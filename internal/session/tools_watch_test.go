@@ -2,12 +2,10 @@ package session
 
 // Watch tests.
 //
-// Every timing assertion here rides a REAL two-second timer — the tool's own
-// floor — because the thing under test is a loop whose whole subject is the
-// passage of time, and a fake clock would test the fake. The cost is paid once:
-// the slow cases run in parallel with each other, so the file's wall time is
-// about one interval plus change rather than the sum of them, and every wait is
-// a polled condition with a deadline rather than a fixed sleep.
+// Every case drives the real watch loop and shell command. Cases about delta
+// selection and quiet streaks acknowledge each tick and release the next one
+// through the registry's wait seam; timer-driven cases still cover the real
+// two-second floor. A failure deadline buys patience rather than ordering.
 
 import (
 	"encoding/json"
@@ -148,6 +146,7 @@ func TestWatchRejectsBadArguments(t *testing.T) {
 func TestWatchChangeIsBaselineSilenceThenDeltaOnly(t *testing.T) {
 	t.Parallel()
 	agent, workspace := jobsAgent(t)
+	clock := controlWatch(agent)
 	feed(t, workspace, "app.log", "old one", "old two")
 
 	text, isError := startWatchTool(t, agent, map[string]any{
@@ -157,16 +156,18 @@ func TestWatchChangeIsBaselineSilenceThenDeltaOnly(t *testing.T) {
 		t.Fatalf("watch failed to start: %s", text)
 	}
 	id := watchID(t, agent)
+	watched := agent.jobs.find(id)
 
 	// Two ticks over an unchanged file: the first is the baseline, the second
 	// has nothing to say. Neither may speak.
-	waitTicks(t, agent, id, 2)
+	clock.completedTick(t, watched)
+	clock.tick(t, watched)
 	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("an unchanged watch spoke: %v", queued)
 	}
 
 	feed(t, workspace, "app.log", "old one", "old two", "new three", "new four")
-	waitFor(t, "the delta note", func() bool { return len(sessionNotes(agent)) > 0 })
+	clock.tick(t, watched)
 
 	queued := sessionNotes(agent)
 	if len(queued) != 1 {
@@ -236,6 +237,7 @@ func TestWatchNoteCapsAtFortyLines(t *testing.T) {
 func TestWatchMatchDeliversOnlyMatchingLines(t *testing.T) {
 	t.Parallel()
 	agent, workspace := jobsAgent(t)
+	clock := controlWatch(agent)
 	feed(t, workspace, "app.log", "INFO starting")
 
 	text, isError := startWatchTool(t, agent, map[string]any{
@@ -246,17 +248,25 @@ func TestWatchMatchDeliversOnlyMatchingLines(t *testing.T) {
 		t.Fatalf("watch failed to start: %s", text)
 	}
 	id := watchID(t, agent)
-	waitTicks(t, agent, id, 1)
+	watched := agent.jobs.find(id)
+	clock.completedTick(t, watched)
+	if queued := sessionNotes(agent); len(queued) != 0 {
+		t.Fatalf("the matching watch's baseline spoke: %v", queued)
+	}
 
 	// New lines, none of them matching: silence.
 	feed(t, workspace, "app.log", "INFO starting", "INFO listening")
-	waitTicks(t, agent, id, 3)
+	clock.tick(t, watched)
+	clock.tick(t, watched)
 	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("a non-matching change spoke: %v", queued)
 	}
 
 	feed(t, workspace, "app.log", "INFO starting", "INFO listening", "ERROR disk full", "INFO retrying")
-	waitFor(t, "the match note", func() bool { return len(sessionNotes(agent)) > 0 })
+	clock.tick(t, watched)
+	if queued := sessionNotes(agent); len(queued) != 1 {
+		t.Fatalf("want exactly one matching note, got %v", queued)
+	}
 
 	note := sessionNotes(agent)[0]
 	if !strings.HasPrefix(note, "1 line matching /ERROR/") {
@@ -362,6 +372,7 @@ func TestWatchUntilDeliversFinalNoteAndStops(t *testing.T) {
 func TestWatchStopsAfterThreeIdenticalFailures(t *testing.T) {
 	t.Parallel()
 	agent, _ := jobsAgent(t)
+	clock := controlWatch(agent)
 
 	text, isError := startWatchTool(t, agent, map[string]any{
 		"command": "exit 7", "every_seconds": watchMinEvery, "name": "broken",
@@ -371,7 +382,14 @@ func TestWatchStopsAfterThreeIdenticalFailures(t *testing.T) {
 	}
 	id := watchID(t, agent)
 
-	waitFor(t, "the failure note", func() bool { return len(sessionNotes(agent)) > 0 })
+	watched := agent.jobs.find(id)
+	clock.completedTick(t, watched)
+	for tick := 1; tick < watchFailLimit; tick++ {
+		if queued := sessionNotes(agent); len(queued) != 0 {
+			t.Fatalf("a watch stopped before its failure limit: %v", queued)
+		}
+		clock.tick(t, watched)
+	}
 	queued := sessionNotes(agent)
 	if len(queued) != 1 {
 		t.Fatalf("a broken watch reported more than once: %v", queued)
@@ -519,6 +537,7 @@ func TestCloseStopsWatches(t *testing.T) {
 func TestWatchQuietFiresWhenTheOutputStopsMoving(t *testing.T) {
 	t.Parallel()
 	agent, workspace := jobsAgent(t)
+	clock := controlWatch(agent)
 	feed(t, workspace, "build.log", "compiling one")
 
 	text, isError := startWatchTool(t, agent, map[string]any{
@@ -533,22 +552,27 @@ func TestWatchQuietFiresWhenTheOutputStopsMoving(t *testing.T) {
 		t.Fatalf("the start line does not state the quiet terms: %q", text)
 	}
 	id := watchID(t, agent)
+	watched := agent.jobs.find(id)
 
 	// WHILE THE OUTPUT MOVES, NOTHING IS SAID. Two changes across three ticks
 	// keep resetting the run, and a quiet watch that spoke here would be
 	// announcing the opposite of what it was asked to watch for.
-	waitTicks(t, agent, id, 1)
+	clock.completedTick(t, watched)
 	feed(t, workspace, "build.log", "compiling one", "compiling two")
-	waitTicks(t, agent, id, 2)
+	clock.tick(t, watched)
 	feed(t, workspace, "build.log", "compiling one", "compiling two", "linking")
-	waitTicks(t, agent, id, 3)
+	clock.tick(t, watched)
 	if queued := sessionNotes(agent); len(queued) != 0 {
 		t.Fatalf("a quiet watch spoke while the output was moving: %v", queued)
 	}
 
 	// Now leave it alone. Two unchanged ticks in a row are the terms, and the
 	// note that follows is the last one this watch ever sends.
-	waitFor(t, "the quiet note", func() bool { return len(sessionNotes(agent)) > 0 })
+	clock.tick(t, watched)
+	if queued := sessionNotes(agent); len(queued) != 0 {
+		t.Fatalf("a quiet watch fired after only one unchanged tick: %v", queued)
+	}
+	clock.tick(t, watched)
 	queued := sessionNotes(agent)
 	if len(queued) != 1 {
 		t.Fatalf("want exactly one note, got %v", queued)
@@ -560,8 +584,10 @@ func TestWatchQuietFiresWhenTheOutputStopsMoving(t *testing.T) {
 		t.Fatalf("the final note does not carry the last output line: %q", queued[0])
 	}
 
-	waitFor(t, "the watch to stop", func() bool { return !agent.jobs.find(id).running() })
-	waitSignal(t, agent.jobs.find(id).done, "the quiet watch loop to return")
+	waitSignal(t, watched.done, "the quiet watch loop to return")
+	if watched.running() {
+		t.Fatal("a quiet watch kept running after it fired")
+	}
 	// It ends the way `until` ends: its returned loop has no ticker left.
 	before := agent.jobs.find(id).tickCount()
 	if after := agent.jobs.find(id).tickCount(); after != before {

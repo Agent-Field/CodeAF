@@ -479,23 +479,33 @@ func TestAMarksReadingRidesBesideTheStepAndCutsItOnIndependentParts(t *testing.T
 // `phase.done()`, paid a whole Update-and-View cycle before the engine goroutine
 // got its call back. On every call, not only a cancelled one.
 //
-// The listener here takes as long as every other auxiliary in this file, and the
-// two figures the law is about are the same two. It passes because the news is
-// left on a desk (sidecar.go) rather than carried.
+// The listener stays blocked until the turn finishes, and the two figures the
+// law is about are still asserted. It passes because the news is left on a
+// desk (sidecar.go) rather than carried; joining that desk costs no timed wait
+// once the test releases the listener's backlog.
 func TestASlowListenerNeverHoldsTheTurnThatIsTellingIt(t *testing.T) {
 	// The listener is released the instant the test ends, so a desk still working
 	// through a backlog never outlives the thing it was describing.
 	release := make(chan struct{})
-	t.Cleanup(func() { close(release) })
+	var once sync.Once
+	free := func() { once.Do(func() { close(release) }) }
+	defer free()
+	t.Cleanup(free)
+	entered := make(chan struct{}, 1)
 	var told int64
 	previous := OnPhaseNews(func(PhaseNews) {
 		atomic.AddInt64(&told, 1)
 		select {
-		case <-release:
-		case <-time.After(paceSlowReading):
+		case entered <- struct{}{}:
+		default:
 		}
+		<-release
 	})
-	t.Cleanup(func() { OnPhaseNews(previous) })
+	t.Cleanup(func() {
+		free()
+		phaseDesk.settled()
+		OnPhaseNews(previous)
+	})
 
 	rounds := 3
 	completer := &paceCompleter{
@@ -517,6 +527,10 @@ func TestASlowListenerNeverHoldsTheTurnThatIsTellingIt(t *testing.T) {
 			"want at most %dms — a phase was posted down the turn's own stack",
 			pace.StepGapMS, paceLawBudget.Milliseconds())
 	}
+	awaitTestCompletion(t, entered, "the blocked listener receiving a phase")
+	// The turn has finished while the listener is still blocked. Release its
+	// backlog before joining it, rather than paying a timeout for every phase.
+	free()
 	phaseDesk.settled()
 	// AND THE LISTENER REALLY WAS TOLD. A turn that posted nothing would pass this
 	// law by saying nothing, which is the other way to break the status line.

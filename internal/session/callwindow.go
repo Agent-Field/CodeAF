@@ -51,6 +51,9 @@ type callWindow struct {
 	// call, which is the one effort a person's pinned rung yields to (the
 	// adapter's WithRequiredReasoningEffort states the rule).
 	answer bool
+	// timeout is a test-only context-clock seam. A nil seam keeps the real
+	// deadline, so production windows and the information told stay unchanged.
+	timeout func(context.Context, time.Duration) (context.Context, context.CancelFunc)
 }
 
 // callWindowKey is the context key [callWindow] rides under.
@@ -60,7 +63,11 @@ type callWindowKey struct{}
 // told. It is the one way this package opens a told window, and the checker's
 // calls are held to it by a law (callwindow_law_test.go).
 func openCallWindow(ctx context.Context, bound time.Duration, window callWindow) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(ctx, bound)
+	timeout := context.WithTimeout
+	if window.timeout != nil {
+		timeout = window.timeout
+	}
+	ctx, cancel := timeout(ctx, bound)
 	return context.WithValue(ctx, callWindowKey{}, window), cancel
 }
 

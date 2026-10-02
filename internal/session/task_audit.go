@@ -1289,7 +1289,7 @@ func (a *Agent) auditOnce(ctx context.Context, node *TaskNode, tree taskTree, gr
 	// through two thirty-second shares without a word (#941). Opened this way,
 	// every request the checker makes under it carries the time it has left, and
 	// the adapter's effort ladder sizes its thinking to fit (callwindow.go).
-	auditCtx, done := openCallWindow(ctx, bound, callWindow{})
+	auditCtx, done := openCallWindow(ctx, bound, callWindow{timeout: a.config.auditTimeout})
 	defer done()
 
 	fmt.Fprintf(log, "audit: verifying against the acceptance\n")

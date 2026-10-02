@@ -515,6 +515,10 @@ func (r *jobRegistry) runWatch(ctx context.Context, cancel context.CancelFunc, w
 		if fired {
 			break
 		}
+		if r.watchTickWait != nil {
+			r.watchTickWait(ctx)
+			continue
+		}
 		select {
 		case <-ctx.Done():
 		case <-ticker.C:

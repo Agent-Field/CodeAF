@@ -15,9 +15,10 @@ package session
 // is telemetry with a complete log behind it and must stay quiet, and a turn per
 // delta would turn a quiet observer into an autonomous conversation.
 //
-// Every case here drives the REAL timer loop rather than calling the lane's door,
-// for tools_watch_test.go's reason: the thing under test is which news a tick is,
-// and a fixture that decided that for itself would be testing the fixture.
+// Every case here drives the real watch loop rather than calling the lane's
+// door. The tick-silence case releases acknowledged ticks through the wait seam;
+// the other cases retain the real timer. The loop still decides which news a
+// tick is, because a fixture that chose the lane would be testing the fixture.
 
 import (
 	"context"
@@ -138,10 +139,14 @@ func TestWatchTicksNeverStartATurn(t *testing.T) {
 		},
 	}}
 	agent, workspace := newTestAgent(t, completer, nil)
+	clock := controlWatch(agent)
 
-	firingWatch(t, agent, workspace, "app.log", "this never appears", "starting up")
+	id := firingWatch(t, agent, workspace, "app.log", "this never appears", "starting up")
+	watched := agent.jobs.find(id)
+	clock.completedTick(t, watched)
 	for round, line := range []string{"one", "two", "three"} {
 		feed(t, workspace, "app.log", "starting up", line)
+		clock.tick(t, watched)
 		want := round + 1
 		waitFor(t, fmt.Sprintf("tick %d to reach the ambient queue", want), func() bool {
 			return len(ambientQueue(agent)) == want
@@ -153,6 +158,12 @@ func TestWatchTicksNeverStartATurn(t *testing.T) {
 	}
 	if queued := steeringQueue(agent); len(queued) != 0 {
 		t.Fatalf("a tick reached the owed lane: %v", queued)
+	}
+	agent.mu.Lock()
+	running := agent.running
+	agent.mu.Unlock()
+	if running {
+		t.Fatal("ordinary watch ticks started a turn before its model was scheduled")
 	}
 }
 

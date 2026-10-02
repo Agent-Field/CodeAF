@@ -155,6 +155,9 @@ func (a *Agent) watchTeamTraffic(profile string) {
 	// before the loop, so one already past its bound closes on the start
 	// rather than waiting out a tick (team_wrapup.go).
 	a.teamWrapUpResume(profile, time.Now())
+	if a.config.teamWatchManual {
+		return
+	}
 	guard.Go("team traffic wake", func() { a.teamWatchLoop(profile) })
 }
 

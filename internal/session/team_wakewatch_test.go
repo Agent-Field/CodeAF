@@ -259,10 +259,25 @@ func TestTeamWakeFinishedAfterReplyStillDeduplesAfterManagerRestart(t *testing.T
 }
 
 func TestTeamWakeTheLoopBreakerCountsTenMemberReplies(t *testing.T) {
-	fastTeamWake(t)
+	// The real traffic reader is driven at explicit logical instants, so no
+	// timer can consume a reply before the test advances the settle clock.
+	manual := func(config *Config) { config.teamWatchManual = true }
 	fixture := newWakingTeamFixture(t)
 	managerCalls := oneAnswer(teamLoopRounds + 1)
-	manager := teamAgent(t, fixture, fixture.manager, managerCalls, nil)
+	manager := teamAgent(t, fixture, fixture.manager, managerCalls, manual)
+	wakes, stopWakes := manager.WatchWakes()
+	defer stopWakes()
+	now := time.Now()
+	tick := func() {
+		if !manager.teamWatchTick(fixture.profile, now) {
+			t.Fatal("the manager stopped watching its team")
+		}
+		now = now.Add(teamWakeSettle)
+		if !manager.teamWatchTick(fixture.profile, now) {
+			t.Fatal("the manager stopped watching at the settle boundary")
+		}
+		now = now.Add(teamWakeSettle)
+	}
 	posted := make(chan int, teamLoopRounds+1)
 	releases := make([]chan struct{}, teamLoopRounds+1)
 	for i := range releases {
@@ -288,7 +303,7 @@ func TestTeamWakeTheLoopBreakerCountsTenMemberReplies(t *testing.T) {
 		}
 		return textResponse("finished"), nil
 	}}
-	web = teamAgent(t, fixture, fixture.web, rounds, nil)
+	web = teamAgent(t, fixture, fixture.web, rounds, manual)
 	for i := 0; i <= teamLoopRounds; i++ {
 		rounds.arm(i)
 		events := mustSubmit(t, web, "answer the manager")
@@ -297,18 +312,35 @@ func TestTeamWakeTheLoopBreakerCountsTenMemberReplies(t *testing.T) {
 			if got != i {
 				t.Fatalf("posted round %d before %d", got, i)
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(awaitPatience(t)):
 			t.Fatal("the member did not post")
 		}
+		tick()
 		if i < teamLoopRounds {
-			waitRequests(t, managerCalls, i+1)
-			waitIdle(t, manager)
+			select {
+			case stream := <-wakes:
+				collect(t, stream)
+			case <-time.After(awaitPatience(t)):
+				t.Fatal("the member reply did not wake the manager")
+			}
 		} else {
-			waitEvent(t, fixture, "the team has woken me 10 times")
+			// The manual tick writes its hold notice before returning, so its
+			// completion is the acknowledgement; no polling window is needed.
+			if got := trafficEvents(t, fixture, "the team has woken me 10 times"); len(got) == 0 {
+				t.Fatal("the eleventh reply did not leave the loop notice in the traffic")
+			}
 		}
 		close(releases[i])
 		collect(t, events)
-		time.Sleep(3*teamWakeSettle + 10*teamWatchEvery)
+		// The member's stream closes after its finished event is written.
+		// Read that event and cross the settle boundary again to prove it
+		// cannot duplicate the explicit reply's wake.
+		tick()
+		select {
+		case <-wakes:
+			t.Fatalf("round %d woke the manager again after its reply", i)
+		default:
+		}
 		if got := managerCalls.requests(); got != min(i+1, teamLoopRounds) {
 			t.Fatalf("after round %d the manager made %d calls", i, got)
 		}

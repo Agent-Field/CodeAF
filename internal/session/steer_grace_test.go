@@ -13,7 +13,6 @@ import (
 	"context"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,13 +32,14 @@ func advanceSteerAge(agent *Agent, age time.Duration) {
 // not at the command's own ending, and not at the background clock.
 func TestASteerLandsWhenAYoungBashCrossesTheGrace(t *testing.T) {
 	t.Parallel()
-	var reached atomic.Int64
+	command, release := heldSteerBash(t, "grace-bash-finished")
+	reached := make(chan struct{})
 	completer := &scriptedCompleter{steps: []step{
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			return toolResponse("grace-bash", "bash", `{"command":"sleep 7; echo grace-bash-finished"}`), nil
+			return bashCall("grace-bash", command)(context.Background(), nil)
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
-			reached.Store(time.Now().UnixNano())
+			close(reached)
 			return textResponse("2026-09-05, and the suite is still running"), nil
 		},
 		func(context.Context, []ai.Message) (*ai.Response, error) {
@@ -53,21 +53,32 @@ func TestASteerLandsWhenAYoungBashCrossesTheGrace(t *testing.T) {
 	// steer waiting for it. Twenty seconds stands in for livechat's thirty and
 	// is longer than anything this test does.
 	agent, _ := newTestAgent(t, completer, func(config *Config) { config.BashBackgroundAfterSeconds = 20 })
+	clock := controlSteer(agent)
 	turn := mustSubmit(t, agent, "run the suite")
 	waitFor(t, "the foreground bash to start", func() bool { return len(agent.inFlightBash.snapshot()) == 1 })
 	calls := agent.inFlightBash.snapshot()
-	if age := calls[0].RunningFor(); age >= steerBashAge {
+	if age := agent.steerBashRunningFor(calls[0]); age >= steerBashAge {
 		t.Fatalf("the bash was already %s old, so this is not the young case", age)
 	}
-	sent := time.Now()
 	steered := mustSteer(t, agent, "while that runs, what is today's date")
-
-	waitFor(t, "the steer to reach the model", func() bool { return reached.Load() != 0 })
-	waited := time.Unix(0, reached.Load()).Sub(sent)
-	t.Logf("the steer reached the model %s after it was sent", waited)
-	if bound := steerBashAge + 2*time.Second; waited > bound {
-		t.Fatalf("the steer reached the model %s after it was sent, want it inside %s", waited, bound)
+	agent.mu.Lock()
+	watch := agent.steerGrace
+	agent.mu.Unlock()
+	if watch == nil || clock.fire == nil {
+		t.Fatal("no second look was armed for the young bash")
 	}
+	if want := steerBashAge + steerGraceMargin; clock.delay != want {
+		t.Fatalf("the second look was scheduled after %s, want %s", clock.delay, want)
+	}
+	if agent.jobs.find(1) != nil {
+		t.Fatal("the young bash was adopted before its grace")
+	}
+	// The command is held until its eventual exit is asked for below. Advancing
+	// its age and firing the actual scheduled callback proves the second look
+	// without racing the process's lifetime against a wall-clock window.
+	advanceSteerAge(agent, steerBashAge+steerGraceMargin)
+	clock.fire()
+	awaitTestCompletion(t, reached, "the delayed steer reaching the model")
 
 	second := completer.request(1)
 	if got, want := userLines(second), []string{"run the suite", "while that runs, what is today's date"}; !equalStrings(got, want) {
@@ -85,6 +96,7 @@ func TestASteerLandsWhenAYoungBashCrossesTheGrace(t *testing.T) {
 	}
 
 	// ONE PROCESS, ADOPTED ONCE, AND ITS ENDING STILL ARRIVES.
+	release()
 	waitFor(t, "the adopted job's exit note", func() bool { return notesContain(agent, "grace-bash-finished") })
 	waitFor(t, "the owed exit request", func() bool { return completer.requests() >= 3 })
 	if got := strings.Join(userLines(completer.request(2)), "\n"); !strings.Contains(got, "job 1 exited 0") {
