@@ -26,21 +26,22 @@ var startedFiles = map[string]string{
 	"telemetry/install_id": "x", "telemetry/first_run": "x",
 	"graph.db-wal": "x", "graph.db-shm": "x",
 	"v3/history.jsonl": `{"text":"/quit","cwd":"/w","ts":"2026-01-01T00:00:00Z"}` + "\n",
-	"v3/models.json":   "{}", "v3/lanes.json": "{}", "v3/lanes.json.lock": "",
-	"v3/draft-ab-0-12.json":           `{"version":1,"owner":"o","slots":[{"owner":"o","caret":0}]}`,
-	"v3/hosts/ab/host.sock":           "",
-	"v3/hosts/ab/host.log":            "",
-	"v3/standing/tick.lock":           "",
-	"v3/stores/sweep.stamp":           "",
-	"v3/stores/01SESSION/budget.json": "{}",
-	"v3/stores/01SESSION/budget.lock": "",
-	sessionDir + "/meta.json":         "{}",
-	sessionDir + "/presence.json":     "{}",
-	cellDir + "/meta.json":            "{}",
-	cellDir + "/session.json":         "{}",
-	cellDir + "/env/.keep-dir":        "",
-	cellDir + "/memories.jsonl":       "",
-	cellDir + "/transcript.jsonl":     `{"type":"session","version":1,"id":"01SESSION"}` + "\n",
+	"v3/models.json":   "{}", "v3/lanes.json": "{}", "v3/lanes.json.lock": "", "v3/lanes.log": "{}\n",
+	"v3/lanes/deepseek%2Fdeepseek-v4.1-flash.json": "{}",
+	"v3/draft-ab-0-12.json":                        `{"version":1,"owner":"o","slots":[{"owner":"o","caret":0}]}`,
+	"v3/hosts/ab/host.sock":                        "",
+	"v3/hosts/ab/host.log":                         "",
+	"v3/standing/tick.lock":                        "",
+	"v3/stores/sweep.stamp":                        "",
+	"v3/stores/01SESSION/budget.json":              "{}",
+	"v3/stores/01SESSION/budget.lock":              "",
+	sessionDir + "/meta.json":                      "{}",
+	sessionDir + "/presence.json":                  "{}",
+	cellDir + "/meta.json":                         "{}",
+	cellDir + "/session.json":                      "{}",
+	cellDir + "/env/.keep-dir":                     "",
+	cellDir + "/memories.jsonl":                    "",
+	cellDir + "/transcript.jsonl":                  `{"type":"session","version":1,"id":"01SESSION"}` + "\n",
 }
 
 // startedHome lays the started files out, then applies the change a test makes.
@@ -82,7 +83,9 @@ func makeGraph(t *testing.T, home string, extra []string) {
 	for _, q := range append([]string{
 		`CREATE TABLE IF NOT EXISTS nodes (id TEXT)`, `CREATE TABLE IF NOT EXISTS events (id TEXT)`,
 		`CREATE TABLE IF NOT EXISTS messages (id TEXT)`, `CREATE TABLE IF NOT EXISTS memories (id TEXT)`,
+		`CREATE TABLE IF NOT EXISTS facts (kind TEXT, channel TEXT)`,
 		`INSERT INTO nodes VALUES ('root')`, `INSERT INTO events VALUES ('boot')`,
+		`INSERT INTO facts VALUES ('skill', 'inferred')`, // one per skill installed on the computer, read again at every start
 	}, extra...) {
 		if _, err := db.Exec(q); err != nil {
 			t.Fatal(err)
@@ -131,6 +134,7 @@ func TestPristineRefusesEveryKindOfUse(t *testing.T) {
 		"an unknown file":          func(h string) { put(t, filepath.Join(h, "v3/notes.txt"), "x") },
 		"a stored message":         func(h string) { makeGraph(t, h, []string{`INSERT INTO messages VALUES ('m')`}) },
 		"a second node":            func(h string) { makeGraph(t, h, []string{`INSERT INTO nodes VALUES ('task')`}) },
+		"a remembered fact":        func(h string) { makeGraph(t, h, []string{`INSERT INTO facts VALUES ('preference', 'stated')`}) },
 		"a stray byte for a graph": func(h string) { put(t, filepath.Join(h, "graph.db"), "x") },
 		"a broken graph":           func(h string) { put(t, filepath.Join(h, "graph.db"), "not a database") },
 	}

@@ -145,10 +145,10 @@ func onlyCommands(path string) (bool, error) {
 // graphRoot is the one node a start puts in the memory graph.
 const graphRoot = "root"
 
-// bareGraph is for the memory graph. A start seeds its root node and logs events
-// about it; every other table (sessions, messages, memories, charters, ...) and
-// every other node is work the person did. It is opened read-only so judging a
-// home never changes it.
+// bareGraph is for the memory graph. A start seeds its root node and its
+// inferred skill facts and logs events about them; every other table (sessions,
+// messages, memories, charters, ...), node and fact is work the person did. It
+// is opened read-only so judging a home never changes it.
 func bareGraph(path string) (bool, error) {
 	if sound, err := soundDatabase(path); !sound || err != nil {
 		return true, err
@@ -210,13 +210,22 @@ func graphTables(db *sql.DB) ([]string, error) {
 	return names, rows.Err()
 }
 
-// holdsWork says whether a table has a row beyond the root node.
+// workRows names, per table, the rows that are the person's: what is left once
+// what a start writes itself is taken out. A start seeds the root node and one
+// inferred skill fact for each skill installed on the computer (read from the
+// disk again at every start). A table not named here is all work.
+var workRows = map[string]string{
+	"nodes": "id <> '" + graphRoot + "'",
+	"facts": "NOT (kind = 'skill' AND channel = 'inferred')",
+}
+
+// holdsWork says whether a table has a row that is the person's work.
 func holdsWork(db *sql.DB, table string) (bool, error) {
-	var n int
 	query := `SELECT count(*) FROM "` + table + `"`
-	if table == "nodes" {
-		query += ` WHERE id <> '` + graphRoot + `'`
+	if only, ok := workRows[table]; ok {
+		query += " WHERE " + only
 	}
+	var n int
 	err := db.QueryRow(query).Scan(&n)
 	return n > 0, err
 }

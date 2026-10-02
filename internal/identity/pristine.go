@@ -37,6 +37,7 @@ var started = within(rules{
 	"telemetry": within(rules{"first_run": never, "install_id": never, "notice_seen": never}),
 	"v3": within(rules{
 		"history.jsonl": onlyCommands, "models.json": never, "lanes.json": never, "lanes.json.lock": never,
+		"lanes.log": never, "lanes": never, // provider facts fetched from the model catalogue, fetched again on demand
 		"draft-*.json": untypedDraft, "hosts": never, "standing": never,
 		"stores": within(rules{
 			"sweep.stamp": never,
