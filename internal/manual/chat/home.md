@@ -288,7 +288,7 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
 updates the tab and the row in Sessions together.
 
-## Chats on my other machines — a chat running on another computer, "running on studio", "studio off", why does it say running on build-box off, merge / discard
+## Chats on my other machines — a chat running on another computer, "running on studio", "studio offline", why does it say running on build-box offline, merge / discard
 
 When this machine can reach your other machines, a chat that lives on one of them is a
 row under **sessions**, beside the local ones and ordered by when its last saved turn
@@ -297,11 +297,11 @@ happened. The row says where the chat is only where that tells you something:
 | The chat is | The row says |
 | --- | --- |
 | running on another machine | `running on <device>` |
-| on a machine that went off or to sleep without letting go | `<device> off` |
+| on a machine that went off or to sleep without letting go | `<device> offline` |
 | a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
 | held by this machine, or let go by everyone | nothing |
 
-Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box off` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `off` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -322,14 +322,14 @@ If the other machines cannot be reached, the last list stays on screen and the l
 extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
 same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
 
-## Continue a chat here that another machine left — "studio off", takeover, "continue here", the chat is running on another computer
+## Continue a chat here that another machine left — "studio offline", takeover, "continue here", the chat is running on another computer
 
-Press enter on a row that says `<device> off` or `running on <device>` and home asks **Continue this chat here?**
+Press enter on a row that says `<device> offline` or `running on <device>` and home asks **Continue this chat here?**
 with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
-The card says how fresh the copy is: `last durable turn <N>s ago; up to <K> turns may still
+The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
 be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
 `running on <device>` row the card starts with that: `running on <device>; last durable turn
-<N>s ago`. When that device is not online, the card leaves `running on` out and says `last durable turn <N>s ago`. Press enter to continue: the chat is fetched, this machine takes it
+<N>s ago`. When that device is not online, the card leaves `running on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
 over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
 running there stops taking new turns there the moment you take it, and its window says
 `<device> continued this chat; this window now only shows it`. Anything it had not yet sent
@@ -338,11 +338,11 @@ question takes the whole screen, with the sentence wrapped.
 
 - If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
   branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
-- If another machine took an `off` chat first, the row goes back to `running on <device>` with one
+- If another machine took an `offline` chat first, the row goes back to `running on <device>` with one
   line saying another device continued it first. Nothing was changed.
 - If the other machines cannot be reached, enter says `other machines unreachable` and asks
   nothing: no chat can be taken without them.
-- With no way to continue set up, an off row has no `continue here`: enter says its sentence.
+- With no way to continue set up, an offline row has no `continue here`: enter says its sentence.
 
 ## What comes with a continued chat — the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
 

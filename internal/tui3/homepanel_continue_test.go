@@ -86,7 +86,7 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	standOn(t, a, "c-off")
 	text := homeText(a)
 	for _, want := range []string{
-		"last durable turn 10800s ago; up to 3 turns may still be on studio",
+		"last saved turn 3h ago; up to 3 turns may still be on studio",
 		chatlist.OfferContinue,
 	} {
 		if !strings.Contains(text, want) {
@@ -96,7 +96,7 @@ func TestTakeoverScreenCopy(t *testing.T) {
 	// K = 0 leaves the `up to` clause out.
 	standOn(t, a, "c-clean")
 	text = homeText(a)
-	if !strings.Contains(text, "last durable turn 90s ago") || strings.Contains(text, "up to") {
+	if !strings.Contains(text, "last saved turn 1m ago") || strings.Contains(text, "up to") {
 		t.Errorf("a takeover with nothing left behind says the wrong thing:\n%s", text)
 	}
 }
@@ -107,7 +107,7 @@ func TestTakeoverScreenOffersARunningChat(t *testing.T) {
 	taker := &fakeTaker{}
 	a := continueHome(t, taker, continueRows, 200)
 	standOn(t, a, "c-run")
-	if text := homeText(a); !strings.Contains(text, "running on studio; last durable turn 120s ago") {
+	if text := homeText(a); !strings.Contains(text, "running on studio; last saved turn 2m ago") {
 		t.Fatalf("the screen does not name where the chat runs:\n%s", text)
 	}
 	confirm(t, a)
@@ -339,7 +339,7 @@ func TestTakeoverScreenGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
 			"╭─ ? Continue this chat here? ────────────────────────────────────────────────╮",
-			"│ last durable turn 10800s ago; up to 3 turns may still be on studio          │",
+			"│ last saved turn 3h ago; up to 3 turns may still be on studio                │",
 			"│                                                                             │",
 			"│ ▸ 1  continue here                                                          │",
 			"│   2  leave it there                                            safe answer  │",
@@ -348,8 +348,8 @@ func TestTakeoverScreenGolden(t *testing.T) {
 		},
 		40: {
 			"╭─ ? Continue this chat here? ────────╮",
-			"│ last durable turn 10800s ago; up to │",
-			"│ 3 turns may still be on studio      │",
+			"│ last saved turn 3h ago; up to 3     │",
+			"│ turns may still be on studio        │",
 			"│                                     │",
 			"│ ▸ 1  continue here                  │",
 			"│   2  leave it there    safe answer  │",
@@ -422,7 +422,7 @@ func TestTakeoverCardOfAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	a.dirFeed = feed
 	a.rebuildMachines()
 	standOn(t, a, "c-run")
-	if text := homeText(a); !strings.Contains(text, "running on build-box; last durable turn 15s ago") {
+	if text := homeText(a); !strings.Contains(text, "running on build-box; last saved turn 15s ago") {
 		t.Fatalf("an online device's card lost running on:\n%s", text)
 	}
 	feed.state.Online = nil
@@ -430,7 +430,7 @@ func TestTakeoverCardOfAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	a.dropHomeAsk()
 	a.offerContinue(raw, chatlist.Offer{})
 	text := homeText(a)
-	if strings.Contains(text, "running on") || !strings.Contains(text, "last durable turn 15s ago") {
+	if strings.Contains(text, "running on") || !strings.Contains(text, "last saved turn 15s ago") {
 		t.Fatalf("an offline device's card says the wrong thing:\n%s", text)
 	}
 }

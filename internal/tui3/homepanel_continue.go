@@ -72,6 +72,7 @@ const (
 	continueAsk   = "Continue this chat here?"
 	continueStay  = "leave it there"
 	lostRaceWord  = chatlist.LostRace
+	continuing    = "continuing here…"
 	continueFails = "could not continue this chat here"
 	branchAsk     = "What should happen to these turns?"
 	branchLeave   = "leave them"
@@ -242,7 +243,7 @@ type homeTakenMsg struct {
 // takeRemote asks the taker, off the update loop: a takeover fetches and waits
 // on the directory, and a keystroke may not wait on a network.
 func (a *app) takeRemote(row chatlist.Row) tea.Cmd {
-	a.home.say(chatlist.OfferContinue+"…", "")
+	a.home.say(continuing, "")
 	taker, ctx := a.taker, a.ctx
 	return func() tea.Msg {
 		taken, err := taker.Take(ctx, row.Cell)

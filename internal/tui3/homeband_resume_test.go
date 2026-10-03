@@ -62,7 +62,7 @@ func TestResumeIsDecidedAgainWhenTheFeedSaysTheDeviceWentOffline(t *testing.T) {
 	// The relay's offline debounce is over: the feed drops the device.
 	feed.state.Online = nil
 	a.tookWatch(dirWatchMsg{from: feed})
-	if got := leftOffFrame(a); !strings.Contains(got, "Continue where you left off on spark?") {
+	if got := leftOffFrame(a); !strings.Contains(got, "Continue spark's latest chat here?") {
 		t.Fatalf("no card after the device went offline:\n%s", got)
 	}
 	// It comes back: the reason is gone and the card with it.
@@ -101,7 +101,7 @@ func TestResumeOffersOnceAndLeadsToTheTakeoverCard(t *testing.T) {
 	a := leftOffApp(&fakeTaker{})
 	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "spark", chatlist.Off, time.Hour)}})
 	got := leftOffFrame(a)
-	for _, want := range []string{"Continue where you left off on spark?", resumeYes, resumeNo} {
+	for _, want := range []string{"Continue spark's latest chat here?", resumeYes, resumeNo} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
@@ -157,7 +157,7 @@ func TestResumeAppearsWithinTheBoundWhenTheLeaseLapses(t *testing.T) {
 	}
 	src.rows = row(chatlist.Off)
 	lapsed := *now
-	for !strings.Contains(leftOffFrame(a), "Continue where you left off on spark?") {
+	for !strings.Contains(leftOffFrame(a), "Continue spark's latest chat here?") {
 		if waited := now.Sub(lapsed); waited > machinesCap+homeEvery {
 			t.Fatalf("no card %s after the lease lapsed, want within %s", waited, machinesCap)
 		}
