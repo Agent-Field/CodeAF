@@ -176,7 +176,7 @@ func TestHomeSkillPathOpensAConversationWithThePathStillInThePicker(t *testing.T
 	a.start = func(string) (Conversation, error) {
 		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: "/tmp/alpha/next/transcript.jsonl"}, nil
 	}
-	a.homeSlash("/skills ./tools/reviewer")
+	unfold(t, a, a.homeSlash("/skills ./tools/reviewer"))
 	if a.at(pageHome) {
 		t.Fatal("the skill command stayed on home")
 	}

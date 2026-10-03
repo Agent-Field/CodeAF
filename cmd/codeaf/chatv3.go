@@ -954,6 +954,12 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		})
 	}
 
+	// THE SHELF'S IMPORT PASS RUNS OFF THE OPEN, AND THE FIRST TURN HOLDS
+	// FOR IT, BOUNDED (#1659). The channel goes into the config below; the
+	// pass runs when the launch's assembly is otherwise done, and closes the
+	// channel when it lands. A foreignSkillPass that cannot run — no shelf —
+	// still closes the channel, so no turn ever waits on nothing.
+	skillsReady := make(chan struct{})
 	cfg := session.Config{
 		Workspace:      workspace,
 		Model:          chosen,
@@ -985,6 +991,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// the skills a person installed for another harness are not memory,
 		// and turning memory off never asked for them to go.
 		Skills: proc.skillShelf(),
+		// AND THE GATE the first turn holds for the pass (#1659):
+		SkillsReady:      skillsReady,
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
@@ -1187,7 +1195,21 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// The pass is idempotent — an unchanged disk journals nothing — so an open
 	// costs one scan and no writes, and a skill edited since the last open is
 	// re-read before the model ever sees the shelf.
-	importForeignSkillsBeforeFirstMessage(proc.skillShelf(), workspace)
+	// THE FOREIGN-SKILL PASS LEAVES THE OPEN (#1659). It ran here,
+	// synchronously, before anything could build — on the shared road inside
+	// the enter keystroke itself. It runs off the open now: the first turn's
+	// skill resolve waits on skillsReady, bounded, so the first message still
+	// sees the shelf while the door that opened the conversation never waits
+	// on a disk scan.
+	go func() {
+		defer close(skillsReady)
+		// THE PASS NEVER TAKES THE PROCESS DOWN. It runs beside a shelf whose
+		// owner may be closing — a lost race with a shutdown costs the pass
+		// itself, never the conversation; the resident reconciler runs the
+		// same pass on its own clock, so nothing is lost but a scan.
+		defer func() { _ = recover() }()
+		foreignSkillPass(proc.skillShelf(), workspace)
+	}()
 
 	// AND THIS PROCESS STARTS KEEPING TIME. Any open window takes the store's
 	// lock and runs the pass; the OS timer is the backup for "no terminal open"
@@ -1213,6 +1235,11 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Subharnesses: subharnesses,
 	}, nil
 }
+
+// foreignSkillPass is the pass a launch runs off the open. A var so the
+// suite can hold the scan still while it proves the door came back and the
+// first turn's gate holds.
+var foreignSkillPass = importForeignSkillsBeforeFirstMessage
 
 // importForeignSkillsBeforeFirstMessage runs the foreign-skill import pass
 // against the conversation's own shelf, in place: every SKILL.md folder a

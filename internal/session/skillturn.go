@@ -23,6 +23,7 @@ package session
 
 import (
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/plan"
 	store "github.com/Agent-Field/codeaf/internal/store"
@@ -42,6 +43,32 @@ const skillTurnMax = 4
 // skillEntries reads the same bound, so a name resolves the same way here as
 // it does in a task's brief).
 const skillTurnResolveLimit = store.SkillShelfLimit
+
+// skillImportWait is how long a turn holds for the foreign-skill import pass
+// before composing without it — long enough for a real scan of real skill
+// folders, short enough that a stuck scan costs the first message a delay and
+// nothing more (#1659).
+const skillImportWait = 2 * time.Second
+
+// waitSkillsReady holds the turn back, bounded, until the shelf's import pass
+// has finished. The very first message must not miss foreign skills; no later
+// one waits at all, because the channel the door handed the config stays
+// closed. A gate nobody handed us is no gate.
+func (a *Agent) waitSkillsReady() {
+	if a.config.SkillsReady == nil {
+		return
+	}
+	wait := a.config.SkillsReadyWait
+	if wait <= 0 {
+		wait = skillImportWait
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-a.config.SkillsReady:
+	case <-timer.C:
+	}
+}
 
 // turnSkillsLead introduces the block [turnSkills] splices onto the copy the
 // model reads.
@@ -100,6 +127,12 @@ func (a *Agent) turnSkills(text string) (string, []string) {
 	if shelf == nil || text == "" {
 		return "", nil
 	}
+	// THE FIRST TURN MAY HOLD FOR THE SHELF, BOUNDED. The import pass a
+	// launch used to run before anything could build is off the open now
+	// (#1659); the first message still must not miss foreign skills, so the
+	// resolve waits here for the pass to finish — up to the bound, never
+	// past it, and never at all once the pass is done.
+	a.waitSkillsReady()
 	facts, err := shelf.SkillFacts(store.FactActive, skillTurnResolveLimit)
 	if err != nil {
 		// A shelf that cannot be read is no shelf: nothing is attached, the
