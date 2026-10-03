@@ -390,7 +390,17 @@ func (w *behindWatch) adopt(events <-chan session.Event, stop func()) {
 
 // startBehindWatch subscribes to everything this agent has and drains it.
 func startBehindWatch(key string, agent Agent, out chan<- behindStirMsg) *behindWatch {
+	return startBehindWatchSeeded(key, agent, out, false)
+}
+
+// startBehindWatchSeeded is [startBehindWatch] with what the surface knew as
+// it put the conversation down: turnInFlight seeds the flag BEFORE the
+// goroutine starts, so the one frame the hold redraws reads the seed and never
+// a race with [behindWatch.run] attaching on its own goroutine. See the
+// watcher line at [app.stowHeld].
+func startBehindWatchSeeded(key string, agent Agent, out chan<- behindStirMsg, turnInFlight bool) *behindWatch {
 	w := &behindWatch{key: key, agent: agent, out: out, quit: make(chan struct{}), adopts: make(chan behindTurn, 1)}
+	w.turning.Store(turnInFlight)
 	go w.run()
 	return w
 }
@@ -459,12 +469,20 @@ func (w *behindWatch) run() {
 		events, running, stop := door.Attach()
 		if running {
 			turn, turnStop = events, stop
-			// A TURN WAS ALREADY IN FLIGHT AT THE DETACH, and that is the one
-			// moment this fact cannot be recovered from anywhere else later
-			// (tabsignal.go).
-			w.turning.Store(true)
 		} else {
 			stop()
+		}
+		// A TURN WAS ALREADY IN FLIGHT AT THE DETACH, and that is the one
+		// moment this fact cannot be recovered from anywhere else later
+		// (tabsignal.go) — so [app.stowHeld] SEEDS this flag on the UI thread,
+		// from the signal the surface let go of, before the one frame the hold
+		// redraws. This line is the same fact re-stated when the door answers,
+		// and it stirs whenever the two disagree: a turn that ended before this
+		// attach, or one the surface never saw, must not leave the mark missing
+		// or standing without a frame to show it — the [behindWatch.replaceTurn]
+		// edge rule.
+		if w.turning.Swap(running) != running {
+			w.stir()
 		}
 	}
 	defer func() {
@@ -853,14 +871,24 @@ func (a *app) drawBehindParked(p parked, shown string) {
 
 // ── holding a conversation, and taking one back ─────────────────────────────
 
-// stow puts the conversation that was just detached into the keeper and starts
-// its watcher.
+// stow is the ordinary door onto [app.stowHeld], for a caller that hands over a
+// conversation with no reading of its own about it: the wall, the teams pages,
+// a /new that opens fresh. The two switch doors read the front's signal before
+// the detach forgets it and come in through [app.stowHeld] directly, which
+// carries the comment on why that signal has to arrive at the hold.
+func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
+	return a.stowHeld(conv, side, false)
+}
+
+// stowHeld puts the conversation that was just detached into the keeper and
+// starts its watcher, knowing turnInFlight — what the surface read as it let
+// go of this conversation.
 //
 // THE CRASH INSURANCE IS WRITTEN HERE and not in the detach, because this is the
 // branch where the conversation goes on existing: a machine that loses power
 // with three conversations open should give all three boxes back, and the
 // sidecar is memory (draft.go).
-func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
+func (a *app) stowHeld(conv Conversation, side *aside, turnInFlight bool) tea.Cmd {
 	key := a.convKey(conv.SessionFile)
 	if key == "" || conv.Agent == nil {
 		return nil
@@ -906,10 +934,20 @@ func (a *app) stow(conv Conversation, side *aside) tea.Cmd {
 	if a.behind == nil {
 		a.behind = map[string]*kept{}
 	}
+	// THE WORKING FLAG IS SEEDED HERE, from the signal the surface carried as it
+	// let go ([app.bringForward] and [app.takeBeside] read it before the detach
+	// forgets it). The stow redraws the frame once, and the watcher's own
+	// attach is a goroutine away — past that redraw when the door answers
+	// slowly (over --host it is a call to another machine). Without the seed a
+	// tab held while its turn is ALREADY RUNNING, and every @mention of it,
+	// would show no working mark until the turn's close finally raised one;
+	// with it the mark is on the frame of the hold itself. The watcher
+	// re-states the same fact when it attaches and stirs whenever the two
+	// disagree ([behindWatch.run]).
 	held := &kept{
 		conv:  conv,
 		side:  side,
-		watch: startBehindWatch(key, conv.Agent, a.stirs),
+		watch: startBehindWatchSeeded(key, conv.Agent, a.stirs, turnInFlight),
 	}
 	a.behind[key] = held
 	a.rememberOpen(key)
@@ -1019,8 +1057,11 @@ func (a *app) bringForward(file string) (cmd tea.Cmd, owned bool) {
 	}
 	delete(a.behind, key)
 	held.watch.stop()
+	// THE SIGNAL OF THE CONVERSATION BEING HELD is read here, while it is still
+	// the front — the detach forgets it a line later. See [app.stowHeld].
+	turnInFlight := a.state == stateWorking
 	leaving, side := a.front(), a.detachConversation()
-	parked := a.stow(leaving, side)
+	parked := a.stowHeld(leaving, side, turnInFlight)
 	cmd = tea.Batch(parked, a.attachConversation(held.conv, held.side))
 	a.rememberOpen(key)
 	return cmd, true
@@ -1094,8 +1135,11 @@ func (a *app) takeBeside(conv Conversation) tea.Cmd {
 	if closed == "" {
 		closed = a.place
 	}
+	// THE SIGNAL OF THE CONVERSATION BEING HELD is read here, while it is still
+	// the front — the detach forgets it a line later. See [app.stowHeld].
+	turnInFlight := a.state == stateWorking
 	leaving, side := a.front(), a.detachConversation()
-	parked := a.stow(leaving, side)
+	parked := a.stowHeld(leaving, side, turnInFlight)
 	if a.shared {
 		// The legacy wire seam returns only an Agent. The local draft store
 		// belongs to this window, with separate owner-scoped slots inside it.

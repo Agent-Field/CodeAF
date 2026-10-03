@@ -145,3 +145,45 @@ func TestMentionRefreshQuietFramesDoNotRelayout(t *testing.T) {
 		t.Fatal("a quiet frame with a held conversation at rest dirtied itself")
 	}
 }
+
+// A tab held while its turn is ALREADY RUNNING carries its mark on the frame
+// of the hold itself. The flag is seeded from the signal the surface let go
+// of (keeper.go's [app.stowHeld]) — the watcher's own attach is a goroutine
+// away and may land after the one frame the stow redraws, and no later event
+// need come before the turn ends. So the mark is THERE when the hold returns:
+// no stir folded, no watcher event awaited.
+func TestMentionRefreshHoldMidTurnShowsTheMarkAtOnce(t *testing.T) {
+	first := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	a := newTestApp(first)
+	a.file = "/tmp/lab/one/transcript.jsonl"
+	a.stirs = make(chan behindStirMsg, stirDepth)
+	second := &switchAgent{fakeAgent: &fakeAgent{model: "m"}}
+	stowOne(t, a, second, "/tmp/lab/two/transcript.jsonl")
+
+	// THE TURN IS ALREADY RUNNING when the tab is held: the surface says so,
+	// and the door reports so to the watcher whenever its goroutine asks.
+	a.state = stateWorking
+	second.running = true
+
+	cmd, ours := a.bringForward("/tmp/lab/one/transcript.jsonl")
+	if !ours {
+		t.Fatal("the keeper did not recognise its own conversation")
+	}
+	key := convKey("/tmp/lab/two/transcript.jsonl")
+	held := a.behind[key]
+	if held == nil {
+		t.Fatal("the conversation that was held is not in the keeper")
+	}
+	t.Cleanup(held.watch.stop)
+	// IMMEDIATELY — before the hold's own commands run, and with nothing
+	// folded off the stir lane.
+	if sig := a.tabSignalFor(key, false); sig != tabWorking {
+		t.Fatalf("a tab held while its turn runs reads %v at the hold, want working", sig)
+	}
+	drain(t, a, cmd)
+	// AND IT STAYS TRUE through the settle: the watcher's attach is the same
+	// fact re-stated, not a correction (keeper.go's [behindWatch.run]).
+	if sig := a.tabSignalFor(key, false); sig != tabWorking {
+		t.Fatalf("a tab held mid-turn reads %v once the hold settled, want working", sig)
+	}
+}
