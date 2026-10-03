@@ -176,22 +176,6 @@ func wholeName(text string) string {
 // noticed.
 func taskIDWord(id uint64) string { return "task " + itoa(int(id)) }
 
-// railFigWord is the row's number in the form a person can say out loud — `#6` —
-// drawn dim before the state glyph on the rail's family rows
-// ([app.railEntryRow]) wherever the column has room for it beside the whole
-// name. The handle is a stored row's own `#id` ([taskNode.handle], the `t-` the
-// store spells its ids with already dropped), and a node the engine named
-// carries its counter instead — the same word either way, because the number
-// is the one thing every row has that never changes while the work runs. It
-// is furniture by the marker's own argument, and it is ASCII already, so no
-// tier respells it.
-func (a *app) railFigWord(node *taskNode) string {
-	if handle := strings.TrimSpace(node.handle); handle != "" {
-		return "#" + handle
-	}
-	return "#" + itoa(int(node.id))
-}
-
 // taskSubtitleOf is the one line under a name: the first sentence of what the
 // node was asked to do, capped.
 //
