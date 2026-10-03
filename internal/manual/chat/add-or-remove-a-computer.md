@@ -89,7 +89,7 @@ While your answer is on its way the screen says `approving…` or `declining…`
 When you approve, your screen says:
 
 ```
-laptop joined your devices — your chats are now everywhere.
+laptop is now paired. Your chats can continue there.
 ```
 
 Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop joined your devices.` and a no says `Request declined.` The terminal first says `"laptop" (linux) wants to join your devices.`

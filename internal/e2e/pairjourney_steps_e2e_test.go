@@ -148,7 +148,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		a.skipSetup(t)
 		a.keys("Space")
 		a.keys("Space")
-		screen, ok := waitPlain(a, 15*time.Second, "Continue where you left off on")
+		screen, ok := waitPlain(a, 15*time.Second, "latest chat here?")
 		j.require(ok, "A offered no way to continue where B left off")
 		j.see(a)
 		_ = screen

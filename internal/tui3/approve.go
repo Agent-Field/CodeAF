@@ -89,7 +89,7 @@ const (
 	approveDeclining = "declining…"
 	approveDenied    = "%s was declined."
 	approveTimeout   = 8 * time.Second
-	joinedFleetWord  = "%s joined your devices — your chats are now everywhere."
+	joinedFleetWord  = "%s is now paired. Your chats can continue there."
 )
 
 // linkShape is what link pairing is typed as (contract section 2): a short
