@@ -221,3 +221,10 @@ immediately, without the former expansion transition.
 All three additional-improvement milestones are implemented. Remaining work is owner
 review and any resulting revisions, followed by final branch validation and publication
 only when explicitly authorized. No further feature milestone is scheduled.
+
+
+Global manager card revision: absent, deleted or missing managers show only the optional
+coordination explanation and the card's creation button. The sidebar has no duplicate
+creation control. Populated cards retain their conversation preview and delete control,
+with Add member and Settings, but no creation or Choose manager action. The global role
+cannot open the existing-member manager chooser; ordinary team choosers are unchanged.

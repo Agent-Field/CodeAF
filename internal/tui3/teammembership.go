@@ -84,7 +84,7 @@ func (a *app) teamMembershipOpen(id, member string) tea.Cmd {
 // Choosing leadership is separate from adding members and cannot create a chat.
 func (a *app) teamChooseManagerOpen(id string) tea.Cmd {
 	t, ok := a.teamByID(id)
-	if !ok || t.Closed() {
+	if !ok || t.Closed() || t.Root {
 		return nil
 	}
 	a.tmembers = teamMembershipSheet{on: true, choosingManager: true, team: id, generation: a.tmembers.generation + 1}

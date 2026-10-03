@@ -24,6 +24,8 @@ func TestTeamsGlobalManagerCardCreationAndRecoveryStayReachable(t *testing.T) {
 			for _, tg := range d.targets {
 				if tg.act == teamsActRootManager {
 					found = true
+				} else {
+					t.Fatalf("absent manager exposes extra control: %+v", tg)
 				}
 				if tg.x0 < 0 || tg.x1 > width {
 					t.Fatalf("target outside card: %+v", tg)
@@ -40,8 +42,8 @@ func TestTeamsGlobalManagerCardCreationAndRecoveryStayReachable(t *testing.T) {
 		}
 		d := &teamsDraw{a: a}
 		rail := a.teamsRail(d, 30, len(a.teamsRailRows()))
-		if !strings.Contains(plain(strings.Join(rail, "\n")), teamGlobalManagerSlotWord) {
-			t.Fatal("sidebar creation label missing")
+		if strings.Contains(plain(strings.Join(rail, "\n")), teamGlobalManagerSlotWord) {
+			t.Fatal("duplicate sidebar creation remains")
 		}
 		a.teamsRailWindow(&teamsDraw{a: a}, 30, 1)
 	}
@@ -64,10 +66,19 @@ func TestTeamsGlobalManagerCardLinksPreviewAndDeletesOnlyItsConversation(t *test
 	a.tp.previews = map[string]teamsPreview{key: {text: "Actual saved update from the global manager"}}
 	d := &teamsDraw{a: a}
 	text := plain(strings.Join(a.teamsGlobalManagerCard(d, 90, 3), "\n"))
-	for _, word := range []string{"Global manager", "@global", "Actual saved update", "Choose manager", "Settings"} {
+	for _, word := range []string{"Global manager", "@global", "Actual saved update", "+ Add member", "Settings"} {
 		if !strings.Contains(text, word) {
 			t.Fatalf("missing %s: %s", word, text)
 		}
+	}
+	for _, word := range []string{teamGlobalManagerSlotWord, "Choose manager"} {
+		if strings.Contains(text, word) {
+			t.Fatalf("populated global card has %s", word)
+		}
+	}
+	a.teamChooseManagerOpen(rootID)
+	if a.tmembers.on {
+		t.Fatal("global manager chooser is still available")
 	}
 	var deletion teamsTarget
 	for _, tg := range d.targets {
@@ -160,7 +171,10 @@ func TestTeamsGlobalManagerDeletionRefreshesWithoutOtherHeldMembers(t *testing.T
 	}
 	a.tp.sel = teamsAllRow
 	a.page = pageTeams
-	text := teamsFrameText(a)
+	text := plain(strings.Join(a.teamsGlobalManagerCard(&teamsDraw{a: a}, 100, 0), "\n"))
+	if strings.Contains(text, "+ Add member") || strings.Contains(text, "Settings") || strings.Contains(text, "Choose manager") {
+		t.Fatal("deleted manager card retained controls")
+	}
 	if !strings.Contains(text, teamGlobalManagerSlotWord) || strings.Contains(text, "Conversation unavailable") {
 		t.Fatalf("creation did not return after deletion: %s", text)
 	}
@@ -283,5 +297,69 @@ func TestTeamsGlobalManagerCreationRefusesConcurrentLeaderAndKeepsNewChat(t *tes
 		if a.frontTabKey() != a.convKey(newFile) || a.teamViews.id != "" {
 			t.Fatal("new unassigned conversation lost or wrong overlay retained")
 		}
+	}
+}
+
+func TestMissingGlobalManagerUsesOnlyTheCreationState(t *testing.T) {
+	a, _, _ := menuApp(t)
+	var rootID string
+	if err := a.teamEdit(func(f *teamstore.File) error { rootID = f.MakeRoot(a.now()); return f.SetManager(rootID, "missing") }); err != nil {
+		t.Fatal(err)
+	}
+	a.tp.previews = map[string]teamsPreview{"missing": {missing: true}}
+	d := &teamsDraw{a: a}
+	text := plain(strings.Join(a.teamsGlobalManagerCard(d, 100, 0), "\n"))
+	if !strings.Contains(text, "Optional") || !strings.Contains(text, teamGlobalManagerSlotWord) {
+		t.Fatal("missing creation state")
+	}
+	if len(d.targets) != 1 || d.targets[0].act != teamsActRootManager {
+		t.Fatal("missing manager exposes other controls")
+	}
+	if strings.Contains(text, "Conversation unavailable") || strings.Contains(text, "idle") {
+		t.Fatal("missing manager still shows stale conversation")
+	}
+
+}
+
+func TestEmptyTeamsPageOffersGlobalCreationOnlyInItsCard(t *testing.T) {
+	a := placeApp(t)
+	a.width, a.height = 110, 24
+	drive(t, a, key("alt+2"))
+	text := teamsFrameText(a)
+	if !strings.Contains(text, "Global manager") || !strings.Contains(text, teamGlobalManagerSlotWord) {
+		t.Fatal("empty Teams page hides global card")
+	}
+	rows := strings.Split(text, "\n")
+	for _, target := range a.tp.targets {
+		if target.hidden || !target.pane || (target.act != teamsActOrganize && target.act != teamsActNewTeam) {
+			continue
+		}
+		if target.y < 0 || target.y >= len(rows) {
+			t.Fatal("empty-page action outside frame")
+		}
+		label := "Organize"
+		if target.act == teamsActNewTeam {
+			label = "New team"
+		}
+		if !strings.Contains(ansi.Cut(rows[target.y], target.x0, target.x1), label) {
+			t.Fatalf("empty-page %s hit misses visible label: %+v", label, target)
+		}
+	}
+	creation := 0
+	for _, target := range a.tp.targets {
+		if target.act != teamsActRootManager {
+			continue
+		}
+		creation++
+		if !target.pane || target.hidden || target.y < placeHeadRows || target.y >= a.height-placeBareFootRows {
+			t.Fatalf("creation not visible in card: %+v", target)
+		}
+		hit, ok := a.teamsTargetAt(target.x0+1, target.y)
+		if !ok || hit.act != teamsActRootManager {
+			t.Fatal("creation hit misses its button")
+		}
+	}
+	if creation != 1 {
+		t.Fatalf("creation buttons=%d", creation)
 	}
 }

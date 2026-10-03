@@ -482,8 +482,15 @@ func TestTeamsChooseManagerRootAndLongListsRemainReachable(t *testing.T) {
 	a.wall.teams = append(a.wall.teams, root)
 	a.tp.sel = root.ID
 	a.width, a.height = 72, 42
-	if target := teamsTargetOf(t, a, teamsActChooseManager, root.ID); target.id != root.ID {
-		t.Fatal("global manager cannot be replaced")
+	teamsFrameText(a)
+	for _, target := range a.tp.targets {
+		if target.act == teamsActChooseManager && target.id == root.ID {
+			t.Fatal("global manager chooser is visible")
+		}
+	}
+	a.teamChooseManagerOpen(root.ID)
+	if a.tmembers.on {
+		t.Fatal("global manager chooser can still open")
 	}
 }
 
@@ -512,14 +519,14 @@ func TestTeamsChooseManagerKeepsTheDisplayedIdentityDuringRefresh(t *testing.T) 
 	}
 }
 
-func TestTeamsGlobalManagerCanAddReplacementBeforeChoosing(t *testing.T) {
+func TestTeamsGlobalManagerCanAddMemberWithoutChoosingReplacement(t *testing.T) {
 	a, _, _ := menuApp(t)
 	a.width, a.height = 120, 35
 	var root string
 	if err := a.teamEdit(func(f *teamstore.File) error { root = f.MakeRoot(a.now()); return f.SetManager(root, a.frontTabKey()) }); err != nil {
 		t.Fatal(err)
 	}
-	// Only the global manager exists: no ordinary team's manager can serve as a candidate.
+	// Global membership remains editable, but leadership is created in its own card.
 	a.teamMembershipOpen(root, "")
 	if !a.tmembers.on {
 		t.Fatal("global team has no Add member path")
@@ -528,14 +535,15 @@ func TestTeamsGlobalManagerCanAddReplacementBeforeChoosing(t *testing.T) {
 	if err := a.teamAdd(root, []chatTab{added}); err != nil {
 		t.Fatal(err)
 	}
+	if !mustTeam(t, a, root).Holds(added.key) {
+		t.Fatal("global membership was not added")
+	}
+	a.teamMembershipShut()
 	a.teamChooseManagerOpen(root)
-	found := false
-	for _, row := range a.teamMembershipRows() {
-		found = found || row.key == added.key
+	if a.tmembers.on {
+		t.Fatal("global manager chooser is still available")
 	}
-	if !found {
-		t.Fatal("added global candidate absent from manager picker")
-	}
+
 }
 
 func TestTeamsChooseManagerRejectsUnrelatedAndMissingCandidates(t *testing.T) {

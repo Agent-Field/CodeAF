@@ -81,9 +81,10 @@ func TestTeamsAllOverviewKeepsGlobalManagerAndDecisions(t *testing.T) {
 	}
 	a.tp.packets = []teamstore.Packet{{ID: "question", Team: teamstore.Person, Origin: harbor, Kind: teamstore.PacketQuestion, State: teamstore.PacketOpen, Question: "Which layout first?"}}
 	a.tp.packets = append(a.tp.packets, teamstore.Packet{ID: "global-question", Team: root.ID, Origin: harbor, Kind: teamstore.PacketQuestion, State: teamstore.PacketOpen, Question: "Global decision"})
+	a.tp.previews[root.Manager] = teamsPreview{text: "Current global update"}
 	a.tp.sel = teamsAllRow
 	text := teamsFrameText(a)
-	for _, want := range []string{"@global", "Settings", "Choose manager", "+ Add member", "Which layout first?", "Global decision", "Subteams"} {
+	for _, want := range []string{"@global", "Settings", "+ Add member", "Which layout first?", "Global decision", "Subteams"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %s:\n%s", want, text)
 		}

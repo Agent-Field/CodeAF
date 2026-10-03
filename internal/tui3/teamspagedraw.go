@@ -107,8 +107,6 @@ func (a *app) teamsRail(d *teamsDraw, width, height int) []string {
 		switch r.kind {
 		case railRowAll:
 			return a.teamsRailAll(d, width, y)
-		case railRowGlobalManager:
-			return d.row(" "+teamGlobalManagerSlotWord, width, teamsTarget{act: teamsActRootManager, y: y, hint: "Create the optional global manager; its reports are top-level team managers" + hintSegment + "M"}, false)
 		case railRowTeam:
 			t, _ := a.teamByID(r.id)
 			return a.teamsRailTeam(d, t, r.depth, width, y)
@@ -170,7 +168,7 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 	var head, middle, foot []int
 	for i, row := range kinds {
 		switch row.kind {
-		case railRowAll, railRowGlobalManager:
+		case railRowAll:
 			head = append(head, i)
 		case railRowNew, railRowClosed, railRowOrganize:
 			foot = append(foot, i)
@@ -998,9 +996,15 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	mark := len(d.targets)
 	pane := a.teamsTop(d, paneW-1)
 	if !a.teamsAny() {
-		pane = a.teamsEmpty(d, paneW-1, room-top)
+		pane = append(pane, "")
+		pane = append(pane, a.teamsGlobalManagerCard(d, paneW-1, len(pane))...)
+		emptyMark, emptyY := len(d.targets), len(pane)
+		empty := a.teamsEmpty(d, paneW-1, 0)
+		d.shift(emptyMark, 0, emptyY)
+		pane = append(pane, empty...)
+	} else {
+		pane = append(pane, a.teamsPaneRest(d, paneW-1, len(pane))...)
 	}
-	pane = append(pane, a.teamsPaneRest(d, paneW-1, len(pane))...)
 	for i := mark; i < len(d.targets); i++ {
 		d.targets[i].line = top + d.targets[i].y
 	}

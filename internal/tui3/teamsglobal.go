@@ -31,8 +31,9 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 			act                 teamsAct
 		}{word, id, key, hint, act})
 	}
-	root, exists := a.teamsRoot()
+	root, _ := a.teamsRoot()
 	m, hasManager := root.Member(root.Manager)
+	hasManager = hasManager && !a.teamsManagerMissing(root)
 	if hasManager {
 		alias, title, state := m.Word, m.Word, "idle"
 		for _, r := range a.teamsCrew(root) {
@@ -41,11 +42,7 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 			}
 		}
 		preview := a.tp.previews[m.Key]
-		if !preview.missing {
-			control(alias, teamsActMember, root.ID, m.Key, "Open the global manager conversation")
-		} else {
-			add(a.pal.ink(alias))
-		}
+		control(alias, teamsActMember, root.ID, m.Key, "Open the global manager conversation")
 		if title != alias {
 			add(a.pal.dim(title))
 		}
@@ -55,8 +52,6 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 		}
 		words := preview.text
 		switch {
-		case preview.missing:
-			words = "Conversation unavailable"
 		case preview.unavailable || a.hosted():
 			words = "Preview unavailable"
 		case words == "":
@@ -64,11 +59,7 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 		}
 		parts := wrap(words, inner)
 		for _, part := range parts[:min(len(parts), 4)] {
-			if preview.missing {
-				add(a.pal.dim(part))
-			} else {
-				control(part, teamsActMember, root.ID, m.Key, "Open the global manager to read or respond")
-			}
+			control(part, teamsActMember, root.ID, m.Key, "Open the global manager to read or respond")
 		}
 		var reports []string
 		tree := a.teamTree()
@@ -83,16 +74,13 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 		} else {
 			add(a.pal.dim("Team managers report here as they are assigned"))
 		}
-		if !preview.missing {
-			action("x", teamsActDeleteGlobalManager, root.ID, m.Key, "Permanently delete the global manager conversation; every team and its manager remains")
-		}
+		action("x", teamsActDeleteGlobalManager, root.ID, m.Key, "Permanently delete the global manager conversation; every team and its manager remains")
 	}
-	if !hasManager || a.teamsManagerMissing(root) {
+	if !hasManager {
 		action(teamGlobalManagerSlotWord, teamsActRootManager, "", "", "Create the optional global manager conversation")
 	}
-	if exists {
-		action("+ Add member", teamsActAddMember, root.ID, "", "Add a candidate before choosing a replacement global manager")
-		action("Choose manager", teamsActChooseManager, root.ID, "", "Choose an existing member as global manager")
+	if hasManager {
+		action("+ Add member", teamsActAddMember, root.ID, "", "Add a conversation to the global manager team")
 		action("Settings", teamsActSettings, root.ID, "", "Global manager settings and spending controls")
 	}
 	line, x := "", 0
