@@ -61,6 +61,19 @@ const (
 	// that carry none — so the journal takes a snapshot on an interval instead
 	// and a replay lands on that floor rather than on nothing.
 	EventMemoryRanking EventKind = "memory_ranking"
+	// EventMemorySkipped journals a write the dedup door refused. A skip is an
+	// outcome, not a silence: the person said "remember X" twice, and the
+	// record of both says so. It carries the text and the id it matched.
+	EventMemorySkipped EventKind = "memory_skipped"
+	// EventMemoryWriteFailed journals a write that did not land — an
+	// extraction the store refused, an import row that failed. Errors used to
+	// vanish at every one of these doors; now every failure that reaches this
+	// kind is readable at the store, and the session's dim line points here.
+	EventMemoryWriteFailed EventKind = "memory_write_failed"
+	// EventMemoryRehomed journals a quarantine row's move to a provable owner.
+	// A permission change is exactly the kind of thing the journal exists to
+	// carry: it can be replayed, audited, and — much later, with sync — folded.
+	EventMemoryRehomed EventKind = "memory_rehomed"
 )
 
 // The five kinds of thing worth remembering across sessions. They are separate
@@ -78,6 +91,11 @@ const (
 // A memory's scope is the blast radius of its truth: something true about the
 // person everywhere, something true only inside this project, or something true
 // only of this machine.
+//
+// SCOPE IS DERIVED FROM OWNER NOW (memory_owner.go), and the column stays
+// because the snapshot's shelf grouping and every row the migration already
+// moved read it. A caller setting one without the other gets the owner's —
+// the payload gate derives scope from owner and refuses the reverse drift.
 const (
 	MemoryScopeUser    = "user"
 	MemoryScopeProject = "project"
@@ -108,7 +126,12 @@ const (
 
 // Memory is one durable thing known across sessions.
 type Memory struct {
-	ID     string
+	ID string
+	// Owner is WHO the memory belongs to — the whole of the permission model
+	// (memory_owner.go). Every read that can put a memory in front of a model
+	// filters on it; two projects may hold genuinely different truths about
+	// the same words, and never see each other's.
+	Owner  string
 	Type   string
 	Scope  string
 	Title  string
@@ -163,9 +186,17 @@ type MemoryStub struct{ ID, Title, Type, Scope string }
 // view and search" a property of the write rather than a filter every reader
 // has to remember — a superseded or forgotten row leaves the index at the
 // moment it stops being true.
+//
+// THE INDEX IS CREATED SEPARATELY FROM THE TABLE, and only when a probe proves
+// FTS5 works in this build ([Store.fts]). It has always worked in the SQLite
+// this module ships, and the probe is not a hedge against that — it is the
+// answer to "what happens on a build where it does not": memory stays readable,
+// writable and owner-scoped, and only the lexical tier goes quiet, the same way
+// a store with no vectors answers without them.
 const memoriesSchema = `
 CREATE TABLE IF NOT EXISTS memories (
     id          TEXT PRIMARY KEY,
+    owner       TEXT NOT NULL DEFAULT 'user',
     type        TEXT NOT NULL,
     scope       TEXT NOT NULL,
     title       TEXT NOT NULL,
@@ -181,6 +212,10 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 CREATE INDEX IF NOT EXISTS memories_status_updated ON memories (status, updated_seq DESC);
 CREATE INDEX IF NOT EXISTS memories_status_scope ON memories (status, scope, updated_seq DESC);
+CREATE INDEX IF NOT EXISTS memories_owner_active ON memories (owner, updated_seq DESC) WHERE status = 'active';
+`
+
+const memoriesFTSSchema = `
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     memory_id UNINDEXED,
     title,
@@ -210,6 +245,7 @@ func migrateMemoriesSchema(db *sql.DB) error {
 
 type memoryPayload struct {
 	ID            string   `json:"id"`
+	Owner         string   `json:"owner,omitempty"`
 	Type          string   `json:"type"`
 	Scope         string   `json:"scope"`
 	Title         string   `json:"title"`
@@ -311,14 +347,14 @@ func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 	if err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
-	if err := applyMemoryAdd(tx, payload, seq); err != nil {
+	if err := applyMemoryAdd(tx, payload, seq, s.fts); err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
 	return Memory{
-		ID: payload.ID, Type: payload.Type, Scope: payload.Scope,
+		ID: payload.ID, Owner: payload.Owner, Type: payload.Type, Scope: payload.Scope,
 		Title: payload.Title, Text: payload.Text, Tags: payload.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
 		SourceSession: payload.SourceSession, SourceSeq: memorySourceSeq(payload.SourceSession, seq),
@@ -329,6 +365,17 @@ func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 // because a memory that changed either of those is a different memory and
 // wants SupersedeMemory: the whole point of an update is that the router's
 // existing pointers to this id stay valid.
+// UpdateMemory, UpdateMemoryFromSession, SupersedeMemory,
+// ForgetMemoryFromSession and RestoreMemory act BY ID, with no owner filter —
+// that is a contract, not an oversight, and it is written here so the next
+// caller reads it before it becomes a hole. A raw id door is for two callers
+// only: the person's own surface (the memory place, which may manage any row
+// it is showing), and a caller that has PROVEN the row's visibility first —
+// the session's write path reads the target through its owner filter before
+// it updates or supersedes, and its forget match is scoped the same way. A
+// caller that holds an id from a model or from the wire and has not proven
+// where it came from must not call these; it should go through reads that
+// name owners, and write through [Store.Write].
 func (s *Store) UpdateMemory(id, title, text string, tags []string) error {
 	return s.UpdateMemoryFromSession(id, title, text, tags, "")
 }
@@ -354,7 +401,7 @@ func (s *Store) UpdateMemoryFromSession(id, title, text string, tags []string, s
 	if err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
-	if err := applyMemoryUpdate(tx, payload, seq); err != nil {
+	if err := applyMemoryUpdate(tx, payload, seq, s.fts); err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -399,14 +446,14 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	if err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
-	if err := applyMemorySupersede(tx, payload, seq); err != nil {
+	if err := applyMemorySupersede(tx, payload, seq, s.fts); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
 	return Memory{
-		ID: fresh.ID, Type: fresh.Type, Scope: fresh.Scope,
+		ID: fresh.ID, Owner: fresh.Owner, Type: fresh.Type, Scope: fresh.Scope,
 		Title: fresh.Title, Text: fresh.Text, Tags: fresh.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
 		SourceSession: fresh.SourceSession, SourceSeq: memorySourceSeq(fresh.SourceSession, seq),
@@ -438,7 +485,7 @@ func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
 	if err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
-	if err := applyMemoryForget(tx, payload, seq); err != nil {
+	if err := applyMemoryForget(tx, payload, seq, s.fts); err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -464,7 +511,7 @@ func (s *Store) RestoreMemory(id string) error {
 	if err != nil {
 		return fmt.Errorf("restore memory: %w", err)
 	}
-	if err := applyMemoryRestore(tx, payload, seq); err != nil {
+	if err := applyMemoryRestore(tx, payload, seq, s.fts); err != nil {
 		return fmt.Errorf("restore memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -473,15 +520,22 @@ func (s *Store) RestoreMemory(id string) error {
 	return nil
 }
 
-// GetMemories reads full memories by id, in the order asked for.
+// GetMemories reads full memories by id, in the order asked for, and returns
+// only the ones the caller may SEE: owner-filtered and active-only. The owner
+// filter is the point — a pointer to an id survives in transcripts, in a
+// session's held lines and in a task's brief, and an id that names another
+// project's memory must hand back nothing, not somebody else's truth.
 //
 // Input order is the contract because the caller is a router that has already
 // decided what matters most; re-sorting its choice by anything the store knows
 // would discard the one ranking in the system that saw the actual question. Ids
-// that name nothing, or name something no longer active, are simply absent —
-// a memory the user forgot between the index read and this call must not
-// reappear because a pointer to it survived.
-func (s *Store) GetMemories(ids []string) ([]Memory, error) {
+// that name nothing, or name something no longer active or not the caller's,
+// are simply absent — a memory the user forgot between the index read and this
+// call must not reappear because a pointer to it survived.
+func (s *Store) GetMemories(owners []string, ids []string) ([]Memory, error) {
+	if len(owners) == 0 {
+		return nil, fmt.Errorf("get memories: %w: no owner was named", ErrInvalid)
+	}
 	wanted := make([]string, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -501,8 +555,10 @@ func (s *Store) GetMemories(ids []string) ([]Memory, error) {
 		args = append(args, id)
 	}
 	args = append(args, MemoryActive)
+	where, ownerArgs := ownerFilterSQL(owners)
+	args = append(args, ownerArgs...)
 	found, err := s.queryMemories(
-		`WHERE id IN (`+placeholders+`) AND status = ?`, args, "", 0)
+		`WHERE id IN (`+placeholders+`) AND status = ?`+where, args, "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("get memories: %w", err)
 	}
@@ -531,15 +587,36 @@ func (s *Store) GetMemories(ids []string) ([]Memory, error) {
 // that safe to say: it reduces the caller's words to quoted alphanumeric terms
 // joined by OR, so hostile FTS syntax never reaches MATCH and a failure here is
 // a real failure worth returning.
-func (s *Store) SearchMemories(query string, limit int) ([]Memory, error) {
+// SearchMemories finds active memories the caller may see, by their words, best
+// match first. The owners list is the search's blast radius: two projects may
+// hold genuinely different truths about the same words, so a search never
+// leaves the owners it was handed — dedup, forget-matching and person queries
+// all go through it, and all of them are scoped the same way by construction.
+//
+// An empty owners list is an error and not "everything": this read feeds
+// decisions a model acts on, and "unscoped" would be the scope leak the owner
+// column exists to close. The janitor's unscoped read is [Store.ListMemories].
+//
+// A store without the FTS index answers nil: the lexical tier is the whole of
+// this read, and a missing tier is a miss, not a failure.
+func (s *Store) SearchMemories(owners []string, query string, limit int) ([]Memory, error) {
+	if len(owners) == 0 {
+		return nil, fmt.Errorf("search memories: %w: no owner was named", ErrInvalid)
+	}
+	if !s.fts {
+		return nil, nil
+	}
 	terms := ftsQueryFrom(query)
 	if terms == "" {
 		return nil, nil
 	}
+	where, ownerArgs := ownerFilterSQL(owners)
+	args := []any{terms, MemoryActive}
+	args = append(args, ownerArgs...)
 	memories, err := s.queryMemories(`
 		JOIN memories_fts ON memories_fts.memory_id = memories.id
-		WHERE memories_fts MATCH ? AND memories.status = ?`,
-		[]any{terms, MemoryActive},
+		WHERE memories_fts MATCH ? AND memories.status = ?`+where,
+		args,
 		`bm25(memories_fts), memories.updated_seq DESC`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search memories: %w", err)
@@ -547,16 +624,19 @@ func (s *Store) SearchMemories(query string, limit int) ([]Memory, error) {
 	return memories, nil
 }
 
-// ListMemories returns active memories newest-touched first. An empty scope
-// means every scope, which is what a person means by "what do you remember".
-func (s *Store) ListMemories(scope string, limit int) ([]Memory, error) {
-	where := `WHERE status = ?`
-	args := []any{MemoryActive}
-	if scope = strings.TrimSpace(scope); scope != "" {
-		where += ` AND scope = ?`
-		args = append(args, scope)
-	}
-	memories, err := s.queryMemories(where, args, `updated_seq DESC, id`, limit)
+// ListMemories returns active memories newest-touched first.
+//
+// THE OWNERS LIST IS THE ONLY FILTER, and an empty one is deliberate: this is
+// the janitor's read — the background tidy, the demo seeder, a repair pass —
+// and it is the one place "every owner" is an honest answer, because its work
+// is by id against the row's own owner and never a retrieval. Every caller
+// that can put a row in front of a model names its owners and the type system
+// will not say so twice: [Store.MemoryCandidates] and [Store.SearchMemories]
+// refuse the empty list.
+func (s *Store) ListMemories(owners []string, limit int) ([]Memory, error) {
+	where, ownerArgs := ownerFilterSQL(owners)
+	args := append([]any{MemoryActive}, ownerArgs...)
+	memories, err := s.queryMemories(`WHERE status = ?`+where, args, `updated_seq DESC, id`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list memories: %w", err)
 	}
@@ -576,14 +656,15 @@ func (s *Store) ListMemories(scope string, limit int) ([]Memory, error) {
 // It is a separate read from ListMemories rather than a projection of it
 // because carrying five hundred bodies to render five hundred titles is how a
 // memory store becomes the most expensive thing in the loop.
-func (s *Store) MemoryIndex(limit int) ([]MemoryStub, error) {
+func (s *Store) MemoryIndex(owners []string, limit int) ([]MemoryStub, error) {
 	// THE INDEX IS A RANKING, NOT A CHRONOLOGY. Memories that have proved useful
 	// lead; updated sequence only settles equal-use rows.
+	where, ownerArgs := ownerFilterSQL(owners)
 	statement := `
 		SELECT id, title, type, scope FROM memories
-		WHERE status = ?
+		WHERE status = ?` + where + `
 		ORDER BY use_count DESC, updated_seq DESC, id`
-	args := []any{MemoryActive}
+	args := append([]any{MemoryActive}, ownerArgs...)
 	if limit > 0 {
 		statement += ` LIMIT ?`
 		args = append(args, limit)
@@ -669,7 +750,10 @@ const rrfK = 60
 // shorter than the index keeps — is not an error and not an empty answer: the
 // two arithmetic orderings still rank, so a person who types "ok, do it" is
 // still shown what has mattered most and what changed last.
-func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) {
+func (s *Store) MemoryCandidates(owners []string, terms string, limit int) ([]MemoryStub, error) {
+	if len(owners) == 0 {
+		return nil, fmt.Errorf("memory candidates: %w: no owner was named", ErrInvalid)
+	}
 	if limit <= 0 {
 		limit = MemoryCandidatesDefault
 	}
@@ -677,8 +761,10 @@ func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) 
 	// lexical ranking is left out of the fusion entirely when there is nothing
 	// to match with. The other two still rank every row.
 	lexical := `SELECT '' AS id, 0 AS rank WHERE 0`
+	where, ownerArgs := ownerFilterSQL(owners)
 	args := []any{MemoryActive}
-	if query := ftsQueryFrom(terms); query != "" {
+	args = append(args, ownerArgs...)
+	if query := ftsQueryFrom(terms); query != "" && s.fts {
 		lexical = `
 			SELECT id, ROW_NUMBER() OVER (ORDER BY relevance, updated_seq DESC, id) AS rank
 			FROM (
@@ -692,7 +778,7 @@ func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) 
 	statement := `
 		WITH active AS (
 			SELECT id, title, type, scope, use_count, miss_count, updated_seq
-			FROM memories WHERE status = ?
+			FROM memories WHERE status = ?` + where + `
 		),
 		lexical AS (` + lexical + `),
 		important AS (
@@ -935,7 +1021,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 	// that rewrote it would be a reader with two shapes. One statement, one
 	// rowid seek per row carried out, and no second read from Go.
 	statement := `
-		SELECT memories.id, memories.type, memories.scope, memories.title,
+		SELECT memories.id, memories.owner, memories.type, memories.scope, memories.title,
 		       memories.text, memories.tags, memories.status, memories.use_count,
 		       memories.miss_count, memories.created_seq, memories.updated_seq,
 		       memories.source_session, memories.source_seq,
@@ -957,7 +1043,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 	for rows.Next() {
 		var memory Memory
 		var tags, updatedAt string
-		if err := rows.Scan(&memory.ID, &memory.Type, &memory.Scope, &memory.Title,
+		if err := rows.Scan(&memory.ID, &memory.Owner, &memory.Type, &memory.Scope, &memory.Title,
 			&memory.Text, &tags, &memory.Status, &memory.UseCount, &memory.MissCount,
 			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq,
 			&updatedAt); err != nil {
@@ -984,22 +1070,28 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 
 // applyMemoryAdd materializes one added memory. It is shared by the write path
 // and by Rebuild, so a replayed brain and a live one cannot differ.
-func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64) error {
+func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64, fts bool) error {
+	// A PAYLOAD WITH NO OWNER IS A JOURNAL WRITTEN BEFORE THE COLUMN EXISTED,
+	// and it is answered the way the migration answers its rows: from the scope
+	// the row carries, with a bare `project` quarantined. An insert here must
+	// never land an empty owner — the column is NOT NULL and an empty owner in
+	// a view would be a row nothing can see and nothing can prove.
+	payload.Owner = ownerForReplay(payload)
 	tags, err := memoryTagsJSON(payload.Tags)
 	if err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO memories (id, type, scope, title, text, tags, status, use_count, created_seq, updated_seq, source_session, source_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-		payload.ID, payload.Type, payload.Scope, payload.Title, payload.Text,
+		INSERT INTO memories (id, owner, type, scope, title, text, tags, status, use_count, created_seq, updated_seq, source_session, source_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+		payload.ID, payload.Owner, payload.Type, payload.Scope, payload.Title, payload.Text,
 		tags, MemoryActive, seq, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq)); err != nil {
 		return err
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
-func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error {
+func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64, fts bool) error {
 	tags, err := memoryTagsJSON(payload.Tags)
 	if err != nil {
 		return err
@@ -1018,10 +1110,10 @@ func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error
 	if changed != 1 {
 		return fmt.Errorf("%w: update targets missing or inactive memory %q", ErrInvalid, payload.ID)
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
-func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64) error {
+func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64, fts bool) error {
 	result, err := tx.Exec(`
 		UPDATE memories SET status = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status = ?`,
@@ -1036,13 +1128,13 @@ func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64)
 	if changed != 1 {
 		return fmt.Errorf("%w: supersession targets missing or inactive memory %q", ErrInvalid, payload.OldID)
 	}
-	if err := refreshMemoryFTS(tx, payload.OldID); err != nil {
+	if err := refreshMemoryFTS(tx, payload.OldID, fts); err != nil {
 		return err
 	}
-	return applyMemoryAdd(tx, payload.New, seq)
+	return applyMemoryAdd(tx, payload.New, seq, fts)
 }
 
-func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error {
+func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64, fts bool) error {
 	result, err := tx.Exec(`
 		UPDATE memories SET status = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status <> ?`,
@@ -1057,7 +1149,7 @@ func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error
 	if changed != 1 {
 		return fmt.Errorf("%w: nothing to forget under %q", ErrInvalid, payload.ID)
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
 // applyMemoryRanking restores the counters one snapshot recorded. It is shared
@@ -1089,7 +1181,7 @@ func memorySourceSeq(sourceSession string, seq int64) int64 {
 	return seq
 }
 
-func applyMemoryRestore(tx *sql.Tx, payload memoryRestorePayload, seq int64) error {
+func applyMemoryRestore(tx *sql.Tx, payload memoryRestorePayload, seq int64, fts bool) error {
 	result, err := tx.Exec(`UPDATE memories SET status = ?, updated_seq = ? WHERE id = ? AND status = ?`,
 		MemoryActive, seq, payload.ID, MemoryForgotten)
 	if err != nil {
@@ -1102,7 +1194,7 @@ func applyMemoryRestore(tx *sql.Tx, payload memoryRestorePayload, seq int64) err
 	if changed != 1 {
 		return fmt.Errorf("%w: restore targets missing or non-forgotten memory %q", ErrInvalid, payload.ID)
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
 // memoryTagsJSON is why a memory with no tags reads back the same way after a
@@ -1133,7 +1225,13 @@ func memoryTagsJSON(tags []string) (string, error) {
 // superseded or forgotten row matches nothing, so the DELETE stands and the row
 // is out of every search from that instant — no reader has to remember to
 // filter it, and none can forget.
-func refreshMemoryFTS(tx *sql.Tx, id string) error {
+func refreshMemoryFTS(tx *sql.Tx, id string, fts bool) error {
+	if !fts {
+		// NO INDEX, NOTHING TO REFRESH — and nothing to get wrong: a store
+		// running without FTS5 must not have its writes fail because the index
+		// is not there.
+		return nil
+	}
 	if _, err := tx.Exec(`DELETE FROM memories_fts WHERE memory_id = ?`, id); err != nil {
 		return err
 	}
@@ -1145,21 +1243,52 @@ func refreshMemoryFTS(tx *sql.Tx, id string) error {
 }
 
 // memoryPayloadFrom is the one gate every written memory passes through.
+//
+// OWNER IS THE AUTHORITY AND SCOPE IS DERIVED from it (memory_owner.go): a
+// caller that names both gets the owner's scope, and a caller that names only
+// the old scope word is answered as a legacy write — `user` and `env` map to
+// their owners, and a bare `project` maps to the QUARANTINE, because a caller
+// that cannot name the project's key has just demonstrated that it cannot prove
+// the row belongs anywhere. The old `MemoryScopeProject` constant stays part of
+// the surface for the snapshot's shelf words; the write path never trusts it as
+// an identity.
 func memoryPayloadFrom(m Memory) (memoryPayload, error) {
 	memoryType := strings.ToLower(strings.TrimSpace(m.Type))
 	if !validMemoryType(memoryType) {
 		return memoryPayload{}, fmt.Errorf("%w: unknown memory type %q", ErrInvalid, m.Type)
 	}
-	scope := strings.ToLower(strings.TrimSpace(m.Scope))
-	if !validMemoryScope(scope) {
-		return memoryPayload{}, fmt.Errorf("%w: unknown memory scope %q", ErrInvalid, m.Scope)
+	owner := normalizeOwner(m.Owner)
+	if owner == "" {
+		// THE LEGACY CALLER. Only Scope was set. user and env are provable
+		// without anything else; a project is not, and lands in quarantine.
+		switch strings.ToLower(strings.TrimSpace(m.Scope)) {
+		case MemoryScopeUser:
+			owner = OwnerUser
+		case MemoryScopeEnv:
+			owner = OwnerMachine
+		case MemoryScopeProject:
+			owner = OwnerLegacyProject
+		default:
+			return memoryPayload{}, fmt.Errorf("%w: unknown memory scope %q", ErrInvalid, m.Scope)
+		}
 	}
+	if !ValidOwner(owner) {
+		return memoryPayload{}, fmt.Errorf("%w: unknown memory owner %q", ErrInvalid, m.Owner)
+	}
+	scope := OwnerScopeOf(owner)
 	title, text, tags, err := validMemoryBody(m.Title, m.Text, m.Tags)
 	if err != nil {
 		return memoryPayload{}, err
 	}
+	if owner == OwnerLegacyProject && !hasTag(tags, legacyTag) {
+		// THE QUARANTINE CARRIES ITS MARK. A row nobody can prove the owner of
+		// is labeled as one, wherever it is read back — the person who is asked
+		// to re-home it deserves to see that this is what it is.
+		tags = append(tags, legacyTag)
+	}
 	return memoryPayload{
 		ID:    strings.TrimSpace(m.ID),
+		Owner: owner,
 		Type:  memoryType,
 		Scope: scope,
 		Title: title,

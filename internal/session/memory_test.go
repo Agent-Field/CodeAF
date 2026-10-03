@@ -317,7 +317,7 @@ func TestTheRoutersRememberCommandWritesToTheStore(t *testing.T) {
 	agent.routedMemory(context.Background(), "remember that I always deploy on Fridays",
 		func(line string) { seen = append(seen, line) }, true)
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -346,7 +346,7 @@ func TestTheRoutersForgetCommandDropsTheMatchAndSaysWhich(t *testing.T) {
 
 	agent.routedMemory(context.Background(), "forget when standup is", nil, true)
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestForgettingWhatIsNotThereSaysSo(t *testing.T) {
 	if len(seen) != 1 || !strings.Contains(seen[0], "nothing matched") {
 		t.Fatalf("the answer was %v, want one line saying nothing matched", seen)
 	}
-	kept, _ := brain.ListMemories("", 10)
+	kept, _ := brain.ListMemories(nil, 10)
 	if len(kept) != 1 {
 		t.Fatalf("a no-match forget changed the store: %v", titles(kept))
 	}
@@ -428,7 +428,7 @@ func TestAnExchangeWorthKeepingLandsWithNoDecisionToMake(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -497,7 +497,7 @@ func TestANeighbourTurnsTheWriteIntoADecision(t *testing.T) {
 				t.Fatalf("close: %v", err)
 			}
 
-			kept, err := brain.ListMemories("", 10)
+			kept, err := brain.ListMemories(nil, 10)
 			if err != nil {
 				t.Fatalf("list: %v", err)
 			}
@@ -514,7 +514,7 @@ func TestAnExchangeWithNothingInItWritesNothing(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "what is the capital of France"))
 	_ = agent.Close()
 
-	kept, _ := brain.ListMemories("", 10)
+	kept, _ := brain.ListMemories(nil, 10)
 	if len(kept) != 0 {
 		t.Fatalf("an exchange worth nothing wrote %v", titles(kept))
 	}
@@ -529,7 +529,7 @@ func TestExtractedMemoryCarriesTheSessionID(t *testing.T) {
 	sessionID := agent.memorySourceSession()
 	collect(t, mustSubmit(t, agent, "I prefer tabs in Go"))
 	_ = agent.Close()
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil || len(kept) != 1 || kept[0].SourceSession != sessionID || kept[0].SourceSeq == 0 {
 		t.Fatalf("extracted memory = (%+v, %v), want source session %q", kept, err, sessionID)
 	}
@@ -547,7 +547,7 @@ func TestAFailedExtractionBreaksNothingAndWritesNothing(t *testing.T) {
 	}
 	_ = agent.Close()
 
-	kept, _ := brain.ListMemories("", 10)
+	kept, _ := brain.ListMemories(nil, 10)
 	if len(kept) != 0 {
 		t.Fatalf("a failed extraction wrote %v", titles(kept))
 	}
@@ -674,7 +674,7 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 
 	agent.importMemoryFile()
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -694,7 +694,7 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 		config.MemoryImport = path
 	})
 	second.importMemoryFile()
-	again, _ := brain.ListMemories("", 10)
+	again, _ := brain.ListMemories(nil, 10)
 	if len(again) != 2 {
 		t.Fatalf("a second run imported again: %v", titles(again))
 	}
