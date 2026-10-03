@@ -156,7 +156,7 @@ func TestDenyTurnsAwayAndEscLeavesItUndecided(t *testing.T) {
 	r.until("the card again", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
 	r.press("d")
 	r.until("closed", func() bool { return !a.pair.open })
-	if !strings.Contains(door.did(), "deny:k7m2q9xd") || strings.Contains(updateNotes(a), "joined your devices") {
+	if !strings.Contains(door.did(), "deny:k7m2q9xd") || strings.Contains(updateNotes(a), "is now paired") {
 		t.Fatalf("door %s, notes %s", door.did(), updateNotes(a))
 	}
 }
