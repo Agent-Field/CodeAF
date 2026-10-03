@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -379,6 +380,30 @@ func (a *Agent) beltRunCompleter() Completer {
 func (a *Agent) fallbackModels(model string) []string {
 	models, _ := a.modelFallbackChain(model)
 	return models
+}
+
+// fallbackModelsAfter is [Agent.fallbackModels] for a model that may be a
+// person's own pick.
+//
+// A PICK HOLDS. Once somebody chose the model explicitly — a `models.roles` pin,
+// or the model they named for a task — a failure never moves the call to a model
+// the catalog merely thought similar: chosen by nobody, and different on every
+// computer, since each one reads its own catalog. Only what the person WROTE in
+// `models.fallbacks` survives, so the chain is empty when they wrote nothing and
+// the caller ends on the model they chose and says what failed.
+func (a *Agent) fallbackModelsAfter(model string, picked bool) []string {
+	options := a.fallbackModels(model)
+	if !picked {
+		return options
+	}
+	a.mu.Lock()
+	written := a.config.ModelFallbacks
+	a.mu.Unlock()
+	return slices.DeleteFunc(slices.Clone(options), func(option string) bool {
+		return !slices.ContainsFunc(written, func(row string) bool {
+			return strings.EqualFold(strings.TrimSpace(row), option)
+		})
+	})
 }
 
 // modelFallbackChain reads the optional model-chain capability behind the
