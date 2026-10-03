@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // MENTIONS: "@" ALSO NAMES A TEAM OR A CONVERSATION.
@@ -67,6 +68,11 @@ type mentionChat struct {
 	slug             string
 	open             bool
 	note             string
+	// signal is [app.tabSignalFor]’s reading for this conversation: what the
+	// strip would say it is doing. It is tabIdle for at rest AND for not
+	// known, the one honest answer for a conversation this window does not
+	// hold.
+	signal tabSignal
 }
 
 // mentionScope splits an @ query into a section prefix and the needle. No
@@ -702,6 +708,9 @@ func (a *app) mentionLinkChats() []mentionChat {
 			return
 		}
 		seen[chat.key] = true
+		// The one state source, the strip’s own: keeper-cached, no file, no
+		// wire (tabsignal.go’s law).
+		chat.signal = a.tabSignalFor(chat.key, chat.key == a.frontTabKey())
 		out = append(out, chat)
 	}
 	for _, chat := range a.mentionChats() {
@@ -722,6 +731,23 @@ func (a *app) mentionLinkChats() []mentionChat {
 		}
 	}
 	return out
+}
+
+// mentionSignalPaint is a live mention’s ink: the FIRST CELL of the token
+// carries the signal mark in [palette.tabSignalInk], and the rest keeps the
+// link ink — exactly the strip’s mechanism (chattabs.go), where the mark is
+// the first cell of the name. Two claims, two inks (tabsignal.go’s
+// [palette.tabSignalInk] comment): the ink says it is a link, the first cell
+// says what the conversation is doing, and neither overwrites the other. No
+// new glyph, no new ink, and the hover override (paintLinksWith) still wins
+// over the whole token because it replaces ref.paint outright.
+func mentionSignalPaint(sig tabSignal) func(palette, string) string {
+	return func(pal palette, s string) string {
+		if s == "" {
+			return s
+		}
+		return pal.tabSignalInk(sig, ansi.Cut(s, 0, 1)) + teamLinkInk(pal, ansi.Cut(s, 1, ansi.StringWidth(s)))
+	}
 }
 
 func linkifyMentions(text string, pal palette, teams []mentionTeam, chats []mentionChat, hot int) (string, []taskLink) {
@@ -785,7 +811,11 @@ func mentionTextRefs(flat string, teams []mentionTeam, chats []mentionChat) []ta
 				break
 			}
 			if strings.EqualFold(chat.handle, low) || chat.slug == low {
-				out = append(out, taskRef{from: i, to: j, member: chat.key, title: chat.title})
+				ref := taskRef{from: i, to: j, member: chat.key, title: chat.title}
+				if chat.signal != tabIdle {
+					ref.paint = mentionSignalPaint(chat.signal)
+				}
+				out = append(out, ref)
 				break
 			}
 		}
@@ -829,6 +859,9 @@ func (a *app) mentionChatHint(key string) string {
 		words := verb + " " + name
 		if title := strings.TrimSpace(chat.title); title != "" && title != name {
 			words += hintSegment + title
+		}
+		if chat.signal != tabIdle {
+			words += hintSegment + tabSignalWord(chat.signal)
 		}
 		return words + hintSegment + "click"
 	}
