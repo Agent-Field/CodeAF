@@ -82,9 +82,11 @@ func TestStartingFromHomeKeepsThePreviousConversationsDraft(t *testing.T) {
 					if target == "other project" {
 						a.target.where = "/tmp/another-project"
 					}
-					if _, ok := a.homeOpenAtTarget(); !ok {
+					opened, ok := a.homeOpenAtTarget(nil)
+					if !ok {
 						t.Fatal("Home did not open the new conversation")
 					}
+					unfold(t, a, opened)
 				}
 				if a.input.String() != "" || len(a.chips) != 1 || a.chips[0].path != "new.txt" {
 					t.Fatalf("new conversation inherited the old draft: %q %+v", a.input.String(), a.chips)
@@ -112,9 +114,11 @@ func TestHomeCreationRefusalKeepsBothDrafts(t *testing.T) {
 	a.home.box.setText("new conversation prompt")
 	a.home.chips = []chip{{path: "new.png"}}
 	lab.refuse = errors.New("cannot start")
-	if _, started := a.homeOpenAtTarget(); started {
-		t.Fatal("creation unexpectedly succeeded")
+	renewed, started := a.homeOpenAtTarget(nil)
+	if !started {
+		t.Fatal("the door was not queued")
 	}
+	unfold(t, a, renewed)
 	if !a.at(pageHome) || a.home.box.String() != "new conversation prompt" || len(a.home.chips) != 1 {
 		t.Fatal("refusal lost Home's draft")
 	}
