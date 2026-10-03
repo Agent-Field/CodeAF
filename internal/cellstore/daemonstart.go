@@ -9,12 +9,26 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
 )
 
 // idleMinutes is how long the daemon outlives its last client. The next verb
 // after it exits starts it again, so the value costs latency, never correctness.
 const idleMinutes = "10"
+
+// testIdleMinutes is how long a daemon started by a test binary outlives its
+// last client. A test that crashes before its teardown runs leaves the daemon
+// behind, and a short idle exit is what lets that leak heal itself.
+const testIdleMinutes = "1"
+
+// idleFlag is the --idle-minutes value the daemon is started with.
+func idleFlag() string {
+	if testing.Testing() {
+		return testIdleMinutes
+	}
+	return idleMinutes
+}
 
 // retryAfter is how long a daemon that failed to start is left alone: every
 // verb in that window goes straight to the fallback.
@@ -67,12 +81,14 @@ func launch(d Daemon) (<-chan struct{}, error) {
 	if err := os.MkdirAll(filepath.Dir(d.Socket), 0o700); err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(bin, "serve", "--socket", d.Socket, "--idle-minutes", idleMinutes) //codeaf:plumbing starts the engine's long-lived daemon
+	sealInheritedDescriptors()
+	cmd := exec.Command(bin, "serve", "--socket", d.Socket, "--idle-minutes", idleFlag()) //codeaf:plumbing starts the engine's long-lived daemon
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start engine daemon: %w", err)
 	}
 	exited := make(chan struct{})
+	remember(cmd.Process, exited)
 	go func() { // reap it; it outlives this call by design
 		_ = cmd.Wait()
 		close(exited)
