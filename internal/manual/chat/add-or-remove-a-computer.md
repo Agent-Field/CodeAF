@@ -28,28 +28,30 @@ The card goes away once you have two devices. It is not drawn when this chat can
 What the new device prints while it waits:
 
 ```
-Approve this device from one you already use. Open this link there:
+Approve this device from one you already use.
+
+Open this link there:
   https://codeaf.agentfield.ai/p/k7m2q9xd#Qm9v…
 
 Or, on a computer with codeaf, run:
   codeaf pair approve k7m2q9xd.Qm9v…
 
-Check number: 4821 (the other device shows the same number)
-Waiting for approval; good for 10 minutes. Press ctrl+c to cancel.
+Check number: 4821 — the other device shows the same number.
+Waiting for approval (10 minutes). Press ctrl+c to cancel.
 ```
 
 A device with no screen or no browser, such as a server, does the same: run `codeaf pair` there and approve from your laptop. Two things name the same request: the link `https://codeaf.agentfield.ai/p/<code>#<key>`, which opens in a browser and hands over to the installed app (the part after `#` never leaves the browser), and the bare token `<code>.<key>`, for a terminal where nobody can click. `codeaf pair approve` takes either one, and so does pasting into home. When it is approved it says how many workspaces it can now reach:
 
 ```
-Paired - 3 workspaces available.
+Paired. 3 workspaces available.
 ```
 
-(`Paired - 1 workspace available.` when there is one.)
+(`Paired. 1 workspace available.` when there is one.)
 
 ## The pair words — approve, --code and --via
 
 ```
-usage: codeaf pair [--replace] [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
+usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
 ```
 
 - `codeaf pair` with nothing after it is for the NEW device. It asks to join and shows a link.
@@ -58,13 +60,13 @@ usage: codeaf pair [--replace] [--name <name>] | codeaf pair approve <link-or-co
 - `--name <name>` is what your devices call this computer. See the page *Naming a device*.
 - `--via <address>` names the address of the service to go through when it is not the one this device already uses. Pass it to both `codeaf pair` and `codeaf pair approve`. The new device prints the full approve line with `--via` in it when one is needed.
 
-A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair` on the new device again.
+A link is good for 10 minutes and one approval. If it ran out, run `codeaf pair` on the new device again. Ctrl+c while it waits ends with `Cancelled. Nothing was paired.`
 
 ## The four-digit check — how I know the right computer is asking
 
 The new device shows a check number of four digits. The device that approves shows the same four digits. Look at both screens. Approve only when they match. If they do not match, decline: somebody else may have used the link.
 
-On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question is `Does that device show the check number 4821?` and you answer `y` or `n`.
+On the approving screen the number reads `Check number 4821. Approve only if the new device shows the same number.` In a terminal the question reads the same and you answer `y` or `n`.
 
 ## Approve a new device — the approve screen, a and d, and decline
 
@@ -92,7 +94,7 @@ When you approve, your screen says:
 laptop is now paired. Your chats can continue there.
 ```
 
-Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop joined your devices.` and a no says `Request declined.` The terminal first says `"laptop" (linux) wants to join your devices.`
+Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop is now paired. Your chats can continue there.` and a no says `Declined. Nothing was paired.` The terminal first says `laptop (Linux) wants to pair.` (the system is left out when it is not known). `codeaf pair approve` with nothing after it says `usage: codeaf pair approve <link-or-code> — the link or code the new device shows`.
 
 ## What does the dot next to a computer mean — the devices row, online and offline
 
@@ -130,7 +132,7 @@ The list is in a fixed order: this device first, then devices that are online, t
 **I was told this device was removed.** Another of your devices removed this one. The chat says:
 
 ```
-this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back
+this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back
 ```
 
 `/devices` on the removed computer says the same line in place of the list. It appears the moment the other device removes this one, even if codeaf has been open for days, in the open chat and on the home screen alike, and once only. Your chats on this device are safe and stay on it. They no longer follow your other devices. To bring the device back, run `codeaf pair` here, then approve the link it shows from a device that is still in (the steps above). If you did not mean to remove it, that is the whole fix.

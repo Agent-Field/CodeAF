@@ -499,7 +499,7 @@ func TestRelayTooOld(t *testing.T) {
 // A RELAY THAT DOES NOT ANSWER IS NAMED BY ITS HOST, and the offering device
 // shows no code it could not serve.
 func TestRelayUnreachable(t *testing.T) {
-	const want = "cannot reach relay.test"
+	const want = "cannot reach relay.test \u2014 check your internet connection and try again"
 	t.Run("at the first question", func(t *testing.T) {
 		r, hostile := hostileRig(t)
 		hostile.failLimits(unreachable())

@@ -275,25 +275,25 @@ devices that can use this machine
   laptop   paired 3d ago  ·  last here 2h ago
   desktop  paired 12d ago
 
-stop one with `codeaf devices revoke <name>` — it will need a new code to come back.
+remove one with `codeaf devices revoke <name>` — it will need a new code to come back.
 ```
 
-If you also paired computers with `/pair`, a second group under the heading `devices with your chats` lists them, and `revoke <name>` works on both groups. With nothing of either kind it says:
+If you also paired computers with `/pair`, a second group under the heading `your devices` lists them, and `revoke <name>` works on both groups. With nothing of either kind it says:
 
 ```
-no devices are paired yet — run `codeaf pair` to share your chats with another computer, or `codeaf serve` to let a device use this machine.
+nothing is paired yet — run `codeaf pair` to add another device, or `codeaf serve` to let a device use this machine.
 ```
  A device that has never
 connected shows nothing where its last connection would be, rather than a zero.
 
-To stop one:
+To remove one:
 
 ```
 codeaf devices revoke laptop
 ```
 
 which answers
-`laptop has been stopped — it can no longer open a conversation here, and it will need a new pairing code to come back.`
+`laptop was removed — it can no longer open a chat here, and it needs a new pairing code to come back.`
 
 A name nothing matches says:
 
@@ -301,7 +301,7 @@ A name nothing matches says:
 no device called "phone" is paired with this machine — `codeaf devices` lists the ones that are
 ```
 
-Two devices with the same name are refused rather than guessed at, and `--all` stops every
+Two devices with the same name are refused rather than guessed at, and `--all` removes every
 device answering to that name:
 
 ```
@@ -314,10 +314,10 @@ the name or after it; `codeaf devices revoke --help` prints it. It used to be re
 it came first, so `codeaf devices revoke laptop --all` was refused with a usage line that did
 not mention `--all` at all.
 
-Stopping one device with `--all` answers in the ordinary sentence — `laptop has been stopped
-— it can no longer open a conversation here, and it will need a new pairing code to come
-back.` Stopping several answers `2 devices called laptop have been stopped — each needs a new
-pairing code to come back.`
+Removing one device with `--all` answers in the ordinary sentence — `laptop was removed — it
+can no longer open a chat here, and it needs a new pairing code to come back.` Removing
+several answers `2 devices called laptop were removed — each needs a new pairing code to come
+back.`
 
 **Revoking is always the decision of the machine that owns the work.** There is no way to
 do it from the device, and no way for a device to remove another one.
