@@ -14,6 +14,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/furrow"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/relayserve"
@@ -350,5 +351,26 @@ func TestAChatTakenAndTakenBackGetsADriveSideOfItsOwn(t *testing.T) {
 	}
 	if err := again.Gate(); err != nil {
 		t.Fatalf("a chat taken back is refused: %v", err)
+	}
+}
+
+// A chat in the middle of its takeover here is not opened: the session would
+// read the journal as it was before the swap. The door says so, builds nothing,
+// and opens the chat once the takeover is over.
+func TestAChatBeingTakenIsNotOpened(t *testing.T) {
+	cfg, _ := doorChat(t)
+	opened := 0
+	open := func(session.Config) (*session.Agent, error) { opened++; return nil, errors.New("stop here") }
+	release := handoff.Arrive(cfg.Place.Dir)
+	if _, _, _, err := openV3Agent(cfg, cfg.Place.Workspace, open); err == nil || err.Error() != chatArrivingSentence {
+		t.Fatalf("a chat being taken was opened or refused in other words: %v", err)
+	}
+	if opened != 0 {
+		t.Fatal("a session was built for a chat that is being taken")
+	}
+	release()
+	_, _, _, _ = openV3Agent(cfg, cfg.Place.Workspace, open)
+	if opened != 1 {
+		t.Fatal("the chat did not open after its takeover ended")
 	}
 }

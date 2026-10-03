@@ -127,7 +127,8 @@ func branchOf(tree string) string {
 // changedPaths is every path whose content differs from the copy's last commit:
 // modified, added, deleted and untracked. What the copy's own .gitignore names
 // is never listed, which is what keeps build output and .env files out. Renames
-// are reported as a delete and an add, so each path stands alone.
+// are reported as a delete and an add, so each path stands alone. The harness's
+// own droppings (job logs and the like) are machinery and never listed.
 func changedPaths(tree string) ([]string, error) {
 	out, err := git(tree, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
 	if err != nil {
@@ -136,7 +137,7 @@ func changedPaths(tree string) ([]string, error) {
 	var paths []string
 	for _, entry := range strings.Split(out, "\x00") {
 		// An entry is two status letters, a space and the path.
-		if len(entry) > 3 {
+		if len(entry) > 3 && !cell.IsTaskDropping(entry[3:]) {
 			paths = append(paths, entry[3:])
 		}
 	}

@@ -2953,6 +2953,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"a folder was left out of the move because it could not be read", "home"},
 		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer"},
 		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer"},
+		{"why does it say this chat is arriving", "continuing-a-chat-on-another-computer"},
 		{"does /remember work on my other computer", "what-i-remember"},
 		{"are my memories shared across computers", "what-i-remember"},
 		{"too many pairing attempts from this network", "relay-limits-and-refusals"},
