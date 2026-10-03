@@ -4278,10 +4278,9 @@ func (a *app) railOffersResize() bool {
 //	Queued 3 ▸                         a folded group and its count
 //	Done 7 ▾                           the same group, opened
 //
-// EVERY TASK ROW OPENS WITH ITS NUMBER WHERE THE COLUMN HAS ROOM FOR IT BESIDE
-// THE WHOLE NAME, then one glyph and it is the state, two cells in under its
-// heading, then the name the person approved, cut with an ellipsis, and how
-// long the work has been at it (or took) in the muted ink at the right.
+// EVERY TASK ROW OPENS WITH ONE GLYPH AND IT IS THE STATE, two cells in under
+// its heading, then the name the person approved, cut with an ellipsis, and
+// how long the work has been at it (or took) in the muted ink at the right.
 // The whole name, and what a row used to say under it, are the hint line's
 // ([app.sideHoverWords]).
 //
@@ -4310,21 +4309,8 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 		return ""
 	}
 	const indent = "  "
-	fig := a.railFigWord(node)
 	glyph := a.railTreeGlyph(node)
-	// THE NAME HAS FIRST CLAIM ON THE CELLS, and the task's number yields
-	// them whole: it is furniture, drawn where the column has room for it
-	// beside the WHOLE name and dropped where keeping it would be the reason a
-	// name is cut — the same law the age and the badge answer from the other
-	// side, giving up their cells while the title keeps its floor. The glyph is
-	// measured and not assumed, because a held row's pair of cells is two wide
-	// and a room that counted one would let the row overrun the column.
-	room := width - len(indent) - ansi.StringWidth(glyph) - 2
-	if room-ansi.StringWidth(fig)-1 < ansi.StringWidth(node.title) {
-		fig = ""
-	} else {
-		room -= ansi.StringWidth(fig) + 1
-	}
+	room := width - len(indent) - 2
 	// A program's badge stays on its row when the side column is compact.
 	// The time gives up cells first, then the badge shortens, while the title
 	// keeps enough room to name the work.
@@ -4342,11 +4328,7 @@ func (a *app) railEntryRow(e railEntry, width int) string {
 		age = ""
 	}
 	title, w := fitWidth(node.title, room)
-	line := indent
-	if fig != "" {
-		line += a.pal.dim(fig) + " "
-	}
-	line += glyph + " " + a.railTitle(node, title) + a.pal.programAfter(wears)
+	line := indent + glyph + " " + a.railTitle(node, title) + a.pal.programAfter(wears)
 	if age != "" {
 		line += strings.Repeat(" ", max(room-w, 0)+1) + a.pal.dim(age)
 	}

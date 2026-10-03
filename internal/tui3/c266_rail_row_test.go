@@ -98,13 +98,8 @@ func TestTheRailIndentsATaskUnderItsParentTask(t *testing.T) {
 	// '-') now fails here instead of passing the position check above. The
 	// mark's glyph comes from the palette so its spelling is never assumed.
 	pending := plain(a.pal.glyph(tokens.GQueued))
-	// The number the row opens with is its own handle — `#kid`, the fixture's
-	// id with the store's `t-` gone (the fixture spells bare ids, so the handle
-	// is the word itself). The pin carries connector, number, mark and title
-	// together: a regression that drops any one of them off the row now fails
-	// here instead of passing the position check above.
-	if !strings.Contains(plain(child), plain("\u2514   #kid "+pending+" ")+"write the fixtures") {
-		t.Fatalf("the task under a task does not wear its number and mark before its title:\n%s", child)
+	if !strings.Contains(plain(child), plain("\u2514   "+pending+" ")+"write the fixtures") {
+		t.Fatalf("the task under a task does not wear its mark before its title:\n%s", child)
 	}
 }
 
