@@ -48,7 +48,10 @@ func newPairDoor(in io.Reader, out io.Writer) pairDoor {
 		requests: linkRequests, linking: linkJoining(home.Dir()), approver: linkApprover(home.Dir())}
 }
 
-const pairUsage = "usage: codeaf pair [--replace] [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code"
+const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code"
+
+// approveUsage is what `codeaf pair approve` with nothing after it is told.
+const approveUsage = "usage: codeaf pair approve <link-or-code> \u2014 the link or code the new device shows"
 
 func runPair(args []string) error {
 	// ctrl+c is how a shown code is taken back, so it cancels the pairing rather
@@ -60,11 +63,11 @@ func runPair(args []string) error {
 
 func (d pairDoor) run(ctx context.Context, args []string) error {
 	flags := commandFlags("pair")
-	via := flags.String("via", "", "the sync address to pair through; empty is the one this computer syncs through")
+	via := flags.String("via", "", "the sync address to pair through; empty is the one this device already uses")
 	renamedFlag(flags, "relay", "via")
-	code := flags.Bool("code", false, "show a six-digit code to share this computer's chats, instead of asking to join")
-	replace := flags.Bool("replace", false, "when typing a code, give up this computer's own chats for the ones being shared")
-	name := flags.String("name", "", "what your devices call this computer; empty keeps its current name, which starts as the host name")
+	code := flags.Bool("code", false, "show a six-digit code that shares this device's chats, instead of asking to join")
+	replace := flags.Bool("replace", false, "when typing a code, replace this device's own chats with the shared ones")
+	name := flags.String("name", "", "what your devices call this one; empty keeps its current name, which starts as the host name")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -125,6 +128,8 @@ func (d pairDoor) dispatch(ctx context.Context, args []string, relay string, rep
 		return d.show(ctx, relay)
 	case len(args) == 0 && !code:
 		return d.askToJoin(ctx, relay, replace)
+	case len(args) == 1 && args[0] == "approve":
+		return wrongCall(approveUsage)
 	case len(args) == 2 && args[0] == "approve" && !code && !replace:
 		return d.approve(ctx, relay, args[1])
 	case len(args) == 1 && !code && pair.IsLinkText(args[0]):
@@ -148,7 +153,7 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 	}
 	label, err := pair.Offer(ctx, route, grant, offerScreen{d.term})
 	if err != nil {
-		return endedByPerson(ctx, err)
+		return d.endedByPerson(ctx, err)
 	}
 	d.term.say(pair.PairedChatsLine(label))
 	return nil
@@ -166,7 +171,7 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 	}
 	joined, err := pair.Join(ctx, route, d.joining(replace), typed, joinScreen{d.term})
 	if err != nil {
-		return endedByPerson(ctx, err)
+		return d.endedByPerson(ctx, err)
 	}
 	d.term.say(joinedSentence(joined))
 	return nil
@@ -175,10 +180,13 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 // joinedSentence is how a finished join reads.
 func joinedSentence(joined pair.Joined) string { return joined.Sentence() }
 
-// endedByPerson turns the end a person chose with ctrl+c into a clean exit, and
-// leaves every other failure as the sentence it already is.
-func endedByPerson(ctx context.Context, err error) error {
+// endedByPerson turns the end a person chose with ctrl+c into a clean exit that
+// says nothing was paired, and leaves every other failure as the sentence it already is.
+func (d pairDoor) endedByPerson(ctx context.Context, err error) error {
 	if ctx.Err() != nil {
+		// The terminal echoes ^C on the prompt's own line, so start a fresh one.
+		fmt.Fprintln(d.term.out)
+		d.term.say(pair.CancelledLine)
 		return nil
 	}
 	return err

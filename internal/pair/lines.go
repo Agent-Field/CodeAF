@@ -71,16 +71,17 @@ type Invite struct {
 	Via string
 }
 
-// InviteLines is what the new device prints: the link, the typed form, the
-// check number to compare, and how long it is good for.
+// InviteLines is what the new device prints: who should approve, the link, the
+// typed form for a terminal, the check number to compare, and the wait.
 func InviteLines(in Invite) string {
 	var b strings.Builder
-	b.WriteString("Approve this device from one you already use. Open this link there:\n")
+	b.WriteString("Approve this device from one you already use.\n\n")
+	b.WriteString("Open this link there:\n")
 	fmt.Fprintf(&b, "  %s\n\n", in.Ref.URL())
 	b.WriteString("Or, on a computer with codeaf, run:\n")
 	fmt.Fprintf(&b, "  %s\n\n", ApproveCommand(in.Ref, in.Via))
-	fmt.Fprintf(&b, "Check number: %s (the other device shows the same number)\n", in.Check)
-	fmt.Fprintf(&b, "Waiting for approval; good for %d minutes. Press ctrl+c to cancel.", int(in.ExpiresIn/time.Minute))
+	fmt.Fprintf(&b, "Check number: %s \u2014 the other device shows the same number.\n", in.Check)
+	fmt.Fprintf(&b, "Waiting for approval (%d minutes). Press ctrl+c to cancel.", int(in.ExpiresIn/time.Minute))
 	return b.String()
 }
 
@@ -93,30 +94,48 @@ func ApproveCommand(ref LinkRef, via string) string {
 	return cmd
 }
 
-// JoinedFleetLine is what the new device says when it is in.
+// JoinedFleetLine is what the new device says when it is in. No workspaces
+// yet says nothing about them, as a zero is never printed.
 func JoinedFleetLine(workspaces int) string {
-	if workspaces == 1 {
-		return "Paired - 1 workspace available."
+	switch workspaces {
+	case 0:
+		return "Paired."
+	case 1:
+		return "Paired. 1 workspace available."
 	}
-	return fmt.Sprintf("Paired - %d workspaces available.", workspaces)
+	return fmt.Sprintf("Paired. %d workspaces available.", workspaces)
 }
 
-// WantsToJoinLine tells the approving person which device is asking.
+// platformWords are the names a person knows their system by, keyed by the
+// platform a computer reports.
+var platformWords = map[string]string{
+	"darwin": "Mac", "linux": "Linux", "windows": "Windows",
+	"ios": "iPhone or iPad", "android": "Android",
+}
+
+// WantsToJoinLine tells the approving person which device is asking. A system
+// that has no familiar name is left out rather than shown as a raw word.
 func WantsToJoinLine(name, platform string) string {
-	return fmt.Sprintf("%q (%s) wants to join your devices.", name, platform)
+	if word, ok := platformWords[platform]; ok {
+		return fmt.Sprintf("%s (%s) wants to join your devices.", name, word)
+	}
+	return fmt.Sprintf("%s wants to join your devices.", name)
 }
 
 // CheckQuestion is what the approving person is asked: the number must match
-// the one the new device shows.
+// the one the new device shows, in the words the app's approve screen uses.
 func CheckQuestion(check string) string {
-	return "Does that device show the check number " + check + "?"
+	return "Check number " + check + ". Approve only if the new device shows the same number."
 }
 
-// ApprovedLine is what the approving device says when it let a device in.
-func ApprovedLine(name string) string { return name + " joined your devices." }
+// ApprovedLine is what the approving device says when it let one in.
+func ApprovedLine(name string) string { return name + " is now paired. Your chats can continue there." }
 
 // DeclinedLine is what the approving device says after a no.
-const DeclinedLine = "Request declined."
+const DeclinedLine = "Declined. Nothing was paired."
+
+// CancelledLine is what a person sees after ctrl+c ends a pairing they began.
+const CancelledLine = "Cancelled. Nothing was paired."
 
 // ── naming this computer ─────────────────────────────────────────────────────
 
@@ -146,4 +165,4 @@ func NamePrompt(name string) string {
 }
 
 // NameTried is the sentence for a name that was refused, then the question again.
-func NameTried(err error) string { return err.Error() + " - try another." }
+func NameTried(err error) string { return err.Error() + " \u2014 try another." }

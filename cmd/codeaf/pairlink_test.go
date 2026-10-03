@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -51,7 +52,7 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	screen.waitFor(t, `Paired - \d+ workspaces available\.`)
+	screen.waitFor(t, `Paired\.`)
 	first, _ := identity.Load(rig.homeA)
 	second, err := identity.Load(rig.homeB)
 	if err != nil || second.ID() != first.ID() {
@@ -98,5 +99,37 @@ func TestPairApproveRefusals(t *testing.T) {
 	err = rig.door(rig.homeA, strings.NewReader(""), out).run(context.Background(), []string{"approve", "nope"})
 	if !errors.Is(err, pair.ErrLinkShape) {
 		t.Fatalf("a typo ended with %v", err)
+	}
+}
+
+// `codeaf pair approve` with nothing after it is a usage error that names the
+// link, not a complaint about the shape of a six-digit code.
+func TestPairApproveWithoutALinkSaysUsage(t *testing.T) {
+	rig := newPairRig(t)
+	errs := &bytes.Buffer{}
+	previous := usageErr
+	usageErr = errs
+	defer func() { usageErr = previous }()
+	err := rig.door(rig.homeA, strings.NewReader(""), &pairScreenText{}).run(context.Background(), []string{"approve"})
+	if err != exitStatus(2) || !strings.Contains(errs.String(), "usage: codeaf pair approve <link-or-code>") || strings.Contains(errs.String(), "42-715-302") {
+		t.Fatalf("a bare approve ended with %v and said %q, want its own usage line and exit 2", err, errs.String())
+	}
+}
+
+// ctrl+c while the link waits ends the pairing and says that nothing was paired,
+// so a person is not left looking at a silent prompt.
+func TestPairCancelSaysNothingWasPaired(t *testing.T) {
+	rig := newPairRig(t)
+	out := &pairScreenText{}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- rig.door(rig.homeB, strings.NewReader(""), out).run(ctx, nil) }()
+	out.waitFor(t, `ctrl\+c to cancel`)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("cancelling ended with %v, want a clean exit", err)
+	}
+	if !strings.Contains(out.String(), pair.CancelledLine) {
+		t.Fatalf("cancelling printed %q, want %q", out.String(), pair.CancelledLine)
 	}
 }
