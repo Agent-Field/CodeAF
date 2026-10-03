@@ -52,7 +52,7 @@ const (
 	fleetAskTimeout = 5 * time.Second
 
 	addMachineHeading = "+ Add another machine"
-	addMachinePitch   = "Add another machine - pick up your work anywhere, exactly where you left it."
+	addMachinePitch   = "Add another machine — pick up your work anywhere, exactly where you left it."
 	addMachineStepRun = "1. On the new machine, install and run: codeaf pair"
 	addMachineStepPut = "2. It shows a link. Paste it here:"
 	addMachineField   = "> "

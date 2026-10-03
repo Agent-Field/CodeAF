@@ -135,7 +135,7 @@ func TestApproveToastsAndClosesAndTheJoinedEventIsNotToldTwice(t *testing.T) {
 	if !strings.Contains(door.did(), "approve:k7m2q9xd") {
 		t.Fatalf("door: %s", door.did())
 	}
-	if notes := updateNotes(a); !strings.Contains(notes, "spark joined your fleet - your chats are now everywhere.") {
+	if notes := updateNotes(a); !strings.Contains(notes, "spark joined your devices — your chats are now everywhere.") {
 		t.Fatalf("no toast:\n%s", notes)
 	}
 	if !a.approve.told("dev_B") {
@@ -156,16 +156,16 @@ func TestDenyTurnsAwayAndEscLeavesItUndecided(t *testing.T) {
 	r.until("the card again", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
 	r.press("d")
 	r.until("closed", func() bool { return !a.pair.open })
-	if !strings.Contains(door.did(), "deny:k7m2q9xd") || strings.Contains(updateNotes(a), "joined your fleet") {
+	if !strings.Contains(door.did(), "deny:k7m2q9xd") || strings.Contains(updateNotes(a), "joined your devices") {
 		t.Fatalf("door %s, notes %s", door.did(), updateNotes(a))
 	}
 }
 
 func TestAGoneRequestSaysSoAndKeepsNoKeys(t *testing.T) {
-	door := &fakeApprovals{err: errors.New("gone")}
+	door := &fakeApprovals{err: errors.New("that link is not waiting any more; run `codeaf pair` on the new device for a fresh one")}
 	a, r := approveApp(t, door)
 	r.slash("/pair " + testLink)
-	r.until("the sentence", func() bool { return strings.Contains(plain(frame(a)), approveGone) })
+	r.until("the sentence", func() bool { return strings.Contains(plain(frame(a)), "that link is not waiting any more") })
 	r.press("a")
 	if strings.Contains(door.did(), "approve:") {
 		t.Fatal("a card with no request approved")
@@ -208,7 +208,7 @@ func TestDeviceListShowsPresenceAndRevokesWithOneKey(t *testing.T) {
 		t.Fatalf("r on this device said nothing:\n%s", plain(frame(a)))
 	}
 	r.press("down", "down", "r")
-	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "spark was revoked") })
+	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "spark was removed") })
 	if door.did() != "revoke:dev_B" {
 		t.Fatalf("door: %s", door.did())
 	}
@@ -231,7 +231,7 @@ func TestJoinedEventFromAnotherDeviceIsToldOnce(t *testing.T) {
 	a.dirFeed = stillFeed{joined: []dirwatch.Joined{{Seq: 1, Device: "dev_D", Name: "sealed"}}}
 	a.announceJoined()
 	a.announceJoined()
-	if n := strings.Count(updateNotes(a), "n:sealed joined your fleet - your chats are now everywhere."); n != 1 {
+	if n := strings.Count(updateNotes(a), "n:sealed joined your devices — your chats are now everywhere."); n != 1 {
 		t.Fatalf("told %d times:\n%s", n, updateNotes(a))
 	}
 }
@@ -287,7 +287,7 @@ func TestSameNameDevicesAreToldApart(t *testing.T) {
 	r.slash("/devices")
 	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
 	got := plain(frame(a))
-	for _, want := range []string{"spark #aaa1", "spark #bbb2", "dumb  Linux"} {
+	for _, want := range []string{"spark #aaa1", "spark #bbb2", "dumb         Linux"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("list lacks %q:\n%s", want, got)
 		}
@@ -335,9 +335,9 @@ func TestARevokedRowNeverShowsAnOnlineDot(t *testing.T) {
 	r.slash("/devices")
 	r.until("the list", func() bool { c, ok := a.pair.card.(*deviceCard); return ok && c.loaded })
 	r.press("down", "r")
-	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "was revoked") })
+	r.until("revoked", func() bool { return strings.Contains(plain(frame(a)), "was removed") })
 	got := plain(frame(a))
-	if !strings.Contains(got, "○ spark") || strings.Contains(got, "● spark") || !strings.Contains(got, "revoked") {
+	if !strings.Contains(got, "○ spark") || strings.Contains(got, "● spark") || !strings.Contains(got, "removed") {
 		t.Fatalf("revoked row:\n%s", got)
 	}
 }
@@ -378,7 +378,7 @@ func TestOpenDeviceListMarksADeviceAnotherComputerRevoked(t *testing.T) {
 	door.mu.Unlock()
 	a.dirFeed = &stillFeed{version: 9}
 	r.feed(dirWatchMsg{from: a.dirFeed})
-	r.until("revoked row", func() bool { return strings.Contains(plain(frame(a)), "spark  Linux  revoked") })
+	r.until("revoked row", func() bool { return strings.Contains(plain(frame(a)), "spark     Linux  removed") })
 	if strings.Contains(plain(frame(a)), "● spark") {
 		t.Fatalf("a revoked computer shows online:\n%s", plain(frame(a)))
 	}

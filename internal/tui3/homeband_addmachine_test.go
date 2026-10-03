@@ -3,7 +3,7 @@ package tui3
 import (
 	tea "charm.land/bubbletea/v2"
 	"context"
-	"errors"
+	"github.com/Agent-Field/codeaf/internal/pair"
 	"strings"
 	"testing"
 	"time"
@@ -103,7 +103,7 @@ func TestAddMachinePasteGoesToTheApproveScreenAndApproveEndsTheCard(t *testing.T
 	if !strings.Contains(door.did(), "approve:k7m2q9xd") {
 		t.Fatalf("not approved: %s", door.did())
 	}
-	if !strings.Contains(plain(frame(a)), "spark joined your fleet") {
+	if !strings.Contains(plain(frame(a)), "spark joined your devices") {
 		t.Fatalf("no toast:\n%s", plain(frame(a)))
 	}
 	if a.addMachineWanted() {
@@ -133,7 +133,7 @@ func TestPairLinkOnBareHomeShowsTheApproveScreen(t *testing.T) {
 			a.openHome()
 			drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
 			r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
-			if got := plain(frame(a)); !strings.Contains(got, "wants to join your fleet") {
+			if got := plain(frame(a)); !strings.Contains(got, "wants to join your devices") {
 				t.Fatalf("no approve screen on the frame:\n%s", got)
 			}
 		})
@@ -153,12 +153,12 @@ func TestPairLinkTypedAndEnteredOnHomeShowsTheApproveScreen(t *testing.T) {
 }
 
 func TestPairLinkThatRanOutSaysSoAndIsNotSilent(t *testing.T) {
-	door := &fakeApprovals{err: errors.New("expired")}
+	door := &fakeApprovals{err: pair.ErrLinkGone}
 	a, r := approveApp(t, door)
 	a.openHome()
 	drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
 	r.until("the failure", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.line != "" })
-	if got := plain(frame(a)); !strings.Contains(got, "that request has run out") {
+	if got := plain(frame(a)); !strings.Contains(got, "that link is not waiting any more") {
 		t.Fatalf("no plain message:\n%s", got)
 	}
 }
@@ -276,7 +276,7 @@ func TestAddMachinePasteOnHomeShowsTheApproveScreen(t *testing.T) {
 	drive(t, a, altD)
 	drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
 	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
-	if got := plain(frame(a)); !strings.Contains(got, "wants to join your fleet") {
+	if got := plain(frame(a)); !strings.Contains(got, "wants to join your devices") {
 		t.Fatalf("no approve screen on the frame:\n%s", got)
 	}
 }
