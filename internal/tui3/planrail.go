@@ -240,7 +240,8 @@ const railLeadFloor = 2
 // railLevels is how many levels of family a column this wide may hang before a
 // deeper path stops eating the cells the name needs. Two cells to a level, so
 // the budget is the room a title keeps after a level draws itself; a path past
-// it hangs a level up ([app.railLead] takes the count from its callers).
+// it is NAMED AT THE BOUNDARY and not drawn ([app.railRowPlace]: one ellipsis
+// row where the levels run out, never a row hung flat at the cap's depth).
 func railLevels(width int) int {
 	levels := (width - railTitleFloor) / 2
 	if levels < 1 {
@@ -292,6 +293,35 @@ func (a *app) railLead(last []bool, elbow bool) string {
 	return out.String()
 }
 
+// railRowPlace is one family row's place in the tree — the one mechanism both
+// renderers hang their rows by: the flags of the levels above the row with its
+// own last-child flag, the lead those flags draw, and the room the lead leaves
+// a title. A row deeper than the column's levels, or one whose lead leaves
+// less than [railLeadFloor] (the day a level draws wider than its two cells,
+// [app.railLead]'s own warning), is PAST the column: the caller names the
+// branch at the boundary with [app.railBoundaryRow] and draws nothing of it,
+// so a deep family is never flattened to the cap's depth — a child hung beside
+// its parent — and never hidden without a row that says it is there.
+func (a *app) railRowPlace(last []bool, i, n, width, levels int) (hang []bool, lead string, room int, past bool) {
+	at := make([]bool, len(last), len(last)+1)
+	copy(at, last)
+	at = append(at, i == n-1)
+	hang = at
+	if len(hang) > levels {
+		hang = hang[len(hang)-levels:]
+	}
+	lead = a.railLead(hang, true)
+	room = max(width-ansi.StringWidth(lead), 0)
+	return hang, lead, room, len(at) > levels || room < railLeadFloor
+}
+
+// railBoundaryRow is the one row that names a branch the column will not draw:
+// the branch's own connector and the vocabulary's one ellipsis. It is the door
+// onto the task it names, as every drawn line is ([app.openRailPlan]).
+func (a *app) railBoundaryRow(lead, id string) railLine {
+	return railLine{text: lead + a.pal.dim(a.pal.glyph(tokens.GEllipsis)), entry: -1, plan: id, head: true}
+}
+
 // planRailLines draws a run's parts under a row, each one THROUGH THE NODE
 // RENDERER and one line each, as every task on the side column is (sidecol.go):
 // a level of family costs two cells, drawn as the tree's own connectors
@@ -305,16 +335,9 @@ func (a *app) railLead(last []bool, elbow bool) string {
 func (a *app) planRailLines(kids []*planTwig, last []bool, width, levels int) []railLine {
 	var out []railLine
 	for i, kid := range kids {
-		at := make([]bool, len(last), len(last)+1)
-		copy(at, last)
-		at = append(at, i == len(kids)-1)
-		hang := at
-		if len(hang) > levels {
-			hang = hang[len(hang)-levels:]
-		}
-		lead := a.railLead(hang, true)
-		room := max(width-ansi.StringWidth(lead), 0)
-		if room < railLeadFloor {
+		hang, lead, room, past := a.railRowPlace(last, i, len(kids), width, levels)
+		if past {
+			out = append(out, a.railBoundaryRow(lead, kid.row.ID))
 			continue
 		}
 		text := a.railEntryRow(railEntry{node: planRailNode(kid.row)}, room)
@@ -334,16 +357,9 @@ func (a *app) planRailLines(kids []*planTwig, last []bool, width, levels int) []
 func (a *app) planPageLines(kids []*planTwig, last []bool, width, levels int) []railLine {
 	var out []railLine
 	for i, kid := range kids {
-		at := make([]bool, len(last), len(last)+1)
-		copy(at, last)
-		at = append(at, i == len(kids)-1)
-		hang := at
-		if len(hang) > levels {
-			hang = hang[len(hang)-levels:]
-		}
-		lead := a.railLead(hang, true)
-		room := max(width-ansi.StringWidth(lead), 0)
-		if room < railLeadFloor {
+		hang, lead, room, past := a.railRowPlace(last, i, len(kids), width, levels)
+		if past {
+			out = append(out, a.railBoundaryRow(lead, kid.row.ID))
 			continue
 		}
 		node := planRailNode(kid.row)

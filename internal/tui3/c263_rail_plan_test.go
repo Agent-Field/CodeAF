@@ -306,3 +306,56 @@ func TestAPartWithNoStepInFlightDrawsNoLiveLine(t *testing.T) {
 		t.Fatalf("an empty command drew a live line %q", got)
 	}
 }
+
+// A FAMILY DEEPER THAN THE COLUMN IS NAMED AT THE BOUNDARY, not drawn flat at
+// the cap. The old clamp drew every row past the levels at the cap's own depth
+// — a child hung beside its parent — and a lead that left less than the floor
+// dropped the row and its whole subtree without a word. One ellipsis row now
+// hangs where the levels run out, it is the door onto the branch it names,
+// and every row the column does draw stands at its true depth.
+func TestADeeperFamilyIsNamedAtTheBoundaryNotDrawnFlat(t *testing.T) {
+	rows := []session.PlanTaskRow{
+		{ID: "t-1", Title: "One", Status: "claimed"},
+		{ID: "t-2", Parent: "t-1", Title: "Two", Status: "claimed"},
+		{ID: "t-3", Parent: "t-2", Title: "Three", Status: "claimed"},
+		{ID: "t-4", Parent: "t-3", Title: "Four", Status: "claimed"},
+	}
+	a, _ := planAppWith(t, rows, nil)
+	// A column sixteen cells wide hangs two levels; the third is past it, and
+	// the one ellipsis row that names the branch is the door onto it.
+	hung := a.planRailLines(planTwigsOf(rows), nil, 16, railLevels(16))
+	text := func(lines []railLine) string {
+		out := make([]string, len(lines))
+		for i, line := range lines {
+			out[i] = line.text
+		}
+		return strings.Join(out, "\n")
+	}
+	var sawOne, sawTwo, sawThree, sawFour, namedAtBoundary bool
+	for _, line := range hung {
+		switch {
+		case strings.Contains(line.text, "One"):
+			sawOne = true
+		case strings.Contains(line.text, "Two"):
+			sawTwo = true
+		case strings.Contains(line.text, "Three"):
+			sawThree = true
+		case strings.Contains(line.text, "Four"):
+			sawFour = true
+		case strings.Contains(line.text, a.pal.glyph(tokens.GEllipsis)):
+			namedAtBoundary = true
+			if line.plan != "t-3" {
+				t.Fatalf("the boundary row names %q, want the branch it hangs on (t-3):\n%s", line.plan, plain(text(hung)))
+			}
+		}
+	}
+	if sawThree || sawFour {
+		t.Fatalf("a row past the column's levels was drawn:\n%s", plain(text(hung)))
+	}
+	if !sawOne || !sawTwo {
+		t.Fatalf("the column dropped rows inside its own levels:\n%s", plain(text(hung)))
+	}
+	if !namedAtBoundary {
+		t.Fatalf("the column hid a deeper family without naming it at the boundary:\n%s", plain(text(hung)))
+	}
+}
