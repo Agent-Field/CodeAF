@@ -6,10 +6,11 @@
 import { DurableObject } from 'cloudflare:workers';
 import { limitsOf } from '../limits.js';
 import { guarded } from '../wire.js';
+import { fence } from './generation.js';
 import { forbidden, gone, sideFull } from './refusals.js';
 
 export class Mailbox extends DurableObject {
-  #box = null; // { expires, keys: {a, b}, msgs: {a: [bytes], b: [bytes]} }, or null when there is none
+  #box = null; // { expires, gen, keys: {a, b}, msgs: {a: [bytes], b: [bytes]} }, or null when there is none
   #waiting = new Set(); // wake functions of the long polls now waiting
 
   constructor(ctx, env) {
@@ -20,45 +21,46 @@ export class Mailbox extends DurableObject {
     });
   }
 
-  /** open makes the box, claimed on side a by keyHash, that lives until `expires`. */
-  open(keyHash, expires) {
+  /** open makes the box, claimed on side a by keyHash, that lives until `expires`; `gen` names this opening. */
+  open(keyHash, expires, gen) {
     return guarded(async () => {
-      this.#box = { expires, keys: { a: keyHash, b: null }, msgs: { a: [], b: [] } };
+      this.#box = { expires, gen, keys: { a: keyHash, b: null }, msgs: { a: [], b: [] } };
       await this.ctx.storage.put('box', this.#box);
       await this.ctx.storage.setAlarm(expires);
     });
   }
 
-  /** post adds one message to a side, claiming the side first if nobody has, and answers its index. */
-  post(side, keyHash, bytes) {
+  /** post adds one message to a side, claiming the side first if nobody has, and answers its index and the box's generation. */
+  post(side, keyHash, bytes, gen) {
     return guarded(async () => {
-      const box = this.#live();
+      const box = this.#live(gen);
       box.keys[side] ??= keyHash;
       if (box.keys[side] !== keyHash) throw forbidden();
       if (box.msgs[side].length >= this.limits.pairMaxMsgsPerSide) throw sideFull();
       const n = box.msgs[side].push(bytes) - 1;
       await this.ctx.storage.put('box', box);
       this.#wake();
-      return { n };
+      return { n, gen: box.gen ?? null };
     });
   }
 
   /**
-   * read answers the messages `side` wrote from index `after` on, and the next index to ask for.
-   * With none yet it waits up to waitMs for one; it answers null when the wait ends empty.
+   * read answers the box's generation and the messages `side` wrote from index `after` on, with the next index to ask for.
+   * With none yet it waits up to waitMs for one; the messages are null when the wait ends empty.
    */
-  read(side, after, waitMs) {
+  read(side, after, waitMs, gen) {
     return guarded(async () => {
-      if (this.#live().msgs[side].length <= after && waitMs > 0) await this.#untilWoken(waitMs);
-      const msgs = this.#live().msgs[side];
-      return msgs.length > after ? { msgs: msgs.slice(after), next: msgs.length } : null;
+      if (this.#live(gen).msgs[side].length <= after && waitMs > 0) await this.#untilWoken(waitMs);
+      const box = this.#live(gen);
+      const msgs = box.msgs[side];
+      return { gen: box.gen ?? null, ...(msgs.length > after && { msgs: msgs.slice(after), next: msgs.length }) };
     });
   }
 
   /** close deletes the box for a caller holding either side's key. */
-  close(keyHash) {
+  close(keyHash, gen) {
     return guarded(async () => {
-      const { keys } = this.#live();
+      const { keys } = this.#live(gen);
       if (keyHash !== keys.a && keyHash !== keys.b) throw forbidden();
       await this.#end();
     });
@@ -68,8 +70,10 @@ export class Mailbox extends DurableObject {
     await this.#end();
   }
 
-  #live() {
+  // #live is the box, or gone when there is none, it has expired, or `gen` names an earlier opening of this nameplate.
+  #live(gen) {
     if (!this.#box || Date.now() >= this.#box.expires) throw gone();
+    fence(this.#box, gen);
     return this.#box;
   }
 

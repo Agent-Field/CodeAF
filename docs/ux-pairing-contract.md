@@ -274,6 +274,25 @@ frames. An event frame has a string key `t` and no key `v`:
 `gone` 404, `too_big` 413 (here, `too_large` for directory bodies stays), `rate_limited` 429, `full` 503,
 `rotated` 410.
 
+## 7a. Nameplates and generations (`/v1/pair`)
+
+A nameplate is a short number, so it is drawn again some day. Two rules keep a device that still holds an
+old code from being answered by a newer mailbox that landed on the same nameplate.
+
+1. **Quarantine.** A relay does not draw a nameplate again until `plateQuarantineMs` after its mailbox ended
+   (released or expired). The hosted relay's default is one pairing life (`pairTtlMs`, 10 minutes): a device
+   may come back to a code until the code's life ends, and a poll that starts during the quarantine finds the
+   old mailbox gone. Quarantined plates count as occupied when the nameplate length (2 to 4 digits) is chosen.
+2. **Generation.** Each opening of a mailbox has a random generation, 32 hex characters, sent in the header
+   `Codeaf-Pair-Gen` on every answer about that mailbox (create, post, poll). A device sends back the one it
+   was told, on post, poll and delete. A mailbox that is a different opening answers `404 gone`, the same
+   answer as for a mailbox that is not there.
+
+The header is optional both ways. A request with none is not fenced, and a mailbox opened before generations
+existed, or a relay that names none (the self-hosted one), answers without it; a device then sends none. No
+body, status or word changes, so old and new builds keep working together. A joining device learns the
+generation from its first answer, so it is fenced from its second call on.
+
 ## 8. Test vectors
 
 `docs/testdata/ux-pairing-vectors.json` holds the record shapes above as fixtures for the lanes
