@@ -13,4 +13,6 @@ invalidates:
   - "A `models.fallbacks` list naming only the model that was failing was read as no list, so codeaf sent the turn to other models it picked. It is now a pin: no other model is used, codeaf asks that model again a bounded number of times, then ends the turn and says what failed."
   - "Opening a chat on a computer while it was still arriving there could open a half-arrived copy. It now shows `this chat is arriving on this computer; it opens by itself in a moment`, and the chat opens by itself when it has arrived."
   - "A wrong or expired pairing code could leave the new computer waiting with no word. It now always ends with a sentence: `that code did not work, or it timed out; ask for a new one`, or `the other device stopped pairing; run /pair there again`."
+  - "When a model you named for a task, or pinned to the checking role, failed, codeaf could move the work to a model it guessed from that computer's own catalog, so two computers could pick differently. Now that work stays on your model, or moves only to a model you wrote in `models.fallbacks`; the guess is used only when you picked nothing and wrote no fallback list."
+  - "The job logs codeaf writes in a task's working copy moved with the chat and came back on the other computer as if you had edited them. They now stay behind; a file you made in that copy still moves."
 ---
