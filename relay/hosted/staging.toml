@@ -46,7 +46,6 @@ new_sqlite_classes = ["LinkGate", "LinkRequest"]
 LEASE_POLICY = "amended"
 # The conformance suite makes one identity per case, all from one address, so the per-IP cap on new
 # identities is lifted for staging only; production keeps the default of 20 a day.
-# The pairing suite also needs a TTL short enough to wait out and callers who name their own network,
-# so staging trusts X-Forwarded-For and keeps mailboxes 4 s; production does neither.
+# Staging trusts X-Forwarded-For so callers can name their own network; production does not.
 TRUST_PROXY = "1"
-CAF_LIMITS = '{"newIdentitiesPerIpPerDay":1000000,"pairTtlMs":4000}'
+CAF_LIMITS = '{"newIdentitiesPerIpPerDay":1000000}'
