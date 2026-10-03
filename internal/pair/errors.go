@@ -156,7 +156,9 @@ func NothingWaitingUnder(plate string) error {
 }
 
 // CannotReachHost names the relay that did not answer.
-func CannotReachHost(host string) error { return fmt.Errorf("%w %s", ErrCannotReach, host) }
+func CannotReachHost(host string) error {
+	return fmt.Errorf("%w %s \u2014 check your internet connection and try again", ErrCannotReach, host)
+}
 
 // TooManyFor says how long until a network may ask again.
 func TooManyFor(wait time.Duration) error {
@@ -181,5 +183,5 @@ var (
 	// ErrPairedNotRead is a pairing that worked and a list of devices that did not load.
 	ErrPairedNotRead = errors.New("paired, but your devices could not be read yet; open codeaf again in a moment")
 	// ErrNotJoined is an approver that has no device of its own to answer with.
-	ErrNotJoined = errors.New("this computer is not paired with any device yet, so it cannot approve one; run `codeaf pair` first")
+	ErrNotJoined = errors.New("this device is not paired yet, so it cannot approve one; run `codeaf pair` first")
 )

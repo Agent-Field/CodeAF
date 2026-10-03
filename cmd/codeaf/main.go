@@ -573,15 +573,15 @@ Housekeeping — changes state on disk or on the network
   codeaf rebuild [--db path] [--yes]
       discard everything codeaf worked out from the journal and replay it
   codeaf pair [--via url] [--name name]
-      show a code that shares your chats with another computer
-  codeaf pair <code> [--via url] [--replace] [--name name]
-      type the code another computer shows: this one gets its chats
+      add this device to yours: shows a link to approve from one you use
+  codeaf pair approve <link-or-code> | <code> [--replace] | --code
+      approve a new device; or use or show a six-digit code for your chats
   codeaf serve [--workspace path] [--via url]
       be reachable from your other devices without ssh, with a pairing code
   codeaf devices
-      list the devices with your chats and the ones that can use this machine
+      list your devices and the ones that can use this machine
   codeaf devices revoke <name> [--all] | rename <name>
-      stop one (cannot undo what a computer holds), or name this one
+      remove one (cannot undo what a device holds), or name this one
   codeaf notebook [--db path]
       what it has learned, and what it has been corrected on
   codeaf notebook retract|restore <seq> [--db path]
