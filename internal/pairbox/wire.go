@@ -14,6 +14,11 @@ const (
 	Path = "/v1/pair"
 	// KeyHeader carries the side key, base64url.
 	KeyHeader = "Codeaf-Pair-Key"
+	// GenHeader names one opening of a nameplate. A relay that fences says it in
+	// every answer about a mailbox, a device sends back the one it was told, and
+	// a mailbox that is a later opening of the same nameplate answers 404 gone.
+	// It is optional both ways, so a relay or a device without it still works.
+	GenHeader = "Codeaf-Pair-Gen"
 	// PeerHeader is where a device may say which network it comes from; a relay
 	// honours it only behind a proxy it was told to trust.
 	PeerHeader = "X-Forwarded-For"
