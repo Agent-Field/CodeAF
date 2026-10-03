@@ -487,7 +487,16 @@ func (w *behindWatch) run() {
 			turnStop()
 		}
 		turn, turnStop = next, stop
-		w.turning.Store(next != nil)
+		// A TURN STARTING IS THE ONE SIGNAL EDGE WITH NO CLOSE BEHIND IT: the
+		// end of a stream stirs below, but the opening of one reached here
+		// through an adoption or a wake, and a tab or mention reading
+		// [behindWatch.signal] would hold "at rest" for the whole of a turn
+		// that began between landings. The stir rides the same arm every
+		// other edge dedupes on, so a wake replacing a turn already in
+		// flight adds no frame.
+		if !w.turning.Swap(next != nil) && next != nil {
+			w.stir()
+		}
 	}
 
 	waiting := needsPerson(w.agent)
