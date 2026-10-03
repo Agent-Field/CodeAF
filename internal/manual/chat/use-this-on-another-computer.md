@@ -236,7 +236,7 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 ## Is my code sent anywhere before I pair — quiet first launch
 
-No. The first launch makes your identity on this machine and does nothing on the network: no request, no connection and no device record reaches the relay. That state is **quiet**. It ends when you pair another machine (`/pair`, `codeaf pair` or `codeaf pair approve`), open the `+ Add another machine` card with `alt+d`, or already belong to a fleet of more than one. Until then your chats stay here, and home shows no devices row.
+No. The first launch makes your identity on this machine and does nothing on the network: no request, no connection and no device record reaches the relay. That state is **quiet**. It ends when you pair another device (`/pair`, `codeaf pair` or `codeaf pair approve`), open the `+ Add another device` card with `alt+d`, or already have more than one device. Until then your chats stay here, and home shows no devices row.
 
 If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
 

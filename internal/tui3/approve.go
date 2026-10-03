@@ -1,6 +1,6 @@
 package tui3
 
-// ── APPROVING A NEW DEVICE, ON A DEVICE THAT IS ALREADY IN THE FLEET ────────
+// ── APPROVING A NEW DEVICE, ON A DEVICE THAT IS ALREADY PAIRED ────────
 //
 // A new device asks to join and shows a link and a four-digit check. The
 // person opens that link here (`/pair <link>` or a paste of it), and this
@@ -11,7 +11,7 @@ package tui3
 // (docs/ux-pairing-contract.md, section 5: only `joined`, `presence` and
 // `revoked` are pushed). So the screen opens on a link, and the push channel
 // speaks once, afterwards: another device approved, and every device hears
-// `<name> joined your fleet` ([app.announceJoined]).
+// `<name> is now paired` ([app.announceJoined]).
 //
 // THE SCREEN IS A CARD IN THE PAIRING PANEL. It takes the panel's six seats
 // (height, draw, hint, keys, press guard, beat) and adds no seat of its own;
@@ -25,6 +25,7 @@ package tui3
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -78,14 +79,17 @@ type Approvals interface {
 
 // The screen's own words, in the vocabulary law's terms.
 const (
-	approveAsk       = "A new device wants to join your fleet."
-	approveCheckWord = "Check number %s - it must match the one on the new device."
-	approveKeys      = "a approve · d deny · esc later"
+	approveAsk       = "A new device wants to pair."
+	approveCheckWord = "Check number %s. Approve only if the new device shows the same number."
+	approveKeys      = "a approve · d decline · esc later"
 	approveLoading   = "looking up the request…"
-	approveGone      = "that request has run out - ask the new device for a new link"
-	approveDenied    = "%s was turned away."
+	approveGone      = "that request has run out — ask the new device for a new link"
+	approveSlow      = "no answer from your devices — try again"
+	approveWorking   = "approving…"
+	approveDeclining = "declining…"
+	approveDenied    = "%s was declined."
 	approveTimeout   = 8 * time.Second
-	joinedFleetWord  = "%s joined your fleet - your chats are now everywhere."
+	joinedFleetWord  = "%s is now paired. Your chats can continue there."
 )
 
 // linkShape is what link pairing is typed as (contract section 2): a short
@@ -212,16 +216,20 @@ func (m decidedMsg) land(a *app) tea.Cmd {
 	return nil
 }
 
-// approveFailure is the one sentence for a refused or failed answer.
+// approveFailure is the one sentence for a refused or failed answer. The door
+// already says what happened in words a person can act on, so they are shown
+// as they are; only a silent wait, which has no sentence of its own, gets one.
 func approveFailure(err error) string {
-	if err == nil {
-		return ""
+	if errors.Is(err, context.DeadlineExceeded) {
+		return approveSlow
 	}
-	return approveGone + " (" + err.Error() + ")"
+	return err.Error()
 }
 
+// hint offers a and d only while they can work: not before the request has
+// loaded, not while an answer is on its way, and not once it has run out.
 func (c *approveCard) hint() string {
-	if c.req == nil || c.working {
+	if c.req == nil || c.working || !c.req.ExpiresAt.After(time.Now()) {
 		return pairDoneKeys
 	}
 	return approveKeys
@@ -240,8 +248,12 @@ func (c *approveCard) rows(width int, now time.Time, pal palette) []string {
 	out = append(out, pal.accent(fit("  "+info.icon+" "+r.Name+" · "+info.word, width)))
 	out = append(out, pal.dim(fit("  "+requestAge(r, now), width)))
 	out = append(out, dressed(wrap(fmt.Sprintf(approveCheckWord, r.Check), max(width, 4)), pal.ink)...)
-	if c.line != "" {
-		out = append(out, dressed(wrap(c.line, max(width, 4)), pal.accent)...)
+	line := c.line
+	if line == "" && !r.ExpiresAt.After(now) {
+		line = approveGone
+	}
+	if line != "" {
+		out = append(out, dressed(wrap(line, max(width, 4)), pal.accent)...)
 	}
 	return out
 }
@@ -276,14 +288,14 @@ func (c *approveCard) key(a *app, name string) (tea.Cmd, bool) {
 	if name == "esc" {
 		return nil, true
 	}
-	if c.req == nil || c.working {
+	if c.req == nil || c.working || !c.req.ExpiresAt.After(time.Now()) {
 		return nil, false
 	}
 	answer, ok := map[string]bool{"a": true, "d": false}[name]
 	if !ok {
 		return nil, false
 	}
-	c.working = true
+	c.working, c.line = true, map[bool]string{true: approveWorking, false: approveDeclining}[answer]
 	return a.decide(c, answer), false
 }
 

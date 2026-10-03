@@ -53,7 +53,7 @@ func TestHomeRowsFromOtherMachines(t *testing.T) {
 	text := homeText(a)
 	for _, want := range []string{
 		"Nightly index rebuild", "running on studio",
-		"Port the picker", "studio off",
+		"Port the picker", "studio offline",
 		"Fix the flaky test", "2 turns from laptop: merge / discard",
 		"Notes on the migration",
 	} {
@@ -115,13 +115,13 @@ func TestHomeMachineRowsGolden(t *testing.T) {
 	golden := map[int][]string{
 		80: {
 			"   Nightly index rebuild  running on studio                                   2m",
-			"   Port the picker  studio off                                                3h",
+			"   Port the picker  studio offline                                            3h",
 			"   Fix the flaky test  2 turns from laptop: merge / discard                   5h",
 			"   Notes on the migration                                                     1d",
 		},
 		40: {
 			"  Nightly index...  running on studio 2m",
-			"  Port the picker  studio off         3h",
+			"  Port the picker  studio offline     3h",
 			"  Fix the flaky ...  2 turns · laptop 5h",
 			"  Notes on the migration              1d",
 		},
@@ -235,7 +235,7 @@ func TestARowOnAnOfflineDeviceDoesNotSayRunning(t *testing.T) {
 	if got := linesWith(a, "running on"); len(got) != 0 {
 		t.Fatalf("an offline device's chat still says running: %q", got)
 	}
-	if got := linesWith(a, "studio off"); len(got) != 1 {
+	if got := linesWith(a, "studio offline"); len(got) != 1 {
 		t.Fatalf("an offline device's chat does not say it is off:\n%s", homeText(a))
 	}
 }
@@ -250,7 +250,7 @@ func TestAPresenceSignalRedrawsTheRow(t *testing.T) {
 	a.rebuildMachines()
 	feed.state.Online = nil
 	a.tookWatch(dirWatchMsg{from: feed})
-	if got := linesWith(a, "studio off"); len(got) != 1 {
+	if got := linesWith(a, "studio offline"); len(got) != 1 {
 		t.Fatalf("a presence signal left the row stale:\n%s", homeText(a))
 	}
 }
