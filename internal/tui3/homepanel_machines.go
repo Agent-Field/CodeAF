@@ -14,7 +14,7 @@ import (
 //
 // A chat somebody left running on another computer is a row like any other, in
 // the place they look for their chats. Its words come whole from [chatlist]
-// (`running on studio`, `studio off`, `2 turns from studio: merge / discard`),
+// (`running on studio`, `studio offline`, `2 turns from studio: merge / discard`),
 // so this screen and `codeaf cell list --all` never spell them twice.
 //
 // THE EMPTINESS LAW DECIDES WHAT IS SAID. A chat this machine holds says

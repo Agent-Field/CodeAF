@@ -31,7 +31,7 @@ func TestFreshStartIsPristineAndAPairLinkIsNotAChatMessage(t *testing.T) {
 	// Whichever way the answer goes (a request to approve, one that ran out, or
 	// no way to approve here) it is a pairing answer; a model's turn is not.
 	var screen string
-	for _, answer := range []string{"wants to join your fleet", "request has run out", "pairing is not available"} {
+	for _, answer := range []string{"wants to pair", "request has run out", "pairing is not available"} {
 		if got, ok := waitPlain(r, 5*time.Second, answer); ok {
 			screen = got
 			break

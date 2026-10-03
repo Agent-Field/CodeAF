@@ -29,11 +29,11 @@ const (
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	runningOn      = "running on %s"
-	deviceOff      = "%s off"
+	deviceOff      = "%s offline"
 	branchLine     = "%s from %s: merge / discard"
 	branchKeep     = "%s from %s: discard"
 	branchShort    = "%s · %s"
-	takeoverLine   = "last durable turn %ds ago"
+	takeoverLine   = "last saved turn %s ago"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	supersededLine = "%s continued this chat; this window now only shows it"
@@ -169,11 +169,25 @@ func BranchShort(r Row) string { return fmt.Sprintf(branchShort, turns(r.OrphanT
 // on the other machine is left out when none are. A chat that is running now
 // says where first, because continuing it here stops it there.
 func TakeoverLine(r Row) string {
-	line := fmt.Sprintf(takeoverLine, int64(r.DurableAgo/time.Second))
+	line := fmt.Sprintf(takeoverLine, agoWord(r.DurableAgo))
 	if r.Pending > 0 {
 		line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
 	}
 	return holderLead(r) + line
+}
+
+// agoWord spells an age in its largest whole unit, so an hour reads `1h` and
+// not `3600s`: seconds under a minute, then minutes, hours and days.
+func agoWord(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int64(d/time.Second))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int64(d/time.Minute))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int64(d/time.Hour))
+	}
+	return fmt.Sprintf("%dd", int64(d/(24*time.Hour)))
 }
 
 // holderLead names the device a live chat runs on, and is empty for a chat
