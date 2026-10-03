@@ -33,7 +33,7 @@ func TestCellListAll(t *testing.T) {
 	}
 	want := []string{
 		"01AAA  Nightly index rebuild  studio  running on studio             2m",
-		"01BBB  Port the picker        studio  studio off                    3h",
+		"01BBB  Port the picker        studio  studio offline                3h",
 		"01CCC  Fix the flaky test     laptop  2 turns from laptop: discard  5h",
 		"01DDD  Notes                  laptop  -                             1d 2h",
 	}

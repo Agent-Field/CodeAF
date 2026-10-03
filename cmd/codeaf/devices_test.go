@@ -67,11 +67,11 @@ func TestDevicesBothKinds(t *testing.T) {
 	kinds := []deviceKind{chats, bookKind{bookWith(t, "phone")}}
 
 	printed := listed(t, kinds...)
-	first, second := strings.Index(printed, "devices with your chats"), strings.Index(printed, "devices that can use this machine")
+	first, second := strings.Index(printed, "your devices"), strings.Index(printed, "devices that can use this machine")
 	if first < 0 || second < first {
 		t.Fatalf("the two headings are missing or out of order:\n%s", printed)
 	}
-	for _, want := range []string{"laptop", "this computer", "phone"} {
+	for _, want := range []string{"laptop", "this device", "phone"} {
 		if !strings.Contains(printed, want) {
 			t.Errorf("the list lacks %q:\n%s", want, printed)
 		}
@@ -84,7 +84,7 @@ func TestDevicesBothKinds(t *testing.T) {
 	if err != nil || !l.Devices[otherComputer].Revoked || l.Devices[thisComputer].Revoked {
 		t.Fatalf("directory after the stop: %+v, %v", l.Devices, err)
 	}
-	if after := listed(t, kinds...); !strings.Contains(after, "stopped") {
+	if after := listed(t, kinds...); !strings.Contains(after, "removed") {
 		t.Fatalf("a stopped computer is not marked:\n%s", after)
 	}
 
@@ -114,7 +114,7 @@ func TestDevicesEmptinessLaw(t *testing.T) {
 func TestDevicesRevokeNamesThatCannotPickOne(t *testing.T) {
 	chats, dir := chatsWith(t, "phone")
 	kinds := []deviceKind{chats, bookKind{bookWith(t, "phone")}}
-	for name, want := range map[string]string{"phone": "more than one", "ghost": "no device is called", "desk": "this computer"} {
+	for name, want := range map[string]string{"phone": "more than one", "ghost": "no device is called", "desk": "this device"} {
 		_, err := captureStdout(t, func() error { return stopDevice(kinds, []string{name}) })
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("revoke %s: %v, want a sentence with %q", name, err, want)
@@ -153,5 +153,40 @@ func TestDevicesRevokeText(t *testing.T) {
 				t.Errorf("%q does not say %q", text, want)
 			}
 		}
+	}
+}
+
+// This computer is listed first and a removed one last, whatever the names sort
+// to, so the row a person is typing on is always where the eye starts.
+func TestChatsTableListsThisComputerFirst(t *testing.T) {
+	kind, dir := chatsWith(t, "atlas")
+	rows, err := kind.rows()
+	if err != nil || len(rows) != 2 || !rows[0].This || rows[1].Name != "atlas" {
+		t.Fatalf("rows were %+v (%v), want this computer ahead of atlas", rows, err)
+	}
+	if err := dir.Revoke(devicesCtx, otherComputer); err != nil {
+		t.Fatal(err)
+	}
+	table, _ := kind.table(time.Now())
+	if strings.Index(table, "desk") > strings.Index(table, "atlas") || !strings.Contains(table, "removed") {
+		t.Fatalf("the table was:\n%s\nwant desk first and atlas marked removed", table)
+	}
+}
+
+// A list holding only this computer says nothing a person did not know, so it
+// is not drawn and the one sentence takes its place.
+func TestChatsTableOfOnlyThisComputerIsAbsent(t *testing.T) {
+	cellKey := bytes.Repeat([]byte{7}, 32)
+	dir := directory.NewMemory(time.Now)
+	sealed, err := directory.SealName(directory.MetadataKey(cellKey), "desk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dir.For(thisComputer).PutDevice(devicesCtx, thisComputer, directory.Device{V: 1, Name: sealed}); err != nil {
+		t.Fatal(err)
+	}
+	kind := chatsKindOf(dir.For(thisComputer), cellKey, thisComputer, "https://relay.example")
+	if table, err := kind.table(time.Now()); table != "" || err != nil {
+		t.Fatalf("a lone computer drew %q (%v), want nothing", table, err)
 	}
 }

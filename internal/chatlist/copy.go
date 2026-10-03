@@ -23,7 +23,7 @@ const (
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
 	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
-	Removed        = "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back"
+	Removed        = "this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
 	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"

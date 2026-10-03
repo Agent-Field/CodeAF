@@ -3723,7 +3723,7 @@ func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
 		{"what does codeaf pair --code do", add, "codeaf pair --code"},
 		{"how do I remove a computer", add, "r remove"},
 		{"what does the dot next to a computer mean", add, "○ dumb (offline)"},
-		{"I was told this computer was removed", add, "this computer was stopped by another of your computers"},
+		{"I was told this computer was removed", add, "this device was removed by another of your devices"},
 		{"how do I rename this computer", naming, "codeaf devices rename \"atlas\""},
 		{"why does it show my hostname", naming, "Because you never named this device"},
 		{"how do I change what my device is called", naming, "press `n`"},
