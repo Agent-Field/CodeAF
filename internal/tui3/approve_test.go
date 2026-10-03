@@ -135,7 +135,7 @@ func TestApproveToastsAndClosesAndTheJoinedEventIsNotToldTwice(t *testing.T) {
 	if !strings.Contains(door.did(), "approve:k7m2q9xd") {
 		t.Fatalf("door: %s", door.did())
 	}
-	if notes := updateNotes(a); !strings.Contains(notes, "spark joined your fleet - your chats are now everywhere.") {
+	if notes := updateNotes(a); !strings.Contains(notes, "spark joined your fleet. Your chats can now continue there.") {
 		t.Fatalf("no toast:\n%s", notes)
 	}
 	if !a.approve.told("dev_B") {
@@ -231,7 +231,7 @@ func TestJoinedEventFromAnotherDeviceIsToldOnce(t *testing.T) {
 	a.dirFeed = stillFeed{joined: []dirwatch.Joined{{Seq: 1, Device: "dev_D", Name: "sealed"}}}
 	a.announceJoined()
 	a.announceJoined()
-	if n := strings.Count(updateNotes(a), "n:sealed joined your fleet - your chats are now everywhere."); n != 1 {
+	if n := strings.Count(updateNotes(a), "n:sealed joined your fleet. Your chats can now continue there."); n != 1 {
 		t.Fatalf("told %d times:\n%s", n, updateNotes(a))
 	}
 }

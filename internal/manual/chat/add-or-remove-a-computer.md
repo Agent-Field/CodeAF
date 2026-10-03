@@ -87,7 +87,7 @@ The line under the name says what system the new device runs (Mac, Linux, Window
 When you approve, your screen says:
 
 ```
-laptop joined your fleet - your chats are now everywhere.
+laptop joined your fleet. Your chats can now continue there.
 ```
 
 Every other device that is on says it too, a moment later, from the same message. In a terminal approval the line is `laptop joined your devices.` and a no says `Request declined.` The terminal first says `"laptop" (linux) wants to join your devices.`

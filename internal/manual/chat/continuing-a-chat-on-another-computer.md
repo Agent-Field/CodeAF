@@ -8,7 +8,7 @@ A chat can be worked on by one device at a time. If you open a chat here that an
 
 ```
 Continue this chat here?
-running on spark; last durable turn 4s ago
+running on spark; last saved turn 4s ago
 1 continue here
 2 leave it there
 ```
@@ -21,7 +21,7 @@ If you continue it, the other device's window stops taking new turns and says `<
 
 ## What does running on spark mean — a row on home and the verb it offers
 
-Home lists chats from your other devices. A chat that a device is working on now says `running on <device>`. One that a device let go of, or that went off because its lid closed, says `<device> off`.
+Home lists chats from your other devices. A chat that a device is working on now says `running on <device>`. One that a device let go of, or that went off because its lid closed, says `<device> offline`.
 
 Press enter on either row to continue it here. The verb on the card depends on the row: **Move here** for a chat another device is running right now, **Continue here** for one it let go of. You already chose to continue, so the cursor starts on `continue here` and enter completes the move; `esc` leaves it there. The card says how fresh the copy is, so you know how many turns may still be on the other device.
 
@@ -30,8 +30,8 @@ Press enter on either row to continue it here. The verb on the card depends on t
 If you open codeaf and a chat on another device was running or went off in the last 24 hours, and that device is offline now (its lid is closed) or has let go of the chat, home offers it first of all:
 
 ```
-Continue where you left off on spark?
-alt+c continue · alt+x not now
+Continue spark's latest chat here?
+alt+c continue here · alt+x not now
 ```
 
 - `alt+c` opens the same card as above, with the reason and the cursor on `continue here`, so enter finishes it. Nothing is moved by this line alone.
@@ -94,7 +94,7 @@ If two computers press `continue here` for the same chat together, only one of t
 
 While a chat is moving onto this computer, pressing enter on its row says `this chat is arriving on this computer; it opens by itself in a moment`. Nothing is wrong and nothing needs doing: the move takes a second or two, and the chat opens by itself when it ends, with the other computer's latest turns in it. Opening it earlier is refused on purpose, because a window opened halfway would show the chat as it was before the move and could not save your turns.
 
-When the holder is off (its lid is shut), the row reads `<device> off` and you can still continue the chat here: the card says `last durable turn <N>s ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; when it comes back online it sees the chat was continued elsewhere and keeps those turns as a branch for you to merge or discard.
+When the holder is off (its lid is shut), the row reads `<device> offline` and you can still continue the chat here: the card says `last saved turn <N> ago; up to <K> turns may still be on <device>`. Turns that never left that computer are not in the copy you get; when it comes back online it sees the chat was continued elsewhere and keeps those turns as a branch for you to merge or discard.
 
 ## Can the chat on the other computer still open the job logs it mentions — logs, saved tool output, task journals and the task history after a move
 
