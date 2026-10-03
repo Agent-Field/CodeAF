@@ -30,6 +30,13 @@ below is made, and the background tidy never runs. With it off, `/remember`,
 memory is off for this session · turn it on under /settings
 ```
 
+**Turning memory off does not turn conversation search off.** Everything said
+in this machine's conversations stays indexed and `search_conversations` still
+works — searching what was said is reading your own history, not remembering
+about you, and the memory row takes the second away, not the first. The
+`remember` verb is off the belt entirely, so the model cannot try to save
+anything.
+
 Skills are not memory, and turning memory off keeps them: the skills in your
 Claude Code, Codex and other skill folders still reach the conversation, carried
 with a message that suits them and attached by `/skill`
@@ -582,7 +589,10 @@ true about you everywhere (the default), `project` for something true only in
 this project, `env` for something true only on this machine.
 
 All three go through the same settling step, so saying it twice refines one
-memory rather than making a second.
+memory rather than making a second — **and the settling step no longer needs
+the model to be up**: if the small memory model cannot answer, the line is
+still kept through the store's own duplicate check, and the failed settle is
+recorded in the journal rather than lost.
 
 ## Forgetting something
 
@@ -652,15 +662,38 @@ pair uses it.
 ## Where is it kept, and does a task see it?
 
 It is kept in `~/.codeaf/graph.db`, which is per person rather than per
-conversation or per project — so something remembered in one repository is
-remembered in the next. `CODEAF_HOME` moves it with everything else codeaf
-keeps. The same file holds every message of every conversation, which is what
+conversation — but **not** one flat pool: what each conversation is SHOWN
+depends on who the memory belongs to.
+
+- A memory kept as **you** (the default) is yours everywhere — every project,
+  every conversation.
+- A memory kept as **this project** belongs to that project and is shown only
+  in conversations running in it. Two repositories can hold genuinely
+  different truths about the same words, and neither one's memory leaks into
+  the other's conversation: the router's shortlist, a `/memories <query>` and
+  a `/forget <query>` in this project can never answer with another project's
+  memory.
+- A memory kept as **this machine** stays on this machine.
+
+Which project a conversation is in is proved, not guessed: the project's git
+`origin` URL (folded so that an SSH clone and an HTTPS clone of the same
+repository are the same project), or the folder itself when there is no
+remote. A memory whose project cannot be proved — rows kept by older builds
+that recorded only the word `project` — is **quarantined** rather than
+re-attributed: it is never shown to any conversation automatically, and the
+ones whose source conversation can be traced to a folder are moved back to
+that project's own memories. The rest wait on the memory place under the
+project shelf, marked `legacy-project`, for you to keep, re-word or drop.
+
+`CODEAF_HOME` moves the whole file with everything else codeaf keeps. The
+same file holds every message of every conversation, which is what
 `search_conversations` searches; the transcripts themselves stay in each
 conversation's own folder.
 
 **A task gets the same treatment as a message.** When work is handed off to a
-task, the router is asked once against that task's brief, and whatever it names
-is put at the top of the task's own instructions. The task never writes memories
+task, the router is asked once against that task's brief, and whatever it
+names is put at the top of the task's own instructions — scoped to the same
+owners the conversation that started it can see. The task never writes memories
 of its own: a family of eight tasks would otherwise be eight writers on one
 brain, all blind to each other.
 
@@ -794,6 +827,31 @@ imported 12 memories from memory.md
 ```
 
 After that the file is gone from codeaf's view and the store is the only memory.
+
+**The rename is the last thing that happens.** If the file could not be read in
+full, or a line could not be kept, the file stays exactly where it is, the
+failure is written into the store's journal, and the import is tried again on a
+later turn. A retry never makes duplicates: a line the first attempt already
+kept is recognised as kept and skipped, so a file that half-imported once
+finishes cleanly the second time.
+
+## When a memory write fails
+
+Memory writes used to fail silently — an extraction the small memory model
+could not settle, a line the store refused, an import that stopped halfway.
+Now every failure lands in the store's journal (`memory_write_failed`, with
+the door that failed and the reason), and the conversation says one dim line
+about it, at most once every five minutes however many failures pile up:
+
+```
+couldn't settle a memory just now · the journal has the reason
+```
+
+If the store itself is what failed — a disk out of room, a file that will not
+take writes — the reason goes to `~/.codeaf/v3/memory-failures.log` instead,
+one line per failure, so there is always somewhere the answer lives. Nothing
+is retried automatically except the legacy import above; the next turn's
+extraction simply tries again the normal way.
 
 ## It used to say preparing saved context — why is that gone, and does the lookup slow my answer down?
 

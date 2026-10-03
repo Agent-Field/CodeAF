@@ -1329,6 +1329,31 @@ type Config struct {
 	// and every machine that has already been through it.
 	MemoryImport string
 
+	// MemoryProjectKey is THIS SESSION'S PROVABLE PROJECT IDENTITY — the key
+	// internal/gitidentity.ProjectKey mints from the workspace's origin remote
+	// (or its canonical path, when there is no remote) — and it is what turns
+	// the scope word `project` into the owner a memory really belongs to.
+	// Empty means the door could not prove a project, and a project write from
+	// this session lands in quarantine rather than somewhere guessed
+	// (memory.go's ownerForScope).
+	//
+	// IT IS A CONFIG FIELD AND NOT A STORE FIELD for the reason every other
+	// where-does-this-live answer is: the door decides where a session's state
+	// lives, the session carries its identity, and the store holds rows. A
+	// worker built from a copied config inherits the same key, so a task node's
+	// memory reading is scoped exactly as its parent's was.
+	MemoryProjectKey string
+
+	// MemoryIndex is the store THIS SESSION'S CONVERSATION is indexed into,
+	// and it is deliberately not [Config.Memory]: with memory off, the session
+	// writes nothing about the person and still writes its own words where the
+	// next search can find them. Nil indexes nothing, which is a session built
+	// by a caller that opens no store at all.
+	//
+	// Every reader falls back to Memory when this is unset, so a door that
+	// never adopted the split behaves exactly as it did.
+	MemoryIndex *store.Store
+
 	// ApprovalPolicy decides whether a tool call runs, asks, or is refused
 	// (internal/approval, gated in consent.go). NIL ALLOWS EVERYTHING, which is
 	// the behavior every caller had before the gate existed: a headless --once

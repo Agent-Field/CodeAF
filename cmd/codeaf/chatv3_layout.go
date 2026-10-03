@@ -415,12 +415,20 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 		if workspace := strings.TrimSpace(place.Workspace); workspace != "" {
 			cfg.Workspace = workspace
 		}
+		cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
 		return cfg, nil
 	}
 	if err := prepareOwnedWorkspace(place); err != nil {
 		return cfg, err
 	}
 	cfg.Workspace = place.Work()
+	// AND THE PROJECT KEY FOLLOWS THE WORKSPACE, because the key IS the
+	// workspace's provable identity: a conversation moved to another session
+	// folder — /new, a resume, a picker — is a conversation that may be in a
+	// different project, and a memory scoped to the wrong key is a memory in
+	// the wrong place. Recomputed here, where the workspace is settled, so
+	// every door through this function agrees about whose project this is.
+	cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
 	return cfg, nil
 }
 

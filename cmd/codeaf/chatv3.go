@@ -23,6 +23,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
@@ -980,6 +981,20 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// memory row is on, which is what makes "memory off makes no calls" a
 		// fact about the wiring instead of a branch every caller has to keep.
 		Memory: proc.Memory,
+		// AND THE CONVERSATION INDEX, WHICH IS NOT THE MEMORY ANY MORE. It is
+		// the process's search store — the same handle as Memory when memory
+		// is on, and its own handle of the same file when memory is off — so
+		// the search verb survives the memory row. The chat journal indexes
+		// the conversation into it either way; the memory row now decides
+		// only what is REMEMBERED (internal/session's memory.go).
+		MemoryIndex: proc.Search,
+		// AND THE PROJECT THIS SESSION CAN PROVE IT IS IN. The key is minted
+		// from the workspace's origin remote, or its canonical path when there
+		// is no remote, and it is what turns a `project` scope word into the
+		// owner a memory really belongs to. Empty (an error, or a workspace
+		// that could not be resolved) quarantines project writes rather than
+		// guessing.
+		MemoryProjectKey: v3ProjectKey(workspace),
 		// AND THE SKILL SHELF, which is the line above when memory is on and a
 		// shelf of the skill folders alone when it is off ([v3SkillShelf]):
 		// the skills a person installed for another harness are not memory,
@@ -2100,6 +2115,35 @@ func v3BuiltinApprovals() map[string]any {
 // made by [store.Open] itself, which is the one door every caller goes through,
 // and what reaches the line below is only ever a real reason: it names the file
 // and says what the disk said about it.
+// v3SearchStore opens the conversation index with the memory row OFF. It is
+// the same file the memory store is ([defaultChatDB]), opened when the memory
+// store was not — and its failures are the same non-fatal shape: a person who
+// wanted a conversation gets one, and the search verb answers what a missing
+// index honestly answers.
+func v3SearchStore(profileDir string) *store.Store {
+	brain, err := store.Open(defaultChatDB())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "conversation search is off for this session: "+err.Error())
+		return nil
+	}
+	return brain
+}
+
+// v3ProjectKey mints the key this launch's workspace can prove it is. It is
+// the origin remote's normalized identity when the workspace is a git
+// repository with one, and the canonical path's hash when there is none —
+// never a guess. An error or an empty workspace answers "", and a session
+// carrying "" quarantines its project writes rather than attributing them
+// (internal/gitidentity's project.go states the rule; internal/session's
+// memory.go states where the empty key lands).
+func v3ProjectKey(workspace string) string {
+	key, err := gitidentity.ProjectKey(workspace)
+	if err != nil || strings.TrimSpace(key) == "" {
+		return ""
+	}
+	return key
+}
+
 func v3Memory(profileDir string) *store.Store {
 	if !config.MemoryEnabledAt(profileDir) {
 		return nil
@@ -2137,8 +2181,29 @@ func (s v3Brain) ChangedSince(t time.Time) (int, int, error) {
 	return s.brain.MemoryChangedSince(t)
 }
 
+// ListMemories answers the surface's scope word as the OWNERS it means. The
+// person's overview reads the whole store (the snapshot above does), so an
+// empty scope stays "every owner"; `project` is the word the surface spells
+// for "the project rows", and it answers every project's rows — this is the
+// person's own audit page, not a session's retrieval, and the session-scoped
+// reads live in internal/session. A scope this build does not spell answers
+// nothing rather than everything.
 func (s v3Brain) ListMemories(scope string, limit int) ([]store.Memory, error) {
-	return s.brain.ListMemories(scope, limit)
+	switch strings.TrimSpace(scope) {
+	case "":
+		return s.brain.ListMemories(nil, limit)
+	case store.MemoryScopeUser:
+		return s.brain.ListMemories([]string{store.OwnerUser}, limit)
+	case store.MemoryScopeEnv:
+		return s.brain.ListMemories([]string{store.OwnerMachine}, limit)
+	case store.MemoryScopeProject:
+		// EVERY PROJECT'S ROWS, INCLUDING THE QUARANTINE: this is the person's
+		// audit shelf, not a session's retrieval — a project-scoped listing
+		// that answered only the quarantine would hide every real project's
+		// memories the day the first one was written with an owner.
+		return s.brain.ListProjectMemories(limit)
+	}
+	return nil, nil
 }
 
 func (s v3Brain) UpdateMemory(id, title, text string, tags []string) error {

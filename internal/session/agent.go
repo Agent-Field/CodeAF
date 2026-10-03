@@ -360,7 +360,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// And it takes the DROPPINGS home for the registry's reason: the only thing
 	// the journal does with a Place is spill an over-long message's bytes through
 	// [writeStub], which is a dropping like any other (landing.go).
-	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.droppingsPlace())
+	// THE JOURNAL INDEXES INTO THE CONVERSATION INDEX, which is the memory
+	// store for every pre-split caller and its own store where a door opened
+	// one — memory off keeps the conversation searchable (tools_conversations.go
+	// states the order).
+	agent.chatlog = newChatJournal(config.conversationIndexStore(), agent.threadID(), config.Workspace, config.droppingsPlace())
 	// And the state card is held before any turn has run, so that the note the
 	// first request carries already has it: a resumed conversation's card is what
 	// it knew yesterday, and a model that had to wait for the first post-turn

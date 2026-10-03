@@ -262,7 +262,7 @@ type tidyPass struct {
 // run is the pass proper: read what is remembered, decide whether it is worth a
 // call, make it, apply what came back, stamp the clock and say one line.
 func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
-	batch, err := p.brain.ListMemories("", consolidateBatch)
+	batch, err := p.brain.ListMemories(nil, consolidateBatch)
 	if err != nil {
 		return standing.Tidied{}, err
 	}
@@ -323,7 +323,7 @@ func consolidateHighWater(brain *store.Store, batch []store.Memory) int64 {
 			high = memory.UpdatedSeq
 		}
 	}
-	newest, err := brain.ListMemories("", 1)
+	newest, err := brain.ListMemories(nil, 1)
 	if err == nil && len(newest) == 1 && newest[0].UpdatedSeq > high {
 		high = newest[0].UpdatedSeq
 	}
