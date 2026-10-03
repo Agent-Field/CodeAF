@@ -311,7 +311,7 @@ func TestWallRenderStates(t *testing.T) {
 	v.choices = teamHueChoices(wallViewHues(v), teamReservedFrom(darkRamp), 6)
 	rows, _ = renderWall(pal, v, 120, 40)
 	card := wallPlainFrame(rows)
-	for _, want := range []string{"─ New team ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "Cancel esc", "Create ↵", "Shuffle"} {
+	for _, want := range []string{"─ New team ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "esc cancel", "enter create", "ctrl+r shuffle"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the new-team card lacks %q\n%s", want, card)
 		}
@@ -320,6 +320,24 @@ func TestWallRenderStates(t *testing.T) {
 	rows, _ = renderWall(pal, v, 120, 9)
 	if got := ansi.Strip(rows[1]); !strings.Contains(got, "New team › night▌") || !strings.Contains(got, "2 picked") {
 		t.Errorf("naming row: %q", got)
+	}
+	rows, hits = renderWall(pal, v, 20, 9)
+	for _, action := range []struct {
+		label string
+		act   wallAct
+	}{{"esc cancel", wallActCancel}, {"enter create", wallActSave}} {
+		found := false
+		for _, hit := range hits {
+			if hit.kind == wallHitAction && hit.arg == int(action.act) {
+				found = true
+				if got := ansi.Strip(ansi.Cut(rows[hit.y0], hit.x0, hit.x1)); got != action.label {
+					t.Errorf("compact naming target %q draws %q", action.label, got)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("compact naming lost %q", action.label)
+		}
 	}
 }
 
@@ -466,6 +484,9 @@ func TestWallClickHitsSitOnTheirLabels(t *testing.T) {
 					}
 					if hit.kind == wallHitAction && hit.y1-hit.y0 == 1 && hit.arg != int(wallActFilter) {
 						want := labels[wallAct(hit.arg)]
+						if v.naming && (wallAct(hit.arg) == wallActSave || wallAct(hit.arg) == wallActCancel || wallAct(hit.arg) == wallActShuffle) {
+							want = strings.ToLower(want)
+						}
 						if pal.ascii && want == "−" {
 							want = "-"
 						}

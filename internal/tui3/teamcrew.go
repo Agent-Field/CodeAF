@@ -610,7 +610,7 @@ func (a *app) teamCrewOver(frame string) string {
 //	╭─ harbor · 6 members ──────────────────────────────────────────────╮
 //	│  ◆ @boss    harbor's manager      working             Open        │
 //	│  @review    code review           asking    also in test  Resume  │
-//	│                                                         Close esc │
+//	│                    up/down move · enter open · esc close          │
 //	╰───────────────────────────────────────────────────────────────────╯
 func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 	pal := a.pal
@@ -625,7 +625,8 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 	}
 	const padX = 1
 	inner := w - 2 - 2*padX
-	room := max(h-4, 1)
+	footer := teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("enter", "open"), teamHint("esc", "close", wallHit{kind: crewHitClose, arg: -1}))
+	room := max(h-2-len(footer), 1)
 	c := &a.tcrew
 	c.cursor = min(max(c.cursor, 0), max(len(rows)-1, 0))
 	top := min(c.top, max(len(rows)-room, 0))
@@ -692,14 +693,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 		}
 		lines = append(lines, wallCardLine{s: text, hits: hits})
 	}
-	closeWord := " Close " + pal.dim("esc") + " "
-	cw := ansi.StringWidth(" Close esc ")
-	cs := closeWord
-	if c.hotClose {
-		cs = pal.cursor(" Close esc ", 0)
-	}
-	lines = append(lines, wallCardLine{s: strings.Repeat(" ", max(inner-cw, 0)) + cs,
-		hits: []wallHit{{x0: inner - cw, x1: inner, y1: 1, kind: crewHitClose, arg: -1}}})
+	lines = append(lines, footer...)
 	// THE COUNT IS THE HEADER'S COUNT: the members beside the manager, with
 	// the manager named apart, so the header's `◆ Manager  1 member` and this
 	// title never disagree about the same team.

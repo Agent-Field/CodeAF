@@ -592,18 +592,23 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 
 	switch {
 	case v.naming && !wallNameCardFits(width, height):
-		// The card has no room on this frame; the prompt is drawn here instead,
-		// with the same two buttons.
+		// The compact prompt keeps its key-first hints visible ahead of its name.
 		lead := pal.muted("New team "+g.gt+" ") + pal.ink(v.name) + pal.ink(g.cursor)
-		if v.asking {
-			lead += pal.dim(wallNamingWord(pal.ascii))
+		lead += pal.dim(" · " + strconv.Itoa(wallMarked(v)) + " picked")
+		footer := teamFooter(pal, min(width, 25),
+			teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: int(wallActCancel)}),
+			teamHint("enter", "create", wallHit{kind: wallHitAction, arg: int(wallActSave)}))
+		if len(footer) == 0 {
+			return "", nil
 		}
-		put(lead, ansi.StringWidth(lead))
-		count := "   " + pal.dim(strconv.Itoa(wallMarked(v))+" picked") + "  "
-		put(count, ansi.StringWidth(count))
-		button(wallButton{act: wallActCancel, label: "Cancel", key: "esc"})
-		button(wallButton{act: wallActSave, label: "Create", key: k.enter})
-		return ansi.Truncate(b.String(), width, ""), wallHitsWithin(hits, width)
+		if len(footer) > 1 {
+			return footer[0].s, teamFooterHitsAt(footer[0].hits, 0, y)
+		}
+		room := max(width-26, 0)
+		if room > 0 {
+			return fit(lead, room) + " " + footer[0].s, teamFooterHitsAt(footer[0].hits, room+1, y)
+		}
+		return footer[0].s, teamFooterHitsAt(footer[0].hits, 0, y)
 	case v.filtering || v.filter != "":
 		put(pal.dim("Filter  "), 8)
 		w := 2 + ansi.StringWidth(v.filter)
@@ -1171,8 +1176,8 @@ func wallNamingWord(ascii bool) string {
 }
 
 // wallNameCardRows is the new-team card's height: two borders, the padding
-// above and below, and four lines.
-const wallNameCardRows = 2 + 2*wallCardPadY + 4
+// above and below, and five lines, including the wrapped keyboard hints.
+const wallNameCardRows = 2 + 2*wallCardPadY + 5
 
 // wallNameCardFits reports whether the new-team card has room on a frame.
 func wallNameCardFits(width, height int) bool {
@@ -1217,10 +1222,11 @@ func wallSwatches(pal palette, v wallView, choices []teamHueSpec, choice, x int)
 //
 //	╭─ New team ────────────────────────────────────╮
 //	│                                                │
-//	│  Name    harbor▌                    ↻ Shuffle  │
+//	│  Name    harbor▌                               │
 //	│  Colour  ◉ ● ● ● ● ●                           │
 //	│  3 · the tree walk, ship the port, relay au…   │
-//	│                         Cancel esc   Create ↵  │
+//	│            left/right colour · ctrl+r shuffle  │
+//	│                    esc cancel · enter create  │
 //	│                                                │
 //	╰────────────────────────────────────────────────╯
 //
@@ -1230,17 +1236,10 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	if !wallNameCardFits(width, height) {
 		return wallCard{}
 	}
-	k := wallKeysFor(pal.ascii)
 	w := min(60, width-4)
 	inner := w - 2 - 2*wallCardPadX
-
-	shuffle := wallButton{act: wallActShuffle, label: k.shuffle + " Shuffle", key: "ctrl+r"}
-	if inner < 46 {
-		shuffle.key = ""
-	}
-	sw := wallButtonW(shuffle)
 	const labelW = 8
-	nameRoom := max(inner-labelW-sw-2-ansi.StringWidth(g.cursor), 1)
+	nameRoom := max(inner-labelW-ansi.StringWidth(g.cursor), 1)
 	name := v.name
 	if ansi.StringWidth(name) > nameRoom {
 		// The end of a long name is the part being typed.
@@ -1256,15 +1255,12 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	// field, and only where it fits whole.
 	if v.asking {
 		word := wallNamingWord(pal.ascii)
-		if ww := ansi.StringWidth(word); inner+1-sw-fieldW >= ww+1 {
+		if ww := ansi.StringWidth(word); inner-fieldW >= ww+1 {
 			field += pal.dim(word)
 			fieldW += ww
 		}
 	}
-	// The Name row and the button row bleed (wallCardLine), so Shuffle and
-	// Create end on the text's right edge; the label takes the cell back.
-	s, _, sh := wallLay(pal, []wallButton{shuffle}, v.hover, inner+2-sw, 0, 1)
-	l1 := wallCardLine{s: " " + pal.dim("Name    ") + field + strings.Repeat(" ", max(inner+1-sw-fieldW, 0)) + s, hits: sh, bleed: true}
+	l1 := wallCardLine{s: pal.dim("Name    ") + field}
 
 	sws, _, swh := wallSwatches(pal, v, v.choices, v.choice, labelW)
 	l2 := wallCardLine{s: pal.dim("Colour  ") + sws, hits: swh}
@@ -1287,13 +1283,11 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 		l3.s = pal.warn(ansi.Truncate(v.nameError, inner, g.more))
 	}
 
-	bs := []wallButton{
-		{act: wallActCancel, label: "Cancel", key: "esc"},
-		{act: wallActSave, label: "Create", key: k.enter},
-	}
-	bw := wallBarWidth(bs, 1)
-	bstr, _, bh := wallLay(pal, bs, v.hover, inner+2-bw, 0, 1)
-	l4 := wallCardLine{s: strings.Repeat(" ", max(inner+2-bw, 0)) + bstr, hits: bh, bleed: true}
+	lines := []wallCardLine{l1, l2, l3}
+	lines = append(lines, teamFooter(pal, inner,
+		teamHint("left/right", "colour"), teamHint("ctrl+r", "shuffle", wallHit{kind: wallHitAction, arg: int(wallActShuffle)}),
+		teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: int(wallActCancel)}),
+		teamHint("enter", "create", wallHit{kind: wallHitAction, arg: int(wallActSave)}))...)
 
 	x := (width - w) / 2
 	gridH := height - wallChromeRows
@@ -1302,7 +1296,7 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	if v.nameIn != "" {
 		title += " in " + v.nameIn
 	}
-	return wallCardBuild(pal, title, []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX, wallCardPadY)
+	return wallCardBuild(pal, title, lines, x, y, w, wallCardPadX, wallCardPadY)
 }
 
 // ── POPOVERS ────────────────────────────────────────────────────────────────

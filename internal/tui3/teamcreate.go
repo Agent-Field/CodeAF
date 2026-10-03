@@ -154,9 +154,9 @@ func (a *app) teamCreateKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		a.teamCreateShut()
 	case "tab":
-		s.field = (s.field + 1) % 4
+		s.field = (s.field + 1) % 3
 	case "shift+tab":
-		s.field = (s.field + 3) % 4
+		s.field = (s.field + 2) % 3
 	case "enter":
 		return a.teamCreateSave()
 	case "up":
@@ -295,7 +295,11 @@ func (a *app) teamCreateOver(frame string) string {
 	if s.message != "" {
 		messageRows = 1
 	}
-	room := max(min(height-13-messageRows, 12), 1)
+	footer := teamFooter(a.pal, inner,
+		teamHint("up/down", "move"), teamHint("space", "select"), teamHint("tab", "next field"),
+		teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: teamCreateCancel}),
+		teamHint("enter", "create", wallHit{kind: wallHitAction, arg: teamCreateSubmit}))
+	room := max(min(height-9-messageRows-len(footer), 12), 1)
 	s.top = min(s.top, max(len(rows)-room, 0))
 	if s.cursor < s.top {
 		s.top = s.cursor
@@ -329,9 +333,7 @@ func (a *app) teamCreateOver(frame string) string {
 	if s.message != "" {
 		lines = append(lines, wallCardLine{s: a.pal.warn(fit(s.message, inner))})
 	}
-	cancel, create := "Cancel esc", "Create enter"
-	at := max(inner-len(cancel)-2-len(create), 0)
-	lines = append(lines, wallCardLine{s: strings.Repeat(" ", at) + a.pal.muted(cancel) + "  " + wallPopRowPaint(a.pal, create, len(create), s.field == 3), hits: []wallHit{{x0: at, x1: at + len(cancel), y1: 1, kind: wallHitAction, arg: teamCreateCancel}, {x0: at + len(cancel) + 2, x1: inner, y1: 1, kind: wallHitAction, arg: teamCreateSubmit}}}, wallCardLine{s: a.pal.dim(fit("up/down move · space select · tab next field", inner))})
+	lines = append(lines, footer...)
 	h := len(lines) + 2
 	x, y := (width-w)/2, max((height-h)/3, 1)
 	card := wallCardBuild(a.pal, title, lines, x, y, w, 1, 0)

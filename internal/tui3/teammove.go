@@ -449,7 +449,8 @@ func (a *app) teamMoveCard(width, height int) wallCard {
 	rows := a.teamMoveRows()
 	// The rows the card holds: the frame less the border, the padding, the
 	// filter, two rules and the foot.
-	room := max(height-2-2*wallCardPadY-5, 3)
+	footer := teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("enter", "choose"), teamHint("esc", "cancel"))
+	room := max(height-2-2*wallCardPadY-5-len(footer), 1)
 	at := 0
 	for i, r := range rows {
 		if r.parent == a.tmove.cursor {
@@ -497,17 +498,16 @@ func (a *app) teamMoveCard(width, height int) wallCard {
 		})
 	}
 	lines = append(lines, wallCardLine{rule: true})
-	foot := "esc cancel"
+	foot := ""
 	if r, ok := a.teamMoveFocus(); ok {
 		if r.ok {
-			foot = pal.muted(fit(a.teamMoveDoing(a.tmove.ids, r.parent), inner-8)) + pal.dim("  enter")
+			foot = pal.muted(fit(a.teamMoveDoing(a.tmove.ids, r.parent), inner))
 		} else {
 			foot = pal.muted(fit(r.why, inner))
 		}
-	} else {
-		foot = pal.dim(foot)
 	}
 	lines = append(lines, wallCardLine{s: foot})
+	lines = append(lines, footer...)
 	title := "Move " + a.teamMoveSubject(a.tmove.ids) + " into"
 	w := inner + 2 + 2*wallCardPadX
 	h := len(lines) + 2 + 2*wallCardPadY

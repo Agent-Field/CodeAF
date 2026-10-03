@@ -361,6 +361,24 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 	// The cards float over the grid; what they cover stops answering the
 	// pointer, so a press lands on the card and never on the tile under it.
 	// A popover floats over everything, the tray included.
+	if v.naming && !wallNameCardFits(width, height) && width < 25 {
+		// A narrow prompt uses the header's next row rather than dropping its
+		// affirmative hint. Covered grid targets stop answering the pointer.
+		footer := teamFooter(pal, width,
+			teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: int(wallActCancel)}),
+			teamHint("enter", "create", wallHit{kind: wallHitAction, arg: int(wallActSave)}))
+		for i := 1; i < len(footer) && i+1 < height; i++ {
+			y := i + 1
+			rows[y] = footer[i].s
+			kept := hits[:0]
+			for _, hit := range hits {
+				if hit.y1 <= y || hit.y0 > y {
+					kept = append(kept, hit)
+				}
+			}
+			hits = append(kept, teamFooterHitsAt(footer[i].hits, 0, y)...)
+		}
+	}
 	switch {
 	case v.org.on:
 		hits = wallOverlay(rows, hits, wallOrgCard(pal, g, v, width, height), width)

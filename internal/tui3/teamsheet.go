@@ -254,22 +254,33 @@ func (a *app) teamSheetCard(width, height int) wallCard {
 	case teamSheetDelete:
 		title, lines = "Delete "+t.Name, a.teamSheetDeleteLines(t, inner)
 	}
+	hints := []teamFooterHint{teamHint("up/down", "move"), teamHint("enter", "choose"), teamHint("esc", "done")}
+	if s.editing >= 0 {
+		hints = []teamFooterHint{teamHint("enter", "save"), teamHint("esc", "cancel")}
+	}
 	if s.mode != teamSheetSettings {
-		footer := 1
+		hints = []teamFooterHint{teamHint("up/down", "choose"), teamHint("enter", "choose"), teamHint("esc", "cancel")}
+		choices := 1
 		if s.mode == teamSheetClose {
-			footer = 2
+			choices = 2
 		}
-		budget := max(height-7-footer, 1)
-		content := lines[:len(lines)-footer]
+		footer := teamFooter(a.pal, inner, hints...)
+		budget := max(height-7-choices-len(footer), 1)
+		content := lines[:len(lines)-choices]
+		if len(content) > budget {
+			hints = append([]teamFooterHint{teamHint("pgup/pgdown", "details")}, hints...)
+			footer = teamFooter(a.pal, inner, hints...)
+			budget = max(height-7-choices-len(footer), 1)
+		}
 		s.detailsMax = max(len(content)-budget, 0)
 		s.detailsTop = min(max(s.detailsTop, 0), s.detailsMax)
 		if s.detailsMax > 0 {
-			ending := append([]wallCardLine(nil), lines[len(lines)-footer:]...)
+			ending := append([]wallCardLine(nil), lines[len(lines)-choices:]...)
 			lines = append([]wallCardLine{}, content[s.detailsTop:min(s.detailsTop+budget, len(content))]...)
-			lines = append(lines, wallCardLine{s: a.pal.dim("PgUp/PgDn or wheel · view affected teams")})
 			lines = append(lines, ending...)
 		}
 	}
+	lines = append(lines, teamFooter(a.pal, inner, hints...)...)
 	w := inner + 2 + 2*wallCardPadX
 	h := len(lines) + 2 + 2*wallCardPadY
 	if w > width-2 || h > height-1 {
@@ -371,9 +382,8 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 		row += " " + b
 		hits = append(hits, hit)
 	}
-	enter := a.linearMark("⏎", "enter")
-	doneX := inner + 2 - a.teamSheetButtonW("Done", enter)
-	done, doneHit, _ := a.teamSheetButton("Done", enter, tsDone, doneX, false)
+	doneX := inner + 2 - a.teamSheetButtonW("Done", "")
+	done, doneHit, _ := a.teamSheetButton("Done", "", tsDone, doneX, false)
 	row = teamsPad(row, doneX) + done
 	lines = append(lines, wallCardLine{s: row, hits: append(hits, doneHit), bleed: true})
 	return lines
@@ -430,10 +440,10 @@ func (a *app) teamSheetDeleteLines(t team, inner int) []wallCardLine {
 		lines = append(lines, wallCardLine{s: pal.ink(l)})
 	}
 	lines = append(lines, wallCardLine{})
-	keepW := a.teamSheetButtonW("Keep", "esc")
+	keepW := a.teamSheetButtonW("Keep", "")
 	delW := a.teamSheetButtonW("Delete", "")
 	x := inner + 2 - keepW - 1 - delW
-	keep, kh, _ := a.teamSheetButton("Keep", "esc", tsKeep, x, false)
+	keep, kh, _ := a.teamSheetButton("Keep", "", tsKeep, x, false)
 	del := " " + pal.bad("Delete") + " "
 	if a.teamSheetLit(tsDelete) {
 		del = pal.cursor(del, 0)

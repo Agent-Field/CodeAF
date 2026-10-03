@@ -295,7 +295,8 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 	}
 	w := inner + 2 + 2*padX
 	top := tabStripRow + 1
-	capacity := height - top - 2
+	footer := teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("enter", "choose"), teamHint("esc", "cancel"))
+	capacity := height - top - 2 - len(footer)
 	if w > width-2 || capacity < 1 {
 		return wallCard{}
 	}
@@ -334,5 +335,6 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 			hits: []wallHit{{x0: 0, y0: 0, x1: inner, y1: 1, kind: wallHitPopRow, arg: ln.row.code, id: ln.row.id}},
 		})
 	}
+	cardLines = append(cardLines, footer...)
 	return wallCardBuild(pal, ansi.Truncate(title, w-5, g.more), cardLines, x, top, w, padX, 0)
 }

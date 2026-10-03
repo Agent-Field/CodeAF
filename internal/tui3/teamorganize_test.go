@@ -168,7 +168,7 @@ func TestOrganizeCardTogglesAndSaysFoldersOnly(t *testing.T) {
 		t.Fatalf("the card is not up with its rows: %+v", a.wall.org)
 	}
 	frame := orgFrame(a)
-	for _, want := range []string{"─ Organize ", "New teams", "lab", "from the folder", "suggestions from folders only", "Cancel esc", "Apply ↵"} {
+	for _, want := range []string{"─ Organize ", "New teams", "lab", "from the folder", "suggestions from folders only", "esc cancel", "enter apply"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the card lacks %q:\n%s", want, frame)
 		}
@@ -299,7 +299,7 @@ func TestOrganizeCountAndOrganizedStates(t *testing.T) {
 		t.Fatalf("the card does not say it is thinking:\n%s", orgFrame(a))
 	}
 	spend(t, a, cmd)
-	if frame := orgFrame(a); !strings.Contains(frame, "Everything is organized") || !strings.Contains(frame, "Close esc") {
+	if frame := orgFrame(a); !strings.Contains(frame, "Everything is organized") || !strings.Contains(frame, "esc close") {
 		t.Fatalf("an empty run:\n%s", frame)
 	}
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEscape})
@@ -413,7 +413,7 @@ func TestOrganizeRowWidths(t *testing.T) {
 								t.Fatalf("%s: the button's target lies on %q", name, label)
 							}
 						case hit.kind == wallHitAction && hit.arg == int(wallActOrgApply):
-							if strings.TrimSpace(label) != "Apply "+wallKeysFor(pal.ascii).enter {
+							if strings.TrimSpace(label) != "enter apply" {
 								t.Fatalf("%s: Apply's target lies on %q", name, label)
 							}
 						case hit.kind == wallHitOrgRow:

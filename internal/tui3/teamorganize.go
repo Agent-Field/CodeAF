@@ -961,7 +961,7 @@ const wallOrgNameCap = 16
 //	│  Add to existing                                         │
 //	│  ☑ ● harbor        + 2  relay audit, footprint table     │
 //	│                                                          │
-//	│  about $0.0020                      Cancel esc  Apply ↵  │
+//	│  up/down move · space select · esc cancel · enter apply │
 //	│                                                          │
 //	╰──────────────────────────────────────────────────────────╯
 //
@@ -981,21 +981,7 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 	var list []wallCardLine
 	cursorLine := -1
 	var tail []wallCardLine
-	button := func(lead string, bs ...wallButton) wallCardLine {
-		bw := wallBarWidth(bs, 1)
-		s, _, hits := wallLay(pal, bs, v.hover, inner+2-bw, 0, 1)
-		lw := ansi.StringWidth(lead)
-		if lead != "" && lw+2 > inner+2-bw {
-			lead = ""
-		}
-		pad := strings.Repeat(" ", max(inner+2-bw-lw-1, 0))
-		if lead == "" {
-			pad = strings.Repeat(" ", max(inner+2-bw, 0))
-			return wallCardLine{s: pad + s, hits: hits, bleed: true}
-		}
-		return wallCardLine{s: " " + pal.dim(lead) + pad + s, hits: hits, bleed: true}
-	}
-	cancel := wallButton{act: wallActOrgCancel, label: "Cancel", key: "esc"}
+	cancel := teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: int(wallActOrgCancel)})
 	switch {
 	case o.thinking:
 		word := "thinking…"
@@ -1003,10 +989,12 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 			word = "thinking..."
 		}
 		list = append(list, wallCardLine{s: pal.dim(word)})
-		tail = append(tail, wallCardLine{}, button("", cancel))
+		tail = append(tail, wallCardLine{})
+		tail = append(tail, teamFooter(pal, inner, cancel)...)
 	case len(o.props) == 0:
 		list = append(list, wallCardLine{s: pal.ink("Everything is organized")})
-		tail = append(tail, wallCardLine{}, button("", wallButton{act: wallActOrgCancel, label: "Close", key: "esc"}))
+		tail = append(tail, wallCardLine{})
+		tail = append(tail, teamFooter(pal, inner, teamHint("esc", "close", wallHit{kind: wallHitAction, arg: int(wallActOrgCancel)}))...)
 	default:
 		nameW, countW := 6, 1
 		for _, p := range o.props {
@@ -1034,8 +1022,12 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 		if o.folderOnly {
 			tail = append(tail, wallCardLine{}, wallCardLine{s: pal.dim("suggestions from folders only")})
 		}
-		apply := wallButton{act: wallActOrgApply, label: "Apply", key: k.enter}
-		tail = append(tail, wallCardLine{}, button(o.cost, cancel, apply))
+		tail = append(tail, wallCardLine{})
+		if o.cost != "" {
+			tail = append(tail, wallCardLine{s: pal.dim(fit(o.cost, inner))})
+		}
+		tail = append(tail, teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("space", "select"), cancel,
+			teamHint("enter", "apply", wallHit{kind: wallHitAction, arg: int(wallActOrgApply)}))...)
 	}
 
 	top := wallGridTop

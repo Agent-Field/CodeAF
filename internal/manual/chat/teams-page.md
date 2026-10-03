@@ -124,10 +124,10 @@ teams; members of this team are left out. Type a title or workspace to filter, u
 and `enter`, or click a row. Adding an existing conversation keeps its context, other
 memberships and reporting manager.
 
-`+ New conversation` in the picker asks for its first assignment. `Create member · enter`
+`+ New conversation` in the picker asks for its first assignment. `enter create`
 creates a session in the team's workspace, adds its membership, opens it in Chats with this
 team's overlay, and submits the assignment. It follows the conversation's ordinary tool
-approval rules. `Cancel · esc` dismisses the sheet; Esc also cancels a pending creation.
+approval rules. `esc cancel` dismisses the sheet; Esc also cancels a pending creation.
 
 Each ordinary member card has a small `x` that removes only this membership. Its session,
 draft, transcript, running work and other memberships survive. A manager cannot be removed
@@ -296,7 +296,8 @@ After `M` starts a manager, Chats opens and its message box receives the keyboar
 │  team depth                     2 levels        reset      │
 │  sub-team share                 50%                          │
 │  ────────────────────────────────────────────────────────  │
-│  Disband team…                                   Done ⏎    │
+│  Disband team…                                   Done      │
+│                   up/down move · enter choose · esc done   │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
@@ -402,6 +403,16 @@ You may create an empty team and add members afterward. Creation never assigns a
 opens its members. Both routes land on the new team overview. A failed save is reported there.
 Chats also offers `+ New team` in its full saved-conversation grid: select cards, then name
 and create. The full conversation grid itself lives only in Chats.
+
+## Keyboard hints in team menus
+
+Team menus show muted instructions together at the foot of the box, with the key first:
+`up/down move · space select · tab next field · esc cancel · enter create` in New team and
+Add subteam. Narrow boxes wrap the instructions rather than hiding them. Only text fields,
+colour, and members are tab stops; the creation hint stays in that footer. Add member and
+Choose manager show `up/down move · enter choose · esc cancel`; creating a new conversation
+shows `enter create · esc cancel`. Settings, Move, Organize, and the Chats team-naming card
+use the same key-first format. Clickable action hints act on the same choices as their keys.
 
 ## Choose manager — change a team's manager from existing members
 

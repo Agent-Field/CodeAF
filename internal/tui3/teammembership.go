@@ -393,6 +393,9 @@ func (a *app) teamMembershipMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		}
 		for _, hit := range s.hits {
 			if m.X >= hit.x0 && m.X < hit.x1 && m.Y >= hit.y0 && m.Y < hit.y1 {
+				if hit.arg == -2 {
+					return a.teamMembershipKey(tea.KeyPressMsg{Code: tea.KeyEnter}), true
+				}
 				if hit.arg < 0 {
 					if a.conversationOpening {
 						a.cancelConversationOpening()
@@ -456,6 +459,16 @@ func (a *app) teamMembershipOver(frame string) string {
 		title = "Choose manager for " + t.Name
 	}
 	var lines []wallCardLine
+	enterAction := "choose"
+	if s.new {
+		enterAction = "create"
+	}
+	hints := []teamFooterHint{teamHint("up/down", "move")}
+	if s.new {
+		hints = nil
+	}
+	hints = append(hints, teamHint("enter", enterAction, wallHit{arg: -2}), teamHint("esc", "cancel", wallHit{arg: -1}))
+	footer := teamFooter(a.pal, inner, hints...)
 	if s.member != "" {
 		m, _ := t.Member(s.member)
 		title = "@" + m.Handle + " of " + t.Name
@@ -466,7 +479,6 @@ func (a *app) teamMembershipOver(frame string) string {
 	} else if s.new {
 		title = "New member in " + t.Name
 		lines = append(lines, wallCardLine{s: a.pal.dim("Describe its first assignment")}, wallCardLine{s: fit(s.filter.String()+a.linearMark("▏", "|"), inner)})
-		lines = append(lines, wallCardLine{s: a.pal.underline("Create member · enter"), hits: []wallHit{{x1: inner, y1: 1}}})
 	} else {
 		lines = append(lines, wallCardLine{s: a.pal.dim("Filter  ") + fit(s.filter.String()+a.linearMark("▏", "|"), inner-8)})
 		rows := a.teamMembershipRows()
@@ -498,7 +510,7 @@ func (a *app) teamMembershipOver(frame string) string {
 			all = append(all, conversationColumns(r, inner))
 		}
 		s.cursor = min(max(s.cursor, 0), len(all)-1)
-		room := max(height-10, 1)
+		room := max(height-9-len(footer), 1)
 		s.top = min(s.top, max(len(all)-room, 0))
 		if s.cursor < s.top {
 			s.top = s.cursor
@@ -516,12 +528,7 @@ func (a *app) teamMembershipOver(frame string) string {
 	if s.message != "" {
 		lines = append(lines, wallCardLine{s: a.pal.warn(fit(s.message, inner))})
 	}
-	if s.choosingManager {
-		hint := "enter choose · esc cancel"
-		lines = append(lines, wallCardLine{s: a.pal.dim(strings.Repeat(" ", max(inner-ansi.StringWidth(hint), 0)) + fit(hint, inner))})
-	} else {
-		lines = append(lines, wallCardLine{s: a.pal.dim("Cancel · esc"), hits: []wallHit{{x1: inner, y1: 1, arg: -1}}})
-	}
+	lines = append(lines, footer...)
 	h := len(lines) + 2
 	x, y := (width-w)/2, max((height-h)/3, 1)
 	card := wallCardBuild(a.pal, title, lines, x, y, w, 1, 0)
