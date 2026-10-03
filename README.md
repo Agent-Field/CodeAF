@@ -151,15 +151,30 @@ A run is a task like any other, on `home`, with a room and a stop.
 
 <picture>
   <source media="(max-width: 767px)" srcset="assets/readme/bbg-factory-barchart-square.png">
-  <img src="assets/readme/bbg-factory-barchart-wide.png" alt="The software factory UX: one driver orchestrating 8 parallel workers, and the DeepSWE benchmark on DeepSeek V4 Flash — solve rate per harness: CodeAF 54.9% at $0.40 per solved task (1.00x), mini-swe-agent 49.6% (1.93x), codex 45.1% (2.08x), claude-code 14.2% (3.40x)." width="100%">
+  <img src="assets/readme/bbg-factory-barchart-wide.png" alt="The software factory UX: one driver dispatching parallel workers. DeepSWE on DeepSeek V4 Flash: senior-dev, codeaf's developer subharness, solved 54.9% at about $0.40 per solved task; mini-swe-agent solved 49.6% at about 1.9x its cost per solve, codex 45.1% at about 2.1x, and claude-code 14.2% at about 3.4x." width="100%">
 </picture>
 
-`/senior-dev`, CodeAF's developer subharness, against nine other coding harnesses
+`/senior-dev`, codeaf's developer subharness, against nine other coding harnesses
 on the same model, DeepSeek V4 Flash: 113 real GitHub issues from DeepSWE, graded
-by the official verifiers. It solved the most issues and paid the least for each
-one it solved.
+by the official verifiers. In this one-seed comparison, senior-dev solved the
+most issues and paid the least for each one it solved. Its lead over
+mini-swe-agent is not statistically resolved, and sampling settings differed;
+see the [method and limits](docs/benchmarks/deepswe/#limits).
 
-<img src="assets/readme/benchmark-deepswe.webp" alt="First on DeepSWE: senior-dev, CodeAF's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Every other harness solved less and paid more per solve: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
+The factory plates label the winning bar with the product name, but the measured harness is
+**senior-dev**, not the separate **codeaf swe-pro** harness described in
+[AGENTS.md](AGENTS.md#the-old-name-and-the-three-places-it-is-still-allowed).
+These figures do not establish swe-pro's performance. The image labels remain
+unchanged; this text and the alt text clarify their scope.
+
+Cost comparisons come from the recorded spend and solved counts in
+[`arms.csv`](docs/benchmarks/deepswe/arms.csv), not from dividing the rounded dollar
+labels in the artwork. The documented senior-dev baseline is 39.9¢ per solved
+issue, displayed as about $0.40. Relative costs are approximately 1.9x for
+mini-swe-agent, 2.1x for codex and 3.4x for claude-code; the artwork's two-decimal
+multipliers are rounded display values, not additional measurement precision.
+
+<img src="assets/readme/benchmark-deepswe.webp" alt="DeepSWE comparison: senior-dev, codeaf's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Approximate cost-per-solve multiples relative to senior-dev: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5-4.8x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
 
 Every number, the method and the limits: [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
 
