@@ -130,6 +130,17 @@ func (a *app) homeBeat(gen int) tea.Cmd {
 	if !a.at(pageHome) || gen != a.homeGen {
 		return nil
 	}
+	// THE DOOR IS IN FLIGHT ([app.conversationLater]'s window): home is on the
+	// screen the person is waiting on while their conversation prepares off the
+	// loop, and this beat's rescan would run the walk and the rebuild against
+	// the very loop that door is about to answer on. The rescan is deferred and
+	// coalesced — one owed mark however many beats land ([homeView.owed]) — the
+	// beat's other readings ride the same deferral, and the CLOCK STAYS ARMED,
+	// because a window that outlives the beat still owes its screen a settle.
+	if a.conversationOpening {
+		a.home.owed = true
+		return homeTick(a.homeGen)
+	}
 	a.refreshHome()
 	a.refreshCreditWarnings()
 	// AND THE ROW A MOVE LEFT BEHIND IS AIMED AT AGAIN, because the reading above
@@ -598,6 +609,15 @@ type homeView struct {
 	// world is the reading the rows were built from, replaced whole on every
 	// rescan.
 	world session.World
+	// owed says a rescan was asked for while a conversation door was in flight
+	// and the screen has not taken it yet. The window ([app.conversationLater])
+	// is exactly when the rescan must not run — the walk and the rebuild would
+	// steal the update loop from the door the person is waiting on — and a beat
+	// that lands inside it marks this instead of queueing work, so however many
+	// beats arrive, the settle is ONE rescan at the next beat after the door
+	// lands or is cancelled ([app.refreshHome], [app.homeBeat]). It dies with
+	// the view: a home raised or dropped owes nothing.
+	owed bool
 	// lines is the left column in draw order; cursor indexes it and never rests
 	// on a heading, a blank or a collapsed tail.
 	lines  []homeLine
@@ -1446,6 +1466,16 @@ func (a *app) refreshHome() {
 	if !a.at(pageHome) {
 		return
 	}
+	// AND THE SAME LAW AT EVERY ROAD THAT ASKS FOR A RESCAN, named here because
+	// this is the one function the walk lives behind: an event landing while a
+	// conversation door is in flight ([app.conversationOpening]) marks the
+	// screen owed instead of rescanning under the door's feet, and the next
+	// beat after the door settles it, once.
+	if a.conversationOpening {
+		a.home.owed = true
+		return
+	}
+	a.home.owed = false
 	a.home.world, a.home.known = a.readWorldKnown()
 	// AND EVERY READING THE SCREEN IS DRAWN FROM, the same list the door and the
 	// greeting take ([app.furnishHome]); on the beat it is a rescan and a
