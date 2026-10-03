@@ -86,7 +86,7 @@ func tidyBrain(t *testing.T, script Completer, rows ...store.Memory) (tidyPass, 
 
 func activeTitles(t *testing.T, brain *store.Store) []string {
 	t.Helper()
-	rows, err := brain.ListMemories("", 50)
+	rows, err := brain.ListMemories(nil, 50)
 	if err != nil {
 		t.Fatalf("list memories: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestTheTidyNeedsTwoThingsToHaveChanged(t *testing.T) {
 		store.Memory{Title: "deploys on Fridays", Text: "they deploy on Fridays"},
 		store.Memory{Title: "prefers tabs", Text: "they prefer tabs"},
 	)
-	rows, err := brain.ListMemories("", 50)
+	rows, err := brain.ListMemories(nil, 50)
 	if err != nil {
 		t.Fatalf("list memories: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestARefineRewritesOneLineInPlace(t *testing.T) {
 		store.Memory{Title: "tabs", Text: "they prefer tabs"},
 		store.Memory{Title: "tabs in go", Text: "they prefer tabs in go files"},
 	)
-	rows, _ := brain.ListMemories("", 50)
+	rows, _ := brain.ListMemories(nil, 50)
 	target := rows[0]
 	script.plan = mustPlan(t, consolidateOp{Op: "refine", ID: target.ID,
 		Title: "prefers tabs", Text: "they prefer tabs, in go files and everywhere else"})
@@ -243,7 +243,7 @@ func TestASupersedeRetiresTheRowAndLeavesItReadable(t *testing.T) {
 		store.Memory{Type: store.MemoryProjectState, Title: "on v2", Text: "the api is on v2"},
 		store.Memory{Title: "deploys on Fridays", Text: "they deploy on Fridays"},
 	)
-	rows, _ := brain.ListMemories("", 50)
+	rows, _ := brain.ListMemories(nil, 50)
 	var target store.Memory
 	for _, row := range rows {
 		if row.Type == store.MemoryProjectState {
@@ -291,7 +291,7 @@ func TestTheTidyNeverRetiresSomebodysOwnWords(t *testing.T) {
 				store.Memory{Type: kind, Title: "no force pushes", Text: "never force push to main"},
 				store.Memory{Title: "deploys on Fridays", Text: "they deploy on Fridays"},
 			)
-			rows, _ := brain.ListMemories("", 50)
+			rows, _ := brain.ListMemories(nil, 50)
 			var mine store.Memory
 			for _, row := range rows {
 				if row.Type == kind {
@@ -344,7 +344,7 @@ func TestABadOperationIsSkippedAndTheRestOfThePlanLands(t *testing.T) {
 		store.Memory{Title: "one", Text: "the first thing"},
 		store.Memory{Title: "two", Text: "the second thing"},
 	)
-	rows, _ := brain.ListMemories("", 50)
+	rows, _ := brain.ListMemories(nil, 50)
 	script.plan = mustPlan(t,
 		consolidateOp{Op: "refine", ID: "no-such-memory", Title: "ghost", Text: "nothing"},
 		consolidateOp{Op: "sideways", ID: rows[0].ID, Title: "wrong", Text: "wrong"},
@@ -377,7 +377,7 @@ func TestOnePassChangesAtMostEightLines(t *testing.T) {
 		})
 	}
 	pass, brain, _ := tidyBrain(t, script, rows...)
-	stored, _ := brain.ListMemories("", 50)
+	stored, _ := brain.ListMemories(nil, 50)
 	ops := make([]consolidateOp, 0, len(stored))
 	for _, row := range stored {
 		ops = append(ops, consolidateOp{Op: "refine", ID: row.ID, Title: row.Title + "!", Text: row.Text + "!"})
@@ -404,7 +404,7 @@ func TestAPassStampsTheClockPastItsOwnWrites(t *testing.T) {
 		store.Memory{Title: "one", Text: "the first thing"},
 		store.Memory{Title: "two", Text: "the second thing"},
 	)
-	rows, _ := brain.ListMemories("", 50)
+	rows, _ := brain.ListMemories(nil, 50)
 	script.plan = mustPlan(t, consolidateOp{Op: "refine", ID: rows[0].ID, Title: "one, clearly", Text: "said once"})
 
 	tidied, err := pass.run(context.Background())
@@ -421,7 +421,7 @@ func TestAPassStampsTheClockPastItsOwnWrites(t *testing.T) {
 	if mark.Merged != 1 || mark.USD != 0.0021 {
 		t.Fatalf("the watermark says %+v", mark)
 	}
-	after, _ := brain.ListMemories("", 1)
+	after, _ := brain.ListMemories(nil, 1)
 	if mark.Seq < after[0].UpdatedSeq {
 		t.Fatalf("the watermark is at %d, behind the pass's own write at %d", mark.Seq, after[0].UpdatedSeq)
 	}
@@ -508,7 +508,7 @@ func mustPlan(t *testing.T, ops ...consolidateOp) string {
 
 func mustList(t *testing.T, brain *store.Store) []store.Memory {
 	t.Helper()
-	rows, err := brain.ListMemories("", 50)
+	rows, err := brain.ListMemories(nil, 50)
 	if err != nil {
 		t.Fatalf("list memories: %v", err)
 	}
