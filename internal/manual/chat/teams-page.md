@@ -60,7 +60,10 @@ The left column is the **rail**:
 
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
 and the pane beside it. Choosing a team changes the overview without changing the chat in
-front or its draft. Clicking a member opens Chats with that team's view selected.
+front or its draft. The Chats dropdown selects the same team; returning to Chats restores
+its last conversation. A team chosen in Chats also selects its Teams overview. None in
+Chats maps to All teams here. Choosing All teams here enables its global overlay when the
+optional global manager exists. Clicking a member opens Chats with that team's view selected.
 
 ## All teams overview: parent cards and nested subteams
 
@@ -97,8 +100,8 @@ for dragging a conversation onto another team.
 
 The manager comes first in a full-width card, about forty percent shorter than the previous
 large preview. It ranges from eight to fourteen rows to keep authors and recent text readable.
-Compact ordinary member cards follow, with a plain border and no role title; the interaction
-panel follows the members. The manager card shows a labelled latest excerpt from up to eight
+The Recent interactions panel follows the manager and separates it from the compact
+ordinary member cards, which retain a plain border and no role title. The manager card shows a labelled latest excerpt from up to eight
 recent messages, preserving authors and paragraph breaks. A clipped message says `continued`.
 On short windows, Down from the manager alias or a wheel tick on its card reveals the latest
 excerpt lines; Up or a wheel tick upward returns to the alias. Clicking either opens Chats.
@@ -144,7 +147,7 @@ not work-status events. Click the disclosure at the start of a row to expand the
 message and its replies inline; click it again to collapse them.
 
 The wheel over the panel scrolls only its contents. One down control, `Next page`, advances
-by a full viewport: with ten rows, 1–10, 11–20, then 21 onward. A short final page does not
+by a full viewport: with six rows, 1–6, 7–12, then 13 onward. A short final page does not
 repeat the previous page's rows; the control says `Last page` and stays there. `pgup` /
 `pgdown` move back or forward by a page. The rest of the overview stays in place. At smaller heights,
 walk into the panel with the arrow keys to bring it into view.
@@ -314,7 +317,7 @@ away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
 confirmation. It lists the selected team and every descendant. Disbanding ends all their
 memberships and coordination. Current turns finish, conversations survive, and memberships
 in other active teams survive. A conversation losing its reporting manager becomes independent.
-The team overlay returns to All; the current conversation stays selected.
+An affected team overlay returns to None; the retained team history remains selected in Teams.
 
 Long confirmations scroll with `pgup`, `pgdown` or the wheel. Cancel changes nothing.
 Disbanding cannot be undone or reopened. `Show closed` reveals the disbanded history.

@@ -236,21 +236,21 @@ func TestTeamsInteractionPagingDoesNotRepeatTheShortLastPage(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
 	a.width, a.height = 160, 46
 	teamsOverviewTraffic(t, a, harbor, 25)
-	for page, span := range []string{"1 to 10 of 25", "11 to 20 of 25", "21 to 25 of 25"} {
+	for page, span := range []string{"1 to 6 of 25", "7 to 12 of 25", "13 to 18 of 25", "19 to 24 of 25", "25 to 25 of 25"} {
 		text := teamsFrameText(a)
 		if !strings.Contains(text, span) {
 			t.Fatalf("page %d: %s", page+1, text)
 		}
-		if page == 2 && (strings.Contains(text, "Exchange 10") || !strings.Contains(text, "Last page")) {
+		if page == 4 && (strings.Contains(text, "Exchange 10") || !strings.Contains(text, "Last page")) {
 			t.Fatal("last page repeated earlier interactions")
 		}
 		a.teamsDo(teamsTarget{act: teamsActInteractionDown, id: harbor})
 	}
-	if a.tp.interactionOffsets[harbor] != 20 {
+	if a.tp.interactionOffsets[harbor] != 24 {
 		t.Fatal("last-page control moved beyond the final page")
 	}
 	drive(t, a, key("pgup"))
-	if text := teamsFrameText(a); !strings.Contains(text, "11 to 20 of 25") {
+	if text := teamsFrameText(a); !strings.Contains(text, "19 to 24 of 25") {
 		t.Fatal("PgUp did not return to the previous complete page")
 	}
 }
@@ -330,12 +330,12 @@ func TestTeamsManyMembersAndTheirInteractionPanelRemainReachable(t *testing.T) {
 	if text := teamsFrameText(a); !strings.Contains(text, "@extra29") {
 		t.Fatal("last member is unreachable")
 	}
-	for i := 0; i < 10 && a.tp.cur.act != teamsActInteractionDown; i++ {
+	for i := 0; i < len(crew)+10 && a.tp.cur.act != teamsActInteractionDown; i++ {
 		_ = teamsFrameText(a)
-		drive(t, a, key("down"))
+		drive(t, a, key("up"))
 	}
 	if a.tp.cur.act != teamsActInteractionDown {
-		t.Fatal("Down could not reach the interaction panel")
+		t.Fatal("Up from members could not reach the interaction panel")
 	}
 	if text := teamsFrameText(a); !strings.Contains(text, "Recent interactions") {
 		t.Fatal("large member grid made the interaction panel unreachable")
@@ -497,9 +497,11 @@ func TestTeamsOverviewKeepsMembersAndInteractionsReachableAtSmallWidths(t *testi
 			}
 			teamsOverviewTraffic(t, a, harbor, 30)
 			seen := map[string]bool{}
+			sawInteractions := false
 			a.tp.cur = teamsRef{act: teamsActMember, id: harbor, arg: mustTeam(t, a, harbor).Manager}
-			for i := 0; i < 12; i++ {
+			for i := 0; i < 20; i++ {
 				text := teamsFrameText(a)
+				sawInteractions = sawInteractions || strings.Contains(text, "Recent interactions")
 				for _, line := range strings.Split(text, "\n") {
 					if ansi.StringWidth(line) > width {
 						t.Fatalf("row exceeds %d cells: %q", width, line)
@@ -517,7 +519,7 @@ func TestTeamsOverviewKeepsMembersAndInteractionsReachableAtSmallWidths(t *testi
 					t.Fatalf("member %q cannot be reached", member.Key)
 				}
 			}
-			if !strings.Contains(teamsFrameText(a), "Recent interactions") {
+			if !sawInteractions {
 				t.Fatal("cannot reach interaction table")
 			}
 		})
@@ -598,6 +600,16 @@ func TestSelectedManagerCardLeadsCompactMembersAndUsesActualMessages(t *testing.
 					t.Fatalf("missing %q: %s", want, text)
 				}
 			}
+			interactionRow := -1
+			for i, row := range rows {
+				if strings.Contains(plain(row), "Recent interactions") {
+					interactionRow = i
+					break
+				}
+			}
+			if interactionRow != a.teamsManagerHeight()+1 {
+				t.Fatal("interactions do not separate manager and members")
+			}
 			managerHeight := a.teamsManagerHeight()
 			crew := a.teamsCrew(team)
 			if len(crew) < 2 {
@@ -612,8 +624,8 @@ func TestSelectedManagerCardLeadsCompactMembersAndUsesActualMessages(t *testing.
 					t.Fatal("preview has wrong overlay")
 				}
 			}
-			if firstMemberY != managerHeight+2 {
-				t.Fatalf("member grid starts at %d, want %d", firstMemberY, managerHeight+2)
+			if firstMemberY != managerHeight+a.teamsInteractionHeight()+7 {
+				t.Fatalf("member grid starts at %d, want %d", firstMemberY, managerHeight+a.teamsInteractionHeight()+7)
 			}
 			for _, row := range rows {
 				if ansi.StringWidth(row) > width {
@@ -808,12 +820,21 @@ func TestManagerReadingWheelContinuesToMembersAndInteractions(t *testing.T) {
 	if a.tp.cur.act == teamsActMember && a.tp.cur.arg == manager {
 		t.Fatal("second wheel trapped in manager")
 	}
-	for i := 0; i < 4; i++ {
-		wheel()
+	// Once the pointer reaches the interaction table, wheel ticks scroll that
+	// panel's own content. Move it into the pane's free column to continue down.
+	sawInteractions := strings.Contains(teamsFrameText(a), "Recent interactions")
+	for i := 0; i < 10; i++ {
+		drive(t, a, tea.MouseWheelMsg{X: a.tp.table.x + 1, Y: placeHeadRows + 1, Button: tea.MouseWheelDown})
+		teamsFrameText(a)
+		sawInteractions = sawInteractions || strings.Contains(teamsFrameText(a), "Recent interactions")
+		if a.tp.cur.act == teamsActMember && a.tp.cur.arg != manager {
+			if !sawInteractions {
+				t.Fatal("wheel skipped interactions")
+			}
+			return
+		}
 	}
-	if a.tp.cur.act != teamsActInteractionDown && a.tp.cur.act != teamsActInteractionToggle && a.tp.cur.act != teamsActInteractionJump {
-		t.Fatalf("repeated wheel could not reach interactions: %+v", a.tp.cur)
-	}
+	t.Fatal("wheel could not continue to members")
 
 }
 

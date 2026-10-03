@@ -208,3 +208,16 @@ an enclosing card boundary, grouping their questions and choices. Answer targets
 with their visible text and stay inside the border; narrow permission choices wrap onto
 additional rows instead of disappearing. Focused regressions exercise boxed option clicks,
 real packet decisions, permission answer delivery, Unicode and short-frame preview reading.
+
+
+Milestone 3 review revision: Recent interactions now follows the manager card and
+separates it from ordinary members. Pages contain six rows rather than ten. Teams sidebar
+choices synchronize with the Chats dropdown; None selects the All teams overview, and
+All teams enables the global overlay when a global manager exists. Selecting an overview
+changes no draft or running work. The lower-row membership buttons are removed, leaving
+the dropdown as the single Chats selector. Opening a grid tile enters the full chat
+immediately, without the former expansion transition.
+
+All three additional-improvement milestones are implemented. Remaining work is owner
+review and any resulting revisions, followed by final branch validation and publication
+only when explicitly authorized. No further feature milestone is scheduled.

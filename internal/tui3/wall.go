@@ -55,10 +55,9 @@ import (
 // only the keys move it.
 //
 // THE MOTION IS SMALL AND NEVER HOLDS A KEY. The tiles come in row by row as
-// the wall opens (about 140ms in all), and an opened tile's rectangle grows
-// into the frame over three frames while the conversation is already live
-// behind it. Both run on the paint clock, both are cut short by any key or
-// press, and neither is drawn on the linear or ASCII tiers or over a remote
+// the wall opens (about 140ms in all). Opening a tile lands immediately in
+// Chats. The reveal runs on the paint clock and is cut short by any key or
+// press; it is not drawn on the linear or ASCII tiers or over a remote
 // link, where a few frames of movement is a stutter rather than a gesture.
 // Hover is instant, as it is everywhere in a terminal, and esc is instant.
 
@@ -491,9 +490,7 @@ func (a *app) wallFocusKey(key string) {
 	a.wallMove(0, len(tiles))
 }
 
-// wallOpen goes to tile i's conversation. The wall is down on the same
-// message, so the conversation is live before the first frame of the zoom is
-// drawn over it; the zoom only frames it (see [app.wallZoomed]).
+// Opening a grid tile lands directly in its conversation without a transition.
 func (a *app) wallOpen(tiles []wallTile, i int) tea.Cmd {
 	if i < 0 || i >= len(tiles) {
 		return nil
@@ -504,16 +501,9 @@ func (a *app) wallOpen(tiles []wallTile, i int) tea.Cmd {
 		a.tabView = a.wall.returnView
 	}
 	a.teamViewSet("")
-	from, ok := a.wallTileRect(i)
 	a.closeWall()
-	var cmd tea.Cmd
-	if ok && a.wallMotionOK() {
-		a.wall.zoomFrom, a.wall.zoomAt = from, a.now()
-		cmd = tea.Batch(a.tabGo(tab), a.wake())
-	} else {
-		cmd = a.tabGo(tab)
-	}
-	return a.hopLand(cmd)
+	a.wallZoomDone()
+	return a.hopLand(a.tabGo(tab))
 }
 
 // wallToggle marks tile i, or unmarks it. Any tile marked is the selection

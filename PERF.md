@@ -15,7 +15,7 @@ remote journals are never opened on this machine. Manager excerpts retain at mos
 messages, capped to the same **64 KiB** total. Its card uses about sixty percent of the previous height, capped at **14 rows**
 (`teamsManagerRows`), with an **8-row** minimum (`teamsManagerMinRows`) for readable authors and text. Interaction readings retain at most
 **200 entries** (`trafficKeep`), merged by id without consuming the live delivery cursor.
-The table paints at most **10 body rows**, reduced to fit the available pane, with a
+The table paints at most **6 body rows** (`teamsInteractionRows`), reduced to fit the available pane, with a
 pinned header and independent scrolling. Paint performs no filesystem or network reads.
 `TestTeamsPreviewReadsOnlyTheTailAndFollowsUpdates`, the overview navigation/geometry
 regressions, and `TestTheFrameNeverReadsTheDisk` defend these bounds.

@@ -69,8 +69,7 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		} else {
 			a.tp.railOffset = 0
 			if sel, ok := a.teamsSelected(); ok && sel.Closed() {
-				a.tp.sel = teamsAllRow
-				a.teamsSettle()
+				a.teamsViewFromSelection(teamsAllRow)
 			}
 		}
 		a.touch()
@@ -151,12 +150,10 @@ func (a *app) teamDraggable(t teamsTarget) bool {
 	return false
 }
 
-// teamsSelect puts the pane on team id and, when it has a manager, brings that
-// conversation in front, where the pane draws it. The keyboard goes back to the
-// composer: choosing a team is choosing whom to talk to.
-// Selecting a team changes only the overview; background work keeps its focus.
+// Selecting a team synchronizes the Chats overlay without opening a chat
+// from the overview or disturbing any conversation's work or draft.
 func (a *app) teamsSelect(id string) tea.Cmd {
-	a.tp.sel = id
+	a.teamsViewFromSelection(id)
 	a.tp.expand, a.tp.answering = "", ""
 	a.tp.focus = true
 	a.tp.cur = teamsRef{act: teamsActSelect, id: id}

@@ -4644,9 +4644,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// It is read with the rest of the pinned rows and above the strip and
 			// the rail for the same reason they are: it spans the whole window
 			// while both of those claim columns of it.
-			if cmd, took := a.teamBadgePress(msg.Mouse().X, msg.Mouse().Y); took {
-				return a, cmd
-			}
 			if cmd, took := a.tabPress(msg.Mouse().X, msg.Mouse().Y); took {
 				return a, cmd
 			}
@@ -4881,7 +4878,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// mean the same thing on every page, so the button under the pointer
 		// takes its ground wherever a person is standing (topnav.go's
 		// [app.headHover]).
-		a.teamBadgeMotion(msg.Mouse().X, msg.Mouse().Y)
 		a.hoverDraftSeam(msg.Mouse().X, msg.Mouse().Y)
 		if a.headHover(msg.Mouse().X, msg.Mouse().Y) {
 			// AND THE HEAD TAKES THE POINTER OFF HOME'S PROJECT NAMES, which

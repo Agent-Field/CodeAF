@@ -22,6 +22,7 @@ const teamsPreviewBytes = 64 << 10
 const teamsPreviewMessages = 8
 const teamsManagerRows = 14
 const teamsManagerMinRows = 8
+const teamsInteractionRows = 6
 
 type teamsPreviewMessage struct {
 	author      string
@@ -224,8 +225,8 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	return left + strings.Repeat(" ", max(rightX-ansi.StringWidth(left), 0)) + strings.Join(buttons, " ") + " "
 }
 
-// The manager leads with a full-width conversation excerpt. Members retain
-// their compact grid, and every preview uses the same conversation door.
+// The manager leads with a full-width excerpt. Recent interactions separate
+// it from the compact member grid, and every preview uses the same chat door.
 func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 	if width < 12 {
 		return nil
@@ -245,6 +246,8 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 		out = append(out, "")
 		crew = crew[1:]
 	}
+	out = append(out, a.teamsInteractionTable(d, t, width, y+len(out))...)
+	out = append(out, "")
 	for first := 0; first < len(crew); first += columns {
 		var cards [][]string
 		for column := 0; column < columns && first+column < len(crew); column++ {
@@ -314,10 +317,10 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 	return out
 }
 
-// Both panels use one height budget so the manager is never shorter than the
-// interaction panel, including on terminals with the rail above the content.
+// Interaction pages keep six body rows, reducing only when the terminal
+// cannot fit the table and its fixed header, footer and border.
 func (a *app) teamsInteractionHeight() int {
-	height := min(max(a.height/3, 4), 10)
+	height := min(max(a.height/3, 4), teamsInteractionRows)
 	available := a.height - placeHeadRows - placeFootRowsFor(pageTeams, a.height)
 	if teamsRailCols(a.width) == 0 {
 		available -= min(len(a.teamsRailRows()), max(min(available/3, 5), 1)) + 1

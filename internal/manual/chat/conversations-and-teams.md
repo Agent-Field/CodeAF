@@ -1,16 +1,20 @@
 # Conversations and teams
 
-## All, team overlays, membership badges and stable tabs
+## All, team overlays, Teams dropdown and stable tabs
 
-Ordinary Home, saved-session and Chats-menu navigation opens the original conversation
+Ordinary Home, saved-session and conversation-switcher navigation opens the original conversation
 with **None** selected in the Teams dropdown. None disables the team's visual overlay;
 it does not end membership, change reporting authority, or stop background work.
 The composer has no team-recipient hint and the sidebar uses the ordinary task view.
 
-Team badges below the strip name this conversation's active memberships. Clicking a badge
-selects its overlay while keeping the conversation in front. Choosing a team in the dropdown
-restores that team's last conversation. Following a member or interaction from Teams selects
-its originating overlay, including for conversations shared by several teams.
+The Teams dropdown is the only team selector in Chats; there are no membership buttons
+below the strip. Choosing a team restores that team's last conversation and selects the
+same team in the Teams sidebar. Selecting a team in Teams selects its Chats overlay
+without opening a conversation from the overview. Returning through the Chats navigation
+word retains that selection and restores its conversation. None in Chats selects the All teams
+overview. All teams in Teams selects the All teams overlay when the optional global
+manager exists; otherwise Chats remains on None. Following a member or interaction from
+Teams selects its originating overlay, including conversations shared by several teams.
 
 An overlay shows every member as a tab, manager first, using aliases. Saved members have tabs
 before this window attaches their conversations; selecting one opens it and reports unavailable
@@ -43,8 +47,7 @@ The toolbar offers `Filter /`, `Columns − +`, `Help ?` and `Back`.
 
 Cancel with `alt+v`, `esc`, `Back`, or the strip's `▦ All`. Cancelling restores the original
 team overlay, conversation and draft. Opening any tile enters ordinary Chats with no overlay,
-even when it is the current conversation. You can select an overlay afterward with its badge
-or the Teams dropdown. Closing a tile only removes its view; work keeps running.
+even when it is the current conversation. You can select an overlay afterward with the Teams dropdown. Closing a tile only removes its view; work keeps running.
 
 Team creation, membership, manager assignment, settings and organization live on Teams.
 The grid has no team filter or management controls. Its hover hint reads
@@ -96,9 +99,8 @@ title bar's `needs you` count does the same when pressed.
 
 ## Pointing, focusing and opening a tile
 
-A press on a tile opens its conversation, the way a thumbnail opens its window. The tile
-grows into the frame for a moment while the conversation is already live under it, so a key
-typed at once lands in its box.
+A press on a tile opens its conversation immediately, with no expansion animation.
+The first frame shows the full chat and its composer.
 
 The pointer resting on a tile lights it and turns its bottom border into its **action row**:
 

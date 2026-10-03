@@ -855,8 +855,6 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 	default:
 		out = append(out, "")
 		out = append(out, a.teamsMemberCards(d, t, width, y+len(out))...)
-		out = append(out, "")
-		out = append(out, a.teamsInteractionTable(d, t, width, y+len(out))...)
 	}
 	return out
 }

@@ -174,10 +174,9 @@ func TestWallOpeningRevealsRowByRowAndAKeyFinishesIt(t *testing.T) {
 	}
 }
 
-// AN OPENED TILE GROWS INTO THE FRAME over a few frames, around a conversation
-// that is already in front, and a key ends the growing at once.
-func TestWallOpenedTileZoomsIntoTheFrame(t *testing.T) {
-	a, now := wallPinned(t)
+// Grid opening lands immediately so the first frame is the full conversation.
+func TestWallOpenedTileLandsWithoutExpansion(t *testing.T) {
+	a, _ := wallPinned(t)
 	_ = a.openWall()
 	a.wallSettle()
 	_ = a.wallFrame(a.width, a.height)
@@ -190,32 +189,16 @@ func TestWallOpenedTileZoomsIntoTheFrame(t *testing.T) {
 	}
 	a.wallMove(target, len(tiles))
 	_ = a.wallFrame(a.width, a.height)
-	from, _ := a.wallTileRect(target)
 	wallKeyPress(a, "enter")
 	if a.wall.on || a.frontTabKey() != tiles[target].tab.key {
-		t.Fatal("enter did not open the tile")
+		t.Fatal("tile did not open")
 	}
-	if !a.wallAnimating() {
-		t.Fatal("the zoom does not keep the paint clock turning")
+	if !a.wall.zoomAt.IsZero() || a.wallAnimating() {
+		t.Fatal("tile opening still animates")
 	}
 	lines := screenLines(a)
-	if from.y0 == 0 || strings.TrimSpace(lines[0]) != "" {
-		t.Fatalf("the first frame of the zoom drew outside the tile: %q", lines[0])
-	}
-	if !strings.HasPrefix(strings.TrimLeft(lines[from.y0], " "), "╭") {
-		t.Fatalf("the zoom's edge is not on the tile's top row: %q", lines[from.y0])
-	}
-	*now = now.Add(wallZoomFor)
-	_ = screenLines(a)
-	if !a.wall.zoomAt.IsZero() || a.wallAnimating() {
-		t.Fatal("the zoom outlived its time")
-	}
-
-	// A key ends it on the spot.
-	a.wall.zoomFrom, a.wall.zoomAt = from, *now
-	a.key(key("h"))
-	if !a.wall.zoomAt.IsZero() {
-		t.Fatal("a key did not end the zoom")
+	if !strings.Contains(plain(lines[0]), "codeaf") {
+		t.Fatal("first conversation frame is clipped by expansion")
 	}
 }
 

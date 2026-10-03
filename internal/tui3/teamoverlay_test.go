@@ -3,6 +3,8 @@ package tui3
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -71,27 +73,23 @@ func TestTeamOverlayRemembersEachSelectionAndSharesDraftsAcrossViews(t *testing.
 	}
 }
 
-func TestTeamOverlayBadgeActivatesTheCurrentConversationAndHomeReturnsToAll(t *testing.T) {
+func TestTeamOverlayDropdownKeepsSharedConversationAndHomeReturnsToNone(t *testing.T) {
 	a, harbor, orbit := menuApp(t)
 	if err := a.teamAdd(orbit, []chatTab{a.teamMenuFront()}); err != nil {
 		t.Fatal(err)
 	}
 	a.teamViewSet("")
 	front := a.frontTabKey()
-	_ = a.teamBadgesRow(a.width)
-	if len(a.teamViews.badges) != 2 {
-		t.Fatal("shared conversation is missing a team badge")
-	}
-	badge := a.teamViews.badges[1]
-	if _, took := a.teamBadgePress(badge.span.from, chatHeadRows-1); !took || a.wall.activeID != orbit || a.frontTabKey() != front {
-		t.Fatal("badge did not keep the current conversation")
+	_ = a.teamMenuDo(teamMenuRow{code: wallPopTeam, id: orbit})
+	if a.wall.activeID != orbit || a.tp.sel != orbit || a.frontTabKey() != front {
+		t.Fatal("dropdown lost shared conversation or overview selection")
 	}
 	_ = a.homeOpenLine(homeLine{row: session.SessionRow{Transcript: a.file}})
-	if a.wall.activeID != "" || a.teamViews.id != "" {
-		t.Fatal("Home retained a team overlay")
+	if a.wall.activeID != "" || a.teamViews.id != "" || a.tp.sel != teamsAllRow {
+		t.Fatal("Home retained a team overlay or stale overview")
 	}
 	if !teamHolds(mustTeam(t, a, harbor), front) || !teamHolds(mustTeam(t, a, orbit), front) {
-		t.Fatal("changing view changed membership")
+		t.Fatal("view selection changed memberships")
 	}
 }
 
@@ -276,19 +274,19 @@ func TestTeamOverlayEmptyMembershipReturnsToAllAndFailedOpenKeepsTheDraft(t *tes
 	}
 }
 
-func TestTeamOverlayLongNamesOfferAnOverflowDoor(t *testing.T) {
-	a, harbor, orbit := menuApp(t)
-	a.teamAdd(orbit, []chatTab{a.teamMenuFront()})
-	a.teamRename(harbor, strings.Repeat("Long team name ", 10))
-	a.teamMake("Third membership", []chatTab{a.teamMenuFront()})
-	text := a.teamBadgesRow(30)
-	if len(a.teamViews.badges) != 2 || !strings.Contains(plain(text), "+2 teams") {
-		t.Fatalf("narrow badges: %q %+v", text, a.teamViews.badges)
+func TestChatsHasNoRedundantMembershipButtonsBelowStrip(t *testing.T) {
+	a, _, orbit := menuApp(t)
+	if err := a.teamAdd(orbit, []chatTab{a.teamMenuFront()}); err != nil {
+		t.Fatal(err)
 	}
-	last := a.teamViews.badges[1]
-	a.teamBadgePress(last.span.from, chatHeadRows-1)
-	if !a.teamMenu.on {
-		t.Fatal("overflow does not lead to hidden memberships")
+	rows := a.headRows(a.width, a.tabsRow(a.width), a.pal)
+	if plain(rows[chatHeadRows-1]) != "" {
+		t.Fatal("membership buttons remain below strip")
+	}
+	_ = a.teamMenuDo(teamMenuRow{code: wallPopTeam, id: orbit})
+	rows = a.headRows(a.width, a.tabsRow(a.width), a.pal)
+	if plain(rows[chatHeadRows-1]) != "" {
+		t.Fatal("selected team rendered a duplicate selector")
 	}
 }
 
@@ -397,5 +395,145 @@ func TestTeamOverlayRootUsesCurrentManagersAndProtectsAutomaticMemberships(t *te
 	a.teamOverlaySync()
 	if a.frontTabKey() == former || !a.teamOverlayHolds(mustTeam(t, a, root), a.frontTabKey()) || a.teamOverlayHolds(mustTeam(t, a, root), former) {
 		t.Fatal("root retained its hidden former-manager selection")
+	}
+}
+
+func TestTeamsAndChatsSynchronizeSelectionsWithoutOpeningFromOverview(t *testing.T) {
+	a, harbor, orbit := menuApp(t)
+	front := a.frontTabKey()
+	a.input.insert("unsent draft")
+	drive(t, a, runCmd(a.showPage(pageTeams))...)
+	drive(t, a, runCmd(a.teamsSelect(orbit))...)
+	if a.tp.sel != orbit || a.teamViews.id != orbit || a.wall.activeID != orbit {
+		t.Fatal("Teams choice did not select Chats overlay")
+	}
+	if a.frontTabKey() != front || a.input.String() != "unsent draft" {
+		t.Fatal("overview selection opened a chat or changed draft")
+	}
+	drive(t, a, runCmd(a.teamMenuDo(teamMenuRow{code: wallPopTeam, id: harbor}))...)
+	if a.tp.sel != harbor {
+		t.Fatal("Chats choice did not select Teams overview")
+	}
+	_ = a.teamMenuDo(teamMenuRow{code: teamMenuNone})
+	if a.tp.sel != teamsAllRow || a.teamViews.id != "" {
+		t.Fatal("None did not select All teams overview")
+	}
+	var rootID string
+	global := filepath.Join(t.TempDir(), "global.jsonl")
+	if err := os.WriteFile(global, []byte("{\"type\":\"message\",\"role\":\"assistant\",\"content\":\"Update\"}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		rootID = f.MakeRoot(a.now())
+		if err := f.AddMember(rootID, teamstore.Member{Key: global, File: global, Handle: "lead"}); err != nil {
+			return err
+		}
+		return f.SetManager(rootID, global)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	flushTeams(t, a)
+	drive(t, a, runCmd(a.teamsSelect(teamsAllRow))...)
+	if a.teamViews.id != rootID || !a.teamsAllSelected() {
+		t.Fatalf("All teams overview did not select global overlay: id=%q root=%q sel=%q rootPresent=%v", a.teamViews.id, rootID, a.tp.sel, a.wall.teams)
+	}
+	_ = a.teamMenuDo(teamMenuRow{code: wallPopTeam, id: orbit})
+	_ = a.teamMenuDo(teamMenuRow{code: wallPopTeam, id: rootID})
+	if !a.teamsAllSelected() {
+		t.Fatal("global overlay did not select All teams overview")
+	}
+	_ = a.teamMenuDo(teamMenuRow{code: teamMenuNone})
+	// Re-selecting None must undo a different overview even if Chats is already bare.
+	a.tp.sel = harbor
+	_ = a.teamMenuDo(teamMenuRow{code: teamMenuNone})
+	if a.tp.sel != teamsAllRow {
+		t.Fatal("unchanged None left stale Teams selection")
+	}
+}
+
+func TestOverviewBrowsingPreservesRememberedChatAndSameTeamReselection(t *testing.T) {
+	a, harbor, orbit := menuApp(t)
+	front := a.frontTabKey()
+	if err := a.teamAdd(orbit, []chatTab{a.teamMenuFront()}); err != nil {
+		t.Fatal(err)
+	}
+	_ = a.teamActivate(orbit)
+	var other chatTab
+	for _, tab := range a.tabList() {
+		if tab.key != front && teamHolds(mustTeam(t, a, orbit), tab.key) {
+			other = tab
+		}
+	}
+	_ = a.tabGo(other)
+	a.tabView = tabViewport{from: 2, browsing: true}
+	_ = a.teamActivate(harbor)
+	remembered := a.teamViews.views[orbit]
+	_ = a.showPage(pageTeams)
+	_ = a.teamsSelect(orbit)
+	_ = a.teamsSelect(harbor)
+	if a.teamViews.views[orbit] != remembered {
+		t.Fatal("overview browsing overwrote remembered chat")
+	}
+	_ = a.teamsSelect(orbit)
+	_ = a.showPage(pageChats)
+	if a.frontTabKey() != other.key || a.tabView != remembered.viewport {
+		t.Fatal("return from Teams did not restore remembered chat and strip")
+	}
+	_ = a.teamActivate(harbor)
+	_ = a.teamActivate(orbit)
+	// The saved map still names other; reselecting this actual overlay must keep front.
+	_ = a.trafficGo(front)
+	a.input.insert("keep this draft")
+	_ = a.showPage(pageTeams)
+	_ = a.teamsSelect(orbit)
+	_ = a.showPage(pageChats)
+	if a.frontTabKey() != front || a.input.String() != "keep this draft" {
+		t.Fatal("same-team overview selection jumped to stale chat")
+	}
+}
+
+func TestExternalDisbandClearsHiddenSelectionAndClosedToggleSelectsGlobal(t *testing.T) {
+	a, harbor, _ := menuApp(t)
+	var rootID string
+	if err := a.teamEdit(func(f *teamstore.File) error { rootID = f.MakeRoot(a.now()); return f.SetManager(rootID, "global") }); err != nil {
+		t.Fatal(err)
+	}
+	_ = a.showPage(pageTeams)
+	_ = a.teamsSelect(harbor)
+	adopted := teamsClone(a.wall.teams)
+	for i := range adopted {
+		if adopted[i].ID == harbor {
+			adopted[i].State = teamstore.TeamClosed
+		}
+	}
+	a.teamAdopt(adopted)
+	a.teamsSettle()
+	if !a.teamsAllSelected() || a.teamViews.id != rootID {
+		t.Fatal("external disband left hidden closed overlay")
+	}
+	_ = a.teamsSelect(harbor)
+	a.tp.closedOpen = true
+	a.teamsDo(teamsTarget{act: teamsActClosedFold})
+	if !a.teamsAllSelected() || a.teamViews.id != rootID {
+		t.Fatal("hiding closed selection did not select global overlay")
+	}
+}
+
+func TestExternalDisbandRetainsVisibleHistoryWithoutAnOverlayAndUndoSynchronizes(t *testing.T) {
+	a, harbor, _ := menuApp(t)
+	_ = a.showPage(pageTeams)
+	_ = a.teamsSelect(harbor)
+	a.tp.closedOpen = true
+	if err := a.teamEdit(func(f *teamstore.File) error { return f.Disband(harbor, a.now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	a.teamsSettle()
+	if a.tp.sel != harbor || a.teamViews.id != "" || a.wall.activeID != "" {
+		t.Fatal("external disband lost visible history or retained closed overlay")
+	}
+	a.tp.undo = teamsUndo{team: harbor, name: "harbor", at: a.now()}
+	_ = a.teamsUndoClose()
+	if a.tp.sel != harbor || a.teamViews.id != harbor || a.wall.activeID != harbor {
+		t.Fatal("Undo did not restore synchronized selection")
 	}
 }

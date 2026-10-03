@@ -283,34 +283,30 @@ func (a *app) teamsSelected() (team, bool) {
 	return a.teamByID(a.tp.sel)
 }
 
-// teamsSettle keeps the selection on something that exists: a team that went
-// is replaced by the team of the conversation in front, else the first open
-// team, else the root, else the `All teams` row, else nothing.
+// A vanished selection follows the Chats overlay or returns to All teams.
+// The conversation's memberships never imply an overview selection.
 func (a *app) teamsSettle() {
 	if a.tp.sel == teamsAllRow {
 		return
 	}
-	if t, ok := a.teamByID(a.tp.sel); ok {
-		if !t.Closed() || a.tp.closedOpen {
-			return
+	if t, ok := a.teamByID(a.tp.sel); ok && (!t.Closed() || a.tp.closedOpen) {
+		if t.Closed() {
+			if active, found := a.teamByID(a.teamViews.id); a.teamViews.id != "" && (!found || active.Closed()) {
+				a.teamViewSet("")
+				a.tp.sel = t.ID
+			}
 		}
-	}
-	a.tp.sel = ""
-	if t, ok := a.teamOfFront(); ok && !t.Closed() && !t.Root {
-		a.tp.sel = t.ID
 		return
 	}
-	if tree := a.teamsOpenTree(); len(tree) > 0 {
-		a.tp.sel = tree[0].id
+	if t, ok := a.teamByID(a.teamViews.id); ok && !t.Closed() {
+		a.teamsSelectionFromView(t.ID)
 		return
 	}
-	if root, ok := a.teamsRoot(); ok {
-		a.tp.sel = root.ID
+	if a.teamViews.id != "" {
+		a.teamsViewFromSelection(teamsAllRow)
 		return
 	}
-	if a.teamsAny() {
-		a.tp.sel = teamsAllRow
-	}
+	a.teamsSelectionFromView("")
 }
 
 // teamsManaged reports whether any open team has a manager, which is when the

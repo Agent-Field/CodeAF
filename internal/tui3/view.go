@@ -305,7 +305,6 @@ func (a *app) frameBody() (string, int, int) {
 	// to paint would open a place for a click on a rule (topnav.go's
 	// [app.navPress]).
 	a.tabRow = -1
-	a.teamViews.badges = nil
 	width, height := a.size()
 	if a.pasteEdit.open {
 		return a.pasteEditorFrame(width, height)

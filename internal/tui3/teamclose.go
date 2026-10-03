@@ -230,10 +230,10 @@ func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) t
 	} else {
 		a.teamsDisbandSaid(t.Name, "")
 	}
-	a.tp.closedOpen, a.tp.sel = true, t.ID
 	if active, ok := a.teamByID(a.teamViews.id); !ok || active.Closed() {
 		a.teamViewSet("")
 	}
+	a.tp.closedOpen, a.tp.sel = true, t.ID
 	a.touch()
 	return nil
 }
@@ -274,7 +274,7 @@ func (a *app) teamsUndoClose() tea.Cmd {
 		return nil
 	}
 	a.tp.msg = u.name + " is open again"
-	a.tp.sel = u.team
+	a.teamsViewFromSelection(u.team)
 	a.touch()
 	return tea.Batch(a.teamsTell(u.team, teamstore.Entry{Kind: teamstore.KindReopen, From: teamstore.FromYou, To: teamstore.ToEveryone,
 		Text: "the person reopened the team"}))
@@ -328,7 +328,7 @@ func (a *app) teamsReopen(id string, withParents bool) tea.Cmd {
 		}
 	}
 	a.chatTabBar = tabBar{}
-	a.tp.sel = id
+	a.teamsViewFromSelection(id)
 	a.tp.msg = t.Name + " is open again"
 	a.touch()
 	var tells []tea.Cmd

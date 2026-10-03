@@ -632,7 +632,8 @@ func (a *app) teamActivate(id string) (cmd tea.Cmd) {
 	if t, ok := a.teamByID(id); !ok || t.Closed() {
 		id = ""
 	}
-	if id == a.teamViews.id {
+	if id == a.teamViews.id && !a.teamViews.deferred {
+		a.teamsSelectionFromView(id)
 		return nil
 	}
 	a.teamViewSet(id)

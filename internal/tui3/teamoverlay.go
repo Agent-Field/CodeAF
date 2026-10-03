@@ -1,11 +1,7 @@
 package tui3
 
 import (
-	"fmt"
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 type teamOverlayView struct {
@@ -16,17 +12,11 @@ type teamOverlayView struct {
 // Each overlay remembers its own selection and strip window. Drafts and chat
 // reading positions already belong to the conversation's keeper entry.
 type teamOverlayViews struct {
-	id      string
-	views   map[string]teamOverlayView
-	members []string
-	badges  []teamBadge
-	pending string
-	hover   string
-}
-
-type teamBadge struct {
-	id   string
-	span hudSpan
+	id       string
+	views    map[string]teamOverlayView
+	members  []string
+	pending  string
+	deferred bool
 }
 
 func (a *app) teamViewSet(id string) {
@@ -34,13 +24,17 @@ func (a *app) teamViewSet(id string) {
 		a.teamViews.views = map[string]teamOverlayView{}
 	}
 	if a.teamViews.id != id {
-		a.teamViews.views[a.teamViews.id] = teamOverlayView{key: a.frontTabKey(), viewport: a.tabView}
+		if !a.teamViews.deferred {
+			a.teamViews.views[a.teamViews.id] = teamOverlayView{key: a.frontTabKey(), viewport: a.tabView}
+		}
 		a.tabView = a.teamViews.views[id].viewport
 		a.teamViews.members = nil
 		a.teamViews.pending = ""
 	}
 	a.teamViews.id = id
+	a.teamViews.deferred = false
 	a.wall.activeID = id
+	a.teamsSelectionFromView(id)
 	a.chatTabBar = tabBar{}
 	a.touch()
 }
@@ -50,6 +44,9 @@ func (a *app) teamViewSet(id string) {
 func (a *app) teamOverlaySync() tea.Cmd {
 	if a.wall.on || a.pageShowing() || a.startingChat() {
 		return nil
+	}
+	if a.teamViews.deferred {
+		return a.teamActivate(a.teamViews.id)
 	}
 	t, ok := a.teamActive()
 	if !ok || t.Closed() {
@@ -102,85 +99,6 @@ func (a *app) teamOverlaySync() tea.Cmd {
 	return cmd
 }
 
-// Membership badges occupy the existing air row under the strip. They change
-// the view without changing the engine's reporting roles or ongoing work.
-func (a *app) teamBadgesRow(width int) string {
-	a.teamViews.badges = nil
-	if a.wall.on || a.startingChat() {
-		return ""
-	}
-	front := a.frontTabKey()
-	var memberships []team
-	for _, t := range a.wall.teams {
-		if !t.Closed() && a.teamOverlayHolds(t, front) {
-			memberships = append(memberships, t)
-		}
-	}
-	line := " "
-	paint := func(id, word string) {
-		x := ansi.StringWidth(line)
-		a.teamViews.badges = append(a.teamViews.badges, teamBadge{id: id, span: hudSpan{from: x, to: x + ansi.StringWidth(word)}})
-		if a.teamViews.hover == id {
-			word = a.tabHoverPaint(word)
-		} else if id == a.wall.activeID && id != "" {
-			word = a.pal.selected(a.pal.muted(word), 0)
-		} else {
-			word = a.pal.underline(a.pal.dim(word))
-		}
-		line += word + " "
-	}
-	for i, t := range memberships {
-		room := width - ansi.StringWidth(line)
-		reserve := 0
-		if i < len(memberships)-1 {
-			reserve = ansi.StringWidth(fmt.Sprintf(" +%d teams ", len(memberships)-i-1)) + 1
-		}
-		if room-reserve < 6 {
-			word := fmt.Sprintf(" +%d teams ", len(memberships)-i)
-			if ansi.StringWidth(word) <= room {
-				paint("more", word)
-			}
-			break
-		}
-		word := " " + ansi.Truncate(t.Name, room-reserve-2, "…") + " "
-		paint(t.ID, word)
-	}
-	return strings.TrimRight(line, " ")
-}
-
-func (a *app) teamBadgePress(x, y int) (tea.Cmd, bool) {
-	if y != chatHeadRows-1 || a.pageShowing() || a.wall.on || a.startingChat() {
-		return nil, false
-	}
-	for _, badge := range a.teamViews.badges {
-		if x >= badge.span.from && x < badge.span.to {
-			if badge.id == "more" {
-				a.openTeamMenu()
-				return nil, true
-			}
-			a.teamViewSet(badge.id)
-			return nil, true
-		}
-	}
-	return nil, false
-}
-
-func (a *app) teamBadgeMotion(x, y int) {
-	hot := ""
-	if y == chatHeadRows-1 && !a.pageShowing() && !a.wall.on {
-		for _, b := range a.teamViews.badges {
-			if x >= b.span.from && x < b.span.to {
-				hot = b.id
-				break
-			}
-		}
-	}
-	if a.teamViews.hover != hot {
-		a.teamViews.hover = hot
-		a.touch()
-	}
-}
-
 // Root membership shown in Chats is its current managers, matching the overview.
 func (a *app) teamOverlayHolds(t team, key string) bool {
 	if !t.Root {
@@ -192,4 +110,39 @@ func (a *app) teamOverlayHolds(t team, key string) bool {
 		}
 	}
 	return false
+}
+
+// Both surfaces name the same selected team. None maps to the All teams
+// overview without enabling the optional global manager overlay.
+func (a *app) teamsSelectionFromView(id string) {
+	selected := id
+	if selected == "" {
+		selected = teamsAllRow
+	}
+	if a.tp.sel != selected {
+		a.tp.sel = selected
+		a.tp.expand, a.tp.answering = "", ""
+		a.tp.cur = teamsRef{act: teamsActSelect, id: selected}
+	}
+}
+
+// Choosing the overview enables All teams in Chats only when its optional
+// global manager can actually be opened. Closed teams remain history only.
+func (a *app) teamsViewFromSelection(id string) {
+	view := ""
+	if id == teamsAllRow {
+		if root, ok := a.teamsRoot(); ok && root.Manager != "" && !a.teamsManagerMissing(root) {
+			view = root.ID
+		}
+	} else if t, ok := a.teamByID(id); ok && !t.Closed() {
+		if !t.Root || t.Manager != "" && !a.teamsManagerMissing(t) {
+			view = id
+		}
+	}
+	deferred := a.teamViews.deferred || view != a.teamViews.id
+	a.teamViewSet(view)
+	// The overview names the overlay now; Chats restores its conversation on return.
+	a.teamViews.deferred = deferred
+	// Retained history has no Chats overlay but keeps its selected record.
+	a.tp.sel = id
 }
