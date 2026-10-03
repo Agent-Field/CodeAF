@@ -244,7 +244,7 @@ frames. An event frame has a string key `t` and no key `v`:
 
 - `joined`: sent to every open event socket of the identity (the new device itself excluded) in the same
   turn as the approve. The directory version also moves, so a client that only lists still sees it.
-  The UI string is "<name> joined your fleet", decoded from `name` with the metadata key.
+  The UI string is "<name> is now paired", decoded from `name` with the metadata key.
 - `presence`: sent to the other event sockets when the first socket of a device opens (`online:true`)
   and when its last socket closes (`online:false`). A device is online iff it holds at least one open
   watch socket. A flapping device is debounced: an `online:false` is sent 15 s after the last socket

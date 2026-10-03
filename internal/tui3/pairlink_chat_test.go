@@ -32,7 +32,7 @@ func TestPairLinkOnTheStartPageShowsTheApproveScreenAndMakesNoChat(t *testing.T)
 	if lab.made != 0 {
 		t.Fatalf("the link made %d conversations", lab.made)
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "wants to join your fleet") {
+	if got := plain(frame(a)); !strings.Contains(got, "wants to pair") {
 		t.Fatalf("no approve screen on the frame:\n%s", got)
 	}
 }
@@ -72,7 +72,7 @@ func TestPairLinkInARunningChatShowsTheApproveScreenAndIsNotSent(t *testing.T) {
 // A DEVICE LIST THAT CANNOT LOAD SAYS WHY. The error used to land on a card that
 // was still drawing "looking up your devices…", so a refusal never showed.
 func TestDevicesCardSaysWhyItCannotLoad(t *testing.T) {
-	const why = "this computer was stopped by another of your computers"
+	const why = "this device was removed by another of your devices"
 	door := &fakeApprovals{err: errors.New(why)}
 	a, r := approveApp(t, door)
 	r.slash("/devices")

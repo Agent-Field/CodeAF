@@ -59,14 +59,14 @@ func tellFleet(ctx context.Context, dir, name string) error {
 // runDevicesRename is `codeaf devices rename <name>`. The name may be several
 // words, typed with or without quotes.
 func runDevicesRename(args []string) error {
-	// The help for rename is the line it shares with revoke in the usage table.
-	flags := commandFlags("devices revoke")
+	// Its own usage entry names the command; it takes no flags of its own.
+	flags := commandFlags("devices rename")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
 	typed := strings.Join(flags.Args(), " ")
 	if strings.TrimSpace(typed) == "" {
-		return errors.New("usage: codeaf devices rename <name> - " + devname.ErrEmpty.Error())
+		return errors.New("usage: codeaf devices rename <name> \u2014 " + devname.ErrEmpty.Error())
 	}
 	said, err := renameThisDevice(context.Background(), home.Dir(), typed)
 	if err != nil {

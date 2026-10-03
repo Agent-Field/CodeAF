@@ -27,7 +27,7 @@ func TestOfferCopy(t *testing.T) {
 func TestStatusLineCopy(t *testing.T) {
 	cases := map[Status]string{
 		Running: "running on studio",
-		Off:     "studio off",
+		Off:     "studio offline",
 		Branch:  "2 turns from studio: merge / discard",
 		Idle:    "",
 		Here:    "",
@@ -41,11 +41,11 @@ func TestStatusLineCopy(t *testing.T) {
 
 func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
 	r := Row{Device: "studio", DurableAgo: 42*time.Second + 900*time.Millisecond, Pending: 3}
-	if got, want := TakeoverLine(r), "last durable turn 42s ago; up to 3 turns may still be on studio"; got != want {
+	if got, want := TakeoverLine(r), "last saved turn 42s ago; up to 3 turns may still be on studio"; got != want {
 		t.Fatalf("got %q", got)
 	}
 	r.Pending = 0
-	if got, want := TakeoverLine(r), "last durable turn 42s ago"; got != want {
+	if got, want := TakeoverLine(r), "last saved turn 42s ago"; got != want {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -54,7 +54,7 @@ func TestTakeoverLineOmitsClauseAtZero(t *testing.T) {
 // continuing it here stops it there.
 func TestTakeoverLineNamesTheDeviceARunningChatIsOn(t *testing.T) {
 	r := Row{Status: Running, Device: "studio", DurableAgo: 12 * time.Second}
-	if got, want := TakeoverLine(r), "running on studio; last durable turn 12s ago"; got != want {
+	if got, want := TakeoverLine(r), "running on studio; last saved turn 12s ago"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
@@ -88,7 +88,7 @@ func TestFrozenSentences(t *testing.T) {
 		ClockOff:     "this computer's clock is off by more than 5 minutes",
 		ReplacedGone: "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)",
 		Replaced:     "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)",
-		Removed:      "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back",
+		Removed:      "this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back",
 		SlowDown:     "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows",
 		TooManyNew:   "this network has started too many new identities today; sync begins when it allows more",
 	} {
@@ -125,7 +125,17 @@ func TestMovedSaysTheMeasuredTime(t *testing.T) {
 // A chat whose holder is offline stopped; its sentence does not say it runs.
 func TestTakeoverLineOfAQuietRowDoesNotSayRunning(t *testing.T) {
 	r := Row{Status: Running, Device: "build-box", DurableAgo: 15 * time.Second}.Quiet()
-	if got, want := TakeoverLine(r), "last durable turn 15s ago"; got != want {
+	if got, want := TakeoverLine(r), "last saved turn 15s ago"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestTakeoverLineSpellsAgeInReadableUnits(t *testing.T) {
+	for age, want := range map[time.Duration]string{
+		42 * time.Second: "42s", 90 * time.Second: "1m", 3 * time.Hour: "3h", 50 * time.Hour: "2d",
+	} {
+		if got := TakeoverLine(Row{DurableAgo: age}); got != "last saved turn "+want+" ago" {
+			t.Errorf("%v: %q", age, got)
+		}
 	}
 }

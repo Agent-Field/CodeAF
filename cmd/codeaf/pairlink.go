@@ -111,7 +111,7 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 	}
 	joined, err := pair.JoinByLink(ctx, d.requests(route), d.linking(route, replace), inviteScreen{d.term})
 	if err != nil && !errors.Is(err, pair.ErrPairedNotRead) {
-		return endedByPerson(ctx, err)
+		return d.endedByPerson(ctx, err)
 	}
 	if err != nil {
 		d.term.say(err.Error())
@@ -156,7 +156,7 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 
 func (d pairDoor) decline(ctx context.Context, who pair.Approver, asking pair.Asking) error {
 	if ctx.Err() != nil {
-		return nil
+		return d.endedByPerson(ctx, nil)
 	}
 	if err := who.Deny(ctx, asking); err != nil {
 		return err

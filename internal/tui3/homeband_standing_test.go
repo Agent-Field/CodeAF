@@ -15,7 +15,7 @@ func TestDevicesRowAndRescueStandOnAnEmptyHome(t *testing.T) {
 	a.tookMachines(homeMachinesMsg{rows: []chatlist.Row{leftOffRow("a", "dumb", chatlist.Off, time.Hour)}})
 	a.openHome()
 	got := strings.Join(strings.Fields(homeText(a)), " ")
-	for _, want := range []string{"● This Mac ● spark ○ dumb (offline)", "Continue where you left off on dumb?"} {
+	for _, want := range []string{"● This Mac ● spark ○ dumb (offline)", "Continue dumb's latest chat here?"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("empty home lacks %q:\n%s", want, homeText(a))
 		}

@@ -26,21 +26,25 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 const (
-	devicesKeys     = "↑↓ choose · n name this device · r revoke · esc close"
+	devicesNameKey  = "n rename"
+	devicesGoneKey  = "r remove"
+	devicesMoveKey  = "↑↓ choose"
+	devicesCloseKey = "esc close"
 	devicesNameKeys = "enter save · ctrl+u clear · esc cancel"
 	devicesNameAsk  = "name this device: "
-	devicesNameOwn  = "a device names itself - choose this device's row, or open /devices on the one you mean."
+	devicesNameOwn  = "a device renames itself — choose this device's row, or open /devices on the one you mean."
 	devicesLoading  = "looking up your devices…"
-	devicesNone     = "no other device is in your fleet yet - /pair adds one"
-	devicesRevoked  = "%s was revoked - it can no longer reach your chats."
+	devicesNone     = "no other device yet — /pair adds one"
+	devicesRevoked  = "%s was removed — it can no longer reach your chats."
 	devicesSelf     = "this device"
-	devicesOwnRow   = "this device cannot remove itself - choose another row."
+	devicesOwnRow   = "this device cannot remove itself — choose another row."
 	idTail          = 4
 )
 
@@ -200,7 +204,22 @@ func (c *deviceCard) hint() string {
 	if c.naming != nil {
 		return devicesNameKeys
 	}
-	return devicesKeys
+	return c.keys()
+}
+
+// keys names only what the row under the cursor can do: `r` is absent on this
+// device's own row and on one already removed, and the arrows when there is
+// no other row to walk to.
+func (c *deviceCard) keys() string {
+	var out []string
+	if len(c.rowsOf) > 1 {
+		out = append(out, devicesMoveKey)
+	}
+	out = append(out, devicesNameKey)
+	if row, ok := c.pick(); ok && !row.Self && !row.Revoked {
+		out = append(out, devicesGoneKey)
+	}
+	return strings.Join(append(out, devicesCloseKey), " · ")
 }
 
 func (c *deviceCard) typing() bool { return c.naming != nil }
@@ -320,7 +339,8 @@ func (c *deviceCard) waiting() string {
 func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palette) string {
 	online, _ := c.livePresence()
 	d.Online = online[d.ID] && !d.Revoked
-	text := fmt.Sprintf("%s %s  %s", d.dot(pal), c.shownName(d), platformOf(d.Platform).word)
+	nameW, wordW := c.columns()
+	text := d.dot(pal) + " " + padTo(c.shownName(d), nameW) + "  " + padTo(platformOf(d.Platform).word, wordW)
 	for _, tail := range d.tails(now) {
 		text += "  " + tail
 	}
@@ -328,6 +348,16 @@ func (c *deviceCard) row(i int, d DeviceRow, width int, now time.Time, pal palet
 		return pal.ink(fit("› "+text, width))
 	}
 	return pal.dim(fit("  "+text, width))
+}
+
+// columns are the widths of the name and system columns, so the marks, names,
+// systems and tails of every row start in the same cells.
+func (c *deviceCard) columns() (nameW, wordW int) {
+	for _, d := range c.rowsOf {
+		nameW = max(nameW, ansi.StringWidth(c.shownName(d)))
+		wordW = max(wordW, ansi.StringWidth(platformOf(d.Platform).word))
+	}
+	return nameW, wordW
 }
 
 // dot is `●` for a device online now, `○` otherwise.
@@ -341,11 +371,13 @@ func (d DeviceRow) dot(pal palette) string {
 func (d DeviceRow) tails(now time.Time) []string {
 	switch {
 	case d.Revoked:
-		return []string{"revoked"}
+		return []string{"removed"}
 	case d.Self:
 		return []string{devicesSelf}
-	case d.Online || d.LastSeen.IsZero():
+	case d.Online:
 		return nil
+	case d.LastSeen.IsZero():
+		return []string{"offline"}
 	}
 	return []string{seenTail(d.LastSeen, now)}
 }
