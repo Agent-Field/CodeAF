@@ -6,6 +6,7 @@ import { readBody } from '../body.js';
 import { base64, fromBase64Url, sha256, hex } from '../codec.js';
 import { limitsOf } from '../limits.js';
 import { empty, ipOf, json, unwrap } from '../wire.js';
+import { GENERATION_HEADER, generationOf } from './generation.js';
 import { forbidden, gone, tooBig } from './refusals.js';
 
 const MAX_WAIT_MS = 25_000;
@@ -27,6 +28,12 @@ function intOf(url, name) {
 const gateOf = (c) => c.env.PAIR_GATE.get(c.env.PAIR_GATE.idFromName('gate'));
 const boxOf = (c, nameplate) => c.env.MAILBOX.get(c.env.MAILBOX.idFromName(nameplate));
 
+/** stamped adds the box's generation to an answer, when the box has one, so a device can carry it on its next call. */
+function stamped(res, gen) {
+  if (gen) res.headers.set(GENERATION_HEADER, gen);
+  return res;
+}
+
 const ROUTES = [
   ['GET', /^\/v1\/pair\/limits$/, (c) => json({
     ttl_ms: c.limits.pairTtlMs,
@@ -37,15 +44,16 @@ const ROUTES = [
   })],
 
   ['POST', /^\/v1\/pair$/, async (c) => {
-    const answer = unwrap(await gateOf(c).create(c.ip, await keyHashOf(c.request)));
-    return json(answer, 201);
+    const { gen, ...answer } = unwrap(await gateOf(c).create(c.ip, await keyHashOf(c.request)));
+    return stamped(json(answer, 201), gen);
   }],
 
   ['POST', /^\/v1\/pair\/(\d{1,4})\/([ab])$/, async (c, [nameplate, side]) => {
     const keyHash = await keyHashOf(c.request);
     const bytes = await readBody(c.request, c.limits.pairMaxMsg, tooBig().code);
     unwrap(await gateOf(c).admitWrite(c.ip));
-    return json(unwrap(await boxOf(c, nameplate).post(side, keyHash, bytes)), 201);
+    const { gen, ...posted } = unwrap(await boxOf(c, nameplate).post(side, keyHash, bytes, generationOf(c.request)));
+    return stamped(json(posted, 201), gen);
   }],
 
   ['GET', /^\/v1\/pair\/(\d{1,4})\/([ab])$/, async (c, [nameplate, side]) => {
@@ -53,15 +61,15 @@ const ROUTES = [
     const wait = Math.min(intOf(c.url, 'wait'), MAX_WAIT_MS);
     const token = unwrap(await gateOf(c).acquirePoll(c.ip));
     try {
-      const got = unwrap(await boxOf(c, nameplate).read(side, after, wait));
-      return got ? json({ msgs: got.msgs.map(base64), next: got.next }) : empty();
+      const got = unwrap(await boxOf(c, nameplate).read(side, after, wait, generationOf(c.request)));
+      return stamped(got.msgs ? json({ msgs: got.msgs.map(base64), next: got.next }) : empty(), got.gen);
     } finally {
       await gateOf(c).releasePoll(token);
     }
   }],
 
   ['DELETE', /^\/v1\/pair\/(\d{1,4})$/, async (c, [nameplate]) => {
-    unwrap(await boxOf(c, nameplate).close(await keyHashOf(c.request)));
+    unwrap(await boxOf(c, nameplate).close(await keyHashOf(c.request), generationOf(c.request)));
     await gateOf(c).release(nameplate);
     return empty();
   }],
