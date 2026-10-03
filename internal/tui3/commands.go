@@ -480,10 +480,11 @@ var commands = []command{
 	// wearing the "…" of the other computer. The other words are what people say
 	// they want: "use this on my laptop", "sync my chats", "connect another
 	// computer".
-	{name: "pair", desc: "share your chats with another computer · or /pair <code> on the other",
+	{name: "pair", desc: "show a code that shares your chats with another computer",
 		alias: []string{"sync", "link", "laptop"}},
-	{name: "pair", args: "<code>", desc: "join another computer's chats with the code it shows"},
-	{name: "devices", desc: "your devices · r revokes one"},
+	{name: "pair", args: "<code>", desc: "…join the chats of the computer that shows that code"},
+	{name: "pair", args: "<link>", desc: "…approve a new computer from the link it shows"},
+	{name: "devices", desc: "list your devices · n names this one, r revokes one"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf and restart on it", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag, then restart"},
