@@ -39,7 +39,7 @@ func addMachineFrame(a *app, width int) string {
 func TestAddMachineCardShowsForAFleetOfOne(t *testing.T) {
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	got := addMachineFrame(a, 80)
-	for _, want := range []string{"Add another machine", "pick up your work anywhere, exactly where you left it.", addMachineShow} {
+	for _, want := range []string{"Add another device", "pick up your work anywhere, exactly where you left it.", addMachineShow} {
 		if !strings.Contains(strings.Join(strings.Fields(got), " "), want) {
 			t.Fatalf("card lacks %q:\n%s", want, got)
 		}
@@ -103,7 +103,7 @@ func TestAddMachinePasteGoesToTheApproveScreenAndApproveEndsTheCard(t *testing.T
 	if !strings.Contains(door.did(), "approve:k7m2q9xd") {
 		t.Fatalf("not approved: %s", door.did())
 	}
-	if !strings.Contains(plain(frame(a)), "spark joined your devices") {
+	if !strings.Contains(plain(frame(a)), "spark is now paired") {
 		t.Fatalf("no toast:\n%s", plain(frame(a)))
 	}
 	if a.addMachineWanted() {
@@ -133,7 +133,7 @@ func TestPairLinkOnBareHomeShowsTheApproveScreen(t *testing.T) {
 			a.openHome()
 			drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
 			r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
-			if got := plain(frame(a)); !strings.Contains(got, "wants to join your devices") {
+			if got := plain(frame(a)); !strings.Contains(got, "wants to pair") {
 				t.Fatalf("no approve screen on the frame:\n%s", got)
 			}
 		})
@@ -254,14 +254,14 @@ func TestAddMachineCardShowsOnAnEmptyHome(t *testing.T) {
 	a := addMachineRig(&fakeApprovals{}, 1, true)
 	a.openHome()
 	got := strings.Join(strings.Fields(homeText(a)), " ")
-	for _, want := range []string{"Add another machine", "exactly where you left it.", addMachineShow} {
+	for _, want := range []string{"Add another device", "exactly where you left it.", addMachineShow} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("empty home lacks %q:\n%s", want, homeText(a))
 		}
 	}
 	b := addMachineRig(&fakeApprovals{}, 2, true)
 	b.openHome()
-	if strings.Contains(homeText(b), "Add another machine") {
+	if strings.Contains(homeText(b), "Add another device") {
 		t.Fatal("a fleet of two kept the card on home")
 	}
 }
@@ -276,7 +276,7 @@ func TestAddMachinePasteOnHomeShowsTheApproveScreen(t *testing.T) {
 	drive(t, a, altD)
 	drive(t, a, tea.PasteStartMsg{}, tea.PasteMsg{Content: testLink}, tea.PasteEndMsg{})
 	r.until("the card", func() bool { c, ok := a.pair.card.(*approveCard); return ok && c.req != nil })
-	if got := plain(frame(a)); !strings.Contains(got, "wants to join your devices") {
+	if got := plain(frame(a)); !strings.Contains(got, "wants to pair") {
 		t.Fatalf("no approve screen on the frame:\n%s", got)
 	}
 }

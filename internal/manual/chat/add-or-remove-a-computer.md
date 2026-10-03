@@ -1,21 +1,21 @@
 # Adding a computer to your devices, approving it, and removing it
 
-## How do I add a second device — the Add another machine card, codeaf pair, a link to paste, and pairing a server with no browser
+## How do I add a second device — the Add another device card (add another machine), codeaf pair, a link to paste, and pairing a server with no browser
 
 Your chats and your work can follow you to a second device. You add it in two steps. There is no account to make and no form to fill.
 
 While you have only one device, home shows a card at the foot:
 
 ```
-+ Add another machine
-Add another machine — pick up your work anywhere, exactly where you left it.
++ Add another device
+Add another device — pick up your work anywhere, exactly where you left it.
 alt+d how
 ```
 
 Press `alt+d` to open the steps, and `alt+d` again to close them:
 
 ```
-1. On the new machine, install and run: codeaf pair
+1. On the new device, install and run: codeaf pair
 2. It shows a link. Paste it here:
 >
 ```
@@ -71,7 +71,7 @@ On the approving screen the number reads `Check number 4821. Approve only if the
 When you open a link on a device that is already in (paste it, or type `/pair <link>`), the screen says who is asking:
 
 ```
-A new device wants to join your devices.
+A new device wants to pair.
   $ laptop · Linux
   asked just now · 9 min left
 Check number 4821. Approve only if the new device shows the same number.

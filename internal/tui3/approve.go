@@ -1,6 +1,6 @@
 package tui3
 
-// ── APPROVING A NEW DEVICE, ON A DEVICE THAT IS ALREADY IN THE FLEET ────────
+// ── APPROVING A NEW DEVICE, ON A DEVICE THAT IS ALREADY PAIRED ────────
 //
 // A new device asks to join and shows a link and a four-digit check. The
 // person opens that link here (`/pair <link>` or a paste of it), and this
@@ -11,7 +11,7 @@ package tui3
 // (docs/ux-pairing-contract.md, section 5: only `joined`, `presence` and
 // `revoked` are pushed). So the screen opens on a link, and the push channel
 // speaks once, afterwards: another device approved, and every device hears
-// `<name> joined your fleet` ([app.announceJoined]).
+// `<name> is now paired` ([app.announceJoined]).
 //
 // THE SCREEN IS A CARD IN THE PAIRING PANEL. It takes the panel's six seats
 // (height, draw, hint, keys, press guard, beat) and adds no seat of its own;
@@ -79,7 +79,7 @@ type Approvals interface {
 
 // The screen's own words, in the vocabulary law's terms.
 const (
-	approveAsk       = "A new device wants to join your devices."
+	approveAsk       = "A new device wants to pair."
 	approveCheckWord = "Check number %s. Approve only if the new device shows the same number."
 	approveKeys      = "a approve · d decline · esc later"
 	approveLoading   = "looking up the request…"

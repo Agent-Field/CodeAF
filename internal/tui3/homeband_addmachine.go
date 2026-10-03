@@ -51,9 +51,9 @@ const (
 	// fleetAskTimeout bounds one ask, so a silent directory is an unknown fleet.
 	fleetAskTimeout = 5 * time.Second
 
-	addMachineHeading = "+ Add another machine"
-	addMachinePitch   = "Add another machine — pick up your work anywhere, exactly where you left it."
-	addMachineStepRun = "1. On the new machine, install and run: codeaf pair"
+	addMachineHeading = "+ Add another device"
+	addMachinePitch   = "Add another device — pick up your work anywhere, exactly where you left it."
+	addMachineStepRun = "1. On the new device, install and run: codeaf pair"
 	addMachineStepPut = "2. It shows a link. Paste it here:"
 	addMachineField   = "> "
 	addMachineShow    = addMachineKey + " how"

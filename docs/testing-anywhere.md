@@ -208,14 +208,14 @@ Use two terminals, one per machine, both with `CODEAF_SYNC_URL=$CODEAF_RELAY`. A
 already has your work, B is the new one. This is what each step should look like.
 
 1. **Home on A.** Run `codeaf`. If this machine never synced, the home screen shows a card,
-   "Add another machine", with the pitch "pick up your work anywhere".
+   "Add another device", with the pitch "pick up your work anywhere".
 2. **Pair B.** On B run `codeaf pair`. B prints a link ending `codeaf.agentfield.ai/p/<code>`
    (staging prints its own host), a "Check number", and "Waiting for approval".
 3. **Approve on A.** Open the card, choose to add a machine, and paste the link. A shows
-   "wants to join your fleet" with the device's name, its platform, how long ago it asked and
+   "wants to pair" with the device's name, its platform, how long ago it asked and
    the same Check number B shows. If the numbers differ, deny. Press `a` to approve.
 4. **Both sides confirm.** B prints "Paired - N workspaces available". A shows a news line,
-   "joined your fleet".
+   "is now paired".
 5. **Work on B.** On B open a chat in a folder, ask for a small change, and let it finish.
 6. **See B from A.** A's home shows a devices row with both machines online (filled dots).
    `/devices` lists both.

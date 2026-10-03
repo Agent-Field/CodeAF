@@ -32,7 +32,7 @@ func TestPairLinkOnTheStartPageShowsTheApproveScreenAndMakesNoChat(t *testing.T)
 	if lab.made != 0 {
 		t.Fatalf("the link made %d conversations", lab.made)
 	}
-	if got := plain(frame(a)); !strings.Contains(got, "wants to join your devices") {
+	if got := plain(frame(a)); !strings.Contains(got, "wants to pair") {
 		t.Fatalf("no approve screen on the frame:\n%s", got)
 	}
 }
