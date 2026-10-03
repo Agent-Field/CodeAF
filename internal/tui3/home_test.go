@@ -2708,7 +2708,7 @@ func TestTheDoorOpensWhenThisWindowStartsASecondConversation(t *testing.T) {
 	if !started {
 		t.Fatal("/new refused to open a second conversation")
 	}
-	runCmd(renewed)
+	unfold(t, a, renewed)
 	if a.file == mine {
 		t.Fatal("/new did not move the surface onto another conversation")
 	}

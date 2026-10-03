@@ -425,9 +425,11 @@ func TestTeamNewConversationJoinsTheShownTeam(t *testing.T) {
 	}
 	a.teamActivate(id)
 
-	if _, ok := a.renew(); !ok {
+	renewed, ok := a.renew()
+	if !ok {
 		t.Fatal("/new refused")
 	}
+	unfold(t, a, renewed)
 	fresh := a.frontTabKey()
 	if fresh == before || fresh == "" {
 		t.Fatalf("/new left %q in front", fresh)

@@ -564,21 +564,26 @@ func (a *app) placeTalkAbout(text string) (tea.Cmd, bool) {
 	}
 	a.leavePlace()
 	a.standDownFullscreen()
-	renewed, started := a.renew()
+	// THE SENTENCE GOES OUT AFTER THE SWAP (#1659): the door is off the loop,
+	// so the submit rides the fold — ahead of the swap it would land on the
+	// conversation still on screen. AND HOME'S PINS GO ONTO IT, exactly as
+	// they do from [app.homeOpenAtTarget]: the rule above home's box promised
+	// a model, a rung and a gate, and a conversation opened from home that
+	// ignored them would be the disagreement home's target was built to end.
+	send := func() tea.Cmd { return a.submit(text) }
+	if fromHome {
+		send = func() tea.Cmd {
+			return tea.Batch(a.applyTargetPins(), a.submit(text))
+		}
+	}
+	renewed, started := a.renewRefusingAfter(a.note, send)
 	if !started {
 		// The door failed after the place was stood down. The sentence is not
 		// sent anywhere — that is the point — and the false leaves it in the box
 		// it was typed into, which is where its owner will look for it.
 		return nil, false
 	}
-	// AND HOME'S PINS GO ONTO IT, exactly as they do from [app.homeOpenAtTarget]:
-	// the rule above home's box promised a model, a rung and a gate, and a
-	// conversation opened from home that ignored them would be the disagreement
-	// home's target was built to end.
-	if fromHome {
-		return tea.Batch(renewed, a.applyTargetPins(), a.submit(text)), true
-	}
-	return tea.Batch(renewed, a.submit(text)), true
+	return renewed, true
 }
 
 // homeDraftMotion gives the draft its horizontal arrows whenever it has any

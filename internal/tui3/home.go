@@ -3653,7 +3653,25 @@ func (a *app) homeStartWithProjectNow(text, place string) tea.Cmd {
 	// THIS WINDOW'S workspace and ignored it. The row under the cursor and the
 	// key disagreed about where a sentence went, which is exactly the drift the
 	// scope chip existed to end and could not, because nothing read it.
-	started, opened := a.homeOpenAtTarget()
+	// THE SEND RIDES THE FOLD (#1659). The door is off the loop now, so what
+	// to send is decided here and sent AFTER the swap — ahead of it, the
+	// sentence would land on the conversation still on screen. A full tray is
+	// a message (input.go's law about enter said at the other door onto the
+	// same send): an empty sentence with a picture on the tray is not an
+	// empty message, and the door that carries the pictures is the tray's own
+	// (attach.go's [app.submitImages]).
+	started, opened := a.homeOpenAtTarget(func() tea.Cmd {
+		if len(a.chips) > 0 {
+			return a.submitImages(text)
+		}
+		if strings.TrimSpace(text) == "" {
+			return nil
+		}
+		if _, bash := session.BashCommand(text); bash {
+			return a.submitBash(text)
+		}
+		return a.submit(text)
+	})
 	if !opened {
 		// A door that failed has already said so where the person is standing —
 		// [app.renew] into home's own line, [app.startBeside]'s refusal onto it.
@@ -3666,20 +3684,7 @@ func (a *app) homeStartWithProjectNow(text, place string) tea.Cmd {
 		}
 		return nil
 	}
-	// A FULL TRAY IS A MESSAGE, which is input.go's law about enter said at the
-	// other door onto the same send: an empty sentence with a picture on the tray
-	// is not an empty message, and the door that carries the pictures is the
-	// tray's own (attach.go's [app.submitImages]).
-	if len(a.chips) > 0 {
-		return tea.Batch(started, a.submitImages(text))
-	}
-	if strings.TrimSpace(text) == "" {
-		return started
-	}
-	if _, bash := session.BashCommand(text); bash {
-		return tea.Batch(started, a.submitBash(text))
-	}
-	return tea.Batch(started, a.submit(text))
+	return started
 }
 
 // homeOpenAtTarget is the ONE DOOR onto a conversation started from home: the
@@ -3697,14 +3702,14 @@ func (a *app) homeStartWithProjectNow(text, place string) tea.Cmd {
 // THE FOLDER PIN IS SPENT HERE AND THE MODEL PIN IS NOT (homedraft.go's owner
 // ruling). It is spent on the way OUT rather than on the way in, so a door that
 // refused leaves the pin a person set exactly where they set it.
-func (a *app) homeOpenAtTarget() (tea.Cmd, bool) {
-	return a.homeOpenAt(a.targetWhere())
+func (a *app) homeOpenAtTarget(settle func() tea.Cmd) (tea.Cmd, bool) {
+	return a.homeOpenAt(a.targetWhere(), settle)
 }
 
 // homeOpenAt opens the target captured while the draft is still visible.
 // Consuming a slash draft rebuilds Home's rows and can move its cursor to a
 // different project; that new selection must not redirect the submitted work.
-func (a *app) homeOpenAt(target string) (tea.Cmd, bool) {
+func (a *app) homeOpenAt(target string, settle func() tea.Cmd) (tea.Cmd, bool) {
 	// A draft with no conversation identity cannot be put in the keeper.
 	if !a.mainComposer().empty() && (a.agent == nil || a.convKey(a.file) == "") {
 		a.home.say(startDraftUnownedWord, "")
@@ -3722,15 +3727,28 @@ func (a *app) homeOpenAt(target string) (tea.Cmd, bool) {
 		a.putComposer(composerState{chips: carried})
 		return tea.Batch(cmd, a.applyTargetPins()), true
 	}
-	// Keep Home visible until creation succeeds, so a refusal keeps both drafts.
-	renewed, started := a.renewRefusing(func(word string) { a.home.say(word, "") })
+	// KEEP HOME VISIBLE UNTIL CREATION SUCCEEDS, so a refusal keeps both
+	// drafts. The door is off the loop now (#1659), so the closing steps ride
+	// the fold: home closes, the composer takes the tray, and the pins land
+	// after the attach ([app.applyTargetPins]'s own law) — the same order the
+	// synchronous road gave them, none of it inside the keystroke.
+	renewed, started := a.renewRefusingAfter(func(word string) { a.home.say(word, "") }, func() tea.Cmd {
+		a.closeHome()
+		// /new carries the old draft by design. Home starts its own message instead.
+		a.putComposer(composerState{chips: carried})
+		pins := a.applyTargetPins()
+		if settle == nil {
+			return pins
+		}
+		// THE CALLER'S OWN POST-SWAP STEP — the sentence, the dispatch — rides
+		// the fold after the swap and the composer, the order the synchronous
+		// road gave it.
+		return tea.Batch(pins, settle())
+	})
 	if !started {
 		return nil, false
 	}
-	a.closeHome()
-	// /new carries the old draft by design. Home starts its own message instead.
-	a.putComposer(composerState{chips: carried})
-	return tea.Batch(renewed, a.applyTargetPins()), true
+	return renewed, true
 }
 
 // applyTargetModel puts the pinned model onto the conversation that has just

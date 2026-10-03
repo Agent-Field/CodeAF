@@ -81,26 +81,14 @@ func (a *app) startDoor(workspace string) (func() (Conversation, error), bool) {
 }
 
 func (a *app) renewLater(say func(string), after func() tea.Cmd) tea.Cmd {
-	if a.shared {
-		cmd, ok := a.renewRefusing(say)
-		if ok && after != nil {
-			return tea.Batch(cmd, after())
-		}
-		return cmd
-	}
-	if !a.canStart() {
-		say(newUnavailableWord)
-		return nil
-	}
-	replacing := a.renewReplaces()
-	ask, whole := a.startDoor("")
-	return a.conversationLater(ask, say, func(conv Conversation) tea.Cmd {
-		cmd := a.finishRenew(conv, whole, replacing)
-		if after != nil {
-			return tea.Batch(cmd, after())
-		}
-		return cmd
-	})
+	// ONE ROAD FOR EVERY CONNECTION (#1659). The shared legacy connection used
+	// to take a synchronous branch here — the whole launch assembly inside the
+	// keystroke — and now it takes the road the rest of the doors took with
+	// #1662: the ask off the loop on the door line, the commit and `after` on
+	// it. [app.renewRefusingAfter] is that road; a refusal is said where the
+	// caller is looking, and `after` keeps its place after the swap.
+	cmd, _ := a.renewRefusingAfter(say, after)
+	return cmd
 }
 
 func (a *app) homeStartLater(text, place string) tea.Cmd {
