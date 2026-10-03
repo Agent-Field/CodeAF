@@ -85,7 +85,7 @@ const (
 	approveGone      = "that request has run out - ask the new device for a new link"
 	approveDenied    = "%s was turned away."
 	approveTimeout   = 8 * time.Second
-	joinedFleetWord  = "%s joined your fleet - your chats are now everywhere."
+	joinedFleetWord  = "%s joined your fleet. Your chats can now continue there."
 )
 
 // linkShape is what link pairing is typed as (contract section 2): a short

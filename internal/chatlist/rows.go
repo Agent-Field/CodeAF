@@ -39,7 +39,7 @@ type Row struct {
 
 // Quiet is the row of a chat whose live holder has gone: a lease that still
 // runs on a device that is no longer online is a chat that stopped, so it reads
-// as one that went off (`studio off`), not `running on studio`.
+// as one that went off (`studio offline`), not `running on studio`.
 func (r Row) Quiet() Row {
 	if r.Status == Running {
 		r.Status = Off

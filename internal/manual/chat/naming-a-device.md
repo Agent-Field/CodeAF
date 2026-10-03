@@ -2,7 +2,7 @@
 
 ## Why does it show my hostname — the host name is the default until a device is named, and where a name appears
 
-Every screen that names a device uses one name for it: the home rows (`running on spark`, `spark off`), `Continue where you left off on spark?`, the approve screen, `spark joined your fleet - your chats are now everywhere.`, `/devices`, and the line after a move, `Moved from spark in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
+Every screen that names a device uses one name for it: the home rows (`running on spark`, `spark offline`), `Continue spark's latest chat here?`, the approve screen, `spark joined your fleet. Your chats can now continue there.`, `/devices`, and the line after a move, `Moved from spark in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
 
 Because you never named this device, it kept the default. Name it and every other device shows the new name.
 
