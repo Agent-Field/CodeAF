@@ -9632,7 +9632,7 @@ func (a *Agent) nextNodeModel(node *TaskNode, ranOn string) (string, bool) {
 	if standing := node.standingModel(); standing != "" && !strings.EqualFold(standing, ranOn) {
 		return standing, true
 	}
-	options := a.fallbackModels(ranOn)
+	options := a.fallbackModelsAfter(ranOn, node.modelPicked())
 	if len(options) == 0 {
 		return "", false
 	}
