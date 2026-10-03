@@ -139,3 +139,19 @@ func TestTakeoverLineSpellsAgeInReadableUnits(t *testing.T) {
 		}
 	}
 }
+
+func TestTooManyNewNamesWhenTheDayFreesUp(t *testing.T) {
+	for wait, want := range map[time.Duration]string{
+		0:                            TooManyNew,
+		20 * time.Second:             "too many new identities from this network today — try again in about a minute",
+		time.Minute + time.Second:    "too many new identities from this network today — try again in about 2 minutes",
+		45 * time.Minute:             "too many new identities from this network today — try again in about 45 minutes",
+		time.Hour:                    "too many new identities from this network today — try again in about an hour",
+		time.Hour + time.Second:      "too many new identities from this network today — try again in about 2 hours",
+		2*time.Hour + 30*time.Minute: "too many new identities from this network today — try again in about 3 hours",
+	} {
+		if got := TooManyNewIn(wait); got != want {
+			t.Errorf("wait %v: got %q want %q", wait, got, want)
+		}
+	}
+}

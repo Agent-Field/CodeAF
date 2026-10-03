@@ -36,7 +36,7 @@ var refusals = []Refusal{
 	{Is: wireauth.ErrGone, Say: said(chatlist.ReplacedGone), Halts: true},
 	{Is: wireauth.ErrRotated, Say: said(chatlist.Replaced), Halts: true},
 	{Is: wireauth.ErrSkew, Say: said(chatlist.ClockOff), Flat: true},
-	{Is: wireauth.ErrTooManyIdentities, Say: said(chatlist.TooManyNew)},
+	{Is: wireauth.ErrTooManyIdentities, Say: tooManyLine},
 	{Is: wireauth.ErrRateLimited, Say: said(chatlist.SlowDown), Quiet: 3 * time.Minute},
 }
 
@@ -45,6 +45,9 @@ func said(line string) func(error) string { return func(error) string { return l
 
 // fullLine names the ceiling the relay told us, when it told us one.
 func fullLine(err error) string { return chatlist.RelayFull(blobstore.LimitOf(err)) }
+
+// tooManyLine says when the relay's day for this network frees up, when it told us.
+func tooManyLine(err error) string { return chatlist.TooManyNewIn(wireauth.After(err)) }
 
 // RefusalOf finds the row err is, and false for a failure that is not a
 // refusal (an unreachable relay, say), which is retried on the plain backoff

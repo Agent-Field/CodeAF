@@ -6,6 +6,7 @@ import { Refusal } from './verify.js';
 import { BadFrame } from './frame.js';
 import { RuleError } from './rules.js';
 import { Conflict, Damaged } from './store.js';
+import { networkOf } from './network.js';
 
 export class Wire extends Error {
   constructor(code, status, retryAfter, limitBytes) {
@@ -27,10 +28,12 @@ export const full = (limitBytes) => new Wire('full', 507, undefined, limitBytes)
 export const gone = () => new Wire('gone', 410);
 export const tooManyIdentities = (seconds) => new Wire('too_many_identities', 429, seconds);
 
-// The IP is the socket peer as Cloudflare reports it (CF-Connecting-IP). A request without one shares a single
-// "unknown" allowance, which is the strict way to fail.
+// The IP is the socket peer as Cloudflare reports it (CF-Connecting-IP), named by its network (see network.js), so every
+// per-caller limit counts an IPv6 caller by its /64. A request without one shares a single "unknown" allowance, which is
+// the strict way to fail.
 export function ipOf(request, env) {
-  return (env.TRUST_PROXY === '1' ? forwarded(request) : null) ?? request.headers.get('cf-connecting-ip') ?? 'unknown';
+  const address = (env.TRUST_PROXY === '1' ? forwarded(request) : null) ?? request.headers.get('cf-connecting-ip') ?? 'unknown';
+  return networkOf(address);
 }
 
 // With TRUST_PROXY set (a test rig that stands where a trusted proxy would), a caller may name its own
@@ -57,8 +60,10 @@ export const json = (value, status = 200) =>
 export const empty = () => new Response(null, { status: 204 });
 
 function refusal(w) {
-  const res = json({ err: w.code, ...(w.limitBytes && { limit_bytes: w.limitBytes }) }, w.status);
-  if (w.retryAfter) res.headers.set('retry-after', String(Math.ceil(w.retryAfter)));
+  // retry_after is the Retry-After header again, in the body, for a client that reads the body and not the headers.
+  const wait = w.retryAfter && Math.ceil(w.retryAfter);
+  const res = json({ err: w.code, ...(w.limitBytes && { limit_bytes: w.limitBytes }), ...(wait && { retry_after: wait }) }, w.status);
+  if (wait) res.headers.set('retry-after', String(wait));
   return res;
 }
 

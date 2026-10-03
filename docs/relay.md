@@ -54,7 +54,7 @@ relay by a pairing change sees `that relay is too old for pairing`.
 ## The hosted relay
 
 `relay/hosted/` is the same relay as a Cloudflare Worker with Durable Objects and R2, with
-per-identity limits (5 GiB, rate limits, 20 new identities per network a day). Its own
+per-identity limits (5 GiB, rate limits, a daily cap on new identities per network, set in `relay/hosted/src/limits.js`). Its own
 README says how to deploy it to an account. Nothing in this repository deploys it.
 
 codeaf's own deployment is called the fabric and is served at `https://codeaf.agentfield.ai/fabric`,

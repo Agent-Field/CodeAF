@@ -101,13 +101,14 @@ func TestARateLimitIsRetriedOnTheWaitTheRelayNamed(t *testing.T) {
 
 func TestTooManyIdentitiesIsToldAtOnceAndWaitsTheRelaysWord(t *testing.T) {
 	r := newRig(t)
-	err := wireauth.Wait(wireauth.ErrTooManyIdentities, http.Header{"Retry-After": {"3600"}})
+	err := wireauth.Wait(wireauth.ErrTooManyIdentities, http.Header{"Retry-After": {"10800"}})
 	b, told := refused(t, r, err)
 	if d := b.flush(context.Background()); d != time.Hour {
-		t.Fatalf("wait = %v, want the relay's hour", d)
+		t.Fatalf("wait = %v, want the hour a wait is capped at", d)
 	}
-	if len(*told) != 1 || (*told)[0] != chatlist.TooManyNew {
-		t.Fatalf("told %q, want the new-identities sentence", *told)
+	want := "too many new identities from this network today — try again in about 3 hours"
+	if len(*told) != 1 || (*told)[0] != want {
+		t.Fatalf("told %q, want %q: the relay's real wait, not the capped one", *told, want)
 	}
 }
 

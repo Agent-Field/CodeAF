@@ -25,6 +25,7 @@ const (
 	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
 	Removed        = "this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
+	tooManyNewIn   = "too many new identities from this network today — try again in about %s"
 	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
@@ -227,6 +228,35 @@ func RelayFull(limitBytes int64) string {
 	}
 	return fmt.Sprintf(relayFull, size)
 }
+
+// TooManyNewIn is said when the relay turned a network's new identity away and
+// named when its day frees up. It rounds the wait up, so a person who comes back
+// at the time it says is never turned away again; a relay that named no wait
+// gets the plain TooManyNew.
+func TooManyNewIn(wait time.Duration) string {
+	if wait <= 0 {
+		return TooManyNew
+	}
+	return fmt.Sprintf(tooManyNewIn, waitWords(wait))
+}
+
+// waitWords spells a wait in the unit a person plans by: a minute or less, whole
+// minutes below an hour (a wait that rounds to 60 of them is an hour), and whole hours after, each rounded up.
+func waitWords(wait time.Duration) string {
+	switch {
+	case wait <= time.Minute:
+		return "a minute"
+	case wait < time.Hour-time.Minute:
+		return fmt.Sprintf("%d minutes", ceilUnits(wait, time.Minute))
+	}
+	if hours := ceilUnits(wait, time.Hour); hours > 1 {
+		return fmt.Sprintf("%d hours", hours)
+	}
+	return "an hour"
+}
+
+// ceilUnits is wait in whole units of unit, rounded up.
+func ceilUnits(wait, unit time.Duration) int { return int((wait + unit - 1) / unit) }
 
 // bytesSize spells a byte count in the largest binary unit it reaches, without
 // trailing zeros: 5 GiB, 1.5 GiB, 512 MiB.
