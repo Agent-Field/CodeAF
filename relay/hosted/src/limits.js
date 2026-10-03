@@ -44,6 +44,8 @@ export const DEFAULTS = {
   pairWritePerMinute: 30,
   pairConcurrentPolls: 4,
   pairMaxBoxes: 2_000, // at 32 KiB each this is also the 64 MiB ceiling in all
+  // How long an ended mailbox's nameplate waits before it can be drawn again; null means pairTtlMs (see pair/plates.js).
+  plateQuarantineMs: null,
   // Link requests (docs/ux-pairing-contract.md 3.6), for a new device that has no identity yet. The
   // time to live is pairTtlMs, shared with the mailbox.
   linkCreatePerHour: 10,
@@ -57,7 +59,11 @@ export const DEFAULTS = {
 };
 
 /** limitsOf reads the table, with any number the deployment overrides in its CAF_LIMITS variable (JSON). */
-export const limitsOf = (env) => ({ ...DEFAULTS, ...JSON.parse(env.CAF_LIMITS ?? '{}') });
+export function limitsOf(env) {
+  const table = { ...DEFAULTS, ...JSON.parse(env.CAF_LIMITS ?? '{}') };
+  // A device may come back to its code until the code's life ends, so the default quarantine is one life.
+  return { ...table, plateQuarantineMs: table.plateQuarantineMs ?? table.pairTtlMs };
+}
 
 /**
  * RateLimit counts hits per key in fixed windows and answers how long a refused caller should

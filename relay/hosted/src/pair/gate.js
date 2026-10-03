@@ -6,40 +6,34 @@
 import { DurableObject } from 'cloudflare:workers';
 import { Counters } from '../counters.js';
 import { limitsOf } from '../limits.js';
-import { guarded } from '../wire.js';
-import { relayFull, slowDown } from './refusals.js';
+import { guarded, unwrap } from '../wire.js';
+import { newGeneration } from './generation.js';
+import { Plates } from './plates.js';
+import { slowDown } from './refusals.js';
 
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;
 const POLL_LEASE_MS = 30_000; // a poll lasts 25 s at most; a slot whose release was lost frees itself after this
-
-/** digitsFor is the smallest nameplate length, 2 to 4, that keeps the live boxes under a tenth of the space. */
-export function digitsFor(live) {
-  let k = 2;
-  while (k < 4 && live * 10 >= 10 ** k) k++;
-  return k;
-}
-
-const draw = (k) => crypto.getRandomValues(new Uint32Array(1))[0] % 10 ** k;
 
 export class PairGate extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.limits = limitsOf(env);
     this.sql = ctx.storage.sql;
-    this.sql.exec('CREATE TABLE IF NOT EXISTS plates (np TEXT PRIMARY KEY, expires INTEGER NOT NULL)');
+    this.plates = new Plates(this.sql, this.limits);
     this.counters = new Counters(this.sql);
     this.sql.exec('CREATE TABLE IF NOT EXISTS polls (token TEXT PRIMARY KEY, ip TEXT NOT NULL, expires INTEGER NOT NULL)');
   }
 
-  /** create allocates a nameplate for a new mailbox, opens it, and answers {nameplate, expires_in_ms}. */
+  /** create allocates a nameplate for a new mailbox, opens it as a new generation, and answers {nameplate, expires_in_ms, gen}. */
   create(ip, keyHash) {
     return guarded(async () => {
       const now = Date.now();
       this.#hit(`create:${ip}`, HOUR_MS, this.limits.pairCreatePerHour, now);
-      const nameplate = this.#allocate(now);
-      await this.env.MAILBOX.get(this.env.MAILBOX.idFromName(nameplate)).open(keyHash, now + this.limits.pairTtlMs);
-      return { nameplate, expires_in_ms: this.limits.pairTtlMs };
+      const nameplate = this.plates.allocate(now);
+      const gen = newGeneration();
+      unwrap(await this.env.MAILBOX.get(this.env.MAILBOX.idFromName(nameplate)).open(keyHash, now + this.limits.pairTtlMs, gen));
+      return { nameplate, expires_in_ms: this.limits.pairTtlMs, gen };
     });
   }
 
@@ -65,27 +59,14 @@ export class PairGate extends DurableObject {
     this.sql.exec('DELETE FROM polls WHERE token = ?', token);
   }
 
-  /** release frees a nameplate whose mailbox is gone. */
+  /** release ends a nameplate whose mailbox is gone; the plate stays quarantined before it is drawn again. */
   release(nameplate) {
-    this.sql.exec('DELETE FROM plates WHERE np = ?', nameplate);
+    this.plates.release(nameplate, Date.now());
   }
 
   // #hit counts one event for key in a fixed window and throws rate_limited past max.
   #hit(key, windowMs, max, now) {
     const { n, retryAfter } = this.counters.hit(key, windowMs, now);
     if (n > max) throw slowDown(retryAfter);
-  }
-
-  // #allocate reserves a free nameplate, or throws full when the relay holds all the mailboxes it will.
-  #allocate(now) {
-    this.sql.exec('DELETE FROM plates WHERE expires <= ?', now);
-    const { live } = this.sql.exec('SELECT COUNT(*) AS live FROM plates').one();
-    if (live >= this.limits.pairMaxBoxes) throw relayFull();
-    for (;;) {
-      const np = String(draw(digitsFor(live)));
-      if (this.sql.exec('SELECT 1 FROM plates WHERE np = ?', np).toArray().length) continue;
-      this.sql.exec('INSERT INTO plates VALUES (?,?)', np, now + this.limits.pairTtlMs);
-      return np;
-    }
   }
 }

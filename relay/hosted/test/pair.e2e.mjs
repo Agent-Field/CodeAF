@@ -11,11 +11,11 @@ const key = () => randomBytes(16).toString('base64url');
 let nextIp = 10;
 const freshIp = () => `10.9.0.${nextIp++}`;
 
-async function send(method, path, { ip = freshIp(), pairKey, body } = {}) {
-  const headers = { 'cf-connecting-ip': ip, ...(pairKey ? { 'codeaf-pair-key': pairKey } : {}) };
+async function send(method, path, { ip = freshIp(), pairKey, body, gen } = {}) {
+  const headers = { 'cf-connecting-ip': ip, ...(pairKey ? { 'codeaf-pair-key': pairKey } : {}), ...(gen ? { 'codeaf-pair-gen': gen } : {}) };
   const res = await fetch(BASE + path, { method, headers, body });
   const text = await res.text();
-  return { status: res.status, retry: res.headers.get('retry-after'), json: text.startsWith('{') ? JSON.parse(text) : null };
+  return { status: res.status, retry: res.headers.get('retry-after'), gen: res.headers.get('codeaf-pair-gen'), json: text.startsWith('{') ? JSON.parse(text) : null };
 }
 
 const limits = (await (await fetch(BASE + '/v1/pair/limits')).json());
@@ -25,7 +25,7 @@ async function box(ip = freshIp()) {
   const made = await send('POST', '/v1/pair', { ip, pairKey: a });
   assert.equal(made.status, 201, `create answered ${made.status}`);
   const np = made.json.nameplate;
-  return { np, a, ip, close: () => send('DELETE', `/v1/pair/${np}`, { pairKey: a }) };
+  return { np, a, ip, gen: made.gen, close: () => send('DELETE', `/v1/pair/${np}`, { pairKey: a }) };
 }
 
 const tests = {
@@ -132,6 +132,35 @@ const tests = {
     const boxes = await Promise.all([box(), box(), box()]);
     assert.equal(new Set(boxes.map((b) => b.np)).size, 3);
     await Promise.all(boxes.map((b) => b.close()));
+  },
+
+  async GenerationIsTold() {
+    const b = await box();
+    assert.match(b.gen, /^[0-9a-f]{32}$/, 'create tells the generation');
+    const posted = await send('POST', `/v1/pair/${b.np}/a`, { pairKey: b.a, body: 'x' });
+    const polled = await send('GET', `/v1/pair/${b.np}/a?after=1`);
+    assert.deepEqual([posted.gen, polled.status, polled.gen], [b.gen, 204, b.gen], 'a joining device learns it from any answer');
+    assert.equal((await send('GET', `/v1/pair/${b.np}/a`)).json.msgs.length, 1);
+    await b.close();
+  },
+
+  async GenerationFences() {
+    const b = await box();
+    const other = '0'.repeat(32);
+    for (const [method, path, extra] of [
+      ['GET', `/v1/pair/${b.np}/a?after=0`, {}],
+      ['POST', `/v1/pair/${b.np}/a`, { pairKey: b.a, body: 'x' }],
+      ['DELETE', `/v1/pair/${b.np}`, { pairKey: b.a }],
+    ]) {
+      for (const gen of [other, 'short', '!']) {
+        const r = await send(method, path, { ...extra, gen });
+        assert.deepEqual([r.status, r.json?.err], [404, 'gone'], `${method} with generation ${gen}`);
+      }
+    }
+    assert.equal((await send('GET', `/v1/pair/${b.np}/a?after=0`, { gen: b.gen })).status, 204, 'the right generation is let in');
+    assert.equal((await send('POST', `/v1/pair/${b.np}/a`, { pairKey: b.a, body: 'x', gen: b.gen })).status, 201);
+    assert.equal((await send('GET', `/v1/pair/${b.np}/a?after=0`)).status, 200, 'a device with none is let in');
+    assert.equal((await b.close()).status, 204);
   },
 
   async CreateRateLimited() {
