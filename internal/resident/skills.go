@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
