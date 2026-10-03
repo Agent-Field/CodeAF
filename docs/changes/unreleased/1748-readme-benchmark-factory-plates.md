@@ -15,3 +15,10 @@ as about $0.40, and the text uses approximate multipliers rather than deriving
 precise ratios from rounded artwork costs. The one-seed and sampling-setting
 limits remain explicit. The raw table, CSV and image files are unchanged by this
 hygiene follow-up.
+
+The wide illustration has eight unlabeled worker tiles; the square has six
+numbered cards and conceptual `/task --parallel` mockup text, not validated
+runnable syntax. Campaign month labels and the rounded ad/social cost headline
+are not benchmark provenance and are not present in the two PR factory PNGs.
+The README and PR body distinguish those channel creatives from embedded art
+and cite the September 11–12 benchmark dates and CSV-based ratios.

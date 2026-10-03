@@ -167,12 +167,26 @@ The factory plates label the winning bar with the product name, but the measured
 These figures do not establish swe-pro's performance. The image labels remain
 unchanged; this text and the alt text clarify their scope.
 
+The factory illustrations are conceptual UI: the wide plate shows eight
+unlabeled worker tiles, while the square mobile plate shows six numbered cards.
+The square's `/task --parallel` is invented orchestration syntax in a conceptual
+mockup, not a supported orchestration flag: the parser treats `--parallel` as
+brief text. The manual documents `/task --best` and `/task --cheap`, and
+concurrency via `task.parallel`, not that slash-command flag.
+
+The benchmark ran on September 11–12, 2026. A "SEPTEMBER 2026" campaign label on
+separate channel creatives denotes the campaign month, not run provenance.
+Those ad/social creatives are not the PNGs embedded here: neither README factory
+plate displays that date or the channel headline "2–3.4x cost". That headline is
+a rounded campaign comparison, not mini-swe-agent's exact 1.93x cost ratio.
+
 Cost comparisons come from the recorded spend and solved counts in
 [`arms.csv`](docs/benchmarks/deepswe/arms.csv), not from dividing the rounded dollar
 labels in the artwork. The documented senior-dev baseline is 39.9¢ per solved
-issue, displayed as about $0.40. Relative costs are approximately 1.9x for
-mini-swe-agent, 2.1x for codex and 3.4x for claude-code; the artwork's two-decimal
-multipliers are rounded display values, not additional measurement precision.
+issue, displayed as about $0.40. Ratios derived from the recorded spend per solve,
+relative to senior-dev's spend per solve, round to 1.93x for mini-swe-agent,
+2.08x for codex and 3.40x for claude-code. These are approximately 1.9x, 2.1x
+and 3.4x; they are not calculated from the rounded dollar labels in the plates.
 
 <img src="assets/readme/benchmark-deepswe.webp" alt="DeepSWE comparison: senior-dev, codeaf's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Approximate cost-per-solve multiples relative to senior-dev: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5-4.8x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
 
