@@ -1,9 +1,11 @@
 package vaultsync
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -100,26 +102,57 @@ func (f Files) slot(rel string) Carried {
 // one text, so the vault's whole-slot rules keep the two together.
 type fileMedium struct{ root, path string }
 
+func (m fileMedium) relative() (string, error) {
+	rel, err := filepath.Rel(m.root, m.path)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsLocal(rel) || rel == "." {
+		return "", ErrDamaged
+	}
+	return rel, nil
+}
+
 func (m fileMedium) Read() (string, time.Time, error) {
-	info, err := os.Lstat(m.path)
+	rel, err := m.relative()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	root, err := os.OpenRoot(m.root)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	defer root.Close()
+	// Root resolves symlinks without escaping the directory, including when a
+	// parent is replaced concurrently. Inspect and read the same opened file.
+	f, err := root.Open(rel)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	if !info.Mode().IsRegular() {
 		return "", time.Time{}, ErrDamaged
 	}
-	raw, err := os.ReadFile(m.path)
+	raw, err := io.ReadAll(f)
 	return encodeFile(info.Mode().Perm(), raw), info.ModTime(), err
 }
 
 func (m fileMedium) Realized(content string) string { return content }
 
 func (m fileMedium) Clear() error {
-	return keepingFolderTimes(m.root, m.path, func() error { return ignoreMissing(os.Remove(m.path)) })
+	parent, name, close, err := m.parent(false)
+	if err != nil {
+		return ignoreMissing(err)
+	}
+	defer close()
+	return ignoreMissing(parent.Remove(name))
 }
 
-// Write puts the file back with its mode, and leaves a file that already is that
-// alone so an unchanged file keeps its save time.
+// Write restores the bytes and mode without changing an identical file save time.
 func (m fileMedium) Write(content string) error {
 	mode, data, err := decodeFile(content)
 	if err != nil {
@@ -128,45 +161,97 @@ func (m fileMedium) Write(content string) error {
 	if have, _, err := m.Read(); err == nil && have == content {
 		return nil
 	}
-	return keepingFolderTimes(m.root, m.path, func() error {
-		if err := os.MkdirAll(filepath.Dir(m.path), 0o755); err != nil {
-			return err
-		}
-		return writeAtomic(m.path, data, mode)
-	})
+	parent, name, close, err := m.parent(true)
+	if err != nil {
+		return err
+	}
+	defer close()
+
+	// All mutations use the pinned parent directory, not a checked path that
+	// could be swapped for an external symlink between validation and use.
+	tmp := ".vaultsync-" + rand.Text()
+	f, err := parent.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer parent.Remove(tmp)
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Chmod(mode); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return parent.Rename(tmp, name)
 }
 
-// keepingFolderTimes runs change, which adds or removes the withheld file at
-// path, and gives every folder between root and the file the save time it had
-// before. A folder's time is part of what a seal records, so a change that
-// moved it would read as an edit of the tree at the next takeover, yet putting
-// a withheld file back, or taking it away, is the vault's doing and not the
-// person's. Folders that change made are new and keep the time they got.
-func keepingFolderTimes(root, path string, change func() error) error {
-	before := map[string]os.FileInfo{}
-	for dir := filepath.Dir(path); within(root, dir); dir = filepath.Dir(dir) {
-		if info, err := os.Stat(dir); err == nil {
-			before[dir] = info
+// parent opens each directory relative to an already-pinned directory handle.
+// os.Root enforces confinement during resolution, not via a racy lstat check.
+// Retaining the handles also restores seal-visible directory times without
+// traversing a path that an attacker may have replaced since the write.
+func (m fileMedium) parent(create bool) (*os.Root, string, func(), error) {
+	rel, err := m.relative()
+	if err != nil {
+		return nil, "", nil, err
+	}
+	root, err := os.OpenRoot(m.root)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	type folder struct {
+		root  *os.Root
+		at    time.Time
+		saved bool
+	}
+	folders := []folder{}
+	remember := func(r *os.Root, saved bool) {
+		info, err := r.Stat(".")
+		entry := folder{root: r, saved: saved && err == nil}
+		if err == nil {
+			entry.at = info.ModTime()
 		}
-		if dir == root {
-			break
+		folders = append(folders, entry)
+	}
+	remember(root, true)
+	close := func() {
+		for i := len(folders) - 1; i >= 0; i-- {
+			entry := folders[i]
+			// "." names the pinned directory itself: no symlink target can change.
+			if entry.saved {
+				_ = entry.root.Chtimes(".", entry.at, entry.at)
+			}
+			_ = entry.root.Close()
 		}
 	}
-	err := change()
-	for dir, info := range before {
-		_ = os.Chtimes(dir, info.ModTime(), info.ModTime())
+	current := root
+	dir := filepath.Dir(rel)
+	if dir != "." {
+		for _, name := range strings.Split(dir, string(filepath.Separator)) {
+			next, err := current.OpenRoot(name)
+			existed := true
+			if create && errors.Is(err, os.ErrNotExist) {
+				err = current.Mkdir(name, 0o755)
+				if err == nil || errors.Is(err, os.ErrExist) {
+					existed = err != nil
+					next, err = current.OpenRoot(name)
+				}
+			}
+			if err != nil {
+				close()
+				return nil, "", nil, err
+			}
+			remember(next, existed)
+			current = next
+		}
 	}
-	return err
+	return current, filepath.Base(rel), close, nil
 }
 
-// within says whether dir is root or a folder below it.
-func within(root, dir string) bool {
-	rel, err := filepath.Rel(root, dir)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-// encodeFile is "<octal mode>:<base64 bytes>": text, so a binary key survives
-// the vault's JSON.
+// encodeFile keeps the mode and binary bytes together in one vault slot.
 func encodeFile(mode fs.FileMode, data []byte) string {
 	return fmt.Sprintf("%04o:%s", mode, base64.StdEncoding.EncodeToString(data))
 }
