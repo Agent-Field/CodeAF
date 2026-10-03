@@ -244,6 +244,27 @@ func TestIgnoredFilesAndSecretsStayOut(t *testing.T) {
 	}
 }
 
+// A job log the harness writes inside a task copy is machinery, not the
+// person's file: carrying it would arrive on the other computer as a change the
+// person never made.
+func TestTaskMachineryInsideACopyDoesNotTravel(t *testing.T) {
+	a := newMachine(t)
+	tree := a.task("1")
+	for _, name := range cell.TaskDroppings() {
+		write(t, filepath.Join(tree, name, "jobs", "1.log"), "building\n")
+	}
+	write(t, filepath.Join(tree, "mine.txt"), "mine\n")
+	b, _ := a.takeOn()
+	for _, name := range cell.TaskDroppings() {
+		if _, ok := b.read("1", name+"/jobs/1.log"); ok {
+			t.Errorf("%s/jobs/1.log travelled as the person's file", name)
+		}
+	}
+	if got, _ := b.read("1", "mine.txt"); got != "mine\n" {
+		t.Errorf("mine.txt = %q, a file the person made must still travel", got)
+	}
+}
+
 func TestRestoreForgetsRegistrationsForPathsNotHere(t *testing.T) {
 	a := newMachine(t)
 	a.task("1")
