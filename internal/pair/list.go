@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"strings"
 	"time"
 )
@@ -42,22 +43,20 @@ func DevicesList(name string, paired []Paired, keeper Keeper, now time.Time) str
 
 	widest := 0
 	for _, one := range paired {
-		if len(one.Label) > widest {
-			widest = len(one.Label)
-		}
+		widest = max(widest, width(one.Label))
 	}
 	out.WriteString("devices that can use this machine\n\n")
 	for _, one := range paired {
 		// The emptiness law, one row at a time: a device that has never
 		// connected shows nothing where its last connection would be, rather
 		// than a zero time or the word "never".
-		line := fmt.Sprintf("  %-*s  paired %s", widest, one.Label, since(one.Since, now))
+		line := fmt.Sprintf("  %s  paired %s", padded(one.Label, widest), since(one.Since, now))
 		if seen := since(one.Seen, now); seen != "" {
 			line += "  ·  last here " + seen
 		}
 		out.WriteString(line + "\n")
 	}
-	out.WriteString("\nstop one with `codeaf devices revoke <name>` — it will need a new code to come back.\n")
+	out.WriteString("\nremove one with `codeaf devices revoke <name>` — it will need a new code to come back.\n")
 	return out.String()
 }
 
@@ -73,46 +72,51 @@ func MachinesList(known []Known, now time.Time) string {
 	out.WriteString("\nmachines this device can reach\n\n")
 	widest := 0
 	for _, one := range known {
-		if len(one.Name) > widest {
-			widest = len(one.Name)
-		}
+		widest = max(widest, width(one.Name))
 	}
 	for _, one := range known {
-		fmt.Fprintf(&out, "  %-*s  paired %s\n", widest, one.Name, since(one.Since, now))
+		fmt.Fprintf(&out, "  %s  paired %s\n", padded(one.Name, widest), since(one.Since, now))
 	}
 	out.WriteString("\nopen one with `codeaf chat --at <name>`.\n")
 	return out.String()
 }
 
-// RevokedLine is what a person reads when a device has been stopped.
+// width is how many columns a name takes, so a name with wide or accented
+// letters still lines up with the rest of its column.
+func width(s string) int { return ansi.StringWidth(s) }
+
+// padded is s followed by the spaces that make it w columns wide.
+func padded(s string, w int) string { return s + strings.Repeat(" ", max(0, w-width(s))) }
+
+// RevokedLine is what a person reads when a device has been removed.
 func RevokedLine(label string) string {
-	return label + " has been stopped — it can no longer open a conversation here, and it will need a new pairing code to come back."
+	return label + " was removed — it can no longer open a chat here, and it needs a new pairing code to come back."
 }
 
 // NoDevices is the whole answer of `codeaf devices` when nothing of either kind
 // is paired: one sentence, and the two ways to change that.
-const NoDevices = "no devices are paired yet — run `codeaf pair` to share your chats with another computer, or `codeaf serve` to let a device use this machine."
+const NoDevices = "nothing is paired yet — run `codeaf pair` to add another device, or `codeaf serve` to let a device use this machine."
 
-// ChatsDevice is one computer that holds the person's chats, as a row.
+// ChatsDevice is one device that holds the person's chats, as a row.
 type ChatsDevice struct {
 	Name    string
 	This    bool // the computer the command is typed on
-	Stopped bool // revoked: the relay no longer answers it
+	Stopped bool // removed: the relay no longer answers it
 }
 
 // ChatsDevicesList is the table of computers that hold the person's chats. Its
 // caller has already checked that rows is not empty.
 func ChatsDevicesList(rows []ChatsDevice) string {
 	var out strings.Builder
-	out.WriteString("devices with your chats\n\n")
+	out.WriteString("your devices\n\n")
 	widest := 0
 	for _, one := range rows {
-		widest = max(widest, len(one.Name))
+		widest = max(widest, width(one.Name))
 	}
 	for _, one := range rows {
-		fmt.Fprintf(&out, "  %-*s%s\n", widest, one.Name, chatsMarks(one))
+		fmt.Fprintf(&out, "  %s%s\n", padded(one.Name, widest), chatsMarks(one))
 	}
-	out.WriteString("\nstop one with `codeaf devices revoke <name>` — that cuts it off from your chats, and cannot undo what it already holds.\n")
+	out.WriteString("\nremove one with `codeaf devices revoke <name>` — it stops syncing your chats, but keeps what it already holds.\n")
 	return out.String()
 }
 
@@ -121,10 +125,10 @@ func ChatsDevicesList(rows []ChatsDevice) string {
 func chatsMarks(one ChatsDevice) string {
 	var marks []string
 	if one.This {
-		marks = append(marks, "this computer")
+		marks = append(marks, "this device")
 	}
 	if one.Stopped {
-		marks = append(marks, "stopped")
+		marks = append(marks, "removed")
 	}
 	if len(marks) == 0 {
 		return ""
@@ -133,10 +137,9 @@ func chatsMarks(one ChatsDevice) string {
 }
 
 // ChatsRevokedLine is what a person reads when a computer that holds their
-// chats has been stopped. It says what stopping cannot do, because the person
-// who has just stopped a stolen computer is the one who most needs to know.
+// chats has been removed. It says what removing cannot do, because the person
+// who has just removed a stolen computer is the one who most needs to know.
 func ChatsRevokedLine(name string) string {
-	return name + " has been stopped — it can no longer sync your chats. " +
-		"it cannot undo what that computer already holds: it has your chats and keys, so if it was stolen, treat your chats as exposed. " +
-		"to lock it out for good, run `codeaf identity rotate`: it gives all your other computers a new identity."
+	return name + " was removed — it can no longer sync your chats.\n" +
+		"It cannot undo what that device already holds: your chats and keys. If it was lost or stolen, treat your chats as exposed and run `codeaf identity rotate` to lock it out for good."
 }

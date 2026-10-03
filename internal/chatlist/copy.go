@@ -23,17 +23,17 @@ const (
 	// cellsync table lists them). None names a code or a number of requests:
 	// each says what is true for the person and what, if anything, to do.
 	relayFull      = "your sync space is full%s, so new turns stay on this computer; free space there and reopen this chat"
-	Removed        = "this computer was stopped by another of your computers, so this chat stays here only; run `codeaf pair` to bring it back"
+	Removed        = "this device was removed by another of your devices, so this chat stays here only — run `codeaf pair` to bring it back"
 	SlowDown       = "sync is asking this computer to slow down; new turns stay here and go up as soon as it allows"
 	TooManyNew     = "this network has started too many new identities today; sync begins when it allows more"
 	ReplacedGone   = "your identity was replaced and sync has deleted the old one; pair this computer again (/pair on a computer that has the new one)"
 	Replaced       = "your chats are moving to a new identity; when that is done, pair this computer again (/pair on the computer that moved them)"
 	runningOn      = "running on %s"
-	deviceOff      = "%s off"
+	deviceOff      = "%s offline"
 	branchLine     = "%s from %s: merge / discard"
 	branchKeep     = "%s from %s: discard"
 	branchShort    = "%s · %s"
-	takeoverLine   = "last durable turn %ds ago"
+	takeoverLine   = "last saved turn %s ago"
 	takeoverMore   = "; up to %s may still be on %s"
 	keptEdits      = "your unsaved edits here were kept as %s from %s"
 	supersededLine = "%s continued this chat; this window now only shows it"
@@ -169,11 +169,25 @@ func BranchShort(r Row) string { return fmt.Sprintf(branchShort, turns(r.OrphanT
 // on the other machine is left out when none are. A chat that is running now
 // says where first, because continuing it here stops it there.
 func TakeoverLine(r Row) string {
-	line := fmt.Sprintf(takeoverLine, int64(r.DurableAgo/time.Second))
+	line := fmt.Sprintf(takeoverLine, agoWord(r.DurableAgo))
 	if r.Pending > 0 {
 		line += fmt.Sprintf(takeoverMore, turns(r.Pending), r.Device)
 	}
 	return holderLead(r) + line
+}
+
+// agoWord spells an age in its largest whole unit, so an hour reads `1h` and
+// not `3600s`: seconds under a minute, then minutes, hours and days.
+func agoWord(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int64(d/time.Second))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int64(d/time.Minute))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int64(d/time.Hour))
+	}
+	return fmt.Sprintf("%dd", int64(d/(24*time.Hour)))
 }
 
 // holderLead names the device a live chat runs on, and is empty for a chat

@@ -120,7 +120,7 @@ func listDevices(kinds []deviceKind, now time.Time) error {
 // `codeaf devices revoke --help`, and named in the one usage table.
 func stopDevice(kinds []deviceKind, args []string) error {
 	flags := commandFlags("devices revoke")
-	all := flags.Bool("all", false, "stop every device of that name that can use this machine, not just the one")
+	all := flags.Bool("all", false, "remove every device of that name that can use this machine, not just the one")
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func kindOf(kinds []deviceKind, name string) (deviceKind, error) {
 	case len(hits) == 1:
 		return hits[0], nil
 	case len(hits) > 1:
-		return nil, fmt.Errorf("more than one device is called %q, so that name cannot pick one — `codeaf devices` lists them", name)
+		return nil, fmt.Errorf("more than one device is called %q, so the name cannot pick one — `codeaf devices` lists them", name)
 	case failed != nil:
 		return nil, failed
 	}
@@ -207,8 +207,7 @@ func (b bookKind) table(now time.Time) (string, error) {
 }
 
 // letIn is the table of devices let in, or "" when there are none. The machine's
-// own name and where its key is kept are only worth saying when there is a
-// device they matter to.
+// own name is only worth saying when there is a device it matters to.
 func (bookKind) letIn(paired []pair.Paired, now time.Time) (string, error) {
 	if len(paired) == 0 {
 		return "", nil
@@ -243,7 +242,7 @@ func (b bookKind) stopAll(name string) (string, error) {
 	case count == 1:
 		return pair.RevokedLine(name), nil
 	}
-	return fmt.Sprintf("%d devices called %s have been stopped — each needs a new pairing code to come back.", count, name), nil
+	return fmt.Sprintf("%d devices called %s were removed — each needs a new pairing code to come back.", count, name), nil
 }
 
 // countCalled counts the items whose label is name, ignoring case as the book does.
@@ -310,18 +309,30 @@ func (c chatsKind) rows() ([]chatsRow, error) {
 			id:          id,
 		})
 	}
-	slices.SortFunc(rows, func(a, b chatsRow) int { return cmp.Or(cmp.Compare(a.Name, b.Name), cmp.Compare(a.id, b.id)) })
+	// This computer first, removed ones last, then by name: the order the chat's list uses.
+	slices.SortFunc(rows, func(a, b chatsRow) int {
+		return cmp.Or(cmp.Compare(rank(a.Stopped), rank(b.Stopped)), -cmp.Compare(rank(a.This), rank(b.This)), cmp.Compare(a.Name, b.Name), cmp.Compare(a.id, b.id))
+	})
 	return rows, nil
+}
+
+// rank is a bool as the number a sort can compare.
+func rank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 func (c chatsKind) table(time.Time) (string, error) {
 	rows, err := c.rows()
 	if err != nil {
 		// The other kind is still worth showing when the relay is not answering.
-		fmt.Fprintln(os.Stderr, "the devices with your chats cannot be listed now:", err)
+		fmt.Fprintln(os.Stderr, "your devices cannot be listed now:", err)
 		return "", nil
 	}
-	if len(rows) == 0 {
+	// A list of only this computer says nothing a person did not know.
+	if len(rows) == 0 || (len(rows) == 1 && rows[0].This) {
 		return "", nil
 	}
 	shown := make([]pair.ChatsDevice, len(rows))
@@ -347,18 +358,18 @@ func (c chatsKind) stop(name string) (string, error) {
 	case err != nil:
 		return "", err
 	case len(rows) > 1:
-		return "", fmt.Errorf("more than one of your computers is called %q, so that name cannot pick one — `codeaf devices` lists them", name)
+		return "", fmt.Errorf("more than one of your devices is called %q, so the name cannot pick one — `codeaf devices` lists them", name)
 	case len(rows) == 0:
 		return "", unknownDevice(name)
 	case rows[0].Stopped:
-		return rows[0].Name + " is already stopped.", nil
+		return rows[0].Name + " is already removed.", nil
 	}
 	return c.revoke(rows[0])
 }
 
 func (c chatsKind) revoke(row chatsRow) (string, error) {
 	if row.This {
-		return "", errors.New("that is this computer — stop it from another of your computers, so it is not the one cutting itself off")
+		return "", errors.New("that is this device — remove it from another of your devices instead")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), listRequestWithin)
 	defer cancel()
@@ -372,7 +383,7 @@ func (c chatsKind) revoke(row chatsRow) (string, error) {
 func (c chatsKind) explain(err error) error {
 	switch {
 	case errors.Is(err, directory.ErrRevoked):
-		return errors.New("this computer was stopped by another of your computers, so it can no longer reach your chats — run `codeaf pair` to bring it back")
+		return errors.New("this device was removed by another of your devices, so it can no longer reach your chats — run `codeaf pair` to bring it back")
 	case errors.Is(err, wireauth.ErrSkew):
 		return errors.New(chatlist.ClockOff)
 	case errors.Is(err, directory.ErrUnreachable):

@@ -64,7 +64,7 @@ func TestHomeLiveSource(t *testing.T) {
 
 	clock.Advance(directory.LeaseTTL + 1)
 	drain(t, a, a.askMachines())
-	if text := homeText(a); !strings.Contains(text, "studio off") || strings.Contains(text, "running on studio") {
+	if text := homeText(a); !strings.Contains(text, "studio offline") || strings.Contains(text, "running on studio") {
 		t.Fatalf("the chat went quiet and home did not follow:\n%s", text)
 	}
 
@@ -80,7 +80,7 @@ func TestHomeLiveSource(t *testing.T) {
 	live.down = true
 	drain(t, a, a.askMachines())
 	text := homeText(a)
-	if !strings.Contains(text, chatlist.Unreachable) || !strings.Contains(text, "studio off") {
+	if !strings.Contains(text, chatlist.Unreachable) || !strings.Contains(text, "studio offline") {
 		t.Fatalf("with the directory out of reach the last listing must stay, under the sentence:\n%s", text)
 	}
 
@@ -90,7 +90,7 @@ func TestHomeLiveSource(t *testing.T) {
 	}
 	drain(t, a, a.askMachines())
 	text = homeText(a)
-	if strings.Contains(text, chatlist.Unreachable) || strings.Contains(text, "studio off") {
+	if strings.Contains(text, chatlist.Unreachable) || strings.Contains(text, "studio offline") {
 		t.Fatalf("the chat is held here now and the sentences must go:\n%s", text)
 	}
 }

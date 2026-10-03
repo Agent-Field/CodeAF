@@ -22,7 +22,7 @@ func TestEverySentenceOfTheDeviceScreensIsOnItsPage(t *testing.T) {
 			addMachineHeading, addMachinePitch, addMachineStepRun, addMachineStepPut, addMachineShow,
 			approveAsk, fmt.Sprintf(approveCheckWord, "4821"), approveKeys, approveGone,
 			fmt.Sprintf(approveDenied, "laptop"), fmt.Sprintf(joinedFleetWord, "laptop"),
-			devicesKeys, devicesNone, fmt.Sprintf(devicesRevoked, "dumb"), "seen 3h ago",
+			strings.Join([]string{devicesMoveKey, devicesNameKey, devicesGoneKey, devicesCloseKey}, " · "), devicesNone, fmt.Sprintf(devicesRevoked, "dumb"), "seen 3h ago", "offline", approveWorking, approveDeclining, approveSlow,
 			deviceBring, deviceNothing, devicePickAsk, devicePickLeav,
 			chatlist.Device{Name: "dumb"}.Mark(false), chatlist.Removed,
 		},

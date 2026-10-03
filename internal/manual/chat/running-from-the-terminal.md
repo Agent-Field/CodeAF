@@ -263,7 +263,7 @@ key the first time the identity is made on that machine.
 ## List your chats on every machine — codeaf cell list --all, and what its lines mean
 
 **`codeaf cell list --all`** prints every chat you have on any of your machines, one line
-each: id, title, device, where it runs (`running on <device>`, `<device> off`,
+each: id, title, device, where it runs (`running on <device>`, `<device> offline`,
 `<K> turns from <device>: discard`, or `-` for one held here or let go), and how
 long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
 `--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
@@ -302,7 +302,7 @@ show your chats on the other machines once both machines share an identity and t
 With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
 for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
 other machine can pick it up at once. If this machine sleeps or loses its connection, the hold runs
-out after about ninety seconds and the chat's row on your other machines then says `<device> off`.
+out after about ninety seconds and the chat's row on your other machines then says `<device> offline`.
 You do not have to wait for that: press enter on a chat that says `running on <device>` on another
 machine and continue it there, and it is taken at once (see "Continue a chat here that another
 machine left" in home).

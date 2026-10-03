@@ -31,7 +31,7 @@ The code is good for 10 minutes. It works once.
 `/pair` also answers to `/sync`, `/link` and `/laptop`. Type `/pair` with nothing after it to show a code. Type `/pair <code>` to use one. `codeaf pair --code` shows a code in a terminal; `codeaf pair` with nothing after it asks to join by link instead. `codeaf pair <code>` uses one.
 
 ```
-usage: codeaf pair [<code>] [--via url] [--replace] [--name <name>]
+usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code
 ```
 
 Press ctrl+c in the terminal to take a shown code back. In the chat, Esc stops it.
@@ -75,7 +75,7 @@ paired: laptop
 and the other computer says:
 
 ```
-paired. this computer now has your chats.
+Paired. This device now has your chats.
 ```
 
 The code is now dead. It cannot pair a third computer.
@@ -189,18 +189,18 @@ There is no phone app in this stage. You cannot pair a phone, and there is no pa
 `codeaf devices` lists every device linked to this computer, in up to two groups. A group with nothing in it does not show. With nothing of either kind it says:
 
 ```
-no devices are paired yet — run `codeaf pair` to share your chats with another computer, or `codeaf serve` to let a device use this machine.
+nothing is paired yet — run `codeaf pair` to add another device, or `codeaf serve` to let a device use this machine.
 ```
 
 The group of computers you paired with `/pair` has this heading:
 
 ```
-devices with your chats
+your devices
 
-  laptop  this computer
+  laptop   this device
   desktop
 
-stop one with `codeaf devices revoke <name>` — that cuts it off from your chats on the relay, and cannot undo what it already holds.
+remove one with `codeaf devices revoke <name>` — it stops syncing your chats, but keeps what it already holds.
 ```
 
 The group of computers you let in with `codeaf serve` has this heading, and its own list under it:
@@ -209,13 +209,14 @@ The group of computers you let in with `codeaf serve` has this heading, and its 
 devices that can use this machine
 ```
 
-To stop one, run `codeaf devices revoke <name>` with the name from the list. It works on both groups. When you stop a computer that holds your chats, it says:
+To remove one, run `codeaf devices revoke <name>` with the name from the list. It works on both groups. When you remove a device that holds your chats, it says:
 
 ```
-desktop has been stopped — it can no longer sync your chats through the relay. it cannot undo what that computer already holds: it has your chats and keys, so if it was stolen, treat your chats as exposed.
+desktop was removed — it can no longer sync your chats.
+It cannot undo what that device already holds: your chats and keys. If it was lost or stolen, treat your chats as exposed and run `codeaf identity rotate` to lock it out for good.
 ```
 
-You cannot stop the computer you are typing on. It says `that is this computer — stop it from another of your computers, so it is not the one cutting itself off`.
+You cannot remove the device you are typing on. It says `that is this device — remove it from another of your devices instead`. A device that is already removed says `desktop is already removed.` With only this device paired, the list is not shown and the sentence above is.
 
 **Revoking has a limit, and you must know it.** Revoking cuts a device off from the relay. The relay stops serving it. Revoking does not undo what the device already holds. That device has your whole identity. It keeps every secret it already has.
 
@@ -236,7 +237,7 @@ Keep the file and the passphrase safe. Anybody who has both has your chats.
 
 ## Is my code sent anywhere before I pair — quiet first launch
 
-No. The first launch makes your identity on this machine and does nothing on the network: no request, no connection and no device record reaches the relay. That state is **quiet**. It ends when you pair another machine (`/pair`, `codeaf pair` or `codeaf pair approve`), open the `+ Add another machine` card with `alt+d`, or already belong to a fleet of more than one. Until then your chats stay here, and home shows no devices row.
+No. The first launch makes your identity on this machine and does nothing on the network: no request, no connection and no device record reaches the relay. That state is **quiet**. It ends when you pair another device (`/pair`, `codeaf pair` or `codeaf pair approve`), open the `+ Add another device` card with `alt+d`, or already have more than one device. Until then your chats stay here, and home shows no devices row.
 
 If something reaches for the relay while quiet, it gets the word `sync is waiting until another machine is added`. That is not a fault.
 
@@ -305,7 +306,7 @@ Other things the relay can say:
 The relay does not answer. The name is the host you used:
 
 ```
-cannot reach relay.example.com
+cannot reach relay.example.com — check your internet connection and try again
 ```
 
 The relay is full. Try again in a few minutes:

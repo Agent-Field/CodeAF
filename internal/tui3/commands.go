@@ -484,7 +484,7 @@ var commands = []command{
 		alias: []string{"sync", "link", "laptop"}},
 	{name: "pair", args: "<code>", desc: "…join the chats of the computer that shows that code"},
 	{name: "pair", args: "<link>", desc: "…approve a new computer from the link it shows"},
-	{name: "devices", desc: "list your devices · n names this one, r revokes one"},
+	{name: "devices", desc: "list your devices · n renames this one, r removes one"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf and restart on it", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag, then restart"},

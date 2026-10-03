@@ -51,7 +51,7 @@ func TestFreshInstallSendsNothingToTheSyncService(t *testing.T) {
 	app.skipSetup(t)
 	app.keys("Space")
 	app.keys("Space")
-	if _, ok := waitPlain(app, 12*time.Second, "Add another machine"); !ok {
+	if _, ok := waitPlain(app, 12*time.Second, "Add another device"); !ok {
 		t.Fatalf("the card is hidden on a fresh install:\n%s", plain(app))
 	}
 	time.Sleep(20 * time.Second) // home polls, device row, watch socket would all have fired
@@ -71,7 +71,7 @@ func TestFreshInstallSendsNothingToTheSyncService(t *testing.T) {
 	app.skipSetup(t)
 	app.keys("Space")
 	app.keys("Space")
-	if _, ok := waitPlain(app, 12*time.Second, "Add another machine"); !ok {
+	if _, ok := waitPlain(app, 12*time.Second, "Add another device"); !ok {
 		t.Fatalf("the card is gone on the second launch:\n%s", plain(app))
 	}
 	if got := count.seen(); len(got) != 0 {
