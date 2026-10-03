@@ -1203,11 +1203,15 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	// on a disk scan.
 	go func() {
 		defer close(skillsReady)
-		// THE PASS NEVER TAKES THE PROCESS DOWN. It runs beside a shelf whose
-		// owner may be closing — a lost race with a shutdown costs the pass
-		// itself, never the conversation; the resident reconciler runs the
-		// same pass on its own clock, so nothing is lost but a scan.
-		defer func() { _ = recover() }()
+		// THE PASS NEVER TAKES THE PROCESS DOWN, AND NEVER IN SILENCE. It runs
+		// beside a shelf whose owner may be closing — a lost race with a
+		// shutdown costs the pass itself, never the conversation; the resident
+		// reconciler runs the same pass on its own clock, so nothing is lost but
+		// a scan. A fault in the pass is absorbed AND RECORDED: [guard.Recover]
+		// logs the recovered value and its stack to the chat log (runSurface
+		// parks the standard logger in ~/.codeaf/chat.log) rather than
+		// dropping the panic in silence.
+		defer guard.Recover("chatv3/foreign-skills")
 		foreignSkillPass(proc.skillShelf(), workspace)
 	}()
 
