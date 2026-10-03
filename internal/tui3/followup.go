@@ -204,8 +204,9 @@ func (a *app) startFollow() tea.Cmd {
 		plain := restingDoorWords(value)
 		// A DEMOTION TRAVELS WITH THE QUEUED WORDS. The fallback knows only
 		// resting door words, so the queue's own annotations must join it. Match
-		// against this text's command spans to drop stale ranges and duplicates.
-		for _, s := range commandSpans(value, true) {
+		// against the same spans the transcript paints, including quoted names,
+		// to drop stale ranges and duplicates.
+		for _, s := range paintedCommandSpans(value, true) {
 			if containsSegment(next.demoted, s) && !containsSegment(plain, s) {
 				plain = append(plain, s)
 			}

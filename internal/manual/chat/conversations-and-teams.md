@@ -313,25 +313,77 @@ so. An `@word` that is no member's handle is left as plain text.
 
 In the message box, `@` opens the same list files use. Teams are a section of it,
 each row a coloured dot and the team's name. Conversations are the next section:
-the ones open in this window first, then recent ones. A conversation in no team is
-on that list.
+the ones open in this window first, in the tab strip's order, then recent ones. A
+conversation in no team is on that list.
 
 The first row is the words **team**, **chat** and **file**. Each is a button with a
 background under the pointer and a one-line hint (`only teams · click`). A press
-types `@team:`, `@chat:` or `@file:`, and the list keeps only that section. Typing
-filters every section that is still showing.
+types `@team:`, `@chat:` or `@file:`, and the list keeps only that section.
 
-Choosing a team inserts `●harbor` in the team's colour. Choosing a conversation
-inserts `@handle`, or a short slug of its title when it has none, and the row's
-hint is the full title. After you send, both stay links. A press on the team opens
-the teams page with it selected. A press on the conversation opens that conversation.
-Over `--host`, against an engine with no teams doors, a press on the team opens the
-conversations view on it instead.
+Choosing a team inserts `●harbor` in its current colour, on home's box too;
+a team edit or adoption is reflected on every box.
+Choosing a conversation inserts `@handle`, or a short slug of its title when it
+has none, and the row's hint is the full title. After you send, both stay links.
+A press on the team opens the teams page with it selected. A press on the
+conversation opens that conversation. Over `--host`, against an engine with no
+teams doors, a press on the team opens the conversations view on it instead.
 
 The model receives a short digest of each reference: for a team, its members,
 handles, states and recent traffic; for a chat, its title, its state and an excerpt
 of the last reply. It does not receive the transcript. Mentioning a conversation
 does not message it and does not wake it. Your transcript keeps the words you typed.
+
+## Which conversations the @ list offers, and why the one I am in is missing
+
+The `@` list offers every open tab, including other projects, except the chat you
+are typing in. Only the window's own front is absent if unnamed with nothing sent,
+even if its draft names its tab. Held, restored and side tabs have no such
+check. Home and the new-chat page (`+` or `ctrl+t`) leave no eligible chat off: their
+sentences open a new one, so the chat behind them is a reference too.
+
+After the tabs come the twenty most recent conversations in this project. They
+are read once per opening when no read is pending: a new `@` token, typed or pasted,
+or the next letter after `esc`. Openings during a read share one follow-up; the
+older answer cannot settle their search. Letters, caret moves and automatic closes
+start no read. A prefixed multi-word chat search waits with `looking…` for its
+fresh read. Removing the token ends it; the next `@` asks again. After `esc`,
+a space or punctuation keeps even a bare `@` closed.
+Over `--host` those are the far machine's. An older conversation, or one in another
+project, is offered only if it is already an open tab here; otherwise use `/resume`.
+The same transcript appears once, even when its folder has a symlink spelling.
+
+The bare `@` keeps eight teams and eight conversations beside the tasks and files;
+`@chat:` and `@team:` keep up to thirty-two rows in their section and scroll.
+
+Home has the same sections and prefixes; its first-row words are not buttons, so
+type the prefix. Typing or pasting starts the same reads. New rows select the best match unless
+you chose a row with the arrows since the query last changed; that choice stays
+selected while still offered. A changed query returns to the best match.
+
+Over `--host`, home's unpinned file list offers this machine's files, as a
+conversation's list does. The foot and sent sentence use the far workspace.
+
+## Searching the @ list with spaces — @chat:who is
+
+A bare `@` token ends at the first space: `cc @ara on this` is prose, and Enter
+sends the whole sentence. `@ ` is no token. Spaces belong to prefixed searches
+only: `@chat:who is` finds `who is kim jong il`, `@team:har bor` finds `harbor`,
+and `@file:tui3 app` finds `internal/tui3/app.go`. The token may hold up to three
+spaces and never crosses a newline, on a conversation's box, home's box and the
+new-chat page's box.
+
+Teams, conversations and files match every word, in any order. A word matches
+by prefix, substring or letters in order; only the word still being typed
+may match by letters in order. Finished words match whole. `@chat:deploy worker`
+finds `Cloudflare worker deploy`. Conversations match their title, handle and
+slug, never their transcript. Tasks keep their own scorer for the whole query;
+they do not use this every-word rule.
+
+A prefixed search of several words that matches nothing closes after its catalog
+has been read. Before that it stays open with `looking…` and starts the read.
+One word that matches nothing says `no team matches`, `no conversation matches`
+or `no file matches`. After a chosen mention, a space or punctuation such as
+`,`, `.`, `;`, `:`, `!`, `?` or `)` keeps the list closed: you are writing on.
 
 ## Where teams are kept
 

@@ -251,7 +251,15 @@ func beltRepoWorkspace(t *testing.T) string {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not on PATH")
 	}
-	dir := t.TempDir()
+	// The engine records every path under the repository's canonical root
+	// (internal/session repositoryRoot resolves symlinks so one spelling serves
+	// every later path and lock), and on macOS t.TempDir() is spelled through
+	// the /var -> /private/var link. Resolving it here lets a test compare the
+	// files the envelope names against the workspace it built, on any host.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	beltGit(t, dir, "init")
 	beltGit(t, dir, "checkout", "-b", "work")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("the project\n"), 0o644); err != nil {

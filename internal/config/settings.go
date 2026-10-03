@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/taxonomy"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // The settings registry is the one place a user-tunable knob is written down.
@@ -2595,11 +2596,25 @@ func (s *Settings) build() []Setting {
 			Key: KeyTelemetry, Category: CategoryInterface, Kind: SettingBool,
 			Label: "telemetry", Env: "CODEAF_TELEMETRY",
 			Hint: "sends the anonymous usage counts described in docs/TELEMETRY.md — session " +
-				"starts and ends, tool and model call counts, coarse cost — after a notice " +
-				"has been printed once. Off sends nothing. The session's own counters still " +
-				"count, because counting is free; a change lands the next time codeaf starts.",
-			read:  func() string { return formatBool(TelemetryAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyTelemetry, raw) },
+				"starts and ends, tool and model call counts, coarse cost. Off stops sending " +
+				"immediately. Turning it on takes effect the next time codeaf starts. " +
+				"The session's own counters still count.",
+			read: func() string { return formatBool(TelemetryAt(dir)) },
+			write: func(raw string) error {
+				on, err := parseBool(raw)
+				if err != nil {
+					return err
+				}
+				if err := WriteTelemetry(dir, on); err != nil {
+					return err
+				}
+				// OFF REACHES THE RUNNING PIPE AT ONCE. Re-enabling waits for
+				// startup to resolve every opt-out before anything can be sent.
+				if !on {
+					telemetry.Configure(true)
+				}
+				return nil
+			},
 		},
 		Setting{
 			Key: KeyDraftPersist, Category: CategoryInterface, Kind: SettingBool,
@@ -3404,7 +3419,7 @@ func ModelPoolAt(profileDir string) poolcfg.Config {
 // verbs whose tests hand one in. It is where the telemetry off switch reaches
 // the pool: the environment rungs (CODEAF_TELEMETRY, DO_NOT_TRACK) are read by
 // the resolver through lookup, and the two rungs that live on disk — the
-// project file and the profile row that `codeaf telemetry off` writes — are
+// project file and the profile row the settings sheet's telemetry switch writes — are
 // read here and applied with [poolcfg.Config.Quieted]. The rows, not the
 // pin: a caller that injected an environment must get the answer for THAT
 // environment's CODEAF_TELEMETRY, not the one the harness happens to export
@@ -3416,6 +3431,15 @@ func ModelPoolResolved(profileDir string, lookup func(string) (string, bool)) po
 		cfg = cfg.Quieted()
 	}
 	return cfg
+}
+
+// PoolTelemetryRowsOffAt rechecks the telemetry project file and profile row
+// before an in-flight pool send, because either can change after the caller
+// resolved its configuration. The caller keeps its own resolved environment;
+// this check does not resolve the pool configuration again.
+func PoolTelemetryRowsOffAt(profileDir string) bool {
+	cwd, _ := os.Getwd()
+	return telemetryRowsOff(cwd, profileDir)
 }
 
 // telemetryRowsOff is the disk half of [TelemetryOffReason]: the project file
@@ -4616,9 +4640,10 @@ func TelemetryAtIn(cwd, profileDir string) bool {
 	return DefaultTelemetry
 }
 
-// WriteTelemetry persists the person's own answer to the telemetry row —
-// the writer `codeaf telemetry on|off` goes through, so the command and the
-// settings sheet write the same file the same way and cannot drift.
+// WriteTelemetry persists the person's own answer to the telemetry row, the
+// one writer the settings sheet's telemetry switch goes through. (`codeaf
+// telemetry on|off` wrote through it too, until the command left on
+// 2026-10-01.)
 func WriteTelemetry(profileDir string, on bool) error {
 	return writeProfileValue(profileDir, KeyTelemetry, on)
 }

@@ -60,6 +60,21 @@ func loaded() machineReading {
 	return reading
 }
 
+// littleMemoryHost makes every governor built for the rest of the test see a
+// quiet machine with one gibibyte available, so a test that holds work under
+// a 1 EiB floor (`TaskMinFreeMB = 1 << 40` MiB) is held on every host. The real
+// reading is /proc/meminfo, and a host without it — macOS — reports unknown,
+// which admits everything; stating the machine here instead of skipping
+// keeps the held-run tests running wherever the suite is run.
+func littleMemoryHost(t *testing.T) {
+	t.Helper()
+	reading := roomFor(0)
+	reading.availableMB = 1024
+	previous := readHost
+	readHost = func() (machineReading, bool) { return reading, true }
+	t.Cleanup(func() { readHost = previous })
+}
+
 // fanRunner is a scripted runner that only records a start: every node it is
 // handed stays running until the test settles it, ON THE TEST'S OWN GOROUTINE,
 // so the frontier pass a settle causes has finished before the next line reads

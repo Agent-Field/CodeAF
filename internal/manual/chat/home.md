@@ -1475,19 +1475,70 @@ the keys row, over the project, with the bulb and the cross, and it appears only
 what makes each one appear and disappear, and the **disable hints** row on the Workspace
 tab that turns them off, are on the *hints and tips* page.
 
-## Typing @ on home — does the @ file list work on home, complete a path into home's box
+## Typing @ on home — does the @ list work on home, mention a team, a chat or a file from home's box
 
-Yes, since 2026-09-22. Type `@` and a letter or two into home's box and the same list a
-conversation's box opens appears in home's column: files and folders under the folder the
-next conversation opens in (the one at the right of the keys row), ranked as you type,
-`folder` and `img` tags on the right. `↑`/`↓` pick, `enter` puts the path into your sentence
-after the `@`, and choosing a picture takes the half-typed token out and puts the picture on
-home's tray instead, saying `attached · shot.png · rides with the next conversation`. `esc`
-closes the list and leaves the word alone — and it is the innermost layer of the three esc
-walks through on home, so the first `esc` takes the list and a later one leaves home. Tasks
-are not on this list — a task pointer is minted when a conversation sends, and home has none
-yet. While the walk is still running the column reads `looking…`; with no match it reads
-`no file matches`.
+Yes. Type `@` into home's box and the same list a conversation's box opens appears in
+home's column, with the same sections and the same prefixes. Its first row is the words
+**team**, **chat** and **file**; under them come **teams**, then **conversations**, then
+files and folders, ranked as you type, `folder` and `img` tags on the right. Their
+root is the pinned target, otherwise this window's workspace; over `--host` the
+unpinned list uses this machine's working directory, as a conversation's list does. `@team:`
+keeps only teams, `@chat:` only conversations, `@file:` only files, exactly as in a
+conversation.
+Conversations are every open tab, including other projects — then the twenty
+most recent in this project. Only the window's own front conversation is absent for being
+unnamed with nothing sent, even if its draft names its tab. Held, restored and side tabs
+are offered without that check. Recents are read once per opening when no read is
+pending: a new `@` or the next letter after `esc`. Openings during a read share one
+follow-up.
+
+`↑`/`↓` pick and `enter` puts the row in: a team as `●harbor` in the team's colour, a
+conversation as `@handle` or a short slug of its title, a path after the `@`. Choosing a
+picture takes the half-typed token out and puts the picture on home's tray instead, saying
+`attached · shot.png · rides with the next conversation`. `esc` closes the list and leaves
+the word alone. It takes the list first; a later `esc` leaves home. Tasks are not on this list — a
+task pointer is minted when a conversation sends, and home has none yet. While the walk is
+still running the column reads `looking…`; with no match it reads `no matches`, or under a
+prefix `no team matches`, `no conversation matches` or `no file matches`. On home the three
+words on the first row are not buttons: type the prefix.
+
+## Which project home's @ paths use
+
+Home's `@` files come from the target pinned with `alt+p` or `/project`, otherwise
+this window's file root. On a local window that is the workspace, the folder the
+sentence opens in and the one named after `project: ` on the keys row while the
+list is up. Over `--host`, the unpinned list offers this machine's files, as a
+conversation's list does; the foot and sent sentence use the far machine's
+workspace. The project row the cursor stood on before opening the list does not
+choose the file root.
+
+Changing the pinned project while the list is up replaces its files immediately
+and starts the new folder's walk. A late answer from the old folder is ignored.
+With the list closed, arrows across other projects leave the completed walk
+alone; opening the list again on that folder reuses it.
+
+## Searching home's @ list with spaces and writing after a mention
+
+On home, a bare `@` token ends at its first space: `ask @ben to fix` stays a
+sentence, and Enter starts the conversation with the whole sentence. `@ ` is no
+token. Only prefixed searches hold spaces, up to three and never across a newline:
+`@chat:who is`, `@team:har bor` and `@file:tui3 app`. Teams, conversations and files
+match every word in any order; finished words match whole, and only the final
+word may match by letters in order.
+
+Recents are read once per opening when no read is pending: a new `@` token or the
+next letter after `esc`. Openings during a read share one follow-up; the older answer
+cannot settle their search. Letters, caret moves and automatic closes start no read.
+After `esc`, a space or punctuation keeps even a bare `@` closed.
+Clearing the box ends the token and closes its list;
+the next `@` reads again and can offer a conversation started in another window.
+A prefixed chat search waits with `looking…` for its fresh read. Several words
+with no match close it after that answer.
+
+An arrival selects the best match unless you chose a row with the arrows since
+the query last changed; that choice survives while still offered. A changed query
+returns to the best match. Clicking a row inserts it immediately. After choosing,
+a space or punctuation such as a comma keeps the list closed so you can write on.
 
 ## How do I get back to the dashboard or the home screen from any page — press space twice
 

@@ -1,10 +1,10 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -17,9 +17,12 @@ import (
 //
 // THE CATALOG IS MEMORY. Teams are the ones this window already loaded
 // ([app.wall.teams]). Conversations are the ones open in this window, then the
-// recent list the door already handed the surface. Nothing here opens a file
-// on a frame. The recent list is read once, inside a command, because that
-// read can touch the disk.
+// recent list the door hands the surface. Nothing here opens a file on a
+// frame. The recent list is read inside a command, because that read can
+// touch the disk, and it is read again EVERY TIME THE LIST OPENS: a snapshot
+// taken once per process left a conversation started in another window, or
+// named after this window's first "@", off the list for as long as the window
+// lived, while its name sat in plain sight on a tab strip.
 //
 // A PREFIX NARROWS THE LIST TO ONE SECTION. "@team:", "@chat:" and "@file:"
 // are the three, and the same three words sit on the list's first row, each
@@ -36,9 +39,16 @@ const (
 	scopeTeam = "team"
 	scopeChat = "chat"
 	scopeFile = "file"
-	// mentionRows is how many teams, and how many conversations, one list draws.
-	// It is the file list's own screenful.
-	mentionRows = 8
+	// mentionRows is how many teams, and how many conversations, the MIXED list
+	// keeps — the bare "@", where every section shares one screenful and the
+	// files and tasks under them still have to be reachable. It is the file
+	// list's own screenful.
+	mentionRows = completeRows
+	// mentionRowsScoped is the cap once a prefix has narrowed the list to one
+	// section. The person asked for conversations and nothing else, so the
+	// list holds as many as the file list does and scrolls, instead of showing
+	// eight of thirty open tabs and no sign of the rest.
+	mentionRowsScoped = completeRows * 4
 	// mentionRecentCap is how many recent conversations the snapshot keeps.
 	mentionRecentCap = 24
 )
@@ -93,7 +103,7 @@ func (c *completion) rankMentions(needle string) {
 		for _, team := range c.teams {
 			if _, ok := pathScore(team.name+" "+team.slug, needle); ok {
 				c.teamHits = append(c.teamHits, team)
-				if len(c.teamHits) >= mentionRows {
+				if len(c.teamHits) >= mentionCap(c.scope) {
 					break
 				}
 			}
@@ -104,12 +114,21 @@ func (c *completion) rankMentions(needle string) {
 			hay := chat.title + " " + chat.handle + " " + chat.slug
 			if _, ok := pathScore(hay, needle); ok {
 				c.chatHits = append(c.chatHits, chat)
-				if len(c.chatHits) >= mentionRows {
+				if len(c.chatHits) >= mentionCap(c.scope) {
 					break
 				}
 			}
 		}
 	}
+}
+
+// mentionCap is how many rows one section keeps: a screenful on the mixed
+// list, the file list's own cap once a prefix has made it the only section.
+func mentionCap(scope string) int {
+	if scope == "" {
+		return mentionRows
+	}
+	return mentionRowsScoped
 }
 
 // layoutMentions appends the team section and the conversation section.
@@ -219,6 +238,13 @@ func mentionToken(chat mentionChat) string {
 func (a *app) fillMentions() {
 	a.comp.teams = a.mentionTeams()
 	a.comp.chats = a.mentionChats()
+	a.comp.recentsLoaded = a.mentionRecentsReady(true)
+}
+
+// mentionRecentsReady distinguishes an unanswered read from a settled catalog.
+// Token openings invalidate it through the read itself, never a display close.
+func (a *app) mentionRecentsReady(_ bool) bool {
+	return a.recentSessions == nil || !a.comp.recentsPending && (a.comp.recentsLoaded || len(a.comp.recents) > 0)
 }
 
 func (a *app) mentionTeams() []mentionTeam {
@@ -242,12 +268,30 @@ func (a *app) mentionTeams() []mentionTeam {
 // mentionChats is the open conversations in this window, then recent ones that
 // are not already open. The conversation in front is left off: pointing at the
 // chat you are typing in is not a reference.
+//
+// ON THE START PAGE NOTHING IS LEFT OFF. `+` stands the conversation's unit down
+// and points the box at a composer of its own, but it opens no file: the
+// window still carries the conversation it came from as the one in front
+// (chatstart.go's [app.openChatStart]). The sentence being typed there opens a
+// NEW conversation, so that one is a reference like any other — and leaving it
+// off was the owner typing `@chat:kim` on the page with `tell me about kim jung
+// il` lit on the strip beside it, and reading `no conversation matches`.
 func (a *app) mentionChats() []mentionChat {
-	front := a.frontTabKey()
+	if a.startingChat() {
+		return a.mentionChatsExcept("")
+	}
+	return a.mentionChatsExcept(a.frontTabKey())
+}
+
+// mentionChatsExcept is that catalog with one conversation left off, or none
+// for "". Home's box leaves none off: its sentence opens a NEW conversation,
+// and the one behind the screen is as much a reference as any other
+// (homeat.go's [app.fillHomeMentions]).
+func (a *app) mentionChatsExcept(front string) []mentionChat {
 	var out []mentionChat
 	seen := map[string]bool{}
 	for _, tab := range a.tabList() {
-		if tab.slot || tab.key == "" || tab.key == front || seen[tab.key] {
+		if tab.slot || tab.key == "" || tab.key == front || seen[tab.key] || !a.mentionableTab(tab) {
 			continue
 		}
 		seen[tab.key] = true
@@ -262,6 +306,27 @@ func (a *app) mentionChats() []mentionChat {
 		out = append(out, chat)
 	}
 	return out
+}
+
+// mentionableTab leaves off only the front's own unsent shell. Other tabs are
+// offered without guessing their sent history from a name or sidecar.
+func (a *app) mentionableTab(tab chatTab) bool {
+	if tab.key != a.frontTabKey() {
+		return true
+	}
+	named := func(title string) bool {
+		title = strings.TrimSpace(title)
+		return title != "" && title != unnamedConversationWord
+	}
+	if named(a.title) || strings.TrimSpace(a.openingPrompt) != "" {
+		return true
+	}
+	for _, e := range a.entries {
+		if e.kind == entryUser {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *app) mentionFromTab(tab chatTab, open bool) mentionChat {
@@ -300,35 +365,82 @@ func (a *app) mentionHandle(key string) string {
 }
 
 // mentionRecentsMsg is the recent list, read off the loop.
-type mentionRecentsMsg struct{ rows []Session }
+type mentionRecentsMsg struct {
+	rows []Session
+	keys []string
+	read uint64
+}
 
-// loadMentionRecents reads the door's recent list once. The door's function
-// may open a directory, so it runs inside the command and not on the loop.
+// loadMentionRecents reads the door's recent list. The door's function may
+// open a directory, so it runs inside the command and not on the loop.
+//
+// EVERY OPENING ASKS FOR FRESH ROWS, not just the process's first one. A new @
+// token or the list returning after Escape starts an opening, independently of
+// automatic display closes ([completion.beginToken]). Only one walk may be in
+// flight per window. Openings while it runs owe one follow-up after it lands;
+// its earlier answer cannot settle their search as fresh. The door returns at
+// most twenty recent conversations (cmd/codeaf's v3RecentSessions), but may
+// examine many more session folders, so overlapping its walks is unbounded work.
 func (a *app) loadMentionRecents() tea.Cmd {
-	if a.comp.recentsHeld || a.recentSessions == nil {
+	if a.recentSessions == nil || a.comp.recentsHeld && !a.comp.recentsPending {
 		return nil
 	}
-	a.comp.recentsHeld = true
-	read := a.recentSessions
+	if a.comp.recentsPending {
+		a.comp.recentsAgain = true
+		return nil
+	}
+	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = true, false, true
+	a.comp.recentsRead++
+	readID := a.comp.recentsRead
+	read, hosted := a.recentSessions, a.hosted()
 	return func() tea.Msg {
 		list := read()
 		if len(list) > mentionRecentCap {
 			list = list[:mentionRecentCap]
 		}
-		return mentionRecentsMsg{rows: list}
+		// Canonical keys travel with the read because resolving a symlink is
+		// disk work. The hosted rule is captured before this closure runs.
+		keys := make([]string, len(list))
+		for i, row := range list {
+			file := strings.TrimSpace(row.File)
+			if file == "" {
+				continue
+			}
+			if hosted {
+				keys[i] = filepath.Clean(file)
+			} else {
+				keys[i] = convKey(file)
+			}
+		}
+		return mentionRecentsMsg{rows: list, keys: keys, read: readID}
 	}
 }
 
-func (a *app) mentionRecentsLoaded(rows []Session) {
-	a.comp.recentsHeld = true
+// mentionRecentsLoaded folds in keys already computed by the read. A message
+// supplied without keys uses cleaned spellings and never resolves local files.
+func (a *app) mentionRecentsLoaded(rows []Session, keys ...string) {
+	// The read has landed, so the next opening of the list may ask again.
+	a.comp.recentsHeld, a.comp.recentsLoaded, a.comp.recentsPending = false, true, false
+	a.comp.recentsAgain = false
 	a.comp.recents = a.comp.recents[:0]
 	seen := map[string]bool{}
-	for _, row := range rows {
+	for i, row := range rows {
 		file := strings.TrimSpace(row.File)
-		if file == "" || seen[file] {
+		// THE KEY IS THE CANONICAL FILE, the same spelling every tab carries
+		// (chattabs.go's [chatTab.key]). Keyed on the row's own spelling, a
+		// home reached through a symlink listed the conversation in front,
+		// and every open tab a second time, as recent rows: `/tmp` is
+		// `/private/tmp` on a Mac, and the walk spells what it was given.
+		key := ""
+		if i < len(keys) {
+			key = keys[i]
+		} else if file != "" {
+			key = filepath.Clean(file)
+		}
+		if key == "" || seen[key] {
 			continue
 		}
-		seen[file] = true
+		seen[key] = true
 		title := strings.TrimSpace(row.Title)
 		if title == "" {
 			title = strings.TrimSpace(row.Opening)
@@ -337,14 +449,20 @@ func (a *app) mentionRecentsLoaded(rows []Session) {
 			continue
 		}
 		a.comp.recents = append(a.comp.recents, mentionChat{
-			key: file, file: file, title: title,
-			handle: a.mentionHandle(file), slug: mentionSlug(title),
+			key: key, file: file, title: title,
+			handle: a.mentionHandle(key), slug: mentionSlug(title),
 			note: title,
 		})
 	}
 	if a.comp.open {
 		a.fillMentions()
-		a.comp.rank()
+		a.comp.refresh(&a.input)
+	}
+	// AND HOME'S LIST IS THE OTHER READER OF THE SAME SNAPSHOT (homeat.go).
+	if a.home.comp.open {
+		a.fillHomeMentions()
+		a.home.comp.rank()
+		a.home.build()
 	}
 	a.touch()
 }
@@ -355,37 +473,47 @@ func (a *app) mentionRecentsLoaded(rows []Session) {
 // comes out: the bullet is the mark, and a second mark in front of it would
 // be two names for one thing.
 func (a *app) completeTeam(team mentionTeam) {
+	completeTeamIn(&a.input, &a.comp, team)
+	a.touch()
+}
+
+// completeTeamIn is that edit on ANY box its list is bound to — the
+// conversation's, or home's (homeat.go) — so the two cannot grow two spellings
+// of what choosing a team types.
+func completeTeamIn(e *editor, c *completion, team mentionTeam) {
 	slug := team.slug
 	if slug == "" {
 		slug = mentionSlug(team.name)
 	}
 	token := "●" + slug
-	e := &a.input
-	head := append([]rune(nil), e.value[:a.comp.at]...)
+	head := append([]rune(nil), e.value[:c.at]...)
 	tail := append([]rune(nil), e.value[e.cursor:]...)
 	e.value = append(append(head, []rune(token)...), tail...)
-	e.cursor = a.comp.at + len([]rune(token))
-	a.comp.done = ""
-	a.comp.close()
-	a.touch()
+	e.cursor = c.at + len([]rune(token))
+	c.done = ""
+	c.close()
 }
 
 // completeChat types "@" and the handle, or the title's slug when the
 // conversation has no handle.
 func (a *app) completeChat(chat mentionChat) {
+	completeChatIn(&a.input, &a.comp, chat)
+	a.touch()
+}
+
+// completeChatIn is that edit on any box, for [completeTeamIn]'s reason.
+func completeChatIn(e *editor, c *completion, chat mentionChat) {
 	token := mentionToken(chat)
 	if token == "" {
-		a.comp.close()
+		c.close()
 		return
 	}
-	e := &a.input
-	head := append([]rune(nil), e.value[:a.comp.at+1]...)
+	head := append([]rune(nil), e.value[:c.at+1]...)
 	tail := append([]rune(nil), e.value[e.cursor:]...)
 	e.value = append(append(head, []rune(token)...), tail...)
-	e.cursor = a.comp.at + 1 + len([]rune(token))
-	a.comp.done = token
-	a.comp.close()
-	a.touch()
+	e.cursor = c.at + 1 + len([]rune(token))
+	c.done = token
+	c.close()
 }
 
 // ── the prefix words ────────────────────────────────────────────────────────
@@ -486,17 +614,15 @@ func (a *app) mentionHeadHint() string {
 // paintDraftMentions colours a "●slug" in the box with its team's colour. The
 // runes stay the runes, so the caret's column does not move.
 func (a *app) paintDraftMentions(block []string) []string {
-	if len(a.comp.teams) == 0 && len(a.wall.teams) == 0 {
-		return block
-	}
-	teams := a.comp.teams
-	if len(teams) == 0 {
-		teams = a.mentionTeams()
-	}
+	var teams []mentionTeam
 	for i, line := range block {
-		plain := ansi.Strip(line)
-		if !strings.Contains(plain, "●") {
+		if !strings.Contains(line, "●") {
 			continue
+		}
+		// Only a row containing a team mark pays for the current catalog. The
+		// conversation's completion snapshot may predate a team edit or adoption.
+		if teams == nil {
+			teams = a.mentionTeams()
 		}
 		for _, team := range teams {
 			token := "●" + team.slug

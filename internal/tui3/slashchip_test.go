@@ -8,6 +8,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── the chip ────────────────────────────────────────────────────────────────
@@ -66,6 +67,28 @@ func sameRuns(t *testing.T, got, want []string, what string) {
 		if got[i] != want[i] {
 			t.Fatalf("%s: chipped %q, want %q", what, got, want)
 		}
+	}
+}
+
+func TestInformationalLineStartingWithBangStillChipsAKnownCommand(t *testing.T) {
+	pal := newPalette(tokens.ANSI256, false)
+	for _, line := range []string{"! use /task for this", "  ! ask about '/task'"} {
+		t.Run(line, func(t *testing.T) {
+			value := []rune(line)
+			spans := recognizedCommandSpans(value, true)
+			if len(spans) != 1 || string(value[spans[0].from:spans[0].to]) != "/task" {
+				t.Fatalf("informational line lost its known command: spans=%v", spans)
+			}
+			sameRuns(t, chipRuns(paintPayload(line, nil, pal, pal.ink)), []string{"/task"}, "informational paint")
+			if got := commandSpans(value, true); len(got) != 0 {
+				t.Fatalf("bash line acquired actionable commands: %v", got)
+			}
+			sameRuns(t, chipRuns(paintCommands(line, pal, pal.ink, true)), nil, "bash command paint")
+			sameRuns(t, chipRuns(paintDraftCommands(line, pal, pal.ink, 0, true, nil)), nil, "bash draft paint")
+			if got := transcriptCommandSpans(value, nil, 0); len(got) != 0 {
+				t.Fatalf("bash transcript acquired command chips: %v", got)
+			}
+		})
 	}
 }
 
@@ -304,6 +327,68 @@ func TestTaskTagUsesTheTaskCommandRoad(t *testing.T) {
 	}
 }
 
+func TestQuotedDoorNamesSendTheWholeSentenceAsProse(t *testing.T) {
+	for _, quotes := range [][2]string{{"'", "'"}, {"\"", "\""}, {"‘", "’"}, {"“", "”"}} {
+		for _, word := range []string{"task", "standing", "background", "senior-dev"} {
+			line := "What does " + quotes[0] + "/" + word + quotes[1] + " do?"
+			t.Run(line, func(t *testing.T) {
+				base := &fakeAgent{model: "m"}
+				door := &taskCommandFake{Agent: base}
+				a := newTestApp(door)
+				typeInto(t, a, line)
+				if tags := a.liveTags(); len(tags) != 0 {
+					t.Errorf("quoted command became %d actionable tags", len(tags))
+				}
+				drive(t, a, key("enter"))
+				if door.singleCalls != 0 || len(base.marked) != 0 {
+					t.Fatalf("quoted command acted: tasks=%d marked=%q", door.singleCalls, base.marked)
+				}
+				if len(base.sent) != 1 || base.sent[0] != line {
+					t.Fatalf("quoted question did not send whole: %q", base.sent)
+				}
+				if len(a.entries) == 0 || a.entries[0].text != line {
+					t.Fatalf("ordinary message lost the whole sentence: entries=%+v", a.entries)
+				}
+			})
+		}
+	}
+}
+
+func TestQuotedDoorNamesStayPlainInTheOrdinarySendTranscript(t *testing.T) {
+	for _, quotes := range [][2]string{{"'", "'"}, {"\"", "\""}, {"‘", "’"}, {"“", "”"}} {
+		for _, word := range []string{"task", "standing"} {
+			line := "What does " + quotes[0] + "/" + word + quotes[1] + " do?"
+			t.Run(line, func(t *testing.T) {
+				base := &fakeAgent{model: "m"}
+				door := &taskCommandFake{Agent: base}
+				a := newTestApp(door)
+				typeInto(t, a, line)
+				sameRuns(t, boxRuns(a), []string{"/" + word}, "the quoted draft")
+				drive(t, a, key("enter"))
+				if door.singleCalls != 0 || len(base.marked) != 0 || len(base.sent) != 1 || base.sent[0] != line {
+					t.Fatalf("quoted question did not send as prose: tasks=%d marked=%q sent=%q", door.singleCalls, base.marked, base.sent)
+				}
+				e := lastUserEntry(t, a)
+				if e.text != line {
+					t.Fatalf("ordinary transcript lost the question: %q", e.text)
+				}
+				sameRuns(t, chipRuns(a.renderEntry(0, e, 30)...), nil, "the quoted ordinary transcript")
+			})
+		}
+	}
+}
+
+func TestUnquotedTaskQuestionKeepsItsLiveTag(t *testing.T) {
+	base := &fakeAgent{model: "m"}
+	door := &taskCommandFake{Agent: base}
+	a := newTestApp(door)
+	typeInto(t, a, "What does /task do?")
+	drive(t, a, key("enter"))
+	if door.singleCalls != 1 || door.brief != "What does do?" {
+		t.Fatalf("unquoted task question changed: tasks=%d brief=%q", door.singleCalls, door.brief)
+	}
+}
+
 func TestTheModelsOwnProseIsNeverChipped(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "m"})
 	a.entries = []entry{{kind: entryAssistant, text: "run /compact when it gets long", settled: true}}
@@ -340,6 +425,29 @@ func TestTheCommandListOpensAtAWordBoundaryAndNotInsideAWord(t *testing.T) {
 	typeInto(t, a, "cmd/")
 	if a.menu.open {
 		t.Fatal("a slash inside a word opened the list")
+	}
+}
+
+// A QUOTED COMMAND IS STILL THE COMMAND. Prose that names one — the setup's
+// detail says '/budget 50' — gets its chip on the name alone, and a closing
+// quote right after the name is not part of it. A quoted path stays a path.
+func TestAQuoteIsAWordBoundaryForACommandChip(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		want []string
+	}{
+		{"type '/budget 50' to change it", []string{"/budget"}},
+		{"\u201c/budget conversation 20\u201d sets one", []string{"/budget"}},
+		{"see '/settings'", []string{"/settings"}},
+		{"open '/Users/person/notes.md'", nil},
+	} {
+		var got []string
+		for _, span := range recognizedCommandSpans([]rune(c.text), true) {
+			got = append(got, string([]rune(c.text)[span.from:span.to]))
+		}
+		if strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Errorf("%q chipped %v, want %v", c.text, got, c.want)
+		}
 	}
 }
 

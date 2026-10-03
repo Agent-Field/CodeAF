@@ -75,7 +75,6 @@ func newRelay(t *testing.T) *relayRecorder {
 func TestFlushSendsFiftyPerPostAndRemovesSentLines(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
-	MarkNoticeShown()
 	for i := 0; i < 120; i++ {
 		if err := SpoolSync(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("session-%d", i), freshClock(t)))); err != nil {
 			t.Fatalf("spooling event %d: %v", i, err)
@@ -112,34 +111,9 @@ func TestFlushSendsFiftyPerPostAndRemovesSentLines(t *testing.T) {
 	}
 }
 
-func TestFlushIsSilentUntilTheNoticeWasShown(t *testing.T) {
-	testHome(t)
-	recorder := newRelay(t)
-	if err := SpoolSync(stamped(SessionStarted(ModeChat, false, "session-gated", freshClock(t)))); err != nil {
-		t.Fatal(err)
-	}
-	if err := Flush(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if got := recorder.count(); got != 0 {
-		t.Fatalf("the relay saw %d posts before the notice was marked shown, want 0", got)
-	}
-	if left := len(SpoolContents()); left != 1 {
-		t.Fatalf("%d lines remain after a gated flush, want 1", left)
-	}
-	MarkNoticeShown()
-	if err := Flush(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if got := recorder.count(); got != 1 {
-		t.Fatalf("after MarkNoticeShown the relay saw %d posts, want 1", got)
-	}
-}
-
 func TestFlushDropsEventsOlderThanSevenDays(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
-	MarkNoticeShown()
 
 	fresh := stamped(SessionStarted(ModeChat, false, "session-fresh", freshClock(t)))
 	ancient := stamped(SessionStarted(ModeChat, false, "session-ancient", freshClock(t)))
@@ -193,7 +167,6 @@ func TestFlushRespectsTheCallerDeadline(t *testing.T) {
 		hanging.Close()
 	})
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", hanging.URL)
-	MarkNoticeShown()
 	for i := 0; i < 3; i++ {
 		if err := SpoolSync(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("session-hang-%d", i), freshClock(t)))); err != nil {
 			t.Fatal(err)
@@ -264,7 +237,6 @@ func TestFlushDropsEventsThatCannotNameTheirVersion(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			testHome(t)
 			recorder := newRelay(t)
-			MarkNoticeShown()
 			event := SessionStarted(ModeChat, false, "session-"+tc.name, freshClock(t))
 			spoolAsVersion(t, event, tc.version, tc.omit)
 			if err := Flush(context.Background()); err != nil {
@@ -286,7 +258,6 @@ func TestFlushDropsEventsThatCannotNameTheirVersion(t *testing.T) {
 func TestFlushSendsOnlyStampedLinesFromAMixedBatch(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
-	MarkNoticeShown()
 	unknown := SessionStarted(ModeChat, false, "session-unknown", freshClock(t))
 	spoolAsVersion(t, unknown, "unknown", false)
 	// The two stamped lines are written by hand too: the test binary has no
@@ -322,7 +293,6 @@ func TestFlushSendsOnlyStampedLinesFromAMixedBatch(t *testing.T) {
 func TestFlushCapsAtOneThousandLinesDroppingTheOldest(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
-	MarkNoticeShown()
 	if err := ensureDir(); err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +334,6 @@ func TestFlushKeepsTheNewestThousandLines(t *testing.T) {
 	}))
 	t.Cleanup(relay.Close)
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", relay.URL)
-	MarkNoticeShown()
 	if err := ensureDir(); err != nil {
 		t.Fatal(err)
 	}
@@ -405,7 +374,6 @@ func TestFlushKeepsTheNewestThousandLines(t *testing.T) {
 func TestFlushDropsPropKeysAndEventNamesTheContractDoesNotAllow(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
-	MarkNoticeShown()
 
 	// A spool line carrying a prop key the contract does not name — written by
 	// an older build, or by hand. The key must not reach the wire.
@@ -473,7 +441,6 @@ func TestFlushPartialFailure(t *testing.T) {
 	}))
 	t.Cleanup(flaky.Close)
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", flaky.URL)
-	MarkNoticeShown()
 	const total = 120 // three batches: 50 + 50 + 20
 	ids := make([]string, total)
 	for i := 0; i < total; i++ {
@@ -569,7 +536,6 @@ func TestSpoolConcurrent(t *testing.T) {
 func TestFlushRacesSpool(t *testing.T) {
 	testHome(t)
 	recorder := newRelay(t)
-	MarkNoticeShown()
 	// Warm the spool so the flush has lines to send while the spooler runs.
 	for i := 0; i < 30; i++ {
 		if err := SpoolSync(stamped(SessionStarted(ModeChat, false, fmt.Sprintf("warm-%d", i), freshClock(t)))); err != nil {
@@ -652,7 +618,6 @@ func TestFlushRacesSpool(t *testing.T) {
 // spool at the start of the next flush, and nothing is adopted twice.
 func TestFlushAdoptsOrphanedSendingFiles(t *testing.T) {
 	testHome(t)
-	MarkNoticeShown()
 	orphan := filepath.Join(telemetryDir(), "spool.sending.999999.deadbeef")
 	if err := os.MkdirAll(telemetryDir(), 0o700); err != nil {
 		t.Fatal(err)
@@ -729,7 +694,6 @@ func TestAFailingRelayKeepsTheSpoolAndStaysSilent(t *testing.T) {
 	testHome(t)
 	// Nothing listens here.
 	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", "http://127.0.0.1:1/telemetry")
-	MarkNoticeShown()
 	if err := SpoolSync(stamped(SessionStarted(ModeChat, false, "session-lost", freshClock(t)))); err != nil {
 		t.Fatal(err)
 	}

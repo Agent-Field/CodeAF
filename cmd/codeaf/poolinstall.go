@@ -13,7 +13,9 @@ import (
 	"context"
 	cryptorand "crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -82,7 +84,7 @@ func installNonce(poolDir string) (string, error) {
 // switch and never at a person. The rows a batch did not reach stay pending,
 // where the next judged run and the next start-up try them again.
 func poolPush(ctx context.Context, profileDir string, cfg poolcfg.Config, budget time.Duration) {
-	if !cfg.CanSend() {
+	if !cfg.CanSend() || config.PoolTelemetryRowsOffAt(profileDir) {
 		return
 	}
 	poolDir := config.ProfilePath(profileDir, "pool")
@@ -103,7 +105,26 @@ func poolPush(ctx context.Context, profileDir string, cfg poolcfg.Config, budget
 	}
 	box.Install = nonce
 	box.Budget = budget
+	box.Client = &http.Client{Transport: poolSendTransport{profileDir: profileDir, cfg: cfg}}
 	if _, err := box.Send(ctx, cfg.SubmitURL); err != nil && trace.Enabled() {
 		log.Printf("model pool: send: %v", err)
 	}
+}
+
+// poolSendTransport asks the live disk switches before EVERY REQUEST, because
+// one outbox send can hold later batches and retries of refused rows. It keeps
+// the caller's resolved configuration so its environment remains the caller's.
+// A request refused here leaves its rows pending, as an unanswered relay does.
+// The pool's own ladder decides this; the usage gate also closes on source
+// builds, which have always been able to send pool scores.
+type poolSendTransport struct {
+	profileDir string
+	cfg        poolcfg.Config
+}
+
+func (transport poolSendTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if !transport.cfg.CanSend() || config.PoolTelemetryRowsOffAt(transport.profileDir) {
+		return nil, errors.New("model pool sending is off")
+	}
+	return http.DefaultTransport.RoundTrip(request)
 }
