@@ -52,11 +52,12 @@ func Offer(ctx context.Context, route Mailbox, grant Grant, ui OfferUI) (string,
 	if err := checkRelay(ctx, route); err != nil {
 		return "", err
 	}
-	for {
-		label, err := offerOnce(ctx, route, grant, ui)
+	for burned := ""; ; {
+		label, plate, err := offerOnce(ctx, route, grant, ui, burned)
 		if !errors.Is(err, ErrWrongCode) {
 			return label, err
 		}
+		burned = plate
 		ui.Burned()
 	}
 }
@@ -71,15 +72,17 @@ func checkRelay(ctx context.Context, route Mailbox) error {
 }
 
 // offerOnce is one code's whole life: made, shown, spent by the first message
-// that arrives, and taken away again whatever happened.
-func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI) (string, error) {
+// that arrives, and taken away again whatever happened. It answers the nameplate
+// it used, so the next code can be made under another one. burned is the plate
+// of the code this one replaces, or empty for the first.
+func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI, burned string) (string, string, error) {
 	code, key, err := drawCode()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	made, err := route.Box.Create(ctx, key)
+	made, err := createApart(ctx, route.Box, key, burned)
 	if err != nil {
-		return "", phraseBox(err, route.Host)
+		return "", "", phraseBox(err, route.Host)
 	}
 	code = code.WithPlate(made.Nameplate)
 	defer discard(route.Box, made.Nameplate, key)
@@ -92,9 +95,27 @@ func offerOnce(ctx context.Context, route Mailbox, grant Grant, ui OfferUI) (str
 		key: key, gone: map[stage]error{awaitStart: ErrDidNotFinish, awaitOffer: ErrDidNotFinish}, sendGone: ErrDidNotFinish}
 	joiner, err := answer(link, chatScheme(made.Nameplate), code.secret())
 	if err != nil {
-		return "", phraseBox(err, route.Host)
+		return "", made.Nameplate, phraseBox(err, route.Host)
 	}
-	return conclude(ctx, joiner, grant, ui)
+	label, err := conclude(ctx, joiner, grant, ui)
+	return label, made.Nameplate, err
+}
+
+// createApart opens a mailbox under a nameplate other than burned. Nameplates
+// are short and the relay draws them at random, so the next mailbox can land on
+// the one just deleted, and the joining device whose code burned is still
+// waiting on that plate: it would find a live, empty mailbox where it expected
+// the word that the old one is gone, and wait there for an answer that cannot
+// come. A relay that keeps handing the same plate back is as good as full.
+func createApart(ctx context.Context, box pairbox.Box, key pairbox.Key, burned string) (pairbox.Created, error) {
+	for range 5 {
+		made, err := box.Create(ctx, key)
+		if err != nil || made.Nameplate != burned {
+			return made, err
+		}
+		discard(box, made.Nameplate, key)
+	}
+	return pairbox.Created{}, pairbox.ErrRelayFull
 }
 
 // conclude puts the joining device to a person and sends the answer: the grant

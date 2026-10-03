@@ -264,6 +264,61 @@ func TestRelayAlters(t *testing.T) {
 	}
 }
 
+// A CODE THAT BURNS IS NEVER FOLLOWED BY A MAILBOX UNDER THE SAME PLATE. The
+// relay draws short plates at random, so the new mailbox can land on the one
+// just deleted; the joining device, still waiting there for the answer to its
+// guess, would then find a live empty mailbox instead of the word that the old
+// one is gone, and wait on it until its own time ran out.
+func TestABurnedPlateIsNotMadeAgain(t *testing.T) {
+	inner := newHostile(pairbox.NewMemory(roomy(), nil))
+	// Message 1 that is no point at all, so the code burns the moment it is read.
+	inner.on(1, func(h *hostileBox, w write) (int, error) {
+		w.msg = bytes.Repeat([]byte{0xff}, len(w.msg))
+		return h.store(w)
+	})
+	box := &unluckyBox{Box: inner}
+	r := newChatRig(t).via(box)
+	att := startPair(t, r, 20*time.Second)
+
+	b := joinWithin(t, att.join)
+	if !errors.Is(b.err, ErrStopped) && !errors.Is(b.err, ErrCodeDidNotWork) {
+		t.Fatalf("B was told %v, want an ending", b.err)
+	}
+	if next := att.a.nextCode(t); next.Plate() == att.code.Plate() {
+		t.Fatalf("the code that replaced %s was made under the same plate", att.code.Plate())
+	}
+	att.offer.stop()
+	wantNoSuccess(t, att.offer.wait(t))
+}
+
+// unluckyBox is a relay whose second mailbox lands on the plate of the first,
+// the draw a short plate space gives about one time in a hundred.
+type unluckyBox struct {
+	pairbox.Box
+	mu    sync.Mutex
+	made  int
+	first string
+}
+
+func (u *unluckyBox) Create(ctx context.Context, key pairbox.Key) (pairbox.Created, error) {
+	u.mu.Lock()
+	u.made++
+	n, first := u.made, u.first
+	u.mu.Unlock()
+	for {
+		made, err := u.Box.Create(ctx, key)
+		if err != nil || n != 2 || made.Nameplate == first {
+			if err == nil && n == 1 {
+				u.mu.Lock()
+				u.first = made.Nameplate
+				u.mu.Unlock()
+			}
+			return made, err
+		}
+		_ = u.Box.Delete(ctx, made.Nameplate, key)
+	}
+}
+
 // ── a relay that sits in the middle ─────────────────────────────────────────
 
 // mitmBox is a relay that runs a device of its own against each real one: a
