@@ -389,6 +389,20 @@ A member card's `x` opens a confirmation naming the member and team. `cancel` is
 by default; choose `yes` to remove only that team's membership. Its work finishes and its
 conversation remains. Removing the manager requires replacing it first.
 
+## Create an empty team or select several conversations
+
+`+ New team` opens a creation dialog over Teams, keeping the overview behind it.
+`+ Add subteam` uses the same dialog with the selected parent named in its title.
+Enter Name, choose Colour, and optionally select members from the searchable Name/Project list.
+Click several rows to toggle their checkboxes; filtering preserves hidden selections. `tab`
+changes fields, arrows move, `space` selects a highlighted member, `enter` creates, and `esc`
+cancels. No internal IDs are shown. A duplicate name or invalid parent is refused.
+
+You may create an empty team and add members afterward. Creation never assigns a manager or
+opens its members. Both routes land on the new team overview. A failed save is reported there.
+Chats also offers `+ New team` in its full saved-conversation grid: select cards, then name
+and create. The full conversation grid itself lives only in Chats.
+
 ## Choose manager — change a team's manager from existing members
 
 `Choose manager` in the selected team's header opens a filtered Name/Project list of its

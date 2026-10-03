@@ -65,7 +65,7 @@ func (a *app) teamsRoute(msg tea.Msg) (tea.Cmd, bool) {
 	if a.at(pageTeams) && !a.wall.on && a.wall.org.on {
 		return a.teamsOrganizeRoute(msg)
 	}
-	if !a.at(pageTeams) || a.tsheet.on || a.teamMenu.on || a.wall.on || a.tmove.on {
+	if !a.at(pageTeams) || a.tsheet.on || a.teamMenu.on || a.wall.on || a.tmove.on || a.tcreate.on || a.tmembers.on || a.cdelete.on {
 		return nil, false
 	}
 	switch m := msg.(type) {

@@ -242,7 +242,7 @@ func TestWallEscClosesTheInnermostLayerFirst(t *testing.T) {
 	// The card goes before the selection under it.
 	_ = a.openWall()
 	_ = a.wallFrame(a.width, a.height)
-	a.teamMenuNewTeam()
+	a.wallStartNaming(a.wallShown(a.now()))
 	wallKeyPress(a, "esc")
 	if a.wall.naming || len(a.wall.marked) != 1 || !a.wall.on {
 		t.Fatalf("esc on the card: naming %v marked %v on %v", a.wall.naming, a.wall.marked, a.wall.on)
@@ -278,7 +278,7 @@ func TestWallPressOffACardPutsItAway(t *testing.T) {
 		t.Fatalf("a press off the popover: pop %+v on %v focus %d", a.wall.pop, a.wall.on, a.wall.focus)
 	}
 
-	a.teamMenuNewTeam()
+	a.wallStartNaming(a.wallShown(a.now()))
 	_ = a.wallFrame(a.width, a.height)
 	if a.wall.card.w() == 0 {
 		t.Fatal("the card's place was not recorded")
@@ -291,7 +291,7 @@ func TestWallPressOffACardPutsItAway(t *testing.T) {
 // CLOSING A TILE HANDS THE FOCUS TO ITS RIGHT, or at the end of the list to
 // its left, and never back to the start; closing another tile keeps the
 // focus on the conversation it was on.
-func TestWallCloseHandsTheFocusToTheNeighbour(t *testing.T) {
+func TestWallCloseTabKeepsCardAndDeletionHandsFocusToNeighbour(t *testing.T) {
 	// The fixture is two conversations behind and the one in front, last.
 	fresh := func() (*app, []wallTile) {
 		a, _, _ := tabApp(t)
@@ -308,8 +308,8 @@ func TestWallCloseHandsTheFocusToTheNeighbour(t *testing.T) {
 	a, tiles := fresh()
 	a.wallMove(0, len(tiles))
 	wallKeyPress(a, "x")
-	if got := focused(a); got != tiles[1].tab.key {
-		t.Fatalf("closing the focused tile focused %q, want its right neighbour %q", got, tiles[1].tab.key)
+	if got := focused(a); got != tiles[0].tab.key {
+		t.Fatalf("closing a tab lost its conversation card: focused %q, want %q", got, tiles[0].tab.key)
 	}
 
 	a, tiles = fresh()
@@ -394,7 +394,7 @@ func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 		t.Fatalf("m with %d picked: %+v", len(behind), a.wall.pop)
 	}
 	wallKeyPress(a, "x")
-	if n := len(a.wallShown(a.now())); n != len(tiles)-len(behind) {
+	if n := len(a.wallShown(a.now())); n != len(tiles) {
 		t.Fatalf("x with %d picked left %d of %d", len(behind), n, len(tiles))
 	}
 

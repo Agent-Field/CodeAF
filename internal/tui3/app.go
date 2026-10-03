@@ -1450,6 +1450,7 @@ type app struct {
 	// Overlay selection belongs to the view; conversation drafts stay in the keeper.
 	teamViews          teamOverlayViews
 	tmembers           teamMembershipSheet
+	tcreate            teamCreateSheet
 	cdelete            conversationDeleteSheet
 	deleteConversation func(file string, choices map[string]string, affected map[string][]string) error
 	deletedSessionRows map[tasksKey]bool
@@ -3977,6 +3978,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window to let go of (takeover.go).
 		return a, a.takeoverTick(msg)
 
+	case wallSavedReadMsg:
+		a.wallTakeSavedRead(msg)
+		return a, nil
+
 	case wallReadMsg:
 		a.wallTakeRead(msg)
 		return a, nil
@@ -4044,6 +4049,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		if a.cdelete.on {
 			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
 		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
@@ -4323,6 +4331,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		if a.cdelete.on {
 			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
 		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
@@ -4755,6 +4766,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.cdelete.on {
 			return a, a.conversationDeleteMouse(msg, msg.Mouse())
 		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
+		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
 			return a, cmd
@@ -4802,6 +4816,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMotionMsg:
 		if a.cdelete.on {
 			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
 		}
 		if a.tmembers.on {
 			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
@@ -9062,6 +9079,36 @@ func (a *app) paste(text string) tea.Cmd {
 	// at the door — CRLF first, then bare CR.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	// Creation and the grid own their clipboard input just as they own keys.
+	// A paste must never spill into the conversation draft behind them.
+	if a.tcreate.on {
+		text = strings.ReplaceAll(text, "\n", " ")
+		switch a.tcreate.field {
+		case 0:
+			a.tcreate.name.insert(text)
+		case 2:
+			a.tcreate.filter.insert(text)
+			a.tcreate.cursor, a.tcreate.top = 0, 0
+		}
+		a.touch()
+		return nil
+	}
+	if a.wall.on {
+		text = strings.ReplaceAll(text, "\n", " ")
+		if a.wall.naming {
+			if a.wall.nameFresh {
+				a.wall.name = ""
+			}
+			a.wall.name += text
+			a.wall.nameFresh, a.wall.nameAsking = false, false
+			a.wall.nameError = ""
+		} else if a.wall.filterOn {
+			a.wall.filter += text
+			a.wall.focus, a.wall.scroll = 0, 0
+		}
+		a.touch()
+		return nil
+	}
 	if a.pasteEdit.open {
 		before := a.pasteEdit.box.String()
 		a.pasteEdit.box.insert(text)

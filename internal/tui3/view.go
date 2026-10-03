@@ -289,6 +289,7 @@ func (a *app) frame() (string, int, int) {
 	body = a.teamSheetOver(body)
 	body = a.teamMoveOver(body)
 	body = a.teamMembershipOver(body)
+	body = a.teamCreateOver(body)
 	body = a.conversationDeleteOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }

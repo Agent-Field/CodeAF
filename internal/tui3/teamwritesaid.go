@@ -67,6 +67,15 @@ func (a *app) teamsWriteSettled(w teamsWrote) {
 	now := a.now()
 	if a.wall.madeSaid.settle(w) {
 		a.wall.madeAt = now
+		if a.at(pageTeams) {
+			if selected, ok := a.teamsSelected(); ok && selected.Name == a.wall.made {
+				if why := a.wall.madeSaid.why; why != "" {
+					a.tp.msg = teamNotSaved(a.wall.made, why)
+				} else {
+					a.tp.msg = "Created " + a.wall.made
+				}
+			}
+		}
 	}
 	if a.wall.org.said.settle(w) {
 		a.wall.org.doneAt = now

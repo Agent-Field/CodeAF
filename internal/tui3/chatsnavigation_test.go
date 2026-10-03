@@ -121,7 +121,7 @@ func TestTabWallDoorStaysAtRightAcrossWidthsAndOverflow(t *testing.T) {
 func TestConversationGridHasOnlyConversationControls(t *testing.T) {
 	a, _, _ := menuApp(t)
 	spend(t, a, a.openWall())
-	for _, key := range []string{"m", "s", "e", "r", "D", "o", "u", "1", "9"} {
+	for _, key := range []string{"m", "e", "r", "D", "o", "u", "1", "9"} {
 		wallKeyPress(a, key)
 		if !a.wall.on || a.wall.activeID != "" || a.wall.naming || a.wall.org.on || a.wall.pop.kind != wallPopNone || a.tsheet.on {
 			t.Fatalf("%s opened team controls", key)
@@ -129,7 +129,7 @@ func TestConversationGridHasOnlyConversationControls(t *testing.T) {
 	}
 	wallKeyPress(a, "?")
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	for _, word := range []string{"New team", "Make team", "Add to", "Team settings", "Switch team", "Organize"} {
+	for _, word := range []string{"Add to", "Team settings", "Switch team", "Organize"} {
 		if strings.Contains(frame, word) {
 			t.Fatalf("help advertises %q", word)
 		}
@@ -142,7 +142,7 @@ func TestConversationGridFilterKeepsTotalOpenCount(t *testing.T) {
 	spend(t, a, a.openWall())
 	a.wall.filter = "Shipping the parser"
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if len(a.wallShown(a.now())) != 1 || !strings.Contains(frame, "1 of 3 open") {
+	if len(a.wallShown(a.now())) != 1 || !strings.Contains(frame, "1 of 3 conversations") {
 		t.Fatal(frame)
 	}
 }
@@ -162,18 +162,18 @@ func TestConversationGridRetainsTeamsOriginNamingFlow(t *testing.T) {
 		}
 		target := teamsTargetOf(t, a, act, parent)
 		drive(t, a, tea.MouseClickMsg{X: target.x0, Y: target.y, Button: tea.MouseLeft})
-		if !a.wall.on || !a.wall.naming || a.wall.nameParent != parent {
+		if a.wall.on || !a.tcreate.on || a.tcreate.parent != parent {
 			t.Fatal("Teams did not open its naming card")
 		}
 		wantName := "new top"
 		if parent != "" {
 			wantName = "new sub"
 		}
-		a.wall.name = wantName
-		_ = a.wallFrame(a.width, a.height)
-		spend(t, a, wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActSave))))
+		a.tcreate.name.setText(wantName)
+		_, _, _ = a.frame()
+		spend(t, a, a.teamCreateSave())
 		made := a.wall.teams[len(a.wall.teams)-1]
-		if made.Name != wantName || made.Parent != parent || a.wall.naming {
+		if made.Name != wantName || made.Parent != parent || a.tcreate.on {
 			t.Fatalf("naming flow: %+v", made)
 		}
 	}

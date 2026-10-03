@@ -28,9 +28,12 @@ returns to None. Narrow strips keep their scroll arrows and a fixed `▦ All` gr
 
 ## The conversations view (the wall): how do I see all my conversations at once?
 
-The **conversations view** shows every conversation this window has open as a grid of live
-tiles. It is independent of teams: choosing an overlay in Chats does not filter this grid.
-Saved conversations not open here remain accessible through Home and Sessions.
+The **conversations view** on Chats shows every saved, non-deleted conversation, including
+conversations whose tabs are dismissed and older archived conversations. It reads the same
+conversation catalog as `alt+k`, without the switcher's visible-row limit. It is independent
+of teams: choosing an overlay does not filter the grid. Browsing and selecting saved cards
+never starts work or opens their tabs. Live held conversations update; other cards show saved
+previews. Over a hosted connection, saved previews are unavailable unless already cached.
 
 Open the grid with:
 
@@ -40,18 +43,19 @@ Open the grid with:
 - `▦ All` on the dock under the message box, drawn once a second conversation is open
 
 The strip belongs to Chats; from a place use `alt+v` or `/wall`. On strips narrower than the
-12-column header floor it is absent. The title reads `Conversations · open in this window`.
+12-column header floor it is absent. The title reads `Conversations · all saved conversations`.
 Membership dots on tiles are context; they do not filter the grid or edit teams.
 Hovering a conversation tab also highlights `▦ All`, revealing the alternate grid view.
-The toolbar offers `Filter /`, `Columns − +`, `Help ?` and `Back`.
+The toolbar offers `+ New team s`, `Filter /`, `Columns − +`, `Help ?` and `Back`.
 
 Cancel with `alt+v`, `esc`, `Back`, or the strip's `▦ All`. Cancelling restores the original
 team overlay, conversation and draft. Opening any tile enters ordinary Chats with no overlay,
-even when it is the current conversation. You can select an overlay afterward with the Teams dropdown. Closing a tile only removes its view; work keeps running.
+even when it is the current conversation. You can select an overlay afterward with the Teams dropdown. Closing an open card's tab removes that tab; its conversation stays in the grid and work keeps running.
+A saved card without a tab offers no Close action.
 
-Team creation, membership, manager assignment, settings and organization live on Teams.
-The grid has no team filter or management controls. Its hover hint reads
-`The grid of your open conversations · alt+v`.
+The grid also offers team creation from selected cards. Membership editing, manager assignment,
+settings and organization live on Teams. The grid has no team filter. Its hover hint reads
+`The grid of all your conversations · alt+v`.
 
 ## The tabs dock under the message box
 
@@ -64,7 +68,7 @@ while it is idle. Amber is only for waiting on you. One open conversation draws 
 Rest the pointer on a square and that square takes the hover ground. The hint line says
 `Go to Shipping the parser · running · click`, with `waiting on you` or `idle` in the
 middle. On the square in front it says `Shipping the parser · you are here`. On `▦ All`
-it says `The grid of your open conversations · alt+v`, as the strip's `▦ All` does,
+it says `The grid of all your conversations · alt+v`, as the strip's `▦ All` does,
 and the hover ground covers the glyph and the word together: they are one button.
 
 A press on a square goes to that conversation and does not open this view. A press
@@ -115,22 +119,37 @@ shows its action row too.
 `space` (or `Select` on a tile) picks the focused conversation. Once one is picked, every
 tile shows its box, `☐` or `☑`, and a press toggles its selection instead of opening it.
 
-The tray reads `2 selected   Close views   Clear esc`. Close views removes the picked views
-from this window; the work keeps running, and work in flight is asked about first.
-Clear or `esc` unpicks them all. The tray cannot create teams or change memberships.
+The tray offers `Create team` and `Clear esc`. Outside explicit New team selection, it also
+offers `Close views` when a picked conversation has an open tab. Closing views removes those
+tabs; the work keeps running, and work in flight is asked about first. Saved conversations
+stay in the grid. Clear or `esc` unpicks them all. During New team selection, cards offer only
+selection controls, including cards waiting for an answer.
 
 ## Teams: named groups of conversations
 
 A **team** is a named group of conversations, such as `harbor`. A conversation can belong
 to several teams. The Chats overlay shows all the selected team's members, manager first;
-the `▦ All` grid always shows all conversations open in this window regardless of team.
+the `▦ All` grid always shows all saved conversations regardless of team.
 
 Create a team with **+ New team** below the Teams sidebar list. **+ Add subteam** beside
-Add member creates one under the selected team. The naming card starts with the conversation
-in front selected and offers a name and colour. A shared project folder supplies the name;
-otherwise a word is offered and the naming model may suggest a short name until you type.
-Type a name, `ctrl+r` for another name and colour, arrows to change colour, `enter` to create,
-or `esc` to cancel. Rename afterward in Settings.
+Add member creates one under the selected team. A dedicated dialog over Teams offers Name,
+Colour, and an optional searchable Name/Project member list. Click several rows to select them;
+filters keep earlier selections. Leave the list unselected to create an empty team and use
+Add member afterward. `tab` changes fields, arrows move through members or colours, `space`
+selects the highlighted member, `enter` creates, and `esc` cancels. Manager assignment stays
+separate. Duplicate team names are refused; Rename is in Settings.
+
+## Create a team from conversation cards in Chats
+
+In Chats, open **▦ All** and click **+ New team** (or press `s`). The grid enters selection
+mode with no conversation automatically picked. Card clicks and `space` toggle members;
+filtering keeps selections hidden by the filter. Click **Create team** or press `enter` to
+name the team and choose its colour. Zero selections creates an empty team. The naming card
+suggests a name; typing replaces the suggestion, `ctrl+r` shuffles it and its colour, and
+arrows change colour. `enter` creates and opens the new overview in Teams, without resuming
+its members. `esc` cancels naming, then selection, then the grid. Cancelling does not change
+memberships or the conversation's draft. Both creation routes use the same saved catalog and
+creation rules.
 
 Use **+ Add member** in the team's overview to add an existing conversation or create one.
 Use the member card's **x** to remove that membership with confirmation. Current work finishes,
@@ -204,7 +223,7 @@ Selecting a team restores its conversation and horizontal strip position. A new 
 keeps the current conversation if it is a member, otherwise selects the manager first.
 None restores ordinary Chats. `↑` and `↓` move, `enter` chooses, and `esc` or a press
 outside cancels. Long pickers scroll with the arrows or wheel, keeping the selected row visible. On very narrow strips the dropdown gives way to the current tab and
-the fixed right-edge `▦ All` button. The grid button opens all conversations open here;
+the fixed right-edge `▦ All` button. The grid button opens all saved conversations;
 it does not select an overlay.
 
 ## A team's manager
@@ -300,8 +319,9 @@ what its key does.
 | `g`, `G` (`home`, `end`) | First and last conversation |
 | `pgup`, `pgdown` | A screen of rows; the wheel moves one row |
 | `n` | Next conversation waiting on you |
-| `enter` | Open the focused conversation |
+| `enter` | Open the focused conversation; in team selection, name the selected set |
 | `space` | Pick the focused conversation, or put it back |
+| `s` | Begin team selection; with selections, open the naming card |
 | `x` | Close the focused view, or the picked ones; the work keeps running |
 | `tab`, `shift+tab` | Next or previous conversation in the grid |
 | `/` | Filter conversations by name; `esc` clears it |

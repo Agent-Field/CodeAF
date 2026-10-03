@@ -68,7 +68,7 @@ const dockLabel = tabWallWord
 //
 // The hint names conversations open here because saved sessions belong to
 // Home and Sessions, while this button shows this window's tiles side by side.
-const dockWallWord = "The grid of your open conversations" + hintSegment + wallOpenKey
+const dockWallWord = "The grid of all your conversations" + hintSegment + wallOpenKey
 
 // dockChatsWord is what the hint slot says while the pointer rests on the
 // dock's `▦ All`.
@@ -300,8 +300,8 @@ func dockCellHint(tab chatTab) string {
 }
 
 // dockHoverWords is what the hint slot says while the pointer rests on the
-// dock, and "" when it rests anywhere else: `The grid of your open tabs, and
-// your teams · alt+v` over `▦ All`, and [dockCellHint] over a cell. The strip's own door
+// dock, and "" when it rests anywhere else: [dockWallWord] over `▦ All`, and
+// [dockCellHint] over a cell. The strip's own door
 // to the wall (chattabs.go) is explained here too, in its own sentence.
 func (a *app) dockHoverWords() string {
 	// THE TEAM'S OWN DOORS EXPLAIN THEMSELVES HERE TOO: the manager's place on

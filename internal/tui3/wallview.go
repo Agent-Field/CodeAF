@@ -111,7 +111,7 @@ const wallFreshSettle = 600 * time.Millisecond
 const wallMadeFor = 2 * time.Second
 
 // wallEmptyWord is the whisper an empty wall draws beside its way back.
-const wallEmptyWord = "No open conversations"
+const wallEmptyWord = "Conversations you save will appear here"
 
 // wallBox is one border's glyphs.
 type wallBox struct{ tl, tr, bl, br, h, v string }
@@ -247,6 +247,9 @@ func wallScrollFor(focus, scroll, n, width, height, cols int) int {
 // wallMarked is how many of the drawn tiles are marked. Any at all is the
 // selection mode: every tile shows its box, and a press on a tile toggles it.
 func wallMarked(v wallView) int {
+	if v.selectedN > 0 {
+		return v.selectedN
+	}
 	n := 0
 	for _, t := range v.tiles {
 		if t.marked {
@@ -269,14 +272,6 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 	}
 	rows := make([]string, height)
 	g := wallGlyphsFor(pal.ascii)
-	if len(v.tiles) == 0 && v.filter == "" && v.team == "" {
-		// Nothing is open at all: there is nothing to title, narrow or lay out,
-		// so the frame is the one sentence and the way back.
-		y := (height - 1) / 2
-		row, hits := wallEmptyRow(pal, v, width, y)
-		rows[y] = row
-		return rows, hits
-	}
 
 	n := len(v.tiles)
 	focus := min(max(v.focus, 0), max(n-1, 0))
@@ -310,6 +305,14 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 		if gridEnd > wallGridTop {
 			y := wallGridTop + (gridEnd-wallGridTop-1)/2
 			row, h := wallNoneRow(pal, v, width, y)
+			if v.filter == "" && v.team == "" {
+				word := wallEmptyWord
+				if v.loading {
+					word = "Loading conversations"
+				}
+				row = strings.Repeat(" ", max((width-ansi.StringWidth(word))/2, 0)) + pal.dim(fit(word, width))
+				h = nil
+			}
 			rows[y] = row
 			hits = append(hits, h...)
 		}
@@ -363,7 +366,7 @@ func renderWall(pal palette, v wallView, width, height int) ([]string, []wallHit
 		hits = wallOverlay(rows, hits, wallOrgCard(pal, g, v, width, height), width)
 	case v.naming:
 		hits = wallOverlay(rows, hits, wallNameCard(pal, g, v, width, height), width)
-	case wallMarked(v) > 0:
+	case v.selecting || wallMarked(v) > 0:
 		hits = wallOverlay(rows, hits, wallTray(pal, g, v, width, height), width)
 	}
 	if v.pop.kind != wallPopNone && !v.naming && !v.org.on {
@@ -409,13 +412,8 @@ func wallInset(width, c, tileW int) int {
 // a count growing a digit moves only what is left of it. The count waiting on
 // a person is a button: it goes to the next one, as ? does.
 //
-//	▦ Conversations · open in this window · in test    2 more in test · Open them   1 open
-//
-// THE WALL IS WHAT IS OPEN IN THIS WINDOW, narrowed by a team, and the title
-// says so in those words. A team's members this window does not have open are
-// not tiles; while there are any, one quiet word button says how many and
-// resumes them behind ([app.wallResumeAway]), and while there are none it is
-// not drawn at all.
+// The title says that the grid contains all saved conversations. Team overlays
+// never filter this library; the counts describe the cards currently shown.
 func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (string, []wallHit) {
 	mark := "▦"
 	run := "⠿"
@@ -479,9 +477,9 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 		awayAt = len(pills)
 		pills = append(pills, awayPill(true))
 	}
-	open := strconv.Itoa(len(v.tiles)) + " open"
+	open := strconv.Itoa(len(v.tiles)) + " conversations"
 	if v.filter != "" && v.total > len(v.tiles) {
-		open = strconv.Itoa(len(v.tiles)) + " of " + strconv.Itoa(v.total) + " open"
+		open = strconv.Itoa(len(v.tiles)) + " of " + strconv.Itoa(v.total) + " conversations"
 	}
 	pills = append(pills, pill{s: pal.dim(open), w: len(open)})
 	gapBefore := func(i int) int {
@@ -540,9 +538,8 @@ func wallTitleRow(pal palette, g wallGlyphs, v wallView, width, inset, y int) (s
 	return b.String(), hits
 }
 
-// wallOpenHereWord is what the wall is, in the title's words: the
-// conversations open in this window, whichever team narrows them.
-const wallOpenHereWord = "open in this window"
+// wallOpenHereWord names the catalog's scope in the title.
+const wallOpenHereWord = "all saved conversations"
 
 // wallResumeWord is the title's word button that resumes the shown team's
 // members this window does not have open.
@@ -679,7 +676,7 @@ func wallLookFor(pal palette, v wallView, t wallTile, i int, focused bool) wallT
 		border:  wallBorderInk(pal, t, focused, hovered),
 		ground:  wallGroundFor(pal, t, hovered),
 		hovered: hovered,
-		boxOn:   wallMarked(v) > 0,
+		boxOn:   (v.selecting || wallMarked(v) > 0),
 		rowOn:   hovered || focused,
 	}
 }
@@ -801,7 +798,7 @@ func wallPaintTile(pal palette, g wallGlyphs, v wallView, t wallTile, i int, foc
 	for _, s := range body {
 		out = append(out, row(s))
 	}
-	if dx, dy, _, ok := wallAnswerAt(pal.ascii, t, w, h); ok && dy < len(out) {
+	if dx, dy, _, ok := wallAnswerAt(pal.ascii, t, w, h); !v.selecting && ok && dy < len(out) {
 		// The button is laid over its row with the tile's ground around it and
 		// its own ground under it, as a control in a tile is.
 		btn := wallButtonPaint(pal, wallAnswerButton(pal.ascii), wallRowHot(v, wallHitOpen, i, y0+dy))
@@ -814,7 +811,7 @@ func wallPaintTile(pal palette, g wallGlyphs, v wallView, t wallTile, i int, foc
 		out = append(out, blank)
 	}
 	if look.rowOn {
-		if acts := wallTileActs(pal.ascii, t, w); len(acts) > 0 {
+		if acts := wallTileActsIn(v, pal.ascii, t, w); len(acts) > 0 {
 			return append(out, wallActRow(pal, v, i, look, acts, w, y0+h-1))
 		}
 	}

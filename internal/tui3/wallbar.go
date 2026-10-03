@@ -192,6 +192,7 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 	const gap = 2
 	left := []wallButton{{act: wallActBack, label: k.back + " Back", key: "esc"}}
 	acts := []wallButton{
+		{act: wallActNewTeam, label: "+ New team", key: "s"},
 		{act: wallActFilter, label: "Filter", key: "/"},
 	}
 	cols := []wallButton{{act: wallActColsLess, label: k.minus}, {act: wallActColsMore, label: "+"}}
@@ -349,9 +350,9 @@ func wallHint(v wallView, ascii bool) string {
 			return ""
 		}
 		switch {
-		case marked > 0 && v.tiles[h.arg].marked:
+		case (v.selecting || marked > 0) && v.tiles[h.arg].marked:
 			return keyed("Click to take out of the selection", "space")
-		case marked > 0:
+		case v.selecting || marked > 0:
 			return keyed("Click to add to the selection", "space")
 		case h.arg == min(max(v.focus, 0), len(v.tiles)-1):
 			return keyed("Click to open "+name(h.arg), "enter")
@@ -375,7 +376,7 @@ func wallHint(v wallView, ascii bool) string {
 		// tab steps through the teams rather than naming one, so no key is
 		// offered for a single segment.
 		if h.id == "" {
-			return "Show every conversation open in this window"
+			return "Show all saved conversations"
 		}
 		// The team's segment counts what is open here, and the hint says what
 		// the team is beside it, so the two numbers are never read as one.
@@ -417,7 +418,7 @@ func wallHint(v wallView, ascii bool) string {
 			switch {
 			case v.filter != "":
 				return keyed("Clear the filter", "esc")
-			case marked > 0:
+			case v.selecting || marked > 0:
 				return keyed("Clear the selection", "esc")
 			}
 			return keyed("Back to the conversation", "esc")
@@ -492,7 +493,7 @@ func wallNewTeamHint(marked int) string {
 	if marked > 0 {
 		return "Make a team of the " + strconv.Itoa(marked) + " selected"
 	}
-	return "Make a team, starting with the focused conversation"
+	return "Select conversations for a new team"
 }
 
 // wallEmptyRow is the whisper an empty wall draws, with the way back beside it
@@ -519,7 +520,7 @@ func wallNoneRow(pal palette, v wallView, width, y int) (string, []wallHit) {
 	if i := v.teamRow(v.team); i >= 0 {
 		name = v.teams[i].name
 	}
-	word := "No open conversations in " + name
+	word := "No conversations in " + name
 	btn := wallButton{act: wallActFilterClear, label: "Clear", key: "esc"}
 	kind, arg := wallHitAction, int(wallActFilterClear)
 	if v.filter != "" {
@@ -881,6 +882,9 @@ func wallTileActs(ascii bool, t wallTile, w int) []wallTileAct {
 		{kind: wallHitSelect, btn: wallButton{label: "Select", key: k.pick}},
 		{kind: wallHitClose, btn: wallButton{label: "Close", key: "x"}},
 	}
+	if t.noTab {
+		all = all[:2]
+	}
 	// The row keeps "╰─" before the first button and at least one rule cell
 	// and the corner after the last.
 	x := 2
@@ -898,6 +902,21 @@ func wallTileActs(ascii bool, t wallTile, w int) []wallTileAct {
 		x += bw
 	}
 	return out
+}
+
+// Explicit team selection makes every card control select, rather than open.
+func wallTileActsIn(v wallView, ascii bool, t wallTile, w int) []wallTileAct {
+	acts := wallTileActs(ascii, t, w)
+	if !v.selecting {
+		return acts
+	}
+	for _, act := range acts {
+		if act.kind == wallHitSelect {
+			act.x = 2
+			return []wallTileAct{act}
+		}
+	}
+	return nil
 }
 
 // wallActRow is the bottom border as the action row: each button a verb in
@@ -984,7 +1003,7 @@ func wallTileHits(pal palette, v wallView, t wallTile, i int, focused bool, x0, 
 	// A waiting tile's Answer is the tile's open, cut out of the body around
 	// it so the two never share a cell.
 	last := y0 + h - 1
-	if dx, dy, bw, ok := wallAnswerAt(pal.ascii, t, w, h); ok && y0+dy < last {
+	if dx, dy, bw, ok := wallAnswerAt(pal.ascii, t, w, h); !v.selecting && ok && y0+dy < last {
 		ay := y0 + dy
 		body(y0+1, ay, x0, x0+w)
 		body(ay, ay+1, x0, x0+dx)
@@ -996,7 +1015,7 @@ func wallTileHits(pal palette, v wallView, t wallTile, i int, focused bool, x0, 
 	}
 	var bottom []wallHit
 	if look.rowOn {
-		for _, act := range wallTileActs(pal.ascii, t, w) {
+		for _, act := range wallTileActsIn(v, pal.ascii, t, w) {
 			bottom = append(bottom, wallHit{x0: x0 + act.x, x1: x0 + act.x + wallButtonW(act.btn), kind: act.kind})
 		}
 	}
@@ -1097,15 +1116,24 @@ const (
 // can be done to them, the most used first.
 func wallTray(pal palette, g wallGlyphs, v wallView, width, height int) wallCard {
 	n := wallMarked(v)
-	if n == 0 || height < 8 {
+	k := wallKeysFor(pal.ascii)
+	if n == 0 && !v.selecting || height < 8 {
 		return wallCard{}
 	}
 	word := strconv.Itoa(n) + " selected"
 	lead := pal.accent(g.marked) + " " + pal.ink(word) + "  "
 	leadW := ansi.StringWidth(g.marked) + 1 + len(word) + 2
 	bs := []wallButton{
-		{act: wallActCloseViews, label: "Close views"},
+		{act: wallActMakeTeam, label: "Create team", key: k.enter},
 		{act: wallActClear, label: "Clear", key: "esc"},
+	}
+	if !v.selecting {
+		for _, tile := range v.tiles {
+			if tile.marked && !tile.noTab {
+				bs = append(bs[:1], append([]wallButton{{act: wallActCloseViews, label: "Close views"}}, bs[1:]...)...)
+				break
+			}
+		}
 	}
 	room := width - 2 - 2 - 2*wallCardPadX
 	// Close views leaves first, then Add to: Make team and Clear are the two a
@@ -1247,11 +1275,17 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 			names = append(names, t.name)
 		}
 	}
+	if v.selectedNames != nil {
+		names = v.selectedNames
+	}
 	who := strconv.Itoa(len(names)) + " " + g.sep + " " + strings.Join(names, ", ")
 	if ansi.StringWidth(who) > inner {
 		who = ansi.Truncate(who, inner, g.more)
 	}
 	l3 := wallCardLine{s: pal.dim(who)}
+	if v.nameError != "" {
+		l3.s = pal.warn(ansi.Truncate(v.nameError, inner, g.more))
+	}
 
 	bs := []wallButton{
 		{act: wallActCancel, label: "Cancel", key: "esc"},

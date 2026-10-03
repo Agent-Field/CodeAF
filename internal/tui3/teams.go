@@ -435,15 +435,22 @@ func (a *app) teamMakeHued(name string, tabs []chatTab, hue teamHueSpec) (string
 // session's own sub-team start does, and a team remade under a name it
 // already has stays where it is.
 func (a *app) teamMakeIn(name string, tabs []chatTab, hue teamHueSpec, parent string) (string, error) {
+	return a.teamMakeInChecked(name, tabs, hue, parent, false)
+}
+
+// Both creation interfaces use the same store edit, refusing name collisions
+// and a parent that disappeared before the write reached the shared store.
+func (a *app) teamCreateIn(name string, tabs []chatTab, hue teamHueSpec, parent string) (string, error) {
+	return a.teamMakeInChecked(name, tabs, hue, parent, true)
+}
+
+func (a *app) teamMakeInChecked(name string, tabs []chatTab, hue teamHueSpec, parent string, freshOnly bool) (string, error) {
 	a.teamsEnsure()
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", errors.New("a team needs a name")
 	}
 	t := teamFromTabs(name, tabs, time.Now())
-	if len(t.Members) == 0 {
-		return "", errors.New("a team needs at least one conversation")
-	}
 	// The id is minted here, once, and the change below only uses it: the
 	// change is made twice ([app.teamEdit]) and must name the same team both
 	// times.
@@ -452,6 +459,18 @@ func (a *app) teamMakeIn(name string, tabs []chatTab, hue teamHueSpec, parent st
 	defaults := a.tp.defaults
 	err := a.teamEdit(func(f *teamstore.File) error {
 		at := teamNamed(f.Teams, name)
+		if freshOnly && at >= 0 {
+			return errors.New("a team already uses this name")
+		}
+		if freshOnly && parent != "" {
+			if p, ok := f.Team(parent); !ok || p.Closed() || p.Root {
+				return errors.New("the parent team is no longer active")
+			}
+			effective := f.Effective(parent, defaults)
+			if effective.DepthLimit > 0 && f.Depth(parent)+1 > effective.DepthLimit {
+				return errors.New("the parent team cannot take another level of subteams")
+			}
+		}
 		if at < 0 {
 			made := t.Clone()
 			made.ID = fresh

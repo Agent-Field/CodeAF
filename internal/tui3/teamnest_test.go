@@ -373,14 +373,15 @@ func TestNewTeamInTheChosenTeam(t *testing.T) {
 		t.Fatalf("the rail does not offer a team inside harbor:\n%s", teamsFrameText(a))
 	}
 	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActAddSubteam, harbor)))...)
-	if !a.wall.on || !a.wall.naming || a.wall.nameParent != harbor {
+	if a.wall.on || !a.tcreate.on || a.tcreate.parent != harbor {
 		t.Fatalf("the new-team card is not for a team in harbor: on %v naming %v parent %q", a.wall.on, a.wall.naming, a.wall.nameParent)
 	}
 	if !strings.Contains(teamsFrameText(a), "New team in harbor") {
 		t.Fatalf("the card does not say where the team goes:\n%s", teamsFrameText(a))
 	}
-	a.wall.name = "slip"
-	drive(t, a, runCmd(a.wallMakeTeam(a.wallShown(a.now())))...)
+	a.tcreate.name.setText("slip")
+	_, _, _ = a.frame()
+	drive(t, a, runCmd(a.teamCreateSave())...)
 	var made team
 	for _, u := range a.wall.teams {
 		if u.Name == "slip" {
@@ -398,7 +399,7 @@ func TestNewTeamInTheChosenTeam(t *testing.T) {
 		t.Fatalf("a team at the limit does not say why: %q", tg.hint)
 	}
 	drive(t, a, runCmd(a.teamsDo(tg))...)
-	if a.wall.naming {
+	if a.tcreate.on {
 		t.Fatal("a team at the limit opened the new-team card")
 	}
 }
@@ -426,7 +427,7 @@ func TestSwitcherIsTheTreeAndConversationGridRemainsTeamAgnostic(t *testing.T) {
 	hy, oy := -1, -1
 	// The switcher's rows, not the strip's chip above it: a radio leads each.
 	for y, l := range lines {
-		if hy < 0 && strings.Contains(l, "◉ ● harbor") {
+		if hy < 0 && strings.Contains(l, "● harbor") && strings.Contains(l, "○") {
 			hy = y
 		}
 		if oy < 0 && strings.Contains(l, "● orbit") && strings.Contains(l, "○") {

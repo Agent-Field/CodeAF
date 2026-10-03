@@ -54,7 +54,7 @@ page instead, so the word never leads nowhere.
 It is not a room. It is the lit word while you are in a conversation, because that is where
 the tab strip of your chats is drawn; `tab` and `shift+tab` step over it (they walk the rooms), and it has
 no count. Its hint says `every conversation, one at a time`, which is how it differs from
-`▦ All` on the strip: that one is the grid of the tabs you have open, all at once. `esc` still goes to home, as on every place.
+`▦ All` on the strip: that one is the grid of all saved conversations. `esc` still goes to home, as on every place.
 `alt+k` is a different key: it opens the chats switcher to choose *which* conversation, while
 `chats` on the bar goes straight back to the one you were in.
 
@@ -159,7 +159,7 @@ back.
 **The hint line says what the word opens and its key** while the pointer rests on it:
 `alt+2 teams · the teams you hand work to`, `alt+3 chats · every conversation, one at a
 time`. On `more ▾` it says `more · the places this row has no room for`; on the strip's
-`▦ All` it says `The grid of your open conversations · alt+v`.
+`▦ All` it says `The grid of all your conversations · alt+v`.
 
 **A resize drops that hint.** Widening the window so `more ▾` is no longer drawn clears
 the hover, and the hint line stops saying `more · the places this row has no room for`

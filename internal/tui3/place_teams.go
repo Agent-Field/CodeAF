@@ -63,6 +63,7 @@ func (placeTeams) close(a *app) {
 	// page and go with it; a move made keeps its Undo for the next visit.
 	a.tdrag, a.tcrew = teamDrag{}, teamCrew{}
 	a.teamMembershipShut()
+	a.teamCreateShut()
 	a.tmove.pend = teamMovePend{}
 }
 

@@ -63,8 +63,8 @@ func TestWallClickPicksTilesAndClosesViews(t *testing.T) {
 		t.Fatalf("selected %d", len(a.wall.marked))
 	}
 	wallClick(t, a, wallHitFor(t, a, wallHitAction, int(wallActCloseViews)))
-	if len(a.wallShown(a.now())) != len(tiles)-2 || len(a.wall.marked) != 0 {
-		t.Fatal("Close views left selected tiles visible")
+	if len(a.wallShown(a.now())) != len(tiles) || len(a.wall.marked) != 0 {
+		t.Fatal("Close views discarded conversations or left selection")
 	}
 	for _, tile := range tiles[:2] {
 		if a.behind[tile.tab.key] == nil {

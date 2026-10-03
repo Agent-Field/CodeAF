@@ -228,3 +228,15 @@ coordination explanation and the card's creation button. The sidebar has no dupl
 creation control. Populated cards retain their conversation preview and delete control,
 with Add member and Settings, but no creation or Choose manager action. The global role
 cannot open the existing-member manager chooser; ordinary team choosers are unchanged.
+
+### Revision: saved conversation library and two creation routes
+
+Chats owns the conversation grid. It shows all saved, non-deleted conversations,
+independent of open tabs or team overlay. Saved cards use bounded previews rather
+than starting agents. Teams New team and Add subteam open a dedicated searchable
+Name/Project multi-select dialog over the overview. Initial membership is optional;
+empty teams are supported. The Chats grid retains New team as a selection mode,
+with click-based card selection and selections preserved through filtering. Both
+routes use one conversation catalog and one creation edit, then show the new Teams
+overview. Manager assignment stays separate. Cancel leaves memberships and drafts
+unchanged. Duplicate names and stale parent/depth permissions are refused.

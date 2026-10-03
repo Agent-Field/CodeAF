@@ -66,6 +66,7 @@ func wallHelpList(ascii bool) []wallHelpGroup {
 		}},
 		{name: "Select", rows: []wallHelpRow{
 			row("Select", k.pick, "space", "Select the focused conversation"),
+			row("New team", "s", "s", "Select conversations for a new team"),
 			row("Close view", "x", "x", "Close the focused view; the work keeps running"),
 		}},
 		{name: "View", rows: []wallHelpRow{

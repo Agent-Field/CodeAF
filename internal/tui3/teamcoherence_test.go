@@ -53,7 +53,7 @@ func TestTheStripAndTheWallAgreeAboutATeam(t *testing.T) {
 	}
 	spend(t, a, a.openWall())
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "open in this window") || strings.Contains(frame, "in harbor") || strings.Contains(frame, "Open them") {
+	if !strings.Contains(frame, "all saved conversations") || strings.Contains(frame, "in harbor") || strings.Contains(frame, "Open them") {
 		t.Fatal(frame)
 	}
 	if strings.Contains(frame, "quantum") {
@@ -360,7 +360,7 @@ func TestAClosedTeamLinkSelectsItInsideClosed(t *testing.T) {
 	if !a.tp.closedOpen {
 		t.Fatal("the Closed fold stayed shut")
 	}
-	if text := teamsFrameText(a); !strings.Contains(text, "Closed") || !strings.Contains(text, "orbit") || !strings.Contains(text, "disbanded without a report") {
+	if text := teamsFrameText(a); !strings.Contains(text, "Show closed") || !strings.Contains(text, "orbit") || !strings.Contains(text, "disbanded without a report") {
 		t.Fatalf("the closed team is not in the pane:\n%s", text)
 	}
 }
@@ -387,7 +387,7 @@ func TestATeamLinkOverHostFallsBackToTheWall(t *testing.T) {
 	}
 	front := a.frontTabKey()
 	spend(t, a, a.press(link.span.from+1, y))
-	if a.at(pageTeams) || !a.wall.on || a.wall.activeID != harbor {
+	if a.at(pageTeams) || !a.wall.on || a.wall.activeID != "" {
 		t.Fatalf("the fallback landed on page %q wall %v team %q", a.page.word(), a.wall.on, a.wall.activeID)
 	}
 	if a.frontTabKey() != front {

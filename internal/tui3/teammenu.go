@@ -110,43 +110,9 @@ func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
 	return a.teamActivate(r.id)
 }
 
-// teamMenuNewTeam opens the wall with the new-team card, the conversation in
-// front already picked. A team shown that it is not a member of would hide its
-// tile, so the wall widens to All first: the card makes a team of the tiles it
-// can see.
-func (a *app) teamMenuNewTeam() tea.Cmd { return a.teamMenuNewTeamIn("") }
-
-// teamMenuNewTeamIn is [app.teamMenuNewTeam] with the new team made inside
-// team parent ("" the top level): the teams page's `+ New team in harbor`. A
-// parent that cannot take one more level says why and opens nothing.
-func (a *app) teamMenuNewTeamIn(parent string) tea.Cmd {
-	if parent != "" {
-		if ok, why := a.teamsCanNest(parent); !ok {
-			a.tp.msg = why
-			a.touch()
-			return nil
-		}
-	}
-	var open tea.Cmd
-	if !a.wall.on {
-		open = a.openWall()
-	}
-	front := a.frontTabKey()
-	if t, ok := a.teamActive(); ok && !teamHolds(t, front) {
-		a.wallSetTeam("")
-	}
-	tiles := a.wallShown(a.now())
-	a.wall.marked = map[string]bool{}
-	for i, tile := range tiles {
-		if tile.tab.key == front {
-			a.wall.marked[front] = true
-			a.wallMove(i, len(tiles))
-		}
-	}
-	naming := a.wallStartNaming(tiles)
-	a.wall.nameParent = parent
-	return tea.Batch(open, naming)
-}
+// Team creation has its own member picker over the originating Teams page.
+func (a *app) teamMenuNewTeam() tea.Cmd                { return a.teamMenuNewTeamIn("") }
+func (a *app) teamMenuNewTeamIn(parent string) tea.Cmd { return a.teamCreateOpen(parent) }
 
 // teamMenuKey is a key while the switcher is up: the arrows walk its rows,
 // enter takes one, esc puts it away, and nothing else leaks to what is under

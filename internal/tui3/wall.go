@@ -79,9 +79,18 @@ func wallOpenPressed(msg tea.KeyPressMsg) bool {
 // moment later and the tiles fill in.
 func (a *app) openWall() tea.Cmd {
 	a.teamsEnsure()
+	if a.pageShowing() {
+		a.leavePlace()
+	}
+	a.closeRoom()
 	now := a.now()
 	a.wall.returnTeam, a.wall.returnView = a.teamViews.id, a.tabView
 	a.wall.on = true
+	a.wall.catalogGen++
+	a.wall.catalogBusy, a.wall.savedReading, a.wall.catalogKnown = false, false, false
+	a.wall.catalogAt = time.Time{}
+	a.wall.catalog = a.conversationCatalog(session.World{})
+	a.wall.selecting = false
 	a.wall.activeID = ""
 	a.wall.openedAt = now
 	a.wall.naming, a.wall.filterOn = false, false
@@ -113,7 +122,7 @@ func (a *app) openWall() tea.Cmd {
 	if !a.wall.ticking {
 		tick = a.wallTick()
 	}
-	return tea.Batch(a.wallReadCmd(keys...), tick, a.wake())
+	return tea.Batch(a.wallReadCmd(keys...), a.wallCatalogRead(), tick, a.wake())
 }
 
 func (a *app) closeWall() {
@@ -121,6 +130,9 @@ func (a *app) closeWall() {
 		a.tabView = a.wall.returnView
 	}
 	a.wall.on = false
+	a.wall.catalogGen++
+	a.wall.catalogBusy, a.wall.savedReading = false, false
+	a.wall.selecting = false
 	a.wall.activeID = a.teamViews.id
 	a.wall.naming, a.wall.filterOn = false, false
 	a.wall.hover = wallHitRef{}
@@ -135,7 +147,7 @@ func (a *app) closeWall() {
 	a.touch()
 }
 
-// wallShown always reads the conversations open in this window. Team overlays
+// wallShown reads the full saved catalog and live tabs. Team overlays
 // select Chats tabs only; they cannot hide an unrelated conversation in the grid.
 func (a *app) wallShown(now time.Time) []wallTile {
 	return a.wallTiles(now)
@@ -177,7 +189,9 @@ func (a *app) wallFrame(width, height int) []string {
 			}
 		}
 		tail := a.wall.tails[tiles[i].tab.key]
-		tiles[i].rows = a.wallMiniRows(tail, wallInnerW(tileW))
+		if i >= a.wall.scroll*cols && i < (a.wall.scroll+max(wallVisibleRows(room, tileH), 1))*cols {
+			tiles[i].rows = a.wallMiniRows(tail, wallInnerW(tileW))
+		}
 		if tail != nil {
 			tiles[i].doing = wallDoing(tail.recent, tiles[i].signal)
 			tiles[i].moved = tail.moved
@@ -200,7 +214,10 @@ func (a *app) wallFrame(width, height int) []string {
 		filter:    a.wall.filter,
 		filtering: a.wall.filterOn,
 		naming:    a.wall.naming,
+		selecting: a.wall.selecting,
+		loading:   !a.wall.catalogKnown,
 		name:      a.wall.name,
+		nameError: a.wall.nameError,
 		nameFresh: a.wall.nameFresh,
 		asking:    a.wall.nameAsking,
 		nameIn:    a.teamNameOf(a.wall.nameParent),
@@ -221,12 +238,11 @@ func (a *app) wallFrame(width, height int) []string {
 		helpTop:   a.wall.helpTop,
 		doorHot:   a.hot.kind == hoverTab && a.wall.door.pressable() && a.hot.index == a.wall.door.from,
 	}
-	// Text filtering changes the shown count, never the window's open count.
-	for _, tab := range a.tabList() {
-		if !tab.start && !tab.work && (tab.here || a.behind[tab.key] != nil) {
-			view.total++
-		}
+	view.total = len(a.wallCandidates())
+	for _, tab := range a.wallMarkedTabs(tiles) {
+		view.selectedNames = append(view.selectedNames, tab.word)
 	}
+	view.selectedN = len(view.selectedNames)
 	// Membership dots are context; they do not filter or manage this grid.
 	for _, t := range a.wall.teams {
 		if t.Closed() {
@@ -324,6 +340,7 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		case "backspace":
 			a.wall.name = dropLastRune(a.wall.name)
+			a.wall.nameError = ""
 			a.wall.nameFresh, a.wall.nameAsking = false, false
 		default:
 			if t := msg.Key().Text; t != "" {
@@ -334,6 +351,7 @@ func (a *app) wallKey(msg tea.KeyPressMsg) tea.Cmd {
 					a.wall.name = ""
 				}
 				a.wall.name += t
+				a.wall.nameError = ""
 				a.wall.nameFresh, a.wall.nameAsking = false, false
 			}
 		}
@@ -409,7 +427,12 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 	case "end", "G":
 		a.wallMove(n-1, n)
 	case "enter":
+		if a.wall.selecting {
+			return a.wallStartNaming(tiles)
+		}
 		return a.wallOpen(tiles, a.wall.focus)
+	case "s":
+		return a.wallAct(wallActNewTeam, tiles)
 	case "space":
 		a.wallToggle(tiles, a.wall.focus)
 	case "x":
@@ -455,7 +478,8 @@ func (a *app) wallCommand(key string, tiles []wallTile) tea.Cmd {
 // smaller of the two, and it may have been picked through the filter.
 func (a *app) wallBack(tiles []wallTile) {
 	switch {
-	case len(a.wallMarkedTabs(tiles)) > 0:
+	case a.wall.selecting || len(a.wallMarkedTabs(tiles)) > 0:
+		a.wall.selecting = false
 		a.wall.marked = map[string]bool{}
 	case a.wall.filter != "":
 		a.wallClearFilter(tiles)
@@ -548,14 +572,15 @@ func (a *app) wallCols(by, n int) {
 // After the card is saved nothing renames a team but the person.
 func (a *app) wallStartNaming(tiles []wallTile) tea.Cmd {
 	marked := a.wallMarkedTabs(tiles)
-	if len(marked) == 0 && len(tiles) > 0 {
+	if a.wall.focus >= len(tiles) {
+		a.wall.focus = max(len(tiles)-1, 0)
+	}
+	if len(marked) == 0 && len(tiles) > 0 && !a.wall.selecting {
 		a.wall.marked[tiles[a.wall.focus].tab.key] = true
 		marked = a.wallMarkedTabs(tiles)
 	}
-	if len(marked) == 0 {
-		return nil
-	}
 	a.wall.naming = true
+	a.wall.nameError = ""
 	a.wall.filterOn = false
 	a.wall.pop = wallPop{}
 	a.wall.nameParent = ""
@@ -667,6 +692,7 @@ const wallSwatchCount = 6
 // is there and never one a team already has, and moves the colour to the next
 // best one offered.
 func (a *app) wallShuffleName(tiles []wallTile) {
+	a.wall.nameError = ""
 	a.wall.name = teamFreshName(a.wallMarkedTabs(tiles), a.teamNames(), a.wall.name, rand.IntN)
 	a.wall.nameFresh = true
 	// A shuffle is the person choosing: a suggestion still on its way is
@@ -679,6 +705,8 @@ func (a *app) wallShuffleName(tiles []wallTile) {
 }
 
 func (a *app) wallMarkedTabs(tiles []wallTile) []chatTab {
+	// Filtering cannot change the selection that creation will save.
+	tiles = a.wallTilesUnfiltered()
 	var out []chatTab
 	for _, tile := range tiles {
 		if a.wall.marked[tile.tab.key] {
@@ -689,9 +717,16 @@ func (a *app) wallMarkedTabs(tiles []wallTile) []chatTab {
 }
 
 func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
+	a.wall.nameError = ""
 	name := strings.TrimSpace(a.wall.name)
-	a.wall.naming = false
 	if name == "" {
+		a.wall.nameError = "Give the team a name"
+		a.touch()
+		return nil
+	}
+	if teamNamed(a.wall.teams, name) >= 0 {
+		a.wall.nameError = "A team already uses this name"
+		a.touch()
 		return nil
 	}
 	a.teamsEnsure()
@@ -701,9 +736,13 @@ func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 	}
 	parent := a.wall.nameParent
 	a.wall.nameParent = ""
-	id, err := a.teamMakeIn(name, a.wallMarkedTabs(tiles), hue, parent)
-	made, ok := a.teamByID(id)
+	id, err := a.teamCreateIn(name, a.wallMarkedTabs(tiles), hue, parent)
+	_, ok := a.teamByID(id)
 	if !ok {
+		if err != nil {
+			a.wall.nameError = err.Error()
+			a.touch()
+		}
 		return nil
 	}
 	if err != nil {
@@ -711,14 +750,9 @@ func (a *app) wallMakeTeam(tiles []wallTile) tea.Cmd {
 	}
 	// `Made` WAITS FOR THE STORE: the row says it once the write that carried
 	// this team is back, and says it was not saved if that write was refused.
-	a.wall.madeSaid = a.teamWriteWatch(err)
-	// THE VIEW STAYS WHERE IT WAS. A person making a team is usually sorting
-	// several at once, and a wall that jumped into the new one would hide the
-	// conversations they were about to sort next. The chip row names the team
-	// and its chip is one press away.
+	// Both creation routes show the new overview without opening its members.
 	a.wall.marked = map[string]bool{}
-	a.wall.made, a.wall.madeN, a.wall.madeAt = made.Name, len(made.Members), a.now()
-	return nil
+	return a.teamCreatedShow(id, err)
 }
 
 // wallPlace is where one team's grid was left: the focused conversation, by
@@ -980,7 +1014,7 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 	case wallHitTile:
 		switch {
 		case hit.arg >= n:
-		case len(a.wallMarkedTabs(tiles)) > 0:
+		case a.wall.selecting || len(a.wallMarkedTabs(tiles)) > 0:
 			// The selection mode: a press anywhere on a tile picks it, the way a
 			// photo grid does once one photo is picked.
 			a.wallToggle(tiles, hit.arg)
@@ -995,6 +1029,10 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 			a.wallOpenMembers([]string{tiles[hit.arg].tab.key}, a.wallLocal(hit))
 		}
 	case wallHitOpen:
+		if a.wall.selecting {
+			a.wallToggle(tiles, hit.arg)
+			return nil
+		}
 		return a.wallOpen(tiles, hit.arg)
 	case wallHitClose:
 		return a.wallDismissAt(tiles, hit.arg)
@@ -1004,7 +1042,7 @@ func (a *app) wallDo(hit wallHit) tea.Cmd {
 		// The team's card (teamsheet.go), over the wall.
 		return a.teamSheetOpen(hit.id, teamSheetSettings)
 	case wallHitAddTeam:
-		return a.wallStartNaming(tiles)
+		return a.wallAct(wallActNewTeam, tiles)
 	case wallHitMini:
 		a.wallMove(hit.arg, n)
 	case wallHitAction:
@@ -1034,7 +1072,13 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 		return a.wallOpen(tiles, a.wall.focus)
 	case wallActSelect:
 		a.wallToggle(tiles, a.wall.focus)
-	case wallActNewTeam, wallActMakeTeam:
+	case wallActNewTeam:
+		if a.wall.selecting || len(a.wallMarkedTabs(tiles)) > 0 {
+			return a.wallStartNaming(tiles)
+		}
+		a.wall.selecting = true
+		a.touch()
+	case wallActMakeTeam:
 		return a.wallStartNaming(tiles)
 	case wallActFilter:
 		a.wall.filterOn = true
@@ -1051,6 +1095,7 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 	case wallActCloseViews:
 		return a.wallCloseViews(tiles)
 	case wallActClear:
+		a.wall.selecting = false
 		a.wall.marked = map[string]bool{}
 	case wallActSave:
 		return a.wallMakeTeam(tiles)
@@ -1080,6 +1125,9 @@ func (a *app) wallAct(act wallAct, tiles []wallTile) tea.Cmd {
 // itself.
 func (a *app) wallDismissAt(tiles []wallTile, i int) tea.Cmd {
 	if i < 0 || i >= len(tiles) {
+		return nil
+	}
+	if tiles[i].noTab {
 		return nil
 	}
 	tab := tiles[i].tab
@@ -1264,6 +1312,9 @@ func (a *app) wallCloseViews(tiles []wallTile) tea.Cmd {
 	var cmds []tea.Cmd
 	var ask *chatTab
 	for _, tab := range a.wallMarkedTabs(tiles) {
+		if a.tabShut[tab.key] || !tab.here && a.behind[tab.key] == nil {
+			continue
+		}
 		if a.tabCloseAsks(tab) {
 			if ask == nil {
 				held := tab

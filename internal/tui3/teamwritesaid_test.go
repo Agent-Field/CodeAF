@@ -47,12 +47,12 @@ func TestAWallTeamTheStoreRefusedIsNeverSaidToBeMade(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.teamsDisk.door = refusingSeam(a, teamstore.ErrBusy)
 	wallMakeFromFront(t, a, "beta")
-	if frame := wallPlainFrame(a.wallFrame(a.width, a.height)); strings.Contains(frame, "Made beta") {
+	if frame := teamsFrameText(a); strings.Contains(frame, "Created beta") {
 		t.Fatalf("the wall said the team was made before the store took it:\n%s", frame)
 	}
 	drive(t, a, runCmd(a.teamsWrite())...)
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if strings.Contains(frame, "Made beta") {
+	frame := teamsFrameText(a)
+	if strings.Contains(frame, "Created beta") {
 		t.Fatalf("the wall said a refused team was made:\n%s", frame)
 	}
 	if !strings.Contains(frame, "beta was not saved") {
@@ -69,11 +69,11 @@ func TestAWallTeamSaysMadeOnlyOnceTheStoreTookIt(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.teamsDisk.door = refusingSeam(a, nil)
 	wallMakeFromFront(t, a, "gamma")
-	if frame := wallPlainFrame(a.wallFrame(a.width, a.height)); strings.Contains(frame, "Made gamma") {
+	if frame := teamsFrameText(a); strings.Contains(frame, "Created gamma") {
 		t.Fatalf("the wall said the team was made before the store took it:\n%s", frame)
 	}
 	drive(t, a, runCmd(a.teamsWrite())...)
-	if frame := wallPlainFrame(a.wallFrame(a.width, a.height)); !strings.Contains(frame, "Made gamma · 1") {
+	if frame := teamsFrameText(a); !strings.Contains(frame, "Created gamma") {
 		t.Fatalf("the wall did not say the team was made:\n%s", frame)
 	}
 }
@@ -95,8 +95,8 @@ func TestATakenTeamIsNotBlamedForASiblingEditsRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	drive(t, a, runCmd(a.teamsWrite())...)
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "Made delta · 1") || strings.Contains(frame, "delta was not saved") {
+	frame := teamsFrameText(a)
+	if !strings.Contains(frame, "Created delta") || strings.Contains(frame, "delta was not saved") {
 		t.Fatalf("the made team was blamed for another edit's refusal:\n%s", frame)
 	}
 }
@@ -116,11 +116,11 @@ func TestARefusedOrganizeIsNeverSaidToBeOrganized(t *testing.T) {
 		o := &a.wall.org
 		o.on, o.props = true, []orgProp{{name: "sorted", keys: []string{tiles[0].tab.key}, names: []string{tiles[0].name}, take: true}}
 		a.wallOrganizeApply()
-		if frame := wallPlainFrame(a.wallFrame(a.width, a.height)); strings.Contains(frame, "Organized ·") {
+		if frame := teamsFrameText(a); strings.Contains(frame, "Organized ·") {
 			t.Fatalf("refuse=%v: Organized was said before the store took it:\n%s", refuse, frame)
 		}
 		drive(t, a, runCmd(a.teamsWrite())...)
-		frame := wallPlainFrame(a.wallFrame(a.width, a.height))
+		frame := teamsFrameText(a)
 		switch {
 		case refuse && (strings.Contains(frame, "Organized ·") || !strings.Contains(frame, "not saved")):
 			t.Fatalf("a refused Organize said it was done, or not that it was refused:\n%s", frame)

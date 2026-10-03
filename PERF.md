@@ -2786,3 +2786,12 @@ kill and reap the child so `Wait` cannot hang behind a full stdout pipe. Stderr
 capture retains at most **4 KiB** while continuing to drain. Regression fixtures
 cover both engines, direct runtime roots, aliases, broad globs, subprocess
 termination, source worktrees, and growth during a snapshot read.
+
+## Saved conversation cards
+
+The Chats grid reads the switcher's world metadata off-loop at most every
+`wallCatalogEvery` (**3 seconds**) and caches canonical conversation keys before painting.
+Only visible saved cards read transcript tails, one batch at a time, under the
+shared `teamsPreviewBytes` (**64 KiB per transcript**) budget. Transcript pieces
+are rendered only for visible cards. Hosted catalogs never read local transcript
+paths. No saved conversation is resumed to display or select its card.

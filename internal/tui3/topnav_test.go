@@ -363,7 +363,7 @@ func TestEveryNavWordSaysWhatItOpens(t *testing.T) {
 	}
 	drive(t, a, tea.MouseMotionMsg{X: a.wall.door.from, Y: tabStripRow})
 	all := a.footHint(a.width)
-	if !strings.Contains(all, "grid of your open tabs") || strings.Contains(all, placeFor(pageChats).about()) {
+	if !strings.Contains(all, "grid of all your conversations") || strings.Contains(all, placeFor(pageChats).about()) {
 		t.Fatalf("`▦ All` does not say it is the grid of open tabs: %q", all)
 	}
 }

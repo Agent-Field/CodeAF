@@ -3,7 +3,6 @@ package tui3
 import (
 	"fmt"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
-	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -41,43 +40,19 @@ func (a *app) teamMembershipOpen(id, member string) tea.Cmd {
 		return nil
 	}
 	a.tmembers.loading = true
-	door, root, hosted := a.world, a.placesRoot(), a.hosted()
-	return a.besideLine(func() func(bool) tea.Cmd {
-		world, known := worldSeam(door, root, hosted)
-		return func(bool) tea.Cmd {
-			if !a.tmembers.on || a.tmembers.generation != gen {
-				return nil
-			}
-			a.tmembers.loading = false
-			if !known {
-				a.tmembers.message = "Conversations are still loading; close and try again"
-			}
-			seen := map[string]bool{}
-			add := func(tab chatTab) {
-				if tab.key == "" || tab.start || tab.work || seen[tab.key] {
-					return
-				}
-				seen[tab.key] = true
-				a.tmembers.rows = append(a.tmembers.rows, tab)
-			}
-			for _, tab := range a.tabList() {
-				add(tab)
-			}
-			for _, project := range world.Projects {
-				for _, row := range project.Sessions {
-					if row.Archived {
-						continue
-					}
-					where := row.ProjectDir
-					if where == "" {
-						where = row.Workspace
-					}
-					add(chatTab{key: a.convKey(row.Transcript), file: row.Transcript, where: where, word: homeName(row)})
-				}
-			}
-			a.touch()
+	return a.conversationCatalogRead(func(rows []conversationCandidate, known bool) tea.Cmd {
+		if !a.tmembers.on || a.tmembers.generation != gen {
 			return nil
 		}
+		a.tmembers.loading = false
+		if !known {
+			a.tmembers.message = "Conversations are still loading; close and try again"
+		}
+		for _, row := range rows {
+			a.tmembers.rows = append(a.tmembers.rows, row.tab)
+		}
+		a.touch()
+		return nil
 	})
 }
 
@@ -520,11 +495,7 @@ func (a *app) teamMembershipOver(frame string) string {
 			all[0] = "cancel"
 		}
 		for _, r := range rows {
-			project := filepath.Base(r.where)
-			if r.where == "" {
-				project = ""
-			}
-			all = append(all, teamsPad(r.word, nameWidth)+"  "+teamsPad(project, projectWidth))
+			all = append(all, conversationColumns(r, inner))
 		}
 		s.cursor = min(max(s.cursor, 0), len(all)-1)
 		room := max(height-10, 1)

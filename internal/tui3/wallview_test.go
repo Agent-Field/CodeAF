@@ -266,7 +266,7 @@ func TestWallRenderStates(t *testing.T) {
 	rows, _ := renderWall(pal, v, 180, 50)
 	frame := wallPlainFrame(rows)
 	for _, want := range []string{
-		"▦ Conversations", "open in this window · in port", "⠿ 2 running", "? 1 needs you", "6 open",
+		"▦ Conversations", "all saved conversations · in port", "⠿ 2 running", "? 1 needs you", "6 conversations",
 		"Filter /", "Help ?",
 		"Answer ↵", "seen 6m ago", "running bash " + wallGlyphsFor(false).sep + " 2m", "? waiting on you",
 		"updated 5m ago", "☑", "▌", tokens.Spinner(v.spin),
@@ -292,13 +292,13 @@ func TestWallRenderStates(t *testing.T) {
 	}
 
 	empty, hits := renderWall(pal, wallView{}, 80, 24)
-	if len(empty) != 24 || len(hits) != 1 || hits[0].kind != wallHitAction || hits[0].arg != int(wallActBack) {
+	if len(empty) != 24 || len(hits) < 2 || hits[0].kind != wallHitAction || hits[0].arg != int(wallActBack) {
 		t.Fatalf("empty: %d rows, hits %+v", len(empty), hits)
 	}
 	if got := ansi.Strip(ansi.Cut(empty[hits[0].y0], hits[0].x0, hits[0].x1)); !strings.Contains(got, "Back") {
 		t.Fatalf("the empty frame's way back is drawn as %q", got)
 	}
-	if !strings.Contains(wallPlainFrame(empty), "No open conversations") {
+	if !strings.Contains(wallPlainFrame(empty), wallEmptyWord) {
 		t.Fatalf("the empty frame says nothing")
 	}
 
@@ -449,7 +449,7 @@ func wallFrameVariants(t *testing.T, pal palette, n, w, h int, each func(name st
 func TestWallClickHitsSitOnTheirLabels(t *testing.T) {
 	labels := map[wallAct]string{
 		wallActBack: "Back", wallActNewTeam: "New team", wallActFilter: "Filter", wallActNext: "needs you",
-		wallActColsLess: "−", wallActColsMore: "+", wallActMakeTeam: "Make team", wallActAddTo: "Add to",
+		wallActColsLess: "−", wallActColsMore: "+", wallActMakeTeam: "Create team", wallActAddTo: "Add to",
 		wallActCloseViews: "Close views", wallActClear: "Clear", wallActSave: "Create", wallActCancel: "Cancel",
 		wallActFilterClear: "Clear", wallActShuffle: "Shuffle", wallActHelp: "Help",
 	}
@@ -503,7 +503,7 @@ func TestWallBarTrayIffMarked(t *testing.T) {
 					adds = true
 				}
 			}
-			if makes || adds {
+			if makes != marks || adds {
 				t.Fatalf("%dx%d marks=%v: make team=%v add to=%v\n%s", sz[0], sz[1], marks, makes, adds, frame)
 			}
 			if bar := ansi.Strip(rows[len(rows)-1]); !strings.Contains(bar, "Back esc") {
@@ -1083,7 +1083,7 @@ func TestWallNarrowedToNothing(t *testing.T) {
 			}
 			v.filter = ""
 			rows, _ = renderWall(pal, v, sz[0], sz[1])
-			if !strings.Contains(wallPlainFrame(rows), "No open conversations in port") {
+			if !strings.Contains(wallPlainFrame(rows), "No conversations in port") {
 				t.Fatalf("%s: the empty team:\n%s", name, wallPlainFrame(rows))
 			}
 		}
@@ -1100,7 +1100,7 @@ func TestWallTitleOffersTheTeamsMembersNotOpenHere(t *testing.T) {
 	v.away = 2
 	rows, hits := renderWall(pal, v, 180, 50)
 	title := ansi.Strip(rows[0])
-	for _, want := range []string{"open in this window · in port", "2 more in port · Open them", "6 open"} {
+	for _, want := range []string{"all saved conversations · in port", "2 more in port · Open them", "6 conversations"} {
 		if !strings.Contains(title, want) {
 			t.Fatalf("title %q lacks %q", title, want)
 		}
