@@ -1,7 +1,7 @@
 ---
 kind: added
 title: ai& is offered as a provider of its own, asked for by key and nothing else
-pr: 1
+pr: 1737
 surface: [chat, engine]
 invalidates:
   - >-
