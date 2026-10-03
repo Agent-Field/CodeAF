@@ -143,14 +143,14 @@ class Run:
     def pair_once(self):
         """The six-digit-style code way: A shows a code, B types it, A answers y. The staging mailbox lives 4 s, so it is scripted."""
         sh(f"tmux -L vcp{SUF} kill-server", check=False)
-        sh(f"tmux -L vcp{SUF} new-session -d -s vcp -x 150 -y 30 \"bash -lc '. {A.root}/env.sh; codeaf pair --code; echo EXIT=\\$?; sleep 60'\"")
+        sh(f"tmux -L vcp{SUF} new-session -d -s vcp -x 150 -y 30 \"bash -lc '. {A.root}/env.sh; codeaf pair --code --name spark-a; echo EXIT=\\$?; sleep 60'\"")
         code, t0 = None, time.time()
         while time.time() - t0 < 90 and not code:
             m = re.search(r"codeaf pair (\d\d-\d\d\d-\d\d\d)", sh(f"tmux -L vcp{SUF} capture-pane -p -t vcp").stdout)
             code = m and m.group(1)
             time.sleep(0.05)
         assert code, "no pairing code shown"
-        join = subprocess.Popen(["bash", "-lc", f". {B.root}/env.sh; codeaf pair {code}"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        join = subprocess.Popen(["bash", "-lc", f". {B.root}/env.sh; codeaf pair --name spark-b {code}"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         answered = False
         while time.time() - t0 < 40:
             out = sh(f"tmux -L vcp{SUF} capture-pane -p -t vcp").stdout

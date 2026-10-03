@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 func legacySession(t *testing.T) string {
@@ -175,5 +176,40 @@ func TestLegacyTruthKeysReadOnceThenWriteSnakeCase(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "launchDir") || strings.Contains(string(raw), "archivedTasks") {
 		t.Errorf("rewrite kept camelCase: %s", raw)
+	}
+}
+
+// A task's own folder (trajectory, worker transcript) is found where
+// plandb.TaskDir looks after the folder becomes a cell, whether it migrated
+// from legacy or arrived beside a cell from an older take: one home, once.
+func TestTaskFoldersEndWhereTheReaderLooks(t *testing.T) {
+	for name, early := range map[string]bool{"legacy folder": false, "cell restored with journals beside it": true} {
+		t.Run(name, func(t *testing.T) {
+			dir := legacySession(t)
+			if early {
+				if err := cell.MigrateLegacy(dir); err != nil {
+					t.Fatal(err)
+				}
+			}
+			beside := filepath.Join(dir, "tasks", "7", "trajectory.jsonl")
+			if err := os.MkdirAll(filepath.Dir(beside), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(beside, []byte("{\"step\":1}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if err := cell.MigrateLegacy(dir, TruthCarriers()...); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := os.ReadFile(filepath.Join(plandb.TaskDir(dir, "7"), "trajectory.jsonl"))
+			if err != nil || string(got) != "{\"step\":1}\n" {
+				t.Fatalf("trajectory where the reader looks = %q, %v", got, err)
+			}
+			if _, err := os.Stat(beside); err == nil {
+				t.Error("a second copy stayed beside the chat")
+			}
+		})
 	}
 }

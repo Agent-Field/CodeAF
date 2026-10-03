@@ -4,21 +4,34 @@
 // A socket carries one number, the directory's version, and never a record. The list of sockets is the
 // platform's own (ctx.getWebSockets survives hibernation), so the object keeps none of its own.
 import { Liveness } from './liveness.js';
+import { PRESENCE, windowMs } from './limits.js';
 import { vouchedUntil } from './vouch.js';
 import { Wire } from './wire.js';
 
 /** The close codes a client acts on: a revoked device stops for good; a rotation stops the watching. */
 export const CLOSE_REVOKED = 4401;
 export const CLOSE_ROTATED = 4410;
+/** A socket that stopped answering is closed with this code; a client that reads it redials at once (contract 21.12.4). */
+export const CLOSE_SILENT = 4408;
 
-/** The answer header that tells a client this relay counts its socket as proof of life (contract 21.11.1). */
-const VOUCH_HEADER = 'Codeaf-Vouch';
+/** The answer headers that tell a client this relay counts its socket as proof of life, and judges presence by it (contract 21.11.1, 21.12.3). */
+const ANSWER_HEADERS = { 'Codeaf-Vouch': '1', 'Codeaf-Presence': '1' };
 
-const attachmentOf = (ws) => ws.deserializeAttachment() ?? { at: 0, holds: [], events: false };
+/** What a socket carries through hibernation; an attachment from before a field existed reads as its default. */
+const FRESH = { at: 0, holds: [], events: false, beat: PRESENCE.defaultBeat, lapsed: false };
+const attachmentOf = (ws) => ({ ...FRESH, ...ws.deserializeAttachment() });
 
-function signOfLife(ctx, ws) {
-  const { at, holds } = attachmentOf(ws);
-  return { holds, seenAt: Math.max(at, ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0) };
+/**
+ * signOfLife is the later of the time the socket was accepted and its last auto-response, which the platform records
+ * without waking us. A socket whose timestamp cannot be read (one that is closing) counts as heard from now, so a
+ * close the platform reports is never mistaken for silence.
+ */
+function signOfLife(ctx, ws, at, now) {
+  try {
+    return Math.max(at, ctx.getWebSocketAutoResponseTimestamp(ws)?.getTime() ?? 0);
+  } catch {
+    return now;
+  }
 }
 
 const PENDING = 'offline:';
@@ -46,7 +59,7 @@ const frame = (version) => `{"v":${version}}`;
 export const NOBODY = { broadcast() {}, closeDevice() {}, closeAll() {}, vouchedUntil: () => 0, announce() {} };
 
 export class Watchers {
-  constructor(ctx, cap, ttlMs, arm = () => {}) {
+  constructor(ctx, cap, ttlMs, arm = () => {}, seen = () => {}) {
     this.ctx = ctx;
     this.cap = cap;
     this.ttlMs = ttlMs;
@@ -55,6 +68,7 @@ export class Watchers {
       pending: new KvPending(ctx.storage),
       arm,
       clock: Date.now,
+      seen,
     });
     // The platform answers the client's keepalive itself, without running this object, so it never wakes.
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
@@ -64,17 +78,20 @@ export class Watchers {
    * accept opens a socket for `device`, tells it `version` at once, and answers the 101 that completes the upgrade.
    * The holds the socket names and the time it was accepted travel in its attachment, which the platform keeps
    * with the socket through hibernation, so vouching for a lease costs no storage write (contract 21.11).
-   * A socket opened with `events` also hears the event frames (presence, joined, revoked) and, at once, who is online.
+   * A socket opened with `events` also hears the event frames (presence, joined, revoked) and, at once, who is online;
+   * it is also the viewer that makes the presence sweep worth arming (contract 21.12.4). `beat` is the ping period the
+   * client declared, from which the socket's window follows.
    */
-  accept(device, version, holds, now, events = false) {
+  accept(device, version, now, { holds, beat, events = false }) {
     if (this.ctx.getWebSockets().length >= this.cap) throw new Wire('too_many_watchers', 429);
     const { 0: client, 1: server } = new WebSocketPair();
     this.ctx.acceptWebSocket(server, [device]);
-    server.serializeAttachment({ at: now, holds, events });
+    server.serializeAttachment({ ...FRESH, at: now, holds, events, beat });
     server.send(frame(version));
     if (events) for (const text of this.liveness.snapshot(device)) server.send(text);
     this.liveness.opened(device);
-    return new Response(null, { status: 101, webSocket: client, headers: { [VOUCH_HEADER]: '1' } });
+    this.liveness.rearm(); // any new live socket may lapse before the sweep that is set, but only a viewer makes a sweep worth setting
+    return new Response(null, { status: 101, webSocket: client, headers: ANSWER_HEADERS });
   }
 
   /**
@@ -83,7 +100,7 @@ export class Watchers {
    * time it was accepted if it never pinged.
    */
   vouchedUntil(device, cell, fence) {
-    const sockets = this.ctx.getWebSockets(device).map((ws) => signOfLife(this.ctx, ws));
+    const sockets = this.ctx.getWebSockets(device).map((ws) => this.#evidence(ws));
     return vouchedUntil(sockets, cell, fence, this.ttlMs);
   }
 
@@ -93,27 +110,44 @@ export class Watchers {
     for (const ws of this.ctx.getWebSockets()) attempt(() => ws.send(text));
   }
 
-  #peers() {
-    return this.ctx.getWebSockets().map((ws) => ({
+  /** #evidence is what a socket names and when it last showed life, which is all a lease needs of it. */
+  #evidence(ws) {
+    const { holds, at } = attachmentOf(ws);
+    return { holds, seenAt: signOfLife(this.ctx, ws, at, Date.now()) };
+  }
+
+  /** #peer is one socket as Liveness reads it: its device, what it hears, and the evidence of its life. */
+  #peer(ws) {
+    const att = attachmentOf(ws);
+    return {
       ws,
       device: this.ctx.getTags(ws)[0],
-      events: attachmentOf(ws).events === true,
+      events: att.events === true,
+      sign: signOfLife(this.ctx, ws, att.at, Date.now()),
+      windowMs: windowMs(att.beat),
+      lapsed: att.lapsed,
       send: (text) => attempt(() => ws.send(text)),
-    }));
+      // The flag goes first and is stored with the socket, so a sweep that is cut short never tells of it twice.
+      lapse: () => (ws.serializeAttachment({ ...att, lapsed: true }), attempt(() => ws.close(CLOSE_SILENT, 'silent'))),
+    };
   }
 
-  /** left runs when a socket has closed. It answers the device that now holds no socket, or undefined. */
+  #peers() {
+    return this.ctx.getWebSockets().map((ws) => this.#peer(ws));
+  }
+
+  /** left runs when a socket has closed. It answers the device that now holds no live socket, or undefined: a socket that was already silent leaves nothing to tell. */
   left(ws) {
-    const device = this.ctx.getTags(ws)[0];
-    return device !== undefined && this.liveness.closed({ ws, device }) ? device : undefined;
+    const peer = this.#peer(ws);
+    return peer.device !== undefined && this.liveness.closed(peer) ? peer.device : undefined;
   }
 
-  /** expire sends the offline frames that are due; the object's alarm calls it. */
+  /** expire sends the offline frames that are due and sweeps the sockets that went silent; the object's alarm calls it. */
   expire() {
     this.liveness.expire();
   }
 
-  /** online is the set of devices that hold a watch socket now. */
+  /** online is the set of devices that hold a live watch socket now: one inside its window (contract 21.12.2). */
   online() {
     return this.liveness.online();
   }

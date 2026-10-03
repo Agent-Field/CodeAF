@@ -114,14 +114,14 @@ class Fid:
 
     def pair(self):
         sh("tmux -L vfp kill-server", check=False)
-        sh(f"tmux -L vfp new-session -d -s vfp -x 150 -y 30 \"bash -lc '. {A_ROOT}/env.sh; codeaf pair --code; echo EXIT=\\$?; sleep 60'\"")
+        sh(f"tmux -L vfp new-session -d -s vfp -x 150 -y 30 \"bash -lc '. {A_ROOT}/env.sh; codeaf pair --code --name spark-a; echo EXIT=\\$?; sleep 60'\"")
         code, t0 = None, time.time()
         while time.time() - t0 < 60 and not code:
             m = re.search(r"codeaf pair (\d\d-\d\d\d-\d\d\d)", sh("tmux -L vfp capture-pane -p -t vfp", check=False).stdout)
             code = m and m.group(1)
             time.sleep(0.05)
         assert code, "no pairing code shown"
-        join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_ROOT}/env.sh; codeaf pair {code}'"],
+        join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_ROOT}/env.sh; codeaf pair --name dumb-b {code}'"],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         answered = False
         while time.time() - t0 < 60:
@@ -156,13 +156,15 @@ class Fid:
         d = box.run(f"ls -td {box.root}/home/v3/projects/*/*/.cell 2>/dev/null | head -1").stdout.strip()
         return d, os.path.basename(os.path.dirname(d))
 
-    def head_wait(self, cell, last_turn, secs=3600):
-        """The relay's head for the chat is A's view (the same identity): poll it from A's home until it is last_turn."""
+    def head_wait(self, cell, box, secs=3600):
+        """The relay's head for the chat is A's view (the same identity): poll it from A's home until it is the newest
+        sealed turn of box's chat. The newest turn is read on every poll: a chat seals once more a moment after its turn
+        ends (the writes that come after the answer), so a turn read once at the start can be passed by the head."""
         t0 = time.time()
         while time.time() - t0 < secs:
             cells = json.loads(A.sh("s1probe cells").stdout)["cells"] or []
             head = next((c["head"] for c in cells if c["id"] == cell), None)
-            if head == last_turn:
+            if head is not None and head == self.last_turn(box):
                 return round(time.time() - t0, 1)
             time.sleep(1)
         raise RuntimeError("head never reached the last sealed turn")
@@ -224,7 +226,7 @@ class Fid:
         self.say(A, "Run exactly this one bash command and nothing else: `git status --short | head -3` (ref-fd1)")
         cdir, cell = self.cell_of(A)
         self.res["cell"] = cell
-        self.res["a_durable_s"] = self.head_wait(cell, self.last_turn(A))
+        self.res["a_durable_s"] = self.head_wait(cell, A)
         log("first upload durable", self.res["a_durable_s"], "s")
         stop_a()
         self.manifest(A, WS_A, "a0")
@@ -245,7 +247,7 @@ class Fid:
         self.chat(A, WS_A)
         A.drive("open-local")
         self.say(A, "Run exactly this one bash command and nothing else: `git status --short | head -3` (ref-fd2)")
-        self.res["a2_durable_s"] = self.head_wait(cell, self.last_turn(A))
+        self.res["a2_durable_s"] = self.head_wait(cell, A)
         stop_a()
         self.manifest(A, WS_A, "a2")
         t2 = self.take(B, cell)
@@ -259,7 +261,7 @@ class Fid:
         self.chat(B, f"{B_ROOT}/work/b")
         B.drive("open-local")
         self.say(B, "Run exactly this one bash command and nothing else: `cd " + bt + " && mv docs/b.md docs/b-from-mac.md && rm -f docs/feature.md && mkdir -p mac-new && printf mac > mac-new/f.txt && printf x > \"$(printf 'mac\\314\\201.txt')\" && printf y >> src/a.txt` (ref-fd3)")
-        self.head_wait(cell, self.last_turn(B))
+        self.head_wait(cell, B)
         stop_b()
         self.manifest(B, bt, "b3")
         t3 = self.take(A, cell)
@@ -307,7 +309,7 @@ class Fid:
             self.save(f"probe-{name}-screen.txt", turn.get("pane", ""))
             cdir, cell = self.cell_of(A)
             try:
-                head = self.head_wait(cell, self.last_turn(A), secs=120)
+                head = self.head_wait(cell, A, secs=120)
             except RuntimeError as e:
                 out[name] = {"sealed": False, "note": str(e)}
                 sh(f"chmod -R u+rwx {ws}", check=False)

@@ -147,7 +147,7 @@ func (f *Feed) run(ctx context.Context) {
 			f.refuse(err)
 			return
 		}
-		if !f.sleep(ctx, wait) {
+		if wait > 0 && !f.sleep(ctx, wait) {
 			return
 		}
 	}
@@ -174,14 +174,19 @@ func (f *Feed) session(ctx context.Context) error {
 }
 
 // retryIn says how long to wait after a connection ended for err, and whether
-// to come back at all. A refusal is final, a relay without the route is asked
-// again only rarely, and anything else is a dropped socket: back off, return.
+// to come back at all. A refusal is final, a relay that stopped hearing us is
+// answered at once, a relay without the route is asked again only rarely, and anything else is a dropped socket: back off, return.
 func (f *Feed) retryIn(err error) (wait time.Duration, again bool) {
 	switch {
 	case errors.Is(err, ErrRevoked), errors.Is(err, ErrRotated):
 		return 0, false
 	case errors.Is(err, ErrNoRoute):
 		return ProbeEvery, true
+	case errors.Is(err, ErrSilent):
+		// The relay already told everyone this device was quiet, so waiting
+		// would only lengthen the time it shows offline.
+		f.retry.reset()
+		return 0, true
 	default:
 		return f.retry.next(), true
 	}

@@ -301,7 +301,7 @@ happened. The row says where the chat is only where that tells you something:
 | a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
 | held by this machine, or let go by everyone | nothing |
 
-Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box off` says that computer is switched off, asleep or offline and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `off` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box off` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `off` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
 `untitled`, and a machine whose name will not open shows the first eight characters of
 its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
 even that will not fit the sentence gives way whole before the chat's name is cut, so a
@@ -394,7 +394,7 @@ chat while you are still fetching it, this machine keeps exactly what it had.
 A chat that moves to another computer brings, from the relay and sealed on the way:
 
 - the whole conversation, and every file in its folder;
-- the files beside the chat that its messages name: a job's log (`logs/jobs/<n>.log`), a cut-short tool result's full output and each task's journal. A file over 1 MiB, or past 16 MiB together, or one that looks like a secret, stays behind and is named under `not brought along:`. The job itself is not carried: `was running there:` lists it and codeaf never restarts it;
+- the files beside the chat that its messages name: a job's log (`logs/jobs/<n>.log`) and a cut-short tool result's full output. A log or output file over 1 MiB, or past 16 MiB together, or one that looks like a secret, stays behind and is named under `not brought along:`. Each task's journal is not among them: it travels whole inside the chat, with no size limit. The job itself is not carried: `was running there:` lists it and codeaf never restarts it;
 - the chat's dials (effort, approval), the folders it refers to and which tasks were put away;
 - a task's unlanded working copy and its branch (see "Tasks that had not landed when a chat moved"), and a finished task's kept branch (see the same section);
 - what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;

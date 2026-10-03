@@ -203,7 +203,7 @@ func rowOf(id string, dev directory.Device, key []byte, self string) tui3.Device
 // openName is a sealed name in words, and "a device" when it cannot be opened.
 func openName(key []byte, sealed string) string {
 	if name, err := directory.OpenName(key, sealed); err == nil && strings.TrimSpace(name) != "" {
-		return name
+		return devname.Shown(name)
 	}
 	return "a device"
 }

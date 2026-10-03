@@ -4,7 +4,7 @@
 // and answer a Response or throw a refusal; the Durable Object does everything around them.
 import { MAX_FRAME } from './frame.js';
 import { approve, deny } from './link/decide.js';
-import { onlineDevices, presenceOf } from './presence.js';
+import { parseBeat, presenceOf } from './presence.js';
 import { parseHolds } from './vouch.js';
 import { Wire, badRequest, json, empty, notFound } from './wire.js';
 
@@ -45,13 +45,14 @@ function watching(c) {
   if (c.request.headers.get('upgrade')?.toLowerCase() !== 'websocket') throw new Wire('upgrade_required', 426);
   const { searchParams } = new URL(c.request.url);
   const holds = parseHolds(searchParams.getAll('hold'), c.tenant.limits.maxHolds);
-  return c.tenant.watch(c.device, holds, searchParams.get('events') === '1');
+  const beat = parseBeat(searchParams.getAll('beat'));
+  return c.tenant.watch(c.device, { holds, beat, events: searchParams.get('events') === '1' });
 }
 
 // The directory's version rides on a presence answer as on a list.
 const presence = (c) => {
   const { tenant } = c;
-  const answer = presenceOf(tenant.dir.list().devices, onlineDevices(tenant.watchers.ctx), tenant.clock());
+  const answer = presenceOf(tenant.dir.list().devices, tenant.watchers.online(), tenant.clock());
   return withVersion(json(answer), tenant.dir.version);
 };
 

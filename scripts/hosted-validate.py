@@ -3,7 +3,8 @@
 
   scripts/hosted-validate.py <pass number> [--repo r02-mj-base] [--out DIR]
 
-One pass: pair two machines (this one, A, and the second one, B, reached with ssh) through the relay in CODEAF_RELAY, work in a
+One pass: pair two machines (this one, A, and the second one, B, reached with ssh) through the relay in CODEAF_RELAY (B asks and
+shows a link, A approves it), work in a
 real chat with a live model, time the instant save of each tool call, move the chat to the other
 machine (a cold take through the home screen, a warm take and a take back through the same take the
 home screen runs), capture the resume card, and time how fast a new chat reaches the other machine's
@@ -43,6 +44,15 @@ CORPUS = A_R = B_HOST = B_R = A = B = None
 CTL = "/tmp/vd-ssh"
 B_PRE = "export PATH=/opt/homebrew/bin:$PATH; "
 MODEL = "deepseek/deepseek-v4.1-flash"
+
+
+def parse_invite(text):
+    """The link and the check number a new device prints while it waits for approval, or None until both
+    are on the screen. They are read from the printed sentences (pair.InviteLines) because the link carries
+    the one-time key, so it can only be taken from the screen, never rebuilt."""
+    link = re.search(r"https://\S+/p/\S+#\S+", text)
+    check = re.search(r"Check number: (\d+)", text)
+    return (link.group(0), check.group(1)) if link and check else None
 
 
 # ---------------------------------------------------------------- machines ----
@@ -143,41 +153,47 @@ class Pass:
         subprocess.run(["scp", "-q", "-o", f"ControlPath={CTL}", *helpers, f"{B_HOST}:/tmp/"], check=True)
         bsh(f"bash /tmp/setup.sh {B_R} {rigenv.get('CODEAF_RELAY')}; mkdir -p {B_R}/bin; cp /tmp/tuidrive.py /tmp/cellread.py /tmp/treehash.py {B_R}/bin/")
 
-    # ---- pairing: the staging relay keeps a mailbox 4 s, so the handshake is scripted ----
+    # ---- pairing: the new device asks and shows a link, the device already in approves it ----
 
     def pair(self):
+        """B, the new machine, runs `codeaf pair` and shows a link and a check number; A, which already holds the
+        work, runs `codeaf pair approve <link>` and answers y once it asks about the check number B shows."""
         sh("tmux -L vdp kill-server", check=False)
         t0 = time.time()
-        sh(f"tmux -L vdp new-session -d -s vdp -x 150 -y 30 \"bash -lc '. {A_R}/env.sh; codeaf pair; echo EXIT=\\$?; sleep 120'\"")
-        code = None
-        while time.time() - t0 < 20:
-            m = re.search(r"codeaf pair (\d\d-\d\d\d-\d\d\d)", sh("tmux -L vdp capture-pane -p -t vdp").stdout)
-            if m:
-                code = m.group(1)
-                break
-            time.sleep(0.03)
-        assert code, "no code shown"
-        t_code = time.time()
-        join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_R}/env.sh; codeaf pair {code}'"],
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        answered = None
-        while time.time() - t_code < 30:
-            out = sh("tmux -L vdp capture-pane -p -t vdp").stdout
-            if "wants your chats" in out and answered is None:
-                sh("tmux -L vdp send-keys -t vdp y Enter")
-                answered = time.time() - t_code
-            if "EXIT=" in out:
-                break
-            time.sleep(0.03)
-        jout = join.communicate(timeout=30)[0]
-        a_out = sh("tmux -L vdp capture-pane -p -t vdp").stdout
+        shown = f"{self.dir}/b-pair-invite.txt"
+        with open(shown, "w") as f:
+            join = subprocess.Popen(["ssh", "-o", f"ControlPath={CTL}", B_HOST, f"bash -l -c '. {B_R}/env.sh; codeaf pair --name dumb-b'"],
+                                    stdout=f, stderr=subprocess.STDOUT, text=True)
+        link, check = self.wait_for(lambda: parse_invite(open(shown).read()), 20, "B never showed a link and a check number")
+        approve = f". {A_R}/env.sh; codeaf pair approve {shlex.quote(link)}; echo EXIT=$?; sleep 120"
+        sh(f"tmux -L vdp new-session -d -s vdp -x 150 -y 30 {shlex.quote('bash -lc ' + shlex.quote(approve))}")
+        self.wait_for(lambda: f"check number {check}?" in self.a_pane(), 30, f"A never asked about check number {check}")
+        sh("tmux -L vdp send-keys -t vdp y Enter")
+        self.wait_for(lambda: "EXIT=" in self.a_pane(), 30, "A never finished approving")
+        join.wait(timeout=30)
+        a_out, jout = self.a_pane(), open(shown).read()
         sh("tmux -L vdp kill-server", check=False)
         self.save("pair.txt", f"A:\n{a_out}\nB:\n{jout}\n")
-        ok = "paired" in a_out and "paired." in jout
+        ok = "joined your devices" in a_out and "Paired - " in jout
         self.res["pair_s"] = round(time.time() - t0, 3)
         self.res["pair_ok"] = ok
         log("pair", self.res["pair_s"], "s ok" if ok else "FAILED")
         assert ok, "pairing failed: " + a_out + jout
+
+    @staticmethod
+    def a_pane():
+        return sh("tmux -L vdp capture-pane -p -t vdp").stdout
+
+    @staticmethod
+    def wait_for(look, secs, why):
+        """The first truthy answer of look(), polled until the deadline; a missed deadline stops the pass with why."""
+        t0 = time.time()
+        while time.time() - t0 < secs:
+            got = look()
+            if got:
+                return got
+            time.sleep(0.1)
+        raise AssertionError(why)
 
     # ---- the workspace and the chats ----
 

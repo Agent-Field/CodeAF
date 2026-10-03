@@ -51,3 +51,24 @@ func TestLeaseConformance(t *testing.T) {
 		}
 	})
 }
+
+// The presence cases against any live relay. They declare a beat of two
+// seconds, so each waits the five-second window on the relay's own clock.
+func TestPresenceConformance(t *testing.T) {
+	base := baseURL(t)
+	directorytest.RunPresence(t, func(t *testing.T) directorytest.WatchRig {
+		acct := newAccount(t)
+		return directorytest.WatchRig{
+			Rig: directorytest.Rig{
+				Clock: relayClock{t, base},
+				Devices: func(name string) directory.Client {
+					return directory.NewHTTP(base, acct.sign(name, wall), httpClient)
+				},
+				ID: acct.deviceID,
+			},
+			Base:     base,
+			Sign:     func(name string) wireauth.Sign { return acct.sign(name, wall) },
+			Stranger: func() wireauth.Sign { return newAccount(t).sign("a", wall) },
+		}
+	})
+}

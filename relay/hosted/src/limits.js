@@ -7,6 +7,16 @@ import { full, rateLimited } from './wire.js';
 const GiB = 1 << 30;
 const MiB = 1 << 20;
 
+/**
+ * The numbers of presence (contract 21.12.3), each said once. A client declares the beat it pings at; a socket that
+ * declares none is a pre-presence client, which was told to ping every 30 s. The window is how many beats of silence
+ * the relay allows before the socket stops counting as proof that its device is alive.
+ */
+export const PRESENCE = { maxBeat: 60, defaultBeat: 30, windowFactor: 2.5 };
+
+/** windowMs is how long a socket that declared `beat` seconds may stay silent and still be live. */
+export const windowMs = (beat) => beat * 1000 * PRESENCE.windowFactor;
+
 export const DEFAULTS = {
   // One identity.
   storeBytes: 5 * GiB, // stored bytes; the cost ceiling
