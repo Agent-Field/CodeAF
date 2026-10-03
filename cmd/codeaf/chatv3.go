@@ -992,7 +992,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		// and turning memory off never asked for them to go.
 		Skills: proc.skillShelf(),
 		// AND THE GATE the first turn holds for the pass (#1659):
-		SkillsReady:      skillsReady,
+		SkillsReady: skillsReady,
 		// And the file the old memory lived in, carried into the store on the
 		// first turn and then renamed out of the way. It is named here rather
 		// than derived down there for the reason every other path is.
