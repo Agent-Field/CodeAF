@@ -90,6 +90,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -6983,22 +6984,16 @@ func worktreeDirtIn(ctx context.Context, dir string) string {
 	return string(sum[:8])
 }
 
-// codeafDroppings is the one directory under a node's worktree that is the
-// harness's and never the node's work: job logs, saved pictures a session keeps
-// for itself, anything this program leaves behind while the node works. Named
-// once because two places have to agree about it — the fingerprint above and
-// the index [stageTaskWork] builds — and a disagreement would mean a node
-// judged as working on files that never reach its branch.
-const codeafDroppings = ".codeaf"
+// codeafDroppings is the harness's own directory under a node's worktree. It
+// is named once, in internal/cell, because the fingerprint, the index
+// [stageTaskWork] builds and the task-copy carrier all have to agree about it.
+const codeafDroppings = cell.TaskDropping
 
 const legacyCodeafDroppings = ".aforge-v3" // legacy-name
 
 // taskDroppingNames is the one list of repository-local task machinery a
-// reader, cleaner or index builder must recognise. Writes keep using
-// codeafDroppings because live worktree registrations cannot be moved.
-func taskDroppingNames() []string {
-	return []string{codeafDroppings, legacyCodeafDroppings}
-}
+// reader, cleaner or index builder must recognise.
+func taskDroppingNames() []string { return cell.TaskDroppings() }
 
 // readTaskDropping reads current metadata first and consults the former
 // directory only when the current file is absent. A current file that exists
@@ -7018,15 +7013,7 @@ func readTaskDropping(dir, name string) ([]byte, error) {
 	return nil, absent
 }
 
-func isTaskDropping(path string) bool {
-	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
-	for _, name := range taskDroppingNames() {
-		if clean == name || strings.HasPrefix(clean, name+"/") {
-			return true
-		}
-	}
-	return false
-}
+func isTaskDropping(path string) bool { return cell.IsTaskDropping(path) }
 
 // savingTools are the hands that PUT A FILE ON DISK at a path the call itself
 // names. They are the producing half of the belt, and the counterpart to
