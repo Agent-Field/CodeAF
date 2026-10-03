@@ -1543,6 +1543,12 @@ internal markup instead of words — codeaf asks that same model again a bounded
 times, then ends the turn and says plainly what failed. It does not guess a "nearby" model
 for you; the catalog's suggestion is used only when you wrote no fallback list at all.
 
+The same holds for a model you picked explicitly: a role you pinned in `models.roles`
+(the checker, when it gives no answer) or the model you named for a task. If
+that model fails, codeaf never moves the work to a model it guessed from the catalog. It
+moves only to a fallback you wrote yourself, and with none the work ends on the model you
+chose and says what failed.
+
 And when the fallbacks could not finish it either, the sentence says so rather than
 repeating advice already taken:
 

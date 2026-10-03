@@ -3113,6 +3113,16 @@ func (a *Agent) auditorModel() string {
 	return judge
 }
 
+// rolePinned reports whether `model` is what the person pinned `role` to in
+// `models.roles`, which is the one way a role's model is an explicit pick.
+func (a *Agent) rolePinned(role roles.Role, model string) bool {
+	a.mu.Lock()
+	source := a.config.RolesSource
+	a.mu.Unlock()
+	pin, ok := roles.Pinned(roles.Source(source), role)
+	return ok && strings.EqualFold(pin, strings.TrimSpace(model))
+}
+
 // newAuditAgent builds the judge: the same loop and the same package as the
 // node it audits, on the high tier, with a read-only belt and a system prompt
 // that is nothing but the audit contract.
