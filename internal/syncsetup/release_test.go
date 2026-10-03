@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -72,5 +73,36 @@ func TestTakeBackRetiresTheStaleSessionBeforeTheTranscriptMoves(t *testing.T) {
 	}
 	if session.InUse(transcriptOf(h.cell)) {
 		t.Fatal("the journal is still locked after the take-back")
+	}
+}
+
+// A chat is fenced against being opened for the whole of its takeover, from the
+// retiring of the old session to the last hook, and open again the moment the
+// takeover ends. A window that opens the chat in between boots a session on the
+// journal as it was before the swap, bound to a drive side that was made while
+// the other machine still held the lease: every tool refused, no turn saved.
+func TestAChatIsFencedAgainstOpeningWhileItIsTaken(t *testing.T) {
+	h := bContinued(t)
+	c := h.continuerA()
+	roots := c.opt.RootFor
+	var seen []bool
+	c.opt.RootFor = func(id string) string {
+		root := roots(id)
+		seen = append(seen, handoff.Arriving(root))
+		return root
+	}
+	if _, err := c.Take(context.Background(), h.cell.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) < 2 {
+		t.Fatalf("the take asked where the chat lives %d times; the test no longer samples its steps", len(seen))
+	}
+	for i, fenced := range seen[1:] { // the first answer is the one the fence itself is made from
+		if !fenced {
+			t.Fatalf("the chat could be opened at step %d of its takeover", i+1)
+		}
+	}
+	if handoff.Arriving(h.cell.Root) {
+		t.Fatal("the chat is still fenced after the takeover ended")
 	}
 }
