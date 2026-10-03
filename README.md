@@ -149,12 +149,17 @@ A run is a task like any other, on `home`, with a room and a stop.
 
 ## Benchmarks
 
-<img src="assets/readme/benchmark-deepswe.webp" alt="First on DeepSWE: senior-dev, CodeAF's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Every other harness solved less and paid more per solve: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
+<picture>
+  <source media="(max-width: 767px)" srcset="assets/readme/bbg-factory-barchart-square.png">
+  <img src="assets/readme/bbg-factory-barchart-wide.png" alt="The software factory UX: one driver orchestrating 8 parallel workers, and the DeepSWE benchmark on DeepSeek V4 Flash — solve rate per harness: CodeAF 54.9% at $0.40 per solved task (1.00x), mini-swe-agent 49.6% (1.93x), codex 45.1% (2.08x), claude-code 14.2% (3.40x)." width="100%">
+</picture>
 
 `/senior-dev`, CodeAF's developer subharness, against nine other coding harnesses
 on the same model, DeepSeek V4 Flash: 113 real GitHub issues from DeepSWE, graded
 by the official verifiers. It solved the most issues and paid the least for each
 one it solved.
+
+<img src="assets/readme/benchmark-deepswe.webp" alt="First on DeepSWE: senior-dev, CodeAF's developer subharness, solved the most tasks (54.9%) at the lowest cost per solved task (1x). Every other harness solved less and paid more per solve: mini-swe-agent 1.9x, codex 2.1x, pi 2.4x, claude-code 3.4x, omp, kilo and opencode about 4.5x, muse-code 11.3x, deepseek-harness 26.6x." width="100%">
 
 Every number, the method and the limits: [docs/benchmarks/deepswe](docs/benchmarks/deepswe/).
 
