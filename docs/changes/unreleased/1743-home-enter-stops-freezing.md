@@ -2,7 +2,7 @@
 kind: fixed
 title: enter in the home input no longer freezes the screen while a shared conversation opens
 pr: 1743
-surface: [chat, tui]
+surface: [chat]
 invalidates:
   - "On a shared legacy connection, pressing enter in the home input ran the whole launch assembly — subharness wiring, the memory graph, the foreign-skill scan — inside the keystroke, and typing and drawing froze for as long as the engine took. The door opens off the update loop now, on the line every other door uses; only the swap onto the shared agent stays on the loop, so shared behavior is unchanged. Home stays visible until creation succeeds, and a refused door keeps both drafts where they were typed."
   - "A conversation opened from a place row, from /manual on home, or from home with a draft sent its opening sentence in a batch beside the open. With the door off the loop the sentence could land on the conversation still on screen. The send now rides the door's fold after the swap, in the same order the synchronous road gave it, so the words always reach the conversation they were typed for."
