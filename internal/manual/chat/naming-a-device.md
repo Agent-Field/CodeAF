@@ -2,7 +2,7 @@
 
 ## Why does it show my hostname — the host name is the default until a device is named, and where a name appears
 
-Every screen that names a device uses one name for it: the home rows (`running on spark`, `spark off`), `Continue where you left off on spark?`, the approve screen, `spark joined your fleet - your chats are now everywhere.`, `/devices`, and the line after a move, `Moved from spark in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
+Every screen that names a device uses one name for it: the home rows (`running on spark`, `spark off`), `Continue where you left off on spark?`, the approve screen, `spark joined your devices — your chats are now everywhere.`, `/devices`, and the line after a move, `Moved from spark in 4s`. A device is called by its host name, the word your operating system already uses for it, until you give it a name. A name is only a label. It is not a key and it signs nothing, and renaming a device changes nothing about what it can reach.
 
 Because you never named this device, it kept the default. Name it and every other device shows the new name.
 
@@ -31,7 +31,7 @@ name this device: atlas▏
 enter save · ctrl+u clear · esc cancel
 ```
 
-Edit it and press enter to save, ctrl+u to clear it, esc to leave it as it was. A device names itself, so `n` on any other row says `a device names itself - choose this device's row, or open /devices on the one you mean.` To rename a device, rename it on that device.
+Edit it and press enter to save, ctrl+u to clear it, esc to leave it as it was. A device renames itself, so `n` on any other row says `a device renames itself — choose this device's row, or open /devices on the one you mean.` To rename a device, rename it on that device.
 
 After a rename it says:
 

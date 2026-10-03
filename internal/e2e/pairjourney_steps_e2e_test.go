@@ -51,7 +51,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		_, ok := waitPlain(a, 5*time.Second, "Paste it here")
 		j.check(ok, "the card did not open its steps")
 		a.paste(link)
-		screen, ok := waitPlain(a, 6*time.Second, "wants to join your fleet")
+		screen, ok := waitPlain(a, 6*time.Second, "wants to join your devices")
 		j.check(ok, "pasting the link into the card showed no approve screen")
 		j.see(a)
 		if !ok {
@@ -66,7 +66,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 
 	var check string
 	j.step("3b A: approve screen names the device", true, func() {
-		screen, ok := waitPlain(a, 12*time.Second, "wants to join your fleet")
+		screen, ok := waitPlain(a, 12*time.Second, "wants to join your devices")
 		j.require(ok, "no approve screen")
 		j.see(a)
 		m := regexp.MustCompile(`Check number (\d{4})`).FindStringSubmatch(screen)
@@ -88,8 +88,8 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		j.require(ok, "B never printed Paired")
 		j.check(regexp.MustCompile(`Paired - \d+ workspaces? available`).MatchString(screen), "B's line is not 'Paired - N workspaces available'")
 		j.see(b)
-		toast, ok := waitPlain(a, 6*time.Second, "joined your fleet")
-		j.check(ok, "A showed no 'joined your fleet' news")
+		toast, ok := waitPlain(a, 6*time.Second, "joined your devices")
+		j.check(ok, "A showed no 'joined your devices' news")
 		t.Logf("A after approve:\n%s", toast)
 	})
 
@@ -188,7 +188,7 @@ func journeyRun(j *journey, env []string, homeA, homeB, wsA, wsB string) {
 		a.keys("Escape")
 		a.lit("/devices")
 		a.keys("Enter")
-		list, ok := waitPlain(a, 8*time.Second, "r revoke")
+		list, ok := waitPlain(a, 8*time.Second, "r remove")
 		j.require(ok, "no device list on A")
 		t.Logf("devices before revoke:\n%s", list)
 		a.keys(downToOtherDevice(list)...)

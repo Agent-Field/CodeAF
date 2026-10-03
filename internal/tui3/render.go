@@ -4043,6 +4043,10 @@ func (a *app) hintWord() string {
 			return hint
 		}
 		return "↑↓ · enter · esc"
+	case a.approvals != nil && isPairLink(a.input.String()):
+		// A pair link in the box is not a message: enter opens the request it
+		// names (takePairLink), and nothing else in the slot says so.
+		return "enter opens the join request"
 	case a.shaping():
 		// The widening answer is part-way given and the block is on its second
 		// beat (question.go): the numbers bank a shape and esc puts the question
