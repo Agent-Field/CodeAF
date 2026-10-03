@@ -95,7 +95,7 @@ npm run dev                       # http://127.0.0.1:8787, R2 and Durable Object
 ```
 
 `npm run dev` lifts the new-identity cap (the conformance suite makes one identity per case, all from
-127.0.0.1); a bare `wrangler dev` keeps the default of 20 a day per address. Conformance, against
+127.0.0.1); a bare `wrangler dev` keeps the default of 200 a day per network. Conformance, against
 the running relay, from the repository root:
 
 ```sh
@@ -233,7 +233,7 @@ per-IP identity cap); production sets none of them. The pairing wire words are t
 | stored bytes per identity | 5 GiB | `507 full` |
 | rotation grace: min / max / default (`minGraceMs`, `maxGraceMs`, `defaultGraceMs`; tests lower the min) | 1 h / 30 d / 7 d | `400 bad_grace` |
 | stored objects per identity (the index is SQLite rows; the byte cap rules) | 5,000,000 | `507 full` |
-| new identities per IP per day (first sight only; existing identities never counted) | 20 | `429 too_many_identities`, `Retry-After` |
+| new identities per network per day (first sight only; existing identities never counted; a network is an IPv4 address or an IPv6 /64, see `src/network.js`) | 200 | `429 too_many_identities`, `Retry-After` (seconds until that network's day ends, also `retry_after` in the body) |
 | new frames per identity per day | 5,000 | `507 full` |
 | requests per minute, per identity / per device | 1,200 / 600 | `429 rate_limited`, `Retry-After` |
 | puts in flight per identity (a 16 MiB frame costs 2 to 3 times its size in memory) | 2 | `429 rate_limited` |

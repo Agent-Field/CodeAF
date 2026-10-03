@@ -45,7 +45,7 @@ new_sqlite_classes = ["LinkGate", "LinkRequest"]
 [vars]
 LEASE_POLICY = "amended"
 # The conformance suite makes one identity per case, all from one address, so the per-IP cap on new
-# identities is lifted for staging only; production keeps the default of 20 a day.
+# identities is lifted for staging only; production keeps the default (see src/limits.js).
 # Staging trusts X-Forwarded-For so callers can name their own network; production does not.
 TRUST_PROXY = "1"
 CAF_LIMITS = '{"newIdentitiesPerIpPerDay":1000000}'
