@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -56,6 +57,7 @@ func TestMain(m *testing.M) {
 	startCmdProfile()
 	surfaceTick = harnessTick
 	code := runTests(m)
+	cellstore.StopSpawned() // no engine daemon outlives the run
 	writeCmdProfile()
 	// A DEADLINE-DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody
 	// will write to; an owner-proven empty waiter is never started. The count is
