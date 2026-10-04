@@ -381,6 +381,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	if a.wall.on && !door {
 		return a.wallKey(msg)
 	}
+	// AND THE MAP, on the same terms: /atlas's sheet takes the whole keyboard
+	// while it is up, esc and q hand it back, and ctrl+c keeps its meaning
+	// (atlascmd.go). It reads above the first-run setup because it cannot be
+	// open at the same time as anything else that owns the frame.
+	if a.atlas.on && !door {
+		return a.atlasKey(msg)
+	}
 	if !door && wallOpenPressed(msg) {
 		return a.openWall()
 	}

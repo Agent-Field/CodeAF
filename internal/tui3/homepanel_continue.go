@@ -300,6 +300,12 @@ func (a *app) rebuildMachines() {
 // openTaken opens the chat a takeover just materialized, when this machine now
 // lists it, and says that edits were kept when they were. A chat that is not on
 // the list yet stays on home and the listing is asked for again.
+//
+// THE SENTENCE RIDES THE OPEN ([app.homeTakenSaid]). The ordinary open from
+// home goes off the loop and lands later, so a note written here would be said
+// into the conversation the person is leaving; the open's landing says it into
+// the one they are arriving in. A shared window opens in place, and the ride
+// is spent here rather than at the landing.
 func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 	a.refreshHome()
 	kept := takenSaid(msg.taken)
@@ -309,10 +315,29 @@ func (a *app) openTaken(msg homeTakenMsg) tea.Cmd {
 		a.home.say(joinSaid(moved, kept), "")
 		return a.askMachines()
 	}
+	a.homeTakenSaid = func() tea.Cmd {
+		a.note(joinSaid(moved, kept))
+		if a.file == line.row.Transcript {
+			a.offerSetup(msg.taken.Resume)
+		}
+		return nil
+	}
 	cmd := a.homeOpenLine(line)
-	a.note(joinSaid(moved, kept))
-	if a.file == line.row.Transcript {
-		a.offerSetup(msg.taken.Resume)
+	switch {
+	case cmd == nil && a.at(pageHome):
+		// THE OPEN REFUSED and home still stands: the sentence has no
+		// conversation to arrive in, so home itself says the takeover
+		// happened, the way it says every row's refusal.
+		a.home.say(joinSaid(moved, kept), "")
+		a.homeTakenSaid = nil
+		return a.askMachines()
+	case !a.at(pageHome):
+		// THE OPEN LANDED IN PLACE — a shared window walks in synchronously —
+		// so the ride is spent here rather than at a landing that already
+		// happened.
+		said := a.homeTakenSaid
+		a.homeTakenSaid = nil
+		return tea.Batch(cmd, said(), a.askMachines())
 	}
 	return tea.Batch(cmd, a.askMachines())
 }

@@ -111,7 +111,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseReleaseMsg:
 		m.updateMouseRelease(msg)
 		return m, nil
-	case tickMsg:
+	case tickMsg, Beat:
 		if m.playing && m.flow >= 0 {
 			m.stepBy(1)
 			return m, m.tick()
@@ -305,6 +305,22 @@ func (m *Model) togglePlay() {
 func (m *Model) tick() tea.Cmd {
 	return tea.Tick(time.Millisecond*playMillis, func(time.Time) tea.Msg { return tickMsg{} })
 }
+
+// Beat is the one beat of a playing flow, forwarded to the model by a host
+// surface that keeps the frame for it. The chat's /atlas sheet is that host:
+// its own loop runs the clock, so the beat has to cross packages as a
+// message type both sides can spell.
+type Beat struct{}
+
+// PlayTick is the clock a playing flow runs on. A host that keeps the frame
+// arms it when a beat arrives and drops the command when the flow is over;
+// standalone [Run] re-arms through Update instead.
+func (m *Model) PlayTick() tea.Cmd { return m.tick() }
+
+// Frame is the map as one frame body, for a host surface that composes its
+// own screen around it. It is the same drawing [View] returns, without the
+// standalone program's own alt-screen and mouse ask — the host decides both.
+func (m *Model) Frame() string { return m.drawFrame() }
 
 // toggleHelp shows or hides the legend.
 func (m *Model) toggleHelp() { m.help = !m.help }

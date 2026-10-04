@@ -90,7 +90,6 @@ var chordRegistry = []chordClaim{
 	{"resumeSkipKey", []string{ctxHome}},
 	{"selectKey", []string{ctxCopyMode}},
 	{"spellOutKey", []string{ctxSpell}},
-	{"standMarkKey", []string{ctxStanding}},
 	{"steerKeySuper", []string{ctxConversation}},
 	{"taskSheetKey", []string{ctxTaskRecord}},
 	{"teamManagerKey", []string{ctxConversation}},
