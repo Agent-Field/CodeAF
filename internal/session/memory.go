@@ -1161,14 +1161,23 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		// replayed conversation, a model's invention — changes nothing here,
 		// because the store's update runs under this session's owner filter and
 		// this check makes the skip visible before the store is asked.
+		//
+		// A STORE ERROR ON THE VISIBILITY CHECK REFUSES THE WRITE. The old guard
+		// treated both a miss and an error as a signal to proceed: a transient
+		// store failure converted the one cross-owner check into a silent pass,
+		// letting a model-named foreign id land. An error here is returned — the
+		// write is retryable through the door.
 		if decided.TargetID == "" {
 			return store.Memory{}, nil
 		}
 		visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
-		if err == nil && len(visible) == 0 {
+		if err != nil {
+			return store.Memory{}, fmt.Errorf("checking update target: %w", err)
+		}
+		if len(visible) == 0 {
 			return store.Memory{}, nil
 		}
-		if err := a.memory.store.UpdateMemoryFromSession(decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
+		if err := a.memory.store.UpdateMemoryForOwners(owners, decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
 			return store.Memory{}, err
 		}
 		return store.Memory{ID: decided.TargetID, Title: fresh.Title, Text: fresh.Text}, nil
@@ -1179,12 +1188,14 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		// The old line is read BEFORE it is retired, because the note names it
 		// and a read afterwards would be a second query for a row this one
 		// already had in hand — and read through the owners this session can
-		// see, for the same reason the update's target is.
-		retired, _, err := a.memory.store.MemoryRecord(decided.TargetID)
-		if err != nil || retired.ID == "" {
+		// see, for exactly the same reason the update's target is: a decider
+		// naming another project's id must not retire that project's memory.
+		visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
+		if err != nil || len(visible) == 0 {
 			return store.Memory{}, nil
 		}
-		replacement, err := a.memory.store.SupersedeMemory(decided.TargetID, fresh)
+		retired := visible[0]
+		replacement, err := a.memory.store.SupersedeMemoryForOwners(owners, decided.TargetID, fresh)
 		if err != nil {
 			return store.Memory{}, err
 		}
