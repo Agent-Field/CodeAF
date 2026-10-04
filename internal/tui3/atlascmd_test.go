@@ -31,7 +31,7 @@ func TestAtlasOpensTheMapAndReturnsToTheChat(t *testing.T) {
 		t.Fatalf("/atlas stood the sheet up as a place (%v)", a.page)
 	}
 	body, _, _ := a.frameBody()
-	for _, want := range []string{atlas.Atlas.Title, "drag boxes", "click/enter details"} {
+	for _, want := range []string{atlas.Maps[0].Title, "drag boxes", "click/enter details"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("the map's frame is missing %q:\n%s", want, body)
 		}

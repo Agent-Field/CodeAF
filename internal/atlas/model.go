@@ -10,7 +10,7 @@ import (
 // Update hands the same model back and the tests can drive one directly
 // without a program.
 type Model struct {
-	data Data
+	data *Map
 	W, H int
 
 	// pos is each box's centre as fractions of the map area; a drag edits it.
@@ -59,9 +59,9 @@ type tickMsg struct{}
 // New returns the model in its opening state: the plain overview, nothing
 // selected, at whatever size the terminal is (80×24 until the first
 // WindowSizeMsg says otherwise).
-func New(data Data, width, height int) *Model {
-	pos := make(map[string][2]float64, len(data.Nodes))
-	for _, n := range data.Nodes {
+func New(mp *Map, width, height int) *Model {
+	pos := make(map[string][2]float64, len(mp.Nodes))
+	for _, n := range mp.Nodes {
 		pos[n.ID] = [2]float64{n.X, n.Y}
 	}
 	if width < 1 {
@@ -71,7 +71,7 @@ func New(data Data, width, height int) *Model {
 		height = 24
 	}
 	return &Model{
-		data: data,
+		data: mp,
 		W:    width,
 		H:    height,
 		pos:  pos,

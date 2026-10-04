@@ -368,7 +368,7 @@ func sign(v int) int {
 
 // portOffsets spreads the ports of the edges that share one side of one box,
 // ordered by where on that side each edge's far end sits.
-func portOffsets(data Data, rects map[string]Rect) [][2]int {
+func portOffsets(data *Map, rects map[string]Rect) [][2]int {
 	type item struct {
 		i   int
 		to  bool // the offset lands on the edge's target side

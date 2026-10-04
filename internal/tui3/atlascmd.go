@@ -55,7 +55,7 @@ func (a *app) openAtlas() tea.Cmd {
 	a.closeLists()
 	a.dropHover()
 	if a.atlas.model == nil {
-		a.atlas.model = atlas.New(atlas.Atlas, 0, 0)
+		a.atlas.model = atlas.New(atlas.Maps[0], 0, 0)
 	}
 	// THE MAP IS DRAWN AT THE TERMINAL'S SIZE, which the model has not been
 	// told yet on a first open: the same read the frame body makes, said once

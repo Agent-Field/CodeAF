@@ -34,9 +34,9 @@ func (m *Model) drawHeader(c *canvas, g geom) {
 	head := "◆ " + m.data.Title
 	c.text(0, 0, head, colAccent, true)
 	x := len(head) + 2
-	if g.W >= 110 && m.data.Subtitle != "" {
-		c.text(x, 0, m.data.Subtitle, colDim, false)
-		x += len(m.data.Subtitle) + 2
+	if g.W >= 110 && m.data.Description != "" {
+		c.text(x, 0, m.data.Description, colDim, false)
+		x += len(m.data.Description) + 2
 	}
 	for i, f := range m.data.Flows {
 		name := f.Title
