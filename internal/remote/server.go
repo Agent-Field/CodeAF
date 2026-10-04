@@ -1039,6 +1039,16 @@ func (r *ring) after(seq uint64) (uint64, []json.RawMessage) {
 var errExecutionMode = errors.New("this conversation is already open in a different interactive or headless mode; close it before retrying")
 
 func (sess *Session) attach(s *server, hello Hello) error {
+	// EVERY ATTACH READS THE ENGINE'S OWN PROFILE. Held and joined conversations
+	// bypass boot, so refreshing only there kept their old connected key. Take
+	// the hook under the session lock and run it outside both this lock and the
+	// host's open lock: updating sources takes the process and agent locks itself.
+	sess.mu.Lock()
+	refresh := sess.engine.RefreshModelSources
+	sess.mu.Unlock()
+	if refresh != nil {
+		refresh()
+	}
 	sess.mu.Lock()
 	if hello.Headless != sess.engine.Headless {
 		sess.mu.Unlock()

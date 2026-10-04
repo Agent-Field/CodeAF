@@ -493,6 +493,13 @@ func (p *v3Process) refreshModelSources() {
 		return
 	}
 	profileDir, key, base := p.sourceSeeds()
+	// A PROFILE WRITE IS LIVE AT THE ENGINE. Resolve after releasing the
+	// snapshot lock; setAPIKey owns the same lock and updates retained agents.
+	// A keyless reading cannot revoke a working in-memory connection.
+	if resolved := config.APIKeyAt(profileDir); resolved != "" && resolved != key {
+		_ = p.setAPIKey(resolved)
+		key = resolved
+	}
 	p.setModelSources(config.ResolveSources(profileDir, key, base))
 }
 
