@@ -27,12 +27,13 @@ import (
 // keeps the user listing it was handed so a test can assert exactly what the
 // model was shown.
 type tidyScript struct {
-	mu     sync.Mutex
-	plan   string
-	fail   error
-	usd    float64
-	calls  int
-	listed string
+	mu           sync.Mutex
+	plan         string
+	fail         error
+	usd          float64
+	calls        int
+	listed       string
+	beforeAnswer func()
 }
 
 func (s *tidyScript) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
@@ -42,6 +43,9 @@ func (s *tidyScript) CompleteWithMessages(_ context.Context, messages []ai.Messa
 	}
 	if !strings.Contains(system, "You tidy a person's remembered notes") {
 		return nil, errors.New("the tidy asked something that was not the tidy")
+	}
+	if s.beforeAnswer != nil {
+		s.beforeAnswer()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -677,7 +681,10 @@ func TestTheTidyRefusesARowWhoseOwnerMovedAfterTheRead(t *testing.T) {
 	// boundary check must refuse it, and the store's guarded door must refuse
 	// it too.
 	plan := consolidatePlan{Ops: []consolidateOp{{Op: "refine", ID: target.ID, Title: "moved", Text: "the row moved away"}}}
-	tidied := applyConsolidatePlan(brain, rows, []string{store.OwnerMachine}, plan)
+	tidied, err := applyConsolidatePlan(brain, rows, []string{store.OwnerMachine}, plan)
+	if err != nil {
+		t.Fatalf("refusing an unauthorized plan: %v", err)
+	}
 	if tidied.Changed() != 0 {
 		t.Fatalf("a plan applied under the wrong owner changed %d lines", tidied.Changed())
 	}
@@ -726,6 +733,111 @@ func TestTheTidyStillRefinesItsOwnOwnersRows(t *testing.T) {
 	}
 	if tidied.Merged != 1 {
 		t.Fatalf("a same-owner refine came to %+v, want one merge", tidied)
+	}
+}
+
+func TestTheTidyRejectsLegacyProjectConfiguration(t *testing.T) {
+	for _, key := range []string{"legacy", " legacy "} {
+		t.Run(key, func(t *testing.T) {
+			script := &tidyScript{}
+			pass, brain, _ := tidyBrain(t, script,
+				store.Memory{Title: "one", Text: "first user fact"},
+				store.Memory{Title: "two", Text: "second user fact"},
+				store.Memory{Owner: store.OwnerLegacyProject, Title: "orphan", Text: "quarantined fact"},
+			)
+			rows := mustList(t, brain)
+			var orphan store.Memory
+			for _, row := range rows {
+				if row.Owner == store.OwnerLegacyProject {
+					orphan = row
+				}
+			}
+			if orphan.ID == "" {
+				t.Fatal("missing quarantine fixture")
+			}
+			pass.owners = consolidateOwners(Config{MemoryProjectKey: key})
+			script.plan = mustPlan(t, consolidateOp{Op: "refine", ID: orphan.ID, Text: "rewritten"})
+			if _, err := pass.run(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(script.listing(), orphan.ID) {
+				t.Fatal("legacy configuration exposed quarantine to model")
+			}
+			after, found, err := brain.MemoryRecord(orphan.ID)
+			if err != nil || !found || after.Text != orphan.Text {
+				t.Fatalf("quarantine changed: %+v, %v", after, err)
+			}
+		})
+	}
+}
+
+func TestTheTidyRefusesExplicitQuarantineAuthorization(t *testing.T) {
+	script := &tidyScript{}
+	pass, _, root := tidyBrain(t, script,
+		store.Memory{Owner: store.OwnerLegacyProject, Title: "one", Text: "first quarantined fact"},
+		store.Memory{Owner: store.OwnerLegacyProject, Title: "two", Text: "second quarantined fact"},
+	)
+	pass.owners = []string{store.OwnerLegacyProject}
+	if _, err := pass.run(context.Background()); err == nil {
+		t.Fatal("quarantine authorization was accepted")
+	}
+	if script.count() != 0 {
+		t.Fatal("quarantine was sent to model")
+	}
+	if _, found := readConsolidateMark(root); found {
+		t.Fatal("refused pass stamped success")
+	}
+}
+
+func TestFailedTidyWritesAreJournaledWithoutSuccessStamp(t *testing.T) {
+	for _, op := range []string{consolidateRefine, consolidateSupersede} {
+		t.Run(op, func(t *testing.T) {
+			script := &tidyScript{usd: 0.0021}
+			pass, brain, root := tidyBrain(t, script,
+				store.Memory{Title: "one", Text: "first fact"},
+				store.Memory{Title: "two", Text: "second fact"},
+			)
+			rows := mustList(t, brain)
+			target := rows[0]
+			prior := consolidateMark{At: time.Now().Add(-2 * consolidateEvery)}
+			if err := writeConsolidateMark(root, prior); err != nil {
+				t.Fatal(err)
+			}
+			pass.mark = prior
+			script.plan = mustPlan(t,
+				consolidateOp{Op: op, ID: target.ID, Text: "failed replacement"},
+				consolidateOp{Op: "refine", ID: rows[1].ID, Text: "successful refinement"},
+			)
+			script.beforeAnswer = func() {
+				if err := brain.ForgetMemory(target.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tidied, err := pass.run(context.Background())
+			if err == nil || !strings.Contains(err.Error(), target.ID) {
+				t.Fatalf("failed write not surfaced: %v", err)
+			}
+			if tidied.Merged != 1 || tidied.Superseded != 0 || tidied.USD != script.usd {
+				t.Fatalf("partial result lost: %+v", tidied)
+			}
+			mark, found := readConsolidateMark(root)
+			if !found || !mark.At.Equal(prior.At) || mark.Seq != prior.Seq {
+				t.Fatalf("failed pass stamped success: %+v", mark)
+			}
+			events, err := brain.Events(0, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			failures := 0
+			for _, event := range events {
+				if event.Kind == store.EventMemoryWriteFailed {
+					failures++
+				}
+			}
+			if failures != 1 {
+				t.Fatalf("journaled failures = %d, want 1", failures)
+			}
+		})
 	}
 }
 

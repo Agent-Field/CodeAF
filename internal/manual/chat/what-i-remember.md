@@ -519,6 +519,12 @@ all — which is most passes. The line arrives in whichever conversation you mos
 recently touched, if any is open; on a machine with no window open there is no
 line, and the change is simply there the next time you look at `/memory`.
 
+If a tidy write fails, it reports an error rather than recording a successful
+no-op. Successful changes from that pass remain, but its completion watermark
+is not advanced, so the failed work stays eligible for retry. Write failures
+are also journaled when the store can accept the failure record. Quarantined
+rows are excluded even if a project key is accidentally set to `legacy`.
+
 **When it runs.** It rides the same 5-minute background pass that checks
 everything standing, and three things have to be true at once: memory is **on**,
 **nobody has said anything anywhere for fifteen minutes**, and the last tidy was

@@ -195,7 +195,9 @@ const consolidateSource = "memory-tidy"
 func consolidateOwners(cfg Config) []string {
 	owners := []string{store.OwnerUser, store.OwnerMachine}
 	if key := strings.TrimSpace(cfg.MemoryProjectKey); key != "" {
-		owners = append(owners, store.OwnerProject(key))
+		if owner := store.OwnerProject(key); owner != store.OwnerLegacyProject && store.ValidOwner(owner) {
+			owners = append(owners, owner)
+		}
 	}
 	return owners
 }
@@ -305,6 +307,11 @@ func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
 	if len(p.owners) == 0 {
 		return standing.Tidied{}, errors.New("session: the tidy has no authorized owners to tidy")
 	}
+	for _, owner := range p.owners {
+		if !store.ValidOwner(owner) || owner == store.OwnerLegacyProject {
+			return standing.Tidied{}, errors.New("session: the tidy has an unauthorized owner")
+		}
+	}
 	batch, err := p.brain.ListMemories(p.owners, consolidateBatch)
 	if err != nil {
 		return standing.Tidied{}, err
@@ -323,8 +330,12 @@ func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
 	if err != nil {
 		return standing.Tidied{USD: usd}, err
 	}
-	tidied := applyConsolidatePlan(p.brain, batch, p.owners, plan)
+	tidied, err := applyConsolidatePlan(p.brain, batch, p.owners, plan)
 	tidied.USD = usd
+	if err != nil {
+		noticeLiveWindow("memory tidy failed · changes remain due for review")
+		return tidied, err
+	}
 
 	// THE WATERMARK IS TAKEN AFTER THE WRITES, from the store rather than from
 	// the batch, so the pass's own updates are not what the next pass reads as
@@ -484,31 +495,28 @@ func consolidateScopeWord(scope string) string {
 // applyConsolidatePlan writes the plan through the store's OWNER-GUARDED events
 // and answers what actually landed.
 //
-// EVERY REFUSAL IS SILENT AND LOCAL. An operation naming a row that is not in
-// the batch, a row already touched by this plan, an empty title or a retirement
-// the pass is not allowed to make changes nothing and stops nothing else in the
-// plan — the model answered about fifty lines and got one of them wrong, which
-// is not a reason to throw away the other seven.
-//
-// THE OWNERS LIST IS THE STRICT WRITE POLICY. A row in the batch is only
-// written when ITS OWNER IS ONE OF THE AUTHORIZED OWNERS — never a project the
-// pass was not built for, never the quarantine. The store's ForOwners doors
-// re-prove the owner inside the write transaction, so even a plan that names a
-// foreign id (a stale neighbour list, a model invention) is refused at the
-// door: the row's owner is checked against the authorized list, not merely
-// against "the batch knows it". A nil or empty owners list fails closed and
-// writes nothing at all.
-func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []string, plan consolidatePlan) standing.Tidied {
+// Invalid model operations are skipped locally. Store write failures are
+// journaled and returned, preserving successful partial work without stamping
+// the pass as complete. Mutation doors use the row's observed owner alone.
+func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []string, plan consolidatePlan) (standing.Tidied, error) {
 	known := map[string]store.Memory{}
 	for _, memory := range batch {
 		known[memory.ID] = memory
 	}
 	authorized := map[string]bool{}
 	for _, owner := range owners {
-		authorized[strings.TrimSpace(owner)] = true
+		owner = strings.TrimSpace(owner)
+		if store.ValidOwner(owner) && owner != store.OwnerLegacyProject {
+			authorized[owner] = true
+		}
 	}
 	touched := map[string]bool{}
 	var tidied standing.Tidied
+	var failures error
+	recordFailure := func(id string, err error) {
+		failure := fmt.Errorf("tidy memory %s: %w", id, err)
+		failures = errors.Join(failures, failure, brain.JournalMemoryFailure(consolidateSource, failure))
+	}
 	for index, op := range plan.Ops {
 		if index >= consolidateOps {
 			break
@@ -537,7 +545,8 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []str
 				// screen about a store that did not move.
 				continue
 			}
-			if err := brain.UpdateMemoryForOwners(owners, id, title, text, row.Tags, consolidateSource); err != nil {
+			if err := brain.UpdateMemoryForOwners([]string{row.Owner}, id, title, text, row.Tags, consolidateSource); err != nil {
+				recordFailure(id, err)
 				continue
 			}
 			touched[id] = true
@@ -556,7 +565,8 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []str
 			// reaches would be a different memory wearing the old one's place.
 			// The owner is carried over the same way, and the ForOwners door
 			// re-proves it inside the transaction.
-			if _, err := brain.SupersedeMemoryForOwners(owners, id, fresh); err != nil {
+			if _, err := brain.SupersedeMemoryForOwners([]string{row.Owner}, id, fresh); err != nil {
+				recordFailure(id, err)
 				continue
 			}
 			touched[id] = true
@@ -565,7 +575,7 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []str
 			continue
 		}
 	}
-	return tidied
+	return tidied, failures
 }
 
 // consolidateBody is the title and text an operation leaves behind, trimmed and
