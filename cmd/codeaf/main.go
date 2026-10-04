@@ -538,8 +538,9 @@ Hand it work — nobody is watching, the answer is on stdout
 Look at what happened — read-only, no key, nothing spent
   codeaf why self | <task-id> [--db path]
       today's self-spend receipts, or what one piece of work did
-  codeaf atlas
-      the architecture map: pair, continue, furrow — drag boxes, step flows
+  codeaf atlas [map]
+      an architecture map — pairing and the rest — drag boxes, step flows;
+      bare codeaf atlas shows the picker, an unknown name lists what there is
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what

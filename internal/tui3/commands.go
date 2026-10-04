@@ -494,7 +494,7 @@ var commands = []command{
 	// read-only and spends nothing — the same map `codeaf atlas` draws on its
 	// own terminal, opened here so a person mid-chat does not leave the window.
 	// esc or q hands the conversation back.
-	{name: "atlas", desc: "the architecture map: pair, devices, cells, continue, furrow"},
+	{name: "atlas", args: "<map>", desc: "the architecture map · bare /atlas picks one"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf for the next launch", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag; skip or never answer an open offer"},

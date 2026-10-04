@@ -8362,8 +8362,9 @@ func (a *app) slash(line string) tea.Cmd {
 		// THE ARCHITECTURE MAP, INSIDE THIS CONVERSATION (atlascmd.go): the
 		// same model `codeaf atlas` draws on its own terminal, opened here as
 		// a fullscreen sheet. It reads nothing and spends nothing, and esc or
-		// q gives the conversation back whole.
-		return a.openAtlas()
+		// q gives the conversation back whole. The words after the name pick
+		// the map, and bare /atlas raises the picker over the registry.
+		return a.runAtlas(rest)
 
 	case "new":
 		// The command that replaces the agent is the one command here that
