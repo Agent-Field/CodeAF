@@ -45,11 +45,12 @@ const teamCrewLetter = "p"
 type teamsCrewRow struct {
 	key, handle, title string
 	// word is the state in one word: working, asking, failed or idle.
-	word    string
-	asking  bool
-	manager bool
-	held    bool
-	at      time.Time
+	word        string
+	asking      bool
+	manager     bool
+	held        bool
+	independent bool
+	at          time.Time
 	// also is the team whose manager a shared member reports to, "" for this
 	// team's own.
 	also string
@@ -98,7 +99,7 @@ func (a *app) teamsCrew(t team) []teamsCrewRow {
 			}
 			st := a.teamsMember(m)
 			r := teamsCrewRow{key: m.Key, handle: m.Handle, title: strings.TrimSpace(m.Word), word: "idle",
-				manager: m.Key == t.Manager, held: a.trafficHeld(m.Key), at: st.at, file: m.File}
+				manager: m.Key == t.Manager, independent: m.Independent, held: a.trafficHeld(m.Key), at: st.at, file: m.File}
 			switch {
 			case st.asking:
 				r.word, r.asking = "asking", true

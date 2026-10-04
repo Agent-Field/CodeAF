@@ -46,7 +46,7 @@ func TestTeamsCardModelsFollowLiveAndSavedConversations(t *testing.T) {
 	if text := paint(); !strings.Contains(text, "vendor/saved-after") || strings.Contains(text, "saved-before") {
 		t.Fatal(text)
 	}
-	label := a.teamsConversationLabel("@picker", held.Key, held.File, 25)
+	label := a.teamsCardMetadata(teamsCrewRow{handle: "picker", key: held.Key, file: held.File}, 25)[0]
 	if plain(label) != "@picker · vendor/saved..." || ansi.StringWidth(label) > 25 {
 		t.Fatalf("narrow label = %q (%d cells)", plain(label), ansi.StringWidth(label))
 	}

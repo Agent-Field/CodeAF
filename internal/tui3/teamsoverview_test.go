@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestTeamsPreviewReadsOnlyTheTailAndFollowsUpdates(t *testing.T) {
+func TestTeamsPreviewRetainsBoundedTextAndFollowsUpdates(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "transcript.jsonl")
 	old := strings.Repeat("x", teamsPreviewBytes*2) + "\n"
 	write := func(text string) {
@@ -560,10 +560,10 @@ func TestTeamsRailKeepsCreationAndHistoryVisibleWithALongTree(t *testing.T) {
 	}
 }
 
-func TestManagerPreviewPreservesRecentAuthorsParagraphsAndBounds(t *testing.T) {
+func TestManagerPreviewPreservesLatestExchangeParagraphsAndBounds(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "transcript.jsonl")
 	var data strings.Builder
-	for i := 0; i < teamsPreviewMessages+4; i++ {
+	for i := 0; i < 12; i++ {
 		role := "user"
 		if i%2 == 1 {
 			role = "assistant"
@@ -574,7 +574,7 @@ func TestManagerPreviewPreservesRecentAuthorsParagraphsAndBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := teamsReadPreview(file, teamsPreview{})
-	if p.count != teamsPreviewMessages || p.messages[0].text != "Message 04\nSecond paragraph" || p.messages[7].role != "assistant" {
+	if p.count != 2 || p.messages[0].text != "Message 10\nSecond paragraph" || p.messages[1].role != "assistant" {
 		t.Fatalf("excerpt: %+v", p)
 	}
 	if p.text != "Message 11 Second paragraph" {
@@ -595,7 +595,7 @@ func TestSelectedManagerCardLeadsCompactMembersAndUsesActualMessages(t *testing.
 			d := &teamsDraw{a: a}
 			rows := a.teamsMemberCards(d, team, width, 0)
 			text := plain(strings.Join(rows, "\n"))
-			for _, want := range []string{"You", "Which layout?", "Use the wide layout.", "Keep the narrow fallback."} {
+			for _, want := range []string{a.pal.youGlyph() + "Which layout?", "Use the wide layout.", "fallback."} {
 				if !strings.Contains(text, want) {
 					t.Fatalf("missing %q: %s", want, text)
 				}
@@ -647,17 +647,17 @@ func TestSelectedManagerCardLeadsCompactMembersAndUsesActualMessages(t *testing.
 	}
 }
 
-func TestManagerPreviewUsesFrontConversationAndLabelsClippedTail(t *testing.T) {
+func TestManagerPreviewUsesFrontConversationAndClipsReplyBeginning(t *testing.T) {
 	a, id, _ := teamsPlaceLabIDs(t)
 	team := mustTeam(t, a, id)
 	team.Manager = a.frontTabKey()
 	a.width, a.height = 100, 40
 	a.tp.previews[team.Manager] = teamsPreview{text: "stale saved update"}
-	a.entries = []entry{{kind: entryUser, text: "Use this prompt"}, {kind: entryAssistant, text: strings.Repeat("earlier line\n", 30) + "Latest answer", cut: true}, {kind: entryThinking, text: "private reasoning"}}
+	a.entries = []entry{{kind: entryUser, text: "Use this prompt"}, {kind: entryAssistant, text: "Answer begins here.\n\n" + strings.Repeat("Later paragraph.\n\n", 30) + "Latest answer", cut: true}, {kind: entryThinking, text: "private reasoning"}}
 	r := teamsCrewRow{key: team.Manager, handle: "lead", manager: true, word: "idle"}
 	rows := a.teamsManagerCard(&teamsDraw{a: a}, team, r, 100, 0)
 	text := plain(strings.Join(rows, "\n"))
-	if !strings.Contains(text, "Latest answer") || !strings.Contains(text, "Manager (interrupted) (continued)") || strings.Contains(text, "stale saved update") || strings.Contains(text, "private reasoning") {
+	if !strings.Contains(text, "Use this prompt") || !strings.Contains(text, "Answer begins here.") || !strings.Contains(text, "...") || strings.Contains(text, "Latest answer") || strings.Contains(text, "stale saved update") || strings.Contains(text, "private reasoning") {
 		t.Fatal(text)
 	}
 }
@@ -685,12 +685,12 @@ from @scrape #1: The draft is ready.
 	a.entries = []entry{{kind: entryTeam, text: wrapper}, {kind: entrySteer, steer: &steerElbow{words: "Use narrow instead"}}}
 	rows := a.teamsManagerCard(&teamsDraw{a: a}, mustTeam(t, a, id), teamsCrewRow{key: manager, handle: "boss", manager: true, word: "idle"}, 120, 0)
 	text := plain(strings.Join(rows, "\n"))
-	for _, want := range []string{"@scrape to @boss", "The draft is ready.", "You (correction)", "Use narrow instead"} {
+	for _, want := range []string{"Use narrow instead"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %q: %s", want, text)
 		}
 	}
-	if strings.Contains(text, "SECRET MODEL RULE") || strings.Contains(text, teamAsideLead) {
+	if strings.Contains(text, "The draft is ready.") || strings.Contains(text, "SECRET MODEL RULE") || strings.Contains(text, teamAsideLead) {
 		t.Fatal("model wrapper leaked")
 	}
 }
@@ -717,7 +717,7 @@ func TestManagerPreviewClickUsesTheOriginatingTeamsComposer(t *testing.T) {
 	}
 }
 
-func TestTallManagerLatestExcerptRemainsReachableByArrowsAndWheel(t *testing.T) {
+func TestTallManagerClippedReplyRemainsReachableByArrowsAndWheel(t *testing.T) {
 	for _, gesture := range []string{"arrows", "wheel"} {
 		t.Run(gesture, func(t *testing.T) {
 			a, id, _ := teamsHostedLab(t)
@@ -732,13 +732,13 @@ func TestTallManagerLatestExcerptRemainsReachableByArrowsAndWheel(t *testing.T) 
 			}
 			manager := mustTeam(t, a, id).Manager
 			a.tp.previews = map[string]teamsPreview{}
-			a.entries = []entry{{kind: entryAssistant, text: strings.Repeat("Older line\n", 20) + "LATEST DECISION"}}
+			a.entries = []entry{{kind: entryAssistant, text: "REPLY BEGINS HERE\n\n" + strings.Repeat("Later paragraph\n\n", 20)}}
 			a.tp.cur = teamsRef{act: teamsActMember, id: id, arg: manager}
 			a.tp.focus = true
 			a.touch()
 			before := teamsFrameText(a)
-			if strings.Contains(before, "LATEST DECISION") {
-				t.Fatal("fixture did not clip latest preview")
+			if !strings.Contains(before, "REPLY BEGINS HERE") {
+				t.Fatal("reply beginning was hidden")
 			}
 			if gesture == "arrows" {
 				drive(t, a, key("down"))
@@ -752,7 +752,7 @@ func TestTallManagerLatestExcerptRemainsReachableByArrowsAndWheel(t *testing.T) 
 				}
 				drive(t, a, tea.MouseWheelMsg{X: hit.x0 + 1, Y: hit.y, Button: tea.MouseWheelDown})
 			}
-			if text := teamsFrameText(a); !strings.Contains(text, "LATEST DECISION") {
+			if text := teamsFrameText(a); !strings.Contains(text, "...") {
 				t.Fatalf("latest preview inaccessible via %s: %s", gesture, text)
 			}
 			if a.tp.cur.arg != manager || a.tp.cur.opt != "preview" || !a.at(pageTeams) {
@@ -778,11 +778,8 @@ from @example: text quoted by the person
 	n := 0
 	for _, m := range got {
 		n += len(m.text)
-		if !strings.Contains(m.text, "Newest") {
-			t.Fatal("lost newest message")
-		}
 	}
-	if len(got) != 1 || n > teamsPreviewBytes {
+	if len(got) != 2 || got[0].text != "Earlier prompt" || !strings.HasPrefix(got[1].text, "界") || strings.Contains(got[1].text, "Newest") || !got[1].clipped || n > teamsPreviewBytes {
 		t.Fatalf("live excerpt exceeded shared bound: %d bytes, %d messages", n, len(got))
 	}
 }

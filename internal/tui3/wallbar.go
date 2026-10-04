@@ -1060,11 +1060,16 @@ type wallCardLine struct {
 // the lines, each padded padX cells inside the border and padY blank rows
 // above and below them, cut to fit.
 func wallCardBuild(pal palette, title string, lines []wallCardLine, x, y, w, padX, padY int) wallCard {
+	return wallCardBuildWithBorder(pal, title, lines, x, y, w, padX, padY, pal.muted)
+}
+
+// Alert cards change only their frame ink; message and control colours keep
+// their ordinary meanings inside the same geometry.
+func wallCardBuildWithBorder(pal palette, title string, lines []wallCardLine, x, y, w, padX, padY int, border func(string) string) wallCard {
 	box := wallBoxLight
 	if pal.ascii {
 		box = wallBoxLightASCII
 	}
-	border := pal.muted
 	inner := w - 2 - 2*padX
 	card := wallCard{x: x, y: y, w: w}
 	top := border(box.tl + strings.Repeat(box.h, w-2) + box.tr)

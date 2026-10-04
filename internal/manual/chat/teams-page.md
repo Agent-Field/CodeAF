@@ -99,21 +99,31 @@ opens the team's settings and spending controls. Member cards provide the conver
 links directly; there is no separate `Members` button. `p` opens the keyboard member list
 for dragging a conversation onto another team.
 
-The manager comes first in a full-width card, about forty percent shorter than the previous
-large preview. It ranges from eight to fourteen rows to keep authors and recent text readable.
-The Recent interactions panel follows the manager and separates it from the compact
-ordinary member cards, which retain a plain border and no role title. The manager card shows a labelled latest excerpt from up to eight
-recent messages, preserving authors and paragraph breaks. A clipped message says `continued`.
-On short windows, Down from the manager alias or a wheel tick on its card reveals the latest
-excerpt lines; Up or a wheel tick upward returns to the alias. Clicking either opens Chats.
-Messages currently displayed in the front conversation take precedence over saved previews.
-Other conversations use the saved transcript tail, which may describe earlier work while
-another turn is running. Ordinary cards retain two lines of the latest saved assistant update. Clicking an alias, title or preview opens the conversation in Chats
-with this team's view selected. The card's `working`, `asking`, `failed` or `idle` state is
-separate from `unread`; looking at a preview does not mark the chat read.
+The manager comes first in a full-width card, eight to fourteen rows tall. The Recent
+interactions panel follows it and separates it from the compact ordinary member cards.
+Card sizes stay unchanged. A white alias leads the first row with the conversation title
+in grey parentheses and the grey model beside it; narrow cards use a second model row.
+Idle ages and excerpt labels do not consume preview space.
 
-A preview reads only the last 64 KiB of a local transcript. `Updates appear here` means no
-assistant update was found in that tail. `Conversation unavailable` means the file could
+Manager, Global manager and member previews show the latest user message and the beginning
+of its assistant response. User words use Chats' blue prompt glyph and muted blue body;
+assistant words use Chats' Markdown renderer and ordinary answer ink. Long messages end in
+`...`. A new unanswered prompt never borrows the previous response. Without a user prompt
+in the saved conversation, the latest team delivery or assistant update appears instead.
+Messages displayed in the front conversation take precedence over saved previews; other
+conversations use the saved transcript, which can lag running work. Looking at a
+preview does not mark the conversation read. Clicking the alias, title or preview opens
+Chats with this team's view selected. On short windows, Down or a wheel tick on a manager
+card reveals its preview; Up returns to the alias.
+
+An active question gives the card a yellow border and a yellow `?` heading on its top edge,
+shortened with `...` when necessary. Permission choices and team decisions remain directly
+answerable in their existing decision cards. Live working, failed and unread facts stay
+compact on the card’s top edge; idle ages are omitted.
+
+A preview locates the latest user exchange in a local transcript off the UI loop, retaining
+at most 64 KiB of message beginnings. `Updates appear here` means no user message or assistant
+update was found. `Conversation unavailable` means the file could
 not be found. Saved remote transcript previews are not available over `--host`; the front conversation
 can still show its already displayed messages. Local files are never read as substitutes
 for a remote conversation.
@@ -461,7 +471,7 @@ All teams shows a dedicated **Global manager** card above its team cards. The gl
 manager is optional. `+ Global manager` appears only in this card and creates a separate
 conversation; the managers of open top-level teams become its reports automatically.
 Ordinary members and subteam managers are not direct reports. The card shows the current
-reporting teams and up to four lines of the latest saved assistant update. Read the preview
+reporting teams and the latest user message with the beginning of its assistant response. Read the preview
 without marking the conversation read; click its alias or preview to open and respond.
 
 The card's top-right `x` permanently deletes the global-manager conversation with the usual
@@ -480,7 +490,7 @@ the saved manager conversation is missing. With a manager, the creation button d
 ## Model names on manager and member cards
 
 Every manager and member card shows its conversation model beside the white alias, such as
-`@picker · ~deepseek/deepseek-v4-flash-latest`. The separator and model are grey. A long model
+`@picker (Conversation title) · ~deepseek/deepseek-v4-flash-latest`. The title, separator and model are grey. A long model
 ends in `...` to fit the card; the alias keeps its space. Unknown models show no label.
 Live conversations use their current model; other conversations use their saved model,
 refreshed with the Teams overview. Changing a model saves that choice immediately, so

@@ -8,17 +8,22 @@ with a message that says what happened.
 
 ## Teams overview reading bounds
 
-Member previews read at most **64 KiB** (`teamsPreviewBytes`) from each selected local
-member's journal, off the UI loop. An unchanged size/mtime reuses its cached preview;
-remote journals are never opened on this machine. Manager excerpts retain at most **8 messages**
-(`teamsPreviewMessages`) in that same tail; the front conversation uses its already displayed
-messages, capped to the same **64 KiB** total. Its card uses about sixty percent of the previous height, capped at **14 rows**
-(`teamsManagerRows`), with an **8-row** minimum (`teamsManagerMinRows`) for readable authors and text. Interaction readings retain at most
-**200 entries** (`trafficKeep`), merged by id without consuming the live delivery cursor.
-The table paints at most **6 body rows** (`teamsInteractionRows`), reduced to fit the available pane, with a
-pinned header and independent scrolling. Paint performs no filesystem or network reads.
-`TestTeamsPreviewReadsOnlyTheTailAndFollowsUpdates`, the overview navigation/geometry
-regressions, and `TestTheFrameNeverReadsTheDisk` defend these bounds.
+Member previews locate the latest human exchange off the UI loop by scanning journal
+record boundaries backwards. Unchanged size/mtime reuses the cached preview; remote
+journals are never opened on this machine. Reads use a **64 KiB** (`teamsPreviewBytes`)
+chunk and at most the first **64 KiB** of each record, including oversized JSON content
+strings. Finding the prompt can scan more than 64 KiB of a changed journal, but retained
+messages stay bounded to **64 KiB total** and **2 messages** (`teamsPreviewMessages`).
+The prompt retains up to one quarter of that byte budget, leaving space for the response's
+beginning. Front conversations use their displayed messages with the same retained bound.
+Manager cards remain capped at **14 rows** (`teamsManagerRows`), with an **8-row** minimum
+(`teamsManagerMinRows`). Interaction readings retain at most **200 entries** (`trafficKeep`),
+merged by id without consuming the live delivery cursor. The table paints at most **6 body
+rows** (`teamsInteractionRows`), reduced to fit the available pane, with a pinned header
+and independent scrolling. Paint performs no filesystem or network reads.
+`TestTeamsPreviewRetainsBoundedTextAndFollowsUpdates`, the long-record exchange regressions,
+the overview navigation/geometry regressions and `TestTheFrameNeverReadsTheDisk` defend
+these bounds.
 
 ## Context recovery bounds
 
