@@ -119,8 +119,8 @@ kill <holder 938330>                                               EXIT 0   (tur
 12×0.5s capture clear-*.ans; settle-*.ans                          EXIT 0   (mark cleared, checked in bytes)
 python3 /tmp/render1747.py … (assembly)                            EXIT 0   (8 frames, 150,649 bytes)
 python3 frame/state/distinctness probes (Pillow)                   EXIT 0   (output above)
-scp spark:…/1747-mention-live-state.{gif,png} docs/design/         EXIT 0
-scp spark:…/seq-*.ans docs/design/capture-frames/                  EXIT 0
+scp capture-host:…/1747-mention-live-state.{gif,png} docs/design/         EXIT 0
+scp capture-host:…/seq-*.ans docs/design/capture-frames/                  EXIT 0
 /tmp/codeaf-1747 --version; shasum -a 256 /tmp/codeaf-1747         EXIT 0
 ```
 
