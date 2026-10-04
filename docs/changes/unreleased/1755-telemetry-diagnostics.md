@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: Usage receipts distinguish routing, model families and missing counts
-pr: 0
+pr: 1755
 surface: [engine, remote, build, docs]
 invalidates:
   - "Usage telemetry carried only positive token totals. It now includes bounded routing and model-family categories and explicitly records missing provider receipts without token totals."
