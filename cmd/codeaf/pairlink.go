@@ -118,6 +118,7 @@ func (d pairDoor) askToJoin(ctx context.Context, relay string, replace bool) err
 		return nil
 	}
 	d.term.say(pair.JoinedFleetLine(joined.Fleet.Workspaces))
+	d.recordOwnDeviceOrSay(ctx, route)
 	return nil
 }
 
@@ -151,6 +152,7 @@ func (d pairDoor) approve(ctx context.Context, relay, typed string) error {
 		return err
 	}
 	d.term.say(pair.ApprovedLine(asking.Name))
+	d.recordOwnDeviceOrSay(ctx, route)
 	return nil
 }
 

@@ -21,7 +21,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/directory"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
+	"github.com/Agent-Field/codeaf/internal/syncsetup"
 )
 
 // pairDoor is one run of `codeaf pair`: the terminal it talks on and the three
@@ -41,17 +43,48 @@ type pairDoor struct {
 	requests func(pair.Mailbox) directory.Requests
 	linking  func(route pair.Mailbox, replace bool) pair.LinkJoining
 	approver func(pair.Mailbox) (pair.Approver, error)
+
+	// ownRecord is the seam a finished pairing's own directory record goes
+	// through — the same upsert every chat start makes. A seam like the rest,
+	// so a test can point two doors of one process at two homes.
+	ownRecord func(ctx context.Context, route pair.Mailbox) error
 }
 
 func newPairDoor(in io.Reader, out io.Writer) pairDoor {
 	return pairDoor{term: newTerminal(in, out), asksName: in == io.Reader(os.Stdin) && stdinIsTerminal(os.Stdin), mailbox: pairMailbox, grant: pairGrant, joining: pairJoining,
-		requests: linkRequests, linking: linkJoining(home.Dir()), approver: linkApprover(home.Dir())}
+		requests: linkRequests, linking: linkJoining(home.Dir()), approver: linkApprover(home.Dir()),
+		ownRecord: func(ctx context.Context, route pair.Mailbox) error { return ownDeviceRecord(ctx, home.Dir(), route) }}
 }
 
 const pairUsage = "usage: codeaf pair [--name <name>] | codeaf pair approve <link-or-code> | codeaf pair <code> [--replace] [--name <name>] | codeaf pair --code"
 
 // approveUsage is what `codeaf pair approve` with nothing after it is told.
 const approveUsage = "usage: codeaf pair approve <link-or-code> \u2014 the link or code the new device shows"
+
+// ownDeviceRecord writes dir's own directory record at the relay a pairing
+// just went through — the same upsert every chat start makes
+// (syncsetup.PutOwnDevice), so a device that finished a pairing is on its own
+// list at once and not on the next chat start.
+func ownDeviceRecord(ctx context.Context, dir string, route pair.Mailbox) error {
+	client, id, err := homeDirectory(dir, route)
+	if err != nil {
+		return err
+	}
+	dev, err := identity.Device(dir)
+	if err != nil {
+		return err
+	}
+	return syncsetup.PutOwnDevice(ctx, client, id, dev, devname.Name(dir))
+}
+
+// recordOwnDeviceOrSay is what a finished pairing does about its record: the
+// pairing itself succeeded, so a record that did not land is one line on the
+// screen and a clean exit — the next chat start writes the record anyway.
+func (d pairDoor) recordOwnDeviceOrSay(ctx context.Context, route pair.Mailbox) {
+	if err := d.ownRecord(ctx, route); err != nil {
+		d.term.say(pair.RecordUnsaidLine(err))
+	}
+}
 
 func runPair(args []string) error {
 	// ctrl+c is how a shown code is taken back, so it cancels the pairing rather
@@ -156,6 +189,7 @@ func (d pairDoor) show(ctx context.Context, relay string) error {
 		return d.endedByPerson(ctx, err)
 	}
 	d.term.say(pair.PairedChatsLine(label))
+	d.recordOwnDeviceOrSay(ctx, route)
 	return nil
 }
 
@@ -174,6 +208,7 @@ func (d pairDoor) join(ctx context.Context, relay, typed string, replace bool) e
 		return d.endedByPerson(ctx, err)
 	}
 	d.term.say(joinedSentence(joined))
+	d.recordOwnDeviceOrSay(ctx, route)
 	return nil
 }
 

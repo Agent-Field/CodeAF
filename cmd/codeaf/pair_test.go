@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 	"github.com/Agent-Field/codeaf/internal/pairbox"
@@ -132,6 +134,7 @@ func (r *pairRig) door(home string, in io.Reader, out io.Writer) pairDoor {
 		return j
 	}
 	d.approver = linkApprover(home)
+	d.ownRecord = func(ctx context.Context, route pair.Mailbox) error { return ownDeviceRecord(ctx, home, route) }
 	return d
 }
 
@@ -223,6 +226,68 @@ func TestPairBothDoorsOnATerminal(t *testing.T) {
 	}
 	if got := syncsetup.Resolve(rig.homeB).URL; got != rig.url {
 		t.Fatalf("the second computer saved the relay %q, want %q", got, rig.url)
+	}
+}
+
+// A pairing that finished puts BOTH computers on the directory: each side's
+// devices list shows the other, with no chat start needed. Straight after
+// pairing, neither machine used to have a record and `codeaf devices` said
+// nothing was paired yet on the very computer that just said "Paired.".
+func TestDevicesAfterACodePairingShowsBothComputers(t *testing.T) {
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_SYNC_URL", rig.url)
+	if _, err := devname.Set(rig.homeA, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := devname.Set(rig.homeB, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+
+	shown := rig.show(t)
+	code := shown.code(t)
+	joined := make(chan error, 1)
+	go func() {
+		var err error
+		_, err = rig.joinWith(t, code, false)
+		joined <- err
+	}()
+	if asked := shown.out.waitFor(t, `"laptop" wants your chats\. Same three words on that screen: ([a-z ]+)\?  y / n `); asked == nil {
+		t.Fatal("the sharing screen never asked")
+	}
+	if _, err := io.WriteString(shown.typed, "y\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-joined; err != nil {
+		t.Fatal(err)
+	}
+	if err := shown.end(t); err != nil {
+		t.Fatal(err)
+	}
+
+	// BOTH sides list both computers, each named as its device record says.
+	for _, side := range []struct{ home, want, label string }{
+		{rig.homeA, "laptop", "the computer that showed the code"},
+		{rig.homeB, "desk", "the computer that typed it"},
+	} {
+		t.Setenv("CODEAF_HOME", side.home)
+		chats, ok := openChatsKind()
+		if !ok {
+			t.Fatalf("%s has no chats kind", side.label)
+		}
+		rows, err := chats.rows()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 2 {
+			t.Fatalf("%s's devices list holds %d rows, want both computers", side.label, len(rows))
+		}
+		names := make([]string, 0, len(rows))
+		for _, row := range rows {
+			names = append(names, row.Name)
+		}
+		if !slices.Contains(names, side.want) {
+			t.Fatalf("%s's devices list holds %v, want %q on it", side.label, names, side.want)
+		}
 	}
 }
 
