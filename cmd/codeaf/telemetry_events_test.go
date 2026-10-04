@@ -59,7 +59,6 @@ func TestTelemetryEventsTeeCountsAHostedSession(t *testing.T) {
 		ToolCalls:        2,
 		ToolCallsFailed:  1,
 		CostUSD:          0.123456,
-		TotalTokens:      155,
 	}
 	if got := telemetry.Snapshot(); got != want {
 		t.Fatalf("hosted stream counted %+v, want %+v", got, want)

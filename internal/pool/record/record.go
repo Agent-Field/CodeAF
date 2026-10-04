@@ -116,8 +116,9 @@ type Row struct {
 
 // ExampleRowJSON is one row as the relay would receive it, on the day given,
 // with placeholder slugs where a real row carries the model that held the
-// seat and the model that judged it. `codeaf telemetry show` prints it so a
-// person sees the bytes before any row exists. It is marshalled from [Row],
+// seat and the model that judged it — the bytes a person can read before any
+// row exists. `codeaf telemetry show` printed it until 2026-10-01; its readers
+// are the tests and the disclosure now. It is marshalled from [Row],
 // so it cannot spell a key a real row would not.
 func ExampleRowJSON(now time.Time) string {
 	row := Row{

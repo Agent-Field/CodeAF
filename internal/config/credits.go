@@ -16,10 +16,14 @@ import (
 )
 
 type creditsRecord struct {
-	Low    bool      `json:"low"`
-	Known  bool      `json:"known"`
-	Key    string    `json:"key"`
-	ReadAt time.Time `json:"read_at"`
+	Low   bool `json:"low"`
+	Known bool `json:"known"`
+	// Expired says the service refused the key as expired at the last read. A
+	// record written before the field existed reads as not expired, which is
+	// the honest answer: nobody asked.
+	Expired bool      `json:"expired,omitempty"`
+	Key     string    `json:"key"`
+	ReadAt  time.Time `json:"read_at"`
 }
 
 var creditsMemo = filememo.Stamped(SettingsGeneration, func(_ string, data []byte, missing bool) (creditsRecord, error) {
@@ -50,13 +54,22 @@ func CreditsLowAt(profileDir string) bool {
 	return r.Known && r.Low && r.Key == CreditsKeyPrint(APIKeyAt(profileDir))
 }
 
-// CreditsNeedRead asks again at launch for a missing, changed, or low record.
+// CreditsExpiredAt reads only a known-expired record for the key in force; a
+// damaged or missing record, or one about another key, is not expired.
+func CreditsExpiredAt(profileDir string) bool {
+	r := creditsAt(profileDir)
+	return r.Known && r.Expired && r.Key == CreditsKeyPrint(APIKeyAt(profileDir))
+}
+
+// CreditsNeedRead asks again at launch for a missing, changed, low or expired
+// record. An expired key is read again for the same reason a low one is: the
+// warning it carries should stand only as long as the fact does.
 func CreditsNeedRead(profileDir, key string) bool {
 	if strings.TrimSpace(key) == "" {
 		return false
 	}
 	r := creditsAt(profileDir)
-	return r.Key != CreditsKeyPrint(key) || r.Low
+	return r.Key != CreditsKeyPrint(key) || r.Low || r.Expired
 }
 
 // WriteCreditsReading atomically replaces machine state. Dollars and the key
@@ -66,7 +79,8 @@ func WriteCreditsReading(profileDir, key string, reading credits.Reading) error 
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	value := creditsRecord{Low: reading.Known && reading.Low, Known: reading.Known, Key: CreditsKeyPrint(key), ReadAt: time.Now().UTC()}
+	value := creditsRecord{Low: reading.Known && reading.Low, Known: reading.Known, Expired: reading.Known && reading.Expired,
+		Key: CreditsKeyPrint(key), ReadAt: time.Now().UTC()}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err

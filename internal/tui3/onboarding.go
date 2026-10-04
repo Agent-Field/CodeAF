@@ -3,6 +3,7 @@ package tui3
 import (
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/fuzzy"
+	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -54,11 +56,13 @@ import (
 //   - IT SPENDS NOTHING. Opening a model list reads the catalog this process
 //     already has; nothing on this screen sends a prompt or calls a model.
 //
-// The example on the right is labelled as an example. It is one request somebody
-// could make and the kind of result it leads to, and it moves only when the
-// person moves — a deliberate focus change or the arrow keys, never a timer and
-// never a keystroke inside a field. No invented cost, no fabricated activity, no
-// claim that anything has already run.
+// The example above the form is labelled as an example. It is one request
+// somebody could make and the kind of result it leads to. It turns on its own
+// clock, every [setupTurnEvery], and the arrow keys turn it by hand; any key
+// holds the clock for one more interval, and the focus never moves it, so a
+// person reading one is not interrupted and a person filling the form is not
+// followed. No invented cost, no fabricated activity, no claim that anything
+// has already run.
 
 // setupControl is one row of the controls screen, in the order tab walks them.
 // The day's limit comes first because it is the consequential one; the two model
@@ -68,7 +72,6 @@ type setupControl int
 const (
 	controlLimit setupControl = iota
 	controlChatModel
-	controlReview
 	controlStart
 )
 
@@ -78,13 +81,12 @@ const setupControlCount = int(controlStart) + 1
 
 // ── what the screen says ────────────────────────────────────────────────────
 
-// The heading and the line under it. The heading names the SUBJECT of the screen
-// rather than the act ("setup", "configuration"), because the subject is what a
-// person is deciding about and the act is already obvious from being here.
-const (
-	controlsTitle = "Models and spending"
-	controlsLead  = "Keep these choices or change them."
-)
+// The heading. It is ONE LINE, and it names what the rows under it are —
+// settings, the basic ones — because the keys line stands directly under it
+// and a second sentence of lead-in between the two was a sentence nobody read
+// on their way to the first row. (It was `Models and spending` over `Keep
+// these choices or change them.` until 2026-10-01.)
+const controlsTitle = "Basic settings"
 
 // The three field labels, laid out in one column so their values line up.
 const (
@@ -104,38 +106,32 @@ const controlLabelWidth = 19
 // behind `?` on that control.
 const (
 	controlLimitWord = "When all " + product + " spends today reaches this amount, " +
-		"new work waits until midnight or you raise it."
-	controlModelWord = "The model you talk to in this conversation."
+		"new work waits until midnight or you raise it. /budget changes it later."
+	controlModelWord = "The model you talk to in this conversation. /model changes it later."
 )
 
 // The detail behind `?`, on the field with the focus.
 //
-// THE LIMIT'S DETAIL REFUSES TO OVERPROMISE. It is a ceiling on what codeaf
-// RECORDS spending, calls already in flight can carry the day a little past it,
-// and the provider account has controls of its own that this number knows nothing
-// about. A screen that said "you will never be billed more than this" would be
-// the product making a promise it cannot keep with somebody else's money.
+// THE LIMIT'S DETAIL EXPLAINS THE TWO CEILINGS AND HOW THEY MEET. The day's
+// limit is the one this row sets; a conversation can carry a smaller one of its
+// own (`/budget conversation`), both hold at once, and whichever is reached
+// first stops the work — the day's holds everything until midnight, a
+// conversation's holds that conversation. It still refuses to overpromise: the
+// turn in flight finishes, and the provider account has controls of its own
+// that this number knows nothing about, so a screen that said "you will never
+// be billed more than this" would be making a promise with somebody else's
+// money.
 const (
-	controlLimitDetail = "It counts spending " + product + " records here. Calls already " +
-		"running can carry it a little past. Your provider account has its own controls. " +
-		"Task crews also have a daily cap of their own, set in /crew."
+	// The commands are quoted whole, so a reader sees that the amount is part of
+	// what is typed; the chip painter treats a quote as a word boundary
+	// (slashchip.go's [recognizedCommandSpans]) and still marks each command.
+	controlLimitDetail = "The day's ceiling for everything " + product + " does: '/budget 50' " +
+		"changes it later and '/budget none' removes it. A conversation can carry a " +
+		"smaller ceiling of its own set by e.g. '/budget conversation 20'. Both hold " +
+		"at once, and whichever is reached first stops the work."
 	controlModelDetail = "It also handles this conversation's tool use. Changing it here is " +
 		"the same choice /model makes, and it is kept for the next launch." +
 		" Tasks get their own crew, picked per task · /crew shows it."
-)
-
-// The two spellings of the row under the fields. A fresh profile is told these
-// are defaults, because they are; a profile that has written any of them down is
-// NOT told that, because it would be false — and the review then shows the actual
-// values either way.
-// AND EACH HAS A SHORT SPELLING FOR A NARROW WINDOW. `Other settings use
-// defaults · r…` is a row that has stopped saying anything; a shorter true
-// sentence is always better than a longer one with its end cut off.
-const (
-	controlReviewDefaults      = "Other settings use defaults · review"
-	controlReviewDefaultsShort = "Other settings · review"
-	controlReviewYours         = "Review other settings"
-	controlReviewYoursShort    = "Other settings"
 )
 
 // controlStartWord is the way out, and it is named for what happens next rather
@@ -143,10 +139,17 @@ const (
 // this describes the person's day.
 const controlStartWord = "Start a conversation"
 
-// controlReviewRest is the line under the optional review: where these three
-// live afterwards. It is the one door this screen offers onto everything it
-// deliberately does not ask about.
-const controlReviewRest = "/settings changes these and every other one."
+// The note under the way out: where everything this screen does not ask about
+// lives. It is one dim sentence with the command in it painted as the
+// composer's chip, so the one word a person can act on is the one word that
+// stands out. IT REPLACED A ROW. Until 2026-10-01 `Other settings use defaults
+// · review` stood between the chat model and the way out and opened three
+// read-only rows; a row that shows settings and lets nobody change them was a
+// door painted on a wall, and people pressed on it.
+const (
+	controlSettingsNoteLead    = "Everything else is in "
+	controlSettingsNoteCommand = "/settings"
+)
 
 // controlPinnedLead prefixes a value an environment variable owns, and
 // controlFromLead a value one merely SEEDED. The two are different facts and the
@@ -191,10 +194,6 @@ func (a *app) setupControlsKey(name, text string) bool {
 			s.detail = false
 			return true
 		}
-		if s.reviewOpen {
-			s.reviewOpen = false
-			return true
-		}
 		return false
 
 	case "tab", "down", "ctrl+n":
@@ -214,14 +213,13 @@ func (a *app) setupControlsKey(name, text string) bool {
 		return true
 
 	case "left", "right":
-		// THE EXAMPLES ARE BROWSED AND NEVER CYCLED. No clock on this screen moves
-		// between them; these two keys are the only way the right-hand panel
-		// changes other than following the focus, and they change nothing about
-		// the profile. Each such move plays the panel's own one-shot
-		// demonstration once and then it is still — a browse is a deliberate act,
-		// which is exactly the condition that motion here is allowed under. Inside
-		// the model list they are not free — the filter box has the keyboard — so
-		// the list keeps them and does nothing.
+		// THE EXAMPLES ARE BROWSED WITH THESE TWO KEYS AND TURN BY THEMSELVES
+		// OTHERWISE ([app.setupTurnAt]). They change nothing about the profile,
+		// and they are the panel's own keys and nothing else's: the focus never
+		// moves the example (it did until 2026-10-01, which read as the panel
+		// jumping about under a person walking the rows). Inside the model list
+		// they are not free — the filter box has the keyboard — so the list
+		// keeps them and does nothing.
 		if s.modelOpen {
 			return true
 		}
@@ -229,9 +227,7 @@ func (a *app) setupControlsKey(name, text string) bool {
 		if name == "left" {
 			delta = -1
 		}
-		s.example = moveCursor(s.example, delta, len(setupExamples))
-		// One of the two deliberate acts the demonstration plays for.
-		a.restartSetupDemo()
+		a.turnSetupExample(delta)
 		return true
 
 	case "backspace":
@@ -291,6 +287,15 @@ func (a *app) setupControlsKey(name, text string) bool {
 	return true
 }
 
+// wrapCursor walks a ring of count rows by delta, coming round at both ends —
+// the examples' walk, where [moveCursor]'s clamp is a list's.
+func wrapCursor(cursor, delta, count int) int {
+	if count <= 0 {
+		return 0
+	}
+	return ((cursor+delta)%count + count) % count
+}
+
 // dropLast takes one rune off the end of what has been typed.
 func dropLast(text string) string {
 	runes := []rune(text)
@@ -313,23 +318,14 @@ func (s *setupFlow) closeChoosers() {
 }
 
 // focusControl walks the rows, closing whatever was open on the way. THE
-// EXAMPLE FOLLOWS THE FOCUS because a focus change is a deliberate act — which
-// is the whole rule the right-hand column is built on (docs/design/onboarding).
+// EXAMPLE DOES NOT FOLLOW THE FOCUS: it turns on its own clock and on ←/→, and
+// nothing a person does to the rows moves it ([app.setupTurnAt]).
 func (s *setupFlow) focusControl(a *app, delta int) {
 	s.closeChoosers()
 	// The detail belongs to the field it was asked about and goes with it.
 	s.detail = false
 	s.control = setupControl(moveCursor(int(s.control), delta, setupControlCount))
-	was := s.example
-	s.example = exampleForControl(s.control)
 	s.refusal = ""
-	// The other deliberate act. Two rows share an example — the model row and
-	// `Start a conversation` both stand beside the first — and walking between
-	// them does not replay it: the panel would restart under a person who never
-	// changed what it was showing.
-	if s.example != was {
-		a.restartSetupDemo()
-	}
 	a.touch()
 }
 
@@ -392,16 +388,27 @@ func (a *app) setupControlsEnter() bool {
 		if !a.commitSetupLimit() {
 			return false
 		}
+		s.answered[controlLimit] = true
 		s.focusControl(a, 1)
 		return false
 
 	case controlChatModel:
 		if s.modelOpen {
 			models := a.setupModelChoices()
-			if s.modelAt >= 0 && s.modelAt < len(models) {
-				a.takeSetupModel(models[s.modelAt].ID)
+			if s.modelAt < 0 || s.modelAt >= len(models) {
+				return false
 			}
+			a.takeSetupModel(models[s.modelAt].ID)
 			s.closeChoosers()
+			// AND THEN ENTER GOES ON, as it does on the limit. A model taken
+			// from the list is this row answered; an earlier build left the
+			// focus on it, so the next enter opened the list again and a person
+			// pressing enter to get through the form never got past this row.
+			// A refusal keeps the focus here so it can be read.
+			if s.refusal == "" {
+				s.answered[controlChatModel] = true
+				s.focusControl(a, 1)
+			}
 			return false
 		}
 		// A ROW THE ENVIRONMENT OWNS DOES NOT OPEN A LIST. Offering a choice that
@@ -416,14 +423,94 @@ func (a *app) setupControlsEnter() bool {
 		s.modelOpen = true
 		a.filterSetupModels("")
 		return false
-
-	case controlReview:
-		s.reviewOpen = !s.reviewOpen
-		return false
 	}
 	// `Start a conversation` — everything the screen holds is written down, and
 	// a row that refused keeps the screen up with its refusal on it.
 	return a.commitSetupControls()
+}
+
+// ── the pointer ─────────────────────────────────────────────────────────────
+
+// setupDoors is what the last frame of the controls screen drew for the pointer:
+// a door per body row, and where the body stands in the window. It is written by
+// [app.setupControlsFrame] and read by [app.setupPress], so a press is answered
+// against the rows a person can see rather than against a form rebuilt from
+// state that may have moved under them.
+type setupDoors struct {
+	rows []setupDoor
+	// top is the frame row the first body row is on; left and width are the
+	// form's columns, so a press on the example column beside the form — which
+	// is an illustration — selects nothing.
+	top, left, width int
+}
+
+// setupPress is a left press on the controls screen, answered the way the keys
+// would have answered it. It reports whether the screen is finished.
+//
+// THE SCREEN USED TO SWALLOW EVERY PRESS, on the argument that the setup was
+// three keystrokes. It is a form now, with rows that look like rows and a list
+// that looks like a list, and the first thing a person who sees a list does is
+// click on it. So a press on a control is a tab to it, and a press on a row that
+// enter would act on — the model field, the way out, or one model of
+// the open list — is that enter. The limit row is only focused, because what a
+// press on an amount means is "I want to type here". A press anywhere else on
+// the screen — a sentence, a blank, the example — does nothing, which is what a
+// press on words should do.
+func (a *app) setupPress(x, y int) bool {
+	s := &a.setup
+	if s.step() != setupControls {
+		return false
+	}
+	d := s.doors
+	row := y - d.top
+	if row < 0 || row >= len(d.rows) || x < d.left || x >= d.left+d.width {
+		return false
+	}
+	door := d.rows[row]
+	switch door.kind {
+	case doorModel:
+		models := a.setupModelChoices()
+		if door.model < 0 || door.model >= len(models) {
+			return false
+		}
+		s.modelAt = door.model
+		a.touch()
+		return a.setupControlsEnter()
+	case doorControl:
+		if s.control != door.control {
+			// A tab to the row, which closes whatever was open on the way
+			// ([setupFlow.focusControl]); the example stays where it is.
+			s.focusControl(a, int(door.control)-int(s.control))
+		} else if s.modelOpen && door.control == controlChatModel {
+			// A press on the field whose list is open puts the list away and
+			// chooses nothing, which is esc's rule: a cursor is not an answer.
+			s.closeChoosers()
+			a.touch()
+			return false
+		}
+		if door.control == controlLimit {
+			a.touch()
+			return false
+		}
+		a.touch()
+		return a.setupControlsEnter()
+	}
+	return false
+}
+
+// setupWheel is the wheel over the controls screen. It turns the open model
+// list — the one thing on the screen that scrolls — and nothing else.
+func (a *app) setupWheel(down bool) {
+	s := &a.setup
+	if s.step() != setupControls || !s.modelOpen {
+		return
+	}
+	delta := -1
+	if down {
+		delta = 1
+	}
+	a.moveSetupModel(delta)
+	a.touch()
 }
 
 // clampIndex keeps a cursor inside a list that may have changed under it.
@@ -537,6 +624,31 @@ const setupModelUnsavedWord = "this conversation is on it, but it could not be s
 // catalog does not carry it, and the cursor opens on it either way.
 func (a *app) setupModelChoices() []Model {
 	models := a.modelList()
+	if a.setupFreeOnly() {
+		// ONLY THE FREE ROWS WHILE THE ACCOUNT READS LOW. The warning under the
+		// message box says some models may not be available; on this screen,
+		// where a person who has never run the program is choosing by name, a
+		// list of three hundred paid models they cannot use is a list they will
+		// pick the wrong row from (five new people did, 2026-09-30). The same
+		// test the warning uses decides a row: a `:free`
+		// id, a catalog row priced at zero, or a model another service serves.
+		// Build the free-id set once because this list is read on every key;
+		// scanning the whole catalog again for each row made that work quadratic.
+		freeIDs := make(map[string]bool, len(models))
+		for _, model := range models {
+			if config.IsFreeModel(model.ID, model.PriceKnown, model.PromptPrice, model.CompletionPrice, model.RequestPrice) {
+				freeIDs[model.ID] = true
+			}
+		}
+		free := make([]Model, 0, len(models))
+		for _, model := range models {
+			bare, _ := roles.SplitEffort(strings.TrimPrefix(model.ID, "~"))
+			if strings.TrimSpace(model.ID) == "" || a.modelIsDirect(model.ID) || config.IsFreeModel(model.ID, false, 0, 0, 0) || freeIDs[bare] {
+				free = append(free, model)
+			}
+		}
+		models = free
+	}
 	if current := strings.TrimSpace(a.model); current != "" {
 		found := false
 		for _, model := range models {
@@ -581,6 +693,23 @@ func (a *app) setupModelChoices() []Model {
 	return out
 }
 
+// setupFreeOnly reports whether the model list is cut to free rows: the default
+// provider's account is known low, by the same reading the warning under the
+// message box follows ([app.refreshCreditWarnings]). It is read live rather than
+// at seed time because the balance is read AFTER the key lands, on its own
+// goroutine, and usually answers while this screen is already up.
+func (a *app) setupFreeOnly() bool {
+	return a.readCredits != nil && a.creditsLow && !a.creditsExpired
+}
+
+// setupKeyExpired reports whether the default provider refused the key as
+// expired at the last read. The list is NOT cut for it — the free rows fail on
+// the same key — but the line under the field says what is wrong and where the
+// fix is.
+func (a *app) setupKeyExpired() bool {
+	return a.readCredits != nil && a.creditsExpired
+}
+
 // setupModelSlots is how many models the list SHOWS AT ONCE, and it is a height
 // budget rather than a limit on the catalog: the cursor scrolls the rest past it
 // and typing narrows them. Five is what a twenty-four-row window has to spare
@@ -616,8 +745,9 @@ func (a *app) startSetupControls() {
 	s.control = controlLimit
 	s.limitText, s.limitTyped = "", false
 	s.closeChoosers()
-	s.reviewOpen, s.detail = false, false
-	s.example = exampleForControl(controlLimit)
+	s.detail = false
+	// The panel opens on the first example and turns from there.
+	s.example = 0
 	// ARRIVING ON THE SCREEN IS THE FIRST OF THE TWO DELIBERATE ACTS, so the
 	// panel plays once here. Coming BACK from the step behind this one does not
 	// reach this line at all — the seeded guard above returns first — which is
@@ -647,10 +777,9 @@ type setupExample struct {
 	leads []string
 }
 
-// setupExamples are the four, in the order ←/→ walks them. Each one is tied to a
-// control by [exampleForControl] except the last, which belongs to no field and
-// is reachable by browsing — the design's own point that the column is an
-// invitation rather than a caption.
+// setupExamples are the five, in the order the panel turns through them and
+// ←/→ walk them. None is tied to a row: the panel is an invitation rather than
+// a caption, and it turns on its own clock ([app.setupTurnAt]).
 var setupExamples = []setupExample{
 	{
 		title: "Understand an unfamiliar project",
@@ -697,29 +826,26 @@ var setupExamples = []setupExample{
 			"A recommendation you can argue with",
 		},
 	},
+	{
+		// THE OTHER EXAMPLE THAT SPELLS A COMMAND. `/senior-dev <brief>` hands the
+		// whole brief to the autonomous coding agent codeaf carries, and the
+		// manual's account of it (senior-dev.md) is what the three lines are held
+		// to: it writes the brief down word for word, works in a private copy on
+		// a branch of its own, and hands back a change it has built and tested on
+		// a frozen tree. Nothing here says "approved" or "merged" — it submits,
+		// and what happens to the branch is the person's.
+		title: "Hand off complex coding tasks",
+		ask:   "/senior-dev Add retries with backoff to the HTTP client, with tests.",
+		leads: []string{
+			"Your brief written down word for word",
+			"Work on a branch of its own, step by step",
+			"A change built and tested, handed back",
+		},
+	},
 }
 
-// exampleForControl is which example accompanies which field, and it is the
-// design's own mapping: the money row is accompanied by following the work and
-// its cost, the crew by handing something off, and the model row — with the
-// connection that precedes it — by understanding a project, which is the first
-// thing most people actually type.
-func exampleForControl(control setupControl) int {
-	switch control {
-	case controlLimit:
-		return 2
-	case controlReview:
-		// THE HAND-OFF EXAMPLE stood beside the crew row, which is gone: a task's
-		// crew is picked per task now and asks nothing here. The review row is
-		// the door to every setting this screen does not ask about, the crew's
-		// among them, so the hand-off stands beside it.
-		return 1
-	}
-	return 0
-}
-
-// The two labels that keep the column honest. They are the whole reason a person
-// does not read the right-hand side as a report about their own machine.
+// The two labels that keep the panel honest. They are the whole reason a person
+// does not read it as a report about their own machine.
 const (
 	exampleAskLabel  = "Example request"
 	exampleLeadLabel = "What it leads to"
@@ -808,22 +934,29 @@ func titleWord(word string) string {
 
 // ── the drawing ─────────────────────────────────────────────────────────────
 
-// The composition, in cells. At 120×24 it is a 54-cell form, an eight-cell gap
-// and a 36-cell example, centred as one 98-cell object with eleven cells of
-// margin either side. Under [setupWideCols] the example is not drawn at all —
-// stacking it under the form would put promotional content between a person and
-// the thing they came here to do.
+// The composition, in cells: ONE COLUMN. The example panel stands at the top,
+// at the composition's full width, so the request and the three lines it leads
+// to each stand on one row instead of wrapping inside a thirty-six-cell box;
+// two blank rows under it; then the keyboard legend with the form directly
+// under it, because the legend is about the form and the two read as one
+// object when nothing stands between them. Until 2026-10-01 the example was a
+// second column to the right of the form, drawn only from 112 columns up and
+// level with the first field; on a tall window that left the whole lower half
+// of the screen empty while the panel squeezed its sentences three ways, and
+// the first move — under the form — put the legend between the form and the
+// panel, where it read as a caption for the wrong one. The panel takes the rows
+// the form leaves, WHOLE OR NOT AT ALL: a window with no rows to spare draws
+// the legend and the form alone, from the top.
 const (
-	setupFormWidth = 54
-	setupShowGap   = 8
-	setupShowWidth = 36
-	// setupWideCols is the width at which the pair fits with the three-cell
-	// margins the design asks for, rounded to the round number the design study
-	// states.
-	setupWideCols = 112
-	// setupNarrowForm is the form's width when it stands alone, which is a
-	// comfortable measure for a sentence and no wider.
-	setupNarrowForm = 64
+	// setupFormWidth is the form's width, a comfortable measure for a sentence
+	// and no wider.
+	setupFormWidth = 64
+	// setupShowcaseWidth is the example panel's width on a window that has it —
+	// the old pair's own width, which the two columns used to share — and
+	// setupShowcaseMinWidth is the least a panel is drawn at, which is the width
+	// the design gave the old column.
+	setupShowcaseWidth    = 92
+	setupShowcaseMinWidth = 36
 	// setupMargin is the least the composition is ever inset from the frame.
 	setupMargin = 3
 )
@@ -837,17 +970,20 @@ const (
 // floated up and down as its rows opened and closed would move the thing a person
 // is aiming at every time they pressed a key.
 func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
-	wide := width >= setupWideCols
-	form := min(width-2*setupMargin, setupNarrowForm)
-	pair := form
-	if wide {
-		form = setupFormWidth
-		pair = setupFormWidth + setupShowGap + setupShowWidth
-	}
+	s := &a.setup
+	form := min(width-2*setupMargin, setupFormWidth)
 	if form < 20 {
 		form = max(width-2, 1)
-		pair = form
 	}
+	show := min(width-2*setupMargin, setupShowcaseWidth)
+	if show < setupShowcaseMinWidth {
+		show = 0
+	}
+	// The composition is centred on the wider of the two, and the form keeps to
+	// its own measure inside it: a sentence set ninety cells wide is a sentence
+	// nobody reads to the end, where a panel that wide is a panel whose lines
+	// do not wrap.
+	pair := max(form, show)
 	lead := max((width-pair)/2, 0)
 	pad := strings.Repeat(" ", lead)
 
@@ -859,42 +995,42 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	// is the only row that has nothing beside it — the example column stops well
 	// above the foot — so budgeting it at the form's fifty-four cells cut
 	// `←→ examples` off the one screen the arrows exist on.
-	sheet := a.setupControlsForm(form)
+	sheet := a.setupControlsForm(form, pair)
 	// The rows the window cannot have are given up WHOLE BLOCK AT A TIME, in the
 	// order the form itself ranked them. A wrapped sentence cut off in the middle
-	// is worse than a sentence that is not there. Three rows are spoken for
-	// before the form gets any: the header, the blank under it, and the legend.
-	body, caretRow := sheet.trim(max(height-3, 1))
+	// is worse than a sentence that is not there. Two rows are spoken for before
+	// the form gets any: the header and the blank under it.
+	body, doors, caretRow := sheet.trim(max(height-2, 1))
+	// THE DOORS ARE KEPT WITH THE FRAME THAT DREW THEM, so a press reads the
+	// rows that are actually on the screen: body row i is frame row top+i,
+	// where top is settled below once the panel and the legend are placed, and
+	// it spans the form's own columns.
+	s.doors = setupDoors{rows: doors, left: lead, width: form}
 
-	var show []string
-	if wide {
-		show = a.setupShowcase(setupShowWidth, len(body))
+	// THE EXAMPLE TAKES THE ROWS THE FORM LEAVES, and only the whole of it.
+	// Two rows are spoken for around the form — the header and the blank under
+	// it — and the panel needs its own rows plus the two blank ones under it; a
+	// panel that does not fit whole in what is left is not drawn, because half
+	// a panel is a panel whose request has lost what it leads to.
+	var block []string
+	if show > 0 {
+		block = a.setupShowcaseBlock(show, height-2-len(body)-setupShowcaseGap)
 	}
 
 	lines := make([]string, 0, height)
 	lines = append(lines, pad+head, "")
-	for i, line := range body {
-		row := pad + line
-		if i < len(show) && show[i] != "" {
-			// The example is placed at a fixed column so its own left edge is
-			// straight down the screen: a column whose rows started wherever the
-			// form's row happened to end would not read as a column at all.
-			row = pad + padTo(line, setupFormWidth+setupShowGap) + show[i]
-		}
-		lines = append(lines, row)
+	for _, line := range block {
+		lines = append(lines, pad+line)
 	}
-	// THE KEYBOARD GUIDANCE FOLLOWS THE FORM WITH ONE BLANK ROW UNDER IT, and the
-	// window's own empty rows fall below that. It is measured against the WHOLE
-	// composition rather than the form, because it is the only row the example
-	// column never stands beside — budgeting it at the form's fifty-four cells cut
-	// `←→ examples` off the one screen the arrows exist on
-	// ([app.setupControlsKeys] then cuts by whole clauses, never mid-word).
-	//
-	// It is not pinned to the last row of the window. A legend nailed to the foot
-	// of a twenty-four-row frame under an eighteen-row form leaves a hole in the
-	// middle of the composition, and a hole reads as a screen that stopped.
-	if len(lines) < height {
-		lines = append(lines, pad+a.pal.dim(a.setupControlsKeys(pair)))
+	for i := 0; len(block) > 0 && i < setupShowcaseGap; i++ {
+		lines = append(lines, "")
+	}
+	// The form begins here — its heading, the keys line under it, then the
+	// rows: the row a press is measured from, and the caret's.
+	top := len(lines)
+	s.doors.top = top
+	for _, line := range body {
+		lines = append(lines, pad+line)
 	}
 	for len(lines) < height {
 		lines = append(lines, "")
@@ -902,13 +1038,26 @@ func (a *app) setupControlsFrame(width, height int) ([]string, int, int) {
 	if len(lines) > height {
 		lines = lines[:height]
 	}
-	caretY := caretRow + 2
+	// THE ACCOUNT'S WARNING RIDES THE FOOT, whole or not at all, and only on a
+	// foot the form left empty: a window the form fills to its last row keeps
+	// that row, because a form row is a thing a person acts on and the warning
+	// is read again under the message box a moment later.
+	if warning := a.setupFootWarning(); warning != "" && height > 0 && lines[height-1] == "" &&
+		ansi.StringWidth(warning)+3 <= width {
+		lines[height-1] = withCreditWarning("", 0, width, warning, a.pal)
+	}
+	caretY := caretRow + top
 	a.caret = caretRow >= 0 && caretY < height
 	if !a.caret {
 		return lines, 0, 0
 	}
 	return lines, lead + sheet.caretX, caretY
 }
+
+// setupShowcaseGap is the blank rows between the example panel and the legend:
+// enough that the panel reads as its own object above the form, and the legend
+// as the form's.
+const setupShowcaseGap = 2
 
 // padTo pads a painted row out to a column, measuring the plain text under the
 // paint so an escape sequence is never counted as a cell.
@@ -950,12 +1099,43 @@ type controlsSheet struct {
 	// block is the block id each row belongs to, or zero for a row that is never
 	// given up: a field's value, an open chooser, the primary action, the legend.
 	block []int
+	// door is what each row is a door onto for the pointer, row for row with
+	// rows: the control a press on it focuses, or the model it chooses. A row
+	// that is only words carries the zero value, which is a row a press lands on
+	// and nothing happens.
+	door []setupDoor
 	// ranked is every droppable block with how willingly it goes.
 	ranked  []controlsRank
 	next    int
 	caretAt int
 	caretX  int
 }
+
+// setupDoor is what one row of the form means to a press. A row is one of three
+// things: nothing (a sentence, a blank, the count under the list), a control
+// (its label-and-value row, or the primary action), or one model of the open
+// list — in which case model is its index into [app.setupModelChoices].
+//
+// IT IS RECORDED WHILE THE FORM IS BUILT AND NOT RECOMPUTED FROM A CLICK,
+// because the form is not a fixed shape: a short window gives up whole blocks
+// ([controlsSheet.trim]) and an open list or review adds rows under a field, so
+// the only thing that knows which control is on row nine is the pass that put it
+// there. The frame keeps the doors it drew ([setupFlow.doors]) and a press reads
+// them back — the same memo-at-draw-time rule every other page's press obeys.
+type setupDoor struct {
+	control setupControl
+	model   int
+	kind    setupDoorKind
+}
+
+// setupDoorKind is which of the three a row is.
+type setupDoorKind int
+
+const (
+	doorNone setupDoorKind = iota
+	doorControl
+	doorModel
+)
 
 // controlsRank pairs a block with how willingly it goes.
 type controlsRank struct{ rank, id int }
@@ -968,16 +1148,26 @@ type controlsRank struct{ rank, id int }
 // screen because somebody pressed `?` for it.
 const (
 	rankSpacer = iota + 1
+	// rankNote is the sentence under the way out, which a short window gives
+	// up right after the blank rows: it points somewhere else, and a person on
+	// a short window has the rest of the form to read first.
+	rankNote
 	rankOtherWords
-	rankReviewRest
-	rankLead
 	rankFocusedWords
 	rankDetail
 )
 
 func (f *controlsSheet) add(lines ...string) {
 	for _, line := range lines {
-		f.rows, f.block = append(f.rows, line), append(f.block, 0)
+		f.rows, f.block, f.door = append(f.rows, line), append(f.block, 0), append(f.door, setupDoor{})
+	}
+}
+
+// open adds rows that are never given up AND are a door for the pointer: a
+// control's own row, or one model of the list.
+func (f *controlsSheet) open(door setupDoor, lines ...string) {
+	for _, line := range lines {
+		f.rows, f.block, f.door = append(f.rows, line), append(f.block, 0), append(f.door, door)
 	}
 }
 
@@ -990,15 +1180,15 @@ func (f *controlsSheet) soft(rank int, lines ...string) {
 	id := f.next
 	f.ranked = append(f.ranked, controlsRank{rank: rank, id: id})
 	for _, line := range lines {
-		f.rows, f.block = append(f.rows, line), append(f.block, id)
+		f.rows, f.block, f.door = append(f.rows, line), append(f.block, id), append(f.door, setupDoor{})
 	}
 }
 
 // trim gives the window back the rows it does not have, block by block, and
-// carries the caret with it.
-func (f *controlsSheet) trim(height int) ([]string, int) {
+// carries the caret and the doors with it.
+func (f *controlsSheet) trim(height int) ([]string, []setupDoor, int) {
 	if len(f.rows) <= height {
-		return f.rows, f.caretAt
+		return f.rows, f.door, f.caretAt
 	}
 	over := len(f.rows) - height
 	// The blocks are ordered by rank, and within one rank the LOWEST ON THE
@@ -1027,6 +1217,7 @@ func (f *controlsSheet) trim(height int) ([]string, int) {
 		}
 	}
 	out := make([]string, 0, len(f.rows))
+	doors := make([]setupDoor, 0, len(f.rows))
 	caret := f.caretAt
 	for at, line := range f.rows {
 		if gone[f.block[at]] {
@@ -1036,6 +1227,7 @@ func (f *controlsSheet) trim(height int) ([]string, int) {
 			continue
 		}
 		out = append(out, line)
+		doors = append(doors, f.door[at])
 	}
 	if len(out) > height {
 		// EVERY BLOCK HAS GONE AND IT IS STILL TOO TALL, which is a window shorter
@@ -1044,21 +1236,26 @@ func (f *controlsSheet) trim(height int) ([]string, int) {
 		// person can do without, and the legend at the foot is the one they cannot.
 		cut := len(out) - height
 		out = out[cut:]
+		doors = doors[cut:]
 		caret -= cut
 	}
-	return out, caret
+	return out, doors, caret
 }
 
 // setupControlsForm builds the form: its rows, the blocks a short window gives
-// up, and where the caret sits. The legend is NOT one of its rows — it belongs to
-// the frame, at the foot of the window ([app.setupControlsFrame]).
-func (a *app) setupControlsForm(width int) *controlsSheet {
+// up, and where the caret sits. THE KEYS LINE IS ITS SECOND ROW, directly under
+// the heading, so what the keys do is read with the rows they do it to; it is
+// measured against the whole composition (legend) rather than the form's own
+// width, because it is one line of clauses rather than a sentence, and
+// [app.setupControlsKeys] cuts it by whole clauses, never mid-word. Neither row
+// is ever given up.
+func (a *app) setupControlsForm(width, legend int) *controlsSheet {
 	pal := a.pal
 	s := &a.setup
 	f := &controlsSheet{caretAt: -1}
 
 	f.add(pal.bold(pal.ink(fit(controlsTitle, width))))
-	f.soft(rankLead, pal.muted(fit(controlsLead, width)))
+	f.add(pal.dim(a.setupControlsKeys(legend)))
 	f.soft(rankSpacer, "")
 
 	// ── the day's limit ──
@@ -1066,15 +1263,19 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 	if s.control == controlLimit {
 		f.caretAt, f.caretX = len(f.rows), limitCaret
 	}
-	f.add(limitRow)
+	f.open(setupDoor{kind: doorControl, control: controlLimit}, limitRow)
 	a.addControlWords(f, width, controlLimit, controlLimitWord, controlLimitDetail)
 	f.soft(rankSpacer, "")
 
 	// ── the chat model ──
-	f.add(a.setupFieldRow(width, controlChatModel, controlModelLabel, modelWord(a.model), a.setupModelSource()))
+	f.open(setupDoor{kind: doorControl, control: controlChatModel},
+		a.setupFieldRow(width, controlChatModel, controlModelLabel, modelWord(a.model), a.setupModelSource()))
 	a.addControlWords(f, width, controlChatModel, controlModelWord, a.setupModelDetail())
 	if s.modelOpen {
-		f.add(a.setupModelRows(width)...)
+		rows, doors := a.setupModelRows(width)
+		for i, row := range rows {
+			f.open(doors[i], row)
+		}
 	}
 	f.soft(rankSpacer, "")
 
@@ -1085,17 +1286,8 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 	}
 	f.soft(rankSpacer, "")
 
-	// ── the optional review ──
-	f.add(a.setupReviewRow(width))
-	if s.reviewOpen {
-		rows, rest := a.setupReviewRows(width)
-		f.add(rows...)
-		f.soft(rankReviewRest, rest...)
-	}
-	f.soft(rankSpacer, "")
-
 	// ── the way out ──
-	f.add(a.setupStartRow(width))
+	f.open(setupDoor{kind: doorControl, control: controlStart}, a.setupStartRow(width))
 	if s.refusal != "" {
 		// A REFUSAL IS NEVER GIVEN UP. It is the one row on this screen that is
 		// about something that just went wrong, and a window too short to show it
@@ -1105,7 +1297,17 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 		}
 	}
 	f.soft(rankSpacer, "")
+	f.soft(rankNote, a.setupSettingsNote(width))
 	return f
+}
+
+// setupSettingsNote is the dim sentence under the way out, with the command in
+// it wearing the chip the message box paints a recognised command with — the
+// same paint, so the word reads as something to type rather than as prose.
+func (a *app) setupSettingsNote(width int) string {
+	pal := a.pal
+	lead := fit(controlSettingsNoteLead, max(width-2-len(controlSettingsNoteCommand), 1))
+	return "  " + pal.dim(lead) + pal.chip(controlSettingsNoteCommand)
 }
 
 // addControlWords adds a field's one-line explanation, and — only where `?` asked
@@ -1113,10 +1315,13 @@ func (a *app) setupControlsForm(width int) *controlsSheet {
 func (a *app) addControlWords(f *controlsSheet, width int, control setupControl, word, detail string) {
 	pal := a.pal
 	indent := strings.Repeat(" ", 4)
+	// A COMMAND IN THE SENTENCE WEARS ITS CHIP — `/budget`, `/model` — the
+	// paint the message box gives a recognised command, so the one word a
+	// person can act on later is the one word that stands out in a dim line.
 	paint := func(text string, ink func(string) string) []string {
 		lines := wrap(text, width-4)
 		for i, line := range lines {
-			lines[i] = indent + ink(line)
+			lines[i] = indent + paintCommandSpans(line, recognizedCommandSpans([]rune(line), true), pal, ink)
 		}
 		return lines
 	}
@@ -1163,22 +1368,28 @@ func (a *app) setupControlLead(control setupControl) string {
 	return "  "
 }
 
+// setupLabelInk is the one rule for how a row's name is painted, on every row
+// of the form: the ACCENT while the focus is on it, DIM once enter has answered
+// it, and the body INK until then. A name is never decoration — it is what tells
+// a person what the figure beside it means — so the three states are the three
+// facts about it a person needs at a glance: this one, done, still to do.
+func (a *app) setupLabelInk(control setupControl) func(string) string {
+	s := &a.setup
+	switch {
+	case s.control == control:
+		return a.pal.accent
+	case s.answered[control]:
+		return a.pal.dim
+	}
+	return a.pal.ink
+}
+
 // setupFieldRow is one label-and-value row of the form: the label in its column,
 // the value in bold, and — where a row has one — a dim word for where the value
 // came from.
 func (a *app) setupFieldRow(width int, control setupControl, label, value, source string) string {
 	pal := a.pal
-	name := padTo(label, controlLabelWidth)
-	if a.setup.control == control {
-		name = pal.ink(name)
-	} else {
-		// A LABEL IS NEVER DECORATION. `Daily limit` is what tells a person what
-		// the figure beside it means, and a form whose three labels were all at
-		// telemetry weight was a form nobody could scan. Dim on this screen is
-		// kept for where a value came from and for the keyboard legend — the
-		// metadata around the decision, not the decision.
-		name = pal.muted(name)
-	}
+	name := a.setupLabelInk(control)(padTo(label, controlLabelWidth))
 	if value == "" {
 		// THE EMPTINESS LAW. A value nobody has resolved yet draws as nothing at
 		// all rather than as a placeholder claiming one.
@@ -1263,45 +1474,51 @@ func (a *app) setupLimitRow(width int) (string, int) {
 	}
 	room := max(width-2-controlLabelWidth, 1)
 	shown = fit(shown, room)
-	name := padTo(controlLimitLabel, controlLabelWidth)
-	if s.control == controlLimit {
-		name = pal.ink(name)
-	} else {
-		name = pal.dim(name)
-	}
+	name := a.setupLabelInk(controlLimit)(padTo(controlLimitLabel, controlLabelWidth))
 	at := ansi.StringWidth(setupLead) + controlLabelWidth + ansi.StringWidth(shown)
 	return a.setupControlLead(controlLimit) + name + pal.bold(pal.ink(shown)), at
 }
 
 // setupModelRows is the list standing under the chat-model row: five rows of the
-// catalog with the cursor's exact id under it, and a count that says how much
+// catalog, EACH ITS EXACT ID AND NOTHING ELSE, and a count that says how much
 // more there is and how to reach it. A machine with no catalog at all still shows
 // the model in use, so enter confirms rather than changes.
-func (a *app) setupModelRows(width int) []string {
+//
+// IT IS A FLAT LIST OF IDS. Until 2026-10-01 each row was the catalog's friendly
+// name (`Qwen3.8 27b:free`) with the exact id drawn under the cursor's row only,
+// which read as a heading with a subheading and made the one row a person could
+// act on two rows tall. The id is the name a person pastes, types after /model
+// and sees in the catalog; the friendly name is still what the filter searches
+// ([app.setupModelChoices]) and what the field above shows.
+//
+// It answers the rows and, row for row, what each is a door onto for a press:
+// a model's row chooses that model, and the count line chooses nothing.
+func (a *app) setupModelRows(width int) ([]string, []setupDoor) {
 	pal := a.pal
 	s := &a.setup
 	models := a.setupModelChoices()
 	if len(models) == 0 {
 		if strings.TrimSpace(s.modelFind) != "" {
-			return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoMatchWord, width-4))}
+			return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoMatchWord, width-4))}, []setupDoor{{}}
 		}
-		return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoCatalogWord, width-4))}
+		return []string{strings.Repeat(" ", 4) + pal.dim(fit(setupNoCatalogWord, width-4))}, []setupDoor{{}}
 	}
 	top := clampIndex(s.modelTop, max(len(models)-setupModelSlots+1, 1))
 	out := make([]string, 0, setupModelSlots+2)
+	doors := make([]setupDoor, 0, setupModelSlots+2)
 	for i := top; i < len(models) && i < top+setupModelSlots; i++ {
-		name := modelWord(models[i].ID)
+		door := setupDoor{kind: doorModel, control: controlChatModel, model: i}
 		if i == s.modelAt {
-			out = append(out, "  "+pal.accent(setupLead)+pal.bold(pal.ink(fit(name, width-6))))
-			// THE EXACT ID, UNDER THE ONE ROW IT IS ABOUT. The list reads as names
-			// and the address is still on the screen for whoever needs it.
-			out = append(out, strings.Repeat(" ", 6)+pal.dim(fit(models[i].ID, width-6)))
+			out = append(out, "  "+pal.accent(setupLead)+pal.bold(pal.ink(fit(models[i].ID, width-6))))
+			doors = append(doors, door)
 			continue
 		}
-		out = append(out, "    "+pal.dim(fit(name, width-6)))
+		out = append(out, "    "+pal.dim(fit(models[i].ID, width-6)))
+		doors = append(doors, door)
 	}
 	out = append(out, strings.Repeat(" ", 4)+pal.dim(fit(a.setupModelCountWord(len(models)), width-4)))
-	return out
+	doors = append(doors, setupDoor{})
+	return out, doors
 }
 
 // setupModelCountWord is the line under the list: where the cursor is in the
@@ -1310,10 +1527,57 @@ func (a *app) setupModelRows(width int) []string {
 func (a *app) setupModelCountWord(count int) string {
 	at := clampIndex(a.setup.modelAt, count) + 1
 	where := itoa(at) + " of " + itoa(count)
+	if a.setupFreeOnly() {
+		where += " · " + setupFreeOnlyWord
+	}
 	if find := strings.TrimSpace(a.setup.modelFind); find != "" {
 		return where + " · matching " + find
 	}
 	return where + " · type to narrow"
+}
+
+// setupFreeOnlyWord is the count line's word for a list cut to free rows, and
+// setupLowCreditsWord is the dim line under the chat model that says why. The
+// line names the account rather than the list, because the account is the fact
+// a person can act on, and it ends on where the rest went so the cut does not
+// read as a catalog that failed to load.
+const (
+	setupFreeOnlyWord   = "free only"
+	setupLowCreditsWord = "Your OpenRouter account is low on credits · the list shows free models only"
+	// The expired key's line names the door to a new one, and the door depends
+	// on where this screen stands: with the connect step before it, esc goes
+	// back there to paste; standing alone — a key already in the shell or the
+	// profile, only the controls asked — esc skips the setup, the keys line two
+	// rows up says so, and the door is /connect once the conversation opens.
+	setupExpiredKeyBackWord  = "Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys"
+	setupExpiredKeyAloneWord = "Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys"
+)
+
+// setupExpiredKeyWord is the expired key's line for the step this screen is on
+// — the one whose way out is the one [app.setupBackWord] names on the same
+// frame, so the two lines never disagree about what esc does.
+func (a *app) setupExpiredKeyWord() string {
+	if a.setup.at > 0 {
+		return setupExpiredKeyBackWord
+	}
+	return setupExpiredKeyAloneWord
+}
+
+// setupFootWarning is the account's one-line warning for this screen — the key
+// expired, or the balance low and the list cut — and "", the emptiness law,
+// when the account gives no cause. It is drawn on the frame's LAST ROW, right
+// aligned, in the warning colour: where the same warning stands on the keys
+// row under a conversation's message box ([withCreditWarning]), so a person
+// meets it in the one place it will keep appearing. Until 2026-10-01 it stood
+// under the chat-model row, wrapped, where it read as part of the form.
+func (a *app) setupFootWarning() string {
+	switch {
+	case a.setupKeyExpired():
+		return a.setupExpiredKeyWord()
+	case a.setupFreeOnly():
+		return setupLowCreditsWord
+	}
+	return ""
 }
 
 // setupNoCatalogWord is what the list says where there is no catalog to choose
@@ -1325,101 +1589,19 @@ const setupNoCatalogWord = "no model list on this machine yet · /model finds on
 // setupNoMatchWord is a filter that matched nothing.
 const setupNoMatchWord = "nothing matches · backspace widens it"
 
-// setupReviewRow is the row under the fields. Its wording depends on the profile
-// and not on a guess: a profile that has written any of the three down is NOT
-// told they are defaults.
-func (a *app) setupReviewRow(width int) string {
-	pal := a.pal
-	long, short := controlReviewDefaults, controlReviewDefaultsShort
-	if a.setupOtherSettingsWritten() {
-		long, short = controlReviewYours, controlReviewYoursShort
-	}
-	word := long
-	if ansi.StringWidth(long) > width-2 {
-		word = short
-	}
-	if a.setup.control == controlReview {
-		return a.setupControlLead(controlReview) + pal.ink(fit(word, width-2))
-	}
-	return a.setupControlLead(controlReview) + pal.dim(fit(word, width-2))
-}
-
-// setupOtherSettingsWritten reports whether this profile has chosen any of the
-// three the review shows. It reads the registry's own record of what is written
-// down ([config.Settings.PersistedKeys]) rather than comparing values to
-// defaults, because a person who deliberately set a row to its default has still
-// chosen it.
-func (a *app) setupOtherSettingsWritten() bool {
-	written := a.registry().PersistedKeys()
-	for _, key := range setupReviewKeys {
-		for _, have := range written {
-			if have == key {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// setupReviewKeys are the three the optional review shows, in the order it shows
-// them. They are the three the design deliberately does NOT make into questions:
-// memory is on and useful before anybody has an opinion, permissions cannot be
-// configured before a person has seen a tool ask for something, and the countdown
-// belongs beside the actual countdown.
-var setupReviewKeys = []string{
-	config.KeyMemoryEnabled,
-	config.KeyToolApprovalMode,
-	config.KeyTaskAutoApprove,
-}
-
-// setupReviewRows is the review itself: three rows read straight off the
-// registry, so what it shows is what /settings shows and never a claim that a
-// configured profile is on defaults. It answers the rows and the closing line
-// separately, because the line is the one part a short window may give up.
-func (a *app) setupReviewRows(width int) ([]string, []string) {
-	pal := a.pal
-	out := make([]string, 0, len(setupReviewKeys))
-	// The label column is measured against the labels themselves rather than
-	// borrowed from the fields above: `ask before running` is eighteen cells and
-	// ran straight into its own value at the field column's seventeen, which is
-	// how `ask before runningprompt` reached a screen.
-	names := 0
-	for _, key := range setupReviewKeys {
-		if row, ok := a.registry().Row(key); ok {
-			names = max(names, ansi.StringWidth(row.Label)+2)
-		}
-	}
-	for _, key := range setupReviewKeys {
-		row, ok := a.registry().Row(key)
-		if !ok {
-			continue
-		}
-		out = append(out, strings.Repeat(" ", 4)+pal.dim(padTo(row.Label, names))+
-			pal.ink(fit(row.Reading(), max(width-4-names, 1))))
-	}
-	rest := []string{strings.Repeat(" ", 4) + pal.dim(fit(controlReviewRest, width-4))}
-	return out, rest
-}
-
-// setupStartRow is the primary action, with the key that takes it on the right.
-// It is a row of the same form rather than a bright panel: the accent on this
-// screen belongs to whatever the person is standing on, and an action that
-// glowed whether or not it had the focus would be two things competing to be the
-// obvious one.
+// setupStartRow is the primary action. It is a row of the same form rather than
+// a bright panel: the accent on this screen belongs to whatever the person is
+// standing on, and an action that glowed whether or not it had the focus would
+// be two things competing to be the obvious one. The key that takes it is NOT
+// written at its right any more: the keys line under the heading already says
+// `enter starts` when the focus is here, and a second `enter` on the row was
+// the same fact twice.
 func (a *app) setupStartRow(width int) string {
-	pal := a.pal
-	word := controlStartWord
+	word := a.setupLabelInk(controlStart)(controlStartWord)
 	if a.setup.control == controlStart {
-		word = pal.bold(pal.ink(word))
-	} else {
-		word = pal.dim(word)
+		word = a.pal.bold(word)
 	}
-	row := a.setupControlLead(controlStart) + word
-	const cap = "enter"
-	if width > ansi.StringWidth(controlStartWord)+len(cap)+6 {
-		row = padTo(row, width-len(cap)) + pal.dim(cap)
-	}
-	return row
+	return a.setupControlLead(controlStart) + word
 }
 
 // setupControlsKeys is the legend at the foot: what the keys do RIGHT HERE, in
@@ -1442,31 +1624,38 @@ func (a *app) setupControlsKeys(width int) string {
 			parts = append(parts, "type to narrow")
 		}
 	} else {
-		// THE TWO KEYS THAT DRIVE THE FORM COME FIRST, and `tab moves` is the
-		// second of them. At forty columns the legend has room for two clauses,
-		// and a person who has been told only what enter does and how to go back
-		// has been told everything except how to reach the other four rows —
-		// which is the one thing this screen cannot be completed without. The way
-		// out is third and appears from sixty columns up.
+		// THE TWO KEYS THAT DRIVE THE FORM COME FIRST: what enter does here, then
+		// how to reach the other rows. At forty columns the legend has room for
+		// two clauses, and a person who has been told only what enter does and
+		// how to go back has been told everything except how to reach the other
+		// rows — which is the one thing this screen cannot be completed without.
+		// The way out is third and appears from sixty columns up.
+		// THE ROWS ARE WALKED WITH THE ARROWS, AND THE LEGEND SAYS SO. Tab
+		// walks them too, and `tab moves` used to be the word here; it was one
+		// more key to learn on a screen whose list a person already walks with ↑↓.
 		switch s.control {
 		case controlLimit:
-			parts = []string{"enter goes on", "tab moves", a.setupBackWord(), "type an amount or none"}
+			parts = []string{"enter sets the limit", setupMovesWord, a.setupBackWord(), "type an amount or none"}
 		case controlChatModel:
-			parts = []string{"enter opens the list", "tab moves", a.setupBackWord()}
-		case controlReview:
-			parts = []string{"enter shows them", "tab moves", a.setupBackWord()}
+			parts = []string{"enter opens the list", setupMovesWord, a.setupBackWord()}
 		case controlStart:
-			parts = []string{"enter starts", "tab moves", a.setupBackWord()}
+			parts = []string{"enter starts", setupMovesWord, a.setupBackWord()}
 		}
 		if s.control <= controlChatModel {
 			parts = append(parts, "? detail")
 		}
-		if w, _ := a.size(); w >= setupWideCols {
-			parts = append(parts, "←→ examples")
-		}
+		// THE ARROWS ARE NOT NAMED HERE. The example panel's own bottom edge
+		// carries `←  3 / 5  →`, which is the one place a control for it
+		// belongs, and a clause about it on the form's keys line was a clause
+		// about a different object.
 	}
 	return clausesWithin(parts, width)
 }
+
+// setupMovesWord is the legend's clause for walking the rows. It is one
+// constant because the tmux suite waits for it to know the form is up
+// (internal/e2e's tmux_test.go), and a respelling has to be one edit.
+const setupMovesWord = "↑↓ moves"
 
 // clausesWithin joins as many whole clauses as fit, in the order they are given.
 // It never cuts one in half, which is the whole reason it is not [fit].
@@ -1496,17 +1685,16 @@ func (a *app) setupBackWord() string {
 	return setupSkipKeysWord
 }
 
-// ── the demonstration panel on the right ────────────────────────────────────
+// ── the demonstration panel above the form ──────────────────────────────────
 //
 // A FRAME THAT IS THERE TO SAY "NOT YOURS".
 //
-// Nothing about the form on the left has an edge. This panel is framed, and the
+// Nothing about the form under it has an edge. This panel is framed, and the
 // reason is the one thing a frame is actually good at: it separates a thing
-// from its surroundings. Unframed, the right-hand column read as a SECOND
-// COLUMN OF THE FORM — more instructions, in the same voice, about the fields
-// on the left. A frame with a label on its top edge cannot be read that way.
-// Everything inside it is an illustration, and the frame is what says so before
-// a word is read.
+// from its surroundings. Unframed, the panel read as MORE OF THE FORM — more
+// instructions, in the same voice, about the fields under it. A frame with a
+// label on its top edge cannot be read that way. Everything inside it is an
+// illustration, and the frame is what says so before a word is read.
 //
 // It is drawn by the one frame (frame.go), which is also what a question hangs
 // in and what the two sheets raised over the page wear — this panel's header
@@ -1525,8 +1713,7 @@ func (a *app) setupBackWord() string {
 // something that LOOKS like a run, and the panel says outright that it was not
 // one. Neither line is decoration and neither is dropped before the leads are.
 const (
-	showcaseTitleWord  = "Example · what you can do"
-	showcaseHonestWord = "An illustration. Nothing here has run."
+	showcaseTitleWord = "Example"
 )
 
 // showcaseCaret is the block that trails the request while it is being typed
@@ -1538,22 +1725,15 @@ const (
 	showcaseCaretASCII = "_"
 )
 
-// setupShowcase draws the right-hand column: a framed panel holding one example
-// request and what it leads to, with where in the four it is on the bottom edge.
-//
-// It is drawn LOWER CONTRAST than the form beside it — nothing in it is at ink
-// weight except the request being typed — because it is an illustration standing
-// beside the thing a person came here to do, and the active control on the left
-// is the anchor.
-//
-// The panel is a FIXED HEIGHT for a given example: the rows the leads will land
-// in are drawn empty before they arrive, so the frame that is on screen at the
-// first beat is the same size as the frame at the last. A box that grew three
-// rows while somebody was reading the form would be motion in the corner of
-// their eye that means nothing.
-func (a *app) setupShowcase(width, height int) []string {
+// setupShowcaseBlock is the example panel as a framed block at the given width,
+// or nil when the window cannot hold the whole of it in maxHeight rows. It is
+// whole or nothing: the label on its top edge is what keeps the panel from being
+// read as a report about this machine, and a panel cut to fit would be an edge
+// with half an illustration under it — or, cut from the top, an illustration
+// with no edge to say what it is.
+func (a *app) setupShowcaseBlock(width, maxHeight int) []string {
 	pal := a.pal
-	if len(setupExamples) == 0 || height <= 0 || width < 20 {
+	if len(setupExamples) == 0 || width < setupShowcaseMinWidth {
 		return nil
 	}
 	at := clampIndex(a.setup.example, len(setupExamples))
@@ -1561,38 +1741,18 @@ func (a *app) setupShowcase(width, height int) []string {
 	inner := frameInner(width) - 2 // one cell of air inside each edge
 
 	body := a.showcaseBody(example, inner)
-	// The frame comes off the top of what the window has left, whole rows at a
-	// time, and the leads go before the title does: a panel with no title is
-	// still labelled by its own top edge, where a panel with no request is a
-	// panel about nothing.
-	for len(body)+2 > height && len(body) > 0 {
-		body = body[:len(body)-1]
-	}
-	if len(body)+2 > height {
+	if len(body)+2 > maxHeight {
 		return nil
 	}
-
 	rows := make([]string, 0, len(body))
 	for _, line := range body {
 		rows = append(rows, " "+padTo(line, inner)+" ")
 	}
 	block, _ := framed{
-		title:     pal.dim(showcaseTitle(pal)),
+		title:     showcaseTitle(pal, example),
 		keysAside: pal.dim(setupShowcaseCount(at, len(setupExamples))),
 	}.draw(pal, width, rows)
-
-	// showcaseTop is where the panel begins: level with the first field, which is
-	// three rows into the form (heading, lead, blank). A short window has dropped
-	// those, and the panel comes up with them rather than floating.
-	showcaseTop := min(3, max(height-len(block), 0))
-	out := make([]string, height)
-	for i, line := range block {
-		if showcaseTop+i >= height {
-			break
-		}
-		out[showcaseTop+i] = line
-	}
-	return out
+	return block
 }
 
 // showcaseBody is what stands inside the frame, at the inner width, with the
@@ -1604,7 +1764,8 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 		caret = showcaseCaretASCII
 	}
 	rows := make([]string, 0, 16)
-	rows = append(rows, pal.muted(fit(example.title, inner)), "")
+	// The example's title is on the panel's top edge ([showcaseTitle]), so the
+	// body opens straight on the request.
 
 	// THE REQUEST, TYPED. It is drawn behind this surface's own `you` marker,
 	// which is the mark the transcript opens a person's own line with — so what
@@ -1621,12 +1782,18 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 		}
 		return strings.Repeat(" ", ansi.StringWidth(pal.youGlyph()))
 	}
+	// A COMMAND IN THE REQUEST WEARS ITS CHIP, the same chip the composer draws
+	// over a recognised command (slashchip.go's [paintCommands]), so the panel
+	// shows `/senior-dev` the way the box will show it when it is typed: as a
+	// word the program knows. While the request is still typing itself out the
+	// word is painted the moment it is whole, and plain before that, exactly as
+	// it is under a person's own fingers.
 	for i := range full {
 		switch {
 		case i < len(shown)-1:
-			rows = append(rows, lead(i)+pal.ink(shown[i]))
+			rows = append(rows, lead(i)+paintCommands(shown[i], pal, pal.ink, i == 0))
 		case i == len(shown)-1:
-			line := pal.ink(shown[i])
+			line := paintCommands(shown[i], pal, pal.ink, i == 0)
 			if typing {
 				line += pal.accent(caret)
 			}
@@ -1656,23 +1823,25 @@ func (a *app) showcaseBody(example setupExample, inner int) []string {
 			rows = append(rows, pal.dim(mark+line))
 		}
 	}
-	rows = append(rows, "")
-	for _, line := range wrap(showcaseHonestWord, inner) {
-		rows = append(rows, pal.dim(line))
-	}
+	// THERE IS NO LINE AT THE FOOT SAYING NOTHING HERE HAS RUN. Until
+	// 2026-10-01 one stood there, dim; the label on the top edge — `Example`
+	// — says the same thing once, and the panel is now above a form that has
+	// not been answered yet, where nothing could have run.
 	return rows
 }
 
 // showcaseTitle is the panel's label, written into its top edge by the frame,
-// behind the one mark on it. A label on an edge is a label that cannot be
-// mistaken for content.
-func showcaseTitle(pal palette) string {
+// behind the one mark on it: the word that says what the panel IS, dim, and
+// then the example's own title at the panel's reading weight. A label on an edge
+// is a label that cannot be mistaken for content, and a title on the edge is a
+// row the body does not have to spend.
+func showcaseTitle(pal palette, example setupExample) string {
 	// THE MARK IS THIS SURFACE'S OWN GLYPH FOR "NOTHING IS TURNING"
 	// (tokens.GQueued, the empty circle that is deliberately not a spinner), which
 	// is exactly what this panel is. Borrowing it rather than inventing a shape
 	// keeps one vocabulary, and it means the one glyph on the frame agrees with
 	// the sentence at its foot.
-	return pal.glyph(tokens.GQueued) + " " + showcaseTitleWord
+	return pal.dim(pal.glyph(tokens.GQueued)+" "+showcaseTitleWord+" · ") + pal.muted(example.title)
 }
 
 // setupShowcaseCount is the position line on the panel's bottom edge —
@@ -1682,17 +1851,24 @@ func setupShowcaseCount(at, count int) string {
 	return "←  " + itoa(at+1) + " / " + itoa(count) + "  →"
 }
 
-// ── the one-shot demonstration ──────────────────────────────────────────────
+// ── the demonstration, and the clock that turns the examples ────────────────
 //
-// THE PANEL PLAYS ONCE, ON A DELIBERATE ACT, AND THEN IT IS STILL.
+// THE PANEL PLAYS EACH EXAMPLE ONCE AS IT ARRIVES, AND THE EXAMPLES TURN.
 //
 // The request types itself out and the three lines under it arrive in order,
-// which is the whole of it: about a second and a third, six beats of typing and
-// one per line. It is armed by exactly two things — arriving on this screen, and
-// a person moving the focus or browsing the examples with ←/→. Nothing else
-// starts it, nothing repeats it, and there is no clock anywhere on this screen
-// that switches examples by itself: a carousel on a setup screen is motion
-// competing with the decision a person is trying to make.
+// which is the whole of the demonstration: about a second and a third, six
+// beats of typing and one per line. It plays when an example arrives — on
+// reaching this screen, on ←/→, and on the turn — and then it is still.
+//
+// THE TURN is the second clock. Left alone, the panel shows the next example
+// every [setupTurnEvery], round and round, so a person reading the form sees
+// all five without touching anything; ←/→ browse them by hand. ANY KEY HOLDS
+// THE CLOCK for a full [setupTurnEvery] from that key, so the panel never
+// turns under a person who is typing an amount or walking the rows, and
+// browsing by hand is not raced by the clock. Until 2026-10-01 the design
+// refused a carousel here and moved the example with the focus instead; new
+// people read that as the panel jumping about as they walked the rows, and
+// the owner asked for the clock.
 //
 // AND ANY OTHER KEY SETTLES IT AT ONCE. Typing an amount, narrowing the model
 // list, opening a chooser — every one of those jumps the panel straight to its
@@ -1754,8 +1930,8 @@ func (a *app) showcaseRevealed(example setupExample) int {
 	return min(a.setup.demoAt-setupDemoTypeBeats+1, len(example.leads))
 }
 
-// restartSetupDemo plays the panel from the top. It is called on the two
-// deliberate acts and nowhere else.
+// restartSetupDemo plays the panel from the top: on arriving, on ←/→, and on
+// the turn.
 func (a *app) restartSetupDemo() {
 	s := &a.setup
 	s.demoGen++
@@ -1768,7 +1944,7 @@ func (a *app) restartSetupDemo() {
 }
 
 // settleSetupDemo puts the panel straight into its finished state and stops the
-// clock. Any key that is not one of the two deliberate acts lands here.
+// demonstration's clock. Any key that is not ←/→ lands here.
 func (a *app) settleSetupDemo() {
 	s := &a.setup
 	if last := a.setupDemoLast(); s.demoAt < last {
@@ -1812,6 +1988,82 @@ func (a *app) setupDemoBeatAt(gen int) tea.Cmd {
 	s.demoAt++
 	a.touch()
 	return a.setupDemoCmd()
+}
+
+// setupTurnEvery is how long the panel holds one example before showing the
+// next, and how long any key holds the clock.
+const setupTurnEvery = 3 * time.Second
+
+// setupTurnClockGeneration gives each physical timer a separate negative stamp.
+// A timer's queued message survives a later hold, but never a closed showing;
+// nonnegative generations remain the direct clock-delivery seam's hold stamps.
+var setupTurnClockGeneration atomic.Int64
+
+// setupTurnMsg is the turn's clock arriving, stamped so an old showing cannot
+// turn a panel that has since closed.
+type setupTurnMsg struct{ gen int }
+
+// turnSetupExample moves the panel by delta, round the ring, and plays the
+// example that arrives. It is the one way the example changes — ←/→ and the
+// clock both come through it.
+func (a *app) turnSetupExample(delta int) {
+	s := &a.setup
+	// THE EXAMPLES GO ROUND. `→` on the last one is the first again, so a
+	// person browsing them never hits a wall they cannot see the reason for;
+	// the count on the panel's edge says where they are.
+	s.example = wrapCursor(s.example, delta, len(setupExamples))
+	a.restartSetupDemo()
+	a.touch()
+}
+
+// setupTurnCmd arms the turn's clock, and answers nil in every state where
+// there should not be one: off this screen, already armed, or in the
+// screen-reader tier, where a panel that changed by itself would be the same
+// illustration announced over and over. It is the ONE place the clock is
+// armed, so a second cannot be started beside the first.
+func (a *app) setupTurnCmd() tea.Cmd {
+	s := &a.setup
+	if !s.open || len(s.steps) == 0 || s.step() != setupControls || a.linear || s.turnTicking {
+		return nil
+	}
+	s.turnTicking = true
+	s.turnClockGen = -int(setupTurnClockGeneration.Add(1))
+	gen := s.turnClockGen
+	delay := setupTurnEvery
+	if remaining := s.turnHoldUntil.Sub(a.now()); remaining > 0 {
+		delay = remaining
+	}
+	return surfaceTick(delay, func(time.Time) tea.Msg { return setupTurnMsg{gen: gen} })
+}
+
+// holdSetupTurn moves the deadline rather than arming a timer per key. The
+// timer already in flight checks the last hold when it reaches the update loop.
+func (a *app) holdSetupTurn() tea.Cmd {
+	s := &a.setup
+	s.turnGen++
+	s.turnHoldUntil = a.now().Add(setupTurnEvery)
+	return a.setupTurnCmd()
+}
+
+// setupTurnAt is the clock arriving. A tick from a retired generation is
+// dropped whole, and so is one that finds the screen gone or stepped back to
+// the key. A live tick waits out the latest hold before the next example
+// arrives, plays, and arms the clock again.
+func (a *app) setupTurnAt(gen int) tea.Cmd {
+	s := &a.setup
+	if gen != s.turnGen && gen != s.turnClockGen {
+		return nil
+	}
+	s.turnTicking = false
+	if !s.open || len(s.steps) == 0 || s.step() != setupControls || a.linear {
+		return nil
+	}
+	if a.now().Before(s.turnHoldUntil) {
+		return a.setupTurnCmd()
+	}
+	s.turnHoldUntil = time.Time{}
+	a.turnSetupExample(1)
+	return tea.Batch(a.setupDemoCmd(), a.setupTurnCmd())
 }
 
 // sortStrings is the one small thing the crew detail needs and nothing else here

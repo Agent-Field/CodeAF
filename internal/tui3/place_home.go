@@ -547,9 +547,12 @@ func (placeHome) wheel(a *app, delta int) (tea.Cmd, bool) { return nil, false }
 // (homecardread.go). Asking costs a map lookup on every key that changed
 // nothing, which is what it costs to never be stale.
 func (placeHome) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
+	// THE `@` LIST'S CATALOGS ARE COPIED BEFORE THE KEY IS READ, because the
+	// key may be the one that ranks them (homeat.go's [app.fillHomeMentions]).
+	was := a.home.comp.open
+	a.prepareHomeCompletion(msg.Text)
 	answered := a.homeKey(msg)
-	// AND THE `@` LIST'S WALK STARTS THE KEY THAT OPENED IT (homeat.go).
-	return tea.Batch(answered, a.loadHomeFiles(), a.refreshHomeCard(a.now()))
+	return tea.Batch(answered, a.syncHomeCompletion(was), a.refreshHomeCard(a.now()))
 }
 
 // owns is the two layers of home that take the WHOLE keyboard, `tab` included,
@@ -577,7 +580,7 @@ func (placeHome) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// full-frame card a thumb is in the middle of, and the phone's rule names no
 	// chord at all — there is no `alt` on a phone to press.
 	if cmd, took := a.placeTargetKey(msg); took {
-		return cmd, true
+		return tea.Batch(cmd, a.syncHomeCompletion(true)), true
 	}
 	a.settleExchangeFocus()
 	ex := a.paneExchange()

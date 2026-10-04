@@ -229,7 +229,6 @@ type SessionStats struct {
 	ToolCalls        int
 	ToolCallsFailed  int
 	CostUSD          float64
-	TotalTokens      int
 	StopReason       string
 	ExitCode         int
 }
@@ -261,9 +260,27 @@ func SessionEnded(mode Mode, stats SessionStats, sessionID string, now time.Time
 	event.Props["tool_calls"] = BucketCount(stats.ToolCalls)
 	event.Props["tool_calls_failed"] = BucketCount(stats.ToolCallsFailed)
 	event.Props["cost_usd"] = BucketCost(stats.CostUSD)
-	event.Props["total_tokens"] = max(0, stats.TotalTokens)
 	event.Props["stop_reason"] = stop
 	event.Props["exit_code"] = exit
+	return event
+}
+
+// UsageDelta records provider-reported tokens as soon as a completed model
+// call reaches the process's accounting door. A remote engine may fold several
+// calls into one turn before this process sees them, so the event deliberately
+// says "delta" rather than claiming every row is exactly one call. Deltas can
+// be summed without counting the same session again at its end.
+func UsageDelta(mode Mode, input, output int, sessionID string, now time.Time) Event {
+	event := base("usage_delta", sessionID, now)
+	if mode != ModeTask {
+		mode = ModeChat
+	}
+	input = max(0, input)
+	output = max(0, output)
+	event.Props["mode"] = string(mode)
+	event.Props["input_tokens"] = input
+	event.Props["output_tokens"] = output
+	event.Props["total_tokens"] = input + output
 	return event
 }
 
@@ -305,7 +322,10 @@ var allowedProps = map[string]map[string]bool{
 	"session_started": merge(set(commonPropNames), set([]string{"mode", "resumed"})),
 	"session_ended": merge(set(commonPropNames), set([]string{
 		"mode", "duration", "turns", "model_calls", "model_calls_failed",
-		"tool_calls", "tool_calls_failed", "cost_usd", "total_tokens", "stop_reason", "exit_code",
+		"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code",
+	})),
+	"usage_delta": merge(set(commonPropNames), set([]string{
+		"mode", "input_tokens", "output_tokens", "total_tokens",
 	})),
 	"fault": merge(set(commonPropNames), set([]string{"mode", "scope", "fingerprint"})),
 }
@@ -316,9 +336,10 @@ var allowedProps = map[string]map[string]bool{
 const EveryEvent = "every event"
 
 // propDocs is what each allowlisted prop IS, in a person's words: the third
-// column of docs/TELEMETRY.md's table, held here so that `codeaf telemetry
-// show` and the doc read from one table and the doc test can fail the build
-// when the two drift. Every allowlisted prop has a line, and the test holds
+// column of docs/TELEMETRY.md's table, held here so that the doc and the code
+// read from one table and the doc test can fail the build when the two drift.
+// Until 2026-10-01 `codeaf telemetry show` printed it too; the doc is its one
+// reader now. Every allowlisted prop has a line, and the test holds
 // that too.
 var propDocs = map[string]map[string]string{
 	EveryEvent: {
@@ -342,9 +363,14 @@ var propDocs = map[string]map[string]string{
 		"tool_calls":         "a count band",
 		"tool_calls_failed":  "a count band",
 		"cost_usd":           "a dollar band",
-		"total_tokens":       "total provider-reported input and output tokens in this session",
 		"stop_reason":        "done, error, incomplete, budget, turn-cap, deadline, price, question, interrupted, or unknown",
 		"exit_code":          "0 to 5",
+	},
+	"usage_delta": {
+		"mode":          "chat or task",
+		"input_tokens":  "provider-reported input tokens since the preceding usage event",
+		"output_tokens": "provider-reported output tokens since the preceding usage event",
+		"total_tokens":  "the sum of this event's input and output tokens",
 	},
 	"fault": {
 		"mode":        "chat, task, or other",
@@ -365,7 +391,9 @@ func EventPropNames(event string) []string {
 		return []string{"mode", "resumed"}
 	case "session_ended":
 		return []string{"mode", "duration", "turns", "model_calls", "model_calls_failed",
-			"tool_calls", "tool_calls_failed", "cost_usd", "total_tokens", "stop_reason", "exit_code"}
+			"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code"}
+	case "usage_delta":
+		return []string{"mode", "input_tokens", "output_tokens", "total_tokens"}
 	case "fault":
 		return []string{"mode", "scope", "fingerprint"}
 	}
@@ -395,10 +423,10 @@ func StopReasons() []string {
 
 // exampleProps is one plausible value per event prop, spelled from the
 // contract's own constants wherever the contract has one, so an example row
-// can never show a value a real row could not carry. `codeaf telemetry show`
-// prints one row per event from this table so a person sees the shape of
-// what leaves before anything has. The fingerprint is the one invented value:
-// sixteen hex characters, which is all a real one is.
+// can never show a value a real row could not carry. docs/TELEMETRY.md is held
+// to this table so a person reading the repository sees the shape of what
+// leaves. The fingerprint is the one invented value: sixteen hex characters,
+// which is all a real one is.
 var exampleProps = map[string]map[string]string{
 	"session_started": {
 		"mode":    string(ModeChat),
@@ -413,9 +441,14 @@ var exampleProps = map[string]map[string]string{
 		"tool_calls":         BucketSix,
 		"tool_calls_failed":  BucketZero,
 		"cost_usd":           Cost10cTo1,
-		"total_tokens":       "12500",
 		"stop_reason":        StopDone,
 		"exit_code":          "0",
+	},
+	"usage_delta": {
+		"mode":          string(ModeChat),
+		"input_tokens":  "10000",
+		"output_tokens": "2500",
+		"total_tokens":  "12500",
 	},
 	"fault": {
 		"mode":        string(ModeChat),
@@ -439,10 +472,10 @@ func AllowlistedProps(eventName string) []string {
 	return names
 }
 
-// AllowlistedEvents names the four events the contract defines, in a stable
+// AllowlistedEvents names the five events the contract defines, in a stable
 // order for the doc.
 func AllowlistedEvents() []string {
-	return []string{"first_run", "session_started", "session_ended", "fault"}
+	return []string{"first_run", "session_started", "usage_delta", "session_ended", "fault"}
 }
 
 // CommonPropNames names the six props every event carries, in contract order.

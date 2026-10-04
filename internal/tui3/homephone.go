@@ -491,6 +491,7 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 	// Use the same multiline layout as the wide frame, including blank lines
 	// and the caret's actual position rather than the end of the draft.
 	draft, draftX, draftY := draftBlockWithTags(&a.home.box, pal, width-2, homeDraftRows, placeRestWord, "", nil, pal.ink)
+	draft = a.paintDraftMentions(draft)
 	foot := 2 + len(draft) // The rule, the draft rows, and the bar.
 	room := height - len(lines) - foot
 	if room < 1 {
@@ -643,6 +644,9 @@ func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
 		// a wide frame (home.go's [app.homeLine]): a tap opens any project's
 		// conversation now, so there is no door to mark as shut.
 		return []string{" " + pal.dim(fit(line.project, width-1))}
+	case homeCompletionRule:
+		// THE `@` LIST'S OWN RULES, drawn as the wide frame draws them (homeat.go).
+		return []string{a.homeCompletionRow(line, at, width, pal)}
 	}
 	label, note, tint := a.homePhoneWords(line, pal)
 	// THE CONVERSATION THIS TERMINAL IS IN KEEPS ITS MARK ON A PHONE TOO. It is
@@ -689,8 +693,8 @@ func (a *app) homePhoneWords(line homeLine, pal palette) (string, string, noteIn
 	case homeCommand:
 		return line.cmd.typed(), line.cmd.note(a.chords), nil
 	case homeCompletion:
-		path, note, _ := h.completionWords(line)
-		return path, note, nil
+		label, note, _ := h.completionWords(line, pal)
+		return label, note, nil
 	case homeItem:
 		return standGlyph(line.view.Item, line.view.Running, line.view.News, pal.ascii) +
 				" " + strings.TrimSpace(line.view.Item.Words),

@@ -132,7 +132,11 @@ func (a *Agent) armSteerGraceLocked() {
 	}
 	a.stopSteerGraceLocked()
 	watch := &steerWatch{turn: a.turnSeq, calls: young}
-	watch.timer = time.AfterFunc(wait+steerGraceMargin, func() { a.steerGraceFired(watch) })
+	after := time.AfterFunc
+	if a.steerAfter != nil {
+		after = a.steerAfter
+	}
+	watch.timer = after(wait+steerGraceMargin, func() { a.steerGraceFired(watch) })
 	a.steerGrace = watch
 }
 

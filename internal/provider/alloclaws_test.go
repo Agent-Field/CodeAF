@@ -1,8 +1,13 @@
 package provider
 
 import (
+	"encoding"
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // THE LAWS THIS FILE DEFENDS ARE ABOUT WORK, NOT ABOUT TIME.
@@ -52,6 +57,78 @@ func TestTheWarmToolEncodeAllocatesNothing(t *testing.T) {
 	}
 }
 
+// markedJSONPrice prices only the encoding/json calls the benchmark's two
+// marked shapes are designed to make. Their inputs are built before measuring,
+// so this baseline cannot absorb an allocation added inside marshalMarked or
+// the memo. A new fixture shape needs its own price rather than a guess.
+func markedJSONPrice(t *testing.T, message ai.Message) float64 {
+	t.Helper()
+	// A wire type's own marshaler makes encoding/json's measured price include this package's work.
+	// A deliberate marshaler needs named overhead here and in PERF.md in the same change.
+	for _, wireType := range []reflect.Type{
+		reflect.TypeFor[markedTextPart](),
+		reflect.TypeFor[markedMessage](),
+		reflect.TypeFor[markedToolMessage](),
+	} {
+		for _, candidate := range []reflect.Type{wireType, reflect.PointerTo(wireType)} {
+			for _, marshaler := range []reflect.Type{
+				reflect.TypeFor[json.Marshaler](),
+				reflect.TypeFor[encoding.TextMarshaler](),
+			} {
+				if candidate.Implements(marshaler) {
+					t.Fatalf("%v implements %v: encoding/json's price is measured only while the wire types "+
+						"have no marshaler of their own. A marshaler added on purpose is this package's work "+
+						"and must be priced as a named overhead here and in PERF.md together.", candidate, marshaler)
+				}
+			}
+		}
+	}
+	if len(message.Content) != 1 || message.Content[0].Type != "text" || len(message.ToolCalls) != 0 {
+		t.Fatalf("marked JSON price has no law for role %q with %d content parts and %d tool calls",
+			message.Role, len(message.Content), len(message.ToolCalls))
+	}
+	price := func(marshal func() ([]byte, error)) float64 {
+		return testing.AllocsPerRun(100, func() {
+			if _, err := marshal(); err != nil {
+				t.Fatalf("pricing encoding/json: %v", err)
+			}
+		})
+	}
+	part := message.Content[0]
+	switch message.Role {
+	case "system":
+		if message.ToolCallID != "" {
+			t.Fatalf("marked JSON price has no law for a system message with tool id %q", message.ToolCallID)
+		}
+		marshalPart := func() ([]byte, error) {
+			return json.Marshal(markedTextPart{
+				Type: part.Type, Text: part.Text, CacheControl: ephemeralBreakpoint,
+			})
+		}
+		raw, err := marshalPart()
+		if err != nil {
+			t.Fatalf("building marked JSON price inputs: %v", err)
+		}
+		parts := []json.RawMessage{raw}
+		return price(marshalPart) + price(func() ([]byte, error) {
+			return json.Marshal(markedMessage{Role: message.Role, Content: parts})
+		})
+	case "tool":
+		if message.ToolCallID == "" {
+			t.Fatal("marked JSON price has no law for a tool result without an id")
+		}
+		return price(func() ([]byte, error) {
+			return json.Marshal(markedToolMessage{
+				Role: message.Role, Content: part.Text,
+				ToolCallID: message.ToolCallID, CacheControl: ephemeralBreakpoint,
+			})
+		})
+	default:
+		t.Fatalf("marked JSON price has no law for role %q", message.Role)
+		return 0
+	}
+}
+
 // THE WARM TRANSCRIPT ENCODE COSTS THE SAME AT EIGHTY TURNS AS AT EIGHT.
 //
 // This is the law the memo exists for, stated as the only thing that can prove
@@ -60,20 +137,38 @@ func TestTheWarmToolEncodeAllocatesNothing(t *testing.T) {
 // linear in transcript length is a per-run cost quadratic in the length of the
 // run — which is exactly what it was before memo.go.
 //
-// The two constants are named rather than merely bounded, because each of them
-// is a specific thing and a change to either is a change worth reading:
+// This package's own allocations are named rather than merely bounded, because
+// each is a specific thing and a change to one is a change worth reading:
 //
 //   - automatic: 1 — the []json.RawMessage the caller is handed. Every element
 //     of it is a slice the memo already holds. There is nothing else to pay.
-//   - breakpoints: 8 — that same slice, plus the two marked positions, which are
-//     re-derived per call BY DESIGN. The tail marker rolls forward every turn, so
-//     a memo of the marked form would be a cache of the one thing that changes
-//     (memo.go says this where it explains what is deliberately not memoized).
-//     Two marshals, whatever they cost, and never 244.
+//   - breakpoints: that same slice, the parts slice the marked system message is
+//     expanded into, and encoding/json's price for the two marked positions.
+//     The tool result has no overhead of its own. The marked forms are re-derived
+//     per call BY DESIGN: the tail marker rolls forward every turn, so a memo of
+//     it would cache the one thing that changes (memo.go explains this choice).
+//
+// ONLY ENCODING/JSON'S PRICE IS MEASURED IN THIS PROCESS. The complete
+// breakpoints path cost 8 on Go 1.26 and 11 on Go 1.27 with the memo unchanged,
+// so a total copied from one toolchain turned a Go upgrade into a red that CI
+// could not see. The baseline now calls encoding/json directly with this
+// package's wire types and prebuilt inputs; it never calls marshalMarked or
+// encodeMessages. This package's own costs stay named, and each marked position
+// is checked before the whole warm path. An extra allocation of this package's
+// own ANYWHERE ON THAT PATH, inside marshalMarked included, therefore fails
+// instead of raising its own allowance.
 //
 // The equality across sizes is the load-bearing assertion; the constants are the
 // teaching. One-per-message at 81 turns would be 244.
 func TestTheWarmTranscriptEncodeCostsTheSameAtEightyTurnsAsAtEight(t *testing.T) {
+	const (
+		// resultSliceCost is the slice the caller needs to hold this call's encoded transcript.
+		resultSliceCost = 1
+		// partsSliceCost is the storage needed to expand the marked system message into array form.
+		partsSliceCost = 1
+		// toolOverhead is zero because the marked tool result needs no intermediate storage.
+		toolOverhead = 0
+	)
 	warmEncode := func(t *testing.T, turns int, dialect cacheDialect) float64 {
 		t.Helper()
 		messages := benchTranscript(turns)
@@ -88,18 +183,56 @@ func TestTheWarmTranscriptEncodeCostsTheSameAtEightyTurnsAsAtEight(t *testing.T)
 		})
 	}
 
+	messages := benchTranscript(81)
+	placed := breakpointsFor(messages)
+	if placed.system < 0 || placed.tail < 0 {
+		t.Fatal("the benchmark transcript must place both a system and a tail breakpoint")
+	}
+	systemJSON := markedJSONPrice(t, messages[placed.system])
+	tailJSON := markedJSONPrice(t, messages[placed.tail])
+	for _, position := range []struct {
+		name     string
+		index    int
+		jsonCost float64
+		ownCost  float64
+	}{
+		{"system", placed.system, systemJSON, partsSliceCost},
+		{"tail", placed.tail, tailJSON, toolOverhead},
+	} {
+		allocations := testing.AllocsPerRun(100, func() {
+			if _, err := marshalMarked(messages[position.index]); err != nil {
+				t.Fatalf("marked %s position: %v", position.name, err)
+			}
+		})
+		t.Logf("marked %s position: encoding/json=%.0f package=%.0f total=%.0f",
+			position.name, position.jsonCost, position.ownCost, allocations)
+		if want := position.jsonCost + position.ownCost; allocations != want {
+			change := "Fewer allocations mean the marked shape or its named overhead has changed."
+			if allocations > want {
+				change = "An extra allocation inside marshalMarked must fail rather than raise its own allowance."
+			}
+			t.Fatalf("marked %s position (%d) costs %.0f allocations, want %.0f: "+
+				"encoding/json's price is measured in-process (%.0f), and this package's "+
+				"own overhead is named (%.0f). %s If this is deliberate, update markedJSONPrice's "+
+				"shapes, the named overhead constants, and the PERF.md row together.",
+				position.name, position.index, allocations, want, position.jsonCost, position.ownCost, change)
+		}
+	}
+
 	for _, dialect := range []struct {
 		name string
 		d    cacheDialect
 		want float64
 	}{
-		{"automatic", cacheDialectAutomatic, 1},
-		{"breakpoints", cacheDialectBreakpoints, 8},
+		{"automatic", cacheDialectAutomatic, resultSliceCost},
+		{"breakpoints", cacheDialectBreakpoints, resultSliceCost + systemJSON + partsSliceCost + tailJSON + toolOverhead},
 	} {
 		t.Run(dialect.name, func(t *testing.T) {
 			// 8 and 81 turns are the ends of the range BENCHMARKS.md records for
 			// real runs, and they are 25 and 244 messages long.
 			small, large := warmEncode(t, 8, dialect.d), warmEncode(t, 81, dialect.d)
+			t.Logf("warm %s encode: 8 turns=%.0f 81 turns=%.0f law=%.0f",
+				dialect.name, small, large, dialect.want)
 			if small != large {
 				t.Fatalf("a warm encode costs %.0f allocations at 8 turns and %.0f at 81 — "+
 					"the memo's whole promise is that this number does not move with the "+
@@ -107,10 +240,12 @@ func TestTheWarmTranscriptEncodeCostsTheSameAtEightyTurnsAsAtEight(t *testing.T)
 					"quadratically (memo.go)", small, large)
 			}
 			if large != dialect.want {
-				t.Fatalf("a warm %s encode costs %.0f allocations, and the law is %.0f. "+
-					"If this is a deliberate change — a different marked-message shape, a "+
-					"different result slice — move the number here and in PERF.md together; "+
-					"if it is not, something on the warm path stopped being memoized.",
+				t.Fatalf("a warm %s encode costs %.0f allocations, and the law is %.0f: "+
+					"encoding/json's price is measured in-process, and this package's own "+
+					"allocations are named. An extra allocation of this package's own "+
+					"anywhere on the warm path, inside marshalMarked included, fails. If "+
+					"this is deliberate, change the law here and in PERF.md together; if "+
+					"it is not, the warm path is doing work it should not.",
 					dialect.name, large, dialect.want)
 			}
 		})

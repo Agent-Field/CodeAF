@@ -71,6 +71,7 @@ func TestMachineAdmissionNoticesSettingsFromAnotherProcess(t *testing.T) {
 }
 
 func TestNewAdmissionReadsSettingsChangedBeforeItsCreation(t *testing.T) {
+	littleMemoryHost(t)
 	for _, profileKind := range []string{"named", "default"} {
 		t.Run(profileKind, func(t *testing.T) {
 			profile := t.TempDir()

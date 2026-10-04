@@ -23,14 +23,14 @@ import (
 // own checkout has the failure fixed without a commit, so only a detached read
 // of the branch can still find the committed red.
 func TestAReadingOfTheBaseSaysWhichChecksWereAlreadyFailing(t *testing.T) {
-	repo := newGoModuleRepo(t)
-	test := filepath.Join(repo, "base_test.go")
-	writeFile(t, test, "package taskaudit\n\nimport \"testing\"\n\nfunc TestBaseWasRed(t *testing.T) { t.Fatal(\"old red\") }\n")
+	repo := newTestRepo(t)
+	test := filepath.Join(repo, "check.sh")
+	writeFile(t, test, "printf 'old red\\n'; exit 1\n")
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "old red")
-	writeFile(t, test, "package taskaudit\n\nimport \"testing\"\n\nfunc TestBaseWasRed(t *testing.T) {}\n")
+	writeFile(t, test, "exit 0\n")
 
-	command := "go test ./..."
+	command := "sh check.sh"
 	photograph := (&Agent{}).baseChecksFor(context.Background(), taskTree{
 		dir: repo, root: repo, branch: "work", ground: repo, seal: baselineCommitForTest(t, repo),
 	}, []string{command})
@@ -292,16 +292,17 @@ func proposeTaskWithAcceptance(title, brief, acceptance, ground string, checks [
 // the real task door. The task writes an unrelated deliverable over a committed
 // failing suite, and the finished report carries the shared session sentence.
 func TestAPreExistingRedDoesNotStandBetweenTheWorkAndItsLanding(t *testing.T) {
-	repo := newGoModuleRepo(t)
-	writeFile(t, filepath.Join(repo, "old_red_test.go"),
-		"package taskaudit\n\nimport \"testing\"\n\nfunc TestOldRed(t *testing.T) { t.Fatal(\"already red\") }\n")
+	repo := newTestRepo(t)
+	// A real failing shell check proves attribution without rebuilding a
+	// disposable Go module; both detached and landing trees still run it.
+	writeFile(t, filepath.Join(repo, "check.sh"), "printf 'already red\n'; exit 1\n")
 	mustGit(t, repo, "add", "-A")
 	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "old red")
 	t.Setenv("HOME", t.TempDir())
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeTaskWithAcceptance("Write the note", "write note.txt", "note.txt exists and `go test ./...` passes", repo, []string{"go test ./..."}),
+			proposeTaskWithAcceptance("Write the note", "write note.txt", "note.txt exists and `sh check.sh` passes", repo, []string{"sh check.sh"}),
 			finalText("handed off"),
 		},
 		child: []step{
@@ -321,38 +322,43 @@ func TestAPreExistingRedDoesNotStandBetweenTheWorkAndItsLanding(t *testing.T) {
 	if node == nil {
 		t.Fatalf("no node was admitted; events = %#v", events)
 	}
-	waitDoneNode(t, node)
+	awaitTestCompletion(t, node.done, "the task over the pre-existing red to land")
 	notice := node.notice()
 
 	if notice.State != TaskDone {
 		t.Fatalf("state = %q, report = %q, want done", notice.State, notice.Report)
 	}
-	want := "1 check was already failing before this work; that does not show the requested result works: go test ./..."
+	want := "1 check was already failing before this work; that does not show the requested result works: sh check.sh"
 	if !strings.Contains(notice.Report, want) {
 		t.Fatalf("report = %q, want %q", notice.Report, want)
 	}
 }
 
 // TestAGreenCheckTheWorkTurnedRedIsTheWorksOwn proves C6. The base is clean,
-// the child's only file introduces a failing test, and the checker's refusal
+// the child's only file turns the check red, and the checker's refusal
 // remains a refusal without borrowing the old-red sentence.
 func TestAGreenCheckTheWorkTurnedRedIsTheWorksOwn(t *testing.T) {
-	repo := newGoModuleRepo(t)
+	repo := newTestRepo(t)
+	// The base check passes until the worker creates the regression marker.
+	// Its failure uses the same test-name format the product extracts from Go.
+	writeFile(t, filepath.Join(repo, "check.sh"),
+		"if [ -f work.txt ]; then printf '%s\n' '--- FAIL: TestWorkBreaksGreen (0.00s)' 'FAIL'; exit 1; fi\n")
+	mustGit(t, repo, "add", "check.sh")
+	mustGit(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "green check")
 	t.Setenv("HOME", t.TempDir())
 
 	completer := &routedCompleter{
 		parent: []step{
-			proposeTaskWithAcceptance("Add the check", "write work_test.go", "work_test.go exists and `go test ./...` passes", repo, []string{"go test ./..."}),
+			proposeTaskWithAcceptance("Add the check", "write work.txt", "work.txt exists and `sh check.sh` passes", repo, []string{"sh check.sh"}),
 			finalText("handed off"),
 		},
 		child: []step{
-			writeCall("write-red", "work_test.go",
-				"package taskaudit\n\nimport \"testing\"\n\nfunc TestWorkBreaksGreen(t *testing.T) { t.Fatal(\"new red\") }\n"),
-			finalText("Wrote work_test.go."),
+			writeCall("write-red", "work.txt", "the regression marker\n"),
+			finalText("Wrote work.txt."),
 		},
 		audit: []step{
-			bashCall("run-check", "go test ./..."),
-			verdictFromEvidence("FAIL", "REFUTED — go test ./... now fails: TestWorkBreaksGreen", "VERIFIED — go test ./... passes"),
+			bashCall("run-check", "sh check.sh"),
+			verdictFromEvidence("FAIL", "REFUTED — sh check.sh now fails: TestWorkBreaksGreen", "VERIFIED — sh check.sh passes"),
 		},
 	}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {
@@ -366,7 +372,7 @@ func TestAGreenCheckTheWorkTurnedRedIsTheWorksOwn(t *testing.T) {
 	if node == nil {
 		t.Fatalf("no node was admitted; events = %#v", events)
 	}
-	waitDoneNode(t, node)
+	awaitTestCompletion(t, node.done, "the task's refusal of the newly red check")
 	notice := node.notice()
 
 	if notice.State != TaskFailed {

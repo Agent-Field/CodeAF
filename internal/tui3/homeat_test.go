@@ -169,3 +169,113 @@ func TestThereIsNoImageCommand(t *testing.T) {
 		t.Fatalf("/image was not answered as an unknown word:\n%s", body)
 	}
 }
+
+// atHomeWithMentions is [atHome] with a team and a recent conversation in
+// reach, the way [mentionApp] sets a conversation's box up.
+func atHomeWithMentions(t *testing.T) *app {
+	t.Helper()
+	a, _ := atHome(t)
+	a.wall.loaded = true
+	a.wall.teams = []team{{
+		ID: "t1", Name: "harbor", Hue: 210,
+		Members: []teamMember{
+			{Key: "/s/parser.jsonl", File: "/s/parser.jsonl", Handle: "parser", Word: "the parser"},
+		},
+	}}
+	a.comp.recentsHeld = true
+	a.comp.recents = []mentionChat{{
+		key: "/s/side.jsonl", file: "/s/side.jsonl",
+		title: "side chat", slug: "side-chat", note: "side chat",
+	}}
+	return a
+}
+
+// Home's `@` list is the conversation's: the prefix words on its first row,
+// teams and conversations above the files, and the same three prefixes.
+func TestAtOnHomeOffersTeamsAndConversationsWithThePrefixes(t *testing.T) {
+	a := atHomeWithMentions(t)
+	drive(t, a, key("@"))
+	h := &a.home
+	if !h.comp.open {
+		t.Fatal("the bare @ did not open the list on home")
+	}
+	text := homeText(a)
+	for _, want := range []string{"team  chat  file", "teams", "harbor", "conversations", "side chat", "notes.md"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("home's list is missing %q:\n%s", want, text)
+		}
+	}
+	line, ok := h.focusedLine()
+	if !ok || line.kind != homeCompletion {
+		t.Fatalf("the cursor is not on a row of the list: %+v", line)
+	}
+	if label, _, _ := h.completionWords(line, a.pal); !strings.Contains(label, "harbor") {
+		t.Fatalf("the cursor opened on %q, and the team is the first row", label)
+	}
+
+	a = atHomeWithMentions(t)
+	drive(t, a, key("@"), key("c"), key("h"), key("a"), key("t"), key(":"), key("s"), key("i"))
+	h = &a.home
+	if len(h.comp.chatHits) != 1 || len(h.comp.teamHits) != 0 || len(h.comp.hits) != 0 {
+		t.Fatalf("@chat:si kept teams=%d chats=%d files=%d", len(h.comp.teamHits), len(h.comp.chatHits), len(h.comp.hits))
+	}
+	drive(t, a, key("enter"))
+	if got := h.box.String(); got != "@side-chat" {
+		t.Fatalf("choosing the conversation on home typed %q", got)
+	}
+	if h.comp.open || !a.at(pageHome) {
+		t.Fatal("choosing a conversation left the list open or left home")
+	}
+
+	a = atHomeWithMentions(t)
+	drive(t, a, key("@"), key("t"), key("e"), key("a"), key("m"), key(":"), key("h"))
+	h = &a.home
+	drive(t, a, key("enter"))
+	if got := h.box.String(); got != "●harbor" {
+		t.Fatalf("choosing the team on home typed %q", got)
+	}
+
+	a = atHomeWithMentions(t)
+	drive(t, a, key("@"), key("c"), key("h"), key("a"), key("t"), key(":"), key("z"), key("z"))
+	if text := homeText(a); !strings.Contains(text, "no conversation matches") {
+		t.Fatalf("a chat prefix nothing matches does not say so on home:\n%s", text)
+	}
+	if !strings.Contains(a.homeHint(), "enter put it in") {
+		t.Fatalf("the foot is %q", a.homeHint())
+	}
+}
+
+// Home reads the recent conversations on every opening of its list, as a
+// conversation's box does, and not on the letters typed after the `@`.
+func TestAtOnHomeReadsRecentConversationsOnEachOpening(t *testing.T) {
+	a := atHomeWithMentions(t)
+	a.comp.recentsHeld, a.comp.recents = false, nil
+	reads := 0
+	rows := []Session{{Title: "openrouter price scrape", File: "/s/price.jsonl"}}
+	a.recentSessions = func() []Session {
+		reads++
+		return append([]Session(nil), rows...)
+	}
+	drive(t, a, key("@"), key("c"), key("h"), key("a"), key("t"), key(":"))
+	h := &a.home
+	if reads != 1 {
+		t.Fatalf("the first opening read the recent list %d times", reads)
+	}
+	if len(h.comp.chatHits) != 1 || h.comp.chatHits[0].title != "openrouter price scrape" {
+		t.Fatalf("home's list holds %+v", h.comp.chatHits)
+	}
+	drive(t, a, key("esc"))
+	rows = append(rows, Session{Title: "Cloudflare worker deploy", File: "/s/cloudflare.jsonl"})
+	drive(t, a, key("c"))
+	if reads != 2 {
+		t.Fatalf("the second opening left the recent list at %d reads", reads)
+	}
+	// The letter after it narrows what the opening read, and reads nothing.
+	drive(t, a, key("l"))
+	if reads != 2 {
+		t.Fatalf("typing into the open list read the recent list again: %d reads", reads)
+	}
+	if len(h.comp.chatHits) != 1 || h.comp.chatHits[0].title != "Cloudflare worker deploy" {
+		t.Fatalf("a conversation started after the first opening is not on home's list: %+v", h.comp.chatHits)
+	}
+}

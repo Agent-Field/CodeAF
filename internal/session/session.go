@@ -1369,6 +1369,10 @@ type Config struct {
 	// person reads when the window runs out without waiting five real minutes for
 	// it.
 	auditWindow time.Duration
+	// auditTimeout lets a test expire a checker's context after advancing the
+	// checking clock. Production leaves it nil and uses context.WithTimeout
+	// with the same window and call share.
+	auditTimeout func(context.Context, time.Duration) (context.Context, context.CancelFunc)
 
 	// clock is THE AGENT'S ONE READING OF THE WORLD'S TIME, and it is UNEXPORTED
 	// AND FOR TESTS ONLY ([Agent.now]). The product's answer is [time.Now].
@@ -1383,6 +1387,9 @@ type Config struct {
 	// other. The other caller today is the trail that records a request's own
 	// length (task_calltrail.go).
 	clock func() time.Time
+	// teamWatchManual leaves traffic-clock advances to tests calling
+	// teamWatchTick. Production leaves it false and starts the real ticker.
+	teamWatchManual bool
 
 	// AskConsent says somebody is watching this agent's events and will answer
 	// an EventConsentRequest with [Agent.ResolveConsent].
@@ -3025,6 +3032,9 @@ type Agent struct {
 	// steerAge is the foreground-command age seam used by steer tests. A nil
 	// seam reads the process's real start through [bare.BashCall.RunningFor].
 	steerAge func(*bare.BashCall) time.Duration
+	// steerAfter lets a test hold and fire the scheduled second look itself.
+	// Production leaves it nil and uses time.AfterFunc at the same grace.
+	steerAfter func(time.Duration, func()) *time.Timer
 	// ambient is periodic watch news that must wait for a TURN boundary.
 	//
 	// It is separate from steering because a step boundary is not a turn

@@ -119,7 +119,7 @@ func TestTelemetryTaskSessionSpoolsStartedAndEnded(t *testing.T) {
 	restore := telemetryArgs("plan", "run", "p.json")
 	defer restore()
 
-	session := telemetryBegin()
+	session := telemetryStart(telemetryBegin())
 	if session.mode != telemetry.ModeTask || session.resumed {
 		t.Fatalf("plan run: mode=%q resumed=%v, want task, false", session.mode, session.resumed)
 	}
@@ -181,6 +181,32 @@ func TestTelemetrySessionEndedCarriesTheSessionCounters(t *testing.T) {
 		if ended[key] != value {
 			t.Errorf("session_ended %s = %v, want %s", key, ended[key], value)
 		}
+	}
+}
+
+func TestTelemetryUsageIsQueuedBeforeTheSessionEnds(t *testing.T) {
+	telemetryLifecycleHome(t)
+	telemetry.ResetCountersForTest(t)
+	restore := telemetryArgs("exec", "answer once")
+	defer restore()
+
+	session := telemetryStart(telemetryBegin())
+	telemetry.CountTokens(100, 25)
+	if session.finishUsage != nil {
+		session.finishUsage()
+		session.finishUsage = nil
+	}
+
+	rows := telemetrySpoolRows(t)
+	usage := telemetryProps(t, telemetryRowNamed(t, rows, "usage_delta"))
+	if usage["input_tokens"] != float64(100) || usage["output_tokens"] != float64(25) || usage["total_tokens"] != float64(125) {
+		t.Fatalf("usage_delta props = %v", usage)
+	}
+
+	telemetryEnd(session, 0)
+	ended := telemetryProps(t, telemetryRowNamed(t, telemetrySpoolRows(t), "session_ended"))
+	if _, exists := ended["total_tokens"]; exists {
+		t.Fatalf("session_ended repeated the token total: %v", ended)
 	}
 }
 
@@ -260,24 +286,15 @@ func TestTelemetryOffWritesNothingAtAll(t *testing.T) {
 	}
 }
 
-// TestTelemetryNoticePrintsOnceAcrossTwoInvocations: the notice is shown once
-// per install. The first task session marks it shown and spools first_run
-// once; the second session of the same install marks nothing and spools no
-// second first_run.
-func TestTelemetryNoticePrintsOnceAcrossTwoInvocations(t *testing.T) {
+// TestFirstRunIsSpooledOnceAcrossTwoInvocations: first_run is one event per
+// install. The first task session spools it; the second session of the same
+// install spools no second one.
+func TestFirstRunIsSpooledOnceAcrossTwoInvocations(t *testing.T) {
 	telemetryLifecycleHome(t)
 	restore := telemetryArgs("do", "fix the bug")
 	defer restore()
 
-	if telemetry.NoticeShown() {
-		t.Fatalf("a fresh home read as notice-already-shown")
-	}
-	// A task command shows the notice even with piped stderr, because a task
-	// runs unattended and its person may never open a chat.
 	first := telemetryBegin()
-	if !telemetry.NoticeShown() {
-		t.Fatalf("the notice was not marked shown for a task session")
-	}
 	telemetryEnd(first, 0)
 
 	rows := telemetrySpoolRows(t)
@@ -307,20 +324,19 @@ func TestTelemetryNoticePrintsOnceAcrossTwoInvocations(t *testing.T) {
 	}
 }
 
-// TestTelemetryNoticeNeverPrintsUnderJSON: a --json stdout must stay
-// machine-clean, so a --json session never shows the notice; the events wait
-// in the spool until a session that can show it runs.
-func TestTelemetryNoticeNeverPrintsUnderJSON(t *testing.T) {
-	telemetryLifecycleHome(t)
-	restore := telemetryArgs("do", "--json", "fix the bug")
-	defer restore()
-
-	if !telemetryHasJSON(os.Args[1:]) {
-		t.Fatalf("telemetryHasJSON missed --json")
+// THE HELP NAMES THE SWITCHES AND POINTS AT THE REPOSITORY, and it no longer
+// names a `codeaf telemetry` command: the command left on 2026-10-01 with the
+// notice, and a help line for a command that does not exist is a help line
+// that sends somebody to `there is no codeaf telemetry`.
+func TestTheHelpNamesTheTelemetrySwitchesAndNoCommand(t *testing.T) {
+	for _, wanted := range []string{"CODEAF_TELEMETRY", "CODEAF_TELEMETRY_ENDPOINT", "DO_NOT_TRACK", "docs/TELEMETRY.md"} {
+		if !strings.Contains(environmentText, wanted) {
+			t.Errorf("the environment table should name %s", wanted)
+		}
 	}
-	session := telemetryBegin()
-	telemetryEnd(session, 0)
-	if telemetry.NoticeShown() {
-		t.Fatalf("the notice was marked shown under --json")
+	for name, text := range map[string]string{"usage": usageText, "environment": environmentText} {
+		if strings.Contains(text, "codeaf telemetry") {
+			t.Errorf("%s text still names `codeaf telemetry`, which is not a command", name)
+		}
 	}
 }

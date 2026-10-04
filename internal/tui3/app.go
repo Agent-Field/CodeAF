@@ -884,17 +884,6 @@ type app struct {
 	hostReplayWaiting   bool
 	hostCalls           int
 	hostDeferred        []func() tea.Cmd
-	// telemetryNotice is the usage notice still owed to the person, drawn on the
-	// first conversation's greeting ([app.welcomeNoticeRows]); empty when nothing
-	// is owed or once the greeting that showed it has gone.
-	telemetryNotice string
-	// telemetryNoticeShown is the door's "it was seen" record, and
-	// telemetryNoticeOnFrame is a frame's note that it drew the notice. The frame
-	// only notes; the update loop calls the door, once
-	// ([app.settleTelemetryNotice]), and telemetryNoticeSettled says it has.
-	telemetryNoticeShown   func()
-	telemetryNoticeOnFrame bool
-	telemetryNoticeSettled bool
 
 	questionReplacement *questionReplacement
 
@@ -978,6 +967,7 @@ type app struct {
 	creditRecordPending atomic.Bool
 	creditTrigger       *credits.Trigger
 	creditsLow          bool
+	creditsExpired      bool
 	implicitTalk        bool
 	creditSwitching     bool
 	chatCreditWarning   string
@@ -3046,7 +3036,6 @@ func newApp(ctx context.Context, opts Options) *app {
 		lastQuestionKey: time.Now(),
 		questionReach:   newQuestionDeliveryRule(),
 	}
-	a.telemetryNotice, a.telemetryNoticeShown = opts.TelemetryNotice, opts.TelemetryNoticeShown
 	// THE MEMOS ARE BUILT BEFORE ANYTHING ASKS THEM ANYTHING, because the frame's
 	// door onto each is a memo lookup and nothing else: a memo with no reader
 	// behind it answers "nobody has read that" forever (learned.go). They are
@@ -3057,6 +3046,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		a.creditTrigger = credits.NewTrigger(time.Now)
 		a.creditWake = newDoorbell(creditWakeMsg{})
 		a.creditsLow = config.CreditsLowAt(a.profileDir)
+		a.creditsExpired = config.CreditsExpiredAt(a.profileDir)
 		if a.paymentRefusals != nil {
 			a.creditHookStop = a.paymentRefusals(func() { a.creditRecordPending.Store(true); a.creditWake.ring() })
 		}
@@ -3444,7 +3434,7 @@ func (a *app) Init() tea.Cmd {
 		// AND THE SETUP SCREEN'S EXAMPLE PANEL, when the setup is the first frame
 		// and the controls screen is its first step. It answers nil in every other
 		// case, which is most launches (onboarding.go).
-		a.setupDemoCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
+		a.setupDemoCmd(), a.setupTurnCmd(), a.checkForUpdate(), a.launchCredits(), a.creditWake.waitRing(), titleSend(a.titleSent),
 		// AND THE TWO DOORS INTO THE LOOP FROM ELSEWHERE, each with its one
 		// command parked on it (doorbell.go).
 		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
@@ -3518,7 +3508,6 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
 	// the frame may only note that it drew it (view.go), because the door's
 	// record is a write to disk.
-	a.settleTelemetryNotice()
 	// A JUMP TO A MESSAGE WAITING FOR ITS CONVERSATION lands here, on the first
 	// message after that conversation is in front (teamjump.go).
 	if a.traffic.jump.key != "" {
@@ -3922,17 +3911,25 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case filesLoadedMsg:
 		if msg.home {
-			a.homeFilesLoaded(msg.paths)
+			a.homeFilesLoaded(msg.paths, msg.root)
 			return a, nil
 		}
 		a.comp.all, a.comp.loaded, a.comp.loading = msg.paths, true, false
 		a.fillMentions()
-		a.comp.rank()
+		a.comp.refresh(&a.input)
 		a.touch()
 		return a, nil
 
 	case mentionRecentsMsg:
-		a.mentionRecentsLoaded(msg.rows)
+		if msg.read == 0 || msg.read == a.comp.recentsRead {
+			if msg.read != 0 && a.comp.recentsAgain {
+				// Openings after this read began need rows from the follow-up,
+				// so its older answer must leave their search pending.
+				a.comp.recentsHeld, a.comp.recentsPending, a.comp.recentsAgain = false, false, false
+				return a, a.loadMentionRecents()
+			}
+			a.mentionRecentsLoaded(msg.rows, msg.keys...)
+		}
 		return a, nil
 
 	case tasksLoadedMsg:
@@ -4076,6 +4073,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.tsheet.detailsTop = min(max(a.tsheet.detailsTop+placeWheelDelta(msg.Mouse().Button), 0), a.tsheet.detailsMax)
 				a.touch()
 			}
+			return a, nil
+		}
+		if a.setup.open {
+			// The setup is a sheet over everything; its open model list is the
+			// one thing under the wheel (onboarding.go's [app.setupWheel]).
+			a.setupWheel(msg.Mouse().Button == tea.MouseWheelDown)
 			return a, nil
 		}
 		if a.wall.on {
@@ -4400,14 +4403,22 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.pasteEdit.open {
 			return a, nil
 		}
-		if a.copy.on || a.setup.open {
+		if a.copy.on {
 			// A click in copy mode acts on nothing: the rows under the pointer are
 			// a FROZEN snapshot, and expanding a call in it would be expanding a
-			// row that is no longer where the conversation says it is. The setup
-			// screen is the same for the pointer's own reason: it is three
-			// keystrokes, and a press through it would land on a frame that is
-			// not being drawn (firstrun.go).
+			// row that is no longer where the conversation says it is.
 			return a, nil
+		}
+		if a.setup.open {
+			// THE SETUP OWNS THE PRESS WHILE IT IS UP, for the modal's reason: a
+			// press through it would land on a frame that is not being drawn.
+			// The controls screen answers a press on its own rows the way the
+			// keys would (onboarding.go's [app.setupPress]); the key step, which
+			// is one box, takes nothing from the pointer.
+			if msg.Mouse().Button == tea.MouseLeft && a.setupPress(msg.Mouse().X, msg.Mouse().Y) {
+				return a, a.endSetup(false)
+			}
+			return a, a.holdSetupTurn()
 		}
 		if msg.Mouse().Button == tea.MouseLeft {
 			// THE NAV IS READ BEFORE EVERY PAGE'S OWN ROWS, because it is the
@@ -5235,6 +5246,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// flow — no focus moves, nothing is written, and the caret stays in the
 		// field on the left (onboarding.go).
 		return a, a.setupDemoBeatAt(msg.gen)
+
+	case setupTurnMsg:
+		// The setup panel's turn: the next example arrives and plays, and the
+		// clock is armed again — unless a key retired this tick (onboarding.go).
+		return a, a.setupTurnAt(msg.gen)
 
 	case taskPilotMsg:
 		return a, a.pilotEvent(msg)
@@ -9191,6 +9207,10 @@ func (a *app) paste(text string) tea.Cmd {
 		// (imagepaste.go's [app.keyboardBox]), because the keystroke fold has to
 		// ask the same question of the same keyboard and get the same answer.
 		box, chips := a.keyboardBox()
+		was := a.home.comp.open
+		if box == &a.home.box {
+			a.prepareHomeCompletion(text)
+		}
 		wasEmpty := len(box.value) == 0
 		if box == &a.home.box {
 			a.home.projectPaste.path = ""
@@ -9206,6 +9226,9 @@ func (a *app) paste(text string) tea.Cmd {
 		}
 		a.dropLanded(box)
 		a.touch()
+		if box == &a.home.box {
+			return a.syncHomeCompletion(was)
+		}
 		return nil
 	}
 	// A DROPPED PICTURE IS A PICTURE. A terminal writes a drag-and-drop into the
@@ -9304,8 +9327,8 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, true
 
 	case "esc":
-		// It SEALS the word it was pressed over, so the list does not reappear
-		// on the next letter of it ([app.dismissLists]).
+		// It seals a command word, or ends an @ opening so the next letter
+		// starts a fresh one ([app.dismissLists]).
 		a.dismissLists()
 		a.touch()
 		return nil, true
@@ -9363,6 +9386,7 @@ func (a *app) listKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // no draft can put the caret in both at once (slashchip.go's [slashToken],
 // files.go's [atToken]).
 func (a *app) syncLists() tea.Cmd {
+	opening := a.comp.beginToken(&a.input)
 	if _, bash := session.BashCommand(a.input.String()); bash {
 		a.closeLists()
 		return nil
@@ -9395,17 +9419,19 @@ func (a *app) syncLists() tea.Cmd {
 		a.comp.close()
 		return read
 	}
-	was := a.comp.open
+	var recents tea.Cmd
+	if opening {
+		a.noticeEvent(eventAtOpened)
+		recents = a.loadMentionRecents()
+	}
 	a.fillMentions()
 	a.comp.sync(&a.input)
-	if a.comp.open && !was {
-		// The list coming up is the proof that `@` has been found (notice.go).
-		a.noticeEvent(eventAtOpened)
+	if opening {
 		// Both halves of the list are asked for at the same moment, and neither
 		// waits for the other: the index is one small file and lands first, the
 		// walk lands when it lands (taskmention.go, files.go). The recent
 		// conversations ride the same opening (mention.go).
-		return tea.Batch(a.loadFiles(), a.loadTasks(), a.loadMentionRecents())
+		return tea.Batch(a.loadFiles(), a.loadTasks(), recents)
 	}
 	return nil
 }
@@ -9413,18 +9439,22 @@ func (a *app) syncLists() tea.Cmd {
 func (a *app) closeLists() {
 	a.menu.close()
 	a.comp.close()
+	if len(a.input.value) == 0 {
+		// Sending removes the token before closing its list, without another edit.
+		a.comp.beginToken(&a.input)
+	}
 	a.harnPick.close()
 	a.skillPick.close()
 }
 
-// dismissLists is esc over a typed list, which is [app.closeLists] plus the one
-// thing esc means that a close does not: the person MEANT the word they are
-// typing. Without the seal the list is back on the next keystroke — the overlays
-// are derived from the draft, so closing one over a word that still matches is a
-// dismissal that lasts exactly until the next letter — and a slash word inside a
-// sentence would be uncloseable. See [menu.dismiss].
+// dismissLists is esc over a typed list. A command word is sealed so its list
+// stays closed while the person writes on ([menu.dismiss]). An @ list instead
+// ends its opening, so the next letter can bring it back with a fresh read.
 func (a *app) dismissLists() {
 	sealed, at := a.menu.open, a.menu.at
+	if a.comp.open {
+		a.comp.dismiss()
+	}
 	a.closeLists()
 	if sealed {
 		a.menu.dismiss(at)

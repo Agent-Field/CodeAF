@@ -2723,6 +2723,21 @@ func (e *APIError) AccountCannotPay() bool {
 	return e != nil && paymentrefusal.Matches(e.Status, []byte(e.Body))
 }
 
+// KeyExpired reports the service refusing the key as expired: a 401 whose
+// sentence says so (OpenRouter answers `API key expired.`). It is a fact read
+// off the wire, stamped here so no caller reads the status for itself; the
+// balance read spells the same fact off its own routes (internal/credits).
+func (e *APIError) KeyExpired() bool {
+	if e == nil {
+		return false
+	}
+	switch e.Status {
+	case http.StatusUnauthorized:
+		return strings.Contains(strings.ToLower(e.Message+" "+e.Body), "expired")
+	}
+	return false
+}
+
 // RefusalFrom recovers the provider's refusal from anywhere in an error chain,
 // which is how a caller several wraps away asks the two questions above rather
 // than grepping the sentence.

@@ -52,28 +52,15 @@ const persistSizeLimit = 1 << 20
 // goroutines apart.
 var spoolMu sync.Mutex
 
-// noticeSeenPath is the marker that says the person has seen the notice. Until
-// it exists, nothing is sent: spooling is silent, flushing is a no-op.
-const noticeSeenFile = "notice_seen"
-
-// noticeSeenPath is where NoticeShown reads and MarkNoticeShown writes.
-func noticeSeenPath() string { return telemetryFile(noticeSeenFile) }
-
 // spoolPath is the JSON-lines file events wait in.
+//
+// THERE IS NO NOTICE GATE ON THE SPOOL ANY MORE. Until 2026-10-01 the binary
+// printed a six-line notice once per install and sent nothing until a frame or
+// a terminal had shown it; the disclosure now lives in the repository
+// (README.md and docs/TELEMETRY.md), the product says nothing, and the ladder
+// in enabled.go — CODEAF_TELEMETRY, DO_NOT_TRACK, the project file, the
+// profile's telemetry row — is the whole of what decides whether a flush sends.
 func spoolPath() string { return telemetryFile("spool.jsonl") }
-
-// NoticeShown reports whether the notice has been marked shown. Until it has,
-// events may be spooled but are never flushed.
-func NoticeShown() bool { return fileExists(noticeSeenPath()) }
-
-// MarkNoticeShown records that the person has seen the notice, which opens the
-// gate on flushing. A failure is silent for the same reason every other write
-// here is: the worst case is a notice seen twice.
-func MarkNoticeShown() {
-	if err := writeFilePrivate(noticeSeenPath(), []byte("shown\n")); err != nil {
-		oneWarning("telemetry: could not record that the notice was shown")
-	}
-}
 
 // warnOnce is the one line to stderr a process may ever produce for telemetry
 // failures, however many failures there are.
@@ -171,9 +158,6 @@ type spoolEntry struct {
 // appended back rather than rewritten around the other's.
 func Flush(ctx context.Context) error {
 	if !enabledFor() {
-		return nil
-	}
-	if !NoticeShown() {
 		return nil
 	}
 	deadline, hasDeadline := ctx.Deadline()
@@ -397,7 +381,7 @@ func batchEvents(batch []spoolEntry) []jsonEvent {
 // allowlistedEvents is the event-name half of the contract's allowlist, for
 // the flush loop's one look per line.
 var allowlistedEvents = map[string]bool{
-	"first_run": true, "session_started": true, "session_ended": true, "fault": true,
+	"first_run": true, "session_started": true, "usage_delta": true, "session_ended": true, "fault": true,
 }
 
 // httpClient is the one client, and the package's one send seam: production
@@ -470,9 +454,9 @@ func SpoolContents() []json.RawMessage {
 	return out
 }
 
-// Show returns the spool as pretty JSON — the exact answer a future
-// `codeaf telemetry show` prints, so a person can read everything that has
-// not left yet.
+// Show returns the spool as pretty JSON: everything that has not left yet. It
+// was what `codeaf telemetry show` printed until 2026-10-01; the tests are its
+// only readers now, and the spool itself is plain JSON lines a person can open.
 func Show() string {
 	contents := SpoolContents()
 	if len(contents) == 0 {
