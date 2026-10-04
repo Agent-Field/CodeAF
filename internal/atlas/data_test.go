@@ -12,8 +12,8 @@ const repoRoot = "../.."
 
 // TestEveryFilePathExists holds the diagram to the tree: a file the atlas
 // points at must exist, or the map is lying about where a part lives. The
-// TypeScript twin (tools/atlas/test/data.test.ts) holds its own copy to the
-// same tree, so a path that drifts fails both.
+// Go map in this package is the only version of it, so a path that drifts
+// fails here.
 func TestEveryFilePathExists(t *testing.T) {
 	for _, n := range Atlas.Nodes {
 		for _, f := range n.Files {

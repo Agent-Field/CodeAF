@@ -6,9 +6,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// The palette, one colour per node kind and one hot accent, carried over from
-// the TypeScript twin (tools/atlas/src/theme.ts) so both versions of the map
-// read the same on screen. Colours ride on lipgloss, which codeaf already
+// The palette, one colour per node kind and one hot accent, kept to the same
+// colours the map has always read on screen. Colours ride on lipgloss, which codeaf already
 // carries: it strips them itself on a terminal with no colour, so nothing here
 // has to detect the profile.
 const (
