@@ -98,6 +98,14 @@ jobs:
           restore-keys: |
             codeaf-go-v1-modules-${{ runner.os }}-${{ runner.arch }}-${{ steps.go.outputs.go-version }}-
 
+      # THE ENGINE IS BUILT FROM SOURCE so the sealing tests below exercise
+      # exactly the engine/ tree this commit carries, not a pinned release.
+      - name: Build furrow from engine/
+        working-directory: engine
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          cargo build --release --locked -p furrow-cli
+
       # Several sessions work this tree at once and a half-finished file breaks
       # the build for everyone. This is the cheapest way to find that out, and
       # the one failure that blocks every other kind of work.

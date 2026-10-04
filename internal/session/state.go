@@ -212,8 +212,8 @@ func statePath(sessionFile string) string {
 	if sessionFile == "" {
 		return ""
 	}
-	if filepath.Base(sessionFile) == placeTranscript {
-		return filepath.Join(filepath.Dir(sessionFile), placeState)
+	if dir, ok := FolderOf(sessionFile); ok {
+		return truthPath(dir, placeState)
 	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".state.json"
 }

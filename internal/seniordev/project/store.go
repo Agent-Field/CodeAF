@@ -161,6 +161,7 @@ func (s *Store) Provide(ctx context.Context, input LoadInput, fn func(context.Co
 }
 
 func runGit(ctx context.Context, cwd string, args ...string) (string, bool) {
+	//codeaf:plumbing git read of project state
 	command := exec.CommandContext(ctx, "git", args...)
 	command.Dir = cwd
 	var stdout bytes.Buffer

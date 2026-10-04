@@ -522,6 +522,9 @@ type Store struct {
 	// statements holds the parsed form of the reads taken often enough that the
 	// driver's own re-parse is most of what they cost (prepared.go).
 	statements statementCache
+	// ledger keeps a second, sealed copy of every memory event (memory_ledger.go);
+	// nil when the opener installed none.
+	ledger MemoryLedger
 }
 
 const schema = `
@@ -985,16 +988,22 @@ func appendEvent(tx *sql.Tx, nodeID string, kind EventKind, payload any) (int64,
 		return 0, time.Time{}, fmt.Errorf("encode %s event: %w", kind, err)
 	}
 	at := time.Now().UTC()
+	seq, err := insertEvent(tx, at, nodeID, kind, encoded)
+	return seq, at, err
+}
+
+// insertEvent journals an already-encoded event at the instant given.
+func insertEvent(tx *sql.Tx, at time.Time, nodeID string, kind EventKind, encoded []byte) (int64, error) {
 	result, err := tx.Exec(`INSERT INTO events (ts, node_id, kind, payload) VALUES (?, ?, ?, ?)`,
 		formatTime(at), nodeID, kind, string(encoded))
 	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("append %s event: %w", kind, err)
+		return 0, fmt.Errorf("append %s event: %w", kind, err)
 	}
 	seq, err := result.LastInsertId()
 	if err != nil {
-		return 0, time.Time{}, fmt.Errorf("read %s sequence: %w", kind, err)
+		return 0, fmt.Errorf("read %s sequence: %w", kind, err)
 	}
-	return seq, at, nil
+	return seq, nil
 }
 
 // journalTime is RFC 3339 with a fixed-width nanosecond field. The width is

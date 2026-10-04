@@ -79,6 +79,7 @@ func (recorder *gitRecorder) Kind() string { return "git" }
 // byte-for-byte while trimming ordinary human-readable output.
 func (recorder *gitRecorder) git(args ...string) (string, error) {
 	argv := util.GitArgv(args...)
+	//codeaf:plumbing git recorder of workspace changes
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = recorder.workspace
 	out, err := cmd.CombinedOutput()
@@ -158,6 +159,7 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	}
 	defer os.Remove(tmpIndex)
 	env := append(os.Environ(), "GIT_INDEX_FILE="+tmpIndex)
+	//codeaf:plumbing git recorder of workspace changes
 	read := exec.Command("git", "read-tree", "HEAD")
 	read.Dir, read.Env = recorder.workspace, env
 	if out, err := read.CombinedOutput(); err != nil {
@@ -186,6 +188,7 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	if err := os.WriteFile(pathspecFile, []byte(strings.Join(pathspecs, "\x00")+"\x00"), 0o600); err != nil {
 		return "", err
 	}
+	//codeaf:plumbing git recorder of workspace changes
 	add := exec.Command("git", "add", "-A", "--pathspec-from-file="+pathspecFile, "--pathspec-file-nul")
 	add.Dir, add.Env = recorder.workspace, env
 	if out, err := add.CombinedOutput(); err != nil {
@@ -194,6 +197,7 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 	// The candidate must obey the ignore rules from the START of the run,
 	// even after the model rewrote .gitignore. This is a private temporary index;
 	// the real index never stages these paths.
+	//codeaf:plumbing git recorder of workspace changes
 	listed := exec.Command("git", "ls-files", "--cached", "-z")
 	listed.Dir, listed.Env = recorder.workspace, env
 	staged, err := listed.CombinedOutput()
@@ -207,12 +211,14 @@ func (recorder *gitRecorder) Snapshot() (string, error) {
 		}
 	}
 	if len(excluded) > 0 {
+		//codeaf:plumbing git recorder of workspace changes
 		reset := exec.Command("git", append([]string{"reset", "-q", "HEAD", "--"}, excluded...)...)
 		reset.Dir, reset.Env = recorder.workspace, env
 		if out, err := reset.CombinedOutput(); err != nil {
 			return "", fmt.Errorf("git reset temporary index: %v: %s", err, strings.TrimSpace(string(out)))
 		}
 	}
+	//codeaf:plumbing git recorder of workspace changes
 	write := exec.Command("git", "write-tree")
 	write.Dir, write.Env = recorder.workspace, env
 	out, err := write.CombinedOutput()
@@ -379,6 +385,7 @@ func (recorder *gitRecorder) Change(base string) (soloTreeChange, error) {
 func (recorder *gitRecorder) ListPaths(
 	ctx context.Context, maxBytes int,
 ) ([]string, int, bool, error) {
+	//codeaf:plumbing git recorder of workspace changes
 	command := exec.CommandContext(
 		ctx, "git", "ls-files", "-z", "--cached", "--others", "--exclude-standard",
 	)
@@ -461,6 +468,7 @@ func (recorder *gitRecorder) Summary(
 
 	var patchBytes countingWriter
 	var diffError bytes.Buffer
+	//codeaf:plumbing git recorder of workspace changes
 	command := exec.CommandContext(ctx, "git", diffArgs("--binary", "--no-renames")...)
 	command.Dir, command.Stdout, command.Stderr = workspace, &patchBytes, &diffError
 	status := "completed"

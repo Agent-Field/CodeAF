@@ -455,6 +455,9 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 	// AND THE SETUP FORM IS ONE AT EVERY WIDTH. Below sixty columns it draws
 	// neither its title nor `esc skips setup`, only the first two clauses of its
 	// legend, which is what [setupMovesWord] reads.
+	if headlessVerbs[firstWord(args)] {
+		return r
+	}
 	if hit, _ := r.waitForAny(45*time.Second, say(t, "placeRestWord"),
 		say(t, "starterTaskWord"), say(t, "setupTitleWord"), say(t, "setupSkipWord"), setupMovesWord,
 		say(t, "landingKeysWord"), say(t, "welcomeStarterKeysWord"),
@@ -463,6 +466,17 @@ func startWithEnv(t *testing.T, env []string, name, home, ws string, cols, rows 
 		t.Fatal("the terminal never reached an interactive surface")
 	}
 	return r
+}
+
+// headlessVerbs are commands that print to the terminal and never draw a
+// surface, so a launch of one has no interactive screen to wait for.
+var headlessVerbs = map[string]bool{"pair": true, "devices": true}
+
+func firstWord(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
 }
 
 func (r *rig) resize(cols, rows int) {

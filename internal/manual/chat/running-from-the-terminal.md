@@ -222,7 +222,7 @@ hand it work            do "<task>" · exec "<prompt>" · run <program>
 look at what happened   why self · why <task-id> · notebook · competence · services ·
                         logs · models · doctor · manual · version
 housekeeping            connect · disconnect · cache · cache clean · rebuild · wake ·
-                        serve · devices · help env
+                        serve · pair · devices · help env
 plan work by hand       plan new "<goal>" · plan show <plan.json> ·
                         plan revise <plan.json> "…" · plan run <plan.json>
 ```
@@ -237,6 +237,167 @@ Two more exist and are deliberately kept out of the help text, because nothing t
 by hand: **`codeaf engine`** is the far half of `chat --host`, started by ssh, and
 **`codeaf tick`** is the one bounded pass the background timer runs every five minutes.
 Neither draws anything or reads a key.
+
+A third, **`codeaf cell`**, is typed by hand but is not in the help text: it works
+unless `CODEAF_CELLS=0` turns cells off. Its verbs are described under "The cell verbs" below.
+
+## codeaf pair — show a code, or use one, from the terminal
+
+**`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
+
+## The cell verbs — list a cell's turns and rewind it, and when CODEAF_CELLS=0 stops them
+
+Cells are on by default, so a paired computer moves chats with no setting. `codeaf cell` is hidden from the
+help text, and `CODEAF_CELLS=0` turns cells off and stops it. With cells on, **`codeaf cell log [<cell>]`** lists a cell's
+turns, newest first, one line each (turn, parent, time, trigger, tools, receipt; a setup turn says `Setup` and its calls are marked `[external]`), and
+**`codeaf cell rewind <turn> [<cell>]`** puts the cell's files and transcript back to that
+turn. A rewind adds a new turn on top of the newest one and deletes nothing, so it can be
+rewound too. It refuses while a tool call began and never finished. With no cell named,
+both use the cell the current folder is in.
+
+## Your identity — codeaf identity show, export and import, and when CODEAF_CELLS=0 stops them
+
+Your identity is the one root secret codeaf keeps for you on a machine: a signing key, a
+secret for deduplicating file content, and the key your saved secrets are sealed under. It
+lives in `identity.json` in the codeaf home, readable by you only. There is no account.
+These verbs are hidden from the help text and refuse to run only when `CODEAF_CELLS=0` turns cells off.
+
+**`codeaf identity show`** prints your public id, a short fingerprint you can compare by
+eye between two machines, the cell key id, and this machine's device id. It makes the identity the first time it runs.
+
+**`codeaf identity export [<file>]`** asks for a passphrase (typed twice at a prompt, or one line
+piped in) and writes your identity wrapped under it, to the file or to the
+screen. The blob is safe to copy; without the passphrase it opens to nothing. Keep the
+passphrase: losing it and every machine loses the identity.
+
+**`codeaf identity import [--replace] <file>`** asks for the passphrase and makes that
+identity this machine's. Afterwards `show` prints the same id and cell key id on both
+machines. It refuses to overwrite a different identity already here unless you pass
+`--replace`, and after a replace the secrets sealed under the old identity can no longer
+be read. A wrong passphrase and a damaged blob get the same refusal.
+
+**`codeaf identity rotate [--grace 7d] [--yes] [--abandon]`** replaces your identity on every
+computer you keep: a new root, every chat and your saved keys sealed again under it, and the
+old identity deleted by the relay after the grace period. It is how a lost computer is locked
+out for good. It asks first and says what it costs; `--abandon` stops a rotation that has not
+switched yet. Read *Locking out a lost computer for good*.
+
+Each machine also has its own device key, made the first time and never exported. Your
+identity signs a small certificate for it, so two machines share one id but keep separate
+device ids, and one machine can be told apart from another.
+
+A vault made before identities existed keeps working: its old key becomes the identity's
+key the first time the identity is made on that machine.
+
+## List your chats on every machine — codeaf cell list --all, and what its lines mean
+
+**`codeaf cell list --all`** prints every chat you have on any of your machines, one line
+each: id, title, device, where it runs (`running on <device>`, `<device> offline`,
+`<K> turns from <device>: discard`, or `-` for one held here or let go), and how
+long ago its last saved turn was. It needs no terminal UI, so it works over ssh. Without
+`--all` it prints the usage line. With sync off (`CODEAF_SYNC_URL=off`, or no relay to sync through) it prints
+`sync is off: set CODEAF_SYNC_URL to your relay's address` and lists nothing. With a relay
+set but no identity on this machine it prints
+`this machine has no identity yet: codeaf identity import` and lists nothing, and when the
+other machines cannot be reached it starts with `other machines unreachable`.
+
+## Sync your chats between machines — CODEAF_SYNC_URL and CODEAF_SYNC_INTERVAL_MS
+
+Two settings, both read from the environment, point this machine at a relay so your chats
+can follow you from one computer to another. Neither is a row in `/settings`. With sync off,
+codeaf behaves exactly as it does without it.
+
+**`CODEAF_SYNC_URL`** is the relay's address, like `http://host:8787`, or the word `off`.
+Plain `http` is for trying it out inside an ssh tunnel; later the relay needs TLS. Unset, it
+is the relay a pairing saved on this computer, and with none saved it is codeaf's hosted
+relay when this build has one (see "Where your chats are stored" in use-this-on-another-computer); a build with no
+hosted relay keeps sync off until you name one. `off` turns sync off. Set to something that is not a web address, it stops with
+`CODEAF_SYNC_URL is not a web address like http://host:8787`. Set on a machine with no
+identity it stops with `this machine has no identity yet: codeaf identity import`; it never
+makes an identity for you, because a fresh one would be an identity none of your other
+machines know.
+
+**`CODEAF_SYNC_INTERVAL_MS`** is how often unsaved turns are sent to the relay, in
+milliseconds. The default is `5000`. A longer interval means fewer requests and more turns
+that only this machine has if it goes to sleep. It must be a positive number.
+
+Everything sent is sealed under your identity first; the relay holds no names, no titles and
+no file content it can read. Requests are signed by this machine's own device key, so the
+relay can tell your machines apart. `codeaf cell list --all` and the sessions panel on home
+show your chats on the other machines once both machines share an identity and this setting.
+
+## When another machine continues your chat — the window that only shows it, the turns kept as a branch, and "your computer's clock is off"
+
+With sync on, the chat you are typing in sends each saved turn to your relay, and holds the chat
+for this machine while it is open. Closing the chat sends what is left and lets go of it, so your
+other machine can pick it up at once. If this machine sleeps or loses its connection, the hold runs
+out after about ninety seconds and the chat's row on your other machines then says `<device> offline`.
+You do not have to wait for that: press enter on a chat that says `running on <device>` on another
+machine and continue it there, and it is taken at once (see "Continue a chat here that another
+machine left" in home).
+
+When another machine does, this window says `<device> continued this chat; this window now only shows it`,
+with the name of the machine that took over (or the first digits of its id when it has no name). From then on
+this window only shows the conversation: a tool call the model tries here answers with that same line and does
+not run, so the two machines never both change the chat. Nothing on the other machine is overwritten.
+
+Turns you saved here that had not reached the relay yet are not lost. They are kept as a separate chat
+that starts from the last turn both machines share, and `codeaf cell list --all` shows it as
+`<K> turns from <device>: discard`. Open this chat again and it carries on as that separate chat.
+
+**`codeaf cell discard <branch> [<cell>]`** sets such a branch aside: it is archived, not deleted, and it leaves
+every machine's list. It runs on the machine that holds the chat and says `discarded <branch>`; on any other
+machine it refuses, naming the chat whose hold is missing. (The branch row on home discards from any of your
+machines.) **There is no `codeaf cell merge` in this version:** folding a branch back into its chat is not
+offered anywhere, so a branch row says `discard` alone.
+
+If this computer's clock is more than five minutes off, sync shows `this computer's clock is off by more than 5 minutes`
+once and tries again on the next round; fix the clock and it carries on. With sync off none of
+this exists and the chat behaves as it always did.
+
+## What syncing a conversation cost — how much data it uploaded, codeaf cell report, and sending the numbers only if you choose
+
+Each time a conversation is synced to another machine, codeaf adds one line of counts to a file on this
+machine, `v3/sync/stats/<cell>.jsonl` in the codeaf home: how many turns, frames and objects that flush
+carried, how many bytes went up and came down, and how many put, get and has requests it made. Requests that
+no flush carries are counted too, in a line with a dash for its turn: what it cost to fetch a conversation
+when you continue it here, and what a publish that failed had already sent. Sending your secrets along with
+a conversation is counted apart, in `v3/sync/stats/vault.jsonl`, because it serves every conversation. A line holds
+counts only: no time, no file names, no titles and no content. The file never leaves the machine on its own.
+
+**`codeaf cell report [<cell>]`** (cells are on by default) prints one row per flush and a total row for the
+cell, or for the cell the current folder is in, then a `vault` row for what carrying your secrets cost on this
+machine. The vault row is never added into the cell's total. Every request this machine made to the relay is
+in exactly one row, so the rows of all conversations plus the vault add up to what the relay counted for
+this machine. A cell that has never been synced has no rows, and
+with no vault row either the report prints nothing at all rather than a table of zeros.
+
+**`codeaf cell report --export <file>`** also writes those same lines to the file you name, and says so:
+"counts only: bytes, objects and requests per turn; no content, no paths". Nothing is exported unless you
+type `--export`, so a report on its own writes no file and sends nothing.
+
+## Free disk from old conversations — codeaf cell gc and the cell disk budget
+
+**`codeaf cell gc [--dry-run]`** (cells are on by default) frees disk from finished
+conversations. A conversation that codeaf keeps its own working folder for has files that
+can always be written back from what codeaf sealed. `gc` removes those working files of
+finished conversations, least recently opened first, until the cells fit the disk budget:
+the `cell disk budget` row in settings, or `CODEAF_CELL_BUDGET_GB` for one launch, in
+gigabytes (a fraction such as 0.5 works), 20 when unset, 0 for no limit. `codeaf doctor`
+shows a `cells` row with what they hold against that budget. Only a conversation nobody is using and that is
+fully sealed is touched. One that is open in any window, one opened in the last ten
+minutes, and one with a call still in flight or not yet sealed are passed over, and `gc`
+says why beside each. Your own project folders are never removed: a conversation
+working in a folder of yours is passed over with "workspace is yours", however much disk
+you are short of. What stays is the conversation itself (its transcript and history),
+so it still lists and opens, and opening one writes its files back, byte for byte. A start
+also looks at the budget, at most once an hour, using sizes it already knows. `--dry-run`
+removes nothing and prints what would go:
+
+```
+cells hold 24576.0 MiB, budget 20480.0 MiB
+  01M3NZ9GCNB38JGMWYVG7V6WWC  6144.0 MiB  would evict
+```
 
 ## Connect from the terminal without opening the chat — codeaf connect and codeaf disconnect
 
@@ -638,7 +799,7 @@ This prints one piece of work's whole record: every turn, what it said, every to
 called with its arguments, what came back, and how it ended.
 
 ```
-codeaf why <node-id> [--db path]
+codeaf why <part-id> [--db path]
 ```
 
 Each entry is a headline with its body indented four spaces under it:
@@ -696,16 +857,40 @@ when an existing resident did the work and this invocation cannot establish its 
 `why` reads a store, and by default that store is `~/.codeaf/graph.db`. A headless
 `codeaf do` run does **not** work there: it uses a separate store of its own, kept only when
 the run failed or you asked for it with `--keep`, and the last line on the error stream
-says where:
+says where, and the line above it says how to carry the run on:
 
 ```
+continue it with: codeaf do --continue 3f81c2
 record kept at ~/.codeaf/runs/codeaf-do-3f81c2
 ```
+
+`codeaf do --continue <id>` carries a kept run on: the id is the part of the folder name after
+`codeaf-do-`, an unambiguous start of it is enough, and the folder's own path works too. Words
+after it are this round's finding (`codeaf do --continue 3f81c2 "also add a test"`). The new run
+is handed the original assignment unchanged, how the last run ended and what its plan reached,
+and it works in `--dir` (the current directory unless you say otherwise), where the last run's
+edits already are. It is a new run with its own record and its own id, and continuing a
+continuation still names the first request once. Only a kept record can be continued: a run that
+finished cleanly keeps none unless you passed `--keep`. An id nothing matches, or matches twice,
+is refused in words. Only the run engine keeps this record, so `--continue` is refused when
+`CODEAF_TASK_BELT` selects the older engine.
+
+With cells on, which is the default, `codeaf do` runs inside a cell, the same kind of folder a chat is, and
+the tool calls the run's workers make are sealed as turns, one turn for each set of calls the
+model asked for together, taken after the calls' results are written down, and the end of
+a worker's turn is sealed after its answer: `codeaf cell log` lists the turns,
+and the kept record holds a `cell` file naming the cell. `codeaf do --continue <id>` then goes
+on in that same cell from its last sealed turn: its files stand as that turn left them, and the
+new run is told how many turns were sealed. A call that began and never finished (the run was
+killed in the middle of it) is listed in the new run's brief and is never run again, so the new
+run looks at what it left before relying on it. A run's cell is host-bound, so every call it
+seals counts as external. A record from a run made without the flag has no cell and continues
+from the record alone, as before. With the flag off nothing about `do` changes.
 
 That directory holds a `graph.db`, and that is what to point the reader at:
 
 ```
-codeaf why <node-id> --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
+codeaf why <part-id> --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
 codeaf why self      --db ~/.codeaf/runs/codeaf-do-3f81c2/graph.db
 ```
 

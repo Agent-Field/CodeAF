@@ -64,6 +64,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 )
 
@@ -560,6 +561,9 @@ type jobRegistry struct {
 	// to say no.
 	closed bool
 	epoch  uint64
+	// seat is the executor of the session these jobs belong to; nil is a
+	// registry that belongs to none and runs on the host.
+	seat procexec.Seat
 	// THE LOG-FOLDER SWEEP BELONGS TO THE REGISTRY AND NOT TO ANY ONE JOB'S
 	// ENDING (issue #1636). A job's end only ASKS for it; one pass at a time
 	// drains every folder asked for, off the road that publishes the ending, so
@@ -576,6 +580,11 @@ type jobRegistry struct {
 	retentionShut bool
 	// The stage callback is a per-registry test seam; production leaves it nil.
 	retentionStage func(string)
+	// lifecycle, when set, is told of each background command as it starts and as
+	// it ends, however it ends. It is how the record of what is running is kept
+	// without a second detector: this registry already knows, to the moment, and
+	// nothing else sees a job that outlived the call that started it.
+	lifecycle procexec.Lifecycle
 	// watchTickWait lets a test acknowledge a completed tick and release the
 	// next one. Production leaves it nil and waits on the watch's real ticker.
 	watchTickWait func(context.Context)
@@ -587,6 +596,15 @@ func newJobRegistry(workspace string, place Place, notify func(string), watch ..
 		registry.notifyWatch = watch[0]
 	}
 	return registry
+}
+
+// runner is the session's executor rooted at dir. Jobs and watch ticks are the
+// session's own work, so they run on its seat like every other tool call.
+func (r *jobRegistry) runner(dir string) procexec.Runner {
+	if r.seat == nil {
+		return procexec.Host.In(dir)
+	}
+	return r.seat.In(dir)
 }
 
 // errSessionClosed is what BOTH doors of a shut registry say, and they say it
@@ -795,7 +813,29 @@ func (r *jobRegistry) add(started *job) error {
 		return err
 	}
 	r.announceRow(started)
+	r.announceStart(started)
 	return nil
+}
+
+// cellRelative is a job's folder as the record spells it: relative to the
+// workspace the seal captures, "" for the root, and "" too for a folder outside
+// it, which no other machine could name (L1).
+func (r *jobRegistry) cellRelative(dir string) string {
+	rel := relativeTo(r.workspace, dir)
+	if len(rel) == 0 || rel[0] == "." {
+		return ""
+	}
+	return rel[0]
+}
+
+// announceStart tells the lifecycle observer that a command is running. Only a
+// process is a command: a watch, a task node or a render has no process group to
+// be alive or not, and the record is of what a machine will lack.
+func (r *jobRegistry) announceStart(one *job) {
+	if r.lifecycle == nil || one.kind != jobKindBash || one.cmd == nil || one.cmd.Process == nil {
+		return
+	}
+	r.lifecycle.Started(procexec.Job{ID: one.id, Command: one.command, Dir: r.cellRelative(one.dir), PGID: one.cmd.Process.Pid})
 }
 
 // announceRow publishes one job's row, and it is the ONE PLACE that decides
@@ -822,6 +862,9 @@ func (r *jobRegistry) announceRow(one *job) {
 func (r *jobRegistry) settled(one *job, code int) bool {
 	requested := one.settle(code)
 	r.announceRow(one)
+	if r.lifecycle != nil && one.kind == jobKindBash {
+		r.lifecycle.Ended(one.id)
+	}
 	return requested
 }
 
@@ -846,19 +889,23 @@ func (r *jobRegistry) start(command string) (*job, error) {
 	// and this used to be a hand-copied three-line shell choice with no
 	// buffering fix in it at all.
 	shell, shellArgs := bare.StreamingShell(command)
-	process := exec.Command(shell, shellArgs...)
-	process.Dir = started.dir
-	process.Env = bare.StreamingEnv()
-	// Setsid puts the job and everything it spawns in one process group, so a
-	// kill reaches the whole tree — the leader of a new session leads its own
-	// group, so every `kill -pgid` here works exactly as it did under Setpgid.
-	// A dev server that forks a compiler must not survive the kill of its
-	// parent. AND IT TAKES THE TERMINAL AWAY: a job has no controlling tty, so
-	// a child that opens /dev/tty — a CLI that is itself a screen, a prompt
+	// A new session puts the job and everything it spawns in one process group,
+	// so a kill reaches the whole tree — the leader of a new session leads its
+	// own group, so every `kill -pgid` here works exactly as it did under
+	// Setpgid. A dev server that forks a compiler must not survive the kill of
+	// its parent. AND IT TAKES THE TERMINAL AWAY: a job has no controlling tty,
+	// so a child that opens /dev/tty — a CLI that is itself a screen, a prompt
 	// that insists on the keyboard — is refused instead of painting over the
 	// person's frame. That was measured, not imagined: two review CLIs run as
 	// jobs drew their own output across the top of a running conversation.
-	processgroup.ConfigureDetached(process)
+	process, err := r.runner(started.dir).Command(context.Background(), procexec.ExecRequest{
+		Argv: append([]string{shell}, shellArgs...), Env: bare.StreamingEnv(),
+		Group: procexec.GroupSession,
+	})
+	if err != nil {
+		started.sink.close()
+		return nil, fmt.Errorf("could not start the command: %w", err)
+	}
 	process.Stdout = started.sink
 	process.Stderr = started.sink
 

@@ -1,0 +1,70 @@
+// Port of internal/directory rules.go: pure, no clock, no store. The exported rules are the amended
+// law the Go rules implement, which the vectors pin; the frozen 30 s law stays only as a named policy.
+/** Stage 1 lease law, and the Stage 1H amendment: a publish is proof of life and the TTL is longer. */
+export const STAGE1 = { ttlMs: 30_000, renewOnPublish: false };
+export const AMENDED = { ttlMs: 90_000, renewOnPublish: true };
+
+const POLICIES = { stage1: STAGE1, amended: AMENDED };
+
+/** policyOf names the deployed lease law; an unknown name stops the relay rather than guess. */
+export function policyOf(name = 'amended') {
+  if (!(name in POLICIES)) throw new Error(`unknown LEASE_POLICY ${name}`);
+  return POLICIES[name];
+}
+
+export class RuleError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
+const refuse = (code) => new RuleError(code);
+
+function holder(c, device, fence) {
+  if (c.lease.fence !== fence || c.lease.device !== device) throw refuse('fence_stale');
+}
+
+/** makeRules binds the pure lease rules to one policy. Nothing here reads a clock or a store. */
+export function makeRules({ ttlMs, renewOnPublish }) {
+  // force is the amendment: a person who chose "continue here" takes a live lease at once.
+  // The fence still goes up, so the old holder's next write is refused as before.
+  const acquire = (c, device, now, force = false) => {
+    if (!force && c.lease.expires > now && c.lease.device !== device) throw refuse('lease_held');
+    return { ...c, lease: { device, fence: c.lease.fence + 1, expires: now + ttlMs, pending: 0 } };
+  };
+
+  const heartbeat = (c, device, b, now) => {
+    holder(c, device, b.fence);
+    return { ...c, lease: { ...c.lease, expires: now + ttlMs, pending: b.pending } };
+  };
+
+  const publishTo = (c, device, p, now) => {
+    holder(c, device, p.fence);
+    if (p.old_head !== c.head) throw refuse('head_moved');
+    const title = p.title === '' || p.title === undefined ? c.title : p.title;
+    const expires = renewOnPublish ? now + ttlMs : c.lease.expires;
+    // The frame plan describes the head it was set with, so every publish replaces it
+    // wholesale: a publish that says nothing is a true statement, a stale one is not kept.
+    const { frames, ...kept } = c;
+    const next = { ...kept, head: p.head, size: p.size, class: p.class, durable_at: now, lease: { ...c.lease, expires, pending: p.pending } };
+    return omitEmpty(next, { title, frames: p.frames });
+  };
+
+  const releaseOf = (c, device, fence) => {
+    holder(c, device, fence);
+    return { ...c, lease: { ...c.lease, expires: 0, pending: 0 } };
+  };
+
+  const created = (init, device, now) => {
+    const c = { V: 1, head: init.head, durable_at: now, class: init.class, size: init.size, keys: init.keys,
+      lease: { device, fence: 1, expires: now + ttlMs, pending: 0 } };
+    return omitEmpty(c, { parent_cell: init.parent_cell, title: init.title, orphan_turns: init.orphan_turns, frames: init.frames });
+  };
+
+  return { acquire, heartbeat, publishTo, releaseOf, created };
+}
+
+const omitEmpty = (c, optional) =>
+  Object.assign(c, Object.fromEntries(Object.entries(optional).filter(([, v]) => v !== undefined && v !== '' && v !== 0 && !(Array.isArray(v) && !v.length))));
+
+export const { acquire, heartbeat, publishTo, releaseOf, created } = makeRules(AMENDED);

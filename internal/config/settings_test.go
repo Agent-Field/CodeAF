@@ -871,6 +871,18 @@ func TestTheTaskThrottleRowsRoundTrip(t *testing.T) {
 		t.Fatalf("turning the load check off: %v, %v", err, TaskMaxLoadAt(dir))
 	}
 
+	// The cell budget takes a fraction of a GB, and shows it back the same way.
+	budget := mustRow(t, rows, KeyCellBudget)
+	if got := budget.Value(); got != "20" {
+		t.Fatalf("unset cell.budget_gb reads %q, want 20", got)
+	}
+	if err := budget.Apply("0.5"); err != nil || CellBudgetGBAt(dir) != 0.5 {
+		t.Fatalf("cell.budget_gb after 0.5: %v, %v", err, CellBudgetGBAt(dir))
+	}
+	if err := budget.Apply("lots"); err == nil {
+		t.Fatal("cell.budget_gb accepted a word")
+	}
+
 	memory := mustRow(t, rows, KeyTaskMinFreeMB)
 	if got := memory.Value(); got != "1536" {
 		t.Fatalf("unset task.min_free_mb reads %q", got)

@@ -248,3 +248,24 @@ func TestADownloadThatDidNotArriveIsAnErrorAndNotAnEmptyFile(t *testing.T) {
 		t.Fatalf("downloaded %q; want the artifact", body)
 	}
 }
+
+func TestABuiltArtifactIsStagedWithoutTheCacheOrThePin(t *testing.T) {
+	platform := furrowbin.Platform("linux", "arm64")
+	cache, stage := t.TempDir(), t.TempDir()
+
+	if err := stageBuilt(stage, platform, artifactOn(t, "compiled from this tree")); err != nil {
+		t.Fatalf("stage a built artifact: %v", err)
+	}
+	if got := stagedBody(t, stage, platform); got != "compiled from this tree" {
+		t.Fatalf("staged %q; want the built bytes", got)
+	}
+	if entries, _ := os.ReadDir(cache); len(entries) != 0 {
+		t.Fatalf("a built artifact reached the pinned-release cache: %v", entries)
+	}
+}
+
+func TestAMissingBuiltArtifactIsAnError(t *testing.T) {
+	if err := stageBuilt(t.TempDir(), "linux-arm64", filepath.Join(t.TempDir(), "absent")); err == nil {
+		t.Fatal("staging a file that does not exist succeeded")
+	}
+}

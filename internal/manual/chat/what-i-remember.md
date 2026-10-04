@@ -187,6 +187,12 @@ same build may restart to pick up a changed terminal environment; a busy one
 keeps running and is only replaced when a newer build connects. Nothing already
 saved is at risk while it waits.
 
+## Does /remember work on my other computer — memory across computers, memory missing on the new laptop, and what travels with a chat
+
+A memory is kept in the file `~/.codeaf/graph.db` of the computer that made it, and that file is never copied to the relay on its own. What does travel is the memories a **chat** wrote, with that chat. When you `/remember` a line in a conversation (or the model remembers one), the line is also written into that conversation's own ledger, which is sealed and moved with the chat. When you continue the chat on another computer, that computer reads the ledger back and has those lines in its own memory.
+
+So: a line remembered in a chat reaches your other computer **when that chat is continued there**, not before, and not for chats you never move. A memory that belongs to no chat, such as a line you edited by hand in the memory place, stays on the computer where you wrote it. Pairing a second computer does not merge two memories into one. To carry everything to a new computer at once, copy `graph.db` as described under "Where is everything you remember kept", or continue the chats you care about there.
+
 ## Where is everything you remember kept
 
 In `~/.codeaf/graph.db`, one file, made the first time codeaf runs. Memories,

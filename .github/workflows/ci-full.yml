@@ -252,6 +252,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Build furrow from engine/
+        working-directory: engine
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          cargo build --release --locked -p furrow-cli
       - name: Weigh the binary
         run: |
           set -euo pipefail

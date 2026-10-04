@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/cell"
 )
 
 // The names inside a session folder. They are constants and not configuration:
@@ -44,7 +45,7 @@ const (
 	placeMetaLock     = "meta.lock"
 	placeNodeJournals = "tasks"
 	placeLogs         = "logs"
-	placeTrees        = "trees"
+	placeTrees        = cell.TreesDir
 	placeWork         = "work"
 	placeArtifacts    = "artifacts"
 	// placeTeamCursors is how far into each of its teams' Traffic this
@@ -74,6 +75,15 @@ func (p Place) join(parts ...string) string {
 		return ""
 	}
 	return filepath.Join(append([]string{p.Dir}, parts...)...)
+}
+
+// truth answers a truth file of the session folder: at the top in the legacy
+// layout, inside .cell/ in the cell layout, or "" on the legacy zero Place.
+func (p Place) truth(name string) string {
+	if strings.TrimSpace(p.Dir) == "" {
+		return ""
+	}
+	return truthPath(p.Dir, name)
 }
 
 // canonicalPath gives every repository and worktree path one spelling.
@@ -121,10 +131,15 @@ func (p Place) ID() string {
 }
 
 // Transcript is the journal, and the flock that guards the session lives on it.
-func (p Place) Transcript() string { return p.join(placeTranscript) }
+func (p Place) Transcript() string {
+	if strings.TrimSpace(p.Dir) == "" {
+		return ""
+	}
+	return layoutOf(p.Dir).transcript(p.Dir)
+}
 
 // State is the BPE working-state file (Decision 22).
-func (p Place) State() string { return p.join(placeState) }
+func (p Place) State() string { return p.truth(placeState) }
 
 // Card is the state card: what the work is FOR and where it stands, maintained
 // by the post-turn extractor and rendered into every system prompt (card.go).
@@ -135,14 +150,15 @@ func (p Place) State() string { return p.join(placeState) }
 func (p Place) Card() string { return p.join(placeCard) }
 
 // Tasks is the live graph checkpoint (Decision 19).
-func (p Place) Tasks() string { return p.join(placeTasks) }
+func (p Place) Tasks() string { return p.truth(placeTasks) }
 
 // MetaPath is the identity file a picker reads without opening the journal.
 func (p Place) MetaPath() string { return p.join(placeMeta) }
 
 // NodeJournals is where task nodes and their audits keep their transcripts —
-// beside the conversation that commissioned them, not in a parallel tree.
-func (p Place) NodeJournals() string { return p.join(placeNodeJournals) }
+// beside the conversation that commissioned them, not in a parallel tree. They
+// are truth, so in the cell layout they sit inside .cell/ and travel with it.
+func (p Place) NodeJournals() string { return p.truth(placeNodeJournals) }
 
 // Logs holds the droppings — job logs and stubbed tool results. Everything in it is
 // re-creatable and carries the sweep's 7-day TTL; nothing in it is a
@@ -151,10 +167,11 @@ func (p Place) Logs() string { return p.join(placeLogs) }
 
 // Artifacts holds deliverables that have no natural home in the workspace —
 // a generated image in a borrowed session lands here rather than littering
-// the person's repo, and its row in the global index is how it is found.
-// An owned session's deliverables land in work/ instead; this directory is
-// the borrowed session's answer.
-func (p Place) Artifacts() string { return p.join(placeArtifacts) }
+// the person's repo. It is truth, so in the cell layout it sits inside .cell/
+// and travels with the chat; its ledger ([Place.ArtifactLedger]) is how the
+// files are found again on any machine. An owned session's deliverables land
+// in work/ instead; this directory is the borrowed session's answer.
+func (p Place) Artifacts() string { return p.truth(placeArtifacts) }
 
 // Trees holds the git worktrees, one per running node. Session deletion runs
 // git worktree remove/prune against [Meta.Workspace] BEFORE this directory
@@ -172,6 +189,37 @@ func (p Place) Work() string {
 		return ""
 	}
 	return p.join(placeWork)
+}
+
+// OwnsFolder reports whether workspace is the work/ folder of a session folder
+// on this machine. A chat that arrives from another machine whose project is not
+// here works in such a folder while its record still calls it borrowed: the
+// record travels between machines, so it cannot say "owned" without being wrong
+// on the machine the project is on. The folder itself is the fact that holds
+// here, and a surface that names places asks it of the folder.
+func OwnsFolder(workspace string) bool {
+	workspace = filepath.Clean(strings.TrimSpace(workspace))
+	if filepath.Base(workspace) != placeWork {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(filepath.Dir(workspace), placeMeta))
+	return err == nil
+}
+
+// OriginOf is the project folder the chat working in workspace was left in on
+// another machine, and "" when the folder is not a chat's own or none is known.
+func OriginOf(workspace string) string {
+	if !OwnsFolder(workspace) {
+		return ""
+	}
+	m, _ := LoadMeta(filepath.Dir(filepath.Clean(strings.TrimSpace(workspace))))
+	return m.Origin
+}
+
+// TitleOf is the name of the chat whose own folder workspace is.
+func TitleOf(workspace string) string {
+	m, _ := LoadMeta(filepath.Dir(filepath.Clean(strings.TrimSpace(workspace))))
+	return strings.TrimSpace(m.Title)
 }
 
 // Meta is one session's identity, written where a picker can read it without
@@ -192,6 +240,10 @@ type Meta struct {
 	// bucket directory above the session folder is derived from it and is
 	// NOT an identity; this field is.
 	Workspace string `json:"workspace"`
+	// Origin is the project folder a chat that moved here was left in on the
+	// machine it came from, when that folder is not on this one. It is this
+	// machine's own note, never sealed, so it cannot follow the chat back.
+	Origin string `json:"origin,omitempty"`
 	// LaunchDir is where the person actually stood when the session opened —
 	// the repo subdirectory, or the temp dir whose presence marks the session
 	// as sweepable litter.
@@ -285,7 +337,26 @@ type Meta struct {
 // LoadMeta reads a session folder's identity. A missing file, an unparsable
 // file, or a file with no id answers a zero Meta and no error — see [Meta] —
 // and only an I/O failure that is not absence is worth reporting.
-func LoadMeta(dir string) (Meta, error) {
+func LoadMeta(dir string) (Meta, error) { return LoadMetaIn(dir, "") }
+
+// LoadMetaIn is [LoadMeta] for a caller that knows where this machine keeps
+// the session's workspace: a folder whose meta.json names none (a sealed tree
+// just materialized here) resolves its sealed paths against workspace, and
+// answers it as the Meta's workspace.
+func LoadMetaIn(dir, workspace string) (Meta, error) {
+	meta, err := readMeta(dir)
+	if err != nil {
+		return Meta{}, err
+	}
+	if strings.TrimSpace(meta.Workspace) == "" {
+		meta.Workspace = workspace
+	}
+	return overlayTruth(dir, meta)
+}
+
+// readMeta reads meta.json alone: the derived summary, plus whatever truth a
+// legacy folder keeps beside it.
+func readMeta(dir string) (Meta, error) {
 	raw, err := os.ReadFile(filepath.Join(dir, placeMeta))
 	if errors.Is(err, fs.ErrNotExist) {
 		return Meta{}, nil
@@ -363,36 +434,52 @@ func SetTaskArchived(dir, sessionID, taskID string, archived bool) error {
 }
 
 // SaveMeta writes the identity whole, temp-and-rename, never partially: a
-// picker that reads a half-written meta.json would draw a phantom row.
+// picker that reads a half-written meta.json would draw a phantom row. In the
+// cell layout the truth-only fields go to .cell/ first and meta.json keeps the
+// summary alone, so no field lives in two files.
 func SaveMeta(dir string, meta Meta) error {
 	if strings.TrimSpace(dir) == "" {
 		return fmt.Errorf("save session meta: no session directory")
 	}
-	meta.Build = buildinfo.String()
-	raw, err := json.MarshalIndent(meta, "", "  ")
-	if err != nil {
-		return fmt.Errorf("save session meta: %w", err)
-	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("save session meta: %w", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".meta-*.json")
-	if err != nil {
+	meta.Build = buildinfo.String()
+	if path := layoutOf(dir).metaTruth(dir); path != "" {
+		if err := writeTruth(dir, path, meta); err != nil {
+			return fmt.Errorf("save session meta: %w", err)
+		}
+		meta = meta.derived()
+	}
+	if err := writeJSONAtomic(filepath.Join(dir, placeMeta), meta); err != nil {
 		return fmt.Errorf("save session meta: %w", err)
+	}
+	return nil
+}
+
+// writeJSONAtomic replaces path with v's JSON, temp-and-rename beside it.
+func writeJSONAtomic(path string, v any) error {
+	raw, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".meta-*.json")
+	if err != nil {
+		return err
 	}
 	name := tmp.Name()
 	if _, err := tmp.Write(append(raw, '\n')); err != nil {
 		tmp.Close()
 		os.Remove(name)
-		return fmt.Errorf("save session meta: %w", err)
+		return err
 	}
 	if err := tmp.Close(); err != nil {
 		os.Remove(name)
-		return fmt.Errorf("save session meta: %w", err)
+		return err
 	}
-	if err := os.Rename(name, filepath.Join(dir, placeMeta)); err != nil {
+	if err := os.Rename(name, path); err != nil {
 		os.Remove(name)
-		return fmt.Errorf("save session meta: %w", err)
+		return err
 	}
 	return nil
 }

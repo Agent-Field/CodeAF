@@ -15,6 +15,10 @@ func (a *app) taskRowVerbs(row session.SessionRow, entry session.TaskIndexEntry)
 	if row.Transcript != "" && entry.ID != "" && (a.deleteTask != nil || !a.hosted()) {
 		verbs = append(verbs, verb{key: 'x', word: "delete", do: func() tea.Cmd { return a.taskDeleteOpen(row, entry) }})
 	}
+	dir := strings.TrimSpace(row.Dir)
+	if dir == "" && strings.TrimSpace(row.Transcript) != "" {
+		dir = session.DirOf(row.Transcript)
+	}
 	if a.hosted() {
 		return verbs
 	}

@@ -324,6 +324,10 @@ func TestStartTaskBashBeltStartsARunOnTheStore(t *testing.T) {
 
 	wakes, stopWakes := agent.WatchWakes()
 	defer stopWakes()
+	// THE ENGINE'S OWN CALL IS NOT THE LANDING'S. The run double asks its model
+	// from the engine goroutine before it reports entered, which can be after
+	// StartTask has answered, so the count starts once the engine is inside.
+	<-double.entered
 	callsBeforeLanding := completer.requests()
 	close(double.release)
 	beltRunWaitFor(t, "the run's landing", func() bool {

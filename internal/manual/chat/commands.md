@@ -326,10 +326,23 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/budget` | `/limits` | `<amount>` | sets the day's limit · `none` removes it |
 | `/budget` | `/limits` | `<row> <amount>` | sets one by name: `day`, `conversation`, `plan`, `practice` |
 
+## Pairing commands — /pair, /pair <code>, /sync, /link and /laptop
+
+| Command | Aliases | Argument | Effect |
+|---|---|---|---|
+| `/pair` | `/sync`, `/link`, `/laptop` | — | shows a code like `42-715-302`, valid 10 minutes, that gives your chats to another computer, then asks `y / n` when that computer types it |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<code>` | on the other computer: uses a code from `/pair` there, and shows three words to compare while it waits |
+| `/pair` | `/sync`, `/link`, `/laptop` | `<link>` | on a device that is already paired: opens a new device's request from the link it shows, with its name, system, time and a check number to compare, then `a` approves and `d` declines |
+| `/devices` | — | — | lists your devices with `●` online and `○` away; `n` renames this device, `r` removes the one under the cursor at once, and a removed device can only return as a new request you approve |
+
+The words to type are `/pair`, `/pair <code>`, `/sync`, `/link` and `/laptop`. All five open the same door. In a terminal the same two forms are `codeaf pair` and `codeaf pair <code>`. The page *Pairing your chats with a second computer* has the whole story: the three words, one attempt for each code, and what revoking cannot take back.
+
 ## Cache, display and export commands
 
 | Command | Aliases | Argument | Effect |
 |---|---|---|---|
+| `/setup` | — | — | prepare this machine: shows what this device lacks for the conversation (present, installable, impossible) and, for a chat that moved here, the folders it did not bring along, and does nothing else |
+| `/setup` | — | `now` | starts a setup turn in which the agent installs the installable items; asks first unless approvals are open |
 | `/cache` | — | — | how big the shared build cache is, and where |
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/cache` | — | `clean now` | deletes the shared build cache now |
@@ -2216,3 +2229,25 @@ tabs included, and opening a row brings the tab and its draft back too.
 notification and press `delete` to dismiss just that notification. Pending
 `your call` decisions stay visible. Dismissal does not stop work, accept a
 result, delete a task, or remove its output from Sessions.
+
+## /setup — prepare this machine so a conversation can run here
+
+A conversation carries a record of the tools and services it has used (codeaf builds it by
+watching what ran; the agent cannot write it). `/setup` compares that record with this
+machine and lists three kinds of line: what is already here, what the agent can install
+("needs jq — agent can set it up"), and what is impossible on this machine (a GPU, a
+Mac-only toolchain, a service on another network). Impossible lines are shown and never
+attempted. For a chat that moved here from another machine it also lists `not brought along:`
+the install folders a lockfile rebuilds (`node_modules`, `.venv`) with the command that brings
+each back (see "What a moved chat left behind" in home). When nothing is installable and
+nothing was left behind, `/setup` says so and does nothing.
+
+`/setup now` starts a **setup turn**: the agent installs the installable items, and brings back
+what a move left behind, into user space, with the network open for that turn only. Every call in it is recorded as external
+and the turn is marked as a setup turn in `codeaf cell log`. Because the network is open,
+each call asks first, exactly like any other outside action, unless approvals are open
+(`--yolo` or the allow posture). Limits: a setup turn is never replayed on another machine
+(the agent does it again there), it never runs impossible items, it needs your permission
+for the network, a sandboxed conversation can install only inside its own folder (`bin/`, `.venv/bin` and `node_modules/.bin` there count as this machine's tools), and it can be rewound like any turn. When it ends, codeaf looks at what is
+now on this machine and updates the record. Cells are on by default (`CODEAF_CELLS=0` turns them off); without a
+cell there is nothing to set up.

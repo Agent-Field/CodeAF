@@ -212,6 +212,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Build furrow from engine/
+        working-directory: engine
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          cargo build --release --locked -p furrow-cli
       - name: Build all targets with their furrow
         env:
           TAG: ${{ needs.prepare.outputs.tag }}
@@ -236,6 +241,10 @@ jobs:
             if [ "$goos" = "windows" ]; then
               rm -f internal/furrowbin/cache/furrow-*.gz
               extension=".exe"
+            elif [ "$goos/$goarch" = "linux/amd64" ]; then
+              # The runner's own platform is the one furrow is built for here.
+              env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
+                -goos "$goos" -goarch "$goarch" -built engine/target/release/furrow
             else
               env -u GOOS -u GOARCH go run ./internal/furrowbin/cmd/fetch \
                 -goos "$goos" -goarch "$goarch"

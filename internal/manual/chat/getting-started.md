@@ -49,6 +49,17 @@ the value you already have, so pressing `enter` there agrees to exactly what is 
 screen. Its heading is `Basic settings`, one line, with the keys line directly under it
 (until 2026-10-01 it was `Models and spending` over `Keep these choices or change them.`).
 
+## I already use codeaf on a second computer — the code field on the first screen
+
+The first screen has one field for you if your chats are on another computer:
+
+```
+have a code from another device?
+use your own relay: codeaf pair <code> --via <url>
+```
+
+On the computer that has your chats, type `/pair` to show a code like `42-715-302`. Type that code in the field. Compare the three words on both screens. The other computer asks `y / n`. On `y`, this computer has your chats. Read *Pairing your chats with a second computer* for the rest.
+
 ## Skipping setup and reading its header
 
 `esc` on the first screen skips the setup: the flow is marked seen and it does not open

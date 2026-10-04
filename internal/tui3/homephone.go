@@ -463,6 +463,20 @@ func standNoteWords(note standing.Note) string {
 
 // ── the frame ───────────────────────────────────────────────────────────────
 
+// homePhoneBody is the inbox, or the takeover screen where a question about a
+// chat on another machine is up ([app.machineScreen]).
+func (a *app) homePhoneBody(width, room int, pal palette) []homeDrawn {
+	screen := a.machineScreen(width)
+	if screen == nil {
+		return a.homePhoneList(width, room, pal)
+	}
+	out := make([]homeDrawn, len(screen))
+	for i, text := range screen {
+		out[i] = homeDrawn{text: text, hit: -1, pane: -1}
+	}
+	return out
+}
+
 // homePhoneFrame is the whole screen while the inbox is up: exactly height
 // rows, which line of the column each of them answers to the pointer, and where
 // the caret sits. It is [app.homeFrame]'s answer at this tier and it keeps that
@@ -498,7 +512,7 @@ func (a *app) homePhoneFrame(width, height int) ([]string, []int, int, int) {
 		room = 1
 	}
 	a.home.top = listTop(a.home.cursor, a.home.top, len(a.home.lines), overlayItems(room, width))
-	body := a.homePhoneList(width, room, pal)
+	body := a.homePhoneBody(width, room, pal)
 	for i := 0; i < room; i++ {
 		// THE REGION IS FILLED WHETHER OR NOT THE LIST FILLS IT. The foot is
 		// drawn after this loop and the frame is padded at the END, so a body
@@ -626,6 +640,9 @@ func headingKind(kind homeRowKind) bool {
 // band across both, and the pointer's lead are decided in one place for every
 // list on this surface (palette.go).
 func (a *app) homePhoneRow(line homeLine, at, width int, pal palette) []string {
+	if line.kind == homeMachineRow {
+		return a.machineRowTexts(line, at, width, pal)
+	}
 	if line.kind == homeSession && line.cell != nil && (line.cell.panel == panelRecent || line.cell.panel == panelSessions) {
 		return a.homeCellRow(line, at, width, pal, at == a.home.cursor)
 	}

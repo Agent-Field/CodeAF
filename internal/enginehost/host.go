@@ -76,6 +76,11 @@ func sweepSpan() time.Duration {
 	return 30 * time.Second
 }
 
+// SessionIdleAfter is how long a host keeps a conversation nobody is in before
+// it lets go of the conversation's journal lock, for a sentence that tells
+// someone how long a "running" row can last.
+func SessionIdleAfter() time.Duration { return sessionIdle }
+
 // The two numbers a stand-down is measured in.
 //
 // A HOST THAT AGREED TO GO WRITES ITS ANSWER BEFORE IT GOES. The frame saying
@@ -117,6 +122,11 @@ type Options struct {
 	// no door behind it means, and the empty string it answers for a hello that
 	// named nothing is then the boot's problem rather than an identity.
 	Key func(remote.Hello) string
+
+	// Cells is the cells mode this host runs in, fixed when it starts. It is
+	// told to every asker ([remote.HostSelf.Cells]) so a door in the other mode
+	// can replace an idle host or refuse a busy one instead of attaching.
+	Cells bool
 }
 
 // Host is one workspace's conversations, and the socket they are reached
@@ -533,6 +543,7 @@ func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
 	self.Started = h.started
 	self.BuiltAt = h.binary.builtAt()
 	self.Surfaces = h.live - h.probes
+	self.Cells = h.opts.Cells
 	for _, sess := range h.sessions {
 		if sess != nil && !sess.Ended() && !deletedJournal(sess.File()) {
 			self.Conversations++

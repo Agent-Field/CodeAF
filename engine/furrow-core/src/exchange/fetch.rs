@@ -1,0 +1,228 @@
+//! `want` and `import`: learn what a head still needs, then accept it.
+
+use super::ledger::{parse_rid, Ledger};
+use super::survey::{survey, Object, Walk};
+use crate::fault;
+use crate::model::{id_hex, ObjectId};
+use crate::sealer::Sealer;
+use crate::store::ObjectStore;
+use anyhow::Context;
+use std::collections::{BTreeMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// The most rids one `want` names.
+pub const WANT_LIMIT: usize = 1000;
+
+/// The rids needed next to complete `head` locally, nearest the snapshot
+/// first. Empty means the head is complete.
+pub fn want(
+    store: &ObjectStore,
+    sealer: &dyn Sealer,
+    head: ObjectId,
+) -> anyhow::Result<Vec<ObjectId>> {
+    let found = survey(store, head, WANT_LIMIT)?;
+    Ok(found
+        .missing
+        .iter()
+        .map(|(kind, id)| sealer.remote_id(*kind, id))
+        .collect())
+}
+
+pub struct Import<'a> {
+    pub store: &'a ObjectStore,
+    pub sealer: &'a dyn Sealer,
+    pub head: ObjectId,
+    pub inbox: &'a Path,
+    /// The ledger of the store the objects came from. Whatever a store handed
+    /// us is by definition already in it, so it is recorded as published there
+    /// and the next export never sends it back.
+    pub ledger: &'a Ledger,
+}
+
+/// How an import treats the inbox files its walk did not take.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Leftovers {
+    /// An unwanted file is an error.
+    Refuse,
+    /// An unwanted file is deleted.
+    Delete,
+    /// Every file stays: the inbox may still be filling.
+    Keep,
+}
+
+/// What one import call took: the objects it stored and, in primed mode, the
+/// unwanted inbox files it deleted.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Taken {
+    pub imported: usize,
+    pub extras_deleted: usize,
+}
+
+impl Import<'_> {
+    /// Takes every wanted file out of the inbox and returns how many it took.
+    ///
+    /// A delivered object can name children that were not wanted until it
+    /// arrived, so passes repeat until one takes nothing. A file that no pass
+    /// wanted is an error.
+    pub fn run(&self) -> anyhow::Result<usize> {
+        Ok(self.take(Leftovers::Refuse)?.imported)
+    }
+
+    /// The same import with the rule a priming take needs: an inbox file no
+    /// pass wanted is deleted rather than an error, and the count comes back.
+    pub fn run_primed(&self) -> anyhow::Result<Taken> {
+        self.take(Leftovers::Delete)
+    }
+
+    /// The take for an inbox that is still filling while the frames download:
+    /// it stores whatever the walk wants from what has arrived and returns the
+    /// count. It never deletes or refuses a leftover file, because a file may
+    /// belong to an object whose parent has not arrived yet, and an incomplete
+    /// wanted set is the normal state, not an error.
+    pub fn run_partial(&self) -> anyhow::Result<usize> {
+        Ok(self.take(Leftovers::Keep)?.imported)
+    }
+
+    /// One call, one batch: the catalog commits once and the active pack
+    /// syncs once, however many objects and passes the inbox holds, instead
+    /// of once per object. The files are deleted only after the batch
+    /// commits, so a failure mid-batch rolls the catalog back to a state with
+    /// no partial object and still leaves every file its next attempt wants;
+    /// pack bytes the rollback outruns are the store's rebuild-from-pack
+    /// rule's to tolerate, as the comment on `ObjectStore::batched` says.
+    fn take(&self, leftovers: Leftovers) -> anyhow::Result<Taken> {
+        let mut taken = Taken::default();
+        let mut stored = Vec::new();
+        let files = self.inbox_files()?;
+        self.store.batched(|| {
+            let mut walk = Walk::new(self.head);
+            loop {
+                let pass = self.pass(&mut walk, &files, &mut stored)?;
+                if pass.is_empty() {
+                    break;
+                }
+                self.ledger.append(&pass)?;
+                taken.imported += pass.len();
+            }
+            fault::point("import.stored");
+            Ok(())
+        })?;
+        for path in stored {
+            fs::remove_file(&path).with_context(|| format!("delete {}", path.display()))?;
+        }
+        if leftovers != Leftovers::Keep {
+            taken.extras_deleted = self.settle_leftovers(leftovers == Leftovers::Delete)?;
+        }
+        Ok(taken)
+    }
+
+    /// One pass: stores every inbox file for an object the walk newly found
+    /// missing, in rid order, and returns their rids. The walk is told what
+    /// each stored object names, so the next pass sees only the objects that
+    /// became wanted because of this one, not the whole graph again. The
+    /// paths of the files now safe to delete once the batch commits are added
+    /// to `stored`.
+    fn pass(
+        &self,
+        walk: &mut Walk,
+        files: &BTreeMap<ObjectId, PathBuf>,
+        stored: &mut Vec<PathBuf>,
+    ) -> anyhow::Result<Vec<ObjectId>> {
+        let mut taken = Vec::new();
+        for (rid, (kind, id)) in self.wanted(walk)? {
+            let Some(path) = files.get(&rid) else {
+                continue;
+            };
+            let bytes = self
+                .store_verified(kind, &id, &rid, path)
+                .map_err(|error| anyhow::anyhow!("import object {}: {error:#}", id_hex(&rid)))?;
+            walk.expand(kind, &bytes)?;
+            taken.push(rid);
+            stored.push(path.clone());
+        }
+        Ok(taken)
+    }
+
+    /// The objects the walk newly found missing, by the rid they travel under.
+    fn wanted(&self, walk: &mut Walk) -> anyhow::Result<BTreeMap<ObjectId, Object>> {
+        Ok(walk
+            .explore(self.store, usize::MAX)?
+            .missing
+            .into_iter()
+            .map(|(kind, id)| (self.sealer.remote_id(kind, &id), (kind, id)))
+            .collect())
+    }
+
+    /// Opens, stores and returns the verified bytes of one inbox file.
+    fn store_verified(
+        &self,
+        kind: crate::model::ObjectKind,
+        id: &ObjectId,
+        rid: &ObjectId,
+        path: &Path,
+    ) -> anyhow::Result<Vec<u8>> {
+        let sealed = fs::read(path)?;
+        let bytes = self.sealer.open(kind, id, rid, &sealed)?;
+        anyhow::ensure!(
+            self.store.put_bytes(kind, &bytes)? == *id,
+            "stored id does not match"
+        );
+        Ok(bytes)
+    }
+
+    /// Files left after the last pass are either copies of objects already
+    /// stored (a crash between storing and deleting) or unwanted. The copies
+    /// go in both modes; the unwanted ones are an error in strict mode, with
+    /// nothing deleted, and are deleted in primed mode, where the caller
+    /// already knows the inbox holds more than this head wants.
+    fn settle_leftovers(&self, primed: bool) -> anyhow::Result<usize> {
+        let leftovers = self.inbox_files()?;
+        if leftovers.is_empty() {
+            return Ok(0);
+        }
+        let held = self.held_rids()?;
+        let extra = |(rid, _): &(&ObjectId, &PathBuf)| !held.contains(*rid);
+        if !primed {
+            if let Some((rid, _)) = leftovers.iter().find(extra) {
+                anyhow::bail!(
+                    "import object {}: not wanted for head {}",
+                    id_hex(rid),
+                    id_hex(&self.head)
+                );
+            }
+        }
+        for path in leftovers.values() {
+            fs::remove_file(path).with_context(|| format!("delete {}", path.display()))?;
+        }
+        Ok(leftovers.iter().filter(extra).count())
+    }
+
+    fn held_rids(&self) -> anyhow::Result<HashSet<ObjectId>> {
+        let found = survey(self.store, self.head, usize::MAX)?;
+        Ok(found
+            .present
+            .iter()
+            .map(|(kind, id)| self.sealer.remote_id(*kind, id))
+            .collect())
+    }
+
+    /// The inbox files by rid. Names starting with a dot are files still being
+    /// written and are left alone; any other name that is not a rid is an error.
+    fn inbox_files(&self) -> anyhow::Result<BTreeMap<ObjectId, PathBuf>> {
+        let mut files = BTreeMap::new();
+        for entry in fs::read_dir(self.inbox)
+            .with_context(|| format!("read inbox {}", self.inbox.display()))?
+        {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
+            let rid = parse_rid(&name)
+                .with_context(|| format!("inbox file {name} is not named by a rid"))?;
+            files.insert(rid, entry.path());
+        }
+        Ok(files)
+    }
+}

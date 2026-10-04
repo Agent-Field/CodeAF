@@ -374,14 +374,10 @@ func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 	if exists != 0 {
 		return Memory{}, fmt.Errorf("add memory: %w: %q already exists", ErrInvalid, payload.ID)
 	}
-	seq, _, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
+	seq, err := s.commitMemoryEvent(tx, payload.ID, EventMemoryAdd, payload, func(seq int64) error {
+		return applyMemoryAdd(tx, payload, seq, s.fts)
+	})
 	if err != nil {
-		return Memory{}, fmt.Errorf("add memory: %w", err)
-	}
-	if err := applyMemoryAdd(tx, payload, seq, s.fts); err != nil {
-		return Memory{}, fmt.Errorf("add memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
 	return Memory{
@@ -428,14 +424,10 @@ func (s *Store) UpdateMemoryFromSession(id, title, text string, tags []string, s
 	defer tx.Rollback()
 
 	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags, SourceSession: strings.TrimSpace(sourceSession)}
-	seq, _, err := appendEvent(tx, id, EventMemoryUpdate, payload)
+	_, err = s.commitMemoryEvent(tx, id, EventMemoryUpdate, payload, func(seq int64) error {
+		return applyMemoryUpdate(tx, payload, seq, s.fts)
+	})
 	if err != nil {
-		return fmt.Errorf("update memory: %w", err)
-	}
-	if err := applyMemoryUpdate(tx, payload, seq, s.fts); err != nil {
-		return fmt.Errorf("update memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
 	return nil
@@ -484,14 +476,10 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	}
 	fresh.SourceSession = strings.TrimSpace(m.SourceSession)
 	payload := memorySupersedePayload{OldID: oldID, New: fresh, SourceSession: fresh.SourceSession}
-	seq, _, err := appendEvent(tx, fresh.ID, EventMemorySupersede, payload)
+	seq, err := s.commitMemoryEvent(tx, fresh.ID, EventMemorySupersede, payload, func(seq int64) error {
+		return applyMemorySupersede(tx, payload, seq, s.fts)
+	})
 	if err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
-	}
-	if err := applyMemorySupersede(tx, payload, seq, s.fts); err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
 	return Memory{
@@ -765,7 +753,7 @@ func (s *Store) forgetMemory(owners []string, id, sourceSession string) error {
 		return fmt.Errorf("forget memory: %w", err)
 	}
 	payload := memoryForgetPayload{ID: id, Owner: rowOwner, SourceSession: strings.TrimSpace(sourceSession)}
-	seq, _, err := appendEvent(tx, id, EventMemoryForget, payload)
+	seq, at, err := appendEvent(tx, id, EventMemoryForget, payload)
 	if err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
@@ -793,7 +781,7 @@ func (s *Store) forgetMemory(owners []string, id, sourceSession string) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
-	return nil
+	return s.seal(id, EventMemoryForget, at, payload)
 }
 
 // RestoreMemory returns a forgotten memory to the active views. Superseded
@@ -836,14 +824,10 @@ func (s *Store) restoreMemory(owners []string, id string) error {
 		}
 	}
 	payload := memoryRestorePayload{ID: id}
-	seq, _, err := appendEvent(tx, id, EventMemoryRestore, payload)
+	_, err = s.commitMemoryEvent(tx, id, EventMemoryRestore, payload, func(seq int64) error {
+		return applyMemoryRestore(tx, payload, seq, s.fts)
+	})
 	if err != nil {
-		return fmt.Errorf("restore memory: %w", err)
-	}
-	if err := applyMemoryRestore(tx, payload, seq, s.fts); err != nil {
-		return fmt.Errorf("restore memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("restore memory: %w", err)
 	}
 	return nil

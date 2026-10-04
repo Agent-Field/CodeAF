@@ -128,7 +128,7 @@ func runExec(args []string) error {
 	}
 	defer closeRouter(client)
 
-	ctx, stopSignals := signal.NotifyContext(traced, os.Interrupt, syscall.SIGTERM)
+	ctx, stopSignals := signal.NotifyContext(hostSeated(traced), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	deadline := execDeadline(*maxTokens, wall.wall)
 	if wall.wall > 0 {

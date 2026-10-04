@@ -568,6 +568,7 @@ func runGit(ctx context.Context, root string, args ...string) (string, bool) {
 	if ctx == nil {
 		return "", false
 	}
+	//codeaf:plumbing git read of the workspace state
 	command := osexec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
 	// A read that takes the index lock can lose a race with whatever else is
 	// working in this tree, and an account is never worth blocking the work.

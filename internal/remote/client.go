@@ -2651,6 +2651,11 @@ func oversizeImage(path string) error {
 // NeedsPerson reads the pushed conversation state without a round trip.
 func (a *Agent) NeedsPerson() bool { return a.c.facts.read().NeedsPerson }
 
+// SealFailing answers for THE MACHINE AT THE OTHER END, off the last fact set it
+// stated: the seal watch lives with that machine's seat, so this is a memory
+// read of what it said and never a frame on the wire.
+func (a *Agent) SealFailing() bool { return a.c.facts.read().Unsealed }
+
 // ReplaceQuestion starts a revised request after retiring the pending turn.
 func (a *Agent) ReplaceQuestion(ctx context.Context, answer session.Answer) (<-chan session.Event, error) {
 	return a.open(ctx, MethodQuestionReplace, QuestionArgs{Answer: answer})

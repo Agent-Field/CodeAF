@@ -1,0 +1,1 @@
+{"V":1,"tools":[{"name":"node","binary_hash":"3fa9c2","version_string":"v22.4.0"}],"services":[{"name":"postgres","version":"16.3","ports":[5432],"data_dir":"var/pg"}],"platform":{"os":"linux","arch":"amd64"},"lockfiles":["uv.lock"],"env_var_names":["DATABASE_URL"],"hints":{"devcontainer":".devcontainer/devcontainer.json"},"annotations":{"postgres":{"optional":true}}}

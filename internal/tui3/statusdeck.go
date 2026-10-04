@@ -591,6 +591,7 @@ var deckSegWords = [segCount]string{
 	// road nine of the eleven facts on this line already take (hostlink.go, and
 	// this file's header).
 	segLink:  "connection",
+	segSeal:  "sealing",
 	segState: "state",
 }
 

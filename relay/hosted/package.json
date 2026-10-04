@@ -1,0 +1,13 @@
+{
+  "name": "codeaf-hosted-relay",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "e2e": "sh test/e2e.sh",
+    "dev": "wrangler dev --local --var TRUST_PROXY:1 --var 'CAF_LIMITS:{\"newIdentitiesPerIpPerDay\":1000000,\"pairTtlMs\":4000}'"
+  },
+  "devDependencies": {
+    "wrangler": "^4.144.0"
+  }
+}

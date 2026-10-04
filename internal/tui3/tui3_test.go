@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -47,9 +48,16 @@ import (
 // itself is deliberately left alone: this package draws `~` in front of paths
 // and those readings are about the real one.
 func TestMain(m *testing.M) {
+	// A KEY IN THE RUNNER'S ENVIRONMENT IS NOT PART OF ANY TEST'S WORLD. The key
+	// reader ([config.APIKeyAt]) prefers the environment over the profile file,
+	// so an ambient key made every test that seeds a profile key read another
+	// key's balance record as stale. The suite owns its keys through profiles.
+	os.Unsetenv(config.APIKeyEnv)
+	os.Unsetenv("OPENAI_API_KEY")
 	startCmdProfile()
 	surfaceTick = harnessTick
 	code := runTests(m)
+	cellstore.StopSpawned() // no engine daemon outlives the run
 	writeCmdProfile()
 	// A DEADLINE-DROPPED COMMAND LEAVES A GOROUTINE PARKED on a channel nobody
 	// will write to; an owner-proven empty waiter is never started. The count is

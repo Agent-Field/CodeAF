@@ -1,0 +1,240 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/executor"
+	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/session"
+)
+
+const cellUsage = "usage: codeaf cell log [<cell>] | codeaf cell rewind <turn> [<cell>] | codeaf cell resolve [<cell>] | codeaf cell discard <branch> [<cell>] | codeaf cell gc [--dry-run] | codeaf cell list --all | codeaf cell report [<cell>] [--export <file>]"
+
+// cellVerb is one word after `cell`: how many arguments of its own it takes
+// before the optional cell name, and what it does to the cell. A verb that is
+// about every cell on the device (wide) takes no cell name and gets all its
+// arguments.
+type cellVerb struct {
+	args int
+	wide bool
+	flag string // a value-taking flag the verb owns; its value is passed after the positional arguments
+	run  func(c cell.Cell, args []string, out io.Writer) error
+}
+
+var cellVerbs = map[string]cellVerb{
+	"log":     {args: 0, run: cellLog},
+	"rewind":  {args: 1, run: cellRewind},
+	"resolve": {args: 0, run: cellResolve},
+	"discard": {args: 1, run: cellDiscard},
+	"gc":      {wide: true, run: cellGC},
+	"list":    {wide: true, run: cellListVerb},
+	"report":  {args: 0, flag: "--export", run: cellReport},
+}
+
+// runCell is the stage 0 door onto a cell's turn chain. Like `engine` it is
+// machinery, not on the help page, until cells are the default.
+func runCell(args []string) error {
+	cwd, _ := os.Getwd()
+	return runCellIn(args, os.Stdout, cwd)
+}
+
+// runCellIn is runCell with the writer and the working directory injectable.
+func runCellIn(args []string, out io.Writer, cwd string) error {
+	if len(args) == 0 {
+		return errors.New(cellUsage)
+	}
+	verb, ok := cellVerbs[args[0]]
+	rest := args[1:]
+	if ok && verb.wide {
+		return verb.run(cell.Cell{}, rest, out)
+	}
+	rest, flagged, err := takeFlag(rest, verb.flag)
+	if err != nil {
+		return err
+	}
+	if !ok || len(rest) < verb.args || len(rest) > verb.args+1 {
+		return errors.New(cellUsage)
+	}
+	c, err := openCellNamed(strings.Join(rest[verb.args:], ""), cwd)
+	if err != nil {
+		return err
+	}
+	return verb.run(c, append(rest[:verb.args:verb.args], flagged...), out)
+}
+
+// takeFlag removes `<flag> <value>` from args and answers the value, so the
+// positional arguments that are left can be counted. An empty flag takes nothing.
+func takeFlag(args []string, flag string) (rest, value []string, err error) {
+	for i, a := range args {
+		if flag == "" || a != flag {
+			continue
+		}
+		if i+1 >= len(args) {
+			return nil, nil, fmt.Errorf("%s needs a file name", flag)
+		}
+		return append(append([]string{}, args[:i]...), args[i+2:]...), args[i+1 : i+2], nil
+	}
+	return args, nil, nil
+}
+
+// openCellNamed opens the cell an id or a folder path names, or, with no name,
+// the cell the working directory is inside.
+func openCellNamed(name, cwd string) (cell.Cell, error) {
+	switch {
+	case name == "":
+		return openCellAbove(cwd)
+	case cell.ValidID(name):
+		return openCellByID(name)
+	}
+	return openCellAbove(name)
+}
+
+// openCellByID finds a cell by id where a chat keeps it: in the project bucket
+// its workspace names, or in the flat cells directory of cell.Create.
+func openCellByID(id string) (cell.Cell, error) {
+	buckets, _ := filepath.Glob(filepath.Join(home.Join("v3", "projects"), "*", id))
+	for _, dir := range append(buckets, filepath.Join(cell.Dir(home.Dir()), id)) {
+		if c, err := cell.OpenAt(dir, id); err == nil {
+			return c, nil
+		}
+	}
+	return cell.Open(home.Dir(), id)
+}
+
+func openCellAbove(dir string) (cell.Cell, error) {
+	for d := dir; ; d = filepath.Dir(d) {
+		if _, err := os.Stat(filepath.Join(d, filepath.FromSlash(cell.MetaPath))); err == nil {
+			return cell.OpenAt(d, filepath.Base(d))
+		}
+		if filepath.Dir(d) == d {
+			return cell.Cell{}, fmt.Errorf("no cell at or above %s; name one by id or folder", dir)
+		}
+	}
+}
+
+// cellLog prints one line per turn, newest first: id, parent, time, trigger,
+// tools (an external call is marked), receipt.
+func cellLog(c cell.Cell, _ []string, out io.Writer) error {
+	entries, err := cellstore.Log(c)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsAdopted {
+			fmt.Fprintf(out, "%s  %s  sealed on %s\n", short(e.Turn.ID), orDash(short(e.Turn.Parent)), orDefault(e.Adopted, "another device"))
+			continue
+		}
+		fmt.Fprintf(out, "%s  %s  %s  %s  %s  %s\n", short(e.Turn.ID), orDash(short(e.Turn.Parent)),
+			time.UnixMilli(e.Turn.SealedAtMs).UTC().Format("2006-01-02T15:04:05Z"),
+			e.Turn.Trigger, toolSummary(e.Receipt), short(e.Turn.Receipt))
+	}
+	return writeGaps(c, out)
+}
+
+// writeGaps marks what the chain cannot show yet: calls that began and never
+// finished, and calls that finished and were never sealed. The second is the
+// gap a failing seal leaves, and it stays in the call log until a seal holds,
+// so it is still here after the session that hit it is gone.
+func writeGaps(c cell.Cell, out io.Writer) error {
+	_, rec, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
+	if err != nil {
+		return err
+	}
+	writeUnsealed(rec.Completed, out)
+	writeUnfinishedOf(rec.Incomplete, out)
+	return nil
+}
+
+// writeUnsealed says how many finished calls no turn holds, and since when.
+func writeUnsealed(done []cellstore.Executed, out io.Writer) {
+	if len(done) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "unsealed  %d call(s) since %s  not in any turn yet; the next seal that holds takes them\n", len(done),
+		time.UnixMilli(done[0].Call.Started).UTC().Format("2006-01-02T15:04:05Z"))
+}
+
+// writeUnfinishedOf says which calls began and never finished: a crash left them
+// in the call log, and the harness never runs them again on its own.
+func writeUnfinishedOf(open []cellstore.Intent, out io.Writer) {
+	for _, in := range open {
+		fmt.Fprintf(out, "unfinished  %s  %s  started %s  not run again; `codeaf cell resolve` closes it\n", in.Tool,
+			in.SideEffect, time.UnixMilli(in.Started).UTC().Format("2006-01-02T15:04:05Z"))
+	}
+}
+
+// cellResolve closes every unfinished call of a cell no session holds, so the
+// cell can be rewound again.
+func cellResolve(c cell.Cell, _ []string, out io.Writer) error {
+	if cellBusy(c) {
+		return fmt.Errorf("a session holds this cell; close it first — %s", heldByEngineHint())
+	}
+	wal, rec, err := cellstore.OpenWAL(cellEngine(c).WALPath(c))
+	if err != nil {
+		return err
+	}
+	for _, in := range rec.Incomplete {
+		if err := wal.Resolve(in); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "resolved  %s  started %s\n", in.Tool, time.UnixMilli(in.Started).UTC().Format("2006-01-02T15:04:05Z"))
+	}
+	return nil
+}
+
+// cellRewind restores the cell to a turn and prints the turn that records it.
+func cellRewind(c cell.Cell, args []string, out io.Writer) error {
+	sealed, err := cellEngine(c).Rewind(context.Background(), c, args[0])
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(out, "rewound to %s as new turn %s\n", args[0], short(sealed.Turn.ID))
+	return err
+}
+
+// cellEngine is the engine of a cell opened from a verb: built from the
+// session place the cell's meta records, exactly as the session's seat builds it.
+func cellEngine(c cell.Cell) cellstore.Engine { return cellstore.EngineFor(cellWorkspace(c)) }
+
+// cellWorkspace is the tree a cell's session seals: its own work/ when the
+// session owns its workspace, else the project it borrowed.
+func cellWorkspace(c cell.Cell) string {
+	meta, _ := session.LoadMeta(c.Root)
+	return v3PlaceFor(c.Root, meta.Workspace, meta.Owned).Workspace
+}
+
+const shortIDLen = 12
+
+func short(id string) string { return id[:min(len(id), shortIDLen)] }
+
+func orDash(s string) string { return orDefault(s, "-") }
+
+func orDefault(s, otherwise string) string {
+	if s == "" {
+		return otherwise
+	}
+	return s
+}
+
+func toolSummary(r cellstore.Receipt) string {
+	tools := make([]string, len(r.Calls))
+	for i, call := range r.Calls {
+		tools[i] = call.Tool
+		if call.SideEffect == string(executor.EffectExternal) {
+			tools[i] += "[external]"
+		}
+	}
+	return orDash(strings.Join(tools, ","))
+}
+
+// cellListVerb adapts cellList to the verb table, which hands every verb a cell.
+func cellListVerb(_ cell.Cell, args []string, out io.Writer) error { return cellList(args, out) }

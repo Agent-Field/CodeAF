@@ -2420,7 +2420,7 @@ func journalLeafExhaustion(graph *store.Store, nodeID string, attempt int,
 		record.Bound = string(exec.StopDeadline)
 		record.Allowed = watchdog.Round(time.Second).String()
 		record.Reason = "the worker did not come back within " + record.Allowed +
-			" and was stopped — its work is recorded and the node goes back on the queue"
+			" and was stopped — its work is recorded and the part goes back on the queue"
 	case err == nil && outcome != nil && leafRanOutOfRoom(outcome):
 		bound := leafStop(outcome)
 		record.Bound = string(bound)

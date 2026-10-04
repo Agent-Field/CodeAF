@@ -299,6 +299,14 @@ var settingUI = map[string]settingMeta{
 		about: "MB of memory that must be free before another task starts. 0 stops " +
 			"watching.",
 	},
+	// The disk budget sits with the machine's other limits because it is the same
+	// kind of question: how much of this computer the work may occupy.
+	config.KeyCellBudget: {
+		tab: tabTasks, label: "disk for conversations", widget: widgetText,
+		about: "GB the working files of finished conversations may use before the oldest " +
+			"are shrunk to their saved copy. Fractions work: 0.5 is half a GB. Your own folders " +
+			"are never touched. 0 is no limit.",
+	},
 	// And beside it, the other thing that is true of every task you hand off:
 	// whose hands it goes into. It is answered by the PICKER, like the two tier
 	// rows below it and for the same reason — a row that asks "which model" and
@@ -327,7 +335,7 @@ var settingUI = map[string]settingMeta{
 	},
 	config.KeyTierWorkerModel: {
 		tab: tabProviders, label: "worker", widget: widgetSelect,
-		about: "does the work · every task, its parts, every run node — most of the bill. Empty is auto: routed per task",
+		about: "does the work · every task, its parts, every run step — most of the bill. Empty is auto: routed per task",
 	},
 	config.KeyTierHighModel: {
 		tab: tabProviders, label: "checker", widget: widgetSelect,
@@ -630,7 +638,7 @@ var settingUI = map[string]settingMeta{
 	config.KeyModelPoolPublicKey: {
 		tab: tabProviders, label: "pool key", widget: widgetText,
 		about: "the public key a Model Pool index must be signed with. Blank " +
-			"trusts the key built into codeaf; set it to read a relay of your own.",
+			"trusts the key built into codeaf; set it to read an index server of your own.",
 	},
 	config.KeyVisionModel: {
 		tab: tabProviders, label: "looking", widget: widgetSelect,

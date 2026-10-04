@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"net"
 	"os"
 	"os/exec"
@@ -236,7 +237,7 @@ func hostAnswers(workspace string) bool {
 func TestAHostOfThisBuildIsSplicedOntoWithoutAWord(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity()}, false)
+	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: buildinfo.Identity(), Cells: cell.Enabled()}, false)
 
 	note, err := clearStaleEngineHost(workspace)
 	if err != nil {

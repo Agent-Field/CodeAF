@@ -16,7 +16,7 @@ schema, and a person needs to know which command actually thinks.
 
 ```
 codeaf do "<task>" [--dir dir] [--db path] [--keep] [--timeout D]
-                   [--json] [--yes-spend] [--model slug] [--plan-model slug]
+                   [--continue id] [--json] [--yes-spend] [--model slug] [--plan-model slug]
                    [--check-model slug] [--best|--cheap] [--pin seat=model[@provider]]
                    [--context-fill N] [--completion-reserve N]
 ```
@@ -39,6 +39,7 @@ work done.
 | `--dir dir` | the current directory | The directory it works in, **edited in place**. Not an output folder — it opens what is there and leaves nothing behind that you did not ask for. `-w` is the shorthand and keeps working forever. |
 | `--db path` | a private temp store, deleted on exit | Work in this durable store instead. This is how state survives across runs. |
 | `--keep` | off | Keep the private store instead of deleting it; the path is printed to stderr. |
+| `--continue id` | none | Carry on a kept run (one that did not finish, or was kept with `--keep`): `id` is the part of the `record kept at` folder name after `codeaf-do-`, an unambiguous start of it, or the folder path. Words after it are this round's finding; the assignment is unchanged. Works in `--dir`. Run engine only. |
 | `--timeout D` | `15m` | Hard wall, as a duration with a unit: `5m`, `2h`, `90s`. A bare number is still read as seconds for one release, so `--timeout 900` keeps working. A wall, not a schedule — the length of rope at which a wedged run is more useful dead. |
 | `--json` | off | Print one machine-readable object instead of the prose deliverable. |
 | `--yes-spend` | off | Spend past today's limit and past the plan-price question, without stopping to ask. The same flag with the same one sentence on `codeaf plan run`. Equivalent to `CODEAF_PREAUTHORIZE_SPEND=1`. It does not lift the per-task limit (`/crew cap task`, $5 unless set). |

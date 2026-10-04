@@ -3,8 +3,9 @@
 package bare
 
 import (
-	"golang.org/x/sys/windows"
 	"os"
+
+	"golang.org/x/sys/windows"
 )
 
 func bashSpillSingleLink(file *os.File) bool {

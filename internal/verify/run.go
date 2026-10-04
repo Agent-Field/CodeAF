@@ -11,13 +11,12 @@ package verify
 import (
 	"bytes"
 	"context"
-	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/processgroup"
+	"github.com/Agent-Field/codeaf/internal/executor"
 )
 
 // strictPreamble is prefixed to every command this package runs. A pipeline
@@ -142,25 +141,20 @@ func RunReading(
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, shell, "-c", strictPreamble+strategy.Command)
-	command.Dir = filepath.Join(workspace, strategy.Workdir)
 	// A suite spawns children — a test server, a browser, a compiler — and
 	// killing only the shell leaves them holding the pipe this reading is being
-	// read from. The whole group goes, and WaitDelay bounds the wait on the
-	// pipes after it does, which is exec's one remaining way to block forever
-	// on a process it has already killed.
-	processgroup.Configure(command)
-	command.Cancel = func() error {
-		if command.Process == nil {
-			return nil
-		}
-		return processgroup.Kill(command.Process.Pid)
-	}
-	command.WaitDelay = 2 * time.Second
-
+	// read from. The executor kills the whole group, and WaitDelay bounds the
+	// wait on the pipes after it does, which is exec's one remaining way to
+	// block forever on a process it has already killed.
 	captured := &tailBuffer{limit: capturedOutputLimit}
-	command.Stdout = captured
-	command.Stderr = captured
+	run, err := executor.For(ctx).In(filepath.Join(workspace, strategy.Workdir)).Exec(ctx, executor.ExecRequest{
+		Argv:      []string{shell, "-c", strictPreamble + strategy.Command},
+		WaitDelay: 2 * time.Second, Combined: true, Stream: true,
+	}, func(c executor.Chunk) { _, _ = captured.Write(c.Data) })
+	ran := run.Status != ""
+	if ran {
+		err = run.Failure()
+	}
 
 	result := Result{
 		Entrypoint: Entrypoint{
@@ -170,7 +164,6 @@ func RunReading(
 		Strategy: strategy,
 		Exit:     -1,
 	}
-	err = command.Run()
 	switch {
 	case err == nil:
 		result.Exit = 0
@@ -179,11 +172,8 @@ func RunReading(
 		// exit status, and reporting one for a command that never exited is how
 		// a hang gets read as a failure with a cause.
 		result.TimedOut = true
-	default:
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			result.Exit = exitErr.ExitCode()
-		}
+	case ran:
+		result.Exit = run.Exit
 	}
 	output := captured.String()
 	reported, failing, read := strategy.Read.Read(output)

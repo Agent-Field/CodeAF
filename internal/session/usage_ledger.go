@@ -91,6 +91,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -100,6 +101,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -191,7 +193,7 @@ type UsageLine struct {
 	// The role beside it names the reflex, so the row remains useful even to a
 	// reader that does not know this build's aggregate counters.
 	Empty bool `json:"empty,omitempty"`
-	// Session is the 16-hex id of the conversation the call was made in. For a
+	// Session is the id of the conversation the call was made in. For a
 	// piece of work it is the NODE's own journal id and not the conversation
 	// that asked for it, which is why Task sits beside it: the pair is what
 	// identifies where the money went.
@@ -1001,6 +1003,7 @@ func (a *Agent) recordUsageLine(call bankedCall) {
 	// absent, which is the true sentence "nobody said" rather than a zero
 	// somebody reads as a figure.
 	RecordUsage(path, usageFromResponse(line, call.lane.Lane, call.lane.TTFT, call.lane.Gen, call.lane.Output, call.lane.Hedged, call.lane.Waste))
+	procexec.NoteModelCall(a.config.seat(), modelCallOf(line, call.used))
 
 	// BESIDE THE LEDGER ROW, the plan store's own charge: a bash-belt worker
 	// with a plan task writes the same call into the run's spend ledger
@@ -1215,3 +1218,16 @@ func (a *Agent) recordUnbilledReceipt(model string) {
 		Root: a.config.rootSession, Standing: a.config.standingItemID, Workspace: a.config.Workspace,
 	})
 }
+
+// modelCallOf is the receipt's word for one ledger row: the same call, seen
+// from the seat that seals the turn it was made in.
+func modelCallOf(line UsageLine, used Usage) procexec.ModelCall {
+	return procexec.ModelCall{
+		Model: line.Model, Role: line.Role,
+		TokensIn: line.Input, TokensOut: line.Output, TokensCached: used.CacheRead,
+		CostMicroUSD: int64(math.Round(line.USD * microPerUSD)),
+	}
+}
+
+// microPerUSD is the receipt's money unit: whole millionths of a dollar.
+const microPerUSD = 1e6

@@ -34,6 +34,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/offpath"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -679,7 +680,12 @@ type Event struct {
 	Kind EventKind
 	// Addressed is a producer's declaration that streamed text is for the person.
 	// It does not imply a completed response and survives interruption.
-	Addressed  bool `json:"Addressed,omitempty"`
+	Addressed bool `json:"Addressed,omitempty"`
+	// Told marks an [EventNotice] as addressed to the person: a surface draws it
+	// as a line to read, and never folds it into the turn's work group with the
+	// dim facts. It is omitted when false, so an older peer sees what it always
+	// saw.
+	Told       bool `json:"Told,omitempty"`
 	Text       string
 	ShortTitle string `json:"ShortTitle,omitempty"`
 	Tool       string
@@ -1206,10 +1212,23 @@ type Config struct {
 	WaitForBeltSteps bool
 
 	Workspace string // tools root here; all relative paths resolve inside it
-	Model     string
-	APIKey    string
-	BaseURL   string
-	Sources   modelsource.Set
+	// Seat is the executor this session owns: every tool call runs on it, so
+	// the class the workspace declared and the seal after each call follow the
+	// session and never a path. Nil is a session with no cell, whose calls run
+	// on the host; see [Config.seat].
+	Seat procexec.Seat
+	// Interrupted is what the last run of this conversation's cell left
+	// unfinished: the model is told once, on its next turn, that those calls were
+	// cut off (interrupted.go). Nil is nothing to tell.
+	Interrupted procexec.Interrupted
+	// Machine is the session's view of the device it runs on, for the setup
+	// turn (setup.go). Nil is a session with no cell: it has nothing to set up.
+	Machine Machine
+	// Seals is what this session's seat says about its seals, so a surface
+	// showing this session reads this session's own state. It belongs to the
+	// seat: whoever builds one builds the other, and a config with no seat has
+	// none. Nil draws and says nothing.
+	Seals SealState
 	// AuthKeySource explains a refused worker account without supplying routing
 	// settings to a worker whose completer already owns its endpoint and key.
 	// Nil keeps ordinary sessions on their own profile and source ladder.
@@ -1218,6 +1237,10 @@ type Config struct {
 	// worker. Account-aware completers leave it empty and resolve the qualified
 	// model themselves; the auth explanation never supplies this value.
 	workerWireModel string
+	Model           string
+	APIKey          string
+	BaseURL         string
+	Sources         modelsource.Set
 
 	// There is no app-attribution field here any more. The three that used to
 	// be forwarded to the provider client — a referer, a title, a category
@@ -3637,4 +3660,39 @@ type Agent struct {
 	// under it, and a measurement must never be able to contend with the turn it
 	// is measuring.
 	phase phaseHeart
+}
+
+// seat is the executor this session's tool calls run on. A session with no
+// cell says so by name: it is on the host seat.
+func (c Config) seat() procexec.Seat {
+	if c.Seat == nil {
+		return procexec.Host
+	}
+	return c.Seat
+}
+
+// seatFor is the seat a turn's tool calls run on: the session's own, or its
+// setup form when the turn is a setup turn (setup.go).
+func (c Config) seatFor(ctx context.Context) procexec.Seat {
+	if inSetup(ctx) {
+		return procexec.ForSetup(c.seat())
+	}
+	return c.seat()
+}
+
+// rootContext is where work that belongs to the session and not to a turn
+// starts from: a background task, an orchestrated run, a resumed one. It
+// carries the session's seat, so a tool call below it runs where the session
+// says and never falls back to the host by accident.
+func (a *Agent) rootContext() context.Context {
+	return procexec.With(context.Background(), a.config.seat())
+}
+
+// rootContext is the graph's own: its owner's, and the host's only for a graph
+// that has no owner (a standing item's throwaway).
+func (g *TaskGraph) rootContext() context.Context {
+	if g.home == nil {
+		return procexec.With(context.Background(), procexec.Host)
+	}
+	return g.home.rootContext()
 }

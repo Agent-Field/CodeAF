@@ -253,6 +253,7 @@ var settingReaders = map[string]string{
 	KeyTaskParallel:  "TaskParallelAt",
 	KeyTaskMaxLoad:   "TaskMaxLoadAt",
 	KeyTaskMinFreeMB: "TaskMinFreeMBAt",
+	KeyCellBudget:    "CellBudgetGBAt",
 	// The task model is read by the v3 door and becomes session.Config.TaskModel,
 	// which a proposal that names no model of its own resolves through
 	// (internal/session's taskmodel.go). It names the accessor the door touches,

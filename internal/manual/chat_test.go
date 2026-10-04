@@ -36,6 +36,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
 
 		{"what can you do", "what-i-can-do"},
+		{"my task had uncommitted edits when I moved the chat to another machine, are they lost", "home"},
+		{"does a task's working copy come along when I continue a chat here", "home"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},
@@ -2151,6 +2153,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"all my tasks disappeared after a restart", "tasks"},
 		{"does a quick task come back after I close codeaf", "tasks"},
 		{"does a quick task resume when I reopen the conversation", "tasks"},
+		{"codeaf was killed while a command was running, will it run again when I come back", "sessions-and-rewind"},
+		{"I killed codeaf and a command it started is still running", "sessions-and-rewind"},
 		// The sixteenth wave, and every one of these is a real model choosing
 		// wrongly before the wording was fixed: a READ-ONLY survey that got a
 		// branch, a quick task cut at twenty files that ran out of rounds, and
@@ -2962,6 +2966,101 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// device had been stopped. It cannot any more, and the words a person brings
 		// to that are the two sentences they just read on their own screen.
 		{"it said paired and then that the device was stopped, what happened?", "reaching-this-machine-without-ssh"},
+		// PAIRING ANOTHER COMPUTER, ASKED IN THE WORDS OF SOMEBODY WITH A NEW LAPTOP.
+		// The code, the three words and the one attempt are one page; the verbs
+		// (`/pair`, `codeaf pair`, `/sync`, `/link`, `/laptop`) are how a person
+		// finds it, and none of these asks for the remote-access door.
+		{"how do I use this on my laptop", "use-this-on-another-computer"},
+		{"connect another computer", "use-this-on-another-computer"},
+		{"sync my chats", "use-this-on-another-computer"},
+		{"pair", "use-this-on-another-computer"},
+		{"get my chats on my other computer", "use-this-on-another-computer"},
+		{"move my chats to a new machine", "use-this-on-another-computer"},
+		{"can I use codeaf on two computers", "use-this-on-another-computer"},
+		{"how do I get my chats on my phone", "use-this-on-another-computer"},
+		{"I got a new laptop", "use-this-on-another-computer"},
+		{"log in on another machine", "use-this-on-another-computer"},
+		{"share my conversation with my other computer", "use-this-on-another-computer"},
+		{"what is the code for", "use-this-on-another-computer"},
+		{"the code did not work", "use-this-on-another-computer"},
+		{"I lost my laptop and it had my chats", "use-this-on-another-computer"},
+		{"what does /pair do", "use-this-on-another-computer"},
+		{"what are the three words it shows on both screens", "use-this-on-another-computer"},
+		{"it asks y / n about a device, what do I answer", "use-this-on-another-computer"},
+		{"someone typed a wrong code, new code", "use-this-on-another-computer"},
+		{"how many tries does a pairing code get", "use-this-on-another-computer"},
+		{"does the relay see my chats when I pair", "use-this-on-another-computer"},
+		{"can I use my own relay to pair", "use-this-on-another-computer"},
+		{"sync is off (CODEAF_SYNC_URL=off); pairing needs a sync address", "use-this-on-another-computer"},
+		{"does revoking a device take my chats back", "use-this-on-another-computer"},
+		// LOCKING OUT A LOST COMPUTER FOR GOOD, ASKED BY SOMEBODY WHO READ THAT
+		// REVOKING IS NOT ENOUGH. The words are the wish (lock it out, make it
+		// useless), the verb they will have met (rotate), and the worry (what does
+		// the stolen one still have).
+		{"my laptop was stolen and I want it locked out for good", "lock-out-a-lost-computer"},
+		{"codeaf identity rotate", "lock-out-a-lost-computer"},
+		{"how do I rotate my identity", "lock-out-a-lost-computer"},
+		{"make a new identity so the stolen computer cannot read my new chats", "lock-out-a-lost-computer"},
+		{"what does a stolen computer still keep after I rotate", "lock-out-a-lost-computer"},
+		{"do I have to change my provider keys after a rotation", "lock-out-a-lost-computer"},
+		{"it says this identity was already rotated", "lock-out-a-lost-computer"},
+		{"a rotation stopped half way, what now", "lock-out-a-lost-computer"},
+		{"what does /laptop do", "use-this-on-another-computer"},
+		{"how do I move my identity to another machine without a relay", "use-this-on-another-computer"},
+		{"no pairing is waiting under 42", "use-this-on-another-computer"},
+		{"what does codeaf pair do", "use-this-on-another-computer"},
+		{"what does the relay store about me", "relay-what-it-stores-and-sees"},
+		{"can the relay operator read my chat titles", "relay-what-it-stores-and-sees"},
+		{"what metadata can the relay see, like my IP address", "relay-what-it-stores-and-sees"},
+		{"is there a hosted relay or do I run my own", "relay-hosted-or-your-own"},
+		{"how do I set CODEAF_SYNC_URL", "relay-hosted-or-your-own"},
+		{"codeaf relay --listen --store how do I run my own relay", "relay-hosted-or-your-own"},
+		{"is there a docker image for the relay", "relay-hosted-or-your-own"},
+		{"is there a storage limit on the relay", "relay-limits-and-refusals"},
+		{"why does my chat not sync and say nothing, is the relay full", "relay-limits-and-refusals"},
+		{"what is the limit on new identities from one network", "relay-limits-and-refusals"},
+		{"the chat says the relay has no room left", "relay-limits-and-refusals"},
+		{"the relay is asking this computer to slow down", "relay-limits-and-refusals"},
+		{"I lost all my computers, can I recover my chats", "losing-every-device"},
+		{"is there a codeaf identity rotate", "losing-every-device"},
+		{"I typed the code on the first screen and nothing happened", "use-this-on-another-computer"},
+		// THE CROSS-COMPUTER FEATURES, ASKED IN A PERSON'S OWN WORDS: quiet first
+		// launch, the link and its token, the devices list, taking a chat back, what a
+		// move carries, and memory across computers.
+		{"is my code sent anywhere before I pair", "use-this-on-another-computer"},
+		{"does codeaf send anything before I pair a second computer", "use-this-on-another-computer"},
+		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer"},
+		{"what is the https codeaf.agentfield.ai/p link", "add-or-remove-a-computer"},
+		{"what is the bare token for pairing a headless server", "add-or-remove-a-computer"},
+		{"how do I pair a server with no browser", "add-or-remove-a-computer"},
+		{"how do I approve a new computer from a terminal", "add-or-remove-a-computer"},
+		{"why does it say running on build-box offline", "home"},
+		{"what does the offline holder mean when I try to continue a chat", "continuing-a-chat-on-another-computer"},
+		{"what does leave it there do", "continuing-a-chat-on-another-computer"},
+		{"when was a device last seen", "add-or-remove-a-computer"},
+		{"what does the removed computer see after I remove it", "add-or-remove-a-computer"},
+		{"what happens to node_modules when I move a chat", "home"},
+		{"are my job logs moved with the chat", "home"},
+		{"does the task history come with the chat to another computer", "home"},
+		{"do kept branches come along when I move a chat", "home"},
+		{"does my spend move with a chat to another computer", "home"},
+		{"do my usage numbers sync between computers", "home"},
+		{"two files with the same name in different case after a move", "home"},
+		{"a folder was left out of the move because it could not be read", "home"},
+		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer"},
+		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer"},
+		{"why does it say this chat is arriving", "continuing-a-chat-on-another-computer"},
+		{"does /remember work on my other computer", "what-i-remember"},
+		{"are my memories shared across computers", "what-i-remember"},
+		{"too many pairing attempts from this network", "relay-limits-and-refusals"},
+		{"this computer was revoked what does it say", "add-or-remove-a-computer"},
+		{"how do I use my own relay instead of the hosted one", "relay-hosted-or-your-own"},
+		{"where does sync go by default", "relay-hosted-or-your-own"},
+		{"the pairing link says it ran out before anyone approved it", "add-or-remove-a-computer"},
+		{"the link says that request was already answered", "add-or-remove-a-computer"},
+		{"it says the check number does not fit that device", "add-or-remove-a-computer"},
+		{"how many pairing links can I make in an hour", "add-or-remove-a-computer"},
+		{"why is my memory missing on the new laptop", "what-i-remember"},
 		// THE TERMINAL VERBS. Six of them — `why`, `notebook`, `competence`,
 		// `services`, `wake` and `rebuild` — were in no page at all, so a person
 		// who asked the chat how to see what a piece of work did was answered by
@@ -2969,6 +3068,25 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		// gate that would have caught the omission is
 		// TestTheChatManualMentionsEveryVerbTheCommandLineAnswersTo.
 		{"can I run this without the chat", "running-from-the-terminal"},
+		{"how do I list my chats on every machine from the terminal", "running-from-the-terminal"},
+		{"codeaf cell list --all", "running-from-the-terminal"},
+		{"a chat is running on my other computer how does home show it", "home"},
+		{"what does studio offline mean on a chat row", "home"},
+		{"home says other machines unreachable", "home"},
+		{"how do I turn on sync between my machines", "running-from-the-terminal"},
+		{"what is CODEAF_SYNC_URL", "running-from-the-terminal"},
+		{"how often does sync send my turns CODEAF_SYNC_INTERVAL_MS", "running-from-the-terminal"},
+		{"cell list says sync is off", "running-from-the-terminal"},
+		{"where are my chats stored", "use-this-on-another-computer"},
+		{"how do I turn off sync", "use-this-on-another-computer"},
+		{"how do I self-host the relay", "use-this-on-another-computer"},
+		{"is my code private when my chats sync", "use-this-on-another-computer"},
+		{"which relay do my chats sync through by default", "use-this-on-another-computer"},
+		{"how do I continue a chat here that my other computer left", "home"},
+		{"what does last durable turn ago up to turns may still be on studio mean", "home"},
+		{"my unsaved edits here were kept as turns", "home"},
+		{"how do I discard the turns from a branch row", "home"},
+		{"can I merge a branch from another machine", "home"},
 		{"how do I update codeaf to the latest version", "running-from-the-terminal"},
 		{"how do I install the latest dev build beside my codeaf", "running-from-the-terminal"},
 		{"what is devaf", "running-from-the-terminal"},
@@ -3868,5 +3986,136 @@ func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
 			where = append(where, section.Page+" · "+section.Title)
 		}
 		t.Errorf("%q does not reach what-i-remember · %q; it reached %v", question, title, where)
+	}
+}
+
+func TestTheCellReportQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"how much data did syncing this conversation upload", "codeaf cell report [<cell>]"},
+		{"how do I see the bytes and requests a sync used", "one row per flush"},
+		{"does codeaf send my sync usage numbers anywhere", "Nothing is exported unless you"},
+		{"can I export the sync cost report to a file", "codeaf cell report --export <file>"},
+		{"do the sync stats contain my file names or titles", "no file names, no titles and no content"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a running-from-the-terminal section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
+func TestTheMovedChatQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"set this machine up", "Set this machine up like <device> had it?"},
+		{"why is node_modules missing after I continued the chat here", "`node_modules` (with a `package-lock.json`"},
+		{"my dev server is not running after I moved", "`was running there:` the commands"},
+		{"does set up run npm ci without asking again", "consent for exactly the commands the card lists"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "home" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a home section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
+func TestTheSupersededChatQuestionsReachTheAnswer(t *testing.T) {
+	for _, probe := range []struct{ asked, says string }{
+		{"another machine continued my chat and this window only shows it", "this window now only shows it"},
+		{"why did my tool call not run after I continued the chat on my laptop", "a tool call the model tries here answers with that same line"},
+		{"what happens to the turns I had not synced when another computer took over the conversation", "`<K> turns from <device>: discard`"},
+		{"does closing the chat let another machine take it over", "lets go of it"},
+		{"sync says my computer's clock is off", "clock is off by more than 5 minutes"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "running-from-the-terminal" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a running-from-the-terminal section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
+func TestTheDeviceQuestionsReachTheirPages(t *testing.T) {
+	const add, cont, naming = "add-or-remove-a-computer", "continuing-a-chat-on-another-computer", "naming-a-device"
+	for _, probe := range []struct{ asked, page, says string }{
+		{"why can't I type in this chat", cont, "Your words stay in the box"},
+		{"my message did not send and home opened with a question", cont, "Continue this chat here?"},
+		{"continue on this machine", cont, "Continue spark's latest chat here?"},
+		{"what does running on spark mean", cont, "Move here"},
+		{"what does moved from spark in 3.2s mean", cont, "Everything as you left it."},
+		{"what is the card that says set this machine up", cont, "set up"},
+		{"what does the hollow dot next to a device mean", add, "(offline)"},
+		{"how do I add another computer", add, "On the new device, install and run: codeaf pair"},
+		{"how do I add another machine", add, "alt+d how"},
+		{"can I paste the link here on home", add, "paste it anywhere on home"},
+		{"what does codeaf pair approve do", add, "codeaf pair approve <link-or-code>"},
+		{"what is the check number on the new device", add, "Check number 4821. Approve only if"},
+		{"what does codeaf pair --code do", add, "codeaf pair --code"},
+		{"how do I remove a computer", add, "r remove"},
+		{"what does the dot next to a computer mean", add, "○ dumb (offline)"},
+		{"I was told this computer was removed", add, "this device was removed by another of your devices"},
+		{"how do I rename this computer", naming, "codeaf devices rename \"atlas\""},
+		{"why does it show my hostname", naming, "Because you never named this device"},
+		{"how do I change what my device is called", naming, "press `n`"},
+		{"can I name a device when I join", naming, "codeaf pair --name"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a %s section that says %q", probe.asked, probe.page, probe.says)
+		}
+	}
+}
+
+func TestTheCrossComputerQuestionsReachTheFactThatAnswersThem(t *testing.T) {
+	for _, probe := range []struct{ asked, page, says string }{
+		{"is my code sent anywhere before I pair", "use-this-on-another-computer", "no device record reaches the relay"},
+		{"what does sync is waiting until another machine is added mean", "use-this-on-another-computer", "That is not a fault."},
+		{"how do I pair a server with no browser", "add-or-remove-a-computer", "the bare token `<code>.<key>`"},
+		{"the pairing link says it ran out before anyone approved it", "add-or-remove-a-computer", "a link is good for 10 minutes"},
+		{"how many pairing links can I make in an hour", "add-or-remove-a-computer", "at most 10 new links in an hour and 3 waiting at once"},
+		{"what happens to node_modules when I move a chat", "home", "`node_modules` (with a `package-lock.json`"},
+		{"are my job logs moved with the chat", "home", "`logs/jobs/<n>.log`"},
+		{"does my spend move with a chat to another computer", "home", "read again from its sealed record"},
+		{"does my task branch come with me", "home", "the branch it kept is put back in your project on this machine at the same commit"},
+		{"can I read the job log on my other computer", "continuing-a-chat-on-another-computer", "A single such file over 1 MiB stays behind"},
+		{"is there a size limit on task journals when I move a chat", "continuing-a-chat-on-another-computer", "A task journal has no size limit and always moves whole."},
+		{"is the task history carried to the other computer", "continuing-a-chat-on-another-computer", "rebuilt from the chat's own record"},
+		{"does /remember work on my other computer", "what-i-remember", "when that chat is continued there"},
+		{"how do I take a chat back from my other computer", "continuing-a-chat-on-another-computer", "Nothing has to be returned or switched off first."},
+		{"what happens if two computers continue the same chat at once", "continuing-a-chat-on-another-computer", "The slower one sees `another device continued this chat first`"},
+		{"where does sync go by default", "relay-hosted-or-your-own", "https://codeaf.agentfield.ai/fabric"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == probe.page && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a %s section that says %q", probe.asked, probe.page, probe.says)
+		}
 	}
 }

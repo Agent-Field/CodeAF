@@ -342,8 +342,14 @@ var groundLadder = []groundRung{universeRung{}, snapshotRung{}, copyRung{}}
 // admitted and its first request, which were fifteen on a laptop for weeks with
 // nothing anywhere saying where they went.
 func carveGround(ctx context.Context, order groundOrder) (taskTree, error) {
+	return carveGroundDown(ctx, groundLadder, order)
+}
+
+// carveGroundDown is [carveGround] over the rungs it is handed, which is how a
+// copy that must be a particular kind of world comes back by the same walk.
+func carveGroundDown(ctx context.Context, ladder []groundRung, order groundOrder) (taskTree, error) {
 	var climb groundClimb
-	for _, rung := range groundLadder {
+	for _, rung := range ladder {
 		reaches, stood := rung.reach(order)
 		climb.stood(stood)
 		if !reaches {
@@ -836,7 +842,7 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, err
 	// other way — cut at HEAD, then bring the parent's work across — is the
 	// shape that leaves a window where the child is standing in the wrong world,
 	// and it is also two answers to "what is this branch based on".
-	base, err := sealGroundWork(order.root, order.title)
+	base, err := sealGroundWorkExclusively(order)
 	if err != nil {
 		// A SEAL THAT WOULD NOT GO IS NOT A GROUND THIS RUNG CANNOT REACH — it
 		// is this rung reaching it and failing, and the two used to be one
@@ -866,6 +872,18 @@ func (snapshotRung) carve(ctx context.Context, order groundOrder) (taskTree, err
 		tree.seal = strings.TrimSpace(head)
 	}
 	return tree, nil
+}
+
+// sealGroundWorkExclusively seals the order's ground under the repository lock
+// that [cutWorktreeFrom] holds while it adds a worktree. A division's parts are
+// carved at the same moment, and a sibling's worktree lives inside this very
+// tree: sealing while its directory is half made makes `git add` stop at an
+// embedded repository that "does not have a commit checked out", and a part
+// fails for no reason of its own. Under the lock a sibling is either not there
+// yet or whole.
+func sealGroundWorkExclusively(order groundOrder) (string, error) {
+	defer lockGitRoot(order.place, order.root)()
+	return sealGroundWork(order.root, order.title)
 }
 
 // sealGroundWork commits a working tree AS IT STANDS onto whatever branch the

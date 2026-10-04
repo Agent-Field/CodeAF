@@ -1663,25 +1663,30 @@ func (a *app) switchActiveConnection() {
 }
 
 func (a *app) cyclePlanPause(id string) {
-	rows := config.PersistedSources(a.profileDir)
-	for index := range rows {
-		if !strings.EqualFold(rows[index].ID, id) {
-			continue
+	err := config.UpdateSources(a.profileDir, func(rows []config.PersistedSource) []config.PersistedSource {
+		for index := range rows {
+			if strings.EqualFold(rows[index].ID, id) {
+				rows[index].PlanPaused = cycledPlanPause(rows[index].PlanPaused)
+			}
 		}
-		if strings.TrimSpace(rows[index].PlanPaused) == config.PlanPausedUseMeter {
-			rows[index].PlanPaused = config.PlanPausedWait
-		} else {
-			rows[index].PlanPaused = config.PlanPausedUseMeter
-		}
-		if err := config.WriteSources(a.profileDir, rows); err != nil {
-			a.modelServiceMessage(err.Error())
-			return
-		}
-		a.reloadModelSources()
-		a.sheet.sources = a.sources
-		a.sheet.build()
+		return rows
+	})
+	if err != nil {
+		a.modelServiceMessage(err.Error())
 		return
 	}
+	a.reloadModelSources()
+	a.sheet.sources = a.sources
+	a.sheet.build()
+}
+
+// cycledPlanPause is the other answer to what a service does when its plan runs
+// out: meter the spend, or wait.
+func cycledPlanPause(current string) string {
+	if strings.TrimSpace(current) == config.PlanPausedUseMeter {
+		return config.PlanPausedWait
+	}
+	return config.PlanPausedUseMeter
 }
 
 func (a *app) reconnectModelService(id string) tea.Cmd {

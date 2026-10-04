@@ -458,6 +458,8 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (sta
 
 	agent := &Agent{config: cfg, model: cfg.Model, id: NewSessionID()}
 	agent.jobs = newJobRegistry(cfg.Workspace, cfg.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.seat = cfg.seat()
+	agent.jobs.lifecycle = lifecycleOf(cfg.Machine)
 	agent.connect = newConnectHub(cfg)
 	agent.tools = agent.belt()
 
@@ -708,7 +710,7 @@ func standingSessionDir(item standing.Item) string {
 	if transcript == "" {
 		return ""
 	}
-	return filepath.Dir(transcript)
+	return DirOf(transcript)
 }
 
 // Run is one firing's work: a fresh headless session in the run folder, a turn

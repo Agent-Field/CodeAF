@@ -48,6 +48,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/codexauth"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
@@ -311,6 +312,12 @@ type Conversation struct {
 	// Nil leaves whatever the surface holds, which is every local door — there is
 	// no link — and every door whose conversations share one connection.
 	Link *LinkSeam
+
+	// Seal is what THIS conversation's seat says about its seals ([SealSeam]).
+	// It is per conversation because a window can switch between them: the
+	// segment and the sentences are the shown session's own. The zero value is
+	// a conversation whose calls are not sealed, which draws nothing.
+	Seal SealSeam
 }
 
 // TaskOwnerAsk names the conversation a task page wants to look into.
@@ -430,6 +437,34 @@ type CodexFlow interface {
 
 // Options configures one surface.
 type Options struct {
+	// Machines lists this person's chats on their other machines. Nil is a
+	// machine that syncs nothing, and home then draws nothing extra: the
+	// sessions panel is exactly what it was (homepanel_machines.go).
+	Machines chatlist.Source
+	// Takeover continues a chat from another machine here. Nil is a machine
+	// that cannot, and the offer is then absent rather than failing
+	// (homepanel_continue.go).
+	Takeover Taker
+	// Pairing shares this computer's chats with another, and receives another's
+	// (pair.go). Nil is a connection that cannot, and /pair then says so in one
+	// sentence while the first-run screen leaves its code field out.
+	Pairing Pairing
+	// Approvals answers a new device's request to join and revokes devices
+	// (approve.go, devices.go). Nil is a connection that cannot, and the
+	// screens are then absent.
+	Approvals Approvals
+	// Fleet counts this person's paired devices, which keeps the home card that
+	// offers another machine on screen until there are two
+	// (homeband_addmachine.go). Nil is a connection that cannot count, and the
+	// card is then absent.
+	Fleet Fleet
+	// Branches is what a branch row can do. A nil verb is absent from the row.
+	Branches BranchActions
+	// Notices is the desk a goroutine outside the surface puts a sentence on
+	// when the person has to read it at once: another machine took the chat
+	// over, the computer's clock is off (notices.go). Nil is a door that has
+	// none.
+	Notices *Notices
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 	// EngineRoad says the conversation is in a daemon on this machine. It is
@@ -1186,6 +1221,12 @@ type Options struct {
 	// asked about. Only the --host door fills it (cmd/codeaf's chatv3_host.go).
 	Link LinkSeam
 
+	// Seal is what the door can tell this surface about the sealing of the
+	// conversation's calls: whether the last seal failed, and the sentences
+	// worth saying when that changes ([SealSeam]). The zero value is a surface
+	// whose calls are not sealed, which draws nothing.
+	Seal SealSeam
+
 	// Width and Height are the size a headless driver is pretending to be.
 	// A real terminal answers this itself and these stay zero; a pipe cannot
 	// be asked, and a renderer with no size draws nothing at all.
@@ -1417,6 +1458,7 @@ func Run(ctx context.Context, opts Options) error {
 	// a second surface in one process cannot inherit the first one's desk.
 	defer listenForNews(surface.news)()
 	defer surface.news.close()
+	defer surface.noticeBell.close()
 	defer surface.leaving.close()
 	// AND THE DOOR LINE ENDS WITH THE WINDOW, after what is already in it has
 	// been asked (offloop.go): a person's last keystroke before they close a

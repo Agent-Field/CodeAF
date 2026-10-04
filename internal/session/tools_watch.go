@@ -64,7 +64,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -72,7 +71,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
-	"github.com/Agent-Field/codeaf/internal/processgroup"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 )
 
 const (
@@ -662,30 +661,23 @@ func (r *jobRegistry) runTick(ctx context.Context, spec watchSpec) (string, stri
 	defer cancel()
 
 	shell, shellArgs := jobShell()
-	process := exec.CommandContext(tickCtx, shell, append(shellArgs, spec.command)...)
-	process.Dir = r.workspace
-	process.Env = os.Environ()
-	// A new SESSION rather than a bare process group: the group-kill below is
+	// A new SESSION rather than a bare process group: the group-kill is
 	// unchanged (a session leader leads its own group), and a tick's child that
 	// opens /dev/tty is refused rather than drawing on the person's frame
-	// (jobs.go states the measured case).
-	processgroup.ConfigureDetached(process)
-	// The timeout kills the whole GROUP, not just the shell: a tick that ran
-	// `sleep 600 | grep x` leaves two processes, and killing the parent alone
-	// would leak the rest of them once per tick, forever.
-	process.Cancel = func() error {
-		_ = processgroup.Kill(process.Process.Pid)
-		return nil
-	}
-	// And the wait is bounded too, because output is copied from a pipe a
-	// grandchild may still hold open after its parent died.
-	process.WaitDelay = 2 * time.Second
-
+	// (jobs.go states the measured case). The timeout kills the whole GROUP,
+	// not just the shell: a tick that ran `sleep 600 | grep x` leaves two
+	// processes, and killing the parent alone would leak the rest of them once
+	// per tick, forever. And the wait is bounded too, because output is copied
+	// from a pipe a grandchild may still hold open after its parent died.
 	var captured bytes.Buffer
-	process.Stdout = &captured
-	process.Stderr = &captured
-
-	err := process.Run()
+	res, err := r.runner(r.workspace).Exec(tickCtx, procexec.ExecRequest{
+		Argv: append([]string{shell}, append(shellArgs, spec.command)...), Env: os.Environ(),
+		Group: procexec.GroupSession, WaitDelay: 2 * time.Second,
+		Combined: true, Stream: true,
+	}, func(c procexec.Chunk) { captured.Write(c.Data) })
+	if res.Status != "" {
+		err = res.Failure()
+	}
 	output := captured.String()
 	switch {
 	case tickCtx.Err() == context.DeadlineExceeded:

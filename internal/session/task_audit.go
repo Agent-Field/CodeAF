@@ -2912,7 +2912,7 @@ func (a *Agent) reauditTask(node *TaskNode) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(a.rootContext())
 	// NO JOB ROW, NO RE-AUDIT. The registry is where the cancel is registered, so
 	// a goroutine started without one would run on a bare context: no `jobs kill`,
 	// no death at [Agent.Close], and a landing that finishes a node into a session
@@ -3111,6 +3111,16 @@ func (a *Agent) auditorModel() string {
 		return model
 	}
 	return judge
+}
+
+// rolePinned reports whether `model` is what the person pinned `role` to in
+// `models.roles`, which is the one way a role's model is an explicit pick.
+func (a *Agent) rolePinned(role roles.Role, model string) bool {
+	a.mu.Lock()
+	source := a.config.RolesSource
+	a.mu.Unlock()
+	pin, ok := roles.Pinned(roles.Source(source), role)
+	return ok && strings.EqualFold(pin, strings.TrimSpace(model))
 }
 
 // newAuditAgent builds the judge: the same loop and the same package as the

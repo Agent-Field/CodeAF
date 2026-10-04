@@ -547,11 +547,10 @@ func TestASlowListenerNeverHoldsTheTurnThatIsTellingIt(t *testing.T) {
 // counter that allocated would put a heap write on each of those three
 // chokepoints, and a test that only timed them would pass on a fast machine
 // while the garbage piled up on a slow one. So both halves are pinned: zero
-// allocations per call, and a million calls of each kind finishing far inside
-// a single pace-law budget. The 200ms bound is deliberately generous — three
-// million atomic adds take on the order of ten — because a busy machine is slow
-// for reasons that are not this code's, and a test that fails on a loaded
-// laptop tests the laptop rather than the counters.
+// allocations per call, and the fastest batch of each kind staying far inside
+// a per-call budget. The fastest batch, not the total, is measured because a
+// busy machine is slow for reasons that are not this code's, and a test that
+// fails on a loaded laptop tests the laptop rather than the counters.
 func TestSessionCountersCostNothingBesideTheWork(t *testing.T) {
 	if allocs := testing.AllocsPerRun(100, func() {
 		telemetry.CountTurn()
@@ -569,30 +568,38 @@ func TestSessionCountersCostNothingBesideTheWork(t *testing.T) {
 		t.Fatalf("CountToolCall allocated %v times per call, want 0", allocs)
 	}
 
-	const counterCalls = 1_000_000
-	const counterBudget = 200 * time.Millisecond
+	var bare atomic.Int64
+	budget := counterBudgetFactor * max(fastestPerCall(func() { bare.Add(1) }), time.Nanosecond)
+	for name, count := range map[string]func(){
+		"CountTurn":      func() { telemetry.CountTurn() },
+		"CountModelCall": func() { telemetry.CountModelCall(true, 0.001) },
+		"CountToolCall":  func() { telemetry.CountToolCall(true) },
+	} {
+		if per := fastestPerCall(count); per > budget {
+			t.Errorf("%s cost %v per call at its fastest, want at most %v", name, per, budget)
+		}
+	}
+}
 
-	started := time.Now()
-	for i := 0; i < counterCalls; i++ {
-		telemetry.CountTurn()
-	}
-	if took := time.Since(started); took > counterBudget {
-		t.Fatalf("a million CountTurn took %v, want at most %v", took, counterBudget)
-	}
+// counterBudgetFactor is how many bare atomic adds one counter call may cost.
+// The budget is a multiple of an add measured in the same run, so it follows the
+// machine's speed instead of assuming one; the widest counter is about two adds,
+// and a lock, an allocation or a syscall costs well over four.
+const counterBudgetFactor = 4
 
-	started = time.Now()
-	for i := 0; i < counterCalls; i++ {
-		telemetry.CountModelCall(true, 0.001)
+// fastestPerCall times many short batches and returns the best per-call cost.
+// A busy machine can only add time to a batch, never remove it, so the fastest
+// batch is the one that ran undisturbed: load cannot fail the law, while a
+// counter that is really slow is slow in every batch and still fails it.
+func fastestPerCall(call func()) time.Duration {
+	const batches, callsPerBatch = 200, 5_000
+	best := time.Duration(1<<63 - 1)
+	for b := 0; b < batches; b++ {
+		started := time.Now()
+		for i := 0; i < callsPerBatch; i++ {
+			call()
+		}
+		best = min(best, time.Since(started)/callsPerBatch)
 	}
-	if took := time.Since(started); took > counterBudget {
-		t.Fatalf("a million CountModelCall took %v, want at most %v", took, counterBudget)
-	}
-
-	started = time.Now()
-	for i := 0; i < counterCalls; i++ {
-		telemetry.CountToolCall(true)
-	}
-	if took := time.Since(started); took > counterBudget {
-		t.Fatalf("a million CountToolCall took %v, want at most %v", took, counterBudget)
-	}
+	return best
 }

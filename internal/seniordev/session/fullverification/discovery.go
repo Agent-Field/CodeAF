@@ -608,6 +608,7 @@ func declaresPytest(workspace string) bool {
 // the project's own directory — its virtual environment's when it has one
 // ([ProjectVenv]) — so an installed or local pytest is usable.
 func pythonHasPytest(workspace string) bool {
+	//codeaf:plumbing probe for an installed python module
 	command := exec.Command(projectPython(workspace), "-c", "import pytest")
 	command.Dir = workspace
 	return command.Run() == nil

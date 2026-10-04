@@ -116,6 +116,7 @@ func TestPairingThenAWholeConversationThroughARelayThatCannotReadIt(t *testing.T
 		Device:  machine,
 		Devices: devices,
 		Desk:    desk,
+		Approve: func(string, string) bool { return true },
 		Open: func(tunnel io.ReadWriteCloser) {
 			// THE TUNNEL GOES STRAIGHT INTO internal/remote WITH NO WIRE
 			// CHANGE. That is the whole reason Serve was written against a
@@ -163,7 +164,8 @@ func TestPairingThenAWholeConversationThroughARelayThatCannotReadIt(t *testing.T
 	}
 	defer func() { _ = tunnel.Close() }()
 
-	if len(said) < 3 || said[0] != PairingPreamble(name) || said[1] != PairingWeight || said[2] != PairedLine(name) {
+	if len(said) < 4 || said[0] != PairingPreamble(name) || said[1] != PairingWeight ||
+		!strings.HasPrefix(said[2], WaitingLine(name, "")) || said[3] != PairedLine(name) {
 		t.Fatalf("the pairing said %q", said)
 	}
 
@@ -223,7 +225,7 @@ func openWhenReady(ctx context.Context, reach Reach) (*Tunnel, error) {
 		if err == nil {
 			return tunnel, nil
 		}
-		if !strings.Contains(err.Error(), "not connected to the relay") || time.Now().After(deadline) {
+		if !strings.Contains(err.Error(), "not connected to the service") || time.Now().After(deadline) {
 			return nil, err
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -249,6 +251,7 @@ func TestARevokedDeviceIsTurnedAwayByTheMachineItself(t *testing.T) {
 		Device:  machine,
 		Devices: devices,
 		Desk:    desk,
+		Approve: func(string, string) bool { return true },
 		Open:    func(tunnel io.ReadWriteCloser) { <-time.After(time.Second); _ = tunnel.Close() },
 	}
 	ctx, stop := context.WithCancel(context.Background())

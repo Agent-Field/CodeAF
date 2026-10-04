@@ -48,7 +48,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -202,13 +201,7 @@ func (a *Agent) composeMusic(ctx context.Context, client MediaGenerator, composi
 		a.failMusic(composing, "could not save the generated music: "+err.Error())
 		return
 	}
-	RecordArtifact(a.config.ArtifactsIndex, Artifact{
-		Path:    path,
-		Session: a.journalID(),
-		Title:   mediaTitle(request.Prompt, path),
-		Kind:    "audio",
-		Created: time.Now(),
-	})
+	a.recordArtifact(path, mediaTitle(request.Prompt, path), "audio")
 
 	landed := describeGeneratedMusic(a.config.Workspace, path, len(response.Audio), model)
 	fmt.Fprintln(composing.sink, landed)
