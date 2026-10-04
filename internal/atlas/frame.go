@@ -2,6 +2,7 @@ package atlas
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -94,13 +95,27 @@ func (c *canvas) put(x, y int, ch rune, fg string, bold bool) {
 	c.cells[y*c.w+x] = cell{ch: ch, fg: fg, bold: bold}
 }
 
-// text writes s from (x, y), clipping at the right edge.
+// cw is how many cells s takes: one per rune, since every glyph the map draws
+// is a single cell wide. len would count bytes and push text after a '—' or
+// '•' right, over whatever border follows it.
+func cw(s string) int { return utf8.RuneCountInString(s) }
+
+// text writes s from (x, y), one cell per rune, clipping at the right edge.
 func (c *canvas) text(x, y int, s, fg string, bold bool) {
-	for i, r := range s {
+	i := 0
+	for _, r := range s {
 		if x+i >= c.w {
 			return
 		}
 		c.put(x+i, y, r, fg, bold)
+		i++
+	}
+}
+
+// fill blanks every cell of r, so a panel drawn over the map hides it.
+func (c *canvas) fill(r Rect) {
+	for y := r.Y; y < r.Y+r.H; y++ {
+		c.hline(y, r.X, r.X+r.W-1, ' ', "", false)
 	}
 }
 
@@ -216,13 +231,13 @@ func (m *Model) geometry() geom {
 // room, the short subtitle, each inside a one-cell border.
 func nodeSize(n Node, compact bool) (int, int) {
 	if compact {
-		w := len(n.Label) + 4
+		w := cw(n.Label) + 4
 		if w > 18 {
 			w = 18
 		}
 		return w, 3
 	}
-	w := len(n.Label)
+	w := cw(n.Label)
 	if len(n.Short) > w {
 		w = len(n.Short)
 	}
@@ -447,9 +462,17 @@ func edgeCells(a, b Rect, offA, offB int) []pt {
 	return rasterize(route(a, b, offA, offB))
 }
 
-// drawEdge paints one arrow and, when showLabel, its label at the middle of
-// the path, truncated to the screen.
-func drawEdge(c *canvas, a, b Rect, offA, offB int, label, color string, showLabel bool) {
+// edgeLabel is an arrow's caption waiting to be placed: labels go down after
+// the boxes, so a box can never cut through one.
+type edgeLabel struct {
+	cells []pt
+	text  string
+	color string
+}
+
+// drawEdge paints one arrow and answers its label, when showLabel, for
+// placeLabels to put down once the boxes are drawn.
+func drawEdge(c *canvas, a, b Rect, offA, offB int, label, color string, showLabel bool) *edgeLabel {
 	cells := edgeCells(a, b, offA, offB)
 	for i, cell := range cells {
 		var ch rune
@@ -473,21 +496,59 @@ func drawEdge(c *canvas, a, b Rect, offA, offB int, label, color string, showLab
 		}
 		c.put(cell.X, cell.Y, ch, color, false)
 	}
-	if showLabel && label != "" && len(cells) > 2 {
-		mid := cells[len(cells)/2]
-		maxLen := 30
-		if c.w-2 < maxLen {
-			maxLen = c.w - 2
+	if !showLabel || label == "" || len(cells) <= 2 {
+		return nil
+	}
+	maxLen := min(30, c.w-2)
+	if maxLen < 4 {
+		maxLen = 4
+	}
+	text := " " + label + " "
+	if cw(text) > maxLen {
+		text = string([]rune(text)[:maxLen-1]) + "…"
+	}
+	return &edgeLabel{cells: cells, text: text, color: color}
+}
+
+// placeLabels puts each label on its own arrow, as near the middle as it can
+// sit without covering a box or an earlier label; a label with no free spot
+// is left off, since the detail pane and the flow panel still say it.
+func placeLabels(c *canvas, labels []*edgeLabel, boxes []Rect) {
+	taken := append([]Rect(nil), boxes...)
+	free := func(r Rect) bool {
+		if r.X < 0 || r.X+r.W > c.w || r.Y < 1 || r.Y >= c.h {
+			return false
 		}
-		if maxLen < 4 {
-			maxLen = 4
+		for _, t := range taken {
+			if r.X < t.X+t.W && t.X < r.X+r.W && r.Y < t.Y+t.H && t.Y < r.Y+r.H {
+				return false
+			}
 		}
-		text := " " + label + " "
-		if len([]rune(text)) > maxLen {
-			text = string([]rune(text)[:maxLen-1]) + "…"
+		return true
+	}
+	for _, l := range labels {
+		if l == nil {
+			continue
 		}
-		x := clamp(mid.X-len(text)/2, 0, max(0, c.w-len(text)))
-		c.text(x, mid.Y, text, color, false)
+		w := cw(l.text)
+		mid := len(l.cells) / 2
+		// Walk out from the middle: mid, mid+1, mid-1, mid+2, ...
+		for k := 0; k < len(l.cells); k++ {
+			i := mid + (k+1)/2
+			if k%2 == 0 {
+				i = mid - k/2
+			}
+			if i < 1 || i >= len(l.cells)-1 {
+				continue
+			}
+			p := l.cells[i]
+			r := Rect{X: clamp(p.X-w/2, 0, max(0, c.w-w)), Y: p.Y, W: w, H: 1}
+			if free(r) {
+				c.text(r.X, r.Y, l.text, l.color, false)
+				taken = append(taken, r)
+				break
+			}
+		}
 	}
 }
 
@@ -517,7 +578,7 @@ func wrapText(s string, width int) []string {
 		}
 		line := words[0]
 		for _, w := range words[1:] {
-			if len(line)+1+len(w) <= width {
+			if cw(line)+1+cw(w) <= width {
 				line += " " + w
 				continue
 			}

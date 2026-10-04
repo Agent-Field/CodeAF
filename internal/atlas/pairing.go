@@ -5,8 +5,8 @@ package atlas
 // data_test.go checks that for every registered map.
 var Pairing = &Map{
 	Name:        "pairing",
-	Title:       "Wormhole atlas",
-	Description: "codeaf on two computers: pair with a link, continue a chat on the other (PR 1738)",
+	Title:       "Pairing",
+	Description: "two computers, one chat",
 	Nodes: []Node{
 		// ── machines ──────────────────────────────────────────────────────
 		{ID: "machineA", Label: "Machine A", Short: "existing device", Kind: KindMachine, X: 0.08, Y: 0.1,

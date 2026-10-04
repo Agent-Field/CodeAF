@@ -13,8 +13,13 @@ func (m *Model) drawFrame() string {
 	c := newCanvas(g.W, g.H)
 	m.hits = m.hits[:0]
 	m.drawHeader(c, g)
-	m.drawEdges(c, g)
+	labels := m.drawEdges(c, g)
 	m.drawNodes(c, g)
+	boxes := make([]Rect, 0, len(m.data.Nodes))
+	for _, n := range m.data.Nodes {
+		boxes = append(boxes, m.rects[n.ID])
+	}
+	placeLabels(c, labels, boxes)
 	if m.flow >= 0 {
 		m.drawFlowPanel(c, g)
 	}
@@ -33,10 +38,10 @@ func (m *Model) drawFrame() string {
 func (m *Model) drawHeader(c *canvas, g geom) {
 	head := "◆ " + m.data.Title
 	c.text(0, 0, head, colAccent, true)
-	x := len(head) + 2
+	x := cw(head) + 2
 	if g.W >= 110 && m.data.Description != "" {
 		c.text(x, 0, m.data.Description, colDim, false)
-		x += len(m.data.Description) + 2
+		x += cw(m.data.Description) + 2
 	}
 	for i, f := range m.data.Flows {
 		name := f.Title
@@ -51,8 +56,8 @@ func (m *Model) drawHeader(c *canvas, g geom) {
 		} else {
 			c.text(x, 0, label, colFg, false)
 		}
-		m.hits = append(m.hits, hit{rect: Rect{X: x, Y: 0, W: len(label), H: 1}, kind: hitTab, arg: i})
-		x += len(label) + 2
+		m.hits = append(m.hits, hit{rect: Rect{X: x, Y: 0, W: cw(label), H: 1}, kind: hitTab, arg: i})
+		x += cw(label) + 2
 		if x >= g.W {
 			return
 		}
@@ -61,8 +66,9 @@ func (m *Model) drawHeader(c *canvas, g geom) {
 
 // drawEdges paints every arrow once, dimmed or lit by what is selected, and
 // then the active flow step's arrow again in the accent colour with its
-// message as the label.
-func (m *Model) drawEdges(c *canvas, g geom) {
+// message as the label. It answers the labels, which go down after the boxes.
+func (m *Model) drawEdges(c *canvas, g geom) []*edgeLabel {
+	var labels []*edgeLabel
 	step, inFlow := m.activeStep()
 	stepEdge := Edge{}
 	if inFlow {
@@ -86,10 +92,10 @@ func (m *Model) drawEdges(c *canvas, g geom) {
 			}
 		}
 		showLabel := !inFlow && (touches || !g.compact)
-		drawEdge(c, m.rects[e.From], m.rects[e.To], offs[i][0], offs[i][1], e.Label, color, showLabel)
+		labels = append(labels, drawEdge(c, m.rects[e.From], m.rects[e.To], offs[i][0], offs[i][1], e.Label, color, showLabel))
 	}
 	if !inFlow {
-		return
+		return labels
 	}
 	// The active arrow travels the overview edge's ports when it follows one,
 	// from the end that matches the step's own direction.
@@ -107,8 +113,10 @@ func (m *Model) drawEdges(c *canvas, g geom) {
 			offA, offB = offB, offA
 		}
 	}
-	drawEdge(c, m.rects[step.From], m.rects[step.To], offA, offB,
+	// The active step's label goes first, so it wins the best spot.
+	active := drawEdge(c, m.rects[step.From], m.rects[step.To], offA, offB,
 		itoa(m.step+1)+". "+step.Message, colAccent, true)
+	return append([]*edgeLabel{active}, labels...)
 }
 
 // drawNodes paints the boxes over the arrows: a rounded border in the kind's
@@ -124,6 +132,8 @@ func (m *Model) drawNodes(c *canvas, g geom) {
 		if isActive {
 			color = colAccent
 		}
+		// Blank the inside first: arrows run under boxes, never through them.
+		c.fill(r)
 		m.drawBox(c, r, color, isSel)
 		if !isActive && isSel {
 			color = colEdgeHi
@@ -178,14 +188,15 @@ func (m *Model) drawFlowPanel(c *canvas, g geom) {
 	f := m.data.Flows[m.flow]
 	s := f.Steps[m.step]
 	top := g.H - 1 - g.flowH
+	c.fill(Rect{X: 0, Y: top, W: g.W, H: g.flowH})
 	c.hline(top, 0, g.W-1, '─', colAccent, false)
 	row := top + 1
 	prev := "◀ prev"
 	c.text(1, row, prev, colAccent, false)
-	m.hits = append(m.hits, hit{rect: Rect{X: 1, Y: row, W: len(prev), H: 1}, kind: hitPrev})
+	m.hits = append(m.hits, hit{rect: Rect{X: 1, Y: row, W: cw(prev), H: 1}, kind: hitPrev})
 	next := "next ▶"
-	c.text(g.W-1-len(next), row, next, colAccent, false)
-	m.hits = append(m.hits, hit{rect: Rect{X: g.W - 1 - len(next), Y: row, W: len(next), H: 1}, kind: hitNext})
+	c.text(g.W-1-cw(next), row, next, colAccent, false)
+	m.hits = append(m.hits, hit{rect: Rect{X: g.W - 1 - cw(next), Y: row, W: cw(next), H: 1}, kind: hitNext})
 
 	// The story's first line names where the flow stands: title, step number,
 	// one dot per step, and a marker while it plays itself.
@@ -196,7 +207,7 @@ func (m *Model) drawFlowPanel(c *canvas, g geom) {
 		}
 		s = fitRune(s, g.W-1-x)
 		c.text(x, row+1, s, fg, bold)
-		x += len(s)
+		x += cw(s)
 	}
 	put(f.Title, colAccent, true)
 	put(" step "+itoa(m.step+1)+"/"+itoa(len(f.Steps)), colDim, false)
@@ -252,11 +263,12 @@ func (m *Model) drawDetail(c *canvas, g geom) {
 		w, x = sidePaneW, g.W-sidePaneW
 	}
 	r := Rect{X: x, Y: 1, W: w, H: g.mapH}
+	c.fill(r)
 	m.drawBox(c, r, kindColor[n.Kind], false)
 	title := " " + n.Label + " "
 	c.text(r.X+1, r.Y, fitRune(title, r.W-2), kindColor[n.Kind], false)
 	foot := " esc close "
-	c.text(r.X+r.W-1-len(foot), r.Y+r.H-1, foot, colMuted, false)
+	c.text(r.X+r.W-1-cw(foot), r.Y+r.H-1, foot, colMuted, false)
 
 	inner := r.W - 4
 	y := r.Y + 1
@@ -340,11 +352,12 @@ func (m *Model) drawHelp(c *canvas, g geom) {
 		h = g.H - 2
 	}
 	r := Rect{X: max(0, (g.W-w)/2), Y: max(0, (g.H-h)/2), W: w, H: h}
+	c.fill(r)
 	m.drawBox(c, r, colAccent, false)
 	title := " help · legend "
-	c.text(r.X+(r.W-len(title))/2, r.Y, title, colAccent, false)
+	c.text(r.X+(r.W-cw(title))/2, r.Y, title, colAccent, false)
 	foot := " ? or esc closes "
-	c.text(r.X+(r.W-len(foot))/2, r.Y+r.H-1, foot, colMuted, false)
+	c.text(r.X+(r.W-cw(foot))/2, r.Y+r.H-1, foot, colMuted, false)
 
 	inner := r.W - 4
 	y := r.Y + 1
@@ -395,7 +408,7 @@ func (m *Model) drawStatus(c *canvas, g geom) {
 	if m.flow >= 0 {
 		hints = "←/→ step · p play · 0 overview · tab select · ? help · q quit"
 	}
-	if g.W < len(hints)+2 {
+	if g.W < cw(hints)+2 {
 		hints = hints[:max(0, g.W-3)] + "…"
 	}
 	c.text(0, g.H-1, hints, colMuted, false)
