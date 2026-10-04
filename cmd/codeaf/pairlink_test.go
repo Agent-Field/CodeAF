@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -47,7 +48,8 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := pair.WantsToJoinLine("laptop", "linux") + "\n" + pair.CheckQuestion(check) + "  y / n "
+	// The asking computer names its own operating system, so on a Mac it says Mac.
+	want := pair.WantsToJoinLine("laptop", runtime.GOOS) + "\n" + pair.CheckQuestion(check) + "  y / n "
 	if !strings.HasPrefix(out.String(), want) || !strings.Contains(out.String(), pair.ApprovedLine("laptop")) {
 		t.Fatalf("the approving terminal printed:\n%s\nwant it to start:\n%s", out.String(), want)
 	}
