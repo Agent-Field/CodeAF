@@ -223,31 +223,56 @@ func TestALowBalanceRoutesTheCrewToFreePools(t *testing.T) {
 	}
 }
 
-// An environment key outranks the saved key, so only its own balance may
-// change defaults. A stale profile-key reading must never affect that account.
+// C7: Low credits follow the new default-endpoint ladder. Only the OpenRouter
+// variable outranks a saved connection; the OpenAI variable leaves its balance
+// in charge, whether that variable holds a usable fallback or an unrelated key.
 func TestLowCreditsFollowTheEffectiveEnvironmentKey(t *testing.T) {
-	for _, variable := range []string{APIKeyEnv, "OPENAI_API_KEY"} {
-		t.Run(variable, func(t *testing.T) {
+	for _, row := range []struct {
+		name, variable, key string
+		profileWins         bool
+	}{
+		{"OpenRouter", APIKeyEnv, "sk-or-v1-test-environment", false},
+		{"usable OpenAI fallback", "OPENAI_API_KEY", "sk-or-v1-test-fallback", true},
+		{"unrelated OpenAI", "OPENAI_API_KEY", "sk-proj-test-ignored", true},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			t.Setenv("CODEAF_BASE_URL", "")
 			dir := creditsProfile(t)
-			if err := WriteAPIKey(dir, "profile-key"); err != nil {
+			if err := WriteAPIKey(dir, "sk-or-v1-test-profile"); err != nil {
 				t.Fatal(err)
 			}
-			if err := WriteCreditsReading(dir, "profile-key", credits.Reading{Known: true, Low: true}); err != nil {
+			if err := WriteCreditsReading(dir, "sk-or-v1-test-profile", credits.Reading{Known: true, Low: true}); err != nil {
 				t.Fatal(err)
 			}
-			t.Setenv(variable, "environment-key")
-			if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel {
-				t.Fatal("the profile key's reading changed the environment key's defaults")
+			t.Setenv(row.variable, row.key)
+			if CreditsLowAt(dir) != row.profileWins {
+				t.Fatal("balance did not follow the effective key")
 			}
-			if err := WriteCreditsReading(dir, "environment-key", credits.Reading{Known: true, Low: true}); err != nil {
+			want := DefaultModel
+			if row.profileWins {
+				want = FreeChatModel
+			}
+			if ChatDefaultAt(dir) != want {
+				t.Fatal("model default did not follow the effective balance")
+			}
+			if err := WriteCreditsReading(dir, row.key, credits.Reading{Known: true, Low: true}); err != nil {
 				t.Fatal(err)
 			}
-			if !CreditsLowAt(dir) || ChatDefaultAt(dir) != FreeChatModel {
-				t.Fatal("the environment key's low reading did not select free defaults")
+			if row.profileWins {
+				// The one recorded balance now belongs to the ignored key. It
+				// cannot select free defaults for the saved connection.
+				if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel {
+					t.Fatal("ignored key's balance selected free defaults")
+				}
+				if err := WriteCreditsReading(dir, "sk-or-v1-test-profile", credits.Reading{Known: true, Low: true}); err != nil {
+					t.Fatal(err)
+				}
+			} else if !CreditsLowAt(dir) || ChatDefaultAt(dir) != FreeChatModel {
+				t.Fatal("effective low balance did not select free defaults")
 			}
-			t.Setenv(variable, "replacement-key")
-			if CreditsLowAt(dir) || ChatDefaultAt(dir) != DefaultModel {
-				t.Fatal("the previous environment key's reading changed the replacement's defaults")
+			t.Setenv(row.variable, "sk-or-v1-test-replacement")
+			if CreditsLowAt(dir) != row.profileWins || ChatDefaultAt(dir) != want {
+				t.Fatal("replacement balance did not follow the new ladder")
 			}
 		})
 	}

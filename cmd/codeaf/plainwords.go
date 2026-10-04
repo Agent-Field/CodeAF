@@ -246,12 +246,12 @@ var remedies = []struct {
 	},
 	{
 		fact:   "no auth credentials found",
-		remedy: "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.",
+		remedy: "export OPENROUTER_API_KEY and run it again.",
 	},
 	{
 		// The most common first-run failure there is ([config.ErrNoAPIKey]).
-		fact:   "openrouter_api_key (or openai_api_key) is required",
-		remedy: "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.",
+		fact:   "openrouter_api_key is required",
+		remedy: "export OPENROUTER_API_KEY and run it again.",
 	},
 	{
 		fact:   "insufficient credits",
@@ -261,6 +261,10 @@ var remedies = []struct {
 
 func remedyFor(fact string) string {
 	lowered := strings.ToLower(fact)
+	// Older callers can still send the retired missing-key sentence. Match
+	// that refusal precisely so a key-source suffix on an auth error never
+	// gains unrelated missing-key advice.
+	lowered = strings.ReplaceAll(lowered, "openrouter_api_key (or openai_api_key) is required", "openrouter_api_key is required")
 	for _, known := range remedies {
 		if strings.Contains(lowered, known.fact) {
 			return known.remedy

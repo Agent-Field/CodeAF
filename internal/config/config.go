@@ -319,7 +319,7 @@ type Config struct {
 // door can tell "no key" from "config broken": the first is a person who has
 // not set up yet, and the interactive chat opens anyway and asks them
 // ([LoadKeyless]); the second stops the launch, whoever is watching.
-var ErrNoAPIKey = errors.New(APIKeyEnv + " (or OPENAI_API_KEY) is required")
+var ErrNoAPIKey = errors.New(APIKeyEnv + " is required")
 
 // ProfileDirEnv is the variable that moves the whole profile — the key, the
 // settings file, the measured behaviour — somewhere else. It is what an

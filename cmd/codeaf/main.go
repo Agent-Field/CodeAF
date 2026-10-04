@@ -255,7 +255,7 @@ func execute() (code int) {
 		// `plan`, `models` and `run` said only the machine half — so four
 		// callers out of five were told the cause and not what to do about it.
 		fmt.Fprintln(os.Stderr, "codeaf needs a model to work with.")
-		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.")
+		fmt.Fprintln(os.Stderr, "export OPENROUTER_API_KEY and run it again.")
 		return 1
 	default:
 		// And every other failure passes the one rule about what a person may
@@ -606,16 +606,19 @@ const legacyEnvironmentHelp = "AFORGE_* names are read for one release when CODE
 
 var environmentText = `codeaf — the environment
 
-Every variable below is read at launch. A variable set here always wins over the
-` + "`/settings`" + ` sheet in the chat, and that row reads read-only in the sheet rather
-than fighting your shell.
+Variables are read when a process starts. An idle folder engine restarts when
+this terminal's relevant environment changes. A busy engine stays running; the
+window names codeaf engine --stop --workspace <dir> to pick up the change.
+A variable that pins a ` + "`/settings`" + ` row wins over that row.
 
 ` + legacyEnvironmentHelp + `
 
-  OPENROUTER_API_KEY   a provider key, and the first of three places one is
-                       looked for — this, then OPENAI_API_KEY, then the key
-                       kept in your profile. Any one of them is enough, so a
-                       machine set up in the chat needs no variable at all;
+  OPENROUTER_API_KEY   first choice; then the key kept in your profile; then
+                       OPENAI_API_KEY only with an OpenRouter-shaped key.
+                       Other OpenAI keys are ignored on OpenRouter.
+                       With a custom CODEAF_BASE_URL, the order is this,
+                       OPENAI_API_KEY (any shape), then your profile key.
+                       A connected machine needs no variable at all;
                        ` + "`codeaf doctor`" + ` names the one that answered.
   CODEAF_CODEX_ISSUER  ` + codexauth.DefaultIssuer + ` by default; the sign-in issuer
                        used by ` + "`codeaf connect codex`" + `.
