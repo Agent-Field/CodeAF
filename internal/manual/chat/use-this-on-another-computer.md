@@ -166,7 +166,7 @@ If the other computer already has chats of its own, it keeps them and nothing ch
 this computer already has chats of its own, so they stay local and nothing was changed; to replace them with the other device's, run this again with --replace
 ```
 
-Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. Chats sealed under the old identity can no longer be read after that.
+Run `codeaf pair <code> --replace` if you want the chats of the other computer instead. In the chat, type `/pair <code> --replace`: it asks first, states that this machine's own chats will be permanently replaced and that chats sealed under the old identity can no longer be read afterwards, and replaces them only after an explicit yes. A no, or closing the panel with esc, leaves everything as it was.
 
 If the other computer already has the same chats, it says:
 

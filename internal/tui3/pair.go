@@ -35,6 +35,13 @@ import (
 type Pairing interface {
 	Offer(ctx context.Context, ui pair.OfferUI) (label string, err error)
 	Join(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error)
+	// JoinReplacing is Join with this computer's own chats given up: the same
+	// errand wearing the terminal's --replace (cmd/codeaf/pair.go). The panel
+	// asks before it is called, and only calls it on an explicit yes.
+	JoinReplacing(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error)
+	// HasOwnChats reports whether this home holds an identity of its own — the
+	// fact a plain Join refuses on, and the reason a replace asks first.
+	HasOwnChats() bool
 }
 
 // The panel's own words. Everything a person is TOLD comes from internal/pair;
@@ -48,8 +55,17 @@ const (
 	pairJoiningWord = "joining…"
 	// pairSharingKeys, pairAskKeys and pairDoneKeys are the hint under the box.
 	pairSharingKeys = "esc stop"
+	pairCodeKeys    = "c copy code · esc stop"
 	pairAskKeys     = pair.AskChoice + " · esc is n"
 	pairDoneKeys    = "esc close"
+	// replaceAskLine is the question a joining side with chats of its own reads
+	// before anything is replaced — the same facts the manual states
+	// (use-this-on-another-computer.md), and no default: esc is a no.
+	replaceAskLine = "replacing this computer's own chats with the other computer's " +
+		"cannot be undone: its chats are gone for good, and chats sealed under the " +
+		"old identity cannot be read afterwards. Replace them?"
+	// replaceDeclinedLine is the word when the answer was no.
+	replaceDeclinedLine = "nothing was replaced: this computer's chats stay."
 )
 
 // pairRun is one pairing in flight: the context that ends it and the road its
@@ -107,8 +123,11 @@ type (
 	// pairBurned is the code being gone: a wrong one was typed.
 	pairBurned struct{}
 	// pairAsked is a person being put a question. The answer goes down reply.
+	// raw carries a question the door wrote whole, when the pairing's own
+	// AskChatsLine shape does not fit what is being asked.
 	pairAsked struct {
 		label, words string
+		raw          string
 		reply        chan bool
 	}
 	// pairWaiting is the joining side waiting on the other computer's person.
@@ -133,6 +152,20 @@ type pairUI struct{ run *pairRun }
 func (u pairUI) Show(code *pair.Code, lines string) { u.run.send(pairShown{code: code, lines: lines}) }
 func (u pairUI) Burned()                            { u.run.send(pairBurned{}) }
 func (u pairUI) Waiting(words string)               { u.run.send(pairWaiting{words: words}) }
+
+// Confirm puts a question of the door's own before the person — the in-chat
+// replace's confirmation — and answers as Ask answers: no when the context
+// ends, which is how closing the panel becomes a no.
+func (u pairUI) Confirm(ctx context.Context, question string) bool {
+	reply := make(chan bool, 1)
+	u.run.send(pairAsked{raw: question, reply: reply})
+	select {
+	case yes := <-reply:
+		return yes
+	case <-ctx.Done():
+		return false
+	}
+}
 
 // Ask blocks the door's goroutine and never the frame. It answers no when the
 // context ends, which is how silence becomes a no.
@@ -222,7 +255,11 @@ func (p *pairPanel) rows(width int, now time.Time, pal palette) []string {
 		say(p.waiting, pal.dim)
 	}
 	if p.ask != nil {
-		say(pair.AskChatsLine(p.ask.label, p.ask.words), pal.ink)
+		if p.ask.raw != "" {
+			say(p.ask.raw, pal.ink)
+		} else {
+			say(pair.AskChatsLine(p.ask.label, p.ask.words), pal.ink)
+		}
 	}
 	if p.result != "" {
 		say(p.result, pal.ink)
@@ -272,6 +309,8 @@ func (p *pairPanel) hint() string {
 		return pairAskKeys
 	case p.done:
 		return pairDoneKeys
+	case p.code != nil:
+		return pairCodeKeys
 	}
 	return pairSharingKeys
 }
@@ -282,6 +321,14 @@ func (p *pairPanel) hint() string {
 // and not started twice: the process-wide guard in internal/pair would refuse
 // the second, but the person's answer should be the panel they already had.
 func (a *app) runPair(typed string) tea.Cmd {
+	// THE IN-CHAT REPLACE IS TYPED, AND IT IS TYPED WHOLE: the flag rides the
+	// command the way the terminal's does (cmd/codeaf/pair.go), never a stray
+	// keystroke. `--replace` is the primary spelling and the only one.
+	replace := false
+	if line := strings.TrimSuffix(strings.TrimSpace(typed), "--replace"); line != typed {
+		replace = true
+		typed = strings.TrimSpace(line)
+	}
 	if isLinkShape(typed) {
 		return a.openApprove(typed)
 	}
@@ -303,15 +350,30 @@ func (a *app) runPair(typed string) tea.Cmd {
 			run.send(pairEnded{line: sharedLine(label, err), ok: err == nil})
 		})
 	}
-	return a.startPair(pairJoiningWord, joinWork(door, typed))
+	return a.startPair(pairJoiningWord, joinWork(door, typed, replace))
 }
 
 // joinWork is the joining side's errand: type the code, and end on the line for
 // how it went. It is the same errand from /pair <code> and from the first-run
 // screen's field, so the two cannot end in different words.
-func joinWork(door Pairing, typed string) func(*pairRun) {
+func joinWork(door Pairing, typed string, replace bool) func(*pairRun) {
 	return func(run *pairRun) {
-		joined, err := door.Join(run.ctx, typed, pairUI{run})
+		ui := pairUI{run}
+		// THE REPLACE ASKS FIRST, and only the door knows whether there is
+		// anything to lose: a home with no identity of its own is joined as if
+		// it were plain. A no — typed or by closing the panel — leaves
+		// everything exactly as it was.
+		if replace && door.HasOwnChats() && !ui.Confirm(run.ctx, replaceAskLine) {
+			run.send(pairEnded{line: replaceDeclinedLine, ok: true})
+			return
+		}
+		var joined pair.Joined
+		var err error
+		if replace {
+			joined, err = door.JoinReplacing(run.ctx, typed, ui)
+		} else {
+			joined, err = door.Join(run.ctx, typed, ui)
+		}
 		run.send(pairEnded{line: joinedLine(joined, err), ok: err == nil})
 	}
 }
@@ -373,6 +435,8 @@ func (a *app) pairKey(msg tea.KeyPressMsg) tea.Cmd {
 	case p.ask != nil && (key == "n" || key == "esc"):
 		p.answer(false)
 	case p.ask != nil:
+	case key == "c" && p.code != nil:
+		return a.pairCopyCode()
 	case key == "esc" || (p.done && key == "enter"):
 		p.close()
 	}

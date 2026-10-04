@@ -488,6 +488,7 @@ var commands = []command{
 		alias: []string{"sync", "link", "laptop"}},
 	{name: "pair", args: "<code>", desc: "…join the chats of the computer that shows that code"},
 	{name: "pair", args: "<link>", desc: "…approve a new computer from the link it shows"},
+	{name: "pair", args: "<code> --replace", desc: "…join, replacing this computer's own chats with its chats"},
 	{name: "devices", desc: "list your devices · n renames this one, r removes one"},
 	// THE ARCHITECTURE MAP, INSIDE THE CONVERSATION (atlascmd.go). It rides
 	// beside the pair rows because it is a picture OF that work, and it is

@@ -18,8 +18,10 @@ import (
 // the other computer would have and reads what the screen says back.
 
 type fakePairing struct {
-	offer func(ctx context.Context, ui pair.OfferUI) (string, error)
-	join  func(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error)
+	offer    func(ctx context.Context, ui pair.OfferUI) (string, error)
+	join     func(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error)
+	replace  func(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error)
+	hasChats bool
 }
 
 func (f *fakePairing) Offer(ctx context.Context, ui pair.OfferUI) (string, error) {
@@ -29,6 +31,12 @@ func (f *fakePairing) Offer(ctx context.Context, ui pair.OfferUI) (string, error
 func (f *fakePairing) Join(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error) {
 	return f.join(ctx, typed, ui)
 }
+
+func (f *fakePairing) JoinReplacing(ctx context.Context, typed string, ui pair.JoinUI) (pair.Joined, error) {
+	return f.replace(ctx, typed, ui)
+}
+
+func (f *fakePairing) HasOwnChats() bool { return f.hasChats }
 
 // pairRig runs the commands a pairing returns the way the program would: each
 // on its own goroutine, its message fed back through Update, and whatever
