@@ -55,6 +55,12 @@ type WhoIs struct {
 	// from whatever binary is on disk now. It is refused while there is work in
 	// flight, and the answer says which happened.
 	StandDown bool `json:"standDown,omitempty"`
+	// IgnoreWatchGrace asks an environment replacement to disregard only a
+	// recently active window whose pipe has gone. Attached windows, streams,
+	// unanswered questions and handed-off work still keep the host alive.
+	// A stalled window may redial onto the replacement, with every journal
+	// flushed and reopened, exactly as an older-build replacement already does.
+	IgnoreWatchGrace bool `json:"ignoreWatchGrace,omitempty"`
 	// Anyway asks for the retirement even with work in flight, and there is
 	// exactly one caller: a person typing `codeaf engine --stop` on the machine
 	// itself, who has been told what is running and said stop anyway. A turn
