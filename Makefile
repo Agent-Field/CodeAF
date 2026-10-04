@@ -411,13 +411,13 @@ size: build
 
 # The end-of-change ritual in one word: prove it, then ship the binary, then
 # weigh it.
-# Read the release workflow so this gate follows the shipped platform list.
+# The shipped platform list: the six platforms upstream codeaf releases for.
+# This repository runs no GitHub workflows, so the list lives here.
 # The six builds share the normal GOCACHE, so a warm box pays far less than a
 # cold one; the printed duration is the whole step, cold or warm.
 build-cross:
 	@set -eu; started=$$(date +%s%N); \
-	targets="$$(awk '/^[[:space:]]*targets=\($$/ { in_targets=1; next } in_targets && /^[[:space:]]*\)/ { exit } in_targets { gsub(/"/, ""); if (NF == 2) print $$1 "/" $$2 }' .github/workflows/release.yml)"; \
-	test -n "$$targets"; \
+	targets="darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64"; \
 	for target in $$targets; do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		printf 'build-cross: %s/%s\n' "$$goos" "$$goarch"; \
