@@ -340,7 +340,7 @@ func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 					}
 				}
 				if place.cursor(keyed) != target {
-					t.Fatalf("the arrows never reached body line %d on the %s place", target, place.id.word())
+					t.Fatalf("the arrows never reached body line %d on the %s place: cursor %d ref %+v targets %+v", target, place.id.word(), place.cursor(keyed), keyed.tp.cur, keyed.tp.targets)
 				}
 				drive(t, clicked, tea.MouseClickMsg{X: placeClickX(clicked), Y: y, Button: tea.MouseLeft})
 				drive(t, keyed, key("enter"))

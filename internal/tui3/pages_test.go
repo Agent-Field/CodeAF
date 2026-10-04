@@ -375,14 +375,14 @@ func TestTheArrowOnlyOpensAStripWhereTheRowHasVerbs(t *testing.T) {
 			t.Fatalf("the strip is missing %q: %s", want, words)
 		}
 	}
-	// A row without a folder still has a name to copy and can be closed.
+	// A row without a folder still has a name to copy and can be deleted once it has a saved transcript.
 	drive(t, a, key("esc"))
 	bare := switcherRow{kind: switcherConversation, title: "Nowhere"}
-	if got := switcherVerbsFor(bare); len(got) != 2 || got[1].key != 'c' || got[0].key != 'x' || got[0].word != "close" {
+	if got := switcherVerbsFor(bare); len(got) != 2 || got[1].key != 'c' || got[0].key != 'x' || got[0].word != "delete" {
 		t.Fatalf("an addressless row offered %v", got)
 	}
 	bare.session.Archived = true
-	if got := switcherVerbsFor(bare); len(got) != 2 || got[1].key != 'c' || got[0].key != 'x' || got[0].word != "reopen" {
+	if got := switcherVerbsFor(bare); len(got) != 2 || got[1].key != 'c' || got[0].key != 'x' || got[0].word != "delete" {
 		t.Fatalf("an archived row offered %v", got)
 	}
 }

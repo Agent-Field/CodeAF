@@ -208,10 +208,11 @@ func (a *Agent) dropDeletedTasks(ids map[string]bool) error {
 }
 
 func purgeTaskRecords(file, sessionID string, ids map[string]bool, rows []TaskIndexEntry, checkpointWrite bool) error {
-	if err := purgeTaskIndex(file, sessionID, ids); err != nil {
+	blocked, err := purgeTaskCheckpoint(file, ids, checkpointWrite)
+	if err != nil {
 		return err
 	}
-	if err := purgeTaskCheckpoint(file, ids, checkpointWrite); err != nil {
+	if err := purgeTaskIndex(file, sessionID, ids, blocked); err != nil {
 		return err
 	}
 	for _, r := range rows {
@@ -245,6 +246,25 @@ func filterDeletedDocument(doc taskDocument, ids map[string]bool) taskDocument {
 		if ids[root] {
 			for id := range taskDeletionScope(rows, "", root) {
 				ids[id] = true
+			}
+		}
+	}
+	// Removing a prerequisite must not turn its unfinished dependents into
+	// runnable work after restart. Completed results still stand on their own.
+	blocked := map[uint64]bool{}
+	for changed := true; changed; {
+		changed = false
+		for i := range doc.Nodes {
+			r := &doc.Nodes[i]
+			if ids[strconv.FormatUint(r.ID, 10)] || blocked[r.ID] || r.State.settled() && r.State != TaskInterrupted {
+				continue
+			}
+			for _, dep := range r.DependsOn {
+				if ids[strconv.FormatUint(dep, 10)] || blocked[dep] {
+					r.State, r.Ending, r.Report = TaskFailed, TaskEndingUpstream, "dependency was deleted"
+					blocked[r.ID], changed = true, true
+					break
+				}
 			}
 		}
 	}
@@ -514,7 +534,7 @@ func commitTaskDeletions(file string, deleted, ids map[string]bool) error {
 	return nil
 }
 
-func purgeTaskIndex(file, sessionID string, ids map[string]bool) error {
+func purgeTaskIndex(file, sessionID string, ids map[string]bool, blocked map[string]taskRecord) error {
 	path := TaskIndexPath(file)
 	err := withTaskIndexLock(path, func() error {
 		raw, err := os.ReadFile(path)
@@ -532,6 +552,15 @@ func purgeTaskIndex(file, sessionID string, ids map[string]bool) error {
 			var row TaskIndexEntry
 			if json.Unmarshal([]byte(line), &row) == nil && row.SessionID == sessionID && (ids == nil || ids[row.ID]) {
 				continue
+			}
+			if r, ok := blocked[row.ID]; ok && row.SessionID == sessionID {
+				row.Status, row.Ending, row.Outcome = string(r.State), r.Ending, r.Report
+				row.EndedAt = r.EndedAt
+				raw, err := json.Marshal(row)
+				if err != nil {
+					return err
+				}
+				line = string(raw)
 			}
 			keep = append(keep, line)
 		}
@@ -556,24 +585,36 @@ func purgeTaskIndex(file, sessionID string, ids map[string]bool) error {
 	return nil
 }
 
-func purgeTaskCheckpoint(file string, ids map[string]bool, checkpointWrite bool) error {
-	var err error
+func purgeTaskCheckpoint(file string, ids map[string]bool, checkpointWrite bool) (map[string]taskRecord, error) {
+	blocked := map[string]taskRecord{}
 	checkpoint := taskCheckpointPath(file)
 	if ids == nil {
-		if err = os.Remove(checkpoint); err != nil && !os.IsNotExist(err) {
-			return err
+		if err := os.Remove(checkpoint); err != nil && !os.IsNotExist(err) {
+			return nil, err
 		}
 	} else if doc, ok := loadTaskCheckpoint(checkpoint); ok && checkpointWrite {
 		doc = filterDeletedDocument(doc, ids)
-		raw, _ := json.Marshal(doc)
+		for i := range doc.Nodes {
+			r := &doc.Nodes[i]
+			if r.State == TaskFailed && r.Ending == TaskEndingUpstream && r.Report == "dependency was deleted" {
+				if r.EndedAt.IsZero() {
+					r.EndedAt = time.Now()
+				}
+				blocked[strconv.FormatUint(r.ID, 10)] = *r
+			}
+		}
+		raw, err := json.Marshal(doc)
+		if err != nil {
+			return nil, err
+		}
 		if err = os.WriteFile(checkpoint+".delete-tmp", raw, 0600); err != nil {
-			return err
+			return nil, err
 		}
 		if err = os.Rename(checkpoint+".delete-tmp", checkpoint); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	return nil
+	return blocked, nil
 }
 
 func purgeTaskJournal(file, journal string) error {

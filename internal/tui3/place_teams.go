@@ -291,10 +291,10 @@ func (a *app) teamsWalk(dx, dy int) bool {
 		}
 		var score int
 		switch {
-		case dy < 0 && t.y < here.y && t.pane == here.pane:
-			score = (here.y-t.y)*1000 + abs(t.x0-here.x0)
-		case dy > 0 && t.y > here.y && t.pane == here.pane:
-			score = (t.y-here.y)*1000 + abs(t.x0-here.x0)
+		case dy < 0 && t.line < here.line && t.pane == here.pane:
+			score = (here.line-t.line)*1000 + abs(t.x0-here.x0)
+		case dy > 0 && t.line > here.line && t.pane == here.pane:
+			score = (t.line-here.line)*1000 + abs(t.x0-here.x0)
 		case dx < 0 && t.y == here.y && t.x0 < here.x0:
 			score = here.x0 - t.x0
 		case dx > 0 && t.y == here.y && t.x0 > here.x0:

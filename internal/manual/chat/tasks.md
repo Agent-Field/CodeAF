@@ -5468,7 +5468,10 @@ supports deletion. With no filter being typed, `x` opens the confirmation direct
 it also appears in the row's verbs. The top border asks `Stop work and permanently delete?`, with `cancel` selected by default and `delete`. `enter choose`
 and `esc cancel` appear at the bottom right. Deleting a conversation removes all
 its tasks. Deleting a task removes that task and its contained subtasks; a leaf
-removes only itself. Other tasks are kept. These rows have no close or reopen action.
+removes only itself. Other tasks are kept. Unfinished work that requires a deleted
+prerequisite becomes incomplete, including its dependent chain; completed results
+are preserved. A suggested dependency is advice and does not cancel work when
+deleted. These rows have no close or reopen action.
 
 A running task may separately offer `s stop it` on its verbs strip. That ends the
 work and keeps its saved record and branch, through the same engine door used by

@@ -942,7 +942,7 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.taskSheetTyped()
 		return nil, true
 	}
-	if key == "x" && a.taskSheetFilter() == "" {
+	if key == "x" && a.taskSheet.query.String() == "" {
 		if chat, ok := a.taskSheetChat(); ok {
 			return a.conversationDeleteOpen(chat.row.Transcript, chat.title), true
 		}

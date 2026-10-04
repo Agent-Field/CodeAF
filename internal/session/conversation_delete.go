@@ -15,7 +15,7 @@ import (
 
 // A tombstone prevents stale tabs and other windows from recreating a deleted
 // journal. Its companions remain available as deliverables; the transcript goes.
-const conversationDeletedFile = ".conversation-deleted"
+const conversationDeletedFile = teams.ConversationDeletedFile
 
 // SessionPath identifies the journal a process owns without exposing its config.
 func (a *Agent) SessionPath() string { return a.config.SessionFile }

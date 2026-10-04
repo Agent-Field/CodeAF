@@ -54,12 +54,17 @@ func (s *Store) DeleteSubtree(id string) ([]string, error) {
 			fresh.Deleted[key] = true
 		}
 	}
+	// Hard prerequisites remain gates even when their records are removed.
+	// Advice is not a gate and must not cancel otherwise independent work.
+	for id := range doomed {
+		cancelBlockedDependents(&fresh, id, "dependency was deleted", s.now().UTC())
+	}
 	for _, t := range fresh.Tasks {
 		kept := t.Dependencies[:0:0]
 		for _, d := range t.Dependencies {
 			if !doomed[d.TaskID] {
 				kept = append(kept, d)
-			} else if !terminal(t.Status) {
+			} else if d.Kind != DepSuggests && !terminal(t.Status) {
 				t.Status = StatusCancelled
 				t.Error = "dependency was deleted"
 				t.ClaimedBy = ""

@@ -151,6 +151,9 @@ func Save(profileDir string, teams []Team) error {
 			before = &File{Version: Version, localIdentities: true}
 		}
 		next := &File{Version: Version, Teams: teams, localIdentities: true}
+		if err := next.checkIntroducedConversations(before); err != nil {
+			return err
+		}
 		if err := next.CheckManagementChange(before); err != nil {
 			return err
 		}
@@ -194,6 +197,9 @@ func updateLocked(profileDir string, fn func(*File) error) (*File, error) {
 		return f, nil
 	}
 	tidy(f.Teams)
+	if err := f.checkIntroducedConversations(previous); err != nil {
+		return nil, err
+	}
 	if err := f.CheckManagementChange(previous); err != nil {
 		return nil, err
 	}

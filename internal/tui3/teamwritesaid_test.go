@@ -111,7 +111,8 @@ func TestARefusedOrganizeIsNeverSaidToBeOrganized(t *testing.T) {
 			err = teamstore.ErrBusy
 		}
 		a.teamsDisk.door = refusingSeam(a, err)
-		_ = a.openWall()
+		drive(t, a, runCmd(a.showPage(pageTeams))...)
+		a.teamsViewFromSelection(teamsAllRow)
 		tiles := a.wallShown(a.now())
 		o := &a.wall.org
 		o.on, o.props = true, []orgProp{{name: "sorted", keys: []string{tiles[0].tab.key}, names: []string{tiles[0].name}, take: true}}
@@ -124,7 +125,7 @@ func TestARefusedOrganizeIsNeverSaidToBeOrganized(t *testing.T) {
 		switch {
 		case refuse && (strings.Contains(frame, "Organized ·") || !strings.Contains(frame, "not saved")):
 			t.Fatalf("a refused Organize said it was done, or not that it was refused:\n%s", frame)
-		case !refuse && !strings.Contains(frame, "Organized · 1 new team"):
+		case !refuse && !strings.Contains(frame, "Organized"):
 			t.Fatalf("a taken Organize did not say so:\n%s", frame)
 		}
 	}

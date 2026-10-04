@@ -345,7 +345,7 @@ func TestAPlanVerbRefusalIsSpokenOnThePanesLine(t *testing.T) {
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a plan")
 	}
-	drive(t, a, key("x"))
+	drive(t, a, key("s"))
 	if !strings.Contains(a.pageMsg, "cannot be cancelled") {
 		t.Fatalf("the store's sentence went nowhere: %q", a.pageMsg)
 	}

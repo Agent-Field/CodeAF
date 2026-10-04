@@ -1074,7 +1074,8 @@ func wallCardBuildWithBorder(pal palette, title string, lines []wallCardLine, x,
 	card := wallCard{x: x, y: y, w: w}
 	top := border(box.tl + strings.Repeat(box.h, w-2) + box.tr)
 	if title != "" {
-		t := " " + title + " "
+		// Titles share the frame's width budget even for long Unicode names.
+		t := " " + ansi.Truncate(title, max(w-5, 0), "...") + " "
 		top = border(box.tl+box.h) + pal.ink(t) + border(strings.Repeat(box.h, max(w-3-ansi.StringWidth(t), 0))+box.tr)
 	}
 	card.rows = append(card.rows, top)

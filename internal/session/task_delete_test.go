@@ -79,6 +79,49 @@ func TestTaskDeleteSubtreePreservesSiblingsAndOtherOwnersAfterRestart(t *testing
 	}
 }
 
+func TestTaskDeleteOfflineBlocksUnfinishedDependentsAfterRestart(t *testing.T) {
+	root, _, file := taskDeleteFixture(t)
+	doc, ok := loadTaskCheckpoint(taskCheckpointPath(file))
+	if !ok {
+		t.Fatal("missing fixture checkpoint")
+	}
+	doc.Nodes[3].State = TaskQueued
+	doc.Nodes = append(doc.Nodes,
+		taskRecord{ID: 5, Title: "downstream", Brief: "do work", Acceptance: "done", State: TaskQueued, DependsOn: []uint64{4}},
+		taskRecord{ID: 6, Title: "independent", Brief: "do work", Acceptance: "done", State: TaskQueued},
+	)
+	doc.Seq = 6
+	writeCheckpoint(t, taskCheckpointPath(file), doc)
+	for _, id := range []string{"4", "5", "6"} {
+		appendTaskIndex(TaskIndexPath(file), TaskIndexEntry{ID: id, SessionID: "conversation", Status: string(TaskQueued)})
+	}
+	if err := DeleteTaskUnder(root, file, "1", nil); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(taskCheckpointPath(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := decodeTasks(raw)
+	if err != nil || len(restored.Nodes) != 3 {
+		t.Fatalf("restart lost siblings: %+v %v", restored, err)
+	}
+	for _, r := range restored.Nodes {
+		if r.ID == 6 {
+			if r.State != TaskQueued {
+				t.Fatal("independent work was changed")
+			}
+		} else if r.State != TaskFailed || r.Ending != TaskEndingUpstream || r.Report != "dependency was deleted" {
+			t.Fatalf("dependent can run without its prerequisite: %+v", r)
+		}
+	}
+	for _, r := range ReadTaskIndex(TaskIndexPath(file)) {
+		if r.SessionID == "conversation" && (r.ID == "4" || r.ID == "5") && r.Status != string(TaskFailed) {
+			t.Fatalf("index disagrees with checkpoint: %+v", r)
+		}
+	}
+}
+
 func TestTaskDeleteLeafAndConversationHaveDifferentScopes(t *testing.T) {
 	root, profile, file := taskDeleteFixture(t)
 	if err := DeleteTaskUnder(root, file, "3", nil); err != nil {

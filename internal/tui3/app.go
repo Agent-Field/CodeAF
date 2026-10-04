@@ -9097,6 +9097,14 @@ func (a *app) paste(text string) tea.Cmd {
 	text = strings.ReplaceAll(text, "\r", "\n")
 	// Creation and the grid own their clipboard input just as they own keys.
 	// A paste must never spill into the conversation draft behind them.
+	if a.tmembers.on {
+		if a.tmembers.member == "" && !a.tmembers.removing && !a.tmembers.choosingManager {
+			a.tmembers.filter.insert(strings.ReplaceAll(text, "\n", " "))
+			a.tmembers.cursor, a.tmembers.top = 0, 0
+		}
+		a.touch()
+		return nil
+	}
 	if a.tcreate.on {
 		text = strings.ReplaceAll(text, "\n", " ")
 		switch a.tcreate.field {

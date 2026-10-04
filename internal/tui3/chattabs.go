@@ -836,8 +836,25 @@ func (a *app) tabsFit(tabs []chatTab, room, door int) ([]tabPiece, []tabHit) {
 			if tab.here {
 				kind = tabHere
 			}
-			word := a.tabName(tab, room-tabInsetCells)
-			return finish([]tabPiece{{word: word, kind: kind, tab: tab}}, []tabHit{{span: hudSpan{from: 0, to: room}, kind: kind, tab: tab}}, room)
+			// Even the smallest strip keeps a visible name and a whole
+			// overflow count. Padded labels can otherwise become all spaces.
+			hidden := a.tabsFoldWord(len(tabs) - 1)
+			countW := ansi.StringWidth(hidden)
+			if door > 0 {
+				room += sepW
+			}
+			nameW := room - tabInsetCells
+			if countW > 0 && nameW > countW {
+				nameW -= countW
+			}
+			word := fitTabTitle(tab.word, nameW)
+			pieces := []tabPiece{{word: teamsPad(word, nameW), kind: kind, tab: tab}}
+			hits := []tabHit{{span: hudSpan{from: 0, to: nameW + tabInsetCells}, kind: kind, tab: tab}}
+			if nameW+tabInsetCells < room {
+				pieces = append(pieces, tabPiece{word: hidden, kind: tabFold})
+				hits = append(hits, tabHit{span: hudSpan{from: nameW + tabInsetCells, to: room}, kind: tabFold})
+			}
+			return finish(pieces, hits, room)
 		}
 		if a.canStart() && room >= sepW+3 {
 			return finish([]tabPiece{{word: a.tabSepWord(), quiet: true}, {word: " + ", kind: tabNew}}, []tabHit{{span: hudSpan{from: sepW, to: sepW + 3}, kind: tabNew}}, sepW+3)

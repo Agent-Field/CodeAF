@@ -851,7 +851,7 @@ func (a *app) taskPlanToggle(id string) tea.Cmd {
 // node — and `p` holds it or lets it go again. A letter is a letter the moment
 // there is a filter to type, so neither is taken once something is in the box.
 func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
-	if a.taskSheetFilter() != "" {
+	if a.taskSheet.query.String() != "" {
 		return nil, false
 	}
 	item, ok := a.taskSheetCurrent()

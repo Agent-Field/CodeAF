@@ -266,11 +266,11 @@ func TestDragDropsOnlyOnValidTargetsAndEscCancels(t *testing.T) {
 	below := -1
 	for _, tg := range a.tp.targets {
 		if tg.act == teamsActNewTeam {
-			below = tg.y - 1
+			below = tg.y + 1
 		}
 	}
 	drive(t, a, nestPress(ox, oy), dragTo(ox, oy+2), dragTo(3, below))
-	if !a.teamDropLit(teamMoveTop) || !strings.Contains(teamsFrameText(a), "Top level") {
+	if !a.teamDropLit(teamMoveTop) || !strings.Contains(a.teamDragHint(), "top level") {
 		t.Fatalf("the empty rail is not the top level: %q\n%s", a.teamDragHint(), teamsFrameText(a))
 	}
 	drive(t, a, release(3, below))
