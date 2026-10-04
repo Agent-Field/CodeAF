@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/atlas"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -161,6 +162,11 @@ type completion struct {
 
 	cursor int
 	top    int
+	// words is the candidate list of a WORD argument — the atlas map names,
+	// when the prefix is /atlas — ranked into hits in place of the file walk.
+	// It is nil for every other kind of opening, and nil says the file list is
+	// the one source.
+	words []string
 	// chosen is the identity the person selected with arrows, or empty before
 	// a choice. Query changes clear it; ranking follows it while still offered.
 	chosen string
@@ -192,6 +198,28 @@ func deadLine() compLine {
 func (c *completion) sync(e *editor) {
 	if strings.HasPrefix(strings.TrimSpace(e.String()), "!") {
 		c.close()
+		return
+	}
+	if at, query, ok := wordArgToken(e.value, e.cursor); ok {
+		// A WORD ARGUMENT ANSWERS TO THE SAME RULES AS A PATH ONE: tab opens
+		// it over an empty argument, an inserted word is not re-completed, and
+		// every edit while it stands re-ranks the same named list.
+		if c.words == nil {
+			c.words = wordArgCandidates()
+			c.loaded = true
+		}
+		switch {
+		case query == "" && !(c.open && c.arg):
+			// Nothing typed after the command yet, and nobody asked: tab is what
+			// opens a list over an empty argument.
+			c.open = false
+		case c.arg && query == c.done:
+			// This list just INSERTED that word, and enter must run the
+			// command rather than complete what enter completed.
+			c.open = false
+		default:
+			c.narrow(at, query, true)
+		}
 		return
 	}
 	if at, query, ok := argToken(e.value, e.cursor); ok {
@@ -261,6 +289,9 @@ func (c *completion) beginToken(e *editor) bool {
 	if _, _, arg := argToken(e.value, e.cursor); arg {
 		ok = false
 	}
+	if _, _, arg := wordArgToken(e.value, e.cursor); arg {
+		ok = false
+	}
 	token := 0
 	if ok {
 		token = at + 1
@@ -305,6 +336,12 @@ func (c *completion) refresh(e *editor) {
 func (c *completion) narrow(at int, query string, arg bool) {
 	was := c.open && c.at == at && c.arg == arg && c.query == query
 	c.open, c.arg, c.at, c.query = true, arg, at, query
+	if !arg {
+		// An opening that is not an argument never has word candidates: the
+		// field is the argument lists' alone, and a stale one would leak the
+		// last argument's words into an @ list.
+		c.words = nil
+	}
 	if !was {
 		c.cursor, c.top, c.chosen = 0, 0, ""
 	}
@@ -315,12 +352,32 @@ func (c *completion) narrow(at int, query string, arg bool) {
 // nothing has been typed after the command yet. It reports whether there was an
 // argument to open it over.
 func (c *completion) openArg(e *editor) bool {
+	if at, query, ok := wordArgToken(e.value, e.cursor); ok {
+		// A WORD ARGUMENT IS ITS OWN CATALOG, named at the door and ranked
+		// like any other: the registry is short and already in memory, so
+		// there is no walk to wait for and [completion.loaded] is simply true.
+		c.words = wordArgCandidates()
+		c.loaded = true
+		c.narrow(at, query, true)
+		return true
+	}
 	at, query, ok := argToken(e.value, e.cursor)
 	if !ok {
 		return false
 	}
 	c.narrow(at, query, true)
 	return true
+}
+
+// wordArgCandidates is the candidate list a word argument completes from. One
+// source today — the atlas registry — gathered here so the next command that
+// takes a word from a named list joins the same door.
+func wordArgCandidates() []string {
+	out := make([]string, 0, len(atlas.Maps))
+	for _, mp := range atlas.Maps {
+		out = append(out, mp.Name)
+	}
+	return out
 }
 
 func (c *completion) close() { c.open = false }
@@ -350,7 +407,24 @@ var argPrefixes = []string{"/export ", "/attach "}
 // the command's prefix up to the caret. A path may hold spaces, so the token
 // runs to the caret rather than back to the last one.
 func argToken(value []rune, cursor int) (int, string, bool) {
-	for _, prefix := range argPrefixes {
+	return tokenAfter(value, cursor, argPrefixes)
+}
+
+// wordArgPrefixes are the commands whose argument is a WORD from a named list
+// rather than a path — "/atlas " completes the registry's map names
+// (atlas.Maps), and every command written here shares the shape: a fixed list
+// of candidates, ranked by [pathScore] the way the paths are.
+var wordArgPrefixes = []string{"/atlas "}
+
+// wordArgToken is [argToken] over the word-argument commands.
+func wordArgToken(value []rune, cursor int) (int, string, bool) {
+	return tokenAfter(value, cursor, wordArgPrefixes)
+}
+
+// tokenAfter is the one walk both argument finders share: the prefix the caret
+// sits behind, and the words between it and the caret.
+func tokenAfter(value []rune, cursor int, prefixes []string) (int, string, bool) {
+	for _, prefix := range prefixes {
 		at := len([]rune(prefix))
 		if cursor < at || len(value) < at {
 			continue
@@ -474,9 +548,20 @@ func (c *completion) rank() {
 	needle = strings.ToLower(needle)
 	c.hits = c.hits[:0]
 	// A prefix that is not "file" hides the paths. The argument list is only
-	// ever paths, so it never takes a prefix.
+	// ever paths or WORDS — a word argument ranks its own named list in place
+	// of the walk, by the same score.
 	if c.arg || c.scope == "" || c.scope == scopeFile {
-		for i, path := range c.all {
+		source := c.all
+		if c.arg && c.words != nil {
+			source = c.words
+		}
+		// The score row is indexed by candidate, and a word list is shorter
+		// or longer than the walk by its own count — sized here, where the
+		// source is known.
+		if cap(c.score) < len(source) {
+			c.score = make([]int, len(source))
+		}
+		for i, path := range source {
 			score, ok := pathScore(path, needle)
 			if !ok {
 				continue
@@ -699,6 +784,10 @@ func (c *completion) choice() (string, bool) {
 	if at < 0 || c.lines[at].file < 0 {
 		return "", false
 	}
+	if c.arg && c.words != nil && c.lines[at].file < len(c.words) {
+		// A word argument's rows index the named list, not the file walk.
+		return c.words[c.lines[at].file], true
+	}
 	return c.all[c.lines[at].file], true
 }
 
@@ -763,6 +852,11 @@ func (c *completion) lineNote(at int) string {
 		return ""
 	}
 	line := c.lines[at]
+	if c.arg && c.words != nil && line.file >= 0 {
+		// A word row has no tag: a map name is not a folder and not a picture,
+		// and the file walk's notes would be read off the wrong list.
+		return ""
+	}
 	switch {
 	case line.header != "" || line.filters:
 		return ""
@@ -812,7 +906,15 @@ func (c *completion) rows(width, n int, pal palette, hover int, headKey string) 
 			note := c.lineNote(at)
 			ok = fill.add(at, taskRowLabel(c.taskHits[line.task], note, width, pal), note, at == c.selLine(), false)
 		default:
-			ok = fill.add(at, c.all[line.file], c.lineNote(at), at == c.selLine(), false)
+			word := ""
+			if c.arg && c.words != nil && line.file >= 0 && line.file < len(c.words) {
+				// A word argument's rows index the named list, and the walk has
+				// nothing to say about them.
+				word = c.words[line.file]
+			} else if line.file >= 0 && line.file < len(c.all) {
+				word = c.all[line.file]
+			}
+			ok = fill.add(at, word, c.lineNote(at), at == c.selLine(), false)
 		}
 		if !ok {
 			break

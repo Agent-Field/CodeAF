@@ -1652,6 +1652,11 @@ func (a *app) completePath() tea.Cmd {
 		return nil
 	}
 	a.touch()
+	if a.comp.words != nil {
+		// A word argument's catalog was named at the door: there is no walk to
+		// wait for, and the list is already on the screen.
+		return nil
+	}
 	return a.loadFiles()
 }
 
