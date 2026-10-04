@@ -26,5 +26,5 @@ func (a *app) teamsConversationLabel(alias, key, file string, width int) string 
 	if model == "" || room < 4 {
 		return name
 	}
-	return name + a.pal.dim(" "+a.teamsDot()+" "+ansi.Truncate("~"+model, room, "..."))
+	return name + a.pal.dim(" "+a.teamsDot()+" "+ansi.Truncate(model, room, "..."))
 }
