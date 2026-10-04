@@ -20,7 +20,6 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 		lines = append(lines, wallCardLine{s: d.row(a.pal.muted(word), inner,
 			teamsTarget{act: act, id: id, arg: key, x0: 2, y: y + 1 + len(lines), hint: hint, pane: true}, false)})
 	}
-	add(a.pal.dim("Optional " + a.teamsDot() + " coordinates the managers of top-level teams"))
 	var actions []struct {
 		word, id, key, hint string
 		act                 teamsAct
@@ -42,7 +41,12 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 			}
 		}
 		preview := a.tp.previews[m.Key]
-		control(a.teamsConversationLabel(alias, m.Key, m.File, inner), teamsActMember, root.ID, m.Key, "Open the global manager conversation")
+		aliasRow := d.row(a.teamsConversationLabel(alias, m.Key, m.File, inner-3), inner-3,
+			teamsTarget{act: teamsActMember, id: root.ID, arg: m.Key, x0: 2, y: y + 1, hint: "Open the global manager conversation", pane: true}, false)
+		deleteRow := d.row(a.pal.muted(" x "), 3, teamsTarget{act: teamsActDeleteGlobalManager, id: root.ID, arg: m.Key,
+			x0: width - 5, y: y + 1, hint: "Permanently delete the global manager conversation; every team and its manager remains", pane: true}, false)
+		lines = append(lines, wallCardLine{s: aliasRow + deleteRow})
+		add(a.pal.dim("Optional " + a.teamsDot() + " coordinates the managers of top-level teams"))
 		if title != alias {
 			add(a.pal.dim(title))
 		}
@@ -74,9 +78,9 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 		} else {
 			add(a.pal.dim("Team managers report here as they are assigned"))
 		}
-		action("x", teamsActDeleteGlobalManager, root.ID, m.Key, "Permanently delete the global manager conversation; every team and its manager remains")
 	}
 	if !hasManager {
+		add(a.pal.dim("Optional " + a.teamsDot() + " coordinates the managers of top-level teams"))
 		action(teamGlobalManagerSlotWord, teamsActRootManager, "", "", "Create the optional global manager conversation")
 	}
 	if hasManager {

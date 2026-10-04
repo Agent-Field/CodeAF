@@ -12,14 +12,15 @@ import (
 
 // ── THE TEAM SETTINGS CARD, AND THE CLOSE AND DELETE CARDS ─────────────────
 //
-// Settings belongs to the Teams page. The five rows use the same override and
+// Settings belongs to the Teams page. Its only button deletes an ordinary
+// team; the pane holds Disband and Escape dismisses settings. The five rows use the same override and
 // reset mechanics; inherited parent values name their source, while profile
 // defaults need no repeated provenance. Movement remains in the Teams picker.
 // Writes reach the session's own store, including over --host.
 //
-// THE SAME CARD CLOSES AND DELETES (teamclose.go says what each does), in two
-// more modes, because each is a question about one team asked where the team
-// is: the close card from `Close…`, the delete card only on a closed team.
+// THE SAME CARD DISBANDS AND DELETES (teamclose.go says what each does), in
+// two more modes, because each question belongs where the team is selected.
+// The pane asks to disband; deletion is available for active and retained teams.
 
 // The card's modes.
 type teamSheetMode int
@@ -260,10 +261,7 @@ func (a *app) teamSheetCard(width, height int) wallCard {
 	}
 	if s.mode != teamSheetSettings {
 		hints = []teamFooterHint{teamHint("up/down", "choose"), teamHint("enter", "choose"), teamHint("esc", "cancel")}
-		choices := 1
-		if s.mode == teamSheetClose {
-			choices = 2
-		}
+		choices := 2
 		footer := teamFooter(a.pal, inner, hints...)
 		budget := max(height-7-choices-len(footer), 1)
 		content := lines[:len(lines)-choices]
@@ -371,21 +369,11 @@ func (a *app) teamSheetSettingsLines(t team, inner int) []wallCardLine {
 	if s.err != "" {
 		lines = append(lines, wallCardLine{s: pal.bad(fit(s.err, inner))})
 	}
-	lines = append(lines, wallCardLine{rule: true})
-	closeWord := "Disband team" + a.linearMark("…", "...")
-	var hits []wallHit
-	row := ""
 	if !t.Root {
-		b, hit, _ := a.teamSheetButton(closeWord, "", tsCloseTeam, 0, false)
-		row, hits = b, append(hits, hit)
-		b, hit, _ = a.teamSheetButton("Delete team…", "", tsDeleteTeam, ansi.StringWidth(row)+1, false)
-		row += " " + b
-		hits = append(hits, hit)
+		lines = append(lines, wallCardLine{rule: true})
+		button, hit, _ := a.teamSheetButton("Delete team", "", tsDeleteTeam, 0, false)
+		lines = append(lines, wallCardLine{s: button, hits: []wallHit{hit}, bleed: true})
 	}
-	doneX := inner + 2 - a.teamSheetButtonW("Done", "")
-	done, doneHit, _ := a.teamSheetButton("Done", "", tsDone, doneX, false)
-	row = teamsPad(row, doneX) + done
-	lines = append(lines, wallCardLine{s: row, hits: append(hits, doneHit), bleed: true})
 	return lines
 }
 
@@ -440,16 +428,14 @@ func (a *app) teamSheetDeleteLines(t team, inner int) []wallCardLine {
 		lines = append(lines, wallCardLine{s: pal.ink(l)})
 	}
 	lines = append(lines, wallCardLine{})
-	keepW := a.teamSheetButtonW("Keep", "")
-	delW := a.teamSheetButtonW("Delete", "")
-	x := inner + 2 - keepW - 1 - delW
-	keep, kh, _ := a.teamSheetButton("Keep", "", tsKeep, x, false)
+	keep, kh, _ := a.teamSheetButton("Keep", "", tsKeep, 0, false)
+	lines = append(lines, wallCardLine{s: keep, hits: []wallHit{kh}, bleed: true})
 	del := " " + pal.bad("Delete") + " "
 	if a.teamSheetLit(tsDelete) {
 		del = pal.cursor(del, 0)
 	}
-	dh := wallHit{x0: x + keepW + 1, x1: x + keepW + 1 + delW, y1: 1, kind: wallHitPopRow, arg: tsDelete}
-	lines = append(lines, wallCardLine{s: strings.Repeat(" ", max(x, 0)) + keep + " " + del, hits: []wallHit{kh, dh}, bleed: true})
+	dh := wallHit{x0: 0, x1: a.teamSheetButtonW("Delete", ""), y1: 1, kind: wallHitPopRow, arg: tsDelete}
+	lines = append(lines, wallCardLine{s: del, hits: []wallHit{dh}, bleed: true})
 	return lines
 }
 
@@ -464,9 +450,9 @@ func (a *app) teamSheetStops() []int {
 		t, ok := a.teamByID(s.team)
 		stops = append(stops, tsQuestions, tsWake, tsCap, tsDepth, tsShare)
 		if ok && !t.Root {
-			stops = append(stops, tsCloseTeam, tsDeleteTeam)
+			stops = append(stops, tsDeleteTeam)
 		}
-		return append(stops, tsDone)
+		return stops
 	case teamSheetClose:
 		return []int{tsCancel, tsCloseNow}
 	case teamSheetDelete:

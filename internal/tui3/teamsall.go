@@ -4,8 +4,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
-
-	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // All teams is an overview of the hierarchy, independent of whether the
@@ -92,13 +90,15 @@ func (a *app) teamsOverviewState(t team) string {
 	return strings.Join(parts, " "+a.teamsDot()+" ")
 }
 
+// The team-card section is named below the global role, rather than repeating
+// the sidebar selection above that role. Organize stays beside this heading.
 func (a *app) teamsAllHeader(d *teamsDraw, width, y int) []string {
 	pal := a.pal
 	word := a.teamsSpark() + " Organize"
 	buttonW := ansi.StringWidth(word) + 2
 	x := max(width-buttonW-1, 1)
 	button, _ := d.button(word, teamsTarget{act: teamsActOrganize, x0: x, y: y, hint: "Suggest teams; nothing changes until you apply", pane: true}, pal.muted)
-	left := fit(" "+pal.bold(pal.ink(teamstore.RootName)), max(x-1, 1))
+	left := fit(" "+pal.bold(pal.ink("teams")), max(x-1, 1))
 	out := []string{teamsPad(left, x) + button}
 	// Undo belongs to the same surface as Apply, including its store refusal.
 	o := a.wall.org
@@ -123,6 +123,12 @@ func (a *app) teamsAllCards(d *teamsDraw, width, y int) []string {
 		return nil
 	}
 	out := a.teamsGlobalManagerCard(d, width, y)
+	if root, exists := a.teamsRoot(); exists {
+		out = append(out, a.teamsPromptRows(d, root, width, y+len(out))...)
+	}
+	out = append(out, a.teamsInboxRows(d, width, y+len(out))...)
+	out = append(out, "")
+	out = append(out, a.teamsAllHeader(d, width, y+len(out))...)
 	out = append(out, "")
 	return append(out, a.teamsOverviewGrid(d, a.teamsOverviewRoots(), width, 0, y+len(out), false, map[string]bool{})...)
 }

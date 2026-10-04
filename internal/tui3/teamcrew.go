@@ -206,14 +206,17 @@ func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
 	if t.Root {
 		name = teamstore.RootName
 	}
-	left := " " + a.tabTeamDot(t) + " " + pal.bold(pal.ink(name))
+	left := " "
+	if !t.Closed() {
+		left += a.tabTeamDot(t) + " " + pal.bold(pal.ink(name))
+	}
 	type btn struct {
 		word string
 		t    teamsTarget
 	}
 	var bs []btn
 	if t.Closed() {
-		bs = append(bs, btn{"Delete" + a.linearMark("…", "..."), teamsTarget{act: teamsActDelete, id: t.ID, hint: "Permanently delete the retained team record; conversations stay" + hintSegment + "d"}})
+		bs = append(bs, btn{"Delete", teamsTarget{act: teamsActDelete, id: t.ID, hint: "Permanently delete the retained team record; conversations stay" + hintSegment + "d"}})
 	} else {
 		bs = append(bs,
 			btn{"Settings", teamsTarget{act: teamsActSettings, id: t.ID, hint: "What this team overrides, and what it inherits" + hintSegment + "s"}})

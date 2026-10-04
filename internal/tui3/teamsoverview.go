@@ -183,11 +183,7 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	}
 	rightX := width - rightWidth - 1
 	leftRoom := max(rightX-2, 1)
-	name := t.Name
-	if t.Root {
-		name = teamstore.RootName
-	}
-	left := " " + a.tabTeamDot(t) + " " + a.pal.bold(a.pal.ink(name))
+	left := " "
 	if spend := a.teamsSpendWords(t); spend != "" {
 		left += "  " + a.pal.dim(spend)
 	}

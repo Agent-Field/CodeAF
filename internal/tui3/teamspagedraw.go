@@ -350,11 +350,6 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		out = append(out, "")
 	}
 	if a.teamsAllSelected() {
-		out = append(out, a.teamsAllHeader(d, width, len(out))...)
-		if root, exists := a.teamsRoot(); exists {
-			out = append(out, a.teamsPromptRows(d, root, width, len(out))...)
-		}
-		out = append(out, a.teamsInboxRows(d, width, len(out))...)
 		return out
 	}
 	if !ok {
@@ -845,7 +840,6 @@ func (a *app) teamsPaneRest(d *teamsDraw, width, y int) []string {
 	case a.teamsOff():
 		out = append(out, "", " "+pal.dim(fit(teamHostedWord, width-2)))
 	case a.teamsAllSelected():
-		out = append(out, "")
 		out = append(out, a.teamsAllCards(d, width, y+len(out))...)
 	case !ok:
 	case t.Closed():
@@ -996,8 +990,7 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	mark := len(d.targets)
 	pane := a.teamsTop(d, paneW-1)
 	if !a.teamsAny() {
-		pane = append(pane, "")
-		pane = append(pane, a.teamsGlobalManagerCard(d, paneW-1, len(pane))...)
+		pane = append(pane, a.teamsAllCards(d, paneW-1, len(pane))...)
 		emptyMark, emptyY := len(d.targets), len(pane)
 		empty := a.teamsEmpty(d, paneW-1, 0)
 		d.shift(emptyMark, 0, emptyY)

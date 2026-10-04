@@ -78,7 +78,8 @@ Click a team's name or card background to inspect its Teams overview without ope
 Click a manager alias to open its conversation with that team's Chats overlay. Reading a
 preview does not mark a conversation read. The dedicated Global manager card precedes the team cards;
 it shows its alias, saved update, activity, spending and reporting teams. Its alias and
-preview lead to its conversation. Pending decisions remain directly actionable above the cards.
+preview lead to its conversation. Pending decisions remain directly actionable below the global manager and above the team cards.
+A bold white `teams` heading separates the global manager from the team cards.
 
 Arrow keys walk the cards; `space` picks teams and `m` moves the focused or picked teams.
 Drag a team card onto another card or sidebar team to move it; the empty sidebar below the
@@ -92,7 +93,8 @@ Closing the dialog returns to All teams without changing the Chats overlay or dr
 
 ## The pane: the team you chose
 
-The header shows the team's name, today's spending and its cap when available. `Settings`
+The sidebar selection names the team; the pane does not repeat that title. Its controls row
+shows today's spending and its cap when available. `Settings`
 opens the team's settings and spending controls. Member cards provide the conversation
 links directly; there is no separate `Members` button. `p` opens the keyboard member list
 for dragging a conversation onto another team.
@@ -296,8 +298,8 @@ After `M` starts a manager, Chats opens and its message box receives the keyboar
 │  team depth                     2 levels        reset      │
 │  sub-team share                 50%                          │
 │  ────────────────────────────────────────────────────────  │
-│  Disband team…                                   Done      │
-│                   up/down move · enter choose · esc done   │
+│  Delete team                                              │
+│  up/down move · enter choose · esc done                    │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
@@ -309,11 +311,12 @@ it (the two on and off rows flip; the others take a figure), and `r` resets the 
 cursor is on. Wake follows the same styling, reset control and `r` shortcut as the other rows.
 Team movement remains on Teams with `m` or dragging; Settings has no Inside field. A cap is dollars a day (0 for none), a depth is 1 to 10 levels, a share is 1 to
 100 percent. The name is edited as you type and kept with `enter` or when the card is put
-away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
+away; `←` `→` choose a colour. `esc` puts the card away. `Delete team` is its only button for an ordinary team;
+disbanding remains on the main pane. Global settings have no deletion button.
 
 ## Disbanding a team — does current work stop?
 
-`Disband…`, `c`, `Disband team…` in Settings, or `D` on the conversations view asks for
+`Disband`, `c`, or `D` on the conversations view asks for
 confirmation. It lists the selected team and every descendant. Disbanding ends all their
 memberships and coordination. Current turns finish, conversations survive, and memberships
 in other active teams survive. A conversation losing its reporting manager becomes independent.
@@ -330,9 +333,10 @@ roster, interactions, decisions, report and spending history. Surviving conversa
 open bare Chats. Deleted conversations are unavailable, while copied exchanges and decisions
 remain readable. New messages and decisions cannot change disbanded history.
 
-`Delete…` (`d`) permanently deletes the selected team and every descendant, including their
-interactions and decisions. Settings offers `Delete team…` for active teams too: they are
-first disbanded. The confirmation names all affected teams. Conversations and current work
+`Delete` (`d`) permanently deletes the selected team and every descendant, including their
+interactions and decisions. Settings offers `Delete team` for active teams too: they are
+first disbanded. The confirmation names all affected teams and stacks `Keep` above `Delete`,
+with `Keep` selected by default and `up/down` choosing between them. Conversations and current work
 survive. Deletion cannot be undone. Older hosted engines without checked deletion refuse it.
 
 ## Organize disbands quiet teams
@@ -460,7 +464,7 @@ Ordinary members and subteam managers are not direct reports. The card shows the
 reporting teams and up to four lines of the latest saved assistant update. Read the preview
 without marking the conversation read; click its alias or preview to open and respond.
 
-The card's `x` permanently deletes the global-manager conversation with the usual
+The card's top-right `x` permanently deletes the global-manager conversation with the usual
 `cancel` / `delete` confirmation. Its teams, their managers, running work and history remain.
 This same optional-global-manager exception works from Home, Chats and Sessions.
 `+ Global manager` reappears so it can be created again; assigning it reconnects current
