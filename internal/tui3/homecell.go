@@ -583,7 +583,13 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 	if cell.path {
 		title, pad = homeCellPathTitle(cell, width)
 	}
-	for _, fact := range []*string{&note, &tag} {
+	// A NOTE THAT HAS A NARROWER SPELLING SAYS THAT BEFORE IT GIVES WAY WHOLE, so
+	// a fact a person acts on (a branch row's `2 turns · laptop`) shrinks to the
+	// room the name leaves rather than vanishing with the sentence it belongs to.
+	if cell.noteShort != "" && homeCellWidth(title, pad, note, tag, right) > width {
+		note = cell.noteShort
+	}
+	for _, fact := range cell.giveWay(&note, &tag, title, pad, right, width) {
 		if homeCellWidth(title, pad, note, tag, right) <= width {
 			break
 		}
@@ -640,6 +646,18 @@ func homeCellBody(cell *homeCell, width int, pal palette, lit bool) string {
 		return line
 	}
 	return line + strings.Repeat(" ", max(1, width-used-ansi.StringWidth(tail))) + factInk(tail)
+}
+
+// giveWay is the facts in the order a narrow row sheds them. A cell that
+// KEEPS ITS NOTE (a chat on another machine: `running on studio` is the point
+// of the row) sheds the tag alone and lets the title be cut, for as long as the
+// note still fits beside a title of [homeCellTitleFloor] cells; below that the
+// note goes as it always did.
+func (c *homeCell) giveWay(note, tag *string, title string, pad int, right string, width int) []*string {
+	if c.keepNote && homeCellWidth(fit(title, homeCellTitleFloor), pad, *note, "", right) <= width {
+		return []*string{tag}
+	}
+	return []*string{note, tag}
 }
 
 // homeCellPathTitle preserves the start of a project path: an absolute root
@@ -769,7 +787,7 @@ func (a *app) homeAskNote(field []homeCellLine, width, room int) []homeCellLine 
 			if line == homeNoLine || line < 0 || line >= len(h.lines) {
 				continue
 			}
-			if h.lines[line].kind == homeSession && strings.TrimSpace(h.lines[line].row.Transcript) == armed {
+			if h.lines[line].armedBy(armed) {
 				at = y
 				break
 			}

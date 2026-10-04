@@ -277,7 +277,7 @@ window and get on with something else on this machine.
 You get one sentence back from the machine holding the conversation:
 
 ```
-the keyboard is on spark right now — press enter here to take it back
+the keyboard is on spark right now — press enter here to move it here
 ```
 
 or, for a window on this same machine, `the keyboard is in another window right now — press
@@ -450,16 +450,36 @@ It asks the engine holding that workspace what it is, and stops nothing:
   binary     /home/you/.codeaf/bin/devaf
   build      a1b2c3d4 built 2026-09-21 09:00
   started    2026-09-21 09:12 (43h00m ago)
+  cells      off
   windows    1 attached · 3 conversations open
   stop it    codeaf engine --stop --workspace /home/you/api
 ```
 
 The first line is the answer — `this build`, `an older build`, or `a newer build than this
 binary` — and each line under it is left off when the engine did not say it; an engine too
-old to answer the question at all is named by its pid and binary alone. With nothing there
+old to answer the question at all is named by its pid and binary alone. `cells` is the mode
+the engine runs in (`CODEAF_CELLS`); an engine reads it once, so it is the mode of every
+chat it opens. When no window is attached and nothing is running, a `holding` line says how
+long the engine keeps the conversations it still has open before it lets go of them. With nothing there
 it says `no engine is holding /home/you/api on this machine`. `--status-all` does every
 workspace this machine has an engine folder for. As with `--stop`, no `--workspace` means
 your home directory.
+
+## Cells on for this chat but the engine runs with cells off (CODEAF_CELLS=0) — what happens
+
+An engine reads `CODEAF_CELLS` once, at launch, and serves every later chat in that
+mode. So a chat opened with cells on (the default) next to an engine started with `CODEAF_CELLS=0`
+would never migrate. It does not attach in silence. **An idle engine in the other mode
+is restarted**, with one line saying so (`restarted the idle engine because it ran with cells
+off; it runs with cells on now`). **An engine that is still working is left alone** and the
+window says which mode it runs in and what to do: let that finish, or run
+`codeaf engine --stop --workspace <folder>` and open again.
+
+**A chat can read as running after every window closed.** That is on purpose: the engine keeps
+a chat's lock so you can come back and be in it. It lets go on its own after the chat has
+been idle for 30 minutes, and the engine itself leaves two minutes after its last chat. Until
+then `codeaf cell gc` and the cell commands pass over that chat as running, and say how long
+the wait is; `codeaf engine --stop` lets go at once.
 
 ## Rebuilt codeaf but your conversation was still on the old engine — how codeaf tells you
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -173,17 +174,11 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	}
 
 	jobCtx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(jobCtx, "bash", "-lc", command)
-	configureDetachedCommand(cmd, r.workspace.Root(), logFile)
-	cmd.Env = environment
-	cmd.Cancel = func() error {
-		if cmd.Process == nil {
-			return os.ErrProcessDone
-		}
-		return processgroup.Kill(cmd.Process.Pid)
+	cmd, err := detachedCommand(executor.For(ctx), jobCtx, r.workspace.Root(), command, environment, logFile, 3*time.Second)
+	if err == nil {
+		err = cmd.Start()
 	}
-	cmd.WaitDelay = 3 * time.Second
-	if err := cmd.Start(); err != nil {
+	if err != nil {
 		cancel()
 		_ = logFile.Close()
 		return errorf("could not start background job: %v", err)
@@ -191,7 +186,7 @@ func (t *Toolbox) startBackground(ctx context.Context, command string, args map[
 	// Start duplicated the descriptor into the child. The parent closes its
 	// copy immediately; cmd.Wait does not need it and the child writes directly.
 	_ = logFile.Close()
-	// configureDetachedCommand gave the child its own session, so its pid is
+	// detachedCommand gave the child its own session, so its pid is
 	// its process group id and everything it spawns inherits the yield.
 	setProcessGroupPriority(cmd.Process.Pid, backgroundJobNice)
 

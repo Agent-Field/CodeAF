@@ -135,7 +135,7 @@ func (a *Agent) RunOrchestrate(ctx context.Context, goal, model string, capDolla
 	// registry entry: constructing that family already writes its first row.
 	a.orchestrateWorkers.Add(1)
 	if a.orchestrateContext == nil {
-		a.orchestrateContext, a.orchestrateStop = context.WithCancel(context.Background())
+		a.orchestrateContext, a.orchestrateStop = context.WithCancel(a.rootContext())
 	}
 	lifetime := a.orchestrateContext
 	a.orchestrateSeq++

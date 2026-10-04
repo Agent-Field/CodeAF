@@ -1,0 +1,1073 @@
+{
+ "frames": [
+  {
+   "name": "cell key short",
+   "frame": "QUdFRgGDAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6ImFiY2QiLCJvYmplY3RzIjpbeyJyaWQiOiIwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxIiwib2ZmIjowLCJsZW4iOjZ9XX1BR0VPAXg=",
+   "ok": false
+  },
+  {
+   "name": "cell key uppercase",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlBQkNERUYwMTIzNDU2Nzg5QUJDREVGIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": false
+  },
+  {
+   "name": "duplicate rid",
+   "frame": "QUdFRgH6AAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fSx7InJpZCI6IjAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEiLCJvZmYiOjYsImxlbiI6Nn1dfUFHRU8BYUFHRU8BYg==",
+   "ok": false
+  },
+  {
+   "name": "gap between objects",
+   "frame": "QUdFRgH6AAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fSx7InJpZCI6IjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIiLCJvZmYiOjcsImxlbiI6Nn1dfUFHRU8BYVhBR0VPAWI=",
+   "ok": false
+  },
+  {
+   "name": "header names in other case",
+   "frame": "QUdFRgGfAAAAeyJ2IjoxLCJDRUxMX0tFWV9JRCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwiT2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0101010101010101010101010101010101010101010101010101010101010101"
+   ],
+   "lens": [
+    6
+   ],
+   "frame_id": "2a59aadf8f22dbe524ac9f2b8c269199160ad6fcff403ea4fa1ef2a92a585739",
+   "js_stricter": true
+  },
+  {
+   "name": "header not json",
+   "frame": "QUdFRgEEAAAAbm9wZQ==",
+   "ok": false
+  },
+  {
+   "name": "header over limit",
+   "frame": "QUdFRgEBABAAe30=",
+   "ok": false
+  },
+  {
+   "name": "header past frame",
+   "frame": "QUdFRgH/AAAAe30=",
+   "ok": false
+  },
+  {
+   "name": "no objects",
+   "frame": "QUdFRgFFAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W119",
+   "ok": false
+  },
+  {
+   "name": "object names in other case",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3siUklEIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIk9mZiI6MCwiTEVOIjo2fV19QUdFTwF4",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0101010101010101010101010101010101010101010101010101010101010101"
+   ],
+   "lens": [
+    6
+   ],
+   "frame_id": "6c2b627cd9a2922d8fcd5ee55956d09df39d1204bdb2a9506c7c52660a004b97",
+   "js_stricter": true
+  },
+  {
+   "name": "object past payload",
+   "frame": "QUdFRgGgAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2MH1dfUFHRU8BeA==",
+   "ok": false
+  },
+  {
+   "name": "object too short",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjozfV19QUdF",
+   "ok": false
+  },
+  {
+   "name": "plaintext object",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo1fV19aGVsbG8=",
+   "ok": false
+  },
+  {
+   "name": "rid not hex",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZ2dnZyIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": false
+  },
+  {
+   "name": "too short",
+   "frame": "QUdFRg==",
+   "ok": false
+  },
+  {
+   "name": "unknown version",
+   "frame": "QUdFRgGfAAAAeyJWIjoyLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4",
+   "ok": false
+  },
+  {
+   "name": "unnamed trailing",
+   "frame": "QUdFRgGfAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo2fV19QUdFTwF4SlVOSw==",
+   "ok": false
+  },
+  {
+   "name": "valid three objects",
+   "frame": "QUdFRgFXAQAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo4fSx7InJpZCI6IjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIiLCJvZmYiOjgsImxlbiI6NX0seyJyaWQiOiIwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzIiwib2ZmIjoxMywibGVuIjoxMH1dfUFHRU8Bb25lQUdFTwFBR0VPAXRocmVl",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0101010101010101010101010101010101010101010101010101010101010101",
+    "0202020202020202020202020202020202020202020202020202020202020202",
+    "0303030303030303030303030303030303030303030303030303030303030303"
+   ],
+   "lens": [
+    8,
+    5,
+    10
+   ],
+   "frame_id": "2a658f60d2a65bf6cccb72e5639aab7c7c453ad8e2024972529b5277e1d91af9"
+  },
+  {
+   "name": "valid vault object",
+   "frame": "QUdFRgGgAAAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOTA5MDkwOSIsIm9mZiI6MCwibGVuIjoxMH1dfUFHRVYBdmF1bHQ=",
+   "ok": true,
+   "cell_key_id": "0123456789abcdef0123456789abcdef",
+   "rids": [
+    "0909090909090909090909090909090909090909090909090909090909090909"
+   ],
+   "lens": [
+    10
+   ],
+   "frame_id": "3790ec9558ee129e38d5f790c4adec13e155dea9cb57cbbfc425116a84ed35f6"
+  },
+  {
+   "name": "wrong magic",
+   "frame": "WFhYWFhXAQAAeyJWIjoxLCJjZWxsX2tleV9pZCI6IjAxMjM0NTY3ODlhYmNkZWYwMTIzNDU2Nzg5YWJjZGVmIiwib2JqZWN0cyI6W3sicmlkIjoiMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMTAxMDEwMSIsIm9mZiI6MCwibGVuIjo4fSx7InJpZCI6IjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIwMjAyMDIiLCJvZmYiOjgsImxlbiI6NX0seyJyaWQiOiIwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzMDMwMzAzIiwib2ZmIjoxMywibGVuIjoxMH1dfUFHRU8Bb25lQUdFTwFBR0VPAXRocmVl",
+   "ok": false
+  }
+ ],
+ "requests": [
+  {
+   "name": "valid get",
+   "method": "GET",
+   "uri": "/v1/store/stats",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "dUHONXzq9Ha21kzKwK2MBmLZ6PHsj7rJi7p0m3Xs-61iWjUFiKSTZCWSLQ-RjfDnP9DwYayaeKyC4MbwzihxCA",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "identity": "id_29d2ccef9206ea31ea6a903a89345c29",
+   "device": "dev_d16a0fc93f6a8030173cd5b1b72f77d0"
+  },
+  {
+   "name": "valid post with query",
+   "method": "POST",
+   "uri": "/v1/store/has?x=1",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "DIJFWo92Hsjmy9Livd2TMsvBF2jbP17Ys7bqDw6QHxh5TuqbGJixxuCxrsbWLbU1zx5Ov4WM9Fh1fLyhf_yfBg",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "eyJyaWRzIjpbIngiXX0=",
+   "now_ms": 1759049990000,
+   "identity": "id_29d2ccef9206ea31ea6a903a89345c29",
+   "device": "dev_d16a0fc93f6a8030173cd5b1b72f77d0"
+  },
+  {
+   "name": "body changed in flight",
+   "method": "POST",
+   "uri": "/v1/store/has",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "4wswMsRb1jJBFd90H8tkMQCibPgEdmrjtIpdDUUbsm_bDC8r_Bi-Fs2tx2HDC8ZRB4MqmtoZWe6KlVKFyG5HAg",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "e30=",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "skew five minutes ok",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "97_tPC-JZDqzU3pVIUfnh_xdAxS3vWOUlHonDAsC3CLc3jtzMXupN5leK9dKljoGoznySmdSskNr68CbcRvUAQ",
+    "Codeaf-Time": "1759049690000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "identity": "id_29d2ccef9206ea31ea6a903a89345c29",
+   "device": "dev_d16a0fc93f6a8030173cd5b1b72f77d0"
+  },
+  {
+   "name": "skew six minutes past",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "F4Pk-5iw99QN6jdjrQswDvTvy8ayhX0FchVmeHfaNN84Tiz6-HM4ih55PPSLDxpvOdDasGLCaPrqRX8rh2VLAQ",
+    "Codeaf-Time": "1759049630000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "skew"
+  },
+  {
+   "name": "skew six minutes ahead",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "J3R6Y6Z3VSMR4maJ_qoOxGdddk9yJZ8gloESAr61xEd8HinPV6Cr52Q_qBNovr-xVX5qDfgleU7RyH38oO9QBA",
+    "Codeaf-Time": "1759050350000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "skew"
+  },
+  {
+   "name": "foreign cert",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3MDE4OWZiY2M2ZjFkMDg4NjBmOTM3Mjc2Yzg5ODM5YmUyMTg4MjkxYzMyOTJlMGQwZjkyNWMzYTZiMmI1ZmM2IiwiY3JlYXRlZCI6MTc5MDczODk0NjY2Niwic2lnIjoiMjA4YmNjOTYyYTgxMDljM2Q2NmRmNjRkNWFiZjc1YjNjMzE4OGExNTUzYThjNmRjNzA0MzMwMWYzYzI4NWFjNzQ0ZGZjOWYwYWQ3Y2M0MWI0MzBjOTc5YTU2OWEwNzUzNDExMmI4NmJlMjg1NTc1MDRjODFhNmVkM2FlNTU4MGQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "Ink1wJuCT-wWdtP6AfI94awB0kCYZyOe_YVZZj5DHEdjdNEl_atFh6uIpDuuhDLJ54cn8lNhJQunbGkoyTKtCg",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "signature by another device key",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "2CCPrm786MyXhu6-UpxcMgiyihjxbC2Pu-PI6dxsFoRF0zR5Plg4xB3OC-gYnTAADMNfIqoXC6S1huT13LViCQ",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "missing signature",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "identity key truncated",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06Bccl",
+    "Codeaf-Sig": "Ink1wJuCT-wWdtP6AfI94awB0kCYZyOe_YVZZj5DHEdjdNEl_atFh6uIpDuuhDLJ54cn8lNhJQunbGkoyTKtCg",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  },
+  {
+   "name": "path changed after signing",
+   "method": "GET",
+   "uri": "/v1/dir/list",
+   "headers": {
+    "Codeaf-Cert": "eyJWIjoxLCJkZXZpY2UiOiI3N2EyYTcyMjE0MGMzMDhlMzEyNjgzYmVmMGM3YWI1Nzk3ZjA1NjJlNGRkZDkxMmEyYjAwMmFlOThlYmQ1MjI1IiwiY3JlYXRlZCI6MTc5MDczODk0NjY1MSwic2lnIjoiYWRhMzZmYjNmODZkMTBlM2ExNTExNmEyZWEwZGIzMDA2YjllMDU4YzA5NjE0MjE4MWFiNjIwNTJiZGFjOGNiOTQ5ZThmODA1MmViYTM5Njg4ZDg0OTAyMmYxMjJjZGQ0MTlkZWVhNjAyMTI5NTY5MmQ2YmQ4N2RkNzk1OGE1MDQifQ",
+    "Codeaf-Identity": "9Yrd1bCPFZAATM06BccllB6ywCYvMklbgxTMnk0tr0w",
+    "Codeaf-Sig": "dUHONXzq9Ha21kzKwK2MBmLZ6PHsj7rJi7p0m3Xs-61iWjUFiKSTZCWSLQ-RjfDnP9DwYayaeKyC4MbwzihxCA",
+    "Codeaf-Time": "1759049990000"
+   },
+   "body": "",
+   "now_ms": 1759049990000,
+   "refusal": "unauthorized"
+  }
+ ],
+ "rules": [
+  {
+   "name": "acquire free cell",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 91000,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "acquire live lease of another",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "err": "lease_held"
+  },
+  {
+   "name": "acquire own live lease",
+   "op": "acquire",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 4,
+     "expires": 91000,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "acquire expired lease of another",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 501,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 90501,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "acquire at exact expiry",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 500,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 90500,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "forced acquire of a live lease",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "force": true
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 91000,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "forced acquire of a free cell",
+   "op": "acquire",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "force": true
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 91000,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "heartbeat after a forced takeover",
+   "op": "heartbeat",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 91000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "pending": 0
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "publish after a forced takeover",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 91000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "publish renews an expired lease nobody took",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 9999,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "want": {
+    "V": 1,
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "durable_at": 9999,
+    "class": "chat",
+    "size": 20,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 99999,
+     "pending": 1
+    }
+   }
+  },
+  {
+   "name": "heartbeat holder",
+   "op": "heartbeat",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "pending": 7
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 91000,
+     "pending": 7
+    }
+   }
+  },
+  {
+   "name": "heartbeat stale fence",
+   "op": "heartbeat",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 2,
+    "pending": 0
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "heartbeat other device",
+   "op": "heartbeat",
+   "device": "dev_b",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "pending": 0
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "heartbeat expired same fence",
+   "op": "heartbeat",
+   "device": "dev_a",
+   "now": 9999,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 500,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "pending": 0
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 99999,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "publish holder",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "title": "t2",
+    "pending": 1
+   },
+   "want": {
+    "V": 1,
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "durable_at": 2000,
+    "class": "chat",
+    "size": 20,
+    "title": "t2",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 92000,
+     "pending": 1
+    }
+   }
+  },
+  {
+   "name": "publish empty title keeps",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "want": {
+    "V": 1,
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "durable_at": 2000,
+    "class": "chat",
+    "size": 20,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 92000,
+     "pending": 1
+    }
+   }
+  },
+  {
+   "name": "publish stale fence beats moved head",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 2,
+    "old_head": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "publish head moved",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "err": "head_moved"
+  },
+  {
+   "name": "publish after takeover",
+   "op": "publish",
+   "device": "dev_a",
+   "now": 2000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_b",
+     "fence": 4,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3,
+    "old_head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "head": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+    "size": 20,
+    "class": "chat",
+    "pending": 1
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "release holder",
+   "op": "release",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 3
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 0,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "name": "release stale",
+   "op": "release",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 10,
+    "title": "t1",
+    "keys": {},
+    "lease": {
+     "device": "dev_a",
+     "fence": 3,
+     "expires": 50000,
+     "pending": 2
+    }
+   },
+   "arg": {
+    "fence": 1
+   },
+   "err": "fence_stale"
+  },
+  {
+   "name": "create",
+   "op": "create",
+   "device": "dev_a",
+   "now": 1000,
+   "cell": {
+    "V": 0,
+    "head": "",
+    "durable_at": 0,
+    "class": "",
+    "size": 0,
+    "keys": null,
+    "lease": {
+     "device": "",
+     "fence": 0,
+     "expires": 0,
+     "pending": 0
+    }
+   },
+   "arg": {
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "class": "chat",
+    "title": "t",
+    "size": 5,
+    "keys": {
+     "k": {
+      "id_x": "w"
+     }
+    },
+    "orphan_turns": 1
+   },
+   "want": {
+    "V": 1,
+    "head": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "durable_at": 1000,
+    "class": "chat",
+    "size": 5,
+    "title": "t",
+    "keys": {
+     "k": {
+      "id_x": "w"
+     }
+    },
+    "lease": {
+     "device": "dev_a",
+     "fence": 1,
+     "expires": 91000,
+     "pending": 0
+    },
+    "orphan_turns": 1
+   }
+  }
+ ]
+}

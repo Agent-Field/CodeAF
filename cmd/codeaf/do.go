@@ -1,13 +1,16 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/router"
 	"io"
 	"log"
@@ -355,6 +358,8 @@ func runDo(args []string) error {
 	slotsRaw := flags.String("slots", "",
 		"how many workers may run at once for this run; 0 is no limit "+
 			"(default: your task.parallel setting, which is no limit)")
+	continueID := flags.String("continue", "", "carry on a run that did not finish (or was kept with --keep): "+
+		"its id is on the `record kept at` line; any words after it are this round's finding")
 	debug := flags.Bool("debug", false, debugFlagHelp())
 	if err := parseCommandFlags(flags, reorder(flags, args)); err != nil {
 		return err
@@ -379,7 +384,7 @@ func runDo(args []string) error {
 	// the model-call log carries, and a second reading could name a different
 	// run in a process that had opened two.
 	run := trace.RunFrom(ctx)
-	task, err := readText(flags.Name(), flags.Args())
+	next, err := errandTask(flags, *continueID)
 	if err != nil {
 		return refuseDoBeforeRun(*asJSON, run, err)
 	}
@@ -395,7 +400,7 @@ func runDo(args []string) error {
 	}
 	return doErrand(doRequest{
 		effort: effort, pins: pins.pins,
-		task: task, run: run, database: *database, keep: *keep, workspace: *workspace,
+		task: next.brief, assignment: next.assignment, cellRoot: next.cellRoot, run: run, database: *database, keep: *keep, workspace: *workspace,
 		timeout: wall.wall, asJSON: *asJSON,
 		yesSpend: *yesSpend, model: *model, planModel: *planModel, checkModel: *checkModel,
 		contextFill: *contextFill, completionReserve: *completionReserve, slots: slots,
@@ -422,6 +427,12 @@ func refuseDoBeforeRun(asJSON bool, run string, err error) error {
 // whole command rather than a piece of it.
 type doRequest struct {
 	task string
+	// assignment is what the person first asked for, when task is a
+	// continuation of it. It names the run; empty is a fresh run, named by task.
+	assignment string
+	// cellRoot is the cell a continuation goes on working in; empty mints one
+	// (cells on, the default) or runs on the host.
+	cellRoot string
 	// run is the id this invocation minted at the door ([trace.Begin]). It goes
 	// out on the `--json` envelope, where it is the join to the model-call log
 	// and to the debug record's folder, both of which are named by it.
@@ -474,6 +485,31 @@ type doRequest struct {
 	// is what a live run does; a test hands back a [session.Completer] that
 	// answers without a network.
 	newBeltCompleter func(model string) session.Completer
+}
+
+// headline is what names this run: the assignment it carries on, or its task.
+func (r doRequest) headline() string {
+	return cmp.Or(r.assignment, r.task)
+}
+
+// errandTask is the task text of this invocation and, on a continuation, the
+// assignment it carries on. The words after --continue are the finding.
+func errandTask(flags *flag.FlagSet, continueID string) (continuation, error) {
+	if continueID == "" {
+		task, err := readText(flags.Name(), flags.Args())
+		return continuation{brief: task}, err
+	}
+	if err := continuesOnRunRoad(); err != nil {
+		return continuation{}, err
+	}
+	return continuedBrief(continueID, strings.Join(flags.Args(), " "))
+}
+
+// sayRecordKept names a kept record on stderr, and how to carry it on. The
+// path stays the last line, which is where callers read it.
+func sayRecordKept(w io.Writer, folder string) {
+	fmt.Fprintln(w, continueHint(folder))
+	fmt.Fprintf(w, "record kept at %s\n", folder)
 }
 
 func (r doRequest) residentWaitOrDefault() time.Duration {
@@ -597,16 +633,16 @@ func doErrand(request doRequest) error {
 	fmt.Fprintln(request.stderr, seats.Report())
 	call := router.CrewCallID(request.run)
 	if seats.Crew != nil {
-		config.LogCrewDecision(profileDir, call, *seats.Crew, repo, crewTitle(request.task))
+		config.LogCrewDecision(profileDir, call, *seats.Crew, repo, crewTitle(request.headline()))
 	}
 	outcome, err := errandRun(request, seats, started)
 	if err != nil {
 		if !request.asJSON {
 			if outcome.recordKept != "" {
-				fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
+				sayRecordKept(request.stderr, outcome.recordKept)
 			}
 			if seats.Crew != nil {
-				config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.task), router.CrewNotKept, 0)
+				config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.headline()), router.CrewNotKept, 0)
 			}
 			return err
 		}
@@ -623,7 +659,7 @@ func doErrand(request doRequest) error {
 		if outcome.resolvedStop() == stopDone {
 			settled = router.CrewAccepted
 		}
-		config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.task), settled, outcome.Spend)
+		config.LogCrewOutcome(profileDir, call, *seats.Crew, repo, crewTitle(request.headline()), settled, outcome.Spend)
 		fmt.Fprintln(request.stderr, "crew: "+seats.Crew.Line("", outcome.Spend))
 	}
 	// THE RUN NAMES ITSELF ON EVERY PATH, including the one where nothing
@@ -872,7 +908,7 @@ func errandRun(request doRequest, seats config.Seats, started time.Time) (outcom
 	// during the unwind kills the process the way it always did. SIGKILL is
 	// outside all of this and stays correct by accident: no defer runs, so
 	// nothing deletes the store either.
-	signalled, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalled, stopSignals := signal.NotifyContext(hostSeated(context.Background()), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 	// The person's own ending of the run is the one fact the usage counts
 	// keep about how it ended: the interrupt word, not a failure word.
@@ -1252,9 +1288,11 @@ func sameStore(left, right string) bool {
 	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }
 
+// residentHost names the computer that holds the store, spelled as every other
+// screen spells a computer ([devname.Shown]): the holder recorded its raw host name.
 func residentHost(holder *lease.Resident) string {
 	if host := strings.TrimSpace(holder.Host); host != "" {
-		return host
+		return devname.Shown(host)
 	}
 	return "unknown host"
 }
@@ -3423,7 +3461,7 @@ func reportErrand(request doRequest, outcome headlessOutcome) error {
 		fmt.Fprintln(request.stderr, "error: "+outcome.Error)
 	}
 	if outcome.recordKept != "" && request.stderr != nil {
-		fmt.Fprintf(request.stderr, "record kept at %s\n", outcome.recordKept)
+		sayRecordKept(request.stderr, outcome.recordKept)
 	}
 	if request.asJSON {
 		encoded, err := json.MarshalIndent(errandEnvelope(outcome), "", "  ")
@@ -3504,7 +3542,7 @@ func errandFooter(outcome headlessOutcome) string {
 		parts = append(parts, elapsed.String())
 	}
 	if outcome.Nodes > 0 {
-		parts = append(parts, plural(outcome.Nodes, "node"))
+		parts = append(parts, plural(outcome.Nodes, "part"))
 	}
 	if spent := config.SpentFigure(outcome.Spend); spent != "" {
 		parts = append(parts, spent)
@@ -3658,7 +3696,7 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 	// files were there first, still hold what they held, and are none of the
 	// run's business ([session.RunTreeSnapshot]).
 	before := session.SnapshotRunTree(workspace)
-	title := topicTitle(request.task)
+	title := topicTitle(request.headline())
 	_, recordDir, _, err := headlessStore("")
 	if err != nil {
 		return headlessOutcome{}, err
@@ -3677,6 +3715,13 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 		}
 		outcome.recordKept = recordDir
 	}()
+	inCell, err := openErrandCell(workspace, request.cellRoot)
+	if err == nil {
+		err = inCell.pointFrom(recordDir)
+	}
+	if err != nil {
+		return headlessOutcome{}, err
+	}
 	store, err := session.OpenRunPlanAt(filepath.Join(recordDir, "plandb.db"), title, request.task)
 	if err != nil {
 		return headlessOutcome{}, err
@@ -3727,11 +3772,11 @@ func runErrand(request doRequest, seats config.Seats) (outcome headlessOutcome, 
 		Slots:     request.slotsFor(settings.ProfileDir),
 		Limits:    limits,
 		Gate:      hold.runGate(),
-		Factory: runengine.CrewFactory(store, workspace, settings.ProfileDir, runengine.Seats{
+		Factory: runengine.CrewFactoryWithWorkers(store, workspace, settings.ProfileDir, runengine.Seats{
 			Work:  seats.Work.Model,
 			Plan:  seats.Plan.Model,
 			Check: seats.Check.Model,
-		}, doStanding(workspace), completerFor, settings.Sources),
+		}, doStanding(workspace), completerFor, inCell.workerOptions(), settings.Sources),
 	})
 	errand := runErrandOutcome(summary, workspace, bound)
 	// THE RUN'S OWN CLOCK, read off the context because the summary's word is

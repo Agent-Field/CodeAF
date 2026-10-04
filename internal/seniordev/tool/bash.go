@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/msgmodel"
 	"github.com/Agent-Field/codeaf/internal/seniordev/engine/steploop"
 	"github.com/Agent-Field/codeaf/internal/seniordev/session/outputoffload"
@@ -120,14 +121,16 @@ func (r *Registry) executeBash(ctx context.Context, call steploop.ToolCall) (ste
 			return steploop.ToolResult{}, err
 		}
 	}
-	command := shellExecCommand(shell, input.Command)
-	command.Dir = cwd
-	command.Env = shellEnvironment(call.SessionID)
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	// A plain `sleep 300 &` leaves stdout open after bash exits. Without a
 	// pipe-close bound, exec.Wait waits for that background job and turns a
 	// successful shell command into a timeout before the run can clean it up.
-	command.WaitDelay = 100 * time.Millisecond
+	command, err := executor.For(ctx).In(cwd).Command(context.Background(), executor.ExecRequest{
+		Argv: shellArgv(shell, input.Command), Env: shellEnvironment(call.SessionID),
+		WaitDelay: 100 * time.Millisecond,
+	})
+	if err != nil {
+		return steploop.ToolResult{}, fmt.Errorf("start shell command: %w", err)
+	}
 	var output bashOutput
 	command.Stdout = &output
 	command.Stderr = &output
@@ -249,14 +252,14 @@ func (r *Registry) bashResult(
 	return steploop.ToolResult{Title: firstRunes(command, 60), Metadata: metadata, Output: inline}
 }
 
-func shellExecCommand(shell, command string) *exec.Cmd {
+func shellArgv(shell, command string) []string {
 	switch ShellName(shell) {
 	case "cmd":
-		return exec.Command(shell, "/c", command)
+		return []string{shell, "/c", command}
 	case "powershell", "pwsh":
-		return exec.Command(shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command)
+		return []string{shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command}
 	default:
-		return exec.Command(shell, "-c", command)
+		return []string{shell, "-c", command}
 	}
 }
 

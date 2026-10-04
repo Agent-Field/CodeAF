@@ -375,6 +375,8 @@ var commands = []command{
 	// /clean already means "start another conversation" there, and a word that
 	// sometimes cleared the screen and sometimes deleted half a gigabyte would
 	// be the most expensive pun on the surface.
+	{name: "setup", desc: "prepare this machine · what it lacks for this conversation"},
+	{name: "setup", args: "now", desc: "…have the agent install what it can · asks first"},
 	{name: "cache", desc: "the shared build cache — how big, and where"},
 	{name: "cache", args: "clean", desc: "…delete it to free disk · asks before anything is removed"},
 	{name: "cache", args: "clean now", desc: "…delete the cache now"},
@@ -473,6 +475,20 @@ var commands = []command{
 	// and position here is a claim about frequency — nobody turns the record on
 	// twice in a day, and a row inserted higher would push a daily command
 	// behind a scroll.
+	// SHARING YOUR CHATS WITH ANOTHER COMPUTER (pair.go). It is an errand nobody
+	// does twice in a day, so it stands below the daily eight with /update and
+	// /debug, where position in this table is the honest claim about frequency.
+	//
+	// TWO ROWS FOR ONE COMMAND, /export's reason exactly: the bare form is the one
+	// that can be run from the list, and the one that takes a code rides under it
+	// wearing the "…" of the other computer. The other words are what people say
+	// they want: "use this on my laptop", "sync my chats", "connect another
+	// computer".
+	{name: "pair", desc: "show a code that shares your chats with another computer",
+		alias: []string{"sync", "link", "laptop"}},
+	{name: "pair", args: "<code>", desc: "…join the chats of the computer that shows that code"},
+	{name: "pair", args: "<link>", desc: "…approve a new computer from the link it shows"},
+	{name: "devices", desc: "list your devices · n renames this one, r removes one"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf for the next launch", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag; skip or never answer an open offer"},

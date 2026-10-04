@@ -338,7 +338,7 @@ func SetCrewAllowed(profileDir, raw string) error {
 	if err != nil {
 		return err
 	}
-	return writeCrewAllowed(profileDir, rule)
+	return editCrewAllowed(profileDir, func() crewroute.Allowed { return rule })
 }
 
 // ModifyCrewAllowed is `/crew models +x` and `-x`: the rule with one word
@@ -348,11 +348,24 @@ func ModifyCrewAllowed(profileDir string, add bool, word string) error {
 	if word == "" {
 		return errors.New("name a model or a provider after the + or -")
 	}
-	return writeCrewAllowed(profileDir, CrewAllowedAt(profileDir).With(add, word))
+	return editCrewAllowed(profileDir, func() crewroute.Allowed { return CrewAllowedAt(profileDir).With(add, word) })
 }
 
-// writeCrewAllowed is the rule's one writer.
-func writeCrewAllowed(profileDir string, rule crewroute.Allowed) error {
+// editCrewAllowed is the rule's one writer. The rule is asked for inside the
+// profile write, so a word added to the rule as it stands now is not lost to a
+// rule read earlier; a rule that would leave a pinned seat outside it is refused.
+func editCrewAllowed(profileDir string, rule func() crewroute.Allowed) error {
+	return editProfile(profileDir, KeyCrewAllowed, func(map[string]json.RawMessage) (profileChange, error) {
+		allowed := rule()
+		if err := pinsAdmitted(profileDir, allowed); err != nil {
+			return profileChange{}, err
+		}
+		return encodeChange(map[string]any{KeyCrewAllowed: allowed.String()})
+	})
+}
+
+// pinsAdmitted refuses a rule that leaves out a model a seat is pinned to.
+func pinsAdmitted(profileDir string, rule crewroute.Allowed) error {
 	for _, seat := range crewroute.Seats {
 		pin, ok := CrewPinAt(profileDir, seat)
 		if !ok {
@@ -363,7 +376,7 @@ func writeCrewAllowed(profileDir string, rule crewroute.Allowed) error {
 				seat, pin.Model, seat, crewroute.ShortModel(pin.Model))
 		}
 	}
-	return writeProfileValue(profileDir, KeyCrewAllowed, rule.String())
+	return nil
 }
 
 // CrewCapAt is the daily cap on crew spend, zero for none.
@@ -1086,7 +1099,7 @@ func CrewOffersAt(profileDir string) []CrewOffer {
 // exactly the reason the typed form would be — a pinned seat it would leave
 // outside.
 func SetCrewAllowedRule(profileDir string, rule crewroute.Allowed) error {
-	return writeCrewAllowed(profileDir, rule)
+	return editCrewAllowed(profileDir, func() crewroute.Allowed { return rule })
 }
 
 // CrewState is the crew's persisted rows as they stand — the three seats, the

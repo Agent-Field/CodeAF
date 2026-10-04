@@ -125,6 +125,18 @@ type Seats struct {
 // reads empty, so a fallback means somebody emptied a row rather than that the
 // profile is old.
 func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer, sourceSets ...modelsource.Set) WorkerFactory {
+	return crewFactory(store, workspace, profileDir, seats, standing, completerFor, nil, sourceSets)
+}
+
+// CrewFactoryWithWorkers is CrewFactory for a door that also configures every
+// worker it builds — a cell run seats each worker on the cell's seat — so a
+// door that names no worker option never has to say so. The source sets are
+// the crew's, exactly as CrewFactory takes them.
+func CrewFactoryWithWorkers(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer, workerOpts []WorkerOption, sourceSets ...modelsource.Set) WorkerFactory {
+	return crewFactory(store, workspace, profileDir, seats, standing, completerFor, workerOpts, sourceSets)
+}
+
+func crewFactory(store *plandb.Store, workspace, profileDir string, seats Seats, standing string, completerFor func(model string) session.Completer, workerOpts []WorkerOption, sourceSets []modelsource.Set) WorkerFactory {
 	// The admitted source set explains the refused account without resolving
 	// worker requests a second time. The completer still owns every route.
 	var sources modelsource.Set
@@ -134,7 +146,7 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 		sources = config.ResolveSources(profileDir, config.APIKeyAt(profileDir), config.DefaultBaseURL)
 	}
 	workerFor := func(model string, completer session.Completer) *BashWorker {
-		worker := NewBashWorker(store, workspace, model, standing, completer)
+		worker := NewBashWorker(store, workspace, model, standing, completer, workerOpts...)
 		// A run worker has no parent agent to inherit the web pair from. Bind
 		// the same live resolver the chat and CLI use to this run's profile.
 		worker.searchProvider, worker.searchFetcher = search.Live(func() search.Options {

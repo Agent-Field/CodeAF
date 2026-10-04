@@ -35,7 +35,9 @@ package furrowbin
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -83,22 +85,29 @@ func Embedded() bool {
 }
 
 var (
-	ensureOnce sync.Once
+	ensureMu   sync.Mutex
 	ensurePath string
-	ensureErr  error
 )
 
 // Ensure puts the embedded furrow on disk if it is not already there and
 // returns the path to it.
 //
-// It is memoised for the life of the process because it sits in front of belt
-// construction, where it is asked once per session and would otherwise cost a
-// stat each time; the first call in a fresh state root costs one decompression
-// and one six-megabyte write, and every call after that on every later boot
-// costs one stat.
+// The answer is remembered for the life of the process because it sits in front
+// of belt construction, where it is asked once per session, and the first call
+// in a fresh state root costs one decompression and one six-megabyte write. A
+// remembered path is only trusted while its file is still there: a state root
+// that was cleaned or replaced under a long-lived process would otherwise leave
+// every later seal spawning a program that no longer exists. The steady state
+// is one stat.
 func Ensure() (string, error) {
-	ensureOnce.Do(func() { ensurePath, ensureErr = extract() })
-	return ensurePath, ensureErr
+	ensureMu.Lock()
+	defer ensureMu.Unlock()
+	if ensurePath != "" && installed(ensurePath) {
+		return ensurePath, nil
+	}
+	path, err := extract()
+	ensurePath = path
+	return path, err
 }
 
 // extract is Ensure's one-time body: find the carried bytes, then put them
@@ -116,14 +125,16 @@ func extract() (string, error) {
 // the real one has exactly one of — a fresh state root, a version already
 // there, an older version beside it, a root that cannot be written to.
 func extractInto(dir, version string, archive []byte) (string, error) {
-	// THE PATH IS STAMPED WITH THE VERSION, AND THAT IS WHAT MAKES REPLACING A
-	// RUNNING BINARY IMPOSSIBLE RATHER THAN CAREFUL. A codeaf that upgrades
-	// its pinned furrow writes a file with a new name; the old one keeps its
-	// inode and any furrow still running out of it keeps running. This repo has
-	// paid the other bill twice — a binary written over in place is a process
-	// killed with signal 9 on macOS the moment it next pages in — and the
-	// lesson generalises past codeaf's own binary to any binary it writes.
-	path := filepath.Join(dir, "furrow-"+version)
+	// THE PATH IS STAMPED WITH THE VERSION AND THE ARCHIVE'S HASH, AND THAT IS
+	// WHAT MAKES REPLACING A RUNNING BINARY IMPOSSIBLE RATHER THAN CAREFUL. A
+	// codeaf that carries a different furrow writes a file with a different
+	// name; the old one keeps its inode and any furrow still running out of it
+	// keeps running. This repo has paid the other bill twice — a binary written
+	// over in place is a process killed with signal 9 on macOS the moment it
+	// next pages in. The hash is what the version alone cannot say: furrow is
+	// built from source now and its version does not move with every change, so
+	// a machine holding furrow-0.1.0 would trust the old engine forever.
+	path := installPath(dir, version, archive)
 
 	// One stat is the steady state. A file at this path is complete by
 	// construction — it got there by rename, below, and a rename either
@@ -131,7 +142,7 @@ func extractInto(dir, version string, archive []byte) (string, error) {
 	// its executable bit are the whole check. Hashing six megabytes on every
 	// boot to re-learn what the build already verified against the pin would
 	// be paying twice for one fact.
-	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 && info.Size() > 0 {
+	if installed(path) {
 		return path, nil
 	}
 
@@ -169,6 +180,29 @@ func extractInto(dir, version string, archive []byte) (string, error) {
 	}
 	return path, nil
 }
+
+// installed says the file at path is a complete furrow: an ordinary,
+// executable, non-empty file.
+func installed(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 && info.Size() > 0
+}
+
+// installPath is the one place the extracted file's name is decided:
+// furrow-<version>-<stamp>. The stamp is hashed from the embedded archive
+// bytes, which Ensure reads once per process, never from the extracted file.
+func installPath(dir, version string, archive []byte) string {
+	return filepath.Join(dir, "furrow-"+version+"-"+stamp(archive))
+}
+
+// stamp is the first twelve hex digits of the archive's sha256: enough that two
+// engines never share a name, short enough to read in a directory listing.
+func stamp(archive []byte) string {
+	sum := sha256.Sum256(archive)
+	return hex.EncodeToString(sum[:])[:stampLength]
+}
+
+const stampLength = 12
 
 // decompress inflates the staged archive. It is a plain gzip stream of the
 // artifact's own bytes and nothing else — no container format, because there is

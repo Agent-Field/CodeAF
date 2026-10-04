@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -37,7 +38,7 @@ func TestEngineEnvironmentHostHelper(t *testing.T) {
 	}
 	// F1: Keep the grace unmistakably live without making a test wait for it.
 	remote.WatchFor = time.Hour
-	err := enginehost.Run(workspace, enginehost.Options{Boot: func(hello remote.Hello) (*remote.Engine, error) {
+	err := enginehost.Run(workspace, enginehost.Options{Cells: cell.Enabled(), Boot: func(hello remote.Hello) (*remote.Engine, error) {
 		file := hello.Session
 		if file == "" {
 			file = filepath.Join(workspace, "conversation.jsonl")
@@ -353,7 +354,9 @@ func TestOlderWindowJoinsNewerRealHostDespiteDifferentEnvironment(t *testing.T) 
 	old := environmentChild(t, workspace, os.Getenv(config.APIKeyEnv))
 	held := waitEnvironmentHost(t, workspace, func(self remote.HostSelf) bool { return !self.Busy })
 	t.Setenv(config.APIKeyEnv, "sk-or-v1-test-other-terminal")
-	note, err := clearStaleEngineHostAs(workspace, window("older-build", held.BuiltAt.Add(-time.Hour)))
+	me := window("older-build", held.BuiltAt.Add(-time.Hour))
+	me.Cells = held.Cells
+	note, err := clearStaleEngineHostAs(workspace, me)
 	if err != nil || note != "" {
 		t.Fatalf("older window disturbed newer host: %q, %v", note, err)
 	}

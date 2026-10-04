@@ -17,10 +17,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/relay"
 )
 
@@ -34,6 +36,12 @@ type Host struct {
 	Devices *Book
 	// Desk holds the live pairing code.
 	Desk *Desk
+	// Approve is asked, with the joining device's name and the join words, before
+	// this machine lets a device in, and answers whether the person looking at
+	// that device's screen said yes. NIL IS A NO: a machine with nobody to ask
+	// admits nobody, because admitting a shell without a look at the other
+	// device is the weaker door.
+	Approve func(label, words string) bool
 	// Say is where a person-facing line goes — the name, the code, and one
 	// line per device that arrives or is turned away. Nil says nothing.
 	Say func(string)
@@ -69,7 +77,7 @@ func (h *Host) say(line string) {
 // again cannot fix.
 func (h *Host) Run(ctx context.Context) error {
 	if strings.TrimSpace(h.Service) == "" {
-		return errors.New("no relay is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to a relay's address")
+		return errors.New("no sync address is set up on this machine, so there is nowhere to be reachable from — set " + RelayEnv + " to your sync address")
 	}
 	wait := time.Second
 	announced := false
@@ -82,17 +90,17 @@ func (h *Host) Run(ctx context.Context) error {
 			// already connected under this machine's name, which in practice
 			// means a second `codeaf serve` on this same machine. Trying again
 			// forever would be two processes fighting over one name.
-			return fmt.Errorf("this machine is already connected to the relay as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
+			return fmt.Errorf("this machine is already connected to sync as %s — there is only one of it, so close the other `codeaf serve`", h.Device.Name())
 		case errors.Is(err, relay.ErrUnreachable):
 			if !announced {
 				return Unreachable(h.Service)
 			}
-			h.say("lost the relay — trying again")
+			h.say("lost sync — trying again")
 		default:
 			if !announced {
 				return err
 			}
-			h.say("the relay refused this machine: " + err.Error())
+			h.say("sync refused this machine: " + err.Error())
 		}
 
 		if err == nil {
@@ -119,18 +127,31 @@ func (h *Host) Run(ctx context.Context) error {
 	}
 }
 
-// hold answers arrivals until the registration ends.
+// hold answers arrivals until the registration ends, and returns only after
+// every conversation it started has ended.
+//
+// A CONVERSATION OUTLIVING ITS HOST IS A LEAK. Closing the registration closes
+// every stream on it, so each worker is already on its way out when Accept
+// fails; waiting for them is what makes "Run returned" mean that nothing of
+// this machine is still writing its book or speaking to its screen.
 func (h *Host) hold(ctx context.Context, registration *relay.Registration) {
 	go func() {
 		<-ctx.Done()
 		_ = registration.Close()
 	}()
+	var workers sync.WaitGroup
+	defer workers.Wait()
 	for {
 		stream, err := registration.Accept()
 		if err != nil {
+			_ = registration.Close()
 			return
 		}
-		go h.answer(stream)
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			h.answer(stream)
+		}()
 	}
 }
 
@@ -169,24 +190,57 @@ func (h *Host) pair(stream io.ReadWriteCloser) {
 	// device it is paired — see pairAsMachine. It is passed in rather than done
 	// here for exactly that reason: done here it would be done one reply too
 	// late, and the device's own next connection could find the book empty.
-	admitted, err := pairAsMachine(stream, h.Device.Name(), code, h.Device, h.now(), h.Devices.Admit)
-	if err != nil {
-		var write notWrittenDown
-		if errors.As(err, &write) {
-			h.say("could not write down that pairing: " + write.Error())
-			return
-		}
-		h.say("a device tried to pair with the wrong code")
-		return
-	}
-	// One code pairs one device. A person who wants a second device reads the
-	// next one, which is another thing they had to be sitting at this machine
-	// to do.
+	admitted, err := pairAsMachine(stream, h.Device.Name(), code, h.Device, h.now(), h.approver(stream), h.Devices.Admit)
+	h.say(h.outcome(admitted, err))
+	// Every attempt spends the code, so every attempt is followed by the next
+	// one: a person who watched a code burn must not have to ask for another.
 	h.Desk.Retire()
-	h.say(fmt.Sprintf("%s is now paired with this machine — it can open conversations here and run what this machine allows", admitted.Label))
 	if next, err := h.Desk.Offer(); err == nil {
 		h.say(strings.TrimRight(Lines(h.Device.Name(), next), "\n"))
 	}
+}
+
+// approver asks the person, with the connection's deadline held open for as long
+// as they are given and put back afterwards. Silence is a no, so a machine
+// nobody is sitting at never admits anything.
+func (h *Host) approver(stream io.ReadWriteCloser) func(label, words string) error {
+	return func(label, words string) error {
+		withDeadline(stream, h.now().Add(ConfirmWithin+HandshakeWithin))
+		defer withDeadline(stream, h.now().Add(HandshakeWithin))
+		if h.Approve == nil || !h.Approve(label, words) {
+			return ErrRefused
+		}
+		return nil
+	}
+}
+
+// outcomes is what this machine says about how an attempt ended, first match
+// wins. The last row matches everything, so an attempt always says something.
+var outcomes = []struct {
+	is   func(error) bool
+	line func(h *Host, one Paired, err error) string
+}{
+	{func(err error) bool { return err == nil }, func(h *Host, one Paired, _ error) string {
+		return fmt.Sprintf("%s is now paired with this machine — it can open conversations here and run what this machine allows", one.Label)
+	}},
+	{func(err error) bool { return errors.Is(err, ErrRefused) }, func(*Host, Paired, error) string {
+		return "a device asked to pair and was not let in"
+	}},
+	{func(err error) bool { var w notWrittenDown; return errors.As(err, &w) }, func(_ *Host, _ Paired, err error) string {
+		return "could not write down that pairing: " + err.Error()
+	}},
+	{func(error) bool { return true }, func(*Host, Paired, error) string {
+		return "someone typed a wrong code, so that code is no longer good"
+	}},
+}
+
+func (h *Host) outcome(one Paired, err error) string {
+	for _, row := range outcomes {
+		if row.is(err) {
+			return row.line(h, one, err)
+		}
+	}
+	return ""
 }
 
 // connect answers a device that has already been paired.
@@ -225,17 +279,8 @@ func (h *Host) connect(stream io.ReadWriteCloser) {
 	h.say(who.Label + " left")
 }
 
-// ThisMachineLabel is what this device calls itself when it pairs. It is the
-// host name, because that is the word a person already uses for their laptop,
-// and it is only ever a label — a connection is checked against a key.
-func ThisMachineLabel() string {
-	name, err := os.Hostname()
-	if err != nil || strings.TrimSpace(name) == "" {
-		return "a device"
-	}
-	// A host name with a domain on it reads badly in a list of two laptops.
-	if dot := strings.IndexByte(name, '.'); dot > 0 {
-		name = name[:dot]
-	}
-	return readableLabel(name)
-}
+// ThisMachineLabel is what this device calls itself when it pairs: the name a
+// person gave it, else the host name ([devname.Name]), because that is the word
+// they already use for their laptop. It is only ever a label — a connection is
+// checked against a key.
+func ThisMachineLabel() string { return readableLabel(devname.Name(home.Dir())) }

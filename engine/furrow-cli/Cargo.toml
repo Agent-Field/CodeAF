@@ -1,0 +1,32 @@
+[package]
+name = "furrow-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "The furrow command line"
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "furrow"
+path = "src/main.rs"
+
+[dependencies]
+furrow-core = { path = "../furrow-core" }
+furrow-daemon = { path = "../furrow-daemon" }
+anyhow.workspace = true
+clap.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+furrow-core = { path = "../furrow-core", features = ["fault-injection"] }
+assert_cmd.workspace = true
+predicates.workspace = true
+blake3.workspace = true
+filetime.workspace = true
+hex.workspace = true
+xattr.workspace = true
+rusqlite.workspace = true

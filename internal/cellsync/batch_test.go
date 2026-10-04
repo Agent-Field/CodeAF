@@ -1,0 +1,459 @@
+package cellsync
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/Agent-Field/codeaf/internal/blobstore"
+	"github.com/Agent-Field/codeaf/internal/cell"
+	"github.com/Agent-Field/codeaf/internal/cellstore"
+	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/wireauth"
+)
+
+// fakeInner is a Stage 0 store that seals instantly in the fake engine, with
+// no network at all.
+type fakeInner struct {
+	r *rig
+	n int
+}
+
+func (f *fakeInner) Seal(context.Context, cell.Cell, cellstore.TurnInfo) (cellstore.Sealed, error) {
+	f.n++
+	head := f.r.seal(map[string]string{"a": fmt.Sprint(f.n)})
+	return cellstore.Sealed{Turn: cellstore.Turn{ID: head}}, nil
+}
+
+func TestPublishingNeverBlocksSeal(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	r.store.set(nil, func(ctx context.Context) { // the store hangs
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+	})
+	note(b, r.seal(map[string]string{"a": "one"}))
+	flushed := make(chan struct{})
+	go func() { b.flush(context.Background()); close(flushed) }()
+	<-entered // a flush is now stuck inside the store
+
+	sealed := make(chan error, 1)
+	p := &Publishing{Inner: &fakeInner{r: r}, Batcher: b}
+	go func() { _, err := p.Seal(context.Background(), r.cellA, cellstore.TurnInfo{}); sealed <- err }()
+	select {
+	case err := <-sealed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a seal waited on the network")
+	}
+	if b.Pending() != 2 {
+		t.Fatalf("pending = %d, want 2", b.Pending())
+	}
+	close(release)
+	<-flushed
+}
+
+func TestBatcherPublishesNewestOnly(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	var flushes []Flush
+	b.OnFlush = func(f Flush) { flushes = append(flushes, f) }
+	h1 := r.seal(map[string]string{"a": "1"})
+	h2 := r.seal(map[string]string{"a": "2"})
+	h3 := r.seal(map[string]string{"a": "3"})
+	note(b, h1, h2, h3)
+
+	if d := b.flush(context.Background()); d != 0 {
+		t.Fatalf("next flush in %v, want at once: the upload was the window", d)
+	}
+	if got := r.head(cellID); got.Head != h3 {
+		t.Fatalf("head %s, want the newest %s", got.Head, h3)
+	}
+	if len(flushes) != 1 || flushes[0].Head != h3 || flushes[0].Turns != 3 || flushes[0].Frames != 1 || flushes[0].Objects == 0 {
+		t.Fatalf("flushes = %+v", flushes)
+	}
+	if b.Pending() != 0 || r.puts() != 1 {
+		t.Fatalf("pending %d, puts %d", b.Pending(), r.puts())
+	}
+}
+
+func TestBatcherHeartbeatCarriesPending(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	note(b, r.seal(map[string]string{"a": "1"}))
+	b.flush(context.Background())
+	note(b, r.seal(map[string]string{"a": "2"}), r.seal(map[string]string{"a": "3"}))
+
+	r.clock.Advance(directory.HeartbeatEvery)
+	b.beat(context.Background())
+	got := r.head(cellID)
+	if got.Lease.Pending != 2 || got.Lease.Expires <= r.clock.Now().UnixMilli() {
+		t.Fatalf("lease after heartbeat: %+v", got.Lease)
+	}
+}
+
+func TestStoreFailureKeepsSealing(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	h1 := r.publishFirst(map[string]string{"a": "0"})
+	r.store.set(blobstore.ErrUnreachable, nil)
+	inner := &fakeInner{r: r}
+	p := &Publishing{Inner: inner, Batcher: b}
+	seal := func() {
+		if _, err := p.Seal(context.Background(), r.cellA, cellstore.TurnInfo{}); err != nil {
+			t.Fatalf("seal failed while the store was full: %v", err)
+		}
+	}
+
+	var waits []time.Duration
+	for i := 0; i < 6; i++ {
+		seal()
+		waits = append(waits, b.flush(context.Background()))
+	}
+	s := time.Second
+	want := []time.Duration{10 * s, 20 * s, 40 * s, 60 * s, 60 * s, 60 * s}
+	for i := range want {
+		if waits[i] != want[i] {
+			t.Fatalf("backoff %v, want %v", waits, want)
+		}
+	}
+	if b.Pending() != 6 || r.head(cellID).Head != h1 {
+		t.Fatalf("pending %d, head %s", b.Pending(), r.head(cellID).Head)
+	}
+
+	r.store.set(nil, nil)
+	if d := b.flush(context.Background()); d != 0 || b.Pending() != 0 {
+		t.Fatalf("after recovery: wait %v, pending %d", d, b.Pending())
+	}
+}
+
+func TestStoreDownDirectoryUp(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	h1 := r.publishFirst(map[string]string{"a": "0"})
+	r.store.set(blobstore.ErrUnreachable, nil)
+	h2, h3 := r.seal(map[string]string{"a": "1"}), r.seal(map[string]string{"a": "2"})
+	note(b, h2, h3)
+	b.flush(context.Background())
+
+	for i := 0; i < 5; i++ { // 50 s: longer than a lease
+		r.clock.Advance(directory.HeartbeatEvery)
+		b.beat(context.Background())
+		if _, err := r.dir.For(devB).Acquire(context.Background(), cellID, directory.AcquireOpts{}); !errors.Is(err, directory.ErrLeaseHeld) {
+			t.Fatalf("beat %d: takeover = %v, the lease should be kept", i, err)
+		}
+	}
+	got := r.head(cellID)
+	if got.Head != h1 || got.Lease.Pending != 2 || b.Pending() != 2 {
+		t.Fatalf("head %s pending %d/%d", got.Head, got.Lease.Pending, b.Pending())
+	}
+
+	r.store.set(nil, nil)
+	b.flush(context.Background())
+	if got := r.head(cellID); got.Head != h3 || b.Pending() != 0 {
+		t.Fatalf("the next tick did not publish: head %s, pending %d", got.Head, b.Pending())
+	}
+}
+
+func TestDirectoryDownThenFenceStale(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	h1 := r.publishFirst(map[string]string{"a": "0"})
+	var branches, by []string
+	b.OnSuperseded = func(s Superseded) { branches, by = append(branches, s.Branch), append(by, s.By) }
+	h2 := r.seal(map[string]string{"a": "1"})
+	note(b, h2)
+
+	r.dirA.set(directory.ErrUnreachable)
+	b.flush(context.Background()) // uploads may go through; the head cannot move
+	if r.head(cellID).Head != h1 {
+		t.Fatal("the head moved with the directory down")
+	}
+	r.takeOver()
+	r.bPublishes(h1)
+	r.dirA.set(nil)
+
+	b.flush(context.Background())
+	if len(branches) != 1 {
+		t.Fatalf("OnSuperseded calls: %v", branches)
+	}
+	if got := r.head(cellID); got.Head != otherHead {
+		t.Fatalf("the old cell's head moved to %s", got.Head)
+	}
+	if got := r.head(branches[0]); got.Head != h2 || got.ParentCell != cellID || got.OrphanTurns != 1 {
+		t.Fatalf("branch = %+v", got)
+	}
+}
+
+func TestBatcherRidesOutRelayRestart(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	r.publishFirst(map[string]string{"a": "0"})
+	h2 := r.seal(map[string]string{"a": "1"})
+	note(b, h2)
+	var superseded int
+	b.OnSuperseded = func(Superseded) { superseded++ }
+
+	r.dirA.set(directory.ErrUnreachable) // the relay restarts
+	r.clock.Advance(directory.HeartbeatEvery)
+	b.beat(context.Background())
+	if d := b.flush(context.Background()); d != 2*b.Interval {
+		t.Fatalf("backoff = %v", d)
+	}
+	r.dirA.set(nil) // back before the lease lapsed
+	r.clock.Advance(directory.HeartbeatEvery)
+	b.beat(context.Background())
+	b.flush(context.Background())
+
+	got := r.head(cellID)
+	if got.Head != h2 || got.Lease.Fence != 1 || got.Lease.Device != devA || superseded != 0 {
+		t.Fatalf("cell %+v, superseded %d", got, superseded)
+	}
+}
+
+func TestSkewIsSurfacedOnce(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	var shown []error
+	b.OnError = func(err error) { shown = append(shown, err) }
+	r.publishFirst(map[string]string{"a": "0"})
+	note(b, r.seal(map[string]string{"a": "1"}))
+
+	r.dirA.set(wireauth.ErrSkew)
+	for i := 0; i < 3; i++ {
+		if d := b.flush(context.Background()); d != b.Interval {
+			t.Fatalf("skew was retried on the backoff: %v", d)
+		}
+		b.beat(context.Background())
+	}
+	if len(shown) != 1 || !errors.Is(shown[0], wireauth.ErrSkew) {
+		t.Fatalf("OnError calls: %v", shown)
+	}
+
+	r.dirA.set(nil) // a fixed clock makes the next skew news again
+	b.flush(context.Background())
+	r.dirA.set(wireauth.ErrSkew)
+	note(b, r.seal(map[string]string{"a": "2"}))
+	b.flush(context.Background())
+	if len(shown) != 2 {
+		t.Fatalf("OnError calls after recovery: %v", shown)
+	}
+}
+
+func TestCloseFlushesAndReleases(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	h1 := r.seal(map[string]string{"a": "1"})
+	note(b, h1)
+	if err := b.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := r.head(cellID)
+	if got.Head != h1 || got.Lease.Expires != 0 {
+		t.Fatalf("after close: %+v", got)
+	}
+	if _, err := r.dir.For(devB).Acquire(context.Background(), cellID, directory.AcquireOpts{}); err != nil {
+		t.Fatalf("a released lease is takeable at once: %v", err)
+	}
+}
+
+func TestBatcherRunFlushesAtOnceAndBeatsOnSchedule(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(1) // the flush loop waits for a turn, so only the heartbeat sleeps
+
+	h1 := r.seal(map[string]string{"a": "1"})
+	note(b, h1)
+	eventually(t, "a lone turn to go up at once", func() bool { return headIfAny(r) == h1 })
+	h2 := r.seal(map[string]string{"a": "2"})
+	note(b, h2) // no window follows an upload, so the next turn goes up at once too
+	eventually(t, "the next turn to go up at once", func() bool { return headIfAny(r) == h2 })
+	sl.settle(1) // and the flush loop is back to waiting for a turn, not for a timer
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run = %v", err)
+	}
+}
+
+// headIfAny is the relay's head for the chat, or "" while it has no record.
+func headIfAny(r *rig) string {
+	v, err := r.dir.For(devB).Cell(context.Background(), cellID)
+	if err != nil {
+		return ""
+	}
+	return v.Cell.Head
+}
+
+// eventually waits up to a real second for ok, so a loop that never gets there
+// fails the test instead of hanging it.
+func eventually(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(time.Second); !ok(); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+	}
+}
+
+// Coalescing comes from the upload's own duration and from nothing else: while
+// one upload is in flight, nine more seals arrive, and when it ends exactly one
+// more upload sends the newest of them. A burst of ten costs two uploads, and a
+// seal after that goes up at once, with no window to wait out.
+func TestBurstCostsTwoUploadsAndTheNextSealGoesUpAtOnce(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	first := r.publishFirst(map[string]string{"a": "0"})
+	puts := r.puts()
+	inFlight, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	r.store.set(nil, func(context.Context) {
+		once.Do(func() { close(inFlight); <-release }) // only the first upload is slow
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+
+	note(b, r.seal(map[string]string{"a": "1"}))
+	<-inFlight // the first upload has begun and is held
+	var last string
+	for i := 2; i <= 10; i++ {
+		last = r.seal(map[string]string{"a": string(rune('0' + i))})
+		note(b, last)
+	}
+	close(release)
+	eventually(t, "the newest head to go up", func() bool { return r.head(cellID).Head == last && b.Pending() == 0 })
+	if got := r.puts() - puts; got != 2 || r.head(cellID).Head == first {
+		t.Fatalf("a burst of ten made %d uploads, want 2", got)
+	}
+
+	after := r.seal(map[string]string{"a": "z"})
+	note(b, after)
+	eventually(t, "a seal after the burst to go up at once", func() bool { return r.head(cellID).Head == after })
+	cancel()
+	<-done
+}
+
+// A publish renews the lease, so a chat that has just published sends no
+// heartbeat at its next tick; once it goes quiet, one heartbeat goes out per tick.
+func TestOnlyAnIdleChatSendsHeartbeats(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	r.publishFirst(map[string]string{"a": "0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(1)
+	h := r.seal(map[string]string{"a": "1"})
+	note(b, h)
+	eventually(t, "the publish", func() bool { return r.head(cellID).Head == h })
+	sl.settle(1) // only the heartbeat sleeps
+
+	sl.advance(directory.HeartbeatEvery) // the tick after a publish
+	sl.settle(1)
+	if got := r.dirA.beats.Load(); got != 0 {
+		t.Fatalf("%d heartbeats at the tick after a publish, want none", got)
+	}
+	sl.advance(directory.HeartbeatEvery) // a tick with nothing published
+	sl.settle(1)
+	if got := r.dirA.beats.Load(); got != 1 {
+		t.Fatalf("%d heartbeats at a quiet tick, want 1", got)
+	}
+	cancel()
+	<-done
+}
+
+// Idle with nothing sealed since the last upload asks the relay for nothing.
+func TestIdleWithNothingNewIsFree(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = 7 * time.Second
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	r.publishFirst(map[string]string{"a": "0"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(1)
+	puts := r.puts()
+	b.Idle()
+	for range 10000 { // there is no event to wait for: an idle with nothing noted must simply do nothing
+		runtime.Gosched()
+	}
+	sl.settle(1)
+	if r.puts() != puts {
+		t.Fatalf("an idle with nothing new made %d puts", r.puts()-puts)
+	}
+	cancel()
+	<-done
+}
+
+// When the relay is failing, a finished turn must not make the client retry at
+// once: thousands of clients would hammer a struggling relay after every turn.
+// Idle only means "flush when the backoff ends", and that flush sends it all.
+func TestIdleDuringBackoffWaitsForTheBackoff(t *testing.T) {
+	r := newRig(t)
+	b := r.batcher()
+	b.Interval = 7 * time.Second
+	sl := newFakeSleeper(r.clock)
+	b.Sleep = sl.Sleep
+	r.publishFirst(map[string]string{"a": "0"})
+	var attempts atomic.Int32
+	r.store.set(blobstore.ErrUnreachable, func(context.Context) { attempts.Add(1) })
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx) }()
+	sl.settle(1)
+
+	note(b, r.seal(map[string]string{"a": "1"}))
+	b.Idle()
+	sl.settleOn(2 * b.Interval) // the idle flush failed once and the loop backs off
+	if attempts.Load() != 1 {
+		t.Fatalf("%d upload attempts after the first idle, want 1", attempts.Load())
+	}
+
+	h2 := r.seal(map[string]string{"a": "2"})
+	note(b, h2)
+	b.Idle()
+	b.Idle()
+	for range 10000 { // give a wrongly woken flush loop every chance to run; there is no event to wait for
+		runtime.Gosched()
+	}
+	sl.advance(time.Second)
+	sl.settleOn(2*b.Interval - time.Second) // still the same backoff, not a new one begun by an idle retry
+	if attempts.Load() != 1 {
+		t.Fatalf("an idle during the backoff retried: %d attempts", attempts.Load())
+	}
+	sl.advance(2*b.Interval - time.Second) // the backoff ends: one more attempt
+	sl.settleOn(4 * b.Interval)
+	if attempts.Load() != 2 {
+		t.Fatalf("%d upload attempts across the backoff, want 2", attempts.Load())
+	}
+
+	r.store.set(nil, nil)
+	sl.advance(4 * b.Interval)
+	eventually(t, "the newest head to be sent", func() bool { return headIfAny(r) == h2 })
+	if got := r.head(cellID).Head; got != h2 || b.Pending() != 0 {
+		t.Fatalf("after the backoff: head %s, %d pending; want the newest head sent", got, b.Pending())
+	}
+	cancel()
+	<-done
+}

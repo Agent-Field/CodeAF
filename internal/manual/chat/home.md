@@ -288,6 +288,196 @@ before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; dismissing or reopening a tab
 updates the tab and the row in Sessions together.
 
+## Chats on my other machines — a chat running on another computer, "running on studio", "studio offline", why does it say running on build-box offline, merge / discard
+
+When this machine can reach your other machines, a chat that lives on one of them is a
+row under **sessions**, beside the local ones and ordered by when its last saved turn
+happened. The row says where the chat is only where that tells you something:
+
+| The chat is | The row says |
+| --- | --- |
+| running on another machine | `running on <device>` |
+| on a machine that went off or to sleep without letting go | `<device> offline` |
+| a branch left by a takeover | `<K> turns from <device>: merge / discard`, or `: discard` alone where merge is not offered |
+| held by this machine, or let go by everyone | nothing |
+
+Read the two words apart: `running on build-box` says that computer is working on the chat now, and `build-box offline` says that computer has not answered for 25 seconds (it is switched off, asleep, frozen or offline; the word appears within 30 seconds, and goes at once when it answers again) and has not let the chat go, so the chat's last saved turns are what you would get. The name is only the device's. A chat on a computer that is `offline` can still be continued here; the card says how many turns may still be there. A count of one reads `1 turn`, never `1 turns`. The device is the name you gave that machine. A chat whose name will not open shows
+`untitled`, and a machine whose name will not open shows the first eight characters of
+its id. On a narrow frame a branch's sentence shortens to `<K> turns · <device>`, and where
+even that will not fit the sentence gives way whole before the chat's name is cut, so a
+row may show only the name and its age. These rows are stops for the cursor: enter runs
+what the row offers, described in the next two sections.
+
+When the relay offers a live connection, home keeps one open and a change made on
+another machine shows on home within a second or two. The list is also fetched once a
+minute as a safety net, and at once when you open home or come back to the window. When the
+relay does not offer a live connection (an older or self-hosted relay), or the connection is
+down, home asks for the list instead. It asks only while home is on screen and the terminal
+has your attention (its focus, or a key pressed in the last ten minutes). It asks every few
+seconds while the list is changing and about once a minute while it is not. Each row's age is
+counted from its last saved turn, so it keeps growing between fetches.
+
+If the other machines cannot be reached, the last list stays on screen and the line
+`other machines unreachable` stands under it. With no connection set up at all (sync off, see "Sync your chats between machines" in running-from-the-terminal), nothing
+extra is drawn and the panel is exactly the local list. `codeaf cell list --all` prints the
+same rows in a terminal (see "The cell verbs" in running-from-the-terminal).
+
+## Continue a chat here that another machine left — "studio offline", takeover, "continue here", the chat is running on another computer
+
+Press enter on a row that says `<device> offline` or `running on <device>` and home asks **Continue this chat here?**
+with the cursor on `continue here`, because pressing enter on the row already said you want it; `esc` or `2` leaves it there.
+The card says how fresh the copy is: `last saved turn <N> ago; up to <K> turns may still
+be on <device>`. The `up to` clause is left out when nothing is waiting there. On a
+`running on <device>` row the card starts with that: `running on <device>; last durable turn
+<N>s ago`. When that device is not online, the card leaves `running on` out and says `last saved turn <N> ago`. Press enter to continue: the chat is fetched, this machine takes it
+over at once and it opens. You do not wait for the other machine to go quiet: a chat that is
+running there stops taking new turns there the moment you take it, and its window says
+`<device> continued this chat; this window now only shows it`. Anything it had not yet sent
+is kept as a branch, `<K> turns from <device>: merge / discard`. On a narrow frame the same
+question takes the whole screen, with the sentence wrapped.
+
+- If you had unsaved edits to that chat here, they are not overwritten. They are kept as a
+  branch and the chat says `your unsaved edits here were kept as <K> turns from <device>`.
+- If another machine took an `offline` chat first, the row goes back to `running on <device>` with one
+  line saying another device continued it first. Nothing was changed.
+- If the other machines cannot be reached, enter says `other machines unreachable` and asks
+  nothing: no chat can be taken without them.
+- With no way to continue set up, an offline row has no `continue here`: enter says its sentence.
+
+## What comes with a continued chat — the files, binary files, file modes, the executable bit, the .env, where the copy lives, no git needed
+
+Continuing a chat brings all of it: the whole conversation, and every file the chat worked
+on, byte for byte: text and binary files, files that were never in a git repository, the
+executable bit, links. The one exception is an install folder a lockfile rebuilds, such as
+`node_modules` (see "What a moved chat left behind"). Nothing is fetched from git and no git login or remote is needed on
+the machine that continues; everything comes from your relay. The copy lives in a folder of
+its own under this machine's chats, and the chat works in a `work` folder inside it. Your
+project folder on the other machine is not touched. If this machine already has the chat and
+it works in one of your project folders, the chat is restored into that very folder: it is
+never renamed or replaced, so an editor or git that holds it open keeps working, and it shows
+the other machine's work.
+
+**Secrets do not travel in the files.** A `.env`, at any depth, and any other file that holds a
+secret is kept out of the saved history and kept whole in your key vault instead, and the vault
+travels with your chats. When you continue, each of those files is put back at the same
+path in the chat's work folder, with the same bytes and the same permissions: comments, order
+and quoting are as you wrote them. Each file is carried on its own, so two machines that edited
+different files keep both. When both edited the same file, the one saved last wins as a whole
+file, never line by line. A file you delete on one machine is deleted on the other. With no
+identity on this machine, no secrets are fetched and no file is written.
+
+**Your keys travel too, through the same encrypted vault.** Two things are sealed in the
+vault with your identity key and sent when they change, so a machine you continue on does not
+ask you to enter keys again. One is `credentials.json`, the keys of every account you
+connected. The other is the model keys stored in your profile's `config.json`: the model key,
+the search keys, the app secret and the key of any model service that keeps its key in the
+file. Each key is sent on its own: when two machines both changed the same key the one changed last
+wins, changing a budget or any other setting never makes a key look newer, and removing a key on
+one machine removes it on the other. A key that comes from an environment variable such as
+`OPENROUTER_API_KEY` is never sent. A damaged `credentials.json` or `config.json` is never
+sent and never replaces a good copy; when a good `credentials.json` arrives, the damaged file
+is kept beside it as `credentials.json.damaged`.
+
+**Budgets stay per machine.** Only the key fields of `config.json` travel. Your budgets and
+limits, model picks and every other setting are not sent, and a key arriving never changes them,
+so a limit you set here is not applied to your other machine. A service's key lands only on a
+machine that already has that service listed, and a machine without it never removes it for
+your other machines.
+
+If you continue a chat on a machine that already has it, the chat as it was left replaces
+what is there. Anything you had changed and never saved is kept first, as a branch, with the
+sentence above; nothing is thrown away. If another machine takes the
+chat while you are still fetching it, this machine keeps exactly what it had.
+
+## What a move carries and what it leaves behind — job logs, task history, kept branches, do spend and usage numbers sync between computers, memory, withheld folders
+
+A chat that moves to another computer brings, from the relay and sealed on the way:
+
+- the whole conversation, and every file in its folder;
+- the files beside the chat that its messages name: a job's log (`logs/jobs/<n>.log`) and a cut-short tool result's full output. A log or output file over 1 MiB, or past 16 MiB together, or one that looks like a secret, stays behind and is named under `not brought along:`. Each task's journal is not among them: it travels whole inside the chat, with no size limit. The job itself is not carried: `was running there:` lists it and codeaf never restarts it;
+- the chat's dials (effort, approval), the folders it refers to and which tasks were put away;
+- a task's unlanded working copy and its branch (see "Tasks that had not landed when a chat moved"), and a finished task's kept branch (see the same section);
+- what the chat spent: the chat's share of the usage and spend figures is read again from its sealed record on the new computer, so its cost shows there and a rewind never drops it;
+- the memories that chat wrote, kept in the chat's own ledger and read back into the new computer's memory.
+
+The project's task history (the list of finished tasks) and the git bookkeeping inside a task's working copy are not carried: they are made again on the other computer from the chat's own record.
+
+It leaves behind, and lists on the card under `not brought along:`: install folders a lockfile rebuilds (`node_modules`, `.venv`, `target`, `vendor`, `Pods`), files this computer cannot read, and one of two names that differ only in letter case or accent. A read-only folder arrives read-only. A secret file (`.env`) is not in the chat's files: it travels in the key vault. Budgets, limits and model picks are per computer and never travel. Memory that belongs to no chat, for example a line edited by hand in the memory place, stays on the computer it was written on.
+
+## What a moved chat left behind — set this machine up, why is node_modules missing, my dev server is not running after I moved, not brought along, rebuilt from the lockfile
+
+A chat that moves brings its conversation and every file it worked on, except an install
+folder that a lockfile rebuilds: `node_modules` (with a `package-lock.json`,
+`npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock` or `bun.lockb`), `.venv` or
+`venv` (with `uv.lock`, `poetry.lock`, `pdm.lock`, `Pipfile.lock`, or a `requirements.txt`
+that pins every version with `==`), `target` (with a `Cargo.lock` beside its `Cargo.toml`),
+`vendor` (with a `composer.lock` or `Gemfile.lock`) and `Pods` (with a `Podfile.lock`). A
+folder is left out only when its lockfile travels too, git tracks nothing inside it, and your
+own `.furrowpolicy` does not already exclude it. A folder with no lockfile, build output such
+as `.next` or `dist`, and data folders always travel. Rebuilding from the lock gives the same
+packages, and a `node_modules` made on a Mac holds Mac programs that would be wrong on Linux.
+A copy of the folder that a machine already has is never deleted: taking a chat back, or
+rewinding, leaves it alone.
+
+Taking such a chat raises one card, **Set this machine up like <device> had it?**, with
+`set up` and `not now` (the cursor starts on `not now`). It lists `not brought along:` the
+folders, each with the command that brings it back, `was running there:` the commands that
+were running (a dev server, with its port), and `also needed:` the tools this machine lacks.
+A line is left out when it has nothing to say, and a machine that has everything, such as
+the one taking its own chat back, gets no card.
+
+`set up` starts the same setup turn as `/setup now`, opened with exactly those facts, and is
+consent for exactly the commands the card lists: the agent runs them without asking again,
+and any other command asks first, as in every setup turn, because the network is open for it.
+`not now` and esc run nothing; the same facts reach the agent once, at its next step, as news
+that asks for nothing, and `/setup` lists what is missing later. codeaf never restarts a
+command by itself, and database rows or container data do not travel. A secret in a recorded
+command is shown as `…`. Limits: there is no way to force a folder to travel, and what was
+running is known only from the moment of the move.
+
+## A file that cannot be read, two files with the same name in different case — odd files and a moved chat, not brought along, read-only folder, hard links
+
+One odd file never stops a chat from saving or moving. A file that this machine cannot read
+(mode `0000`, or owned by another user) is kept out of the saved history: the chat says
+`<file> cannot be read here, so it is left out of the saved history until its permissions
+allow it`, the card lists it under `not brought along:` with the same reason, and everything
+else saves as usual. Once the file can be read, the next save carries it. Two files whose
+names differ only in letter case (`Readme.md` and `README.md`), or only in how an accent is
+spelled, cannot both live on a Mac's default disk. The move brings one, the name that sorts
+first (`README.md` before `Readme.md`), keeps the other out and lists it on the card as
+`<file>: not brought along; same name as <other> here`. Taking the chat back leaves both
+files on the machine that had them. A folder marked read-only moves like any other and
+arrives read-only. Two paths that are one file (a hard link) arrive as one file again; where
+the disk refuses links they arrive as two files with the same bytes.
+
+## Tasks that had not landed when a chat moved — does my task branch come with me, working copy, uncommitted task edits, unmerged task branch, kept branch, worktree
+
+A task works in a
+copy of your repository on its own branch. When the chat moves, each copy still at work comes
+along: its branch and commits arrive with the project, and the files the task had changed but
+not yet committed (edited, added, and the ones it deleted) are carried beside them and laid back
+over a fresh copy on the same branch, in this machine's own folder for that chat. Home says
+`the working copy of a task came along: <task>`, or `working copies of tasks came along:
+<task>, <task>` for several. A task that has finished has no copy, but the branch it kept is put back in your project on this machine at the same commit, so it does come.
+What the repository's own `.gitignore` names (build output, a `.env`) and any file that looks
+like it holds a secret stay behind, and so does a task's own installed `node_modules`, which the
+card in "What a moved chat left behind" lists as `trees/<task>/…`. Copies the other machine registered in the repository are
+forgotten here, so `git worktree list` shows only what this machine has. If a copy cannot be set
+up again (say its branch is checked out somewhere else), the sentence `a task's working copy
+could not be set up again here` names why, and the task's files are still in its folder under
+the chat's `trees` folder.
+
+## Discard the turns of a branch — "2 turns from studio", merge / discard, archive a branch
+
+A chat that was moved to another machine while another machine still held unsent turns leaves those turns
+as a branch. Press enter on its row to be asked **What should happen to these turns?** and
+answer `discard` (or `merge`, where it is offered), then enter; the cursor starts on `leave
+them`. **Discard archives** the branch: it leaves this list and is not deleted. **Merge is
+not offered on this build**: nothing here can merge a branch yet, so the row says
+`<K> turns from <device>: discard` and the card has only discard and leave them. Where a
+build can merge, the row says `<K> turns from <device>: merge / discard`. If the other
+machines cannot be reached, enter says `other machines unreachable` and does nothing.
+
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
 **A conversation nothing has named yet reads `new conversation`** on home's sessions

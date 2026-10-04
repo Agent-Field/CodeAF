@@ -114,8 +114,8 @@ func taskCheckpointPath(sessionFile string) string {
 	if sessionFile == "" {
 		return ""
 	}
-	if filepath.Base(sessionFile) == placeTranscript {
-		return filepath.Join(filepath.Dir(sessionFile), placeTasks)
+	if dir, ok := FolderOf(sessionFile); ok {
+		return truthPath(dir, placeTasks)
 	}
 	return strings.TrimSuffix(sessionFile, filepath.Ext(sessionFile)) + ".tasks.json"
 }
@@ -903,6 +903,9 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 		s.duringWrite()
 	}
 	document = filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(s.path), placeTranscript)))
+	if codec, sealed := checkpointCodec(s.path); sealed {
+		document = document.mapPaths(codec.encode)
+	}
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return err
@@ -1339,6 +1342,9 @@ func loadTaskCheckpoint(path string) (taskDocument, bool) {
 	if err != nil {
 		log.Printf("session: ignoring corrupt task checkpoint %s: %v", path, err)
 		return taskDocument{}, false
+	}
+	if codec, sealed := checkpointCodec(path); sealed {
+		document = document.mapPaths(codec.resolve)
 	}
 	return filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(path), placeTranscript))), true
 }

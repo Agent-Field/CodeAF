@@ -106,3 +106,41 @@ func TestWaitingSentenceWrongOverlap(t *testing.T) {
 		t.Fatalf("sign-in borrowed another lane's sentence: reason=%q", waiting.reason)
 	}
 }
+
+// TestWaitingSentenceHarnessDesign pins the order the design ask raises in: the
+// lane and its sentence are published together, so the first read that sees a
+// person is needed already carries a reason.
+func TestWaitingSentenceHarnessDesign(t *testing.T) {
+	agent, _ := questionSession(t, "dsgn1111dsgn1111", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	bad := make(chan personAsk, 1)
+	saw := make(chan struct{}, 1)
+	go func() {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			waiting := agent.waitingOnPerson()
+			if !waiting.waiting {
+				continue
+			}
+			if strings.TrimSpace(waiting.reason) == "" {
+				bad <- waiting
+				return
+			}
+			saw <- struct{}{}
+			return
+		}
+	}()
+	page := subharness.Harness{}
+	page.Id.Name = "research"
+	go func() {
+		_, _ = agent.askHarnessDesign(ctx, &TaskNode{id: 7}, page, "", make(chan string))
+	}()
+	select {
+	case waiting := <-bad:
+		t.Fatalf("a design ask says a person is needed with no sentence: waiting=%v reason=%q", waiting.waiting, waiting.reason)
+	case <-saw:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the design question never became active")
+	}
+}

@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/handoff"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/openrouterauth"
@@ -168,7 +169,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which they meant would open a conversation on a machine they did not
 	// name.
 	if strings.TrimSpace(*host) != "" && strings.TrimSpace(*at) != "" {
-		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through a relay: name one or the other, not both")
+		return fmt.Errorf("--host reaches a machine over ssh and --at reaches one through the sync service: name one or the other, not both")
 	}
 
 	// A BUDGET IS A SENTENCE ABOUT AN UNATTENDED SESSION, so it is refused
@@ -489,6 +490,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	err = runSurface(ctx, tui3.Options{
 		Agent:             agent,
 		Build:             buildinfo.String(),
+		Seal:              sealSeamOf(agent, cfg.Seals),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),
 		// The memory place reads the conversation's store; memory off supplies no seam.
 		Memory:       v3MemorySeam(cfg.Memory),
@@ -649,7 +651,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the top of the conversation — rather than growing surfaces of their
 		// own. An ordinary attended launch with the same file on disk is still
 		// shown nothing whatever.
-		Notice:        joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice()),
+		Notice:        v3Interrupted(cfg, joinV3Notices(entryNotice, notice, session.UnattendedNotice(cfg), buildinfo.StaleNotice())),
 		ContextWindow: cfg.ContextWindow,
 		History:       recall,
 		DraftFile:     draft,
@@ -1252,7 +1254,34 @@ func importForeignSkillsBeforeFirstMessage(shelf *store.Store, workspace string)
 	if err != nil {
 		return
 	}
-	resident.ReconcileImportedSkills(shelf, workspace, homeDir)
+	runWithinBudget(skillImportBudget, func() {
+		resident.ReconcileImportedSkills(shelf, workspace, homeDir)
+	})
+}
+
+// skillImportBudget is how long a launch waits for the skill import pass. The
+// pass reads a few small files and takes milliseconds; the one thing that makes
+// it slow is a skill folder linked into a place the operating system guards
+// with a permission prompt (macOS Documents, reached over ssh), where open(2)
+// blocks and nothing can cancel it. Waiting forever there left the window blank.
+const skillImportBudget = 2 * time.Second
+
+// runWithinBudget runs pass and waits for it at most budget, reporting whether
+// it finished. A pass that outlives the budget is left to finish on its own: it
+// is idempotent and ignores every failure, so the only cost of giving up is a
+// conversation that opens without the skills that pass had not yet recorded.
+func runWithinBudget(budget time.Duration, pass func()) bool {
+	done := make(chan struct{})
+	guard.Go("chatv3/skill-import", func() {
+		defer close(done)
+		pass()
+	})
+	select {
+	case <-done:
+		return true
+	case <-time.After(budget):
+		return false
+	}
 }
 
 // v3SkillShelf is the store the skill shelf lives in for one process: the
@@ -1423,6 +1452,12 @@ func v3Connections(manager *connect.Manager) tui3.Connections {
 // cannot be shown a fuel gate (engine.go) — and a door deciding that for itself
 // would be this file guessing who is watching.
 func openV3Agent(cfg session.Config, workspace string, open func(session.Config) (*session.Agent, error)) (*session.Agent, session.Config, string, error) {
+	// A chat in the middle of being taken over here is not opened: a session booted
+	// now would read the journal from before the swap (see [handoff.Arrive]).
+	if handoff.Arriving(cfg.Place.Dir) {
+		return nil, cfg, "", errors.New(chatArrivingSentence)
+	}
+	cfg = v3Seated(v3Migrated(cfg))
 	// Restore the gate before construction, so restored work cannot start behind
 	// the profile default. Return the launch config unchanged: a subsequent new
 	// conversation must not inherit this one's saved override.
@@ -1473,6 +1508,10 @@ func openV3Agent(cfg session.Config, workspace string, open func(session.Config)
 		reason:     sessionHeldElsewhereSentence(workspace),
 	}
 }
+
+// chatArrivingSentence is what a door says about a chat that is being moved onto
+// this computer right now: it opens by itself when the move ends.
+const chatArrivingSentence = "this chat is arriving on this computer; it opens by itself in a moment"
 
 // sessionHeldElsewhere is a conversation another window is writing, named so a
 // door with a SCREEN can do something better than print the sentence.
@@ -2156,6 +2195,7 @@ func v3Memory(profileDir string) *store.Store {
 		fmt.Fprintln(os.Stderr, "memory is off for this session: "+err.Error())
 		return nil
 	}
+	brain.SetMemoryLedger(session.CellMemories)
 	return brain
 }
 

@@ -604,7 +604,7 @@ func (a *Agent) failoverCheckerModel(model string) (string, bool) {
 	if a.config.OneModel {
 		return "", false
 	}
-	options := a.fallbackModels(model)
+	options := a.fallbackModelsAfter(model, a.rolePinned(roles.RoleAuditor, model))
 	if len(options) == 0 {
 		return "", false
 	}

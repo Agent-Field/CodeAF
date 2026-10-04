@@ -1,0 +1,47 @@
+name = "codeaf-hosted-relay"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# Local development and the base of every deployment: `wrangler dev --local` runs this in workerd
+# with a simulated R2 bucket and Durable Objects. See README.md for what a deployment changes.
+
+[[r2_buckets]]
+binding = "FRAMES"
+bucket_name = "codeaf-relay-frames"
+
+[[durable_objects.bindings]]
+name = "IDENTITY"
+class_name = "IdentityDO"
+
+[[durable_objects.bindings]]
+name = "PAIR_GATE"
+class_name = "PairGate"
+
+[[durable_objects.bindings]]
+name = "NEWCOMERS"
+class_name = "NewcomerGate"
+
+[[durable_objects.bindings]]
+name = "MAILBOX"
+class_name = "Mailbox"
+
+[[durable_objects.bindings]]
+name = "LINK_GATE"
+class_name = "LinkGate"
+
+[[durable_objects.bindings]]
+name = "LINK_REQUEST"
+class_name = "LinkRequest"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["IdentityDO", "PairGate", "Mailbox", "NewcomerGate"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LinkGate", "LinkRequest"]
+
+[vars]
+# The lease law: "amended" is contract 8.7 of the stage 1H decision (90 s, a publish renews) and is
+# what the client and the Go relay implement; "stage1" is the frozen 30 s law, kept for reference.
+LEASE_POLICY = "amended"

@@ -90,6 +90,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/cell"
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/guard"
@@ -1616,7 +1617,7 @@ func (g *TaskGraph) runFrontier() {
 		// graph believes a node is running and has no handle on it. A node
 		// belongs to the process and not to a turn or a surface, so the parent
 		// is Background — detaching a renderer ends nothing here.
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(g.rootContext())
 		node.ctx, node.cancel = ctx, cancel
 		starting = append(starting, node)
 		// The handle is kept here as well as on the node, because the goroutine
@@ -2885,7 +2886,7 @@ func (n *TaskNode) runContext() (context.Context, context.CancelFunc) {
 	n.graph.mu.Lock()
 	defer n.graph.mu.Unlock()
 	if n.ctx == nil {
-		n.ctx, n.cancel = context.WithCancel(context.Background())
+		n.ctx, n.cancel = context.WithCancel(n.graph.rootContext())
 	}
 	return n.ctx, n.cancel
 }
@@ -7002,22 +7003,16 @@ func worktreeDirtIn(ctx context.Context, dir string) string {
 	return string(sum[:8])
 }
 
-// codeafDroppings is the one directory under a node's worktree that is the
-// harness's and never the node's work: job logs, saved pictures a session keeps
-// for itself, anything this program leaves behind while the node works. Named
-// once because two places have to agree about it — the fingerprint above and
-// the index [stageTaskWork] builds — and a disagreement would mean a node
-// judged as working on files that never reach its branch.
-const codeafDroppings = ".codeaf"
+// codeafDroppings is the harness's own directory under a node's worktree. It
+// is named once, in internal/cell, because the fingerprint, the index
+// [stageTaskWork] builds and the task-copy carrier all have to agree about it.
+const codeafDroppings = cell.TaskDropping
 
 const legacyCodeafDroppings = ".aforge-v3" // legacy-name
 
 // taskDroppingNames is the one list of repository-local task machinery a
-// reader, cleaner or index builder must recognise. Writes keep using
-// codeafDroppings because live worktree registrations cannot be moved.
-func taskDroppingNames() []string {
-	return []string{codeafDroppings, legacyCodeafDroppings}
-}
+// reader, cleaner or index builder must recognise.
+func taskDroppingNames() []string { return cell.TaskDroppings() }
 
 // readTaskDropping reads current metadata first and consults the former
 // directory only when the current file is absent. A current file that exists
@@ -7037,15 +7032,7 @@ func readTaskDropping(dir, name string) ([]byte, error) {
 	return nil, absent
 }
 
-func isTaskDropping(path string) bool {
-	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
-	for _, name := range taskDroppingNames() {
-		if clean == name || strings.HasPrefix(clean, name+"/") {
-			return true
-		}
-	}
-	return false
-}
+func isTaskDropping(path string) bool { return cell.IsTaskDropping(path) }
 
 // savingTools are the hands that PUT A FILE ON DISK at a path the call itself
 // names. They are the producing half of the belt, and the counterpart to
@@ -8429,17 +8416,25 @@ func cutTaskWorktree(ctx context.Context, place Place, root, session string, id 
 	// that grounds a node in a repository arrives here, so this one call is what
 	// makes the ground law true for all of them rather than for the one road
 	// somebody remembered to change.
-	return carveGround(ctx, groundOrder{
+	return carveGround(ctx, worktreeOrder(place, root, dir, mode, taskBranchName(title), title, frozen))
+}
+
+// worktreeOrder is the order for a branch cut off a repository into dir, which is
+// the one order every road that makes a task's copy of a repository places: a
+// task being started ([cutTaskWorktree]) and a copy being put back on another
+// machine ([TaskCopyCutter]).
+func worktreeOrder(place Place, root, dir string, mode os.FileMode, branch, title, frozen string) groundOrder {
+	return groundOrder{
 		place:   place,
 		ground:  root,
 		root:    root,
 		dir:     dir,
 		mode:    mode,
-		branch:  taskBranchName(title),
+		branch:  branch,
 		title:   title,
 		promise: TaskModeWorktree,
 		frozen:  frozen,
-	})
+	}
 }
 
 // cutWorktreeAt is the git of it, with the two names handed in: a directory to
@@ -9726,7 +9721,7 @@ func (a *Agent) nextNodeModel(node *TaskNode, ranOn string) (string, bool) {
 	if standing := node.standingModel(); standing != "" && !strings.EqualFold(standing, ranOn) {
 		return standing, true
 	}
-	options := a.fallbackModels(ranOn)
+	options := a.fallbackModelsAfter(ranOn, node.modelPicked())
 	if len(options) == 0 {
 		return "", false
 	}

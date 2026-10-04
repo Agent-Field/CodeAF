@@ -481,6 +481,7 @@ func (a *app) closeForSwitch() {
 	a.pick.close()
 	a.mem.close()
 	a.permPanel.close()
+	a.pair.hide()
 	// AND THE STANDING PAGE, which is a door onto what stands over the
 	// conversation this window was holding: the shelves are read per
 	// conversation, so one left open across a switch would be three headings

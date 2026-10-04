@@ -2122,6 +2122,10 @@ const (
 	// checkpointCeilingTrivial is the spawn floor (spawnfloor.go): the ask
 	// itself is one command, so nothing moves, whatever the work has cost.
 	checkpointCeilingTrivial = "dropped:trivial-ask"
+	// checkpointCeilingSetup is the setup turn (setup.go): the harness asked for
+	// this work itself, in the person's own conversation, and it is bounded by
+	// its brief, so it is never handed to a task.
+	checkpointCeilingSetup = "dropped:setup-turn"
 	// checkpointCeilingDelivering is the write seam standing down over a result
 	// this conversation already owns (writeseam.go's
 	// [Agent.deliveringOwnedResult]): the integration of finished work stays
@@ -4189,6 +4193,9 @@ func (a *Agent) handOverRunningTurn(ctx context.Context, hub *eventHub, turn *Us
 	// above writes the drop, and the turn carries on.
 	if trivialAsk(a.turnAsk()) {
 		return checkpointHandover{decision: checkpointCeilingTrivial}
+	}
+	if inSetup(ctx) {
+		return checkpointHandover{decision: checkpointCeilingSetup}
 	}
 	// A HANDOVER IS AN ENDING, AND AN UNATTENDED SESSION'S PRINCIPAL READS EVERY
 	// ENDING (see [Agent.endTurnUnderSteward]). It is asked FIRST, before the

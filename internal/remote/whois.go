@@ -140,6 +140,10 @@ type HostSelf struct {
 	Surfaces int `json:"surfaces,omitempty"`
 	// Conversations is how many conversations the host is holding open.
 	Conversations int `json:"conversations,omitempty"`
+	// Cells is the cells mode the host STARTED with. A host reads its
+	// environment once, so a door whose own mode differs must not attach to it
+	// silently: the chats it opened would be in the other mode.
+	Cells bool `json:"cells,omitempty"`
 }
 
 // ErrNoHostThere is a far end that answered the question with a refusal, which

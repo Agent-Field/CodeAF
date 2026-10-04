@@ -339,11 +339,7 @@ func breakLong(word string, width int) []string {
 // cache clean` are one noun with two verbs on it, not one word meaning two
 // things, and without this entry `codeaf cache --help` would print the
 // destructive command's line under the harmless one's name.
-// `devices revoke` is the same shape as `cache clean` and is here for the same
-// reason: one noun, a harmless reading verb and a destructive one, and without
-// the entry `codeaf devices --help` would print the revoking line under the
-// listing's name.
-var longerCommands = []string{"cache clean", "devices revoke"}
+var longerCommands = []string{"cache clean"}
 
 // usageForCommand lifts one command's lines out of [usageText].
 //
@@ -522,7 +518,7 @@ func commandWords() []string {
 // reason they are absent from the usage text: nothing types them. The programs
 // this build carries are joined to it where it is read ([commandWords]).
 var knownCommands = []string{
-	"chat", "resume", "serve", "devices", "do", "plan", "revise", "run", "exec",
+	"chat", "resume", "pair", "serve", "devices", "do", "plan", "revise", "run", "exec",
 	"show", "models", "pool", "notebook", "collections", "competence", "services", "wake", "patch",
 	"doc", "web", "image",
 	"doctor",

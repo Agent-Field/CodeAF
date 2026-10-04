@@ -198,7 +198,7 @@ func sweepSession(ctx context.Context, dir string, now time.Time, note func(stri
 // of them is a reason to leave the folder alone, because the sweep's whole
 // licence is that it only removes what it is sure about.
 func sessionIsOpen(dir string) bool {
-	path := filepath.Join(dir, placeTranscript)
+	path := layoutOf(dir).transcript(dir)
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		// No transcript at all: a folder that never held a conversation, and

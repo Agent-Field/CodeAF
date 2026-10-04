@@ -2065,6 +2065,11 @@ const (
 	// a narrow frame gives up a number rather than the one segment saying that
 	// the session has stopped and is waiting for them.
 	segQuestions
+	// segSeal is `not sealed`, drawn while the last seal of the conversation's
+	// calls failed and never otherwise (sealseam.go). It is not in
+	// [dropOrder]: a narrow frame gives up a number before the fact that there
+	// is nothing to rewind to.
+	segSeal
 	segState
 	segCount
 )
@@ -2656,6 +2661,7 @@ func (a *app) telemetry(width int) []hudPart {
 	// link's own reason said one rung louder: the numbers are not moving, and
 	// this is the segment that says whose move it is (question.go).
 	add(segQuestions, a.questionSegment())
+	add(segSeal, a.sealSegment())
 	if word, painted := a.stateSegment(); word != "" {
 		parts = append(parts, hudPart{kind: segState, text: word, paint: painted})
 	}
@@ -2777,6 +2783,10 @@ func (a *app) paintPart(part hudPart) string {
 		// own argument at the one hue this surface reserves for a person being
 		// waited on (question.go, styles.go's [hueWarn]).
 		return a.pal.warn(part.text)
+	case segSeal:
+		// LOUD FOR WHAT IT MEANS, [segYolo]'s argument: it is true for exactly as
+		// long as it is drawn, so its age says nothing.
+		return a.pal.bad(part.text)
 	case segYolo:
 		// The one segment that is loud because of what it MEANS rather than
 		// because of when it changed. It is a reading here and not a door: the
@@ -4021,6 +4031,8 @@ func (a *app) hintWord() string {
 		// another project cannot be excepted from a place it never reached
 		// ([standingPlace.hint]).
 		return a.orders.hint(a)
+	case a.pair.open:
+		return a.pair.hint()
 	case a.crewUI.open:
 		// The crew panel prints its keys in its own bottom edge (crewpanel.go),
 		// and a slot repeating them would say the same thing twice on one screen.
@@ -4067,6 +4079,10 @@ func (a *app) hintWord() string {
 			return hint
 		}
 		return "↑↓ · enter · esc"
+	case a.approvals != nil && isPairLink(a.input.String()):
+		// A pair link in the box is not a message: enter opens the request it
+		// names (takePairLink), and nothing else in the slot says so.
+		return "enter opens the join request"
 	case a.shaping():
 		// The widening answer is part-way given and the block is on its second
 		// beat (question.go): the numbers bank a shape and esc puts the question

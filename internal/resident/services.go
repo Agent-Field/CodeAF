@@ -7,13 +7,13 @@ import (
 	"net"
 	"net/http"
 	"os"
-	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	executor "github.com/Agent-Field/codeaf/internal/exec"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/codeaf/internal/thread"
@@ -112,9 +112,14 @@ func (*platformServiceRuntime) Healthy(ctx context.Context, service store.Servic
 		}
 		return nil
 	case store.ServiceHealthCmd:
-		command := osexec.CommandContext(ctx, "bash", "-lc", service.Health.Value)
-		command.Dir = service.Dir
-		return command.Run()
+		res, err := procexec.Host.In(service.Dir).Exec(ctx, procexec.ExecRequest{
+			Argv:  []string{"bash", "-lc", service.Health.Value},
+			Group: procexec.GroupInherit,
+		}, nil)
+		if err != nil {
+			return err
+		}
+		return res.Failure()
 	default:
 		return fmt.Errorf("unknown health kind %q", service.Health.Kind)
 	}

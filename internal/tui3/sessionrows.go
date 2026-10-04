@@ -37,8 +37,8 @@ func sessionStem(file string) string {
 	if file == "" {
 		return baseName(file)
 	}
-	dir := filepath.Dir(file)
-	if file != (session.Place{Dir: dir}).Transcript() {
+	dir, ok := session.FolderOf(file)
+	if !ok {
 		return baseName(file)
 	}
 	// The folder is the session's id, which is what the flat layout's file name

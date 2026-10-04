@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/sessionid"
 )
 
 // ── WHAT A TEAM HAS SPENT TODAY ─────────────────────────────────────────────
@@ -133,26 +134,13 @@ func sessionIDs(key string) []string {
 		return nil
 	}
 	var out []string
-	if dir := filepath.Base(filepath.Dir(key)); isSessionID(dir) {
+	if dir := filepath.Base(filepath.Dir(key)); sessionid.Valid(dir) {
 		out = append(out, dir)
 	}
-	if base := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key)); isSessionID(base) {
+	if base := strings.TrimSuffix(filepath.Base(key), filepath.Ext(key)); sessionid.Valid(base) {
 		out = append(out, base)
 	}
 	return out
-}
-
-// isSessionID reports whether s looks like a session id: 16 hex digits.
-func isSessionID(s string) bool {
-	if len(s) != 16 {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
-			return false
-		}
-	}
-	return true
 }
 
 // spendPair is where a ledger line's money went.

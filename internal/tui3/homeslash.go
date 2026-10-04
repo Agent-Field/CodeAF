@@ -208,7 +208,8 @@ func homeFate(word, rest string) string {
 	case "land", "workspace", "dismiss", "delete":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "skill",
-		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":
+		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder",
+		"setup", "pair", "devices":
 		// /manual IS HERE SINCE 2026-09-22 and not among the answers: it is a
 		// turn of a conversation now (manualcmd.go), and a turn needs one. As
 		// an answer it printed the pages into the conversation BEHIND home,
@@ -218,6 +219,9 @@ func homeFate(word, rest string) string {
 		// now — give THIS conversation a folder — so on home it needs one,
 		// exactly like /files. The pin it used to be here is /project
 		// (projectcmd.go).
+		//
+		// /setup prepares the machine for ONE conversation's needs, read from
+		// that conversation's inventory, so on home it needs one too.
 		return fateNeedsChat
 	case "standing":
 		// Bare it is the standing place; with words it is a card raised in a

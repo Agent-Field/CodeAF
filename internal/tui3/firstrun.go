@@ -151,6 +151,11 @@ type setupFlow struct {
 	authFlow     OpenRouterFlow
 	authLink     string
 	authID       uint64
+	// codeText and onCode are the optional field for a code from another device
+	// (pair_firstrun.go): what has been typed into it, and whether it has the
+	// keyboard. It never has it until a person asks with tab.
+	codeText string
+	onCode   bool
 	// skipped says esc ended it, which is the difference between a profile
 	// that was answered and one that was declined — the note at the end reads
 	// the profile rather than this, but the marker is written either way.
@@ -280,6 +285,7 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	_ = config.MarkSetupSeen(dir, a.now())
 	a.cancelSetupAuth()
 	a.cancelSetupProvider()
+	a.cancelSetupPair()
 	// THE QUESTIONS THIS ESC WALKED PAST GET A DOOR. `setup_seen_at` is stamped
 	// whichever way this screen ended and only the key-only form ever reopens,
 	// so the chat model and the day's limit are retired here — silently, until this
@@ -418,6 +424,9 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if name != "enter" {
 		s.refusal = ""
 	}
+	if cmd, took := a.setupCodeKey(msg); took {
+		return cmd, true
+	}
 	// THE CONTROLS SCREEN OWNS ITS OWN KEYBOARD. It is a form with five rows, two
 	// choosers and a browsable column, and none of that is the key box's
 	// vocabulary — so it is routed whole rather than grown as arms on the switch
@@ -540,6 +549,11 @@ func (a *app) setupPaste(text string) bool {
 			a.setup.refusal = ""
 			a.touch()
 		}
+		return true
+	}
+	if a.setup.onCode {
+		a.setup.codeText += strings.TrimSpace(text)
+		a.touch()
 		return true
 	}
 	if a.setup.provider == "" {
@@ -895,6 +909,16 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 			shown := maskTyped(s.text)
 			caretX = len(setupLead) + ansi.StringWidth(shown)
 			add(pal.accent(setupLead) + pal.ink(shown))
+			for _, row := range a.setupCodeRows(inner) {
+				if row.soft {
+					addSoft(row.line)
+				} else {
+					add(row.line)
+				}
+				if row.caretX >= 0 {
+					caretRow, caretX = len(body)-1, row.caretX
+				}
+			}
 		}
 	}
 	if s.refusal != "" {
@@ -1039,17 +1063,20 @@ func (a *app) setupKeysWord() string {
 		}
 		return "esc cancel"
 	}
+	if words := a.setupCodeKeysWord(); words != "" {
+		return words
+	}
 	if strings.TrimSpace(s.text) == "" {
 		if a.routerConnect != nil {
 			// Onboarding skips; a later connection returns to its provider menu.
-			return setupBrowserConnectKeysWord + " · paste a key · " + exit
+			return a.setupTabHint(setupBrowserConnectKeysWord + " · paste a key · " + exit)
 		}
 		if s.connection {
-			return "paste a key · " + exit
+			return a.setupTabHint("paste a key · " + exit)
 		}
-		return "enter goes on without a key · " + exit
+		return a.setupTabHint("enter goes on without a key · " + exit)
 	}
-	return "enter saves it · " + exit
+	return a.setupTabHint("enter saves it · " + exit)
 }
 
 // maskTyped is the key as it is being typed: one bullet per character and the

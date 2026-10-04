@@ -302,6 +302,8 @@ func (f *feed) ingestStream(ev session.Event, lump bool) {
 			if n := len(f.entries); n > 0 && f.entries[n-1].kind == entryNote {
 				f.entries[n-1].carried = true
 			}
+		} else if ev.Told {
+			f.toldNote(ev.Text)
 		} else {
 			f.note(ev.Text)
 		}
@@ -1354,6 +1356,16 @@ func (f *feed) reserveResponseContinuation() {
 // the one four lines up, and a transcript that swallowed it would be answering a
 // deliberate command with silence.
 func (f *feed) note(text string) { f.noteWritten(text, false, nil) }
+
+// eachLine says every line of a notice as a note of its own. A door's notice is
+// one sentence to a line, and a note is one row of a sentence.
+func eachLine(text string, say func(string)) {
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			say(line)
+		}
+	}
+}
 
 // toldNote is a note ADDRESSED TO THE PERSON: same dim line, same door, and the
 // work chip may not swallow it ([entry.told]). Explicit user-directed notices

@@ -1627,6 +1627,18 @@ conversation against **your own server**, which never ends this way while you wa
 error: nothing came back from the model in 1m30s, three times. a different model may answer — /model, or set models.fallbacks so this can move on its own
 ```
 
+**A pin holds.** Write `models.fallbacks` as just the model you pinned and no call ever goes
+to any other model: when its reply keeps coming apart — a cut stream, or the model's own
+internal markup instead of words — codeaf asks that same model again a bounded number of
+times, then ends the turn and says plainly what failed. It does not guess a "nearby" model
+for you; the catalog's suggestion is used only when you wrote no fallback list at all.
+
+The same holds for a model you picked explicitly: a role you pinned in `models.roles`
+(the checker, when it gives no answer) or the model you named for a task. If
+that model fails, codeaf never moves the work to a model it guessed from the catalog. It
+moves only to a fallback you wrote yourself, and with none the work ends on the model you
+chose and says what failed.
+
 And when the fallbacks could not finish it either, the sentence says so rather than
 repeating advice already taken:
 

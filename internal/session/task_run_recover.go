@@ -100,7 +100,7 @@ func (a *Agent) resumeAdmittedRun(g *TaskGraph, kept TaskNotice) {
 		a.interruptUnrecoverableRun(g, kept, "the saved task has no working folder; ask for the task again with its folder")
 		return
 	}
-	if _, err := a.ContinueRun(context.Background(), kept.ID); err != nil {
+	if _, err := a.ContinueRun(a.rootContext(), kept.ID); err != nil {
 		log.Printf("session: could not resume task %d: %v", kept.ID, err)
 		a.interruptUnrecoverableRun(g, kept, err.Error())
 	}
@@ -136,7 +136,7 @@ func (a *Agent) resumePendingRun(g *TaskGraph, kept TaskNotice) {
 	if err != nil {
 		return
 	}
-	ctx, cut := context.WithCancel(context.Background())
+	ctx, cut := context.WithCancel(a.rootContext())
 	run := &beltRun{plan: plan, store: reopened, root: reopened.RootID(), row: id,
 		title: kept.Title, brief: pending.Brief, crew: crew, recoveredCrew: kept.CrewState, ground: canonicalPath(pending.Ground),
 		stand: taskStand{dir: pending.Ground, mode: pending.Mode}, pending: true,

@@ -8,7 +8,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
+	procexec "github.com/Agent-Field/codeaf/internal/executor"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/skills"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -348,11 +348,14 @@ func runSkillCheck(ctx context.Context, skillDir string) error {
 
 	trialCtx, cancel := context.WithTimeout(ctx, skillTrialTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(trialCtx, filepath.Join(skillDir, "check.sh"))
-	cmd.Dir = clean
-	cmd.Env = safeSkillCheckEnv(skillDir)
-	cmd.WaitDelay = time.Second
-	output, runErr := cmd.CombinedOutput()
+	res, runErr := procexec.Host.In(clean).Exec(trialCtx, procexec.ExecRequest{
+		Argv: []string{filepath.Join(skillDir, "check.sh")}, Env: safeSkillCheckEnv(skillDir),
+		Group: procexec.GroupInherit, WaitDelay: time.Second, Combined: true,
+	}, nil)
+	output := res.Stdout
+	if runErr == nil {
+		runErr = res.Failure()
+	}
 	if trialCtx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("check.sh timed out after %s: %s", skillTrialTimeout, boundedSkillOutput(output))
 	}
