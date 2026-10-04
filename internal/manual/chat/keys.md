@@ -640,6 +640,9 @@ If you came here looking for a different kind of key, it is somewhere else:
   *Reaching a machine with a pairing code*
 - an **ssh key** — that is your own ssh setup, and codeaf runs your `ssh` unchanged; see
   *Running on another machine*
+- the **architecture map** — `/atlas`, or `codeaf atlas` from the shell. It takes the
+  whole frame while it is up; `?` inside shows its keys, and `esc` or `q` closes the map
+  or its map picker and gives the frame back
 
 ## Keys in the message box: sending, stopping, and queueing
 

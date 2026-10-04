@@ -55,7 +55,11 @@ and each
 has commands of its own (`/home`, `/teams`, `/history`, `/standing`,
 `/memory`, `/settings`). The rewind timeline (`/rewind`) takes the frame the same way and is
 deliberately not one of the seven: it is something you do to this conversation rather than
-a room in the machine.
+a room in the machine. The architecture map (`/atlas`, or `codeaf atlas` from the shell)
+takes the frame the same way and is not one of the seven either: it is a map you read, and
+`esc` or `q` gives the frame back. Bare `/atlas` opens a picker first — every map with its
+name and its one-line description; `enter` opens the one the cursor is on, `esc` or `q`
+leaves and gives the chat back exactly as it was.
 
 While any of them is up nothing else is drawn — no conversation, no box, no status line —
 and `esc` gives the frame back. **Only one is ever up:** opening any one closes the rest.
