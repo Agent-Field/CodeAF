@@ -10,24 +10,24 @@ import (
 // the data is relative to it.
 const repoRoot = "../.."
 
-// TestEveryFilePathExists holds the diagram to the tree: a file the atlas
-// points at must exist, or the map is lying about where a part lives. The
-// Go map in this package is the only version of it, so a path that drifts
-// fails here.
+// TestEveryFilePathExists holds every registered map to the tree: a file a
+// map points at must exist, or the map is lying about where a part lives.
 func TestEveryFilePathExists(t *testing.T) {
-	for _, n := range Atlas.Nodes {
-		for _, f := range n.Files {
-			if _, err := os.Stat(filepath.Join(repoRoot, f.Path)); err != nil {
-				t.Errorf("node %s names the file %s, which does not exist", n.ID, f.Path)
-			}
-			for _, s := range f.Symbols {
-				raw, readErr := os.ReadFile(filepath.Join(repoRoot, f.Path))
-				if readErr != nil {
-					t.Errorf("node %s names the file %s: %v", n.ID, f.Path, readErr)
-					continue
+	for _, mp := range Maps {
+		for _, n := range mp.Nodes {
+			for _, f := range n.Files {
+				if _, err := os.Stat(filepath.Join(repoRoot, f.Path)); err != nil {
+					t.Errorf("%s: node %s names the file %s, which does not exist", mp.Name, n.ID, f.Path)
 				}
-				if !containsName(string(raw), s) {
-					t.Errorf("node %s says %s names %s, which the file never spells", n.ID, f.Path, s)
+				for _, s := range f.Symbols {
+					raw, readErr := os.ReadFile(filepath.Join(repoRoot, f.Path))
+					if readErr != nil {
+						t.Errorf("%s: node %s names the file %s: %v", mp.Name, n.ID, f.Path, readErr)
+						continue
+					}
+					if !containsName(string(raw), s) {
+						t.Errorf("%s: node %s says %s names %s, which the file never spells", mp.Name, n.ID, f.Path, s)
+					}
 				}
 			}
 		}
@@ -71,38 +71,69 @@ func isNameByte(b byte) bool {
 	return b == '_' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9'
 }
 
-// TestEdgesAndStepsNameRealNodes holds every arrow and every step to the
-// boxes: an edge between boxes that do not exist draws nowhere, and a flow
-// step on a made-up edge would tell a story about nothing.
+// TestEdgesAndStepsNameRealNodes holds every arrow and every step of every
+// map to the boxes: an edge between boxes that do not exist draws nowhere,
+// and a flow step on a made-up edge would tell a story about nothing.
 func TestEdgesAndStepsNameRealNodes(t *testing.T) {
-	ids := map[string]bool{}
-	for _, n := range Atlas.Nodes {
-		if ids[n.ID] {
-			t.Errorf("two nodes are named %s", n.ID)
-		}
-		ids[n.ID] = true
-	}
-	edgeIDs := map[string]bool{}
-	for _, e := range Atlas.Edges {
-		if edgeIDs[e.ID] {
-			t.Errorf("two edges are named %s", e.ID)
-		}
-		edgeIDs[e.ID] = true
-		if !ids[e.From] || !ids[e.To] {
-			t.Errorf("edge %s joins %s and %s; both have to be nodes", e.ID, e.From, e.To)
-		}
-	}
-	for _, f := range Atlas.Flows {
-		if len(f.Steps) == 0 {
-			t.Errorf("flow %s has no steps", f.ID)
-		}
-		for i, s := range f.Steps {
-			if !ids[s.From] || !ids[s.To] {
-				t.Errorf("flow %s step %d runs from %s to %s; both have to be nodes", f.ID, i+1, s.From, s.To)
+	for _, mp := range Maps {
+		ids := map[string]bool{}
+		for _, n := range mp.Nodes {
+			if ids[n.ID] {
+				t.Errorf("%s: two nodes are named %s", mp.Name, n.ID)
 			}
-			if s.Edge != "" && !edgeIDs[s.Edge] {
-				t.Errorf("flow %s step %d travels edge %s, which no overview edge answers to", f.ID, i+1, s.Edge)
+			ids[n.ID] = true
+		}
+		edgeIDs := map[string]bool{}
+		for _, e := range mp.Edges {
+			if edgeIDs[e.ID] {
+				t.Errorf("%s: two edges are named %s", mp.Name, e.ID)
 			}
+			edgeIDs[e.ID] = true
+			if !ids[e.From] || !ids[e.To] {
+				t.Errorf("%s: edge %s joins %s and %s; both have to be nodes", mp.Name, e.ID, e.From, e.To)
+			}
+		}
+		for _, f := range mp.Flows {
+			if len(f.Steps) == 0 {
+				t.Errorf("%s: flow %s has no steps", mp.Name, f.ID)
+			}
+			for i, s := range f.Steps {
+				if !ids[s.From] || !ids[s.To] {
+					t.Errorf("%s: flow %s step %d runs from %s to %s; both have to be nodes", mp.Name, f.ID, i+1, s.From, s.To)
+				}
+				if s.Edge != "" && !edgeIDs[s.Edge] {
+					t.Errorf("%s: flow %s step %d travels edge %s, which no overview edge answers to", mp.Name, f.ID, i+1, s.Edge)
+				}
+			}
+		}
+	}
+}
+
+// TestMapNamesAreUnique keeps the registry honest: a person types a map's
+// name at `codeaf atlas`, so two maps answering to one name would leave the
+// second one unreachable.
+func TestMapNamesAreUnique(t *testing.T) {
+	seen := map[string]bool{}
+	for _, mp := range Maps {
+		if mp.Name == "" {
+			t.Error("a registered map has no name")
+		}
+		if seen[mp.Name] {
+			t.Errorf("two maps are named %s", mp.Name)
+		}
+		seen[mp.Name] = true
+	}
+}
+
+// TestRegistryIsEmptyWithoutMaps keeps the entry points safe: the picker and
+// the CLI both read Maps, and an empty registry would render nothing at all.
+func TestRegistryIsEmptyWithoutMaps(t *testing.T) {
+	if len(Maps) == 0 {
+		t.Fatal("no map is registered")
+	}
+	for _, mp := range Maps {
+		if mp.Title == "" || mp.Description == "" {
+			t.Errorf("map %s has no title or no one-line description for the picker", mp.Name)
 		}
 	}
 }
@@ -111,17 +142,21 @@ func TestEdgesAndStepsNameRealNodes(t *testing.T) {
 // continuing a chat, and the furrow engine, each a flow a person can step
 // through, and every kind of box drawn in its own colour.
 func TestTheMapCoversItsThreeStories(t *testing.T) {
+	pairing, ok := ByName("pairing")
+	if !ok {
+		t.Fatal("no map is named pairing")
+	}
 	flows := map[string]bool{}
-	for _, f := range Atlas.Flows {
+	for _, f := range pairing.Flows {
 		flows[f.ID] = true
 	}
 	for _, id := range []string{"pairing", "continue", "furrow"} {
 		if !flows[id] {
-			t.Errorf("the atlas has no flow named %s", id)
+			t.Errorf("the pairing map has no flow named %s", id)
 		}
 	}
 	kinds := map[Kind]bool{}
-	for _, n := range Atlas.Nodes {
+	for _, n := range pairing.Nodes {
 		if n.Summary == "" {
 			t.Errorf("node %s says nothing about itself", n.ID)
 		}

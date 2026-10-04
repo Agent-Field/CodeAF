@@ -12,7 +12,12 @@ import (
 // catches, restores the terminal for and reports as [tea.ErrProgramPanic] (the
 // one exit every command shares turns that into the plain fault sentence).
 func Run() error {
-	m := New(Atlas, 0, 0)
+	return RunMap(Maps[0])
+}
+
+// RunMap opens one map in this terminal and blocks until the person leaves it.
+func RunMap(mp *Map) error {
+	m := New(mp, 0, 0)
 	_, err := tea.NewProgram(m).Run()
 	if err != nil {
 		return fmt.Errorf("atlas: %w", err)

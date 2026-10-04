@@ -12,7 +12,7 @@ import (
 // their on-screen rectangles.
 func newTestModel(t *testing.T, w, h int) *Model {
 	t.Helper()
-	m := New(Atlas, w, h)
+	m := New(Pairing, w, h)
 	m.Update(tea.WindowSizeMsg{Width: w, Height: h})
 	m.drawFrame()
 	return m
@@ -73,7 +73,7 @@ func frameAt(t *testing.T, m *Model) (string, string) {
 // one-line subtitle: a box whose subtitle is longer than its label must be
 // wide enough for both, or the subtitle is clipped in every frame.
 func TestEveryBoxCarriesItsShortLine(t *testing.T) {
-	for _, n := range Atlas.Nodes {
+	for _, n := range Pairing.Nodes {
 		w, _ := nodeSize(n, false)
 		if len(n.Short) > w-4 {
 			t.Errorf("node %s: the box is %d cells wide but the subtitle %q needs %d", n.ID, w, n.Short, len(n.Short)+4)
@@ -93,7 +93,7 @@ func TestDraggingMovesTheBoxAndReroutesItsArrows(t *testing.T) {
 
 	// Where the arrows ran before the drag.
 	var edge Edge
-	for _, e := range Atlas.Edges {
+	for _, e := range Pairing.Edges {
 		if e.ID == "pair-hosted" {
 			edge = e
 		}
@@ -170,7 +170,7 @@ func samePath(a, b []pt) bool {
 // its files and what it talks to.
 func TestTabThenEnterOpensTheDetailPane(t *testing.T) {
 	m := newTestModel(t, 120, 35)
-	first := Atlas.Nodes[0]
+	first := Pairing.Nodes[0]
 	send(t, m, tea.KeyPressMsg{Code: tea.KeyTab})
 	send(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
 	if m.detail != first.ID {
@@ -189,7 +189,7 @@ func TestTabThenEnterOpensTheDetailPane(t *testing.T) {
 // and a release without movement in between.
 func TestClickingABoxOpensItsDetail(t *testing.T) {
 	m := newTestModel(t, 120, 35)
-	first := Atlas.Nodes[0]
+	first := Pairing.Nodes[0]
 	r, _ := m.nodeRect(first.ID)
 	sendMouse(t, m, tea.MouseClickMsg{X: r.X + 2, Y: r.Y + 1, Button: tea.MouseLeft})
 	sendMouse(t, m, tea.MouseReleaseMsg{X: r.X + 2, Y: r.Y + 1, Button: tea.MouseLeft})
@@ -204,7 +204,7 @@ func TestClickingABoxOpensItsDetail(t *testing.T) {
 // arrows walk it, and the step the map is telling is the one that draws.
 func TestSteppingAFlowHighlightsTheRightStep(t *testing.T) {
 	m := newTestModel(t, 120, 35)
-	flow := Atlas.Flows[0]
+	flow := Pairing.Flows[0]
 	send(t, m, tea.KeyPressMsg{Code: '1', Text: "1"})
 	if m.flow != 0 || m.step != 0 {
 		t.Fatalf("pressing 1 opened flow %d at step %d", m.flow, m.step)
@@ -363,7 +363,7 @@ func TestTheFrameFitsEightyByTwentyFour(t *testing.T) {
 			}
 		}
 		plainText := stripANSI(styled)
-		for _, n := range Atlas.Nodes {
+		for _, n := range Pairing.Nodes {
 			if !strings.Contains(plainText, n.Label) {
 				t.Errorf("at %dx%d the box %q is not drawn at all", size[0], size[1], n.Label)
 			}
@@ -379,8 +379,8 @@ func TestTheFrameFitsEightyByTwentyFour(t *testing.T) {
 func TestTheOverviewDrawsItsTitle(t *testing.T) {
 	m := newTestModel(t, 120, 35)
 	text, _ := frameAt(t, m)
-	if !strings.Contains(text, Atlas.Title) {
-		t.Fatalf("the overview does not draw its title %q:\n%s", Atlas.Title, text)
+	if !strings.Contains(text, Pairing.Title) {
+		t.Fatalf("the overview does not draw its title %q:\n%s", Pairing.Title, text)
 	}
 	if !strings.Contains(text, "◀") && !strings.Contains(text, "▶") {
 		t.Fatal("the overview draws no arrowheads")
