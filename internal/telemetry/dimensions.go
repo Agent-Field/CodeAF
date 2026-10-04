@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // UsageDimensions contains only bounded diagnostic categories. ReceiptID is
@@ -37,7 +39,7 @@ func RoutingProvider(endpoint string) string {
 	host := strings.ToLower(parsed.Hostname())
 	switch host {
 	case "openrouter.ai":
-		return "openrouter"
+		return modelsource.DefaultID
 	case "api.openai.com":
 		return "openai"
 	case "api.anthropic.com":

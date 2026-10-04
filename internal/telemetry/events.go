@@ -3,6 +3,8 @@ package telemetry
 import (
 	"runtime"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // Count buckets, exactly the strings the contract enumerates. A bucket is a
@@ -457,7 +459,7 @@ var exampleProps = map[string]map[string]string{
 		"input_tokens":      "10000",
 		"output_tokens":     "2500",
 		"total_tokens":      "12500",
-		"routing_provider":  "openrouter",
+		"routing_provider":  modelsource.DefaultID,
 		"model_family":      "deepseek",
 		"usage_status":      "reported",
 		"accounting_source": "provider",
