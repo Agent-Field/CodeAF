@@ -329,20 +329,28 @@ func (a *app) placeWord(path string) string {
 }
 
 // movedWord is how a chat that moved here from another machine is named when
-// its project is not on this one: the folder it was left in, marked as a copy,
-// else the chat's own title. It is "" for any chat that is not such a copy.
+// its project is not on this one: the project it came from, marked as a copy
+// of that machine's folder, else the chat's own title. It is "" for any chat
+// that is not such a copy.
+//
+// THE MARKER NAMES THE OTHER MACHINE AND NOT A FOLDER HERE. "proj-a (copy
+// here)" read as a copy of proj-a being ON this machine, and on the machine
+// that took the chat there is no such folder — the chat works in its own
+// work/, and the label owes that fact. The wording is [session.MovedCopyWord],
+// the one spelling the home screen's project rows share, so the two surfaces
+// cannot drift into disagreeing about the same chat.
 func movedWord(workspace string, owned bool) string {
 	if owned || !session.OwnsFolder(workspace) {
 		return ""
 	}
 	name := session.TitleOf(workspace)
 	if origin := session.OriginOf(workspace); origin != "" {
-		return filepath.Base(origin) + " (copy here)"
+		return filepath.Base(origin) + session.MovedCopyWord
 	}
 	if name == "" {
 		name = "this chat"
 	}
-	return name + " (copy here)"
+	return name + session.MovedCopyWord
 }
 
 // hostedPath is a path as it should be READ: on a remote session, the machine

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 
@@ -421,20 +422,143 @@ func movedKeys(t *testing.T, work string) string {
 }
 
 // A chat moved here from a machine whose project is not on this one works in
-// its own work/ folder. The keys row names the project it was left in, marked
-// as a copy, never the state-root path of that folder and never the product.
-func TestAMovedChatIsNamedByTheProjectItWasLeftIn(t *testing.T) {
+// its own work/ folder. The keys row names the project it came from, marked as
+// a copy of ANOTHER MACHINE'S folder — never the state-root path of the chat's
+// own folder, never the product, and never a bare "proj-a" that would be
+// claiming a folder this machine does not have.
+func TestAMovedChatIsNamedByTheProjectItCameFrom(t *testing.T) {
 	work := movedFolder(t, `{"id":"x","title":"fix it","origin":"/srv/other/proj-a"}`)
 	keys := movedKeys(t, work)
-	if !strings.Contains(keys, "project: proj-a (copy here)") || strings.Contains(keys, "/work") {
+	if !strings.Contains(keys, "project: proj-a (copy from another machine)") {
+		t.Fatalf("the keys row = %q", keys)
+	}
+	for _, claim := range []string{"/work", "(copy here)", "proj-a ·"} {
+		if strings.Contains(keys, claim) {
+			t.Fatalf("the keys row claims %q: %q", claim, keys)
+		}
+	}
+}
+
+// With no origin recorded the chat's own title stands in, marked the same way,
+// never the product.
+func TestAMovedChatWithNoOriginIsNamedByItsTitle(t *testing.T) {
+	keys := movedKeys(t, movedFolder(t, `{"id":"x","title":"fix it"}`))
+	if !strings.Contains(keys, "project: fix it (copy from another machine)") || strings.Contains(keys, ownedWord) {
 		t.Fatalf("the keys row = %q", keys)
 	}
 }
 
-// With no origin recorded the chat's own title stands in, never the product.
-func TestAMovedChatWithNoOriginIsNamedByItsTitle(t *testing.T) {
-	keys := movedKeys(t, movedFolder(t, `{"id":"x","title":"fix it"}`))
-	if !strings.Contains(keys, "project: fix it (copy here)") || strings.Contains(keys, ownedWord) {
+// A chat taken back to the machine and folder it came from is named by that
+// folder plainly: it works in the project's own directory again — the folder
+// is on this machine, as it is on the machine a chat comes home to — and a
+// copy marker would be claiming a copy there is no reason for.
+func TestAChatBackInItsOwnFolderIsNamedByIt(t *testing.T) {
+	home := t.TempDir()
+	proj := filepath.Join(home, "proj-a")
+	if err := os.MkdirAll(proj, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := hostLab(t)
+	a.host = ""
+	a.takeUp(Conversation{Agent: &fakeAgent{model: "m"}, Workspace: proj}, true)
+	keys := plain(a.hintRow(a.width))
+	if !strings.Contains(keys, proj) {
 		t.Fatalf("the keys row = %q", keys)
+	}
+	for _, claim := range []string{"copy"} {
+		if strings.Contains(keys, claim) {
+			t.Fatalf("a chat back in its own folder is marked %q: %q", claim, keys)
+		}
+	}
+}
+
+// The home screen agrees with the footer about the same taken chat: a project
+// every conversation of which is a copy taken here from another machine is
+// named for where it came from — the origin folder's name, marked as a copy —
+// and the projects panel shows that name instead of the recorded path, which
+// is a folder on the machine the chat left and would be claiming one here.
+func TestHomeNamesACopyProjectForWhereItCameFrom(t *testing.T) {
+	lab := newHomeLab(t)
+	spoke := lab.pin(time.Now())
+	dir := filepath.Join(lab.project("-tmp-taken"), "cell000000000001")
+	work := filepath.Join(dir, "work")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"),
+		[]byte(`{"type":"session","version":1,"id":"cell000000000001"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(dir, session.Meta{
+		ID: "cell000000000001", Title: "fix it",
+		Workspace: "/srv/other/proj-a", LaunchDir: "/srv/other/proj-a",
+		Origin:  "/srv/other/proj-a",
+		Created: spoke.Add(-time.Hour), LastUserAt: spoke,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	world := session.ReadWorld(lab.root)
+	if len(world.Projects) != 1 {
+		t.Fatalf("read %d projects, want 1", len(world.Projects))
+	}
+	project := world.Projects[0]
+	if !project.Moved {
+		t.Fatalf("project %q is not marked as a copy", project.Name)
+	}
+	if project.Name != "proj-a (copy from another machine)" {
+		t.Fatalf("project is called %q", project.Name)
+	}
+	a := lab.app("")
+	a.world = func() (session.World, bool) { return world, true }
+	a.openHome()
+	text := homeText(a)
+	// The panel truncates the marker at its width, so the assertion takes the
+	// untruncated head of the name and not its full spelling.
+	if !strings.Contains(text, "proj-a (copy from") {
+		t.Fatalf("home does not name the copy project:\n%s", text)
+	}
+	for _, claim := range []string{"/srv/other/proj-a", "(copy here)"} {
+		if strings.Contains(text, claim) {
+			t.Fatalf("home claims %q for a copy project:\n%s", claim, text)
+		}
+	}
+}
+
+// A chat that came home — its folder is on this machine again — is not a copy
+// whatever a note from an earlier hop says: the world names its project by the
+// folder that is there.
+func TestHomeNamesAChatBackInItsOwnFolderByIt(t *testing.T) {
+	lab := newHomeLab(t)
+	spoke := lab.pin(time.Now())
+	proj := lab.workspace("proj-a") // a real folder on this machine
+	dir := filepath.Join(lab.project("-tmp-home"), "cell000000000002")
+	work := filepath.Join(dir, "work")
+	if err := os.MkdirAll(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "transcript.jsonl"),
+		[]byte(`{"type":"session","version":1,"id":"cell000000000002"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := session.SaveMeta(dir, session.Meta{
+		ID: "cell000000000002", Title: "fix it",
+		Workspace: proj, LaunchDir: proj,
+		// A note written on a machine the chat hopped through, carried home
+		// with the record: the folder it names is HERE now.
+		Origin:  proj,
+		Created: spoke.Add(-time.Hour), LastUserAt: spoke,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	world := session.ReadWorld(lab.root)
+	if len(world.Projects) != 1 {
+		t.Fatalf("read %d projects, want 1", len(world.Projects))
+	}
+	project := world.Projects[0]
+	if project.Moved {
+		t.Fatalf("a chat back in its own folder is marked a copy: %q", project.Name)
+	}
+	if project.Name != "proj-a" {
+		t.Fatalf("project is called %q, want %q", project.Name, "proj-a")
 	}
 }
