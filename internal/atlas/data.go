@@ -4,10 +4,10 @@
 //
 // THE DATA IS ONE FILE. Every box, arrow, flow and file reference on the map
 // lives in [Atlas] below and nowhere else — the view never hard-codes content,
-// and the TypeScript twin in tools/atlas/src/data.ts is kept to the same text,
-// so the two versions of the diagram cannot drift apart in what they claim.
-// When the code moves, both files move in the same change; data_test.go fails
-// the build when a files[].Path no longer exists.
+// The Go map here is the only version of the diagram; the retired TypeScript
+// twin was removed and everything reads from this package. When the code
+// moves, this file moves in the same change; data_test.go fails the build
+// when a files[].Path no longer exists.
 package atlas
 
 // Kind is what a box is; it drives its colour and its legend entry.

@@ -9,8 +9,8 @@ import (
 // runAtlas opens the architecture map: the two-computer work — pairing,
 // devices, cells, sync and the furrow engine — drawn as boxes and arrows a
 // person can drag, open and step through (internal/atlas). It reads nothing
-// and changes nothing; it is a picture of the code, kept to the same text as
-// tools/atlas, the TypeScript twin it was ported from.
+// and changes nothing; it is a picture of the code, and internal/atlas holds
+// the only version of it.
 func runAtlas(args []string) error {
 	flags := commandFlags("atlas")
 	if err := parseCommandFlags(flags, args); err != nil {
