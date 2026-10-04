@@ -406,8 +406,8 @@ and create. The full conversation grid itself lives only in Chats.
 
 ## Keyboard hints in team menus
 
-Team menus show muted instructions together at the foot of the box, with the key first:
-`up/down move · space select · tab next field · esc cancel · enter create` in New team and
+Team menus show grey instructions together at the left of the box footer, with the key first:
+`up/down move · space select · esc cancel · enter create` in New team and
 Add subteam. Narrow boxes wrap the instructions rather than hiding them. Only text fields,
 colour, and members are tab stops; the creation hint stays in that footer. Add member and
 Choose manager show `up/down move · enter choose · esc cancel`; creating a new conversation
@@ -472,3 +472,13 @@ top-level teams` and `+ Global manager`. This same state returns after deletion 
 the saved manager conversation is missing. With a manager, the creation button disappears;
 `+ Add member` and `Settings` remain alongside the conversation's `x` delete control.
 `Choose manager` is unavailable for the global role. `Settings` retains global spending controls.
+
+## Model names on manager and member cards
+
+Every manager and member card shows its conversation model beside the white alias, such as
+`@picker · ~deepseek/deepseek-v4-flash-latest`. The separator and model are grey. A long model
+ends in `...` to fit the card; the alias keeps its space. Unknown models show no label.
+Live conversations use their current model; other conversations use their saved model,
+refreshed with the Teams overview. Changing a model saves that choice immediately, so
+another window can reflect it without waiting for another message. The All teams sidebar
+row has a white circle; the selected main navigation tab is bold with the hover highlight.

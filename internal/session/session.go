@@ -3447,6 +3447,9 @@ type Agent struct {
 	// a session that never speaks starts no goroutine (placemeta.go).
 	metaStampOnce   sync.Once
 	metaStampWriter *stampWriter
+	// Model choices have a separate writer so coalescing never drops a user stamp.
+	modelStampOnce   sync.Once
+	modelStampWriter *stampWriter
 
 	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
 	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its

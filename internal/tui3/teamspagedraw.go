@@ -249,7 +249,7 @@ func (a *app) teamsSpark() string {
 
 // All teams always opens the hierarchy; global-manager creation has its own row.
 func (a *app) teamsRailAll(d *teamsDraw, width, y int) string {
-	word := " " + a.pal.bold(a.pal.ink(teamstore.RootName))
+	word := " " + a.pal.ink(a.icon(tokens.GTeamDot)) + " " + a.pal.bold(a.pal.ink(teamstore.RootName))
 	if root, ok := a.teamsRoot(); ok {
 		if root.Manager != "" {
 			word += " " + a.pal.dim(a.teamManagerMark())

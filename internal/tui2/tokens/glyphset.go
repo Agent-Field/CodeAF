@@ -201,6 +201,8 @@ const (
 	// (internal/tui3's followup.go), and deliberately not [GQueued], which is a
 	// waiting task.
 	GFollowUp
+	// GTeamDot marks a team identity in the navigation tree.
+	GTeamDot
 	glyphIDCount
 )
 

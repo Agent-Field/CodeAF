@@ -876,7 +876,7 @@ func teamsSameWorld(was, now map[string]session.SessionRow) bool {
 	}
 	for k, r := range now {
 		o, ok := was[k]
-		if !ok || !o.At.Equal(r.At) || o.Open != r.Open || o.Live != r.Live || o.Title != r.Title ||
+		if !ok || !o.At.Equal(r.At) || o.Open != r.Open || o.Live != r.Live || o.Title != r.Title || o.Model != r.Model ||
 			o.Presence.State != r.Presence.State || o.Presence.Question.ID != r.Presence.Question.ID ||
 			o.Presence.Question.Kind != r.Presence.Question.Kind {
 			return false

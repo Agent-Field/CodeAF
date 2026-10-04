@@ -72,7 +72,9 @@ were reading.
 
 Choosing a model does four things: the model is set on the session, the machine running
 the session learns that model's context window for compaction, a note appears reading
-`model · <model>`, and the choice is written into your profile.
+`model · <model>`, and the choice is written into your profile and the conversation's
+saved configuration immediately. Other windows can see that saved model without waiting
+for another message.
 
 Over `--host`, the picker and its prices are this laptop's catalog, while the context
 window used for compaction comes from the far machine's catalog. The machine doing the

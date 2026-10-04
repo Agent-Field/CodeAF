@@ -209,15 +209,15 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 				title = r.title
 			}
 		}
-		word := a.pal.dim("Manager ") + a.pal.muted(name)
-		if !compact && title != name {
-			word += "  " + a.pal.dim(title)
-		}
+		word := a.pal.dim("Manager ") + a.teamsConversationLabel(name, m.Key, m.File, inner-8)
 		if !t.Closed() && !a.tp.previews[m.Key].missing {
 			target := teamsTarget{act: teamsActMember, id: t.ID, arg: m.Key, x0: x + 2, y: y + 1 + len(lines), hint: "Open " + name + " of " + t.Name, pane: true}
 			lines = append(lines, wallCardLine{s: d.row(word, inner, target, false)})
 		} else {
 			add(word)
+		}
+		if !compact && title != name {
+			add(a.pal.dim(title))
 		}
 		if !compact && !t.Closed() {
 			preview := a.tp.previews[m.Key]

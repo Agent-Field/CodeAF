@@ -296,7 +296,7 @@ func (a *app) teamCreateOver(frame string) string {
 		messageRows = 1
 	}
 	footer := teamFooter(a.pal, inner,
-		teamHint("up/down", "move"), teamHint("space", "select"), teamHint("tab", "next field"),
+		teamHint("up/down", "move"), teamHint("space", "select"),
 		teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: teamCreateCancel}),
 		teamHint("enter", "create", wallHit{kind: wallHitAction, arg: teamCreateSubmit}))
 	room := max(min(height-9-messageRows-len(footer), 12), 1)

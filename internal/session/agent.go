@@ -719,6 +719,9 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// session's own state; this is about a fetch somebody else will do, and a
 	// lock held across a hand-off is a lock held for no reason.
 	a.noteLaneModel(model)
+	// Other windows read the conversation model from its saved configuration.
+	// A model choice exists before another turn is sent, so publish it now.
+	a.stampModel()
 	return landing
 }
 

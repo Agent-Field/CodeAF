@@ -278,7 +278,11 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 				preview = "Conversation unavailable"
 			}
 			parts := wrap(preview, w-4)
-			words := []string{a.pal.ink(r.name()), a.pal.dim(r.title), a.teamsCrewInk(r.word)(state), "", ""}
+			labelWidth := w - 4
+			if !t.Root && !t.Closed() {
+				labelWidth -= 3
+			}
+			words := []string{a.teamsConversationLabel(r.name(), r.key, r.file, labelWidth), a.pal.dim(r.title), a.teamsCrewInk(r.word)(state), "", ""}
 			for i := 0; i < min(len(parts), 2); i++ {
 				words[3+i] = a.pal.muted(parts[i])
 			}
@@ -388,7 +392,11 @@ func (a *app) teamsManagerCard(d *teamsDraw, t team, r teamsCrewRow, width, y in
 	if age := sinceAt(r.at, a.now()); age != "" && r.word != "working" {
 		state += "  " + age
 	}
-	words := []string{a.pal.ink(r.name()), a.pal.dim(r.title), a.teamsCrewInk(r.word)(state), a.pal.dim("Recent messages" + hintSegment + "latest excerpt")}
+	labelWidth := inner
+	if !t.Closed() {
+		labelWidth -= 3
+	}
+	words := []string{a.teamsConversationLabel(r.name(), r.key, r.file, labelWidth), a.pal.dim(r.title), a.teamsCrewInk(r.word)(state), a.pal.dim("Recent messages" + hintSegment + "latest excerpt")}
 	budget := max(height-2-len(words), 1)
 	var excerpt []string
 	messages := a.teamsManagerMessages(r.key)

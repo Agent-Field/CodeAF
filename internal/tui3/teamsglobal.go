@@ -42,7 +42,7 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 			}
 		}
 		preview := a.tp.previews[m.Key]
-		control(alias, teamsActMember, root.ID, m.Key, "Open the global manager conversation")
+		control(a.teamsConversationLabel(alias, m.Key, m.File, inner), teamsActMember, root.ID, m.Key, "Open the global manager conversation")
 		if title != alias {
 			add(a.pal.dim(title))
 		}

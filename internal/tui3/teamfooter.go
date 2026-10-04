@@ -1,8 +1,6 @@
 package tui3
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -32,12 +30,7 @@ func teamFooter(pal palette, width int, hints ...teamFooterHint) []wallCardLine 
 		if text == "" {
 			return
 		}
-		pad := max(width-ansi.StringWidth(text), 0)
-		for i := range hits {
-			hits[i].x0 += pad
-			hits[i].x1 += pad
-		}
-		lines = append(lines, wallCardLine{s: pal.muted(strings.Repeat(" ", pad) + text), hits: hits})
+		lines = append(lines, wallCardLine{s: pal.dim(text), hits: hits})
 		text, hits = "", nil
 	}
 	for _, hint := range hints {
