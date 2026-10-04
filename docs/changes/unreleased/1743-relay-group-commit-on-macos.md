@@ -1,4 +1,5 @@
-kind: fix
+---
+kind: fixed
 title: a relay on a Mac commits a frame's pointers as one group, so a chat's first publish lands in a tenth of a second
 pr: 1743
 surface: [relay]
