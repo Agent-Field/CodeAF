@@ -393,6 +393,12 @@ func run() error {
 		return runRebuild(os.Args[2:])
 	case "why":
 		return runWhy(os.Args[2:])
+	case "atlas":
+		// The architecture map of the two-computer work — pair, continue,
+		// furrow — drawn as boxes and arrows a person can drag and open
+		// (internal/atlas). It is a surface a person sits in front of with no
+		// key and nothing spent, so it is in the usage text.
+		return runAtlas(os.Args[2:])
 	case "manual":
 		// Everything codeaf knows about itself, read straight (manual.go). It
 		// is the same corpus the chat's manual tool reads, printed as it is
@@ -530,10 +536,10 @@ Hand it work — nobody is watching, the answer is on stdout
 ` + handWorkFooter + `
 
 Look at what happened — read-only, no key, nothing spent
-  codeaf why self [--db path]
-      show today's self-spend receipts
-  codeaf why <task-id> [--db path]
-      what one piece of work did — its turns, tools, arguments, how it ended
+  codeaf why self | <task-id> [--db path]
+      today's self-spend receipts, or what one piece of work did
+  codeaf atlas
+      the architecture map: pair, continue, furrow — drag boxes, step flows
   codeaf logs [--tail 40] [--follow] [--path] [--json] [--run id]
               [--call id] [--tag t] [--model m] [--node n] [--body id]
       every model call codeaf made — what was asked, which lane answered, what

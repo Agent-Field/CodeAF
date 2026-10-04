@@ -245,6 +245,25 @@ unless `CODEAF_CELLS=0` turns cells off. Its verbs are described under "The cell
 
 **`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
 
+## The architecture map — codeaf atlas, what talks to what, how two computers pair and continue a chat
+
+`codeaf atlas` draws a picture of the parts behind the two-computer work — the
+pairing, the devices, the chats that move, the sync and the furrow engine — as
+boxes and arrows, with three flows you can step through (pairing, continue a
+chat, how a turn is sealed and restored). It opens no conversation, reads no
+key and spends nothing; it is a map of the code, not a control.
+
+- Drag a box with the mouse to move it; the arrows follow.
+- Click a box, or `tab` then `enter`, to open what it does, its files and what
+  it talks to. `esc` closes.
+- `1` `2` `3` or `f` open the flows; `←` `→` (or `h` `l`) step through one,
+  and `p` plays it. `0` or `esc` goes back to the overview.
+- `?` shows the keys and the colour legend. `q` or `ctrl+c` quits and gives
+  the terminal back.
+
+It is meant for a terminal of 120×35 or larger and still works at 80×24.
+`codeaf atlas --help` answers with its usage like every other command.
+
 ## The cell verbs — list a cell's turns and rewind it, and when CODEAF_CELLS=0 stops them
 
 Cells are on by default, so a paired computer moves chats with no setting. `codeaf cell` is hidden from the

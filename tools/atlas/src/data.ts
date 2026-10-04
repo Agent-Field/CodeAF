@@ -11,7 +11,7 @@ export const atlas: AtlasData = {
     { id: "machineA", label: "Machine A", short: "existing device", kind: "machine", pos: { x: 0.08, y: 0.1 },
       summary: "The computer that already runs codeaf. It approves new machines and publishes each chat's turns so another machine can continue them.",
       details: ["Holds the identity key and a device cert signed by it", "Publishes encrypted frames every turn while it holds the chat's lease"],
-      files: [{ path: "cmd/codeaf/approvals.go", symbols: ["approvalsDoor"] }] },
+      files: [{ path: "cmd/codeaf/approvals.go", symbols: ["approvalsDoor"] }, { path: "cmd/codeaf/syncdrive.go", symbols: ["startDrive"], note: "starts the drive side: publishes turns while this machine holds the lease" }] },
     { id: "machineB", label: "Machine B", short: "new device", kind: "machine", pos: { x: 0.92, y: 0.1 },
       summary: "The computer being added. It runs `codeaf pair`, and once joined it can 'continue here' on a chat that is running on A.",
       details: ["Generates its own ed25519 device key and x25519 box key", "Plaintext files only ever exist on the machines, never on the relay"],
@@ -19,7 +19,7 @@ export const atlas: AtlasData = {
     // ── services ──────────────────────────────────────────────────────────
     { id: "hosted", label: "hosted relay", short: "default", kind: "service", pos: { x: 0.38, y: 0.1 },
       summary: "The default service at https://codeaf.agentfield.ai/fabric: a Cloudflare Worker with Durable Objects and R2. It holds the directory, the encrypted blobs and pairing requests, and it cannot decrypt any of them.",
-      details: ["Limits: 5 GiB/identity, 1200 req/min/identity, 600/min/device", "Pairing: 10-minute TTL, 10 link creates/hr, 3 pending per IP", "Keeps no request log and holds no recovery key"],
+      details: ["Limits: 5 GiB/identity, 1200 req/min/identity, 600/min/device", "Pairing: 10-minute TTL, 10 link creates/hr, 3 pending per IP", "Keeps no request log and no account table: an identity is the hash of its key"],
       files: [
         { path: "relay/hosted/src/limits.js", symbols: ["DEFAULTS"] },
         { path: "relay/hosted/src/routes.js" },
@@ -38,8 +38,8 @@ export const atlas: AtlasData = {
       ] },
     // ── codeaf Go ─────────────────────────────────────────────────────────
     { id: "pair", label: "pair", short: "link + 4 digits", kind: "go", pos: { x: 0.1, y: 0.38 },
-      summary: "`codeaf pair` on the new machine prints a link and a 4-digit check. The existing machine pastes the link (home card or `codeaf pair approve`), the person compares the digits and presses a. No account is involved.",
-      details: ["check = sha256(pubkey)[0:2] mod 10000, so a swapped key shows different digits", "Link key k lives only in the URL fragment and seals the device name", "The grant is sealed to B's x25519 key, so the relay only sees an opaque box"],
+      summary: "`codeaf pair` on the new machine prints a link and a 4-digit check. The existing machine pastes the link into the chat (the pairing card opens) or runs `codeaf pair approve`, the person compares the digits and answers a. No account is involved.",
+      details: ["check = the first two bytes of sha256(pubkey) read as one number, mod 10000, so a swapped key shows different digits", "Link key k lives only in the URL fragment and seals the device name", "The grant is sealed to B's x25519 key, so the relay only sees an opaque box"],
       files: [
         { path: "cmd/codeaf/pair.go", symbols: ["pairDoor", "runPair"] },
         { path: "cmd/codeaf/pairlink.go", symbols: ["askToJoin", "approve", "linkApprover", "homeSigner"] },
@@ -78,7 +78,7 @@ export const atlas: AtlasData = {
         { path: "internal/keys/seal.go", symbols: ["seal", "open"] },
       ] },
     { id: "cells", label: "cells", short: "continue here", kind: "go", pos: { x: 0.8, y: 0.38 },
-      summary: "A cell is a chat together with its workspace. On by default; CODEAF_CELLS=0 turns cells off (the PR text says =1, which is out of date). 'Continue here' on home moves the files, history, tool output and task records to this machine.",
+      summary: "A cell is a chat together with its workspace. On by default; CODEAF_CELLS=0 turns cells off. 'Continue here' on home moves the files, history, tool output and task records to this machine.",
       details: ["do_continue.go continues a `do` run on the same machine; it does not move anything between machines"],
       files: [
         { path: "cmd/codeaf/cell.go", symbols: ["runCell", "cellRewind", "cellEngine"] },
@@ -121,7 +121,7 @@ export const atlas: AtlasData = {
         { path: "engine/furrow-daemon/src/verbs.rs", symbols: ["lookup"] },
       ] },
     { id: "furrowCli", label: "furrow-cli", short: "`furrow` binary", kind: "engine", pos: { x: 0.45, y: 0.9 },
-      summary: "The `furrow` command. Every verb accepts --json: export/published/want/import/materialize, plus timeline, rewind, fork, merge, `hook turn-end` and `serve`.",
+      summary: "The `furrow` command. The exchange verbs export, published, want, import and materialize take --json, and so do timeline, rewind, merge and serve; `furrow fork COMMAND` runs a command in the new fork and refuses --json there.",
       files: [
         { path: "engine/furrow-cli/src/main.rs" },
         { path: "engine/furrow-cli/src/exchange.rs", symbols: ["run"] },
@@ -130,7 +130,7 @@ export const atlas: AtlasData = {
     { id: "furrowCore", label: "furrow-core", short: "CoW + timeline", kind: "engine", pos: { x: 0.72, y: 0.9 },
       summary: "The engine library. It forks workspaces with copy-on-write (APFS clonefile, Linux FICLONE), splits files into content-defined BLAKE3 chunks in hash-verified packs, and keeps a Merkle timeline with rewind. Frames sent to another machine are encrypted with XChaCha20-Poly1305.",
       files: [
-        { path: "engine/furrow-core/src/repository.rs", symbols: ["Repository::seal", "Repository::fork", "Repository::rewind"] },
+        { path: "engine/furrow-core/src/repository.rs", symbols: ["FurrowRepository.seal", "FurrowRepository.fork", "FurrowRepository.rewind"] },
         { path: "engine/furrow-core/src/fork.rs", symbols: ["fork_workspace"] },
         { path: "engine/furrow-core/src/chunker.rs" },
         { path: "engine/furrow-core/src/store.rs" },
@@ -145,7 +145,7 @@ export const atlas: AtlasData = {
       files: [{ path: "docs/ux-pairing-contract.md" }, { path: "docs/testing-anywhere.md" }] },
   ],
   edges: [
-    { id: "a-pair", from: "machineA", to: "pair", label: "approve link", detail: "Home 'Add another machine' card or `codeaf pair approve LINK`." },
+    { id: "a-pair", from: "machineA", to: "pair", label: "approve link", detail: "Paste the link into the chat (`/pair <link>` or a paste opens the card) or run `codeaf pair approve LINK`." },
     { id: "b-pair", from: "machineB", to: "pair", label: "codeaf pair" },
     { id: "pair-hosted", from: "pair", to: "hosted", label: "link request", detail: "POST /v1/link/requests; the device name is sealed under the link key; the grant is a sealed box." },
     { id: "pair-identity", from: "pair", to: "identity", label: "cert + grant" },
@@ -161,8 +161,8 @@ export const atlas: AtlasData = {
     { id: "cellsync-cellstore", from: "cellsync", to: "cellstore", label: "export/want/import" },
     { id: "cellstore-daemon", from: "cellstore", to: "furrowDaemon", label: "unix socket JSON", detail: "One JSON object per line; tried first." },
     { id: "cellstore-cli", from: "cellstore", to: "furrowCli", label: "exec per verb", detail: "Fallback when the daemon is not reachable." },
-    { id: "daemon-core", from: "furrowDaemon", to: "furrowCore", label: "Repository" },
-    { id: "cli-core", from: "furrowCli", to: "furrowCore", label: "Repository" },
+    { id: "daemon-core", from: "furrowDaemon", to: "furrowCore", label: "FurrowRepository" },
+    { id: "cli-core", from: "furrowCli", to: "furrowCore", label: "FurrowRepository" },
     { id: "spec-pair", from: "spec", to: "cells", label: "specifies" },
   ],
   flows: [
@@ -170,16 +170,16 @@ export const atlas: AtlasData = {
       { from: "machineB", to: "pair", message: "`codeaf pair`: make an ed25519 device key, an x25519 box key and a 16-byte link key k", edge: "b-pair", note: "internal/pair/linkkey.go NewLinkKey" },
       { from: "pair", to: "hosted", message: "POST /v1/link/requests {pubkey, x25519, name_sealed, check}", edge: "pair-hosted" },
       { from: "hosted", to: "pair", message: "code (8 chars, 10 min TTL); B prints URL code#k and the 4 digits", edge: "pair-hosted" },
-      { from: "machineA", to: "pair", message: "the person pastes the link into the home card or `codeaf pair approve`", edge: "a-pair" },
+      { from: "machineA", to: "pair", message: "the person pastes the link into the chat (the pairing card opens) or runs `codeaf pair approve`", edge: "a-pair" },
       { from: "pair", to: "hosted", message: "A: GET /v1/link/requests/{code}, open the name with k, show name and digits", edge: "pair-hosted", note: "Approver.Look" },
-      { from: "machineA", to: "pair", message: "the person checks the 4 digits match on both screens and presses a", edge: "a-pair" },
+      { from: "machineA", to: "pair", message: "the person checks the 4 digits match on both screens and answers the card: a approves, d denies (`codeaf pair approve` asks y/n)", edge: "a-pair" },
       { from: "pair", to: "identity", message: "A signs a cert for B's key; the grant is sealed to B's x25519 key", edge: "pair-identity" },
       { from: "pair", to: "hosted", message: "POST /v1/dir/requests/{code}/approve (signed); relay writes the Device record", edge: "pair-hosted" },
       { from: "hosted", to: "machineB", message: "awaitDecision gets the grant; openLinkGrant installs identity, cert and SyncURL", note: "single use: a second approver gets 409" },
     ] },
     { id: "continue", title: "Continue chat", summary: "Machine B takes over a chat running on A: workspace, history, tool output and task records.", steps: [
       { from: "machineB", to: "cells", message: "home shows 'running on A'; the person picks continue here", edge: "b-cells", note: "internal/tui3/homepanel_continue.go" },
-      { from: "cells", to: "sync", message: "takeover.Take calls syncsetup Continuer.Take, which retires the old holder", edge: "cells-sync" },
+      { from: "cells", to: "sync", message: "syncsetup's Continuer.Take runs the takeover (internal/handoff): B's own unsealed edits are sealed into a branch first, then the lease moves", edge: "cells-sync" },
       { from: "sync", to: "hosted", message: "Dir.Cell(id): read head, frame list and lease", edge: "sync-hosted" },
       { from: "cells", to: "cellsync", message: "keepLocal: B's own edits are sealed and kept as a branch", edge: "cells-cellsync" },
       { from: "cellsync", to: "cellstore", message: "furrow `want --head H` lists the missing frames", edge: "cellsync-cellstore" },
