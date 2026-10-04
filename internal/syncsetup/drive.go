@@ -12,6 +12,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/cellsync"
 	"github.com/Agent-Field/codeaf/internal/chatlist"
 	"github.com/Agent-Field/codeaf/internal/directory"
+	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/keys"
 	"github.com/Agent-Field/codeaf/internal/vaultsync"
 )
@@ -159,11 +160,20 @@ func (d *Drive) flushed() func(cellsync.Flush) {
 
 // putDevice upserts this device's record with its sealed name and what it can do.
 func (s *Sync) putDevice(ctx context.Context, name string) error {
-	rec, err := deviceRecord(s.Identity, name)
+	return PutOwnDevice(ctx, s.Dir, s.Identity, s.Device, name)
+}
+
+// PutOwnDevice upserts a device's own directory record at dir: the same sealed
+// name and capability row every chat start makes ([Sync.putDevice]), exposed so
+// the doors that finish a pairing can make it too. A device may only ever write
+// its own record, the name travels sealed under the identity's key, and the
+// relay never learns it.
+func PutOwnDevice(ctx context.Context, dir directory.Client, id identity.Identity, dev identity.Dev, name string) error {
+	rec, err := deviceRecord(id, name)
 	if err != nil {
 		return err
 	}
-	return s.Dir.PutDevice(ctx, s.Device.ID(), rec)
+	return dir.PutDevice(ctx, dev.ID(), rec)
 }
 
 // Rename tells the identity's other devices what this one is now called. It is

@@ -108,6 +108,16 @@ A filled green dot `●` is a device that is online now, and always your own. A 
 
 Under the row, `alt+m bring work here` brings the newest chat of an online device to this one. With more than one choice it asks `Which device?` and the last choice is `leave it there`. If there is nothing to bring it says `no other device that is online has a chat to bring here`. The page *Continuing a chat on another device* tells what happens next.
 
+## Does the other computer appear on the device list straight after pairing — a just-paired device, devices empty after pairing
+
+Yes, on both sides. When a pairing finishes — a six-digit code on both screens, a link
+typed into `codeaf pair approve`, either end of it — the computer it finished on writes
+its own device record then and there, the same record every chat start writes. `codeaf
+devices` and `/devices` show both computers at once, on each computer, with no chat
+opened first. If that record did not land, the pairing still stands and the terminal
+says one line about it, `paired, but this device could not write its own record: … — it
+is written at the next chat start.`, and the pairing ends cleanly.
+
 ## Which devices do I have — /devices, how to remove or revoke one, a device that was revoked, and I was told this machine was removed
 
 Type `/devices` to list them:

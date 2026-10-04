@@ -131,6 +131,15 @@ func CheckQuestion(check string) string {
 // ApprovedLine is what the approving device says when it let one in.
 func ApprovedLine(name string) string { return name + " is now paired. Your chats can continue there." }
 
+// RecordUnsaidLine is what a device says when its own record did not reach the
+// directory after a pairing that itself worked: the pairing stands, and the
+// next chat start writes the record anyway, so this is one dim line and not a
+// failure.
+func RecordUnsaidLine(err error) string {
+	return "paired, but this device could not write its own record: " + err.Error() +
+		" — it is written at the next chat start."
+}
+
 // DeclinedLine is what the approving device says after a no.
 const DeclinedLine = "Declined. Nothing was paired."
 

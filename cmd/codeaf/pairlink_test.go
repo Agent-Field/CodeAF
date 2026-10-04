@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/devname"
 	"github.com/Agent-Field/codeaf/internal/identity"
 	"github.com/Agent-Field/codeaf/internal/pair"
 )
@@ -57,6 +59,59 @@ func TestPairByLinkEndToEnd(t *testing.T) {
 	second, err := identity.Load(rig.homeB)
 	if err != nil || second.ID() != first.ID() {
 		t.Fatalf("the new computer holds %v (%v), want the first one's identity", second.ID(), err)
+	}
+}
+
+// A link pairing puts the APPROVER on the directory too, not only the joiner:
+// the joiner's devices list shows the computer that approved it, and the
+// approver is on its own list as well. `pair approve` used to write only the
+// joiner's record, so the approving machine's `codeaf devices` stayed empty
+// until its next chat start.
+func TestDevicesAfterALinkPairingShowTheApprover(t *testing.T) {
+	rig := newPairRig(t)
+	t.Setenv("CODEAF_SYNC_URL", rig.url)
+	if _, err := devname.Set(rig.homeA, "desk"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := devname.Set(rig.homeB, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+
+	screen, done := rig.asking(t)
+	link := screen.waitFor(t, `https://codeaf\.agentfield\.ai/p/\S+#\S+`)[0]
+	out, err := rig.approveWith(t, []string{link}, "y\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), pair.ApprovedLine("laptop")) {
+		t.Fatalf("the approving terminal printed:\n%s", out.String())
+	}
+
+	// The joiner's list shows the approver, not itself alone; the approver's
+	// list shows both, and names the joiner it let in.
+	for _, side := range []struct{ home, want, label string }{
+		{rig.homeB, "desk", "the computer that joined"},
+		{rig.homeA, "laptop", "the computer that approved"},
+	} {
+		t.Setenv("CODEAF_HOME", side.home)
+		chats, ok := openChatsKind()
+		if !ok {
+			t.Fatalf("%s has no chats kind", side.label)
+		}
+		rows, err := chats.rows()
+		if err != nil {
+			t.Fatal(err)
+		}
+		names := make([]string, 0, len(rows))
+		for _, row := range rows {
+			names = append(names, row.Name)
+		}
+		if len(rows) < 2 || !slices.Contains(names, side.want) {
+			t.Fatalf("%s's devices list holds %v, want the computer it paired with on it", side.label, names)
+		}
 	}
 }
 
