@@ -249,25 +249,7 @@ func filterDeletedDocument(doc taskDocument, ids map[string]bool) taskDocument {
 			}
 		}
 	}
-	// Removing a prerequisite must not turn its unfinished dependents into
-	// runnable work after restart. Completed results still stand on their own.
-	blocked := map[uint64]bool{}
-	for changed := true; changed; {
-		changed = false
-		for i := range doc.Nodes {
-			r := &doc.Nodes[i]
-			if ids[strconv.FormatUint(r.ID, 10)] || blocked[r.ID] || r.State.settled() && r.State != TaskInterrupted {
-				continue
-			}
-			for _, dep := range r.DependsOn {
-				if ids[strconv.FormatUint(dep, 10)] || blocked[dep] {
-					r.State, r.Ending, r.Report = TaskFailed, TaskEndingUpstream, "dependency was deleted"
-					blocked[r.ID], changed = true, true
-					break
-				}
-			}
-		}
-	}
+	blockDeletedPrerequisites(doc.Nodes, ids)
 	nodes := doc.Nodes[:0:0]
 	for _, r := range doc.Nodes {
 		if !ids[strconv.FormatUint(r.ID, 10)] {
@@ -290,6 +272,28 @@ func filterDeletedDocument(doc taskDocument, ids map[string]bool) taskDocument {
 	}
 	doc.Runs = runs
 	return doc
+}
+
+func blockDeletedPrerequisites(nodes []taskRecord, ids map[string]bool) {
+	// Removing a prerequisite must not turn its unfinished dependents into
+	// runnable work after restart. Completed results still stand on their own.
+	blocked := map[uint64]bool{}
+	for changed := true; changed; {
+		changed = false
+		for i := range nodes {
+			r := &nodes[i]
+			if ids[strconv.FormatUint(r.ID, 10)] || blocked[r.ID] || r.State.settled() && r.State != TaskInterrupted {
+				continue
+			}
+			for _, dep := range r.DependsOn {
+				if ids[strconv.FormatUint(dep, 10)] || blocked[dep] {
+					r.State, r.Ending, r.Report = TaskFailed, TaskEndingUpstream, "dependency was deleted"
+					blocked[r.ID], changed = true, true
+					break
+				}
+			}
+		}
+	}
 }
 
 func withTaskIndexLock(path string, write func() error) error {
@@ -549,20 +553,13 @@ func purgeTaskIndex(file, sessionID string, ids map[string]bool, blocked map[str
 			if line == "" {
 				continue
 			}
-			var row TaskIndexEntry
-			if json.Unmarshal([]byte(line), &row) == nil && row.SessionID == sessionID && (ids == nil || ids[row.ID]) {
-				continue
+			line, err = taskDeletionIndexLine(line, sessionID, ids, blocked)
+			if err != nil {
+				return err
 			}
-			if r, ok := blocked[row.ID]; ok && row.SessionID == sessionID {
-				row.Status, row.Ending, row.Outcome = string(r.State), r.Ending, r.Report
-				row.EndedAt = r.EndedAt
-				raw, err := json.Marshal(row)
-				if err != nil {
-					return err
-				}
-				line = string(raw)
+			if line != "" {
+				keep = append(keep, line)
 			}
-			keep = append(keep, line)
 		}
 		temp, err := os.CreateTemp(filepath.Dir(path), ".task-index-delete-")
 		if err != nil {
@@ -585,6 +582,25 @@ func purgeTaskIndex(file, sessionID string, ids map[string]bool, blocked map[str
 	return nil
 }
 
+// Index projection preserves other owners and malformed historical rows while
+// reflecting the same dependency outcome as the resumable checkpoint.
+func taskDeletionIndexLine(line, sessionID string, ids map[string]bool, blocked map[string]taskRecord) (string, error) {
+	var row TaskIndexEntry
+	if json.Unmarshal([]byte(line), &row) != nil || row.SessionID != sessionID {
+		return line, nil
+	}
+	if ids == nil || ids[row.ID] {
+		return "", nil
+	}
+	if r, ok := blocked[row.ID]; ok {
+		row.Status, row.Ending, row.Outcome = string(r.State), r.Ending, r.Report
+		row.EndedAt = r.EndedAt
+		raw, err := json.Marshal(row)
+		return string(raw), err
+	}
+	return line, nil
+}
+
 func purgeTaskCheckpoint(file string, ids map[string]bool, checkpointWrite bool) (map[string]taskRecord, error) {
 	blocked := map[string]taskRecord{}
 	checkpoint := taskCheckpointPath(file)
@@ -597,9 +613,6 @@ func purgeTaskCheckpoint(file string, ids map[string]bool, checkpointWrite bool)
 		for i := range doc.Nodes {
 			r := &doc.Nodes[i]
 			if r.State == TaskFailed && r.Ending == TaskEndingUpstream && r.Report == "dependency was deleted" {
-				if r.EndedAt.IsZero() {
-					r.EndedAt = time.Now()
-				}
 				blocked[strconv.FormatUint(r.ID, 10)] = *r
 			}
 		}

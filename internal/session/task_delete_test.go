@@ -107,6 +107,9 @@ func TestTaskDeleteOfflineBlocksUnfinishedDependentsAfterRestart(t *testing.T) {
 		t.Fatalf("restart lost siblings: %+v %v", restored, err)
 	}
 	for _, r := range restored.Nodes {
+		if !r.EndedAt.IsZero() {
+			t.Fatal("offline cleanup invented a work completion time")
+		}
 		if r.ID == 6 {
 			if r.State != TaskQueued {
 				t.Fatal("independent work was changed")
@@ -118,7 +121,7 @@ func TestTaskDeleteOfflineBlocksUnfinishedDependentsAfterRestart(t *testing.T) {
 	found := map[string]bool{}
 	for _, r := range ReadTaskIndex(TaskIndexPath(file)) {
 		if r.SessionID == "conversation" && (r.ID == "4" || r.ID == "5") {
-			if r.Status != string(TaskFailed) {
+			if r.Status != string(TaskFailed) || !r.EndedAt.IsZero() {
 				t.Fatalf("index disagrees with checkpoint: %+v", r)
 			}
 			found[r.ID] = true
