@@ -1135,6 +1135,10 @@ type app struct {
 	// must not leave the transcript lighting rows nobody swept.
 	boxSel    boxDrag
 	dragInBox bool
+	// pairSel is the same gesture over the pairing panel's rows (pairdrag.go):
+	// the panel takes every press and answers none, but a press on it may arm a
+	// sweep whose release copies the code or the lines around it.
+	pairSel pairDrag
 	// clickAt, clickX, clickY and clicks are the multi-click count: a press
 	// soon and near the last is the same gesture's second or third click
 	// (dragselect.go's [app.countClick]).
@@ -4697,7 +4701,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// AND THE PAIRING PANEL TAKES EVERY PRESS AND ACTS ON NONE: a press must
 			// never answer the question of whether a device may have your chats.
 			if a.pair.open {
-				return a, nil
+				// It may still ARM a sweep: a drag over the panel copies the code it
+				// shows, the way a drag over any text here copies it (pairdrag.go).
+				return a, a.pairPressed(msg.Mouse().X, msg.Mouse().Y)
 			}
 			// THE STANDING PAGE USED TO BE READ HERE, under the two registry
 			// panels. It is a PLACE now and is read with the other three of them,
@@ -5063,6 +5069,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the box took never parked a body drag and the two can therefore never
 		// both be live: this is the same gesture answered where the transcript's
 		// own machinery cannot see it (boxselect.go).
+		if msg.Mouse().Button == tea.MouseLeft && a.pairMotion(msg.Mouse().X, msg.Mouse().Y) {
+			return a, nil
+		}
 		if msg.Mouse().Button == tea.MouseLeft && a.boxMotion(msg.Mouse().X, msg.Mouse().Y) {
 			return a, nil
 		}

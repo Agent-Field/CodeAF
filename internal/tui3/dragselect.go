@@ -423,6 +423,11 @@ func (a *app) dragMotion(x, y int) bool {
 // copied, a parked click is spent on the body at the row it pressed, and a
 // release nothing owns is nothing.
 func (a *app) dragRelease() tea.Cmd {
+	// A SWEEP OVER THE PAIRING PANEL ENDS HERE FIRST — the same release, and
+	// the two gestures can never both be live (pairdrag.go).
+	if cmd, took := a.pairRelease(); took {
+		return cmd
+	}
 	// A SWEEP INSIDE A TEXT BOX ENDS HERE FIRST. It is the same button coming
 	// up, and the two gestures can never both be live — a press the box took
 	// never parked a body drag (boxselect.go).

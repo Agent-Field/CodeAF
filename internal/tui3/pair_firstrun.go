@@ -173,7 +173,7 @@ func (a *app) setupJoin() tea.Cmd {
 		return nil
 	}
 	s.codeText, s.onCode = "", false
-	cmd := a.startPair(pairJoiningWord, joinWork(a.pairing, typed))
+	cmd := a.startPair(pairJoiningWord, joinWork(a.pairing, typed, false))
 	// The panel stays shut: this join reports on the first-run screen.
 	a.pair.open = false
 	return cmd

@@ -3504,7 +3504,7 @@ func (a *app) overlayRows(width, n int) []string {
 	case a.permPanel.open:
 		return a.permPanel.draw(width, n, a.pal, hover)
 	case a.pair.open:
-		return a.pair.draw(width, n, a.now(), a.pal)
+		return a.pairPaintSelection(a.pair.draw(width, n, a.now(), a.pal))
 	case a.subPage.open:
 		return a.subPage.draw(a, width, n, hover)
 	case a.menu.open:
