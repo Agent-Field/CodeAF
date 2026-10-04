@@ -112,6 +112,13 @@ engine on both machines from the same commit (`make build`; on the Mac, `export
 PATH=/opt/homebrew/bin:$PATH` first). A copied binary is killed by macOS until it is signed:
 `codesign -s - -f <binary>`.
 
+To build the Linux binary on the Mac instead, build furrow for Linux from `engine/` first (in a
+Linux container: `cargo build --release --locked -p furrow-cli`) and hand it to the build:
+`GOOS=linux GOARCH=arm64 make build BINARY=bin/codeaf-linux-arm64 FURROW_FROM=source
+FURROW_BIN=<that furrow>`. A plain cross-build embeds the pinned furrow release, which is too old
+for cells: that Linux machine can neither take a chat nor publish one, and its rewind says the
+engine "does not support --cell-dir".
+
 Export the settings above first; each script's docstring says which of them it reads and the
 layout it expects under the roots. Run `--help` on any of them to see the options.
 
