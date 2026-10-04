@@ -251,19 +251,32 @@ unless `CODEAF_CELLS=0` turns cells off. Its verbs are described under "The cell
 
 **`codeaf pair`** on a new computer asks to join your devices and shows a link to approve from a computer that is already in (`codeaf pair approve <link>`); **`codeaf pair --code`** shows a code that gives your chats to another computer. **`codeaf pair <code>`** uses a code that another computer showed, for example `codeaf pair 42-715-302`. `--via <url>` names the sync address to go through, and `--replace` lets this computer drop chats of its own for the ones it is given. The page *Pairing your chats with a second computer* has the whole story.
 
-## The architecture map — codeaf atlas, /atlas, what talks to what, how two computers pair and continue a chat
+## The architecture map — codeaf atlas [map], /atlas [map], what talks to what, how two computers pair and continue a chat
 
-`codeaf atlas` draws a picture of the parts behind the two-computer work — the
+The atlas draws a picture of the parts behind the two-computer work — the
 pairing, the devices, the chats that move, the sync and the furrow engine — as
-boxes and arrows, with three flows you can step through (pairing, continue a
-chat, how a turn is sealed and restored). It opens no conversation, reads no
-key and spends nothing; it is a map of the code, not a control.
+boxes and arrows, with flows you can step through. It opens no conversation, reads no
+key and spends nothing; it is a map of the code, not a control. The old
+Bun + OpenTUI version that lived in `tools/atlas` is gone: everything goes
+through Go, from the one model and one registry of maps inside the binary.
 
-**`/atlas` opens the same map inside the chat**, over the conversation you are
-typing in, on the same terms: nothing is read, nothing is spent, and `esc` or
-`q` closes it and gives the conversation back exactly as it was, with the
-transcript, the draft and everything you had open untouched. A box you dragged
-stays where you put it the next time you open the map.
+Maps are named. **`codeaf atlas pairing`** opens the pairing map — codeaf on
+two computers, pairing with a link and continuing a chat on the other — and
+**`/atlas pairing`** opens the same map inside the chat, over the conversation
+you are typing in, on the same terms: nothing is read, nothing is spent, and
+`esc` or `q` closes it and gives the conversation back exactly as it was, with
+the transcript, the draft and everything you had open untouched. A box you
+dragged stays where you put it the next time you open the map.
+
+Bare `codeaf atlas` and bare `/atlas` open a **picker** instead: one row per
+registered map, its name and its one-line description. `enter` opens the row
+the cursor is on; `esc` or `q` leaves without opening anything — back to the
+shell, or back to the chat. `tab` completes map names after `/atlas`, the way
+other commands with arguments complete theirs. A name that is not a map exits
+the CLI non-zero with `no map "<name>" — available maps: …`; in the chat the
+same line lands in the transcript like any other slash error.
+
+Once a map is open:
 
 - Drag a box with the mouse to move it; the arrows follow.
 - Click a box, or `tab` then `enter`, to open what it does, its files and what

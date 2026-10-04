@@ -8,7 +8,10 @@ invalidates:
   - "The atlas data was written from the PR text and repeated a few of its mistakes. The Go data file now says what the code says: the four-digit check is the first two bytes of sha256(pubkey) mod 10000, approving happens in the chat card or `codeaf pair approve` and not on a home card, CODEAF_CELLS=0 is the off switch, the takeover is run by syncsetup's Continuer.Take through internal/handoff, the repository type is FurrowRepository, and `furrow fork COMMAND` refuses --json."
 ---
 
-The map is one typed data file, `internal/atlas/data.go`, and the view renders
-only from it; `data_test.go` fails the build when a file the map points at no
-longer exists or an edge names a box that is not there, so the diagram cannot
-drift silently from the code it describes.
+The map is a registry of named maps — `internal/atlas/registry.go`, with the
+`pairing` map in `internal/atlas/pairing.go` — and the view renders only from
+it; `data_test.go` checks every registered map, and fails the build when a
+file the map points at no longer exists or an edge or flow names a box that is
+not there, so the diagram cannot drift silently from the code it describes.
+The old Bun + OpenTUI version in `tools/atlas` is deleted: the map is drawn by
+the codeaf binary and nothing else.
