@@ -119,7 +119,11 @@ func persist(line []byte) error {
 		return err
 	}
 	_, writeErr := file.Write(append(line, '\n'))
+	syncErr := file.Sync()
 	closeErr := file.Close()
+	if syncErr != nil {
+		return syncErr
+	}
 	if writeErr != nil {
 		return writeErr
 	}
@@ -134,6 +138,7 @@ func persist(line []byte) error {
 	if err != nil || len(lines) < 2 {
 		return nil
 	}
+	oneWarning("codeaf: anonymous counts exceeded local storage limits; older counts were discarded")
 	return rewriteSpool(path, lines[len(lines)/2:])
 }
 
@@ -189,6 +194,7 @@ func Flush(ctx context.Context) error {
 	var survivors []spoolEntry
 	for _, entry := range entries {
 		if entry.ageKnown && ageOf(entry.event.EventTime) > MaxEventAge {
+			oneWarning("codeaf: anonymous counts expired before delivery")
 			continue
 		}
 		if !allowlistedEvents[entry.event.EventName] {
@@ -199,6 +205,7 @@ func Flush(ctx context.Context) error {
 		survivors = append(survivors, entry)
 	}
 	if len(survivors) > MaxSpoolLines {
+		oneWarning("codeaf: anonymous counts exceeded local storage limits; older counts were discarded")
 		survivors = survivors[len(survivors)-MaxSpoolLines:]
 	}
 	var batches [][]spoolEntry

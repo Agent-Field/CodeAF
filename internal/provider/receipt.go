@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // THE RECEIPT: MONEY A CUT STREAM LEFT OFF THE WIRE.
@@ -99,6 +100,7 @@ type receiptWork struct {
 	result Reconciled
 	sink   ReconcileSink
 	queued time.Time
+	usage  func(int, int)
 }
 
 // deadline is the latest a receipt may be answered: [receiptFetchTimeout] after
@@ -193,7 +195,11 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		}
 		return
 	}
-	work := receiptWork{result: result, sink: sink}
+	work := receiptWork{result: result, sink: sink, usage: telemetry.CaptureUsageRecorder(telemetry.UsageDimensions{
+		RoutingProvider: telemetry.RoutingProvider(c.config.BaseURL),
+		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
+		AccountingSource: "provider", ReceiptID: "generation:" + result.Ref,
+	})}
 	// THE WORK IS TOLD A RECEIPT IS OWED BEFORE IT IS QUEUED, and told it was
 	// answered only after the sink has banked it, so a caller waiting for its
 	// receipts cannot see zero owed while money is between the two
@@ -283,6 +289,12 @@ func (c *Client) reconcile(work receiptWork) {
 			billed.Model = result.Model
 			result.Billed = billed
 			result.Found = true
+			// Recovery is reached only when the stream had no usage block, so
+			// these tokens replace an unknown receipt rather than add to a
+			// previously reported total.
+			if work.usage != nil {
+				work.usage(billed.PromptTokens, billed.CompletionTokens)
+			}
 			work.sink(result)
 			return
 		}

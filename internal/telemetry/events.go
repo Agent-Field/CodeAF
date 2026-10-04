@@ -281,6 +281,10 @@ func UsageDelta(mode Mode, input, output int, sessionID string, now time.Time) E
 	event.Props["input_tokens"] = input
 	event.Props["output_tokens"] = output
 	event.Props["total_tokens"] = input + output
+	event.Props["routing_provider"] = "unknown"
+	event.Props["model_family"] = "unknown"
+	event.Props["usage_status"] = "reported"
+	event.Props["accounting_source"] = "engine"
 	return event
 }
 
@@ -325,7 +329,7 @@ var allowedProps = map[string]map[string]bool{
 		"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code",
 	})),
 	"usage_delta": merge(set(commonPropNames), set([]string{
-		"mode", "input_tokens", "output_tokens", "total_tokens",
+		"mode", "input_tokens", "output_tokens", "total_tokens", "routing_provider", "model_family", "usage_status", "accounting_source",
 	})),
 	"fault": merge(set(commonPropNames), set([]string{"mode", "scope", "fingerprint"})),
 }
@@ -367,10 +371,14 @@ var propDocs = map[string]map[string]string{
 		"exit_code":          "0 to 5",
 	},
 	"usage_delta": {
-		"mode":          "chat or task",
-		"input_tokens":  "provider-reported input tokens since the preceding usage event",
-		"output_tokens": "provider-reported output tokens since the preceding usage event",
-		"total_tokens":  "the sum of this event's input and output tokens",
+		"mode":              "chat or task",
+		"input_tokens":      "provider-reported input tokens since the preceding usage event",
+		"output_tokens":     "provider-reported output tokens since the preceding usage event",
+		"total_tokens":      "the sum of this event's input and output tokens",
+		"routing_provider":  "openrouter, openai, anthropic, google, bedrock, azure, ollama, other, or unknown",
+		"model_family":      "deepseek, claude, gpt, gemini, llama, qwen, kimi, glm, other, or unknown",
+		"usage_status":      "reported or missing",
+		"accounting_source": "provider or engine",
 	},
 	"fault": {
 		"mode":        "chat, task, or other",
@@ -393,7 +401,7 @@ func EventPropNames(event string) []string {
 		return []string{"mode", "duration", "turns", "model_calls", "model_calls_failed",
 			"tool_calls", "tool_calls_failed", "cost_usd", "stop_reason", "exit_code"}
 	case "usage_delta":
-		return []string{"mode", "input_tokens", "output_tokens", "total_tokens"}
+		return []string{"mode", "input_tokens", "output_tokens", "total_tokens", "routing_provider", "model_family", "usage_status", "accounting_source"}
 	case "fault":
 		return []string{"mode", "scope", "fingerprint"}
 	}
@@ -445,10 +453,14 @@ var exampleProps = map[string]map[string]string{
 		"exit_code":          "0",
 	},
 	"usage_delta": {
-		"mode":          string(ModeChat),
-		"input_tokens":  "10000",
-		"output_tokens": "2500",
-		"total_tokens":  "12500",
+		"mode":              string(ModeChat),
+		"input_tokens":      "10000",
+		"output_tokens":     "2500",
+		"total_tokens":      "12500",
+		"routing_provider":  "openrouter",
+		"model_family":      "deepseek",
+		"usage_status":      "reported",
+		"accounting_source": "provider",
 	},
 	"fault": {
 		"mode":        string(ModeChat),
