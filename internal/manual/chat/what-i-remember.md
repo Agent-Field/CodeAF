@@ -527,8 +527,10 @@ must have changed since the last one — one new line has already been settled
 against its neighbours on the turn that wrote it, so there would be nothing to
 merge it with.
 
-**What it may do.** It reads the fifty most recently touched lines, grouped by
-how far each one's truth reaches, and answers with at most **eight** changes:
+**What it may do.** It reads the fifty most recently touched lines — only yours and
+this machine's, never a project you are not currently in and never what is in
+quarantine — grouped by how far each one's truth reaches, and answers with at most
+**eight** changes:
 
 - **merge** two lines that say the same thing into one clearer line, keeping
   every fact both of them carried;

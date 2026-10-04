@@ -23,13 +23,16 @@ import (
 // nobody is watching, which is the failure this file exists to hold shut.
 
 // tidyScript answers the consolidation call and counts it. It knows the call by
-// its system prompt, which is how the calls really differ on the wire.
+// its system prompt, which is how the calls really differ on the wire, and it
+// keeps the user listing it was handed so a test can assert exactly what the
+// model was shown.
 type tidyScript struct {
-	mu    sync.Mutex
-	plan  string
-	fail  error
-	usd   float64
-	calls int
+	mu     sync.Mutex
+	plan   string
+	fail   error
+	usd    float64
+	calls  int
+	listed string
 }
 
 func (s *tidyScript) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
@@ -43,6 +46,9 @@ func (s *tidyScript) CompleteWithMessages(_ context.Context, messages []ai.Messa
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.calls++
+	if len(messages) > 1 {
+		s.listed = messageText(messages[1])
+	}
 	if s.fail != nil {
 		return nil, s.fail
 	}
@@ -60,9 +66,22 @@ func (s *tidyScript) count() int {
 	return s.calls
 }
 
+func (s *tidyScript) listing() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listed
+}
+
 // tidyBrain is a store of the test's own with the given rows in it, oldest
-// first, and the pass that reads it.
+// first, and the pass that reads it. The owners default to user+machine so a
+// test can observe what happens inside one partition, and may be overridden
+// when it wants a specific owner policy.
 func tidyBrain(t *testing.T, script Completer, rows ...store.Memory) (tidyPass, *store.Store, string) {
+	t.Helper()
+	return tidyBrainWithOwners(t, script, nil, rows...)
+}
+
+func tidyBrainWithOwners(t *testing.T, script Completer, owners []string, rows ...store.Memory) (tidyPass, *store.Store, string) {
 	t.Helper()
 	root := t.TempDir()
 	brain, err := store.Open(filepath.Join(root, "brain.db"))
@@ -81,7 +100,10 @@ func tidyBrain(t *testing.T, script Completer, rows ...store.Memory) (tidyPass, 
 			t.Fatalf("add memory %q: %v", row.Title, err)
 		}
 	}
-	return tidyPass{brain: brain, completer: script, model: "tidy-model", root: root}, brain, root
+	if len(owners) == 0 {
+		owners = []string{store.OwnerUser, store.OwnerMachine}
+	}
+	return tidyPass{brain: brain, completer: script, model: "tidy-model", root: root, owners: owners}, brain, root
 }
 
 func activeTitles(t *testing.T, brain *store.Store) []string {
@@ -492,6 +514,218 @@ func TestTheListingGroupsByHowFarTheTruthReaches(t *testing.T) {
 	}
 	if !strings.Contains(listing, "a · fact · tabs — prefers tabs") {
 		t.Fatalf("a row is not addressable in:\n%s", listing)
+	}
+}
+
+// ── the owner boundary ──────────────────────────────────────────────────────
+
+// THE QUARANTINE IS NEVER IN THE MODEL'S BATCH AND NEVER MUTATED. A quarantined
+// row's owner is unprovable, so the architecture says nothing injects it; an
+// idle pass that read or rewrote one would be exactly the widening the
+// quarantine exists to close. The listing the model sees excludes it, and even
+// a plan that names its id changes nothing.
+func TestTheTidyNeverReadsOrMutatesTheQuarantine(t *testing.T) {
+	script := &tidyScript{}
+	pass, brain, _ := tidyBrain(t, script,
+		store.Memory{Title: "user truth", Text: "true about the person"},
+		store.Memory{Owner: store.OwnerMachine, Scope: store.MemoryScopeEnv, Type: store.MemoryFact,
+			Title: "machine truth", Text: "true about this machine"},
+		store.Memory{Owner: store.OwnerLegacyProject, Scope: store.MemoryScopeProject, Type: store.MemoryFact,
+			Title: "orphan", Text: "a row nobody can prove the owner of"},
+	)
+	// Find the quarantined row's id.
+	all, err := brain.ListMemories(nil, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var orphan store.Memory
+	for _, row := range all {
+		if row.Owner == store.OwnerLegacyProject {
+			orphan = row
+		}
+	}
+	if orphan.ID == "" {
+		t.Fatal("the fixture did not create a quarantined row")
+	}
+	before, _, err := brain.MemoryRecord(orphan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The model's plan names the quarantined row: a refine and a supersede.
+	// Neither may land.
+	script.plan = mustPlan(t,
+		consolidateOp{Op: "refine", ID: orphan.ID, Title: "rewritten", Text: "the idle pass rewrote this"},
+		consolidateOp{Op: "supersede", ID: orphan.ID, Title: "replacement", Text: "the idle pass replaced this"},
+	)
+	tidied, err := pass.run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if tidied.Changed() != 0 {
+		t.Fatalf("the pass changed %d lines against quarantine, want 0", tidied.Changed())
+	}
+	// The call WAS made — with two in-scope rows the pass had something to ask
+	// about — and the listing it was shown never named the quarantined row.
+	if script.count() != 1 {
+		t.Fatalf("the pass made %d calls, want 1", script.count())
+	}
+	if strings.Contains(script.listing(), orphan.ID) || strings.Contains(script.listing(), "orphan") {
+		t.Fatalf("the model was shown a quarantined row:\n%s", script.listing())
+	}
+	after, found, err := brain.MemoryRecord(orphan.ID)
+	if err != nil || !found {
+		t.Fatalf("the quarantined row vanished: %v", err)
+	}
+	if after.Title != before.Title || after.Text != before.Text || after.Status != store.MemoryActive {
+		t.Fatalf("the quarantined row was touched: %q / %q / %s", after.Title, after.Text, after.Status)
+	}
+}
+
+// A PASS SCOPED TO ONE PROJECT NEVER TOUCHES ANOTHER PROJECT'S ROW, nor the
+// person's own row, even when the model names a foreign id. The batch only ever
+// held rows the pass owns, and the write door re-proves the owner in the same
+// transaction.
+func TestTheTidyScopedToOneProjectRefusesAnotherProjectsAndTheUsersRows(t *testing.T) {
+	script := &tidyScript{}
+	// Build the pass with ONLY project-alpha's owner authorized.
+	alphaOwner := store.OwnerProject("alpha-key")
+	pass, brain, _ := tidyBrainWithOwners(t, script, []string{alphaOwner},
+		store.Memory{Owner: alphaOwner, Scope: store.MemoryScopeProject, Type: store.MemoryProjectState,
+			Title: "alpha on v2", Text: "the alpha api is on v2"},
+		store.Memory{Owner: alphaOwner, Scope: store.MemoryScopeProject, Type: store.MemoryProjectState,
+			Title: "alpha deploy day", Text: "alpha deploys on Tuesdays"},
+		store.Memory{Owner: store.OwnerProject("beta-key"), Scope: store.MemoryScopeProject, Type: store.MemoryProjectState,
+			Title: "beta on v1", Text: "the beta api is on v1"},
+		store.Memory{Owner: store.OwnerUser, Scope: store.MemoryScopeUser, Type: store.MemoryFact,
+			Title: "user fact", Text: "true about the person"},
+	)
+	all, err := brain.ListMemories(nil, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var alpha, beta, user store.Memory
+	for _, row := range all {
+		switch row.Owner {
+		case alphaOwner:
+			if row.Title == "alpha on v2" {
+				alpha = row
+			}
+		case store.OwnerProject("beta-key"):
+			beta = row
+		case store.OwnerUser:
+			user = row
+		}
+	}
+	if alpha.ID == "" || beta.ID == "" || user.ID == "" {
+		t.Fatal("the fixture did not create all three rows")
+	}
+
+	// The model names ALL THREE ids: its refine of alpha should land, its
+	// refine of beta and its supersede of the user row must be refused.
+	script.plan = mustPlan(t,
+		consolidateOp{Op: "refine", ID: alpha.ID, Title: "alpha on v2, clearly", Text: "the alpha api is on v2, now documented"},
+		consolidateOp{Op: "refine", ID: beta.ID, Title: "beta on v1, clearly", Text: "the beta api is on v1, now documented"},
+		consolidateOp{Op: "supersede", ID: user.ID, Title: "user fact superseded", Text: "no longer true"},
+	)
+	tidied, err := pass.run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if tidied.Merged != 1 || tidied.Superseded != 0 {
+		t.Fatalf("the pass came to %+v, want exactly one alpha merge", tidied)
+	}
+	// Alpha's own row was refined.
+	alphaAfter, _, err := brain.MemoryRecord(alpha.ID)
+	if err != nil || alphaAfter.Text != "the alpha api is on v2, now documented" {
+		t.Fatalf("alpha's row was not refined: (%v, %v)", alphaAfter, err)
+	}
+	// Beta's row is untouched.
+	betaAfter, _, err := brain.MemoryRecord(beta.ID)
+	if err != nil || betaAfter.Text != "the beta api is on v1" || betaAfter.Status != store.MemoryActive {
+		t.Fatalf("the pass touched beta's row: %q / %s", betaAfter.Text, betaAfter.Status)
+	}
+	// The person's row is untouched.
+	userAfter, _, err := brain.MemoryRecord(user.ID)
+	if err != nil || userAfter.Text != "true about the person" || userAfter.Status != store.MemoryActive {
+		t.Fatalf("the pass touched the user's row: %q / %s", userAfter.Text, userAfter.Status)
+	}
+	// And the model was never even SHOWN the foreign rows.
+	if strings.Contains(script.listing(), beta.ID) || strings.Contains(script.listing(), user.ID) {
+		t.Fatalf("the model was shown rows the pass does not own:\n%s", script.listing())
+	}
+}
+
+// AN OWNER REMOVED OR CHANGED BETWEEN THE READ AND THE WRITE IS REFUSED. The
+// batch is read under one owner list, but the write door re-proves the row's
+// CURRENT owner in the same transaction — a row that stopped being the pass's
+// between listing and apply cannot be rewritten by it.
+func TestTheTidyRefusesARowWhoseOwnerMovedAfterTheRead(t *testing.T) {
+	_, brain, _ := tidyBrain(t, &tidyScript{},
+		store.Memory{Title: "one", Text: "the first thing"},
+		store.Memory{Title: "two", Text: "the second thing"},
+	)
+	rows, err := brain.ListMemories(nil, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := rows[0]
+
+	// The batch the pass read holds a row owned by the user, but the WRITE is
+	// scoped to a narrower owner list that no longer includes the user — the
+	// shape of an owner that moved between listing and apply. The pass's own
+	// boundary check must refuse it, and the store's guarded door must refuse
+	// it too.
+	plan := consolidatePlan{Ops: []consolidateOp{{Op: "refine", ID: target.ID, Title: "moved", Text: "the row moved away"}}}
+	tidied := applyConsolidatePlan(brain, rows, []string{store.OwnerMachine}, plan)
+	if tidied.Changed() != 0 {
+		t.Fatalf("a plan applied under the wrong owner changed %d lines", tidied.Changed())
+	}
+	check, _, err := brain.MemoryRecord(target.ID)
+	if err != nil || check.Text != target.Text {
+		t.Fatalf("the row was changed despite the owner mismatch: %q", check.Text)
+	}
+}
+
+// A MISSING OWNER LIST IS A FAIL-CLOSED NO-OP. The pass reads nothing, asks
+// nothing, writes nothing — a consolidate that cannot prove what it may touch
+// must not touch everything.
+func TestTheTidyFailsClosedWithNoAuthorizedOwners(t *testing.T) {
+	script := &tidyScript{}
+	pass, _, _ := tidyBrain(t, script,
+		store.Memory{Title: "one", Text: "the first thing"},
+		store.Memory{Title: "two", Text: "the second thing"},
+	)
+	pass.owners = nil
+	tidied, err := pass.run(context.Background())
+	if err == nil {
+		t.Fatal("a pass with no authorized owners answered no error")
+	}
+	if tidied.Changed() != 0 {
+		t.Fatalf("a pass with no owners changed %d lines", tidied.Changed())
+	}
+	if script.count() != 0 {
+		t.Fatalf("a pass with no owners made %d calls", script.count())
+	}
+}
+
+// A LEGITIMATE SAME-OWNER REFINEMENT STILL WORKS through the guarded door —
+// the owner boundary is a filter on who may be touched, never a ban on tidying
+// the pass's own rows.
+func TestTheTidyStillRefinesItsOwnOwnersRows(t *testing.T) {
+	script := &tidyScript{}
+	pass, brain, _ := tidyBrain(t, script,
+		store.Memory{Title: "one", Text: "the first thing"},
+		store.Memory{Title: "two", Text: "the second thing"},
+	)
+	rows, _ := brain.ListMemories(nil, 50)
+	script.plan = mustPlan(t, consolidateOp{Op: "refine", ID: rows[0].ID, Title: "one, clearly", Text: "the first thing, said once"})
+	tidied, err := pass.run(context.Background())
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if tidied.Merged != 1 {
+		t.Fatalf("a same-owner refine came to %+v, want one merge", tidied)
 	}
 }
 
