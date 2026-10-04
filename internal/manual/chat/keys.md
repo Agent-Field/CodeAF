@@ -1,5 +1,18 @@
 # Keys, typing, and the mouse — what all the keys do
 
+## Make this one chat think harder — the effort keys
+
+`alt+e` walks this conversation's thinking rung one step — auto → low → medium → high →
+xhigh → max — and back to auto; `/effort` opens the ladder and `/effort <rung>` sets it
+outright. What each rung buys is on the models-and-cost page.
+
+## How do I stop a task from the chat without opening it
+
+Raise the task roster — `alt+t` — put the cursor on the task and press `→` to open its
+verbs: `s stop it` stops that task without opening its room. One stoppable task row in
+view also takes `x`, which raises the card and stops nothing by itself. `Stop` on the
+task's own page ends the work there; the roster's foot names what each road does.
+
 ## Which key sends, and which key opens a new line
 
 `enter` sends the message you have typed.

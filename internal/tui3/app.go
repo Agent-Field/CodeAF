@@ -17,6 +17,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/atlas"
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
@@ -1445,9 +1446,22 @@ type app struct {
 	behind map[string]*kept
 	// wall is the grid of every open conversation and the teams (wallcontract.go).
 	wall wallState
+	// atlas is the architecture map over the conversation, up while /atlas
+	// has it open (atlascmd.go). The model is kept between opens, so a box a
+	// person dragged stays where they put it.
+	atlas atlasState
 	// traffic is the Traffic log's cache, its clock and its rail
 	// (teamtraffic.go).
 	traffic trafficState
+	// homeTakenSaid is the takeover's own closing work — the sentence about
+	// what came over and the setup card — waiting to be said INSIDE the
+	// conversation the person is arriving in (homepanel_continue.go). The
+	// ordinary open from home goes off the loop and lands later
+	// (conversation_open.go's [app.homeOpenLater]), so a note written where the
+	// takeover is confirmed would be said into the conversation the person is
+	// LEAVING. The open's landing spends it; a shared window opens in place
+	// and spends it at once.
+	homeTakenSaid func() tea.Cmd
 	// teamsDisk is where the teams are kept and the edits not yet written
 	// there (teamseam.go).
 	teamsDisk teamsDisk
@@ -3710,9 +3724,22 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window being born. Keeping the last known size draws something;
 		// taking the zero draws nothing.
 		if msg.Width > 0 && msg.Height > 0 {
+			// THE MAP IS TOLD THE TERMINAL'S SIZE TOO, so its boxes land in
+			// the cells it is really drawn in (atlascmd.go).
+			if a.atlas.on {
+				a.atlas.model.Update(msg)
+			}
 			return a, a.resized(msg.Width, msg.Height)
 		}
 		return a, nil
+
+	case atlas.Beat:
+		// ONE BEAT OF A PLAYING FLOW (atlascmd.go). The sheet owns the clock
+		// while it is up; a beat that outlived the sheet changes nothing.
+		if !a.atlas.on {
+			return a, nil
+		}
+		return a, a.atlasBeat()
 
 	case tea.BackgroundColorMsg:
 		// THE TERMINAL ANSWERED [app.Init]'s one unanswerable question. Everything
@@ -4457,6 +4484,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.conversationOpening {
 			a.cancelConversationOpening()
 		}
+		// THE MAP OWNS THE PRESS WHILE IT IS UP, before anything else reads
+		// one: a press that fell through to a page underneath would act on a
+		// surface nobody can see (atlascmd.go).
+		if a.atlas.on {
+			a.atlasPress(msg)
+			return a, nil
+		}
 		a.ptr.still = false
 		a.clearPlaceRowHover()
 		a.sawAPerson()
@@ -4905,6 +4939,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		a.ptr.still = false
+		// A RELEASE ON THE MAP ENDS ITS DRAG, before anything else reads one —
+		// a release without a move is the click that opens a box's detail
+		// (atlascmd.go).
+		if a.atlas.on {
+			a.atlasReleased(msg)
+			return a, nil
+		}
 		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
 		// started: the press it would close was taken by the sheet, and letting
 		// this one through would end a sweep of a transcript nobody swept
@@ -4956,6 +4997,13 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 		a.sawAPerson()
+		// THE MAP OWNS MOTION WHILE IT IS UP: a drag has to keep moving its box
+		// for as long as the button is down, wherever the pointer goes
+		// (atlascmd.go).
+		if a.atlas.on {
+			a.atlasMoved(msg)
+			return a, nil
+		}
 		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
 		// targets light under the pointer, and the strip above it still does
 		// (wall.go).
@@ -8310,6 +8358,13 @@ func (a *app) slash(line string) tea.Cmd {
 
 	case "delete":
 		return a.conversationDeleteOpen(a.file, a.sessionName())
+	case "atlas":
+		// THE ARCHITECTURE MAP, INSIDE THIS CONVERSATION (atlascmd.go): the
+		// same model `codeaf atlas` draws on its own terminal, opened here as
+		// a fullscreen sheet. It reads nothing and spends nothing, and esc or
+		// q gives the conversation back whole.
+		return a.openAtlas()
+
 	case "new":
 		// The command that replaces the agent is the one command here that
 		// returns work: the standing task lane belongs to the agent that handed

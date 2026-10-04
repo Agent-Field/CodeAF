@@ -1,5 +1,13 @@
 # A task's room after a restart
 
+## Inside a task I cannot see the chat session or the output
+
+The task's room is its own session view, not the chat that commissioned it: `enter` on its
+roster row, a click on its strip chip or a `task 7` link walks into it, and the room shows
+the whole transcript — the instruction, the prose, the thinking blocks, every tool call
+with its arguments and result, and the report at the end. `ctrl+o` expands a call to read
+its output.
+
 ## See what a task did after restarting — a finished task's room shows its whole transcript
 
 Close codeaf, open the same conversation again, and walk into a task that finished in the

@@ -489,6 +489,12 @@ var commands = []command{
 	{name: "pair", args: "<code>", desc: "…join the chats of the computer that shows that code"},
 	{name: "pair", args: "<link>", desc: "…approve a new computer from the link it shows"},
 	{name: "devices", desc: "list your devices · n renames this one, r removes one"},
+	// THE ARCHITECTURE MAP, INSIDE THE CONVERSATION (atlascmd.go). It rides
+	// beside the pair rows because it is a picture OF that work, and it is
+	// read-only and spends nothing — the same map `codeaf atlas` draws on its
+	// own terminal, opened here so a person mid-chat does not leave the window.
+	// esc or q hands the conversation back.
+	{name: "atlas", desc: "the architecture map: pair, devices, cells, continue, furrow"},
 	{name: "debug", desc: "keep the full record of this conversation · says where it goes"},
 	{name: "update", desc: "install the newest codeaf for the next launch", alias: []string{"upgrade"}},
 	{name: "update", args: "<channel or tag>", desc: "…that channel or exact tag; skip or never answer an open offer"},

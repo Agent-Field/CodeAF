@@ -302,6 +302,12 @@ work is active. On New chat it closes
 the start page and parks its unfinished first message. Stop on a task page
 ends that task; `/quit` ends the program.
 
+## Stop just this chat without touching the others — close one tab, the rest keep running
+
+`ctrl+w` closes the tab you are in and nothing else. The card names THIS conversation;
+`stop work` ends this conversation's reply, tasks and jobs, and nothing in any other chat
+is touched. The other tabs keep running; find them again with `alt+k`.
+
 ## Keep running, stop work or cancel — closing a tab on a chat that is still working
 
 A tool permission question does not trap you in its tab. `ctrl+w` offers the same
