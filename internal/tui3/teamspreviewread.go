@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -43,6 +44,7 @@ func teamsReadExchange(f *os.File, size int64, preview *teamsPreview) error {
 		}
 		var header struct {
 			Type, Role string
+			Timestamp  string
 			Dropped    int
 		}
 		if json.Unmarshal(data, &header) != nil {
@@ -58,6 +60,9 @@ func teamsReadExchange(f *os.File, size int64, preview *teamsPreview) error {
 		if header.Type == "message" && header.Role != "" && skip > 0 {
 			skip--
 			return false, nil
+		}
+		if header.Type == "message" && header.Role != "" && preview.messageAt.IsZero() {
+			preview.messageAt, _ = time.Parse(time.RFC3339Nano, header.Timestamp)
 		}
 		messages := []teamsPreviewMessage{}
 		for _, e := range session.ReadTranscriptBytes(data).Entries {

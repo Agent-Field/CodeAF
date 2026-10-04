@@ -120,6 +120,7 @@ func (a *app) teamsSelectionFromView(id string) {
 		selected = teamsAllRow
 	}
 	if a.tp.sel != selected {
+		a.teamsScrollSelection(selected)
 		a.tp.sel = selected
 		a.tp.expand, a.tp.answering = "", ""
 		a.tp.cur = teamsRef{act: teamsActSelect, id: selected}
@@ -129,6 +130,7 @@ func (a *app) teamsSelectionFromView(id string) {
 // Choosing the overview enables All teams in Chats only when its optional
 // global manager can actually be opened. Closed teams remain history only.
 func (a *app) teamsViewFromSelection(id string) {
+	a.teamsScrollSelection(id)
 	view := ""
 	if id == teamsAllRow {
 		if root, ok := a.teamsRoot(); ok && root.Manager != "" && !a.teamsManagerMissing(root) {

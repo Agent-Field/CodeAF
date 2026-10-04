@@ -8,6 +8,8 @@ with a message that says what happened.
 
 ## Teams overview reading bounds
 
+Visible teams’ member previews and latest-message times are read once per conversation
+key in the same serial batch, so shared membership does not duplicate journal reads.
 Member previews locate the latest human exchange off the UI loop by scanning journal
 record boundaries backwards. Unchanged size/mtime reuses the cached preview; remote
 journals are never opened on this machine. Reads use a **64 KiB** (`teamsPreviewBytes`)
@@ -20,7 +22,9 @@ Manager cards remain capped at **14 rows** (`teamsManagerRows`), with an **8-row
 (`teamsManagerMinRows`). Interaction readings retain at most **200 entries** (`trafficKeep`),
 merged by id without consuming the live delivery cursor. The table paints at most **6 body
 rows** (`teamsInteractionRows`), reduced to fit the available pane, with a pinned header
-and independent scrolling. Paint performs no filesystem or network reads.
+and independent paging. Sorting shares one subtree timestamp pass per frame, including
+live correction times. Mouse wheels move physical rows in the pane or sidebar under
+the pointer. Paint performs no filesystem or network reads.
 `TestTeamsPreviewRetainsBoundedTextAndFollowsUpdates`, the long-record exchange regressions,
 the overview navigation/geometry regressions and `TestTheFrameNeverReadsTheDisk` defend
 these bounds.

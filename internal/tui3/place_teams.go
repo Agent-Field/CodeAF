@@ -43,7 +43,7 @@ func (placeTeams) open(a *app) tea.Cmd {
 }
 
 // tick is the router's beat: the counts are the router's own, and the page
-// refreshes the selected team's previews, interactions and member states.
+// refreshes visible teams' previews and the selected team's interactions and states.
 func (placeTeams) tick(a *app, now time.Time) (bool, tea.Cmd) {
 	if !a.teamsAny() {
 		return true, nil
@@ -198,16 +198,10 @@ func (placeTeams) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// wheel walks the page's buttons exactly as the arrows do, a row a notch.
+// Pointer routing normally chooses the side from its coordinates. A wheel
+// delivered without coordinates still scrolls the overview rather than keys.
 func (placeTeams) wheel(a *app, delta int) (tea.Cmd, bool) {
-	step := tea.KeyPressMsg{Code: tea.KeyDown}
-	if delta < 0 {
-		step, delta = tea.KeyPressMsg{Code: tea.KeyUp}, -delta
-	}
-	for i := 0; i < delta; i++ {
-		a.teamsKey(step)
-	}
-	a.touch()
+	a.teamsScrollPane(delta)
 	return nil, true
 }
 
@@ -259,6 +253,7 @@ func (a *app) teamsCursorHome() {
 // or below (dy 1), keeping as close to its column as it can, or along its row
 // for dx. It reports whether it moved.
 func (a *app) teamsWalk(dx, dy int) bool {
+	a.tp.paneWheel, a.tp.railWheel = false, false
 	at := a.teamsCursorIndex()
 	if at < 0 {
 		a.teamsCursorHome()

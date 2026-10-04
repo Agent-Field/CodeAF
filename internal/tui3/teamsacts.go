@@ -23,6 +23,11 @@ import (
 func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	a.tp.msg = ""
 	a.tp.cur = t.ref()
+	if t.pane {
+		a.tp.paneWheel = false
+	} else {
+		a.tp.railWheel = false
+	}
 	switch t.act {
 	case teamsActChooseManager:
 		return a.teamChooseManagerOpen(t.id)

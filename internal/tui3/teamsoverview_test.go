@@ -207,18 +207,18 @@ func teamsOverviewTraffic(t *testing.T, a *app, id string, count int) {
 	a.tp.cur = teamsRef{act: teamsActInteractionDown, id: id}
 }
 
-func TestTeamsInteractionPanelScrollsIndependentlyAndKeepsItsHeader(t *testing.T) {
+func TestTeamsInteractionPanelPagesIndependentlyAndKeepsItsHeader(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
-	a.width, a.height = 160, 46
+	a.width, a.height = 160, 80
 	teamsOverviewTraffic(t, a, harbor, 30)
 	before := teamsFrameText(a)
 	if !strings.Contains(before, "Exchange 30") {
 		t.Fatal(before)
 	}
 	rect := a.tp.table
-	drive(t, a, tea.MouseWheelMsg{X: rect.x + 4, Y: rect.y + 3, Button: tea.MouseWheelDown})
+	a.teamsDo(teamsTarget{act: teamsActInteractionDown, id: harbor, pane: true})
 	after := teamsFrameText(a)
-	if !strings.Contains(after, "Exchange 27") || strings.Contains(after, "Exchange 30") {
+	if !strings.Contains(after, "Exchange 24") || strings.Contains(after, "Exchange 30") {
 		t.Fatal(after)
 	}
 	oldLines, newLines := strings.Split(before, "\n"), strings.Split(after, "\n")
@@ -755,7 +755,7 @@ func TestTallManagerClippedReplyRemainsReachableByArrowsAndWheel(t *testing.T) {
 			if text := teamsFrameText(a); !strings.Contains(text, "...") {
 				t.Fatalf("latest preview inaccessible via %s: %s", gesture, text)
 			}
-			if a.tp.cur.arg != manager || a.tp.cur.opt != "preview" || !a.at(pageTeams) {
+			if a.tp.cur.arg != manager || !a.at(pageTeams) || (gesture == "arrows" && a.tp.cur.opt != "preview") || (gesture == "wheel" && a.tp.cur.opt != "") {
 				t.Fatal("reading moved away from manager")
 			}
 		})
@@ -788,51 +788,31 @@ func TestManagerReadingWheelContinuesToMembersAndInteractions(t *testing.T) {
 	a, id, _ := teamsHostedLab(t)
 	a.width, a.height = 80, 24
 	manager := mustTeam(t, a, id).Manager
-	a.tp.previews = map[string]teamsPreview{}
-	a.entries = []entry{{kind: entryAssistant, text: strings.Repeat("Older line\n", 20) + "LATEST WORDS"}}
+	a.entries = []entry{{kind: entryAssistant, text: strings.Repeat("Older line\n", 20)}}
 	a.tp.focus = true
 	a.tp.cur = teamsRef{act: teamsActMember, id: id, arg: manager}
 	a.touch()
 	teamsFrameText(a)
-
-	var pointer teamsTarget
-	for _, target := range a.tp.targets {
-		if target.act == teamsActMember && target.arg == manager && target.y >= placeHeadRows && target.y < a.height-placeBareFootRows {
-			pointer = target
-			break
+	cursor := a.tp.cur
+	sawInteractions := false
+	for i := 0; i < 50; i++ {
+		drive(t, a, tea.MouseWheelMsg{X: a.tp.railW + 2, Y: placeHeadRows + 2, Button: tea.MouseWheelDown})
+		text := teamsFrameText(a)
+		sawInteractions = sawInteractions || strings.Contains(text, "Recent interactions")
+		if a.tp.cur != cursor {
+			t.Fatal("wheel changed keyboard focus")
 		}
 	}
-	if pointer.arg == "" {
-		t.Fatal("no visible manager reading target")
+	if !sawInteractions || a.tp.paneOffset != max(a.tp.paneRows-a.tp.paneRoom, 0) {
+		t.Fatal("wheel did not read through interactions to the pane bottom")
 	}
-	wheel := func() {
-		drive(t, a, tea.MouseWheelMsg{X: pointer.x0 + 1, Y: pointer.y, Button: tea.MouseWheelDown})
+	for i := 0; i < 50; i++ {
+		drive(t, a, tea.MouseWheelMsg{X: a.tp.railW + 2, Y: placeHeadRows + 2, Button: tea.MouseWheelUp})
 		teamsFrameText(a)
 	}
-	wheel()
-	if a.tp.cur.opt != "preview" {
-		t.Fatal("first wheel missed latest preview")
+	if a.tp.paneOffset != 0 {
+		t.Fatal("wheel did not return to the top")
 	}
-	wheel()
-	if a.tp.cur.act == teamsActMember && a.tp.cur.arg == manager {
-		t.Fatal("second wheel trapped in manager")
-	}
-	// Once the pointer reaches the interaction table, wheel ticks scroll that
-	// panel's own content. Move it into the pane's free column to continue down.
-	sawInteractions := strings.Contains(teamsFrameText(a), "Recent interactions")
-	for i := 0; i < 10; i++ {
-		drive(t, a, tea.MouseWheelMsg{X: a.tp.table.x + 1, Y: placeHeadRows + 1, Button: tea.MouseWheelDown})
-		teamsFrameText(a)
-		sawInteractions = sawInteractions || strings.Contains(teamsFrameText(a), "Recent interactions")
-		if a.tp.cur.act == teamsActMember && a.tp.cur.arg != manager {
-			if !sawInteractions {
-				t.Fatal("wheel skipped interactions")
-			}
-			return
-		}
-	}
-	t.Fatal("wheel could not continue to members")
-
 }
 
 func TestBoxedTeamDecisionKeepsAnswerHitInsideItsBorder(t *testing.T) {

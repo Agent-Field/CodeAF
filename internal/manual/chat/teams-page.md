@@ -66,13 +66,23 @@ optional global manager exists. Clicking a member opens Chats with that team's v
 
 ## All teams overview: parent cards and nested subteams
 
-Choose **All teams** in the Teams sidebar to see one card per top-level team, in stored order.
+Choose **All teams** in the Teams sidebar to see one card per top-level team, newest conversation message first.
+A parent includes activity in its subteams; siblings share this ordering with the sidebar.
+All teams stays first in the sidebar. Equal or unknown message times keep their previous order.
 Each card shows the team's name, conversation count, activity and unread counts separately,
 spending when available, the manager's alias and conversation title, and up to two lines
 of its latest saved assistant update. Smaller subteam cards sit inside their parent's card;
 deeper descendants remain nested. `Show closed` includes retained teams in this hierarchy;
-their cards lead to read-only history. Narrow panes use one column. The existing preview limits
+their cards lead to read-only history. Wide panes alternate cards left/right, with each
+column stacked independently and one blank row between cards. Narrow panes use one column. The existing preview limits
 and remote restrictions described below also apply here.
+
+The wheel scrolls the area under the pointer: left of the sidebar divider scrolls the team
+list; right of it scrolls the main overview, regardless of keyboard focus. Main scrolling
+reaches the bottom border of the last card and returns to the top. Arrow keys still reveal
+the focused control. At narrow widths, the list above the overview scrolls independently.
+Saved message timestamps include assistant replies; older or remote records without them
+use the known last user-message time. Changing a title or model does not reorder teams.
 
 Click a team's name or card background to inspect its Teams overview without opening a chat.
 Click a manager alias to open its conversation with that team's Chats overlay. Reading a
@@ -113,8 +123,8 @@ in the saved conversation, the latest team delivery or assistant update appears 
 Messages displayed in the front conversation take precedence over saved previews; other
 conversations use the saved transcript, which can lag running work. Looking at a
 preview does not mark the conversation read. Clicking the alias, title or preview opens
-Chats with this team's view selected. On short windows, Down or a wheel tick on a manager
-card reveals its preview; Up returns to the alias.
+Chats with this team's view selected. On short windows, Down on a manager
+card reveals its preview; Up returns to the alias. The wheel moves the whole main overview.
 
 An active question gives the card a yellow border and a yellow `?` heading on its top edge,
 shortened with `...` when necessary. Permission choices and team decisions remain directly
@@ -157,7 +167,7 @@ exchange, with the most recently active exchange first. A reply count counts mes
 not work-status events. Click the disclosure at the start of a row to expand the full
 message and its replies inline; click it again to collapse them.
 
-The wheel over the panel scrolls only its contents. One down control, `Next page`, advances
+The wheel over the panel scrolls the main overview. One down control, `Next page`, advances
 by a full viewport: with six rows, 1–6, 7–12, then 13 onward. A short final page does not
 repeat the previous page's rows; the control says `Last page` and stays there. `pgup` /
 `pgdown` move back or forward by a page. The rest of the overview stays in place. At smaller heights,

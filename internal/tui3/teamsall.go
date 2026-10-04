@@ -16,7 +16,8 @@ func (a *app) teamsAllSelected() bool {
 	return ok && t.Root
 }
 
-// Children are read in store order so activity cannot rearrange the overview.
+// Siblings share the same recency order in the overview and sidebar; a child
+// remains inside its parent regardless of the latest message.
 func (a *app) teamsOverviewChildren(parent string) []team {
 	var out []team
 	for _, t := range a.wall.teams {
@@ -24,6 +25,7 @@ func (a *app) teamsOverviewChildren(parent string) []team {
 			out = append(out, t)
 		}
 	}
+	a.teamsSortRecent(out)
 	return out
 }
 
@@ -35,6 +37,7 @@ func (a *app) teamsOverviewRoots() []team {
 			out = append(out, t)
 		}
 	}
+	a.teamsSortRecent(out)
 	return out
 }
 
@@ -139,27 +142,32 @@ func (a *app) teamsOverviewGrid(d *teamsDraw, teams []team, width, x, y int, com
 		columns = 2
 	}
 	w := (width - (columns-1)*2) / columns
-	var out []string
-	for first := 0; first < len(teams); first += columns {
-		cards := make([][]string, 0, columns)
-		height := 0
-		for col := 0; col < columns && first+col < len(teams); col++ {
-			card := a.teamsOverviewCard(d, teams[first+col], w, x+col*(w+2), y+len(out), compact, ancestors)
-			cards = append(cards, card)
-			height = max(height, len(card))
+	stacks := make([][]string, columns)
+	for i, t := range teams {
+		col := i % columns
+		// Each column advances by its own card height, with one blank row
+		// between cards. Ordering alternates left/right without row padding.
+		if len(stacks[col]) > 0 {
+			stacks[col] = append(stacks[col], "")
 		}
-		for row := 0; row < height; row++ {
-			var parts []string
-			for _, card := range cards {
-				line := ""
-				if row < len(card) {
-					line = card[row]
-				}
-				parts = append(parts, teamsPad(line, w))
+		card := a.teamsOverviewCard(d, t, w, x+col*(w+2), y+len(stacks[col]), compact, ancestors)
+		stacks[col] = append(stacks[col], card...)
+	}
+	height := 0
+	for _, stack := range stacks {
+		height = max(height, len(stack))
+	}
+	out := make([]string, 0, height)
+	for row := 0; row < height; row++ {
+		var parts []string
+		for _, stack := range stacks {
+			line := ""
+			if row < len(stack) {
+				line = stack[row]
 			}
-			out = append(out, strings.Join(parts, "  "))
+			parts = append(parts, teamsPad(line, w))
 		}
-		out = append(out, "")
+		out = append(out, strings.Join(parts, "  "))
 	}
 	return out
 }

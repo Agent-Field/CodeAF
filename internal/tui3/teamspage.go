@@ -67,9 +67,17 @@ type teamsPage struct {
 	targets []teamsTarget
 	// expand is an inbox card beyond the first three that a press unfolded.
 	expand string
-	// railW is the rail's columns on the last sync, its separator included.
+	// railW is the rail's columns in the current frame, its separator included.
 	railW      int
 	railOffset int
+	// Pointer scrolling has its own offsets; keyboard focus never redirects
+	// a wheel or snaps its viewport back to a previously selected button.
+	paneOffset, paneRows, paneRoom, paneTop int
+	railRoom, railRows                      int
+	paneWheel, railWheel                    bool
+	// recent exists only during a paint, sharing one subtree-time pass between
+	// the sidebar and every nested card. Readers outside paint use fresh state.
+	recent map[string]time.Time
 	// reading says a read is out, so a beat that comes round before it is
 	// answered does not start a second; again says a read was asked for while
 	// it was out, and againWorld that the ask wanted the members' rows too.
@@ -206,14 +214,15 @@ func (a *app) teamsRoot() (team, bool) {
 
 // teamsOpenTree is every open team that is not the root, in tree order: each
 // top-level team (or each team directly under the root) and then its open
-// sub-teams, depth first, in stored order, with its depth from 0.
+// sub-teams, depth first, with siblings sorted by latest message and depth from 0.
 func (a *app) teamsOpenTree() []teamsRailRow {
 	root, hasRoot := a.teamsRoot()
 	var out []teamsRailRow
 	var walk func(parent string, depth int)
 	walk = func(parent string, depth int) {
-		for _, t := range a.wall.teams {
-			if t.Root || t.Closed() || t.Parent != parent {
+		children := a.teamsOverviewChildren(parent)
+		for _, t := range children {
+			if t.Closed() {
 				continue
 			}
 			out = append(out, teamsRailRow{kind: railRowTeam, id: t.ID, depth: depth})
@@ -230,9 +239,11 @@ func (a *app) teamsOpenTree() []teamsRailRow {
 	return out
 }
 
-// teamsClosed is every closed team, newest close first.
+// teamsClosed is every retained team, newest conversation message first.
 func (a *app) teamsClosed() []team {
-	return a.teamTree().ClosedTeams()
+	out := a.teamTree().ClosedTeams()
+	a.teamsSortRecent(out)
+	return out
 }
 
 // teamsRailRows is the rail, top to bottom. Memory only.
@@ -614,18 +625,16 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 		files = a.teamsMemberFiles()
 	}
 	selected, _ := a.teamsSelected()
-	members := append([]teamMember(nil), a.teamsCrewMembers(selected)...)
-	members = append(members, selected.FormerMembers...)
-	if a.teamsAllSelected() {
-		members = nil
-		seen := map[string]bool{}
-		for _, t := range a.wall.teams {
-			if t.Closed() {
-				continue
-			}
-			if m, ok := t.Member(t.Manager); ok && !seen[m.Key] {
+	var members []teamMember
+	seenMembers := map[string]bool{}
+	for _, t := range a.wall.teams {
+		if t.Closed() && !a.tp.closedOpen {
+			continue
+		}
+		for _, m := range append(append([]teamMember(nil), t.Members...), t.FormerMembers...) {
+			if !seenMembers[m.Key] {
 				members = append(members, m)
-				seen[m.Key] = true
+				seenMembers[m.Key] = true
 			}
 		}
 	}
@@ -739,16 +748,16 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	})
 }
 
-// teamsMemberFiles is every member transcript of the open teams, cleaned and
-// once each: what the page's rows are read for. Memory only.
+// teamsMemberFiles is every visible member transcript, including retained teams
+// when shown, cleaned and once each: what the page's rows are read for. Memory only.
 func (a *app) teamsMemberFiles() []string {
 	seen := map[string]bool{}
 	var files []string
 	for _, t := range a.wall.teams {
-		if t.Closed() {
+		if t.Closed() && !a.tp.closedOpen {
 			continue
 		}
-		for _, m := range t.Members {
+		for _, m := range append(append([]teamMember(nil), t.Members...), t.FormerMembers...) {
 			file := strings.TrimSpace(m.File)
 			if file == "" {
 				continue

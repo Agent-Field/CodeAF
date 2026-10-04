@@ -189,7 +189,7 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 	room := max(height-len(head)-len(foot), 0)
 	off := min(a.tp.railOffset, max(len(middle)-room, 0))
 	for _, target := range d.targets[mark:] {
-		if target.ref() != a.tp.cur {
+		if a.tp.railWheel || target.ref() != a.tp.cur {
 			continue
 		}
 		for i, line := range middle {
@@ -205,6 +205,7 @@ func (a *app) teamsRailWindow(d *teamsDraw, width, height int) []string {
 		}
 	}
 	a.tp.railOffset = off
+	a.tp.railRows, a.tp.railRoom = len(middle), room
 	positions := map[int]int{}
 	out := make([]string, height)
 	for i := range out {
@@ -965,11 +966,14 @@ func (a *app) teamsEmpty(d *teamsDraw, width, height int) []string {
 // pane side by side, or the explainer alone with no teams. Its targets are
 // recorded in frame cells.
 func (a *app) teamsBody(width, room int) []placeRow {
+	a.tp.recent = a.teamsRecentTimes()
+	defer func() { a.tp.recent = nil }()
 	d := &teamsDraw{a: a}
 	a.tp.table = teamsTableRect{}
 	a.teamsSettle()
 	var lines []string
 	railW := teamsRailCols(width)
+	a.tp.railW = railW
 	paneW := width - railW
 	var rail []string
 	if railW > 0 {
@@ -996,27 +1000,32 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	for i := mark; i < len(d.targets); i++ {
 		d.targets[i].line = top + d.targets[i].y
 	}
-	// THE PANE SCROLLS TO KEEP THE CURSOR ON IT: a long inbox moves up
-	// under a cursor walking down it, rather than walking it off the frame.
-	if vis := room - top; len(pane) > vis && vis > 0 {
-		off := 0
-		for _, t := range d.targets[mark:] {
-			if t.ref() == a.tp.cur {
-				if t.y >= vis {
-					off = min(t.y-vis+1, len(pane)-vis)
-				}
-				if t.act == teamsActInteractionUp || t.act == teamsActInteractionDown || t.act == teamsActInteractionToggle || t.act == teamsActInteractionJump {
-					off = min(max(a.tp.table.y+a.tp.table.h-vis, 0), len(pane)-vis)
-				}
-				break
+	// Physical scrolling retains its offset through redraws. Keyboard walks
+	// reveal only the newly focused target, including controls below a card.
+	vis := max(room-top, 0)
+	a.tp.paneRows, a.tp.paneRoom, a.tp.paneTop = len(pane), vis, top
+	off := min(a.tp.paneOffset, max(len(pane)-vis, 0))
+	if !a.tp.paneWheel && vis > 0 {
+		for _, target := range d.targets[mark:] {
+			if target.ref() != a.tp.cur {
+				continue
 			}
-		}
-		if off > 0 {
-			pane = pane[off:]
-			d.shift(mark, 0, -off)
-			a.tp.table.y -= off
+			if target.y < off {
+				off = target.y
+			}
+			if target.y >= off+vis {
+				off = min(target.y-vis+1, max(len(pane)-vis, 0))
+			}
+			if target.act == teamsActInteractionUp || target.act == teamsActInteractionDown || target.act == teamsActInteractionToggle || target.act == teamsActInteractionJump {
+				off = min(max(a.tp.table.y+a.tp.table.h-vis, 0), max(len(pane)-vis, 0))
+			}
+			break
 		}
 	}
+	a.tp.paneOffset = off
+	pane = pane[off:]
+	d.shift(mark, 0, -off)
+	a.tp.table.y -= off
 	d.shift(mark, railW, top)
 	a.tp.table.x += railW
 	a.tp.table.y += top + placeHeadRows

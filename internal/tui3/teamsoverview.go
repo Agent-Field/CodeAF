@@ -38,6 +38,7 @@ type teamsPreview struct {
 	count       int
 	size        int64
 	modified    time.Time
+	messageAt   time.Time
 }
 
 func teamsReadPreview(file string, previous teamsPreview) teamsPreview {
