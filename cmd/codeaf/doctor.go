@@ -44,11 +44,9 @@ type doctorSnapshot struct {
 	Now time.Time
 }
 
-// fallbackKeyEnv is the OpenAI-shaped variable [config.Load] accepts when the
-// OpenRouter one is unset. It is spelled here because internal/config has no
-// exported name for it — and [TestDoctorNamesTheSameKeyVariablesTheDoorDoes]
-// pins this spelling against `config.ErrNoAPIKey`, so a rename there fails here
-// rather than leaving doctor pointing at a variable nobody reads any more.
+// fallbackKeyEnv is the compatibility variable [config.Load] accepts for an
+// OpenRouter-shaped key or a custom endpoint. The registry names the preferred
+// variable, so doctor names this one separately to explain when it is ignored.
 const fallbackKeyEnv = "OPENAI_API_KEY"
 
 // keyReport is the provider key doctor found, named by WHERE IT CAME FROM and
@@ -59,7 +57,7 @@ const fallbackKeyEnv = "OPENAI_API_KEY"
 // an absence — so unlike every other figure on this page it is PRINTED. The
 // emptiness law is about a measurement nobody made; this is a measurement that
 // came back "none", and it is the whole reason somebody ran doctor.
-type keyReport struct{ Where string }
+type keyReport struct{ Where, Unused string }
 
 // callLogReport is where the model-call log is and how big it has got, or
 // nothing at all. Nothing is the honest answer on a machine that has not called
@@ -139,26 +137,30 @@ func runDoctorWith(args []string, output io.Writer, dailyBudget float64, overrid
 	return err
 }
 
-// readKeyReport climbs the ladder [config.Load] climbs — the OpenRouter
-// variable, the OpenAI one, then the profile file — and reports the rung that
-// answered rather than the key it holds.
-//
-// IT CLIMBS THE RUNGS SEPARATELY RATHER THAN CALLING [config.APIKeyAt], because
-// the whole point of the row is WHICH ONE ANSWERED and that function folds them
-// into one string. [TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey] pins the
-// two together at every rung, so a ladder that grows a step is a red test here
-// and not a doctor that quietly says "none" to a machine that runs fine.
+// readKeyReport names the rung from the same ladder the door climbs. An unused
+// compatibility variable is explained without printing its secret, so a person
+// can tell a saved connection from a forgotten shell key.
 func readKeyReport(profileDir string) keyReport {
-	if strings.TrimSpace(os.Getenv(config.APIKeyEnv)) != "" {
-		return keyReport{Where: config.APIKeyEnv}
+	var report keyReport
+	switch config.APIKeySourceAt(profileDir) {
+	case config.APIKeySourceOpenRouter:
+		report.Where = config.APIKeyEnv
+	case config.APIKeySourceOpenAI:
+		report.Where = fallbackKeyEnv
+	case config.APIKeySourceProfile:
+		report.Where = config.BudgetConfigPath(profileDir)
 	}
-	if strings.TrimSpace(os.Getenv(fallbackKeyEnv)) != "" {
-		return keyReport{Where: fallbackKeyEnv}
+	if strings.TrimSpace(os.Getenv(fallbackKeyEnv)) != "" && report.Where != fallbackKeyEnv {
+		switch report.Where {
+		case config.APIKeyEnv:
+			report.Unused = fallbackKeyEnv + " is outranked by " + config.APIKeyEnv
+		case "":
+			report.Unused = fallbackKeyEnv + " is not an OpenRouter key, so it is not used"
+		default:
+			report.Unused = fallbackKeyEnv + " is outranked by the profile key"
+		}
 	}
-	if config.PersistedAPIKey(profileDir) != "" {
-		return keyReport{Where: config.BudgetConfigPath(profileDir)}
-	}
-	return keyReport{}
+	return report
 }
 
 // formatKey is the row: where the key came from, or that there is none and what
@@ -166,10 +168,14 @@ func readKeyReport(profileDir string) keyReport {
 // answers a keyless run with — so the page a person opens when nothing works
 // and the refusal they just read cannot tell them two different things.
 func formatKey(report keyReport) string {
+	row := "set · " + report.Where
 	if report.Where == "" {
-		return "none · " + remedyFor(config.ErrNoAPIKey.Error())
+		row = "none · " + remedyFor(config.ErrNoAPIKey.Error())
 	}
-	return "set · " + report.Where
+	if report.Unused != "" {
+		row += " · " + report.Unused
+	}
+	return row
 }
 
 // readCallLogReport measures the log without opening it for writing. A path

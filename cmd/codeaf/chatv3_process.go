@@ -217,9 +217,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		}
 		fmt.Fprintln(os.Stderr, "codeaf "+door+" needs a model to talk with.")
 		if keyless, loadErr := config.LoadKeyless(); loadErr == nil && v3UsesDefaultOpenRouter(keyless) {
-			fmt.Fprintln(os.Stderr, "run `codeaf` in a terminal to connect OpenRouter, or export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
+			fmt.Fprintln(os.Stderr, "run `codeaf` in a terminal to connect OpenRouter, or export "+config.APIKeyEnv+" and run it again.")
 		} else {
-			fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" (or OPENAI_API_KEY) and run it again.")
+			fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" and run it again.")
 		}
 		return nil, err
 	}
@@ -493,6 +493,13 @@ func (p *v3Process) refreshModelSources() {
 		return
 	}
 	profileDir, key, base := p.sourceSeeds()
+	// A PROFILE WRITE IS LIVE AT THE ENGINE. Resolve after releasing the
+	// snapshot lock; setAPIKey owns the same lock and updates retained agents.
+	// A keyless reading cannot revoke a working in-memory connection.
+	if resolved := config.APIKeyAt(profileDir); resolved != "" && resolved != key {
+		_ = p.setAPIKey(resolved)
+		key = resolved
+	}
 	p.setModelSources(config.ResolveSources(profileDir, key, base))
 }
 

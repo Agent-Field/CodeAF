@@ -193,7 +193,7 @@ func TestDoctorSaysThereIsNoKeyAndWhatToTypeAboutIt(t *testing.T) {
 		t.Fatalf("the key row does not say there is no key.\n  row:  %q\n  want: it to say `none`", line)
 	}
 	// AND WHAT TO DO ABOUT IT, in the door's own words.
-	for _, want := range []string{"export " + config.APIKeyEnv, fallbackKeyEnv} {
+	for _, want := range []string{"export " + config.APIKeyEnv} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("the key row says the cause and never what to type.\n  row:  %q\n  want it to name %q",
 				line, want)
@@ -205,6 +205,7 @@ func TestDoctorSaysThereIsNoKeyAndWhatToTypeAboutIt(t *testing.T) {
 // WHICH is the difference between "my shell has it" and "this machine has it" —
 // the question behind every report of a timer-driven run that could not
 // authenticate while the terminal beside it could.
+// C9: Doctor names the default-endpoint rung and never a key.
 func TestDoctorNamesWhereTheKeyCameFrom(t *testing.T) {
 	profile := t.TempDir()
 	if err := config.WriteAPIKey(profile, "sk-or-v1-persisted-000000000000"); err != nil {
@@ -219,7 +220,7 @@ func TestDoctorNamesWhereTheKeyCameFrom(t *testing.T) {
 		want       string
 	}{
 		{name: "the OpenRouter variable", openRouter: secret, want: config.APIKeyEnv},
-		{name: "the OpenAI variable", openAI: secret, want: fallbackKeyEnv},
+		{name: "profile over the OpenAI variable", openAI: secret, want: config.BudgetConfigPath(profile)},
 		{name: "the profile file", want: config.BudgetConfigPath(profile)},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
@@ -251,6 +252,7 @@ func TestDoctorNamesWhereTheKeyCameFrom(t *testing.T) {
 // into one string. This is the seam that keeps them one reading, so a ladder
 // that grows a step fails here rather than leaving doctor telling a working
 // machine it has no key.
+// C7, C8 and C9: Doctor agrees with the door at every new rung and endpoint.
 func TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey(t *testing.T) {
 	withKey := t.TempDir()
 	if err := config.WriteAPIKey(withKey, "sk-or-v1-persisted-000000000000"); err != nil {
@@ -261,16 +263,23 @@ func TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey(t *testing.T) {
 		openRouter string
 		openAI     string
 		profile    string
+		base       string
 	}{
 		{name: "nothing anywhere", profile: t.TempDir()},
 		{name: "the OpenRouter variable", openRouter: "sk-or-v1-aaaaaaaaaaaaaaaaaaaa", profile: t.TempDir()},
-		{name: "the OpenAI variable", openAI: "sk-aaaaaaaaaaaaaaaaaaaaaaaa", profile: t.TempDir()},
+		{name: "an unusable OpenAI variable", openAI: "sk-proj-test-aaaaaaaa", profile: t.TempDir()},
+		{name: "a usable OpenAI variable", openAI: "sk-or-v1-test-aaaaaaaa", profile: t.TempDir()},
+		{name: "profile over usable fallback", openAI: "sk-or-v1-test-aaaaaaaa", profile: withKey},
+		{name: "OpenAI on custom endpoint", openAI: "sk-proj-test-aaaaaaaa", profile: withKey, base: "https://custom.invalid/v1"},
+		{name: "profile on custom endpoint", profile: withKey, base: "https://custom.invalid/v1"},
+		{name: "OpenRouter on custom endpoint", openRouter: "sk-or-v1-test-router", openAI: "sk-proj-test-aaaaaaaa", profile: withKey, base: "https://custom.invalid/v1"},
 		{name: "only the profile file", profile: withKey},
 		{name: "a variable over a profile file", openRouter: "sk-or-v1-bbbbbbbbbbbbbbbbbbbb", profile: withKey},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
 			t.Setenv(config.APIKeyEnv, probe.openRouter)
 			t.Setenv(fallbackKeyEnv, probe.openAI)
+			t.Setenv("CODEAF_BASE_URL", probe.base)
 			doorFound := config.APIKeyAt(probe.profile) != ""
 			doctorFound := readKeyReport(probe.profile).Where != ""
 			if doorFound != doctorFound {
@@ -282,14 +291,14 @@ func TestDoctorAgreesWithTheDoorAboutWhetherThereIsAKey(t *testing.T) {
 	}
 }
 
-// And doctor names the same two variables the refusal at the door names. There
-// is no exported constant for the OpenAI-shaped one, so this is the pin that
-// keeps the two spellings one fact.
+// C12: Doctor and the missing-key door offer the variable that works with the
+// default provider. A compatibility variable must not be offered as a remedy.
 func TestDoctorNamesTheSameKeyVariablesTheDoorDoes(t *testing.T) {
 	refusal := config.ErrNoAPIKey.Error()
-	for _, variable := range []string{config.APIKeyEnv, fallbackKeyEnv} {
-		if !strings.Contains(refusal, variable) {
-			t.Fatalf("doctor points at %q and the door's refusal does not name it: %q", variable, refusal)
+	remedy := formatKey(keyReport{})
+	for _, sentence := range []string{refusal, remedy} {
+		if !strings.Contains(sentence, config.APIKeyEnv) || strings.Contains(sentence, fallbackKeyEnv) {
+			t.Fatalf("missing-key advice must name the OpenRouter variable: %q", sentence)
 		}
 	}
 }
@@ -315,7 +324,7 @@ func rowSaying(text, label string) string {
 // they already had.
 //
 // The truth is the ladder [config.APIKeyAt] climbs and `codeaf doctor` reports:
-// the OpenRouter variable, the OpenAI one, then the profile. This asserts the
+// the OpenRouter variable, the profile, then a usable OpenAI variable. This asserts the
 // page against that ladder rather than against a sentence, so a rung added
 // tomorrow is a red test here and not a front door that has quietly gone stale.
 func TestTheEnvironmentPageDoesNotCallTheKeyVariableRequired(t *testing.T) {

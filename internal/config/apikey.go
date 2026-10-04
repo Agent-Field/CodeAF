@@ -3,10 +3,12 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
@@ -23,7 +25,7 @@ const KeyAPIKey = "api_key"
 const APIKeyEnv = "OPENROUTER_API_KEY"
 
 // PersistedAPIKey reads the api_key stored in the profile config file. It is
-// the last rung of Load's key resolution: a timer-driven `codeaf wake` runs
+// the durable rung of Load's key resolution: a timer-driven `codeaf wake` runs
 // with no shell environment, so the profile file is the only place a key can
 // survive to reach it.
 func PersistedAPIKey(profileDir string) string {
@@ -54,34 +56,73 @@ func apiKeyFrom(values map[string]json.RawMessage) string {
 	return key
 }
 
+// The source names are shared with doctor so its row names the same rung as
+// an authentication refusal, without revealing a credential.
 const (
-	apiKeySourceOpenRouter = "the shell's OPENROUTER_API_KEY"
-	apiKeySourceOpenAI     = "the shell's OPENAI_API_KEY"
-	apiKeySourceProfile    = "the key saved in your profile"
+	APIKeySourceOpenRouter = "the shell's OPENROUTER_API_KEY"
+	APIKeySourceOpenAI     = "the shell's OPENAI_API_KEY"
+	APIKeySourceProfile    = "the key saved in your profile"
 )
+
+// usableOpenAIKey keeps an unrelated OpenAI credential off OpenRouter. A custom
+// endpoint still accepts the compatible key its operator supplied.
+func usableOpenAIKey(base string) string {
+	key := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	if !defaultKeyEndpoint(base) || strings.HasPrefix(key, openRouterKeyPrefix) {
+		return key
+	}
+	return ""
+}
+
+const openRouterKeyPrefix = "sk-or-"
+
+// defaultKeyEndpoint compares hosts so a trailing slash or a different API path
+// cannot turn OpenRouter into a custom endpoint and admit an unrelated key.
+func defaultKeyEndpoint(base string) bool {
+	if strings.TrimSpace(base) == "" {
+		return true
+	}
+	base = strings.TrimSpace(base)
+	if !strings.Contains(base, "://") {
+		base = "https://" + strings.TrimPrefix(base, "//")
+	}
+	address, err := url.Parse(base)
+	if err != nil {
+		return false
+	}
+	defaultAddress, _ := url.Parse(DefaultBaseURL)
+	host := strings.TrimSuffix(strings.ToLower(address.Hostname()), ".")
+	host = strings.TrimPrefix(host, "www.")
+	return strings.EqualFold(host, defaultAddress.Hostname())
+}
 
 // apiKeyResolution is the one ladder shared by the key and its explanation.
 // Keeping the source beside the value prevents an auth message from naming a
-// different rung than the client actually used.
+// different rung than the client actually used. On OpenRouter a connected key
+// outranks the compatibility variable; custom endpoints retain their old order.
 func apiKeyResolution(values map[string]json.RawMessage) (string, string) {
-	for _, candidate := range []struct {
-		value  string
-		source string
-	}{
-		{os.Getenv(APIKeyEnv), apiKeySourceOpenRouter},
-		{os.Getenv("OPENAI_API_KEY"), apiKeySourceOpenAI},
-		{persistedAPIKeyFrom(values), apiKeySourceProfile},
-	} {
-		if key := strings.TrimSpace(candidate.value); key != "" {
-			return key, candidate.source
+	base := env.Get("CODEAF_BASE_URL")
+	profile, fallback := persistedAPIKeyFrom(values), usableOpenAIKey(base)
+	candidates := []struct{ value, source string }{
+		{strings.TrimSpace(os.Getenv(APIKeyEnv)), APIKeySourceOpenRouter},
+		{profile, APIKeySourceProfile},
+		{fallback, APIKeySourceOpenAI},
+	}
+	if !defaultKeyEndpoint(base) {
+		candidates[1], candidates[2] = candidates[2], candidates[1]
+	}
+	for _, candidate := range candidates {
+		if candidate.value != "" {
+			return candidate.value, candidate.source
 		}
 	}
 	return "", ""
 }
 
 // APIKeyAt is the key a session opened on this profile would talk with, in
-// [Load]'s own order: the OpenRouter variable, the OpenAI one, then the profile
-// file. It is the reading the settings row and the first-run setup share, so
+// [Load]'s own order: the OpenRouter variable, the profile, then an OpenRouter
+// key in the OpenAI variable. Custom endpoints put the OpenAI variable second.
+// It is the reading the settings row and the first-run setup share, so
 // neither can say "no key" while Load would have found one.
 func APIKeyAt(profileDir string) string {
 	values, _ := readProfileConfig(profileDir)
@@ -120,7 +161,7 @@ func WriteAPIKey(profileDir, key string) error {
 // key, and it is deliberately only a shape check: it spends no network call,
 // because the setup runs before a person has agreed to spend anything. An
 // OpenRouter key reads `sk-or-v1-…`; an OpenAI-shaped key, which Load also
-// accepts from the environment, reads `sk-…`. Whitespace inside is a paste that
+// accepts for custom endpoints, reads `sk-…`. Whitespace inside is a paste that
 // picked up a line break, which is the one thing worth refusing here rather
 // than discovering as a 401 on the first turn.
 func LooksLikeAPIKey(key string) bool {
@@ -137,7 +178,7 @@ func EnsurePersistedAPIKey(profileDir string) (bool, string, error) {
 	if PersistedAPIKey(profileDir) != "" {
 		return false, path, nil
 	}
-	key := strings.TrimSpace(firstNonEmpty(os.Getenv(APIKeyEnv), os.Getenv("OPENAI_API_KEY")))
+	key, _ := apiKeyResolution(nil)
 	if key == "" {
 		return false, path, nil
 	}

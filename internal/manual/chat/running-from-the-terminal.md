@@ -1005,16 +1005,22 @@ lines:
 
 ```
 codeaf needs a model to work with.
-export OPENROUTER_API_KEY (or OPENAI_API_KEY) and run it again.
+export OPENROUTER_API_KEY and run it again.
 ```
 
 **For the default service, `OPENROUTER_API_KEY` is not required** — it is the first of three places its key is looked
-for. The variable, then `OPENAI_API_KEY`, then the default-service key kept in your profile, which is where
-the one you pasted on the first run or typed into `/settings` lives. Any one of them is
-enough, so a machine set up in the chat runs `codeaf do` with no variable set at all.
+for. On OpenRouter the order is that variable, the default-service key kept in your
+profile, then `OPENAI_API_KEY` only if it starts with `sk-or-`. An OpenAI key such as
+`sk-proj-…` is ignored. With a custom `CODEAF_BASE_URL`, the order is
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY` of any shape, then the profile key. The profile is
+where the one connected in the browser or typed into `/settings` lives, so a machine
+set up in the chat runs `codeaf do` with no variable set at all.
 Each directly connected service may instead name its own environment variable, which is
 stored with that service. `codeaf doctor`'s first row still reports only which default-service key answered — `key set · OPENROUTER_API_KEY`, or
-`key set · /home/you/.codeaf/config.json`, or `key none ·` and the two lines above.
+`key set · /home/you/.codeaf/config.json`, or `key none ·` and the remedy above.
+When `OPENAI_API_KEY` is set but unused, doctor explains whether it was outranked or
+was not an OpenRouter key, without printing its value. `codeaf help env` explains
+which variables the folder engine picks up when it restarts.
 
 **These key variables are removed from a model's shell environment.** `OPENROUTER_API_KEY`,
 `OPENAI_API_KEY` and every connected service's own key variable are stripped before a

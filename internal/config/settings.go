@@ -1958,15 +1958,15 @@ func (s *Settings) build() []Setting {
 		// to paste a replacement or to use a custom endpoint's credential. It masks
 		// like every credential, the environment outranks
 		// it as it always has (apikey.go's resolution order), and a write lands
-		// on the RUNNING session through the surface's Applied hook rather than
-		// waiting for the next launch — the row this was modelled on says "on the
-		// next search" because search reads live; this is the conversation.
+		// on an in-process session through the surface's Applied hook. Linked
+		// engines instead re-read their own profile at a hello or model change,
+		// because credentials must never be pushed through the wire.
 		Setting{
 			Key: KeyAPIKey, Category: CategoryModels, Kind: SettingText, Secret: true,
 			Label: "openrouter key", Env: APIKeyEnv, EmptyLabel: "not set",
-			Hint: "the key codeaf talks to models with. With the default provider, a missing key " +
-				"opens connect openrouter in your browser; paste a replacement here if needed. " +
-				"Set in the shell it outranks this row. A change lands on this conversation at once.",
+			Hint: "the key codeaf talks to models with; paste a replacement here if needed. " +
+				"On OpenRouter, OPENROUTER_API_KEY in the shell outranks this row, and this row outranks OPENAI_API_KEY. " +
+				"A saved change reaches the conversation the next time you open it or switch models.",
 			read:  func() string { return maskCredential(APIKeyAt(dir)) },
 			write: func(raw string) error { return writeCredential(dir, KeyAPIKey, raw, APIKeyAt(dir)) },
 		},

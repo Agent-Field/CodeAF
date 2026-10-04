@@ -23,7 +23,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/ctxbudget"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/guard"
-	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/rtk"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -1961,36 +1960,9 @@ func JobShellEnv(environment []string) []string {
 	environment = withoutEnv(environment, "TMUX", "TMUX_PANE")
 	environment = replaceEnv(environment, "TMUX_TMPDIR", jobTmuxDir())
 	if env.Get(AllowProviderKeysInShell) == "" {
-		environment = withoutEnv(environment, providerKeyEnvNames()...)
+		environment = withoutEnv(environment, config.ProviderKeyEnvNames()...)
 	}
 	return environment
-}
-
-// providerKeyEnvNames is every environment variable a provider credential can
-// live in: the two [config.APIKeyAt] reads directly, one per vendored service
-// (modelsource.Vendored's KeyEnv), and one per custom variable a person named
-// for a connected service in this profile (config.PersistedSource.KeyEnv,
-// config.sourceKeyFromRow's third rung) — a service added later, or a person's
-// own MY_ZAI_KEY, is covered without anyone remembering this list. It is read
-// fresh rather than cached for the same reason.
-func providerKeyEnvNames() []string {
-	names := []string{config.APIKeyEnv, "OPENAI_API_KEY"}
-	for _, source := range modelsource.Vendored() {
-		if source.KeyEnv != "" {
-			names = append(names, source.KeyEnv)
-		}
-	}
-	for _, row := range config.PersistedSources(config.ProfileDir()) {
-		if row.KeyEnv != "" {
-			names = append(names, row.KeyEnv)
-			// A custom owned variable has the same compatibility read as
-			// every other owned variable, so its former spelling is a key too.
-			if strings.HasPrefix(row.KeyEnv, "CODEAF_") {
-				names = append(names, env.Legacy(row.KeyEnv))
-			}
-		}
-	}
-	return names
 }
 
 // withoutEnv drops the named variables from an environment slice. It is

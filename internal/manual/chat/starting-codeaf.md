@@ -77,7 +77,7 @@ ChatGPT plan later from the Codex row in `/connect` or with `codeaf connect code
 A `--once` or piped run cannot open a browser. When its model uses the keyless default
 service it stops at the door with `codeaf chat needs a model to talk with.` Its next line
 says to run bare `codeaf` in a terminal to connect OpenRouter, or to export
-`OPENROUTER_API_KEY` (or `OPENAI_API_KEY`). A connected direct service can carry that run
+`OPENROUTER_API_KEY`. A connected direct service can carry that run
 instead. A custom `CODEAF_BASE_URL` is never offered the OpenRouter connection.
 That variable still changes only the default service. To add a supported second place
 models come from, connect a service through `/connect`; the [services page](services.md)
@@ -800,3 +800,34 @@ will tell you so instead of inventing an answer.
 `ctrl+u`, a conversation switch, any clear that empties the whole box — codeaf pushes the draft onto a ring of ten (the kill ring, `draftring.go`). The usual `↑` walk, which used to answer about the sent lines, now visits the ring first, dim in front of the sent history. `/drafts` opens the same ring as its own page: a list with `enter` restorer over what is left in the box (that box, too, joins the ring before the restored line takes it), and `d` letting one go for good. A cleared draft is never lost and never keeps its place in the ring once it lands back in the box.
 
 Even with no cleared drafts, the page draws its heading and the line `no cleared draft is waiting`.
+
+## I changed or unset my API key in the shell but codeaf still uses the old one — your key was not accepted for this model — codeaf ignores my OPENAI_API_KEY
+
+A folder's engine keeps the environment it started with. When you open codeaf from
+a terminal with changed keys or settings, it restarts by itself if no window is
+attached, no turn is running, no question is waiting, and no background task, job
+or run is going. The window says `the engine restarted to pick up this terminal's environment`.
+Saved conversations reopen from their journals. Changes to `PWD`, `TERM` or `PATH`
+do not restart it.
+
+If the engine is still in use, codeaf joins it and says it started with a different
+environment. Close its other windows or let its work finish, or copy
+`codeaf engine --stop --workspace <dir>` from that line and open codeaf again.
+For example:
+`codeaf engine --stop --workspace '/tmp/my project'`.
+Stopping ends any work still running there; quote spaces and escape apostrophes,
+as in `codeaf engine --stop --workspace '/tmp/it'\''s project'`.
+`codeaf engine --status --workspace <dir>` and `--status-all` report a known
+environment difference; an engine without a recorded environment is joined.
+
+On OpenRouter, keys are tried in this order: `OPENROUTER_API_KEY`, the key saved
+in your profile, then `OPENAI_API_KEY` only if it starts with `sk-or-`.
+An OpenAI key such as `sk-proj-…` or `sk-…` is not sent to OpenRouter or copied
+into the profile. A custom `CODEAF_BASE_URL` keeps the order `OPENROUTER_API_KEY`,
+`OPENAI_API_KEY` of any shape, then the profile key.
+
+`codeaf doctor` names which key is in use and explains an unused `OPENAI_API_KEY`
+without printing it. A key saved by `codeaf connect openrouter` or `/settings`
+reaches a conversation when you next open it or switch models;
+`OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
+the provider refused the key; doctor helps find the source to replace.
