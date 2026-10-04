@@ -468,8 +468,11 @@ func TestTheTeamHeaderIsOneLineAndDropsInOrder(t *testing.T) {
 				t.Fatalf("no header at %d:\n%s", width, text)
 			}
 			line := strings.Split(text, "\n")[y]
-			if !strings.Contains(line, "harbor") {
-				t.Fatalf("the header lost the team's name at %d: %q", width, line)
+			if strings.Contains(line, "harbor") {
+				t.Fatalf("the controls row repeats the sidebar's team name at %d: %q", width, line)
+			}
+			if !strings.Contains(text, "harbor") || a.tp.sel != harbor {
+				t.Fatalf("the sidebar lost the selected team at %d:\n%s", width, text)
 			}
 			if width >= 110 {
 				add := strings.Index(line, "+ Add member")
