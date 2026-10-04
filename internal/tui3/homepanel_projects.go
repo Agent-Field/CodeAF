@@ -81,6 +81,14 @@ func projectsOrdered(in *homeGridInput) []session.Project {
 // project that never recorded a folder draws nothing here, because the bucket
 // it lives in is an address and not a place.
 func projectWord(project session.Project, tilde string) string {
+	// A project that is a copy taken here from another machine has no path on
+	// this one: the recorded folder is on the machine the chat came from, and
+	// drawing it would claim a place that is not here. Its name already carries
+	// the copy marker (world.go's [movedName]), which is the same word the
+	// footer's keys row says about the same chat.
+	if project.Moved {
+		return project.Name
+	}
 	return tildePath(strings.TrimSpace(project.Path), tilde)
 }
 

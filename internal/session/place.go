@@ -483,3 +483,15 @@ func writeJSONAtomic(path string, v any) error {
 	}
 	return nil
 }
+
+// MovedCopyWord is how every surface marks a chat that works in its own copy
+// of a project that lives on another machine: "proj-a (copy from another
+// machine)". It is one const because the footer (internal/tui3's [movedWord])
+// and the home screen's project rows must say the same thing about the same
+// chat, and two spellings would drift apart the day one of them was reworded.
+//
+// It names the machine the project is ON and not a folder here: the folder
+// the chat works in is its own work/, which says nothing anybody can act on,
+// and the origin folder is not on this machine — a label that repeated its
+// name without the marker would be claiming a local folder that is not there.
+const MovedCopyWord = " (copy from another machine)"

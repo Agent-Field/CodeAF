@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -224,6 +225,22 @@ func (a *app) targetChordWords() string {
 // targetProject is the destination of the next conversation, written as a
 // path so projects with the same basename remain distinguishable.
 func (a *app) targetProject() string {
+	// A ROW THAT IS A COPY TAKEN HERE FROM ANOTHER MACHINE is named for where
+	// it came from and never for the folder it recorded: that folder is on
+	// the machine the chat left, and the footer of the conversation itself
+	// says the same thing about it (host.go's [movedWord]). This is the one
+	// door with the row in hand, so the marking lives here rather than in
+	// [targetWhere], which is an address a pin and a chord still act on.
+	if a.at(pageHome) {
+		if line, ok := a.home.previewLine(); ok && line.kind == homeSession {
+			// homeGone is the reading the world scan already took, and not a
+			// stat of the frame's own: a frame that read the disk to name a
+			// project is the frame that must not exist (render_test.go).
+			if row := line.row; row.Origin != "" && a.homeGone(row.Workspace) {
+				return filepath.Base(row.Origin) + session.MovedCopyWord
+			}
+		}
+	}
 	return a.hostedPath(a.placeWord(tildePath(a.targetWhere(), a.tilde)))
 }
 
