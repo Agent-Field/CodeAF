@@ -261,7 +261,8 @@ func (a *app) tookTakeover(msg homeTakenMsg) tea.Cmd {
 		a.machineRead.down = true
 		a.home.say(chatlist.Unreachable, "")
 	case msg.err != nil:
-		a.home.say(continueFails, "")
+		// Say why: the bare sentence left a failing takeover undiagnosable.
+		a.home.say(continueFails+" · "+firstLine(msg.err.Error()), "")
 	default:
 		return a.openTaken(msg)
 	}
