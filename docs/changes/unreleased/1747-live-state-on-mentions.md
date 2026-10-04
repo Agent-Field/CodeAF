@@ -4,7 +4,7 @@ title: live state on @chat-name mentions carries the strip working and needs-you
 pr: 1747
 surface: [chat]
 invalidates:
-  - a @chat-name mention in a message looked the same whether that conversation was at rest or working; the token now paints the strip's working mark while that conversation's turn is in flight and the needs-you mark when it waits on the person, and clears when the turn ends.
+  - a @chat-name mention in a message looked the same whether that conversation was at rest or working; the token now paints the strip's working glyph in place of its @ while that conversation's turn is in flight and the warning glyph when it waits on the person, and clears when the turn ends.
   - a tab held while its turn was already running showed no working mark until a later watcher event fired; the frame of the hold now carries the mark.
 ---
 

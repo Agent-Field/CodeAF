@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -738,9 +739,14 @@ func (a *app) mentionLinkChats() []mentionChat {
 // link ink — exactly the strip’s mechanism (chattabs.go), where the mark is
 // the first cell of the name. Two claims, two inks (tabsignal.go’s
 // [palette.tabSignalInk] comment): the ink says it is a link, the first cell
-// says what the conversation is doing, and neither overwrites the other. No
-// new glyph, no new ink, and the hover override (paintLinksWith) still wins
-// over the whole token because it replaces ref.paint outright.
+// says what the conversation is doing, and neither overwrites the other. The
+// mark is the strip's own state glyph in the strip's own ink, worn in the @'s
+// cell: accent ◐ while the turn runs, the warning ? while it waits on the
+// person. An ink-only mark would read as nothing — the accent and the link
+// ink share a hue (styles.go:386) — so the glyph is what a person actually
+// sees change, and because it wears the @'s own cell the row never changes
+// width. The hover override (paintLinksWith) still wins over the whole token
+// because it replaces ref.paint outright.
 func mentionSignalPaint(sig tabSignal) func(palette, string) string {
 	switch sig {
 	case tabWorking:
@@ -769,7 +775,14 @@ func mentionSignalSplit(pal palette, sig tabSignal, s string) string {
 		return s
 	}
 	mark := ansi.Cut(s, 0, 1)
-	return pal.tabSignalInk(sig, mark) + teamLinkInk(pal, s[len(mark):])
+	rest := s[len(mark):]
+	if sig == tabWorking {
+		return pal.tabSignalInk(sig, tokens.GlyphWorking) + teamLinkInk(pal, rest)
+	}
+	if sig == tabNeedsPerson {
+		return pal.tabSignalInk(sig, tokens.GlyphNeedsHuman) + teamLinkInk(pal, rest)
+	}
+	return pal.tabSignalInk(sig, mark) + teamLinkInk(pal, rest)
 }
 
 func linkifyMentions(text string, pal palette, teams []mentionTeam, chats []mentionChat, hot int) (string, []taskLink) {
