@@ -11,6 +11,7 @@ internal/furrowbin/cache/furrow-*.gz
 .claude/
 !internal/skills/testdata/**/.claude/
 /codeaf
+/cmd/codeaf/codeaf
 bench-results/
 .codeaf/
 !internal/skills/testdata/**/.codeaf/
