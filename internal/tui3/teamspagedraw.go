@@ -356,11 +356,6 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		return out
 	}
 	out = append(out, a.teamsOverviewHeader(d, t, width, len(out)))
-	if t.Closed() && t.Parent != "" {
-		for _, line := range wrap(a.teamsAncestryName(t), max(width-2, 1)) {
-			out = append(out, " "+pal.dim(line))
-		}
-	}
 	if !t.Closed() {
 		for _, control := range []struct {
 			word string
