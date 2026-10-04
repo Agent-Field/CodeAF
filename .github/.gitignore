@@ -1,0 +1,3 @@
+# No GitHub Actions in this repository: upstream syncs must not bring any back.
+.github/workflows/
+.github/workflows/*
