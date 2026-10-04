@@ -344,17 +344,33 @@ func foldMemoryEvent(tx *sql.Tx, event Event, seq int64, fts bool, allow func(ow
 		// fold: the origin proved the row's project, and a receiver that
 		// refused the news would keep a row in quarantine the origin has since
 		// re-homed — divergence with no upside. The fold under it only ever
-		// moves a row that is STILL quarantined ([applyMemoryRehomed]), so a
+		// moves a row that is STILL quarantined ([applyRehomeOne]), so a
 		// re-home can never strip an owner it disagrees with.
+		//
+		// THE TARGET OWNER IS VALIDATED, same as the live door. A re-home
+		// event carrying an owner this build does not mint is refused: moving
+		// a quarantined row to an invalid owner would be a quarantine escape.
 		var payload struct {
 			IDs []string `json:"ids"`
 		}
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return false, err
 		}
+		targetOwner := memoryEventOwner(event)
+		if !ValidOwner(targetOwner) {
+			// An owner this build does not understand is refused, not widened.
+			return false, nil
+		}
+		// A RE-HOME TO QUARANTINE IS NOT A RE-HOME. The live door never moves a
+		// row from quarantine to quarantine; the fold must agree. A row already
+		// in quarantine that an event tries to "re-home" to OwnerLegacyProject
+		// stays exactly where it is.
+		if targetOwner == OwnerLegacyProject {
+			return false, nil
+		}
 		moved := 0
 		for _, id := range payload.IDs {
-			applied, err := applyRehomeOne(tx, id, memoryEventOwner(event), seq)
+			applied, err := applyRehomeOne(tx, id, targetOwner, seq)
 			if err != nil {
 				return false, err
 			}
@@ -413,14 +429,14 @@ func eventSyncable(kind EventKind) bool {
 
 // memoryEventOwner reads the owner out of whichever payload shape the event
 // carries, for the policy's sake. An event from before the column answers the
-// way the replay answers it: from scope, user by default.
+// way the replay answers it. An owner this build does not understand is
+// quarantined — a policy gate that widens to user is not a gate.
 func memoryEventOwner(event Event) string {
 	var payload memoryPayload
 	if err := json.Unmarshal(event.Payload, &payload); err == nil {
-		if owner := normalizeOwner(payload.Owner); ValidOwner(owner) {
-			return owner
-		}
 		return ownerForReplay(payload)
 	}
-	return OwnerUser
+	// A payload this build cannot parse carries no owner. The quarantine is the
+	// honest answer for a row whose provenance is unknown.
+	return OwnerLegacyProject
 }
