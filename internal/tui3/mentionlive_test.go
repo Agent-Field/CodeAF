@@ -1,18 +1,18 @@
 package tui3
 
 // MENTIONS CARRY LIVE STATE. A @chat token in prose wears the mentioned
-// conversation's signal the way the strip wears it: the FIRST CELL of the
-// token is the mark, in tabSignalInk, and the rest keeps the link ink — two
-// claims, two inks. An idle or unknown conversation changes nothing, the
-// hover highlight still wins over the whole token, and the hint names the
-// state in words. These tests pin each of those.
+// conversation's signal the way the strip wears it: the token's @ cell shows
+// the strip's state glyph in tabSignalInk (accent ◐ working, warning ? needs
+// you) and the name keeps the link ink — two claims, two inks, one cell, no
+// width change. An idle or unknown conversation changes nothing, the hover
+// highlight still wins over the whole token, and the hint names the state in
+// words. These tests pin each of those.
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
-	"github.com/charmbracelet/x/ansi"
 )
 
 func mentionLivePalette() palette { return newPalette(tokens.TrueColor, false) }
@@ -21,31 +21,32 @@ func mentionLiveChat(signal tabSignal) mentionChat {
 	return mentionChat{key: "k-price", slug: "price", title: "Price scrape", signal: signal}
 }
 
-// A working mention paints the first cell of the token with the accent — the
-// strip's working mark — and the rest with the link ink.
+// A working mention paints the token's @ cell with the strip's working glyph
+// — accent ◐ — and keeps the name in the link ink: a mark a person can see,
+// in the strip's own vocabulary, without the row changing width.
 func TestMentionLiveWorkingPaintsFirstCell(t *testing.T) {
 	pal := mentionLivePalette()
 	painted, links := linkifyMentions("ask @price about it", pal, nil, []mentionChat{mentionLiveChat(tabWorking)}, -1)
 	if len(links) != 1 {
 		t.Fatalf("the mention did not link: %q", painted)
 	}
-	want := pal.accent("@") + teamLinkInk(pal, "price")
+	want := pal.accent(tokens.GlyphWorking) + teamLinkInk(pal, "price")
 	if !strings.Contains(painted, want) {
-		t.Fatalf("a working mention is not first-cell accent + link ink\nwant: %q\ngot:  %q", want, painted)
+		t.Fatalf("a working mention is not glyph accent + link ink\nwant: %q\ngot:  %q", want, painted)
 	}
-	if strings.Contains(painted, pal.accent("@price")) {
+	if strings.Contains(painted, pal.accent(tokens.GlyphWorking+"price")) {
 		t.Fatalf("the mark swallowed the whole token — two claims, two inks: %q", painted)
 	}
 }
 
-// A needs-you mention paints the first cell with the warning ink, the strip's
-// question mark.
+// A needs-you mention paints the token's @ cell with the warning ink and the
+// strip's question mark — the glyph the comment always promised.
 func TestMentionLiveNeedsYouPaintsWarn(t *testing.T) {
 	pal := mentionLivePalette()
 	painted, _ := linkifyMentions("ask @price about it", pal, nil, []mentionChat{mentionLiveChat(tabNeedsPerson)}, -1)
-	want := pal.warn("@") + teamLinkInk(pal, "price")
+	want := pal.warn(tokens.GlyphNeedsHuman) + teamLinkInk(pal, "price")
 	if !strings.Contains(painted, want) {
-		t.Fatalf("a needs-you mention is not first-cell warn + link ink\nwant: %q\ngot:  %q", want, painted)
+		t.Fatalf("a needs-you mention is not glyph warn + link ink\nwant: %q\ngot:  %q", want, painted)
 	}
 }
 
@@ -110,11 +111,11 @@ func TestMentionLiveHoverWinsOverSignal(t *testing.T) {
 	if !strings.Contains(hot, teamLinkHotInk(pal, "@price")) {
 		t.Fatalf("a hovered working mention is not the hot ink whole: %q", hot)
 	}
-	if strings.Contains(hot, pal.accent("@")) {
+	if strings.Contains(hot, pal.accent(tokens.GlyphWorking)) {
 		t.Fatalf("the signal mark bled into the hover: %q", hot)
 	}
 	cool, _ := linkifyMentions("ask @price about it", pal, nil, chats, -1)
-	if !strings.Contains(cool, pal.accent(ansi.Cut("@price", 0, 1))) {
+	if !strings.Contains(cool, pal.accent(tokens.GlyphWorking)) {
 		t.Fatalf("the mark did not return when the hover left: %q", cool)
 	}
 }
