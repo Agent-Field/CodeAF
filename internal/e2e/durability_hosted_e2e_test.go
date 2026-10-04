@@ -111,19 +111,52 @@ func (d *durable) pidA() int {
 	d.t.Helper()
 	raw, err := exec.Command("tmux", "display-message", "-p", "-t", d.a.name, "#{pane_pid}").Output()
 	pane, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
-	candidates := []int{pane}
-	kids, _ := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", pane, pane))
-	for _, k := range strings.Fields(string(kids)) {
-		n, _ := strconv.Atoi(k)
-		candidates = append(candidates, n)
+	candidates := append([]int{pane}, childPids(pane)...)
+	want := binary(d.t)
+	if real, err := filepath.EvalSymlinks(want); err == nil {
+		want = real
 	}
 	for _, pid := range candidates {
-		if exe, _ := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid)); pid > 0 && exe == binary(d.t) {
+		if pid > 0 && exeOf(pid) == want {
 			return pid
 		}
 	}
 	d.t.Fatalf("no process under pane %d runs the binary under test (%v)", pane, err)
 	return 0
+}
+
+// childPids is the processes directly under pid: /proc on Linux, and
+// `pgrep -P` where there is no /proc (macOS).
+func childPids(pid int) []int {
+	var raw []byte
+	if _, err := os.Stat("/proc"); err == nil {
+		raw, _ = os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", pid, pid))
+	} else {
+		raw, _ = exec.Command("pgrep", "-P", strconv.Itoa(pid)).Output()
+	}
+	var kids []int
+	for _, k := range strings.Fields(string(raw)) {
+		if n, err := strconv.Atoi(k); err == nil {
+			kids = append(kids, n)
+		}
+	}
+	return kids
+}
+
+// exeOf is the executable pid runs, symlinks resolved: /proc/<pid>/exe on
+// Linux, and `ps -o comm=` (the full exec path on macOS) without /proc.
+func exeOf(pid int) string {
+	var exe string
+	if _, err := os.Stat("/proc"); err == nil {
+		exe, _ = os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+	} else {
+		raw, _ := exec.Command("ps", "-o", "comm=", "-p", strconv.Itoa(pid)).Output()
+		exe = strings.TrimSpace(string(raw))
+	}
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	return exe
 }
 
 // freezable is the words that run the chat as a child of a launcher that stays
@@ -851,9 +884,7 @@ func (d *durable) watchLeaseLapse(s *holdRun, frozen time.Time) time.Duration {
 func (d *durable) holderState() string {
 	pid := d.pidA()
 	out := []string{fmt.Sprintf("%d:%s", pid, procState(pid))}
-	kids, _ := os.ReadFile(fmt.Sprintf("/proc/%d/task/%d/children", pid, pid))
-	for _, k := range strings.Fields(string(kids)) {
-		n, _ := strconv.Atoi(k)
+	for _, n := range childPids(pid) {
 		out = append(out, fmt.Sprintf("%d:%s", n, procState(n)))
 	}
 	return strings.Join(out, " ")
