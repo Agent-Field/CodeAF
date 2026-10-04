@@ -56,3 +56,35 @@ func TestDeletedConversationCannotBeReadmittedByStaleTeamWriter(t *testing.T) {
 		})
 	}
 }
+
+func TestDeletedCanonicalConversationCannotBeReadmittedThroughJournalAlias(t *testing.T) {
+	profile, canonicalDir, aliasDir := t.TempDir(), t.TempDir(), t.TempDir()
+	canonical := filepath.Join(canonicalDir, "transcript.jsonl")
+	alias := filepath.Join(aliasDir, "transcript.jsonl")
+	if err := os.WriteFile(canonical, []byte("history"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(canonical, alias); err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(profile, []Team{{ID: "team", Name: "Team"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(canonicalDir, ConversationDeletedFile), []byte("deleted"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(canonical); err != nil {
+		t.Fatal(err)
+	}
+	err := Update(profile, func(f *File) error {
+		f.Teams[0].Members = []Member{{Key: canonical, File: alias, Word: "Deleted conversation"}}
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "permanently deleted") {
+		t.Fatalf("dangling journal alias readmitted: %v", err)
+	}
+	f, err := Snapshot(profile)
+	if err != nil || len(f.Teams[0].Members) != 0 {
+		t.Fatal("refused alias changed membership")
+	}
+}

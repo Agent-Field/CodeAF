@@ -1,8 +1,9 @@
 # Teams UX cleanup
 
-The owner-approved feature is developed locally on `codex/teams-ux-cleanup`, with a built
-binary and adversarial implementation review at each major milestone. No branch push or
-GitHub pull request is authorized until the owner says so.
+The owner-approved feature is developed on `zeropoint95/teams-ux-cleanup`, with a built
+binary and adversarial implementation review at each major milestone. The owner has
+authorized final validation, publication of this branch and a draft pull request against
+`dev`. Merging remains a separate decision.
 
 ## Milestone 1: overview — approved
 
@@ -240,3 +241,18 @@ with click-based card selection and selections preserved through filtering. Both
 routes use one conversation catalog and one creation edit, then show the new Teams
 overview. Manager assignment stays separate. Cancel leaves memberships and drafts
 unchanged. Duplicate names and stale parent/depth permissions are refused.
+
+### Final implementation review
+
+Late membership writes check the permanent conversation marker under the owning
+Teams store lock, including canonical keys whose journal aliases now dangle. Offline
+task deletion keeps unfinished dependent chains incomplete instead of releasing their
+prerequisite gates; checkpoint and Sessions index agree. Suggested dependencies remain
+advice and do not cancel independent work. Completed sibling results are preserved.
+
+Membership picker paste stays in its visible field and preserves the hidden chat draft.
+Long Unicode dialog titles fit the existing frame. Narrow strips retain a recognizable
+tab name and overflow count before the fixed grid control. Vertical sidebar walking
+uses logical rows, while crossing independently scrolled panes uses visible rows.
+Race-enabled focused checks cover these regressions and Teams/deletion flows through
+the local and hosted engines. Mutable test clocks share a lock with watcher readers.

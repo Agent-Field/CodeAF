@@ -93,7 +93,7 @@ func TestTaskDeleteOfflineBlocksUnfinishedDependentsAfterRestart(t *testing.T) {
 	doc.Seq = 6
 	writeCheckpoint(t, taskCheckpointPath(file), doc)
 	for _, id := range []string{"4", "5", "6"} {
-		appendTaskIndex(TaskIndexPath(file), TaskIndexEntry{ID: id, SessionID: "conversation", Status: string(TaskQueued)})
+		appendTaskIndex(TaskIndexPath(file), TaskIndexEntry{ID: id, Title: "unfinished work", SessionID: "conversation", Status: string(TaskQueued)})
 	}
 	if err := DeleteTaskUnder(root, file, "1", nil); err != nil {
 		t.Fatal(err)
@@ -115,10 +115,17 @@ func TestTaskDeleteOfflineBlocksUnfinishedDependentsAfterRestart(t *testing.T) {
 			t.Fatalf("dependent can run without its prerequisite: %+v", r)
 		}
 	}
+	found := map[string]bool{}
 	for _, r := range ReadTaskIndex(TaskIndexPath(file)) {
-		if r.SessionID == "conversation" && (r.ID == "4" || r.ID == "5") && r.Status != string(TaskFailed) {
-			t.Fatalf("index disagrees with checkpoint: %+v", r)
+		if r.SessionID == "conversation" && (r.ID == "4" || r.ID == "5") {
+			if r.Status != string(TaskFailed) {
+				t.Fatalf("index disagrees with checkpoint: %+v", r)
+			}
+			found[r.ID] = true
 		}
+	}
+	if !found["4"] || !found["5"] {
+		t.Fatal("dependent index rows disappeared")
 	}
 }
 

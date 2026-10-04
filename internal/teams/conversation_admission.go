@@ -24,17 +24,17 @@ func (f *File) checkIntroducedConversations(previous *File) error {
 			if existed && prior.File == m.File && (t.Manager != m.Key || old.Manager == m.Key) {
 				continue
 			}
-			file := m.File
-			if file == "" {
-				file = m.Key
-			}
-			if !filepath.IsAbs(file) {
-				continue
-			}
-			if _, err := os.Stat(filepath.Join(filepath.Dir(file), ConversationDeletedFile)); err == nil {
-				return fmt.Errorf("that conversation was permanently deleted; choose another conversation")
-			} else if !os.IsNotExist(err) {
-				return fmt.Errorf("cannot check whether that conversation was deleted: %w", err)
+			// The canonical key survives deletion even when File is a journal
+			// symlink whose target no longer exists.
+			for _, file := range []string{m.Key, m.File} {
+				if !filepath.IsAbs(file) {
+					continue
+				}
+				if _, err := os.Stat(filepath.Join(filepath.Dir(file), ConversationDeletedFile)); err == nil {
+					return fmt.Errorf("that conversation was permanently deleted; choose another conversation")
+				} else if !os.IsNotExist(err) {
+					return fmt.Errorf("cannot check whether that conversation was deleted: %w", err)
+				}
 			}
 		}
 	}
