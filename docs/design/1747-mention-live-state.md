@@ -1,7 +1,6 @@
 # 1747 — mention live-state capture (evidence for #197)
 
-Captured on the Spark (`spark`) over raw ssh only. No local build, test or
-capture ran on the Mac (scp moved artifacts only). Nothing was posted or pushed
+Captured from the compiled TUI in an isolated environment on the capture host. Artifacts were moved into the tree as files only. Nothing was posted or pushed
 to GitHub.
 
 ## Deliverables
@@ -19,7 +18,7 @@ to GitHub.
   (81,971,700 bytes).
 - Head SHA claimed by the inherited state: **f731fb813e49bc55995828eaf856bed8fd552e5b**,
   built from `~/work/mention-final`.
-- **Caveat, measured:** that tree has **no `.git` directory** on the Spark
+- **Caveat, measured:** that tree has **no `.git` directory** on the capture host
   (`git rev-parse HEAD` → exit 128, "not a git repository"), and the binary
   itself reports `codeaf dev (no revision stamped — no .git directory for the
   toolchain to read…) · go1.26.5 linux/arm64`. So f731fb8 could not be
@@ -83,7 +82,7 @@ answers — a real turn really in flight, no tokens spent.
 - The never-answering socket: `python3 /tmp/cap1747-holder.py` — bind
   `127.0.0.1:18444`, `accept()` then `sleep(600)`. Probe: `NO_ANSWER_AFTER
   TimeoutError 3.0` (exit 0).
-- **Deviation from the brief:** port **18443 is occupied on the Spark** by an
+- **Deviation from the brief:** port **18443 is occupied on the capture host** by an
   unrelated long-running fixture (`srv_tls.py 18443 FixtureTLS certA keyA.pem
   certA.pem`, pid 2339841, up since Sep 18) which resets plain HTTP. It is not
   ours to kill, so the holder uses **18444**.
@@ -102,8 +101,7 @@ answers — a real turn really in flight, no tokens spent.
 
 ## Exact commands and exit codes
 
-All run on the Spark via `ssh -o BatchMode=yes spark '…'` unless said; scp
-only copied artifacts into the tree.
+Commands ran on the capture host over its remote shell; file copies moved artifacts into the tree only.
 
 ```
 ls /tmp/codeaf-1747; tmux ls; ls …/projects/-tmp-pr1747-demo/     EXIT 0   (binary, cap1747, seed a/b present)
@@ -160,5 +158,5 @@ underline geometry against the raw SGR bytes before assembly.
 - **Attribution:** captured and rendered with codeaf (`/tmp/codeaf-1747`, head
   f731fb8 per the built tree); this report is the change's record.
 
-Captured 2026-10-03 18:30–19:09 EDT on the Spark · evidence for #197 ·
+Captured 2026-10-03 18:30–19:09 EDT on the capture host · evidence for #197 ·
 rendered by codeaf.
