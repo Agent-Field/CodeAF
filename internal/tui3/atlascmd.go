@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -211,11 +210,7 @@ func (a *app) atlasFrame(width, height int) []string {
 func (a *app) atlasPickerFrame(width, height int) []string {
 	rows := []string{"atlas — choose a map", ""}
 	for at, mp := range atlas.Maps {
-		mark := " "
-		if at == a.atlas.cursor {
-			mark = "›"
-		}
-		rows = append(rows, fmt.Sprintf("%s %s  %s", mark, mp.Name, mp.Description))
+		rows = append(rows, atlas.PickRow(mp, at == a.atlas.cursor))
 	}
 	rows = append(rows, "", "enter open · esc/q leave")
 	if len(rows) > height {

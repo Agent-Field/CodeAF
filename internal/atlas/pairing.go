@@ -6,7 +6,7 @@ package atlas
 var Pairing = &Map{
 	Name:        "pairing",
 	Title:       "Pairing",
-	Description: "two computers, one chat",
+	Description: "codeaf on two computers: pair with a link, continue a chat on the other",
 	Nodes: []Node{
 		// ── machines ──────────────────────────────────────────────────────
 		{ID: "machineA", Label: "Machine A", Short: "existing device", Kind: KindMachine, X: 0.08, Y: 0.1,

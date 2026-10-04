@@ -20,7 +20,24 @@ import (
 // pickCursor is the marker on the row the cursor sits on.
 const pickCursor = "›"
 
-var pickRowStyle = lipgloss.NewStyle().Faint(true)
+// PickRow is one picker row, drawn the same by `codeaf atlas` and `/atlas`:
+// the cursor mark, the map's name in bold (accent on the cursor row) padded
+// to the longest name, then its description dim — the codeaf list shape of a
+// name and a dim tail, so the names read as a column of their own.
+func PickRow(mp *Map, selected bool) string {
+	nameW := 0
+	for _, m := range Maps {
+		nameW = max(nameW, cw(m.Name))
+	}
+	mark := " "
+	name := lipgloss.NewStyle().Bold(true)
+	if selected {
+		mark = pickCursor
+		name = name.Foreground(lipgloss.Color(colAccent))
+	}
+	gap := strings.Repeat(" ", nameW-cw(mp.Name)+3)
+	return mark + " " + name.Render(mp.Name) + gap + paint(mp.Description, colMuted, false)
+}
 
 // Picker is the map list. Like [Model], it is a pointer used as a tea.Model,
 // so Update hands the same model back and the tests can drive one directly.
@@ -89,16 +106,7 @@ func (p *Picker) frame() string {
 	b.WriteString("atlas — choose a map\n")
 	b.WriteString("\n")
 	for at, mp := range Maps {
-		mark := " "
-		if at == p.cursor {
-			mark = pickCursor
-		}
-		row := fmt.Sprintf("%s %s  %s", mark, mp.Name, mp.Description)
-		if at == p.cursor {
-			b.WriteString(row + "\n")
-		} else {
-			b.WriteString(pickRowStyle.Render(row) + "\n")
-		}
+		b.WriteString(PickRow(mp, at == p.cursor) + "\n")
 	}
 	b.WriteString("\nenter open · esc/q leave\n")
 	return b.String()
