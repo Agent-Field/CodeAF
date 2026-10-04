@@ -295,8 +295,14 @@ after the conversation. Memory keeps person-, project-, or machine-scoped record
 
 ## Models, keys, and spending
 
-Key resolution for the default provider is `OPENROUTER_API_KEY`, then
-`OPENAI_API_KEY`, then `api_key` in the profile's `config.json`. With no credential,
+On the default OpenRouter endpoint, key resolution is `OPENROUTER_API_KEY`, then
+`api_key` in the profile's `config.json`, then `OPENAI_API_KEY` only if it starts
+with `sk-or-`; an unrelated OpenAI key is neither used nor saved there. With a
+custom `CODEAF_BASE_URL`, the order is `OPENROUTER_API_KEY`, `OPENAI_API_KEY` of
+any shape, then the profile key. A folder engine restarts for a changed terminal
+environment when no window, turn, question or background work is holding it;
+otherwise the window explains the difference and names its stop command.
+With no credential,
 an interactive local launch opens a two-page setup that offers to connect OpenRouter
 in a browser or take a pasted key. First run is unchanged and does not offer Codex.
 A non-interactive chat starts when the default provider has a key or any connected
