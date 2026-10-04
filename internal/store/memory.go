@@ -460,6 +460,129 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	}, nil
 }
 
+// SupersedeMemoryForOwners retires one memory and admits its replacement, under
+// the constraint that the old row is owned by one of the named owners. The
+// owners list is the store-level enforcement: even a caller that holds a foreign
+// id cannot retire another project's memory through this door. The raw-id door
+// [Store.SupersedeMemory] remains for the person's own surface (which may
+// manage any row it is showing) and for callers that have already proven
+// visibility.
+func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory) (Memory, error) {
+	if len(owners) == 0 {
+		return Memory{}, fmt.Errorf("supersede memory: %w: no owner was named", ErrInvalid)
+	}
+	oldID = strings.TrimSpace(oldID)
+	if oldID == "" {
+		return Memory{}, fmt.Errorf("supersede memory: %w: id is required", ErrInvalid)
+	}
+	fresh, err := memoryPayloadFrom(m)
+	if err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if fresh.ID == "" {
+		fresh.ID = NewMemoryID()
+	}
+	if fresh.ID == oldID {
+		return Memory{}, fmt.Errorf("supersede memory: %w: %q cannot supersede itself", ErrInvalid, oldID)
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	defer tx.Rollback()
+
+	// THE OLD ROW'S OWNER IS IN THE NAMED OWNERS, or the supersession is
+	// refused. This is the store-level guard the session's own visibility
+	// check already makes, and it is what closes the raw-id door: a decider
+	// naming (or a stale neighbor list carrying) another project's memory id
+	// cannot mark that row superseded here.
+	where, ownerArgs := ownerFilterSQL(owners)
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ? AND status = ?`+where,
+		append([]any{oldID, MemoryActive}, ownerArgs...)...).Scan(&count); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if count == 0 {
+		return Memory{}, fmt.Errorf("supersede memory: %w: %q is not an active memory this session can see", ErrInvalid, oldID)
+	}
+
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, fresh.ID).Scan(&exists); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if exists != 0 {
+		return Memory{}, fmt.Errorf("supersede memory: %w: %q already exists", ErrInvalid, fresh.ID)
+	}
+	fresh.SourceSession = strings.TrimSpace(m.SourceSession)
+	payload := memorySupersedePayload{OldID: oldID, New: fresh, SourceSession: fresh.SourceSession}
+	seq, _, err := appendEvent(tx, fresh.ID, EventMemorySupersede, payload)
+	if err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if err := applyMemorySupersede(tx, payload, seq, s.fts); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	return Memory{
+		ID: fresh.ID, Owner: fresh.Owner, Type: fresh.Type, Scope: fresh.Scope,
+		Title: fresh.Title, Text: fresh.Text, Tags: fresh.Tags,
+		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
+		SourceSession: fresh.SourceSession, SourceSeq: memorySourceSeq(fresh.SourceSession, seq),
+	}, nil
+}
+
+// UpdateMemoryForOwners updates a memory only when the target's owner is in the
+// named owners list. It is the store-level guard: the session's own visibility
+// check closes one door, and this closes the other. A caller that holds a
+// foreign id from a stale neighbor list or a model invention cannot rewrite
+// another project's memory through this door.
+func (s *Store) UpdateMemoryForOwners(owners []string, id, title, text string, tags []string, sourceSession string) error {
+	if len(owners) == 0 {
+		return fmt.Errorf("update memory: %w: no owner was named", ErrInvalid)
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("update memory: %w: id is required", ErrInvalid)
+	}
+	title, text, tags, err := validMemoryBody(title, text, tags)
+	if err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	defer tx.Rollback()
+
+	// THE TARGET ROW'S OWNER IS IN THE NAMED OWNERS, or the update is refused.
+	// A store error on this read also refuses: a guard that cannot prove the
+	// target is owned by this session must never become a pass.
+	where, ownerArgs := ownerFilterSQL(owners)
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ? AND status = ?`+where,
+		append([]any{id, MemoryActive}, ownerArgs...)...).Scan(&count); err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	if count == 0 {
+		return fmt.Errorf("update memory: %w: %q is not an active memory this session can see", ErrInvalid, id)
+	}
+
+	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags, SourceSession: strings.TrimSpace(sourceSession)}
+	seq, _, err := appendEvent(tx, id, EventMemoryUpdate, payload)
+	if err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	if err := applyMemoryUpdate(tx, payload, seq, s.fts); err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	return nil
+}
+
 // ForgetMemory tombstones a memory. It refuses a memory that is already
 // forgotten rather than returning quietly: "forget that" is an instruction a
 // person expects to have had an effect, and a silent success on a row that was

@@ -481,3 +481,183 @@ func errorsNew(text string) error { return &failureError{text} }
 type failureError struct{ text string }
 
 func (e *failureError) Error() string { return e.text }
+
+// ── regression: foreign-ID write isolation through the session ────────────────
+
+// A decider that names another project's memory id — from a stale neighbor
+// list, a replayed conversation, or a model invention — cannot update that
+// memory through the session's write path. The store-level owner guard
+// refuses even if the session's own visibility check were bypassed.
+func TestAForeignIDCannotUpdateAnotherProjectsMemory(t *testing.T) {
+	brain, err := store.Open(filepath.Join(t.TempDir(), "foreign-update.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = brain.Close() })
+
+	alpha, _ := newTestAgent(t, &reflexScript{}, func(config *Config) {
+		config.Memory = brain
+		config.MemoryProjectKey = "alpha-key"
+	})
+
+	// Write a memory from alpha's project.
+	title, err := alpha.RememberScoped("deploys to the amber cluster on Tuesdays", store.MemoryScopeProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == "" {
+		t.Fatal("alpha's project write produced no title")
+	}
+
+	// Find the row directly.
+	alphaRows, err := brain.SearchMemories([]string{store.OwnerProject("alpha-key")}, "amber", 5)
+	if err != nil || len(alphaRows) != 1 {
+		t.Fatalf("alpha's rows = (%v, %v)", memoryIDs(alphaRows), err)
+	}
+	foreignID := alphaRows[0].ID
+
+	// A beta agent with a different project key tries to update alpha's row
+	// through the scoped store door.
+	beta, _ := newTestAgent(t, &reflexScript{}, func(config *Config) {
+		config.Memory = brain
+		config.MemoryProjectKey = "beta-key"
+	})
+	betaOwners := beta.memoryOwners()
+	err = brain.UpdateMemoryForOwners(betaOwners, foreignID,
+		"Deploys Wednesdays", "Deploys to the ember cluster on Wednesdays.", nil, "")
+	if err == nil {
+		t.Fatal("UpdateMemoryForOwners accepted a foreign project id")
+	}
+
+	// Alpha's row is unchanged.
+	alphaRows2, err := brain.SearchMemories([]string{store.OwnerProject("alpha-key")}, "amber", 5)
+	if err != nil || len(alphaRows2) != 1 {
+		t.Fatalf("alpha's rows after foreign update = (%v, %v)", memoryIDs(alphaRows2), err)
+	}
+	if alphaRows2[0].Text != alphaRows[0].Text {
+		t.Fatalf("alpha's row was modified: %q", alphaRows2[0].Text)
+	}
+}
+
+// A decider that names another project's memory id cannot supersede that
+// memory through the session's write path. The store-level owner guard
+// refuses, and the old row stays active.
+func TestAForeignIDCannotSupersedeAnotherProjectsMemory(t *testing.T) {
+	brain, err := store.Open(filepath.Join(t.TempDir(), "foreign-supersede.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = brain.Close() })
+
+	alpha, _ := newTestAgent(t, &reflexScript{}, func(config *Config) {
+		config.Memory = brain
+		config.MemoryProjectKey = "alpha-key"
+	})
+
+	title, err := alpha.RememberScoped("deploys to the amber cluster on Tuesdays", store.MemoryScopeProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == "" {
+		t.Fatal("alpha's project write produced no title")
+	}
+
+	alphaRows, err := brain.SearchMemories([]string{store.OwnerProject("alpha-key")}, "amber", 5)
+	if err != nil || len(alphaRows) != 1 {
+		t.Fatalf("alpha's rows = (%v, %v)", memoryIDs(alphaRows), err)
+	}
+	foreignID := alphaRows[0].ID
+
+	// A beta agent tries to supersede alpha's row through the scoped store door.
+	beta, _ := newTestAgent(t, &reflexScript{}, func(config *Config) {
+		config.Memory = brain
+		config.MemoryProjectKey = "beta-key"
+	})
+	betaOwners := beta.memoryOwners()
+	_, err = brain.SupersedeMemoryForOwners(betaOwners, foreignID, store.Memory{
+		Owner: store.OwnerProject("beta-key"), Type: store.MemoryFact,
+		Title: "Deploys Wednesdays", Text: "Deploys to the ember cluster on Wednesdays.",
+	})
+	if err == nil {
+		t.Fatal("SupersedeMemoryForOwners accepted a foreign project id")
+	}
+
+	// Alpha's row is still active.
+	alphaRows2, err := brain.SearchMemories([]string{store.OwnerProject("alpha-key")}, "amber", 5)
+	if err != nil || len(alphaRows2) != 1 {
+		t.Fatalf("alpha's rows after foreign supersede = (%v, %v)", memoryIDs(alphaRows2), err)
+	}
+	if alphaRows2[0].Status != store.MemoryActive {
+		t.Fatalf("alpha's row is %q, want active", alphaRows2[0].Status)
+	}
+}
+
+// The post-turn extraction that infers a project-scoped memory after a /forget
+// removed the project copy must not auto-widen that memory to user-global. The
+// extraction ownership is pinned to the session's authorized audience — the
+// project key that the door proved. A memory scoped to project by the model
+// stays in the project, even when no project copy exists to dedup against.
+func TestPostTurnExtractionDoesNotWidenProjectMemoryToUserGlobal(t *testing.T) {
+	brain, err := store.Open(filepath.Join(t.TempDir(), "no-widen.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = brain.Close() })
+
+	alpha, _ := newTestAgent(t, &reflexScript{}, func(config *Config) {
+		config.Memory = brain
+		config.MemoryProjectKey = "alpha-key"
+	})
+
+	// Write a project-scoped memory.
+	title, err := alpha.RememberScoped("the deploy window opens on Tuesday morning", store.MemoryScopeProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == "" {
+		t.Fatal("project write produced no title")
+	}
+
+	// Forget it from the project's view.
+	forgot, err := alpha.Forget("deploy window")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forgot == "" {
+		t.Fatal("forget found nothing")
+	}
+
+	// Re-member the same content. The session's ownerForScope pins the
+	// project scope to the authorized project, never widens to user.
+	title2, err := alpha.RememberScoped("the deploy window opens on Tuesday morning", store.MemoryScopeProject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title2 == "" {
+		t.Fatal("second project write produced no title")
+	}
+
+	// The new row is owned by alpha's project, NOT by user.
+	allRows, err := brain.ListMemories(nil, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range allRows {
+		if row.Status != store.MemoryActive {
+			continue
+		}
+		if strings.Contains(row.Text, "deploy window") && row.Owner == store.OwnerUser {
+			t.Fatalf("a project-scoped memory landed as user-global: owner=%q text=%q", row.Owner, row.Text)
+		}
+	}
+
+	// And user-scoped searches in another project do not find it.
+	beta, _ := newTestAgent(t, &reflexScript{}, func(config *Config) {
+		config.Memory = brain
+		config.MemoryProjectKey = "beta-key"
+	})
+	block := beta.memoryBlock(context.Background(), "deploy window Tuesday")
+	if strings.Contains(block, "deploy window") {
+		t.Fatalf("beta's block carried alpha's project memory after /forget re-write:\n%s", block)
+	}
+}

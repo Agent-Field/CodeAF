@@ -460,3 +460,168 @@ func containsStubTag(tags []string, want string) bool {
 	}
 	return false
 }
+
+// ── regression: owner widening ───────────────────────────────────────────────
+
+// An unknown owner in replay — a future team:… owner from a newer build — is
+// quarantined, never widened to user. A row whose owner cannot be understood
+// must never degrade to one visible from every project.
+func TestOwnerForReplayQuarantinesAnUnknownOwner(t *testing.T) {
+	// A payload with an explicit future team owner.
+	payload := memoryPayload{ID: "mem_x", Owner: "team:the-fold", Scope: MemoryScopeUser}
+	got := ownerForReplay(payload)
+	if got != OwnerLegacyProject {
+		t.Fatalf("ownerForReplay(team:the-fold) = %q, want %q (quarantine)", got, OwnerLegacyProject)
+	}
+	// An unknown scope word with no explicit owner also quarantines.
+	payload2 := memoryPayload{ID: "mem_y", Scope: "global"}
+	got2 := ownerForReplay(payload2)
+	if got2 != OwnerLegacyProject {
+		t.Fatalf("ownerForReplay(scope=global) = %q, want %q (quarantine)", got2, OwnerLegacyProject)
+	}
+}
+
+// A memory event with an unknown owner — a newer build's team:… owner — is
+// quarantined by the sync fold rather than widened.
+func TestMemoryEventOwnerQuarantinesAnUnknownOwner(t *testing.T) {
+	// A payload carrying an explicit owner this build does not mint.
+	payload, _ := json.Marshal(memoryPayload{ID: "mem_x", Owner: "team:the-fold", Scope: MemoryScopeUser})
+	event := Event{Kind: EventMemoryAdd, Payload: json.RawMessage(payload)}
+	got := memoryEventOwner(event)
+	if got != OwnerLegacyProject {
+		t.Fatalf("memoryEventOwner(team:the-fold) = %q, want %q (quarantine)", got, OwnerLegacyProject)
+	}
+	// An unparseable payload also quarantines — a blob this build cannot decode
+	// carries no owner it can assert.
+	event2 := Event{Kind: EventMemoryAdd, Payload: json.RawMessage(`{bogus`)}
+	got2 := memoryEventOwner(event2)
+	if got2 != OwnerLegacyProject {
+		t.Fatalf("memoryEventOwner(unparseable) = %q, want %q (quarantine)", got2, OwnerLegacyProject)
+	}
+}
+
+// ── regression: owner-scoped write doors ─────────────────────────────────────
+
+// A SupersedeMemoryForOwners that names a row the owners cannot see is refused.
+func TestSupersedeForOwnersRefusesAForeignID(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "supersede-refuse.db"))
+	alpha := OwnerProject("alpha")
+	beta := OwnerProject("beta")
+
+	alphaRow, err := graph.Write(WriteRequest{Owner: alpha, Type: MemoryFact,
+		Title: "Deploys Tuesdays", Text: "Deploys to the amber cluster every Tuesday."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Beta tries to supersede alpha's row through the scoped door.
+	_, err = graph.SupersedeMemoryForOwners([]string{beta}, alphaRow.Memory.ID, Memory{
+		Owner: beta, Type: MemoryFact,
+		Title: "Deploys Wednesdays", Text: "Deploys to the ember cluster every Wednesday.",
+	})
+	if err == nil {
+		t.Fatal("SupersedeMemoryForOwners accepted a foreign id — the door is open")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("SupersedeMemoryForOwners = %v, want an ErrInvalid refusal", err)
+	}
+}
+
+// An UpdateMemoryForOwners that names a row the owners cannot see is refused.
+func TestUpdateForOwnersRefusesAForeignID(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "update-refuse.db"))
+	alpha := OwnerProject("alpha")
+	beta := OwnerProject("beta")
+
+	alphaRow, err := graph.Write(WriteRequest{Owner: alpha, Type: MemoryFact,
+		Title: "Amber cluster", Text: "The amber cluster is in us-east-1."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Beta tries to update alpha's row through the scoped door.
+	err = graph.UpdateMemoryForOwners([]string{beta}, alphaRow.Memory.ID,
+		"Amber cluster", "The amber cluster is in us-west-2.", nil, "")
+	if err == nil {
+		t.Fatal("UpdateMemoryForOwners accepted a foreign id — the door is open")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("UpdateMemoryForOwners = %v, want an ErrInvalid refusal", err)
+	}
+}
+
+// ── regression: rehome fold validates the target owner ───────────────────────
+
+// A rehomed event in the fold whose target owner is not valid is skipped —
+// never applied to move a quarantined row to an owner this build does not mint.
+func TestRehomedFoldRefusesAnInvalidTargetOwner(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "rehome-fold-refuse.db"))
+	// Put a row in quarantine.
+	quarantined := mustAddMemory(t, graph, Memory{Type: MemoryDecision, Scope: MemoryScopeProject,
+		Title: "Pricing stays annual", Text: "Pricing is billed annually."})
+	if quarantined.Owner != OwnerLegacyProject {
+		t.Fatalf("quarantined row owner = %q, want %q", quarantined.Owner, OwnerLegacyProject)
+	}
+	// Construct a rehome event with a future team owner.
+	payload, _ := json.Marshal(map[string]any{
+		"ids":   []string{quarantined.ID},
+		"owner": "team:the-fold",
+	})
+	events := []MemoryEvent{{Seq: 1, Kind: EventMemoryRehomed, Payload: json.RawMessage(payload)}}
+	// Apply with a permissive policy — the fold itself should refuse the invalid
+	// owner inside the apply.
+	result, err := graph.ApplyMemoryEvents(events, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 0 {
+		t.Fatalf("the rehome fold applied a future team owner: %d applied", result.Applied)
+	}
+	if result.Skipped == 0 {
+		t.Fatal("the rehome fold did not skip the invalid-owner event")
+	}
+	// The row is still in quarantine.
+	row, ok, err := graph.MemoryRecord(quarantined.ID)
+	if err != nil || !ok || row.Owner != OwnerLegacyProject {
+		t.Fatalf("after invalid-owner rehome fold: (%+v, %v, %v), want still in quarantine", row, ok, err)
+	}
+}
+
+// ── regression: aged dedup ───────────────────────────────────────────────────
+
+// The dedup door catches an exact duplicate that is older than the old 5-row
+// FTS window. The store's Write door is the one path; prove it skips an exact
+// repeat that is behind more than five active rows for the same owner.
+func TestDedupCatchesAnExactDuplicateBeyondTheOldWindow(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "aged-dedup.db"))
+	owner := OwnerUser
+	// Write six fillers, then a target, then the duplicate — six rows after the
+	// target means the old 5-neighbor window would miss it.
+	for index := 0; index < 6; index++ {
+		if _, err := graph.Write(WriteRequest{Owner: owner, Type: MemoryFact,
+			Title: fmt.Sprintf("Filler %02d", index),
+			Text:  fmt.Sprintf("Filler row number %02d with distinct words %x.", index, index)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := graph.Write(WriteRequest{Owner: owner, Type: MemoryPreference,
+		Title: "Prefers tabs", Text: "Prefers tabs over spaces in Go files."})
+	if err != nil || first.Outcome != WriteOutcomeAdded {
+		t.Fatalf("first write of the target: (%+v, %v)", first, err)
+	}
+	// Six more fillers push the target past the old 5-neighbor window.
+	for index := 6; index < 12; index++ {
+		if _, err := graph.Write(WriteRequest{Owner: owner, Type: MemoryFact,
+			Title: fmt.Sprintf("Filler %02d", index),
+			Text:  fmt.Sprintf("Filler row number %02d with distinct words %x.", index, index)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The exact repeat, different case and spacing.
+	again, err := graph.Write(WriteRequest{Owner: owner, Type: MemoryPreference,
+		Title: "Prefers tabs", Text: "PREFERS   tabs over spaces in Go files."})
+	if err != nil || again.Outcome != WriteOutcomeSkipped {
+		t.Fatalf("repeat past the old window = (%+v, %v), want a skip", again, err)
+	}
+	if again.Memory.ID != first.Memory.ID {
+		t.Fatalf("the aged dedup matched %q, want the original %q", again.Memory.ID, first.Memory.ID)
+	}
+}

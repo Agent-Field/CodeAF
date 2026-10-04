@@ -351,13 +351,25 @@ func ownerForReplay(payload memoryPayload) string {
 	if owner := normalizeOwner(payload.Owner); ValidOwner(owner) {
 		return owner
 	}
+	// An explicit owner that is not known to this build (e.g. a future team:…
+	// owner from a newer paired device) is QUARANTINED, never widened to user.
+	// A row whose owner cannot be understood must never degrade to one that
+	// is visible from every project; quarantined rows are never injected.
+	if owner := normalizeOwner(payload.Owner); owner != "" && !ValidOwner(owner) {
+		return OwnerLegacyProject
+	}
 	switch strings.ToLower(strings.TrimSpace(payload.Scope)) {
+	case MemoryScopeUser:
+		return OwnerUser
 	case MemoryScopeEnv:
 		return OwnerMachine
 	case MemoryScopeProject:
 		return OwnerLegacyProject
 	default:
-		return OwnerUser
+		// A scope word this build does not understand is quarantined: a filter
+		// that cannot be understood must never degrade to no filter. The caller
+		// that knows the correct owner overrides with its own payload.Owner.
+		return OwnerLegacyProject
 	}
 }
 

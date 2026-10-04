@@ -58,7 +58,7 @@ type WriteResult struct {
 const (
 	WriteOutcomeAdded    = "added"
 	WriteOutcomeSkipped  = "skipped-duplicate"
-	writeNeighborLookups = 5
+	writeNeighborLookups = 200
 )
 
 // Write is the one door. It validates, looks for a same-owner duplicate, and
@@ -157,9 +157,10 @@ func (s *Store) writeDuplicate(owner string, fresh Memory) (*Memory, error) {
 }
 
 // memoryDuplicateScanLimit bounds the no-index fallback scan: past this many
-// rows the exact-duplicate question is asked of the newest thousand, which is
-// where a repeated "remember" lands anyway.
-const memoryDuplicateScanLimit = 1000
+// rows the exact-duplicate question is asked of the newest ten thousand, which
+// covers every active-owner store in practice. A store big enough for the scan
+// to hurt is a store that has an index.
+const memoryDuplicateScanLimit = 10000
 
 // normalizeMemoryWords folds the words a dedup question is asked in: case,
 // whitespace and width. It is the ONE spelling of "the same words" for the
