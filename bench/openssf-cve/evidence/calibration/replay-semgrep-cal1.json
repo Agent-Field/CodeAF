@@ -1,0 +1,28 @@
+{
+  "tool": "semgrep",
+  "compared": 40,
+  "agree": 38,
+  "agreement_pct": 95.0,
+  "confusion": {
+    "both_hit": 5,
+    "both_miss": 33,
+    "ours_only": 0,
+    "theirs_only": 2
+  },
+  "disagreements": [
+    {
+      "cve": "CVE-2017-16117",
+      "variant": "unfixed",
+      "ours_hit": false,
+      "ours": "The finding at line 8 reports a non-literal RegExp construction issue, which is a different vulnerability than the one described in the CVE. The CVE specifically identifies a polynomial regular expression denial of service at line 64 in slug.js. The finding at line 8 describes a different code path and different vulnerability pattern (dynamic regex construction vs. polynomial regex complexity). These are not the same vulnerability instance.",
+      "theirs": "The CVE-2017-16117 describes a Regular Expression Denial of Service (ReDoS) vulnerability in the slug module where specially crafted input can block the event loop. The security agent detected exactly this vulnerability - identifying that RegExp() is called in a way that could cause ReDoS attacks by blocking the main thread. The detection identifies the same vulnerability type (ReDoS), the same security impact (denial of service by blocking the event loop), and the same location (slug.js). This is a direct match for the CVE."
+    },
+    {
+      "cve": "CVE-2019-5484",
+      "variant": "unfixed",
+      "ours_hit": false,
+      "ours": "The CVE describes a Zip Slip vulnerability at line 65 in lib/util/extract.js involving arbitrary file write during zip extraction. The findings all point to lines 165-178, which are in a different part of the file dealing with path.join/path.resolve operations. These findings do not identify the same code path as the CVE's recorded vulnerability location (line 65, zip extraction). They appear to be generic path traversal warnings on different code paths, not the specific Zip Slip vulnerability instance.",
+      "theirs": "CVE-2019-5484 describes a path traversal vulnerability in Bower's install command that allows arbitrary file write when extracting malicious packages (also known as \"Zip Slip\"). The detected issues identify path traversal vulnerabilities in lib/util/extract.js - the exact file responsible for extracting packages. The detection correctly identifies that user-controllable input (file paths from the archive) is passed to path.join/path.resolve functions without proper sanitization, which is precisely the root cause of the Zip Slip vulnerability. The security impact (arbitrary file write via path traversal during extraction) and the attack pattern (malicious paths in archived files exploiting unsanitized path operations) match exactly between the CVE and the detected issues."
+    }
+  ]
+}

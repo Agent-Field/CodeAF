@@ -1,0 +1,185 @@
+{
+  "tool": "codeaf",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "mode": "diff",
+  "seed": "s1",
+  "set": "deepsource",
+  "judge_model": "anthropic/claude-opus-4.5",
+  "rows_planned": 165,
+  "rows_judged": 165,
+  "unavailable": [],
+  "tool_errors": [
+    "CVE-2017-16003/fixed: driver wrote no findings.json; driver exited 124",
+    "CVE-2019-10090/unfixed: driver exited 124",
+    "CVE-2019-10759/fixed: driver exited 124"
+  ],
+  "unjudged": [],
+  "judge_calls": 90,
+  "tool_cost_usd": 4.9268,
+  "tool_seconds": 31912,
+  "metrics": {
+    "TP": 76,
+    "FP": 5,
+    "TN": 78,
+    "FN": 6,
+    "rows": 165,
+    "precision": 93.83,
+    "recall": 92.68,
+    "f1": 93.25,
+    "accuracy": 93.33
+  },
+  "by_cwe_recall": {
+    "CWE-829": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-730": {
+      "found": 10,
+      "of": 10
+    },
+    "CWE-400": {
+      "found": 20,
+      "of": 20
+    },
+    "CWE-770": {
+      "found": 3,
+      "of": 3
+    },
+    "CWE-338": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-022": {
+      "found": 8,
+      "of": 9
+    },
+    "CWE-023": {
+      "found": 3,
+      "of": 4
+    },
+    "CWE-036": {
+      "found": 3,
+      "of": 4
+    },
+    "CWE-073": {
+      "found": 3,
+      "of": 4
+    },
+    "CWE-099": {
+      "found": 3,
+      "of": 4
+    },
+    "CWE-078": {
+      "found": 22,
+      "of": 22
+    },
+    "CWE-088": {
+      "found": 12,
+      "of": 12
+    },
+    "CWE-079": {
+      "found": 20,
+      "of": 20
+    },
+    "CWE-116": {
+      "found": 15,
+      "of": 15
+    },
+    "CWE-601": {
+      "found": 2,
+      "of": 3
+    },
+    "CWE-918": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-200": {
+      "found": 1,
+      "of": 2
+    },
+    "unknown": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-250": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-094": {
+      "found": 12,
+      "of": 12
+    },
+    "CWE-915": {
+      "found": 10,
+      "of": 10
+    },
+    "CWE-94": {
+      "found": 4,
+      "of": 4
+    },
+    "CWE-089": {
+      "found": 0,
+      "of": 1
+    },
+    "CWE-020": {
+      "found": 3,
+      "of": 3
+    },
+    "CWE-74": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-79": {
+      "found": 3,
+      "of": 3
+    },
+    "CWE-807": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-290": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-668": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-20": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-312": {
+      "found": 0,
+      "of": 1
+    },
+    "CWE-315": {
+      "found": 0,
+      "of": 1
+    },
+    "CWE-359": {
+      "found": 0,
+      "of": 1
+    },
+    "CWE-352": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-502": {
+      "found": 0,
+      "of": 1
+    },
+    "CWE-125": {
+      "found": 1,
+      "of": 1
+    },
+    "CWE-126": {
+      "found": 1,
+      "of": 1
+    }
+  },
+  "partial": false,
+  "rig_rev": "aafbcacb1",
+  "dataset_rev": "91c59fd54b2b768c0f310bb0027d2ac59cdf74d4",
+  "bin_sha256_16": "f4cd057fd5041370"
+}

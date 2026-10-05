@@ -1,0 +1,18 @@
+{
+  "bin_sha256_16": "",
+  "dataset_rev": "91c59fd54b2b768c0f310bb0027d2ac59cdf74d4",
+  "host": "Darwin arm64",
+  "jobs": 2,
+  "judge_model": "anthropic/claude-opus-4.5",
+  "mode": "diff",
+  "model": "-",
+  "rig_rev": "f81638787",
+  "rows": 4,
+  "seed": "smoke",
+  "set": "deepsource",
+  "stage": "unjudged",
+  "started": "2026-10-05T18:33:29Z",
+  "timeout_seconds": 900,
+  "tool": null,
+  "tool_wall_seconds": 0
+}

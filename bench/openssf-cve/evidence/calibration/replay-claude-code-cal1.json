@@ -1,0 +1,21 @@
+{
+  "tool": "claude-code",
+  "compared": 40,
+  "agree": 39,
+  "agreement_pct": 97.5,
+  "confusion": {
+    "both_hit": 13,
+    "both_miss": 26,
+    "ours_only": 0,
+    "theirs_only": 1
+  },
+  "disagreements": [
+    {
+      "cve": "CVE-2018-3757",
+      "variant": "fixed",
+      "ours_hit": false,
+      "ours": "The CVE describes command injection at line 116 in index.js involving an unescaped string parameter. None of the findings reference line 116 or the specific vulnerability instance there. Finding 0 is at line 85, finding 1 at line 94, finding 2 at line 98, and finding 3 at line 54. While these findings describe command injection issues in the same file, they identify different code paths than the specific vulnerability at line 116 that the CVE describes.",
+      "theirs": "The first detected issue precisely describes the CVE-2018-3757 vulnerability: command injection exploitable via control of pdfFilePath in a shell command constructed with spawn() on a spaced cmd ('gm convert'/'convert'). This matches the exact instance, attack vector (pdfFilePath), and security impact (arbitrary command execution). Even in fixed code, this detection aligns with the specific CVE description. Other issues are related command/arg injections or path traversal in different code paths/parameters, not the exact CVE vulnerability."
+    }
+  ]
+}

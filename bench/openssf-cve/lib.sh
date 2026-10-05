@@ -17,11 +17,21 @@ RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # work/ are whole repositories, some of which carry Go files, and `go build
 # ./...` walks the filesystem rather than the index: a CVE's apn-go/apn.go under
 # the tree broke the repository's own build gate. bench/prompt-diet keeps its
-# output outside the tree for the same reason.
-BENCH_ROOT="${BENCH_ROOT:-$HOME/bench-openssf-cve}"
+# output outside the tree for the same reason, and the DeepSWE campaigns live
+# under ~/Code beside the checkout.
+#
+# Three places, by what they hold:
+#   work/     the dataset, the clones and the checkouts — all regenerable
+#   results/  one directory per run, EVIDENCE ONLY: findings, verdicts, truth,
+#             briefs, envelopes, logs — about 30 KB a cell
+#   bulk/     the isolated codeaf state root every cell ran under (call logs,
+#             run store, telemetry), parked here by cell.sh when the cell ends
+#             so a 165-row run stays 5 MB of evidence and not 1.9 GB
+BENCH_ROOT="${BENCH_ROOT:-$HOME/Code/openssf-cve-bench}"
 WORK="${WORK:-$BENCH_ROOT/work}"
 DATASET="${DATASET:-$WORK/dataset}"
 RESULTS="${RESULTS:-$BENCH_ROOT/results}"
+BULK="${BULK:-$BENCH_ROOT/bulk}"
 
 # The dataset is the OpenSSF project's own repository; its CVEs/ folder holds
 # one JSON record per CVE naming the repository, the vulnerable and the fixed
