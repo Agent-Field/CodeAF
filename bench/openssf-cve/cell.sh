@@ -102,4 +102,11 @@ PY
 
 cp "$SRC/info.json" "$CELL/truth.json"
 [ "${KEEP_WORKSPACE:-0}" = 1 ] || rm -rf "$WS"
+# The state root a driver ran under is debugging material, not evidence, and it
+# is most of a cell's size. It is parked under bulk/ at the same relative path,
+# so a results directory stays something a person can read whole and publish.
+if [ -d "$CELL/home" ]; then
+  park="$BULK/$(basename "$OUT")/$CVE/$VARIANT"
+  rm -rf "$park"; mkdir -p "$park"; mv "$CELL/home" "$park/home"
+fi
 log "$CVE/$VARIANT: $TOOL exited $CODE after ${SECS}s, $(jq '.findings|length' "$CELL/findings.json") finding(s)"

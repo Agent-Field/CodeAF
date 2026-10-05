@@ -1,0 +1,22 @@
+{
+  "bin_sha256_16": "f4cd057fd5041370",
+  "dataset_rev": "91c59fd54b2b768c0f310bb0027d2ac59cdf74d4",
+  "finished": "2026-10-05T21:47:23Z",
+  "host": "Darwin arm64",
+  "jobs": 3,
+  "judge_model": "anthropic/claude-opus-4.5",
+  "mode": "diff",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "replay_tool": "",
+  "resumed": 1,
+  "rig_rev": "aafbcacb1",
+  "rows": 165,
+  "seed": "s1",
+  "set": "deepsource",
+  "stage": "done",
+  "started": "2026-10-05T20:44:49Z",
+  "timeout_seconds": 900,
+  "tool": "codeaf",
+  "tool_wall_seconds": 3721,
+  "work": "/Users/ara/bench-openssf-cve/work"
+}

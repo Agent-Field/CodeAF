@@ -1,0 +1,45 @@
+{
+  "tool": null,
+  "model": "-",
+  "mode": "diff",
+  "seed": "smoke",
+  "set": "deepsource",
+  "judge_model": "anthropic/claude-opus-4.5",
+  "rows_planned": 4,
+  "rows_judged": 4,
+  "unavailable": [],
+  "tool_errors": [],
+  "unjudged": [],
+  "judge_calls": 0,
+  "tool_cost_usd": 0.0,
+  "tool_seconds": 0,
+  "metrics": {
+    "TP": 0,
+    "FP": 0,
+    "TN": 2,
+    "FN": 2,
+    "rows": 4,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "accuracy": 50.0
+  },
+  "by_cwe_recall": {
+    "CWE-829": {
+      "found": 0,
+      "of": 1
+    },
+    "CWE-078": {
+      "found": 0,
+      "of": 1
+    },
+    "CWE-088": {
+      "found": 0,
+      "of": 1
+    }
+  },
+  "partial": false,
+  "rig_rev": "f81638787",
+  "dataset_rev": "91c59fd54b2b768c0f310bb0027d2ac59cdf74d4",
+  "bin_sha256_16": ""
+}
