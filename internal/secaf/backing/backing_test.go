@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
 	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 )
 
@@ -28,7 +29,10 @@ type fakeAPI struct {
 	auth    []string
 }
 
-func (f *fakeAPI) serve(t *testing.T) *Client {
+func (f *fakeAPI) serve(t *testing.T) *Client { return f.serveWithHeader(t, "", "") }
+
+// serveWithHeader is serve with one header on every answer that is not a 200.
+func (f *fakeAPI) serveWithHeader(t *testing.T, header, value string) *Client {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
@@ -49,6 +53,9 @@ func (f *fakeAPI) serve(t *testing.T) *Client {
 		f.replies = f.replies[1:]
 		f.mu.Unlock()
 		status, payload := reply(body)
+		if header != "" && status != 200 {
+			w.Header().Set(header, value)
+		}
 		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(payload)
 	}))
@@ -58,6 +65,7 @@ func (f *fakeAPI) serve(t *testing.T) *Client {
 		t.Fatal(err)
 	}
 	client.pause = func(int) time.Duration { return time.Millisecond }
+	client.held = func() time.Duration { return time.Millisecond }
 	return client
 }
 
@@ -352,4 +360,41 @@ func TestAStructuredCallFallsBackToTheSchemaInWords(t *testing.T) {
 
 func appxOptions(cwd, project string) appx.HarnessOptions {
 	return appx.HarnessOptions{Cwd: cwd, ProjectDir: project}
+}
+
+// A CALL THE CEILING HOLDS BEHIND CALLS IN FLIGHT WAITS ITS TURN, however many
+// times it is held, and is not a failure; the ceiling itself is.
+func TestAHeldCallWaitsItsTurn(t *testing.T) {
+	held := func(wireRequest) (int, any) {
+		return 429, ai.ErrorResponse{Error: ai.ErrorDetail{Message: "the run's dollar ceiling of $5.00 is held by calls in flight"}}
+	}
+	api := &fakeAPI{}
+	for range 6 {
+		api.then(held)
+	}
+	api.then(answer("ok", 0))
+	client := api.serveWithHeader(t, modelapi.HeldHeader, "ceiling")
+	response, err := client.Complete(t.Context(), Request{Messages: []ai.Message{textMessage("user", "hi")}})
+	if err != nil || response.Text() != "ok" || len(api.bodies) != 7 {
+		t.Fatalf("a held call answered %v, %v after %d asks", response, err, len(api.bodies))
+	}
+}
+
+// Every tool's parameters are a JSON Schema a strict server takes: an object
+// whose `required` is a list, empty included.
+func TestEveryToolSchemaIsStrictlyValid(t *testing.T) {
+	for _, tool := range (toolbox{}).definitions() {
+		encoded, _ := json.Marshal(tool.Function.Parameters)
+		var shape struct {
+			Type     string          `json:"type"`
+			Required json.RawMessage `json:"required"`
+		}
+		_ = json.Unmarshal(encoded, &shape)
+		if shape.Type != "object" || !strings.HasPrefix(string(shape.Required), "[") {
+			t.Errorf("%s's parameters are %s", tool.Function.Name, encoded)
+		}
+		if _, err := compileSchema(tool.Function.Parameters); err != nil {
+			t.Errorf("%s's parameters do not compile: %v", tool.Function.Name, err)
+		}
+	}
 }

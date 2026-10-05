@@ -67,7 +67,10 @@ func (t toolbox) definitions() []ai.ToolDefinition {
 	tool := func(name, description string, properties map[string]any, required ...string) ai.ToolDefinition {
 		return ai.ToolDefinition{Type: "function", Function: ai.ToolFunction{
 			Name: name, Description: description,
-			Parameters: map[string]any{"type": "object", "properties": properties, "required": required},
+			// AN EMPTY LIST, NEVER NULL: a strict server refuses a tool whose
+			// `required` is not an array, and a tool with no required argument
+			// would otherwise send null.
+			Parameters: map[string]any{"type": "object", "properties": properties, "required": append([]string{}, required...)},
 		}}
 	}
 	text := func(description string) map[string]any {

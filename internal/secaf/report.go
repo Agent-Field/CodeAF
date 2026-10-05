@@ -209,3 +209,13 @@ func plural(n int) string {
 	}
 	return "s"
 }
+
+// outcomeLine is a finished audit in one line, for its ending: how many
+// problems stand, or that none does.
+func outcomeLine(result schemas.SecurityAuditResult) string {
+	standing := result.Confirmed + result.Likely
+	if standing == 0 {
+		return "it found nothing it could show exploitable"
+	}
+	return fmt.Sprintf("it found %d problem%s: %d confirmed, %d likely", standing, plural(standing), result.Confirmed, result.Likely)
+}

@@ -130,7 +130,14 @@ var machineryWords = []struct {
 func plainWords(text string) string {
 	text = oneLine(text)
 	for _, word := range machineryWords {
-		text = word.pattern.ReplaceAllString(text, word.plain)
+		text = word.pattern.ReplaceAllStringFunc(text, func(found string) string {
+			// The plain word keeps the found word's capital, so a note that
+			// opened a sentence still opens one.
+			if found != "" && found[0] >= 'A' && found[0] <= 'Z' {
+				return strings.ToUpper(word.plain[:1]) + word.plain[1:]
+			}
+			return word.plain
+		})
 	}
 	return text
 }

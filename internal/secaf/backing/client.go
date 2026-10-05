@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -44,8 +45,10 @@ type Client struct {
 	// behind it learn the same answer without asking a server that already
 	// gave it.
 	stopped atomic.Pointer[error]
-	// pause is how long a retry waits, per attempt; a test shortens it.
+	// pause is how long a retry waits, per attempt, and held how long a held
+	// call waits; a test shortens both.
 	pause func(attempt int) time.Duration
+	held  func() time.Duration
 }
 
 // NewClient opens the run's model API. It refuses an API with no address or no
@@ -138,14 +141,7 @@ func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, e
 		return nil, fmt.Errorf("encode the call: %w", err)
 	}
 	var last error
-	for attempt := 0; attempt <= retries; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(c.pause(attempt)):
-			}
-		}
+	for attempt := 0; attempt <= retries; {
 		response, err, again := c.send(ctx, body)
 		if err == nil {
 			return response, nil
@@ -155,12 +151,58 @@ func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, e
 			c.stopped.CompareAndSwap(nil, &err)
 			return nil, err
 		}
-		if !again || ctx.Err() != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		// A CALL HELD BEHIND CALLS IN FLIGHT WAITS ITS TURN, for as long as
+		// the session's own bounds allow, and is not counted as a failure: the
+		// audit runs many calls at once and the ceiling admits as many as it
+		// can price (modelapi's held answer).
+		if errors.Is(err, errHeld) {
+			if !c.wait(ctx, c.holdPause()) {
+				return nil, ctx.Err()
+			}
+			continue
+		}
+		if !again {
 			return nil, err
 		}
 		last = err
+		attempt++
+		if attempt > retries {
+			break
+		}
+		if !c.wait(ctx, c.pause(attempt)) {
+			return nil, ctx.Err()
+		}
 	}
 	return nil, last
+}
+
+// errHeld is the model API asking a call to wait while calls in flight hold
+// what is left of the run's ceiling.
+var errHeld = errors.New("the run's ceiling is held by calls in flight")
+
+// holdPause is how long a held call waits before it asks again: about the two
+// seconds the model API suggests, spread so that calls held together do not
+// all ask again together.
+func (c *Client) holdPause() time.Duration {
+	if c.held != nil {
+		return c.held()
+	}
+	return 2*time.Second + time.Duration(rand.Int64N(int64(2*time.Second)))
+}
+
+// wait sleeps d unless ctx ends first, and answers whether it slept.
+func (c *Client) wait(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 // send is one attempt: the reply, or the error and whether another attempt
@@ -183,6 +225,9 @@ func (c *Client) send(ctx context.Context, body []byte) (*ai.Response, error, bo
 	}
 	if answer.StatusCode >= 400 {
 		message := apiMessage(raw)
+		if answer.Header.Get(modelapi.HeldHeader) != "" {
+			return nil, fmt.Errorf("%w: %s", errHeld, message), true
+		}
 		switch answer.StatusCode {
 		case http.StatusPaymentRequired:
 			return nil, &RefusedError{Ceiling: true, Code: answer.StatusCode, Message: message}, false

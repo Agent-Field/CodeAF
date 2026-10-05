@@ -139,6 +139,13 @@ type Delegate struct {
 	// Args is how the command row shows what follows the name, such as
 	// `[changes] [quick | thorough]`. Empty is `<brief>`.
 	Args string
+	// ModelFlag is the flag of the default command that names the models it
+	// works on (senior-dev's `high`, security-audit's `model`), without its
+	// dashes. A shell run resolves what the person typed there through the
+	// profile's own services before the program starts, and puts the
+	// profile's work seat on the line when they typed nothing. Empty is a
+	// program that takes no model.
+	ModelFlag string
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every
 	// run it starts from a conversation. Nil is a program that picks its own
@@ -334,6 +341,9 @@ func (d Delegate) validateLineFlags() error {
 				return fmt.Errorf("%s: the crew flags %q are not flags its %s command takes", d.Name, strings.Join(flags, " "), command.Name)
 			}
 		}
+	}
+	if flag := strings.TrimSpace(d.ModelFlag); flag != "" && !parses([]string{"--" + flag, "vendor/model"}) {
+		return fmt.Errorf("%s: the model flag --%s is not a flag its %s command takes", d.Name, flag, command.Name)
 	}
 	if len(d.PlainFolder) > 0 && !parses(d.PlainFolder) {
 		return fmt.Errorf("%s: the plain folder flags %q are not flags its %s command takes", d.Name, strings.Join(d.PlainFolder, " "), command.Name)

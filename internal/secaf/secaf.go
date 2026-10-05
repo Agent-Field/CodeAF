@@ -86,6 +86,7 @@ var Program = delegate.Delegate{
 	// the person's money, so the conversation offers it and waits.
 	FollowUp: "If it found confirmed or likely problems, offer to hand them to senior-dev as one task that fixes them, " +
 		"naming which; propose that task only after the person says yes.",
+	ModelFlag:  "model",
 	CrewFlags:  crewFlags,
 	StageWords: stageWords,
 	Present:    presentActions,
@@ -103,6 +104,9 @@ func crewFlags(crew delegate.Crew) []string {
 	if len(crew.Asked) > 0 {
 		model = crew.Asked[0]
 	}
+	// THE IDS GO ON AS THE CREW SPELLS THEM, which is how the run's model API
+	// reads them: a first segment naming a connected service is that service,
+	// and anything else is the default service's (modelsource.Split).
 	if model = strings.TrimSpace(model); model != "" {
 		flags = append(flags, "--model", model)
 	}
@@ -272,7 +276,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	text := summary(scope, changes, result, files)
 	return delegate.Ending{
 		Status:      delegate.StatusPass,
-		Message:     firstLine(text),
+		Message:     outcomeLine(result),
 		CostUSD:     spent,
 		Deliverable: text,
 		Extra: map[string]any{
