@@ -154,7 +154,7 @@ told something while it works; it never waits for a reply.
 
 **It has no step cap.** Each program has finite dollar and wall-clock ceilings of its own
 even when the conversation sets none — senior-dev's are $10 and three hours,
-sec's $5 and two hours; `/budget conversation` can lower the dollar ceiling,
+sec's $5 and four hours; `/budget conversation` can lower the dollar ceiling,
 and shell flags set either ceiling directly.
 An open chat's `/budget conversation` change binds its next proposal, run and turn
 as soon as the setting receipt appears.

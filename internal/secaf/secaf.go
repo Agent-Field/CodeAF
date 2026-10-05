@@ -69,10 +69,12 @@ var stageWords = map[string]string{
 	stageReport:      "report",
 }
 
-// Unattended is the audit's own ceilings: $5 and two hours, which a standard
-// audit of a mid-sized repository fits in with room, and which stop a run
-// nobody is watching.
-var Unattended = delegate.Ceilings{CostUSD: 5, Hours: 2}
+// Unattended is the audit's own ceilings: $5 and four hours, which stop a run
+// nobody is watching. TIME IS THE CEILING A STANDARD AUDIT MEETS FIRST: one of
+// a mid-sized Rust repository on 2026-10-05 made 1,952 calls, spent $2.40 of
+// its $5 and was cut by two hours in prove with no fixes written, so the hours
+// were doubled and the dollars left where they were.
+var Unattended = delegate.Ceilings{CostUSD: 5, Hours: 4}
 
 // Program is sec as codeaf carries it.
 var Program = delegate.Delegate{
