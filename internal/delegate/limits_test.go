@@ -112,3 +112,46 @@ func TestUnattendedCeilingsAreTheProgramsOwn(t *testing.T) {
 		t.Fatalf("a shell run got %+v, want the program's own %+v", inv.Ceilings, own)
 	}
 }
+
+// A BARE RUN OF A PROGRAM WITH A DEFAULT BRIEF RUNS THAT BRIEF, and the line a
+// host hands its child carries it, so the child parses back the same
+// invocation. A program with none still has nothing to run.
+func TestABareRunTakesTheProgramsDefaultBrief(t *testing.T) {
+	program := testProgram(nil)
+	program.DefaultBrief = "the whole repository"
+	inv, err := Parse(program, []string{"--max-cost", "2"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Brief() != "the whole repository" {
+		t.Fatalf("a bare run's brief = %q", inv.Brief())
+	}
+	again, err := Parse(program, inv.Line, &bytes.Buffer{})
+	if err != nil || again.Brief() != inv.Brief() || again.Ceilings != inv.Ceilings {
+		t.Fatalf("the line %q read back as %+v, %v", inv.Line, again, err)
+	}
+	if typed, _ := Parse(program, []string{"changes"}, &bytes.Buffer{}); typed.Brief() != "changes" {
+		t.Fatalf("a typed brief became %q", typed.Brief())
+	}
+	program.DefaultBrief = ""
+	if bare, _ := Parse(program, nil, &bytes.Buffer{}); bare.Brief() != "" {
+		t.Fatalf("a program with no default brief ran %q", bare.Brief())
+	}
+}
+
+// No ceiling is said as no words, and one ceiling as that one alone.
+func TestACeilingThatIsNotSetIsNotSaid(t *testing.T) {
+	for _, tc := range []struct {
+		in   Ceilings
+		want string
+	}{
+		{Ceilings{}, ""},
+		{Ceilings{CostUSD: 5}, "up to $5.00"},
+		{Ceilings{Hours: 2}, "up to 2h"},
+		{Ceilings{CostUSD: 5, Hours: 2}, "up to $5.00 and 2h"},
+	} {
+		if got := tc.in.Summary(); got != tc.want {
+			t.Errorf("%+v says %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

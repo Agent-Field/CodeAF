@@ -115,12 +115,20 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	// A shell run nobody set a ceiling for still stops on its own, at the
 	// program's unattended ceilings ([Delegate.Unattended]).
 	ceilings := (Ceilings{CostUSD: *cost, Hours: *hours}).FilledFrom(program.Unattended)
+	args := fs.Args()
+	// A BARE RUN OF A PROGRAM WHOSE NAME SAYS THE WORK RUNS ITS DEFAULT BRIEF
+	// ([Delegate.DefaultBrief]), and the line a host hands its child says it,
+	// so the child reads back the same invocation.
+	if len(args) == 0 && command.Name == program.Default && strings.TrimSpace(program.DefaultBrief) != "" {
+		args = []string{program.DefaultBrief}
+		ordered = append(append([]string(nil), ordered...), "--", program.DefaultBrief)
+	}
 	return &Invocation{
 		Program: program, Command: command,
 		Workspace:     abs,
 		Ceilings:      ceilings,
 		JSON:          *asJSON,
-		Args:          fs.Args(),
+		Args:          args,
 		Line:          append(append([]string(nil), line[:len(line)-len(rest)]...), ordered...),
 		ExplicitFlags: explicitFlags,
 		body:          body,

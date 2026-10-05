@@ -553,9 +553,16 @@ const fixedPrefixTarget = 48_000
 // block to 34,927 over 24 tools. The measured fixed prefix is 57,218 bytes:
 // 94 above its preceding cap. The fixed waiver rises by exactly 94 for this
 // combined belt; the lean arm remains within its 49,590-byte cap.
+//
+// 2026-10-05, security-audit, the second program codeaf carries. Its guide
+// (programguide.SecurityAudit, 386 bytes) is one more item of the hand-off
+// paragraph's list, which is all the prefix pays for a program: its manual
+// page and its report-turn wording ride no request. The fixed prefix measures
+// 57,595 bytes and the lean 49,830, 377 and 240 above their caps, and both
+// waivers rise by exactly that.
 const (
-	fixedPrefixWaiver = 9_218
-	leanPrefixWaiver  = 18_090
+	fixedPrefixWaiver = 9_595
+	leanPrefixWaiver  = 18_330
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
@@ -680,7 +687,10 @@ const leanWindow = 16_000
 // own guide but does not read the platform's carried registry: Windows carries
 // none, while this budget must still weigh the Unix shipping maximum.
 func prefixPrograms() []delegate.Delegate {
-	return []delegate.Delegate{{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree}}
+	return []delegate.Delegate{
+		{Name: "security-audit", Guide: programguide.SecurityAudit, Lands: delegate.LandsText},
+		{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree},
+	}
 }
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of

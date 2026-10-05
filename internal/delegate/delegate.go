@@ -129,6 +129,16 @@ type Delegate struct {
 	// found something to fix suggests its own next step better than codeaf can,
 	// and the wake turn starts nothing ([LandsText]).
 	FollowUp string
+	// DefaultBrief is the brief a bare `/<name>` or `codeaf <name>` runs.
+	// Empty is a program that needs one, and is refused without it.
+	//
+	// A BRIEF IS THE WORK, AND SOME WORK IS ALREADY SAID BY THE NAME. "Fix
+	// it" is no task for senior-dev, but an audit of the repository it is
+	// started in is exactly what a bare `/security-audit` means.
+	DefaultBrief string
+	// Args is how the command row shows what follows the name, such as
+	// `[changes] [quick | thorough]`. Empty is `<brief>`.
+	Args string
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every
 	// run it starts from a conversation. Nil is a program that picks its own

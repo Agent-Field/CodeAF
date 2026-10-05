@@ -718,7 +718,11 @@ func (v *carriedView) begin() {
 	if v.records != nil {
 		return
 	}
-	v.say("%s · working in %s · %s", v.inv.Program.Name, v.where(), v.inv.Ceilings.Summary())
+	if ceilings := v.inv.Ceilings.Summary(); ceilings != "" {
+		v.say("%s · working in %s · %s", v.inv.Program.Name, v.where(), ceilings)
+	} else {
+		v.say("%s · working in %s", v.inv.Program.Name, v.where())
+	}
 	// A COPY IS CUT FROM A COMMIT, so what the person had not committed is not
 	// in it, and a person at a shell is told so before the run spends a cent on
 	// work that needed it — as a conversation's receipt tells them.

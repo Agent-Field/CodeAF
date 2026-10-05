@@ -40,6 +40,11 @@ type DelegateRow struct {
 	Description string
 	// Lands is delegate.LandsTree or delegate.LandsText.
 	Lands string
+	// Args is what the row shows after the name; empty is `<brief>`.
+	Args string `json:",omitempty"`
+	// BriefOptional says a bare `/<name>` runs the program's default brief
+	// ([delegate.Delegate.DefaultBrief]) rather than asking for one.
+	BriefOptional bool `json:",omitempty"`
 }
 
 // DelegateReport is the programs this conversation can hand work to, as the
@@ -59,7 +64,8 @@ func (c Config) delegateReport() DelegateReport {
 		if lands == "" {
 			lands = delegate.LandsTree
 		}
-		report.Rows = append(report.Rows, DelegateRow{Name: program.Name, Description: program.Summary, Lands: lands})
+		report.Rows = append(report.Rows, DelegateRow{Name: program.Name, Description: program.Summary, Lands: lands,
+			Args: program.Args, BriefOptional: strings.TrimSpace(program.DefaultBrief) != ""})
 	}
 	return report
 }
@@ -414,10 +420,13 @@ func (a *Agent) delegateFor(name string) (delegate.Delegate, error) {
 // linked.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
 	brief = strings.TrimSpace(brief)
+	program, err := a.delegateFor(name)
+	if brief == "" && err == nil {
+		brief = strings.TrimSpace(program.DefaultBrief)
+	}
 	if brief == "" {
 		return 0, "", "", errors.New("/" + strings.TrimSpace(name) + " needs a brief: the whole task, in words")
 	}
-	program, err := a.delegateFor(name)
 	if err != nil {
 		return 0, "", "", err
 	}

@@ -348,6 +348,40 @@ func TestAProgramsRunThatDidNotFinishIsEndedInItsStore(t *testing.T) {
 	}
 }
 
+// A BARE START OF A PROGRAM WHOSE NAME SAYS THE WORK runs its default brief,
+// and starts under its own ceilings, which the start note names; one with no
+// default brief is still asked for one.
+func TestABareStartRunsTheProgramsDefaultBrief(t *testing.T) {
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	registry := testPrograms("audit")
+	registry[0].Lands, registry[0].DefaultBrief = delegate.LandsText, "whole repository"
+	registry[0].Unattended = delegate.Ceilings{CostUSD: 5, Hours: 2}
+	registry = append(registry, testPrograms("fake")...)
+	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: t.TempDir()}
+		config.Delegates = registry
+	})
+	_, title, note, err := agent.StartDelegate(context.Background(), "audit", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if title == "" || note != "up to $5.00 and 2h" {
+		t.Fatalf("title %q, note %q", title, note)
+	}
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	if spec.Brief != "whole repository" || spec.Delegate == nil || spec.Delegate.Name != "audit" {
+		t.Fatalf("the run was handed %q for %v", spec.Brief, spec.Delegate)
+	}
+	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", ""); err == nil || !strings.Contains(err.Error(), "/fake needs a brief") {
+		t.Fatalf("a program with no default brief started bare: %v", err)
+	}
+}
+
 func TestStartDelegateRefusesANameThisMachineDoesNotHave(t *testing.T) {
 	double := newBeltRunDouble("done")
 	registerBeltRunEngine(t, double)

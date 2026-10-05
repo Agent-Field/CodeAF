@@ -124,9 +124,19 @@ func (c Ceilings) SeniorDev() Ceilings { return c.CappedBy(SeniorDevCeilings) }
 // SeniorDevDefaults is [Ceilings.FilledFrom] senior-dev's ceilings.
 func (c Ceilings) SeniorDevDefaults() Ceilings { return c.FilledFrom(SeniorDevCeilings) }
 
-// Summary says the two ceilings as the person sees them at either start door.
+// Summary says the two ceilings as the person sees them at either start door,
+// and says nothing of a ceiling that is not set: none at all is "", never
+// `up to $0.00 and 0h` (the emptiness law).
 func (c Ceilings) Summary() string {
-	return fmt.Sprintf("up to $%.2f and %s", c.CostUSD, c.TimeWord())
+	switch {
+	case c.CostUSD > 0 && c.Hours > 0:
+		return fmt.Sprintf("up to $%.2f and %s", c.CostUSD, c.TimeWord())
+	case c.CostUSD > 0:
+		return fmt.Sprintf("up to $%.2f", c.CostUSD)
+	case c.Hours > 0:
+		return "up to " + c.TimeWord()
+	}
+	return ""
 }
 
 // TimeWord spells the wall ceiling without padded zero units.

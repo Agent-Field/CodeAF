@@ -1,13 +1,17 @@
 # Programs codeaf carries
 
-## What a program codeaf carries is — a delegate, another coding agent, an agent of its own for a whole task
+## What a program codeaf carries is — a delegate, another coding agent, an agent of its own for a whole task, which programs there are
 
-codeaf carries programs of its own that take one whole coding task and do it alone, for as
-long as an hour or more. People call them delegates. You hand one a task the way codeaf
-hands a task to its own worker: in a git repository it works in a private copy of its
-own and leaves its work on a branch of its own when it ends; in a folder with no git
-history it works in the folder itself. It runs under this conversation's dollar and time
-limits, shows on the rail while it runs, and can be stopped.
+codeaf carries programs of its own that take one whole task and do it alone, for as
+long as an hour or more. People call them delegates. There are two: **senior-dev**, a
+coding agent for one large, well-specified change, and **security-audit**, which audits
+the repository or its changes for security problems and changes nothing (its own page
+says how). You hand one a task the way codeaf hands a task to its own worker. A program
+that edits code, as senior-dev does, works in a private copy of its own in a git
+repository and leaves its work on a branch of its own when it ends; in a folder with no
+git history it works in the folder itself. One that answers, as security-audit does,
+reads the folder and leaves its report. Each runs under this conversation's dollar and
+time limits, shows on the rail while it runs, and can be stopped.
 
 Each one is **built into codeaf**. There is nothing to install and nothing to set up, and
 none of them runs on its own outside codeaf. Each is a command in the chat, `/<name>
@@ -28,7 +32,7 @@ did.
 
 **Every program's tasks wear its name as a badge**: `[<name>]` after the task's title on
 the side list, the proposal card, the task's page, the `@` list, the sessions place and home, and its
-initials (`[sd]` for senior-dev) where a list is narrow. A task codeaf's own worker does
+initials (`[sd]` for senior-dev, `[sa]` for security-audit) where a list is narrow. A task codeaf's own worker does
 wears none, and a program added to codeaf later gets its own badge from its name.
 The landed card's head shows the title and outcome without a program badge.
 
@@ -66,8 +70,9 @@ than doing it itself or giving it to codeaf's own worker, even when it is one lo
 with nothing to run beside it. Each program's own line says what it is for: senior-dev's
 claims complex, multi-part coding work, such as fixing an issue in a mature codebase
 whose cause spans files, a feature with its tests, a rewrite across a package, or a
-migration. The model proposes that work with `via` naming the program, and its card goes
-up like any proposal's.
+migration; security-audit's claims a security audit of the whole repository or of the
+changes on the branch. The model proposes that work with `via` naming the program, and
+its card goes up like any proposal's.
 
 **Naming the program is enough.** Say it in your message, by name or as its command
 ("fix issue 412 with senior-dev", "give this to /senior-dev", "senior dev should do
@@ -147,8 +152,9 @@ everything it would stop and ask is already settled. The model is told the same 
 it proposes one. A program that listens, as senior-dev does until it hands in, can still be
 told something while it works; it never waits for a reply.
 
-**It has no step cap.** senior-dev has finite dollar and wall-clock ceilings even when
-the conversation sets none; `/budget conversation` can lower the dollar ceiling,
+**It has no step cap.** Each program has finite dollar and wall-clock ceilings of its own
+even when the conversation sets none — senior-dev's are $10 and three hours,
+security-audit's $5 and two hours; `/budget conversation` can lower the dollar ceiling,
 and shell flags set either ceiling directly.
 An open chat's `/budget conversation` change binds its next proposal, run and turn
 as soon as the setting receipt appears.
@@ -225,8 +231,10 @@ and keeps what was loose as a patch in the run's record folder. Its own notes
 folder. In a folder with no git history its work is simply there, and nothing is
 committed.
 
-A program that only answers works in your folder in place and changes nothing. Its answer
-arrives in the conversation the way a task's landing does.
+A program that only answers, as security-audit does, works in your folder in place and
+changes nothing. Its answer arrives in the conversation the way a task's landing does, and
+the chat tells you what it found and offers the next step it names; the files its answer
+points at are in the task's record folder.
 
 What it spent is in the conversation's total, in `/cost` and on the status line. Every
 model call it made went through codeaf and is priced like one of codeaf's own. A run

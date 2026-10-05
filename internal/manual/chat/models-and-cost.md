@@ -3123,8 +3123,9 @@ tab.
 The `$` on the status line counts what the tasks are spending while they spend it, and
 `/cost` splits that figure into `conversation` and `tasks`.
 
-senior-dev's run ceiling is separate from this per-task figure. Its own page names
-the defaults and flags; its run still spends against the conversation and day.
+senior-dev's and security-audit's run ceilings are separate from this per-task figure.
+Each program's own page names the defaults and flags; its run still spends against the
+conversation and day.
 
 `/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
 The **composer layer** can put a further figure on one errand; see the tasks page.
