@@ -7,37 +7,43 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
-	EventContextualEvidence    EventKind = "contextual_evidence"
-	EventContextualSuppression EventKind = "contextual_suppression"
-	ContextualEvidenceLimit              = 128
+	EventContextualEvidence          EventKind = "contextual_evidence"
+	EventContextualSuppression       EventKind = "contextual_suppression"
+	EventContextualMemorySuppression EventKind = "contextual_memory_suppression"
+	ContextualEvidenceLimit                    = 128
 )
 
 // ContextualEvidence preserves observations separately from the claim derived
 // from them. The existing event journal is its only durable representation.
 type ContextualEvidence struct {
-	ID           string
-	MemoryID     string
-	Owner        string
-	SessionID    string
-	TurnID       string
-	Actor        string
-	Tool         string
-	ReceiptIDs   []string
-	Observation  string
-	Revision     string
-	Verification string
-	Derivations  []int64
-	Authority    string
-	ValidFrom    time.Time
-	ValidUntil   time.Time
-	Conditions   map[string]string
-	SourceKey    string
-	SourceHash   string
-	Seq          int64
-	At           time.Time
+	ID            string
+	MemoryID      string
+	Owner         string
+	SessionID     string
+	TurnID        string
+	Actor         string
+	Tool          string
+	ReceiptIDs    []string
+	Applicability []string
+	Rationale     string
+	Rejected      []string
+	Reconsider    string
+	Observation   string
+	Revision      string
+	Verification  string
+	Derivations   []int64
+	Authority     string
+	ValidFrom     time.Time
+	ValidUntil    time.Time
+	Conditions    map[string]string
+	SourceKey     string
+	SourceHash    string
+	Seq           int64
+	At            time.Time
 }
 
 type contextualSuppression struct{ Owner, SourceKey, SourceHash, Reason string }
@@ -86,6 +92,14 @@ func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEviden
 			return e, errors.New("contextual receipt exceeds bounds")
 		}
 	}
+	if len(e.Applicability) > 8 || len(e.Rejected) > 8 {
+		return e, errors.New("contextual reasoning exceeds bounds")
+	}
+	for _, v := range append(append([]string{e.Rationale, e.Reconsider}, e.Applicability...), e.Rejected...) {
+		if utf8.RuneCountInString(v) > 240 {
+			return e, errors.New("contextual reasoning exceeds bounds")
+		}
+	}
 	e.Seq = 0
 	e.At = time.Time{}
 	tx, err := s.beginWrite()
@@ -110,6 +124,11 @@ func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEviden
 		if suppressed > 0 {
 			return e, errors.New("contextual source was suppressed")
 		}
+	}
+	if invalid, err := contextualMemorySuppressed(tx, e); err != nil {
+		return e, err
+	} else if invalid {
+		return e, errors.New("contextual memory or source was suppressed")
 	}
 	// Parent validation uses this write transaction, so suppression cannot race it.
 	for _, seq := range e.Derivations {
@@ -183,6 +202,9 @@ func contextualUsable(q contextualReader, e ContextualEvidence, at time.Time, se
 	defer delete(seen, e.Seq)
 	if !e.ValidFrom.IsZero() && at.Before(e.ValidFrom) || !e.ValidUntil.IsZero() && !at.Before(e.ValidUntil) {
 		return false, nil
+	}
+	if invalid, err := contextualMemorySuppressed(q, e); err != nil || invalid {
+		return false, err
 	}
 	var invalid int
 	if e.SourceKey != "" {
@@ -349,4 +371,30 @@ func (s *Store) ContextualEvidenceEligible(e ContextualEvidence, conditions map[
 func contextualConditionsBounded(q contextualReader, e ContextualEvidence, conditions map[string]string) (bool, error) {
 	budget := ContextualEvidenceLimit
 	return contextualConditionsMatch(q, e, conditions, &budget)
+}
+
+// SuppressContextualMemorySources retires all provenance of a forgotten claim
+// with one canonical event. New evidence cannot relearn any retired source.
+func (s *Store) SuppressContextualMemorySources(owner, memoryID, reason string) error {
+	if strings.TrimSpace(owner) == "" || strings.TrimSpace(memoryID) == "" {
+		return errors.New("memory suppression requires owner and memory")
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	_, _, err = appendEvent(tx, contextualNode(owner), EventContextualMemorySuppression, struct{ MemoryID, Reason string }{memoryID, reason})
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// The source join includes every historical provenance entry of a suppressed
+// memory, rather than only its latest entry or a bounded retrieval window.
+func contextualMemorySuppressed(q contextualReader, e ContextualEvidence) (bool, error) {
+	var invalid int
+	err := q.QueryRow(`SELECT EXISTS(SELECT 1 FROM events AS suppression WHERE suppression.node_id=? AND suppression.kind=? AND (json_extract(suppression.payload,'$.MemoryID')=? OR EXISTS(SELECT 1 FROM events AS source WHERE source.node_id=suppression.node_id AND source.kind=? AND json_extract(source.payload,'$.MemoryID')=json_extract(suppression.payload,'$.MemoryID') AND json_extract(source.payload,'$.SourceKey')=? AND json_extract(source.payload,'$.SourceHash')=? AND ?<>'')))`, contextualNode(e.Owner), EventContextualMemorySuppression, e.MemoryID, EventContextualEvidence, e.SourceKey, e.SourceHash, e.SourceKey).Scan(&invalid)
+	return invalid != 0, err
 }

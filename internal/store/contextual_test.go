@@ -119,3 +119,68 @@ func TestContextualAssistantCannotBecomeObservation(t *testing.T) {
 		t.Fatal("assistant self report became observation")
 	}
 }
+
+func TestContextualMemorySuppressionIncludesAllSources(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "memory-suppression.db"))
+	e := ContextualEvidence{ID: "old", MemoryID: "m", Owner: "user", Actor: "user", Authority: "user", Observation: "old", SourceKey: "turn:old", SourceHash: "hash-old"}
+	old, err := s.AppendContextualEvidence(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.ID = "new"
+	e.SourceKey = "turn:new"
+	e.SourceHash = "hash-new"
+	latest, err := s.AppendContextualEvidence(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	derived, err := s.AppendContextualEvidence(ContextualEvidence{ID: "d", MemoryID: "derived", Owner: "user", Authority: "inference", Observation: "derived", Derivations: []int64{old.Seq}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SuppressContextualMemorySources("user", "m", "forget"); err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range []ContextualEvidence{old, latest, derived} {
+		if ok, err := s.ContextualEvidenceEligible(record, nil, time.Now()); err != nil || ok {
+			t.Fatalf("suppressed record=%s usable=%v err=%v", record.ID, ok, err)
+		}
+	}
+	for _, source := range []ContextualEvidence{old, latest} {
+		source.ID += "relearn"
+		source.MemoryID = "new-id"
+		if _, err = s.AppendContextualEvidence(source); err == nil {
+			t.Fatalf("old source %s relearned", source.SourceKey)
+		}
+	}
+	e.ID = "fresh"
+	e.MemoryID = "fresh-memory"
+	e.SourceHash = "different"
+	if _, err = s.AppendContextualEvidence(e); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.Rebuild(); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.ContextualEvidenceEligible(old, nil, time.Now()); err != nil || ok {
+		t.Fatalf("rebuild resurrected evidence usable=%v err=%v", ok, err)
+	}
+}
+
+func TestContextualReasoningMetadataBounds(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "metadata.db"))
+	e := ContextualEvidence{ID: "meta", MemoryID: "m", Owner: "user", Actor: "user", Authority: "user", Observation: "claim", Applicability: []string{"only project a"}, Rationale: "the owner said why", Rejected: []string{"option b"}, Reconsider: "when dependencies change"}
+	written, err := s.AppendContextualEvidence(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ContextualEvidenceByID("user", written.ID)
+	if err != nil || got.Rationale != e.Rationale || len(got.Applicability) != 1 || len(got.Rejected) != 1 {
+		t.Fatalf("metadata=%+v err=%v", got, err)
+	}
+	e.ID = "too-many"
+	e.Applicability = make([]string, 9)
+	if _, err = s.AppendContextualEvidence(e); err == nil {
+		t.Fatal("unbounded applicability accepted")
+	}
+}
