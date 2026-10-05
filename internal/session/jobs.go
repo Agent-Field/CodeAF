@@ -495,6 +495,12 @@ type jobRegistry struct {
 	// watch will ever say — so it is owed exactly as a process job's exit is, and
 	// agent.go's lane reads this bool to decide which of the two it queues.
 	notifyWatch func(string, string, bool)
+	// onSettle is the observational tap a bash job's REAL ending reaches. A
+	// promoted command answered "still running as job N", so its true exit code,
+	// arriving long after that call returned, would otherwise die with the note.
+	// It is set by the agent that owns the registry and fires only for a
+	// non-requested settlement; it is nil in every registry built without one.
+	onSettle func(*job, int)
 	// announce carries one job's row to the roster — the column beside the
 	// conversation, where work this session started shows whatever door started
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
@@ -1078,6 +1084,15 @@ func (r *jobRegistry) reap(watched *job) {
 // note goes on the steering queue.
 func (r *jobRegistry) settleExit(watched *job, code int) {
 	requested := r.settled(watched, code)
+
+	// A JOB'S REAL ENDING REACHES THE JOURNAL BEFORE THE NOTE. This is the one
+	// place a promoted call's outcome can be known — its call already returned a
+	// non-error sentence — and a failure here is what a later turn must be able
+	// to warn about. A requested death (a kill, a shutdown, a person's stop) is
+	// not reported: the caller already knows and it is not a fact about the work.
+	if r.onSettle != nil && watched.kind == jobKindBash {
+		r.onSettle(watched, code)
+	}
 
 	if requested {
 		// A DEATH THIS SESSION ASKED FOR RELEASES THE WORK AT ONCE. The registry's

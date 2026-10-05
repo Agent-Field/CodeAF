@@ -29,12 +29,15 @@ const priorOutcomeLimit = 2
 // comes from the tool boundary's own reading, never from model text: a refusal
 // is blocked/unknown, never a demonstrated failure, and no overall exit code
 // proves a sub-check passed.
-func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.ToolCall, result toolResult) {
+func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.ToolCall, result toolResult, preSnapshot string) {
 	if !a.remembers() {
 		return
 	}
 	status := attemptOutcomeStatus(result)
 	if status == "" {
+		return
+	}
+	if !attemptWorthStoring(call, result) {
 		return
 	}
 	action := attemptAction(call)
@@ -48,7 +51,15 @@ func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.To
 	if strings.TrimSpace(receipt) == "" {
 		return
 	}
-	snapshot := a.captureSourceSnapshot(ctx).Identity
+	// THE CALL'S OWN CIRCUMSTANCES, BEFORE AND AFTER. A snapshot taken only
+	// after the action could certify a state the failure was never earned under;
+	// capturing the pre-action state and comparing lets a tree that moved while
+	// the call ran be reported honestly as unknown rather than as the post state.
+	post := a.captureSourceSnapshot(ctx).Identity
+	snapshot := post
+	if preSnapshot != post {
+		snapshot = "unknown"
+	}
 	a.memory.mu.Lock()
 	goal := a.memory.outcomeGoal
 	turnID := a.memory.outcomeTurnID
@@ -71,8 +82,8 @@ func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.To
 		SessionID:   a.memorySourceSession(),
 		TurnID:      turnID,
 		Tool:        call.Function.Name,
-		Action:      contextualClip(action, 1024),
-		Goal:        contextualClip(goal, 1024),
+		Action:      redact.Secrets(contextualClip(action, 1024)),
+		Goal:        redact.Secrets(contextualClip(goal, 1024)),
 		Status:      status,
 		ReceiptIDs:  receipts,
 		Observation: redact.Secrets(receipt),
@@ -85,6 +96,43 @@ func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.To
 	if _, err := a.memory.store.AppendContextualAttempt(e); err != nil {
 		a.journalMemoryFailure("attempt", err)
 	}
+}
+
+// attemptWorthStoring refuses the noise contract 5 names. A failed LOOKUP — a
+// read/ls/grep/glob of a path that simply is not there — is not a lesson about
+// the world, and an argument the harness rejected before anything ran is not an
+// outcome at all. A blocked door is KEPT: it is the harness's own refusal and
+// the honest unknown contract 1 preserves.
+func attemptWorthStoring(call ai.ToolCall, result toolResult) bool {
+	if result.harness || result.refusedBy != "" {
+		return true
+	}
+	if !result.isError {
+		return false
+	}
+	text := strings.TrimSpace(result.text)
+	if strings.HasPrefix(text, "Invalid arguments") || strings.HasPrefix(text, "Unknown tool:") {
+		return false
+	}
+	switch call.Function.Name {
+	case "read", "ls", "glob", "grep", "find", "search", "list", "view", "open", "head", "tail", "cat":
+		return !lookupMiss(text)
+	}
+	return true
+}
+
+// lookupMiss answers whether an error is a provably-empty lookup rather than a
+// failure with something to learn. The markers are the shapes a missing path or
+// an empty result set answers with; a permission error or a real diagnostic
+// carries none of them and is kept.
+func lookupMiss(text string) bool {
+	lower := strings.ToLower(text)
+	for _, marker := range []string{"no such file", "not found", "no matches", "did not match", "does not exist", "no files", "no entries", "cannot find", "no results", "empty directory"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // attemptOutcomeStatus reads how a call ended. A refusal or a harness failure
@@ -195,7 +243,7 @@ func renderPriorAttempt(at store.ContextualAttempt, current string) string {
 		seen = ", seen " + at.At.Format("2006-01-02")
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "- Prior observed attempt [%s%s]: `%s` %s. Observation: %q.", label, seen, contextualClip(at.Action, 240), status, contextualClip(at.Observation, 240))
+	fmt.Fprintf(&b, "- Prior observed attempt [%s%s]: %q %s. Observation: %q.", label, seen, contextualClip(at.Action, 240), status, contextualClip(at.Observation, 240))
 	if cause := strings.TrimSpace(at.InferredCause); cause != "" {
 		fmt.Fprintf(&b, " Inferred cause (advisory, not proof): %q.", contextualClip(cause, 240))
 	}
@@ -206,26 +254,55 @@ func renderPriorAttempt(at store.ContextualAttempt, current string) string {
 	return b.String()
 }
 
-// attemptRelevant answers whether an attempt shares a meaningful term with the
-// turn's goal. Unrelated history stays quiet: a failure of a different task is
-// not shown before this one.
+// attemptRelevant answers whether an attempt shares MEANINGFUL terms with the
+// turn's goal — never one substring of a generic engineering word. Unrelated
+// history stays quiet: a failure of a different task is not shown before this
+// one. One shared term is enough only when it is a token of the action itself,
+// which is where the work actually named the thing; otherwise two distinct
+// terms are required.
 func attemptRelevant(at store.ContextualAttempt, terms map[string]bool) bool {
 	haystack := strings.ToLower(at.Goal + " " + at.Action)
+	action := strings.ToLower(at.Action)
+	matched := 0
 	for term := range terms {
 		if strings.Contains(haystack, term) {
-			return true
+			matched++
+		}
+	}
+	if matched >= 2 {
+		return true
+	}
+	if matched == 1 {
+		for term := range terms {
+			if strings.Contains(action, term) && strings.Contains(haystack, term) {
+				return true
+			}
 		}
 	}
 	return false
 }
 
+// outcomeStopwords are the words a software task shares with every other one.
+// Matching on them would surface a prior failure of an unrelated task the
+// moment two goals both said "implement" or "tests".
+var outcomeStopwords = map[string]bool{
+	"implement": true, "feature": true, "script": true, "tests": true, "test": true,
+	"code": true, "bug": true, "fix": true, "file": true, "files": true,
+	"update": true, "change": true, "work": true, "task": true, "build": true,
+	"error": true, "issue": true, "please": true, "make": true, "help": true,
+	"need": true, "want": true, "using": true, "with": true, "this": true,
+	"that": true, "from": true, "when": true, "then": true, "them": true,
+	"they": true, "have": true, "should": true,
+}
+
 // outcomeTerms reduces a goal to the distinct words worth matching on. Short
-// words are dropped so "the" and "run" do not drag every attempt into view.
+// words and the generic engineering vocabulary are dropped so "the", "run",
+// "implement" and "tests" do not drag every attempt into view.
 func outcomeTerms(cue string) map[string]bool {
 	terms := map[string]bool{}
 	for _, field := range strings.FieldsFunc(cue, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
 		word := strings.ToLower(field)
-		if len([]rune(word)) >= 4 {
+		if len([]rune(word)) >= 4 && !outcomeStopwords[word] {
 			terms[word] = true
 		}
 	}

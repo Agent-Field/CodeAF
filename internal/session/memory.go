@@ -136,13 +136,14 @@ type memoryBrain struct {
 	impactPrepared bool
 	impactBlock    string
 	impactCue      string
-	// outcomeGoal, outcomeSnapshot and outcomeTurnID are the turn's binding
-	// circumstances, recorded before the first request so a failed call later in
-	// the turn can be written with the goal it served and the exact source
-	// snapshot it was earned under.
-	outcomeGoal     string
-	outcomeSnapshot string
-	outcomeTurnID   string
+	// outcomeGoal and outcomeTurnID are the turn's binding circumstances,
+	// recorded before the first request so a failed call later in the turn can be
+	// written with the goal it served and the turn it belongs to. The snapshot is
+	// NOT kept here: it is captured at the call boundary before and after the
+	// action, because a turn's start-of-turn identity cannot say whether a call's
+	// failure was earned under the state that follows it.
+	outcomeGoal   string
+	outcomeTurnID string
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
@@ -1470,16 +1471,64 @@ func (a *Agent) forgetMatching(query string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(found) == 0 {
-		return "", nil
+	if len(found) > 0 {
+		if err := a.suppressContextualMemory(found[0]); err != nil {
+			return "", err
+		}
+		if err := a.memory.store.ForgetMemoryForOwners(a.memoryOwners(), found[0].ID, a.memorySourceSession()); err != nil {
+			return "", err
+		}
 	}
-	if err := a.suppressContextualMemory(found[0]); err != nil {
-		return "", err
+	// A STANDALONE ATTEMPT HAS NO MEMORY ROW TO MATCH. The extractor may never
+	// have made a candidate for its receipt — and a ninth failed call in a turn
+	// is past the receipt buffer entirely — so the memory path cannot reach it.
+	// The same query retires the observed attempts it names, by their own source
+	// key, scoped to the owner and the matching source: unrelated and fresh
+	// attempts survive, and no whole owner is muted.
+	retired, attemptTitle := a.forgetAttempts(query)
+	if len(found) > 0 {
+		return found[0].Title, nil
 	}
-	if err := a.memory.store.ForgetMemoryForOwners(a.memoryOwners(), found[0].ID, a.memorySourceSession()); err != nil {
-		return "", err
+	if retired > 0 {
+		return attemptTitle, nil
 	}
-	return found[0].Title, nil
+	return "", nil
+}
+
+// forgetAttempts retires the independently observed attempts a forget query
+// names. It is the ONE caller of the unconditional attempt read, and it never
+// hands anything to a model: it only records a suppression of the exact source
+// each matching attempt carried.
+func (a *Agent) forgetAttempts(query string) (int, string) {
+	terms := outcomeTerms(query)
+	if len(terms) == 0 {
+		return 0, ""
+	}
+	retired := 0
+	title := ""
+	for _, owner := range a.memoryOwners() {
+		if strings.TrimSpace(owner) == "" || !store.ValidOwner(owner) {
+			continue
+		}
+		rows, err := a.memory.store.ContextualAttemptsRecent(owner, time.Now(), store.ContextualAttemptLimit)
+		if err != nil {
+			continue
+		}
+		for _, at := range rows {
+			if !attemptRelevant(at, terms) {
+				continue
+			}
+			if err := a.memory.store.SuppressContextualSource(at.Owner, at.SourceKey, at.SourceHash, "explicit forget"); err != nil {
+				a.journalMemoryFailure("attempt-forget", err)
+				continue
+			}
+			retired++
+			if title == "" {
+				title = contextualClip(at.Goal, 80)
+			}
+		}
+	}
+	return retired, title
 }
 
 // Memories lists what is kept, newest-touched first — or the best matches for a

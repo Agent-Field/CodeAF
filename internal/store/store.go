@@ -598,6 +598,10 @@ CREATE INDEX IF NOT EXISTS nodes_session ON nodes (session_id);
 CREATE INDEX IF NOT EXISTS edges_to_kind ON edges (to_id, kind);
 CREATE INDEX IF NOT EXISTS events_node_seq ON events (node_id, seq);
 CREATE INDEX IF NOT EXISTS events_kind_ts ON events (kind, ts);
+-- The suppression/provenance scan is per-owner and per-kind and must not be an
+-- O(journal) json_extract walk for every candidate: this covers the (node_id,
+-- kind) prefix that the scan and the bounded attempt window both seek.
+CREATE INDEX IF NOT EXISTS events_node_kind_seq ON events (node_id, kind, seq);
 
 CREATE TRIGGER IF NOT EXISTS events_no_update
 BEFORE UPDATE ON events

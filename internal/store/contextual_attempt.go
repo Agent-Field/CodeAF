@@ -18,6 +18,17 @@ import (
 const EventContextualAttempt EventKind = "contextual_attempt"
 const ContextualAttemptLimit = 64
 
+// RETENTION IS LOGICAL, NOT PHYSICAL, AND THAT IS THE JOURNAL'S LAW RATHER THAN
+// A CHOICE HERE. Attempts live in the one canonical journal, whose
+// events_no_delete trigger refuses every DELETE — an attempt cannot be pruned
+// without breaking the append-only guarantee the whole store rests on. What
+// bounds automatic outcome churn therefore is the READ: every attempt path
+// reads at most one [ContextualAttemptLimit]-sized newest window (see
+// [Store.ContextualAttemptsApplicable] and [Store.ContextualAttemptsRecent]),
+// so growth is on disk and never in the work a turn does. The scan that window
+// pays for is covered by events_node_kind_seq, and a suppression tombstone is
+// a separate event that no read can lose.
+
 // The three status words an attempt may carry. "unknown" is the honest reading
 // of a call the HARNESS blocked — a refused door, a withdrawn hand — because a
 // refusal is not a demonstration that the approach cannot work.
@@ -269,6 +280,66 @@ func contextualAttemptConditions(a ContextualAttempt, conditions map[string]stri
 		}
 	}
 	return true
+}
+
+// ContextualAttemptsRecent reads a bounded newest window of an owner's usable
+// attempts WITHOUT condition filtering. It exists for ONE caller — the explicit
+// forget path — where the person named the work in words and the attempt that
+// recorded it must be reachable even when it carried a condition the caller's
+// read set cannot reconstruct. It never widens what a model is shown: the
+// retrieval path keeps its conditions, and only the forget path uses this.
+func (s *Store) ContextualAttemptsRecent(owner string, at time.Time, limit int) ([]ContextualAttempt, error) {
+	if strings.TrimSpace(owner) == "" || !ValidOwner(owner) {
+		return nil, errors.New("contextual attempts require a valid owner")
+	}
+	if limit <= 0 || limit > ContextualAttemptLimit {
+		limit = ContextualAttemptLimit
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	var floor int64
+	err := s.db.QueryRow(`SELECT COALESCE(MIN(seq),0)-1 FROM (SELECT seq FROM events WHERE node_id=? AND kind=? ORDER BY seq DESC LIMIT ?)`, contextualNode(owner), EventContextualAttempt, ContextualAttemptLimit).Scan(&floor)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT seq,ts,payload FROM events WHERE node_id=? AND kind=? AND seq>? ORDER BY seq`, contextualNode(owner), EventContextualAttempt, floor)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	all := make([]ContextualAttempt, 0)
+	for rows.Next() {
+		var a ContextualAttempt
+		var payload, ts string
+		var seq int64
+		if err = rows.Scan(&seq, &ts, &payload); err != nil {
+			return nil, err
+		}
+		if err = decodeAttempt(payload, &a); err != nil {
+			return nil, err
+		}
+		a.Seq = seq
+		if a.At, err = parseTime(ts); err != nil {
+			return nil, err
+		}
+		all = append(all, a)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]ContextualAttempt, 0)
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		a := all[i]
+		ok, err := contextualAttemptUsable(s.db, a, at)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
 }
 
 func decodeAttempt(payload string, a *ContextualAttempt) error {

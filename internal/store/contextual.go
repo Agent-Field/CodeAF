@@ -313,9 +313,29 @@ func (s *Store) ContextualEvidenceApplicable(owner string, conditions map[string
 	return out, nil
 }
 
+// contextualRevisionUnknown answers whether a snapshot identity is one the
+// capture could not prove. The empty string is NOT unknown here: it is the
+// absent revision of a user-authored rule, which the caller treats as a
+// wildcard before this ever runs.
+func contextualRevisionUnknown(s string) bool {
+	switch s {
+	case "unknown", "source-snapshot-unavailable":
+		return true
+	}
+	return false
+}
+
 func contextualConditionsMatch(q contextualReader, e ContextualEvidence, conditions map[string]string, remaining *int) (bool, error) {
-	if e.Revision != "" && conditions["revision"] != e.Revision {
-		return false, nil
+	// AN UNKNOWN SNAPSHOT PROVES NOTHING. An EMPTY revision is user-authored
+	// intent — a rule the person wrote with no source attached — and applies on
+	// any source. Any other revision must name a KNOWN current snapshot and
+	// equal it, so "unknown" never matches "unknown": two captures that each
+	// failed to identify the source are not the same source.
+	if e.Revision != "" {
+		cur := conditions["revision"]
+		if contextualRevisionUnknown(cur) || contextualRevisionUnknown(e.Revision) || cur != e.Revision {
+			return false, nil
+		}
 	}
 	*remaining--
 	if *remaining < 0 {

@@ -3566,9 +3566,17 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	a.mu.Lock()
 	memoryTurn := a.turnSeq
 	a.mu.Unlock()
+	// THE CALL'S OWN CIRCUMSTANCES, TAKEN BEFORE IT RUNS. A snapshot read only
+	// after the action could certify a state the failure was never earned under;
+	// the pre-action identity is what tells an honest "the tree moved" from a
+	// claim earned against the post state.
+	pre := ""
+	if a.remembers() || a.outcomes != nil {
+		pre = a.captureSourceSnapshot(ctx).Identity
+	}
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
-	a.recordMemoryTool(memoryTurn, call, result)
-	a.recordMemoryAttempt(ctx, memoryTurn, call, result)
+	a.recordMemoryTool(ctx, memoryTurn, call, result)
+	a.recordOutcome(ctx, memoryTurn, call, result, pre)
 	a.refreshContextualImpactsAfterAction(result, call.Function.Name)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on

@@ -149,7 +149,7 @@ func TestRecordMemoryAttemptSurvivesRollover(t *testing.T) {
 	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
 	a.prepareBindingContext(context.Background(), "make the parser tests pass")
 	call := ai.ToolCall{ID: "call1", Function: ai.ToolCallFunction{Name: "bash", Arguments: `{"command":"go test ./parser"}`}}
-	a.recordMemoryAttempt(context.Background(), 1, call, toolResult{text: "undefined: priorOutcomeContext", isError: true})
+	a.recordMemoryAttempt(context.Background(), 1, call, toolResult{text: "undefined: priorOutcomeContext", isError: true}, a.captureSourceSnapshot(context.Background()).Identity)
 	// The turn's own receipt buffer is gone; the journal row is not.
 	a.memory.mu.Lock()
 	a.memory.receipts = map[uint64][]memoryToolReceipt{}
@@ -181,9 +181,9 @@ func TestRecordMemoryAttemptStatuses(t *testing.T) {
 	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
 	ctx := context.Background()
 	a.prepareBindingContext(ctx, "make the parser tests pass")
-	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "ok", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "fine"})
-	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "no", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "denied", isError: true, harness: true, refusedBy: "policy"})
-	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "gone", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "withdrawn", isError: true, harness: true})
+	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "ok", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "fine"}, a.captureSourceSnapshot(context.Background()).Identity)
+	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "no", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "denied", isError: true, harness: true, refusedBy: "policy"}, a.captureSourceSnapshot(context.Background()).Identity)
+	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "gone", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "withdrawn", isError: true, harness: true}, a.captureSourceSnapshot(context.Background()).Identity)
 	rows, err := brain.ContextualAttemptsApplicable(store.OwnerProject("p"), map[string]string{"project": "p"}, time.Now(), store.ContextualAttemptLimit)
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestRecordMemoryAttemptRedactsSecrets(t *testing.T) {
 	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
 	ctx := context.Background()
 	a.prepareBindingContext(ctx, "call the deploy script")
-	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "s", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "aws key AKIAIOSFODNN7EXAMPLE rejected", isError: true})
+	a.recordMemoryAttempt(ctx, 1, ai.ToolCall{ID: "s", Function: ai.ToolCallFunction{Name: "bash"}}, toolResult{text: "aws key AKIAIOSFODNN7EXAMPLE rejected", isError: true}, a.captureSourceSnapshot(context.Background()).Identity)
 	rows, err := brain.ContextualAttemptsApplicable(store.OwnerProject("p"), map[string]string{"project": "p"}, time.Now(), store.ContextualAttemptLimit)
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("attempt not stored: %+v %v", rows, err)

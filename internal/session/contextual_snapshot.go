@@ -26,7 +26,14 @@ const (
 	sourceSnapshotTimeout  = 2500 * time.Millisecond
 )
 
-var errSnapshotCap = errors.New("source snapshot exceeded its bound")
+var (
+	errSnapshotCap = errors.New("source snapshot exceeded its bound")
+	// errSnapshotRace is the metadata mismatch between a file's stat and the
+	// read of its bytes: the file was rewritten underneath the capture. It is a
+	// DISTINCT error so the caller can report the honest unknown rather than
+	// hash empty content and certify an identity that never existed.
+	errSnapshotRace = errors.New("source snapshot raced a file change")
+)
 
 // sourceSnapshot is the identity of the source tree at capture time. Identity
 // is the canonical token stored in evidence and attempt rows; a clean tree
@@ -72,6 +79,17 @@ func (a *Agent) captureSourceSnapshot(ctx context.Context) sourceSnapshot {
 		return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
 	}
 	if len(first) == 0 {
+		// A CLEAN TREE IS AGREED TWICE, exactly as the dirty path is. One read
+		// of an empty listing is not proof the tree stayed still while it was
+		// read; a second HEAD and listing that disagree is the honest unknown.
+		head2, err := gitCapture(bounded, root, "rev-parse", "HEAD")
+		if err != nil || strings.TrimSpace(head2) != head {
+			return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
+		}
+		second, err := gitCapture(bounded, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+		if err != nil || len(second) != 0 {
+			return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
+		}
 		return sourceSnapshot{Identity: head, Head: head}
 	}
 	if len(first) > sourceSnapshotMaxBytes {
@@ -188,10 +206,15 @@ func snapshotContent(ctx context.Context, root, rel, status string, remaining in
 		return "", 0, errSnapshotCap
 	}
 	// The file must be the same one that was stat-ed: an equal-listing race
-	// (the file rewritten between stat and read) is refused, not certified.
+	// (the file rewritten between stat and read) is refused, not certified. The
+	// mismatch returns a DEDICATED error — a nil error here would hash the
+	// empty/garbled content and certify an identity the capture never earned.
 	after, err := os.Lstat(path)
-	if err != nil || after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) || after.Mode() != info.Mode() {
-		return "", 0, err
+	if err != nil {
+		return "", 0, errSnapshotRace
+	}
+	if after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) || after.Mode() != info.Mode() {
+		return "", 0, errSnapshotRace
 	}
 	return contextualHash(string(data)), int64(len(data)), nil
 }
@@ -210,8 +233,39 @@ func readBounded(path string, limit int64) ([]byte, error) {
 // gitCapture runs one bounded git command and reports both its output and its
 // failure. An empty answer with no error is a real empty answer; a failed or
 // timed-out command is an error the caller must not read as clean.
+//
+// THE LISTING IS READ THROUGH A BYTE-CAPPED BUFFER. `git status` output used to
+// be buffered whole and checked against the bound afterwards, so a pathological
+// listing could allocate without limit before the check ever ran; the writer
+// below stops the read the moment the bound is crossed.
 func gitCapture(ctx context.Context, root string, args ...string) (string, error) {
 	command := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...)
-	out, err := command.Output()
-	return string(out), err
+	var buf boundedBuffer
+	buf.limit = sourceSnapshotMaxBytes + 1
+	command.Stdout = &buf
+	if err := command.Run(); err != nil {
+		return string(buf.data), err
+	}
+	return string(buf.data), nil
+}
+
+// boundedBuffer is a write target that stops accepting bytes past its limit,
+// returning the snapshot-cap error so the read ends instead of growing. The
+// bytes already read are kept so a caller can still measure them.
+type boundedBuffer struct {
+	data  []byte
+	limit int
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	remaining := b.limit - len(b.data)
+	if remaining <= 0 {
+		return 0, errSnapshotCap
+	}
+	if len(p) > remaining {
+		b.data = append(b.data, p[:remaining]...)
+		return remaining, errSnapshotCap
+	}
+	b.data = append(b.data, p...)
+	return len(p), nil
 }

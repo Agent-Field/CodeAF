@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,7 +19,7 @@ const contextualFileBytes = 64 << 10
 
 // contextualReadReceipt accepts only a successful full read the tool actually
 // made. Partial output, refused reads and arbitrary shell programs prove no link.
-func (a *Agent) contextualReadReceipt(call ai.ToolCall, result toolResult, r memoryToolReceipt) memoryToolReceipt {
+func (a *Agent) contextualReadReceipt(ctx context.Context, call ai.ToolCall, result toolResult, r memoryToolReceipt) memoryToolReceipt {
 	if result.isError || result.harness {
 		return r
 	}
@@ -70,6 +71,9 @@ func (a *Agent) contextualReadReceipt(call ai.ToolCall, result toolResult, r mem
 	r.Path = canonical
 	r.Body = body
 	r.Hash = contextualHash(body)
+	// The receipt's OWN snapshot: the evidence row is earned under the state
+	// the read saw, not the turn's arbitrary start-of-turn identity.
+	r.Snapshot = a.captureSourceSnapshot(ctx).Identity
 	return r
 }
 

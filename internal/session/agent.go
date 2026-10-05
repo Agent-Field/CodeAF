@@ -171,6 +171,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.Memory != nil && (config.hasStore() || config.liveProfile.auto || config.profile.chat()) {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
+		// The delegated-observation collector lives with the brain: it is the one
+		// bridge a worker has into this journal, and it exists only where there is
+		// a store to write into.
+		agent.outcomes = newOutcomeCollector(agent)
 	}
 	// AND THE NAMER'S OWN LIFETIME, minted for every session because every
 	// session may name itself and the errand starts on the first message rather
@@ -195,6 +199,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// (jobrow.go). It is set here rather than passed to the constructor because
 	// it closes over the agent the constructor is building.
 	agent.jobs.announce = agent.announceJobRow
+	// And the registry gets the OUTCOME tap as well, for the same reason as the
+	// row: a promoted command's real ending is the one fact the call that started
+	// it never learned, and recording it is how a later turn is warned
+	// (contextual_delegated.go's [Agent.recordSettledJob]).
+	agent.jobs.onSettle = func(one *job, code int) {
+		agent.recordSettledJob(one.id, one.command, one.sink.tail(jobExitTailLines), code)
+	}
 	// And the registry gets the RELEASE lane, for the same reason and by the same
 	// route: a command this agent started in the foreground and had taken over
 	// into a job is one the work is still waiting for, so the registry says when
@@ -2520,6 +2531,11 @@ func (a *Agent) Close() error {
 	}
 	if cancel != nil {
 		cancel(stopFor(StopByClosing))
+	}
+	// THE COLLECTOR STOPS FIRST, so a worker still running when the conversation
+	// ends cannot write an observation into a journal that is shutting.
+	if a.outcomes != nil {
+		a.outcomes.close()
 	}
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)

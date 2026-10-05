@@ -7873,6 +7873,16 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// on its next request if it has not. A worker built for a node whose run
 	// carries no reading — a store that is off, a test building one by hand —
 	// opens with exactly the prompt it always did.
+	// AND THE WORKER'S OBSERVATIONS HAVE A ROAD HOME. A node has no brain of
+	// its own, so its failing tools would be recorded nowhere without this: the
+	// collector belongs to the root session and this worker only hands it raw
+	// observations (contextual_delegated.go), gaining no write power itself.
+	child.outcomes = a.outcomes
+	if nodeID != 0 {
+		child.outcomeOrigin = fmt.Sprintf("task:%d", nodeID)
+	} else {
+		child.outcomeOrigin = "task"
+	}
 	nodeMemoryOn(ctx, node).handTo(child)
 	return child, nil
 }

@@ -231,7 +231,7 @@ func contextualReviewFullRead(t *testing.T, a *Agent, path, id string) memoryToo
 	call := ai.ToolCall{ID: id}
 	call.Function.Name = "read"
 	call.Function.Arguments = string(args)
-	r := a.contextualReadReceipt(call, toolResult{text: string(body)}, memoryToolReceipt{ID: id, Tool: "read", Text: string(body), Status: "done"})
+	r := a.contextualReadReceipt(context.Background(), call, toolResult{text: string(body)}, memoryToolReceipt{ID: id, Tool: "read", Text: string(body), Status: "done"})
 	if r.Path == "" {
 		t.Fatal("full read receipt not retained")
 	}

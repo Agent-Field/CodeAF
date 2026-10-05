@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -26,6 +27,10 @@ const (
 type memoryToolReceipt struct {
 	ID, Tool, Text, Status string
 	Path, Hash, Body       string
+	// Snapshot is the source identity the read actually saw. Tool-derived
+	// evidence carries THIS rather than the turn's start-of-turn snapshot: a
+	// claim learned from a receipt is earned under the state that receipt read.
+	Snapshot string
 }
 type memoryTurnEvidence struct {
 	Session, Turn, User, Revision string
@@ -35,12 +40,12 @@ type memoryTurnEvidence struct {
 
 // recordMemoryTool retains independent receipts, including failure and refusal.
 // Assistant summaries never turn into additional corroborating observations.
-func (a *Agent) recordMemoryTool(turn uint64, call ai.ToolCall, result toolResult) {
+func (a *Agent) recordMemoryTool(ctx context.Context, turn uint64, call ai.ToolCall, result toolResult) {
 	if !a.remembers() {
 		return
 	}
-	receipt := memoryToolReceipt{ID: call.ID, Tool: call.Function.Name, Text: contextualClip(result.text, contextualReceiptRunes), Status: toolStatus(result)}
-	receipt = a.contextualReadReceipt(call, result, receipt)
+	receipt := memoryToolReceipt{ID: call.ID, Tool: call.Function.Name, Text: redact.Secrets(contextualClip(result.text, contextualReceiptRunes)), Status: toolStatus(result)}
+	receipt = a.contextualReadReceipt(ctx, call, result, receipt)
 	a.memory.mu.Lock()
 	defer a.memory.mu.Unlock()
 	if a.memory.receipts == nil {
@@ -147,10 +152,12 @@ func (a *Agent) recordContextualMemory(m store.Memory, c reflex.ExtractResult, s
 				e.Verification = "observed"
 				e.SourceHash = contextualHash(r.Text)
 				e.SourceKey = s.Session + ":" + s.Turn + ":" + r.ID
+				// THE RECEIPT'S OWN SNAPSHOT, not the turn's start-of-turn one: the
+				// claim was earned under the state the read actually saw.
+				e.Revision = r.Snapshot
 				break
 			}
 		}
-		e.Revision = s.Revision
 		if e.Revision == "" {
 			e.Revision = "source-snapshot-unavailable"
 		}
@@ -195,7 +202,6 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 		}
 	}
 	a.memory.outcomeGoal = cue
-	a.memory.outcomeSnapshot = revision
 	a.memory.outcomeTurnID = a.memorySourceSession() + ":" + fmt.Sprint(turn) + ":" + contextualHash(cue)[:16]
 	a.memory.mu.Unlock()
 	block := a.bindingContext(cue, revision)

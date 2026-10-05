@@ -2557,6 +2557,14 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
+	// outcomes is the observation-only bridge from delegated workers to this
+	// conversation's journal (contextual_delegated.go). It is shared with every
+	// worker this session builds; a worker only hands it a raw observation and
+	// gains no memory write, approval or promotion power from it. outcomeOrigin
+	// names the task a worker belongs to, for the collector's provenance.
+	outcomes      *outcomeCollector
+	outcomeOrigin string
+
 	// laneStop cancels the session's lane context, including probes. laneDone
 	// joins the optional sheet beat, whose cache writes must finish before Close
 	// returns. Both are established before the agent is published.
