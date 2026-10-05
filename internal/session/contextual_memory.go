@@ -416,7 +416,7 @@ func (a *Agent) contextualEvidenceTools() []bare.Tool {
 	if !a.remembers() {
 		return nil
 	}
-	return []bare.Tool{{Name: "memory_evidence", Description: "Read the supporting source words, conditions, rationale and actual tool observation for one saved memory id. Use selectively when a claim affects current work. Old test observations do not prove the current source; proposals are not approved rules.", Schema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`), Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+	return []bare.Tool{{Name: "memory_evidence", Description: "Read a saved memory's sources, conditions and rationale. Old tool results are historical; proposals do not confer user approval.", Schema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`), Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
 		var request struct {
 			ID string `json:"id"`
 		}

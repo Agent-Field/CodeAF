@@ -1649,7 +1649,7 @@ func memoryTitleFrom(text string) string {
 
 // ── the one tool ────────────────────────────────────────────────────────────
 
-const rememberDescription = "Remember one durable thing across sessions: a preference the person stated, a correction they made, a decision that will still bind tomorrow. Write it as a standing truth in one short line ('prefers tabs over spaces in Go'), not as a log of what just happened. It is settled against what is already remembered — a near-duplicate refines the existing line rather than adding a second — and the title it landed under comes back to you. Do not remember what the transcript already holds, what the repo or AGENTS.md already records, or anything that will be false tomorrow."
+const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. Related memories are reconciled; the result names the saved title."
 
 const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: this project by default; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
 
