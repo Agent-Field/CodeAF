@@ -554,15 +554,15 @@ const fixedPrefixTarget = 48_000
 // 94 above its preceding cap. The fixed waiver rises by exactly 94 for this
 // combined belt; the lean arm remains within its 49,590-byte cap.
 //
-// 2026-10-05, security-audit, the second program codeaf carries. Its guide
-// (programguide.SecurityAudit, 386 bytes) is one more item of the hand-off
-// paragraph's list, which is all the prefix pays for a program: its manual
-// page and its report-turn wording ride no request. The fixed prefix measures
-// 57,595 bytes and the lean 49,830, 377 and 240 above their caps, and both
-// waivers rise by exactly that.
+// 2026-10-05, sec (sec-af's security audit), the second program codeaf
+// carries. Its guide (programguide.Sec, 386 bytes) is one more item of the
+// hand-off paragraph's list, which is all the prefix pays for a program: its
+// manual page and its report-turn wording ride no request. The fixed prefix
+// measures 57,584 bytes and the lean 49,819, 366 and 229 above their caps, and
+// both waivers rise by exactly that.
 const (
-	fixedPrefixWaiver = 9_595
-	leanPrefixWaiver  = 18_330
+	fixedPrefixWaiver = 9_584
+	leanPrefixWaiver  = 18_319
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
@@ -688,7 +688,7 @@ const leanWindow = 16_000
 // none, while this budget must still weigh the Unix shipping maximum.
 func prefixPrograms() []delegate.Delegate {
 	return []delegate.Delegate{
-		{Name: "security-audit", Guide: programguide.SecurityAudit, Lands: delegate.LandsText},
+		{Name: "sec", Guide: programguide.Sec, Lands: delegate.LandsText},
 		{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree},
 	}
 }

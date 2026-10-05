@@ -1056,15 +1056,15 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't the delegate ask me anything", "delegates"},
 		{"why is there no command for my delegate", "delegates"},
 		{"where does a delegate's work go, does it squash the commits", "delegates"},
-		// security-audit, the auditing program codeaf carries, asked the way
+		// sec, the auditing program codeaf carries, asked the way
 		// somebody wants a security review: by its job, not its name.
-		{"how do I run a security review of my repo", "security-audit"},
-		{"can codeaf scan my code for vulnerabilities", "security-audit"},
-		{"audit only my changes for security problems", "security-audit"},
-		{"where is the security audit report and the sarif file", "security-audit"},
-		{"will the security audit change or commit my files", "security-audit"},
-		{"how much does a security audit cost", "security-audit"},
-		{"fix the vulnerabilities the security audit found", "security-audit"},
+		{"how do I run a security review of my repo", "sec"},
+		{"can codeaf scan my code for vulnerabilities", "sec"},
+		{"audit only my changes for security problems", "sec"},
+		{"where is the security audit report and the sarif file", "sec"},
+		{"will the security audit change or commit my files", "sec"},
+		{"how much does a security audit cost", "sec"},
+		{"fix the vulnerabilities the security audit found", "sec"},
 		// senior-dev, the program codeaf carries, asked the ways somebody meets
 		// it: what the command does, whether it will stop to ask, where its
 		// commits went, what it cost, its flags, and why a Windows build has none.

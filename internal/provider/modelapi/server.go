@@ -695,7 +695,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 		// own — so it is said in the status every program's client already
 		// retries, with the header that says which weather it is. A program that
 		// makes one call at a time never meets it; one that makes many at once
-		// (security-audit) would otherwise be told its ceiling was reached at $0
+		// (sec) would otherwise be told its ceiling was reached at $0
 		// spent.
 		w.Header().Set("Retry-After", "2")
 		w.Header().Set(HeldHeader, "ceiling")

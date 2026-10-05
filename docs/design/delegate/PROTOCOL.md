@@ -119,7 +119,7 @@ one package codeaf's funnel law lets spell a model route. Every call:
    reserved is not refused but HELD (2026-10-05): HTTP 429 with `Retry-After`
    and `X-Codeaf-Held: ceiling`, and no turn is written, because it was not
    made and will be asked again. A program that makes many calls at once
-   (security-audit) waits it out; one that makes one call at a time never
+   (sec) waits it out; one that makes one call at a time never
    meets it;
 2. goes through codeaf's own model funnel, with its router, retries, caching and
    billing, on the model the program asked for when one of the person's
@@ -267,8 +267,8 @@ record that named one, and its stage's word before any has.
 
 ## 8. Built in now for later programs
 
-*sec-af became the second program on 2026-10-05: `security-audit`, in
-`internal/secaf`, landing text (docs/design/security-audit/ABSORB.md). It is the
+*sec-af became the second program on 2026-10-05: `sec`, in
+`internal/secaf`, landing text (docs/design/sec/ABSORB.md). It is the
 first program to make many calls at once and the first to land text, which is
 why the held answer in §3, a program's own ceilings (`Unattended`), its follow-up
 offer and its record folder (`CODEAF_RECORDS`) arrived with it. What follows is

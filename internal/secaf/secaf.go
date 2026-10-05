@@ -1,4 +1,4 @@
-// Package secaf is security-audit: sec-af, the security auditor, as a program
+// Package secaf is sec: sec-af, the security auditor, as a program
 // codeaf carries and runs, and nothing else can. It takes one brief — the
 // whole repository, or the changes on this branch — reads the folder it is
 // handed without changing it, hunts for vulnerabilities, sets each against the
@@ -9,15 +9,15 @@
 // AgentField node: a control plane carried its calls, a router key it held
 // paid for its models, and a coding-agent binary ran each of its agent
 // sessions. It was copied into codeaf once, at the tag codeaf-absorb (47d57d7),
-// and lives on only here (docs/design/security-audit/ABSORB.md). Its algorithm
+// and lives on only here (docs/design/sec/ABSORB.md). Its algorithm
 // — the phases, the twelve hunters, the four-agent proof chain, the prompts —
 // is in the packages below this one and is its own; what it runs on is
 // codeaf's (internal/secaf/backing).
 //
 // IT HAS NO ENTRY POINT OF ITS OWN. What codeaf needs of it is a
 // delegate.Delegate value, and its command's body takes a delegate.Host, which
-// only codeaf makes: `/security-audit` in the chat, `codeaf security-audit` at
-// a shell, and `propose_task` with `via: "security-audit"`.
+// only codeaf makes: `/sec` in the chat, `codeaf sec` at
+// a shell, and `propose_task` with `via: "sec"`.
 package secaf
 
 import (
@@ -39,7 +39,7 @@ import (
 )
 
 // Name is the program's name: its chat command and its shell verb.
-const Name = "security-audit"
+const Name = "sec"
 
 // The stages the audit reports, in order. They are sec-af's own phases, and
 // `starting` and `report` around them.
@@ -70,13 +70,13 @@ var stageWords = map[string]string{
 // nobody is watching.
 var Unattended = delegate.Ceilings{CostUSD: 5, Hours: 2}
 
-// Program is security-audit as codeaf carries it.
+// Program is sec as codeaf carries it.
 var Program = delegate.Delegate{
 	Name:    Name,
 	Summary: "a security audit of the repository or of its changes",
-	Guide:   programguide.SecurityAudit,
+	Guide:   programguide.Sec,
 	Lands:   delegate.LandsText,
-	// A BARE `/security-audit` AUDITS THE REPOSITORY IT IS STARTED IN, which
+	// A BARE `/sec` AUDITS THE REPOSITORY IT IS STARTED IN, which
 	// is what the name already says.
 	DefaultBrief: "whole repository",
 	Args:         "[changes [since <ref>]] [quick | thorough]",
@@ -167,9 +167,9 @@ func run(ctx context.Context, host delegate.Host, o options, notes io.Writer) {
 	host.Hello(Stages)
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			_, _ = fmt.Fprintf(notes, "[security-audit] panic: %v\n%s", recovered, debug.Stack())
+			_, _ = fmt.Fprintf(notes, "[sec] panic: %v\n%s", recovered, debug.Stack())
 			host.Terminal(delegate.Ending{Status: delegate.StatusCrashed,
-				Message: fmt.Sprintf("security-audit broke: %v", recovered)})
+				Message: fmt.Sprintf("sec broke: %v", recovered)})
 		}
 	}()
 	host.Terminal(runAudit(ctx, host, o, notes))
@@ -187,11 +187,11 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	case "quick", "standard", "thorough":
 	default:
 		return delegate.Ending{Status: delegate.StatusFail,
-			Message: fmt.Sprintf("security-audit did not start: the depth %q is not quick, standard or thorough", scope.Depth)}
+			Message: fmt.Sprintf("sec did not start: the depth %q is not quick, standard or thorough", scope.Depth)}
 	}
 	root, err := filepath.EvalSymlinks(host.Workspace())
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusFail, Message: "security-audit did not start: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "sec did not start: " + err.Error()}
 	}
 	host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "running", Data: stageData(map[string]any{
 		"scope": scope.Describe(), "depth": scope.Depth})})
@@ -200,11 +200,11 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		read, err := ReadChanges(ctx, root, scope.Base)
 		if err != nil {
 			if errors.Is(err, errNoChanges) {
-				return delegate.Ending{Status: delegate.StatusPass, Message: "security-audit had nothing to audit: " + err.Error(),
+				return delegate.Ending{Status: delegate.StatusPass, Message: "sec had nothing to audit: " + err.Error(),
 					Deliverable: "Security audit of " + scope.Describe() + ": " + err.Error() + ", so there was nothing to audit.",
 					Extra:       map[string]any{"status": "pass"}}
 			}
-			return delegate.Ending{Status: delegate.StatusFail, Message: "security-audit did not start: " + err.Error()}
+			return delegate.Ending{Status: delegate.StatusFail, Message: "sec did not start: " + err.Error()}
 		}
 		changes = &read
 		host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "changes", Data: stageData(map[string]any{
@@ -212,7 +212,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	}
 	client, err := backing.NewClient(host.Models())
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusFail, Message: "security-audit did not start: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "sec did not start: " + err.Error()}
 	}
 	records := ""
 	if recorder, ok := host.(delegate.Recorder); ok {
@@ -233,7 +233,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	// removes it when it ends.
 	if records != "" {
 		request.CheckpointDir = filepath.Join(records, "checkpoints")
-	} else if scratch, err := os.MkdirTemp("", "security-audit-"); err == nil {
+	} else if scratch, err := os.MkdirTemp("", "sec-"); err == nil {
 		defer os.RemoveAll(scratch)
 		request.CheckpointDir = scratch
 	}
@@ -252,29 +252,29 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	result, err := audit.Run(auditCtx, app, request)
 	spent, sessions, calls := app.Spent()
 	if err != nil {
-		_, _ = fmt.Fprintf(notes, "[security-audit] the audit ended without a result: %v\n", err)
+		_, _ = fmt.Fprintf(notes, "[sec] the audit ended without a result: %v\n", err)
 		ending := delegate.Ending{CostUSD: spent, Reason: err.Error(),
 			Extra: map[string]any{"sessions": sessions, "calls": calls}}
 		switch {
 		case errors.Is(err, backing.ErrCeiling):
 			ending.Status = delegate.StatusBudget
-			ending.Message = "security-audit reached the run's dollar ceiling before it finished, so it has no report"
+			ending.Message = "sec reached the run's dollar ceiling before it finished, so it has no report"
 		case errors.Is(auditCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
 			ending.Status = delegate.StatusBudget
-			ending.Message = "security-audit reached the run's time ceiling before it finished, so it has no report"
+			ending.Message = "sec reached the run's time ceiling before it finished, so it has no report"
 		case ctx.Err() != nil:
 			ending.Status = delegate.StatusFail
-			ending.Message = "security-audit was stopped before it finished"
+			ending.Message = "sec was stopped before it finished"
 		default:
 			ending.Status = delegate.StatusFail
-			ending.Message = "security-audit did not finish: " + firstSentence(err.Error())
+			ending.Message = "sec did not finish: " + firstSentence(err.Error())
 		}
 		return ending
 	}
 	host.Stage(delegate.StageRecord{Stage: stageReport, Status: "running"})
 	files, err := reportFiles(records, result, len(request.ComplianceFrameworks) > 0)
 	if err != nil {
-		_, _ = fmt.Fprintf(notes, "[security-audit] could not write the full report: %v\n", err)
+		_, _ = fmt.Fprintf(notes, "[sec] could not write the full report: %v\n", err)
 	}
 	text := summary(scope, changes, result, files)
 	return delegate.Ending{

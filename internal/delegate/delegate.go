@@ -134,7 +134,7 @@ type Delegate struct {
 	//
 	// A BRIEF IS THE WORK, AND SOME WORK IS ALREADY SAID BY THE NAME. "Fix
 	// it" is no task for senior-dev, but an audit of the repository it is
-	// started in is exactly what a bare `/security-audit` means.
+	// started in is exactly what a bare `/sec` means.
 	DefaultBrief string
 	// Title is the title a typed `/<name> <brief>` gives its task, from the
 	// brief as typed; nil takes the brief's own first words, as a task's
@@ -146,7 +146,7 @@ type Delegate struct {
 	// `[changes] [quick | thorough]`. Empty is `<brief>`.
 	Args string
 	// ModelFlag is the flag of the default command that names the models it
-	// works on (senior-dev's `high`, security-audit's `model`), without its
+	// works on (senior-dev's `high`, sec's `model`), without its
 	// dashes. A shell run resolves what the person typed there through the
 	// profile's own services before the program starts, and puts the
 	// profile's work seat on the line when they typed nothing. Empty is a

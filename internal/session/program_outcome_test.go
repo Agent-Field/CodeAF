@@ -514,11 +514,11 @@ func TestAProgramOutcomeCountsAHandBackAsFixingItYourself(t *testing.T) {
 func TestAReportProgramsEndingAsksForASummaryAndStartsNothing(t *testing.T) {
 	const offer = "If it found problems, offer to hand them to senior-dev to fix."
 	note := func(verdict programVerdict, auto int) string {
-		return programOutcomeNote(programOutcome{row: 9, program: "security-audit", verdict: verdict,
+		return programOutcomeNote(programOutcome{row: 9, program: "sec", verdict: verdict,
 			report: true, followUp: offer, programAttempt: programAttempt{attempt: auto + 1, auto: auto}}, "done · ran 14m", 0.8)
 	}
 	passed := note(programPassed, 0)
-	for _, want := range []string{"[security-audit ended — for you to act on] task 9 · passed · run 1 · $0.80",
+	for _, want := range []string{"[sec ended — for you to act on] task 9 · passed · run 1 · $0.80",
 		"it changed nothing in the folder", offer, "Start nothing on this turn."} {
 		if !strings.Contains(passed, want) {
 			t.Fatalf("a finished report's note lacks %q:\n%s", want, passed)
@@ -548,7 +548,7 @@ func TestAReportProgramsEndingAsksForASummaryAndStartsNothing(t *testing.T) {
 // nothing there.
 func TestAReportProgramsRunReadsAsFinishedAndItsLimitLineNamesNoWork(t *testing.T) {
 	a := programConversation(t, nil)
-	program := testPrograms("security-audit")[0]
+	program := testPrograms("sec")[0]
 	program.Lands = delegate.LandsText
 	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the audit", planRootID, "The audit", "")
 	if err != nil {
