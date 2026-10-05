@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -938,4 +939,36 @@ func TestAReceiptIsAnsweredWithinReceiptWaitOfBeingQueued(t *testing.T) {
 	if answered := time.Since(late.queued); answered > ReceiptWait+2*time.Second {
 		t.Fatalf("the receipt was answered %v after it was queued, past ReceiptWait %v", answered, ReceiptWait)
 	}
+}
+
+// The actual receipt wire door retains both response and caller-context bounds
+// when recovery selects the route of an overflow attempt.
+func TestActualReceiptWireDoorKeepsResponseAndDeadlineBounds(t *testing.T) {
+	t.Run("response size", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, strings.Repeat(" ", maxReceiptBytes)+`{"data":{"tokens_prompt":10,"tokens_completion":3}}`)
+		}))
+		t.Cleanup(server.Close)
+		client := receiptTestClient(t, server)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if _, found, _ := client.fetchReceiptAt(ctx, "oversized", server.URL); found {
+			t.Fatal("receipt read beyond maxReceiptBytes")
+		}
+	})
+	t.Run("caller deadline", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }))
+		t.Cleanup(server.Close)
+		client := receiptTestClient(t, server)
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		began := time.Now()
+		if _, found, _ := client.fetchReceiptAt(ctx, "waiting", server.URL); found {
+			t.Fatal("expired receipt was reported found")
+		}
+		if time.Since(began) > time.Second {
+			t.Fatal("receipt wire door ignored caller deadline")
+		}
+	})
 }

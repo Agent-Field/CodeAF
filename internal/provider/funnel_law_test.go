@@ -345,12 +345,12 @@ func TestNothingOutsideTheFunnelTalksToAModelEndpoint(t *testing.T) {
 //	             which are request/response and carry no stream at all
 //	Fetch        sheetFetcher's GET of the lane sheet, which is not a model call
 //	             — it is the belief the choice is made from (lanes.go)
-//	fetchReceipt the bounded background GET for a cut stream's exact generation
+//	fetchReceiptAt the bounded background GET for a cut stream's exact generation
 //	             receipt; it creates no model work and never runs on the turn
 //
 // probeConnection is a credential-free HEAD of the configured origin. Its
 // contract tests forbid a prompt, a request body or redirect following.
-var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceipt", "probeConnection", "probeLane", "send"}
+var funnelWireSenders = []string{"Fetch", "doEndpoint", "fetchReceiptAt", "probeConnection", "probeLane", "send"}
 
 // funnelSendCallers is every function that reaches [Client.send].
 //

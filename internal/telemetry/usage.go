@@ -26,7 +26,7 @@ var activeUsageSession atomic.Pointer[usageSession]
 
 // BeginUsageSession gives the provider accounting door the session identity
 // needed for usage_delta rows. Its returned function closes only this session,
-// waits for its asynchronous disk appends, and is safe to call more than once.
+// waits for its disk appends, and is safe to call more than once.
 func BeginUsageSession(mode Mode, sessionID string) func() {
 	session := &usageSession{mode: mode, id: sessionID}
 	activeUsageSession.Store(session)
@@ -43,12 +43,10 @@ func BeginUsageSession(mode Mode, sessionID string) func() {
 }
 
 // recordUsageDelta keeps counting and sending separate: CountTokens owns the
-// exact provider boundary, while this function turns a positive delta into a
-// local event. The append is asynchronous, and session shutdown waits for it.
-func recordUsageDelta(input, output int) {
-	if input <= 0 && output <= 0 {
-		return
-	}
+// accounting boundary, while this function turns a receipt into a local
+// event. The append finishes before this boundary returns; shutdown waits
+// for any append already in progress.
+func recordUsageDelta(input, output int, dimensions UsageDimensions) {
 	session := activeUsageSession.Load()
 	if session == nil || !enabledFor() {
 		return
@@ -60,11 +58,14 @@ func recordUsageDelta(input, output int) {
 	}
 	session.wg.Add(1)
 	session.mu.Unlock()
-	event := UsageDelta(session.mode, input, output, session.id, time.Now())
-	guard.Go("telemetry.usage-delta", func() {
-		defer session.wg.Done()
-		_ = SpoolSync(event)
-	})
+	event := UsageReceipt(session.mode, input, output, session.id, time.Now(), dimensions)
+	// The receipt is appended before accounting returns so a hard stop cannot
+	// strand completed usage in an unscheduled goroutine. Network work stays
+	// on the periodic sender.
+	defer session.wg.Done()
+	if err := SpoolSync(event); err != nil {
+		oneWarning("codeaf: usage counts could not be saved locally")
+	}
 }
 
 // StartPeriodicFlush sends queued events while a session stays open. It never
@@ -96,6 +97,30 @@ func StartPeriodicFlush(interval time.Duration) func() {
 		once.Do(func() {
 			close(stop)
 			<-done
+		})
+	}
+}
+
+// CaptureUsageRecorder binds a later provider receipt to the original session.
+// A receipt worker may finish after that session closes or a new one opens;
+// looking up the active session then would attribute its tokens to the wrong
+// work. This callback records at most once and still honors current opt-out.
+func CaptureUsageRecorder(dimensions UsageDimensions) func(int, int) {
+	session := activeUsageSession.Load()
+	if session == nil || !enabledFor() {
+		return nil
+	}
+	mode, id := session.mode, session.id
+	var once sync.Once
+	return func(input, output int) {
+		once.Do(func() {
+			if !enabledFor() {
+				return
+			}
+			event := UsageReceipt(mode, input, output, id, time.Now(), dimensions)
+			if err := SpoolSync(event); err != nil {
+				oneWarning("codeaf: usage counts could not be saved locally")
+			}
 		})
 	}
 }
