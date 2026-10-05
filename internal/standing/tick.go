@@ -347,6 +347,16 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			// THE FIRST READING IS THE BASELINE AND IS SILENT. An item that was
 			// armed ([Store.Arm]) carries its reading already and never reaches
 			// here; one that was not keeps the old, silent first look exactly.
+			//
+			// A WATCH THAT COULD NOT BE ARMED CARRIES A VISIBLE FLAG
+			// ([NeedsBaselineLead], written by the ratifier). The first look
+			// that reads everything it matches ESTABLISHES the baseline the arm
+			// could not, so the flag comes down here rather than staying on the
+			// item as a stale complaint — and a look that was still truncated
+			// keeps it, because no baseline has been set even now.
+			if IsBaselineLine(item.NeedsPerson) && !truncated {
+				item.NeedsPerson = ""
+			}
 			return sighting{state: stateQuiet, line: "nothing has changed yet"}, nil
 		case !changed:
 			if truncated {
@@ -472,11 +482,21 @@ func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence 
 		// [Item.Previous]. WHAT THE CALL COST IS STILL CHARGED WHEN THE CALLER
 		// COULD NAME IT — a refusal that was billed is still a bill — and a
 		// ledger that could not be written is a storage error that propagates.
+		//
+		// AND THE ITEM'S OWN LIFETIME FIGURE IS PERSISTED HERE, because the
+		// undecided path writes NOTHING else on the item. [Store.NoteSpend] adds
+		// only the cost, under the item's lock: no NextDue is set, no fingerprint
+		// touched, no question written and the status unchanged, so the
+		// opportunity the person is waiting on is not consumed. A failure to
+		// record it is returned rather than swallowed, so the pass counts it.
 		if usd > 0 {
-			item.SpentUSD += usd
 			if lerr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: entryCheck, USD: usd}); lerr != nil {
 				return VerdictUnknown, oneLine(line), lerr
 			}
+			if serr := t.Store.NoteSpend(item.ID, usd); serr != nil {
+				return VerdictUnknown, oneLine(line), serr
+			}
+			item.SpentUSD += usd
 		}
 		if strings.TrimSpace(line) == "" {
 			line = "I could not tell"
@@ -984,65 +1004,95 @@ func fingerprint(workspace, glob string) (string, string, bool, error) {
 	return hexdigest, listing.String(), truncated, nil
 }
 
-// globMaxEntries bounds how many directory entries one meta segment may list,
-// so a directory with a million names cannot make the scan read them all just to
-// find the four the pattern matches.
+// globMaxEntries bounds how many directory entries one listing step may read,
+// so a directory with a million names cannot make the scan read them all just
+// to find the four the pattern matches.
 const globMaxEntries = 100000
 
-// boundedGlob expands a simple glob pattern while LISTING BOUNDED and COLLECTING
+// boundedGlob expands a glob pattern while LISTING BOUNDED and COLLECTING
 // BOUNDED: filepath.Glob materialises and sorts every match before any cap is
-// applied, which is the very allocation the caps exist to prevent. A pattern
-// whose directory has no metacharacter (the ordinary "*.sql", "docs/*.md") is
-// expanded by reading its directory once, up to [globMaxEntries] entries, and
-// matching each name; the collection stops at max and reports truncation. A
-// directory that itself contains a metacharacter is rare here and falls back to
-// filepath.Glob, whose result is then capped — a documented residual on the
-// path the standing globs do not take.
+// applied, which is the very allocation the caps exist to prevent. It walks the
+// pattern one path segment at a time, listing each directory once, so a
+// metacharacter in ANY segment — "services/*/go.mod" as readily as "*.sql" —
+// is expanded under the same entry bound. It stops collecting at max and
+// reports truncation, which the caller reads as "unknown", never as "nothing
+// matched".
+//
+// IT NEVER HANDS A PATTERN TO filepath.Glob. An earlier version fell back to
+// Glob when the pattern's directory contained a metacharacter, which is exactly
+// the unbounded allocation the bound exists to prevent; a pattern this walk
+// cannot expand answers truncation rather than a lie about an empty set. A
+// literal path segment that does not exist simply contributes nothing, which is
+// the same "no match" an old reader got.
 func boundedGlob(pattern string, max int) (matches []string, truncated bool, err error) {
-	dir, file := filepath.Split(pattern)
-	if dir == "" {
-		dir = "."
+	volume := filepath.VolumeName(pattern)
+	rest := strings.TrimPrefix(pattern, volume)
+	root := volume
+	if strings.HasPrefix(rest, string(filepath.Separator)) {
+		root += string(filepath.Separator)
+		rest = strings.TrimPrefix(rest, string(filepath.Separator))
 	}
-	if strings.ContainsAny(dir, "*?[") {
-		all, gerr := filepath.Glob(pattern)
-		if gerr != nil {
-			return nil, false, gerr
-		}
-		sort.Strings(all)
-		if len(all) > max {
-			return all[:max], true, nil
-		}
-		return all, false, nil
+	if root == "" {
+		root = "."
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
+	bases := []string{root}
 	scanned := 0
-	for _, entry := range entries {
-		scanned++
-		if scanned > globMaxEntries {
-			truncated = true
-			break
-		}
-		ok, merr := filepath.Match(file, entry.Name())
-		if merr != nil {
-			return nil, false, merr
-		}
-		if !ok {
+	for _, segment := range strings.Split(rest, string(filepath.Separator)) {
+		if segment == "" || segment == "." {
 			continue
 		}
-		matches = append(matches, filepath.Join(dir, entry.Name()))
-		if len(matches) >= max {
+		var next []string
+		meta := strings.ContainsAny(segment, "*?[")
+		for _, base := range bases {
+			if !meta {
+				candidate := filepath.Join(base, segment)
+				if _, statErr := os.Lstat(candidate); statErr == nil {
+					next = append(next, candidate)
+				}
+				continue
+			}
+			entries, readErr := os.ReadDir(base)
+			if readErr != nil {
+				// A base that is gone or is not a directory contributes nothing,
+				// the way filepath.Glob's silent skip did; any other failure is real.
+				if info, statErr := os.Stat(base); statErr != nil || !info.IsDir() {
+					continue
+				}
+				return nil, false, readErr
+			}
+			for _, entry := range entries {
+				scanned++
+				if scanned > globMaxEntries {
+					truncated = true
+					break
+				}
+				ok, matchErr := filepath.Match(segment, entry.Name())
+				if matchErr != nil {
+					return nil, false, matchErr
+				}
+				if ok {
+					next = append(next, filepath.Join(base, entry.Name()))
+				}
+			}
+			if len(next) >= max {
+				truncated = true
+				break
+			}
+		}
+		if len(next) > max {
+			next = next[:max]
 			truncated = true
+		}
+		bases = next
+		if len(bases) == 0 || (truncated && scanned > globMaxEntries) {
 			break
 		}
 	}
-	sort.Strings(matches)
-	return matches, truncated, nil
+	sort.Strings(bases)
+	if len(bases) > max {
+		return bases[:max], true, nil
+	}
+	return bases, truncated, nil
 }
 
 // hashFile writes up to limit bytes of path into dst and answers how many it

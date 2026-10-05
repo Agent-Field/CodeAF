@@ -29,7 +29,10 @@ type fakeStanding struct {
 	created []standing.Item
 	saved   []standing.Item
 	items   map[string]standing.Item
+	armed   []string
 	fail    error
+	armErr  error
+	noteErr error
 	next    int
 }
 
@@ -61,6 +64,39 @@ func (f *fakeStanding) Create(item standing.Item) (standing.Item, error) {
 	f.created = append(f.created, item)
 	f.items[item.ID] = item
 	return item, nil
+}
+
+// Arm stands in for the store's baseline capture. The fake has no filesystem,
+// so it records the call and stamps a fingerprint the way a complete scan would.
+func (f *fakeStanding) Arm(id string) (standing.Item, error) {
+	item, found := f.items[id]
+	if !found {
+		return standing.Item{}, standing.ErrNotFound
+	}
+	if f.armErr != nil {
+		return standing.Item{}, f.armErr
+	}
+	f.armed = append(f.armed, id)
+	if item.When.Kind == standing.WhenFile {
+		item.Fingerprint = "armed-baseline"
+	}
+	f.items[id] = item
+	return item, nil
+}
+
+func (f *fakeStanding) NoteNeedsPerson(id, note string) error {
+	if f.noteErr != nil {
+		return f.noteErr
+	}
+	item, found := f.items[id]
+	if !found {
+		return standing.ErrNotFound
+	}
+	if strings.TrimSpace(item.NeedsPerson) == "" {
+		item.NeedsPerson = note
+	}
+	f.items[id] = item
+	return nil
 }
 
 func (f *fakeStanding) Save(item standing.Item) error {
@@ -938,10 +974,11 @@ func TestStandingSayReachesALiveConversation(t *testing.T) {
 	registerLiveSession(agent)
 	t.Cleanup(func() { forgetLiveSession(agent) })
 
+	dir := t.TempDir()
 	runner := &standingRunner{}
 	outcome, err := runner.Say(context.Background(), standing.Item{
 		Words:  "tell me when CI goes red",
-		Origin: standing.Origin{SessionID: agent.id},
+		Origin: standing.Origin{SessionID: agent.id, Transcript: filepath.Join(dir, "transcript.jsonl")},
 	}, "the last run on main failed")
 	if err != nil || outcome.Kind != "said" {
 		t.Fatalf("Say = %+v err=%v", outcome, err)
@@ -960,6 +997,14 @@ func TestStandingSayReachesALiveConversation(t *testing.T) {
 	// as a request ([TestTheSteeringLineReadsAsNewsAndNotAsARequest]).
 	if !strings.Contains(line, "◦ tell me when CI goes red: the last run on main failed") {
 		t.Fatalf("steering line = %q", line)
+	}
+	// AND THE LINE IS DURABLE BESIDE THE OFFER. An open window makes the news
+	// immediate, but the note is already on disk, so a crash or a window closing
+	// before it is read cannot lose it. This is the at-least-once handoff: the
+	// same line may be seen live and again in a fold, and it is never lost.
+	notes, err := standing.Drain(dir)
+	if err != nil || len(notes) != 1 || notes[0].Text != "the last run on main failed" {
+		t.Fatalf("the durable note is %+v (err %v), want the line on disk before the live offer", notes, err)
 	}
 }
 
@@ -1311,10 +1356,14 @@ func TestAFiringWhoseOriginIsClosedReachesAnotherWindowOfTheProject(t *testing.T
 	if queued := standingQueued(elsewhere); len(queued) != 0 {
 		t.Fatalf("a window of another project was steered into: %q", queued)
 	}
-	// AND NOTHING WAS FILED. A line delivered into a room is not also a line
-	// waiting in a fold tomorrow.
-	if _, err := os.Stat(standing.InboxPath(dir)); !os.IsNotExist(err) {
-		t.Fatalf("the origin's inbox was written as well: %v", err)
+	// AND THE DURABLE NOTE STANDS UNDER THE LIVE OFFER. The room heard it, and
+	// the origin's inbox holds it too: without the note, a window that closed
+	// between the offer and the person reading it would lose the line. This is
+	// the stated at-least-once handoff — the line can be seen live and again in
+	// the origin's fold — and loss is the direction this refuses to fail toward.
+	notes, err := standing.Drain(dir)
+	if err != nil || len(notes) != 1 || notes[0].Text != "the last run on main failed" {
+		t.Fatalf("the origin's durable note is %+v (err %v)", notes, err)
 	}
 }
 
@@ -1910,7 +1959,9 @@ func TestAFiringThatNeedsSomebodyReportsItOnTheStandingLane(t *testing.T) {
 		Workspace: workspace,
 		Origin:    standing.Origin{SessionID: room.id, Transcript: room.config.SessionFile},
 	}
-	runner.deliver(item, "needs-you", "the fix touches migrations", "")
+	if err := runner.deliver(item, "needs-you", "the fix touches migrations", "", ""); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
 	event := standingNextUpdate(t, lane)
 	if event.Standing.Update != "needs-you" || event.Standing.Text != "the fix touches migrations" {
 		t.Fatalf("the row is %+v", event.Standing)

@@ -352,7 +352,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 	probeCtx, cancel := context.WithTimeout(ctx, standingProbeWindow)
 	defer cancel()
 
-	cfg := r.parent
+	cfg := standingPinnedConfig(r.parent, item)
 	cfg.Workspace = item.Workspace
 	cfg.Place = Place{}
 	// THE FOLDER GOES BECAUSE THE PROBE IS NOT THE SESSION; THE LITTER STAYS WITH
@@ -405,13 +405,47 @@ func standingProbeArgs(raw json.RawMessage) string {
 
 // Say delivers one line, and the two roads it can take are the whole of this
 // file's header: the open window, or the inbox.
+//
+// IT ANSWERS THE ADDRESS ERROR. A line nobody could address is a line still
+// owed to the person, so it is reported rather than swallowed: the caller that
+// can keep the intent ([standing.Ticker] for [ActionSay]) must not read success
+// and drop the only record that the person is waiting for it. With no identity
+// to dedup on, [Say] is the LEGACY door; [Deliver] is the one the ticker uses.
 func (r *standingRunner) Say(ctx context.Context, item standing.Item, text string) (standing.Outcome, error) {
 	line := strings.TrimSpace(text)
 	if line == "" {
 		line = item.Words
 	}
-	r.deliver(item, "said", line, "")
+	if err := r.deliver(item, "said", line, "", ""); err != nil {
+		return standing.Outcome{}, err
+	}
 	return standing.Outcome{Kind: "said", Text: line}, nil
+}
+
+// Deliver carries out one [standing.Pending] whose identity was written to the
+// item before the line was carried out, and answers the same [standing.Outcome]
+// [Say] does. It is the door [standing.Ticker] uses when the Runner implements
+// [standing.Deliverer] (standing_run.go's header states why the core wants it).
+//
+// THE IDENTITY TRAVELS INTO THE NOTE, and it is the whole of what makes a
+// replay harmless: a note appended by an attempt whose acknowledgement was lost
+// carries the SAME id, and [standing.Drain] recognises it as spent rather than
+// showing the person the same line twice. The address is resolved the same way
+// [deliver] resolves it for a firing's own outcome; the only difference is the
+// id in the note.
+func (r *standingRunner) Deliver(ctx context.Context, item standing.Item, pending standing.Pending) (standing.Outcome, error) {
+	line := strings.TrimSpace(pending.Text)
+	if line == "" {
+		line = item.Words
+	}
+	kind := string(pending.Kind)
+	if strings.TrimSpace(kind) == "" {
+		kind = "said"
+	}
+	if err := r.deliver(item, kind, line, "", pending.ID); err != nil {
+		return standing.Outcome{}, err
+	}
+	return standing.Outcome{Kind: kind, Text: line}, nil
 }
 
 // deliver is the one door news comes through, so a firing's line and a firing's
@@ -427,29 +461,31 @@ func (r *standingRunner) Say(ctx context.Context, item standing.Item, text strin
 // the room and a person who reads the fold tomorrow are owed the same sentence,
 // so the line and the note are both built from the item's own words here and
 // never assembled twice.
-func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
-	origin := strings.TrimSpace(item.Origin.SessionID)
-	agent := liveSession(origin)
-	if agent == nil {
-		// The origin is closed, or was an exchange and was never a target at
-		// all. The window the person is actually sitting in is a better address
-		// than any file: any open conversation of the SAME PROJECT, most
-		// recently touched first.
-		agent = liveSessionIn(strings.TrimSpace(item.Workspace), origin)
-	}
-	if agent != nil {
-		// THE ROW FIRST, THE MODEL SECOND. The person is owed the news itself —
-		// one dim line in the conversation they are sitting in — and they are
-		// owed it whether or not the model has anything to add and whether or
-		// not the wake below is even allowed to start a turn (the rail, a turn
-		// already running, a session mid-close all decline it). Drawing it here,
-		// before the steering line goes on the queue, is what makes the order on
-		// screen the order it happened in: the firing, then whatever is said
-		// about it.
-		agent.emitStandingNews(standingUpdateWord(kind), item, text)
-		agent.enqueueSteering(standingSteeringLine(item, text))
-		return
-	}
+// id is the delivery identity when the caller has one (a [standing.Pending]),
+// and "" for a firing's own outcome or the legacy [Say]. THE IDENTITY IS STAMPED
+// INTO THE NOTE: a note appended by an attempt whose acknowledgement was lost
+// carries the SAME id, and the inbox dedups on it (standing.Deliver and
+// standing.Drain), so a restart or a retry does not put the same line in front
+// of the person twice. When there is no identity the note is passed through as
+// it always was.
+//
+// THE DURABLE NOTE IS WRITTEN BEFORE THE LINE IS OFFERED TO A WINDOW. The
+// address is resolved first and the note is appended and Sync'd before anything
+// is drawn or queued; only then is the line ALSO offered to an open window. If
+// the window is found and the line is offered there, the note still stands in
+// the inbox, so a crash or a window closing between the offer and the person
+// reading it cannot lose the line — the next fold carries it. THE HANDOFF TO A
+// LIVE WINDOW IS AT-LEAST-ONCE: a line offered live and then folded when the
+// window is reopened can be seen twice, because whether a screen actually drew
+// the row is not observable here and this file makes NO exactly-once claim about
+// user display. Loss is the direction this refuses to fail toward; a duplicate
+// is the stated cost.
+//
+// IT ANSWERS AN ERROR. A note that could not be made durable — no address, or a
+// folder that refused the write — is reported, so the caller that owns the
+// durable intent keeps it rather than dropping it on a success that did not
+// happen.
+func (r *standingRunner) deliver(item standing.Item, kind, text, run, id string) error {
 	note := standing.Note{
 		At:     time.Now(),
 		ItemID: item.ID,
@@ -457,21 +493,50 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 		Kind:   kind,
 		Text:   text,
 		Run:    run,
+		ID:     strings.TrimSpace(id),
 	}
+	// ── THE NOTE IS MADE DURABLE FIRST ──────────────────────────────────────
+	//
 	// AN EXCHANGE'S FOLDER IS A DEAD LETTER OFFICE. Home lists what is under
 	// v3/projects, which is precisely what an errand's folder is kept out of,
 	// so a note written into it is a note no screen in this product ever opens.
 	// The project's inbox is the address that IS read: home draws it under the
 	// project, and the next ordinary conversation opened there folds it in.
 	if strings.TrimSpace(item.Origin.Exchange) != "" && r.root != "" {
-		_ = standing.DeliverProject(r.root, item.Workspace, note)
-		return
+		if err := standing.DeliverProject(r.root, item.Workspace, note); err != nil {
+			return err
+		}
+	} else {
+		dir := standingSessionDir(item)
+		if dir == "" {
+			// NOBODY IS OPEN AND THERE IS NO FOLDER TO FILE IT IN. That is not a
+			// delivery: the line has nowhere to go that a person reads, and
+			// saying so lets the caller keep the intent for a later, addressable
+			// pass.
+			return errors.New("standing: nothing is open and this item has no inbox address")
+		}
+		if err := standing.Deliver(dir, note); err != nil {
+			return err
+		}
 	}
-	dir := standingSessionDir(item)
-	if dir == "" {
-		return
+	// ── AND OFFERED TO THE WINDOW SOMEBODY IS SITTING IN ────────────────────
+	//
+	// The origin is tried first, then any open conversation of the same project
+	// most recently touched. This is an OFFER ON TOP OF the durable note, never
+	// an alternative to it: the offer makes the news immediate, and the note is
+	// what survives the window closing before it was read.
+	origin := strings.TrimSpace(item.Origin.SessionID)
+	agent := liveSession(origin)
+	if agent == nil {
+		agent = liveSessionIn(strings.TrimSpace(item.Workspace), origin)
 	}
-	_ = standing.Deliver(dir, note)
+	if agent != nil {
+		// THE ROW FIRST, THE MODEL SECOND, so the order on screen is the order
+		// it happened in: the firing, then whatever is said about it.
+		agent.emitStandingNews(standingUpdateWord(kind), item, text)
+		agent.enqueueSteering(standingSteeringLine(item, text))
+	}
+	return nil
 }
 
 // standingUpdateWord maps a firing's outcome onto the word a surface draws a
@@ -764,7 +829,18 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		// survive the run folder the sweep will eventually reap.
 		return outcome, nil
 	}
-	r.deliver(item, outcome.Kind, outcome.Text, runDir)
+	if err := r.deliver(item, outcome.Kind, outcome.Text, runDir, ""); err != nil {
+		// THE WORK LANDED AND ITS NEWS COULD NOT BE FILED. The outcome is still
+		// true, so it is returned with the person told why they are not reading
+		// it rather than as a failed run that would send the ticker down the
+		// task-replay path for work that already happened.
+		outcome.Text = strings.TrimSpace(outcome.Text)
+		note := "the run finished but its news could not be delivered: " + err.Error()
+		if outcome.NeedsPerson == "" {
+			outcome.NeedsPerson = note
+		}
+		return outcome, nil
+	}
 	return outcome, nil
 }
 
@@ -799,6 +875,82 @@ func standingCameTo(saved bool, report, needs string) string {
 	return standing.OutcomeNothing
 }
 
+// standingPinnedConfig is the config one item's text seats must run under.
+//
+// A BACKGROUND PASS RELOADS A POSTURE OF ITS OWN. v3StandingTicker rebuilds the
+// pass from config.LoadKeyless every tick, and that posture's tiers, role pins
+// and fallback ladder are the PROFILE'S, not the ratifying conversation's. An
+// item made while the person ran `--one-model` therefore carries the promise on
+// its own origin ([standing.Origin.PinnedModel]) and it is applied HERE, at the
+// one place every firing's config is assembled, so the sentinel, the run and
+// every task child it hands out ride the model the yes was given on.
+//
+// IT CLEARS THE LADDER RATHER THAN ONLY SETTING THE MODEL. Setting Model alone
+// would leave a role pin, a tier row or a fallback chain to answer a seat and
+// move it back off the pinned model — which is exactly the silent re-routing
+// the pin exists to stop (applyV3Governance withholds the same fields under the
+// flag). An item with no pin is returned unchanged, so ordinary orders keep the
+// profile's routing exactly as before.
+func standingPinnedConfig(cfg Config, item standing.Item) Config {
+	if !item.Origin.OneModel {
+		return cfg
+	}
+	cfg.OneModel = true
+	if pinned := strings.TrimSpace(item.Origin.PinnedModel); pinned != "" {
+		cfg.Model = pinned
+	}
+	cfg.RolesSource = nil
+	cfg.ModelFallbacks = nil
+	cfg.NearestModels = nil
+	cfg.RouteCrew = nil
+	return cfg
+}
+
+// standingSentinelModel is which model one sentinel judgment runs on. A pinned
+// item answers with its own frozen model and never touches the ladder; every
+// other item resolves the sentinel role from the pass's own source and model.
+func standingSentinelModel(cfg Config, item standing.Item) (string, error) {
+	if cfg.OneModel {
+		if pinned := strings.TrimSpace(item.Origin.PinnedModel); pinned != "" {
+			return pinned, nil
+		}
+	}
+	return roles.Resolve(roles.Source(cfg.RolesSource), roles.RoleSentinel, cfg.Model)
+}
+
+// standingSeatSettings is the provider settings one text seat runs under, with
+// the routing and the fallback ladder a pinned seat must not carry.
+//
+// IT IS A NAMED FUNCTION AND NOT INLINE so the policy is testable without a
+// provider: the pinned/unpinned difference is the whole of "no alternate model
+// call" and it is asserted directly (standing_integration_test.go).
+func standingSeatSettings(cfg Config, model string) provider.Config {
+	settings := cfg.clientConfig(model, providerTimeout)
+	settings.Routing = provider.StaticRouting(cfg.Routing)
+	// The fallback seams travel the same way [newProviderClient] sends them, so
+	// the sentinel is a seat like any other. A PINNED SEAT THEN HAS THEM TAKEN
+	// AWAY: the chain and the catalog's nearest-model guess are exactly the two
+	// ways a one-model run stops being one, and they would fire on the refusal
+	// this judgment is most likely to meet.
+	settings.Fallbacks = cfg.ModelFallbacks
+	settings.NearestModels = cfg.NearestModels
+	if cfg.OneModel {
+		settings.Fallbacks = nil
+		settings.NearestModels = nil
+	}
+	return settings
+}
+
+// standingSeatKey is the client-cache key: the wire model AND whether the seat
+// is pinned. Two seats that name the same model but differ on the one-model
+// promise are different clients, because only one of them may fall back.
+func standingSeatKey(model string, pinned bool) string {
+	if pinned {
+		return "pinned\x00" + model
+	}
+	return model
+}
+
 // standingRunConfig is the run's own session: the parent launch, pointed at a
 // fresh folder in the item's project, with nobody to ask and nothing standing.
 //
@@ -813,7 +965,7 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 		return Config{}, err
 	}
 	place := Place{Dir: runDir, Workspace: item.Workspace}
-	cfg := parent
+	cfg := standingPinnedConfig(parent, item)
 	cfg.Workspace = item.Workspace
 	cfg.Place = place
 	cfg.SessionFile = place.Transcript()
@@ -1124,11 +1276,11 @@ func standingTail(text string, n int) string {
 // would say rather than a verdict word.
 const standingSentinelPrompt = `You are a sentinel. You are given something a person asked to be told about, in their own words, and the evidence one check gathered. You decide ONE thing: has it happened?
 
-Answer with "yes" or "no" as the first word, then ONE plain sentence saying what you saw — the sentence a person reads, so write it as you would say it: "the last run on main failed", "nothing has changed since yesterday".
+Answer with "yes", "no" or "unknown" as the first word, then ONE plain sentence saying what you saw — the sentence a person reads, so write it as you would say it: "the last run on main failed", "nothing has changed since yesterday".
 
 You are also shown what you said the last few times and what came of it. Do not raise the same thing again when it has already been said and nothing has moved.
 
-When the evidence does not settle it, answer no. A wrong yes interrupts somebody for nothing.`
+When the evidence does not settle it — it is ambiguous, unreadable, or you cannot tell — answer "unknown" and say what stopped you. Never answer "no" for something you could not actually decide: a false no buries what the person asked to be told, and a wrong yes interrupts somebody for nothing.`
 
 // NO CEILING TRAVELS WITH A SENTINEL ANSWER. There was one — 1024, already
 // widened once from a figure sized for "yes plus a line" because on a model
@@ -1136,31 +1288,56 @@ When the evidence does not settle it, answer no. A wrong yes interrupts somebody
 // every check read as no clear answer forever. Widening a guess is still a
 // guess. The prompt asks for a verdict and a sentence.
 
-// NewStandingSentinel is the seam a door fills [standing.Ticker.Sentinel] with.
-// It builds its client ONCE and lazily: a machine with no key, or a pass with
-// no probe to judge, must not pay for a connection nobody used.
-func NewStandingSentinel(parent Config) standing.Sentinel {
+// standingSentinelCall builds the one lazy client-and-call both sentinel readers
+// share, and answers the RAW reply text and cost. [NewStandingSentinel] and
+// [NewStandingSentinelVerdict] wrap it, so the model, the ladder, the rails and
+// the purpose cannot drift between the binary reader and the three-way reader.
+func standingSentinelCall(parent Config) func(ctx context.Context, judgment standing.Judgment) (string, float64, error) {
 	var (
-		once   sync.Once
-		client Completer
-		model  string
-		built  error
+		mu      sync.Mutex
+		clients = map[string]Completer{}
 	)
-	return func(ctx context.Context, judgment standing.Judgment) (bool, string, float64, error) {
-		once.Do(func() {
-			model, built = roles.Resolve(roles.Source(parent.RolesSource), roles.RoleSentinel, parent.Model)
-			if built != nil {
-				return
-			}
-			settings := parent.clientConfig(model, providerTimeout)
-			// The request carries the chosen model explicitly, so keep the bare id
-			// the service door resolved instead of restoring its service prefix.
-			model = settings.Model
-			settings.Routing = provider.StaticRouting(parent.Routing)
-			client, built = provider.NewClient(settings)
-		})
-		if built != nil {
-			return false, "", 0, built
+	// clientFor builds (once per SEAT) the client one judgment runs on.
+	//
+	// THE KEY IS THE MODEL AND THE POLICY, NOT THE MODEL ALONE. A pinned item and
+	// an unpinned one that resolve to the SAME model are still different seats:
+	// the pinned client has its fallback chain and nearest-model ladder cleared,
+	// the unpinned one does not. A cache keyed on the model alone would hand the
+	// unpinned client — built first, with a chain — to a later pinned judgment
+	// and let it fall onto a model the one-model promise had withheld. So the
+	// policy is part of the key, and the wire model the service door returned is
+	// what goes in it so a pinned and an unpinned seat naming one id do not
+	// collide on two spellings.
+	clientFor := func(cfg Config, model string) (Completer, string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		settings := standingSeatSettings(cfg, model)
+		model = settings.Model
+		key := standingSeatKey(model, cfg.OneModel)
+		if client, ok := clients[key]; ok {
+			return client, model, nil
+		}
+		client, err := provider.NewClient(settings)
+		if err != nil {
+			return nil, model, err
+		}
+		clients[key] = client
+		return client, model, nil
+	}
+	return func(ctx context.Context, judgment standing.Judgment) (string, float64, error) {
+		// THE RATIFYING CONVERSATION'S OWN MODEL, NOT THE PASS'S LADDER. An item
+		// that recorded the one-model promise at its yes is read off the item
+		// and wins outright: no role pin, no tier, no fallback. This is what
+		// keeps a background tick from silently answering on a different model
+		// than the yes was given on ([standing.Origin.PinnedModel]).
+		cfg := standingPinnedConfig(parent, judgment.Item)
+		model, err := standingSentinelModel(cfg, judgment.Item)
+		if err != nil {
+			return "", 0, err
+		}
+		client, model, err := clientFor(cfg, model)
+		if err != nil {
+			return "", 0, err
 		}
 		// THE SENTINEL ASKS THE LADDER, AND FOR AN ITEM NOBODY DIALLED THE
 		// LADDER SAYS NOTHING.
@@ -1213,17 +1390,50 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 				textMessage("user", standingSentinelQuestion(judgment)),
 			})
 		if err != nil {
-			return false, "", 0, err
+			return "", 0, err
 		}
 		if response == nil {
-			return false, "", 0, errors.New("standing: the sentinel answered nothing")
+			return "", 0, errors.New("standing: the sentinel answered nothing")
 		}
 		usd := 0.0
 		if response.Usage != nil && response.Usage.Cost != nil {
 			usd = *response.Usage.Cost
 		}
-		yes, line := standingVerdict(response.Text())
+		return response.Text(), usd, nil
+	}
+}
+
+// NewStandingSentinel is the seam a door fills [standing.Ticker.Sentinel] with:
+// the binary reader, which folds any non-yes into "no". It is kept for callers
+// that still speak in yes/no; the live ticker uses [NewStandingSentinelVerdict]
+// so an undecided check stays open.
+func NewStandingSentinel(parent Config) standing.Sentinel {
+	call := standingSentinelCall(parent)
+	return func(ctx context.Context, judgment standing.Judgment) (bool, string, float64, error) {
+		text, usd, err := call(ctx, judgment)
+		if err != nil {
+			return false, "", 0, err
+		}
+		yes, line := standingVerdict(text)
 		return yes, line, usd, nil
+	}
+}
+
+// NewStandingSentinelVerdict is the seam a door fills
+// [standing.Ticker.SentinelVerdict] with: the SAME call and the same pinned
+// model, read THREE ways. An ambiguous, empty, refused or timed-out reply is
+// [standing.VerdictUnknown] and the item stays due — it is never read as an
+// established no, which would consume the one opportunity the person is waiting
+// on and never look again.
+func NewStandingSentinelVerdict(parent Config) standing.SentinelVerdict {
+	call := standingSentinelCall(parent)
+	return func(ctx context.Context, judgment standing.Judgment) (standing.Verdict, string, float64, error) {
+		text, usd, err := call(ctx, judgment)
+		if err != nil {
+			return standing.VerdictUnknown, "", 0, err
+		}
+		verdict, line := standingVerdictThree(text)
+		return verdict, line, usd, nil
 	}
 }
 
@@ -1261,20 +1471,54 @@ func standingSentinelQuestion(judgment standing.Judgment) string {
 // contract, and reading a "yes" out of the middle of a paragraph is how a watch
 // starts firing on the sentence "no, this is not yes".
 func standingVerdict(reply string) (bool, string) {
-	answer := strings.TrimSpace(reply)
-	lower := strings.ToLower(answer)
-	yes := strings.HasPrefix(lower, "yes")
-	if !yes && !strings.HasPrefix(lower, "no") {
-		return false, "there was no clear answer, so nothing was said"
+	word, line := standingVerdictWords(reply)
+	switch word {
+	case "yes":
+		return true, line
+	case "no":
+		return false, line
 	}
-	line := answer
-	if fields := strings.Fields(answer); len(fields) > 1 {
-		line = strings.TrimSpace(strings.Join(fields[1:], " "))
-	} else {
-		line = ""
+	return false, "there was no clear answer, so nothing was said"
+}
+
+// standingVerdictThree is the three-way reader: yes, no, and UNKNOWN. A reply
+// that says "unknown", or says none of the three at all, is
+// [standing.VerdictUnknown] with a line — never a decided no, which would close
+// an opportunity nobody actually decided.
+func standingVerdictThree(reply string) (standing.Verdict, string) {
+	word, line := standingVerdictWords(reply)
+	switch word {
+	case "yes":
+		return standing.VerdictYes, line
+	case "no":
+		return standing.VerdictNo, line
+	case "unknown":
+		return standing.VerdictUnknown, line
 	}
-	line = strings.TrimSpace(strings.TrimLeft(line, "—:-, "))
-	return yes, line
+	return standing.VerdictUnknown, "there was no clear answer, so nothing was said"
+}
+
+// standingVerdictWords reads a reply's verdict AS THE FIRST WHOLE WORD, and the
+// sentence after it as the line.
+//
+// IT IS NOT A PREFIX MATCH. "yesterday the run failed" and "nothing has changed"
+// both open with the letters of a verdict and mean neither, and a prefix reader
+// turned the first into a YES and the second into a decided NO — exactly the
+// two misreadings the tri-state reader exists to prevent. So the first field is
+// taken whole and stripped only of the punctuation a model hangs on it ("yes.",
+// "No — ..."), and anything that is not one of the three words is no verdict
+// at all. The line is the rest of the reply, with the same leading punctuation
+// taken off.
+func standingVerdictWords(reply string) (word, line string) {
+	fields := strings.Fields(strings.TrimSpace(reply))
+	if len(fields) == 0 {
+		return "", ""
+	}
+	word = strings.ToLower(strings.Trim(fields[0], " \t.,:;!?\"'()[]{}\u2014\u2013-"))
+	if len(fields) > 1 {
+		line = strings.TrimSpace(strings.TrimLeft(strings.Join(fields[1:], " "), "\u2014:-, "))
+	}
+	return word, line
 }
 
 // ── whether the machine is quiet ────────────────────────────────────────────

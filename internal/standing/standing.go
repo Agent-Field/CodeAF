@@ -86,13 +86,22 @@ import (
 // written at.
 //
 // VERSION 3 IS THE DEFERRED-DELIVERY BARRIER. A document that carries a durable
-// [Item.Pending], a task in-flight marker or a [Item.Revision] is written at 3,
-// so a build that predates those fields — codeaf, devaf and stageaf share one
-// home, so that build is an ordinary afternoon and not a downgrade — SKIPS it
-// rather than decoding it without those fields and re-marshalling the loss back.
-// Version 2 alone is not safe: a v2 reader knows [Action.Isolate] but not
-// Pending, and would silently drop an authorized line. Reading 1 and 2 still
-// works; the upgrade to 3 happens on the next write.
+// [Item.Pending], a task in-flight marker, an armed [Item.Fingerprint] or an
+// advanced [Item.Revision] is written at 3, so a build that predates those
+// fields — codeaf, devaf and stageaf share one home, so that build is an
+// ordinary afternoon and not a downgrade — SKIPS it rather than decoding it
+// without those fields and re-marshalling the loss back. Version 2 alone is not
+// safe: a v2 reader knows [Action.Isolate] but not Pending, and would silently
+// drop an authorized line. Reading 1 and 2 still works; the upgrade to 3 happens
+// on the next write.
+//
+// THE BARRIER PROTECTS SEMANTICS THAT PREDATE [Item.Pending]. A newly armed
+// file watch carries its [Item.Fingerprint] baseline and a bumped [Item.Revision]
+// BEFORE any delivery intent exists; a baseline reader that decodes it without
+// those fields would re-marshal the loss back and turn "the file changed" into
+// "nothing changed", and its write would reset the revision the guarded write
+// ([Store.saveActive]) relies on. So the fence is on the fields themselves and
+// not only on a pending line.
 const Schema = 3
 
 // SchemaOf is the version an item is written at: the oldest one whose readers
@@ -109,14 +118,20 @@ const Schema = 3
 // Pending), so any item that carries them is written at 3 and an older build
 // SKIPS it rather than decoding the loss back.
 //
-// EVERY OTHER ITEM KEEPS ITS OLD VERSION. A plain order stays at 1 and an
-// isolated order at 2, so an ordinary reminder an older build created is still
-// read and fired rather than hidden for no reason. [Item.Revision] alone does
-// not force 3: an older writer dropping it is recoverable (its next reader
-// reads the revision that is actually on disk), whereas dropping a pending is
-// not.
+// EVERY ITEM TOUCHED BY THIS BUILD'S NEW SEMANTICS IS VERSION 3, and an item
+// this build has never rewritten keeps the oldest version whose readers still
+// keep its meaning: a plain order created here is written at 1 and an isolated
+// order at 2, so an ordinary reminder an older build created is still read and
+// fired rather than hidden for no reason.
+//
+// THE VERSION IS COMPUTED AT MARSHAL TIME (see [marshalItem]) so the revision
+// this very write is about to mint is the one tested. An item this build has
+// saved at least twice ([Item.Revision] > 1) carries the guarded-write
+// generation a baseline reader would silently reset, and an armed file watch
+// carries the baseline [Item.Fingerprint] it would silently drop, so both are
+// fenced at 3 rather than left at 1 for a reader that would lie about them.
 func SchemaOf(it Item) int {
-	if len(it.Pending) > 0 || it.TaskInflight != nil {
+	if len(it.Pending) > 0 || it.TaskInflight != nil || it.Fingerprint != "" || it.Revision > 1 || it.Origin.OneModel {
 		return Schema
 	}
 	if it.Does.Isolate {
@@ -382,6 +397,22 @@ type Origin struct {
 	// changing this item. Home uses them to tell a conversation that was only
 	// ever about this item from one that merely contains it.
 	TurnIDs []string `json:"turnIds,omitempty"`
+	// PinnedModel and OneModel are the RATIFYING CONVERSATION'S MODEL POLICY,
+	// frozen at the moment the person said yes. They are on the origin because
+	// a firing is that conversation's work done later: a background pass
+	// reloads a keyless posture whose tiers, role pins and fallback ladder are
+	// the profile's, and without the pin an item made under `--one-model` would
+	// quietly route its sentinel and its child work through a different model
+	// the person had already promised away. OneModel is whether the promise was
+	// in force; PinnedModel is the model it named (the conversation's own), and
+	// is the model every TEXT seat of this item must use when it is set.
+	//
+	// IT IS WRITTEN AT SCHEMA 3 WHEN SET (see [SchemaOf]): a build that predates
+	// these fields decodes the document without them and would re-marshal the
+	// silent re-routing back, so such an item is fenced rather than left to be
+	// read as an ordinary unpinned order.
+	PinnedModel string `json:"pinnedModel,omitempty"`
+	OneModel    bool   `json:"oneModel,omitempty"`
 }
 
 // ── altitude: how far an item reaches ───────────────────────────────────────
@@ -702,6 +733,21 @@ func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 		}
 	}
 	return false
+}
+
+// NeedsBaselineLead opens the line a ratifier leaves when a file watch could not
+// have its baseline read whole, so no baseline was set ([Store.Arm] and
+// [ErrBaselineIncomplete]). It is a FLAG rather than a failure: the item stands
+// and keeps its ordinary first-reading semantics, but the person is told that
+// the reading it starts from was not established at the yes. It is declared
+// beside [NeedsPermissionLead] for the same reason — two packages agree on the
+// words, the session writes them and [IsBaselineLine] recognises them.
+const NeedsBaselineLead = "started without a full baseline: the watch could not read everything it matches"
+
+// IsBaselineLine reports whether a line on an item is the baseline-incomplete
+// flag rather than a question the firing put to the person.
+func IsBaselineLine(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), NeedsBaselineLead)
 }
 
 // NeedsPermissionLead opens the one line a firing leaves when it stopped

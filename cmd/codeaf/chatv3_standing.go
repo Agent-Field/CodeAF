@@ -140,10 +140,20 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, func(), error) {
 	}
 	idle := session.StandingIdle()
 	return &standing.Ticker{
-		Store:    store,
-		Sentinel: session.NewStandingSentinel(posture),
-		Runner:   session.NewStandingRunner(posture, store.Root()),
-		Idle:     idle,
+		Store: store,
+		// THE THREE-WAY READER IS WHAT A REAL TICK USES. An ambiguous, refused
+		// or timed-out sentinel reply is [standing.VerdictUnknown] and the item
+		// stays due; the binary reader below folds every non-yes into "no" and
+		// is kept only for callers that still speak in yes/no. A per-item pinned
+		// model is read off the item inside the sentinel and the runner
+		// ([session.standingPinnedConfig]), so a pass reloaded from the profile
+		// cannot route an item the person ratified under `--one-model` onto a
+		// different model (the pinned-model boundary this file's posture note
+		// describes).
+		SentinelVerdict: session.NewStandingSentinelVerdict(posture),
+		Sentinel:        session.NewStandingSentinel(posture),
+		Runner:          session.NewStandingRunner(posture, store.Root()),
+		Idle:            idle,
 		// The dreaming pass over what is remembered, which rides this pass
 		// because it wants exactly what this pass already has: one process
 		// elected among every window and the OS timer, and a machine nobody is

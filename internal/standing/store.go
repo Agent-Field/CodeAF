@@ -42,12 +42,12 @@ func (s *Store) Create(item Item) (Item, error) {
 	if err := checkID(item.ID); err != nil {
 		return Item{}, err
 	}
-	item.Schema = SchemaOf(item)
 	item.Status = StatusActive
 	item.RetiredWhy = ""
 	item.Created = now
 	item.Updated = now
 	item.Revision = 1
+	item.Schema = SchemaOf(item)
 	due, err := firstDue(item, now)
 	if err != nil {
 		return Item{}, err
@@ -94,7 +94,6 @@ func (s *Store) Save(item Item) error {
 	if err := checkID(item.ID); err != nil {
 		return err
 	}
-	item.Schema = SchemaOf(item)
 	if err := os.MkdirAll(s.root, 0o700); err != nil {
 		return err
 	}
@@ -142,7 +141,6 @@ func (s *Store) SetStandingEffort(id string, rung effort.Rung) error {
 		return err
 	}
 	item.Does.Effort = rung.String()
-	item.Schema = SchemaOf(item)
 	item.Updated = s.now()
 	return s.write(item)
 }
@@ -170,7 +168,6 @@ func (s *Store) saveActive(item *Item) error {
 	if err := checkID(item.ID); err != nil {
 		return err
 	}
-	item.Schema = SchemaOf(*item)
 	if err := os.MkdirAll(s.root, 0o700); err != nil {
 		return err
 	}
@@ -238,10 +235,11 @@ func (s *Store) Arm(id string) (Item, error) {
 			return err
 		}
 		if truncated {
-			return errBaselineIncomplete
+			return ErrBaselineIncomplete
 		}
 		current.Fingerprint = digest
 		current.Revision++
+		current.Schema = SchemaOf(current)
 		current.Updated = s.now()
 		data, err := marshalItem(current)
 		if err != nil {
@@ -256,14 +254,98 @@ func (s *Store) Arm(id string) (Item, error) {
 	return out, err
 }
 
+// NoteNeedsPerson makes a line visible on an item that has none, under the
+// item's own lock, and answers the item as written.
+//
+// IT NEVER OVERWRITES A QUESTION. A firing's own question is the item's words
+// put to the person; a ratifier that could not establish a file watch's baseline
+// is a lesser fact and must not replace it. An empty field is filled and the
+// document re-marshalled; the revision is bumped because a person's later edit
+// must still be seen as newer than a pass holding a copy from before.
+func (s *Store) NoteNeedsPerson(id, note string) error {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return nil
+	}
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(current.NeedsPerson) != "" {
+			return nil
+		}
+		current.NeedsPerson = note
+		current.Revision++
+		current.Updated = s.now()
+		data, err := marshalItem(current)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
+}
+
+// NoteSpend adds a judged check's cost to the item's lifetime figure, under the
+// item's own lock, without touching anything else on the document.
+//
+// WHY IT EXISTS BESIDE THE LEDGER. The daily rail is read from the LEDGER, so a
+// paid judgment that could not be decided already counts against the day. The
+// item's own lifetime figure is read from [Item.SpentUSD] and a card quotes it,
+// and an undecided check writes NOTHING on the item ([Ticker.one]'s
+// stateUndecided) — so before this door the item's figure silently lost every
+// refusal, timeout and ambiguity that was still billed. Adding it HERE, without
+// NextDue, Fingerprint, NeedsPerson, LastChecked or a status change, keeps the
+// undecided look from consuming the opportunity while still recording what it
+// cost. A failed write is returned, so the pass counts it rather than losing it
+// in silence.
+func (s *Store) NoteSpend(id string, usd float64) error {
+	if usd <= 0 {
+		return nil
+	}
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		current.SpentUSD += usd
+		current.Revision++
+		current.Updated = s.now()
+		data, err := marshalItem(current)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
+}
+
 // errConsentChanged is the ticker's answer when a guarded write ([saveActive])
 // found that the person paused, stopped, resumed or edited the item while a
 // pass had it in its hands. It is not a failure: it is the person's act winning.
 var errConsentChanged = errors.New("standing: the item was changed while it was being worked on")
 
-// errBaselineIncomplete is [Store.Arm] refusing to invent an [Item.Fingerprint]
-// from a scan that could not read everything it matched.
-var errBaselineIncomplete = errors.New("standing: the baseline scan could not read everything it matched, so no baseline was set")
+// ErrBaselineIncomplete is [Store.Arm] refusing to invent an [Item.Fingerprint]
+// from a scan that could not read everything it matched. It is exported because
+// the RATIFIER must see it: the session lane calls Arm when the card is answered
+// and turns this refusal into a visible [Item.NeedsPerson] rather than letting a
+// truncated scan pass as a baseline nobody was told was not set.
+var ErrBaselineIncomplete = errors.New("standing: the baseline scan could not read everything it matched, so no baseline was set")
+
+// errBaselineIncomplete is kept as an in-package spelling for the tests and the
+// store's own reading, so there is still exactly one error value.
+var errBaselineIncomplete = ErrBaselineIncomplete
 
 // markPendingOrphan records on a non-active item that an authorized delivery is
 // still waiting, so a paused, retired or expired item's unresolved line is
@@ -285,8 +367,8 @@ func (s *Store) markPendingOrphan(id, note string) error {
 		if strings.TrimSpace(current.NeedsPerson) == "" {
 			current.NeedsPerson = note
 		}
-		current.Schema = SchemaOf(current)
 		current.Revision++
+		current.Schema = SchemaOf(current)
 		current.Updated = s.now()
 		data, err := marshalItem(current)
 		if err != nil {
@@ -514,6 +596,10 @@ func (s *Store) write(item Item) error {
 // marshalItem is the one place an item becomes bytes on disk, so the append-only
 // writers and the whole-document writers cannot disagree about the shape.
 func marshalItem(item Item) ([]byte, error) {
+	// THE VERSION IS CHOSEN HERE, at the last moment before the bytes exist, so
+	// it reflects the pending, fingerprint and revision this very write mints
+	// rather than whatever the caller happened to hold when it started.
+	item.Schema = SchemaOf(item)
 	data, err := json.MarshalIndent(item, "", "  ")
 	if err != nil {
 		return nil, err
@@ -577,6 +663,13 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return err
+	}
+	// THE RENAME MUST NOT PUBLISH BYTES STILL IN THE PAGE CACHE: a crash after
+	// the rename but before the write reaches disk would leave an empty or torn
+	// document behind the name. Sync before Close, and report a Sync failure.
+	if err := temporary.Sync(); err != nil {
 		temporary.Close()
 		return err
 	}

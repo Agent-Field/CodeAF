@@ -160,6 +160,14 @@ type standingStore interface {
 	// interface exists: every path under the store root is internal/standing's
 	// business, and a second answer to one of them would be a second truth.
 	ExchangeDir(id string) string
+	// Arm gives a file watch its baseline AT THE YES, so a change between the
+	// card and the first wake is a change and not the baseline the watch
+	// silently absorbs. It is the core's own door ([standing.Store.Arm]) and
+	// this interface only carries it to the ratifier.
+	Arm(id string) (standing.Item, error)
+	// NoteNeedsPerson makes the ratifier's baseline-incomplete flag visible on
+	// an item that carries no question yet ([standing.Store.NoteNeedsPerson]).
+	NoteNeedsPerson(id, note string) error
 }
 
 // standingItems answers which store this agent writes through: the test's fake
@@ -520,6 +528,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		return "nothing was set up: " + err.Error(), true, nil
 	}
 	created = a.standingFileTheExchange(store, created)
+	created, armNote := a.standingArmBaseline(store, created)
 	a.emitStandingUpdate("stood", created, "")
 	// Implicit setup reports to the surface once. The tool result also carries
 	// current availability: saving an item is not a promise that this home
@@ -529,9 +538,56 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	if when := strings.TrimSpace(notice.WhenWords); when != "" {
 		line += "\nit wakes: " + when
 	}
+	if armNote != "" {
+		line += "\n" + armNote
+	}
 	line += "\n" + standingRatifiedLine
 	line += a.standingBackgroundLimitation(created)
 	return line, false, nil
+}
+
+// standingArmBaseline gives a newly ratified FILE watch its baseline now rather
+// than letting the first wake silently absorb whatever changed in between.
+//
+// IT RETRIES A BOUNDED NUMBER OF TIMES and reports what it came to. The scan is
+// the item's own glob read through the core's bounded reader; a scan that could
+// not read everything it matched answers [standing.ErrBaselineIncomplete] and
+// sets NO baseline, so the retry is over the same read and is bounded rather
+// than a loop that could never end. When it is still incomplete the item is left
+// standing — a watch that could not be measured is not a watch that should be
+// refused — with a VISIBLE [standing.NeedsBaselineLead] flag, and the model is
+// told so the person reads it on the card's own result.
+//
+// A NON-BASELINE ERROR IS REPORTED AND NEVER SWALLOWED. A watch whose store
+// could not be written is a watch whose baseline is not on disk, which is the
+// same fact under a different cause; it gets the same visible note.
+func (a *Agent) standingArmBaseline(store standingStore, item standing.Item) (standing.Item, string) {
+	if item.When.Kind != standing.WhenFile || item.Status != standing.StatusActive {
+		return item, ""
+	}
+	const attempts = 3
+	var last error
+	for attempt := 0; attempt < attempts; attempt++ {
+		armed, err := store.Arm(item.ID)
+		if err == nil {
+			return armed, ""
+		}
+		last = err
+		if !errors.Is(err, standing.ErrBaselineIncomplete) {
+			break
+		}
+	}
+	if last == nil {
+		return item, ""
+	}
+	note := standing.NeedsBaselineLead
+	if err := store.NoteNeedsPerson(item.ID, note); err != nil {
+		return item, "its baseline could not be read (" + oneLine(err.Error()) + ") and that could not be recorded either"
+	}
+	if errors.Is(last, standing.ErrBaselineIncomplete) {
+		return item, "it starts from a reading taken at the first check, not at the yes: the watch could not read everything its glob matches"
+	}
+	return item, "its baseline could not be read: " + last.Error()
 }
 
 // standingOnceHandoff records an approval, not execution. Keep the entire
@@ -1037,12 +1093,25 @@ func (a *Agent) standingOrigin() standing.Origin {
 	a.mu.Lock()
 	turn := a.usage.Turns + 1
 	id := a.sessionID()
+	oneModel := a.config.OneModel
+	model := a.model
 	a.mu.Unlock()
-	return standing.Origin{
+	origin := standing.Origin{
 		SessionID:  id,
 		Transcript: strings.TrimSpace(a.config.SessionFile),
 		TurnIDs:    []string{strconv.Itoa(turn)},
 	}
+	// THE MODEL POLICY IS FROZEN AT THE YES. A background pass reloads a
+	// keyless posture whose tiers, role pins and fallback ladder are the
+	// profile's, not this conversation's; an item made under the one-model
+	// promise must carry that promise with it or the pass routes its sentinel
+	// and its child work through models the person already promised away
+	// ([standing.Origin.PinnedModel] states the whole of it).
+	if oneModel {
+		origin.OneModel = true
+		origin.PinnedModel = strings.TrimSpace(model)
+	}
+	return origin
 }
 
 // standingAskedFromHome answers whether THIS conversation is an errand said at

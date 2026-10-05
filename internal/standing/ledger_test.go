@@ -231,7 +231,16 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	if err != nil || len(notes) != 0 {
 		t.Fatalf("a second drain answered %d notes and %v", len(notes), err)
 	}
-	if entries, err := os.ReadDir(sessionDir); err != nil || len(entries) != 0 {
-		t.Fatalf("the drain left %v behind (%v)", entries, err)
+	if entries, err := os.ReadDir(sessionDir); err != nil {
+		t.Fatalf("the drain left the folder unreadable: %v", err)
+	} else {
+		for _, entry := range entries {
+			// The inbox flock file stays: it is the serialization point and not
+			// a note. Everything the drain owned must be gone.
+			if entry.Name() == inboxLockName {
+				continue
+			}
+			t.Fatalf("the drain left %s behind", entry.Name())
+		}
 	}
 }

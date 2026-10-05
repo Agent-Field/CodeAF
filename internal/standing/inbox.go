@@ -18,8 +18,6 @@ package standing
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +37,11 @@ import (
 const (
 	inboxMaxBytes = 16 << 20
 	inboxMaxLine  = 1 << 20
+	// inboxLockName is the flock file's name inside an inbox folder. It is a
+	// dot-name, so no reader that globs the folder's notes ever sees it, and it
+	// travels WITH the folder so a symlink alias and a different TEMP directory
+	// still resolve to one lock.
+	inboxLockName = ".inbox.lock"
 )
 
 // errInboxFull is the visible backpressure of a bounded inbox. It is returned
@@ -50,11 +53,13 @@ var errInboxFull = errors.New("standing: this inbox is full; the note was not de
 // cannot write into the inode the drain just renamed away and then lose the
 // line to the drain's delete.
 //
-// THE LOCK FILE LIVES IN THE SYSTEM TEMP DIRECTORY, NAMED BY A HASH OF THE
-// ABSOLUTE INBOX DIR, so a session or project folder is never polluted with a
-// lock file a reader would have to know to ignore. Two processes that resolve
-// the same folder and the same temp directory serialize against each other; a
-// process with a different TEMP would not, which is stated rather than hidden.
+// THE LOCK IS ADDRESSED BY THE INBOX, NOT BY THE PROCESS. It lives inside the
+// inbox folder under a dot-name no reader scans ([inboxLockName]), and the
+// folder is first canonicalised through any symlink alias, so two processes
+// that name the same inbox — through a symlink, or with different TEMP
+// directories — resolve to the same lock file and serialize. A lock named by
+// os.TempDir() would not: a process with a different TEMP would take a
+// different lock and could write the inode the drain renamed away.
 func withInboxLock(dir string, fn func() error) error {
 	trimmed := strings.TrimSpace(dir)
 	if trimmed == "" {
@@ -63,12 +68,11 @@ func withInboxLock(dir string, fn func() error) error {
 	if err := os.MkdirAll(trimmed, 0o700); err != nil {
 		return err
 	}
-	absolute, err := filepath.Abs(trimmed)
-	if err != nil {
-		absolute = trimmed
+	canonical := trimmed
+	if resolved, err := filepath.EvalSymlinks(trimmed); err == nil {
+		canonical = resolved
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(absolute)))
-	lockPath := filepath.Join(os.TempDir(), "codeaf-inbox-"+hex.EncodeToString(sum[:16])+".lock")
+	lockPath := filepath.Join(canonical, inboxLockName)
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
@@ -120,8 +124,46 @@ func Deliver(sessionDir string, note Note) error {
 			file.Close()
 			return err
 		}
+		// THE DELIVERY IS ON DISK BEFORE IT IS ACKNOWLEDGED. A pending intent is
+		// dropped by the caller as soon as this returns nil, so a crash between an
+		// unflushed write and the acknowledgement must not lose the line: Sync
+		// makes the append durable, and a Sync failure is reported rather than
+		// read as success.
+		if err := file.Sync(); err != nil {
+			file.Close()
+			return err
+		}
 		return file.Close()
 	})
+}
+
+// HandedOver records that a delivery identity reached the person by the LIVE
+// road — a firing delivered into an open window — so the next fold does not
+// repeat it. It is [rememberDrained] under the inbox's own lock, so the live
+// writer and the draining reader serialize on one file and cannot interleave a
+// record with a drain of the same identity.
+//
+// IT REPORTS A WRITE FAILURE. A lost dedup is a line shown twice, which is the
+// safe direction, but it is never silent: the caller that owns the durable
+// [Pending] keeps it, so the line still reaches a person.
+func HandedOver(sessionDir, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	return withInboxLock(sessionDir, func() error {
+		return rememberDrained(sessionDir, []Note{{ID: id}})
+	})
+}
+
+// HandedOverProject is [HandedOver] at a project's address, so a firing that
+// reached a window through road 4 is not folded into the next conversation of
+// that project.
+func HandedOverProject(root, workspace, id string) error {
+	if strings.TrimSpace(root) == "" || strings.TrimSpace(workspace) == "" {
+		return nil
+	}
+	return HandedOver(ProjectInboxDir(root, workspace), id)
 }
 
 // Drain reads and removes a session's inbox, oldest first. An absent inbox is
@@ -158,6 +200,15 @@ func Drain(sessionDir string) ([]Note, error) {
 		if err != nil {
 			return err
 		}
+		// A NOTE ALREADY HANDED OVER LIVE IS NOT FOLDED AGAIN. [Deliver] and the
+		// live path that writes through it record the delivery identity before it
+		// is drawn, so a note that was shown in an open window is not repeated by
+		// the next fold: the identity, and not which road the note took, is what
+		// dedups. Notes with no identity pass through, as they always have.
+		drained := map[string]bool{}
+		for _, id := range readSeenIDs(seenPath(sessionDir)) {
+			drained[id] = true
+		}
 		for _, file := range staged {
 			part, readErr := readInbox(file)
 			if readErr != nil {
@@ -169,7 +220,12 @@ func Drain(sessionDir string) ([]Note, error) {
 			if err := os.Remove(file); err != nil {
 				problems = append(problems, err)
 			}
-			notes = append(notes, part...)
+			for _, note := range part {
+				if note.ID != "" && drained[note.ID] {
+					continue
+				}
+				notes = append(notes, note)
+			}
 		}
 		sort.SliceStable(notes, func(a, b int) bool { return notes[a].At.Before(notes[b].At) })
 		if err := rememberDrained(sessionDir, notes); err != nil {
