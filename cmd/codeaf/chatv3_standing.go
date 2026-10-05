@@ -152,7 +152,7 @@ func v3StandingTicker(store *standing.Store) (*standing.Ticker, func(), error) {
 		// describes).
 		SentinelVerdict: session.NewStandingSentinelVerdict(posture),
 		Sentinel:        session.NewStandingSentinel(posture),
-		Runner:          session.NewStandingRunner(posture, store.Root()),
+		Runner:          session.NewStandingRunnerWithMemory(posture, store.Root(), v3MemoryPath(settings.ProfileDir)),
 		Idle:            idle,
 		// The dreaming pass over what is remembered, which rides this pass
 		// because it wants exactly what this pass already has: one process

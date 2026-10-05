@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -260,6 +261,228 @@ func TestContextualReviewFullReadPathlibBuildsOnlyExactObservedEdge(t *testing.T
 	}
 }
 
+// A VERIFIED CONSEQUENCE IS NOT GATED ON A KEYWORD. The old hardcoded word
+// list missed the ordinary way this happens — a person asking to "make the
+// amount optional" while the edit actually changes a producer another project
+// consumes. The evidence is what decides: a real producer change plus an
+// unchanged consumer assumption is offered whatever the words were.
+func TestContextualNoKeywordCueStillSeesVerifiedProducerImpact(t *testing.T) {
+	a, _, producer, consumer := contextualReviewObservedFixture(t)
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumer, "c")}})
+	if got := a.contextualImpactContext("make the amount optional"); got != "" {
+		t.Fatalf("unchanged source warned on an ordinary request: %s", got)
+	}
+	if err := os.WriteFile(producer, []byte("def export(): return {\"value\": None}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// A write happened, which is what re-opens the evidence pass in a real turn.
+	a.refreshContextualImpactsAfterAction(toolResult{text: "file updated"}, "write")
+	a.memory.mu.Lock()
+	got := a.memoryText
+	a.memory.mu.Unlock()
+	if got == "" || !strings.Contains(got, consumer) {
+		t.Fatalf("verified producer change was missed without a keyword: %q", got)
+	}
+}
+
+// ── precise dismissal of offered consequences ──────────────────────────────
+
+func contextualHeldNotices(a *Agent) int {
+	a.memory.mu.Lock()
+	defer a.memory.mu.Unlock()
+	return len(a.memory.impactNotices)
+}
+
+// contextualOfferCount asks the store the authoritative question: would this
+// session be offered a notice for the producer's CURRENT content? A dismissed
+// notice is gone from that answer across a restart, which is what this measures.
+func contextualOfferCount(t *testing.T, a *Agent, s *store.Store, producer, consumer string) int {
+	t.Helper()
+	body, err := os.ReadFile(producer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerBody, err := os.ReadFile(consumer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	links, err := s.DependenciesForProducer(contextualPathOwner(producer), 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for _, d := range links {
+		notices, err := s.ContextualImpacts([]string{d.ProducerOwner, d.ConsumerOwner}, d.ProducerOwner, d.EntityID, contextualHash(string(body)), map[string]string{d.ConsumerPath: contextualHash(string(consumerBody))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += len(notices)
+	}
+	return total
+}
+
+func contextualReviewOfferTwo(t *testing.T, a *Agent, producer string) {
+	t.Helper()
+	if err := os.WriteFile(producer, []byte("def export(): return 2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.contextualImpactContext("change the export contract")
+	if err := os.WriteFile(producer, []byte("def export(): return 3\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.refreshContextualImpactsAfterAction(toolResult{text: "file updated"}, "write")
+	if got := contextualHeldNotices(a); got != 2 {
+		t.Fatalf("expected two held notices, got %d", got)
+	}
+}
+
+// A NEGATED DISMISSAL KEEPS THE NOTICE. "do not dismiss" carries the dismiss
+// word and means the opposite; no notice is touched.
+func TestContextualDismissalNegationKeepsNotice(t *testing.T) {
+	a, s, producer, consumer := contextualReviewObservedFixture(t)
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumer, "c")}})
+	contextualReviewOfferTwo(t, a, producer)
+	a.dismissContextualNotices("please do not dismiss that, it is useful")
+	if contextualHeldNotices(a) != 2 {
+		t.Fatal("a negated dismissal dropped the notices")
+	}
+	if contextualOfferCount(t, a, s, producer, consumer) != 1 {
+		t.Fatal("a negated dismissal persisted a suppression")
+	}
+}
+
+// A BARE DISMISS WITH SEVERAL HELD NOTICES NAMES NOTHING. It must not silence
+// the whole history on a substring.
+func TestContextualDismissalAmbiguousMultipleDoesNothing(t *testing.T) {
+	a, s, producer, consumer := contextualReviewObservedFixture(t)
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumer, "c")}})
+	contextualReviewOfferTwo(t, a, producer)
+	a.dismissContextualNotices("ok")
+	if contextualHeldNotices(a) != 2 || contextualOfferCount(t, a, s, producer, consumer) != 1 {
+		t.Fatal("an unqualified dismiss with two notices silenced the history")
+	}
+}
+
+// NAMING ONE NOTICE DISMISSES ONLY THAT ONE, EVEN WITH SEVERAL HELD. Two
+// consumer projects depend on the same producer, so a name can be told apart.
+func TestContextualDismissalTargetsExactlyTheNamedNotice(t *testing.T) {
+	root := t.TempDir()
+	dirs := map[string]string{}
+	for _, name := range []string{"producer", "alpha", "beta"} {
+		dir := filepath.Join(root, name)
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+			t.Fatalf("init: %s %v", out, err)
+		}
+		dirs[name] = dir
+	}
+	producer := filepath.Join(dirs["producer"], "lib.py")
+	if err := os.WriteFile(producer, []byte("def export(): return 1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	alpha := filepath.Join(dirs["alpha"], "alpha.py")
+	beta := filepath.Join(dirs["beta"], "beta.py")
+	for _, path := range []string{alpha, beta} {
+		if err := os.WriteFile(path, []byte("producer = \""+producer+"\"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	key, err := gitidentity.ProjectKey(dirs["producer"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, s := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dirs["producer"]; c.MemoryProjectKey = key })
+	receipts := []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, alpha, "a"), contextualReviewFullRead(t, a, beta, "b")}
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: receipts})
+	if err := os.WriteFile(producer, []byte("def export(): return 2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.refreshContextualImpactsAfterAction(toolResult{text: "file updated"}, "write")
+	if got := contextualHeldNotices(a); got != 2 {
+		t.Fatalf("expected two distinct edges, held %d", got)
+	}
+	a.dismissContextualNotices("dismiss the one about alpha.py")
+	current, _ := os.ReadFile(producer)
+	total := 0
+	links, err := s.DependenciesForProducer(contextualPathOwner(producer), 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range links {
+		consumerBody, err := os.ReadFile(d.ConsumerPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		notices, err := s.ContextualImpacts([]string{d.ProducerOwner, d.ConsumerOwner}, d.ProducerOwner, d.EntityID, contextualHash(string(current)), map[string]string{d.ConsumerPath: contextualHash(string(consumerBody))})
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += len(notices)
+	}
+	if total != 1 {
+		t.Fatalf("naming one notice should leave the other offered, got %d", total)
+	}
+}
+
+// AN EXPLICIT BATCH WORD DISMISSES THE WHOLE HELD BATCH, AND THE SUPPRESSION
+// SURVIVES A RESTART: a fresh session against the same store is offered nothing.
+func TestContextualDismissalBatchPersistsAcrossRestart(t *testing.T) {
+	a, s, producer, consumer := contextualReviewObservedFixture(t)
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumer, "c")}})
+	contextualReviewOfferTwo(t, a, producer)
+	if contextualOfferCount(t, a, s, producer, consumer) == 0 {
+		t.Fatal("no notice was offered to dismiss")
+	}
+	a.dismissContextualNotices("dismiss all of those notices")
+	if got := contextualOfferCount(t, a, s, producer, consumer); got != 0 {
+		t.Fatalf("batch dismissal did not persist: %d still offered", got)
+	}
+	// A RESTART: a new session over the same canonical store re-derives offers.
+	fresh, _ := newTestAgent(t, &reflexScript{}, func(c *Config) {
+		c.Memory = s
+		c.MemoryProjectKey = a.config.MemoryProjectKey
+	})
+	freshBlock := fresh.contextualImpactContext("change the export contract")
+	if strings.Contains(freshBlock, consumer) {
+		t.Fatalf("a dismissed notice was handed back after restart: %s", freshBlock)
+	}
+}
+
+// THE HELD SET IS EVICTABLE. More than eight distinct offers must not
+// permanently block newer material: the newest is held and shown.
+func TestContextualHeldOffersAreBoundedAndAllowNewMaterial(t *testing.T) {
+	a, _, producer, _ := contextualReviewObservedFixture(t)
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumerFixturePath(t, producer), "c")}})
+	// Nine successive producer contents, each a distinct notice.
+	for i := 0; i < contextualContextLimit+1; i++ {
+		if err := os.WriteFile(producer, []byte(fmt.Sprintf("def export(): return %d\n", i+10)), 0600); err != nil {
+			t.Fatal(err)
+		}
+		a.refreshContextualImpactsAfterAction(toolResult{text: "file updated"}, "write")
+	}
+	a.memory.mu.Lock()
+	held := len(a.memory.impactNotices)
+	order := append([]string(nil), a.memory.impactOrder...)
+	a.memory.mu.Unlock()
+	if held > contextualContextLimit {
+		t.Fatalf("held notices exceeded the bound: %d", held)
+	}
+	if held == 0 || len(order) == 0 {
+		t.Fatal("new material was permanently blocked after the bound")
+	}
+}
+
+func consumerFixturePath(t *testing.T, producer string) string {
+	t.Helper()
+	// The fixture lays the consumer beside the producer's parent directory.
+	consumer := filepath.Join(filepath.Dir(filepath.Dir(producer)), "consumer", "run.py")
+	if _, err := os.Stat(consumer); err != nil {
+		t.Fatal(err)
+	}
+	return consumer
+}
 func TestContextualReviewRepeatedRecallKeepsPreparedImpactNotice(t *testing.T) {
 	a, _, producer, consumer := contextualReviewObservedFixture(t)
 	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumer, "c")}})

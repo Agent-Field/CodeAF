@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -182,5 +183,65 @@ func TestContextualReasoningMetadataBounds(t *testing.T) {
 	e.Applicability = make([]string, 9)
 	if _, err = s.AppendContextualEvidence(e); err == nil {
 		t.Fatal("unbounded applicability accepted")
+	}
+}
+
+// A RARE APPROVED RULE IS NOT STARVED BY A BURST OF NEWER INCIDENTAL NOISE.
+// The general projection reads a newest window of every observation, so 128
+// later tool observations would push an older approval out of it; the binding
+// projection spends its window on authority and still finds it, while the
+// suppression and validity guards keep deciding whether it is live.
+func TestContextualApprovedRuleSurvivesIncidentalNoise(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "noise.db"))
+	owner := OwnerProject("noise")
+	rule := ContextualEvidence{ID: "rule", MemoryID: "m-rule", Owner: owner, Actor: "user",
+		Authority: "approved_rule", Observation: "release artifacts must run offline",
+		SourceKey: "turn:rule", SourceHash: "hash-rule"}
+	if _, err := s.AppendContextualEvidence(rule); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < ContextualEvidenceLimit+2; i++ {
+		noise := ContextualEvidence{ID: fmt.Sprintf("obs-%d", i), MemoryID: fmt.Sprintf("m-%d", i),
+			Owner: owner, Actor: "tool", Tool: "bash", ReceiptIDs: []string{fmt.Sprintf("r-%d", i)},
+			Authority: "observation", Observation: "incidental output",
+			SourceKey: fmt.Sprintf("turn:%d", i), SourceHash: fmt.Sprintf("hash-%d", i)}
+		if _, err := s.AppendContextualEvidence(noise); err != nil {
+			t.Fatal(err)
+		}
+	}
+	approved, err := s.ContextualEvidenceApproved(owner, map[string]string{}, time.Now(), ContextualEvidenceLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, e := range approved {
+		if e.ID == "rule" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("approved rule starved by incidental noise: %+v", approved)
+	}
+	general, err := s.ContextualEvidenceApplicable(owner, map[string]string{}, time.Now(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range general {
+		if e.ID == "rule" {
+			t.Fatal("the general window reached an approval older than its bound, which this assertion exists to show it cannot")
+		}
+	}
+	// A FORGOTTEN RULE STAYS GONE EVEN IN THE BINDING PROJECTION.
+	if err := s.SuppressContextualSource(owner, "turn:rule", "hash-rule", "explicit forget"); err != nil {
+		t.Fatal(err)
+	}
+	approved, err = s.ContextualEvidenceApproved(owner, map[string]string{}, time.Now(), ContextualEvidenceLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range approved {
+		if e.ID == "rule" {
+			t.Fatalf("suppressed rule resurfaced in the binding projection: %+v", approved)
+		}
 	}
 }

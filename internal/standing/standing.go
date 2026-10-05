@@ -1120,13 +1120,13 @@ type Judgment struct {
 // log; it is read by the person, so it is one plain sentence.
 //
 // IT IS THE LEGACY SHAPE and it stays source-compatible on purpose: every
-// adapter and test written before [Verdict] existed keeps compiling and keeps
+// adapter and test written before [SentinelReading] existed keeps compiling and keeps
 // its old meaning. A yes is [VerdictYes], a no is [VerdictNo], and an error — a
 // refusal, a timeout, a provider that could not answer — is [VerdictUnknown]
 // rather than an established no.
 type Sentinel func(ctx context.Context, judgment Judgment) (yes bool, line string, usd float64, err error)
 
-// Verdict is a sentinel's three-valued answer, and the reason this package
+// SentinelReading is a sentinel's three-valued answer, and the reason this package
 // stopped speaking in booleans.
 //
 // FALSE AND UNKNOWN ARE DIFFERENT FACTS. A decided no is the world saying the
@@ -1136,12 +1136,12 @@ type Sentinel func(ctx context.Context, judgment Judgment) (yes bool, line strin
 // and quietly drop a pending opportunity the person is still waiting on. Only
 // [VerdictYes] fires; [VerdictUnknown] leaves the opportunity open and records
 // nothing as decided.
-type Verdict int
+type SentinelReading int
 
 const (
 	// VerdictUnknown is "nobody could tell": a refusal, a timeout, an
 	// ambiguous answer. It neither fires nor counts as an established no.
-	VerdictUnknown Verdict = iota
+	VerdictUnknown SentinelReading = iota
 	// VerdictNo is a decided negative.
 	VerdictNo
 	// VerdictYes is a decided affirmative, and the only verdict that fires.
@@ -1153,7 +1153,7 @@ const (
 // the legacy two-valued meaning. It is an optional capability, discovered by a
 // field rather than by a type assertion on an interface, so a caller that has
 // not heard of it still builds.
-type SentinelVerdict func(ctx context.Context, judgment Judgment) (verdict Verdict, line string, usd float64, err error)
+type SentinelVerdict func(ctx context.Context, judgment Judgment) (verdict SentinelReading, line string, usd float64, err error)
 
 // Deliverer is the optional capability a [Runner] may add when it can make a
 // delivery durable by IDENTITY. When a Runner implements it, the core hands it

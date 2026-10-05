@@ -132,6 +132,7 @@ type memoryBrain struct {
 	receipts       map[uint64][]memoryToolReceipt
 	revisions      map[uint64]string
 	impactNotices  map[string]store.ContextualImpactNotice
+	impactOrder    []string
 	impactTurn     uint64
 	impactPrepared bool
 	impactBlock    string
@@ -155,6 +156,15 @@ func newMemoryBrain(s *store.Store) *memoryBrain {
 // work until its profile is full.
 func (a *Agent) remembers() bool {
 	return a.memory != nil && a.memory.store != nil && !a.config.promptProfile().lean()
+}
+
+// memoryWritable is remembers() AND the corrections that a session may WRITE
+// through the brain. A read-only binding posture answers true to remembers()
+// — so the owner's rules can be read before the first action — and false
+// here, so nothing a firing does is promoted, extracted, imported or dismissed
+// on the strength of a brain it was only lent.
+func (a *Agent) memoryWritable() bool {
+	return a.remembers() && !a.config.bindingOnlyMemory
 }
 
 // memorySourceSession is the journal header id attached to a memory write. A
@@ -716,7 +726,7 @@ func (r *recallAside) everAsked() bool { return r != nil && r.reading.everAsked(
 // reading borrowing its parent's store; record says whether the ids it injected
 // are this session's to count.
 func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), record bool) string {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return ""
 	}
 	if record {
@@ -948,7 +958,7 @@ func (m *memoryBrain) takeNotices() []string {
 // waited for by Close, and silent whatever happens to it. There is no event kind
 // for "a small thing did not work" (title.go's reasoning, unchanged).
 func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return
 	}
 	injected := a.memory.takeInjected()
@@ -1315,7 +1325,7 @@ func (a *Agent) addThroughDoor(fresh store.Memory) (store.Memory, error) {
 // The returned title is the one that landed — the existing row's when the
 // write was skipped, the new row's when it was added.
 func (a *Agent) writeRemembered(text, scope string) (string, error) {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return "", errors.New("this build is not remembering anything")
 	}
 	text = strings.Join(strings.Fields(text), " ")
@@ -1462,7 +1472,7 @@ func (a *Agent) RememberScoped(text, scope string) (string, error) {
 // Forget drops the best match for a query and answers with the title it
 // dropped, or "" when nothing matched.
 func (a *Agent) Forget(query string) (string, error) {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return "", errors.New("this build is not remembering anything")
 	}
 	return a.forgetMatching(query)
@@ -1629,7 +1639,7 @@ func (a *Agent) memoryContext() context.Context {
 // already kept. A partially imported file finishes; a fully imported one that
 // failed only at the rename does not make a thousand duplicates.
 func (a *Agent) importMemoryFile() {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return
 	}
 	a.memory.mu.Lock()
@@ -1759,7 +1769,7 @@ func init() { glossField["remember"] = "text" }
 // carrying `remember` against no store is a model told it can remember, whose
 // every call is refused. A session without memory simply does not have the verb.
 func (a *Agent) memoryTools() []bare.Tool {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return nil
 	}
 	return append([]bare.Tool{{

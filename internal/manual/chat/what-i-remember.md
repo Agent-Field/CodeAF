@@ -904,8 +904,12 @@ them apply across projects. The ordinary remember tool also defaults to project;
 `/remember` retains its explicit personal-save behavior.
 
 Explicit rules and decisions with supporting user words are read locally before
-the first reply request. Optional semantic recall can arrive later. Source words
-outrank interpretations; assistant assertions do not confirm test outcomes.
+the first reply request. A standing order authorized to act unattended is bound
+the same way: its run reads this project's approved rules read-only before its
+first action and writes nothing back. Optional semantic recall can arrive later.
+Source words outrank interpretations; assistant assertions do not confirm test
+outcomes. A binding claim is judged against its own supporting span, not every
+word of the turn, so a quotation of ordinary talk cannot manufacture a rule.
 Observed tool results carry receipt identities and a source revision; automatic
 extraction has only the current turn's receipts. Dirty or
 untracked sources cannot establish a current test result; inspect them again.
@@ -922,15 +926,19 @@ follow-up. This does not authorize edits in another project. Dynamic imports,
 partial reads, arbitrary shell programs and delegated-worker receipts are not
 resolved by this adapter.
 
-Impact checks currently require one of these words in the active turn: contract,
-format, schema, export, return, decimal, change, release, or api. Other wording can
-miss a consequence.
+Impact checks are driven by observed state, not a word list: a producer whose
+source truly changed while the re-read consumer assumption still holds is offered
+however the request was worded, and an unchanged file stays quiet. A repeated read
+of the same content does not reset the recorded baseline.
 
-Related consequences are batched; dismissal applies to the offered batch. Its
-substring recognition can also catch an unrelated use of the word dismiss. Saying "dismiss that" or "don't bring that up"
-suppresses the currently offered consequences until their content evidence changes.
-A repeated read with the same content does not reset dismissal. A fresh conversation
-can offer an undismissed consequence again; there is no global user-awareness model.
+Dismissal is precise. "dismiss that" drops an unmistakable single offer; with
+several held, naming the file dismisses just that one and an explicit plural
+("dismiss those") drops the whole batch. A bare "dismiss" that names nothing drops
+nothing. "do not dismiss" and "don't dismiss" are read as the opposite and keep the
+offer. A dismissal suppresses by exact content evidence, survives a restart, and a
+later content change can be offered again. The notice is context put in front of
+the assistant, not proof the person saw or read it; there is no global
+user-awareness model.
 
 ## Does forgetting erase the conversation or stop relearning it?
 
@@ -953,7 +961,9 @@ never authorizes an unrelated edit. Memory adds no second scheduler.
 
 The assistant can use `memory_evidence` for one saved memory id when its supporting
 source matters to the work. It returns the source words or actual receipt, conditions,
-rationale and circumstances for reconsidering the decision. The same access and
+rationale and circumstances for reconsidering the decision. Secret-shaped spans are
+replaced with a marker before anything is kept or shown, so a credential spoken beside
+a real rule does not travel with it. The same access and
 validity rules apply: forgotten or expired evidence is unavailable, and a stale source
 needs a fresh inspection. This read is bounded; original conversation history can still
 be searched separately.

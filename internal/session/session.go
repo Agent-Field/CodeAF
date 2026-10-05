@@ -1302,6 +1302,14 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
+	// bindingOnlyMemory makes a brain READ-ONLY. It exists for the authorized
+	// standing run, which must see the owner's approved binding rules before
+	// its first action without gaining any general memory write: extraction,
+	// dependency observation, dismissal, import and the remember/forget verbs
+	// are all refused, while the same canonical identity, query and context
+	// machinery answers the read. Nothing is written from a posture that only
+	// borrowed the brain to be bound.
+	bindingOnlyMemory bool
 	// Skills is the store the skill shelf is read from: the catalog section,
 	// the skills a message carries, and `use_skill`. NIL FALLS BACK TO
 	// Memory, so a door that names no shelf of its own reads the shelf in the

@@ -313,6 +313,79 @@ func (s *Store) ContextualEvidenceApplicable(owner string, conditions map[string
 	return out, nil
 }
 
+// ContextualEvidenceApproved reads the newest bounded window of BINDING
+// authority — approved rules and confirmed decisions — for one owner.
+//
+// IT EXISTS SO NOISE CANNOT STARVE A LIVE CONSTRAINT. The general projection
+// reads a newest window of every observation, so a burst of newer incidental
+// evidence would push a rare approved rule past the window and out of the
+// results. A rule a person explicitly approved is not the newest thing; it is
+// the thing that must keep binding. This projection filters the window by
+// authority at the query, so the window is spent on rules, and the same
+// validity, suppression, correction and condition guards still decide whether
+// each one is live. The window and the result are both bounded.
+func (s *Store) ContextualEvidenceApproved(owner string, conditions map[string]string, at time.Time, limit int) ([]ContextualEvidence, error) {
+	if strings.TrimSpace(owner) == "" {
+		return nil, errors.New("contextual evidence requires owner")
+	}
+	if limit <= 0 || limit > ContextualEvidenceLimit {
+		limit = ContextualEvidenceLimit
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	var floor int64
+	err := s.db.QueryRow(`SELECT COALESCE(MIN(seq),0)-1 FROM (SELECT seq FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision') ORDER BY seq DESC LIMIT ?)`, contextualNode(owner), EventContextualEvidence, ContextualEvidenceLimit).Scan(&floor)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`SELECT seq,ts,payload FROM events WHERE node_id=? AND kind=? AND seq>? AND json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision') ORDER BY seq`, contextualNode(owner), EventContextualEvidence, floor)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	all := make([]ContextualEvidence, 0)
+	for rows.Next() {
+		var e ContextualEvidence
+		var ts, payload string
+		var seq int64
+		if err = rows.Scan(&seq, &ts, &payload); err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal([]byte(payload), &e); err != nil {
+			return nil, err
+		}
+		e.Seq = seq
+		if e.At, err = parseTime(ts); err != nil {
+			return nil, err
+		}
+		all = append(all, e)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]ContextualEvidence, 0)
+	budget := ContextualEvidenceLimit * ContextualEvidenceLimit
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		e := all[i]
+		ok, err := contextualUsable(s.db, e, at, map[int64]bool{}, &budget)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		ok, err = contextualConditionsBounded(s.db, e, conditions)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, e)
+		}
+	}
+	return out, nil
+}
+
 // contextualRevisionUnknown answers whether a snapshot identity is one the
 // capture could not prove. The empty string is NOT unknown here: it is the
 // absent revision of a user-authored rule, which the caller treats as a

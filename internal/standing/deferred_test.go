@@ -17,9 +17,9 @@ import (
 )
 
 // verdicts is a three-valued sentinel that says what a test told it to.
-func verdicts(replies ...Verdict) (SentinelVerdict, *int) {
+func verdicts(replies ...SentinelReading) (SentinelVerdict, *int) {
 	asked := 0
-	return func(_ context.Context, _ Judgment) (Verdict, string, float64, error) {
+	return func(_ context.Context, _ Judgment) (SentinelReading, string, float64, error) {
 		verdict := VerdictUnknown
 		if asked < len(replies) {
 			verdict = replies[asked]
@@ -30,9 +30,9 @@ func verdicts(replies ...Verdict) (SentinelVerdict, *int) {
 }
 
 // judgings is a three-valued sentinel that records every Judgment it is handed.
-func judgings(reply Verdict) (SentinelVerdict, *[]Judgment) {
+func judgings(reply SentinelReading) (SentinelVerdict, *[]Judgment) {
 	seen := &[]Judgment{}
-	return func(_ context.Context, judgment Judgment) (Verdict, string, float64, error) {
+	return func(_ context.Context, judgment Judgment) (SentinelReading, string, float64, error) {
 		*seen = append(*seen, judgment)
 		return reply, "a judgment", 0, nil
 	}, seen
@@ -344,7 +344,7 @@ func TestUnknownChargesWhatTheCallCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sentinel := func(_ context.Context, _ Judgment) (Verdict, string, float64, error) {
+	sentinel := func(_ context.Context, _ Judgment) (SentinelReading, string, float64, error) {
 		return VerdictUnknown, "the model refused", 0.25, errors.New("timeout")
 	}
 	tick := &Ticker{Store: store, Runner: runner, SentinelVerdict: sentinel, Now: held(now)}

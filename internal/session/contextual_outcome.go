@@ -8,9 +8,9 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/store"
-	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
 // priorOutcomeLimit is how many prior attempts a single turn may be shown. Two

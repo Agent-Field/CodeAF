@@ -75,11 +75,13 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 const (
@@ -268,6 +270,11 @@ type standingRunner struct {
 	// exactly one thing — the project inbox, road 4 of this file's delivery
 	// order — and an empty root simply means that road is closed.
 	root string
+	// memoryPath is the owner's brain, or empty when memory is off. A firing is
+	// built from a vision posture that deliberately opens no database, so this
+	// is handed in and opened lazily, for the length of one run, exactly as the
+	// dreaming pass is (chatv3_standing.go). An empty path is memory off.
+	memoryPath string
 	// child builds the headless session one firing's work runs in. It is [New]
 	// in every real build and it is a field for [newAgent]'s reason: it is the
 	// seam a test that wants a scripted child shares with the door that wants a
@@ -287,6 +294,54 @@ func (r *standingRunner) newChild(cfg Config) (*Agent, error) {
 // root is the store's own directory ([standing.Store.Root]).
 func NewStandingRunner(parent Config, root string) standing.Runner {
 	return &standingRunner{parent: parent, root: strings.TrimSpace(root)}
+}
+
+// NewStandingRunnerWithMemory is [NewStandingRunner] for the door that also
+// knows where the brain lives. The run it builds reads the owner's approved
+// binding rules before its first action WITHOUT gaining a memory write: the
+// brain is opened read-only for that one run and closed with it. An empty path
+// is memory off and behaves exactly like [NewStandingRunner].
+func NewStandingRunnerWithMemory(parent Config, root, memoryPath string) standing.Runner {
+	return &standingRunner{parent: parent, root: strings.TrimSpace(root), memoryPath: strings.TrimSpace(memoryPath)}
+}
+
+// withBindingMemory lends the run the canonical brain, owner-scoped to the
+// item's project, for reads only. It is best effort: a brain that cannot open
+// leaves the firing as it was — an ambient run is never refused because a
+// memory database is busy — but when it opens, the approved rules and
+// confirmed decisions this project already carries are in front of the model
+// before its first request, and nothing the firing does is written back.
+func (r *standingRunner) withBindingMemory(cfg Config, item standing.Item) (Config, func()) {
+	if cfg.Memory != nil || strings.TrimSpace(r.memoryPath) == "" {
+		return cfg, func() {}
+	}
+	brain, err := store.Open(r.memoryPath)
+	if err != nil {
+		return cfg, func() {}
+	}
+	cfg.Memory = brain
+	cfg.bindingOnlyMemory = true
+	if key := standingProjectKey(item.Workspace); key != "" {
+		cfg.MemoryProjectKey = key
+	}
+	return cfg, func() { _ = brain.Close() }
+}
+
+// standingProjectKey is the owner key a firing's project resolves to, read
+// through the same Git-rooted identity every other memory owner uses.
+func standingProjectKey(workspace string) string {
+	dir := strings.TrimSpace(workspace)
+	if dir == "" {
+		return ""
+	}
+	if root, ok := repositoryRoot(dir); ok {
+		dir = root
+	}
+	key, err := gitidentity.ProjectKey(dir)
+	if err != nil {
+		return ""
+	}
+	return key
 }
 
 // Probe takes one look at the world and answers what it saw, clipped from the
@@ -615,6 +670,8 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	if err != nil {
 		return standing.Outcome{}, err
 	}
+	cfg, closeMemory := r.withBindingMemory(cfg, item)
+	defer closeMemory()
 
 	var tree taskTree
 	if item.Does.Isolate {
@@ -925,7 +982,15 @@ func standingSentinelModel(cfg Config, item standing.Item) (string, error) {
 // provider: the pinned/unpinned difference is the whole of "no alternate model
 // call" and it is asserted directly (standing_integration_test.go).
 func standingSeatSettings(cfg Config, model string) provider.Config {
-	settings := cfg.clientConfig(model, providerTimeout)
+	return standingSeatPolicy(cfg, cfg.clientConfig(model, providerTimeout))
+}
+
+// standingSeatPolicy folds the routing and the fallback ladder onto settings
+// that already came from [Config.clientConfig]. It is split out so the one
+// place that actually builds a client — [standingSentinelCall]'s clientFor —
+// can call clientConfig itself and still share this policy, which is what the
+// gated-config law requires of every provider.NewClient.
+func standingSeatPolicy(cfg Config, settings provider.Config) provider.Config {
 	settings.Routing = provider.StaticRouting(cfg.Routing)
 	// The fallback seams travel the same way [newProviderClient] sends them, so
 	// the sentinel is a seat like any other. A PINNED SEAT THEN HAS THEM TAKEN
@@ -1318,7 +1383,7 @@ func standingSentinelCall(parent Config) func(ctx context.Context, judgment stan
 	clientFor := func(cfg Config, model string) (Completer, string, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		settings := standingSeatSettings(cfg, model)
+		settings := standingSeatPolicy(cfg, cfg.clientConfig(model, providerTimeout))
 		model = settings.Model
 		key := standingSeatKey(model, cfg.OneModel)
 		if client, ok := clients[key]; ok {
@@ -1434,7 +1499,7 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 // on and never look again.
 func NewStandingSentinelVerdict(parent Config) standing.SentinelVerdict {
 	call := standingSentinelCall(parent)
-	return func(ctx context.Context, judgment standing.Judgment) (standing.Verdict, string, float64, error) {
+	return func(ctx context.Context, judgment standing.Judgment) (standing.SentinelReading, string, float64, error) {
 		text, usd, err := call(ctx, judgment)
 		if err != nil {
 			return standing.VerdictUnknown, "", 0, err
@@ -1492,7 +1557,7 @@ func standingVerdict(reply string) (bool, string) {
 // that says "unknown", or says none of the three at all, is
 // [standing.VerdictUnknown] with a line — never a decided no, which would close
 // an opportunity nobody actually decided.
-func standingVerdictThree(reply string) (standing.Verdict, string) {
+func standingVerdictThree(reply string) (standing.SentinelReading, string) {
 	word, line := standingVerdictWords(reply)
 	switch word {
 	case "yes":

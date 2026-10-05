@@ -184,15 +184,14 @@ func (a *Agent) contextualImpactContext(cue string) string {
 	a.memory.impactCue = cue
 	a.memory.impactBlock = ""
 	a.memory.mu.Unlock()
-	lower := strings.ToLower(cue)
-	relevant := false
-	for _, word := range []string{"contract", "format", "schema", "export", "return", "decimal", "change", "release", "api"} {
-		if strings.Contains(lower, word) {
-			relevant = true
-			break
-		}
-	}
-	if !relevant || a.config.MemoryProjectKey == "" {
+	// THE EVIDENCE DECIDES, NOT A KEYWORD LIST. A hardcoded vocabulary was the
+	// old gate, and a person asking to "make the amount optional" — words none
+	// of it contained — would not hear about a consequence their own edit just
+	// produced. What runs now is the actual observed state: an edge whose
+	// producer source really changed and whose consumer assumption still holds.
+	// A turn that changed nothing reads no different files and says nothing, so
+	// ordinary and irrelevant requests stay quiet without a word list.
+	if a.config.MemoryProjectKey == "" {
 		return ""
 	}
 	owner := store.OwnerProject(a.config.MemoryProjectKey)
@@ -225,11 +224,20 @@ func (a *Agent) contextualImpactContext(cue string) string {
 				a.memory.impactNotices = map[string]store.ContextualImpactNotice{}
 			}
 			_, said := a.memory.impactNotices[notice.EvidenceHash]
-			if !said && len(a.memory.impactNotices) >= contextualContextLimit {
-				said = true
-			}
 			if !said {
+				// THE HELD SET IS BOUNDED AND EVICTABLE. A session that has
+				// already offered its eight notices must still be able to offer
+				// genuinely new material: the oldest offer is dropped rather
+				// than permanently blocking the ninth. Notice identity is the
+				// content hash, so the same change never repeats; a later change
+				// is a different notice and can surface.
+				for len(a.memory.impactOrder) >= contextualContextLimit {
+					oldest := a.memory.impactOrder[0]
+					a.memory.impactOrder = a.memory.impactOrder[1:]
+					delete(a.memory.impactNotices, oldest)
+				}
 				a.memory.impactNotices[notice.EvidenceHash] = notice
+				a.memory.impactOrder = append(a.memory.impactOrder, notice.EvidenceHash)
 			}
 			a.memory.mu.Unlock()
 			if said {
@@ -252,8 +260,14 @@ func (a *Agent) contextualImpactContext(cue string) string {
 }
 
 func (a *Agent) dismissContextualNotices(user string) {
+	if !a.remembers() {
+		return
+	}
 	lower := strings.ToLower(user)
-	if !strings.Contains(lower, "dismiss") && !strings.Contains(lower, "don't bring that up") && !strings.Contains(lower, "do not bring that up") {
+	// A NEGATED DISMISSAL IS NOT A DISMISSAL. "do not dismiss that" and its
+	// friends carry the dismiss word and mean the opposite; reading them as the
+	// instruction would throw away the very notice the person asked to keep.
+	if !contextualDismissCue(lower) || contextualDismissNegated(lower) {
 		return
 	}
 	a.memory.mu.Lock()
@@ -262,11 +276,89 @@ func (a *Agent) dismissContextualNotices(user string) {
 		notices = append(notices, n)
 	}
 	a.memory.mu.Unlock()
+	if len(notices) == 0 {
+		return
+	}
+	// DISMISS WHAT THE PERSON NAMED, OR AN UNAMBIGUOUS SINGLETON/BATCH. A bare
+	// "dismiss" with several notices held names nothing, so it disappears
+	// nothing rather than silencing the whole history on a substring.
+	targets := make([]store.ContextualImpactNotice, 0, len(notices))
 	for _, n := range notices {
+		if contextualNoticeNamed(lower, n) {
+			targets = append(targets, n)
+		}
+	}
+	if len(targets) == 0 && (len(notices) == 1 || contextualDismissBatch(lower)) {
+		targets = notices
+	}
+	if len(targets) == 0 {
+		return
+	}
+	for _, n := range targets {
 		if err := a.memory.store.DismissContextualImpact([]string{n.Dependency.ProducerOwner, n.Dependency.ConsumerOwner}, n); err != nil {
 			a.journalMemoryFailure("impact-dismissal", err)
 		}
 	}
+	a.memory.mu.Lock()
+	for _, n := range targets {
+		delete(a.memory.impactNotices, n.EvidenceHash)
+	}
+	kept := a.memory.impactOrder[:0]
+	for _, hash := range a.memory.impactOrder {
+		if _, held := a.memory.impactNotices[hash]; held {
+			kept = append(kept, hash)
+		}
+	}
+	a.memory.impactOrder = kept
+	a.memory.mu.Unlock()
+}
+
+// contextualDismissCue answers whether the person is asking for a notice to be
+// dropped at all.
+func contextualDismissCue(lower string) bool {
+	for _, cue := range []string{"dismiss", "don't bring that up", "do not bring that up", "don't bring it up", "do not bring it up", "stop bringing that up"} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualDismissNegated answers whether that request is negated. It is
+// checked before any notice is touched.
+func contextualDismissNegated(lower string) bool {
+	for _, neg := range []string{"don't dismiss", "do not dismiss", "not dismiss", "never dismiss", "don't drop", "do not drop"} {
+		if strings.Contains(lower, neg) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualNoticeNamed answers whether the person named this notice's producer
+// or consumer, by path or by file name.
+func contextualNoticeNamed(lower string, n store.ContextualImpactNotice) bool {
+	for _, path := range []string{n.Dependency.ProducerPath, n.Dependency.ConsumerPath} {
+		path = strings.ToLower(strings.TrimSpace(path))
+		if path == "" {
+			continue
+		}
+		if strings.Contains(lower, path) || strings.Contains(lower, strings.ToLower(filepath.Base(path))) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualDismissBatch answers whether an explicit plural or batch reference
+// makes dismissing every held notice unambiguous.
+func contextualDismissBatch(lower string) bool {
+	for _, word := range []string{"those", "them", "both", "all", "batch", "notices"} {
+		if strings.Contains(lower, word) {
+			return true
+		}
+	}
+	return false
 }
 
 // The small static resolver accepts direct paths and a literal pathlib chain.

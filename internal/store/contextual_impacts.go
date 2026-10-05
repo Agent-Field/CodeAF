@@ -133,6 +133,22 @@ func (s *Store) ObserveContextualDependency(authorizedOwners []string, d Context
 		if canonical.ProducerHash == d.ProducerHash && canonical.ConsumerHash == d.ConsumerHash && canonical.Assumption == d.Assumption {
 			return canonical, nil
 		}
+		// A RE-READ ALONE IS NOT DEMONSTRATED COMPATIBILITY. When the consumer
+		// side is byte-identical — the same consumer content and the same
+		// recorded assumption — a producer that now reads differently does NOT
+		// reset the baseline the consumer was observed against. Otherwise a
+		// delegated worker that freshly reads CHANGED A and UNCHANGED B would
+		// silently move the edge to the changed producer BEFORE the post-action
+		// impact check, hiding the very consequence the check exists to find:
+		// ContextualImpacts would see the stored producer hash already equal the
+		// current one and stay quiet. The consumer's earlier producer
+		// circumstances therefore stand until the consumer's OWN assumption
+		// changes, which is a reconsideration this edge can actually justify.
+		// The baseline is not rewritten with a new read's hashes, so no old
+		// hash provenance is fabricated onto newer receipts.
+		if canonical.ConsumerHash == d.ConsumerHash && canonical.Assumption == d.Assumption {
+			return canonical, nil
+		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return d, err
 	}

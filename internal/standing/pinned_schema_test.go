@@ -245,7 +245,7 @@ func TestAPaidUndecidedCheckPersistsItsCostWithoutConsumingTheLook(t *testing.T)
 	}
 
 	const billed = 0.25
-	refusing := func(context.Context, Judgment) (Verdict, string, float64, error) {
+	refusing := func(context.Context, Judgment) (SentinelReading, string, float64, error) {
 		return VerdictUnknown, "the provider refused", billed, errors.New("the provider refused")
 	}
 

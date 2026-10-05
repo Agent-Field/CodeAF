@@ -206,7 +206,7 @@ func TestAnIncompleteBaselineIsVisibleAndNotSilentLegacy(t *testing.T) {
 func TestSentinelVerdictReadsWholeTokensNotPrefixes(t *testing.T) {
 	cases := []struct {
 		reply string
-		want  standing.Verdict
+		want  standing.SentinelReading
 	}{
 		{"yes \u2014 the last run on main failed", standing.VerdictYes},
 		{"Yes. The run failed.", standing.VerdictYes},

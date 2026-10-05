@@ -41,7 +41,7 @@ type memoryTurnEvidence struct {
 // recordMemoryTool retains independent receipts, including failure and refusal.
 // Assistant summaries never turn into additional corroborating observations.
 func (a *Agent) recordMemoryTool(ctx context.Context, turn uint64, call ai.ToolCall, result toolResult) {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return
 	}
 	receipt := memoryToolReceipt{ID: call.ID, Tool: call.Function.Name, Text: redact.Secrets(contextualClip(result.text, contextualReceiptRunes)), Status: toolStatus(result)}
@@ -105,32 +105,48 @@ func (s memoryTurnEvidence) ground(c reflex.ExtractResult) reflex.ExtractResult 
 		c.Source = "assistant"
 		c.Authority = "proposal"
 		for _, r := range s.Receipts {
-			if c.ReceiptID == r.ID && r.Status != "refused" {
+			// A RECEIPT FROM A DERIVED SOURCE IS NOT AN INDEPENDENT OBSERVATION.
+			// A task worker's report, a conversation-history lookup and this
+			// session's own memory_evidence are all things a model already read
+			// or summarized, so citing one back is self-corroboration: it can
+			// re-learn a suppressed claim under a fresh reader receipt id. The
+			// raw boundary collector is the only path a worker's real outcome
+			// or full read takes. Genuine raw tool evidence is untouched.
+			if c.ReceiptID == r.ID && r.Status != "refused" && !contextualDerivedReceipt(r.Tool) {
 				c.Source = "tool"
 				c.Authority = "observation"
 				break
 			}
 		}
 	} else {
-		// An extractor label cannot manufacture approval from a quoted "yes".
-		// Binding requires an explicit rule in the user's actual utterance.
-		if c.Authority == "approved_rule" && !explicitContextualRule(s.User) {
+		// AN EXTRACTOR LABEL CANNOT MANUFACTURE AUTHORITY FROM A WHOLE
+		// UTTERANCE. The gate reads the SELF-CONTAINED supporting span, not
+		// every word of the turn: an unrelated true quote sharing a turn with
+		// another rule or a global preference must not widen a different fact,
+		// and a quoted "yes" is not a rule whatever else was said. The
+		// surrounding utterance still travels in the evidence, so conditions,
+		// exceptions and rationale are not lost.
+		if c.Authority == "approved_rule" && !explicitContextualRule(quote) {
 			c.Authority = "observation"
 		}
-		if c.Authority == "confirmed_decision" && !explicitContextualDecision(s.User) {
+		if c.Authority == "confirmed_decision" && !explicitContextualDecision(quote) {
 			c.Authority = "observation"
 		}
 		if c.Authority != "approved_rule" && c.Authority != "confirmed_decision" {
 			c.Authority = "observation"
 		}
-		quote = contextualClip(s.User, contextualReceiptRunes)
 	}
-	if c.Scope == store.MemoryScopeUser && !explicitContextualGlobal(s.User) {
+	if c.Scope == store.MemoryScopeUser && !explicitContextualGlobal(userQuoteForScope(c, s.User)) {
 		c.Scope = store.MemoryScopeProject
 	}
-	// Rich conditions and rationale are kept in evidence, not squeezed into the
-	// memory row's established 512-rune body. Settlement keeps this marker.
-	c.Text = contextualClip(c.Text, store.MemoryTextRunes)
+	// SANITIZE ON THE WAY OUT, VALIDATE ON THE WAY IN. The literal-support
+	// checks above read the person's ORIGINAL words, because that is what proves
+	// a rule is real; everything this session persists or renders is passed
+	// through the one secret redactor first. A credential in the same utterance
+	// as a genuine constraint is removed from the claim body, its conditions,
+	// rationale, rejected alternatives and reconsideration, and from the
+	// observation, before any of it can reach the prompt or memory_evidence.
+	c.Text = redact.Secrets(contextualClip(c.Text, store.MemoryTextRunes))
 	c.Tags = append(c.Tags, contextualTag)
 	return c
 }
@@ -139,7 +155,9 @@ func (a *Agent) recordContextualMemory(m store.Memory, c reflex.ExtractResult, s
 	owner := a.ownerForScope(c.Scope)
 	// An update result can omit owner; the authority still comes from the same
 	// candidate partition used by settlement, never from the session's read set.
-	e := store.ContextualEvidence{ID: store.NewMemoryID(), MemoryID: m.ID, Owner: owner, SessionID: s.Session, TurnID: s.Turn, Actor: c.Source, Authority: c.Authority, Observation: contextualClip(s.User, 4000), Verification: "asserted", ValidFrom: s.At, SourceKey: s.Session + ":" + s.Turn, SourceHash: contextualHash(s.User), Applicability: contextualItems(c.Conditions), Rationale: contextualClip(c.Rationale, 240), Rejected: contextualItems(c.Rejected), Reconsider: contextualClip(c.Reconsider, 240)}
+	// THE SOURCE KEY AND HASH STAY ON THE RAW TURN so suppression and dedup keep
+	// their exact semantics; only the human-readable fields are sanitized.
+	e := store.ContextualEvidence{ID: store.NewMemoryID(), MemoryID: m.ID, Owner: owner, SessionID: s.Session, TurnID: s.Turn, Actor: c.Source, Authority: c.Authority, Observation: redact.Secrets(contextualClip(s.User, 4000)), Verification: "asserted", ValidFrom: s.At, SourceKey: s.Session + ":" + s.Turn, SourceHash: contextualHash(s.User), Applicability: contextualSanitizedItems(c.Conditions), Rationale: redact.Secrets(contextualClip(c.Rationale, 240)), Rejected: contextualSanitizedItems(c.Rejected), Reconsider: redact.Secrets(contextualClip(c.Reconsider, 240))}
 	if owner != store.OwnerUser {
 		e.Conditions = map[string]string{"project": a.config.MemoryProjectKey}
 	}
@@ -238,7 +256,11 @@ func (a *Agent) bindingContext(cue, revision string) string {
 	seen := map[string]bool{}
 	conditions := map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}
 	for _, owner := range a.memoryOwners() {
-		evidence, err := a.memory.store.ContextualEvidenceApplicable(owner, conditions, time.Now(), contextualContextLimit)
+		// THE BINDING PROJECTION SPENDS ITS WINDOW ON AUTHORITY, NOT ON NOISE.
+		// A burst of newer incidental observations must not push a rare
+		// approved rule out of the read; the same latest/suppression/expiry
+		// guards still decide whether each one is live.
+		evidence, err := a.memory.store.ContextualEvidenceApproved(owner, conditions, time.Now(), contextualContextLimit)
 		if err != nil {
 			continue
 		}
@@ -393,6 +415,16 @@ func explicitContextualDecision(text string) bool {
 	return false
 }
 
+// contextualSanitizedItems is contextualItems with the secret redactor applied
+// to every retained condition or rejected alternative.
+func contextualSanitizedItems(items []string) []string {
+	out := contextualItems(items)
+	for i := range out {
+		out[i] = redact.Secrets(out[i])
+	}
+	return out
+}
+
 func contextualItems(items []string) []string {
 	if len(items) > 8 {
 		items = items[:8]
@@ -402,6 +434,30 @@ func contextualItems(items []string) []string {
 		result = append(result, contextualClip(item, 240))
 	}
 	return result
+}
+
+// userQuoteForScope answers the literal span a scope promotion must be argued
+// from. When the caller still holds the verified supporting quote it is that
+// span alone; otherwise it falls back to the whole turn, which is the only
+// string a non-user candidate can be checked against.
+func userQuoteForScope(c reflex.ExtractResult, user string) string {
+	if q := strings.TrimSpace(c.SourceQuote); q != "" && strings.Contains(user, q) {
+		return q
+	}
+	return user
+}
+
+// contextualDerivedReceipt names the tools whose output is a SUMMARY, a HISTORY
+// lookup or a memory read rather than an independent observation of the world.
+// Citing one back cannot corroborate a claim: the model already read or wrote
+// it, and a fresh reader receipt id would let suppressed history re-enter as
+// observed proof.
+func contextualDerivedReceipt(tool string) bool {
+	switch strings.ToLower(strings.TrimSpace(tool)) {
+	case "search_conversations", "recall", "read_task", "tasks", "memory_evidence":
+		return true
+	}
+	return false
 }
 
 func explicitContextualGlobal(text string) bool {

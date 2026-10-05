@@ -527,7 +527,7 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 		// as though something now stands.
 		return "nothing was set up: " + err.Error(), true, nil
 	}
-	created = a.standingFileTheExchange(store, created)
+	created, fileNote := a.standingFileTheExchange(store, created)
 	created, armNote := a.standingArmBaseline(store, created)
 	a.emitStandingUpdate("stood", created, "")
 	// Implicit setup reports to the surface once. The tool result also carries
@@ -540,6 +540,9 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 	}
 	if armNote != "" {
 		line += "\n" + armNote
+	}
+	if fileNote != "" {
+		line += "\n" + fileNote
 	}
 	line += "\n" + standingRatifiedLine
 	line += a.standingBackgroundLimitation(created)
@@ -1141,19 +1144,31 @@ func (a *Agent) standingAskedFromHome(store standingStore) bool {
 // conversation that asked, and it is what a live delivery is addressed to
 // (standing_run.go).
 //
-// It is BEST EFFORT on the write. The item already stands — the person answered
-// yes and Create wrote it — so a second write that failed costs the door home
-// opens and never the thing itself; the alternative, failing here, would be a
-// conversation saying nothing was set up when something was.
-func (a *Agent) standingFileTheExchange(store standingStore, item standing.Item) standing.Item {
+// A FAILED WRITE IS SAID, AND THE ITEM IS RETURNED AS IT ACTUALLY STANDS. The
+// item already stands — the person answered yes and Create wrote it — so a
+// second write that failed costs the door home opens and never the thing
+// itself. But that door is exactly what a failed write loses, so the item the
+// caller carries on with is the UNFILED one the store really holds: answering
+// with the moved origin would be claiming a record that is not on disk, and a
+// firing addressed to that path would open nothing. The person is told in the
+// same breath and the store's visible needs-person line carries it, so the
+// outcome is partial rather than a denied setup.
+func (a *Agent) standingFileTheExchange(store standingStore, item standing.Item) (standing.Item, string) {
 	if !a.standingAskedFromHome(store) {
-		return item
+		return item, ""
 	}
 	filed := store.ExchangeDir(item.ID)
-	item.Origin.Exchange = filed
-	item.Origin.Transcript = filepath.Join(filed, placeTranscript)
-	_ = store.Save(item)
-	return item
+	filedItem := item
+	filedItem.Origin.Exchange = filed
+	filedItem.Origin.Transcript = filepath.Join(filed, placeTranscript)
+	if err := store.Save(filedItem); err != nil {
+		note := "the item stands, but where it was filed could not be saved (" + oneLine(err.Error()) + "): it still needs you"
+		if nerr := store.NoteNeedsPerson(item.ID, note); nerr != nil {
+			note += "; and that could not be recorded either"
+		}
+		return item, note
+	}
+	return filedItem, ""
 }
 
 // ── the card ────────────────────────────────────────────────────────────────

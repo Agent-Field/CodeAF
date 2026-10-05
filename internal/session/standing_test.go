@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // ── a store this package can watch ──────────────────────────────────────────
@@ -31,6 +32,7 @@ type fakeStanding struct {
 	items   map[string]standing.Item
 	armed   []string
 	fail    error
+	saveErr error
 	armErr  error
 	noteErr error
 	next    int
@@ -102,6 +104,9 @@ func (f *fakeStanding) NoteNeedsPerson(id, note string) error {
 func (f *fakeStanding) Save(item standing.Item) error {
 	if err := item.Validate(); err != nil {
 		return err
+	}
+	if f.saveErr != nil {
+		return f.saveErr
 	}
 	f.saved = append(f.saved, item)
 	f.items[item.ID] = item
@@ -546,6 +551,132 @@ func TestStandingItemMadeFromHomeIsFiledUnderItself(t *testing.T) {
 	// firing is addressed to, and moving a folder does not rename it.
 	if item.Origin.SessionID != agent.id {
 		t.Fatalf("origin.SessionID = %q, want the exchange's own id %q", item.Origin.SessionID, agent.id)
+	}
+}
+
+// A HOME FILING THAT COULD NOT BE WRITTEN IS NOT REPORTED AS A NORMAL SETUP.
+// The item stands — Create wrote it — but its origin still names the exchange
+// it is leaving, so the door home opens is not silently claimed; the tool result
+// says so and the store carries a visible needs-person line.
+func TestStandingHomeFilingWriteFailureIsVisibleAndTruthful(t *testing.T) {
+	store := newFakeStanding(t)
+	store.saveErr = errors.New("standing: the record would not write")
+	exchange := "a1b2c3d4e5f60719"
+	dir := filepath.Join(standing.ExchangesRoot(store.Root()), exchange)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("the exchange folder: %v", err)
+	}
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", aReminder()),
+		finalText("set up"),
+	}}
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.SessionFile = filepath.Join(dir, "transcript.jsonl")
+	})
+
+	events, err := agent.Submit(context.Background(), "remind me at 6 to leave")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	if len(store.created) != 1 {
+		t.Fatalf("a yes created %d items", len(store.created))
+	}
+	item, err := store.Get(store.created[0].ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	// THE ITEM REALLY STANDS, and its recorded origin is the one actually on
+	// disk: not the folder it never got pointed at.
+	if item.Status != standing.StatusActive {
+		t.Fatalf("status = %q, want active", item.Status)
+	}
+	if item.Origin.Exchange != "" {
+		t.Fatalf("origin.Exchange = %q, an unpersisted filing was claimed", item.Origin.Exchange)
+	}
+	if item.NeedsPerson == "" {
+		t.Fatal("a filing that could not be saved left no visible needs-person line")
+	}
+	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "could not be saved") || !strings.Contains(output, "still needs you") {
+		t.Fatalf("tool result = %q, want the partial outcome told to the person", output)
+	}
+}
+
+// A FUTURE AUTHORIZED RUN IS BOUND BEFORE ITS FIRST ACTION. A firing is built
+// from a vision posture that opens no database, so without this seam it would
+// act with none of the project's approved binding rules in front of it. The run
+// is lent the canonical brain READ-ONLY: the rules and their conditional
+// exceptions ride the first provider request, an unrelated project's rules stay
+// absent, and the firing gains no remember/forget verb and no write.
+func TestStandingRunBindsApprovedRuleReadOnlyBeforeFirstRequest(t *testing.T) {
+	dir := t.TempDir()
+	brainPath := filepath.Join(t.TempDir(), "brain.db")
+	brain, err := store.Open(brainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := standingProjectKey(dir)
+	owner := store.OwnerProject(key)
+	m, err := brain.AddMemory(store.Memory{ID: "rule", Owner: owner, Type: store.MemoryDecision,
+		Title: "offline release", Text: "Release runtime uses standard library only."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := brain.AppendContextualEvidence(store.ContextualEvidence{ID: "ev", MemoryID: m.ID,
+		Owner: owner, SessionID: "s", TurnID: "t", Actor: "user", Authority: "approved_rule",
+		Observation: "release artifacts must run offline", Verification: "asserted",
+		Applicability: []string{"release runtime only; development network allowed"},
+		Rationale:     "deploy without dependency downloads", SourceKey: "s:t", SourceHash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	otherOwner := store.OwnerProject("some-other-project")
+	other, err := brain.AddMemory(store.Memory{ID: "other", Owner: otherOwner, Type: store.MemoryDecision,
+		Title: "other rule", Text: "Other project indents with tabs."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := brain.AppendContextualEvidence(store.ContextualEvidence{ID: "ev-other", MemoryID: other.ID,
+		Owner: otherOwner, SessionID: "s", TurnID: "t", Actor: "user", Authority: "approved_rule",
+		Observation: "tabs", Verification: "asserted", SourceKey: "s:t", SourceHash: "h2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := brain.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &standingRunner{memoryPath: brainPath}
+	cfg, closeMemory := runner.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	defer closeMemory()
+	if cfg.Memory == nil || !cfg.bindingOnlyMemory || cfg.MemoryProjectKey != key {
+		t.Fatalf("run was not bound to its project brain: %+v", cfg.MemoryProjectKey)
+	}
+	script := &reflexScript{}
+	agent, _ := newTestAgent(t, script, func(c *Config) {
+		c.Memory = cfg.Memory
+		c.MemoryProjectKey = cfg.MemoryProjectKey
+		c.bindingOnlyMemory = cfg.bindingOnlyMemory
+	})
+	if agent.memoryWritable() {
+		t.Fatal("a binding-only posture allowed memory writes")
+	}
+	if len(agent.memoryTools()) != 0 {
+		t.Fatal("a binding-only posture lent the remember/forget verb")
+	}
+	collect(t, mustSubmit(t, agent, "finish the offline release work"))
+	script.mu.Lock()
+	requests := append([]string(nil), script.requests...)
+	script.mu.Unlock()
+	joined := strings.Join(requests, "\n")
+	if !strings.Contains(joined, "standard library only") {
+		t.Fatalf("first provider request lacked the approved rule:\n%s", joined)
+	}
+	if !strings.Contains(joined, "release runtime only") || !strings.Contains(joined, "deploy without dependency downloads") {
+		t.Fatalf("first provider request lost the conditional exception or rationale:\n%s", joined)
+	}
+	if strings.Contains(joined, "Other project indents with tabs") {
+		t.Fatalf("an unrelated project's rule was bound in:\n%s", joined)
 	}
 }
 

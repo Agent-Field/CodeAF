@@ -119,6 +119,52 @@ func TestContextualImpactDismissalPersistsUntilMaterialEvidenceChanges(t *testin
 	}
 }
 
+// A PAIRED RE-READ OF CHANGED PRODUCER + UNCHANGED CONSUMER MUST NOT BLINDLY
+// RESET THE EDGE. A worker freshly reading changed A and unchanged B proves only
+// that it read them; it does not demonstrate the consumer still tolerates the
+// new producer. If that read moved the baseline to the changed producer, the
+// post-action impact check would compare changed-A against changed-A and stay
+// quiet — hiding the consequence the check exists to surface. The baseline
+// moves only when the consumer's own assumption changes.
+func TestContextualPairedRereadKeepsEarlierProducerCircumstances(t *testing.T) {
+	graph := openTestStore(t, filepath.Join(t.TempDir(), "paired.db"))
+	d := impactTestDependency()
+	owners := []string{d.ProducerOwner, d.ConsumerOwner}
+	observed, err := graph.ObserveContextualDependency(owners, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := map[string]string{d.ConsumerPath: d.ConsumerHash}
+	// The delegated worker reads the NEW producer alongside the SAME consumer.
+	reread := observed
+	reread.ProducerHash = impactTestHash("v2")
+	reread.ReceiptIDs = []string{"delegated-producer-read", "delegated-consumer-read"}
+	kept, err := graph.ObserveContextualDependency(owners, reread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kept.ProducerHash != observed.ProducerHash {
+		t.Fatalf("paired re-read reset the baseline: %q -> %q", observed.ProducerHash, kept.ProducerHash)
+	}
+	notices, err := graph.ContextualImpacts(owners, d.ProducerOwner, d.EntityID, impactTestHash("v2"), current)
+	if err != nil || len(notices) != 1 {
+		t.Fatalf("material impact hidden after paired re-read: %+v %v", notices, err)
+	}
+	// AND WHEN THE CONSUMER'S OWN ASSUMPTION CHANGES, THE EDGE MOVES. A
+	// different consumer content is a reconsideration this edge can justify.
+	reconsidered := observed
+	reconsidered.ProducerHash = impactTestHash("v2")
+	reconsidered.ConsumerHash = impactTestHash("consumer now imports ../service/api.json differently")
+	reconsidered.ReceiptIDs = []string{"producer-reread-2", "consumer-reread-2"}
+	moved, err := graph.ObserveContextualDependency(owners, reconsidered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.ConsumerHash != reconsidered.ConsumerHash || moved.ProducerHash != reconsidered.ProducerHash {
+		t.Fatalf("changed consumer assumption did not re-baseline: %+v", moved)
+	}
+}
+
 func TestContextualDependencyNeighborhoodAndOutputAreBounded(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "bounded.db"))
 	d := impactTestDependency()

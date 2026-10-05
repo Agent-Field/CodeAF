@@ -485,13 +485,13 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 // A JUDGMENT IS BILLED WHETHER OR NOT IT SAYS YES. It is the auxiliary line the
 // card promised, and a watch that looks a hundred times to fire once has spent
 // a hundred looks' worth of the day's money.
-func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence string) (Verdict, string, error) {
+func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence string) (SentinelReading, string, error) {
 	if t.SentinelVerdict == nil && t.Sentinel == nil {
 		return VerdictUnknown, "", errors.New("there is nothing in this build to judge with")
 	}
 	judgment := Judgment{Item: *item, Evidence: evidence, Previous: item.Previous}
 	var (
-		verdict Verdict
+		verdict SentinelReading
 		line    string
 		usd     float64
 		err     error

@@ -506,7 +506,7 @@ func (c *outcomeCollector) fail(err error) {
 // with a brain records the attempt as it always did; a worker with no brain but
 // a collector forwards the raw observation to the root. Nothing else differs.
 func (a *Agent) recordOutcome(ctx context.Context, turn uint64, call ai.ToolCall, result toolResult, preSnapshot string) {
-	if a.remembers() {
+	if a.memoryWritable() {
 		a.recordMemoryAttempt(ctx, turn, call, result, preSnapshot)
 		return
 	}

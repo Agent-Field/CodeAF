@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Agent-Field/codeaf/internal/store"
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 func gitRepo(t *testing.T, dir string, args ...string) string {
