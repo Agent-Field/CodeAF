@@ -269,6 +269,7 @@ type memorySupersedePayload struct {
 }
 
 type memoryForgetPayload struct {
+	Owner         string `json:"owner,omitempty"`
 	ID            string `json:"id"`
 	SourceSession string `json:"source_session,omitempty"`
 }
@@ -433,6 +434,17 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	}
 	defer tx.Rollback()
 
+	var oldOwner string
+	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Memory{}, fmt.Errorf("supersede memory: %w: target must be active", ErrInvalid)
+		}
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if oldOwner != fresh.Owner {
+		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
+	}
+
 	var exists int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, fresh.ID).Scan(&exists); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
@@ -504,6 +516,17 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 	}
 	if count == 0 {
 		return Memory{}, fmt.Errorf("supersede memory: %w: %q is not an active memory this session can see", ErrInvalid, oldID)
+	}
+
+	var oldOwner string
+	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Memory{}, fmt.Errorf("supersede memory: %w: target must be active", ErrInvalid)
+		}
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if oldOwner != fresh.Owner {
+		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
 	}
 
 	var exists int
@@ -593,6 +616,18 @@ func (s *Store) ForgetMemory(id string) error {
 
 // ForgetMemoryFromSession records the conversation that issued the tombstone.
 func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
+	return s.forgetMemory(nil, id, sourceSession)
+}
+
+// ForgetMemoryForOwners tombstones only a row owned by the named owners.
+func (s *Store) ForgetMemoryForOwners(owners []string, id, sourceSession string) error {
+	if len(owners) == 0 {
+		return fmt.Errorf("forget memory: %w: no owner was named", ErrInvalid)
+	}
+	return s.forgetMemory(owners, id, sourceSession)
+}
+
+func (s *Store) forgetMemory(owners []string, id, sourceSession string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("forget memory: %w: id is required", ErrInvalid)
@@ -603,7 +638,19 @@ func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
 	}
 	defer tx.Rollback()
 
-	payload := memoryForgetPayload{ID: id, SourceSession: strings.TrimSpace(sourceSession)}
+	if owners != nil {
+		if err := requireMemoryOwners(tx, owners, id); err != nil {
+			return fmt.Errorf("forget memory: %w", err)
+		}
+	}
+	var rowOwner string
+	if err := tx.QueryRow("SELECT owner FROM memories WHERE id = ?", id).Scan(&rowOwner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("forget memory: %w: missing memory", ErrInvalid)
+		}
+		return fmt.Errorf("forget memory: %w", err)
+	}
+	payload := memoryForgetPayload{ID: id, Owner: rowOwner, SourceSession: strings.TrimSpace(sourceSession)}
 	seq, _, err := appendEvent(tx, id, EventMemoryForget, payload)
 	if err != nil {
 		return fmt.Errorf("forget memory: %w", err)
@@ -619,7 +666,29 @@ func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
 
 // RestoreMemory returns a forgotten memory to the active views. Superseded
 // memories remain retired because their replacement is still the store's truth.
-func (s *Store) RestoreMemory(id string) error {
+func (s *Store) RestoreMemory(id string) error { return s.restoreMemory(nil, id) }
+
+// RestoreMemoryForOwners restores only a forgotten row owned by the named owners.
+func (s *Store) RestoreMemoryForOwners(owners []string, id string) error {
+	if len(owners) == 0 {
+		return fmt.Errorf("restore memory: %w: no owner was named", ErrInvalid)
+	}
+	return s.restoreMemory(owners, id)
+}
+
+func requireMemoryOwners(tx *sql.Tx, owners []string, id string) error {
+	where, args := ownerFilterSQL(owners)
+	var count int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM memories WHERE id = ?"+where, append([]any{id}, args...)...).Scan(&count); err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("%w: memory is outside the named owners", ErrInvalid)
+	}
+	return nil
+}
+
+func (s *Store) restoreMemory(owners []string, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("restore memory: %w: id is required", ErrInvalid)
@@ -629,6 +698,11 @@ func (s *Store) RestoreMemory(id string) error {
 		return fmt.Errorf("restore memory: %w", err)
 	}
 	defer tx.Rollback()
+	if owners != nil {
+		if err := requireMemoryOwners(tx, owners, id); err != nil {
+			return fmt.Errorf("restore memory: %w", err)
+		}
+	}
 	payload := memoryRestorePayload{ID: id}
 	seq, _, err := appendEvent(tx, id, EventMemoryRestore, payload)
 	if err != nil {
@@ -1270,6 +1344,17 @@ func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64, fts b
 		return err
 	}
 	if changed != 1 {
+		// An owner-proven sync tombstone may precede its row. Its journal event
+		// remains the pending tombstone when Rebuild has no row to materialize.
+		if ValidOwner(normalizeOwner(payload.Owner)) && strings.TrimSpace(payload.ID) != "" {
+			var exists int
+			if err := tx.QueryRow("SELECT COUNT(*) FROM memories WHERE id = ?", payload.ID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists == 0 {
+				return nil
+			}
+		}
 		return fmt.Errorf("%w: nothing to forget under %q", ErrInvalid, payload.ID)
 	}
 	return refreshMemoryFTS(tx, payload.ID, fts)

@@ -104,7 +104,7 @@ func TestWriteRefusesAnOwnerItCannotProve(t *testing.T) {
 // ── the one write door ──────────────────────────────────────────────────────
 
 // A repeated "remember this" through the one door skips the second: exact
-// words, or the same title, within the same owner, and the skip is journaled.
+// words within the same owner, and the skip is journaled.
 func TestWriteDoorSkipsADuplicateWithinTheSameOwner(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "door.db"))
 	alpha := OwnerProject("alpha")
@@ -123,13 +123,12 @@ func TestWriteDoorSkipsADuplicateWithinTheSameOwner(t *testing.T) {
 	if again.Memory.ID != first.Memory.ID {
 		t.Fatalf("skip names %q, want the row it matched %q", again.Memory.ID, first.Memory.ID)
 	}
-	// AND THE SAME TITLE IS ENOUGH — the title is the index line the router
-	// picks by, and two rows with one title would be two entries in every
-	// shortlist.
+	// THE SAME TITLE MAY LABEL DIFFERENT FACTS. Only the body determines
+	// an exact duplicate, so the changed words remain available for review.
 	retitled, err := graph.Write(WriteRequest{Owner: alpha, Type: MemoryFact,
 		Title: "prefers TABS", Text: "An entirely different sentence about editors."})
-	if err != nil || retitled.Outcome != WriteOutcomeSkipped {
-		t.Fatalf("same-title write = (%+v, %v), want a skip", retitled, err)
+	if err != nil || retitled.Outcome != WriteOutcomeAdded {
+		t.Fatalf("same-title write = (%+v, %v), want an add", retitled, err)
 	}
 
 	// The other owner is NOT deduplicated against: beta may hold a genuinely
@@ -152,8 +151,8 @@ func TestWriteDoorSkipsADuplicateWithinTheSameOwner(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if count != 2 {
-		t.Fatalf("skips journaled = %d, want 2", count)
+	if count != 1 {
+		t.Fatalf("skips journaled = %d, want 1", count)
 	}
 }
 

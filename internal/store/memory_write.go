@@ -56,114 +56,102 @@ type WriteResult struct {
 
 // WriteOutcomeAdded and WriteOutcomeSkipped are the two outcomes.
 const (
-	WriteOutcomeAdded    = "added"
-	WriteOutcomeSkipped  = "skipped-duplicate"
-	writeNeighborLookups = 200
+	WriteOutcomeAdded   = "added"
+	WriteOutcomeSkipped = "skipped-duplicate"
 )
 
-// Write is the one door. It validates, looks for a same-owner duplicate, and
-// either adds or skips — and both outcomes are journaled, the skip so that
-// "it said remember twice and the store kept one" is provable later.
-//
-// The dedup is deliberately SMALL: exact text (words folded, case folded) or
-// exact title, within the same owner. Everything subtler is the decider's job
-// — the model compares near misses and refines — and this door only refuses
-// what no reading of the words could make different. A store without the FTS
-// index falls back to a bounded scan of its own active rows, so the door's
-// promise holds on a build where the index never existed.
+// Write validates and deduplicates under one immediate write transaction.
+// Exact folded bodies within the same owner are duplicates; titles alone are
+// labels and may name different facts. Validation comes before the lookup so
+// an invalid request cannot become a successful skip.
 func (s *Store) Write(req WriteRequest) (WriteResult, error) {
 	owner := normalizeOwner(req.Owner)
 	if !ValidOwner(owner) {
 		return WriteResult{}, fmt.Errorf("write memory: %w: an owner is required and %q is not one this build mints", ErrInvalid, req.Owner)
 	}
-	fresh := Memory{
-		Owner:         owner,
-		Type:          req.Type,
-		Title:         req.Title,
-		Text:          req.Text,
-		Tags:          req.Tags,
-		SourceSession: req.SourceSession,
-	}
-	existing, err := s.writeDuplicate(owner, fresh)
+	payload, err := memoryPayloadFrom(Memory{Owner: owner, Type: req.Type, Title: req.Title, Text: req.Text, Tags: req.Tags})
 	if err != nil {
-		return WriteResult{}, err
+		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	}
+	payload.ID = NewMemoryID()
+	payload.SourceSession = strings.TrimSpace(req.SourceSession)
+	tx, err := s.beginWrite()
+	if err != nil {
+		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	}
+	defer tx.Rollback()
+	existing, err := writeDuplicateOn(tx, owner, payload.Text)
+	if err != nil {
+		return WriteResult{}, fmt.Errorf("write memory: %w", err)
 	}
 	if existing != nil {
-		skip := WriteResult{
-			Memory:  *existing,
-			Outcome: WriteOutcomeSkipped,
-			Why:     "already kept as " + existing.Title,
+		result := WriteResult{Memory: *existing, Outcome: WriteOutcomeSkipped, Why: "already kept as " + existing.Title}
+		if _, _, err := appendEvent(tx, "memory", EventMemorySkipped, map[string]any{"owner": owner, "text": payload.Text, "kept": existing.ID}); err != nil {
+			return WriteResult{}, fmt.Errorf("write memory: %w", err)
 		}
-		if _, _, err := s.journalMemoryOutcome(EventMemorySkipped, map[string]any{
-			"owner": owner, "text": fresh.Text, "kept": existing.ID,
-		}); err != nil {
-			return skip, fmt.Errorf("write memory: %w", err)
+		if err := tx.Commit(); err != nil {
+			return WriteResult{}, fmt.Errorf("write memory: %w", err)
 		}
-		return skip, nil
+		return result, nil
 	}
-	memory, err := s.addMemory(fresh, fresh.SourceSession)
+	seq, _, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
 	if err != nil {
-		return WriteResult{}, err
+		return WriteResult{}, fmt.Errorf("write memory: %w", err)
 	}
-	return WriteResult{Memory: memory, Outcome: WriteOutcomeAdded}, nil
+	if err := applyMemoryAdd(tx, payload, seq, s.fts); err != nil {
+		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	}
+	rows, err := queryMemoriesOn(tx, "WHERE id = ?", []any{payload.ID}, "", 1)
+	if err != nil {
+		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	}
+	return WriteResult{Memory: rows[0], Outcome: WriteOutcomeAdded}, nil
 }
 
-// writeDuplicate answers the same-owner row this write would duplicate, or nil.
-// nil-with-no-error means nothing matched; an error means the search itself
-// failed and the write is refused rather than risked, because a dedup search
-// that cannot run must never become a second copy of somebody's words.
-//
-// BOTH WORDS AND TITLE ARE SEARCHED. A repeat usually retypes the words, but a
-// caller that renamed the body while keeping the index line is also a
-// duplicate — the title is what every shortlist picks by, and two rows with
-// one title would be two entries in every one of them.
-func (s *Store) writeDuplicate(owner string, fresh Memory) (*Memory, error) {
-	want := normalizeMemoryWords(fresh.Text)
-	wantTitle := normalizeMemoryWords(fresh.Title)
-	var found []Memory
-	var err error
-	if s.fts {
-		byText, err := s.SearchMemories([]string{owner}, fresh.Text, writeNeighborLookups)
-		if err != nil {
-			return nil, fmt.Errorf("write memory: %w", err)
+// writeDuplicateOn checks bodies in the transaction that admits the new row.
+// It streams the owner's active rows rather than relying on a lexical top-k:
+// punctuation-only bodies and old duplicates must obey the same exact rule.
+func writeDuplicateOn(tx *sql.Tx, owner, text string) (*Memory, error) {
+	rows, err := tx.Query("SELECT id, text FROM memories WHERE owner = ? AND status = ? ORDER BY updated_seq DESC, id DESC", owner, MemoryActive)
+	if err != nil {
+		return nil, err
+	}
+	want := normalizeMemoryWords(text)
+	var id string
+	for rows.Next() {
+		var candidateID, body string
+		if err := rows.Scan(&candidateID, &body); err != nil {
+			rows.Close()
+			return nil, err
 		}
-		byTitle, err := s.SearchMemories([]string{owner}, fresh.Title, writeNeighborLookups)
-		if err != nil {
-			return nil, fmt.Errorf("write memory: %w", err)
-		}
-		found = append(append([]Memory{}, byText...), byTitle...)
-	} else {
-		// No index: scan the owner's own active rows. A store big enough for
-		// the scan to hurt is a store that has an index.
-		found, err = s.ListMemories([]string{owner}, memoryDuplicateScanLimit)
-		if err != nil {
-			return nil, fmt.Errorf("write memory: %w", err)
+		if normalizeMemoryWords(body) == want {
+			id = candidateID
+			break
 		}
 	}
-	seen := map[string]bool{}
-	for _, row := range found {
-		if seen[row.ID] {
-			continue
-		}
-		seen[row.ID] = true
-		if want != "" && normalizeMemoryWords(row.Text) == want {
-			return &row, nil
-		}
-		if wantTitle != "" && normalizeMemoryWords(row.Title) == wantTitle {
-			return &row, nil
-		}
+	readErr := rows.Err()
+	closeErr := rows.Close()
+	if readErr != nil {
+		return nil, readErr
 	}
-	return nil, nil
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if id == "" {
+		return nil, nil
+	}
+	found, err := queryMemoriesOn(tx, "WHERE id = ?", []any{id}, "", 1)
+	if err != nil {
+		return nil, err
+	}
+	return &found[0], nil
 }
-
-// memoryDuplicateScanLimit bounds the no-index fallback scan: past this many
-// rows the exact-duplicate question is asked of the newest ten thousand, which
-// covers every active-owner store in practice. A store big enough for the scan
-// to hurt is a store that has an index.
-const memoryDuplicateScanLimit = 10000
 
 // normalizeMemoryWords folds the words a dedup question is asked in: case,
-// whitespace and width. It is the ONE spelling of "the same words" for the
+// whitespace. It is the ONE spelling of "the same words" for the
 // write door, and it is deliberately weaker than a similarity score — two
 // lines that are not the same words are not the same memory, and a score
 // threshold would be a guess wearing a rule's clothes.

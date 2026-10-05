@@ -1,10 +1,12 @@
 package store
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // The memory sync seam. THESE TWO METHODS ARE THE WHOLE OF WHAT SYNC NEEDS
@@ -132,16 +134,15 @@ type AppliedMemoryEvents struct {
 //     the owner the event or the row itself names — a store that has retired
 //     the target first is not overwritten back to life by a slower delivery;
 //   - forget is a tombstone and applies to any row that is not already
-//     forgotten; a LATER-delivered add of the same id never resurrects it,
-//     because the add checks existence, not activity;
+//     forgotten, or retains an owner-proven pending tombstone; a later add
+//     checks both existing rows and pending tombstones;
 //   - restore brings back only a forgotten row;
 //   - re-home moves only a row that is still quarantined, exactly what the
 //     live door would have moved.
 //
-// Two devices superseding the same row, or one forgetting what the other
-// updates, therefore converge to the first fold that landed, and the skipped
-// half is counted so a surface can say so. That is an ORDER, not a promise
-// that disagreement cannot happen.
+// Conflicting updates use arrival order and can leave devices with different
+// bodies if they fold opposite orders. This seam does not claim convergence.
+// Delivery receipts prevent repeats from undoing subsequent local work.
 //
 // Each applied event is RE-JOURNALED under the receiving store's own sequence
 // with its original payload, so the fold is durable, replayable, and
@@ -151,10 +152,12 @@ type AppliedMemoryEvents struct {
 //
 // The allow function is the RECEIVER's visibility policy, decided before
 // anything lands: an owner the policy refuses is skipped, never written under
-// a widened owner. Update, forget and restore payloads carry no owner of their
-// own — they act on a row that is already here — so for those the policy is
-// asked about THE ROW'S OWN owner, read in the same transaction. A nil policy
-// allows every owner, which is the local default — a store moving its own
+// a widened owner. For update, forget and restore of an existing row, policy
+// is asked about THE ROW'S OWN owner, read in the same transaction. New forget
+// events also carry owner proof, so an unknown-id tombstone may be journaled
+// first and suppress a later add. Legacy ownerless unknown tombstones are
+// skipped because their policy cannot be proved. A nil policy allows every
+// owner, which is the local default — a store moving its own
 // journal forward in a test.
 func (s *Store) ApplyMemoryEvents(events []MemoryEvent, allow func(owner string) bool) (AppliedMemoryEvents, error) {
 	var result AppliedMemoryEvents
@@ -196,14 +199,29 @@ func (s *Store) applyOneMemoryEvent(event MemoryEvent, allow func(owner string) 
 		return false, err
 	}
 	defer tx.Rollback()
-	// The event is journaled under THIS store's sequence first; the fold below
-	// stamps its views with that sequence. A skip rolls the journal entry back
-	// with the rest of the transaction — a no-op is not history.
-	seq, _, err := appendEvent(tx, "remote", event.Kind, event.Payload)
+	// Delivery identity lives in the journal so rebuilding the views does not
+	// forget which updates already arrived. Forwarders preserve an existing
+	// identity rather than minting a new one on every replication hop.
+	deliveryID, err := memoryDeliveryID(event)
 	if err != nil {
 		return false, err
 	}
-	local := Event{Seq: seq, NodeID: "remote", Kind: event.Kind, Payload: event.Payload}
+	seen, err := memoryDeliverySeen(tx, event, deliveryID)
+	if err != nil {
+		return false, err
+	}
+	if seen {
+		return false, nil
+	}
+
+	// The event is journaled under THIS store's sequence first; the fold below
+	// stamps its views with that sequence. A skip rolls the journal entry back
+	// with the rest of the transaction — a no-op is not history.
+	seq, _, err := appendEvent(tx, deliveryID, event.Kind, event.Payload)
+	if err != nil {
+		return false, err
+	}
+	local := Event{Seq: seq, NodeID: deliveryID, Kind: event.Kind, Payload: event.Payload}
 	applied, err := foldMemoryEvent(tx, local, seq, s.fts, allow)
 	if err != nil {
 		return false, err
@@ -230,10 +248,9 @@ func ownerBearingKind(kind EventKind) bool {
 }
 
 // foldMemoryEvent applies ONE memory event to the views, idempotently, and
-// answers whether it changed anything. IT IS THE SHARED FOLD: the write
-// path's replay reaches it through [replayEvent] with the journal's own seq,
-// and the sync seam reaches it with the re-journaled event's seq. One fold,
-// so no receiver can disagree with its own replay about what an event means.
+// answers whether it changed anything. It enforces sync policy and receipt
+// rules before reaching the same apply functions that Rebuild uses. Only
+// admitted events enter the journal; Rebuild repeats their materialization.
 func foldMemoryEvent(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
 	switch event.Kind {
 	case EventMemoryAdd:
@@ -242,6 +259,16 @@ func foldMemoryEvent(tx *sql.Tx, event Event, seq int64, fts bool, allow func(ow
 			return false, err
 		}
 		payload.Owner = ownerForReplay(payload)
+		// A tombstone that arrived first remains in the journal under its proven
+		// owner. A later add cannot turn delayed delivery into resurrection.
+		var tombstones int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE seq < ? AND kind = ? AND json_extract(payload, '$.id') = ? AND json_extract(payload, '$.owner') = ?`,
+			seq, EventMemoryForget, payload.ID, payload.Owner).Scan(&tombstones); err != nil {
+			return false, err
+		}
+		if tombstones != 0 {
+			return false, nil
+		}
 		var exists int
 		if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, payload.ID).Scan(&exists); err != nil {
 			return false, err
@@ -305,12 +332,22 @@ func foldMemoryEvent(tx *sql.Tx, event Event, seq int64, fts bool, allow func(ow
 		err := tx.QueryRow(`SELECT owner, status FROM memories WHERE id = ?`, payload.ID).Scan(&rowOwner, &status)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
-			// NOTHING TO FORGET HERE. The tombstone may arrive before the row
-			// it names on another device, but on this one it is a skip.
-			return false, nil
+			// Only a tombstone that proves its owner can be kept before its row.
+			// Legacy ownerless events cannot pass a receiver policy by guessing.
+			owner := normalizeOwner(payload.Owner)
+			if !ValidOwner(owner) || strings.TrimSpace(payload.ID) == "" {
+				return false, nil
+			}
+			if allow != nil && !allow(owner) {
+				return false, nil
+			}
+			return true, nil
 		case err != nil:
 			return false, err
 		case status == MemoryForgotten:
+			return false, nil
+		}
+		if payload.Owner != "" && normalizeOwner(payload.Owner) != rowOwner {
 			return false, nil
 		}
 		// THE POLICY IS ASKED ABOUT THE ROW'S OWN OWNER — the payload names no
@@ -432,6 +469,13 @@ func eventSyncable(kind EventKind) bool {
 // way the replay answers it. An owner this build does not understand is
 // quarantined — a policy gate that widens to user is not a gate.
 func memoryEventOwner(event Event) string {
+	if event.Kind == EventMemorySupersede {
+		var payload memorySupersedePayload
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return OwnerLegacyProject
+		}
+		return ownerForReplay(payload.New)
+	}
 	var payload memoryPayload
 	if err := json.Unmarshal(event.Payload, &payload); err == nil {
 		return ownerForReplay(payload)
@@ -439,4 +483,50 @@ func memoryEventOwner(event Event) string {
 	// A payload this build cannot parse carries no owner. The quarantine is the
 	// honest answer for a row whose provenance is unknown.
 	return OwnerLegacyProject
+}
+
+// memoryDeliveryID preserves the originating event identity across forwarding.
+func memoryDeliveryID(event MemoryEvent) (string, error) {
+	if strings.HasPrefix(event.NodeID, "remote-memory:") {
+		return event.NodeID, nil
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("remote-memory:%x", sha256.Sum256(encoded)), nil
+}
+
+// memoryDeliverySeen recognizes receipts and echoes of this store's own events.
+// An originating store has no receipt yet, so matching payloads are checked
+// against their original journal identity before an echo can undo newer work.
+func memoryDeliverySeen(tx *sql.Tx, incoming MemoryEvent, deliveryID string) (bool, error) {
+	var count int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM events WHERE node_id = ?", deliveryID).Scan(&count); err != nil {
+		return false, err
+	}
+	if count != 0 {
+		return true, nil
+	}
+	rows, err := tx.Query("SELECT seq, ts, node_id, kind, payload FROM events WHERE kind = ? AND payload = ?", incoming.Kind, string(incoming.Payload))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var candidate MemoryEvent
+		var payload string
+		if err := rows.Scan(&candidate.Seq, &candidate.Time, &candidate.NodeID, &candidate.Kind, &payload); err != nil {
+			return false, err
+		}
+		candidate.Payload = json.RawMessage(payload)
+		identity, err := memoryDeliveryID(candidate)
+		if err != nil {
+			return false, err
+		}
+		if identity == deliveryID {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
