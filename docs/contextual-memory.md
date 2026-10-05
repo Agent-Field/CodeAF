@@ -56,7 +56,11 @@ decisions are read through their own bounded projection, so a burst of newer
 incidental observations cannot starve a live rare constraint, while latest
 correction, expiry, conditions and suppression still win. Authority and scope
 are judged against the claim's own supporting span, not the whole utterance, so a
-true quote of ordinary talk cannot manufacture a rule. Scope is gated the same way:
+true quote of ordinary talk cannot manufacture a rule. The containing clause must
+also be an assertion: a rule inside a question ("Should we never use pandas?") or a
+rejected third-party quotation ("The reviewer said never use floats, but I reject
+that") is demoted to a proposal, while a polite real directive and an ordinary
+literal constraint still bind automatically. Scope is gated the same way:
 a project span stays in its project even beside a global sentence, only an explicit
 machine-wide span may take machine scope (which then applies across projects on the
 same authorized machine and carries no project condition), "everywhere in this

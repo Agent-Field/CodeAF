@@ -910,7 +910,10 @@ first action and writes nothing back, and when memory is on a run that cannot lo
 those rules refuses and asks for you instead of acting unbound. Optional semantic recall can arrive later.
 Source words outrank interpretations; assistant assertions do not confirm test
 outcomes. A binding claim is judged against its own supporting span, not every
-word of the turn, so a quotation of ordinary talk cannot manufacture a rule. Scope
+word of the turn, so a quotation of ordinary talk cannot manufacture a rule. The
+containing sentence must be an instruction rather than a question or a quotation of
+something the person rejected, so "Should we never use pandas?" is not a rule, while
+"Please make sure the release never uses pandas" is. Scope
 is read the same way: a project rule stays in its project, a rule that says on this
 machine may apply across projects on this machine, and "everywhere in this project"
 is still just this project.

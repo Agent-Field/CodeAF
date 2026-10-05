@@ -130,10 +130,18 @@ func (s memoryTurnEvidence) ground(c reflex.ExtractResult) reflex.ExtractResult 
 		// and a quoted "yes" is not a rule whatever else was said. The
 		// surrounding utterance still travels in the evidence, so conditions,
 		// exceptions and rationale are not lost.
-		if c.Authority == "approved_rule" && !explicitContextualRule(quote) {
+		// A TRUE SUBSTRING IS NOT AUTHORITY. The quote must also sit in a span
+		// the person actually asserted: a rule inside a question ("Should we
+		// never use pandas?") or a rejected third-party quotation ("The reviewer
+		// said never use floats, but I reject that") is reported, not approved.
+		// The check is textual and conservative over the CONTAINING clause, not
+		// a semantic vote; a polite real directive ("Please make sure ...") and
+		// ordinary literal constraints still bind automatically.
+		directive := contextualSpanDirective(contextualSupportClause(s.User, quote))
+		if c.Authority == "approved_rule" && (!explicitContextualRule(quote) || !directive) {
 			c.Authority = "observation"
 		}
-		if c.Authority == "confirmed_decision" && !explicitContextualDecision(quote) {
+		if c.Authority == "confirmed_decision" && (!explicitContextualDecision(quote) || !directive) {
 			c.Authority = "observation"
 		}
 		if c.Authority != "approved_rule" && c.Authority != "confirmed_decision" {
@@ -442,6 +450,55 @@ func contextualItems(items []string) []string {
 		result = append(result, contextualClip(item, 240))
 	}
 	return result
+}
+
+// contextualSupportClause answers the sentence the supporting quote actually
+// sits in, terminator included. A question mark after the quote is part of the
+// question, so it has to be inside the span the directive check reads.
+func contextualSupportClause(user, quote string) string {
+	idx := strings.Index(user, quote)
+	if idx < 0 {
+		return quote
+	}
+	start := idx
+	for start > 0 {
+		switch rune(user[start-1]) {
+		case '.', '!', '?', '\n', ';':
+			goto done
+		}
+		start--
+	}
+done:
+	end := idx + len(quote)
+	for end < len(user) {
+		end++
+		switch rune(user[end-1]) {
+		case '.', '!', '?', '\n', ';':
+			return user[start:end]
+		}
+	}
+	return user[start:end]
+}
+
+// contextualSpanDirective answers whether a clause is the person asserting a
+// rule rather than asking about one or reporting one they rejected. It is
+// deliberately textual and conservative: ambiguity demotes to a proposal.
+func contextualSpanDirective(clause string) bool {
+	if strings.Contains(clause, "?") {
+		return false
+	}
+	lower := strings.ToLower(clause)
+	for _, cue := range []string{"should we", "should i", "should the", "do we", "do you", "did we", "did you", "can we", "could we", "would we", "is it", "are we", "what if", "why should", "any reason"} {
+		if strings.Contains(lower, cue) {
+			return false
+		}
+	}
+	for _, cue := range []string{"reject", "refuse", "disagree", "not going to", "no longer", "don't want", "do not want", "according to", "reviewer", "someone said", "they said", "he said", "she said", "claimed", "reported that"} {
+		if strings.Contains(lower, cue) {
+			return false
+		}
+	}
+	return true
 }
 
 // userQuoteForScope answers the literal span a scope promotion must be argued

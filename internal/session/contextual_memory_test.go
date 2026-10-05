@@ -364,3 +364,34 @@ func TestContextualMachineScopeAppliesAcrossProjects(t *testing.T) {
 	}
 	_ = agentA.Close()
 }
+
+// A TRUE SUBSTRING INSIDE A QUESTION OR A REJECTED THIRD-PARTY QUOTATION IS NOT
+// APPROVAL. The containing clause decides, while a polite real directive and an
+// ordinary literal constraint still bind automatically.
+func TestContextualSpanAuthorityRejectsQuestionAndRejectedQuote(t *testing.T) {
+	question := memoryTurnEvidence{User: "Should we never use pandas?", At: time.Now()}.ground(
+		reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
+			Source: "user", SourceQuote: "never use pandas", Authority: "approved_rule", Text: "never use pandas"})
+	if question.Authority == "approved_rule" {
+		t.Fatalf("a rule inside a question became approval: %+v", question)
+	}
+	rejected := memoryTurnEvidence{User: "The reviewer said never use floats, but I reject that.", At: time.Now()}.ground(
+		reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
+			Source: "user", SourceQuote: "never use floats", Authority: "approved_rule", Text: "never use floats"})
+	if rejected.Authority == "approved_rule" {
+		t.Fatalf("a rejected third-party quotation became approval: %+v", rejected)
+	}
+	polite := memoryTurnEvidence{User: "Please make sure the release never uses pandas, except in the legacy importer.", At: time.Now()}.ground(
+		reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
+			Source: "user", SourceQuote: "never uses pandas", Authority: "approved_rule",
+			Text: "never uses pandas", Conditions: []string{"except in the legacy importer"}})
+	if polite.Authority != "approved_rule" || len(polite.Conditions) != 1 {
+		t.Fatalf("a polite real directive was not kept: %+v", polite)
+	}
+	plain := memoryTurnEvidence{User: "The ledger must use exact decimals.", At: time.Now()}.ground(
+		reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision, Scope: store.MemoryScopeProject,
+			Source: "user", SourceQuote: "must use exact decimals", Authority: "approved_rule", Text: "use exact decimals"})
+	if plain.Authority != "approved_rule" {
+		t.Fatalf("an ordinary literal constraint was demoted: %+v", plain)
+	}
+}
