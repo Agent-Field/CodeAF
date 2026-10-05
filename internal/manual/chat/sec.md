@@ -21,7 +21,7 @@ In the chat, type `/sec` on its own to audit the whole repository the conversati
 
 It starts as a task at once, shows on the rail which of its phases it is in (`recon`, `hunt`, `prove`, `remediate`, `report`), and can be stopped. The turn goes on while it runs.
 
-**Asking in words works too.** "Do a security review of this repo" or "audit my changes for security problems" makes the chat propose the work with `via: "sec"`; you answer its card like any proposal's.
+**Asking in words works too.** "Do a security review of this repo" or "audit my changes for security problems" makes the chat propose the work with `via: "sec"`; you answer its card like any proposal's. The proposal's brief is sec's own words — `whole repository thorough`, `changes since main` — and those words are all sec is handed, exactly as if you had typed them after `/sec`.
 
 At a shell, `codeaf sec` audits the folder you are in, or the one `--dir` names. `codeaf sec --changes` audits the changes, `--base <ref>` measures them from another commit, and `--depth quick|standard|thorough` sets how hard it looks. `--max-cost` and `--max-hours` set its ceilings. `codeaf sec run --help` lists every flag.
 
@@ -60,6 +60,12 @@ The full report is three files in the task's record folder, named at the end of 
 - `sec-report.sarif` — SARIF 2.1.0, which code-scanning tools and editors read; it names its tool `sec`, with codeaf's build
 
 `--compliance owasp,pci-dss` (at a shell) maps the findings to compliance frameworks — OWASP, PCI-DSS, SOC2, HIPAA, ISO27001 — and adds `sec-compliance.md`. A shell run's record folder is under `~/.codeaf/v3/carried/sec/`, one folder per run.
+
+## An earlier audit's report — find it from another conversation, run it again, the last audit, start fresh
+
+A sec run in the chat keeps its report in that task's record folder, `~/.codeaf/v3/projects/<project>/<conversation>/tasks/<n>/`. Every conversation in the project can see the run in `tasks`: its row's outcome is the first line of its account, which says what it found — `Security audit of the whole repository: 14 problems, 9 confirmed and 5 likely (1 critical, 1 high, 12 medium).` — and its `artifact` is that record folder, where `sec-report.md` is.
+
+Running it again needs nothing cleared away. Each run starts from nothing in a new task folder of its own, reads the folder as it is on disk now, and never reads an earlier run's checkpoints or report. A run in the same conversation is the next task number; a new conversation starts its own. Comparing two runs is the chat's to do, from the two reports.
 
 ## Does sec change my files — read only, no shell, will it edit or commit anything
 

@@ -224,8 +224,11 @@ func TestAnAuditRunsTheWholePipelineAndChangesNothing(t *testing.T) {
 	if ending.Extra["status"] != "pass" {
 		t.Fatalf("the ending's data says %v", ending.Extra["status"])
 	}
-	if !strings.HasPrefix(ending.Deliverable, "Security audit of the whole repository, quick.") {
-		t.Fatalf("the account begins %q", firstLine(ending.Deliverable))
+	// THE FIRST LINE SAYS WHAT IT FOUND, because it is all the project's index
+	// keeps of the run for another conversation to read.
+	if first := firstLine(ending.Deliverable); !strings.HasPrefix(first, "Security audit of the whole repository, quick: ") ||
+		!strings.Contains(first, "findings stayed unclear and are in the report") {
+		t.Fatalf("the account begins %q", first)
 	}
 	readable, _ := os.ReadFile(filepath.Join(host.records, reportMarkdown))
 	for _, want := range []string{"# sec — security audit of the whole repository, quick", "## What it found", "## How it ran"} {
@@ -457,6 +460,26 @@ func TestThePageUsesSecAfsPhaseNames(t *testing.T) {
 	}
 	if got := plainWords("Verifier starting"); got != "Verifier starting" {
 		t.Errorf("sec-af's Verifier became %q", got)
+	}
+}
+
+// THE ACCOUNT'S FIRST LINE SAYS WHAT STANDS, since the project's index keeps
+// only that line of it, and sec's brief is handed to it as its words alone
+// (delegate.Delegate.Words), however the run was asked for.
+func TestTheAccountsFirstLineSaysWhatItFound(t *testing.T) {
+	result := schemas.SecurityAuditResult{Confirmed: 1, Likely: 1, Inconclusive: 3, NotExploitable: 1, Findings: []schemas.VerifiedFinding{
+		{Title: "Command injection", Severity: "critical", Verdict: schemas.VerdictConfirmed},
+		{Title: "Open redirect", Severity: "medium", Verdict: schemas.VerdictLikely},
+	}}
+	account := summary(Scope{Depth: "standard"}, nil, result, []string{"/records/sec-report.md"}, "", "4h")
+	if first := firstLine(account); first != "Security audit of the whole repository: 2 problems, 1 confirmed and 1 likely (1 critical, 1 medium)." {
+		t.Fatalf("the account begins %q", first)
+	}
+	if !strings.Contains(account, "\n3 more stayed unclear and 1 was ruled out.\n") {
+		t.Fatalf("the account does not count the rest:\n%s", account)
+	}
+	if !Program.Words {
+		t.Fatal("sec is handed a composed brief, and reads its headings as its scope")
 	}
 }
 

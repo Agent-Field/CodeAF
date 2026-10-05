@@ -922,6 +922,17 @@ func (p *stagedProposal) Commit(ctx context.Context) (string, bool, error) {
 	return taskReceipt(p.id, spec, state, p.stand, elsewhere), false, nil
 }
 
+// proposalBrief is what a proposal committed to a run hands its work: the
+// composed brief every task gets, or, for a program that reads its brief as
+// words, the words alone, the way a typed `/<name>` hands them
+// ([delegate.Delegate.Words]).
+func proposalBrief(spec taskSpec, via *delegate.Delegate) string {
+	if via != nil && via.Words {
+		return programWords(spec.brief, *via)
+	}
+	return composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+}
+
 // commitProposalToRun is the run road of an approved proposal: an approved
 // hand-off under the bash belt, and every hand-off that names a delegate, is a
 // RUN and never a session-tree node. It keeps the id the card showed, carries
@@ -953,7 +964,7 @@ func (a *Agent) commitProposalToRun(ctx context.Context, p *stagedProposal, spec
 		}
 		via = &m
 	}
-	description := composeBrief(briefWhole, spec.request, spec.brief, spec.deliverable, spec.acceptance, "", spec.admission, spec.origin, taskCopy{})
+	description := proposalBrief(spec, via)
 	// THE RUN OUTLIVES THE TURN THAT LAUNCHED IT, AND NOT THE CONVERSATION.
 	// This context is the turn's, and the turn cancels it on its way out
 	// (agent.go, `defer cancel(nil)`); a run driven under it would be stopped

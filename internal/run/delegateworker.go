@@ -751,7 +751,10 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
-	if note := strings.TrimSpace(w.setup.BriefNote); note != "" {
+	// A PROGRAM WHOSE BRIEF IS WORDS READS NO NOTE ABOVE THEM: it reads its
+	// scope off the brief's first line (delegate.Delegate.Words), and the
+	// folder it works in is its --dir.
+	if note := strings.TrimSpace(w.setup.BriefNote); note != "" && !w.program.Words {
 		brief = note + "\n\n" + brief
 	}
 	started = time.Now()

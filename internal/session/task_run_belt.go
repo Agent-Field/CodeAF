@@ -99,12 +99,16 @@ func programUnattended(program *delegate.Delegate) delegate.Ceilings {
 // holdProgramCeilings writes onto the run which ceilings it starts under and
 // whether the conversation's own limit, rather than the program's unattended
 // one, is the one that will stop it — the words its ending is told in. A run
-// of no program, or of one with no ceilings of its own, keeps none.
+// of no program keeps none.
+//
+// A PROGRAM WITH NO CEILINGS OF ITS OWN IS STOPPED BY THE CONVERSATION'S, and
+// its ending says so. Skipping it left the run holding no ceiling and no
+// word for whose it was, and its ending named "the run's $0.00 limit".
 func (a *Agent) holdProgramCeilings(run *beltRun, spec RunSpec) {
-	own := programUnattended(run.delegate)
-	if own.IsZero() {
+	if run.delegate == nil {
 		return
 	}
+	own := programUnattended(run.delegate)
 	run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
 	run.conversationCostLimit = a.railCap(0) > 0 && (own.CostUSD <= 0 || runCostLeft(a.railCap(0), a.Usage().CostUSD) <= own.CostUSD)
 	run.conversationTimeLimit = a.programConversationTimeLimit(own)

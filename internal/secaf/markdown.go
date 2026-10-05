@@ -265,3 +265,10 @@ func wasWere(n int) string {
 	}
 	return "were"
 }
+
+func areIs(n int) string {
+	if n == 1 {
+		return "is"
+	}
+	return "are"
+}

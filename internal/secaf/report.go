@@ -129,37 +129,43 @@ const summaryFindings = 12
 // audited, what it found in counts, the findings that stand one per line with
 // where and how to fix, and where the full report is.
 func summary(scope Scope, changes *Changes, result schemas.SecurityAuditResult, files []string, cutAt, wall string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Security audit of %s", scope.Describe())
-	if changes != nil {
-		fmt.Fprintf(&b, " (%d changed files since %s, %d files near them)", len(changes.Changed), changes.BaseName, len(changes.Nearby))
-	}
-	b.WriteString(".\n")
-	if cutAt != "" {
-		b.WriteString(cutSentence(cutAt, wall) + "\n")
-	}
 	standing := make([]schemas.VerifiedFinding, 0, len(result.Findings))
 	for _, finding := range result.Findings {
 		if finding.Verdict == schemas.VerdictConfirmed || finding.Verdict == schemas.VerdictLikely {
 			standing = append(standing, finding)
 		}
 	}
+	// THE FIRST LINE SAYS WHAT IT FOUND, because the first line is what the
+	// project's index keeps of a run (session's taskOutcome) and all another
+	// conversation reads of it there. It used to say only what was audited,
+	// so a window beside the one that ran it read "Security audit of the
+	// whole repository." and went looking through the disk for the rest.
+	var b strings.Builder
+	fmt.Fprintf(&b, "Security audit of %s", scope.Describe())
+	if changes != nil {
+		fmt.Fprintf(&b, " (%d changed files since %s, %d files near them)", len(changes.Changed), changes.BaseName, len(changes.Nearby))
+	}
 	if len(standing) == 0 {
-		b.WriteString("It found nothing it could show exploitable")
+		b.WriteString(": nothing it could show exploitable")
 		if result.Inconclusive > 0 {
-			fmt.Fprintf(&b, "; %d finding%s stayed unclear and are in the report", result.Inconclusive, plural(result.Inconclusive))
+			fmt.Fprintf(&b, "; %d finding%s stayed unclear and %s in the report", result.Inconclusive, plural(result.Inconclusive), areIs(result.Inconclusive))
 		}
 		b.WriteString(".\n")
 	} else {
-		fmt.Fprintf(&b, "Found %d problem%s: %d confirmed and %d likely", len(standing), plural(len(standing)), result.Confirmed, result.Likely)
+		fmt.Fprintf(&b, ": %d problem%s, %d confirmed and %d likely", len(standing), plural(len(standing)), result.Confirmed, result.Likely)
 		if counts := severityCounts(standing); counts != "" {
 			b.WriteString(" (" + counts + ")")
 		}
-		b.WriteString(".")
+		b.WriteString(".\n")
+	}
+	if cutAt != "" {
+		b.WriteString(cutSentence(cutAt, wall) + "\n")
+	}
+	if len(standing) > 0 {
 		if result.Inconclusive > 0 || result.NotExploitable > 0 {
-			fmt.Fprintf(&b, " %d more stayed unclear and %d were ruled out.", result.Inconclusive, result.NotExploitable)
+			fmt.Fprintf(&b, "%d more stayed unclear and %d %s ruled out.\n", result.Inconclusive, result.NotExploitable, wasWere(result.NotExploitable))
 		}
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 		sort.SliceStable(standing, func(i, j int) bool {
 			if a, b := severityRank(standing[i].Severity), severityRank(standing[j].Severity); a != b {
 				return a < b

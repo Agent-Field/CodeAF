@@ -410,6 +410,16 @@ func (a *Agent) delegateFor(name string) (delegate.Delegate, error) {
 	return delegate.Delegate{}, DelegateUnknownError{Named: name, Have: a.config.delegateNames()}
 }
 
+// programWords is the brief a program that reads its brief as words is
+// handed from a proposal: the words the model wrote, or the program's default
+// brief when it wrote none ([delegate.Delegate.Words]).
+func programWords(brief string, program delegate.Delegate) string {
+	if brief = strings.TrimSpace(brief); brief != "" {
+		return brief
+	}
+	return strings.TrimSpace(program.DefaultBrief)
+}
+
 // StartDelegate hands one person-authored brief to the named program. It is
 // `/<name> <brief>`'s door and it answers what StartTask answers: the id the
 // row wears, the title, a note about where the work stands (always empty here)

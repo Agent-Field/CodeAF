@@ -136,6 +136,19 @@ type Delegate struct {
 	// it" is no task for senior-dev, but an audit of the repository it is
 	// started in is exactly what a bare `/sec` means.
 	DefaultBrief string
+	// Words says the program's brief is a few words it reads itself, such as
+	// sec's `changes since main thorough`, and not a document for a model.
+	// Such a program is handed exactly the words it was asked with, from the
+	// chat's proposal as from a typed `/<name>`; false hands it the composed
+	// brief every task gets.
+	//
+	// A COMPOSED BRIEF OPENS ON ITS OWN HEADINGS, NOT ON THE WORK. A
+	// proposal's brief is the person's message, the work, the deliverable and
+	// lines from the conversation under capitals, and a program that read its
+	// scope off the first line read `WHAT THE PERSON ASKED FOR` there: a
+	// proposed `whole repository thorough` ran at standard depth, and a
+	// proposed `changes` audited the whole repository.
+	Words bool
 	// Title is the title a typed `/<name> <brief>` gives its task, from the
 	// brief as typed; nil takes the brief's own first words, as a task's
 	// title always has. A brief that is only a program's own scope words

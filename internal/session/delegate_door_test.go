@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/crewroute"
 	"github.com/Agent-Field/codeaf/internal/delegate"
@@ -380,6 +382,54 @@ func TestABareStartRunsTheProgramsDefaultBrief(t *testing.T) {
 	}
 	if _, _, _, err := agent.StartDelegate(context.Background(), "fake", ""); err == nil || !strings.Contains(err.Error(), "/fake needs a brief") {
 		t.Fatalf("a program with no default brief started bare: %v", err)
+	}
+}
+
+// A PROPOSED RUN OF A PROGRAM WHOSE BRIEF IS WORDS IS HANDED THE WORDS. The
+// chat's proposal composes a brief under its own headings, and sec read its
+// scope off that brief's first line: a proposed `whole repository thorough`
+// ran at standard depth, because the first line was `WHAT THE PERSON ASKED
+// FOR`. And the row it leaves in the project's index points at its record
+// folder, where its report is, and not at the repository it changed nothing in.
+func TestAProposedProgramWhoseBriefIsWordsIsHandedOnlyItsWords(t *testing.T) {
+	double := newBeltRunDouble("done")
+	registerBeltRunEngine(t, double)
+	registry := testPrograms("audit")
+	registry[0].Lands, registry[0].DefaultBrief, registry[0].Words = delegate.LandsText, "whole repository", true
+	arguments, _ := json.Marshal(taskArguments{
+		Title: "Second audit of the repository", Summary: "a thorough pass to confirm the first",
+		Brief: "whole repository thorough", Deliverable: "a report with every finding", Acceptance: "every phase finishes",
+		Via: "audit",
+	})
+	completer := &routedCompleter{parent: []step{
+		func(context.Context, []ai.Message) (*ai.Response, error) {
+			return toolResponse("call-task", "propose_task", string(arguments)), nil
+		},
+		finalText("started"),
+	}}
+	var index string
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.Workspace = newTestRepo(t)
+		config.Place = Place{Dir: filepath.Join(t.TempDir(), "conversation")}
+		config.AskConsent = false
+		config.Delegates = registry
+		index = config.taskIndexFile()
+	})
+	collect(t, mustSubmit(t, agent, "can we run a second, thorough audit to confirm these?"))
+	<-double.entered
+	double.mu.Lock()
+	spec := double.spec
+	double.mu.Unlock()
+	if spec.Brief != "whole repository thorough" {
+		t.Fatalf("the program was handed %q, want only its words", spec.Brief)
+	}
+	agent.beltMu.Lock()
+	records := plandb.TaskDir(filepath.Dir(agent.beltRun.store.Path()), agent.beltRun.root)
+	agent.beltMu.Unlock()
+	endBeltRun(t, agent, double)
+	rows := ReadTaskIndex(index)
+	if len(rows) != 1 || rows[0].ArtifactURI != "file://"+records {
+		t.Fatalf("the index rows = %+v, want one pointing at the record folder %s", rows, records)
 	}
 }
 

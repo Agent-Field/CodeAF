@@ -85,7 +85,10 @@ var Program = delegate.Delegate{
 	// A BARE `/sec` AUDITS THE REPOSITORY IT IS STARTED IN, which
 	// is what the name already says.
 	DefaultBrief: "whole repository",
-	Args:         "[changes [since <ref>]] [quick | thorough]",
+	// ITS BRIEF IS ITS SCOPE WORDS AND NOTHING ELSE (ReadScope), however the
+	// run was asked for.
+	Words: true,
+	Args:  "[changes [since <ref>]] [quick | thorough]",
 	// A TYPED RUN IS TITLED BY WHAT IT AUDITS, because its brief is a few
 	// scope words that say nothing as a title (`quick`, `changes`).
 	Title:      func(brief string) string { return "Security audit of " + ReadScope(brief, false, "", "").Describe() },
