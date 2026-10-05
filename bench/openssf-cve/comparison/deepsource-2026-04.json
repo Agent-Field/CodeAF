@@ -1,0 +1,117 @@
+{
+  "note": "metrics recomputed from their judged-results JSONL; published_f1 is the figure on deepsource.com/benchmarks where one was published",
+  "revision": "0f9a1e00e7c24ef0baba7bf29e75602215fdb309",
+  "rows": "165 = 82 unfixed + 83 fixed, over 85 CVEs; JavaScript and TypeScript only",
+  "run": "DeepSource, April 2026; each tool reviewed a draft pull request adding the file(s) in full; judge Claude Opus 4.5, blind to tool",
+  "source": "https://github.com/DeepSourceCorp/benchmarks",
+  "tools": {
+    "claude-code": {
+      "FN": 42,
+      "FP": 5,
+      "TN": 78,
+      "TP": 40,
+      "accuracy": 71.52,
+      "f1": 62.99,
+      "precision": 88.89,
+      "published_f1": 62.4,
+      "recall": 48.78,
+      "rows": 165
+    },
+    "coderabbit": {
+      "FN": 63,
+      "FP": 4,
+      "TN": 79,
+      "TP": 19,
+      "accuracy": 59.39,
+      "f1": 36.19,
+      "precision": 82.61,
+      "published_f1": 36.0,
+      "recall": 23.17,
+      "rows": 165
+    },
+    "codex": {
+      "FN": 28,
+      "FP": 3,
+      "TN": 80,
+      "TP": 54,
+      "accuracy": 81.21,
+      "f1": 77.7,
+      "precision": 94.74,
+      "published_f1": 77.7,
+      "recall": 65.85,
+      "rows": 165
+    },
+    "cursor-bugbot": {
+      "FN": 10,
+      "FP": 25,
+      "TN": 58,
+      "TP": 72,
+      "accuracy": 78.79,
+      "f1": 80.45,
+      "precision": 74.23,
+      "published_f1": 80.45,
+      "recall": 87.8,
+      "rows": 165
+    },
+    "deepsource": {
+      "FN": 22,
+      "FP": 0,
+      "TN": 83,
+      "TP": 60,
+      "accuracy": 86.67,
+      "f1": 84.51,
+      "precision": 100.0,
+      "published_f1": 84.51,
+      "recall": 73.17,
+      "rows": 165
+    },
+    "devin": {
+      "FN": 25,
+      "FP": 7,
+      "TN": 76,
+      "TP": 57,
+      "accuracy": 80.61,
+      "f1": 78.08,
+      "precision": 89.06,
+      "published_f1": 78.08,
+      "recall": 69.51,
+      "rows": 165
+    },
+    "gitlab-duo": {
+      "FN": 46,
+      "FP": 3,
+      "TN": 82,
+      "TP": 39,
+      "accuracy": 71.18,
+      "f1": 61.42,
+      "precision": 92.86,
+      "published_f1": null,
+      "recall": 45.88,
+      "rows": 170
+    },
+    "greptile": {
+      "FN": 35,
+      "FP": 8,
+      "TN": 75,
+      "TP": 47,
+      "accuracy": 73.94,
+      "f1": 68.61,
+      "precision": 85.45,
+      "published_f1": 68.61,
+      "recall": 57.32,
+      "rows": 165
+    },
+    "semgrep": {
+      "FN": 62,
+      "FP": 7,
+      "TN": 76,
+      "TP": 20,
+      "accuracy": 58.18,
+      "f1": 36.7,
+      "precision": 74.07,
+      "published_f1": 36.7,
+      "recall": 24.39,
+      "rows": 165
+    }
+  }
+}
