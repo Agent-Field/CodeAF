@@ -132,7 +132,7 @@ func TestClosedSessionHasNoMemoryPassStillWritingTheStore(t *testing.T) {
 				}
 				// AND WHAT IT WROTE IS THERE, read after Close and before the
 				// store is: the pass reached the store inside the session's life.
-				kept, err := brain.ListMemories("", 10)
+				kept, err := brain.ListMemories(nil, 10)
 				if err != nil {
 					t.Fatalf("list: %v", err)
 				}
