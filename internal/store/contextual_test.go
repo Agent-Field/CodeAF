@@ -29,12 +29,8 @@ func TestContextualSuppressionPropagatesAndBlocksRelearning(t *testing.T) {
 	}
 	base.ID = "relearn"
 	base.MemoryID = "m3"
-	relearn, err := s.AppendContextualEvidence(base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ok, err := s.ContextualEvidenceEligible(relearn, nil, time.Now()); err != nil || ok {
-		t.Fatalf("relearn eligible=%v err=%v", ok, err)
+	if _, err = s.AppendContextualEvidence(base); err == nil {
+		t.Fatal("suppressed source relearned")
 	}
 	if _, err = s.AppendContextualEvidence(ContextualEvidence{ID: "bad", MemoryID: "m4", Owner: "user", Authority: "inference", Observation: "bad", Derivations: []int64{derived.Seq}}); err == nil {
 		t.Fatal("suppressed parent accepted")
@@ -113,5 +109,13 @@ func TestContextualSourceChangeInvalidatesAncestors(t *testing.T) {
 	all, err := s.ContextualEvidenceApplicable("user", map[string]string{"revision": "two"}, time.Now(), 1000)
 	if err != nil || len(all) != 1 || all[0].ID != "second" {
 		t.Fatalf("projection=%+v err=%v", all, err)
+	}
+}
+
+func TestContextualAssistantCannotBecomeObservation(t *testing.T) {
+	s := openTestStore(t, filepath.Join(t.TempDir(), "actor.db"))
+	_, err := s.AppendContextualEvidence(ContextualEvidence{ID: "a", MemoryID: "m", Owner: "user", Actor: "assistant", Authority: "observation", Observation: "self report"})
+	if err == nil {
+		t.Fatal("assistant self report became observation")
 	}
 }

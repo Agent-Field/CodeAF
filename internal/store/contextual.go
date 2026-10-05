@@ -62,6 +62,9 @@ func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEviden
 	if (e.Authority == "user" || e.Authority == "approved_rule" || e.Authority == "confirmed_decision") && e.Actor != "user" {
 		return e, errors.New("user authority requires a user assertion")
 	}
+	if e.Authority == "observation" && e.Actor != "user" && e.Actor != "tool" && e.Actor != "system" {
+		return e, errors.New("observation requires a user, tool or system source")
+	}
 	if len(e.ReceiptIDs) > 0 && e.Actor != "tool" {
 		return e, errors.New("receipts require a tool observation")
 	}
@@ -97,6 +100,16 @@ func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEviden
 	}
 	if duplicate != 0 {
 		return e, errors.New("contextual evidence id already exists")
+	}
+	if e.SourceKey != "" {
+		var suppressed int
+		err = tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.SourceKey')=? AND (COALESCE(json_extract(payload,'$.SourceHash'),'')='' OR json_extract(payload,'$.SourceHash')=?)`, contextualNode(e.Owner), EventContextualSuppression, e.SourceKey, e.SourceHash).Scan(&suppressed)
+		if err != nil {
+			return e, err
+		}
+		if suppressed > 0 {
+			return e, errors.New("contextual source was suppressed")
+		}
 	}
 	// Parent validation uses this write transaction, so suppression cannot race it.
 	for _, seq := range e.Derivations {
