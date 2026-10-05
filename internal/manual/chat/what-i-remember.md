@@ -909,7 +909,10 @@ the same way: its run reads this project's approved rules read-only before its
 first action and writes nothing back. Optional semantic recall can arrive later.
 Source words outrank interpretations; assistant assertions do not confirm test
 outcomes. A binding claim is judged against its own supporting span, not every
-word of the turn, so a quotation of ordinary talk cannot manufacture a rule.
+word of the turn, so a quotation of ordinary talk cannot manufacture a rule. Scope
+is read the same way: a project rule stays in its project, a rule that says on this
+machine may apply across projects on this machine, and "everywhere in this project"
+is still just this project.
 Observed tool results carry receipt identities and a source revision; automatic
 extraction has only the current turn's receipts. Dirty or
 untracked sources cannot establish a current test result; inspect them again.

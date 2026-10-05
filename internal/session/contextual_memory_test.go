@@ -284,3 +284,83 @@ func TestContextualEvidenceRedactsSecretsAndKeepsRealConstraint(t *testing.T) {
 	}
 	_ = agent.Close()
 }
+
+// SCOPE IS GATED ON THE SUPPORTING SPAN TOO. A machine-wide span may claim the
+// machine, a project span stays in its project even beside a global sentence,
+// "everywhere in this project" is project scope, and no tool observation is
+// inferred to be machine-wide.
+func TestContextualScopeGatesOnSupportingSpan(t *testing.T) {
+	user := "Across all projects I prefer concise answers. On this machine, always use the mirror. The venv must pin the mirror."
+	source := memoryTurnEvidence{User: user, At: time.Now()}
+	local := source.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision, Scope: store.MemoryScopeEnv,
+		Source: "user", SourceQuote: "The venv must pin the mirror", Authority: "approved_rule", Text: "pin the mirror"})
+	if local.Scope == store.MemoryScopeEnv || local.Scope == store.MemoryScopeUser {
+		t.Fatalf("a project span was widened by a neighbouring global sentence: %+v", local)
+	}
+	machine := source.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision, Scope: store.MemoryScopeEnv,
+		Source: "user", SourceQuote: "On this machine, always use the mirror", Authority: "approved_rule", Text: "use the mirror"})
+	if machine.Scope != store.MemoryScopeEnv {
+		t.Fatalf("an explicit machine-wide span was restricted: %+v", machine)
+	}
+	project := memoryTurnEvidence{User: "Use tabs everywhere in this project.", At: time.Now()}.ground(
+		reflex.ExtractResult{Mem: 1, Type: store.MemoryPreference, Scope: store.MemoryScopeUser,
+			Source: "user", SourceQuote: "Use tabs everywhere in this project", Authority: "observation", Text: "use tabs"})
+	if project.Scope == store.MemoryScopeUser {
+		t.Fatalf("a project-qualified everywhere became the person at large: %+v", project)
+	}
+	tool := memoryTurnEvidence{User: "read the config", At: time.Now(),
+		Receipts: []memoryToolReceipt{{ID: "r", Tool: "bash", Status: "done", Text: "venv uses mirror"}}}.ground(
+		reflex.ExtractResult{Mem: 1, Type: store.MemoryFact, Scope: store.MemoryScopeEnv,
+			Source: "assistant", ReceiptID: "r", Text: "the venv uses a mirror"})
+	if tool.Scope == store.MemoryScopeEnv {
+		t.Fatalf("a tool observation was inferred machine-wide: %+v", tool)
+	}
+}
+
+// A MACHINE FACT CARRIES NO PROJECT CONDITION AND APPLIES ACROSS THE SAME
+// AUTHORIZED MACHINE; A PROJECT FACT STAYS IN ITS PROJECT, AND A TOOL-LABELLED
+// MACHINE CLAIM DOES NOT REACH ANOTHER PROJECT.
+func TestContextualMachineScopeAppliesAcrossProjects(t *testing.T) {
+	script := &reflexScript{}
+	agentA, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "project-a" })
+	machine, err := brain.AddMemory(store.Memory{ID: "mirror", Owner: store.OwnerMachine, Type: store.MemoryDecision,
+		Title: "mirror", Text: "Use the internal mirror."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := memoryTurnEvidence{User: "On this machine, always use the mirror.", Session: "s", Turn: "t", At: time.Now()}
+	candidate := source.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision, Scope: store.MemoryScopeEnv,
+		Source: "user", SourceQuote: "On this machine, always use the mirror", Authority: "approved_rule", Text: "Use the internal mirror."})
+	if candidate.Scope != store.MemoryScopeEnv {
+		t.Fatalf("machine span not kept: %+v", candidate)
+	}
+	if err := agentA.recordContextualMemory(machine, candidate, source); err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := brain.ContextualEvidenceForMemory(store.OwnerMachine, machine.ID)
+	if err != nil || evidence.Owner != store.OwnerMachine || len(evidence.Conditions) != 0 {
+		t.Fatalf("machine evidence carried a project condition: %+v err=%v", evidence, err)
+	}
+	// The same machine sees it from another project.
+	agentB, _ := newTestAgent(t, script, func(c *Config) { c.Memory = brain; c.MemoryProjectKey = "project-b" })
+	if block := agentB.bindingContext("the internal mirror", ""); !strings.Contains(block, "internal mirror") {
+		t.Fatalf("a machine rule did not apply on another project of the same machine: %q", block)
+	}
+	// A TOOL-LABELLED machine claim stays in its origin project.
+	project, err := brain.AddMemory(store.Memory{ID: "venv", Owner: store.OwnerProject("project-a"), Type: store.MemoryFact,
+		Title: "venv", Text: "The venv pins the mirror."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	toolSource := memoryTurnEvidence{User: "read the venv", Session: "s", Turn: "t2", At: time.Now(),
+		Receipts: []memoryToolReceipt{{ID: "r", Tool: "bash", Status: "done", Text: "pip.conf pins the mirror"}}}
+	toolCandidate := toolSource.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryFact, Scope: store.MemoryScopeEnv,
+		Source: "assistant", ReceiptID: "r", Text: "the venv pins the mirror"})
+	if err := agentA.recordContextualMemory(project, toolCandidate, toolSource); err != nil {
+		t.Fatal(err)
+	}
+	if block := agentB.bindingContext("the venv pins the mirror", ""); strings.Contains(block, "pins the mirror") {
+		t.Fatalf("a tool-labelled machine claim reached another project: %q", block)
+	}
+	_ = agentA.Close()
+}

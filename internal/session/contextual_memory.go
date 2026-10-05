@@ -98,7 +98,11 @@ func (s memoryTurnEvidence) ground(c reflex.ExtractResult) reflex.ExtractResult 
 	if c.Scope == store.MemoryScopeUser && (!userSupported || (c.Type != store.MemoryPreference && c.Authority != "approved_rule")) {
 		c.Scope = store.MemoryScopeProject
 	}
-	if c.Scope == store.MemoryScopeEnv && !userSupported {
+	// MACHINE SCOPE NEEDS A MACHINE-WIDE SPAN. Kept only for a supported user
+	// quote that actually says so; an unrelated quote in the same turn, or a
+	// tool observation the model labelled `env`, stays project-local rather
+	// than silently applying to every project on the machine.
+	if c.Scope == store.MemoryScopeEnv && (!userSupported || !explicitContextualMachine(userQuoteForScope(c, s.User))) {
 		c.Scope = store.MemoryScopeProject
 	}
 	if !userSupported {
@@ -158,7 +162,11 @@ func (a *Agent) recordContextualMemory(m store.Memory, c reflex.ExtractResult, s
 	// THE SOURCE KEY AND HASH STAY ON THE RAW TURN so suppression and dedup keep
 	// their exact semantics; only the human-readable fields are sanitized.
 	e := store.ContextualEvidence{ID: store.NewMemoryID(), MemoryID: m.ID, Owner: owner, SessionID: s.Session, TurnID: s.Turn, Actor: c.Source, Authority: c.Authority, Observation: redact.Secrets(contextualClip(s.User, 4000)), Verification: "asserted", ValidFrom: s.At, SourceKey: s.Session + ":" + s.Turn, SourceHash: contextualHash(s.User), Applicability: contextualSanitizedItems(c.Conditions), Rationale: redact.Secrets(contextualClip(c.Rationale, 240)), Rejected: contextualSanitizedItems(c.Rejected), Reconsider: redact.Secrets(contextualClip(c.Reconsider, 240))}
-	if owner != store.OwnerUser {
+	// A PROJECT FACT CARRIES ITS PROJECT; A MACHINE FACT DOES NOT. The owner is
+	// what scopes a machine-wide rule to the one authorized machine, so pinning
+	// its evidence to the origin project would silently restrict it there. User
+	// and machine evidence carry no project condition; project evidence does.
+	if owner != store.OwnerUser && owner != store.OwnerMachine {
 		e.Conditions = map[string]string{"project": a.config.MemoryProjectKey}
 	}
 	if c.Source == "tool" {
@@ -462,7 +470,27 @@ func contextualDerivedReceipt(tool string) bool {
 
 func explicitContextualGlobal(text string) bool {
 	lower := strings.ToLower(text)
+	// A PROJECT-QUALIFIED "everywhere" IS PROJECT SCOPE. "everywhere in this
+	// project" is the ordinary way to say the fact spans one repository, and
+	// the earlier substring match promoted it to the person at large.
+	for _, qualifier := range []string{"everywhere in this project", "everywhere in the project", "everywhere in this repo", "everywhere in this repository", "everywhere in this codebase"} {
+		if strings.Contains(lower, qualifier) {
+			return false
+		}
+	}
 	for _, cue := range []string{"across projects", "all projects", "every project", "any project", "everywhere", "personal preference"} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+// explicitContextualMachine grants machine scope only to a self-contained span
+// that says the rule applies to the machine, not to one project.
+func explicitContextualMachine(text string) bool {
+	lower := strings.ToLower(text)
+	for _, cue := range []string{"on this machine", "this machine", "on my machine", "my machine", "machine-wide", "machine wide"} {
 		if strings.Contains(lower, cue) {
 			return true
 		}

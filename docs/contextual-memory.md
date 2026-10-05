@@ -54,9 +54,13 @@ block new material. A notice is model-facing context, not proof the person saw i
 Binding retrieval spends its window on authority: approved rules and confirmed
 decisions are read through their own bounded projection, so a burst of newer
 incidental observations cannot starve a live rare constraint, while latest
-correction, expiry, conditions and suppression still win. Authority and global scope
+correction, expiry, conditions and suppression still win. Authority and scope
 are judged against the claim's own supporting span, not the whole utterance, so a
-true quote of ordinary talk cannot manufacture a rule. Receipts from conversation
+true quote of ordinary talk cannot manufacture a rule. Scope is gated the same way:
+a project span stays in its project even beside a global sentence, only an explicit
+machine-wide span may take machine scope (which then applies across projects on the
+same authorized machine and carries no project condition), "everywhere in this
+project" is project scope, and no tool observation is inferred machine-wide. Receipts from conversation
 history, this session's memory reader and task summaries are derived, not
 independent observations: citing one back cannot corroborate a claim, which also
 keeps suppressed history from re-entering as fresh proof. Genuine raw tool receipts
