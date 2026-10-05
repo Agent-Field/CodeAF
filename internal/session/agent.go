@@ -204,8 +204,13 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// it never learned, and recording it is how a later turn is warned
 	// (contextual_delegated.go's [Agent.recordSettledJob]).
 	agent.jobs.onSettle = func(one *job, code int) {
-		agent.recordSettledJob(one.id, one.command, one.sink.tail(jobExitTailLines), code)
+		agent.recordSettledJob(one, code)
 	}
+	// And the frozen provenance a promoted command's death is stamped with,
+	// for the same reason as the tap: the job's own turn and goal are facts
+	// about when it started, and reading them at settle would let the person's
+	// next question claim a death that happened under an earlier one.
+	agent.jobs.origin = agent.frozenJobOrigin
 	// And the registry gets the RELEASE lane, for the same reason and by the same
 	// route: a command this agent started in the foreground and had taken over
 	// into a job is one the work is still waiting for, so the registry says when
@@ -2534,7 +2539,11 @@ func (a *Agent) Close() error {
 	}
 	// THE COLLECTOR STOPS FIRST, so a worker still running when the conversation
 	// ends cannot write an observation into a journal that is shutting.
-	if a.outcomes != nil {
+	//
+	// ONLY ITS OWNER SEALS IT. A task worker holds the root session's collector
+	// (it has no store of its own), and a worker finishing a node must not shut
+	// the bridge every later node and turn still needs.
+	if a.outcomes != nil && a.outcomes.root == a {
 		a.outcomes.close()
 	}
 	if memoryStop != nil {

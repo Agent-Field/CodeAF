@@ -176,6 +176,12 @@ type job struct {
 	id      int
 	command string
 	kind    jobKind
+	// origin is the provenance FROZEN AT LAUNCH: the root session, turn, goal
+	// and owner whose work this job is. It is written once in [newJob] and read
+	// without the lock, so a job that settles long after the turn that started
+	// it cannot be stamped with whatever turn is live when it dies
+	// (contextual_delegated.go's [Agent.recordSettledJob]).
+	origin jobOrigin
 	// label and detail are a watch's short name and its terms ("every 10s on
 	// change"), empty for a bash job. They are set once at start and read
 	// without the lock.
@@ -501,6 +507,11 @@ type jobRegistry struct {
 	// It is set by the agent that owns the registry and fires only for a
 	// non-requested settlement; it is nil in every registry built without one.
 	onSettle func(*job, int)
+	// origin answers the frozen provenance of a job about to be launched. It
+	// is a function for [jobRegistry.notify]'s reason: the registry starts
+	// processes and has no idea what a turn is, and a caller with nothing to
+	// stamp leaves it nil and pays nothing.
+	origin func() jobOrigin
 	// announce carries one job's row to the roster — the column beside the
 	// conversation, where work this session started shows whatever door started
 	// it (jobrow.go). It is a function for [jobRegistry.notify]'s reason exactly:
@@ -647,6 +658,12 @@ func (r *jobRegistry) newJob(command string, kind jobKind) (*job, error) {
 		done:    make(chan struct{}),
 	}
 	started.sink = newJobSink(logFile, spoolPath)
+	// THE ORIGIN IS TAKEN AT LAUNCH, ONCE. A job's real ending may arrive long
+	// after the turn that started it, and it must be stamped with the turn that
+	// owns it rather than the one that happens to be live when it settles.
+	if r.origin != nil {
+		started.origin = r.origin()
+	}
 	// Closing asks for maintenance before the job publishes its final state.
 	// Claim and startup also sweep, while a log write never does.
 	started.sink.finishRetention = func() { r.askRetention(directory, started.sink) }
@@ -1089,8 +1106,11 @@ func (r *jobRegistry) settleExit(watched *job, code int) {
 	// place a promoted call's outcome can be known — its call already returned a
 	// non-error sentence — and a failure here is what a later turn must be able
 	// to warn about. A requested death (a kill, a shutdown, a person's stop) is
-	// not reported: the caller already knows and it is not a fact about the work.
-	if r.onSettle != nil && watched.kind == jobKindBash {
+	// NOT reported as an execution failure: the caller already knows, and a
+	// CANCELLATION is not a demonstrated failure of the command. The gate is
+	// `requested` here, not only in the doc comment, so a killed job can never
+	// be journaled as one that failed.
+	if !requested && r.onSettle != nil && watched.kind == jobKindBash {
 		r.onSettle(watched, code)
 	}
 

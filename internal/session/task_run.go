@@ -7878,11 +7878,34 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// collector belongs to the root session and this worker only hands it raw
 	// observations (contextual_delegated.go), gaining no write power itself.
 	child.outcomes = a.outcomes
-	if nodeID != 0 {
-		child.outcomeOrigin = fmt.Sprintf("task:%d", nodeID)
-	} else {
-		child.outcomeOrigin = "task"
+	// THE WORKER'S PROVENANCE IS FROZEN HERE, BEFORE IT RUNS. A first-level
+	// worker inherits the root session's live binding circumstances; a nested
+	// worker inherits its parent's already-frozen copy so a tree launched under
+	// one user turn keeps that turn to the end. Only the task label is this
+	// node's own.
+	origin := a.origin
+	if strings.TrimSpace(origin.Session) == "" && a.outcomes != nil {
+		origin = a.outcomes.rootOrigin()
 	}
+	if nodeID != 0 {
+		origin.Task = fmt.Sprintf("task:%d", nodeID)
+	} else {
+		origin.Task = "task"
+	}
+	// AND THIS WORKER'S OWN RUN IDENTITY. A node can have more than one worker
+	// Agent (a repair round, an auditor's sibling), and job ids restart per
+	// Agent, so the run identity — not the task label — is what keeps two
+	// workers' `job 1` from sharing one journal source.
+	origin.Run = child.sessionID()
+	if strings.TrimSpace(origin.Run) == "" || origin.Run == "unfiled" {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err == nil {
+			origin.Run = "worker-" + hex.EncodeToString(b[:])
+		} else {
+			origin.Run = "worker-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		}
+	}
+	child.origin = origin
 	nodeMemoryOn(ctx, node).handTo(child)
 	return child, nil
 }

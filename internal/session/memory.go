@@ -816,6 +816,11 @@ func (a *Agent) runMemoryCommand(say func(string), cmd reflex.Cmd) {
 		title, err := a.forgetMatching(cmd.Arg)
 		if err != nil {
 			a.journalMemoryFailure("routed-forget", err)
+			if title != "" {
+				say("partly forgot · " + title + " · some evidence could not be retired")
+				return
+			}
+			say("could not forget · " + cmd.Arg)
 			return
 		}
 		if title == "" {
@@ -1485,12 +1490,19 @@ func (a *Agent) forgetMatching(query string) (string, error) {
 	// The same query retires the observed attempts it names, by their own source
 	// key, scoped to the owner and the matching source: unrelated and fresh
 	// attempts survive, and no whole owner is muted.
-	retired, attemptTitle := a.forgetAttempts(query)
+	//
+	// A PARTIAL ANSWER IS ANSWERED AS PARTIAL. The title names what was dropped,
+	// and a non-nil error says some evidence could NOT be retired — never an
+	// authoritative success while a suppression silently failed.
+	retired, attemptTitle, attemptErr := a.forgetAttempts(query)
 	if len(found) > 0 {
-		return found[0].Title, nil
+		return found[0].Title, attemptErr
 	}
 	if retired > 0 {
-		return attemptTitle, nil
+		return attemptTitle, attemptErr
+	}
+	if attemptErr != nil {
+		return "", attemptErr
 	}
 	return "", nil
 }
@@ -1499,27 +1511,50 @@ func (a *Agent) forgetMatching(query string) (string, error) {
 // names. It is the ONE caller of the unconditional attempt read, and it never
 // hands anything to a model: it only records a suppression of the exact source
 // each matching attempt carried.
-func (a *Agent) forgetAttempts(query string) (int, string) {
+//
+// IT ANSWERS TRUTHFULLY ABOUT WHAT IT COULD NOT DO. A read that failed or a
+// suppression that failed is visible twice: journaled, and returned as a
+// non-nil error that names how much was retired and how much was not. The old
+// shape swallowed both and returned success whenever any row was retired, which
+// let a store error masquerade as a complete forget.
+//
+// THE SUPPRESSION IS EXACT AND SOURCE-SCOPED: owner, source key and content
+// hash, per row. It is never a whole-owner mute, so a fresh, independently
+// observed attempt carrying a new source key is learned again.
+func (a *Agent) forgetAttempts(query string) (int, string, error) {
 	terms := outcomeTerms(query)
 	if len(terms) == 0 {
-		return 0, ""
+		return 0, "", nil
 	}
 	retired := 0
 	title := ""
+	failed := 0
+	firstFailure := ""
 	for _, owner := range a.memoryOwners() {
 		if strings.TrimSpace(owner) == "" || !store.ValidOwner(owner) {
 			continue
 		}
 		rows, err := a.memory.store.ContextualAttemptsRecent(owner, time.Now(), store.ContextualAttemptLimit)
 		if err != nil {
+			a.journalMemoryFailure("attempt-forget", err)
+			failed++
+			if firstFailure == "" {
+				firstFailure = "read " + owner + ": " + err.Error()
+			}
 			continue
 		}
 		for _, at := range rows {
-			if !attemptRelevant(at, terms) {
+			// The row's OWN owner is the suppression scope; a row the read
+			// returned under another owner is not this query's to touch.
+			if at.Owner != owner || !attemptRelevant(at, terms) {
 				continue
 			}
 			if err := a.memory.store.SuppressContextualSource(at.Owner, at.SourceKey, at.SourceHash, "explicit forget"); err != nil {
 				a.journalMemoryFailure("attempt-forget", err)
+				failed++
+				if firstFailure == "" {
+					firstFailure = "source " + at.SourceKey + ": " + err.Error()
+				}
 				continue
 			}
 			retired++
@@ -1528,7 +1563,10 @@ func (a *Agent) forgetAttempts(query string) (int, string) {
 			}
 		}
 	}
-	return retired, title
+	if failed > 0 {
+		return retired, title, fmt.Errorf("forget retired %d observed attempt(s) and could not retire %d: %s", retired, failed, firstFailure)
+	}
+	return retired, title, nil
 }
 
 // Memories lists what is kept, newest-touched first — or the best matches for a
