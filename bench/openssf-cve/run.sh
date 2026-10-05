@@ -18,9 +18,10 @@
 #   NO_JUDGE=1  stop after the tools have run; judge later with judge.py
 #   JUDGE_MODEL the judge (default anthropic/claude-opus-4.5, DeepSource's)
 #   CODEAF_BIN  the binary the codeaf driver runs (default bin/codeaf)
-#   WORK RESULTS   lib.sh
+#   BENCH_ROOT  where work/ and results/ live (default ~/bench-openssf-cve;
+#               never inside the checkout — lib.sh says why)
 #
-# Writes results/<tool>-<mode>-<model>-<seed>/{meta.json,rows.tsv,rig/,
+# Writes $RESULTS/<tool>-<mode>-<model>-<seed>/{meta.json,rows.tsv,rig/,
 # <CVE>/<variant>/…,summary.json}. The rig is copied into the result directory
 # first and the run re-executes from the copy, so editing a script while a run
 # is in flight cannot change the run (bash reads scripts incrementally; the
@@ -32,7 +33,7 @@ if [ -z "${RIG_SNAPSHOT:-}" ]; then
   [ $# -ge 3 ] || { echo "usage: run.sh <tool> <model> <seed-tag> [<cve> ...]" >&2; exit 2; }
   __mode="${MODE:-diff}"
   __slug="$(printf '%s' "$2" | tr '/:' '--')"; [ "$__slug" = "-" ] && __slug=nomodel
-  export RESULTS="${RESULTS:-$__RIG_SRC/results}"
+  export RESULTS="${RESULTS:-${BENCH_ROOT:-$HOME/bench-openssf-cve}/results}"
   __out="$RESULTS/$1-$__mode-$__slug-$3"
   rm -rf "$__out"; mkdir -p "$__out/rig/tools"
   cp "$__RIG_SRC"/*.sh "$__RIG_SRC"/*.py "$__out/rig/"
@@ -40,7 +41,7 @@ if [ -z "${RIG_SNAPSHOT:-}" ]; then
   cp -R "$__RIG_SRC/sets" "$__RIG_SRC/comparison" "$__out/rig/"
   export RIG_SNAPSHOT="$__out/rig" RIG_SRC="$__RIG_SRC"
   export RIG_REV="$(git -C "$__RIG_SRC" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-  export WORK="${WORK:-$__RIG_SRC/work}"
+  export WORK="${WORK:-${BENCH_ROOT:-$HOME/bench-openssf-cve}/work}"
   exec bash "$__out/rig/run.sh" "$@"
 fi
 

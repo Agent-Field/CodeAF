@@ -13,9 +13,15 @@
 set -uo pipefail
 
 RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORK="${WORK:-$RIG_DIR/work}"
+# Everything the rig writes lives OUTSIDE the checkout. The checkouts under
+# work/ are whole repositories, some of which carry Go files, and `go build
+# ./...` walks the filesystem rather than the index: a CVE's apn-go/apn.go under
+# the tree broke the repository's own build gate. bench/prompt-diet keeps its
+# output outside the tree for the same reason.
+BENCH_ROOT="${BENCH_ROOT:-$HOME/bench-openssf-cve}"
+WORK="${WORK:-$BENCH_ROOT/work}"
 DATASET="${DATASET:-$WORK/dataset}"
-RESULTS="${RESULTS:-$RIG_DIR/results}"
+RESULTS="${RESULTS:-$BENCH_ROOT/results}"
 
 # The dataset is the OpenSSF project's own repository; its CVEs/ folder holds
 # one JSON record per CVE naming the repository, the vulnerable and the fixed
