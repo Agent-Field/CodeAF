@@ -120,6 +120,11 @@ type programOutcome struct {
 	// followUp is the program's own sentence for what to offer once it has
 	// finished ([delegate.Delegate.FollowUp]); empty is none.
 	followUp string
+	// account is the run's ending as the note handed it to the turn — the
+	// landing line, and a report program's whole answer — kept so a turn that
+	// could not finish its own answer still leaves it with the person
+	// ([Agent.programOutcomeUnansweredLocked]). It is not saved with the hold.
+	account string
 	programAttempt
 }
 
@@ -309,7 +314,7 @@ func (a *Agent) programAttemptFor(row uint64) programAttempt {
 func (a *Agent) programLandingNote(run *beltRun, summary RunSummary, line string) userMessage {
 	outcome := programOutcome{
 		row: run.row, program: programName(run.delegate), verdict: programVerdictOf(summary),
-		programAttempt: a.programAttemptFor(run.row),
+		programAttempt: a.programAttemptFor(run.row), account: strings.TrimSpace(line),
 	}
 	if run.delegate != nil && !run.delegate.LandsTree() {
 		outcome.report, outcome.followUp = true, run.delegate.FollowUp
@@ -468,4 +473,34 @@ func programLimitLine(run *beltRun, summary RunSummary, landing RunLanding) stri
 		where = "on branch " + landing.Branch + " in " + run.ground
 	}
 	return fmt.Sprintf("%s stopped at %s %s limit · %s · its work is %s", programName(run.delegate), scope, limit, spentWord, where)
+}
+
+// programOutcomeUnansweredLocked writes a program's own account of its ending
+// into the conversation when the turn its ending woke did not finish an answer.
+// The caller holds a.mu, at the end of that turn.
+//
+// A PROGRAM'S ENDING IS NEVER LOST TO A FAILED REPLY. On 2026-10-05 a two-hour
+// sec run ended, the turn it woke read its report and began a good summary,
+// and every model it was offered was cut mid-reply; the partial summary was
+// kept as an interrupted message the chat does not draw, and the person saw
+// a done card and nothing else. The program's account is what the turn was
+// woken to relay, so when the turn could not, the conversation says that it
+// could not and gives the account itself — once per run, as an authored line,
+// the way a run's limit line is written ([Agent.recordProgramLimit]).
+func (a *Agent) programOutcomeUnansweredLocked(hub *eventHub, completed bool) {
+	outcome := a.programOutcomeNow
+	if completed || outcome == nil || outcome.account == "" || a.programAnsweredFor == outcome.row {
+		return
+	}
+	a.programAnsweredFor = outcome.row
+	text := fmt.Sprintf("%s ended, but the chat could not finish its answer to it, so here is what %s said:\n\n%s",
+		outcome.program, outcome.program, outcome.account)
+	note := userText(text)
+	note.authored = true
+	a.recordUserLocked(note)
+	event := Event{Kind: EventNotice, Text: text}
+	hub.send(event)
+	for _, watcher := range a.taskWatchers {
+		watcher.send(event)
+	}
 }

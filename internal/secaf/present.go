@@ -54,9 +54,9 @@ type watch struct {
 	stage string
 }
 
-func newWatch(host delegate.Host) *backing.Watch {
+func newWatch(host delegate.Host) (*backing.Watch, *watch) {
 	w := &watch{host: host, stage: stageStarting}
-	return &backing.Watch{Session: w.session, Note: w.note, Call: w.call}
+	return &backing.Watch{Session: w.session, Note: w.note, Call: w.call}, w
 }
 
 // pagedCalls are the single structured calls that are an agent of sec-af's
@@ -206,6 +206,9 @@ var noteRewrites = []struct {
 	// it widened the hunt would be untrue.
 	{regexp.MustCompile(`^CWE expansion suggested .*$`), ""},
 	{regexp.MustCompile(`fingerprint-unique findings, running semantic dedup`), "distinct findings, merging duplicates"},
+	// A finding whose proof chain did not finish is demoted to unclear; its
+	// note named the internal error class and an unknown decision.
+	{regexp.MustCompile(`^Demoted finding '(.+)' \(decision=[^)]*\): .*$`), "'$1' stays unclear: its test did not finish"},
 }
 
 // rewriteNote is a note as the page says it, or "" for one it leaves off.

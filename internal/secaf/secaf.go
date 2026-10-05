@@ -226,10 +226,11 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	if light == "" {
 		light = o.model
 	}
+	watching, phases := newWatch(host)
 	app := backing.New(client, backing.Config{
 		Root: root, SessionModel: o.model, AIModel: light,
 		Sessions: o.sessions, MaxTurns: o.maxTurns, SessionWall: o.sessionWall,
-		Watch: newWatch(host),
+		Watch: watching,
 	})
 	request := auditRequest(root, scope, changes, o, records)
 	// THE CHECKPOINTS GO WITH THE RECORDS, never into the person's folder. A
@@ -275,20 +276,30 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		}
 		return ending
 	}
+	// A RESULT THE WALL CUT SAYS SO. sec-af finishes a phase whose agents were
+	// stopped — a test that did not finish leaves its finding unclear, a fix
+	// that was not written is missing — and hands back a whole-looking result.
+	// The run stopped itself at its time ceiling, so the account and the report
+	// say where, rather than reading as an audit that ran to its end.
+	cut := ""
+	if errors.Is(auditCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		cut = stageWords[phases.current()]
+	}
 	host.Stage(delegate.StageRecord{Stage: stageReport, Status: "running"})
 	files, err := reportFiles(records, result, len(request.ComplianceFrameworks) > 0, runFacts{
-		scope: scope, changes: changes, spent: spent, sessions: sessions, calls: calls, took: time.Since(started)})
+		scope: scope, changes: changes, spent: spent, sessions: sessions, calls: calls, took: time.Since(started),
+		cutAt: cut, wall: host.Ceilings().TimeWord()})
 	if err != nil {
 		_, _ = fmt.Fprintf(notes, "[sec] could not write the full report: %v\n", err)
 	}
-	text := summary(scope, changes, result, files)
+	text := summary(scope, changes, result, files, cut, host.Ceilings().TimeWord())
 	return delegate.Ending{
 		Status:      delegate.StatusPass,
-		Message:     outcomeLine(result),
+		Message:     outcomeLine(result, cut),
 		CostUSD:     spent,
 		Deliverable: text,
 		Extra: map[string]any{
-			"status": "pass", "reports": files, "sessions": sessions, "calls": calls,
+			"status": "pass", "reports": files, "sessions": sessions, "calls": calls, "cut_at": cut,
 			"confirmed": result.Confirmed, "likely": result.Likely,
 			"inconclusive": result.Inconclusive, "ruled_out": result.NotExploitable,
 		},

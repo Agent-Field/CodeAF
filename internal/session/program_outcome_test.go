@@ -565,3 +565,66 @@ func TestAReportProgramsRunReadsAsFinishedAndItsLimitLineNamesNoWork(t *testing.
 		t.Fatalf("a report's limit line = %q", line)
 	}
 }
+
+// failingCompleter is a model that cannot answer at all: every call is
+// refused for want of a key, which ends a turn at once.
+type failingCompleter struct{ calls atomic.Int32 }
+
+func (f *failingCompleter) CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error) {
+	f.calls.Add(1)
+	return nil, provider.ErrNoAPIKey
+}
+
+// A PROGRAM'S ENDING IS NEVER LOST TO A FAILED REPLY. The turn its landing
+// wakes is the one that tells the person what the program found; when that turn
+// cannot finish an answer, the program's own account is written into the
+// conversation as the session's line — once, however many turns fail after it.
+func TestAProgramsEndingIsSaidWhenTheTurnItWokeCannotAnswer(t *testing.T) {
+	completer := &failingCompleter{}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = false
+		// THE JOURNAL IS WHAT MARKS A LINE AS THE SESSION'S, so the conversation
+		// has one, as every conversation a person opens does.
+		config.SessionFile = filepath.Join(t.TempDir(), "conversation.jsonl")
+	})
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the run", "1", "Audit", "whole repository")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	program := testPrograms("sec")[0]
+	program.Lands = delegate.LandsText
+	run := &beltRun{store: store, root: store.RootID(), row: 1, delegate: &program, ground: "/project"}
+	const account = "Found 2 problems: 1 confirmed and 1 likely.\n- critical · confirmed · Command injection · app/views.py:4"
+	agent.deliverBeltRunLanding(run, RunSummary{Outcome: beltRunOutcomeDone, Result: account}, RunLanding{})
+	beltRunWaitFor(t, "the failed outcome turn to end", func() bool {
+		agent.mu.Lock()
+		defer agent.mu.Unlock()
+		return completer.calls.Load() > 0 && !agent.running
+	})
+	said := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, "sec ended, but the chat could not finish its answer to it") {
+			said++
+			if entry.Role != "aside" || !strings.Contains(entry.Text, "app/views.py:4") {
+				t.Fatalf("the ending was said as %s: %q", entry.Role, entry.Text)
+			}
+		}
+	}
+	if said != 1 {
+		t.Fatalf("the program's ending was said %d times after the turn failed", said)
+	}
+	// A later failed turn does not say it again.
+	agent.mu.Lock()
+	agent.programOutcomeUnansweredLocked(nil, false)
+	agent.mu.Unlock()
+	again := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, "could not finish its answer") {
+			again++
+		}
+	}
+	if again != 1 {
+		t.Fatalf("the ending was said %d times", again)
+	}
+}

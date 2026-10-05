@@ -128,13 +128,16 @@ const summaryFindings = 12
 // summary is the account of a finished audit the conversation reads: what was
 // audited, what it found in counts, the findings that stand one per line with
 // where and how to fix, and where the full report is.
-func summary(scope Scope, changes *Changes, result schemas.SecurityAuditResult, files []string) string {
+func summary(scope Scope, changes *Changes, result schemas.SecurityAuditResult, files []string, cutAt, wall string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Security audit of %s", scope.Describe())
 	if changes != nil {
 		fmt.Fprintf(&b, " (%d changed files since %s, %d files near them)", len(changes.Changed), changes.BaseName, len(changes.Nearby))
 	}
 	b.WriteString(".\n")
+	if cutAt != "" {
+		b.WriteString(cutSentence(cutAt, wall) + "\n")
+	}
 	standing := make([]schemas.VerifiedFinding, 0, len(result.Findings))
 	for _, finding := range result.Findings {
 		if finding.Verdict == schemas.VerdictConfirmed || finding.Verdict == schemas.VerdictLikely {
@@ -239,10 +242,33 @@ func plural(n int) string {
 
 // outcomeLine is a finished audit in one line, for its ending: how many
 // problems stand, or that none does.
-func outcomeLine(result schemas.SecurityAuditResult) string {
+func outcomeLine(result schemas.SecurityAuditResult, cutAt string) string {
 	standing := result.Confirmed + result.Likely
-	if standing == 0 {
-		return "it found nothing it could show exploitable"
+	line := "it found nothing it could show exploitable"
+	if standing > 0 {
+		line = fmt.Sprintf("it found %d problem%s: %d confirmed, %d likely", standing, plural(standing), result.Confirmed, result.Likely)
 	}
-	return fmt.Sprintf("it found %d problem%s: %d confirmed, %d likely", standing, plural(standing), result.Confirmed, result.Likely)
+	if cutAt != "" {
+		line += ", before its time ceiling cut it short during " + cutAt
+	}
+	return line
+}
+
+// cutSentence says that the run's time ceiling stopped it, in which phase, and
+// what that left undone.
+func cutSentence(phase, wall string) string {
+	ceiling := "its time ceiling"
+	if wall != "" {
+		ceiling += " of " + wall
+	}
+	undone := "the work after it did not run"
+	switch phase {
+	case stageWords[stageProve]:
+		undone = "findings whose tests had not finished are marked unclear, and no fixes were written"
+	case stageWords[stageRemediation]:
+		undone = "the fixes it had not finished are missing"
+	case stageWords[stageHunt]:
+		undone = "the hunters still running were stopped, and their findings were not tested"
+	}
+	return fmt.Sprintf("It reached %s during %s, so %s.", ceiling, phase, undone)
 }

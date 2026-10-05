@@ -1925,6 +1925,9 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// terms. Everything else on the queue drains exactly as it always has.
 			a.liftSteersLocked(hub)
 			_, unanswered := a.drainSteeringLocked(hub)
+			// A PROGRAM'S ENDING THIS TURN COULD NOT ANSWER IS SAID ANYWAY, in
+			// the program's own words (program_outcome.go).
+			a.programOutcomeUnansweredLocked(hub, completed)
 			// AND THE SECOND LOOK AT A YOUNG COMMAND IS LET GO OF WITH THE TURN
 			// IT WAS ARMED IN. It re-checks this turn's number before it touches
 			// anything, so a leftover is inert either way; stopping it here is

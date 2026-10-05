@@ -16,6 +16,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/secaf/schemas"
 )
 
 // stubHost is the host a run of the program is handed: what it says is kept,
@@ -456,5 +457,29 @@ func TestThePageUsesSecAfsPhaseNames(t *testing.T) {
 	}
 	if got := plainWords("Verifier starting"); got != "Verifier starting" {
 		t.Errorf("sec-af's Verifier became %q", got)
+	}
+}
+
+// A RUN ITS TIME CEILING CUT SAYS SO, in its account, its one-line ending and
+// its report, and says what the cut left undone; one that finished says none
+// of it.
+func TestARunCutByItsTimeCeilingSaysWhere(t *testing.T) {
+	result := schemas.SecurityAuditResult{Confirmed: 9, Likely: 5}
+	scope := Scope{Depth: "standard"}
+	account := summary(scope, nil, result, nil, "prove", "2h")
+	if !strings.Contains(account, "It reached its time ceiling of 2h during prove, so findings whose tests had not finished are marked unclear, and no fixes were written.") {
+		t.Fatalf("the account does not say it was cut:\n%s", account)
+	}
+	if got := outcomeLine(result, "prove"); got != "it found 14 problems: 9 confirmed, 5 likely, before its time ceiling cut it short during prove" {
+		t.Fatalf("the ending says %q", got)
+	}
+	if report := markdownReport(result, runFacts{scope: scope, cutAt: "remediate", wall: "2h"}); !strings.Contains(report, "> **Cut short.** It reached its time ceiling of 2h during remediate, so the fixes it had not finished are missing.") {
+		t.Fatalf("the report does not say it was cut:\n%s", report)
+	}
+	if whole := summary(scope, nil, result, nil, "", "2h"); strings.Contains(whole, "time ceiling") {
+		t.Fatalf("a finished run says it was cut:\n%s", whole)
+	}
+	if got := rewriteNote("Demoted finding 'SSRF via unvalidated S3 endpoint' (decision=unknown): verifier_error"); got != "'SSRF via unvalidated S3 endpoint' stays unclear: its test did not finish" {
+		t.Fatalf("the demotion note reads %q", got)
 	}
 }

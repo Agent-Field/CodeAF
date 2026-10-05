@@ -2728,6 +2728,11 @@ type Agent struct {
 	// woken with, nil for every other turn: a hand-off it makes is a re-attempt
 	// of that run ([Agent.programRetryRefusal]). Cleared with owedAsks.
 	programOutcomeNow *programOutcome
+	// programAnsweredFor is the row whose program ending was last written
+	// into the conversation because the turn it woke did not finish its
+	// answer ([Agent.programOutcomeUnansweredLocked]), so a run's account is
+	// written once however many turns then fail.
+	programAnsweredFor uint64
 	// programHold is the last program ending since the person's own words. It
 	// survives wake turns and reloads from the conversation's sidecar record.
 	programHold    *programOutcome

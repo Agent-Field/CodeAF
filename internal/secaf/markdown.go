@@ -34,6 +34,9 @@ type runFacts struct {
 	sessions int
 	calls    int
 	took     time.Duration
+	// cutAt is the phase the run's time ceiling stopped it in, and wall that
+	// ceiling in words; empty for a run that finished in its time.
+	cutAt, wall string
 }
 
 // markdownReport is the readable report.
@@ -58,6 +61,9 @@ func markdownReport(result schemas.SecurityAuditResult, run runFacts) string {
 		b.WriteString(strings.Join(facts, " · ") + "\n\n")
 	}
 
+	if run.cutAt != "" {
+		fmt.Fprintf(&b, "> **Cut short.** %s\n\n", cutSentence(run.cutAt, run.wall))
+	}
 	b.WriteString("## What it found\n\n")
 	standing, unclear, ruledOut := sortFindings(result.Findings)
 	if len(standing) == 0 {
