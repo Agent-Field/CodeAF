@@ -156,10 +156,45 @@ theirs on 96% of cells, codeaf scores F1 N beside Claude Code's 63 and
 Codex's 78.* It is not evidence that codeaf finds new vulnerabilities, and it
 says nothing about Go.
 
-The first measurement is the `s1` run of `codeaf` on `deepseek/deepseek-v4.1-flash`
-in diff mode; its `summary.json` is the record. The smoke before it, one CVE
-through the whole pipeline, hit the vulnerable revision and stayed quiet on
-the fix at $0.04 and 225 seconds for both cells.
+## Measured
+
+`s1`, 2026-10-05: `codeaf do` on `deepseek/deepseek-v4.1-flash`, diff mode,
+all 165 rows, three cells at a time, 900 s wall, judged by
+`anthropic/claude-opus-4.5`. Its `summary.json` is the record.
+
+| tool | F1 | precision | recall | accuracy | TP | FP | TN | FN |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **codeaf, deepseek-v4.1-flash** | **93.25** | 93.83 | 92.68 | 93.33 | 76 | 5 | 78 | 6 |
+| DeepSource | 84.51 | 100.00 | 73.17 | 86.67 | 60 | 0 | 83 | 22 |
+| Cursor Bugbot | 80.45 | 74.23 | 87.80 | 78.79 | 72 | 25 | 58 | 10 |
+| Devin | 78.08 | 89.06 | 69.51 | 80.61 | 57 | 7 | 76 | 25 |
+| OpenAI Codex | 77.70 | 94.74 | 65.85 | 81.21 | 54 | 3 | 80 | 28 |
+| Greptile | 68.61 | 85.45 | 57.32 | 73.94 | 47 | 8 | 75 | 35 |
+| Claude Code | 62.99 | 88.89 | 48.78 | 71.52 | 40 | 5 | 78 | 42 |
+| Semgrep CE | 36.70 | 74.07 | 24.39 | 58.18 | 20 | 7 | 76 | 62 |
+| CodeRabbit | 36.19 | 82.61 | 23.17 | 59.39 | 19 | 4 | 79 | 63 |
+
+What it cost and what went wrong, because both belong beside the number:
+$4.93 of model spend on the tool side for 165 cells (three cents a cell,
+self-reported by `codeaf do`), $0.70 on 90 judge calls, a median of 145 s and
+a mean of 193 s per cell, 8.9 hours of tool time over about 3.3 hours of
+wall. Three cells hit the 900 s wall and were scored as the empty report they
+delivered (two on fixed revisions, so they landed as TN; one on a vulnerable
+revision had already written its findings). Per CWE on the vulnerable rows:
+command injection 22/22, XSS 20/20, ReDoS 20/20, code injection 12/12,
+prototype pollution 10/10, path traversal 8/9.
+
+Read it with the caveats above open. The recall gap to every other row is
+far too large to be a difference in reviewing skill between a flash-tier
+model and the ones on the table; the plainer reading is that these are the
+best-known JavaScript CVEs of 2016–2021 and the review brief names their
+classes, and a model that has read the advisories finds them. The precision
+column is the more interesting one: 5 FP against Bugbot's 25 and Devin's 7,
+with a judge that is stricter than theirs. What the number is fit to say is
+"on the one public table there is, with their protocol and a stricter judge,
+codeaf's row is the top one," and nothing more. The smoke before the run,
+one CVE through the whole pipeline, had already hit the vulnerable revision
+and stayed quiet on the fix.
 
 ## The drivers
 
