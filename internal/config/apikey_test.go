@@ -8,7 +8,9 @@ import (
 	"testing"
 )
 
-func TestPersistedAPIKeyIsTheLastRungOfLoadResolution(t *testing.T) {
+// C7: A saved connection works without a shell key, and the OpenRouter variable wins.
+func TestPersistedAPIKeyIsTheDurableRungOfLoadResolution(t *testing.T) {
+	t.Setenv("CODEAF_BASE_URL", "")
 	dir := t.TempDir()
 	t.Setenv("CODEAF_PROFILE_DIR", dir)
 	t.Setenv("OPENROUTER_API_KEY", "")
@@ -40,7 +42,9 @@ func TestPersistedAPIKeyIsTheLastRungOfLoadResolution(t *testing.T) {
 	}
 }
 
+// C7: The explanation follows the new ladder without exposing the credential.
 func TestAPIKeySourceMatchesAPIKeyAtWithoutExposingTheKey(t *testing.T) {
+	t.Setenv("CODEAF_BASE_URL", "")
 	dir := t.TempDir()
 	if err := WriteAPIKey(dir, "sk-profile-source-123"); err != nil {
 		t.Fatal(err)
@@ -53,7 +57,7 @@ func TestAPIKeySourceMatchesAPIKeyAtWithoutExposingTheKey(t *testing.T) {
 		source string
 	}{
 		{"shell OpenRouter", "sk-router-source-123", "sk-openai-source-123", "sk-router-source-123", "the shell's OPENROUTER_API_KEY"},
-		{"shell OpenAI", "", "sk-openai-source-123", "sk-openai-source-123", "the shell's OPENAI_API_KEY"},
+		{"profile over shell OpenAI", "", "sk-or-v1-test-fallback", "sk-profile-source-123", "the key saved in your profile"},
 		{"profile", "", "", "sk-profile-source-123", "the key saved in your profile"},
 	} {
 		t.Run(row.name, func(t *testing.T) {
@@ -72,7 +76,9 @@ func TestAPIKeySourceMatchesAPIKeyAtWithoutExposingTheKey(t *testing.T) {
 	}
 }
 
+// C11: Environment persistence preserves existing keys and unrelated settings.
 func TestEnsurePersistedAPIKeyCopiesTheEnvKeyOnceAndTightensTheFile(t *testing.T) {
+	t.Setenv("CODEAF_BASE_URL", "")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	// Pre-existing unrelated config must survive, including its budget key.

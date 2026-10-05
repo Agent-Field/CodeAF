@@ -132,11 +132,14 @@ provider for the conversation's model, and neither the shell nor the profile hol
 A connected direct provider carrying the conversation, a custom `CODEAF_BASE_URL`, a
 `--host` session, and a headless `--once` run are not offered an OpenRouter browser trip.
 For a headless run using the default provider, start bare `codeaf` once to connect in a terminal, or export
-`OPENROUTER_API_KEY` (or `OPENAI_API_KEY`) before running it.
+`OPENROUTER_API_KEY` before running it.
 
 **If the default provider's `OPENROUTER_API_KEY` is already set in your shell, this step is not shown at all.**
-The environment outranks the file, always; the setup only asks for what nothing else has
-answered.
+That variable outranks the profile. On OpenRouter the profile key comes next, then
+`OPENAI_API_KEY` only when it starts with `sk-or-`; an unrelated OpenAI key does not
+skip setup. Custom `CODEAF_BASE_URL` endpoints use `OPENROUTER_API_KEY`, then
+`OPENAI_API_KEY` of any shape, then the profile key. The setup only asks for what
+nothing else has answered. `codeaf doctor` names the key source without printing it.
 
 ## The daily limit on the setup screen — what may codeaf spend in a day
 

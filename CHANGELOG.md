@@ -18,6 +18,234 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.7.1 — 2026-10-05
+
+### Changed
+
+- **Usage receipts distinguish routing, model families and missing counts** — [#1755](https://github.com/Agent-Field/codeaf/pull/1755) · `engine` `remote` `build` `docs`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - Usage telemetry carried only positive token totals. It now includes bounded routing and model-family categories and explicitly records missing provider receipts without token totals.
+  - Provider usage appends ran on background goroutines. Completed receipts are now appended before accounting returns, while network delivery stays periodic.
+  - Usage categories named the initial service even after a plan overflow. They now follow the actual attempt route, including later generation receipt recovery. Periodic delivery no longer holds the local append lock across network requests.
+  - Missing release-download credentials silently passed the scheduled job. Production reporting now fails visibly when required credentials are absent.
+
+  </details>
+
+
+### Internal
+
+- **CHANGELOG.md gains its v0.7.0 section ahead of the stable cut** — [#1754](https://github.com/Agent-Field/codeaf/pull/1754) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The twelve pull requests merged after v0.6.0, from #1714 to #1752, were described only by loose files under docs/changes/unreleased/; CHANGELOG.md now carries them as v0.7.0, and that folder holds only what lands next.
+
+  </details>
+
+
+## v0.7.0 — 2026-10-04
+
+### Changed
+
+- **ctrl+enter queues a follow-up, and queued messages can be taken back** — [#1714](https://github.com/Agent-Field/codeaf/pull/1714) · `chat` `engine`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - Queueing a message for after the current turn was `ctrl+q`. It is now `ctrl+enter` only for non-empty words from this conversation's composer while its turn runs. At rest, on the start page, over a `/command`, or with an empty box it takes plain enter's action; `ctrl+q` is deliberately unbound. Mid-turn the queue carries words alone and refuses over pictures or a picked harness without changing the draft.
+  - A queued follow-up had no take-backs. It does now for messages queued from this window: a click removes one before its turn starts and returns words, pasted documents and plain slash tags to this conversation's composer. A new draft is kept and the returned message appended on a new line, with paste chips renumbered; pending answers cannot start the removed message, and multiple take-backs keep click order. `↑` does not reach the queue; it stays the parked block's and history's key.
+  - The keys row under the box named `ctrl+shift+enter stops and sends` while a turn ran. That slot is the queue key's now — `enter steers it in · ctrl+enter queue · esc interrupt`, with words in the box on a terminal that can send the chord. `ctrl+shift+enter` still stops and sends and the key sheet lists it; the foot no longer names it.
+  - The queued queue drew only a count, `after yield · N`. It draws one row per message above the box, dim, behind a reply arrow `↳` (a new vocabulary slot, `GFollowUp`, sharing `GReplyIn`'s byte by position — deliberately not the hollow circle a waiting task wears), with nothing under it: rows fit the frame, and only rows holding this window's own receipt light under the pointer and take a click.
+  - `ctrl+enter` marked a draft as a standing order. The chord is queueing's now; the explicit marked door is `/standing <words>`, which works on every terminal, and the hint under the box says the command.
+  - The manual said plain terminals could queue with `ctrl+q`. A decoded `ctrl+enter` now works wherever the terminal sends it, including modifyOtherKeys without a kitty reply. Hints and tips still require the terminal's key-support reply. Unsupported keyboards deliver plain enter on many terminals or a newline on some.
+
+  `UnqueueFollowUp` is on the engine and crosses the wire ([MethodUnqueueFollowUp]):
+  the surface takes a message back by the stream it has held since the moment it
+  queued, the engine answers false when the turn already drained it — in which case
+  the row stays and the message runs — and the take-back is asked off the update loop
+  like every other door. A hosted chat's agent is the telemetry tee
+  (`cmd/codeaf`'s countingAgent), which hands the surface a copy of each
+  follow-up's stream; the tee maps the copy back to the stream the remote agent
+  minted, or the take-back names a stream the far end never saw and answers false.
+
+  </details>
+
+- **senior-dev leaves no wip commits, writes its own commit message, and gets fixes handed back** — [#1716](https://github.com/Agent-Field/codeaf/pull/1716) · `chat` `engine` `docs`
+
+  <details><summary>6 things that are no longer true</summary>
+
+  - senior-dev committed every file its model wrote or edited on the run's branch as it went (`wip(write): <path>`, `wip(edit): <path>`, authored `senior-dev <senior-dev@localhost>`), and the manual said those commits stay and nothing squashes them. It makes no commits of its own now; the run's work is the one commit codeaf makes when the run ends.
+  - The `SENIOR_DEV_EAGER_COMMIT` opt-out and the `SENIOR_DEV_EXPECTED_BRANCH` variable codeaf passed to senior-dev existed for those commits and are gone.
+  - codeaf's finishing commit for a program's run always took the task's title as its subject and the run's ending as its body. It takes the message the program wrote to `.senior-dev/commit-message` as it is only when the run passed; otherwise the run's ending follows the message before the credits. Missing, blank, oversized (over 8 KiB), non-UTF-8, NUL-containing, credit-only, non-regular or symlink messages, and unchanged copies already tracked at the run's start, fall back to the title and ending.
+  - The brief a program in a git repository was handed said nothing about committing, so a brief that asked senior-dev to commit and push had it do both. codeaf's line at the head of the brief now tells it to leave its work uncommitted and not to push, switch branches, rewrite history, stash, reset, clean, or check out or restore files over its work even where the brief asks; this is asked, not enforced.
+  - On the turn a program's run ends, the chat was told to finish a small gap itself on the program's branch in its own worktree. Handing the work back to the same program now counts as fixing it yourself and is preferred for anything beyond a trivial gap. Once retries are spent, the chat tells the person what still does not work, where the work is and what it would try next.
+  - senior-dev's unsubmitted-run nudge and landing turn told its model to commit before verifying on a committed tree. They no longer do: the candidate is frozen from the working tree through a temporary index.
+
+  Prompted by #1693, whose fifty `wip` commits with senior-dev as an author would
+  have been written into `dev`'s history by the repository's squash merge, which
+  lists every commit message.
+
+  </details>
+
+- **first run answers clicks and a second enter, drops the telemetry notice, lists free models when low** — [#1720](https://github.com/Agent-Field/codeaf/pull/1720) · `chat` `docs`
+
+  <details><summary>19 things that are no longer true</summary>
+
+  - On the first conversation's screen, enter on a starting point filled the box and the next enter did nothing — the starting point kept taking it. With words in the box, enter now sends them: ↓ enter enter sends the starting point's sentence.
+  - The `?` detail on the setup's Daily limit row said it counts recorded spending, running calls can carry it past, and task crews have a cap in /crew. It now explains the two ceilings in four sentences: `'/budget 50'` changes the day's limit and `'/budget none'` removes it; a conversation can carry a smaller ceiling of its own set by e.g. `'/budget conversation 20'`; both hold at once and whichever is reached first stops the work. The commands are quoted whole, and a quote now counts as a word boundary for the command chip everywhere (`'/settings'` is chipped; a quoted path is not).
+  - The setup's example panel followed the focused row (the limit showed `Follow the work and its cost`, `Start a conversation` the senior-dev hand-off) and never turned by itself. It opens on the first example and turns to the next every 3 seconds, round the ring; `←`/`→` browse by hand; any key — typing, walking the rows, browsing, a press — holds the clock for 3 seconds from that key; the focus never moves it; the screen-reader tier never turns by itself. exampleForControl is gone; setupFlow has turnGen and turnTicking, and setupTurnMsg is the clock.
+  - On the setup's controls screen `Start a conversation` carried a dim `enter` at its right, and the two explanations did not name a command. The loose `enter` is gone (the keys line says `enter starts` there); the limit's line ends `/budget changes it later.` and the chat model's `/model changes it later.`, each command painted as the composer's chip.
+  - The setup's controls screen had a row `Other settings use defaults · review` (or `Review other settings`) between the chat model and `Start a conversation`, which enter opened into three read-only rows (memory, ask before running, task countdown) and the line `/settings changes these and every other one.`. The row is gone — the form is three rows: the limit, the chat model, the way out — and one dim line under `Start a conversation` reads `Everything else is in /settings`, with `/settings` painted as the composer's command chip. controlReview, setupFlow.reviewOpen, setupReviewRow, setupReviewRows, setupReviewKeys and setupOtherSettingsWritten are gone.
+  - The setup's model list drew each model's friendly name with the exact id on a second row under the cursor's model. It is a flat list of exact ids now, one row per model; the friendly name is still searched by typing and still shown on the Chat model field.
+  - On the setup's controls screen a row's name was the body ink when focused and muted otherwise, and `←`/`→` stopped at the first and last example. A name is now the accent while focused, dim once enter has acted on the row (the limit set, a model taken; setupFlow.answered), and the body ink until then, on every row including `Start a conversation`; and the examples go round in both directions.
+  - The setup's controls screen was headed `Models and spending` over `Keep these choices or change them.`, with the keys line at the foot of the form. Its heading is the one line `Basic settings`, and the keys line is the row directly under it. The example panel no longer carries `An illustration. Nothing here has run.` at its foot (its `Example` label says so), and the keys line no longer says `←→ examples` — the panel's own bottom edge carries the arrows.
+  - The Models and spending setup screen swallowed every mouse press. A press on a row is now the key that row would take — the limit focuses, the chat model opens its list, a model in the list is taken, `Start a conversation` leaves — and the wheel scrolls the open list.
+  - Enter on the chat-model row left the focus there after a model was taken, so the next enter reopened the list; enter on an open review folded it away. Taking a model now goes on to the next row, so enter alone walks the three-row form down to `Start a conversation`.
+  - codeaf printed a six-line anonymous-usage-counts notice once per install — on the first conversation's screen under the starting points, or to stderr ahead of `chat --once` and task commands — and sent nothing until a frame or a terminal had shown it. It prints no notice anywhere now and the gate is gone; the disclosure is the README's Telemetry section and docs/TELEMETRY.md, which a test holds to the switches.
+  - `codeaf telemetry` (`status`, `info`, `show`, `on`, `off`) existed and `--help` listed it. It does not exist: `codeaf telemetry` exits 1 with an error that names CODEAF_TELEMETRY=off, DO_NOT_TRACK=1 and the telemetry switch in /settings, and points at docs/TELEMETRY.md. The switches are unchanged: the `telemetry` toggle in /settings, CODEAF_TELEMETRY=off, DO_NOT_TRACK=1, `telemetry = off` in the project file, an empty CODEAF_TELEMETRY_ENDPOINT. tui3.Options no longer has TelemetryNotice or TelemetryNoticeShown, and internal/telemetry no longer has Notice, PrintNotice, NoticeShown or MarkNoticeShown.
+  - A balance read that OpenRouter answered with `API key expired` was a failed read: nothing was recorded and nothing was said, and the turn then failed with a plain auth error. It is now a reading of its own (credits.Reading.Expired, stored beside low in credits.json, config.CreditsExpiredAt): `Your OpenRouter key has expired — make a new one at openrouter.ai/settings/keys` stands under the message box in a conversation and on Home for every OpenRouter model, free included, the setup screen’s last row reads `Your OpenRouter key has expired · /connect takes a new one from openrouter.ai/settings/keys` when it is the only step, or `Your OpenRouter key has expired · esc to paste a new one from openrouter.ai/settings/keys` with a connection step behind it; a turn refused as expired starts a fresh read on the engine launch as well as `chat --no-host`, under the same 30-second debounce. The engine launch recognizes the session's shared `your key was not accepted for this model` prefix for the default service, whatever key-source tail follows; the read decides whether the key expired, and a merely invalid key changes nothing. An expired reading keeps an untouched conversation’s current model without a model note.
+  - The setup screen's example panel (`○ Example · what you can do`) was a second column to the right of the form, 36 cells wide, drawn only from 112 columns up and level with the first field; on a tall window the lower half of the screen stayed empty while the panel wrapped every sentence. It now stands ABOVE the form, under the header: the panel, two blank rows, the keys line, then the form directly under it, as wide as the window allows up to 92 cells, whole or not at all: a window with no rows to spare (24 rows) draws the keys line and the form alone, and the keys line never names `←→ examples`; the panel’s own bottom edge carries the arrows. The panel's top edge carries the example's title (`○ Example · Follow the work and its cost`) instead of `Example · what you can do`, and the title is no longer a row inside the body. There is a fifth example, `Hand off complex coding tasks`, whose request is `/senior-dev Add retries with backoff to the HTTP client, with tests.`; it stands beside `Start a conversation`, and a command in any example's request is painted with the composer's command chip. The form itself is 64 cells wide on every window (it was 54 beside the panel), and setupWideCols, setupFormWidth=54, setupShowGap and setupShowWidth are gone.
+  - The setup screen's keys line said `enter goes on · tab moves · …` on the limit row. It says `enter sets the limit · ↑↓ moves · …`; `tab` still walks the rows but is no longer named, and the tmux suite's setupMovesWord needle is `↑↓ moves`.
+  - The setup screen's chat-model list was the whole catalog whatever the account's balance. While the OpenRouter balance reads low ($0.50 or less, the reading behind the low-credits warning), it offers only the `:free` ids and the catalog rows priced at zero, its count line says `free only`, and `Your OpenRouter account is low on credits · the list shows free models only` stands right-aligned on the screen's last row, where the keys row carries the warning outside the setup (the expired-key line stands there too). The model in use stays on the list.
+  - Enter on the setup's open chat-model list with `nothing matches · backspace widens it` closed the list. It now keeps the list open, the row unanswered, and the focus and the model unchanged; backspace widens it and esc closes it.
+  - Turning the /settings telemetry switch off wrote the profile but the running process kept sending usage and exit events; its registry hint still promised a notice and a restart for every change. Off now stops sending immediately, including later periodic and exit flushes, without building a session-ended event. A pool row already being judged is not sent either: the pool reads the live off switches before recording outgoing rows and immediately before a POST. Turning it back on takes effect at the next start. A request already on the wire may complete and counts queued locally stay unsent while off.
+  - docs/TELEMETRY.md did not say the counts are on by default. It says so now, and its test holds the page to every one of the five off switches.
+
+  Santosh watched five new people through the first run on 2026-09-30. Four read
+  the second enter doing nothing as enter being broken, most read the telemetry
+  notice as something to deal with, and the ones on an empty OpenRouter account
+  picked paid models they knew by name from a list that should not have offered
+  them. The notice's legal job is done by the repository, so it left the product
+  with the command that explained it.
+
+  </details>
+
+- **touched packages run concurrently and attribute flaky or inherited failures** — [#1734](https://github.com/Agent-Field/codeaf/pull/1734) · `build` `docs`
+
+  <details><summary>3 things that are no longer true</summary>
+
+  - The touched job ran every changed package in sequence and charged its first failure to the PR. It now starts the needed tui3, session, unsharded codeaf and rest legs together, retries each named failure once, then compares persistent failures with the exact base before deciding.
+  - The PR gate restored a cache keyed only on go.sum, so weeks of compiled changes were never saved. The first dev push missing each build namespace's UTC-day key now saves it, and light saves modules by go.sum hash; PRs restore the newest compatible entries without saving, and GitHub evicts old days.
+  - Local touched proof had its own package walk and no failure attribution. It now uses CI's shared selector, partitions and classifier; tooling acceptance remains conditional on the changed scripts, Makefile or covered benchmark paths.
+
+  A flaky test remains a bug with an owner, but its first failure is not evidence
+  that this PR introduced it. Unnamed failures and more than five failed tests per
+  leg stay red without retries; a new persistent head-only failure still blocks
+  check. The classifier prints human test output, skips no test by name and
+  records warnings in the lowest-numbered open exact-title standing issue. The
+  shared ledger guard, suite lock, light-gate prerequisites and full workflow
+  remain unchanged.
+
+  </details>
+
+
+### Fixed
+
+- **the test suite is green on macOS, and the allocation law prices its marshals itself** — [#1722](https://github.com/Agent-Field/codeaf/pull/1722) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - the ten tests that failed `make pr-ready` on a clean dev on a Mac were a host or toolchain assumption in each test, never a product fault or a flake — CI on ubuntu was green for the same commit.
+  - `internal/provider/alloclaws_test.go` no longer names 8 for a warm breakpoints encode; encoding/json's own price is measured in-process, this package's own allocations are named, and nothing more is allowed (8 in all on Go 1.26, 11 on Go 1.27 — both measured).
+
+  Four `internal/session` tests that hold a task under a memory floor no machine
+  meets (`1 << 40` MiB) state their machine through `littleMemoryHost`, a `readHost`
+  seam the governors are built over, because the real reading is `/proc/meminfo` and a
+  host without it admits everything; they now run and pass on every host instead
+  of holding only on Linux. Four `cmd/codeaf` engine tests, the standing
+  isolation test and the held-run reopen test compare against the canonical temp
+  folder, since the engine records the resolved root and macOS spells `/var`
+  through `/private/var`. The warm breakpoints encode law measures encoding/json's
+  own price in-process, names this package's own result and parts slice allocations,
+  and allows nothing more anywhere on the warm path, inside `marshalMarked` included.
+
+  </details>
+
+- **the @ list finds recent conversations on every box without taking over prose** — [#1725](https://github.com/Agent-Field/codeaf/pull/1725) · `chat` `docs`
+
+  <details><summary>13 things that are no longer true</summary>
+
+  - The `@` list's recent conversations were read once per process, so a conversation started in another window after the first `@` was never on it. They are read once per opening on every box when no read is pending: a new `@` token, typed or pasted, or the list returning on the next letter after `esc`. Openings during a read share one follow-up.
+  - `@chat:` and `@team:` kept the first eight rows of their section and showed no sign of more. A prefixed list keeps up to thirty-two and scrolls; the bare `@` still keeps eight per section.
+  - The manual did not say which conversations the `@` list holds. It does: every open tab except the one you are in and the window's own unnamed, unsent front, then the twenty most recent in this project; open tabs from other projects are included too; older or other-project saved conversations use `/resume` unless already open here.
+  - On the new-chat page (`+`), the `@` list left off the conversation the window came from, as though you were typing inside it, so `@chat:kim` beside a lit `tell me about kim jung il` said `no conversation matches`. The start page leaves no eligible conversation off.
+  - A prefixed `@chat:who is` search closed at its first space. `@team:`, `@chat:` and `@file:` now hold up to three spaces and match every word in any order on teams, conversations and files. A bare `@` still ends at its first space, so ordinary prose never reopens the list. A multi-word search with no match closes only after its catalog has been read.
+  - Home's `@` list offered files alone, and `@chat:` typed there answered `no file matches`. Home's list has the same teams and conversations sections and the same `@team:`, `@chat:` and `@file:` prefixes as a conversation's box, and leaves no eligible conversation off.
+  - Home's `@` list could clear its paths under already-ranked rows and crash, including on dev. It now walks the pinned target or this window's file root, never the row selected before opening. Locally the list, foot and sentence use the same folder; over `--host` the unpinned list walks this machine's folder like a conversation's list, while the foot and send keep the far workspace. Catalogs and rows change together; old-folder answers are ignored; closed-list arrows preserve the completed walk.
+  - A pasted opening could skip the fresh recent read when an earlier catalog matched nothing. A new token now asks for fresh recents exactly once, even when its unmatched display closes; openings during a pending read share one follow-up, keeping at most one walk in flight per window; the earlier answer never settles their search as fresh; letters and caret moves within that opening never restart the read or repeat the opening notice. Dismissing it with `esc` ends the opening on every box; a space or punctuation keeps even a bare `@` closed without a read; the next letter brings it back with one fresh read and one opening notice. Prefixed multi-word chat searches wait for their token's answer.
+  - Recent rows or a file walk could move the chosen row before Enter, and home's arrows left its completion cursor behind. Data arrivals select the best match unless the person chose a row since the query last changed; that choice survives while still offered. A changed query returns to the best match.
+  - Emptying home's box skipped completion sync and kept its list open, so the next token could miss conversations started in another window. Every edit now syncs the token, including the empty box; the next `@` asks for fresh rows.
+  - Recent-row canonicalization walked the disk on the update loop. Keys now travel with the off-loop read, preserving symlink deduplication and the hosted cleaned-path rule.
+  - Punctuation after a chosen mention reopened an empty list, and home could draw chosen teams plain from a stale conversation catalog. Punctuation keeps the list closed; every box draws the current team colour, and plain draft rows allocate nothing for team painting.
+  - An unsent shell could appear on the `@` list under its draft's tab name and supply an empty digest. Only the window's own unnamed front with no user entry or opening prompt is left off for having nothing sent. Every held, restored or side tab is offered without title/opening heuristics, including an untitled conversation whose first user message was a queued follow-up.
+
+  Santosh's report (2026-09-30): a tab reading `cloudfl…` was on the strip and
+  `@chat:cloudfl` did not list it. The match itself was fine; what the list held was
+  not. The recent list was a snapshot taken on the window's first `@` and kept for
+  the life of the process, and a section cut at eight rows said nothing about the
+  rest. The conversation in front is still left off on purpose: pointing at the
+  chat you are typing in is not a reference.
+
+  </details>
+
+- **Token usage reaches telemetry while a session is still running** — [#1731](https://github.com/Agent-Field/codeaf/pull/1731) · `docs` `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - Token telemetry was reported only when a session ended. It is now queued as additive usage deltas and flushed every 30 seconds while the session remains open.
+  - `codeaf telemetry on` changed the profile but could leave the notice send gate closed. Explicit opt-in now opens that gate immediately.
+
+  </details>
+
+- **forgotten OpenAI keys and stale folder environments no longer hide a connected key** — [#1752](https://github.com/Agent-Field/codeaf/pull/1752) · `chat` `engine` `docs`
+
+  <details><summary>5 things that are no longer true</summary>
+
+  - The default OpenRouter key ladder was OPENROUTER_API_KEY, OPENAI_API_KEY of any shape, then the saved profile key. It is now OPENROUTER_API_KEY, the saved profile key, then OPENAI_API_KEY only when it starts with sk-or-. A custom CODEAF_BASE_URL keeps the old order and accepts any compatibility-key shape. An unusable OpenAI key is never copied into the profile.
+  - Unsetting a stale key and opening a new terminal was not enough: the folder engine kept the environment of the terminal that started it. A same-build idle engine now restarts immediately after a window disconnects to pick up the new terminal's provider and settings environment, while preserving journaled conversations.
+  - Picking up a changed shell environment always meant stopping the engine by hand. An idle engine now stands down automatically without force; a host with an attached window, streaming turn, waiting question or background work keeps it, and the window names a shell-quoted codeaf engine --stop --workspace <dir>. Status also reports a known environment difference.
+  - A running engine resolved new model sources with its boot-time default key. A newly connected profile key now reaches retained, reopened and joined conversations before their welcome, and later conversations on source refresh, while OPENROUTER_API_KEY still wins and a keyless reading keeps a working in-memory key.
+  - Doctor and the missing-key remedies recommended OPENAI_API_KEY without distinguishing its provider. Doctor now names the resolved rung and explains unused compatibility keys without revealing them; help, settings, the guide and the chat manual describe the new ladders and engine restart.
+
+  The engine compares only a local, private salted fingerprint. No credential or
+  provider address is added to the wire. Environment replacement disregards only
+  a disconnected window's watch grace; ended conversations hold no work. Ordinary
+  build takeover and the person's stop command keep their existing rules. Missing
+  or unreadable fingerprints keep the current host, and ordinary terminal bookkeeping never triggers a restart.
+
+  </details>
+
+
+### Internal
+
+- **the unreleased entries are rolled up into CHANGELOG.md as v0.6.0** — [#1726](https://github.com/Agent-Field/codeaf/pull/1726) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - docs/changes/unreleased/ held 32 entries for the work after v0.5.1. They are now the `## v0.6.0` section of CHANGELOG.md, and the folder starts the next version.
+
+  </details>
+
+- **CODEAF_INBOX is registered as operator plumbing, so release builds pass their tests again** — [#1730](https://github.com/Agent-Field/codeaf/pull/1730) · `build`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - After #1689 added CODEAF_INBOX, every staging, rc and stable build failed TestRegistryCoversEveryUserFacingEnvironmentPin in its release test job; the pull-request gate never ran that test because #1689 did not touch internal/config. The variable is now on OperatorEnvPins and those builds publish again.
+
+  </details>
+
+- **The telemetry package comment matches its live contract** — [#1732](https://github.com/Agent-Field/codeaf/pull/1732) · `docs`
+- **twelve slow session tests wait on acknowledgements instead of wall clocks** — [#1733](https://github.com/Agent-Field/codeaf/pull/1733) · `engine`
+
+  <details><summary>2 things that are no longer true</summary>
+
+  - The slowest internal/session tests (the watch tickers, the team loop breaker, the slow phase listener, the young-bash steer grace, the stalled checker, the task-baseline attribution trio) took about 123 seconds between them, waiting on real time. They now drive the same real commands, queues and landings through acknowledgements and explicit clock advances, about 4 seconds in all. The two plandb CLI tests that run a real loop through bash (about 35 seconds each) are unchanged and remain the slowest in the package.
+  - jobRegistry.watchTickWait, Agent.steerAfter, Config.teamWatchManual and Config.auditTimeout are new private test seams. Each is nil or false in production and falls through to the call it replaced, so no window, default or limit moved.
+
+  </details>
+
+
 ## v0.6.0 — 2026-10-01
 
 ### Added

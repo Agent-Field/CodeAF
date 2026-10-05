@@ -291,7 +291,8 @@ func clearStaleEngineHost(workspace string) (string, error) {
 //
 // WHAT MAKES TWO BUILDS THE SAME ONE IS THE SOURCE AND THE FILE. A host of this
 // source running from this file (or one that does not say which file) is this
-// build's engine, whatever minute the two were linked in (#730), and is joined.
+// build's engine, whatever minute the two were linked in (#730). It is joined
+// unless an environment change can retire it without ending anybody's work.
 //
 // WHICH IS OLDER IS THE BUILD MOMENT AND NOTHING ELSE, and a tie is never a
 // replacement. That is what makes the rule converge: two windows on two builds
@@ -312,7 +313,16 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 	}
 	host := held.Self
 	if held.Answered && sameEngineBuild(host, me) {
-		return "", nil
+		if !enginehost.EnvironmentDiffers(workspace) {
+			return "", nil
+		}
+		// THE HOST DECIDES WHETHER IT CAN GO. Never send Anyway for an
+		// environment change: a window, turn, question or background work must
+		// keep its process, but a disconnected window's watch grace need not.
+		if err := enginehost.RetireForEnvironment(workspace); err != nil {
+			return differentEngineEnvironmentSentence(hostWorkspace(host, workspace)), nil
+		}
+		return "the engine restarted to pick up this terminal's environment", nil
 	}
 	if held.Answered && !host.BuiltAt.Before(me.BuiltAt) {
 		// A NEWER BUILD (or a tie) IS NOT REPLACED FROM HERE. Same wire: join it.
@@ -333,6 +343,16 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		return "", nil
 	}
 	return replacedEngineHostSentence(held), nil
+}
+
+// differentEngineEnvironmentSentence names the host's workspace so the command
+// stops the folder actually holding the old environment, including from Home.
+func differentEngineEnvironmentSentence(workspace string) string {
+	stop := "codeaf engine --stop"
+	if workspace = strings.TrimSpace(workspace); workspace != "" {
+		stop += " --workspace " + shellQuote(workspace)
+	}
+	return "the engine for this folder started with a different environment than this terminal and is still in use — close its other windows or let its work finish, or run " + stop
 }
 
 // sameEngineBuild is the host being this build: the same wire, the same source,
@@ -568,6 +588,9 @@ func writeEngineStatus(out io.Writer, workspace string, held enginehost.Holder, 
 		if host.Busy {
 			fmt.Fprintln(out, "  working    yes — a turn, a task or a question is in flight")
 		}
+	}
+	if enginehost.EnvironmentDiffers(workspace) {
+		fmt.Fprintln(out, "  environment differs from this terminal's")
 	}
 	stop := "codeaf engine --stop"
 	if strings.TrimSpace(workspace) != "" {

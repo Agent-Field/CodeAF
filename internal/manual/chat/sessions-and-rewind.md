@@ -770,7 +770,7 @@ the connection to devbox is gone — run the same command to pick the conversati
 That is not advice dressed up: the conversation is on that machine's disk and the same
 command opens it again. Running the session elsewhere with `--host` has its own page.
 
-## Does codeaf save my API keys — a token or password a command printed, and whether it is in the transcript
+## Does codeaf save my API keys — saved keys, tokens and passwords in the transcript
 
 **A secret is taken out of a tool result before anything keeps it.** When output comes
 back from a shell command, a file that was read, or a page that was fetched, every span in

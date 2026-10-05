@@ -217,13 +217,22 @@ class ReleaseDownloadsTest(unittest.TestCase):
         self.assertEqual(payload["api_key"], "<unset>")
         self.assertEqual(len(payload["batch"]), 15)
 
-    def test_sending_without_project_key_is_a_notice_and_success(self):
+    def test_sending_without_project_key_fails(self):
         # Only the sending path stops on a missing key; it never reaches the
         # network or the PostHog host.
         result = run_script()
-        self.assertEqual(result.returncode, 0)
-        self.assertIn("notice", result.stderr)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("error", result.stderr)
         self.assertIn("CODEAF_POSTHOG_PROJECT_KEY", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_sending_without_github_token_fails(self):
+        result = run_script(env_extra={
+            "CODEAF_POSTHOG_PROJECT_KEY": "phx_test",
+            "GH_TOKEN": "", "GITHUB_TOKEN": "",
+        })
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("GITHUB_TOKEN", result.stderr)
         self.assertEqual(result.stdout, "")
 
 

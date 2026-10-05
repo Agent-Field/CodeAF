@@ -51,6 +51,10 @@ any of the three drift apart.
 | usage_delta | input_tokens | provider-reported input tokens since the preceding usage event |
 | usage_delta | output_tokens | provider-reported output tokens since the preceding usage event |
 | usage_delta | total_tokens | the sum of this event's input and output tokens |
+| usage_delta | routing_provider | openrouter, openai, anthropic, google, bedrock, azure, ollama, other, or unknown |
+| usage_delta | model_family | deepseek, claude, gpt, gemini, llama, qwen, kimi, glm, other, or unknown |
+| usage_delta | usage_status | reported or missing |
+| usage_delta | accounting_source | provider or engine |
 | session_ended | mode | chat or task |
 | session_ended | duration | a band: under 1m, 1-5m, 5-30m, 30m-2h, 2h or more |
 | session_ended | turns | a count band |
@@ -67,8 +71,8 @@ any of the three drift apart.
 
 Count bands are 0, 1, 2-5, 6-20, 21-100 and 100+. Dollar bands are 0, under
 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+.
-Each numeric usage delta is written when provider accounting arrives, including
-tokens read from cache once. Missing usage contributes no event. Deltas, rather
+Each provider usage receipt is appended locally before provider accounting returns, including
+tokens read from cache once. Missing provider receipts produce a `usage_status = missing` event without token fields; a missing receipt never invents a zero total. Routing categories follow the actual attempt, including an explicitly authorized billing-door switch and any later generation receipt. Bounded routing and model-family categories describe reported usage without sending exact model names or endpoint addresses. Hosted engines currently report aggregate turn deltas with unknown routing and family, labelled `accounting_source = engine`; those aggregates are not per-call receipts and can be lost before a turn ends. Deltas, rather
 than repeated session totals, make the stream safe to sum while a run is open.
 
 first_run carries only the every-event properties and is sent once per
@@ -82,7 +86,7 @@ ids never leave this machine.
 
 Prompts, model replies, code, file names, paths, repo or directory names, git
 remotes, hostnames, usernames, IP addresses, environment values, API keys,
-email addresses, model names, error text, panic messages. A test builds every
+email addresses, exact model names, custom model names, error text, panic messages. Public model-family categories are sent as described above. A test builds every
 event from inputs stuffed with exactly these and fails if any of them reach
 the marshalled output.
 
@@ -93,7 +97,7 @@ per request, every 30 seconds while a session is open and once more when it
 ends. Nothing older than 7 days is sent and at most 1000 lines are kept. An
 event whose version is unknown is dropped at send time and never leaves the
 machine. The spool is plain JSON lines, so what has not left yet can be read
-with any editor.
+with any editor. A local warning reports storage failures or counts discarded by the age/size limits; it contains no event contents. These warnings do not establish how many tokens were lost.
 
 ## Turning it off
 
@@ -148,3 +152,5 @@ the count GitHub already shows on the release page. Sidecar files such as
 `.github/workflows/release-downloads.yml`; the script behind it is
 `scripts/release_downloads.py`, and running it with `--dry-run` prints the
 batch it would send.
+
+The release-download workflow fails visibly when its production PostHog key or GitHub token is missing; dry-run still works without a PostHog key.
