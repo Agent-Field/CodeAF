@@ -190,10 +190,10 @@ def main(argv=None) -> int:
     project_key = os.environ.get("CODEAF_POSTHOG_PROJECT_KEY", "")
     if not project_key and not args.dry_run:
         print(
-            "notice: CODEAF_POSTHOG_PROJECT_KEY is not set; nothing sent",
+            "error: CODEAF_POSTHOG_PROJECT_KEY is not set; nothing sent",
             file=sys.stderr,
         )
-        return 0
+        return 1
     # --dry-run is the local and test path: it must work without a key, so a
     # missing key is printed as a placeholder rather than stopping the run.
     if not project_key:
@@ -206,10 +206,10 @@ def main(argv=None) -> int:
         token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
         if not token:
             print(
-                "notice: GITHUB_TOKEN is not set; nothing sent",
+                "error: GITHUB_TOKEN is not set; nothing sent",
                 file=sys.stderr,
             )
-            return 0
+            return 1
         releases = fetch_releases(args.repository, token)
 
     snapshot_date = datetime.datetime.now(datetime.timezone.utc).strftime(

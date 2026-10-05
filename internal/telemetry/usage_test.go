@@ -1,7 +1,11 @@
 package telemetry
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -64,5 +68,52 @@ func TestPeriodicFlushSendsBeforeTheSessionEnds(t *testing.T) {
 
 	if rows := SpoolContents(); len(rows) != 0 {
 		t.Fatalf("periodic flush left %d rows", len(rows))
+	}
+}
+
+func TestUsagePersistenceDoesNotWaitForRelayDelivery(t *testing.T) {
+	testHome(t)
+	VersionForTest(t, "v0.7.0")
+	finish := BeginUsageSession(ModeTask, "active")
+	defer finish()
+	if err := SpoolSync(UsageDelta(ModeTask, 1, 1, "earlier", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	relay := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-release
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }); relay.Close() })
+	t.Setenv("CODEAF_TELEMETRY_ENDPOINT", relay.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	flushed := make(chan struct{})
+	go func() { defer close(flushed); _ = Flush(ctx) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("relay was never entered")
+	}
+	persisted := make(chan struct{})
+	go func() {
+		defer close(persisted)
+		CountUsage(10, 2, UsageDimensions{UsageStatus: "reported", AccountingSource: "provider"})
+	}()
+	select {
+	case <-persisted:
+	case <-time.After(300 * time.Millisecond):
+		releaseOnce.Do(func() { close(release) })
+		<-flushed
+		<-persisted
+		t.Fatal("provider receipt waited behind network delivery")
+	}
+	releaseOnce.Do(func() { close(release) })
+	<-flushed
+	if rows := SpoolContents(); len(rows) != 1 {
+		t.Fatalf("concurrent persisted receipt was lost: %d rows", len(rows))
 	}
 }

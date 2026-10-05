@@ -317,7 +317,18 @@ func Held() ([]string, error) {
 }
 
 func Retire(workspace string, anyway bool) error {
-	self, err := Ask(workspace, remote.WhoIs{StandDown: true, Anyway: anyway})
+	return retire(workspace, remote.WhoIs{StandDown: true, Anyway: anyway})
+}
+
+// RetireForEnvironment asks only idle work to stand down, without allowing a
+// disconnected window's watch grace to preserve the environment it just left.
+// NEVER ANYWAY: actual windows, turns, questions and background work still refuse.
+func RetireForEnvironment(workspace string) error {
+	return retire(workspace, remote.WhoIs{StandDown: true, IgnoreWatchGrace: true})
+}
+
+func retire(workspace string, ask remote.WhoIs) error {
+	self, err := Ask(workspace, ask)
 	if err != nil {
 		return err
 	}

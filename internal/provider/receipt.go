@@ -12,6 +12,8 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/guard"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
+	"github.com/Agent-Field/codeaf/internal/telemetry"
 )
 
 // THE RECEIPT: MONEY A CUT STREAM LEFT OFF THE WIRE.
@@ -99,6 +101,8 @@ type receiptWork struct {
 	result Reconciled
 	sink   ReconcileSink
 	queued time.Time
+	usage  func(int, int)
+	base   string
 }
 
 // deadline is the latest a receipt may be answered: [receiptFetchTimeout] after
@@ -157,7 +161,11 @@ func (m *receiptRouteMemo) heard(base string, now time.Time) {
 // measured first-frame in-band refusal is an upstream breaking before it
 // produced a generation, not money the provider charged. Those mutually
 // exclusive doors keep one call from ever being counted twice.
-func (c *Client) settle(ctx context.Context, model string, response *ai.Response, reason string, answerBytes int) {
+func (c *Client) settle(ctx context.Context, model string, response *ai.Response, reason string, answerBytes int, traces ...*callTrace) {
+	base := c.config.BaseURL
+	if len(traces) > 0 && traces[0] != nil && traces[0].attemptBase != "" {
+		base = traces[0].attemptBase
+	}
 	if response != nil && response.Usage != nil {
 		c.bill(ctx, model, response)
 		return
@@ -166,7 +174,7 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 	// usage block supplies no measured figures to record, and calling the
 	// router's route on the vendor would send that vendor a request and bearer
 	// for a fact this client already knows cannot be there.
-	if c.config.Direct {
+	if c.config.Direct && (base == c.config.BaseURL || telemetry.RoutingProvider(base) != modelsource.DefaultID) {
 		return
 	}
 	sink := reconcileFrom(ctx)
@@ -193,7 +201,11 @@ func (c *Client) settle(ctx context.Context, model string, response *ai.Response
 		}
 		return
 	}
-	work := receiptWork{result: result, sink: sink}
+	work := receiptWork{result: result, sink: sink, base: base, usage: telemetry.CaptureUsageRecorder(telemetry.UsageDimensions{
+		RoutingProvider: telemetry.RoutingProvider(base),
+		ModelFamily:     telemetry.ModelFamily(result.Model), UsageStatus: "reported",
+		AccountingSource: "provider", ReceiptID: "generation:" + result.Ref,
+	})}
 	// THE WORK IS TOLD A RECEIPT IS OWED BEFORE IT IS QUEUED, and told it was
 	// answered only after the sink has banked it, so a caller waiting for its
 	// receipts cannot see zero owed while money is between the two
@@ -264,7 +276,10 @@ func (c *Client) nextReceipt() (receiptWork, bool) {
 // counted from when the receipt was queued ([receiptWork.deadline]).
 func (c *Client) reconcile(work receiptWork) {
 	result := work.result
-	base := strings.TrimRight(strings.TrimSpace(c.config.BaseURL), "/")
+	base := strings.TrimRight(strings.TrimSpace(work.base), "/")
+	if base == "" {
+		base = strings.TrimRight(strings.TrimSpace(c.config.BaseURL), "/")
+	}
 	if !receiptRoutes.askable(base, time.Now()) {
 		work.sink(result)
 		return
@@ -272,7 +287,7 @@ func (c *Client) reconcile(work receiptWork) {
 	ctx, cancel := context.WithDeadline(context.Background(), work.deadline())
 	defer cancel()
 	for attempt := 0; attempt < receiptAttempts; attempt++ {
-		billed, found, noRoute := c.fetchReceipt(ctx, result.Ref)
+		billed, found, noRoute := c.fetchReceiptAt(ctx, result.Ref, base)
 		if noRoute {
 			receiptRoutes.heard(base, time.Now())
 			work.sink(result)
@@ -283,6 +298,12 @@ func (c *Client) reconcile(work receiptWork) {
 			billed.Model = result.Model
 			result.Billed = billed
 			result.Found = true
+			// Recovery is reached only when the stream had no usage block, so
+			// these tokens replace an unknown receipt rather than add to a
+			// previously reported total.
+			if work.usage != nil {
+				work.usage(billed.PromptTokens, billed.CompletionTokens)
+			}
 			work.sink(result)
 			return
 		}
@@ -312,7 +333,12 @@ type receiptWire struct {
 // receipt from the one durable capability answer; every other failure simply
 // leaves both false so the caller may follow its bounded retry schedule.
 func (c *Client) fetchReceipt(ctx context.Context, ref string) (Billed, bool, bool) {
-	endpoint, err := url.Parse(strings.TrimSpace(c.config.BaseURL))
+	return c.fetchReceiptAt(ctx, ref, c.config.BaseURL)
+}
+
+// fetchReceiptAt follows the route the generation actually used.
+func (c *Client) fetchReceiptAt(ctx context.Context, ref, base string) (Billed, bool, bool) {
+	endpoint, err := url.Parse(strings.TrimSpace(base))
 	if err != nil {
 		return Billed{}, false, false
 	}

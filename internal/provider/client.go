@@ -1116,7 +1116,7 @@ func (c *Client) completionInOnePiece(
 			began: logBegan, status: status, served: served, err: err,
 			response: &response, reasoningTokens: reasoningTokens, responseBody: payload,
 		})
-		c.settle(ctx, c.modelFor(request), &response, receiptRefusalReason, len(responseText(&response)))
+		c.settle(ctx, c.modelFor(request), &response, receiptRefusalReason, len(responseText(&response)), knobs.trace)
 		return nil, false, err
 	}
 	// AND THE SAME SPLIT THE STREAM TAKES, taken over the whole body (answer.go).
@@ -1818,7 +1818,7 @@ func (c *Client) completeWithMessagesStreaming(
 		// An endpoint producing soup has failed this lineage as surely as one
 		// that went quiet, so the pin moves too.
 		c.releaseEndpoint(ctx, c.modelFor(request))
-		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
+		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len(), knobs.trace)
 		return nil, false, cut
 	}
 	for {
@@ -1866,7 +1866,7 @@ func (c *Client) completeWithMessagesStreaming(
 					response: response, reasoningTokens: reasoningTokens,
 					ttft: firstTokenAfter(began, firstToken),
 				})
-				c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
+				c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len(), knobs.trace)
 				return nil, false, cut
 			}
 			// A stream that broke off for any reason but a cut — the caller
@@ -1879,7 +1879,7 @@ func (c *Client) completeWithMessagesStreaming(
 				response: response, reasoningTokens: reasoningTokens,
 				ttft: firstTokenAfter(began, firstToken),
 			})
-			c.settle(ctx, c.modelFor(request), response, receiptTornReason, content.Len())
+			c.settle(ctx, c.modelFor(request), response, receiptTornReason, content.Len(), knobs.trace)
 			return nil, false, decodeErr
 		}
 		if response.ID == "" {
@@ -1933,7 +1933,7 @@ func (c *Client) completeWithMessagesStreaming(
 				ttft: firstTokenAfter(began, firstToken),
 			})
 			c.releaseEndpoint(ctx, c.modelFor(request))
-			c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
+			c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len(), knobs.trace)
 			return nil, false, refusal
 		}
 		if chunk.Usage != nil {
@@ -2147,7 +2147,7 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len())
+		c.settle(ctx, c.modelFor(request), response, cut.Reason.word(), content.Len(), knobs.trace)
 		return nil, false, cut
 	}
 	response.Choices = []ai.Choice{{Index: 0, FinishReason: finishReason, Message: ai.Message{
@@ -2164,7 +2164,7 @@ func (c *Client) completeWithMessagesStreaming(
 			response: response, reasoningTokens: reasoningTokens,
 			ttft: firstTokenAfter(began, firstToken),
 		})
-		c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len())
+		c.settle(ctx, c.modelFor(request), response, receiptRefusalReason, content.Len(), knobs.trace)
 		return nil, false, err
 	}
 	// The last call has no successor to close it, so the clean end of the stream
