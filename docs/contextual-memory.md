@@ -66,7 +66,11 @@ independent observations: citing one back cannot corroborate a claim, which also
 keeps suppressed history from re-entering as fresh proof. Genuine raw tool receipts
 are unchanged. A standing run lent the canonical brain for binding is read-only: it
 sees the owner's approved rules before its first action and extracts, observes,
-imports and remembers nothing back.
+imports and remembers nothing back. With memory ON this binding is a promise, not
+a best effort: if the owner cannot be proven, the brain cannot open, or the
+binding read fails, the run refuses before any provider or tool call and the item
+is left a visible needs-person task that is not replayed. Memory off remains
+intentionally absent. An already-supplied brain is still bound, never bypassed.
 
 Forgetting suppresses all historical sources of a claim and derived use; the raw
 original conversation history remains on disk and can still be searched explicitly,

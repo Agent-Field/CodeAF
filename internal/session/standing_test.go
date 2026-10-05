@@ -604,6 +604,65 @@ func TestStandingHomeFilingWriteFailureIsVisibleAndTruthful(t *testing.T) {
 	}
 }
 
+// MEMORY-ON MUST FAIL CLOSED. If the approved rules cannot be loaded, the run
+// must not reach a provider or a tool call, and the ticker is left a visible
+// needs-person outcome rather than an unbound firing. Memory-off stays absent.
+func TestStandingRunFailsClosedWhenBindingCannotLoad(t *testing.T) {
+	dir := t.TempDir()
+	corrupt := filepath.Join(t.TempDir(), "brain.db")
+	if err := os.WriteFile(corrupt, []byte("this is not a sqlite database"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &standingRunner{memoryPath: corrupt}
+	cfg, closeMemory, err := runner.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	closeMemory()
+	if err == nil || cfg.Memory != nil {
+		t.Fatalf("a corrupt brain was silently treated as an unbound run: cfg=%v err=%v", cfg.Memory, err)
+	}
+	// AND THE RUN ITSELF NEVER BUILDS A CHILD SESSION.
+	built := 0
+	runner = &standingRunner{memoryPath: corrupt, child: func(Config) (*Agent, error) {
+		built++
+		return nil, errors.New("a child must never be built when binding failed")
+	}}
+	if _, err := runner.Run(context.Background(), standing.Item{ID: "t", Workspace: dir,
+		Does: standing.Action{Kind: standing.ActionTask}}, t.TempDir(), ""); err == nil {
+		t.Fatal("a run whose binding could not load reported success")
+	}
+	if built != 0 {
+		t.Fatalf("a run whose binding could not load built %d child sessions", built)
+	}
+	// MEMORY-OFF IS INTENTIONALLY ABSENT, NOT AN ERROR.
+	off := &standingRunner{}
+	cfg, closeMemory, err = off.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	closeMemory()
+	if err != nil || cfg.Memory != nil || cfg.bindingOnlyMemory {
+		t.Fatalf("memory-off was not left intentionally absent: %v/%v", cfg.Memory, err)
+	}
+}
+
+// AN ALREADY-SUPPLIED BRAIN IS STILL BOUND READ-ONLY, AND AN UNPROVABLE PROJECT
+// FAILS CLOSED INSTEAD OF BYPASSING THE BINDING PATH.
+func TestStandingRunBindsSuppliedMemoryAndRequiresOwnerIdentity(t *testing.T) {
+	dir := t.TempDir()
+	brain, err := store.Open(filepath.Join(t.TempDir(), "supplied.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = brain.Close() })
+	runner := &standingRunner{}
+	cfg, closeMemory, err := runner.withBindingMemory(Config{Workspace: dir, Memory: brain}, standing.Item{Workspace: dir})
+	closeMemory()
+	if err != nil || cfg.Memory != brain || !cfg.bindingOnlyMemory || cfg.MemoryProjectKey != standingProjectKey(dir) {
+		t.Fatalf("a supplied brain bypassed the binding posture: %+v mem=%v err=%v", cfg, cfg.Memory == brain, err)
+	}
+	// AN EMPTY WORKSPACE CANNOT PROVE AN OWNER, so memory-on must not run.
+	_, _, err = runner.withBindingMemory(Config{Memory: brain}, standing.Item{})
+	if err == nil {
+		t.Fatal("an unprovable project was allowed to run with memory on")
+	}
+}
+
 // A FUTURE AUTHORIZED RUN IS BOUND BEFORE ITS FIRST ACTION. A firing is built
 // from a vision posture that opens no database, so without this seam it would
 // act with none of the project's approved binding rules in front of it. The run
@@ -647,7 +706,10 @@ func TestStandingRunBindsApprovedRuleReadOnlyBeforeFirstRequest(t *testing.T) {
 	}
 
 	runner := &standingRunner{memoryPath: brainPath}
-	cfg, closeMemory := runner.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	cfg, closeMemory, err := runner.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	if err != nil {
+		t.Fatalf("binding memory: %v", err)
+	}
 	defer closeMemory()
 	if cfg.Memory == nil || !cfg.bindingOnlyMemory || cfg.MemoryProjectKey != key {
 		t.Fatalf("run was not bound to its project brain: %+v", cfg.MemoryProjectKey)

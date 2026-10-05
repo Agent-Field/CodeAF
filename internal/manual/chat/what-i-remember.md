@@ -906,7 +906,8 @@ them apply across projects. The ordinary remember tool also defaults to project;
 Explicit rules and decisions with supporting user words are read locally before
 the first reply request. A standing order authorized to act unattended is bound
 the same way: its run reads this project's approved rules read-only before its
-first action and writes nothing back. Optional semantic recall can arrive later.
+first action and writes nothing back, and when memory is on a run that cannot load
+those rules refuses and asks for you instead of acting unbound. Optional semantic recall can arrive later.
 Source words outrank interpretations; assistant assertions do not confirm test
 outcomes. A binding claim is judged against its own supporting span, not every
 word of the turn, so a quotation of ordinary talk cannot manufacture a rule. Scope

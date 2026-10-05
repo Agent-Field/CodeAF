@@ -306,25 +306,51 @@ func NewStandingRunnerWithMemory(parent Config, root, memoryPath string) standin
 }
 
 // withBindingMemory lends the run the canonical brain, owner-scoped to the
-// item's project, for reads only. It is best effort: a brain that cannot open
-// leaves the firing as it was — an ambient run is never refused because a
-// memory database is busy — but when it opens, the approved rules and
-// confirmed decisions this project already carries are in front of the model
-// before its first request, and nothing the firing does is written back.
-func (r *standingRunner) withBindingMemory(cfg Config, item standing.Item) (Config, func()) {
-	if cfg.Memory != nil || strings.TrimSpace(r.memoryPath) == "" {
-		return cfg, func() {}
+// item's project, for reads only.
+//
+// MEMORY-ON IS A PROMISE, NOT A BEST EFFORT. When memory is configured, an
+// action-capable run must be bound before it can act: if the owner identity
+// cannot be proven, the brain cannot be opened, or the owner's binding read
+// fails, this returns an ERROR and the run never reaches a provider or a tool
+// call. The ticker then leaves the task's in-flight marker and a visible
+// needs-person line, so nothing is replayed blind and no action is claimed to
+// have run. A run that acted with none of the project's approved rules in front
+// of it because a database was unavailable is exactly the failure this refuses.
+//
+// MEMORY-OFF IS INTENTIONALLY ABSENT and stays that way.
+//
+// AN ALREADY-SUPPLIED BRAIN IS STILL BOUND, not bypassed: whether the caller
+// handed one in or this opened it, the run takes the read-only posture and the
+// item's own project identity, so an existing Memory never skips the binding
+// path or the owner scope.
+func (r *standingRunner) withBindingMemory(cfg Config, item standing.Item) (Config, func(), error) {
+	memoryOn := cfg.Memory != nil || strings.TrimSpace(r.memoryPath) != ""
+	if !memoryOn {
+		return cfg, func() {}, nil
 	}
-	brain, err := store.Open(r.memoryPath)
-	if err != nil {
-		return cfg, func() {}
+	key := standingProjectKey(item.Workspace)
+	if key == "" {
+		return cfg, func() {}, errors.New("a run with memory on cannot prove which project it is in, so it cannot be bound to its approved rules")
 	}
-	cfg.Memory = brain
+	noop := func() {}
+	if cfg.Memory == nil {
+		brain, err := store.Open(r.memoryPath)
+		if err != nil {
+			return cfg, noop, fmt.Errorf("a run with memory on could not open its approved rules: %w", err)
+		}
+		cfg.Memory = brain
+		noop = func() { _ = brain.Close() }
+	}
+	// PROVE THE BINDING READ WORKS BEFORE ANY ACTION. An empty answer is a
+	// project with no rules; a query that FAILED is not, and must not become an
+	// unbound run.
+	if _, err := cfg.Memory.ContextualEvidenceApproved(store.OwnerProject(key), map[string]string{"project": key, "revision": ""}, time.Now(), 1); err != nil {
+		noop()
+		return cfg, func() {}, fmt.Errorf("a run with memory on could not read its approved rules: %w", err)
+	}
 	cfg.bindingOnlyMemory = true
-	if key := standingProjectKey(item.Workspace); key != "" {
-		cfg.MemoryProjectKey = key
-	}
-	return cfg, func() { _ = brain.Close() }
+	cfg.MemoryProjectKey = key
+	return cfg, noop, nil
 }
 
 // standingProjectKey is the owner key a firing's project resolves to, read
@@ -670,7 +696,10 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 	if err != nil {
 		return standing.Outcome{}, err
 	}
-	cfg, closeMemory := r.withBindingMemory(cfg, item)
+	cfg, closeMemory, err := r.withBindingMemory(cfg, item)
+	if err != nil {
+		return standing.Outcome{}, err
+	}
 	defer closeMemory()
 
 	var tree taskTree
