@@ -395,22 +395,45 @@ func (s *Store) Get(id string) (Item, error) {
 //
 // SKIPPING IS THE POINT. One document written by a build from the future, or
 // one truncated by a full disk, must not be able to stop every other standing
-// thing a person owns from being checked.
+// thing a person owns from being checked. List keeps the original erased
+// shape; [Store.ListChecked] is the same walk that also says what it skipped,
+// which is what a pass's wake log needs so that "nothing was examined" is
+// never read as "nothing was wrong".
 func (s *Store) List() ([]Item, error) {
+	items, _, err := s.ListChecked()
+	return items, err
+}
+
+// SkippedDoc is one document List could not read: its file name and why. It is
+// a diagnostic and not an item; the document stays on disk untouched so an
+// older or newer build that understands it still can.
+type SkippedDoc struct {
+	Name   string
+	Reason string
+}
+
+// ListChecked reads every item newest first and, beside them, reports each
+// document it skipped and the reason. An unreadable or newer-schema document is
+// skipped rather than fatal, but it is NEVER SILENT: the reader that has a
+// wake log ([Ticker.Tick]) writes the skipped set into it, so a pass is not
+// allowed to pass by the absence of a document it could not read.
+func (s *Store) ListChecked() ([]Item, []SkippedDoc, error) {
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	items := make([]Item, 0, len(entries))
+	var skipped []SkippedDoc
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		item, err := s.read(filepath.Join(s.root, entry.Name()))
 		if err != nil {
+			skipped = append(skipped, SkippedDoc{Name: entry.Name(), Reason: err.Error()})
 			continue
 		}
 		items = append(items, item)
@@ -421,7 +444,7 @@ func (s *Store) List() ([]Item, error) {
 		}
 		return items[a].Created.After(items[b].Created)
 	})
-	return items, nil
+	return items, skipped, nil
 }
 
 // ForWorkspace is List filtered to one project, the grouping home draws.

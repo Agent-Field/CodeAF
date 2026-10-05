@@ -549,14 +549,18 @@ func (a *Agent) standPropose(ctx context.Context, parsed standArguments) (string
 // standingArmBaseline gives a newly ratified FILE watch its baseline now rather
 // than letting the first wake silently absorb whatever changed in between.
 //
-// IT RETRIES A BOUNDED NUMBER OF TIMES and reports what it came to. The scan is
-// the item's own glob read through the core's bounded reader; a scan that could
-// not read everything it matched answers [standing.ErrBaselineIncomplete] and
-// sets NO baseline, so the retry is over the same read and is bounded rather
-// than a loop that could never end. When it is still incomplete the item is left
-// standing — a watch that could not be measured is not a watch that should be
-// refused — with a VISIBLE [standing.NeedsBaselineLead] flag, and the model is
-// told so the person reads it on the card's own result.
+// IT ARMS ONCE, AT THE YES, AND NEVER LOOPS. The scan is the item's own glob
+// read through the core's bounded reader; a scan that could not read everything
+// it matched answers [standing.ErrBaselineIncomplete] and sets NO baseline. That
+// is not retried here — a retry loop around a transport that is already bounded
+// is a second bound that only multiplies, and a scan that could not read the
+// world once is not likelier to read it in the next millisecond. Instead the
+// item is left standing — a watch that could not be measured is not a watch
+// that should be refused — with a VISIBLE [standing.NeedsBaselineLead] flag,
+// and the ORDINARY five-minute pass retries the arming quietly: its first
+// COMPLETE scan establishes the baseline and takes the flag down (Ticker.look).
+// That is the bounded retry, and it rides the scheduler the product already has
+// rather than a loop of this function's own.
 //
 // A NON-BASELINE ERROR IS REPORTED AND NEVER SWALLOWED. A watch whose store
 // could not be written is a watch whose baseline is not on disk, which is the
@@ -565,29 +569,18 @@ func (a *Agent) standingArmBaseline(store standingStore, item standing.Item) (st
 	if item.When.Kind != standing.WhenFile || item.Status != standing.StatusActive {
 		return item, ""
 	}
-	const attempts = 3
-	var last error
-	for attempt := 0; attempt < attempts; attempt++ {
-		armed, err := store.Arm(item.ID)
-		if err == nil {
-			return armed, ""
-		}
-		last = err
-		if !errors.Is(err, standing.ErrBaselineIncomplete) {
-			break
-		}
-	}
-	if last == nil {
-		return item, ""
+	armed, err := store.Arm(item.ID)
+	if err == nil {
+		return armed, ""
 	}
 	note := standing.NeedsBaselineLead
-	if err := store.NoteNeedsPerson(item.ID, note); err != nil {
-		return item, "its baseline could not be read (" + oneLine(err.Error()) + ") and that could not be recorded either"
+	if nerr := store.NoteNeedsPerson(item.ID, note); nerr != nil {
+		return item, "its baseline could not be read (" + oneLine(nerr.Error()) + ") and that could not be recorded either"
 	}
-	if errors.Is(last, standing.ErrBaselineIncomplete) {
-		return item, "it starts from a reading taken at the first check, not at the yes: the watch could not read everything its glob matches"
+	if errors.Is(err, standing.ErrBaselineIncomplete) {
+		return item, "it starts from a reading taken at the first complete check, not at the yes: the watch could not read everything its glob matches"
 	}
-	return item, "its baseline could not be read: " + last.Error()
+	return item, "its baseline could not be read: " + err.Error()
 }
 
 // standingOnceHandoff records an approval, not execution. Keep the entire

@@ -995,7 +995,14 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	// pile of one-run conversations and no way to say that they were all the same
 	// promise, kept every morning for a month (usage_ledger.go).
 	cfg.standingItemID = item.ID
-	if model := strings.TrimSpace(item.Does.Model); model != "" {
+	// THE PIN WINS OVER THE ITEM'S OWN MODEL. A steady order can name a model
+	// ([standing.Action.Model]) and ordinarily that choice is kept exactly as
+	// the person set it. But under the ONE-MODEL promise a per-item override
+	// would silently re-route the run and every child it hands out off the
+	// model the yes was given on — the very drift the pin exists to stop
+	// (standingPinnedConfig above). The pin therefore suppresses the override;
+	// an item with no pin keeps its explicit model untouched.
+	if model := strings.TrimSpace(item.Does.Model); model != "" && !cfg.OneModel {
 		cfg.Model = model
 	}
 	// ── how hard a firing thinks ────────────────────────────────────────────
@@ -1578,17 +1585,32 @@ func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return
 	}
-	var notes []standing.Note
+	var (
+		notes    []standing.Note
+		problems []error
+	)
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {
 		dir = filepath.Dir(strings.TrimSpace(a.config.SessionFile))
 	}
 	if dir != "" && dir != "." {
-		if mine, err := standing.Drain(dir); err == nil {
-			notes = mine
+		// THE NOTES ARE USED EVEN WHEN THE DRAIN REPORTED A FAILURE. [standing.Drain]
+		// hands back every note it read whole before it removes anything, and a
+		// malformed sibling file, a seen-record write failure or a removal error
+		// must not cost the person the valid notes the same drain returned. The
+		// failure is still surfaced BELOW rather than swallowed.
+		mine, err := standing.Drain(dir)
+		notes = mine
+		if err != nil {
+			problems = append(problems, err)
 		}
 	}
-	notes = append(notes, a.drainProjectInbox()...)
+	project, err := a.drainProjectInbox()
+	notes = append(notes, project...)
+	if err != nil {
+		problems = append(problems, err)
+	}
+	a.surfaceInboxProblems(problems)
 	if len(notes) == 0 {
 		return
 	}
@@ -1646,23 +1668,36 @@ func (a *Agent) queueStandingNews(notes []standing.Note) {
 // and is never reopened, so a fold drawn into one would be this build reading a
 // person's news out to nobody and then deleting it. It waits for a
 // conversation, which is a room they come back to.
-func (a *Agent) drainProjectInbox() []standing.Note {
+func (a *Agent) drainProjectInbox() ([]standing.Note, error) {
 	if a.config.Errand {
-		return nil
+		return nil, nil
 	}
 	store := a.standingItems()
 	if store == nil {
-		return nil
+		return nil, nil
 	}
 	root, workspace := strings.TrimSpace(store.Root()), a.standingWorkspace()
 	if root == "" || workspace == "" {
-		return nil
+		return nil, nil
 	}
-	notes, err := standing.DrainProject(root, workspace)
-	if err != nil {
-		return nil
+	// THE PROJECT'S NOTES COME BACK THE SAME WAY: used even when the drain
+	// reported a failure, with the failure returned rather than hidden.
+	return standing.DrainProject(root, workspace)
+}
+
+// surfaceInboxProblems says, in the ambient lane the fold itself uses, that
+// something the person was owed could not be read. It is not silent and it is
+// not fatal: the valid notes are already queued, and this is the one dim line
+// that keeps a damaged inbox from reading as an empty one.
+func (a *Agent) surfaceInboxProblems(problems []error) {
+	if len(problems) == 0 {
+		return
 	}
-	return notes
+	joined := oneLine(errors.Join(problems...).Error())
+	if joined == "" {
+		return
+	}
+	a.enqueueAmbientNote("standing news could not be fully read and is still waiting: " + joined)
 }
 
 // standingAwayNote renders that fold: one opening line, then one line per note

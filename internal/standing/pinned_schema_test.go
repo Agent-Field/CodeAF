@@ -67,10 +67,21 @@ func TestInboxLockIsAddressedByTheFolderNotTheProcess(t *testing.T) {
 
 	tempOne := t.TempDir()
 	t.Setenv("TMPDIR", tempOne)
-	if err := HandedOver(alias, id); err != nil {
-		t.Fatalf("HandedOver through the alias: %v", err)
+	if err := Deliver(alias, Note{ID: id, Text: "the last run failed"}); err != nil {
+		t.Fatalf("Deliver through the alias: %v", err)
 	}
-	// A different process TEMP must not take a different lock.
+	// DRAINED THROUGH THE ALIAS AND RECORDED AS SEEN. The seen record is written
+	// under the folder both spellings resolve to.
+	first, err := Drain(alias)
+	if err != nil {
+		t.Fatalf("Drain through the alias: %v", err)
+	}
+	if len(first) != 1 || first[0].ID != id {
+		t.Fatalf("the alias drained %+v, want the one note", first)
+	}
+	// A different process TEMP must not take a different lock or a different
+	// seen record: the identity is already spent, so the same delivery under
+	// the real spelling is not appended a second time.
 	tempTwo := t.TempDir()
 	t.Setenv("TMPDIR", tempTwo)
 	if err := Deliver(real, Note{ID: id, Text: "the last run failed"}); err != nil {
@@ -80,10 +91,8 @@ func TestInboxLockIsAddressedByTheFolderNotTheProcess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
-	// One spelling handed it over; the other must have recognised the identity
-	// as spent, not appended a second copy.
 	if len(notes) != 0 {
-		t.Fatalf("an identity handed over through the alias was delivered again: %+v", notes)
+		t.Fatalf("an identity drained through the alias was delivered again: %+v", notes)
 	}
 	// AND THE LOCK LIVES WITH THE FOLDER. Nothing hash-named was written into
 	// either temp directory.

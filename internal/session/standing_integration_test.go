@@ -8,6 +8,7 @@ package session
 // where a failure has to be injected (standing_test.go's fakeStanding).
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -191,8 +192,9 @@ func TestAnIncompleteBaselineIsVisibleAndNotSilentLegacy(t *testing.T) {
 	if !standing.IsBaselineLine(back.NeedsPerson) {
 		t.Fatalf("the item does not carry the visible baseline flag: %q", back.NeedsPerson)
 	}
-	// THE RETRY IS BOUNDED. Three attempts, and it then gives up visibly rather
-	// than scanning forever.
+	// IT ARMS ONCE AND DOES NOT LOOP. The incomplete arm recorded no baseline
+	// here; the bounded retry is the ordinary five-minute pass, whose first
+	// COMPLETE look establishes the baseline and takes the flag down.
 	if len(store.armed) != 0 {
 		t.Fatalf("an incomplete arm recorded a baseline: %v", store.armed)
 	}
@@ -512,5 +514,82 @@ func TestARunOfAPinnedItemInheritsThePinForItsChildren(t *testing.T) {
 	}
 	if got.OneModel || got.Model != parent.Model || got.RolesSource == nil {
 		t.Fatal("an ordinary order had its routing changed")
+	}
+}
+
+// THE FOLD TAKES THE VALID NOTES WHEN A SIBLING INBOX FILE CANNOT BE READ
+// WHOLE. A malformed or oversized file beside a good one must not cost the
+// person the good one: the drain returns both the notes and the failure, and
+// this caller uses the notes AND surfaces the failure rather than dropping
+// either.
+func TestTheFoldTakesValidNotesFromAnInboxThatCouldNotBeReadWhole(t *testing.T) {
+	dir := t.TempDir()
+	note := standing.Note{At: time.Now(), ItemID: "item-fold", Words: "keep main green", Kind: "said", Text: "the fix landed", ID: "fold-valid-1"}
+	raw, err := json.Marshal(note)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "inbox.jsonl.aaa.draining"), append(raw, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	broken := filepath.Join(dir, "inbox.jsonl.bbb.draining")
+	if err := os.WriteFile(broken, bytes.Repeat([]byte("x"), 2<<20), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
+		config.Place = Place{Dir: dir}
+	})
+	fold := ""
+	surfaced := false
+	for _, line := range standingQueued(agent) {
+		if strings.HasPrefix(line, "while you were away") {
+			fold = line
+		}
+		if strings.Contains(line, "could not be fully read") {
+			surfaced = true
+		}
+	}
+	if !strings.Contains(fold, "the fix landed") {
+		t.Fatalf("the valid note was dropped when a sibling could not be read; queued %v", standingQueued(agent))
+	}
+	if !surfaced {
+		t.Fatal("the inbox read failure was never surfaced to the conversation")
+	}
+	if _, err := os.Stat(broken); err != nil {
+		t.Fatalf("the unreadable file was deleted: %v", err)
+	}
+}
+
+// AN ONE-MODEL PIN BEATS A CONTRADICTORY PER-ITEM MODEL in the actual run config
+// every firing and child is built from; an unpinned item keeps the model it
+// explicitly named.
+func TestAPinnedRunIgnoresAContradictoryItemModel(t *testing.T) {
+	parent := reloadedPosture()
+	item := standing.Item{
+		ID:        "item-contradiction",
+		Words:     "keep main green",
+		Workspace: t.TempDir(),
+		Does:      standing.Action{Kind: standing.ActionTask, Brief: "check main", Model: "a-model-the-item-named"},
+		Origin:    standing.Origin{OneModel: true, PinnedModel: "deepseek/deepseek-v4.1-flash"},
+	}
+	cfg, err := standingRunConfig(parent, item, filepath.Join(t.TempDir(), "run"))
+	if err != nil {
+		t.Fatalf("standingRunConfig: %v", err)
+	}
+	if !cfg.OneModel || strings.TrimSpace(cfg.Model) != "deepseek/deepseek-v4.1-flash" {
+		t.Fatalf("an item model overrode the pin: %+v", cfg)
+	}
+	if cfg.RolesSource != nil || cfg.ModelFallbacks != nil || cfg.NearestModels != nil || cfg.RouteCrew != nil {
+		t.Fatal("the pinned run kept a ladder a pinned seat must not carry")
+	}
+	// UNPINNED, THE ITEM'S EXPLICIT MODEL IS KEPT EXACTLY AS BEFORE.
+	plain := item
+	plain.Origin = standing.Origin{}
+	got, err := standingRunConfig(parent, plain, filepath.Join(t.TempDir(), "run2"))
+	if err != nil {
+		t.Fatalf("standingRunConfig plain: %v", err)
+	}
+	if got.OneModel || strings.TrimSpace(got.Model) != "a-model-the-item-named" {
+		t.Fatalf("an ordinary item's explicit model was changed: %+v", got)
 	}
 }

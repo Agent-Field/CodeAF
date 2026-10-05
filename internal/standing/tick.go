@@ -51,9 +51,18 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 	defer release()
 
 	pass := Pass{At: t.clock()}
-	items, err := t.Store.List()
+	items, unread, err := t.Store.ListChecked()
 	if err != nil {
 		return pass, err
+	}
+	// A DOCUMENT THAT COULD NOT BE READ IS SAID SO. Skipping a newer-schema or
+	// damaged document must not stop the rest of the walk, but it must never
+	// read as a pass in which nothing was wrong: the count and a bounded line
+	// go into the pass, into /status and into the wake log below.
+	if len(unread) > 0 {
+		pass.Unread = len(unread)
+		pass.UnreadWhy = unreadLine(unread)
+		pass.Notes = append(pass.Notes, pass.UnreadWhy)
 	}
 	// SETTLE FIRST. Authorized deliveries that were never acknowledged are done
 	// before any fresh look and before the rails, so a quiet item, an advanced
@@ -339,33 +348,47 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		if err != nil {
 			return sighting{}, err
 		}
-		first := item.Fingerprint == ""
+		// A PARTIAL READING IS NEVER A BASELINE AND IS NEVER COMPARED WITH ONE.
+		// A truncated digest is prefixed "t" ([fingerprint]), so it can never
+		// equal a complete one; adopting it as the baseline, or comparing it to
+		// a complete one, would fabricate a change on the next complete scan.
+		// A stored "t…" fingerprint — written by an earlier build that had
+		// this bug — is therefore read as NO baseline, the same as an empty one.
+		first := item.Fingerprint == "" || strings.HasPrefix(item.Fingerprint, truncatedPrefix)
 		changed := !first && digest != item.Fingerprint
-		item.Fingerprint = digest
 		switch {
+		case truncated:
+			// NOTHING IS CERTIFIED AND NOTHING IS WRITTEN. The prior complete
+			// baseline, if there was one, stays exactly where it was; an item
+			// that was never armed stays unarmed with its visible flag; and the
+			// look is undecided, so the opportunity is not consumed. The next
+			// COMPLETE scan is what establishes or compares a baseline.
+			return sighting{state: stateUndecided, line: "I could not read everything I am watching"}, nil
 		case first:
-			// THE FIRST READING IS THE BASELINE AND IS SILENT. An item that was
-			// armed ([Store.Arm]) carries its reading already and never reaches
-			// here; one that was not keeps the old, silent first look exactly.
+			// THE FIRST COMPLETE READING IS THE BASELINE AND IS SILENT. An item
+			// that was armed ([Store.Arm]) carries its reading already and never
+			// reaches here; one that was not keeps the old, silent first look.
 			//
 			// A WATCH THAT COULD NOT BE ARMED CARRIES A VISIBLE FLAG
-			// ([NeedsBaselineLead], written by the ratifier). The first look
-			// that reads everything it matches ESTABLISHES the baseline the arm
-			// could not, so the flag comes down here rather than staying on the
-			// item as a stale complaint — and a look that was still truncated
-			// keeps it, because no baseline has been set even now.
-			if IsBaselineLine(item.NeedsPerson) && !truncated {
+			// ([NeedsBaselineLead], written by the ratifier). This complete
+			// look ESTABLISHES the baseline the arm could not, so the flag comes
+			// down here rather than staying on the item as a stale complaint.
+			item.Fingerprint = digest
+			if IsBaselineLine(item.NeedsPerson) {
 				item.NeedsPerson = ""
 			}
 			return sighting{state: stateQuiet, line: "nothing has changed yet"}, nil
 		case !changed:
-			if truncated {
-				// A bounded view cannot certify that nothing changed past the
-				// bound. It says only what it could read.
-				return sighting{state: stateQuiet, line: "nothing has changed in what I could read"}, nil
-			}
+			// Complete against complete and equal: nothing moved. The digest is
+			// re-stamped only so the document carries the same reading forward.
+			item.Fingerprint = digest
 			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
 		}
+		// A COMPLETE READING OF A REAL CHANGE IS THE NEW BASELINE. It is stamped
+		// BEFORE the firing so that a firing which settles, fails or is judged
+		// down does not leave the old digest behind and re-report the same
+		// change on the next pass.
+		item.Fingerprint = digest
 		found = sighting{state: stateReady, line: "the files you are watching changed", evidence: listing}
 
 	case WhenIdle:
@@ -390,16 +413,28 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		if t.Runner == nil {
 			return sighting{}, errors.New("there is nothing in this build to look with")
 		}
+		due := item.NextDue
 		evidence, err := t.Runner.Probe(ctx, *item)
-		item.NextDue = now.Add(every)
 		if err != nil {
+			// THE LOOK DID NOT COMPLETE, so the due moment it already had is
+			// kept: an error must never consume the opportunity the person is
+			// waiting on.
+			item.NextDue = due
 			return sighting{}, err
 		}
 		evidence = clipTail(evidence, ProbeClip)
 		verdict, line, err := t.judge(ctx, item, now, evidence)
 		if err != nil {
+			// A JUDGE/ACCOUNTING ERROR IS NOT A LOOK THAT CONSUMED ITS MOMENT.
+			// [Ticker.noteFailure] persists the item copy this error travels
+			// with, so the advanced NextDue that used to be set above the error
+			// is put back before it can be written: a billed unknown whose
+			// ledger or lifetime figure could not be stored keeps its original
+			// opportunity, and the failure is still counted and said.
+			item.NextDue = due
 			return sighting{}, err
 		}
+		item.NextDue = now.Add(every)
 		if verdict == VerdictUnknown {
 			// NOBODY COULD DECIDE. Nothing is written, so the item stays due and
 			// the next pass faces the same question: an unknown must not consume
@@ -490,13 +525,23 @@ func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence 
 		// opportunity the person is waiting on is not consumed. A failure to
 		// record it is returned rather than swallowed, so the pass counts it.
 		if usd > 0 {
-			if lerr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: entryCheck, USD: usd}); lerr != nil {
-				return VerdictUnknown, oneLine(line), lerr
+			// BOTH RECORDS ARE ATTEMPTED, so one storage failure does not
+			// suppress the other: the ledger is what the daily rail reads and
+			// the item's figure is what a card reads, and a cost that reached
+			// either one is truthfully carried. The error is joined and
+			// returned, so the pass counts it and the note says what happened.
+			ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: entryCheck, USD: usd})
+			spendErr := t.Store.NoteSpend(item.ID, usd)
+			if ledgerErr == nil || spendErr == nil {
+				item.SpentUSD += usd
 			}
-			if serr := t.Store.NoteSpend(item.ID, usd); serr != nil {
-				return VerdictUnknown, oneLine(line), serr
+			if ledgerErr != nil || spendErr != nil {
+				line = oneLine(strings.TrimSpace(line))
+				if line == "" {
+					line = "I could not tell"
+				}
+				return VerdictUnknown, line, errors.Join(ledgerErr, spendErr)
 			}
-			item.SpentUSD += usd
 		}
 		if strings.TrimSpace(line) == "" {
 			line = "I could not tell"
@@ -874,6 +919,33 @@ func (t *Ticker) noteFailure(item Item, failure error) {
 	_ = t.Store.Log(item.ID, item.LastCheckLine)
 }
 
+// unreadLine is the one bounded sentence a pass says about documents it could
+// not read. It names at most [unreadReported] of them, so a root with a
+// thousand damaged files cannot write a thousand-name wake entry, and it always
+// states the whole count.
+const unreadReported = 5
+
+func unreadLine(skipped []SkippedDoc) string {
+	if len(skipped) == 0 {
+		return ""
+	}
+	shown := skipped
+	more := 0
+	if len(shown) > unreadReported {
+		more = len(shown) - unreadReported
+		shown = shown[:unreadReported]
+	}
+	parts := make([]string, 0, len(shown))
+	for _, doc := range shown {
+		parts = append(parts, doc.Name+": "+doc.Reason)
+	}
+	line := strconv.Itoa(len(skipped)) + " standing document(s) could not be read: " + strings.Join(parts, "; ")
+	if more > 0 {
+		line += "; and " + strconv.Itoa(more) + " more"
+	}
+	return oneLine(line)
+}
+
 // expiryOf answers when an item stops being watched. A WhenAt item expires a
 // day after its moment whatever the rails say, because a reminder for six
 // o'clock that nothing woke up to deliver is not still worth delivering on
@@ -902,6 +974,11 @@ const (
 	fingerprintPerFile  = 256 << 10
 	fingerprintBudget   = 2 * time.Second
 )
+
+// truncatedPrefix marks a digest read from a partial scan. A complete digest is
+// bare hex, so this prefix can never collide with one, and [Ticker.look] uses it
+// to tell a real baseline from the partial one an earlier build wrongly kept.
+const truncatedPrefix = "t"
 
 // fingerprint is a WhenFile's reading of the world: the names, sizes and bounded
 // CONTENTS of everything the glob matches, hashed. The listing beside it is what
@@ -999,7 +1076,7 @@ func fingerprint(workspace, glob string) (string, string, bool, error) {
 	}
 	hexdigest := hex.EncodeToString(sum.Sum(nil))
 	if truncated {
-		hexdigest = "t" + hexdigest
+		hexdigest = truncatedPrefix + hexdigest
 	}
 	return hexdigest, listing.String(), truncated, nil
 }
@@ -1150,7 +1227,16 @@ func (s *Store) appendWake(pass Pass) error {
 		" needs=" + strconv.Itoa(pass.NeedsYou) +
 		" skipped=" + strconv.Itoa(pass.Skipped) +
 		" errors=" + strconv.Itoa(pass.Errors) +
-		" tidied=" + strconv.Itoa(pass.Tidied) + "\n"
+		" tidied=" + strconv.Itoa(pass.Tidied) +
+		" unread=" + strconv.Itoa(pass.Unread)
+	// AND WHY, BOUNDED AND ON ONE LINE. A pass that skipped a document is not
+	// silent about it, and the wake log's last line is what /status and the
+	// timer's own check read ([lastWake] reads the timestamp and ignores the
+	// rest), so the detail rides here rather than in a second line.
+	if pass.UnreadWhy != "" {
+		line += " why=" + strconv.Quote(oneLine(pass.UnreadWhy))
+	}
+	line += "\n"
 	if _, err := file.WriteString(line); err != nil {
 		return err
 	}

@@ -1299,6 +1299,12 @@ type Pass struct {
 	// Tidied is how many remembered lines the consolidation pass moved, which
 	// is zero on all but a handful of passes a day (see [Tidy]).
 	Tidied int
+	// Unread is how many standing documents [Store.List] skipped because they
+	// could not be read — a newer schema, a damaged file, a dangling link.
+	// UnreadWhy says which and why in ONE bounded line. A pass that skipped a
+	// document says so; absence of evidence is not success.
+	Unread    int
+	UnreadWhy string
 	// Notes are one sentence per thing worth saying, for the log.
 	Notes []string
 }

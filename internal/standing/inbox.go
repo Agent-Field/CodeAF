@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/codeaf/internal/filelock"
 )
@@ -96,6 +97,13 @@ func withInboxLock(dir string, fn func() error) error {
 // written before this existed, and every writer that has none — is passed
 // through untouched. This is a durable-inbox guarantee, not a display one: the
 // boundary is stated in [Drain].
+//
+// A DEDUP RECORD THAT CANNOT BE READ IS NOT "NOTHING WAS DRAINED". The missing
+// file is normal and reads as an empty record; a read/scanner failure does not.
+// The note is still appended — a duplicate is the safe direction and a line
+// withheld because a record was corrupt is not — but the failure is RETURNED
+// so the caller that owns the durable intent keeps it and says so. It is never
+// swallowed into a success by absence.
 func Deliver(sessionDir string, note Note) error {
 	if note.At.IsZero() {
 		note.At = time.Now()
@@ -109,8 +117,18 @@ func Deliver(sessionDir string, note Note) error {
 		return fmt.Errorf("standing: a note larger than %d bytes was refused", inboxMaxLine)
 	}
 	return withInboxLock(sessionDir, func() error {
-		if note.ID != "" && alreadyDrained(sessionDir, note.ID) {
-			return nil
+		var dedupErr error
+		if note.ID != "" {
+			drained, err := alreadyDrained(sessionDir, note.ID)
+			switch {
+			case err != nil:
+				// CANNOT VERIFY THE RECORD. Deliver anyway, then report it: a
+				// duplicate the person has seen before is the safe cost, and the
+				// error keeps the caller's durable intent alive.
+				dedupErr = fmt.Errorf("standing: the drained-identity record could not be read, so this delivery may repeat: %w", err)
+			case drained:
+				return nil
+			}
 		}
 		path := InboxPath(sessionDir)
 		if info, err := os.Stat(path); err == nil && info.Size()+int64(len(line)) > inboxMaxBytes {
@@ -133,37 +151,11 @@ func Deliver(sessionDir string, note Note) error {
 			file.Close()
 			return err
 		}
-		return file.Close()
+		if err := file.Close(); err != nil {
+			return err
+		}
+		return dedupErr
 	})
-}
-
-// HandedOver records that a delivery identity reached the person by the LIVE
-// road — a firing delivered into an open window — so the next fold does not
-// repeat it. It is [rememberDrained] under the inbox's own lock, so the live
-// writer and the draining reader serialize on one file and cannot interleave a
-// record with a drain of the same identity.
-//
-// IT REPORTS A WRITE FAILURE. A lost dedup is a line shown twice, which is the
-// safe direction, but it is never silent: the caller that owns the durable
-// [Pending] keeps it, so the line still reaches a person.
-func HandedOver(sessionDir, id string) error {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return nil
-	}
-	return withInboxLock(sessionDir, func() error {
-		return rememberDrained(sessionDir, []Note{{ID: id}})
-	})
-}
-
-// HandedOverProject is [HandedOver] at a project's address, so a firing that
-// reached a window through road 4 is not folded into the next conversation of
-// that project.
-func HandedOverProject(root, workspace, id string) error {
-	if strings.TrimSpace(root) == "" || strings.TrimSpace(workspace) == "" {
-		return nil
-	}
-	return HandedOver(ProjectInboxDir(root, workspace), id)
 }
 
 // Drain reads and removes a session's inbox, oldest first. An absent inbox is
@@ -181,6 +173,35 @@ func HandedOverProject(root, workspace, id string) error {
 // and whether the caller then draws, folds or forwards it is outside this
 // package. The drained-identity window is [inboxSeenKeep]; beyond it a replay is
 // shown again. No exactly-once claim is made about anything else.
+//
+// IT IS TRANSACTIONAL IN THE ONE ORDER THAT CANNOT LOSE A NOTE: read everything
+// first, make the dedup record durable, and only then remove the files. What
+// this package can promise is the queue-to-caller handoff — a note it returns
+// has been read whole and, where it has an identity, recorded as spent — and
+// that promise is kept even when something else in the drain failed:
+//
+//   - a file that could not be read WHOLE is kept and reported, never deleted;
+//   - if [rememberDrained] cannot be written, NO file is deleted, so the whole
+//     payload is retained for the next drain and the failure is returned;
+//   - a file whose notes were recorded but whose later removal failed is kept
+//     too, and the identity record recognises its notes as spent next time, so
+//     that is a duplicate at worst and never a loss;
+//   - notes gathered from more than one staged file are deduped against each
+//     other in THIS drain as well as against the seen record;
+//   - a dedup record that cannot be READ is reported and left untouched — it is
+//     never read as an empty record and never rewritten, so the identities
+//     already in it survive — and nothing is deleted under it, so a retry
+//     re-hands the payload rather than losing it;
+//   - a corrupt line in the record is counted and reported while the valid
+//     identities beside it are still honoured.
+//
+// A caller MUST therefore use the notes it is handed even when the error is
+// non-nil: the error says something in or around the drain failed, not that
+// every note is unusable. Valid notes returned here are the person's own
+// authorized work and are never discarded because a sibling file was malformed.
+// A note whose identity was drained before — by this drain or an earlier one —
+// is passed over. Losing a note is the direction this refuses to fail toward;
+// repeating one is the stated cost.
 func Drain(sessionDir string) ([]Note, error) {
 	var (
 		notes    []Note
@@ -200,36 +221,64 @@ func Drain(sessionDir string) ([]Note, error) {
 		if err != nil {
 			return err
 		}
-		// A NOTE ALREADY HANDED OVER LIVE IS NOT FOLDED AGAIN. [Deliver] and the
-		// live path that writes through it record the delivery identity before it
-		// is drawn, so a note that was shown in an open window is not repeated by
-		// the next fold: the identity, and not which road the note took, is what
-		// dedups. Notes with no identity pass through, as they always have.
+		// THE DEDUP RECORD IS READ HONESTLY. A missing file is a normal empty
+		// record; a corrupt line is counted and reported; a read or scanner
+		// failure is fatal to the record and is never read as "nothing was
+		// drained".
+		seenIDs, corrupt, seenErr := readSeenIDs(seenPath(sessionDir))
+		if corrupt > 0 {
+			problems = append(problems, fmt.Errorf("standing: the drained-identity record has %d unreadable line(s)", corrupt))
+		}
 		drained := map[string]bool{}
-		for _, id := range readSeenIDs(seenPath(sessionDir)) {
+		for _, id := range seenIDs {
 			drained[id] = true
 		}
+		// READ EVERYTHING BEFORE ANYTHING IS DELETED. A file that could not be
+		// read whole is kept for the next drain and its failure reported; its
+		// readable neighbours are still handed out.
+		readable := make([]string, 0, len(staged))
 		for _, file := range staged {
 			part, readErr := readInbox(file)
 			if readErr != nil {
-				// NEVER DELETE WHAT COULD NOT BE READ WHOLE; the notes are kept for
-				// the next drain and the failure is reported.
 				problems = append(problems, fmt.Errorf("%s: %w", filepath.Base(file), readErr))
 				continue
 			}
-			if err := os.Remove(file); err != nil {
-				problems = append(problems, err)
-			}
+			readable = append(readable, file)
 			for _, note := range part {
-				if note.ID != "" && drained[note.ID] {
-					continue
+				if note.ID != "" {
+					// ONE IDENTITY IS ONE NOTE ACROSS THE WHOLE DRAIN, not only
+					// within one file: a retry can leave the same id staged in
+					// two files, and both would otherwise reach the person.
+					if drained[note.ID] {
+						continue
+					}
+					drained[note.ID] = true
 				}
 				notes = append(notes, note)
 			}
 		}
 		sort.SliceStable(notes, func(a, b int) bool { return notes[a].At.Before(notes[b].At) })
+		if seenErr != nil {
+			// THE RECORD COULD NOT BE READ, SO IT IS NOT REWRITTEN AND NOTHING IS
+			// DELETED. Rewriting it would drop the identities already inside it
+			// (dedup state lost); deleting the files would lose the payload.
+			// The notes read whole are still returned, and the failure rides out
+			// with them.
+			problems = append(problems, fmt.Errorf("standing: the drained-identity record could not be read: %w", seenErr))
+			return nil
+		}
+		// THE DEDUP RECORD GOES DOWN BEFORE A SINGLE FILE IS REMOVED. If it
+		// cannot be written, nothing is deleted: the payload stays for the next
+		// drain, an unmarked note can only be a duplicate later, and the error
+		// is returned to a caller that must still use the notes it was given.
 		if err := rememberDrained(sessionDir, notes); err != nil {
 			problems = append(problems, err)
+			return nil
+		}
+		for _, file := range readable {
+			if err := os.Remove(file); err != nil {
+				problems = append(problems, err)
+			}
 		}
 		return nil
 	})
@@ -313,23 +362,30 @@ const inboxSeenKeep = 4096
 func seenPath(sessionDir string) string { return filepath.Join(sessionDir, "inbox.seen") }
 
 // alreadyDrained reports whether a delivery identity was already drained from
-// this inbox. A missing or unreadable record reads as "not drained": the cost
-// of a duplicate is one line the person has already seen, and the cost of a
-// false positive is a line they never see at all.
-func alreadyDrained(sessionDir, id string) bool {
+// this inbox. A MISSING record is normal and reads as "not drained"; an
+// UNREADABLE one is an error and NEVER reads as "not drained" — the cost of a
+// duplicate (one line the person has already seen) is the safe direction, but a
+// read failure is surfaced rather than hidden behind that safe default.
+func alreadyDrained(sessionDir, id string) (bool, error) {
 	file, err := os.Open(seenPath(sessionDir))
 	if err != nil {
-		return false
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 4096), 1<<20)
 	for scanner.Scan() {
 		if strings.TrimSpace(string(scanner.Bytes())) == id {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	if err := scanner.Err(); err != nil {
+		return false, err
+	}
+	return false, nil
 }
 
 // rememberDrained appends the drained notes' identities to the record, bounded
@@ -349,7 +405,12 @@ func rememberDrained(sessionDir string, notes []Note) error {
 		return err
 	}
 	path := seenPath(sessionDir)
-	kept := readSeenIDs(path)
+	kept, _, err := readSeenIDs(path)
+	if err != nil {
+		// NEVER REWRITE A RECORD THAT COULD NOT BE READ: doing so would drop
+		// every identity already in it, which is dedup state lost.
+		return err
+	}
 	kept = append(kept, ids...)
 	if len(kept) > inboxSeenKeep {
 		kept = kept[len(kept)-inboxSeenKeep:]
@@ -362,23 +423,52 @@ func rememberDrained(sessionDir string, notes []Note) error {
 	return writeAtomic(path, []byte(out.String()))
 }
 
-// readSeenIDs reads the drained-identity record, skipping blanks. A missing or
-// unreadable file is an empty record, not an error.
-func readSeenIDs(path string) []string {
+// readSeenIDs reads the drained-identity record. A MISSING file is the normal
+// empty record (nil, 0, nil). It answers three things: the identities it could
+// read, how many lines could not be an identity at all, and a fatal read error.
+//
+// A CORRUPT LINE IS COUNTED, NOT SILENTLY DROPPED: a record that came back with
+// garbage in it must not read as a clean one, or "nothing was drained" is
+// inferred from bytes nobody could use. An unreadable file or a scanner failure
+// is a fatal error; the caller must not treat it as an empty record.
+func readSeenIDs(path string) ([]string, int, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, 0, nil
+		}
+		return nil, 0, err
 	}
 	defer file.Close()
-	var ids []string
+	var (
+		ids []string
+		bad int
+	)
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 4096), 1<<20)
 	for scanner.Scan() {
-		if line := strings.TrimSpace(string(scanner.Bytes())); line != "" {
-			ids = append(ids, line)
+		line := strings.TrimSpace(string(scanner.Bytes()))
+		if line == "" {
+			continue
 		}
+		if !plausibleIdentity(line) {
+			bad++
+			continue
+		}
+		ids = append(ids, line)
 	}
-	return ids
+	if err := scanner.Err(); err != nil {
+		return ids, bad, err
+	}
+	return ids, bad, nil
+}
+
+// plausibleIdentity is the weakest shape a drained identity can have: bounded,
+// valid UTF-8 and free of NUL. An identity is opaque to this package, but a
+// record line that is not even a well-formed string is corruption and is
+// reported rather than trusted.
+func plausibleIdentity(line string) bool {
+	return len(line) <= 1024 && utf8.ValidString(line) && !strings.ContainsRune(line, 0)
 }
 
 // ── the project inbox: news for a project, not for one conversation ─────────
