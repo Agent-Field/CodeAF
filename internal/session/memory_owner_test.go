@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -154,10 +155,10 @@ func TestEveryRememberDoorSettlesIntoOneRow(t *testing.T) {
 		// to be walked at all.
 		route: `{"inject":[],"cmd":{"name":"remember","arg":"always deploys on Fridays"}}`,
 	}
-	agent, brain := brainAgent(t, script, nil)
+	agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "deploy-project" })
 
-	// Door one: /remember.
-	if _, err := agent.Remember("always deploys on Fridays"); err != nil {
+	// Door one explicitly names the project scope used by ordinary routing.
+	if _, err := agent.RememberScoped("always deploys on Fridays", store.MemoryScopeProject); err != nil {
 		t.Fatalf("/remember: %v", err)
 	}
 	// Door two: the same words through the routed command — a different mouth,
@@ -166,11 +167,11 @@ func TestEveryRememberDoorSettlesIntoOneRow(t *testing.T) {
 		nil, true)
 	// Door three: the same words typed with different case, which is the same
 	// words to the door.
-	if _, err := agent.Remember("ALWAYS deploys on Fridays"); err != nil {
+	if _, err := agent.RememberScoped("ALWAYS deploys on Fridays", store.MemoryScopeProject); err != nil {
 		t.Fatalf("/remember retyped: %v", err)
 	}
 
-	kept, err := brain.ListMemories([]string{store.OwnerUser}, 10)
+	kept, err := brain.ListMemories([]string{store.OwnerProject("deploy-project")}, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -659,5 +660,27 @@ func TestPostTurnExtractionDoesNotWidenProjectMemoryToUserGlobal(t *testing.T) {
 	block := beta.memoryBlock(context.Background(), "deploy window Tuesday")
 	if strings.Contains(block, "deploy window") {
 		t.Fatalf("beta's block carried alpha's project memory after /forget re-write:\n%s", block)
+	}
+}
+
+// Explicit user saves keep their declared scope; ordinary routed remembering
+// cannot silently promote project-local words into a rule for every project.
+func TestExplicitUserSaveAndOrdinaryRoutedSaveKeepSeparateOwners(t *testing.T) {
+	script := &reflexScript{decide: `{"op":"add"}`}
+	agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "deploy-project" })
+	if _, err := agent.Remember("Deploys happen on Fridays"); err != nil {
+		t.Fatal(err)
+	}
+	agent.runMemoryCommand(nil, reflex.Cmd{Name: "remember", Arg: "Deploys happen on Fridays"})
+	user, err := brain.ListMemories([]string{store.OwnerUser}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project, err := brain.ListMemories([]string{store.OwnerProject("deploy-project")}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(user) != 1 || len(project) != 1 || user[0].ID == project[0].ID {
+		t.Fatalf("explicit and ordinary scopes collapsed: user=%+v project=%+v", user, project)
 	}
 }

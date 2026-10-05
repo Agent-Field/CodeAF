@@ -486,8 +486,12 @@ func TestANeighbourTurnsTheWriteIntoADecision(t *testing.T) {
 				route:   `{"inject":[],"cmd":null}`,
 				extract: `{"mem":1,"type":"fact","scope":"project","title":"standup time","text":"standup is at 9:30","tags":[]}`,
 			}
-			agent, brain := brainAgent(t, script, nil)
-			existing := remember(t, brain, "standup time", "standup is at 9:15")
+			agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "standup-project" })
+			// Settlement may only change its own project partition.
+			existing, err := brain.AddMemory(store.Memory{Owner: store.OwnerProject("standup-project"), Type: store.MemoryFact, Title: "standup time", Text: "standup is at 9:15"})
+			if err != nil {
+				t.Fatal(err)
+			}
 			script.mu.Lock()
 			script.decide = probe.decide(existing.ID)
 			script.mu.Unlock()
@@ -1179,12 +1183,16 @@ func TestASupersessionSaysWhatItReplaced(t *testing.T) {
 		route:   `{"inject":[],"cmd":null}`,
 		extract: `{"mem":1,"type":"fact","scope":"project","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings.","tags":[]}`,
 	}
-	agent, brain := brainAgent(t, script, nil)
+	agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "deploy-project" })
 	// THE NEXT TURN'S RECALL IS WHAT SAYS IT, and that recall rides beside the
 	// turn: the conversation answers once it has landed, so the line is on the
 	// stream of the turn that said it rather than whichever turn came after.
 	watchReadings(t, agent)
-	fridays := remember(t, brain, "deploys on Fridays", "Deploys go out on Friday afternoons.")
+	// The changed deployment policy belongs to the observed project.
+	fridays, err := brain.AddMemory(store.Memory{Owner: store.OwnerProject("deploy-project"), Type: store.MemoryFact, Title: "deploys on Fridays", Text: "Deploys go out on Friday afternoons."})
+	if err != nil {
+		t.Fatal(err)
+	}
 	script.mu.Lock()
 	script.decide = `{"op":"supersede","target_id":"` + fridays.ID + `","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings."}`
 	script.mu.Unlock()
