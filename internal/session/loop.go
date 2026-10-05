@@ -3568,6 +3568,7 @@ func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, cal
 	a.mu.Unlock()
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
 	a.recordMemoryTool(memoryTurn, call, result)
+	a.recordMemoryAttempt(ctx, memoryTurn, call, result)
 	a.refreshContextualImpactsAfterAction(result, call.Function.Name)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on

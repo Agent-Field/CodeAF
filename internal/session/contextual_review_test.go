@@ -133,7 +133,11 @@ func TestContextualReviewSettlementKeepsConditionalMetadata(t *testing.T) {
 	}
 }
 
-func TestContextualReviewDirtySourceHasNoSnapshotIdentity(t *testing.T) {
+// A CREDIT IS EXACT OR IT IS NOT MADE. A dirty or untracked tree now carries a
+// bounded content identity instead of the old empty string, but that identity
+// must never equal the clean commit — otherwise a lesson earned against
+// uncommitted source would pose as current.
+func TestContextualReviewDirtySourceCarriesBoundedIdentity(t *testing.T) {
 	dir := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
@@ -150,21 +154,26 @@ func TestContextualReviewDirtySourceHasNoSnapshotIdentity(t *testing.T) {
 	git("-c", "user.name=review", "-c", "user.email=review@example.invalid", "commit", "-qm", "initial")
 	a, _ := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "review" })
 	clean := a.contextualRevision(context.Background())
-	if clean == "" {
-		t.Fatal("clean source lacks revision")
+	if clean == "" || strings.HasPrefix(clean, "dirty:") {
+		t.Fatalf("clean source lacks a bare commit identity: %q", clean)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "tracked"), []byte("two"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if dirty := a.contextualRevision(context.Background()); dirty != "" {
-		t.Fatalf("dirty snapshot falsely current: %s", dirty)
+	dirty := a.contextualRevision(context.Background())
+	if dirty == "" || dirty == clean {
+		t.Fatalf("dirty source lacks a distinct bounded identity: %q (clean %q)", dirty, clean)
+	}
+	if !strings.HasPrefix(dirty, "dirty:") {
+		t.Fatalf("dirty identity is not labelled: %q", dirty)
 	}
 	git("checkout", "--", "tracked")
 	if err := os.WriteFile(filepath.Join(dir, "untracked"), []byte("new"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if dirty := a.contextualRevision(context.Background()); dirty != "" {
-		t.Fatalf("untracked snapshot falsely current: %s", dirty)
+	untracked := a.contextualRevision(context.Background())
+	if untracked == "" || untracked == clean || untracked == dirty {
+		t.Fatalf("untracked source lacks a distinct bounded identity: %q", untracked)
 	}
 }
 

@@ -957,3 +957,46 @@ rationale and circumstances for reconsidering the decision. The same access and
 validity rules apply: forgotten or expired evidence is unavailable, and a stale source
 needs a fresh inspection. This read is bounded; original conversation history can still
 be searched separately.
+
+## Do you remember a failed approach before I take it again?
+
+Yes, and it is shown **before** a matching action rather than only after a
+failure. When a `bash` call fails, or is blocked before it runs, one row is
+written the moment the call ends — no model is asked anything, so a single
+extraction that found nothing, or a turn that rolled over, cannot lose it. The
+row keeps the exact **action** that ran, the **goal** it served, the **observed
+receipt** in its own words, and the **circumstances** it was earned under.
+
+On a later turn, before the first request of the answer goes out, a prior failed
+or blocked attempt that is **relevant to what you are asking** is put in front of
+the model as an advisory line:
+
+```
+- Prior observed attempt [different source snapshot, seen 2026-10-03]: `bash: make build` failed.
+  Observation: "make: *** No rule to make target 'build'". Different circumstances invite fresh verification.
+```
+
+It is history, not a prohibition and not a cause: what failed once may work now,
+and the line says so. A failure of a task you are not working on stays quiet, and
+only failures and blocks are ever shown — a successful call is not remembered,
+so the history does not become a list of everything that has ever worked.
+
+The label in the brackets is honest about circumstances:
+
+- **same source snapshot** — the failure was earned under exactly the commit and
+  the uncommitted changes the tree has now;
+- **different source snapshot** — the tree has moved since; the failure may no
+  longer apply, so it invites a fresh check;
+- **circumstances unknown** — the source could not be identified, and it is never
+  presented as current.
+
+A blocked call — a refused door, a hand taken off the belt — is recorded as
+**blocked**, never as a failure, because a refusal is not proof that the approach
+cannot work. An overall success on one command never proves a sub-check passed;
+the row is only ever one observed result.
+
+The receipt is untrusted text and is **quoted** rather than obeyed, and any
+secret-shaped span in it is redacted before it is stored. `/forget` retires the
+claims a failure was provenance of, and the failures learned from the same
+receipt with them — an unrelated failure in the same project is untouched, and a
+genuinely new observation is kept. Turning memory off turns this off with it.

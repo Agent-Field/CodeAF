@@ -136,6 +136,13 @@ type memoryBrain struct {
 	impactPrepared bool
 	impactBlock    string
 	impactCue      string
+	// outcomeGoal, outcomeSnapshot and outcomeTurnID are the turn's binding
+	// circumstances, recorded before the first request so a failed call later in
+	// the turn can be written with the goal it served and the exact source
+	// snapshot it was earned under.
+	outcomeGoal     string
+	outcomeSnapshot string
+	outcomeTurnID   string
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {

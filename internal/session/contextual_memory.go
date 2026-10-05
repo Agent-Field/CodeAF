@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -180,7 +179,8 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	if !a.remembers() {
 		return
 	}
-	revision := a.contextualRevision(ctx)
+	snapshot := a.captureSourceSnapshot(ctx)
+	revision := snapshot.Identity
 	a.mu.Lock()
 	turn := a.turnSeq
 	a.mu.Unlock()
@@ -194,9 +194,16 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 			delete(a.memory.revisions, seq)
 		}
 	}
+	a.memory.outcomeGoal = cue
+	a.memory.outcomeSnapshot = revision
+	a.memory.outcomeTurnID = a.memorySourceSession() + ":" + fmt.Sprint(turn) + ":" + contextualHash(cue)[:16]
 	a.memory.mu.Unlock()
 	block := a.bindingContext(cue, revision)
 	block += a.contextualImpactContext(cue)
+	block += a.priorOutcomeContext(cue, revision)
+	// The shared ceiling is a promise about the system prompt: the rules, the
+	// impacts and any prior outcome all ride inside it together.
+	block = contextualClip(block, memoryBlockRunes)
 	a.mu.Lock()
 	a.memoryText = block
 	a.landVolatileLocked()
@@ -212,6 +219,7 @@ func (a *Agent) withBindingContext(block, cue string) string {
 	a.memory.mu.Unlock()
 	bound := a.bindingContext(cue, revision)
 	bound += a.contextualImpactContext(cue)
+	bound += a.priorOutcomeContext(cue, revision)
 	if bound == "" {
 		return block
 	}
@@ -328,29 +336,19 @@ func (a *Agent) suppressContextualMemory(m store.Memory) error {
 		return err
 	}
 	_ = e
+	// The tombstone retires this claim's provenance and every descendant that
+	// shares a source, which is also how an observed attempt learned from the
+	// same receipt is retired — never the whole project's history.
 	return a.memory.store.SuppressContextualMemorySources(m.Owner, m.ID, "explicit forget")
 }
 
+// contextualRevision is the snapshot identity an observation is earned under.
+// A clean commit keeps the bare HEAD; a dirty or untracked tree now carries a
+// bounded content overlay instead of having no identity at all, so a lesson
+// learned against uncommitted source survives the tree moving under it. An
+// unknown or truncated capture says so, and never certifies the current source.
 func (a *Agent) contextualRevision(ctx context.Context) string {
-	if strings.TrimSpace(a.config.Workspace) == "" {
-		return ""
-	}
-	bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	command := exec.CommandContext(bounded, "git", "-C", a.config.Workspace, "rev-parse", "HEAD")
-	raw, err := command.Output()
-	if err != nil {
-		return ""
-	}
-	revision := strings.TrimSpace(string(raw))
-	dirty := exec.CommandContext(bounded, "git", "-C", a.config.Workspace, "status", "--porcelain", "--untracked-files=normal")
-	status, err := dirty.Output()
-	if err != nil || len(status) != 0 {
-		// A clean commit identifies the entire tracked snapshot. A dirty or
-		// untracked source has no such identity, so its results need a fresh read.
-		return ""
-	}
-	return revision
+	return a.captureSourceSnapshot(ctx).Identity
 }
 
 func contextualHash(s string) string {
