@@ -184,6 +184,12 @@ func Run(workspace string, opts Options) error {
 		return ErrHostRunning
 	}
 
+	// THE ENVIRONMENT IS RECORDED BEFORE THE SOCKET ANSWERS. Only the lock
+	// owner writes it, so a replacement cannot publish the previous host's
+	// fingerprint during its birth. A failed write leaves the answer unknown.
+	_ = os.Remove(filepath.Join(dir, environmentName))
+	_ = writeEnvironment(dir, workspace)
+
 	// Whatever socket file is lying there belongs to a host that is gone: the
 	// lock we just took proves it. A unix socket is not removed by the process
 	// that made it dying, so somebody has to, and the only safe moment to do it
@@ -496,7 +502,7 @@ func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
 	// This connection is the question and not the work — counted before
 	// anything is measured, so that the measurement is right.
 	h.probes++
-	self := remote.HostSelf{Workspace: h.workspace, Busy: !h.idleLocked()}
+	self := remote.HostSelf{Workspace: h.workspace, Busy: !h.idleWithWatchGraceLocked(ask.StandDown && ask.IgnoreWatchGrace)}
 	// AND WHAT THIS PROCESS IS, for `codeaf engine --status` and for the door
 	// deciding which of two builds is the older one. The counts are read under
 	// the same lock as busy, so the three never disagree with each other.
@@ -536,11 +542,24 @@ func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
 // be retired RIGHT NOW without taking anything down with it, which is a
 // different question with a different answer.
 func (h *Host) idleLocked() bool {
+	return h.idleWithWatchGraceLocked(false)
+}
+
+func (h *Host) idleWithWatchGraceLocked(ignoreWatchGrace bool) bool {
 	if h.live-h.probes > 0 {
 		return false
 	}
 	for _, sess := range h.sessions {
-		if sess.IdleSince().IsZero() {
+		// ENDED CONVERSATIONS HOLD NOTHING. Their last act can still be inside
+		// the watch grace before the sweep removes them from this map.
+		if sess == nil || sess.Ended() {
+			continue
+		}
+		idle := sess.IdleSince
+		if ignoreWatchGrace {
+			idle = sess.IdleSinceWithoutWatchGrace
+		}
+		if idle().IsZero() {
 			return false
 		}
 	}

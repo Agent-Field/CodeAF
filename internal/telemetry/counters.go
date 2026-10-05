@@ -49,7 +49,10 @@ var counters struct {
 // useful while a long session is still running, so it becomes a queued delta
 // event when telemetry is on and a session identity has been configured.
 func CountTokens(input, output int) {
-	recordUsageDelta(input, output)
+	if input <= 0 && output <= 0 {
+		return
+	}
+	recordUsageDelta(input, output, UsageDimensions{UsageStatus: "reported", AccountingSource: "engine"})
 }
 
 // costToMicro is the single float-to-integer crossing. math.Round rather than
@@ -127,4 +130,10 @@ func resetCountersForTest() {
 	counters.toolCalls.Store(0)
 	counters.toolFail.Store(0)
 	counters.costMicro.Store(0)
+}
+
+// CountUsage records one provider receipt, including an explicitly missing
+// receipt. Its dimensions are normalized before any value reaches the spool.
+func CountUsage(input, output int, dimensions UsageDimensions) {
+	recordUsageDelta(input, output, dimensions)
 }

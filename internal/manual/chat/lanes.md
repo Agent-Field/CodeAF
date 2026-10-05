@@ -805,7 +805,7 @@ its own.
   eight sends to one host over ninety seconds while six other hosts on the
   same model were answering in under five.
 
-## What all hosts have been ignored means — a refusal from nobody
+## Why did every provider get ignored — what all hosts have been ignored means
 
 When the router answers `All
 hosts have been ignored`, no host was ever asked: a list had removed the
