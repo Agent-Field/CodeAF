@@ -906,7 +906,8 @@ them apply across projects. The ordinary remember tool also defaults to project;
 Explicit rules and decisions with supporting user words are read locally before
 the first reply request. Optional semantic recall can arrive later. Source words
 outrank interpretations; assistant assertions do not confirm test outcomes.
-Observed tool results carry receipt identities and a source revision. Dirty or
+Observed tool results carry receipt identities and a source revision; automatic
+extraction has only the current turn's receipts. Dirty or
 untracked sources cannot establish a current test result; inspect them again.
 Legacy notes have less evidence, and should be treated as old assertions.
 
@@ -921,7 +922,12 @@ follow-up. This does not authorize edits in another project. Dynamic imports,
 partial reads, arbitrary shell programs and delegated-worker receipts are not
 resolved by this adapter.
 
-Related consequences are batched. Saying "dismiss that" or "don't bring that up"
+Impact checks currently require one of these words in the active turn: contract,
+format, schema, export, return, decimal, change, release, or api. Other wording can
+miss a consequence.
+
+Related consequences are batched; dismissal applies to the offered batch. Its
+substring recognition can also catch an unrelated use of the word dismiss. Saying "dismiss that" or "don't bring that up"
 suppresses the currently offered consequences until their content evidence changes.
 A repeated read with the same content does not reset dismissal. A fresh conversation
 can offer an undismissed consequence again; there is no global user-awareness model.

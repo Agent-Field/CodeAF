@@ -23,6 +23,8 @@ conditions. Supporting words are checked against the actual user turn. Conservat
 wording gates reserve binding priority for explicit rules/choices; this remains a
 heuristic, not semantic proof. Assistant claims do not corroborate themselves. Tool
 claims show their actual receipt alongside their interpretation; they do not prove causes.
+Tool receipts available for automatic extraction are turn-local; a later-turn
+summary cannot acquire earlier receipts as independent corroboration.
 Model-reported use does not train benefit rankings. Dirty/untracked revisions exclude
 outcome evidence rather than pretending one ':dirty' marker identifies every snapshot.
 
@@ -30,8 +32,12 @@ Cross-project links require successful full read receipts and an exact resolved 
 not shared names. A bounded consumer reread checks whether its recorded assumption is
 unchanged after a producer content change. This offers a hypothesis to inspect rather
 than asserting breakage or authorizing consumer edits. Dynamic dependencies, partial
-reads, arbitrary shell programs and worker-only receipts are not handled. Dismissal is
-content-based; changed receipts alone do not resurface a notice.
+reads, arbitrary shell programs and worker-only receipts are not handled. Impact scanning currently requires a contract/change cue in the active turn
+(contract, format, schema, export, return, decimal, change, release or api). This
+lexical gate can miss natural questions. Dismissal is content-based and applies to
+the offered batch; substring dismissal detection can be broader than intended.
+Changed receipts alone do not resurface a notice. The session retains at most eight
+notice identities; after that it suppresses further unseen notices in that session.
 
 Forgetting suppresses all historical sources of a claim and derived use; searchable
 conversation history remains. Completed/abandoned user-declared work can expire from
