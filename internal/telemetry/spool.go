@@ -45,11 +45,10 @@ const (
 // still cannot grow the file without bound. Every other cap belongs to Flush.
 const persistSizeLimit = 1 << 20
 
-// spoolMu guards every in-process touch of the spool files: the append in
-// persist, the rename-and-send cycle in Flush, the read behind SpoolContents.
-// Several codeaf processes run at once, and the sending-file protocol above
-// is what keeps them apart; this mutex is what keeps one process's own
-// goroutines apart.
+// spoolMu guards shared spool filenames: appends, ownership transfers and
+// returning unsent lines. A flush reads and sends its privately owned sending
+// file without this lock, so provider receipt appends never wait for network
+// work. The sending-file protocol keeps separate processes apart.
 var spoolMu sync.Mutex
 
 // spoolPath is the JSON-lines file events wait in.
@@ -90,7 +89,8 @@ func Spool(event Event) {
 
 // SpoolSync appends one event and waits for the append, for tests and for a
 // caller that must see the line on disk. It shares every law with Spool and is
-// not for the product's hot path.
+// intentionally used at the completed provider receipt boundary; network
+// sending never shares its append lock.
 func SpoolSync(event Event) error {
 	if !enabledFor() {
 		return nil
@@ -170,18 +170,23 @@ func Flush(ctx context.Context) error {
 		deadline = time.Now().Add(time.Second)
 	}
 	spoolMu.Lock()
-	defer spoolMu.Unlock()
 	adoptStaleSendingFiles()
 	path := spoolPath()
 	if !fileExists(path) {
+		spoolMu.Unlock()
 		// An empty spool is a no-op: no rename, so no sending file is left
 		// behind for a later flush to adopt.
 		return nil
 	}
 	sending := sendingPath()
 	if err := os.Rename(path, sending); err != nil {
+		spoolMu.Unlock()
 		return nil
 	}
+	// The renamed file belongs exclusively to this flush. Release the
+	// shared append lock before parsing or sending so a completed model call
+	// never waits behind network delivery.
+	spoolMu.Unlock()
 	entries, err := readSpoolLines(sending)
 	if err != nil {
 		// The lines are safe where they are; a flush ten minutes on adopts
@@ -240,7 +245,10 @@ func Flush(ctx context.Context) error {
 		}
 	}
 	if len(kept) > 0 {
-		if err := appendLines(spoolPath(), kept); err != nil {
+		spoolMu.Lock()
+		appendErr := appendLines(spoolPath(), kept)
+		spoolMu.Unlock()
+		if appendErr != nil {
 			// The unsent lines are still in the sending file; leave it for a
 			// later flush to adopt rather than dropping them.
 			return nil

@@ -101,3 +101,81 @@ func TestRecoveredReceiptAddsOnlyPreviouslyMissingTokens(t *testing.T) {
 		t.Fatalf("reported usage entered late recovery: %d rows", len(rows))
 	}
 }
+
+func TestOverflowUsageNamesTheActualAttemptRoute(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	telemetry.EnableForTest(t, true)
+	telemetry.VersionForTest(t, "v0.7.0")
+	finish := telemetry.BeginUsageSession(telemetry.ModeTask, "overflow")
+	defer finish()
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Host == "api.anthropic.com" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"1316","message":"plan window exhausted"}`))
+			return
+		}
+		if r.URL.Host != "openrouter.ai" {
+			t.Errorf("unexpected host: %s", r.URL.Host)
+		}
+		_, _ = w.Write([]byte(`{"model":"anthropic/claude-sonnet-4","choices":[{"index":0,"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":4,"completion_tokens":1}}`))
+	})
+	client, err := NewClient(Config{APIKey: "test", BaseURL: "https://api.anthropic.com/v1", Model: "anthropic/claude-sonnet-4", Direct: true, BillingDoor: "coding plan", PlanOverflow: "https://openrouter.ai/api/v1", PlanOverflowDoor: "pay-as-you-go", OverflowOnPlanPause: true, HTTPClient: handlerClient(handler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.CompleteWithMessages(context.Background(), userMessages("hello")); err != nil {
+		t.Fatal(err)
+	}
+	rows := telemetry.SpoolContents()
+	if len(rows) != 2 {
+		t.Fatalf("expected refused and paid attempts, got %d", len(rows))
+	}
+	var paid struct {
+		Props map[string]any `json:"props"`
+	}
+	if err := json.Unmarshal(rows[1], &paid); err != nil {
+		t.Fatal(err)
+	}
+	if paid.Props["routing_provider"] != "openrouter" || paid.Props["total_tokens"] != float64(5) {
+		t.Fatal(paid.Props)
+	}
+}
+
+func TestLateReceiptFollowsTheOverflowRoute(t *testing.T) {
+	t.Setenv(home.EnvVar, t.TempDir())
+	telemetry.EnableForTest(t, true)
+	telemetry.VersionForTest(t, "v0.7.0")
+	finish := telemetry.BeginUsageSession(telemetry.ModeTask, "overflow-late")
+	defer finish()
+	results := make(chan Reconciled, 1)
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Host != "openrouter.ai" || r.URL.Path != "/api/v1/generation" {
+			t.Errorf("receipt followed wrong route: %s", r.URL)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"total_cost":0.02,"tokens_prompt":10,"tokens_completion":3}}`))
+	})
+	client, err := NewClient(Config{APIKey: "test", BaseURL: "https://api.anthropic.com/v1", Model: "anthropic/claude-sonnet-4", Direct: true, HTTPClient: handlerClient(handler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithReconcile(context.Background(), func(answer Reconciled) { results <- answer })
+	client.settle(ctx, client.config.Model, &ai.Response{ID: "generation-overflow"}, receiptTornReason, 1, &callTrace{attemptBase: "https://openrouter.ai/api/v1"})
+	if result := receiptResult(t, results); !result.Found {
+		t.Fatal("overflow receipt was not recovered")
+	}
+	rows := telemetry.SpoolContents()
+	if len(rows) != 1 {
+		t.Fatalf("expected one recovered receipt, got %d", len(rows))
+	}
+	var event struct {
+		Props map[string]any `json:"props"`
+	}
+	if err := json.Unmarshal(rows[0], &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Props["routing_provider"] != "openrouter" || event.Props["total_tokens"] != float64(13) {
+		t.Fatal(event.Props)
+	}
+}

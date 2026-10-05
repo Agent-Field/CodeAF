@@ -72,7 +72,7 @@ any of the three drift apart.
 Count bands are 0, 1, 2-5, 6-20, 21-100 and 100+. Dollar bands are 0, under
 0.01, 0.01-0.1, 0.1-1, 1-10 and 10+.
 Each provider usage receipt is appended locally before provider accounting returns, including
-tokens read from cache once. Missing provider receipts produce a `usage_status = missing` event without token fields; a missing receipt never invents a zero total. Bounded routing and model-family categories describe reported usage without sending exact model names or endpoint addresses. Hosted engines currently report aggregate turn deltas with unknown routing and family, labelled `accounting_source = engine`; those aggregates are not per-call receipts and can be lost before a turn ends. Deltas, rather
+tokens read from cache once. Missing provider receipts produce a `usage_status = missing` event without token fields; a missing receipt never invents a zero total. Routing categories follow the actual attempt, including an explicitly authorized billing-door switch and any later generation receipt. Bounded routing and model-family categories describe reported usage without sending exact model names or endpoint addresses. Hosted engines currently report aggregate turn deltas with unknown routing and family, labelled `accounting_source = engine`; those aggregates are not per-call receipts and can be lost before a turn ends. Deltas, rather
 than repeated session totals, make the stream safe to sum while a run is open.
 
 first_run carries only the every-event properties and is sent once per

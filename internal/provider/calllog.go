@@ -121,6 +121,9 @@ type callTrace struct {
 	// row written after the transport returned always names the attempt that
 	// actually produced the answer.
 	attemptID string
+	// attemptBase is the address this attempt actually used, including an
+	// explicitly authorized plan overflow. It never leaves the process.
+	attemptBase string
 	// open is the attempt that has a start row on the wire and nothing under it
 	// yet, and nil whenever the log is square.
 	//
@@ -171,6 +174,7 @@ type openAttempt struct {
 	request *ai.Request
 	knobs   callKnobs
 	stream  bool
+	base    string
 }
 
 // The words [calllog.Record.Ended] uses. They are constants for the reason the
@@ -212,6 +216,7 @@ func (t *callTrace) track(facts recordFacts, id string) {
 		request: facts.request,
 		knobs:   facts.knobs,
 		stream:  facts.stream,
+		base:    facts.baseFor(t.attemptBase),
 	}
 }
 
@@ -229,7 +234,7 @@ func (c *Client) closeOpenAttempt(ctx context.Context, trace *callTrace, ended s
 	trace.open = nil
 	c.record(recordFacts{
 		ctx: ctx, request: open.request, knobs: open.knobs, stream: open.stream,
-		attempt: open.attempt, began: open.began, ended: ended, id: open.id,
+		attempt: open.attempt, began: open.began, ended: ended, id: open.id, base: open.base,
 	})
 }
 
@@ -270,6 +275,9 @@ func (t *callTrace) note(learned ...string) {
 // endpoint has no status and no tokens, and the emptiness law leaves both off
 // the line rather than writing a zero somebody could read as a measurement.
 type recordFacts struct {
+	// base is explicit on synthetic endings of an earlier attempt.
+	base string
+
 	ctx     context.Context
 	request *ai.Request
 	knobs   callKnobs
@@ -524,7 +532,7 @@ func (c *Client) record(facts recordFacts) {
 			status = "reported"
 		}
 		telemetry.CountUsage(record.PromptTokens, record.CompletionTokens, telemetry.UsageDimensions{
-			RoutingProvider: telemetry.RoutingProvider(c.config.BaseURL),
+			RoutingProvider: telemetry.RoutingProvider(facts.baseFor(c.config.BaseURL)),
 			ModelFamily:     telemetry.ModelFamily(model), UsageStatus: status,
 			AccountingSource: "provider", ReceiptID: record.ID,
 		})
@@ -827,4 +835,16 @@ func (c *Client) relaxNames(model string, knobs callKnobs) []string {
 		names = append(names, rung.name)
 	}
 	return names
+}
+
+// baseFor reads the route of this row's attempt rather than the client's
+// initial service, which can differ after an authorized billing-door switch.
+func (facts recordFacts) baseFor(fallback string) string {
+	if facts.base != "" {
+		return facts.base
+	}
+	if facts.knobs.trace != nil && facts.knobs.trace.attemptBase != "" {
+		return facts.knobs.trace.attemptBase
+	}
+	return fallback
 }
