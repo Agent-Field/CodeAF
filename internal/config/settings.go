@@ -1090,6 +1090,11 @@ var OperatorEnvPins = []string{
 	// that can be told something while it works, and that program reads it
 	// back; it is a path into one task's record folder, so plumbing.
 	"CODEAF_INBOX",
+	// The run's own record folder (internal/delegate's EnvRecords), where a
+	// program that answers with a report writes it. codeaf sets it on every
+	// program's launch and the program reads it back; it is one run's folder,
+	// so plumbing.
+	"CODEAF_RECORDS",
 	// The release check's one-launch opt-out and its two mirror addresses
 	// (internal/update). They are plumbing rather than settings rows: the first
 	// is a shell's decision not to make a launch request, while the other two
