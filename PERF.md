@@ -2780,7 +2780,7 @@ independent receipts per turn, each clipped to 2,000 runes, and eight metadata i
 of 240 runes each. The existing 512-rune memory body stays unchanged; rich source
 words and reasoning live in the canonical journal. Approved context and direct
 lexical fallback together take at most eight claims, within the existing 4,800-rune
-memory block. Local source identity queries get a two-second cancellation bound.
+memory block. Local source revision queries get a two-second cancellation bound.
 Only clean tracked revisions establish current outcome evidence.
 
 Evidence reads inspect the newest 128 owner evidence events with bounded ancestry;

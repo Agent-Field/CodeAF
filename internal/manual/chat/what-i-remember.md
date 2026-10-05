@@ -941,3 +941,13 @@ An intention can be retained with its prerequisite, but memory does not schedule
 it. When available, the existing `stand` tool proposes a standing order and uses
 its existing ratification, triggers and spending rails. Recognizing an opportunity
 never authorizes an unrelated edit. Memory adds no second scheduler.
+
+
+## Can I inspect the source behind a saved claim?
+
+The assistant can use `memory_evidence` for one saved memory id when its supporting
+source matters to the work. It returns the source words or actual receipt, conditions,
+rationale and circumstances for reconsidering the decision. The same access and
+validity rules apply: forgotten or expired evidence is unavailable, and a stale source
+needs a fresh inspection. This read is bounded; original conversation history can still
+be searched separately.

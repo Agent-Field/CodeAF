@@ -10,6 +10,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"encoding/json"
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -173,5 +176,114 @@ func TestContextualReviewObservedDependencyRequiresExactPath(t *testing.T) {
 	}
 	if !contextualResolvedReference(consumer, "producer = \""+producer+"\"", producer, "../producer.py") {
 		t.Fatal("an exact observed absolute path was not recognized")
+	}
+}
+
+func contextualReviewObservedFixture(t *testing.T) (*Agent, *store.Store, string, string) {
+	t.Helper()
+	root := t.TempDir()
+	producerDir := filepath.Join(root, "producer")
+	consumerDir := filepath.Join(root, "consumer")
+	for _, dir := range []string{producerDir, consumerDir} {
+		if err := os.Mkdir(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+			t.Fatalf("init: %s %v", out, err)
+		}
+	}
+	producer := filepath.Join(producerDir, "lib.py")
+	consumer := filepath.Join(consumerDir, "run.py")
+	if err := os.WriteFile(producer, []byte("def export(): return 1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	body := "import pathlib\nLIB = pathlib.Path(__file__).resolve().parent.parent / \"producer\" / \"lib.py\"\n"
+	if err := os.WriteFile(consumer, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	key, err := gitidentity.ProjectKey(producerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, s := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = producerDir; c.MemoryProjectKey = key })
+	return a, s, producer, consumer
+}
+
+func contextualReviewFullRead(t *testing.T, a *Agent, path, id string) memoryToolReceipt {
+	t.Helper()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args, err := json.Marshal(map[string]string{"path": path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := ai.ToolCall{ID: id}
+	call.Function.Name = "read"
+	call.Function.Arguments = string(args)
+	r := a.contextualReadReceipt(call, toolResult{text: string(body)}, memoryToolReceipt{ID: id, Tool: "read", Text: string(body), Status: "done"})
+	if r.Path == "" {
+		t.Fatal("full read receipt not retained")
+	}
+	return r
+}
+
+func TestContextualReviewFullReadPathlibBuildsOnlyExactObservedEdge(t *testing.T) {
+	a, s, producer, consumer := contextualReviewObservedFixture(t)
+	unrelatedDir := filepath.Join(t.TempDir(), "producer")
+	if err := os.Mkdir(unrelatedDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	unrelated := filepath.Join(unrelatedDir, "lib.py")
+	if err := os.WriteFile(unrelated, []byte("def export(): return 999\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	receipts := []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "producer-read"), contextualReviewFullRead(t, a, consumer, "consumer-read"), contextualReviewFullRead(t, a, unrelated, "unrelated-read")}
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: receipts})
+	links, err := s.DependenciesForProducer(contextualPathOwner(producer), 8)
+	if err != nil || len(links) != 1 || links[0].ProducerPath != producer || links[0].ConsumerPath != consumer {
+		t.Fatalf("observed links=%+v err=%v", links, err)
+	}
+	foreign, err := s.DependenciesForProducer(contextualPathOwner(unrelated), 8)
+	if err != nil || len(foreign) != 0 {
+		t.Fatalf("same-name unrelated source linked=%+v err=%v", foreign, err)
+	}
+}
+
+func TestContextualReviewRepeatedRecallKeepsPreparedImpactNotice(t *testing.T) {
+	a, _, producer, consumer := contextualReviewObservedFixture(t)
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumer, "c")}})
+	if err := os.WriteFile(producer, []byte("def export(): return {\"value\": 1}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	first := a.contextualImpactContext("change the export contract")
+	if first == "" || !strings.Contains(first, consumer) {
+		t.Fatalf("observed consequence absent: %s", first)
+	}
+	again := a.contextualImpactContext("continue")
+	if again != first {
+		t.Fatalf("optional recall erased prepared impact: first=%q again=%q", first, again)
+	}
+}
+
+func TestContextualReviewPostActionImpactReachesNextRequestContext(t *testing.T) {
+	a, _, producer, consumer := contextualReviewObservedFixture(t)
+	a.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, a, producer, "p"), contextualReviewFullRead(t, a, consumer, "c")}})
+	if got := a.contextualImpactContext("change the export contract"); got != "" {
+		t.Fatalf("unchanged source warned: %s", got)
+	}
+	if err := os.WriteFile(producer, []byte("def export(): return {\"value\": 1}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	a.refreshContextualImpactsAfterAction(toolResult{text: "file updated"}, "write")
+	a.mu.Lock()
+	next := a.memoryText
+	a.mu.Unlock()
+	if !strings.Contains(next, "<contextual_impacts>") || !strings.Contains(next, consumer) {
+		t.Fatalf("next request lacks post-action consequence: %s", next)
+	}
+	if again := a.withBindingContext("", "continue"); !strings.Contains(again, consumer) {
+		t.Fatalf("later optional recall erased post-action consequence: %s", again)
 	}
 }

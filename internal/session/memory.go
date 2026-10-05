@@ -128,10 +128,14 @@ type memoryBrain struct {
 	// failure is said once per window, not once per failure: an outage that
 	// fails forty extractions in a row would otherwise be forty lines about
 	// the same thing on a screen somebody is trying to work in.
-	failureSaid   time.Time
-	receipts      map[uint64][]memoryToolReceipt
-	revisions     map[uint64]string
-	impactNotices map[string]store.ContextualImpactNotice
+	failureSaid    time.Time
+	receipts       map[uint64][]memoryToolReceipt
+	revisions      map[uint64]string
+	impactNotices  map[string]store.ContextualImpactNotice
+	impactTurn     uint64
+	impactPrepared bool
+	impactBlock    string
+	impactCue      string
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
@@ -1664,7 +1668,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 	if !a.remembers() {
 		return nil
 	}
-	return []bare.Tool{{
+	return append([]bare.Tool{{
 		Name:        "remember",
 		Description: rememberDescription,
 		Schema:      json.RawMessage(rememberSchemaJSON),
@@ -1682,7 +1686,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 			}
 			return "remembered: " + title, false, nil
 		},
-	}}
+	}}, a.contextualEvidenceTools()...)
 }
 
 // refreshSystemLocked rebuilds message[0] from the base prompt, the folders

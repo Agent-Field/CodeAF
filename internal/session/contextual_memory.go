@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -290,7 +292,7 @@ func (a *Agent) contextualEligibleMemories(memories []store.Memory, revision str
 		}
 		usable, err := a.memory.store.ContextualEvidenceEligible(e, conditions, time.Now())
 		if err == nil && usable {
-			m.Text += "\nEvidence: " + e.Authority + "/" + e.Verification
+			m.Text += "\nMemory id: " + m.ID + "\nEvidence: " + e.Authority + "/" + e.Verification
 			if e.Actor == "user" {
 				m.Text += "\nSource words: " + contextualClip(e.Observation, contextualReceiptRunes)
 			}
@@ -309,6 +311,8 @@ func (a *Agent) contextualEligibleMemories(memories []store.Memory, revision str
 			if e.Reconsider != "" {
 				m.Text += "\nReconsider when: " + e.Reconsider
 			}
+			// Leave room for a useful first rule even when its metadata is long.
+			m.Text = contextualClip(m.Text, memoryBlockRunes-512)
 			result = append(result, m)
 		}
 	}
@@ -404,4 +408,41 @@ func explicitContextualGlobal(text string) bool {
 		}
 	}
 	return false
+}
+
+// Evidence is fetched selectively under the same owner and validity guards as
+// recall. Forgotten sources are never reintroduced through this second read.
+func (a *Agent) contextualEvidenceTools() []bare.Tool {
+	if !a.remembers() {
+		return nil
+	}
+	return []bare.Tool{{Name: "memory_evidence", Description: "Read the supporting source words, conditions, rationale and actual tool observation for one saved memory id. Use selectively when a claim affects current work. Old test observations do not prove the current source; proposals are not approved rules.", Schema: json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"],"additionalProperties":false}`), Execute: func(ctx context.Context, args json.RawMessage) (string, bool, error) {
+		var request struct {
+			ID string `json:"id"`
+		}
+		if err := decodeToolArguments(args, &request); err != nil {
+			return "Invalid arguments: " + err.Error(), true, nil
+		}
+		rows, err := a.memory.store.GetMemories(a.memoryOwners(), []string{request.ID})
+		if err != nil {
+			return "Could not read that supporting source", true, nil
+		}
+		if len(rows) == 0 {
+			return "That saved claim is not available here", false, nil
+		}
+		e, err := a.memory.store.ContextualEvidenceForMemory(rows[0].Owner, request.ID)
+		if err != nil {
+			return "That claim has no supporting evidence record; treat it as an old assertion", false, nil
+		}
+		revision := a.contextualRevision(ctx)
+		usable, err := a.memory.store.ContextualEvidenceEligible(e, map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}, time.Now())
+		if err != nil || !usable || e.Seq <= rows[0].UpdatedSeq {
+			return "That supporting source is no longer applicable; inspect the current work", false, nil
+		}
+		encoded, err := json.Marshal(e)
+		if err != nil {
+			return "Could not read that supporting source", true, nil
+		}
+		return contextualClip(string(encoded), memoryBlockRunes), false, nil
+	}}}
 }

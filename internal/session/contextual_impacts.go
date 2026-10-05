@@ -1,16 +1,13 @@
 package session
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
@@ -96,11 +93,8 @@ func contextualPathOwner(path string) string {
 	directory := filepath.Dir(path)
 	// A previously read file grants an observed link to its actual repository,
 	// not to every workspace sharing one basename or a vocabulary word.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	root, err := exec.CommandContext(ctx, "git", "-C", directory, "rev-parse", "--show-toplevel").Output()
-	if err == nil {
-		directory = strings.TrimSpace(string(root))
+	if root, ok := repositoryRoot(directory); ok {
+		directory = root
 	}
 	key, err := gitidentity.ProjectKey(directory)
 	if err != nil || key == "" {
@@ -142,7 +136,19 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 			if producerOwner == "" || consumerOwner == "" || producerOwner == consumerOwner {
 				continue
 			}
-			d := store.ContextualDependencyObservation{ID: store.NewMemoryID(), ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer.Path, ProducerPath: producer.Path, ConsumerPath: consumer.Path, ProducerHash: producer.Hash, ConsumerHash: consumer.Hash, ReceiptIDs: []string{producer.ID, consumer.ID}, Assumption: "Consumer source references the exact producer path " + relative}
+			// Work can change the consumer after its first read. Recheck its exact
+			// reference after the turn, so an unrelated formatting edit does not
+			// leave the link attached to an obsolete whole-file snapshot.
+			consumerHash, consumerReceipt := consumer.Hash, consumer.ID
+			current, readErr := contextualReadFile(consumer.Path)
+			if readErr != nil || !contextualResolvedReference(consumer.Path, current, producer.Path, relative) {
+				continue
+			}
+			if hash := contextualHash(current); hash != consumer.Hash {
+				consumerHash = hash
+				consumerReceipt = "contextual-recheck:" + hash
+			}
+			d := store.ContextualDependencyObservation{ID: "", ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer.Path, ProducerPath: producer.Path, ConsumerPath: consumer.Path, ProducerHash: producer.Hash, ConsumerHash: consumerHash, ReceiptIDs: []string{producer.ID, consumerReceipt}, Assumption: "Consumer source references the exact producer path " + relative}
 			if _, err := a.memory.store.ObserveContextualDependency([]string{producerOwner, consumerOwner}, d); err != nil {
 				a.journalMemoryFailure("dependency", err)
 			}
@@ -160,6 +166,20 @@ func (a *Agent) contextualImpactContext(cue string) string {
 	if !a.remembers() {
 		return ""
 	}
+	a.mu.Lock()
+	turn := a.turnSeq
+	a.mu.Unlock()
+	a.memory.mu.Lock()
+	if a.memory.impactTurn == turn && a.memory.impactPrepared {
+		block := a.memory.impactBlock
+		a.memory.mu.Unlock()
+		return block
+	}
+	a.memory.impactTurn = turn
+	a.memory.impactPrepared = true
+	a.memory.impactCue = cue
+	a.memory.impactBlock = ""
+	a.memory.mu.Unlock()
 	lower := strings.ToLower(cue)
 	relevant := false
 	for _, word := range []string{"contract", "format", "schema", "export", "return", "decimal", "change", "release", "api"} {
@@ -220,7 +240,11 @@ func (a *Agent) contextualImpactContext(cue string) string {
 	if len(lines) == 0 {
 		return ""
 	}
-	return "\n<contextual_impacts>\nMention only a useful supported consequence for the current work; batch related consequences. File change alone does not prove breakage.\n" + strings.Join(lines, "\n") + "\n</contextual_impacts>\n"
+	block := "\n<contextual_impacts>\nMention only a useful supported consequence for the current work; batch related consequences. File change alone does not prove breakage.\n" + strings.Join(lines, "\n") + "\n</contextual_impacts>\n"
+	a.memory.mu.Lock()
+	a.memory.impactBlock = block
+	a.memory.mu.Unlock()
+	return block
 }
 
 func (a *Agent) dismissContextualNotices(user string) {
@@ -268,4 +292,26 @@ func contextualResolvedReference(consumerPath, body, producerPath, relative stri
 		}
 	}
 	return false
+}
+
+// A successful action may change a known producer during this very turn. The
+// next request receives the consequence before its reply, not a turn later.
+func (a *Agent) refreshContextualImpactsAfterAction(result toolResult, tool string) {
+	if !a.remembers() || result.isError || result.harness || tool == "read" {
+		return
+	}
+	a.memory.mu.Lock()
+	cue := a.memory.impactCue
+	a.memory.impactPrepared = false
+	a.memory.mu.Unlock()
+	block := a.contextualImpactContext(cue)
+	if block == "" {
+		return
+	}
+	a.mu.Lock()
+	if !strings.Contains(a.memoryText, block) {
+		a.memoryText = contextualClip(a.memoryText+block, memoryBlockRunes)
+		a.landVolatileLocked()
+	}
+	a.mu.Unlock()
 }
