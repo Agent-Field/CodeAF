@@ -247,3 +247,19 @@ func TestContextualSyncOwnerlessUnknownTombstoneCannotInventOwner(t *testing.T) 
 		t.Fatalf("ownerless tombstone affected foreign owner: %+v", written)
 	}
 }
+
+func TestContextualSyncPendingTombstoneNormalizesOwnerLikePolicy(t *testing.T) {
+	receiver := openTestStore(t, filepath.Join(t.TempDir(), "receiver.db"))
+	forgotten, err := json.Marshal(memoryForgetPayload{ID: "delayed", Owner: "\u2003user\u2003"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	added, err := json.Marshal(memoryPayload{ID: "delayed", Owner: OwnerUser, Type: MemoryFact, Scope: MemoryScopeUser, Text: "Delayed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := receiver.ApplyMemoryEvents([]MemoryEvent{{Seq: 1, Kind: EventMemoryForget, Payload: forgotten}, {Seq: 2, Kind: EventMemoryAdd, Payload: added}}, func(owner string) bool { return owner == OwnerUser })
+	if err != nil || result.Applied != 1 || result.Skipped != 1 {
+		t.Fatalf("normalized owner tombstone=%+v %v", result, err)
+	}
+}

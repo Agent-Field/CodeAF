@@ -261,12 +261,11 @@ func foldMemoryEvent(tx *sql.Tx, event Event, seq int64, fts bool, allow func(ow
 		payload.Owner = ownerForReplay(payload)
 		// A tombstone that arrived first remains in the journal under its proven
 		// owner. A later add cannot turn delayed delivery into resurrection.
-		var tombstones int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE seq < ? AND kind = ? AND json_extract(payload, '$.id') = ? AND json_extract(payload, '$.owner') = ?`,
-			seq, EventMemoryForget, payload.ID, payload.Owner).Scan(&tombstones); err != nil {
+		pending, err := pendingMemoryTombstone(tx, payload.ID, payload.Owner, seq)
+		if err != nil {
 			return false, err
 		}
-		if tombstones != 0 {
+		if pending {
 			return false, nil
 		}
 		var exists int
@@ -525,6 +524,31 @@ func memoryDeliverySeen(tx *sql.Tx, incoming MemoryEvent, deliveryID string) (bo
 			return false, err
 		}
 		if identity == deliveryID {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
+}
+
+// pendingMemoryTombstone compares owners using the same normalization as the
+// policy guard. Raw remote payloads stay immutable in the journal, so equality
+// on their unnormalized JSON owner would let whitespace undo a tombstone.
+func pendingMemoryTombstone(tx *sql.Tx, id, owner string, before int64) (bool, error) {
+	rows, err := tx.Query(`SELECT payload FROM events WHERE seq < ? AND kind = ? AND json_extract(payload, '$.id') = ?`, before, EventMemoryForget, id)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var encoded string
+		if err := rows.Scan(&encoded); err != nil {
+			return false, err
+		}
+		var tombstone memoryForgetPayload
+		if err := json.Unmarshal([]byte(encoded), &tombstone); err != nil {
+			return false, err
+		}
+		if normalizeOwner(tombstone.Owner) == owner {
 			return true, nil
 		}
 	}
