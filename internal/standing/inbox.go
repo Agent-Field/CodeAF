@@ -25,7 +25,18 @@ import (
 )
 
 // Deliver appends a note to a session's inbox.
+//
+// A NOTE THAT CARRIES AN IDENTITY IS NOT DELIVERED TWICE. The identity is the
+// [Pending] record's id, written to the item before the line was carried out;
+// a note whose identity was already delivered and drained is dropped here, so a
+// restart that re-runs a delivery whose acknowledgement was lost does not put
+// the same line in front of the person again. A note with no identity — every
+// note written before this existed, and every writer that has none — is passed
+// through untouched.
 func Deliver(sessionDir string, note Note) error {
+	if note.ID != "" && alreadyDrained(sessionDir, note.ID) {
+		return nil
+	}
 	if note.At.IsZero() {
 		note.At = time.Now()
 	}
@@ -50,6 +61,10 @@ func Deliver(sessionDir string, note Note) error {
 
 // Drain reads and removes a session's inbox, oldest first. An absent inbox is
 // an empty slice and no error.
+//
+// IT REMEMBERS WHAT IT DRAINED, so a delivery replayed after a restart whose
+// note was already shown is recognised as spent ([Deliver]) rather than shown
+// twice. The record is the ids alone, bounded by [inboxSeenKeep].
 func Drain(sessionDir string) ([]Note, error) {
 	path := InboxPath(sessionDir)
 	staged := path + "." + newID() + ".draining"
@@ -60,7 +75,9 @@ func Drain(sessionDir string) ([]Note, error) {
 		return nil, err
 	}
 	defer os.Remove(staged)
-	return readInbox(staged), nil
+	notes := readInbox(staged)
+	rememberDrained(sessionDir, notes)
+	return notes, nil
 }
 
 // readInbox reads one inbox file, oldest first. A file that is not there, or
@@ -74,6 +91,7 @@ func readInbox(path string) []Note {
 	}
 	defer file.Close()
 	var notes []Note
+	seen := make(map[string]bool)
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 	for scanner.Scan() {
@@ -85,6 +103,14 @@ func readInbox(path string) []Note {
 		if err := json.Unmarshal(raw, &note); err != nil {
 			continue
 		}
+		// ONE IDENTITY, ONE NOTE. A torn or repeated append of the same
+		// delivery is one line to the person, not two.
+		if note.ID != "" {
+			if seen[note.ID] {
+				continue
+			}
+			seen[note.ID] = true
+		}
 		notes = append(notes, note)
 	}
 	// The file is already in the order it was written; the sort only matters
@@ -92,6 +118,73 @@ func readInbox(path string) []Note {
 	// notes that share a moment.
 	sort.SliceStable(notes, func(a, b int) bool { return notes[a].At.Before(notes[b].At) })
 	return notes
+}
+
+// inboxSeenKeep bounds the drained-identity record so recognising a replayed
+// delivery cannot grow a session folder without limit.
+const inboxSeenKeep = 4096
+
+// seenPath is the drained-identity record beside an inbox.
+func seenPath(sessionDir string) string { return filepath.Join(sessionDir, "inbox.seen") }
+
+// alreadyDrained reports whether a delivery identity was already drained from
+// this inbox. A missing or unreadable record reads as "not drained": the cost
+// of a duplicate is one line the person has already seen, and the cost of a
+// false positive is a line they never see at all.
+func alreadyDrained(sessionDir, id string) bool {
+	file, err := os.Open(seenPath(sessionDir))
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 4096), 1<<20)
+	for scanner.Scan() {
+		if strings.TrimSpace(string(scanner.Bytes())) == id {
+			return true
+		}
+	}
+	return false
+}
+
+// rememberDrained appends the drained notes' identities to the record, bounded
+// by [inboxSeenKeep]. A failure here loses a dedup, never a note, so it is
+// deliberately best effort.
+func rememberDrained(sessionDir string, notes []Note) {
+	ids := make([]string, 0, len(notes))
+	for _, note := range notes {
+		if note.ID != "" {
+			ids = append(ids, note.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
+		return
+	}
+	path := seenPath(sessionDir)
+	kept := make([]string, 0, inboxSeenKeep)
+	if file, err := os.Open(path); err == nil {
+		scanner := bufio.NewScanner(file)
+		scanner.Buffer(make([]byte, 0, 4096), 1<<20)
+		for scanner.Scan() {
+			if line := strings.TrimSpace(string(scanner.Bytes())); line != "" {
+				kept = append(kept, line)
+			}
+		}
+		file.Close()
+	}
+	kept = append(kept, ids...)
+	if len(kept) > inboxSeenKeep {
+		kept = kept[len(kept)-inboxSeenKeep:]
+	}
+	var out strings.Builder
+	for _, id := range kept {
+		out.WriteString(id)
+		out.WriteByte('\n')
+	}
+	_ = writeAtomic(path, []byte(out.String()))
 }
 
 // ── the project inbox: news for a project, not for one conversation ─────────

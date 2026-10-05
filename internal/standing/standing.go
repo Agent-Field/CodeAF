@@ -151,8 +151,9 @@ const (
 	WhenAt WhenKind = "at"
 	// WhenEvery fires on a rhythm — a cron line or an interval — forever.
 	WhenEvery WhenKind = "every"
-	// WhenFile fires when files matching a glob change (a fingerprint of
-	// names, sizes and mtimes, as v1's file watch did).
+	// WhenFile fires when files matching a glob change (a bounded fingerprint of
+	// names, sizes and CONTENTS — not mtimes, so a bare touch is not a change and
+	// an equal-size edit is).
 	WhenFile WhenKind = "file"
 	// WhenIdle fires when the machine has been quiet — no window busy, no
 	// task running anywhere — for [When.IdleFor]. "Learn this later" is this.
@@ -437,6 +438,13 @@ type Item struct {
 	Status  Status    `json:"status"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
+	// Revision counts this document's writes. It is the generation a pass that
+	// has been holding a copy for minutes compares against before it writes:
+	// if the number moved, somebody edited, paused or resumed the item while the
+	// pass was looking, and THEIR ACT IS NEWER THAN THE PASS'S STALE COPY. A
+	// status-only check is not enough — a pause and a resume both leave the
+	// status active — so the count is what the guard actually reads.
+	Revision int64 `json:"revision,omitempty"`
 	// RetiredWhy says why a retired item retired: "fired", "expired",
 	// "stopped by you", or the sentence the last failure left.
 	RetiredWhy string `json:"retiredWhy,omitempty"`
@@ -452,6 +460,13 @@ type Item struct {
 	// Previous are the last [Previous] sentinel lines, newest first, each with
 	// what came of it.
 	Previous []string `json:"previous,omitempty"`
+	// Pending are deliveries this item means to make but has not confirmed. A
+	// delivery record is written BEFORE the line is carried out and cleared only
+	// when the delivery is acknowledged, so a crash between the two leaves the
+	// intent on disk and the next pass re-delivers it under the SAME identity
+	// instead of guessing. It is bounded by [PendingKeep] and empty on almost
+	// every item.
+	Pending []Pending `json:"pending,omitempty"`
 
 	// The ledger half, kept on the item for the card; the daily ledger is the
 	// truth for the rails.
@@ -756,6 +771,43 @@ func (it Item) ClearNeedsPerson() Item {
 	return it
 }
 
+// pendingSay finds an unresolved delivery of the same text, so a firing that
+// failed partway does not mint a second identity on its next attempt: the same
+// line re-delivers under the same identity and the inbox dedups it. It is the
+// whole reason a restart after a lost acknowledgement is not a duplicate.
+func (it Item) pendingSay(text string) (Pending, bool) {
+	for _, pending := range it.Pending {
+		if pending.Kind == ActionSay && pending.Text == text {
+			return pending, true
+		}
+	}
+	return Pending{}, false
+}
+
+// addPending records one delivery intent, newest last. It answers false rather
+// than making room when [PendingKeep] is already reached: a cap that silently
+// evicted the oldest undelivered line would be this package throwing away the
+// person's own authorized work, so the caller stops and says so instead.
+func (it *Item) addPending(pending Pending) bool {
+	if len(it.Pending) >= PendingKeep {
+		return false
+	}
+	it.Pending = append(it.Pending, pending)
+	return true
+}
+
+// dropPending clears one delivery intent by identity. An identity that is not
+// there is the state the caller wanted, so it is not an error.
+func (it *Item) dropPending(id string) {
+	kept := it.Pending[:0]
+	for _, pending := range it.Pending {
+		if pending.ID != id {
+			kept = append(kept, pending)
+		}
+	}
+	it.Pending = kept
+}
+
 // Glyph is the one character a row leads with, decided here so every surface
 // agrees: ▲ needs you, ● a pass has it in its hands right now — checking it or
 // firing it — ◦ waiting for its time, ∙ paused or retired. Running is the
@@ -908,6 +960,36 @@ type Note struct {
 	Text string `json:"text"`
 	// Run is the run folder a person can open for the whole story.
 	Run string `json:"run,omitempty"`
+	// ID is the delivery identity, when the writer had one: the identity of
+	// the [Pending] record the core wrote before the line was carried out.
+	// Drain and Peek dedup on it, so a line appended twice across a restart or
+	// a torn write reaches the person once. Empty notes — every note written
+	// before this field existed, and every writer that has no identity — are
+	// passed through untouched.
+	ID string `json:"id,omitempty"`
+}
+
+// PendingKeep bounds how many undelivered records one item may carry, so a
+// delivery that keeps failing cannot grow the document without limit. It is
+// generous for the real case — one line at a time — and finite for the bad one.
+const PendingKeep = 8
+
+// Pending is one delivery the item means to make, written to the item before
+// the line is carried out so that a crash cannot lose it and a restart can
+// reconcile it by identity rather than by guessing. It is the durable half of
+// [ActionSay]; [ActionTask] has no such record and makes no exactly-once
+// promise about the arbitrary edits a task may make (see the integration
+// contract).
+type Pending struct {
+	// ID is the delivery identity, stable across restart, and the thing an
+	// inbox dedups on.
+	ID string `json:"id"`
+	// Kind is [ActionSay] today; it names what was being delivered.
+	Kind ActionKind `json:"kind"`
+	// Text is the line, already templated, that was meant to be said.
+	Text string `json:"text,omitempty"`
+	// At is when the intent was written.
+	At time.Time `json:"at"`
 }
 
 // InboxPath is the inbox inside a session folder.
@@ -925,7 +1007,58 @@ type Judgment struct {
 
 // Sentinel is one cheap yes/no call. The line is kept on the item and in the
 // log; it is read by the person, so it is one plain sentence.
+//
+// IT IS THE LEGACY SHAPE and it stays source-compatible on purpose: every
+// adapter and test written before [Verdict] existed keeps compiling and keeps
+// its old meaning. A yes is [VerdictYes], a no is [VerdictNo], and an error — a
+// refusal, a timeout, a provider that could not answer — is [VerdictUnknown]
+// rather than an established no.
 type Sentinel func(ctx context.Context, judgment Judgment) (yes bool, line string, usd float64, err error)
+
+// Verdict is a sentinel's three-valued answer, and the reason this package
+// stopped speaking in booleans.
+//
+// FALSE AND UNKNOWN ARE DIFFERENT FACTS. A decided no is the world saying the
+// condition does not hold; a refusal, a timeout, an ambiguous output or a
+// provider hiccup says only that nobody could tell. Collapsing the second into
+// the first would write a negative into the item's own history ([Item.Previous])
+// and quietly drop a pending opportunity the person is still waiting on. Only
+// [VerdictYes] fires; [VerdictUnknown] leaves the opportunity open and records
+// nothing as decided.
+type Verdict int
+
+const (
+	// VerdictUnknown is "nobody could tell": a refusal, a timeout, an
+	// ambiguous answer. It neither fires nor counts as an established no.
+	VerdictUnknown Verdict = iota
+	// VerdictNo is a decided negative.
+	VerdictNo
+	// VerdictYes is a decided affirmative, and the only verdict that fires.
+	VerdictYes
+)
+
+// SentinelVerdict is the three-valued form of [Sentinel]. A Ticker that carries
+// one uses it and ignores Sentinel; a Ticker that carries only a Sentinel keeps
+// the legacy two-valued meaning. It is an optional capability, discovered by a
+// field rather than by a type assertion on an interface, so a caller that has
+// not heard of it still builds.
+type SentinelVerdict func(ctx context.Context, judgment Judgment) (verdict Verdict, line string, usd float64, err error)
+
+// Deliverer is the optional capability a [Runner] may add when it can make a
+// delivery durable by IDENTITY. When a Runner implements it, the core hands it
+// the [Pending] record it already wrote to the item, so the same line delivered
+// twice across a restart carries the same identity and the second is deduped
+// rather than repeated.
+//
+// A RUNNER THAT DOES NOT IMPLEMENT IT STILL WORKS: the core falls back to
+// [Runner.Say], which has no identity to dedup on. That fallback is at-least-
+// once for a delivery whose acknowledgement was lost, which is stated plainly
+// and is why strong guarantees require this seam (see the integration contract).
+type Deliverer interface {
+	// Deliver carries out a pending delivery whose identity was already
+	// written to the item. It answers the same [Outcome] Runner.Say does.
+	Deliver(ctx context.Context, item Item, pending Pending) (Outcome, error)
+}
 
 // Outcome is what a run came to.
 type Outcome struct {
@@ -1069,6 +1202,9 @@ type Ticker struct {
 	// Tidy is the consolidation pass over what is remembered, run once at the
 	// end of a pass and only when the session lane supplied one.
 	Tidy Tidy
+	// SentinelVerdict, when set, is the three-valued judgment and replaces the
+	// legacy Sentinel. Nil means the legacy [Sentinel] is used, if it is set.
+	SentinelVerdict SentinelVerdict
 	// DailyRailUSD is the ceiling on everything standing spends in one day,
 	// from settings. Zero is no rail, which the card says out loud.
 	DailyRailUSD float64

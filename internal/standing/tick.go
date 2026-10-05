@@ -24,6 +24,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -53,7 +55,8 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 	if err != nil {
 		return pass, err
 	}
-	for _, item := range items {
+	for i := range items {
+		item := &items[i]
 		if ctx.Err() != nil {
 			// A pass that ran out of time stops where it is. The items it did
 			// not reach are simply due again in five minutes; there is no state
@@ -68,7 +71,7 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 		if err := t.one(ctx, &pass, item); err != nil {
 			pass.Errors++
 			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(err.Error()))
-			t.noteFailure(item, err)
+			t.noteFailure(*item, err)
 		}
 	}
 	// THE TIDY GOES LAST AND IS NOT AN ITEM. Everything the person actually
@@ -139,11 +142,15 @@ func (t *Ticker) clock() time.Time {
 }
 
 // one is a single item's whole pass: the rails, the look, and the firing.
-func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
+//
+// IT TAKES THE ITEM BY POINTER because a firing writes twice — the delivery
+// intent, then the result — and the revision that guards those writes has to
+// travel with the item, not with a copy the caller kept.
+func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 	now := t.clock()
 
 	// RAIL ONE: it ran out of time.
-	if deadline, has := expiryOf(item); has && !now.Before(deadline) {
+	if deadline, has := expiryOf(*item); has && !now.Before(deadline) {
 		item.Status = StatusRetired
 		item.RetiredWhy = "expired"
 		item.LastChecked = now
@@ -151,7 +158,10 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		pass.Skipped++
 		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
 		_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
-		return t.Store.Save(item)
+		if err := t.Store.saveActive(item); err != nil && !errors.Is(err, errConsentChanged) {
+			return err
+		}
+		return nil
 	}
 
 	// AND A HOLD IS WALKED PAST IN SILENCE. It has no moment, no rhythm and no
@@ -174,7 +184,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 	}
 	if item.Rails.MaxPerDay > 0 && mine.Fired >= item.Rails.MaxPerDay {
 		pass.Skipped++
-		return t.quiet(item, now, "it has already run today as often as you allowed")
+		return t.quiet(*item, now, "it has already run today as often as you allowed")
 	}
 
 	// RAIL THREE: everything standing has spent what the day allows.
@@ -186,7 +196,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 		if all.USD >= t.DailyRailUSD {
 			pass.Skipped++
 			pass.Notes = append(pass.Notes, "today's spending limit is reached; nothing standing runs again until tomorrow")
-			return t.quiet(item, now, "today's spending limit is reached")
+			return t.quiet(*item, now, "today's spending limit is reached")
 		}
 	}
 
@@ -204,19 +214,37 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 	t.Store.markRunning(item.ID, RunningChecking)
 	defer t.Store.clearRunning(item.ID)
 
-	found, err := t.look(ctx, &item, now)
+	found, err := t.look(ctx, item, now)
 	if err != nil {
 		return err
 	}
+
+	// A PROBE MAY HAVE TAKEN MINUTES, AND THE PERSON MAY HAVE ACTED IN THEM.
+	// The item this pass has been working on was read at the top of the walk;
+	// anything paused, stopped or edited since then is the newer truth, and a
+	// firing must not be delivered past it. The revision is the guard, not the
+	// status: a pause and a resume both leave the status active. The write below
+	// is guarded again ([Store.saveActive]); this is what stops the delivery.
+	if current, err := t.Store.Get(item.ID); err != nil || current.Status != StatusActive || current.Revision != item.Revision {
+		return nil
+	}
+
 	switch found.state {
 	case stateAsleep:
 		// Nothing was looked at, so nothing is written. An item that says it
 		// was checked when it was not is the one dishonesty this design has no
 		// tolerance for.
 		return nil
+	case stateUndecided:
+		// It was looked at but nobody could decide. NOTHING IS WRITTEN — not
+		// the check, not the next-due, not a negative — so the item stays due
+		// and the next pass faces the same question. An unknown must not consume
+		// the opportunity the person is still waiting on.
+		pass.Checked++
+		return nil
 	case stateQuiet:
 		pass.Checked++
-		return t.quiet(item, now, found.line)
+		return t.quiet(*item, now, found.line)
 	}
 	pass.Checked++
 	return t.fire(ctx, pass, item, now, found)
@@ -228,9 +256,10 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item Item) error {
 type state int
 
 const (
-	stateAsleep state = iota // its time has not come; nothing was looked at
-	stateQuiet               // it was looked at and the world had nothing to say
-	stateReady               // it is time, or the world changed, or the sentinel said yes
+	stateAsleep    state = iota // its time has not come; nothing was looked at
+	stateUndecided              // looked, but nobody could decide; nothing is written
+	stateQuiet                  // it was looked at and the world had nothing to say
+	stateReady                  // it is time, or the world changed, or the sentinel said yes
 )
 
 // sighting is one look's answer: what state it left the item in, the one plain
@@ -274,7 +303,7 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		found = sighting{state: stateReady, line: "it was the time you asked for"}
 
 	case WhenFile:
-		digest, listing, err := fingerprint(item.Workspace, item.When.Glob)
+		digest, listing, truncated, err := fingerprint(item.Workspace, item.When.Glob)
 		if err != nil {
 			return sighting{}, err
 		}
@@ -283,12 +312,16 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		item.Fingerprint = digest
 		switch {
 		case first:
-			// THE FIRST READING IS THE BASELINE AND IS SILENT. Everything on
-			// disk looks new to a watch that has never looked, and telling a
-			// person their whole repository just changed would be the last time
-			// they trusted one of these.
+			// THE FIRST READING IS THE BASELINE AND IS SILENT. An item that was
+			// armed ([Store.Arm]) carries its reading already and never reaches
+			// here; one that was not keeps the old, silent first look exactly.
 			return sighting{state: stateQuiet, line: "nothing has changed yet"}, nil
 		case !changed:
+			if truncated {
+				// A bounded view cannot certify that nothing changed past the
+				// bound. It says only what it could read.
+				return sighting{state: stateQuiet, line: "nothing has changed in what I could read"}, nil
+			}
 			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
 		}
 		found = sighting{state: stateReady, line: "the files you are watching changed", evidence: listing}
@@ -321,11 +354,18 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			return sighting{}, err
 		}
 		evidence = clipTail(evidence, ProbeClip)
-		yes, line, err := t.judge(ctx, item, now, evidence)
+		verdict, line, err := t.judge(ctx, item, now, evidence)
 		if err != nil {
 			return sighting{}, err
 		}
-		if !yes {
+		if verdict == VerdictUnknown {
+			// NOBODY COULD DECIDE. Nothing is written, so the item stays due and
+			// the next pass faces the same question: an unknown must not consume
+			// the opportunity the person is waiting on, and it must never read as
+			// an established no.
+			return sighting{state: stateUndecided, line: line}, nil
+		}
+		if verdict != VerdictYes {
 			return sighting{state: stateQuiet, line: line}, nil
 		}
 		return sighting{state: stateReady, line: line, evidence: evidence}, nil
@@ -335,14 +375,21 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 	}
 
 	// A hint on a kind that does not need judgment asks for it anyway: "every
-	// weekday at 8, IF there is anything worth saying". The sentinel is given no
-	// evidence, because there is none — only the person's words and the hint.
+	// weekday at 8, IF there is anything worth saying". The sentinel is given the
+	// evidence the look gathered — the changed-file listing for a file watch, and
+	// nothing for a kind that has none — so it is never asked to judge a change
+	// it was told about but cannot see.
 	if item.When.Hint != "" {
-		yes, line, err := t.judge(ctx, item, now, "")
+		verdict, line, err := t.judge(ctx, item, now, found.evidence)
 		if err != nil {
 			return sighting{}, err
 		}
-		if !yes {
+		if verdict == VerdictUnknown {
+			// An undecided hint writes nothing at all, so the item stays due and
+			// is judged again rather than counted as a no it never was.
+			return sighting{state: stateUndecided, line: line}, nil
+		}
+		if verdict != VerdictYes {
 			return sighting{state: stateQuiet, line: line}, nil
 		}
 		found.line = line
@@ -350,39 +397,101 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 	return found, nil
 }
 
-// judge is the one cheap yes/no call, with the item's last few judgments riding
-// along so that a thing already said is not said again every five minutes.
+// judge is the one cheap call, with the item's last few judgments riding along
+// so that a thing already said is not said again every five minutes.
+//
+// IT ANSWERS THREE WAYS, NOT TWO. [VerdictYes] fires; [VerdictNo] is a decided
+// negative; [VerdictUnknown] — a refusal, a timeout, a provider that could not
+// answer, or a sentinel that merely errored — is neither, and is never written
+// into the item's history as a no.
 //
 // A JUDGMENT IS BILLED WHETHER OR NOT IT SAYS YES. It is the auxiliary line the
 // card promised, and a watch that looks a hundred times to fire once has spent
 // a hundred looks' worth of the day's money.
-func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence string) (bool, string, error) {
-	if t.Sentinel == nil {
-		return false, "", errors.New("there is nothing in this build to judge with")
+func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence string) (Verdict, string, error) {
+	if t.SentinelVerdict == nil && t.Sentinel == nil {
+		return VerdictUnknown, "", errors.New("there is nothing in this build to judge with")
 	}
-	yes, line, usd, err := t.Sentinel(ctx, Judgment{Item: *item, Evidence: evidence, Previous: item.Previous})
+	judgment := Judgment{Item: *item, Evidence: evidence, Previous: item.Previous}
+	var (
+		verdict Verdict
+		line    string
+		usd     float64
+		err     error
+	)
+	if t.SentinelVerdict != nil {
+		verdict, line, usd, err = t.SentinelVerdict(ctx, judgment)
+	} else {
+		var yes bool
+		yes, line, usd, err = t.Sentinel(ctx, judgment)
+		switch {
+		case err != nil:
+			verdict = VerdictUnknown
+		case yes:
+			verdict = VerdictYes
+		default:
+			verdict = VerdictNo
+		}
+	}
 	if err != nil {
-		return false, "", err
+		// A REFUSAL, A TIMEOUT OR A PROVIDER THAT COULD NOT ANSWER REACHES HERE.
+		// It is not a no and it is not this item's failure: the opportunity a
+		// person is still waiting on stays open, and no negative is written into
+		// [Item.Previous]. WHAT THE CALL COST IS STILL CHARGED WHEN THE CALLER
+		// COULD NAME IT — a refusal that was billed is still a bill — and a
+		// ledger that could not be written is a storage error that propagates.
+		if usd > 0 {
+			item.SpentUSD += usd
+			if lerr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: entryCheck, USD: usd}); lerr != nil {
+				return VerdictUnknown, oneLine(line), lerr
+			}
+		}
+		if strings.TrimSpace(line) == "" {
+			line = "I could not tell"
+		}
+		return VerdictUnknown, oneLine(line), nil
 	}
 	if usd > 0 {
 		item.SpentUSD += usd
 		if err := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: entryCheck, USD: usd}); err != nil {
-			return false, "", err
+			return verdict, oneLine(line), err
 		}
 	}
-	return yes, line, nil
+	return verdict, oneLine(line), nil
 }
 
 // quiet is the whole of a check that found nothing: the item remembers it
 // looked, and NOTHING ELSE IS WRITTEN ANYWHERE.
+//
+// IT SAVES GUARDED. The check ran against a copy read at the top of the walk;
+// if the person paused or stopped the item while it was being looked at, their
+// act wins and this write is refused rather than undoing it.
 func (t *Ticker) quiet(item Item, now time.Time, line string) error {
 	item.LastChecked = now
 	item.LastCheckLine = oneLine(line)
-	return t.Store.Save(item)
+	if err := t.Store.saveActive(&item); err != nil {
+		if errors.Is(err, errConsentChanged) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // fire is the firing and everything it leaves behind.
-func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time, found sighting) error {
+//
+// THE DELIVERY HAS TWO HALVES AND THE ORDER IS THE CONTRACT. For [ActionSay] the
+// intent — a [Pending] record with an identity — is written to the item BEFORE
+// the line is carried out, and cleared only when the delivery is acknowledged.
+// A crash between the two leaves the intent on disk, so the next pass or a
+// restart settles it BY IDENTITY instead of guessing. When the Runner can
+// dedup on that identity ([Deliverer]) the delivery is exactly-once; when it
+// cannot, the fallback [Runner.Say] is at-least-once and says so.
+//
+// [ActionTask] HAS NO SUCH RECORD AND PROMISES NOTHING. A task makes arbitrary
+// edits in the world, and no identity this package can mint makes replaying one
+// safe; a task that fails part-way is left for the person, never replayed blind.
+func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time, found sighting) error {
 	if t.Runner == nil {
 		return errors.New("there is nothing in this build to run it with")
 	}
@@ -397,17 +506,58 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	)
 	switch item.Does.Kind {
 	case ActionSay:
-		outcome, err = t.Runner.Say(ctx, item, strings.ReplaceAll(item.Does.Say, "{{evidence}}", found.evidence))
+		text := strings.ReplaceAll(item.Does.Say, "{{evidence}}", found.evidence)
+		pending, known := item.pendingSay(text)
+		if !known {
+			pending = Pending{ID: newID(), Kind: ActionSay, Text: text, At: now}
+			if !item.addPending(pending) {
+				// BACKPRESSURE, NOT SILENT EVICTION: a cap that dropped the
+				// oldest undelivered line would be this package discarding the
+				// person's own authorized work. It stops and says so instead.
+				item.NeedsPerson = oneLine("there are already too many undelivered lines waiting")
+				_ = t.Store.saveActive(item)
+				return errors.New("standing: too many undelivered lines are waiting; not delivering another")
+			}
+		}
+		// THE INTENT IS ON DISK BEFORE THE LINE IS CARRIED OUT. If this write
+		// fails, nothing is delivered: an external notification must never
+		// precede the durable state that lets a restart reconcile it.
+		if err := t.Store.saveActive(item); err != nil {
+			item.dropPending(pending.ID)
+			if errors.Is(err, errConsentChanged) {
+				return nil
+			}
+			return fmt.Errorf("could not record the delivery before making it: %w", err)
+		}
+		if deliverer, ok := t.Runner.(Deliverer); ok {
+			outcome, err = deliverer.Deliver(ctx, *item, pending)
+		} else {
+			outcome, err = t.Runner.Say(ctx, *item, text)
+		}
+		if err != nil {
+			// The line may or may not have landed. The intent STAYS on the item
+			// so the next pass, or a restart, settles it by identity rather than
+			// guessing, and the error is propagated so it is counted.
+			return err
+		}
+		item.dropPending(pending.ID)
 	case ActionTask:
 		runDir, err = t.Store.newRunDir(item.ID)
 		if err != nil {
 			return err
 		}
-		outcome, err = t.Runner.Run(ctx, item, runDir, found.evidence)
+		outcome, err = t.Runner.Run(ctx, *item, runDir, found.evidence)
 	default:
 		return errors.New("standing: an unknown kind of action: " + string(item.Does.Kind))
 	}
 	if err != nil {
+		if item.Does.Kind == ActionTask {
+			// A TASK THAT FAILED MID-WAY MAY ALREADY HAVE MADE EXTERNAL EDITS,
+			// and this package makes NO exactly-once promise about them. It is
+			// left for the person rather than replayed blind on the next pass.
+			item.NeedsPerson = oneLine("a task could not be finished: " + err.Error())
+			_ = t.Store.saveActive(item)
+		}
 		return err
 	}
 
@@ -459,7 +609,14 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item Item, now time.Time,
 	}
 	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir})
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
-	return errors.Join(ledgerErr, logErr, t.Store.Save(item))
+	// THE SAVE IS GUARDED, and a refusal is the person's act winning rather than
+	// this pass failing: the delivery already happened and cannot be undone, but
+	// a paused or retired item must not be written over.
+	saveErr := t.Store.saveActive(item)
+	if saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
+		return errors.Join(ledgerErr, logErr, saveErr)
+	}
+	return errors.Join(ledgerErr, logErr)
 }
 
 // writeCameTo leaves [CameTo] in the run folder: one word saying what this run
@@ -513,7 +670,9 @@ func (t *Ticker) noteFailure(item Item, failure error) {
 	now := t.clock()
 	item.LastChecked = now
 	item.LastCheckLine = "could not check: " + shorten(oneLine(failure.Error()), 200)
-	_ = t.Store.Save(item)
+	if err := t.Store.saveActive(&item); err != nil && !errors.Is(err, errConsentChanged) {
+		_ = t.Store.Log(item.ID, "could not write the item's failure: "+oneLine(err.Error()))
+	}
 	_ = t.Store.Log(item.ID, item.LastCheckLine)
 }
 
@@ -535,24 +694,58 @@ func expiryOf(item Item) (time.Time, bool) {
 	return deadline, true
 }
 
-// fingerprint is a WhenFile's reading of the world: the names, sizes and
-// modification times of everything the glob matches, hashed. The listing beside
-// it is what the firing is told, since a hash is evidence of nothing to a model
-// or to a person.
-func fingerprint(workspace, glob string) (string, string, error) {
+// The bounds on one WhenFile reading. THEY ARE THE WHOLE POINT: an unbounded
+// scan of a home directory is a hang, and a fingerprint that varies with how
+// much of the world it happened to read is worse than none. Past any of these a
+// reading is TRUNCATED, which is reported and never passed off as "unchanged".
+const (
+	fingerprintMaxFiles = 4096
+	fingerprintMaxBytes = 8 << 20
+	fingerprintPerFile  = 256 << 10
+	fingerprintBudget   = 2 * time.Second
+)
+
+// fingerprint is a WhenFile's reading of the world: the names, sizes and bounded
+// CONTENTS of everything the glob matches, hashed. The listing beside it is what
+// a firing is told, since a hash is evidence of nothing to a model or a person.
+//
+// CONTENT, NOT MTIME. A bare touch changes no content and is not a change; an
+// edit that keeps a file's size and its mtime identical changes the content and
+// IS one. A file that was renamed changes its name and is one. A symlink is read
+// as its target, never followed, so a link whose target changed is a change and
+// a link cannot walk the scan out of the workspace.
+//
+// IT ANSWERS truncated AND SAYS WHY NOWHERE ELSE MATTERS: a name with no file
+// (vanished between the glob and the stat), a file it could not open, a file
+// larger than the per-file cap, more files than the file cap, more bytes than
+// the byte cap, or a scan that ran out of its time budget. A truncated reading
+// hashes to a different digest than a complete one, so arming ([Store.Arm])
+// refuses it and a watch never certifies "unchanged" on a partial look.
+func fingerprint(workspace, glob string) (string, string, bool, error) {
 	pattern := glob
 	if !filepath.IsAbs(pattern) {
 		pattern = filepath.Join(workspace, pattern)
 	}
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
-		return "", "", fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+		return "", "", false, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
 	}
 	sort.Strings(matches)
-	digest := sha256.New()
+	truncated := false
+	if len(matches) > fingerprintMaxFiles {
+		matches = matches[:fingerprintMaxFiles]
+		truncated = true
+	}
+	sum := sha256.New()
 	listing := &strings.Builder{}
+	deadline := time.Now().Add(fingerprintBudget)
+	budget := int64(fingerprintMaxBytes)
 	for _, match := range matches {
-		info, err := os.Stat(match)
+		if time.Now().After(deadline) {
+			truncated = true
+			break
+		}
+		info, err := os.Lstat(match)
 		if err != nil {
 			// A file that vanished between the glob and the stat is a change
 			// like any other; the next reading will not have it either.
@@ -562,12 +755,90 @@ func fingerprint(workspace, glob string) (string, string, error) {
 		if relative, err := filepath.Rel(workspace, match); err == nil {
 			name = relative
 		}
-		fmt.Fprintf(digest, "%s|%d|%d\n", name, info.Size(), info.ModTime().UnixNano())
+		kind := "file"
+		size := info.Size()
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			kind = "symlink"
+			if target, err := os.Readlink(match); err == nil {
+				size = int64(len(target))
+			} else {
+				truncated = true
+			}
+		case info.IsDir():
+			kind = "dir"
+		}
+		fmt.Fprintf(sum, "%s\x00%s\x00%d\x00", name, kind, size)
+		switch kind {
+		case "file":
+			if budget <= 0 {
+				truncated = true
+				break
+			}
+			limit := int64(fingerprintPerFile)
+			if budget < limit {
+				limit = budget
+			}
+			read, fileTruncated, readErr := hashFile(sum, match, limit)
+			budget -= read
+			if readErr != nil || fileTruncated {
+				truncated = true
+			}
+		case "symlink":
+			if target, err := os.Readlink(match); err == nil {
+				if budget > 0 {
+					sum.Write([]byte(target))
+					budget -= int64(len(target))
+				} else {
+					truncated = true
+				}
+			}
+		}
 		if listing.Len() < ProbeClip {
-			fmt.Fprintf(listing, "%s  %d bytes  %s\n", name, info.Size(), info.ModTime().Format(time.RFC3339))
+			fmt.Fprintf(listing, "%s  %d bytes\n", name, size)
 		}
 	}
-	return hex.EncodeToString(digest.Sum(nil)), listing.String(), nil
+	hexdigest := hex.EncodeToString(sum.Sum(nil))
+	if truncated {
+		hexdigest = "t" + hexdigest
+	}
+	return hexdigest, listing.String(), truncated, nil
+}
+
+// hashFile writes up to limit bytes of path into dst and answers how many it
+// wrote and whether the file was longer than the limit. It reads in fixed chunks
+// rather than slurping the file, so a pathologically large match cannot allocate
+// its size just to be hashed.
+func hashFile(dst hash.Hash, path string, limit int64) (read int64, truncated bool, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, false, err
+	}
+	defer file.Close()
+	buf := make([]byte, 32*1024)
+	for read < limit {
+		want := int64(len(buf))
+		if remaining := limit - read; remaining < want {
+			want = remaining
+		}
+		n, rerr := file.Read(buf[:want])
+		if n > 0 {
+			dst.Write(buf[:n])
+			read += int64(n)
+		}
+		if rerr == io.EOF {
+			return read, false, nil
+		}
+		if rerr != nil {
+			return read, false, rerr
+		}
+	}
+	// We stopped on the limit, not the end. One more byte settles which.
+	var probe [1]byte
+	if n, _ := file.Read(probe[:]); n > 0 {
+		truncated = true
+	}
+	return read, truncated, nil
 }
 
 // appendWake writes the one line per pass that "last wake" and "next check" are
