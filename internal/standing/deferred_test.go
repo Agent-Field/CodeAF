@@ -461,7 +461,7 @@ func TestPendingSayIsDurableAndReusesItsIdentityAcrossAFailedDelivery(t *testing
 	}
 }
 
-func TestPendingCapRefusesRatherThanEvictingAuthorizedWork(t *testing.T) {
+func TestPendingIsRetriedBySettleAndNeverEvicted(t *testing.T) {
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
 	made, err := store.Create(reminder("remind me at 6 to leave", now))
@@ -475,17 +475,35 @@ func TestPendingCapRefusesRatherThanEvictingAuthorizedWork(t *testing.T) {
 	if err := store.Save(item); err != nil {
 		t.Fatal(err)
 	}
+	first := item.Pending[0].ID
 
-	pass := mustTick(t, newTicker(store, &fakeRunner{outcome: Outcome{Kind: "said"}}, now))
-	if pass.Errors != 1 {
-		t.Fatalf("a full pending list did not stop the pass: %+v", pass)
+	// A Runner whose delivery always fails: settle must retry the SAME identity
+	// each pass, never evict authorized work, and finally surface it.
+	runner := &deliveringRunner{failFor: 1 << 30}
+	for attempt := 1; attempt <= PendingGiveUp; attempt++ {
+		pass := mustTick(t, newTicker(store, runner, now))
+		if pass.Errors == 0 {
+			t.Fatalf("pass %d did not count the failed delivery: %+v", attempt, pass)
+		}
+		back, _ := store.Get(made.ID)
+		if len(back.Pending) != PendingKeep {
+			t.Fatalf("pass %d evicted authorized work: %d intents left", attempt, len(back.Pending))
+		}
+		if back.Pending[0].Attempts != attempt {
+			t.Fatalf("pass %d bumped the wrong attempt count: %d", attempt, back.Pending[0].Attempts)
+		}
+	}
+	if len(runner.ids) != PendingGiveUp {
+		t.Fatalf("the retrying line was delivered %d times, wanted %d", len(runner.ids), PendingGiveUp)
+	}
+	for _, id := range runner.ids {
+		if id != first {
+			t.Fatalf("a retry minted a new identity: %q then %q", first, id)
+		}
 	}
 	back, _ := store.Get(made.ID)
-	if len(back.Pending) != PendingKeep {
-		t.Fatalf("the cap evicted authorized work: %d intents left, wanted %d", len(back.Pending), PendingKeep)
-	}
-	if !strings.Contains(back.NeedsPerson, "too many") {
-		t.Fatalf("the backpressure was not recorded: %q", back.NeedsPerson)
+	if !strings.Contains(back.NeedsPerson, "could not be delivered") {
+		t.Fatalf("a line that cannot be delivered was not surfaced: %q", back.NeedsPerson)
 	}
 }
 

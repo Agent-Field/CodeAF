@@ -5,9 +5,12 @@ package standing
 // folder, appended by whoever has news, drained whole the next time the person
 // opens that conversation and shown under one "while you were away" fold.
 //
-// THE DRAIN RENAMES BEFORE IT READS. A note delivered while the fold is being
-// built would otherwise be read and then deleted unseen; moving the file aside
-// first means a racing delivery starts a fresh inbox that the next open finds.
+// THE DRAIN RENAMES BEFORE IT READS, UNDER A PER-INBOX FLOCK. A note delivered
+// while the fold is being built would otherwise be read and then deleted unseen;
+// moving the file aside first means a racing delivery starts a fresh inbox that
+// the next open finds, and the flock keeps a racing delivery out of the inode
+// the drain renamed away. A staged file left by a crash is recovered by the next
+// drain, not lost.
 //
 // There are TWO addresses and one shape. A session's inbox is the one below; a
 // PROJECT's inbox is the second half of this file, and it exists because not
@@ -15,28 +18,81 @@ package standing
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
+
+// The boxes on one inbox. They bound a folder so a stuck writer surfaces as
+// visible backpressure rather than growing the folder without limit, and bound
+// one line so an oversized note is refused (and its caller keeps the pending)
+// rather than truncating the reader's scan silently.
+const (
+	inboxMaxBytes = 16 << 20
+	inboxMaxLine  = 1 << 20
+)
+
+// errInboxFull is the visible backpressure of a bounded inbox. It is returned
+// rather than swallowed, so the caller keeps its durable intent and can say so.
+var errInboxFull = errors.New("standing: this inbox is full; the note was not delivered")
+
+// withInboxLock serializes EVERY mutation of one inbox folder — Deliver, Drain
+// and the seen record — under a process flock, so a delivery racing a drain
+// cannot write into the inode the drain just renamed away and then lose the
+// line to the drain's delete.
+//
+// THE LOCK FILE LIVES IN THE SYSTEM TEMP DIRECTORY, NAMED BY A HASH OF THE
+// ABSOLUTE INBOX DIR, so a session or project folder is never polluted with a
+// lock file a reader would have to know to ignore. Two processes that resolve
+// the same folder and the same temp directory serialize against each other; a
+// process with a different TEMP would not, which is stated rather than hidden.
+func withInboxLock(dir string, fn func() error) error {
+	trimmed := strings.TrimSpace(dir)
+	if trimmed == "" {
+		return errors.New("standing: an inbox with no address")
+	}
+	if err := os.MkdirAll(trimmed, 0o700); err != nil {
+		return err
+	}
+	absolute, err := filepath.Abs(trimmed)
+	if err != nil {
+		absolute = trimmed
+	}
+	sum := sha256.Sum256([]byte(filepath.Clean(absolute)))
+	lockPath := filepath.Join(os.TempDir(), "codeaf-inbox-"+hex.EncodeToString(sum[:16])+".lock")
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err := filelock.Lock(lock, true, false); err != nil {
+		return err
+	}
+	defer func() { _ = filelock.Unlock(lock) }()
+	return fn()
+}
 
 // Deliver appends a note to a session's inbox.
 //
-// A NOTE THAT CARRIES AN IDENTITY IS NOT DELIVERED TWICE. The identity is the
-// [Pending] record's id, written to the item before the line was carried out;
-// a note whose identity was already delivered and drained is dropped here, so a
-// restart that re-runs a delivery whose acknowledgement was lost does not put
-// the same line in front of the person again. A note with no identity — every
-// note written before this existed, and every writer that has none — is passed
-// through untouched.
+// A NOTE THAT CARRIES AN IDENTITY IS NOT DELIVERED TWICE, while the identity is
+// inside the drained-identity window ([inboxSeenKeep]). The identity is the
+// [Pending] record's id, written to the item before the line was carried out; a
+// note whose identity was already delivered and drained is dropped here, so a
+// replay after a restart whose acknowledgement was lost does not put the same
+// line in front of the person again. A note with no identity — every note
+// written before this existed, and every writer that has none — is passed
+// through untouched. This is a durable-inbox guarantee, not a display one: the
+// boundary is stated in [Drain].
 func Deliver(sessionDir string, note Note) error {
-	if note.ID != "" && alreadyDrained(sessionDir, note.ID) {
-		return nil
-	}
 	if note.At.IsZero() {
 		note.At = time.Now()
 	}
@@ -45,55 +101,125 @@ func Deliver(sessionDir string, note Note) error {
 		return err
 	}
 	line = append(line, '\n')
-	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
-		return err
+	if len(line) > inboxMaxLine {
+		return fmt.Errorf("standing: a note larger than %d bytes was refused", inboxMaxLine)
 	}
-	file, err := os.OpenFile(InboxPath(sessionDir), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if _, err := file.Write(line); err != nil {
-		return err
-	}
-	return file.Close()
+	return withInboxLock(sessionDir, func() error {
+		if note.ID != "" && alreadyDrained(sessionDir, note.ID) {
+			return nil
+		}
+		path := InboxPath(sessionDir)
+		if info, err := os.Stat(path); err == nil && info.Size()+int64(len(line)) > inboxMaxBytes {
+			return errInboxFull
+		}
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return err
+		}
+		if _, err := file.Write(line); err != nil {
+			file.Close()
+			return err
+		}
+		return file.Close()
+	})
 }
 
 // Drain reads and removes a session's inbox, oldest first. An absent inbox is
 // an empty slice and no error.
 //
-// IT REMEMBERS WHAT IT DRAINED, so a delivery replayed after a restart whose
-// note was already shown is recognised as spent ([Deliver]) rather than shown
-// twice. The record is the ids alone, bounded by [inboxSeenKeep].
+// IT RECOVERS A LEFTOVER .draining FILE DETERMINISTICALLY, even alongside a live
+// inbox: a crash after the rename and before the delete would otherwise lose the
+// notes for good. It reads every staged file, and a file it could NOT read whole
+// (an open failure, a read failure, or a line too long for the scanner) is KEPT
+// and reported rather than deleted. It remembers what it drained, so a replay is
+// recognised as spent.
+//
+// THE GUARANTEE IS DURABLE PERSISTENCE AND A RECOVERABLE READ HANDOFF, NOT USER
+// DISPLAY ACKNOWLEDGEMENT: a note removed here has been handed to the caller,
+// and whether the caller then draws, folds or forwards it is outside this
+// package. The drained-identity window is [inboxSeenKeep]; beyond it a replay is
+// shown again. No exactly-once claim is made about anything else.
 func Drain(sessionDir string) ([]Note, error) {
-	path := InboxPath(sessionDir)
-	staged := path + "." + newID() + ".draining"
-	if err := os.Rename(path, staged); err != nil {
+	var (
+		notes    []Note
+		problems []error
+	)
+	err := withInboxLock(sessionDir, func() error {
+		path := InboxPath(sessionDir)
+		// Move the live inbox aside so a delivery that starts after this point
+		// lands in a fresh file. The lock already orders writers; the rename is
+		// what makes the isolation legible to a reader of the folder.
+		if _, err := os.Stat(path); err == nil {
+			if err := os.Rename(path, path+"."+newID()+".draining"); err != nil {
+				return err
+			}
+		}
+		staged, err := drainFiles(sessionDir)
+		if err != nil {
+			return err
+		}
+		for _, file := range staged {
+			part, readErr := readInbox(file)
+			if readErr != nil {
+				// NEVER DELETE WHAT COULD NOT BE READ WHOLE; the notes are kept for
+				// the next drain and the failure is reported.
+				problems = append(problems, fmt.Errorf("%s: %w", filepath.Base(file), readErr))
+				continue
+			}
+			if err := os.Remove(file); err != nil {
+				problems = append(problems, err)
+			}
+			notes = append(notes, part...)
+		}
+		sort.SliceStable(notes, func(a, b int) bool { return notes[a].At.Before(notes[b].At) })
+		if err := rememberDrained(sessionDir, notes); err != nil {
+			problems = append(problems, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return notes, errors.Join(problems...)
+}
+
+// drainFiles lists the staged .draining files under a session folder, oldest
+// name first, so recovery is deterministic rather than directory-order.
+func drainFiles(sessionDir string) ([]string, error) {
+	entries, err := os.ReadDir(sessionDir)
+	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	defer os.Remove(staged)
-	notes := readInbox(staged)
-	rememberDrained(sessionDir, notes)
-	return notes, nil
+	prefix := filepath.Base(InboxPath(sessionDir)) + "."
+	var out []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".draining") {
+			continue
+		}
+		out = append(out, filepath.Join(sessionDir, name))
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
-// readInbox reads one inbox file, oldest first. A file that is not there, or
-// one line of it that will not parse, is nothing rather than an error: an inbox
-// is news and never a record anybody reconciles, so one unreadable line must
-// not cost the person the rest of them.
-func readInbox(path string) []Note {
+// readInbox reads one inbox file, oldest first. One line that will not parse is
+// skipped rather than costing the person the rest, but a READ FAILURE — an open
+// error, a read error, or a line longer than [inboxMaxLine] — is returned so the
+// caller does not delete a file it could not read whole.
+func readInbox(path string) ([]Note, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer file.Close()
 	var notes []Note
 	seen := make(map[string]bool)
 	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	scanner.Buffer(make([]byte, 0, 64*1024), inboxMaxLine)
 	for scanner.Scan() {
 		raw := scanner.Bytes()
 		if len(raw) == 0 {
@@ -113,11 +239,14 @@ func readInbox(path string) []Note {
 		}
 		notes = append(notes, note)
 	}
+	if err := scanner.Err(); err != nil {
+		return notes, err
+	}
 	// The file is already in the order it was written; the sort only matters
 	// when two writers interleaved, and a stable sort keeps that order for the
 	// notes that share a moment.
 	sort.SliceStable(notes, func(a, b int) bool { return notes[a].At.Before(notes[b].At) })
-	return notes
+	return notes, nil
 }
 
 // inboxSeenKeep bounds the drained-identity record so recognising a replayed
@@ -148,9 +277,9 @@ func alreadyDrained(sessionDir, id string) bool {
 }
 
 // rememberDrained appends the drained notes' identities to the record, bounded
-// by [inboxSeenKeep]. A failure here loses a dedup, never a note, so it is
-// deliberately best effort.
-func rememberDrained(sessionDir string, notes []Note) {
+// by [inboxSeenKeep]. IT REPORTS a write failure rather than swallowing it: a
+// lost dedup is possible, but it is not silent.
+func rememberDrained(sessionDir string, notes []Note) error {
 	ids := make([]string, 0, len(notes))
 	for _, note := range notes {
 		if note.ID != "" {
@@ -158,23 +287,13 @@ func rememberDrained(sessionDir string, notes []Note) {
 		}
 	}
 	if len(ids) == 0 {
-		return
+		return nil
 	}
 	if err := os.MkdirAll(sessionDir, 0o700); err != nil {
-		return
+		return err
 	}
 	path := seenPath(sessionDir)
-	kept := make([]string, 0, inboxSeenKeep)
-	if file, err := os.Open(path); err == nil {
-		scanner := bufio.NewScanner(file)
-		scanner.Buffer(make([]byte, 0, 4096), 1<<20)
-		for scanner.Scan() {
-			if line := strings.TrimSpace(string(scanner.Bytes())); line != "" {
-				kept = append(kept, line)
-			}
-		}
-		file.Close()
-	}
+	kept := readSeenIDs(path)
 	kept = append(kept, ids...)
 	if len(kept) > inboxSeenKeep {
 		kept = kept[len(kept)-inboxSeenKeep:]
@@ -184,7 +303,26 @@ func rememberDrained(sessionDir string, notes []Note) {
 		out.WriteString(id)
 		out.WriteByte('\n')
 	}
-	_ = writeAtomic(path, []byte(out.String()))
+	return writeAtomic(path, []byte(out.String()))
+}
+
+// readSeenIDs reads the drained-identity record, skipping blanks. A missing or
+// unreadable file is an empty record, not an error.
+func readSeenIDs(path string) []string {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	var ids []string
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 4096), 1<<20)
+	for scanner.Scan() {
+		if line := strings.TrimSpace(string(scanner.Bytes())); line != "" {
+			ids = append(ids, line)
+		}
+	}
+	return ids
 }
 
 // ── the project inbox: news for a project, not for one conversation ─────────
@@ -266,5 +404,6 @@ func PeekProjectInbox(root, workspace string) []Note {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(workspace) == "" {
 		return nil
 	}
-	return readInbox(ProjectInboxPath(root, workspace))
+	notes, _ := readInbox(ProjectInboxPath(root, workspace))
+	return notes
 }

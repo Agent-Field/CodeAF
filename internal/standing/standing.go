@@ -84,20 +84,41 @@ import (
 // changes meaning; a reader that meets a newer schema than it knows skips the
 // document and says so in the pass. [SchemaOf] says which version one item is
 // written at.
-const Schema = 2
+//
+// VERSION 3 IS THE DEFERRED-DELIVERY BARRIER. A document that carries a durable
+// [Item.Pending], a task in-flight marker or a [Item.Revision] is written at 3,
+// so a build that predates those fields — codeaf, devaf and stageaf share one
+// home, so that build is an ordinary afternoon and not a downgrade — SKIPS it
+// rather than decoding it without those fields and re-marshalling the loss back.
+// Version 2 alone is not safe: a v2 reader knows [Action.Isolate] but not
+// Pending, and would silently drop an authorized line. Reading 1 and 2 still
+// works; the upgrade to 3 happens on the next write.
+const Schema = 3
 
 // SchemaOf is the version an item is written at: the oldest one whose readers
 // all keep its meaning.
 //
-// AN ITEM THAT ISOLATES ITS WORK IS VERSION 2, AND EVERY OTHER ITEM STAYS AT 1.
-// A build older than [Action.Isolate] decodes the document without that field
-// and would fire the task in the person's own checkout — the commit on their
-// branch the approval card promised would not happen. codeaf, devaf and stageaf
-// share one home, so an older build reading this store is an ordinary
-// afternoon, not a downgrade. Every older build skips a document newer than it
-// reads, so version 2 leaves an isolated order to the builds that can keep it,
-// while an ordinary order stays at 1 and an older build keeps firing it.
+// AN ITEM CARRYING A DURABLE DELIVERY OR A TASK IN-FLIGHT MARKER IS VERSION 3,
+// THE DEFERRED-DELIVERY BARRIER. A build that predates those fields decodes the
+// document without them and would
+//   - drop a [Item.Pending] on its next write, losing an authorized line that
+//     was never acknowledged, or
+//   - run a [ActionTask] whose outcome is unknown, replaying arbitrary edits.
+//
+// Version 2 alone is not safe (a v2 reader knows [Action.Isolate] but not
+// Pending), so any item that carries them is written at 3 and an older build
+// SKIPS it rather than decoding the loss back.
+//
+// EVERY OTHER ITEM KEEPS ITS OLD VERSION. A plain order stays at 1 and an
+// isolated order at 2, so an ordinary reminder an older build created is still
+// read and fired rather than hidden for no reason. [Item.Revision] alone does
+// not force 3: an older writer dropping it is recoverable (its next reader
+// reads the revision that is actually on disk), whereas dropping a pending is
+// not.
 func SchemaOf(it Item) int {
+	if len(it.Pending) > 0 || it.TaskInflight != nil {
+		return Schema
+	}
 	if it.Does.Isolate {
 		return 2
 	}
@@ -463,10 +484,18 @@ type Item struct {
 	// Pending are deliveries this item means to make but has not confirmed. A
 	// delivery record is written BEFORE the line is carried out and cleared only
 	// when the delivery is acknowledged, so a crash between the two leaves the
-	// intent on disk and the next pass re-delivers it under the SAME identity
-	// instead of guessing. It is bounded by [PendingKeep] and empty on almost
-	// every item.
+	// intent on disk and a later pass reconciles it BY IDENTITY instead of
+	// guessing. It is bounded by [PendingKeep] and empty on almost every item.
+	// A later pass settles it at the top of the walk, before any fresh look, so
+	// an advanced prerequisite can never strand it.
 	Pending []Pending `json:"pending,omitempty"`
+	// TaskInflight, when set, is the durable marker of a task attempt that began
+	// but whose outcome is not known: written BEFORE [Runner.Run] and cleared
+	// only on a terminal outcome. A later pass refuses to run the task again
+	// while it is set and reconciles it as [Item.NeedsPerson] rather than
+	// replaying arbitrary edits. It makes NO exactly-once promise about what a
+	// task did; it makes replay STOP.
+	TaskInflight *TaskInflight `json:"taskInflight,omitempty"`
 
 	// The ledger half, kept on the item for the card; the daily ledger is the
 	// truth for the rails.
@@ -808,6 +837,19 @@ func (it *Item) dropPending(id string) {
 	it.Pending = kept
 }
 
+// bumpPending counts one failed attempt to settle a delivery intent, returning
+// the new count. It is how a line that cannot be delivered becomes an explicit
+// [Item.NeedsPerson] instead of retrying forever with nothing to show.
+func (it *Item) bumpPending(id string) int {
+	for i := range it.Pending {
+		if it.Pending[i].ID == id {
+			it.Pending[i].Attempts++
+			return it.Pending[i].Attempts
+		}
+	}
+	return 0
+}
+
 // Glyph is the one character a row leads with, decided here so every surface
 // agrees: ▲ needs you, ● a pass has it in its hands right now — checking it or
 // firing it — ◦ waiting for its time, ∙ paused or retired. Running is the
@@ -974,12 +1016,16 @@ type Note struct {
 // generous for the real case — one line at a time — and finite for the bad one.
 const PendingKeep = 8
 
+// PendingGiveUp is how many passes may fail to settle one delivery intent
+// before the item says so as an explicit [Item.NeedsPerson]. It bounds a retry
+// that cannot succeed so it surfaces to the person instead of retrying forever.
+const PendingGiveUp = 3
+
 // Pending is one delivery the item means to make, written to the item before
-// the line is carried out so that a crash cannot lose it and a restart can
-// reconcile it by identity rather than by guessing. It is the durable half of
-// [ActionSay]; [ActionTask] has no such record and makes no exactly-once
-// promise about the arbitrary edits a task may make (see the integration
-// contract).
+// the line is carried out so that a crash cannot lose it and a later pass can
+// reconcile it by identity. It is the durable half of [ActionSay]. It carries
+// an identity and an attempt count; it makes no exactly-once promise about
+// anything a task may do — [Item.TaskInflight] is what stops arbitrary replay.
 type Pending struct {
 	// ID is the delivery identity, stable across restart, and the thing an
 	// inbox dedups on.
@@ -990,6 +1036,25 @@ type Pending struct {
 	Text string `json:"text,omitempty"`
 	// At is when the intent was written.
 	At time.Time `json:"at"`
+	// Attempts counts how many passes have tried to settle this intent and
+	// failed, so a line that cannot be delivered becomes an explicit
+	// [Item.NeedsPerson] rather than retrying forever in silence.
+	Attempts int `json:"attempts,omitempty"`
+}
+
+// TaskInflight is the durable marker of a task attempt with no known outcome,
+// written before [Runner.Run] and cleared only when the attempt reaches one.
+// It exists so a crash or an error leaves a fact on disk that a later pass can
+// refuse to replay: a task edits the world, and nothing here can make a second
+// run idempotent, so the second run must not happen at all.
+type TaskInflight struct {
+	// RunDir is the run folder the attempt was given, so the person can open it.
+	RunDir string `json:"runDir,omitempty"`
+	// Started is when the attempt began.
+	Started time.Time `json:"started"`
+	// Attempts counts attempts that reached this marker, so a task that keeps
+	// dying can be surfaced rather than retried forever.
+	Attempts int `json:"attempts,omitempty"`
 }
 
 // InboxPath is the inbox inside a session folder.

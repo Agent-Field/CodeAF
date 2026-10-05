@@ -265,6 +265,37 @@ var errConsentChanged = errors.New("standing: the item was changed while it was 
 // from a scan that could not read everything it matched.
 var errBaselineIncomplete = errors.New("standing: the baseline scan could not read everything it matched, so no baseline was set")
 
+// markPendingOrphan records on a non-active item that an authorized delivery is
+// still waiting, so a paused, retired or expired item's unresolved line is
+// visible rather than silently forgotten. It reads the document UNDER THE LOCK
+// and writes it back whole, so a person's concurrent edit is not clobbered, and
+// it never overwrites a question the item already carries.
+func (s *Store) markPendingOrphan(id, note string) error {
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(current.NeedsPerson) == "" {
+			current.NeedsPerson = note
+		}
+		current.Schema = SchemaOf(current)
+		current.Revision++
+		current.Updated = s.now()
+		data, err := marshalItem(current)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
+}
+
 // Get reads one item. A missing id is [ErrNotFound].
 func (s *Store) Get(id string) (Item, error) {
 	if err := checkID(id); err != nil {

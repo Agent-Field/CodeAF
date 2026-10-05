@@ -55,6 +55,10 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 	if err != nil {
 		return pass, err
 	}
+	// SETTLE FIRST. Authorized deliveries that were never acknowledged are done
+	// before any fresh look and before the rails, so a quiet item, an advanced
+	// due moment or a spent daily rail can never strand one.
+	t.settle(ctx, &pass, items)
 	for i := range items {
 		item := &items[i]
 		if ctx.Err() != nil {
@@ -71,7 +75,14 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 		if err := t.one(ctx, &pass, item); err != nil {
 			pass.Errors++
 			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": "+oneLine(err.Error()))
-			t.noteFailure(*item, err)
+			var acct *accountingError
+			if errors.As(err, &acct) {
+				// The firing succeeded; only its accounting failed. Do not
+				// relabel its outcome as a check failure.
+				_ = t.Store.Log(item.ID, "the accounting for this firing could not be written: "+oneLine(acct.Error()))
+			} else {
+				t.noteFailure(*item, err)
+			}
 		}
 	}
 	// THE TIDY GOES LAST AND IS NOT AN ITEM. Everything the person actually
@@ -214,17 +225,38 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 	t.Store.markRunning(item.ID, RunningChecking)
 	defer t.Store.clearRunning(item.ID)
 
+	// AN UNRESOLVED DELIVERY OR TASK ATTEMPT IS NOT A REASON TO FIRE AGAIN.
+	// [Ticker.settle] already tried the delivery at the top of the pass; if it
+	// is still here the last attempt failed, and firing a second line would be a
+	// duplicate intent for the same authorization. A task whose in-flight marker
+	// is up must never run twice, so it is surfaced as needing the person.
+	if len(item.Pending) > 0 {
+		pass.Skipped++
+		return nil
+	}
+	if item.TaskInflight != nil {
+		if item.NeedsPerson == "" {
+			item.NeedsPerson = oneLine("a task is waiting for you before it can run again")
+			if err := t.Store.saveActive(item); err != nil && !errors.Is(err, errConsentChanged) {
+				return err
+			}
+		}
+		pass.Skipped++
+		return nil
+	}
+
 	found, err := t.look(ctx, item, now)
 	if err != nil {
 		return err
 	}
 
-	// A PROBE MAY HAVE TAKEN MINUTES, AND THE PERSON MAY HAVE ACTED IN THEM.
-	// The item this pass has been working on was read at the top of the walk;
-	// anything paused, stopped or edited since then is the newer truth, and a
-	// firing must not be delivered past it. The revision is the guard, not the
-	// status: a pause and a resume both leave the status active. The write below
-	// is guarded again ([Store.saveActive]); this is what stops the delivery.
+	// CONSENT IS CHECKED BEFORE THE DELIVERY BEGINS. A probe may have taken
+	// minutes and the person may have acted in them; the item read at the top of
+	// the walk is stale, and a firing must not begin past their newer act. The
+	// revision is the guard, not the status: a pause and a resume both leave the
+	// status active. The save below is guarded again ([Store.saveActive]), and a
+	// pause that lands DURING the delivery is not claimed as a cancelled one — it
+	// only refuses to record the result.
 	if current, err := t.Store.Get(item.ID); err != nil || current.Status != StatusActive || current.Revision != item.Revision {
 		return nil
 	}
@@ -480,17 +512,20 @@ func (t *Ticker) quiet(item Item, now time.Time, line string) error {
 
 // fire is the firing and everything it leaves behind.
 //
-// THE DELIVERY HAS TWO HALVES AND THE ORDER IS THE CONTRACT. For [ActionSay] the
-// intent — a [Pending] record with an identity — is written to the item BEFORE
-// the line is carried out, and cleared only when the delivery is acknowledged.
-// A crash between the two leaves the intent on disk, so the next pass or a
-// restart settles it BY IDENTITY instead of guessing. When the Runner can
-// dedup on that identity ([Deliverer]) the delivery is exactly-once; when it
-// cannot, the fallback [Runner.Say] is at-least-once and says so.
+// THE ORDER IS THE CONTRACT. For [ActionSay] the intent — a [Pending] record
+// with an identity — is written to the item BEFORE the line is carried out, and
+// cleared only when the delivery is acknowledged. A crash between the two leaves
+// the intent on disk, and a later pass settles it BY IDENTITY ([Ticker.settle])
+// whatever the item's prerequisite now says. The identity is what an inbox
+// dedups on: a retry is at-least-once against a Runner with no [Deliverer] and
+// deduped by identity against one that has it. This package makes NO exactly-
+// once promise about anything; it makes the retry carry the same identity and
+// never mint a second intent for the same firing.
 //
-// [ActionTask] HAS NO SUCH RECORD AND PROMISES NOTHING. A task makes arbitrary
-// edits in the world, and no identity this package can mint makes replaying one
-// safe; a task that fails part-way is left for the person, never replayed blind.
+// A TASK IS THE OPPOSITE. It edits the world and no identity makes a second run
+// safe, so a durable in-flight marker goes down BEFORE [Runner.Run], and a task
+// whose marker is still up is never run again — it is reconciled as
+// [Item.NeedsPerson], not replayed.
 func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time, found sighting) error {
 	if t.Runner == nil {
 		return errors.New("there is nothing in this build to run it with")
@@ -521,7 +556,7 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 		}
 		// THE INTENT IS ON DISK BEFORE THE LINE IS CARRIED OUT. If this write
 		// fails, nothing is delivered: an external notification must never
-		// precede the durable state that lets a restart reconcile it.
+		// precede the durable state that lets a later pass reconcile it.
 		if err := t.Store.saveActive(item); err != nil {
 			item.dropPending(pending.ID)
 			if errors.Is(err, errConsentChanged) {
@@ -529,15 +564,16 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 			}
 			return fmt.Errorf("could not record the delivery before making it: %w", err)
 		}
-		if deliverer, ok := t.Runner.(Deliverer); ok {
-			outcome, err = deliverer.Deliver(ctx, *item, pending)
-		} else {
-			outcome, err = t.Runner.Say(ctx, *item, text)
-		}
+		outcome, err = t.deliver(ctx, *item, pending)
 		if err != nil {
-			// The line may or may not have landed. The intent STAYS on the item
-			// so the next pass, or a restart, settles it by identity rather than
-			// guessing, and the error is propagated so it is counted.
+			// The line may or may not have landed. The intent STAYS, with a
+			// counted attempt, so a later pass settles it by identity rather
+			// than guessing; the error propagates so the pass counts it.
+			item.bumpPending(pending.ID)
+			if pendingAttempts(item, pending.ID) >= PendingGiveUp {
+				item.NeedsPerson = oneLine("a line could not be delivered and is still waiting")
+			}
+			_ = t.Store.saveActive(item)
 			return err
 		}
 		item.dropPending(pending.ID)
@@ -546,19 +582,40 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 		if err != nil {
 			return err
 		}
+		// THE MARKER GOES DOWN BEFORE THE TASK RUNS. A crash after this line, or
+		// an error below, leaves it on disk and a later pass refuses to replay.
+		attempts := 1
+		if item.TaskInflight != nil {
+			attempts = item.TaskInflight.Attempts + 1
+		}
+		item.TaskInflight = &TaskInflight{RunDir: runDir, Started: now, Attempts: attempts}
+		if err := t.Store.saveActive(item); err != nil {
+			item.TaskInflight = nil
+			if errors.Is(err, errConsentChanged) {
+				return nil
+			}
+			return fmt.Errorf("could not record the task before starting it: %w", err)
+		}
 		outcome, err = t.Runner.Run(ctx, *item, runDir, found.evidence)
 	default:
 		return errors.New("standing: an unknown kind of action: " + string(item.Does.Kind))
 	}
 	if err != nil {
 		if item.Does.Kind == ActionTask {
-			// A TASK THAT FAILED MID-WAY MAY ALREADY HAVE MADE EXTERNAL EDITS,
-			// and this package makes NO exactly-once promise about them. It is
-			// left for the person rather than replayed blind on the next pass.
-			item.NeedsPerson = oneLine("a task could not be finished: " + err.Error())
-			_ = t.Store.saveActive(item)
+			// A TASK FAILED WITH ITS IN-FLIGHT MARKER STILL UP. It may already
+			// have made external edits, and nothing here can make a second run
+			// idempotent, so it is left FOR THE PERSON: the marker stays and
+			// [Ticker.one] refuses to run the task again while it is there. No
+			// exactly-once promise is made about what the task did.
+			item.NeedsPerson = oneLine("a task could not be finished and is waiting for you: " + err.Error())
+			if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
+				return errors.Join(err, saveErr)
+			}
 		}
 		return err
+	}
+	if item.Does.Kind == ActionTask {
+		item.TaskInflight = nil // the attempt reached an outcome
 	}
 
 	item.Runs++
@@ -616,7 +673,128 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	if saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
 		return errors.Join(ledgerErr, logErr, saveErr)
 	}
-	return errors.Join(ledgerErr, logErr)
+	// THE DELIVERY SUCCEEDED. A ledger or log failure is ACCOUNTING, not the
+	// check, and must not be relabelled as one: [Tick] counts it and says so
+	// without overwriting the outcome the firing just recorded.
+	if ledgerErr != nil || logErr != nil {
+		return &accountingError{err: errors.Join(ledgerErr, logErr)}
+	}
+	return nil
+}
+
+// accountingError says a firing succeeded but its ledger or log line could not
+// be written. [Tick] counts it and logs it, but does NOT replace the item's
+// outcome with a check failure the way [Ticker.noteFailure] would — the delivery
+// happened, and saying "could not check" about it would be a lie.
+type accountingError struct{ err error }
+
+func (e *accountingError) Error() string { return e.err.Error() }
+func (e *accountingError) Unwrap() error { return e.err }
+
+// deliver carries out one pending line, by identity when the Runner can dedup
+// ([Deliverer]) and through the legacy [Runner.Say] otherwise.
+func (t *Ticker) deliver(ctx context.Context, item Item, pending Pending) (Outcome, error) {
+	if deliverer, ok := t.Runner.(Deliverer); ok {
+		return deliverer.Deliver(ctx, item, pending)
+	}
+	return t.Runner.Say(ctx, item, pending.Text)
+}
+
+// pendingAttempts is how many passes have failed to settle one delivery intent.
+func pendingAttempts(item *Item, id string) int {
+	for i := range item.Pending {
+		if item.Pending[i].ID == id {
+			return item.Pending[i].Attempts
+		}
+	}
+	return 0
+}
+
+// settle resolves durable delivery intents INDEPENDENTLY of any fresh look, at
+// the top of a pass and before the rails. A pending line is authorized work: it
+// is delivered by identity even if the item's file stopped changing, its
+// NextDue moved on, or its daily rail is spent. The SAME identity is reused, so
+// a retry mints no new intent, runs nothing new and adds no second ledger
+// charge for the same authorization.
+//
+// An item that is no longer active (paused, retired or expired) cannot be
+// settled through its own walk — [Ticker.Tick] skips it — so its unresolved
+// line is surfaced as [Item.NeedsPerson] instead of being silently forgotten.
+func (t *Ticker) settle(ctx context.Context, pass *Pass, items []Item) {
+	if t.Runner == nil {
+		return
+	}
+	for i := range items {
+		item := &items[i]
+		if len(item.Pending) == 0 {
+			continue
+		}
+		if item.Status != StatusActive {
+			if err := t.Store.markPendingOrphan(item.ID, "an authorized line is still waiting and this item is no longer running"); err != nil {
+				pass.Errors++
+				pass.Notes = append(pass.Notes, "could not mark a waiting line: "+oneLine(err.Error()))
+			} else {
+				pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": an authorized line is still waiting")
+			}
+			continue
+		}
+		t.settleItem(ctx, pass, item)
+	}
+}
+
+// settleItem carries out the pending lines of one active item, completing the
+// firing bookkeeping the original attempt never reached, and settling each under
+// its own stable identity.
+func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
+	if _, err := t.Store.Get(item.ID); err != nil {
+		return // gone or unreadable; nothing can be settled safely
+	}
+	for len(item.Pending) > 0 {
+		pending := item.Pending[0]
+		outcome, err := t.deliver(ctx, *item, pending)
+		if err != nil {
+			item.bumpPending(pending.ID)
+			if pendingAttempts(item, pending.ID) >= PendingGiveUp {
+				item.NeedsPerson = oneLine("a line could not be delivered and is still waiting")
+			}
+			if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
+				pass.Errors++
+				pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": a waiting line could not be recorded: "+oneLine(saveErr.Error()))
+				return
+			}
+			pass.Errors++
+			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": a waiting line could not be delivered")
+			return
+		}
+		// SETTLED: this is the tail of a firing that never got to record itself.
+		item.dropPending(pending.ID)
+		item.Runs++
+		item.LastFired = t.clock()
+		item.LastChecked = item.LastFired
+		item.LastCheckLine = oneLine("delivered a line that was waiting")
+		item.LastOutcome = outcome.Kind
+		item.SpentUSD += outcome.USD
+		item.Previous = remember(item.Previous, pending.Text, outcome)
+		if item.When.Kind == WhenAt {
+			item.Status = StatusRetired
+			item.RetiredWhy = "fired"
+		}
+		ledgerErr := t.Store.Append(Entry{At: item.LastFired, ItemID: item.ID, Kind: string(pending.Kind), USD: outcome.USD})
+		logErr := t.Store.Log(item.ID, "delivered a line that was waiting")
+		if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
+			pass.Errors++
+			pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": a delivered line could not be recorded: "+oneLine(saveErr.Error()))
+			return
+		}
+		pass.Fired++
+		if pending.Kind == ActionSay {
+			pass.Said++
+		}
+		if ledgerErr != nil || logErr != nil {
+			pass.Errors++
+			pass.Notes = append(pass.Notes, "the accounting for a waiting line could not be written: "+oneLine(errors.Join(ledgerErr, logErr).Error()))
+		}
+	}
 }
 
 // writeCameTo leaves [CameTo] in the run folder: one word saying what this run
@@ -726,15 +904,9 @@ func fingerprint(workspace, glob string) (string, string, bool, error) {
 	if !filepath.IsAbs(pattern) {
 		pattern = filepath.Join(workspace, pattern)
 	}
-	matches, err := filepath.Glob(pattern)
+	matches, truncated, err := boundedGlob(pattern, fingerprintMaxFiles)
 	if err != nil {
 		return "", "", false, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
-	}
-	sort.Strings(matches)
-	truncated := false
-	if len(matches) > fingerprintMaxFiles {
-		matches = matches[:fingerprintMaxFiles]
-		truncated = true
 	}
 	sum := sha256.New()
 	listing := &strings.Builder{}
@@ -747,8 +919,10 @@ func fingerprint(workspace, glob string) (string, string, bool, error) {
 		}
 		info, err := os.Lstat(match)
 		if err != nil {
-			// A file that vanished between the glob and the stat is a change
-			// like any other; the next reading will not have it either.
+			// It was listed and then was not there: an UNSTABLE listing is
+			// unknown, not "unchanged". Marking it truncated stops the reading
+			// from certifying anything about a moment it could not trust.
+			truncated = true
 			continue
 		}
 		name := match
@@ -784,6 +958,11 @@ func fingerprint(workspace, glob string) (string, string, bool, error) {
 			if readErr != nil || fileTruncated {
 				truncated = true
 			}
+			// The bytes we read disagree with the size we stat'd: the file moved
+			// under the scan. That instability is unknown, never "unchanged".
+			if readErr == nil && !fileTruncated && info.Size() <= limit && read != info.Size() {
+				truncated = true
+			}
 		case "symlink":
 			if target, err := os.Readlink(match); err == nil {
 				if budget > 0 {
@@ -803,6 +982,67 @@ func fingerprint(workspace, glob string) (string, string, bool, error) {
 		hexdigest = "t" + hexdigest
 	}
 	return hexdigest, listing.String(), truncated, nil
+}
+
+// globMaxEntries bounds how many directory entries one meta segment may list,
+// so a directory with a million names cannot make the scan read them all just to
+// find the four the pattern matches.
+const globMaxEntries = 100000
+
+// boundedGlob expands a simple glob pattern while LISTING BOUNDED and COLLECTING
+// BOUNDED: filepath.Glob materialises and sorts every match before any cap is
+// applied, which is the very allocation the caps exist to prevent. A pattern
+// whose directory has no metacharacter (the ordinary "*.sql", "docs/*.md") is
+// expanded by reading its directory once, up to [globMaxEntries] entries, and
+// matching each name; the collection stops at max and reports truncation. A
+// directory that itself contains a metacharacter is rare here and falls back to
+// filepath.Glob, whose result is then capped — a documented residual on the
+// path the standing globs do not take.
+func boundedGlob(pattern string, max int) (matches []string, truncated bool, err error) {
+	dir, file := filepath.Split(pattern)
+	if dir == "" {
+		dir = "."
+	}
+	if strings.ContainsAny(dir, "*?[") {
+		all, gerr := filepath.Glob(pattern)
+		if gerr != nil {
+			return nil, false, gerr
+		}
+		sort.Strings(all)
+		if len(all) > max {
+			return all[:max], true, nil
+		}
+		return all, false, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	scanned := 0
+	for _, entry := range entries {
+		scanned++
+		if scanned > globMaxEntries {
+			truncated = true
+			break
+		}
+		ok, merr := filepath.Match(file, entry.Name())
+		if merr != nil {
+			return nil, false, merr
+		}
+		if !ok {
+			continue
+		}
+		matches = append(matches, filepath.Join(dir, entry.Name()))
+		if len(matches) >= max {
+			truncated = true
+			break
+		}
+	}
+	sort.Strings(matches)
+	return matches, truncated, nil
 }
 
 // hashFile writes up to limit bytes of path into dst and answers how many it
