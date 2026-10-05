@@ -92,6 +92,17 @@ func (w *watch) session(label string, result backing.SessionResult, err error) {
 		outcome = "stopped: " + firstSentence(err.Error())
 	case result.Failed != "":
 		outcome = "no answer: " + firstSentence(result.Failed)
+	default:
+		// WHAT IT FOUND, NOT ONLY THAT IT ANSWERED: a scan says how many
+		// places it will look at, and an enrichment the finding it made of
+		// one, so the hunt reads as what the hunters turned up.
+		found, title := sessionFound(result.JSON)
+		if found != "" {
+			outcome = found
+		}
+		if title != "" {
+			label += " · " + title
+		}
 	}
 	// THE RECORD SAYS IT AS EVERY SURFACE DOES: a shell run prints the
 	// record's words as they are, so the agent's name is put in a person's
@@ -138,15 +149,38 @@ func (w *watch) note(message string, tags []string) {
 		}
 	}
 	// AN AGENT'S START IS ITS SESSION'S LINE ALREADY, so its "starting" note
-	// is left off; a hunter's is kept, because it names the kind of problem
-	// the hunt has turned to.
-	if strings.HasSuffix(message, " starting") && !strings.Contains(message, "hunter") {
+	// is left off — a hunter's too, now that its scan's line names it.
+	if strings.HasSuffix(message, " starting") {
 		return
 	}
 	if message = rewriteNote(message); message == "" {
 		return
 	}
 	w.host.Step(delegate.StepRecord{Tool: toolNote, Step: w.current(), Command: plainWords(message)})
+}
+
+// sessionFound is what a session's answer says it found, as an outcome word
+// and a title: a scan's locations (`2 locations`, `nothing`), or an
+// enrichment's finding (`high`, and its title). Any other answer says neither.
+func sessionFound(answer json.RawMessage) (outcome, title string) {
+	var shape struct {
+		Locations *[]json.RawMessage `json:"locations"`
+		Title     string             `json:"title"`
+		Severity  string             `json:"severity"`
+	}
+	if len(answer) == 0 || json.Unmarshal(answer, &shape) != nil {
+		return "", ""
+	}
+	switch {
+	case shape.Locations != nil:
+		if n := len(*shape.Locations); n > 0 {
+			return fmt.Sprintf("%d location%s", n, plural(n)), ""
+		}
+		return "nothing", ""
+	case shape.Title != "" && shape.Severity != "":
+		return strings.ToLower(shape.Severity), oneLine(shape.Title)
+	}
+	return "", ""
 }
 
 // machineryWords are sec-af's words for what its provers decide, and the
@@ -262,7 +296,7 @@ func presentStep(action delegate.Action) (delegate.Shown, bool) {
 	case toolSession:
 		outcome, _, _ := strings.Cut(action.Observation, " · ")
 		outcome, _, _ = strings.Cut(outcome, ":")
-		return delegate.Shown{Step: step, Text: strings.ToLower(plainWords(action.Command)), Outcome: outcome,
+		return delegate.Shown{Step: step, Text: plainWords(action.Command), Outcome: outcome,
 			Detail: action.Observation}, true
 	case toolNote:
 		return delegate.Shown{Step: step, Text: plainWords(action.Command)}, strings.TrimSpace(action.Command) != ""

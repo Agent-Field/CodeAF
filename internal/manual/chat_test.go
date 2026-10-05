@@ -1065,6 +1065,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"will the security audit change or commit my files", "sec"},
 		{"how much does a security audit cost", "sec"},
 		{"fix the vulnerabilities the security audit found", "sec"},
+		{"why does the sec task page show the same hunter lines over and over", "sec"},
 		// senior-dev, the program codeaf carries, asked the ways somebody meets
 		// it: what the command does, whether it will stop to ask, where its
 		// commits went, what it cost, its flags, and why a Windows build has none.

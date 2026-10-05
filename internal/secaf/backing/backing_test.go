@@ -398,3 +398,20 @@ func TestEveryToolSchemaIsStrictlyValid(t *testing.T) {
 		}
 	}
 }
+
+// A label already in words keeps them; an identifier is split into words; an
+// ordinary opening capital is lowered and an acronym kept.
+func TestSessionLabelsReadAsAPersonWouldSayThem(t *testing.T) {
+	for _, tc := range []struct{ label, cwd, want string }{
+		{"DataFlowTracer", "", "data flow tracer"},
+		{"Data flow mapper", "", "data flow mapper"},
+		{"DoS hunter · scan", "", "DoS hunter · scan"},
+		{"auth hunter · src/UserView.py:12", "", "auth hunter · src/UserView.py:12"},
+		{"", "/tmp/secaf-remediation-123", "remediation"},
+		{"", "/repo", "agent"},
+	} {
+		if got := sessionLabel(tc.label, tc.cwd); got != tc.want {
+			t.Errorf("%q (%q) reads %q, want %q", tc.label, tc.cwd, got, tc.want)
+		}
+	}
+}

@@ -265,12 +265,26 @@ func TestAnAuditRunsTheWholePipelineAndChangesNothing(t *testing.T) {
 		}
 	}
 	sessions := map[string]bool{}
+	observed := map[string]string{}
 	for _, step := range host.steps {
 		if step.Tool == toolSession {
 			sessions[step.Command] = true
+			observed[step.Command] = step.Observation
 		}
 	}
-	for _, want := range []string{"architecture mapper", "hunt location scanner", "hunt finding enricher", "deciding agent", "dependency checker"} {
+	// EACH HUNTER'S SESSIONS SAY WHICH HUNTER AND WHAT IT FOUND: the scan how
+	// many places it found, the enrichment the finding it made of one.
+	if got := observed["injection hunter · scan"]; !strings.HasPrefix(got, "1 location · ") {
+		t.Errorf("the injection hunter's scan says %q", got)
+	}
+	if got := observed["injection hunter · app/views.py:4 · x"]; !strings.HasPrefix(got, "x · ") {
+		t.Errorf("the injection hunter's enrichment says %q", got)
+	}
+	sarif, _ := os.ReadFile(filepath.Join(host.records, reportSARIF))
+	if !strings.Contains(string(sarif), `"name": "sec"`) || strings.Contains(string(sarif), "SEC-AF") || strings.Contains(string(sarif), "sec-af/") {
+		t.Errorf("the SARIF does not name sec as its tool:\n%.600s", sarif)
+	}
+	for _, want := range []string{"architecture mapper", "injection hunter · scan", "deciding agent", "dependency checker"} {
 		if !sessions[want] {
 			t.Errorf("no %s session was recorded; sessions were %v", want, keys(sessions))
 		}

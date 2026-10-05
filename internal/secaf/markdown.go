@@ -1,6 +1,6 @@
 package secaf
 
-// sec's readable report, `security-audit.md`, in the words the conversation's
+// sec's readable report, `sec-report.md`, in the words the conversation's
 // account uses.
 //
 // sec-af wrote its own (internal/secaf/output's GenerateReport, kept byte for

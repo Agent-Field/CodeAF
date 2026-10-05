@@ -43,7 +43,11 @@ Its phases keep sec-af's own names, on the rail, as the headings of its task's p
 4. **Remediate** (`remediate`): the remediation agent writes a suggested fix, with a patch, for each confirmed or likely finding.
 5. **Report** (`report`).
 
-Up to eight agent sessions run at once, each reading the code with up to fifty turns of its own. A standard audit runs a hundred or more of them, which is why it takes minutes to an hour. The task's page shows one line per agent session — which agent, in which phase, how it came out — plus the hunters as each starts and sec-af's own note as each phase starts and ends; `ctrl+y` shows the raw model calls.
+Up to eight agent sessions run at once, each reading the code with up to fifty turns of its own. A standard audit runs a hundred or more of them, which is why it takes minutes to an hour.
+
+## What sec's task page shows — each agent's line, which hunter, where it looked, what it found, the same lines repeated
+
+The task's page shows one line per agent session — which agent, in which phase, and what it found — plus sec-af's own note as each phase starts and ends; `ctrl+y` shows the raw model calls. Under `hunt`, each hunter's scan says how many places it will look at (`injection hunter · scan` · `2 locations`, or `nothing`), and each of those places gets a line of its own with the finding it made and its severity (`injection hunter · app/views.py:4 · Command injection via os.popen` · `critical`).
 
 ## What sec reports and where the full report is — confirmed, likely, unclear, ruled out, SARIF, JSON, Markdown
 
@@ -51,11 +55,11 @@ When it finishes, the chat is handed a short account and tells you what it found
 
 The full report is three files in the task's record folder, named at the end of the account:
 
-- `security-audit.md` — the readable report, in the same words as the account: confirmed and likely problems in full (where, the weakness, why, how the data gets there, the attack, the fix and its patch), then the unclear ones, what was ruled out, attack chains and how the run went
-- `security-audit.json` — every finding in full, as data
-- `security-audit.sarif` — SARIF 2.1.0, which code-scanning tools and editors read
+- `sec-report.md` — the readable report, in the same words as the account: confirmed and likely problems in full (where, the weakness, why, how the data gets there, the attack, the fix and its patch), then the unclear ones, what was ruled out, attack chains and how the run went
+- `sec-report.json` — every finding in full, as data
+- `sec-report.sarif` — SARIF 2.1.0, which code-scanning tools and editors read; it names its tool `sec`, with codeaf's build
 
-`--compliance owasp,pci-dss` (at a shell) maps the findings to compliance frameworks — OWASP, PCI-DSS, SOC2, HIPAA, ISO27001 — and adds `security-audit-compliance.md`. A shell run's record folder is under `~/.codeaf/v3/carried/sec/`, one folder per run.
+`--compliance owasp,pci-dss` (at a shell) maps the findings to compliance frameworks — OWASP, PCI-DSS, SOC2, HIPAA, ISO27001 — and adds `sec-compliance.md`. A shell run's record folder is under `~/.codeaf/v3/carried/sec/`, one folder per run.
 
 ## Does sec change my files — read only, no shell, will it edit or commit anything
 

@@ -244,7 +244,19 @@ var camelBoundary = regexp.MustCompile(`([a-z])([A-Z])`)
 // `hunt scan`), else `agent`.
 func sessionLabel(label, cwd string) string {
 	if label = strings.TrimSpace(label); label != "" {
-		return strings.ToLower(camelBoundary.ReplaceAllString(label, "$1 $2"))
+		// AN IDENTIFIER IS SPLIT INTO WORDS; A LABEL ALREADY IN WORDS KEEPS
+		// THEM, only its first letter lowered, because it may carry a path
+		// whose case is the file's own (`auth hunter · src/UserView.py:12`).
+		if !strings.Contains(label, " ") {
+			return strings.ToLower(camelBoundary.ReplaceAllString(label, "$1 $2"))
+		}
+		// Only a capital that opens an ordinary word is lowered: `Data flow
+		// mapper` is `data flow mapper`, and `DoS hunter` stays as it is.
+		first, _, _ := strings.Cut(label, " ")
+		if len(first) > 1 && first[0] >= 'A' && first[0] <= 'Z' && strings.ToLower(first[1:]) == first[1:] {
+			return strings.ToLower(label[:1]) + label[1:]
+		}
+		return label
 	}
 	name, scratch := strings.CutPrefix(filepath.Base(strings.TrimSpace(cwd)), "secaf-")
 	if !scratch {

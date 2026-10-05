@@ -100,6 +100,32 @@ func ScanPrompt(hunterPrompt string) string {
 // writes its JSON output outside it; `shutil.rmtree(..., ignore_errors=True)`
 // maps to a deferred os.RemoveAll whose error is deliberately dropped.
 func ScanLocations(ctx context.Context, app appx.Harnesser, prompt, repoPath string) ([]schemas.VulnLocation, error) {
+	return scanLocationsFor(ctx, app, prompt, repoPath, "")
+}
+
+// hunterLabel is the session label a hunter's own sessions carry on the
+// audit's page: `injection hunter · scan`, `auth hunter · app/views.py:4`.
+// Every hunter's scan was `Hunt location scanner` and every enrichment `Hunt
+// finding enricher`, so a hunt of eleven strategies read as the same two lines
+// over and over, saying neither which hunter nor where.
+func hunterLabel(strategy, what string) string {
+	strategy = strings.TrimSpace(strategy)
+	if strategy == "" {
+		return ""
+	}
+	name, known := hunterNames[strategy]
+	if !known {
+		name = strings.ReplaceAll(strategy, "_", " ")
+	}
+	return name + " hunter · " + what
+}
+
+// hunterNames is the strategies whose name is not its id with spaces: the
+// ones written in capitals wherever a person meets them.
+var hunterNames = map[string]string{"dos": "DoS", "ssrf": "SSRF", "xss": "XSS", "api_security": "API security"}
+
+// scanLocationsFor is ScanLocations for one hunter, its session named for it.
+func scanLocationsFor(ctx context.Context, app appx.Harnesser, prompt, repoPath, strategy string) ([]schemas.VulnLocation, error) {
 	scanPrompt := ScanPrompt(prompt)
 	// AN AUDIT OF THE CHANGES TELLS THE SCAN WHAT CHANGED (internal/secaf/focus).
 	// sec-af's own PR mode only filtered the findings after a whole-repository
@@ -118,7 +144,7 @@ func ScanLocations(ctx context.Context, app appx.Harnesser, prompt, repoPath str
 
 	parsed, err := harnessx.RunExtract[schemas.ScanLocationsResult](
 		ctx, app, scanPrompt,
-		appx.HarnessOptions{Cwd: harnessCwd, ProjectDir: repoPath},
+		appx.HarnessOptions{Cwd: harnessCwd, ProjectDir: repoPath, Label: hunterLabel(strategy, "scan")},
 		scanExtractName,
 	)
 	if err != nil {
@@ -171,7 +197,8 @@ func EnrichLocation(
 
 	return harnessx.RunExtract[schemas.EnrichedFinding](
 		ctx, app, enrichPrompt,
-		appx.HarnessOptions{Cwd: harnessCwd, ProjectDir: repoPath},
+		appx.HarnessOptions{Cwd: harnessCwd, ProjectDir: repoPath,
+			Label: hunterLabel(strategy, location.FilePath+":"+strconv.Itoa(location.StartLine))},
 		enrichExtractName,
 	)
 }
@@ -353,7 +380,7 @@ func runHunterBody(
 	repoPath string,
 	spec hunterSpec,
 ) (schemas.HuntResult, error) {
-	locations, err := ScanLocations(ctx, app, spec.ScanPrompt, repoPath)
+	locations, err := scanLocationsFor(ctx, app, spec.ScanPrompt, repoPath, spec.Strategy)
 	if err != nil {
 		return schemas.HuntResult{}, err
 	}

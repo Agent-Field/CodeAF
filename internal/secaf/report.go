@@ -14,20 +14,37 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/secaf/output"
 	"github.com/Agent-Field/codeaf/internal/secaf/schemas"
 )
 
-// Report file names in the record folder.
+// Report file names in the record folder: the program's own name on each, as
+// it is on every surface.
 const (
-	reportJSON     = "security-audit.json"
-	reportMarkdown = "security-audit.md"
-	reportSARIF    = "security-audit.sarif"
+	reportJSON     = "sec-report.json"
+	reportMarkdown = "sec-report.md"
+	reportSARIF    = "sec-report.sarif"
 	// reportCompliance is written only when the audit was asked to map its
 	// findings to compliance frameworks.
-	reportCompliance = "security-audit-compliance.md"
+	reportCompliance = "sec-compliance.md"
 )
+
+// sarifTool is who sec's SARIF says produced it. A code-scanning tool shows
+// the driver's name beside every result, and the program a person ran is sec,
+// so the log names it, its build and its home rather than sec-af's.
+func sarifTool() output.SarifTool {
+	return output.SarifTool{Name: Name, Version: buildinfo.Revision(),
+		InformationURI: "https://github.com/Agent-Field/CodeAF", PropertyPrefix: Name}
+}
+
+// complianceBrand is how sec signs its compliance report.
+var complianceBrand = output.ComplianceBrand{
+	Heading:   "# sec — compliance report",
+	Signature: "*Written by sec, the security audit codeaf carries.*",
+}
 
 // reportFiles writes the full report into folder and answers the paths it
 // wrote, in a fixed order. A folder of "" writes nothing.
@@ -38,6 +55,16 @@ func reportFiles(folder string, result schemas.SecurityAuditResult, compliance b
 	if err := os.MkdirAll(folder, 0o700); err != nil {
 		return nil, err
 	}
+	// THE FILES SAY WHAT THIS RUN MEASURED. sec-af's own result carries a
+	// cost and an agent count it never filled — $0.00 and the calls between
+	// its own parts — and a provider word ("harness") that is not true here.
+	// The run's own figures go in their place, and the SARIF is written again
+	// under sec's name.
+	result.CostUsd = run.spent
+	result.AgentInvocations = run.sessions + run.calls
+	result.Provider = "codeaf"
+	result.Findings = output.RuleIDsAs(result.Findings, sarifTool())
+	result.Sarif = output.GenerateSarifAs(result, sarifTool())
 	files := []struct {
 		name string
 		body []byte
@@ -50,7 +77,7 @@ func reportFiles(folder string, result schemas.SecurityAuditResult, compliance b
 		files = append(files, struct {
 			name string
 			body []byte
-		}{reportCompliance, []byte(output.GenerateComplianceReport(result))})
+		}{reportCompliance, []byte(output.GenerateComplianceReportAs(result, time.Now().UTC(), complianceBrand))})
 	}
 	var written []string
 	for _, file := range files {

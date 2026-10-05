@@ -57,6 +57,12 @@ var precisionRank = map[string]int{"very-high": 4, "high": 3, "medium": 2, "low"
 // The key order below is the Python dict literal's order and is part of the
 // artifact (see pyjson_local.go).
 func GenerateSarif(result schemas.SecurityAuditResult) string {
+	return GenerateSarifAs(result, SecAfTool)
+}
+
+// GenerateSarifAs is [GenerateSarif] for another tool's identity.
+func GenerateSarifAs(result schemas.SecurityAuditResult, tool SarifTool) string {
+	result.Findings = RuleIDsAs(result.Findings, tool)
 	included := make([]schemas.VerifiedFinding, 0, len(result.Findings))
 	for _, finding := range result.Findings {
 		if string(finding.Verdict) != "not_exploitable" {
@@ -66,7 +72,7 @@ func GenerateSarif(result schemas.SecurityAuditResult) string {
 
 	results := make([]any, 0, len(included))
 	for _, finding := range included {
-		results = append(results, buildResult(finding))
+		results = append(results, buildResult(finding, tool.PropertyPrefix))
 	}
 
 	sarif := obj{
@@ -74,16 +80,54 @@ func GenerateSarif(result schemas.SecurityAuditResult) string {
 		{"version", "2.1.0"},
 		{"runs", []any{
 			obj{
-				{"tool", buildToolSection(included)},
+				{"tool", buildToolSection(included, tool)},
 				{"results", results},
 				{"automationDetails", obj{
-					{"id", fmt.Sprintf("sec-af/audit/%s/%s", result.Repository, result.Timestamp.String())},
+					{"id", fmt.Sprintf("%s/audit/%s/%s", tool.PropertyPrefix, result.Repository, result.Timestamp.String())},
 				}},
 			},
 		}},
 	}
 	return dumpsIndent(sarif, 2)
 }
+
+// SarifTool is who a SARIF log says produced it: the driver's name, its
+// version, where to read about it, and the prefix its own properties carry.
+// sec-af's is [SecAfTool], which the goldens hold byte for byte; codeaf's
+// program names itself (internal/secaf's sec), because a code-scanning tool
+// shows the driver's name beside every result, and the program a person ran
+// is sec.
+type SarifTool struct {
+	Name string
+	// SemanticVersion is a semver and Version anything else; an empty one
+	// is left out of the log.
+	SemanticVersion, Version string
+	InformationURI           string
+	// PropertyPrefix leads the driver's own result properties
+	// (`<prefix>/verdict`) and its automation id.
+	PropertyPrefix string
+}
+
+// RuleIDsAs is findings with their SARIF rule ids under tool's prefix in
+// place of sec-af's (`sec-af/sast/cwe-78` is `sec/sast/cwe-78`), so a log
+// names one tool throughout. sec-af's own identity leaves them as they are;
+// the slice is a copy, and the findings handed in are not changed.
+func RuleIDsAs(findings []schemas.VerifiedFinding, tool SarifTool) []schemas.VerifiedFinding {
+	if tool.PropertyPrefix == "" || tool.PropertyPrefix == SecAfTool.PropertyPrefix {
+		return findings
+	}
+	out := append([]schemas.VerifiedFinding(nil), findings...)
+	for i := range out {
+		if rest, ok := strings.CutPrefix(out[i].SarifRuleID, SecAfTool.PropertyPrefix+"/"); ok {
+			out[i].SarifRuleID = tool.PropertyPrefix + "/" + rest
+		}
+	}
+	return out
+}
+
+// SecAfTool is sec-af's own identity, as its Python original wrote it.
+var SecAfTool = SarifTool{Name: "SEC-AF", SemanticVersion: pythonPackageVersion,
+	InformationURI: "https://github.com/Agent-Field/sec-af", PropertyPrefix: "sec-af"}
 
 // RenderSarif ports render_sarif, the alias generate_sarif is exported under.
 func RenderSarif(auditResult schemas.SecurityAuditResult) string {
@@ -92,7 +136,7 @@ func RenderSarif(auditResult schemas.SecurityAuditResult) string {
 
 // buildToolSection ports _build_tool_section: one rule per distinct
 // sarif_rule_id, in sorted rule-id order (Python's `sorted(rules_by_id.items())`).
-func buildToolSection(findings []schemas.VerifiedFinding) obj {
+func buildToolSection(findings []schemas.VerifiedFinding, tool SarifTool) obj {
 	rulesByID := map[string][]schemas.VerifiedFinding{}
 	for _, finding := range findings {
 		rulesByID[finding.SarifRuleID] = append(rulesByID[finding.SarifRuleID], finding)
@@ -108,14 +152,18 @@ func buildToolSection(findings []schemas.VerifiedFinding) obj {
 		rules = append(rules, buildRule(ruleID, rulesByID[ruleID]))
 	}
 
-	return obj{
-		{"driver", obj{
-			{"name", "SEC-AF"},
-			{"semanticVersion", pythonPackageVersion},
-			{"informationUri", "https://github.com/Agent-Field/sec-af"},
-			{"rules", rules},
-		}},
+	driver := obj{{"name", tool.Name}}
+	if tool.SemanticVersion != "" {
+		driver = append(driver, kv{"semanticVersion", tool.SemanticVersion})
 	}
+	if tool.Version != "" {
+		driver = append(driver, kv{"version", tool.Version})
+	}
+	if tool.InformationURI != "" {
+		driver = append(driver, kv{"informationUri", tool.InformationURI})
+	}
+	driver = append(driver, kv{"rules", rules})
+	return obj{{"driver", driver}}
 }
 
 // buildRule ports _build_rule. The first finding for the rule id supplies the
@@ -149,7 +197,7 @@ func buildRule(ruleID string, findings []schemas.VerifiedFinding) obj {
 //
 // `relatedLocations` and `codeFlows` are only present when non-empty, matching
 // the Python `if related_locations:` / `if code_flows:` guards.
-func buildResult(finding schemas.VerifiedFinding) obj {
+func buildResult(finding schemas.VerifiedFinding, prefix string) obj {
 	locations := []any{obj{{"physicalLocation", physicalLocation(finding.Location)}}}
 
 	result := obj{
@@ -160,11 +208,11 @@ func buildResult(finding schemas.VerifiedFinding) obj {
 		{"partialFingerprints", obj{{"primaryLocationLineHash", finding.Fingerprint}}},
 		{"properties", obj{
 			{"security-severity", formatSecuritySeverity(finding.SarifSecuritySeverity)},
-			{"sec-af/verdict", string(finding.Verdict)},
-			{"sec-af/evidence_level", int(finding.EvidenceLevel)},
-			{"sec-af/exploitability_score", finding.ExploitabilityScore},
-			{"sec-af/chain_id", finding.ChainID},
-			{"sec-af/compliance", complianceList(finding)},
+			{prefix + "/verdict", string(finding.Verdict)},
+			{prefix + "/evidence_level", int(finding.EvidenceLevel)},
+			{prefix + "/exploitability_score", finding.ExploitabilityScore},
+			{prefix + "/chain_id", finding.ChainID},
+			{prefix + "/compliance", complianceList(finding)},
 			{"tags", resultTags(finding)},
 		}},
 	}
