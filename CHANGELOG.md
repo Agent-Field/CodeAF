@@ -18,6 +18,33 @@ rule.
 
 <!-- codeaf-changes inserts new versions directly below this line -->
 
+## v0.7.1 — 2026-10-05
+
+### Changed
+
+- **Usage receipts distinguish routing, model families and missing counts** — [#1755](https://github.com/Agent-Field/codeaf/pull/1755) · `engine` `remote` `build` `docs`
+
+  <details><summary>4 things that are no longer true</summary>
+
+  - Usage telemetry carried only positive token totals. It now includes bounded routing and model-family categories and explicitly records missing provider receipts without token totals.
+  - Provider usage appends ran on background goroutines. Completed receipts are now appended before accounting returns, while network delivery stays periodic.
+  - Usage categories named the initial service even after a plan overflow. They now follow the actual attempt route, including later generation receipt recovery. Periodic delivery no longer holds the local append lock across network requests.
+  - Missing release-download credentials silently passed the scheduled job. Production reporting now fails visibly when required credentials are absent.
+
+  </details>
+
+
+### Internal
+
+- **CHANGELOG.md gains its v0.7.0 section ahead of the stable cut** — [#1754](https://github.com/Agent-Field/codeaf/pull/1754) · `docs`
+
+  <details><summary>1 thing that is no longer true</summary>
+
+  - The twelve pull requests merged after v0.6.0, from #1714 to #1752, were described only by loose files under docs/changes/unreleased/; CHANGELOG.md now carries them as v0.7.0, and that folder holds only what lands next.
+
+  </details>
+
+
 ## v0.7.0 — 2026-10-04
 
 ### Changed
