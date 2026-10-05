@@ -1,0 +1,24 @@
+---
+kind: added
+title: security-audit, sec-af's security auditor built into codeaf, audits a repository or its changes
+pr: 1757
+surface: [chat, engine, docs, build]
+invalidates:
+  - "senior-dev was the only program codeaf carries. There are two: security-audit (`/security-audit`, `codeaf security-audit`, `via: \"security-audit\"`) is the second, and it changes no files."
+  - "sec-af was a separate AgentField node with its own key and a coding-agent binary per agent call. It is copied into codeaf at sec-af's tag codeaf-absorb (47d57d7) as internal/secaf, runs only through codeaf, and is frozen in its own repository."
+  - "Every program's unattended ceilings were senior-dev's, chosen by its name in nine places. A program names its own (`Delegate.Unattended`); a program with none runs on what the conversation has left."
+  - "A program that lands text had no ending of its own and was sent looking for a branch. Its ending asks the chat for a summary and the program's own offer (`Delegate.FollowUp`) and starts nothing."
+  - "The model API answered 402 to any call its ceiling could not admit at that moment. A call held only by calls still in flight is answered 429 with Retry-After and X-Codeaf-Held; 402 is kept for a ceiling truly reached."
+  - "A shell run resolved a person's model only through a flag named `--high`. A program names its own model flag (`Delegate.ModelFlag`)."
+  - "A bare `/<program>` always asked for a brief. A program with a default brief runs bare (`/security-audit` audits the whole repository), and its row shows its own arguments."
+  - "sec-af failed every audit that named compliance frameworks, and its PR mode read the diff from the wrong folder and only filtered findings after a whole-repository scan. Frameworks map and report; an audit of the changes reads them in the folder under audit and tells the hunters what changed."
+  - "The fixed and lean prefix caps were 57,218 and 49,590 bytes and SIZE-BUDGET was 68,850,000. They are 57,595, 49,830 and 71,363,000, raised by exactly what security-audit measured (PERF.md)."
+---
+
+`/security-audit` (or `changes`, `changes since <ref>`, `quick`, `thorough`) starts an
+audit that reads the folder with four read-only tools, hunts for vulnerabilities,
+tests each one against the code, and reports what stands with file, line and fix.
+Its report goes to the task's record folder (`security-audit.md`, `.json`, `.sarif`)
+and its account to the conversation, which offers to hand confirmed findings to
+senior-dev. Every model call goes through the run's model API, priced and held to
+its ceiling: $5 and two hours unless the conversation has less.

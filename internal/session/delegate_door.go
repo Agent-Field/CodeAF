@@ -443,6 +443,11 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	}
 	id := g.reserve()
 	title := taskPersonTitle(brief)
+	if program.Title != nil {
+		if own := strings.TrimSpace(program.Title(brief)); own != "" {
+			title = own
+		}
+	}
 	note := ""
 	if !program.Unattended.IsZero() {
 		note = a.programCeilings(&program, a.Usage().CostUSD).Summary()

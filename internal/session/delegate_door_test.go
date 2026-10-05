@@ -357,6 +357,7 @@ func TestABareStartRunsTheProgramsDefaultBrief(t *testing.T) {
 	registry := testPrograms("audit")
 	registry[0].Lands, registry[0].DefaultBrief = delegate.LandsText, "whole repository"
 	registry[0].Unattended = delegate.Ceilings{CostUSD: 5, Hours: 2}
+	registry[0].Title = func(brief string) string { return "Audit of the " + brief }
 	registry = append(registry, testPrograms("fake")...)
 	agent, _ := newTestAgent(t, beltRunCompleter{text: "unused"}, func(config *Config) {
 		config.Workspace = newTestRepo(t)
@@ -367,7 +368,7 @@ func TestABareStartRunsTheProgramsDefaultBrief(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if title == "" || note != "up to $5.00 and 2h" {
+	if title != "Audit of the whole repository" || note != "up to $5.00 and 2h" {
 		t.Fatalf("title %q, note %q", title, note)
 	}
 	<-double.entered

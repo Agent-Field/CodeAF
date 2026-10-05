@@ -136,6 +136,12 @@ type Delegate struct {
 	// it" is no task for senior-dev, but an audit of the repository it is
 	// started in is exactly what a bare `/security-audit` means.
 	DefaultBrief string
+	// Title is the title a typed `/<name> <brief>` gives its task, from the
+	// brief as typed; nil takes the brief's own first words, as a task's
+	// title always has. A brief that is only a program's own scope words
+	// (`quick`, `changes`) says nothing as a title, so such a program names
+	// its run itself.
+	Title func(brief string) string
 	// Args is how the command row shows what follows the name, such as
 	// `[changes] [quick | thorough]`. Empty is `<brief>`.
 	Args string

@@ -114,7 +114,13 @@ one package codeaf's funnel law lets spell a model route. Every call:
 1. is refused before it is made when the run's dollar ceiling is reached, with
    HTTP 402 (a status senior-dev does not retry). A run a refusal ended is
    reported as `<name> reached the run's dollar ceiling of $X: …`, whatever
-   status the program itself wrote, and ends on the run's cost limit;
+   status the program itself wrote, and ends on the run's cost limit. A call
+   that would fit once calls already in flight have given back what they
+   reserved is not refused but HELD (2026-10-05): HTTP 429 with `Retry-After`
+   and `X-Codeaf-Held: ceiling`, and no turn is written, because it was not
+   made and will be asked again. A program that makes many calls at once
+   (security-audit) waits it out; one that makes one call at a time never
+   meets it;
 2. goes through codeaf's own model funnel, with its router, retries, caching and
    billing, on the model the program asked for when one of the person's
    services can serve it, and otherwise on the run's work seat, which the turn
@@ -260,6 +266,14 @@ record that named one, and its stage's word before any has.
   command changes outside the workspace comes back.
 
 ## 8. Built in now for later programs
+
+*sec-af became the second program on 2026-10-05: `security-audit`, in
+`internal/secaf`, landing text (docs/design/security-audit/ABSORB.md). It is the
+first program to make many calls at once and the first to land text, which is
+why the held answer in §3, a program's own ceilings (`Unattended`), its follow-up
+offer and its record folder (`CODEAF_RECORDS`) arrived with it. What follows is
+as it was written on 2026-09-23.*
+
 
 pr-af and sec-af, looked at on 2026-09-23, would need: plain structured calls
 with `response_format`, many conversations at once (kept apart by thread),

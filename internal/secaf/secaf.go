@@ -80,7 +80,10 @@ var Program = delegate.Delegate{
 	// is what the name already says.
 	DefaultBrief: "whole repository",
 	Args:         "[changes [since <ref>]] [quick | thorough]",
-	Unattended:   Unattended,
+	// A TYPED RUN IS TITLED BY WHAT IT AUDITS, because its brief is a few
+	// scope words that say nothing as a title (`quick`, `changes`).
+	Title:      func(brief string) string { return "Security audit of " + ReadScope(brief, false, "", "").Describe() },
+	Unattended: Unattended,
 	// THE OFFER IS A FIX, AND THE PERSON SAYS WHETHER. A report that found
 	// something wants mending; mending is another program's work and more of
 	// the person's money, so the conversation offers it and waits.

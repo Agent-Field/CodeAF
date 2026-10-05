@@ -161,7 +161,9 @@ as soon as the setting receipt appears.
 Before forwarding a call, codeaf reserves the larger estimate from the requested model
 and its possible fallback seat when both have known prices, using input size and output
 cap; if either price is unknown, it uses the unpriced bound. It refuses a call whose
-estimate would cross the ceiling. An
+estimate would cross the ceiling, and a call that would fit once calls already in flight have
+ended (a program that makes many calls at once, as security-audit does) is asked to wait for
+them instead and goes on when one ends. An
 answer can cost more than its estimate. When a model has no known price, codeaf reserves
 half the dollar ceiling and limits concurrent calls once half the recorded spend is used;
 an unpriced service's actual charge cannot be measured here. The wall-clock ceiling still

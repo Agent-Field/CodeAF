@@ -105,9 +105,17 @@ func (w *watch) note(message string, tags []string) {
 		return
 	}
 	for _, tag := range tags {
-		if tag == "progress" {
+		// A progress block is data, and the incremental merge counts every
+		// finding twice over what the hunt's own closing note says.
+		if tag == "progress" || tag == "incremental" {
 			return
 		}
+	}
+	// AN AGENT'S START IS ITS SESSION'S LINE ALREADY, so its "starting" note
+	// is left off; a hunter's is kept, because it names the kind of problem
+	// the hunt has turned to.
+	if strings.HasSuffix(message, " starting") && !strings.Contains(message, "hunter") {
+		return
 	}
 	w.host.Step(delegate.StepRecord{Tool: toolNote, Step: w.current(), Command: plainWords(message)})
 }
