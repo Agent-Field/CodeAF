@@ -10,8 +10,11 @@ package secaf
 // follow is which agent ran, in which phase, and how it came out — and the raw
 // calls stay one key away.
 //
-// NO MACHINERY WORDS. sec-af's notes say "verified" and "verdict"; this house
-// says neither to a person, so a note is reworded before it is shown.
+// sec-af's OWN WORDS, BUT NOT ITS MACHINERY. The phases and agents keep sec-af's
+// names — RECON, HUNT, PROVE, the Verifier — because those are what its notes
+// say; but this house says none of `verdict`, `verified`, `auditor` or
+// `refuted` to a person, so those are reworded, and a note that only exposes
+// the algorithm's plumbing is reworded or left off ([noteRewrites]).
 
 import (
 	"encoding/json"
@@ -28,10 +31,10 @@ import (
 // stage's lines, and its task's row reads while the audit is in it.
 var stepWords = map[string]string{
 	stageStarting:    "setup",
-	stageRecon:       "map",
+	stageRecon:       "recon",
 	stageHunt:        "hunt",
-	stageProve:       "test",
-	stageRemediation: "fix",
+	stageProve:       "prove",
+	stageRemediation: "remediate",
 	stageReport:      "report",
 }
 
@@ -53,7 +56,27 @@ type watch struct {
 
 func newWatch(host delegate.Host) *backing.Watch {
 	w := &watch{host: host, stage: stageStarting}
-	return &backing.Watch{Session: w.session, Note: w.note}
+	return &backing.Watch{Session: w.session, Note: w.note, Call: w.call}
+}
+
+// pagedCalls are the single structured calls that are an agent of sec-af's
+// own, by the schema their answer takes, and the agent's name. The Verdict
+// agent is the fourth of the proof chain; it reads the other three's evidence
+// in one call rather than a session, and without this line the page showed a
+// chain of three. The duplicate checks, the compliance mapping and the like
+// are many small calls of plumbing, and stay off the page.
+var pagedCalls = map[string]string{"VerdictDecision": "verdict agent"}
+
+func (w *watch) call(schema string, err error) {
+	agent := pagedCalls[schema]
+	if agent == "" {
+		return
+	}
+	outcome := "answered"
+	if err != nil {
+		outcome = "stopped: " + firstSentence(err.Error())
+	}
+	w.host.Step(delegate.StepRecord{Tool: toolSession, Step: w.current(), Command: plainWords(agent), Observation: outcome + " · one call"})
 }
 
 func (w *watch) current() string {
@@ -70,8 +93,11 @@ func (w *watch) session(label string, result backing.SessionResult, err error) {
 	case result.Failed != "":
 		outcome = "no answer: " + firstSentence(result.Failed)
 	}
+	// THE RECORD SAYS IT AS EVERY SURFACE DOES: a shell run prints the
+	// record's words as they are, so the agent's name is put in a person's
+	// words here, once, rather than only by the page's reader.
 	w.host.Step(delegate.StepRecord{
-		Tool: toolSession, Step: w.current(), Command: label,
+		Tool: toolSession, Step: w.current(), Command: plainWords(label),
 		Observation: fmt.Sprintf("%s · %d turn%s · %d read%s", outcome, result.Turns, plural(result.Turns), result.Tools, plural(result.Tools)),
 	})
 }
@@ -117,6 +143,9 @@ func (w *watch) note(message string, tags []string) {
 	if strings.HasSuffix(message, " starting") && !strings.Contains(message, "hunter") {
 		return
 	}
+	if message = rewriteNote(message); message == "" {
+		return
+	}
 	w.host.Step(delegate.StepRecord{Tool: toolNote, Step: w.current(), Command: plainWords(message)})
 }
 
@@ -129,12 +158,31 @@ var machineryWords = []struct {
 	{regexp.MustCompile(`(?i)\bverdict agent\b`), "deciding agent"},
 	{regexp.MustCompile(`(?i)\bverdicts?\b`), "decision"},
 	{regexp.MustCompile(`(?i)\bverified\b`), "tested"},
-	{regexp.MustCompile(`(?i)\bverifier\b`), "tester"},
 	{regexp.MustCompile(`(?i)\bauditors?\b`), "checker"},
 	{regexp.MustCompile(`(?i)\brefuted\b`), "ruled out"},
 }
 
-// plainWords is a note of sec-af's in a person's words.
+// noteRewrites are sec-af notes that say how its algorithm works rather than
+// what it found, in words a person reads; a rewrite to "" leaves the note off.
+var noteRewrites = []struct {
+	pattern *regexp.Regexp
+	plain   string
+}{
+	// The expansion is computed and never handed to the hunters, so saying
+	// it widened the hunt would be untrue.
+	{regexp.MustCompile(`^CWE expansion suggested .*$`), ""},
+	{regexp.MustCompile(`fingerprint-unique findings, running semantic dedup`), "distinct findings, merging duplicates"},
+}
+
+// rewriteNote is a note as the page says it, or "" for one it leaves off.
+func rewriteNote(message string) string {
+	for _, rewrite := range noteRewrites {
+		message = rewrite.pattern.ReplaceAllString(message, rewrite.plain)
+	}
+	return strings.TrimSpace(message)
+}
+
+// plainWords is a note of sec-af's without its machinery words.
 func plainWords(text string) string {
 	text = oneLine(text)
 	for _, word := range machineryWords {
@@ -200,6 +248,9 @@ func presentStage(action delegate.Action) (delegate.Shown, bool) {
 		}
 		return delegate.Shown{}, false
 	case action.Status == "running":
+		if note := text("note"); note != "" {
+			return delegate.Shown{Step: step, Text: note}, true
+		}
 		return delegate.Shown{Step: step, Text: stageWords[action.Stage]}, stageWords[action.Stage] != ""
 	}
 	return delegate.Shown{}, false

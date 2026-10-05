@@ -226,6 +226,17 @@ func TestAnAuditRunsTheWholePipelineAndChangesNothing(t *testing.T) {
 	if !strings.HasPrefix(ending.Deliverable, "Security audit of the whole repository, quick.") {
 		t.Fatalf("the account begins %q", firstLine(ending.Deliverable))
 	}
+	readable, _ := os.ReadFile(filepath.Join(host.records, reportMarkdown))
+	for _, want := range []string{"# sec — security audit of the whole repository, quick", "## What it found", "## How it ran"} {
+		if !strings.Contains(string(readable), want) {
+			t.Errorf("the readable report lacks %q:\n%s", want, readable)
+		}
+	}
+	for _, unwanted := range []string{"Verdict", "inconclusive", "not exploitable", "$0.00", "Provider"} {
+		if strings.Contains(string(readable), unwanted) {
+			t.Errorf("the readable report says %q:\n%s", unwanted, readable)
+		}
+	}
 	for _, name := range []string{reportMarkdown, reportJSON, reportSARIF} {
 		path := filepath.Join(host.records, name)
 		if _, err := os.Stat(path); err != nil {
@@ -259,7 +270,7 @@ func TestAnAuditRunsTheWholePipelineAndChangesNothing(t *testing.T) {
 			sessions[step.Command] = true
 		}
 	}
-	for _, want := range []string{"architecture mapper", "hunt location scanner", "hunt finding enricher"} {
+	for _, want := range []string{"architecture mapper", "hunt location scanner", "hunt finding enricher", "deciding agent", "dependency checker"} {
 		if !sessions[want] {
 			t.Errorf("no %s session was recorded; sessions were %v", want, keys(sessions))
 		}
@@ -388,7 +399,7 @@ func TestThePageSpeaksAPersonsWords(t *testing.T) {
 		if lower := strings.ToLower(shown.Text + " " + shown.Outcome); strings.Contains(lower, "verdict") || strings.Contains(lower, "verified") {
 			t.Errorf("the page says %q", shown.Text)
 		}
-		if shown.Step != "test" {
+		if shown.Step != "prove" {
 			t.Errorf("%q is under %q", shown.Text, shown.Step)
 		}
 	}
@@ -396,5 +407,40 @@ func TestThePageSpeaksAPersonsWords(t *testing.T) {
 		if stepWords[stage] == "" {
 			t.Errorf("the stage %s has no step word", stage)
 		}
+	}
+}
+
+// THE PAGE SPEAKS sec-af's PHASE NAMES, from the row to the notes: its step
+// headings are the phases' own, its running and closing lines are sec-af's
+// notes, and the notes that expose plumbing are reworded or left off.
+func TestThePageUsesSecAfsPhaseNames(t *testing.T) {
+	read := presentActions()
+	for _, tc := range []struct {
+		action delegate.Action
+		step   string
+		text   string
+	}{
+		{delegate.Action{Kind: delegate.ActionStage, Stage: stageRecon, Status: "running", Data: stageData(map[string]any{"note": "RECON phase starting"})}, "recon", "RECON phase starting"},
+		{delegate.Action{Kind: delegate.ActionStage, Stage: stageRecon, Status: "done", Data: stageData(map[string]any{"note": "RECON phase complete"})}, "recon", "RECON phase complete"},
+		{delegate.Action{Kind: delegate.ActionStage, Stage: stageRemediation, Status: "running"}, "remediate", "remediate"},
+	} {
+		shown, ok := read(tc.action)
+		if !ok || shown.Step != tc.step || shown.Text != tc.text {
+			t.Errorf("%s %s read as %+v (%v), want %q under %q", tc.action.Stage, tc.action.Status, shown, ok, tc.text, tc.step)
+		}
+	}
+	for stage, word := range stageWords {
+		if stage != stageStarting && stepWords[stage] != word {
+			t.Errorf("the row says %q for %s and the page %q", word, stage, stepWords[stage])
+		}
+	}
+	if got := rewriteNote("CWE expansion suggested 8 additional CWEs"); got != "" {
+		t.Errorf("the CWE expansion note was kept: %q", got)
+	}
+	if got := rewriteNote("HUNT found 6 fingerprint-unique findings, running semantic dedup"); got != "HUNT found 6 distinct findings, merging duplicates" {
+		t.Errorf("the dedup note reads %q", got)
+	}
+	if got := plainWords("Verifier starting"); got != "Verifier starting" {
+		t.Errorf("sec-af's Verifier became %q", got)
 	}
 }

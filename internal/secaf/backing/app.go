@@ -53,6 +53,9 @@ type Watch struct {
 	Session func(label string, result SessionResult, err error)
 	// Note is one of sec-af's progress notes, with its tags.
 	Note func(message string, tags []string)
+	// Call is one single structured call that ended: the title of the schema
+	// its answer took (`VerdictDecision`), and the error that stopped it.
+	Call func(schema string, err error)
 }
 
 // App is [appx.App] on codeaf.
@@ -186,7 +189,22 @@ func (a *App) AI(ctx context.Context, prompt string, opts ...ai.Option) (*ai.Res
 		response, err = a.client.Complete(ctx, call)
 	}
 	a.spend(costOf(response), false)
+	if watch := a.config.Watch; watch != nil && watch.Call != nil {
+		watch.Call(schemaTitle(request.ResponseFormat), err)
+	}
 	return response, err
+}
+
+// schemaTitle is the title a response format's schema carries, "" for none.
+func schemaTitle(format *ai.ResponseFormat) string {
+	if format == nil || format.JSONSchema == nil {
+		return ""
+	}
+	var schema struct {
+		Title string `json:"title"`
+	}
+	_ = json.Unmarshal(format.JSONSchema.Schema, &schema)
+	return schema.Title
 }
 
 // Note is one of sec-af's progress notes.

@@ -56,13 +56,17 @@ const (
 var Stages = []string{stageStarting, stageRecon, stageHunt, stageProve, stageRemediation, stageReport}
 
 // stageWords is the stages in a person's words, for the task's row.
+//
+// THEY ARE sec-af's OWN PHASE NAMES, the words its notes on the page already
+// use (`RECON phase complete`), so the row, the page's step headings and the
+// notes under them say one thing (the owner's call, 2026-10-05).
 var stageWords = map[string]string{
 	stageStarting:    "starting",
-	stageRecon:       "mapping the code",
-	stageHunt:        "hunting",
-	stageProve:       "testing what it found",
-	stageRemediation: "writing fixes",
-	stageReport:      "writing the report",
+	stageRecon:       "recon",
+	stageHunt:        "hunt",
+	stageProve:       "prove",
+	stageRemediation: "remediate",
+	stageReport:      "report",
 }
 
 // Unattended is the audit's own ceilings: $5 and two hours, which a standard
@@ -272,7 +276,8 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		return ending
 	}
 	host.Stage(delegate.StageRecord{Stage: stageReport, Status: "running"})
-	files, err := reportFiles(records, result, len(request.ComplianceFrameworks) > 0)
+	files, err := reportFiles(records, result, len(request.ComplianceFrameworks) > 0, runFacts{
+		scope: scope, changes: changes, spent: spent, sessions: sessions, calls: calls, took: time.Since(started)})
 	if err != nil {
 		_, _ = fmt.Fprintf(notes, "[sec] could not write the full report: %v\n", err)
 	}

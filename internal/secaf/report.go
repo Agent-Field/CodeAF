@@ -31,7 +31,7 @@ const (
 
 // reportFiles writes the full report into folder and answers the paths it
 // wrote, in a fixed order. A folder of "" writes nothing.
-func reportFiles(folder string, result schemas.SecurityAuditResult, compliance bool) ([]string, error) {
+func reportFiles(folder string, result schemas.SecurityAuditResult, compliance bool, run runFacts) ([]string, error) {
 	if strings.TrimSpace(folder) == "" {
 		return nil, nil
 	}
@@ -42,7 +42,7 @@ func reportFiles(folder string, result schemas.SecurityAuditResult, compliance b
 		name string
 		body []byte
 	}{
-		{reportMarkdown, []byte(output.GenerateReport(result))},
+		{reportMarkdown, []byte(markdownReport(result, run))},
 		{reportJSON, []byte(output.GenerateJSON(result, true) + "\n")},
 		{reportSARIF, []byte(result.Sarif)},
 	}
