@@ -268,7 +268,7 @@ record that named one, and its stage's word before any has.
 ## 8. Built in now for later programs
 
 *sec-af became the second program on 2026-10-05: `sec`, in
-`internal/secaf`, landing text (docs/design/sec/ABSORB.md). It is the
+`internal/secaf`, landing text (docs/design/security-audit/ABSORB.md). It is the
 first program to make many calls at once and the first to land text, which is
 why the held answer in §3, a program's own ceilings (`Unattended`), its follow-up
 offer and its record folder (`CODEAF_RECORDS`) arrived with it. What follows is

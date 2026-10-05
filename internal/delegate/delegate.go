@@ -115,8 +115,10 @@ type Delegate struct {
 	// left.
 	//
 	// A PROGRAM NOBODY WATCHES MUST STOP ON ITS OWN, AND HOW LONG IT MAY GO IS
-	// THE PROGRAM'S TO KNOW. senior-dev's hour-long change and an audit's
-	// quarter of an hour are different shapes of work, so the figure lives
+	// THE PROGRAM'S TO KNOW. senior-dev's change and sec's whole-repository
+	// audit are different shapes of work: an audit spends its hours long
+	// before its dollars, which a change does not ([SeniorDevCeilings] and
+	// secaf.Unattended say each one's figures and why). So the figure lives
 	// beside the program rather than in a branch of codeaf that names it
 	// ([Ceilings.CappedBy], [Ceilings.FilledFrom]).
 	Unattended Ceilings

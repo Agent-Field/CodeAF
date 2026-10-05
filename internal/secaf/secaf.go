@@ -9,7 +9,7 @@
 // AgentField node: a control plane carried its calls, a router key it held
 // paid for its models, and a coding-agent binary ran each of its agent
 // sessions. It was copied into codeaf once, at the tag codeaf-absorb (47d57d7),
-// and lives on only here (docs/design/sec/ABSORB.md). Its algorithm
+// and lives on only here (docs/design/security-audit/ABSORB.md). Its algorithm
 // — the phases, the twelve hunters, the four-agent proof chain, the prompts —
 // is in the packages below this one and is its own; what it runs on is
 // codeaf's (internal/secaf/backing).

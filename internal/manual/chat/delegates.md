@@ -243,13 +243,15 @@ model call it made went through codeaf and is priced like one of codeaf's own. A
 stopped in the middle of a call is not over until that call's price has come in, for at
 most 70 seconds, so the call it was cut in is in those figures too.
 
-## When a program finished but the chat said nothing — done with no summary, no answer after it ended
+## When a program finished but the chat said nothing — done with no summary, no answer after it ended, I pressed stop
 
 When a program ends, its ending wakes a turn in the conversation, and that turn tells you
-what it did or found. **The ending is never lost to a failed reply:** if that turn cannot
-finish an answer because every model it is offered fails, the conversation says so in a
-line of its own and gives the program's own account in full:
-`<name> ended, but the chat could not finish its answer to it, so here is what <name> said:`.
+what it did or found. **The ending is never lost to a missing reply:** if that turn does
+not finish an answer, the conversation gives the program's own account in full in a line
+of its own. When every model it was offered failed, the line opens
+`<name> ended, but the chat could not finish its answer to it, so here is what <name> said:`;
+when you stopped the answer yourself, it opens
+`<name> ended, and you stopped the chat's answer to it, so here is what <name> said:`.
 It is written once per run. Ask again in your own words and the chat answers from it.
 
 ## Why is there no command for it — missing, not in this build, Windows, a hosted conversation

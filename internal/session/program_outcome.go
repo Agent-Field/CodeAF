@@ -487,14 +487,23 @@ func programLimitLine(run *beltRun, summary RunSummary, landing RunLanding) stri
 // woken to relay, so when the turn could not, the conversation says that it
 // could not and gives the account itself — once per run, as an authored line,
 // the way a run's limit line is written ([Agent.recordProgramLimit]).
-func (a *Agent) programOutcomeUnansweredLocked(hub *eventHub, completed bool) {
+//
+// AND IT SAYS WHY THE ANSWER IS MISSING. A turn the person stopped did not
+// complete either, and telling them the chat "could not" finish would be the
+// record misdescribing their own key: their stop keeps the account and names
+// itself instead.
+func (a *Agent) programOutcomeUnansweredLocked(hub *eventHub, completed, personStopped bool) {
 	outcome := a.programOutcomeNow
 	if completed || outcome == nil || outcome.account == "" || a.programAnsweredFor == outcome.row {
 		return
 	}
 	a.programAnsweredFor = outcome.row
-	text := fmt.Sprintf("%s ended, but the chat could not finish its answer to it, so here is what %s said:\n\n%s",
-		outcome.program, outcome.program, outcome.account)
+	why := "but the chat could not finish its answer to it"
+	if personStopped {
+		why = "and you stopped the chat's answer to it"
+	}
+	text := fmt.Sprintf("%s ended, %s, so here is what %s said:\n\n%s",
+		outcome.program, why, outcome.program, outcome.account)
 	note := userText(text)
 	note.authored = true
 	a.recordUserLocked(note)

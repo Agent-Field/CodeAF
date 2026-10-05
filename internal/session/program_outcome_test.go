@@ -616,7 +616,7 @@ func TestAProgramsEndingIsSaidWhenTheTurnItWokeCannotAnswer(t *testing.T) {
 	}
 	// A later failed turn does not say it again.
 	agent.mu.Lock()
-	agent.programOutcomeUnansweredLocked(nil, false)
+	agent.programOutcomeUnansweredLocked(nil, false, false)
 	agent.mu.Unlock()
 	again := 0
 	for _, entry := range agent.Transcript() {
@@ -626,5 +626,21 @@ func TestAProgramsEndingIsSaidWhenTheTurnItWokeCannotAnswer(t *testing.T) {
 	}
 	if again != 1 {
 		t.Fatalf("the ending was said %d times", again)
+	}
+	// A TURN THE PERSON STOPPED IS TOLD AS THEIRS, and still keeps the account:
+	// their key did not make the chat fail.
+	agent.mu.Lock()
+	agent.programOutcomeNow = &programOutcome{row: 2, program: "sec", account: account}
+	agent.programOutcomeUnansweredLocked(nil, false, true)
+	agent.mu.Unlock()
+	stopped := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, "sec ended, and you stopped the chat's answer to it, so here is what sec said:") &&
+			strings.Contains(entry.Text, "app/views.py:4") {
+			stopped++
+		}
+	}
+	if stopped != 1 {
+		t.Fatalf("a stopped answer was said %d times as the person's stop", stopped)
 	}
 }

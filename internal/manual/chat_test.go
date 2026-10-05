@@ -1146,6 +1146,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't codeaf edit files while senior-dev is working", "senior-dev"},
 		{"my task was refused because senior-dev is working in the folder", "senior-dev"},
 		{"the delegate was refused because of uncommitted changes", "delegates"},
+		{"I pressed stop while the chat was answering a program that ended", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets
