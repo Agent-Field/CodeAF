@@ -16,6 +16,13 @@ CVE="$1"; VARIANT="$2"
 CELL="$OUT/$CVE/$VARIANT"; mkdir -p "$CELL"
 SRC="$WORK/repos/$CVE/$VARIANT"
 M="$CELL/meta.json"
+# A resumed run keeps every cell whose tool already finished; a cell the stop
+# caught mid-tool has stage=tool and runs again from a fresh copy.
+if [ "${RESUME:-0}" = 1 ] && [ -f "$M" ]; then
+  case "$(jq -r '.stage // empty' "$M")" in
+    judge|done|unavailable) log "$CVE/$VARIANT: kept from the earlier run"; exit 0 ;;
+  esac
+fi
 meta "$M" "cve=$CVE" "variant=$VARIANT" "tool=$TOOL" "mode=$MODE" "model=$MODEL"
 
 if [ -f "$WORK/repos/$CVE/unavailable.txt" ] || [ ! -s "$SRC/info.json" ]; then

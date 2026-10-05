@@ -53,7 +53,9 @@ profile rung, so no profile under `results/` ever carries it.
 Knobs, all environment variables: `MODE` (below), `SET` (`deepsource`, `all`,
 or a file of `cve<TAB>variant` rows), `SAMPLE=N` (a seeded subset),
 `JOBS` (cells at once, default 2), `TIMEOUT` (seconds per cell, default 900),
-`NO_JUDGE=1` (judge later with `judge.py <results-dir>`), `JUDGE_MODEL`
+`RESUME=1` (keep the result directory and skip every cell already past its
+tool stage, for a campaign a wall or a closed lid stopped), `NO_JUDGE=1`
+(judge later with `judge.py <results-dir>`), `JUDGE_MODEL`
 (default `anthropic/claude-opus-4.5`, DeepSource's), `CODEAF_BIN`,
 `KEEP_WORKSPACE=1`. Pass CVE ids after the seed to run only those.
 

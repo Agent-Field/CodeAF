@@ -15,6 +15,9 @@
 #   SAMPLE      run only N rows, chosen by a shuffle seeded from the seed tag
 #   JOBS        cells running at once (default 2)
 #   TIMEOUT     seconds a tool gets per cell (default 900)
+#   RESUME=1    keep an existing result directory and skip every cell that is
+#               already past its tool stage — a campaign stopped by a wall or a
+#               closed lid finishes from where it was
 #   NO_JUDGE=1  stop after the tools have run; judge later with judge.py
 #   JUDGE_MODEL the judge (default anthropic/claude-opus-4.5, DeepSource's)
 #   CODEAF_BIN  the binary the codeaf driver runs (default bin/codeaf)
@@ -35,7 +38,12 @@ if [ -z "${RIG_SNAPSHOT:-}" ]; then
   __slug="$(printf '%s' "$2" | tr '/:' '--')"; [ "$__slug" = "-" ] && __slug=nomodel
   export RESULTS="${RESULTS:-${BENCH_ROOT:-$HOME/bench-openssf-cve}/results}"
   __out="$RESULTS/$1-$__mode-$__slug-$3"
-  rm -rf "$__out"; mkdir -p "$__out/rig/tools"
+  if [ "${RESUME:-0}" = 1 ] && [ -d "$__out" ]; then
+    rm -rf "$__out/rig"
+  else
+    rm -rf "$__out"
+  fi
+  mkdir -p "$__out/rig/tools"
   cp "$__RIG_SRC"/*.sh "$__RIG_SRC"/*.py "$__out/rig/"
   cp "$__RIG_SRC"/tools/*.sh "$__out/rig/tools/"
   cp -R "$__RIG_SRC/sets" "$__RIG_SRC/comparison" "$__out/rig/"
@@ -91,7 +99,7 @@ meta "$OUT/meta.json" "tool=$TOOL" "model=$MODEL" "seed=$SEED" "mode=$MODE" "set
   "rows=$N" "timeout_seconds=$TIMEOUT" "jobs=$JOBS" "judge_model=$JUDGE_MODEL" \
   "dataset_rev=$(cat "$WORK/dataset.rev" 2>/dev/null || echo unknown)" "rig_rev=${RIG_REV:-unknown}" \
   "bin_sha256_16=$BIN_SHA" "host=$(uname -sm)" "started=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  "replay_tool=${REPLAY_TOOL:-}" "work=$WORK" "stage=prepare"
+  "replay_tool=${REPLAY_TOOL:-}" "work=$WORK" "resumed=${RESUME:-0}" "stage=prepare"
 
 # --- checkouts -----------------------------------------------------------------
 cut -f1 "$OUT/rows.tsv" | sort -u | while read -r cve; do
