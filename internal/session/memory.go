@@ -128,7 +128,10 @@ type memoryBrain struct {
 	// failure is said once per window, not once per failure: an outage that
 	// fails forty extractions in a row would otherwise be forty lines about
 	// the same thing on a screen somebody is trying to work in.
-	failureSaid time.Time
+	failureSaid   time.Time
+	receipts      map[uint64][]memoryToolReceipt
+	revisions     map[uint64]string
+	impactNotices map[string]store.ContextualImpactNotice
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
@@ -498,6 +501,7 @@ func (a *Agent) refreshMemory(ctx context.Context, cue string) bool {
 	// it), and what they are waiting for from the instant they press enter is the
 	// model's own first word.
 	block := a.routedMemory(ctx, cue, a.sayMemory, true)
+	block = a.withBindingContext(block, cue)
 
 	a.mu.Lock()
 	moved := a.memoryText != block
@@ -753,6 +757,13 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), 
 	if err != nil || len(memories) == 0 {
 		return ""
 	}
+	a.mu.Lock()
+	turn := a.turnSeq
+	a.mu.Unlock()
+	a.memory.mu.Lock()
+	revision := a.memory.revisions[turn]
+	a.memory.mu.Unlock()
+	memories = a.contextualEligibleMemories(memories, revision)
 	block, kept := renderMemoryBlock(memories, time.Now())
 	if record {
 		a.memory.setInjected(kept)
@@ -924,6 +935,9 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 		return
 	}
 	injected := a.memory.takeInjected()
+	source := a.memoryTurnSource(userMsg)
+	a.observeContextualDependencies(source)
+	a.dismissContextualNotices(userMsg)
 	if !a.startMemoryJob() {
 		return
 	}
@@ -934,7 +948,7 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 		if client == nil {
 			return
 		}
-		found, err := reflex.Extract(ctx, client, userMsg, assistantMsg, injected)
+		found, err := reflex.Extract(ctx, client, userMsg, source.extractContext(assistantMsg), injected)
 		if err != nil {
 			// AND NOTHING IS COUNTED — but the failure is no longer SILENT.
 			// The accounting below is the extractor's answer; a provider
@@ -947,7 +961,9 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 			a.journalMemoryFailure("extract", err)
 			return
 		}
-		a.recordMemoryOutcome(injected, found.Used)
+		// A model self-report is diagnostic, not an independently observed benefit.
+		// It must not train the ranking as though a command or edit improved.
+		// recordMemoryOutcome remains available to observed-outcome callers.
 		// THE STATE DELTA IS SETTLED FIRST, AND SEPARATELY FROM THE MEMORY GATE.
 		// Mem answers whether this exchange held anything worth carrying into
 		// ANOTHER session; the delta answers what it did to THIS one, and those
@@ -961,7 +977,15 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 		if found.Mem == 0 {
 			return
 		}
-		if _, err := a.applyCandidate(ctx, client, found); err != nil {
+		found = source.ground(found)
+		if found.Mem == 0 {
+			return
+		}
+		memory, err := a.applyCandidate(ctx, client, found)
+		if err == nil && memory.ID != "" {
+			err = a.recordContextualMemory(memory, found, source)
+		}
+		if err != nil {
 			// THE SETTLE FAILED, AND THAT IS SAID — once per window — with the
 			// reason in the journal. It used to be `_, _ =`: a memory the
 			// session noticed could fail to land and nothing anywhere would
@@ -1114,7 +1138,9 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		return store.Memory{}, errors.New("session: a memory with no text says nothing")
 	}
 	fresh := a.memoryDraft(candidate)
-	owners := a.memoryOwners()
+	// Read access does not grant correction authority. A candidate settles only
+	// inside its own partition; promotion requires an explicit new write.
+	owners := []string{fresh.Owner}
 	neighbors, err := a.memory.store.SearchMemories(owners, candidate.Text, memoryNeighbors)
 	if err != nil {
 		// A SEARCH THAT FAILED IS NOT "NOTHING NEARBY". The old read treated
@@ -1132,6 +1158,14 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 	}
 	near := make([]reflex.Neighbor, 0, len(neighbors))
 	for _, neighbor := range neighbors {
+		if evidence, err := a.memory.store.ContextualEvidenceForMemory(neighbor.Owner, neighbor.ID); err == nil {
+			if len(evidence.Applicability) > 0 {
+				neighbor.Text += "\nApplies when: " + strings.Join(evidence.Applicability, "; ")
+			}
+			if evidence.Actor == "user" {
+				neighbor.Text += "\nSource words: " + contextualClip(evidence.Observation, contextualReceiptRunes)
+			}
+		}
 		near = append(near, reflex.Neighbor{ID: neighbor.ID, Title: neighbor.Title, Text: neighbor.Text})
 	}
 	decided, err := reflex.Decide(ctx, client, candidate, near)
@@ -1146,6 +1180,12 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 	}
 	if len(decided.Tags) > 0 {
 		fresh.Tags = decided.Tags
+	}
+	for _, tag := range candidate.Tags {
+		if tag == contextualTag {
+			fresh.Tags = append(fresh.Tags, contextualTag)
+			break
+		}
 	}
 	switch decided.Op {
 	case "add":
@@ -1191,7 +1231,10 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		// see, for exactly the same reason the update's target is: a decider
 		// naming another project's id must not retire that project's memory.
 		visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
-		if err != nil || len(visible) == 0 {
+		if err != nil {
+			return store.Memory{}, fmt.Errorf("checking supersession target: %w", err)
+		}
+		if len(visible) == 0 {
 			return store.Memory{}, nil
 		}
 		retired := visible[0]
@@ -1263,7 +1306,7 @@ func (a *Agent) writeRemembered(text, scope string) (string, error) {
 		return "", errors.New("there is nothing to remember")
 	}
 	if strings.TrimSpace(scope) == "" {
-		scope = store.MemoryScopeUser
+		scope = store.MemoryScopeProject
 	}
 	candidate := reflex.ExtractResult{
 		Mem:   1,
@@ -1419,7 +1462,10 @@ func (a *Agent) forgetMatching(query string) (string, error) {
 	if len(found) == 0 {
 		return "", nil
 	}
-	if err := a.memory.store.ForgetMemoryFromSession(found[0].ID, a.memorySourceSession()); err != nil {
+	if err := a.suppressContextualMemory(found[0]); err != nil {
+		return "", err
+	}
+	if err := a.memory.store.ForgetMemoryForOwners(a.memoryOwners(), found[0].ID, a.memorySourceSession()); err != nil {
 		return "", err
 	}
 	return found[0].Title, nil
@@ -1601,7 +1647,7 @@ func memoryTitleFrom(text string) string {
 
 const rememberDescription = "Remember one durable thing across sessions: a preference the person stated, a correction they made, a decision that will still bind tomorrow. Write it as a standing truth in one short line ('prefers tabs over spaces in Go'), not as a log of what just happened. It is settled against what is already remembered — a near-duplicate refines the existing line rather than adding a second — and the title it landed under comes back to you. Do not remember what the transcript already holds, what the repo or AGENTS.md already records, or anything that will be false tomorrow."
 
-const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: the person everywhere (default), this project only (invisible to other projects), or this machine only"}},"required":["text"],"additionalProperties":false}`
+const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: this project by default; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
 
 // The gloss a person reads beside a memory call is the thing itself —
 // "remember prefers tabs over spaces" — for the reason every other tool's gloss

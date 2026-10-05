@@ -75,13 +75,19 @@ type is one of: %s
 scope is one of: %s
 title is at most six words. text is one line, in the person's own terms.
 
+Keep project observations in project scope. Use user scope ONLY when the person explicitly states a preference or rule across projects, never because an assistant generalizes from project work. Preserve every condition and exception in text. A release-artifact constraint is not a development prohibition.
+
+Assistant assertions and repeated summaries are not independent evidence. Select source=user only for a claim supported by the person's own words and copy a short exact source_quote. Select source=tool only for an observed result supplied in TOOL RECEIPTS, with its receipt_id; never call an assistant claim a tool observation. Otherwise source=assistant and authority=proposal. authority=approved_rule requires an explicit user instruction; confirmed_decision requires an explicit user choice; other user statements are observations. Preserve rationale, rejected alternatives, and reconsideration circumstances in their separate fields. A failed attempt is an observation under its recorded conditions, not a demonstrated cause. Keep deferred intentions conditional; noticing an opportunity never authorizes unrelated edits.
+
+Retain unfinished project goals and decisions across conversations; when work finishes or is abandoned, describe that state rather than leaving an unfinished commitment. Set work_status=completed or abandoned only when the user explicitly closes the work; an assistant claim that tests pass is not user completion. Never turn a guessed test result into a confirmed outcome.
+
 Add state ONLY when the exchange MOVED THE WORK — the goal changed, something finished, something started, the next step changed, a question opened, or a file or link became the thing being worked on. An exchange that only answered a question moved nothing and has no state.
 
 When a REMEMBERED section is given, also answer which of those memory ids actually bore on the answer — used. A line bore on the answer if the assistant would have answered differently without it. Copy the ids exactly. Most lines bore on nothing, and an empty list is the normal answer. Omit used when there is no REMEMBERED section.
 
 Answer with ONE JSON object and nothing else. No prose, no code fence.
 
-{"mem": 0 or 1, "type": "...", "scope": "...", "title": "...", "text": "...", "tags": ["..."], "used": ["id", ...], "state": {"goal": "...", "done": ["..."], "inflight": ["..."], "next": ["..."], "open": ["..."], "refs": ["..."]} or omitted}
+{"mem": 0 or 1, "type": "...", "scope": "...", "title": "...", "text": "...", "tags": ["..."], "used": ["id", ...], "source":"user|tool|assistant", "source_quote":"exact supporting user words", "receipt_id":"tool receipt id", "authority":"proposal|observation|confirmed_decision|approved_rule", "conditions":["when this holds"], "rationale":"why chosen", "rejected":["alternative and reason"], "reconsider":"what would change the decision", "work_status":"active|completed|abandoned", "state": {"goal": "...", "done": ["..."], "inflight": ["..."], "next": ["..."], "open": ["..."], "refs": ["..."]} or omitted}
 
 USER:
 what does this regex do
@@ -132,7 +138,7 @@ update — a stored line says this less precisely, or with less of it. Give its 
 supersede — a stored line CONTRADICTS this: it was true and is not any more. Give its id and the new line.
 add — nothing near it says this. It is new.
 
-Prefer skip over add when you are unsure: a second copy of a fact is worse than a fact remembered once.
+Skip only when the complete claim including conditions and exceptions is equivalent. A matching title alone is not identity. Preserve conditions, rationale and reconsideration circumstances on update. Never widen a conditional claim. If applicability differs, add a separate line. Only supersede a contradicted claim within the same conditions; an exception is not a global correction.
 
 Answer with ONE JSON object and nothing else. No prose, no code fence.
 
@@ -200,6 +206,21 @@ func decideInput(candidate ExtractResult, neighbors []Neighbor) string {
 	if text := strings.TrimSpace(candidate.Text); text != "" {
 		builder.WriteString(" — ")
 		builder.WriteString(clip(text, messageLimit))
+	}
+	if candidate.SourceQuote != "" {
+		builder.WriteString("\nSOURCE WORDS: " + clip(candidate.SourceQuote, messageLimit))
+	}
+	if len(candidate.Conditions) > 0 {
+		builder.WriteString("\nAPPLICABILITY: " + strings.Join(candidate.Conditions, "; "))
+	}
+	if candidate.Rationale != "" {
+		builder.WriteString("\nRATIONALE: " + clip(candidate.Rationale, messageLimit))
+	}
+	if len(candidate.Rejected) > 0 {
+		builder.WriteString("\nREJECTED: " + strings.Join(candidate.Rejected, "; "))
+	}
+	if candidate.Reconsider != "" {
+		builder.WriteString("\nRECONSIDER: " + clip(candidate.Reconsider, messageLimit))
 	}
 	if len(candidate.Tags) > 0 {
 		builder.WriteString("\nTAGS: ")

@@ -892,3 +892,52 @@ the time it does not.
 **What bounds it now.** It acts on a silent machine after **two seconds** by
 moving to a different one, and stops trying after **eighteen**. Saved memories are
 never deleted by a lookup that ran out of time.
+
+## Do ordinary decisions and conditional rules survive a fresh conversation?
+
+Ordinary exchanges can save a project decision, its reason, rejected alternatives,
+and circumstances that would justify reconsidering it. You do not need a memory
+command. Conditions and exceptions stay with the supporting source words: an
+offline release-runtime rule does not forbid network use during development.
+Automatic observations stay in their project unless your words explicitly make
+them apply across projects. The ordinary remember tool also defaults to project;
+`/remember` retains its explicit personal-save behavior.
+
+Explicit rules and decisions with supporting user words are read locally before
+the first reply request. Optional semantic recall can arrive later. Source words
+outrank interpretations; assistant assertions do not confirm test outcomes.
+Observed tool results carry receipt identities and a source revision. Dirty or
+untracked sources cannot establish a current test result; inspect them again.
+Legacy notes have less evidence, and should be treated as old assertions.
+
+## How are cross-project consequences noticed or dismissed?
+
+A successful full read can establish a dependency when the consumer references
+the exact producer path, including a literal Python pathlib chain. Matching names
+alone do not establish a connection. After the producer changes, memory checks a
+small neighborhood and re-reads the consumer assumption. A changed file does not
+prove breakage: the assistant should inspect the contract before offering a useful
+follow-up. This does not authorize edits in another project. Dynamic imports,
+partial reads, arbitrary shell programs and delegated-worker receipts are not
+resolved by this adapter.
+
+Related consequences are batched. Saying "dismiss that" or "don't bring that up"
+suppresses the currently offered consequences until their content evidence changes.
+A repeated read with the same content does not reset dismissal. A fresh conversation
+can offer an undismissed consequence again; there is no global user-awareness model.
+
+## Does forgetting erase the conversation or stop relearning it?
+
+`/forget` removes the matching saved claim and suppresses all its recorded sources.
+Derived claims cannot use those sources, and automatic extraction cannot save the
+same suppressed evidence again under a new memory identity. Original conversation
+history remains searchable; forgetting a claim does not erase that history.
+A genuinely new source may support a new claim. Explicitly completed or abandoned
+work can expire from recall while remaining in the evidence history.
+
+## Will a future intention automatically schedule work?
+
+An intention can be retained with its prerequisite, but memory does not schedule
+it. When available, the existing `stand` tool proposes a standing order and uses
+its existing ratification, triggers and spending rails. Recognizing an opportunity
+never authorizes an unrelated edit. Memory adds no second scheduler.

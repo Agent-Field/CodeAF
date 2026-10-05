@@ -557,7 +557,7 @@ func TestAFailedExtractionBreaksNothingAndWritesNothing(t *testing.T) {
 // bore on the answer is counted as a use; one that was put in front of the
 // model and bore on nothing is counted AGAINST it, which is the same bargain
 // fixstore.go keeps with a fix it offered that then failed.
-func TestOnlyAMemoryThatHelpedIsCountedAsUsed(t *testing.T) {
+func TestModelReportedUseDoesNotCountAsObservedBenefit(t *testing.T) {
 	script := &reflexScript{}
 	// The ledger is about a block the turn CARRIED, so the turn waits for it.
 	script.aDeliberateFirstAnswer()
@@ -574,16 +574,16 @@ func TestOnlyAMemoryThatHelpedIsCountedAsUsed(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("read back: %v, found=%v", err, found)
 	}
-	if helped.UseCount != 1 || helped.MissCount != 0 {
-		t.Fatalf("the memory that helped reads %d/%d, want one use and no miss",
+	if helped.UseCount != 0 || helped.MissCount != 0 {
+		t.Fatalf("the memory that helped reads %d/%d, want no observed use or miss",
 			helped.UseCount, helped.MissCount)
 	}
 	unused, found, err := brain.MemoryRecord(dark.ID)
 	if err != nil || !found {
 		t.Fatalf("read back: %v, found=%v", err, found)
 	}
-	if unused.UseCount != 0 || unused.MissCount != 1 {
-		t.Fatalf("the memory that bore on nothing reads %d/%d, want no use and one miss",
+	if unused.UseCount != 0 || unused.MissCount != 0 {
+		t.Fatalf("the memory that bore on nothing reads %d/%d, want no observed use or miss",
 			unused.UseCount, unused.MissCount)
 	}
 }

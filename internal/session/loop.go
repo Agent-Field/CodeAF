@@ -300,6 +300,9 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	// Binding context is read locally before any model or early tool request.
+	// Optional semantic recall can still race beside the reply.
+	a.prepareBindingContext(ctx, user.text())
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}
@@ -3560,7 +3563,11 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	started := time.Now()
+	a.mu.Lock()
+	memoryTurn := a.turnSeq
+	a.mu.Unlock()
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	a.recordMemoryTool(memoryTurn, call, result)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on
 	// [toolResult.harness] for this reason — every counter that judges the
