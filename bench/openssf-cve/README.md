@@ -26,7 +26,9 @@ bench/openssf-cve/run.sh gold  - oracle           # the oracle: must score F1 10
 bench/openssf-cve/run.sh codeaf deepseek/deepseek-v4.1-flash s1   # the product
 ```
 
-A run writes `results/<tool>-<mode>-<model>-<seed>/`, with one directory per
+A run writes `~/bench-openssf-cve/results/<tool>-<mode>-<model>-<seed>/`
+(`BENCH_ROOT` moves it; it is never inside the checkout, because the checkouts
+it holds are whole repositories and `go build ./...` walks the filesystem), with one directory per
 row holding the tool's report (`findings.json`), what the driver kept
 (`do.json`, `run.log`, `brief.md` and the run store under `home/` for codeaf), the judge's verdict
 (`judge.json`) and the answer the judge was shown (`truth.json`, copied in
@@ -98,7 +100,7 @@ is the judge:
 
 ```sh
 REPLAY_TOOL=claude-code SAMPLE=40 bench/openssf-cve/run.sh replay - cal1
-bench/openssf-cve/calibrate.py results/replay-diff-nomodel-cal1
+bench/openssf-cve/calibrate.py ~/bench-openssf-cve/results/replay-diff-nomodel-cal1
 ```
 
 Measured on 2026-10-05, 40 rows per tool, seed `cal1`, judge `anthropic/claude-opus-4.5`:
@@ -189,11 +191,13 @@ for a quiet, correct review.
 - `sets/deepsource-165.tsv` — the rows, as their judged files list them.
 - `comparison/deepsource-2026-04.json` — their table, recomputed from the
   JSONL at revision `0f9a1e00`, which `fetch.sh` pins and re-checks.
-- `work/` (ignored) — the dataset clone, bare blob-less clones of every
-  repository, the checkouts, OSV records, DeepSource's rows.
-- `results/` (ignored) — runs. Each one carries the rig it ran under in
-  `rig/`, because the run re-executes from that copy: editing a script while a
-  run is in flight cannot change the run.
+- `~/bench-openssf-cve/work/` — the dataset clone, bare blob-less clones of
+  every repository, the checkouts, OSV records, DeepSource's rows.
+- `~/bench-openssf-cve/results/` — runs. Each one carries the rig it ran
+  under in `rig/`, because the run re-executes from that copy: editing a
+  script while a run is in flight cannot change the run.
+- Both sit outside the tree on purpose: a checkout under `work/` carried
+  `apn-go/apn.go`, and `go build ./...` found it. `BENCH_ROOT` moves them.
 
 One of the 186 repositories is gone (`linxiaowu66/swagger-ui`, CVE-2016-1000229,
 not in the DeepSource set). `prepare.sh` records it as unavailable and
