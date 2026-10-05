@@ -42,7 +42,7 @@ func TestSeniorDevShellFlagsReplaceDefaults(t *testing.T) {
 
 func TestSeniorDevShellParserSetsFiniteDefaultsAndHonorsFlags(t *testing.T) {
 	program := testProgram(nil)
-	program.Name = "senior-dev"
+	program.Name, program.Unattended = "senior-dev", SeniorDevCeilings
 	for _, tc := range []struct {
 		line []string
 		want Ceilings
@@ -62,7 +62,7 @@ func TestSeniorDevShellParserSetsFiniteDefaultsAndHonorsFlags(t *testing.T) {
 
 func TestSeniorDevRejectsNonFiniteCeilings(t *testing.T) {
 	program := testProgram(nil)
-	program.Name = "senior-dev"
+	program.Name, program.Unattended = "senior-dev", SeniorDevCeilings
 	for _, line := range [][]string{
 		{"--max-cost", "NaN", "repair"},
 		{"--max-hours", "+Inf", "repair"},
@@ -73,5 +73,42 @@ func TestSeniorDevRejectsNonFiniteCeilings(t *testing.T) {
 	}
 	if got := (Ceilings{CostUSD: math.NaN(), Hours: math.Inf(1)}).SeniorDev(); got.CostUSD != DefaultSeniorDevCostUSD || got.Hours != DefaultSeniorDevHours {
 		t.Fatalf("non-finite conversation limit produced %+v", got)
+	}
+}
+
+// A program that names no ceilings of its own is held to none: the
+// conversation's remaining limits pass through as they are, and a shell line
+// with no flags runs unbounded, as every program but senior-dev did before the
+// field existed. One that names its own is held to those and not to
+// senior-dev's.
+func TestUnattendedCeilingsAreTheProgramsOwn(t *testing.T) {
+	left := Ceilings{CostUSD: 30, Hours: 9}
+	if got := left.CappedBy(Ceilings{}); got != left {
+		t.Fatalf("a program with no ceilings capped %+v to %+v", left, got)
+	}
+	own := Ceilings{CostUSD: 5, Hours: 2}
+	if got := left.CappedBy(own); got != own {
+		t.Fatalf("%+v capped by %+v became %+v", left, own, got)
+	}
+	if got := (Ceilings{}).CappedBy(own); got != own {
+		t.Fatalf("an unlimited conversation ran under %+v, want %+v", got, own)
+	}
+	if got := (Ceilings{CostUSD: 1}).CappedBy(Ceilings{Hours: 2}); got != (Ceilings{CostUSD: 1, Hours: 2}) {
+		t.Fatalf("a program with only a wall ceiling gave %+v", got)
+	}
+	program := testProgram(nil)
+	inv, err := Parse(program, []string{"repair"}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inv.Ceilings.IsZero() {
+		t.Fatalf("a shell run of a program with no ceilings got %+v", inv.Ceilings)
+	}
+	program.Unattended = own
+	if inv, err = Parse(program, []string{"repair"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if inv.Ceilings != own {
+		t.Fatalf("a shell run got %+v, want the program's own %+v", inv.Ceilings, own)
 	}
 }

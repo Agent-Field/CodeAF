@@ -98,8 +98,11 @@ var Program = delegate.Delegate{
 	Notes: ".senior-dev",
 	// IT LISTENS: the person's words from its page and the conversation's
 	// `say` reach its model between steps until it hands in (app/steering.go).
-	Listens:   true,
-	CrewFlags: crewFlags,
+	Listens: true,
+	// An hour-long change nobody may be watching stops on its own at $10 and
+	// three hours, or sooner where the conversation has less left.
+	Unattended: delegate.SeniorDevCeilings,
+	CrewFlags:  crewFlags,
 	// What a person reads for its stages, one plain word per phase: getting
 	// ready, doing the work (every inner stage of a model turn included),
 	// handing it in, checking it, wrapping up. Its task's row reads them only

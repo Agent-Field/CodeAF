@@ -113,6 +113,13 @@ type programOutcome struct {
 	row     uint64
 	program string
 	verdict programVerdict
+	// report is a program that lands text ([delegate.LandsText]): its ending
+	// is an answer that changed nothing in the folder, so there is no branch
+	// to read, check or offer, and the turn is told so.
+	report bool
+	// followUp is the program's own sentence for what to offer once it has
+	// finished ([delegate.Delegate.FollowUp]); empty is none.
+	followUp string
 	programAttempt
 }
 
@@ -129,6 +136,12 @@ func programOutcomeNote(outcome programOutcome, line string, costUSD float64) st
 	}
 	b.WriteString("\n")
 	b.WriteString(programNextStep(outcome))
+	if outcome.report {
+		// A REPORT HAS NO CODE TO LOCATE. The paragraph below is about the
+		// branch a program that edits files leaves, and handed to the turn after
+		// an answer it sent the model looking for a branch that was never cut.
+		return b.String()
+	}
 	b.WriteString("\n\nBefore any checks or edits, locate the run's code. If the ending names a branch whose copy was removed, run each check in a temporary worktree that one command adds and always removes: `tmp=$(mktemp -d) && git -C <repository> worktree add -q --detach \"$tmp\" <branch> && (cd \"$tmp\" && <check command>); status=$?; git -C <repository> worktree remove --force \"$tmp\"; exit $status`. A worktree left behind stays registered in the person's repository. Do not run checks in the person's checkout: it still holds their code, not the run's result, and tests can leave files there. If the ending says its copy was kept, or the run worked in a folder with no git history, use the folder it names instead.")
 	return b.String()
 }
@@ -136,6 +149,9 @@ func programOutcomeNote(outcome programOutcome, line string, costUSD float64) st
 // programNextStep is what to do about one ending, in one sentence the model
 // reads with the playbook it expands.
 func programNextStep(o programOutcome) string {
+	if o.report {
+		return programReportStep(o)
+	}
 	left := programAutoRetries - o.auto
 	switch o.verdict {
 	case programPassed:
@@ -152,6 +168,27 @@ func programNextStep(o programOutcome) string {
 		return fmt.Sprintf("It broke rather than finished. If the cause looks passing (a network or provider failure), hand the same work to %s again; otherwise tell the person plainly. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 	}
 	return fmt.Sprintf("It handed in no finished change. Read what it got done on its branch, then hand the work back to %s with a brief sharpened by what is missing, which counts as fixing it yourself; finish only a trivial gap in your own worktree. You may send it back %d more time%s on your own.", o.program, left, plural(left))
+}
+
+// programReportStep is what to do about the ending of a program that lands a
+// report rather than a change. Its answer is above, in the note; nothing in the
+// folder moved, so there is nothing to check on a branch and nothing to merge.
+func programReportStep(o programOutcome) string {
+	left := programAutoRetries - o.auto
+	switch o.verdict {
+	case programPassed, programUnverified:
+		step := "It finished, and its report is above; it changed nothing in the folder. Tell the person in a short plain summary what it found, most serious first, and where its full report is."
+		if follow := strings.TrimSpace(o.followUp); follow != "" {
+			step += " " + follow
+		}
+		return step + " Start nothing on this turn."
+	case programLimit:
+		return "It stopped on a limit, so another run spends more of the person's money: do not hand it back. Tell the person briefly what it found before it stopped, and ask whether to spend more."
+	}
+	if left <= 0 || o.verdict != programCrashed {
+		return "It did not finish its report. Tell the person plainly what it got through and why it stopped, and let them decide whether to run it again."
+	}
+	return fmt.Sprintf("It broke rather than finished. If the cause looks passing (a network or provider failure), hand the same work to %s again; otherwise tell the person plainly. You may send it back %d more time%s on your own.", o.program, left, plural(left))
 }
 
 // rememberProgramOutcomeLocked keeps a program's ending until the person next
@@ -273,6 +310,14 @@ func (a *Agent) programLandingNote(run *beltRun, summary RunSummary, line string
 	outcome := programOutcome{
 		row: run.row, program: programName(run.delegate), verdict: programVerdictOf(summary),
 		programAttempt: a.programAttemptFor(run.row),
+	}
+	if run.delegate != nil && !run.delegate.LandsTree() {
+		outcome.report, outcome.followUp = true, run.delegate.FollowUp
+		// A REPORT THAT ARRIVED IS A FINISHED ANSWER. `unverified` is about a
+		// change nobody's checks passed, and a report has no checks to run.
+		if outcome.verdict == programUnverified {
+			outcome.verdict = programPassed
+		}
 	}
 	a.mu.Lock()
 	a.programHold = &outcome
@@ -412,6 +457,11 @@ func programLimitLine(run *beltRun, summary RunSummary, landing RunLanding) stri
 	spentWord := "spent no metered dollars"
 	if spent > 0 {
 		spentWord = fmt.Sprintf("spent $%.2f", spent)
+	}
+	if run.delegate != nil && !run.delegate.LandsTree() {
+		// A REPORT HAS NO WORK IN THE FOLDER to point at: it changed nothing
+		// there, and what it found before it stopped is in its ending.
+		return fmt.Sprintf("%s stopped at %s %s limit · %s · it changed nothing in %s", programName(run.delegate), scope, limit, spentWord, run.ground)
 	}
 	where := "in the folder " + run.ground
 	if landing.Branch != "" {

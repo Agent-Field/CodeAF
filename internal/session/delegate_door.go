@@ -74,6 +74,18 @@ func (c Config) delegateNames() []string {
 	return names
 }
 
+// delegateNamed finds a program this launch carries by its name, without the
+// refusal [Agent.delegateFor] words for one it does not.
+func (c Config) delegateNamed(name string) (delegate.Delegate, bool) {
+	name = strings.TrimSpace(name)
+	for _, program := range c.Delegates {
+		if name != "" && program.Name == name {
+			return program, true
+		}
+	}
+	return delegate.Delegate{}, false
+}
+
 // mayDelegate says whether this belt may hand work to a program: it is the
 // conversation's own hand-off predicate with one more condition, that this
 // build carries at least one. A task node never delegates, for the reason it
@@ -423,8 +435,8 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	id := g.reserve()
 	title := taskPersonTitle(brief)
 	note := ""
-	if program.Name == "senior-dev" {
-		note = a.seniorDevCeilings(a.Usage().CostUSD).Summary()
+	if !program.Unattended.IsZero() {
+		note = a.programCeilings(&program, a.Usage().CostUSD).Summary()
 	}
 	if err := a.startKnownTaskRunVia(ctx, id, title, brief, nil, delegateStand(folder), "", &program); err != nil {
 		return 0, "", "", err

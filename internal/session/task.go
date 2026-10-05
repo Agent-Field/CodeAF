@@ -1315,8 +1315,8 @@ func (a *Agent) openTask(ctx context.Context, id uint64, spec taskSpec, elsewher
 		deadline = a.taskClockNow().Add(countdown)
 	}
 	question := newTaskQuestion(id, spec, elsewhere, deadline, a.config)
-	if spec.via == "senior-dev" {
-		question.notice.Ceiling = a.seniorDevCeilings(a.usage.CostUSD).Summary()
+	if program, known := a.config.delegateNamed(spec.via); known && !program.Unattended.IsZero() {
+		question.notice.Ceiling = a.programCeilings(&program, a.usage.CostUSD).Summary()
 	}
 	if a.taskAnswers == nil {
 		a.taskAnswers = make(map[uint64]*taskQuestion, 1)

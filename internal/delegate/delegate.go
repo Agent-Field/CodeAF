@@ -108,6 +108,27 @@ type Delegate struct {
 	// conversation's `say`. A program that does not listen is refused a message
 	// in so many words, never handed one nothing reads.
 	Listens bool
+	// Unattended is the ceilings a run of this program starts under when
+	// nobody set smaller ones: a conversation with no limit, or a shell line
+	// with no --max-cost or --max-hours. A zero field is no ceiling of the
+	// program's own, which leaves that run on whatever the conversation has
+	// left.
+	//
+	// A PROGRAM NOBODY WATCHES MUST STOP ON ITS OWN, AND HOW LONG IT MAY GO IS
+	// THE PROGRAM'S TO KNOW. senior-dev's hour-long change and an audit's
+	// quarter of an hour are different shapes of work, so the figure lives
+	// beside the program rather than in a branch of codeaf that names it
+	// ([Ceilings.CappedBy], [Ceilings.FilledFrom]).
+	Unattended Ceilings
+	// FollowUp is one sentence the conversation is handed when a run of a
+	// program that lands text finishes: what to offer the person next, in the
+	// program's own terms. Empty offers nothing. It is read only on that turn,
+	// so it costs the conversation's fixed prefix nothing.
+	//
+	// THE OFFER IS THE PROGRAM'S, AND THE DECISION THE PERSON'S. A report that
+	// found something to fix suggests its own next step better than codeaf can,
+	// and the wake turn starts nothing ([LandsText]).
+	FollowUp string
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every
 	// run it starts from a conversation. Nil is a program that picks its own

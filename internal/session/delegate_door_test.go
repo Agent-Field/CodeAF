@@ -21,13 +21,20 @@ import (
 // never starts its process — the run engine is a double here — so its command
 // is a body that is never called.
 func testPrograms(name string) []delegate.Delegate {
-	return []delegate.Delegate{{
+	program := delegate.Delegate{
 		Name: name, Summary: "a fake program", Default: "run", Page: name,
 		Guide: "For work a fake does, with a brief that names the fake's files.",
 		Commands: []delegate.Command{{Name: "run", Bind: func(*flag.FlagSet) delegate.Body {
 			return func(context.Context, delegate.Host, []string) error { return nil }
 		}}},
-	}}
+	}
+	// A fake called senior-dev carries senior-dev's own unattended ceilings,
+	// because what the tests that name it hold is how a run of a program with
+	// ceilings of its own is bounded.
+	if name == "senior-dev" {
+		program.Unattended = delegate.SeniorDevCeilings
+	}
+	return []delegate.Delegate{program}
 }
 
 // The whole road from the door to the branch: `/fake <brief>` starts a run

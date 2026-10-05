@@ -506,3 +506,62 @@ func TestAProgramOutcomeCountsAHandBackAsFixingItYourself(t *testing.T) {
 		}
 	}
 }
+
+// A PROGRAM THAT ANSWERS WITH A REPORT IS NEVER SENT LOOKING FOR A BRANCH. Its
+// ending changed nothing in the folder, so its note carries none of the
+// worktree, check or merge advice a change gets: it says what the report is
+// for, the program's own offer, and that nothing starts on this turn.
+func TestAReportProgramsEndingAsksForASummaryAndStartsNothing(t *testing.T) {
+	const offer = "If it found problems, offer to hand them to senior-dev to fix."
+	note := func(verdict programVerdict, auto int) string {
+		return programOutcomeNote(programOutcome{row: 9, program: "security-audit", verdict: verdict,
+			report: true, followUp: offer, programAttempt: programAttempt{attempt: auto + 1, auto: auto}}, "done · ran 14m", 0.8)
+	}
+	passed := note(programPassed, 0)
+	for _, want := range []string{"[security-audit ended — for you to act on] task 9 · passed · run 1 · $0.80",
+		"it changed nothing in the folder", offer, "Start nothing on this turn."} {
+		if !strings.Contains(passed, want) {
+			t.Fatalf("a finished report's note lacks %q:\n%s", want, passed)
+		}
+	}
+	for _, verdict := range []programVerdict{programPassed, programFailed, programLimit, programCrashed} {
+		got := note(verdict, 0)
+		for _, unwanted := range []string{"worktree", "merge", "branch"} {
+			if strings.Contains(got, unwanted) {
+				t.Errorf("a %s report's note speaks of a %s:\n%s", verdict, unwanted, got)
+			}
+		}
+	}
+	if limit := note(programLimit, 0); !strings.Contains(limit, "ask whether to spend more") || strings.Contains(limit, offer) {
+		t.Fatalf("a report that stopped on a limit is not told to ask first:\n%s", limit)
+	}
+	if failed := note(programFailed, 0); strings.Contains(failed, "hand the same work") {
+		t.Fatalf("a report that did not finish is sent back on codeaf's own:\n%s", failed)
+	}
+	if crashed := note(programCrashed, programAutoRetries); strings.Contains(crashed, "hand the same work") {
+		t.Fatalf("a crash after the last retry is still sent back:\n%s", crashed)
+	}
+}
+
+// A report program's ending that named no `pass` is still a finished answer,
+// and its limit line points at nothing in the folder, because it changed
+// nothing there.
+func TestAReportProgramsRunReadsAsFinishedAndItsLimitLineNamesNoWork(t *testing.T) {
+	a := programConversation(t, nil)
+	program := testPrograms("security-audit")[0]
+	program.Lands = delegate.LandsText
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the audit", planRootID, "The audit", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	run := &beltRun{row: 2, root: planRootID, store: store, delegate: &program, ground: "/repo", costCeiling: 2}
+	note := a.programLandingNote(run, RunSummary{Outcome: beltRunOutcomeDone}, "done")
+	if note.programOutcome == nil || note.programOutcome.verdict != programPassed || !note.programOutcome.report {
+		t.Fatalf("a finished report reads as %+v, want a passed report", note.programOutcome)
+	}
+	line := programLimitLine(run, RunSummary{Outcome: "incomplete", Limit: RunLimitCost, USD: 2}, RunLanding{})
+	if !strings.Contains(line, "it changed nothing in /repo") || strings.Contains(line, "its work is") {
+		t.Fatalf("a report's limit line = %q", line)
+	}
+}

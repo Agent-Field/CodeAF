@@ -112,10 +112,9 @@ func Parse(program Delegate, line []string, out io.Writer) (*Invocation, error) 
 	if err != nil {
 		return nil, fmt.Errorf("%s %s: --dir: %w", program.Name, command.Name, err)
 	}
-	ceilings := Ceilings{CostUSD: *cost, Hours: *hours}
-	if program.Name == "senior-dev" {
-		ceilings = ceilings.SeniorDevDefaults()
-	}
+	// A shell run nobody set a ceiling for still stops on its own, at the
+	// program's unattended ceilings ([Delegate.Unattended]).
+	ceilings := (Ceilings{CostUSD: *cost, Hours: *hours}).FilledFrom(program.Unattended)
 	return &Invocation{
 		Program: program, Command: command,
 		Workspace:     abs,
