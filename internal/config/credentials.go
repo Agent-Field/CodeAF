@@ -1,6 +1,9 @@
 package config
 
-import "strings"
+import (
+	"os"
+	"strings"
+)
 
 // Credentials is every credential this profile is configured with, in the exact
 // values a call would carry — the key the models are talked to with, the search
@@ -43,8 +46,9 @@ func Credentials(profileDir string) []string {
 		add(credentialAt(profileDir, row.Env, row.Key))
 	}
 	// AND THE KEY'S SECOND SPELLING. The model key resolves from two variables
-	// and not one ([APIKeyAt]) — the row names only the first — so a person
-	// running with OPENAI_API_KEY set would have registered nothing at all.
+	// and not one ([APIKeyAt]) — the row names only the first. Even an ignored
+	// OPENAI_API_KEY is a secret that must be kept out of a debug record.
+	add(os.Getenv("OPENAI_API_KEY"))
 	add(APIKeyAt(profileDir))
 	for _, service := range ResolveSources(profileDir, APIKeyAt(profileDir), DefaultBaseURL).All()[1:] {
 		add(service.Key)

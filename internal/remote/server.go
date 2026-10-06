@@ -628,9 +628,20 @@ func (sess *Session) Ended() bool {
 // somebody's work. [Session.RetireIfIdle] is where that re-check becomes a
 // decision.
 func (sess *Session) IdleSince() time.Time {
+	return sess.idleSince(false)
+}
+
+// IdleSinceWithoutWatchGrace is the environment replacement's reading: a
+// disconnected window's recent act alone cannot keep its stale environment.
+// Every other protection and the off-lock work reading remain the same.
+func (sess *Session) IdleSinceWithoutWatchGrace() time.Time {
+	return sess.idleSince(true)
+}
+
+func (sess *Session) idleSince(ignoreWatchGrace bool) time.Time {
 	sess.mu.Lock()
 	agent, generation := sess.agent, sess.generation
-	idle := sess.idleSinceLocked()
+	idle := sess.idleSinceWithWatchGraceLocked(ignoreWatchGrace)
 	sess.mu.Unlock()
 	if idle.IsZero() || agent == nil {
 		return idle
@@ -646,12 +657,16 @@ func (sess *Session) IdleSince() time.Time {
 	if sess.agent != agent || sess.generation != generation {
 		return time.Time{}
 	}
-	return sess.idleSinceLocked()
+	return sess.idleSinceWithWatchGraceLocked(ignoreWatchGrace)
 }
 
 // idleSinceLocked is the half of the reading this package can answer itself.
 func (sess *Session) idleSinceLocked() time.Time {
-	if sess.watchedLocked() || len(sess.rings) > 0 || sess.heldOutstandingLocked() > 0 {
+	return sess.idleSinceWithWatchGraceLocked(false)
+}
+
+func (sess *Session) idleSinceWithWatchGraceLocked(ignoreWatchGrace bool) time.Time {
+	if len(sess.surfaces) > 0 || (!ignoreWatchGrace && sess.watchedLocked()) || len(sess.rings) > 0 || sess.heldOutstandingLocked() > 0 {
 		return time.Time{}
 	}
 	return sess.empty
@@ -1024,6 +1039,16 @@ func (r *ring) after(seq uint64) (uint64, []json.RawMessage) {
 var errExecutionMode = errors.New("this conversation is already open in a different interactive or headless mode; close it before retrying")
 
 func (sess *Session) attach(s *server, hello Hello) error {
+	// EVERY ATTACH READS THE ENGINE'S OWN PROFILE. Held and joined conversations
+	// bypass boot, so refreshing only there kept their old connected key. Take
+	// the hook under the session lock and run it outside both this lock and the
+	// host's open lock: updating sources takes the process and agent locks itself.
+	sess.mu.Lock()
+	refresh := sess.engine.RefreshModelSources
+	sess.mu.Unlock()
+	if refresh != nil {
+		refresh()
+	}
 	sess.mu.Lock()
 	if hello.Headless != sess.engine.Headless {
 		sess.mu.Unlock()

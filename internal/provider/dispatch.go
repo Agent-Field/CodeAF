@@ -467,6 +467,9 @@ func (c *Client) send(ctx context.Context, request *ai.Request, knobs callKnobs,
 		// the end of it (calllog.go). The count lives on the knobs rather than
 		// here because a call that is repaired or relaxed comes back through
 		// this loop with a new body and the same trace.
+		if knobs.trace != nil {
+			knobs.trace.attemptBase = currentBase
+		}
 		knobs.trace.begin()
 		if attempt > 0 && switchedDoor {
 			// A BILLING-DOOR SWITCH IS NEITHER A RECONNECTION NOR A RETRY. The

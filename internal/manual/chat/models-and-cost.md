@@ -1919,7 +1919,10 @@ to exactly that.
 **And an authentication refusal is not retried at all.** A `401` or `403` means the key or
 its permission was refused, so it stops. For a model served by the default provider,
 it names whether the key came from the shell's
-`OPENROUTER_API_KEY`, the shell's `OPENAI_API_KEY`, or the key saved in your profile.
+`OPENROUTER_API_KEY`, the key saved in your profile, or a usable shell
+`OPENAI_API_KEY`. On OpenRouter that last key must start with `sk-or-` and comes
+after the saved key; a custom `CODEAF_BASE_URL` accepts any shape and puts it before
+the saved key. `codeaf doctor` names the source and explains an ignored variable.
 It is never treated as a provider `5xx`. A refusal that names no endpoint is also not retried:
 if the router refused on its own account, it read the request codeaf built and said no to it —
 every endpoint alive would say the same thing about the same bytes. The turn ends immediately.

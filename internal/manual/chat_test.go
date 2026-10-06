@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,6 +30,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		// C12: Key troubleshooting must reach the self-contained restart section.
+		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
+		{"your key was not accepted for this model", "starting-codeaf"},
+		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
+
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
@@ -3565,6 +3572,83 @@ func TestTheFreshInstallQuestionsReachTheirAnswers(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%q does not reach the models-and-cost section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
+// C12: Each troubleshooting question reaches the actual restart section,
+// rather than another mention of a key elsewhere on the same page.
+func TestKeyTroubleshootingReachesTheEngineRestartSection(t *testing.T) {
+	for _, question := range []string{
+		"I changed or unset my API key in the shell but codeaf still uses the old one",
+		"your key was not accepted for this model",
+		"codeaf ignores my OPENAI_API_KEY",
+	} {
+		found := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page == "starting-codeaf" && strings.Contains(section.Title, "still uses the old one") && strings.Contains(section.Body, "codeaf engine --stop --workspace <dir>") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q missed the restart section", question)
+		}
+	}
+}
+
+// C12, F5 and F7: The retrieved restart answer names every busy condition,
+// stays self-contained, and offers copyable commands for spaces and apostrophes.
+func TestEnvironmentRestartManualNamesBackgroundWorkAndQuotesCommands(t *testing.T) {
+	for _, section := range Chat().Search("I changed or unset my API key in the shell but codeaf still uses the old one", DefaultResults) {
+		if section.Page != "starting-codeaf" || !strings.Contains(section.Title, "still uses the old one") {
+			continue
+		}
+		for _, needle := range []string{"no window", "no turn", "no question", "no background task, job", "or run", "next open it or switch models"} {
+			if !strings.Contains(section.Body, needle) {
+				t.Errorf("restart answer omits %q: %s", needle, section.Body)
+			}
+		}
+		if len(section.Title)+len(section.Body) > 2000 || strings.Contains(section.Body, "grace") {
+			t.Fatal("restart answer is too long or teaches a grace period")
+		}
+		for _, example := range []struct{ command, workspace string }{
+			{"codeaf engine --stop --workspace '/tmp/my project'", "/tmp/my project"},
+			{`codeaf engine --stop --workspace '/tmp/it'\''s project'`, "/tmp/it's project"},
+		} {
+			if !strings.Contains(section.Body, example.command) {
+				t.Errorf("restart answer omits the quoted example %s", example.command)
+				continue
+			}
+			out, err := exec.Command("bash", "-c", "codeaf() { printf '%s\\n' \"$@\"; }; "+example.command).Output()
+			if err != nil || string(out) != "engine\n--stop\n--workspace\n"+example.workspace+"\n" {
+				t.Errorf("manual command arguments = %q, error %v", out, err)
+			}
+		}
+		return
+	}
+	t.Fatal("the restart answer could not be retrieved")
+}
+
+// C12 and F8: The guide's current keys answer agrees with the default and custom
+// doors and explains when a changed terminal environment reaches the engine.
+// The earlier captured terminal reply is historical evidence, not this answer.
+func TestGuideKeysAnswerNamesBothLaddersAndTheEnvironmentRestart(t *testing.T) {
+	body, err := os.ReadFile("../../docs/GUIDE.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, answer, ok := strings.Cut(string(body), "## Models, keys, and spending\n")
+	if !ok {
+		t.Fatal("guide no longer has its keys answer")
+	}
+	answer, _, _ = strings.Cut(answer, "<details>")
+	for _, needle := range []string{
+		"`OPENROUTER_API_KEY`, then\n`api_key`", "`OPENAI_API_KEY` only if it starts\nwith `sk-or-`",
+		"custom `CODEAF_BASE_URL`", "`OPENROUTER_API_KEY`, `OPENAI_API_KEY` of\nany shape, then the profile key",
+		"engine restarts", "no window, turn, question or background work", "names its stop command",
+	} {
+		if !strings.Contains(answer, needle) {
+			t.Errorf("guide keys answer omits %q", needle)
 		}
 	}
 }
