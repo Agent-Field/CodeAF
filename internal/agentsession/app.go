@@ -51,7 +51,7 @@ type Config struct {
 	//
 	// EACH AGENT IS BOUNDED BY WHAT ITS OWN WORK TAKES. One cap for every agent
 	// was too short for a scanner that walks the repository and far too long
-	// for a profiler that reads three files: /pr's reviewers spent fifty turns
+	// for a profiler that reads three files: /review's reviewers spent fifty turns
 	// at twenty seconds each where a dozen would have done, and sec's
 	// scanners were the ones cut at fifty. The program knows its agents, so the
 	// figures are its own.
