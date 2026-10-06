@@ -61,6 +61,11 @@ func TestABeltWorkerReadsTheBeltsPagesAndNothingElse(t *testing.T) {
 			t.Errorf("a belt worker's page carries %q, which only prompts/system.md has", foreign)
 		}
 	}
+	// The policy precedes the web guidance, so a stale bash-only restriction
+	// there would override the tools the worker actually carries.
+	if strings.Contains(page, "one native bash tool call") || !strings.Contains(page, "one available tool call per response") {
+		t.Fatal("the worker policy still restricts native web actions to bash")
+	}
 	// AND THE TWO FACTS IT ACTS ON SURVIVE: the finish verb and the plan CLI.
 	for _, want := range []string{"plandb done", "plandb"} {
 		if !strings.Contains(page, want) {

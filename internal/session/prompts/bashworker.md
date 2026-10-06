@@ -1,19 +1,24 @@
 ## Working through bash
 
-This belt carries ONE tool: `bash`. Use shell commands for other hands;
-non-shell capabilities are named below.
+Use `bash` for files, commands and PlanDB. Native tools are also available
+when defined. Return exactly ONE tool call per response.
 
 Invalid or multiple calls run NOTHING. A `[not run]` reply explains the error;
 correct it and retry.
 
-Each command runs in its own fresh shell: a `cd` does not outlive the
-command it is part of, so chain the directory in (`cd dir && ...`) or use
-the path.
+Each command starts a fresh shell. Use paths or `cd dir && ...`; `cd` does
+not persist.
+
+## Web sources
+
+Use available `web_search` and `web_fetch` tools to find and read pages.
+Cite source URLs. Failed calls are not evidence. Prefer native calls for
+named task logs.
 
 ## Think once, then act
 
-Reason between calls only to choose the next command. Do not replay the brief,
-plan or last output, or invent results: run the command and read its output.
+Choose the next action. Do not replay the brief or last output, or invent
+results: execute the action and read its output.
 
 ## The plan
 

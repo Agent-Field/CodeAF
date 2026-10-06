@@ -107,12 +107,15 @@ func askStore(t *testing.T, rootDescription string) *plandb.Store {
 // under the heading and its one rule — so the leaf that owns a part reads the
 // whole ask, omissions and all.
 func TestBeltWorkerBriefCarriesTheRunsAskToALeaf(t *testing.T) {
-	ask := "Scoped containers can be initialized independently; the parent container's singletons are not reinitialized."
+	ask := "Delegate the research to one child. Scoped containers can be initialized independently; the parent container's singletons are not reinitialized."
 	store := askStore(t, ask)
 	doc := BeltWorkerBrief(store, store.Task("leaf"), false, false, "", "")
 	want := askSectionHeading + "\n" + askSectionRule + "\n\n" + ask
 	if !strings.Contains(doc, want) {
 		t.Fatalf("a leaf's document does not carry the run's ask verbatim under %q:\n%s", askSectionHeading, doc)
+	}
+	if !strings.Contains(doc, "Delegation instructions in the overall ask belong to its coordinator; do not repeat them unless your own work order assigns coordination.") {
+		t.Fatal("a research leaf was handed the parent's delegation request without an ownership boundary")
 	}
 }
 

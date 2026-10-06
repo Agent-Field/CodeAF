@@ -41,6 +41,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/plandb"
+	"github.com/Agent-Field/codeaf/internal/search"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -134,6 +135,11 @@ func CrewFactory(store *plandb.Store, workspace, profileDir string, seats Seats,
 	}
 	workerFor := func(model string, completer session.Completer) *BashWorker {
 		worker := NewBashWorker(store, workspace, model, standing, completer)
+		// A run worker has no parent agent to inherit the web pair from. Bind
+		// the same live resolver the chat and CLI use to this run's profile.
+		worker.searchProvider, worker.searchFetcher = search.Live(func() search.Options {
+			return config.SearchOptionsAt(profileDir)
+		})
 		worker.authKeySource = func(model string) string {
 			return config.APIKeySourceForModel(profileDir, sources, model)
 		}

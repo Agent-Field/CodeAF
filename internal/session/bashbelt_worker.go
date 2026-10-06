@@ -261,7 +261,7 @@ func BeltWorkerBrief(store *plandb.Store, task *plandb.Task, root, resume bool, 
 // is for.
 const (
 	askSectionHeading = "## The ask this run serves"
-	askSectionRule    = "Your work order above is your part; where it and the ask disagree on a requirement you own, the ask wins, and you say so in your report."
+	askSectionRule    = "Your work order above is your part; where it and the ask disagree on a requirement you own, the ask wins, and you say so in your report. Delegation instructions in the overall ask belong to its coordinator; do not repeat them unless your own work order assigns coordination."
 	// askSectionLimit is the hard cap on the verbatim ask. The whole value of
 	// carrying it is that nothing was edited out, and the bound is for the
 	// pasted-log case, where an unbounded copy would put megabytes into every
