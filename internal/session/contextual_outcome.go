@@ -2393,7 +2393,11 @@ func programPrefixRange(s string) bool {
 // `open(<literal-or-alias>[, <literal>...]).read()`/`.read_bytes()`/
 // `.read_text()`, or a pathlib constructor chained to a reading method. A
 // literal alias must have been assigned a simple string constant BEFORE the
-// read. Nothing else is a read: a call that parses, decodes or computes is not.
+// read. A read method may carry ONE literal read size — a nonnegative decimal
+// integer, as in the live `open('vendor.csv','rb').read(4)` byte probe — which
+// bounds the same pure read rather than computing over it; a symbolic, signed,
+// computed or side-effecting size is not a proven bound and is left as work.
+// Nothing else is a read: a call that parses, decodes or computes is not.
 func programPureReadExpr(expr string, aliases map[string]bool) bool {
 	s := strings.TrimSpace(expr)
 	parts, i, ok := programDottedName(s, 0)
@@ -2432,12 +2436,49 @@ func programPureReadExpr(expr string, aliases map[string]bool) bool {
 	i = k
 	if i < len(s) && s[i] == '(' {
 		inner, e2, ok := callArguments(s, i)
-		if !ok || strings.TrimSpace(inner) != "" {
+		if !ok {
+			return false
+		}
+		// AN EMPTY read() IS THE UNBOUNDED READ; otherwise the ONLY argument this
+		// reader proves is a bounded literal size, and ONLY on the read-content
+		// methods. `open(...)` names mode and encoding, never a size, so it keeps
+		// its empty-argument shape.
+		if strings.TrimSpace(inner) != "" && !(programReadSizeMethods[method] && programBoundedReadSize(inner)) {
 			return false
 		}
 		i = e2
 	}
 	return i == len(s)
+}
+
+// programReadSizeMethods are the read-content methods whose one optional
+// argument is a bounded literal count rather than a mode, encoding or
+// computation. `open(...)` is deliberately absent: its arguments name mode and
+// encoding, never a size, so a pathlib `.open(...)` keeps the empty-argument
+// shape.
+var programReadSizeMethods = map[string]bool{
+	"read": true, "read_bytes": true, "read_text": true,
+}
+
+// programBoundedReadSize answers whether the single `.read(...)` argument is a
+// SMALL LITERAL bound: a nonnegative decimal integer and nothing else. The live
+// diagnostic that the writer and the read-time projection must both recognise is
+// `open('vendor.csv','rb').read(4)`, a literal byte count that bounds a pure
+// read-preview, so the count stays inside the same bounded read the zero-argument
+// form already names. A symbolic, signed, computed, subscripted or
+// side-effecting argument is not a proven bound and is left as work, so the
+// genuine `read()` -> decode -> parse -> arithmetic calculation stays eligible.
+func programBoundedReadSize(s string) bool {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return false
+	}
+	for i := 0; i < len(trimmed); i++ {
+		if trimmed[i] < '0' || trimmed[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // programReadLiteralArgs answers whether an `open(...)` argument list starts

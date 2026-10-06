@@ -32,6 +32,16 @@ const (
 	// The exact live byte-count/prefix diagnostic.
 	bytePreview = `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(); print(len(d), d[:80])"`
 
+	// THE EXACT LIVE BOUNDED-SIZE PROBE: the historic alternative that build
+	// 902b4eb8c still served because `.read(4)` carried a non-empty, literal size
+	// argument the reader refused. A small literal count is a bounded pure read
+	// and must be projected out exactly like the zero-argument probe.
+	byteSizePreview = `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(4); print(d)"`
+
+	// The same bounded-size read at a larger literal count: the acceptance is the
+	// LITERAL SHAPE, not a specific number.
+	byteSize64Preview = `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(64); print(d)"`
+
 	// The same diagnostic through an assigned literal alias and an inline read:
 	// both are the same class and must be refused too.
 	aliasPreview = `.venv/bin/python -c "import sys
@@ -78,6 +88,8 @@ func TestReadPreviewOnlyRefusesDiagnosticAndLeavesWork(t *testing.T) {
 		"exact live diagnostic": `import sys; d=open('vendor.csv','rb').read(); print(len(d), d[:80])`,
 		"literal alias":         "p = 'vendor.csv'\nd = open(p, 'rb').read()\nprint(len(d), d[:80])",
 		"inline read":           `print(len(open('vendor.csv','rb').read()), open('vendor.csv','rb').read()[:80])`,
+		"bounded literal size":  "d = open('vendor.csv','rb').read(4)\nprint(d)",
+		"bounded size inline":   `print(len(open('vendor.csv','rb').read(64)), open('vendor.csv','rb').read(4)[:4])`,
 		"pathlib read_bytes":    "from pathlib import Path\nd = Path('vendor.csv').read_bytes()\nprint(len(d), d[:4].hex())",
 		"path prefix hex":       "raw = open('vendor.csv','rb').read()\nprint(raw[:16].hex())",
 		// THE e62 SECOND SUCCESS: a full decoded dump is inspection too.
@@ -100,6 +112,13 @@ func TestReadPreviewOnlyRefusesDiagnosticAndLeavesWork(t *testing.T) {
 		"computed decode":   "d = open('vendor.csv','rb').read()\nprint(d.decode(enc))",
 		"unknown call":      "d = open('vendor.csv','rb').read()\nprint(d.splitlines())",
 		"bare read":         "d = open('vendor.csv','rb').read()",
+		// A non-literal SIZE is not a proven bound and must fail closed.
+		"symbolic size": "d = open('vendor.csv','rb').read(n)\nprint(d)",
+		"computed size": "d = open('vendor.csv','rb').read(2 + 2)\nprint(d)",
+		"signed size":   "d = open('vendor.csv','rb').read(-1)\nprint(d)",
+		"called size":   "d = open('vendor.csv','rb').read(size())\nprint(d)",
+		"string size":   "d = open('vendor.csv','rb').read('4')\nprint(d)",
+		"two sizes":     "d = open('vendor.csv','rb').read(4, 8)\nprint(d)",
 	}
 	for name, prog := range works {
 		if programReadPreviewOnly(prog) {
@@ -126,6 +145,7 @@ func TestReadPreviewTaxonomyAgrees(t *testing.T) {
 		"exact live diagnostic": bytePreview,
 		"literal alias":         aliasPreview,
 		"inline read":           inlinePreview,
+		"bounded literal size":  byteSizePreview,
 		"e62 full read dump":    fullDumpPreview,
 		"decoded buffer":        decodedDumpPreview,
 		"decoded prefix":        decodedPrefixPreview,
@@ -162,6 +182,8 @@ func TestReadPreviewDoesNotConsumeAlternativeAtBoundary(t *testing.T) {
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p1", bytePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p2", aliasPreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p3", inlinePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
+			worker.recordOutcome(ctx, 0, delegatedBashCall("p3b", byteSizePreview), toolResult{text: "b'\\xff\\xfec\\x00'"}, pre)
+			worker.recordOutcome(ctx, 0, delegatedBashCall("p3c", byteSize64Preview), toolResult{text: "b'\\xff\\xfec\\x00'"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p4", fullDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p5", decodedDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("g1", previewGenuine), toolResult{text: "food 0.30\ntravel 37.05\ngrand total 37.35"}, pre)
@@ -171,6 +193,8 @@ func TestReadPreviewDoesNotConsumeAlternativeAtBoundary(t *testing.T) {
 			root.recordOutcome(ctx, 1, delegatedBashCall("p1", bytePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("p2", aliasPreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("p3", inlinePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
+			root.recordOutcome(ctx, 1, delegatedBashCall("p3b", byteSizePreview), toolResult{text: "b'\\xff\\xfec\\x00'"}, pre)
+			root.recordOutcome(ctx, 1, delegatedBashCall("p3c", byteSize64Preview), toolResult{text: "b'\\xff\\xfec\\x00'"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("p4", fullDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("p5", decodedDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("g1", previewGenuine), toolResult{text: "food 0.30\ntravel 37.05\ngrand total 37.35"}, pre)
@@ -210,7 +234,7 @@ func TestReadPreviewDoesNotConsumeAlternativeAtBoundary(t *testing.T) {
 // ONE FAILURE KEEPS ONE ALTERNATIVE: under a concurrent batch of diagnostics the
 // genuine calculation still wins the single slot, at BOTH boundaries.
 func TestReadPreviewKeepsOneAlternativeUnderRace(t *testing.T) {
-	noise := []string{bytePreview, aliasPreview, inlinePreview, fullDumpPreview, decodedDumpPreview, decodedPrefixPreview}
+	noise := []string{bytePreview, aliasPreview, inlinePreview, byteSizePreview, byteSize64Preview, fullDumpPreview, decodedDumpPreview, decodedPrefixPreview}
 
 	run := func(t *testing.T, delegated bool) {
 		dir := t.TempDir()
@@ -394,6 +418,7 @@ func TestProjectionGuardProvesOnlyCompleteKnownPreview(t *testing.T) {
 		"exact live diagnostic": storedBytePreview,
 		"literal alias":         "bash: " + aliasPreview,
 		"inline read":           "bash: " + inlinePreview,
+		"bounded literal size":  "bash: " + byteSizePreview,
 		"e62 full read dump":    "bash: " + fullDumpPreview,
 		"decoded buffer":        "bash: " + decodedDumpPreview,
 		"decoded prefix":        "bash: " + decodedPrefixPreview,
@@ -406,6 +431,7 @@ func TestProjectionGuardProvesOnlyCompleteKnownPreview(t *testing.T) {
 	kept := map[string]string{
 		"complete genuine calculation": "bash: " + previewGenuine,
 		"decode then parse":            "bash: " + `.venv/bin/python -c "raw = open('vendor.csv','rb').read(); text = raw.decode('utf-16'); rows = list(csv.DictReader(io.StringIO(text))); print(len(rows))"`,
+		"unbounded unknown size":       "bash: " + `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(n); print(d)"`,
 		"clipped genuine calculation":  "bash: " + contextualClip(previewGenuine, 240),
 		"legacy clipped program":       "bash: " + `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(); print(len(d), d[:80])` + "\u2026",
 		"unproven clipping marker":     "bash: " + inlinePreview + "\u2026",
