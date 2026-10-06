@@ -28,8 +28,8 @@ the worked example this one follows.
 - `internal/delegate`, `internal/inproc`, `carried/` and `codeaf/`: pr-af's own
   first drafts of a codeaf integration (a host mirror, its own read-only agent
   loop, a drop-in adapter). The program here uses codeaf's real
-  `internal/delegate` types, and its agent sessions are sec's
-  (`internal/secaf/backing`).
+  `internal/delegate` types, and its agent sessions are the loop sec runs on
+  too (`internal/agentsession`), told their work is "a code review".
 
 ## Changed
 

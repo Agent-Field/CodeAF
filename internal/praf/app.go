@@ -1,15 +1,14 @@
 package praf
 
 // The App the review runs on: pr-af's three verbs answered by codeaf, on the
-// agent sessions internal/secaf/backing runs over the run's model API.
+// agent sessions internal/agentsession runs over the run's model API.
 //
-// THE SESSIONS ARE sec's, BECAUSE THEY ARE THE SAME THING. pr-af's reviewers
-// were a coding-agent binary per call, and so were sec-af's agents; sec
-// replaced its binary with a small read-only loop on the model API (four
+// THE SESSIONS ARE THE ONES sec RUNS ON, BECAUSE THEY ARE THE SAME THING.
+// pr-af's reviewers were a coding-agent binary per call, and so were sec-af's
+// agents; both became the same small read-only loop on the model API (four
 // tools, an answer checked against its schema, a second chance when it does
-// not parse, the run's 402 and 429 heard once for every call), and a review
-// needs exactly that. So the review is handed that loop rather than a second
-// copy of it.
+// not parse, the run's 402 and 429 heard once for every call), told only what
+// work it is part of.
 
 import (
 	"context"
@@ -17,9 +16,9 @@ import (
 	"sync"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/agentsession"
+	secappx "github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/praf/appx"
-	secappx "github.com/Agent-Field/codeaf/internal/secaf/appx"
-	"github.com/Agent-Field/codeaf/internal/secaf/backing"
 )
 
 // sessionApp is what a review needs of the sessions: sec's App, narrowed so a
@@ -30,7 +29,7 @@ type sessionApp interface {
 	Spent() (cost float64, sessions, calls int)
 }
 
-var _ sessionApp = (*backing.App)(nil)
+var _ sessionApp = (*agentsession.App)(nil)
 
 // app is the review's appx.App over the sessions, keeping count of every call
 // and how many failed. The pipeline turns a failed reviewer into "no

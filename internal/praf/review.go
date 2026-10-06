@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/praf/afx"
@@ -21,7 +22,6 @@ import (
 	"github.com/Agent-Field/codeaf/internal/praf/orch"
 	"github.com/Agent-Field/codeaf/internal/praf/reasoners"
 	"github.com/Agent-Field/codeaf/internal/praf/schemas"
-	"github.com/Agent-Field/codeaf/internal/secaf/backing"
 )
 
 // softFraction is where the pipeline's own budget gate is set, as a share of
@@ -31,6 +31,11 @@ import (
 // ceiling itself would let them carry the run over it, where the model API
 // refuses every call and the review has nothing to hand back.
 const softFraction = 0.8
+
+// sessionWork is what every agent session of a review is one agent of, in
+// the loop's system prompt: "You are one agent of a code review of the
+// repository at …".
+const sessionWork = "a code review"
 
 // reportReserve is the time kept back from the run's wall for writing the
 // review down, so a review cut by its hours still says what it found. A
@@ -43,7 +48,7 @@ type reviewer struct {
 	token       func(ctx context.Context) string
 	gh          func(token string) gitHub
 	resolveRepo func(ctx context.Context, access orch.Access, prURL string) (string, error)
-	sessions    func(api delegate.ModelAPI, config backing.Config) (sessionApp, error)
+	sessions    func(api delegate.ModelAPI, config agentsession.Config) (sessionApp, error)
 	review      func(ctx context.Context, deps orch.Deps, in schemas.ReviewInput, cfg config.ReviewConfig) (schemas.ReviewResult, *schemas.GitHubPRData, error)
 	branchPR    func(ctx context.Context, dir string, gh gitHub) (Target, error)
 	workdir     func() (string, func(), error)
@@ -63,12 +68,12 @@ func defaultReviewer() reviewer {
 		resolveRepo: func(ctx context.Context, access orch.Access, prURL string) (string, error) {
 			return orch.ResolveRepo(ctx, access, "", prURL)
 		},
-		sessions: func(api delegate.ModelAPI, config backing.Config) (sessionApp, error) {
-			client, err := backing.NewClient(api)
+		sessions: func(api delegate.ModelAPI, config agentsession.Config) (sessionApp, error) {
+			client, err := agentsession.NewClient(api)
 			if err != nil {
 				return nil, err
 			}
-			return backing.New(client, config), nil
+			return agentsession.New(client, config), nil
 		},
 		review: func(ctx context.Context, deps orch.Deps, in schemas.ReviewInput, cfg config.ReviewConfig) (schemas.ReviewResult, *schemas.GitHubPRData, error) {
 			o := orch.New(deps, in, cfg)
@@ -164,8 +169,11 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 	if light == "" {
 		light = o.model
 	}
-	sessions, err := r.sessions(host.Models(), backing.Config{
-		Root: checkout, SessionModel: o.model, AIModel: light,
+	// THE SESSIONS ARE TOLD THEIR WORK IS A CODE REVIEW. The loop is sec's
+	// too, and a session told nothing would read the checkout as no work in
+	// particular.
+	sessions, err := r.sessions(host.Models(), agentsession.Config{
+		Root: checkout, Work: sessionWork, SessionModel: o.model, AIModel: light,
 		Sessions: o.sessions, MaxTurns: o.maxTurns, SessionWall: o.sessionWall,
 	})
 	if err != nil {
@@ -251,7 +259,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 func failedReview(ctx, reviewCtx context.Context, t Target, err error, cost float64) delegate.Ending {
 	ending := delegate.Ending{CostUSD: cost, Reason: err.Error(), Status: delegate.StatusFail}
 	switch {
-	case errors.Is(err, backing.ErrCeiling):
+	case errors.Is(err, agentsession.ErrCeiling):
 		ending.Status = delegate.StatusBudget
 		ending.Message = "pr reached the run's dollar ceiling before it finished, so it has no review"
 	case errors.Is(reviewCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:

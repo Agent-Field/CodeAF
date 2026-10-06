@@ -14,13 +14,13 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/agentsession"
+	secappx "github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/praf/appx"
 	"github.com/Agent-Field/codeaf/internal/praf/config"
 	"github.com/Agent-Field/codeaf/internal/praf/orch"
 	"github.com/Agent-Field/codeaf/internal/praf/schemas"
-	secappx "github.com/Agent-Field/codeaf/internal/secaf/appx"
-	"github.com/Agent-Field/codeaf/internal/secaf/backing"
 )
 
 // testHost is codeaf's side of a run as a test sees it: the folder, the
@@ -131,7 +131,7 @@ type captured struct {
 	in     schemas.ReviewInput
 	cfg    config.ReviewConfig
 	access orch.Access
-	conf   backing.Config
+	conf   agentsession.Config
 }
 
 // testReviewer wires every seam to a stand-in; review is the pipeline.
@@ -144,7 +144,7 @@ func testReviewer(sessions *fakeSessions, review func(ctx context.Context, deps 
 			c.access = access
 			return "/tmp/co", nil
 		},
-		sessions: func(_ delegate.ModelAPI, conf backing.Config) (sessionApp, error) {
+		sessions: func(_ delegate.ModelAPI, conf agentsession.Config) (sessionApp, error) {
 			c.conf = conf
 			return sessions, nil
 		},
@@ -253,6 +253,9 @@ func TestReviewHandsBackTheAccountAndTheReport(t *testing.T) {
 	if c.access != (orch.Access{Workdir: "/tmp/work", Token: "gh-token"}) || c.conf.Root != "/tmp/co" {
 		t.Errorf("access %+v, sessions on %q", c.access, c.conf.Root)
 	}
+	if c.conf.Work != "a code review" {
+		t.Errorf("sessions are told their work is %q, want a code review", c.conf.Work)
+	}
 
 	// The report: the review to read, and the review to post.
 	md, err := os.ReadFile(filepath.Join(host.records, reportMarkdown))
@@ -340,7 +343,7 @@ func TestFailuresEndByTheirCause(t *testing.T) {
 		status string
 		says   string
 	}{
-		{backing.ErrCeiling, delegate.StatusBudget, "dollar ceiling"},
+		{agentsession.ErrCeiling, delegate.StatusBudget, "dollar ceiling"},
 		{orch.ErrBadInput, delegate.StatusFail, "could not review o/r#7"},
 		{errors.New("boom"), delegate.StatusFail, "did not finish: boom"},
 	} {

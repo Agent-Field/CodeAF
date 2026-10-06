@@ -256,12 +256,12 @@ list, on Go 1.27.0:
 
 | platform | without | with | what pr cost |
 | --- | --- | --- | --- |
-| darwin/amd64, furrow staged | 69,630,208 | 70,662,976 | 1,032,768 |
+| darwin/amd64, furrow staged | 69,630,224 | 70,663,008 | 1,032,784 |
 
 It brings no module codeaf did not already link — its agent sessions are sec's
 and its schema readers the ones sec brought — so the cost is pr-af's own code
 and prompts and the tables that code carries. The budget rises by exactly that
-cost, to 72,395,768.
+cost, to 72,395,784.
 
 ## Adaptive run shutdown grace
 

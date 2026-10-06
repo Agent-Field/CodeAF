@@ -14,7 +14,7 @@
 // plan, the dimension reviewers, the evidence, challenge, cross-reference and
 // coverage passes, the prompts — is in the packages below this one and is its
 // own. What it runs on is codeaf's: the agent sessions sec's audit runs on
-// (internal/secaf/backing), over the run's model API.
+// (internal/agentsession), over the run's model API.
 //
 // IT HAS NO ENTRY POINT OF ITS OWN. What codeaf needs of it is a
 // delegate.Delegate value, and its command's body takes a delegate.Host, which

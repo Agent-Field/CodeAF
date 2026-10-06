@@ -2,7 +2,7 @@
 // gates and orchestrator are written against. pr-af received the AgentField
 // SDK's `Agent` and called `.Harness(...)`, `.AI(...)` and `.Note(...)` on it;
 // here the codeaf side answers those verbs (internal/praf's app.go, over the
-// agent sessions internal/secaf/backing runs), so the seam names no SDK agent
+// agent sessions internal/agentsession runs), so the seam names no SDK agent
 // or harness type.
 package appx
 
