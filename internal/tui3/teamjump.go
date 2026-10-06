@@ -2,11 +2,13 @@ package tui3
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -45,9 +47,9 @@ const trafficOlderWords = "that message is older than this chat's history"
 // trafficJumpTo is a jump waiting for its conversation, and trafficLanding
 // the entry lifted after one, or the hint said when it found nothing.
 type trafficJumpTo struct {
-	key, id string
-	until   time.Time
-	waking  bool
+	key, id, team string
+	until         time.Time
+	waking        bool
 }
 
 type trafficLanding struct {
@@ -66,6 +68,15 @@ type trafficJumpDeadlineMsg struct{}
 // trafficJump opens member key's conversation at Traffic entry id, or in
 // front at id when key is "" or already in front.
 func (a *app) trafficJump(key, id string) tea.Cmd {
+	// The column's team owns the clicked message. The rail filter can instead
+	// name a team above it, where this manager is also an ordinary member.
+	t, _, _ := a.sideTeam()
+	return a.trafficJumpIn(key, id, t.ID)
+}
+
+// trafficJumpIn retains the source team before opening another conversation,
+// whose own team or rail filter must not change the message's identity.
+func (a *app) trafficJumpIn(key, id, teamID string) tea.Cmd {
 	var cmd tea.Cmd
 	if key != "" && key != a.frontTabKey() {
 		cmd = a.trafficGo(key)
@@ -73,7 +84,7 @@ func (a *app) trafficJump(key, id string) tea.Cmd {
 	if key == "" {
 		key = a.frontTabKey()
 	}
-	a.traffic.jump = trafficJumpTo{key: key, id: id, until: a.now().Add(trafficJumpWait)}
+	a.traffic.jump = trafficJumpTo{key: key, id: id, team: teamID, until: a.now().Add(trafficJumpWait)}
 	return tea.Batch(cmd, a.trafficLand())
 }
 
@@ -96,7 +107,7 @@ func (a *app) trafficLand() tea.Cmd {
 	}
 	at := -1
 	if a.now().Before(j.until) {
-		at = a.teamEntryAt(j.id)
+		at = a.teamEntryAtIn(j.id, j.team)
 	}
 	if at < 0 && (a.hostReplayLoading || a.hostReplayWaiting) && a.now().Before(j.until) {
 		if !j.waking {
@@ -150,37 +161,53 @@ func (a *app) revealTrafficEntry(at int) {
 // teamEntryAt is the newest entry of the conversation that carries Traffic
 // entry id, -1 for none.
 func (a *app) teamEntryAt(id string) int {
+	t, _, _ := a.sideTeam()
+	return a.teamEntryAtIn(id, t.ID)
+}
+
+// teamEntryAtIn matches both parts of a Traffic message's identity. Numbers
+// count separately in every team, including the optional All teams group.
+func (a *app) teamEntryAtIn(id, teamID string) int {
 	if id == "" {
+		return -1
+	}
+	shown, inTeam := a.teamByID(teamID)
+	if teamID != "" && !inTeam {
 		return -1
 	}
 	// A START ROOT IS ANSWERED BY ITS OWN TEAM'S MATCHER FIRST. Traffic numbers
 	// count per team, so a `team_send` into another team can carry the same
 	// `(#N)` as this team's start, and the newest-first search below would land
-	// on it; [app.teamStartEntryAt] checks the team, and that search cannot.
-	if at := a.teamStartEntryAt(id); at >= 0 {
-		return at
+	// on a send rather than the start. [app.teamStartEntryAt] also checks the
+	// accepted brief and recipient, so a start keeps its own call.
+	if inTeam {
+		if at := a.teamStartEntryAt(id, shown); at >= 0 {
+			return at
+		}
 	}
 	number := teamstore.ThreadNumber(id)
-	shown, inTeam := a.teamOfFront()
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
 		switch e.kind {
 		case entryTeam:
 			for _, l := range e.team {
-				if l.Thread == id {
+				if l.Thread == id && (!inTeam || a.trafficLineBelongs(l, shown)) {
 					return i
 				}
 			}
 		case entryTool:
 			switch e.tool {
 			case "team_send":
-				if inTeam && sentElsewhere(e, shown) {
+				if inTeam && a.sentElsewhere(e, shown, id) {
 					continue
 				}
 				if strings.Contains(e.detail.Output, "("+number+")") {
 					return i
 				}
 			case "team_post":
+				if inTeam && a.sentElsewhere(e, shown, id) {
+					continue
+				}
 				if strings.Contains(e.detail.Output, " as "+number+",") || strings.Contains(e.detail.Output, " as "+number+".") {
 					return i
 				}
@@ -190,16 +217,115 @@ func (a *app) teamEntryAt(id string) int {
 	return -1
 }
 
-// sentElsewhere reports a `team_send` that named a team other than shown, whose
-// `(#N)` counts in that team's traffic and says nothing about this one. A send
-// that names no team went to the sender's own and is still a candidate.
-func sentElsewhere(e *entry, shown team) bool {
-	var args struct{ Team string }
+// trafficLineBelongs keeps deliveries in their source team. A delivery stores
+// the name it arrived under, so its retained Traffic identity takes precedence
+// over a name another team acquired later. Identical retained identities in
+// multiple teams cannot establish which historical team delivered the card.
+// An evicted or unloaded foreign row is not evidence of an absent identity.
+func (a *app) trafficLineBelongs(line session.TeamLine, target team) bool {
+	if line.Team == "" || line.Team == target.ID {
+		return true
+	}
+	for _, owner := range a.wall.teams {
+		if owner.ID == target.ID || (line.Team != owner.ID && !strings.EqualFold(line.Team, owner.Name)) {
+			continue
+		}
+		known := a.traffic.cursor[owner.ID] == trafficFromStart
+		for _, row := range a.traffic.rows[owner.ID] {
+			if row.ID == line.Thread {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return false
+		}
+	}
+	matched := ""
+	for id, rows := range a.traffic.rows {
+		for _, e := range rows {
+			if e.ID != line.Thread || e.Kind != line.Kind || e.From != line.From || session.TeamDeliveryText(e) != strings.TrimSpace(line.Text) {
+				continue
+			}
+			if matched != "" && matched != id {
+				return false
+			}
+			matched = id
+			break
+		}
+	}
+	if matched != "" {
+		return matched == target.ID
+	}
+	if strings.EqualFold(line.Team, target.Name) {
+		return true
+	}
+	return false
+}
+
+// sentElsewhere reports a team tool that named a team other than shown, whose
+// receipt counts in that team's traffic and says nothing about this one. An
+// omitted post team is resolved through the executed receipt: a manager can
+// also be a member elsewhere, where its post verb belongs. Each team's own
+// sender identity must establish a renamed post, because handles can differ.
+func (a *app) sentElsewhere(e *entry, shown team, id string) bool {
+	var args struct{ Team, Text string }
 	if json.Unmarshal([]byte(e.detail.Args), &args) != nil {
 		return false
 	}
 	target := strings.TrimSpace(args.Team)
-	return target != "" && target != shown.ID && target != shown.Name
+	omittedPost := target == "" && e.tool == "team_post"
+	if omittedPost {
+		if _, after, ok := strings.Cut(e.detail.Output, " in "); ok {
+			if quoted, err := strconv.QuotedPrefix(after); err == nil {
+				target, _ = strconv.Unquote(quoted)
+			}
+		}
+	}
+	if omittedPost && target != "" {
+		ownerID := ""
+		for _, owner := range a.wall.teams {
+			if target == owner.ID || strings.EqualFold(target, owner.Name) {
+				ownerID = owner.ID
+				break
+			}
+		}
+		// A currently named team owns its receipt. A historical-name guess
+		// cannot transfer it to another team, even when their handles differ.
+		if ownerID != "" && ownerID != shown.ID {
+			return true
+		}
+		matched := ""
+		for _, owner := range a.wall.teams {
+			if ownerID != "" && owner.ID != ownerID {
+				continue
+			}
+			sender, ok := owner.Member(a.frontTabKey())
+			if !ok {
+				continue
+			}
+			known := a.traffic.cursor[owner.ID] == trafficFromStart
+			for _, row := range a.traffic.rows[owner.ID] {
+				if row.ID != id {
+					continue
+				}
+				known = true
+				if row.Kind == teamstore.KindNote && row.From == sender.Handle && (ownerID != "" || strings.TrimSpace(row.Text) == strings.TrimSpace(args.Text)) {
+					if matched != "" && matched != owner.ID {
+						return true
+					}
+					matched = owner.ID
+				}
+			}
+			// A rename cannot be disambiguated by a candidate team's missing
+			// numbered row. Only loaded evidence can establish ownership.
+			if !known {
+				return true
+			}
+		}
+		return matched != shown.ID
+	}
+	return target != "" && target != shown.ID && !strings.EqualFold(target, shown.Name)
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the

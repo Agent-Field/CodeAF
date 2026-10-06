@@ -767,7 +767,7 @@ func teamLine(role teamRole, entry teams.Entry) string {
 	// (handlepick.go's [handleRenameEntry]).
 	if entry.Kind == teams.KindEvent && entry.From == teams.FromSystem && entry.To == teams.ToEveryone {
 		if text := strings.TrimSpace(entry.Text); text != "" {
-			return teamSpeaker(entry.From) + ": " + cutRunesTeam(text, teamEntryText)
+			return teamSpeaker(entry.From) + ": " + TeamDeliveryText(entry)
 		}
 		return ""
 	}
@@ -778,7 +778,7 @@ func teamLine(role teamRole, entry teams.Entry) string {
 	if text == "" {
 		return ""
 	}
-	text = indentAfterFirst(cutRunesTeam(text, teamEntryText))
+	text = indentAfterFirst(TeamDeliveryText(entry))
 	if role.manager {
 		switch entry.From {
 		case teams.FromManager, teams.FromYou, teams.FromSystem:
