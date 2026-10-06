@@ -70,11 +70,11 @@ func defaultReviewer() reviewer {
 			return orch.ResolveRepo(ctx, access, "", prURL)
 		},
 		sessions: func(api delegate.ModelAPI, config agentsession.Config) (sessionApp, error) {
-			client, err := agentsession.NewClient(api)
+			client, err := agentsession.NewClient(api, retries)
 			if err != nil {
 				return nil, err
 			}
-			return agentsession.New(client, config), nil
+			return agentsession.New(client, config)
 		},
 		review: func(ctx context.Context, deps orch.Deps, in schemas.ReviewInput, cfg config.ReviewConfig) (schemas.ReviewResult, *schemas.GitHubPRData, error) {
 			o := orch.New(deps, in, cfg)
@@ -203,8 +203,9 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 	// particular.
 	sessions, err := r.sessions(host.Models(), agentsession.Config{
 		Root: checkout, Work: sessionWork, SessionModel: o.model, AIModel: light,
-		Sessions: o.sessions, MaxTurns: otherLimits.Turns, SessionWall: otherLimits.Wall,
-		Limits: limitsFor(o),
+		Sessions: o.sessions, Calls: callsAtOnce,
+		MaxTurns: otherLimits.Turns, SessionWall: otherLimits.Wall,
+		Limits: limitsFor(o), Policy: sessionPolicy,
 	})
 	if err != nil {
 		return delegate.Ending{Status: delegate.StatusFail, Message: "its agent sessions could not start: " + err.Error()}

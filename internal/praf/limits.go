@@ -42,6 +42,40 @@ var agentLimits = map[string]agentsession.Limits{
 // otherLimits is what a session no row names runs under.
 var otherLimits = agentsession.Limits{Turns: 20, Wall: 10 * time.Minute}
 
+// sessionsAtOnce and callsAtOnce are how many agent sessions and single model
+// calls run at once across a review: pr-af's served node ran its reviewers
+// eight at a time. --sessions sets the first.
+const (
+	sessionsAtOnce = 8
+	callsAtOnce    = 8
+)
+
+// retries is how many times a model call that failed on the way is sent
+// again, past the model API's own ladder of services.
+const retries = 2
+
+// sessionPolicy is how every one of pr's agent sessions reads and answers.
+// The figures are the ones its first live reviews ran on, said here as pr's
+// own: agentsession has no defaults, so that nothing tuned for sec's agents
+// reaches pr's, or the reverse.
+var sessionPolicy = agentsession.Policy{
+	// Asks for an answer of the right shape after one that was not.
+	FollowUps: 2,
+	// About a hundred thousand tokens, which every model a person is likely to
+	// seat holds with room for the answer.
+	ContextChars: 400_000,
+	AnswerNow:    "Stop reading now and give your answer from what you have found, in the form the system message asks for.",
+	Tools: agentsession.ToolLimits{
+		// A line is cut at 2,000 characters, so the contexts a review writes
+		// for its sessions are indented JSON (reasoners.writeContextFile).
+		ReadLines: 400, ReadBytes: 48 << 10, ReadLineRunes: 2000,
+		ListEntries: 400, GlobMatches: 300,
+		// A file past two megabytes is a bundle, a dump or a dataset, and its
+		// lines are not code to trace.
+		GrepMatches: 200, GrepFileBytes: 2 << 20, GrepLineRunes: 240,
+	},
+}
+
 // limitsFor is the run's per-agent limits, with the person's --max-turns and
 // --session-wall, when set, in place of every agent's own.
 func limitsFor(o options) func(secappx.HarnessOptions) agentsession.Limits {

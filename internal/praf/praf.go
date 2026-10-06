@@ -13,8 +13,9 @@
 // (docs/design/pr-review/ABSORB.md); its algorithm — the intake, the review
 // plan, the dimension reviewers, the evidence, challenge, cross-reference and
 // coverage passes, the prompts — is in the packages below this one and is its
-// own. What it runs on is codeaf's: the agent sessions sec's audit runs on
-// (internal/agentsession), over the run's model API.
+// own. What it runs on is codeaf's: the agent loop sec runs on too
+// (internal/agentsession), over the run's model API, with every limit and
+// figure pr's own (limits.go).
 //
 // IT HAS NO ENTRY POINT OF ITS OWN. What codeaf needs of it is a
 // delegate.Delegate value, and its command's body takes a delegate.Host, which
@@ -136,7 +137,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	var o options
 	fs.StringVar(&o.model, "model", "", "the model that reads the code (default: the run's work seat)")
 	fs.StringVar(&o.light, "light", "", "the model for single structured calls (default: --model)")
-	fs.IntVar(&o.sessions, "sessions", 8, "how many agent sessions run at once")
+	fs.IntVar(&o.sessions, "sessions", sessionsAtOnce, "how many agent sessions run at once")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "the most turns every agent session takes (default: each agent's own)")
 	fs.DurationVar(&o.sessionWall, "session-wall", 0, "the longest every agent session runs (default: each agent's own)")
 	return func(ctx context.Context, host delegate.Host, args []string) error {

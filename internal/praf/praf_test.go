@@ -166,7 +166,7 @@ func testReviewer(sessions *fakeSessions, review func(ctx context.Context, deps 
 }
 
 func defaults() options {
-	return options{sessions: 8}
+	return options{sessions: sessionsAtOnce}
 }
 
 func TestProgramIsValid(t *testing.T) {
@@ -260,6 +260,11 @@ func TestReviewHandsBackTheAccountAndTheReport(t *testing.T) {
 	}
 	if c.conf.Work != "a code review" {
 		t.Errorf("sessions are told their work is %q, want a code review", c.conf.Work)
+	}
+	// EVERY FIGURE IS PR'S: the shared loop has no defaults and refuses a
+	// config that leaves one unset.
+	if _, err := agentsession.New(nil, c.conf); err != nil {
+		t.Errorf("the sessions' config is incomplete: %v", err)
 	}
 
 	// The report: the review to read, and the review to post.
