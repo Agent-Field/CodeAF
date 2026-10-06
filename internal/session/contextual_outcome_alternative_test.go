@@ -157,6 +157,23 @@ func TestPriorOutcomeRendersObservedAlternativeWithOwnCircumstances(t *testing.T
 	if !strings.Contains(got, "same source snapshot") {
 		t.Fatalf("matching circumstances were not labelled:\n%s", got)
 	}
+	// THE SHARED METHOD-SELECTION GUIDANCE RIDES WITH THE PAIR. It is dynamic
+	// context in [priorOutcomeContext], not a static prompt file, and it is the
+	// same for a manager chat, a read-only binding and a worker. It prefers the
+	// observed working path and refuses a needless failure reconfirmation, while
+	// leaving the goal and the user's words in charge and naming no command,
+	// library or expected value.
+	for _, want := range []string{"START with an observed successful path", "do NOT re-run a known-failed method", "not current test proof", "current goal and the user's own words outrank"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("shared prior-outcome guidance %q was not rendered:\n%s", want, got)
+		}
+	}
+	// NO DATASET-SPECIFIC OR CANNED TEXT LEAKS INTO THE SHARED GUIDANCE.
+	for _, banned := range []string{"pandas", "week.csv", "grand total: 12.35"} {
+		if strings.Contains(got, banned) {
+			t.Fatalf("shared guidance leaked example-specific text %q:\n%s", banned, got)
+		}
+	}
 	// A changed source is an invitation, never a ban.
 	if changed := a.priorOutcomeContext("fix the foobar parser", "dirty:abc:def"); !strings.Contains(changed, "different source snapshot") {
 		t.Fatalf("changed circumstances were not labelled honestly:\n%s", changed)
@@ -288,6 +305,11 @@ func TestObservedAlternativeBeforeFirstRequestThroughRunTurn(t *testing.T) {
 	// re-request after a tool had run would prove nothing about ordering.
 	if !strings.Contains(requests[0], "Observed successful alternative") || !strings.Contains(requests[0], "grand total: 12.35") {
 		t.Fatalf("the first provider request did not carry the observed alternative before any action: %q", requests[0])
+	}
+	// AND THE NEW SHARED GUIDANCE IS PINNED INTO THAT SAME FIRST REQUEST, on the
+	// real RunTurn seam rather than by calling the helper by hand.
+	if !strings.Contains(requests[0], "START with an observed successful path") || !strings.Contains(requests[0], "do NOT re-run a known-failed method") {
+		t.Fatalf("the first provider request did not carry the shared method-selection guidance: %q", requests[0])
 	}
 }
 

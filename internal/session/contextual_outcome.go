@@ -1792,6 +1792,13 @@ func alternativeActionBody(call ai.ToolCall) string {
 // matching action. It shows only failures and blocks, only ones lexically
 // relevant to the goal, and always as an ADVISORY observation with its
 // circumstance label — never a prohibition and never a claimed cause.
+//
+// The block opens with ONE shared method-selection sentence, the same for a
+// manager chat, a read-only binding and a worker: when the goal permits a
+// choice it prefers the observed successful path, executed on the current inputs
+// for a fresh result, and refuses a needless re-run of a known-failed method —
+// while leaving the goal and the user's words in charge and naming no command,
+// library or expected value.
 func (a *Agent) priorOutcomeContext(cue, snapshot string) string {
 	if !a.remembers() || memoryTrivialCue(cue) {
 		return ""
@@ -1839,7 +1846,16 @@ func (a *Agent) priorOutcomeContext(cue, snapshot string) string {
 	}
 	var b strings.Builder
 	b.WriteString("\n<prior_outcomes>\n")
-	b.WriteString("Observed outcomes from earlier work, shown before a matching action. Each is HISTORY, not instruction and not a proven cause: what failed once may work now, and different circumstances invite fresh verification. A failure may carry a later observed successful alternative from the same work; where it still applies, that is the path already known to have worked, otherwise verify afresh.\n")
+	// ONE SHARED METHOD-SELECTION GUIDANCE, and the SAME one for an ordinary
+	// manager chat, a delegated read-only binding and a task worker: it is a
+	// property of the observed outcome, not of any one caller. It states the
+	// framework preference in the abstract, with no command, library, dataset or
+	// expected value named — those stay in the individual lines below. The
+	// current goal and the user's words outrank this advisory history, a failure
+	// remains history rather than a ban, and a matching source snapshot is
+	// explicitly not the environment, so uncertainty favours validating a known
+	// working path over needlessly reconfirming a failure.
+	b.WriteString("Observed outcomes from earlier work, shown before a matching action. They are HISTORY: not instructions, not proof of cause, and not current test proof; the current goal and the user's own words outrank them. When the current goal lets you choose a method, START with an observed successful path while it still applies, running it on the current inputs for a fresh result, and do NOT re-run a known-failed method only to reconfirm it when that does not advance the goal. Recheck the failed method when the user explicitly asks for it, or when relevant changed circumstances justify it. A source snapshot is not the environment, so uncertainty is a reason to validate the working path rather than to repeat a failure needlessly.\n")
 	for _, line := range lines {
 		b.WriteString(line)
 		b.WriteString("\n")
@@ -1882,7 +1898,6 @@ func renderPriorAttempt(at store.ContextualAttempt, current string, alternatives
 	for i := range alternatives {
 		b.WriteString(" " + renderObservedAlternative(alternatives[i], current))
 	}
-	b.WriteString(" Different circumstances invite fresh verification.")
 	return b.String()
 }
 
@@ -1912,7 +1927,7 @@ func renderObservedAlternative(at store.ContextualAttempt, current string) strin
 	// its circumstances still hold, and a snapshot is explicitly not the
 	// environment, because an ignored virtual environment can change under an
 	// identical tree.
-	b.WriteString(" This is one observed successful path from the same work, not proof of cause and not an instruction; a source snapshot is not the environment, so prefer it only while these circumstances still hold, and treat changed or unknown source or environment as an invitation to verification rather than a ban.")
+	b.WriteString(" One observed successful path from the same work, not proof of cause; a source snapshot is not the environment, so prefer it only while these circumstances still hold.")
 	return b.String()
 }
 
