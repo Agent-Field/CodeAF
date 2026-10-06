@@ -877,6 +877,10 @@ type (
 )
 
 type app struct {
+	// Navigation is kept independently of transcripts and temporary overlays.
+	saveView            func(config.ViewState) error
+	keptView            config.ViewState
+	restoreViewCmd      tea.Cmd
 	conversationRequest uint64
 	conversationOpening bool
 	hostReplayLoading   bool
@@ -3242,7 +3246,10 @@ func newApp(ctx context.Context, opts Options) *app {
 	// It reads the surface it opens over — which conversation this window is in,
 	// so the cursor can open on it — and it must be able to see that the picker
 	// already took the frame, because a launch gets one greeting (home.go).
-	a.landHome()
+	a.saveView = opts.SaveView
+	if !a.restorePlace(opts.RestorePlace) {
+		a.landHome()
+	}
 	// AND A LAUNCH THAT MET A LOCK LANDS ON THE ROW IT COULD NOT OPEN, armed, so
 	// one enter continues that conversation here rather than leaving somebody
 	// with a second one they did not ask for (takeover.go).
@@ -3429,7 +3436,7 @@ func (a *app) Init() tea.Cmd {
 		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
-		a.teamsWrite()}
+		a.teamsWrite(), a.restoreViewCmd}
 	if a.warmEmptyProviders != nil {
 		warm := a.warmEmptyProviders
 		standing = append(standing, func() tea.Msg {
@@ -3494,6 +3501,7 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	model, cmd := a.update(msg)
+	a.keepView(false)
 	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
 	// the frame may only note that it drew it (view.go), because the door's
 	// record is a write to disk.
@@ -8521,6 +8529,7 @@ func (a *app) orchestrateEvent(ev session.Event) tea.Cmd {
 // conversation it is holding — ending the ones this process runs, detaching from
 // the ones a host runs (keeper.go's [app.leaveEverything]).
 func (a *app) quit() tea.Cmd {
+	a.keepView(true)
 	if a.creditHookStop != nil {
 		a.creditHookStop()
 		a.creditHookStop = nil

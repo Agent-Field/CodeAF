@@ -430,6 +430,10 @@ type CodexFlow interface {
 
 // Options configures one surface.
 type Options struct {
+	// RestorePlace is the saved registry word for an ordinary local launch.
+	// SaveView is absent on remote surfaces and tests unless explicitly supplied.
+	RestorePlace string
+	SaveView     func(config.ViewState) error
 	// Agent is the conversation this surface shows. Required.
 	Agent Agent
 	// EngineRoad says the conversation is in a daemon on this machine. It is
@@ -1384,6 +1388,8 @@ func Run(ctx context.Context, opts Options) error {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
 	surface := newApp(ctx, opts)
+	// The loop has stopped before this final write, including context failures.
+	defer surface.keepView(true)
 	defer listenForServiceModels(surface, opts.SubscribeServiceModels)()
 	p := tea.NewProgram(surface, program...)
 	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT ITS NEWS, and the loop a door to
