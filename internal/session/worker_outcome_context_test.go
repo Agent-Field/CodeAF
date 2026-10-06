@@ -241,7 +241,7 @@ func TestWorkerOutcomeContextOmittedWholeWhenRulesFillCeiling(t *testing.T) {
 	if strings.Contains(block, "<prior_outcomes>") || strings.Contains(block, "</prior_outcomes>") {
 		t.Fatalf("a prior outcome survived under a full rules ceiling instead of being omitted whole: %q", block)
 	}
-	if strings.Contains(block, "Observed outcomes from earlier work") {
+	if strings.Contains(block, "QUOTED HISTORY") {
 		t.Fatalf("an instruction fragment leaked from an omitted block: %q", block)
 	}
 }
@@ -318,7 +318,7 @@ func TestManagerContextNeverClipsRecordMidSentence(t *testing.T) {
 	}
 	// The history framing is one sentence: it is present in full or absent,
 	// never cut into a fragment.
-	if strings.Contains(block, "Observed outcomes from earlier work") && !strings.Contains(block, "current goal and the user's own words outrank them.") {
+	if strings.Contains(block, "QUOTED HISTORY") && !strings.Contains(block, "conditions hold.") {
 		t.Fatalf("the history framing was cut into a fragment: %q", block)
 	}
 	if strings.Contains(block, "Observed successful alternative") && !strings.Contains(block, "t succeeded at the tool boundary.") {

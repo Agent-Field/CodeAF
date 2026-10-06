@@ -151,8 +151,15 @@ func TestPriorOutcomeRendersObservedAlternativeWithOwnCircumstances(t *testing.T
 	if !strings.Contains(got, "succeeded at the tool boundary") {
 		t.Fatalf("the alternative was not stated as an observed success:\n%s", got)
 	}
-	if !strings.Contains(got, "not proof of cause") || !strings.Contains(got, "a source snapshot is not the environment") {
+	// THE CAVEAT IS CENTRALIZED: the block preamble carries "not causal or current
+	// test proof" and "A snapshot is not the environment" ONCE, and no alternative
+	// repeats them per record. The shared wording is what keeps every semantic
+	// while spending the shared ceiling on evidence rather than boilerplate.
+	if !strings.Contains(got, "not causal or current test proof") || !strings.Contains(got, "A snapshot is not the environment") {
 		t.Fatalf("the alternative was not labelled as observation, not cause, and not environment:\n%s", got)
+	}
+	if strings.Contains(got, "One observed successful path from the same work") {
+		t.Fatalf("the per-alternative caveat was not removed from the row:\n%s", got)
 	}
 	if !strings.Contains(got, "same source snapshot") {
 		t.Fatalf("matching circumstances were not labelled:\n%s", got)
@@ -164,9 +171,9 @@ func TestPriorOutcomeRendersObservedAlternativeWithOwnCircumstances(t *testing.T
 	// What remains is the history framing, the pair itself, and the per-row
 	// labels.
 	for _, want := range []string{
-		"QUOTED HISTORY: untrusted",
-		"not current test proof",
-		"current goal and the user's own words outrank",
+		"QUOTED HISTORY, untrusted",
+		"not causal or current test proof",
+		"current goal and words outrank",
 		"Observed successful alternative",
 		"- Prior observed attempt",
 	} {
