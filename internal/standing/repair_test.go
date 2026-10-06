@@ -404,7 +404,7 @@ func TestDrainKeepsThePayloadWhenTheDedupRecordCannotBeUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	notes, err := Drain(dir)
+	notes, err := drainAndAck(t, dir)
 	if err == nil {
 		t.Fatal("a seen-record write failure was silent")
 	}
@@ -420,7 +420,7 @@ func TestDrainKeepsThePayloadWhenTheDedupRecordCannotBeUsed(t *testing.T) {
 	if err := os.Remove(seenPath(dir)); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Drain(dir)
+	again, err := drainAndAck(t, dir)
 	if err != nil {
 		t.Fatalf("retry drain: %v", err)
 	}
@@ -441,7 +441,7 @@ func TestDrainHandsValidNotesWhenASiblingFileCannotBeRead(t *testing.T) {
 	// A line longer than the scanner's buffer: readInbox cannot read it whole.
 	broken := stageFile(t, dir, "bbb", strings.Repeat("x", inboxMaxLine+1024))
 
-	notes, err := Drain(dir)
+	notes, err := drainAndAck(t, dir)
 	if err == nil {
 		t.Fatal("an unreadable inbox file was silent")
 	}
@@ -464,7 +464,7 @@ func TestDrainDedupsOneIdentityAcrossStagedFiles(t *testing.T) {
 	stageFile(t, dir, "aaa", noteLine(t, note))
 	stageFile(t, dir, "bbb", noteLine(t, note))
 
-	notes, err := Drain(dir)
+	notes, err := drainAndAck(t, dir)
 	if err != nil {
 		t.Fatalf("drain: %v", err)
 	}
@@ -490,7 +490,7 @@ func TestDeliverSurfacesAnUnreadableDedupRecordAndStillDelivers(t *testing.T) {
 
 	// The note is on disk anyway, so the person is not made to wait for the
 	// record to be fixed.
-	notes, err := Drain(dir)
+	notes, err := drainAndAck(t, dir)
 	if err == nil {
 		t.Fatal("Drain read the unreadable dedup record as empty")
 	}
@@ -508,7 +508,7 @@ func TestDeliverSurfacesAnUnreadableDedupRecordAndStillDelivers(t *testing.T) {
 	if err := os.Remove(seenPath(dir)); err != nil {
 		t.Fatal(err)
 	}
-	again, err := Drain(dir)
+	again, err := drainAndAck(t, dir)
 	if err != nil {
 		t.Fatalf("retry drain: %v", err)
 	}
@@ -517,9 +517,10 @@ func TestDeliverSurfacesAnUnreadableDedupRecordAndStillDelivers(t *testing.T) {
 	}
 }
 
-// A CORRUPT LINE IS REPORTED AND THE DEDUP STATE IT BESIDE SURVIVES. A valid
-// identity already in the record is still honoured and still kept after the
-// drain rewrites the record around the garbage.
+// A CORRUPT LINE IS REPORTED AND THE DEDUP STATE BESIDE IT SURVIVES. The drain
+// reads the record to skip what was already acknowledged, reports the corruption,
+// and an acknowledged identity is still honoured: its staged file is retired
+// without being shown again, and a later delivery of it is refused.
 func TestDrainReportsACorruptDedupLineAndKeepsDedupState(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(seenPath(dir), []byte("already-drained\n\xff\xfe not an identity\n"), 0o600); err != nil {
@@ -528,12 +529,21 @@ func TestDrainReportsACorruptDedupLineAndKeepsDedupState(t *testing.T) {
 	stageFile(t, dir, "aaa", noteLine(t, Note{At: time.Now(), ItemID: "i", Words: "keep main green", Kind: "said", Text: "the fix landed", ID: "fresh-1"}))
 	stageFile(t, dir, "bbb", noteLine(t, Note{At: time.Now(), ItemID: "i", Words: "keep main green", Kind: "said", Text: "already seen", ID: "already-drained"}))
 
-	notes, err := Drain(dir)
+	files, err := Drain(dir)
 	if err == nil {
 		t.Fatal("a corrupt dedup line was silent")
 	}
-	if len(notes) != 1 || notes[0].ID != "fresh-1" {
-		t.Fatalf("the drain answered %+v, want only the fresh note", notes)
+	var handed []Note
+	for _, file := range files {
+		handed = append(handed, file.Notes...)
+	}
+	if len(handed) != 1 || handed[0].ID != "fresh-1" {
+		t.Fatalf("the drain handed %+v, want only the fresh note", handed)
+	}
+	for _, file := range files {
+		if ackErr := file.Ack(); ackErr != nil {
+			t.Fatalf("ack: %v", ackErr)
+		}
 	}
 	raw, err := os.ReadFile(seenPath(dir))
 	if err != nil {
@@ -547,11 +557,11 @@ func TestDrainReportsACorruptDedupLineAndKeepsDedupState(t *testing.T) {
 	}
 
 	// The identity already in the record is still honoured: a later delivery of
-	// it is dropped, and the fold stays empty.
-	if err := Deliver(dir, Note{At: time.Now(), ID: "already-drained", Text: "again"}); err != nil {
-		t.Fatalf("Deliver after the rewrite: %v", err)
+	// it is refused, and the fold stays empty.
+	if err := Deliver(dir, Note{At: time.Now(), ID: "already-drained", Text: "again"}); !errors.Is(err, ErrAlreadyDrained) {
+		t.Fatalf("Deliver after the rewrite answered %v, wanted ErrAlreadyDrained", err)
 	}
-	after, err := Drain(dir)
+	after, err := drainAndAck(t, dir)
 	if err != nil {
 		t.Fatalf("Drain after the rewrite: %v", err)
 	}

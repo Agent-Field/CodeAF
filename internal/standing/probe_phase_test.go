@@ -190,7 +190,7 @@ type delayedProbe struct {
 	clock func()
 }
 
-func (d *delayedProbe) Probe(ctx context.Context, item Item) (string, error) {
+func (d *delayedProbe) Probe(ctx context.Context, item Item) (ProbeReading, error) {
 	out, err := d.fakeRunner.Probe(ctx, item)
 	if item.ID == d.slow && d.clock != nil {
 		d.clock()

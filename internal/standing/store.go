@@ -87,6 +87,17 @@ func firstDue(item Item, now time.Time) (time.Time, error) {
 // as the write. That is what makes a person's edit, pause or resume visible to
 // a pass that is holding a copy from before it ([Store.saveActive] refuses to
 // write over a revision it did not read).
+//
+// A WHOLE-DOCUMENT WRITE NEVER CLEARS RUNTIME STATE IT DID NOT SEE. This door is
+// the person's — a pause, a stop, an edit, a resume — and the row a surface
+// hands back was drawn before the ticker committed the delivery intent
+// ([Item.Pending]) or the task's in-flight marker ([Item.TaskInflight]). Writing
+// the stale copy whole would drop both: a line the person is still owed, or the
+// only thing that stops an ambiguous task from being replayed. So the document
+// on disk is read INSIDE this lock and its runtime state is carried onto the
+// write — intents unioned by identity, the in-flight marker taken from disk
+// when one is present. The settlement that DOES clear them is the ticker's own
+// guarded write ([Store.saveActive]), never this door.
 func (s *Store) Save(item Item) error {
 	if err := item.Validate(); err != nil {
 		return err
@@ -102,6 +113,10 @@ func (s *Store) Save(item Item) error {
 		switch {
 		case err == nil:
 			item.Revision = current.Revision + 1
+			item.Pending = keepPending(item.Pending, current.Pending)
+			if item.TaskInflight == nil {
+				item.TaskInflight = current.TaskInflight
+			}
 		case errors.Is(err, ErrNotFound):
 			item.Revision = 1
 		default:
@@ -114,6 +129,33 @@ func (s *Store) Save(item Item) error {
 		}
 		return writeAtomic(s.ItemPath(item.ID), data)
 	})
+}
+
+// keepPending unions a document's delivery intents with the ones already on
+// disk, newest state first and one identity once. The disk copy is the newer
+// truth for an identity present in both (a counted attempt), and an intent the
+// caller carries that disk does not is kept rather than dropped: authorized
+// work is never cleared by a write that did not settle it.
+func keepPending(mine, disk []Pending) []Pending {
+	if len(disk) == 0 || len(mine) == 0 {
+		if len(disk) == 0 {
+			return mine
+		}
+		return disk
+	}
+	merged := append([]Pending(nil), disk...)
+	have := make(map[string]bool, len(disk))
+	for _, pending := range disk {
+		have[pending.ID] = true
+	}
+	for _, pending := range mine {
+		if have[pending.ID] {
+			continue
+		}
+		have[pending.ID] = true
+		merged = append(merged, pending)
+	}
+	return merged
 }
 
 // SetStandingEffort sets how hard one item's firings and its checks think, and
@@ -136,13 +178,29 @@ func (s *Store) SetStandingEffort(id string, rung effort.Rung) error {
 	if err := checkID(id); err != nil {
 		return ErrNotFound
 	}
-	item, err := s.read(s.ItemPath(id))
-	if err != nil {
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
 		return err
 	}
-	item.Does.Effort = rung.String()
-	item.Updated = s.now()
-	return s.write(item)
+	// THE READ AND THE WRITE ARE ONE CRITICAL SECTION. Reading the rung's own
+	// field before taking the lock and writing the whole document after it would
+	// publish a copy that predates any intent or in-flight marker the ticker
+	// committed in between, exactly what [Store.Save] refuses; this door moves
+	// one field on the document on disk instead.
+	return s.underItemLock(id, func() error {
+		item, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		item.Does.Effort = rung.String()
+		item.Revision++
+		item.Schema = SchemaOf(item)
+		item.Updated = s.now()
+		data, err := marshalItem(item)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
 }
 
 // saveActive is the ticker's guarded write. It refuses in the three cases where

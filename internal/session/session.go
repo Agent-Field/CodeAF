@@ -3522,6 +3522,14 @@ type Agent struct {
 	// empty list of watchers and the person would open a conversation with news
 	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
 	standingNews []Event
+	// standingHeld are the staged standing-inbox files a live, unsettled fold
+	// already owns, keyed by the staged file's path ([standing.DrainFile.Path]).
+	// A drain hands a file over; until the fold it fed is durably journaled and
+	// the file acknowledged, a repeat drain — construction and every surface
+	// attach both ask ([Agent.WatchTaskUpdates]) — must NOT queue the same notes
+	// again or acknowledge a file another fold is still waiting to retire. A
+	// path leaves this map when its acknowledgement runs.
+	standingHeld map[string]bool
 	// jobRows is the roster id minted for each background job, keyed by the
 	// registry's own number for it. The two numberings are separate counters and
 	// a row keyed on the registry's would collide with a task's, which is why

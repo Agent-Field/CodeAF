@@ -5,12 +5,23 @@ package standing
 // folder, appended by whoever has news, drained whole the next time the person
 // opens that conversation and shown under one "while you were away" fold.
 //
-// THE DRAIN RENAMES BEFORE IT READS, UNDER A PER-INBOX FLOCK. A note delivered
-// while the fold is being built would otherwise be read and then deleted unseen;
-// moving the file aside first means a racing delivery starts a fresh inbox that
-// the next open finds, and the flock keeps a racing delivery out of the inode
-// the drain renamed away. A staged file left by a crash is recovered by the next
-// drain, not lost.
+// THE DRAIN RENAMES BEFORE IT READS, UNDER A PER-INBOX FLOCK, AND NOTHING IS
+// SPENT UNTIL THE CALLER ACKNOWLEDGES IT. A note delivered while the fold is
+// being built would otherwise be read and then deleted unseen; moving the file
+// aside first means a racing delivery starts a fresh inbox that the next open
+// finds, and the flock keeps a racing delivery out of the inode the drain
+// renamed away.
+//
+// THE HANDOFF IS A CLAIM, NOT A DELETE. [Drain] reads the staged files and hands
+// the caller one [DrainFile] per file; the files stay on disk and the
+// drained-identity record stays untouched until [DrainFile.Ack]. A crash between
+// the read and the acknowledgement therefore loses nothing: the next drain reads
+// the same staged files again and hands the same notes over — a duplicate the
+// person might have read, never a note nobody was ever shown. The spend is what
+// [DrainFile.Ack] makes durable, and the session lane runs it from the settle
+// callback of the durable delivery its fold was journaled as, so the
+// acknowledgement follows the caller's own durable receipt rather than a volatile
+// queue.
 //
 // There are TWO addresses and one shape. A session's inbox is the one below; a
 // PROJECT's inbox is the second half of this file, and it exists because not
@@ -53,6 +64,15 @@ const (
 // errInboxFull is the visible backpressure of a bounded inbox. It is returned
 // rather than swallowed, so the caller keeps its durable intent and can say so.
 var errInboxFull = errors.New("standing: this inbox is full; the note was not delivered")
+
+// ErrAlreadyDrained reports that a note's identity was already drained from this
+// inbox, so nothing was appended now. IT IS NOT A FAILURE: the line is already in
+// the person's hands, and the caller that owns a durable intent must treat it as
+// settled — but it must NOT offer the line live or steer the model with it
+// again, because the person has already read it once. [standingRunner.deliver]
+// reads it that way; [Deliver] returns it instead of a silent nil so a live offer
+// cannot be made over a line the fold already spent.
+var ErrAlreadyDrained = errors.New("standing: this delivery was already drained")
 
 // withInboxLock serializes EVERY mutation of one inbox folder — Deliver, Drain
 // and the seen record — under a process flock, so a delivery racing a drain
@@ -132,7 +152,7 @@ func Deliver(sessionDir string, note Note) error {
 				// error keeps the caller's durable intent alive.
 				dedupErr = fmt.Errorf("standing: the drained-identity record could not be read, so this delivery may repeat: %w", err)
 			case drained:
-				return nil
+				return ErrAlreadyDrained
 			}
 		}
 		path := InboxPath(sessionDir)
@@ -163,53 +183,105 @@ func Deliver(sessionDir string, note Note) error {
 	})
 }
 
-// Drain reads and removes a session's inbox, oldest first. An absent inbox is
-// an empty slice and no error.
+// DrainFile is one staged inbox file and the acknowledgement that retires it:
+// the notes read from it that the caller has NOT already durably received, and
+// the file those notes came from.
+//
+// NOTHING IS SPENT UNTIL [DrainFile.Ack], AND THE CALLER MUST ACK ONLY AFTER ITS
+// OWN RECEIPT IS DURABLE. The file stays on disk and the drained-identity record
+// stays as it was until then, so a crash between the read and the acknowledgement
+// hands the same notes again — a duplicate the person might have read, never a
+// note nobody was shown. The session lane's durable receipt is the journal line
+// its fold is written as ([durableDelivery] and [sessionFile.recorded]); it acks
+// from the settle callback, which fires only after that line reached the file.
+type DrainFile struct {
+	// Notes are the notes read whole from this file, oldest first, EXCLUDING any
+	// identity already in the drained-identity record: an identity there was
+	// handed over and acknowledged on an earlier drain, so it is retired without
+	// being shown again. A READ FAILURE in this very file yields no DrainFile at
+	// all (it is kept and reported instead).
+	Notes []Note
+
+	dir  string
+	path string
+}
+
+// Path is the staged file this acknowledgement retires. It is the identity a
+// caller dedups repeated drains on — a second [Drain] before this one is
+// acknowledged returns the same path for the same notes.
+func (f DrainFile) Path() string { return f.path }
+
+// Ack marks this file's notes as spent and removes the file, under the one
+// inbox flock. It is idempotent: a file already gone is already retired.
+//
+// THE RECORD GOES DOWN BEFORE THE FILE COMES OFF. If the drained-identity record
+// cannot be read or written, the file is KEPT and the failure rides out: the next
+// drain re-hands the notes rather than losing them. Once the record holds the
+// ids, a removal failure only means the file is read again — and its notes are
+// skipped because they are spent — so it can never be shown twice or lost.
+func (f DrainFile) Ack() error {
+	if f.dir == "" || f.path == "" {
+		return nil
+	}
+	return withInboxLock(f.dir, func() error {
+		if err := rememberDrained(f.dir, f.Notes); err != nil {
+			return err
+		}
+		if err := os.Remove(f.path); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	})
+}
+
+// drainSeen is the drained-identity record read once for one drain. A record
+// that cannot be read is reported and treated as EMPTY FOR SKIPPING ONLY: the
+// safe direction is to hand a note over again, never to withhold it because a
+// record was corrupt.
+func drainSeen(sessionDir string) (map[string]bool, []error) {
+	var problems []error
+	seenIDs, corrupt, err := readSeenIDs(seenPath(sessionDir))
+	if err != nil {
+		problems = append(problems, fmt.Errorf("standing: the drained-identity record could not be read: %w", err))
+		seenIDs = nil
+	} else if corrupt > 0 {
+		problems = append(problems, fmt.Errorf("standing: the drained-identity record has %d unreadable line(s)", corrupt))
+	}
+	seen := make(map[string]bool, len(seenIDs))
+	for _, id := range seenIDs {
+		seen[id] = true
+	}
+	return seen, problems
+}
+
+// Drain reads a session's inbox, oldest first, and answers ONE [DrainFile] per
+// staged file the caller must acknowledge. An absent inbox is an empty answer and
+// no error.
 //
 // IT RECOVERS A LEFTOVER .draining FILE DETERMINISTICALLY, even alongside a live
-// inbox: a crash after the rename and before the delete would otherwise lose the
-// notes for good. It reads every staged file, and a file it could NOT read whole
-// (an open failure, a read failure, or a line too long for the scanner) is KEPT
-// and reported rather than deleted. It remembers what it drained, so a replay is
-// recognised as spent.
+// inbox: a crash after the rename and before the acknowledgement would otherwise
+// lose the notes for good. It reads every staged file, and a file it could NOT
+// read whole (an open failure, a read failure, or a line too long for the
+// scanner) is KEPT and reported rather than handed over or removed.
 //
-// THE GUARANTEE IS DURABLE PERSISTENCE AND A RECOVERABLE READ HANDOFF, NOT USER
-// DISPLAY ACKNOWLEDGEMENT: a note removed here has been handed to the caller,
-// and whether the caller then draws, folds or forwards it is outside this
-// package. The drained-identity window is [inboxSeenKeep]; beyond it a replay is
-// shown again. No exactly-once claim is made about anything else.
+// IT CONSULTS THE DRAINED-IDENTITY RECORD TO SKIP WHAT WAS ALREADY ACKNOWLEDGED.
+// The record is written only by [DrainFile.Ack], which a caller runs only after
+// its own receipt is durable, so an identity there means the line already reached
+// the person through that receipt. Skipping it here is what stops a residual file
+// — an acknowledgement whose removal failed — from replaying forever. An
+// identity NOT in the record is handed over however long its file has sat.
 //
-// IT IS TRANSACTIONAL IN THE ONE ORDER THAT CANNOT LOSE A NOTE: read everything
-// first, make the dedup record durable, and only then remove the files. What
-// this package can promise is the queue-to-caller handoff — a note it returns
-// has been read whole and, where it has an identity, recorded as spent — and
-// that promise is kept even when something else in the drain failed:
+// THE GUARANTEE IS A DURABLE AT-LEAST-ONCE HANDOFF, NOT EXACTLY-ONCE DISPLAY. A
+// note acknowledged through [DrainFile.Ack] was handed to the caller AND recorded
+// as spent; whether the caller then draws, folds or forwards it is outside this
+// package. A crash before the acknowledgement shows the note again. The
+// drained-identity window is [inboxSeenKeep]; beyond it a replay is shown again.
 //
-//   - a file that could not be read WHOLE is kept and reported, never deleted;
-//   - if [rememberDrained] cannot be written, NO file is deleted, so the whole
-//     payload is retained for the next drain and the failure is returned;
-//   - a file whose notes were recorded but whose later removal failed is kept
-//     too, and the identity record recognises its notes as spent next time, so
-//     that is a duplicate at worst and never a loss;
-//   - notes gathered from more than one staged file are deduped against each
-//     other in THIS drain as well as against the seen record;
-//   - a dedup record that cannot be READ is reported and left untouched — it is
-//     never read as an empty record and never rewritten, so the identities
-//     already in it survive — and nothing is deleted under it, so a retry
-//     re-hands the payload rather than losing it;
-//   - a corrupt line in the record is counted and reported while the valid
-//     identities beside it are still honoured.
-//
-// A caller MUST therefore use the notes it is handed even when the error is
-// non-nil: the error says something in or around the drain failed, not that
-// every note is unusable. Valid notes returned here are the person's own
-// authorized work and are never discarded because a sibling file was malformed.
-// A note whose identity was drained before — by this drain or an earlier one —
-// is passed over. Losing a note is the direction this refuses to fail toward;
-// repeating one is the stated cost.
-func Drain(sessionDir string) ([]Note, error) {
+// A caller MUST use the notes it is handed even when the error is non-nil: the
+// error says a sibling file could not be read, not that every note is unusable.
+func Drain(sessionDir string) ([]DrainFile, error) {
 	var (
-		notes    []Note
+		files    []DrainFile
 		problems []error
 	)
 	err := withInboxLock(sessionDir, func() error {
@@ -226,71 +298,52 @@ func Drain(sessionDir string) ([]Note, error) {
 		if err != nil {
 			return err
 		}
-		// THE DEDUP RECORD IS READ HONESTLY. A missing file is a normal empty
-		// record; a corrupt line is counted and reported; a read or scanner
-		// failure is fatal to the record and is never read as "nothing was
-		// drained".
-		seenIDs, corrupt, seenErr := readSeenIDs(seenPath(sessionDir))
-		if corrupt > 0 {
-			problems = append(problems, fmt.Errorf("standing: the drained-identity record has %d unreadable line(s)", corrupt))
-		}
-		drained := map[string]bool{}
-		for _, id := range seenIDs {
-			drained[id] = true
-		}
-		// READ EVERYTHING BEFORE ANYTHING IS DELETED. A file that could not be
-		// read whole is kept for the next drain and its failure reported; its
-		// readable neighbours are still handed out.
-		readable := make([]string, 0, len(staged))
+		drained, seenProblems := drainSeen(sessionDir)
+		problems = append(problems, seenProblems...)
+		// READ EVERYTHING BEFORE ANYTHING IS OFFERED OR REMOVED. A file that
+		// could not be read whole is kept for the next drain and its failure
+		// reported; its readable neighbours are still handed out.
 		for _, file := range staged {
 			part, readErr := readInbox(file)
 			if readErr != nil {
 				problems = append(problems, fmt.Errorf("%s: %w", filepath.Base(file), readErr))
 				continue
 			}
-			readable = append(readable, file)
+			out := DrainFile{dir: sessionDir, path: file}
 			for _, note := range part {
 				if note.ID != "" {
-					// ONE IDENTITY IS ONE NOTE ACROSS THE WHOLE DRAIN, not only
-					// within one file: a retry can leave the same id staged in
-					// two files, and both would otherwise reach the person.
+					// ONE IDENTITY IS ONE NOTE ACROSS THE WHOLE DRAIN, and one
+					// already spent is retired without being shown: a retry can
+					// leave the same id staged in two files, and a residual file
+					// can hold one already acknowledged.
 					if drained[note.ID] {
 						continue
 					}
 					drained[note.ID] = true
 				}
-				notes = append(notes, note)
+				out.Notes = append(out.Notes, note)
 			}
+			files = append(files, out)
 		}
-		sort.SliceStable(notes, func(a, b int) bool { return notes[a].At.Before(notes[b].At) })
-		if seenErr != nil {
-			// THE RECORD COULD NOT BE READ, SO IT IS NOT REWRITTEN AND NOTHING IS
-			// DELETED. Rewriting it would drop the identities already inside it
-			// (dedup state lost); deleting the files would lose the payload.
-			// The notes read whole are still returned, and the failure rides out
-			// with them.
-			problems = append(problems, fmt.Errorf("standing: the drained-identity record could not be read: %w", seenErr))
-			return nil
-		}
-		// THE DEDUP RECORD GOES DOWN BEFORE A SINGLE FILE IS REMOVED. If it
-		// cannot be written, nothing is deleted: the payload stays for the next
-		// drain, an unmarked note can only be a duplicate later, and the error
-		// is returned to a caller that must still use the notes it was given.
-		if err := rememberDrained(sessionDir, notes); err != nil {
-			problems = append(problems, err)
-			return nil
-		}
-		for _, file := range readable {
-			if err := os.Remove(file); err != nil {
-				problems = append(problems, err)
-			}
-		}
+		sort.SliceStable(files, func(a, b int) bool {
+			return firstNoteAt(files[a]).Before(firstNoteAt(files[b]))
+		})
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return notes, errors.Join(problems...)
+	return files, errors.Join(problems...)
+}
+
+// firstNoteAt is a staged file's oldest note instant, so a drain hands files back
+// in the order the notes arrived. A file whose notes are all spent sorts first;
+// it is retired either way.
+func firstNoteAt(file DrainFile) time.Time {
+	if len(file.Notes) == 0 {
+		return time.Time{}
+	}
+	return file.Notes[0].At
 }
 
 // drainFiles lists the staged .draining files under a session folder, oldest
@@ -536,9 +589,9 @@ func DeliverProject(root, workspace string, note Note) error {
 	return Deliver(ProjectInboxDir(root, workspace), note)
 }
 
-// DrainProject reads and removes a project's inbox, oldest first — [Drain] at
-// the project's address.
-func DrainProject(root, workspace string) ([]Note, error) {
+// DrainProject reads a project's inbox, oldest first — [Drain] at the project's
+// address, answering the same [DrainFile] acknowledgements its caller must run.
+func DrainProject(root, workspace string) ([]DrainFile, error) {
 	if strings.TrimSpace(root) == "" || strings.TrimSpace(workspace) == "" {
 		return nil, nil
 	}

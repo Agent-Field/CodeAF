@@ -520,7 +520,7 @@ func TestInboxDedupsByIdentityAcrossDrainAndRestart(t *testing.T) {
 	if err := Deliver(dir, note); err != nil {
 		t.Fatal(err)
 	}
-	first, err := Drain(dir)
+	first, err := drainAndAck(t, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,11 +529,12 @@ func TestInboxDedupsByIdentityAcrossDrainAndRestart(t *testing.T) {
 	}
 
 	// A restart re-runs the delivery whose acknowledgement was lost. The note
-	// was already drained, so it is not put in front of the person again.
-	if err := Deliver(dir, note); err != nil {
-		t.Fatal(err)
+	// was already drained and acknowledged, so the inbox REFUSES the append with
+	// [ErrAlreadyDrained] rather than putting it in front of the person again.
+	if err := Deliver(dir, note); !errors.Is(err, ErrAlreadyDrained) {
+		t.Fatalf("a replayed delivery answered %v, wanted ErrAlreadyDrained", err)
 	}
-	second, err := Drain(dir)
+	second, err := drainAndAck(t, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -545,7 +546,7 @@ func TestInboxDedupsByIdentityAcrossDrainAndRestart(t *testing.T) {
 	if err := Deliver(dir, Note{ItemID: "item", Kind: "said", Text: "legacy"}); err != nil {
 		t.Fatal(err)
 	}
-	third, _ := Drain(dir)
+	third, _ := drainAndAck(t, dir)
 	if len(third) != 1 {
 		t.Fatalf("an identity-less note was dropped: %+v", third)
 	}
@@ -565,14 +566,14 @@ func TestProjectInboxPeeksWithoutEmptyingAndDrainsWhole(t *testing.T) {
 	if again := PeekProjectInbox(root, workspace); len(again) != 1 {
 		t.Fatalf("peeking emptied the inbox: %d notes left", len(again))
 	}
-	drained, err := DrainProject(root, workspace)
+	drained, err := drainProjectAndAck(t, root, workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(drained) != 1 {
 		t.Fatalf("drain took %d notes", len(drained))
 	}
-	empty, _ := DrainProject(root, workspace)
+	empty, _ := drainProjectAndAck(t, root, workspace)
 	if len(empty) != 0 {
 		t.Fatalf("a second drain found %d notes", len(empty))
 	}
@@ -600,16 +601,16 @@ type pausingRunner struct {
 	apply func(Item) Item
 }
 
-func (p *pausingRunner) Probe(_ context.Context, item Item) (string, error) {
+func (p *pausingRunner) Probe(_ context.Context, item Item) (ProbeReading, error) {
 	current, err := p.store.Get(item.ID)
 	if err != nil {
-		return "", err
+		return ProbeReading{}, err
 	}
 	current = p.apply(current)
 	if err := p.store.Save(current); err != nil {
-		return "", err
+		return ProbeReading{}, err
 	}
-	return "conclusion=success", nil
+	return ProbeReading{Text: "conclusion=success"}, nil
 }
 
 func TestPauseDuringProbeStopsTheDeliveryAndTheWrite(t *testing.T) {

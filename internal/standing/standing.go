@@ -1313,14 +1313,32 @@ func RunCameToNothing(runDir string) bool {
 // headless under the person's banked rules in a fresh session folder at
 // runDir.
 type Runner interface {
-	// Probe runs the item's probe and answers its output, clipped.
-	Probe(ctx context.Context, item Item) (string, error)
+	// Probe runs the item's probe and answers what it saw, with whether the
+	// reader had to cut it short. A CLIPPED READING IS NOT AN IDENTITY (see
+	// [ProbeReading]): the runner that cut it must say so, because a tail that
+	// fits under the cap is indistinguishable from a whole short reading.
+	Probe(ctx context.Context, item Item) (ProbeReading, error)
 	// Say delivers one line: into the origin conversation if it is open in
 	// this process, else into its inbox, and always onto the item.
 	Say(ctx context.Context, item Item, text string) (Outcome, error)
 	// Run runs the item's task brief in a fresh headless session at runDir,
 	// with the evidence available to the brief, bounded by the item's rails.
 	Run(ctx context.Context, item Item, runDir, evidence string) (Outcome, error)
+}
+
+// ProbeReading is what one look at the world answered: the evidence the sentinel
+// is shown, and whether the runner had to keep only part of what it read.
+//
+// A CLIPPED READING CANNOT CERTIFY AN UNCHANGED STATE. Two different full
+// readings can share the one tail a clip leaves — a log whose new failure is in
+// the dropped head still wears the same footer — so a look built from a clipped
+// reading carries no identity and a repeat of it is judged afresh rather than
+// suppressed as "the same state". A reading that fits is whole and may be hashed.
+type ProbeReading struct {
+	// Text is the evidence, already clipped from the tail where it was too long.
+	Text string
+	// Clipped reports that Text is only part of what the probe read.
+	Clipped bool
 }
 
 // Idle answers whether the machine is quiet enough for a WhenIdle: no live

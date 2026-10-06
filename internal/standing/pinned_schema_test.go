@@ -72,7 +72,7 @@ func TestInboxLockIsAddressedByTheFolderNotTheProcess(t *testing.T) {
 	}
 	// DRAINED THROUGH THE ALIAS AND RECORDED AS SEEN. The seen record is written
 	// under the folder both spellings resolve to.
-	first, err := Drain(alias)
+	first, err := drainAndAck(t, alias)
 	if err != nil {
 		t.Fatalf("Drain through the alias: %v", err)
 	}
@@ -84,10 +84,10 @@ func TestInboxLockIsAddressedByTheFolderNotTheProcess(t *testing.T) {
 	// the real spelling is not appended a second time.
 	tempTwo := t.TempDir()
 	t.Setenv("TMPDIR", tempTwo)
-	if err := Deliver(real, Note{ID: id, Text: "the last run failed"}); err != nil {
-		t.Fatalf("Deliver under a second TEMP: %v", err)
+	if err := Deliver(real, Note{ID: id, Text: "the last run failed"}); !errors.Is(err, ErrAlreadyDrained) {
+		t.Fatalf("a delivery after an acknowledged drain answered %v, wanted ErrAlreadyDrained", err)
 	}
-	notes, err := Drain(real)
+	notes, err := drainAndAck(t, real)
 	if err != nil {
 		t.Fatalf("Drain: %v", err)
 	}

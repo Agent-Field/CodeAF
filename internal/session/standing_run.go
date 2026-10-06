@@ -373,20 +373,20 @@ func standingProjectKey(workspace string) string {
 // Probe takes one look at the world and answers what it saw, clipped from the
 // TAIL: a command's news is at the end of its output, and a probe clipped from
 // the front would hand the judgment the banner and drop the failure.
-func (r *standingRunner) Probe(ctx context.Context, item standing.Item) (string, error) {
+func (r *standingRunner) Probe(ctx context.Context, item standing.Item) (standing.ProbeReading, error) {
 	switch {
 	case strings.TrimSpace(item.When.Probe.Command) != "":
 		return r.probeCommand(ctx, item)
 	case strings.TrimSpace(item.When.Probe.Tool) != "":
 		return r.probeTool(ctx, item)
 	}
-	return "", errors.New("standing: this item has nothing to look at")
+	return standing.ProbeReading{}, errors.New("standing: this item has nothing to look at")
 }
 
 // probeCommand runs the shell the same way bash and a watch tick do: the same
 // shell, the same process group, the same kill. A probe that could see or do
 // anything bash could not would be a second set of hands nobody approved.
-func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (string, error) {
+func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (standing.ProbeReading, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, standingProbeWindow)
 	defer cancel()
 
@@ -417,7 +417,7 @@ func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (
 		// most informative outcome into nothing to judge.
 		seen += "\n(the command failed: " + err.Error() + ")"
 	}
-	return standingTail(seen, standing.ProbeClip), nil
+	return standingProbeReading(seen), nil
 }
 
 // probeTool runs one belt tool for the item's workspace, through the same
@@ -429,7 +429,7 @@ func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (
 // model, so it is assembled the way [newAgent] assembles a belt and nothing
 // else. It is InTask because it is not a conversation — it must not hand work
 // out, change a setting, or start a watch that dies with the check.
-func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (string, error) {
+func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (standing.ProbeReading, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, standingProbeWindow)
 	defer cancel()
 
@@ -470,7 +470,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 		},
 	}
 	result := agent.executeTool(probeCtx, agent.newEpisode(), nil, call, argsText(call))
-	return standingTail(result.text, standing.ProbeClip), nil
+	return standingProbeReading(result.text), nil
 }
 
 // standingProbeArgs is the arguments as the wire wants them: an absent object
@@ -583,22 +583,17 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run, id string)
 	// so a note written into it is a note no screen in this product ever opens.
 	// The project's inbox is the address that IS read: home draws it under the
 	// project, and the next ordinary conversation opened there folds it in.
-	if strings.TrimSpace(item.Origin.Exchange) != "" && r.root != "" {
-		if err := standing.DeliverProject(r.root, item.Workspace, note); err != nil {
-			return err
-		}
-	} else {
-		dir := standingSessionDir(item)
-		if dir == "" {
-			// NOBODY IS OPEN AND THERE IS NO FOLDER TO FILE IT IN. That is not a
-			// delivery: the line has nowhere to go that a person reads, and
-			// saying so lets the caller keep the intent for a later, addressable
-			// pass.
-			return errors.New("standing: nothing is open and this item has no inbox address")
-		}
-		if err := standing.Deliver(dir, note); err != nil {
-			return err
-		}
+	fresh, err := r.makeNoteDurable(item, note)
+	if err != nil {
+		return err
+	}
+	if !fresh {
+		// ALREADY DRAINED AND ALREADY READ. The inbox recognised the identity as
+		// spent, so the person has the line; nothing was appended now and nothing
+		// may be offered live or steered into the model, or a retried one-shot is
+		// the last thing they see for a second time. The caller treats this as a
+		// settled delivery, which is exactly what it is.
+		return nil
 	}
 	// ── AND OFFERED TO THE WINDOW SOMEBODY IS SITTING IN ────────────────────
 	//
@@ -618,6 +613,39 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run, id string)
 		agent.enqueueSteering(standingSteeringLine(item, text))
 	}
 	return nil
+}
+
+// makeNoteDurable appends the note at the item's address — the project inbox for
+// an exchange, this conversation's inbox otherwise — and answers whether it was
+// NEWLY made durable. An identity the inbox has already drained is answered as
+// (false, nil): the line is already in the person's hands, so it is settled and
+// must not be offered twice. A real error is answered as (false, err) and keeps
+// the caller's durable intent alive, exactly as [standing.Deliver] does.
+//
+// IT IS ONE DOOR FOR BOTH ADDRESSES, so the identity rule and the "already
+// drained is not a failure" rule cannot drift between them.
+func (r *standingRunner) makeNoteDurable(item standing.Item, note standing.Note) (bool, error) {
+	var err error
+	if strings.TrimSpace(item.Origin.Exchange) != "" && r.root != "" {
+		err = standing.DeliverProject(r.root, item.Workspace, note)
+	} else {
+		dir := standingSessionDir(item)
+		if dir == "" {
+			// NOBODY IS OPEN AND THERE IS NO FOLDER TO FILE IT IN. That is not a
+			// delivery: the line has nowhere to go that a person reads, and
+			// saying so lets the caller keep the intent for a later, addressable
+			// pass.
+			return false, errors.New("standing: nothing is open and this item has no inbox address")
+		}
+		err = standing.Deliver(dir, note)
+	}
+	switch {
+	case errors.Is(err, standing.ErrAlreadyDrained):
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	return true, nil
 }
 
 // standingUpdateWord maps a firing's outcome onto the word a surface draws a
@@ -1356,17 +1384,27 @@ func standingRefusalWant(event Event) string {
 	return clip(glossValue(args, glossField[tool]), hintLimit)
 }
 
-// standingTail keeps the LAST n bytes, on a line boundary where it can find
-// one. See [standingRunner.Probe] for why the tail is the interesting end.
-func standingTail(text string, n int) string {
+// standingTail keeps the LAST n bytes, on a line boundary where it can find one,
+// and says whether it had to. See [standingRunner.Probe] for why the tail is the
+// interesting end; see [standing.ProbeReading] for why the runner must report the
+// cut rather than let the shorter string pass for a whole one.
+func standingTail(text string, n int) (string, bool) {
 	if len(text) <= n {
-		return strings.TrimSpace(text)
+		return strings.TrimSpace(text), false
 	}
 	cut := text[len(text)-n:]
 	if at := strings.IndexByte(cut, '\n'); at >= 0 && at < len(cut)-1 {
 		cut = cut[at+1:]
 	}
-	return strings.TrimSpace("…\n" + cut)
+	return strings.TrimSpace("…\n" + cut), true
+}
+
+// standingProbeReading is the one door a probe's raw output becomes the reading
+// [standing.Probe] answers, so the command road and the tool road cannot disagree
+// about what it means to have kept only the tail.
+func standingProbeReading(text string) standing.ProbeReading {
+	tail, clipped := standingTail(text, standing.ProbeClip)
+	return standing.ProbeReading{Text: tail, Clipped: clipped}
 }
 
 // ── the sentinel ────────────────────────────────────────────────────────────
@@ -1664,23 +1702,33 @@ func StandingIdle() standing.Idle {
 // docs/AMBIENT.md calls "while you were away", and six separate lines would be
 // six separate things to read before the first sentence they came for.
 //
-// THE AMBIENT LANE AND NOT THE WAKING ONE ([Agent.enqueueAmbientNote]). This
-// runs before anybody has said anything, and an account of what happened while
-// they were gone is context for whatever they type next — not a reason for the
-// session to start talking to itself about last night.
+// THE AMBIENT LANE AND NOT THE WAKING ONE. This runs before anybody has said
+// anything, and an account of what happened while they were gone is context for
+// whatever they type next — not a reason for the session to start talking to
+// itself about last night.
 //
 // IT RUNS TWICE OVER AND THAT IS THE POINT. Construction is one of the two
 // moments a person arrives at a conversation; a SURFACE ATTACHING to one this
 // process never let go of is the other, and since #653 the second is the
 // ordinary one — the session host outlives the window and hands the next one
 // the same agent. So [Agent.WatchTaskUpdates] asks for this too, and the drain
-// is idempotent by construction: it empties the files it reads.
+// is idempotent because a file is HELD from the moment its fold is queued until
+// its acknowledgement runs ([Agent.holdStandingFile]): a second ask finds the
+// file held and neither queues nor acknowledges it again.
+//
+// THE ACKNOWLEDGEMENT FOLLOWS THE RECORD, NOT THE QUEUE. An inbox file is
+// retired by a settle callback attached to the fold message
+// ([Agent.enqueueStandingFold]); the callback fires only once the journal holds
+// that line. A crash before then leaves the file staged, so the next open hands
+// the fold over again — a duplicate, never a silence. This is the durable
+// at-least-once handoff, and no exactly-once claim is made about what a screen
+// drew.
 func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return
 	}
 	var (
-		notes    []standing.Note
+		files    []standing.DrainFile
 		problems []error
 	)
 	dir := strings.TrimSpace(a.config.Place.Dir)
@@ -1689,31 +1737,137 @@ func (a *Agent) drainStandingInbox() {
 	}
 	if dir != "" && dir != "." {
 		// THE NOTES ARE USED EVEN WHEN THE DRAIN REPORTED A FAILURE. [standing.Drain]
-		// hands back every note it read whole before it removes anything, and a
-		// malformed sibling file, a seen-record write failure or a removal error
-		// must not cost the person the valid notes the same drain returned. The
-		// failure is still surfaced BELOW rather than swallowed.
+		// hands back every file it read whole, and a malformed sibling must not
+		// cost the person the valid notes the same drain returned. The failure is
+		// still surfaced BELOW rather than swallowed.
 		mine, err := standing.Drain(dir)
-		notes = mine
+		files = append(files, mine...)
 		if err != nil {
 			problems = append(problems, err)
 		}
 	}
 	project, err := a.drainProjectInbox()
-	notes = append(notes, project...)
+	files = append(files, project...)
 	if err != nil {
 		problems = append(problems, err)
 	}
+	a.takeStandingFiles(files)
 	a.surfaceInboxProblems(problems)
+}
+
+// takeStandingFiles turns the files one drain handed over into the fold and the
+// durable deliveries that will retire them.
+//
+// A FILE A LIVE FOLD ALREADY OWNS IS LEFT ALONE. [Agent.holdStandingFile] answers
+// false for it, so the same notes are not queued twice and a second acknowledgement
+// cannot retire a file before the fold that owns it is journaled.
+//
+// A NOTE THE JOURNAL ALREADY HOLDS IS NOT SHOWN AGAIN. A crash between the fold's
+// journal line and the file's acknowledgement leaves both; the delivery id in the
+// record ([Agent.hasRecorded]) answers for it, so it is retired without a second
+// fold. A file whose every note is already durable is acknowledged at once.
+func (a *Agent) takeStandingFiles(files []standing.DrainFile) {
+	var (
+		notes      []standing.Note
+		deliveries []durableDelivery
+	)
+	for _, file := range files {
+		if !a.holdStandingFile(file.Path()) {
+			continue
+		}
+		live := make([]standing.Note, 0, len(file.Notes))
+		for _, note := range file.Notes {
+			if id := standingDeliveryID(note.ID); id != "" && a.hasRecorded(deliveryID(id)) {
+				continue
+			}
+			live = append(live, note)
+		}
+		if len(live) == 0 {
+			// EVERY NOTE IN THE FILE IS ALREADY IN THE RECORD: retire the file
+			// now rather than wait for a fold that would say nothing new.
+			a.settleStandingFile(file)
+			continue
+		}
+		notes = append(notes, live...)
+		// ONE DELIVERY PER NOTE, so a resume can ask the record about each id; all
+		// of them settle the same file once the fold is journaled.
+		settle := sync.OnceFunc(func() { a.settleStandingFile(file) })
+		for _, note := range live {
+			deliveries = append(deliveries, durableDelivery{id: deliveryID(standingDeliveryID(note.ID)), settled: settle})
+		}
+	}
 	if len(notes) == 0 {
 		return
 	}
-	// TWO INBOXES, ONE FOLD, IN ONE ORDER. What arrived is what arrived: a
-	// person who was away does not care which file a note waited in, and two
-	// folds with two openings would be the mailbox this note exists to avoid.
+	// TWO INBOXES, ONE FOLD, IN ONE ORDER. What arrived is what arrived: a person
+	// who was away does not care which file a note waited in, and two folds with
+	// two openings would be the mailbox this note exists to avoid.
 	sort.SliceStable(notes, func(i, j int) bool { return notes[i].At.Before(notes[j].At) })
-	a.enqueueAmbientNote(standingAwayNote(notes))
+	a.enqueueStandingFold(standingAwayNote(notes), deliveries)
 	a.queueStandingNews(notes)
+}
+
+// standingDeliveryID is the durable receipt of one inbox note in this session's
+// journal: the note's own identity under one prefix, so a resume can ask
+// [Agent.hasRecorded] whether the fold that carried it is already written down.
+func standingDeliveryID(noteID string) string {
+	id := strings.TrimSpace(noteID)
+	if id == "" {
+		return ""
+	}
+	return "standing-inbox/" + id
+}
+
+// enqueueStandingFold hands the fold to the ambient lane carrying the deliveries
+// that retire the files it came from. The message IS the receipt: only once the
+// journal holds this line does [durableDelivery.settled] fire and each file be
+// acknowledged.
+func (a *Agent) enqueueStandingFold(text string, deliveries []durableDelivery) {
+	note := userText(text)
+	note.delivered = deliveries
+	a.enqueueNote(note)
+}
+
+// holdStandingFile claims a staged file for a live fold, answering false when a
+// fold already owns it. The check and the claim are one step under the agent's
+// lock, so construction and a racing surface attach cannot both queue the same
+// notes.
+func (a *Agent) holdStandingFile(path string) bool {
+	if path == "" {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.standingHeld[path] {
+		return false
+	}
+	if a.standingHeld == nil {
+		a.standingHeld = make(map[string]bool)
+	}
+	a.standingHeld[path] = true
+	return true
+}
+
+// releaseStandingFile drops a file's hold once its acknowledgement has run.
+func (a *Agent) releaseStandingFile(path string) {
+	if path == "" {
+		return
+	}
+	a.mu.Lock()
+	delete(a.standingHeld, path)
+	a.mu.Unlock()
+}
+
+// settleStandingFile acknowledges one staged file and releases its hold. It is
+// idempotent, so a file retired from several delivery callbacks is retired once.
+func (a *Agent) settleStandingFile(file standing.DrainFile) {
+	if err := file.Ack(); err != nil {
+		// THE FILE STAYS AND THE FOLD STAYS OWED. The record could not be written,
+		// so the next open re-hands the notes rather than losing them; the failure
+		// is said in the ambient lane rather than swallowed.
+		a.surfaceInboxProblems([]error{err})
+	}
+	a.releaseStandingFile(file.Path())
 }
 
 // queueStandingNews turns the fold into what the SCREEN reads: one dim row per
@@ -1754,7 +1908,7 @@ func (a *Agent) queueStandingNews(notes []standing.Note) {
 	a.mu.Unlock()
 }
 
-// drainProjectInbox empties the PROJECT's inbox — what fired for this workspace
+// drainProjectInbox reads the PROJECT's inbox — what fired for this workspace
 // while no window of it was open, from an item whose own origin was an exchange
 // and had nowhere else to land ([standingRunner.deliver], road 4).
 //
@@ -1762,7 +1916,7 @@ func (a *Agent) queueStandingNews(notes []standing.Note) {
 // and is never reopened, so a fold drawn into one would be this build reading a
 // person's news out to nobody and then deleting it. It waits for a
 // conversation, which is a room they come back to.
-func (a *Agent) drainProjectInbox() ([]standing.Note, error) {
+func (a *Agent) drainProjectInbox() ([]standing.DrainFile, error) {
 	if a.config.Errand {
 		return nil, nil
 	}

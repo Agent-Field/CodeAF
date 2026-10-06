@@ -1195,7 +1195,7 @@ func TestStandingSayReachesALiveConversation(t *testing.T) {
 	// immediate, but the note is already on disk, so a crash or a window closing
 	// before it is read cannot lose it. This is the at-least-once handoff: the
 	// same line may be seen live and again in a fold, and it is never lost.
-	notes, err := standing.Drain(dir)
+	notes, err := drainStanding(t, dir)
 	if err != nil || len(notes) != 1 || notes[0].Text != "the last run on main failed" {
 		t.Fatalf("the durable note is %+v (err %v), want the line on disk before the live offer", notes, err)
 	}
@@ -1313,15 +1313,29 @@ func TestStandingEvidenceIsFoldedIn(t *testing.T) {
 // output, and clipping from the front hands the judgment the banner.
 func TestStandingProbeIsClippedFromTheTail(t *testing.T) {
 	text := strings.Repeat("noise\n", 100) + "the last line"
-	got := standingTail(text, 40)
+	got, clipped := standingTail(text, 40)
+	if !clipped {
+		t.Fatal("a tail that was cut did not report the cut")
+	}
 	if !strings.HasSuffix(got, "the last line") {
 		t.Fatalf("the tail lost the tail: %q", got)
 	}
 	if len(got) > 60 {
 		t.Fatalf("the clip kept %d bytes", len(got))
 	}
-	if got := standingTail("short", 40); got != "short" {
-		t.Fatalf("a short output was changed: %q", got)
+	if got, clipped := standingTail("short", 40); got != "short" || clipped {
+		t.Fatalf("a short output was changed or called clipped: %q clipped=%v", got, clipped)
+	}
+	// THE PRODUCTION READING REPORTS THE CUT, so the core never hashes a tail as
+	// if it were the whole thing. A reading over the clip is the shape that must
+	// carry it; a short one must not.
+	big := strings.Repeat("noise\n", standing.ProbeClip/6+16)
+	reading := standingProbeReading(big)
+	if !reading.Clipped {
+		t.Fatalf("an over-clip reading did not report the cut: clipped=%v len=%d", reading.Clipped, len(reading.Text))
+	}
+	if short := standingProbeReading("short"); short.Clipped || short.Text != "short" {
+		t.Fatalf("a short reading was called clipped or changed: %+v", short)
 	}
 }
 
@@ -1554,7 +1568,7 @@ func TestAFiringWhoseOriginIsClosedReachesAnotherWindowOfTheProject(t *testing.T
 	// between the offer and the person reading it would lose the line. This is
 	// the stated at-least-once handoff — the line can be seen live and again in
 	// the origin's fold — and loss is the direction this refuses to fail toward.
-	notes, err := standing.Drain(dir)
+	notes, err := drainStanding(t, dir)
 	if err != nil || len(notes) != 1 || notes[0].Text != "the last run on main failed" {
 		t.Fatalf("the origin's durable note is %+v (err %v)", notes, err)
 	}
@@ -1676,7 +1690,7 @@ func TestAnOrdinaryOriginStillWaitsInItsOwnConversation(t *testing.T) {
 	if _, err := runner.Say(context.Background(), item, "the last run on main failed"); err != nil {
 		t.Fatalf("Say: %v", err)
 	}
-	notes, err := standing.Drain(dir)
+	notes, err := drainStanding(t, dir)
 	if err != nil || len(notes) != 1 {
 		t.Fatalf("the session inbox holds %d notes (err %v)", len(notes), err)
 	}

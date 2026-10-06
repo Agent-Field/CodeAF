@@ -265,7 +265,7 @@ func TestOrphanDrainingIsRecoveredAlongsideANewInbox(t *testing.T) {
 	if err := Deliver(dir, Note{ItemID: "i", Kind: "said", Text: "fresh", ID: "fresh1"}); err != nil {
 		t.Fatal(err)
 	}
-	notes, err := Drain(dir)
+	notes, err := drainAndAck(t, dir)
 	if err != nil {
 		t.Fatalf("drain: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestUnreadableInboxIsReportedAndKept(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"item":"i","kind":"said","text":"secret"}`+"\n"), 0o000); err != nil {
 		t.Fatal(err)
 	}
-	notes, err := Drain(dir)
+	notes, err := drainAndAck(t, dir)
 	if err == nil {
 		t.Fatalf("an unreadable inbox drained without a word: %+v", notes)
 	}
@@ -322,7 +322,7 @@ func TestOversizedNoteIsRefusedAndAnOversizedLineIsKept(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Repeat("a", inboxMaxLine+16)+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	notes, err := Drain(dir)
+	notes, err := drainAndAck(t, dir)
 	if err == nil {
 		t.Fatalf("an unreadably long line drained silently: %+v", notes)
 	}
@@ -359,7 +359,7 @@ func TestConcurrentDeliverAndDrainLoseNothing(t *testing.T) {
 				return
 			default:
 			}
-			notes, _ := Drain(dir)
+			notes, _ := drainAndAck(t, dir)
 			mu.Lock()
 			for _, note := range notes {
 				if note.ID != "" {
@@ -375,7 +375,7 @@ func TestConcurrentDeliverAndDrainLoseNothing(t *testing.T) {
 	drainWg.Wait()
 
 	// A final drain catches anything delivered last.
-	if notes, err := Drain(dir); err != nil {
+	if notes, err := drainAndAck(t, dir); err != nil {
 		t.Fatalf("final drain: %v", err)
 	} else {
 		mu.Lock()

@@ -336,185 +336,16 @@ type sighting struct {
 // the whole pass began ([Pass.At]). A probe's next due is measured against the
 // pass, never against `now`, and [probeNextDue] says the whole of why.
 func (t *Ticker) look(ctx context.Context, item *Item, now, pass time.Time) (sighting, error) {
-	found := sighting{}
-	switch item.When.Kind {
-	case WhenAt:
-		if now.Before(item.When.At) {
-			return sighting{state: stateAsleep}, nil
-		}
-		found = sighting{state: stateReady, line: "it was the time you asked for"}
-
-	case WhenEvery:
-		next, err := ParseEvery(item.When.Every)
-		if err != nil {
-			return sighting{}, err
-		}
-		if item.NextDue.IsZero() {
-			item.NextDue = next(now)
-			return sighting{state: stateQuiet, line: "waiting for its time"}, nil
-		}
-		if now.Before(item.NextDue) {
-			return sighting{state: stateAsleep}, nil
-		}
-		// THE RHYTHM MOVES ON BECAUSE ITS TIME CAME, not because it fired. A
-		// routine whose hint says "nothing worth saying this morning" must wait
-		// for tomorrow morning like any other; advancing this only on a firing
-		// would leave it due, and therefore judged, every five minutes until it
-		// finally said yes.
-		item.NextDue = next(now)
-		found = sighting{state: stateReady, line: "it was the time you asked for"}
-
-	case WhenFile:
-		digest, listing, truncated, err := fingerprint(item.Workspace, item.When.Glob)
-		if err != nil {
-			return sighting{}, err
-		}
-		// A PARTIAL READING IS NEVER A BASELINE AND IS NEVER COMPARED WITH ONE.
-		// A truncated digest is prefixed "t" ([fingerprint]), so it can never
-		// equal a complete one; adopting it as the baseline, or comparing it to
-		// a complete one, would fabricate a change on the next complete scan.
-		// A stored "t…" fingerprint — written by an earlier build that had
-		// this bug — is therefore read as NO baseline, the same as an empty one.
-		first := item.Fingerprint == "" || strings.HasPrefix(item.Fingerprint, truncatedPrefix)
-		changed := !first && digest != item.Fingerprint
-		switch {
-		case truncated:
-			// NOTHING IS CERTIFIED AND NOTHING IS WRITTEN. The prior complete
-			// baseline, if there was one, stays exactly where it was; an item
-			// that was never armed stays unarmed with its visible flag; and the
-			// look is undecided, so the opportunity is not consumed. The next
-			// COMPLETE scan is what establishes or compares a baseline.
-			return sighting{state: stateUndecided, line: "I could not read everything I am watching"}, nil
-		case first:
-			// THE FIRST COMPLETE READING IS THE BASELINE AND IS SILENT. An item
-			// that was armed ([Store.Arm]) carries its reading already and never
-			// reaches here; one that was not keeps the old, silent first look.
-			//
-			// A WATCH THAT COULD NOT BE ARMED CARRIES A VISIBLE FLAG
-			// ([NeedsBaselineLead], written by the ratifier). This complete
-			// look ESTABLISHES the baseline the arm could not, so the flag comes
-			// down here rather than staying on the item as a stale complaint.
-			item.Fingerprint = digest
-			if IsBaselineLine(item.NeedsPerson) {
-				item.NeedsPerson = ""
-			}
-			return sighting{state: stateQuiet, line: "nothing has changed yet"}, nil
-		case !changed:
-			// Complete against complete and equal: nothing moved. The digest is
-			// re-stamped only so the document carries the same reading forward.
-			item.Fingerprint = digest
-			return sighting{state: stateQuiet, line: "nothing has changed"}, nil
-		}
-		// A COMPLETE READING OF A REAL CHANGE IS THE NEW BASELINE. It is stamped
-		// BEFORE the firing so that a firing which settles, fails or is judged
-		// down does not leave the old digest behind and re-report the same
-		// change on the next pass.
-		item.Fingerprint = digest
-		found = sighting{state: stateReady, line: "the files you are watching changed", evidence: listing}
-
-	case WhenIdle:
-		if t.Idle == nil {
-			// Nobody in this process can say whether the machine is quiet, so
-			// it never is. A capability that cannot work is absent.
-			return sighting{state: stateAsleep}, nil
-		}
-		if !t.Idle(item.When.IdleFor) {
-			return sighting{state: stateQuiet, line: "the machine has not been quiet long enough"}, nil
-		}
-		found = sighting{state: stateReady, line: "the machine has been quiet"}
-
-	case WhenProbe:
-		every := item.When.ProbeEvery
-		if every <= 0 {
-			every = Interval
-		}
-		if !item.NextDue.IsZero() && now.Before(item.NextDue) {
-			return sighting{state: stateAsleep}, nil
-		}
-		if t.Runner == nil {
-			return sighting{}, errors.New("there is nothing in this build to look with")
-		}
-		due := item.NextDue
-		raw, err := t.Runner.Probe(ctx, *item)
-		if err != nil {
-			// THE LOOK DID NOT COMPLETE, so the due moment it already had is
-			// kept: an error must never consume the opportunity the person is
-			// waiting on.
-			item.NextDue = due
-			return sighting{}, err
-		}
-		// A READING THE CLIP CUT SHORT CANNOT CERTIFY AN UNCHANGED STATE. The
-		// sentinel is shown only the tail, so two different full readings could
-		// share it; such a look carries NO identity, and a repeat of it must not
-		// be passed off as "the same state". The sentinel keeps deciding and no
-		// suppression is made on a partial view.
-		clipped := len(raw) > ProbeClip
-		evidence := clipTail(raw, ProbeClip)
-		verdict, line, err := t.judge(ctx, item, now, evidence)
-		if err != nil {
-			// A JUDGE/ACCOUNTING ERROR IS NOT A LOOK THAT CONSUMED ITS MOMENT.
-			// [Ticker.noteFailure] persists the item copy this error travels
-			// with, so the advanced NextDue that used to be set above the error
-			// is put back before it can be written: a billed unknown whose
-			// ledger or lifetime figure could not be stored keeps its original
-			// opportunity, and the failure is still counted and said.
-			item.NextDue = due
-			return sighting{}, err
-		}
-		// THE NEXT LOOK COMES OFF THE ITEM'S OWN CADENCE, MEASURED AGAINST
-		// THE PASS AND NEVER AGAINST THIS LOOK. Anchoring it to `now` would
-		// carry the moment the item was reached into its phase: a pass that
-		// began at T and reached this item at T+2m because an earlier probe
-		// was slow would leave the next look due at T+2m+every, so the pass
-		// at T+every -- the very next one -- would find it asleep and a
-		// five-minute look would be taken every ten. [probeNextDue] says the
-		// whole of it.
-		item.NextDue = probeNextDue(due, every, pass)
-		// A CONDITION WATCH SPEAKS ONLY THE DELTA. The identity of THIS reading
-		// is compared with the reading the person was last told about: while the
-		// observed state is byte-for-byte the one already reported, the watch
-		// stays quiet however the sentinel words its answer, and only a reading
-		// that actually moved is judged afresh. THAT is what bounds an unchanged
-		// continuous positive, independently of a model that says "already
-		// reported" and answers yes in the same breath.
-		identity := ""
-		if !clipped {
-			identity = readingIdentity(evidence)
-		}
-		if identity != "" && identity == item.Positive {
-			// THE SAME OBSERVED STATE, ALREADY REPORTED. Whatever the sentinel
-			// now says about it — yes, no, or nothing — the world has not
-			// moved since the person was told, so this is not a new firing and no
-			// negative is written. A sentinel that could not decide keeps the
-			// honest "nothing was written" shape.
-			if verdict == VerdictUnknown {
-				return sighting{state: stateUndecided, line: line}, nil
-			}
-			return sighting{state: stateQuiet, line: "the same state was already reported — nothing has moved"}, nil
-		}
-		if verdict == VerdictUnknown {
-			// NOBODY COULD DECIDE. Nothing is written, so the item stays due and
-			// the next pass faces the same question: an unknown must not consume
-			// the opportunity the person is waiting on, and it must never read as
-			// an established no.
-			return sighting{state: stateUndecided, line: line}, nil
-		}
-		if verdict != VerdictYes {
-			// A DECIDED NO REARMS THE WATCH: the condition is not true now, so a
-			// later true is a fresh edge, reported again.
-			item.Positive = ""
-			return sighting{state: stateQuiet, line: line}, nil
-		}
-		// THE IDENTITY TRAVELS WITH THE FIRING, NOT INTO THE ITEM. [Ticker.fire]
-		// commits it in the one save that also writes the delivery intent, so a
-		// look whose intent could not be recorded leaves no identity that would
-		// suppress the notice forever without ever having delivered it.
-		return sighting{state: stateReady, line: line, evidence: evidence, positive: identity}, nil
-
-	default:
-		return sighting{}, errors.New("standing: an unknown kind of watch: " + string(item.When.Kind))
+	// A PROBE IS ITS OWN KIND OF LOOK, and the one that judges inside itself: it
+	// never falls through to the hint below. [Ticker.lookProbe] says the whole of
+	// why.
+	if item.When.Kind == WhenProbe {
+		return t.lookProbe(ctx, item, now, pass)
 	}
-
+	found, err := t.lookScheduled(item, now)
+	if err != nil {
+		return sighting{}, err
+	}
 	// A hint on a kind that does not need judgment asks for it anyway: "every
 	// weekday at 8, IF there is anything worth saying". The sentinel is given the
 	// evidence the look gathered — the changed-file listing for a file watch, and
@@ -536,6 +367,201 @@ func (t *Ticker) look(ctx context.Context, item *Item, now, pass time.Time) (sig
 		found.line = line
 	}
 	return found, nil
+}
+
+// lookScheduled is the look for the kinds whose moment is a clock or a file
+// rather than a probe: one case per kind, so each kind's own rules are read in
+// one place.
+func (t *Ticker) lookScheduled(item *Item, now time.Time) (sighting, error) {
+	switch item.When.Kind {
+	case WhenAt:
+		return t.lookAt(item, now)
+	case WhenEvery:
+		return t.lookEvery(item, now)
+	case WhenFile:
+		return t.lookFile(item)
+	case WhenIdle:
+		return t.lookIdle(item)
+	}
+	return sighting{}, errors.New("standing: an unknown kind of watch: " + string(item.When.Kind))
+}
+
+// lookAt is a moment watch: due exactly when its moment has come.
+func (t *Ticker) lookAt(item *Item, now time.Time) (sighting, error) {
+	if now.Before(item.When.At) {
+		return sighting{state: stateAsleep}, nil
+	}
+	return sighting{state: stateReady, line: "it was the time you asked for"}, nil
+}
+
+// lookEvery is a rhythm: its first look sets the phase, and it moves on the
+// moment its time comes rather than on a firing.
+func (t *Ticker) lookEvery(item *Item, now time.Time) (sighting, error) {
+	next, err := ParseEvery(item.When.Every)
+	if err != nil {
+		return sighting{}, err
+	}
+	if item.NextDue.IsZero() {
+		item.NextDue = next(now)
+		return sighting{state: stateQuiet, line: "waiting for its time"}, nil
+	}
+	if now.Before(item.NextDue) {
+		return sighting{state: stateAsleep}, nil
+	}
+	// THE RHYTHM MOVES ON BECAUSE ITS TIME CAME, not because it fired. A routine
+	// whose hint says "nothing worth saying this morning" must wait for tomorrow
+	// morning like any other; advancing this only on a firing would leave it due,
+	// and therefore judged, every five minutes until it finally said yes.
+	item.NextDue = next(now)
+	return sighting{state: stateReady, line: "it was the time you asked for"}, nil
+}
+
+// lookFile is a file watch: a complete reading of a real change is the new
+// baseline and fires; a partial reading certifies nothing.
+func (t *Ticker) lookFile(item *Item) (sighting, error) {
+	digest, listing, truncated, err := fingerprint(item.Workspace, item.When.Glob)
+	if err != nil {
+		return sighting{}, err
+	}
+	// A PARTIAL READING IS NEVER A BASELINE AND IS NEVER COMPARED WITH ONE.
+	// A truncated digest is prefixed "t" ([fingerprint]), so it can never
+	// equal a complete one; adopting it as the baseline, or comparing it to
+	// a complete one, would fabricate a change on the next complete scan.
+	// A stored "t…" fingerprint — written by an earlier build that had
+	// this bug — is therefore read as NO baseline, the same as an empty one.
+	first := item.Fingerprint == "" || strings.HasPrefix(item.Fingerprint, truncatedPrefix)
+	changed := !first && digest != item.Fingerprint
+	switch {
+	case truncated:
+		// NOTHING IS CERTIFIED AND NOTHING IS WRITTEN. The prior complete
+		// baseline, if there was one, stays exactly where it was; an item
+		// that was never armed stays unarmed with its visible flag; and the
+		// look is undecided, so the opportunity is not consumed. The next
+		// COMPLETE scan is what establishes or compares a baseline.
+		return sighting{state: stateUndecided, line: "I could not read everything I am watching"}, nil
+	case first:
+		// THE FIRST COMPLETE READING IS THE BASELINE AND IS SILENT. An item
+		// that was armed ([Store.Arm]) carries its reading already and never
+		// reaches here; one that was not keeps the old, silent first look.
+		//
+		// A WATCH THAT COULD NOT BE ARMED CARRIES A VISIBLE FLAG
+		// ([NeedsBaselineLead], written by the ratifier). This complete
+		// look ESTABLISHES the baseline the arm could not, so the flag comes
+		// down here rather than staying on the item as a stale complaint.
+		item.Fingerprint = digest
+		if IsBaselineLine(item.NeedsPerson) {
+			item.NeedsPerson = ""
+		}
+		return sighting{state: stateQuiet, line: "nothing has changed yet"}, nil
+	case !changed:
+		// Complete against complete and equal: nothing moved. The digest is
+		// re-stamped only so the document carries the same reading forward.
+		item.Fingerprint = digest
+		return sighting{state: stateQuiet, line: "nothing has changed"}, nil
+	}
+	// A COMPLETE READING OF A REAL CHANGE IS THE NEW BASELINE. It is stamped
+	// BEFORE the firing so that a firing which settles, fails or is judged
+	// down does not leave the old digest behind and re-report the same
+	// change on the next pass.
+	item.Fingerprint = digest
+	return sighting{state: stateReady, line: "the files you are watching changed", evidence: listing}, nil
+}
+
+// lookIdle is an idle watch, due when the machine has been quiet long enough.
+func (t *Ticker) lookIdle(item *Item) (sighting, error) {
+	if t.Idle == nil {
+		// Nobody in this process can say whether the machine is quiet, so
+		// it never is. A capability that cannot work is absent.
+		return sighting{state: stateAsleep}, nil
+	}
+	if !t.Idle(item.When.IdleFor) {
+		return sighting{state: stateQuiet, line: "the machine has not been quiet long enough"}, nil
+	}
+	return sighting{state: stateReady, line: "the machine has been quiet"}, nil
+}
+
+// lookProbe is a condition watch: it looks at the world, judges the reading and
+// speaks only the delta. Its next due is measured against the PASS, never against
+// the look ([probeNextDue] says the whole of why).
+//
+// A READING THE CLIP CUT SHORT CANNOT CERTIFY AN UNCHANGED STATE. The sentinel is
+// shown only the tail, so two different full readings could share it; such a look
+// carries NO identity, and a repeat of it must not be passed off as "the same
+// state". THE RUNNER'S OWN ANSWER IS THE TRUTH — a production probe hands back a
+// tail that already fits under the cap, so measuring the bytes alone would read a
+// cut reading as a whole one ([ProbeReading]).
+func (t *Ticker) lookProbe(ctx context.Context, item *Item, now, pass time.Time) (sighting, error) {
+	every := item.When.ProbeEvery
+	if every <= 0 {
+		every = Interval
+	}
+	if !item.NextDue.IsZero() && now.Before(item.NextDue) {
+		return sighting{state: stateAsleep}, nil
+	}
+	if t.Runner == nil {
+		return sighting{}, errors.New("there is nothing in this build to look with")
+	}
+	due := item.NextDue
+	reading, err := t.Runner.Probe(ctx, *item)
+	if err != nil {
+		// THE LOOK DID NOT COMPLETE, so the due moment it already had is kept: an
+		// error must never consume the opportunity the person is waiting on.
+		item.NextDue = due
+		return sighting{}, err
+	}
+	clipped := reading.Clipped || len(reading.Text) > ProbeClip
+	evidence := clipTail(reading.Text, ProbeClip)
+	verdict, line, err := t.judge(ctx, item, now, evidence)
+	if err != nil {
+		// A JUDGE/ACCOUNTING ERROR IS NOT A LOOK THAT CONSUMED ITS MOMENT.
+		// [Ticker.noteFailure] persists the item copy this error travels with, so
+		// the advanced NextDue is put back before it can be written: a billed
+		// unknown whose ledger or lifetime figure could not be stored keeps its
+		// original opportunity, and the failure is still counted and said.
+		item.NextDue = due
+		return sighting{}, err
+	}
+	item.NextDue = probeNextDue(due, every, pass)
+	// A CONDITION WATCH SPEAKS ONLY THE DELTA. The identity of THIS reading is
+	// compared with the reading the person was last told about: while the observed
+	// state is byte-for-byte the one already reported, the watch stays quiet
+	// however the sentinel words its answer, and only a reading that actually
+	// moved is judged afresh. THAT is what bounds an unchanged continuous
+	// positive, independently of a model that says "already reported" and answers
+	// yes in the same breath.
+	identity := ""
+	if !clipped {
+		identity = readingIdentity(evidence)
+	}
+	if identity != "" && identity == item.Positive {
+		// THE SAME OBSERVED STATE, ALREADY REPORTED. Whatever the sentinel now
+		// says about it — yes, no, or nothing — the world has not moved since
+		// the person was told, so this is not a new firing and no negative is
+		// written. A sentinel that could not decide keeps the honest "nothing was
+		// written" shape.
+		if verdict == VerdictUnknown {
+			return sighting{state: stateUndecided, line: line}, nil
+		}
+		return sighting{state: stateQuiet, line: "the same state was already reported — nothing has moved"}, nil
+	}
+	switch verdict {
+	case VerdictUnknown:
+		// NOBODY COULD DECIDE. Nothing is written, so the item stays due and the
+		// next pass faces the same question: an unknown must not consume the
+		// opportunity the person is waiting on, and it must never read as an
+		// established no.
+		return sighting{state: stateUndecided, line: line}, nil
+	case VerdictYes:
+		// THE IDENTITY TRAVELS WITH THE FIRING, NOT INTO THE ITEM. [Ticker.fire]
+		// commits it in the one save that also writes the delivery intent, so a
+		// look whose intent could not be recorded leaves no identity that would
+		// suppress the notice forever without ever having delivered it.
+		return sighting{state: stateReady, line: line, evidence: evidence, positive: identity}, nil
+	}
+	// A DECIDED NO REARMS THE WATCH: the condition is not true now, so a later
+	// true is a fresh edge, reported again.
+	item.Positive = ""
+	return sighting{state: stateQuiet, line: line}, nil
 }
 
 // probeNextDue is the next moment a probe wants its look: the item's own

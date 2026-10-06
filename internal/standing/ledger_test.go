@@ -215,7 +215,7 @@ func TestRunsSinceIsEmptyWithNothingToCount(t *testing.T) {
 func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	sessionDir := filepath.Join(t.TempDir(), "sessions", "0123456789abcdef")
 
-	notes, err := Drain(sessionDir)
+	notes, err := drainAndAck(t, sessionDir)
 	if err != nil {
 		t.Fatalf("an absent inbox is not a failure: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 		t.Fatalf("the inbox was not written: %v", err)
 	}
 
-	notes, err = Drain(sessionDir)
+	notes, err = drainAndAck(t, sessionDir)
 	if err != nil {
 		t.Fatalf("drain: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	if _, err := os.Stat(InboxPath(sessionDir)); !os.IsNotExist(err) {
 		t.Fatalf("the inbox is still there after a drain: %v", err)
 	}
-	notes, err = Drain(sessionDir)
+	notes, err = drainAndAck(t, sessionDir)
 	if err != nil || len(notes) != 0 {
 		t.Fatalf("a second drain answered %d notes and %v", len(notes), err)
 	}

@@ -54,7 +54,7 @@ func TestDeliverDedupsByDurableIdentityAcrossARetryAndARestart(t *testing.T) {
 	}
 	// Two attempts, two lines on disk, ONE note to the person: readInbox dedups
 	// on the identity.
-	notes, err := standing.Drain(dir)
+	notes, err := drainStanding(t, dir)
 	if err != nil {
 		t.Fatalf("Drain: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestDeliverDedupsByDurableIdentityAcrossARetryAndARestart(t *testing.T) {
 	if _, err := runner.Deliver(context.Background(), item, pending); err != nil {
 		t.Fatalf("replayed Deliver: %v", err)
 	}
-	again, err := standing.Drain(dir)
+	again, err := drainStanding(t, dir)
 	if err != nil {
 		t.Fatalf("Drain after replay: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestLiveDeliveryIsDurableSoAWindowClosingCannotLoseIt(t *testing.T) {
 	}
 	// The window closes; the durable note survives.
 	forgetLiveSession(room)
-	notes, err := standing.Drain(dir)
+	notes, err := drainStanding(t, dir)
 	if err != nil || len(notes) != 1 || notes[0].ID != "live-1" {
 		t.Fatalf("a line offered to a window that then closed is %+v (err %v)", notes, err)
 	}
