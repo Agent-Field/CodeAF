@@ -41,6 +41,19 @@ print(len(d), d[:80])"`
 
 	inlinePreview = `.venv/bin/python -c "print(len(open('vendor.csv','rb').read()), open('vendor.csv','rb').read()[:80])"`
 
+	// THE EXACT e62 SECOND SUCCESSFUL COMMAND: it dumps the WHOLE decoded file to
+	// look at it and computes nothing, so it belongs to the same inspection class
+	// as the byte probe. It is the command that would still have stolen the one
+	// alternative slot had only len/prefix been refused.
+	fullDumpPreview = `.venv/bin/python -c "print(open('vendor.csv',encoding='utf-16').read())"`
+
+	// The same full dump through an assigned read buffer and a STRAIGHT known
+	// decode, and a decoded PREFIX of that buffer: both inspect, neither computes.
+	decodedDumpPreview = `.venv/bin/python -c "d = open('vendor.csv','rb').read()
+print(d.decode('utf-16'))"`
+	decodedPrefixPreview = `.venv/bin/python -c "d = open('vendor.csv','rb').read()
+print(d[:80].decode('utf-16'))"`
+
 	// The genuine standard-library calculation over the same goal file: it reads
 	// with open(...).read(), DECODES and PARSES it and does Decimal arithmetic,
 	// so it is real work and must stay the observed alternative.
@@ -67,6 +80,13 @@ func TestReadPreviewOnlyRefusesDiagnosticAndLeavesWork(t *testing.T) {
 		"inline read":           `print(len(open('vendor.csv','rb').read()), open('vendor.csv','rb').read()[:80])`,
 		"pathlib read_bytes":    "from pathlib import Path\nd = Path('vendor.csv').read_bytes()\nprint(len(d), d[:4].hex())",
 		"path prefix hex":       "raw = open('vendor.csv','rb').read()\nprint(raw[:16].hex())",
+		// THE e62 SECOND SUCCESS: a full decoded dump is inspection too.
+		"full decoded dump": `print(open('vendor.csv',encoding='utf-16').read())`,
+		// A raw buffer printed whole, and a straight known-content decode of it,
+		// are the same inspection class as a length or a prefix.
+		"raw buffer printed": "d = open('vendor.csv','rb').read()\nprint(d)",
+		"decoded buffer":     "d = open('vendor.csv','rb').read()\nprint(d.decode('utf-16'))",
+		"decoded prefix":     "d = open('vendor.csv','rb').read()\nprint(d[:80].decode('utf-16'))",
 	}
 	for name, prog := range previews {
 		if !programReadPreviewOnly(prog) {
@@ -74,11 +94,12 @@ func TestReadPreviewOnlyRefusesDiagnosticAndLeavesWork(t *testing.T) {
 		}
 	}
 	works := map[string]string{
-		"decode then print":  "raw = open('vendor.csv','rb').read()\ntext = raw.decode('utf-16')\nprint(text)",
-		"parse and total":    "import csv\nrows = list(csv.DictReader(open('vendor.csv', encoding='utf-16')))\nprint(sum(len(r) for r in rows))",
-		"arithmetic print":   "d = open('vendor.csv','rb').read()\nprint(len(d) + 1)",
-		"buffer printed raw": "d = open('vendor.csv','rb').read()\nprint(d)",
-		"bare read":          "d = open('vendor.csv','rb').read()",
+		"decode then parse": "raw = open('vendor.csv','rb').read()\ntext = raw.decode('utf-16')\nrows = list(csv.DictReader(io.StringIO(text)))\nprint(len(rows))",
+		"parse and total":   "import csv\nrows = list(csv.DictReader(open('vendor.csv', encoding='utf-16')))\nprint(sum(len(r) for r in rows))",
+		"arithmetic print":  "d = open('vendor.csv','rb').read()\nprint(len(d) + 1)",
+		"computed decode":   "d = open('vendor.csv','rb').read()\nprint(d.decode(enc))",
+		"unknown call":      "d = open('vendor.csv','rb').read()\nprint(d.splitlines())",
+		"bare read":         "d = open('vendor.csv','rb').read()",
 	}
 	for name, prog := range works {
 		if programReadPreviewOnly(prog) {
@@ -105,6 +126,9 @@ func TestReadPreviewTaxonomyAgrees(t *testing.T) {
 		"exact live diagnostic": bytePreview,
 		"literal alias":         aliasPreview,
 		"inline read":           inlinePreview,
+		"e62 full read dump":    fullDumpPreview,
+		"decoded buffer":        decodedDumpPreview,
+		"decoded prefix":        decodedPrefixPreview,
 	} {
 		if !shellMetadataOnly(body) {
 			t.Errorf("%s was not metadata: %q", name, body)
@@ -138,6 +162,8 @@ func TestReadPreviewDoesNotConsumeAlternativeAtBoundary(t *testing.T) {
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p1", bytePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p2", aliasPreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("p3", inlinePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
+			worker.recordOutcome(ctx, 0, delegatedBashCall("p4", fullDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
+			worker.recordOutcome(ctx, 0, delegatedBashCall("p5", decodedDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
 			worker.recordOutcome(ctx, 0, delegatedBashCall("g1", previewGenuine), toolResult{text: "food 0.30\ntravel 37.05\ngrand total 37.35"}, pre)
 		} else {
 			pre := root.captureSourceSnapshot(ctx).Identity
@@ -145,6 +171,8 @@ func TestReadPreviewDoesNotConsumeAlternativeAtBoundary(t *testing.T) {
 			root.recordOutcome(ctx, 1, delegatedBashCall("p1", bytePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("p2", aliasPreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("p3", inlinePreview), toolResult{text: "4096 b'\\xff\\xfe6300'"}, pre)
+			root.recordOutcome(ctx, 1, delegatedBashCall("p4", fullDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
+			root.recordOutcome(ctx, 1, delegatedBashCall("p5", decodedDumpPreview), toolResult{text: "category,amount\nfood,0.30"}, pre)
 			root.recordOutcome(ctx, 1, delegatedBashCall("g1", previewGenuine), toolResult{text: "food 0.30\ntravel 37.05\ngrand total 37.35"}, pre)
 		}
 
@@ -182,7 +210,7 @@ func TestReadPreviewDoesNotConsumeAlternativeAtBoundary(t *testing.T) {
 // ONE FAILURE KEEPS ONE ALTERNATIVE: under a concurrent batch of diagnostics the
 // genuine calculation still wins the single slot, at BOTH boundaries.
 func TestReadPreviewKeepsOneAlternativeUnderRace(t *testing.T) {
-	noise := []string{bytePreview, aliasPreview, inlinePreview}
+	noise := []string{bytePreview, aliasPreview, inlinePreview, fullDumpPreview, decodedDumpPreview, decodedPrefixPreview}
 
 	run := func(t *testing.T, delegated bool) {
 		dir := t.TempDir()
@@ -292,6 +320,9 @@ func TestProjectionOmitsHistoricPurePreviewAlternative(t *testing.T) {
 	}
 	appendH("hist-fail", "bash: "+previewFailed, store.AttemptFailed, "", "r0")
 	appendH("hist-noise", storedBytePreview, store.AttemptSucceeded, "hist-fail", "r1")
+	// The exact e62 SECOND successful command, stored the same way: a whole-file
+	// read dump is the same inspection class and is projected out too.
+	appendH("hist-dump", "bash: "+fullDumpPreview, store.AttemptSucceeded, "hist-fail", "r4")
 
 	// 2. A LATER GENUINE REAL PAIR: the standard-library calculation, stored in
 	// its real display-clipped form, plus a LEGACY CLIPPED diagnostic-looking
@@ -308,9 +339,13 @@ func TestProjectionOmitsHistoricPurePreviewAlternative(t *testing.T) {
 	if block == "" {
 		t.Fatal("the projection rendered nothing: the failure history vanished")
 	}
-	// FILTERED: the known complete past byte probe never reaches the model.
+	// FILTERED: the known complete past byte probe never reaches the model, and
+	// neither does the exact e62 full-file dump.
 	if strings.Contains(block, bytePreview) {
 		t.Fatalf("the historic pure preview was still rendered:\n%s", block)
+	}
+	if strings.Contains(block, fullDumpPreview) {
+		t.Fatalf("the historic full read dump was still rendered:\n%s", block)
 	}
 	// LEFT: the failure history remains.
 	if !strings.Contains(block, previewFailed) {
@@ -359,6 +394,9 @@ func TestProjectionGuardProvesOnlyCompleteKnownPreview(t *testing.T) {
 		"exact live diagnostic": storedBytePreview,
 		"literal alias":         "bash: " + aliasPreview,
 		"inline read":           "bash: " + inlinePreview,
+		"e62 full read dump":    "bash: " + fullDumpPreview,
+		"decoded buffer":        "bash: " + decodedDumpPreview,
+		"decoded prefix":        "bash: " + decodedPrefixPreview,
 	}
 	for name, action := range proven {
 		if !priorAlternativeProvenPurePreview(action) {
@@ -367,6 +405,7 @@ func TestProjectionGuardProvesOnlyCompleteKnownPreview(t *testing.T) {
 	}
 	kept := map[string]string{
 		"complete genuine calculation": "bash: " + previewGenuine,
+		"decode then parse":            "bash: " + `.venv/bin/python -c "raw = open('vendor.csv','rb').read(); text = raw.decode('utf-16'); rows = list(csv.DictReader(io.StringIO(text))); print(len(rows))"`,
 		"clipped genuine calculation":  "bash: " + contextualClip(previewGenuine, 240),
 		"legacy clipped program":       "bash: " + `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(); print(len(d), d[:80])` + "\u2026",
 		"unproven clipping marker":     "bash: " + inlinePreview + "\u2026",

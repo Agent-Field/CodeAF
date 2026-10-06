@@ -695,15 +695,16 @@ func shellToolName(name string) bool {
 // treated as ordinary work, never as metadata, so an unfamiliar command is
 // never mislabelled.
 //
-// A PURE READ-PREVIEW OF A FILE IS METADATA TOO. An interpreter one-liner that
-// only reads a file's bytes into a buffer and prints the byte count and a
-// bounded prefix (`print(len(d), d[:80])`) copies bytes out of a file to look at
-// them; it transforms nothing, whatever the file, library or interpreter is
-// named. [segmentReadPreview] recognises that bounded shape generically, so the
-// same diagnostic can never be carried as the way a failed piece of work got
-// done. The reader is lexical and narrow and makes no claim of complete program
-// understanding: see [programReadPreviewOnly] for the shape it proves and the
-// forms it leaves as work.
+// A PURE READ-INSPECTION OF A FILE IS METADATA TOO. An interpreter one-liner
+// that only reads a file's bytes into a buffer and prints the byte count, a
+// bounded prefix or the whole buffer (`print(len(d), d[:80])`,
+// `print(open('vendor.csv', encoding='utf-16').read())`) copies bytes out of a
+// file to look at them; it transforms nothing, whatever the file, library or
+// interpreter is named. [segmentReadPreview] recognises that bounded shape
+// generically, so the same diagnostic can never be carried as the way a failed
+// piece of work got done. The reader is lexical and narrow and makes no claim of
+// complete program understanding: see [programReadPreviewOnly] for the shape it
+// proves and the forms it leaves as work.
 //
 // THE SEGMENTS ARE READ BY THE ONE QUOTE-AWARE READER [shellSegments], not by
 // splitting on every `;`, `|` and newline in the text. A quoted `grep -E
@@ -2045,22 +2046,25 @@ func interpreterInlineProgram(segment string, words []shellWord) (string, bool) 
 }
 
 // programReadPreviewOnly answers whether an inline interpreter program is the
-// pure read-and-preview diagnostic: it reads a file's bytes into a buffer (or
-// reads one inline) and then only PRINTS that buffer's LENGTH or a bounded
-// PREFIX of it, as in `print(len(d), d[:80])`. Such a program copies bytes out
-// of a file to look at them; it transforms nothing, so it is metadata and never
-// the way a failed piece of work got done.
+// pure read-inspection diagnostic: it reads a file's bytes into a buffer (or
+// reads one inline) and then only PRINTS an inspection of that buffer — its
+// LENGTH, a bounded PREFIX, the WHOLE buffer, or a straight decoded buffer or
+// decoded prefix — as in `print(len(d), d[:80])` or
+// `print(open('vendor.csv', encoding='utf-16').read())`. Such a program copies
+// bytes out of a file to look at them; it transforms nothing, so it is metadata
+// and never the way a failed piece of work got done.
 //
 // THE RECOGNITION IS POSITIVE, BOUNDED AND GENERIC. It names no file, library,
 // result or domain: the same shape is recognised for any path and any
-// interpreter, so a pure byte-count/prefix/read-preview diagnostic is metadata
+// interpreter, so a pure byte-count/prefix/dump read-inspection is metadata
 // whatever `vendor.csv`, `totals`, `pandas` or any other word is present. A
 // program the reader CAN read must consist ONLY of imports, simple string
-// aliases, a pure read assignment and length/prefix prints. ANY other statement
-// the reader can read — a decode, a parse, arithmetic, a loop, an unknown call —
-// proves the program does work and leaves the segment as work, which is how the
-// genuine `read_bytes`/`read_text` -> decode -> parse -> arithmetic calculation
-// stays eligible.
+// aliases, a pure read assignment (and a straight known-content decode of one),
+// and inspection prints. ANY other statement the reader can read — a parse,
+// arithmetic, a loop, an unknown call, a decode with a computed encoding — proves
+// the program does work and leaves the segment as work, which is how the genuine
+// `read_bytes`/`read_text` -> decode -> parse -> arithmetic calculation stays
+// eligible.
 //
 // IT FAILS CLOSED ON A PROGRAM IT CANNOT READ. When the statement structure
 // cannot be bounded (an unterminated string, unbalanced brackets) the reader
@@ -2103,6 +2107,11 @@ func programReadPreviewClassify(prog string) (bool, bool) {
 				continue
 			}
 			if programPureReadExpr(rhs, aliases) {
+				buffers[name] = true
+				reads++
+				continue
+			}
+			if programStraightDecodeExpr(rhs, aliases, buffers) {
 				buffers[name] = true
 				reads++
 				continue
@@ -2240,10 +2249,15 @@ func programPrintArgs(stmt string) ([]string, bool) {
 	return programArgList(inner), true
 }
 
-// programPreviewArg answers whether one print argument is a preview of a read:
-// a string literal, `len(<buffer>)`, `<buffer>[:N]` or the same slice with
-// `.hex()`, where the buffer is a proven read buffer or an inline pure read. The
-// second result says whether the argument itself performed an inline read.
+// programPreviewArg answers whether one print argument is an INSPECTION of a
+// read rather than a use of it: a string literal, `len(<buffer>)`, the whole
+// `<buffer>`, a bounded prefix `<buffer>[:N]`, a straight decoded buffer or
+// decoded prefix (`<buffer>.decode(<literal>)`, `<buffer>[:N].decode(<literal>)`,
+// `<buffer>.decode(<literal>)[:N]`) or any of those with `.hex()`, where the
+// buffer is a proven read buffer or an inline pure read. Printing bytes or text
+// out to look at them — the full file included — transforms nothing, so it is
+// the same metadata class as a length or a bounded prefix. The second result
+// says whether the argument itself performed an inline read.
 func programPreviewArg(arg string, aliases, buffers map[string]bool) (bool, bool) {
 	a := strings.TrimSpace(arg)
 	if programStringLiteralExpr(a) {
@@ -2259,25 +2273,95 @@ func programPreviewArg(arg string, aliases, buffers map[string]bool) (bool, bool
 		}
 		return false, false
 	}
+	// PEEL THE INSPECTION WRAPPERS — a bounded prefix, a straight `.decode` of a
+	// known literal, a `.hex()` dump — until only the core read operand is left.
+	// Wrappers may nest in the orders the live forms use (`d[:80].decode('utf-16')`
+	// and `d.decode('utf-16')[:80]`); anything left after the peel that is not a
+	// proven read buffer or a pure read is not an inspection of a read.
 	body := a
-	if strings.HasSuffix(body, ".hex()") {
-		body = strings.TrimSpace(body[:len(body)-len(".hex()")])
+	for {
+		if strings.HasSuffix(body, ".hex()") {
+			body = strings.TrimSpace(body[:len(body)-len(".hex()")])
+			continue
+		}
+		if base, ok := programDecodeSuffix(body); ok {
+			body = strings.TrimSpace(base)
+			continue
+		}
+		if strings.HasSuffix(body, "]") {
+			if open := programTopLevelIndex(body, '['); open >= 0 && programPrefixRange(body[open+1:len(body)-1]) {
+				body = strings.TrimSpace(body[:open])
+				continue
+			}
+		}
+		break
 	}
-	if !strings.HasSuffix(body, "]") {
-		return false, false
-	}
-	open := programTopLevelIndex(body, '[')
-	if open < 0 || !programPrefixRange(body[open+1:len(body)-1]) {
-		return false, false
-	}
-	base := strings.TrimSpace(body[:open])
-	if programBareIdentifier(base) && buffers[base] {
+	if programBareIdentifier(body) && buffers[body] {
 		return true, false
 	}
-	if programPureReadExpr(base, aliases) {
+	if programPureReadExpr(body, aliases) {
 		return true, true
 	}
 	return false, false
+}
+
+// programStraightDecodeExpr answers whether an expression is a STRAIGHT decode of
+// a proven read: exactly one trailing `.decode(<string literal>)` over a read
+// buffer or a pure read (`raw.decode('utf-16')`,
+// `open('vendor.csv','rb').read().decode('utf-16')`). A known literal encoding is
+// the decode that just makes a read printable, so it stays inspection; a decode
+// with a computed or multi-argument encoding is not proven and is left as work.
+func programStraightDecodeExpr(expr string, aliases, buffers map[string]bool) bool {
+	base, ok := programDecodeSuffix(strings.TrimSpace(expr))
+	if !ok {
+		return false
+	}
+	base = strings.TrimSpace(base)
+	if programBareIdentifier(base) && buffers[base] {
+		return true
+	}
+	return programPureReadExpr(base, aliases)
+}
+
+// programDecodeSuffix peels one trailing `.decode(<string literal>)` call from an
+// expression and returns what it decodes. ok=false when the expression does not
+// end in a decode of exactly one string literal, so a decode with a computed or
+// multi-argument encoding is never read as the straight known-content decode.
+func programDecodeSuffix(s string) (string, bool) {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\'' || c == '"' {
+			i = skipStringLiteral(s, i) - 1
+			continue
+		}
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '.':
+			if depth != 0 {
+				continue
+			}
+			name, j, ok := programIdentifierAt(s, i+1)
+			if !ok || name != "decode" || j >= len(s) || s[j] != '(' {
+				continue
+			}
+			inner, end, ok := callArguments(s, j)
+			if !ok || end != len(s) || !programStringLiteralExpr(inner) {
+				continue
+			}
+			base := strings.TrimSpace(s[:i])
+			if base == "" {
+				continue
+			}
+			return base, true
+		}
+	}
+	return "", false
 }
 
 // programPrefixRange answers whether a slice subscript is a bounded PREFIX from
@@ -2358,7 +2442,9 @@ func programPureReadExpr(expr string, aliases map[string]bool) bool {
 
 // programReadLiteralArgs answers whether an `open(...)` argument list starts
 // with a string literal or a proven literal alias and every other argument is a
-// string literal (a mode or encoding).
+// known constant — a string literal, or a keyword whose value is one
+// (`encoding='utf-16'`, `mode='rb'`). A mode or encoding the program computes is
+// not known content and is left as work.
 func programReadLiteralArgs(args string, aliases map[string]bool) bool {
 	list := programArgList(args)
 	if len(list) == 0 {
@@ -2369,11 +2455,27 @@ func programReadLiteralArgs(args string, aliases map[string]bool) bool {
 		return false
 	}
 	for _, a := range list[1:] {
-		if !programStringLiteralExpr(strings.TrimSpace(a)) {
+		if !programLiteralArgument(strings.TrimSpace(a)) {
 			return false
 		}
 	}
 	return true
+}
+
+// programLiteralArgument answers whether one `open(...)` mode/encoding argument
+// is a known constant: a bare string literal or a keyword whose value is one.
+// Anything computed, imported or referenced is not known content.
+func programLiteralArgument(s string) bool {
+	if programStringLiteralExpr(s) {
+		return true
+	}
+	eq := strings.Index(s, "=")
+	if eq <= 0 || (eq+1 < len(s) && s[eq+1] == '=') {
+		return false
+	}
+	name := strings.TrimSpace(s[:eq])
+	value := strings.TrimSpace(s[eq+1:])
+	return programBareIdentifier(name) && programStringLiteralExpr(value)
 }
 
 // programOneLiteralArg answers whether a call's argument list is a single string
@@ -3054,8 +3156,9 @@ func (a *Agent) priorOutcomeBlock(st *store.Store, projectKey, cue, snapshot str
 // priorAlternativeProvenPurePreview answers whether a HISTORIC observed
 // alternative row can be PROVEN, by the SAME bounded lexical classifier that
 // already guards the live writers, to be nothing but a pure read-preview
-// diagnostic: an interpreter run whose inline program only reads a file into a
-// buffer and prints its length or a bounded prefix. It is a READ-TIME
+// diagnostic: an interpreter run whose inline program only inspects a file it
+// read into a buffer — its length, a bounded prefix, the whole buffer, or a
+// straight decoded buffer or prefix. It is a READ-TIME
 // projection, not a write — the stored event is never altered or deleted, the
 // failure history still renders, and only the alternative bullet is omitted.
 //
