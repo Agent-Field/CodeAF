@@ -1075,3 +1075,20 @@ secret-shaped span in it is redacted before it is stored. `/forget` retires the
 claims a failure was provenance of, and the failures learned from the same
 receipt with them — an unrelated failure in the same project is untouched, and a
 genuinely new observation is kept. Turning memory off turns this off with it.
+
+## What happens to old command results when input files change?
+
+If a command failed last week and the data file has changed since, codeaf keeps
+that old result as history but does not treat it as current proof. The recorded
+failure stays in memory as a historical advisory: it says what was observed
+once, under the source snapshot it ran against, so it can shape the next
+decision. A changed input does not automatically erase or retire that history,
+and it does not force a rerun. A changed file is a reason to look again, not proof
+either way.
+
+What it must not do is call the old result still true. A fresh inspection of the
+changed file is needed before any prior result may be reported as current; until
+then the failure is an old observation, not a fact about now. Depending on the
+task, codeaf may rerun the command, read the changed file, or adapt its approach.
+Nothing about the change itself guarantees the command will be tried again, and
+nothing about it guarantees the old failure is forgotten.

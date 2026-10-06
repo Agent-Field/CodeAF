@@ -3787,3 +3787,45 @@ func TestAFailedMethodQuestionReachesTheObservedOutcomeAdvisory(t *testing.T) {
 		}
 	}
 }
+
+// q7's answer overpromised: asked what happens to a last week's failure when
+// the data file has changed, it guaranteed a rerun and said the stale failure
+// would be "retired rather than carried forward". Neither is promised. A
+// changed input does not automatically erase or retire the recorded history and
+// does not force a tool rerun; the past result stays a historical advisory, and
+// a fresh inspection of the changed file is what is needed before the prior
+// result may be called current. The agent may rerun, read or adapt. This probe
+// reaches the dedicated section by the asker's actual words and asserts the
+// retained-history-versus-current-proof distinction rather than the topic.
+func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
+	const question = "If a command failed last week but the data file has changed, how will codeaf use that experience now?"
+	const title = "What happens to old command results when input files change?"
+	says := []string{
+		"command failed last week and the data file has changed",
+		"historical advisory",
+		"does not automatically erase or retire that history",
+		"does not force a rerun",
+		"fresh inspection of the\nchanged file",
+		"may rerun the command, read the changed file, or adapt",
+	}
+	reached := false
+	for _, section := range Chat().Search(question, DefaultResults) {
+		if section.Page != "what-i-remember" || !strings.Contains(section.Title, title) {
+			continue
+		}
+		reached = true
+		for _, needle := range says {
+			if !strings.Contains(section.Body, needle) {
+				t.Errorf("%q reached %q but its body omits %q", question, section.Title, needle)
+			}
+		}
+	}
+	if !reached {
+		found := Chat().Search(question, DefaultResults)
+		where := make([]string, 0, len(found))
+		for _, section := range found {
+			where = append(where, section.Page+" · "+section.Title)
+		}
+		t.Errorf("%q does not reach what-i-remember · %q; it reached %v", question, title, where)
+	}
+}
