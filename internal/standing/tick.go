@@ -647,6 +647,10 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	// line, no run and no delivery — the state that would drop the one notice
 	// the person is still waiting on.
 	priorPositive := item.Positive
+	// settled is the delivery identity this firing carried out, recorded on
+	// the ledger line below so the firing is durable evidence in its own right.
+	// It is set only on a successful [ActionSay] settlement.
+	var settled string
 	var (
 		outcome Outcome
 		runDir  string
@@ -697,6 +701,7 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 			return err
 		}
 		item.dropPending(pending.ID)
+		settled = pending.ID
 	case ActionTask:
 		runDir, err = t.Store.newRunDir(item.ID)
 		if err != nil {
@@ -791,7 +796,7 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	if item.NeedsPerson != "" {
 		pass.NeedsYou++
 	}
-	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir})
+	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir, Pending: settled})
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
 	// THE SAVE IS GUARDED, and a refusal is the person's act winning rather than
 	// this pass failing: the delivery already happened and cannot be undone, but
@@ -878,6 +883,18 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 	}
 	for len(item.Pending) > 0 {
 		pending := item.Pending[0]
+		// NATIVE FIRING EVIDENCE, READ BEFORE ANY DELIVERY. The append-only
+		// ledger records the identity of every line that was carried out. If
+		// this intent is already there, the line reached the person on an
+		// earlier pass whose item write was lost — a one-shot's retire-save
+		// that failed. Settle the intent and its retirement from that record
+		// rather than deliver the one line a second time. A read that fails
+		// falls through to the delivery below: an unreadable ledger must never
+		// be read as "already delivered".
+		if recorded, err := t.Store.recordedDelivery(item.ID, pending.ID, pending.At); err == nil && recorded {
+			t.settleDelivered(pass, item, pending)
+			continue
+		}
 		outcome, err := t.deliver(ctx, *item, pending)
 		if err != nil {
 			item.bumpPending(pending.ID)
@@ -910,7 +927,7 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 			item.Status = StatusRetired
 			item.RetiredWhy = "fired"
 		}
-		ledgerErr := t.Store.Append(Entry{At: item.LastFired, ItemID: item.ID, Kind: string(pending.Kind), USD: outcome.USD})
+		ledgerErr := t.Store.Append(Entry{At: item.LastFired, ItemID: item.ID, Kind: string(pending.Kind), USD: outcome.USD, Pending: pending.ID})
 		logErr := t.Store.Log(item.ID, "delivered a line that was waiting")
 		if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
 			pass.Errors++
@@ -925,6 +942,37 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 			pass.Errors++
 			pass.Notes = append(pass.Notes, "the accounting for a waiting line could not be written: "+oneLine(errors.Join(ledgerErr, logErr).Error()))
 		}
+	}
+}
+
+// settleDelivered completes the tail of a firing whose delivery is already
+// recorded on the append-only ledger but whose item write was lost — the
+// retire-save that failed after a one-shot's line reached the person. It clears
+// the intent and retires a fulfilled one-shot WITHOUT delivering again, so the
+// one line a person asked for is not put in front of them twice, and settles
+// the retirement BEFORE the pass walks on to any fresh probe. It appends no
+// ledger line: the firing it completes is the one already recorded.
+func (t *Ticker) settleDelivered(pass *Pass, item *Item, pending Pending) {
+	item.dropPending(pending.ID)
+	item.Runs++
+	item.LastFired = t.clock()
+	item.LastChecked = item.LastFired
+	item.LastCheckLine = oneLine("delivered a line that was waiting")
+	// A ONE-SHOT RETIRES HERE for the same reason it retires in [Ticker.fire]:
+	// it has told the person the one thing they asked to be told once.
+	if item.retiresOnFiring() {
+		item.Status = StatusRetired
+		item.RetiredWhy = "fired"
+	}
+	_ = t.Store.Log(item.ID, "settled a line already recorded as delivered")
+	if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
+		pass.Errors++
+		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": a delivered line could not be recorded: "+oneLine(saveErr.Error()))
+		return
+	}
+	pass.Fired++
+	if pending.Kind == ActionSay {
+		pass.Said++
 	}
 }
 

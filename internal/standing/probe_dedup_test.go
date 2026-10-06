@@ -580,6 +580,113 @@ func TestAOneShotLostDeliveryIsNotRetiredAndSettlesOnce(t *testing.T) {
 	}
 }
 
+// retireOnDeliverRunner flips the store root read-only at the exact moment a
+// line is carried out, so the write that would clear the pending and retire a
+// fulfilled one-shot fails while the pre-delivery intent write has already
+// landed and the append-only ledger line still can be appended to its existing
+// day file. No production testing knob is added to reach this state: the fault
+// is the real, narrow disk failure the earlier summary left open.
+type retireOnDeliverRunner struct {
+	*deliveringRunner
+	root  string
+	armed bool
+}
+
+func (r *retireOnDeliverRunner) Deliver(ctx context.Context, item Item, pending Pending) (Outcome, error) {
+	if r.armed {
+		if err := os.Chmod(r.root, 0o500); err != nil {
+			return Outcome{}, err
+		}
+	}
+	return r.deliveringRunner.Deliver(ctx, item, pending)
+}
+
+// A ONE-SHOT WHOSE RETIRE-SAVE FAILS STILL SETTLES ITS RETIREMENT BEFORE ANY
+// FURTHER PROBE. The delivery already reached the person and the append-only
+// ledger recorded it, so a RESTART settles the intent from that native firing
+// evidence rather than delivering the one line again; a later false then true
+// cannot re-notify; exactly one Pending ID is ever delivered and the item ends
+// retired.
+func TestAOneShotWhoseRetireSaveFailsSettlesFromTheLedgerNotASecondDelivery(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	// A ledger line for a quiet check creates today's ledger FILE, so the
+	// firing that follows can still be appended while the root is momentarily
+	// read-only; the check itself costs nothing and counts against no run.
+	if err := store.Append(Entry{At: now, ItemID: "some-other-thing", Kind: entryCheck}); err != nil {
+		t.Fatal(err)
+	}
+	runner := &retireOnDeliverRunner{
+		deliveringRunner: &deliveringRunner{fakeRunner: fakeRunner{evidence: `{"ready": true}`}},
+		root:             store.Root(),
+	}
+	made, err := store.Create(oneShotProbe("notify me once when ready becomes true"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes, _ := countingSentinel(VerdictYes)
+	no, _ := countingSentinel(VerdictNo)
+
+	// PASS ONE: the line is delivered, the retire-save fails.
+	runner.armed = true
+	if pass := mustTick(t, probeTicker(store, runner, yes, now)); pass.Fired != 1 {
+		t.Fatalf("the one-shot first true did not deliver once: %+v", pass)
+	}
+	runner.armed = false
+	if err := os.Chmod(store.Root(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("the first pass delivered %d lines, wanted one", runner.calls)
+	}
+	// The retire write was lost: the item is still active and still carries its
+	// one intent and its identity.
+	afterFirst, err := store.Get(made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterFirst.Status != StatusActive || len(afterFirst.Pending) != 1 || afterFirst.Positive == "" {
+		t.Fatalf("the failed retire-save is status=%q pending=%d positive=%q, wanted active with one intent",
+			afterFirst.Status, len(afterFirst.Pending), afterFirst.Positive)
+	}
+	pendingID := afterFirst.Pending[0].ID
+	// THE LEDGER RECORDED THE DELIVERY: the native firing evidence is there.
+	if recorded, err := store.recordedDelivery(made.ID, pendingID, afterFirst.Pending[0].At); err != nil || !recorded {
+		t.Fatalf("the recorded firing is not found in the ledger: recorded=%v err=%v", recorded, err)
+	}
+
+	// RESTART, THEN FALSE. A fresh ticker settles the retirement from the ledger
+	// and must NOT reach the runner again.
+	runner.deliveringRunner.evidence = `{"ready": false}`
+	second := mustTick(t, probeTicker(store, runner, no, now.Add(6*time.Minute)))
+	if second.Fired != 1 {
+		t.Fatalf("the restart did not settle the fulfilled one-shot: %+v", second)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("the restart delivered a line that had already reached the person: calls=%d", runner.calls)
+	}
+	settled, err := store.Get(made.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settled.Status != StatusRetired || settled.RetiredWhy != "fired" || len(settled.Pending) != 0 {
+		t.Fatalf("a settled one-shot is status=%q because=%q pending=%d, wanted retired because fired and clean",
+			settled.Status, settled.RetiredWhy, len(settled.Pending))
+	}
+
+	// TRUE AGAIN WITH DIFFERENT BYTES: a retired item is not looked at.
+	runner.deliveringRunner.evidence = `{"ready":   true}`
+	if pass := mustTick(t, probeTicker(store, runner, yes, now.Add(12*time.Minute))); pass.Fired != 0 || pass.Examined != 0 {
+		t.Fatalf("a fulfilled one-shot was looked at after its retirement: %+v", pass)
+	}
+	if runner.calls != 1 {
+		t.Fatalf("the one-shot delivered %d lines, wanted exactly one", runner.calls)
+	}
+	if len(runner.ids) != 1 || runner.ids[0] != pendingID {
+		t.Fatalf("exactly one Pending ID must be delivered: got %v, wanted [%s]", runner.ids, pendingID)
+	}
+}
+
 // A ONE-SHOT TASK WHOSE EDITS ARE AMBIGUOUS STOPS FOR THE PERSON AND IS NEVER
 // REPLAYED.
 func TestAOneShotTaskThatFailsStaysForThePersonAndIsNotReplayed(t *testing.T) {

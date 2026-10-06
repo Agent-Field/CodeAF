@@ -126,6 +126,44 @@ func (s *Store) RunsSince(from time.Time) (map[string]Spend, error) {
 	return out, nil
 }
 
+// recordedDelivery reports whether the append-only ledger already records a firing
+// that settled this exact delivery identity for this item.
+//
+// A LEDGER LINE IS WRITTEN ONLY AFTER A DELIVERY SUCCEEDED — [Ticker.fire] and
+// [Ticker.settleItem] append it after the line was carried out and return before
+// it on a failure — so its presence is native durable firing evidence. It is
+// what lets a one-shot whose item write was lost settle its retirement from the
+// record of the delivery itself, rather than deliver the one line a second time.
+// The read spans the day the intent was written through today, bounded by
+// [ledgerReach]; a line that is not there is a delivery that did not happen.
+func (s *Store) recordedDelivery(itemID, pendingID string, from time.Time) (bool, error) {
+	if s == nil || itemID == "" || pendingID == "" {
+		return false, nil
+	}
+	now := s.now()
+	if from.IsZero() || from.After(now) {
+		from = now
+	}
+	day := startOfDay(from)
+	if oldest := startOfDay(now).AddDate(0, 0, -(ledgerReach - 1)); day.Before(oldest) {
+		day = oldest
+	}
+	found := false
+	for last := startOfDay(now); !day.After(last); day = day.AddDate(0, 0, 1) {
+		if err := readLedgerDay(s.LedgerPath(day), func(entry Entry) {
+			if entry.ItemID == itemID && entry.Pending == pendingID {
+				found = true
+			}
+		}); err != nil {
+			return false, err
+		}
+		if found {
+			return true, nil
+		}
+	}
+	return found, nil
+}
+
 // count folds one ledger line into a running sum. IT IS THE ONE PLACE THE TWO
 // COLUMNS ARE DEFINED: a check costs money and did not fire, so it counts
 // against the money and never against the runs, and a second reader spelling

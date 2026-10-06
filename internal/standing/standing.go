@@ -1087,6 +1087,14 @@ type Entry struct {
 	USD  float64 `json:"usd"`
 	// Run is the run folder, for a firing.
 	Run string `json:"run,omitempty"`
+	// Pending is the delivery identity this firing settled, when it settled
+	// one: the identity of the [Pending] intent the line was carried out
+	// under. The line is written only AFTER the delivery succeeded, so its
+	// presence in the append-only ledger is NATIVE DURABLE FIRING EVIDENCE.
+	// [Ticker.settleItem] reads it to settle an intent whose item write was
+	// lost — a one-shot whose line already reached the person retires from
+	// this evidence instead of being delivered a second time.
+	Pending string `json:"pending,omitempty"`
 }
 
 // Spend is what today's ledger says, for one item or for all.

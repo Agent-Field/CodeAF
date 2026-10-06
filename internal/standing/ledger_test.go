@@ -8,6 +8,34 @@ import (
 	"time"
 )
 
+// recordedDelivery reads a firing identity back out of the append-only ledger: a line
+// written for a pending means that exact line was carried out, and nothing else
+// does.
+func TestDeliveredReadsTheFiringIdentityFromTheLedger(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	if err := store.Append(Entry{At: now, ItemID: "aaaaaaaaaaaaaaaa", Kind: string(ActionSay), Pending: "p-delivered"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.recordedDelivery("aaaaaaaaaaaaaaaa", "p-delivered", now)
+	if err != nil || !got {
+		t.Fatalf("a recorded delivery was not found: got=%v err=%v", got, err)
+	}
+	// A different identity, a different item and an empty identity are not
+	// evidence of anything.
+	for _, probe := range []struct{ item, pending string }{
+		{"aaaaaaaaaaaaaaaa", "p-other"},
+		{"bbbbbbbbbbbbbbbb", "p-delivered"},
+		{"", "p-delivered"},
+		{"aaaaaaaaaaaaaaaa", ""},
+	} {
+		if found, err := store.recordedDelivery(probe.item, probe.pending, now); err != nil || found {
+			t.Fatalf("recordedDelivery(%q,%q) = %v,%v, wanted false,nil", probe.item, probe.pending, found, err)
+		}
+	}
+}
+
 func TestLedgerSumsTodayForOneItemAndForAll(t *testing.T) {
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
