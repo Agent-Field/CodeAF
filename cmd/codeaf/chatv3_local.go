@@ -44,6 +44,8 @@ import (
 // been resolved by the rule that decided to come here ([v3HostRoad]) rather
 // than parsed out of a flag.
 type localLaunch struct {
+	// restorePlace accompanies an implicit saved session, never --session.
+	restorePlace string
 	// workspace is the directory whose host holds this conversation, absolute
 	// and resolved — the same answer [openV3Launch] would have reached, so both
 	// doors agree about which project this terminal is in.
@@ -274,7 +276,8 @@ func openChatV3Local(launch localLaunch) error {
 	// at all (its world is not an answer yet by the first frame, which is what
 	// [app.landHome] refuses on), and a launch that NAMED a conversation or asked
 	// for the picker means that one, exactly as the in-process door reads it.
-	options.Landing = strings.TrimSpace(launch.session) == "" && !launch.pick
+	options.Landing = (strings.TrimSpace(launch.session) == "" || launch.restorePlace != "") && !launch.pick
+	options.RestorePlace = launch.restorePlace
 	// AND THE CONVERSATION THIS LAUNCH COULD NOT HAVE, POINTED AT AND ARMED.
 	// It is "" on every ordinary launch; it is set only by the refusal above,
 	// and the surface lands on home with that row under the cursor

@@ -657,7 +657,7 @@ conversation. There is no separate Search tab or `/search` command.
 
 ## Why did a dashboard open when I started codeaf — home greets you
 
-**Home is the first thing you see when you open codeaf.** The conversation your launch
+**Without a saved view, home can be the first thing you see when you open codeaf.** The conversation your launch
 would have opened is loaded and waiting underneath it: `esc` drops straight into it. In
 effect the launch is the launch you always had, with home already open on top of it.
 
@@ -666,13 +666,15 @@ were`, wearing `here` — so the first frame already answers "where am I". `↑`
 the column stays there (see *Where the cursor starts*); `esc` goes on with
 what you were doing.
 
-Nothing about *which* conversation opens is changed by this. The door picks it exactly as it
-always did — this directory's most recently spoken-in chat, or a fresh one — before home is
-drawn at all.
+An ordinary restart restores the chat and main place last left from this launch directory.
+If you left home, it opens over that chat. If you left chat or another place, that view
+opens instead. Without a usable bookmark, the door picks this directory's most recently
+spoken-in chat, or a fresh one, before deciding whether to greet you with home.
 
 It greets you only when it has something to say. All of these have to be true:
 
 - You opened codeaf **without naming a conversation**. `codeaf` or `codeaf chat`.
+- There is no usable saved view to restore.
 - The machine holds **a conversation other than the one this launch opened**. Somewhere
   else to go, in other words.
 - It is a real terminal session — not `--once`, not `--host`.
@@ -682,7 +684,8 @@ typing searches the rest of the saved conversations.
 
 ## Skip the home screen — launching straight into a conversation
 
-Four ways, and each of them is you saying which conversation you mean:
+Leaving the window on chat makes the next ordinary launch from the same directory
+restore chat directly. These explicit launches also choose their own startup view:
 
 | What you run | What you get |
 |---|---|
@@ -691,7 +694,7 @@ Four ways, and each of them is you saying which conversation you mean:
 | `codeaf chat --once "text"` | replies printed with no surface; one reply normally, or every landing-woken reply when `--yolo` has a budget |
 | `codeaf --host <machine>` | the far machine's session, no greeting — `space` `space` opens that machine's home |
 
-And on a machine with only one conversation — a first run — home does not greet you.
+Without a saved view, a machine with only one conversation — a first run — does not greet you with home.
 There is no setting for this and no flag to turn it off: whether home greets you follows
 from how you launched and what the machine holds, both of which answer themselves.
 

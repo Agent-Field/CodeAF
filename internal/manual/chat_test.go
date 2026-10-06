@@ -30,6 +30,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		question string
 		page     string
 	}{
+		{"restore the last view after restarting codeaf", "starting-codeaf"},
+		{"why does codeaf reopen a random chat when I close and open it", "starting-codeaf"},
 		// C12: Key troubleshooting must reach the self-contained restart section.
 		{"I changed or unset my API key in the shell but codeaf still uses the old one", "starting-codeaf"},
 		{"your key was not accepted for this model", "starting-codeaf"},
