@@ -159,17 +159,41 @@ func TestPriorOutcomeRendersObservedAlternativeWithOwnCircumstances(t *testing.T
 	}
 	// THE SHARED METHOD-SELECTION GUIDANCE RIDES WITH THE PAIR. It is dynamic
 	// context in [priorOutcomeContext], not a static prompt file, and it is the
-	// same for a manager chat, a read-only binding and a worker. It prefers the
-	// observed working path and refuses a needless failure reconfirmation, while
-	// leaving the goal and the user's words in charge and naming no command,
-	// library or expected value.
-	for _, want := range []string{"START with an observed successful path", "do NOT re-run a known-failed method", "not current test proof", "current goal and the user's own words outrank"} {
+	// same for a manager chat, a read-only binding and a worker. It prefers a
+	// compatible observed working path and refuses a needless failure
+	// reconfirmation, while leaving the goal and the user's words in charge and
+	// naming no command, library or expected value. It also separates what the
+	// person's words actually fix — a stated runtime, exactness or a ban on
+	// edits constrains the RESULT, not a particular failed entrypoint — so a goal
+	// that names no method leaves the method open, a member is handed the
+	// observations and chooses the method rather than being briefed with a
+	// known-failed command, changed circumstances need actual evidence rather
+	// than a differing snapshot alone, and an explicit debug/test of the failed
+	// method stays allowed.
+	for _, want := range []string{
+		"use a compatible observed working approach",
+		"run on the current inputs for a fresh result",
+		"rather than re-running a known-failed method only to reconfirm that it failed",
+		"not current test proof",
+		"current goal and the user's own words outrank",
+		"not a particular failed entrypoint",
+		"do not read it as a demand to run the exact command that failed",
+		"let the member choose the method",
+		"not a matching source snapshot alone",
+		"explicitly to debug or test that method",
+	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("shared prior-outcome guidance %q was not rendered:\n%s", want, got)
 		}
 	}
+	// THE FRAMEWORK GUIDANCE STANDS OUTSIDE THE QUOTED ROWS: it is a plain
+	// preamble in front of the escaped history bullets, never smuggled inside an
+	// action or receipt string.
+	if policyAt, rowAt := strings.Index(got, "framework method policy"), strings.Index(got, "- Prior observed attempt"); policyAt < 0 || rowAt < 0 || policyAt > rowAt {
+		t.Fatalf("the framework guidance was not stated outside the quoted rows (policy=%d row=%d):\n%s", policyAt, rowAt, got)
+	}
 	// NO DATASET-SPECIFIC OR CANNED TEXT LEAKS INTO THE SHARED GUIDANCE.
-	for _, banned := range []string{"pandas", "week.csv", "grand total: 12.35"} {
+	for _, banned := range []string{"pandas", "python", ".venv", "ledger.py", "vendor", "week.csv", "grand total: 12.35"} {
 		if strings.Contains(got, banned) {
 			t.Fatalf("shared guidance leaked example-specific text %q:\n%s", banned, got)
 		}
@@ -308,7 +332,7 @@ func TestObservedAlternativeBeforeFirstRequestThroughRunTurn(t *testing.T) {
 	}
 	// AND THE NEW SHARED GUIDANCE IS PINNED INTO THAT SAME FIRST REQUEST, on the
 	// real RunTurn seam rather than by calling the helper by hand.
-	if !strings.Contains(requests[0], "START with an observed successful path") || !strings.Contains(requests[0], "do NOT re-run a known-failed method") {
+	if !strings.Contains(requests[0], "use a compatible observed working approach") || !strings.Contains(requests[0], "rather than re-running a known-failed method only to reconfirm that it failed") {
 		t.Fatalf("the first provider request did not carry the shared method-selection guidance: %q", requests[0])
 	}
 }
