@@ -472,7 +472,10 @@ func TestPendingIsRetriedBySettleAndNeverEvicted(t *testing.T) {
 	for i := 0; i < PendingKeep; i++ {
 		item.Pending = append(item.Pending, Pending{ID: newID(), Kind: ActionSay, Text: "an older line", At: now})
 	}
-	if err := store.Save(item); err != nil {
+	// THE RUNTIME FIELDS HAVE ONE DOOR. [Store.Save] is the person's and takes
+	// Pending from disk rather than the caller, so a fixture that seeds a pending
+	// intent writes it through the ticker's own guarded door.
+	if err := store.saveActive(&item); err != nil {
 		t.Fatal(err)
 	}
 	first := item.Pending[0].ID

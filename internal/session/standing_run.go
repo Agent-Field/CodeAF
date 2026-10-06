@@ -1857,11 +1857,16 @@ func standingDeliveryID(noteID string) string {
 // is acknowledged ([durableDelivery] and [sessionFile.recorded]) — and the
 // second open finds the file gone.
 //
-// IT DOES NOT FIRE A TURN AND IT DOES NOT FABRICATE A PERSON. The line is the
-// session's own authored note, the same shape the fold always reached the model
-// as; it is recorded rather than queued, so the fold is in the transcript for
-// the next sentence the person types without anything having to start a turn
-// for it. No model call, no wake, and no user role the person did not type.
+// IT DOES NOT FIRE A TURN AND IT DOES NOT FABRICATE A PERSON. The line carries
+// [userMessage.authored] — the session's own mark — so the journal writes it in
+// the session's lane ([sessionEntry.Note]) and NOT as a person's message, and the
+// folder does not learn that the person spoke: no [Meta.LastUserAt] and no
+// placeholder title ([Agent.stampUserLocked] runs only on the person's own road).
+// The delivery ids ([userMessage.delivered]) ride the same marked line, so the
+// journal is the durable receipt a crash reads ([Agent.hasRecorded]). It is
+// recorded rather than queued, so the fold is in the transcript for the next
+// sentence the person types without anything having to start a turn for it. No
+// model call, no wake, and no user role the person did not type.
 //
 // A TURN ALREADY RUNNING IS THE ONE CASE THAT WAITS. A user line appended
 // between a tool call and its result is an illegal transcript, so when this
@@ -1869,7 +1874,13 @@ func standingDeliveryID(noteID string) string {
 // that turn's own drain records it and settles it a boundary later, which is
 // the old behaviour kept for the only shape that needs it.
 func (a *Agent) recordStandingFold(text string, deliveries []durableDelivery) {
+	// THE SESSION'S OWN LINE, NEVER THE PERSON'S. `authored` is what routes the
+	// record through the note door ([sessionFile.appendNote]) instead of the plain
+	// user-message door: the journal keeps the note mark and the delivery ids
+	// together, which is what makes hasRecorded true and stops a replay folding
+	// the same notice twice.
 	note := userText(text)
+	note.authored = true
 	note.delivered = deliveries
 	if !a.recordNoteAtRest(note) {
 		a.enqueueNote(note)

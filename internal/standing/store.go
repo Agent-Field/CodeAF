@@ -88,16 +88,22 @@ func firstDue(item Item, now time.Time) (time.Time, error) {
 // a pass that is holding a copy from before it ([Store.saveActive] refuses to
 // write over a revision it did not read).
 //
-// A WHOLE-DOCUMENT WRITE NEVER CLEARS RUNTIME STATE IT DID NOT SEE. This door is
-// the person's — a pause, a stop, an edit, a resume — and the row a surface
-// hands back was drawn before the ticker committed the delivery intent
-// ([Item.Pending]) or the task's in-flight marker ([Item.TaskInflight]). Writing
-// the stale copy whole would drop both: a line the person is still owed, or the
-// only thing that stops an ambiguous task from being replayed. So the document
-// on disk is read INSIDE this lock and its runtime state is carried onto the
-// write — intents unioned by identity, the in-flight marker taken from disk
-// when one is present. The settlement that DOES clear them is the ticker's own
-// guarded write ([Store.saveActive]), never this door.
+// A WHOLE-DOCUMENT WRITE TAKES THE RUNTIME STATE FROM DISK, EXACTLY. This door is
+// the person's — a pause, a stop, an edit, a resume — and the row a surface hands
+// back was drawn before the ticker committed or settled the delivery intents
+// ([Item.Pending]) and the task's in-flight marker ([Item.TaskInflight]). The
+// document on disk is read INSIDE this lock and BOTH fields are copied from it
+// verbatim: an intent or marker the ticker committed after the row was read is
+// CARRIED rather than dropped, and one the ticker has since settled is NOT
+// RESURRECTED from the stale row. A union of the two was wrong in the second
+// direction: an intent the ticker had already settled came back from the person's
+// copy and blocked the item until they answered a line they had already seen.
+//
+// NEITHER FIELD IS THIS DOOR'S TO AUTHOR. No production caller of [Store.Save]
+// sets them — every one is a surface act on an existing row (a pause, a stop, an
+// edit, an exception, an origin move) — so the disk copy is the only truth there
+// is. The ticker commits and settles both through its own guarded write
+// ([Store.saveActive]), which is the one internal runtime door.
 func (s *Store) Save(item Item) error {
 	if err := item.Validate(); err != nil {
 		return err
@@ -113,11 +119,13 @@ func (s *Store) Save(item Item) error {
 		switch {
 		case err == nil:
 			item.Revision = current.Revision + 1
-			item.Pending = keepPending(item.Pending, current.Pending)
-			if item.TaskInflight == nil {
-				item.TaskInflight = current.TaskInflight
-			}
+			item.Pending = current.Pending
+			item.TaskInflight = current.TaskInflight
 		case errors.Is(err, ErrNotFound):
+			// NO DOCUMENT ON DISK IS THE CREATION SHAPE: there is nothing to
+			// carry, so the caller's own fields stand. Production creates through
+			// [Store.Create]; this branch only keeps a whole-document write of a
+			// document that does not exist from minting a wrong revision.
 			item.Revision = 1
 		default:
 			return err
@@ -129,33 +137,6 @@ func (s *Store) Save(item Item) error {
 		}
 		return writeAtomic(s.ItemPath(item.ID), data)
 	})
-}
-
-// keepPending unions a document's delivery intents with the ones already on
-// disk, newest state first and one identity once. The disk copy is the newer
-// truth for an identity present in both (a counted attempt), and an intent the
-// caller carries that disk does not is kept rather than dropped: authorized
-// work is never cleared by a write that did not settle it.
-func keepPending(mine, disk []Pending) []Pending {
-	if len(disk) == 0 || len(mine) == 0 {
-		if len(disk) == 0 {
-			return mine
-		}
-		return disk
-	}
-	merged := append([]Pending(nil), disk...)
-	have := make(map[string]bool, len(disk))
-	for _, pending := range disk {
-		have[pending.ID] = true
-	}
-	for _, pending := range mine {
-		if have[pending.ID] {
-			continue
-		}
-		have[pending.ID] = true
-		merged = append(merged, pending)
-	}
-	return merged
 }
 
 // SetStandingEffort sets how hard one item's firings and its checks think, and

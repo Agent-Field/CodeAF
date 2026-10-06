@@ -181,10 +181,12 @@ func TestAClippedProbeReadingCannotCertifyAnIdentity(t *testing.T) {
 	}
 }
 
-// AN EDIT NEVER CLEARS RUNTIME STATE IT DID NOT SEE. The row a surface hands back
-// was drawn before the ticker committed the delivery intent or the task's
-// in-flight marker; the person's save must carry both forward. THE REVIEW'S
-// DEFECT 6.
+// AN EDIT NEVER CLEARS RUNTIME STATE IT DID NOT SEE, AND NEVER RESURRECTS WHAT IT
+// DID NOT SEE SETTLED. The row a surface hands back was drawn before the ticker
+// committed the delivery intent or the task's in-flight marker; the person's save
+// takes both from DISK, so the intent committed after the read is carried forward
+// (this test) and one settled after the read is not brought back (store_test's
+// TestSaveNeverResurrectsSettledRuntimeState). THE REVIEW'S DEFECT 6 and F4.
 func TestSaveKeepsRuntimePendingAndInflight(t *testing.T) {
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	store := openStore(t, now)

@@ -77,7 +77,9 @@ func TestSettleSurfacesAPendingOnANonActiveItem(t *testing.T) {
 	item, _ := store.Get(made.ID)
 	item.Pending = append(item.Pending, Pending{ID: newID(), Kind: ActionSay, Text: "a waiting line", At: now})
 	item.Status = StatusPaused
-	if err := store.Save(item); err != nil {
+	// The intent is runtime state, so it goes through the ticker's guarded door;
+	// the person's Save would rightly take Pending from disk and drop it.
+	if err := store.saveActive(&item); err != nil {
 		t.Fatal(err)
 	}
 	// A paused item is skipped by the walk, so its waiting line must still be
@@ -226,7 +228,7 @@ func TestSchemaThreeKeepsDurableStateOutOfOlderReaders(t *testing.T) {
 	// reader (which knows only up to 2) skips rather than decoding the loss.
 	held, _ := store.Get(ordinary.ID)
 	held.Pending = append(held.Pending, Pending{ID: newID(), Kind: ActionSay, Text: "a line", At: now})
-	if err := store.Save(held); err != nil {
+	if err := store.saveActive(&held); err != nil {
 		t.Fatal(err)
 	}
 	if got := schemaOnDisk(t, store, ordinary.ID); got != schemaDeferred || got < 3 {
