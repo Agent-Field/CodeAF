@@ -134,10 +134,27 @@ func contextualForwardedReads(rows []memoryToolReceipt) []memoryToolReceipt {
 // live while the delegated call runs, so they are merged in BEFORE the condenser
 // replaces that result with a stub. Only receipts that are a trusted full read
 // are carried across, so an unrelated observation cannot ride the turn either.
+//
+// THE MERGE IS AUTHENTICATED, NOT MERELY KEYED ON A NUMBER. The live cache is
+// mutable and is read at observation time, so three things must agree before a
+// root receipt is allowed to join a frozen origin's set: the SESSION the turn
+// spelling names, the OWNER the origin was admitted under, and — when the origin
+// carries one — its admitted PROJECT. Without the session check a source at a
+// colliding numeric turn could borrow another session's reads; without the owner
+// check a root anchor that re-homed the conversation after the worker was
+// admitted could let the worker's observation borrow a post-anchor read of a
+// different repository. The source's OWN trusted boundary receipts are never
+// filtered: they were earned under the origin when it was stamped.
 func (a *Agent) contextualTurnReceipts(source memoryTurnEvidence) []memoryToolReceipt {
 	rows := append([]memoryToolReceipt(nil), source.Receipts...)
 	seq, ok := contextualTurnSeq(source.Turn)
 	if !ok {
+		return rows
+	}
+	// The turn spelling carries the session it belongs to. A source that names a
+	// DIFFERENT session cannot borrow this agent's live cache, whatever its
+	// numeric turn.
+	if session := strings.TrimSpace(source.Session); session != "" && session != a.memorySourceSession() {
 		return rows
 	}
 	a.memory.mu.Lock()
@@ -154,10 +171,35 @@ func (a *Agent) contextualTurnReceipts(source memoryTurnEvidence) []memoryToolRe
 		if seen[r.ID] {
 			continue
 		}
+		if !contextualReceiptAdmitted(source, r) {
+			continue
+		}
 		seen[r.ID] = true
 		rows = append(rows, r)
 	}
 	return rows
+}
+
+// contextualReceiptAdmitted answers whether one of the ROOT's own live read
+// receipts may join a frozen source. A conversation's own turn carries no owner
+// and admits every one of its own reads. A delegated origin's frozen owner admits
+// only a receipt whose exact path resolves to that owner's repository, and when
+// the origin also froze a project key, to that same project — so a read of a
+// different repository, taken before or after a root anchor, can never be
+// borrowed into an already-admitted worker's evidence.
+func contextualReceiptAdmitted(source memoryTurnEvidence, r memoryToolReceipt) bool {
+	owner := strings.TrimSpace(source.Owner)
+	if owner == "" {
+		return true
+	}
+	pathOwner := contextualPathOwner(r.Path)
+	if pathOwner == "" || pathOwner != owner {
+		return false
+	}
+	if project := strings.TrimSpace(source.Project); project != "" && projectKeyFromOwner(pathOwner) != project {
+		return false
+	}
+	return true
 }
 
 // contextualTurnSeq reads the turn number from either spelling of a turn id:
@@ -179,20 +221,168 @@ func contextualTurnSeq(turn string) (uint64, bool) {
 
 // contextualPathLiteral is a quoted path-like literal: it must carry a directory
 // separator, so an ordinary quoted word ("export.py", "amount") is never read as
-// a path. The literal is only ever a CANDIDATE; it must still resolve to a real
-// regular file before it means anything.
+// a path. It is only ever a CANDIDATE: it must appear in a construct that
+// actually CONSUMES the file, and resolve to a real regular file inside the
+// consumer's authorized source scope, before it means anything.
 var contextualPathLiteral = regexp.MustCompile(`["']([^"'\n]*[/\\][^"'\n]*)["']`)
 
+// contextualFileConsumer names the calls whose argument is an ACTUAL use of a
+// file: the program opens, reads, executes, imports or loads it. A quoted path
+// literal anywhere else — a comment, a print/log call, a bare assignment or a
+// list of strings — is a MENTION, and a mention names no producer. The name is
+// compared by its last dotted segment, so subprocess.check_output and io.open
+// still count while logger.info does not.
+var contextualFileConsumer = map[string]bool{
+	"open": true, "read": true, "read_text": true, "read_bytes": true,
+	"load": true, "exec": true, "compile": true,
+	"check_output": true, "check_call": true, "popen": true, "call": true, "run": true,
+	"sourcefileloader": true, "spec_from_file_location": true,
+	"include": true, "require": true, "source": true, "cat": true,
+}
+
+// contextualCodeOnly drops line comments, so a path merely mentioned in a
+// comment is never read as a reference. It is deliberately conservative: a `#`
+// inside a string is treated as a comment and the rest of the line is dropped,
+// which can only ever LOSE a candidate, never invent one.
+func contextualCodeOnly(body string) string {
+	if !strings.Contains(body, "#") {
+		return body
+	}
+	var b strings.Builder
+	for _, line := range strings.Split(body, "\n") {
+		if idx := strings.IndexByte(line, '#'); idx >= 0 {
+			line = line[:idx]
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// contextualInsideQuoted answers whether offset sits inside a quoted string of
+// code. A pathlib chain or a quoted path that appears only inside a printed or
+// debug string is text the program never evaluates.
+func contextualInsideQuoted(code string, offset int) bool {
+	inside := false
+	var quote byte
+	for i := 0; i < offset && i < len(code); i++ {
+		c := code[i]
+		if c == '\\' {
+			i++
+			continue
+		}
+		if inside {
+			if c == quote {
+				inside = false
+			}
+			continue
+		}
+		if c == '"' || c == '\'' {
+			inside = true
+			quote = c
+		}
+	}
+	return inside
+}
+
+// contextualLiteralConsumed answers whether a quoted path literal whose opening
+// quote ends prefix is actually USED: an argument of a file-consuming call, or a
+// reading operand/redirection (a `cat`, a `<`). Everything else — a print, a
+// log, a bare assignment, a literal list — is a mention and proves nothing.
+func contextualLiteralConsumed(prefix string) bool {
+	p := strings.TrimRight(prefix, " \t\r\n")
+	if p == "" {
+		return false
+	}
+	switch {
+	case strings.HasSuffix(p, "<"), strings.HasSuffix(p, "-f"),
+		strings.HasSuffix(p, "--file"), strings.HasSuffix(p, "--file="),
+		strings.HasSuffix(p, "cat"), strings.HasSuffix(p, "source"):
+		return true
+	}
+	return contextualBracketConsumed(p)
+}
+
+// contextualBracketConsumed walks outward from the innermost still-open bracket
+// and answers whether the call that owns it is a file consumer. A bracket with no
+// call name of its own — a literal list, a grouping — is skipped so the call
+// around it (check_output([...])) is still found.
+func contextualBracketConsumed(p string) bool {
+	depth := 0
+	for i := len(p) - 1; i >= 0; i-- {
+		switch p[i] {
+		case ')', ']', '}':
+			depth++
+		case '(', '[', '{':
+			if depth == 0 {
+				name := contextualCallNameBefore(p, i)
+				if name != "" {
+					return contextualFileConsumer[name]
+				}
+				return contextualBracketConsumed(p[:i])
+			}
+			depth--
+		}
+	}
+	return false
+}
+
+// contextualCallNameBefore reads the (possibly dotted) call name immediately
+// before an opening bracket, ignoring spaces, and returns its lowercased last
+// dotted segment.
+func contextualCallNameBefore(p string, bracket int) string {
+	end := bracket
+	for end > 0 && (p[end-1] == ' ' || p[end-1] == '\t') {
+		end--
+	}
+	start := end
+	for start > 0 {
+		c := p[start-1]
+		if c == '.' || c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			start--
+			continue
+		}
+		break
+	}
+	if start == end {
+		return ""
+	}
+	name := p[start:end]
+	if idx := strings.LastIndex(name, "."); idx >= 0 {
+		name = name[idx+1:]
+	}
+	return strings.ToLower(name)
+}
+
+// contextualConsumerNeighborhood is the widest directory a consumer's own source
+// can legitimately reference a producer from: the PARENT of the consumer's own
+// repository root, which holds its sibling repositories. The consumer's own
+// repository is inside it too. A path outside it is an arbitrary path named in
+// file text, not a reference this conversation's source scope authorizes, so the
+// framework neither reads it nor mints an owner for it. LOOKING UP A DIRECTORY
+// AND HASHING WHATEVER OWNER IT HAPPENS TO CARRY IS NOT A FROZEN ACCESS GRANT.
+func contextualConsumerNeighborhood(consumerPath string) string {
+	base := filepath.Dir(consumerPath)
+	if root, ok := repositoryRoot(base); ok {
+		base = root
+	}
+	return filepath.Dir(base)
+}
+
 // contextualReferencedProducers resolves the producer paths a consumer's source
-// NAMES. It reads the reference from the source text and demands that the exact
-// resolved path is a real regular file on disk; a name, a prefix or a
-// same-basename match proves nothing. Only the literal pathlib chain and quoted
-// path literals are read; module discovery is left to an actual read.
+// ACTUALLY references. A reference is either the code-level pathlib chain — a
+// real expression the program evaluates against its own location, read FIRST so
+// a list of quoted strings cannot starve it — or a quoted path literal in an
+// actual file-consuming construct. The exact resolved path must be a real
+// regular file within the consumer's authorized source scope; a name, a prefix,
+// a same-basename match, a comment and a bare quoted string prove nothing.
 func contextualReferencedProducers(consumerPath, body string) []string {
 	if strings.TrimSpace(consumerPath) == "" || strings.TrimSpace(body) == "" {
 		return nil
 	}
+	code := contextualCodeOnly(body)
 	directory := filepath.Dir(consumerPath)
+	neighborhood := contextualConsumerNeighborhood(consumerPath)
 	found := map[string]bool{}
 	var out []string
 	add := func(candidate string) {
@@ -207,6 +397,13 @@ func contextualReferencedProducers(consumerPath, body string) []string {
 		if err != nil || canonical == consumerPath {
 			return
 		}
+		// AUTHORIZED SOURCE SCOPE, DECIDED BEFORE ANY READ. A path outside the
+		// neighborhood the consumer's repository lives in is refused here, so the
+		// framework never opens an arbitrary named file and never mints an owner
+		// from a directory the conversation was not standing in.
+		if !contextualPathWithin(canonical, neighborhood) {
+			return
+		}
 		info, err := os.Stat(canonical)
 		if err != nil || !info.Mode().IsRegular() {
 			return
@@ -216,10 +413,17 @@ func contextualReferencedProducers(consumerPath, body string) []string {
 			out = append(out, canonical)
 		}
 	}
-	for _, literal := range contextualPathLiteral.FindAllStringSubmatch(body, contextualContextLimit) {
-		add(literal[1])
-	}
-	for _, chain := range contextualPathChain.FindAllStringSubmatch(body, contextualContextLimit) {
+	// THE CODE-LEVEL CHAIN IS THE PRIMARY REFERENCE. It is read first and only
+	// outside a comment or a quoted string, so a printed `Path(...)` example or a
+	// debug string is never a reference.
+	for _, loc := range contextualPathChain.FindAllStringSubmatchIndex(code, contextualContextLimit) {
+		if loc[0] < 0 || loc[1] > len(code) || contextualInsideQuoted(code, loc[0]) {
+			continue
+		}
+		chain := contextualPathChain.FindStringSubmatch(code[loc[0]:loc[1]])
+		if chain == nil {
+			continue
+		}
 		resolved := consumerPath
 		for i := 0; i < strings.Count(chain[1], ".parent"); i++ {
 			resolved = filepath.Dir(resolved)
@@ -229,11 +433,21 @@ func contextualReferencedProducers(consumerPath, body string) []string {
 		}
 		add(resolved)
 	}
+	// THEN QUOTED LITERALS, AND ONLY WHERE THE SOURCE ACTUALLY CONSUMES THE FILE.
+	for _, loc := range contextualPathLiteral.FindAllStringSubmatchIndex(code, contextualContextLimit) {
+		if loc[2] < 0 || loc[3] > len(code) {
+			continue
+		}
+		if !contextualLiteralConsumed(code[:loc[0]]) {
+			continue
+		}
+		add(code[loc[2]:loc[3]])
+	}
 	return out
 }
 
 // contextualNamesProducer answers whether the current consumer source still
-// names the exact producer path, for the post-turn recheck.
+// CONSUMES the exact producer path, for the post-turn recheck.
 func contextualNamesProducer(consumerPath, body, producer string) bool {
 	for _, candidate := range contextualReferencedProducers(consumerPath, body) {
 		if candidate == producer {
@@ -244,17 +458,36 @@ func contextualNamesProducer(consumerPath, body, producer string) bool {
 }
 
 func contextualReadFile(path string) (string, error) {
-	f, err := os.Open(path)
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("no source path")
+	}
+	f, err := contextualOpenRead(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
+	before, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !before.Mode().IsRegular() {
+		return "", fmt.Errorf("source is not a regular file")
+	}
+	if before.Size() > contextualFileBytes {
+		return "", fmt.Errorf("source exceeds contextual read bound")
+	}
 	body, err := io.ReadAll(io.LimitReader(f, contextualFileBytes+1))
 	if err != nil {
 		return "", err
 	}
 	if len(body) > contextualFileBytes {
 		return "", fmt.Errorf("source exceeds contextual read bound")
+	}
+	// THE SAME FILE, BEFORE AND AFTER. os.Stat does not open, so a FIFO here is
+	// answered without blocking; the identity comparison catches a swap.
+	after, err := os.Stat(path)
+	if err != nil || !after.Mode().IsRegular() || !os.SameFile(before, after) {
+		return "", fmt.Errorf("source changed while being read")
 	}
 	return string(body), nil
 }
@@ -309,12 +542,13 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 			// THE PRODUCER SIDE IS EITHER A REAL TOOL READ OR A FRAMEWORK
 			// RECHECK, AND THE RECORD SAYS WHICH. When the agent actually read
 			// the producer, its own receipt (and hash) is used. When it did not
-			// — the ordinary case where the consumer's source simply names the
-			// producer and the agent only read the consumer — the framework
-			// reads the exact named file under the same bound a tool read uses
-			// and records THAT, labelled `framework-verify:`, so a reader can
-			// never mistake it for a `cat` the agent ran. No shell exit code and
-			// no substring of some command's output is ever proof here.
+			// — the ordinary case where the consumer's source genuinely
+			// CONSUMES the producer and the agent only read the consumer — the
+			// framework reads the exact referenced file under the same bound a
+			// tool read uses and records THAT, labelled `framework-verify:`, so a
+			// reader can never mistake it for a `cat` the agent ran. No shell exit
+			// code, no substring of some command's output and no quoted mention is
+			// ever proof here.
 			var producerHash, producerReceipt string
 			if held, ok := byPath[producer]; ok {
 				producerHash, producerReceipt = held.Hash, held.ID
@@ -343,7 +577,7 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 			if err != nil {
 				continue
 			}
-			d := store.ContextualDependencyObservation{ID: "", ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer, ProducerPath: producer, ConsumerPath: consumer.Path, ProducerHash: producerHash, ConsumerHash: consumerHash, ReceiptIDs: []string{consumerReceipt, producerReceipt}, Assumption: "Consumer source names the exact producer path " + relative}
+			d := store.ContextualDependencyObservation{ID: "", ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer, ProducerPath: producer, ConsumerPath: consumer.Path, ProducerHash: producerHash, ConsumerHash: consumerHash, ReceiptIDs: []string{consumerReceipt, producerReceipt}, Assumption: "Consumer source consumes the exact producer path " + relative}
 			if _, err := a.memory.store.ObserveContextualDependency([]string{producerOwner, consumerOwner}, d); err != nil {
 				a.journalMemoryFailure("dependency", err)
 			}

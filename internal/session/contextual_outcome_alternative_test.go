@@ -14,6 +14,8 @@ package session
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1049,5 +1051,59 @@ func TestGoalFileIdentityTracksEffectiveDirectory(t *testing.T) {
 	wrapped := "env FOO=1 cd " + work + " && .venv/bin/python script.py week.csv"
 	if !alternativeEligible(delegatedBashCall("e", wrapped), "bash", failed, goal, work) {
 		t.Fatal("a wrapped cd onto the workspace stopped grounding the pairing")
+	}
+}
+
+// THE WORKER'S OWN WORKSPACE GROUNDS THE GOAL-FILE IDENTITY AT THE REAL
+// DELEGATED BOUNDARY. This drives [Agent.recordOutcome] through a task worker, so
+// it proves the delegated caller passes worker.config.Workspace: a success that
+// opens the SAME goal-named file by an ABSOLUTE path inside the workspace pairs
+// with the failure, while an unrelated file elsewhere with the same basename is
+// refused.
+func TestDelegatedBoundaryWorkspaceGroundsGoalFileIdentity(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	week := filepath.Join(dir, "week.csv")
+	if err := os.WriteFile(week, []byte("merchant,amount\nStationery,1235\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	otherWeek := filepath.Join(other, "week.csv")
+	if err := os.WriteFile(otherWeek, []byte("merchant,amount\nOther,1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	run := func(success string) []store.ContextualAttempt {
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(ctx, a4Goal)
+		worker := spawnTaskWorker(t, root, dir)
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("s1", success), toolResult{text: "independent grand total: 12.35"}, pre)
+		return attemptsForProject(t, brain, root)
+	}
+
+	// The absolute path to the workspace's OWN week.csv is the same file the goal
+	// named, so the real calculation is the observed alternative.
+	same := run(".venv/bin/python -c 'open(\"" + week + "\")'")
+	if len(same) != 2 {
+		t.Fatalf("the workspace's own goal file did not ground the pairing: %+v", same)
+	}
+	paired := false
+	for i := range same {
+		if same[i].Status == store.AttemptSucceeded && same[i].AlternativeOf != "" {
+			paired = true
+		}
+	}
+	if !paired {
+		t.Fatalf("the delegated alternative was not linked to the failure: %+v", same)
+	}
+
+	// An unrelated file elsewhere with the SAME basename is a different file and
+	// never grounds the pairing.
+	foreign := run(".venv/bin/python -c 'open(\"" + otherWeek + "\")'")
+	if len(foreign) != 1 || foreign[0].Status != store.AttemptFailed {
+		t.Fatalf("an unrelated same-basename file grounded the delegated pairing: %+v", foreign)
 	}
 }

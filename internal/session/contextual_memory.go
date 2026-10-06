@@ -376,12 +376,12 @@ func trimRenderedMemoryBlock(block string, limit int) string {
 // turn would carry that scratch consequence into the repository the conversation
 // has just moved to.
 //
-// THE FIELDS ARE TOUCHED DIRECTLY AND THE READ IS RE-DERIVED, rather than calling
-// a reset in contextual_outcome.go: the two files share this package and the
-// struct, so there is no interface to race with a parallel owner, and a helper
-// method that did not exist in this worktree would be a compile-time dependency
-// on somebody else's edit. What is reset is exactly the state keyed to the old
-// owner, and nothing else the turn has already said is rewritten.
+// THE PAIRING RESET IS ONE RULE, NOT TWO. This path already holds a.memory.mu,
+// so it calls the locked form of the reset in contextual_outcome.go
+// ([Agent.invalidateOutcomePairingLocked]) rather than clearing the fields itself:
+// the anchor and an explicit owner transition can then never drift apart. What is
+// reset is exactly the state keyed to the old owner, and nothing else the turn has
+// already said is rewritten.
 func (a *Agent) rebindAfterAnchor() {
 	if !a.remembers() {
 		return
@@ -393,10 +393,7 @@ func (a *Agent) rebindAfterAnchor() {
 	// THE PRE-ANCHOR PAIRING DOES NOT SURVIVE THE ANCHOR. Dropping the key also
 	// drops the turn's pending causal claim; a post-anchor success must start a
 	// fresh pairing under the repository's owner or none at all.
-	a.memory.outcomeFailedKey = ""
-	a.memory.outcomeFailedTool = ""
-	a.memory.outcomeFailedAction = ""
-	a.memory.outcomeAlternativeDone = false
+	a.invalidateOutcomePairingLocked()
 	// AND THE SCRATCH IMPACT READING GOES WITH IT: the cached block, its cue and
 	// its held notices were all owner-relative and must be recomputed against the
 	// repository on the next request rather than replayed from the scratch owner.

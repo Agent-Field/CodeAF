@@ -236,24 +236,36 @@ func (a *Agent) recordMemoryAlternative(ctx context.Context, turn uint64, call a
 // transition — MUST call this exactly where it changes the owner, because the
 // failure already in the journal is immutable provenance and is never rewritten.
 //
-// THE ROOT PAIRING FIELDS IT CLEARS live beside the memory brain
-// (contextual_memory.go, owned by the lifecycle worker): outcomeFailedKey,
-// outcomeFailedTool, outcomeFailedAction and outcomeAlternativeDone. The
-// lifecycle worker owns that file and wires this call; this file owns the rule
-// and the reset only. The delegated side needs no equivalent reset: a worker's
-// pairing lives in a collector state already bound to the FROZEN origin, so its
-// owner and project can never move under it. It is a no-op when no failure is
-// pending, so it is safe to call on every transition.
+// THE ROOT PAIRING FIELDS IT CLEARS live beside the memory brain:
+// outcomeFailedKey, outcomeFailedTool, outcomeFailedAction and
+// outcomeAlternativeDone. THERE IS ONE RESET FOR THEM. A caller that already
+// holds the brain's lock (the anchor path, which re-homes the conversation under
+// its own lock) uses [Agent.invalidateOutcomePairingLocked] directly; every other
+// caller uses this one, which takes the lock. The delegated side needs no
+// equivalent reset: a worker's pairing lives in a collector state already bound
+// to the FROZEN origin, so its owner and project can never move under it. It is a
+// no-op when no failure is pending, so it is safe to call on every transition.
 func (a *Agent) invalidateOutcomePairing() {
 	if a.memory == nil {
 		return
 	}
 	a.memory.mu.Lock()
+	a.invalidateOutcomePairingLocked()
+	a.memory.mu.Unlock()
+}
+
+// invalidateOutcomePairingLocked is [Agent.invalidateOutcomePairing] for a caller
+// that already holds a.memory.mu. It is the single place the pending failure and
+// its unspent alternative slot are cleared, so the anchor path and the explicit
+// transition can never drift apart.
+func (a *Agent) invalidateOutcomePairingLocked() {
+	if a.memory == nil {
+		return
+	}
 	a.memory.outcomeFailedKey = ""
 	a.memory.outcomeFailedTool = ""
 	a.memory.outcomeFailedAction = ""
 	a.memory.outcomeAlternativeDone = false
-	a.memory.mu.Unlock()
 }
 
 // alternativeExcludedTools are the bare lookups and metadata calls that are

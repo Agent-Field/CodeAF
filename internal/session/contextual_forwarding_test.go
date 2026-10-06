@@ -269,8 +269,8 @@ func TestContextualForwardingSameProjectOwnerIsNotADependency(t *testing.T) {
 // the CONSUMER'S OWN project is not a cross-project dependency.
 func TestContextualForwardingUnreadableAndOwnProjectSymlinkAreNotDependencies(t *testing.T) {
 	root, s, producer, consumer := contextualForwardingFixture(t)
-	// A named path that does not exist on disk.
-	if err := os.WriteFile(consumer, []byte("PRODUCER = \""+filepath.Join(filepath.Dir(consumer), "missing", "export.py")+"\"\n"), 0600); err != nil {
+	// A consumed path that does not exist on disk.
+	if err := os.WriteFile(consumer, []byte("data = open(\""+filepath.Join(filepath.Dir(consumer), "missing", "export.py")+"\").read()\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	root.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, root, consumer, "c")}})
@@ -285,7 +285,7 @@ func TestContextualForwardingUnreadableAndOwnProjectSymlinkAreNotDependencies(t 
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(consumer, []byte("PRODUCER = \""+link+"\"\n"), 0600); err != nil {
+	if err := os.WriteFile(consumer, []byte("data = open(\""+link+"\").read()\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	root.observeContextualDependencies(memoryTurnEvidence{Receipts: []memoryToolReceipt{contextualReviewFullRead(t, root, consumer, "c2")}})
@@ -298,11 +298,13 @@ func TestContextualForwardingUnreadableAndOwnProjectSymlinkAreNotDependencies(t 
 	}
 }
 
-// A consumer that names its producer by an exact absolute path is enough: the
-// framework resolves the literal and rechecks the file, no chain required.
+// A consumer that CONSUMES its producer by an exact absolute path is enough: the
+// framework resolves the literal and rechecks the file, no chain required. A
+// bare assignment or a printed string is only a mention and is refused — see
+// [TestContextualForwardingCommentAndPrintMentionIsNoEdge].
 func TestContextualForwardingAbsoluteLiteralReferenceIsVerified(t *testing.T) {
 	root, s, producer, consumer := contextualForwardingFixture(t)
-	if err := os.WriteFile(consumer, []byte("PRODUCER = \""+producer+"\"\n"), 0600); err != nil {
+	if err := os.WriteFile(consumer, []byte("data = open(\""+producer+"\").read()\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	contextualForwardBoundaryRead(t, root, consumer, "root-read")
@@ -323,5 +325,139 @@ func TestContextualForwardedReadsCarriesOnlyFullReads(t *testing.T) {
 	})
 	if len(got) != 1 || got[0].ID != "read" || got[0].Path != "/p/a.py" {
 		t.Fatalf("forwarded reads = %+v", got)
+	}
+}
+
+// ── the independent review's reproduced blockers ────────────────────────────
+
+// A path merely MENTIONED — in a comment or a print/log string — is not a
+// consumption. No canonical row is written and the framework reads nothing.
+func TestContextualForwardingCommentAndPrintMentionIsNoEdge(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	mention := "#!/usr/bin/env python3\n" +
+		"# unrelated note about \"" + producer + "\"\n" +
+		"print(\"" + producer + "\")\n"
+	if err := os.WriteFile(consumer, []byte(mention), 0600); err != nil {
+		t.Fatal(err)
+	}
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	contextualForwardPostTurn(t, root, "inspect the report utility")
+	contextualForwardExpectNone(t, s, producer)
+}
+
+// A path in a THIRD, unrelated project is outside the consumer's authorized
+// source scope. The framework neither reads it nor mints a cross-owner row, even
+// though the consumer really does open it: a directory hash is not a grant.
+func TestContextualForwardingThirdProjectQuotedPathIsRefused(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	third := filepath.Join(t.TempDir(), "third")
+	if err := os.MkdirAll(third, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", third, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("init: %s %v", out, err)
+	}
+	foreign := filepath.Join(third, "secret.py")
+	if err := os.WriteFile(foreign, []byte("SECRET = 42\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(consumer, []byte("data = open(\""+foreign+"\").read()\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	contextualForwardPostTurn(t, root, "inspect the report utility")
+	contextualForwardExpectNone(t, s, foreign)
+	contextualForwardExpectNone(t, s, producer)
+}
+
+// EIGHT quoted candidates ahead of the genuine pathlib chain do not starve it:
+// the code-level chain is read first and the real edge is written.
+func TestContextualForwardingDecoysDoNotStarveRealChain(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	// A SIBLING repository: its files are inside the consumer's neighbourhood, so
+	// each one is a legitimate candidate that could consume the write cap.
+	decoyDir := filepath.Join(filepath.Dir(filepath.Dir(consumer)), "decoy-core")
+	if err := os.MkdirAll(decoyDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "-C", decoyDir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("init: %s %v", out, err)
+	}
+	body := "files = [\n"
+	for i := 0; i < contextualContextLimit; i++ {
+		decoy := filepath.Join(decoyDir, "decoy"+string(rune('a'+i))+".py")
+		if err := os.WriteFile(decoy, []byte("D = 1\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		body += "  open(\"" + decoy + "\").read(),\n"
+	}
+	body += "]\nimport pathlib\nP = pathlib.Path(__file__).resolve().parent.parent / \"expense-core\" / \"export.py\"\n"
+	if err := os.WriteFile(consumer, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	contextualForwardPostTurn(t, root, "inspect the report utility")
+	contextualForwardExpectEdge(t, s, producer, consumer)
+}
+
+// A source naming a DIFFERENT session cannot borrow this agent's live receipts,
+// even at a colliding numeric turn.
+func TestContextualForwardingWrongSessionDoesNotBorrowRootReceipts(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	root.observeContextualDependencies(memoryTurnEvidence{Session: "other-session", Turn: "other-session:0:deadbeef"})
+	contextualForwardExpectNone(t, s, producer)
+}
+
+// A frozen origin admits only root reads that resolve to ITS admitted owner. A
+// root anchor that re-homes the conversation to another repository mid-turn must
+// not let the already-admitted worker borrow the post-anchor read.
+func TestContextualForwardingFrozenOwnerDoesNotBorrowPostAnchorReads(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	ctx := context.Background()
+	root.prepareBindingContext(ctx, "wire the report to its producer")
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	// The worker is admitted under the FIRST repository, so its origin freezes
+	// that owner before the anchor below moves the conversation.
+	worker := spawnTaskWorker(t, root, filepath.Dir(consumer))
+
+	// A later anchor re-homes the conversation; the root's own read of the new
+	// repository lands live under the SAME numeric turn.
+	otherRoot := t.TempDir()
+	otherConsumerDir := filepath.Join(otherRoot, "other-report")
+	otherProducerDir := filepath.Join(otherRoot, "other-core")
+	for _, dir := range []string{otherConsumerDir, otherProducerDir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+			t.Fatalf("init: %s %v", out, err)
+		}
+	}
+	otherProducer := filepath.Join(otherProducerDir, "other_export.py")
+	if err := os.WriteFile(otherProducer, []byte("def export(): return 7\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	otherConsumer := filepath.Join(otherConsumerDir, "other_report.py")
+	if err := os.WriteFile(otherConsumer, []byte("data = open(\""+otherProducer+"\").read()\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	otherKey, err := gitidentity.ProjectKey(otherConsumerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root.config.Workspace = otherConsumerDir
+	root.config.MemoryProjectKey = otherKey
+	contextualForwardBoundaryRead(t, root, otherConsumer, "anchor-read")
+
+	// The worker finally reads its own producer at its real boundary.
+	producerBody, err := os.ReadFile(producer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.recordOutcome(ctx, 0, delegatedReadCall(t, producer, "child-producer"), toolResult{text: string(producerBody)}, worker.captureSourceSnapshot(ctx).Identity)
+	contextualForwardExpectEdge(t, s, producer, consumer)
+	if links := contextualForwardEdges(t, s, otherProducer); len(links) != 0 {
+		t.Fatalf("a post-anchor read of another project was borrowed into the frozen origin: %+v", links)
 	}
 }

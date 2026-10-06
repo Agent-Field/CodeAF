@@ -385,7 +385,9 @@ func TestContextualDismissalTargetsExactlyTheNamedNotice(t *testing.T) {
 	alpha := filepath.Join(dirs["alpha"], "alpha.py")
 	beta := filepath.Join(dirs["beta"], "beta.py")
 	for _, path := range []string{alpha, beta} {
-		if err := os.WriteFile(path, []byte("producer = \""+producer+"\"\n"), 0600); err != nil {
+		// A GENUINE CONSUMPTION, not a bare assignment: the consumer opens the
+		// producer, which is what makes it a reference rather than a mention.
+		if err := os.WriteFile(path, []byte("data = open(\""+producer+"\").read()\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}

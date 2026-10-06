@@ -450,21 +450,16 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 		return
 	}
 	state := c.stateLocked(originKey)
-	// THE WORKER'S OWN WORKSPACE BELONGS IN THE ELIGIBILITY CALL. The outcome
-	// owner is widening alternativeEligible with an optional trailing workspace
-	// parameter so an unrelated command run from the SAME BASENAME elsewhere
-	// cannot be read as the remedy for a failure (the A4 false positive). This
-	// delegated caller must pass the worker's workspace ONCE that parameter
-	// exists; this branch cannot add the argument yet without failing to compile
-	// against the un-widened signature, so the EXACT required change is recorded
-	// here for root integration:
-	//
-	//   !alternativeEligible(call, state.altTool, state.altAction, origin.Goal, worker.config.Workspace)
-	//
-	// It is stated, not applied, because adding a fifth argument to a four-argument
-	// function is exactly the compile error the parallel owner's file must land
-	// first (§4 of the follow-through brief permits documenting it).
-	if state.altDone || state.altOf == "" || state.emissions >= delegatedAttemptEmissionMax || !alternativeEligible(call, state.altTool, state.altAction, origin.Goal) {
+	// THE WORKER'S OWN WORKSPACE BELONGS IN THE ELIGIBILITY CALL, and it is now
+	// passed. [alternativeEligible]'s optional trailing workspace is the effective
+	// directory a goal-named file operand is normalized against; the root caller
+	// passes Config.Workspace and this delegated caller must pass the worker's own
+	// Config.Workspace, or an unrelated command that merely runs from the same
+	// BASENAME elsewhere can be read as the remedy for a failure (the A4 false
+	// positive). A worker stands where its ground put it, so the worker's config is
+	// the correct directory — never the root's, whose workspace may have moved
+	// under a later anchor.
+	if state.altDone || state.altOf == "" || state.emissions >= delegatedAttemptEmissionMax || !alternativeEligible(call, state.altTool, state.altAction, origin.Goal, worker.config.Workspace) {
 		c.mu.Unlock()
 		return
 	}
