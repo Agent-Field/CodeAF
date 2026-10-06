@@ -348,12 +348,13 @@ func TestTheCompiledOneShotConditionRidesTheCardAndTheDocument(t *testing.T) {
 	if !item.When.OneShot {
 		t.Fatal("the compiled one-shot intent did not ride the item")
 	}
-	// THE INTENT IS VISIBLE IN THE CARD'S WHEN BAND even though the model said
-	// a cadence back: it is the compiled field, not a word it happened to send.
-	// The approval notice quotes [When.Words], and the stored manifest is the
-	// same item.
-	if item.When.Words != "once \u00b7 every five minutes" {
-		t.Fatalf("the one-shot when band reads %q, wanted the intent and the cadence", item.When.Words)
+	// THE INTENT IS VISIBLE IN THE CARD'S WHEN BAND: it is the compiled field,
+	// not a word the model happened to send. The cadence beside it is the TYPED
+	// one (the probe named no probe_every, so the native five-minute pass
+	// stands), never the model's own when_words prose. The approval notice
+	// quotes [When.Words], and the stored manifest is the same item.
+	if item.When.Words != "once \u00b7 every 5 minutes" {
+		t.Fatalf("the one-shot when band reads %q, wanted the intent and the typed cadence", item.When.Words)
 	}
 	notice := StandingNotice{Item: item, WhenWords: item.When.Words}
 	if !strings.HasPrefix(notice.WhenWords, "once") {

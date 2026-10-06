@@ -668,8 +668,27 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	// `when ·` band under one would be the card reading a rhythm into the word
 	// "always" — and every surface afterwards would quote it as the moment this
 	// thing wakes up.
-	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold {
-		when.Words = words
+	// A PROBE'S CADENCE IS THE TYPED ONE, NEVER THE MODEL'S PROSE. Everything
+	// else lets when_words stand, because a moment or a rhythm has no second
+	// typed source to disagree with. A look does: [When.ProbeEvery] is the
+	// compiled cadence and the card's own "checked every ..." clause already
+	// reads the real clock, so a model that retried a once-refused "every
+	// minute" with a valid probe_every but left that prose in when_words would
+	// otherwise put a lying "when - every minute" over a truthful five-minute
+	// look. The band is therefore DERIVED from the typed duration here - from
+	// [standing.Interval] when none was sent - and never copied from the
+	// model's words. THE CONDITION IS NOT LOST: the person's own sentence is
+	// [standing.Item.Words] whole, and the look's [standing.When.Hint] is the
+	// compiled condition, both carried untouched. Nothing here reads English.
+	switch when.Kind {
+	case standing.WhenHold:
+		// A rule is not due at any time, so it has no cadence to say back.
+	case standing.WhenProbe:
+		when.Words = probeLookCadence(when.ProbeEvery)
+	default:
+		if words := strings.TrimSpace(parsed.WhenWords); words != "" {
+			when.Words = words
+		}
 	}
 	// THE ONE-SHOT INTENT IS ALWAYS ON THE CARD'S WHEN BAND, whatever cadence
 	// the model said back. The field is the compiled decision and the band is
@@ -818,6 +837,52 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		return when, "Invalid arguments: no when called " + strconv.Quote(string(when.Kind)) + " — " + standingKindWords
 	}
 	return when, ""
+}
+
+// probeLookCadence spells the cadence a probe's look is actually taken at. It
+// is DERIVED from the typed [standing.When.ProbeEvery] - or the one clock this
+// build runs, [standing.Interval], when the call named none - so the card and
+// the machinery can never disagree about how often the world is looked at, and
+// no model's prose claim can put a cadence on the card the pass cannot reach.
+// It is display only: the stored cadence stays the typed duration.
+func probeLookCadence(every time.Duration) string {
+	if every <= 0 {
+		every = standing.Interval
+	}
+	return "every " + cadenceWords(every)
+}
+
+// cadenceWords spells an exact duration the way a person says it: whole hours,
+// minutes and seconds, joined, and never a technical "5m0s". The remainder is
+// carried rather than rounded, so a seven-and-a-half-minute look reads "every 7
+// minutes 30 seconds" and not "every 7 minutes", which would be this build
+// understating a cadence somebody chose.
+func cadenceWords(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	count := func(n int, noun string) string {
+		if n == 1 {
+			return "1 " + noun
+		}
+		return strconv.Itoa(n) + " " + noun + "s"
+	}
+	hours := int(d / time.Hour)
+	d -= time.Duration(hours) * time.Hour
+	minutes := int(d / time.Minute)
+	d -= time.Duration(minutes) * time.Minute
+	seconds := int(d / time.Second)
+	var parts []string
+	if hours > 0 {
+		parts = append(parts, count(hours, "hour"))
+	}
+	if minutes > 0 {
+		parts = append(parts, count(minutes, "minute"))
+	}
+	if seconds > 0 || len(parts) == 0 {
+		parts = append(parts, count(seconds, "second"))
+	}
+	return strings.Join(parts, " ")
 }
 
 // standingDoes is what a firing does, and it takes the kind that wakes it

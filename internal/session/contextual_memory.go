@@ -288,8 +288,8 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	// ([frameworkCeiling]): the policy and the bounded history together stay
 	// inside one ceiling. A pair that does not fit is omitted WHOLE, and the
 	// policy is then not emitted alone.
-	block := composeBeforeRequestContextUnder(frameworkCeiling(outcomes), authority, a.contextualImpactContext(cue), outcomes, history, "")
-	a.setFrameworkPolicy(strings.Contains(block, "<prior_outcomes>"))
+	block, outcomesRetained := composeBeforeRequestContextUnderMeta(frameworkCeiling(outcomes), authority, a.contextualImpactContext(cue), outcomes, history, "")
+	a.setFrameworkPolicy(outcomesRetained)
 	a.mu.Lock()
 	a.memoryText = block
 	a.landVolatileLocked()
@@ -325,8 +325,8 @@ func (a *Agent) prepareWorkerBinding(ctx context.Context, cue string) {
 	// prior outcomes come next, and the advisory lexical history spends only
 	// what is left of the one shared ceiling after them, by WHOLE records, so a
 	// history record never crowds out a grounded local outcome.
-	block := composeBeforeRequestContextUnder(frameworkCeiling(outcomes), authority, "", outcomes, history, "")
-	a.setFrameworkPolicy(strings.Contains(block, "<prior_outcomes>"))
+	block, outcomesRetained := composeBeforeRequestContextUnderMeta(frameworkCeiling(outcomes), authority, "", outcomes, history, "")
+	a.setFrameworkPolicy(outcomesRetained)
 	if block == "" {
 		return
 	}
@@ -454,16 +454,39 @@ func composeBeforeRequestContextWithHistory(rules, impacts, outcomes, history, r
 // the SAME dynamic ceiling rather than let the two compose past it
 // ([frameworkCeiling]).
 func composeBeforeRequestContextUnder(ceiling int, rules, impacts, outcomes, history, recall string) string {
+	block, _ := composeBeforeRequestContextUnderMeta(ceiling, rules, impacts, outcomes, history, recall)
+	return block
+}
+
+// composeBeforeRequestContextUnderMeta is [composeBeforeRequestContextUnder]
+// returning STRUCTURED COMPOSITION METADATA beside the assembled block: whether
+// the prior-outcomes half was ACTUALLY retained WHOLE inside this block. The
+// caller that decides whether the source-authored [frameworkMethodPolicy] rides
+// the request's SYSTEM message reads THAT decision, never a marker search over
+// the assembled text ([Agent.setFrameworkPolicy]). A rendered note is composed
+// of untrusted, %q-quoted observation and filesystem text, so a row that merely
+// SPELLED "<prior_outcomes>" would make a substring test believe a pair had been
+// shown and add the policy's runes past the shared ceiling. The decision is the
+// one the composer already made: the half was kept exactly when the whole-record
+// trim returned a non-empty block for it.
+func composeBeforeRequestContextUnderMeta(ceiling int, rules, impacts, outcomes, history, recall string) (string, bool) {
 	var b strings.Builder
 	b.WriteString(rules)
 	remaining := ceiling - utf8.RuneCountInString(rules)
 	if remaining < 0 {
 		remaining = 0
 	}
-	for _, part := range []struct{ block, open, close string }{
-		{impacts, "<contextual_impacts>", "</contextual_impacts>"},
-		{outcomes, "<prior_outcomes>", "</prior_outcomes>"},
-		{history, "<memory>", "</memory>"},
+	outcomesRetained := false
+	for _, part := range []struct {
+		block string
+		open  string
+		close string
+		// outcome marks the one half whose retention activates the policy.
+		outcome bool
+	}{
+		{impacts, "<contextual_impacts>", "</contextual_impacts>", false},
+		{outcomes, "<prior_outcomes>", "</prior_outcomes>", true},
+		{history, "<memory>", "</memory>", false},
 	} {
 		if part.block == "" {
 			continue
@@ -474,11 +497,14 @@ func composeBeforeRequestContextUnder(ceiling int, rules, impacts, outcomes, his
 		if remaining < 0 {
 			remaining = 0
 		}
+		if part.outcome {
+			outcomesRetained = kept != ""
+		}
 	}
 	if recall != "" {
 		b.WriteString(trimRenderedMemoryBlock(strings.TrimSpace(recall), remaining))
 	}
-	return b.String()
+	return b.String(), outcomesRetained
 }
 
 // trimRenderedWholeRecords drops trailing whole RECORDS from a rendered optional
@@ -635,8 +661,8 @@ func (a *Agent) withBindingContext(block, cue string) string {
 	// history and the asynchronous routed recall each spend what is left, by
 	// whole records. The source-authored framework policy is reserved inside the
 	// SAME ceiling ([frameworkCeiling]).
-	composed := composeBeforeRequestContextUnder(frameworkCeiling(outcomes), authority, impacts, outcomes, history, block)
-	a.setFrameworkPolicy(strings.Contains(composed, "<prior_outcomes>"))
+	composed, outcomesRetained := composeBeforeRequestContextUnderMeta(frameworkCeiling(outcomes), authority, impacts, outcomes, history, block)
+	a.setFrameworkPolicy(outcomesRetained)
 	return composed
 }
 

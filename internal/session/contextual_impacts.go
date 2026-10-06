@@ -729,7 +729,15 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 // [trimRenderedWholeRecords] treat one line as one whole record for this block
 // exactly as it does for the %q-quoted outcomes block.
 func formatContextualImpact(d store.ContextualDependencyObservation, notice store.ContextualImpactNotice) string {
-	return fmt.Sprintf("- %q changed since %q was observed consuming it. Consumer source was re-read and its recorded assumption is unchanged: %q. Inspect that assumption before asserting a break; offer the relevant follow-up, without editing another project. notice=%q", d.ProducerPath, d.ConsumerPath, d.Assumption, notice.EvidenceHash)
+	// THE PATH AND ASSUMPTION FIELDS GO THROUGH [contextualMemoryField], NOT %q.
+	// Go's %q escapes the newline that would split the record, but it leaves
+	// angle brackets literal; [contextualMemoryField] escapes those too, so a
+	// producer path or recorded assumption that SPELLED "<prior_outcomes>" or
+	// "</contextual_impacts>" is inert text rather than a marker a reader of the
+	// assembled block could mistake for a wrapper. The journal keeps the raw
+	// bytes; only this projection escapes.
+	return fmt.Sprintf("- %s changed since %s was observed consuming it. Consumer source was re-read and its recorded assumption is unchanged: %s. Inspect that assumption before asserting a break; offer the relevant follow-up, without editing another project. notice=%q",
+		contextualMemoryField(d.ProducerPath), contextualMemoryField(d.ConsumerPath), contextualMemoryField(d.Assumption), notice.EvidenceHash)
 }
 
 // contextualImpactContext re-reads the consumer assumption before suggesting a
