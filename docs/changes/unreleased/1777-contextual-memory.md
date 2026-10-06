@@ -32,6 +32,12 @@ invalidates:
   - "A run lent the canonical brain read-only still journaled project attempt rows: nested task workers and the run's own promoted jobs wrote through the delegated outcome collector, which checked no posture. The collector now refuses every observation when the root is binding-only, so the lent brain is read-only through every door while the binding read and the ordinary session's delegated continuity are unchanged. A session folder keeps exactly one persistent resident now that its inbox flock lives inside it, and the lock file's name is exported for callers that assert on a folder's contents."
   - "Only failures and blocks were ever written from the tool boundary. A success in the same turn and goal now attaches to the failure as its observed successful alternative, and no other success is retained."
   - "A fresh turn shown a prior failure had no note of a path already known to work, so it could repeat dead work to rediscover it. An applicable observed alternative is now rendered beside its failure with its own receipt and source circumstances, as observed history rather than a cause or a ban."
+  - "A condition watch passed the proposer's model-authored hint to the sentinel as WHAT A YES LOOKS LIKE with no provenance, so a status-only probe against an application-readiness ask fired while the body said not ready. The sentinel now judges the person's own sentence as the criterion, the hint is labelled the proposer's own guess, and a weaker fact than they named — a host answering where they asked whether an application is ready — is unknown."
+  - "The sentinel was handed the probe's output alone and inferred the contract from it, so a bare HTTP 200 read as the application being ready. The judgment now carries the look's own command, or belt tool and arguments, beside the evidence under WHAT THE CHECK RAN, read from the approved item and never re-derived; a status or reachability reading proves transport and not the application contract the person named, and a weaker witness is unknown unless the output itself carries what they named or their own words made that reading the criterion."
+  - "The sentinel's closing question asked \"yes or no\" while the prompt promised three answers, so an unresolved look could be read as a decided no. The closing question now asks yes, no or unknown as the first word."
+  - "The stand tool's probe guidance did not say the look must be read-only, and its hint field could read as the person's own condition. A probe must now take a read-only look at what the endpoint or command returns, and the hint field says reachability is not their condition."
+  - "The sentinel-grounding matrix lived in an in-package double that re-encoded yes/no/unknown plumbing rather than showing what the model does with the composed prompt. It is now an opt-in, tag-gated real-model end-to-end regression at the production seam, pinned to the review's model, that SKIPS with no provider key and is never a pass; focused tests and a skip still do not establish real work."
+  - "The whole-request outcome-composition fixture modelled the trailing failure without its own observed alternative, so it claimed the captured two-failure/two-alternative case fit after the shared-caveat dedup when it does not. The fixture now drives the real composition seam with each alternative indexing: inside the one shared 4,800-rune ceiling, alongside a realistic mandatory approved-rule load, the leading pair survives complete and the trailing pair is omitted whole with no orphan alternative, and no claim is made that both pairs always fit. No production cap, priority or authority order changed."
 ---
 
 This draft starts from #1751 and keeps one canonical event journal. Source,
@@ -81,7 +87,21 @@ The alternative is an `AttemptSucceeded` row whose `AlternativeOf` names the
 failed attempt's source key, so an explicit forget of either source retires the
 pair through the existing suppression join and the read side never shows a
 success on its own. A source snapshot is labelled as a snapshot, never as the
-live machine's own state.
+live machine's own state. The rendered prior-outcome block is bounded by whole
+records inside the one shared memory ceiling: the leading failure/alternative pair is kept
+complete when it fits, and a later pair that does not fit is omitted whole with no orphan
+alternative and no claim that both pairs always fit.
+
+The condition sentinel is grounded in the person's own sentence. A watch's judgment now
+carries the look's own command, or belt tool and arguments, beside the evidence — read
+from the approved item and never re-derived — so a status-only probe against a readiness
+ask is unknown rather than a false yes; the model-authored hint is the proposer's guess,
+not the person's criterion. The stand tool asks for a read-only look at what the endpoint
+or command actually returns. The recorded failing shape was measured at the production
+seam on the review's pinned model, and that live matrix is an opt-in e2e regression that
+skips with no key and is never acceptance.
 
 Final-head terminal acceptance is required; focused tests alone do not establish
-real work improved. See docs/contextual-memory.md for limitations and evidence.
+real work improved. The final native
+terminal acceptance has not yet been run, so this entry claims no native pass; focused
+tests, and any key-skipped e2e run, still do not establish that real work improved. See docs/contextual-memory.md for limitations and evidence.
