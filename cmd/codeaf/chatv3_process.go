@@ -971,6 +971,11 @@ func (s *v3Seam) anchor(agent interface {
 	s.boot.Config.Workspace = resolved
 	s.boot.Config.Place.Workspace = resolved
 	s.boot.Config.Place.Owned = false
+	// AND THE PROJECT KEY FOLLOWS THE WORKSPACE here too, through the one mint
+	// [v3PointAt] uses: the anchor moved the boot config's subject, and a key left
+	// on the scratch folder would scope every later launch's project reads and
+	// writes to a project this conversation is no longer in.
+	s.boot.Config.MemoryProjectKey = v3ProjectKey(resolved)
 	s.boot.Place = s.boot.Config.Place
 	if bucket, bucketErr := v3ProjectDir(resolved); bucketErr == nil {
 		s.boot.Bucket = bucket

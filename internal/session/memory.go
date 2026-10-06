@@ -170,6 +170,17 @@ func (a *Agent) remembers() bool {
 	return a.memory != nil && a.memory.store != nil && !a.config.promptProfile().lean()
 }
 
+// bindingBrain is the store a binding read may use: the read-only lent store for
+// a task worker, and otherwise the conversation's own brain. It is the ONE
+// reading of that question, so a worker cannot be lent a different brain than
+// the conversation it was built from.
+func (c Config) bindingBrain() *store.Store {
+	if c.bindingStore != nil {
+		return c.bindingStore
+	}
+	return c.Memory
+}
+
 // memoryWritable is remembers() AND the corrections that a session may WRITE
 // through the brain. A read-only binding posture answers true to remembers()
 // — so the owner's rules can be read before the first action — and false
@@ -222,8 +233,9 @@ func (a *Agent) ownerForScope(scope string) string {
 // this project. Every read that can put a memory in front of a model — the
 // router's shortlist, the dedup search, a forget match, a person's query —
 // names exactly this list, and the store refuses to answer without it. A task
-// worker inherits the same config, so a node's reading is scoped the same way
-// its parent's was.
+// worker does not inherit a config; it is handed the root's key and a
+// read-only lent brain explicitly, so its binding read is scoped to the same
+// project its conversation's was ([Agent.prepareWorkerBinding]).
 func (a *Agent) memoryOwners() []string {
 	owners := []string{store.OwnerUser, store.OwnerMachine}
 	if key := strings.TrimSpace(a.config.MemoryProjectKey); key != "" {

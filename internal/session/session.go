@@ -1302,6 +1302,17 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
+	// bindingStore is the brain a TASK WORKER is LENT READ-ONLY, so its first
+	// provider request carries the project's approved binding rules without the
+	// worker gaining any memory write, extraction, import or the remember/forget
+	// verbs ([Config.bindingOnlyMemory]'s posture, expressed here as a store that
+	// is never [Config.Memory]). It is the parent conversation's own brain handed
+	// down the worker tree, so every node and auditor reads the SAME owner set the
+	// conversation that started it reads. NIL IS NO BINDING, which is memory off
+	// and every caller that predates this field; a worker then opens exactly as it
+	// did, with no approved block and no new authority. It is read-only by the
+	// plumbing that uses it ([Agent.prepareWorkerBinding] never writes it).
+	bindingStore *store.Store
 	// bindingOnlyMemory makes a brain READ-ONLY. It exists for the authorized
 	// standing run, which must see the owner's approved binding rules before
 	// its first action without gaining any general memory write: extraction,
@@ -1347,9 +1358,12 @@ type Config struct {
 	//
 	// IT IS A CONFIG FIELD AND NOT A STORE FIELD for the reason every other
 	// where-does-this-live answer is: the door decides where a session's state
-	// lives, the session carries its identity, and the store holds rows. A
-	// worker built from a copied config inherits the same key, so a task node's
-	// memory reading is scoped exactly as its parent's was.
+	// lives, the session carries its identity, and the store holds rows. A task
+	// worker is HAND-BUILT from a Config literal that names no brain of its own;
+	// the key is copied onto it explicitly ([Agent.newTaskAgentOn],
+	// [orchestrateExec.newChild], [Agent.newAuditor]) so its read-only binding
+	// read is scoped to the conversation's project, and it is NEVER inherited by
+	// a config copy that was not written to carry it.
 	MemoryProjectKey string
 
 	// MemoryIndex is the store THIS SESSION'S CONVERSATION is indexed into,
@@ -2875,6 +2889,15 @@ type Agent struct {
 	// transcript's first message, and it is REPLACED per turn rather than
 	// appended to — a turn's memories are that turn's.
 	memoryText string
+	// bindingText is the project's APPROVED BINDING BLOCK as read before the
+	// first request of a task worker (contextual_memory.go's
+	// [Agent.prepareWorkerBinding]). It is a note of its OWN rather than the
+	// routed block's, because a node hands the worker its semantic shortlist
+	// asynchronously ([Agent.takeMemory]) and that hand may land at any moment;
+	// keeping the binding rules in their own field and their own note is what
+	// lets the deterministic, may-not-be-late half survive a late router answer.
+	// It is empty for every conversation, which lands nothing.
+	bindingText string
 	// cardText is the <state> block (card.go): what this conversation is doing,
 	// as the post-turn pass has folded it. It sits under mu because it is
 	// rendered into the transcript — at the TAIL, in the volatile note

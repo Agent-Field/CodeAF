@@ -303,6 +303,11 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// Binding context is read locally before any model or early tool request.
 	// Optional semantic recall can still race beside the reply.
 	a.prepareBindingContext(ctx, user.text())
+	// AND A TASK WORKER'S READ-ONLY APPROVED BINDINGS, DETERMINISTICALLY, before
+	// its first request: the node's routed shortlist arrives beside the work and
+	// may be late ([nodeMemory]), but an approved rule or confirmed decision may
+	// not be. A conversation owns a brain and returns here immediately.
+	a.prepareWorkerBinding(user.text())
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}

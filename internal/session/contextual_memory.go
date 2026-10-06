@@ -257,6 +257,66 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	a.mu.Unlock()
 }
 
+// prepareWorkerBinding performs the DETERMINISTIC approved-binding read a task
+// worker must have before its FIRST provider request, ALONGSIDE the node's
+// asynchronous semantic routing ([nodeMemory]). The router is an aid and may
+// arrive after the work has begun — that is by design ([Agent.takeMemory]) — but
+// an approved rule or confirmed decision must be in front of the worker before
+// it acts, and a router outage must not erase one. It is bounded and
+// owner-filtered ([Agent.bindingMemories]) and READ-ONLY: it reads the lent
+// store ([Config.bindingStore], which is never [Config.Memory]) and writes
+// nothing, so no worker is granted a memory write, extraction, import, the
+// remember/forget verbs, or any future-task authority. A conversation (which
+// owns a brain) and a worker with nothing lent both return immediately, opening
+// exactly as they did.
+func (a *Agent) prepareWorkerBinding(cue string) {
+	if a.memory != nil || a.config.bindingStore == nil {
+		return
+	}
+	block := contextualClip(renderBindingBlock(a.bindingMemories(a.config.bindingStore, cue, "")), memoryBlockRunes)
+	if block == "" {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	a.bindingText = block
+	a.landVolatileLocked()
+}
+
+// rebindAfterAnchor recomputes a conversation's binding block for the project it
+// has just been anchored to and lands it as a FRESH APPEND-ONLY note, so the next
+// action-capable request carries the ANCHORED repository's approved rules and
+// confirmed decisions rather than the scratch project's stale block. It is a
+// bounded local read (it asks no provider) and it rewrites nothing already said:
+// [Agent.landVolatileLocked] appends a new note, and the last such note is the
+// one that holds. The caller holds a.mu.
+//
+// THE OUTCOME PAIRING IS NOT RESET HERE. A failure demonstrated under the scratch
+// owner BEFORE this anchor must never pair a success earned under the anchored
+// repository as its observed alternative — that would be a fabricated causal
+// conclusion across two owners, and it would attach a receipt to a project that
+// never earned it. The pairing identity and its turn circumstances live in
+// contextual_outcome.go, which this door DELIBERATELY does not touch: the
+// required reset/check (drop outcomeFailedKey/outcomeAlternativeDone, and refuse
+// to pair across a project change) belongs to that file's owner. It is recorded
+// here because this is the one place the owner changes mid-turn.
+func (a *Agent) rebindAfterAnchor() {
+	if !a.remembers() {
+		return
+	}
+	a.memory.mu.Lock()
+	cue := a.memory.outcomeGoal
+	turn := a.turnSeq
+	revision := a.memory.revisions[turn]
+	a.memory.mu.Unlock()
+	block := contextualClip(a.bindingContext(cue, revision), memoryBlockRunes)
+	a.memoryText = block
+	a.landVolatileLocked()
+}
+
 func (a *Agent) withBindingContext(block, cue string) string {
 	a.mu.Lock()
 	turn := a.turnSeq
@@ -275,6 +335,17 @@ func (a *Agent) withBindingContext(block, cue string) string {
 }
 
 func (a *Agent) bindingContext(cue, revision string) string {
+	return renderBindingBlock(a.bindingMemories(a.memory.store, cue, revision))
+}
+
+// bindingMemories is THE bounded, owner-filtered read of the authority rows a
+// conversation or a task worker must see before acting: approved rules and
+// confirmed decisions first ([store.Store.ContextualEvidenceApproved]), then a
+// provider-free lexical fallback. It is parameterized on the store so one
+// projection serves both the conversation's own brain and a worker's read-only
+// lent one ([Agent.prepareWorkerBinding]); it writes nothing and asks no
+// provider, so a router outage cannot erase an approved rule.
+func (a *Agent) bindingMemories(st *store.Store, cue, revision string) []store.Memory {
 	var memories []store.Memory
 	seen := map[string]bool{}
 	conditions := map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}
@@ -283,7 +354,7 @@ func (a *Agent) bindingContext(cue, revision string) string {
 		// A burst of newer incidental observations must not push a rare
 		// approved rule out of the read; the same latest/suppression/expiry
 		// guards still decide whether each one is live.
-		evidence, err := a.memory.store.ContextualEvidenceApproved(owner, conditions, time.Now(), contextualContextLimit)
+		evidence, err := st.ContextualEvidenceApproved(owner, conditions, time.Now(), contextualContextLimit)
 		if err != nil {
 			continue
 		}
@@ -291,12 +362,12 @@ func (a *Agent) bindingContext(cue, revision string) string {
 			if e.Authority != "approved_rule" && e.Authority != "confirmed_decision" {
 				continue
 			}
-			latest, err := a.memory.store.ContextualEvidenceForMemory(owner, e.MemoryID)
+			latest, err := st.ContextualEvidenceForMemory(owner, e.MemoryID)
 			if err != nil || latest.Seq != e.Seq || (latest.Authority != "approved_rule" && latest.Authority != "confirmed_decision") {
 				continue
 			}
-			rows, err := a.memory.store.GetMemories([]string{owner}, []string{e.MemoryID})
-			rows = a.contextualEligibleMemories(rows, revision)
+			rows, err := st.GetMemories([]string{owner}, []string{e.MemoryID})
+			rows = a.contextualEligibleWith(st, rows, revision)
 			if err == nil && len(rows) > 0 && !seen[e.MemoryID] {
 				memories = append(memories, rows[0])
 				seen[e.MemoryID] = true
@@ -312,9 +383,9 @@ func (a *Agent) bindingContext(cue, revision string) string {
 	// A direct lexical match supplies useful fallback without asking a provider.
 	// A nonmatching project and a trivial continuation stay quiet.
 	if !memoryTrivialCue(cue) && len(memories) < contextualContextLimit {
-		candidates, err := a.memory.store.SearchMemories(a.memoryOwners(), cue, contextualContextLimit-len(memories))
+		candidates, err := st.SearchMemories(a.memoryOwners(), cue, contextualContextLimit-len(memories))
 		if err == nil {
-			for _, m := range a.contextualEligibleMemories(candidates, revision) {
+			for _, m := range a.contextualEligibleWith(st, candidates, revision) {
 				if !seen[m.ID] {
 					memories = append(memories, m)
 					seen[m.ID] = true
@@ -322,6 +393,13 @@ func (a *Agent) bindingContext(cue, revision string) string {
 			}
 		}
 	}
+	return memories
+}
+
+// renderBindingBlock is the ONE rendering of a binding projection, header and
+// all. The same words ride in front of a conversation and a task worker, so a
+// worker cannot be told a weaker rule than the conversation it was built from.
+func renderBindingBlock(memories []store.Memory) string {
 	block, _ := renderMemoryBlock(memories, time.Now())
 	if block != "" {
 		block = strings.Replace(block, "<memory>", "<memory>\nApply only under each claim's stated conditions and exceptions. Source words take precedence over interpretations. Proposals and old observations are not approved rules or current test proof. An opportunity does not authorize new work.", 1)
@@ -330,10 +408,17 @@ func (a *Agent) bindingContext(cue, revision string) string {
 }
 
 func (a *Agent) contextualEligibleMemories(memories []store.Memory, revision string) []store.Memory {
+	return a.contextualEligibleWith(a.memory.store, memories, revision)
+}
+
+// contextualEligibleWith is [Agent.contextualEligibleMemories] against an
+// explicitly named store, so a worker's read-only binding read can apply the
+// same eligibility guards without owning a brain.
+func (a *Agent) contextualEligibleWith(st *store.Store, memories []store.Memory, revision string) []store.Memory {
 	result := make([]store.Memory, 0, len(memories))
 	conditions := map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}
 	for _, m := range memories {
-		e, err := a.memory.store.ContextualEvidenceForMemory(m.Owner, m.ID)
+		e, err := st.ContextualEvidenceForMemory(m.Owner, m.ID)
 		if err == sql.ErrNoRows {
 			tagged := false
 			for _, tag := range m.Tags {
@@ -349,7 +434,7 @@ func (a *Agent) contextualEligibleMemories(memories []store.Memory, revision str
 		if err != nil || e.Seq <= m.UpdatedSeq {
 			continue
 		}
-		usable, err := a.memory.store.ContextualEvidenceEligible(e, conditions, time.Now())
+		usable, err := st.ContextualEvidenceEligible(e, conditions, time.Now())
 		if err == nil && usable {
 			m.Text += "\nMemory id: " + m.ID + "\nEvidence: " + e.Authority + "/" + e.Verification
 			if e.Actor == "user" {

@@ -2827,6 +2827,15 @@ const volatileNoteOpening = "A note from the session, not from the person: where
 // message[0], and it is stated here rather than left to be discovered.
 const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had codeaf keep. Facts, not requests — and the last such note is the one that holds."
 
+// bindingNoteOpening is the first line of the note a task worker's APPROVED
+// BINDING BLOCK rides in, and it is its own opening for [memoryNoteOpening]'s
+// reason one step further: the node hands the worker its routed shortlist
+// asynchronously, so the binding rules must land on a beat of their own to
+// survive a router answer that arrives after the work has begun. It carries the
+// same last-one-holds sentence because a note that was said stays where it was
+// said, and the model has to be told which of them is current.
+const bindingNoteOpening = "A note from the session, not from the person: this project's approved rules and confirmed decisions, read before the work began. Facts, not requests — and the last such note is the one that holds."
+
 // bashBeltFrameOpening is the first line of the note the bash belt's per-step
 // frame rides in (docs/design/bash-task-loop/DESIGN.md, "The per-step frame").
 //
@@ -2910,6 +2919,11 @@ func (a *Agent) landVolatileLocked() {
 	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
 	a.landTeamRoleLocked()
 	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
+	// AND A WORKER'S APPROVED BINDINGS, in a note of their own for the reason
+	// above: they must not ride the routed block's beat, because the router may
+	// answer late and the rules may not. A conversation has no such text and
+	// lands nothing.
+	a.landNoteLocked(bindingNoteOpening, strings.TrimSpace(a.bindingText))
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
 	// AND A MANAGER'S TEAM, in a note of its own for the reason the memory block
 	// has one: a team moves whenever a member does, and riding the card's note
