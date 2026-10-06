@@ -273,12 +273,15 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	a.memory.outcomeFailedAction = ""
 	a.memory.outcomeAlternativeDone = false
 	a.memory.mu.Unlock()
-	rules := a.bindingContext(cue, revision)
-	// The shared ceiling is a promise about the system prompt: the mandatory
-	// approved rules are reserved FIRST and whole, and the optional impacts and
-	// prior outcomes spend only what is left, by WHOLE records, so no record is
-	// ever clipped mid-sentence and no wrapper is left open.
-	block := composeBeforeRequestContext(rules, a.contextualImpactContext(cue), a.priorOutcomeContext(cue, revision), "")
+	authority, history := a.bindingContextParts(cue, revision)
+	// The shared ceiling is a promise about the system prompt: the genuinely
+	// approved rules and confirmed decisions are reserved FIRST and whole, then
+	// the grounded impacts and relevant prior outcomes, and only then the
+	// advisory lexical history spends what is left, by WHOLE records, so no
+	// record is ever clipped mid-sentence and no wrapper is left open. Lexical
+	// history is provenance, not a rule, and never crowds out a grounded local
+	// outcome.
+	block := composeBeforeRequestContextWithHistory(authority, a.contextualImpactContext(cue), a.priorOutcomeContext(cue, revision), history, "")
 	a.mu.Lock()
 	a.memoryText = block
 	a.landVolatileLocked()
@@ -301,7 +304,7 @@ func (a *Agent) prepareWorkerBinding(ctx context.Context, cue string) {
 	if a.memory != nil || a.config.bindingStore == nil {
 		return
 	}
-	rules := renderBindingBlock(a.bindingMemories(a.config.bindingStore, cue, ""))
+	authority, history := a.bindingBlockParts(a.config.bindingStore, cue, "")
 	// AND THE RELEVANT PRIOR OUTCOMES, READ-ONLY, FROM THE SAME LENT STORE AND
 	// THE SAME FROZEN PROJECT KEY the rules were read under. A worker has no
 	// memory writer and no brain (its [Agent.remembers] is false), so this read
@@ -310,10 +313,11 @@ func (a *Agent) prepareWorkerBinding(ctx context.Context, cue string) {
 	// still owns no memory and no future-task authority. The read is bounded and
 	// owner-filtered on the existing journal ([Agent.priorOutcomeBlock]).
 	outcomes := a.priorOutcomeBlock(a.config.bindingStore, a.config.MemoryProjectKey, cue, a.workerSourceSnapshot(ctx))
-	// THE BINDING RULES ARE MANDATORY AND RESERVED FIRST; the relevant prior
-	// outcomes are advisory and spend only what is left of the one shared
-	// ceiling, by WHOLE records.
-	block := composeBeforeRequestContext(rules, "", outcomes, "")
+	// THE APPROVED BINDING RULES ARE MANDATORY AND RESERVED FIRST; the relevant
+	// prior outcomes come next, and the advisory lexical history spends only
+	// what is left of the one shared ceiling after them, by WHOLE records, so a
+	// history record never crowds out a grounded local outcome.
+	block := composeBeforeRequestContextWithHistory(authority, "", outcomes, history, "")
 	if block == "" {
 		return
 	}
@@ -381,6 +385,21 @@ func (a *Agent) reserveBindingFirstLocked() {
 // one whole record is omitted WHOLE rather than cut into a fragment: an honest
 // absence is preferable to a malformed record.
 func composeBeforeRequestContext(rules, impacts, outcomes, recall string) string {
+	return composeBeforeRequestContextWithHistory(rules, impacts, outcomes, "", recall)
+}
+
+// composeBeforeRequestContextWithHistory is [composeBeforeRequestContext] with
+// ONE more optional block: the ADVISORY lexical history the binding projection
+// could not establish as authority. THE PRIORITY IS THE CONTRACT: the genuinely
+// approved rules and confirmed decisions are mandatory and reserved FIRST,
+// whole; then the contextual impacts and the relevant observed prior outcomes,
+// which are grounded in what this project actually did; and only then the
+// advisory lexical history and the asynchronous semantic recall, which spend
+// what is left of the one shared [memoryBlockRunes] ceiling by WHOLE records. A
+// lexical history record is not a rule and never crowds out a grounded local
+// outcome; an optional block that cannot show at least one whole record is
+// omitted WHOLE rather than cut into a fragment.
+func composeBeforeRequestContextWithHistory(rules, impacts, outcomes, history, recall string) string {
 	var b strings.Builder
 	b.WriteString(rules)
 	remaining := memoryBlockRunes - utf8.RuneCountInString(rules)
@@ -390,6 +409,7 @@ func composeBeforeRequestContext(rules, impacts, outcomes, recall string) string
 	for _, part := range []struct{ block, open, close string }{
 		{impacts, "<contextual_impacts>", "</contextual_impacts>"},
 		{outcomes, "<prior_outcomes>", "</prior_outcomes>"},
+		{history, "<memory>", "</memory>"},
 	} {
 		if part.block == "" {
 			continue
@@ -548,21 +568,42 @@ func (a *Agent) withBindingContext(block, cue string) string {
 	a.memory.mu.Lock()
 	revision := a.memory.revisions[turn]
 	a.memory.mu.Unlock()
-	rules := a.bindingContext(cue, revision)
+	authority, history := a.bindingContextParts(cue, revision)
 	impacts := a.contextualImpactContext(cue)
 	outcomes := a.priorOutcomeContext(cue, revision)
-	if rules == "" && impacts == "" && outcomes == "" {
+	if authority == "" && impacts == "" && outcomes == "" && history == "" {
 		return block
 	}
 	// One shared ceiling includes deterministic and optional routed context: the
-	// approved rules are reserved whole FIRST, and the impacts, the prior
-	// outcomes and the asynchronous routed recall each spend only what is left,
-	// by whole records.
-	return composeBeforeRequestContext(rules, impacts, outcomes, block)
+	// genuinely approved rules and confirmed decisions are reserved whole FIRST,
+	// then the impacts and the prior outcomes, and only then the advisory lexical
+	// history and the asynchronous routed recall each spend what is left, by
+	// whole records.
+	return composeBeforeRequestContextWithHistory(authority, impacts, outcomes, history, block)
 }
 
 func (a *Agent) bindingContext(cue, revision string) string {
 	return renderBindingBlock(a.bindingMemories(a.memory.store, cue, revision))
+}
+
+// bindingContextParts is the conversation's own binding projection split into
+// the MANDATORY authority block and the ADVISORY lexical-history block, so the
+// one shared ceiling reserves the approved rules and confirmed decisions FIRST
+// and lets the grounded local impacts and prior outcomes in before any advisory
+// history spends a byte. It is [Agent.bindingBlockParts] against the
+// conversation's own brain.
+func (a *Agent) bindingContextParts(cue, revision string) (string, string) {
+	return a.bindingBlockParts(a.memory.store, cue, revision)
+}
+
+// bindingBlockParts renders a binding projection from an EXPLICIT store as TWO
+// bounded blocks: the approved/confirmed authority (mandatory) and the advisory
+// lexical history. Each half is rendered by the ONE renderer
+// ([Agent.renderBindingBlock]) so both share the honest preamble and the
+// unforgeable whole-record wrapper, and neither is ever cut mid-record.
+func (a *Agent) bindingBlockParts(st *store.Store, cue, revision string) (string, string) {
+	authority, history := a.bindingMemoriesPartitioned(st, cue, revision)
+	return renderBindingBlock(authority), renderBindingBlock(history)
 }
 
 // bindingMemories is THE bounded, owner-filtered read of the authority rows a
@@ -572,8 +613,30 @@ func (a *Agent) bindingContext(cue, revision string) string {
 // projection serves both the conversation's own brain and a worker's read-only
 // lent one ([Agent.prepareWorkerBinding]); it writes nothing and asks no
 // provider, so a router outage cannot erase an approved rule.
+//
+// THE SIGNATURE AND THE ORDER ARE UNCHANGED: authority first, then the lexical
+// fallback. The AUTHORITY SPLIT lives in [Agent.bindingMemoriesPartitioned],
+// because the one shared ceiling must reserve the genuinely approved rules and
+// confirmed decisions WHOLE before advisory lexical history may take a byte of
+// it — a record that merely shares words with the goal is history, not a rule,
+// and it must never crowd out a grounded local outcome.
 func (a *Agent) bindingMemories(st *store.Store, cue, revision string) []store.Memory {
-	var memories []store.Memory
+	authority, history := a.bindingMemoriesPartitioned(st, cue, revision)
+	return append(authority, history...)
+}
+
+// bindingMemoriesPartitioned is [Agent.bindingMemories] split by AUTHORITY. The
+// first slice is the MANDATORY half the shared ceiling reserves first: approved
+// rules and confirmed decisions, read under the latest/suppression/expiry guards
+// and, when the provider-free lexical fallback happens to name one, a record
+// whose OWN latest journal row is still a live approved rule or confirmed
+// decision ([Agent.contextualRecordAuthoritative]). The second slice is the
+// ADVISORY half that may only spend what the mandatory rules, the impacts and
+// the prior outcomes leave: lexical history the projection could NOT establish
+// as binding, labelled on the record itself. The order within each half is the
+// order the reads already produced, so nothing is re-sorted and no new scope or
+// schema is introduced.
+func (a *Agent) bindingMemoriesPartitioned(st *store.Store, cue, revision string) (authority, history []store.Memory) {
 	seen := map[string]bool{}
 	conditions := map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}
 	for _, owner := range a.memoryOwners() {
@@ -596,14 +659,14 @@ func (a *Agent) bindingMemories(st *store.Store, cue, revision string) []store.M
 			rows, err := st.GetMemories([]string{owner}, []string{e.MemoryID})
 			rows = a.contextualEligibleWith(st, rows, revision)
 			if err == nil && len(rows) > 0 && !seen[e.MemoryID] {
-				memories = append(memories, rows[0])
+				authority = append(authority, rows[0])
 				seen[e.MemoryID] = true
 			}
-			if len(memories) >= contextualContextLimit {
+			if len(authority)+len(history) >= contextualContextLimit {
 				break
 			}
 		}
-		if len(memories) >= contextualContextLimit {
+		if len(authority)+len(history) >= contextualContextLimit {
 			break
 		}
 	}
@@ -611,31 +674,33 @@ func (a *Agent) bindingMemories(st *store.Store, cue, revision string) []store.M
 	// supplies useful history without asking a provider, but SearchMemories
 	// ranks by relevance and knows nothing about a record's authority, so a
 	// plain observation that merely shares words with the goal can reach this
-	// window. Each such record is therefore LABELLED ON ITSELF: a candidate
+	// window. Each such record is therefore classified on ITSELF: a candidate
 	// whose own latest journal row is not an approved rule or a confirmed
-	// decision rides marked "history only", so the block's opening sentence is
-	// never the only place its authority is described and a prior user TASK
-	// request can no longer be read as a current rule or decision. A nonmatching
-	// project and a trivial continuation stay quiet.
-	if !memoryTrivialCue(cue) && len(memories) < contextualContextLimit {
-		candidates, err := st.SearchMemories(a.memoryOwners(), cue, contextualContextLimit-len(memories))
+	// decision rides in the ADVISORY half marked "history only", so the block's
+	// opening sentence is never the only place its authority is described and a
+	// prior user TASK request can no longer be read as a current rule or
+	// decision. A nonmatching project and a trivial continuation stay quiet.
+	if !memoryTrivialCue(cue) && len(authority)+len(history) < contextualContextLimit {
+		candidates, err := st.SearchMemories(a.memoryOwners(), cue, contextualContextLimit-len(authority)-len(history))
 		if err == nil {
 			for _, m := range a.contextualEligibleWith(st, candidates, revision) {
 				if seen[m.ID] {
 					continue
 				}
-				if !a.contextualRecordAuthoritative(st, m, revision) {
-					m.Text = bindingAdvisoryLabel + "\n" + m.Text
-				}
-				memories = append(memories, m)
 				seen[m.ID] = true
-				if len(memories) >= contextualContextLimit {
+				if a.contextualRecordAuthoritative(st, m, revision) {
+					authority = append(authority, m)
+				} else {
+					m.Text = bindingAdvisoryLabel + "\n" + m.Text
+					history = append(history, m)
+				}
+				if len(authority)+len(history) >= contextualContextLimit {
 					break
 				}
 			}
 		}
 	}
-	return memories
+	return authority, history
 }
 
 // bindingAdvisoryLabel marks a record the binding projection could NOT establish
