@@ -119,8 +119,8 @@ func (a *app) teamsAllHeader(d *teamsDraw, width, y int) []string {
 	return out
 }
 
-// Cards compose recursively. Narrow panes use one column; each smaller child
-// remains physically inside its parent's frame, including deeper descendants.
+// Cards contain two nested box levels while space allows. Deeper or narrower
+// descendants use a compact tree so shrinking frames cannot hide a team.
 func (a *app) teamsAllCards(d *teamsDraw, width, y int) []string {
 	if width < 12 {
 		return nil
@@ -138,7 +138,7 @@ func (a *app) teamsAllCards(d *teamsDraw, width, y int) []string {
 
 func (a *app) teamsOverviewGrid(d *teamsDraw, teams []team, width, x, y int, compact bool, ancestors map[string]bool) []string {
 	columns := 1
-	if width >= 100 || compact && width >= 60 {
+	if !compact && width >= 100 {
 		columns = 2
 	}
 	w := (width - (columns-1)*2) / columns
@@ -260,10 +260,12 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 	children := a.teamsOverviewChildren(t.ID)
 	if len(children) > 0 {
 		add("")
-		add(a.pal.dim("Subteams"))
+		count := " " + a.teamsDot() + " " + itoa(len(children))
+		label := fit("Subteams of "+t.Name, max(inner-ansi.StringWidth(count), 1))
+		add(a.pal.dim(label + count))
 		// Child targets are registered before their surrounding padding, so a
 		// click inside a child always chooses that child rather than its parent.
-		childRows := a.teamsOverviewGrid(d, children, inner, x+2, y+1+len(lines), true, ancestors)
+		childRows := a.teamsOverviewBranches(d, children, inner, x+2, y+1+len(lines), ancestors)
 		for _, row := range childRows {
 			lines = append(lines, wallCardLine{s: row})
 		}

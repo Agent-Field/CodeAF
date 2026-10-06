@@ -261,3 +261,14 @@ tab name and overflow count before the fixed grid control. Vertical sidebar walk
 uses logical rows, while crossing independently scrolled panes uses visible rows.
 Race-enabled focused checks cover these regressions and Teams/deletion flows through
 the local and hosted engines. Mutable test clocks share a lock with watcher readers.
+
+### Nested-team overview refinement
+
+Children stack in one column beneath a parent-specific Subteams heading and direct-child
+count. Grey branch guides join their headings while each team keeps its own colour.
+The overview draws no more than two box levels inside a top-level card. Deeper descendants,
+or child boxes below 36 columns, use compact clickable tree rows, initially expanded.
+Independent arrow controls collapse or expand descendants with pointer or keyboard;
+team names open their own Teams overview. Indentation stops consuming name space in
+narrow panes, and target hints keep the full ancestry. Folds do not change memberships,
+sidebar ordering, authority or the configured team depth (three total levels by default).

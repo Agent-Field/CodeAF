@@ -57,6 +57,9 @@ type teamsPage struct {
 	sel string
 	// closedOpen includes retained teams in the sidebar and All teams overview.
 	closedOpen bool
+	// foldedSubteams remembers compact-tree folds by team, across refreshes
+	// and width changes. Descendants start expanded so none silently vanish.
+	foldedSubteams map[string]bool
 	// focus lights the keyboard target while the overview owns the keyboard.
 	focus bool
 	// cur is the target the keyboard is on and hot the one under the pointer,
@@ -178,6 +181,7 @@ const (
 	teamsActAddSubteam
 	teamsActOrganizeUndo
 	teamsActDeleteGlobalManager
+	teamsActSubteamsFold
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────

@@ -29,6 +29,13 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 		a.tp.railWheel = false
 	}
 	switch t.act {
+	case teamsActSubteamsFold:
+		if a.tp.foldedSubteams == nil {
+			a.tp.foldedSubteams = make(map[string]bool)
+		}
+		a.tp.foldedSubteams[t.id] = !a.tp.foldedSubteams[t.id]
+		a.touch()
+		return nil
 	case teamsActChooseManager:
 		return a.teamChooseManagerOpen(t.id)
 	case teamsActAddMember:

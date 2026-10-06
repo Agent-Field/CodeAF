@@ -71,8 +71,15 @@ A parent includes activity in its subteams; siblings share this ordering with th
 All teams stays first in the sidebar. Equal or unknown message times keep their previous order.
 Each card shows the team's name, conversation count, activity and unread counts separately,
 spending when available, the manager's alias and conversation title, and up to two lines
-of its latest saved assistant update. Smaller subteam cards sit inside their parent's card;
-deeper descendants remain nested. `Show closed` includes retained teams in this hierarchy;
+of its latest saved assistant update. Subteam cards stack in one column inside their parent,
+under `Subteams of <team name> · <count>`, with grey branch guides joining child headings.
+At most two box levels nest inside a top-level card. Deeper descendants, or children whose
+boxes would be narrower than 36 columns, appear as compact tree rows. These start expanded;
+click a row's arrow (or focus it and press `enter`) to collapse or expand its children.
+Click the team name to open that team's overview. Indentation is bounded at narrow widths,
+and the focused row's footer hint names its full ancestry. Folding changes only this view;
+it does not change membership, the sidebar, or the configured depth limit.
+`Show closed` includes retained teams in this hierarchy;
 their cards lead to read-only history. Wide panes alternate cards left/right, with each
 column stacked independently and one blank row between cards. Narrow panes use one column. The existing preview limits
 and remote restrictions described below also apply here.
