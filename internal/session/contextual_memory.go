@@ -792,65 +792,202 @@ func (a *Agent) bindingMemoriesPartitioned(st *store.Store, cue, revision string
 	for _, owner := range a.memoryOwners() {
 		// THE BINDING PROJECTION SPENDS ITS WINDOW ON AUTHORITY, NOT ON NOISE.
 		// A burst of newer incidental observations must not push a rare
-		// approved rule out of the read; the same latest/suppression/expiry
-		// guards still decide whether each one is live.
-		evidence, err := st.ContextualEvidenceApproved(owner, conditions, time.Now(), contextualContextLimit)
+		// approved rule out of the read; the approved window is still the
+		// newest binding rows, and the latest/suppression/expiry guards still
+		// decide whether each one is live.
+		found, err := a.bindingAuthorityFor(st, owner, conditions, seen)
 		if err != nil {
 			continue
 		}
-		for _, e := range evidence {
-			if e.Authority != "approved_rule" && e.Authority != "confirmed_decision" {
-				continue
-			}
-			latest, err := st.ContextualEvidenceForMemory(owner, e.MemoryID)
-			if err != nil || latest.Seq != e.Seq || (latest.Authority != "approved_rule" && latest.Authority != "confirmed_decision") {
-				continue
-			}
-			rows, err := st.GetMemories([]string{owner}, []string{e.MemoryID})
-			rows = a.contextualEligibleWith(st, rows, revision)
-			if err == nil && len(rows) > 0 && !seen[e.MemoryID] {
-				authority = append(authority, rows[0])
-				seen[e.MemoryID] = true
-			}
-			if len(authority)+len(history) >= contextualContextLimit {
-				break
-			}
-		}
+		authority = append(authority, found...)
 		if len(authority)+len(history) >= contextualContextLimit {
 			break
 		}
 	}
 	// THE LEXICAL FALLBACK IS NOT AN AUTHORITY FILTER. A direct word match
 	// supplies useful history without asking a provider, but SearchMemories
-	// ranks by relevance and knows nothing about a record's authority, so a
-	// plain observation that merely shares words with the goal can reach this
-	// window. Each such record is therefore classified on ITSELF: a candidate
-	// whose own latest journal row is not an approved rule or a confirmed
-	// decision rides in the ADVISORY half marked "history only", so the block's
-	// opening sentence is never the only place its authority is described and a
-	// prior user TASK request can no longer be read as a current rule or
-	// decision. A nonmatching project and a trivial continuation stay quiet.
+	// ranks by relevance and knows nothing about a record's authority, so the
+	// classification is made on each record's OWN latest evidence row.
 	if !memoryTrivialCue(cue) && len(authority)+len(history) < contextualContextLimit {
-		candidates, err := st.SearchMemories(a.memoryOwners(), cue, contextualContextLimit-len(authority)-len(history))
-		if err == nil {
-			for _, m := range a.contextualEligibleWith(st, candidates, revision) {
-				if seen[m.ID] {
-					continue
-				}
-				seen[m.ID] = true
-				if a.contextualRecordAuthoritative(st, m, revision) {
-					authority = append(authority, m)
-				} else {
-					m.Text = bindingAdvisoryLabel + "\n" + m.Text
-					history = append(history, m)
-				}
-				if len(authority)+len(history) >= contextualContextLimit {
-					break
-				}
-			}
+		moreAuthority, moreHistory := a.bindingLexicalFallback(st, cue, conditions, seen, contextualContextLimit-len(authority)-len(history))
+		authority = append(authority, moreAuthority...)
+		history = append(history, moreHistory...)
+	}
+	return authority, history
+}
+
+// bindingAuthorityFor reads one owner's mandatory half: the newest approved
+// rules and confirmed decisions, each confirmed against its OWN latest evidence
+// row, resolved to memory rows in ONE owner-scoped read. It answers a store
+// failure rather than an empty half, so the caller can move on without treating
+// a read that failed as an owner with no rules.
+func (a *Agent) bindingAuthorityFor(st *store.Store, owner string, conditions map[string]string, seen map[string]bool) ([]store.Memory, error) {
+	evidence, err := st.ContextualEvidenceApproved(owner, conditions, time.Now(), contextualContextLimit)
+	if err != nil {
+		return nil, err
+	}
+	verdicts, err := a.contextualVerdictsFor(st, owner, contextualMemoryIDs(evidence), conditions)
+	if err != nil {
+		return nil, err
+	}
+	keep := make([]string, 0, len(evidence))
+	for _, e := range evidence {
+		v, ok := verdicts[e.MemoryID]
+		if !ok || !v.eligible || v.evidence.Seq != e.Seq || seen[e.MemoryID] {
+			continue
+		}
+		keep = append(keep, e.MemoryID)
+	}
+	rows, err := st.GetMemories([]string{owner}, keep)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]store.Memory, 0, len(rows))
+	for _, m := range rows {
+		if seen[m.ID] {
+			continue
+		}
+		seen[m.ID] = true
+		if v, ok := verdicts[m.ID]; ok && v.has {
+			contextualAnnotateMemory(&m, v.evidence)
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// bindingLexicalFallback is the advisory half: a provider-free word match whose
+// records are classified by their own latest evidence, authoritative ones going
+// to the first slice and the rest labelled history in the second.
+func (a *Agent) bindingLexicalFallback(st *store.Store, cue string, conditions map[string]string, seen map[string]bool, budget int) (authority, history []store.Memory) {
+	candidates, err := st.SearchMemories(a.memoryOwners(), cue, budget)
+	if err != nil {
+		return nil, nil
+	}
+	verdicts := a.contextualVerdicts(st, candidates, conditions)
+	for _, m := range candidates {
+		v := verdicts[m.ID]
+		if seen[m.ID] || !contextualVerdictKeeps(m, v) {
+			continue
+		}
+		seen[m.ID] = true
+		if v.has {
+			contextualAnnotateMemory(&m, v.evidence)
+		}
+		if contextualVerdictAuthoritative(v) {
+			authority = append(authority, m)
+		} else {
+			m.Text = bindingAdvisoryLabel + "\n" + m.Text
+			history = append(history, m)
+		}
+		if len(authority)+len(history) >= budget {
+			break
 		}
 	}
 	return authority, history
+}
+
+// contextualVerdict is one candidate memory's latest evidence row and whether
+// the guards admit it. has is false when the memory has no evidence row at all,
+// which is a different answer from "an evidence row that failed a guard".
+type contextualVerdict struct {
+	evidence store.ContextualEvidence
+	has      bool
+	eligible bool
+}
+
+// contextualMemoryIDs is the deduped memory-id list a window named.
+func contextualMemoryIDs(evidence []store.ContextualEvidence) []string {
+	ids := make([]string, 0, len(evidence))
+	seen := map[string]bool{}
+	for _, e := range evidence {
+		if e.MemoryID == "" || seen[e.MemoryID] {
+			continue
+		}
+		seen[e.MemoryID] = true
+		ids = append(ids, e.MemoryID)
+	}
+	return ids
+}
+
+// contextualVerdictsFor answers, in batched reads, the latest-evidence verdict
+// of each named memory under one owner. It is the batched form of the per-row
+// [Store.ContextualEvidenceForMemory] + [Store.ContextualEvidenceEligible] pair:
+// one indexed latest-by-memory read and one batched eligibility read, instead of
+// two queries per candidate.
+func (a *Agent) contextualVerdictsFor(st *store.Store, owner string, memoryIDs []string, conditions map[string]string) (map[string]contextualVerdict, error) {
+	verdicts := map[string]contextualVerdict{}
+	latest, err := st.ContextualEvidenceLatestForMemories(owner, memoryIDs)
+	if err != nil {
+		return nil, err
+	}
+	records := make([]store.ContextualEvidence, 0, len(latest))
+	ids := make([]string, 0, len(latest))
+	for _, id := range memoryIDs {
+		e, ok := latest[id]
+		if !ok {
+			continue
+		}
+		e.MemoryID = id
+		records = append(records, e)
+		ids = append(ids, id)
+	}
+	eligible, err := st.ContextualEvidenceEligibleBatch(records, conditions, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	for i, id := range ids {
+		verdicts[id] = contextualVerdict{evidence: records[i], has: true, eligible: eligible[i]}
+	}
+	return verdicts, nil
+}
+
+// contextualVerdicts answers the verdicts of memories that may span owners,
+// grouping the batched reads by owner. A failed owner read leaves its memories
+// unclassified, which the caller treats as a memory with no evidence.
+func (a *Agent) contextualVerdicts(st *store.Store, memories []store.Memory, conditions map[string]string) map[string]contextualVerdict {
+	byOwner := map[string][]string{}
+	for _, m := range memories {
+		byOwner[m.Owner] = append(byOwner[m.Owner], m.ID)
+	}
+	out := map[string]contextualVerdict{}
+	for owner, ids := range byOwner {
+		found, err := a.contextualVerdictsFor(st, owner, ids, conditions)
+		if err != nil {
+			continue
+		}
+		for id, verdict := range found {
+			out[id] = verdict
+		}
+	}
+	return out
+}
+
+// contextualVerdictKeeps is the eligibility answer for one memory. A memory with
+// no evidence row is kept only when it carries no contextual tag; otherwise its
+// latest evidence must be newer than the row and must pass the guards.
+func contextualVerdictKeeps(m store.Memory, v contextualVerdict) bool {
+	if !v.has {
+		return !hasContextualTag(m.Tags)
+	}
+	return v.evidence.Seq > m.UpdatedSeq && v.eligible
+}
+
+// contextualVerdictAuthoritative reports whether a kept memory's own latest
+// evidence row is a live approved rule or confirmed decision.
+func contextualVerdictAuthoritative(v contextualVerdict) bool {
+	return v.has && (v.evidence.Authority == "approved_rule" || v.evidence.Authority == "confirmed_decision")
+}
+
+// hasContextualTag reports whether a memory carries the contextual-evidence tag
+// that marks it as having provenance to account for.
+func hasContextualTag(tags []string) bool {
+	for _, tag := range tags {
+		if tag == contextualTag {
+			return true
+		}
+	}
+	return false
 }
 
 // bindingAdvisoryLabel marks a record the binding projection could NOT establish
@@ -858,24 +995,6 @@ func (a *Agent) bindingMemoriesPartitioned(st *store.Store, cue, revision string
 // a reader can tell quoted historical provenance apart from binding authority
 // even when both share one <memory> block.
 const bindingAdvisoryLabel = "History only \u2014 not an approved rule or a confirmed decision: an earlier turn's own words, kept as provenance and not authority for new work."
-
-// contextualRecordAuthoritative reports whether a lexical-fallback candidate's
-// OWN latest journal row is an approved rule or a confirmed decision that is
-// still live under the projection's conditions. The fallback ranks by words, so
-// the projection asks the journal per record rather than letting the block's
-// opening sentence claim an authority the record does not have.
-func (a *Agent) contextualRecordAuthoritative(st *store.Store, m store.Memory, revision string) bool {
-	e, err := st.ContextualEvidenceForMemory(m.Owner, m.ID)
-	if err != nil {
-		return false
-	}
-	if e.Authority != "approved_rule" && e.Authority != "confirmed_decision" {
-		return false
-	}
-	conditions := map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}
-	usable, err := st.ContextualEvidenceEligible(e, conditions, time.Now())
-	return err == nil && usable
-}
 
 // bindingBlockPreamble is the sentence every binding block opens with, after
 // the <memory> tag: the same words ride in front of a conversation and a task
@@ -925,52 +1044,47 @@ func (a *Agent) contextualEligibleWith(st *store.Store, memories []store.Memory,
 // filters eligibility against the project it was admitted into rather than the
 // live one. The guards are otherwise identical.
 func (a *Agent) contextualEligibleFor(st *store.Store, memories []store.Memory, revision, projectKey string) []store.Memory {
-	result := make([]store.Memory, 0, len(memories))
 	conditions := map[string]string{"project": projectKey, "revision": revision}
+	verdicts := a.contextualVerdicts(st, memories, conditions)
+	result := make([]store.Memory, 0, len(memories))
 	for _, m := range memories {
-		e, err := st.ContextualEvidenceForMemory(m.Owner, m.ID)
-		if err == sql.ErrNoRows {
-			tagged := false
-			for _, tag := range m.Tags {
-				if tag == contextualTag {
-					tagged = true
-				}
-			}
-			if !tagged {
-				result = append(result, m)
-			}
+		verdict := verdicts[m.ID]
+		if !contextualVerdictKeeps(m, verdict) {
 			continue
 		}
-		if err != nil || e.Seq <= m.UpdatedSeq {
-			continue
-		}
-		usable, err := st.ContextualEvidenceEligible(e, conditions, time.Now())
-		if err == nil && usable {
-			m.Text += "\nMemory id: " + m.ID + "\nEvidence: " + e.Authority + "/" + e.Verification
-			if e.Actor == "user" {
-				m.Text += "\nHistorical source words (quoted provenance, not a current request): " + contextualClip(e.Observation, contextualReceiptRunes)
-			}
-			if e.Actor == "tool" {
-				m.Text += "\nObserved receipt (claim is an interpretation): " + contextualClip(e.Observation, contextualReceiptRunes)
-			}
-			if len(e.Applicability) > 0 {
-				m.Text += "\nApplies when: " + strings.Join(e.Applicability, "; ")
-			}
-			if e.Rationale != "" {
-				m.Text += "\nRationale: " + e.Rationale
-			}
-			if len(e.Rejected) > 0 {
-				m.Text += "\nRejected alternatives: " + strings.Join(e.Rejected, "; ")
-			}
-			if e.Reconsider != "" {
-				m.Text += "\nReconsider when: " + e.Reconsider
-			}
-			// Leave room for a useful first rule even when its metadata is long.
-			m.Text = contextualClip(m.Text, memoryBlockRunes-512)
-			result = append(result, m)
-		}
+		contextualAnnotateMemory(&m, verdict.evidence)
+		result = append(result, m)
 	}
 	return result
+}
+
+// contextualAnnotateMemory appends the human-readable provenance an eligible
+// record carries: its authority, the source words or observed receipt, and the
+// stated conditions, rationale, rejected alternatives and reconsideration. It is
+// the rendering half of eligibility, kept apart so the selection above reads as
+// its one decision.
+func contextualAnnotateMemory(m *store.Memory, e store.ContextualEvidence) {
+	m.Text += "\nMemory id: " + m.ID + "\nEvidence: " + e.Authority + "/" + e.Verification
+	if e.Actor == "user" {
+		m.Text += "\nHistorical source words (quoted provenance, not a current request): " + contextualClip(e.Observation, contextualReceiptRunes)
+	}
+	if e.Actor == "tool" {
+		m.Text += "\nObserved receipt (claim is an interpretation): " + contextualClip(e.Observation, contextualReceiptRunes)
+	}
+	if len(e.Applicability) > 0 {
+		m.Text += "\nApplies when: " + strings.Join(e.Applicability, "; ")
+	}
+	if e.Rationale != "" {
+		m.Text += "\nRationale: " + e.Rationale
+	}
+	if len(e.Rejected) > 0 {
+		m.Text += "\nRejected alternatives: " + strings.Join(e.Rejected, "; ")
+	}
+	if e.Reconsider != "" {
+		m.Text += "\nReconsider when: " + e.Reconsider
+	}
+	// Leave room for a useful first rule even when its metadata is long.
+	m.Text = contextualClip(m.Text, memoryBlockRunes-512)
 }
 
 func (a *Agent) suppressContextualMemory(m store.Memory) error {
@@ -1302,22 +1416,60 @@ func contextualContainsAny(lower string, cues []string) bool {
 }
 
 // contextualProjectQualifiers name a narrower blast radius than the person at
-// large. A scope cue inside one of these spans stays project-local.
+// large. A scope cue inside one of these spans stays project-local. The list is
+// deliberately generous — a qualifier this gate has not heard of must NOT be the
+// reason a claim widens, so the safe direction is to treat an unlisted local word
+// as local by naming the common ones here.
 var contextualProjectQualifiers = []string{
-	"this project", "the project", "this repo", "the repo", "this repository",
-	"the repository", "this codebase", "the codebase", "this workspace",
-	"the workspace", "this module", "the module", "this package", "the package",
-	"this directory", "the directory", "this folder", "the folder", "in this repo",
+	"this project", "the project", "our project", "this repo", "the repo",
+	"our repo", "this repository", "the repository", "our repository",
+	"this codebase", "the codebase", "our codebase", "this workspace",
+	"the workspace", "our workspace", "this module", "the module", "this package",
+	"the package", "this directory", "the directory", "this folder", "the folder",
+	"this app", "the app", "this service", "the service", "this monorepo",
+	"the monorepo", "our monorepo", "in this repo", "project-local", "repo-local",
 }
 
+// contextualScopeExceptions name a qualifier or an exception that narrows an
+// otherwise global-sounding cue. A clause carrying one of these stays local: the
+// global word did not stand alone, so the conservative reading is the narrower
+// one.
+var contextualScopeExceptions = []string{
+	"unless", "except", "other than", "apart from", "besides", "save for",
+	"excluding", "restricted to", "limited to", "only",
+}
+
+// explicitCrossProjectCues are the spans that WIDEN a claim to the person at
+// large on their own words, not on a neighbouring word. Bare "everywhere" is
+// deliberately absent: it is ambiguous between the person and a span the clause
+// never named, so it widens only beside one of these.
+var explicitCrossProjectCues = []string{"across projects", "all projects", "every project", "any project", "personal preference"}
+
+// contextualGlobalCues are every span worth checking for a global scope. The
+// unambiguous grants come before "everywhere" so the clause a bare "everywhere"
+// is judged in is still the sentence it sits in.
+var contextualGlobalCues = []string{"across projects", "all projects", "every project", "any project", "everywhere", "personal preference"}
+
+// explicitContextualGlobal answers whether a span explicitly grants cross-project
+// or person-wide scope. THE PRINCIPLE IS CONSERVATIVE: widening runs from the
+// person's own unambiguous words. A bare "everywhere" does not widen on its own,
+// because it may mean this app, this service or this repo; it widens only when
+// the SAME clause also names a cross-project grant. A clause with a project
+// qualifier, an exception or a negation stays local.
 func explicitContextualGlobal(text string) bool {
-	clause, _ := contextualScopeClause(text, []string{"across projects", "all projects", "every project", "any project", "everywhere", "personal preference"})
+	clause, cue := contextualScopeClause(text, contextualGlobalCues)
 	if clause == "" {
 		return false
 	}
 	lower := strings.ToLower(clause)
 	if contextualNegated(clause) || contextualContainsAny(lower, contextualProjectQualifiers) {
 		return false
+	}
+	if contextualContainsAny(lower, contextualScopeExceptions) {
+		return false
+	}
+	if cue == "everywhere" {
+		return contextualContainsAny(lower, explicitCrossProjectCues)
 	}
 	return true
 }
@@ -1337,7 +1489,11 @@ func explicitContextualMachine(text string) bool {
 			continue
 		}
 		clause := contextualClauseAround(text, idx)
-		if contextualNegated(clause) || contextualContainsAny(strings.ToLower(clause), contextualProjectQualifiers) {
+		lower := strings.ToLower(clause)
+		if contextualNegated(clause) || contextualContainsAny(lower, contextualProjectQualifiers) {
+			continue
+		}
+		if contextualContainsAny(lower, contextualScopeExceptions) {
 			continue
 		}
 		return true

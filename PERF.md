@@ -2783,8 +2783,19 @@ lexical fallback together take at most eight claims, within the existing 4,800-r
 memory block. Local source revision queries get a two-second cancellation bound.
 Only clean tracked revisions establish current outcome evidence.
 
-Evidence reads inspect the newest 128 owner evidence events with bounded ancestry;
-source suppression checks the owner journal to avoid old-source resurrection.
+Binding retrieval spends its bounded window on authority: approved rules and
+confirmed decisions are read through a partial index (`events_contextual_approved`)
+that holds only binding rows, so the newest-128 window is a seek over the rule
+count rather than a walk of the owner's evidence partition. A projection that asks
+for many memories' latest evidence does so in ONE indexed read per owner through
+`events_contextual_memory` (an expression index over the memory id), and the live
+guards (validity, memory suppression, source retirement, derivation ancestry and
+conditions) are answered for the whole candidate set in batched, owner-scoped
+reads rather than a query per row. The per-memory latest read is NOT windowed to a
+record count: a live rule whose newest evidence sits behind a burst of newer rows
+is still answered, so no hidden total-claim ceiling can drop it. Source suppression
+still checks the owner journal to avoid old-source resurrection, and the ancestry
+it walks is bounded by the candidates' derivation closure, not by a fixed count.
 Dependency projections inspect 128 events and return at most eight links/notices.
 Only successful full reads of files up to 64 KiB can establish an exact-path link.
 At most eight source reads per pass can establish eight edges. Consumer probes are

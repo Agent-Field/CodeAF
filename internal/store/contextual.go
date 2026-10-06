@@ -65,9 +65,18 @@ func validateContextualEvidence(e ContextualEvidence) error {
 	return validateContextualEvidenceAuthority(e)
 }
 
-// validateContextualEvidenceBounds is the size and interval half of the table:
-// what a row may weigh and how long it may live.
+// validateContextualEvidenceBounds is the size and interval half of the table,
+// split into its shape (what a row may weigh) and its metadata (how long any one
+// field may be) so neither road holds more endings than a reader can follow.
 func validateContextualEvidenceBounds(e ContextualEvidence) error {
+	if err := validateContextualEvidenceShape(e); err != nil {
+		return err
+	}
+	return validateContextualEvidenceMetadata(e)
+}
+
+// validateContextualEvidenceShape is the count and interval half.
+func validateContextualEvidenceShape(e ContextualEvidence) error {
 	switch {
 	case len(e.ReceiptIDs) > 32 || len(e.Derivations) > 16 || len(e.Conditions) > 16 || len(e.Observation) > 16384:
 		return errors.New("contextual evidence exceeds bounds")
@@ -76,6 +85,12 @@ func validateContextualEvidenceBounds(e ContextualEvidence) error {
 	case !e.ValidUntil.IsZero() && !e.ValidUntil.After(e.ValidFrom):
 		return errors.New("invalid contextual validity interval")
 	}
+	return nil
+}
+
+// validateContextualEvidenceMetadata is the per-field length half: identifiers,
+// conditions, receipts and the reasoning lines.
+func validateContextualEvidenceMetadata(e ContextualEvidence) error {
 	for _, v := range []string{e.ID, e.MemoryID, e.Owner, e.SessionID, e.TurnID, e.Actor, e.Tool, e.Revision, e.Verification, e.Authority, e.SourceKey, e.SourceHash} {
 		if len(v) > 1024 {
 			return errors.New("contextual metadata exceeds bounds")
@@ -160,7 +175,7 @@ func appendContextualEvidenceTx(tx *sql.Tx, e ContextualEvidence) (ContextualEvi
 			return e, fmt.Errorf("contextual parent: %w", err)
 		}
 		budget := ContextualEvidenceLimit
-		if ok, err := contextualUsable(tx, parent, time.Now(), map[int64]bool{}, &budget); err != nil || !ok {
+		if ok, err := contextualUsable(contextualDB{tx}, parent, time.Now(), map[int64]bool{}, &budget); err != nil || !ok {
 			if err != nil {
 				return e, err
 			}
@@ -217,6 +232,42 @@ func (s *Store) SuppressContextualSource(owner, key, hash, reason string) error 
 
 type contextualReader interface{ QueryRow(string, ...any) *sql.Row }
 
+// contextualRecords answers one canonical evidence row at a fixed sequence and
+// the two owner-journal states the guard consults: whether a suppression retires
+// it, and whether a later correction or a direct suppression retired its source.
+// A database-backed reader loads each answer on demand; the batched guard
+// ([Store.ContextualEvidenceEligibleBatch]) preloads the whole ancestry in a
+// couple of owner-scoped reads, so the recursion below never issues one query
+// per candidate row.
+type contextualRecords interface {
+	record(owner string, seq int64) (ContextualEvidence, error)
+	suppressed(e ContextualEvidence) (bool, error)
+	sourceRetired(e ContextualEvidence) (bool, error)
+}
+
+type contextualDB struct{ q contextualReader }
+
+func (d contextualDB) record(owner string, seq int64) (ContextualEvidence, error) {
+	return readContextualEvidence(d.q, owner, seq)
+}
+
+func (d contextualDB) suppressed(e ContextualEvidence) (bool, error) {
+	return contextualMemorySuppressed(d.q, e)
+}
+
+// sourceRetired is the older of the two journal questions: a direct source
+// suppression, or a later evidence row that shares the source key with a
+// different hash or revision. It consults the whole owner journal, never only the
+// window the caller read, so a truncated window cannot resurrect a retired source.
+func (d contextualDB) sourceRetired(e ContextualEvidence) (bool, error) {
+	if e.SourceKey == "" {
+		return false, nil
+	}
+	var invalid int
+	err := d.q.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND ((kind=? AND json_extract(payload,'$.SourceKey')=? AND (COALESCE(json_extract(payload,'$.SourceHash'),'' )='' OR json_extract(payload,'$.SourceHash')=?)) OR (kind=? AND seq>? AND json_extract(payload,'$.SourceKey')=? AND (COALESCE(json_extract(payload,'$.SourceHash'),'' )<>? OR COALESCE(json_extract(payload,'$.Revision'),'' )<>?)))`, contextualNode(e.Owner), EventContextualSuppression, e.SourceKey, e.SourceHash, EventContextualEvidence, e.Seq, e.SourceKey, e.SourceHash, e.Revision).Scan(&invalid)
+	return invalid != 0, err
+}
+
 func readContextualEvidence(q contextualReader, owner string, seq int64) (ContextualEvidence, error) {
 	var e ContextualEvidence
 	var payload, ts string
@@ -234,40 +285,45 @@ func readContextualEvidence(q contextualReader, owner string, seq int64) (Contex
 
 // contextualUsable consults global source state even when the caller reads a
 // narrow window. Truncating a window must never resurrect an invalidated source.
-func contextualUsable(q contextualReader, e ContextualEvidence, at time.Time, seen map[int64]bool, budget *int) (bool, error) {
+func contextualUsable(r contextualRecords, e ContextualEvidence, at time.Time, seen map[int64]bool, budget *int) (bool, error) {
 	*budget--
 	if *budget < 0 || seen[e.Seq] {
 		return false, nil
 	}
 	seen[e.Seq] = true
 	defer delete(seen, e.Seq)
-	if !e.ValidFrom.IsZero() && at.Before(e.ValidFrom) || !e.ValidUntil.IsZero() && !at.Before(e.ValidUntil) {
+	if !contextualWithinValidity(e, at) {
 		return false, nil
 	}
-	if invalid, err := contextualMemorySuppressed(q, e); err != nil || invalid {
+	if invalid, err := r.suppressed(e); err != nil || invalid {
 		return false, err
 	}
-	var invalid int
-	if e.SourceKey != "" {
-		err := q.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND ((kind=? AND json_extract(payload,'$.SourceKey')=? AND (COALESCE(json_extract(payload,'$.SourceHash'),'' )='' OR json_extract(payload,'$.SourceHash')=?)) OR (kind=? AND seq>? AND json_extract(payload,'$.SourceKey')=? AND (COALESCE(json_extract(payload,'$.SourceHash'),'' )<>? OR COALESCE(json_extract(payload,'$.Revision'),'' )<>?)))`, contextualNode(e.Owner), EventContextualSuppression, e.SourceKey, e.SourceHash, EventContextualEvidence, e.Seq, e.SourceKey, e.SourceHash, e.Revision).Scan(&invalid)
-		if err != nil {
-			return false, err
-		}
-		if invalid > 0 {
-			return false, nil
-		}
+	if invalid, err := r.sourceRetired(e); err != nil || invalid {
+		return false, err
 	}
 	for _, seq := range e.Derivations {
-		p, err := readContextualEvidence(q, e.Owner, seq)
+		parent, err := r.record(e.Owner, seq)
 		if err != nil {
 			return false, err
 		}
-		ok, err := contextualUsable(q, p, at, seen, budget)
+		ok, err := contextualUsable(r, parent, at, seen, budget)
 		if err != nil || !ok {
 			return false, err
 		}
 	}
 	return true, nil
+}
+
+// contextualWithinValidity is the interval half of the guard, kept apart so the
+// road above reads as its phases.
+func contextualWithinValidity(e ContextualEvidence, at time.Time) bool {
+	if !e.ValidFrom.IsZero() && at.Before(e.ValidFrom) {
+		return false
+	}
+	if !e.ValidUntil.IsZero() && !at.Before(e.ValidUntil) {
+		return false
+	}
+	return true
 }
 
 // ContextualEvidenceWindow bounds the amount read as well as the result. The
@@ -332,26 +388,7 @@ func (s *Store) ContextualEvidenceApplicable(owner string, conditions map[string
 	if err != nil {
 		return nil, err
 	}
-	out := make([]ContextualEvidence, 0)
-	budget := ContextualEvidenceLimit * ContextualEvidenceLimit
-	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
-		e := all[i]
-		ok, err := contextualUsable(s.db, e, at, map[int64]bool{}, &budget)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			continue
-		}
-		ok, err = contextualConditionsBounded(s.db, e, conditions)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			out = append(out, e)
-		}
-	}
-	return out, nil
+	return contextualFilterEvidence(s.db, all, false, conditions, at, limit)
 }
 
 // ContextualEvidenceApproved reads the newest bounded window of BINDING
@@ -386,39 +423,59 @@ func (s *Store) ContextualEvidenceApproved(owner string, conditions map[string]s
 		return nil, err
 	}
 	defer rows.Close()
-	newest := make([]ContextualEvidence, 0)
+	newest, err := scanContextualEvidenceRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	return contextualFilterEvidence(s.db, newest, true, conditions, at, limit)
+}
+
+// scanContextualEvidenceRows reads a (seq, ts, payload) evidence window.
+func scanContextualEvidenceRows(rows *sql.Rows) ([]ContextualEvidence, error) {
+	out := make([]ContextualEvidence, 0)
 	for rows.Next() {
 		var e ContextualEvidence
 		var ts, payload string
 		var seq int64
-		if err = rows.Scan(&seq, &ts, &payload); err != nil {
+		if err := rows.Scan(&seq, &ts, &payload); err != nil {
 			return nil, err
 		}
-		if err = json.Unmarshal([]byte(payload), &e); err != nil {
+		if err := json.Unmarshal([]byte(payload), &e); err != nil {
 			return nil, err
 		}
 		e.Seq = seq
-		if e.At, err = parseTime(ts); err != nil {
+		at, err := parseTime(ts)
+		if err != nil {
 			return nil, err
 		}
-		newest = append(newest, e)
+		e.At = at
+		out = append(out, e)
 	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	out := make([]ContextualEvidence, 0)
+	return out, rows.Err()
+}
+
+// contextualFilterEvidence applies the live guards to one already-read window,
+// newest first when newestFirst is set and oldest first otherwise. The budget is
+// shared across the window, so an ancestry that exhausts it stops the walk, not
+// one row of it.
+func contextualFilterEvidence(q contextualReader, window []ContextualEvidence, newestFirst bool, conditions map[string]string, at time.Time, limit int) ([]ContextualEvidence, error) {
+	out := make([]ContextualEvidence, 0, limit)
 	budget := ContextualEvidenceLimit * ContextualEvidenceLimit
-	for i := 0; i < len(newest) && len(out) < limit; i++ {
-		e := newest[i]
-		ok, err := contextualUsable(s.db, e, at, map[int64]bool{}, &budget)
+	guard := contextualDB{q}
+	for step := 0; step < len(window) && len(out) < limit; step++ {
+		i := step
+		if !newestFirst {
+			i = len(window) - 1 - step
+		}
+		e := window[i]
+		ok, err := contextualUsable(guard, e, at, map[int64]bool{}, &budget)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
 			continue
 		}
-		ok, err = contextualConditionsBounded(s.db, e, conditions)
-		if err != nil {
+		if ok, err = contextualConditionsBounded(guard, e, conditions); err != nil {
 			return nil, err
 		}
 		if ok {
@@ -440,7 +497,7 @@ func contextualRevisionUnknown(s string) bool {
 	return false
 }
 
-func contextualConditionsMatch(q contextualReader, e ContextualEvidence, conditions map[string]string, remaining *int) (bool, error) {
+func contextualConditionsMatch(r contextualRecords, e ContextualEvidence, conditions map[string]string, remaining *int) (bool, error) {
 	// AN UNKNOWN SNAPSHOT PROVES NOTHING. An EMPTY revision is user-authored
 	// intent — a rule the person wrote with no source attached — and applies on
 	// any source. Any other revision must name a KNOWN current snapshot and
@@ -462,11 +519,11 @@ func contextualConditionsMatch(q contextualReader, e ContextualEvidence, conditi
 		}
 	}
 	for _, seq := range e.Derivations {
-		parent, err := readContextualEvidence(q, e.Owner, seq)
+		parent, err := r.record(e.Owner, seq)
 		if err != nil {
 			return false, err
 		}
-		ok, err := contextualConditionsMatch(q, parent, conditions, remaining)
+		ok, err := contextualConditionsMatch(r, parent, conditions, remaining)
 		if err != nil || !ok {
 			return false, err
 		}
@@ -496,16 +553,16 @@ func (s *Store) ContextualEvidenceEligible(e ContextualEvidence, conditions map[
 		at = time.Now()
 	}
 	budget := ContextualEvidenceLimit
-	ok, err := contextualUsable(s.db, canonical, at, map[int64]bool{}, &budget)
+	ok, err := contextualUsable(contextualDB{s.db}, canonical, at, map[int64]bool{}, &budget)
 	if err != nil || !ok {
 		return false, err
 	}
-	return contextualConditionsBounded(s.db, canonical, conditions)
+	return contextualConditionsBounded(contextualDB{s.db}, canonical, conditions)
 }
 
-func contextualConditionsBounded(q contextualReader, e ContextualEvidence, conditions map[string]string) (bool, error) {
+func contextualConditionsBounded(r contextualRecords, e ContextualEvidence, conditions map[string]string) (bool, error) {
 	budget := ContextualEvidenceLimit
-	return contextualConditionsMatch(q, e, conditions, &budget)
+	return contextualConditionsMatch(r, e, conditions, &budget)
 }
 
 // SuppressContextualMemorySources retires all provenance of a forgotten claim

@@ -157,30 +157,55 @@ func migrateMemoriesOwner(db *sql.DB) error {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
 	defer tx.Rollback()
-
 	if _, err := tx.Exec(`ALTER TABLE memories ADD COLUMN owner TEXT NOT NULL DEFAULT ''`); err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
 	// The column lands empty and is filled from scope in one pass each, so no
 	// row is ever left with an owner the validator would refuse.
-	if _, err := tx.Exec(`UPDATE memories SET owner = ? WHERE scope = ? AND owner = ''`,
-		OwnerUser, MemoryScopeUser); err != nil {
+	steps := []struct {
+		owner, scope string
+	}{
+		{OwnerUser, MemoryScopeUser},
+		{OwnerMachine, MemoryScopeEnv},
+	}
+	for _, step := range steps {
+		if _, err := tx.Exec(`UPDATE memories SET owner = ? WHERE scope = ? AND owner = ''`, step.owner, step.scope); err != nil {
+			return fmt.Errorf("migrate memory owners: %w", err)
+		}
+	}
+	if err := quarantineOwnerlessProjectRows(tx); err != nil {
+		return err
+	}
+	// Anything still empty is a scope this build does not know, written by a
+	// later or a hand-edited store. It is quarantined too — the same answer,
+	// for the same reason: an owner nobody can prove never injects.
+	if _, err := tx.Exec(`UPDATE memories SET owner = ? WHERE owner = ''`, OwnerLegacyProject); err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
-	if _, err := tx.Exec(`UPDATE memories SET owner = ? WHERE scope = ? AND owner = ''`,
-		OwnerMachine, MemoryScopeEnv); err != nil {
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS memories_owner_active ON memories (owner, updated_seq DESC) WHERE status = 'active'`); err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
-	rows, err := tx.Query(`SELECT id, tags FROM memories WHERE scope = ? AND owner = ''`,
-		MemoryScopeProject)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migrate memory owners: %w", err)
+	}
+	return nil
+}
+
+// quarantinedMemory is one legacy project row that cannot prove its owner.
+type quarantinedMemory struct {
+	id   string
+	tags []string
+}
+
+// quarantineOwnerlessProjectRows moves every project-scoped row that cannot
+// prove its workspace to [OwnerLegacyProject], tagging it [legacyTag]. It reads
+// the rows first so the walk and its writes do not share a cursor.
+func quarantineOwnerlessProjectRows(tx *sql.Tx) error {
+	rows, err := tx.Query(`SELECT id, tags FROM memories WHERE scope = ? AND owner = ''`, MemoryScopeProject)
 	if err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
-	type quarantined struct {
-		id   string
-		tags []string
-	}
-	var pending []quarantined
+	var pending []quarantinedMemory
 	for rows.Next() {
 		var id, tags string
 		if err := rows.Scan(&id, &tags); err != nil {
@@ -191,7 +216,7 @@ func migrateMemoriesOwner(db *sql.DB) error {
 		if err := json.Unmarshal([]byte(tags), &parsed); err != nil {
 			parsed = nil
 		}
-		pending = append(pending, quarantined{id: id, tags: parsed})
+		pending = append(pending, quarantinedMemory{id: id, tags: parsed})
 	}
 	if err := rows.Err(); err != nil {
 		rows.Close()
@@ -206,22 +231,9 @@ func migrateMemoriesOwner(db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("migrate memory owners: %w", err)
 		}
-		if _, err := tx.Exec(`UPDATE memories SET owner = ?, tags = ? WHERE id = ?`,
-			OwnerLegacyProject, string(encoded), row.id); err != nil {
+		if _, err := tx.Exec(`UPDATE memories SET owner = ?, tags = ? WHERE id = ?`, OwnerLegacyProject, string(encoded), row.id); err != nil {
 			return fmt.Errorf("migrate memory owners: %w", err)
 		}
-	}
-	// Anything still empty is a scope this build does not know, written by a
-	// later or a hand-edited store. It is quarantined too — the same answer,
-	// for the same reason: an owner nobody can prove never injects.
-	if _, err := tx.Exec(`UPDATE memories SET owner = ? WHERE owner = ''`, OwnerLegacyProject); err != nil {
-		return fmt.Errorf("migrate memory owners: %w", err)
-	}
-	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS memories_owner_active ON memories (owner, updated_seq DESC) WHERE status = 'active'`); err != nil {
-		return fmt.Errorf("migrate memory owners: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("migrate memory owners: %w", err)
 	}
 	return nil
 }

@@ -107,14 +107,30 @@ func validateContextualAttemptStatus(e ContextualAttempt) error {
 	return nil
 }
 
-// validateContextualAttemptBounds is the size and interval half of the table.
+// validateContextualAttemptBounds is the size and interval half of the table,
+// split into its shape and its per-field metadata so neither road holds more
+// endings than a reader can follow.
 func validateContextualAttemptBounds(e ContextualAttempt) error {
+	if err := validateContextualAttemptShape(e); err != nil {
+		return err
+	}
+	return validateContextualAttemptMetadata(e)
+}
+
+// validateContextualAttemptShape is the count and interval half.
+func validateContextualAttemptShape(e ContextualAttempt) error {
 	if len(e.ReceiptIDs) > 8 || len(e.Conditions) > 16 || len(e.Observation) > 16384 || len(e.Action) > 4096 || len(e.Goal) > 4096 {
 		return errors.New("contextual attempt exceeds bounds")
 	}
 	if !e.ValidUntil.IsZero() && !e.ValidUntil.After(e.ValidFrom) {
 		return errors.New("invalid contextual attempt validity interval")
 	}
+	return nil
+}
+
+// validateContextualAttemptMetadata is the per-field length half: identifiers,
+// reasoning lines, conditions and receipts.
+func validateContextualAttemptMetadata(e ContextualAttempt) error {
 	for _, v := range []string{e.ID, e.Owner, e.SessionID, e.TurnID, e.Tool, e.Reconsider, e.Snapshot, e.SourceKey, e.SourceHash, e.AlternativeOf} {
 		if len(v) > 1024 {
 			return errors.New("contextual attempt metadata exceeds bounds")
@@ -232,50 +248,20 @@ func (s *Store) ContextualAttemptsApplicable(owner string, conditions map[string
 	if at.IsZero() {
 		at = time.Now()
 	}
-	var floor int64
-	err := s.db.QueryRow(`SELECT COALESCE(MIN(seq),0)-1 FROM (SELECT seq FROM events WHERE node_id=? AND kind=? ORDER BY seq DESC LIMIT ?)`, contextualNode(owner), EventContextualAttempt, ContextualAttemptLimit).Scan(&floor)
+	all, err := s.readContextualAttempts(owner)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.Query(`SELECT seq,ts,payload FROM events WHERE node_id=? AND kind=? AND seq>? ORDER BY seq`, contextualNode(owner), EventContextualAttempt, floor)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	all := make([]ContextualAttempt, 0)
-	for rows.Next() {
-		var a ContextualAttempt
-		var payload, ts string
-		var seq int64
-		if err = rows.Scan(&seq, &ts, &payload); err != nil {
-			return nil, err
-		}
-		if err = decodeAttempt(payload, &a); err != nil {
-			return nil, err
-		}
-		a.Seq = seq
-		if a.At, err = parseTime(ts); err != nil {
-			return nil, err
-		}
-		all = append(all, a)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	out := make([]ContextualAttempt, 0)
+	out := make([]ContextualAttempt, 0, limit)
 	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
 		a := all[i]
 		ok, err := contextualAttemptUsable(s.db, a, at)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			continue
+		if ok && contextualAttemptConditions(a, conditions) {
+			out = append(out, a)
 		}
-		if !contextualAttemptConditions(a, conditions) {
-			continue
-		}
-		out = append(out, a)
 	}
 	return out, nil
 }
@@ -339,6 +325,27 @@ func (s *Store) ContextualAttemptsRecent(owner string, at time.Time, limit int) 
 	if at.IsZero() {
 		at = time.Now()
 	}
+	all, err := s.readContextualAttempts(owner)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ContextualAttempt, 0, limit)
+	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
+		ok, err := contextualAttemptUsable(s.db, all[i], at)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, all[i])
+		}
+	}
+	return out, nil
+}
+
+// readContextualAttempts reads one bounded newest window of an owner's attempts,
+// oldest first, WITHOUT condition filtering. Both recent readers walk this same
+// window, so the floor and the scan have one spelling.
+func (s *Store) readContextualAttempts(owner string) ([]ContextualAttempt, error) {
 	var floor int64
 	err := s.db.QueryRow(`SELECT COALESCE(MIN(seq),0)-1 FROM (SELECT seq FROM events WHERE node_id=? AND kind=? ORDER BY seq DESC LIMIT ?)`, contextualNode(owner), EventContextualAttempt, ContextualAttemptLimit).Scan(&floor)
 	if err != nil {
@@ -349,7 +356,7 @@ func (s *Store) ContextualAttemptsRecent(owner string, at time.Time, limit int) 
 		return nil, err
 	}
 	defer rows.Close()
-	all := make([]ContextualAttempt, 0)
+	out := make([]ContextualAttempt, 0)
 	for rows.Next() {
 		var a ContextualAttempt
 		var payload, ts string
@@ -364,23 +371,9 @@ func (s *Store) ContextualAttemptsRecent(owner string, at time.Time, limit int) 
 		if a.At, err = parseTime(ts); err != nil {
 			return nil, err
 		}
-		all = append(all, a)
+		out = append(out, a)
 	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	out := make([]ContextualAttempt, 0)
-	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
-		a := all[i]
-		ok, err := contextualAttemptUsable(s.db, a, at)
-		if err != nil {
-			return nil, err
-		}
-		if ok {
-			out = append(out, a)
-		}
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func decodeAttempt(payload string, a *ContextualAttempt) error {

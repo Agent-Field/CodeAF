@@ -60,11 +60,16 @@ true quote of ordinary talk cannot manufacture a rule. The containing clause mus
 also be an assertion: a rule inside a question ("Should we never use pandas?") or a
 rejected third-party quotation ("The reviewer said never use floats, but I reject
 that") is demoted to a proposal, while a polite real directive and an ordinary
-literal constraint still bind automatically. Scope is gated the same way:
-a project span stays in its project even beside a global sentence, only an explicit
-machine-wide span may take machine scope (which then applies across projects on the
-same authorized machine and carries no project condition), "everywhere in this
-project" is project scope, and no tool observation is inferred machine-wide. Receipts from conversation
+literal constraint still bind automatically. Scope is gated the same way and
+conservatively: a project span stays in its project even beside a global sentence,
+only an explicit machine-wide span may take machine scope (which then applies across
+projects on the same authorized machine and carries no project condition), and no
+tool observation is inferred machine-wide. Widening to the person at large runs from
+the person's own unambiguous words: a cross-project grant ("across all projects")
+widens, while a bare "everywhere" stays in the project because it is ambiguous
+between the person and a span the clause never named, and a clause with a project
+qualifier ("in this app", "our repo", "this monorepo"), an exception ("unless",
+"except") or a restriction ("only", "restricted to") stays local. Receipts from conversation
 history, this session's memory reader and task summaries are derived, not
 independent observations: citing one back cannot corroborate a claim, which also
 keeps suppressed history from re-entering as fresh proof. Genuine raw tool receipts

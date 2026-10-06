@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
 // Memories are what one session knows and the next one would otherwise have to
@@ -250,6 +252,16 @@ func migrateMemoriesSchema(db *sql.DB) error {
 	// partition. Created here (idempotently) because this migration hook runs at
 	// every open, after the schema step has made the events table.
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS events_contextual_approved ON events (node_id, kind, seq) WHERE json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision')`); err != nil {
+		return err
+	}
+	// AND THE PER-MEMORY LATEST RECORD IS A SEEK, NOT A PARTITION WALK. A binding
+	// projection asks for the newest evidence of each candidate memory; the only
+	// index over the journal was (node_id, kind, seq), so a latest-by-memory read
+	// walked the owner's evidence partition behind each id. This expression index
+	// carries the memory id, so SQLite takes the maximum sequence per id and the
+	// read is bounded by the ids asked for rather than by the partition behind
+	// them. Created here (idempotently) beside the approved partial index.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS events_contextual_memory ON events (node_id, kind, json_extract(payload,'$.MemoryID'), seq)`); err != nil {
 		return err
 	}
 	return nil
@@ -1623,9 +1635,14 @@ func memoryPayloadFrom(m Memory) (memoryPayload, error) {
 // without: something to say. Lengths are counted in runes rather than bytes,
 // because a cap measured in bytes refuses a shorter sentence for being written
 // in a different language.
+// validMemoryBody is the ONE normalization every memory mouth shares: the add
+// door, the update doors and the supersede door all pass through it. It redacts
+// first and then enforces the caps, so a credential cannot ride a title, a body
+// or a tag through a door that forgot to redact. A caller that already redacted
+// loses nothing: the redactor is idempotent over its own output.
 func validMemoryBody(title, text string, tags []string) (string, string, []string, error) {
-	title = strings.TrimSpace(title)
-	text = strings.TrimSpace(text)
+	title = redact.Secrets(strings.TrimSpace(title))
+	text = redact.Secrets(strings.TrimSpace(text))
 	if text == "" {
 		return "", "", nil, fmt.Errorf("%w: a memory with no text says nothing", ErrInvalid)
 	}
@@ -1639,7 +1656,7 @@ func validMemoryBody(title, text string, tags []string) (string, string, []strin
 	}
 	kept := make([]string, 0, len(tags))
 	for _, tag := range tags {
-		if tag = strings.ToLower(strings.TrimSpace(tag)); tag != "" {
+		if tag = redact.Secrets(strings.ToLower(strings.TrimSpace(tag))); tag != "" {
 			kept = append(kept, tag)
 		}
 	}

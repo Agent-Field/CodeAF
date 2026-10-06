@@ -1374,6 +1374,56 @@ func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer,
 	// REPLACE the draft, and the model has no secret filter of its own — the
 	// same reason the line below is bounded here. Tags are sanitized with the
 	// title and body so no door through this settle can keep a credential.
+	applyDecidedDraft(&fresh, decided, candidate)
+	switch decided.Op {
+	case "add":
+		return a.addThroughDoorFrom(fresh, evidence)
+	case "update":
+		return a.settleUpdate(owners, decided, fresh, evidence)
+	case "supersede":
+		return a.settleSupersede(owners, decided, fresh, evidence)
+	}
+	return store.Memory{}, nil
+}
+
+// memoryNeighborsWithEvidence decorates the dedup neighbors with their latest
+// evidence in ONE indexed read per owner, rather than a ContextualEvidenceForMemory
+// call per neighbor. The same applicability and source-words lines are appended.
+func (a *Agent) memoryNeighborsWithEvidence(neighbors []store.Memory) []reflex.Neighbor {
+	byOwner := map[string][]string{}
+	for _, neighbor := range neighbors {
+		byOwner[neighbor.Owner] = append(byOwner[neighbor.Owner], neighbor.ID)
+	}
+	latest := map[string]store.ContextualEvidence{}
+	for owner, ids := range byOwner {
+		found, err := a.memory.store.ContextualEvidenceLatestForMemories(owner, ids)
+		if err != nil {
+			continue
+		}
+		for id, evidence := range found {
+			latest[id] = evidence
+		}
+	}
+	near := make([]reflex.Neighbor, 0, len(neighbors))
+	for _, neighbor := range neighbors {
+		if evidence, ok := latest[neighbor.ID]; ok {
+			if len(evidence.Applicability) > 0 {
+				neighbor.Text += "\nApplies when: " + strings.Join(evidence.Applicability, "; ")
+			}
+			if evidence.Actor == "user" {
+				neighbor.Text += "\nSource words: " + contextualClip(evidence.Observation, contextualReceiptRunes)
+			}
+		}
+		near = append(near, reflex.Neighbor{ID: neighbor.ID, Title: neighbor.Title, Text: neighbor.Text})
+	}
+	return near
+}
+
+// applyDecidedDraft folds a decider's replacement title, body and tags onto the
+// draft. The replacement passes the secret redactor and the store's caps, and the
+// candidate's own contextual tag is restored, so no door through this settle can
+// keep a credential or drop the provenance marker.
+func applyDecidedDraft(fresh *store.Memory, decided reflex.DecideResult, candidate reflex.ExtractResult) {
 	if title := strings.TrimSpace(decided.Title); title != "" {
 		fresh.Title = contextualClip(redact.Secrets(title), store.MemoryTitleRunes)
 	}
@@ -1389,15 +1439,6 @@ func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer,
 			break
 		}
 	}
-	switch decided.Op {
-	case "add":
-		return a.addThroughDoorFrom(fresh, evidence)
-	case "update":
-		return a.settleUpdate(owners, decided, fresh, evidence)
-	case "supersede":
-		return a.settleSupersede(owners, decided, fresh, evidence)
-	}
-	return store.Memory{}, nil
 }
 
 // settleUpdate is the refiner's half of the settle. A MISSING TARGET IS A SKIP:
