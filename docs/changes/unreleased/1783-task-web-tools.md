@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: PlanDB run workers can search and fetch through native tools
-pr: 1
+pr: 1783
 surface: [engine, chat]
 invalidates:
   - "The task belt defined web tools but PlanDB run workers received no web dependencies. The crew factory now binds the run profile's live search and fetch pair."
