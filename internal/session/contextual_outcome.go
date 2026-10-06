@@ -1995,6 +1995,33 @@ func segmentReadPreview(segment string) bool {
 	return ok && programReadPreviewOnly(prog)
 }
 
+// segmentReadPreviewProven is the PURE-POSITIVE reading of [segmentReadPreview]:
+// it answers true only when the segment's inline program was positively READ as
+// the preview skeleton, never when the structure could not be bounded. It exists
+// for the read-time projection guard, where an unreadable or clipped row must be
+// retained rather than declared a proven preview; the writer keeps using the
+// fail-closed [segmentReadPreview].
+func segmentReadPreviewProven(segment string) bool {
+	words := shellWords(segment)
+	if !isInterpreterCommand(words) {
+		return false
+	}
+	prog, ok := interpreterInlineProgram(segment, words)
+	if !ok {
+		return false
+	}
+	return programReadPreviewProven(prog)
+}
+
+// programReadPreviewProven is the PURE-POSITIVE program reading behind
+// [segmentReadPreviewProven]: the preview skeleton proven AND the structure
+// actually bounded. [programReadPreviewOnly] keeps the fail-closed reading the
+// writer needs, where an unreadable program is refused as metadata.
+func programReadPreviewProven(prog string) bool {
+	preview, bounded := programReadPreviewClassify(prog)
+	return preview && bounded
+}
+
 // interpreterInlineProgram returns the inline source an interpreter segment
 // actually executes: an explicit `-c`/`-e`/`--eval` program replaces a heredoc
 // body even when the program is empty, a bare `-` or an ordinary heredoc keeps
@@ -2042,9 +2069,21 @@ func interpreterInlineProgram(segment string, words []shellWord) (string, bool) 
 // Python parser: it understands the observed diagnostic forms and leaves every
 // other form as work, and no claim of complete program understanding is made.
 func programReadPreviewOnly(prog string) bool {
+	preview, _ := programReadPreviewClassify(prog)
+	return preview
+}
+
+// programReadPreviewClassify is the ONE reading behind [programReadPreviewOnly]
+// and its pure-positive sibling [programReadPreviewProven]. The first result is
+// the classification; the second says whether the program's structure was
+// actually BOUNDED and read. The two callers differ only in what an unreadable
+// program means to them: a WRITER fails closed and refuses it as metadata, while
+// a READ-TIME projection must not claim an unreadable row is a proven preview,
+// so it consults the bounded flag.
+func programReadPreviewClassify(prog string) (bool, bool) {
 	stmts, bounded := programSimpleStatements(prog)
 	if !bounded {
-		return true
+		return true, false
 	}
 	aliases := map[string]bool{}
 	buffers := map[string]bool{}
@@ -2068,16 +2107,16 @@ func programReadPreviewOnly(prog string) bool {
 				reads++
 				continue
 			}
-			return false
+			return false, true
 		}
 		args, isPrint := programPrintArgs(stmt)
 		if !isPrint {
-			return false
+			return false, true
 		}
 		for _, arg := range args {
 			ok, read := programPreviewArg(arg, aliases, buffers)
 			if !ok {
-				return false
+				return false, true
 			}
 			if read {
 				reads++
@@ -2085,7 +2124,7 @@ func programReadPreviewOnly(prog string) bool {
 		}
 		prints++
 	}
-	return prints > 0 && reads > 0
+	return prints > 0 && reads > 0, true
 }
 
 // programSimpleStatements splits a program into its top-level statements at `;`
@@ -2962,6 +3001,17 @@ func (a *Agent) priorOutcomeBlock(st *store.Store, projectKey, cue, snapshot str
 	alternatives := map[string][]store.ContextualAttempt{}
 	for _, at := range attempts {
 		if at.Status == store.AttemptSucceeded && at.AlternativeOf != "" {
+			// A HISTORIC PURE PREVIEW IS PROJECTED OUT, NEVER REWRITTEN. An
+			// observed success recorded by an OLDER build can be a pure
+			// read-preview diagnostic that today's classifier refuses, and the
+			// journal row is immutable — so the omission happens here, at the
+			// read, and only the ALTERNATIVE half of the pair is dropped. The
+			// failure row is untouched and still renders with its history, and
+			// nothing is deleted or altered. The guard is pure-positive and
+			// fails closed: a clipped or unprovable row is retained honestly.
+			if priorAlternativeProvenPurePreview(at.Action) {
+				continue
+			}
 			alternatives[at.AlternativeOf] = append(alternatives[at.AlternativeOf], at)
 		}
 	}
@@ -2999,6 +3049,53 @@ func (a *Agent) priorOutcomeBlock(st *store.Store, projectKey, cue, snapshot str
 	}
 	b.WriteString("</prior_outcomes>\n")
 	return b.String()
+}
+
+// priorAlternativeProvenPurePreview answers whether a HISTORIC observed
+// alternative row can be PROVEN, by the SAME bounded lexical classifier that
+// already guards the live writers, to be nothing but a pure read-preview
+// diagnostic: an interpreter run whose inline program only reads a file into a
+// buffer and prints its length or a bounded prefix. It is a READ-TIME
+// projection, not a write — the stored event is never altered or deleted, the
+// failure history still renders, and only the alternative bullet is omitted.
+//
+// THE DISPLAY CLIP IS A FAIL-CLOSED BOUNDARY. [attemptAction] stores the action
+// as the raw body clipped to 240 runes, with a trailing clip marker when the
+// body was longer. A body the reader cannot see in full must never be judged
+// from the remainder: a complete genuine calculation whose tail the clip
+// removed could otherwise read as a bare preview and be silently dropped. A
+// stored action that carries the clip marker is therefore never classified, and
+// the alternative is retained honestly. [programReadPreviewOnly] separately
+// leaves every unreadable or non-preview program as work, so unknown structure
+// fails closed on its own. The guard names no file, library, result or domain,
+// and it recognises the same known skeleton and nothing wider.
+func priorAlternativeProvenPurePreview(action string) bool {
+	trimmed := strings.TrimSpace(action)
+	if trimmed == "" || strings.HasSuffix(trimmed, "\u2026") {
+		return false
+	}
+	i := strings.Index(trimmed, ": ")
+	if i < 0 || !shellToolName(strings.TrimSpace(trimmed[:i])) {
+		return false
+	}
+	body := strings.TrimSpace(trimmed[i+2:])
+	if body == "" || !shellMetadataOnly(body) {
+		return false
+	}
+	return shellHasReadPreview(body)
+}
+
+// shellHasReadPreview answers whether a shell body carries at least one segment
+// the bounded reader PROVES is a pure read-preview diagnostic. It is what scopes
+// the projection guard to the preview skeleton rather than to every metadata
+// lookup, so an ordinary `cat` alternative is left where it was.
+func shellHasReadPreview(body string) bool {
+	for _, segment := range shellSegments(body) {
+		if segmentReadPreviewProven(segment) {
+			return true
+		}
+	}
+	return false
 }
 
 // renderPriorAttempt renders one attempt as an advisory line. The observation

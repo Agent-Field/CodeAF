@@ -250,3 +250,134 @@ func TestReadPreviewKeepsKnownRefusals(t *testing.T) {
 		}
 	}
 }
+
+// ── the read-time projection guard ──────────────────────────────────────────
+//
+// THE OLD BAD ALTERNATIVE IS IMMUTABLE AND THE FIX IS AT THE READ. The live
+// session e62 stored the pure byte-count/prefix diagnostic as the observed
+// alternative BEFORE the writer refused such a shape, so the journal row cannot
+// be altered or deleted. [Agent.priorOutcomeBlock] therefore projects it out of
+// the rendered pair while leaving the raw event and the failure history exactly
+// where they were. This test seeds that historic shape directly (the way the
+// journal really holds it), drives the real read, and pins all five properties
+// the steer names: the known complete byte probe is filtered, the failed row is
+// left, a later genuine pair is shown, a legacy clipped program is retained
+// honestly, and the raw journal is unmodified.
+
+// The exact live diagnostic as attemptAction would STORE it: the "bash: " tool
+// prefix plus the raw body, well inside the 240-rune display clip so the reader
+// can prove the whole program.
+const storedBytePreview = "bash: " + bytePreview
+
+func TestProjectionOmitsHistoricPurePreviewAlternative(t *testing.T) {
+	dir := t.TempDir()
+	root, brain := brainAgent(t, &reflexScript{}, func(c *Config) {
+		c.Workspace = dir
+		c.MemoryProjectKey = "p"
+	})
+	owner := store.OwnerProject("p")
+
+	// 1. The immutable historic failure, and its historic pure-preview
+	// alternative as the OLD build stored it.
+	appendH := func(id, action, status, alt string, receipts ...string) {
+		t.Helper()
+		_, err := brain.AppendContextualAttempt(store.ContextualAttempt{
+			ID: id, Owner: owner, Tool: "bash", Action: action, Goal: previewGoal,
+			Status: status, ReceiptIDs: receipts, Observation: "historic row",
+			Snapshot: "snapA", SourceKey: id, AlternativeOf: alt,
+		})
+		if err != nil {
+			t.Fatalf("seed %s: %v", id, err)
+		}
+	}
+	appendH("hist-fail", "bash: "+previewFailed, store.AttemptFailed, "", "r0")
+	appendH("hist-noise", storedBytePreview, store.AttemptSucceeded, "hist-fail", "r1")
+
+	// 2. A LATER GENUINE REAL PAIR: the standard-library calculation, stored in
+	// its real display-clipped form, plus a LEGACY CLIPPED diagnostic-looking
+	// program whose tail the clip hid. Neither is judged from an incomplete
+	// source, so both stay.
+	genuineStored := "bash: " + contextualClip(previewGenuine, 240)
+	appendH("hist-genuine", genuineStored, store.AttemptSucceeded, "hist-fail", "r2")
+	legacyClipped := "bash: " + `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(); print(len(d), d[:80])` + "\u2026"
+	appendH("hist-legacy", legacyClipped, store.AttemptSucceeded, "hist-fail", "r3")
+
+	before := attemptsForProject(t, brain, root)
+
+	block := root.priorOutcomeBlock(brain, "p", previewGoal, "snapA")
+	if block == "" {
+		t.Fatal("the projection rendered nothing: the failure history vanished")
+	}
+	// FILTERED: the known complete past byte probe never reaches the model.
+	if strings.Contains(block, bytePreview) {
+		t.Fatalf("the historic pure preview was still rendered:\n%s", block)
+	}
+	// LEFT: the failure history remains.
+	if !strings.Contains(block, previewFailed) {
+		t.Fatalf("the failure history was dropped with its alternative:\n%s", block)
+	}
+	// SHOWN: the later genuine real pair is rendered, honestly clipped (the
+	// block quotes the action with Go escaping, so the marker is unescaped).
+	if !strings.Contains(block, "raw.decode('utf-16')") {
+		t.Fatalf("the genuine later alternative was not shown:\n%s", block)
+	}
+	// RETAINED: the clipped/unknown program is NOT mislabelled metadata.
+	if !strings.Contains(block, "print(len(d), d[:80])") {
+		t.Fatalf("a clipped program was silently dropped as metadata:\n%s", block)
+	}
+	if got := strings.Count(block, "Observed successful alternative"); got != 2 {
+		t.Fatalf("expected the two honest alternatives, got %d:\n%s", got, block)
+	}
+
+	// UNMODIFIED: the read wrote nothing; every raw row is byte-for-byte here.
+	after := attemptsForProject(t, brain, root)
+	if len(after) != len(before) {
+		t.Fatalf("the projection changed the journal: %d rows before, %d after", len(before), len(after))
+	}
+	for i := range before {
+		if before[i].Action != after[i].Action || before[i].Status != after[i].Status || before[i].AlternativeOf != after[i].AlternativeOf {
+			t.Fatalf("row %d changed under the projection: %+v -> %+v", i, before[i], after[i])
+		}
+	}
+	var previewRow *store.ContextualAttempt
+	for i := range after {
+		if after[i].ID == "hist-noise" {
+			previewRow = &after[i]
+		}
+	}
+	if previewRow == nil || previewRow.Action != storedBytePreview {
+		t.Fatalf("the raw preview event was altered: %+v", previewRow)
+	}
+}
+
+// THE GUARD IS PURE-POSITIVE AND FAILS CLOSED. Only the complete known preview
+// skeleton is proven metadata; a genuine complete calculation, a clipped
+// program of any kind, a non-shell action and an unreadable one are all left as
+// work so nothing genuine is ever dropped from history.
+func TestProjectionGuardProvesOnlyCompleteKnownPreview(t *testing.T) {
+	proven := map[string]string{
+		"exact live diagnostic": storedBytePreview,
+		"literal alias":         "bash: " + aliasPreview,
+		"inline read":           "bash: " + inlinePreview,
+	}
+	for name, action := range proven {
+		if !priorAlternativeProvenPurePreview(action) {
+			t.Errorf("%s was not proven a pure preview: %q", name, action)
+		}
+	}
+	kept := map[string]string{
+		"complete genuine calculation": "bash: " + previewGenuine,
+		"clipped genuine calculation":  "bash: " + contextualClip(previewGenuine, 240),
+		"legacy clipped program":       "bash: " + `.venv/bin/python -c "import sys; d=open('vendor.csv','rb').read(); print(len(d), d[:80])` + "\u2026",
+		"unproven clipping marker":     "bash: " + inlinePreview + "\u2026",
+		"unreadable structure":         "bash: " + ".venv/bin/python -c \"d = open('vendor.csv','rb').read()\nprint(len(d)\"",
+		"not a shell action":           "read: vendor.csv",
+		"no body":                      "bash",
+		"blank":                        "   ",
+	}
+	for name, action := range kept {
+		if priorAlternativeProvenPurePreview(action) {
+			t.Errorf("%s was misclassified as the pure preview: %q", name, action)
+		}
+	}
+}
