@@ -263,7 +263,7 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 		return nil
 	}
 
-	found, err := t.look(ctx, item, now)
+	found, err := t.look(ctx, item, now, pass.At)
 	if err != nil {
 		return err
 	}
@@ -330,7 +330,12 @@ type sighting struct {
 
 // look decides whether an item wants to fire, and updates the parts of the item
 // that a look changes whatever it decides: the next moment, and the fingerprint.
-func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting, error) {
+//
+// IT IS HANDED THE PASS'S OWN MOMENT AS WELL AS THE ITEM'S. `now` is when this
+// item was reached, which is every earlier item's probe later; `pass` is when
+// the whole pass began ([Pass.At]). A probe's next due is measured against the
+// pass, never against `now`, and [probeNextDue] says the whole of why.
+func (t *Ticker) look(ctx context.Context, item *Item, now, pass time.Time) (sighting, error) {
 	found := sighting{}
 	switch item.When.Kind {
 	case WhenAt:
@@ -456,7 +461,15 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			item.NextDue = due
 			return sighting{}, err
 		}
-		item.NextDue = now.Add(every)
+		// THE NEXT LOOK COMES OFF THE ITEM'S OWN CADENCE, MEASURED AGAINST
+		// THE PASS AND NEVER AGAINST THIS LOOK. Anchoring it to `now` would
+		// carry the moment the item was reached into its phase: a pass that
+		// began at T and reached this item at T+2m because an earlier probe
+		// was slow would leave the next look due at T+2m+every, so the pass
+		// at T+every -- the very next one -- would find it asleep and a
+		// five-minute look would be taken every ten. [probeNextDue] says the
+		// whole of it.
+		item.NextDue = probeNextDue(due, every, pass)
 		// A CONDITION WATCH SPEAKS ONLY THE DELTA. The identity of THIS reading
 		// is compared with the reading the person was last told about: while the
 		// observed state is byte-for-byte the one already reported, the watch
@@ -523,6 +536,47 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 		found.line = line
 	}
 	return found, nil
+}
+
+// probeNextDue is the next moment a probe wants its look: the item's own
+// cadence, stepped forward from the moment that was just honoured until it is
+// strictly past the pass that honoured it.
+//
+// IT IS MEASURED AGAINST THE PASS AND NOT AGAINST THE LOOK. A probe is not a
+// timer of its own: [Interval] is the only clock in this build, and a pass --
+// one live window's, or the operating system's timer -- is what takes the look.
+// The instant the look happened carries whatever delay the pass accumulated
+// before it reached this item (an earlier item's slow probe, a settlement, a
+// lock), and anchoring the next due there would push the item's phase further
+// out on every pass. Once that drift passes a whole interval the NEXT pass
+// arrives before the due, the item reads as asleep, and the look is silently
+// skipped for a full cadence: a card that promised a look every five minutes
+// is taken every ten, and nothing anywhere says so.
+//
+// STEPPING FROM THE DUE TO JUST PAST THE PASS IS WHAT MAKES THAT IMPOSSIBLE.
+// The next due lands in (pass, pass+every], and the pass after this one begins
+// at least one [Interval] later, so a cadence at or below the pass period comes
+// due on the very next pass however long this one took. The phase is the item's
+// own -- the moment [firstDue] gave it -- so a look is always one whole cadence
+// after the one before it on that same grid, and never a cadence after the
+// clock reading that happened to take it.
+//
+// WHOLE STEPS, SO THERE IS NO CATCH-UP BURST. A machine that slept through four
+// cadences owes the person ONE look at the next pass, not four in a row; the
+// elapsed time is divided by the cadence rather than walked. A zero due -- an
+// item whose moment was never set -- is one cadence past the pass, the same
+// answer the old code gave it.
+func probeNextDue(due time.Time, every time.Duration, pass time.Time) time.Time {
+	if due.IsZero() {
+		return pass.Add(every)
+	}
+	if next := due.Add(every); next.After(pass) {
+		return next
+	}
+	// The pass ran past whole cadences of this item's grid: put it back on that
+	// grid at the first boundary after the pass instead of handing it one look
+	// for each cadence it missed.
+	return pass.Add(every - pass.Sub(due)%every)
 }
 
 // judge is the one cheap call, with the item's last few judgments riding along
