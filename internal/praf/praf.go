@@ -158,7 +158,7 @@ func run(ctx context.Context, host delegate.Host, o options, notes io.Writer) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_, _ = fmt.Fprintf(notes, "[pr] panic: %v\n%s", recovered, debug.Stack())
-			host.Terminal(delegate.Ending{Status: delegate.StatusCrashed, Message: fmt.Sprintf("pr broke: %v", recovered)})
+			host.Terminal(delegate.Ending{Status: delegate.StatusCrashed, Message: fmt.Sprintf("the review panicked: %v", recovered)})
 		}
 	}()
 	if request.Post != "" {

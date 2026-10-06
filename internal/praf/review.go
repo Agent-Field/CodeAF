@@ -134,36 +134,36 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		found, err := r.branchPR(ctx, host.Workspace(), gh)
 		if err != nil {
 			return delegate.Ending{Status: delegate.StatusFail,
-				Message: "pr did not start: " + firstSentence(err.Error()) + "; name the pull request, such as /pr owner/repo#123",
+				Message: firstSentence(err.Error()) + "; name the pull request, such as /pr owner/repo#123",
 				Reason:  fmt.Errorf("%w: %v", errNoBranchPR, err).Error()}
 		}
 		t = found
 	}
 	if !host.Models().Ready() {
-		return delegate.Ending{Status: delegate.StatusCrashed, Message: "pr was started without a model API; codeaf serves one to every run it starts"}
+		return delegate.Ending{Status: delegate.StatusCrashed, Message: "it was started without a model API; codeaf serves one to every run it starts"}
 	}
 	workdir, cleanup, err := r.workdir()
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusFail, Message: "pr did not start: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "it could not make a folder for its checkout: " + err.Error()}
 	}
 	defer cleanup()
 	host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "running", Data: stageData(map[string]any{"doing": "checking out " + t.String(), "pull_request": t.String()})})
 	checkout, err := r.resolveRepo(ctx, orch.Access{Workdir: workdir, Token: token}, t.URL())
 	if err != nil {
 		if ctx.Err() != nil {
-			return delegate.Ending{Status: delegate.StatusFail, Message: "pr was stopped before it finished"}
+			return delegate.Ending{Status: delegate.StatusFail, Message: "it was stopped before it finished"}
 		}
-		return delegate.Ending{Status: delegate.StatusFail, Message: "pr could not check out " + t.String() + ": " + firstSentence(err.Error()), Reason: err.Error()}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "could not check out " + t.String() + ": " + firstSentence(err.Error()), Reason: err.Error()}
 	}
 
 	ceilings := host.Ceilings()
 	in, err := reviewInput(t, checkout, request.Focus, ceilings, started)
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusCrashed, Message: "pr broke reading its own input: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusCrashed, Message: "its own review input did not bind: " + err.Error()}
 	}
 	cfg, err := config.ReviewConfig{}.FromInput(in)
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusCrashed, Message: "pr broke reading its own input: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusCrashed, Message: "its own review input did not bind: " + err.Error()}
 	}
 	light := o.light
 	if light == "" {
@@ -177,7 +177,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		Sessions: o.sessions, MaxTurns: o.maxTurns, SessionWall: o.sessionWall,
 	})
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusFail, Message: "pr did not start: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "its agent sessions could not start: " + err.Error()}
 	}
 	review := &app{sessions: sessions}
 	tracker := newPhaseTracker(host, routerHandlers(reasoners.Deps{Harness: review, AI: review}))
@@ -208,7 +208,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		// Every reviewer degraded to "no findings" because none could run.
 		// That is not a clean review; it is no review.
 		return delegate.Ending{Status: delegate.StatusFail, CostUSD: cost, Reason: calls.FirstErr,
-			Message: fmt.Sprintf("pr could not review %s: every agent session failed (%d of %d), the first with: %s",
+			Message: fmt.Sprintf("could not review %s: every agent session failed (%d of %d), the first with: %s",
 				t, calls.SessionFailed, calls.SessionTotal, firstSentence(calls.FirstErr))}
 	}
 	// A REVIEW THE WALL CUT SAYS SO. The pipeline degrades a reviewer that was
@@ -256,24 +256,28 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 }
 
 // failedReview is the ending of a review the pipeline gave up on, by why.
+//
+// ITS SENTENCE IS THE REASON ALONE. codeaf says the program's name and how
+// it ended before it — `pr did not finish: …`, `pr stopped on its own
+// ceiling: …` — so a sentence that said them again read twice.
 func failedReview(ctx, reviewCtx context.Context, t Target, err error, cost float64) delegate.Ending {
 	ending := delegate.Ending{CostUSD: cost, Reason: err.Error(), Status: delegate.StatusFail}
 	switch {
 	case errors.Is(err, agentsession.ErrCeiling):
 		ending.Status = delegate.StatusBudget
-		ending.Message = "pr reached the run's dollar ceiling before it finished, so it has no review"
+		ending.Message = "it reached the run's dollar ceiling before it finished, so it has no review"
 	case errors.Is(reviewCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
 		ending.Status = delegate.StatusBudget
-		ending.Message = "pr reached the run's time ceiling before it finished, so it has no review"
+		ending.Message = "it reached the run's time ceiling before it finished, so it has no review"
 	case ctx.Err() != nil:
-		ending.Message = "pr was stopped before it finished"
+		ending.Message = "it was stopped before it finished"
 	case orch.IsBudgetExhausted(err):
 		ending.Status = delegate.StatusBudget
-		ending.Message = "pr " + firstSentence(err.Error()) + ", so it has no review"
+		ending.Message = firstSentence(err.Error()) + ", so it has no review"
 	case errors.Is(err, orch.ErrBadInput):
-		ending.Message = "pr could not review " + t.String() + ": " + firstSentence(err.Error())
+		ending.Message = "could not review " + t.String() + ": " + firstSentence(err.Error())
 	default:
-		ending.Message = "pr did not finish: " + firstSentence(err.Error())
+		ending.Message = firstSentence(err.Error())
 	}
 	return ending
 }

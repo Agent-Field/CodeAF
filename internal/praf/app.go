@@ -12,6 +12,7 @@ package praf
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 
@@ -83,9 +84,22 @@ func (a *app) Harness(ctx context.Context, prompt string, schema map[string]any,
 		Cwd: opts.Cwd, ProjectDir: opts.Cwd, Label: opts.Label,
 	})
 	switch {
-	case err != nil:
+	case err != nil && endsTheRun(ctx, err):
 		a.record(true, err.Error())
 		return nil, err
+	case err != nil:
+		// A SESSION THAT FAILED IS A REVIEWER THAT FAILED, NOT A REVIEW THAT
+		// DID. The session loop answers an error for a session it could not
+		// carry through — a reply with no choices, a transport that dropped —
+		// and pr-af's pipeline reads an error from a reviewer as the end of
+		// the whole review: one bad reply cancelled every reviewer still
+		// running and handed back nothing (a live review, 2026-10-06). pr-af's
+		// harness reported such a run as a failed result, which the pipeline
+		// degrades to "no findings" and the run counts, so it is reported so
+		// here. Only what ends every call — the run's dollar ceiling, a key
+		// the service refused, a stop — stays an error.
+		a.record(true, err.Error())
+		return &appx.HarnessResult{IsError: true, ErrorMessage: err.Error()}, nil
 	case result == nil:
 		a.record(true, "the session gave no result")
 		return nil, nil
@@ -99,6 +113,15 @@ func (a *app) Harness(ctx context.Context, prompt string, schema map[string]any,
 		ErrorMessage: result.ErrorMessage, NumTurns: result.NumTurns,
 		DurationMS: result.DurationMS, CostUSD: result.CostUSD,
 	}, nil
+}
+
+// endsTheRun says an error ends every call of the run, not only this one: a
+// refusal by the model API (the dollar ceiling, a key the service refused)
+// or the run's own stop.
+func endsTheRun(ctx context.Context, err error) bool {
+	var refused *agentsession.RefusedError
+	return ctx.Err() != nil || errors.As(err, &refused) || errors.Is(err, agentsession.ErrCeiling) ||
+		errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // AI runs one single structured call: the intake, coverage, polish and merge

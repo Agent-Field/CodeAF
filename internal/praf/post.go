@@ -67,20 +67,20 @@ func runPost(ctx context.Context, host delegate.Host, path string, newGitHub fun
 	host.Stage(delegate.StageRecord{Stage: stagePost, Status: "running", Data: stageData(map[string]any{"doing": "reading the review"})})
 	saved, path, err := readSaved(path)
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusFail, Message: "pr posted nothing: " + firstSentence(err.Error())}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "nothing was posted: " + firstSentence(err.Error())}
 	}
 	t := saved.PullRequest.Target()
 	token := githubToken(ctx)
 	if token == "" {
 		return delegate.Ending{Status: delegate.StatusFail,
-			Message: "pr posted nothing: posting to " + t.String() + " needs a GitHub token; set GH_TOKEN or sign in with `gh auth login`"}
+			Message: "nothing was posted: posting to " + t.String() + " needs a GitHub token; set GH_TOKEN or sign in with `gh auth login`"}
 	}
 	host.Stage(delegate.StageRecord{Stage: stagePost, Status: "running", Data: stageData(map[string]any{"doing": "posting the review to " + t.String()})})
 	pr := schemas.GitHubPRData{Owner: t.Owner, Repo: t.Repo, Number: t.Number, HeadSHA: saved.PullRequest.HeadSHA}
 	event, err := orch.PostReviewEvent(ctx, newGitHub(token), pr, saved.Review.Review)
 	if err != nil {
 		return delegate.Ending{Status: delegate.StatusFail, Reason: err.Error(),
-			Message: "pr could not post the review to " + t.String() + ": " + firstSentence(err.Error())}
+			Message: "could not post the review to " + t.String() + ": " + firstSentence(err.Error())}
 	}
 	comments := len(saved.Review.Review.Comments)
 	what := eventWords[event]

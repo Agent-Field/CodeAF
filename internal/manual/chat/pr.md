@@ -27,11 +27,11 @@ At a shell, `codeaf pr <pull request> [focus]` reviews it from the folder you ar
 
 ## Review my current branch's pull request — a bare /pr, this branch, no link
 
-`/pr` on its own, or a brief that names no pull request, reviews **the open pull request of the branch the conversation's folder is on**, with the brief as the reviewers' focus. `gh pr view` finds it when `gh` is installed; otherwise pr asks GitHub for an open pull request from the branch's upstream (a fork's too) into `origin`'s repository. It reviews the pull request as GitHub has it, not your uncommitted edits: push first. With none it ends at once, for example `pr did not start: the branch fix-it has no open pull request on owner/repo; name the pull request, such as /pr owner/repo#123`.
+`/pr` on its own, or a brief that names no pull request, reviews **the open pull request of the branch the conversation's folder is on**, with the brief as the reviewers' focus. `gh pr view` finds it when `gh` is installed; otherwise pr asks GitHub for an open pull request from the branch's upstream (a fork's too) into `origin`'s repository. It reviews the pull request as GitHub has it, not your uncommitted edits: push first. With none it ends at once, for example `pr did not finish: the branch fix-it has no open pull request on owner/repo; name the pull request, such as /pr owner/repo#123`.
 
 ## Private repositories — GH_TOKEN, GITHUB_TOKEN, gh auth login, repository not found
 
-A public repository needs nothing. For a private one pr uses `GH_TOKEN`, else `GITHUB_TOKEN`, from the environment codeaf was started in, else the token `gh auth token` answers when you have signed in with `gh auth login`. The token reaches git only for the one clone, in its environment, and is never written into the checkout. Without one, a private repository fails to clone: `pr could not check out owner/repo#123: git clone failed: …`.
+A public repository needs nothing. For a private one pr uses `GH_TOKEN`, else `GITHUB_TOKEN`, from the environment codeaf was started in, else the token `gh auth token` answers when you have signed in with `gh auth login`. The token reaches git only for the one clone, in its environment, and is never written into the checkout. Without one, a private repository fails to clone: `pr did not finish: could not check out owner/repo#123: git clone failed: …`.
 
 ## What pr does, step by step — why a review takes so long, how it works, the stages
 
@@ -45,7 +45,7 @@ Its stages are on the rail and head the lines of its page:
 6. **obligations** and **coverage**: lists what the change must do and checks it, and looks for gaps.
 7. **report**.
 
-Each reviewer is an agent session that reads the checkout with four read-only tools — read a file, list a folder, find files by name, look for text in files — for up to fifty turns. A review of a mid-sized pull request commonly takes half an hour to an hour.
+Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — for up to fifty turns. A review of a mid-sized pull request commonly takes half an hour to an hour.
 
 ## What pr shows while it runs — each reviewer's line, what it found, which files
 
@@ -62,13 +62,13 @@ A shell run's record folder is under `~/.codeaf/v3/carried/pr/`, one folder per 
 
 ## Post the review to GitHub — comment on the pull request, request changes, /pr post
 
-pr never posts during a review. When a review found something, the chat offers to post it and waits; only after you say yes does it propose `pr` with the brief `post <the pr-report.json path>`, which you can also type yourself: `/pr post ~/.codeaf/v3/…/pr-report.json` (the record folder works too). That run posts the review **as it stands** — its summary, its inline comments, and its event (a request for changes when something blocks, a comment when nothing does, an approval when it found nothing) — on the commit that was reviewed, even if the pull request has moved since. Posting needs a token that can write to the repository (see *Private repositories*); without one it ends `pr posted nothing: posting to owner/repo#123 needs a GitHub token; set GH_TOKEN or sign in with gh auth login`. GitHub refuses a request for changes on your own pull request, so there it goes as a comment, and the account says so.
+pr never posts during a review. When a review found something, the chat offers to post it and waits; only after you say yes does it propose `pr` with the brief `post <the pr-report.json path>`, which you can also type yourself: `/pr post ~/.codeaf/v3/…/pr-report.json` (the record folder works too). That run posts the review **as it stands** — its summary, its inline comments, and its event (a request for changes when something blocks, a comment when nothing does, an approval when it found nothing) — on the commit that was reviewed, even if the pull request has moved since. Posting needs a token that can write to the repository (see *Private repositories*); without one it ends `pr did not finish: nothing was posted: posting to owner/repo#123 needs a GitHub token; set GH_TOKEN or sign in with gh auth login`. GitHub refuses a request for changes on your own pull request, so there it goes as a comment, and the account says so.
 
 ## What a code review costs and how long it takes — limit, ceiling, $5, two hours
 
 A run nobody set a limit for stops at **$5 and two hours**, or sooner where this conversation has less left; `/budget conversation` can lower that, and at a shell `--max-cost` and `--max-hours` set either. At 80% of its dollar ceiling it stops starting new reviewers and finishes with what it has, and its account says it covers part of the change.
 
-It keeps three minutes of its time ceiling back to write its review. **A review its time ceiling cuts still reports**, and says so in its second line: `It reached its time ceiling of 2h while reviewing, so the reviewers still running were stopped and their parts of the change were not reviewed.` A run that reaches a ceiling before it has any review ends `pr reached the run's dollar ceiling before it finished, so it has no review` (or `time ceiling`).
+It keeps three minutes of its time ceiling back to write its review. **A review its time ceiling cuts still reports**, and says so in its second line: `It reached its time ceiling of 2h while reviewing, so the reviewers still running were stopped and their parts of the change were not reviewed.` A run that reaches a ceiling before it has any review says `it reached the run's dollar ceiling before it finished, so it has no review` (or `time ceiling`).
 
 **Which models.** From the chat, the conversation's working seat reads the code and its light seat makes the single structured calls; a model you name for the hand-off reads the code instead. At a shell, `--model` and `--light` name them, else the profile's work seat does both.
 

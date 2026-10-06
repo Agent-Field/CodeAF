@@ -71,9 +71,13 @@ var _ delegate.Recorder = (*testHost)(nil)
 type fakeSessions struct {
 	cost   float64
 	failed string
+	err    error
 }
 
 func (f *fakeSessions) Harness(context.Context, string, map[string]any, any, secappx.HarnessOptions) (*secappx.HarnessResult, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
 	if f.failed != "" {
 		return &secappx.HarnessResult{IsError: true, ErrorMessage: f.failed}, nil
 	}
@@ -345,7 +349,7 @@ func TestFailuresEndByTheirCause(t *testing.T) {
 	}{
 		{agentsession.ErrCeiling, delegate.StatusBudget, "dollar ceiling"},
 		{orch.ErrBadInput, delegate.StatusFail, "could not review o/r#7"},
-		{errors.New("boom"), delegate.StatusFail, "did not finish: boom"},
+		{errors.New("boom"), delegate.StatusFail, "boom"},
 	} {
 		r, _ := testReviewer(&fakeSessions{}, func(context.Context, orch.Deps) (schemas.ReviewResult, error) {
 			return schemas.ReviewResult{}, tc.err
@@ -432,3 +436,25 @@ func TestPlainWordsKeepsCodeSpans(t *testing.T) {
 }
 
 func appxOptions() appx.HarnessOptions { return appx.HarnessOptions{Label: "reviewer"} }
+
+// TestASessionErrorIsOneFailedReviewer: an error the session loop answers for
+// one session — a reply with no choices — is that reviewer failing, which the
+// pipeline degrades and counts, not the end of the review; only the run's
+// ceiling, a refused key or a stop ends every call.
+func TestASessionErrorIsOneFailedReviewer(t *testing.T) {
+	ctx := context.Background()
+	review := &app{sessions: &fakeSessions{err: errors.New("the model's reply has no choices")}}
+	result, err := review.Harness(ctx, "review", nil, nil, appxOptions())
+	if err != nil || result == nil || !result.IsError || result.ErrorMessage != "the model's reply has no choices" {
+		t.Errorf("result %+v, err %v: want a failed result and no error", result, err)
+	}
+	if stats := review.stats(); stats.SessionFailed != 1 || stats.SessionTotal != 1 {
+		t.Errorf("stats = %+v", stats)
+	}
+	for _, ends := range []error{agentsession.ErrCeiling, &agentsession.RefusedError{Code: 401, Message: "bad key"}, context.Canceled} {
+		review := &app{sessions: &fakeSessions{err: ends}}
+		if _, err := review.Harness(ctx, "review", nil, nil, appxOptions()); err == nil {
+			t.Errorf("%v did not end the run", ends)
+		}
+	}
+}
