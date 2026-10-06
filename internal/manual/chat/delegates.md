@@ -97,6 +97,13 @@ first in the message, or its name right after with, via, using, use, give, hand,
 have, let, ask, get or want. A name in passing asks nothing: "fix senior-dev's typo in
 this file" or "fix the line senior-dev changed in this file" stays here.
 
+**review is heard by its work, not its word.** "review" is a word you use for much
+else, so the word alone names nothing: "review this function" stays here. `/review`
+always asks for it, and so does a message that points at a pull request (PR, pull
+request, its link, `owner/repo#123`) and asks for it to be looked over: "review PR
+123", "take a look at my PR". Its turn-back then says which work was heard:
+``the person asked for a code review of a GitHub pull request, which review does: …``.
+
 **A commit, an undo or a revert stays here, whatever it names.** "revert senior-dev's
 commit", "commit senior-dev's changes" or "revert this commit with senior-dev" is done in
 the conversation, and a proposal for it is refused: a program works on a branch of its

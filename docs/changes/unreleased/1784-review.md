@@ -7,6 +7,7 @@ invalidates:
   - "sec and senior-dev were the only programs codeaf carries. There are three: review (`/review`, `codeaf review`, `via: \"review\"`) is the third, and it changes no files."
   - "pr-af was a separate AgentField node with its own keys and a coding-agent binary per reviewer. It is copied into codeaf at pr-af's tag codeaf-absorb (b70667e) as internal/praf, runs only through codeaf on the shared agent sessions (internal/agentsession), and is frozen in its own repository."
   - "A program codeaf carried never posted anything outside the machine. review posts a review it wrote to its pull request, but only as its own run (`/review post <report>`), which the chat proposes after the person says yes."
+  - "Typing a program's name as a word asked for it. A program whose name is an everyday word (`Delegate.Asked`) is heard by its command and its work instead: `/review` and \"take a look at PR 123\" ask for review, and \"review this function\" does not."
   - "The fixed and lean prefix caps were 57,584 and 49,819 bytes and SIZE-BUDGET was 71,363,000. They are 57,787, 50,022 and 72,395,784, raised by exactly what review measured (PERF.md)."
 ---
 

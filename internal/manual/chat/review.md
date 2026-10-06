@@ -21,7 +21,7 @@ In the chat, type `/review` and the pull request, then anything the reviewers sh
 
 The pull request can be its link, `owner/repo#123`, or `#123` when the conversation's folder is a checkout whose `origin` is on GitHub. Everything else in the brief goes to every reviewer as guidance. It starts at once, shows on the rail which stage it is in, and can be stopped.
 
-**Asking in words works too.** "Review PR 123 in owner/repo" makes the chat propose the work with `via: "review"`; its brief is the pull request and the focus, and that is all it is handed.
+**Asking in words works too.** "Review PR 123 in owner/repo" or "take a look at my PR" makes the chat propose the work with `via: "review"`; its brief is the pull request and the focus, and that is all it is handed. The word "review" alone does not ask for it — "review this function" stays in the conversation — because it is heard by what you ask for, a look over a pull request, and by `/review`.
 
 At a shell, `codeaf review <pull request> [focus]` reviews it from the folder you are in, or the one `--dir` names. `--max-cost` and `--max-hours` set its ceilings; `codeaf review run --help` lists every flag.
 

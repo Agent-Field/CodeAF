@@ -61,6 +61,10 @@ var Program = delegate.Delegate{
 	// composed brief's quoted conversation could name some other pull request.
 	Words: true,
 	Args:  "[<pull request>] [what to focus on] | post <report>",
+	// ITS NAME IS AN EVERYDAY WORD, SO THE CHAT HEARS ITS WORK INSTEAD
+	// (asked.go): `/review` and "take a look at PR 123" ask for it, and
+	// "review this function" does not.
+	Asked: asksForReview,
 	// A TYPED RUN IS TITLED BY WHAT IT REVIEWS, because its brief is a link or
 	// a few words that say little as a title.
 	Title:      title,
