@@ -372,6 +372,55 @@ func TestTeamOverlayClearChipUsesNoneTransition(t *testing.T) {
 	}
 }
 
+func TestTeamOverlayClearChipTracksHoverAboveOpenMenu(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.openTeamMenu()
+	menuFrame(t, a)
+	for _, span := range []hudSpan{a.wall.chip, a.wall.chipClear} {
+		_, _ = a.Update(tea.MouseMotionMsg{X: span.from, Y: tabStripRow})
+		_, _ = a.Update(pointerMsg{})
+		menuFrame(t, a)
+		if a.hot != (hoverAt{kind: hoverTab, index: span.from}) {
+			t.Fatalf("open menu suppressed chip hover: got %+v, want column %d; menu %v", a.hot, span.from, a.teamMenu.on)
+		}
+	}
+	hit := menuHit(t, a, teamMenuNone, "")
+	_, _ = a.Update(tea.MouseMotionMsg{X: hit.x0 + 1, Y: hit.y0})
+	_, _ = a.Update(pointerMsg{})
+	if a.hot != (hoverAt{}) || a.teamMenu.hover != hit.ref() {
+		t.Fatal("menu row retained stale clear-button hover")
+	}
+}
+
+func TestTeamOverlayClearChipRestoresOrdinaryConversationAndDrafts(t *testing.T) {
+	a, harbor, orbit := menuApp(t)
+	ordinary := a.frontTabKey()
+	a.input.insert("ordinary draft")
+	// Re-entering an overlay saves the actual ordinary viewport and selection.
+	a.teamActivate("")
+	wantView := tabViewport{from: 2, browsing: true}
+	a.tabView = wantView
+	a.teamActivate(orbit)
+	member := a.frontTabKey()
+	if member == ordinary {
+		t.Fatal("fixture did not switch to a different team conversation")
+	}
+	a.input.insert("member draft")
+	_ = a.tabsRow(a.width)
+	_, cmd := a.Update(tea.MouseClickMsg{X: a.wall.chipClear.from, Y: tabStripRow, Button: tea.MouseLeft})
+	drive(t, a, runCmd(cmd)...)
+	if a.frontTabKey() != ordinary || a.input.String() != "ordinary draft" || a.tabView != wantView || a.tp.sel != teamsAllRow {
+		t.Fatal("clear did not restore the saved ordinary conversation, draft and viewport")
+	}
+	drive(t, a, runCmd(a.teamActivate(orbit))...)
+	if a.frontTabKey() != member || a.input.String() != "member draft" {
+		t.Fatal("clearing discarded the team conversation's draft")
+	}
+	if len(mustTeam(t, a, harbor).Members) != 2 {
+		t.Fatal("clear changed unrelated membership")
+	}
+}
+
 // TestTeamMenuPrintsFrame prints the strip with the switcher open, on a
 // 120-column chat, for a person to look at.
 func TestTeamMenuPrintsFrame(t *testing.T) {

@@ -175,6 +175,16 @@ func (a *app) teamMenuPress(x, y int) tea.Cmd {
 
 // teamMenuMotion lights the row under the pointer.
 func (a *app) teamMenuMotion(x, y int) {
+	// The chip remains clickable above the modal, so its name and clear mark
+	// must keep their independent hover feedback while the menu is open.
+	hot := hoverAt{}
+	if hit, ok := a.tabAt(x, y); ok && (hit.kind == tabTeam || hit.kind == tabTeamClear) {
+		hot = hoverAt{kind: hoverTab, index: hit.span.from}
+	}
+	if hot != a.hot {
+		a.hot = hot
+		a.touch()
+	}
 	hit, _ := a.teamMenuHitAt(x, y)
 	if ref := hit.ref(); ref != a.teamMenu.hover {
 		a.teamMenu.hover = ref
