@@ -1,10 +1,10 @@
-// Package praf is pr: pr-af, the pull-request reviewer, as a program codeaf
+// Package praf is review: pr-af, the pull-request reviewer, as a program codeaf
 // carries and runs, and nothing else can. It takes one brief — a GitHub pull
 // request, or the current branch's — checks the pull request out in a folder
 // of its own, plans which parts of the change to review, sends a reviewer at
 // each, challenges what they found against the code, looks for gaps, and ends
 // with one review. It posts nothing; posting a review it wrote is a second,
-// separate run (`/pr post <report>`) that the person says yes to.
+// separate run (`/review post <report>`) that the person says yes to.
 //
 // IT WAS A SEPARATE PROGRAM. pr-af (github.com/Agent-Field/pr-af) was an
 // AgentField node: a control plane carried its calls, a router key it held
@@ -15,12 +15,12 @@
 // coverage passes, the prompts — is in the packages below this one and is its
 // own. What it runs on is codeaf's: the agent loop sec runs on too
 // (internal/agentsession), over the run's model API, with every limit and
-// figure pr's own (limits.go).
+// figure review's own (limits.go).
 //
 // IT HAS NO ENTRY POINT OF ITS OWN. What codeaf needs of it is a
 // delegate.Delegate value, and its command's body takes a delegate.Host, which
-// only codeaf makes: `/pr` in the chat, `codeaf pr` at a shell, and
-// `propose_task` with `via: "pr"`.
+// only codeaf makes: `/review` in the chat, `codeaf review` at a shell, and
+// `propose_task` with `via: "review"`.
 package praf
 
 import (
@@ -39,7 +39,7 @@ import (
 )
 
 // Name is the program's name: its chat command and its shell verb.
-const Name = "pr"
+const Name = "review"
 
 // Unattended is a review's own ceilings, which stop a run nobody is watching.
 // pr-af's served node capped a review at $2 and an hour, and real reviews of
@@ -48,13 +48,13 @@ const Name = "pr"
 // measured.
 var Unattended = delegate.Ceilings{CostUSD: 5, Hours: 2}
 
-// Program is pr as codeaf carries it.
+// Program is review as codeaf carries it.
 var Program = delegate.Delegate{
 	Name:    Name,
 	Summary: "a code review of a GitHub pull request",
-	Guide:   programguide.PR,
+	Guide:   programguide.Review,
 	Lands:   delegate.LandsText,
-	// A BARE `/pr` REVIEWS THE CURRENT BRANCH'S PULL REQUEST, which is what a
+	// A BARE `/review` REVIEWS THE CURRENT BRANCH'S PULL REQUEST, which is what a
 	// person in a checkout of their own work means by it.
 	DefaultBrief: "current branch",
 	// ITS BRIEF IS A PULL REQUEST AND A FOCUS, however the run was asked for: a
@@ -69,8 +69,8 @@ var Program = delegate.Delegate{
 	// their pull request and mending is another program's work and more of
 	// their money, so the conversation offers both and waits.
 	FollowUp: "If it found anything, offer the person two next steps and wait for their answer: posting this review " +
-		"to the pull request as it stands (only after they say yes to posting, propose pr with the brief " +
-		"`post <the pr-report.json path from the account>`), or handing the blocking findings to senior-dev as " +
+		"to the pull request as it stands (only after they say yes to posting, propose review with the brief " +
+		"`post <the review-report.json path from the account>`), or handing the blocking findings to senior-dev as " +
 		"one task that fixes them in this folder when it is the pull request's checkout, naming which. " +
 		"Propose neither before they say yes to it.",
 	ModelFlag:  "model",
@@ -158,7 +158,7 @@ func run(ctx context.Context, host delegate.Host, o options, notes io.Writer) {
 	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			_, _ = fmt.Fprintf(notes, "[pr] panic: %v\n%s", recovered, debug.Stack())
+			_, _ = fmt.Fprintf(notes, "[review] panic: %v\n%s", recovered, debug.Stack())
 			host.Terminal(delegate.Ending{Status: delegate.StatusCrashed, Message: fmt.Sprintf("the review panicked: %v", recovered)})
 		}
 	}()

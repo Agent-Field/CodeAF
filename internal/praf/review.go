@@ -56,7 +56,7 @@ type reviewer struct {
 }
 
 // gitHub is the GitHub client a review uses: pr-af's own, and the one lookup
-// a bare `/pr` adds.
+// a bare `/review` adds.
 type gitHub interface {
 	github.Client
 	OpenPullRequest(ctx context.Context, owner, repo, head string) (int, error)
@@ -104,7 +104,7 @@ func defaultReviewer() reviewer {
 // old one must be before a later run removes it as left behind: no review
 // runs anywhere near a day.
 const (
-	checkoutPrefix = "codeaf-pr-"
+	checkoutPrefix = "codeaf-review-"
 	checkoutStale  = 24 * time.Hour
 )
 
@@ -166,7 +166,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		found, err := r.branchPR(ctx, host.Workspace(), gh)
 		if err != nil {
 			return delegate.Ending{Status: delegate.StatusFail,
-				Message: firstSentence(err.Error()) + "; name the pull request, such as /pr owner/repo#123",
+				Message: firstSentence(err.Error()) + "; name the pull request, such as /review owner/repo#123",
 				Reason:  fmt.Errorf("%w: %v", errNoBranchPR, err).Error()}
 		}
 		t = found
@@ -229,7 +229,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 	result, pr, err := r.review(reviewCtx, orch.Deps{App: review, GH: gh, NodeID: Name, Local: tracker, SpentUSD: spent}, in, cfg)
 	cost, sessionCount, callCount := sessions.Spent()
 	if err != nil {
-		_, _ = fmt.Fprintf(notes, "[pr] the review ended without a result: %v\n", err)
+		_, _ = fmt.Fprintf(notes, "[review] the review ended without a result: %v\n", err)
 		return failedReview(ctx, reviewCtx, t, err, cost)
 	}
 
@@ -271,7 +271,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 	}
 	files, err := writeReport(records, saved, run)
 	if err != nil {
-		_, _ = fmt.Fprintf(notes, "[pr] could not write the full report: %v\n", err)
+		_, _ = fmt.Fprintf(notes, "[review] could not write the full report: %v\n", err)
 	}
 	message := outcomeLine(result, run)
 	if run.cutAt != "" {
@@ -292,7 +292,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 // failedReview is the ending of a review the pipeline gave up on, by why.
 //
 // ITS SENTENCE IS THE REASON ALONE. codeaf says the program's name and how
-// it ended before it — `pr did not finish: …`, `pr stopped on its own
+// it ended before it — `review did not finish: …`, `review stopped on its own
 // ceiling: …` — so a sentence that said them again read twice.
 func failedReview(ctx, reviewCtx context.Context, t Target, err error, cost float64) delegate.Ending {
 	ending := delegate.Ending{CostUSD: cost, Reason: err.Error(), Status: delegate.StatusFail}

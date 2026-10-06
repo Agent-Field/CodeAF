@@ -7,7 +7,7 @@ package praf
 // dimension of the change and a lens choosing what to review do different
 // amounts of reading, so one limit for all either cut the one or let the
 // other wander; and the agent loop is shared with sec, so a limit tuned for
-// its agents must never become pr's. The owner's call (2026-10-06) is each
+// its agents must never become review's. The owner's call (2026-10-06) is each
 // program's own figures for each of its agents.
 //
 // THE FIGURES ARE A CHOICE OF DEPTH, NOT A MEASUREMENT. A live review's
@@ -54,10 +54,10 @@ const (
 // again, past the model API's own ladder of services.
 const retries = 2
 
-// sessionPolicy is how every one of pr's agent sessions reads and answers.
-// The figures are the ones its first live reviews ran on, said here as pr's
+// sessionPolicy is how every one of review's agent sessions reads and answers.
+// The figures are the ones its first live reviews ran on, said here as review's
 // own: agentsession has no defaults, so that nothing tuned for sec's agents
-// reaches pr's, or the reverse.
+// reaches review's, or the reverse.
 var sessionPolicy = agentsession.Policy{
 	// Asks for an answer of the right shape after one that was not.
 	FollowUps: 2,

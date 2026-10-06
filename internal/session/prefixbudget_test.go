@@ -561,12 +561,12 @@ const fixedPrefixTarget = 48_000
 // measures 57,584 bytes and the lean 49,819, 366 and 229 above their caps, and
 // both waivers rise by exactly that.
 //
-// 2026-10-06, pr (pr-af's code review), the third. Its guide (programguide.PR,
-// 197 bytes) and its item's frame are 206 bytes in both arms: the fixed prefix
-// measures 57,790 and the lean 50,025, and both waivers rise by exactly 206.
+// 2026-10-06, review (pr-af's code review), the third. Its guide (programguide.Review,
+// 190 bytes) and its item's frame are 203 bytes in both arms: the fixed prefix
+// measures 57,787 and the lean 50,022, and both waivers rise by exactly 203.
 const (
-	fixedPrefixWaiver = 9_790
-	leanPrefixWaiver  = 18_525
+	fixedPrefixWaiver = 9_787
+	leanPrefixWaiver  = 18_522
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
@@ -692,7 +692,7 @@ const leanWindow = 16_000
 // none, while this budget must still weigh the Unix shipping maximum.
 func prefixPrograms() []delegate.Delegate {
 	return []delegate.Delegate{
-		{Name: "pr", Guide: programguide.PR, Lands: delegate.LandsText},
+		{Name: "review", Guide: programguide.Review, Lands: delegate.LandsText},
 		{Name: "sec", Guide: programguide.Sec, Lands: delegate.LandsText},
 		{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree},
 	}

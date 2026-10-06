@@ -1,7 +1,7 @@
 package praf
 
 // The brief: which pull request to review and what to weigh, or which saved
-// review to post. `/pr` is handed its brief words alone (Delegate.Words), so
+// review to post. `/review` is handed its brief words alone (Delegate.Words), so
 // these are the person's own words or the model's few words for them.
 
 import (
@@ -68,7 +68,7 @@ type Request struct {
 }
 
 // currentBranchWords are the briefs that mean "this branch's pull request" in
-// so many words, which a bare `/pr` runs (DefaultBrief) and which say nothing
+// so many words, which a bare `/review` runs (DefaultBrief) and which say nothing
 // for the reviewers to weigh.
 var currentBranchWords = map[string]bool{
 	"current branch": true, "this branch": true, "the current branch": true,

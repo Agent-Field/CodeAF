@@ -194,7 +194,7 @@ func TestCrewFlagsKeepTheCrewsSpelling(t *testing.T) {
 	if got != "--model c/d" {
 		t.Errorf("asked crew flags = %q, want the first model asked for", got)
 	}
-	fs := flag.NewFlagSet("pr run", flag.ContinueOnError)
+	fs := flag.NewFlagSet("review run", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	runCommand.Bind(fs)
 	if err := fs.Parse(crewFlags(delegate.Crew{Hands: "a/b", Light: "c/d"})); err != nil || fs.NArg() != 0 {
@@ -205,9 +205,9 @@ func TestCrewFlagsKeepTheCrewsSpelling(t *testing.T) {
 func TestTitles(t *testing.T) {
 	for brief, want := range map[string]string{
 		"https://github.com/o/r/pull/7 focus on retries": "Code review of o/r#7",
-		"o/r#9":                  "Code review of o/r#9",
-		"current branch":         "Code review of this branch's pull request",
-		"post /x/pr-report.json": "Posting a code review to GitHub",
+		"o/r#9":                      "Code review of o/r#9",
+		"current branch":             "Code review of this branch's pull request",
+		"post /x/review-report.json": "Posting a code review to GitHub",
 	} {
 		if got := title(brief); got != want {
 			t.Errorf("title(%q) = %q, want %q", brief, got, want)
@@ -296,7 +296,7 @@ func TestABareReviewFindsTheBranchsPullRequest(t *testing.T) {
 		return Target{}, errors.New("the branch fix-it has no open pull request on o/r")
 	}
 	end = runReview(context.Background(), newTestHost(t), ReadBrief("", nil), defaults(), io.Discard, r)
-	if end.Status != delegate.StatusFail || !strings.Contains(end.Message, "has no open pull request") || !strings.Contains(end.Message, "/pr owner/repo#123") {
+	if end.Status != delegate.StatusFail || !strings.Contains(end.Message, "has no open pull request") || !strings.Contains(end.Message, "/review owner/repo#123") {
 		t.Errorf("ending = %q %q", end.Status, end.Message)
 	}
 }
@@ -467,19 +467,19 @@ func TestASessionErrorIsOneFailedReviewer(t *testing.T) {
 
 func TestSweepRemovesOnlyStaleCheckouts(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"codeaf-pr-old", "codeaf-pr-new", "something-else"} {
+	for _, name := range []string{"codeaf-review-old", "codeaf-review-new", "something-else"} {
 		if err := os.MkdirAll(filepath.Join(dir, name), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
 	old := time.Now().Add(-48 * time.Hour)
-	for _, name := range []string{"codeaf-pr-old", "something-else"} {
+	for _, name := range []string{"codeaf-review-old", "something-else"} {
 		if err := os.Chtimes(filepath.Join(dir, name), old, old); err != nil {
 			t.Fatal(err)
 		}
 	}
 	sweepCheckouts(dir, time.Now().Add(-checkoutStale))
-	for name, want := range map[string]bool{"codeaf-pr-old": false, "codeaf-pr-new": true, "something-else": true} {
+	for name, want := range map[string]bool{"codeaf-review-old": false, "codeaf-review-new": true, "something-else": true} {
 		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
 			t.Errorf("%s: present = %v, want %v", name, err == nil, want)
 		}
@@ -512,7 +512,7 @@ func TestEachAgentHasItsOwnLimits(t *testing.T) {
 	if got := overridden(secappx.HarnessOptions{Label: reasoners.LabelLens}); got != (agentsession.Limits{Turns: 7, Wall: time.Minute}) {
 		t.Errorf("--max-turns and --session-wall do not override: %+v", got)
 	}
-	fs := flag.NewFlagSet("pr run", flag.ContinueOnError)
+	fs := flag.NewFlagSet("review run", flag.ContinueOnError)
 	runCommand.Bind(fs)
 	if fs.Lookup("max-turns").DefValue != "0" || fs.Lookup("session-wall").DefValue != "0s" {
 		t.Error("the overrides are set by default")
@@ -528,12 +528,12 @@ func TestABarePostAsksForTheReportAndReviewsNothing(t *testing.T) {
 		t.Errorf("hello = %q, want the post stage alone", host.hello)
 	}
 	if len(host.endings) != 1 || host.endings[0].Status != delegate.StatusFail ||
-		host.endings[0].Message != "nothing was posted: name the review to post: the pr-report.json path its account gave" {
+		host.endings[0].Message != "nothing was posted: name the review to post: the review-report.json path its account gave" {
 		t.Errorf("endings = %+v", host.endings)
 	}
 }
 
-// --sessions below one is refused in pr's own words, before it looks for a
+// --sessions below one is refused in review's own words, before it looks for a
 // pull request or spends anything.
 func TestTooFewSessionsIsRefusedBeforeAnythingRuns(t *testing.T) {
 	host := newTestHost(t)

@@ -11,5 +11,5 @@ import (
 
 // carried is every program this build carries on a unix: senior-dev, whose
 // engine lives in internal/seniordev; sec, sec-af's auditor, in
-// internal/secaf; and pr, pr-af's reviewer, in internal/praf.
+// internal/secaf; and review, pr-af's reviewer, in internal/praf.
 var carried = []delegate.Delegate{seniordev.Program, secaf.Program, praf.Program}

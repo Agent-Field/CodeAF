@@ -61,7 +61,7 @@ the worked example this one follows.
 - `github.NewClient` takes the token it is handed and reads no environment.
   GitHub App sign-in (`GITHUB_APP_ID`, its private key, `golang-jwt`) is not
   carried. `OpenPullRequest` is new: the open pull request from a branch, for a
-  bare `/pr`.
+  bare `/review`.
 - `LFS` smudging is always skipped (`GIT_LFS_SKIP_SMUDGE=1`): the review reads
   code.
 - The pipeline's progress prints go to stderr; stdout is the program's record
@@ -75,4 +75,4 @@ the worked example this one follows.
   (internal/praf/limits.go): 10 to 30 turns and 5 to 15 minutes, where
   pr-af's harness allowed every agent 50 turns. `--max-turns` and
   `--session-wall` replace every agent's own for one run. The limits are
-  pr's alone; the shared agent loop holds none of its own.
+  review's alone; the shared agent loop holds none of its own.

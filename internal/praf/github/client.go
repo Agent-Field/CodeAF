@@ -444,7 +444,7 @@ func isRetryablePostReviewError(err error) bool {
 
 // OpenPullRequest answers the number of the open pull request into owner/repo
 // whose head is head (`owner:branch`), or 0 when there is none. codeaf asks it
-// for a bare `/pr`, which reviews the current branch's pull request.
+// for a bare `/review`, which reviews the current branch's pull request.
 func (c *client) OpenPullRequest(ctx context.Context, owner, repo, head string) (int, error) {
 	headers, err := c.headersForRepo(ctx, owner, repo)
 	if err != nil {

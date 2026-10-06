@@ -20,8 +20,8 @@ func TestReadBrief(t *testing.T) {
 		{"current branch", Request{}},
 		{"", Request{}},
 		{"look hard at the retries", Request{Focus: "look hard at the retries"}},
-		{"post /records/pr-report.json", Request{Posting: true, Post: "/records/pr-report.json"}},
-		{"Post `/a b/pr-report.json`", Request{Posting: true, Post: "/a b/pr-report.json"}},
+		{"post /records/review-report.json", Request{Posting: true, Post: "/records/review-report.json"}},
+		{"Post `/a b/review-report.json`", Request{Posting: true, Post: "/a b/review-report.json"}},
 		{"post", Request{Posting: true}},
 	} {
 		if got := ReadBrief(tc.brief, origin); got != tc.want {

@@ -1,6 +1,6 @@
 package praf
 
-// Posting a review pr wrote: `/pr post <report>`, a run of its own that the
+// Posting a review it wrote: `/review post <report>`, a run of its own that the
 // conversation proposes only after the person says yes to posting
 // (Program.FollowUp).
 //
@@ -24,12 +24,12 @@ import (
 	"github.com/Agent-Field/codeaf/internal/praf/schemas"
 )
 
-// readSaved reads a saved review: the pr-report.json path, or the record
+// readSaved reads a saved review: the review-report.json path, or the record
 // folder that holds one.
 func readSaved(path string) (Saved, string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return Saved{}, "", errors.New("name the review to post: the pr-report.json path its account gave")
+		return Saved{}, "", errors.New("name the review to post: the review-report.json path its account gave")
 	}
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
 		path = filepath.Join(path, reportJSON)
@@ -40,11 +40,11 @@ func readSaved(path string) (Saved, string, error) {
 	}
 	var saved Saved
 	if err := json.Unmarshal(data, &saved); err != nil {
-		return Saved{}, path, fmt.Errorf("%s is not a review pr wrote: %w", path, err)
+		return Saved{}, path, fmt.Errorf("%s is not a report /review wrote: %w", path, err)
 	}
 	switch pr := saved.PullRequest; {
 	case saved.Program != Name:
-		return Saved{}, path, fmt.Errorf("%s is not a review pr wrote", path)
+		return Saved{}, path, fmt.Errorf("%s is not a report /review wrote", path)
 	case pr.Owner == "" || pr.Repo == "" || pr.Number <= 0:
 		return Saved{}, path, fmt.Errorf("the review at %s names no pull request", path)
 	case pr.HeadSHA == "":

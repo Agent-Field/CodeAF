@@ -21,8 +21,8 @@ import (
 
 // Report file names in the record folder: the program's own name on each.
 const (
-	reportMarkdown = "pr-report.md"
-	reportJSON     = "pr-report.json"
+	reportMarkdown = "review-report.md"
+	reportJSON     = "review-report.json"
 )
 
 // accountFindings is how many findings the account lists one per line; the
@@ -32,9 +32,9 @@ const accountFindings = 12
 // evidenceCap bounds one finding's quoted evidence in the report.
 const evidenceCap = 1200
 
-// Saved is the review as pr-report.json keeps it: the pull request it is of,
+// Saved is the review as review-report.json keeps it: the pull request it is of,
 // down to the commit that was reviewed, and the review pr-af built, including
-// the GitHub review a later `/pr post` sends as it stands.
+// the GitHub review a later `/review post` sends as it stands.
 type Saved struct {
 	Program     string               `json:"program"`
 	PullRequest SavedPullRequest     `json:"pull_request"`
@@ -196,7 +196,7 @@ func severityCounts(bySeverity map[string]int) string {
 // page); it is for reading here.
 func markdownReport(review schemas.ReviewResult, run runFacts) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# pr review of %s\n\n", run.target)
+	fmt.Fprintf(&b, "# Code review of %s\n\n", run.target)
 	if url := run.target.URL(); url != "" {
 		fmt.Fprintf(&b, "%s\n\n", url)
 	}
