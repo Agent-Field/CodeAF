@@ -26,8 +26,19 @@ const (
 	sourceSnapshotTimeout  = 2500 * time.Millisecond
 )
 
+const (
+	// sourceSnapshotSubmoduleDepth bounds how deep a nested submodule tree is
+	// followed. Beyond it the submodule is UNKNOWN rather than a constant, so
+	// two trees can never share an identity the reader could not actually read.
+	sourceSnapshotSubmoduleDepth = 4
+)
+
 var (
 	errSnapshotCap = errors.New("source snapshot exceeded its bound")
+	// errSubmoduleUnknown is a submodule directory that IS a git work tree but
+	// whose commit, listing or content could not be read. It propagates the whole
+	// snapshot to UNKNOWN rather than collapsing to a constant two trees share.
+	errSubmoduleUnknown = errors.New("submodule snapshot could not be read")
 	// errSnapshotRace is the metadata mismatch between a file's stat and the
 	// read of its bytes: the file was rewritten underneath the capture. It is a
 	// DISTINCT error so the caller can report the honest unknown rather than
@@ -74,7 +85,7 @@ func (a *Agent) captureSourceSnapshot(ctx context.Context) sourceSnapshot {
 	if err != nil || head == "" {
 		return sourceSnapshot{Identity: "unknown", Unknown: true}
 	}
-	first, err := gitCapture(bounded, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	first, err := gitCapture(bounded, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none")
 	if err != nil {
 		return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
 	}
@@ -91,7 +102,7 @@ func captureCleanSnapshot(ctx context.Context, root, head string) sourceSnapshot
 	if err != nil || strings.TrimSpace(head2) != head {
 		return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
 	}
-	second, err := gitCapture(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	second, err := gitCapture(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none")
 	if err != nil || len(second) != 0 {
 		return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
 	}
@@ -104,7 +115,7 @@ func captureDirtySnapshot(ctx context.Context, root, head, first string) sourceS
 	if len(first) > sourceSnapshotMaxBytes {
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Truncated: true}
 	}
-	entries, err := snapshotEntries(ctx, first, root)
+	entries, err := snapshotEntries(ctx, first, root, 0)
 	if err != nil {
 		truncated := errors.Is(err, errSnapshotCap)
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Truncated: truncated, Unknown: !truncated}
@@ -114,7 +125,7 @@ func captureDirtySnapshot(ctx context.Context, root, head, first string) sourceS
 	if err != nil || strings.TrimSpace(head2) != head {
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Unknown: true}
 	}
-	second, err := gitCapture(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	second, err := gitCapture(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none")
 	if err != nil || first != second {
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Unknown: true}
 	}
@@ -126,7 +137,7 @@ func captureDirtySnapshot(ctx context.Context, root, head, first string) sourceS
 // containing the separator cannot forge another entry's identity. Rename and
 // copy entries emit a second path field, which is consumed here and hashed as
 // its own component.
-func snapshotEntries(ctx context.Context, raw string, root string) ([]string, error) {
+func snapshotEntries(ctx context.Context, raw string, root string, depth int) ([]string, error) {
 	fields := strings.Split(raw, "\x00")
 	out := make([]string, 0, len(fields))
 	budget := int64(sourceSnapshotMaxBytes)
@@ -149,7 +160,7 @@ func snapshotEntries(ctx context.Context, raw string, root string) ([]string, er
 				pair = fields[i]
 			}
 		}
-		first, used, err := snapshotContent(ctx, root, path, status, budget)
+		first, used, err := snapshotContentDepth(ctx, root, path, status, budget, depth)
 		if err != nil {
 			return nil, err
 		}
@@ -163,14 +174,22 @@ func snapshotEntries(ctx context.Context, raw string, root string) ([]string, er
 	return out, nil
 }
 
-// snapshotContent hashes the working-tree content of one changed path. A
-// symlink contributes its target, a directory contributes its kind, a deleted
-// tracked path contributes "absent" (its absence is proven by the D status),
-// and a regular file is read up to the per-file bound. A path that is missing
-// without a deletion status, unreadable from a permission error, or that
-// changes size or mtime between its stat and its read is a race and reports an
-// error rather than a guess.
+// snapshotContent hashes the working-tree content of one changed path. It is the
+// depth-zero door onto [snapshotContentDepth].
 func snapshotContent(ctx context.Context, root, rel, status string, remaining int64) (string, int64, error) {
+	return snapshotContentDepth(ctx, root, rel, status, remaining, 0)
+}
+
+// snapshotContentDepth hashes one changed path. A symlink contributes its
+// target, a directory contributes the submodule identity it can be proven to
+// have (or the constant kind only when it is not a work tree at all), a deleted
+// tracked path contributes "absent" (its absence is proven by the D status), and
+// a regular file is read up to the per-file bound. A path that is missing
+// without a deletion status, unreadable from a permission error, or that changes
+// size or mtime between its stat and its read is a race and reports an error
+// rather than a guess. A submodule whose own tree cannot be read propagates
+// UNKNOWN rather than a constant two different trees could share.
+func snapshotContentDepth(ctx context.Context, root, rel, status string, remaining int64, depth int) (string, int64, error) {
 	if ctx.Err() != nil {
 		return "", 0, errSnapshotCap
 	}
@@ -184,12 +203,17 @@ func snapshotContent(ctx context.Context, root, rel, status string, remaining in
 		return snapshotSymlink(path)
 	case info.IsDir():
 		// A DIRTY GITLINK LOOKS THE SAME WHICHEVER COMMIT IS CHECKED OUT:
-		// porcelain stays ` M child`. Reading the submodule's own HEAD and
-		// listing makes two different commits different source identities.
-		if sub := submoduleIdentity(ctx, path); sub != "" {
-			return sub, int64(len(sub)), nil
+		// porcelain stays ` M child`. Reading the submodule's own HEAD and a
+		// CONTENT-AWARE listing makes two different trees different source
+		// identities; a submodule that is a work tree but unreadable is UNKNOWN.
+		sub, err := submoduleIdentity(ctx, path, depth)
+		if err != nil {
+			return "", 0, err
 		}
-		return "dir", 0, nil
+		if sub == "" {
+			return "dir", 0, nil
+		}
+		return sub, int64(len(sub)), nil
 	case !info.Mode().IsRegular():
 		return "special", 0, nil
 	}
@@ -244,22 +268,55 @@ func snapshotRegularFile(path string, info os.FileInfo, remaining int64) (string
 	return contextualHash(string(data)), int64(len(data)), nil
 }
 
-// submoduleIdentity reads a submodule directory's own commit and dirty state,
-// so a moved submodule tree is not certified as `dir`. It answers "" when the
-// directory is not a git work tree or its HEAD cannot be read, in which case
-// the caller keeps the constant `dir` identity and the comparison stays
-// conservative rather than guessing a commit.
-func submoduleIdentity(ctx context.Context, dir string) string {
+// submoduleIdentity reads a submodule directory's own commit and a
+// CONTENT-AWARE hash of its dirty overlay, so neither a moved commit nor a
+// second edit of an already-dirty file is certified as the same tree. It answers
+// "" (with a nil error) only when the directory is not a git work tree at all.
+// A directory that IS a work tree but whose commit, listing or changed content
+// cannot be read answers errSubmoduleUnknown, so the whole snapshot becomes
+// UNKNOWN rather than a constant two different trees could compare equal.
+func submoduleIdentity(ctx context.Context, dir string, depth int) (string, error) {
+	if depth >= sourceSnapshotSubmoduleDepth {
+		return "", errSubmoduleUnknown
+	}
 	head, err := gitCapture(ctx, dir, "rev-parse", "HEAD")
 	head = strings.TrimSpace(head)
 	if err != nil || head == "" {
-		return ""
+		return "", submoduleUnreadable(dir)
 	}
-	status, err := gitCapture(ctx, dir, "status", "--porcelain=v1", "-z")
+	status, err := gitCapture(ctx, dir, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none")
 	if err != nil {
-		return "submodule:" + head + ":unknown"
+		return "", errSubmoduleUnknown
 	}
-	return "submodule:" + head + ":" + contextualHash(status)[:16]
+	if len(status) == 0 {
+		return "submodule:" + head, nil
+	}
+	overlay, err := submoduleOverlay(ctx, status, dir, depth)
+	if err != nil {
+		return "", err
+	}
+	return "submodule:" + head + ":" + overlay[:16], nil
+}
+
+// submoduleUnreadable distinguishes a directory that is not a work tree at all
+// from one that is a work tree whose HEAD could not be read. The latter is
+// UNKNOWN; the former keeps the honest constant kind.
+func submoduleUnreadable(dir string) error {
+	if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+		return errSubmoduleUnknown
+	}
+	return nil
+}
+
+// submoduleOverlay hashes a submodule's own dirty listing the same bounded,
+// content-aware way the top-level overlay is hashed, recursing into nested
+// submodules. A nested tree that cannot be read fails the whole identity closed.
+func submoduleOverlay(ctx context.Context, raw, dir string, depth int) (string, error) {
+	entries, err := snapshotEntries(ctx, raw, dir, depth+1)
+	if err != nil {
+		return "", err
+	}
+	return contextualHash(strings.Join(entries, "\n")), nil
 }
 
 // readBounded reads at most limit bytes, so a file that grows after its stat

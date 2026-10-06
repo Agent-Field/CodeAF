@@ -65,9 +65,10 @@ func TestVendorPathlibReadRecognition(t *testing.T) {
 	if !alternativeEligible(delegatedBashCall("s", vendorReadBytes), "bash", "bash: "+vendorFailed, vendorGoal, "/w") {
 		t.Fatal("the live pathlib read_bytes calculation was not eligible as the alternative")
 	}
-	// The goal-file link also sees the actual operand, not just the token link.
-	if !sharesGoalNamedFileOperand(vendorReadBytes, vendorGoal, "/w") {
-		t.Fatal("the pathlib read_bytes operand did not ground the goal-file pairing")
+	// The fallback tie also sees the SHARED ACTUAL operand, not just the token
+	// link: the failure and this success both read vendor.csv.
+	if !sharesActualInputOperand(vendorFailed, vendorReadBytes, "/w") {
+		t.Fatal("the pathlib read_bytes operand did not ground the shared-operand pairing")
 	}
 	if got := shellSegmentOperands(vendorReadBytes); len(got) != 1 || got[0] != "vendor.csv" {
 		t.Fatalf("the reader did not extract exactly the read operand: %v", got)
@@ -228,4 +229,22 @@ raw = Path('` + filepath.Join(wrongDir, "vendor.csv") + `').read_bytes()"`
 
 	t.Run("root", func(t *testing.T) { run(t, false) })
 	t.Run("delegated", func(t *testing.T) { run(t, true) })
+}
+
+// sharesGoalNamedFileOperand is the TEST-facing reader for the goal-file tie: it
+// answers whether a success actually USES a file the turn's goal names, by the
+// same lexical identity the eligibility fallback resolves. Production no longer
+// grounds a pairing on this alone (see [goalFileFallbackTie]); the tests keep it
+// to pin the resolution of the goal's files across workspaces.
+func sharesGoalNamedFileOperand(successBody, goal, workspace string) bool {
+	want := goalFileIdentities(goal, workspace)
+	if len(want) == 0 {
+		return false
+	}
+	for id := range shellUsedFileIdentities(successBody, workspace) {
+		if want[id] {
+			return true
+		}
+	}
+	return false
 }

@@ -69,32 +69,22 @@ func dependencyIdentity(d ContextualDependencyObservation) string {
 	return fmt.Sprintf("dependency_%x", sha256.Sum256(encoded))
 }
 
+// validateContextualDependency normalizes the owners and puts an observation
+// through every field check before minting its exact endpoint identity. The
+// checks are separate functions so each reads as the one question it answers.
 func validateContextualDependency(d ContextualDependencyObservation) (ContextualDependencyObservation, error) {
 	d.ProducerOwner = normalizeOwner(d.ProducerOwner)
 	d.ConsumerOwner = normalizeOwner(d.ConsumerOwner)
-	if !dependencyProject(d.ProducerOwner) || !dependencyProject(d.ConsumerOwner) || d.ProducerOwner == d.ConsumerOwner {
-		return d, fmt.Errorf("%w: dependency requires two distinct proven project owners", ErrInvalid)
-	}
-	for _, path := range []string{d.ProducerPath, d.ConsumerPath} {
-		if !filepath.IsAbs(path) || filepath.Clean(path) != path || len(path) > 4096 {
-			return d, fmt.Errorf("%w: dependency paths must be canonical absolute paths", ErrInvalid)
+	for _, check := range []func(ContextualDependencyObservation) error{
+		validateDependencyOwners,
+		validateDependencyPaths,
+		validateDependencyText,
+		validateDependencyHashes,
+		validateDependencyReceipts,
+	} {
+		if err := check(d); err != nil {
+			return d, err
 		}
-	}
-	if strings.TrimSpace(d.EntityID) == "" || len(d.EntityID) > 1024 || strings.TrimSpace(d.Assumption) == "" || len(d.Assumption) > 4096 {
-		return d, fmt.Errorf("%w: dependency requires a bounded exact entity and observed assumption", ErrInvalid)
-	}
-	if !dependencyHashValid(d.ProducerHash) || !dependencyHashValid(d.ConsumerHash) {
-		return d, fmt.Errorf("%w: dependency requires producer and consumer content hashes", ErrInvalid)
-	}
-	if len(d.ReceiptIDs) < 2 || len(d.ReceiptIDs) > 16 {
-		return d, fmt.Errorf("%w: dependency requires receipts for both reads", ErrInvalid)
-	}
-	seen := map[string]bool{}
-	for _, receipt := range d.ReceiptIDs {
-		if strings.TrimSpace(receipt) == "" || len(receipt) > 1024 || seen[receipt] {
-			return d, fmt.Errorf("%w: dependency receipts must be distinct and bounded", ErrInvalid)
-		}
-		seen[receipt] = true
 	}
 	identity := dependencyIdentity(d)
 	if d.ID != "" && d.ID != identity {
@@ -102,6 +92,60 @@ func validateContextualDependency(d ContextualDependencyObservation) (Contextual
 	}
 	d.ID = identity
 	return d, nil
+}
+
+// validateDependencyOwners requires two distinct, proven project owners: an
+// observed edge is between two projects, never a project and itself.
+func validateDependencyOwners(d ContextualDependencyObservation) error {
+	if !dependencyProject(d.ProducerOwner) || !dependencyProject(d.ConsumerOwner) || d.ProducerOwner == d.ConsumerOwner {
+		return fmt.Errorf("%w: dependency requires two distinct proven project owners", ErrInvalid)
+	}
+	return nil
+}
+
+// validateDependencyPaths requires canonical absolute endpoints, so a relative
+// or uncleaned spelling can never stand in for another file.
+func validateDependencyPaths(d ContextualDependencyObservation) error {
+	for _, path := range []string{d.ProducerPath, d.ConsumerPath} {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path || len(path) > 4096 {
+			return fmt.Errorf("%w: dependency paths must be canonical absolute paths", ErrInvalid)
+		}
+	}
+	return nil
+}
+
+// validateDependencyText requires a bounded exact entity and an observed
+// assumption; an empty or oversized one is not an observation.
+func validateDependencyText(d ContextualDependencyObservation) error {
+	if strings.TrimSpace(d.EntityID) == "" || len(d.EntityID) > 1024 || strings.TrimSpace(d.Assumption) == "" || len(d.Assumption) > 4096 {
+		return fmt.Errorf("%w: dependency requires a bounded exact entity and observed assumption", ErrInvalid)
+	}
+	return nil
+}
+
+// validateDependencyHashes requires both content hashes, so an edge always names
+// the exact bytes each side was observed against.
+func validateDependencyHashes(d ContextualDependencyObservation) error {
+	if !dependencyHashValid(d.ProducerHash) || !dependencyHashValid(d.ConsumerHash) {
+		return fmt.Errorf("%w: dependency requires producer and consumer content hashes", ErrInvalid)
+	}
+	return nil
+}
+
+// validateDependencyReceipts requires two to sixteen distinct, bounded receipts:
+// both reads must be proven and no receipt may forge a second one.
+func validateDependencyReceipts(d ContextualDependencyObservation) error {
+	if len(d.ReceiptIDs) < 2 || len(d.ReceiptIDs) > 16 {
+		return fmt.Errorf("%w: dependency requires receipts for both reads", ErrInvalid)
+	}
+	seen := map[string]bool{}
+	for _, receipt := range d.ReceiptIDs {
+		if strings.TrimSpace(receipt) == "" || len(receipt) > 1024 || seen[receipt] {
+			return fmt.Errorf("%w: dependency receipts must be distinct and bounded", ErrInvalid)
+		}
+		seen[receipt] = true
+	}
+	return nil
 }
 
 // ObserveContextualDependency accepts only a trusted successful-read adapter.

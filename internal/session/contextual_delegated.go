@@ -301,8 +301,15 @@ func jobOriginProjectKey(origin jobOrigin) string {
 	return projectKeyFromOwner(origin.Owner)
 }
 
+// delegatedSourceKey names one delegated attempt. It carries origin.Run beside
+// the task label: job ids restart per worker Agent, so two workers of one node
+// that share a turn and reuse a tool-call id must not persist the same source
+// key (the collision [delegatedOrigin.Run] exists to prevent). A success's
+// AlternativeOf is this same key, so the persisted pair names the worker too.
+// Records written before Run was added remain readable: the key is opaque, and
+// nothing parses it back apart.
 func delegatedSourceKey(origin delegatedOrigin, id string) string {
-	return contextualClip("delegated:"+origin.Session+":"+origin.Turn+":"+origin.Task+":"+id, 1024)
+	return contextualClip("delegated:"+origin.Session+":"+origin.Turn+":"+origin.Task+":"+origin.Run+":"+id, 1024)
 }
 
 // observe is the one call a worker makes. It carries the raw call and result

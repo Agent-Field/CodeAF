@@ -453,52 +453,83 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	if shellToolName(name) && shellMasksExit(body) {
 		return false
 	}
+	// AN UNRECOGNIZED WRAPPER OPTION IS NOT A PROGRAM. `command -Z grep` leaves
+	// the reader unable to say what ran, so the call is refused rather than
+	// falling through to judge the option (or the wrapped word) as the work.
+	if shellToolName(name) && shellWrapperUncertain(body) {
+		return false
+	}
 	if sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal, ws) {
 		return true
 	}
-	// A GOAL-NAMED FILE BINDS ONLY A REPLACEMENT OF THE SAME KIND OF PROGRAM.
-	// The goal may name several files; a parser-test failure and a later
-	// week.csv calculation are different work streams, so a success that merely
-	// opens ANOTHER goal-named file is refused rather than filed as the parser
-	// failure's alternative.
+	// THE SAME INTERPRETER IS NOT THE SAME WORK. A `python parser_test.py`
+	// failure is not answered by `python calc.py week.csv` merely because both
+	// run python. A success that shares no meaningful action token must stand on
+	// DEMONSTRATED work: the same ACTUAL input operand the failure used, or —
+	// only when the failure named no input file at all — the single file the
+	// turn's frozen goal names, actually used by the success. With several goal
+	// files named, nothing short of a shared actual operand ties them and the
+	// pairing fails CLOSED.
 	if !sameActionProgram(attemptActionBody(failedAction), body) {
 		return false
 	}
-	// THE REPLACEMENT MAY RUN A DIFFERENT COMMAND AND A DIFFERENT LIBRARY inside
-	// the same tool class. When the failed action and the success share no
-	// meaningful action token, the file the turn's frozen GOAL named is the tie:
-	// a success that actually USES that artifact is the observed way THIS work
-	// got done, not a command that merely happened to run next or one that only
-	// echoed the goal's words back.
-	return sharesGoalNamedFileOperand(body, goal, ws)
+	return goalFileFallbackTie(attemptActionBody(failedAction), body, goal, ws)
 }
 
-// sharesGoalNamedFileOperand answers whether an action actually USES a file the
-// turn's own goal named. Both sides resolve to the same lexical identity: the
-// goal's file is normalized against the frozen workspace and the success's file
-// against the EFFECTIVE directory of the segment that uses it, so `week.csv`
-// under the workspace is not `/other/project/week.csv`. A goal-named file the
-// success only mentions inside printed text, a comment, an echoed heredoc or a
-// check-only probe is not an operand use and never grounds the pairing. With no
-// known directory an absolute path can never be proven equal to a relative one,
-// so it is refused, and an alias reachable only through a symlink stays
-// ambiguous and is refused too.
-func sharesGoalNamedFileOperand(successBody, goal, workspace string) bool {
+// goalFileFallbackTie is the conservative last tie between a failure and a
+// success that share no meaningful action token. When the failure demonstrated
+// an input FILE, the later success must operate on that SAME file — a shared
+// actual operand, not a name the goal happened to mention — or it is refused.
+// Only a failure that named no input file at all falls back to the goal: a
+// success that actually USES a file the frozen goal names. That is the weaker
+// tie, and it is kept for the real pair whose failed import (`python -c 'import
+// pandas'`) touched no file while the goal named the artifact the success read.
+func goalFileFallbackTie(failedBody, successBody, goal, workspace string) bool {
+	if len(shellUsedFileIdentities(failedBody, workspace)) > 0 {
+		return sharesActualInputOperand(failedBody, successBody, workspace)
+	}
+	want := goalFileIdentities(goal, workspace)
+	if len(want) == 0 {
+		return false
+	}
+	used := shellUsedFileIdentities(successBody, workspace)
+	for id := range want {
+		if used[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// sharesActualInputOperand answers whether the failed action and the success
+// actually USE the same file, by the lexical identity read at each side's own
+// effective directory. It is the one tie that stands on demonstrated work rather
+// than on a name a goal happened to mention.
+func sharesActualInputOperand(failedBody, successBody, workspace string) bool {
+	failed := shellUsedFileIdentities(failedBody, workspace)
+	if len(failed) == 0 {
+		return false
+	}
+	for id := range shellUsedFileIdentities(successBody, workspace) {
+		if failed[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// goalFileIdentities are the lexical identities of the files the turn's goal
+// names, resolved against the frozen workspace. Both the goal and the success
+// resolve the same way: `week.csv` under the workspace is not another project's
+// `week.csv`, and an alias reachable only through a symlink stays distinct.
+func goalFileIdentities(goal, workspace string) map[string]bool {
 	want := map[string]bool{}
 	for _, operand := range textFileOperands(goal) {
 		if id := lexicalFileIdentity(operand, workspace); id != "" {
 			want[id] = true
 		}
 	}
-	if len(want) == 0 {
-		return false
-	}
-	for id := range shellUsedFileIdentities(successBody, workspace) {
-		if want[id] {
-			return true
-		}
-	}
-	return false
+	return want
 }
 
 // sameActionProgram answers whether the failure and the success run the same
@@ -1162,7 +1193,59 @@ func shellMasksExit(body string) bool {
 	if shellTrivialTrailingMask(body) {
 		return true
 	}
+	// ANY PIPELINE MAY MASK ITS PRODUCER. Without `pipefail` the shell reports
+	// only the pipeline's LAST command's exit, so a failing producer piped into
+	// ANY consumer can still report zero; a listed set of "passive" consumers
+	// would only ever be one name behind. The pipeline is therefore refused
+	// unless the action itself sets `pipefail`.
+	if shellHasTopLevelPipe(body) && !shellPipefailEnabled(body) {
+		return true
+	}
 	return shellMaskedOperator(body)
+}
+
+// shellHasTopLevelPipe answers whether a body carries a single `|` — a real
+// pipeline — outside quotes and heredoc bodies. `||` and `|&` are not pipelines.
+func shellHasTopLevelPipe(body string) bool {
+	runes := []rune(body)
+	var quote rune
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch r {
+		case '\'', '"':
+			quote = r
+		case '<':
+			if end, ok := heredocChunkEnd(runes, i); ok {
+				i = end - 1
+			}
+		case '|':
+			if i+1 < len(runes) && (runes[i+1] == '|' || runes[i+1] == '&') {
+				i++
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// shellPipefailEnabled answers whether the action itself turns on pipefail, the
+// only reliable evidence that a pipeline's producer exit survives. Absent it the
+// pipeline is read conservatively as masking.
+func shellPipefailEnabled(body string) bool {
+	lower := strings.ToLower(body)
+	for _, marker := range []string{"set -o pipefail", "set -euo pipefail", "set -euxo pipefail", "-o pipefail"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // shellMaskedOperator answers whether the body carries a `||` fallback or a
@@ -1234,53 +1317,9 @@ func shellTrivialTrailingMask(body string) bool {
 			// with an operand is a real reader and is left as work.
 			return len(shellWords(segments[i])) == 1
 		}
-		// A PIPE INTO A PASSIVE CONSUMER REPORTS THE CONSUMER'S ZERO. Without
-		// pipefail, `go test ./x | wc -l` exits 0 even when the test run failed,
-		// so the trailing consumer's own zero proves nothing about the work.
-		if sep, ok := shellLastTopSeparator(body); ok && sep == '|' && shellPassiveConsumers[command[0]] {
-			return true
-		}
 		return false
 	}
 	return false
-}
-
-// shellPassiveConsumers are the pipeline tails that ignore what feeds them and
-// exit zero on their own: a pipe into one of these masks a failed producer.
-var shellPassiveConsumers = map[string]bool{
-	"wc": true, "head": true, "tail": true, "sort": true, "uniq": true,
-	"cut": true, "tr": true, "column": true,
-}
-
-// shellLastTopSeparator returns the last control separator in a body that is
-// not inside a quoted span, so a pipeline into a passive consumer can be told
-// from a `;`-separated sequence that merely ends in one.
-func shellLastTopSeparator(body string) (byte, bool) {
-	var quote byte
-	var last byte
-	for i := 0; i < len(body); i++ {
-		c := body[i]
-		if quote != 0 {
-			if c == '\\' {
-				i++
-				continue
-			}
-			if c == quote {
-				quote = 0
-			}
-			continue
-		}
-		switch c {
-		case '\'', '"', '`':
-			quote = c
-		case ';', '|', '&', '\n':
-			last = c
-			if i+1 < len(body) && body[i+1] == c {
-				i++
-			}
-		}
-	}
-	return last, last != 0
 }
 
 // receiptShowsFailure answers whether a SUCCESS receipt still carries an
@@ -3184,17 +3223,66 @@ var fileExtensionWords = map[string]bool{
 }
 
 // shellSegmentCommand returns the command word a shell segment runs, with
-// navigation, assignments and wrappers skipped so the real program is read. A
-// `git` or `plandb` segment also carries its subcommand. It is a small lexical
-// reader, not a shell parser.
+// navigation, assignments and wrappers normalized to the real program. A
+// recognized wrapper's OWN options are skipped by [shellSkipWrapperOptions]; an
+// option the reader does not recognize leaves the command nil, so the caller
+// refuses to learn the call ([shellWrapperUncertain]) rather than falling
+// through to judge an option as the program. A `git` or `plandb` segment also
+// carries its subcommand. It is a small lexical reader, not a shell parser.
 func shellSegmentCommand(segment string) []string {
 	fields := strings.Fields(segment)
+	at, uncertain, query := shellProgramIndex(fields)
+	if uncertain || at >= len(fields) {
+		return nil
+	}
+	if query {
+		// `command -v X` / `command -V X` only ASKS where X is; it is the same
+		// lookup the `which` verb is, whatever word follows.
+		return []string{"which"}
+	}
+	command := shellWordBase(strings.Trim(fields[at], "\"'`"))
+	if shellNavigationWord[command] {
+		return nil
+	}
+	words := []string{command}
+	if shellSubcommandCLIs[command] {
+		if j, sub := shellSubcommand(fields, at); sub != "" {
+			words = append(words, sub)
+			// `plandb task overview` / `plandb task notes` read the plan
+			// through a noun; the verb after `task` is what says whether it
+			// reads. A lifecycle verb (`task cancel`) is left as work.
+			if command == "plandb" && sub == "task" {
+				if _, verb := shellSubcommand(fields, j); verb != "" {
+					words = append(words, verb)
+				}
+			}
+		}
+	}
+	return words
+}
+
+// shellProgramIndex walks a segment's wrapper words and their recognized
+// options and answers the index of the real program word. uncertain is true when
+// a recognized wrapper carries an option the reader does not know, so the caller
+// refuses to learn the call rather than read the option as the program. A
+// navigation word still consumes its directory argument.
+func shellProgramIndex(fields []string) (int, bool, bool) {
+	query := false
 	for i := 0; i < len(fields); i++ {
 		word := strings.Trim(fields[i], "\"'`")
 		if word == "" || shellAssignment(word) {
 			continue
 		}
 		command := shellWordBase(word)
+		if spec, wrapper := shellWrapperSpecs[command]; wrapper {
+			next, asked, ok := shellSkipWrapperOptions(fields, i, spec)
+			if !ok {
+				return 0, true, false
+			}
+			query = query || asked
+			i = next - 1
+			continue
+		}
 		if shellCommandIgnored[command] {
 			// A NAVIGATION WORD CONSUMES ITS ARGUMENT. `cd <path>` names the
 			// directory the segment reads, not a program the segment runs; the
@@ -3206,23 +3294,86 @@ func shellSegmentCommand(segment string) []string {
 			}
 			continue
 		}
-		words := []string{command}
-		if shellSubcommandCLIs[command] {
-			if j, sub := shellSubcommand(fields, i); sub != "" {
-				words = append(words, sub)
-				// `plandb task overview` / `plandb task notes` read the plan
-				// through a noun; the verb after `task` is what says whether it
-				// reads. A lifecycle verb (`task cancel`) is left as work.
-				if command == "plandb" && sub == "task" {
-					if _, verb := shellSubcommand(fields, j); verb != "" {
-						words = append(words, verb)
-					}
-				}
-			}
-		}
-		return words
+		return i, false, query
 	}
-	return nil
+	return len(fields), false, query
+}
+
+// shellSkipWrapperOptions returns the index of the first word after one
+// wrapper's recognized options, or ok=false for an option it does not know
+// (including one whose argument is missing). A bare `--` ends the options.
+func shellSkipWrapperOptions(fields []string, i int, spec shellWrapperSpec) (int, bool, bool) {
+	query := false
+	for j := i + 1; j < len(fields); j++ {
+		word := strings.Trim(fields[j], "\"'`")
+		if word == "--" {
+			return j + 1, query, true
+		}
+		if word == "-" || !strings.HasPrefix(word, "-") {
+			return j, query, true
+		}
+		if spec.takesArgument[word] {
+			if j+1 >= len(fields) {
+				return 0, false, false
+			}
+			j++
+			continue
+		}
+		if !spec.flags[word] {
+			return 0, false, false
+		}
+		if spec.query[word] {
+			query = true
+		}
+	}
+	return len(fields), query, true
+}
+
+// shellWrapperUncertain answers whether a segment carries a recognized wrapper
+// with an option the reader does not know. Such a call is refused rather than
+// learned: the reader cannot tell what program ran.
+func shellWrapperUncertain(body string) bool {
+	for _, segment := range shellSegments(body) {
+		if _, uncertain, _ := shellProgramIndex(strings.Fields(segment)); uncertain {
+			return true
+		}
+	}
+	return false
+}
+
+// shellWrapperSpec is one recognized wrapper's own option vocabulary. An option
+// outside both sets makes the call unreadable on purpose — the reader refuses to
+// learn it rather than guess which word was the program.
+type shellWrapperSpec struct {
+	flags         map[string]bool
+	takesArgument map[string]bool
+	// query are the options that turn the wrapper into a LOOKUP of the wrapped
+	// name rather than a run of it (`command -v`).
+	query map[string]bool
+}
+
+// shellWrapperSpecs are the wrapper words normalized before the real program is
+// read. Only the options here are accepted: `command -p`/`-v`, `env -i`, and
+// `busybox -c` all peel to the program they wrap. An unknown option is not
+// silently treated as the program.
+var shellWrapperSpecs = map[string]shellWrapperSpec{
+	"command": {flags: shellOptionSet("-p", "-v", "-V"), query: shellOptionSet("-v", "-V")},
+	"busybox": {flags: shellOptionSet("-c")},
+	"env":     {flags: shellOptionSet("-i", "-0"), takesArgument: shellOptionSet("-u", "--unset", "-S", "--split-string", "-C", "--chdir")},
+	"sudo":    {flags: shellOptionSet("-n", "-E", "-H", "-S", "-k", "-b"), takesArgument: shellOptionSet("-u", "-g", "-p", "-C", "-T", "-D")},
+	"doas":    {flags: shellOptionSet("-n", "-s"), takesArgument: shellOptionSet("-u")},
+	"exec":    {flags: shellOptionSet("-l"), takesArgument: shellOptionSet("-a")},
+	"nohup":   {},
+	"time":    {flags: shellOptionSet("-p")},
+}
+
+// shellOptionSet is the set of one wrapper's recognized options.
+func shellOptionSet(options ...string) map[string]bool {
+	set := map[string]bool{}
+	for _, option := range options {
+		set[option] = true
+	}
+	return set
 }
 
 // shellSubcommand returns the index and word of the first non-flag,
@@ -3305,13 +3456,11 @@ func shellAssignment(word string) bool {
 }
 
 // shellCommandIgnored are the shell words skipped before the real program is
-// read: navigation, wrappers and variable setting, never a lookup itself.
+// read and that carry no options of their own: navigation and shell keywords.
+// The option-carrying wrappers live in [shellWrapperSpecs] instead, so their
+// flags are normalized rather than skipped blindly.
 var shellCommandIgnored = map[string]bool{
-	"cd": true, "chdir": true, "pushd": true, "popd": true, "sudo": true,
-	"doas": true, "env": true, "exec": true, "nohup": true, "time": true,
-	// `command grep` and `busybox grep` run the SAME lookup as the bare form;
-	// the wrapper must be peeled or the segment reads as an unknown program.
-	"command": true, "busybox": true,
+	"cd": true, "chdir": true, "pushd": true, "popd": true,
 	"then": true, "else": true, "done": true, "fi": true, "esac": true,
 	"do": true, "for": true, "while": true, "if": true, "and": true, "or": true,
 }

@@ -995,8 +995,10 @@ func contextualNoticeNamed(lower string, n store.ContextualImpactNotice) bool {
 }
 
 // contextualPathToken reports whether a byte can sit inside a path or file name.
+// The DOT is part of the token on purpose: naming `item.data.py` names a
+// DIFFERENT file from a notice about `data.py`, so the dot must bound the match.
 func contextualPathToken(b byte) bool {
-	if b == '_' || b == '-' {
+	if b == '_' || b == '-' || b == '.' {
 		return true
 	}
 	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9'
@@ -1020,12 +1022,43 @@ func contextualPathNamed(lower, path string) bool {
 	}
 }
 
-// contextualDismissBatch answers whether an explicit plural or batch reference
-// makes dismissing every held notice unambiguous. The cues are WHOLE WORDS.
+// contextualDismissBatch answers whether the person used an EXPLICIT phrase
+// that refers to the notices as a set. A bare plural word somewhere in the
+// sentence is not enough: "dismiss the concern, that is all" mentions `all` but
+// names no batch, so the held set must survive. Only a phrase that points at the
+// notices themselves dismisses them all.
+var contextualDismissBatchPhrases = [][]string{
+	{"all", "notices"}, {"both", "notices"}, {"those", "notices"}, {"these", "notices"},
+	{"the", "notices"},
+	{"all", "of", "those"}, {"all", "of", "these"}, {"all", "of", "them"},
+	{"both", "of", "those"}, {"both", "of", "these"}, {"both", "of", "them"},
+	{"dismiss", "all"}, {"dismiss", "both"}, {"dismiss", "them"}, {"dismiss", "those"},
+	{"dismiss", "these"}, {"dismiss", "every"}, {"dismiss", "the", "batch"},
+	{"dismiss", "that", "batch"}, {"dismiss", "this", "batch"},
+}
+
 func contextualDismissBatch(lower string) bool {
-	for _, word := range contextualProseWords(lower) {
-		switch word {
-		case "those", "them", "both", "all", "batch", "notices":
+	words := contextualProseWords(lower)
+	for _, phrase := range contextualDismissBatchPhrases {
+		if contextualWordsInOrder(words, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualWordsInOrder answers whether phrase appears as consecutive whole
+// words of words, so no batch cue can match inside a longer word.
+func contextualWordsInOrder(words, phrase []string) bool {
+	for i := 0; i+len(phrase) <= len(words); i++ {
+		match := true
+		for j := range phrase {
+			if words[i+j] != phrase[j] {
+				match = false
+				break
+			}
+		}
+		if match {
 			return true
 		}
 	}
