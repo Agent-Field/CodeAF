@@ -1165,9 +1165,11 @@ func shellInterpreterWord(program string) bool {
 // `3`), or a major and a minor (`3.12`). Anything else is NOT an interpreter
 // name. This is what keeps the taxonomy closed: `python-config` and
 // `python3-config` are configuration helpers, `pythonista` and `pypyhelper` are
-// unrelated programs, and `python -m <tool>` is a module run rather than this
-// interpreter's own inline program — none of them may ground an operand.
-// A versioned interpreter (`python3.12`, `pypy3.10`) still does.
+// unrelated programs, and none of them may ground an operand. A versioned
+// interpreter (`python3.12`, `pypy3.10`) still does. A recognised interpreter's
+// `-m` module run is still that interpreter's own execution shape and may ground
+// a file operand; it is refused only when the module is `pip` doing a metadata
+// lookup, which [segmentPipMetadata] handles and this taxonomy does not.
 func shellInterpreterVersion(version string) bool {
 	if version == "" {
 		return true
