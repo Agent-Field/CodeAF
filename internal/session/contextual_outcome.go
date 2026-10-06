@@ -321,7 +321,16 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	// so matching on the whole string let every bash action share a token
 	// ("bash") with every other. The match runs on the two BODIES, and a call
 	// with no body is not an alternative to an action.
-	body := strings.TrimSpace(attemptActionBody(attemptAction(call)))
+	// THE BODY IS READ AT ITS OWN WIDTH, NOT THE DISPLAY WIDTH. [attemptAction]
+	// clips a command to a readable 240 runes for the stored Action, and reading
+	// eligibility through that clip dropped the genuine replacement whose action
+	// carried its goal-named file operand past the clip: the EXACT live pair ran a
+	// standalone `.venv/bin/python -c 'import pandas'` that failed and a long
+	// compound `.venv/bin/python -c "<csv/Decimal over week.csv>" && awk ... &&
+	// .venv/bin/python ledger.py ...` that succeeded, and `week.csv` sat at rune
+	// 237 of the 240-rune clip, invisible to the file-operand link. The parser
+	// reads the raw arguments; only the stored text is clipped.
+	body := alternativeActionBody(call)
 	if body == "" {
 		return false
 	}
@@ -1703,6 +1712,38 @@ func attemptAction(call ai.ToolCall) string {
 		}
 	}
 	return name
+}
+
+// alternativeActionBody is the bare action body the ELIGIBILITY reader parses,
+// taken from the call's raw arguments at its full width. [attemptAction] clips
+// the body to a readable 240 runes for the stored Action, and that display clip
+// is not a parser input: a long compound command whose goal-named file operand
+// sits past the clip is still the same action, so the association must see all
+// of it. The stored text is unchanged — only the association reads here.
+func alternativeActionBody(call ai.ToolCall) string {
+	var args struct {
+		Command string `json:"command"`
+		Cmd     string `json:"cmd"`
+		Path    string `json:"path"`
+		Pattern string `json:"pattern"`
+	}
+	_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
+	for _, candidate := range []string{args.Command, args.Cmd, args.Path, args.Pattern} {
+		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
+			// AN OVER-LIMIT ACTION IS REFUSED WHOLE, NEVER TRUNCATED TO THE BOUND.
+			// Cutting a body at a byte ceiling could manufacture a file identity
+			// the real command never carried, or hide the one it did, and either
+			// is a false association. A body past the SAME [contextualFileBytes]
+			// ceiling the evidence reader already uses is no body at all, so the
+			// association fails closed and no alternative is written. No new or
+			// higher cap is introduced; the 240-rune preview is untouched.
+			if len(trimmed) > contextualFileBytes {
+				return ""
+			}
+			return trimmed
+		}
+	}
+	return ""
 }
 
 // priorOutcomeContext is the before-action half of contract 4. It runs inside

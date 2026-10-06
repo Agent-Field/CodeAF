@@ -1406,3 +1406,190 @@ func TestA4InterpreterTaxonomyIsExact(t *testing.T) {
 		}
 	}
 }
+
+// ── A4 RESIDUAL (session 52a5c88b845f362b): THE EXACT LIVE LONG-COMPOUND SUCCESS ──
+//
+// The canonical journal proved only the standalone `.venv/bin/python -c 'import
+// pandas'` FAILED and wrote NO succeeded AlternativeOf row, even though the SAME
+// turn and goal then ran the real independent check and it succeeded. The failed
+// row was stored (the status came from the tool boundary); the replacement was
+// dropped by the ASSOCIATION, which parsed the success through the 240-rune
+// DISPLAY clip of its action — and the goal-named `week.csv` it actually OPENED
+// sat at rune 237 of that clip. The clip is a rendering width, never a parser
+// input, so the file-operand link could not see the artifact the replacement
+// worked on.
+//
+// These are the EXACT live prompt, the EXACT failed command, the EXACT compound
+// command (with the escaped double quotes and embedded newlines the shell tool
+// received) and the EXACT receipts from the production run, never a shortened
+// command invented to share a token and never an altered goal. The captured
+// absolute workspace is relocated into a temp directory ONLY for the boundary
+// test, consistently and through one named helper, so portable CI replays the
+// real pipeline without the acceptance host's own tree.
+const (
+	a4bGoal        = "Run just .venv/bin/python -c 'import pandas' as a standalone tool call, without a shell wrapper that changes its exit status. Then finish the read-only independent grand-total check of week.csv and compare ledger.py."
+	a4bFailed      = ".venv/bin/python -c 'import pandas'"
+	a4bWS          = "/home/santosh/src/contextual-acceptance-work-20261006/ledger"
+	a4bSuccess     = "cd /home/santosh/src/contextual-acceptance-work-20261006/ledger && echo \"--- independent grand total (.venv/bin/python, Decimal, not ledger.py) ---\" && .venv/bin/python -c \"\nfrom decimal import Decimal\nimport csv\nt=Decimal(0)\nwith open('week.csv',newline='') as f:\n    for r in csv.DictReader(f):\n        t+=Decimal(r['amount'])\nprint(t)\n\" && echo \"--- independent grand total (awk) ---\" && awk -F, 'NR>1{s+=$2} END{printf \"%.2f\\n\", s}' week.csv && echo \"--- ledger.py via .venv/bin/python, both modes ---\" && .venv/bin/python ledger.py week.csv && .venv/bin/python ledger.py --json week.csv"
+	a4bFailReceipt = "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'pandas'\n\n\nCommand exited with code 1"
+	a4bOKReceipt   = "--- independent grand total (.venv/bin/python, Decimal, not ledger.py) ---\n12.35\n--- independent grand total (awk) ---\n12.35\n--- ledger.py via .venv/bin/python, both modes ---\nfood: 0.30\ntravel: 12.05\n{\"food\": \"0.30\", \"travel\": \"12.05\"}\n"
+)
+
+func a4bFailureResult() toolResult {
+	return toolResult{text: a4bFailReceipt, isError: true}
+}
+
+func a4bSuccessResult() toolResult {
+	return toolResult{text: a4bOKReceipt}
+}
+
+// relocateCapturedWorkspace rewrites the captured absolute workspace prefix of a
+// frozen live command to the directory a test owns, and NOTHING else: the frozen
+// goal, argv, shell escaping and pipeline shape are untouched. The operand and
+// every later segment are re-based consistently, so the lexical file identity the
+// association computes is the real one. It is what makes the exact live pair
+// replayable in portable CI without the acceptance host's own path.
+func relocateCapturedWorkspace(command, from, to string) string {
+	return strings.ReplaceAll(command, from, to)
+}
+
+// THE REAL PAIR IS PAIRED AT THE PRODUCTION BOUNDARY. The standalone diagnostic
+// failure and the long compound success over the SAME goal-named week.csv become
+// two rows whose second names the first, at BOTH the session and the delegated
+// boundary — proven on the exact live command, not a reduced one. The first
+// assertion is filesystem-free: the exact raw command is eligible against the
+// exact frozen workspace string, so the fix that reads its full width is pinned
+// without needing that directory to exist.
+func TestStandaloneFailurePairsActualLongCompoundLiveSuccess(t *testing.T) {
+	if !alternativeEligible(delegatedBashCall("call_0dcb2d6851734402866add2b", a4bSuccess), "bash", "bash: "+a4bFailed, a4bGoal, a4bWS) {
+		t.Fatal("the exact live compound success was not eligible against the frozen workspace (filesystem-free)")
+	}
+	if n := len([]rune(attemptActionBody(attemptAction(delegatedBashCall("x", a4bSuccess))))); n != 240 {
+		t.Fatalf("the stored display clip should still be 240 runes, got %d", n)
+	}
+
+	// A workspace whose path is LONGER than the captured one keeps the goal-named
+	// operand past the 240-rune display clip, so the boundary test exercises the
+	// real regression rather than a command short enough to be invisible to it.
+	ws := filepath.Join(t.TempDir(), "contextual-acceptance-work-20261006-relocated-ledger")
+	if err := os.MkdirAll(ws, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	relocated := relocateCapturedWorkspace(a4bSuccess, a4bWS, ws)
+	idx := strings.Index(relocated, "week.csv")
+	if idx < 240 {
+		t.Fatalf("the relocated goal-named operand fell inside the display clip at rune %d", idx)
+	}
+	// THE CLIP ALONE NO LONGER GROUNDS THE PAIRING AND THE FULL WIDTH DOES: that
+	// is exactly the boundary the live run fell through.
+	if sharesGoalNamedFileOperand(attemptActionBody(attemptAction(delegatedBashCall("x", relocated))), a4bGoal, ws) {
+		t.Fatal("the 240-rune display clip unexpectedly grounded the pairing; the regression no longer exercises it")
+	}
+	if !sharesGoalNamedFileOperand(relocated, a4bGoal, ws) {
+		t.Fatal("the full-width relocated success did not ground the goal-named file")
+	}
+
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = ws; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, a4bGoal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_d70e5c82b7634f4fb5bec3d3", a4bFailed), a4bFailureResult(), pre)
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_0dcb2d6851734402866add2b", relocated), a4bSuccessResult(), pre)
+		assertA4bPair(t, attemptsForProject(t, brain, a), ws)
+	})
+
+	t.Run("delegated", func(t *testing.T) {
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = ws; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(context.Background(), a4bGoal)
+		// The worker stands where the frozen command cd's to, exactly as the live
+		// run did: a worker whose ground differed would fail the pairing CLOSED.
+		worker := spawnTaskWorker(t, root, ws)
+		ctx := context.Background()
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("call_d70e5c82b7634f4fb5bec3d3", a4bFailed), a4bFailureResult(), pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("call_0dcb2d6851734402866add2b", relocated), a4bSuccessResult(), pre)
+		assertA4bPair(t, attemptsForProject(t, brain, root), ws)
+	})
+
+	t.Run("noise", func(t *testing.T) {
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = ws; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, a4bGoal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_d70e5c82b7634f4fb5bec3d3", a4bFailed), a4bFailureResult(), pre)
+
+		// A LONG ECHO THAT ONLY PRINTS THE NAME. Its only mention of the
+		// goal-named file sits inside the printed text, past the 240-rune
+		// preview, so it names no operand and the slot stays open.
+		printOnly := "cd " + ws + ` && echo "` + strings.Repeat("independent grand total ", 12) + `week.csv"` +
+			" && .venv/bin/python -c '\nfrom decimal import Decimal\nprint(Decimal(1))\n'"
+		if len([]rune(printOnly)) <= 240 {
+			t.Fatalf("the print-only probe was not long enough to clear the preview: %d runes", len([]rune(printOnly)))
+		}
+		if alternativeEligible(delegatedBashCall("c", printOnly), "bash", "bash: "+a4bFailed, a4bGoal, ws) {
+			t.Fatal("a name that appears only inside printed text was eligible as the alternative")
+		}
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_print_only", printOnly), toolResult{text: "independent grand total week.csv\n12.35"}, pre)
+
+		// A GENUINE CALCULATION PAST THE EXISTING CEILING IS REFUSED WHOLE. The
+		// body exceeds contextualFileBytes, so no identity is manufactured by
+		// truncation and the over-limit action cannot claim the slot either.
+		over := "cd " + ws + " && .venv/bin/python -c '\n" + strings.Repeat("# padding\n", contextualFileBytes/10) +
+			"import csv\nwith open(\"week.csv\") as f:\n    print(sum(float(r[1]) for r in list(csv.reader(f))[1:]))\n'"
+		if len(over) <= contextualFileBytes {
+			t.Fatalf("the over-bound probe did not exceed contextualFileBytes: %d bytes", len(over))
+		}
+		if alternativeActionBody(delegatedBashCall("c", over)) != "" {
+			t.Fatal("an over-bound action body was not refused whole")
+		}
+		if alternativeEligible(delegatedBashCall("c", over), "bash", "bash: "+a4bFailed, a4bGoal, ws) {
+			t.Fatal("an over-bound action was eligible as the alternative")
+		}
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_over_bound", over), toolResult{text: "12.35"}, pre)
+
+		rows := attemptsForProject(t, brain, a)
+		if len(rows) != 1 || rows[0].Status != store.AttemptFailed {
+			t.Fatalf("a print-only echo or an over-bound body claimed the alternative slot: %+v", rows)
+		}
+	})
+}
+
+func assertA4bPair(t *testing.T, rows []store.ContextualAttempt, ws string) {
+	t.Helper()
+	if len(rows) != 2 {
+		t.Fatalf("the live standalone failure and its one long-compound success should be two rows, got %+v", rows)
+	}
+	var failed, succeeded *store.ContextualAttempt
+	for i := range rows {
+		switch rows[i].Status {
+		case store.AttemptFailed:
+			failed = &rows[i]
+		case store.AttemptSucceeded:
+			succeeded = &rows[i]
+		}
+	}
+	if failed == nil || succeeded == nil {
+		t.Fatalf("the real pair was not written: %+v", rows)
+	}
+	if failed.Action != "bash: "+a4bFailed {
+		t.Fatalf("the stored failure was not the exact standalone command: %q", failed.Action)
+	}
+	if succeeded.AlternativeOf != failed.SourceKey {
+		t.Fatalf("the long-compound success did not name the standalone failure: alt=%q failure=%q", succeeded.AlternativeOf, failed.SourceKey)
+	}
+	if !strings.Contains(succeeded.SourceKey, "call_0dcb2d6851734402866add2b") {
+		t.Fatalf("the alternative was not the real compound call: %q", succeeded.SourceKey)
+	}
+	if !strings.Contains(succeeded.Action, "bash: cd "+ws) {
+		t.Fatalf("the stored alternative was not the relocated compound command: %q", succeeded.Action)
+	}
+	if !strings.Contains(succeeded.Observation, "12.35") {
+		t.Fatalf("the alternative's own receipt was not kept: %q", succeeded.Observation)
+	}
+	if succeeded.Goal != failed.Goal || succeeded.TurnID != failed.TurnID {
+		t.Fatalf("the alternative lost the frozen goal/turn: alt=%+v failure=%+v", succeeded, failed)
+	}
+}
