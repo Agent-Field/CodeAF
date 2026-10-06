@@ -29,6 +29,7 @@ func teamsRailCols(width int) int {
 type teamsDraw struct {
 	a       *app
 	targets []teamsTarget
+	cards   []teamsCardSpot
 }
 
 // lit reports whether the target named r wears a ground, and which.
@@ -1023,6 +1024,7 @@ func (a *app) teamsBody(width, room int) []placeRow {
 		}
 	}
 	a.tp.paneOffset = off
+	a.tp.cards = d.cards
 	pane = pane[off:]
 	d.shift(mark, 0, -off)
 	a.tp.table.y -= off

@@ -255,7 +255,7 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 				}
 				lines = append(lines, wallCardLine{s: line})
 			}
-			cards = append(cards, a.teamsConversationCard(t, r, role, lines, x, y+len(out), w))
+			cards = append(cards, a.teamsConversationCard(d, t, r, role, lines, x, y+len(out), w))
 		}
 		for row := 0; row < 7; row++ {
 			var line []string
@@ -357,7 +357,7 @@ func (a *app) teamsManagerCard(d *teamsDraw, t team, r teamsCrewRow, width, y in
 		}
 		lines = append(lines, wallCardLine{s: line})
 	}
-	return a.teamsConversationCard(t, r, a.teamManagerMark()+" Manager", lines, 0, y, width)
+	return a.teamsConversationCard(d, t, r, a.teamManagerMark()+" Manager", lines, 0, y, width)
 }
 
 type teamsTableRect struct{ x, y, w, h int }

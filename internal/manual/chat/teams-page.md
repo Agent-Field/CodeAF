@@ -136,7 +136,10 @@ card reveals its preview; Up returns to the alias. The wheel moves the whole mai
 An active question gives the card a yellow border and a yellow `?` heading on its top edge,
 shortened with `...` when necessary. Permission choices and team decisions remain directly
 answerable in their existing decision cards. Live working, failed and unread facts stay
-compact on the card’s top edge; idle ages are omitted.
+compact on the card’s top edge; idle ages are omitted. While a member, manager or
+Global manager responds or runs work, `working` has the same animated spinner as
+Chats. It stops when the conversation needs your input or becomes idle or failed.
+ASCII and screen-reader views use a static work mark instead of animation.
 
 A preview locates the latest user exchange in a local transcript off the UI loop, retaining
 at most 64 KiB of message beginnings. `Updates appear here` means no user message or assistant

@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // A card shows the latest human exchange, even when team traffic arrives
@@ -200,11 +201,22 @@ func (a *app) teamsCardQuestion(t team, r teamsCrewRow) string {
 	return ""
 }
 
+// Work uses the shared time-based spinner, so a quiet polling frame and a
+// faster stream frame agree on its phase. Reduced motion keeps one still mark.
+func (a *app) teamsWorkMark() string {
+	if a.wallReduced() {
+		return glyphRunASCII
+	}
+	return tokens.Spinner(wallSpin(a.now()))
+}
+
 // Live facts share the top edge with the role and question so they never
 // displace the model or the prompt inside a compact member card.
-func (a *app) teamsCardFacts(r teamsCrewRow) string {
+func (a *app) teamsCardFacts(r teamsCrewRow, mark string) string {
 	var facts []string
-	if r.word == "working" || r.word == "failed" {
+	if r.word == "working" && !r.asking {
+		facts = append(facts, "working "+mark)
+	} else if r.word == "failed" {
 		facts = append(facts, r.word)
 	}
 	if r.independent {
@@ -216,16 +228,37 @@ func (a *app) teamsCardFacts(r teamsCrewRow) string {
 	return strings.Join(facts, " ")
 }
 
-func (a *app) teamsConversationCard(t team, r teamsCrewRow, title string, lines []wallCardLine, x, y, width int) []string {
+func (a *app) teamsCardHeading(t team, r teamsCrewRow, title string, width int) (string, func(string) string, bool) {
 	border := a.pal.muted
-	if fact := a.teamsCardFacts(r); fact != "" {
+	question := a.teamsCardQuestion(t, r)
+	// A manager's pending team decision takes precedence over the working
+	// signal, just as a conversation question does for ordinary members.
+	if question != "" {
+		r.asking = true
+	}
+	mark := a.teamsWorkMark()
+	if fact := a.teamsCardFacts(r, mark); fact != "" {
+		if r.word == "working" && !r.asking {
+			// The work mark is the point of this heading. Narrow cards give
+			// up role text and trailing facts before giving up the spinner.
+			budget := max(width-5, 0)
+			workWidth := ansi.StringWidth("working " + mark)
+			if budget < workWidth {
+				title = ""
+				fact = ansi.Truncate("working", max(budget-2, 0), "") + " " + mark
+			} else {
+				factRoom := min(max(budget-ansi.StringWidth(title)-2, workWidth), ansi.StringWidth(fact))
+				title = fit(title, max(budget-factRoom-2, 0))
+				fact = ansi.Truncate(fact, factRoom, "")
+			}
+		}
 		if title != "" {
 			title += "  "
 		}
 		title += a.teamsCrewInk(r.word)(fact)
 	}
 	title = ansi.Truncate(title, max(width-5, 0), "...")
-	if question := a.teamsCardQuestion(t, r); question != "" {
+	if question != "" {
 		border = a.pal.ask
 		if title != "" {
 			title += "  "
@@ -233,5 +266,52 @@ func (a *app) teamsConversationCard(t team, r teamsCrewRow, title string, lines 
 		title = ansi.Truncate(title, max(width-9, 0), "...")
 		title += a.pal.ask(ansi.Truncate("? "+strings.Join(strings.Fields(question), " "), max(width-5-ansi.StringWidth(title), 1), "..."))
 	}
-	return wallCardBuildWithBorder(a.pal, title, lines, x, y, width, 1, 0, border).rows
+	return title, border, r.word == "working" && !r.asking && strings.Contains(ansi.Strip(title), mark)
+}
+
+// Card headings have their own visibility facts because the preview targets
+// below them can remain visible after the spinner has scrolled away.
+type teamsCardSpot struct {
+	team, key, title string
+	y, width         int
+}
+
+func (a *app) teamsConversationCard(d *teamsDraw, t team, r teamsCrewRow, title string, lines []wallCardLine, x, y, width int) []string {
+	if r.key != "" {
+		d.cards = append(d.cards, teamsCardSpot{team: t.ID, key: r.key, title: title, y: y, width: width})
+	}
+	heading, border, _ := a.teamsCardHeading(t, r, title, width)
+	return wallCardBuildWithBorder(a.pal, heading, lines, x, y, width, 1, 0, border).rows
+}
+
+// Only visible conversation cards keep the shared clock turning. State comes
+// from the same held-tab or world reading as the card, with no disk reads or
+// agent calls on the paint path. Reduced motion keeps its static work mark.
+func (a *app) teamsSpinning() bool {
+	if !a.at(pageTeams) || a.wallReduced() {
+		return false
+	}
+	for _, card := range a.tp.cards {
+		if card.y < a.tp.paneOffset || card.y >= a.tp.paneOffset+a.tp.paneRoom {
+			continue
+		}
+		t, ok := a.teamByID(card.team)
+		if !ok {
+			continue
+		}
+		m, ok := t.Member(card.key)
+		if !ok {
+			continue
+		}
+		state := a.teamsMember(m)
+		if state.word != "running" || state.asking {
+			continue
+		}
+		r := teamsCrewRow{key: m.Key, file: m.File, manager: m.Key == t.Manager, word: "working"}
+		_, _, working := a.teamsCardHeading(t, r, card.title, card.width)
+		if working {
+			return true
+		}
+	}
+	return false
 }

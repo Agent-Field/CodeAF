@@ -3520,6 +3520,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// go away when that conversation comes forward (tabsignal.go). It is read
 	// BEFORE the title below, which is drawn from it.
 	a.frontWaits = needsPerson(a.agent)
+	// A Teams card can start working in another window while our own turn is
+	// idle. Its current signal wakes the same clock that keeps it animated.
+	if a.teamsSpinning() {
+		cmd = tea.Batch(cmd, a.wake())
+	}
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd
@@ -5813,11 +5818,11 @@ func (a *app) paint() tea.Cmd {
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
-	// A WORKING TILE ON THE WALL turns its spinner at the spinner's own
-	// cadence and no faster: the glyph changes once a step, and a whole wall
+	// A WORKING TILE ON THE WALL OR A VISIBLE TEAMS CARD turns its spinner at
+	// the spinner's own cadence and no faster: the glyph changes once a step, and a whole wall
 	// drawn thirty times a second to move one glyph a quarter as often would be
 	// the costliest frame on this surface spent on nothing (wall.go).
-	if a.wallSpinning() {
+	if a.wallSpinning() || a.teamsSpinning() {
 		return tea.Batch(kick, surfaceTick(a.frameEvery()*spinnerStep, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false

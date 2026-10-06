@@ -209,7 +209,7 @@ func TestTeamsCardFactsNeverDisplaceQualifiedModel(t *testing.T) {
 		t.Fatalf("model disappeared: %q", metadata)
 	}
 	lines := []wallCardLine{{s: metadata[0]}, {s: metadata[1]}}
-	rows := a.teamsConversationCard(mustTeam(t, a, id), r, "", lines, 0, 0, 39)
+	rows := a.teamsConversationCard(&teamsDraw{a: a}, mustTeam(t, a, id), r, "", lines, 0, 0, 39)
 	for _, word := range []string{"working", "independent", "unread"} {
 		if !strings.Contains(plain(rows[0]), word) {
 			t.Fatalf("fact vanished: %q", rows[0])

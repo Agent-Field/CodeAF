@@ -68,6 +68,9 @@ type teamsPage struct {
 	cur, hot teamsRef
 	// targets is every pressable thing the last frame drew, in frame cells.
 	targets []teamsTarget
+	// cards records the conversation headings in unscrolled pane coordinates,
+	// including idle ones that can start work after this frame was drawn.
+	cards []teamsCardSpot
 	// expand is an inbox card beyond the first three that a press unfolded.
 	expand string
 	// railW is the rail's columns in the current frame, its separator included.

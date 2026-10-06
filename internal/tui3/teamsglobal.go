@@ -110,5 +110,5 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 	if line != "" {
 		lines = append(lines, wallCardLine{s: line})
 	}
-	return a.teamsConversationCard(root, manager, fit("Global manager", width-5), lines, 0, y, width)
+	return a.teamsConversationCard(d, root, manager, fit("Global manager", width-5), lines, 0, y, width)
 }
