@@ -251,7 +251,7 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 		run.failNote = "It neared its dollar ceiling and stopped starting new work, so later checks were skipped; it covers part of the change."
 	}
 	if calls.Failed > 0 {
-		run.failNote = strings.TrimSpace(run.failNote + fmt.Sprintf(" %d of %d model calls failed, so parts of the review may be missing; the first with: %s",
+		run.failNote = strings.TrimSpace(run.failNote + fmt.Sprintf(" %d of its %d agent sessions and single calls failed, so parts of the review may be missing; the first with: %s",
 			calls.Failed, calls.Total, firstSentence(calls.FirstErr)))
 	}
 
