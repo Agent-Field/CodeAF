@@ -201,6 +201,8 @@ const (
 	// out of the tabs' list, in [wallState.chip], because the run of tabs and
 	// its count are one thing and the chip is not one of them.
 	tabTeam
+	// tabTeamClear removes only the overlay, using the switcher's None choice.
+	tabTeamClear
 	// tabWall is the strip's door to the conversations view, ` ▦ All ` at
 	// the right edge (wall.go). It is kept out of the tabs' list for the
 	// chip's reason, in [wallState.door].
@@ -228,7 +230,7 @@ func (h tabHit) door(a *app) bool {
 	switch h.kind {
 	case tabHere:
 		return a.roomOpen() || a.startingChat()
-	case tabOther, tabClose, tabNew, tabScrollLeft, tabScrollRight, tabTeam, tabWall, tabManager:
+	case tabOther, tabClose, tabNew, tabScrollLeft, tabScrollRight, tabTeam, tabTeamClear, tabWall, tabManager:
 		return true
 	}
 	return false
@@ -265,8 +267,9 @@ type tabBar struct {
 	ink   uint64
 	// team is the chip's words, "" with no team shown, and chip where it
 	// was drawn.
-	team string
-	chip hudSpan
+	team  string
+	chip  hudSpan
+	clear hudSpan
 	// wallOn and door are the conversations view's state and where its door
 	// was drawn, so a reused row still lights the door right and still
 	// answers for it; menuOn is whether the chip's switcher is open, which
@@ -578,6 +581,7 @@ func (a *app) roomFactsRow() int {
 func (a *app) tabsRow(width int) string {
 	a.chatTabHits = nil
 	a.wall.chip = hudSpan{}
+	a.wall.chipClear = hudSpan{}
 	a.wall.door = hudSpan{}
 	if a.tabsHeight(width) == 0 {
 		return ""
@@ -632,6 +636,7 @@ func (a *app) tabsRow(width int) string {
 	if memo := a.chatTabBar; memo.newChat == a.canStart() && memo.team == chipWord && memo.wallOn == a.wall.on && memo.menuOn == a.teamMenu.on && memo.same(width, a.inkState, hot, more, tabs) {
 		a.chatTabHits = memo.hits
 		a.wall.chip, a.wall.door = memo.chip, memo.door
+		a.wall.chipClear = memo.clear
 		return memo.line
 	}
 	// The pieces lead with a gap cell of their own ([app.tabsFit]); with no chip
@@ -668,7 +673,7 @@ func (a *app) tabsRow(width int) string {
 	// narrower leaves no cells behind it for the last frame's words.
 	line += strings.Repeat(" ", max(width-ansi.StringWidth(line), 0))
 	a.chatTabBar = tabBar{width: width, ink: a.inkState, hot: hot, more: more, newChat: a.canStart(), line: line, hits: a.chatTabHits,
-		tabs: append([]chatTab(nil), tabs...), team: chipWord, chip: a.wall.chip, wallOn: a.wall.on, menuOn: a.teamMenu.on, door: a.wall.door}
+		tabs: append([]chatTab(nil), tabs...), team: chipWord, chip: a.wall.chip, clear: a.wall.chipClear, wallOn: a.wall.on, menuOn: a.teamMenu.on, door: a.wall.door}
 	return line
 }
 
@@ -721,7 +726,7 @@ func (a *app) tabWallPaint(word string, hot bool) string {
 	return a.pal.dim(" ") + ink(glyph) + a.pal.muted(rest)
 }
 
-// tabTeamWord is the team chip's words, ` ● harbor ▾ `, or with no team
+// tabTeamWord is the team chip's words, ` ● harbor × `, or with no team
 // narrowing the strip a quiet ` Teams ▾ ` while there are teams to switch to,
 // and "" when there are none (teammenu.go says why). The dot is the team's
 // colour where there is one, and its initial where there is not.
@@ -741,7 +746,7 @@ func (a *app) tabTeamWord() string {
 	if ansi.StringWidth(name) > teamNameCells {
 		name = ansi.Truncate(name, teamNameCells, "…")
 	}
-	return " " + a.tabTeamDot(sp) + " " + name + " " + caret + " "
+	return " " + a.tabTeamDot(sp) + " " + name + " " + a.tabCloseWord() + " "
 }
 
 func (a *app) tabTeamDot(sp team) string {
@@ -761,13 +766,30 @@ func (a *app) tabTeamDot(sp team) string {
 func (a *app) tabTeamPaint(word string, at int) string {
 	w := ansi.StringWidth(word)
 	a.wall.chip = hudSpan{from: at, to: at + w}
+	if _, ok := a.teamActive(); ok {
+		// The clear mark and its trailing pad are a separate target. Name and
+		// mark keep their cells when either one is hovered.
+		clearW := ansi.StringWidth(a.tabCloseWord()) + 1
+		a.wall.chipClear = hudSpan{from: at + w - clearW, to: at + w}
+		a.wall.chip.to = a.wall.chipClear.from
+		name := ansi.Cut(word, 0, w-clearW)
+		mark := ansi.Cut(word, w-clearW, w)
+		if a.hot.kind == hoverTab && a.hot.index == a.wall.chip.from || a.teamMenu.on {
+			name = a.tabHoverPaint(name)
+		} else {
+			name = a.pal.selected(a.pal.muted(name), 0)
+		}
+		if a.hot.kind == hoverTab && a.hot.index == a.wall.chipClear.from {
+			mark = a.tabHoverPaint(a.pal.underline(mark))
+		} else {
+			mark = a.pal.selected(a.pal.muted(mark), 0)
+		}
+		return name + mark
+	}
 	if (a.hot.kind == hoverTab && a.hot.index == at) || a.teamMenu.on {
 		return a.tabHoverPaint(word)
 	}
-	if _, ok := a.teamActive(); !ok {
-		return a.pal.muted(word)
-	}
-	return a.pal.selected(a.pal.muted(word), 0)
+	return a.pal.muted(word)
 }
 
 // tabPiece is one drawn segment of the strip: the word, and what it is.
@@ -1138,7 +1160,7 @@ func (a *app) tabsPaint(pieces []tabPiece) string {
 	gridHot := lit && (hot.kind == tabWall || hot.kind == tabHere || hot.kind == tabOther || hot.kind == tabClose || hot.kind == tabManager)
 	line := ""
 	for _, piece := range pieces {
-		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabTeam && hot.kind != tabWall && hot.kind != tabManager
+		on := lit && hot.tab.key == piece.tab.key && hot.tab.start == piece.tab.start && hot.kind != tabFold && hot.kind != tabNew && hot.kind != tabScrollLeft && hot.kind != tabScrollRight && hot.kind != tabTeam && hot.kind != tabTeamClear && hot.kind != tabWall && hot.kind != tabManager
 		switch {
 		case piece.quiet:
 			line += a.pal.dim(piece.word)
@@ -1264,6 +1286,9 @@ func (a *app) hotTab() (tabHit, bool) {
 	if a.wall.chip.pressable() && a.hot.index == a.wall.chip.from {
 		return tabHit{span: a.wall.chip, kind: tabTeam}, true
 	}
+	if a.wall.chipClear.pressable() && a.hot.index == a.wall.chipClear.from {
+		return tabHit{span: a.wall.chipClear, kind: tabTeamClear}, true
+	}
 	for _, hit := range a.chatTabHits {
 		if hit.span.from == a.hot.index && hit.lights() {
 			return hit, true
@@ -1305,6 +1330,9 @@ func (a *app) tabAt(x, y int) (tabHit, bool) {
 	}
 	if a.wall.chip.pressable() && a.wall.chip.holds(x) {
 		return tabHit{span: a.wall.chip, kind: tabTeam}, true
+	}
+	if a.wall.chipClear.pressable() && a.wall.chipClear.holds(x) {
+		return tabHit{span: a.wall.chipClear, kind: tabTeamClear}, true
 	}
 	if a.wall.door.pressable() && a.wall.door.holds(x) {
 		return tabHit{span: a.wall.door, kind: tabWall}, true
@@ -1361,6 +1389,8 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 		// The chip is the team switcher (teammenu.go).
 		a.openTeamMenu()
 		return nil, true
+	case tabTeamClear:
+		return a.teamMenuDo(teamMenuRow{code: teamMenuNone}), true
 	case tabWall:
 		if a.wall.on {
 			a.closeWall()

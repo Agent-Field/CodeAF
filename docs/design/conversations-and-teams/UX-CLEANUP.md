@@ -40,6 +40,11 @@ lands Home. Older hosted engines without checked deletion refuse these operation
 
 ## Verification and review
 
+Chats shows `Teams ▾` with no overlay and a coloured team chip with a separate `x`
+when one is selected. Its name reopens the same dropdown; its `x` uses the existing
+None transition and synchronizes Teams to All teams. The global manager overlay follows
+the same rule. The independent, fixed `▦ All` grid button keeps its existing behavior.
+
 Focused TUI and session regressions cover routing, membership boundaries, scope changes,
 confirmation resizing/scrolling, owner stopping, concurrency, aliases and tombstones.
 The complete lightweight teams, remote and enginehost suites check storage and protocol

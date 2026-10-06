@@ -399,6 +399,8 @@ type wallState struct {
 	// chip is where the strip drew its team chip, empty when it was not
 	// drawn.
 	chip hudSpan
+	// chipClear is the selected overlay's independent clear target.
+	chipClear hudSpan
 	// nameFresh, made, madeN and madeAt are the view's fields of those names.
 	// nameGen counts the suggestions asked for, so an answer to one the card
 	// has moved past is dropped, and nameAsking says one is on its way.

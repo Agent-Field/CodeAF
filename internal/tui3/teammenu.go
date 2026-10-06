@@ -156,6 +156,9 @@ func (a *app) teamMenuHitAt(x, y int) (wallHit, bool) {
 // puts the switcher away and does nothing else, the chip included, so the
 // chip that opened it also closes it.
 func (a *app) teamMenuPress(x, y int) tea.Cmd {
+	if hit, ok := a.tabAt(x, y); ok && hit.kind == tabTeamClear {
+		return a.teamMenuDo(teamMenuRow{code: teamMenuNone})
+	}
 	if hit, ok := a.teamMenuHitAt(x, y); ok {
 		for _, r := range a.teamMenuRows() {
 			if !r.rule && r.code == hit.arg && r.id == hit.id {

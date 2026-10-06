@@ -926,6 +926,8 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 				// The chip is the team switcher here as on every page.
 				a.openTeamMenu()
 				return nil, true
+			case tabTeamClear:
+				return a.teamMenuDo(teamMenuRow{code: teamMenuNone}), true
 			case tabWall:
 				// The strip's own door to this view closes it, as alt+v does.
 				a.closeWall()

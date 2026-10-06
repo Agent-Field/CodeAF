@@ -7,6 +7,12 @@ with **None** selected in the Teams dropdown. None disables the team's visual ov
 it does not end membership, change reporting authority, or stop background work.
 The composer has no team-recipient hint and the sidebar uses the ordinary task view.
 
+With no overlay, the strip shows **Teams ▾**. Selecting a team replaces it with a coloured
+team chip and a separate **x**. Click the name to switch teams; click x to remove the
+overlay, exactly like choosing **None** in the dropdown. Both restore the ordinary Chats
+view and select **All teams** in Teams without changing membership or background work.
+The **▦ All** button still opens the independent conversation grid.
+
 The Teams dropdown is the only team selector in Chats; there are no membership buttons
 below the strip. Choosing a team restores that team's last conversation and selects the
 same team in the Teams sidebar. Selecting a team in Teams selects its Chats overlay

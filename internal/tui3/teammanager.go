@@ -373,7 +373,9 @@ func (a *app) teamHoverWords() string {
 		if !shown {
 			return "Show one team's conversations" + hintSegment + "click"
 		}
-		return "Switch team, add this conversation, or make a manager" + hintSegment + "click"
+		return "Switch team overlay" + hintSegment + "click"
+	case hit.kind == tabTeamClear:
+		return "Remove team overlay" + hintSegment + "click"
 	case hit.kind == tabManager:
 		if a.teamsOff() {
 			return teamHostedWord

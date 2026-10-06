@@ -274,6 +274,104 @@ func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 	}
 }
 
+func TestTeamOverlayClearChipHasIndependentTargets(t *testing.T) {
+	a, harbor, _ := menuApp(t)
+	if err := a.teamRename(harbor, "a very long team name that must be abbreviated"); err != nil {
+		t.Fatal(err)
+	}
+	for _, ascii := range []bool{false, true} {
+		a.pal.ascii = ascii
+		a.touch()
+		row := a.tabsRow(a.width)
+		name, clear, grid := a.wall.chip, a.wall.chipClear, a.wall.door
+		if !name.pressable() || !clear.pressable() || name.to != clear.from {
+			t.Fatalf("name and clear targets: %+v %+v", name, clear)
+		}
+		if label := plain(ansi.Cut(row, clear.from, clear.to)); label != a.tabCloseWord()+" " {
+			t.Fatalf("clear target covers %q", label)
+		}
+		if strings.Contains(plain(ansi.Cut(row, name.from, name.to)), "▾") {
+			t.Fatal("selected chip still carries a dropdown caret")
+		}
+		for _, target := range []struct {
+			span hudSpan
+			kind tabKind
+		}{{name, tabTeam}, {clear, tabTeamClear}} {
+			for x := target.span.from; x < target.span.to; x++ {
+				hit, ok := a.tabAt(x, tabStripRow)
+				if !ok || hit.kind != target.kind {
+					t.Fatalf("column %d targets %+v", x, hit)
+				}
+			}
+			a.hot, _ = a.tabHoverAt(target.span.from, tabStripRow)
+			_ = a.tabsRow(a.width)
+			// A second frame exercises the cached row's independent targets.
+			_ = a.tabsRow(a.width)
+			if a.wall.chip != name || a.wall.chipClear != clear || a.wall.door != grid {
+				t.Fatal("hover or cached frame moved targets or the All button")
+			}
+			hit, ok := a.hotTab()
+			if !ok || hit.kind != target.kind {
+				t.Fatal("hover resolved to a different action")
+			}
+		}
+	}
+	a.width = 40
+	a.touch()
+	_ = a.tabsRow(a.width)
+	if a.wall.chipClear.pressable() {
+		t.Fatal("hidden chip retained a clear target after resizing")
+	}
+}
+
+func TestTeamOverlayClearChipUsesNoneTransition(t *testing.T) {
+	for _, mode := range []string{"chat", "menu", "global"} {
+		t.Run(mode, func(t *testing.T) {
+			a, harbor, _ := menuApp(t)
+			if mode == "global" {
+				var rootID string
+				if err := a.teamEdit(func(f *teamstore.File) error {
+					rootID = f.MakeRoot(a.now())
+					return f.SetManager(rootID, a.frontTabKey())
+				}); err != nil {
+					t.Fatal(err)
+				}
+				a.teamActivate(rootID)
+			}
+			front := a.frontTabKey()
+			a.input.insert("keep this draft")
+			before := mustTeam(t, a, harbor)
+			if mode == "menu" {
+				a.openTeamMenu()
+			}
+			menuFrame(t, a)
+			clear := a.wall.chipClear
+			if !clear.pressable() {
+				t.Fatal("no clear button")
+			}
+			_, _ = a.Update(tea.MouseClickMsg{X: clear.from, Y: tabStripRow, Button: tea.MouseLeft})
+			if a.wall.activeID != "" || a.teamViews.id != "" || a.tp.sel != teamsAllRow || a.teamMenu.on || a.wall.on {
+				t.Fatal("clear did not return to None and synchronize All teams")
+			}
+			if a.frontTabKey() != front || a.input.String() != "keep this draft" {
+				t.Fatal("clear changed the conversation or its draft")
+			}
+			after := mustTeam(t, a, harbor)
+			if after.Manager != before.Manager || len(after.Members) != len(before.Members) || after.Closed() {
+				t.Fatal("clear changed the team")
+			}
+			frame, _ := menuFrame(t, a)
+			if !strings.Contains(frame, " Teams ▾ ") || a.wall.chipClear.pressable() {
+				t.Fatal("None did not restore the ordinary dropdown")
+			}
+			_, _ = a.Update(tea.MouseClickMsg{X: a.wall.chip.from + 1, Y: tabStripRow, Button: tea.MouseLeft})
+			if !a.teamMenu.on || a.teamMenu.cursor != 0 {
+				t.Fatal("ordinary chip did not reopen dropdown on None")
+			}
+		})
+	}
+}
+
 // TestTeamMenuPrintsFrame prints the strip with the switcher open, on a
 // 120-column chat, for a person to look at.
 func TestTeamMenuPrintsFrame(t *testing.T) {
