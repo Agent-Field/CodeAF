@@ -9,7 +9,7 @@ package agentsession
 // WHAT THE OLD HARNESS DID FOR THE AUDIT IS KEPT; HOW IT DID IT IS NOT. sec-af
 // relied on three things from it — a session that can read the code, an
 // answer of the schema it asked for, and a second chance when the answer did
-// not parse ([followUps]) — and each is here. The output file in the person's
+// not parse ([Policy.FollowUps]) — and each is here. The output file in the person's
 // repository, the binary and the key it held are gone, because the audit
 // promised to change nothing in the folder and codeaf holds the keys.
 
@@ -42,6 +42,8 @@ type SessionOrder struct {
 	MaxTurns int
 	// Wall is the session's own time bound; zero is none past the context's.
 	Wall time.Duration
+	// Policy is how the session reads and answers; every field is required.
+	Policy Policy
 }
 
 // SessionResult is how a session ended: its answer, and what it cost.
@@ -59,16 +61,6 @@ type SessionResult struct {
 	Duration time.Duration
 }
 
-const (
-	// followUps is how many times an answer that did not meet its schema is
-	// asked for again: the old harness's own count.
-	followUps = 2
-	// contextChars is how much a session's transcript may hold before it is
-	// told to stop reading and answer. About a hundred thousand tokens, which
-	// every model a person is likely to seat holds with room for the answer.
-	contextChars = 400_000
-)
-
 // errNoAnswer is a session that ran out of turns without answering.
 var errNoAnswer = errors.New("the session ended without an answer")
 
@@ -84,8 +76,12 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 	}
 	maxTurns := order.MaxTurns
 	if maxTurns <= 0 {
-		maxTurns = 50
+		return SessionResult{}, unsetError("SessionOrder", "MaxTurns")
 	}
+	if field := order.Policy.missing(); field != "" {
+		return SessionResult{}, unsetError("SessionOrder", field)
+	}
+	policy := order.Policy
 	var validate *jsonschema.Schema
 	if order.Schema != nil {
 		compiled, err := compileSchema(order.Schema)
@@ -94,7 +90,7 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 		}
 		validate = compiled
 	}
-	tools := toolbox{root: order.Root}
+	tools := toolbox{root: order.Root, limits: policy.Tools}
 	messages := []ai.Message{
 		textMessage("system", sessionSystem(order)),
 		textMessage("user", order.Prompt),
@@ -104,13 +100,13 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 	size := len(order.Prompt)
 	asked := 0
 	answering := false
-	for result.Turns < maxTurns+followUps+1 {
+	for result.Turns < maxTurns+policy.FollowUps+1 {
 		// THE LAST TURN, OR A FULL CONTEXT, IS AN ANSWER. A session that is
 		// still reading when its turns or its room run out is told to answer
 		// with what it has, and is offered no tools to do anything else.
-		if !answering && (result.Turns >= maxTurns-1 || size > contextChars) {
+		if !answering && (result.Turns >= maxTurns-1 || size > policy.ContextChars) {
 			answering = true
-			messages = append(messages, textMessage("user", "Stop reading now and give your answer from what you have found, in the form the system message asks for."))
+			messages = append(messages, textMessage("user", policy.AnswerNow))
 		}
 		request := Request{Model: order.Model, Thread: order.Thread, Messages: messages}
 		if !answering {
@@ -150,7 +146,7 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 			return result, nil
 		}
 		result.Failed = problem
-		if asked == followUps {
+		if asked == policy.FollowUps {
 			return result, nil
 		}
 		asked++

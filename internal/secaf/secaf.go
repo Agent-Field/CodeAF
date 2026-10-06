@@ -161,7 +161,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	fs.StringVar(&o.severity, "severity", "low", "the least severe finding to report: info, low, medium, high")
 	fs.IntVar(&o.maxProvers, "max-provers", 0, "the most findings to test (default: the depth's)")
 	fs.StringVar(&o.compliance, "compliance", "", "frameworks to map findings to, such as owasp,pci-dss")
-	fs.IntVar(&o.sessions, "sessions", 8, "how many agent sessions run at once")
+	fs.IntVar(&o.sessions, "sessions", sessionsAtOnce, "how many agent sessions run at once")
 	fs.IntVar(&o.maxTurns, "max-turns", 0, "most turns of any agent session (default: the agent's own)")
 	fs.DurationVar(&o.sessionWall, "session-wall", 0, "longest any agent session runs (default: the agent's own)")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
@@ -203,6 +203,9 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		return delegate.Ending{Status: delegate.StatusFail,
 			Message: fmt.Sprintf("it could not start: the depth %q is not quick, standard or thorough", scope.Depth)}
 	}
+	if o.sessions < 1 {
+		return delegate.Ending{Status: delegate.StatusFail, Message: fmt.Sprintf("it could not start: --sessions is %d, and at least one agent session has to run", o.sessions)}
+	}
 	root, err := filepath.EvalSymlinks(host.Workspace())
 	if err != nil {
 		return delegate.Ending{Status: delegate.StatusFail, Message: "it could not start: " + err.Error()}
@@ -224,7 +227,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "changes", Data: stageData(map[string]any{
 			"changed": len(read.Changed), "nearby": len(read.Nearby), "base": read.BaseName})})
 	}
-	client, err := agentsession.NewClient(host.Models())
+	client, err := agentsession.NewClient(host.Models(), retries)
 	if err != nil {
 		return delegate.Ending{Status: delegate.StatusFail, Message: "it could not start: " + err.Error()}
 	}
@@ -237,11 +240,14 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		light = o.model
 	}
 	watching, phases := newWatch(host)
-	app := agentsession.New(client, agentsession.Config{
+	app, err := agentsession.New(client, agentsession.Config{
 		Root: root, Work: "a security audit", SessionModel: o.model, AIModel: light,
-		Sessions: o.sessions, MaxTurns: defaultAgentTurns, SessionWall: defaultAgentWall, Limits: limitsFor(o),
-		Watch: watching,
+		Sessions: o.sessions, Calls: callsAtOnce, MaxTurns: defaultAgentTurns, SessionWall: defaultAgentWall,
+		Policy: sessionPolicy, Limits: limitsFor(o), Watch: watching,
 	})
+	if err != nil {
+		return delegate.Ending{Status: delegate.StatusCrashed, Message: "it could not start: " + err.Error()}
+	}
 	request := auditRequest(root, scope, changes, o, records)
 	// THE CHECKPOINTS GO WITH THE RECORDS, never into the person's folder. A
 	// run with no record folder keeps them in a scratch folder of its own and

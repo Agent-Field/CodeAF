@@ -5,7 +5,7 @@
 //
 // Inside codeaf there is no control plane and no external coding-agent CLI, so
 // the seam no longer names any SDK agent type. The harness options and result
-// are declared here, carrying only the fields the audit actually sets and
+// are declared here, carrying only the fields the program actually sets and
 // reads, and the codeaf side supplies the implementation: Harness runs
 // codeaf's own agent loop, AI goes through codeaf's model API, and Call is
 // answered in process by the reasoner registry (internal/secaf/audit).
@@ -21,8 +21,8 @@ import (
 //
 // Cwd is the directory the agent runs in — for most agents a scratch
 // directory the agent writes its structured output into — and ProjectDir is
-// the repository under audit, which the agent reads. Those two are the only
-// options any agent in the audit sets: the model, turn budget and provider were
+// the repository the run reads, which the agent reads. Those two are the only
+// options any agent in the program sets: the model, turn budget and provider were
 // process-wide configuration of the external CLI this seam used to drive, and
 // are now whatever the codeaf implementation of Harness decides.
 type HarnessOptions struct {
@@ -30,12 +30,12 @@ type HarnessOptions struct {
 	ProjectDir string
 	// Label is the agent the run is for, in the words its errors already use
 	// ("Hunt location scanner", "DataFlowTracer"). It changes nothing about
-	// the run; codeaf names the session by it on the audit's page.
+	// the run; codeaf names the session by it on the program's page.
 	Label string
 }
 
-// HarnessResult is the outcome of one harness run, mirroring the fields the
-// audit reads off it.
+// HarnessResult is the outcome of one harness run, mirroring the fields a
+// program reads off it.
 //
 // A run that HAPPENED and failed is reported with IsError and ErrorMessage and
 // a nil Go error; a Go error from Harness means the run could not be made at
@@ -76,7 +76,7 @@ type AIer interface {
 }
 
 // Noter is the `app.note(msg, tags=[...])` seam: a progress line for whoever
-// is watching the audit, never something the algorithm reads back.
+// is watching the program, never something the algorithm reads back.
 type Noter interface {
 	Note(ctx context.Context, message string, tags ...string)
 }

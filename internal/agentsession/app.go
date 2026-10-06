@@ -1,6 +1,6 @@
 package agentsession
 
-// The App the audit runs on: sec-af's four verbs answered by codeaf.
+// The App a program runs on: sec-af's four verbs answered by codeaf.
 
 import (
 	"context"
@@ -33,7 +33,7 @@ type Config struct {
 	// Empty leaves the choice to the model API, which answers on the run's
 	// work seat.
 	SessionModel, AIModel string
-	// Sessions is how many agent sessions run at once across the whole audit,
+	// Sessions is how many agent sessions run at once across the whole run,
 	// and Calls how many single calls. sec-af's own fan-outs multiply — four
 	// hunters each enriching five locations — and the old harness capped its
 	// processes at eight for the same reason.
@@ -43,6 +43,8 @@ type Config struct {
 	// SessionWall bounds one session's time; sec-af's harness waited thirty
 	// minutes.
 	SessionWall time.Duration
+	// Policy is how every session reads and answers ([Policy]).
+	Policy Policy
 	// Limits is each agent's own turns and time, by the options its session
 	// was started with; a zero field falls back to MaxTurns or SessionWall.
 	// Nil gives every agent those two.
@@ -82,7 +84,7 @@ func (a *App) limitsFor(opts appx.HarnessOptions) Limits {
 	return own
 }
 
-// Watch is what the audit's progress is told to.
+// Watch is what the program's progress is told to.
 type Watch struct {
 	// Session is one agent session that ended: its label (the agent that ran
 	// it, such as `hunt-scan`), how it went, and the error that stopped it
@@ -109,27 +111,20 @@ type App struct {
 
 var _ appx.App = (*App)(nil)
 
-// New opens the App over the run's model API.
-func New(client *Client, config Config) *App {
-	if config.Sessions <= 0 {
-		config.Sessions = 8
-	}
-	if config.Calls <= 0 {
-		config.Calls = 8
-	}
-	if config.MaxTurns <= 0 {
-		config.MaxTurns = 50
-	}
-	if config.SessionWall <= 0 {
-		config.SessionWall = 30 * time.Minute
+// New opens the App over the run's model API. It refuses a Config that
+// leaves any figure unset: Sessions, Calls, MaxTurns, SessionWall and every
+// field of Policy are the program's to state ([Policy] says why).
+func New(client *Client, config Config) (*App, error) {
+	if field := config.missing(); field != "" {
+		return nil, unsetError("Config", field)
 	}
 	return &App{config: config, client: client,
-		sessions: make(chan struct{}, config.Sessions), calls: make(chan struct{}, config.Calls)}
+		sessions: make(chan struct{}, config.Sessions), calls: make(chan struct{}, config.Calls)}, nil
 }
 
-// Spent is what the audit's calls have cost so far, as the replies priced
+// Spent is what the program's calls have cost so far, as the replies priced
 // them, and how many sessions and single calls it made. The model API's own
-// meter is what bills the run; this is the audit's own account of itself for
+// meter is what bills the run; this is the program's own account of itself for
 // its report.
 func (a *App) Spent() (cost float64, sessions, calls int) {
 	a.mu.Lock()
@@ -171,7 +166,7 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 	limits := a.limitsFor(opts)
 	result, err := RunSession(ctx, a.client, SessionOrder{
 		Model: a.config.SessionModel, Thread: thread, Root: root, Work: a.config.Work, Prompt: prompt, Schema: schema,
-		MaxTurns: limits.Turns, Wall: limits.Wall,
+		MaxTurns: limits.Turns, Wall: limits.Wall, Policy: a.config.Policy,
 	})
 	a.spend(result.CostUSD, true)
 	if watch := a.config.Watch; watch != nil && watch.Session != nil {
@@ -264,7 +259,7 @@ func (a *App) Note(_ context.Context, message string, tags ...string) {
 	}
 }
 
-// Call is never answered here: the audit's calls between its own reasoners
+// Call is never answered here: the program's calls between its own reasoners
 // stay in the process (internal/secaf/audit's local calls), which wrap this
 // App. A call that reached it is a reasoner nobody registered.
 func (a *App) Call(_ context.Context, target string, _ map[string]any) (map[string]any, error) {

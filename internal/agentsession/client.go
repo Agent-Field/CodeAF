@@ -44,6 +44,9 @@ type Client struct {
 	base  string
 	token string
 	http  *http.Client
+	// retries is how many times a call that failed on the way is sent again:
+	// the program's own figure ([NewClient]).
+	retries int
 	// stopped is set by the first refusal that ends the run — the dollar
 	// ceiling, a key the service refused — so the dozens of calls still queued
 	// behind it learn the same answer without asking a server that already
@@ -57,12 +60,21 @@ type Client struct {
 
 // NewClient opens the run's model API. It refuses an API with no address or no
 // token, because a program with neither has no road to a model at all.
-func NewClient(api delegate.ModelAPI) (*Client, error) {
+//
+// retries is how many times a call that failed on the way is sent again, and
+// it is the program's to state like every figure here ([Policy] says why);
+// zero is no retry. The model API already walks codeaf's own ladder of
+// services for every call, so a retry covers only what that cannot — a
+// connection dropped on this machine, a moment the API was busy.
+func NewClient(api delegate.ModelAPI, retries int) (*Client, error) {
 	if strings.TrimSpace(api.BaseURL) == "" || strings.TrimSpace(api.Token) == "" {
 		return nil, errors.New("a program codeaf carries runs only inside codeaf, which serves its models; this process was handed no model API")
 	}
+	if retries < 0 {
+		return nil, fmt.Errorf("agentsession: NewClient's retries is %d; it is how many times a failed call is sent again, zero or more", retries)
+	}
 	return &Client{
-		base: api.BaseURL, token: api.Token,
+		base: api.BaseURL, token: api.Token, retries: retries,
 		// NO CLIENT TIMEOUT: a thinking model can be quiet for minutes, and the
 		// call's own context (the session's wall, the run's stop) is what ends
 		// it.
@@ -94,7 +106,7 @@ type wireRequest struct {
 }
 
 // ErrCeiling is the run's dollar ceiling, reached: the model API made no call.
-// It ends the audit's model work everywhere at once, and what the audit found
+// It ends the program's model work everywhere at once, and what the program found
 // before it is still reported.
 var ErrCeiling = errors.New("the run's dollar ceiling is reached, so codeaf made no call")
 
@@ -122,12 +134,6 @@ func (e *RefusedError) Error() string {
 // Is makes the ceiling match [ErrCeiling].
 func (e *RefusedError) Is(target error) bool { return target == ErrCeiling && e.Ceiling }
 
-// retries is how many times a call that failed on the way is sent again. The
-// model API already walks codeaf's own ladder of services for every call, so
-// this covers only what that cannot — a connection dropped on this machine, a
-// moment the API was busy — and stays small.
-const retries = 2
-
 // Complete sends one call and answers the model's reply.
 func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, error) {
 	if stopped := c.stopped.Load(); stopped != nil {
@@ -145,7 +151,7 @@ func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, e
 		return nil, fmt.Errorf("encode the call: %w", err)
 	}
 	var last error
-	for attempt := 0; attempt <= retries; {
+	for attempt := 0; attempt <= c.retries; {
 		response, err, again := c.send(ctx, body)
 		if err == nil {
 			return response, nil
@@ -159,8 +165,8 @@ func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, e
 			return nil, ctx.Err()
 		}
 		// A CALL HELD BEHIND CALLS IN FLIGHT WAITS ITS TURN, for as long as
-		// the session's own bounds allow, and is not counted as a failure: the
-		// audit runs many calls at once and the ceiling admits as many as it
+		// the session's own bounds allow, and is not counted as a failure: a
+		// program runs many calls at once and the ceiling admits as many as it
 		// can price (modelapi's held answer).
 		if errors.Is(err, errHeld) {
 			if !c.wait(ctx, c.holdPause()) {
@@ -173,7 +179,7 @@ func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, e
 		}
 		last = err
 		attempt++
-		if attempt > retries {
+		if attempt > c.retries {
 			break
 		}
 		if !c.wait(ctx, c.pause(attempt)) {

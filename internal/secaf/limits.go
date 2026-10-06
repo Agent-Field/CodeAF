@@ -92,3 +92,35 @@ const (
 	defaultAgentTurns = 50
 	defaultAgentWall  = 30 * time.Minute
 )
+
+// sessionsAtOnce and callsAtOnce are how many agent sessions and single model
+// calls run at once across the audit: sec-af's own fan-outs multiply — four
+// hunters each enriching five locations — and the old harness capped its
+// processes at eight for the same reason. --sessions sets the first.
+const (
+	sessionsAtOnce = 8
+	callsAtOnce    = 8
+)
+
+// retries is how many times a model call that failed on the way is sent
+// again, past the model API's own ladder of services.
+const retries = 2
+
+// sessionPolicy is how every one of sec's agent sessions reads and answers.
+// These are the figures sec-af's harness ran on, now said here as sec's own
+// (agentsession has no defaults; its Policy says why).
+var sessionPolicy = agentsession.Policy{
+	// The old harness's own count of asks for an answer of the right shape.
+	FollowUps: 2,
+	// About a hundred thousand tokens, which every model a person is likely to
+	// seat holds with room for the answer.
+	ContextChars: 400_000,
+	AnswerNow:    "Stop reading now and give your answer from what you have found, in the form the system message asks for.",
+	Tools: agentsession.ToolLimits{
+		ReadLines: 400, ReadBytes: 48 << 10, ReadLineRunes: 2000,
+		ListEntries: 400, GlobMatches: 300,
+		// A file past two megabytes is a bundle, a dump or a dataset, and its
+		// lines are not code to trace.
+		GrepMatches: 200, GrepFileBytes: 2 << 20, GrepLineRunes: 240,
+	},
+}

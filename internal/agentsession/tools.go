@@ -3,8 +3,8 @@ package agentsession
 // The tools an agent session is handed: four ways to read the repository and
 // none to change it.
 //
-// EVERY PATH IS THE REPOSITORY'S. A path is read relative to the folder under
-// audit, and one that leads out of it — `..`, an absolute path elsewhere, a
+// EVERY PATH IS THE REPOSITORY'S. A path is read relative to the folder the run
+// reads, and one that leads out of it — `..`, an absolute path elsewhere, a
 // link whose target is elsewhere — is refused in a sentence the model can act
 // on. sec-af's hunters chase data flow wherever it goes, and the person's home
 // folder is not where it goes.
@@ -30,24 +30,6 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 )
 
-const (
-	// readLines is the most lines one read answers.
-	readLines = 400
-	// readBytes is the most bytes one read answers, for files with long lines.
-	readBytes = 48 << 10
-	// listEntries is the most entries a listing answers.
-	listEntries = 400
-	// globMatches is the most paths a glob answers.
-	globMatches = 300
-	// grepMatches is the most lines a search answers.
-	grepMatches = 200
-	// grepFileBytes is the largest file a search reads; past it a file is a
-	// bundle, a dump or a dataset, and its lines are not code to trace.
-	grepFileBytes = 2 << 20
-	// grepLineRunes is how much of one matching line is quoted.
-	grepLineRunes = 240
-)
-
 // skippedDirs are folders a search walks past: version control, dependency
 // trees and build output. A read or a listing still reaches them by name,
 // because a hunter that has a reason to open a vendored file may.
@@ -59,7 +41,8 @@ var skippedDirs = map[string]bool{
 
 // toolbox is the four tools over one repository.
 type toolbox struct {
-	root string
+	root   string
+	limits ToolLimits
 }
 
 // definitions is what the model is offered.
@@ -80,8 +63,8 @@ func (t toolbox) definitions() []ai.ToolDefinition {
 		return map[string]any{"type": "integer", "description": description}
 	}
 	return []ai.ToolDefinition{
-		tool("read_file", fmt.Sprintf("Read a file of the repository, with line numbers. At most %d lines per call; pass offset to read further.", readLines),
-			map[string]any{"path": text("path relative to the repository root"), "offset": number("first line to read, 1-based (default 1)"), "limit": number(fmt.Sprintf("how many lines (default and most %d)", readLines))}, "path"),
+		tool("read_file", fmt.Sprintf("Read a file of the repository, with line numbers. At most %d lines per call; pass offset to read further.", t.limits.ReadLines),
+			map[string]any{"path": text("path relative to the repository root"), "offset": number("first line to read, 1-based (default 1)"), "limit": number(fmt.Sprintf("how many lines (default and most %d)", t.limits.ReadLines))}, "path"),
 		tool("list_dir", "List one folder of the repository: files, and folders with a trailing slash.",
 			map[string]any{"path": text("folder relative to the repository root (default: the root)")}),
 		tool("glob", "Find files whose path matches a pattern such as **/*.py or src/**/routes*.ts. Dependency and build folders are skipped.",
@@ -190,8 +173,8 @@ func (t toolbox) read(name string, offset, limit int) (string, error) {
 	if offset < 1 {
 		offset = 1
 	}
-	if limit <= 0 || limit > readLines {
-		limit = readLines
+	if limit <= 0 || limit > t.limits.ReadLines {
+		limit = t.limits.ReadLines
 	}
 	var b strings.Builder
 	scanner := bufio.NewScanner(file)
@@ -202,7 +185,7 @@ func (t toolbox) read(name string, offset, limit int) (string, error) {
 		if line < offset {
 			continue
 		}
-		if shown >= limit || b.Len() >= readBytes {
+		if shown >= limit || b.Len() >= t.limits.ReadBytes {
 			more = true
 			break
 		}
@@ -210,7 +193,7 @@ func (t toolbox) read(name string, offset, limit int) (string, error) {
 		if line == 1 && bytes.IndexByte([]byte(text), 0) >= 0 {
 			return "", fmt.Errorf("%s is a binary file", name)
 		}
-		text = cutLongLine(text)
+		text = cutLongLine(text, t.limits.ReadLineRunes)
 		fmt.Fprintf(&b, "%6d\t%s\n", line, text)
 		shown++
 	}
@@ -240,7 +223,7 @@ func (t toolbox) list(name string) (string, error) {
 	}
 	var b strings.Builder
 	for index, entry := range entries {
-		if index == listEntries {
+		if index == t.limits.ListEntries {
 			fmt.Fprintf(&b, "[%d more entries not shown]\n", len(entries)-index)
 			break
 		}
@@ -270,7 +253,7 @@ func (t toolbox) glob(pattern string) (string, error) {
 	walkErr := t.walk(t.root, func(path string) bool {
 		rel := t.rel(path)
 		if match.MatchString(rel) {
-			if len(found) == globMatches {
+			if len(found) == t.limits.GlobMatches {
 				more = true
 				return false
 			}
@@ -287,7 +270,7 @@ func (t toolbox) glob(pattern string) (string, error) {
 	sort.Strings(found)
 	out := strings.Join(found, "\n") + "\n"
 	if more {
-		out += fmt.Sprintf("[stopped at %d paths; narrow the pattern]\n", globMatches)
+		out += fmt.Sprintf("[stopped at %d paths; narrow the pattern]\n", t.limits.GlobMatches)
 	}
 	return out, nil
 }
@@ -323,7 +306,7 @@ func (t toolbox) grep(expression, name, filter string, ignoreCase bool) (string,
 			return true
 		}
 		info, err := os.Stat(path)
-		if err != nil || info.Size() > grepFileBytes {
+		if err != nil || info.Size() > int64(t.limits.GrepFileBytes) {
 			return true
 		}
 		data, err := os.ReadFile(path)
@@ -334,11 +317,11 @@ func (t toolbox) grep(expression, name, filter string, ignoreCase bool) (string,
 			if !search.MatchString(line) {
 				continue
 			}
-			if count == grepMatches {
+			if count == t.limits.GrepMatches {
 				more = true
 				return false
 			}
-			line = aroundMatch(strings.TrimRight(line, "\r"), search)
+			line = aroundMatch(strings.TrimRight(line, "\r"), search, t.limits.GrepLineRunes)
 			fmt.Fprintf(&b, "%s:%d: %s\n", t.rel(path), number+1, line)
 			count++
 		}
@@ -351,7 +334,7 @@ func (t toolbox) grep(expression, name, filter string, ignoreCase bool) (string,
 		return "no line matches", nil
 	}
 	if more {
-		fmt.Fprintf(&b, "[stopped at %d lines; narrow the pattern or the path]\n", grepMatches)
+		fmt.Fprintf(&b, "[stopped at %d lines; narrow the pattern or the path]\n", t.limits.GrepMatches)
 	}
 	return b.String(), nil
 }
@@ -447,11 +430,8 @@ func displayName(name string) string {
 	return name
 }
 
-// readLineRunes is the most of one line read_file shows.
-const readLineRunes = 2000
-
 // cutLongLine is one line as read_file shows it: whole, or its first
-// [readLineRunes] characters and what was left out.
+// [ToolLimits.ReadLineRunes] characters and what was left out.
 //
 // A LONG LINE SAYS HOW TO REACH THE REST OF IT. Minified code, generated data
 // and a context file written as one line of JSON are single lines of tens of
@@ -460,30 +440,30 @@ const readLineRunes = 2000
 // its turn cap without finding it (/pr's live review, 2026-10-06). grep shows
 // the text around a match anywhere in a line ([aroundMatch]), so the cut points
 // there.
-func cutLongLine(text string) string {
+func cutLongLine(text string, most int) string {
 	runes := []rune(text)
-	if len(runes) <= readLineRunes {
+	if len(runes) <= most {
 		return text
 	}
 	return fmt.Sprintf("%s …[line cut: the first %d of its %d characters; grep for what you need in it to see the text around each match]",
-		string(runes[:readLineRunes]), readLineRunes, len(runes))
+		string(runes[:most]), most, len(runes))
 }
 
 // aroundMatch is one matching line as grep shows it: whole when it is short,
-// else [grepLineRunes] characters around its first match, so a match far into
+// else [ToolLimits.GrepLineRunes] characters around its first match, so a match far into
 // a long line is shown with its own text rather than with the line's start.
-func aroundMatch(line string, search *regexp.Regexp) string {
+func aroundMatch(line string, search *regexp.Regexp, most int) string {
 	runes := []rune(line)
-	if len(runes) <= grepLineRunes {
+	if len(runes) <= most {
 		return line
 	}
 	at := 0
 	if found := search.FindStringIndex(line); found != nil {
 		at = len([]rune(line[:found[0]]))
 	}
-	start := max(0, at-grepLineRunes/4)
-	end := min(len(runes), start+grepLineRunes)
-	start = max(0, end-grepLineRunes)
+	start := max(0, at-most/4)
+	end := min(len(runes), start+most)
+	start = max(0, end-most)
 	shown := string(runes[start:end])
 	if start > 0 {
 		shown = "… " + shown

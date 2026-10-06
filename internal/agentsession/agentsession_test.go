@@ -61,7 +61,7 @@ func (f *fakeAPI) serveWithHeader(t *testing.T, header, value string) *Client {
 		_ = json.NewEncoder(w).Encode(payload)
 	}))
 	t.Cleanup(server.Close)
-	client, err := NewClient(delegate.ModelAPI{BaseURL: server.URL + "/v1", Token: "tok"})
+	client, err := NewClient(delegate.ModelAPI{BaseURL: server.URL + "/v1", Token: "tok"}, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestASessionReadsTheRepositoryAndAnswersInItsSchema(t *testing.T) {
 			return answer(`{"file":"app/views.py","line":4}`, 0.02)(body)
 		})
 	client := api.serve(t)
-	result, err := RunSession(t.Context(), client, SessionOrder{Model: "vendor/model", Thread: "hunt-1", Root: root,
+	result, err := RunSession(t.Context(), client, SessionOrder{Policy: testPolicy, MaxTurns: 50, Model: "vendor/model", Thread: "hunt-1", Root: root,
 		Prompt: "find the command injection", Schema: findingSchema})
 	if err != nil {
 		t.Fatal(err)
@@ -181,12 +181,12 @@ func TestAnAnswerThatMissesItsSchemaIsAskedForAgainTwice(t *testing.T) {
 			}
 			return answer(`Here: {"file":"app/views.py","line":4} done`, 0)(body)
 		})
-	result, err := RunSession(t.Context(), api.serve(t), SessionOrder{Root: root, Prompt: "find it", Schema: findingSchema})
+	result, err := RunSession(t.Context(), api.serve(t), SessionOrder{Policy: testPolicy, MaxTurns: 50, Root: root, Prompt: "find it", Schema: findingSchema})
 	if err != nil || result.Failed != "" || string(result.JSON) != `{"file":"app/views.py","line":4}` {
 		t.Fatalf("result %+v, err %v", result, err)
 	}
 	stubborn := (&fakeAPI{}).then(answer("no", 0)).then(answer("no", 0)).then(answer("no", 0))
-	result, err = RunSession(t.Context(), stubborn.serve(t), SessionOrder{Root: root, Prompt: "find it", Schema: findingSchema})
+	result, err = RunSession(t.Context(), stubborn.serve(t), SessionOrder{Policy: testPolicy, MaxTurns: 50, Root: root, Prompt: "find it", Schema: findingSchema})
 	if err != nil || result.Failed == "" || result.Turns != 3 {
 		t.Fatalf("a model that never met the schema gave %+v, %v", result, err)
 	}
@@ -240,7 +240,7 @@ func TestNoToolReadsOutsideTheRepository(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(root, "away")); err != nil {
 		t.Fatal(err)
 	}
-	tools := toolbox{root: root}
+	tools := toolbox{root: root, limits: testPolicy.Tools}
 	for _, call := range []struct{ name, args string }{
 		{"read_file", `{"path":"../secret"}`},
 		{"read_file", `{"path":"` + filepath.Join(outside, "secret") + `"}`},
@@ -279,7 +279,7 @@ func TestTheLastTurnIsAnAnswer(t *testing.T) {
 			}
 			return answer("plain words", 0)(body)
 		})
-	result, err := RunSession(context.Background(), api.serve(t), SessionOrder{Root: root, Prompt: "look", MaxTurns: 2})
+	result, err := RunSession(context.Background(), api.serve(t), SessionOrder{Policy: testPolicy, Root: root, Prompt: "look", MaxTurns: 2})
 	if err != nil || result.Text != "plain words" || result.Failed != "" {
 		t.Fatalf("result %+v, err %v", result, err)
 	}
@@ -293,7 +293,7 @@ func TestHarnessKeepsTheOldHarnesssContract(t *testing.T) {
 	var heard []string
 	api := (&fakeAPI{}).then(answer(`{"file":"app/views.py","line":4}`, 0.5)).
 		then(answer("no", 0)).then(answer("no", 0)).then(answer("no", 0))
-	app := New(api.serve(t), Config{Root: root, SessionModel: "vendor/work",
+	app := mustNew(t, api.serve(t), Config{Root: root, SessionModel: "vendor/work",
 		Watch: &Watch{Session: func(label string, _ SessionResult, _ error) { heard = append(heard, label) }}})
 	var dest struct {
 		File string `json:"file"`
@@ -345,7 +345,7 @@ func TestAStructuredCallFallsBackToTheSchemaInWords(t *testing.T) {
 			}
 			return answer(`{"verdict":"likely"}`, 0.1)(body)
 		})
-	app := New(api.serve(t), Config{Root: t.TempDir(), AIModel: "vendor/light"})
+	app := mustNew(t, api.serve(t), Config{Root: t.TempDir(), AIModel: "vendor/light"})
 	response, err := app.AI(t.Context(), "decide", ai.WithSystem("you decide"),
 		ai.WithSchema(json.RawMessage(`{"type":"object","properties":{"verdict":{"type":"string"}}}`)))
 	if err != nil || response.Text() != `{"verdict":"likely"}` {
@@ -384,7 +384,7 @@ func TestAHeldCallWaitsItsTurn(t *testing.T) {
 // Every tool's parameters are a JSON Schema a strict server takes: an object
 // whose `required` is a list, empty included.
 func TestEveryToolSchemaIsStrictlyValid(t *testing.T) {
-	for _, tool := range (toolbox{}).definitions() {
+	for _, tool := range (toolbox{limits: testPolicy.Tools}).definitions() {
 		encoded, _ := json.Marshal(tool.Function.Parameters)
 		var shape struct {
 			Type     string          `json:"type"`
@@ -446,7 +446,7 @@ func TestAnEmptyReplyFailsOnlyItsSessionAndTheCeilingEndsTheRun(t *testing.T) {
 	root := repo(t)
 	empty := func(wireRequest) (int, any) { return 200, ai.Response{} }
 	api := (&fakeAPI{}).then(empty).then(empty).then(empty)
-	app := New(api.serve(t), Config{Root: root})
+	app := mustNew(t, api.serve(t), Config{Root: root})
 	var dest struct {
 		File string `json:"file"`
 	}
@@ -457,7 +457,7 @@ func TestAnEmptyReplyFailsOnlyItsSessionAndTheCeilingEndsTheRun(t *testing.T) {
 	refused := (&fakeAPI{}).then(func(wireRequest) (int, any) {
 		return http.StatusPaymentRequired, map[string]any{"error": map[string]any{"message": "the ceiling is reached"}}
 	})
-	capped := New(refused.serve(t), Config{Root: root})
+	capped := mustNew(t, refused.serve(t), Config{Root: root})
 	if _, err := capped.Harness(t.Context(), "find it", findingSchema, &dest, appxOptions("/tmp/secaf-hunt-scan-2", root)); !errors.Is(err, ErrCeiling) {
 		t.Fatalf("the ceiling gave %v; want it to end the run", err)
 	}
@@ -466,7 +466,7 @@ func TestAnEmptyReplyFailsOnlyItsSessionAndTheCeilingEndsTheRun(t *testing.T) {
 // EACH AGENT IS BOUNDED BY ITS OWN FIGURES, and a figure the program leaves
 // at zero is the App's default.
 func TestEachAgentRunsUnderItsOwnLimits(t *testing.T) {
-	app := New(nil, Config{MaxTurns: 50, SessionWall: 30 * time.Minute, Limits: func(opts appx.HarnessOptions) Limits {
+	app := mustNew(t, nil, Config{MaxTurns: 50, SessionWall: 30 * time.Minute, Limits: func(opts appx.HarnessOptions) Limits {
 		if opts.Label == "scanner" {
 			return Limits{Turns: 75}
 		}
@@ -492,7 +492,7 @@ func TestALongLineIsCutOnACharacterAndGrepShowsAMatchFarIntoIt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "context.json"), []byte(long+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tools := toolbox{root: root}
+	tools := toolbox{root: root, limits: testPolicy.Tools}
 	read := tools.run(ai.ToolCall{Function: ai.ToolCallFunction{Name: "read_file", Arguments: `{"path":"context.json"}`}})
 	if !utf8.ValidString(read) || !strings.Contains(read, "é …[line cut: the first 2000 of its 30519 characters; grep for what you need in it") {
 		t.Fatalf("the long line read as %q", read[max(0, len(read)-200):])
@@ -500,5 +500,82 @@ func TestALongLineIsCutOnACharacterAndGrepShowsAMatchFarIntoIt(t *testing.T) {
 	found := tools.run(ai.ToolCall{Function: ai.ToolCallFunction{Name: "grep", Arguments: `{"pattern":"needle"}`}})
 	if !strings.HasPrefix(found, "context.json:1: … ") || !strings.Contains(found, `"needle":"found it"`) || len([]rune(found)) > 300 {
 		t.Fatalf("grep showed %q", found)
+	}
+}
+
+// testPolicy is the tests' own figures: a program states every one, and so do
+// the tests that stand in for one.
+var testPolicy = Policy{
+	FollowUps: 2, ContextChars: 400_000,
+	AnswerNow: "Stop reading now and give your answer from what you have found, in the form the system message asks for.",
+	Tools: ToolLimits{ReadLines: 400, ReadBytes: 48 << 10, ReadLineRunes: 2000, ListEntries: 400, GlobMatches: 300,
+		GrepMatches: 200, GrepFileBytes: 2 << 20, GrepLineRunes: 240},
+}
+
+// mustNew opens an App for a test, stating every figure the test left unset
+// with the tests' own.
+func mustNew(t *testing.T, client *Client, config Config) *App {
+	t.Helper()
+	if config.Sessions == 0 {
+		config.Sessions = 8
+	}
+	if config.Calls == 0 {
+		config.Calls = 8
+	}
+	if config.MaxTurns == 0 {
+		config.MaxTurns = 50
+	}
+	if config.SessionWall == 0 {
+		config.SessionWall = 30 * time.Minute
+	}
+	if config.Policy == (Policy{}) {
+		config.Policy = testPolicy
+	}
+	app, err := New(client, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return app
+}
+
+// NOTHING HERE HAS A DEFAULT. A program that leaves a figure unset is refused
+// where the App is opened and where a session is run, naming the figure, so
+// no program runs on a number another program chose.
+func TestEveryFigureIsTheProgramsAndAnUnsetOneIsRefused(t *testing.T) {
+	whole := Config{Sessions: 8, Calls: 8, MaxTurns: 50, SessionWall: time.Minute, Policy: testPolicy}
+	if _, err := New(nil, whole); err != nil {
+		t.Fatalf("a Config with every figure stated was refused: %v", err)
+	}
+	for name, unset := range map[string]func(*Config){
+		"Sessions":                   func(c *Config) { c.Sessions = 0 },
+		"Calls":                      func(c *Config) { c.Calls = 0 },
+		"MaxTurns":                   func(c *Config) { c.MaxTurns = 0 },
+		"SessionWall":                func(c *Config) { c.SessionWall = 0 },
+		"Policy.FollowUps":           func(c *Config) { c.Policy.FollowUps = 0 },
+		"Policy.ContextChars":        func(c *Config) { c.Policy.ContextChars = 0 },
+		"Policy.AnswerNow":           func(c *Config) { c.Policy.AnswerNow = " " },
+		"Policy.Tools.ReadLines":     func(c *Config) { c.Policy.Tools.ReadLines = 0 },
+		"Policy.Tools.ReadBytes":     func(c *Config) { c.Policy.Tools.ReadBytes = 0 },
+		"Policy.Tools.ReadLineRunes": func(c *Config) { c.Policy.Tools.ReadLineRunes = 0 },
+		"Policy.Tools.ListEntries":   func(c *Config) { c.Policy.Tools.ListEntries = 0 },
+		"Policy.Tools.GlobMatches":   func(c *Config) { c.Policy.Tools.GlobMatches = 0 },
+		"Policy.Tools.GrepMatches":   func(c *Config) { c.Policy.Tools.GrepMatches = 0 },
+		"Policy.Tools.GrepFileBytes": func(c *Config) { c.Policy.Tools.GrepFileBytes = 0 },
+		"Policy.Tools.GrepLineRunes": func(c *Config) { c.Policy.Tools.GrepLineRunes = 0 },
+	} {
+		config := whole
+		unset(&config)
+		if _, err := New(nil, config); err == nil || !strings.Contains(err.Error(), "Config."+name+" is not set") {
+			t.Errorf("leaving %s unset gave %v", name, err)
+		}
+	}
+	if _, err := RunSession(t.Context(), nil, SessionOrder{Root: t.TempDir(), Prompt: "look", Policy: testPolicy}); err == nil || !strings.Contains(err.Error(), "SessionOrder.MaxTurns is not set") {
+		t.Fatalf("a session with no turns of its own ran: %v", err)
+	}
+	if _, err := RunSession(t.Context(), nil, SessionOrder{Root: t.TempDir(), Prompt: "look", MaxTurns: 3}); err == nil || !strings.Contains(err.Error(), "SessionOrder.Policy.FollowUps is not set") {
+		t.Fatalf("a session with no policy ran: %v", err)
+	}
+	if _, err := NewClient(delegate.ModelAPI{BaseURL: "http://127.0.0.1:1/v1", Token: "tok"}, -1); err == nil {
+		t.Fatal("a client with negative retries was opened")
 	}
 }
