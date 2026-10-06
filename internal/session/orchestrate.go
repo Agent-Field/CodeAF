@@ -1140,6 +1140,21 @@ func (e *orchestrateExec) newChild(dir string, node orchestrate.Node) (*Agent, e
 	if err != nil {
 		return nil, err
 	}
+	// AND THE NODE'S OBSERVATIONS HAVE THE SAME ROAD HOME A TASK NODE'S DO,
+	// through the one primitive both constructors share
+	// ([Agent.adoptWorkerObservation]): the run's root collector lent read-only
+	// and the root's binding circumstances frozen before the node runs. An
+	// adaptive node runs the same loop and the same hands as any other worker
+	// ([orchestrateExec.Exec] drives it through runTaskChild), so its failing
+	// tool calls and promoted jobs are the person's real work too — without
+	// this they were recorded nowhere, because the node carries only the lent
+	// binding store and no collector or origin of its own. The label is the run
+	// plus the node, so two nodes of one run do not share one origin's slot.
+	label := "orchestrate"
+	if id := strings.TrimSpace(node.ID); id != "" {
+		label = "orchestrate:" + strings.TrimSpace(e.id) + ":" + id
+	}
+	a.adoptWorkerObservation(child, label)
 	if e.call.effort != provider.EffortNone {
 		child.SetReasoning(string(e.call.effort))
 	}

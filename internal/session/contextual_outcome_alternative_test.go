@@ -1128,6 +1128,12 @@ func TestA4BareOperandNonReadersDoNotStealAlternativeSlot(t *testing.T) {
 		"mv week.csv /tmp/week.csv",
 		"chmod 000 week.csv",
 		"mytool week.csv",
+		// THE PREFIX IMPOSTORS OF F1: a name that merely STARTS with the
+		// interpreter family is still not a reader.
+		"python-tool week.csv",
+		"python-config week.csv",
+		"pythonista week.csv",
+		"pypyhelper week.csv",
 	}
 	for _, ctrl := range controls {
 		if alternativeEligible(delegatedBashCall("n", ctrl), "bash", "bash: "+a4Failed, a4Goal) {
@@ -1326,6 +1332,10 @@ func TestA4GuardTaxonomyPins(t *testing.T) {
 		`.venv/bin/python -c 'open("week.csv")' || true`,
 		`.venv/bin/python -c 'open("week.csv")' 2>/dev/null`,
 		`false || .venv/bin/python ledger.py week.csv`,
+		`.venv/bin/python -c 'open("week.csv")' ; true`,
+		`.venv/bin/python -c 'open("week.csv")' && true`,
+		`.venv/bin/python -c 'open("week.csv")' | cat`,
+		`.venv/bin/python -c 'open("week.csv")' &`,
 	}
 	for _, body := range masked {
 		if !shellMasksExit(body) {
@@ -1338,10 +1348,61 @@ func TestA4GuardTaxonomyPins(t *testing.T) {
 			t.Fatalf("a genuine action was misread as masking: %q", body)
 		}
 	}
+	// THE GUARD READS ONLY THE LAST SUBSTEP, so a real multi-command run whose
+	// final step keeps its exit is untouched — the `;`-separated ledger utility
+	// and a pipeline into a real consumer both stay eligible.
+	stillClean := []string{
+		`.venv/bin/python ledger.py week.csv; echo "---"; .venv/bin/python ledger.py week.csv --summary grandtotal`,
+		`.venv/bin/python ledger.py week.csv | sort`,
+		`.venv/bin/python -c 'import csv, decimal' ; .venv/bin/python ledger.py week.csv`,
+	}
+	for _, body := range stillClean {
+		if shellMasksExit(body) {
+			t.Fatalf("a genuine multi-command action was misread as masking: %q", body)
+		}
+	}
 	if !receiptShowsFailure("Traceback (most recent call last):") || !receiptShowsFailure("ModuleNotFoundError: No module named 'pandas'") {
 		t.Fatal("a failing receipt was not recognised")
 	}
 	if receiptShowsFailure("rows: 3\nindependent grand total: 12.35") {
 		t.Fatal("a genuine success receipt was misread as a failure")
+	}
+}
+
+// THE INTERPRETER TAXONOMY IS EXACT, NOT A PREFIX. A real interpreter name \u2014
+// bare, a major version or a major.minor \u2014 grounds a bare goal-file operand. A
+// program that merely STARTS with the family word (a `-config` helper, a
+// locally named wrapper, an unrelated `pythonista`/`pypyhelper`) does not: it can
+// never steal the one alternative slot from the genuine calculation that follows.
+func TestA4InterpreterTaxonomyIsExact(t *testing.T) {
+	readers := []string{
+		".venv/bin/python ledger.py week.csv",
+		"python ledger.py week.csv",
+		"python2 ledger.py week.csv",
+		"python3 ledger.py week.csv",
+		"python2.7 ledger.py week.csv",
+		"python3.12 ledger.py week.csv",
+		"pypy ledger.py week.csv",
+		"pypy3 ledger.py week.csv",
+		"pypy3.10 ledger.py week.csv",
+	}
+	for _, body := range readers {
+		if !alternativeEligible(delegatedBashCall("r", body), "bash", "bash: "+a4Failed, a4Goal) {
+			t.Errorf("a real interpreter's operand was refused: %q", body)
+		}
+	}
+	impostors := []string{
+		"python-tool week.csv",
+		"python-config week.csv",
+		"python3-config week.csv",
+		"python3.12-config week.csv",
+		"pythonista week.csv",
+		"pythonw week.csv",
+		"pypyhelper week.csv",
+	}
+	for _, body := range impostors {
+		if alternativeEligible(delegatedBashCall("n", body), "bash", "bash: "+a4Failed, a4Goal) {
+			t.Errorf("a non-interpreter prefix grounded an operand: %q", body)
+		}
 	}
 }

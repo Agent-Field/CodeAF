@@ -790,11 +790,16 @@ func heredocSplit(segment string) (string, string, bool) {
 
 // shellMasksExit answers whether a shell action MASKS a failed substep, so that
 // the overall exit the tool boundary reports cannot prove every step passed: a
-// `||` fallback swallows the left command's failure, and a redirection to the
-// null device throws away the diagnostic that would have said so. Both are the
-// error masking the turn's own prompt forbids. A masked substep is refused
-// before eligibility, so a global zero is never read as a demonstrated success.
+// `||` fallback swallows the left command's failure, a redirection to the null
+// device throws away the diagnostic that would have said so, and a trailing
+// no-op, bare `cat` or background `&` reports the last substep's zero over a
+// failure ahead of it. All are the error masking the turn's own prompt forbids.
+// A masked substep is refused before eligibility, so a global zero is never read
+// as a demonstrated success.
 func shellMasksExit(body string) bool {
+	if shellTrivialTrailingMask(body) {
+		return true
+	}
 	var quote byte
 	for i := 0; i < len(body); i++ {
 		c := body[i]
@@ -822,6 +827,39 @@ func shellMasksExit(body string) bool {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+// shellTrivialTrailingMask answers whether an action's LAST top-level substep
+// is one that cannot itself be the work and whose zero the tool boundary reports
+// no matter what ran before it: a trailing `true`/`:` no-op, a pipeline into a
+// bare `cat`, or a backgrounded `&` the shell never waits on. A failed substep
+// before it — its diagnostic captured elsewhere — is masked exactly as
+// `|| true` masks one. It reads ONLY the last substep, so a genuine
+// multi-command action (`a; b; c`, or a pipeline into a real consumer that keeps
+// its exit) is never refused: the ledger utility's own `;`-separated runs still
+// qualify.
+func shellTrivialTrailingMask(body string) bool {
+	trimmed := strings.TrimRight(body, " \t")
+	if strings.HasSuffix(trimmed, "&") && !strings.HasSuffix(trimmed, "&&") {
+		return true
+	}
+	segments := shellSegments(body)
+	for i := len(segments) - 1; i >= 0; i-- {
+		command := shellSegmentCommand(segments[i])
+		if len(command) == 0 {
+			continue
+		}
+		switch command[0] {
+		case "true", ":":
+			return true
+		case "cat":
+			// A BARE PASS-THROUGH CONSUMER discards the producer's exit; a `cat`
+			// with an operand is a real reader and is left as work.
+			return len(shellWords(segments[i])) == 1
+		}
+		return false
 	}
 	return false
 }
@@ -1113,7 +1151,47 @@ func isInterpreterCommand(words []shellWord) bool {
 // [shellReadsFileOperands] — a program this taxonomy does not recognise is refused
 // rather than guessed at, so the list never grows without a real shape behind it.
 func shellInterpreterWord(program string) bool {
-	return strings.HasPrefix(program, "python") || strings.HasPrefix(program, "pypy")
+	for _, family := range []string{"python", "pypy"} {
+		version, ok := strings.CutPrefix(program, family)
+		if ok && shellInterpreterVersion(version) {
+			return true
+		}
+	}
+	return false
+}
+
+// shellInterpreterVersion answers whether the text after a family name is a
+// PRECISE interpreter version suffix and nothing else: empty, a major (`2` or
+// `3`), or a major and a minor (`3.12`). Anything else is NOT an interpreter
+// name. This is what keeps the taxonomy closed: `python-config` and
+// `python3-config` are configuration helpers, `pythonista` and `pypyhelper` are
+// unrelated programs, and `python -m <tool>` is a module run rather than this
+// interpreter's own inline program — none of them may ground an operand.
+// A versioned interpreter (`python3.12`, `pypy3.10`) still does.
+func shellInterpreterVersion(version string) bool {
+	if version == "" {
+		return true
+	}
+	if version[0] != '2' && version[0] != '3' {
+		return false
+	}
+	version = version[1:]
+	if version == "" {
+		return true
+	}
+	if version[0] != '.' {
+		return false
+	}
+	minor := version[1:]
+	if minor == "" {
+		return false
+	}
+	for i := 0; i < len(minor); i++ {
+		if minor[i] < '0' || minor[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // shellReadsFileOperands answers whether one shell segment's PROGRAM is a
@@ -1323,7 +1401,7 @@ func segmentPipMetadata(words []shellWord) bool {
 	start := 1
 	switch {
 	case base == "pip" || base == "pip3":
-	case strings.HasPrefix(base, "python") || strings.HasPrefix(base, "pypy"):
+	case shellInterpreterWord(base):
 		module := ""
 		for i := 1; i < len(words); i++ {
 			if !words[i].quoted && words[i].text == "-m" && i+1 < len(words) {
