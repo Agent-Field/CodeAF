@@ -1445,6 +1445,8 @@ Answer with "yes", "no" or "unknown" as the first word, then ONE plain sentence 
 
 You are also shown what you said the last few times and what came of it. Do not raise the same thing again when it has already been said and nothing has moved.
 
+THE PERSON'S SENTENCE IS THE ONLY CRITERION. A note of what a yes was expected to look like is the proposer's own guess, not their words, and a match to it does not settle what they asked. When the check shows something weaker than what they named — a host answering where they asked whether an application is ready, a process running where they asked whether the work finished — answer "unknown" and say what the check could not see.
+
 When the evidence does not settle it — it is ambiguous, unreadable, or you cannot tell — answer "unknown" and say what stopped you. Never answer "no" for something you could not actually decide: a false no buries what the person asked to be told, and a wrong yes interrupts somebody for nothing.`
 
 // NO CEILING TRAVELS WITH A SENTINEL ANSWER. There was one — 1024, already
@@ -1608,10 +1610,10 @@ func NewStandingSentinelVerdict(parent Config) standing.SentinelVerdict {
 // reason a declined firing is not proposed again every wake forever.
 func standingSentinelQuestion(judgment standing.Judgment) string {
 	var out strings.Builder
-	out.WriteString("WHAT THEY ASKED FOR (their own words):\n")
+	out.WriteString("WHAT THEY ASKED FOR (the criterion, their own words):\n")
 	out.WriteString(strings.TrimSpace(judgment.Item.Words))
 	if hint := strings.TrimSpace(judgment.Item.When.Hint); hint != "" {
-		out.WriteString("\n\nWHAT A YES LOOKS LIKE:\n" + hint)
+		out.WriteString("\n\nWHAT A YES WAS EXPECTED TO LOOK LIKE (the proposer's guess at setup, not their words):\n" + hint)
 	}
 	evidence := strings.TrimSpace(judgment.Evidence)
 	if evidence == "" {

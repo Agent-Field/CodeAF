@@ -310,8 +310,12 @@ type When struct {
 	// Probe is a WhenProbe's look at the world, taken every ProbeEvery.
 	Probe      Probe         `json:"probe,omitempty"`
 	ProbeEvery time.Duration `json:"probeEvery,omitempty"`
-	// Hint tells the sentinel what a yes looks like, in the model's words at
-	// proposal time: "yes when any run on main shows conclusion=failure".
+	// Hint is the MODEL'S OWN reading, written at proposal time, of what a yes
+	// to this condition would look like in the probe's output: "yes when any
+	// run on main shows conclusion=failure". It is a note the sentinel is
+	// shown, never the person's criterion: [Item.Words] is what is judged, so
+	// a match to the hint does not settle a condition the person phrased more
+	// narrowly or more broadly than the guess.
 	Hint string `json:"hint,omitempty"`
 	// OneShot is a WhenProbe's one-shot intent: the condition watch fires when the
 	// condition FIRST turns true, delivers its one line, and retires. It is the

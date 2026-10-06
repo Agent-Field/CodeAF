@@ -231,9 +231,10 @@ var standDescription = "Set up something that keeps working after this window is
 	"THE DISCHARGE TEST decides it. Can this sentence be satisfied by the work in front of you and then forgotten? If it CAN, it does NOT stand, whatever words it is dressed in, even when it says \"make sure\": \"make sure this website you are building is 3 pages\" is discharged the moment the site has three pages. A REQUEST TO HEAR SOMETHING LATER IS NOT THAT: \"notify me once when ready becomes true\" stands, because the person asked to hear it after this window closes \u2014 a one-time reminder or a one-shot condition stands exactly as a recurring one does. If it can NEVER be discharged \u2014 if work nobody has done yet could violate it tomorrow \u2014 it is standing: \"make sure the tests never break\".\n\n" +
 	"ANCHORING. A sentence about the artifact under construction RIGHT NOW binds the current work, whatever verbs it uses: a demonstrative pointing at it (\"this website you're building\"), or a present tense about work under way. An \"always\", \"never\" or \"ensure\" in such a sentence is EMPHASIS ON THIS WORK, not a request to be told later.\n\n" +
 	"WAKING OR HOLDING. A standing sentence that names a moment, a rhythm or a condition gets the waking kind it names (\"remind me at 6\" is at, \"every Monday draft the update\" is every, \"tell me when CI goes red\" is probe, \"tonight run the suite\" is idle). A condition told ONCE is a probe with once set; told on each change, once is left unset. One that names none \u2014 a rule, convention or preference \u2014 is when.kind hold.\n\n" +
-	"UNSURE MEANS INSTRUCTION PLUS AN OFFER. When the discharge test is genuinely unclear, bind the sentence to the work in front of you AND offer the standing version in one line at the end of your reply. NEVER a card on a guess: one they did not want costs their trust in the next.\n\n" +
-	"Doing a standing sentence once instead of proposing it answers a request they did not make: \"run the tests\" is work now, \"run the tests whenever I push\" is one of these. A future tell is never discharged now, not even a one-time one. The `watch` tool is the near neighbour that is NOT this: a job inside this conversation that stops the moment the window closes.\n\n" +
-	"Nothing stands until the person says yes: the card waits for them, and a session nobody is watching cannot set one up at all. Money is not yours to negotiate \u2014 omit rails and cost_words unless they named a limit. op=list shows what already stands here; op=pause, op=resume and op=stop take an id or the person's own words, and stop is permanent. op=change is the card's answer when they want it different, not yours to call."
+	"A PROBE MUST READ WHAT THEY NAMED: inspect what the endpoint or command really returns before proposing it, since answering is not the same as the thing they asked about.\n\n" +
+	"UNSURE MEANS INSTRUCTION PLUS AN OFFER. When the discharge test is genuinely unclear, bind the sentence to the work in front of you AND offer the standing version in one line. NEVER a card on a guess: one they did not want costs their trust in the next.\n\n" +
+	"Doing a standing sentence once instead answers a request they did not make: \"run the tests whenever I push\" is not a turn, and a future tell is never discharged now, not even a one-time one. The `watch` tool is the near neighbour that is NOT this: a job inside this conversation that stops the moment the window closes.\n\n" +
+	"Nothing stands until the person says yes: the card waits for them, and a session nobody is watching cannot set one up at all. op takes an id or the person's own words, and stop is permanent. op=change is the card's answer when they want it different, not yours to call."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
 	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"propose one, list what stands, or pause, resume or stop one that does."},` +
@@ -251,7 +252,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"args":{"type":"object","description":"That tool's arguments."}` +
 	`},"additionalProperties":false},` +
 	`"probe_every":{"type":"string","description":"How often to take that look, a Go duration. Checks do not run faster than every 5 minutes, so anything shorter is refused; omit for that floor."},` +
-	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."},` +
+	`"hint":{"type":"string","description":"What a yes looks like, read off what the probe actually outputs: \"yes when any run on main shows conclusion=failure\". Their words stay the criterion; a reachability fact is not their condition."},` +
 	`"once":{"type":"boolean","description":"Probe only: fire on the first true, deliver the one line, then retire. Omit to be told on each change instead."}` +
 	`},"additionalProperties":false},` +
 	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE, and sending one with a hold is refused.","properties":{` +
@@ -679,7 +680,8 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	// [standing.Interval] when none was sent - and never copied from the
 	// model's words. THE CONDITION IS NOT LOST: the person's own sentence is
 	// [standing.Item.Words] whole, and the look's [standing.When.Hint] is the
-	// compiled condition, both carried untouched. Nothing here reads English.
+	// model's own reading of what a yes looks like, never the person's
+	// criterion, both carried untouched. Nothing here reads English.
 	switch when.Kind {
 	case standing.WhenHold:
 		// A rule is not due at any time, so it has no cadence to say back.
