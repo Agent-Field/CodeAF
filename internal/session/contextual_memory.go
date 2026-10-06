@@ -237,6 +237,13 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	}
 	a.memory.outcomeGoal = cue
 	a.memory.outcomeTurnID = a.memorySourceSession() + ":" + fmt.Sprint(turn) + ":" + contextualHash(cue)[:16]
+	// A NEW TURN BEGINS WITH NO PENDING FAILURE: an alternative is only ever the
+	// later success of the SAME turn and goal that recorded the failure, never a
+	// success inherited across turns.
+	a.memory.outcomeFailedKey = ""
+	a.memory.outcomeFailedTool = ""
+	a.memory.outcomeFailedAction = ""
+	a.memory.outcomeAlternativeDone = false
 	a.memory.mu.Unlock()
 	block := a.bindingContext(cue, revision)
 	block += a.contextualImpactContext(cue)

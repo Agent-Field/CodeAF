@@ -64,6 +64,12 @@ type ContextualAttempt struct {
 	Conditions    map[string]string
 	SourceKey     string
 	SourceHash    string
+	// AlternativeOf, on an AttemptSucceeded row, is the SourceKey of the
+	// DEMONSTRATED failure this success was independently observed as a later
+	// alternative to. It is the whole association: the pairing rests on the
+	// same turn and goal plus the shared action, never on an inferred cause.
+	// Empty on a failure or a block, which carry their own history only.
+	AlternativeOf string
 	ValidFrom     time.Time
 	ValidUntil    time.Time
 	Seq           int64
@@ -97,7 +103,7 @@ func (s *Store) AppendContextualAttempt(e ContextualAttempt) (ContextualAttempt,
 	if !e.ValidUntil.IsZero() && !e.ValidUntil.After(e.ValidFrom) {
 		return e, errors.New("invalid contextual attempt validity interval")
 	}
-	for _, v := range []string{e.ID, e.Owner, e.SessionID, e.TurnID, e.Tool, e.Reconsider, e.Snapshot, e.SourceKey, e.SourceHash} {
+	for _, v := range []string{e.ID, e.Owner, e.SessionID, e.TurnID, e.Tool, e.Reconsider, e.Snapshot, e.SourceKey, e.SourceHash, e.AlternativeOf} {
 		if len(v) > 1024 {
 			return e, errors.New("contextual attempt metadata exceeds bounds")
 		}

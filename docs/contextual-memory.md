@@ -86,6 +86,14 @@ recall. Existing idle maintenance and standing orders remain the only maintenanc
 scheduling machinery. Deferred intention retention alone does not guarantee a standing
 order was proposed or ratified.
 
+A recorded failure can carry one later observed successful alternative from the same
+turn and goal: the same tool class, an action sharing a meaningful token, taken at the
+true tool boundary, never a lookup or a model summary. It is rendered beside its failure
+with its own receipt and source snapshot, as observed history rather than a cause or a
+ban; a matching snapshot is not the environment, so changed or unknown circumstances
+still invite fresh verification. No other success is retained, and forgetting either
+source retires the pair.
+
 Full product expectations require final-head terminal evidence. Focused tests prove
 contracts, not natural use or real task improvement. The baseline terminal run found a
 premature assistant completion claim and lost release-only conditions, then completed a

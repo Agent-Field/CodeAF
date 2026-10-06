@@ -124,6 +124,14 @@ type delegatedOriginState struct {
 	receipts    []memoryToolReceipt
 	repeats     map[string]struct{}
 	repeatOrder []string
+	// altOf, altTool and altAction are the most recent DEMONSTRATED failure this
+	// frozen origin recorded and has not yet paired; altDone marks that its one
+	// observed alternative is already held, so a node full of successes still
+	// stores only the one that answers a real failure.
+	altOf     string
+	altTool   string
+	altAction string
+	altDone   bool
 }
 
 // delegatedOrigin is the immutable provenance of one worker, captured before it
@@ -271,6 +279,7 @@ func (c *outcomeCollector) observe(worker *Agent, call ai.ToolCall, result toolR
 		c.observeAttempt(worker, origin, call, result, preSnapshot, status)
 		return
 	}
+	c.observeAlternative(worker, origin, call, result, preSnapshot)
 	c.observeRead(worker, origin, call, result)
 }
 
@@ -343,6 +352,106 @@ func (c *outcomeCollector) observeAttempt(worker *Agent, origin delegatedOrigin,
 	}
 	c.remember(key)
 	c.rememberRepeat(originKey, repeat)
+	// A DEMONSTRATED FAILURE OPENS THE ONE PAIRING SLOT for this frozen origin:
+	// a later success of the same tool class and action may be carried as its
+	// observed alternative. A block (unknown) does not, because nothing was
+	// proven to have failed.
+	if status == store.AttemptFailed {
+		c.mu.Lock()
+		if !c.closed {
+			state := c.stateLocked(originKey)
+			state.altOf = key
+			state.altTool = e.Tool
+			state.altAction = e.Action
+			state.altDone = false
+		}
+		c.mu.Unlock()
+	}
+}
+
+// observeAlternative carries the one success that follows a demonstrated
+// failure of the same frozen origin. It mirrors the root writer
+// ([Agent.recordMemoryAlternative]) exactly: a true tool-boundary success only,
+// the same tool class, a shared meaningful token, and a lookup or metadata call
+// refused. The row is bounded by the SAME per-origin emission bound as any other
+// automatic attempt, so an enormous node cannot churn the journal; the failure
+// itself remains the undroppable evidence.
+func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOrigin, call ai.ToolCall, result toolResult, preSnapshot string) {
+	if worker == nil || result.harness || result.refusedBy != "" || result.isError {
+		return
+	}
+	originKey := delegatedOriginKey(origin)
+	c.mu.Lock()
+	key, failedTool, failedAction, done := "", "", "", false
+	if !c.closed {
+		state := c.stateLocked(originKey)
+		key, failedTool, failedAction, done = state.altOf, state.altTool, state.altAction, state.altDone
+	}
+	c.mu.Unlock()
+	if key == "" || done || !alternativeEligible(call, failedTool, failedAction) {
+		return
+	}
+	action := attemptAction(call)
+	receipt := redact.Secrets(contextualClip(result.text, contextualReceiptRunes))
+	if action == "" || strings.TrimSpace(receipt) == "" {
+		return
+	}
+	// RESERVE THE SLOT AND THE EMISSION UNDER ONE LOCK. The pairing is still for
+	// the SAME failure and still open, so a race cannot attach two alternatives
+	// or lose the bound.
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return
+	}
+	state := c.stateLocked(originKey)
+	if state.altDone || state.altOf != key || state.emissions >= delegatedAttemptEmissionMax {
+		c.mu.Unlock()
+		return
+	}
+	state.emissions++
+	c.inflight.Add(1)
+	c.mu.Unlock()
+	defer c.inflight.Done()
+	post := worker.captureSourceSnapshot(context.Background()).Identity
+	snapshot := post
+	if preSnapshot != post {
+		snapshot = "unknown"
+	}
+	conditions := map[string]string{}
+	if projectKey := strings.TrimSpace(c.root.config.MemoryProjectKey); projectKey != "" {
+		conditions["project"] = projectKey
+	}
+	e := store.ContextualAttempt{
+		ID:            store.NewMemoryID(),
+		Owner:         origin.Owner,
+		SessionID:     origin.Session,
+		TurnID:        origin.Turn,
+		Tool:          call.Function.Name,
+		Action:        redact.Secrets(contextualClip(action, 1024)),
+		Goal:          redact.Secrets(contextualClip(origin.Goal, 1024)),
+		Status:        store.AttemptSucceeded,
+		ReceiptIDs:    []string{call.ID},
+		Observation:   receipt,
+		Snapshot:      snapshot,
+		Conditions:    conditions,
+		AlternativeOf: key,
+		SourceKey:     delegatedSourceKey(origin, call.ID),
+		SourceHash:    contextualHash(receipt),
+		ValidFrom:     time.Now(),
+	}
+	if _, err := c.root.memory.store.AppendContextualAttempt(e); err != nil {
+		c.fail(err)
+		c.root.journalMemoryFailure("delegated-alternative", err)
+		return
+	}
+	c.mu.Lock()
+	if !c.closed {
+		if latest := c.stateLocked(originKey); latest.altOf == key {
+			latest.altDone = true
+		}
+	}
+	c.mu.Unlock()
 }
 
 // observeRead forwards a successful, trusted full read to the root's dependency

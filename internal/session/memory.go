@@ -145,6 +145,18 @@ type memoryBrain struct {
 	// failure was earned under the state that follows it.
 	outcomeGoal   string
 	outcomeTurnID string
+	// outcomeFailedKey, outcomeFailedTool and outcomeFailedAction are the
+	// turn's most recent DEMONSTRATED failure, kept so a LATER success in the
+	// same turn and goal can be carried as its observed alternative. The key is
+	// the failure's own source key (the pairing identity); the tool and action
+	// are kept so the replacement must be the same class of action and share a
+	// meaningful token, rather than any success that merely happened next.
+	// outcomeAlternativeDone marks that this failure already carries its one
+	// bounded alternative, so a turn full of successes does not retain them all.
+	outcomeFailedKey       string
+	outcomeFailedTool      string
+	outcomeFailedAction    string
+	outcomeAlternativeDone bool
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
