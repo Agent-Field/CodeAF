@@ -366,6 +366,12 @@ an empty message, and a continuation shorter than three words — `yes`, `go on`
 error, no warning, no memory in the prompt. A memory failure is never allowed to
 break the thing you actually asked for.
 
+**One advisory is not on this path.** A prior *observed* attempt — a `bash` call
+that failed or was blocked — is read **locally** from your saved memories before
+the first request, under your current circumstances, and is bounded to what is
+relevant to what you are asking. It does not depend on the router's ranking or
+this small model (`Remembering a failed method or tool`).
+
 ## Does a remembered line show its age?
 
 Yes, and it is told. Every line in the `<memory>` block carries when it was last
@@ -1007,14 +1013,23 @@ validity rules apply: forgotten or expired evidence is unavailable, and a stale 
 needs a fresh inspection. This read is bounded; original conversation history can still
 be searched separately.
 
-## Do you remember a failed approach before I take it again?
+## Remembering a failed method or tool — will that stop you trying it again, and what if the inputs change?
 
-Yes, and it is shown **before** a matching action rather than only after a
+**No.** Remembering a failure does not stop the tool being tried again. The
+prior failure is shown **before** a matching action rather than only after a
 failure. When a `bash` call fails, or is blocked before it runs, one row is
 written the moment the call ends — no model is asked anything, so a single
 extraction that found nothing, or a turn that rolled over, cannot lose it. The
 row keeps the exact **action** that ran, the **goal** it served, the **observed
 receipt** in its own words, and the **circumstances** it was earned under.
+
+This is a different path from an ordinary remembered note reaching the model. A
+note goes through the router's ranking and its small relevance model, and only the
+two or three lines that survive are shown. This observed-outcome advisory is read
+**locally**, from your saved memories, before the first request goes out, chosen by its
+own relevance to your turn and bounded to the rows that are relevant — **it does not
+depend on the router's ranking or its small relevance model** and does not wait for
+one.
 
 On a later turn, before the first request of the answer goes out, a prior failed
 or blocked attempt that is **relevant to what you are asking** is put in front of
@@ -1025,7 +1040,11 @@ the model as an advisory line:
 ```
 
 It is history, not a prohibition and not a cause: what failed once may work now,
-and the line says so. A source snapshot, the day it was seen, or a launcher every
+and the line says so. **It never bans the tool, and nothing reads a memory to block
+a call.** When the inputs, the tree or the circumstances have changed the agent is
+free to try it again, or to take another route — the line may shape the choice but
+does not settle it. It never promises a retry either: it is advice in front of a
+decision, not the decision. A source snapshot, the day it was seen, or a launcher every
 row genuinely shared is stated **once** above the rows instead of on every row, so
 the bounded space is spent on observed work rather than on repetition; a row whose
 own source or day differs keeps its own bracket. A failure of a task you are not working on stays quiet. A

@@ -128,7 +128,12 @@ confirmed decisions locally and deterministically before their first request (a
 task read-only and bounded, with no provider asked), that binding read is a
 separate path from the router's advisory relevant-memory shortlist, and a search
 of an old conversation is reading only — it does not reactivate a forgotten
-decision. Retrieval probes for these questions are in
+decision. The failed-method page now answers whether remembering a failed method or
+tool stops codeaf trying it again: that observed-outcome advisory is read locally
+from the saved memories before the first request and is not gated by the router's
+ranking or small relevance model, it bans no tool, and with changed inputs or
+circumstances the agent may retry or adapt rather than being forbidden — it never
+promises a retry either. Retrieval probes for these questions are in
 `internal/manual/chat_test.go`.
 
 Final-head terminal acceptance is required before this entry is treated as

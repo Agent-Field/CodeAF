@@ -3740,3 +3740,50 @@ func TestTheRerunQuestionsReachTheirCorrectedSections(t *testing.T) {
 		}
 	}
 }
+
+// q3's rerun answer got the bottom line right — a remembered failure is not a
+// ban — but was materially wrong about the architecture and overpromised: it
+// said the line only reaches the model if it survives the router's ranking and
+// small relevance model, and that with changed inputs it WILL try the tool again.
+// The prior-OBSERVED-outcome advisory is read locally from the saved memories
+// before the first request, ranked by its own relevance to the turn, and does not
+// depend on that router path; it bans nothing, so the agent MAY retry or adapt
+// when the circumstances change, and the line never promises a retry. This probe
+// reaches that section by the actual question and a natural paraphrase, and
+// asserts the distinguishing content rather than a shared topic.
+func TestAFailedMethodQuestionReachesTheObservedOutcomeAdvisory(t *testing.T) {
+	asks := []string{
+		"Does codeaf remembering a failed method mean it will never try that tool again? What if inputs change?",
+		"will codeaf avoid retrying a tool that failed before if my inputs have changed",
+	}
+	const title = "Remembering a failed method or tool"
+	says := []string{
+		"read\n**locally**, from your saved memories, before the first request goes out",
+		"it does not\ndepend on the router's ranking or its small relevance model",
+		"It never bans the tool, and nothing reads a memory to block\na call.",
+		"When the inputs, the tree or the circumstances have changed the agent is\nfree to try it again",
+		"It never promises a retry either",
+	}
+	for _, question := range asks {
+		reached := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page != "what-i-remember" || !strings.Contains(section.Title, title) {
+				continue
+			}
+			reached = true
+			for _, needle := range says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			found := Chat().Search(question, DefaultResults)
+			where := make([]string, 0, len(found))
+			for _, section := range found {
+				where = append(where, section.Page+" \u00b7 "+section.Title)
+			}
+			t.Errorf("%q does not reach what-i-remember \u00b7 %q; it reached %v", question, title, where)
+		}
+	}
+}
