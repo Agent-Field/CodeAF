@@ -15,11 +15,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // A FORGED MARKER IN A QUOTED IMPACT HALF CANNOT ACTIVATE THE POLICY. The
@@ -132,5 +137,162 @@ func TestAFakeOutcomeMarkerInAnImpactPathCannotTurnOnTheSystemPolicy(t *testing.
 	}
 	if got := utf8.RuneCountInString(block); got > memoryBlockRunes {
 		t.Fatalf("the note exceeded the shared ceiling: %d", got)
+	}
+}
+
+// ── THE NOTE AND ITS DECISION TRAVEL TOGETHER, AND THE FLAG TRAVELS WITH THE ──
+// ── MESSAGE SNAPSHOT ────────────────────────────────────────────────────────
+//
+// The composition decision that activates the source-authored policy is recorded
+// in the SAME a.mu critical section that lands the note carrying the rows it
+// governs, and the request seam takes that bit WITH the messages under the same
+// lock. These tests drive a REAL worker writer ([Agent.prepareWorkerBinding])
+// against a REAL request snapshot ([Agent.snapshotWithReasoning]) and pin the two
+// pairings that must be impossible: a full-rules note beside a true policy, and a
+// retained-rows note beside a false one.
+
+// policyWorkerFixture seeds a lent store with one approved rule and one observed
+// outcome pair, and returns a worker whose binding reads them. Its HOT cue matches
+// the pair (the rows are retained, so the policy is on) and its COLD cue matches
+// nothing (the rules are retained alone, so the policy is off).
+func policyWorkerFixture(t *testing.T) (*Agent, string, string) {
+	t.Helper()
+	brain, err := store.Open(filepath.Join(t.TempDir(), "brain.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = brain.Close() })
+	owner := store.OwnerProject("wkey")
+	seedApprovedRule(t, brain, "seal-rule", owner, "workers must use the frozen toolchain")
+	seedOutcomePair(t, brain, owner, "fix the foobar parser",
+		"bash: python -c 'import foobar'", "bash: python report.py week.csv", "turn:1:foobar")
+	worker, _ := newTestAgent(t, &reflexScript{}, func(c *Config) {
+		c.bindingStore = brain
+		c.MemoryProjectKey = "wkey"
+	})
+	if worker.remembers() || worker.memoryWritable() {
+		t.Fatal("the seal fixture worker gained a brain from the lent store")
+	}
+	return worker, "fix the foobar parser and write week.csv", "polish the release checklist documentation"
+}
+
+// latestBindingNoteRetained reports whether the newest note with this opening in
+// the snapshot carries a retained prior-outcome half. It is the TEST's own oracle
+// over a controlled fixture, not a production decision: the code under test never
+// searches for this marker.
+func latestBindingNoteRetained(messages []ai.Message, opening string) bool {
+	for index := len(messages) - 1; index >= 0; index-- {
+		text := messageContentText(messages[index])
+		if strings.HasPrefix(text, opening) {
+			return strings.Contains(text, "<prior_outcomes>")
+		}
+	}
+	return false
+}
+
+// THE ACTIVATION BIT IS A VALUE TAKEN WITH THE SNAPSHOT, NEVER A LATER REREAD. A
+// retained snapshot keeps its own true bit even after a real later read turns the
+// flag off, and the later, rules-only snapshot carries no policy with its own
+// false bit: the two epochs can never be crossed.
+func TestFrameworkPolicyIsTakenWithTheMessageSnapshot(t *testing.T) {
+	worker, hot, cold := policyWorkerFixture(t)
+	worker.prepareWorkerBinding(context.Background(), hot)
+
+	// withFrameworkPolicy edits element zero of the slice it is handed (the
+	// request spread is a fresh snapshot in production), so the seam is applied
+	// to a copy here and the snapshot itself stays as it was taken.
+	applyPolicy := func(messages []ai.Message, active bool) []ai.Message {
+		return worker.withFrameworkPolicy(append([]ai.Message(nil), messages...), active)
+	}
+
+	retained, _, active := worker.snapshotWithReasoning()
+	if !active {
+		t.Fatal("a retained pair did not activate the policy")
+	}
+	if !latestBindingNoteRetained(retained, bindingNoteOpening) {
+		t.Fatal("the flag was set with no retained note in the snapshot")
+	}
+	if applied := applyPolicy(retained, active); !strings.Contains(messageContentText(applied[0]), frameworkMethodPolicy) {
+		t.Fatalf("the retained snapshot's system message lacked the policy: %q", messageContentText(applied[0]))
+	}
+
+	// A REAL later read lands a rules-only note and turns the flag off.
+	worker.prepareWorkerBinding(context.Background(), cold)
+	worker.mu.Lock()
+	fieldNow := worker.frameworkPolicy
+	worker.mu.Unlock()
+	if fieldNow {
+		t.Fatal("the rules-only read left the policy on")
+	}
+	// The bit that was TAKEN WITH the earlier messages still pairs them with the
+	// policy; the field's later value never reaches that snapshot.
+	if applied := applyPolicy(retained, active); !strings.Contains(messageContentText(applied[0]), frameworkMethodPolicy) {
+		t.Fatal("the retained snapshot lost the policy it was taken with")
+	}
+	later, _, laterActive := worker.snapshotWithReasoning()
+	if laterActive {
+		t.Fatal("the rules-only note still activated the policy")
+	}
+	if applied := applyPolicy(later, laterActive); strings.Contains(messageContentText(applied[0]), frameworkMethodPolicy) {
+		t.Fatal("the rules-only snapshot carried the policy from another epoch")
+	}
+}
+
+// THE NOTE AND THE FLAG ARE ONE MUTATION UNDER CONCURRENT REFRESH. One goroutine
+// runs the real binding writer, alternating a cue whose rows are retained with one
+// whose rules are retained alone; the reader takes the real request snapshot. Every
+// snapshot must pair the newest note with its OWN decision - so it can never show a
+// full-rules note beside a true policy, nor a retained-rows note beside a false
+// one. A writer that set the flag and the note under separate acquisitions (the
+// shape this change replaces) makes the two windows observable here.
+func TestFrameworkPolicyNoteAndFlagAreOneMutation(t *testing.T) {
+	worker, hot, cold := policyWorkerFixture(t)
+
+	// A retained state is established first, so a reader that samples before the
+	// writer's first iteration still has a state to compare against.
+	worker.prepareWorkerBinding(context.Background(), hot)
+
+	var done atomic.Bool
+	var writer sync.WaitGroup
+	writer.Add(1)
+	go func() {
+		defer writer.Done()
+		defer done.Store(true)
+		// 500 alternating writes: hot retains the rows and turns the policy on,
+		// cold keeps the rules alone and turns it off.
+		for i := 0; i < 500; i++ {
+			cue := cold
+			if i%2 == 0 {
+				cue = hot
+			}
+			worker.prepareWorkerBinding(context.Background(), cue)
+		}
+	}()
+
+	retainedSnapshots, bareSnapshots := 0, 0
+	samples := 0
+	for !done.Load() {
+		messages, _, active := worker.snapshotWithReasoning()
+		retained := latestBindingNoteRetained(messages, bindingNoteOpening)
+		if retained != active {
+			writer.Wait()
+			t.Fatalf("sample %d paired a note (rows=%v) with policy=%v: the note and its decision were not one mutation", samples, retained, active)
+		}
+		if retained {
+			retainedSnapshots++
+		} else {
+			bareSnapshots++
+		}
+		samples++
+		// Yield so the writer makes progress and the two windows interleave; a
+		// tight CPU loop on a single P would starve it and prove nothing.
+		runtime.Gosched()
+	}
+	writer.Wait()
+	// The stress is only meaningful if BOTH states were actually observed: a
+	// snapshot stream that never saw a retained note would prove nothing about
+	// the pairing.
+	if retainedSnapshots == 0 || bareSnapshots == 0 {
+		t.Fatalf("the stress observed retained=%d bare=%d snapshots; both states are required", retainedSnapshots, bareSnapshots)
 	}
 }

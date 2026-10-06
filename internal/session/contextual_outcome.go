@@ -3232,23 +3232,24 @@ func (a *Agent) priorOutcomeBlock(st *store.Store, projectKey, cue, snapshot str
 }
 
 // withFrameworkPolicy puts the source-authored [frameworkMethodPolicy] into the
-// request's SYSTEM authority when, and only when, this turn carries a relevant
-// prior-outcome note. THE POLICY IS NOT HISTORY AND NEVER RIDES THE NOTE: the
-// note's bullets are escaped, untrusted observation, and a remembered row's text
-// must never stand where framework policy is trusted. It is added to the leading
-// system message of THIS request alone — the transcript is untouched, so a
-// refresh can never double-insert it — and the same call serves an ordinary
-// conversation, a manager and a task worker, because the flag is set by the
-// shared before-request reads. With no rows the flag is false and the request
-// opens exactly as it did.
-func (a *Agent) withFrameworkPolicy(messages []ai.Message) []ai.Message {
+// request's SYSTEM authority when, and only when, the snapshot it is given
+// carries a relevant prior-outcome note. THE POLICY IS NOT HISTORY AND NEVER
+// RIDES THE NOTE: the note's bullets are escaped, untrusted observation, and a
+// remembered row's text must never stand where framework policy is trusted. It
+// is added to the leading system message of THIS request alone — the transcript
+// is untouched, so a refresh can never double-insert it — and the same call
+// serves an ordinary conversation, a manager and a task worker.
+//
+// THE ACTIVATION BIT IS AN ARGUMENT, NEVER A FIELD REREAD. It is the one
+// [Agent.snapshotWithReasoning] took WITH these messages, so a routed pass that
+// lands a new note between the snapshot and this call cannot put the policy into
+// a request whose rows are not the ones in front of the model. With no rows the
+// bit is false and the request opens exactly as it did.
+func (a *Agent) withFrameworkPolicy(messages []ai.Message, active bool) []ai.Message {
 	if len(messages) == 0 {
 		return messages
 	}
-	a.mu.Lock()
-	on := a.frameworkPolicy
-	a.mu.Unlock()
-	if !on || !strings.EqualFold(strings.TrimSpace(messages[0].Role), "system") {
+	if !active || !strings.EqualFold(strings.TrimSpace(messages[0].Role), "system") {
 		return messages
 	}
 	head := messageContentText(messages[0])

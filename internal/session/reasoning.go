@@ -177,13 +177,24 @@ func (a *Agent) recordAssistant(message ai.Message, reasoning provider.MessageRe
 	a.recordPresentedAssistant(message, reasoning, nil)
 }
 
-// snapshotWithReasoning takes both aligned slices under one lock. THE SIDECAR
-// ALWAYS HAS THE TRANSCRIPT'S LENGTH, so no concurrent append can put model
-// working beside the wrong assistant message.
-func (a *Agent) snapshotWithReasoning() ([]ai.Message, []provider.MessageReasoning) {
+// snapshotWithReasoning takes both aligned slices under one lock, AND the
+// source-authored framework policy's activation bit AS OF THAT SAME SNAPSHOT.
+// THE SIDECAR ALWAYS HAS THE TRANSCRIPT'S LENGTH, so no concurrent append can
+// put model working beside the wrong assistant message.
+//
+// THE POLICY BIT IS TAKEN IN THE SAME CRITICAL SECTION AS THE MESSAGES. The
+// note that activates the policy lands at the transcript tail when a
+// before-request read records it ([Agent.landVolatileLocked]), and an
+// asynchronous routed pass ([Agent.refreshMemory]) may land a new note at any
+// moment; a caller that reread the bit after this snapshot could then put the
+// source-authored policy into a request whose rows are not the ones in front of
+// the model. The bit travels with the snapshot it belongs to, and the request
+// seam ([Agent.withFrameworkPolicy]) spends THAT one.
+func (a *Agent) snapshotWithReasoning() ([]ai.Message, []provider.MessageReasoning, bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.alignReasoningLocked()
+	policy := a.frameworkPolicy
 	messages := append([]ai.Message(nil), a.messages...)
 	hasReasoning := false
 	for _, carried := range a.messageReasoning {
@@ -193,8 +204,8 @@ func (a *Agent) snapshotWithReasoning() ([]ai.Message, []provider.MessageReasoni
 		}
 	}
 	if !hasReasoning {
-		return messages, nil
+		return messages, nil, policy
 	}
 	reasoning := append([]provider.MessageReasoning(nil), a.messageReasoning...)
-	return messages, reasoning
+	return messages, reasoning, policy
 }

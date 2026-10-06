@@ -585,11 +585,17 @@ func (a *Agent) refreshMemory(ctx context.Context, cue string) bool {
 	// it), and what they are waiting for from the instant they press enter is the
 	// model's own first word.
 	block := a.routedMemory(ctx, cue, a.sayMemory, true)
-	block = a.withBindingContext(block, cue)
+	block, outcomesRetained := a.withBindingContextMeta(block, cue)
 
 	a.mu.Lock()
 	moved := a.memoryText != block
+	// THE NOTE AND ITS COMPOSITION DECISION ARE ONE MUTATION: the bit that
+	// activates the source-authored policy is recorded in the same critical
+	// section that lands the rows it governs, so a request snapshot
+	// ([Agent.snapshotWithReasoning]) can never see this note beside another
+	// turn's flag.
 	a.memoryText = block
+	a.frameworkPolicy = outcomesRetained
 	// AND IT LANDS AT THE TAIL, not in message[0]. The drain immediately before
 	// the first request would land it anyway (loop.go), and it is landed here as
 	// well so that this pass is complete on its own: what it routed is in front

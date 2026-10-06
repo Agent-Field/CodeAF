@@ -289,9 +289,14 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	// inside one ceiling. A pair that does not fit is omitted WHOLE, and the
 	// policy is then not emitted alone.
 	block, outcomesRetained := composeBeforeRequestContextUnderMeta(frameworkCeiling(outcomes), authority, a.contextualImpactContext(cue), outcomes, history, "")
-	a.setFrameworkPolicy(outcomesRetained)
+	// THE NOTE AND ITS COMPOSITION DECISION ARE ONE MUTATION. The bit that puts
+	// the source-authored policy into a request's SYSTEM message is recorded in
+	// the SAME critical section that lands the rows it governs, so a request
+	// snapshot ([Agent.snapshotWithReasoning]) can never see one turn's note
+	// beside another turn's flag.
 	a.mu.Lock()
 	a.memoryText = block
+	a.frameworkPolicy = outcomesRetained
 	a.landVolatileLocked()
 	a.mu.Unlock()
 }
@@ -326,15 +331,19 @@ func (a *Agent) prepareWorkerBinding(ctx context.Context, cue string) {
 	// what is left of the one shared ceiling after them, by WHOLE records, so a
 	// history record never crowds out a grounded local outcome.
 	block, outcomesRetained := composeBeforeRequestContextUnderMeta(frameworkCeiling(outcomes), authority, "", outcomes, history, "")
-	a.setFrameworkPolicy(outcomesRetained)
-	if block == "" {
-		return
-	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.frameworkPolicy = outcomesRetained
 	if a.closed {
 		return
 	}
+	if block == "" {
+		return
+	}
+	// THE NOTE AND ITS COMPOSITION DECISION ARE ONE MUTATION, for the reason
+	// [Agent.prepareBindingContext] states: the worker's binding note lands in
+	// this same critical section, so no request snapshot can pair it with a
+	// different turn's flag.
 	a.bindingText = block
 	// THE BINDING IS MANDATORY AND RESERVED FIRST; whatever routed memory has
 	// already arrived is bounded to what is LEFT of the one shared ceiling.
@@ -423,16 +432,6 @@ func frameworkCeilingFor(active bool) int {
 	return ceiling
 }
 
-// setFrameworkPolicy records whether this turn's request carries relevant
-// prior-outcome rows, which is the one condition under which the source-authored
-// [frameworkMethodPolicy] is added to the request's SYSTEM message
-// ([Agent.withFrameworkPolicy]).
-func (a *Agent) setFrameworkPolicy(active bool) {
-	a.mu.Lock()
-	a.frameworkPolicy = active
-	a.mu.Unlock()
-}
-
 // composeBeforeRequestContextWithHistory is [composeBeforeRequestContext] with
 // ONE more optional block: the ADVISORY lexical history the binding projection
 // could not establish as authority. THE PRIORITY IS THE CONTRACT: the genuinely
@@ -463,7 +462,8 @@ func composeBeforeRequestContextUnder(ceiling int, rules, impacts, outcomes, his
 // the prior-outcomes half was ACTUALLY retained WHOLE inside this block. The
 // caller that decides whether the source-authored [frameworkMethodPolicy] rides
 // the request's SYSTEM message reads THAT decision, never a marker search over
-// the assembled text ([Agent.setFrameworkPolicy]). A rendered note is composed
+// the assembled text, and records it WITH the note under one a.mu
+// ([Agent.snapshotWithReasoning]). A rendered note is composed
 // of untrusted, %q-quoted observation and filesystem text, so a row that merely
 // SPELLED "<prior_outcomes>" would make a substring test believe a pair had been
 // shown and add the policy's runes past the shared ceiling. The decision is the
@@ -637,11 +637,34 @@ func (a *Agent) rebindAfterAnchor() {
 	a.memory.impactOrder = nil
 	a.memory.mu.Unlock()
 	block := a.bindingContext(cue, revision)
+	// THE NOTE AND ITS COMPOSITION DECISION ARE ONE MUTATION HERE TOO. This
+	// block is the new project's approved rules ALONE — the prior outcomes were
+	// cleared above with the scratch owner, so none is retained here and the bit
+	// that would put the source-authored policy on the request goes with them.
+	// Leaving a pre-anchor bit set would emit the policy against rows that are no
+	// longer in front of the model ([Agent.snapshotWithReasoning]). The caller
+	// holds a.mu ([Agent.AnchorWorkspace]).
 	a.memoryText = block
+	a.frameworkPolicy = false
 	a.landVolatileLocked()
 }
 
+// withBindingContext composes the routed block around this turn's approved
+// binding, impacts and prior outcomes. It returns the block ALONE: the caller
+// that STORES it must use [Agent.withBindingContextMeta], so the note and its
+// composition decision are recorded as ONE mutation ([Agent.refreshMemory]),
+// exactly as the other before-request reads do ([Agent.prepareBindingContext]).
 func (a *Agent) withBindingContext(block, cue string) string {
+	composed, _ := a.withBindingContextMeta(block, cue)
+	return composed
+}
+
+// withBindingContextMeta is [Agent.withBindingContext] returning the STRUCTURED
+// COMPOSITION DECISION beside the composed block: whether a prior-outcome half
+// was retained whole inside it. The routed pass records that bit WITH the note
+// under the one a.mu, so a request snapshot can never pair one turn's note with
+// another turn's policy flag.
+func (a *Agent) withBindingContextMeta(block, cue string) (string, bool) {
 	a.mu.Lock()
 	turn := a.turnSeq
 	a.mu.Unlock()
@@ -652,8 +675,7 @@ func (a *Agent) withBindingContext(block, cue string) string {
 	impacts := a.contextualImpactContext(cue)
 	outcomes := a.priorOutcomeContext(cue, revision)
 	if authority == "" && impacts == "" && outcomes == "" && history == "" {
-		a.setFrameworkPolicy(false)
-		return block
+		return block, false
 	}
 	// One shared ceiling includes deterministic and optional routed context: the
 	// genuinely approved rules and confirmed decisions are reserved whole FIRST,
@@ -662,8 +684,7 @@ func (a *Agent) withBindingContext(block, cue string) string {
 	// whole records. The source-authored framework policy is reserved inside the
 	// SAME ceiling ([frameworkCeiling]).
 	composed, outcomesRetained := composeBeforeRequestContextUnderMeta(frameworkCeiling(outcomes), authority, impacts, outcomes, history, block)
-	a.setFrameworkPolicy(outcomesRetained)
-	return composed
+	return composed, outcomesRetained
 }
 
 func (a *Agent) bindingContext(cue, revision string) string {

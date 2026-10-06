@@ -2006,14 +2006,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if err := a.preparePromptProfile(model); err != nil {
 			return nil, model, err
 		}
-		messages, carried := a.snapshotWithReasoning()
+		messages, carried, policyActive := a.snapshotWithReasoning()
 		// AND THE SOURCE-AUTHORED FRAMEWORK METHOD POLICY, in the SYSTEM
 		// authority and never the quoted-history note, when this turn carries
 		// prior-outcome rows ([Agent.withFrameworkPolicy]): the same constant for
 		// an ordinary conversation, a manager and a task worker, added to THIS
 		// request's leading system message alone so a refresh cannot double-insert
-		// it and the transcript behind it never moves.
-		messages = a.withFrameworkPolicy(messages)
+		// it and the transcript behind it never moves. The activation bit is the
+		// one TAKEN WITH the snapshot above, never reread here, so a routed pass
+		// that lands a new note between the snapshot and this line cannot pair its
+		// flag with rows the request does not carry.
+		messages = a.withFrameworkPolicy(messages, policyActive)
 		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 {
 			rolePage := textMessage("system", strings.TrimSpace(wake.prompt))
 			messages = append(messages[:1:1], append([]ai.Message{rolePage}, messages[1:]...)...)
