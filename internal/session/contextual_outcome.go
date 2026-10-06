@@ -427,36 +427,12 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	if body == "" {
 		return false
 	}
-	// A SHELL METADATA OR LOOKUP ACTION IS NEVER THE WAY THE WORK GOT DONE,
-	// whether it is the `ls` tool or that same read wrapped in a pipeline:
-	// `cd <cwd> && ls -la && cat week.csv`, or `git log`, or a `pip show`, is a
-	// lookup rather than the action that answered a failure. It is judged by what
-	// each command DOES, never by the tool's name.
-	if shellToolName(name) && shellMetadataOnly(body) {
-		return false
-	}
-	// A CHECK-ONLY PROBE IS NOT A REPLACEMENT. A `python -c 'import pandas'` or
-	// `python -c 'print("week.csv")'` that later succeeds confirms the
-	// environment or echoes a name; it does not do the work the failure blocked,
-	// so carrying it as the alternative would teach a later turn that re-checking
-	// is how the job gets done. Real work on an operand — an executed `open(...)`,
-	// a bare file argument, a redirect to a file — is never caught here.
-	if shellToolName(name) && shellCheckOnly(body) {
-		return false
-	}
-	// A MASKED SUBSTEP IS NOT A DEMONSTRATED SUCCESS. When the shell swallows a
-	// failed command's exit (`|| true`, a redirect to the null device) the
-	// overall zero the tool boundary reports proves nothing about the step that
-	// was masked, so the call is refused before either link can claim it as the
-	// way the work got done. The honest receipt check in the writers refuses the
-	// complementary case — an unmasked command whose own receipt is a failure.
-	if shellToolName(name) && shellMasksExit(body) {
-		return false
-	}
-	// AN UNRECOGNIZED WRAPPER OPTION IS NOT A PROGRAM. `command -Z grep` leaves
-	// the reader unable to say what ran, so the call is refused rather than
-	// falling through to judge the option (or the wrapped word) as the work.
-	if shellToolName(name) && shellWrapperUncertain(body) {
+	// A SHELL ACTION THAT ONLY LOOKS, ONLY CONFIRMS, ONLY MASKS ITS OWN EXIT OR
+	// RUNS AN UNRECOGNIZED WRAPPER IS NOT THE WAY THE WORK GOT DONE, whatever
+	// the tool boundary reported. One refusal, spelled out in
+	// [shellUnfitAsDemonstratedWork], so the eligibility road keeps one ending
+	// per phase rather than four that all say the same thing.
+	if shellToolName(name) && shellUnfitAsDemonstratedWork(body) {
 		return false
 	}
 	if sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal, ws) {
@@ -466,24 +442,41 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	// failure is not answered by `python calc.py week.csv` merely because both
 	// run python. A success that shares no meaningful action token must stand on
 	// DEMONSTRATED work: the same ACTUAL input operand the failure used, or —
-	// only when the failure named no input file at all — the single file the
-	// turn's frozen goal names, actually used by the success. With several goal
-	// files named, nothing short of a shared actual operand ties them and the
-	// pairing fails CLOSED.
+	// only when the failure named no input file at all — EVERY file the turn's
+	// frozen goal names, actually used by the success. A success that touched
+	// only one of several goal artifacts cannot be tied to the failure and the
+	// pairing fails CLOSED; see [goalFileFallbackTie].
 	if !sameActionProgram(attemptActionBody(failedAction), body) {
 		return false
 	}
 	return goalFileFallbackTie(attemptActionBody(failedAction), body, goal, ws)
 }
 
+// shellUnfitAsDemonstratedWork answers whether a shell action can NEVER be the
+// way a failed piece of work got done, whatever its exit status. It only looks
+// (a metadata or lookup read, the `ls` tool or that same read wrapped in a
+// pipeline: `cd <cwd> && ls -la && cat week.csv`, `git log`, `pip show`); it
+// only CONFIRMS a check (`python -c 'import pandas'`) and so does not do the
+// work the failure blocked; it MASKS a failed command's exit (`|| true`, a
+// redirect to the null device) so the overall zero proves nothing; or it runs an
+// UNRECOGNIZED WRAPPER whose real program cannot be read. Each is a separate
+// answer to the same question, so they are one predicate rather than four gates.
+func shellUnfitAsDemonstratedWork(body string) bool {
+	return shellMetadataOnly(body) || shellCheckOnly(body) ||
+		shellMasksExit(body) || shellWrapperUncertain(body)
+}
+
 // goalFileFallbackTie is the conservative last tie between a failure and a
 // success that share no meaningful action token. When the failure demonstrated
 // an input FILE, the later success must operate on that SAME file — a shared
 // actual operand, not a name the goal happened to mention — or it is refused.
-// Only a failure that named no input file at all falls back to the goal: a
-// success that actually USES a file the frozen goal names. That is the weaker
-// tie, and it is kept for the real pair whose failed import (`python -c 'import
-// pandas'`) touched no file while the goal named the artifact the success read.
+// Only a failure that named no input file at all falls back to the goal, and
+// then the success must USE EVERY file the goal names: a goal with a single
+// artifact is the ordinary case, and the live compound pair (it touched both
+// week.csv and ledger.py) still ties. A success over only one of several goal
+// artifacts is refused, because a no-input failure cannot say which goal the
+// artifact belonged to and pairing the wrong one would teach a wrong
+// replacement.
 func goalFileFallbackTie(failedBody, successBody, goal, workspace string) bool {
 	if len(shellUsedFileIdentities(failedBody, workspace)) > 0 {
 		return sharesActualInputOperand(failedBody, successBody, workspace)
@@ -492,13 +485,22 @@ func goalFileFallbackTie(failedBody, successBody, goal, workspace string) bool {
 	if len(want) == 0 {
 		return false
 	}
+	// HAVING NO INPUT OF ITS OWN, THE FAILURE CANNOT SAY WHICH GOAL ARTIFACT IT
+	// WAS FOR, so a success that touched ONLY ONE of several goal files is not
+	// evidence it answered this failure: with the turn's goal "validate parser.py
+	// and total week.csv", a calculation over week.csv says nothing about the
+	// parser.py work, and pairing them would teach the wrong replacement. The
+	// success must therefore demonstrate the WHOLE goal — it has to USE EVERY
+	// file the goal names — before the weaker link stands. A shared meaningful
+	// action token is the stronger tie and is decided before this fallback; it
+	// pairs across a multi-file goal without it.
 	used := shellUsedFileIdentities(successBody, workspace)
 	for id := range want {
-		if used[id] {
-			return true
+		if !used[id] {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // sharesActualInputOperand answers whether the failed action and the success
@@ -652,9 +654,28 @@ func textFileOperands(text string) []string {
 	for _, field := range strings.FieldsFunc(text, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '.' && r != '_' && r != '-'
 	}) {
+		// A WORD-SPLIT FRAGMENT OF A QUOTED NAME IS NOT A SECOND ARTIFACT. The
+		// quoted "weekly report.csv" is one file; the bare token the scanner then
+		// sees inside it ("report.csv") must not be counted again, or a goal with
+		// a single spaced file would look like a many-file goal and fail closed.
+		if fragmentOfQuotedOperand(field, out) {
+			continue
+		}
 		add(field)
 	}
 	return out
+}
+
+// fragmentOfQuotedOperand reports whether a bare token is only the trailing
+// word of an already-collected quoted operand ("report.csv" inside "weekly
+// report.csv"), so it is not a distinct file the goal named.
+func fragmentOfQuotedOperand(field string, quoted []string) bool {
+	for _, q := range quoted {
+		if q != field && strings.HasSuffix(q, " "+field) {
+			return true
+		}
+	}
+	return false
 }
 
 // trimOperand strips the quoting and trailing sentence punctuation a lexical

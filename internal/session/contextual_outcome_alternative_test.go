@@ -907,6 +907,38 @@ func TestGoalFileOperandGroundsReplacementNotEchoedProse(t *testing.T) {
 	}
 }
 
+// A GOAL THAT NAMES SEVERAL ARTIFACTS DOES NOT TIE A NO-INPUT FAILURE TO A
+// SUCCESS THAT MERELY USES ONE OF THEM. With two files in the goal — the live
+// mixed shape "validate parser.py and total week.csv" — "the success touched
+// one of the goal's files" is no evidence that it answered a failure that named
+// no input at all; the pairing fails CLOSED. The unambiguous single-artifact
+// goal still pairs on the identical shape, so the genuine CSV fixture is kept.
+func TestGoalFileTieRefusesMultiArtifactGoal(t *testing.T) {
+	const mixedGoal = "validate parser.py and total week.csv and report the grand total"
+	const singleGoal = "total week.csv and report the grand total"
+	if alternativeEligible(delegatedBashCall("s", a4CSV), "bash", "bash: "+a4Failed, mixedGoal) {
+		t.Fatal("a success over one of several goal files tied a no-input failure")
+	}
+	if !alternativeEligible(delegatedBashCall("s", a4CSV), "bash", "bash: "+a4Failed, singleGoal) {
+		t.Fatal("the single-artifact goal stopped tying the genuine success")
+	}
+	// A success that DEMONSTRATED THE WHOLE GOAL — it uses EVERY file the goal
+	// names — is not "one of many": the live compound pair (week.csv AND
+	// ledger.py) still ties a no-input failure.
+	const whole = ".venv/bin/python calc.py parser.py week.csv"
+	if !alternativeEligible(delegatedBashCall("s", whole), "bash", "bash: "+a4Failed, mixedGoal) {
+		t.Fatal("a success that used every goal-named file stopped tying")
+	}
+	// A shared meaningful action token is the STRONGER tie and still pairs even
+	// when the goal names several files.
+	const shared = "parse parser.py and total week.csv"
+	const sharedFailed = "python parse.py parser.py"
+	const sharedSuccess = "python parse.py parser.py --week week.csv"
+	if !alternativeEligible(delegatedBashCall("s", sharedSuccess), "bash", "bash: "+sharedFailed, shared) {
+		t.Fatal("a shared action token stopped tying across a multi-artifact goal")
+	}
+}
+
 // AN UNRELATED COMMAND, A BARE METADATA LOOKUP AND A CHECK-ONLY PROBE ARE ALL
 // REFUSED as the alternative to the standalone import failure.
 func TestAlternativeRefusesUnrelatedMetadataAndCheckOnlySuccess(t *testing.T) {
