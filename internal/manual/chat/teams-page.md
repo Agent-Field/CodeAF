@@ -177,9 +177,10 @@ exchange, with the most recently active exchange first. A reply count counts mes
 not work-status events. Click the disclosure at the start of a row to expand the full
 message and its replies inline; click it again to collapse them.
 
-The wheel over the panel scrolls the main overview. One down control, `Next page`, advances
-by a full viewport: with six rows, 1–6, 7–12, then 13 onward. A short final page does not
-repeat the previous page's rows; the control says `Last page` and stays there. `pgup` /
+The wheel over the panel scrolls the main overview. `Prev` and `Next` move backward or
+forward by a full viewport: with six rows, 1–6, 7–12, then 13 onward. A short final page
+does not repeat the previous page's rows. Both controls remain visible; the unavailable
+direction is grey and stays at the first or last page when chosen. `pgup` /
 `pgdown` move back or forward by a page. The rest of the overview stays in place. At smaller heights,
 walk into the panel with the arrow keys to bring it into view.
 

@@ -241,7 +241,7 @@ func TestTeamsInteractionPagingDoesNotRepeatTheShortLastPage(t *testing.T) {
 		if !strings.Contains(text, span) {
 			t.Fatalf("page %d: %s", page+1, text)
 		}
-		if page == 4 && (strings.Contains(text, "Exchange 10") || !strings.Contains(text, "Last page")) {
+		if page == 4 && (strings.Contains(text, "Exchange 10") || !strings.Contains(text, "Prev") || !strings.Contains(text, "Next")) {
 			t.Fatal("last page repeated earlier interactions")
 		}
 		a.teamsDo(teamsTarget{act: teamsActInteractionDown, id: harbor})
@@ -252,6 +252,81 @@ func TestTeamsInteractionPagingDoesNotRepeatTheShortLastPage(t *testing.T) {
 	drive(t, a, key("pgup"))
 	if text := teamsFrameText(a); !strings.Contains(text, "19 to 24 of 25") {
 		t.Fatal("PgUp did not return to the previous complete page")
+	}
+}
+
+func TestTeamsInteractionButtonsReachLastPageAndReturnToFirst(t *testing.T) {
+	a, id, _ := teamsHostedLab(t)
+	a.width, a.height = 160, 46
+	teamsOverviewTraffic(t, a, id, 25)
+	press := func(act teamsAct, want int) {
+		t.Helper()
+		target := teamsTargetOf(t, a, act, id)
+		drive(t, a, clickAt((target.x0+target.x1)/2, target.y))
+		if got := a.tp.interactionOffsets[id]; got != want {
+			t.Fatalf("button %d: offset %d, want %d", act, got, want)
+		}
+		if !a.at(pageTeams) || a.tp.sel != id {
+			t.Fatal("paging changed the selected team or place")
+		}
+	}
+	press(teamsActInteractionUp, 0)
+	for _, off := range []int{6, 12, 18, 24, 24} {
+		press(teamsActInteractionDown, off)
+	}
+	for _, off := range []int{18, 12, 6, 0, 0} {
+		press(teamsActInteractionUp, off)
+	}
+	if text := teamsFrameText(a); !strings.Contains(text, "1 to 6 of 25") || !strings.Contains(text, "Exchange 25") {
+		t.Fatal("returning to first page lost the newest interactions")
+	}
+	// The same controls remain keyboard stops at both bounds, and moving
+	// horizontally between them preserves the table's viewport.
+	drive(t, a, key("right"), key("enter"))
+	if a.tp.cur.act != teamsActInteractionDown || a.tp.interactionOffsets[id] != 6 {
+		t.Fatal("keyboard could not choose Next from Prev")
+	}
+	drive(t, a, key("left"), key("enter"))
+	if a.tp.cur.act != teamsActInteractionUp || a.tp.interactionOffsets[id] != 0 {
+		t.Fatal("keyboard could not choose Prev from Next")
+	}
+}
+
+func TestTeamsInteractionPagingControlsFitNarrowEmptyAndSinglePages(t *testing.T) {
+	for _, count := range []int{0, 3, 25} {
+		for _, width := range []int{20, 24, 40, 100} {
+			t.Run(fmt.Sprintf("%d-rows-%d-wide", count, width), func(t *testing.T) {
+				a, id, _ := teamsHostedLab(t)
+				a.height = 46
+				teamsOverviewTraffic(t, a, id, count)
+				d := &teamsDraw{a: a}
+				rows := a.teamsInteractionTable(d, mustTeam(t, a, id), width, 0)
+				text := plain(strings.Join(rows, "\n"))
+				if !strings.Contains(text, "Prev") || !strings.Contains(text, "Next") {
+					t.Fatal("narrow panel lost a paging direction")
+				}
+				for _, row := range rows {
+					if ansi.StringWidth(row) > width {
+						t.Fatalf("paging footer exceeds %d cells: %s", width, plain(row))
+					}
+				}
+				for _, target := range d.targets {
+					if target.act != teamsActInteractionUp && target.act != teamsActInteractionDown {
+						continue
+					}
+					if target.x0 < 2 || target.x1 > width-2 || target.y >= len(rows)-1 {
+						t.Fatalf("paging target escaped its card: %+v", target)
+					}
+				}
+				if count <= teamsInteractionRows {
+					a.teamsInteractionsPage(1)
+					a.teamsInteractionsPage(-1)
+					if a.tp.interactionOffsets[id] != 0 {
+						t.Fatal("single-page controls moved beyond their bounds")
+					}
+				}
+			})
+		}
 	}
 }
 
@@ -330,11 +405,11 @@ func TestTeamsManyMembersAndTheirInteractionPanelRemainReachable(t *testing.T) {
 	if text := teamsFrameText(a); !strings.Contains(text, "@extra29") {
 		t.Fatal("last member is unreachable")
 	}
-	for i := 0; i < len(crew)+10 && a.tp.cur.act != teamsActInteractionDown; i++ {
+	for i := 0; i < len(crew)+10 && a.tp.cur.act != teamsActInteractionDown && a.tp.cur.act != teamsActInteractionUp; i++ {
 		_ = teamsFrameText(a)
 		drive(t, a, key("up"))
 	}
-	if a.tp.cur.act != teamsActInteractionDown {
+	if a.tp.cur.act != teamsActInteractionDown && a.tp.cur.act != teamsActInteractionUp {
 		t.Fatal("Up from members could not reach the interaction panel")
 	}
 	if text := teamsFrameText(a); !strings.Contains(text, "Recent interactions") {

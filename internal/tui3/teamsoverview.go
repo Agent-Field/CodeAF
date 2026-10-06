@@ -374,7 +374,7 @@ func (a *app) teamsInteractionsScroll(delta int) {
 	a.touch()
 }
 
-// The single paging control advances by one full viewport and retains a short
+// Paging moves by one full viewport in either direction and retains a short
 // final page, rather than sliding the final rows back over the previous page.
 func (a *app) teamsInteractionsPage(delta int) {
 	if a.tp.tablePageSize <= 0 {
@@ -583,13 +583,28 @@ func (a *app) teamsInteractionTable(d *teamsDraw, t team, width, y int) []string
 		}
 		lines = append(lines, wallCardLine{s: text})
 	}
-	word, hint := "Next page", "Show the next page of interactions"
-	if off >= a.tp.tableOver {
-		word, hint = "Last page", "Last page of interactions; wheel up or PgUp returns to earlier rows"
+	prevInk, nextInk := a.pal.muted, a.pal.muted
+	prevHint, nextHint := "Show the previous page of interactions", "Show the next page of interactions"
+	if off == 0 {
+		prevInk, prevHint = a.pal.dim, "First page of interactions"
 	}
-	footer, _ := d.button(a.icon(tokens.GExpanded)+" "+word, teamsTarget{act: teamsActInteractionDown, id: t.ID, x0: 2, y: y + height + 2, hint: hint, pane: true}, a.pal.dim)
+	if off >= a.tp.tableOver {
+		nextInk, nextHint = a.pal.dim, "Last page of interactions"
+	}
+	footerY := y + height + 2
+	previous, previousW := d.button("Prev", teamsTarget{act: teamsActInteractionUp, id: t.ID, x0: 2, y: footerY, hint: prevHint, pane: true}, prevInk)
+	next, _ := d.button("Next", teamsTarget{act: teamsActInteractionDown, id: t.ID, x0: 2 + previousW + 1, y: footerY, hint: nextHint, pane: true}, nextInk)
+	footer := previous + " " + next
 	if len(rows) > height {
-		footer += "  " + strconv.Itoa(off+1) + " to " + strconv.Itoa(min(off+height, len(rows))) + " of " + strconv.Itoa(len(rows))
+		span := strconv.Itoa(off+1) + " to " + strconv.Itoa(min(off+height, len(rows))) + " of " + strconv.Itoa(len(rows))
+		// Both directions stay visible on narrow cards. The range moves
+		// below them rather than cutting off a button to make room.
+		if ansi.StringWidth(footer)+2+ansi.StringWidth(span) > inner {
+			lines = append(lines, wallCardLine{s: footer})
+			footer = a.pal.dim(fit(span, inner))
+		} else {
+			footer += "  " + a.pal.dim(span)
+		}
 	}
 	lines = append(lines, wallCardLine{s: footer})
 	a.tp.table = teamsTableRect{x: 0, y: y, w: width, h: len(lines) + 2}
