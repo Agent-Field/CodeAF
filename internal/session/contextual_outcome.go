@@ -3746,12 +3746,15 @@ func (a *Agent) priorOutcomeRows(st *store.Store, key string) ([]store.Contextua
 // non-program files besides — is ranked first, so a specific demonstrated
 // method is not crowded out by a newer command that merely read the goal file
 // on the way to failing elsewhere. This ranks evidence, it does not claim which
-// segment of a compound command failed. The second slot prefers a DISTINCT
-// method or input, held behind the same two-slot bound, so two rows never repeat
-// the same evidence; if every remaining row repeats the first row's method, the
-// one that carries a genuine observed success is still shown, and otherwise the
-// slot stays empty rather than duplicating a row. A working alternative stays
-// attached to its own failure in the same bullet.
+// segment of a compound command failed. The two slots are COMPLEMENTARY: when
+// the leading row carries no observed alternative, the second slot is RESERVED
+// for the highest-ranked row that does, so a demonstrated working method is not
+// crowded out by a second bare failure of the same goal artifact; when the
+// leading row already carries one, the second slot goes to a DISTINCT failure.
+// A working alternative is never detached from its own failure: it always rides
+// the same bullet. This is a property of the rows that are relevant and eligible
+// for the note — the bounded, ranked window — never of all stored history, and
+// the second slot stays empty rather than duplicating a row.
 func priorOutcomeLines(attempts []store.ContextualAttempt, goal string, terms map[string]bool, snapshot, workspace string) []string {
 	alternatives := indexPriorAlternatives(attempts)
 	relevant := relevantFailures(attempts, terms)
@@ -3846,12 +3849,23 @@ var priorProgramFileExtensions = map[string]bool{
 	"rb": true, "rs": true, "java": true, "c": true, "h": true, "cpp": true,
 }
 
-// nextDistinctPriorFailure picks the second row: the highest-ranked failure of a
-// DIFFERENT method or input. If every remaining row repeats the first row's
-// method, a row that carries an observed alternative still renders — a genuine
-// working method is never dropped — and otherwise no second row is shown.
+// nextDistinctPriorFailure picks the second row of the bounded, ranked window,
+// so the pair of rows stays COMPLEMENTARY. When the first row carries no observed
+// alternative, the slot is reserved for the highest-ranked remaining row that
+// does: a distinct alternative-bearing row is preferred, and a row of the first
+// row's own method is still taken WHOLE (its observed success rides the same
+// bullet) rather than detached. When the first row already carries an
+// alternative, the slot goes to the highest-ranked DISTINCT method or input. If
+// nothing in the window qualifies, the slot stays empty rather than repeat a
+// row. The guarantee covers only rows that are relevant and eligible for the
+// note, never all stored history.
 func nextDistinctPriorFailure(rest []store.ContextualAttempt, first store.ContextualAttempt, alternatives map[string][]store.ContextualAttempt) (store.ContextualAttempt, bool) {
 	firstKey := priorFailureMethodKey(first)
+	if len(alternatives[first.SourceKey]) == 0 {
+		if at, ok := highestRankedAltBearing(rest, firstKey, alternatives); ok {
+			return at, true
+		}
+	}
 	for _, at := range rest {
 		if priorFailureMethodKey(at) != firstKey {
 			return at, true
@@ -3863,6 +3877,28 @@ func nextDistinctPriorFailure(rest []store.ContextualAttempt, first store.Contex
 		}
 	}
 	return store.ContextualAttempt{}, false
+}
+
+// highestRankedAltBearing returns the first row of rest whose own source key
+// carries an observed alternative, preferring one whose method differs from the
+// chosen first row. A same-method row is returned only when no distinct one
+// exists, and it is returned with its alternative attached, so the pair is kept
+// whole.
+func highestRankedAltBearing(rest []store.ContextualAttempt, firstKey string, alternatives map[string][]store.ContextualAttempt) (store.ContextualAttempt, bool) {
+	var same store.ContextualAttempt
+	sameFound := false
+	for _, at := range rest {
+		if len(alternatives[at.SourceKey]) == 0 {
+			continue
+		}
+		if priorFailureMethodKey(at) != firstKey {
+			return at, true
+		}
+		if !sameFound {
+			same, sameFound = at, true
+		}
+	}
+	return same, sameFound
 }
 
 // priorFailureMethodKey is the deterministic identity of what a failure DID: the
