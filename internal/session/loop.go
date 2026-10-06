@@ -307,7 +307,7 @@ func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bo
 	// its first request: the node's routed shortlist arrives beside the work and
 	// may be late ([nodeMemory]), but an approved rule or confirmed decision may
 	// not be. A conversation owns a brain and returns here immediately.
-	a.prepareWorkerBinding(user.text())
+	a.prepareWorkerBinding(ctx, user.text())
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}

@@ -295,7 +295,7 @@ func TestWorkerBindingInheritsThroughActualConstructors(t *testing.T) {
 			t.Fatalf("%s worker gained a memory write or verb from the lent brain", name)
 		}
 		// AND ITS FIRST REQUEST, with the router down, carries the rule whole.
-		child.prepareWorkerBinding("carry out the work")
+		child.prepareWorkerBinding(context.Background(), "carry out the work")
 		child.mu.Lock()
 		block := child.bindingText
 		child.mu.Unlock()

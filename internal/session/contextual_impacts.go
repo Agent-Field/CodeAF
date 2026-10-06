@@ -721,6 +721,17 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 	}
 }
 
+// formatContextualImpact renders ONE dependency impact as a single physical
+// record. The producer and consumer paths and the recorded assumption are
+// untrusted filesystem text, so they are quoted with Go's own escaping: an
+// embedded newline or a literal </contextual_impacts> becomes inert text and can
+// never split the record or forge a block boundary, which is what lets
+// [trimRenderedWholeRecords] treat one line as one whole record for this block
+// exactly as it does for the %q-quoted outcomes block.
+func formatContextualImpact(d store.ContextualDependencyObservation, notice store.ContextualImpactNotice) string {
+	return fmt.Sprintf("- %q changed since %q was observed consuming it. Consumer source was re-read and its recorded assumption is unchanged: %q. Inspect that assumption before asserting a break; offer the relevant follow-up, without editing another project. notice=%q", d.ProducerPath, d.ConsumerPath, d.Assumption, notice.EvidenceHash)
+}
+
 // contextualImpactContext re-reads the consumer assumption before suggesting a
 // consequence. It never schedules work or edits a consumer in another project.
 func (a *Agent) contextualImpactContext(cue string) string {
@@ -800,7 +811,7 @@ func (a *Agent) contextualImpactContext(cue string) string {
 			if said {
 				continue
 			}
-			lines = append(lines, fmt.Sprintf("- %s changed since %s was observed consuming it. Consumer source was re-read and its recorded assumption is unchanged: %s. Inspect that assumption before asserting a break; offer the relevant follow-up, without editing another project. notice=%s", d.ProducerPath, d.ConsumerPath, d.Assumption, notice.EvidenceHash))
+			lines = append(lines, formatContextualImpact(d, notice))
 		}
 		if len(lines) >= contextualContextLimit {
 			break

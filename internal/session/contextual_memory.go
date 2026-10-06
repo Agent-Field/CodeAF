@@ -287,7 +287,7 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 // remember/forget verbs, or any future-task authority. A conversation (which
 // owns a brain) and a worker with nothing lent both return immediately, opening
 // exactly as they did.
-func (a *Agent) prepareWorkerBinding(cue string) {
+func (a *Agent) prepareWorkerBinding(ctx context.Context, cue string) {
 	if a.memory != nil || a.config.bindingStore == nil {
 		return
 	}
@@ -299,7 +299,7 @@ func (a *Agent) prepareWorkerBinding(cue string) {
 	// remember, forget, import or any other verb is granted, and the worker
 	// still owns no memory and no future-task authority. The read is bounded and
 	// owner-filtered on the existing journal ([Agent.priorOutcomeBlock]).
-	outcomes := a.priorOutcomeBlock(a.config.bindingStore, a.config.MemoryProjectKey, cue, "")
+	outcomes := a.priorOutcomeBlock(a.config.bindingStore, a.config.MemoryProjectKey, cue, a.workerSourceSnapshot(ctx))
 	// THE BINDING RULES ARE MANDATORY AND RESERVED FIRST; the relevant prior
 	// outcomes are advisory and spend only what is left of the one shared
 	// ceiling, by WHOLE records.
@@ -317,6 +317,31 @@ func (a *Agent) prepareWorkerBinding(cue string) {
 	// already arrived is bounded to what is LEFT of the one shared ceiling.
 	a.reserveBindingFirstLocked()
 	a.landVolatileLocked()
+}
+
+// workerSourceSnapshot is the worker's OWN bounded source identity, captured
+// from the worker's own workspace before its first provider request. It is the
+// tree the worker will actually act in — NEVER a snapshot borrowed from the
+// conversation, whose workspace may have moved under a later anchor, and never
+// a stale scope re-bound onto a project the worker is not standing in. The
+// capture is trusted ONLY while the frozen [Config.MemoryProjectKey] still
+// names this worker's own workspace, so a key inherited from another project
+// leaves the label honestly unknown rather than certifying another tree. A
+// capture that is unknown, truncated or raced is unknown, and a worker with no
+// provable project is unknown too.
+func (a *Agent) workerSourceSnapshot(ctx context.Context) string {
+	key := strings.TrimSpace(a.config.MemoryProjectKey)
+	if key == "" {
+		return "unknown"
+	}
+	if own := anchoredProjectKey(strings.TrimSpace(a.config.Workspace)); own == "" || own != key {
+		return "unknown"
+	}
+	snapshot := a.captureSourceSnapshot(ctx)
+	if !snapshot.current() {
+		return "unknown"
+	}
+	return snapshot.Identity
 }
 
 // reserveBindingFirstLocked bounds a task worker's TWO moving blocks under ONE
@@ -601,10 +626,15 @@ const bindingBlockPreamble = "Apply only under each claim's stated conditions an
 // fit is omitted WHOLE by the renderer, so an approved rule is shown in full or
 // not at all.
 func renderBindingBlock(memories []store.Memory) string {
-	// The rendered block adds the preamble and one newline over the raw
-	// <memory> wrapper [renderMemoryBlockWithin] measures, so the body budget is
-	// the ceiling less exactly those bytes.
-	limit := memoryBlockRunes - utf8.RuneCountInString(bindingBlockPreamble) - 1
+	// The rendered block adds the preamble, the newline after the opening tag
+	// AND the whole <memory> wrapper [renderMemoryBlockWithin] measures around
+	// the body, so the body budget is the ceiling less exactly those bytes.
+	// Counting the wrapper is what keeps the returned block inside the ONE
+	// shared ceiling: an approved rule landing in the last few runes of its
+	// budget used to push the whole block over 4800.
+	overhead := utf8.RuneCountInString("\n<memory>\n") + utf8.RuneCountInString("</memory>\n") +
+		utf8.RuneCountInString(bindingBlockPreamble) + 1
+	limit := memoryBlockRunes - overhead
 	if limit < 0 {
 		limit = 0
 	}
