@@ -244,8 +244,11 @@ func TestTheRoutedMemoriesAreRenderedIntoTheBlock(t *testing.T) {
 	if !strings.Contains(block, "<memory>") || !strings.Contains(block, "</memory>") {
 		t.Fatalf("the block is not a <memory> block:\n%s", block)
 	}
-	if !strings.Contains(block, "prefers tabs: prefers tabs over spaces in Go") {
-		t.Fatalf("the routed memory is not in the block:\n%s", block)
+	// ONE QUOTED RECORD on one physical line: the title and the body are both
+	// safely quoted (memory.go's contextualMemoryField), so the assertion is the
+	// emitted format, not a bare unquoted title.
+	if !strings.Contains(block, `- "prefers tabs": "prefers tabs over spaces in Go (learned just now)"`) {
+		t.Fatalf("the routed memory is not in the block as one quoted record:\n%s", block)
 	}
 	if strings.Contains(block, "dark themes") {
 		t.Fatalf("a memory the router did not ask for is in the block:\n%s", block)

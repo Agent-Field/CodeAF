@@ -247,6 +247,40 @@ func TestOneTurnTaskAuthorizationDoesNotBecomeBinding(t *testing.T) {
 	if decision.Authority != "confirmed_decision" {
 		t.Fatalf("an explicit we-decided decision was demoted: %+v", decision)
 	}
+	// AN EXPLICIT LASTING CONSTRAINT THAT USES AN ORDINARY TASK VERB STILL
+	// BINDS. "run the", "check the" and "verify the" are the same words a
+	// durable rule uses, so a lasting quantifier in the same span keeps the
+	// authority: only a bare task command is a one-turn authorization.
+	lasting := []struct {
+		user, quote string
+	}{
+		{"Never run the ledger utility without approval.",
+			"Never run the ledger utility without approval"},
+		{"Always check the ledger before every release.",
+			"Always check the ledger before every release"},
+		{"Before shipping you must always verify the vault checksum before deploying.",
+			"must always verify the vault checksum before deploying"},
+	}
+	for _, l := range lasting {
+		if got := demote(l.user, l.quote, "approved_rule"); got.Authority != "approved_rule" {
+			t.Fatalf("a lasting constraint %q was demoted: %+v", l.quote, got)
+		}
+	}
+	// AN EXPLICIT ONE-OFF SCOPE STILL BOUNDS THE SPAN, even when it carries a
+	// lasting quantifier, so "always"/"must" is not blindly persistent.
+	oneOff := []struct {
+		user, quote string
+	}{
+		{"For this task always print all columns.",
+			"For this task always print all columns"},
+		{"Run the check once; it must not edit files.",
+			"Run the check once"},
+	}
+	for _, o := range oneOff {
+		if got := demote(o.user, o.quote, "approved_rule"); got.Authority != "observation" {
+			t.Fatalf("a one-off scoped span %q was not demoted: %+v", o.quote, got)
+		}
+	}
 }
 
 // 5. THE ACTUAL CONSTRUCTOR'S FIRST REQUEST BINDS THE APPROVED RULE BEFORE ANY

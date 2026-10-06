@@ -824,17 +824,36 @@ func explicitContextualDecision(text string) bool {
 // source gap F3 names: the authority gates read ordinary wording cues, a one-turn
 // task uses those same words, and an extractor that mislabels the task would
 // otherwise promote it to a persistent binding. The check is deliberately
-// narrow and textual, and it never demotes a span that ALSO states a durable
-// decision ("we decided", "instead of"), so a genuine durable rule or an
-// explicit decision from the same turn still binds.
+// narrow and textual, and it never demotes a span that ALSO states a lasting
+// quantifier ("always", "never", "must") or a durable decision ("we decided",
+// "instead of"), so a genuine durable rule or an explicit decision from the
+// same turn still binds; an explicit one-off scope ("for this task", "for now")
+// still bounds that span and keeps the demotion.
 func contextualOneTurnTaskAuthorization(clause string) bool {
 	lower := strings.ToLower(clause)
-	task := false
+	// A CLEARLY BOUNDED ONE-TURN FRAME demotes on its own. A cross-check, an
+	// independent verification, a read-only run, a "keep this" hold or an
+	// explicit one-off scope ("for now", "for this task") names the work of
+	// this turn, so it does not become a lasting rule however else it is
+	// worded; a lasting quantifier in the same span does not rescue it.
 	for _, cue := range []string{
 		"cross-check", "cross check", "independently ", "read-only", "read only",
-		"one-off", "one off", "for now", "for this check", "run the", "re-run",
-		"double-check", "verify the", "check the", "compare the", "keep this",
+		"one-off", "one off", "for now", "for this task", "for this turn",
+		"for this check", "keep this",
 	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	// AN ORDINARY TASK VERB ALONE DOES NOT DEMOTE A LASTING RULE. "run the",
+	// "check the", "verify the" and "compare the" are the same words a durable
+	// constraint uses ("Never run the ledger utility without approval",
+	// "Always check the ledger before every release"). A span that also states
+	// a lasting quantifier ("always", "never", "must") or a durable decision
+	// keeps its authority; only a bare task command is a one-turn
+	// authorization, and an explicit one-off scope still bounds it.
+	task := false
+	for _, cue := range []string{"run the", "re-run", "double-check", "verify the", "check the", "compare the"} {
 		if strings.Contains(lower, cue) {
 			task = true
 			break
@@ -845,6 +864,14 @@ func contextualOneTurnTaskAuthorization(clause string) bool {
 	}
 	for _, durable := range []string{"we decided", "i decided", "we chose", "i chose", "we agreed", "i agreed", "let's", "instead of"} {
 		if strings.Contains(lower, durable) {
+			return false
+		}
+	}
+	// A LASTING QUANTIFIER keeps the span authoritative; word boundaries stop
+	// "whenever" or "mustard" standing in for "never"/"must".
+	padded := " " + lower + " "
+	for _, lasting := range []string{" always ", " never ", " must "} {
+		if strings.Contains(padded, lasting) {
 			return false
 		}
 	}
