@@ -19,7 +19,7 @@ import (
 
 type webSeat struct{ calls int }
 
-func (s *webSeat) CompleteWithMessages(_ context.Context, messages []ai.Message, _ ...ai.Option) (*ai.Response, error) {
+func (s *webSeat) CompleteWithMessages(_ context.Context, _ []ai.Message, _ ...ai.Option) (*ai.Response, error) {
 	s.calls++
 	name, args := "web_search", `{"query":"release notes","count":2}`
 	if s.calls > 1 {
@@ -77,7 +77,10 @@ func TestBashWorkerRunsAndRecordsNativeWebTools(t *testing.T) {
 			defer cancel()
 			// Two actions exhaust this test's allowance; task completion is proved by
 			// the live acceptance run, not by a fabricated finish command here.
-			_, _ = worker.Run(ctx, *store.Task(store.RootID()))
+			report, runErr := worker.Run(ctx, *store.Task(store.RootID()))
+			if runErr == nil || !strings.Contains(runErr.Error(), "stopped at its step cap after 2 steps") || report.Steps != 2 {
+				t.Fatalf("worker did not stop at the declared allowance: report=%+v err=%v", report, runErr)
+			}
 			steps, err := Trajectory(root, store.RootID())
 			if err != nil {
 				t.Fatal(err)
@@ -108,14 +111,17 @@ func TestBashWorkerRunsAndRecordsNativeWebTools(t *testing.T) {
 // than the process default, and observe settings changed after construction.
 func TestCrewFactoryWiresLiveWebFromItsProfile(t *testing.T) {
 	profile := t.TempDir()
-	write := func(pin string) {
+	for _, key := range []string{"EXA_API_KEY", "FIRECRAWL_API_KEY", "JINA_API_KEY"} {
+		t.Setenv(key, "")
+	}
+	write := func(pin, exaKey string) {
 		t.Helper()
-		data, _ := json.Marshal(map[string]string{config.KeySearchProvider: pin})
+		data, _ := json.Marshal(map[string]string{config.KeySearchProvider: pin, config.KeyExaKey: exaKey})
 		if err := os.WriteFile(config.BudgetConfigPath(profile), data, 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	write("exa")
+	write("exa", "fixture-key")
 	factory := CrewFactory(nil, t.TempDir(), profile, Seats{One: "test/model"}, "", func(string) session.Completer { return &webSeat{} })
 	worker := factory(plandb.Task{}).(*BashWorker)
 	if worker.searchProvider == nil || worker.searchFetcher == nil {
@@ -124,8 +130,70 @@ func TestCrewFactoryWiresLiveWebFromItsProfile(t *testing.T) {
 	if got := worker.searchProvider.Name(); got != "exa" {
 		t.Fatalf("search=%q, want profile pin exa", got)
 	}
-	write("duckduckgo")
+	if got := worker.searchFetcher.Name(); got != "exa-fetch" {
+		t.Fatalf("fetch=%q, want the keyed provider from this profile", got)
+	}
+	write("duckduckgo", "")
 	if got := worker.searchProvider.Name(); got != "duckduckgo" {
 		t.Fatalf("search=%q, want changed pin duckduckgo", got)
+	}
+	if got := worker.searchFetcher.Name(); got != "jina" {
+		t.Fatalf("fetch=%q, want the keyless fetcher after the profile key was removed", got)
+	}
+}
+
+// Cancelling a task must reach an in-flight native network action. A handshake
+// makes cancellation happen after the backend starts, without a clock delay.
+type waitingWorkerSearch struct{ entered, cancelled chan struct{} }
+
+func (*waitingWorkerSearch) Name() string { return "waiting-worker-search" }
+func (w *waitingWorkerSearch) Search(ctx context.Context, _ string, _ int) ([]search.Result, error) {
+	close(w.entered)
+	<-ctx.Done()
+	close(w.cancelled)
+	return nil, ctx.Err()
+}
+
+func TestBashWorkerCancellationReachesNativeWebBackend(t *testing.T) {
+	t.Setenv("CODEAF_TASK_BELT", "bash")
+	root := t.TempDir()
+	t.Setenv("CODEAF_HOME", root)
+	stub := filepath.Join(root, "stub-codeaf")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEAF_PLANDB_BIN", stub)
+	store, err := plandb.Open(filepath.Join(root, "plan.db"), "cancel-web", "root", "Research", "Research release notes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	backend := &waitingWorkerSearch{entered: make(chan struct{}), cancelled: make(chan struct{})}
+	worker := NewBashWorker(store, root, "test/model", "", &webSeat{})
+	worker.searchProvider = backend
+	guard, stop := context.WithTimeout(t.Context(), 10*time.Second)
+	defer stop()
+	ctx, cancel := context.WithCancel(guard)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, err := worker.Run(ctx, *store.Task(store.RootID())); done <- err }()
+	select {
+	case <-backend.entered:
+	case <-guard.Done():
+		t.Fatal("native search never started")
+	}
+	cancel()
+	select {
+	case <-backend.cancelled:
+	case <-guard.Done():
+		t.Fatal("task cancellation never reached native search")
+	}
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("cancelled task returned success")
+		}
+	case <-guard.Done():
+		t.Fatal("worker did not finish after its native search was cancelled")
 	}
 }
