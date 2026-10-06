@@ -991,12 +991,14 @@ or blocked attempt that is **relevant to what you are asking** is put in front o
 the model as an advisory line:
 
 ```
-- Prior observed attempt [different source snapshot, seen 2026-10-03]: `bash: make build` failed.
-  Observation: "make: *** No rule to make target 'build'".
+- Prior observed attempt [different source snapshot, seen 2026-10-03]: `bash: make build` failed; receipt "make: *** No rule to make target 'build'".
 ```
 
 It is history, not a prohibition and not a cause: what failed once may work now,
-and the line says so. A failure of a task you are not working on stays quiet. A
+and the line says so. A source snapshot, the day it was seen, or a launcher every
+row genuinely shared is stated **once** above the rows instead of on every row, so
+the bounded space is spent on observed work rather than on repetition; a row whose
+own source or day differs keeps its own bracket. A failure of a task you are not working on stays quiet. A
 successful call is not remembered on its own, so this is not a list of everything
 that has ever worked — but where a later success was observed on the same work,
 the block names it beside the failure as an `Observed successful alternative`.

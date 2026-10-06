@@ -148,8 +148,8 @@ func TestPriorOutcomeRendersObservedAlternativeWithOwnCircumstances(t *testing.T
 	if !strings.Contains(got, "Observed successful alternative") {
 		t.Fatalf("the alternative was not rendered beside its failure:\n%s", got)
 	}
-	if !strings.Contains(got, "succeeded at the tool boundary") {
-		t.Fatalf("the alternative was not stated as an observed success:\n%s", got)
+	if !strings.Contains(got, "succeeded; receipt") {
+		t.Fatalf("the alternative was not stated as an observed success with its receipt:\n%s", got)
 	}
 	// THE CAVEAT IS CENTRALIZED: the block preamble carries "not causal or current
 	// test proof" and "A snapshot is not the environment" ONCE, and no alternative

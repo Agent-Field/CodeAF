@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/redact"
@@ -3729,11 +3730,11 @@ func (a *Agent) priorOutcomeBlock(st *store.Store, projectKey, cue, snapshot str
 	if len(terms) == 0 {
 		return ""
 	}
-	lines := priorOutcomeLines(attempts, cue, terms, snapshot, a.config.Workspace)
-	if len(lines) == 0 {
+	records := priorOutcomeRecords(attempts, cue, terms, a.config.Workspace)
+	if len(records) == 0 {
 		return ""
 	}
-	return renderPriorOutcomeBlock(lines)
+	return renderPriorOutcomeBlock(records, snapshot)
 }
 
 // priorOutcomeRows reads the project's applicable attempts, journaling a read
@@ -3753,38 +3754,41 @@ func (a *Agent) priorOutcomeRows(st *store.Store, key string) ([]store.Contextua
 	return attempts, true
 }
 
-// priorOutcomeLines renders the bounded history. GROUNDED EVIDENCE OUTRANKS
-// RECENCY: the relevant failure whose action most nearly operates on the goal's
-// own artifact — it USES a file the goal names, and uses FEW non-goal,
-// non-program files besides — is ranked first, so a specific demonstrated
-// method is not crowded out by a newer command that merely read the goal file
-// on the way to failing elsewhere. This ranks evidence, it does not claim which
-// segment of a compound command failed. The two slots are COMPLEMENTARY: when
-// the leading row carries no observed alternative, the second slot is RESERVED
-// for the highest-ranked row that does, so a demonstrated working method is not
-// crowded out by a second bare failure of the same goal artifact; when the
-// leading row already carries one, the second slot goes to a DISTINCT failure.
-// A working alternative is never detached from its own failure: it always rides
-// the same bullet. This is a property of the rows that are relevant and eligible
-// for the note — the bounded, ranked window — never of all stored history, and
-// the second slot stays empty rather than duplicating a row.
-func priorOutcomeLines(attempts []store.ContextualAttempt, goal string, terms map[string]bool, snapshot, workspace string) []string {
+// priorOutcomeRecords selects the bounded, ranked window and pairs every chosen
+// failure with the working alternatives independently observed on it. GROUNDED
+// EVIDENCE OUTRANKS RECENCY: the relevant failure whose action most nearly
+// operates on the goal's own artifact \u2014 it USES a file the goal names, and uses
+// FEW non-goal, non-program files besides \u2014 is ranked first, so a specific
+// demonstrated method is not crowded out by a newer command that merely read the
+// goal file on the way to failing elsewhere. This ranks evidence, it does not
+// claim which segment of a compound command failed. The two slots are
+// COMPLEMENTARY: when the leading row carries no observed alternative, the
+// second slot is RESERVED for the highest-ranked row that does, so a
+// demonstrated working method is not crowded out by a second bare failure of the
+// same goal artifact; when the leading row already carries one, the second slot
+// goes to a DISTINCT failure. A working alternative is never detached from its
+// own failure: it always rides the same record, so a whole-record trim can never
+// take the positive half while leaving the failure. This is a property of the
+// rows that are relevant and eligible for the note \u2014 the bounded, ranked
+// window \u2014 never of all stored history, and the second slot stays empty rather
+// than duplicating a row.
+func priorOutcomeRecords(attempts []store.ContextualAttempt, goal string, terms map[string]bool, workspace string) []priorOutcomeRecord {
 	alternatives := indexPriorAlternatives(attempts)
 	relevant := relevantFailures(attempts, terms)
 	if len(relevant) == 0 {
 		return nil
 	}
 	ordered := rankPriorFailures(relevant, goal, workspace, alternatives)
-	lines := make([]string, 0, priorOutcomeLimit)
+	records := make([]priorOutcomeRecord, 0, priorOutcomeLimit)
 	first := ordered[0]
-	lines = append(lines, renderPriorAttempt(first, snapshot, alternatives[first.SourceKey]...))
-	if len(lines) >= priorOutcomeLimit {
-		return lines
+	records = append(records, priorOutcomeRecord{failure: first, alternatives: alternatives[first.SourceKey]})
+	if len(records) >= priorOutcomeLimit {
+		return records
 	}
 	if second, ok := nextDistinctPriorFailure(ordered[1:], first, alternatives); ok {
-		lines = append(lines, renderPriorAttempt(second, snapshot, alternatives[second.SourceKey]...))
+		records = append(records, priorOutcomeRecord{failure: second, alternatives: alternatives[second.SourceKey]})
 	}
-	return lines
+	return records
 }
 
 // priorFailureEvidence is the deterministic rank of one failure: whether its
@@ -3959,18 +3963,270 @@ func relevantFailures(attempts []store.ContextualAttempt, terms map[string]bool)
 	return relevant
 }
 
-// renderPriorOutcomeBlock frames the rows as QUOTED HISTORY ONLY, AND NEVER
-// FRAMEWORK AUTHORITY.
-func renderPriorOutcomeBlock(lines []string) string {
+// priorOutcomeRecord is ONE complete captured pair: the demonstrated failure
+// and the working alternatives independently observed on it, kept together so a
+// whole-record trim can never take the positive half while leaving the failure.
+type priorOutcomeRecord struct {
+	failure      store.ContextualAttempt
+	alternatives []store.ContextualAttempt
+}
+
+// priorOutcomeRow is one rendered half of a record: the observed attempt, and
+// whether it is the later success that answered the failure it rides with.
+type priorOutcomeRow struct {
+	at      store.ContextualAttempt
+	success bool
+}
+
+// priorOutcomeStyle is the ONE compact rendering of the bounded history. It
+// states a fact at the level where it is actually EARNED: a circumstance label
+// (the source snapshot and the observed day) that every row genuinely shares is
+// stated ONCE for the block instead of on every row, and a shell prefix every
+// action genuinely runs behind \u2014 its `cd <workspace> &&` launcher, say \u2014 is
+// stated once and trimmed off each action rather than repeated verbatim per row.
+// An empty field keeps the old per-row statement, so a row whose circumstances
+// or prefix differ keeps its own exact structured source and time. This is a
+// property of the DATA, never a per-fixture rule: nothing is reordered, no
+// filename is special-cased, no record is split, and no preview window is
+// widened or narrowed.
+type priorOutcomeStyle struct {
+	circumstances string // shared bracketed circumstance body; "" = per-row bracket
+	prefix        string // shared action prefix; "" = each action keeps its own
+}
+
+// header states the shared facts ONCE, in the block's own framing line, so the
+// shared ceiling spends its runes on evidence rather than on repeated metadata.
+func (s priorOutcomeStyle) header() string {
+	switch {
+	case s.circumstances != "" && s.prefix != "":
+		return " All rows share [" + s.circumstances + "]; run prefix " + contextualMemoryField(s.prefix) + "."
+	case s.circumstances != "":
+		return " All rows share [" + s.circumstances + "]."
+	case s.prefix != "":
+		return " All rows share run prefix " + contextualMemoryField(s.prefix) + "."
+	}
+	return ""
+}
+
+// renderRow renders one half. THE ACTIONABLE PATH IS STILL THE SUCCESS, it still
+// leads its failure on ONE physical line (the caller joins them), the failure
+// keeps its exact stored action and receipt, and EVERY FIELD still goes through
+// the one markup escaper ([contextualMemoryField] escapes quotes, newlines and
+// angle brackets) so an untrusted receipt can never close the wrapper or forge a
+// directive. The status word is the honest tool-boundary reading \u2014 a claimed
+// cause is never rendered and no causal link is stated \u2014 and the receipt is
+// labelled so the quoted text is unmistakably the observed output rather than an
+// instruction.
+func (s priorOutcomeStyle) renderRow(r priorOutcomeRow, current string) string {
+	var b strings.Builder
+	if r.success {
+		b.WriteString("Observed successful alternative")
+	} else {
+		b.WriteString("- Prior observed attempt")
+	}
+	if s.circumstances == "" {
+		b.WriteString(" [" + r.circumstances(current) + "]")
+	}
+	b.WriteString(": ")
+	action := contextualClip(r.at.Action, 240)
+	if s.prefix != "" {
+		action = strings.TrimPrefix(action, s.prefix)
+	}
+	b.WriteString(contextualMemoryField(action))
+	if r.success {
+		b.WriteString(" succeeded; receipt ")
+	} else if r.at.Status == store.AttemptUnknown {
+		b.WriteString(" was blocked (outcome unknown); receipt ")
+	} else {
+		b.WriteString(" failed; receipt ")
+	}
+	b.WriteString(contextualMemoryField(contextualClip(r.at.Observation, 240)) + ".")
+	if cause := strings.TrimSpace(r.at.InferredCause); cause != "" {
+		fmt.Fprintf(&b, " Inferred cause (advisory, not proof): %s.", contextualMemoryField(contextualClip(cause, 240)))
+	}
+	if reconsider := strings.TrimSpace(r.at.Reconsider); reconsider != "" {
+		fmt.Fprintf(&b, " Reconsider when: %s.", contextualMemoryField(contextualClip(reconsider, 240)))
+	}
+	return b.String()
+}
+
+// circumstances is the row's own honest label and observed day: whether the
+// attempt was earned under exactly the current source snapshot, another one, or
+// an unknown one, plus the day it was seen when the journal kept one.
+func (r priorOutcomeRow) circumstances(current string) string {
+	label := "circumstances unknown"
+	switch {
+	case r.at.Snapshot != "" && r.at.Snapshot != "unknown" && r.at.Snapshot == current && current != "":
+		label = "same source snapshot"
+	case r.at.Snapshot != "" && r.at.Snapshot != "unknown" && current != "" && current != "unknown":
+		label = "different source snapshot"
+	}
+	if r.at.At.IsZero() {
+		return label
+	}
+	return label + ", seen " + r.at.At.Format("2006-01-02")
+}
+
+// renderPriorOutcomeBlock frames the chosen records as QUOTED HISTORY ONLY, AND
+// NEVER FRAMEWORK AUTHORITY. The compact shape is chosen by ACTUAL SIZE: the
+// candidates hoist the shared circumstance label, the shared action prefix, both
+// or neither, and the shortest honest rendering wins, so no metadata is stated
+// twice when stating it once is smaller. The rows are never reordered: the
+// success still leads the failure it belongs to on one physical line.
+func renderPriorOutcomeBlock(records []priorOutcomeRecord, current string) string {
+	rows := priorOutcomeRowHalves(records)
+	if len(rows) == 0 {
+		return ""
+	}
+	body, shared := sharedPriorCircumstances(rows, current)
+	candidates := make([]priorOutcomeStyle, 0, 3)
+	if prefix := sharedPriorActionPrefix(rows); prefix != "" {
+		candidates = append(candidates, priorOutcomeStyle{prefix: prefix})
+		if shared {
+			candidates = append(candidates, priorOutcomeStyle{circumstances: body, prefix: prefix})
+		}
+	}
+	if shared {
+		candidates = append(candidates, priorOutcomeStyle{circumstances: body})
+	}
+	best := renderPriorOutcomeStyled(records, current, priorOutcomeStyle{})
+	for _, style := range candidates {
+		if cand := renderPriorOutcomeStyled(records, current, style); utf8.RuneCountInString(cand) < utf8.RuneCountInString(best) {
+			best = cand
+		}
+	}
+	return best
+}
+
+// priorOutcomeRowHalves flattens records into their rendered halves, alternatives
+// ahead of the failure each answers.
+func priorOutcomeRowHalves(records []priorOutcomeRecord) []priorOutcomeRow {
+	rows := make([]priorOutcomeRow, 0, len(records)*2)
+	for _, rec := range records {
+		for _, alt := range rec.alternatives {
+			rows = append(rows, priorOutcomeRow{at: alt, success: true})
+		}
+		rows = append(rows, priorOutcomeRow{at: rec.failure})
+	}
+	return rows
+}
+
+// renderPriorOutcomeStyled renders every record under one style.
+func renderPriorOutcomeStyled(records []priorOutcomeRecord, current string, style priorOutcomeStyle) string {
 	var b strings.Builder
 	b.WriteString("\n<prior_outcomes>\n")
-	b.WriteString(priorOutcomePreamble + "\n")
-	for _, line := range lines {
-		b.WriteString(line)
+	b.WriteString(priorOutcomePreamble + style.header() + "\n")
+	for _, rec := range records {
+		b.WriteString(style.renderRecord(rec, current))
 		b.WriteString("\n")
 	}
 	b.WriteString("</prior_outcomes>\n")
 	return b.String()
+}
+
+// renderRecord joins one complete pair: every observed alternative, then the
+// failure it was observed on, each on the same physical line.
+func (s priorOutcomeStyle) renderRecord(rec priorOutcomeRecord, current string) string {
+	parts := make([]string, 0, len(rec.alternatives)+1)
+	for _, alt := range rec.alternatives {
+		parts = append(parts, s.renderRow(priorOutcomeRow{at: alt, success: true}, current))
+	}
+	parts = append(parts, s.renderRow(priorOutcomeRow{at: rec.failure}, current))
+	return strings.Join(parts, " ")
+}
+
+// sharedPriorCircumstances answers the circumstance body every rendered row
+// actually shares, or false when they differ. TWO STRUCTURED FACTS MUST MATCH:
+// the raw source snapshot string, so two rows earned under different commits are
+// never fused into one claimed source merely because both render "different
+// source snapshot"; and the body each row would actually state, so two rows seen
+// on different DAYS keep their own dates. Only the day a row was seen is ever
+// rendered, so a body that agrees states the same fact at the note's own
+// precision and no per-record source or time the note exposed is unified away.
+func sharedPriorCircumstances(rows []priorOutcomeRow, current string) (string, bool) {
+	if len(rows) < 2 {
+		return "", false
+	}
+	first := rows[0].at
+	body := rows[0].circumstances(current)
+	for _, r := range rows[1:] {
+		if r.at.Snapshot != first.Snapshot || r.circumstances(current) != body {
+			return "", false
+		}
+	}
+	return body, true
+}
+
+// sharedPriorActionPrefix answers the leading prefix every rendered action
+// actually shares, or "" when they share none. IT IS COMPUTED ONLY OVER THE
+// VISIBLE PREVIEWS, so no clipped-away operand is ever inferred, and the prefix
+// is STRICTLY shorter than every preview, so trimming it can never empty an
+// action. The visible bytes are unchanged: the prefix is clipped out of the SAME
+// 240-rune window the row already showed and stated once instead of per row, so
+// no original action byte beyond the preview is ever revealed.
+//
+// The prefix must end where a whole shell command ends \u2014 `&& ` or `; ` at top
+// level, with the prefix's own quoting balanced and no newline in it \u2014 so a
+// shared span that stops inside a word, a path, a quoted argument or a heredoc
+// body is refused rather than blindly cut.
+func sharedPriorActionPrefix(rows []priorOutcomeRow) string {
+	prefix := contextualClip(rows[0].at.Action, 240)
+	for _, r := range rows[1:] {
+		prefix = commonRunePrefix(prefix, contextualClip(r.at.Action, 240))
+	}
+	if !priorPrefixIsWholeCommand(prefix) {
+		return ""
+	}
+	for _, r := range rows {
+		if utf8.RuneCountInString(prefix) >= utf8.RuneCountInString(contextualClip(r.at.Action, 240)) {
+			return ""
+		}
+	}
+	return prefix
+}
+
+// priorPrefixIsWholeCommand reports whether a shared preview prefix ends at a
+// top-level command boundary: a trailing `&& ` or `; `, balanced quotes, and no
+// newline (so a heredoc body is never treated as a shared launcher).
+func priorPrefixIsWholeCommand(prefix string) bool {
+	if !strings.HasSuffix(prefix, "&& ") && !strings.HasSuffix(prefix, "; ") {
+		return false
+	}
+	if strings.ContainsAny(prefix, "\n\r") {
+		return false
+	}
+	return priorQuotesBalanced(prefix)
+}
+
+// priorQuotesBalanced reports whether single and double quotes are balanced in a
+// preview, so a boundary inside an open quoted argument is refused.
+func priorQuotesBalanced(s string) bool {
+	var single, double, escaped bool
+	for _, r := range s {
+		if escaped {
+			escaped = false
+			continue
+		}
+		switch r {
+		case '\\':
+			escaped = true
+		case '\'':
+			single = !single && !double
+		case '"':
+			double = !double && !single
+		}
+	}
+	return !single && !double
+}
+
+// commonRunePrefix returns the leading runes two strings share.
+func commonRunePrefix(a, b string) string {
+	ra, rb := []rune(a), []rune(b)
+	n := 0
+	for n < len(ra) && n < len(rb) && ra[n] == rb[n] {
+		n++
+	}
+	return string(ra[:n])
 }
 
 // withFrameworkPolicy puts the source-authored [frameworkMethodPolicy] into the
@@ -4047,51 +4303,12 @@ func shellHasReadPreview(body string) bool {
 	return false
 }
 
-// renderPriorAttempt renders one attempt as an advisory line. The observation
-// is quoted with Go's own escaping so untrusted receipt text — newlines, angle
-// brackets, an injected instruction — can never read as a directive, and the
-// circumstance label states honestly whether this failure was earned under the
-// current source snapshot, another one, or an unknown one. Any observed
-// successful alternatives carried by this failure are rendered inside the same
-// bullet, each with its own circumstances.
+// renderPriorAttempt renders one failure, and any working alternatives observed
+// on it, as advisory history. It is the one-record form of the block renderer
+// with no shared header: the row states its own circumstances, and a caller that
+// needs the whole bounded history uses [renderPriorOutcomeBlock].
 func renderPriorAttempt(at store.ContextualAttempt, current string, alternatives ...store.ContextualAttempt) string {
-	label := "circumstances unknown"
-	switch {
-	case at.Snapshot != "" && at.Snapshot != "unknown" && at.Snapshot == current && current != "":
-		label = "same source snapshot"
-	case at.Snapshot != "" && at.Snapshot != "unknown" && current != "" && current != "unknown":
-		label = "different source snapshot"
-	}
-	status := "failed"
-	if at.Status == store.AttemptUnknown {
-		status = "was blocked (outcome unknown)"
-	}
-	seen := ""
-	if !at.At.IsZero() {
-		seen = ", seen " + at.At.Format("2006-01-02")
-	}
-	var b strings.Builder
-	// THE ACTIONABLE PATH COMES FIRST. A later success observed at the same tool
-	// boundary is what the framework asks the model to act on, so it is rendered
-	// BEFORE the failure it belongs to; the failed attempt then rides as the
-	// history that makes the success worth preferring. Both halves stay on ONE
-	// physical line, so the pair is still never separated by a trim.
-	for i := range alternatives {
-		b.WriteString(renderObservedAlternative(alternatives[i], current))
-		b.WriteString(" ")
-	}
-	// EVERY FIELD GOES THROUGH THE ONE MARKUP ESCAPER. %q escaped quotes and
-	// newlines but left angle brackets literal, so a receipt containing
-	// `</prior_outcomes>` closed the wrapper that holds it. [contextualMemoryField]
-	// escapes `<` and `>` as well.
-	fmt.Fprintf(&b, "- Prior observed attempt [%s%s]: %s %s. Observation: %s.", label, seen, contextualMemoryField(contextualClip(at.Action, 240)), status, contextualMemoryField(contextualClip(at.Observation, 240)))
-	if cause := strings.TrimSpace(at.InferredCause); cause != "" {
-		fmt.Fprintf(&b, " Inferred cause (advisory, not proof): %s.", contextualMemoryField(contextualClip(cause, 240)))
-	}
-	if reconsider := strings.TrimSpace(at.Reconsider); reconsider != "" {
-		fmt.Fprintf(&b, " Reconsider when: %s.", contextualMemoryField(contextualClip(reconsider, 240)))
-	}
-	return strings.TrimSpace(b.String())
+	return priorOutcomeStyle{}.renderRecord(priorOutcomeRecord{failure: at, alternatives: alternatives}, current)
 }
 
 // renderObservedAlternative renders a later, independently observed successful
@@ -4100,32 +4317,11 @@ func renderPriorAttempt(at store.ContextualAttempt, current string, alternatives
 // cause: it says a success was seen, never that it was why the failure stopped.
 // Its circumstance label is the source snapshot it was earned under; the shared
 // [priorOutcomePreamble] carries the caveat that a snapshot is not the
-// environment — an ignored virtual environment can change underneath an
+// environment \u2014 an ignored virtual environment can change underneath an
 // identical tree, so a matching snapshot narrows the check without ever being a
-// permanent ban — exactly once for the whole note rather than on every row.
+// permanent ban \u2014 exactly once for the whole note rather than on every row.
 func renderObservedAlternative(at store.ContextualAttempt, current string) string {
-	label := "circumstances unknown"
-	switch {
-	case at.Snapshot != "" && at.Snapshot != "unknown" && at.Snapshot == current && current != "":
-		label = "same source snapshot"
-	case at.Snapshot != "" && at.Snapshot != "unknown" && current != "" && current != "unknown":
-		label = "different source snapshot"
-	}
-	seen := ""
-	if !at.At.IsZero() {
-		seen = ", seen " + at.At.Format("2006-01-02")
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "Observed successful alternative [%s%s]: %s succeeded at the tool boundary. Observation: %s.", label, seen, contextualMemoryField(contextualClip(at.Action, 240)), contextualMemoryField(contextualClip(at.Observation, 240)))
-	// NO CAUSAL CLAIM AND NO HARD BAN. THE CAVEAT IS NOT REPEATED HERE: the one
-	// shared block preamble ([priorOutcomePreamble]) already states that these
-	// are quoted history, not instructions or authority, not causal or current
-	// test proof, that the person's current goal and words outrank them, that a
-	// snapshot is not the environment, and that a working method holds only while
-	// its conditions hold. Repeating it on every alternative spent ~167 runes per
-	// record and crowded a genuine trailing failure out of the shared ceiling;
-	// the alternative keeps only its own observed action, label and receipt.
-	return b.String()
+	return priorOutcomeStyle{}.renderRow(priorOutcomeRow{at: at, success: true}, current)
 }
 
 // attemptRelevant answers whether an attempt shares MEANINGFUL terms with the
