@@ -412,3 +412,138 @@ func parallelOutcomes(n int, fn func(i int)) {
 	close(start)
 	wg.Wait()
 }
+
+// A3 REGRESSION (exact live boundary). The hosted bbc86b8c2 ledger run stored a
+// delegated shell METADATA WRAPPER (cd + echo headers + cat) as the failure's
+// sole observed alternative, consuming the one slot before the genuine
+// standard-library calculation.
+func assertOneStoredAlternative(t *testing.T, rows []store.ContextualAttempt, scope, wantAction string) {
+	t.Helper()
+	succeeded, failedRows := 0, 0
+	var stored, altOf string
+	for _, row := range rows {
+		switch row.Status {
+		case store.AttemptSucceeded:
+			succeeded++
+			stored, altOf = row.Action, row.AlternativeOf
+		case store.AttemptFailed:
+			failedRows++
+		}
+	}
+	if failedRows != 1 || succeeded != 1 {
+		t.Fatalf("%s: expected one failure and one alternative, got %d/%d: %+v", scope, failedRows, succeeded, rows)
+	}
+	if stored != wantAction {
+		t.Fatalf("%s: the stored alternative was not the genuine stdlib success: %q", scope, stored)
+	}
+	for _, row := range rows {
+		if row.Status == store.AttemptFailed && row.SourceKey != altOf {
+			t.Fatalf("%s: the alternative did not name the frozen failure: alt=%q failure=%q", scope, altOf, row.SourceKey)
+		}
+	}
+}
+
+func TestAlternativeRefusesMetadataWrapperAndKeepsStdlibSuccess(t *testing.T) {
+	const cwd = "/home/santosh/src/contextual-final-work-20261005/ledger"
+	const failed = "cd " + cwd + ` && .venv/bin/python -c 'import pandas; print(pandas.__version__)'`
+	const wrapper = "cd " + cwd + ` && echo '===== week.csv =====' && cat week.csv && echo '===== ledger.py =====' && cat ledger.py`
+	const real = "cd " + cwd + " && .venv/bin/python ledger.py week.csv --summary"
+	const goal = "Independently verify the ledger grand total for week.csv. First diagnose whether this environment can use pandas: run exactly .venv/bin/python -c 'import pandas; print(pandas.__version__)' as a standalone command, with no pipe, appended commands, or error masking. If unavailable, complete the verification using the available standard library and the ledger utility. Read-only."
+
+	if alternativeEligible(delegatedBashCall("m", wrapper), "bash", "bash: "+failed, goal) {
+		t.Fatalf("the echo/cat metadata wrapper was eligible as the alternative")
+	}
+	if !alternativeEligible(delegatedBashCall("s", real), "bash", "bash: "+failed, goal) {
+		t.Fatalf("the genuine stdlib calculation was not eligible")
+	}
+
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, goal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("f1", failed), toolResult{text: "ModuleNotFoundError: No module named 'pandas'", isError: true}, pre)
+		a.recordOutcome(ctx, 1, delegatedBashCall("m1", wrapper), toolResult{text: "===== week.csv =====\ncategory,amount\n===== ledger.py =====\n#!/usr/bin/env python3"}, pre)
+		a.recordOutcome(ctx, 1, delegatedBashCall("s1", real), toolResult{text: "food: 0.30\ntravel: 12.05\nTOTAL: 12.35"}, pre)
+		assertOneStoredAlternative(t, attemptsForProject(t, brain, a), "root", "bash: "+real)
+	})
+
+	t.Run("delegated", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(context.Background(), goal)
+		worker := spawnTaskWorker(t, root, dir)
+		ctx := context.Background()
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("f1", failed), toolResult{text: "ModuleNotFoundError: No module named 'pandas'", isError: true}, pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("m1", wrapper), toolResult{text: "===== week.csv =====\ncategory,amount\n===== ledger.py =====\n#!/usr/bin/env python3"}, pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("s1", real), toolResult{text: "food: 0.30\ntravel: 12.05\nTOTAL: 12.35"}, pre)
+		assertOneStoredAlternative(t, attemptsForProject(t, brain, root), "delegated", "bash: "+real)
+	})
+}
+
+func TestShellMetadataOnlyReadsThroughNavigationAndHeaders(t *testing.T) {
+	metadata := []string{
+		"cd /tmp && ls -la",
+		"cd /home/santosh/src/contextual-final-work-20261005/ledger && ls -la && cat week.csv",
+		`cd /home/santosh/src/contextual-final-work-20261005/ledger && echo '===== week.csv =====' && cat week.csv`,
+		`printf '%s\n' '===== week.csv =====' && cat week.csv`,
+		"git log --oneline -5",
+		`plandb list --status ready 2>&1 | head -40`,
+		`plandb task notes t-1`,
+	}
+	for _, body := range metadata {
+		if !shellMetadataOnly(body) {
+			t.Errorf("a pure lookup/metadata wrapper was not classified as metadata: %q", body)
+		}
+	}
+	work := []string{
+		"cd /tmp && go " + "test ./...",
+		`cd /home/santosh/src/contextual-final-work-20261005/ledger && .venv/bin/python ledger.py week.csv --summary`,
+		`plandb ` + "done --agent" + ` claude ` + "--result" + ` 'finished'`,
+	}
+	for _, body := range work {
+		if shellMetadataOnly(body) {
+			t.Errorf("real work was mislabelled as metadata: %q", body)
+		}
+	}
+}
+
+func TestAlternativeRefusesPlanStatusReadAfterFailedDone(t *testing.T) {
+	const doneVerb = `plandb ` + "done --agent" + ` claude ` + "--result" + ` 'Distilled answer'`
+	const failed = `cd /home/santosh/src/contextual-final-work-20261005/weather-core && git status --short; echo "---"; ls -a; echo "--- done ---"; ` + doneVerb
+	const read = `plandb list --status ready 2>&1 | head -40; echo "==="; plandb status --full 2>&1 | head -40`
+	const goal = "Read this producer and explain what amount means, then run it. Read-only."
+	if alternativeEligible(delegatedBashCall("r", read), "bash", "bash: "+failed, goal) {
+		t.Fatalf("a pure plandb list/status read was eligible as the alternative")
+	}
+	if alternativeEligible(delegatedBashCall("o", `plandb task overview`), "bash", "bash: "+failed, goal) {
+		t.Fatalf("a pure plandb task overview read was eligible as the alternative")
+	}
+	if !alternativeEligible(delegatedBashCall("w", `plandb task note t-1 'amount is cents'`), "bash", "bash: "+failed, goal) {
+		t.Fatalf("a plandb write verb was wrongly refused as a read")
+	}
+}
+
+// The same weather read at the REAL boundary: the failure is the turn's only
+// stored row and the status read is not dressed up as its remedy.
+func TestBoundaryRefusesPlanStatusReadAsRemedy(t *testing.T) {
+	doneVerb := `plandb ` + "done --agent" + ` claude ` + "--result" + ` 'Distilled answer'`
+	failed := `cd /home/santosh/src/contextual-final-work-20261005/weather-core && git status --short; echo "---"; ls -a; echo "--- done ---"; ` + doneVerb
+	read := `plandb list --status ready 2>&1 | head -40; echo "==="; plandb status --full 2>&1 | head -40`
+	dir := t.TempDir()
+	initRepo(t, dir)
+	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	ctx := context.Background()
+	a.prepareBindingContext(ctx, "Read this producer and explain what amount means, then run it. Read-only.")
+	pre := a.captureSourceSnapshot(ctx).Identity
+	a.recordOutcome(ctx, 1, delegatedBashCall("f1", failed), toolResult{text: "error: no running task found for agent 'claude'", isError: true}, pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("r1", read), toolResult{text: "t-1 ready\nt-2 done"}, pre)
+	rows := attemptsForProject(t, brain, a)
+	if len(rows) != 1 || rows[0].Status != store.AttemptFailed {
+		t.Fatalf("a plan status read was stored as the failure's remedy: %+v", rows)
+	}
+}

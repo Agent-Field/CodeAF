@@ -398,8 +398,8 @@ func shellMetadataOnly(body string) bool {
 
 // shellSegmentCommand returns the command word a shell segment runs, with
 // navigation, assignments and wrappers skipped so the real program is read. A
-// `git` segment also carries its subcommand. It is a small lexical reader, not
-// a shell parser.
+// `git` or `plandb` segment also carries its subcommand. It is a small lexical
+// reader, not a shell parser.
 func shellSegmentCommand(segment string) []string {
 	fields := strings.Fields(segment)
 	for i := 0; i < len(fields); i++ {
@@ -409,22 +409,46 @@ func shellSegmentCommand(segment string) []string {
 		}
 		command := shellWordBase(word)
 		if shellCommandIgnored[command] {
+			// A NAVIGATION WORD CONSUMES ITS ARGUMENT. `cd <path>` names the
+			// directory the segment reads, not a program the segment runs; the
+			// loop must not walk on to read the cwd path itself as the command
+			// word, or `cd /home/.../ledger && echo h && cat f` reads `ledger`
+			// as an unknown program and stops looking like a pure lookup.
+			if shellNavigationWord[command] && i+1 < len(fields) {
+				i++
+			}
 			continue
 		}
 		words := []string{command}
-		if command == "git" {
-			for j := i + 1; j < len(fields); j++ {
-				candidate := strings.Trim(fields[j], "\"'`")
-				if strings.HasPrefix(candidate, "-") || shellAssignment(candidate) || strings.ContainsAny(candidate, "/\\") {
-					continue
+		if shellSubcommandCLIs[command] {
+			if j, sub := shellSubcommand(fields, i); sub != "" {
+				words = append(words, sub)
+				// `plandb task overview` / `plandb task notes` read the plan
+				// through a noun; the verb after `task` is what says whether it
+				// reads. A lifecycle verb (`task cancel`) is left as work.
+				if command == "plandb" && sub == "task" {
+					if _, verb := shellSubcommand(fields, j); verb != "" {
+						words = append(words, verb)
+					}
 				}
-				words = append(words, strings.ToLower(candidate))
-				break
 			}
 		}
 		return words
 	}
 	return nil
+}
+
+// shellSubcommand returns the index and word of the first non-flag,
+// non-assignment, non-path field after position i: the program's subcommand.
+func shellSubcommand(fields []string, i int) (int, string) {
+	for j := i + 1; j < len(fields); j++ {
+		candidate := strings.Trim(fields[j], "\"'`")
+		if strings.HasPrefix(candidate, "-") || shellAssignment(candidate) || strings.ContainsAny(candidate, "/\\") {
+			continue
+		}
+		return j, strings.ToLower(candidate)
+	}
+	return 0, ""
 }
 
 // shellCommandIsMetadata answers whether one command word is a metadata or
@@ -434,8 +458,20 @@ func shellCommandIsMetadata(words []string) bool {
 	if len(words) == 0 {
 		return true
 	}
-	if words[0] == "git" {
+	switch words[0] {
+	case "git":
 		return len(words) < 2 || shellGitReadSubcommands[words[1]]
+	case "plandb":
+		// A bare plandb prints usage; a read verb only reads the plan back. A
+		// pure `plandb list`/`status` after a failed `plandb done` is a status
+		// read, never the way the failed work got done.
+		if len(words) < 2 {
+			return true
+		}
+		if words[1] == "task" {
+			return len(words) < 3 || shellPlanReadSubcommands[words[2]]
+		}
+		return shellPlanReadSubcommands[words[1]]
 	}
 	return shellMetadataCommands[words[0]]
 }
@@ -473,13 +509,36 @@ var shellCommandIgnored = map[string]bool{
 	"do": true, "for": true, "while": true, "if": true, "and": true, "or": true,
 }
 
+// shellNavigationWord are the ignored words that TAKE A DIRECTORY ARGUMENT: the
+// word after one is a path, not a program, so the reader skips it too.
+var shellNavigationWord = map[string]bool{
+	"cd": true, "chdir": true, "pushd": true, "popd": true,
+}
+
+// shellSubcommandCLIs are the multi-verb programs whose first non-flag word is a
+// subcommand that decides whether the segment reads or works: the bare command
+// word alone says nothing.
+var shellSubcommandCLIs = map[string]bool{
+	"git": true, "plandb": true,
+}
+
+// shellPlanReadSubcommands are plandb's read-only verbs. They show the plan; a
+// `plandb list`/`status`/`show` after a failed `plandb done` reports status, it
+// is not the completion remedy that got the work done.
+var shellPlanReadSubcommands = map[string]bool{
+	"list": true, "status": true, "show": true, "search": true,
+	"overview": true, "notes": true, "contexts": true,
+	"critical-path": true, "bottlenecks": true,
+}
+
 // shellMetadataCommands are the read-only lookup and metadata verbs that are
 // never the way a failed action got done.
 var shellMetadataCommands = map[string]bool{
 	"ls": true, "cat": true, "head": true, "tail": true, "find": true,
 	"grep": true, "rg": true, "wc": true, "stat": true, "file": true,
 	"du": true, "df": true, "tree": true, "pwd": true, "echo": true,
-	"which": true, "whereis": true, "type": true,
+	"printf": true,
+	"which":  true, "whereis": true, "type": true,
 	"less": true, "more": true, "column": true, "realpath": true,
 	"readlink": true, "basename": true, "dirname": true, "whoami": true,
 	"uname": true, "date": true, "hostname": true, "id": true, "sort": true,
