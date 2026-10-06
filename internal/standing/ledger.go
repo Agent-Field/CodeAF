@@ -126,19 +126,29 @@ func (s *Store) RunsSince(from time.Time) (map[string]Spend, error) {
 	return out, nil
 }
 
-// recordedDelivery reports whether the append-only ledger already records a firing
-// that settled this exact delivery identity for this item.
+// recordedFiring reads one completed firing back out of the append-only ledger,
+// identified by whichever native firing identity its caller holds: the delivery
+// identity it settled (pending, for an [ActionSay]) or the run folder a task
+// attempt was given (run, for an [ActionTask]).
 //
-// A LEDGER LINE IS WRITTEN ONLY AFTER A DELIVERY SUCCEEDED — [Ticker.fire] and
+// A LEDGER LINE IS WRITTEN ONLY AFTER A FIRING SUCCEEDED — [Ticker.fire] and
 // [Ticker.settleItem] append it after the line was carried out and return before
-// it on a failure — so its presence is native durable firing evidence. It is
+// it on a failure — so its presence is native durable firing evidence, and the
+// entry it hands back carries what the firing came to, so a settlement restores
+// the item's own bookkeeping from the record rather than inventing it. It is
 // what lets a one-shot whose item write was lost settle its retirement from the
-// record of the delivery itself, rather than deliver the one line a second time.
-// The read spans the day the intent was written through today, bounded by
-// [ledgerReach]; a line that is not there is a delivery that did not happen.
-func (s *Store) recordedDelivery(itemID, pendingID string, from time.Time) (bool, error) {
-	if s == nil || itemID == "" || pendingID == "" {
-		return false, nil
+// record of the delivery itself, and what lets a task whose post-run write was
+// lost stop reading as ambiguous without ever running a second time.
+//
+// IT IS ONE READER FOR BOTH KINDS ON PURPOSE: a say and a task are both firings,
+// and a second walk of the same ledger for the second kind is where the two
+// answers would come to disagree. The read spans the day the firing began
+// through today, bounded by [ledgerReach]; a line that is not there is a firing
+// that did not happen. A day whose file cannot be read at all is reported rather
+// than skipped, because a MISSING record must never be read as "no firing".
+func (s *Store) recordedFiring(itemID, pending, run string, from time.Time) (Entry, bool, error) {
+	if s == nil || itemID == "" || (pending == "" && run == "") {
+		return Entry{}, false, nil
 	}
 	now := s.now()
 	if from.IsZero() || from.After(now) {
@@ -148,20 +158,37 @@ func (s *Store) recordedDelivery(itemID, pendingID string, from time.Time) (bool
 	if oldest := startOfDay(now).AddDate(0, 0, -(ledgerReach - 1)); day.Before(oldest) {
 		day = oldest
 	}
-	found := false
+	var found Entry
+	ok := false
 	for last := startOfDay(now); !day.After(last); day = day.AddDate(0, 0, 1) {
 		if err := readLedgerDay(s.LedgerPath(day), func(entry Entry) {
-			if entry.ItemID == itemID && entry.Pending == pendingID {
-				found = true
+			if entry.ItemID != itemID {
+				return
+			}
+			if pending != "" && entry.Pending == pending {
+				found, ok = entry, true
+				return
+			}
+			if run != "" && entry.Run == run && entry.Kind == string(ActionTask) {
+				found, ok = entry, true
 			}
 		}); err != nil {
-			return false, err
+			return Entry{}, false, err
 		}
-		if found {
-			return true, nil
+		if ok {
+			return found, true, nil
 		}
 	}
-	return found, nil
+	return found, ok, nil
+}
+
+// recordedDelivery answers whether the append-only ledger already records the
+// firing that settled one delivery identity. It is the yes/no face of
+// [Store.recordedFiring], kept so a caller that only needs the question does not
+// have to read the entry.
+func (s *Store) recordedDelivery(itemID, pendingID string, from time.Time) (bool, error) {
+	_, found, err := s.recordedFiring(itemID, pendingID, "", from)
+	return found, err
 }
 
 // count folds one ledger line into a running sum. IT IS THE ONE PLACE THE TWO

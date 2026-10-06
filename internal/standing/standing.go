@@ -1095,6 +1095,24 @@ type Entry struct {
 	// lost — a one-shot whose line already reached the person retires from
 	// this evidence instead of being delivered a second time.
 	Pending string `json:"pending,omitempty"`
+	// Outcome is what the firing came to ([Outcome.Kind]: said, landed,
+	// needs-you, failed or nothing). [Item.LastOutcome] is overwritten by the
+	// next firing, so this field is the only durable record of what this one
+	// outcome was; a settlement reads it back rather than inventing one.
+	Outcome string `json:"outcome,omitempty"`
+	// Line is the one sentence the firing carried (the sighting line
+	// [Ticker.fire] recorded as its check line), which is what the firing wrote
+	// into [Item.LastCheckLine] and [Item.Previous]. It is kept here so a
+	// settlement of this firing can restore both from the record it left behind
+	// rather than from a fresh clock.
+	Line string `json:"line,omitempty"`
+	// Needs is the one line the firing left waiting for the person
+	// ([Item.NeedsPerson]), empty when it left none. A firing that stopped on a
+	// question is a REACHED outcome and not a clean success, so the record
+	// carries the question itself: a settlement restores it, and derives the
+	// clean-run counter from it, rather than reading any line on the ledger as
+	// a clean success.
+	Needs string `json:"needs,omitempty"`
 }
 
 // Spend is what today's ledger says, for one item or for all.

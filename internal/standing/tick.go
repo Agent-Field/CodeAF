@@ -64,10 +64,11 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 		pass.UnreadWhy = unreadLine(unread)
 		pass.Notes = append(pass.Notes, pass.UnreadWhy)
 	}
-	// SETTLE FIRST. Authorized deliveries that were never acknowledged are done
-	// before any fresh look and before the rails, so a quiet item, an advanced
-	// due moment or a spent daily rail can never strand one.
-	t.settle(ctx, &pass, items)
+	// SETTLE FIRST. Authorized deliveries that were never acknowledged, and task
+	// attempts whose outcome is already on the durable record, are done before
+	// any fresh look and before the rails, so a quiet item, an advanced due
+	// moment or a spent daily rail can never strand one.
+	resolved := t.settle(ctx, &pass, items)
 	for i := range items {
 		item := &items[i]
 		if ctx.Err() != nil {
@@ -78,6 +79,14 @@ func (t *Ticker) Tick(ctx context.Context) (Pass, error) {
 			break
 		}
 		if item.Status != StatusActive {
+			continue
+		}
+		if resolved[item.ID] {
+			// THE FIRING THIS ITEM WAS OWED HAS ALREADY HAPPENED. It was
+			// settled from its own durable record above, so this pass must not
+			// look at the world on its behalf again: a second look would
+			// overwrite the check line the settlement just restored, and for a
+			// task there is no second run to be had.
 			continue
 		}
 		pass.Examined++
@@ -751,27 +760,7 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	item.LastCheckLine = oneLine(found.line)
 	item.LastOutcome = outcome.Kind
 	item.SpentUSD += outcome.USD
-	item.NeedsPerson = outcome.NeedsPerson
-	if outcome.Kind == OutcomeNeedsYou && item.NeedsPerson == "" {
-		item.NeedsPerson = oneLine(outcome.Text)
-	}
-	// THE TRUST COUNTER IS KEPT HERE BECAUSE THIS IS WHERE A FIRING IS RECORDED,
-	// beside [Item.Runs] and for the same reason: it is the one place in the
-	// program that knows a firing happened and how it came back. A streak is not
-	// recoverable from the record afterwards — LastOutcome is overwritten by the
-	// next firing — which [Item.CleanRuns] states at length.
-	//
-	// A QUESTION OR A FAILURE PUTS IT BACK TO NOTHING. Trust is a run of clean
-	// firings and not a tally of them: an item that needed somebody last night
-	// is an item somebody has to watch again, whatever it did the fortnight
-	// before. NeedsPerson is read rather than the outcome kind alone, because a
-	// runner may hand back a question on an outcome of any kind and the field is
-	// where that question actually lands.
-	if item.NeedsPerson != "" || outcome.Kind == OutcomeFailed {
-		item.CleanRuns = 0
-	} else {
-		item.CleanRuns++
-	}
+	recordOutcome(item, outcome)
 	if runDir != "" {
 		item.LastRun = runDir
 		writeCameTo(runDir, outcome.Kind)
@@ -796,7 +785,7 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	if item.NeedsPerson != "" {
 		pass.NeedsYou++
 	}
-	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir, Pending: settled})
+	ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: string(item.Does.Kind), USD: outcome.USD, Run: runDir, Pending: settled, Outcome: outcome.Kind, Line: found.line, Needs: item.NeedsPerson})
 	logErr := t.Store.Log(item.ID, firingLine(found, outcome))
 	// THE SAVE IS GUARDED, and a refusal is the person's act winning rather than
 	// this pass failing: the delivery already happened and cannot be undone, but
@@ -812,6 +801,33 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 		return &accountingError{err: errors.Join(ledgerErr, logErr)}
 	}
 	return nil
+}
+
+// recordOutcome lands the two fields a REACHED firing owes the person: the one
+// line it left waiting, and whether it came back clean.
+//
+// IT IS THE ONE PLACE THAT RULE IS SPELLED, shared by the firing itself
+// ([Ticker.fire]), a delivery settled after a crash ([Ticker.settleItem]) and a
+// firing settled from its own ledger record ([settleRecorded]). A settlement
+// that re-derived either field differently is exactly where a question a task
+// left for the person would come back as a clean success.
+//
+// A QUESTION OR A FAILURE PUTS THE STREAK BACK TO NOTHING. Trust is a run of
+// clean firings and not a tally of them: an item that needed somebody last night
+// is an item somebody has to watch again, whatever it did the fortnight before.
+// NeedsPerson is read rather than the outcome kind alone, because a runner may
+// hand back a question on an outcome of any kind and the field is where that
+// question actually lands.
+func recordOutcome(item *Item, outcome Outcome) {
+	item.NeedsPerson = outcome.NeedsPerson
+	if outcome.Kind == OutcomeNeedsYou && item.NeedsPerson == "" {
+		item.NeedsPerson = oneLine(outcome.Text)
+	}
+	if item.NeedsPerson != "" || outcome.Kind == OutcomeFailed {
+		item.CleanRuns = 0
+	} else {
+		item.CleanRuns++
+	}
 }
 
 // accountingError says a firing succeeded but its ledger or log line could not
@@ -842,23 +858,34 @@ func pendingAttempts(item *Item, id string) int {
 	return 0
 }
 
-// settle resolves durable delivery intents INDEPENDENTLY of any fresh look, at
-// the top of a pass and before the rails. A pending line is authorized work: it
-// is delivered by identity even if the item's file stopped changing, its
-// NextDue moved on, or its daily rail is spent. The SAME identity is reused, so
-// a retry mints no new intent, runs nothing new and adds no second ledger
-// charge for the same authorization.
+// settle resolves durable firing state INDEPENDENTLY of any fresh look, at the
+// top of a pass and before the rails. A pending line is authorized work: it is
+// delivered by identity even if the item's file stopped changing, its NextDue
+// moved on, or its daily rail is spent. The SAME identity is reused, so a retry
+// mints no new intent, runs nothing new and adds no second ledger charge for the
+// same authorization.
+//
+// A TASK ATTEMPT IS SETTLED FROM ITS OWN RECORD, NOT REPLAYED. A task whose
+// in-flight marker is up but whose completed firing is already on the ledger
+// (the post-run item write was lost) is completed here from that record and is
+// then not looked at again this pass, so the false "waiting for you" line is
+// never written for a task that already finished. A task with NO such record is
+// left exactly as it was for [Ticker.one] to surface to the person.
 //
 // An item that is no longer active (paused, retired or expired) cannot be
 // settled through its own walk — [Ticker.Tick] skips it — so its unresolved
 // line is surfaced as [Item.NeedsPerson] instead of being silently forgotten.
-func (t *Ticker) settle(ctx context.Context, pass *Pass, items []Item) {
-	if t.Runner == nil {
-		return
-	}
+//
+// The set that comes back names the items whose firing was completed from a
+// durable record, so [Ticker.Tick] can leave them alone.
+func (t *Ticker) settle(ctx context.Context, pass *Pass, items []Item) map[string]bool {
+	resolved := map[string]bool{}
 	for i := range items {
 		item := &items[i]
-		if len(item.Pending) == 0 {
+		if item.Status == StatusActive && item.TaskInflight != nil && t.settleTaskAttempt(pass, item) {
+			resolved[item.ID] = true
+		}
+		if len(item.Pending) == 0 || t.Runner == nil {
 			continue
 		}
 		if item.Status != StatusActive {
@@ -870,14 +897,49 @@ func (t *Ticker) settle(ctx context.Context, pass *Pass, items []Item) {
 			}
 			continue
 		}
-		t.settleItem(ctx, pass, item)
+		t.settleItem(ctx, pass, item, resolved)
 	}
+	return resolved
+}
+
+// settleTaskAttempt completes a task attempt whose firing already reached a
+// durable outcome, identified by the run folder the attempt was given, and
+// clears the in-flight marker only once that completion is safely on disk.
+//
+// IT ANSWERS FALSE AND CHANGES NOTHING WHEN THERE IS NO RECORD, or when the
+// completion cannot be saved. That is the ambiguous case and it stays ambiguous:
+// [Ticker.one] sees the marker still up and leaves the task for the person
+// rather than running it a second time. The item is edited on a COPY for the
+// same reason — a recovery that could not be persisted must not leave the
+// in-memory item looking as though the marker came down, because [Ticker.one]
+// would then run the task again.
+func (t *Ticker) settleTaskAttempt(pass *Pass, item *Item) bool {
+	marker := item.TaskInflight
+	entry, recorded, err := t.Store.recordedFiring(item.ID, "", marker.RunDir, marker.Started)
+	if err != nil || !recorded {
+		return false
+	}
+	next := *item
+	next.TaskInflight = nil
+	settleRecorded(&next, entry, "the task already ran")
+	if err := t.Store.saveActive(&next); err != nil {
+		if errors.Is(err, errConsentChanged) {
+			return false
+		}
+		pass.Errors++
+		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": a finished task could not be recorded: "+oneLine(err.Error()))
+		return false
+	}
+	_ = t.Store.Log(item.ID, "settled a task whose outcome was already recorded")
+	*item = next
+	pass.Fired++
+	return true
 }
 
 // settleItem carries out the pending lines of one active item, completing the
 // firing bookkeeping the original attempt never reached, and settling each under
 // its own stable identity.
-func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
+func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item, resolved map[string]bool) {
 	if _, err := t.Store.Get(item.ID); err != nil {
 		return // gone or unreadable; nothing can be settled safely
 	}
@@ -891,8 +953,9 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 		// rather than deliver the one line a second time. A read that fails
 		// falls through to the delivery below: an unreadable ledger must never
 		// be read as "already delivered".
-		if recorded, err := t.Store.recordedDelivery(item.ID, pending.ID, pending.At); err == nil && recorded {
-			t.settleDelivered(pass, item, pending)
+		if entry, recorded, err := t.Store.recordedFiring(item.ID, pending.ID, "", pending.At); err == nil && recorded {
+			t.settleDelivered(pass, item, pending, entry)
+			resolved[item.ID] = true
 			continue
 		}
 		outcome, err := t.deliver(ctx, *item, pending)
@@ -918,6 +981,7 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 		item.LastCheckLine = oneLine("delivered a line that was waiting")
 		item.LastOutcome = outcome.Kind
 		item.SpentUSD += outcome.USD
+		recordOutcome(item, outcome)
 		item.Previous = remember(item.Previous, pending.Text, outcome)
 		if item.retiresOnFiring() {
 			// THE TAIL OF A FIRING THAT NEVER GOT TO RETIRE ITSELF. A one-shot
@@ -927,7 +991,7 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 			item.Status = StatusRetired
 			item.RetiredWhy = "fired"
 		}
-		ledgerErr := t.Store.Append(Entry{At: item.LastFired, ItemID: item.ID, Kind: string(pending.Kind), USD: outcome.USD, Pending: pending.ID})
+		ledgerErr := t.Store.Append(Entry{At: item.LastFired, ItemID: item.ID, Kind: string(pending.Kind), USD: outcome.USD, Pending: pending.ID, Outcome: outcome.Kind, Line: pending.Text, Needs: item.NeedsPerson})
 		logErr := t.Store.Log(item.ID, "delivered a line that was waiting")
 		if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
 			pass.Errors++
@@ -945,25 +1009,64 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 	}
 }
 
-// settleDelivered completes the tail of a firing whose delivery is already
-// recorded on the append-only ledger but whose item write was lost — the
-// retire-save that failed after a one-shot's line reached the person. It clears
-// the intent and retires a fulfilled one-shot WITHOUT delivering again, so the
-// one line a person asked for is not put in front of them twice, and settles
-// the retirement BEFORE the pass walks on to any fresh probe. It appends no
-// ledger line: the firing it completes is the one already recorded.
-func (t *Ticker) settleDelivered(pass *Pass, item *Item, pending Pending) {
-	item.dropPending(pending.ID)
+// settleRecorded completes the item's own firing bookkeeping from the append-only
+// ledger line that already records the firing, so a recovery restores what the
+// firing actually came to instead of inventing it. IT IS THE ONE PLACE A SETTLED
+// FIRING IS BOOKED, shared by a delivery recovered from the ledger and a task
+// attempt recovered from its run identity: the moment is the record's own
+// [Entry.At] rather than the clock this later pass happens to read, the money is
+// the record's own [Entry.USD] rather than zero, the outcome, the history line
+// and the question the firing left all come from the record, the clean-run
+// counter is derived from that question the way [recordOutcome] derives it at
+// the firing, the run folder is restored where the record carries one, and a
+// fulfilled one-shot retires here exactly as it would have at the firing.
+//
+// A RECORD THAT SAYS "NEEDS-YOU" IS A REACHED OUTCOME, NOT A CLEAN SUCCESS. It
+// restores the question and puts the streak back to nothing, so a recovered
+// firing never clears needed human attention by inferring success from the mere
+// presence of a ledger line.
+func settleRecorded(item *Item, entry Entry, fallbackLine string) {
+	line := entry.Line
+	if strings.TrimSpace(line) == "" {
+		line = fallbackLine
+	}
+	outcome := Outcome{Kind: entry.Outcome, NeedsPerson: entry.Needs}
+	// THE RECORD SAYS A QUESTION WAS LEFT BUT NOT ITS LINE (a ledger line written
+	// before the record carried one). Nothing may be invented, and an existing
+	// question must not be cleared, so the item keeps whatever it already had.
+	if outcome.Kind == OutcomeNeedsYou && outcome.NeedsPerson == "" {
+		outcome.NeedsPerson = item.NeedsPerson
+	}
 	item.Runs++
-	item.LastFired = t.clock()
-	item.LastChecked = item.LastFired
-	item.LastCheckLine = oneLine("delivered a line that was waiting")
-	// A ONE-SHOT RETIRES HERE for the same reason it retires in [Ticker.fire]:
-	// it has told the person the one thing they asked to be told once.
+	item.LastFired = entry.At
+	item.LastChecked = entry.At
+	item.LastCheckLine = oneLine(line)
+	item.LastOutcome = outcome.Kind
+	item.SpentUSD += entry.USD
+	recordOutcome(item, outcome)
+	if entry.Run != "" {
+		item.LastRun = entry.Run
+		writeCameTo(entry.Run, entry.Outcome)
+	}
+	item.Previous = remember(item.Previous, line, outcome)
 	if item.retiresOnFiring() {
 		item.Status = StatusRetired
 		item.RetiredWhy = "fired"
 	}
+}
+
+// settleDelivered completes the tail of a firing whose delivery is already
+// recorded on the append-only ledger but whose item write was lost — the
+// retire-save that failed after a one-shot's line reached the person. It clears
+// the intent and books the firing from that record WITHOUT delivering again, so
+// the one line a person asked for is not put in front of them twice, the cost and
+// outcome and history the firing actually produced are restored, and it settles
+// the retirement BEFORE the pass walks on to any fresh probe. It appends no
+// ledger line: the firing it completes is the one already recorded, and a second
+// line would charge the day twice for one authorization.
+func (t *Ticker) settleDelivered(pass *Pass, item *Item, pending Pending, entry Entry) {
+	item.dropPending(pending.ID)
+	settleRecorded(item, entry, "delivered a line that was waiting")
 	_ = t.Store.Log(item.ID, "settled a line already recorded as delivered")
 	if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
 		pass.Errors++
