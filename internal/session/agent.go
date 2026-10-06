@@ -2834,7 +2834,7 @@ const memoryNoteOpening = "A note from the session, not from the person: what is
 // survive a router answer that arrives after the work has begun. It carries the
 // same last-one-holds sentence because a note that was said stays where it was
 // said, and the model has to be told which of them is current.
-const bindingNoteOpening = "A note from the session, not from the person: this project's approved rules and confirmed decisions, read before the work began. Facts, not requests — and the last such note is the one that holds."
+const bindingNoteOpening = "A note from the session, not from the person: this project's approved rules and confirmed decisions first, then related history from earlier turns that is provenance and not authority, read before the work began. Facts, not requests — and the last such note is the one that holds."
 
 // bashBeltFrameOpening is the first line of the note the bash belt's per-step
 // frame rides in (docs/design/bash-task-loop/DESIGN.md, "The per-step frame").

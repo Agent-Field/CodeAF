@@ -495,8 +495,9 @@ func TestBindingBlockExactCeilingMultibyteRule(t *testing.T) {
 	overhead := utf8.RuneCountInString("\n<memory>\n") + utf8.RuneCountInString("</memory>\n") +
 		utf8.RuneCountInString(bindingBlockPreamble) + 1
 	limit := memoryBlockRunes - overhead
-	// "- " + text + the record's newline must fill exactly limit runes.
-	block := renderBindingBlock([]store.Memory{{ID: "big", Text: strings.Repeat("\u00e9", limit-3)}})
+	// "- " + the QUOTED text ("..." around it) + the record's newline must fill
+	// exactly limit runes; the escaped length is what the ceiling counts.
+	block := renderBindingBlock([]store.Memory{{ID: "big", Text: strings.Repeat("\u00e9", limit-5)}})
 	if got := utf8.RuneCountInString(block); got != memoryBlockRunes {
 		t.Fatalf("a maximal multibyte rule filled the ceiling to %d, want exactly %d", got, memoryBlockRunes)
 	}
@@ -504,7 +505,7 @@ func TestBindingBlockExactCeilingMultibyteRule(t *testing.T) {
 		t.Fatalf("the fixture did not exercise multibyte runes: %d bytes", len(block))
 	}
 	// ONE rune more is omitted WHOLE, never clipped into an over-ceiling block.
-	if over := renderBindingBlock([]store.Memory{{ID: "over", Text: strings.Repeat("\u00e9", limit-2)}}); over != "" {
+	if over := renderBindingBlock([]store.Memory{{ID: "over", Text: strings.Repeat("\u00e9", limit-4)}}); over != "" {
 		t.Fatalf("a rule one rune over budget was rendered (%d runes) instead of omitted whole", utf8.RuneCountInString(over))
 	}
 	// The bound holds through the real worker seam with many large multibyte

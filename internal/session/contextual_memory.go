@@ -155,11 +155,20 @@ func (s memoryTurnEvidence) ground(c reflex.ExtractResult) reflex.ExtractResult 
 		// The check is textual and conservative over the CONTAINING clause, not
 		// a semantic vote; a polite real directive ("Please make sure ...") and
 		// ordinary literal constraints still bind automatically.
-		directive := contextualSpanDirective(contextualSupportClause(s.User, quote))
-		if c.Authority == "approved_rule" && (!explicitContextualRule(quote) || !directive) {
+		clause := contextualSupportClause(s.User, quote)
+		directive := contextualSpanDirective(clause)
+		// A ONE-TURN TASK AUTHORIZATION IS NOT A LASTING RULE. The word cues the
+		// gates read ("only", "must", "use the") are the same words an ordinary
+		// task command uses, so an extractor that mislabels a command as a rule
+		// or a decision could carry a one-off authorization into the persistent
+		// binding. A clearly bounded task — cross-check, compare, verify, run
+		// something read-only — is demoted to an observation unless the same
+		// span states a durable rule or an explicit decision, which still binds.
+		task := contextualOneTurnTaskAuthorization(clause)
+		if c.Authority == "approved_rule" && (!explicitContextualRule(quote) || !directive || task) {
 			c.Authority = "observation"
 		}
-		if c.Authority == "confirmed_decision" && (!explicitContextualDecision(quote) || !directive) {
+		if c.Authority == "confirmed_decision" && (!explicitContextualDecision(quote) || !directive || task) {
 			c.Authority = "observation"
 		}
 		if c.Authority != "approved_rule" && c.Authority != "confirmed_decision" {
@@ -597,15 +606,30 @@ func (a *Agent) bindingMemories(st *store.Store, cue, revision string) []store.M
 			break
 		}
 	}
-	// A direct lexical match supplies useful fallback without asking a provider.
-	// A nonmatching project and a trivial continuation stay quiet.
+	// THE LEXICAL FALLBACK IS NOT AN AUTHORITY FILTER. A direct word match
+	// supplies useful history without asking a provider, but SearchMemories
+	// ranks by relevance and knows nothing about a record's authority, so a
+	// plain observation that merely shares words with the goal can reach this
+	// window. Each such record is therefore LABELLED ON ITSELF: a candidate
+	// whose own latest journal row is not an approved rule or a confirmed
+	// decision rides marked "history only", so the block's opening sentence is
+	// never the only place its authority is described and a prior user TASK
+	// request can no longer be read as a current rule or decision. A nonmatching
+	// project and a trivial continuation stay quiet.
 	if !memoryTrivialCue(cue) && len(memories) < contextualContextLimit {
 		candidates, err := st.SearchMemories(a.memoryOwners(), cue, contextualContextLimit-len(memories))
 		if err == nil {
 			for _, m := range a.contextualEligibleWith(st, candidates, revision) {
-				if !seen[m.ID] {
-					memories = append(memories, m)
-					seen[m.ID] = true
+				if seen[m.ID] {
+					continue
+				}
+				if !a.contextualRecordAuthoritative(st, m, revision) {
+					m.Text = bindingAdvisoryLabel + "\n" + m.Text
+				}
+				memories = append(memories, m)
+				seen[m.ID] = true
+				if len(memories) >= contextualContextLimit {
+					break
 				}
 			}
 		}
@@ -613,11 +637,35 @@ func (a *Agent) bindingMemories(st *store.Store, cue, revision string) []store.M
 	return memories
 }
 
+// bindingAdvisoryLabel marks a record the binding projection could NOT establish
+// as an approved rule or a confirmed decision. It rides on the record itself so
+// a reader can tell quoted historical provenance apart from binding authority
+// even when both share one <memory> block.
+const bindingAdvisoryLabel = "History only \u2014 not an approved rule or a confirmed decision: an earlier turn's own words, kept as provenance and not authority for new work."
+
+// contextualRecordAuthoritative reports whether a lexical-fallback candidate's
+// OWN latest journal row is an approved rule or a confirmed decision that is
+// still live under the projection's conditions. The fallback ranks by words, so
+// the projection asks the journal per record rather than letting the block's
+// opening sentence claim an authority the record does not have.
+func (a *Agent) contextualRecordAuthoritative(st *store.Store, m store.Memory, revision string) bool {
+	e, err := st.ContextualEvidenceForMemory(m.Owner, m.ID)
+	if err != nil {
+		return false
+	}
+	if e.Authority != "approved_rule" && e.Authority != "confirmed_decision" {
+		return false
+	}
+	conditions := map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}
+	usable, err := st.ContextualEvidenceEligible(e, conditions, time.Now())
+	return err == nil && usable
+}
+
 // bindingBlockPreamble is the sentence every binding block opens with, after
 // the <memory> tag: the same words ride in front of a conversation and a task
 // worker, so a worker cannot be told a weaker rule than the conversation it was
 // built from.
-const bindingBlockPreamble = "Apply only under each claim's stated conditions and exceptions. Source words take precedence over interpretations. Proposals and old observations are not approved rules or current test proof. An opportunity does not authorize new work."
+const bindingBlockPreamble = "Apply only under each claim's stated conditions and exceptions. Only an approved rule or a confirmed decision binds; a record marked history only is quoted provenance from an earlier turn \u2014 not a rule, not a decision and not authority for new work. Source words are historical provenance: they define a binding constraint only where the person stated a durable rule or an explicit decision. A completed task's request is an old authorization, not authority for new work, and never outranks the current goal or the person's words now."
 
 // renderBindingBlock is the ONE rendering of a binding projection, header and
 // all. It spends its share of the ONE [memoryBlockRunes] ceiling: the block it
@@ -684,7 +732,7 @@ func (a *Agent) contextualEligibleFor(st *store.Store, memories []store.Memory, 
 		if err == nil && usable {
 			m.Text += "\nMemory id: " + m.ID + "\nEvidence: " + e.Authority + "/" + e.Verification
 			if e.Actor == "user" {
-				m.Text += "\nSource words: " + contextualClip(e.Observation, contextualReceiptRunes)
+				m.Text += "\nHistorical source words (quoted provenance, not a current request): " + contextualClip(e.Observation, contextualReceiptRunes)
 			}
 			if e.Actor == "tool" {
 				m.Text += "\nObserved receipt (claim is an interpretation): " + contextualClip(e.Observation, contextualReceiptRunes)
@@ -767,6 +815,40 @@ func explicitContextualDecision(text string) bool {
 		}
 	}
 	return false
+}
+
+// contextualOneTurnTaskAuthorization reports a span that directs the agent to
+// carry out ONE bounded piece of work now — cross-check, compare, verify, run or
+// read something, usually with a read-only or one-off frame — rather than
+// stating a lasting rule or a decision the person has made. It answers the
+// source gap F3 names: the authority gates read ordinary wording cues, a one-turn
+// task uses those same words, and an extractor that mislabels the task would
+// otherwise promote it to a persistent binding. The check is deliberately
+// narrow and textual, and it never demotes a span that ALSO states a durable
+// decision ("we decided", "instead of"), so a genuine durable rule or an
+// explicit decision from the same turn still binds.
+func contextualOneTurnTaskAuthorization(clause string) bool {
+	lower := strings.ToLower(clause)
+	task := false
+	for _, cue := range []string{
+		"cross-check", "cross check", "independently ", "read-only", "read only",
+		"one-off", "one off", "for now", "for this check", "run the", "re-run",
+		"double-check", "verify the", "check the", "compare the", "keep this",
+	} {
+		if strings.Contains(lower, cue) {
+			task = true
+			break
+		}
+	}
+	if !task {
+		return false
+	}
+	for _, durable := range []string{"we decided", "i decided", "we chose", "i chose", "we agreed", "i agreed", "let's", "instead of"} {
+		if strings.Contains(lower, durable) {
+			return false
+		}
+	}
+	return true
 }
 
 // contextualSanitizedItems is contextualItems with the secret redactor applied

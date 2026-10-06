@@ -55,6 +55,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -935,6 +936,21 @@ func renderMemoryBlock(memories []store.Memory, now time.Time) (string, []reflex
 	return renderMemoryBlockWithin(memories, now, memoryBlockRunes, false)
 }
 
+// contextualMemoryField renders ONE untrusted record field — a title, a claim
+// body, a quoted Source-words provenance line, a rationale — as a single
+// physical line: JSON-quoted, with its angle markers escaped. Escaping the
+// markers is what makes a wrapper unforgeable: a "</memory>" that arrived in a
+// memory's text or in an earlier turn's own words becomes inert text, because
+// the only literal "<memory>"/"</memory>" a rendered block carries are the tags
+// [renderMemoryBlockWithin] writes around it. The journal keeps the raw bytes
+// unchanged; only the projection escapes, so provenance stays immutable.
+func contextualMemoryField(s string) string {
+	q := strconv.Quote(s)
+	q = strings.ReplaceAll(q, "<", "\\u003c")
+	q = strings.ReplaceAll(q, ">", "\\u003e")
+	return q
+}
+
 // renderMemoryBlockWithin is [renderMemoryBlock] against an explicit ceiling, so
 // a projection that must SHARE [memoryBlockRunes] with another block (a worker's
 // approved bindings beside its routed shortlist, contextual_memory.go) can spend
@@ -954,12 +970,23 @@ func renderMemoryBlockWithin(memories []store.Memory, now time.Time, limit int, 
 		used int
 	)
 	for _, memory := range memories {
-		line := "- " + memory.Title + ": " + memory.Text
-		if memory.Title == "" {
-			line = "- " + memory.Text
-		}
+		// THE RECORD IS ONE PHYSICAL LINE OF ESCAPED FIELDS, exactly as a prior
+		// outcome and a contextual impact already are. A rendered record is a
+		// projection of the journal, not the journal: its title and its body
+		// (including every Source-words, rationale and condition line the
+		// evidence seam appended) are JSON-quoted with their angle markers
+		// escaped, so a newline, a carriage return or a forged </memory> inside a
+		// memory's own words or in the turn that produced them can never split a
+		// record, forge a close tag or open a second wrapper. The only literal
+		// tags in the block are the wrapper this function writes, and the length
+		// counted against the ceiling is the length of what is actually emitted.
+		record := memory.Text
 		if age := store.AgeLabel(memory.UpdatedAt, now); age != "" {
-			line += " (learned " + age + ")"
+			record += " (learned " + age + ")"
+		}
+		line := "- " + contextualMemoryField(record)
+		if memory.Title != "" {
+			line = "- " + contextualMemoryField(memory.Title) + ": " + contextualMemoryField(record)
 		}
 		length := utf8.RuneCountInString(line) + 1
 		// A RECORD TOO LONG FOR WHAT IS LEFT IS OMITTED WHOLE, never mutated to
