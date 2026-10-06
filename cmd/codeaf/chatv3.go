@@ -90,7 +90,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	flags := commandFlags(name)
 	model := flags.String("model", "", "model slug for this session; beats the configured default")
 	once := flags.String("once", "", "run one message non-interactively, print the reply, and exit")
-	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
+	file := flags.String("session", "", "session transcript to resume; overrides the saved local view")
 	noCompact := flags.Bool("no-compact", false, "never compact automatically")
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
 	reasoning := flags.String("reasoning", "", "reasoning override: auto (inherit), low, medium, high, xhigh or max; off is an alias for auto")
