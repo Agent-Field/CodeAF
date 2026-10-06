@@ -66,7 +66,7 @@ const (
 // it, and the recorded sentence ends with [loopLeftUndoneNote] — the one
 // sentence [endingOfClaim] reads a worker's last words for — so the node's
 // landing is written by the road that already exists instead of a second one.
-const bashEnvelopeStop = "stopped: four responses in a row carried no valid single bash action, so nothing was run · " + loopLeftUndoneNote
+const bashEnvelopeStop = "stopped: four responses in a row carried no valid single tool action, so nothing was run · " + loopLeftUndoneNote
 
 // bashEnvelopeFault is what is wrong with one submission under the envelope,
 // and empty for one that may run. A response with no calls is a final answer,
@@ -80,11 +80,11 @@ func (a *Agent) bashEnvelopeFault(calls []ai.ToolCall) string {
 		return ""
 	}
 	if len(calls) > 1 {
-		return bashEnvelopeMark + "no action executed: return exactly one bash tool call per response — this belt has one hand, and the shell carries its own parallelism (& with wait, xargs -P)"
+		return bashEnvelopeMark + "no action executed: return exactly one tool call per response — use bash for files and commands or an available native tool; the shell carries its own parallelism (& with wait, xargs -P)"
 	}
 	call := calls[0]
 	if !bashCallsAddressable(calls) {
-		return bashEnvelopeMark + "no action executed: a tool call carries no id, so its result could never be paired with it — send the bash call again as the provider's tool-call form"
+		return bashEnvelopeMark + "no action executed: a tool call carries no id, so its result could never be paired with it — send the tool call again as the provider's tool-call form"
 	}
 	if !a.beltCarries(call.Function.Name) {
 		return bashEnvelopeMark + "no action executed: `" + call.Function.Name + "` is not on this belt — bash is the hand for files and commands, and what the belt cannot do is spelled in its own page"
