@@ -9,4 +9,6 @@ invalidates:
 ---
 
 Task trajectories now retain the native tool name beside arguments and returned
-observations. Files and PlanDB coordination continue through bash.
+observations. Files and PlanDB coordination continue through bash. Both worker
+policy pages allow native calls. Child briefs also distinguish the parent's
+coordination instructions from the child's own work order.

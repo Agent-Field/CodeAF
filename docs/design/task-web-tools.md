@@ -24,7 +24,10 @@ new child, retry and wake passes through that factory. `BashWorker` carries the
 pair into `session.Config`; the existing tool registry owns schemas, argument
 validation, bounds, provider errors and execution. The live resolver rereads
 settings for each operation without performing a network availability probe.
-The worker cannot edit its settings through this addition.
+The worker cannot edit its settings through this addition. Both policy pages
+allow one available tool call, rather than requiring bash for every action.
+A leaf reads the full ask for its owned requirements, but parent coordination
+instructions are not reassigned to it; it follows its own work order.
 
 A search returns titles, URLs and snippets; the worker chooses a URL and calls
 fetch. Each operation receives the task's context, so run cancellation and wall

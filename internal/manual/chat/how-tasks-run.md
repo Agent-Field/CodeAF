@@ -3397,3 +3397,7 @@ The shell commands `codeaf web search QUERY` and `codeaf web fetch URL` use
 the same web backends. Native calls also record their tool name, arguments
 and returned observation in the task's trajectory. A failed web call remains
 a failed observation, never evidence that a page was read.
+
+A child reads the overall ask for requirements it owns. Delegation instructions
+for the parent remain the parent's coordination work; a child repeats them only
+when its own work order assigns coordination.
