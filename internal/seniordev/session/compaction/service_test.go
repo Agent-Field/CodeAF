@@ -414,7 +414,7 @@ func TestEnforceWatermarksRebuildsWhenFirstProjectionLacksHeadroom(t *testing.T)
 	})
 	decision, err := NewService(deps).enforceWatermarks(
 		context.Background(), "ses_1", 70_000, serviceModel(), watermarkTestConfig(),
-		&compactionPart, "original user request",
+		&compactionPart, "original user request", nil, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -487,9 +487,11 @@ func TestEnforceWatermarksStubsTheSummaryOnlyWhenItAloneDoesNotFit(t *testing.T)
 		sizes = sizes[1:]
 		return value, nil
 	})
+	previous := "## Working State\n### Completed\n- Fixed src/a.ts and the build is green."
+	changed := []string{"src/a.ts", "src/b.ts"}
 	decision, err := NewService(deps).enforceWatermarks(
 		context.Background(), "ses_1", 95_000, serviceModel(), watermarkTestConfig(),
-		&compactionPart, "original user request",
+		&compactionPart, "original user request", &previous, changed,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -502,6 +504,16 @@ func TestEnforceWatermarksStubsTheSummaryOnlyWhenItAloneDoesNotFit(t *testing.T)
 	generated := generatedSummaryText(fresh[2])
 	if generated == nil || !strings.Contains(*generated, "retained history did not fit") {
 		t.Fatalf("generated fallback = %v", generated)
+	}
+	// The stub carries state forward: the previous summary verbatim and the
+	// changed-files list, never the old erase marker.
+	for _, want := range []string{"Fixed src/a.ts and the build is green.", "- src/a.ts", "- src/b.ts"} {
+		if !strings.Contains(*generated, want) {
+			t.Fatalf("fallback stub lost %q: %v", want, generated)
+		}
+	}
+	if strings.Contains(*generated, "- (none)") {
+		t.Fatalf("fallback stub erased the files list: %v", generated)
 	}
 	evidenceRemoved := false
 	for _, raw := range fresh[2].Parts {
@@ -953,5 +965,101 @@ func TestProcessPinsSpecOnValidSummaryWhenTheRequestIsUnrecoverable(t *testing.T
 	}
 	if pin.Synthetic == nil || !*pin.Synthetic {
 		t.Fatalf("pin must be synthetic so it is not mistaken for the summary: %#v", pin)
+	}
+}
+
+func TestSummaryTokenBudgetFollowsTheWatermarks(t *testing.T) {
+	service := NewService(baseDeps(&memoryStore{}))
+	cfg := watermarkTestConfig() // capacity 100K: high 60,000, headroom 6,000
+	budget, ok := service.summaryTokenBudget(
+		context.Background(), cfg, serviceModel(), 10_000,
+	)
+	if !ok || budget != 41_952 {
+		t.Fatalf("budget = %v,%v want 41952 (60000-6000-10000-2048)", budget, ok)
+	}
+	// A tail that alone eats the window clamps to the floor, never negative.
+	floor, ok := service.summaryTokenBudget(
+		context.Background(), cfg, serviceModel(), 200_000,
+	)
+	if !ok || floor != 256 {
+		t.Fatalf("clamped budget = %v,%v want 256", floor, ok)
+	}
+	// An unbounded window carries no instruction at all.
+	unbounded := serviceModel()
+	unbounded.Overflow.Limit.Context = 0
+	if _, ok := service.summaryTokenBudget(
+		context.Background(), overflow.Config{}, unbounded, 0,
+	); ok {
+		t.Fatal("an unbounded window must not carry a length budget")
+	}
+}
+
+func TestSummaryPromptCarriesTheWatermarkLengthBudget(t *testing.T) {
+	messages := compactionConversation("coder")
+	store := &memoryStore{messages: append([]msgmodel.WithParts(nil), messages...)}
+	provider := &fakeProvider{
+		model: serviceModel(), provider: ProviderInfo{Source: "env", Options: "opts"},
+	}
+	deps := baseDeps(store)
+	deps.Provider = provider
+	deps.Instance = InstanceContext{Directory: "/repo", Worktree: "/repo"}
+	// Small capacity: high 60,000 against the model's own 122,880, so the
+	// budget is decided by the configured window.
+	cfg := watermarkTestConfig()
+	tail := float64(0) // zero tail budget: the older messages form the head
+	cfg.Compaction.PreserveRecentTokens = &tail
+	deps.Config = ConfigProviderFunc(func(context.Context) (overflow.Config, error) {
+		return cfg, nil
+	})
+	decisions := []CompactionDecision{}
+	deps.Decisions = DecisionSinkFunc(func(decision CompactionDecision) {
+		decisions = append(decisions, decision)
+	})
+	var prompt string
+	deps.Processors = ProcessorFactoryFunc(func(
+		_ context.Context, assistant *msgmodel.Assistant, _ string, _ Model,
+	) (SummaryProcessor, error) {
+		return &fakeProcessor{
+			message: assistant,
+			process: func(ctx context.Context, request SummaryRequest) (steploop.Result, error) {
+				prompt = promptOf(t, request)
+				finish := "stop"
+				assistant.Finish = &finish
+				if err := store.UpdateMessage(ctx, *assistant); err != nil {
+					return steploop.ResultStop, err
+				}
+				if err := store.UpdatePart(ctx, msgmodel.TextPart{
+					PartBase: msgmodel.PartBase{
+						ID: "summary_part", SessionID: "ses_1", MessageID: assistant.ID,
+					},
+					Text: testValidSummary("Fix src/a.ts"),
+				}); err != nil {
+					return steploop.ResultStop, err
+				}
+				return steploop.ResultContinue, nil
+			},
+		}, nil
+	})
+	service := NewService(deps)
+	result, err := service.Process(context.Background(), ProcessInput{
+		ParentID: "uc", Messages: messages, SessionID: "ses_1", Auto: true,
+	})
+	if err != nil || result != steploop.ResultContinue {
+		t.Fatalf("result=%s err=%v", result, err)
+	}
+	if len(decisions) != 1 {
+		t.Fatalf("decisions = %#v", decisions)
+	}
+	want, ok := service.summaryTokenBudget(
+		context.Background(), cfg, serviceModel(), decisions[0].TailTokens,
+	)
+	if !ok {
+		t.Fatal("a bounded window must carry a length budget")
+	}
+	instruction := fmt.Sprintf(
+		"Length budget: keep the summary under %.0f tokens", want,
+	)
+	if !strings.Contains(prompt, instruction) {
+		t.Fatalf("summary prompt lacks %q: %q", instruction, prompt)
 	}
 }

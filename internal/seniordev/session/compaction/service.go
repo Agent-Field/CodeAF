@@ -516,6 +516,16 @@ func (s *Service) Process(ctx context.Context, input ProcessInput) (steploop.Res
 		SerializeTranscript(cloned, ToolOutputMaxChars), SummaryTranscriptMaxChars,
 	)
 	summaryPrompt := "<conversation>\n" + transcript + "\n</conversation>\n\n" + pinnedPrompt
+	// The summary's length target follows the same watermarks the trigger
+	// used: a summary that cannot fit beside the fixed baseline and the kept
+	// tail is rebuilt away by enforceWatermarks, so the instruction is sized
+	// to what the rebuild can hold. Unbounded windows carry no instruction.
+	if budget, ok := s.summaryTokenBudget(ctx, cfg, originalModel, selected.Tokens); ok {
+		summaryPrompt += fmt.Sprintf(
+			"\n\nLength budget: keep the summary under %.0f tokens of prose; the rebuilt session must fit the model's window with room to continue.",
+			budget,
+		)
+	}
 	authoritativeTask, taskSource := s.authoritativeTask(messages)
 	changedFiles := s.changedFiles(ctx)
 
@@ -758,7 +768,7 @@ func (s *Service) Process(ctx context.Context, input ProcessInput) (steploop.Res
 
 	capacity, capacityErr := s.enforceWatermarks(
 		ctx, input.SessionID, beforeTokens, originalModel, cfg,
-		compactionPart, taskSource,
+		compactionPart, taskSource, previousSummary, changedFiles,
 	)
 	decision.Status = capacity.Status
 	decision.Before, decision.After = capacity.Before, capacity.After
@@ -832,6 +842,28 @@ func minimumContinuationHeadroom(marks overflow.CompactionWatermarks) float64 {
 	return math.Max(1, math.Min(gap, wanted))
 }
 
+// summaryTokenBudget sizes the length instruction carried in the summary
+// prompt. The budget is what the rebuild can hold beside the fixed baseline
+// and the kept tail: unbounded windows carry no instruction at all.
+func (s *Service) summaryTokenBudget(
+	ctx context.Context,
+	cfg overflow.Config,
+	model Model,
+	tailTokens float64,
+) (float64, bool) {
+	marks := overflow.Watermarks(
+		overflow.UsableInput{Cfg: cfg, Model: model.Overflow},
+	)
+	if marks.High <= 0 || math.IsInf(marks.High, 1) {
+		return 0, false
+	}
+	budget := marks.High - minimumContinuationHeadroom(marks) - tailTokens - 2_048
+	if budget < 256 {
+		budget = 256
+	}
+	return budget, true
+}
+
 func (s *Service) enforceWatermarks(
 	ctx context.Context,
 	sessionID string,
@@ -840,6 +872,8 @@ func (s *Service) enforceWatermarks(
 	cfg overflow.Config,
 	compactionPart *msgmodel.CompactionPart,
 	source string,
+	previousSummary *string,
+	changedFiles []string,
 ) (CompactionDecision, error) {
 	marks := overflow.Watermarks(
 		overflow.UsableInput{Cfg: cfg, Model: model.Overflow},
@@ -893,6 +927,7 @@ func (s *Service) enforceWatermarks(
 	// deterministic capacity stub.
 	if err := s.installCapacityFallback(
 		ctx, sessionID, compactionPart, source, after, marks,
+		previousSummary, changedFiles,
 	); err != nil {
 		return decision, err
 	}
@@ -911,13 +946,31 @@ func (s *Service) enforceWatermarks(
 	return decision, ContextCapacityError{After: after, High: marks.High}
 }
 
-func compactFallbackSummary(source string, observed float64, marks overflow.CompactionWatermarks) string {
+func compactFallbackSummary(
+	source string,
+	observed float64,
+	marks overflow.CompactionWatermarks,
+	previousSummary *string,
+	changedFiles []string,
+) string {
 	current := "- Continue the authoritative task pinned verbatim beside this state record."
-	files := "- (none)"
-	if source == ".senior-dev/spec.md" {
-		files = "- .senior-dev/spec.md: authoritative task specification"
-	} else if source == "" {
+	if source == "" {
 		current = "- Recover the original request from durable session state before editing."
+	}
+	// The rebuild must carry progress forward: the previous summary is
+	// quoted verbatim (bounded), and the changed-files list the install
+	// loop would otherwise zero out is written into the stub itself.
+	completed := "- No generated completion claim survived the capacity rebuild."
+	if previousSummary != nil && strings.TrimSpace(*previousSummary) != "" {
+		completed = quoteAsData(HeadTailTruncate(strings.TrimSpace(*previousSummary), 8_000))
+	}
+	files := "- (none)"
+	if len(changedFiles) > 0 {
+		lines := make([]string, 0, len(changedFiles))
+		for _, name := range changedFiles {
+			lines = append(lines, "- "+name)
+		}
+		files = strings.Join(lines, "\n")
 	}
 	context := fmt.Sprintf(
 		"- Prior projection was %.0f tokens (target %.0f; high watermark %.0f); retained history did not fit.",
@@ -925,7 +978,7 @@ func compactFallbackSummary(source string, observed float64, marks overflow.Comp
 	)
 	return strings.Join([]string{
 		"## Working State",
-		"### Completed", "- No generated completion claim survived the capacity rebuild.",
+		"### Completed", completed,
 		"### Current", current,
 		"### Verification", context,
 		"### Next", "- Inspect the current diff and latest exact failure before editing.",
@@ -953,6 +1006,8 @@ func (s *Service) installCapacityFallback(
 	source string,
 	observed float64,
 	marks overflow.CompactionWatermarks,
+	previousSummary *string,
+	changedFiles []string,
 ) error {
 	if compactionPart != nil {
 		part := *compactionPart
@@ -971,7 +1026,7 @@ func (s *Service) installCapacityFallback(
 		return errors.New("compaction: completed summary missing during deterministic rebuild")
 	}
 	message := messages[prior[len(prior)-1].AssistantIndex]
-	fallback := compactFallbackSummary(source, observed, marks)
+	fallback := compactFallbackSummary(source, observed, marks, previousSummary, changedFiles)
 	written := false
 	for _, raw := range message.Parts {
 		part, ok := raw.(msgmodel.TextPart)

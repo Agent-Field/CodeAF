@@ -63,7 +63,7 @@ func TestSteeringSurvivesRepeatedCompactionAndCapacityRebuild(t *testing.T) {
 		}
 		t.Logf("boundary %d keeps steering", i+1)
 	}
-	if err := service.installCapacityFallback(ctx, "ses_1", nil, "original user request", 9000, overflow.CompactionWatermarks{High: 8000, Low: 6000}); err != nil {
+	if err := service.installCapacityFallback(ctx, "ses_1", nil, "original user request", 9000, overflow.CompactionWatermarks{High: 8000, Low: 6000}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	fresh, _ := store.Messages(ctx, "ses_1")

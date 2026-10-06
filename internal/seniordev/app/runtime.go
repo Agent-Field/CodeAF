@@ -155,7 +155,7 @@ func (runtime *runtimeAdapter) emitTurnProvenance(configured turn) {
 func (runtime *runtimeAdapter) compactionProvenance(configured turn) map[string]any {
 	cfg, err := runtime.config.overflowConfig()
 	if concrete, ok := runtime.backend.(*modelAPIBackend); ok && concrete != nil && err == nil {
-		cfg = concrete.withPinnedCapacity(cfg, configured.SessionID)
+		cfg = concrete.withPinnedCapacity(cfg, configured.ProviderID, configured.ModelID)
 	}
 	// Config accepts only the window policy or an empty value, so the policy
 	// in force is always the window.
@@ -187,7 +187,7 @@ func (runtime *runtimeAdapter) compactionProvenance(configured turn) map[string]
 		return record
 	}
 	marks := overflow.Watermarks(overflow.UsableInput{Cfg: cfg, Model: model})
-	if pinned, ok := concrete.pinnedCapacityFor(configured.SessionID); ok {
+	if pinned, ok := concrete.pinnedCapacityFor(configured.ProviderID, configured.ModelID); ok {
 		record["pinned_capacity_tokens"] = pinned
 	}
 	record["model_context_tokens"] = model.Limit.Context
@@ -530,9 +530,10 @@ type modelAPIBackend struct {
 	// events receives the records the backend emits on its own, after
 	// configureTurn: the compaction-capacity pins (compaction_pin.go).
 	events *eventWriter
-	// pinnedCapacity is the per-session capacity a context-overflow rejection
-	// named (compaction_pin.go). A run is one process, so the map is the
-	// whole of the state.
+	// pinnedCapacity is the per-model capacity a context-overflow rejection
+	// named (compaction_pin.go). Every session routed to the same endpoint
+	// faces the same window, so one pin serves the whole run. A run is one
+	// process, so the map is the whole of the state.
 	pinMu          sync.Mutex
 	pinnedCapacity map[string]float64
 }
