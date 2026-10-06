@@ -417,10 +417,10 @@ correction.
 
 ## Does a memory count as used when it actually helped?
 
-It asks. When a message was answered with remembered lines in front of it, the
-same cheap pass that reads the exchange afterwards is also shown those lines and
-asked which of them **bore on the answer** — as in, would the reply have been
-different without it. It costs no extra call and about ten words of answer.
+Only where a benefit was **observed**, never where a model merely said so. The
+cheap pass that reads the exchange afterwards still runs, but its answer about
+which lines it leaned on is diagnostic and does **not** train the ranking:
+ordinary extraction no longer records a benefit count from a turn's self-report.
 
 That number is what `helped 7` counts in `/memory`, and it is one of the three
 things the shortlist is ranked by. It counts **help, not retrieval**: a line put
@@ -473,10 +473,11 @@ even when there is no transcript file beside the current conversation.
 - Only messages already indexed in this store are searched. Memory-off history,
   failed or pending index writes, other stores and spilled file contents are not
   included. A miss does not prove the subject was never discussed.
-- **It is off when memory is off.** The conversations are kept in the same place
-  the memories are, so the `memory` row in `/settings` turned off means nothing
-  is written and there is nothing to search. Task workers inherit read-only search
-  when their parent has it; this does not enable memory writes or worker-message indexing.
+- **It survives memory being turned off.** Search reads the same store the
+  memories live in, so turning the `memory` row off stops new memories being
+  written — it does not disable or empty an index already there. With no index
+  yet, there is nothing to search. Task workers inherit read-only search when
+  their parent has it; this does not enable memory writes or worker-message indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
   words. Asked what was decided, codeaf searches and quotes rather than
@@ -592,9 +593,10 @@ remembered · deploys on Fridays
 
 `/remember <text>` is the same thing typed as a command. So is the `remember`
 tool, which codeaf reaches for itself when you have stated something durable: it
-takes the line and, optionally, how far the truth reaches — `user` for something
-true about you everywhere (the default), `project` for something true only in
-this project, `env` for something true only on this machine.
+takes the line and, optionally, how far the truth reaches — `project` for
+something true only in this project (the default, and what an empty scope means),
+`user` for something true about you everywhere, `env` for something true only on
+this machine. Only `/remember` is the personal save.
 
 All three go through the same settling step, so saying it twice refines one
 memory rather than making a second — **and the settling step no longer needs
@@ -990,13 +992,14 @@ the model as an advisory line:
 
 ```
 - Prior observed attempt [different source snapshot, seen 2026-10-03]: `bash: make build` failed.
-  Observation: "make: *** No rule to make target 'build'". Different circumstances invite fresh verification.
+  Observation: "make: *** No rule to make target 'build'".
 ```
 
 It is history, not a prohibition and not a cause: what failed once may work now,
-and the line says so. A failure of a task you are not working on stays quiet, and
-only failures and blocks are ever shown — a successful call is not remembered,
-so the history does not become a list of everything that has ever worked.
+and the line says so. A failure of a task you are not working on stays quiet. A
+successful call is not remembered on its own, so this is not a list of everything
+that has ever worked — but where a later success was observed on the same work,
+the block names it beside the failure as an `Observed successful alternative`.
 
 The label in the brackets is honest about circumstances:
 

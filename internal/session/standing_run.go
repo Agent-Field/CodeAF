@@ -720,41 +720,14 @@ func standingSessionDir(item standing.Item) string {
 // firing retains its worktree, including unfinished edits, with the run's
 // existing working-copy record. Neither grant nor reply prose is a policy.
 func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, evidence string) (standing.Outcome, error) {
-	cfg, err := standingRunConfig(r.parent, item, runDir)
-	if err != nil {
-		return standing.Outcome{}, err
-	}
-	cfg, closeMemory, err := r.withBindingMemory(cfg, item)
+	// ── PREPARE: config, the lent brain, and the worktree ─────────────────────
+	cfg, closeMemory, tree, err := standingRunPrepare(r, item, runDir)
 	if err != nil {
 		return standing.Outcome{}, err
 	}
 	defer closeMemory()
 
-	var tree taskTree
-	if item.Does.Isolate {
-		root, ok := repositoryRoot(item.Workspace)
-		if !ok || !hasCommit(root) {
-			return standing.Outcome{}, errors.New("a separate Git worktree needs a repository with a commit")
-		}
-		name := "standing-" + slugify(item.Title()) + "-" + shortID()
-		dir := canonicalPath(filepath.Join(cfg.Place.Trees(), name))
-		tree, err = cutWorktreeAt(cfg.Place, root, dir, "standing/"+name, 0o700)
-		if err != nil {
-			return standing.Outcome{}, fmt.Errorf("cut standing worktree: %w", err)
-		}
-		cfg.Workspace = tree.dir
-		cfg.Place.Workspace = tree.dir
-		if err := rememberStandingIsolation(cfg, item.Workspace, tree); err != nil {
-			return standing.Outcome{}, fmt.Errorf("record standing worktree %s on %s: %w", tree.dir, tree.branch, err)
-		}
-		// Keep the copy even on cancellation, provider failure, or an unfinished
-		// edit. A successful turn is not evidence that every file was committed.
-	}
-
-	brief := standingEvidence(item.Does.Brief, evidence)
-	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
-		brief += "\n\nDONE WHEN: " + acceptance
-	}
+	brief := standingRunBrief(item, evidence)
 	// THE BRIEF IS BUILT BEFORE THE SESSION IS, because whether this firing may
 	// discover it is wide is read off the brief and has to be settled while the
 	// config can still carry the answer ([standingWideWork]).
@@ -778,87 +751,95 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		return standing.Outcome{}, err
 	}
 
-	steps, limit := 0, item.Does.MaxSteps
-	if limit <= 0 {
-		limit = standingRunSteps
-	}
-	reply := ""
-	needs, saved, capped := "", false, false
-	drain := func(events <-chan Event) {
-		var said strings.Builder
-		for event := range events {
-			switch event.Kind {
-			case EventTextDelta:
-				said.WriteString(event.Text)
-			case EventToolEnd:
-				// A CALL THAT SAVED SOMETHING IS THE LANDING, and [producedAFile]
-				// is the one place this build says which calls those are
-				// (task_run.go). It is read on the END of a call and never on its
-				// start: a `write` that failed saved nothing, and a run whose only
-				// act was a refused write came to exactly nothing.
-				//
-				// AND IT IS ASKED OF THE CALL, NOT OF THE HAND. edit_video is on
-				// the saving belt with one action that reads and three that write,
-				// so a wordless firing whose whole night's work was
-				// `{"action":"measure"}` used to report as landed — which is the
-				// one outcome the sweep may never reap, so its run folder was kept
-				// for ever by a call that left nothing in it.
-				if producedAFile(event.Tool, event.Args) {
-					saved = true
-				}
-			case EventToolFinished:
-				steps++
-				// THE STEP CAP IS A STOP AND NOT A REFUSAL. Whatever the run has
-				// already done stands; what it does not get is another call.
-				//
-				// THE MONEY IS CHECKED HERE TOO, at the one boundary where checking
-				// it can change anything: a turn's spend moves when a response
-				// lands, and the only thing an interrupt can still prevent is the
-				// NEXT request. Asking on every streamed delta would take this
-				// agent's lock a thousand times to learn the same figure.
-				if steps >= limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
-					capped = true
-					agent.InterruptFor(StopByWorkStopped)
-				}
-			case EventToolFailed:
-				if line := standingRefusal(event); line != "" && needs == "" {
-					needs = line
-				}
-			}
-		}
-		// THE OUTCOME IS THE LAST THING THIS FIRING ACTUALLY SAID. A run that
-		// divided opens by announcing that it split the work into three parts
-		// and closes by saying what came of them, and the person reads ONE
-		// clipped line ([standingOutcomeClip]) — so a later turn's words replace
-		// an earlier turn's rather than queueing behind them. A turn that said
-		// nothing replaces nothing: silence is not a newer account, and a run
-		// whose last re-entry was wordless still came to what it said before it.
-		if words := strings.TrimSpace(said.String()); words != "" {
-			reply = words
-		}
-	}
-	drain(events)
+	// ── RUN: the turn, its parts, and the rails across the whole firing ───────
+	watch := standingRunTurns(ctx, agent, events, item, graph, root)
 
-	// ── THE FIRING THAT HANDED PARTS OF ITS WORK OUT ────────────────────────
-	//
-	// A turn ends the moment the model has nothing left to say, and the parts it
-	// just named are still working: `divide_work` hands the ids back at once and
-	// tells the worker not to wait (task_divide.go). So THE TURN ENDING IS NOT
-	// THE FIRING ENDING — and this is the same tail loop a task node's runner
-	// holds open around exactly the same shape ([runTaskChild]), for the same
-	// three reasons. The parts' reports have to reach the model that has to fold
-	// them into one account. Their spend has to be in the ledger this run's
-	// figure is read off ([Agent.foldTaskUsage] posts it to this agent, and this
-	// agent is closed the moment Run returns). And an unattended run that
-	// returned while its own parts were still spending would be the pass writing
-	// a bill and a marker for work that had not happened yet.
-	//
-	// THE RAILS STILL BIND, and they bind across the whole firing rather than
-	// per turn: the step count and the spend carry into the fold, and a firing
-	// cut at either of them takes its unfinished parts down with it
-	// ([TaskGraph.stopChildren]) rather than leaving them spending for a run
-	// nobody is going to read.
-	for graph != nil && !capped && ctx.Err() == nil {
+	// ── REPORT: the outcome, the worktree's own facts, and the delivery ──────
+	outcome := standing.Outcome{
+		Kind: standingCameTo(watch.saved, watch.reply, watch.needs),
+		Text: clip(watch.reply, standingOutcomeClip),
+		USD:  agent.Usage().CostUSD,
+	}
+	if item.Does.Isolate {
+		outcome = standingIsolatedOutcome(tree, watch.reply, watch.needs, outcome)
+	}
+	outcome = standingNeedsOutcome(outcome, watch.needs)
+	return standingDeliverOutcome(r, item, outcome, runDir)
+}
+
+// standingRunPrepare builds the run's config, lends it the canonical brain when
+// the item asked, and cuts a worktree when the firing must be isolated. The
+// returned closeMemory is never nil once the config exists, so the caller
+// releases the brain on every road out.
+func standingRunPrepare(r *standingRunner, item standing.Item, runDir string) (Config, func(), taskTree, error) {
+	cfg, err := standingRunConfig(r.parent, item, runDir)
+	if err != nil {
+		return Config{}, nil, taskTree{}, err
+	}
+	cfg, closeMemory, err := r.withBindingMemory(cfg, item)
+	if err != nil {
+		return Config{}, nil, taskTree{}, err
+	}
+	if !item.Does.Isolate {
+		return cfg, closeMemory, taskTree{}, nil
+	}
+	root, ok := repositoryRoot(item.Workspace)
+	if !ok || !hasCommit(root) {
+		closeMemory()
+		return Config{}, nil, taskTree{}, errors.New("a separate Git worktree needs a repository with a commit")
+	}
+	name := "standing-" + slugify(item.Title()) + "-" + shortID()
+	dir := canonicalPath(filepath.Join(cfg.Place.Trees(), name))
+	tree, err := cutWorktreeAt(cfg.Place, root, dir, "standing/"+name, 0o700)
+	if err != nil {
+		closeMemory()
+		return Config{}, nil, taskTree{}, fmt.Errorf("cut standing worktree: %w", err)
+	}
+	cfg.Workspace = tree.dir
+	cfg.Place.Workspace = tree.dir
+	if err := rememberStandingIsolation(cfg, item.Workspace, tree); err != nil {
+		// Keep the copy even on cancellation, provider failure, or an unfinished
+		// edit. A successful turn is not evidence that every file was committed.
+		closeMemory()
+		return Config{}, nil, taskTree{}, fmt.Errorf("record standing worktree %s on %s: %w", tree.dir, tree.branch, err)
+	}
+	return cfg, closeMemory, tree, nil
+}
+
+// standingRunBrief is what one firing is told: whatever the item asked for, the
+// evidence the look carried, and the acceptance sentence when the order named
+// one.
+func standingRunBrief(item standing.Item, evidence string) string {
+	brief := standingEvidence(item.Does.Brief, evidence)
+	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
+		brief += "\n\nDONE WHEN: " + acceptance
+	}
+	return brief
+}
+
+// standingRunWatch is the whole state one firing's turn loop keeps: how deep the
+// rails let it go, what it has said and come to, and whether it was cut short.
+type standingRunWatch struct {
+	limit  int
+	steps  int
+	reply  string
+	needs  string
+	saved  bool
+	capped bool
+}
+
+// standingRunTurns drains the opening turn and then, while parts it handed out
+// are still working, holds the firing open around them: their reports reach the
+// model that folds them into one account, their spend lands in the ledger this
+// run's figure is read off, and a firing cut at a rail takes its unfinished
+// parts down with it rather than leaving them spending for a run nobody reads.
+func standingRunTurns(ctx context.Context, agent *Agent, events <-chan Event, item standing.Item, graph *TaskGraph, root *TaskNode) standingRunWatch {
+	watch := standingRunWatch{limit: item.Does.MaxSteps}
+	if watch.limit <= 0 {
+		watch.limit = standingRunSteps
+	}
+	watch.drain(events, agent, item)
+	for graph != nil && !watch.capped && ctx.Err() == nil {
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := agent.taskNewsWait()
@@ -885,62 +866,107 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		if next == nil {
 			break
 		}
-		drain(next)
+		watch.drain(next, agent, item)
 	}
-	if graph != nil && (capped || ctx.Err() != nil) {
+	if graph != nil && (watch.capped || ctx.Err() != nil) {
 		graph.stopChildren(root.id)
 	}
+	return watch
+}
 
-	outcome := standing.Outcome{
-		Kind: standingCameTo(saved, reply, needs),
-		Text: clip(reply, standingOutcomeClip),
-		USD:  agent.Usage().CostUSD,
+// drain reads one channel to close into the watch's state.
+func (w *standingRunWatch) drain(events <-chan Event, agent *Agent, item standing.Item) {
+	var said strings.Builder
+	for event := range events {
+		w.observe(event, agent, item, &said)
 	}
-	if item.Does.Isolate {
-		// Record Git facts rather than trying to classify the model's prose.
-		// Another session may advance the host branch while we run; that is
-		// not evidence that this worker changed it.
-		status, statusErr := git(tree.dir, "status", "--porcelain")
-		head, headErr := git(tree.dir, "rev-parse", "HEAD")
-		branch := currentBranch(tree.dir)
-		if statusErr != nil || headErr != nil || branch != tree.branch {
-			outcome.Kind = standing.OutcomeFailed
-			outcome.NeedsPerson = "the worktree's branch could not be confirmed; inspect the saved work"
-			outcome.Text = outcome.NeedsPerson
-		} else if strings.TrimSpace(status) != "" || strings.TrimSpace(head) != tree.checkBase {
-			outcome.Kind = standingCameTo(true, reply, needs)
-		}
-		// The location remains visible even when a wordless firing left only
-		// shell-written files, which producedAFile cannot recognize.
-		outcome.Text = strings.TrimSpace(outcome.Text + "\nWork kept on " + tree.branch + " in " + tree.dir)
-		if outcome.Kind == standing.OutcomeNothing {
-			// The retained location is a report, not evidence of changed work.
-			// It must remain discoverable rather than enter the no-output sweep.
-			outcome.Kind = "said"
-			outcome.Text = "No changes. " + outcome.Text
-		}
-	}
+	w.remember(said.String())
+}
 
-	if needs != "" {
-		// NOTHING PRETENDS THIS LANDED. A run that stopped on something only a
-		// person can allow is not a failure and is not a success; it is work
-		// waiting for them, and home sorts on exactly that.
-		outcome.NeedsPerson = needs
-		if outcome.Text == "" {
-			outcome.Text = needs
+// observe folds one event into the watch. A call that saved something is the
+// landing; a step counts against the rail at the boundary where checking it can
+// still prevent the NEXT request, never per streamed delta.
+func (w *standingRunWatch) observe(event Event, agent *Agent, item standing.Item, said *strings.Builder) {
+	switch event.Kind {
+	case EventTextDelta:
+		said.WriteString(event.Text)
+	case EventToolEnd:
+		if producedAFile(event.Tool, event.Args) {
+			w.saved = true
+		}
+	case EventToolFinished:
+		w.finished(agent, item)
+	case EventToolFailed:
+		if line := standingRefusal(event); line != "" && w.needs == "" {
+			w.needs = line
 		}
 	}
+}
+
+// finished counts one completed call against the step and money rails. The step
+// cap is a stop and not a refusal: whatever the run has done stands, and what it
+// does not get is another call.
+func (w *standingRunWatch) finished(agent *Agent, item standing.Item) {
+	w.steps++
+	if w.steps >= w.limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
+		w.capped = true
+		agent.InterruptFor(StopByWorkStopped)
+	}
+}
+
+// remember keeps the last thing this firing actually said: a later turn's words
+// replace an earlier turn's, and a wordless re-entry replaces nothing.
+func (w *standingRunWatch) remember(words string) {
+	if words = strings.TrimSpace(words); words != "" {
+		w.reply = words
+	}
+}
+
+// standingIsolatedOutcome records Git facts rather than trying to classify the
+// model's prose. Another session may advance the host branch while we run; that
+// is not evidence that this worker changed it.
+func standingIsolatedOutcome(tree taskTree, reply, needs string, outcome standing.Outcome) standing.Outcome {
+	status, statusErr := git(tree.dir, "status", "--porcelain")
+	head, headErr := git(tree.dir, "rev-parse", "HEAD")
+	branch := currentBranch(tree.dir)
+	if statusErr != nil || headErr != nil || branch != tree.branch {
+		outcome.Kind = standing.OutcomeFailed
+		outcome.NeedsPerson = "the worktree's branch could not be confirmed; inspect the saved work"
+		outcome.Text = outcome.NeedsPerson
+	} else if strings.TrimSpace(status) != "" || strings.TrimSpace(head) != tree.checkBase {
+		outcome.Kind = standingCameTo(true, reply, needs)
+	}
+	// The location remains visible even when a wordless firing left only
+	// shell-written files, which producedAFile cannot recognize.
+	outcome.Text = strings.TrimSpace(outcome.Text + "\nWork kept on " + tree.branch + " in " + tree.dir)
 	if outcome.Kind == standing.OutcomeNothing {
-		// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to
-		// tell: no line, no landing, nothing waiting. Walking the delivery roads
-		// with an empty sentence would put `◦ keep main green: ` into the
-		// conversation somebody is sitting in, which is an interruption whose
-		// whole content is that it was not worth interrupting for.
-		//
-		// IT IS STILL RECORDED. The pass writes the ledger row, the item's log
-		// line and its `previous` list from this outcome whatever it says
-		// (internal/standing's tick.go), so the money and the fact that it ran
-		// survive the run folder the sweep will eventually reap.
+		// The retained location is a report, not evidence of changed work.
+		// It must remain discoverable rather than enter the no-output sweep.
+		outcome.Kind = "said"
+		outcome.Text = "No changes. " + outcome.Text
+	}
+	return outcome
+}
+
+// standingNeedsOutcome lands the one thing only a person can allow: it is not a
+// failure and not a success, it is work waiting for them.
+func standingNeedsOutcome(outcome standing.Outcome, needs string) standing.Outcome {
+	if needs == "" {
+		return outcome
+	}
+	outcome.NeedsPerson = needs
+	if outcome.Text == "" {
+		outcome.Text = needs
+	}
+	return outcome
+}
+
+// standingDeliverOutcome hands the outcome to the delivery roads, unless the run
+// came to nothing: a run that came to nothing tells nobody, because there is
+// nothing to tell. It is still recorded, because the pass writes the ledger row
+// and the item's log line from this outcome whatever it says.
+func standingDeliverOutcome(r *standingRunner, item standing.Item, outcome standing.Outcome, runDir string) (standing.Outcome, error) {
+	if outcome.Kind == standing.OutcomeNothing {
 		return outcome, nil
 	}
 	if err := r.deliver(item, outcome.Kind, outcome.Text, runDir, ""); err != nil {
@@ -1716,13 +1742,16 @@ func StandingIdle() standing.Idle {
 // its acknowledgement runs ([Agent.holdStandingFile]): a second ask finds the
 // file held and neither queues nor acknowledges it again.
 //
-// THE ACKNOWLEDGEMENT FOLLOWS THE RECORD, NOT THE QUEUE. An inbox file is
-// retired by a settle callback attached to the fold message
-// ([Agent.enqueueStandingFold]); the callback fires only once the journal holds
-// that line. A crash before then leaves the file staged, so the next open hands
-// the fold over again — a duplicate, never a silence. This is the durable
-// at-least-once handoff, and no exactly-once claim is made about what a screen
-// drew.
+// THE ACKNOWLEDGEMENT FOLLOWS A RECORD THAT IS MADE AT ARRIVAL, NOT AT A TURN.
+// The fold is written into the conversation's own journal the moment it is
+// drained ([Agent.recordStandingFold]), so a reopen that never types still
+// settles the file before the second open — which is what stops a one-time
+// notice being replayed until somebody submits. A crash between the record and
+// the acknowledgement leaves the file staged, but the record already answers for
+// its identity ([Agent.hasRecorded]), so the next open retires the file without
+// folding it again: a note nobody was shown, never a note shown twice. This is
+// the durable at-least-once handoff, and no exactly-once claim is made about
+// what a screen drew.
 func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return
@@ -1803,7 +1832,7 @@ func (a *Agent) takeStandingFiles(files []standing.DrainFile) {
 	// who was away does not care which file a note waited in, and two folds with
 	// two openings would be the mailbox this note exists to avoid.
 	sort.SliceStable(notes, func(i, j int) bool { return notes[i].At.Before(notes[j].At) })
-	a.enqueueStandingFold(standingAwayNote(notes), deliveries)
+	a.recordStandingFold(standingAwayNote(notes), deliveries)
 	a.queueStandingNews(notes)
 }
 
@@ -1818,14 +1847,50 @@ func standingDeliveryID(noteID string) string {
 	return "standing-inbox/" + id
 }
 
-// enqueueStandingFold hands the fold to the ambient lane carrying the deliveries
-// that retire the files it came from. The message IS the receipt: only once the
-// journal holds this line does [durableDelivery.settled] fire and each file be
-// acknowledged.
-func (a *Agent) enqueueStandingFold(text string, deliveries []durableDelivery) {
+// recordStandingFold WRITES THE FOLD INTO THE CONVERSATION'S OWN RECORD AT
+// ARRIVAL and settles the inbox files it came from. This is the fix for the
+// reopen that never typed: an acknowledgement that waited for a turn meant a
+// person who merely reopened the window twice read the same one-time notice
+// twice, because nothing had journaled it between the two opens. Here the note
+// is recorded through the ordinary note door ([Agent.recordUserLocked]) the
+// moment it is drained, so the receipt is durable BEFORE the file it came from
+// is acknowledged ([durableDelivery] and [sessionFile.recorded]) — and the
+// second open finds the file gone.
+//
+// IT DOES NOT FIRE A TURN AND IT DOES NOT FABRICATE A PERSON. The line is the
+// session's own authored note, the same shape the fold always reached the model
+// as; it is recorded rather than queued, so the fold is in the transcript for
+// the next sentence the person types without anything having to start a turn
+// for it. No model call, no wake, and no user role the person did not type.
+//
+// A TURN ALREADY RUNNING IS THE ONE CASE THAT WAITS. A user line appended
+// between a tool call and its result is an illegal transcript, so when this
+// conversation is mid-request the fold stays queued and its file stays staged;
+// that turn's own drain records it and settles it a boundary later, which is
+// the old behaviour kept for the only shape that needs it.
+func (a *Agent) recordStandingFold(text string, deliveries []durableDelivery) {
 	note := userText(text)
 	note.delivered = deliveries
-	a.enqueueNote(note)
+	if !a.recordNoteAtRest(note) {
+		a.enqueueNote(note)
+		return
+	}
+	a.settleDeliveries()
+}
+
+// recordNoteAtRest records one session note into the transcript AND the journal
+// when no turn holds the transcript open, and answers false when a turn is
+// running (or the session is closed), leaving the caller to queue it instead.
+// The check and the append are one step under the agent's lock, so a turn
+// cannot start between them and open the illegal shape this refuses.
+func (a *Agent) recordNoteAtRest(note userMessage) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.running {
+		return false
+	}
+	a.recordUserLocked(note)
+	return true
 }
 
 // holdStandingFile claims a staged file for a live fold, answering false when a

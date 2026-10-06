@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
@@ -112,64 +113,137 @@ func TestAnUnacknowledgedDrainLeavesTheIdentityUnspent(t *testing.T) {
 	}
 }
 
-// THE FOLD ACKNOWLEDGES ITS INBOX ONLY AFTER ITS JOURNAL LINE SETTLES. This is
-// the production crash stage: with the fold merely QUEUED (volatile) the staged
-// file stays, so a crash loses nothing; the acknowledgement runs from the
-// delivery's settle callback, which the journal invokes only once the fold line
-// is written down.
-func TestTheFoldAcknowledgesItsInboxOnlyAfterTheJournalSettles(t *testing.T) {
-	workspace := t.TempDir()
-	agent := standingLiveAgent(t, workspace, nil)
+// A REOPENED WINDOW THAT NEVER TYPED STILL SHOWS THE NOTICE ONCE, AND THE
+// SECOND OPEN IS QUIET. This is the whole point of recording the fold at
+// ARRIVAL rather than at the next turn: the delivery receipt reaches the
+// journal the moment the inbox is drained, so the second open finds the file
+// acknowledged instead of replaying the one-time notice until somebody types.
+// No model call is made and no turn runs.
+func TestAReopenedWindowShowsTheNoticeOnceAndTheSecondOpenIsQuiet(t *testing.T) {
 	dir := t.TempDir()
-	agent.mu.Lock()
-	agent.config.Place = Place{Dir: dir, Workspace: workspace}
-	agent.mu.Unlock()
-
-	// Deliver a note to that conversation's inbox as a firing would.
-	item := standing.Item{
-		ID:        "item-settle",
-		Words:     "tell me when CI goes red",
-		Workspace: workspace,
-		Origin:    standing.Origin{SessionID: "closed", Transcript: filepath.Join(dir, "transcript.jsonl")},
+	config := func() Config {
+		return Config{
+			Workspace:   t.TempDir(),
+			Model:       "test/model",
+			System:      "SYSTEM",
+			SessionFile: filepath.Join(dir, "session.jsonl"),
+			Standing:    &Standing{},
+		}
 	}
-	runner := &standingRunner{}
-	if _, err := runner.Deliver(context.Background(), item, standing.Pending{ID: "settle-1", Kind: standing.ActionSay, Text: "the last run failed"}); err != nil {
+	agent, err := newAgent(config(), &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent: %v", err)
+	}
+	const spoken = "the last run failed on main"
+	if err := standing.Deliver(dir, standing.Note{
+		At: time.Now(), ItemID: "item-once", Words: "tell me when CI goes red",
+		Kind: "said", Text: spoken, ID: "once-1",
+	}); err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 
+	// The window opens: the drain records the fold and retires the file, with
+	// nothing submitted and no turn running.
 	agent.drainStandingInbox()
-
-	// The fold is queued with one durable delivery per note, and the staged file
-	// is STILL THERE: a crash now re-hands the fold rather than losing it.
-	deliveries := 0
+	if got := foldOccurrences(agent, spoken); got != 1 {
+		t.Fatalf("the fold reached the transcript %d time(s), want once", got)
+	}
 	agent.mu.Lock()
-	for _, note := range agent.steering {
-		deliveries += len(note.delivered)
-	}
+	queued := len(agent.steering)
+	running := agent.running
 	agent.mu.Unlock()
-	if deliveries == 0 {
-		t.Fatal("the queued fold carries no durable delivery")
+	if queued != 0 {
+		t.Fatalf("the recorded fold was ALSO left on the steering queue (%d line(s)); a later turn would repeat it", queued)
 	}
-	if staged := countStagedInboxFiles(t, dir); staged == 0 {
-		t.Fatal("the inbox file was acknowledged while the fold was still only queued")
-	}
-
-	// THE JOURNAL LINE IS WRITTEN: settle the deliveries the way recordUserLocked
-	// would, and only now is the file acknowledged.
-	agent.mu.Lock()
-	var settle []durableDelivery
-	for _, note := range agent.steering {
-		settle = append(settle, note.delivered...)
-	}
-	agent.mu.Unlock()
-	for _, delivery := range settle {
-		if delivery.settled != nil {
-			delivery.settled()
-		}
+	if running {
+		t.Fatal("draining the inbox started a turn")
 	}
 	if staged := countStagedInboxFiles(t, dir); staged != 0 {
-		t.Fatalf("the acknowledged inbox left %d staged file(s)", staged)
+		t.Fatalf("the arrival left %d staged file(s); the receipt did not precede the ack", staged)
 	}
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Tomorrow, the SAME journal, a fresh process, and again nobody types. The
+	// content is still there, exactly once.
+	resumed, err := newAgent(config(), &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent (resume): %v", err)
+	}
+	defer func() { _ = resumed.Close() }()
+	if got := foldOccurrences(resumed, spoken); got != 1 {
+		t.Fatalf("after reconstructing the same journal the fold appears %d time(s), want once", got)
+	}
+	if staged := countStagedInboxFiles(t, dir); staged != 0 {
+		t.Fatalf("the second open found %d staged file(s); a one-time notice was replayed without a turn", staged)
+	}
+}
+
+// A CRASH BETWEEN THE RECORD AND THE ACK LOSES NOTHING AND REPEATS NOTHING.
+// The journal already holds the receipt, so the residual staged file is retired
+// without a second fold: the recovery reads the record, not the file.
+func TestACrashBetweenTheFoldRecordAndTheAckIsRetiredQuietly(t *testing.T) {
+	dir := t.TempDir()
+	config := func() Config {
+		return Config{
+			Workspace:   t.TempDir(),
+			Model:       "test/model",
+			System:      "SYSTEM",
+			SessionFile: filepath.Join(dir, "session.jsonl"),
+			Standing:    &Standing{},
+		}
+	}
+	agent, err := newAgent(config(), &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent: %v", err)
+	}
+	const spoken = "the backup job finished"
+	if err := standing.Deliver(dir, standing.Note{
+		At: time.Now(), ItemID: "item-crash", Words: "tell me when the backup ends",
+		Kind: "landed", Text: spoken, ID: "crash-1",
+	}); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	live := standing.InboxPath(dir)
+	stagedBytes, err := os.ReadFile(live)
+	if err != nil {
+		t.Fatalf("read the live inbox: %v", err)
+	}
+	agent.drainStandingInbox()
+	if err := agent.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// The crash state: the record was written and the file was never removed.
+	residual := filepath.Join(dir, filepath.Base(live)+".crash.draining")
+	if err := os.WriteFile(residual, stagedBytes, 0o600); err != nil {
+		t.Fatalf("write the residual staged file: %v", err)
+	}
+
+	reopened, err := newAgent(config(), &scriptedCompleter{})
+	if err != nil {
+		t.Fatalf("newAgent (resume): %v", err)
+	}
+	defer func() { _ = reopened.Close() }()
+	if got := foldOccurrences(reopened, spoken); got != 1 {
+		t.Fatalf("the crash recovery folded the notice %d time(s), want once", got)
+	}
+	if staged := countStagedInboxFiles(t, dir); staged != 0 {
+		t.Fatalf("the residual file was not retired: %d staged file(s) remain", staged)
+	}
+}
+
+// foldOccurrences counts transcript messages that carry one unique string.
+func foldOccurrences(agent *Agent, want string) int {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	n := 0
+	for _, message := range agent.messages {
+		if strings.Contains(messageContentText(message), want) {
+			n++
+		}
+	}
+	return n
 }
 
 // countStagedInboxFiles counts this conversation folder's staged inbox files.

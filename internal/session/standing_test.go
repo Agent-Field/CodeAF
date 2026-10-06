@@ -1500,6 +1500,23 @@ func standingQueued(agent *Agent) []string {
 	return lines
 }
 
+// standingRecordedFold is the fold as it reached the CONVERSATION'S OWN RECORD:
+// the newest transcript line that opens a "while you were away". The fold is
+// recorded at arrival now, not left on the queue, so this — and not
+// [standingQueued] — is where a drain that has run has put it.
+func standingRecordedFold(agent *Agent) string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	fold := ""
+	for _, message := range agent.messages {
+		text := messageContentText(message)
+		if strings.HasPrefix(strings.TrimSpace(text), "while you were away") {
+			fold = text
+		}
+	}
+	return fold
+}
+
 // AN ERRAND IS NEVER STEERED INTO, AND THE PERSON IS TOLD ANYWAY.
 //
 // This is the firing that wrote the rule. A reminder made from home's `ask
@@ -1662,12 +1679,12 @@ func TestAFiringFromAnExchangeWithNothingOpenWaitsOnTheProject(t *testing.T) {
 		config.Place = Place{Dir: t.TempDir(), Workspace: workspace}
 		config.SessionFile = config.Place.Transcript()
 	})
-	queued := standingQueued(agent)
-	if len(queued) != 1 {
-		t.Fatalf("the new conversation queued %d notes, want one fold", len(queued))
+	fold := standingRecordedFold(agent)
+	if !strings.HasPrefix(fold, "while you were away") || !strings.Contains(fold, item.Words) {
+		t.Fatalf("the fold reads %q", fold)
 	}
-	if !strings.HasPrefix(queued[0], "while you were away") || !strings.Contains(queued[0], item.Words) {
-		t.Fatalf("the fold reads %q", queued[0])
+	if queued := standingQueued(agent); len(queued) != 0 {
+		t.Fatalf("a fold was left queued for a turn nobody may start: %q", queued)
 	}
 	if left := standing.PeekProjectInbox(root, workspace); len(left) != 0 {
 		t.Fatalf("the project inbox still holds %d notes after a conversation drained it", len(left))
@@ -2216,10 +2233,14 @@ func TestWhatFiredWhileTheWindowWasShutIsDrawnWhenItOpens(t *testing.T) {
 		t.Fatalf("the second row is %+v", second.Standing)
 	}
 	// AND THE MODEL STILL GETS ONE FOLD AND NOT TWO NOTES. The two readers have
-	// two different laws (standing_run.go's queueStandingNews).
-	queued := standingQueued(agent)
-	if len(queued) != 1 || !strings.HasPrefix(queued[0], "while you were away") {
-		t.Fatalf("the model was handed %d notes: %q", len(queued), queued)
+	// two different laws (standing_run.go's queueStandingNews). The fold is in
+	// the RECORD at arrival now, so a later turn reads it from there.
+	fold := standingRecordedFold(agent)
+	if !strings.Contains(fold, "tell me when CI goes red") || !strings.Contains(fold, "keep main green") {
+		t.Fatalf("the recorded fold is %q", fold)
+	}
+	if queued := standingQueued(agent); len(queued) != 0 {
+		t.Fatalf("the fold was left queued as well as recorded: %q", queued)
 	}
 }
 

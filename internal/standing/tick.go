@@ -177,22 +177,9 @@ func (t *Ticker) clock() time.Time {
 // travel with the item, not with a copy the caller kept.
 func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 	now := t.clock()
-
-	// RAIL ONE: it ran out of time.
-	if deadline, has := expiryOf(*item); has && !now.Before(deadline) {
-		item.Status = StatusRetired
-		item.RetiredWhy = "expired"
-		item.LastChecked = now
-		item.LastCheckLine = "its time ran out"
-		pass.Skipped++
-		pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
-		_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
-		if err := t.Store.saveActive(item); err != nil && !errors.Is(err, errConsentChanged) {
-			return err
-		}
-		return nil
+	if done, err := t.retireIfExpired(item, now, pass); done || err != nil {
+		return err
 	}
-
 	// AND A HOLD IS WALKED PAST IN SILENCE. It has no moment, no rhythm and no
 	// probe, so there is nothing about it that could be due; its whole work was
 	// done at birth, riding into the world of every conversation and every task it
@@ -205,36 +192,16 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 	if item.When.Kind == WhenHold {
 		return nil
 	}
-
-	// RAIL TWO: it has already run today as often as the person allowed.
-	mine, err := t.Store.Today(item.ID, now)
-	if err != nil {
+	if held, err := t.railsHold(ctx, item, now, pass); held || err != nil {
 		return err
-	}
-	if item.Rails.MaxPerDay > 0 && mine.Fired >= item.Rails.MaxPerDay {
-		pass.Skipped++
-		return t.quiet(*item, now, "it has already run today as often as you allowed")
-	}
-
-	// RAIL THREE: everything standing has spent what the day allows.
-	if t.DailyRailUSD > 0 {
-		all, err := t.Store.Today("", now)
-		if err != nil {
-			return err
-		}
-		if all.USD >= t.DailyRailUSD {
-			pass.Skipped++
-			pass.Notes = append(pass.Notes, "today's spending limit is reached; nothing standing runs again until tomorrow")
-			return t.quiet(*item, now, "today's spending limit is reached")
-		}
 	}
 
 	// THE MARKER GOES UP BEFORE THE LOOK AND COMES DOWN WHEN THIS ITEM'S PASS
 	// ENDS, whatever the pass came to — a firing, a quiet check, an error, or
 	// nothing at all. It is raised HERE and not at the top of the method because
-	// the three rails above are a decision not to look: an item that was skipped
-	// for its budget was never in anybody's hands, and saying otherwise would be
-	// the same dishonesty as writing LastChecked for a check that never happened.
+	// the rails above are a decision not to look: an item that was skipped for
+	// its budget was never in anybody's hands, and saying otherwise would be the
+	// same dishonesty as writing LastChecked for a check that never happened.
 	//
 	// The defer is the only thing that takes it down in this process, so every
 	// road out of the walk below — including a panic climbing through — leaves
@@ -243,24 +210,8 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 	t.Store.markRunning(item.ID, RunningChecking)
 	defer t.Store.clearRunning(item.ID)
 
-	// AN UNRESOLVED DELIVERY OR TASK ATTEMPT IS NOT A REASON TO FIRE AGAIN.
-	// [Ticker.settle] already tried the delivery at the top of the pass; if it
-	// is still here the last attempt failed, and firing a second line would be a
-	// duplicate intent for the same authorization. A task whose in-flight marker
-	// is up must never run twice, so it is surfaced as needing the person.
-	if len(item.Pending) > 0 {
-		pass.Skipped++
-		return nil
-	}
-	if item.TaskInflight != nil {
-		if item.NeedsPerson == "" {
-			item.NeedsPerson = oneLine("a task is waiting for you before it can run again")
-			if err := t.Store.saveActive(item); err != nil && !errors.Is(err, errConsentChanged) {
-				return err
-			}
-		}
-		pass.Skipped++
-		return nil
+	if blocked, err := t.attemptBlocked(item, pass); blocked || err != nil {
+		return err
 	}
 
 	found, err := t.look(ctx, item, now, pass.At)
@@ -278,7 +229,79 @@ func (t *Ticker) one(ctx context.Context, pass *Pass, item *Item) error {
 	if current, err := t.Store.Get(item.ID); err != nil || current.Status != StatusActive || current.Revision != item.Revision {
 		return nil
 	}
+	return t.act(ctx, pass, item, now, found)
+}
 
+// retireIfExpired is RAIL ONE: a moment that has passed retires the item where
+// it stands and reports that the walk is over for it.
+func (t *Ticker) retireIfExpired(item *Item, now time.Time, pass *Pass) (bool, error) {
+	deadline, has := expiryOf(*item)
+	if !has || now.Before(deadline) {
+		return false, nil
+	}
+	item.Status = StatusRetired
+	item.RetiredWhy = "expired"
+	item.LastChecked = now
+	item.LastCheckLine = "its time ran out"
+	pass.Skipped++
+	pass.Notes = append(pass.Notes, shorten(item.Words, 60)+": its time ran out")
+	_ = t.Store.Log(item.ID, "its time ran out — no longer watching")
+	if err := t.Store.saveActive(item); err != nil && !errors.Is(err, errConsentChanged) {
+		return true, err
+	}
+	return true, nil
+}
+
+// railsHold is RAILS TWO AND THREE: an item that has already run as often as the
+// person allowed, or a day that has spent what it may, is quietly skipped. Both
+// write the same check the person would read and neither looks at the world.
+func (t *Ticker) railsHold(ctx context.Context, item *Item, now time.Time, pass *Pass) (bool, error) {
+	mine, err := t.Store.Today(item.ID, now)
+	if err != nil {
+		return false, err
+	}
+	if item.Rails.MaxPerDay > 0 && mine.Fired >= item.Rails.MaxPerDay {
+		pass.Skipped++
+		return true, t.quiet(*item, now, "it has already run today as often as you allowed")
+	}
+	if t.DailyRailUSD > 0 {
+		all, err := t.Store.Today("", now)
+		if err != nil {
+			return false, err
+		}
+		if all.USD >= t.DailyRailUSD {
+			pass.Skipped++
+			pass.Notes = append(pass.Notes, "today's spending limit is reached; nothing standing runs again until tomorrow")
+			return true, t.quiet(*item, now, "today's spending limit is reached")
+		}
+	}
+	return false, nil
+}
+
+// attemptBlocked is the refusal to fire over an unresolved intent: a pending
+// delivery or a task whose in-flight marker is still up. Neither is a reason to
+// make a second line, and the task is surfaced as needing the person.
+func (t *Ticker) attemptBlocked(item *Item, pass *Pass) (bool, error) {
+	if len(item.Pending) > 0 {
+		pass.Skipped++
+		return true, nil
+	}
+	if item.TaskInflight != nil {
+		if item.NeedsPerson == "" {
+			item.NeedsPerson = oneLine("a task is waiting for you before it can run again")
+			if err := t.Store.saveActive(item); err != nil && !errors.Is(err, errConsentChanged) {
+				return true, err
+			}
+		}
+		pass.Skipped++
+		return true, nil
+	}
+	return false, nil
+}
+
+// act is what the look's own answer costs: nothing for an item still asleep,
+// a counted check for an undecided or quiet one, and the firing otherwise.
+func (t *Ticker) act(ctx context.Context, pass *Pass, item *Item, now time.Time, found sighting) error {
 	switch found.state {
 	case stateAsleep:
 		// Nothing was looked at, so nothing is written. An item that says it
@@ -621,63 +644,9 @@ func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence 
 		return VerdictUnknown, "", errors.New("there is nothing in this build to judge with")
 	}
 	judgment := Judgment{Item: *item, Evidence: evidence, Previous: item.Previous}
-	var (
-		verdict SentinelReading
-		line    string
-		usd     float64
-		err     error
-	)
-	if t.SentinelVerdict != nil {
-		verdict, line, usd, err = t.SentinelVerdict(ctx, judgment)
-	} else {
-		var yes bool
-		yes, line, usd, err = t.Sentinel(ctx, judgment)
-		switch {
-		case err != nil:
-			verdict = VerdictUnknown
-		case yes:
-			verdict = VerdictYes
-		default:
-			verdict = VerdictNo
-		}
-	}
+	verdict, line, usd, err := t.callSentinel(ctx, judgment)
 	if err != nil {
-		// A REFUSAL, A TIMEOUT OR A PROVIDER THAT COULD NOT ANSWER REACHES HERE.
-		// It is not a no and it is not this item's failure: the opportunity a
-		// person is still waiting on stays open, and no negative is written into
-		// [Item.Previous]. WHAT THE CALL COST IS STILL CHARGED WHEN THE CALLER
-		// COULD NAME IT — a refusal that was billed is still a bill — and a
-		// ledger that could not be written is a storage error that propagates.
-		//
-		// AND THE ITEM'S OWN LIFETIME FIGURE IS PERSISTED HERE, because the
-		// undecided path writes NOTHING else on the item. [Store.NoteSpend] adds
-		// only the cost, under the item's lock: no NextDue is set, no fingerprint
-		// touched, no question written and the status unchanged, so the
-		// opportunity the person is waiting on is not consumed. A failure to
-		// record it is returned rather than swallowed, so the pass counts it.
-		if usd > 0 {
-			// BOTH RECORDS ARE ATTEMPTED, so one storage failure does not
-			// suppress the other: the ledger is what the daily rail reads and
-			// the item's figure is what a card reads, and a cost that reached
-			// either one is truthfully carried. The error is joined and
-			// returned, so the pass counts it and the note says what happened.
-			ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: entryCheck, USD: usd})
-			spendErr := t.Store.NoteSpend(item.ID, usd)
-			if ledgerErr == nil || spendErr == nil {
-				item.SpentUSD += usd
-			}
-			if ledgerErr != nil || spendErr != nil {
-				line = oneLine(strings.TrimSpace(line))
-				if line == "" {
-					line = "I could not tell"
-				}
-				return VerdictUnknown, line, errors.Join(ledgerErr, spendErr)
-			}
-		}
-		if strings.TrimSpace(line) == "" {
-			line = "I could not tell"
-		}
-		return VerdictUnknown, oneLine(line), nil
+		return t.chargeUndecided(item, now, usd, line, err)
 	}
 	if usd > 0 {
 		item.SpentUSD += usd
@@ -686,6 +655,52 @@ func (t *Ticker) judge(ctx context.Context, item *Item, now time.Time, evidence 
 		}
 	}
 	return verdict, oneLine(line), nil
+}
+
+// callSentinel asks the one judge this build has. The verdict door answers in
+// its own words; the boolean door is folded into the same three readings here
+// so every caller reads one shape.
+func (t *Ticker) callSentinel(ctx context.Context, judgment Judgment) (SentinelReading, string, float64, error) {
+	if t.SentinelVerdict != nil {
+		return t.SentinelVerdict(ctx, judgment)
+	}
+	yes, line, usd, err := t.Sentinel(ctx, judgment)
+	switch {
+	case err != nil:
+		return VerdictUnknown, line, usd, err
+	case yes:
+		return VerdictYes, line, usd, nil
+	}
+	return VerdictNo, line, usd, nil
+}
+
+// chargeUndecided is a refusal, a timeout or a provider that could not answer.
+// It is not a no and it is not this item's failure: the opportunity stays open,
+// no negative is written, and what the call cost is still charged when the
+// caller could name it.
+func (t *Ticker) chargeUndecided(item *Item, now time.Time, usd float64, line string, cause error) (SentinelReading, string, error) {
+	if usd > 0 {
+		// BOTH RECORDS ARE ATTEMPTED, so one storage failure does not suppress
+		// the other: the ledger is what the daily rail reads and the item's
+		// figure is what a card reads, and a cost that reached either one is
+		// truthfully carried.
+		ledgerErr := t.Store.Append(Entry{At: now, ItemID: item.ID, Kind: entryCheck, USD: usd})
+		spendErr := t.Store.NoteSpend(item.ID, usd)
+		if ledgerErr == nil || spendErr == nil {
+			item.SpentUSD += usd
+		}
+		if ledgerErr != nil || spendErr != nil {
+			line = oneLine(strings.TrimSpace(line))
+			if line == "" {
+				line = "I could not tell"
+			}
+			return VerdictUnknown, line, errors.Join(cause, ledgerErr, spendErr)
+		}
+	}
+	if strings.TrimSpace(line) == "" {
+		line = "I could not tell"
+	}
+	return VerdictUnknown, oneLine(line), nil
 }
 
 // quiet is the whole of a check that found nothing: the item remembers it
@@ -736,85 +751,23 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	// line, no run and no delivery — the state that would drop the one notice
 	// the person is still waiting on.
 	priorPositive := item.Positive
-	// settled is the delivery identity this firing carried out, recorded on
-	// the ledger line below so the firing is durable evidence in its own right.
-	// It is set only on a successful [ActionSay] settlement.
-	var settled string
 	var (
 		outcome Outcome
 		runDir  string
+		settled string
+		abort   bool
 		err     error
 	)
 	switch item.Does.Kind {
 	case ActionSay:
-		text := strings.ReplaceAll(item.Does.Say, "{{evidence}}", found.evidence)
-		pending, known := item.pendingSay(text)
-		if !known {
-			pending = Pending{ID: newID(), Kind: ActionSay, Text: text, At: now}
-			if !item.addPending(pending) {
-				// BACKPRESSURE, NOT SILENT EVICTION: a cap that dropped the
-				// oldest undelivered line would be this package discarding the
-				// person's own authorized work. It stops and says so instead.
-				item.NeedsPerson = oneLine("there are already too many undelivered lines waiting")
-				_ = t.Store.saveActive(item)
-				return errors.New("standing: too many undelivered lines are waiting; not delivering another")
-			}
-		}
-		// THE INTENT AND THE CONDITION IDENTITY ARE ONE DURABLE UNIT. They are
-		// written by the same save: either both are on disk or neither is.
-		item.Positive = found.positive
-		// THE INTENT IS ON DISK BEFORE THE LINE IS CARRIED OUT. If this write
-		// fails, nothing is delivered: an external notification must never
-		// precede the durable state that lets a later pass reconcile it. The
-		// in-memory identity goes back to what it was, because the document that
-		// comes back to disk in [Ticker.noteFailure] must not carry a positive
-		// with nothing to deliver.
-		if err := t.Store.saveActive(item); err != nil {
-			item.dropPending(pending.ID)
-			item.Positive = priorPositive
-			if errors.Is(err, errConsentChanged) {
-				return nil
-			}
-			return fmt.Errorf("could not record the delivery before making it: %w", err)
-		}
-		outcome, err = t.deliver(ctx, *item, pending)
-		if err != nil {
-			// The line may or may not have landed. The intent STAYS, with a
-			// counted attempt, so a later pass settles it by identity rather
-			// than guessing; the error propagates so the pass counts it.
-			item.bumpPending(pending.ID)
-			if pendingAttempts(item, pending.ID) >= PendingGiveUp {
-				item.NeedsPerson = oneLine("a line could not be delivered and is still waiting")
-			}
-			_ = t.Store.saveActive(item)
-			return err
-		}
-		item.dropPending(pending.ID)
-		settled = pending.ID
+		settled, outcome, abort, err = t.carryOutSay(ctx, item, now, found, priorPositive)
 	case ActionTask:
-		runDir, err = t.Store.newRunDir(item.ID)
-		if err != nil {
-			return err
-		}
-		// THE MARKER GOES DOWN BEFORE THE TASK RUNS. A crash after this line, or
-		// an error below, leaves it on disk and a later pass refuses to replay.
-		attempts := 1
-		if item.TaskInflight != nil {
-			attempts = item.TaskInflight.Attempts + 1
-		}
-		item.TaskInflight = &TaskInflight{RunDir: runDir, Started: now, Attempts: attempts}
-		item.Positive = found.positive
-		if err := t.Store.saveActive(item); err != nil {
-			item.TaskInflight = nil
-			item.Positive = priorPositive
-			if errors.Is(err, errConsentChanged) {
-				return nil
-			}
-			return fmt.Errorf("could not record the task before starting it: %w", err)
-		}
-		outcome, err = t.Runner.Run(ctx, *item, runDir, found.evidence)
+		runDir, outcome, abort, err = t.carryOutTask(ctx, item, now, found, priorPositive)
 	default:
 		return errors.New("standing: an unknown kind of action: " + string(item.Does.Kind))
+	}
+	if abort {
+		return nil
 	}
 	if err != nil {
 		if item.Does.Kind == ActionTask {
@@ -823,8 +776,7 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 			// idempotent, so it is left FOR THE PERSON: the marker stays and
 			// [Ticker.one] refuses to run the task again while it is there. No
 			// exactly-once promise is made about what the task did.
-			item.NeedsPerson = oneLine("a task could not be finished and is waiting for you: " + err.Error())
-			if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
+			if saveErr := t.taskFailed(item, err); saveErr != nil {
 				return errors.Join(err, saveErr)
 			}
 		}
@@ -833,7 +785,100 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	if item.Does.Kind == ActionTask {
 		item.TaskInflight = nil // the attempt reached an outcome
 	}
+	return t.closeFiring(pass, item, now, found, outcome, runDir, settled)
+}
 
+// carryOutSay writes the delivery intent durably and then makes the line. The
+// abort answer is the person winning a race: a save refused because the item
+// moved under the walk is not a failure and nothing is recorded for it.
+func (t *Ticker) carryOutSay(ctx context.Context, item *Item, now time.Time, found sighting, priorPositive string) (settled string, outcome Outcome, abort bool, err error) {
+	text := strings.ReplaceAll(item.Does.Say, "{{evidence}}", found.evidence)
+	pending, known := item.pendingSay(text)
+	if !known {
+		pending = Pending{ID: newID(), Kind: ActionSay, Text: text, At: now}
+		if !item.addPending(pending) {
+			// BACKPRESSURE, NOT SILENT EVICTION: a cap that dropped the
+			// oldest undelivered line would be this package discarding the
+			// person's own authorized work. It stops and says so instead.
+			item.NeedsPerson = oneLine("there are already too many undelivered lines waiting")
+			_ = t.Store.saveActive(item)
+			return "", Outcome{}, false, errors.New("standing: too many undelivered lines are waiting; not delivering another")
+		}
+	}
+	// THE INTENT AND THE CONDITION IDENTITY ARE ONE DURABLE UNIT. They are
+	// written by the same save: either both are on disk or neither is.
+	item.Positive = found.positive
+	// THE INTENT IS ON DISK BEFORE THE LINE IS CARRIED OUT. If this write
+	// fails, nothing is delivered: an external notification must never
+	// precede the durable state that lets a later pass reconcile it. The
+	// in-memory identity goes back to what it was, because the document that
+	// comes back to disk in [Ticker.noteFailure] must not carry a positive
+	// with nothing to deliver.
+	if err := t.Store.saveActive(item); err != nil {
+		item.dropPending(pending.ID)
+		item.Positive = priorPositive
+		if errors.Is(err, errConsentChanged) {
+			return "", Outcome{}, true, nil
+		}
+		return "", Outcome{}, false, fmt.Errorf("could not record the delivery before making it: %w", err)
+	}
+	outcome, err = t.deliver(ctx, *item, pending)
+	if err != nil {
+		// The line may or may not have landed. The intent STAYS, with a
+		// counted attempt, so a later pass settles it by identity rather
+		// than guessing; the error propagates so the pass counts it.
+		item.bumpPending(pending.ID)
+		if pendingAttempts(item, pending.ID) >= PendingGiveUp {
+			item.NeedsPerson = oneLine("a line could not be delivered and is still waiting")
+		}
+		_ = t.Store.saveActive(item)
+		return "", Outcome{}, false, err
+	}
+	item.dropPending(pending.ID)
+	return pending.ID, outcome, false, nil
+}
+
+// carryOutTask writes the in-flight marker before the run and then runs it. The
+// marker is the durable refusal to replay: a crash after this line leaves it on
+// disk, and a later pass will not start the task again.
+func (t *Ticker) carryOutTask(ctx context.Context, item *Item, now time.Time, found sighting, priorPositive string) (runDir string, outcome Outcome, abort bool, err error) {
+	runDir, err = t.Store.newRunDir(item.ID)
+	if err != nil {
+		return "", Outcome{}, false, err
+	}
+	attempts := 1
+	if item.TaskInflight != nil {
+		attempts = item.TaskInflight.Attempts + 1
+	}
+	item.TaskInflight = &TaskInflight{RunDir: runDir, Started: now, Attempts: attempts}
+	item.Positive = found.positive
+	if err := t.Store.saveActive(item); err != nil {
+		item.TaskInflight = nil
+		item.Positive = priorPositive
+		if errors.Is(err, errConsentChanged) {
+			return "", Outcome{}, true, nil
+		}
+		return "", Outcome{}, false, fmt.Errorf("could not record the task before starting it: %w", err)
+	}
+	outcome, err = t.Runner.Run(ctx, *item, runDir, found.evidence)
+	return runDir, outcome, false, err
+}
+
+// taskFailed lands the one field a failed task owes the person: the marker
+// stays and the reason is written for them.
+func (t *Ticker) taskFailed(item *Item, cause error) error {
+	item.NeedsPerson = oneLine("a task could not be finished and is waiting for you: " + cause.Error())
+	if saveErr := t.Store.saveActive(item); saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
+		return saveErr
+	}
+	return nil
+}
+
+// closeFiring is the accounting every firing owes once its line or its task has
+// come back clean: the item's own fields, the ledger, the log, and the guarded
+// save. A ledger or log failure is ACCOUNTING, not the check, and is returned as
+// such so [Tick] counts it without relabelling the outcome.
+func (t *Ticker) closeFiring(pass *Pass, item *Item, now time.Time, found sighting, outcome Outcome, runDir, settled string) error {
 	item.Runs++
 	item.LastFired = now
 	item.LastChecked = now
@@ -846,7 +891,6 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 		writeCameTo(runDir, outcome.Kind)
 	}
 	item.Previous = remember(item.Previous, found.line, outcome)
-
 	if item.retiresOnFiring() {
 		// A reminder is the smallest of these: it fires once and it retires. A
 		// one-shot condition is the same request made of the world, and it is
@@ -857,7 +901,6 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 		item.Status = StatusRetired
 		item.RetiredWhy = "fired"
 	}
-
 	pass.Fired++
 	if item.Does.Kind == ActionSay {
 		pass.Said++
@@ -874,9 +917,6 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	if saveErr != nil && !errors.Is(saveErr, errConsentChanged) {
 		return errors.Join(ledgerErr, logErr, saveErr)
 	}
-	// THE DELIVERY SUCCEEDED. A ledger or log failure is ACCOUNTING, not the
-	// check, and must not be relabelled as one: [Tick] counts it and says so
-	// without overwriting the outcome the firing just recorded.
 	if ledgerErr != nil || logErr != nil {
 		return &accountingError{err: errors.Join(ledgerErr, logErr)}
 	}
@@ -1294,13 +1334,9 @@ const truncatedPrefix = "t"
 // hashes to a different digest than a complete one, so arming ([Store.Arm])
 // refuses it and a watch never certifies "unchanged" on a partial look.
 func fingerprint(workspace, glob string) (string, string, bool, error) {
-	pattern := glob
-	if !filepath.IsAbs(pattern) {
-		pattern = filepath.Join(workspace, pattern)
-	}
-	matches, truncated, err := boundedGlob(pattern, fingerprintMaxFiles)
+	matches, truncated, err := fingerprintMatches(workspace, glob)
 	if err != nil {
-		return "", "", false, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+		return "", "", false, err
 	}
 	sum := sha256.New()
 	listing := &strings.Builder{}
@@ -1311,71 +1347,117 @@ func fingerprint(workspace, glob string) (string, string, bool, error) {
 			truncated = true
 			break
 		}
-		info, err := os.Lstat(match)
-		if err != nil {
-			// It was listed and then was not there: an UNSTABLE listing is
-			// unknown, not "unchanged". Marking it truncated stops the reading
-			// from certifying anything about a moment it could not trust.
+		if cut := fingerprintOne(sum, listing, match, workspace, &budget); cut {
 			truncated = true
-			continue
-		}
-		name := match
-		if relative, err := filepath.Rel(workspace, match); err == nil {
-			name = relative
-		}
-		kind := "file"
-		size := info.Size()
-		switch {
-		case info.Mode()&os.ModeSymlink != 0:
-			kind = "symlink"
-			if target, err := os.Readlink(match); err == nil {
-				size = int64(len(target))
-			} else {
-				truncated = true
-			}
-		case info.IsDir():
-			kind = "dir"
-		}
-		fmt.Fprintf(sum, "%s\x00%s\x00%d\x00", name, kind, size)
-		switch kind {
-		case "file":
-			if budget <= 0 {
-				truncated = true
-				break
-			}
-			limit := int64(fingerprintPerFile)
-			if budget < limit {
-				limit = budget
-			}
-			read, fileTruncated, readErr := hashFile(sum, match, limit)
-			budget -= read
-			if readErr != nil || fileTruncated {
-				truncated = true
-			}
-			// The bytes we read disagree with the size we stat'd: the file moved
-			// under the scan. That instability is unknown, never "unchanged".
-			if readErr == nil && !fileTruncated && info.Size() <= limit && read != info.Size() {
-				truncated = true
-			}
-		case "symlink":
-			if target, err := os.Readlink(match); err == nil {
-				if budget > 0 {
-					sum.Write([]byte(target))
-					budget -= int64(len(target))
-				} else {
-					truncated = true
-				}
-			}
-		}
-		if listing.Len() < ProbeClip {
-			fmt.Fprintf(listing, "%s  %d bytes\n", name, size)
 		}
 	}
+	return fingerprintDigest(sum, listing.String(), truncated)
+}
+
+// fingerprintMatches expands one glob under the listing bound and reports the
+// truncation the caller must treat as unknown.
+func fingerprintMatches(workspace, glob string) ([]string, bool, error) {
+	pattern := glob
+	if !filepath.IsAbs(pattern) {
+		pattern = filepath.Join(workspace, pattern)
+	}
+	matches, truncated, err := boundedGlob(pattern, fingerprintMaxFiles)
+	if err != nil {
+		return nil, false, fmt.Errorf("standing: cannot read the pattern %q: %w", glob, err)
+	}
+	return matches, truncated, nil
+}
+
+// fingerprintOne folds one match into the digest and the human listing. It
+// answers whether anything about this match was UNSTABLE — a listing it could
+// not stat, a file that moved under the scan, or a budget it ran past — which
+// the caller reads as unknown rather than as unchanged.
+func fingerprintOne(sum hash.Hash, listing *strings.Builder, match, workspace string, budget *int64) bool {
+	info, err := os.Lstat(match)
+	if err != nil {
+		// It was listed and then was not there: an UNSTABLE listing is
+		// unknown, not "unchanged".
+		return true
+	}
+	name := match
+	if relative, err := filepath.Rel(workspace, match); err == nil {
+		name = relative
+	}
+	kind, size, truncated := describeMatch(info, match)
+	fmt.Fprintf(sum, "%s\x00%s\x00%d\x00", name, kind, size)
+	if cut := fingerprintBytes(sum, match, kind, size, budget); cut {
+		truncated = true
+	}
+	if listing.Len() < ProbeClip {
+		fmt.Fprintf(listing, "%s  %d bytes\n", name, size)
+	}
+	return truncated
+}
+
+// describeMatch is what one directory entry is called in the digest, and the
+// size the listing shows for it: a symlink reports its target's length, a
+// directory the constant tag, and a file its own size.
+func describeMatch(info os.FileInfo, match string) (string, int64, bool) {
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		if target, err := os.Readlink(match); err == nil {
+			return "symlink", int64(len(target)), false
+		}
+		return "symlink", info.Size(), true
+	case info.IsDir():
+		return "dir", info.Size(), false
+	}
+	return "file", info.Size(), false
+}
+
+// fingerprintBytes folds what a match HOLDS into the sum, under the remaining
+// byte budget, and answers whether the reading was cut.
+func fingerprintBytes(sum hash.Hash, match, kind string, size int64, budget *int64) bool {
+	switch kind {
+	case "file":
+		return hashMatchWithin(sum, match, size, budget)
+	case "symlink":
+		target, err := os.Readlink(match)
+		if err != nil {
+			return false
+		}
+		if *budget <= 0 {
+			return true
+		}
+		sum.Write([]byte(target))
+		*budget -= int64(len(target))
+	}
+	return false
+}
+
+// hashMatchWithin reads one file under both caps and reports an instability:
+// a read error, a file longer than the limit, or bytes that disagree with the
+// size we stat'd because the file moved under the scan.
+func hashMatchWithin(sum hash.Hash, match string, size int64, budget *int64) bool {
+	if *budget <= 0 {
+		return true
+	}
+	limit := int64(fingerprintPerFile)
+	if *budget < limit {
+		limit = *budget
+	}
+	read, fileTruncated, readErr := hashFile(sum, match, limit)
+	*budget -= read
+	if readErr != nil || fileTruncated {
+		return true
+	}
+	return size <= limit && read != size
+}
+
+// fingerprintDigest is the one spelling of the truncated-versus-whole prefix on
+// the hex digest, so a caller that certifies "unchanged" reads the same shape
+// from every road.
+func fingerprintDigest(sum hash.Hash, listing string, truncated bool) (string, string, bool, error) {
 	hexdigest := hex.EncodeToString(sum.Sum(nil))
 	if truncated {
 		hexdigest = truncatedPrefix + hexdigest
 	}
-	return hexdigest, listing.String(), truncated, nil
+	return hexdigest, listing, truncated, nil
 }
 
 // globMaxEntries bounds how many directory entries one listing step may read,
@@ -1399,65 +1481,18 @@ const globMaxEntries = 100000
 // literal path segment that does not exist simply contributes nothing, which is
 // the same "no match" an old reader got.
 func boundedGlob(pattern string, max int) (matches []string, truncated bool, err error) {
-	volume := filepath.VolumeName(pattern)
-	rest := strings.TrimPrefix(pattern, volume)
-	root := volume
-	if strings.HasPrefix(rest, string(filepath.Separator)) {
-		root += string(filepath.Separator)
-		rest = strings.TrimPrefix(rest, string(filepath.Separator))
-	}
-	if root == "" {
-		root = "."
-	}
+	root, rest := globRoot(pattern)
 	bases := []string{root}
 	scanned := 0
 	for _, segment := range strings.Split(rest, string(filepath.Separator)) {
 		if segment == "" || segment == "." {
 			continue
 		}
-		var next []string
-		meta := strings.ContainsAny(segment, "*?[")
-		for _, base := range bases {
-			if !meta {
-				candidate := filepath.Join(base, segment)
-				if _, statErr := os.Lstat(candidate); statErr == nil {
-					next = append(next, candidate)
-				}
-				continue
-			}
-			entries, readErr := os.ReadDir(base)
-			if readErr != nil {
-				// A base that is gone or is not a directory contributes nothing,
-				// the way filepath.Glob's silent skip did; any other failure is real.
-				if info, statErr := os.Stat(base); statErr != nil || !info.IsDir() {
-					continue
-				}
-				return nil, false, readErr
-			}
-			for _, entry := range entries {
-				scanned++
-				if scanned > globMaxEntries {
-					truncated = true
-					break
-				}
-				ok, matchErr := filepath.Match(segment, entry.Name())
-				if matchErr != nil {
-					return nil, false, matchErr
-				}
-				if ok {
-					next = append(next, filepath.Join(base, entry.Name()))
-				}
-			}
-			if len(next) >= max {
-				truncated = true
-				break
-			}
+		next, seen, cut, stepErr := globStep(bases, segment, max, scanned, truncated)
+		if stepErr != nil {
+			return nil, false, stepErr
 		}
-		if len(next) > max {
-			next = next[:max]
-			truncated = true
-		}
-		bases = next
+		bases, scanned, truncated = next, seen, cut
 		if len(bases) == 0 || (truncated && scanned > globMaxEntries) {
 			break
 		}
@@ -1467,6 +1502,72 @@ func boundedGlob(pattern string, max int) (matches []string, truncated bool, err
 		return bases[:max], true, nil
 	}
 	return bases, truncated, nil
+}
+
+// globRoot splits a pattern into the literal prefix it starts from and the
+// segments that remain to be walked.
+func globRoot(pattern string) (root, rest string) {
+	volume := filepath.VolumeName(pattern)
+	rest = strings.TrimPrefix(pattern, volume)
+	root = volume
+	if strings.HasPrefix(rest, string(filepath.Separator)) {
+		root += string(filepath.Separator)
+		rest = strings.TrimPrefix(rest, string(filepath.Separator))
+	}
+	if root == "" {
+		root = "."
+	}
+	return root, rest
+}
+
+// globStep expands ONE path segment against every base, listing each directory
+// once. It never hands a pattern to filepath.Glob: a metacharacter in any
+// segment is expanded here, under the same entry bound, and a pattern this walk
+// cannot expand answers truncation rather than a lie about an empty set.
+func globStep(bases []string, segment string, max, scanned int, truncated bool) ([]string, int, bool, error) {
+	var next []string
+	meta := strings.ContainsAny(segment, "*?[")
+	for _, base := range bases {
+		if !meta {
+			candidate := filepath.Join(base, segment)
+			if _, statErr := os.Lstat(candidate); statErr == nil {
+				next = append(next, candidate)
+			}
+			continue
+		}
+		entries, readErr := os.ReadDir(base)
+		if readErr != nil {
+			// A base that is gone or is not a directory contributes nothing,
+			// the way filepath.Glob's silent skip did; any other failure is real.
+			if info, statErr := os.Stat(base); statErr != nil || !info.IsDir() {
+				continue
+			}
+			return nil, scanned, false, readErr
+		}
+		for _, entry := range entries {
+			scanned++
+			if scanned > globMaxEntries {
+				truncated = true
+				break
+			}
+			ok, matchErr := filepath.Match(segment, entry.Name())
+			if matchErr != nil {
+				return nil, scanned, false, matchErr
+			}
+			if ok {
+				next = append(next, filepath.Join(base, entry.Name()))
+			}
+		}
+		if len(next) >= max {
+			truncated = true
+			break
+		}
+	}
+	if len(next) > max {
+		next = next[:max]
+		truncated = true
+	}
+	return next, scanned, truncated, nil
 }
 
 // hashFile writes up to limit bytes of path into dst and answers how many it

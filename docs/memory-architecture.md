@@ -248,7 +248,7 @@ after ranking.
 ```
 1. Structural   WHERE owner IN visible(ctx) AND status='active'
                 AND (review_after IS NULL OR review_after > now)
-                → capped at 200 candidates
+                → ranked, no cap (the whole owner's active set)
 2. Lexical      FTS5 BM25 against the turn text → top 50
 3. Edges        1-hop relates_to/contradicts/co_used neighbors of the
                 current top 20 → joined at their edge weight
@@ -302,8 +302,9 @@ measurement.
 - **Keyset pagination everywhere**: `/memories` and the activity feed page by
   `(created_at, id)` cursors, 50 per page. No OFFSET. `ChangedSince` already
   sequences the home screen and keeps its contract.
-- **Budgets are hard caps**: k≈8 injected, funnel capped at 200 candidates,
-  tidy archives the long-unused.
+- **Budgets are hard caps**: k≈8 injected, tidy archives the long-unused.
+  Nothing truncates the candidate corpus before ranking: the structural tier
+  ranks the whole owner's active set and only the final k is cut.
 - **Vectors isolated**: 6 KB/row at 1536 dims lives only in `memory_vectors`;
   non-embedding installs never pay it.
 
@@ -501,5 +502,3 @@ identity. **Shipped, and corrected where the early draft guessed:**
    the surface-level staleness is pre-existing behaviour this wave did not
    introduce and did not fix, and it is written here so it is nobody's
    surprise later.
-5. A per-project memory-place shelf view and a re-home verb on the quarantined
-   shelf (the primitives are shipped; the surface is not).

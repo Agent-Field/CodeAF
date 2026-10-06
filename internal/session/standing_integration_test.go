@@ -539,18 +539,15 @@ func TestTheFoldTakesValidNotesFromAnInboxThatCouldNotBeReadWhole(t *testing.T) 
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, func(config *Config) {
 		config.Place = Place{Dir: dir}
 	})
-	fold := ""
+	fold := standingRecordedFold(agent)
 	surfaced := false
 	for _, line := range standingQueued(agent) {
-		if strings.HasPrefix(line, "while you were away") {
-			fold = line
-		}
 		if strings.Contains(line, "could not be fully read") {
 			surfaced = true
 		}
 	}
 	if !strings.Contains(fold, "the fix landed") {
-		t.Fatalf("the valid note was dropped when a sibling could not be read; queued %v", standingQueued(agent))
+		t.Fatalf("the valid note was dropped when a sibling could not be read; fold %q queued %v", fold, standingQueued(agent))
 	}
 	if !surfaced {
 		t.Fatal("the inbox read failure was never surfaced to the conversation")
