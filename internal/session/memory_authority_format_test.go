@@ -281,6 +281,61 @@ func TestOneTurnTaskAuthorizationDoesNotBecomeBinding(t *testing.T) {
 			t.Fatalf("a one-off scoped span %q was not demoted: %+v", o.quote, got)
 		}
 	}
+	// A WORKSTYLE WORD IS NOT A TIME SCOPE. "cross-check", "independently" and
+	// "read-only" describe HOW work is done, not how long it lasts, so they sit
+	// in the ordinary-task-cue tier: a span that also states a lasting quantifier
+	// or a durable decision keeps its authority rather than being demoted as a
+	// one-turn task.
+	workstyle := []struct {
+		user, quote, label string
+	}{
+		{"Always independently verify the ledger before every release.",
+			"Always independently verify the ledger before every release", "approved_rule"},
+		{"The release artifacts must stay read-only.",
+			"The release artifacts must stay read-only", "approved_rule"},
+		{"We decided to cross-check the amounts before every deployment.",
+			"We decided to cross-check the amounts before every deployment", "confirmed_decision"},
+	}
+	for _, w := range workstyle {
+		if got := demote(w.user, w.quote, w.label); got.Authority != w.label {
+			t.Fatalf("a lasting span %q using a workstyle word was demoted: %+v", w.quote, got)
+		}
+	}
+	// A LASTING MARKER IS READ ACROSS PUNCTUATION. "always" closes the clause, so
+	// a spaced-substring test would miss it; the fields-based read keeps the span
+	// authoritative and the workstyle verb in the same span does not demote it.
+	punctuated := demote(
+		"Only an independently verified total counts; verify the ledger independently, always.",
+		"Only an independently verified total counts; verify the ledger independently, always",
+		"approved_rule")
+	if punctuated.Authority != "approved_rule" {
+		t.Fatalf("a punctuation-adjacent lasting marker was not read: %+v", punctuated)
+	}
+	// "keep this" CAN INTRODUCE A LASTING INVARIANT, so those words alone are not
+	// a one-off frame; the lasting quantifier in the same span keeps it binding.
+	keep := demote("Keep this rule: releases must stay read-only.",
+		"Keep this rule: releases must stay read-only", "approved_rule")
+	if keep.Authority != "approved_rule" {
+		t.Fatalf("a 'keep this' lasting invariant was demoted: %+v", keep)
+	}
+	// AN EXPLICIT BOUNDED FRAME STILL DEMOTES A READ-ONLY TASK. "read-only" alone
+	// is a workstyle, but "for this task", "for this check" and "for now" name
+	// the one turn the work belongs to, so the span does not become lasting.
+	bounded := []struct {
+		user, quote string
+	}{
+		{"Keep the diff read-only for this task.",
+			"Keep the diff read-only for this task"},
+		{"For this check the comparison must stay read-only.",
+			"For this check the comparison must stay read-only"},
+		{"Run the read-only comparison once, for now.",
+			"Run the read-only comparison once, for now"},
+	}
+	for _, b := range bounded {
+		if got := demote(b.user, b.quote, "approved_rule"); got.Authority != "observation" {
+			t.Fatalf("an explicitly bounded read-only span %q was not demoted: %+v", b.quote, got)
+		}
+	}
 }
 
 // 5. THE ACTUAL CONSTRUCTOR'S FIRST REQUEST BINDS THE APPROVED RULE BEFORE ANY

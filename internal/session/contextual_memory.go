@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -819,41 +820,49 @@ func explicitContextualDecision(text string) bool {
 
 // contextualOneTurnTaskAuthorization reports a span that directs the agent to
 // carry out ONE bounded piece of work now — cross-check, compare, verify, run or
-// read something, usually with a read-only or one-off frame — rather than
-// stating a lasting rule or a decision the person has made. It answers the
-// source gap F3 names: the authority gates read ordinary wording cues, a one-turn
-// task uses those same words, and an extractor that mislabels the task would
-// otherwise promote it to a persistent binding. The check is deliberately
-// narrow and textual, and it never demotes a span that ALSO states a lasting
-// quantifier ("always", "never", "must") or a durable decision ("we decided",
-// "instead of"), so a genuine durable rule or an explicit decision from the
-// same turn still binds; an explicit one-off scope ("for this task", "for now")
-// still bounds that span and keeps the demotion.
+// read something — rather than stating a lasting rule or a decision the person
+// has made. It answers the source gap F3 names: the authority gates read ordinary
+// wording cues, a one-turn task uses those same words, and an extractor that
+// mislabels the task would otherwise promote it to a persistent binding.
+//
+// TIME SCOPE, NOT WORKSTYLE, DECIDES THE UNCONDITIONAL DEMOTION. Only a frame
+// that names the ONE turn the work belongs to ("for this task", "for this turn",
+// "for this check", "one-off", "for now", "just once") bounds a span on its own.
+// A workstyle verb ("cross-check", "independently", "read-only") describes HOW
+// the work is done and says nothing about how long it lasts, so it sits in the
+// ordinary-task-cue tier beside "run the", "verify the" and "check the": it
+// demotes a span only when that span states no lasting quantifier ("always",
+// "never", "must") and no durable decision. That keeps "Always independently
+// verify the ledger before every release" and "The release artifacts must stay
+// read-only" authoritative. "keep this" is deliberately absent: it can introduce
+// a lasting invariant ("keep this rule"), so those words alone are not a one-off
+// frame.
 func contextualOneTurnTaskAuthorization(clause string) bool {
 	lower := strings.ToLower(clause)
-	// A CLEARLY BOUNDED ONE-TURN FRAME demotes on its own. A cross-check, an
-	// independent verification, a read-only run, a "keep this" hold or an
-	// explicit one-off scope ("for now", "for this task") names the work of
-	// this turn, so it does not become a lasting rule however else it is
-	// worded; a lasting quantifier in the same span does not rescue it.
-	for _, cue := range []string{
-		"cross-check", "cross check", "independently ", "read-only", "read only",
-		"one-off", "one off", "for now", "for this task", "for this turn",
-		"for this check", "keep this",
+	// AN EXPLICIT ONE-TURN FRAME demotes on its own. These are the only cues that
+	// name a bounded time scope rather than a way of working, so a lasting
+	// quantifier in the same span ("for this task always print all columns")
+	// does not rescue it.
+	for _, frame := range []string{
+		"for this task", "for this turn", "for this check",
+		"one-off", "one off", "for now", "for this once", "just once", "this once",
 	} {
-		if strings.Contains(lower, cue) {
+		if strings.Contains(lower, frame) {
 			return true
 		}
 	}
-	// AN ORDINARY TASK VERB ALONE DOES NOT DEMOTE A LASTING RULE. "run the",
-	// "check the", "verify the" and "compare the" are the same words a durable
-	// constraint uses ("Never run the ledger utility without approval",
-	// "Always check the ledger before every release"). A span that also states
-	// a lasting quantifier ("always", "never", "must") or a durable decision
-	// keeps its authority; only a bare task command is a one-turn
-	// authorization, and an explicit one-off scope still bounds it.
+	// AN ORDINARY TASK CUE ALONE DOES NOT DEMOTE A LASTING RULE. "run the",
+	// "check the" and "verify the" are the same words a durable constraint uses
+	// ("Never run the ledger utility without approval", "Always check the ledger
+	// before every release"), and "cross-check", "independently" and "read-only"
+	// state a workstyle, not a time scope. A span that also states a lasting
+	// quantifier ("always", "never", "must") or a durable decision keeps its
+	// authority; only a bare task command is a one-turn authorization.
 	task := false
-	for _, cue := range []string{"run the", "re-run", "double-check", "verify the", "check the", "compare the"} {
+	for _, cue := range []string{
+		"run the", "re-run", "double-check", "verify the", "check the", "compare the",
+		"cross-check", "cross check", "independently", "read-only", "read only",
+	} {
 		if strings.Contains(lower, cue) {
 			task = true
 			break
@@ -867,15 +876,30 @@ func contextualOneTurnTaskAuthorization(clause string) bool {
 			return false
 		}
 	}
-	// A LASTING QUANTIFIER keeps the span authoritative; word boundaries stop
-	// "whenever" or "mustard" standing in for "never"/"must".
-	padded := " " + lower + " "
-	for _, lasting := range []string{" always ", " never ", " must "} {
-		if strings.Contains(padded, lasting) {
+	// A LASTING QUANTIFIER keeps the span authoritative. The markers are read as
+	// whole fields, so surrounding punctuation ("always.", "must,") still counts
+	// while a longer word ("mustard", "whenever") is not read as one.
+	for _, lasting := range []string{"always", "never", "must"} {
+		if contextualHasWord(lower, lasting) {
 			return false
 		}
 	}
 	return true
+}
+
+// contextualHasWord reports whether word stands on its own inside text, with any
+// rune that is not a letter or digit acting as a boundary. It reads fields rather
+// than padded substrings so a lasting marker survives ordinary punctuation
+// without letting a longer word ("mustard", "whenever") stand in for it.
+func contextualHasWord(text, word string) bool {
+	for _, field := range strings.FieldsFunc(text, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
+		if field == word {
+			return true
+		}
+	}
+	return false
 }
 
 // contextualSanitizedItems is contextualItems with the secret redactor applied
