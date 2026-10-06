@@ -344,6 +344,11 @@ func TestProjectionOmitsHistoricPurePreviewAlternative(t *testing.T) {
 	}
 	appendH("hist-fail", "bash: "+previewFailed, store.AttemptFailed, "", "r0")
 	appendH("hist-noise", storedBytePreview, store.AttemptSucceeded, "hist-fail", "r1")
+	// THE EXACT LIVE BOUNDED-SIZE ALTERNATIVE: the historic row build 902b4eb8c
+	// still served because the old reader refused the literal `.read(4)` size.
+	// It is the same inspection class and must be projected out here too, while
+	// its failure history and the later genuine calculation both stay.
+	appendH("hist-size", "bash: "+byteSizePreview, store.AttemptSucceeded, "hist-fail", "r5")
 	// The exact e62 SECOND successful command, stored the same way: a whole-file
 	// read dump is the same inspection class and is projected out too.
 	appendH("hist-dump", "bash: "+fullDumpPreview, store.AttemptSucceeded, "hist-fail", "r4")
@@ -370,6 +375,11 @@ func TestProjectionOmitsHistoricPurePreviewAlternative(t *testing.T) {
 	}
 	if strings.Contains(block, fullDumpPreview) {
 		t.Fatalf("the historic full read dump was still rendered:\n%s", block)
+	}
+	// THE BOUNDED-SIZE ROW: the actual `.read(4)` historic alternative is
+	// projected out by the same classifier that now refuses it at capture.
+	if strings.Contains(block, byteSizePreview) {
+		t.Fatalf("the historic bounded-size pure preview was still rendered:\n%s", block)
 	}
 	// LEFT: the failure history remains.
 	if !strings.Contains(block, previewFailed) {
@@ -444,5 +454,64 @@ func TestProjectionGuardProvesOnlyCompleteKnownPreview(t *testing.T) {
 		if priorAlternativeProvenPurePreview(action) {
 			t.Errorf("%s was misclassified as the pure preview: %q", name, action)
 		}
+	}
+}
+
+// THE ACTUAL BOUNDED-SIZE ROW IS PROJECTED AT THE BEFORE-FIRST-REQUEST SEAM, AND
+// THE GENUINE LATER CALCULATION TAKES THE ALTERNATIVE SLOT. This drives the real
+// turn: a historic failure, the exact `.read(4)` diagnostic an older build stored
+// as its alternative, and the later standard-library calculation. The first
+// provider request -- before any tool ran -- must carry the genuine calculation
+// and never the bounded-size preview, with the failure history intact and the raw
+// journal untouched. It is the deterministic receipt counterpart of the live
+// session where the `.read(4)` alternative reached the model.
+func TestBoundedSizePreviewBeforeFirstRequestKeepsGenuineCalc(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	script := &reflexScript{}
+	a, brain := brainAgent(t, script, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	owner := store.OwnerProject("p")
+	before := attemptsForProject(t, brain, a)
+
+	failed := seedFailure(t, brain, owner, previewGoal, "bash: "+previewFailed,
+		"UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0", "turn:b:f", "hf", "snapB")
+	// The historic bounded-size preview exactly as build 902b4eb8c stored it.
+	seedAlternative(t, brain, owner, previewGoal, "bash: "+byteSizePreview,
+		"b'\\xff\\xfec\\x00'", "turn:b:n", "hn", "snapB", failed.SourceKey)
+	// The later genuine calculation, recorded afterwards under the same snapshot.
+	seedAlternative(t, brain, owner, previewGoal, "bash: "+contextualClip(previewGenuine, 240),
+		"food 0.30\\ntravel 37.05\\ngrand total 37.35", "turn:b:g", "hg", "snapB", failed.SourceKey)
+
+	events := collect(t, mustSubmit(t, a, previewGoal))
+	for _, event := range events {
+		if event.Kind == EventToolBegin || event.Kind == EventToolEnd || event.Kind == EventToolFailed {
+			t.Fatalf("a tool ran before the alternative-carrying first request: %+v", event)
+		}
+	}
+
+	script.mu.Lock()
+	requests := append([]string(nil), script.requests...)
+	script.mu.Unlock()
+	if len(requests) == 0 {
+		t.Fatal("the turn made no provider request")
+	}
+	first := requests[0]
+	if !strings.Contains(first, "raw.decode('utf-16')") {
+		t.Fatalf("the genuine later calculation was not in the first request:\n%s", first)
+	}
+	if strings.Contains(first, byteSizePreview) {
+		t.Fatalf("the historic bounded-size preview reached the first request:\n%s", first)
+	}
+	if !strings.Contains(first, previewFailed) {
+		t.Fatalf("the failure history was dropped from the first request:\n%s", first)
+	}
+	if got := strings.Count(first, "Observed successful alternative"); got != 1 {
+		t.Fatalf("expected exactly the genuine alternative in the first request, got %d:\n%s", got, first)
+	}
+
+	// UNMODIFIED: the read-only render wrote nothing back to the journal.
+	after := attemptsForProject(t, brain, a)
+	if len(after) != len(before)+3 {
+		t.Fatalf("the seeded rows were not all retained: %d -> %d", len(before), len(after))
 	}
 }
