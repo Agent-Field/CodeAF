@@ -695,6 +695,16 @@ func shellToolName(name string) bool {
 // treated as ordinary work, never as metadata, so an unfamiliar command is
 // never mislabelled.
 //
+// A PURE READ-PREVIEW OF A FILE IS METADATA TOO. An interpreter one-liner that
+// only reads a file's bytes into a buffer and prints the byte count and a
+// bounded prefix (`print(len(d), d[:80])`) copies bytes out of a file to look at
+// them; it transforms nothing, whatever the file, library or interpreter is
+// named. [segmentReadPreview] recognises that bounded shape generically, so the
+// same diagnostic can never be carried as the way a failed piece of work got
+// done. The reader is lexical and narrow and makes no claim of complete program
+// understanding: see [programReadPreviewOnly] for the shape it proves and the
+// forms it leaves as work.
+//
 // THE SEGMENTS ARE READ BY THE ONE QUOTE-AWARE READER [shellSegments], not by
 // splitting on every `;`, `|` and newline in the text. A quoted `grep -E
 // 'agent|task|plandb|codeaf'` pattern carries `|` inside a string; a raw split
@@ -710,9 +720,10 @@ func shellMetadataOnly(body string) bool {
 			continue
 		}
 		read = true
-		if !shellCommandIsMetadata(words) {
-			return false
+		if shellCommandIsMetadata(words) || segmentReadPreview(segment) {
+			continue
 		}
+		return false
 	}
 	return read
 }
@@ -1967,6 +1978,493 @@ func programPathRead(prog string, i int) bool {
 		i++
 	}
 	return i < len(prog) && prog[i] == '('
+}
+
+// segmentReadPreview answers whether ONE shell segment is the pure read-preview
+// diagnostic: a recognised interpreter run with an inline program that only
+// reads a file and prints its length or a bounded prefix. It is the segment
+// level of [programReadPreviewOnly], and it is what lets [shellMetadataOnly]
+// judge such a diagnostic as the metadata it is without special-casing any file,
+// library or expected result.
+func segmentReadPreview(segment string) bool {
+	words := shellWords(segment)
+	if !isInterpreterCommand(words) {
+		return false
+	}
+	prog, ok := interpreterInlineProgram(segment, words)
+	return ok && programReadPreviewOnly(prog)
+}
+
+// interpreterInlineProgram returns the inline source an interpreter segment
+// actually executes: an explicit `-c`/`-e`/`--eval` program replaces a heredoc
+// body even when the program is empty, a bare `-` or an ordinary heredoc keeps
+// the body, and a `python script.py` / `python -m module` has no inline source
+// at all. ok=false means the segment carries no readable inline source, so the
+// caller must not claim one.
+func interpreterInlineProgram(segment string, words []shellWord) (string, bool) {
+	if header, body, bounded, opens := heredocLine(segment); opens {
+		if !bounded || heredocOperators(header) != 1 {
+			return "", false
+		}
+		if p := inlineProgramArg(shellWords(header)); p.found && p.provided {
+			return p.text, true
+		}
+		return body, true
+	}
+	if p := inlineProgramArg(words); p.found {
+		return p.text, true
+	}
+	return "", false
+}
+
+// programReadPreviewOnly answers whether an inline interpreter program is the
+// pure read-and-preview diagnostic: it reads a file's bytes into a buffer (or
+// reads one inline) and then only PRINTS that buffer's LENGTH or a bounded
+// PREFIX of it, as in `print(len(d), d[:80])`. Such a program copies bytes out
+// of a file to look at them; it transforms nothing, so it is metadata and never
+// the way a failed piece of work got done.
+//
+// THE RECOGNITION IS POSITIVE, BOUNDED AND GENERIC. It names no file, library,
+// result or domain: the same shape is recognised for any path and any
+// interpreter, so a pure byte-count/prefix/read-preview diagnostic is metadata
+// whatever `vendor.csv`, `totals`, `pandas` or any other word is present. A
+// program the reader CAN read must consist ONLY of imports, simple string
+// aliases, a pure read assignment and length/prefix prints. ANY other statement
+// the reader can read — a decode, a parse, arithmetic, a loop, an unknown call —
+// proves the program does work and leaves the segment as work, which is how the
+// genuine `read_bytes`/`read_text` -> decode -> parse -> arithmetic calculation
+// stays eligible.
+//
+// IT FAILS CLOSED ON A PROGRAM IT CANNOT READ. When the statement structure
+// cannot be bounded (an unterminated string, unbalanced brackets) the reader
+// cannot prove the program does work, so it refuses rather than guessing that an
+// unreadable one-liner is ordinary work. This is a small lexical reader, not a
+// Python parser: it understands the observed diagnostic forms and leaves every
+// other form as work, and no claim of complete program understanding is made.
+func programReadPreviewOnly(prog string) bool {
+	stmts, bounded := programSimpleStatements(prog)
+	if !bounded {
+		return true
+	}
+	aliases := map[string]bool{}
+	buffers := map[string]bool{}
+	prints := 0
+	reads := 0
+	for _, stmt := range stmts {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if programImportStatement(stmt) {
+			continue
+		}
+		if name, rhs, isAssign := programSimpleAssignment(stmt); isAssign {
+			if programStringLiteralExpr(rhs) {
+				aliases[name] = true
+				continue
+			}
+			if programPureReadExpr(rhs, aliases) {
+				buffers[name] = true
+				reads++
+				continue
+			}
+			return false
+		}
+		args, isPrint := programPrintArgs(stmt)
+		if !isPrint {
+			return false
+		}
+		for _, arg := range args {
+			ok, read := programPreviewArg(arg, aliases, buffers)
+			if !ok {
+				return false
+			}
+			if read {
+				reads++
+			}
+		}
+		prints++
+	}
+	return prints > 0 && reads > 0
+}
+
+// programSimpleStatements splits a program into its top-level statements at `;`
+// and newlines that sit outside strings and brackets, dropping `#` comments.
+// bounded=false means the structure could not be read — an unterminated string
+// or an unbalanced bracket — so the caller must not claim to understand it.
+func programSimpleStatements(prog string) ([]string, bool) {
+	var out []string
+	var b strings.Builder
+	depth := 0
+	for i := 0; i < len(prog); {
+		c := prog[i]
+		switch {
+		case c == '\'' || c == '"':
+			end := skipStringLiteral(prog, i)
+			if end < i+2 || prog[end-1] != c {
+				return nil, false
+			}
+			b.WriteString(prog[i:end])
+			i = end
+		case c == '#':
+			for i < len(prog) && prog[i] != '\n' {
+				i++
+			}
+		case c == '(' || c == '[' || c == '{':
+			depth++
+			b.WriteByte(c)
+			i++
+		case c == ')' || c == ']' || c == '}':
+			depth--
+			if depth < 0 {
+				return nil, false
+			}
+			b.WriteByte(c)
+			i++
+		case depth == 0 && (c == ';' || c == '\n'):
+			out = append(out, b.String())
+			b.Reset()
+			i++
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	if depth != 0 {
+		return nil, false
+	}
+	out = append(out, b.String())
+	return out, true
+}
+
+// programImportStatement answers whether a top-level statement is an import
+// (`import x`, `from x import y`). An import is neither a read nor a print, and
+// it names no file, so a diagnostic may carry one.
+func programImportStatement(stmt string) bool {
+	name, _, ok := programIdentifierAt(stmt, 0)
+	return ok && (name == "import" || name == "from")
+}
+
+// programSimpleAssignment reads one top-level `<name> = <expr>` assignment whose
+// left side is a bare identifier and whose `=` is not part of `==`, `!=`, `<=`,
+// `>=`, a compound assignment or `:=`. Anything else — a subscript target, a
+// comparison, a chained assignment — is not a simple assignment.
+func programSimpleAssignment(stmt string) (string, string, bool) {
+	depth := 0
+	for i := 0; i < len(stmt); i++ {
+		c := stmt[i]
+		if c == '\'' || c == '"' {
+			i = skipStringLiteral(stmt, i) - 1
+			continue
+		}
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '#':
+			return "", "", false
+		case '=':
+			if depth != 0 || (i+1 < len(stmt) && stmt[i+1] == '=') {
+				continue
+			}
+			if i > 0 {
+				switch stmt[i-1] {
+				case '=', '!', '<', '>', '+', '-', '*', '/', '%', '&', '|', '^', ':':
+					return "", "", false
+				}
+			}
+			name := strings.TrimSpace(stmt[:i])
+			rhs := strings.TrimSpace(stmt[i+1:])
+			if name == "" || rhs == "" || !programBareIdentifier(name) {
+				return "", "", false
+			}
+			return name, rhs, true
+		}
+	}
+	return "", "", false
+}
+
+// programPrintArgs answers whether a top-level statement is exactly a `print(...)`
+// call and returns its top-level arguments.
+func programPrintArgs(stmt string) ([]string, bool) {
+	name, i, ok := programIdentifierAt(stmt, 0)
+	if !ok || name != "print" || i >= len(stmt) || stmt[i] != '(' {
+		return nil, false
+	}
+	inner, end, ok := callArguments(stmt, i)
+	if !ok || strings.TrimSpace(stmt[end:]) != "" {
+		return nil, false
+	}
+	return programArgList(inner), true
+}
+
+// programPreviewArg answers whether one print argument is a preview of a read:
+// a string literal, `len(<buffer>)`, `<buffer>[:N]` or the same slice with
+// `.hex()`, where the buffer is a proven read buffer or an inline pure read. The
+// second result says whether the argument itself performed an inline read.
+func programPreviewArg(arg string, aliases, buffers map[string]bool) (bool, bool) {
+	a := strings.TrimSpace(arg)
+	if programStringLiteralExpr(a) {
+		return true, false
+	}
+	if strings.HasPrefix(a, "len(") && strings.HasSuffix(a, ")") {
+		inner := strings.TrimSpace(a[len("len(") : len(a)-1])
+		if programBareIdentifier(inner) && buffers[inner] {
+			return true, false
+		}
+		if programPureReadExpr(inner, aliases) {
+			return true, true
+		}
+		return false, false
+	}
+	body := a
+	if strings.HasSuffix(body, ".hex()") {
+		body = strings.TrimSpace(body[:len(body)-len(".hex()")])
+	}
+	if !strings.HasSuffix(body, "]") {
+		return false, false
+	}
+	open := programTopLevelIndex(body, '[')
+	if open < 0 || !programPrefixRange(body[open+1:len(body)-1]) {
+		return false, false
+	}
+	base := strings.TrimSpace(body[:open])
+	if programBareIdentifier(base) && buffers[base] {
+		return true, false
+	}
+	if programPureReadExpr(base, aliases) {
+		return true, true
+	}
+	return false, false
+}
+
+// programPrefixRange answers whether a slice subscript is a bounded PREFIX from
+// the start of the buffer: an empty or `0` start and a non-empty decimal width
+// (`[:80]`, `[0:4]`). A step, a negative or symbolic width, or a non-prefix
+// span is not the preview this reader recognises.
+func programPrefixRange(s string) bool {
+	parts := strings.Split(strings.TrimSpace(s), ":")
+	if len(parts) != 2 {
+		return false
+	}
+	left := strings.TrimSpace(parts[0])
+	if left != "" && left != "0" {
+		return false
+	}
+	right := strings.TrimSpace(parts[1])
+	if right == "" {
+		return false
+	}
+	for i := 0; i < len(right); i++ {
+		if right[i] < '0' || right[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// programPureReadExpr answers whether an expression is a pure READ of one file:
+// `open(<literal-or-alias>[, <literal>...]).read()`/`.read_bytes()`/
+// `.read_text()`, or a pathlib constructor chained to a reading method. A
+// literal alias must have been assigned a simple string constant BEFORE the
+// read. Nothing else is a read: a call that parses, decodes or computes is not.
+func programPureReadExpr(expr string, aliases map[string]bool) bool {
+	s := strings.TrimSpace(expr)
+	parts, i, ok := programDottedName(s, 0)
+	if !ok || i >= len(s) || s[i] != '(' {
+		return false
+	}
+	args, end, ok := callArguments(s, i)
+	if !ok {
+		return false
+	}
+	name := parts[len(parts)-1]
+	var reads map[string]bool
+	switch {
+	case name == "open" && len(parts) == 1:
+		if !programReadLiteralArgs(args, aliases) {
+			return false
+		}
+		reads = map[string]bool{"read": true, "read_bytes": true, "read_text": true}
+	case programPathConstructors[name]:
+		if !programOneLiteralArg(args, aliases) {
+			return false
+		}
+		reads = programPathReads
+	default:
+		return false
+	}
+	i = end
+	if i >= len(s) || s[i] != '.' {
+		return false
+	}
+	i++
+	method, k, ok := programIdentifierAt(s, i)
+	if !ok || !reads[method] {
+		return false
+	}
+	i = k
+	if i < len(s) && s[i] == '(' {
+		inner, e2, ok := callArguments(s, i)
+		if !ok || strings.TrimSpace(inner) != "" {
+			return false
+		}
+		i = e2
+	}
+	return i == len(s)
+}
+
+// programReadLiteralArgs answers whether an `open(...)` argument list starts
+// with a string literal or a proven literal alias and every other argument is a
+// string literal (a mode or encoding).
+func programReadLiteralArgs(args string, aliases map[string]bool) bool {
+	list := programArgList(args)
+	if len(list) == 0 {
+		return false
+	}
+	first := strings.TrimSpace(list[0])
+	if !programStringLiteralExpr(first) && !(programBareIdentifier(first) && aliases[first]) {
+		return false
+	}
+	for _, a := range list[1:] {
+		if !programStringLiteralExpr(strings.TrimSpace(a)) {
+			return false
+		}
+	}
+	return true
+}
+
+// programOneLiteralArg answers whether a call's argument list is a single string
+// literal or a proven literal alias.
+func programOneLiteralArg(args string, aliases map[string]bool) bool {
+	list := programArgList(args)
+	if len(list) != 1 {
+		return false
+	}
+	a := strings.TrimSpace(list[0])
+	return programStringLiteralExpr(a) || (programBareIdentifier(a) && aliases[a])
+}
+
+// programDottedName reads a dotted identifier chain from position i and returns
+// its lowercased components and the index just past it.
+func programDottedName(s string, i int) ([]string, int, bool) {
+	var parts []string
+	for {
+		name, end, ok := programIdentifierAt(s, i)
+		if !ok {
+			return nil, i, false
+		}
+		parts = append(parts, name)
+		i = end
+		if i < len(s) && s[i] == '.' {
+			i++
+			continue
+		}
+		return parts, i, true
+	}
+}
+
+// programIdentifierAt reads the identifier at position i, lowercased, and returns
+// the index just past it.
+func programIdentifierAt(s string, i int) (string, int, bool) {
+	if i < 0 || i >= len(s) || !isIdentifierStart(s[i]) {
+		return "", i, false
+	}
+	j := i + 1
+	for j < len(s) && isIdentifierPart(s[j]) {
+		j++
+	}
+	return strings.ToLower(s[i:j]), j, true
+}
+
+// programBareIdentifier answers whether a trimmed string is one identifier and
+// nothing else.
+func programBareIdentifier(s string) bool {
+	if s == "" || !isIdentifierStart(s[0]) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		if !isIdentifierPart(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// programStringLiteralExpr answers whether a trimmed expression is exactly one
+// string literal.
+func programStringLiteralExpr(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || (s[0] != '\'' && s[0] != '"') {
+		return false
+	}
+	end := skipStringLiteral(s, 0)
+	return end >= 2 && end <= len(s) && s[end-1] == s[0] && strings.TrimSpace(s[end:]) == ""
+}
+
+// programTopLevelIndex returns the first index of ch that sits outside strings
+// and nested brackets, or -1.
+func programTopLevelIndex(s string, ch byte) int {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\'' || c == '"' {
+			i = skipStringLiteral(s, i) - 1
+			continue
+		}
+		if depth == 0 && c == ch {
+			return i
+		}
+		switch c {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		}
+	}
+	return -1
+}
+
+// programArgList splits a call's argument text on its top-level commas.
+func programArgList(s string) []string {
+	var out []string
+	var b strings.Builder
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\'' || c == '"' {
+			end := skipStringLiteral(s, i)
+			b.WriteString(s[i:end])
+			i = end - 1
+			continue
+		}
+		switch c {
+		case '(', '[', '{':
+			depth++
+			b.WriteByte(c)
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+			b.WriteByte(c)
+		case ',':
+			if depth == 0 {
+				out = append(out, b.String())
+				b.Reset()
+				continue
+			}
+			b.WriteByte(c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	out = append(out, b.String())
+	return out
 }
 
 // skipStringLiteral returns the index just past the string literal that starts at
