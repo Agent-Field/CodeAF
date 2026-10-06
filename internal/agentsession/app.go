@@ -43,9 +43,43 @@ type Config struct {
 	// SessionWall bounds one session's time; sec-af's harness waited thirty
 	// minutes.
 	SessionWall time.Duration
+	// Limits is each agent's own turns and time, by the options its session
+	// was started with; a zero field falls back to MaxTurns or SessionWall.
+	// Nil gives every agent those two.
+	//
+	// EACH AGENT IS BOUNDED BY WHAT ITS OWN WORK TAKES. One cap for every agent
+	// was too short for a scanner that walks the repository and far too long
+	// for a profiler that reads three files: /pr's reviewers spent fifty turns
+	// at twenty seconds each where a dozen would have done, and sec's
+	// scanners were the ones cut at fifty. The program knows its agents, so the
+	// figures are its own.
+	Limits func(appx.HarnessOptions) Limits
 	// Watch hears every session, call and note as it ends, for the task's
 	// page. Nil hears nothing.
 	Watch *Watch
+}
+
+// Limits is one agent session's bounds: the most turns it takes and the
+// longest it runs. Zero is the App's own default for that bound.
+type Limits struct {
+	Turns int
+	Wall  time.Duration
+}
+
+// limitsFor is the bounds one session runs under: the program's for this
+// agent, each zero filled from the App's defaults.
+func (a *App) limitsFor(opts appx.HarnessOptions) Limits {
+	var own Limits
+	if a.config.Limits != nil {
+		own = a.config.Limits(opts)
+	}
+	if own.Turns <= 0 {
+		own.Turns = a.config.MaxTurns
+	}
+	if own.Wall <= 0 {
+		own.Wall = a.config.SessionWall
+	}
+	return own
 }
 
 // Watch is what the audit's progress is told to.
@@ -134,9 +168,10 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 		}
 	}
 	thread := fmt.Sprintf("%s-%d", strings.ReplaceAll(label, " ", "-"), a.threads.Add(1))
+	limits := a.limitsFor(opts)
 	result, err := RunSession(ctx, a.client, SessionOrder{
 		Model: a.config.SessionModel, Thread: thread, Root: root, Work: a.config.Work, Prompt: prompt, Schema: schema,
-		MaxTurns: a.config.MaxTurns, Wall: a.config.SessionWall,
+		MaxTurns: limits.Turns, Wall: limits.Wall,
 	})
 	a.spend(result.CostUSD, true)
 	if watch := a.config.Watch; watch != nil && watch.Session != nil {

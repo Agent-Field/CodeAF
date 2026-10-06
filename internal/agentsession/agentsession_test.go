@@ -461,3 +461,20 @@ func TestAnEmptyReplyFailsOnlyItsSessionAndTheCeilingEndsTheRun(t *testing.T) {
 		t.Fatalf("the ceiling gave %v; want it to end the run", err)
 	}
 }
+
+// EACH AGENT IS BOUNDED BY ITS OWN FIGURES, and a figure the program leaves
+// at zero is the App's default.
+func TestEachAgentRunsUnderItsOwnLimits(t *testing.T) {
+	app := New(nil, Config{MaxTurns: 50, SessionWall: 30 * time.Minute, Limits: func(opts appx.HarnessOptions) Limits {
+		if opts.Label == "scanner" {
+			return Limits{Turns: 75}
+		}
+		return Limits{}
+	}})
+	if got := app.limitsFor(appx.HarnessOptions{Label: "scanner"}); got.Turns != 75 || got.Wall != 30*time.Minute {
+		t.Fatalf("the scanner runs under %+v", got)
+	}
+	if got := app.limitsFor(appx.HarnessOptions{Label: "other"}); got.Turns != 50 || got.Wall != 30*time.Minute {
+		t.Fatalf("an agent with no limits of its own runs under %+v", got)
+	}
+}

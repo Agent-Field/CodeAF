@@ -1067,6 +1067,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"fix the vulnerabilities the security audit found", "sec"},
 		{"why does the sec task page show the same hunter lines over and over", "sec"},
 		{"do I need to clear out the old security audit before running it again", "sec"},
+		{"how many turns does each security audit agent get", "sec"},
 		{"find the last security audit's report from another conversation", "sec"},
 		{"the program finished but the chat said nothing, no summary", "delegates"},
 		// senior-dev, the program codeaf carries, asked the ways somebody meets

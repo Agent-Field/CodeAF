@@ -43,7 +43,7 @@ Its phases keep sec-af's own names, on the rail, as the headings of its task's p
 4. **Remediate** (`remediate`): the remediation agent writes a suggested fix, with a patch, for each confirmed or likely finding.
 5. **Report** (`report`).
 
-Up to eight agent sessions run at once, each reading the code with up to fifty turns of its own. A standard audit runs a hundred or more of them, which is why it takes minutes to an hour.
+Up to eight agent sessions run at once. **Each kind of agent has its own turns and time**, from what a real audit measured: a location scanner up to 75 turns and 20 minutes, a context profiler 30 turns and 5 minutes, an agent nothing measured yet 50 turns and 30 minutes. At a shell, `--max-turns` and `--session-wall` set one figure for every agent instead. A standard audit runs a hundred or more sessions, which is why it takes minutes to hours.
 
 ## What sec's task page shows — each agent's line, which hunter, where it looked, what it found, the same lines repeated
 

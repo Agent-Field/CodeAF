@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,8 +14,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/secaf/schemas"
 )
@@ -519,5 +522,38 @@ func TestAnEndingsMessageDoesNotSayTheProgramsName(t *testing.T) {
 	}
 	if strings.HasPrefix(host.ending.Message, "sec ") {
 		t.Fatalf("the ending opens on sec's name: %q", host.ending.Message)
+	}
+}
+
+// EACH OF SEC'S AGENTS RUNS UNDER ITS OWN FIGURES, found by its scratch
+// folder's name; a person's flag is one figure for all of them; and every row
+// of the table names an agent this audit has, so a renamed agent cannot fall
+// silently back to the default.
+func TestEachAgentHasItsOwnLimitsAndAFlagOverridesThem(t *testing.T) {
+	limits := limitsFor(options{})
+	if got := limits(appx.HarnessOptions{Cwd: "/tmp/secaf-hunt-scan-123456"}); got.Turns != 75 || got.Wall != 20*time.Minute {
+		t.Fatalf("the location scanner runs under %+v", got)
+	}
+	if got := limits(appx.HarnessOptions{Cwd: "/tmp/secaf-hunt-enrich-api_security-42"}); got.Turns != 45 {
+		t.Fatalf("an enricher runs under %+v", got)
+	}
+	if got := limits(appx.HarnessOptions{Cwd: "/tmp/secaf-remediation-7"}); got.Turns != 0 || got.Wall != 0 {
+		t.Fatalf("an agent the table does not name runs under %+v, want the default", got)
+	}
+	if got := limitsFor(options{maxTurns: 12, sessionWall: time.Minute})(appx.HarnessOptions{Cwd: "/tmp/secaf-hunt-scan-1"}); got.Turns != 12 || got.Wall != time.Minute {
+		t.Fatalf("a person's flags gave %+v", got)
+	}
+	var sources strings.Builder
+	_ = filepath.WalkDir("agents", func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() && strings.HasSuffix(path, ".go") && !strings.HasSuffix(path, "_test.go") {
+			raw, _ := os.ReadFile(path)
+			sources.Write(raw)
+		}
+		return nil
+	})
+	for _, row := range agentLimits {
+		if !strings.Contains(sources.String(), `"`+row.kind+`"`) && !strings.Contains(sources.String(), `"secaf-`+row.kind+`-`) {
+			t.Errorf("the table bounds %q, which no agent's scratch folder is named for", row.kind)
+		}
 	}
 }

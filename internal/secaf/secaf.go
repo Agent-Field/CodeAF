@@ -162,8 +162,8 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	fs.IntVar(&o.maxProvers, "max-provers", 0, "the most findings to test (default: the depth's)")
 	fs.StringVar(&o.compliance, "compliance", "", "frameworks to map findings to, such as owasp,pci-dss")
 	fs.IntVar(&o.sessions, "sessions", 8, "how many agent sessions run at once")
-	fs.IntVar(&o.maxTurns, "max-turns", 50, "the most turns one agent session takes")
-	fs.DurationVar(&o.sessionWall, "session-wall", 30*time.Minute, "the longest one agent session runs")
+	fs.IntVar(&o.maxTurns, "max-turns", 0, "most turns of any agent session (default: the agent's own)")
+	fs.DurationVar(&o.sessionWall, "session-wall", 0, "longest any agent session runs (default: the agent's own)")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		o.brief = strings.Join(args, " ")
 		run(ctx, host, o, os.Stderr)
@@ -239,7 +239,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	watching, phases := newWatch(host)
 	app := agentsession.New(client, agentsession.Config{
 		Root: root, Work: "a security audit", SessionModel: o.model, AIModel: light,
-		Sessions: o.sessions, MaxTurns: o.maxTurns, SessionWall: o.sessionWall,
+		Sessions: o.sessions, MaxTurns: defaultAgentTurns, SessionWall: defaultAgentWall, Limits: limitsFor(o),
 		Watch: watching,
 	})
 	request := auditRequest(root, scope, changes, o, records)
