@@ -71,5 +71,8 @@ the worked example this one follows.
   read a file a line at a time and cut a line at 2,000 characters, so a
   single-line context of tens of thousands of characters showed its first
   2,000. The prompts, and the inline contexts in them, are unchanged.
-- A review's agent sessions take at most 20 turns (`--max-turns`), where
-  pr-af's harness allowed 50.
+- Each of a review's agents has turn and time limits of its own
+  (internal/praf/limits.go): 10 to 30 turns and 5 to 15 minutes, where
+  pr-af's harness allowed every agent 50 turns. `--max-turns` and
+  `--session-wall` replace every agent's own for one run. The limits are
+  pr's alone; the shared agent loop holds none of its own.

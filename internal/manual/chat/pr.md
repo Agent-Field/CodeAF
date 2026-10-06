@@ -45,7 +45,7 @@ Its stages are on the rail and head the lines of its page:
 6. **obligations** and **coverage**: lists what the change must do and checks it, and looks for gaps.
 7. **report**.
 
-Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — for up to twenty turns (`--max-turns` at a shell), after which it is made to answer. A review of a mid-sized pull request commonly takes half an hour to an hour.
+Each reviewer is an agent session that reads the checkout, told it is part of a code review, with four read-only tools — read a file, list a folder, find files by name, look for text in files — for as many turns and minutes as its part of the review is given — from ten turns for the smallest to thirty for a reviewer — after which it is made to answer. At a shell, `--max-turns` and `--session-wall` set one limit for every reviewer instead. A review of a mid-sized pull request commonly takes half an hour to an hour.
 
 ## What pr shows while it runs — each reviewer's line, what it found, which files
 
