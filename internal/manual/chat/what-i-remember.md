@@ -155,8 +155,10 @@ worth replacing.
 ## Where is everything you remember kept
 
 In `~/.codeaf/graph.db`, one file, made the first time codeaf runs. Memories,
-every conversation this machine has held, and the work it has run are all in it,
-which is why a memory kept in one project is there in the next.
+every conversation this machine has held, and the work it has run are all in it.
+One file holding every project's lines is not the same as every project seeing
+them: a memory kept as **you** or **this machine** is there in the next project,
+while one kept as **this project** stays with the workspace it was learned in.
 
 `CODEAF_HOME` moves the whole folder — set it and codeaf keeps everything
 somewhere else, which is how a disposable run gets a brain of its own without
@@ -707,6 +709,16 @@ owners the conversation that started it can see. The task never writes memories
 of its own: a family of eight tasks would otherwise be eight writers on one
 brain, all blind to each other.
 
+**There is no team shelf.** A memory belongs to you, to one workspace (proved by
+its git identity, or the folder itself when there is no remote) or to this
+machine — no door mints a memory owned by a whole team, and nothing shares a
+line with another person's account automatically. That is about **ownership**,
+not about who reads it: a team's manager and every new member run in that same
+workspace, so its project-scoped memories reach them as they reach a conversation
+(`team-manager`, *When a manager starts a member*), and a task worker gets the
+same scoped context read-only and writes nothing back (`how-tasks-run`, *What the
+task actually reads*).
+
 ## Do you remember errors and how they were fixed?
 
 Yes, and it is a separate thing from everything above. When a `bash` command
@@ -739,8 +751,10 @@ Only **one** suggestion is ever offered — the one with the best record — and
 nothing at all is said when the record is worse than three tries in five, because
 a coin toss dressed as advice is worth less than silence.
 
-This only happens **after** something has already failed. Nothing is looked up
-before a command runs, and a command that works is never annotated.
+This suggestion only happens **after** something has already failed: nothing of
+its kind is looked up before a command runs, and a command that works is never
+annotated. The separate prior-attempt advisory further down is different — it is
+read before the model answers a relevant turn.
 
 Only `bash` is remembered this way, because a `bash` call's answer is a command
 you could run again. `grep` and `find` are not: their answer is the pattern that
@@ -949,14 +963,15 @@ later content change can be offered again. The notice is context put in front of
 the assistant, not proof the person saw or read it; there is no global
 user-awareness model.
 
-## Does forgetting erase the conversation or stop relearning it?
+## Can a forgotten thing come back or will it be relearned
 
 `/forget` removes the matching saved claim and suppresses all its recorded sources.
 Derived claims cannot use those sources, and automatic extraction cannot save the
 same suppressed evidence again under a new memory identity. Original conversation
 history remains searchable; forgetting a claim does not erase that history.
-A genuinely new source may support a new claim. Explicitly completed or abandoned
-work can expire from recall while remaining in the evidence history.
+A genuinely new source may support a new claim. It does not come back by itself:
+the same suppressed evidence never reactivates the line. Explicitly completed or
+abandoned work can expire from recall while remaining in the evidence history.
 
 ## Will a future intention automatically schedule work?
 

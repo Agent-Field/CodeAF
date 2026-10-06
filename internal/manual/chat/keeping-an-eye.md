@@ -261,12 +261,18 @@ answer turns true. When the answer is neither a clear yes nor a clear no, codeaf
 writes nothing at all and looks again next time, so an unclear reading never
 consumes the moment you are waiting on.
 
-## Tell me once, when it first becomes true
+## Will a once watch pop a notification or toast
 
 "Notify me once when ready becomes true" is a watch that speaks **once**: it
 tells you the first time the condition turns true, delivers that one line, and
 retires. It cannot tell you again if the condition later goes false and true
 again, and a reading that merely repeats is not a second notice.
+
+With no window open there is no banner, toast, phone alert or email: the one
+line waits as an inbox note and folds into the next conversation you open in
+that project. It is delivered once and never a second time, so a later reopen
+adds nothing — the line already in that transcript stays visible. If the window
+is open when it fires, the line is drawn there at once.
 
 Drop the word `once` and a watch stays armed: it speaks each change, so
 false-then-true is another notice and a condition that is still true is not. A
@@ -550,7 +556,7 @@ In a conversation, asking "what do you have standing?" lists what stands here
 with its rails; the standing place, and an item's card on a frame wide enough to
 draw one, are where the counts are.
 
-## Does it keep working when I close the terminal or shut the laptop?
+## Does it keep working when the app is closed or the laptop is shut?
 
 **Yes — background checks are on out of the box, and nobody asks you first.**
 
@@ -563,7 +569,7 @@ For "no terminal open at all", the **first thing you ever set up** installs one
 small timer under your own login that runs `codeaf tick` every 5 minutes: a
 launchd agent called `ai.agentfield.codeaf.tick` on a Mac, a systemd user timer
 called `codeaf-tick.timer` on Linux. Nothing else is installed, ever — no
-server, no port, no account.
+server, no port, no account, and no separate helper to install.
 
 You are told, once, in one dim line under the card you just said yes to:
 
@@ -581,15 +587,22 @@ Either way it is said **once, ever**. The fact is written down beside your items
 **before** your machine is touched, so an install that half-worked is still one
 you were told about rather than one you are told about again tomorrow.
 
-**The limits are real.** Nothing runs while the machine is **asleep**; the timer
-is asked to catch one missed check up when the machine comes back rather than
-skip it. Nothing runs when **you are not logged in**: it is a per-user timer,
-not a system service. And
-on any host that is neither macOS nor Linux there is no timer to install, so
-things are checked only while a window is open and the settings row is not there
-at all.
+**`on` means installed, not that a pass has run.** The row and `/status` read the
+timer's definition on disk; to see it actually waking, `/status` carries
+`last check …`, and `codeaf doctor` prints the `background timer` row and says
+`checks look stalled` when an installed one has stopped waking.
 
-## Do the background checks run before I set an API key — the walk happens, the judgment does not
+**The limits are real.** Nothing runs while the machine is **asleep**, and nothing
+runs when **you are not logged in**: it is a per-user timer, not a system service.
+The timer is asked to catch one missed check up when the machine comes back: a
+check missed while the computer is off or asleep is picked up once on the laptop's
+return, not once for every check it slept through — and only while background
+checks are on. A clock-only
+reminder needs no key to fire; a watch that has to be judged needs one. On any host
+that is neither macOS nor Linux there is no timer to install, so things are checked
+only while a window is open and the settings row is not there at all.
+
+## Will a watch retry if my API key is missing or disconnected
 
 **Yes, the pass still walks.** On a machine that has never been given a key, the
 5-minute pass behaves exactly as it would with one: whichever window or timer takes the
@@ -614,6 +627,8 @@ could not check: no API key: this session has not been given one yet
 the walk carries straight on to the next item, and nothing fires, because a firing
 needs a yes and nobody was able to say one. The item still records that it looked, so
 the count of what was examined is honest and the record of the pass carries one error.
+That look queues no inbox note and leaves the item active and due, so it is
+retried next pass rather than lost.
 
 Set the default key — `/settings` → **openrouter key**, say "set up my api key", or use
 the `providers` group in `/connect` to add a provider — and the

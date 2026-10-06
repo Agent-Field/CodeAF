@@ -108,6 +108,22 @@ or command actually returns. The recorded failing shape was measured at the prod
 seam on the review's pinned model, and that live matrix is an opt-in e2e regression that
 skips with no key and is never acceptance.
 
+The built-in manual now names these limits in the words people use: an
+app-closed watch has no separate helper to install; a `once` watch waits as an
+inbox note rather than a notification or toast and is delivered only once, so
+reopening does not repeat it; a look with a missing or disconnected key queues
+no note and leaves the item active and due, to be retried once a key is
+restored; and a check missed while the machine was off or asleep is requested
+once on return, when background checks are on, the person is logged in and the
+pass has a key. It also draws two distinctions the old pages blurred: an
+observed prior attempt is an advisory read before a relevant turn, not the
+error-fix suggestion looked up only after a command fails; and the one shared
+store is not one shared scope, so "a memory kept in one project is there in the
+next" is gone in favour of the closed shelves — you, this workspace, this
+machine — with no memory owned by a whole team, while a manager, a new member
+and a task in that workspace still read its scoped context (a task read-only).
+Retrieval probes for these questions are in `internal/manual/chat_test.go`.
+
 Final-head terminal acceptance is required before this entry is treated as
 landed, and focused tests alone do not establish real work improved: the acceptance runs
 against the frozen final head on the pinned model, and any key-skipped e2e run is a skip

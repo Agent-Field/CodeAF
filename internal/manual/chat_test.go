@@ -1538,6 +1538,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does it clean up old memories", "what-i-remember"},
 		{"why did it say superseded", "what-i-remember"},
 		{"does it know if a memory actually helped", "what-i-remember"},
+		// The contextual wave's own two limits: a forgotten line is not brought
+		// back by the same evidence, and there is no team shelf to share one in.
+		{"can a forgotten memory come back", "what-i-remember"},
+		{"is memory shared with my team", "what-i-remember"},
+		{"does a new team member see my project memory", "what-i-remember"},
+		{"does the team manager get my remembered rules", "team-manager"},
 
 		// The eleventh wave: the words are no longer only carried, they can be
 		// SEARCHED. Somebody asking either of these is asking about the
@@ -2530,6 +2536,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"i have two copies of codeaf, which one runs the background checks", "keeping-an-eye"},
 		{"two copies of codeaf and my reminders fired twice", "keeping-an-eye"},
 		{"does CODEAF_HOME move the background timer", "keeping-an-eye"},
+		// App-closed watch with no window and no helper, a key that is missing or
+		// disconnected, the one-shot that must not toast, and a pass the machine
+		// slept through. Each is the question a person asks about the ambient
+		// side's real limits.
+		{"does a watch keep running with the app closed, is there a helper", "keeping-an-eye"},
+		{"my key is missing or disconnected will my reminder retry", "keeping-an-eye"},
+		{"will a once watch pop a desktop notification or toast", "keeping-an-eye"},
+		{"what happens to a check missed while my computer was off", "keeping-an-eye"},
 		// The wave that gave the ambient side a reach: an order that governs one
 		// chat, one project, or everything. Each of these is what somebody types
 		// looking at the page, at the card's `where` band, or at the one line a

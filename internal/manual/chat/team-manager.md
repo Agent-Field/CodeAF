@@ -184,6 +184,11 @@ the same way. When the manager stops a member,
 its current turn ends the way your own Stop would, including when codeaf opened it in the
 background without a window. Starting a new member still needs a window holding the manager.
 
+The member runs in the team's folder, which is this workspace, so the workspace's
+scoped memories are read before its first request exactly as they are for any
+conversation there — and the team itself owns none of them. The manager reads
+the same workspace's memories the same way.
+
 ## Who a Traffic row is from and who it is to
 
 Every Traffic row reads `from → to`, then the words. The manager is `◆`. Several recipients
