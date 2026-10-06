@@ -155,6 +155,9 @@ func githubToken(ctx context.Context) string {
 // runReview is one review from its brief to its ending.
 func runReview(ctx context.Context, host delegate.Host, request Request, o options, notes io.Writer, r reviewer) delegate.Ending {
 	started := time.Now()
+	if o.sessions < 1 {
+		return delegate.Ending{Status: delegate.StatusFail, Message: fmt.Sprintf("it could not start: --sessions is %d, and at least one agent session has to run", o.sessions)}
+	}
 	host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "running", Data: stageData(map[string]any{"doing": "finding the pull request"})})
 	token := r.token(ctx)
 	gh := r.gh(token)

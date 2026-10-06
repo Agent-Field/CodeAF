@@ -124,23 +124,21 @@ func dimensionDetail(input map[string]any) string {
 
 // phaseTracker is the run's orch.LocalCaller. Every pipeline phase comes
 // through it by name: it reports the stage, runs the reasoner, and reports
-// the finished call as a step. The counts make a fan-out read as progress —
-// "reviewing, 3 of 8 done" — instead of a stage that sits still for twenty
-// minutes.
+// the finished call as a step. A fan-out reads as progress through its
+// steps: each reviewer that finishes is a line on the page with what it
+// found.
 type phaseTracker struct {
 	host     delegate.Host
 	handlers map[string]handler
 
 	mu      sync.Mutex
-	started map[string]int
-	done    map[string]int
 	current string
 }
 
 var _ orch.LocalCaller = (*phaseTracker)(nil)
 
 func newPhaseTracker(host delegate.Host, handlers map[string]handler) *phaseTracker {
-	return &phaseTracker{host: host, handlers: handlers, started: map[string]int{}, done: map[string]int{}, current: stageStarting}
+	return &phaseTracker{host: host, handlers: handlers, current: stageStarting}
 }
 
 // stage is the stage the review is in now.
@@ -161,11 +159,9 @@ func (p *phaseTracker) CallLocal(ctx context.Context, name string, input map[str
 		ph = phase{stage: p.stage(), doing: "working", did: "finished a step"}
 	}
 
-	// Records are written under p.mu so the counts reach codeaf in the order
-	// they were taken: a fan-out finishing on two goroutines at once must not
-	// report "2 of 3 done" before "1 of 3 done".
+	// Records are written under p.mu so they reach codeaf in the order the
+	// calls started and ended, whichever goroutines a fan-out runs on.
 	p.mu.Lock()
-	p.started[ph.stage]++
 	p.current = ph.stage
 	p.stageLocked(ph)
 	p.mu.Unlock()
@@ -179,21 +175,15 @@ func (p *phaseTracker) CallLocal(ctx context.Context, name string, input map[str
 		}
 	}
 	p.mu.Lock()
-	p.done[ph.stage]++
 	p.host.Step(delegate.StepRecord{Tool: name, Step: ph.stage, Command: plainWords(command), Observation: observe(out, err)})
 	p.stageLocked(ph)
 	p.mu.Unlock()
 	return out, err
 }
 
-// stageLocked reports the stage with what it is doing and, once it fans out,
-// how many of its calls are done. Callers hold p.mu.
+// stageLocked reports the stage with what it is doing. Callers hold p.mu.
 func (p *phaseTracker) stageLocked(ph phase) {
-	data := map[string]any{"doing": ph.doing}
-	if started := p.started[ph.stage]; started > 1 {
-		data["started"], data["done"] = started, p.done[ph.stage]
-	}
-	p.host.Stage(delegate.StageRecord{Stage: ph.stage, Status: "running", Data: stageData(data)})
+	p.host.Stage(delegate.StageRecord{Stage: ph.stage, Status: "running", Data: stageData(map[string]any{"doing": ph.doing})})
 }
 
 // observeTitles is how many findings a step's observation names.

@@ -73,7 +73,7 @@ func runPost(ctx context.Context, host delegate.Host, path string, newGitHub fun
 	token := githubToken(ctx)
 	if token == "" {
 		return delegate.Ending{Status: delegate.StatusFail,
-			Message: "nothing was posted: posting to " + t.String() + " needs a GitHub token; set GH_TOKEN or sign in with `gh auth login`"}
+			Message: "nothing was posted: posting to " + t.String() + " needs a GitHub token; set GH_TOKEN or sign in with gh auth login"}
 	}
 	host.Stage(delegate.StageRecord{Stage: stagePost, Status: "running", Data: stageData(map[string]any{"doing": "posting the review to " + t.String()})})
 	pr := schemas.GitHubPRData{Owner: t.Owner, Repo: t.Repo, Number: t.Number, HeadSHA: saved.PullRequest.HeadSHA}

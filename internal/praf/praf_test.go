@@ -518,3 +518,31 @@ func TestEachAgentHasItsOwnLimits(t *testing.T) {
 		t.Error("the overrides are set by default")
 	}
 }
+
+// A bare `post` is a post that names no review: it ends asking for the
+// report, and never starts a review of the current branch.
+func TestABarePostAsksForTheReportAndReviewsNothing(t *testing.T) {
+	host := newTestHost(t)
+	run(context.Background(), host, options{brief: "post", sessions: sessionsAtOnce}, io.Discard)
+	if len(host.hello) != 1 || host.hello[0] != stagePost {
+		t.Errorf("hello = %q, want the post stage alone", host.hello)
+	}
+	if len(host.endings) != 1 || host.endings[0].Status != delegate.StatusFail ||
+		host.endings[0].Message != "nothing was posted: name the review to post: the pr-report.json path its account gave" {
+		t.Errorf("endings = %+v", host.endings)
+	}
+}
+
+// --sessions below one is refused in pr's own words, before it looks for a
+// pull request or spends anything.
+func TestTooFewSessionsIsRefusedBeforeAnythingRuns(t *testing.T) {
+	host := newTestHost(t)
+	r, c := testReviewer(&fakeSessions{}, func(context.Context, orch.Deps) (schemas.ReviewResult, error) { return sampleResult(), nil })
+	end := runReview(context.Background(), host, ReadBrief("o/r#7", nil), options{sessions: 0}, io.Discard, r)
+	if end.Status != delegate.StatusFail || end.Message != "it could not start: --sessions is 0, and at least one agent session has to run" {
+		t.Errorf("ending = %q %q", end.Status, end.Message)
+	}
+	if c.conf.Root != "" || len(host.stages) != 0 {
+		t.Errorf("it went on: sessions on %q, %d stage records", c.conf.Root, len(host.stages))
+	}
+}

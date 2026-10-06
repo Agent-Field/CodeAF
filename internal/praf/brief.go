@@ -53,9 +53,12 @@ var (
 
 // Request is one run's brief, read.
 type Request struct {
-	// Post is the saved review a `post <report>` brief names; empty for a
-	// review.
-	Post string
+	// Posting is a `post <report>` brief, and Post the saved review it names.
+	// THEY ARE TWO FIELDS so a bare `post` is a post that names nothing, which
+	// ends asking for the report, never a review of the current branch that
+	// spends money nobody asked to spend.
+	Posting bool
+	Post    string
 	// Target is the pull request named outright; zero when the brief leaves it
 	// to the folder's current branch.
 	Target Target
@@ -79,7 +82,7 @@ var currentBranchWords = map[string]bool{
 func ReadBrief(brief string, origin func() (owner, repo string, ok bool)) Request {
 	brief = strings.TrimSpace(brief)
 	if rest, ok := cutWord(brief, "post"); ok {
-		return Request{Post: strings.Trim(strings.TrimSpace(rest), "`\"'")}
+		return Request{Posting: true, Post: strings.Trim(strings.TrimSpace(rest), "`\"'")}
 	}
 	t, focus, err := parsePullRequest(brief, origin)
 	if err != nil {

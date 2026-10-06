@@ -40,7 +40,7 @@ Its stages are on the rail and head the lines of its page:
 1. **setup**: finds the pull request and checks it out.
 2. **intake** and **anatomy**: reads what the pull request says it does, and maps the change.
 3. **plan**: chooses what to review, through three lenses (semantic, mechanical, systemic).
-4. **review**: one reviewer per part of the change, up to eight at once; the rail counts them (`reviewing, 3 of 8 done`).
+4. **review**: one reviewer per part of the change, up to eight at once; each reviewer that finishes is a line under it with what it found.
 5. **filter**, **evidence**, **challenge**, **deepen**, **cross-ref**: drops findings not worth raising, checks each against the code, argues against it, deepens what stands, and looks for findings that interact.
 6. **obligations** and **coverage**: lists what the change must do and checks it, and looks for gaps.
 7. **report**.

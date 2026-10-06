@@ -86,7 +86,7 @@ var Program = delegate.Delegate{
 func title(brief string) string {
 	request := ReadBrief(brief, nil)
 	switch {
-	case request.Post != "":
+	case request.Posting:
 		return "Posting a code review to GitHub"
 	case request.Target.Number != 0:
 		return "Code review of " + request.Target.String()
@@ -151,7 +151,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 // terminal — a panic in either included, written as the crash it is.
 func run(ctx context.Context, host delegate.Host, o options, notes io.Writer) {
 	request := ReadBrief(o.brief, func() (string, string, bool) { return workspaceOrigin(ctx, host.Workspace()) })
-	if request.Post != "" {
+	if request.Posting {
 		host.Hello([]string{stagePost})
 	} else {
 		host.Hello(Stages)
@@ -162,7 +162,7 @@ func run(ctx context.Context, host delegate.Host, o options, notes io.Writer) {
 			host.Terminal(delegate.Ending{Status: delegate.StatusCrashed, Message: fmt.Sprintf("the review panicked: %v", recovered)})
 		}
 	}()
-	if request.Post != "" {
+	if request.Posting {
 		host.Terminal(runPost(ctx, host, request.Post, defaultGitHub()))
 		return
 	}
