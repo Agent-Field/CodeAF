@@ -32,9 +32,11 @@ const priorOutcomeLimit = 2
 //
 // ONE SUCCESS IS CAUGHT, AND ONLY AS AN ALTERNATIVE. When the SAME turn and
 // goal that recorded a demonstrated failure later succeeds at the boundary —
-// the same tool class, an action sharing a meaningful token with the one that
-// failed — that success is carried on the failure's evidence as its observed
-// alternative ([Agent.recordMemoryAlternative]). That is the one success kept,
+// the same tool class and tied to the work by a meaningful action token OR by a
+// file the turn's own frozen goal named (a genuine replacement may run a
+// different command and library over the same artifact) — that success is
+// carried on the failure's evidence as its observed alternative
+// ([Agent.recordMemoryAlternative]). That is the one success kept,
 // and only when there is a failure for it to belong to; a turn of ordinary
 // successes writes nothing.
 func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.ToolCall, result toolResult, preSnapshot string) {
@@ -139,9 +141,11 @@ func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.To
 // either source retires the pair by the ordinary suppression join.
 //
 // THE PAIRING IS NARROW AND LABELLED AS OBSERVED. It requires the same tool
-// class and a shared meaningful token, never a claim that the second call ran
-// BECAUSE the first failed; the read side calls it an observed alternative, not
-// a cause. A true tool-boundary success only: a harness door or a refusal is not
+// class and a meaningful link — a shared action token, or a file the turn's
+// frozen goal named when the replacement runs a different command and library —
+// never a claim that the second call ran BECAUSE the first failed; the read side
+// calls it an observed alternative, not a cause. A true tool-boundary success
+// only: a harness door or a refusal is not
 // a success, and a summary is not consulted. A lookup or a metadata call is
 // never an alternative to an action failure, so a later `ls` cannot be dressed
 // up as the way the work got done.
@@ -222,6 +226,35 @@ func (a *Agent) recordMemoryAlternative(ctx context.Context, turn uint64, call a
 	}
 }
 
+// invalidateOutcomePairing drops the turn's pending demonstrated failure so a
+// success observed AFTER the session's owner or project has changed can never be
+// paired to a failure recorded under the OLD owner. A pairing is only ever the
+// later success of the SAME frozen turn, goal and owner that recorded the
+// failure, so the anchor/lifecycle path that re-homes a session — an anchor that
+// changes Config.MemoryProjectKey, adoption into another project, a memory-owner
+// transition — MUST call this exactly where it changes the owner, because the
+// failure already in the journal is immutable provenance and is never rewritten.
+//
+// THE ROOT PAIRING FIELDS IT CLEARS live beside the memory brain
+// (contextual_memory.go, owned by the lifecycle worker): outcomeFailedKey,
+// outcomeFailedTool, outcomeFailedAction and outcomeAlternativeDone. The
+// lifecycle worker owns that file and wires this call; this file owns the rule
+// and the reset only. The delegated side needs no equivalent reset: a worker's
+// pairing lives in a collector state already bound to the FROZEN origin, so its
+// owner and project can never move under it. It is a no-op when no failure is
+// pending, so it is safe to call on every transition.
+func (a *Agent) invalidateOutcomePairing() {
+	if a.memory == nil {
+		return
+	}
+	a.memory.mu.Lock()
+	a.memory.outcomeFailedKey = ""
+	a.memory.outcomeFailedTool = ""
+	a.memory.outcomeFailedAction = ""
+	a.memory.outcomeAlternativeDone = false
+	a.memory.mu.Unlock()
+}
+
 // alternativeExcludedTools are the bare lookups and metadata calls that are
 // never the observed alternative to an action failure. A successful `ls` after a
 // failed import says nothing about how the work got done, so it is refused
@@ -235,10 +268,22 @@ var alternativeExcludedTools = map[string]bool{
 }
 
 // alternativeEligible is the whole association rule, and it is deliberately
-// lexical and narrow: the success must be the SAME tool class as the failure,
-// must not be a bare lookup or metadata call, and its action must share a
-// meaningful WHOLE token with the failed action. Anything less is not labelled
-// an alternative; the model is left to judge relevance for itself.
+// lexical and conservative. The success must be the SAME tool class as the
+// failure (the same registered tool — bash to bash), must carry a real action,
+// must not be a bare lookup or metadata call and must not be a check-only probe,
+// and it must be tied to the work by ONE of two meaningful links:
+//
+//   - a WHOLE token it shares with the FAILED ACTION; or
+//   - a FILE OPERAND it shares with the turn's own FROZEN GOAL.
+//
+// The second link exists because a genuine replacement may run a DIFFERENT
+// COMMAND and a DIFFERENT LIBRARY inside the same tool class, sharing no token
+// with the failed action: the exact live shape is a `python -c 'import pandas'`
+// that failed and a csv/Decimal calculation over the same goal-named week.csv
+// that succeeded. The artifact the goal named is the honest tie — stronger than
+// any generic engineering word, and not forgeable by echoing the goal's prose,
+// while the shared cwd alone is not grounding at all. Anything less is not
+// labelled an alternative; the model judges relevance for itself.
 func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string) bool {
 	name := strings.TrimSpace(call.Function.Name)
 	if name == "" || name != strings.TrimSpace(failedTool) || alternativeExcludedTools[name] {
@@ -260,7 +305,63 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	if shellToolName(name) && shellMetadataOnly(body) {
 		return false
 	}
-	return sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal)
+	// A CHECK-ONLY PROBE IS NOT A REPLACEMENT. A `python -c 'import pandas'`
+	// that later succeeds confirms the environment; it does not do the work the
+	// failure blocked, so carrying it as the alternative would teach a later turn
+	// that re-checking is how the job gets done. Real work on an operand — a
+	// file, a package path, a redirect — is never caught here.
+	if shellToolName(name) && shellCheckOnly(body) {
+		return false
+	}
+	if sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal) {
+		return true
+	}
+	// THE REPLACEMENT MAY RUN A DIFFERENT COMMAND AND A DIFFERENT LIBRARY inside
+	// the same tool class. When the failed action and the success share no
+	// meaningful action token, the file the turn's frozen GOAL named is the tie:
+	// a success that works on that artifact is the observed way THIS work got
+	// done, not a command that merely happened to run next or one that only
+	// echoed the goal's words back.
+	return sharesGoalNamedFileOperand(body, goal)
+}
+
+// sharesGoalNamedFileOperand answers whether an action NAMES a file the turn's
+// own goal named — the association the live ledger run needs when the
+// replacement runs a different command and a different library than the one that
+// failed. The file's own base name is the grounding: `week.csv` counts whether
+// it is written `week.csv`, `./week.csv` or `/home/.../ledger/week.csv`, while
+// the shared cwd every command of a session runs in contributes nothing but the
+// file it actually points at. A command that merely echoes the goal's words —
+// `print("independent grand total")` — names no file and is refused; a genuine
+// calculation over the goal-named artifact pairs whether or not it prints a
+// friendly label.
+func sharesGoalNamedFileOperand(successBody, goal string) bool {
+	want := fileOperands(goal)
+	if len(want) == 0 {
+		return false
+	}
+	for operand := range fileOperands(successBody) {
+		if want[operand] {
+			return true
+		}
+	}
+	return false
+}
+
+// fileOperands extracts the file names a body names, each reduced to its base
+// name and lowercased, so one artifact is one operand however it is pathed. A
+// file is a run of word characters ending in a known extension; a routine call
+// like `json.load` and the shared cwd's own `ledger` directory are not files.
+func fileOperands(text string) map[string]bool {
+	operands := map[string]bool{}
+	for _, run := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '.' && r != '_' && r != '-'
+	}) {
+		if hasFileExtension(run) {
+			operands[run] = true
+		}
+	}
+	return operands
 }
 
 // sharedMeaningfulActionToken answers whether the two action bodies share a
@@ -394,6 +495,149 @@ func shellMetadataOnly(body string) bool {
 		}
 	}
 	return read
+}
+
+// shellCheckOnly answers whether every segment of a shell action only PROBES
+// the environment — an interpreter asked to import or print with an inline
+// one-liner and no operand — rather than working on a thing. It is what keeps a
+// later successful `python -c 'import pandas; print(pandas.__version__)'` from
+// being carried as the observed alternative to the failed import it merely
+// re-checks. A pure metadata/lookup pipeline is already refused by
+// [shellMetadataOnly]; this adds the probe that is not a lookup and still is not
+// work. The reader is lexical and conservative: anything it cannot read as a
+// probe — real work on an operand, a module run, a redirect — is left as work.
+func shellCheckOnly(body string) bool {
+	segments := shellSegments(body)
+	seen := false
+	for _, segment := range segments {
+		words := shellSegmentCommand(segment)
+		if len(words) == 0 {
+			continue
+		}
+		seen = true
+		if shellCommandIsMetadata(words) {
+			continue
+		}
+		if !interpreterProbeSegment(words[0], segment) {
+			return false
+		}
+	}
+	return seen
+}
+
+// shellSegments splits a shell action into its pipeline segments, ignoring the
+// separators that sit inside a single- or double-quoted span: a `;` inside a
+// `python -c '...; ...'` one-liner is code, not a new command, and reading it as
+// one hid the whole probe. It is a small lexical reader, not a shell parser.
+func shellSegments(body string) []string {
+	var segments []string
+	var b strings.Builder
+	var quote rune
+	runes := []rune(body)
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if quote != 0 {
+			b.WriteRune(r)
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch r {
+		case '\'', '"':
+			quote = r
+			b.WriteRune(r)
+		case ';', '|', '&', '\n':
+			segments = append(segments, b.String())
+			b.Reset()
+			if (r == '|' || r == '&') && i+1 < len(runes) && runes[i+1] == r {
+				i++
+			}
+		default:
+			b.WriteRune(r)
+		}
+	}
+	segments = append(segments, b.String())
+	return segments
+}
+
+// interpreterProbeSegment answers whether one shell segment is an interpreter
+// asked to PROBE with an inline one-liner: the `python -c '...'` shape. It
+// requires an inline flag (-c/-e) or a stdin/heredoc marker (`-`, `<<`), and
+// refuses the segment the moment it names an operand — a path, a file, a
+// redirect — because that is work on a thing, not a check. A plain
+// `python script.py` or `python -m module` is work and is never a probe.
+func interpreterProbeSegment(command, segment string) bool {
+	base := strings.ToLower(command)
+	if !strings.HasPrefix(base, "python") && !strings.HasPrefix(base, "pypy") {
+		return false
+	}
+	inline := false
+	for _, field := range strings.Fields(segment) {
+		switch strings.Trim(field, "\"'`") {
+		case "-c", "-e", "-", "--eval":
+			inline = true
+		}
+	}
+	if !inline {
+		return false
+	}
+	return !segmentNamesOperand(segment)
+}
+
+// segmentNamesOperand answers whether a segment names anything to work on: a
+// path (a word with a directory separator or a known file extension) or a
+// redirect to or from a file. The interpreter's own program word is skipped, so
+// its `.venv/bin/python` never reads as the probe's operand, and a heredoc
+// (`<<`), which feeds stdin rather than naming a file, is not an operand.
+func segmentNamesOperand(segment string) bool {
+	fields := strings.Fields(segment)
+	skippedProgram := false
+	for _, field := range fields {
+		word := strings.Trim(field, "\"'`()[]{};,&")
+		if word == "" || shellAssignment(word) {
+			continue
+		}
+		if !skippedProgram {
+			skippedProgram = true
+			continue
+		}
+		if strings.HasPrefix(word, "<<") {
+			continue
+		}
+		if strings.HasPrefix(word, "<") || strings.HasPrefix(word, ">") {
+			return true
+		}
+		if strings.ContainsAny(word, "/\\") {
+			return true
+		}
+		if hasFileExtension(word) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasFileExtension answers whether a word ends in a known data or script file
+// extension. It is deliberately a fixed set rather than any dotted tail, so a
+// library call like `json.load` is not mistaken for a file operand.
+func hasFileExtension(word string) bool {
+	i := strings.LastIndex(word, ".")
+	if i < 0 || i == len(word)-1 {
+		return false
+	}
+	ext := strings.ToLower(word[i+1:])
+	return fileExtensionWords[ext]
+}
+
+// fileExtensionWords are the file extensions that make a word an operand — a
+// thing an action works on — and never a routine call.
+var fileExtensionWords = map[string]bool{
+	"csv": true, "tsv": true, "txt": true, "md": true, "log": true, "dat": true,
+	"json": true, "yaml": true, "yml": true, "toml": true, "ini": true, "cfg": true,
+	"xml": true, "html": true, "sql": true, "db": true,
+	"py": true, "sh": true, "bash": true, "go": true, "js": true, "ts": true,
+	"rb": true, "rs": true, "java": true, "c": true, "h": true, "cpp": true,
 }
 
 // shellSegmentCommand returns the command word a shell segment runs, with

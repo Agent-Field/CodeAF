@@ -547,3 +547,265 @@ func TestBoundaryRefusesPlanStatusReadAsRemedy(t *testing.T) {
 		t.Fatalf("a plan status read was stored as the failure's remedy: %+v", rows)
 	}
 }
+
+// ── A4, THE EXACT LIVE FAILURE (session b050dd21f038f7cf) ────────────────────
+//
+// The canonical row proved only the standalone pandas import FAILED, and no
+// succeeded AlternativeOf was written. The old rule required the success to
+// share a meaningful token with the FAILED ACTION, but the genuine replacements
+// ran a different command and a different library and shared only the turn's own
+// GOAL and the goal-named artifact week.csv. These constants are the EXACT
+// production actions and the EXACT live prompt from b050dd21f038f7cf — never a
+// shortened command invented to share a token, and never an altered goal.
+const (
+	a4Goal   = "Independently verify the ledger grand total for week.csv in this project's .venv. First diagnose available tools by running exactly .venv/bin/python -c 'import pandas; print(pandas.__version__)' as a standalone command, with no pipes, appended commands or error masking. Then complete an independent calculation and compare it with the ledger utility. Read-only."
+	a4Failed = ".venv/bin/python -c 'import pandas; print(pandas.__version__)'"
+	a4CSV    = ".venv/bin/python -c '\nimport csv\nfrom decimal import Decimal\ntotal = Decimal(0)\nn = 0\nwith open(\"week.csv\", newline=\"\") as f:\n    for row in csv.DictReader(f):\n        total += Decimal(row[\"amount\"]); n += 1\nprint(\"rows:\", n)\nprint(\"independent grand total:\", total)\n'"
+	a4Ledger = ".venv/bin/python ledger.py week.csv; echo \"---\"; .venv/bin/python ledger.py week.csv --summary grandtotal; echo \"---\"; .venv/bin/python ledger.py week.csv --json; echo; .venv/bin/python ledger.py week.csv --summary grandtotal --json"
+)
+
+func a4FailureResult() toolResult {
+	return toolResult{text: "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nModuleNotFoundError: No module named 'pandas'\n\n\nCommand exited with code 1", isError: true}
+}
+
+// A STANDALONE DIAGNOSTIC FAILURE IS PAIRED WITH THE ACTUAL CSV/DECIMAL SUCCESS
+// under the SAME frozen goal, at BOTH the session and the delegated boundary,
+// even though the two commands share no library or cwd token. The assertion is
+// that the observed computation was stored as the one alternative — not a claim
+// that any causal learning is certain.
+func TestStandaloneFailurePairsActualCSVDecimalSuccess(t *testing.T) {
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, a4Goal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		// The exact live batch: the failed diagnostic, an ls and two reads that
+		// are never the way the work got done, then the two genuine calculations.
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_01a10f425f0e76c693856c10", a4Failed), a4FailureResult(), pre)
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_01a10f425f49743898e5a9d3", "ls -la"), toolResult{text: ".git/\n.gitignore\n.venv/\n__pycache__/\nledger.py\ntest_ledger.py\nweek.csv"}, pre)
+		a.recordOutcome(ctx, 1, delegatedReadCall(t, "ledger.py", "call_01a10f4260fb76d1ba853b18"), toolResult{text: "#!/usr/bin/env python3\n\"\"\"Summarize a CSV spending ledger by category.\"\"\""}, pre)
+		a.recordOutcome(ctx, 1, delegatedReadCall(t, "week.csv", "call_01a10f42612d746383a2dc8b"), toolResult{text: "category,amount\nfood,0.1\nfood,0.2\ntravel,12.05\n"}, pre)
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_01a10f4263637542833ad7e6", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35\n"}, pre)
+		// A second genuine success in the same batch is NOT retained.
+		a.recordOutcome(ctx, 1, delegatedBashCall("call_01a10f4263f670718eb7ac57", a4Ledger), toolResult{text: "food: 0.30\ntravel: 12.05\n---\ngrand total: 12.35"}, pre)
+
+		rows := attemptsForProject(t, brain, a)
+		if len(rows) != 2 {
+			t.Fatalf("the standalone failure and its one actual success should be two rows, got %+v", rows)
+		}
+		var failed, succeeded *store.ContextualAttempt
+		for i := range rows {
+			switch rows[i].Status {
+			case store.AttemptFailed:
+				failed = &rows[i]
+			case store.AttemptSucceeded:
+				succeeded = &rows[i]
+			}
+		}
+		if failed == nil || succeeded == nil {
+			t.Fatalf("pair was not written: %+v", rows)
+		}
+		if failed.Action != "bash: "+a4Failed {
+			t.Fatalf("the stored failure was not the exact standalone command: %q", failed.Action)
+		}
+		if succeeded.AlternativeOf != failed.SourceKey {
+			t.Fatalf("the actual CSV/Decimal success did not name the standalone failure: alt=%q failure=%q", succeeded.AlternativeOf, failed.SourceKey)
+		}
+		if !strings.HasPrefix(succeeded.Action, "bash: .venv/bin/python -c '\nimport csv") || strings.Contains(succeeded.Action, "ledger.py") {
+			t.Fatalf("the stored alternative was not the actual CSV/Decimal calculation: %q", succeeded.Action)
+		}
+		if succeeded.Goal != failed.Goal || succeeded.TurnID != failed.TurnID {
+			t.Fatalf("the alternative lost the frozen goal/turn: alt=%+v failure=%+v", succeeded, failed)
+		}
+		if !strings.Contains(succeeded.Observation, "12.35") {
+			t.Fatalf("the alternative's own receipt was not kept: %q", succeeded.Observation)
+		}
+	})
+
+	t.Run("delegated", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(context.Background(), a4Goal)
+		worker := spawnTaskWorker(t, root, dir)
+		ctx := context.Background()
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("call_01a10f425f0e76c693856c10", a4Failed), a4FailureResult(), pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("call_01a10f425f49743898e5a9d3", "ls -la"), toolResult{text: ".venv/\nledger.py\nweek.csv"}, pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("call_01a10f4263637542833ad7e6", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35\n"}, pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("call_01a10f4263f670718eb7ac57", a4Ledger), toolResult{text: "grand total: 12.35"}, pre)
+
+		rows := attemptsForProject(t, brain, root)
+		if len(rows) != 2 {
+			t.Fatalf("delegated standalone failure+alternative should be two rows, got %+v", rows)
+		}
+		var failed, succeeded *store.ContextualAttempt
+		for i := range rows {
+			switch rows[i].Status {
+			case store.AttemptFailed:
+				failed = &rows[i]
+			case store.AttemptSucceeded:
+				succeeded = &rows[i]
+			}
+		}
+		if failed == nil || succeeded == nil || succeeded.AlternativeOf != failed.SourceKey {
+			t.Fatalf("delegated pair was not linked: %+v", rows)
+		}
+		if !strings.HasPrefix(succeeded.Action, "bash: .venv/bin/python -c '\nimport csv") {
+			t.Fatalf("the delegated stored alternative was not the actual CSV/Decimal calculation: %q", succeeded.Action)
+		}
+	})
+}
+
+// A GENUINE CALCULATION OVER THE GOAL-NAMED FILE PAIRS EVEN WITH NO FRIENDLY
+// LABEL TEXT, because the grounding is the artifact it operates on; a command
+// that merely ECHOES the goal's words names no file and is refused.
+func TestGoalFileOperandGroundsReplacementNotEchoedProse(t *testing.T) {
+	const silentCSV = ".venv/bin/python -c '\nimport csv, decimal\nwith open(\"week.csv\") as f:\n    print(sum(decimal.Decimal(r[1]) for r in list(csv.reader(f))[1:]))\n'"
+	const echoProse = `.venv/bin/python -c 'print("independent grand total")'`
+	const cwdOnly = `cd /home/santosh/src/contextual-verified-work-20261005/ledger && .venv/bin/python -c 'print(1)'`
+
+	// The grounding is the goal-named FILE, not a label: the calculation pairs
+	// with no "grand total" text anywhere.
+	if !alternativeEligible(delegatedBashCall("s", silentCSV), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("a genuine calculation over the goal-named file was not eligible without friendly label text")
+	}
+	// Echoing the goal's prose names no file and is refused.
+	if alternativeEligible(delegatedBashCall("e", echoProse), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("a command that only echoed the goal's prose was eligible as the alternative")
+	}
+	// The shared cwd's own directory word ("ledger") is not a file operand, so a
+	// no-operand probe under that cwd stays refused.
+	if alternativeEligible(delegatedBashCall("d", cwdOnly), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("a no-operand probe under the shared cwd was eligible as the alternative")
+	}
+	// A PATH-QUALIFIED reference to the goal's file still grounds it: the file's
+	// own name is stronger than the shared cwd, and must not be discarded as if
+	// it were merely part of that cwd.
+	absolute := "cd /home/santosh/src/contextual-verified-work-20261005/ledger && .venv/bin/python -c '\nimport csv, decimal\nf = open(\"/home/santosh/src/contextual-verified-work-20261005/ledger/week.csv\")\nprint(sum(decimal.Decimal(r[1]) for r in list(csv.reader(f))[1:]))\n'"
+	if !alternativeEligible(delegatedBashCall("a", absolute), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("a path-qualified reference to the goal-named file did not ground the replacement")
+	}
+}
+
+// AN UNRELATED COMMAND, A BARE METADATA LOOKUP AND A CHECK-ONLY PROBE ARE ALL
+// REFUSED as the alternative to the standalone import failure.
+func TestAlternativeRefusesUnrelatedMetadataAndCheckOnlySuccess(t *testing.T) {
+	const unrelated = "make docs"
+	const metadata = "ls -la"
+
+	// The per-rule unit: the genuine replacement passes; each negative does not.
+	if !alternativeEligible(delegatedBashCall("s", a4CSV), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("the actual CSV/Decimal calculation was not eligible across the frozen goal")
+	}
+	if alternativeEligible(delegatedBashCall("u", unrelated), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("an unrelated command was eligible as the alternative")
+	}
+	if alternativeEligible(delegatedBashCall("m", metadata), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("a bare metadata lookup was eligible as the alternative")
+	}
+	// The check-only probe is a successful REPLAY of the failed diagnosis: it
+	// confirms the environment, it does not do the work.
+	if alternativeEligible(delegatedBashCall("c", a4Failed), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("a check-only probe replay was eligible as the alternative")
+	}
+	if alternativeEligible(delegatedBashCall("c2", ".venv/bin/python -c 'import pandas'"), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("a check-only import probe was eligible as the alternative")
+	}
+
+	// At the REAL boundary: the unrelated command, the bare lookup and the
+	// successful check-only probe write nothing; only the genuine success does.
+	dir := t.TempDir()
+	initRepo(t, dir)
+	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	ctx := context.Background()
+	a.prepareBindingContext(ctx, a4Goal)
+	pre := a.captureSourceSnapshot(ctx).Identity
+	a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("u1", unrelated), toolResult{text: "docs built"}, pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("m1", metadata), toolResult{text: ".venv\nledger.py\nweek.csv"}, pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("c1", a4Failed), toolResult{text: "2.2.3"}, pre)
+	if rows := attemptsForProject(t, brain, a); len(rows) != 1 || rows[0].Status != store.AttemptFailed {
+		t.Fatalf("noise or a check-only probe was stored as the standalone failure's alternative: %+v", rows)
+	}
+	a.recordOutcome(ctx, 1, delegatedBashCall("s1", a4CSV), toolResult{text: "independent grand total: 12.35"}, pre)
+	rows := attemptsForProject(t, brain, a)
+	if len(rows) != 2 {
+		t.Fatalf("the genuine success was not paired after the refused noise: %+v", rows)
+	}
+}
+
+// ONE FAILURE KEEPS ONE ALTERNATIVE when the genuine replacements arrive as a
+// concurrent tool batch, exactly as the live run issued them.
+func TestStandaloneFailureKeepsOneAlternativeUnderConcurrentBatch(t *testing.T) {
+	countSucceeded := func(rows []store.ContextualAttempt) int {
+		n := 0
+		for _, row := range rows {
+			if row.Status == store.AttemptSucceeded {
+				n++
+			}
+		}
+		return n
+	}
+	both := []string{a4CSV, a4Ledger}
+
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, a4Goal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+		parallelOutcomes(8, func(i int) {
+			a.recordOutcome(ctx, 1, delegatedBashCall(fmt.Sprintf("s%d", i), both[i%2]), toolResult{text: "grand total: 12.35"}, pre)
+		})
+		if n := countSucceeded(attemptsForProject(t, brain, a)); n != 1 {
+			t.Fatalf("the standalone failure kept %d alternatives under a concurrent batch", n)
+		}
+	})
+
+	t.Run("delegated", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(context.Background(), a4Goal)
+		worker := spawnTaskWorker(t, root, dir)
+		ctx := context.Background()
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+		parallelOutcomes(8, func(i int) {
+			worker.recordOutcome(ctx, 0, delegatedBashCall(fmt.Sprintf("s%d", i), both[i%2]), toolResult{text: "grand total: 12.35"}, pre)
+		})
+		if n := countSucceeded(attemptsForProject(t, brain, root)); n != 1 {
+			t.Fatalf("the delegated standalone failure kept %d alternatives under a concurrent batch", n)
+		}
+	})
+}
+
+// AN OWNER/PROJECT TRANSITION DROPS THE PENDING FAILED IDENTITY: a success under
+// a new owner is never paired to a failure recorded under the old one, and the
+// immutable failure receipt in the journal is left untouched.
+func TestOwnerTransitionInvalidatesPendingFailurePairing(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	ctx := context.Background()
+	a.prepareBindingContext(ctx, a4Goal)
+	pre := a.captureSourceSnapshot(ctx).Identity
+	a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+
+	// The lifecycle anchor path calls this exactly where the owner changes.
+	a.invalidateOutcomePairing()
+
+	a.recordOutcome(ctx, 1, delegatedBashCall("s1", a4CSV), toolResult{text: "independent grand total: 12.35"}, pre)
+	rows := attemptsForProject(t, brain, a)
+	if len(rows) != 1 || rows[0].Status != store.AttemptFailed {
+		t.Fatalf("a success was paired after an owner transition, or the failure was rewritten: %+v", rows)
+	}
+	if !strings.Contains(rows[0].Observation, "pandas") {
+		t.Fatalf("the immutable failure receipt was altered: %q", rows[0].Observation)
+	}
+}
