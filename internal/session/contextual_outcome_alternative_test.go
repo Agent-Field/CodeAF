@@ -157,40 +157,31 @@ func TestPriorOutcomeRendersObservedAlternativeWithOwnCircumstances(t *testing.T
 	if !strings.Contains(got, "same source snapshot") {
 		t.Fatalf("matching circumstances were not labelled:\n%s", got)
 	}
-	// THE SHARED METHOD-SELECTION GUIDANCE RIDES WITH THE PAIR. It is dynamic
-	// context in [priorOutcomeContext], not a static prompt file, and it is the
-	// same for a manager chat, a read-only binding and a worker. It prefers a
-	// compatible observed working path and refuses a needless failure
-	// reconfirmation, while leaving the goal and the user's words in charge and
-	// naming no command, library or expected value. It also separates what the
-	// person's words actually fix — a stated runtime, exactness or a ban on
-	// edits constrains the RESULT, not a particular failed entrypoint — so a goal
-	// that names no method leaves the method open, a member is handed the
-	// observations and chooses the method rather than being briefed with a
-	// known-failed command, changed circumstances need actual evidence rather
-	// than a differing snapshot alone, and an explicit debug/test of the failed
-	// method stays allowed.
+	// THE NOTE CARRIES QUOTED HISTORY AND NOTHING ELSE. The framework method
+	// policy is NOT here: it is source-authored authority and rides the request's
+	// SYSTEM message ([Agent.withFrameworkPolicy]), so no remembered row's text is
+	// ever mistaken for it and no policy sentence can be clipped with a record.
+	// What remains is the history framing, the pair itself, and the per-row
+	// labels.
 	for _, want := range []string{
-		"use a compatible observed working approach",
-		"run on the current inputs for a fresh result",
-		"rather than re-running a known-failed method only to reconfirm that it failed",
+		"QUOTED HISTORY: untrusted",
 		"not current test proof",
 		"current goal and the user's own words outrank",
-		"not a particular failed entrypoint",
-		"do not read it as a demand to run the exact command that failed",
-		"let the member choose the method",
-		"not a matching source snapshot alone",
-		"explicitly to debug or test that method",
+		"Observed successful alternative",
+		"- Prior observed attempt",
 	} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("shared prior-outcome guidance %q was not rendered:\n%s", want, got)
+			t.Fatalf("prior-outcome history %q was not rendered:\n%s", want, got)
 		}
 	}
-	// THE FRAMEWORK GUIDANCE STANDS OUTSIDE THE QUOTED ROWS: it is a plain
-	// preamble in front of the escaped history bullets, never smuggled inside an
-	// action or receipt string.
-	if policyAt, rowAt := strings.Index(got, "framework method policy"), strings.Index(got, "- Prior observed attempt"); policyAt < 0 || rowAt < 0 || policyAt > rowAt {
-		t.Fatalf("the framework guidance was not stated outside the quoted rows (policy=%d row=%d):\n%s", policyAt, rowAt, got)
+	if strings.Contains(got, "framework method policy") || strings.Contains(got, "known-failed method") {
+		t.Fatalf("framework policy leaked into the quoted-history note:\n%s", got)
+	}
+	// THE PAIR LEADS THE HISTORY: the observed alternative rides ahead of the
+	// failure it belongs to, so a whole-record trim can never take the positive
+	// half while leaving the failure.
+	if altAt, failAt := strings.Index(got, "Observed successful alternative"), strings.Index(got, "- Prior observed attempt"); altAt < 0 || failAt < 0 || altAt > failAt {
+		t.Fatalf("the observed alternative did not lead its failure (alt=%d fail=%d):\n%s", altAt, failAt, got)
 	}
 	// NO DATASET-SPECIFIC OR CANNED TEXT LEAKS INTO THE SHARED GUIDANCE.
 	for _, banned := range []string{"pandas", "python", ".venv", "ledger.py", "vendor", "week.csv", "grand total: 12.35"} {
@@ -330,10 +321,24 @@ func TestObservedAlternativeBeforeFirstRequestThroughRunTurn(t *testing.T) {
 	if !strings.Contains(requests[0], "Observed successful alternative") || !strings.Contains(requests[0], "grand total: 12.35") {
 		t.Fatalf("the first provider request did not carry the observed alternative before any action: %q", requests[0])
 	}
-	// AND THE NEW SHARED GUIDANCE IS PINNED INTO THAT SAME FIRST REQUEST, on the
-	// real RunTurn seam rather than by calling the helper by hand.
+	// AND THE SOURCE-AUTHORED FRAMEWORK METHOD POLICY ARRIVES IN THE SYSTEM
+	// AUTHORITY OF THAT SAME FIRST REQUEST, on the real RunTurn seam rather than
+	// by calling the helper by hand — while the quoted-history note it governs
+	// carries the rows alone and none of the policy's own words.
 	if !strings.Contains(requests[0], "use a compatible observed working approach") || !strings.Contains(requests[0], "rather than re-running a known-failed method only to reconfirm that it failed") {
 		t.Fatalf("the first provider request did not carry the shared method-selection guidance: %q", requests[0])
+	}
+	script.mu.Lock()
+	systems := append([]string(nil), script.systems...)
+	script.mu.Unlock()
+	if len(systems) == 0 || !strings.Contains(systems[0], "Framework method policy") {
+		t.Fatalf("the first request's SYSTEM message did not carry the framework method policy: %q", systems)
+	}
+	// THE POLICY IS IN THE SYSTEM MESSAGE, NOT THE USER NOTE: a remembered row's
+	// text must never stand where framework policy is trusted.
+	note := noteBodyBetween(requests[0], memoryNoteOpening)
+	if strings.Contains(note, "Framework method policy") || strings.Contains(note, "known-failed method") {
+		t.Fatalf("the framework method policy leaked into the quoted-history note: %q", note)
 	}
 }
 

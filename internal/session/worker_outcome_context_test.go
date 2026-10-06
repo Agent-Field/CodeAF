@@ -271,8 +271,18 @@ func TestManagerBeforeFirstRequestCarriesWholePriorOutcome(t *testing.T) {
 	if !strings.Contains(block, "Observed successful alternative") {
 		t.Fatalf("the manager lost the observed alternative: %q", block)
 	}
-	if !strings.Contains(block, "repeat a failure needlessly.") {
-		t.Fatalf("the shared guidance was clipped mid-sentence: %q", block)
+	// THE FRAMEWORK POLICY IS NOT IN THE NOTE. It is source-authored authority
+	// and rides the request's SYSTEM message, activated by the very rows the note
+	// carries ([Agent.withFrameworkPolicy]); a remembered row's words are never
+	// where framework policy is trusted.
+	if strings.Contains(block, "Framework method policy") || strings.Contains(block, "known-failed method") {
+		t.Fatalf("framework policy leaked into the manager's quoted-history note: %q", block)
+	}
+	a.mu.Lock()
+	active := a.frameworkPolicy
+	a.mu.Unlock()
+	if !active {
+		t.Fatal("the manager's outcome rows did not activate the framework method policy")
 	}
 }
 
@@ -306,10 +316,10 @@ func TestManagerContextNeverClipsRecordMidSentence(t *testing.T) {
 	if strings.Count(block, "<contextual_impacts>") != strings.Count(block, "</contextual_impacts>") {
 		t.Fatalf("an impacts wrapper was left open (clipped mid-record): %q", block)
 	}
-	// The shared guidance is an instruction: it is present in full or absent,
+	// The history framing is one sentence: it is present in full or absent,
 	// never cut into a fragment.
-	if strings.Contains(block, "Observed outcomes from earlier work") && !strings.Contains(block, "repeat a failure needlessly.") {
-		t.Fatalf("the shared guidance was cut into an instruction fragment: %q", block)
+	if strings.Contains(block, "Observed outcomes from earlier work") && !strings.Contains(block, "current goal and the user's own words outrank them.") {
+		t.Fatalf("the history framing was cut into a fragment: %q", block)
 	}
 	if strings.Contains(block, "Observed successful alternative") && !strings.Contains(block, "t succeeded at the tool boundary.") {
 		t.Fatalf("an observed alternative was cut into a fragment: %q", block)

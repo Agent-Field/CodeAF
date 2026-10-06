@@ -144,11 +144,15 @@ func TestGroundedOutcomePairSurvivesOversizedAdvisoryHistory(t *testing.T) {
 	// the approved rule AND the advisory history in ONE <memory> block, as the
 	// 3465-rune captured note carried them -- plus the 1707-rune pair exceeds the
 	// one 4800 ceiling, which is exactly why the pair used to be omitted WHOLE.
+	// The pair now carries the rows alone; the framework method policy it obeys
+	// is source-authored authority counted inside the SAME ceiling, so the three
+	// together are what the ceiling actually holds.
 	combined := renderBindingBlock(a.bindingMemories(brain, ledgerBudgetGoal, ""))
 	outcomes := a.priorOutcomeContext(ledgerBudgetGoal, "")
-	if utf8.RuneCountInString(combined)+utf8.RuneCountInString(outcomes) <= memoryBlockRunes {
-		t.Fatalf("fixture failed to reproduce the captured budget pressure: combined=%d outcomes=%d ceiling=%d",
-			utf8.RuneCountInString(combined), utf8.RuneCountInString(outcomes), memoryBlockRunes)
+	policy := utf8.RuneCountInString(frameworkMethodPolicy)
+	if utf8.RuneCountInString(combined)+utf8.RuneCountInString(outcomes)+policy <= memoryBlockRunes {
+		t.Fatalf("fixture failed to reproduce the captured budget pressure: combined=%d outcomes=%d policy=%d ceiling=%d",
+			utf8.RuneCountInString(combined), utf8.RuneCountInString(outcomes), policy, memoryBlockRunes)
 	}
 }
 

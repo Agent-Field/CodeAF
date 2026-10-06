@@ -977,8 +977,9 @@ func (a *Agent) refreshContextualImpactsAfterAction(result toolResult, tool stri
 		// The head earlier requests already carried stays whole; the fresh
 		// consequence is the optional tail, trimmed by WHOLE records to what is
 		// left of the one shared ceiling and omitted whole when nothing fits, so
-		// no record and no instruction is ever clipped mid-sentence.
-		a.memoryText = composeBeforeRequestContext(a.memoryText, block, "", "")
+		// no record and no instruction is ever clipped mid-sentence. The
+		// source-authored framework policy is counted inside the SAME ceiling.
+		a.memoryText = composeBeforeRequestContextUnder(frameworkCeilingFor(a.frameworkPolicy), a.memoryText, block, "", "", "")
 		a.landVolatileLocked()
 	}
 	a.mu.Unlock()

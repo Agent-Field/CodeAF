@@ -2898,6 +2898,16 @@ type Agent struct {
 	// lets the deterministic, may-not-be-late half survive a late router answer.
 	// It is empty for every conversation, which lands nothing.
 	bindingText string
+	// frameworkPolicy says this turn's request carries relevant prior-outcome
+	// rows, which is the ONE condition under which the source-authored
+	// [frameworkMethodPolicy] rides the request's SYSTEM message. It is set
+	// beside the rows themselves by the before-request reads
+	// ([Agent.prepareBindingContext], [Agent.prepareWorkerBinding],
+	// [Agent.withBindingContext]) and read at the request seam
+	// ([Agent.withFrameworkPolicy]), so the policy and the history always travel
+	// together and the same flag serves a conversation, a manager and a task
+	// worker. False is the ordinary state and adds nothing.
+	frameworkPolicy bool
 	// cardText is the <state> block (card.go): what this conversation is doing,
 	// as the post-turn pass has folded it. It sits under mu because it is
 	// rendered into the transcript — at the TAIL, in the volatile note

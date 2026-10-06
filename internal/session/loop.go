@@ -2007,6 +2007,13 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			return nil, model, err
 		}
 		messages, carried := a.snapshotWithReasoning()
+		// AND THE SOURCE-AUTHORED FRAMEWORK METHOD POLICY, in the SYSTEM
+		// authority and never the quoted-history note, when this turn carries
+		// prior-outcome rows ([Agent.withFrameworkPolicy]): the same constant for
+		// an ordinary conversation, a manager and a task worker, added to THIS
+		// request's leading system message alone so a refresh cannot double-insert
+		// it and the transcript behind it never moves.
+		messages = a.withFrameworkPolicy(messages)
 		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 {
 			rolePage := textMessage("system", strings.TrimSpace(wake.prompt))
 			messages = append(messages[:1:1], append([]ai.Message{rolePage}, messages[1:]...)...)

@@ -281,7 +281,15 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	// record is ever clipped mid-sentence and no wrapper is left open. Lexical
 	// history is provenance, not a rule, and never crowds out a grounded local
 	// outcome.
-	block := composeBeforeRequestContextWithHistory(authority, a.contextualImpactContext(cue), a.priorOutcomeContext(cue, revision), history, "")
+	outcomes := a.priorOutcomeContext(cue, revision)
+	// THE FRAMEWORK METHOD POLICY IS SOURCE-AUTHORED AUTHORITY, so it is shown
+	// only when observed rows actually fit for it to govern, and its runes are
+	// reserved inside the SAME dynamic ceiling the rows spend
+	// ([frameworkCeiling]): the policy and the bounded history together stay
+	// inside one ceiling. A pair that does not fit is omitted WHOLE, and the
+	// policy is then not emitted alone.
+	block := composeBeforeRequestContextUnder(frameworkCeiling(outcomes), authority, a.contextualImpactContext(cue), outcomes, history, "")
+	a.setFrameworkPolicy(strings.Contains(block, "<prior_outcomes>"))
 	a.mu.Lock()
 	a.memoryText = block
 	a.landVolatileLocked()
@@ -317,7 +325,8 @@ func (a *Agent) prepareWorkerBinding(ctx context.Context, cue string) {
 	// prior outcomes come next, and the advisory lexical history spends only
 	// what is left of the one shared ceiling after them, by WHOLE records, so a
 	// history record never crowds out a grounded local outcome.
-	block := composeBeforeRequestContextWithHistory(authority, "", outcomes, history, "")
+	block := composeBeforeRequestContextUnder(frameworkCeiling(outcomes), authority, "", outcomes, history, "")
+	a.setFrameworkPolicy(strings.Contains(block, "<prior_outcomes>"))
 	if block == "" {
 		return
 	}
@@ -369,7 +378,10 @@ func (a *Agent) reserveBindingFirstLocked() {
 	if binding == "" {
 		return
 	}
-	limit := memoryBlockRunes - utf8.RuneCountInString(binding)
+	// The source-authored framework policy rides the request's SYSTEM message and
+	// is counted inside the SAME ceiling, so the routed tail reserves the policy's
+	// runes as well as the mandatory binding's ([frameworkCeilingFor]).
+	limit := frameworkCeilingFor(a.frameworkPolicy) - utf8.RuneCountInString(binding)
 	if limit < 0 {
 		limit = 0
 	}
@@ -388,6 +400,39 @@ func composeBeforeRequestContext(rules, impacts, outcomes, recall string) string
 	return composeBeforeRequestContextWithHistory(rules, impacts, outcomes, "", recall)
 }
 
+// frameworkCeiling is the one shared dynamic ceiling reduced by the runes the
+// source-authored [frameworkMethodPolicy] will occupy in the request's SYSTEM
+// message, so the policy and the bounded history together stay inside the ONE
+// ceiling. With no observed rows there is no policy and the ceiling is
+// unchanged; a policy larger than the ceiling leaves nothing for the rows rather
+// than overflowing it.
+func frameworkCeiling(outcomes string) int {
+	return frameworkCeilingFor(outcomes != "")
+}
+
+// frameworkCeilingFor is [frameworkCeiling] against the decision itself, for a
+// caller that already holds the policy flag rather than a rendered block.
+func frameworkCeilingFor(active bool) int {
+	if !active {
+		return memoryBlockRunes
+	}
+	ceiling := memoryBlockRunes - utf8.RuneCountInString(frameworkMethodPolicy)
+	if ceiling < 0 {
+		ceiling = 0
+	}
+	return ceiling
+}
+
+// setFrameworkPolicy records whether this turn's request carries relevant
+// prior-outcome rows, which is the one condition under which the source-authored
+// [frameworkMethodPolicy] is added to the request's SYSTEM message
+// ([Agent.withFrameworkPolicy]).
+func (a *Agent) setFrameworkPolicy(active bool) {
+	a.mu.Lock()
+	a.frameworkPolicy = active
+	a.mu.Unlock()
+}
+
 // composeBeforeRequestContextWithHistory is [composeBeforeRequestContext] with
 // ONE more optional block: the ADVISORY lexical history the binding projection
 // could not establish as authority. THE PRIORITY IS THE CONTRACT: the genuinely
@@ -400,9 +445,18 @@ func composeBeforeRequestContext(rules, impacts, outcomes, recall string) string
 // outcome; an optional block that cannot show at least one whole record is
 // omitted WHOLE rather than cut into a fragment.
 func composeBeforeRequestContextWithHistory(rules, impacts, outcomes, history, recall string) string {
+	return composeBeforeRequestContextUnder(memoryBlockRunes, rules, impacts, outcomes, history, recall)
+}
+
+// composeBeforeRequestContextUnder is [composeBeforeRequestContextWithHistory]
+// against an EXPLICIT ceiling, so a caller whose request also carries the
+// source-authored [frameworkMethodPolicy] can reserve that policy's runes inside
+// the SAME dynamic ceiling rather than let the two compose past it
+// ([frameworkCeiling]).
+func composeBeforeRequestContextUnder(ceiling int, rules, impacts, outcomes, history, recall string) string {
 	var b strings.Builder
 	b.WriteString(rules)
-	remaining := memoryBlockRunes - utf8.RuneCountInString(rules)
+	remaining := ceiling - utf8.RuneCountInString(rules)
 	if remaining < 0 {
 		remaining = 0
 	}
@@ -572,14 +626,18 @@ func (a *Agent) withBindingContext(block, cue string) string {
 	impacts := a.contextualImpactContext(cue)
 	outcomes := a.priorOutcomeContext(cue, revision)
 	if authority == "" && impacts == "" && outcomes == "" && history == "" {
+		a.setFrameworkPolicy(false)
 		return block
 	}
 	// One shared ceiling includes deterministic and optional routed context: the
 	// genuinely approved rules and confirmed decisions are reserved whole FIRST,
 	// then the impacts and the prior outcomes, and only then the advisory lexical
 	// history and the asynchronous routed recall each spend what is left, by
-	// whole records.
-	return composeBeforeRequestContextWithHistory(authority, impacts, outcomes, history, block)
+	// whole records. The source-authored framework policy is reserved inside the
+	// SAME ceiling ([frameworkCeiling]).
+	composed := composeBeforeRequestContextUnder(frameworkCeiling(outcomes), authority, impacts, outcomes, history, block)
+	a.setFrameworkPolicy(strings.Contains(composed, "<prior_outcomes>"))
+	return composed
 }
 
 func (a *Agent) bindingContext(cue, revision string) string {
