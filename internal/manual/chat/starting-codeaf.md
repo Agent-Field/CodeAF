@@ -146,7 +146,7 @@ stale is running.
 | --- | --- |
 | `--model <slug>` | start on a particular model instead of the configured default |
 | `--reasoning <level>` | how hard the model is asked to think: `off`, `low`, `medium` or `high` |
-| `--session <path>` | open a particular conversation file instead of the most recent |
+| `--session <path>` | open that conversation instead of restoring the saved view |
 | `--host <host[:path]>` | run the conversation on another machine over ssh |
 | `--once "<text>"` | send one message and print its replies — normally it then exits; with `--yolo` and a budget it stays until handed-over work is home or the limit ends it |
 | `--no-compact` | never shorten the conversation automatically |

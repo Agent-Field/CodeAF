@@ -1198,11 +1198,18 @@ func completionRecentCommands(cmd tea.Cmd) []tea.Cmd {
 	if strings.Contains(name, ".loadMentionRecents.") {
 		return []tea.Cmd{cmd}
 	}
-	if !strings.Contains(name, ".Batch.") {
+	// Bubble Tea 2.0.8 builds Batch through a generic compactCmds helper.
+	// Admit both spellings, then check the message type: Sequence shares that
+	// helper, and its commands must not be mistaken for a batch of readers.
+	if !strings.Contains(name, ".Batch.") && !strings.Contains(name, ".compactCmds[") {
+		return nil
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
 		return nil
 	}
 	var out []tea.Cmd
-	for _, child := range cmd().(tea.BatchMsg) {
+	for _, child := range batch {
 		out = append(out, completionRecentCommands(child)...)
 	}
 	return out
