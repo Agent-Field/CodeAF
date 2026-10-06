@@ -13,6 +13,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
@@ -476,5 +477,28 @@ func TestEachAgentRunsUnderItsOwnLimits(t *testing.T) {
 	}
 	if got := app.limitsFor(appx.HarnessOptions{Label: "other"}); got.Turns != 50 || got.Wall != 30*time.Minute {
 		t.Fatalf("an agent with no limits of its own runs under %+v", got)
+	}
+}
+
+// A LONG LINE SAYS HOW TO REACH THE REST, AND GREP REACHES IT. A context file
+// written as one line of JSON was cut at 2,000 bytes with no way to its rest,
+// and the agents reading it ran to their turn cap.
+func TestALongLineIsCutOnACharacterAndGrepShowsAMatchFarIntoIt(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("a", 1999) + "é" + strings.Repeat("b", 28000) + `"needle":"found it"` + strings.Repeat("c", 500)
+	if err := os.WriteFile(filepath.Join(root, "context.json"), []byte(long+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tools := toolbox{root: root}
+	read := tools.run(ai.ToolCall{Function: ai.ToolCallFunction{Name: "read_file", Arguments: `{"path":"context.json"}`}})
+	if !utf8.ValidString(read) || !strings.Contains(read, "é …[line cut: the first 2000 of its 30519 characters; grep for what you need in it") {
+		t.Fatalf("the long line read as %q", read[max(0, len(read)-200):])
+	}
+	found := tools.run(ai.ToolCall{Function: ai.ToolCallFunction{Name: "grep", Arguments: `{"pattern":"needle"}`}})
+	if !strings.HasPrefix(found, "context.json:1: … ") || !strings.Contains(found, `"needle":"found it"`) || len([]rune(found)) > 300 {
+		t.Fatalf("grep showed %q", found)
 	}
 }

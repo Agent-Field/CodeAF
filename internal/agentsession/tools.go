@@ -210,9 +210,7 @@ func (t toolbox) read(name string, offset, limit int) (string, error) {
 		if line == 1 && bytes.IndexByte([]byte(text), 0) >= 0 {
 			return "", fmt.Errorf("%s is a binary file", name)
 		}
-		if len(text) > 2000 {
-			text = text[:2000] + " …[line cut]"
-		}
+		text = cutLongLine(text)
 		fmt.Fprintf(&b, "%6d\t%s\n", line, text)
 		shown++
 	}
@@ -340,10 +338,8 @@ func (t toolbox) grep(expression, name, filter string, ignoreCase bool) (string,
 				more = true
 				return false
 			}
-			if runes := []rune(line); len(runes) > grepLineRunes {
-				line = string(runes[:grepLineRunes]) + " …"
-			}
-			fmt.Fprintf(&b, "%s:%d: %s\n", t.rel(path), number+1, strings.TrimRight(line, "\r"))
+			line = aroundMatch(strings.TrimRight(line, "\r"), search)
+			fmt.Fprintf(&b, "%s:%d: %s\n", t.rel(path), number+1, line)
 			count++
 		}
 		return true
@@ -449,4 +445,51 @@ func displayName(name string) string {
 		return "the repository root"
 	}
 	return name
+}
+
+// readLineRunes is the most of one line read_file shows.
+const readLineRunes = 2000
+
+// cutLongLine is one line as read_file shows it: whole, or its first
+// [readLineRunes] characters and what was left out.
+//
+// A LONG LINE SAYS HOW TO REACH THE REST OF IT. Minified code, generated data
+// and a context file written as one line of JSON are single lines of tens of
+// thousands of characters; the cut used to say only `[line cut]`, at a byte that
+// could split a character, and an agent that needed what followed read on to
+// its turn cap without finding it (/pr's live review, 2026-10-06). grep shows
+// the text around a match anywhere in a line ([aroundMatch]), so the cut points
+// there.
+func cutLongLine(text string) string {
+	runes := []rune(text)
+	if len(runes) <= readLineRunes {
+		return text
+	}
+	return fmt.Sprintf("%s …[line cut: the first %d of its %d characters; grep for what you need in it to see the text around each match]",
+		string(runes[:readLineRunes]), readLineRunes, len(runes))
+}
+
+// aroundMatch is one matching line as grep shows it: whole when it is short,
+// else [grepLineRunes] characters around its first match, so a match far into
+// a long line is shown with its own text rather than with the line's start.
+func aroundMatch(line string, search *regexp.Regexp) string {
+	runes := []rune(line)
+	if len(runes) <= grepLineRunes {
+		return line
+	}
+	at := 0
+	if found := search.FindStringIndex(line); found != nil {
+		at = len([]rune(line[:found[0]]))
+	}
+	start := max(0, at-grepLineRunes/4)
+	end := min(len(runes), start+grepLineRunes)
+	start = max(0, end-grepLineRunes)
+	shown := string(runes[start:end])
+	if start > 0 {
+		shown = "… " + shown
+	}
+	if end < len(runes) {
+		shown += " …"
+	}
+	return shown
 }
