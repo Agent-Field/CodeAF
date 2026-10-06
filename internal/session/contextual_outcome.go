@@ -1803,15 +1803,33 @@ func (a *Agent) priorOutcomeContext(cue, snapshot string) string {
 	if !a.remembers() || memoryTrivialCue(cue) {
 		return ""
 	}
-	key := strings.TrimSpace(a.config.MemoryProjectKey)
+	return a.priorOutcomeBlock(a.memory.store, a.config.MemoryProjectKey, cue, snapshot)
+}
+
+// priorOutcomeBlock is [Agent.priorOutcomeContext] against an EXPLICIT store and
+// project key, so the SAME read-only rendering serves a conversation's own brain
+// and a task/orchestrate/audit worker that was lent the brain and the frozen key
+// but owns no memory writer ([Agent.prepareWorkerBinding]). It reads the
+// existing journal only, writes nothing, and never grants a verb. A missing
+// store or an unprovable project key renders nothing, and an unknown or changed
+// circumstance is labelled honestly by the per-record renderer.
+func (a *Agent) priorOutcomeBlock(st *store.Store, projectKey, cue, snapshot string) string {
+	if st == nil || memoryTrivialCue(cue) {
+		return ""
+	}
+	key := strings.TrimSpace(projectKey)
 	if key == "" {
 		return ""
 	}
 	owner := store.OwnerProject(key)
 	conditions := map[string]string{"project": key}
-	attempts, err := a.memory.store.ContextualAttemptsApplicable(owner, conditions, time.Now(), store.ContextualAttemptLimit)
+	attempts, err := st.ContextualAttemptsApplicable(owner, conditions, time.Now(), store.ContextualAttemptLimit)
 	if err != nil {
-		a.journalMemoryFailure("attempt-read", err)
+		// A worker has no brain to journal a failure through; the read simply
+		// renders nothing rather than take a nil brain.
+		if a.memory != nil {
+			a.journalMemoryFailure("attempt-read", err)
+		}
 		return ""
 	}
 	terms := outcomeTerms(cue)

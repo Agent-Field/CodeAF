@@ -963,7 +963,11 @@ func (a *Agent) refreshContextualImpactsAfterAction(result toolResult, tool stri
 	}
 	a.mu.Lock()
 	if !strings.Contains(a.memoryText, block) {
-		a.memoryText = contextualClip(a.memoryText+block, memoryBlockRunes)
+		// The head earlier requests already carried stays whole; the fresh
+		// consequence is the optional tail, trimmed by WHOLE records to what is
+		// left of the one shared ceiling and omitted whole when nothing fits, so
+		// no record and no instruction is ever clipped mid-sentence.
+		a.memoryText = composeBeforeRequestContext(a.memoryText, block, "", "")
 		a.landVolatileLocked()
 	}
 	a.mu.Unlock()

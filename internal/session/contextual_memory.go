@@ -263,12 +263,12 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	a.memory.outcomeFailedAction = ""
 	a.memory.outcomeAlternativeDone = false
 	a.memory.mu.Unlock()
-	block := a.bindingContext(cue, revision)
-	block += a.contextualImpactContext(cue)
-	block += a.priorOutcomeContext(cue, revision)
-	// The shared ceiling is a promise about the system prompt: the rules, the
-	// impacts and any prior outcome all ride inside it together.
-	block = contextualClip(block, memoryBlockRunes)
+	rules := a.bindingContext(cue, revision)
+	// The shared ceiling is a promise about the system prompt: the mandatory
+	// approved rules are reserved FIRST and whole, and the optional impacts and
+	// prior outcomes spend only what is left, by WHOLE records, so no record is
+	// ever clipped mid-sentence and no wrapper is left open.
+	block := composeBeforeRequestContext(rules, a.contextualImpactContext(cue), a.priorOutcomeContext(cue, revision), "")
 	a.mu.Lock()
 	a.memoryText = block
 	a.landVolatileLocked()
@@ -291,7 +291,19 @@ func (a *Agent) prepareWorkerBinding(cue string) {
 	if a.memory != nil || a.config.bindingStore == nil {
 		return
 	}
-	block := renderBindingBlock(a.bindingMemories(a.config.bindingStore, cue, ""))
+	rules := renderBindingBlock(a.bindingMemories(a.config.bindingStore, cue, ""))
+	// AND THE RELEVANT PRIOR OUTCOMES, READ-ONLY, FROM THE SAME LENT STORE AND
+	// THE SAME FROZEN PROJECT KEY the rules were read under. A worker has no
+	// memory writer and no brain (its [Agent.remembers] is false), so this read
+	// borrows the store and the key it was handed and writes nothing: no
+	// remember, forget, import or any other verb is granted, and the worker
+	// still owns no memory and no future-task authority. The read is bounded and
+	// owner-filtered on the existing journal ([Agent.priorOutcomeBlock]).
+	outcomes := a.priorOutcomeBlock(a.config.bindingStore, a.config.MemoryProjectKey, cue, "")
+	// THE BINDING RULES ARE MANDATORY AND RESERVED FIRST; the relevant prior
+	// outcomes are advisory and spend only what is left of the one shared
+	// ceiling, by WHOLE records.
+	block := composeBeforeRequestContext(rules, "", outcomes, "")
 	if block == "" {
 		return
 	}
@@ -323,6 +335,84 @@ func (a *Agent) reserveBindingFirstLocked() {
 		limit = 0
 	}
 	a.memoryText = trimRenderedMemoryBlock(strings.TrimSpace(a.memoryText), limit)
+}
+
+// composeBeforeRequestContext assembles the blocks a request opens with under
+// the ONE shared [memoryBlockRunes] ceiling. The approved binding RULES are
+// mandatory and are reserved FIRST, whole; the contextual impacts, the relevant
+// prior outcomes and the asynchronous routed recall are optional and each spends
+// only what is left, by WHOLE records, so no record is ever clipped mid-sentence
+// and no wrapper is ever left open. An optional block that cannot show at least
+// one whole record is omitted WHOLE rather than cut into a fragment: an honest
+// absence is preferable to a malformed record.
+func composeBeforeRequestContext(rules, impacts, outcomes, recall string) string {
+	var b strings.Builder
+	b.WriteString(rules)
+	remaining := memoryBlockRunes - utf8.RuneCountInString(rules)
+	if remaining < 0 {
+		remaining = 0
+	}
+	for _, part := range []struct{ block, open, close string }{
+		{impacts, "<contextual_impacts>", "</contextual_impacts>"},
+		{outcomes, "<prior_outcomes>", "</prior_outcomes>"},
+	} {
+		if part.block == "" {
+			continue
+		}
+		kept := trimRenderedWholeRecords(part.block, part.open, part.close, remaining)
+		b.WriteString(kept)
+		remaining -= utf8.RuneCountInString(kept)
+		if remaining < 0 {
+			remaining = 0
+		}
+	}
+	if recall != "" {
+		b.WriteString(trimRenderedMemoryBlock(strings.TrimSpace(recall), remaining))
+	}
+	return b.String()
+}
+
+// trimRenderedWholeRecords drops trailing whole RECORDS from a rendered optional
+// block so it fits limit runes, keeping the block's wrapper and its one preamble
+// line intact. The records are the lines after the first, and a prior failure
+// rides with its observed alternative on the SAME line, so the pair is never
+// separated. A block whose shape is unknown, whose preamble does not fit, or
+// that would be left with no record at all is omitted WHOLE: neither an
+// instruction fragment nor a mutated record is ever emitted.
+func trimRenderedWholeRecords(block, openTag, closeTag string, limit int) string {
+	if block == "" || limit <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(block) <= limit {
+		return block
+	}
+	start := strings.Index(block, openTag)
+	if start < 0 || !strings.HasSuffix(block, closeTag+"\n") {
+		return ""
+	}
+	lead := block[:start]
+	inner := strings.Trim(block[start+len(openTag):len(block)-len(closeTag)-1], "\n")
+	lines := strings.Split(inner, "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+		return ""
+	}
+	kept := make([]string, 0, len(lines))
+	for i, line := range lines {
+		candidate := lead + openTag + "\n" + strings.Join(append(append([]string(nil), kept...), line), "\n") + "\n" + closeTag + "\n"
+		if utf8.RuneCountInString(candidate) > limit {
+			if i == 0 {
+				// Even the preamble alone does not fit: omit the block whole.
+				return ""
+			}
+			break
+		}
+		kept = append(kept, line)
+	}
+	if len(kept) <= 1 {
+		// The preamble with no record says nothing; omit it whole.
+		return ""
+	}
+	return lead + openTag + "\n" + strings.Join(kept, "\n") + "\n" + closeTag + "\n"
 }
 
 // trimRenderedMemoryBlock drops trailing RECORDS from a rendered <memory> block
@@ -423,14 +513,17 @@ func (a *Agent) withBindingContext(block, cue string) string {
 	a.memory.mu.Lock()
 	revision := a.memory.revisions[turn]
 	a.memory.mu.Unlock()
-	bound := a.bindingContext(cue, revision)
-	bound += a.contextualImpactContext(cue)
-	bound += a.priorOutcomeContext(cue, revision)
-	if bound == "" {
+	rules := a.bindingContext(cue, revision)
+	impacts := a.contextualImpactContext(cue)
+	outcomes := a.priorOutcomeContext(cue, revision)
+	if rules == "" && impacts == "" && outcomes == "" {
 		return block
 	}
-	// One shared ceiling includes deterministic and optional routed context.
-	return contextualClip(bound+block, memoryBlockRunes)
+	// One shared ceiling includes deterministic and optional routed context: the
+	// approved rules are reserved whole FIRST, and the impacts, the prior
+	// outcomes and the asynchronous routed recall each spend only what is left,
+	// by whole records.
+	return composeBeforeRequestContext(rules, impacts, outcomes, block)
 }
 
 func (a *Agent) bindingContext(cue, revision string) string {
