@@ -131,7 +131,7 @@ const Schema = 3
 // carries the baseline [Item.Fingerprint] it would silently drop, so both are
 // fenced at 3 rather than left at 1 for a reader that would lie about them.
 func SchemaOf(it Item) int {
-	if len(it.Pending) > 0 || it.TaskInflight != nil || it.Fingerprint != "" || it.Revision > 1 || it.Origin.OneModel {
+	if len(it.Pending) > 0 || it.TaskInflight != nil || it.Fingerprint != "" || it.Positive != "" || it.Revision > 1 || it.Origin.OneModel {
 		return Schema
 	}
 	if it.Does.Isolate {
@@ -509,6 +509,25 @@ type Item struct {
 	NextDue       time.Time `json:"nextDue,omitempty"`
 	// Fingerprint is a WhenFile's last reading.
 	Fingerprint string `json:"fingerprint,omitempty"`
+	// Positive is a WhenProbe's last AFFIRMATIVE reading, as an identity: a
+	// bounded digest of the exact evidence the check observed when the sentinel
+	// last said yes. It is what bounds an UNCHANGED continuous positive from
+	// being reported again, independently of the words the sentinel happens to
+	// use on a later check: while the observed reading is byte-for-byte the one
+	// already reported, the watch is quiet, and a decided no clears it so a
+	// later true is a fresh edge again.
+	//
+	// IT IS AN IDENTITY AND NOT A REASON. Nothing here reads the model's line,
+	// because a model that says "same state already reported" and answers yes in
+	// the same breath is exactly the failure this field exists to bound. It is
+	// also not the evidence: only the digest is kept, so no probe output and no
+	// secret it carried is retained.
+	//
+	// IT IS EMPTY WHEN THE READING CANNOT CERTIFY ANYTHING. A reading the clip
+	// cut short ([ProbeClip]) is a partial view, so a repeated look at it must
+	// not be passed off as "the same state"; the identity stays empty and the
+	// sentinel keeps deciding. An empty identity is never a suppression.
+	Positive string `json:"positive,omitempty"`
 	// Previous are the last [Previous] sentinel lines, newest first, each with
 	// what came of it.
 	Previous []string `json:"previous,omitempty"`

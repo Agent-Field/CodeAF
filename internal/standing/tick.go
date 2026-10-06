@@ -414,7 +414,7 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			return sighting{}, errors.New("there is nothing in this build to look with")
 		}
 		due := item.NextDue
-		evidence, err := t.Runner.Probe(ctx, *item)
+		raw, err := t.Runner.Probe(ctx, *item)
 		if err != nil {
 			// THE LOOK DID NOT COMPLETE, so the due moment it already had is
 			// kept: an error must never consume the opportunity the person is
@@ -422,7 +422,13 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			item.NextDue = due
 			return sighting{}, err
 		}
-		evidence = clipTail(evidence, ProbeClip)
+		// A READING THE CLIP CUT SHORT CANNOT CERTIFY AN UNCHANGED STATE. The
+		// sentinel is shown only the tail, so two different full readings could
+		// share it; such a look carries NO identity, and a repeat of it must not
+		// be passed off as "the same state". The sentinel keeps deciding and no
+		// suppression is made on a partial view.
+		clipped := len(raw) > ProbeClip
+		evidence := clipTail(raw, ProbeClip)
 		verdict, line, err := t.judge(ctx, item, now, evidence)
 		if err != nil {
 			// A JUDGE/ACCOUNTING ERROR IS NOT A LOOK THAT CONSUMED ITS MOMENT.
@@ -435,6 +441,28 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			return sighting{}, err
 		}
 		item.NextDue = now.Add(every)
+		// A CONDITION WATCH SPEAKS ONLY THE DELTA. The identity of THIS reading
+		// is compared with the reading the person was last told about: while the
+		// observed state is byte-for-byte the one already reported, the watch
+		// stays quiet however the sentinel words its answer, and only a reading
+		// that actually moved is judged afresh. THAT is what bounds an unchanged
+		// continuous positive, independently of a model that says "already
+		// reported" and answers yes in the same breath.
+		identity := ""
+		if !clipped {
+			identity = readingIdentity(evidence)
+		}
+		if identity != "" && identity == item.Positive {
+			// THE SAME OBSERVED STATE, ALREADY REPORTED. Whatever the sentinel
+			// now says about it — yes, no, or nothing — the world has not
+			// moved since the person was told, so this is not a new firing and no
+			// negative is written. A sentinel that could not decide keeps the
+			// honest "nothing was written" shape.
+			if verdict == VerdictUnknown {
+				return sighting{state: stateUndecided, line: line}, nil
+			}
+			return sighting{state: stateQuiet, line: "the same state was already reported — nothing has moved"}, nil
+		}
 		if verdict == VerdictUnknown {
 			// NOBODY COULD DECIDE. Nothing is written, so the item stays due and
 			// the next pass faces the same question: an unknown must not consume
@@ -443,8 +471,12 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			return sighting{state: stateUndecided, line: line}, nil
 		}
 		if verdict != VerdictYes {
+			// A DECIDED NO REARMS THE WATCH: the condition is not true now, so a
+			// later true is a fresh edge, reported again.
+			item.Positive = ""
 			return sighting{state: stateQuiet, line: line}, nil
 		}
+		item.Positive = identity
 		return sighting{state: stateReady, line: line, evidence: evidence}, nil
 
 	default:
@@ -1241,6 +1273,16 @@ func (s *Store) appendWake(pass Pass) error {
 		return err
 	}
 	return file.Close()
+}
+
+// readingIdentity is the identity of one probe reading: a SHA-256 over the exact
+// bytes the sentinel was shown. A watch compares it with the reading it last
+// reported to decide whether a later affirmative look is the SAME state. It is
+// a hash and never the bytes, so no probe output and no secret inside it is
+// retained on the item.
+func readingIdentity(evidence string) string {
+	sum := sha256.Sum256([]byte(evidence))
+	return hex.EncodeToString(sum[:])
 }
 
 // clipTail keeps the end of what a probe said, because the end is where a
