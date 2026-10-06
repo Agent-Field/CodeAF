@@ -107,7 +107,7 @@ func TestInboxLockIsAddressedByTheFolderNotTheProcess(t *testing.T) {
 			}
 		}
 	}
-	if _, err := os.Stat(filepath.Join(real, inboxLockName)); err != nil {
+	if _, err := os.Stat(filepath.Join(real, InboxLockName)); err != nil {
 		t.Fatalf("the lock did not travel with the inbox folder: %v", err)
 	}
 }

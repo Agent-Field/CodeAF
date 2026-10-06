@@ -1199,11 +1199,20 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 	if err != nil {
 		return store.Memory{}, err
 	}
+	// THE SETTLED LINE IS BOUNDED BY THE CAP THE STORE WILL ENFORCE. The
+	// candidate arrives already clipped, but a decider's merged line REPLACES it
+	// here and the model has no cap of its own: a live acquisition settled 638
+	// runes into a store whose limit is 512, so an otherwise legal write was
+	// refused as invalid and journaled as `memory_write_failed`. The claim body
+	// and its title are what the store holds; the applicability, rationale,
+	// rejected alternatives and reconsideration circumstances live on the
+	// evidence row ([Agent.recordContextualMemory]) and are untouched here, so
+	// bounding this line cannot drop a condition the store was told about.
 	if title := strings.TrimSpace(decided.Title); title != "" {
-		fresh.Title = title
+		fresh.Title = contextualClip(title, store.MemoryTitleRunes)
 	}
 	if text := strings.TrimSpace(decided.Text); text != "" {
-		fresh.Text = text
+		fresh.Text = contextualClip(text, store.MemoryTextRunes)
 	}
 	if len(decided.Tags) > 0 {
 		fresh.Tags = decided.Tags
@@ -1278,11 +1287,17 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 // memoryDraft is the row a candidate would land as, before the decider or the
 // door has its say: owner resolved, title defaulted, source named.
 func (a *Agent) memoryDraft(candidate reflex.ExtractResult) store.Memory {
+	// THE DRAFT IS BOUNDED AT THE DOOR, not at each caller. A candidate's title
+	// is not clipped anywhere on the way in and its text arrives from an
+	// extractor that is free to overrun the cap, while the store refuses either
+	// one over its limit by name. Bounding here is what makes every caller's
+	// draft legal — the post-turn pass, the `remember` tool, /remember, the
+	// import — without any of them having to know the store's numbers.
 	fresh := store.Memory{
 		Owner:         a.ownerForScope(candidate.Scope),
 		Type:          candidate.Type,
-		Title:         strings.TrimSpace(candidate.Title),
-		Text:          candidate.Text,
+		Title:         contextualClip(strings.TrimSpace(candidate.Title), store.MemoryTitleRunes),
+		Text:          contextualClip(candidate.Text, store.MemoryTextRunes),
 		Tags:          candidate.Tags,
 		SourceSession: a.memorySourceSession(),
 	}

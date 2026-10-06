@@ -237,7 +237,7 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 		for _, entry := range entries {
 			// The inbox flock file stays: it is the serialization point and not
 			// a note. Everything the drain owned must be gone.
-			if entry.Name() == inboxLockName {
+			if entry.Name() == InboxLockName {
 				continue
 			}
 			t.Fatalf("the drain left %s behind", entry.Name())

@@ -47,7 +47,17 @@ func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.To
 	// The receipt bytes are the SAME clip the evidence path hashes, so the two
 	// rows share a source key and an explicit forget retires both together. The
 	// stored observation is redacted and untrusted text; the hash is identity.
-	receipt := contextualClip(result.text, contextualReceiptRunes)
+	//
+	// IT IS REDACTED BEFORE IT IS HASHED, AND THAT ORDER IS THE CONTRACT. The
+	// evidence path stores the redacted clip and hashes the bytes it stored
+	// ([Agent.recordMemoryTool] -> [Agent.recordContextualMemory]). Hashing the
+	// raw clip here made the two rows disagree whenever a receipt carried a
+	// secret-shaped span: the memory-forget provenance join matches a source by
+	// key AND hash, so a claim forgotten through its evidence row no longer
+	// retired the attempt learned from the same receipt. Redacting first makes
+	// the stored observation and the hash the same bytes on both writers, and a
+	// secret never reaches the journal on either.
+	receipt := redact.Secrets(contextualClip(result.text, contextualReceiptRunes))
 	if strings.TrimSpace(receipt) == "" {
 		return
 	}
@@ -86,7 +96,7 @@ func (a *Agent) recordMemoryAttempt(ctx context.Context, turn uint64, call ai.To
 		Goal:        redact.Secrets(contextualClip(goal, 1024)),
 		Status:      status,
 		ReceiptIDs:  receipts,
-		Observation: redact.Secrets(receipt),
+		Observation: receipt,
 		Snapshot:    snapshot,
 		Conditions:  conditions,
 		SourceKey:   turnID + ":" + call.ID,

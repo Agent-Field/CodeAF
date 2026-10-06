@@ -38,11 +38,16 @@ import (
 const (
 	inboxMaxBytes = 16 << 20
 	inboxMaxLine  = 1 << 20
-	// inboxLockName is the flock file's name inside an inbox folder. It is a
+	// InboxLockName is the flock file's name inside an inbox folder. It is a
 	// dot-name, so no reader that globs the folder's notes ever sees it, and it
 	// travels WITH the folder so a symlink alias and a different TEMP directory
 	// still resolve to one lock.
-	inboxLockName = ".inbox.lock"
+	//
+	// IT IS EXPORTED BECAUSE IT IS A PERSISTENT RESIDENT OF A SESSION FOLDER. A
+	// conversation's own folder is a standing inbox, so the first open of a
+	// session leaves this file behind and any caller that asserts on what a
+	// session folder holds has to name it rather than guess at it.
+	InboxLockName = ".inbox.lock"
 )
 
 // errInboxFull is the visible backpressure of a bounded inbox. It is returned
@@ -55,7 +60,7 @@ var errInboxFull = errors.New("standing: this inbox is full; the note was not de
 // line to the drain's delete.
 //
 // THE LOCK IS ADDRESSED BY THE INBOX, NOT BY THE PROCESS. It lives inside the
-// inbox folder under a dot-name no reader scans ([inboxLockName]), and the
+// inbox folder under a dot-name no reader scans ([InboxLockName]), and the
 // folder is first canonicalised through any symlink alias, so two processes
 // that name the same inbox — through a symlink, or with different TEMP
 // directories — resolve to the same lock file and serialize. A lock named by
@@ -73,7 +78,7 @@ func withInboxLock(dir string, fn func() error) error {
 	if resolved, err := filepath.EvalSymlinks(trimmed); err == nil {
 		canonical = resolved
 	}
-	lockPath := filepath.Join(canonical, inboxLockName)
+	lockPath := filepath.Join(canonical, InboxLockName)
 	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err

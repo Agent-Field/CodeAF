@@ -243,6 +243,18 @@ func (c *outcomeCollector) observe(worker *Agent, call ai.ToolCall, result toolR
 	if root == nil || !root.remembers() || root.memory == nil {
 		return
 	}
+	// A BRAIN THAT WAS ONLY LENT TO BIND IS NEVER WRITTEN THROUGH. The collector
+	// is built beside the brain and hangs off the root session, so a
+	// binding-only standing run has one even though [Agent.memoryWritable] is
+	// false; a nested task worker carries this collector and a frozen origin
+	// ([Agent.newTaskAgentOn]), so without this line the worker's failing tool
+	// calls would be journaled as project attempts and the run's READ-ONLY
+	// posture would be false. The refusal sits on the ONE boundary every
+	// observation crosses, so a tool receipt, a forwarded read and a settled job
+	// are all covered rather than each caller remembering.
+	if root.config.bindingOnlyMemory {
+		return
+	}
 	// FAIL CLOSED WITHOUT AN IMMUTABLE ORIGIN. Every real worker is stamped at
 	// creation ([Agent.newTaskAgentOn]); falling back to the ROOT'S CURRENT turn
 	// here would silently reattribute a late legacy arrival to whatever the
@@ -270,7 +282,11 @@ func (c *outcomeCollector) observeAttempt(worker *Agent, origin delegatedOrigin,
 		return
 	}
 	action := attemptAction(call)
-	receipt := contextualClip(result.text, contextualReceiptRunes)
+	// REDACTED BEFORE IT IS HASHED, FOR THE SAME REASON AS THE SESSION WRITER
+	// ([Agent.recordMemoryAttempt]): every path that compares or stores this
+	// receipt uses the redacted bytes, so identity, the repeat key and the
+	// stored observation agree, and the secret never enters the journal.
+	receipt := redact.Secrets(contextualClip(result.text, contextualReceiptRunes))
 	if action == "" || strings.TrimSpace(receipt) == "" {
 		return
 	}
@@ -311,7 +327,7 @@ func (c *outcomeCollector) observeAttempt(worker *Agent, origin delegatedOrigin,
 		Goal:        redact.Secrets(contextualClip(origin.Goal, 1024)),
 		Status:      status,
 		ReceiptIDs:  receipts,
-		Observation: redact.Secrets(receipt),
+		Observation: receipt,
 		Snapshot:    snapshot,
 		Conditions:  conditions,
 		SourceKey:   key,
@@ -582,6 +598,13 @@ func (c *outcomeCollector) settleJob(one *job, code int) {
 	if root == nil || !root.remembers() || root.memory == nil {
 		return
 	}
+	// THE SAME BOUNDARY FOR A PROMOTED JOB. A binding-only run's own bash job
+	// settles with a real frozen turn (unlike its tool calls, whose origin is
+	// empty), so without this refusal its death would be written into the
+	// borrowed brain exactly as a worker's would.
+	if root.config.bindingOnlyMemory {
+		return
+	}
 	origin := one.origin
 	// FAIL CLOSED WITHOUT THE FROZEN TURN. A job with no launch-turn provenance
 	// is not stamped with whatever turn is live at settle — that would let a
@@ -616,7 +639,10 @@ func (c *outcomeCollector) settleJob(one *job, code int) {
 	}
 	sourceKey := "job:" + run + ":" + strconv.Itoa(one.id)
 	action := "bash: " + one.command
-	receipt := contextualClip(one.sink.tail(jobExitTailLines), contextualReceiptRunes)
+	// THE SAME REDACT-THEN-HASH ORDER AS EVERY OTHER ATTEMPT WRITER, so the
+	// stored tail and its identity are the same bytes and no secret reaches the
+	// project journal through a promoted job's death.
+	receipt := redact.Secrets(contextualClip(one.sink.tail(jobExitTailLines), contextualReceiptRunes))
 	if strings.TrimSpace(receipt) == "" {
 		receipt = fmt.Sprintf("job %d exited %d", one.id, code)
 	}
@@ -634,7 +660,7 @@ func (c *outcomeCollector) settleJob(one *job, code int) {
 		Goal:        redact.Secrets(contextualClip(origin.Goal, 1024)),
 		Status:      store.AttemptFailed,
 		ReceiptIDs:  []string{sourceKey},
-		Observation: redact.Secrets(receipt),
+		Observation: receipt,
 		Snapshot:    "unknown",
 		Conditions:  conditions,
 		SourceKey:   sourceKey,

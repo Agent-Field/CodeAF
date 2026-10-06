@@ -8,6 +8,7 @@ invalidates:
   - "A file watch took its baseline at the first wake. Ratification now arms it at the yes, and a scan that could not read everything it matches sets no baseline and leaves a visible needs-person flag."
   - "An ambiguous, refused or timed-out judgment was folded into a decided no. The real tick now carries the three-way sentinel: an undecided look writes nothing and the item stays due."
   - "A background pass reloaded the profile's tiers, role pins and fallback ladder, so an item ratified under `--one-model` could be answered by a different model. The item freezes the ratifying conversation's model policy on its origin and the pass honours it for the sentinel and every child seat."
+  - "A run lent the canonical brain read-only still journaled project attempt rows: nested task workers and the run's own promoted jobs wrote through the delegated outcome collector, which checked no posture. The collector now refuses every observation when the root is binding-only, so the lent brain is read-only through every door while the binding read and the ordinary session's delegated continuity are unchanged. A session folder keeps exactly one persistent resident now that its inbox flock lives inside it, and the lock file's name is exported for callers that assert on a folder's contents."
 ---
 
 The deferred-delivery core was already in place; this change is the session and
