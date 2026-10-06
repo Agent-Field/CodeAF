@@ -308,3 +308,130 @@ PY`
 	t.Run("root", func(t *testing.T) { run(t, false) })
 	t.Run("delegated", func(t *testing.T) { run(t, true) })
 }
+
+// THE DOCUMENTED PARSER FALSE-OPENS ARE CLOSED. Each shape below was a verified
+// lexical false-open or a delimiter class that named a stdin SOURCE as if it
+// were a read: an explicit EMPTY -c program that must replace the heredoc body,
+// an ambiguous/unterminated stdin header, a filename-shaped heredoc or
+// here-string delimiter, and a literal the program does not actually execute
+// (inside a triple-quoted string or a comment, continued across a backslash,
+// used before it is declared, or shadowed in a function body). None may name an
+// operand, ground the pairing, or be eligible as the observed alternative.
+func TestVendorHeredocClosesParserFalseOpens(t *testing.T) {
+	// D1: an EXPLICIT empty -c/-e program REPLACES the heredoc body, so the
+	// body's read is not the executed program and names no operand. A bare `-`
+	// (no inline program) keeps the body, which the vendored positive covers.
+	emptyPrograms := map[string]string{
+		"empty -c": `.venv/bin/python -c '' <<'PY'
+path = "vendor.csv"
+raw = open(path, "rb").read()
+PY`,
+		"empty -e": `.venv/bin/python -e "" <<'PY'
+path = "vendor.csv"
+raw = open(path, "rb").read()
+PY`,
+	}
+	for name, body := range emptyPrograms {
+		if got := heredocOperands(body); len(got) != 0 {
+			t.Errorf("%s named an operand: %v", name, got)
+		}
+		if alternativeEligible(delegatedBashCall("e", body), "bash", "bash: "+heredocFailed, heredocGoal, "/w") {
+			t.Errorf("%s was eligible as the alternative", name)
+		}
+	}
+
+	// An EXPLICIT non-empty program likewise replaces the body: only the
+	// program's own read is a use, never the discarded heredoc body.
+	replace := `.venv/bin/python -c 'open("week.csv")' <<'PY'
+path = "vendor.csv"
+raw = open(path, "rb").read()
+PY`
+	if got := heredocOperands(replace); len(got) != 1 || got[0] != "week.csv" {
+		t.Errorf("an explicit -c program did not replace the heredoc body: %v", got)
+	}
+
+	// D2 + P1: multiple or unterminated stdin sources and a filename-shaped
+	// delimiter never name a file operand.
+	falseOpens := map[string]string{
+		"two stdin sources, filename delimiter": `.venv/bin/python - <<A <<x.csv
+path = "vendor.csv"
+raw = open(path, "rb").read()
+A <<x.csv`,
+		"unterminated heredoc": `.venv/bin/python - <<'PY'
+path = "vendor.csv"
+raw = open(path, "rb").read()`,
+		"quoted filename delimiter": `.venv/bin/python - <<'vendor.csv'
+print("no read")
+vendor.csv`,
+		"spaced filename delimiter": `.venv/bin/python - << 'vendor.csv'
+print("no read")
+vendor.csv`,
+		"filename here-string":        `.venv/bin/python - <<<'vendor.csv'`,
+		"filename delimiter, no body": `.venv/bin/python - <<'week.csv'`,
+	}
+	for name, body := range falseOpens {
+		if got := heredocOperands(body); len(got) != 0 {
+			t.Errorf("%s named an operand: %v", name, got)
+		}
+		if alternativeEligible(delegatedBashCall("d", body), "bash", "bash: "+heredocFailed, heredocGoal, "/w") {
+			t.Errorf("%s was eligible as the alternative", name)
+		}
+	}
+
+	// D3: a literal the program does not actually execute at top level before
+	// the read names no operand.
+	unexecuted := map[string]string{
+		"assignment inside triple-quoted string": `.venv/bin/python - <<'PY'
+doc = """
+path = "vendor.csv"
+"""
+raw = open(path, "rb").read()
+PY`,
+		"assignment inside a comment": `.venv/bin/python - <<'PY'
+# path = "vendor.csv"
+raw = open(path, "rb").read()
+PY`,
+		"assignment across a continuation": `.venv/bin/python - <<'PY'
+path = \
+    "vendor.csv"
+raw = open(path, "rb").read()
+PY`,
+		"use before declaration": `.venv/bin/python - <<'PY'
+raw = open(path, "rb").read()
+path = "vendor.csv"
+PY`,
+		"shadowed by a function parameter": `.venv/bin/python - <<'PY'
+path = "vendor.csv"
+def f(path):
+    return open(path)
+PY`,
+		"shadowed by a block-local literal": `.venv/bin/python - <<'PY'
+path = "vendor.csv"
+def f():
+    path = "vendor.csv"
+    return open(path)
+PY`,
+	}
+	for name, body := range unexecuted {
+		if got := heredocOperands(body); len(got) != 0 {
+			t.Errorf("%s named an operand: %v", name, got)
+		}
+		if alternativeEligible(delegatedBashCall("u", body), "bash", "bash: "+heredocFailed, heredocGoal, "/w") {
+			t.Errorf("%s was eligible as the alternative", name)
+		}
+	}
+
+	// The genuine top-level shape still resolves, and a read INSIDE a block of
+	// the real vendor shape (the unindented `with open(path, ...)` header) is
+	// still read, so the hardening only closed non-executed and shadowed names.
+	stillReads := `.venv/bin/python - <<'PY'
+from pathlib import Path
+path = "vendor.csv"
+with open(path, newline="", encoding="utf-16") as f:
+    rows = f.read()
+milestone = Path(path).read_bytes()
+PY`
+	if got := heredocOperands(stillReads); len(got) == 0 || got[0] != "vendor.csv" {
+		t.Errorf("the top-level vendor shape stopped resolving: %v", got)
+	}
+}

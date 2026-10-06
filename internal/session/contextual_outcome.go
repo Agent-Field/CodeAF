@@ -867,33 +867,65 @@ func heredocOperators(header string) int {
 	return n
 }
 
-// heredocSplit answers whether a segment carries a heredoc and returns its
-// header (the command line that opens it) and its body (the inline program),
-// with the terminator removed.
-func heredocSplit(segment string) (string, string, bool) {
+// heredocLine reads the stdin heredoc a segment opens and returns it as coherent
+// state: its header (the command line that opens it), its body (the inline
+// program) and whether that body was actually BOUNDED by its terminator. `opens`
+// is false when the segment carries no `<<...` stdin source at all; when `opens`
+// is true but `bounded` is false the segment opened a stdin source whose
+// terminator never came, so the executed program cannot be read and the caller
+// must claim no operand for the whole segment.
+func heredocLine(segment string) (header, body string, bounded, opens bool) {
 	i := strings.Index(segment, "<<")
 	if i < 0 {
-		return "", "", false
+		return "", "", false, false
 	}
 	nl := strings.IndexByte(segment[i:], '\n')
 	if nl < 0 {
-		return "", "", false
+		return "", "", false, false
 	}
 	nl += i
 	marker := heredocMarker(segment[:nl])
 	if marker == "" {
-		return "", "", false
+		return "", "", false, false
 	}
-	rest := segment[nl+1:]
-	lines := strings.Split(rest, "\n")
-	end := len(lines)
+	lines := strings.Split(segment[nl+1:], "\n")
 	for j, line := range lines {
 		if strings.TrimSpace(line) == marker {
-			end = j
-			break
+			return segment[:nl], strings.Join(lines[:j], "\n"), true, true
 		}
 	}
-	return segment[:nl], strings.Join(lines[:end], "\n"), true
+	return segment[:nl], "", false, true
+}
+
+// heredocDelimiterWords marks the word indices in a heredoc or here-string
+// header that are the stdin redirection operator or its delimiter: `<<EOF`,
+// `<<-EOF`, `<<'EOF'`, `<<<"x"` or the spaced `<< EOF`. A delimiter names the
+// stdin SOURCE, never a file the command reads, so a delimiter that itself looks
+// like a file name (`<<'vendor.csv'`) is not returned as an operand.
+func heredocDelimiterWords(words []shellWord) map[int]bool {
+	skip := map[int]bool{}
+	next := false
+	for i, w := range words {
+		if next {
+			skip[i] = true
+			next = false
+			continue
+		}
+		if !strings.Contains(w.text, "<<") {
+			continue
+		}
+		skip[i] = true
+		rest := w.text
+		for len(rest) > 0 && rest[0] == '<' {
+			rest = rest[1:]
+		}
+		rest = strings.TrimPrefix(rest, "-")
+		if strings.Trim(strings.TrimSpace(rest), "\"'") == "" {
+			// The operator stands alone (`<< EOF`); its delimiter is next.
+			next = true
+		}
+	}
+	return skip
 }
 
 // shellMasksExit answers whether a shell action MASKS a failed substep, so that
@@ -1067,9 +1099,25 @@ func shellWords(segment string) []shellWord {
 	return words
 }
 
-// inlineProgramArg returns the inline program of an interpreter one-liner: the
-// word after -c/-e/--eval, or "" for a bare `-` that reads stdin.
-func inlineProgramArg(words []shellWord) (string, int, bool) {
+// inlineProgram is the inline source an interpreter command carries, tracked as
+// coherent state rather than a single sentinel: `found` is true when the command
+// names an inline source at all (an explicit -c/-e/--eval, or a bare `-` that
+// reads stdin), and `provided` is true only for an explicit -c/-e/--eval
+// program. The distinction matters because an explicit program REPLACES a
+// heredoc body even when it is the empty string, whereas a bare `-` reads stdin
+// and leaves the heredoc body as the program.
+type inlineProgram struct {
+	text     string
+	idx      int
+	provided bool
+	found    bool
+}
+
+// inlineProgramArg reads the inline program of an interpreter one-liner. The
+// word after -c/-e/--eval is an EXPLICIT program (provided), the empty string
+// included; a bare `-` reads stdin (found, not provided). An unknown flag is
+// absent (found=false), so the caller fails closed.
+func inlineProgramArg(words []shellWord) inlineProgram {
 	for i, w := range words {
 		if w.quoted {
 			continue
@@ -1077,14 +1125,16 @@ func inlineProgramArg(words []shellWord) (string, int, bool) {
 		switch w.text {
 		case "-c", "-e", "--eval":
 			if i+1 < len(words) {
-				return words[i+1].text, i + 1, true
+				return inlineProgram{text: words[i+1].text, idx: i + 1, provided: true, found: true}
 			}
-			return "", -1, true
+			// The flag stands alone: an explicit (empty) program was named, so
+			// it still replaces the heredoc body rather than falling back to it.
+			return inlineProgram{idx: -1, provided: true, found: true}
 		case "-":
-			return "", -1, true
+			return inlineProgram{idx: -1, found: true}
 		}
 	}
-	return "", 0, false
+	return inlineProgram{}
 }
 
 // shellUsedFileIdentities returns the lexical identities of the files a shell
@@ -1195,27 +1245,38 @@ func shellSegmentOperands(segment string) []string {
 	}
 	prog := ""
 	skip := map[int]bool{}
-	ambiguous := false
-	if header, body, ok := heredocSplit(segment); ok {
+	if header, body, bounded, opens := heredocLine(segment); opens {
+		if !bounded {
+			// AN UNTERMINATED STDIN SOURCE: the body the interpreter actually
+			// executes cannot be bounded, so the whole segment claims no
+			// operand rather than reading loose body lines as commands.
+			return nil
+		}
 		words = shellWords(header)
 		// A COMMAND LINE THAT OPENS MORE THAN ONE STDIN SOURCE cannot be read
 		// here: the body the interpreter actually executes is not provable, so
-		// the program is left unknown and no operand is claimed.
-		if heredocOperators(header) == 1 {
-			prog = body
-		} else {
-			ambiguous = true
+		// the whole segment claims no operand.
+		if heredocOperators(header) != 1 {
+			return nil
 		}
+		prog = body
 	}
-	if isInterpreterCommand(words) && !ambiguous {
-		if p, idx, ok := inlineProgramArg(words); ok {
+	// A HEREDOC OR HERE-STRING DELIMITER NAMES THE STDIN SOURCE, never a file
+	// the command reads, so its operator and delimiter words are skipped even
+	// when the delimiter looks like a file name.
+	for idx := range heredocDelimiterWords(words) {
+		skip[idx] = true
+	}
+	if isInterpreterCommand(words) {
+		if p := inlineProgramArg(words); p.found {
 			// A BARE `-` READS STDIN, so the heredoc body stays the program; an
-			// explicit `-c`/`-e` program replaces it.
-			if p != "" {
-				prog = p
+			// explicit `-c`/`-e` program REPLACES it, the empty program
+			// included.
+			if p.provided {
+				prog = p.text
 			}
-			if idx >= 0 {
-				skip[idx] = true
+			if p.idx >= 0 {
+				skip[p.idx] = true
 			}
 		}
 	}
@@ -1344,9 +1405,9 @@ func interpreterProbeSegment(segment string, words []shellWord) bool {
 		return false
 	}
 	inline := false
-	if _, _, ok := heredocSplit(segment); ok {
+	if _, _, _, opens := heredocLine(segment); opens {
 		inline = true
-	} else if _, _, ok := inlineProgramArg(words); ok {
+	} else if inlineProgramArg(words).found {
 		inline = true
 	}
 	if !inline {
@@ -1396,16 +1457,18 @@ var programPathReads = map[string]bool{
 // executed call and is never returned, and a constructor that is only built,
 // printed or stat()ed reads nothing and names no operand. A call argument that
 // is a bare NAME is resolved only when the program assigned it a simple string
-// constant exactly once ([programLiteralAssignments]); a dynamic, reassigned or
-// block-scoped alias is not resolved and names no operand.
+// constant exactly once, AT TOP LEVEL and BEFORE the call
+// ([programLiteralAssignments]); a dynamic, reassigned, continued, shadowed or
+// after-the-fact alias is not resolved and names no operand.
 func programFileOperands(prog string) []string {
 	if strings.TrimSpace(prog) == "" {
 		return nil
 	}
 	// THE BOUNDED LITERAL MAP: the names the program assigns a simple string
-	// constant exactly once. A call argument that is one of these names resolves
-	// to that literal; any dynamic, reassigned or block-scoped alias is absent
-	// and fails closed.
+	// constant exactly once, at top level, with the offset of that assignment so
+	// a use can be required to come AFTER its declaration. A call argument that
+	// is one of these names resolves to that literal; any dynamic, reassigned,
+	// continued or block-scoped alias is absent and fails closed.
 	literals := programLiteralAssignments(prog)
 	var out []string
 	for i := 0; i < len(prog); {
@@ -1440,15 +1503,20 @@ func programFileOperands(prog string) []string {
 		if !ok {
 			continue
 		}
+		// A BARE-NAME ARGUMENT IS RESOLVED ONLY AT TOP LEVEL: inside a
+		// def/if/with/for body the name could be a parameter or local shadow the
+		// reader cannot follow, so the reference is left unknown and fails
+		// closed. The real vendor heredoc reads `path` on unindented lines.
+		topLevel := programCallTopLevel(prog, start)
 		switch {
 		case fileConsumerCalls[name]:
 			out = appendProgramOperands(out, arg)
-			out = appendResolvedOperand(out, arg, literals)
+			out = appendResolvedOperand(out, arg, literals, start, topLevel)
 			i = end
 		case programPathConstructors[name]:
 			if programPathRead(prog, end) {
 				out = appendProgramOperands(out, arg)
-				out = appendResolvedOperand(out, arg, literals)
+				out = appendResolvedOperand(out, arg, literals, start, topLevel)
 			}
 			i = end
 		}
@@ -1456,38 +1524,100 @@ func programFileOperands(prog string) []string {
 	return out
 }
 
+// programCallTopLevel answers whether the call beginning at offset start sits on
+// an UNINDENTED line, i.e. at module top level where a bare name is the global
+// the program declared rather than a block- or function-local shadow.
+func programCallTopLevel(prog string, start int) bool {
+	line := start
+	for line > 0 && prog[line-1] != '\n' {
+		line--
+	}
+	return line >= len(prog) || (prog[line] != ' ' && prog[line] != '\t')
+}
+
+// programCode masks the string-literal and comment spans of an inline program
+// with spaces, keeping the length and every newline so an OFFSET into the masked
+// text still addresses the original program. It is how the assignment reader
+// skips an assignment that lives inside a triple-quoted string or a comment.
+func programCode(prog string) string {
+	b := []byte(prog)
+	for i := 0; i < len(prog); {
+		switch c := prog[i]; {
+		case c == '#':
+			for i < len(prog) && prog[i] != '\n' {
+				b[i] = ' '
+				i++
+			}
+		case c == '\'' || c == '"':
+			end := skipStringLiteral(prog, i)
+			for k := i; k < end && k < len(prog); k++ {
+				if b[k] != '\n' {
+					b[k] = ' '
+				}
+			}
+			i = end
+		default:
+			i++
+		}
+	}
+	return string(b)
+}
+
+// programLiteral is a proven top-level string constant: the literal value and
+// the byte offset of its assignment, so a use can be required to come AFTER it.
+type programLiteral struct {
+	value  string
+	offset int
+}
+
 // programLiteralAssignments returns the names an inline program assigns a simple
-// string constant EXACTLY ONCE, at the start of a TOP-LEVEL line:
-// `path = "vendor.csv"`. The map is deliberately narrow. A name the program
-// assigns more than once anywhere, assigns on an indented or compound line
-// (`if x: path = ...`, or inside a def/with/for body), or assigns something that
-// is not a bare quoted literal is NOT returned, so a dynamic, control-flow or
-// reassigned alias fails closed rather than being guessed. A name that is never
-// assigned is likewise absent.
-func programLiteralAssignments(prog string) map[string]string {
+// string constant EXACTLY ONCE, on an UNINDENTED line, with the offset of that
+// assignment: `path = "vendor.csv"`. The map is deliberately narrow and the
+// scan is span-aware. A name the program assigns more than once anywhere,
+// assigns on an indented or compound line (`if x: path = ...`, or inside a
+// def/with/for body), assigns across a backslash continuation, or assigns
+// something that is not a bare quoted literal is NOT returned, so a dynamic,
+// control-flow, continued or reassigned alias fails closed rather than being
+// guessed. An assignment that lives only inside a triple-quoted string or a
+// comment is not an executed binding at all: [programCode] masks those spans
+// before a line is read.
+func programLiteralAssignments(prog string) map[string]programLiteral {
+	code := programCode(prog)
+	rawLines := strings.Split(prog, "\n")
+	codeLines := strings.Split(code, "\n")
 	occurrences := map[string]int{}
-	literals := map[string]string{}
-	for _, line := range strings.Split(prog, "\n") {
-		body := strings.TrimLeft(line, " \t\r")
+	candidates := map[string]programLiteral{}
+	offset := 0
+	for idx, raw := range rawLines {
+		if idx >= len(codeLines) {
+			break
+		}
+		masked := codeLines[idx]
+		trimmed := strings.TrimRight(masked, " \t\r")
+		body := strings.TrimLeft(masked, " \t\r")
 		name, ok := assignmentTarget(body)
 		if !ok {
+			offset += len(raw) + 1
 			continue
 		}
+		// EVERY real binding counts, indented and continued alike, so a second
+		// assignment anywhere invalidates the constant.
 		occurrences[name]++
-		// AN INDENTED LINE IS A BLOCK BODY, not a proven top-level constant.
-		if body != line {
-			continue
+		// A BACKSLASH CONTINUATION and an INDENTED line are not a proven WHOLE
+		// top-level constant; the literal is read from the ORIGINAL line.
+		if !strings.HasSuffix(trimmed, "\\") && body == masked {
+			if lit, ok := simpleLiteralAssignment(raw); ok {
+				candidates[name] = programLiteral{value: lit, offset: offset}
+			}
 		}
-		if lit, ok := simpleLiteralAssignment(body); ok {
-			literals[name] = lit
-		}
+		offset += len(raw) + 1
 	}
-	for name := range literals {
+	for name := range candidates {
 		if occurrences[name] != 1 {
-			delete(literals, name)
+			delete(candidates, name)
 		}
 	}
-	return literals
+	return candidates
 }
 
 // assignmentTarget returns the bare name a line assigns, for a plain `name =` or
@@ -1593,11 +1723,17 @@ func firstCallArgument(arg string) string {
 }
 
 // appendResolvedOperand resolves a call's first argument when it is a BARE NAME
-// the program assigned a simple string constant, and appends that literal when
-// it names a file. An argument that is not an identifier, or a name the bounded
-// assignment reader could not prove constant, contributes nothing: an unknown or
-// dynamic alias fails closed rather than being guessed.
-func appendResolvedOperand(out []string, arg string, literals map[string]string) []string {
+// the program assigned a simple string constant before this call, and appends
+// that literal when it names a file. A call inside a function or block body
+// (topLevel false) is NOT resolved, because the name there could be a parameter
+// or local shadow the reader cannot follow; a name the bounded assignment reader
+// could not prove constant, or one declared only AFTER the call, likewise
+// contributes nothing. An unknown or dynamic alias fails closed rather than
+// being guessed.
+func appendResolvedOperand(out []string, arg string, literals map[string]programLiteral, callOffset int, topLevel bool) []string {
+	if !topLevel {
+		return out
+	}
 	name := strings.TrimSpace(firstCallArgument(arg))
 	if name == "" || !isIdentifierStart(name[0]) {
 		return out
@@ -1608,11 +1744,11 @@ func appendResolvedOperand(out []string, arg string, literals map[string]string)
 		}
 	}
 	lit, ok := literals[name]
-	if !ok {
+	if !ok || lit.offset >= callOffset {
 		return out
 	}
-	if hasFileExtension(trimOperand(lit)) {
-		out = append(out, lit)
+	if hasFileExtension(trimOperand(lit.value)) {
+		out = append(out, lit.value)
 	}
 	return out
 }
