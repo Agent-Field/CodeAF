@@ -286,6 +286,33 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 	return "", false
 }
 
+// turnCue is the goal a turn's before-request reads are scoped to, and it is
+// the same goal the model is about to be given. A turn the person (or a caller)
+// started carries its own words. A WOKEN TURN OPENS EMPTY ([Agent.wakeLocked]):
+// nobody typed it, so its goal exists only as the note the loop's first drain is
+// about to put in front of the model, and the before-request reads run BEFORE
+// that drain (loop.go). Reading the cue off that pending note is what keeps a
+// fresh native team member — and any delegated directive that opens a turn with
+// no words — from composing its grounding from no goal at all. With neither an
+// opening message nor a queued note the cue is "" and the reads are unchanged:
+// truthfully nothing here is worth a call ([memoryTrivialCue]).
+//
+// It is ONE reading rather than two, so the conversation's own binding and a
+// task worker's lent approved bindings are scoped to the same words.
+func (a *Agent) turnCue(user userMessage) string {
+	if cue := strings.TrimSpace(user.text()); cue != "" {
+		return cue
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, note := range a.steering {
+		if text := strings.TrimSpace(note.text()); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
 // runTurn executes one Submit: provider requests interleaved with tool
 // execution until the assistant answers without a tool call, the person
 // interrupts, or the provider fails permanently.
@@ -302,12 +329,13 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
 	// Binding context is read locally before any model or early tool request.
 	// Optional semantic recall can still race beside the reply.
-	a.prepareBindingContext(ctx, user.text())
+	cue := a.turnCue(user)
+	a.prepareBindingContext(ctx, cue)
 	// AND A TASK WORKER'S READ-ONLY APPROVED BINDINGS, DETERMINISTICALLY, before
 	// its first request: the node's routed shortlist arrives beside the work and
 	// may be late ([nodeMemory]), but an approved rule or confirmed decision may
 	// not be. A conversation owns a brain and returns here immediately.
-	a.prepareWorkerBinding(ctx, user.text())
+	a.prepareWorkerBinding(ctx, cue)
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}
