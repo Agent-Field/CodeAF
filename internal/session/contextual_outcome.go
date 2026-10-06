@@ -524,7 +524,13 @@ func sharedMeaningfulActionToken(failedBody, successBody, goal string) bool {
 	if len(failed) == 0 {
 		return false
 	}
-	success := actionTokens(successBody)
+	// THE SUCCESS'S TOKENS COME FROM THE SEGMENTS THAT DO SOMETHING. A compound
+	// wrapper carries introspection beside real work: `env | grep -i
+	// 'agent|plandb' ; echo ---; plandb task overview; <the real command>`. The
+	// words inside that lookup are not evidence that the lookup did the work, so
+	// a token the success contributes ONLY through a metadata, navigation or
+	// no-op segment never carries the association. Real work still does.
+	success := actionWorkTokens(successBody)
 	if len(success) == 0 {
 		return false
 	}
@@ -541,6 +547,27 @@ func sharedMeaningfulActionToken(failedBody, successBody, goal string) bool {
 		return true
 	}
 	return false
+}
+
+// actionWorkTokens returns the WHOLE tokens an action contributes through the
+// segments that actually DO something. A metadata/lookup, navigation or
+// error-masking no-op segment contributes none of its words: a `plandb task
+// overview`, an `env | grep`, an `echo` header or a `cd` names a plan, a
+// variable or a directory, and the words it prints are not the work. The whole
+// body is read by the one quote-aware segmenter [shellSegments], so a word
+// inside a quoted argument is judged by the command that carries the argument.
+func actionWorkTokens(body string) map[string]bool {
+	tokens := map[string]bool{}
+	for _, segment := range shellSegments(body) {
+		command := shellSegmentCommand(segment)
+		if len(command) == 0 || shellCommandIsMetadata(command) || shellNoOpCommand(command) {
+			continue
+		}
+		for token := range actionTokens(segment) {
+			tokens[token] = true
+		}
+	}
+	return tokens
 }
 
 // actionTokens splits a lowercased action body into its distinct WHOLE words.
@@ -624,13 +651,17 @@ func shellToolName(name string) bool {
 // bare `ls` or the same read wrapped in a pipeline. A body it cannot read is
 // treated as ordinary work, never as metadata, so an unfamiliar command is
 // never mislabelled.
+//
+// THE SEGMENTS ARE READ BY THE ONE QUOTE-AWARE READER [shellSegments], not by
+// splitting on every `;`, `|` and newline in the text. A quoted `grep -E
+// 'agent|task|plandb|codeaf'` pattern carries `|` inside a string; a raw split
+// cut the pattern into phantom "commands" ("task", "plandb"), the reader judged
+// the wrapper ordinary work, and the shared pattern words then tied an
+// introspection-only probe to a failure. A wrapper is judged by what each real
+// command DOES, never by the words inside a quoted argument.
 func shellMetadataOnly(body string) bool {
-	replacer := strings.NewReplacer("&&", "\n", "||", "\n")
-	segments := strings.FieldsFunc(replacer.Replace(body), func(r rune) bool {
-		return r == '\n' || r == ';' || r == '|'
-	})
 	read := false
-	for _, segment := range segments {
+	for _, segment := range shellSegments(body) {
 		words := shellSegmentCommand(segment)
 		if len(words) == 0 {
 			continue
@@ -711,6 +742,15 @@ func shellSegments(body string) []string {
 			}
 			b.WriteRune(r)
 		case ';', '|', '&', '\n':
+			// A `&` that follows a redirection operator (`2>&1`, `<&0`) is a
+			// file-descriptor duplication, not a control separator: it belongs to
+			// the redirection it is part of, so it stays in the segment instead of
+			// splitting the command from its own descriptor and leaving a phantom
+			// `1` segment behind.
+			if r == '&' && i > 0 && (runes[i-1] == '>' || runes[i-1] == '<') {
+				b.WriteRune(r)
+				continue
+			}
 			segments = append(segments, b.String())
 			b.Reset()
 			if (r == '|' || r == '&') && i+1 < len(runes) && runes[i+1] == r {

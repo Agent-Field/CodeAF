@@ -550,6 +550,150 @@ func TestBoundaryRefusesPlanStatusReadAsRemedy(t *testing.T) {
 	}
 }
 
+// ── THE ACTUAL ADVERSE HOSTED WEATHER CASE (project 50d9421c…) ──────────────
+//
+// The frozen raw actions of the hosted false pair, with a synthetic innocuous
+// receipt ("status listing") standing in for the tool text: the ROW'S PROGRAM
+// SHAPE is what is under test, and no printed payload grounds the operation. A
+// failing administrative `plandb done` was followed by an unrelated success
+// whose action was ONLY introspection — `env | grep` of the agent/task
+// variables, an echo divider, `plandb task overview` and `head`. It was stored
+// with AlternativeOf naming the failed bookkeeping call even though the
+// introspection neither fixed the bookkeeping nor advanced the weather goal.
+const (
+	weatherAdminFailed = `plandb ` + "done --agent" + ` worker ` + "--result" + ` 'Answer delivered: weather'`
+	// THE QUOTED PATTERN CARRIES `|`. A raw text split read the pattern's own
+	// words ("task", "plandb") as phantom commands, so the wrapper looked like
+	// work and its shared words tied it to the failure.
+	weatherIntrospection = `env | grep -i -E 'agent|task|plandb|codeaf' ; echo ---; plandb task overview 2>&1 | head -40`
+	weatherGoal          = "Read this weather producer and explain what amount means, then run weather.py with no arguments. Read-only."
+)
+
+// A wrapper that is nothing but status/admin introspection is refused as the
+// remedy for a failed administrative call, and the failed call itself stays a
+// stored observed receipt. Because the wrapper echoes the plan and agent words,
+// the pair shares raw tokens: the refusal must come from the introspection
+// rule, not from a silent absence of shared words.
+func TestAlternativeRefusesWeatherIntrospectionAfterFailedAdminDone(t *testing.T) {
+	if !shellMetadataOnly(weatherIntrospection) {
+		t.Fatalf("the env/grep/plandb-task-overview wrapper was not read as introspection: %q", weatherIntrospection)
+	}
+	if alternativeEligible(delegatedBashCall("i", weatherIntrospection), "bash", "bash: "+weatherAdminFailed, weatherGoal) {
+		t.Fatalf("an introspection-only wrapper was eligible as the remedy for a failed admin call")
+	}
+	failedWords, wrapperWords := actionTokens(weatherAdminFailed), actionTokens(weatherIntrospection)
+	for _, want := range []string{"plandb", "agent"} {
+		if failedWords[want] && wrapperWords[want] {
+			continue
+		}
+		t.Fatalf("the frozen pair no longer shares the raw word %q; the case is not exercised", want)
+	}
+	if actionWorkTokens(weatherIntrospection)["plandb"] {
+		t.Fatalf("a plan-read word survived the introspection filter")
+	}
+
+	assertRefused := func(t *testing.T, rows []store.ContextualAttempt) {
+		t.Helper()
+		if len(rows) != 1 || rows[0].Status != store.AttemptFailed {
+			t.Fatalf("introspection was stored as the admin failure's remedy: %+v", rows)
+		}
+		if !strings.Contains(rows[0].Action, "plandb ") || !strings.Contains(rows[0].Action, "done --agent") {
+			t.Fatalf("the failed administrative receipt was not kept: %+v", rows[0])
+		}
+	}
+
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, weatherGoal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("f1", weatherAdminFailed), toolResult{text: "error: no running task found for agent 'worker'", isError: true}, pre)
+		a.recordOutcome(ctx, 1, delegatedBashCall("i1", weatherIntrospection), toolResult{text: "status listing"}, pre)
+		assertRefused(t, attemptsForProject(t, brain, a))
+	})
+
+	t.Run("delegated", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(context.Background(), weatherGoal)
+		worker := spawnTaskWorker(t, root, dir)
+		ctx := context.Background()
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("f1", weatherAdminFailed), toolResult{text: "error: no running task found for agent 'worker'", isError: true}, pre)
+		worker.recordOutcome(ctx, 0, delegatedBashCall("i1", weatherIntrospection), toolResult{text: "status listing"}, pre)
+		assertRefused(t, attemptsForProject(t, brain, root))
+	})
+}
+
+// Under a concurrent tool batch the same introspection cannot take the one
+// alternative slot from genuine work: the wrapper contributes no work token and
+// is refused, and the real command that USES the goal-named weather.py is the
+// single stored alternative naming the frozen failure.
+func TestWeatherIntrospectionDoesNotStealAlternativeUnderRace(t *testing.T) {
+	const genuine = ".venv/bin/python weather.py --summary"
+
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, weatherGoal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("f1", weatherAdminFailed), toolResult{text: "error: no running task found for agent 'worker'", isError: true}, pre)
+		parallelOutcomes(8, func(i int) {
+			if i%2 == 0 {
+				a.recordOutcome(ctx, 1, delegatedBashCall(fmt.Sprintf("i%d", i), weatherIntrospection), toolResult{text: "status listing"}, pre)
+				return
+			}
+			a.recordOutcome(ctx, 1, delegatedBashCall(fmt.Sprintf("s%d", i), genuine), toolResult{text: "rows: 3"}, pre)
+		})
+		assertRaceKeptGenuine(t, attemptsForProject(t, brain, a), "root", genuine)
+	})
+
+	t.Run("delegated", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(context.Background(), weatherGoal)
+		worker := spawnTaskWorker(t, root, dir)
+		ctx := context.Background()
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("f1", weatherAdminFailed), toolResult{text: "error: no running task found for agent 'worker'", isError: true}, pre)
+		parallelOutcomes(8, func(i int) {
+			if i%2 == 0 {
+				worker.recordOutcome(ctx, 0, delegatedBashCall(fmt.Sprintf("i%d", i), weatherIntrospection), toolResult{text: "status listing"}, pre)
+				return
+			}
+			worker.recordOutcome(ctx, 0, delegatedBashCall(fmt.Sprintf("s%d", i), genuine), toolResult{text: "rows: 3"}, pre)
+		})
+		assertRaceKeptGenuine(t, attemptsForProject(t, brain, root), "delegated", genuine)
+	})
+}
+
+// assertRaceKeptGenuine checks the one-slot outcome of the concurrent batch:
+// exactly one stored success, it is the genuine command, and it names the
+// frozen failure's source key.
+func assertRaceKeptGenuine(t *testing.T, rows []store.ContextualAttempt, scope, genuine string) {
+	t.Helper()
+	succeeded := 0
+	var stored, altOf, failedKey string
+	for _, row := range rows {
+		switch row.Status {
+		case store.AttemptSucceeded:
+			succeeded++
+			stored, altOf = row.Action, row.AlternativeOf
+		case store.AttemptFailed:
+			failedKey = row.SourceKey
+		}
+	}
+	if succeeded != 1 || stored != "bash: "+genuine || failedKey == "" || altOf != failedKey {
+		t.Fatalf("%s: the introspection batch did not keep exactly the genuine alternative: n=%d stored=%q altOf=%q failure=%q rows=%+v", scope, succeeded, stored, altOf, failedKey, rows)
+	}
+}
+
 // ── A4, THE EXACT LIVE FAILURE (session b050dd21f038f7cf) ────────────────────
 //
 // The canonical row proved only the standalone pandas import FAILED, and no
