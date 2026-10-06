@@ -4168,7 +4168,10 @@ func sharedPriorCircumstances(rows []priorOutcomeRow, current string) (string, b
 // The prefix must end where a whole shell command ends \u2014 `&& ` or `; ` at top
 // level, with the prefix's own quoting balanced and no newline in it \u2014 so a
 // shared span that stops inside a word, a path, a quoted argument or a heredoc
-// body is refused rather than blindly cut.
+// body is refused rather than blindly cut. THE BOUNDARY TEST IS A BOUNDED SUBSET,
+// not a shell grammar: a prefix that carries an unquoted substitution or
+// grouping construct (`$(`, a backtick, a bare `(` or `)`) is refused outright,
+// so a `; ` or `&& ` inside one is never mistaken for a top-level boundary.
 func sharedPriorActionPrefix(rows []priorOutcomeRow) string {
 	prefix := contextualClip(rows[0].at.Action, 240)
 	for _, r := range rows[1:] {
@@ -4186,8 +4189,12 @@ func sharedPriorActionPrefix(rows []priorOutcomeRow) string {
 }
 
 // priorPrefixIsWholeCommand reports whether a shared preview prefix ends at a
-// top-level command boundary: a trailing `&& ` or `; `, balanced quotes, and no
-// newline (so a heredoc body is never treated as a shared launcher).
+// top-level command boundary: a trailing `&& ` or `; `, balanced quotes, no
+// newline (so a heredoc body is never treated as a shared launcher), and no
+// unquoted substitution or grouping construct. This is a deliberately bounded
+// lexical test, NOT a shell grammar: `$( )`, backticks and `( )` are refused
+// conservatively so a boundary inside one is never factored as top-level, and a
+// construct this test does not know about leaves the full per-row actions.
 func priorPrefixIsWholeCommand(prefix string) bool {
 	if !strings.HasSuffix(prefix, "&& ") && !strings.HasSuffix(prefix, "; ") {
 		return false
@@ -4195,7 +4202,45 @@ func priorPrefixIsWholeCommand(prefix string) bool {
 	if strings.ContainsAny(prefix, "\n\r") {
 		return false
 	}
+	if priorPrefixHasUnquotedNesting(prefix) {
+		return false
+	}
 	return priorQuotesBalanced(prefix)
+}
+
+// priorPrefixHasUnquotedNesting reports whether a preview prefix carries a shell
+// substitution or grouping construct outside single quotes: `$(` or a bare `(`
+// (command and process substitution), a bare `)`, or a backtick. Any of these
+// can span a `; ` or `&& ` that is not a top-level boundary, so the shared-prefix
+// path refuses them rather than parse shell. A construct inside single quotes is
+// literal text and is left alone, matching [priorQuotesBalanced]'s quoting.
+func priorPrefixHasUnquotedNesting(s string) bool {
+	var single, double, escaped bool
+	for _, r := range s {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if single {
+			if r == '\'' {
+				single = false
+			}
+			continue
+		}
+		switch r {
+		case '\\':
+			escaped = true
+		case '\'':
+			if !double {
+				single = true
+			}
+		case '"':
+			double = !double
+		case '(', ')', '`':
+			return true
+		}
+	}
+	return false
 }
 
 // priorQuotesBalanced reports whether single and double quotes are balanced in a

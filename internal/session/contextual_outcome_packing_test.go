@@ -296,6 +296,41 @@ func TestCompactPackingRefusesPartialPrefixes(t *testing.T) {
 	}
 }
 
+// 4b. THE BOUNDED BOUNDARY TEST REFUSES A BOUNDARY THAT ONLY LOOKS TOP-LEVEL. A
+// `; ` inside an unquoted `$(...)`, a backtick span or a `( )` group is not a
+// top-level boundary, and neither is one inside a double-quoted substitution;
+// the conservative test facts none of them, while a genuine launcher whose only
+// semicolon is quoted, and a launcher through a literal non-ASCII path, still
+// compact \u2014 proving the refusal is not a blanket ban on punctuation.
+func TestCompactPackingRefusesNestedSubstitutionBoundaries(t *testing.T) {
+	rows := func(a, b string) []priorOutcomeRow {
+		return []priorOutcomeRow{
+			{at: store.ContextualAttempt{Action: a}},
+			{at: store.ContextualAttempt{Action: b}},
+		}
+	}
+	refused := map[string][]priorOutcomeRow{
+		"dollar-substitution":  rows(`bash: echo $(a; b) x`, `bash: echo $(a; c) x`),
+		"double-quoted-dollar": rows(`bash: echo "$(a; b) x"`, `bash: echo "$(a; c) x"`),
+		"backticks":            rows("bash: echo `a; b` x", "bash: echo `a; c` x"),
+		"grouped":              rows(`bash: (a; b) x`, `bash: (a; c) x`),
+		"process-substitution": rows(`bash: cat <(a; b)`, `bash: cat <(a; c)`),
+	}
+	for name, r := range refused {
+		if prefix := sharedPriorActionPrefix(r); prefix != "" {
+			t.Fatalf("%s: a boundary inside an unquoted construct was factored as top-level: %q", name, prefix)
+		}
+	}
+	quotedSemi := rows(`bash: cd 'dir;x' && alpha`, `bash: cd 'dir;x' && bravo`)
+	if prefix := sharedPriorActionPrefix(quotedSemi); prefix != `bash: cd 'dir;x' && ` {
+		t.Fatalf("a genuine launcher whose semicolon is inside single quotes was refused: %q", prefix)
+	}
+	unicodePath := rows("bash: cd \u00e9t\u00e9-\u65e5\u672c && alpha", "bash: cd \u00e9t\u00e9-\u65e5\u672c && bravo")
+	if prefix := sharedPriorActionPrefix(unicodePath); prefix != "bash: cd \u00e9t\u00e9-\u65e5\u672c && " {
+		t.Fatalf("a shared launcher through a literal non-ASCII path was refused: %q", prefix)
+	}
+}
+
 // 5. THE COMPACT FORMAT STILL ESCAPES AN INJECTED MARKER THAT RIDES THE SHARED
 // SPAN. A launcher every row carries that spells a closing tag cannot close the
 // wrapper from the framing line either.

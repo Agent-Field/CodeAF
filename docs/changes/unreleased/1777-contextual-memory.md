@@ -37,7 +37,7 @@ invalidates:
   - "The sentinel's closing question asked \"yes or no\" while the prompt promised three answers, so an unresolved look could be read as a decided no. The closing question now asks yes, no or unknown as the first word."
   - "The stand tool's probe guidance did not say the look must be read-only, and its hint field could read as the person's own condition. A probe must now take a read-only look at what the endpoint or command returns, and the hint field says reachability is not their condition."
   - "The sentinel-grounding matrix lived in an in-package double that re-encoded yes/no/unknown plumbing rather than showing what the model does with the composed prompt. It is now an opt-in, tag-gated real-model end-to-end regression at the production seam, pinned to the review's model, that SKIPS with no provider key and is never a pass; focused tests and a skip still do not establish real work."
-  - "The whole-request outcome-composition fixture modelled the trailing failure without its own observed alternative, so it claimed the captured two-failure/two-alternative case fit after the shared-caveat dedup when it does not. The fixture now drives the real composition seam with each alternative indexing, and the renderer states a genuinely shared source snapshot, seen day or whole-command action launcher once above the rows instead of on every row: inside the one shared 4,800-rune ceiling, alongside a realistic mandatory approved-rule load, both complete pairs now fit, rows with different structured sources, days or launchers keep their own exact statement, and a pair that still does not fit is omitted whole with no orphan alternative. No production cap, preview window, slot count, priority or authority order changed."
+  - "The whole-request outcome-composition fixture modelled the trailing failure without its own observed alternative, so it claimed the captured two-failure/two-alternative case fit after the shared-caveat dedup when it does not. The fixture now drives the real composition seam with each alternative indexing, and the renderer states a genuinely shared source snapshot, seen day or whole-command action launcher once above the rows instead of on every row: inside the one shared 4,800-rune ceiling, alongside a realistic mandatory approved-rule load, both complete pairs now fit, rows with different structured sources, days or launchers keep their own exact statement, and a pair that still does not fit is omitted whole with no orphan alternative. The boundary test is a bounded lexical subset, not a shell grammar: a span inside an unquoted substitution or grouping construct is refused rather than parsed, and unknown syntax keeps the full per-row actions. No production cap, preview window, slot count, priority or authority order changed."
 ---
 
 This draft starts from #1751 and keeps one canonical event journal. Source,
@@ -94,8 +94,9 @@ same whole-command action launcher, that circumstance is stated once above the r
 per-row repetition is dropped, so two complete failure/alternative pairs fit where
 repetition previously pushed the second one out. Rows whose structured source, day or
 launcher genuinely differ keep their own exact statement, a span that stops inside a word,
-quoted argument or heredoc is never factored, and a pair that still does not fit is omitted
-whole with no orphan alternative. A larger mandatory approved-rule load trims by whole
+quoted argument or heredoc is never factored, an unquoted substitution or grouping construct
+is refused rather than parsed, and a pair that still does not fit is omitted whole with no
+orphan alternative. A larger mandatory approved-rule load trims by whole
 record exactly as before; no cap, preview window, slot count or authority priority changed.
 
 The condition sentinel is grounded in the person's own sentence. A watch's judgment now
