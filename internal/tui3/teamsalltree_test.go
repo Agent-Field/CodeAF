@@ -138,6 +138,118 @@ func TestTeamsAllCompactTreeFoldsWithMouseAndKeyboardAndKeepsNavigation(t *testi
 	}
 }
 
+func TestTeamsAllFoldSurvivesTreeAndBoxLayoutChanges(t *testing.T) {
+	for _, ascii := range []bool{false, true} {
+		a := teamsDeepOverviewLab(t)
+		a.pal.ascii = ascii
+		front := a.frontTabKey()
+		a.input.insert("keep this draft")
+		render := func(width int) *teamsDraw {
+			d := &teamsDraw{a: a}
+			rows := a.teamsOverviewGrid(d, a.teamsOverviewRoots(), width, 0, 0, false, map[string]bool{})
+			for _, row := range rows {
+				if ansi.StringWidth(row) > width {
+					t.Fatalf("row exceeds width %d: %s", width, row)
+				}
+			}
+			return d
+		}
+		foldTarget := func(d *teamsDraw) teamsTarget {
+			for _, target := range d.targets {
+				if target.act == teamsActSubteamsFold && target.id == "depth-1" {
+					return target
+				}
+			}
+			t.Fatal("fold control disappeared after a layout change")
+			return teamsTarget{}
+		}
+		a.teamsDo(foldTarget(render(30)))
+		for _, width := range []int{30, 80, 130, 240, 30} {
+			d := render(width)
+			foldTarget(d)
+			for _, target := range d.targets {
+				for i := 2; i < 12; i++ {
+					if target.id == "depth-"+itoa(i) {
+						t.Fatalf("collapsed descendant returned at width %d (ascii %v): %+v", width, ascii, target)
+					}
+				}
+			}
+		}
+		// The widened card must retain an expand control, rather than only
+		// remembering the fold invisibly until the terminal narrows again.
+		a.teamsDo(foldTarget(render(240)))
+		for _, width := range []int{240, 30} {
+			d := render(width)
+			found := false
+			for _, target := range d.targets {
+				found = found || target.arg == "overview" && target.id == "depth-11"
+			}
+			if !found {
+				t.Fatalf("expanding did not restore the deepest descendant at width %d", width)
+			}
+		}
+		if a.tp.sel != teamsAllRow || a.frontTabKey() != front || a.input.String() != "keep this draft" {
+			t.Fatal("resizing or folding changed Teams selection or Chats")
+		}
+	}
+}
+
+func TestTeamsAllFoldControlKeepsPointerAndKeyboardAfterResize(t *testing.T) {
+	a := teamsDeepOverviewLab(t)
+	drive(t, a, tea.WindowSizeMsg{Width: 42, Height: 100})
+	fold := teamsTargetOf(t, a, teamsActSubteamsFold, "depth-1")
+	drive(t, a, tea.MouseClickMsg{X: fold.x0, Y: fold.y, Button: tea.MouseLeft}, tea.MouseReleaseMsg{X: fold.x0, Y: fold.y, Button: tea.MouseLeft})
+	for _, width := range []int{150, 42, 150} {
+		drive(t, a, tea.WindowSizeMsg{Width: width, Height: 100})
+		fold = teamsTargetOf(t, a, teamsActSubteamsFold, "depth-1")
+		hit, ok := a.teamsTargetAt(fold.x0, fold.y)
+		if !ok || hit.ref() != fold.ref() {
+			t.Fatalf("card background intercepted fold at width %d: %+v", width, hit)
+		}
+		for _, target := range a.tp.targets {
+			if target.pane && target.id == "depth-2" {
+				t.Fatalf("resize to %d restored a collapsed child", width)
+			}
+		}
+	}
+	// The focused arrow keeps its identity even when it moves into a box.
+	drive(t, a, key("enter"))
+	_ = teamsFrameText(a)
+	if a.tp.foldedSubteams["depth-1"] || a.tp.sel != teamsAllRow {
+		t.Fatal("keyboard expansion lost its target after resizing")
+	}
+	fold = teamsTargetOf(t, a, teamsActSubteamsFold, "depth-1")
+	drive(t, a, tea.MouseClickMsg{X: fold.x0, Y: fold.y, Button: tea.MouseLeft}, tea.MouseReleaseMsg{X: fold.x0, Y: fold.y, Button: tea.MouseLeft})
+	drive(t, a, tea.WindowSizeMsg{Width: 42, Height: 100})
+	_ = teamsFrameText(a)
+	if !a.tp.foldedSubteams["depth-1"] || a.tp.sel != teamsAllRow {
+		t.Fatal("boxed pointer collapse did not survive narrowing")
+	}
+}
+
+func TestTeamsAllNarrowFoldHeadingKeepsTwoDigitChildCount(t *testing.T) {
+	a := teamsDeepOverviewLab(t)
+	a.wall.teams = a.wall.teams[:1]
+	for i := 0; i < 10; i++ {
+		a.wall.teams = append(a.wall.teams, team{ID: "child-" + itoa(i), Name: "Child " + itoa(i), Parent: "depth-0"})
+	}
+	for _, ascii := range []bool{false, true} {
+		a.pal.ascii = ascii
+		for _, folded := range []bool{false, true} {
+			a.tp.foldedSubteams = map[string]bool{"depth-0": folded}
+			d := &teamsDraw{a: a}
+			rows := a.teamsOverviewCard(d, a.wall.teams[0], 12, 0, 0, false, map[string]bool{})
+			for _, target := range d.targets {
+				if target.act == teamsActSubteamsFold {
+					if !strings.Contains(ansi.Strip(rows[target.y]), a.teamsDot()+" 10") {
+						t.Fatalf("fold heading truncated child count (ascii %v, folded %v): %s", ascii, folded, rows[target.y])
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestTeamsAllCompactTreeScrollReachesDeepestRowAndClosedHistory(t *testing.T) {
 	a := teamsDeepOverviewLab(t)
 	a.width, a.height = 42, 20

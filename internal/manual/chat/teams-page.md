@@ -76,6 +76,8 @@ under `Subteams of <team name> · <count>`, with grey branch guides joining chil
 At most two box levels nest inside a top-level card. Deeper descendants, or children whose
 boxes would be narrower than 36 columns, appear as compact tree rows. These start expanded;
 click a row's arrow (or focus it and press `enter`) to collapse or expand its children.
+Boxed cards have the same arrow beside their Subteams heading. Collapsed children
+stay collapsed across refreshes and resizing between boxes and compact rows.
 Click the team name to open that team's overview. Indentation is bounded at narrow widths,
 and the focused row's footer hint names its full ancestry. Folding changes only this view;
 it does not change membership, the sidebar, or the configured depth limit.

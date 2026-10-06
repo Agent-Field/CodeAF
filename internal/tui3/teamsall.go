@@ -3,6 +3,7 @@ package tui3
 import (
 	"strings"
 
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -260,14 +261,25 @@ func (a *app) teamsOverviewCard(d *teamsDraw, t team, width, x, y int, compact b
 	children := a.teamsOverviewChildren(t.ID)
 	if len(children) > 0 {
 		add("")
+		folded := a.tp.foldedSubteams[t.ID]
+		mark, verb := tokens.GExpanded, "Collapse"
+		if folded {
+			mark, verb = tokens.GCollapsed, "Expand"
+		}
+		fold, foldW := d.button(a.icon(mark), teamsTarget{act: teamsActSubteamsFold, id: t.ID, x0: x + 2, y: y + 1 + len(lines), pane: true,
+			hint: verb + " subteams of " + a.teamsAncestryName(t)}, a.pal.dim)
 		count := " " + a.teamsDot() + " " + itoa(len(children))
-		label := fit("Subteams of "+t.Name, max(inner-ansi.StringWidth(count), 1))
-		add(a.pal.dim(label + count))
+		label := fit("Subteams of "+t.Name, max(inner-foldW-ansi.StringWidth(count), 0))
+		add(fold + a.pal.dim(label+count))
 		// Child targets are registered before their surrounding padding, so a
 		// click inside a child always chooses that child rather than its parent.
-		childRows := a.teamsOverviewBranches(d, children, inner, x+2, y+1+len(lines), ancestors)
-		for _, row := range childRows {
-			lines = append(lines, wallCardLine{s: row})
+		// Cards and compact rows share folds so resizing never restores hidden
+		// descendants or removes the control needed to expand them again.
+		if !folded {
+			childRows := a.teamsOverviewBranches(d, children, inner, x+2, y+1+len(lines), ancestors)
+			for _, row := range childRows {
+				lines = append(lines, wallCardLine{s: row})
+			}
 		}
 	}
 	card := wallCardBuild(a.pal, "", lines, x, y, width, 1, 0)
