@@ -437,7 +437,7 @@ func displayName(name string) string {
 // and a context file written as one line of JSON are single lines of tens of
 // thousands of characters; the cut used to say only `[line cut]`, at a byte that
 // could split a character, and an agent that needed what followed read on to
-// its turn cap without finding it (/pr's live review, 2026-10-06). grep shows
+// its turn cap without finding it (/review's live review, 2026-10-06). grep shows
 // the text around a match anywhere in a line ([aroundMatch]), so the cut points
 // there.
 func cutLongLine(text string, most int) string {

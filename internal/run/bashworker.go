@@ -20,6 +20,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/plandb"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/search"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -66,6 +67,9 @@ type BashWorker struct {
 	// The door explains a refused account without changing the request road
 	// already owned by the injected completer.
 	authKeySource func(model string) string
+	// The web pair uses the run profile and resolves its settings per operation.
+	searchProvider search.Provider
+	searchFetcher  search.Fetcher
 }
 
 // NewBashWorker builds the seat the run's factory hands each claimed task to.
@@ -117,6 +121,8 @@ func (w *BashWorker) Run(ctx context.Context, task plandb.Task) (rep Report, run
 		Model:            w.model,
 		WaitForBeltSteps: true,
 		AuthKeySource:    w.authKeySource,
+		SearchProvider:   w.searchProvider,
+		SearchFetcher:    w.searchFetcher,
 	}, w.completer, &task, w.store.Path(), w.store.RootID())
 	if err != nil {
 		return Report{}, err
@@ -821,6 +827,7 @@ func (r *stepRecorder) record(n int, event session.Event) error {
 	step := Step{
 		Kind:        trajectoryStepKind,
 		Step:        n,
+		Tool:        event.Tool,
 		Command:     command,
 		Observation: observationHead(event.Output),
 		FullOutput:  r.takeSpill(),
