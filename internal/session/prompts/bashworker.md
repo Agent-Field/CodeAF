@@ -13,7 +13,7 @@ not persist.
 
 Use available `web_search` and `web_fetch` tools to find and read pages.
 Cite source URLs. Failed calls are not evidence. Prefer native calls for
-named task logs; bash can also run `codeaf web search` / `codeaf web fetch`.
+named task logs.
 
 ## Think once, then act
 
