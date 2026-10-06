@@ -7531,13 +7531,20 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	if on = strings.TrimSpace(on); on != "" {
 		model = on
 	}
+	// A REPAIR OR RESOLVE ROUND IS STILL THIS NODE'S WORKER. Its observation
+	// label must carry the node id, or every repair and resolver of one
+	// session pairs under the single word `task` and a success of one is filed
+	// as the alternative to the failure of another. The task GRAPH is the
+	// node's own only for the node's ordinary worker; the id and depth are
+	// always the node's, and the worker's RUN identity is stamped beside the
+	// label by [Agent.adoptWorkerObservation].
 	var (
 		tasker *TaskGraph
-		nodeID uint64
-		depth  int
+		nodeID = node.id
+		depth  = node.familyDepth()
 	)
 	if suffix == "" {
-		tasker, nodeID, depth = node.graph, node.id, node.familyDepth()
+		tasker = node.graph
 	}
 	a.mu.Lock()
 	parent := a.config

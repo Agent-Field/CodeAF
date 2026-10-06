@@ -261,7 +261,7 @@ func (c *outcomeCollector) rootOrigin() delegatedOrigin {
 }
 
 func delegatedOriginKey(origin delegatedOrigin) string {
-	return origin.Session + "\x00" + origin.Turn + "\x00" + origin.Task
+	return origin.Session + "\x00" + origin.Turn + "\x00" + origin.Task + "\x00" + origin.Run
 }
 
 // projectKeyFromOwner recovers a project key from a FROZEN owner. It is the safe
@@ -453,50 +453,69 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 	if action == "" || strings.TrimSpace(receipt) == "" || receiptShowsFailure(receipt) {
 		return
 	}
-	originKey := delegatedOriginKey(origin)
-	// RESERVE THE ONE-ALTERNATIVE SLOT AND THE EMISSION UNDER ONE LOCK, BEFORE
-	// the append. The pairing must still be for the SAME failure and still open,
-	// so the second of two eligible siblings of one concurrent tool batch sees
-	// the slot already taken and returns; marking the slot only after the write
-	// let every sibling append. The emission counter is reserved here too, so
-	// the per-origin bound cannot be lost to the race either.
+	key, ok := c.reserveDelegatedAlternative(worker, origin, call)
+	if !ok {
+		return
+	}
+	defer c.inflight.Done()
+	e := delegatedAlternativeAttempt(worker, origin, call, action, receipt, preSnapshot, key)
+	if _, err := c.root.memory.store.AppendContextualAttempt(e); err != nil {
+		c.releaseDelegatedAlternative(origin, key)
+		c.fail(err)
+		c.root.journalMemoryFailure("delegated-alternative", err)
+	}
+}
+
+// reserveDelegatedAlternative claims the one-alternative slot and the per-origin
+// emission under ONE lock, BEFORE the append, so the second of two eligible
+// siblings of one concurrent batch sees the slot taken. THE WORKER'S OWN
+// WORKSPACE BELONGS IN THE ELIGIBILITY CALL, never the root's.
+func (c *outcomeCollector) reserveDelegatedAlternative(worker *Agent, origin delegatedOrigin, call ai.ToolCall) (string, bool) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.closed {
-		c.mu.Unlock()
-		return
+		return "", false
 	}
-	state := c.stateLocked(originKey)
-	// THE WORKER'S OWN WORKSPACE BELONGS IN THE ELIGIBILITY CALL, and it is now
-	// passed. [alternativeEligible]'s optional trailing workspace is the effective
-	// directory a goal-named file operand is normalized against; the root caller
-	// passes Config.Workspace and this delegated caller must pass the worker's own
-	// Config.Workspace, or an unrelated command that merely runs from the same
-	// BASENAME elsewhere can be read as the remedy for a failure (the A4 false
-	// positive). A worker stands where its ground put it, so the worker's config is
-	// the correct directory — never the root's, whose workspace may have moved
-	// under a later anchor.
-	if state.altDone || state.altOf == "" || state.emissions >= delegatedAttemptEmissionMax || !alternativeEligible(call, state.altTool, state.altAction, origin.Goal, worker.config.Workspace) {
-		c.mu.Unlock()
-		return
+	state := c.stateLocked(delegatedOriginKey(origin))
+	if state.altDone || state.altOf == "" || state.emissions >= delegatedAttemptEmissionMax ||
+		!alternativeEligible(call, state.altTool, state.altAction, origin.Goal, worker.config.Workspace) {
+		return "", false
 	}
-	key := state.altOf
 	state.altDone = true
 	state.emissions++
 	c.inflight.Add(1)
-	c.mu.Unlock()
-	defer c.inflight.Done()
+	return state.altOf, true
+}
+
+// releaseDelegatedAlternative reopens the pairing after a failed append, but
+// only while the SAME failure still owns it.
+func (c *outcomeCollector) releaseDelegatedAlternative(origin delegatedOrigin, key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	if latest := c.stateLocked(delegatedOriginKey(origin)); latest.altOf == key {
+		latest.altDone = false
+		if latest.emissions > 0 {
+			latest.emissions--
+		}
+	}
+}
+
+// delegatedAlternativeAttempt builds the success row, carrying the SAME
+// admitted project as its failure so the pair cannot straddle a later anchor.
+func delegatedAlternativeAttempt(worker *Agent, origin delegatedOrigin, call ai.ToolCall, action, receipt, preSnapshot, key string) store.ContextualAttempt {
 	post := worker.captureSourceSnapshot(context.Background()).Identity
 	snapshot := post
 	if preSnapshot != post {
 		snapshot = "unknown"
 	}
-	// THE SAME ADMITTED PROJECT AS ITS FAILURE, for the same reason: the pair is
-	// one fact under one owner and must not straddle a later root anchor.
 	conditions := map[string]string{}
 	if projectKey := originProjectKey(origin); projectKey != "" {
 		conditions["project"] = projectKey
 	}
-	e := store.ContextualAttempt{
+	return store.ContextualAttempt{
 		ID:            store.NewMemoryID(),
 		Owner:         origin.Owner,
 		SessionID:     origin.Session,
@@ -513,25 +532,6 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 		SourceKey:     delegatedSourceKey(origin, call.ID),
 		SourceHash:    contextualHash(receipt),
 		ValidFrom:     time.Now(),
-	}
-	if _, err := c.root.memory.store.AppendContextualAttempt(e); err != nil {
-		// A FAILED WRITE REOPENS THE PAIRING FOR THE SAME FAILURE and gives the
-		// reserved emission back, so a retry is neither blocked nor counted; a
-		// newer failure owns its own slot and is never cleared by this. The
-		// failure is exposed through the collector's own lane, never swallowed.
-		c.mu.Lock()
-		if !c.closed {
-			if latest := c.stateLocked(originKey); latest.altOf == key {
-				latest.altDone = false
-				if latest.emissions > 0 {
-					latest.emissions--
-				}
-			}
-		}
-		c.mu.Unlock()
-		c.fail(err)
-		c.root.journalMemoryFailure("delegated-alternative", err)
-		return
 	}
 }
 
@@ -797,40 +797,62 @@ func (a *Agent) recordSettledJob(one *job, code int) {
 // caller: the worker supplies the job's raw sink tail and exit code and gets no
 // store handle in return.
 func (c *outcomeCollector) settleJob(one *job, code int) {
-	if c == nil || one == nil || code == 0 {
+	root, ok := c.settleJobRoot(one, code)
+	if !ok {
 		return
 	}
-	root := c.root
-	if root == nil || !root.remembers() || root.memory == nil {
-		return
-	}
-	// THE SAME BOUNDARY FOR A PROMOTED JOB. A binding-only run's own bash job
-	// settles with a real frozen turn (unlike its tool calls, whose origin is
-	// empty), so without this refusal its death would be written into the
-	// borrowed brain exactly as a worker's would.
-	if root.config.bindingOnlyMemory {
-		return
-	}
-	origin := one.origin
-	// FAIL CLOSED WITHOUT THE FROZEN TURN. A job with no launch-turn provenance
-	// is not stamped with whatever turn is live at settle — that would let a
-	// late death be read as a fact about the person's next question.
-	turn := strings.TrimSpace(origin.Turn)
+	turn := strings.TrimSpace(one.origin.Turn)
 	if turn == "" {
 		return
 	}
-	// ADMISSION AND CLOSE ARE ONE DECISION, exactly as they are for a tool
-	// receipt: the in-flight slot is taken under the same lock the seal takes,
-	// so a settlement racing Close either wins and is waited for, or is refused.
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
+	if !c.enter() {
 		return
 	}
-	c.inflight.Add(1)
-	c.mu.Unlock()
 	defer c.inflight.Done()
+	e := settledJobAttempt(root, one, code, turn)
+	if _, err := root.memory.store.AppendContextualAttempt(e); err != nil {
+		c.fail(err)
+		root.journalMemoryFailure("settled-job", err)
+	}
+}
 
+// settleJobRoot applies the collector's own gates: a live collector, a root
+// with a brain, and a run that is not binding-only. FAIL CLOSED WITHOUT THE
+// FROZEN TURN: a job with no launch-turn provenance is never stamped with
+// whatever turn is live at settle.
+func (c *outcomeCollector) settleJobRoot(one *job, code int) (*Agent, bool) {
+	if c == nil || one == nil || code == 0 {
+		return nil, false
+	}
+	root := c.root
+	if root == nil || !root.remembers() || root.memory == nil {
+		return nil, false
+	}
+	// THE SAME BOUNDARY FOR A PROMOTED JOB. A binding-only run's own bash job
+	// settles with a real frozen turn, so without this refusal its death would
+	// be written into the borrowed brain exactly as a worker's would.
+	if root.config.bindingOnlyMemory {
+		return nil, false
+	}
+	return root, true
+}
+
+// enter takes the in-flight slot under the same lock the seal takes, so a
+// settlement racing Close either wins and is waited for, or is refused.
+func (c *outcomeCollector) enter() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return false
+	}
+	c.inflight.Add(1)
+	return true
+}
+
+// settledJobAttempt builds the promoted job's death row under its frozen
+// launch provenance.
+func settledJobAttempt(root *Agent, one *job, code int, turn string) store.ContextualAttempt {
+	origin := one.origin
 	run := strings.TrimSpace(origin.Worker)
 	if run == "" {
 		run = root.memorySourceSession()
@@ -852,13 +874,11 @@ func (c *outcomeCollector) settleJob(one *job, code int) {
 	if strings.TrimSpace(receipt) == "" {
 		receipt = fmt.Sprintf("job %d exited %d", one.id, code)
 	}
-	// THE JOB'S PROJECT IS THE LAUNCHING AGENT'S ADMITTED PROJECT, frozen with
-	// the launch turn; a root anchor before the job dies must not relabel it.
 	conditions := map[string]string{}
 	if projectKey := jobOriginProjectKey(origin); projectKey != "" {
 		conditions["project"] = projectKey
 	}
-	e := store.ContextualAttempt{
+	return store.ContextualAttempt{
 		ID:          store.NewMemoryID(),
 		Owner:       owner,
 		SessionID:   session,
@@ -874,9 +894,5 @@ func (c *outcomeCollector) settleJob(one *job, code int) {
 		SourceKey:   sourceKey,
 		SourceHash:  contextualHash(receipt),
 		ValidFrom:   time.Now(),
-	}
-	if _, err := root.memory.store.AppendContextualAttempt(e); err != nil {
-		c.fail(err)
-		root.journalMemoryFailure("settled-job", err)
 	}
 }

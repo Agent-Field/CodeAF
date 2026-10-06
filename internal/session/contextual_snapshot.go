@@ -79,36 +79,42 @@ func (a *Agent) captureSourceSnapshot(ctx context.Context) sourceSnapshot {
 		return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
 	}
 	if len(first) == 0 {
-		// A CLEAN TREE IS AGREED TWICE, exactly as the dirty path is. One read
-		// of an empty listing is not proof the tree stayed still while it was
-		// read; a second HEAD and listing that disagree is the honest unknown.
-		head2, err := gitCapture(bounded, root, "rev-parse", "HEAD")
-		if err != nil || strings.TrimSpace(head2) != head {
-			return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
-		}
-		second, err := gitCapture(bounded, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
-		if err != nil || len(second) != 0 {
-			return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
-		}
-		return sourceSnapshot{Identity: head, Head: head}
+		return captureCleanSnapshot(bounded, root, head)
 	}
+	return captureDirtySnapshot(bounded, root, head, first)
+}
+
+// captureCleanSnapshot certifies an empty listing only after HEAD and the
+// listing are read a SECOND time and agree, exactly as the dirty path is.
+func captureCleanSnapshot(ctx context.Context, root, head string) sourceSnapshot {
+	head2, err := gitCapture(ctx, root, "rev-parse", "HEAD")
+	if err != nil || strings.TrimSpace(head2) != head {
+		return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
+	}
+	second, err := gitCapture(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	if err != nil || len(second) != 0 {
+		return sourceSnapshot{Identity: "unknown", Head: head, Unknown: true}
+	}
+	return sourceSnapshot{Identity: head, Head: head}
+}
+
+// captureDirtySnapshot hashes the bounded overlay and refuses to certify a tree
+// that moved while it was read.
+func captureDirtySnapshot(ctx context.Context, root, head, first string) sourceSnapshot {
 	if len(first) > sourceSnapshotMaxBytes {
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Truncated: true}
 	}
-	entries, err := snapshotEntries(bounded, first, root)
+	entries, err := snapshotEntries(ctx, first, root)
 	if err != nil {
 		truncated := errors.Is(err, errSnapshotCap)
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Truncated: truncated, Unknown: !truncated}
 	}
 	overlay := contextualHash(strings.Join(entries, "\n"))
-	// A TREE THAT MOVES WHILE IT IS READ IS NOT AN IDENTITY. HEAD and the
-	// listing are read a second time and must agree; a mismatch is the honest
-	// unknown rather than a token certifying a moment that never existed.
-	head2, err := gitCapture(bounded, root, "rev-parse", "HEAD")
+	head2, err := gitCapture(ctx, root, "rev-parse", "HEAD")
 	if err != nil || strings.TrimSpace(head2) != head {
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Unknown: true}
 	}
-	second, err := gitCapture(bounded, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	second, err := gitCapture(ctx, root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil || first != second {
 		return sourceSnapshot{Identity: "unknown", Head: head, Dirty: true, Unknown: true}
 	}
@@ -171,26 +177,47 @@ func snapshotContent(ctx context.Context, root, rel, status string, remaining in
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	info, err := os.Lstat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if strings.ContainsAny(status, "D") {
-				return "absent", 0, nil
-			}
-			return "", 0, err
-		}
-		return "", 0, err
+		return snapshotMissing(status, err)
 	}
 	switch {
 	case info.Mode()&os.ModeSymlink != 0:
-		target, err := os.Readlink(path)
-		if err != nil {
-			return "", 0, err
-		}
-		return "link:" + target, int64(len(target)), nil
+		return snapshotSymlink(path)
 	case info.IsDir():
+		// A DIRTY GITLINK LOOKS THE SAME WHICHEVER COMMIT IS CHECKED OUT:
+		// porcelain stays ` M child`. Reading the submodule's own HEAD and
+		// listing makes two different commits different source identities.
+		if sub := submoduleIdentity(ctx, path); sub != "" {
+			return sub, int64(len(sub)), nil
+		}
 		return "dir", 0, nil
 	case !info.Mode().IsRegular():
 		return "special", 0, nil
 	}
+	return snapshotRegularFile(path, info, remaining)
+}
+
+// snapshotMissing explains a stat failure: a deleted tracked path's absence is
+// proven by its D status, any other absence is a race the caller must not read
+// as an empty file.
+func snapshotMissing(status string, err error) (string, int64, error) {
+	if os.IsNotExist(err) && strings.ContainsAny(status, "D") {
+		return "absent", 0, nil
+	}
+	return "", 0, err
+}
+
+// snapshotSymlink hashes a symlink by its target text.
+func snapshotSymlink(path string) (string, int64, error) {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "", 0, err
+	}
+	return "link:" + target, int64(len(target)), nil
+}
+
+// snapshotRegularFile reads a regular file up to the per-file bound and refuses
+// a file rewritten between its stat and its read.
+func snapshotRegularFile(path string, info os.FileInfo, remaining int64) (string, int64, error) {
 	limit := int64(sourceSnapshotMaxFile)
 	if remaining < limit {
 		limit = remaining
@@ -206,9 +233,7 @@ func snapshotContent(ctx context.Context, root, rel, status string, remaining in
 		return "", 0, errSnapshotCap
 	}
 	// The file must be the same one that was stat-ed: an equal-listing race
-	// (the file rewritten between stat and read) is refused, not certified. The
-	// mismatch returns a DEDICATED error — a nil error here would hash the
-	// empty/garbled content and certify an identity the capture never earned.
+	// (rewritten between stat and read) is refused, not certified.
 	after, err := os.Lstat(path)
 	if err != nil {
 		return "", 0, errSnapshotRace
@@ -217,6 +242,24 @@ func snapshotContent(ctx context.Context, root, rel, status string, remaining in
 		return "", 0, errSnapshotRace
 	}
 	return contextualHash(string(data)), int64(len(data)), nil
+}
+
+// submoduleIdentity reads a submodule directory's own commit and dirty state,
+// so a moved submodule tree is not certified as `dir`. It answers "" when the
+// directory is not a git work tree or its HEAD cannot be read, in which case
+// the caller keeps the constant `dir` identity and the comparison stays
+// conservative rather than guessing a commit.
+func submoduleIdentity(ctx context.Context, dir string) string {
+	head, err := gitCapture(ctx, dir, "rev-parse", "HEAD")
+	head = strings.TrimSpace(head)
+	if err != nil || head == "" {
+		return ""
+	}
+	status, err := gitCapture(ctx, dir, "status", "--porcelain=v1", "-z")
+	if err != nil {
+		return "submodule:" + head + ":unknown"
+	}
+	return "submodule:" + head + ":" + contextualHash(status)[:16]
 }
 
 // readBounded reads at most limit bytes, so a file that grows after its stat

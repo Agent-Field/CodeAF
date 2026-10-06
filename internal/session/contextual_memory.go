@@ -316,6 +316,7 @@ func (a *Agent) prepareBindingContext(ctx context.Context, cue string) {
 	a.memory.outcomeFailedTool = ""
 	a.memory.outcomeFailedAction = ""
 	a.memory.outcomeAlternativeDone = false
+	a.memory.outcomeFailedTurn = 0
 	a.memory.mu.Unlock()
 	authority, history := a.bindingContextParts(cue, revision)
 	// The shared ceiling is a promise about the system prompt: the genuinely

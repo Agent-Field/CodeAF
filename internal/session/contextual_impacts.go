@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
@@ -25,38 +26,8 @@ func (a *Agent) contextualReadReceipt(ctx context.Context, call ai.ToolCall, res
 	if result.isError || result.harness {
 		return r
 	}
-	var path string
-	if call.Function.Name == "read" {
-		var args struct {
-			Path   string `json:"path"`
-			Offset *int   `json:"offset"`
-			Limit  *int   `json:"limit"`
-		}
-		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || args.Offset != nil || args.Limit != nil {
-			return r
-		}
-		path = args.Path
-	} else if call.Function.Name == "bash" {
-		var args struct {
-			Command string `json:"command"`
-			Cmd     string `json:"cmd"`
-		}
-		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
-			return r
-		}
-		command := args.Command
-		if command == "" {
-			command = args.Cmd
-		}
-		words := strings.Fields(command)
-		if len(words) != 2 || words[0] != "cat" || strings.ContainsAny(words[1], ";&|><$`*?\n") {
-			return r
-		}
-		path = strings.Trim(words[1], "\"'")
-	} else {
-		return r
-	}
-	if path == "" {
+	path, ok := contextualReceiptPath(call)
+	if !ok {
 		return r
 	}
 	if !filepath.IsAbs(path) {
@@ -77,6 +48,41 @@ func (a *Agent) contextualReadReceipt(ctx context.Context, call ai.ToolCall, res
 	// the read saw, not the turn's arbitrary start-of-turn identity.
 	r.Snapshot = a.captureSourceSnapshot(ctx).Identity
 	return r
+}
+
+// contextualReceiptPath reads the path a successful `read` or a plain two-word
+// `cat <file>` call names, and refuses anything else.
+func contextualReceiptPath(call ai.ToolCall) (string, bool) {
+	switch call.Function.Name {
+	case "read":
+		var args struct {
+			Path   string `json:"path"`
+			Offset *int   `json:"offset"`
+			Limit  *int   `json:"limit"`
+		}
+		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil || args.Offset != nil || args.Limit != nil {
+			return "", false
+		}
+		return args.Path, true
+	case "bash":
+		var args struct {
+			Command string `json:"command"`
+			Cmd     string `json:"cmd"`
+		}
+		if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
+			return "", false
+		}
+		command := args.Command
+		if command == "" {
+			command = args.Cmd
+		}
+		words := strings.Fields(command)
+		if len(words) != 2 || words[0] != "cat" || strings.ContainsAny(words[1], ";&|><$`*?\n") {
+			return "", false
+		}
+		return strings.Trim(words[1], "\"'"), true
+	}
+	return "", false
 }
 
 // contextualDropping answers whether a canonical path is one of THIS agent's own
@@ -254,33 +260,41 @@ var contextualFileConsumer = map[string]bool{
 func contextualCodeOnly(body string) string {
 	var b strings.Builder
 	for i := 0; i < len(body); {
-		c := body[i]
-		if c == '#' {
-			for i < len(body) && body[i] != '\n' {
-				i++
+		switch c := body[i]; c {
+		case '#':
+			i = contextualSkipLineComment(body, i)
+		case '\'', '"', '`':
+			i = contextualCopyCodeString(&b, body, i)
+		default:
+			if c == '/' && i+1 < len(body) && body[i+1] == '/' {
+				i = contextualSkipLineComment(body, i)
+				continue
 			}
-			continue
+			b.WriteByte(c)
+			i++
 		}
-		if c == '/' && i+1 < len(body) && body[i+1] == '/' {
-			for i < len(body) && body[i] != '\n' {
-				i++
-			}
-			continue
-		}
-		if (c == '\'' || c == '"') && i+2 < len(body) && body[i+1] == c && body[i+2] == c {
-			i = contextualPastTripleQuoted(body, i, c)
-			continue
-		}
-		if c == '\'' || c == '"' || c == '`' {
-			end := contextualPastQuoted(body, i, c)
-			b.WriteString(body[i:end])
-			i = end
-			continue
-		}
-		b.WriteByte(c)
-		i++
 	}
 	return b.String()
+}
+
+// contextualSkipLineComment advances past the rest of a `#` or `//` comment.
+func contextualSkipLineComment(body string, i int) int {
+	for i < len(body) && body[i] != '\n' {
+		i++
+	}
+	return i
+}
+
+// contextualCopyCodeString copies a quoted span (including a triple-quoted one)
+// into the code-only body and answers where it ends.
+func contextualCopyCodeString(b *strings.Builder, body string, i int) int {
+	c := body[i]
+	if i+2 < len(body) && body[i+1] == c && body[i+2] == c {
+		return contextualPastTripleQuoted(body, i, c)
+	}
+	end := contextualPastQuoted(body, i, c)
+	b.WriteString(body[i:end])
+	return end
 }
 
 // contextualPastQuoted returns the index just past one plain quoted span,
@@ -453,37 +467,30 @@ func contextualReferencedProducers(consumerPath, body string) []string {
 	neighborhood := contextualConsumerNeighborhood(consumerPath)
 	found := map[string]bool{}
 	var out []string
-	add := func(candidate string) {
-		if strings.TrimSpace(candidate) == "" {
-			return
-		}
-		path := candidate
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(directory, path)
-		}
-		canonical, err := filepath.EvalSymlinks(path)
-		if err != nil || canonical == consumerPath {
-			return
-		}
-		// AUTHORIZED SOURCE SCOPE, DECIDED BEFORE ANY READ. A path outside the
-		// neighborhood the consumer's repository lives in is refused here, so the
-		// framework never opens an arbitrary named file and never mints an owner
-		// from a directory the conversation was not standing in.
-		if !contextualPathWithin(canonical, neighborhood) {
-			return
-		}
-		info, err := os.Stat(canonical)
-		if err != nil || !info.Mode().IsRegular() {
-			return
-		}
-		if !found[canonical] {
-			found[canonical] = true
-			out = append(out, canonical)
-		}
-	}
 	// THE CODE-LEVEL CHAIN IS THE PRIMARY REFERENCE. It is read first and only
 	// outside a comment or a quoted string, so a printed `Path(...)` example or a
 	// debug string is never a reference.
+	for _, candidate := range contextualChainedReferences(code, consumerPath) {
+		if path, ok := contextualResolveReference(candidate, consumerPath, directory, neighborhood, found); ok {
+			out = append(out, path)
+		}
+	}
+	// THEN QUOTED LITERALS, AND ONLY WHERE THE SOURCE ACTUALLY CONSUMES THE FILE.
+	for _, loc := range contextualPathLiteral.FindAllStringSubmatchIndex(code, contextualContextLimit) {
+		if loc[2] < 0 || loc[3] > len(code) || !contextualLiteralConsumed(code[:loc[0]]) {
+			continue
+		}
+		if path, ok := contextualResolveReference(code[loc[2]:loc[3]], consumerPath, directory, neighborhood, found); ok {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// contextualChainedReferences resolves every pathlib `.parent`/part chain in the
+// code-only body to a candidate path under the consumer's own directory.
+func contextualChainedReferences(code, consumerPath string) []string {
+	var out []string
 	for _, loc := range contextualPathChain.FindAllStringSubmatchIndex(code, contextualContextLimit) {
 		if loc[0] < 0 || loc[1] > len(code) || contextualInsideQuoted(code, loc[0]) {
 			continue
@@ -499,19 +506,42 @@ func contextualReferencedProducers(consumerPath, body string) []string {
 		for _, part := range contextualPathPart.FindAllStringSubmatch(chain[2], contextualContextLimit) {
 			resolved = filepath.Join(resolved, part[1])
 		}
-		add(resolved)
-	}
-	// THEN QUOTED LITERALS, AND ONLY WHERE THE SOURCE ACTUALLY CONSUMES THE FILE.
-	for _, loc := range contextualPathLiteral.FindAllStringSubmatchIndex(code, contextualContextLimit) {
-		if loc[2] < 0 || loc[3] > len(code) {
-			continue
-		}
-		if !contextualLiteralConsumed(code[:loc[0]]) {
-			continue
-		}
-		add(code[loc[2]:loc[3]])
+		out = append(out, resolved)
 	}
 	return out
+}
+
+// contextualResolveReference canonicalizes one candidate and decides whether it
+// is an authorized, regular, not-yet-seen file inside the consumer's
+// neighborhood. It answers the canonical path and whether it was newly accepted.
+func contextualResolveReference(candidate, consumerPath, directory, neighborhood string, found map[string]bool) (string, bool) {
+	if strings.TrimSpace(candidate) == "" {
+		return "", false
+	}
+	path := candidate
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(directory, path)
+	}
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil || canonical == consumerPath {
+		return "", false
+	}
+	// AUTHORIZED SOURCE SCOPE, DECIDED BEFORE ANY READ. A path outside the
+	// neighborhood the consumer's repository lives in is refused here, so the
+	// framework never opens an arbitrary named file and never mints an owner from
+	// a directory the conversation was not standing in.
+	if !contextualPathWithin(canonical, neighborhood) {
+		return "", false
+	}
+	info, err := os.Stat(canonical)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	if found[canonical] {
+		return "", false
+	}
+	found[canonical] = true
+	return canonical, true
 }
 
 // contextualNamesProducer answers whether the current consumer source still
@@ -635,83 +665,20 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 	}
 	// THE ROOT'S OWN BOUNDARY READS JOIN THE ORIGIN'S. A turn handed to a quick
 	// task still made its earlier reads itself, at the real executeTool
-	// boundary; those receipts are merged in here, under the frozen turn both
+	// boundary; those receipts are merged in here under the frozen turn both
 	// sides share, before the condenser's stub can stand in for them.
 	source.Receipts = a.contextualTurnReceipts(source)
 	reads := contextualForwardedReads(source.Receipts)
-	byPath := map[string]memoryToolReceipt{}
-	for _, r := range reads {
-		if _, known := byPath[r.Path]; !known {
-			byPath[r.Path] = r
-		}
-	}
+	byPath := contextualReceiptsByPath(reads)
 	written := 0
 	for _, consumer := range reads {
 		consumerOwner := contextualPathOwner(consumer.Path)
-		if consumerOwner == "" {
-			continue
-		}
-		if a.contextualDropping(consumer.Path) {
+		if consumerOwner == "" || a.contextualDropping(consumer.Path) {
 			continue
 		}
 		for _, producer := range contextualReferencedProducers(consumer.Path, consumer.Body) {
-			if producer == consumer.Path || a.contextualDropping(producer) {
+			if !a.observeDependencyEdge(consumer, producer, consumerOwner, byPath, source.Ceiling) {
 				continue
-			}
-			// THE NEIGHBOURHOOD DISCOVERS; THE CONSENT POLICY AUTHORIZES. A path
-			// neither the LIVE policy nor the origin's FROZEN ADMISSION CEILING
-			// plainly allows is refused here, before its owner is minted and
-			// before any byte is read, hashed or journaled -- so a genuine-looking
-			// consume of a private sibling repository the policy denies proves
-			// nothing, and a later blanket allow cannot widen an old admission.
-			if !a.contextualProducerReadAllowedUnder(producer, source.Ceiling) {
-				continue
-			}
-			producerOwner := contextualPathOwner(producer)
-			if producerOwner == "" || producerOwner == consumerOwner {
-				continue
-			}
-			// THE PRODUCER SIDE IS EITHER A REAL TOOL READ OR A FRAMEWORK
-			// RECHECK, AND THE RECORD SAYS WHICH. When the agent actually read
-			// the producer, its own receipt (and hash) is used. When it did not
-			// — the ordinary case where the consumer's source genuinely
-			// CONSUMES the producer and the agent only read the consumer — the
-			// framework reads the exact referenced file under the same bound a
-			// tool read uses and records THAT, labelled `framework-verify:`, so a
-			// reader can never mistake it for a `cat` the agent ran. No shell exit
-			// code, no substring of some command's output and no quoted mention is
-			// ever proof here.
-			var producerHash, producerReceipt string
-			if held, ok := byPath[producer]; ok {
-				producerHash, producerReceipt = held.Hash, held.ID
-			} else {
-				body, err := contextualReadFile(producer)
-				if err != nil || body == "" {
-					continue
-				}
-				producerHash = contextualHash(body)
-				producerReceipt = "framework-verify:" + producerHash
-			}
-			// Work can change the consumer after its first read. Recheck its
-			// exact reference after the turn, so an unrelated formatting edit
-			// does not leave the link attached to an obsolete whole-file
-			// snapshot.
-			consumerHash, consumerReceipt := consumer.Hash, consumer.ID
-			current, readErr := contextualReadFile(consumer.Path)
-			if readErr != nil || !contextualNamesProducer(consumer.Path, current, producer) {
-				continue
-			}
-			if hash := contextualHash(current); hash != consumer.Hash {
-				consumerHash = hash
-				consumerReceipt = "contextual-recheck:" + hash
-			}
-			relative, err := filepath.Rel(filepath.Dir(consumer.Path), producer)
-			if err != nil {
-				continue
-			}
-			d := store.ContextualDependencyObservation{ID: "", ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer, ProducerPath: producer, ConsumerPath: consumer.Path, ProducerHash: producerHash, ConsumerHash: consumerHash, ReceiptIDs: []string{consumerReceipt, producerReceipt}, Assumption: "Consumer source consumes the exact producer path " + relative}
-			if _, err := a.memory.store.ObserveContextualDependency([]string{producerOwner, consumerOwner}, d); err != nil {
-				a.journalMemoryFailure("dependency", err)
 			}
 			written++
 			if written >= contextualContextLimit {
@@ -719,6 +686,87 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 			}
 		}
 	}
+}
+
+// contextualReceiptsByPath indexes the first receipt for each read path.
+func contextualReceiptsByPath(reads []memoryToolReceipt) map[string]memoryToolReceipt {
+	byPath := map[string]memoryToolReceipt{}
+	for _, r := range reads {
+		if _, known := byPath[r.Path]; !known {
+			byPath[r.Path] = r
+		}
+	}
+	return byPath
+}
+
+// observeDependencyEdge decides and records ONE consumer->producer edge, and
+// answers whether a row was written. THE NEIGHBOURHOOD DISCOVERS; THE CONSENT
+// POLICY AUTHORIZES: a path neither the LIVE policy nor the origin's FROZEN
+// ADMISSION CEILING plainly allows is refused before its owner is minted and
+// before any byte is read, hashed or journaled.
+func (a *Agent) observeDependencyEdge(consumer memoryToolReceipt, producer, consumerOwner string, byPath map[string]memoryToolReceipt, ceiling *approval.Policy) bool {
+	if producer == consumer.Path || a.contextualDropping(producer) {
+		return false
+	}
+	if !a.contextualProducerReadAllowedUnder(producer, ceiling) {
+		return false
+	}
+	producerOwner := contextualPathOwner(producer)
+	if producerOwner == "" || producerOwner == consumerOwner {
+		return false
+	}
+	// THE PRODUCER SIDE IS EITHER A REAL TOOL READ OR A FRAMEWORK RECHECK, AND
+	// THE RECORD SAYS WHICH. A real read uses its own receipt and hash; the
+	// ordinary case reads the exact referenced file under the same bound a tool
+	// read uses and labels it `framework-verify:`. No shell exit code, no
+	// substring of output and no quoted mention is ever proof here.
+	producerHash, producerReceipt, ok := contextualProducerReceipt(producer, byPath)
+	if !ok {
+		return false
+	}
+	// Work can change the consumer after its first read, so its exact reference
+	// is rechecked after the turn and the link is not attached to an obsolete
+	// whole-file snapshot.
+	consumerHash, consumerReceipt, ok := contextualConsumerRecheck(consumer, producer)
+	if !ok {
+		return false
+	}
+	relative, err := filepath.Rel(filepath.Dir(consumer.Path), producer)
+	if err != nil {
+		return false
+	}
+	d := store.ContextualDependencyObservation{ID: "", ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer, ProducerPath: producer, ConsumerPath: consumer.Path, ProducerHash: producerHash, ConsumerHash: consumerHash, ReceiptIDs: []string{consumerReceipt, producerReceipt}, Assumption: "Consumer source consumes the exact producer path " + relative}
+	if _, err := a.memory.store.ObserveContextualDependency([]string{producerOwner, consumerOwner}, d); err != nil {
+		a.journalMemoryFailure("dependency", err)
+	}
+	return true
+}
+
+// contextualProducerReceipt uses the agent's held receipt for a producer it
+// truly read, or reads the referenced file itself under the framework label.
+func contextualProducerReceipt(producer string, byPath map[string]memoryToolReceipt) (string, string, bool) {
+	if held, ok := byPath[producer]; ok {
+		return held.Hash, held.ID, true
+	}
+	body, err := contextualReadFile(producer)
+	if err != nil || body == "" {
+		return "", "", false
+	}
+	hash := contextualHash(body)
+	return hash, "framework-verify:" + hash, true
+}
+
+// contextualConsumerRecheck re-reads the consumer and confirms it still names
+// the producer, refreshing its hash when the file moved after the first read.
+func contextualConsumerRecheck(consumer memoryToolReceipt, producer string) (string, string, bool) {
+	current, err := contextualReadFile(consumer.Path)
+	if err != nil || !contextualNamesProducer(consumer.Path, current, producer) {
+		return "", "", false
+	}
+	if hash := contextualHash(current); hash != consumer.Hash {
+		return hash, "contextual-recheck:" + hash, true
+	}
+	return consumer.Hash, consumer.ID, true
 }
 
 // formatContextualImpact renders ONE dependency impact as a single physical
@@ -760,13 +808,10 @@ func (a *Agent) contextualImpactContext(cue string) string {
 	a.memory.impactCue = cue
 	a.memory.impactBlock = ""
 	a.memory.mu.Unlock()
-	// THE EVIDENCE DECIDES, NOT A KEYWORD LIST. A hardcoded vocabulary was the
-	// old gate, and a person asking to "make the amount optional" — words none
-	// of it contained — would not hear about a consequence their own edit just
-	// produced. What runs now is the actual observed state: an edge whose
-	// producer source really changed and whose consumer assumption still holds.
-	// A turn that changed nothing reads no different files and says nothing, so
-	// ordinary and irrelevant requests stay quiet without a word list.
+	// THE EVIDENCE DECIDES, NOT A KEYWORD LIST. What runs is the actual observed
+	// state: an edge whose producer source really changed and whose consumer
+	// assumption still holds. A turn that changed nothing reads no different
+	// files and says nothing, so ordinary and irrelevant requests stay quiet.
 	if a.config.MemoryProjectKey == "" {
 		return ""
 	}
@@ -777,50 +822,7 @@ func (a *Agent) contextualImpactContext(cue string) string {
 	}
 	var lines []string
 	for _, d := range links {
-		producer, err := contextualReadFile(d.ProducerPath)
-		if err != nil {
-			continue
-		}
-		hash := contextualHash(producer)
-		if hash == d.ProducerHash {
-			continue
-		}
-		consumer, err := contextualReadFile(d.ConsumerPath)
-		if err != nil {
-			continue
-		}
-		consumerHash := contextualHash(consumer)
-		notices, err := a.memory.store.ContextualImpacts([]string{d.ProducerOwner, d.ConsumerOwner}, owner, d.EntityID, hash, map[string]string{d.ConsumerPath: consumerHash})
-		if err != nil {
-			continue
-		}
-		for _, notice := range notices {
-			a.memory.mu.Lock()
-			if a.memory.impactNotices == nil {
-				a.memory.impactNotices = map[string]store.ContextualImpactNotice{}
-			}
-			_, said := a.memory.impactNotices[notice.EvidenceHash]
-			if !said {
-				// THE HELD SET IS BOUNDED AND EVICTABLE. A session that has
-				// already offered its eight notices must still be able to offer
-				// genuinely new material: the oldest offer is dropped rather
-				// than permanently blocking the ninth. Notice identity is the
-				// content hash, so the same change never repeats; a later change
-				// is a different notice and can surface.
-				for len(a.memory.impactOrder) >= contextualContextLimit {
-					oldest := a.memory.impactOrder[0]
-					a.memory.impactOrder = a.memory.impactOrder[1:]
-					delete(a.memory.impactNotices, oldest)
-				}
-				a.memory.impactNotices[notice.EvidenceHash] = notice
-				a.memory.impactOrder = append(a.memory.impactOrder, notice.EvidenceHash)
-			}
-			a.memory.mu.Unlock()
-			if said {
-				continue
-			}
-			lines = append(lines, formatContextualImpact(d, notice))
-		}
+		lines = append(lines, a.contextualLinkNotices(d, owner)...)
 		if len(lines) >= contextualContextLimit {
 			break
 		}
@@ -835,14 +837,67 @@ func (a *Agent) contextualImpactContext(cue string) string {
 	return block
 }
 
+// contextualLinkNotices re-reads one dependency edge and answers the notices
+// whose evidence is new for this session. It holds nothing itself: the held set
+// is bounded and evictable through [Agent.holdImpactNotice].
+func (a *Agent) contextualLinkNotices(d store.ContextualDependencyObservation, owner string) []string {
+	producer, err := contextualReadFile(d.ProducerPath)
+	if err != nil {
+		return nil
+	}
+	hash := contextualHash(producer)
+	if hash == d.ProducerHash {
+		return nil
+	}
+	consumer, err := contextualReadFile(d.ConsumerPath)
+	if err != nil {
+		return nil
+	}
+	notices, err := a.memory.store.ContextualImpacts([]string{d.ProducerOwner, d.ConsumerOwner}, owner, d.EntityID, hash, map[string]string{d.ConsumerPath: contextualHash(consumer)})
+	if err != nil {
+		return nil
+	}
+	var lines []string
+	for _, notice := range notices {
+		if !a.holdImpactNotice(notice) {
+			continue
+		}
+		lines = append(lines, formatContextualImpact(d, notice))
+	}
+	return lines
+}
+
+// holdImpactNotice keeps a genuinely new notice in the bounded held set and
+// answers whether it was not already held. THE SET IS EVICTABLE: a session that
+// has already offered its eight notices must still be able to offer new
+// material, so the oldest offer is dropped rather than permanently blocking the
+// ninth. Notice identity is the content hash, so the same change never repeats.
+func (a *Agent) holdImpactNotice(notice store.ContextualImpactNotice) bool {
+	a.memory.mu.Lock()
+	defer a.memory.mu.Unlock()
+	if a.memory.impactNotices == nil {
+		a.memory.impactNotices = map[string]store.ContextualImpactNotice{}
+	}
+	if _, said := a.memory.impactNotices[notice.EvidenceHash]; said {
+		return false
+	}
+	for len(a.memory.impactOrder) >= contextualContextLimit {
+		oldest := a.memory.impactOrder[0]
+		a.memory.impactOrder = a.memory.impactOrder[1:]
+		delete(a.memory.impactNotices, oldest)
+	}
+	a.memory.impactNotices[notice.EvidenceHash] = notice
+	a.memory.impactOrder = append(a.memory.impactOrder, notice.EvidenceHash)
+	return true
+}
+
 func (a *Agent) dismissContextualNotices(user string) {
 	if !a.remembers() {
 		return
 	}
 	lower := strings.ToLower(user)
 	// A NEGATED DISMISSAL IS NOT A DISMISSAL. "do not dismiss that" and its
-	// friends carry the dismiss word and mean the opposite; reading them as the
-	// instruction would throw away the very notice the person asked to keep.
+	// friends carry the dismiss word and mean the opposite.
 	if !contextualDismissCue(lower) || contextualDismissNegated(lower) {
 		return
 	}
@@ -855,18 +910,7 @@ func (a *Agent) dismissContextualNotices(user string) {
 	if len(notices) == 0 {
 		return
 	}
-	// DISMISS WHAT THE PERSON NAMED, OR AN UNAMBIGUOUS SINGLETON/BATCH. A bare
-	// "dismiss" with several notices held names nothing, so it disappears
-	// nothing rather than silencing the whole history on a substring.
-	targets := make([]store.ContextualImpactNotice, 0, len(notices))
-	for _, n := range notices {
-		if contextualNoticeNamed(lower, n) {
-			targets = append(targets, n)
-		}
-	}
-	if len(targets) == 0 && (len(notices) == 1 || contextualDismissBatch(lower)) {
-		targets = notices
-	}
+	targets := contextualDismissTargets(lower, notices)
 	if len(targets) == 0 {
 		return
 	}
@@ -875,6 +919,29 @@ func (a *Agent) dismissContextualNotices(user string) {
 			a.journalMemoryFailure("impact-dismissal", err)
 		}
 	}
+	a.forgetHeldNotices(targets)
+}
+
+// contextualDismissTargets picks the notices a dismissal names: those the person
+// named by path, or the whole held set only when it is an unambiguous singleton
+// or a whole-word batch reference. A bare "dismiss" with several notices names
+// nothing and drops nothing.
+func contextualDismissTargets(lower string, notices []store.ContextualImpactNotice) []store.ContextualImpactNotice {
+	targets := make([]store.ContextualImpactNotice, 0, len(notices))
+	for _, n := range notices {
+		if contextualNoticeNamed(lower, n) {
+			targets = append(targets, n)
+		}
+	}
+	if len(targets) == 0 && (len(notices) == 1 || contextualDismissBatch(lower)) {
+		return notices
+	}
+	return targets
+}
+
+// forgetHeldNotices drops dismissed notices from the held set and compacts the
+// order, keeping the surviving order stable.
+func (a *Agent) forgetHeldNotices(targets []store.ContextualImpactNotice) {
 	a.memory.mu.Lock()
 	for _, n := range targets {
 		delete(a.memory.impactNotices, n.EvidenceHash)
@@ -912,29 +979,64 @@ func contextualDismissNegated(lower string) bool {
 }
 
 // contextualNoticeNamed answers whether the person named this notice's producer
-// or consumer, by path or by file name.
+// or consumer, by path or by file name. The match is on a PATH BOUNDARY, never a
+// substring: naming `data.py` must not dismiss a notice about `metadata.py`.
 func contextualNoticeNamed(lower string, n store.ContextualImpactNotice) bool {
 	for _, path := range []string{n.Dependency.ProducerPath, n.Dependency.ConsumerPath} {
 		path = strings.ToLower(strings.TrimSpace(path))
 		if path == "" {
 			continue
 		}
-		if strings.Contains(lower, path) || strings.Contains(lower, strings.ToLower(filepath.Base(path))) {
+		if contextualPathNamed(lower, path) || contextualPathNamed(lower, strings.ToLower(filepath.Base(path))) {
 			return true
 		}
 	}
 	return false
 }
 
+// contextualPathToken reports whether a byte can sit inside a path or file name.
+func contextualPathToken(b byte) bool {
+	if b == '_' || b == '-' {
+		return true
+	}
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9'
+}
+
+// contextualPathNamed answers whether prose names path as a WHOLE token.
+func contextualPathNamed(lower, path string) bool {
+	for at := 0; ; {
+		found := strings.Index(lower[at:], path)
+		if found < 0 {
+			return false
+		}
+		start := at + found
+		end := start + len(path)
+		before := start == 0 || !contextualPathToken(lower[start-1])
+		after := end >= len(lower) || !contextualPathToken(lower[end])
+		if before && after {
+			return true
+		}
+		at = start + 1
+	}
+}
+
 // contextualDismissBatch answers whether an explicit plural or batch reference
-// makes dismissing every held notice unambiguous.
+// makes dismissing every held notice unambiguous. The cues are WHOLE WORDS.
 func contextualDismissBatch(lower string) bool {
-	for _, word := range []string{"those", "them", "both", "all", "batch", "notices"} {
-		if strings.Contains(lower, word) {
+	for _, word := range contextualProseWords(lower) {
+		switch word {
+		case "those", "them", "both", "all", "batch", "notices":
 			return true
 		}
 	}
 	return false
+}
+
+// contextualProseWords splits lower-case prose into its word tokens.
+func contextualProseWords(lower string) []string {
+	return strings.FieldsFunc(lower, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
+	})
 }
 
 // The small static resolver accepts direct paths and a literal pathlib chain.

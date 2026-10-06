@@ -159,6 +159,11 @@ type memoryBrain struct {
 	outcomeFailedTool      string
 	outcomeFailedAction    string
 	outcomeAlternativeDone bool
+	// outcomeFailedTurn is the turn sequence the pending failure belongs to. A
+	// late success captured in an EARLIER turn must not reserve this turn's
+	// slot, so the reservation is checked against the immutable turn the
+	// observation was dispatched in, never the live read alone.
+	outcomeFailedTurn uint64
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
