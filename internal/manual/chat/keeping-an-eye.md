@@ -268,11 +268,17 @@ tells you the first time the condition turns true, delivers that one line, and
 retires. It cannot tell you again if the condition later goes false and true
 again, and a reading that merely repeats is not a second notice.
 
-With no window open there is no banner, toast, phone alert or email: the one
-line waits as an inbox note and folds into the next conversation you open in
-that project. It is delivered once and never a second time, so a later reopen
-adds nothing — the line already in that transcript stays visible. If the window
-is open when it fires, the line is drawn there at once.
+With no window open there is no banner, toast, phone alert or email. Where the
+one line waits depends on the chat that set the watch up: one set from an
+ordinary conversation waits in **that conversation's own inbox**, folded under
+one `while you were away` the next time you open *that* chat; one set from home's
+`ask here` box has no conversation to come back to, so its line waits under the
+project instead — home shows it, and the next ordinary conversation you open in
+that project folds it into its own `while you were away`. An ordinary chat's note
+is **not** carried into some other new chat of the project. It is delivered once
+and never a second time, so a later reopen adds nothing — the line already in
+that transcript stays visible. If a window of that project is open when it fires,
+the line is drawn there at once.
 
 Drop the word `once` and a watch stays armed: it speaks each change, so
 false-then-true is another notice and a condition that is still true is not. A
@@ -704,10 +710,14 @@ or not, the timer runs `codeaf tick`, which takes a few seconds, does whatever i
 due, and exits. There is no daemon sitting in memory between those moments, and
 closing the terminal app changes nothing about it.
 
-When something fires with nothing open, it waits for you: it is on home the next
-time you open it, and it folds into the next conversation you open in that
-project under one "while you were away". Nothing reaches your phone, your email,
-or a notification — there is no outward lane at all.
+When something fires with nothing open, it waits for you: an item born in an
+ordinary conversation waits in that conversation's own inbox, folded under one
+"while you were away" the next time you open *that* chat; an item born in home's
+`ask here` exchange has no conversation to come back to, so it waits under the
+project — shown on home — and the next ordinary conversation you open there folds
+it in. An ordinary chat's item is not moved into a different, newly opened chat
+of the same project. Nothing reaches your phone, your email, or a notification —
+there is no outward lane at all.
 
 If the program itself moves — you rebuild it somewhere else and delete the old
 one, or an upgrade leaves the old path empty — the timer would be pointing at a
@@ -961,10 +971,12 @@ Every standing item remembers the conversation that made it, so the answer to
 
 If the conversation was open when it fired, the line arrived in it as it
 happened. If it was not, it went to whichever chat of that project you did have
-open; and if none was, the news waited, and the next time you open a conversation
-there it is folded into **one** note that begins `while you were away` — one line
-per thing, with when, your own words, what happened, and the run folder to open
-for the whole story. Two hours away with nothing to report is nothing at all:
+open; and if none was, the news waited in the inbox of the conversation that made
+it — or, for an item born in home's `ask here`, under the project — and the next
+time you open that conversation, or an ordinary chat of that project for an
+errand, it is folded into **one** note that begins `while you were away` — one
+line per thing, with when, your own words, what happened, and the run folder to
+open for the whole story. Two hours away with nothing to report is nothing at all:
 silence is the design. The four addresses in order are under "Where a reminder
 arrives".
 

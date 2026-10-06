@@ -110,8 +110,10 @@ skips with no key and is never acceptance.
 
 The built-in manual now names these limits in the words people use: an
 app-closed watch has no separate helper to install; a `once` watch waits as an
-inbox note rather than a notification or toast and is delivered only once, so
-reopening does not repeat it; a judged look runs on a model, so the provider
+inbox note rather than a notification or toast — in the conversation that made
+it, or under the project when it came from home's `ask here` — and is delivered
+only once, so reopening does not repeat it; a judged look runs on a model, so the
+provider
 serving THAT judge model must hold the credential — reconnecting an unrelated
 provider leaves the watch where it was — and a look the judge model's provider
 cannot pay for queues no note, leaves the item active and due, and is retried
