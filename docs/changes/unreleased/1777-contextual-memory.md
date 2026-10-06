@@ -111,18 +111,25 @@ skips with no key and is never acceptance.
 The built-in manual now names these limits in the words people use: an
 app-closed watch has no separate helper to install; a `once` watch waits as an
 inbox note rather than a notification or toast and is delivered only once, so
-reopening does not repeat it; a look with a missing or disconnected key queues
-no note and leaves the item active and due, to be retried once a key is
-restored; and a check missed while the machine was off or asleep is requested
-once on return, when background checks are on, the person is logged in and the
-pass has a key. It also draws two distinctions the old pages blurred: an
-observed prior attempt is an advisory read before a relevant turn, not the
-error-fix suggestion looked up only after a command fails; and the one shared
-store is not one shared scope, so "a memory kept in one project is there in the
-next" is gone in favour of the closed shelves — you, this workspace, this
-machine — with no memory owned by a whole team, while a manager, a new member
-and a task in that workspace still read its scoped context (a task read-only).
-Retrieval probes for these questions are in `internal/manual/chat_test.go`.
+reopening does not repeat it; a judged look runs on a model, so the provider
+serving THAT judge model must hold the credential — reconnecting an unrelated
+provider leaves the watch where it was — and a look the judge model's provider
+cannot pay for queues no note, leaves the item active and due, and is retried
+once that provider is connected; and a check missed while the machine was off or
+asleep is a best-effort request rather than a guarantee, and only while
+background checks are on. It also draws the distinctions the old
+pages blurred: an observed prior attempt is an advisory read before a relevant
+turn, not the error-fix suggestion looked up only after a command fails; the one
+shared store is not one shared scope, so "a memory kept in one project is there
+in the next" is gone in favour of the closed shelves — you, this workspace,
+this machine — with no memory owned by a whole team; and while a manager, a new
+member and a task in that workspace read the workspace's approved rules and
+confirmed decisions locally and deterministically before their first request (a
+task read-only and bounded, with no provider asked), that binding read is a
+separate path from the router's advisory relevant-memory shortlist, and a search
+of an old conversation is reading only — it does not reactivate a forgotten
+decision. Retrieval probes for these questions are in
+`internal/manual/chat_test.go`.
 
 Final-head terminal acceptance is required before this entry is treated as
 landed, and focused tests alone do not establish real work improved: the acceptance runs

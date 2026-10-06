@@ -475,10 +475,13 @@ five minutes after it opened — nothing is checked at the moment you launch —
 set for one minute from now arrives on the check after it comes due, not on the second.
 Nothing is checked while the machine is **asleep**, and nothing is checked when **you are
 not logged in**: the timer runs under your own login and is not a system service. The
-machine's own timer is asked to catch a missed check up rather than skip it, so a laptop
-that was shut picks the pass up when it comes back — once, not once for every check it
-slept through. What was actually missed is on the item itself: its row says when it last
-ran.
+installed timer asks the operating system to run **one** check after the machine was
+off, and only while background checks are on — but that catch-up is a request, not a
+guarantee. Nothing runs while the machine is off or asleep, and whether a missed
+interval is run at all, and when, is the operating system's to decide: it can simply
+be skipped. What a pass never does is hand you a burst — when checking resumes, a due
+item is looked at once, not once for every check it slept through. What was actually
+missed is on the item itself: its row says when it last ran.
 
 The card you said yes to states the cadence back to you in words — "Mondays at 9am" — and
 an item's own row says when it last ran. Those two together are the honest answer to "when
@@ -594,10 +597,12 @@ timer's definition on disk; to see it actually waking, `/status` carries
 
 **The limits are real.** Nothing runs while the machine is **asleep**, and nothing
 runs when **you are not logged in**: it is a per-user timer, not a system service.
-The timer is asked to catch one missed check up when the machine comes back: a
-check missed while the computer is off or asleep is picked up once on the laptop's
-return, not once for every check it slept through — and only while background
-checks are on. A clock-only
+The installed timer asks the operating system to run one check after the machine was
+off — and only while background checks are on. That catch-up is requested rather than
+guaranteed: nothing runs while the computer is off or asleep, and whether a missed
+interval is run at all, and when, is the operating system's to decide, so it can
+simply be skipped. A pass never hands you a burst, though: when checking resumes a
+due item is looked at once, not once for every check it slept through. A clock-only
 reminder needs no key to fire; a watch that has to be judged needs one. On any host
 that is neither macOS nor Linux there is no timer to install, so things are checked
 only while a window is open and the settings row is not there at all.
@@ -617,8 +622,8 @@ to the window you are sitting in, or waits for you on home.
 
 **A watch that has to judge something stops on its own row.** "Tell me when the build
 goes red" runs its command first — that part costs nothing and needs nobody — and then
-needs a model to say whether what came back means yes. With no key, that item's `last
-look` reads
+needs a model to say whether what came back means yes. When no key is held for the
+model that item is judged on, its `last look` reads
 
 ```
 could not check: no API key: this session has not been given one yet
@@ -630,10 +635,19 @@ the count of what was examined is honest and the record of the pass carries one 
 That look queues no inbox note and leaves the item active and due, so it is
 retried next pass rather than lost.
 
-Set the default key — `/settings` → **openrouter key**, say "set up my api key", or use
-the `providers` group in `/connect` to add a provider — and the
-next pass judges normally. Nothing has to be re-made and nothing was lost while there
-was no key.
+**It is the key for the model that watch judges on, not any connected account.**
+Every judged watch is read by a small, cheap model — the judging model your settings
+choose, falling back to the model codeaf is set up to talk with when nothing is pinned
+(and, for an item you ratified with `--one-model`, the model that item was frozen to).
+A check only runs when the service **that** model lives on holds a credential. So
+reconnect the one that serves your judge model: if your watch is judged on an
+OpenRouter model,
+reconnect **OpenRouter** — `/connect` → **providers**, say "set up my api key", or
+`codeaf connect openrouter`. If it is judged somewhere else, set the model you want
+it judged on and connect the matching service, because connecting something
+unrelated leaves the watch exactly where it was. Once your judge model's own
+service has the key, the next pass judges normally: nothing has to be re-made and
+nothing was lost while there was no key.
 
 ## Turn background checks off
 

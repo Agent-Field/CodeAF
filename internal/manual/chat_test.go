@@ -3666,3 +3666,77 @@ func TestGuideKeysAnswerNamesBothLaddersAndTheEnvironmentRestart(t *testing.T) {
 		}
 	}
 }
+
+// The realnative rerun exposed four answers that were materially wrong or could
+// not be found. These probes assert that each question reaches the section that
+// now carries the correction, and that the section distinguishes the right
+// answer from the wrong one rather than merely sharing a topic.
+func TestTheRerunQuestionsReachTheirCorrectedSections(t *testing.T) {
+	asked := []struct {
+		question string
+		page     string
+		title    string
+		says     []string
+	}{
+		{
+			// q2: a judge is a model, and only the provider serving that model
+			// opens the door — not any connected provider.
+			question: "my codeaf background watch stopped after disconnecting OpenRouter what happens and how do I restore it",
+			page:     "keeping-an-eye",
+			title:    "Will a watch retry if my API key is missing or disconnected",
+			says:     []string{"judges on", "OpenRouter", "lives on holds a credential", "connecting something\nunrelated"},
+		},
+		{
+			// q5: the task's approved/confirmed binding is a local read before
+			// the first request, separate from the router's advisory shortlist.
+			question: "do saved memories and restrictions reach team managers, team members, and tasks",
+			page:     "what-i-remember",
+			title:    "Where is it kept, and does a task see it?",
+			says:     []string{"approved rules and confirmed", "no model, no router, no provider needed", "advisory lookup", "bounded"},
+		},
+		{
+			// q5: the member page carries the same boundary at the start door.
+			question: "when a manager starts a member do the workspace's saved rules apply before its first request",
+			page:     "team-manager",
+			title:    "When a manager starts a member",
+			says:     []string{"before its first request", "advisory path", "not all guaranteed to fit"},
+		},
+		{
+			// q4: the purpose-built forgetting section, reached by the words a
+			// person actually uses, and answering that a search is reading only.
+			question: "search old conversations re-activate saved context decision memory",
+			page:     "what-i-remember",
+			title:    "Can a forgotten thing come back or will it be relearned",
+			says:     []string{"Searching an old conversation does not bring it back", "reading, not remembering", "suppression above that makes forgetting hold"},
+		},
+		{
+			// q1: the catch-up is requested, not guaranteed, while off or asleep.
+			question: "what happens to a check missed while my computer was off",
+			page:     "keeping-an-eye",
+			title:    "When will it run next, and how often does it check",
+			says:     []string{"a request, not a", "operating system's to decide", "simply\nbe skipped"},
+		},
+	}
+	for _, ask := range asked {
+		reached := false
+		for _, section := range Chat().Search(ask.question, DefaultResults) {
+			if section.Page != ask.page || !strings.Contains(section.Title, ask.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range ask.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", ask.question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			found := Chat().Search(ask.question, DefaultResults)
+			where := make([]string, 0, len(found))
+			for _, section := range found {
+				where = append(where, section.Page+" \u00b7 "+section.Title)
+			}
+			t.Errorf("%q does not reach %s \u00b7 %q; it reached %v", ask.question, ask.page, ask.title, where)
+		}
+	}
+}

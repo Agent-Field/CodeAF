@@ -409,8 +409,9 @@ stopped being true. So it now says one dim line, exactly as `remember` and
 `forget` do.
 
 **The old line is not destroyed.** It is retired, not deleted: it leaves every
-list, every search and every message, and the record of what it said survives.
-If the replacement is wrong, `/remember` the original and it is written back.
+memory list and every memory search, and stops riding into a message, but the
+record of what it said survives. If the replacement is wrong, `/remember` the
+original and it is written back.
 
 The background tidy can retire a line the same way, and says so in the same dim
 register — `memory tidied · 2 merged · 1 superseded`. It is held to a narrower
@@ -627,7 +628,8 @@ dropped all three would be losing two things you never named.
 
 A dropped memory leaves a tombstone rather than a hole — the record that you
 asked for it to be forgotten survives, and the memory itself is out of every
-list, every search and every message from that instant.
+memory list and every memory search from that instant, and no longer travels
+into a message.
 
 ## What does remembering cost?
 
@@ -702,12 +704,19 @@ same file holds every message of every conversation, which is what
 `search_conversations` searches; the transcripts themselves stay in each
 conversation's own folder.
 
-**A task gets the same treatment as a message.** When work is handed off to a
-task, the router is asked once against that task's brief, and whatever it
-names is put at the top of the task's own instructions — scoped to the same
-owners the conversation that started it can see. The task never writes memories
-of its own: a family of eight tasks would otherwise be eight writers on one
-brain, all blind to each other.
+**A task is bound before it starts, and the ordinary lookup is separate.** Before
+a task's worker makes its first request, the approved rules and confirmed
+decisions the conversation can see are read straight from your saved memories on
+this machine — no model, no router, no provider needed — so a provider that is
+slow or down cannot stop a task seeing a rule it must obey. Those binding lines go
+in first and are never crowded out by the advisory history. The **router's
+relevant-memory shortlist is the other, ordinary path**, the same advisory lookup
+any message gets: it is extra, it may arrive after the work has begun, and it is
+never what carries an approved rule. Two limits are honest here. The binding block
+is bounded, so when more approved lines exist than fit at once, the ones that do
+not fit are left out rather than a receipt or a decision being clipped. And a
+task's worker gets the context **read-only**: a task never writes memories of its
+own, so a family of eight tasks cannot become eight writers on one brain.
 
 **There is no team shelf.** A memory belongs to you, to one workspace (proved by
 its git identity, or the folder itself when there is no remote) or to this
@@ -966,12 +975,18 @@ user-awareness model.
 ## Can a forgotten thing come back or will it be relearned
 
 `/forget` removes the matching saved claim and suppresses all its recorded sources.
-Derived claims cannot use those sources, and automatic extraction cannot save the
-same suppressed evidence again under a new memory identity. Original conversation
-history remains searchable; forgetting a claim does not erase that history.
-A genuinely new source may support a new claim. It does not come back by itself:
-the same suppressed evidence never reactivates the line. Explicitly completed or
-abandoned work can expire from recall while remaining in the evidence history.
+It is gone from every memory list and every memory search, and it is no longer carried
+into a message. Derived claims cannot use those sources, and automatic extraction
+cannot save the same suppressed evidence again under a new memory identity.
+
+**Searching an old conversation does not bring it back.** `search_conversations`
+reads your indexed history — the words exactly as they were said — so finding the
+decision where you first made it is reading, not remembering, and that match does
+not reactivate the line. It is the suppression above that makes forgetting hold,
+not the absence of a search. If the decision still holds, `/remember` it again and
+it becomes a carried line. A genuinely new source may support a new claim.
+Explicitly completed or abandoned work can expire from recall while remaining in
+the evidence history.
 
 ## Will a future intention automatically schedule work?
 
