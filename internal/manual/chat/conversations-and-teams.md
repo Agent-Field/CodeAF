@@ -3,34 +3,34 @@
 ## All, team overlays, Teams dropdown and stable tabs
 
 Ordinary Home, saved-session and conversation-switcher navigation opens the original conversation
-with **None** selected in the Teams dropdown. None disables the team's visual overlay;
-it does not end membership, change reporting authority, or stop background work.
+with no team overlay selected. Clearing the team's visual overlay does not end
+membership, change reporting authority, or stop background work.
 The composer has no team-recipient hint and the sidebar uses the ordinary task view.
 
 With no overlay, the strip shows **Teams ▾**. Selecting a team replaces it with a coloured
 team chip and a separate **x**. Click the name to switch teams; click x to remove the
-overlay, exactly like choosing **None** in the dropdown. Both restore the ordinary Chats
-view and select **All teams** in Teams without changing membership or background work.
+overlay and restore ordinary Chats. Clearing selects **All teams** in Teams without
+changing membership or background work. The dropdown lists actual teams only, with no **None** option.
 The **▦ All** button still opens the independent conversation grid.
 
 The Teams dropdown is the only team selector in Chats; there are no membership buttons
 below the strip. Choosing a team restores that team's last conversation and selects the
 same team in the Teams sidebar. Selecting a team in Teams selects its Chats overlay
 without opening a conversation from the overview. Returning through the Chats navigation
-word retains that selection and restores its conversation. None in Chats selects the All teams
+word retains that selection and restores its conversation. Clearing the overlay in Chats selects the All teams
 overview. All teams in Teams selects the All teams overlay when the optional global
-manager exists; otherwise Chats remains on None. Following a member or interaction from
+manager exists; otherwise Chats remains without an overlay. Following a member or interaction from
 Teams selects its originating overlay, including conversations shared by several teams.
 
 An overlay shows every member as a tab, manager first, using aliases. Saved members have tabs
 before this window attaches their conversations; selecting one opens it and reports unavailable
 or locked sessions honestly. Team tabs have no close action: `ctrl+w` keeps them visible and
-points to removal in Teams. With None selected, ordinary tab close never removes membership.
+points to removal in Teams. Without an overlay, ordinary tab close never removes membership.
 
 Each overlay remembers selection and strip browsing separately. Drafts and reading positions
 belong to the conversation and are shared across overlays. New members do not steal focus.
 Removing the selected membership selects the nearest remaining tab; if none remain, the view
-returns to None. Narrow strips keep their scroll arrows and a fixed `▦ All` grid button.
+returns to ordinary Chats. Narrow strips keep their scroll arrows and a fixed `▦ All` grid button.
 
 ## The conversations view (the wall): how do I see all my conversations at once?
 
@@ -164,7 +164,7 @@ removing the current one. **Choose manager** selects an existing member; to use 
 conversation, add it first, then choose it. A manager may manage its team's descendants but
 cannot also manage an unrelated team or be both the global and an ordinary team's manager.
 
-Selecting a team in the Chats dropdown enables its overlay; None removes it. Starting a new
+Selecting a team in the Chats dropdown enables its overlay; the chip's x removes it. Starting a new
 conversation while an overlay is selected joins that team; returning to an existing one
 changes no membership. Team colours mark memberships and overlays, not the global grid button.
 
@@ -218,16 +218,18 @@ again to refresh suggestions. The conversation grid has no Organize or Undo cont
 ## The team switcher on the tab strip
 
 The dropdown is first on the Chats tab strip. With no overlay its label is **Teams ▾**;
-with one selected it shows that team's name and colour. Its first choice is **None**,
-followed by **All teams** when a global manager exists, then the active team hierarchy.
+with one selected it shows that team's name, colour and a separate **x** to clear it.
+The dropdown offers **All teams** when a global manager exists, then the active team hierarchy.
 All teams selects the global-manager overlay; it is separate from the team-agnostic `▦ All` grid.
 A root without a manager or with a known missing manager transcript has no All teams choice.
-The picker has no management actions.
+The picker has no None option or management actions, and is absent when no overlay is available.
 Closed teams are available through Show closed on Teams, not through this picker.
 
 Selecting a team restores its conversation and horizontal strip position. A new overlay
 keeps the current conversation if it is a member, otherwise selects the manager first.
-None restores ordinary Chats. `↑` and `↓` move, `enter` chooses, and `esc` or a press
+The chip's x restores ordinary Chats and selects All teams in Teams. With no overlay,
+the keyboard starts on the first available team; none of the radio marks is selected.
+`↑` and `↓` move, `enter` chooses, and `esc` or a press
 outside cancels. Long pickers scroll with the arrows or wheel, keeping the selected row visible. On very narrow strips the dropdown gives way to the current tab and
 the fixed right-edge `▦ All` button. The grid button opens all saved conversations;
 it does not select an overlay.

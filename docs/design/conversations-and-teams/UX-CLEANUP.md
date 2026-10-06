@@ -41,8 +41,8 @@ lands Home. Older hosted engines without checked deletion refuse these operation
 ## Verification and review
 
 Chats shows `Teams ▾` with no overlay and a coloured team chip with a separate `x`
-when one is selected. Its name reopens the same dropdown; its `x` uses the existing
-None transition and synchronizes Teams to All teams. The global manager overlay follows
+when one is selected. Its name reopens the same dropdown; its `x` clears the overlay
+and synchronizes Teams to All teams. The dropdown has no None option. The global manager overlay follows
 the same rule. The independent, fixed `▦ All` grid button keeps its existing behavior.
 
 Focused TUI and session regressions cover routing, membership boundaries, scope changes,
@@ -131,7 +131,7 @@ remain subject to their own binary review and are not implemented in this milest
 Chats separates navigation from team management. The tab strip reserves a permanently
 right-aligned All grid button before fitting conversation tabs. It remains reachable during
 overflow and narrow layouts. The dropdown reads Teams when no overlay is selected and
-offers None followed by active teams; it cannot change memberships, leadership or settings.
+offers active teams only; its chip's x clears the overlay. It cannot change memberships, leadership or settings.
 
 The grid shows all conversations open in this window, regardless of overlay. It retains
 membership dots as context, conversation filtering, state previews, selection, view dismissal
@@ -175,7 +175,7 @@ these transitions through the real saved-conversation and teams-store doors.
 
 ## Additional improvements: follow-up milestone 3
 
-The Chats picker offers None, then All teams when the optional global manager exists,
+The Chats picker offers All teams when the optional global manager exists,
 then the ordinary active hierarchy. All teams activates the global-manager overlay;
 the fixed All grid remains independent and shows conversations open in this window.
 Root counts use its actual overlay crew, excluding retained former managers or candidates.
@@ -218,7 +218,7 @@ real packet decisions, permission answer delivery, Unicode and short-frame previ
 
 Milestone 3 review revision: Recent interactions now follows the manager card and
 separates it from ordinary members. Pages contain six rows rather than ten. Teams sidebar
-choices synchronize with the Chats dropdown; None selects the All teams overview, and
+choices synchronize with the Chats dropdown; clearing its chip selects the All teams overview, and
 All teams enables the global overlay when a global manager exists. Selecting an overview
 changes no draft or running work. The lower-row membership buttons are removed, leaving
 the dropdown as the single Chats selector. Opening a grid tile enters the full chat

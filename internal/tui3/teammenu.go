@@ -10,8 +10,8 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// The strip's switcher chooses only a team overlay. None restores ordinary
-// Chats; selecting a team restores its last conversation and strip position.
+// The strip's switcher chooses only a team overlay. The chip's separate clear
+// action restores ordinary Chats; selecting a team restores its last conversation and strip position.
 // Management belongs to Teams, so this menu cannot change a membership or manager.
 // It is modal: arrows choose a row, enter activates it, and escape or a press
 // outside closes the menu without changing the view.
@@ -28,10 +28,6 @@ type teamMenu struct {
 	hits   []wallHit
 }
 
-// The switcher's rows that are not a team. A team's row is a wallHitPopRow
-// with arg wallPopTeam and the team's id.
-const teamMenuNone = -10 // None selects ordinary Chats without a team overlay.
-
 // teamMenuRow is one row of the switcher, as the painter and the keys both
 // read it.
 type teamMenuRow struct {
@@ -45,14 +41,29 @@ type teamMenuRow struct {
 
 // The optional global manager has its own overlay, distinct from the grid.
 func (a *app) teamMenuRows() []teamMenuRow {
-	rows := []teamMenuRow{{code: teamMenuNone}}
-	if root, ok := a.teamsRoot(); ok && root.Manager != "" && !a.teamsManagerMissing(root) {
+	var rows []teamMenuRow
+	if root, ok := a.teamsRoot(); ok && a.teamMenuOffers(root) {
 		rows = append(rows, teamMenuRow{code: wallPopTeam, id: root.ID})
 	}
 	for _, r := range a.teamsOpenTree() {
 		rows = append(rows, teamMenuRow{code: wallPopTeam, id: r.id, depth: r.depth})
 	}
 	return rows
+}
+
+// A picker with no available overlay is absent, including retained teams and
+// an optional global manager that has not been created.
+func (a *app) teamMenuOffers(t team) bool {
+	return !t.Closed() && (!t.Root || t.Manager != "" && !a.teamsManagerMissing(t))
+}
+
+func (a *app) teamMenuAvailable() bool {
+	for _, t := range a.wall.teams {
+		if a.teamMenuOffers(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // teamMenuPicks is the rows the keyboard can land on, the rule left out.
@@ -67,13 +78,16 @@ func teamMenuPicks(rows []teamMenuRow) []teamMenuRow {
 }
 
 // openTeamMenu puts the switcher up with the keyboard on the team that is
-// shown, or on None.
+// shown, or on the first available team when no overlay is selected.
 func (a *app) openTeamMenu() {
 	a.teamsEnsure()
-	a.teamMenu = teamMenu{on: true}
 	picks := teamMenuPicks(a.teamMenuRows())
+	if len(picks) == 0 {
+		return
+	}
+	a.teamMenu = teamMenu{on: true}
 	for i, r := range picks {
-		if (r.code == wallPopTeam && r.id == a.wall.activeID) || (r.code == teamMenuNone && a.wall.activeID == "") {
+		if r.id == a.wall.activeID {
 			a.teamMenu.cursor = i
 			break
 		}
@@ -100,14 +114,20 @@ func (a *app) teamMenuFront() chatTab {
 
 // teamMenuDo is one row chosen, by the keyboard or the pointer.
 func (a *app) teamMenuDo(r teamMenuRow) tea.Cmd {
-	if r.code != wallPopTeam && r.code != teamMenuNone {
+	if r.code != wallPopTeam {
 		return nil
 	}
+	return a.teamOverlayChoose(r.id)
+}
+
+// The chip's clear action and menu selections share the same transition, so
+// both surfaces retain one selection and each view retains its saved draft.
+func (a *app) teamOverlayChoose(id string) tea.Cmd {
 	a.closeTeamMenu()
 	if a.wall.on {
 		a.closeWall()
 	}
-	return a.teamActivate(r.id)
+	return a.teamActivate(id)
 }
 
 // Team creation has its own member picker over the originating Teams page.
@@ -157,7 +177,7 @@ func (a *app) teamMenuHitAt(x, y int) (wallHit, bool) {
 // chip that opened it also closes it.
 func (a *app) teamMenuPress(x, y int) tea.Cmd {
 	if hit, ok := a.tabAt(x, y); ok && hit.kind == tabTeamClear {
-		return a.teamMenuDo(teamMenuRow{code: teamMenuNone})
+		return a.teamOverlayChoose("")
 	}
 	if hit, ok := a.teamMenuHitAt(x, y); ok {
 		for _, r := range a.teamMenuRows() {
@@ -229,6 +249,9 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 		on, off = "*", "o"
 	}
 	rows := a.teamMenuRows()
+	if len(rows) == 0 {
+		return wallCard{}
+	}
 	picks := teamMenuPicks(rows)
 	lit := func(r teamMenuRow) bool {
 		if a.teamMenu.hover == (wallHitRef{kind: wallHitPopRow, arg: r.code, id: r.id}) {
@@ -274,14 +297,6 @@ func (a *app) teamMenuCard(width, height int) wallCard {
 			ln.left = pal.ink(radio) + " " + indent + a.tabTeamDot(t) + " " + pal.ink(name)
 			ln.leftW = ansi.StringWidth(radio) + 3 + len(indent) + ansi.StringWidth(name)
 			ln.right = strconv.Itoa(n)
-		case teamMenuNone:
-			radio := off
-			if a.wall.activeID == "" {
-				radio = on
-			}
-			ln.left = pal.ink(radio) + "   " + pal.ink("None")
-			ln.leftW = ansi.StringWidth(radio) + 3 + len("None")
-			ln.right = strconv.Itoa(len(open))
 		}
 		lines = append(lines, ln)
 	}

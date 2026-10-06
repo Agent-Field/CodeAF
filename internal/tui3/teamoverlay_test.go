@@ -382,7 +382,7 @@ func TestTeamOverlayRootUsesCurrentManagersAndProtectsAutomaticMemberships(t *te
 	a.teamViewSet(root)
 	a.teamOverlaySync()
 	for _, row := range a.teamMenuRows() {
-		if row.code != teamMenuNone && row.code != wallPopTeam {
+		if row.code != wallPopTeam {
 			t.Fatal("root offers ordinary membership editing")
 		}
 	}
@@ -414,9 +414,9 @@ func TestTeamsAndChatsSynchronizeSelectionsWithoutOpeningFromOverview(t *testing
 	if a.tp.sel != harbor {
 		t.Fatal("Chats choice did not select Teams overview")
 	}
-	_ = a.teamMenuDo(teamMenuRow{code: teamMenuNone})
+	_ = a.teamOverlayChoose("")
 	if a.tp.sel != teamsAllRow || a.teamViews.id != "" {
-		t.Fatal("None did not select All teams overview")
+		t.Fatal("Clearing did not select All teams overview")
 	}
 	var rootID string
 	global := filepath.Join(t.TempDir(), "global.jsonl")
@@ -442,12 +442,12 @@ func TestTeamsAndChatsSynchronizeSelectionsWithoutOpeningFromOverview(t *testing
 	if !a.teamsAllSelected() {
 		t.Fatal("global overlay did not select All teams overview")
 	}
-	_ = a.teamMenuDo(teamMenuRow{code: teamMenuNone})
-	// Re-selecting None must undo a different overview even if Chats is already bare.
+	_ = a.teamOverlayChoose("")
+	// Clearing must undo a different overview even if Chats is already bare.
 	a.tp.sel = harbor
-	_ = a.teamMenuDo(teamMenuRow{code: teamMenuNone})
+	_ = a.teamOverlayChoose("")
 	if a.tp.sel != teamsAllRow {
-		t.Fatal("unchanged None left stale Teams selection")
+		t.Fatal("Clearing the bare view left stale Teams selection")
 	}
 }
 

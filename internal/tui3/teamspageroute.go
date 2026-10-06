@@ -13,6 +13,11 @@ func (a *app) teamsSync() tea.Cmd {
 		a.tp.focus = true
 		a.tp.railW = teamsRailCols(a.width)
 	}
+	// A refresh can remove the last choice while the picker is open. Dismiss
+	// it on the loop so an empty picker cannot retain keyboard ownership.
+	if a.teamMenu.on && !a.teamMenuAvailable() {
+		a.closeTeamMenu()
+	}
 	return a.teamOverlaySync()
 }
 

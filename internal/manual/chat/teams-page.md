@@ -60,8 +60,8 @@ The left column is the **rail**:
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
 and the pane beside it. Choosing a team changes the overview without changing the chat in
 front or its draft. The Chats dropdown selects the same team; returning to Chats restores
-its last conversation. A team chosen in Chats also selects its Teams overview. None in
-Chats maps to All teams here. Choosing All teams here enables its global overlay when the
+its last conversation. A team chosen in Chats also selects its Teams overview. Clearing
+the team chip with its x in Chats maps to All teams here. Choosing All teams here enables its global overlay when the
 optional global manager exists. Clicking a member opens Chats with that team's view selected.
 
 ## All teams overview: parent cards and nested subteams
@@ -340,7 +340,7 @@ disbanding remains on the main pane. Global settings have no deletion button.
 confirmation. It lists the selected team and every descendant. Disbanding ends all their
 memberships and coordination. Current turns finish, conversations survive, and memberships
 in other active teams survive. A conversation losing its reporting manager becomes independent.
-An affected team overlay returns to None; the retained team history remains selected in Teams.
+An affected team overlay returns to ordinary Chats; the retained team history remains selected in Teams.
 
 Long confirmations scroll with `pgup`, `pgdown` or the wheel. Cancel changes nothing.
 Disbanding cannot be undone or reopened. `Show closed` reveals the disbanded history.

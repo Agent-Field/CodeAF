@@ -112,7 +112,7 @@ func (a *app) teamOverlayHolds(t team, key string) bool {
 	return false
 }
 
-// Both surfaces name the same selected team. None maps to the All teams
+// Both surfaces name the same selected team. Clearing maps to the All teams
 // overview without enabling the optional global manager overlay.
 func (a *app) teamsSelectionFromView(id string) {
 	selected := id

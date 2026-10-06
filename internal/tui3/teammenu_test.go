@@ -45,7 +45,7 @@ func TestTeamMenuOffersGlobalOverlayOnlyWithManager(t *testing.T) {
 		t.Fatal("global choice did not activate global overlay")
 	}
 	a.openTeamMenu()
-	if a.teamMenu.cursor != 1 {
+	if a.teamMenu.cursor != 0 {
 		t.Fatalf("global choice not selected: %d", a.teamMenu.cursor)
 	}
 	a.tp.previews = map[string]teamsPreview{"global": {missing: true}}
@@ -117,7 +117,7 @@ func menuHit(t *testing.T, a *app, code int, id string) wallHit {
 }
 
 // THE CHIP IS THE SWITCHER, ON THE CHAT AS ON THE WALL. A press opens a menu
-// under it with None and every active team; its rows lie on their words, never overlap, and the frame keeps its
+// under it with every active team; its rows lie on their words, never overlap, and the frame keeps its
 // size; the keyboard walks it and a choice narrows the strip without leaving
 // the conversation in front when it is a member.
 func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
@@ -126,10 +126,13 @@ func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 		t.Fatal("the chip did not open the switcher")
 	}
 	frame, rows := menuFrame(t, a)
-	for _, want := range []string{"╭─ Teams ─", "◉ ● harbor", "○ ● orbit", "○   None"} {
+	for _, want := range []string{"╭─ Teams ─", "◉ ● harbor", "○ ● orbit"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the switcher lacks %q\n%s", want, frame)
 		}
+	}
+	if strings.Contains(frame, "None") {
+		t.Fatal("overlay picker still offers None")
 	}
 	card := a.teamMenu.card
 	if card.y0 != tabStripRow+1 || card.x0 != a.wall.chip.from {
@@ -170,13 +173,12 @@ func TestTeamMenuIsTheStripsSwitcher(t *testing.T) {
 	if _ = a.teamMenuPress(hit.x0+2, hit.y0); a.wall.activeID != harbor || a.frontTabKey() != remembered {
 		t.Fatalf("choosing harbor switched the conversation in front: active %q", a.wall.activeID)
 	}
-	// All widens the strip.
+	// The clear mark widens the strip even while the menu is open.
 	a.openTeamMenu()
 	_, _ = menuFrame(t, a)
-	hit = menuHit(t, a, teamMenuNone, "")
-	a.teamMenuPress(hit.x0+2, hit.y0)
-	if a.wall.activeID != "" {
-		t.Fatalf("All left %q shown", a.wall.activeID)
+	a.teamMenuPress(a.wall.chipClear.from, tabStripRow)
+	if a.wall.activeID != "" || a.tp.sel != teamsAllRow {
+		t.Fatalf("clear left %q shown or stale Teams selection %q", a.wall.activeID, a.tp.sel)
 	}
 }
 
@@ -186,12 +188,12 @@ func TestTeamMenuOffersOnlyOverlayChoices(t *testing.T) {
 	a, _, _ := menuApp(t)
 	a.openTeamMenu()
 	frame, _ := menuFrame(t, a)
-	for _, word := range []string{"Add this conversation", "Remove this conversation", "New team", "Team settings", "Make manager", "Closed"} {
+	for _, word := range []string{"None", "Add this conversation", "Remove this conversation", "New team", "Team settings", "Make manager", "Closed"} {
 		if strings.Contains(frame, word) {
 			t.Fatalf("management action %q remains in overlay picker", word)
 		}
 	}
-	if len(a.teamMenuRows()) != len(a.teamsOpenTree())+1 {
+	if len(a.teamMenuRows()) != len(a.teamsOpenTree()) {
 		t.Fatal("picker has extra rows")
 	}
 }
@@ -263,14 +265,88 @@ func TestTeamMenuQuietChipWithNoTeamShown(t *testing.T) {
 		t.Fatal("the quiet chip did not open the switcher")
 	}
 	frame, _ := menuFrame(t, a)
-	if !strings.Contains(frame, "◉   None") || strings.Contains(frame, "Add this conversation") || strings.Contains(frame, "Team settings") {
+	if !strings.Contains(frame, "○ ● harbor") || strings.Contains(frame, "None") || strings.Contains(frame, "◉") || strings.Contains(frame, "Add this conversation") || strings.Contains(frame, "Team settings") {
 		t.Fatalf("the switcher with no team shown:\n%s", frame)
 	}
 	a.pal.ascii = true
 	a.touch()
 	frame, _ = menuFrame(t, a)
-	if !strings.Contains(frame, "*   None") || strings.ContainsAny(frame, "◉○") {
+	if !strings.Contains(frame, "o ") || strings.ContainsAny(frame, "◉○*") || strings.Contains(frame, "None") {
 		t.Fatalf("the ASCII switcher:\n%s", frame)
+	}
+	first := a.teamMenuRows()[0].id
+	drive(t, a, runCmd(a.teamMenuKey(tea.KeyPressMsg{Code: tea.KeyEnter}))...)
+	if a.wall.activeID != first || a.tp.sel != first {
+		t.Fatal("enter from the bare view did not select the first actual team")
+	}
+}
+
+func TestTeamMenuWithoutAvailableTeamsHasNoPlaceholderChoice(t *testing.T) {
+	a, harbor, orbit := menuApp(t)
+	if err := a.teamEdit(func(f *teamstore.File) error {
+		if err := f.Disband(harbor, a.now(), ""); err != nil {
+			return err
+		}
+		if err := f.Disband(orbit, a.now(), ""); err != nil {
+			return err
+		}
+		f.MakeRoot(a.now())
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.teamOverlayChoose("")
+	row := plain(a.tabsRow(a.width))
+	if len(a.teamMenuRows()) != 0 || a.wall.chip.pressable() || strings.Contains(row, "Teams ▾") {
+		t.Fatal("retained teams or an absent global manager left a placeholder picker")
+	}
+	a.openTeamMenu()
+	if a.teamMenu.on || len(a.teamMenuCard(a.width, a.height).rows) != 0 {
+		t.Fatal("empty overlay picker opens or draws a placeholder choice")
+	}
+}
+
+func TestTeamMenuDismissesWhenRefreshRemovesItsLastChoice(t *testing.T) {
+	for _, global := range []bool{false, true} {
+		t.Run(map[bool]string{false: "teams removed", true: "global manager missing"}[global], func(t *testing.T) {
+			a, _, _ := menuApp(t)
+			a.teamOverlayChoose("")
+			if global {
+				f := teamstore.File{}
+				root := f.MakeRoot(a.now())
+				if err := f.SetManager(root, "global"); err != nil {
+					t.Fatal(err)
+				}
+				a.teamAdopt(f.Teams)
+			}
+			a.openTeamMenu()
+			menuFrame(t, a)
+			if !a.teamMenu.on {
+				t.Fatal("fixture picker did not open")
+			}
+			if global {
+				a.tp.previews = map[string]teamsPreview{"global": {missing: true}}
+			} else {
+				a.teamAdopt(nil)
+			}
+			a.Update(nil)
+			if a.teamMenu.on || len(a.teamMenu.hits) != 0 {
+				t.Fatal("refresh left an invisible picker owning keyboard input")
+			}
+			a.Update(tea.KeyPressMsg{Code: 'z', Text: "z"})
+			if !strings.Contains(a.input.String(), "z") {
+				t.Fatal("typing did not return to the ordinary conversation")
+			}
+		})
+	}
+}
+
+func TestTeamMenuKeepsOwnershipWhenFrameIsTooSmall(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.openTeamMenu()
+	a.Update(tea.WindowSizeMsg{Width: 20, Height: 2})
+	if !a.teamMenu.on {
+		t.Fatal("small frame dismissed a picker that still has real choices")
 	}
 }
 
@@ -324,7 +400,7 @@ func TestTeamOverlayClearChipHasIndependentTargets(t *testing.T) {
 	}
 }
 
-func TestTeamOverlayClearChipUsesNoneTransition(t *testing.T) {
+func TestTeamOverlayClearChipReturnsToOrdinaryChats(t *testing.T) {
 	for _, mode := range []string{"chat", "menu", "global"} {
 		t.Run(mode, func(t *testing.T) {
 			a, harbor, _ := menuApp(t)
@@ -351,7 +427,7 @@ func TestTeamOverlayClearChipUsesNoneTransition(t *testing.T) {
 			}
 			_, _ = a.Update(tea.MouseClickMsg{X: clear.from, Y: tabStripRow, Button: tea.MouseLeft})
 			if a.wall.activeID != "" || a.teamViews.id != "" || a.tp.sel != teamsAllRow || a.teamMenu.on || a.wall.on {
-				t.Fatal("clear did not return to None and synchronize All teams")
+				t.Fatal("clear did not return to ordinary Chats and synchronize All teams")
 			}
 			if a.frontTabKey() != front || a.input.String() != "keep this draft" {
 				t.Fatal("clear changed the conversation or its draft")
@@ -362,11 +438,11 @@ func TestTeamOverlayClearChipUsesNoneTransition(t *testing.T) {
 			}
 			frame, _ := menuFrame(t, a)
 			if !strings.Contains(frame, " Teams ▾ ") || a.wall.chipClear.pressable() {
-				t.Fatal("None did not restore the ordinary dropdown")
+				t.Fatal("clear did not restore the ordinary dropdown")
 			}
 			_, _ = a.Update(tea.MouseClickMsg{X: a.wall.chip.from + 1, Y: tabStripRow, Button: tea.MouseLeft})
 			if !a.teamMenu.on || a.teamMenu.cursor != 0 {
-				t.Fatal("ordinary chip did not reopen dropdown on None")
+				t.Fatal("ordinary chip did not reopen dropdown on its first team")
 			}
 		})
 	}
@@ -384,7 +460,7 @@ func TestTeamOverlayClearChipTracksHoverAboveOpenMenu(t *testing.T) {
 			t.Fatalf("open menu suppressed chip hover: got %+v, want column %d; menu %v", a.hot, span.from, a.teamMenu.on)
 		}
 	}
-	hit := menuHit(t, a, teamMenuNone, "")
+	hit := a.teamMenu.hits[0]
 	_, _ = a.Update(tea.MouseMotionMsg{X: hit.x0 + 1, Y: hit.y0})
 	_, _ = a.Update(pointerMsg{})
 	if a.hot != (hoverAt{}) || a.teamMenu.hover != hit.ref() {

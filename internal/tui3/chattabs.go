@@ -201,7 +201,7 @@ const (
 	// out of the tabs' list, in [wallState.chip], because the run of tabs and
 	// its count are one thing and the chip is not one of them.
 	tabTeam
-	// tabTeamClear removes only the overlay, using the switcher's None choice.
+	// tabTeamClear removes only the overlay and synchronizes the Teams overview.
 	tabTeamClear
 	// tabWall is the strip's door to the conversations view, ` ▦ All ` at
 	// the right edge (wall.go). It is kept out of the tabs' list for the
@@ -737,7 +737,7 @@ func (a *app) tabTeamWord() string {
 	}
 	sp, ok := a.teamActive()
 	if !ok {
-		if len(a.wall.teams) == 0 {
+		if !a.teamMenuAvailable() {
 			return ""
 		}
 		return " Teams " + caret + " "
@@ -1390,7 +1390,7 @@ func (a *app) tabPress(x, y int) (tea.Cmd, bool) {
 		a.openTeamMenu()
 		return nil, true
 	case tabTeamClear:
-		return a.teamMenuDo(teamMenuRow{code: teamMenuNone}), true
+		return a.teamOverlayChoose(""), true
 	case tabWall:
 		if a.wall.on {
 			a.closeWall()

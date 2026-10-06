@@ -927,7 +927,7 @@ func (a *app) wallPress(x, y int) (tea.Cmd, bool) {
 				a.openTeamMenu()
 				return nil, true
 			case tabTeamClear:
-				return a.teamMenuDo(teamMenuRow{code: teamMenuNone}), true
+				return a.teamOverlayChoose(""), true
 			case tabWall:
 				// The strip's own door to this view closes it, as alt+v does.
 				a.closeWall()
