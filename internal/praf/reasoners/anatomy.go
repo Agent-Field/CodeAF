@@ -39,7 +39,7 @@ func AnatomyPhase(ctx context.Context, deps Deps, in AnatomyInput) (map[string]a
 	prompt := prompts.AnatomyPrompt(
 		in.Intake, pr.Title, pr.Description, pr.Labels, clusters, stats, len(blastRadius), files,
 	)
-	parsed, _, err := harnessx.Run[anatomySemanticResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "anatomy"})
+	parsed, _, err := harnessx.Run[anatomySemanticResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: LabelAnatomy})
 	if err != nil {
 		return nil, err
 	}

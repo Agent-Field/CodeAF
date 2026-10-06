@@ -203,7 +203,8 @@ func runReview(ctx context.Context, host delegate.Host, request Request, o optio
 	// particular.
 	sessions, err := r.sessions(host.Models(), agentsession.Config{
 		Root: checkout, Work: sessionWork, SessionModel: o.model, AIModel: light,
-		Sessions: o.sessions, MaxTurns: o.maxTurns, SessionWall: o.sessionWall,
+		Sessions: o.sessions, MaxTurns: otherLimits.Turns, SessionWall: otherLimits.Wall,
+		Limits: limitsFor(o),
 	})
 	if err != nil {
 		return delegate.Ending{Status: delegate.StatusFail, Message: "its agent sessions could not start: " + err.Error()}

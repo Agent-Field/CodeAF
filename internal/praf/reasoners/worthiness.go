@@ -43,7 +43,7 @@ func PostWorthinessGate(ctx context.Context, deps Deps, in PostWorthinessInput) 
 	}
 	prompt := prompts.PostWorthinessPrompt(scored)
 
-	parsed, _, err := harnessx.Run[postWorthinessResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: "post worthiness"})
+	parsed, _, err := harnessx.Run[postWorthinessResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: LabelPostWorthiness})
 	if err != nil {
 		return nil, err
 	}

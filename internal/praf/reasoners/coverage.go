@@ -24,7 +24,7 @@ func CoverageGate(ctx context.Context, deps Deps, in CoverageGateInput) (map[str
 
 	var gate schemas.CoverageGate
 	if err := aiStructured(ctx, deps.AI, prompt, prompts.CoverageGateSystem, strictAISchemas[strictAISchemaCoverageGate], &gate); err != nil {
-		parsed, res, harnessErr := harnessx.Run[schemas.CoverageGate](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: "coverage"})
+		parsed, res, harnessErr := harnessx.Run[schemas.CoverageGate](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: LabelCoverage})
 		if harnessErr != nil {
 			return nil, harnessErr
 		}

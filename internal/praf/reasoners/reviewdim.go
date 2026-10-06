@@ -64,7 +64,7 @@ func ReviewDimension(ctx context.Context, deps Deps, in ReviewDimensionInput) (m
 		PrimedCode:        in.PrimedCode,
 	})
 
-	parsed, res, err := harnessx.Run[reviewFindingsResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "reviewer"})
+	parsed, res, err := harnessx.Run[reviewFindingsResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: LabelReviewer})
 	if err != nil {
 		return nil, err
 	}

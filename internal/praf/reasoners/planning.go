@@ -17,7 +17,7 @@ import (
 // or the literal {"dimensions": [], "cross_ref_hints": []} on parse failure.
 func PlanningPhase(ctx context.Context, deps Deps, in PlanningInput) (map[string]any, error) {
 	prompt := prompts.PlanningPrompt(in.Intake, in.Anatomy, in.Depth, in.Hints)
-	parsed, res, err := harnessx.Run[schemas.ReviewPlan](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: "plan"})
+	parsed, res, err := harnessx.Run[schemas.ReviewPlan](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: LabelPlan})
 	if err != nil {
 		return nil, err
 	}

@@ -61,7 +61,7 @@ func IntakePhase(ctx context.Context, deps Deps, in IntakeInput) (map[string]any
 	}
 
 	fallbackPrompt := prompts.IntakeFallbackPrompt(pr.Title, pr.Description, in.Depth, languages, filesChanged)
-	parsed, res, err := harnessx.Run[schemas.IntakeResult](ctx, deps.Harness, fallbackPrompt, appx.HarnessOptions{Label: "intake"})
+	parsed, res, err := harnessx.Run[schemas.IntakeResult](ctx, deps.Harness, fallbackPrompt, appx.HarnessOptions{Label: LabelIntake})
 	if err != nil {
 		return nil, err
 	}

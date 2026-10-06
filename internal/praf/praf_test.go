@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/praf/appx"
 	"github.com/Agent-Field/codeaf/internal/praf/config"
 	"github.com/Agent-Field/codeaf/internal/praf/orch"
+	"github.com/Agent-Field/codeaf/internal/praf/reasoners"
 	"github.com/Agent-Field/codeaf/internal/praf/schemas"
 )
 
@@ -165,7 +166,7 @@ func testReviewer(sessions *fakeSessions, review func(ctx context.Context, deps 
 }
 
 func defaults() options {
-	return options{sessions: 8, maxTurns: defaultMaxTurns}
+	return options{sessions: 8}
 }
 
 func TestProgramIsValid(t *testing.T) {
@@ -480,10 +481,35 @@ func TestSweepRemovesOnlyStaleCheckouts(t *testing.T) {
 	}
 }
 
-func TestReviewSessionsTakeTwentyTurns(t *testing.T) {
+func TestEachAgentHasItsOwnLimits(t *testing.T) {
+	for _, label := range reasoners.Labels {
+		if limits, ok := agentLimits[label]; !ok || limits.Turns <= 0 || limits.Wall <= 0 {
+			t.Errorf("agent %q has no limits of its own", label)
+		}
+	}
+	known := map[string]bool{}
+	for _, label := range reasoners.Labels {
+		known[label] = true
+	}
+	for label := range agentLimits {
+		if !known[label] {
+			t.Errorf("a limits row names %q, which no reasoner's session carries", label)
+		}
+	}
+	own := limitsFor(options{})
+	if got := own(secappx.HarnessOptions{Label: reasoners.LabelReviewer}); got != agentLimits[reasoners.LabelReviewer] {
+		t.Errorf("reviewer limits = %+v", got)
+	}
+	if got := own(secappx.HarnessOptions{Label: "something else"}); got != otherLimits {
+		t.Errorf("an unknown agent's limits = %+v", got)
+	}
+	overridden := limitsFor(options{maxTurns: 7, sessionWall: time.Minute})
+	if got := overridden(secappx.HarnessOptions{Label: reasoners.LabelLens}); got != (agentsession.Limits{Turns: 7, Wall: time.Minute}) {
+		t.Errorf("--max-turns and --session-wall do not override: %+v", got)
+	}
 	fs := flag.NewFlagSet("pr run", flag.ContinueOnError)
 	runCommand.Bind(fs)
-	if got := fs.Lookup("max-turns").DefValue; got != "20" {
-		t.Errorf("--max-turns default = %s, want 20", got)
+	if fs.Lookup("max-turns").DefValue != "0" || fs.Lookup("session-wall").DefValue != "0s" {
+		t.Error("the overrides are set by default")
 	}
 }

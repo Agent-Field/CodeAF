@@ -30,7 +30,7 @@ func AdversaryPhase(ctx context.Context, deps Deps, in AdversaryInput) (map[stri
 	}
 
 	prompt := prompts.AdversaryPrompt(in.Findings, in.AIGeneratedConfidence, in.PrContext, in.RepoPath, evMap)
-	parsed, _, err := harnessx.Run[adversaryPhaseResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "challenge"})
+	parsed, _, err := harnessx.Run[adversaryPhaseResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: LabelChallenge})
 	if err != nil {
 		return nil, err
 	}
