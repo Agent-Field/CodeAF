@@ -506,3 +506,18 @@ func TestARunCutByItsTimeCeilingSaysWhere(t *testing.T) {
 		t.Fatalf("the demotion note reads %q", got)
 	}
 }
+
+// AN ENDING'S MESSAGE IS THE REASON ALONE. codeaf puts `sec did not finish:`
+// (or which ending it was) in front of it, and a message that opened on sec's
+// own name was read out twice: `sec did not finish: sec did not start: …`.
+func TestAnEndingsMessageDoesNotSayTheProgramsName(t *testing.T) {
+	host := &stubHost{workspace: t.TempDir(), records: t.TempDir()}
+	run(context.Background(), host, options{brief: "whole repository", depth: "deep", sessions: 1, maxTurns: 1}, io.Discard)
+	if host.ending == nil || host.ending.Status != delegate.StatusFail ||
+		host.ending.Message != `it could not start: the depth "deep" is not quick, standard or thorough` {
+		t.Fatalf("a refused depth ended %+v", host.ending)
+	}
+	if strings.HasPrefix(host.ending.Message, "sec ") {
+		t.Fatalf("the ending opens on sec's name: %q", host.ending.Message)
+	}
+}

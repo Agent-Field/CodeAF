@@ -142,12 +142,24 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 	if watch := a.config.Watch; watch != nil && watch.Session != nil {
 		watch.Session(label, result, err)
 	}
-	if err != nil {
+	if err != nil && endsTheRun(ctx, err) {
 		return nil, err
 	}
 	cost := result.CostUSD
 	out := &appx.HarnessResult{Result: result.Text, NumTurns: result.Turns,
 		DurationMS: result.Duration.Milliseconds(), CostUSD: &cost}
+	// A SESSION THAT FAILED IS ONE AGENT'S FAILURE, NOT THE RUN'S. A model
+	// that kept answering with nothing (`the model's reply has no choices`,
+	// after the client's own retries) was returned as an error, and a program
+	// that reads an agent's error as fatal ended a 389-call review with no
+	// review. Only what ends every call — the ceiling, a refused key, a stop —
+	// is an error; anything else is this session's failed result, for the
+	// program to degrade around the way it does any agent that came back
+	// without an answer.
+	if err != nil {
+		out.IsError, out.ErrorMessage = true, err.Error()
+		return out, nil
+	}
 	if result.Failed != "" {
 		out.IsError, out.ErrorMessage = true, result.Failed
 		return out, nil
@@ -222,6 +234,16 @@ func (a *App) Note(_ context.Context, message string, tags ...string) {
 // App. A call that reached it is a reasoner nobody registered.
 func (a *App) Call(_ context.Context, target string, _ map[string]any) (map[string]any, error) {
 	return nil, fmt.Errorf("no reasoner %s is carried in this run", target)
+}
+
+// endsTheRun says an agent session's error ends the run's model work and not
+// only this session: the ceiling or a refused key, which the client answers to
+// every call after, or the caller's own context ending. A session's own wall
+// ([Config.SessionWall]) is that session's failure, not the run's, so a
+// deadline is read off the caller's context and never off the error.
+func endsTheRun(ctx context.Context, err error) bool {
+	var refused *RefusedError
+	return ctx.Err() != nil || errors.Is(err, ErrCeiling) || errors.As(err, &refused)
 }
 
 // withSchemaInWords puts a schema the served model would not take as a

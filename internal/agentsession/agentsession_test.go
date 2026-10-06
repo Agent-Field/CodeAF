@@ -437,3 +437,27 @@ func firstLineOf(text string) string {
 	line, _, _ := strings.Cut(text, "\n")
 	return line
 }
+
+// ONE AGENT'S FAILED SESSION IS NOT THE RUN'S. A model that keeps answering
+// with no choices fails that session as a result the program can degrade
+// around; the ceiling still ends the run as an error.
+func TestAnEmptyReplyFailsOnlyItsSessionAndTheCeilingEndsTheRun(t *testing.T) {
+	root := repo(t)
+	empty := func(wireRequest) (int, any) { return 200, ai.Response{} }
+	api := (&fakeAPI{}).then(empty).then(empty).then(empty)
+	app := New(api.serve(t), Config{Root: root})
+	var dest struct {
+		File string `json:"file"`
+	}
+	failed, err := app.Harness(t.Context(), "find it", findingSchema, &dest, appxOptions("/tmp/secaf-hunt-scan-1", root))
+	if err != nil || failed == nil || !failed.IsError || !strings.Contains(failed.ErrorMessage, "no choices") {
+		t.Fatalf("an empty reply gave %+v, %v; want a failed session and no error", failed, err)
+	}
+	refused := (&fakeAPI{}).then(func(wireRequest) (int, any) {
+		return http.StatusPaymentRequired, map[string]any{"error": map[string]any{"message": "the ceiling is reached"}}
+	})
+	capped := New(refused.serve(t), Config{Root: root})
+	if _, err := capped.Harness(t.Context(), "find it", findingSchema, &dest, appxOptions("/tmp/secaf-hunt-scan-2", root)); !errors.Is(err, ErrCeiling) {
+		t.Fatalf("the ceiling gave %v; want it to end the run", err)
+	}
+}

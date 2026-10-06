@@ -172,13 +172,18 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 }
 
 // run is the body: hello first, the audit, and exactly one terminal.
+//
+// AN ENDING'S MESSAGE IS THE REASON ALONE, never opening on sec's name. codeaf
+// puts the program's name and which ending it was in front of it (`sec did not
+// finish: …`, `sec stopped on its own ceiling: …`, `sec finished: …`), and a
+// message that said `sec did not finish: …` itself was read out twice.
 func run(ctx context.Context, host delegate.Host, o options, notes io.Writer) {
 	host.Hello(Stages)
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			_, _ = fmt.Fprintf(notes, "[sec] panic: %v\n%s", recovered, debug.Stack())
 			host.Terminal(delegate.Ending{Status: delegate.StatusCrashed,
-				Message: fmt.Sprintf("sec broke: %v", recovered)})
+				Message: fmt.Sprintf("it broke: %v", recovered)})
 		}
 	}()
 	host.Terminal(runAudit(ctx, host, o, notes))
@@ -196,11 +201,11 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	case "quick", "standard", "thorough":
 	default:
 		return delegate.Ending{Status: delegate.StatusFail,
-			Message: fmt.Sprintf("sec did not start: the depth %q is not quick, standard or thorough", scope.Depth)}
+			Message: fmt.Sprintf("it could not start: the depth %q is not quick, standard or thorough", scope.Depth)}
 	}
 	root, err := filepath.EvalSymlinks(host.Workspace())
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusFail, Message: "sec did not start: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "it could not start: " + err.Error()}
 	}
 	host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "running", Data: stageData(map[string]any{
 		"scope": scope.Describe(), "depth": scope.Depth})})
@@ -209,11 +214,11 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		read, err := ReadChanges(ctx, root, scope.Base)
 		if err != nil {
 			if errors.Is(err, errNoChanges) {
-				return delegate.Ending{Status: delegate.StatusPass, Message: "sec had nothing to audit: " + err.Error(),
+				return delegate.Ending{Status: delegate.StatusPass, Message: "it had nothing to audit: " + err.Error(),
 					Deliverable: "Security audit of " + scope.Describe() + ": " + err.Error() + ", so there was nothing to audit.",
 					Extra:       map[string]any{"status": "pass"}}
 			}
-			return delegate.Ending{Status: delegate.StatusFail, Message: "sec did not start: " + err.Error()}
+			return delegate.Ending{Status: delegate.StatusFail, Message: "it could not start: " + err.Error()}
 		}
 		changes = &read
 		host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "changes", Data: stageData(map[string]any{
@@ -221,7 +226,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 	}
 	client, err := agentsession.NewClient(host.Models())
 	if err != nil {
-		return delegate.Ending{Status: delegate.StatusFail, Message: "sec did not start: " + err.Error()}
+		return delegate.Ending{Status: delegate.StatusFail, Message: "it could not start: " + err.Error()}
 	}
 	records := ""
 	if recorder, ok := host.(delegate.Recorder); ok {
@@ -268,16 +273,16 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		switch {
 		case errors.Is(err, agentsession.ErrCeiling):
 			ending.Status = delegate.StatusBudget
-			ending.Message = "sec reached the run's dollar ceiling before it finished, so it has no report"
+			ending.Message = "it reached the run's dollar ceiling before it finished, so it has no report"
 		case errors.Is(auditCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:
 			ending.Status = delegate.StatusBudget
-			ending.Message = "sec reached the run's time ceiling before it finished, so it has no report"
+			ending.Message = "it reached the run's time ceiling before it finished, so it has no report"
 		case ctx.Err() != nil:
 			ending.Status = delegate.StatusFail
-			ending.Message = "sec was stopped before it finished"
+			ending.Message = "it was stopped before it finished"
 		default:
 			ending.Status = delegate.StatusFail
-			ending.Message = "sec did not finish: " + firstSentence(err.Error())
+			ending.Message = firstSentence(err.Error())
 		}
 		return ending
 	}
