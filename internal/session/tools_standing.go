@@ -250,7 +250,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"tool":{"type":"string","description":"A tool on your belt to call instead, including one a connected account brought."},` +
 	`"args":{"type":"object","description":"That tool's arguments."}` +
 	`},"additionalProperties":false},` +
-	`"probe_every":{"type":"string","description":"How often to take that look, a Go duration. Defaults to how often anything is checked."},` +
+	`"probe_every":{"type":"string","description":"How often to take that look, a Go duration. Checks do not run faster than every 5 minutes, so anything shorter is refused; omit for that floor."},` +
 	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."},` +
 	`"once":{"type":"boolean","description":"Probe only: fire on the first true, deliver the one line, then retire. Omit to be told on each change instead."}` +
 	`},"additionalProperties":false},` +
@@ -789,6 +789,26 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 			parsedEvery, err := time.ParseDuration(every)
 			if err != nil {
 				return when, "Invalid arguments: when.probe_every is a duration like \"10m\""
+			}
+			// A LOOK FASTER THAN THE PASS IS A PROMISE NOTHING CAN KEEP. There is
+			// exactly one clock in this build: [standing.Interval] drives the OS
+			// timer and every window ticker alike, and a probe_every is only the
+			// gate that says whether a pass may take the look once it is already
+			// running. It is never a timer of its own, so a value below the
+			// interval is stored and displayed and then ignored, and the card
+			// promises a cadence the machinery cannot reach (the "check every
+			// minute" defect this refusal closes). REFUSED AT COMPILE AND NOT
+			// CLAMPED, because silently widening the person's "every minute" to
+			// five would be this build deciding a cadence they did not ask for.
+			// The model is told the real floor so it can offer an actual
+			// [standing.Interval] card for the person to approve, or say plainly
+			// that the faster one is not supported, rather than promising either.
+			if parsedEvery < standing.Interval {
+				return when, "Invalid arguments: when.probe_every " + strconv.Quote(every) +
+					" is below this build's check cadence \u2014 a pass runs every " + standing.IntervalWords() +
+					", so a shorter look is never taken. Send " + standing.Interval.String() +
+					" or more, or tell the person this build checks every " + standing.IntervalWords() +
+					" and offer them that instead of a cadence it cannot keep."
 			}
 			when.ProbeEvery = parsedEvery
 		}
