@@ -66,3 +66,10 @@ the worked example this one follows.
   code.
 - The pipeline's progress prints go to stderr; stdout is the program's record
   stream.
+- A JSON context file under `.pr-af-context/` is written indented, one value
+  to a line, where pr-af wrote `json.dumps`' single line. codeaf's sessions
+  read a file a line at a time and cut a line at 2,000 characters, so a
+  single-line context of tens of thousands of characters showed its first
+  2,000. The prompts, and the inline contexts in them, are unchanged.
+- A review's agent sessions take at most 20 turns (`--max-turns`), where
+  pr-af's harness allowed 50.

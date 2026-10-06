@@ -1,7 +1,9 @@
 package reasoners
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -134,8 +136,8 @@ func TestMetaSelectorWritesContextFile(t *testing.T) {
 		t.Fatalf("context file not written: %v", err)
 	}
 	want := prompts.MetaContext(in.Intake, in.Anatomy, []prompts.StrPair(in.DiffPatches), "")
-	if string(b) != want {
-		t.Fatal("context file content diverges from prompts.MetaContext")
+	if string(b) != pagedJSON(t, want) {
+		t.Fatal("context file content diverges from prompts.MetaContext, paged")
 	}
 	if !strings.Contains(h.gotPrompt, "Full analysis context written to: "+filepath.ToSlash(path)) {
 		t.Fatal("prompt should reference the context file path")
@@ -250,8 +252,8 @@ func TestCompoundFinderWritesContextFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compound context file not written: %v", err)
 	}
-	if string(b) != want {
-		t.Fatal("compound context file diverges from the builder summary")
+	if string(b) != pagedJSON(t, want) {
+		t.Fatal("compound context file diverges from the builder summary, paged")
 	}
 	if !strings.Contains(h.gotPrompt, "Cluster findings and evidence written to: "+filepath.ToSlash(path)) {
 		t.Fatal("prompt should reference the context file")
@@ -277,4 +279,44 @@ func TestEvidenceOMapsOrderAndTruthiness(t *testing.T) {
 	if got != want {
 		t.Fatalf("evidence OMap rendering:\n got  %s\n want %s", got, want)
 	}
+}
+
+// TestAJSONContextFilePages: a JSON context is written one value to a line, so
+// a session that reads a line at a time sees all of it; the diffs stay as
+// they are.
+func TestAJSONContextFilePages(t *testing.T) {
+	repo := t.TempDir()
+	long := strings.Repeat("x", 5000)
+	path, err := writeContextFile(`{"intake": {"pr_summary": "`+long+`"}, "file_paths": ["a.go", "b.go"]}`, "meta_semantic_context.json", repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	lines := strings.Split(string(data), "\n")
+	if len(lines) < 6 || !strings.Contains(string(data), `"file_paths": [`) {
+		t.Errorf("context not paged:\n%s", data)
+	}
+	var back map[string]any
+	if json.Unmarshal(data, &back) != nil || back["file_paths"] == nil {
+		t.Error("the paged context is not the same JSON")
+	}
+	diff := "--- a/x\n+++ b/x\n+" + long + "\n"
+	path, err = writeContextFile(diff, "review_dimension_diff_patches.md", repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != diff {
+		t.Error("a non-JSON context was rewritten")
+	}
+}
+
+// pagedJSON is a JSON context as writeContextFile writes it: the same value,
+// one to a line.
+func pagedJSON(t *testing.T, compact string) string {
+	t.Helper()
+	var b bytes.Buffer
+	if err := json.Indent(&b, []byte(compact), "", "  "); err != nil {
+		t.Fatalf("the builder's context is not JSON: %v", err)
+	}
+	return b.String()
 }

@@ -1,6 +1,8 @@
 package reasoners
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sort"
@@ -88,14 +90,26 @@ func extractLanguages(pr schemas.GitHubPRData) []string {
 }
 
 // writeContextFile ports _write_context_file: writes large context under
-// <repo>/.pr-af-context/<name> for the harness subprocess to read, returning
-// the file path. Errors propagate (Python lets the OSError escape).
+// <repo>/.pr-af-context/<name> for the agent session to read, returning the
+// file path. Errors propagate (Python lets the OSError escape).
+//
+// A JSON CONTEXT IS WRITTEN ONE VALUE TO A LINE. pr-af wrote json.dumps'
+// single line, which its coding agent read whole; codeaf's sessions read a
+// file a line at a time and cut a line at 2,000 characters, so a context of
+// tens of thousands showed its first 2,000 and nothing more, and the lenses
+// and checkers that were pointed at it read the repository for fifty turns
+// instead (a live review, 2026-10-06). The same JSON, indented, pages. A
+// context that is not JSON (the diffs, the primed code) is written as it is.
 func writeContextFile(content, name, repoPath string) (string, error) {
 	ctxDir := filepath.Join(repoPath, ".pr-af-context")
 	if err := os.MkdirAll(ctxDir, 0o777); err != nil {
 		return "", err
 	}
 	path := filepath.Join(ctxDir, name)
+	var paged bytes.Buffer
+	if strings.HasSuffix(name, ".json") && json.Indent(&paged, []byte(content), "", "  ") == nil {
+		content = paged.String()
+	}
 	if err := os.WriteFile(path, []byte(content), 0o666); err != nil {
 		return "", err
 	}
