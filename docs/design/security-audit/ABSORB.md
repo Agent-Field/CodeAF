@@ -45,8 +45,9 @@ tell a deliberate change from drift.
   Only `sdk/go/ai` remains, at codeaf's pinned version; no `ai` symbol needed
   an adaptation.
 - `appx` and the agent loop codeaf wrote for the audit live outside the copy,
-  at `internal/agentsession/appx` and `internal/agentsession`, because a second
-  carried program (`/pr`) runs on them too. The loop names the work in its
+  at `internal/agentsession/appx` and `internal/agentsession`, because they are
+  codeaf's and not sec-af's, and a second carried program (`/pr`, being built on
+  its own branch) is to run on them too. The loop names the work in its
   system prompt from `Config.Work`; sec's is `a security audit`.
 - `appx` declares its own `HarnessOptions{Cwd, ProjectDir}` and
   `HarnessResult{Result, Parsed, IsError, ErrorMessage, NumTurns, DurationMS,
