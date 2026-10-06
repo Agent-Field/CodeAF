@@ -30,6 +30,9 @@ func TestRestartRestoresEveryMainPlace(t *testing.T) {
 			if !second.at(room.id()) || second.file != saved.Session || second.welcome.open {
 				t.Fatalf("restart: page %v, file %s, welcome %v", second.page, second.file, second.welcome.open)
 			}
+			if second.at(pageHome) && second.restoreViewCmd != nil {
+				t.Fatal("home restoration armed a second set of launch clocks")
+			}
 			second.quit()
 		})
 	}

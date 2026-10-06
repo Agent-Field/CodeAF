@@ -52,6 +52,12 @@ func (a *app) restorePlace(word string) bool {
 		if room.word() == word && room.id() != pageChats {
 			a.dismissWelcome()
 			a.restoreViewCmd = a.showPage(room.id())
+			// Home's launch clocks and card reads are already armed by Init,
+			// just as on the ordinary greeting. Starting the door's commands
+			// too would leave two recurring ticks on the same generation.
+			if a.at(pageHome) {
+				a.restoreViewCmd = nil
+			}
 			return true
 		}
 	}
