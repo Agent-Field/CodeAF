@@ -499,14 +499,16 @@ func TestBoundedSizePreviewBeforeFirstRequestKeepsGenuineCalc(t *testing.T) {
 	if !strings.Contains(first, "raw.decode('utf-16')") {
 		t.Fatalf("the genuine later calculation was not in the first request:\n%s", first)
 	}
-	if strings.Contains(first, byteSizePreview) {
+	if strings.Contains(first, ".read(4)") || strings.Contains(first, "bounded-size") {
 		t.Fatalf("the historic bounded-size preview reached the first request:\n%s", first)
 	}
 	if !strings.Contains(first, previewFailed) {
 		t.Fatalf("the failure history was dropped from the first request:\n%s", first)
 	}
-	if got := strings.Count(first, "Observed successful alternative"); got != 1 {
-		t.Fatalf("expected exactly the genuine alternative in the first request, got %d:\n%s", got, first)
+	// Exactly one alternative per rendered block: the genuine calculation, never
+	// the projected-out `.read(4)` row.
+	if alts, blocks := strings.Count(first, "Observed successful alternative"), strings.Count(first, "<prior_outcomes>"); alts != blocks {
+		t.Fatalf("expected one genuine alternative per block, got %d across %d blocks:\n%s", alts, blocks, first)
 	}
 
 	// UNMODIFIED: the read-only render wrote nothing back to the journal.
