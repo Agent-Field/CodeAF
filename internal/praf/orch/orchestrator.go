@@ -353,6 +353,19 @@ func New(d Deps, in schemas.ReviewInput, cfg config.ReviewConfig) *Orchestrator 
 	return o
 }
 
+// PRData is the pull request the review fetched, nil before intake or for a
+// review of a diff with no pull request. internal/praf keeps it beside the
+// saved review so a later post lands on the commit that was reviewed.
+func (o *Orchestrator) PRData() *schemas.GitHubPRData {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.prData == nil {
+		return nil
+	}
+	pr := *o.prData
+	return &pr
+}
+
 // reasonerDeps builds the reasoner capability bundle from the single App seam.
 func (o *Orchestrator) reasonerDeps() reasoners.Deps {
 	return reasoners.Deps{Harness: o.deps.App, AI: o.deps.App}

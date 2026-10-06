@@ -29,7 +29,7 @@ func EvidenceVerifier(ctx context.Context, deps Deps, in EvidenceVerifierInput) 
 	}
 
 	prompt := prompts.EvidenceVerifierPrompt(in.Findings, evMap, in.PrContext, in.RepoPath)
-	parsed, _, err := harnessx.Run[verificationResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath})
+	parsed, _, err := harnessx.Run[verificationResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "evidence"})
 	if err != nil {
 		return nil, err
 	}

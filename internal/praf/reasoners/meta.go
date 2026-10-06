@@ -52,7 +52,7 @@ func runMetaLens(
 	}
 
 	prompt := buildPrompt(metaContext, in.RepoPath, in.Depth)
-	parsed, _, err := harnessx.Run[schemas.MetaDimensionResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath})
+	parsed, _, err := harnessx.Run[schemas.MetaDimensionResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "lens"})
 	if err != nil {
 		return nil, err
 	}

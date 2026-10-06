@@ -31,7 +31,7 @@ func DeepenFindings(ctx context.Context, deps Deps, in DeepenInput) (map[string]
 	}
 
 	prompt := prompts.DeepenFindingsPrompt([]prompts.StrPair(in.DiffPatches), in.ExistingTitles, in.RepoPath, in.PrContext)
-	parsed, _, err := harnessx.Run[deepenResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath})
+	parsed, _, err := harnessx.Run[deepenResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "deepen"})
 	if err != nil {
 		return nil, err
 	}

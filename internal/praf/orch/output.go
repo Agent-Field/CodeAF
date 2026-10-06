@@ -189,22 +189,48 @@ func (o *Orchestrator) generateOutput(
 	}, nil
 }
 
-// postReview posts the review, downgrading a 422 "own pull request" REQUEST_
-// CHANGES to a COMMENT and retrying once (orchestrator.py's httpx handling).
+// postReview posts the review the pipeline built, as PostReview does; a
+// failure is only logged, because the review itself stands either way.
 func (o *Orchestrator) postReview(ctx context.Context, review schemas.GitHubReview, summaryBody string, comments []schemas.GitHubComment) {
-	_, err := o.deps.GH.PostReview(ctx, o.prData.Owner, o.prData.Repo, o.prData.Number, review, o.prData.HeadSHA)
+	if _, err := postWithFallback(ctx, o.deps.GH, *o.prData, review, summaryBody, comments); err != nil {
+		fmt.Fprintf(os.Stderr, "[PR-AF] Failed to post review: %v\n", err)
+	}
+}
+
+// PostReview posts review on the pull request pr names, against the commit
+// that was reviewed (pr.HeadSHA), downgrading a 422 "own pull request"
+// REQUEST_CHANGES to a COMMENT and retrying once (orchestrator.py's httpx
+// handling). internal/praf's post command calls it with a saved review, on
+// the person's yes. It answers the event that was posted.
+func PostReview(ctx context.Context, gh github.Client, pr schemas.GitHubPRData, review schemas.GitHubReview) error {
+	_, err := PostReviewEvent(ctx, gh, pr, review)
+	return err
+}
+
+// PostReviewEvent is PostReview, answering the event GitHub took: the review's
+// own, or COMMENT when GitHub refused a request for changes on the author's
+// own pull request.
+func PostReviewEvent(ctx context.Context, gh github.Client, pr schemas.GitHubPRData, review schemas.GitHubReview) (string, error) {
+	return postWithFallback(ctx, gh, pr, review, review.Body, review.Comments)
+}
+
+// postWithFallback posts review, and on GitHub's 422 for a request for changes
+// on the author's own pull request posts the fallback body and comments as a
+// COMMENT instead.
+func postWithFallback(ctx context.Context, gh github.Client, pr schemas.GitHubPRData, review schemas.GitHubReview, fallbackBody string, fallbackComments []schemas.GitHubComment) (string, error) {
+	_, err := gh.PostReview(ctx, pr.Owner, pr.Repo, pr.Number, review, pr.HeadSHA)
 	if err == nil {
-		return
+		return review.Event, nil
 	}
 	var apiErr *github.APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode == 422 && strings.Contains(strings.ToLower(apiErr.Body), "own pull request") {
-		fallback := schemas.GitHubReview{Body: summaryBody, Event: "COMMENT", Comments: comments}
-		if _, retryErr := o.deps.GH.PostReview(ctx, o.prData.Owner, o.prData.Repo, o.prData.Number, fallback, o.prData.HeadSHA); retryErr != nil {
-			fmt.Fprintf(os.Stderr, "[PR-AF] Failed to post review on retry: %v\n", retryErr)
+		fallback := schemas.GitHubReview{Body: fallbackBody, Event: "COMMENT", Comments: fallbackComments}
+		if _, retryErr := gh.PostReview(ctx, pr.Owner, pr.Repo, pr.Number, fallback, pr.HeadSHA); retryErr != nil {
+			return "", retryErr
 		}
-		return
+		return "COMMENT", nil
 	}
-	fmt.Fprintf(os.Stderr, "[PR-AF] Failed to post review: %v\n", err)
+	return "", err
 }
 
 // ---- path / range helpers ----

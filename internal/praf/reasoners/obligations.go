@@ -35,7 +35,7 @@ func ExtractObligations(ctx context.Context, deps Deps, in ExtractObligationsInp
 	}
 
 	prompt := prompts.ExtractObligationsPrompt([]prompts.StrPair(in.DiffPatches), in.RepoPath, in.PrContext)
-	parsed, _, err := harnessx.Run[obligationsResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath})
+	parsed, _, err := harnessx.Run[obligationsResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "obligations"})
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func VerifyObligation(ctx context.Context, deps Deps, in VerifyObligationInput) 
 	}
 
 	prompt := prompts.VerifyObligationPrompt(o.Where, o.ReliesOn, o.Property)
-	parsed, _, err := harnessx.Run[obligationVerdict](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath})
+	parsed, _, err := harnessx.Run[obligationVerdict](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "obligations"})
 	if err != nil {
 		return nil, err
 	}

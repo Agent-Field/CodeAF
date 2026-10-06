@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"time"
@@ -439,4 +440,29 @@ func isRetryablePostReviewError(err error) bool {
 	}
 	var transportErr *transportError
 	return errors.As(err, &transportErr)
+}
+
+// OpenPullRequest answers the number of the open pull request into owner/repo
+// whose head is head (`owner:branch`), or 0 when there is none. codeaf asks it
+// for a bare `/pr`, which reviews the current branch's pull request.
+func (c *client) OpenPullRequest(ctx context.Context, owner, repo, head string) (int, error) {
+	headers, err := c.headersForRepo(ctx, owner, repo)
+	if err != nil {
+		return 0, err
+	}
+	endpoint := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&per_page=1&head=%s", c.baseURL, owner, repo, url.QueryEscape(head))
+	body, err := c.request(ctx, http.MethodGet, endpoint, headers, nil, 30*time.Second)
+	if err != nil {
+		return 0, err
+	}
+	var pulls []struct {
+		Number int `json:"number"`
+	}
+	if err := json.Unmarshal(body, &pulls); err != nil {
+		return 0, err
+	}
+	if len(pulls) == 0 {
+		return 0, nil
+	}
+	return pulls[0].Number, nil
 }

@@ -3123,7 +3123,7 @@ tab.
 The `$` on the status line counts what the tasks are spending while they spend it, and
 `/cost` splits that figure into `conversation` and `tasks`.
 
-senior-dev's and sec's run ceilings are separate from this per-task figure.
+senior-dev's, sec's and pr's run ceilings are separate from this per-task figure.
 Each program's own page names the defaults and flags; its run still spends against the
 conversation and day.
 

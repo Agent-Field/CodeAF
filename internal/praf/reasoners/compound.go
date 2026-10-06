@@ -35,7 +35,7 @@ func CompoundFinderPhase(ctx context.Context, deps Deps, in CompoundFinderInput)
 	}
 
 	prompt := prompts.CompoundFinderPrompt(in.ClusterFindings, in.RepoPath, evMap)
-	parsed, _, err := harnessx.Run[compoundResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath})
+	parsed, _, err := harnessx.Run[compoundResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Cwd: in.RepoPath, Label: "cross-ref"})
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func CompoundDedupPhase(ctx context.Context, deps Deps, in CompoundDedupInput) (
 	}
 
 	prompt := prompts.CompoundDedupPrompt(in.CompoundFindings, in.IndividualFindingsSummary)
-	parsed, _, err := harnessx.Run[compoundDedupResult](ctx, deps.Harness, prompt, appx.HarnessOptions{})
+	parsed, _, err := harnessx.Run[compoundDedupResult](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: "cross-ref"})
 	if err != nil {
 		return nil, err
 	}

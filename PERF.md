@@ -248,6 +248,21 @@ rest is the type and line tables that code carries. The budget rises by exactly
 that cost, to 71,363,000 — this change's bill and nothing else. The tree without
 it was 1,798,688 under the sixth reset's 68,850,000, and still is.
 
+It was reset an eighth time on 2026-10-06, when pr — pr-af, the pull-request
+reviewer, copied in once at its tag `codeaf-absorb` — became the third program
+built into codeaf (`internal/praf`). Measured the same way, on darwin/amd64 with
+its own furrow staged, the same tree with and without the program in the build's
+list, on Go 1.27.0:
+
+| platform | without | with | what pr cost |
+| --- | --- | --- | --- |
+| darwin/amd64, furrow staged | 69,630,208 | 70,662,976 | 1,032,768 |
+
+It brings no module codeaf did not already link — its agent sessions are sec's
+and its schema readers the ones sec brought — so the cost is pr-af's own code
+and prompts and the tables that code carries. The budget rises by exactly that
+cost, to 72,395,768.
+
 ## Adaptive run shutdown grace
 
 `Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
@@ -1483,6 +1498,11 @@ most 400 bytes — and nothing else: its manual page and the wording of the turn
 report wakes ride no request. sec's guide is 386 bytes, and the caps
 rise by exactly what it measured: the full cap is **57,584** bytes (366 more) and
 the lean cap **49,819** (229 more), both dated in `prefixWaivers`.
+
+**pr, the third program (pr-af's code review), adds its guide (2026-10-06).** pr's
+guide is 197 bytes and its item in the hand-off paragraph's list 206, the same in
+both arms, and the caps rise by exactly that: the full cap is **57,790** bytes and
+the lean cap **50,025**, both dated in `prefixWaivers`.
 
 ## Following through on a completion claim
 
