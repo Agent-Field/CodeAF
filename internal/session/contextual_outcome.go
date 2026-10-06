@@ -562,9 +562,24 @@ func actionProgramWords(body string) map[string]bool {
 		if len(command) == 0 || shellCommandIsMetadata(command) || shellNoOpCommand(command) {
 			continue
 		}
-		out[command[0]] = true
+		out[actionProgramFamilyWord(command[0])] = true
 	}
 	return out
+}
+
+// actionProgramFamilyWord canonicalises a recognized interpreter word to the
+// interpreter family for the PROGRAM tie. The closed interpreter taxonomy already
+// reads a bare `.venv/bin/python`, a `python3.12`, a `pypy3.10` and their
+// siblings as one KIND of program — an interpreter that runs its own file or
+// inline source as the work — and grounds a goal-file operand for any of them.
+// The program tie must not then refuse the operand that taxonomy just grounded,
+// so every recognized interpreter is one program. A word outside the taxonomy is
+// returned untouched, so `python-config` and `pypyhelper` still never tie.
+func actionProgramFamilyWord(word string) string {
+	if shellInterpreterWord(word) {
+		return "python"
+	}
+	return word
 }
 
 // lexicalFileIdentity normalizes one file operand against a known directory into

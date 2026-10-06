@@ -1552,8 +1552,10 @@ func TestA4ResidualNoiseUnderRaceKeepsGenuineAlternative(t *testing.T) {
 	})
 }
 
-// EXPECTED FAILURE: the taxonomy helpers are pinned so a later edit cannot
-// quietly widen what counts as a masked substep or a failing receipt.
+// The taxonomy helpers are pinned so a later edit cannot quietly widen what
+// counts as a masked substep or a failing receipt: ANY pipeline that does not
+// itself turn on `pipefail` masks its producer and is refused, while an explicit
+// `pipefail` action is left to the ordinary policy gates rather than waved through.
 func TestA4GuardTaxonomyPins(t *testing.T) {
 	masked := []string{
 		`.venv/bin/python -c 'open("week.csv")' || true`,
@@ -1562,6 +1564,7 @@ func TestA4GuardTaxonomyPins(t *testing.T) {
 		`.venv/bin/python -c 'open("week.csv")' ; true`,
 		`.venv/bin/python -c 'open("week.csv")' && true`,
 		`.venv/bin/python -c 'open("week.csv")' | cat`,
+		`.venv/bin/python ledger.py week.csv | sort`,
 		`.venv/bin/python -c 'open("week.csv")' &`,
 	}
 	for _, body := range masked {
@@ -1577,16 +1580,37 @@ func TestA4GuardTaxonomyPins(t *testing.T) {
 	}
 	// THE GUARD READS ONLY THE LAST SUBSTEP, so a real multi-command run whose
 	// final step keeps its exit is untouched — the `;`-separated ledger utility
-	// and a pipeline into a real consumer both stay eligible.
+	// stays eligible. A PIPELINE, by contrast, is read conservatively: without
+	// `pipefail` the reported zero belongs to the consumer (`sort`), not to the
+	// failed producer, so even the real ledger utility is refused when piped.
 	stillClean := []string{
 		`.venv/bin/python ledger.py week.csv; echo "---"; .venv/bin/python ledger.py week.csv --summary grandtotal`,
-		`.venv/bin/python ledger.py week.csv | sort`,
 		`.venv/bin/python -c 'import csv, decimal' ; .venv/bin/python ledger.py week.csv`,
 	}
 	for _, body := range stillClean {
 		if shellMasksExit(body) {
 			t.Fatalf("a genuine multi-command action was misread as masking: %q", body)
 		}
+	}
+	// AN UNSAFE BARE PIPELINE IS MASKED, and only the action's own `pipefail`
+	// clears that. Clearing it does NOT widen the rest of the policy: the pipefail
+	// action remains eligible only if the current policy's own gates admit it
+	// (same program, shared operand, real work), so nothing is forced green.
+	if !shellMasksExit(`.venv/bin/python ledger.py week.csv | sort`) {
+		t.Fatal("a bare pipeline without pipefail was read as keeping its producer's exit")
+	}
+	pipefailLedger := `set -o pipefail; .venv/bin/python ledger.py week.csv | sort`
+	if shellMasksExit(pipefailLedger) {
+		t.Fatalf("an explicit pipefail pipeline was misread as masking: %q", pipefailLedger)
+	}
+	if shellUnfitAsDemonstratedWork(pipefailLedger) {
+		t.Fatalf("the mask guard cleared the pipefail pipeline, so the policy alone must judge it: %q", pipefailLedger)
+	}
+	// Under the CURRENT policy the pipefail utility pipeline is then eligible
+	// (same interpreter program, every goal file used). If that policy verdict
+	// changes, this assertion should change WITH it — the guard never forces it.
+	if !alternativeEligible(delegatedBashCall("p", pipefailLedger), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatalf("a pipefail-cleared utility pipeline was refused by the current policy: %q", pipefailLedger)
 	}
 	if !receiptShowsFailure("Traceback (most recent call last):") || !receiptShowsFailure("ModuleNotFoundError: No module named 'pandas'") {
 		t.Fatal("a failing receipt was not recognised")
