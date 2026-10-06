@@ -133,7 +133,10 @@ tool stops codeaf trying it again: that observed-outcome advisory is read locall
 from the saved memories before the first request and is not gated by the router's
 ranking or small relevance model, it bans no tool, and with changed inputs or
 circumstances the agent may retry or adapt rather than being forbidden — it never
-promises a retry either. Retrieval probes for these questions are in
+promises a retry either. The scope list now names which mouth is which: an
+omitted scope on the `remember` tool means this project, and only `/remember`
+is the personal save kept as you — the engine's default, not a claim that
+the personal save is the default. Retrieval probes for these questions are in
 `internal/manual/chat_test.go`.
 
 Final-head terminal acceptance is required before this entry is treated as

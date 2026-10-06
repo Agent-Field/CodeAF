@@ -685,8 +685,8 @@ It is kept in `~/.codeaf/graph.db`, which is per person rather than per
 conversation — but **not** one flat pool: what each conversation is SHOWN
 depends on who the memory belongs to.
 
-- A memory kept as **you** (the default) is yours everywhere — every project,
-  every conversation.
+- A memory kept as **you** is yours everywhere — every project, every
+  conversation.
 - A memory kept as **this project** belongs to that project and is shown only
   in conversations running in it. Two repositories can hold genuinely
   different truths about the same words, and neither one's memory leaks into
@@ -694,6 +694,10 @@ depends on who the memory belongs to.
   a `/forget <query>` in this project can never answer with another project's
   memory.
 - A memory kept as **this machine** stays on this machine.
+
+The scope depends on how you save it: an omitted scope on the `remember`
+tool — and the same instruction said in words — means **this project**, while
+`/remember` is the explicit personal save and keeps the memory as **you**.
 
 Which project a conversation is in is proved, not guessed: the project's git
 `origin` URL (folded so that an SSH clone and an HTTPS clone of the same
