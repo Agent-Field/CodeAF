@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
@@ -77,6 +78,171 @@ func (a *Agent) contextualReadReceipt(ctx context.Context, call ai.ToolCall, res
 	return r
 }
 
+// contextualDropping answers whether a canonical path is one of THIS agent's own
+// session droppings — a stub or job log the session wrote for itself — which is
+// never independent source evidence about anybody's project. Both layouts are
+// covered: the session folder's logs/ and, for a caller with no Place, the
+// workspace's legacy .codeaf/. A condenser's stub is a COPY of a real file, so
+// byte identity cannot tell them apart; the folder is what refuses it.
+func (a *Agent) contextualDropping(path string) bool {
+	roots := []string{}
+	if logs := a.config.droppingsPlace().Logs(); logs != "" {
+		roots = append(roots, logs)
+	}
+	if workspace := strings.TrimSpace(a.config.Workspace); workspace != "" {
+		roots = append(roots, filepath.Join(workspace, flatDroppingsDir))
+	}
+	for _, root := range roots {
+		if canonical := canonicalPath(root); canonical != "" && contextualPathWithin(path, canonical) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualPathWithin answers whether path is root itself or a descendant.
+func contextualPathWithin(path, root string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
+}
+
+// contextualForwardedReads keeps only the receipts that carry a trusted full
+// read — the canonical Path, the content Hash and the Body the tool returned.
+// It is the ONE filter a caller uses to forward receipts from an original
+// execution boundary into a frozen origin BEFORE a condenser replaces the
+// result with a stub. Worker prose, stub text and arbitrary successful shell
+// output carry no Path/Hash/Body and are dropped. The helper is pure; the seam
+// that calls it decides when a worker is created.
+func contextualForwardedReads(rows []memoryToolReceipt) []memoryToolReceipt {
+	out := make([]memoryToolReceipt, 0, len(rows))
+	for _, r := range rows {
+		if r.Path == "" || r.Hash == "" || r.Body == "" {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// contextualTurnReceipts makes the delegated and the root paths ONE evidence set
+// for the frozen turn they share. A worker forwards its own full reads under the
+// origin turn captured at its creation; the root session's OWN receipts for that
+// same turn — a `read` it actually made at its execution boundary — are still
+// live while the delegated call runs, so they are merged in BEFORE the condenser
+// replaces that result with a stub. Only receipts that are a trusted full read
+// are carried across, so an unrelated observation cannot ride the turn either.
+func (a *Agent) contextualTurnReceipts(source memoryTurnEvidence) []memoryToolReceipt {
+	rows := append([]memoryToolReceipt(nil), source.Receipts...)
+	seq, ok := contextualTurnSeq(source.Turn)
+	if !ok {
+		return rows
+	}
+	a.memory.mu.Lock()
+	own := append([]memoryToolReceipt(nil), a.memory.receipts[seq]...)
+	a.memory.mu.Unlock()
+	if len(own) == 0 {
+		return rows
+	}
+	seen := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		seen[r.ID] = true
+	}
+	for _, r := range contextualForwardedReads(own) {
+		if seen[r.ID] {
+			continue
+		}
+		seen[r.ID] = true
+		rows = append(rows, r)
+	}
+	return rows
+}
+
+// contextualTurnSeq reads the turn number from either spelling of a turn id:
+// the root's own "seq:hash" and the frozen origin's "session:seq:hash".
+func contextualTurnSeq(turn string) (uint64, bool) {
+	parts := strings.Split(strings.TrimSpace(turn), ":")
+	if len(parts) == 3 {
+		parts = parts[1:]
+	}
+	if len(parts) != 2 {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// contextualPathLiteral is a quoted path-like literal: it must carry a directory
+// separator, so an ordinary quoted word ("export.py", "amount") is never read as
+// a path. The literal is only ever a CANDIDATE; it must still resolve to a real
+// regular file before it means anything.
+var contextualPathLiteral = regexp.MustCompile(`["']([^"'\n]*[/\\][^"'\n]*)["']`)
+
+// contextualReferencedProducers resolves the producer paths a consumer's source
+// NAMES. It reads the reference from the source text and demands that the exact
+// resolved path is a real regular file on disk; a name, a prefix or a
+// same-basename match proves nothing. Only the literal pathlib chain and quoted
+// path literals are read; module discovery is left to an actual read.
+func contextualReferencedProducers(consumerPath, body string) []string {
+	if strings.TrimSpace(consumerPath) == "" || strings.TrimSpace(body) == "" {
+		return nil
+	}
+	directory := filepath.Dir(consumerPath)
+	found := map[string]bool{}
+	var out []string
+	add := func(candidate string) {
+		if strings.TrimSpace(candidate) == "" {
+			return
+		}
+		path := candidate
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(directory, path)
+		}
+		canonical, err := filepath.EvalSymlinks(path)
+		if err != nil || canonical == consumerPath {
+			return
+		}
+		info, err := os.Stat(canonical)
+		if err != nil || !info.Mode().IsRegular() {
+			return
+		}
+		if !found[canonical] {
+			found[canonical] = true
+			out = append(out, canonical)
+		}
+	}
+	for _, literal := range contextualPathLiteral.FindAllStringSubmatch(body, contextualContextLimit) {
+		add(literal[1])
+	}
+	for _, chain := range contextualPathChain.FindAllStringSubmatch(body, contextualContextLimit) {
+		resolved := consumerPath
+		for i := 0; i < strings.Count(chain[1], ".parent"); i++ {
+			resolved = filepath.Dir(resolved)
+		}
+		for _, part := range contextualPathPart.FindAllStringSubmatch(chain[2], contextualContextLimit) {
+			resolved = filepath.Join(resolved, part[1])
+		}
+		add(resolved)
+	}
+	return out
+}
+
+// contextualNamesProducer answers whether the current consumer source still
+// names the exact producer path, for the post-turn recheck.
+func contextualNamesProducer(consumerPath, body, producer string) bool {
+	for _, candidate := range contextualReferencedProducers(consumerPath, body) {
+		if candidate == producer {
+			return true
+		}
+	}
+	return false
+}
+
 func contextualReadFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -111,48 +277,73 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 	if !a.remembers() {
 		return
 	}
-	written := 0
-	owners := map[string]string{}
-	for _, r := range source.Receipts {
-		if r.Path != "" {
-			if _, known := owners[r.Path]; !known {
-				owners[r.Path] = contextualPathOwner(r.Path)
-			}
+	// THE ROOT'S OWN BOUNDARY READS JOIN THE ORIGIN'S. A turn handed to a quick
+	// task still made its earlier reads itself, at the real executeTool
+	// boundary; those receipts are merged in here, under the frozen turn both
+	// sides share, before the condenser's stub can stand in for them.
+	source.Receipts = a.contextualTurnReceipts(source)
+	reads := contextualForwardedReads(source.Receipts)
+	byPath := map[string]memoryToolReceipt{}
+	for _, r := range reads {
+		if _, known := byPath[r.Path]; !known {
+			byPath[r.Path] = r
 		}
 	}
-	for _, consumer := range source.Receipts {
-		if consumer.Path == "" {
+	written := 0
+	for _, consumer := range reads {
+		consumerOwner := contextualPathOwner(consumer.Path)
+		if consumerOwner == "" {
 			continue
 		}
-		for _, producer := range source.Receipts {
-			if producer.Path == "" || producer.Path == consumer.Path {
+		if a.contextualDropping(consumer.Path) {
+			continue
+		}
+		for _, producer := range contextualReferencedProducers(consumer.Path, consumer.Body) {
+			if producer == consumer.Path || a.contextualDropping(producer) {
 				continue
 			}
-			relative, err := filepath.Rel(filepath.Dir(consumer.Path), producer.Path)
-			if err != nil {
+			producerOwner := contextualPathOwner(producer)
+			if producerOwner == "" || producerOwner == consumerOwner {
 				continue
 			}
-			// Full resolved paths are identity evidence; shared names are never enough.
-			if !contextualResolvedReference(consumer.Path, consumer.Body, producer.Path, relative) {
-				continue
+			// THE PRODUCER SIDE IS EITHER A REAL TOOL READ OR A FRAMEWORK
+			// RECHECK, AND THE RECORD SAYS WHICH. When the agent actually read
+			// the producer, its own receipt (and hash) is used. When it did not
+			// — the ordinary case where the consumer's source simply names the
+			// producer and the agent only read the consumer — the framework
+			// reads the exact named file under the same bound a tool read uses
+			// and records THAT, labelled `framework-verify:`, so a reader can
+			// never mistake it for a `cat` the agent ran. No shell exit code and
+			// no substring of some command's output is ever proof here.
+			var producerHash, producerReceipt string
+			if held, ok := byPath[producer]; ok {
+				producerHash, producerReceipt = held.Hash, held.ID
+			} else {
+				body, err := contextualReadFile(producer)
+				if err != nil || body == "" {
+					continue
+				}
+				producerHash = contextualHash(body)
+				producerReceipt = "framework-verify:" + producerHash
 			}
-			producerOwner, consumerOwner := owners[producer.Path], owners[consumer.Path]
-			if producerOwner == "" || consumerOwner == "" || producerOwner == consumerOwner {
-				continue
-			}
-			// Work can change the consumer after its first read. Recheck its exact
-			// reference after the turn, so an unrelated formatting edit does not
-			// leave the link attached to an obsolete whole-file snapshot.
+			// Work can change the consumer after its first read. Recheck its
+			// exact reference after the turn, so an unrelated formatting edit
+			// does not leave the link attached to an obsolete whole-file
+			// snapshot.
 			consumerHash, consumerReceipt := consumer.Hash, consumer.ID
 			current, readErr := contextualReadFile(consumer.Path)
-			if readErr != nil || !contextualResolvedReference(consumer.Path, current, producer.Path, relative) {
+			if readErr != nil || !contextualNamesProducer(consumer.Path, current, producer) {
 				continue
 			}
 			if hash := contextualHash(current); hash != consumer.Hash {
 				consumerHash = hash
 				consumerReceipt = "contextual-recheck:" + hash
 			}
-			d := store.ContextualDependencyObservation{ID: "", ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer.Path, ProducerPath: producer.Path, ConsumerPath: consumer.Path, ProducerHash: producer.Hash, ConsumerHash: consumerHash, ReceiptIDs: []string{producer.ID, consumerReceipt}, Assumption: "Consumer source references the exact producer path " + relative}
+			relative, err := filepath.Rel(filepath.Dir(consumer.Path), producer)
+			if err != nil {
+				continue
+			}
+			d := store.ContextualDependencyObservation{ID: "", ProducerOwner: producerOwner, ConsumerOwner: consumerOwner, EntityID: producer, ProducerPath: producer, ConsumerPath: consumer.Path, ProducerHash: producerHash, ConsumerHash: consumerHash, ReceiptIDs: []string{consumerReceipt, producerReceipt}, Assumption: "Consumer source names the exact producer path " + relative}
 			if _, err := a.memory.store.ObserveContextualDependency([]string{producerOwner, consumerOwner}, d); err != nil {
 				a.journalMemoryFailure("dependency", err)
 			}
