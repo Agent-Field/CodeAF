@@ -76,58 +76,72 @@ type ContextualAttempt struct {
 	At            time.Time
 }
 
-// AppendContextualAttempt writes one observed outcome. It mirrors the evidence
-// writer's guards: one transaction, bounded fields, a suppressed source refused
-// BEFORE anything is returned, and a duplicate receipt made IDEMPOTENT — a
-// re-sent observation with the same SourceKey and SourceHash returns the row
-// already held, while a genuinely fresh observation (a different hash) is new.
-func (s *Store) AppendContextualAttempt(e ContextualAttempt) (ContextualAttempt, error) {
+// validateContextualAttempt is the admission table for one observed outcome:
+// owner, id, action and observation; a receipt for a demonstrated status; the
+// bounds; and the interval. A new guard is a row here, shared by every writer.
+func validateContextualAttempt(e ContextualAttempt) error {
 	if strings.TrimSpace(e.Owner) == "" || !ValidOwner(e.Owner) || strings.TrimSpace(e.ID) == "" || strings.TrimSpace(e.Action) == "" || strings.TrimSpace(e.Observation) == "" {
-		return e, errors.New("contextual attempt requires a valid owner, id, action and observation")
+		return errors.New("contextual attempt requires a valid owner, id, action and observation")
 	}
+	if err := validateContextualAttemptBounds(e); err != nil {
+		return err
+	}
+	return validateContextualAttemptStatus(e)
+}
+
+// validateContextualAttemptStatus is the receipt rule: only a demonstrated
+// outcome needs one, a blocked one invents none.
+func validateContextualAttemptStatus(e ContextualAttempt) error {
 	switch e.Status {
 	case AttemptFailed, AttemptSucceeded:
 		// A DEMONSTRATED OUTCOME NEEDS A REAL RECEIPT. An empty receipt is the
 		// absent evidence that contract 1 refuses to dress up as a proven failure.
 		if len(e.ReceiptIDs) == 0 {
-			return e, errors.New("a demonstrated attempt requires a receipt")
+			return errors.New("a demonstrated attempt requires a receipt")
 		}
 	case AttemptUnknown:
 		// BLOCKED OR UNPROVEN: no receipt is required and none is invented.
 	default:
-		return e, errors.New("unknown contextual attempt status")
+		return errors.New("unknown contextual attempt status")
 	}
+	return nil
+}
+
+// validateContextualAttemptBounds is the size and interval half of the table.
+func validateContextualAttemptBounds(e ContextualAttempt) error {
 	if len(e.ReceiptIDs) > 8 || len(e.Conditions) > 16 || len(e.Observation) > 16384 || len(e.Action) > 4096 || len(e.Goal) > 4096 {
-		return e, errors.New("contextual attempt exceeds bounds")
+		return errors.New("contextual attempt exceeds bounds")
 	}
 	if !e.ValidUntil.IsZero() && !e.ValidUntil.After(e.ValidFrom) {
-		return e, errors.New("invalid contextual attempt validity interval")
+		return errors.New("invalid contextual attempt validity interval")
 	}
 	for _, v := range []string{e.ID, e.Owner, e.SessionID, e.TurnID, e.Tool, e.Reconsider, e.Snapshot, e.SourceKey, e.SourceHash, e.AlternativeOf} {
 		if len(v) > 1024 {
-			return e, errors.New("contextual attempt metadata exceeds bounds")
+			return errors.New("contextual attempt metadata exceeds bounds")
 		}
 	}
 	if utf8.RuneCountInString(e.InferredCause) > 240 || utf8.RuneCountInString(e.Reconsider) > 240 {
-		return e, errors.New("contextual attempt reasoning exceeds bounds")
+		return errors.New("contextual attempt reasoning exceeds bounds")
 	}
 	for k, v := range e.Conditions {
 		if len(k) > 256 || len(v) > 1024 {
-			return e, errors.New("contextual attempt condition exceeds bounds")
+			return errors.New("contextual attempt condition exceeds bounds")
 		}
 	}
 	for _, v := range e.ReceiptIDs {
 		if len(v) > 1024 {
-			return e, errors.New("contextual attempt receipt exceeds bounds")
+			return errors.New("contextual attempt receipt exceeds bounds")
 		}
 	}
+	return nil
+}
+
+// appendContextualAttemptTx writes one observed outcome inside an ALREADY-OPEN
+// transaction. It answers the same idempotent row the public door does when the
+// identical receipt arrives twice, without adding a second row.
+func appendContextualAttemptTx(tx *sql.Tx, e ContextualAttempt) (ContextualAttempt, error) {
 	e.Seq = 0
 	e.At = time.Time{}
-	tx, err := s.beginWrite()
-	if err != nil {
-		return e, err
-	}
-	defer tx.Rollback()
 	// SUPPRESSION IS ANSWERED BEFORE ANY ROW IS RETURNED. A source the journal
 	// has retired, or a claim it was provenance of and has been forgotten, must
 	// never come back authoritative — even to a caller re-sending the same
@@ -147,7 +161,7 @@ func (s *Store) AppendContextualAttempt(e ContextualAttempt) (ContextualAttempt,
 	if e.SourceKey != "" && e.SourceHash != "" {
 		var payload, ts string
 		var seq int64
-		err = tx.QueryRow(`SELECT seq,ts,payload FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.SourceKey')=? AND json_extract(payload,'$.SourceHash')=? ORDER BY seq DESC LIMIT 1`, contextualNode(e.Owner), EventContextualAttempt, e.SourceKey, e.SourceHash).Scan(&seq, &ts, &payload)
+		err := tx.QueryRow(`SELECT seq,ts,payload FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.SourceKey')=? AND json_extract(payload,'$.SourceHash')=? ORDER BY seq DESC LIMIT 1`, contextualNode(e.Owner), EventContextualAttempt, e.SourceKey, e.SourceHash).Scan(&seq, &ts, &payload)
 		if err == nil {
 			var existing ContextualAttempt
 			if err = decodeAttempt(payload, &existing); err != nil {
@@ -164,7 +178,7 @@ func (s *Store) AppendContextualAttempt(e ContextualAttempt) (ContextualAttempt,
 		}
 	}
 	var duplicate int
-	if err = tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.ID')=?`, contextualNode(e.Owner), EventContextualAttempt, e.ID).Scan(&duplicate); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.ID')=?`, contextualNode(e.Owner), EventContextualAttempt, e.ID).Scan(&duplicate); err != nil {
 		return e, err
 	}
 	if duplicate != 0 {
@@ -174,12 +188,33 @@ func (s *Store) AppendContextualAttempt(e ContextualAttempt) (ContextualAttempt,
 	if err != nil {
 		return e, err
 	}
-	if err = tx.Commit(); err != nil {
-		return e, err
-	}
 	e.Seq = seq
 	e.At = at
 	return e, nil
+}
+
+// AppendContextualAttempt writes one observed outcome. It mirrors the evidence
+// writer's guards: one transaction, bounded fields, a suppressed source refused
+// BEFORE anything is returned, and a duplicate receipt made IDEMPOTENT — a
+// re-sent observation with the same SourceKey and SourceHash returns the row
+// already held, while a genuinely fresh observation (a different hash) is new.
+func (s *Store) AppendContextualAttempt(e ContextualAttempt) (ContextualAttempt, error) {
+	if err := validateContextualAttempt(e); err != nil {
+		return e, err
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return e, err
+	}
+	defer tx.Rollback()
+	committed, err := appendContextualAttemptTx(tx, e)
+	if err != nil {
+		return e, err
+	}
+	if err = tx.Commit(); err != nil {
+		return e, err
+	}
+	return committed, nil
 }
 
 // ContextualAttemptsApplicable reads at most one bounded newest window and

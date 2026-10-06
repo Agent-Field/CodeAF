@@ -109,95 +109,133 @@ func (s memoryTurnEvidence) extractContext(answer string) string {
 	return b.String()
 }
 
+// ground is the whole admission decision for one candidate: WHERE it applies
+// (scope), WHO may say it (authority), and what may be persisted. It is three
+// gates rather than one road, so a change to the scope rules cannot move the
+// authority rules.
 func (s memoryTurnEvidence) ground(c reflex.ExtractResult) reflex.ExtractResult {
-	// Automatic scope defaults to the observed project. A user-level preference
-	// requires a literal supporting quote, rather than the model's scope guess.
+	c = s.groundScope(c)
+	c = s.groundAuthority(c)
+	return s.groundSanitize(c)
+}
+
+// userSupported answers whether the candidate cites the person's own words
+// verbatim in this turn.
+func (s memoryTurnEvidence) userSupported(c reflex.ExtractResult) bool {
 	quote := strings.TrimSpace(c.SourceQuote)
-	userSupported := c.Source == "user" && quote != "" && strings.Contains(s.User, quote)
+	return c.Source == "user" && quote != "" && strings.Contains(s.User, quote)
+}
+
+// groundScope refuses the two wide scopes unless their own span argues for
+// them. Automatic scope defaults to the observed project; a user-level
+// preference needs a literal supporting quote, and machine scope needs a
+// machine-wide span that is neither negated nor project-qualified.
+func (s memoryTurnEvidence) groundScope(c reflex.ExtractResult) reflex.ExtractResult {
+	userSupported := s.userSupported(c)
 	if c.Scope == store.MemoryScopeUser && (!userSupported || (c.Type != store.MemoryPreference && c.Authority != "approved_rule")) {
 		c.Scope = store.MemoryScopeProject
 	}
-	// MACHINE SCOPE NEEDS A MACHINE-WIDE SPAN. Kept only for a supported user
-	// quote that actually says so; an unrelated quote in the same turn, or a
-	// tool observation the model labelled `env`, stays project-local rather
-	// than silently applying to every project on the machine.
 	if c.Scope == store.MemoryScopeEnv && (!userSupported || !explicitContextualMachine(userQuoteForScope(c, s.User))) {
 		c.Scope = store.MemoryScopeProject
-	}
-	if !userSupported {
-		c.Source = "assistant"
-		c.Authority = "proposal"
-		for _, r := range s.Receipts {
-			// A RECEIPT FROM A DERIVED SOURCE IS NOT AN INDEPENDENT OBSERVATION.
-			// A task worker's report, a conversation-history lookup and this
-			// session's own memory_evidence are all things a model already read
-			// or summarized, so citing one back is self-corroboration: it can
-			// re-learn a suppressed claim under a fresh reader receipt id. The
-			// raw boundary collector is the only path a worker's real outcome
-			// or full read takes. Genuine raw tool evidence is untouched.
-			if c.ReceiptID == r.ID && r.Status != "refused" && !contextualDerivedReceipt(r.Tool) {
-				c.Source = "tool"
-				c.Authority = "observation"
-				break
-			}
-		}
-	} else {
-		// AN EXTRACTOR LABEL CANNOT MANUFACTURE AUTHORITY FROM A WHOLE
-		// UTTERANCE. The gate reads the SELF-CONTAINED supporting span, not
-		// every word of the turn: an unrelated true quote sharing a turn with
-		// another rule or a global preference must not widen a different fact,
-		// and a quoted "yes" is not a rule whatever else was said. The
-		// surrounding utterance still travels in the evidence, so conditions,
-		// exceptions and rationale are not lost.
-		// A TRUE SUBSTRING IS NOT AUTHORITY. The quote must also sit in a span
-		// the person actually asserted: a rule inside a question ("Should we
-		// never use pandas?") or a rejected third-party quotation ("The reviewer
-		// said never use floats, but I reject that") is reported, not approved.
-		// The check is textual and conservative over the CONTAINING clause, not
-		// a semantic vote; a polite real directive ("Please make sure ...") and
-		// ordinary literal constraints still bind automatically.
-		clause := contextualSupportClause(s.User, quote)
-		directive := contextualSpanDirective(clause)
-		// A ONE-TURN TASK AUTHORIZATION IS NOT A LASTING RULE. The word cues the
-		// gates read ("only", "must", "use the") are the same words an ordinary
-		// task command uses, so an extractor that mislabels a command as a rule
-		// or a decision could carry a one-off authorization into the persistent
-		// binding. A clearly bounded task — cross-check, compare, verify, run
-		// something read-only — is demoted to an observation unless the same
-		// span states a durable rule or an explicit decision, which still binds.
-		task := contextualOneTurnTaskAuthorization(clause)
-		if c.Authority == "approved_rule" && (!explicitContextualRule(quote) || !directive || task) {
-			c.Authority = "observation"
-		}
-		if c.Authority == "confirmed_decision" && (!explicitContextualDecision(quote) || !directive || task) {
-			c.Authority = "observation"
-		}
-		if c.Authority != "approved_rule" && c.Authority != "confirmed_decision" {
-			c.Authority = "observation"
-		}
 	}
 	if c.Scope == store.MemoryScopeUser && !explicitContextualGlobal(userQuoteForScope(c, s.User)) {
 		c.Scope = store.MemoryScopeProject
 	}
-	// SANITIZE ON THE WAY OUT, VALIDATE ON THE WAY IN. The literal-support
-	// checks above read the person's ORIGINAL words, because that is what proves
-	// a rule is real; everything this session persists or renders is passed
-	// through the one secret redactor first. A credential in the same utterance
-	// as a genuine constraint is removed from the claim body, its conditions,
-	// rationale, rejected alternatives and reconsideration, and from the
-	// observation, before any of it can reach the prompt or memory_evidence.
-	c.Text = redact.Secrets(contextualClip(c.Text, store.MemoryTextRunes))
-	c.Tags = append(c.Tags, contextualTag)
 	return c
 }
 
-func (a *Agent) recordContextualMemory(m store.Memory, c reflex.ExtractResult, s memoryTurnEvidence) error {
+// groundAuthority decides whether the candidate may speak as a rule, a decision
+// or an observation. A candidate with no supported user quote is a proposal
+// unless a genuine raw receipt corroborates it.
+func (s memoryTurnEvidence) groundAuthority(c reflex.ExtractResult) reflex.ExtractResult {
+	if !s.userSupported(c) {
+		return s.groundProposal(c)
+	}
+	return s.groundAssertion(c)
+}
+
+// groundProposal is the no-user-quote half: the assistant's own claim, unless an
+// independent raw tool receipt backs it.
+func (s memoryTurnEvidence) groundProposal(c reflex.ExtractResult) reflex.ExtractResult {
+	c.Source = "assistant"
+	c.Authority = "proposal"
+	for _, r := range s.Receipts {
+		// A RECEIPT FROM A DERIVED SOURCE IS NOT AN INDEPENDENT OBSERVATION.
+		// A task worker's report, a conversation-history lookup and this
+		// session's own memory_evidence are all things a model already read
+		// or summarized, so citing one back is self-corroboration: it can
+		// re-learn a suppressed claim under a fresh reader receipt id. The
+		// raw boundary collector is the only path a worker's real outcome
+		// or full read takes. Genuine raw tool evidence is untouched.
+		if c.ReceiptID == r.ID && r.Status != "refused" && !contextualDerivedReceipt(r.Tool) {
+			c.Source = "tool"
+			c.Authority = "observation"
+			break
+		}
+	}
+	return c
+}
+
+// groundAssertion is the supported-user-quote half. AN EXTRACTOR LABEL CANNOT
+// MANUFACTURE AUTHORITY FROM A WHOLE UTTERANCE: the gate reads the
+// SELF-CONTAINED supporting span, not every word of the turn. A rule inside a
+// question or a rejected third-party quotation, and a one-turn task
+// authorization, are demoted to observations.
+func (s memoryTurnEvidence) groundAssertion(c reflex.ExtractResult) reflex.ExtractResult {
+	quote := strings.TrimSpace(c.SourceQuote)
+	clause := contextualSupportClause(s.User, quote)
+	directive := contextualSpanDirective(clause)
+	task := contextualOneTurnTaskAuthorization(clause)
+	if c.Authority == "approved_rule" && (!explicitContextualRule(quote) || !directive || task) {
+		c.Authority = "observation"
+	}
+	if c.Authority == "confirmed_decision" && (!explicitContextualDecision(quote) || !directive || task) {
+		c.Authority = "observation"
+	}
+	if c.Authority != "approved_rule" && c.Authority != "confirmed_decision" {
+		c.Authority = "observation"
+	}
+	return c
+}
+
+// groundSanitize is the last gate: SANITIZE ON THE WAY OUT, VALIDATE ON THE WAY
+// IN. The literal-support checks read the person's ORIGINAL words, because that
+// is what proves a rule is real; everything this session persists or renders is
+// passed through the one secret redactor first — the body, the title and the
+// tags, because a title is stored and rendered beside the body.
+func (s memoryTurnEvidence) groundSanitize(c reflex.ExtractResult) reflex.ExtractResult {
+	c.Text = redact.Secrets(contextualClip(c.Text, store.MemoryTextRunes))
+	c.Title = contextualClip(redact.Secrets(c.Title), store.MemoryTitleRunes)
+	c.Tags = append(contextualSanitizedItems(c.Tags), contextualTag)
+	return c
+}
+
+// derivedSupport answers whether the candidate's own supporting receipt is a
+// derived history lookup — conversation search, this session's memory reader or
+// a task summary — rather than an independent observation. A candidate it
+// supports cannot be published as new proof: it would carry a fresh SourceKey
+// with no derivation, so a forgotten claim could return as history.
+func (s memoryTurnEvidence) derivedSupport(c reflex.ExtractResult) bool {
+	if c.Source == "user" {
+		return false
+	}
+	for _, r := range s.Receipts {
+		if c.ReceiptID == r.ID && contextualDerivedReceipt(r.Tool) {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualEvidenceFor builds the one provenance row a candidate publishes,
+// keyed to the memory row that lands. It is the single construction shared by
+// the standalone evidence door and the atomic add/update/supersede publication,
+// so the two cannot drift apart.
+func (a *Agent) contextualEvidenceFor(memoryID string, c reflex.ExtractResult, s memoryTurnEvidence) store.ContextualEvidence {
 	owner := a.ownerForScope(c.Scope)
-	// An update result can omit owner; the authority still comes from the same
-	// candidate partition used by settlement, never from the session's read set.
 	// THE SOURCE KEY AND HASH STAY ON THE RAW TURN so suppression and dedup keep
 	// their exact semantics; only the human-readable fields are sanitized.
-	e := store.ContextualEvidence{ID: store.NewMemoryID(), MemoryID: m.ID, Owner: owner, SessionID: s.Session, TurnID: s.Turn, Actor: c.Source, Authority: c.Authority, Observation: redact.Secrets(contextualClip(s.User, 4000)), Verification: "asserted", ValidFrom: s.At, SourceKey: s.Session + ":" + s.Turn, SourceHash: contextualHash(s.User), Applicability: contextualSanitizedItems(c.Conditions), Rationale: redact.Secrets(contextualClip(c.Rationale, 240)), Rejected: contextualSanitizedItems(c.Rejected), Reconsider: redact.Secrets(contextualClip(c.Reconsider, 240))}
+	e := store.ContextualEvidence{ID: store.NewMemoryID(), MemoryID: memoryID, Owner: owner, SessionID: s.Session, TurnID: s.Turn, Actor: c.Source, Authority: c.Authority, Observation: redact.Secrets(contextualClip(s.User, 4000)), Verification: "asserted", ValidFrom: s.At, SourceKey: s.Session + ":" + s.Turn, SourceHash: contextualHash(s.User), Applicability: contextualSanitizedItems(c.Conditions), Rationale: redact.Secrets(contextualClip(c.Rationale, 240)), Rejected: contextualSanitizedItems(c.Rejected), Reconsider: redact.Secrets(contextualClip(c.Reconsider, 240))}
 	// A PROJECT FACT CARRIES ITS PROJECT; A MACHINE FACT DOES NOT. The owner is
 	// what scopes a machine-wide rule to the one authorized machine, so pinning
 	// its evidence to the origin project would silently restrict it there. User
@@ -238,7 +276,13 @@ func (a *Agent) recordContextualMemory(m store.Memory, c reflex.ExtractResult, s
 	if e.Observation == "" {
 		e.Observation = c.Text
 	}
-	_, err := a.memory.store.AppendContextualEvidence(e)
+	return e
+}
+
+// recordContextualMemory writes provenance for a row that already exists. It is
+// the standalone door; the post-turn settle publishes atomically instead.
+func (a *Agent) recordContextualMemory(m store.Memory, c reflex.ExtractResult, s memoryTurnEvidence) error {
+	_, err := a.memory.store.AppendContextualEvidence(a.contextualEvidenceFor(m.ID, c, s))
 	return err
 }
 
@@ -1166,22 +1210,115 @@ func contextualDerivedReceipt(tool string) bool {
 	return false
 }
 
-func explicitContextualGlobal(text string) bool {
+// contextualScopeClause answers the sentence a cue actually sits in, together
+// with the cue that matched. The boundary is the sentence terminator and not
+// the whole text on purpose: a project qualifier a few words from the cue still
+// belongs to the same claim, while a neighbouring sentence's words do not.
+func contextualScopeClause(text string, cues []string) (string, string) {
 	lower := strings.ToLower(text)
-	// A PROJECT-QUALIFIED "everywhere" IS PROJECT SCOPE. "everywhere in this
-	// project" is the ordinary way to say the fact spans one repository, and
-	// the earlier substring match promoted it to the person at large.
-	for _, qualifier := range []string{"everywhere in this project", "everywhere in the project", "everywhere in this repo", "everywhere in this repository", "everywhere in this codebase"} {
-		if strings.Contains(lower, qualifier) {
-			return false
+	for _, cue := range cues {
+		idx := wholeWordIndex(lower, cue)
+		if idx < 0 {
+			continue
+		}
+		return contextualClauseAround(text, idx), cue
+	}
+	return "", ""
+}
+
+// wholeWordIndex finds a cue as its OWN span, so `all` inside `fallback` and
+// `data.py` inside `metadata.py` never match a cue they merely appear in.
+func wholeWordIndex(lower, cue string) int {
+	for from := 0; from <= len(lower)-len(cue); {
+		at := strings.Index(lower[from:], cue)
+		if at < 0 {
+			return -1
+		}
+		at += from
+		end := at + len(cue)
+		if (at == 0 || !contextualWordByte(lower[at-1])) && (end >= len(lower) || !contextualWordByte(lower[end])) {
+			return at
+		}
+		from = at + 1
+	}
+	return -1
+}
+
+func contextualWordByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '_'
+}
+
+func contextualClauseAround(text string, idx int) string {
+	start := 0
+	for i := idx - 1; i >= 0; i-- {
+		if contextualClauseBreak(text[i]) {
+			start = i + 1
+			break
 		}
 	}
-	for _, cue := range []string{"across projects", "all projects", "every project", "any project", "everywhere", "personal preference"} {
-		if strings.Contains(lower, cue) {
+	end := len(text)
+	for i := idx; i < len(text); i++ {
+		if contextualClauseBreak(text[i]) {
+			end = i + 1
+			break
+		}
+	}
+	return text[start:end]
+}
+
+func contextualClauseBreak(b byte) bool {
+	switch b {
+	case '.', '!', '?', '\n', ';':
+		return true
+	}
+	return false
+}
+
+// contextualNegated answers whether the clause denies the cue it carries. A
+// negated scope word is not a scope: "not everywhere" and "not on this machine"
+// must not widen a claim, and demoting on any negator in the clause is the safe
+// direction for an authority this broad.
+func contextualNegated(clause string) bool {
+	for _, word := range strings.FieldsFunc(strings.ToLower(clause), func(r rune) bool {
+		return !unicode.IsLetter(r) && r != '\''
+	}) {
+		switch word {
+		case "not", "never", "no", "nor", "without", "except", "neither",
+			"isn't", "aren't", "doesn't", "don't", "won't", "can't", "cannot", "isnt", "arent", "doesnt", "dont", "wont", "cant":
 			return true
 		}
 	}
 	return false
+}
+
+func contextualContainsAny(lower string, cues []string) bool {
+	for _, cue := range cues {
+		if wholeWordIndex(lower, cue) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// contextualProjectQualifiers name a narrower blast radius than the person at
+// large. A scope cue inside one of these spans stays project-local.
+var contextualProjectQualifiers = []string{
+	"this project", "the project", "this repo", "the repo", "this repository",
+	"the repository", "this codebase", "the codebase", "this workspace",
+	"the workspace", "this module", "the module", "this package", "the package",
+	"this directory", "the directory", "this folder", "the folder", "in this repo",
+}
+
+func explicitContextualGlobal(text string) bool {
+	clause, _ := contextualScopeClause(text, []string{"across projects", "all projects", "every project", "any project", "everywhere", "personal preference"})
+	if clause == "" {
+		return false
+	}
+	lower := strings.ToLower(clause)
+	if contextualNegated(clause) || contextualContainsAny(lower, contextualProjectQualifiers) {
+		return false
+	}
+	return true
 }
 
 // explicitContextualMachine grants machine scope only to a self-contained span
@@ -1189,11 +1326,35 @@ func explicitContextualGlobal(text string) bool {
 func explicitContextualMachine(text string) bool {
 	lower := strings.ToLower(text)
 	for _, cue := range []string{"on this machine", "this machine", "on my machine", "my machine", "machine-wide", "machine wide"} {
-		if strings.Contains(lower, cue) {
-			return true
+		idx := wholeWordIndex(lower, cue)
+		if idx < 0 {
+			continue
 		}
+		// A MACHINE-LEARNING PROJECT IS NOT THE MACHINE. "in this machine
+		// learning project" names a repository, so the cue is spent.
+		if strings.HasSuffix(cue, "machine") && contextualFollowingWord(lower, idx+len(cue)) == "learning" {
+			continue
+		}
+		clause := contextualClauseAround(text, idx)
+		if contextualNegated(clause) || contextualContainsAny(strings.ToLower(clause), contextualProjectQualifiers) {
+			continue
+		}
+		return true
 	}
 	return false
+}
+
+// contextualFollowingWord answers the word that starts at end, if any.
+func contextualFollowingWord(lower string, end int) string {
+	start := end
+	for start < len(lower) && !contextualWordByte(lower[start]) {
+		start++
+	}
+	stop := start
+	for stop < len(lower) && contextualWordByte(lower[stop]) {
+		stop++
+	}
+	return lower[start:stop]
 }
 
 // Evidence is fetched selectively under the same owner and validity guards as

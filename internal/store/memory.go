@@ -240,6 +240,18 @@ func migrateMemoriesSchema(db *sql.DB) error {
 			}
 		}
 	}
+	// THE APPROVED-RULE PROJECTION IS A SEEK, NOT A PARTITION WALK. It asks for
+	// the newest 128 BINDING rows by authority, and the only index over the
+	// journal was (node_id, kind, seq): with a few rare approved rules under
+	// thousands of newer observations, the plan preferred that index for its
+	// ordering and paid for every observation behind each rule. This PARTIAL
+	// index holds only binding rows and covers the same ordering, so the read is
+	// an index seek bounded by the rule count rather than the owner's evidence
+	// partition. Created here (idempotently) because this migration hook runs at
+	// every open, after the schema step has made the events table.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS events_contextual_approved ON events (node_id, kind, seq) WHERE json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision')`); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -480,6 +492,56 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 // manage any row it is showing) and for callers that have already proven
 // visibility.
 func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory) (Memory, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	defer tx.Rollback()
+	fresh, err := supersedeMemoryForOwnersTx(tx, s.fts, owners, oldID, m)
+	if err != nil {
+		return Memory{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	return fresh, nil
+}
+
+// SupersedeMemoryForOwnersContextual is [Store.SupersedeMemoryForOwners] with
+// the replacement's provenance appended in the SAME transaction, so a
+// supersession whose evidence could not be written rolls back rather than
+// leaving a live replacement with no journal row to establish it.
+func (s *Store) SupersedeMemoryForOwnersContextual(owners []string, oldID string, m Memory, e ContextualEvidence) (Memory, ContextualEvidence, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	defer tx.Rollback()
+	fresh, err := supersedeMemoryForOwnersTx(tx, s.fts, owners, oldID, m)
+	if err != nil {
+		return Memory{}, e, err
+	}
+	// THE REPLACEMENT'S PROVENANCE NAMES THE REPLACEMENT'S OWNER, exactly as
+	// the supersede itself must keep the target's owner.
+	if e.Owner != "" && normalizeOwner(e.Owner) != fresh.Owner {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w: evidence owner %q is not the replacement owner %q", ErrInvalid, e.Owner, fresh.Owner)
+	}
+	e.Owner = fresh.Owner
+	e.MemoryID = fresh.ID
+	if err := validateContextualEvidence(e); err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	committed, err := appendContextualEvidenceTx(tx, e)
+	if err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	return fresh, committed, nil
+}
+
+func supersedeMemoryForOwnersTx(tx *sql.Tx, fts bool, owners []string, oldID string, m Memory) (Memory, error) {
 	if len(owners) == 0 {
 		return Memory{}, fmt.Errorf("supersede memory: %w: no owner was named", ErrInvalid)
 	}
@@ -497,12 +559,6 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 	if fresh.ID == oldID {
 		return Memory{}, fmt.Errorf("supersede memory: %w: %q cannot supersede itself", ErrInvalid, oldID)
 	}
-	tx, err := s.beginWrite()
-	if err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
-	}
-	defer tx.Rollback()
-
 	// THE OLD ROW'S OWNER IS IN THE NAMED OWNERS, or the supersession is
 	// refused. This is the store-level guard the session's own visibility
 	// check already makes, and it is what closes the raw-id door: a decider
@@ -517,7 +573,6 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 	if count == 0 {
 		return Memory{}, fmt.Errorf("supersede memory: %w: %q is not an active memory this session can see", ErrInvalid, oldID)
 	}
-
 	var oldOwner string
 	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -528,7 +583,6 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 	if oldOwner != fresh.Owner {
 		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
 	}
-
 	var exists int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, fresh.ID).Scan(&exists); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
@@ -542,10 +596,7 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 	if err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
-	if err := applyMemorySupersede(tx, payload, seq, s.fts); err != nil {
-		return Memory{}, fmt.Errorf("supersede memory: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
+	if err := applyMemorySupersede(tx, payload, seq, fts); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
 	return Memory{
@@ -562,23 +613,68 @@ func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory
 // foreign id from a stale neighbor list or a model invention cannot rewrite
 // another project's memory through this door.
 func (s *Store) UpdateMemoryForOwners(owners []string, id, title, text string, tags []string, sourceSession string) error {
-	if len(owners) == 0 {
-		return fmt.Errorf("update memory: %w: no owner was named", ErrInvalid)
-	}
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return fmt.Errorf("update memory: %w: id is required", ErrInvalid)
-	}
-	title, text, tags, err := validMemoryBody(title, text, tags)
-	if err != nil {
-		return fmt.Errorf("update memory: %w", err)
-	}
 	tx, err := s.beginWrite()
 	if err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
 	defer tx.Rollback()
+	if _, err := updateMemoryForOwnersTx(tx, s.fts, owners, id, title, text, tags, sourceSession); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	return nil
+}
 
+// UpdateMemoryForOwnersContextual is [Store.UpdateMemoryForOwners] with the
+// claim's provenance appended in the SAME transaction. It is the one write the
+// post-turn settle takes for an update, so a crash cannot leave a corrected row
+// whose latest evidence row is older than the correction — which the eligible
+// projection reads as a claim with no live provenance.
+func (s *Store) UpdateMemoryForOwnersContextual(owners []string, id, title, text string, tags []string, sourceSession string, e ContextualEvidence) (ContextualEvidence, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	defer tx.Rollback()
+	rowOwner, err := updateMemoryForOwnersTx(tx, s.fts, owners, id, title, text, tags, sourceSession)
+	if err != nil {
+		return e, err
+	}
+	// THE EVIDENCE MUST NAME THE ROW'S OWNER. The row was updated under the
+	// named owners; a provenance row claiming a different blast radius is
+	// refused rather than written beside it.
+	if e.Owner != "" && normalizeOwner(e.Owner) != rowOwner {
+		return e, fmt.Errorf("update memory: %w: evidence owner %q is not the row owner %q", ErrInvalid, e.Owner, rowOwner)
+	}
+	e.Owner = rowOwner
+	e.MemoryID = id
+	if err := validateContextualEvidence(e); err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	committed, err := appendContextualEvidenceTx(tx, e)
+	if err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	return committed, nil
+}
+
+func updateMemoryForOwnersTx(tx *sql.Tx, fts bool, owners []string, id, title, text string, tags []string, sourceSession string) (string, error) {
+	if len(owners) == 0 {
+		return "", fmt.Errorf("update memory: %w: no owner was named", ErrInvalid)
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", fmt.Errorf("update memory: %w: id is required", ErrInvalid)
+	}
+	title, text, tags, err := validMemoryBody(title, text, tags)
+	if err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
+	}
 	// THE TARGET ROW'S OWNER IS IN THE NAMED OWNERS, or the update is refused.
 	// A store error on this read also refuses: a guard that cannot prove the
 	// target is owned by this session must never become a pass.
@@ -586,24 +682,24 @@ func (s *Store) UpdateMemoryForOwners(owners []string, id, title, text string, t
 	var count int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ? AND status = ?`+where,
 		append([]any{id, MemoryActive}, ownerArgs...)...).Scan(&count); err != nil {
-		return fmt.Errorf("update memory: %w", err)
+		return "", fmt.Errorf("update memory: %w", err)
 	}
 	if count == 0 {
-		return fmt.Errorf("update memory: %w: %q is not an active memory this session can see", ErrInvalid, id)
+		return "", fmt.Errorf("update memory: %w: %q is not an active memory this session can see", ErrInvalid, id)
 	}
-
+	var rowOwner string
+	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ?`, id).Scan(&rowOwner); err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
+	}
 	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags, SourceSession: strings.TrimSpace(sourceSession)}
 	seq, _, err := appendEvent(tx, id, EventMemoryUpdate, payload)
 	if err != nil {
-		return fmt.Errorf("update memory: %w", err)
+		return "", fmt.Errorf("update memory: %w", err)
 	}
-	if err := applyMemoryUpdate(tx, payload, seq, s.fts); err != nil {
-		return fmt.Errorf("update memory: %w", err)
+	if err := applyMemoryUpdate(tx, payload, seq, fts); err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("update memory: %w", err)
-	}
-	return nil
+	return rowOwner, nil
 }
 
 // ForgetMemory tombstones a memory. It refuses a memory that is already
@@ -657,6 +753,24 @@ func (s *Store) forgetMemory(owners []string, id, sourceSession string) error {
 	}
 	if err := applyMemoryForget(tx, payload, seq, s.fts); err != nil {
 		return fmt.Errorf("forget memory: %w", err)
+	}
+	// FORGET IS ONE TRANSACTION. The row's tombstone and the provenance
+	// suppression used to commit separately, so a crash between them left the
+	// row active while its evidence was already unusable — and a later write of
+	// the same body skipped as a duplicate. Landing them together closes that
+	// window. The suppression is written only when the claim actually HAS
+	// contextual evidence, so an ordinary memory forget grows the journal by
+	// nothing.
+	var contextual int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.MemoryID')=?`,
+		contextualNode(rowOwner), EventContextualEvidence, id).Scan(&contextual); err != nil {
+		return fmt.Errorf("forget memory: %w", err)
+	}
+	if contextual > 0 {
+		if _, _, err := appendEvent(tx, contextualNode(rowOwner), EventContextualMemorySuppression,
+			struct{ MemoryID, Reason string }{id, "explicit forget"}); err != nil {
+			return fmt.Errorf("forget memory: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("forget memory: %w", err)

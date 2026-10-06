@@ -395,3 +395,108 @@ func TestContextualSpanAuthorityRejectsQuestionAndRejectedQuote(t *testing.T) {
 		t.Fatalf("an ordinary literal constraint was demoted: %+v", plain)
 	}
 }
+
+// SCOPE CUES ARE THEIR OWN SPANS. A project-qualified or negated "everywhere"
+// must not widen a claim to the person at large, and a machine-learning project
+// or a negated "this machine" must not take machine scope.
+func TestContextualScopeCueIsItsOwnSpan(t *testing.T) {
+	for _, quote := range []string{
+		"Use tabs everywhere inside this project",
+		"Use tabs everywhere in this repository",
+		"Use tabs, not everywhere",
+		"Use tabs never everywhere",
+	} {
+		got := memoryTurnEvidence{User: quote, At: time.Now()}.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryPreference,
+			Scope: store.MemoryScopeUser, Source: "user", SourceQuote: quote, Authority: "observation", Text: "use tabs"})
+		if got.Scope == store.MemoryScopeUser {
+			t.Fatalf("%q widened to the person at large: %+v", quote, got)
+		}
+	}
+	// AND A GENUINE GLOBAL PREFERENCE STILL WIDENS.
+	quote := "Across all projects I prefer concise answers"
+	got := memoryTurnEvidence{User: quote, At: time.Now()}.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryPreference,
+		Scope: store.MemoryScopeUser, Source: "user", SourceQuote: quote, Authority: "observation", Text: "prefer concise answers"})
+	if got.Scope != store.MemoryScopeUser {
+		t.Fatalf("a genuine global preference was demoted: %+v", got)
+	}
+	for _, quote := range []string{
+		"You must pin numpy in this machine learning project",
+		"Not on this machine",
+		"On this machine learning project pin numpy",
+	} {
+		got := memoryTurnEvidence{User: quote, At: time.Now()}.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision,
+			Scope: store.MemoryScopeEnv, Source: "user", SourceQuote: quote, Authority: "approved_rule", Text: "pin numpy"})
+		if got.Scope == store.MemoryScopeEnv {
+			t.Fatalf("%q took machine scope: %+v", quote, got)
+		}
+	}
+	// AND AN EXPLICIT MACHINE-WIDE SPAN IS STILL KEPT.
+	machine := "On this machine, always use the mirror"
+	got = memoryTurnEvidence{User: machine, At: time.Now()}.ground(reflex.ExtractResult{Mem: 1, Type: store.MemoryDecision,
+		Scope: store.MemoryScopeEnv, Source: "user", SourceQuote: machine, Authority: "approved_rule", Text: "use the mirror"})
+	if got.Scope != store.MemoryScopeEnv {
+		t.Fatalf("an explicit machine span was lost: %+v", got)
+	}
+}
+
+// A TITLE AND A TAG ARE REDACTED LIKE THE BODY, AND SO IS THE DECIDER'S
+// REPLACEMENT. The claim that lands and the rendered block carry no credential.
+func TestContextualTitleAndTagsAreRedacted(t *testing.T) {
+	const secret = "xoxb-1234567890abcdef"
+	grounded := memoryTurnEvidence{User: "the token is " + secret, At: time.Now()}.ground(reflex.ExtractResult{Mem: 1,
+		Type: store.MemoryFact, Scope: store.MemoryScopeProject, Source: "user", SourceQuote: "the token is " + secret,
+		Authority: "observation", Title: "slack token " + secret, Text: "keep " + secret, Tags: []string{"cred:" + secret}})
+	if strings.Contains(grounded.Title, secret) || strings.Contains(grounded.Text, secret) {
+		t.Fatalf("the title or body survived the redactor: %+v", grounded)
+	}
+	for _, tag := range grounded.Tags {
+		if strings.Contains(tag, secret) {
+			t.Fatalf("a tag survived the redactor: %q", tag)
+		}
+	}
+	// THE WRITE DOOR ITSELF REDACTS, whatever a caller did.
+	script := &reflexScript{}
+	agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "ledger" })
+	title, err := agent.Remember("my slack token is " + secret)
+	if err != nil {
+		t.Fatalf("remember: %v", err)
+	}
+	if strings.Contains(title, secret) {
+		t.Fatalf("the landed title kept a secret: %q", title)
+	}
+	rows, err := brain.ListMemories([]string{store.OwnerUser}, 10)
+	if err != nil || len(rows) == 0 {
+		t.Fatalf("rows=%v err=%v", rows, err)
+	}
+	for _, row := range rows {
+		if strings.Contains(row.Title, secret) || strings.Contains(row.Text, secret) || strings.Contains(strings.Join(row.Tags, " "), secret) {
+			t.Fatalf("a credential landed in the store: %+v", row)
+		}
+	}
+}
+
+// DERIVED HISTORY CANNOT RE-PUBLISH A CLAIM. A candidate whose only support is
+// a conversation-history lookup or this session's memory reader is refused, so a
+// forgotten sentence cannot come back under a fresh source key.
+func TestContextualDerivedHistoryCannotRepublishForgottenClaim(t *testing.T) {
+	script := &reflexScript{extract: `{"mem":1,"type":"decision","scope":"project","title":"ledger decimals","text":"The ledger uses exact decimals.","source":"assistant","authority":"proposal","receipt_id":"hist"}`}
+	agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "ledger" })
+	agent.mu.Lock()
+	turn := agent.turnSeq
+	agent.mu.Unlock()
+	agent.memory.mu.Lock()
+	if agent.memory.receipts == nil {
+		agent.memory.receipts = map[uint64][]memoryToolReceipt{}
+	}
+	agent.memory.receipts[turn] = []memoryToolReceipt{{ID: "hist", Tool: "search_conversations", Status: "done", Text: "the ledger uses exact decimals"}}
+	agent.memory.mu.Unlock()
+	agent.learnFromTurn("what did we decide about the ledger?", "We decided the ledger uses exact decimals.")
+	agent.memoryJobs.Wait()
+	rows, err := brain.ListMemories([]string{store.OwnerProject("ledger")}, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("a derived history lookup published a new claim: %+v", rows)
+	}
+}

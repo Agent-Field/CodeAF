@@ -50,66 +50,90 @@ type contextualSuppression struct{ Owner, SourceKey, SourceHash, Reason string }
 
 func contextualNode(owner string) string { return "contextual:" + owner }
 
-// AppendContextualEvidence rejects a derived claim unless every parent still
-// belongs to its owner and remains usable. Receipts cannot confer authority.
-func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEvidence, error) {
+// validateContextualEvidence is the whole admission table for one evidence row:
+// required fields, bounds, the authority/actor pairs that may speak, and the
+// interval. It answers one reason per refusal, and it is deliberately a table
+// rather than a growing if-ladder — a new guard is a row, and the append
+// writers below share the same rows.
+func validateContextualEvidence(e ContextualEvidence) error {
 	if strings.TrimSpace(e.Owner) == "" || strings.TrimSpace(e.ID) == "" || strings.TrimSpace(e.MemoryID) == "" || strings.TrimSpace(e.Observation) == "" {
-		return e, errors.New("contextual evidence requires owner, id, memory and observation")
+		return errors.New("contextual evidence requires owner, id, memory and observation")
 	}
-	if len(e.ReceiptIDs) > 32 || len(e.Derivations) > 16 || len(e.Conditions) > 16 || len(e.Observation) > 16384 {
-		return e, errors.New("contextual evidence exceeds bounds")
+	if err := validateContextualEvidenceBounds(e); err != nil {
+		return err
 	}
-	if e.Authority != "user" && e.Authority != "observation" && e.Authority != "inference" && e.Authority != "approved_rule" && e.Authority != "confirmed_decision" && e.Authority != "proposal" {
-		return e, errors.New("unknown contextual authority")
-	}
-	if !e.ValidUntil.IsZero() && !e.ValidUntil.After(e.ValidFrom) {
-		return e, errors.New("invalid contextual validity interval")
-	}
-	if (e.Authority == "user" || e.Authority == "approved_rule" || e.Authority == "confirmed_decision") && e.Actor != "user" {
-		return e, errors.New("user authority requires a user assertion")
-	}
-	if e.Authority == "observation" && e.Actor != "user" && e.Actor != "tool" && e.Actor != "system" {
-		return e, errors.New("observation requires a user, tool or system source")
-	}
-	if len(e.ReceiptIDs) > 0 && e.Actor != "tool" {
-		return e, errors.New("receipts require a tool observation")
-	}
-	if len(e.Derivations) > 0 && e.Authority != "inference" {
-		return e, errors.New("derived evidence must retain inference authority")
+	return validateContextualEvidenceAuthority(e)
+}
+
+// validateContextualEvidenceBounds is the size and interval half of the table:
+// what a row may weigh and how long it may live.
+func validateContextualEvidenceBounds(e ContextualEvidence) error {
+	switch {
+	case len(e.ReceiptIDs) > 32 || len(e.Derivations) > 16 || len(e.Conditions) > 16 || len(e.Observation) > 16384:
+		return errors.New("contextual evidence exceeds bounds")
+	case len(e.Applicability) > 8 || len(e.Rejected) > 8:
+		return errors.New("contextual reasoning exceeds bounds")
+	case !e.ValidUntil.IsZero() && !e.ValidUntil.After(e.ValidFrom):
+		return errors.New("invalid contextual validity interval")
 	}
 	for _, v := range []string{e.ID, e.MemoryID, e.Owner, e.SessionID, e.TurnID, e.Actor, e.Tool, e.Revision, e.Verification, e.Authority, e.SourceKey, e.SourceHash} {
 		if len(v) > 1024 {
-			return e, errors.New("contextual metadata exceeds bounds")
+			return errors.New("contextual metadata exceeds bounds")
 		}
 	}
 	for k, v := range e.Conditions {
 		if len(k) > 256 || len(v) > 1024 {
-			return e, errors.New("contextual condition exceeds bounds")
+			return errors.New("contextual condition exceeds bounds")
 		}
 	}
 	for _, v := range e.ReceiptIDs {
 		if len(v) > 1024 {
-			return e, errors.New("contextual receipt exceeds bounds")
+			return errors.New("contextual receipt exceeds bounds")
 		}
-	}
-	if len(e.Applicability) > 8 || len(e.Rejected) > 8 {
-		return e, errors.New("contextual reasoning exceeds bounds")
 	}
 	for _, v := range append(append([]string{e.Rationale, e.Reconsider}, e.Applicability...), e.Rejected...) {
 		if utf8.RuneCountInString(v) > 240 {
-			return e, errors.New("contextual reasoning exceeds bounds")
+			return errors.New("contextual reasoning exceeds bounds")
 		}
 	}
+	return nil
+}
+
+// validateContextualEvidenceAuthority is the WHO MAY SPEAK half: an authority
+// word this build knows, and the actor that must stand behind it.
+func validateContextualEvidenceAuthority(e ContextualEvidence) error {
+	switch {
+	case !validContextualAuthority(e.Authority):
+		return errors.New("unknown contextual authority")
+	case (e.Authority == "user" || e.Authority == "approved_rule" || e.Authority == "confirmed_decision") && e.Actor != "user":
+		return errors.New("user authority requires a user assertion")
+	case e.Authority == "observation" && e.Actor != "user" && e.Actor != "tool" && e.Actor != "system":
+		return errors.New("observation requires a user, tool or system source")
+	case len(e.ReceiptIDs) > 0 && e.Actor != "tool":
+		return errors.New("receipts require a tool observation")
+	case len(e.Derivations) > 0 && e.Authority != "inference":
+		return errors.New("derived evidence must retain inference authority")
+	}
+	return nil
+}
+
+func validContextualAuthority(authority string) bool {
+	switch authority {
+	case "user", "observation", "inference", "approved_rule", "confirmed_decision", "proposal":
+		return true
+	}
+	return false
+}
+
+// appendContextualEvidenceTx admits one evidence row inside an ALREADY-OPEN
+// write transaction. It is the shared body of [Store.AppendContextualEvidence]
+// and [Store.WriteContextual]: a caller that must land a memory row and its
+// provenance together uses this, so the two cannot be split by a crash.
+func appendContextualEvidenceTx(tx *sql.Tx, e ContextualEvidence) (ContextualEvidence, error) {
 	e.Seq = 0
 	e.At = time.Time{}
-	tx, err := s.beginWrite()
-	if err != nil {
-		return e, err
-	}
-	defer tx.Rollback()
 	var duplicate int
-	err = tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.ID')=?`, contextualNode(e.Owner), EventContextualEvidence, e.ID).Scan(&duplicate)
-	if err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.ID')=?`, contextualNode(e.Owner), EventContextualEvidence, e.ID).Scan(&duplicate); err != nil {
 		return e, err
 	}
 	if duplicate != 0 {
@@ -117,8 +141,7 @@ func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEviden
 	}
 	if e.SourceKey != "" {
 		var suppressed int
-		err = tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.SourceKey')=? AND (COALESCE(json_extract(payload,'$.SourceHash'),'')='' OR json_extract(payload,'$.SourceHash')=?)`, contextualNode(e.Owner), EventContextualSuppression, e.SourceKey, e.SourceHash).Scan(&suppressed)
-		if err != nil {
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.SourceKey')=? AND (COALESCE(json_extract(payload,'$.SourceHash'),'')='' OR json_extract(payload,'$.SourceHash')=?)`, contextualNode(e.Owner), EventContextualSuppression, e.SourceKey, e.SourceHash).Scan(&suppressed); err != nil {
 			return e, err
 		}
 		if suppressed > 0 {
@@ -148,12 +171,30 @@ func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEviden
 	if err != nil {
 		return e, err
 	}
-	if err = tx.Commit(); err != nil {
-		return e, err
-	}
 	e.Seq = seq
 	e.At = at
 	return e, nil
+}
+
+// AppendContextualEvidence rejects a derived claim unless every parent still
+// belongs to its owner and remains usable. Receipts cannot confer authority.
+func (s *Store) AppendContextualEvidence(e ContextualEvidence) (ContextualEvidence, error) {
+	if err := validateContextualEvidence(e); err != nil {
+		return e, err
+	}
+	tx, err := s.beginWrite()
+	if err != nil {
+		return e, err
+	}
+	defer tx.Rollback()
+	committed, err := appendContextualEvidenceTx(tx, e)
+	if err != nil {
+		return e, err
+	}
+	if err = tx.Commit(); err != nil {
+		return e, err
+	}
+	return committed, nil
 }
 
 // SuppressContextualSource prevents relearning the same source content, and
@@ -334,17 +375,18 @@ func (s *Store) ContextualEvidenceApproved(owner string, conditions map[string]s
 	if at.IsZero() {
 		at = time.Now()
 	}
-	var floor int64
-	err := s.db.QueryRow(`SELECT COALESCE(MIN(seq),0)-1 FROM (SELECT seq FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision') ORDER BY seq DESC LIMIT ?)`, contextualNode(owner), EventContextualEvidence, ContextualEvidenceLimit).Scan(&floor)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := s.db.Query(`SELECT seq,ts,payload FROM events WHERE node_id=? AND kind=? AND seq>? AND json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision') ORDER BY seq`, contextualNode(owner), EventContextualEvidence, floor)
+	// ONE INDEXED READ, NEWEST FIRST. The partial index
+	// events_contextual_approved holds only binding rows and covers seq, so the
+	// newest-window read is a seek over the rule count rather than a walk of
+	// the owner's whole evidence partition. The window is still bounded: it
+	// carries at most [ContextualEvidenceLimit] rows, newest first, and the
+	// result is bounded by limit.
+	rows, err := s.db.Query(`SELECT seq,ts,payload FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision') ORDER BY seq DESC LIMIT ?`, contextualNode(owner), EventContextualEvidence, ContextualEvidenceLimit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	all := make([]ContextualEvidence, 0)
+	newest := make([]ContextualEvidence, 0)
 	for rows.Next() {
 		var e ContextualEvidence
 		var ts, payload string
@@ -359,15 +401,15 @@ func (s *Store) ContextualEvidenceApproved(owner string, conditions map[string]s
 		if e.At, err = parseTime(ts); err != nil {
 			return nil, err
 		}
-		all = append(all, e)
+		newest = append(newest, e)
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
 	out := make([]ContextualEvidence, 0)
 	budget := ContextualEvidenceLimit * ContextualEvidenceLimit
-	for i := len(all) - 1; i >= 0 && len(out) < limit; i-- {
-		e := all[i]
+	for i := 0; i < len(newest) && len(out) < limit; i++ {
+		e := newest[i]
 		ok, err := contextualUsable(s.db, e, at, map[int64]bool{}, &budget)
 		if err != nil {
 			return nil, err

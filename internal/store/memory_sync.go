@@ -251,178 +251,210 @@ func ownerBearingKind(kind EventKind) bool {
 // answers whether it changed anything. It enforces sync policy and receipt
 // rules before reaching the same apply functions that Rebuild uses. Only
 // admitted events enter the journal; Rebuild repeats their materialization.
+//
+// IT IS A DISPATCH TABLE, NOT ONE ROAD WITH SEVEN ENDINGS. Each kind's fold is
+// its own function, so a guard added to the forget path cannot change the add
+// path and the whole shape reads as the list of kinds the seam moves.
 func foldMemoryEvent(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
 	switch event.Kind {
 	case EventMemoryAdd:
-		var payload memoryPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return false, err
+		return foldMemoryAdd(tx, event, seq, fts, allow)
+	case EventMemoryUpdate:
+		return foldMemoryUpdate(tx, event, seq, fts, allow)
+	case EventMemorySupersede:
+		return foldMemorySupersede(tx, event, seq, fts, allow)
+	case EventMemoryForget:
+		return foldMemoryForget(tx, event, seq, fts, allow)
+	case EventMemoryRestore:
+		return foldMemoryRestore(tx, event, seq, fts, allow)
+	case EventMemoryRehomed:
+		return foldMemoryRehomed(tx, event, seq, fts, allow)
+	default:
+		return foldMemoryObservability(tx, event, seq, fts, allow)
+	}
+}
+
+func foldMemoryAdd(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
+	var payload memoryPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return false, err
+	}
+	payload.Owner = ownerForReplay(payload)
+	// A tombstone that arrived first remains in the journal under its proven
+	// owner. A later add cannot turn delayed delivery into resurrection.
+	pending, err := pendingMemoryTombstone(tx, payload.ID, payload.Owner, seq)
+	if err != nil {
+		return false, err
+	}
+	if pending {
+		return false, nil
+	}
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, payload.ID).Scan(&exists); err != nil {
+		return false, err
+	}
+	if exists != 0 {
+		// ALREADY HERE. An add that re-arrives is re-delivery, and
+		// re-delivery is a skip — never a second row, never a resurrection
+		// of something this store has since retired.
+		return false, nil
+	}
+	return true, applyMemoryAdd(tx, payload, seq, fts)
+}
+
+func foldMemoryUpdate(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
+	var payload memoryUpdatePayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return false, err
+	}
+	// THE GUARD'S OWNER IS THE ROW'S OWN. An update event carries no owner
+	// — it acts on a row that is already here, under whatever owner it
+	// arrived with — so the row itself is read and the receiver's policy
+	// is asked about THAT. A user-labeled context must never be allowed to
+	// rewrite a project's row: an event that cannot say whose row it
+	// touches is gated by the row, not by a default.
+	rowOwner, active := memoryRowOwner(tx, payload.ID)
+	if !active {
+		return false, nil
+	}
+	if allow != nil && !allow(rowOwner) {
+		return false, nil
+	}
+	return true, applyMemoryUpdate(tx, payload, seq, fts)
+}
+
+func foldMemorySupersede(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
+	var payload memorySupersedePayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return false, err
+	}
+	payload.New.Owner = ownerForReplay(payload.New)
+	// THE GUARD'S OWNER IS THE REPLACEMENT'S — a supersede is one decision
+	// about the replacement's owner, and the wrapper payload does not carry
+	// the owner at the top level for the policy read above to find.
+	if !memoryActiveForOwner(tx, payload.OldID, payload.New.Owner) {
+		// THE TARGET IS ALREADY GONE HERE — retired or forgotten by this
+		// store's own history or by a faster delivery. Applying would
+		// resurrect a retired row or add an orphan; skipping is the fold
+		// rule, and the chain stays consistent with it.
+		return false, nil
+	}
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, payload.New.ID).Scan(&exists); err != nil {
+		return false, err
+	}
+	if exists != 0 {
+		return false, nil
+	}
+	return true, applyMemorySupersede(tx, payload, seq, fts)
+}
+
+func foldMemoryForget(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
+	var payload memoryForgetPayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return false, err
+	}
+	var status, rowOwner string
+	err := tx.QueryRow(`SELECT owner, status FROM memories WHERE id = ?`, payload.ID).Scan(&rowOwner, &status)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		// Only a tombstone that proves its owner can be kept before its row.
+		// Legacy ownerless events cannot pass a receiver policy by guessing.
+		owner := normalizeOwner(payload.Owner)
+		if !ValidOwner(owner) || strings.TrimSpace(payload.ID) == "" {
+			return false, nil
 		}
-		payload.Owner = ownerForReplay(payload)
-		// A tombstone that arrived first remains in the journal under its proven
-		// owner. A later add cannot turn delayed delivery into resurrection.
-		pending, err := pendingMemoryTombstone(tx, payload.ID, payload.Owner, seq)
+		if allow != nil && !allow(owner) {
+			return false, nil
+		}
+		return true, nil
+	case err != nil:
+		return false, err
+	case status == MemoryForgotten:
+		return false, nil
+	}
+	if payload.Owner != "" && normalizeOwner(payload.Owner) != rowOwner {
+		return false, nil
+	}
+	// THE POLICY IS ASKED ABOUT THE ROW'S OWN OWNER — the payload names no
+	// owner, and a tombstone the policy would refuse must not land because
+	// the payload stayed silent.
+	if allow != nil && !allow(rowOwner) {
+		return false, nil
+	}
+	return true, applyMemoryForget(tx, payload, seq, fts)
+}
+
+func foldMemoryRestore(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
+	var payload memoryRestorePayload
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return false, err
+	}
+	var status, rowOwner string
+	err := tx.QueryRow(`SELECT owner, status FROM memories WHERE id = ?`, payload.ID).Scan(&rowOwner, &status)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, err
+	case status != MemoryForgotten:
+		return false, nil
+	}
+	if allow != nil && !allow(rowOwner) {
+		return false, nil
+	}
+	return true, applyMemoryRestore(tx, payload, seq, fts)
+}
+
+func foldMemoryRehomed(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
+	// A RE-HOME FROM THE ORIGIN APPLIES, policy-gated at the top of the
+	// fold: the origin proved the row's project, and a receiver that
+	// refused the news would keep a row in quarantine the origin has since
+	// re-homed — divergence with no upside. The fold under it only ever
+	// moves a row that is STILL quarantined ([applyRehomeOne]), so a
+	// re-home can never strip an owner it disagrees with.
+	//
+	// THE TARGET OWNER IS VALIDATED, same as the live door. A re-home
+	// event carrying an owner this build does not mint is refused: moving
+	// a quarantined row to an invalid owner would be a quarantine escape.
+	var payload struct {
+		IDs []string `json:"ids"`
+	}
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		return false, err
+	}
+	targetOwner := memoryEventOwner(event)
+	if !ValidOwner(targetOwner) {
+		// An owner this build does not understand is refused, not widened.
+		return false, nil
+	}
+	// A RE-HOME TO QUARANTINE IS NOT A RE-HOME. The live door never moves a
+	// row from quarantine to quarantine; the fold must agree. A row already
+	// in quarantine that an event tries to "re-home" to OwnerLegacyProject
+	// stays exactly where it is.
+	if targetOwner == OwnerLegacyProject {
+		return false, nil
+	}
+	moved := 0
+	for _, id := range payload.IDs {
+		applied, err := applyRehomeOne(tx, id, targetOwner, seq)
 		if err != nil {
 			return false, err
 		}
-		if pending {
-			return false, nil
+		if applied {
+			moved++
 		}
-		var exists int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, payload.ID).Scan(&exists); err != nil {
-			return false, err
-		}
-		if exists != 0 {
-			// ALREADY HERE. An add that re-arrives is re-delivery, and
-			// re-delivery is a skip — never a second row, never a resurrection
-			// of something this store has since retired.
-			return false, nil
-		}
-		return true, applyMemoryAdd(tx, payload, seq, fts)
-	case EventMemoryUpdate:
-		var payload memoryUpdatePayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return false, err
-		}
-		// THE GUARD'S OWNER IS THE ROW'S OWN. An update event carries no owner
-		// — it acts on a row that is already here, under whatever owner it
-		// arrived with — so the row itself is read and the receiver's policy
-		// is asked about THAT. A user-labeled context must never be allowed to
-		// rewrite a project's row: an event that cannot say whose row it
-		// touches is gated by the row, not by a default.
-		rowOwner, active := memoryRowOwner(tx, payload.ID)
-		if !active {
-			return false, nil
-		}
-		if allow != nil && !allow(rowOwner) {
-			return false, nil
-		}
-		return true, applyMemoryUpdate(tx, payload, seq, fts)
-	case EventMemorySupersede:
-		var payload memorySupersedePayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return false, err
-		}
-		payload.New.Owner = ownerForReplay(payload.New)
-		// THE GUARD'S OWNER IS THE REPLACEMENT'S — a supersede is one decision
-		// about the replacement's owner, and the wrapper payload does not carry
-		// the owner at the top level for the policy read above to find.
-		if !memoryActiveForOwner(tx, payload.OldID, payload.New.Owner) {
-			// THE TARGET IS ALREADY GONE HERE — retired or forgotten by this
-			// store's own history or by a faster delivery. Applying would
-			// resurrect a retired row or add an orphan; skipping is the fold
-			// rule, and the chain stays consistent with it.
-			return false, nil
-		}
-		var exists int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, payload.New.ID).Scan(&exists); err != nil {
-			return false, err
-		}
-		if exists != 0 {
-			return false, nil
-		}
-		return true, applyMemorySupersede(tx, payload, seq, fts)
-	case EventMemoryForget:
-		var payload memoryForgetPayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return false, err
-		}
-		var status, rowOwner string
-		err := tx.QueryRow(`SELECT owner, status FROM memories WHERE id = ?`, payload.ID).Scan(&rowOwner, &status)
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			// Only a tombstone that proves its owner can be kept before its row.
-			// Legacy ownerless events cannot pass a receiver policy by guessing.
-			owner := normalizeOwner(payload.Owner)
-			if !ValidOwner(owner) || strings.TrimSpace(payload.ID) == "" {
-				return false, nil
-			}
-			if allow != nil && !allow(owner) {
-				return false, nil
-			}
-			return true, nil
-		case err != nil:
-			return false, err
-		case status == MemoryForgotten:
-			return false, nil
-		}
-		if payload.Owner != "" && normalizeOwner(payload.Owner) != rowOwner {
-			return false, nil
-		}
-		// THE POLICY IS ASKED ABOUT THE ROW'S OWN OWNER — the payload names no
-		// owner, and a tombstone the policy would refuse must not land because
-		// the payload stayed silent.
-		if allow != nil && !allow(rowOwner) {
-			return false, nil
-		}
-		return true, applyMemoryForget(tx, payload, seq, fts)
-	case EventMemoryRestore:
-		var payload memoryRestorePayload
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return false, err
-		}
-		var status, rowOwner string
-		err := tx.QueryRow(`SELECT owner, status FROM memories WHERE id = ?`, payload.ID).Scan(&rowOwner, &status)
-		switch {
-		case errors.Is(err, sql.ErrNoRows):
-			return false, nil
-		case err != nil:
-			return false, err
-		case status != MemoryForgotten:
-			return false, nil
-		}
-		if allow != nil && !allow(rowOwner) {
-			return false, nil
-		}
-		return true, applyMemoryRestore(tx, payload, seq, fts)
-	case EventMemoryRehomed:
-		// A RE-HOME FROM THE ORIGIN APPLIES, policy-gated at the top of the
-		// fold: the origin proved the row's project, and a receiver that
-		// refused the news would keep a row in quarantine the origin has since
-		// re-homed — divergence with no upside. The fold under it only ever
-		// moves a row that is STILL quarantined ([applyRehomeOne]), so a
-		// re-home can never strip an owner it disagrees with.
-		//
-		// THE TARGET OWNER IS VALIDATED, same as the live door. A re-home
-		// event carrying an owner this build does not mint is refused: moving
-		// a quarantined row to an invalid owner would be a quarantine escape.
-		var payload struct {
-			IDs []string `json:"ids"`
-		}
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			return false, err
-		}
-		targetOwner := memoryEventOwner(event)
-		if !ValidOwner(targetOwner) {
-			// An owner this build does not understand is refused, not widened.
-			return false, nil
-		}
-		// A RE-HOME TO QUARANTINE IS NOT A RE-HOME. The live door never moves a
-		// row from quarantine to quarantine; the fold must agree. A row already
-		// in quarantine that an event tries to "re-home" to OwnerLegacyProject
-		// stays exactly where it is.
-		if targetOwner == OwnerLegacyProject {
-			return false, nil
-		}
-		moved := 0
-		for _, id := range payload.IDs {
-			applied, err := applyRehomeOne(tx, id, targetOwner, seq)
-			if err != nil {
-				return false, err
-			}
-			if applied {
-				moved++
-			}
-		}
-		return moved > 0, nil
-	default:
-		// Skipped and write-failed are observability events about the SENDING
-		// device's own attempts: they say what that device went through, and
-		// applying them here would manufacture local views out of somebody
-		// else's attempt — and a no-op is not history, so the journal entry
-		// the fold's caller wrote rolls back with the skip.
-		return false, nil
 	}
+	return moved > 0, nil
+}
+
+func foldMemoryObservability(tx *sql.Tx, event Event, seq int64, fts bool, allow func(owner string) bool) (bool, error) {
+	// Skipped and write-failed are observability events about the SENDING
+	// device's own attempts: they say what that device went through, and
+	// applying them here would manufacture local views out of somebody
+	// else's attempt — and a no-op is not history, so the journal entry
+	// the fold's caller wrote rolls back with the skip.
+	return false, nil
 }
 
 // memoryRowOwner answers the owner of an ACTIVE row, and whether it is active

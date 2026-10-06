@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
 // The write door. THIS IS THE ONE WAY ANYTHING LANDS IN THE MEMORY TABLE from
@@ -65,50 +67,127 @@ const (
 // labels and may name different facts. Validation comes before the lookup so
 // an invalid request cannot become a successful skip.
 func (s *Store) Write(req WriteRequest) (WriteResult, error) {
+	result, _, err := s.writeMemory(req, nil)
+	return result, err
+}
+
+// WriteContextual is [Store.Write] with the claim's provenance appended in the
+// SAME transaction. The post-turn settle takes this door for an add, so a crash
+// cannot leave an active tagged row whose evidence event never landed — which
+// the eligible projection reads as a claim with no provenance and drops, while
+// the row stays behind. A refused evidence row (a suppressed source, a bound
+// breach) now rolls the memory row back with it, so a suppressed claim cannot
+// be republished under a fresh source key.
+func (s *Store) WriteContextual(req WriteRequest, e ContextualEvidence) (WriteResult, ContextualEvidence, error) {
+	return s.writeMemory(req, &e)
+}
+
+// writeMemory is the whole body of both doors. evidence is nil for a plain
+// write and non-nil when the row and its provenance must land together.
+func (s *Store) writeMemory(req WriteRequest, evidence *ContextualEvidence) (WriteResult, ContextualEvidence, error) {
+	var committed ContextualEvidence
 	owner := normalizeOwner(req.Owner)
 	if !ValidOwner(owner) {
-		return WriteResult{}, fmt.Errorf("write memory: %w: an owner is required and %q is not one this build mints", ErrInvalid, req.Owner)
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w: an owner is required and %q is not one this build mints", ErrInvalid, req.Owner)
+	}
+	// EVIDENCE CANNOT FORGE A DIFFERENT OWNER. The row and its provenance land
+	// in one transaction, so the evidence MUST name the same blast radius the
+	// row does: a caller that slipped another owner's row into the pair is
+	// refused here, before either is written.
+	if evidence != nil && evidence.Owner != "" && normalizeOwner(evidence.Owner) != owner {
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w: evidence owner %q is not the write owner %q", ErrInvalid, evidence.Owner, owner)
+	}
+	req.Title = redact.Secrets(req.Title)
+	req.Text = redact.Secrets(req.Text)
+	for i := range req.Tags {
+		req.Tags[i] = redact.Secrets(req.Tags[i])
 	}
 	payload, err := memoryPayloadFrom(Memory{Owner: owner, Type: req.Type, Title: req.Title, Text: req.Text, Tags: req.Tags})
 	if err != nil {
-		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
 	payload.ID = NewMemoryID()
 	payload.SourceSession = strings.TrimSpace(req.SourceSession)
 	tx, err := s.beginWrite()
 	if err != nil {
-		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
 	defer tx.Rollback()
 	existing, err := writeDuplicateOn(tx, owner, payload.Text)
 	if err != nil {
-		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
 	if existing != nil {
-		result := WriteResult{Memory: *existing, Outcome: WriteOutcomeSkipped, Why: "already kept as " + existing.Title}
-		if _, _, err := appendEvent(tx, "memory", EventMemorySkipped, map[string]any{"owner": owner, "text": payload.Text, "kept": existing.ID}); err != nil {
-			return WriteResult{}, fmt.Errorf("write memory: %w", err)
+		result, committed, err := commitDuplicateWrite(tx, owner, payload, evidence, existing)
+		if err != nil {
+			return WriteResult{}, committed, err
 		}
 		if err := tx.Commit(); err != nil {
-			return WriteResult{}, fmt.Errorf("write memory: %w", err)
+			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 		}
-		return result, nil
+		return result, committed, nil
 	}
+	result, committed, err := commitAddedWrite(tx, s.fts, payload, evidence, owner)
+	if err != nil {
+		return WriteResult{}, committed, err
+	}
+	if err := tx.Commit(); err != nil {
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+	}
+	return result, committed, nil
+}
+
+// commitDuplicateWrite records the skip and, when provenance was supplied, lands
+// it on the row that beat this write.
+func commitDuplicateWrite(tx *sql.Tx, owner string, payload memoryPayload, evidence *ContextualEvidence, existing *Memory) (WriteResult, ContextualEvidence, error) {
+	var committed ContextualEvidence
+	if _, _, err := appendEvent(tx, "memory", EventMemorySkipped, map[string]any{"owner": owner, "text": payload.Text, "kept": existing.ID}); err != nil {
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+	}
+	if evidence != nil {
+		evidence.MemoryID = existing.ID
+		if evidence.Owner == "" {
+			evidence.Owner = owner
+		}
+		if err := validateContextualEvidence(*evidence); err != nil {
+			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+		}
+		var err error
+		if committed, err = appendContextualEvidenceTx(tx, *evidence); err != nil {
+			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+		}
+	}
+	return WriteResult{Memory: *existing, Outcome: WriteOutcomeSkipped, Why: "already kept as " + existing.Title}, committed, nil
+}
+
+// commitAddedWrite admits the row and, when provenance was supplied, lands the
+// evidence in the same transaction.
+func commitAddedWrite(tx *sql.Tx, fts bool, payload memoryPayload, evidence *ContextualEvidence, owner string) (WriteResult, ContextualEvidence, error) {
+	var committed ContextualEvidence
 	seq, _, err := appendEvent(tx, payload.ID, EventMemoryAdd, payload)
 	if err != nil {
-		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
-	if err := applyMemoryAdd(tx, payload, seq, s.fts); err != nil {
-		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	if err := applyMemoryAdd(tx, payload, seq, fts); err != nil {
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
 	rows, err := queryMemoriesOn(tx, "WHERE id = ?", []any{payload.ID}, "", 1)
 	if err != nil {
-		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+		return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return WriteResult{}, fmt.Errorf("write memory: %w", err)
+	if evidence != nil {
+		evidence.MemoryID = payload.ID
+		if evidence.Owner == "" {
+			evidence.Owner = owner
+		}
+		if err := validateContextualEvidence(*evidence); err != nil {
+			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+		}
+		if committed, err = appendContextualEvidenceTx(tx, *evidence); err != nil {
+			return WriteResult{}, committed, fmt.Errorf("write memory: %w", err)
+		}
 	}
-	return WriteResult{Memory: rows[0], Outcome: WriteOutcomeAdded}, nil
+	return WriteResult{Memory: rows[0], Outcome: WriteOutcomeAdded}, committed, nil
 }
 
 // writeDuplicateOn checks bodies in the transaction that admits the new row.

@@ -67,6 +67,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -1134,10 +1135,21 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 		if found.Mem == 0 {
 			return
 		}
-		memory, err := a.applyCandidate(ctx, client, found)
-		if err == nil && memory.ID != "" {
-			err = a.recordContextualMemory(memory, found, source)
+		if source.derivedSupport(found) {
+			// DERIVED HISTORY CANNOT RE-PUBLISH A CLAIM. A candidate supported
+			// only by a conversation-history lookup, this session's memory
+			// reader or a task summary would land as a NEW active row under a
+			// fresh SourceKey and a new SourceHash, so the suppression join
+			// could never retire it and a forgotten sentence would come back as
+			// history. It is refused here rather than threaded, because those
+			// reads carry no evidence seq for a derivation to point at.
+			return
 		}
+		// THE CLAIM AND ITS PROVENANCE LAND TOGETHER (applyCandidate publishes
+		// the evidence row in the memory write's own transaction), so a crash
+		// cannot leave an active tagged row whose evidence never arrived, nor
+		// evidence behind a row that rolled back.
+		_, err = a.applyCandidateFrom(ctx, client, found, &source)
 		if err != nil {
 			// THE SETTLE FAILED, AND THAT IS SAID — once per window — with the
 			// reason in the journal. It used to be `_, _ =`: a memory the
@@ -1286,11 +1298,30 @@ func (a *Agent) startMemoryJobLocked() bool {
 // searches only the candidate's owner: two projects may hold genuinely
 // different truths about the same words, and neither write swallows the
 // other.
+// applyCandidate is the explicit doors' settle: /remember, the remember tool
+// and the routed command publish their own provenance story, so they pass no
+// turn source and add no evidence row here.
 func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, candidate reflex.ExtractResult) (store.Memory, error) {
+	return a.applyCandidateFrom(ctx, client, candidate, nil)
+}
+
+// applyCandidateFrom settles one candidate and, when source is non-nil (the
+// post-turn pass), publishes the claim's provenance in the memory write's own
+// transaction.
+func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer, candidate reflex.ExtractResult, source *memoryTurnEvidence) (store.Memory, error) {
 	if strings.TrimSpace(candidate.Text) == "" {
 		return store.Memory{}, errors.New("session: a memory with no text says nothing")
 	}
 	fresh := a.memoryDraft(candidate)
+	// ONE PROVENANCE ROW, BUILT ONCE. When the caller is the post-turn settle it
+	// hands the turn source, and the row lands in the same transaction as the
+	// memory it belongs to; the explicit doors (source nil) keep their own
+	// evidence story and publish no new provenance here.
+	var evidence *store.ContextualEvidence
+	if source != nil {
+		e := a.contextualEvidenceFor("", candidate, *source)
+		evidence = &e
+	}
 	// Read access does not grant correction authority. A candidate settles only
 	// inside its own partition; promotion requires an explicit new write.
 	owners := []string{fresh.Owner}
@@ -1307,7 +1338,7 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 		// NOTHING NEAR IT IS NOT A QUESTION. A store with no opinion about this
 		// subject has nothing for a decider to weigh, and asking anyway would be
 		// a call whose answer is known.
-		return a.addThroughDoor(fresh)
+		return a.addThroughDoorFrom(fresh, evidence)
 	}
 	near := make([]reflex.Neighbor, 0, len(neighbors))
 	for _, neighbor := range neighbors {
@@ -1334,14 +1365,18 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 	// rejected alternatives and reconsideration circumstances live on the
 	// evidence row ([Agent.recordContextualMemory]) and are untouched here, so
 	// bounding this line cannot drop a condition the store was told about.
+	// THE DECIDER'S REPLACEMENT PASSES THE REDACTOR TOO. Its title and body
+	// REPLACE the draft, and the model has no secret filter of its own — the
+	// same reason the line below is bounded here. Tags are sanitized with the
+	// title and body so no door through this settle can keep a credential.
 	if title := strings.TrimSpace(decided.Title); title != "" {
-		fresh.Title = contextualClip(title, store.MemoryTitleRunes)
+		fresh.Title = contextualClip(redact.Secrets(title), store.MemoryTitleRunes)
 	}
 	if text := strings.TrimSpace(decided.Text); text != "" {
-		fresh.Text = contextualClip(text, store.MemoryTextRunes)
+		fresh.Text = contextualClip(redact.Secrets(text), store.MemoryTextRunes)
 	}
 	if len(decided.Tags) > 0 {
-		fresh.Tags = decided.Tags
+		fresh.Tags = contextualSanitizedItems(decided.Tags)
 	}
 	for _, tag := range candidate.Tags {
 		if tag == contextualTag {
@@ -1351,63 +1386,67 @@ func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, can
 	}
 	switch decided.Op {
 	case "add":
-		return a.addThroughDoor(fresh)
+		return a.addThroughDoorFrom(fresh, evidence)
 	case "update":
-		// A MISSING TARGET IS A SKIP. internal/reflex validates the enum and
-		// leaves the id to the only thing that knows whether it names anything;
-		// this is that thing, and the honest answer to "refine the memory that
-		// is not there" is to change nothing.
-		//
-		// THE TARGET IS CHECKED AGAINST THE OWNERS THIS SESSION CAN SEE. A
-		// decider naming another project's id — from a stale neighbor list, a
-		// replayed conversation, a model's invention — changes nothing here,
-		// because the store's update runs under this session's owner filter and
-		// this check makes the skip visible before the store is asked.
-		//
-		// A STORE ERROR ON THE VISIBILITY CHECK REFUSES THE WRITE. The old guard
-		// treated both a miss and an error as a signal to proceed: a transient
-		// store failure converted the one cross-owner check into a silent pass,
-		// letting a model-named foreign id land. An error here is returned — the
-		// write is retryable through the door.
-		if decided.TargetID == "" {
-			return store.Memory{}, nil
-		}
-		visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
-		if err != nil {
-			return store.Memory{}, fmt.Errorf("checking update target: %w", err)
-		}
-		if len(visible) == 0 {
-			return store.Memory{}, nil
-		}
-		if err := a.memory.store.UpdateMemoryForOwners(owners, decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
-			return store.Memory{}, err
-		}
-		return store.Memory{ID: decided.TargetID, Title: fresh.Title, Text: fresh.Text}, nil
+		return a.settleUpdate(owners, decided, fresh, evidence)
 	case "supersede":
-		if decided.TargetID == "" {
-			return store.Memory{}, nil
-		}
-		// The old line is read BEFORE it is retired, because the note names it
-		// and a read afterwards would be a second query for a row this one
-		// already had in hand — and read through the owners this session can
-		// see, for exactly the same reason the update's target is: a decider
-		// naming another project's id must not retire that project's memory.
-		visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
-		if err != nil {
-			return store.Memory{}, fmt.Errorf("checking supersession target: %w", err)
-		}
-		if len(visible) == 0 {
-			return store.Memory{}, nil
-		}
-		retired := visible[0]
-		replacement, err := a.memory.store.SupersedeMemoryForOwners(owners, decided.TargetID, fresh)
-		if err != nil {
-			return store.Memory{}, err
-		}
-		a.saySuperseded(retired.Title, replacement.Title)
-		return replacement, nil
+		return a.settleSupersede(owners, decided, fresh, evidence)
 	}
 	return store.Memory{}, nil
+}
+
+// settleUpdate is the refiner's half of the settle. A MISSING TARGET IS A SKIP:
+// internal/reflex validates the enum and leaves the id to the only thing that
+// knows whether it names anything. THE TARGET IS CHECKED AGAINST THE OWNERS THIS
+// SESSION CAN SEE, and a STORE ERROR ON THAT CHECK REFUSES THE WRITE — a
+// transient failure must never convert the one cross-owner check into a pass.
+func (a *Agent) settleUpdate(owners []string, decided reflex.DecideResult, fresh store.Memory, evidence *store.ContextualEvidence) (store.Memory, error) {
+	if decided.TargetID == "" {
+		return store.Memory{}, nil
+	}
+	visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
+	if err != nil {
+		return store.Memory{}, fmt.Errorf("checking update target: %w", err)
+	}
+	if len(visible) == 0 {
+		return store.Memory{}, nil
+	}
+	if evidence != nil {
+		if _, err := a.memory.store.UpdateMemoryForOwnersContextual(owners, decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession, *evidence); err != nil {
+			return store.Memory{}, err
+		}
+	} else if err := a.memory.store.UpdateMemoryForOwners(owners, decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
+		return store.Memory{}, err
+	}
+	return store.Memory{ID: decided.TargetID, Title: fresh.Title, Text: fresh.Text}, nil
+}
+
+// settleSupersede is the retirement half. The old line is read BEFORE it is
+// retired, because the note names it, and read through the owners this session
+// can see: a decider naming another project's id must not retire its memory.
+func (a *Agent) settleSupersede(owners []string, decided reflex.DecideResult, fresh store.Memory, evidence *store.ContextualEvidence) (store.Memory, error) {
+	if decided.TargetID == "" {
+		return store.Memory{}, nil
+	}
+	visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
+	if err != nil {
+		return store.Memory{}, fmt.Errorf("checking supersession target: %w", err)
+	}
+	if len(visible) == 0 {
+		return store.Memory{}, nil
+	}
+	retired := visible[0]
+	var replacement store.Memory
+	if evidence != nil {
+		replacement, _, err = a.memory.store.SupersedeMemoryForOwnersContextual(owners, decided.TargetID, fresh, *evidence)
+	} else {
+		replacement, err = a.memory.store.SupersedeMemoryForOwners(owners, decided.TargetID, fresh)
+	}
+	if err != nil {
+		return store.Memory{}, err
+	}
+	a.saySuperseded(retired.Title, replacement.Title)
+	return replacement, nil
 }
 
 // memoryDraft is the row a candidate would land as, before the decider or the
@@ -1438,14 +1477,29 @@ func (a *Agent) memoryDraft(candidate reflex.ExtractResult) store.Memory {
 // one, which the caller reads as "already kept" — the same answer the decider's
 // skip is.
 func (a *Agent) addThroughDoor(fresh store.Memory) (store.Memory, error) {
-	result, err := a.memory.store.Write(store.WriteRequest{
+	return a.addThroughDoorFrom(fresh, nil)
+}
+
+// addThroughDoorFrom is [Agent.addThroughDoor] with the claim's provenance
+// appended in the store write's own transaction when evidence is non-nil.
+func (a *Agent) addThroughDoorFrom(fresh store.Memory, evidence *store.ContextualEvidence) (store.Memory, error) {
+	req := store.WriteRequest{
 		Owner:         fresh.Owner,
 		Type:          fresh.Type,
 		Title:         fresh.Title,
 		Text:          fresh.Text,
 		Tags:          fresh.Tags,
 		SourceSession: fresh.SourceSession,
-	})
+	}
+	var (
+		result store.WriteResult
+		err    error
+	)
+	if evidence != nil {
+		result, _, err = a.memory.store.WriteContextual(req, *evidence)
+	} else {
+		result, err = a.memory.store.Write(req)
+	}
 	if err != nil {
 		return store.Memory{}, err
 	}
@@ -1469,7 +1523,11 @@ func (a *Agent) writeRemembered(text, scope string) (string, error) {
 	if !a.memoryWritable() {
 		return "", errors.New("this build is not remembering anything")
 	}
-	text = strings.Join(strings.Fields(text), " ")
+	// /remember AND THE remember TOOL ARE DOORS TOO. A person pasting a token
+	// beside what they want kept must not have it stored and rendered; the
+	// body is redacted before it is drafted, so the title derived from it is
+	// clean as well.
+	text = redact.Secrets(strings.Join(strings.Fields(text), " "))
 	if text == "" {
 		return "", errors.New("there is nothing to remember")
 	}
@@ -1628,9 +1686,9 @@ func (a *Agent) forgetMatching(query string) (string, error) {
 		return "", err
 	}
 	if len(found) > 0 {
-		if err := a.suppressContextualMemory(found[0]); err != nil {
-			return "", err
-		}
+		// THE STORE RETIRES THE CLAIM'S PROVENANCE IN THE SAME TRANSACTION as
+		// its tombstone (forgetMemory), so there is no window where the row is
+		// gone and its sources are not, or the reverse.
 		if err := a.memory.store.ForgetMemoryForOwners(a.memoryOwners(), found[0].ID, a.memorySourceSession()); err != nil {
 			return "", err
 		}
