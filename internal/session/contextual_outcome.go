@@ -3765,7 +3765,7 @@ func priorOutcomeLines(attempts []store.ContextualAttempt, goal string, terms ma
 	if len(lines) >= priorOutcomeLimit {
 		return lines
 	}
-	if second, ok := nextDistinctPriorFailure(ordered[1:], first, alternatives, workspace); ok {
+	if second, ok := nextDistinctPriorFailure(ordered[1:], first, alternatives); ok {
 		lines = append(lines, renderPriorAttempt(second, snapshot, alternatives[second.SourceKey]...))
 	}
 	return lines
@@ -3850,10 +3850,10 @@ var priorProgramFileExtensions = map[string]bool{
 // DIFFERENT method or input. If every remaining row repeats the first row's
 // method, a row that carries an observed alternative still renders — a genuine
 // working method is never dropped — and otherwise no second row is shown.
-func nextDistinctPriorFailure(rest []store.ContextualAttempt, first store.ContextualAttempt, alternatives map[string][]store.ContextualAttempt, workspace string) (store.ContextualAttempt, bool) {
-	firstKey := priorFailureMethodKey(first, workspace)
+func nextDistinctPriorFailure(rest []store.ContextualAttempt, first store.ContextualAttempt, alternatives map[string][]store.ContextualAttempt) (store.ContextualAttempt, bool) {
+	firstKey := priorFailureMethodKey(first)
 	for _, at := range rest {
-		if priorFailureMethodKey(at, workspace) != firstKey {
+		if priorFailureMethodKey(at) != firstKey {
 			return at, true
 		}
 	}
@@ -3866,25 +3866,18 @@ func nextDistinctPriorFailure(rest []store.ContextualAttempt, first store.Contex
 }
 
 // priorFailureMethodKey is the deterministic identity of what a failure DID: the
-// program families of its working segments plus the lexical files it actually
-// used. Two failures with the same key are the same evidence twice. An action
-// with NO shell structure at all (a different tool, an unknown action) is NOT
-// merged with another: its own text and source key make it unique, so distinct
-// failed tools are never suppressed as if they were one method.
-func priorFailureMethodKey(at store.ContextualAttempt, workspace string) string {
-	body := attemptActionBody(at.Action)
-	parts := make([]string, 0, 8)
-	for word := range actionProgramWords(body) {
-		parts = append(parts, "p:"+word)
-	}
-	for id := range shellUsedFileIdentities(body, workspace) {
-		parts = append(parts, "f:"+id)
-	}
-	if len(parts) == 0 {
-		return "action:" + strings.TrimSpace(at.Action) + "#" + at.SourceKey
-	}
-	sort.Strings(parts)
-	return strings.Join(parts, " ")
+// stored action itself, tool name and full argument text, with nothing but outer
+// whitespace removed. Two rows carrying the SAME stored action are the same
+// evidence twice, whatever their source keys, so an identical command repeated
+// for a second failure still dedups. Everything else is kept DISTINCT: the same
+// program run with a different flag, a different inline program, a wrapper whose
+// text differs - each is a different invocation and is never suppressed as a
+// duplicate of another. The identity is deliberately exact rather than a
+// semantic summary of program family and file operands, because that summary
+// merged genuinely different commands; keeping an identical-looking wrapper
+// distinct is the safe side of the trade.
+func priorFailureMethodKey(at store.ContextualAttempt) string {
+	return strings.TrimSpace(at.Action)
 }
 
 // indexPriorAlternatives indexes succeeded rows by the failed attempt's source
