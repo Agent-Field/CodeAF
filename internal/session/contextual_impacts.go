@@ -424,9 +424,11 @@ func contextualCallNameBefore(p string, bracket int) string {
 // FROZEN ACCESS GRANT, and neither is this neighbourhood. It is a DISCOVERY
 // bound only: it says where a source text is allowed to LOOK for a producer. The
 // authority to actually READ the resolved file comes from the EXISTING consent
-// policy ([Agent.contextualProducerReadAllowed], reusing the pure [Agent.decide]
-// gate), so a private sibling repository a policy denies is never opened just
-// because it shares a parent directory with the consumer.
+// policy ([Agent.contextualProducerReadAllowedUnder], reusing the pure
+// [Agent.decide] gate AND the origin's frozen admission ceiling), so a private
+// sibling repository a policy denies is never opened just because it shares a
+// parent directory with the consumer, and a later blanket allow cannot widen an
+// admission that denied it.
 func contextualConsumerNeighborhood(consumerPath string) string {
 	base := filepath.Dir(consumerPath)
 	if root, ok := repositoryRoot(base); ok {
@@ -596,6 +598,37 @@ func (a *Agent) contextualProducerReadAllowed(producer string) bool {
 	return decision.Action == approval.ActionAllow
 }
 
+// contextualProducerReadAllowedUnder judges a framework producer re-read by the
+// INTERSECTION of two policies: the frozen ADMISSION CEILING a delegated origin
+// was stamped with, and the LIVE policy now in force. A read runs only when
+// BOTH plainly allow it, which is the whole law this seam exists to keep:
+//
+//   - an OLD admission that DENIED the producer never widens merely because the
+//     root anchored a new repository and gained a blanket allow -- the ceiling
+//     still says no;
+//   - a later DENY still revokes an edge an older admission ALLOWED, because the
+//     live half says no;
+//   - an admission both halves allow is unchanged and permitted.
+//
+// A nil ceiling is the configured-nothing admission, which the consent engine's
+// own law names allow, so it constrains nothing and the live policy decides. The
+// ceiling is judged by the pure [approval.Policy.Check] on the same `read` call
+// the live gate uses, so its flats and read-only allowance answer exactly as
+// they did at admission -- no new grant, prompt or registry is introduced.
+func (a *Agent) contextualProducerReadAllowedUnder(producer string, ceiling *approval.Policy) bool {
+	if !a.contextualProducerReadAllowed(producer) {
+		return false
+	}
+	if ceiling == nil {
+		return true
+	}
+	args, err := json.Marshal(map[string]string{"path": producer})
+	if err != nil {
+		return false
+	}
+	return ceiling.Check("read", json.RawMessage(args)).Action == approval.ActionAllow
+}
+
 func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 	if !a.remembers() {
 		return
@@ -626,11 +659,12 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 				continue
 			}
 			// THE NEIGHBOURHOOD DISCOVERS; THE CONSENT POLICY AUTHORIZES. A path
-			// the policy does not plainly allow is refused here, before its owner
-			// is minted and before any byte is read, hashed or journaled -- so a
-			// genuine-looking consume of a private sibling repository the policy
-			// denies proves nothing.
-			if !a.contextualProducerReadAllowed(producer) {
+			// neither the LIVE policy nor the origin's FROZEN ADMISSION CEILING
+			// plainly allows is refused here, before its owner is minted and
+			// before any byte is read, hashed or journaled -- so a genuine-looking
+			// consume of a private sibling repository the policy denies proves
+			// nothing, and a later blanket allow cannot widen an old admission.
+			if !a.contextualProducerReadAllowedUnder(producer, source.Ceiling) {
 				continue
 			}
 			producerOwner := contextualPathOwner(producer)

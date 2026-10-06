@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/reflex"
@@ -44,7 +45,13 @@ type memoryTurnEvidence struct {
 	// the dependency seam can hold a forwarded read to the owner it was admitted
 	// into even though the edge's two endpoint owners are derived from the paths.
 	// Empty for a conversation's own turn.
-	Owner    string
+	Owner string
+	// Ceiling is the ADMISSION-TIME approval policy a delegated origin was
+	// stamped with (its frozen read ceiling), carried so the dependency seam can
+	// judge a forwarded producer re-read under BOTH that ceiling and the live
+	// policy. Nil for a conversation's own turn, which has no admission of its
+	// own and answers only to the live policy.
+	Ceiling  *approval.Policy
 	Receipts []memoryToolReceipt
 	At       time.Time
 }

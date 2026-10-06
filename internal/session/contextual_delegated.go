@@ -79,6 +79,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -155,6 +156,16 @@ type delegatedOrigin struct {
 	// workers of one node each starting job 1 must not share a source key; the
 	// task label alone is not enough.
 	Run string
+	// ReadCeiling is the ADMISSION-TIME approval policy, captured read-only at
+	// worker creation beside the rest of the origin. It is the CEILING the
+	// framework's own producer re-reads are judged by: a producer the admission
+	// policy did not plainly allow can never be read merely because the root
+	// later anchors somewhere else and gains a blanket allow. A nil ceiling means
+	// the session was admitted with the configured-nothing policy, which is the
+	// consent engine's own allow; the LIVE policy still applies on top, so a
+	// later deny revokes. The pointer is never written after capture (a pushed
+	// policy replaces the pointer, it does not edit the rule set).
+	ReadCeiling *approval.Policy
 }
 
 type outcomeCollector struct {
@@ -233,6 +244,11 @@ func (c *outcomeCollector) rootOrigin() delegatedOrigin {
 		Session: root.memorySourceSession(),
 		Owner:   root.ownerForScope(store.MemoryScopeProject),
 	}
+	// THE READ CEILING IS FROZEN HERE, WITH THE REST OF THE ORIGIN. It is the
+	// admission-time consent policy, taken through the one guarded reader
+	// ([Agent.approvalGate]) so a worker's producer re-reads answer to the rules
+	// in force when it was admitted, not to whatever a later anchor pushed.
+	origin.ReadCeiling = root.approvalGate()
 	// THE PROJECT IS DERIVED FROM THE OWNER JUST TAKEN, so the two can never
 	// disagree: a project owner spells its key, and a non-project owner spells
 	// none. Reading the live key here instead would be the very leak this field
@@ -562,7 +578,7 @@ func (c *outcomeCollector) observeRead(worker *Agent, origin delegatedOrigin, ca
 	defer c.inflight.Done()
 	// The turn identity is the FROZEN root turn, never the live one: a late read
 	// cannot bind itself to the user turn that happens to be current.
-	c.root.observeContextualDependencies(memoryTurnEvidence{Session: origin.Session, Turn: origin.Turn, Project: originProjectKey(origin), Owner: origin.Owner, Receipts: rows})
+	c.root.observeContextualDependencies(memoryTurnEvidence{Session: origin.Session, Turn: origin.Turn, Project: originProjectKey(origin), Owner: origin.Owner, Receipts: rows, Ceiling: origin.ReadCeiling})
 }
 
 // admitAttempt answers whether this attempt may proceed, taking its in-flight
