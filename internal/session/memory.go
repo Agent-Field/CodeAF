@@ -237,8 +237,16 @@ func (a *Agent) ownerForScope(scope string) string {
 // read-only lent brain explicitly, so its binding read is scoped to the same
 // project its conversation's was ([Agent.prepareWorkerBinding]).
 func (a *Agent) memoryOwners() []string {
+	return a.memoryOwnersFor(a.config.MemoryProjectKey)
+}
+
+// memoryOwnersFor is [Agent.memoryOwners] for an EXPLICIT project key, so a
+// caller holding a FROZEN scope (a task node's optional recall, captured at
+// admission) can read the owner set it was admitted under rather than whatever
+// project the conversation has since anchored to. It is the one list builder.
+func (a *Agent) memoryOwnersFor(projectKey string) []string {
 	owners := []string{store.OwnerUser, store.OwnerMachine}
-	if key := strings.TrimSpace(a.config.MemoryProjectKey); key != "" {
+	if key := strings.TrimSpace(projectKey); key != "" {
 		owners = append(owners, store.OwnerProject(key))
 	}
 	return owners
@@ -340,6 +348,15 @@ func (a *Agent) memoryBlock(ctx context.Context, cue string) string {
 	return a.routedMemory(ctx, cue, nil, false)
 }
 
+// memoryBlockScoped is [Agent.memoryBlock] under a FROZEN owner set and project
+// key, for a task node's optional recall: the node is admitted under one project
+// and the conversation may anchor to another while the router is still in flight,
+// so the read must resolve the owner it was ADMITTED into rather than the live
+// one. Empty owners is empty.
+func (a *Agent) memoryBlockScoped(ctx context.Context, cue string, owners []string, projectKey string) string {
+	return a.routedMemoryScoped(ctx, cue, nil, false, owners, projectKey)
+}
+
 // ── what a task node is handed ──────────────────────────────────────────────
 
 // nodeMemory is the block one task node's brief was routed to, read ONCE per
@@ -369,6 +386,13 @@ type nodeMemory struct {
 	// a constructor building a DIFFERENT node's worker, and a part must never be
 	// handed its parent's memories under its own brief.
 	id uint64
+	// owners and projectKey are the node's ADMITTED scope, frozen when the reading
+	// is created. A root anchor may move the conversation to another repository
+	// while this route is still in flight, so the read resolves the owner it was
+	// admitted under rather than the live one: an admitted job's optional recall
+	// is never widened to the new project after the transition.
+	owners     []string
+	projectKey string
 	// start routes the brief the first time any worker asks for it, and the
 	// runner may ask for it earlier to overlap the working copy being made.
 	start  sync.Once
@@ -397,10 +421,18 @@ func (a *Agent) withNodeMemory(ctx context.Context, node *TaskNode) (context.Con
 		return ctx, func() {}
 	}
 	cue := node.assembledBrief()
+	// FROZEN AT ADMISSION, LIKE THE BINDING KEY. The owners and project key are
+	// read once here, while the node's admission scope is settled, so a routing
+	// that finishes after the conversation anchors cannot read the new project's
+	// memory into this node's worker.
+	owners := a.memoryOwners()
+	projectKey := strings.TrimSpace(a.config.MemoryProjectKey)
 	memory := &nodeMemory{
-		id:    node.id,
-		ctx:   ctx,
-		route: func(ctx context.Context) string { return a.memoryBlock(ctx, cue) },
+		id:         node.id,
+		owners:     owners,
+		projectKey: projectKey,
+		ctx:        ctx,
+		route:      func(ctx context.Context) string { return a.memoryBlockScoped(ctx, cue, owners, projectKey) },
 	}
 	return context.WithValue(ctx, nodeMemoryKey{}, memory), memory.end
 }
@@ -495,6 +527,11 @@ func (a *Agent) takeMemory(block string) {
 		return
 	}
 	a.memoryText = block
+	// THE ROUTED BLOCK IS THE OPTIONAL HALF of a worker's context: it may spend
+	// only what is left of the one shared [memoryBlockRunes] ceiling after the
+	// mandatory approved-binding block, trimmed by whole records and never cut
+	// mid-rule (contextual_memory.go's [Agent.reserveBindingFirstLocked]).
+	a.reserveBindingFirstLocked()
 }
 
 // refreshMemory is the conversation's own call: route this turn's message, hand
@@ -750,6 +787,15 @@ func (r *recallAside) everAsked() bool { return r != nil && r.reading.everAsked(
 // reading borrowing its parent's store; record says whether the ids it injected
 // are this session's to count.
 func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), record bool) string {
+	return a.routedMemoryScoped(ctx, cue, say, record, a.memoryOwners(), strings.TrimSpace(a.config.MemoryProjectKey))
+}
+
+// routedMemoryScoped is [Agent.routedMemory] under an explicit owner set and
+// project key: the conversation passes its live ones, and a task node's optional
+// recall passes the scope FROZEN at its admission ([memoryBlockScoped]). The
+// project key also stamps the eligibility conditions, so both the candidate
+// shortlist and the final rows are filtered to the scoped owner either way.
+func (a *Agent) routedMemoryScoped(ctx context.Context, cue string, say func(string), record bool, owners []string, projectKey string) string {
 	if !a.memoryWritable() {
 		return ""
 	}
@@ -773,7 +819,7 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), 
 	// near-synonymous preferences is nothing but hard distractors, and rejecting
 	// them is the one job arithmetic cannot do. Showing it the haystack is what
 	// stops.
-	candidates, err := a.memory.store.MemoryCandidates(a.memoryOwners(), cue, store.MemoryCandidatesDefault)
+	candidates, err := a.memory.store.MemoryCandidates(owners, cue, store.MemoryCandidatesDefault)
 	if err != nil || len(candidates) == 0 {
 		// AN EMPTY SHORTLIST IS NOT A CALL, and with two arithmetic rankings
 		// under it an empty one means an empty store. There is nothing to route
@@ -799,7 +845,7 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), 
 	if len(routed.Inject) == 0 {
 		return ""
 	}
-	memories, err := a.memory.store.GetMemories(a.memoryOwners(), routed.Inject)
+	memories, err := a.memory.store.GetMemories(owners, routed.Inject)
 	if err != nil || len(memories) == 0 {
 		return ""
 	}
@@ -809,7 +855,7 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), 
 	a.memory.mu.Lock()
 	revision := a.memory.revisions[turn]
 	a.memory.mu.Unlock()
-	memories = a.contextualEligibleMemories(memories, revision)
+	memories = a.contextualEligibleFor(a.memory.store, memories, revision, projectKey)
 	block, kept := renderMemoryBlock(memories, time.Now())
 	if record {
 		a.memory.setInjected(kept)
@@ -886,6 +932,22 @@ func (a *Agent) runMemoryCommand(say func(string), cmd reflex.Cmd) {
 // zeroes and is also the honest answer for a row whose journal entry predates
 // the column.
 func renderMemoryBlock(memories []store.Memory, now time.Time) (string, []reflex.Stub) {
+	return renderMemoryBlockWithin(memories, now, memoryBlockRunes, false)
+}
+
+// renderMemoryBlockWithin is [renderMemoryBlock] against an explicit ceiling, so
+// a projection that must SHARE [memoryBlockRunes] with another block (a worker's
+// approved bindings beside its routed shortlist, contextual_memory.go) can spend
+// only its own share of the one note budget. Selection stays whole-record: a line
+// that does not fit is OMITTED, never cut mid-record, so an approved rule is
+// either shown in full or absent — it is never silently rewritten by a clip.
+//
+// skipOversized chooses how an over-budget record is omitted. The router's own
+// block keeps its historical TAIL-DROP (false): the last line it named is the
+// one it thought about least, so once the budget is spent everything after it
+// goes. A binding projection asks for SKIP (true) so one oversized approved rule
+// quarantines itself without starving the smaller approved rules behind it.
+func renderMemoryBlockWithin(memories []store.Memory, now time.Time, limit int, skipOversized bool) (string, []reflex.Stub) {
 	var (
 		body strings.Builder
 		kept []reflex.Stub
@@ -900,7 +962,14 @@ func renderMemoryBlock(memories []store.Memory, now time.Time) (string, []reflex
 			line += " (learned " + age + ")"
 		}
 		length := utf8.RuneCountInString(line) + 1
-		if used+length > memoryBlockRunes {
+		// A RECORD TOO LONG FOR WHAT IS LEFT IS OMITTED WHOLE, never mutated to
+		// fit. Which omission depends on the caller: a binding projection SKIPS
+		// it so later records can still land, and the router's own block drops
+		// the tail as it always did.
+		if used+length > limit {
+			if skipOversized {
+				continue
+			}
 			break
 		}
 		used += length

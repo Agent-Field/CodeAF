@@ -141,6 +141,13 @@ type delegatedOriginState struct {
 type delegatedOrigin struct {
 	Session string
 	Owner   string
+	// Project is the project identity this worker was ADMITTED under, frozen at
+	// the same instant as Owner. It is recorded EXPLICITLY rather than read from
+	// the root's live [Config.MemoryProjectKey] at write time, so a root anchor
+	// that moves the conversation to another repository mid-run cannot relabel an
+	// already-admitted worker's receipt or widen the project its conditions name
+	// ([originProjectKey] recovers it from Owner when this is empty).
+	Project string
 	Turn    string
 	Goal    string
 	Task    string
@@ -226,6 +233,11 @@ func (c *outcomeCollector) rootOrigin() delegatedOrigin {
 		Session: root.memorySourceSession(),
 		Owner:   root.ownerForScope(store.MemoryScopeProject),
 	}
+	// THE PROJECT IS DERIVED FROM THE OWNER JUST TAKEN, so the two can never
+	// disagree: a project owner spells its key, and a non-project owner spells
+	// none. Reading the live key here instead would be the very leak this field
+	// exists to close.
+	origin.Project = projectKeyFromOwner(origin.Owner)
 	root.memory.mu.Lock()
 	origin.Turn, origin.Goal = root.memory.outcomeTurnID, root.memory.outcomeGoal
 	root.memory.mu.Unlock()
@@ -234,6 +246,43 @@ func (c *outcomeCollector) rootOrigin() delegatedOrigin {
 
 func delegatedOriginKey(origin delegatedOrigin) string {
 	return origin.Session + "\x00" + origin.Turn + "\x00" + origin.Task
+}
+
+// projectKeyFromOwner recovers a project key from a FROZEN owner. It is the safe
+// derivation for an origin that carries only its owner: a project-kind owner
+// spells the key it was minted from ([store.OwnerProject]), and the legacy
+// quarantine owner spells NO project, so a quarantined row is never widened to a
+// named one. It reads no live session field, so a later anchor cannot relabel it.
+func projectKeyFromOwner(owner string) string {
+	owner = strings.TrimSpace(owner)
+	if owner == store.OwnerLegacyProject {
+		return ""
+	}
+	if !strings.HasPrefix(owner, "project:") {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(owner, "project:"))
+}
+
+// originProjectKey is the project a frozen delegated origin was ADMITTED under.
+// The explicit [delegatedOrigin.Project] wins; an origin carrying only its owner
+// recovers the key from that owner. Either way it is the admission-time project,
+// NEVER the root's live [Config.MemoryProjectKey], so a root anchor mid-run
+// cannot relabel an already-admitted worker's receipt or widen its owner set.
+func originProjectKey(origin delegatedOrigin) string {
+	if key := strings.TrimSpace(origin.Project); key != "" {
+		return key
+	}
+	return projectKeyFromOwner(origin.Owner)
+}
+
+// jobOriginProjectKey is [originProjectKey] for a promoted job's frozen
+// provenance: its own field when set, otherwise the key its owner spells.
+func jobOriginProjectKey(origin jobOrigin) string {
+	if key := strings.TrimSpace(origin.Project); key != "" {
+		return key
+	}
+	return projectKeyFromOwner(origin.Owner)
 }
 
 func delegatedSourceKey(origin delegatedOrigin, id string) string {
@@ -318,8 +367,11 @@ func (c *outcomeCollector) observeAttempt(worker *Agent, origin delegatedOrigin,
 	if preSnapshot != post {
 		snapshot = "unknown"
 	}
+	// THE CONDITIONS NAME THE ADMITTED PROJECT, NEVER THE ROOT'S LIVE ONE. A root
+	// anchor between admission and this write must not scope an already-admitted
+	// worker's receipt to a repository it was never in ([originProjectKey]).
 	conditions := map[string]string{}
-	if projectKey := strings.TrimSpace(c.root.config.MemoryProjectKey); projectKey != "" {
+	if projectKey := originProjectKey(origin); projectKey != "" {
 		conditions["project"] = projectKey
 	}
 	receipts := []string{}
@@ -398,6 +450,20 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 		return
 	}
 	state := c.stateLocked(originKey)
+	// THE WORKER'S OWN WORKSPACE BELONGS IN THE ELIGIBILITY CALL. The outcome
+	// owner is widening alternativeEligible with an optional trailing workspace
+	// parameter so an unrelated command run from the SAME BASENAME elsewhere
+	// cannot be read as the remedy for a failure (the A4 false positive). This
+	// delegated caller must pass the worker's workspace ONCE that parameter
+	// exists; this branch cannot add the argument yet without failing to compile
+	// against the un-widened signature, so the EXACT required change is recorded
+	// here for root integration:
+	//
+	//   !alternativeEligible(call, state.altTool, state.altAction, origin.Goal, worker.config.Workspace)
+	//
+	// It is stated, not applied, because adding a fifth argument to a four-argument
+	// function is exactly the compile error the parallel owner's file must land
+	// first (§4 of the follow-through brief permits documenting it).
 	if state.altDone || state.altOf == "" || state.emissions >= delegatedAttemptEmissionMax || !alternativeEligible(call, state.altTool, state.altAction, origin.Goal) {
 		c.mu.Unlock()
 		return
@@ -413,8 +479,10 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 	if preSnapshot != post {
 		snapshot = "unknown"
 	}
+	// THE SAME ADMITTED PROJECT AS ITS FAILURE, for the same reason: the pair is
+	// one fact under one owner and must not straddle a later root anchor.
 	conditions := map[string]string{}
-	if projectKey := strings.TrimSpace(c.root.config.MemoryProjectKey); projectKey != "" {
+	if projectKey := originProjectKey(origin); projectKey != "" {
 		conditions["project"] = projectKey
 	}
 	e := store.ContextualAttempt{
@@ -462,6 +530,16 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 // tool name. The read is accumulated against its frozen origin so two reads of
 // one node can form an observed link, and the bound keeps one origin finite.
 func (c *outcomeCollector) observeRead(worker *Agent, origin delegatedOrigin, call ai.ToolCall, result toolResult) {
+	// FORWARD ONLY UNDER AN AUTHENTIC, FROZEN SESSION AND OWNER. The dependency
+	// seam pairs a delegated read with the root's own live trusted reads by the
+	// NUMERIC turn parsed out of Turn, so an origin carrying a BORROWED session
+	// (or an owner that is not a valid frozen one) with a colliding numeric turn
+	// could pull another session's or another owner's reads into this worker's
+	// edge. Refuse rather than widen: a read this collector cannot prove belongs
+	// to its own root is not forwarded at all.
+	if strings.TrimSpace(origin.Session) != c.root.memorySourceSession() || !store.ValidOwner(origin.Owner) {
+		return
+	}
 	receipt := memoryToolReceipt{ID: call.ID, Tool: call.Function.Name, Text: redact.Secrets(contextualClip(result.text, contextualReceiptRunes)), Status: toolStatus(result)}
 	receipt = worker.contextualReadReceipt(context.Background(), call, result, receipt)
 	if receipt.Path == "" || receipt.Hash == "" {
@@ -489,7 +567,7 @@ func (c *outcomeCollector) observeRead(worker *Agent, origin delegatedOrigin, ca
 	defer c.inflight.Done()
 	// The turn identity is the FROZEN root turn, never the live one: a late read
 	// cannot bind itself to the user turn that happens to be current.
-	c.root.observeContextualDependencies(memoryTurnEvidence{Session: origin.Session, Turn: origin.Turn, Receipts: rows})
+	c.root.observeContextualDependencies(memoryTurnEvidence{Session: origin.Session, Turn: origin.Turn, Project: originProjectKey(origin), Owner: origin.Owner, Receipts: rows})
 }
 
 // admitAttempt answers whether this attempt may proceed, taking its in-flight
@@ -650,6 +728,11 @@ type jobOrigin struct {
 	Turn    string
 	Goal    string
 	Owner   string
+	// Project is the project identity the launching agent was ADMITTED under,
+	// frozen at launch for the same reason Owner is: a root anchor afterwards
+	// must not relabel a promoted job's settled receipt or widen its conditions
+	// ([jobOriginProjectKey] recovers it from Owner when this is empty).
+	Project string
 	// Worker is the launching worker Agent's identity, frozen at its creation.
 	// It is empty for a job launched by the root session, whose stable session
 	// identity is read at settle instead.
@@ -672,9 +755,10 @@ func (a *Agent) frozenJobOrigin() jobOrigin {
 		if strings.TrimSpace(o.Session) == "" || strings.TrimSpace(o.Turn) == "" {
 			return jobOrigin{}
 		}
-		return jobOrigin{Turn: o.Turn, Goal: o.Goal, Owner: o.Owner, Worker: o.Run}
+		return jobOrigin{Turn: o.Turn, Goal: o.Goal, Owner: o.Owner, Project: o.Project, Worker: o.Run}
 	}
-	origin := jobOrigin{Owner: a.ownerForScope(store.MemoryScopeProject)}
+	owner := a.ownerForScope(store.MemoryScopeProject)
+	origin := jobOrigin{Owner: owner, Project: projectKeyFromOwner(owner)}
 	a.memory.mu.Lock()
 	origin.Turn, origin.Goal = a.memory.outcomeTurnID, a.memory.outcomeGoal
 	a.memory.mu.Unlock()
@@ -757,8 +841,10 @@ func (c *outcomeCollector) settleJob(one *job, code int) {
 	if strings.TrimSpace(receipt) == "" {
 		receipt = fmt.Sprintf("job %d exited %d", one.id, code)
 	}
+	// THE JOB'S PROJECT IS THE LAUNCHING AGENT'S ADMITTED PROJECT, frozen with
+	// the launch turn; a root anchor before the job dies must not relabel it.
 	conditions := map[string]string{}
-	if projectKey := strings.TrimSpace(root.config.MemoryProjectKey); projectKey != "" {
+	if projectKey := jobOriginProjectKey(origin); projectKey != "" {
 		conditions["project"] = projectKey
 	}
 	e := store.ContextualAttempt{

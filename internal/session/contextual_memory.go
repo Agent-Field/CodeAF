@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
@@ -34,8 +35,18 @@ type memoryToolReceipt struct {
 }
 type memoryTurnEvidence struct {
 	Session, Turn, User, Revision string
-	Receipts                      []memoryToolReceipt
-	At                            time.Time
+	// Project is the ADMITTED project a delegated origin's receipts belong to,
+	// carried so the dependency seam can scope an emission to the admission-time
+	// project rather than the root's live [Config.MemoryProjectKey]. Empty for a
+	// conversation's own turn, whose receipts already carry their file's owner.
+	Project string
+	// Owner is the FROZEN owner a delegated origin was admitted under, carried so
+	// the dependency seam can hold a forwarded read to the owner it was admitted
+	// into even though the edge's two endpoint owners are derived from the paths.
+	// Empty for a conversation's own turn.
+	Owner    string
+	Receipts []memoryToolReceipt
+	At       time.Time
 }
 
 // recordMemoryTool retains independent receipts, including failure and refusal.
@@ -273,7 +284,7 @@ func (a *Agent) prepareWorkerBinding(cue string) {
 	if a.memory != nil || a.config.bindingStore == nil {
 		return
 	}
-	block := contextualClip(renderBindingBlock(a.bindingMemories(a.config.bindingStore, cue, "")), memoryBlockRunes)
+	block := renderBindingBlock(a.bindingMemories(a.config.bindingStore, cue, ""))
 	if block == "" {
 		return
 	}
@@ -283,7 +294,66 @@ func (a *Agent) prepareWorkerBinding(cue string) {
 		return
 	}
 	a.bindingText = block
+	// THE BINDING IS MANDATORY AND RESERVED FIRST; whatever routed memory has
+	// already arrived is bounded to what is LEFT of the one shared ceiling.
+	a.reserveBindingFirstLocked()
 	a.landVolatileLocked()
+}
+
+// reserveBindingFirstLocked bounds a task worker's TWO moving blocks under ONE
+// shared [memoryBlockRunes] ceiling rather than each claiming it. The approved
+// binding block is MANDATORY and is reserved whole ([prepareWorkerBinding]); the
+// asynchronous semantic block is the OPTIONAL remainder and is trimmed to what
+// is left by whole records, so neither block is ever cut mid-sentence. The
+// caller holds a.mu.
+func (a *Agent) reserveBindingFirstLocked() {
+	binding := strings.TrimSpace(a.bindingText)
+	if binding == "" {
+		return
+	}
+	limit := memoryBlockRunes - utf8.RuneCountInString(binding)
+	if limit < 0 {
+		limit = 0
+	}
+	a.memoryText = trimRenderedMemoryBlock(strings.TrimSpace(a.memoryText), limit)
+}
+
+// trimRenderedMemoryBlock drops trailing RECORDS from a rendered <memory> block
+// until it fits limit runes, keeping whole lines and the block's own wrapper. A
+// block whose shape is unknown is omitted WHOLE rather than cut: an honest
+// absence is the contract, a mutated record is not.
+func trimRenderedMemoryBlock(block string, limit int) string {
+	if block == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(block) <= limit {
+		return block
+	}
+	if limit <= 0 {
+		return ""
+	}
+	const (
+		openTag  = "<memory>"
+		closeTag = "</memory>"
+	)
+	start := strings.Index(block, openTag)
+	if start < 0 || !strings.HasSuffix(block, closeTag) {
+		return ""
+	}
+	inner := block[start+len(openTag) : len(block)-len(closeTag)]
+	lines := strings.Split(strings.Trim(inner, "\n"), "\n")
+	var kept []string
+	for _, line := range lines {
+		candidate := openTag + "\n" + strings.Join(append(append([]string(nil), kept...), line), "\n") + "\n" + closeTag
+		if utf8.RuneCountInString(candidate) > limit {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if len(kept) == 0 {
+		return ""
+	}
+	return openTag + "\n" + strings.Join(kept, "\n") + "\n" + closeTag
 }
 
 // rebindAfterAnchor recomputes a conversation's binding block for the project it
@@ -294,15 +364,24 @@ func (a *Agent) prepareWorkerBinding(cue string) {
 // [Agent.landVolatileLocked] appends a new note, and the last such note is the
 // one that holds. The caller holds a.mu.
 //
-// THE OUTCOME PAIRING IS NOT RESET HERE. A failure demonstrated under the scratch
-// owner BEFORE this anchor must never pair a success earned under the anchored
-// repository as its observed alternative — that would be a fabricated causal
-// conclusion across two owners, and it would attach a receipt to a project that
-// never earned it. The pairing identity and its turn circumstances live in
-// contextual_outcome.go, which this door DELIBERATELY does not touch: the
-// required reset/check (drop outcomeFailedKey/outcomeAlternativeDone, and refuse
-// to pair across a project change) belongs to that file's owner. It is recorded
-// here because this is the one place the owner changes mid-turn.
+// AND THE OWNER CHANGE INVALIDATES EVERY OWNER-RELATIVE STATE THAT WAS EARNED
+// UNDER THE OLD ONE. A failure demonstrated under the scratch owner BEFORE this
+// anchor must never pair a success earned under the anchored repository as its
+// observed alternative: that would fabricate a causal conclusion across two
+// owners and attach a receipt to a project that never earned it. So the pending
+// failure and its unspent alternative slot are cleared HERE, in the one place the
+// owner changes mid-turn, under the held a.mu and the brain's own lock. The
+// cached impact reading is cleared for the same reason: it was computed against
+// the scratch owner's dependency edges, and a cached block re-read within the same
+// turn would carry that scratch consequence into the repository the conversation
+// has just moved to.
+//
+// THE FIELDS ARE TOUCHED DIRECTLY AND THE READ IS RE-DERIVED, rather than calling
+// a reset in contextual_outcome.go: the two files share this package and the
+// struct, so there is no interface to race with a parallel owner, and a helper
+// method that did not exist in this worktree would be a compile-time dependency
+// on somebody else's edit. What is reset is exactly the state keyed to the old
+// owner, and nothing else the turn has already said is rewritten.
 func (a *Agent) rebindAfterAnchor() {
 	if !a.remembers() {
 		return
@@ -311,8 +390,24 @@ func (a *Agent) rebindAfterAnchor() {
 	cue := a.memory.outcomeGoal
 	turn := a.turnSeq
 	revision := a.memory.revisions[turn]
+	// THE PRE-ANCHOR PAIRING DOES NOT SURVIVE THE ANCHOR. Dropping the key also
+	// drops the turn's pending causal claim; a post-anchor success must start a
+	// fresh pairing under the repository's owner or none at all.
+	a.memory.outcomeFailedKey = ""
+	a.memory.outcomeFailedTool = ""
+	a.memory.outcomeFailedAction = ""
+	a.memory.outcomeAlternativeDone = false
+	// AND THE SCRATCH IMPACT READING GOES WITH IT: the cached block, its cue and
+	// its held notices were all owner-relative and must be recomputed against the
+	// repository on the next request rather than replayed from the scratch owner.
+	a.memory.impactTurn = 0
+	a.memory.impactPrepared = false
+	a.memory.impactBlock = ""
+	a.memory.impactCue = ""
+	a.memory.impactNotices = nil
+	a.memory.impactOrder = nil
 	a.memory.mu.Unlock()
-	block := contextualClip(a.bindingContext(cue, revision), memoryBlockRunes)
+	block := a.bindingContext(cue, revision)
 	a.memoryText = block
 	a.landVolatileLocked()
 }
@@ -396,15 +491,31 @@ func (a *Agent) bindingMemories(st *store.Store, cue, revision string) []store.M
 	return memories
 }
 
+// bindingBlockPreamble is the sentence every binding block opens with, after
+// the <memory> tag: the same words ride in front of a conversation and a task
+// worker, so a worker cannot be told a weaker rule than the conversation it was
+// built from.
+const bindingBlockPreamble = "Apply only under each claim's stated conditions and exceptions. Source words take precedence over interpretations. Proposals and old observations are not approved rules or current test proof. An opportunity does not authorize new work."
+
 // renderBindingBlock is the ONE rendering of a binding projection, header and
-// all. The same words ride in front of a conversation and a task worker, so a
-// worker cannot be told a weaker rule than the conversation it was built from.
+// all. It spends its share of the ONE [memoryBlockRunes] ceiling: the block it
+// returns never exceeds that ceiling, because the record selection is handed a
+// budget reduced by the preamble and wrapper it will add. A record that does not
+// fit is omitted WHOLE by the renderer, so an approved rule is shown in full or
+// not at all.
 func renderBindingBlock(memories []store.Memory) string {
-	block, _ := renderMemoryBlock(memories, time.Now())
-	if block != "" {
-		block = strings.Replace(block, "<memory>", "<memory>\nApply only under each claim's stated conditions and exceptions. Source words take precedence over interpretations. Proposals and old observations are not approved rules or current test proof. An opportunity does not authorize new work.", 1)
+	// The rendered block adds the preamble and one newline over the raw
+	// <memory> wrapper [renderMemoryBlockWithin] measures, so the body budget is
+	// the ceiling less exactly those bytes.
+	limit := memoryBlockRunes - utf8.RuneCountInString(bindingBlockPreamble) - 1
+	if limit < 0 {
+		limit = 0
 	}
-	return block
+	block, _ := renderMemoryBlockWithin(memories, time.Now(), limit, true)
+	if block == "" {
+		return ""
+	}
+	return strings.Replace(block, "<memory>", "<memory>\n"+bindingBlockPreamble, 1)
 }
 
 func (a *Agent) contextualEligibleMemories(memories []store.Memory, revision string) []store.Memory {
@@ -415,8 +526,16 @@ func (a *Agent) contextualEligibleMemories(memories []store.Memory, revision str
 // explicitly named store, so a worker's read-only binding read can apply the
 // same eligibility guards without owning a brain.
 func (a *Agent) contextualEligibleWith(st *store.Store, memories []store.Memory, revision string) []store.Memory {
+	return a.contextualEligibleFor(st, memories, revision, a.config.MemoryProjectKey)
+}
+
+// contextualEligibleFor is [Agent.contextualEligibleWith] under an EXPLICIT
+// project key, so a caller holding a frozen scope (a task node's optional recall)
+// filters eligibility against the project it was admitted into rather than the
+// live one. The guards are otherwise identical.
+func (a *Agent) contextualEligibleFor(st *store.Store, memories []store.Memory, revision, projectKey string) []store.Memory {
 	result := make([]store.Memory, 0, len(memories))
-	conditions := map[string]string{"project": a.config.MemoryProjectKey, "revision": revision}
+	conditions := map[string]string{"project": projectKey, "revision": revision}
 	for _, m := range memories {
 		e, err := st.ContextualEvidenceForMemory(m.Owner, m.ID)
 		if err == sql.ErrNoRows {
