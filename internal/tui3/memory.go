@@ -243,6 +243,12 @@ func (a *app) runForget(query string) tea.Cmd {
 	return a.memoryCall(func() (string, error) {
 		title, err := agent.Forget(query)
 		if err != nil {
+			// A PARTIAL FORGET SAYS SO. Some evidence was retired and some
+			// could not be; claiming either "forgot" or a bare failure would
+			// be untrue.
+			if title != "" {
+				return "partly forgot · " + title + " · " + err.Error(), err
+			}
 			return "could not forget that · " + err.Error(), err
 		}
 		if title == "" {

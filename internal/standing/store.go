@@ -42,11 +42,12 @@ func (s *Store) Create(item Item) (Item, error) {
 	if err := checkID(item.ID); err != nil {
 		return Item{}, err
 	}
-	item.Schema = SchemaOf(item)
 	item.Status = StatusActive
 	item.RetiredWhy = ""
 	item.Created = now
 	item.Updated = now
+	item.Revision = 1
+	item.Schema = SchemaOf(item)
 	due, err := firstDue(item, now)
 	if err != nil {
 		return Item{}, err
@@ -81,6 +82,28 @@ func firstDue(item Item, now time.Time) (time.Time, error) {
 
 // Save rewrites one item's document, temp+rename under its flock, and stamps
 // Updated. It validates first.
+//
+// IT BUMPS [Item.Revision] FROM THE DOCUMENT ON DISK, read inside the same lock
+// as the write. That is what makes a person's edit, pause or resume visible to
+// a pass that is holding a copy from before it ([Store.saveActive] refuses to
+// write over a revision it did not read).
+//
+// A WHOLE-DOCUMENT WRITE TAKES THE RUNTIME STATE FROM DISK, EXACTLY. This door is
+// the person's — a pause, a stop, an edit, a resume — and the row a surface hands
+// back was drawn before the ticker committed or settled the delivery intents
+// ([Item.Pending]) and the task's in-flight marker ([Item.TaskInflight]). The
+// document on disk is read INSIDE this lock and BOTH fields are copied from it
+// verbatim: an intent or marker the ticker committed after the row was read is
+// CARRIED rather than dropped, and one the ticker has since settled is NOT
+// RESURRECTED from the stale row. A union of the two was wrong in the second
+// direction: an intent the ticker had already settled came back from the person's
+// copy and blocked the item until they answered a line they had already seen.
+//
+// NEITHER FIELD IS THIS DOOR'S TO AUTHOR. No production caller of [Store.Save]
+// sets them — every one is a surface act on an existing row (a pause, a stop, an
+// edit, an exception, an origin move) — so the disk copy is the only truth there
+// is. The ticker commits and settles both through its own guarded write
+// ([Store.saveActive]), which is the one internal runtime door.
 func (s *Store) Save(item Item) error {
 	if err := item.Validate(); err != nil {
 		return err
@@ -88,9 +111,32 @@ func (s *Store) Save(item Item) error {
 	if err := checkID(item.ID); err != nil {
 		return err
 	}
-	item.Schema = SchemaOf(item)
-	item.Updated = s.now()
-	return s.write(item)
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(item.ID, func() error {
+		current, err := s.read(s.ItemPath(item.ID))
+		switch {
+		case err == nil:
+			item.Revision = current.Revision + 1
+			item.Pending = current.Pending
+			item.TaskInflight = current.TaskInflight
+		case errors.Is(err, ErrNotFound):
+			// NO DOCUMENT ON DISK IS THE CREATION SHAPE: there is nothing to
+			// carry, so the caller's own fields stand. Production creates through
+			// [Store.Create]; this branch only keeps a whole-document write of a
+			// document that does not exist from minting a wrong revision.
+			item.Revision = 1
+		default:
+			return err
+		}
+		item.Updated = s.now()
+		data, err := marshalItem(item)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(item.ID), data)
+	})
 }
 
 // SetStandingEffort sets how hard one item's firings and its checks think, and
@@ -113,14 +159,262 @@ func (s *Store) SetStandingEffort(id string, rung effort.Rung) error {
 	if err := checkID(id); err != nil {
 		return ErrNotFound
 	}
-	item, err := s.read(s.ItemPath(id))
-	if err != nil {
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
 		return err
 	}
-	item.Does.Effort = rung.String()
-	item.Schema = SchemaOf(item)
-	item.Updated = s.now()
-	return s.write(item)
+	// THE READ AND THE WRITE ARE ONE CRITICAL SECTION. Reading the rung's own
+	// field before taking the lock and writing the whole document after it would
+	// publish a copy that predates any intent or in-flight marker the ticker
+	// committed in between, exactly what [Store.Save] refuses; this door moves
+	// one field on the document on disk instead.
+	return s.underItemLock(id, func() error {
+		item, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		item.Does.Effort = rung.String()
+		item.Revision++
+		item.Schema = SchemaOf(item)
+		item.Updated = s.now()
+		data, err := marshalItem(item)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
+}
+
+// saveActive is the ticker's guarded write. It refuses in the three cases where
+// a whole-document write from a copy read at the top of a walk would do harm:
+//
+//   - THE ITEM IS GONE. A save must not resurrect a document somebody deleted.
+//   - THE ITEM CHANGED. A probe can take minutes; a pause, a stop, an edit or a
+//     resume landing during it is newer than the copy in hand, and
+//     [Item.Revision] is how that is seen. A status-only check is not enough:
+//     pause-then-resume leaves the status active, and only the revision number
+//     remembers that a person acted.
+//   - THE ITEM IS NO LONGER ACTIVE. A paused or retired item is not written to
+//     by a pass at all.
+//
+// On success it advances item's [Item.Revision] to match the document it just
+// wrote, so a caller that writes twice in one firing (the intent, then the
+// result) stays in step with disk. It answers [errConsentChanged] when it
+// refuses, which the ticker reads as "the person's act wins", not as a failure.
+func (s *Store) saveActive(item *Item) error {
+	if err := item.Validate(); err != nil {
+		return err
+	}
+	if err := checkID(item.ID); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(item.ID, func() error {
+		current, err := s.read(s.ItemPath(item.ID))
+		if errors.Is(err, ErrNotFound) {
+			return errConsentChanged
+		}
+		if err != nil {
+			return err
+		}
+		if current.Status != StatusActive || current.Revision != item.Revision {
+			return errConsentChanged
+		}
+		item.Revision = current.Revision + 1
+		item.Updated = s.now()
+		data, err := marshalItem(*item)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(item.ID), data)
+	})
+}
+
+// Arm captures a WhenFile item's baseline NOW, at ratification, and writes it,
+// so the reading the first tick compares against is the world as it stood when
+// the person said yes rather than the world five minutes later.
+//
+// IT IS A SEPARATE CALL AND NOT A LINE IN [Store.Create] ON PURPOSE. Create is
+// passive: it validates a document and writes it, and nothing about a passive
+// write may touch the filesystem the item points at or run a probe. Arming is
+// the ratifier's act — the session lane calls it after the card is answered —
+// and it is what makes "a change between the card and the first wake" a change
+// rather than the baseline. An item that is never armed keeps the old, silent
+// first-reading semantics exactly.
+//
+// IT READS AND WRITES UNDER THE ITEM'S OWN LOCK, so an edit that lands while
+// the scan runs is not overwritten by the whole document this call holds: the
+// document written is the one on disk with only the fingerprint set. A scan
+// that could not read everything it matched ([fingerprint]'s truncated answer)
+// sets NO baseline and answers [errBaselineIncomplete] — a partial reading
+// passed off as the baseline would make "nothing has changed" a lie.
+func (s *Store) Arm(id string) (Item, error) {
+	if err := checkID(id); err != nil {
+		return Item{}, ErrNotFound
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return Item{}, err
+	}
+	var out Item
+	err := s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		if current.Status != StatusActive {
+			return errConsentChanged
+		}
+		if current.When.Kind != WhenFile {
+			out = current
+			return nil
+		}
+		digest, _, truncated, err := fingerprint(current.Workspace, current.When.Glob)
+		if err != nil {
+			return err
+		}
+		if truncated {
+			return ErrBaselineIncomplete
+		}
+		current.Fingerprint = digest
+		current.Revision++
+		current.Schema = SchemaOf(current)
+		current.Updated = s.now()
+		data, err := marshalItem(current)
+		if err != nil {
+			return err
+		}
+		if err := writeAtomic(s.ItemPath(id), data); err != nil {
+			return err
+		}
+		out = current
+		return nil
+	})
+	return out, err
+}
+
+// NoteNeedsPerson makes a line visible on an item that has none, under the
+// item's own lock, and answers the item as written.
+//
+// IT NEVER OVERWRITES A QUESTION. A firing's own question is the item's words
+// put to the person; a ratifier that could not establish a file watch's baseline
+// is a lesser fact and must not replace it. An empty field is filled and the
+// document re-marshalled; the revision is bumped because a person's later edit
+// must still be seen as newer than a pass holding a copy from before.
+func (s *Store) NoteNeedsPerson(id, note string) error {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return nil
+	}
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(current.NeedsPerson) != "" {
+			return nil
+		}
+		current.NeedsPerson = note
+		current.Revision++
+		current.Updated = s.now()
+		data, err := marshalItem(current)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
+}
+
+// NoteSpend adds a judged check's cost to the item's lifetime figure, under the
+// item's own lock, without touching anything else on the document.
+//
+// WHY IT EXISTS BESIDE THE LEDGER. The daily rail is read from the LEDGER, so a
+// paid judgment that could not be decided already counts against the day. The
+// item's own lifetime figure is read from [Item.SpentUSD] and a card quotes it,
+// and an undecided check writes NOTHING on the item ([Ticker.one]'s
+// stateUndecided) — so before this door the item's figure silently lost every
+// refusal, timeout and ambiguity that was still billed. Adding it HERE, without
+// NextDue, Fingerprint, NeedsPerson, LastChecked or a status change, keeps the
+// undecided look from consuming the opportunity while still recording what it
+// cost. A failed write is returned, so the pass counts it rather than losing it
+// in silence.
+func (s *Store) NoteSpend(id string, usd float64) error {
+	if usd <= 0 {
+		return nil
+	}
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		current.SpentUSD += usd
+		current.Revision++
+		current.Updated = s.now()
+		data, err := marshalItem(current)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
+}
+
+// errConsentChanged is the ticker's answer when a guarded write ([saveActive])
+// found that the person paused, stopped, resumed or edited the item while a
+// pass had it in its hands. It is not a failure: it is the person's act winning.
+var errConsentChanged = errors.New("standing: the item was changed while it was being worked on")
+
+// ErrBaselineIncomplete is [Store.Arm] refusing to invent an [Item.Fingerprint]
+// from a scan that could not read everything it matched. It is exported because
+// the RATIFIER must see it: the session lane calls Arm when the card is answered
+// and turns this refusal into a visible [Item.NeedsPerson] rather than letting a
+// truncated scan pass as a baseline nobody was told was not set.
+var ErrBaselineIncomplete = errors.New("standing: the baseline scan could not read everything it matched, so no baseline was set")
+
+// errBaselineIncomplete is kept as an in-package spelling for the tests and the
+// store's own reading, so there is still exactly one error value.
+var errBaselineIncomplete = ErrBaselineIncomplete
+
+// markPendingOrphan records on a non-active item that an authorized delivery is
+// still waiting, so a paused, retired or expired item's unresolved line is
+// visible rather than silently forgotten. It reads the document UNDER THE LOCK
+// and writes it back whole, so a person's concurrent edit is not clobbered, and
+// it never overwrites a question the item already carries.
+func (s *Store) markPendingOrphan(id, note string) error {
+	if err := checkID(id); err != nil {
+		return ErrNotFound
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	return s.underItemLock(id, func() error {
+		current, err := s.read(s.ItemPath(id))
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(current.NeedsPerson) == "" {
+			current.NeedsPerson = note
+		}
+		current.Revision++
+		current.Schema = SchemaOf(current)
+		current.Updated = s.now()
+		data, err := marshalItem(current)
+		if err != nil {
+			return err
+		}
+		return writeAtomic(s.ItemPath(id), data)
+	})
 }
 
 // Get reads one item. A missing id is [ErrNotFound].
@@ -140,22 +434,45 @@ func (s *Store) Get(id string) (Item, error) {
 //
 // SKIPPING IS THE POINT. One document written by a build from the future, or
 // one truncated by a full disk, must not be able to stop every other standing
-// thing a person owns from being checked.
+// thing a person owns from being checked. List keeps the original erased
+// shape; [Store.ListChecked] is the same walk that also says what it skipped,
+// which is what a pass's wake log needs so that "nothing was examined" is
+// never read as "nothing was wrong".
 func (s *Store) List() ([]Item, error) {
+	items, _, err := s.ListChecked()
+	return items, err
+}
+
+// SkippedDoc is one document List could not read: its file name and why. It is
+// a diagnostic and not an item; the document stays on disk untouched so an
+// older or newer build that understands it still can.
+type SkippedDoc struct {
+	Name   string
+	Reason string
+}
+
+// ListChecked reads every item newest first and, beside them, reports each
+// document it skipped and the reason. An unreadable or newer-schema document is
+// skipped rather than fatal, but it is NEVER SILENT: the reader that has a
+// wake log ([Ticker.Tick]) writes the skipped set into it, so a pass is not
+// allowed to pass by the absence of a document it could not read.
+func (s *Store) ListChecked() ([]Item, []SkippedDoc, error) {
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
 	items := make([]Item, 0, len(entries))
+	var skipped []SkippedDoc
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
 		item, err := s.read(filepath.Join(s.root, entry.Name()))
 		if err != nil {
+			skipped = append(skipped, SkippedDoc{Name: entry.Name(), Reason: err.Error()})
 			continue
 		}
 		items = append(items, item)
@@ -166,7 +483,7 @@ func (s *Store) List() ([]Item, error) {
 		}
 		return items[a].Created.After(items[b].Created)
 	})
-	return items, nil
+	return items, skipped, nil
 }
 
 // ForWorkspace is List filtered to one project, the grouping home draws.
@@ -326,17 +643,30 @@ func (s *Store) read(path string) (Item, error) {
 }
 
 func (s *Store) write(item Item) error {
-	data, err := json.MarshalIndent(item, "", "  ")
+	data, err := marshalItem(item)
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
 	if err := os.MkdirAll(s.root, 0o700); err != nil {
 		return err
 	}
 	return s.underItemLock(item.ID, func() error {
 		return writeAtomic(s.ItemPath(item.ID), data)
 	})
+}
+
+// marshalItem is the one place an item becomes bytes on disk, so the append-only
+// writers and the whole-document writers cannot disagree about the shape.
+func marshalItem(item Item) ([]byte, error) {
+	// THE VERSION IS CHOSEN HERE, at the last moment before the bytes exist, so
+	// it reflects the pending, fingerprint and revision this very write mints
+	// rather than whatever the caller happened to hold when it started.
+	item.Schema = SchemaOf(item)
+	data, err := json.MarshalIndent(item, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
 }
 
 // underItemLock holds the item's own flock for the length of one write. It
@@ -395,6 +725,13 @@ func writeAtomic(path string, data []byte) error {
 		return err
 	}
 	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return err
+	}
+	// THE RENAME MUST NOT PUBLISH BYTES STILL IN THE PAGE CACHE: a crash after
+	// the rename but before the write reaches disk would leave an empty or torn
+	// document behind the name. Sync before Close, and report a Sync failure.
+	if err := temporary.Sync(); err != nil {
 		temporary.Close()
 		return err
 	}

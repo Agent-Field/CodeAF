@@ -537,8 +537,17 @@ func standingOptions(item standing.Item) []AnswerOption {
 			{Key: StandingNoKey, Label: "Don't remind me", Consequence: "You are not reminded.", Safe: true},
 		}
 	case standing.CardWatch:
+		// A ONE-SHOT CONDITION WATCH SAYS SO. Its yes is still "Watch for it",
+		// but the consequence is what actually happens: it tells the person
+		// once when the condition first turns true and then stops, and there is
+		// no false-then-true second notice. A recurring watch keeps the old
+		// sentence.
+		watches := "It watches until you stop it."
+		if item.When.OneShot {
+			watches = "It tells you once when the condition first turns true, then stops."
+		}
 		return []AnswerOption{
-			{Key: "1", Label: "Watch for it", Consequence: "It watches until you stop it."},
+			{Key: "1", Label: "Watch for it", Consequence: watches},
 			{Key: StandingOnceKey, Label: "Check once now", Consequence: "Checks once now. Nothing keeps watching."},
 			{Key: StandingNoKey, Label: "Don't watch", Consequence: "Nothing watches.", Safe: true},
 		}

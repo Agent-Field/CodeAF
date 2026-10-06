@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -189,12 +190,22 @@ func TestAProgramsRowCrossesTheWireNamingItsProgram(t *testing.T) {
 // of that lane, whose event has no task payload and is raised outside a turn.
 func TestAStandingFiringReachesTheHostedConversation(t *testing.T) {
 	workspace := t.TempDir()
+	// THE HOSTED CONVERSATION IS A REAL SESSION WITH A REAL JOURNAL. A standing
+	// item is not address-less: it carries the conversation's own folder as its
+	// durable inbox, the way [Agent.standingOrigin] stamps one made in this room
+	// (tools_standing.go), and delivery files the note there BEFORE it is offered
+	// to any window (standing_run.go's deliver). A firing whose address is
+	// missing is not a firing that got through — the line would be lost the
+	// moment the window closed — so the item below names the journal of the
+	// session this test is actually sitting in.
+	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
 	far, err := session.New(session.Config{
-		Workspace: workspace,
-		Model:     "stub/standing-wire",
-		APIKey:    "fixture",
-		BaseURL:   "http://127.0.0.1:1/v1",
-		System:    "Test only.",
+		Workspace:   workspace,
+		SessionFile: transcript,
+		Model:       "stub/standing-wire",
+		APIKey:      "fixture",
+		BaseURL:     "http://127.0.0.1:1/v1",
+		System:      "Test only.",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -232,6 +243,9 @@ func TestAStandingFiringReachesTheHostedConversation(t *testing.T) {
 		ID:        "water",
 		Words:     "remind me in 1 minute to drink water",
 		Workspace: workspace,
+		// The hosted conversation's own journal folder, exactly as the stand
+		// tool stamps the origin of an item made in it.
+		Origin: standing.Origin{Transcript: transcript},
 	}
 	runner := session.NewStandingRunner(session.Config{}, t.TempDir())
 	if _, err := runner.Say(context.Background(), item, "Time to drink water!"); err != nil {

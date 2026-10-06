@@ -12,6 +12,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
 
@@ -73,12 +74,29 @@ var demoMemories = []demoMemory{
 }
 
 // writeMemories puts every memory into the store and answers how many it wrote.
-func writeMemories(brain *store.Store) (int, error) {
+//
+// THE PROJECT ROWS CARRY A REAL OWNER. A scope word alone would land them in
+// the quarantine ([store.OwnerLegacyProject]) — the honest answer for a row
+// whose project nobody proved, and the wrong one for a fixture whose project
+// is sitting right there: the demo home would show its project shelf all
+// quarantined rows and never a live project memory. The key is minted the way
+// every session mints one, from the workspace itself, so the demo's memory is
+// visible exactly where the demo's conversations run.
+func writeMemories(brain *store.Store, projectDir string) (int, error) {
+	key, err := gitidentity.ProjectKey(projectDir)
+	if err != nil || key == "" {
+		return 0, fmt.Errorf("mint the demo project key: %w", err)
+	}
+	projectOwner := store.OwnerProject(key)
 	written := 0
 	for _, held := range demoMemories {
-		made, err := brain.AddMemory(held.memory)
+		memory := held.memory
+		if memory.Scope == store.MemoryScopeProject {
+			memory.Owner = projectOwner
+		}
+		made, err := brain.AddMemory(memory)
 		if err != nil {
-			return written, fmt.Errorf("remember %q: %w", held.memory.Title, err)
+			return written, fmt.Errorf("remember %q: %w", memory.Title, err)
 		}
 		// One call per count: the two counters are written together from one
 		// confirmation after a turn, and there is no door that sets them to a

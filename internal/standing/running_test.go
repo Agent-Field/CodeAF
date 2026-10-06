@@ -22,9 +22,9 @@ type peekRunner struct {
 	said    bool
 }
 
-func (p *peekRunner) Probe(_ context.Context, item Item) (string, error) {
+func (p *peekRunner) Probe(_ context.Context, item Item) (ProbeReading, error) {
 	p.inProbe, p.probed = p.store.Running(item.ID)
-	return "the last run on main failed", nil
+	return ProbeReading{Text: "the last run on main failed"}, nil
 }
 
 func (p *peekRunner) Say(_ context.Context, item Item, _ string) (Outcome, error) {

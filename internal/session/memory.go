@@ -55,6 +55,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,8 +64,10 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/provider"
+	"github.com/Agent-Field/codeaf/internal/redact"
 	"github.com/Agent-Field/codeaf/internal/reflex"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/store"
@@ -123,6 +126,44 @@ type memoryBrain struct {
 	// The rename on disk is the durable answer; this is what keeps a session
 	// from stat-ing the same absent file every turn.
 	imported bool
+	// failureSaid is when the last "couldn't settle that" line went out. A
+	// failure is said once per window, not once per failure: an outage that
+	// fails forty extractions in a row would otherwise be forty lines about
+	// the same thing on a screen somebody is trying to work in.
+	failureSaid    time.Time
+	receipts       map[uint64][]memoryToolReceipt
+	revisions      map[uint64]string
+	impactNotices  map[string]store.ContextualImpactNotice
+	impactOrder    []string
+	impactTurn     uint64
+	impactPrepared bool
+	impactBlock    string
+	impactCue      string
+	// outcomeGoal and outcomeTurnID are the turn's binding circumstances,
+	// recorded before the first request so a failed call later in the turn can be
+	// written with the goal it served and the turn it belongs to. The snapshot is
+	// NOT kept here: it is captured at the call boundary before and after the
+	// action, because a turn's start-of-turn identity cannot say whether a call's
+	// failure was earned under the state that follows it.
+	outcomeGoal   string
+	outcomeTurnID string
+	// outcomeFailedKey, outcomeFailedTool and outcomeFailedAction are the
+	// turn's most recent DEMONSTRATED failure, kept so a LATER success in the
+	// same turn and goal can be carried as its observed alternative. The key is
+	// the failure's own source key (the pairing identity); the tool and action
+	// are kept so the replacement must be the same class of action and share a
+	// meaningful token, rather than any success that merely happened next.
+	// outcomeAlternativeDone marks that this failure already carries its one
+	// bounded alternative, so a turn full of successes does not retain them all.
+	outcomeFailedKey       string
+	outcomeFailedTool      string
+	outcomeFailedAction    string
+	outcomeAlternativeDone bool
+	// outcomeFailedTurn is the turn sequence the pending failure belongs to. A
+	// late success captured in an EARLIER turn must not reserve this turn's
+	// slot, so the reservation is checked against the immutable turn the
+	// observation was dispatched in, never the live read alone.
+	outcomeFailedTurn uint64
 }
 
 func newMemoryBrain(s *store.Store) *memoryBrain {
@@ -136,6 +177,26 @@ func (a *Agent) remembers() bool {
 	return a.memory != nil && a.memory.store != nil && !a.config.promptProfile().lean()
 }
 
+// bindingBrain is the store a binding read may use: the read-only lent store for
+// a task worker, and otherwise the conversation's own brain. It is the ONE
+// reading of that question, so a worker cannot be lent a different brain than
+// the conversation it was built from.
+func (c Config) bindingBrain() *store.Store {
+	if c.bindingStore != nil {
+		return c.bindingStore
+	}
+	return c.Memory
+}
+
+// memoryWritable is remembers() AND the corrections that a session may WRITE
+// through the brain. A read-only binding posture answers true to remembers()
+// — so the owner's rules can be read before the first action — and false
+// here, so nothing a firing does is promoted, extracted, imported or dismissed
+// on the strength of a brain it was only lent.
+func (a *Agent) memoryWritable() bool {
+	return a.remembers() && !a.config.bindingOnlyMemory
+}
+
 // memorySourceSession is the journal header id attached to a memory write. A
 // test or embedded session without a journal still has the stable session name
 // used everywhere else for lineage.
@@ -146,6 +207,56 @@ func (a *Agent) memorySourceSession() string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.sessionID()
+}
+
+// ── who the memory belongs to ───────────────────────────────────────────────
+
+// ownerForScope answers the OWNER a memory written under a scope word lands
+// in. This is the caller propagation, in one function: the DOOR names this
+// session's project ([Config.MemoryProjectKey]), the session turns a scope
+// word into the owner that scope really means, and nothing anywhere writes a
+// memory whose owner was not spelled by this chain.
+//
+// THE EMPTY PROJECT KEY IS THE QUARANTINE'S WHOLE REASON. A session whose door
+// could not prove which project it is in maps a `project` write to the
+// quarantine owner — never to the person at large. A quarantined row is never
+// injected anywhere, so the honest cost of an unprovable project is that its
+// memory waits in the memory place for the person to re-home it.
+func (a *Agent) ownerForScope(scope string) string {
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case store.MemoryScopeEnv:
+		return store.OwnerMachine
+	case store.MemoryScopeProject:
+		if key := strings.TrimSpace(a.config.MemoryProjectKey); key != "" {
+			return store.OwnerProject(key)
+		}
+		return store.OwnerLegacyProject
+	default:
+		return store.OwnerUser
+	}
+}
+
+// memoryOwners is what this session may SEE: the person, this machine, and
+// this project. Every read that can put a memory in front of a model — the
+// router's shortlist, the dedup search, a forget match, a person's query —
+// names exactly this list, and the store refuses to answer without it. A task
+// worker does not inherit a config; it is handed the root's key and a
+// read-only lent brain explicitly, so its binding read is scoped to the same
+// project its conversation's was ([Agent.prepareWorkerBinding]).
+func (a *Agent) memoryOwners() []string {
+	return a.memoryOwnersFor(a.config.MemoryProjectKey)
+}
+
+// memoryOwnersFor is [Agent.memoryOwners] for an EXPLICIT project key, so a
+// caller holding a FROZEN scope (a task node's optional recall, captured at
+// admission) can read the owner set it was admitted under rather than whatever
+// project the conversation has since anchored to. It is the one list builder.
+func (a *Agent) memoryOwnersFor(projectKey string) []string {
+	owners := []string{store.OwnerUser, store.OwnerMachine}
+	if key := strings.TrimSpace(projectKey); key != "" {
+		owners = append(owners, store.OwnerProject(key))
+	}
+	return owners
 }
 
 // reflexClient is this session's own client pinned to the reflex model, or nil
@@ -244,6 +355,15 @@ func (a *Agent) memoryBlock(ctx context.Context, cue string) string {
 	return a.routedMemory(ctx, cue, nil, false)
 }
 
+// memoryBlockScoped is [Agent.memoryBlock] under a FROZEN owner set and project
+// key, for a task node's optional recall: the node is admitted under one project
+// and the conversation may anchor to another while the router is still in flight,
+// so the read must resolve the owner it was ADMITTED into rather than the live
+// one. Empty owners is empty.
+func (a *Agent) memoryBlockScoped(ctx context.Context, cue string, owners []string, projectKey string) string {
+	return a.routedMemoryScoped(ctx, cue, nil, false, owners, projectKey)
+}
+
 // ── what a task node is handed ──────────────────────────────────────────────
 
 // nodeMemory is the block one task node's brief was routed to, read ONCE per
@@ -273,6 +393,13 @@ type nodeMemory struct {
 	// a constructor building a DIFFERENT node's worker, and a part must never be
 	// handed its parent's memories under its own brief.
 	id uint64
+	// owners and projectKey are the node's ADMITTED scope, frozen when the reading
+	// is created. A root anchor may move the conversation to another repository
+	// while this route is still in flight, so the read resolves the owner it was
+	// admitted under rather than the live one: an admitted job's optional recall
+	// is never widened to the new project after the transition.
+	owners     []string
+	projectKey string
 	// start routes the brief the first time any worker asks for it, and the
 	// runner may ask for it earlier to overlap the working copy being made.
 	start  sync.Once
@@ -301,10 +428,18 @@ func (a *Agent) withNodeMemory(ctx context.Context, node *TaskNode) (context.Con
 		return ctx, func() {}
 	}
 	cue := node.assembledBrief()
+	// FROZEN AT ADMISSION, LIKE THE BINDING KEY. The owners and project key are
+	// read once here, while the node's admission scope is settled, so a routing
+	// that finishes after the conversation anchors cannot read the new project's
+	// memory into this node's worker.
+	owners := a.memoryOwners()
+	projectKey := strings.TrimSpace(a.config.MemoryProjectKey)
 	memory := &nodeMemory{
-		id:    node.id,
-		ctx:   ctx,
-		route: func(ctx context.Context) string { return a.memoryBlock(ctx, cue) },
+		id:         node.id,
+		owners:     owners,
+		projectKey: projectKey,
+		ctx:        ctx,
+		route:      func(ctx context.Context) string { return a.memoryBlockScoped(ctx, cue, owners, projectKey) },
 	}
 	return context.WithValue(ctx, nodeMemoryKey{}, memory), memory.end
 }
@@ -399,6 +534,11 @@ func (a *Agent) takeMemory(block string) {
 		return
 	}
 	a.memoryText = block
+	// THE ROUTED BLOCK IS THE OPTIONAL HALF of a worker's context: it may spend
+	// only what is left of the one shared [memoryBlockRunes] ceiling after the
+	// mandatory approved-binding block, trimmed by whole records and never cut
+	// mid-rule (contextual_memory.go's [Agent.reserveBindingFirstLocked]).
+	a.reserveBindingFirstLocked()
 }
 
 // refreshMemory is the conversation's own call: route this turn's message, hand
@@ -451,10 +591,17 @@ func (a *Agent) refreshMemory(ctx context.Context, cue string) bool {
 	// it), and what they are waiting for from the instant they press enter is the
 	// model's own first word.
 	block := a.routedMemory(ctx, cue, a.sayMemory, true)
+	block, outcomesRetained := a.withBindingContextMeta(block, cue)
 
 	a.mu.Lock()
 	moved := a.memoryText != block
+	// THE NOTE AND ITS COMPOSITION DECISION ARE ONE MUTATION: the bit that
+	// activates the source-authored policy is recorded in the same critical
+	// section that lands the rows it governs, so a request snapshot
+	// ([Agent.snapshotWithReasoning]) can never see this note beside another
+	// turn's flag.
 	a.memoryText = block
+	a.frameworkPolicy = outcomesRetained
 	// AND IT LANDS AT THE TAIL, not in message[0]. The drain immediately before
 	// the first request would land it anyway (loop.go), and it is landed here as
 	// well so that this pass is complete on its own: what it routed is in front
@@ -653,7 +800,16 @@ func (r *recallAside) everAsked() bool { return r != nil && r.reading.everAsked(
 // reading borrowing its parent's store; record says whether the ids it injected
 // are this session's to count.
 func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), record bool) string {
-	if !a.remembers() {
+	return a.routedMemoryScoped(ctx, cue, say, record, a.memoryOwners(), strings.TrimSpace(a.config.MemoryProjectKey))
+}
+
+// routedMemoryScoped is [Agent.routedMemory] under an explicit owner set and
+// project key: the conversation passes its live ones, and a task node's optional
+// recall passes the scope FROZEN at its admission ([memoryBlockScoped]). The
+// project key also stamps the eligibility conditions, so both the candidate
+// shortlist and the final rows are filtered to the scoped owner either way.
+func (a *Agent) routedMemoryScoped(ctx context.Context, cue string, say func(string), record bool, owners []string, projectKey string) string {
+	if !a.memoryWritable() {
 		return ""
 	}
 	if record {
@@ -676,7 +832,7 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), 
 	// near-synonymous preferences is nothing but hard distractors, and rejecting
 	// them is the one job arithmetic cannot do. Showing it the haystack is what
 	// stops.
-	candidates, err := a.memory.store.MemoryCandidates(cue, store.MemoryCandidatesDefault)
+	candidates, err := a.memory.store.MemoryCandidates(owners, cue, store.MemoryCandidatesDefault)
 	if err != nil || len(candidates) == 0 {
 		// AN EMPTY SHORTLIST IS NOT A CALL, and with two arithmetic rankings
 		// under it an empty one means an empty store. There is nothing to route
@@ -702,10 +858,17 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), 
 	if len(routed.Inject) == 0 {
 		return ""
 	}
-	memories, err := a.memory.store.GetMemories(routed.Inject)
+	memories, err := a.memory.store.GetMemories(owners, routed.Inject)
 	if err != nil || len(memories) == 0 {
 		return ""
 	}
+	a.mu.Lock()
+	turn := a.turnSeq
+	a.mu.Unlock()
+	a.memory.mu.Lock()
+	revision := a.memory.revisions[turn]
+	a.memory.mu.Unlock()
+	memories = a.contextualEligibleFor(a.memory.store, memories, revision, projectKey)
 	block, kept := renderMemoryBlock(memories, time.Now())
 	if record {
 		a.memory.setInjected(kept)
@@ -720,6 +883,13 @@ func (a *Agent) routedMemory(ctx context.Context, cue string, say func(string), 
 // It is answered in one dim line and nothing else. The person gave an
 // instruction and it either happened or it did not; a card, an event kind or a
 // paragraph would all be this surface making a ceremony out of a note.
+//
+// THE REMEMBER HALF WALKS THE ONE WRITE DOOR. It used to call AddMemory
+// directly — the one door that skipped dedup — so a person who said "remember
+// I prefer tabs" in three sessions could hold three rows the other mouths
+// would have refined into one. It now goes through the same
+// settle-and-apply path /remember and the remember tool walk, and the line it
+// says is the title that actually landed.
 func (a *Agent) runMemoryCommand(say func(string), cmd reflex.Cmd) {
 	if strings.TrimSpace(cmd.Arg) == "" {
 		return
@@ -729,20 +899,21 @@ func (a *Agent) runMemoryCommand(say func(string), cmd reflex.Cmd) {
 	}
 	switch cmd.Name {
 	case "remember":
-		memory, err := a.memory.store.AddMemory(store.Memory{
-			Type:          memoryTypeOf(cmd.Arg),
-			Scope:         store.MemoryScopeUser,
-			Title:         memoryTitleFrom(cmd.Arg),
-			Text:          cmd.Arg,
-			SourceSession: a.memorySourceSession(),
-		})
+		title, err := a.writeRemembered(cmd.Arg, "")
 		if err != nil {
+			a.journalMemoryFailure("routed-remember", err)
 			return
 		}
-		say("remembered · " + memory.Title)
+		say("remembered · " + title)
 	case "forget":
 		title, err := a.forgetMatching(cmd.Arg)
 		if err != nil {
+			a.journalMemoryFailure("routed-forget", err)
+			if title != "" {
+				say("partly forgot · " + title + " · some evidence could not be retired")
+				return
+			}
+			say("could not forget · " + cmd.Arg)
 			return
 		}
 		if title == "" {
@@ -774,21 +945,70 @@ func (a *Agent) runMemoryCommand(say func(string), cmd reflex.Cmd) {
 // zeroes and is also the honest answer for a row whose journal entry predates
 // the column.
 func renderMemoryBlock(memories []store.Memory, now time.Time) (string, []reflex.Stub) {
+	return renderMemoryBlockWithin(memories, now, memoryBlockRunes, false)
+}
+
+// contextualMemoryField renders ONE untrusted record field — a title, a claim
+// body, a quoted Source-words provenance line, a rationale — as a single
+// physical line: JSON-quoted, with its angle markers escaped. Escaping the
+// markers is what makes a wrapper unforgeable: a "</memory>" that arrived in a
+// memory's text or in an earlier turn's own words becomes inert text, because
+// the only literal "<memory>"/"</memory>" a rendered block carries are the tags
+// [renderMemoryBlockWithin] writes around it. The journal keeps the raw bytes
+// unchanged; only the projection escapes, so provenance stays immutable.
+func contextualMemoryField(s string) string {
+	q := strconv.Quote(s)
+	q = strings.ReplaceAll(q, "<", "\\u003c")
+	q = strings.ReplaceAll(q, ">", "\\u003e")
+	return q
+}
+
+// renderMemoryBlockWithin is [renderMemoryBlock] against an explicit ceiling, so
+// a projection that must SHARE [memoryBlockRunes] with another block (a worker's
+// approved bindings beside its routed shortlist, contextual_memory.go) can spend
+// only its own share of the one note budget. Selection stays whole-record: a line
+// that does not fit is OMITTED, never cut mid-record, so an approved rule is
+// either shown in full or absent — it is never silently rewritten by a clip.
+//
+// skipOversized chooses how an over-budget record is omitted. The router's own
+// block keeps its historical TAIL-DROP (false): the last line it named is the
+// one it thought about least, so once the budget is spent everything after it
+// goes. A binding projection asks for SKIP (true) so one oversized approved rule
+// quarantines itself without starving the smaller approved rules behind it.
+func renderMemoryBlockWithin(memories []store.Memory, now time.Time, limit int, skipOversized bool) (string, []reflex.Stub) {
 	var (
 		body strings.Builder
 		kept []reflex.Stub
 		used int
 	)
 	for _, memory := range memories {
-		line := "- " + memory.Title + ": " + memory.Text
-		if memory.Title == "" {
-			line = "- " + memory.Text
-		}
+		// THE RECORD IS ONE PHYSICAL LINE OF ESCAPED FIELDS, exactly as a prior
+		// outcome and a contextual impact already are. A rendered record is a
+		// projection of the journal, not the journal: its title and its body
+		// (including every Source-words, rationale and condition line the
+		// evidence seam appended) are JSON-quoted with their angle markers
+		// escaped, so a newline, a carriage return or a forged </memory> inside a
+		// memory's own words or in the turn that produced them can never split a
+		// record, forge a close tag or open a second wrapper. The only literal
+		// tags in the block are the wrapper this function writes, and the length
+		// counted against the ceiling is the length of what is actually emitted.
+		record := memory.Text
 		if age := store.AgeLabel(memory.UpdatedAt, now); age != "" {
-			line += " (learned " + age + ")"
+			record += " (learned " + age + ")"
+		}
+		line := "- " + contextualMemoryField(record)
+		if memory.Title != "" {
+			line = "- " + contextualMemoryField(memory.Title) + ": " + contextualMemoryField(record)
 		}
 		length := utf8.RuneCountInString(line) + 1
-		if used+length > memoryBlockRunes {
+		// A RECORD TOO LONG FOR WHAT IS LEFT IS OMITTED WHOLE, never mutated to
+		// fit. Which omission depends on the caller: a binding projection SKIPS
+		// it so later records can still land, and the router's own block drops
+		// the tail as it always did.
+		if used+length > limit {
+			if skipOversized {
+				continue
+			}
 			break
 		}
 		used += length
@@ -870,10 +1090,13 @@ func (m *memoryBrain) takeNotices() []string {
 // waited for by Close, and silent whatever happens to it. There is no event kind
 // for "a small thing did not work" (title.go's reasoning, unchanged).
 func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return
 	}
 	injected := a.memory.takeInjected()
+	source := a.memoryTurnSource(userMsg)
+	a.observeContextualDependencies(source)
+	a.dismissContextualNotices(userMsg)
 	if !a.startMemoryJob() {
 		return
 	}
@@ -884,15 +1107,22 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 		if client == nil {
 			return
 		}
-		found, err := reflex.Extract(ctx, client, userMsg, assistantMsg, injected)
+		found, err := reflex.Extract(ctx, client, userMsg, source.extractContext(assistantMsg), injected)
 		if err != nil {
-			// AND NOTHING IS COUNTED. The accounting below is the extractor's
-			// answer; a provider outage is not evidence that a memory failed to
-			// help, and recording it as one would let somebody else's bad
-			// afternoon push a good line down the store's ranking.
+			// AND NOTHING IS COUNTED — but the failure is no longer SILENT.
+			// The accounting below is the extractor's answer; a provider
+			// outage is not evidence that a memory failed to help, and
+			// recording it as one would let somebody else's bad afternoon push
+			// a good line down the store's ranking. What changed is that the
+			// outage is journaled and, once per window, said: a memory system
+			// that quietly stops learning is the failure this file exists to
+			// make visible.
+			a.journalMemoryFailure("extract", err)
 			return
 		}
-		a.recordMemoryOutcome(injected, found.Used)
+		// A model self-report is diagnostic, not an independently observed benefit.
+		// It must not train the ranking as though a command or edit improved.
+		// recordMemoryOutcome remains available to observed-outcome callers.
 		// THE STATE DELTA IS SETTLED FIRST, AND SEPARATELY FROM THE MEMORY GATE.
 		// Mem answers whether this exchange held anything worth carrying into
 		// ANOTHER session; the delta answers what it did to THIS one, and those
@@ -906,7 +1136,33 @@ func (a *Agent) learnFromTurn(userMsg, assistantMsg string) {
 		if found.Mem == 0 {
 			return
 		}
-		_, _ = a.applyCandidate(ctx, client, found)
+		found = source.ground(found)
+		if found.Mem == 0 {
+			return
+		}
+		if source.derivedSupport(found) {
+			// DERIVED HISTORY CANNOT RE-PUBLISH A CLAIM. A candidate supported
+			// only by a conversation-history lookup, this session's memory
+			// reader or a task summary would land as a NEW active row under a
+			// fresh SourceKey and a new SourceHash, so the suppression join
+			// could never retire it and a forgotten sentence would come back as
+			// history. It is refused here rather than threaded, because those
+			// reads carry no evidence seq for a derivation to point at.
+			return
+		}
+		// THE CLAIM AND ITS PROVENANCE LAND TOGETHER (applyCandidate publishes
+		// the evidence row in the memory write's own transaction), so a crash
+		// cannot leave an active tagged row whose evidence never arrived, nor
+		// evidence behind a row that rolled back.
+		_, err = a.applyCandidateFrom(ctx, client, found, &source)
+		if err != nil {
+			// THE SETTLE FAILED, AND THAT IS SAID — once per window — with the
+			// reason in the journal. It used to be `_, _ =`: a memory the
+			// session noticed could fail to land and nothing anywhere would
+			// know, which is the third of the four defects this file was
+			// rewritten for.
+			a.journalMemoryFailure("settle", err)
+		}
 	}()
 }
 
@@ -950,6 +1206,74 @@ func (a *Agent) recordMemoryOutcome(injected []reflex.Stub, used []string) {
 	_, _ = a.memory.store.SnapshotMemoryRanking(fixDecayInterval)
 }
 
+// memoryFailureWindow is how long one "couldn't settle that" line buys. Five
+// minutes is the smallest interval that is honest — long enough that an
+// afternoon outage is a handful of lines, short enough that a single unlucky
+// turn is not followed by silence.
+const memoryFailureWindow = 5 * time.Minute
+
+// journalMemoryFailure is what a failed memory write becomes: an event in the
+// store's journal when the store can take one, a line in a fallback file when
+// the store itself is what failed, and a dim line to the person at most once
+// per window. Errors used to vanish at every one of these doors; nothing
+// here vanishes now, and nothing here can make a failed turn a failed day.
+//
+// THE FALLBACK FILE IS THE DB-IS-THE-PROBLEM ANSWER. Journaling the failure
+// needs the journal, and a disk that refused the last write will refuse this
+// one too — so when the journal write fails, the reason goes to
+// `v3/memory-failures.log` beside the state root instead, appended through the
+// one door a log append has. If even that fails, the failure is dropped ON
+// PURPOSE: there is nothing left to record it in, and a session that cannot
+// write anywhere must not start failing turns about it.
+func (a *Agent) journalMemoryFailure(via string, err error) {
+	if err == nil {
+		return
+	}
+	reason := err.Error()
+	if storeErr := a.memory.store.JournalMemoryFailure(via, err); storeErr != nil {
+		// The journal could not take it. The file is the fallback.
+		if path := memoryFailureLogPath(); path != "" {
+			appendMemoryFailureLog(path, via, reason, storeErr.Error())
+		} else {
+			log.Printf("session: a memory write failed and could not be journaled (via %s): %v", via, err)
+		}
+	}
+	// AND THE PERSON IS TOLD, ONCE PER WINDOW. A dim line in the stream the
+	// memory lines already ride — held for the next turn exactly as every
+	// other memory line is when no stream is live.
+	a.memory.mu.Lock()
+	window := time.Since(a.memory.failureSaid) >= memoryFailureWindow
+	if window {
+		a.memory.failureSaid = time.Now()
+	}
+	a.memory.mu.Unlock()
+	if window {
+		a.sayMemory("couldn't settle a memory just now · the journal has the reason")
+	}
+}
+
+// memoryFailureLogPath is where the fallback carries a failure the store
+// could not: v3/memory-failures.log beside the state root, moved by
+// CODEAF_HOME with everything else. Empty never happens in practice; the
+// answer is "" and the caller logs to stderr instead.
+func memoryFailureLogPath() string {
+	return home.Join("v3", "memory-failures.log")
+}
+
+// appendMemoryFailureLog appends one line, once, best effort. It is a log for
+// a person debugging a disk, not a second journal: no rotation, no reader in
+// the product, one line per failure with the store's own complaint beside it.
+func appendMemoryFailureLog(path, via, reason, storeErr string) {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	stamp := time.Now().UTC().Format(time.RFC3339)
+	line := stamp + " via=" + via + " error=" + reason + " journal_error=" + storeErr + "\n"
+	_, _ = file.WriteString(line)
+}
+
 // startMemoryJob registers one background memory pass, and refuses once the
 // session is closing. It is the [jobRegistry]'s bargain in miniature: the work
 // is tracked, so Close can wait for it, and cancelled, so Close does not wait
@@ -974,76 +1298,328 @@ func (a *Agent) startMemoryJobLocked() bool {
 // answer. It is the ONE write path: the post-turn pass and the `remember` tool
 // both come through here, so a memory written by the model and a memory the
 // session noticed cannot be deduplicated by two different rules.
+//
+// THE ADD WALKS THE STORE'S OWN DEDUP DOOR ([store.Store.Write]), which
+// searches only the candidate's owner: two projects may hold genuinely
+// different truths about the same words, and neither write swallows the
+// other.
+// applyCandidate is the explicit doors' settle: /remember, the remember tool
+// and the routed command publish their own provenance story, so they pass no
+// turn source and add no evidence row here.
 func (a *Agent) applyCandidate(ctx context.Context, client reflex.Completer, candidate reflex.ExtractResult) (store.Memory, error) {
+	return a.applyCandidateFrom(ctx, client, candidate, nil)
+}
+
+// applyCandidateFrom settles one candidate and, when source is non-nil (the
+// post-turn pass), publishes the claim's provenance in the memory write's own
+// transaction.
+func (a *Agent) applyCandidateFrom(ctx context.Context, client reflex.Completer, candidate reflex.ExtractResult, source *memoryTurnEvidence) (store.Memory, error) {
 	if strings.TrimSpace(candidate.Text) == "" {
 		return store.Memory{}, errors.New("session: a memory with no text says nothing")
 	}
-	fresh := store.Memory{
-		Type:          candidate.Type,
-		Scope:         candidate.Scope,
-		Title:         strings.TrimSpace(candidate.Title),
-		Text:          candidate.Text,
-		Tags:          candidate.Tags,
-		SourceSession: a.memorySourceSession(),
+	fresh := a.memoryDraft(candidate)
+	// ONE PROVENANCE ROW, BUILT ONCE. When the caller is the post-turn settle it
+	// hands the turn source, and the row lands in the same transaction as the
+	// memory it belongs to; the explicit doors (source nil) keep their own
+	// evidence story and publish no new provenance here.
+	var evidence *store.ContextualEvidence
+	if source != nil {
+		e := a.contextualEvidenceFor("", candidate, *source)
+		evidence = &e
 	}
-	if fresh.Title == "" {
-		fresh.Title = memoryTitleFrom(candidate.Text)
+	// Read access does not grant correction authority. A candidate settles only
+	// inside its own partition; promotion requires an explicit new write.
+	owners := []string{fresh.Owner}
+	neighbors, err := a.memory.store.SearchMemories(owners, candidate.Text, memoryNeighbors)
+	if err != nil {
+		// A SEARCH THAT FAILED IS NOT "NOTHING NEARBY". The old read treated
+		// both the same and added on top of whatever it could not see; a
+		// failed search is refused, journaled, and nothing is written — the
+		// next turn's extraction can settle it again, which is cheaper than a
+		// duplicate the door never got to catch.
+		return store.Memory{}, fmt.Errorf("the dedup search failed: %w", err)
 	}
-	neighbors, err := a.memory.store.SearchMemories(candidate.Text, memoryNeighbors)
-	if err != nil || len(neighbors) == 0 {
+	if len(neighbors) == 0 {
 		// NOTHING NEAR IT IS NOT A QUESTION. A store with no opinion about this
 		// subject has nothing for a decider to weigh, and asking anyway would be
 		// a call whose answer is known.
-		return a.memory.store.AddMemory(fresh)
+		return a.addThroughDoorFrom(fresh, evidence)
 	}
 	near := make([]reflex.Neighbor, 0, len(neighbors))
 	for _, neighbor := range neighbors {
+		if evidence, err := a.memory.store.ContextualEvidenceForMemory(neighbor.Owner, neighbor.ID); err == nil {
+			if len(evidence.Applicability) > 0 {
+				neighbor.Text += "\nApplies when: " + strings.Join(evidence.Applicability, "; ")
+			}
+			if evidence.Actor == "user" {
+				neighbor.Text += "\nSource words: " + contextualClip(evidence.Observation, contextualReceiptRunes)
+			}
+		}
 		near = append(near, reflex.Neighbor{ID: neighbor.ID, Title: neighbor.Title, Text: neighbor.Text})
 	}
 	decided, err := reflex.Decide(ctx, client, candidate, near)
 	if err != nil {
 		return store.Memory{}, err
 	}
-	if title := strings.TrimSpace(decided.Title); title != "" {
-		fresh.Title = title
-	}
-	if text := strings.TrimSpace(decided.Text); text != "" {
-		fresh.Text = text
-	}
-	if len(decided.Tags) > 0 {
-		fresh.Tags = decided.Tags
-	}
+	// THE SETTLED LINE IS BOUNDED BY THE CAP THE STORE WILL ENFORCE. The
+	// candidate arrives already clipped, but a decider's merged line REPLACES it
+	// here and the model has no cap of its own: a live acquisition settled 638
+	// runes into a store whose limit is 512, so an otherwise legal write was
+	// refused as invalid and journaled as `memory_write_failed`. The claim body
+	// and its title are what the store holds; the applicability, rationale,
+	// rejected alternatives and reconsideration circumstances live on the
+	// evidence row ([Agent.recordContextualMemory]) and are untouched here, so
+	// bounding this line cannot drop a condition the store was told about.
+	// THE DECIDER'S REPLACEMENT PASSES THE REDACTOR TOO. Its title and body
+	// REPLACE the draft, and the model has no secret filter of its own — the
+	// same reason the line below is bounded here. Tags are sanitized with the
+	// title and body so no door through this settle can keep a credential.
+	applyDecidedDraft(&fresh, decided, candidate)
 	switch decided.Op {
 	case "add":
-		return a.memory.store.AddMemory(fresh)
+		return a.addThroughDoorFrom(fresh, evidence)
 	case "update":
-		// A MISSING TARGET IS A SKIP. internal/reflex validates the enum and
-		// leaves the id to the only thing that knows whether it names anything;
-		// this is that thing, and the honest answer to "refine the memory that
-		// is not there" is to change nothing.
-		if decided.TargetID == "" {
-			return store.Memory{}, nil
-		}
-		if err := a.memory.store.UpdateMemoryFromSession(decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
-			return store.Memory{}, err
-		}
-		return store.Memory{ID: decided.TargetID, Title: fresh.Title, Text: fresh.Text}, nil
+		return a.settleUpdate(owners, decided, fresh, evidence)
 	case "supersede":
-		if decided.TargetID == "" {
-			return store.Memory{}, nil
-		}
-		// The old line is read BEFORE it is retired, because the note names it
-		// and a read afterwards would be a second query for a row this one
-		// already had in hand.
-		retired, _, _ := a.memory.store.MemoryRecord(decided.TargetID)
-		replacement, err := a.memory.store.SupersedeMemory(decided.TargetID, fresh)
-		if err != nil {
-			return store.Memory{}, err
-		}
-		a.saySuperseded(retired.Title, replacement.Title)
-		return replacement, nil
+		return a.settleSupersede(owners, decided, fresh, evidence)
 	}
 	return store.Memory{}, nil
+}
+
+// memoryNeighborsWithEvidence decorates the dedup neighbors with their latest
+// evidence in ONE indexed read per owner, rather than a ContextualEvidenceForMemory
+// call per neighbor. The same applicability and source-words lines are appended.
+func (a *Agent) memoryNeighborsWithEvidence(neighbors []store.Memory) []reflex.Neighbor {
+	byOwner := map[string][]string{}
+	for _, neighbor := range neighbors {
+		byOwner[neighbor.Owner] = append(byOwner[neighbor.Owner], neighbor.ID)
+	}
+	latest := map[string]store.ContextualEvidence{}
+	for owner, ids := range byOwner {
+		found, err := a.memory.store.ContextualEvidenceLatestForMemories(owner, ids)
+		if err != nil {
+			continue
+		}
+		for id, evidence := range found {
+			latest[id] = evidence
+		}
+	}
+	near := make([]reflex.Neighbor, 0, len(neighbors))
+	for _, neighbor := range neighbors {
+		if evidence, ok := latest[neighbor.ID]; ok {
+			if len(evidence.Applicability) > 0 {
+				neighbor.Text += "\nApplies when: " + strings.Join(evidence.Applicability, "; ")
+			}
+			if evidence.Actor == "user" {
+				neighbor.Text += "\nSource words: " + contextualClip(evidence.Observation, contextualReceiptRunes)
+			}
+		}
+		near = append(near, reflex.Neighbor{ID: neighbor.ID, Title: neighbor.Title, Text: neighbor.Text})
+	}
+	return near
+}
+
+// applyDecidedDraft folds a decider's replacement title, body and tags onto the
+// draft. The replacement passes the secret redactor and the store's caps, and the
+// candidate's own contextual tag is restored, so no door through this settle can
+// keep a credential or drop the provenance marker.
+func applyDecidedDraft(fresh *store.Memory, decided reflex.DecideResult, candidate reflex.ExtractResult) {
+	if title := strings.TrimSpace(decided.Title); title != "" {
+		fresh.Title = contextualClip(redact.Secrets(title), store.MemoryTitleRunes)
+	}
+	if text := strings.TrimSpace(decided.Text); text != "" {
+		fresh.Text = contextualClip(redact.Secrets(text), store.MemoryTextRunes)
+	}
+	if len(decided.Tags) > 0 {
+		fresh.Tags = contextualSanitizedItems(decided.Tags)
+	}
+	for _, tag := range candidate.Tags {
+		if tag == contextualTag {
+			fresh.Tags = append(fresh.Tags, contextualTag)
+			break
+		}
+	}
+}
+
+// settleUpdate is the refiner's half of the settle. A MISSING TARGET IS A SKIP:
+// internal/reflex validates the enum and leaves the id to the only thing that
+// knows whether it names anything. THE TARGET IS CHECKED AGAINST THE OWNERS THIS
+// SESSION CAN SEE, and a STORE ERROR ON THAT CHECK REFUSES THE WRITE — a
+// transient failure must never convert the one cross-owner check into a pass.
+func (a *Agent) settleUpdate(owners []string, decided reflex.DecideResult, fresh store.Memory, evidence *store.ContextualEvidence) (store.Memory, error) {
+	if decided.TargetID == "" {
+		return store.Memory{}, nil
+	}
+	visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
+	if err != nil {
+		return store.Memory{}, fmt.Errorf("checking update target: %w", err)
+	}
+	if len(visible) == 0 {
+		return store.Memory{}, nil
+	}
+	if evidence != nil {
+		if _, err := a.memory.store.UpdateMemoryForOwnersContextual(owners, decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession, *evidence); err != nil {
+			return store.Memory{}, err
+		}
+	} else if err := a.memory.store.UpdateMemoryForOwners(owners, decided.TargetID, fresh.Title, fresh.Text, fresh.Tags, fresh.SourceSession); err != nil {
+		return store.Memory{}, err
+	}
+	return store.Memory{ID: decided.TargetID, Title: fresh.Title, Text: fresh.Text}, nil
+}
+
+// settleSupersede is the retirement half. The old line is read BEFORE it is
+// retired, because the note names it, and read through the owners this session
+// can see: a decider naming another project's id must not retire its memory.
+func (a *Agent) settleSupersede(owners []string, decided reflex.DecideResult, fresh store.Memory, evidence *store.ContextualEvidence) (store.Memory, error) {
+	if decided.TargetID == "" {
+		return store.Memory{}, nil
+	}
+	visible, err := a.memory.store.GetMemories(owners, []string{decided.TargetID})
+	if err != nil {
+		return store.Memory{}, fmt.Errorf("checking supersession target: %w", err)
+	}
+	if len(visible) == 0 {
+		return store.Memory{}, nil
+	}
+	retired := visible[0]
+	var replacement store.Memory
+	if evidence != nil {
+		replacement, _, err = a.memory.store.SupersedeMemoryForOwnersContextual(owners, decided.TargetID, fresh, *evidence)
+	} else {
+		replacement, err = a.memory.store.SupersedeMemoryForOwners(owners, decided.TargetID, fresh)
+	}
+	if err != nil {
+		return store.Memory{}, err
+	}
+	a.saySuperseded(retired.Title, replacement.Title)
+	return replacement, nil
+}
+
+// memoryDraft is the row a candidate would land as, before the decider or the
+// door has its say: owner resolved, title defaulted, source named.
+func (a *Agent) memoryDraft(candidate reflex.ExtractResult) store.Memory {
+	// THE DRAFT IS BOUNDED AT THE DOOR, not at each caller. A candidate's title
+	// is not clipped anywhere on the way in and its text arrives from an
+	// extractor that is free to overrun the cap, while the store refuses either
+	// one over its limit by name. Bounding here is what makes every caller's
+	// draft legal — the post-turn pass, the `remember` tool, /remember, the
+	// import — without any of them having to know the store's numbers.
+	fresh := store.Memory{
+		Owner:         a.ownerForScope(candidate.Scope),
+		Type:          candidate.Type,
+		Title:         contextualClip(strings.TrimSpace(candidate.Title), store.MemoryTitleRunes),
+		Text:          contextualClip(candidate.Text, store.MemoryTextRunes),
+		Tags:          candidate.Tags,
+		SourceSession: a.memorySourceSession(),
+	}
+	if fresh.Title == "" {
+		fresh.Title = memoryTitleFrom(candidate.Text)
+	}
+	return fresh
+}
+
+// addThroughDoor is the add half of the write path: the store's dedup door,
+// with the draft's owner. The door answers a skip with the row that beat this
+// one, which the caller reads as "already kept" — the same answer the decider's
+// skip is.
+func (a *Agent) addThroughDoor(fresh store.Memory) (store.Memory, error) {
+	return a.addThroughDoorFrom(fresh, nil)
+}
+
+// addThroughDoorFrom is [Agent.addThroughDoor] with the claim's provenance
+// appended in the store write's own transaction when evidence is non-nil.
+func (a *Agent) addThroughDoorFrom(fresh store.Memory, evidence *store.ContextualEvidence) (store.Memory, error) {
+	req := store.WriteRequest{
+		Owner:         fresh.Owner,
+		Type:          fresh.Type,
+		Title:         fresh.Title,
+		Text:          fresh.Text,
+		Tags:          fresh.Tags,
+		SourceSession: fresh.SourceSession,
+	}
+	var (
+		result store.WriteResult
+		err    error
+	)
+	if evidence != nil {
+		result, _, err = a.memory.store.WriteContextual(req, *evidence)
+	} else {
+		result, err = a.memory.store.Write(req)
+	}
+	if err != nil {
+		return store.Memory{}, err
+	}
+	if result.Outcome == store.WriteOutcomeSkipped {
+		// The store already holds this. The result's Memory is the row that
+		// beat the write; the caller sees a title either way.
+		return result.Memory, nil
+	}
+	return result.Memory, nil
+}
+
+// writeRemembered is what a mouth that says "keep this" calls, and there are
+// exactly four: the routed `remember`, /remember, the `remember` tool, and —
+// with no scope word — the import. It settles near-duplicates the model way
+// when a reflex client is in hand, and through the store's own dedup door when
+// there is none; there is no third path, which is the whole point.
+//
+// The returned title is the one that landed — the existing row's when the
+// write was skipped, the new row's when it was added.
+func (a *Agent) writeRemembered(text, scope string) (string, error) {
+	if !a.memoryWritable() {
+		return "", errors.New("this build is not remembering anything")
+	}
+	// /remember AND THE remember TOOL ARE DOORS TOO. A person pasting a token
+	// beside what they want kept must not have it stored and rendered; the
+	// body is redacted before it is drafted, so the title derived from it is
+	// clean as well.
+	text = redact.Secrets(strings.Join(strings.Fields(text), " "))
+	if text == "" {
+		return "", errors.New("there is nothing to remember")
+	}
+	if strings.TrimSpace(scope) == "" {
+		scope = store.MemoryScopeProject
+	}
+	candidate := reflex.ExtractResult{
+		Mem:   1,
+		Type:  memoryTypeOf(text),
+		Scope: scope,
+		Title: memoryTitleFrom(text),
+		Text:  text,
+	}
+	client := a.reflexClient()
+	if client == nil {
+		// NO REFLEX IS NOT NO MEMORY. A person who typed /remember said what
+		// they wanted kept; refusing them because a router model is unreachable
+		// would be losing their words to somebody else's outage. The store's
+		// own dedup door still runs, so a retype is still a skip.
+		memory, err := a.addThroughDoor(a.memoryDraft(candidate))
+		if err != nil {
+			return "", err
+		}
+		return memory.Title, nil
+	}
+	ctx := a.memoryContext()
+	memory, err := a.applyCandidate(ctx, client, candidate)
+	if err != nil {
+		// THE MODEL IS NOT A PERMISSION. A decider that could not answer — an
+		// outage, a nonsense reply — does not lose the words a person typed;
+		// they go through the store's own dedup door, which needs no model.
+		// The failure is journaled either way, so the person can see the
+		// settle never happened even though the save did.
+		a.journalMemoryFailure("explicit-settle", err)
+		memory, fallbackErr := a.addThroughDoor(a.memoryDraft(candidate))
+		if fallbackErr != nil {
+			return "", err
+		}
+		return memory.Title, nil
+	}
+	if memory.Title == "" {
+		// The decider skipped it: the store already holds this, which is the
+		// answer rather than a failure.
+		return candidate.Title, nil
+	}
+	return memory.Title, nil
 }
 
 // saySuperseded is the one dim line a retirement gets, and the reason it exists
@@ -1132,74 +1708,120 @@ func (a *Agent) Remember(text string) (string, error) {
 }
 
 // RememberScoped is Remember with the blast radius named: something true about
-// you everywhere, only inside this project, or only on this machine.
+// you everywhere, only inside this project, or only on this machine. It walks
+// the one write door ([Agent.writeRemembered]), which is every mouth there is.
 func (a *Agent) RememberScoped(text, scope string) (string, error) {
-	if !a.remembers() {
-		return "", errors.New("this build is not remembering anything")
-	}
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
-		return "", errors.New("there is nothing to remember")
-	}
-	if strings.TrimSpace(scope) == "" {
-		scope = store.MemoryScopeUser
-	}
-	candidate := reflex.ExtractResult{
-		Mem:   1,
-		Type:  memoryTypeOf(text),
-		Scope: scope,
-		Title: memoryTitleFrom(text),
-		Text:  text,
-	}
-	client := a.reflexClient()
-	if client == nil {
-		// NO REFLEX IS NOT NO MEMORY. A person who typed /remember said what
-		// they wanted kept; refusing them because a router model is unreachable
-		// would be losing their words to somebody else's outage.
-		memory, err := a.memory.store.AddMemory(store.Memory{
-			Type: candidate.Type, Scope: candidate.Scope,
-			Title: candidate.Title, Text: candidate.Text,
-			SourceSession: a.memorySourceSession(),
-		})
-		if err != nil {
-			return "", err
-		}
-		return memory.Title, nil
-	}
-	ctx := a.memoryContext()
-	memory, err := a.applyCandidate(ctx, client, candidate)
-	if err != nil {
-		return "", err
-	}
-	if memory.Title == "" {
-		// The decider skipped it: the store already holds this, which is the
-		// answer rather than a failure.
-		return candidate.Title, nil
-	}
-	return memory.Title, nil
+	return a.writeRemembered(text, scope)
 }
 
 // Forget drops the best match for a query and answers with the title it
 // dropped, or "" when nothing matched.
 func (a *Agent) Forget(query string) (string, error) {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return "", errors.New("this build is not remembering anything")
 	}
 	return a.forgetMatching(query)
 }
 
 func (a *Agent) forgetMatching(query string) (string, error) {
-	found, err := a.memory.store.SearchMemories(query, 1)
+	// THE MATCH IS SCOPED TO WHAT THIS SESSION CAN SEE. A forget query never
+	// answers with another project's memory: "forget the deploy line" in this
+	// repository forgets the deploy line this person can see here.
+	found, err := a.memory.store.SearchMemories(a.memoryOwners(), query, 1)
 	if err != nil {
 		return "", err
 	}
-	if len(found) == 0 {
-		return "", nil
+	if len(found) > 0 {
+		// THE STORE RETIRES THE CLAIM'S PROVENANCE IN THE SAME TRANSACTION as
+		// its tombstone (forgetMemory), so there is no window where the row is
+		// gone and its sources are not, or the reverse.
+		if err := a.memory.store.ForgetMemoryForOwners(a.memoryOwners(), found[0].ID, a.memorySourceSession()); err != nil {
+			return "", err
+		}
 	}
-	if err := a.memory.store.ForgetMemoryFromSession(found[0].ID, a.memorySourceSession()); err != nil {
-		return "", err
+	// A STANDALONE ATTEMPT HAS NO MEMORY ROW TO MATCH. The extractor may never
+	// have made a candidate for its receipt — and a ninth failed call in a turn
+	// is past the receipt buffer entirely — so the memory path cannot reach it.
+	// The same query retires the observed attempts it names, by their own source
+	// key, scoped to the owner and the matching source: unrelated and fresh
+	// attempts survive, and no whole owner is muted.
+	//
+	// A PARTIAL ANSWER IS ANSWERED AS PARTIAL. The title names what was dropped,
+	// and a non-nil error says some evidence could NOT be retired — never an
+	// authoritative success while a suppression silently failed.
+	retired, attemptTitle, attemptErr := a.forgetAttempts(query)
+	if len(found) > 0 {
+		return found[0].Title, attemptErr
 	}
-	return found[0].Title, nil
+	if retired > 0 {
+		return attemptTitle, attemptErr
+	}
+	if attemptErr != nil {
+		return "", attemptErr
+	}
+	return "", nil
+}
+
+// forgetAttempts retires the independently observed attempts a forget query
+// names. It is the ONE caller of the unconditional attempt read, and it never
+// hands anything to a model: it only records a suppression of the exact source
+// each matching attempt carried.
+//
+// IT ANSWERS TRUTHFULLY ABOUT WHAT IT COULD NOT DO. A read that failed or a
+// suppression that failed is visible twice: journaled, and returned as a
+// non-nil error that names how much was retired and how much was not. The old
+// shape swallowed both and returned success whenever any row was retired, which
+// let a store error masquerade as a complete forget.
+//
+// THE SUPPRESSION IS EXACT AND SOURCE-SCOPED: owner, source key and content
+// hash, per row. It is never a whole-owner mute, so a fresh, independently
+// observed attempt carrying a new source key is learned again.
+func (a *Agent) forgetAttempts(query string) (int, string, error) {
+	terms := outcomeTerms(query)
+	if len(terms) == 0 {
+		return 0, "", nil
+	}
+	retired := 0
+	title := ""
+	failed := 0
+	firstFailure := ""
+	for _, owner := range a.memoryOwners() {
+		if strings.TrimSpace(owner) == "" || !store.ValidOwner(owner) {
+			continue
+		}
+		rows, err := a.memory.store.ContextualAttemptsRecent(owner, time.Now(), store.ContextualAttemptLimit)
+		if err != nil {
+			a.journalMemoryFailure("attempt-forget", err)
+			failed++
+			if firstFailure == "" {
+				firstFailure = "read " + owner + ": " + err.Error()
+			}
+			continue
+		}
+		for _, at := range rows {
+			// The row's OWN owner is the suppression scope; a row the read
+			// returned under another owner is not this query's to touch.
+			if at.Owner != owner || !attemptRelevant(at, terms) {
+				continue
+			}
+			if err := a.memory.store.SuppressContextualSource(at.Owner, at.SourceKey, at.SourceHash, "explicit forget"); err != nil {
+				a.journalMemoryFailure("attempt-forget", err)
+				failed++
+				if firstFailure == "" {
+					firstFailure = "source " + at.SourceKey + ": " + err.Error()
+				}
+				continue
+			}
+			retired++
+			if title == "" {
+				title = contextualClip(at.Goal, 80)
+			}
+		}
+	}
+	if failed > 0 {
+		return retired, title, fmt.Errorf("forget retired %d observed attempt(s) and could not retire %d: %s", retired, failed, firstFailure)
+	}
+	return retired, title, nil
 }
 
 // Memories lists what is kept, newest-touched first — or the best matches for a
@@ -1213,9 +1835,9 @@ func (a *Agent) Memories(query string) ([]MemoryLine, error) {
 		err   error
 	)
 	if strings.TrimSpace(query) == "" {
-		found, err = a.memory.store.ListMemories("", memoryListLimit)
+		found, err = a.memory.store.ListMemories(a.memoryOwners(), memoryListLimit)
 	} else {
-		found, err = a.memory.store.SearchMemories(query, memoryListLimit)
+		found, err = a.memory.store.SearchMemories(a.memoryOwners(), query, memoryListLimit)
 	}
 	if err != nil {
 		return nil, err
@@ -1249,8 +1871,20 @@ func (a *Agent) memoryContext() context.Context {
 // both the durable record that this already happened and the person's copy of
 // what they wrote. A second run finds no memory.md and does nothing; a person
 // who wants it back has the file.
+//
+// THE RENAME IS THE LAST THING THAT HAPPENS AND ONLY WHEN EVERY ROW LANDED.
+// It used to rename whether or not the rows landed — a disk error partway
+// through left a person's old memory renamed out of the way and only partly in
+// the store, with nothing anywhere to say so. Now a scan error or a failed row
+// leaves the file where it is, journals the failure, and resets the
+// once-marker so the next turn retries.
+//
+// THE RETRY IS IDEMPOTENT, which is what makes the reset safe: every row goes
+// through the one write door, whose dedup skips a line the first attempt
+// already kept. A partially imported file finishes; a fully imported one that
+// failed only at the rename does not make a thousand duplicates.
 func (a *Agent) importMemoryFile() {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return
 	}
 	a.memory.mu.Lock()
@@ -1284,29 +1918,49 @@ func (a *Agent) importMemoryFile() {
 		}
 		lines = append(lines, line)
 	}
+	// THE SCAN'S OWN ERROR IS READ. A file too big for its buffer, a disk that
+	// went away mid-read — these arrived here as a partial list that looked
+	// complete, and the import that followed both renamed the file out of the
+	// way and kept only what the scan happened to see. A scan error leaves
+	// everything exactly where it is.
+	if err := scanner.Err(); err != nil {
+		_ = file.Close()
+		a.retryImportNextTurn(fmt.Errorf("reading %s: %w", path, err))
+		return
+	}
 	_ = file.Close()
 
 	imported := 0
 	for _, line := range lines {
-		if _, err := a.memory.store.AddMemory(store.Memory{
-			Type:          store.MemoryFact,
-			Scope:         store.MemoryScopeUser,
-			Title:         memoryTitleFrom(line),
-			Text:          line,
-			SourceSession: a.memorySourceSession(),
-		}); err == nil {
-			imported++
+		if _, err := a.writeRemembered(line, store.MemoryScopeUser); err != nil {
+			// ONE ROW THAT DID NOT LAND STOPS THE IMPORT AND LEAVES THE FILE.
+			// The rows that landed stay landed; the retry skips them as
+			// duplicates and carries on from the first row that failed.
+			a.retryImportNextTurn(fmt.Errorf("importing a memory.md line: %w", err))
+			return
 		}
+		imported++
 	}
-	// The rename happens whether or not a line landed: a file that could not be
-	// imported this time will not import better next time, and a session that
-	// re-read it every turn would be a session that never stopped trying.
 	if err := os.Rename(path, path+".imported"); err != nil {
+		// Every row landed and the rename did not: the retry re-imports into a
+		// dedup door that skips every row, then tries the rename again.
+		a.retryImportNextTurn(fmt.Errorf("moving %s out of the way: %w", path, err))
 		return
 	}
 	if imported > 0 {
 		a.sayMemory(fmt.Sprintf("imported %d memories from memory.md", imported))
 	}
+}
+
+// retryImportNextTurn journals an import failure, says so, and gives the
+// import its next turn back — the once-marker was set optimistically at the
+// door, and a failed attempt is exactly what it was protecting against
+// repeating silently.
+func (a *Agent) retryImportNextTurn(err error) {
+	a.memory.mu.Lock()
+	a.memory.imported = false
+	a.memory.mu.Unlock()
+	a.journalMemoryFailure("import", err)
 }
 
 // ── the small judgements ────────────────────────────────────────────────────
@@ -1344,9 +1998,9 @@ func memoryTitleFrom(text string) string {
 
 // ── the one tool ────────────────────────────────────────────────────────────
 
-const rememberDescription = "Remember one durable thing across sessions: a preference the person stated, a correction they made, a decision that will still bind tomorrow. Write it as a standing truth in one short line ('prefers tabs over spaces in Go'), not as a log of what just happened. It is settled against what is already remembered — a near-duplicate refines the existing line rather than adding a second — and the title it landed under comes back to you. Do not remember what the transcript already holds, what the repo or AGENTS.md already records, or anything that will be false tomorrow."
+const rememberDescription = "Keep one durable user preference, correction or decision in a short line. Preserve conditions and exceptions; omit transcripts, repo facts and temporary state. Related memories are reconciled; the result names the saved title."
 
-const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: the person everywhere (default), this project only, or this machine only"}},"required":["text"],"additionalProperties":false}`
+const rememberSchemaJSON = `{"type":"object","properties":{"text":{"type":"string","description":"The single line to remember, in plain words"},"scope":{"type":"string","enum":["user","project","env"],"description":"How far the truth reaches: this project by default; user only for an explicitly personal rule across projects; env only for this machine"}},"required":["text"],"additionalProperties":false}`
 
 // The gloss a person reads beside a memory call is the thing itself —
 // "remember prefers tabs over spaces" — for the reason every other tool's gloss
@@ -1360,10 +2014,10 @@ func init() { glossField["remember"] = "text" }
 // carrying `remember` against no store is a model told it can remember, whose
 // every call is refused. A session without memory simply does not have the verb.
 func (a *Agent) memoryTools() []bare.Tool {
-	if !a.remembers() {
+	if !a.memoryWritable() {
 		return nil
 	}
-	return []bare.Tool{{
+	return append([]bare.Tool{{
 		Name:        "remember",
 		Description: rememberDescription,
 		Schema:      json.RawMessage(rememberSchemaJSON),
@@ -1381,7 +2035,7 @@ func (a *Agent) memoryTools() []bare.Tool {
 			}
 			return "remembered: " + title, false, nil
 		},
-	}}
+	}}, a.contextualEvidenceTools()...)
 }
 
 // refreshSystemLocked rebuilds message[0] from the base prompt, the folders

@@ -190,3 +190,38 @@ func TestTheRepairRewritesADefinitionThatNamesADeadPath(t *testing.T) {
 type quietHost struct{}
 
 func (quietHost) Run(context.Context, string, ...string) error { return nil }
+
+// THE ONE TICK CONSTRUCTOR WIRES THE THREE-WAY SENTINEL. v3StandingTicker is
+// the only place a pass is built, for a window and for the OS timer alike; a
+// pass that carried only the binary reader folded an ambiguous or refused reply
+// into "no" and closed an opportunity nobody decided. It must carry
+// SentinelVerdict, and the per-item pinned model is read inside the sentinel and
+// the runner from the item's own origin (session.standingPinnedConfig), so a
+// posture reloaded from the profile cannot re-route an item the person happened
+// to ratify under `--one-model`.
+func TestTheTickConstructorWiresTheThreeWaySentinel(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv(home.EnvVar, state)
+	keyless(t)
+
+	store, err := standing.Open(home.Join("v3", "standing"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	ticker, release, err := v3StandingTicker(store)
+	if err != nil {
+		t.Fatalf("v3StandingTicker: %v", err)
+	}
+	if release != nil {
+		defer release()
+	}
+	if ticker.SentinelVerdict == nil {
+		t.Fatal("the real tick has no three-way sentinel")
+	}
+	if ticker.Runner == nil || ticker.Store == nil {
+		t.Fatal("the real tick is missing its runner or store")
+	}
+	if ticker.DailyRailUSD != v3StandingDailyRail(state) {
+		t.Fatal("the pass quotes a different daily rail than the door")
+	}
+}

@@ -908,6 +908,61 @@ func TestASealCarriesAWorldWhoseFurrowMarkerIsHidden(t *testing.T) {
 	}
 }
 
+// A SIBLING'S WORKTREE MID-CUT IS NOT A REASON TO REFUSE THE SEAL.
+//
+// The parts of a legacy-layout division are cut under the ground's OWN
+// `.codeaf/tasks/`, and `git worktree add` makes that directory exist as a
+// nested repository before it has finished checking a commit out. A bare
+// `git add -A -- .` in the ground then fails outright on it —
+// "error: '.../2/' does not have a commit checked out", "fatal: adding files
+// failed" — which took the seal, and the node's whole world, down with it.
+// Two parts cut at once lose this race alternately.
+//
+// SO THIS REPOSITORY HOLDS EXACTLY THAT CORPSE ON DISK, unborn HEAD and all,
+// and the seal has to carry the parent's world anyway — past the machinery,
+// machinery that is reset out of the index either way. The pathspec [seal]
+// builds for the dropping directory is what makes it work; naming it while it
+// is git-ignored would be refused in its turn, which is why both shapes are
+// checked.
+func TestASealCarriesTheWorldPastASiblingsUnbornWorktree(t *testing.T) {
+	for _, ignored := range []bool{false, true} {
+		name := "the machinery is in the person's tree"
+		if ignored {
+			name = "the machinery is git-ignored"
+		}
+		t.Run(name, func(t *testing.T) {
+			repo := newTestRepo(t)
+			writeFile(t, filepath.Join(repo, "wip.txt"), "the parent's unfinished line\n")
+			if ignored {
+				writeFile(t, filepath.Join(repo, ".gitignore"), codeafDroppings+"/\n")
+			}
+			// THE SIBLING'S COPY, REGISTERED AS A REPOSITORY WITH NOTHING CHECKED
+			// OUT YET — the exact state `git worktree add` is in for the instant
+			// before it finishes, and the state that used to fail the add.
+			unborn := filepath.Join(repo, codeafDroppings, "tasks", "unfiled-abc123", "2")
+			if err := os.MkdirAll(unborn, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			mustGit(t, unborn, "init", "--quiet")
+
+			commit, err := sealGroundWork(repo, "the whole job")
+			if err != nil {
+				t.Fatalf("the seal refused a ground a sibling was being cut in: %v", err)
+			}
+			if commit == "" {
+				t.Fatal("the seal answered nothing while the parent held uncommitted work")
+			}
+			listed := gitOut(t, repo, "ls-tree", "-r", "--name-only", commit)
+			if !strings.Contains(listed, "wip.txt") {
+				t.Fatalf("the sealed world is missing the parent's file:\n%s", listed)
+			}
+			if strings.Contains(listed, codeafDroppings) {
+				t.Fatalf("the machinery is in the sealed world:\n%s", listed)
+			}
+		})
+	}
+}
+
 // THE FORK RUNG HAS THE SAME CORNER, and a person whose `.gitignore` lists it
 // used to lose the rung the same way. It seals through the same door as the
 // snapshot now ([universeBranch]), so what is pinned here is the fork's half of

@@ -84,20 +84,79 @@ import (
 // changes meaning; a reader that meets a newer schema than it knows skips the
 // document and says so in the pass. [SchemaOf] says which version one item is
 // written at.
-const Schema = 2
+//
+// VERSION 3 IS THE DEFERRED-DELIVERY BARRIER. A document that carries a durable
+// [Item.Pending], a task in-flight marker, an armed [Item.Fingerprint] or an
+// advanced [Item.Revision] is written at 3, so a build that predates those
+// fields — codeaf, devaf and stageaf share one home, so that build is an
+// ordinary afternoon and not a downgrade — SKIPS it rather than decoding it
+// without those fields and re-marshalling the loss back. Version 2 alone is not
+// safe: a v2 reader knows [Action.Isolate] but not Pending, and would silently
+// drop an authorized line. Reading 1 and 2 still works; the upgrade to 3 happens
+// on the next write.
+//
+// THE BARRIER PROTECTS SEMANTICS THAT PREDATE [Item.Pending]. A newly armed
+// file watch carries its [Item.Fingerprint] baseline and a bumped [Item.Revision]
+// BEFORE any delivery intent exists; a baseline reader that decodes it without
+// those fields would re-marshal the loss back and turn "the file changed" into
+// "nothing changed", and its write would reset the revision the guarded write
+// ([Store.saveActive]) relies on. So the fence is on the fields themselves and
+// not only on a pending line.
+//
+// VERSION 4 IS THE PROBE-RECURRENCE BARRIER, and it is deliberately narrow. A
+// document carrying a [Item.Positive] identity or a one-shot condition
+// ([When.OneShot]) is written at 4, so the build that first landed the positive
+// identity at schema 3 — which decoded a document without the field and
+// re-reported an unchanged positive — SKIPS it rather than misreading it. The
+// fence is on the new fields themselves: version 3 cannot guard a field a
+// schema-3 reader already claims to understand.
+const Schema = 4
+
+// schemaDeferred is version 3, the deferred-delivery barrier. It stays its own
+// number because the fields it guards predate this build, and a reader that
+// knows only up to 2 must go on skipping exactly what it skipped before.
+const schemaDeferred = 3
 
 // SchemaOf is the version an item is written at: the oldest one whose readers
 // all keep its meaning.
 //
-// AN ITEM THAT ISOLATES ITS WORK IS VERSION 2, AND EVERY OTHER ITEM STAYS AT 1.
-// A build older than [Action.Isolate] decodes the document without that field
-// and would fire the task in the person's own checkout — the commit on their
-// branch the approval card promised would not happen. codeaf, devaf and stageaf
-// share one home, so an older build reading this store is an ordinary
-// afternoon, not a downgrade. Every older build skips a document newer than it
-// reads, so version 2 leaves an isolated order to the builds that can keep it,
-// while an ordinary order stays at 1 and an older build keeps firing it.
+// AN ITEM CARRYING A DURABLE DELIVERY OR A TASK IN-FLIGHT MARKER IS VERSION 3,
+// THE DEFERRED-DELIVERY BARRIER. A build that predates those fields decodes the
+// document without them and would
+//   - drop a [Item.Pending] on its next write, losing an authorized line that
+//     was never acknowledged, or
+//   - run a [ActionTask] whose outcome is unknown, replaying arbitrary edits.
+//
+// Version 2 alone is not safe (a v2 reader knows [Action.Isolate] but not
+// Pending), so any item that carries them is written at 3 and an older build
+// SKIPS it rather than decoding the loss back.
+//
+// A POSITIVE IDENTITY OR A ONE-SHOT CONDITION IS VERSION 4, THE PROBE-
+// RECURRENCE BARRIER. Neither field can ride version 3: the build that
+// introduced the identity was itself a schema-3 reader, so it decodes a
+// schema-3 document without the field and re-reports an unchanged positive.
+// Version 4 is what that reader skips. The deferred fields keep version 3, so
+// the fence is only on the semantics that need it.
+//
+// EVERY ITEM TOUCHED BY THIS BUILD'S DEFERRED SEMANTICS STAYS VERSION 3, and an item
+// this build has never rewritten keeps the oldest version whose readers still
+// keep its meaning: a plain order created here is written at 1 and an isolated
+// order at 2, so an ordinary reminder an older build created is still read and
+// fired rather than hidden for no reason.
+//
+// THE VERSION IS COMPUTED AT MARSHAL TIME (see [marshalItem]) so the revision
+// this very write is about to mint is the one tested. An item this build has
+// saved at least twice ([Item.Revision] > 1) carries the guarded-write
+// generation a baseline reader would silently reset, and an armed file watch
+// carries the baseline [Item.Fingerprint] it would silently drop, so both are
+// fenced at 3 rather than left at 1 for a reader that would lie about them.
 func SchemaOf(it Item) int {
+	if it.Positive != "" || it.When.OneShot {
+		return Schema
+	}
+	if len(it.Pending) > 0 || it.TaskInflight != nil || it.Fingerprint != "" || it.Revision > 1 || it.Origin.OneModel {
+		return schemaDeferred
+	}
 	if it.Does.Isolate {
 		return 2
 	}
@@ -151,8 +210,9 @@ const (
 	WhenAt WhenKind = "at"
 	// WhenEvery fires on a rhythm — a cron line or an interval — forever.
 	WhenEvery WhenKind = "every"
-	// WhenFile fires when files matching a glob change (a fingerprint of
-	// names, sizes and mtimes, as v1's file watch did).
+	// WhenFile fires when files matching a glob change (a bounded fingerprint of
+	// names, sizes and CONTENTS — not mtimes, so a bare touch is not a change and
+	// an equal-size edit is).
 	WhenFile WhenKind = "file"
 	// WhenIdle fires when the machine has been quiet — no window busy, no
 	// task running anywhere — for [When.IdleFor]. "Learn this later" is this.
@@ -200,6 +260,15 @@ func (it Item) CardKindOf() CardKind {
 	}
 }
 
+// retiresOnFiring reports whether a successful firing ends an item's life. A
+// reminder retires because its whole content was the moment it named; a one-shot
+// condition ([When.OneShot]) retires for the same reason, once it has told the person
+// the one thing they asked to be told once. An ordinary watch speaks the change
+// and stays armed.
+func (it Item) retiresOnFiring() bool {
+	return it.When.Kind == WhenAt || (it.When.Kind == WhenProbe && it.When.OneShot)
+}
+
 // shortWordsRunes is how much of a cadence a button may carry. Past it the
 // label eats the row and the other answers disappear.
 const shortWordsRunes = 32
@@ -241,9 +310,24 @@ type When struct {
 	// Probe is a WhenProbe's look at the world, taken every ProbeEvery.
 	Probe      Probe         `json:"probe,omitempty"`
 	ProbeEvery time.Duration `json:"probeEvery,omitempty"`
-	// Hint tells the sentinel what a yes looks like, in the model's words at
-	// proposal time: "yes when any run on main shows conclusion=failure".
+	// Hint is the MODEL'S OWN reading, written at proposal time, of what a yes
+	// to this condition would look like in the probe's output: "yes when any
+	// run on main shows conclusion=failure". It is a note the sentinel is
+	// shown, never the person's criterion: [Item.Words] is what is judged, so
+	// a match to the hint does not settle a condition the person phrased more
+	// narrowly or more broadly than the guess.
 	Hint string `json:"hint,omitempty"`
+	// OneShot is a WhenProbe's one-shot intent: the condition watch fires when the
+	// condition FIRST turns true, delivers its one line, and retires. It is the
+	// compiled difference between "notify me once when ready becomes true" (set)
+	// and "tell me every time it is ready" (unset, the rising-edge default).
+	//
+	// IT IS A COMPILED FIELD, NOT A WORD MATCH. The model reads the sentence
+	// once, at proposal time, and this is what it wrote; nothing here scans the
+	// person's English on every pass. It rides the approval card and the stored
+	// document like every other field, and it is fenced at [Schema] so an older
+	// reader skips it rather than silently re-arming a one-shot forever.
+	OneShot bool `json:"once,omitempty"`
 }
 
 // Probe is one look at the world: a shell command in the workspace, OR a belt
@@ -360,6 +444,22 @@ type Origin struct {
 	// changing this item. Home uses them to tell a conversation that was only
 	// ever about this item from one that merely contains it.
 	TurnIDs []string `json:"turnIds,omitempty"`
+	// PinnedModel and OneModel are the RATIFYING CONVERSATION'S MODEL POLICY,
+	// frozen at the moment the person said yes. They are on the origin because
+	// a firing is that conversation's work done later: a background pass
+	// reloads a keyless posture whose tiers, role pins and fallback ladder are
+	// the profile's, and without the pin an item made under `--one-model` would
+	// quietly route its sentinel and its child work through a different model
+	// the person had already promised away. OneModel is whether the promise was
+	// in force; PinnedModel is the model it named (the conversation's own), and
+	// is the model every TEXT seat of this item must use when it is set.
+	//
+	// IT IS WRITTEN AT SCHEMA 3 WHEN SET (see [SchemaOf]): a build that predates
+	// these fields decodes the document without them and would re-marshal the
+	// silent re-routing back, so such an item is fenced rather than left to be
+	// read as an ordinary unpinned order.
+	PinnedModel string `json:"pinnedModel,omitempty"`
+	OneModel    bool   `json:"oneModel,omitempty"`
 }
 
 // ── altitude: how far an item reaches ───────────────────────────────────────
@@ -437,6 +537,13 @@ type Item struct {
 	Status  Status    `json:"status"`
 	Created time.Time `json:"created"`
 	Updated time.Time `json:"updated"`
+	// Revision counts this document's writes. It is the generation a pass that
+	// has been holding a copy for minutes compares against before it writes:
+	// if the number moved, somebody edited, paused or resumed the item while the
+	// pass was looking, and THEIR ACT IS NEWER THAN THE PASS'S STALE COPY. A
+	// status-only check is not enough — a pause and a resume both leave the
+	// status active — so the count is what the guard actually reads.
+	Revision int64 `json:"revision,omitempty"`
 	// RetiredWhy says why a retired item retired: "fired", "expired",
 	// "stopped by you", or the sentence the last failure left.
 	RetiredWhy string `json:"retiredWhy,omitempty"`
@@ -449,9 +556,43 @@ type Item struct {
 	NextDue       time.Time `json:"nextDue,omitempty"`
 	// Fingerprint is a WhenFile's last reading.
 	Fingerprint string `json:"fingerprint,omitempty"`
+	// Positive is a WhenProbe's last AFFIRMATIVE reading, as an identity: a
+	// bounded digest of the exact evidence the check observed when the sentinel
+	// last said yes. It is what bounds an UNCHANGED continuous positive from
+	// being reported again, independently of the words the sentinel happens to
+	// use on a later check: while the observed reading is byte-for-byte the one
+	// already reported, the watch is quiet, and a decided no clears it so a
+	// later true is a fresh edge again.
+	//
+	// IT IS AN IDENTITY AND NOT A REASON. Nothing here reads the model's line,
+	// because a model that says "same state already reported" and answers yes in
+	// the same breath is exactly the failure this field exists to bound. It is
+	// also not the evidence: only the digest is kept, so no probe output and no
+	// secret it carried is retained.
+	//
+	// IT IS EMPTY WHEN THE READING CANNOT CERTIFY ANYTHING. A reading the clip
+	// cut short ([ProbeClip]) is a partial view, so a repeated look at it must
+	// not be passed off as "the same state"; the identity stays empty and the
+	// sentinel keeps deciding. An empty identity is never a suppression.
+	Positive string `json:"positive,omitempty"`
 	// Previous are the last [Previous] sentinel lines, newest first, each with
 	// what came of it.
 	Previous []string `json:"previous,omitempty"`
+	// Pending are deliveries this item means to make but has not confirmed. A
+	// delivery record is written BEFORE the line is carried out and cleared only
+	// when the delivery is acknowledged, so a crash between the two leaves the
+	// intent on disk and a later pass reconciles it BY IDENTITY instead of
+	// guessing. It is bounded by [PendingKeep] and empty on almost every item.
+	// A later pass settles it at the top of the walk, before any fresh look, so
+	// an advanced prerequisite can never strand it.
+	Pending []Pending `json:"pending,omitempty"`
+	// TaskInflight, when set, is the durable marker of a task attempt that began
+	// but whose outcome is not known: written BEFORE [Runner.Run] and cleared
+	// only on a terminal outcome. A later pass refuses to run the task again
+	// while it is set and reconciles it as [Item.NeedsPerson] rather than
+	// replaying arbitrary edits. It makes NO exactly-once promise about what a
+	// task did; it makes replay STOP.
+	TaskInflight *TaskInflight `json:"taskInflight,omitempty"`
 
 	// The ledger half, kept on the item for the card; the daily ledger is the
 	// truth for the rails.
@@ -660,6 +801,21 @@ func (it Item) ExceptedFrom(workspace, sessionID string) bool {
 	return false
 }
 
+// NeedsBaselineLead opens the line a ratifier leaves when a file watch could not
+// have its baseline read whole, so no baseline was set ([Store.Arm] and
+// [ErrBaselineIncomplete]). It is a FLAG rather than a failure: the item stands
+// and keeps its ordinary first-reading semantics, but the person is told that
+// the reading it starts from was not established at the yes. It is declared
+// beside [NeedsPermissionLead] for the same reason — two packages agree on the
+// words, the session writes them and [IsBaselineLine] recognises them.
+const NeedsBaselineLead = "started without a full baseline: the watch could not read everything it matches"
+
+// IsBaselineLine reports whether a line on an item is the baseline-incomplete
+// flag rather than a question the firing put to the person.
+func IsBaselineLine(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), NeedsBaselineLead)
+}
+
 // NeedsPermissionLead opens the one line a firing leaves when it stopped
 // because a call needed permission and nobody was there to give it. It is
 // declared here, beside the field, because two packages must agree on it: the
@@ -754,6 +910,56 @@ func (it Item) ClearNeedsPerson() Item {
 	}
 	it.NeedsPerson = ""
 	return it
+}
+
+// pendingSay finds an unresolved delivery of the same text, so a firing that
+// failed partway does not mint a second identity on its next attempt: the same
+// line re-delivers under the same identity and the inbox dedups it. It is the
+// whole reason a restart after a lost acknowledgement is not a duplicate.
+func (it Item) pendingSay(text string) (Pending, bool) {
+	for _, pending := range it.Pending {
+		if pending.Kind == ActionSay && pending.Text == text {
+			return pending, true
+		}
+	}
+	return Pending{}, false
+}
+
+// addPending records one delivery intent, newest last. It answers false rather
+// than making room when [PendingKeep] is already reached: a cap that silently
+// evicted the oldest undelivered line would be this package throwing away the
+// person's own authorized work, so the caller stops and says so instead.
+func (it *Item) addPending(pending Pending) bool {
+	if len(it.Pending) >= PendingKeep {
+		return false
+	}
+	it.Pending = append(it.Pending, pending)
+	return true
+}
+
+// dropPending clears one delivery intent by identity. An identity that is not
+// there is the state the caller wanted, so it is not an error.
+func (it *Item) dropPending(id string) {
+	kept := it.Pending[:0]
+	for _, pending := range it.Pending {
+		if pending.ID != id {
+			kept = append(kept, pending)
+		}
+	}
+	it.Pending = kept
+}
+
+// bumpPending counts one failed attempt to settle a delivery intent, returning
+// the new count. It is how a line that cannot be delivered becomes an explicit
+// [Item.NeedsPerson] instead of retrying forever with nothing to show.
+func (it *Item) bumpPending(id string) int {
+	for i := range it.Pending {
+		if it.Pending[i].ID == id {
+			it.Pending[i].Attempts++
+			return it.Pending[i].Attempts
+		}
+	}
+	return 0
 }
 
 // Glyph is the one character a row leads with, decided here so every surface
@@ -885,6 +1091,32 @@ type Entry struct {
 	USD  float64 `json:"usd"`
 	// Run is the run folder, for a firing.
 	Run string `json:"run,omitempty"`
+	// Pending is the delivery identity this firing settled, when it settled
+	// one: the identity of the [Pending] intent the line was carried out
+	// under. The line is written only AFTER the delivery succeeded, so its
+	// presence in the append-only ledger is NATIVE DURABLE FIRING EVIDENCE.
+	// [Ticker.settleItem] reads it to settle an intent whose item write was
+	// lost — a one-shot whose line already reached the person retires from
+	// this evidence instead of being delivered a second time.
+	Pending string `json:"pending,omitempty"`
+	// Outcome is what the firing came to ([Outcome.Kind]: said, landed,
+	// needs-you, failed or nothing). [Item.LastOutcome] is overwritten by the
+	// next firing, so this field is the only durable record of what this one
+	// outcome was; a settlement reads it back rather than inventing one.
+	Outcome string `json:"outcome,omitempty"`
+	// Line is the one sentence the firing carried (the sighting line
+	// [Ticker.fire] recorded as its check line), which is what the firing wrote
+	// into [Item.LastCheckLine] and [Item.Previous]. It is kept here so a
+	// settlement of this firing can restore both from the record it left behind
+	// rather than from a fresh clock.
+	Line string `json:"line,omitempty"`
+	// Needs is the one line the firing left waiting for the person
+	// ([Item.NeedsPerson]), empty when it left none. A firing that stopped on a
+	// question is a REACHED outcome and not a clean success, so the record
+	// carries the question itself: a settlement restores it, and derives the
+	// clean-run counter from it, rather than reading any line on the ledger as
+	// a clean success.
+	Needs string `json:"needs,omitempty"`
 }
 
 // Spend is what today's ledger says, for one item or for all.
@@ -908,6 +1140,59 @@ type Note struct {
 	Text string `json:"text"`
 	// Run is the run folder a person can open for the whole story.
 	Run string `json:"run,omitempty"`
+	// ID is the delivery identity, when the writer had one: the identity of
+	// the [Pending] record the core wrote before the line was carried out.
+	// Drain and Peek dedup on it, so a line appended twice across a restart or
+	// a torn write reaches the person once. Empty notes — every note written
+	// before this field existed, and every writer that has no identity — are
+	// passed through untouched.
+	ID string `json:"id,omitempty"`
+}
+
+// PendingKeep bounds how many undelivered records one item may carry, so a
+// delivery that keeps failing cannot grow the document without limit. It is
+// generous for the real case — one line at a time — and finite for the bad one.
+const PendingKeep = 8
+
+// PendingGiveUp is how many passes may fail to settle one delivery intent
+// before the item says so as an explicit [Item.NeedsPerson]. It bounds a retry
+// that cannot succeed so it surfaces to the person instead of retrying forever.
+const PendingGiveUp = 3
+
+// Pending is one delivery the item means to make, written to the item before
+// the line is carried out so that a crash cannot lose it and a later pass can
+// reconcile it by identity. It is the durable half of [ActionSay]. It carries
+// an identity and an attempt count; it makes no exactly-once promise about
+// anything a task may do — [Item.TaskInflight] is what stops arbitrary replay.
+type Pending struct {
+	// ID is the delivery identity, stable across restart, and the thing an
+	// inbox dedups on.
+	ID string `json:"id"`
+	// Kind is [ActionSay] today; it names what was being delivered.
+	Kind ActionKind `json:"kind"`
+	// Text is the line, already templated, that was meant to be said.
+	Text string `json:"text,omitempty"`
+	// At is when the intent was written.
+	At time.Time `json:"at"`
+	// Attempts counts how many passes have tried to settle this intent and
+	// failed, so a line that cannot be delivered becomes an explicit
+	// [Item.NeedsPerson] rather than retrying forever in silence.
+	Attempts int `json:"attempts,omitempty"`
+}
+
+// TaskInflight is the durable marker of a task attempt with no known outcome,
+// written before [Runner.Run] and cleared only when the attempt reaches one.
+// It exists so a crash or an error leaves a fact on disk that a later pass can
+// refuse to replay: a task edits the world, and nothing here can make a second
+// run idempotent, so the second run must not happen at all.
+type TaskInflight struct {
+	// RunDir is the run folder the attempt was given, so the person can open it.
+	RunDir string `json:"runDir,omitempty"`
+	// Started is when the attempt began.
+	Started time.Time `json:"started"`
+	// Attempts counts attempts that reached this marker, so a task that keeps
+	// dying can be surfaced rather than retried forever.
+	Attempts int `json:"attempts,omitempty"`
 }
 
 // InboxPath is the inbox inside a session folder.
@@ -925,7 +1210,58 @@ type Judgment struct {
 
 // Sentinel is one cheap yes/no call. The line is kept on the item and in the
 // log; it is read by the person, so it is one plain sentence.
+//
+// IT IS THE LEGACY SHAPE and it stays source-compatible on purpose: every
+// adapter and test written before [SentinelReading] existed keeps compiling and keeps
+// its old meaning. A yes is [VerdictYes], a no is [VerdictNo], and an error — a
+// refusal, a timeout, a provider that could not answer — is [VerdictUnknown]
+// rather than an established no.
 type Sentinel func(ctx context.Context, judgment Judgment) (yes bool, line string, usd float64, err error)
+
+// SentinelReading is a sentinel's three-valued answer, and the reason this package
+// stopped speaking in booleans.
+//
+// FALSE AND UNKNOWN ARE DIFFERENT FACTS. A decided no is the world saying the
+// condition does not hold; a refusal, a timeout, an ambiguous output or a
+// provider hiccup says only that nobody could tell. Collapsing the second into
+// the first would write a negative into the item's own history ([Item.Previous])
+// and quietly drop a pending opportunity the person is still waiting on. Only
+// [VerdictYes] fires; [VerdictUnknown] leaves the opportunity open and records
+// nothing as decided.
+type SentinelReading int
+
+const (
+	// VerdictUnknown is "nobody could tell": a refusal, a timeout, an
+	// ambiguous answer. It neither fires nor counts as an established no.
+	VerdictUnknown SentinelReading = iota
+	// VerdictNo is a decided negative.
+	VerdictNo
+	// VerdictYes is a decided affirmative, and the only verdict that fires.
+	VerdictYes
+)
+
+// SentinelVerdict is the three-valued form of [Sentinel]. A Ticker that carries
+// one uses it and ignores Sentinel; a Ticker that carries only a Sentinel keeps
+// the legacy two-valued meaning. It is an optional capability, discovered by a
+// field rather than by a type assertion on an interface, so a caller that has
+// not heard of it still builds.
+type SentinelVerdict func(ctx context.Context, judgment Judgment) (verdict SentinelReading, line string, usd float64, err error)
+
+// Deliverer is the optional capability a [Runner] may add when it can make a
+// delivery durable by IDENTITY. When a Runner implements it, the core hands it
+// the [Pending] record it already wrote to the item, so the same line delivered
+// twice across a restart carries the same identity and the second is deduped
+// rather than repeated.
+//
+// A RUNNER THAT DOES NOT IMPLEMENT IT STILL WORKS: the core falls back to
+// [Runner.Say], which has no identity to dedup on. That fallback is at-least-
+// once for a delivery whose acknowledgement was lost, which is stated plainly
+// and is why strong guarantees require this seam (see the integration contract).
+type Deliverer interface {
+	// Deliver carries out a pending delivery whose identity was already
+	// written to the item. It answers the same [Outcome] Runner.Say does.
+	Deliver(ctx context.Context, item Item, pending Pending) (Outcome, error)
+}
 
 // Outcome is what a run came to.
 type Outcome struct {
@@ -981,14 +1317,32 @@ func RunCameToNothing(runDir string) bool {
 // headless under the person's banked rules in a fresh session folder at
 // runDir.
 type Runner interface {
-	// Probe runs the item's probe and answers its output, clipped.
-	Probe(ctx context.Context, item Item) (string, error)
+	// Probe runs the item's probe and answers what it saw, with whether the
+	// reader had to cut it short. A CLIPPED READING IS NOT AN IDENTITY (see
+	// [ProbeReading]): the runner that cut it must say so, because a tail that
+	// fits under the cap is indistinguishable from a whole short reading.
+	Probe(ctx context.Context, item Item) (ProbeReading, error)
 	// Say delivers one line: into the origin conversation if it is open in
 	// this process, else into its inbox, and always onto the item.
 	Say(ctx context.Context, item Item, text string) (Outcome, error)
 	// Run runs the item's task brief in a fresh headless session at runDir,
 	// with the evidence available to the brief, bounded by the item's rails.
 	Run(ctx context.Context, item Item, runDir, evidence string) (Outcome, error)
+}
+
+// ProbeReading is what one look at the world answered: the evidence the sentinel
+// is shown, and whether the runner had to keep only part of what it read.
+//
+// A CLIPPED READING CANNOT CERTIFY AN UNCHANGED STATE. Two different full
+// readings can share the one tail a clip leaves — a log whose new failure is in
+// the dropped head still wears the same footer — so a look built from a clipped
+// reading carries no identity and a repeat of it is judged afresh rather than
+// suppressed as "the same state". A reading that fits is whole and may be hashed.
+type ProbeReading struct {
+	// Text is the evidence, already clipped from the tail where it was too long.
+	Text string
+	// Clipped reports that Text is only part of what the probe read.
+	Clipped bool
 }
 
 // Idle answers whether the machine is quiet enough for a WhenIdle: no live
@@ -1055,6 +1409,12 @@ type Pass struct {
 	// Tidied is how many remembered lines the consolidation pass moved, which
 	// is zero on all but a handful of passes a day (see [Tidy]).
 	Tidied int
+	// Unread is how many standing documents [Store.List] skipped because they
+	// could not be read — a newer schema, a damaged file, a dangling link.
+	// UnreadWhy says which and why in ONE bounded line. A pass that skipped a
+	// document says so; absence of evidence is not success.
+	Unread    int
+	UnreadWhy string
 	// Notes are one sentence per thing worth saying, for the log.
 	Notes []string
 }
@@ -1069,6 +1429,9 @@ type Ticker struct {
 	// Tidy is the consolidation pass over what is remembered, run once at the
 	// end of a pass and only when the session lane supplied one.
 	Tidy Tidy
+	// SentinelVerdict, when set, is the three-valued judgment and replaces the
+	// legacy Sentinel. Nil means the legacy [Sentinel] is used, if it is set.
+	SentinelVerdict SentinelVerdict
 	// DailyRailUSD is the ceiling on everything standing spends in one day,
 	// from settings. Zero is no rail, which the card says out loud.
 	DailyRailUSD float64

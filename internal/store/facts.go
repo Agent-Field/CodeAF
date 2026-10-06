@@ -2238,7 +2238,7 @@ func migrateFactsSchema(db *sql.DB) error {
 		default:
 			continue
 		}
-		if err := replayEvent(tx, event); err != nil {
+		if err := replayEvent(tx, event, false); err != nil {
 			return err
 		}
 	}

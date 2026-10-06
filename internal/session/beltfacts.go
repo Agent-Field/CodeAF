@@ -685,7 +685,8 @@ var standingFacts = []beltFact{{
 		"when CI goes red\", \"every Monday draft the update\", \"always run the tests\".\n" +
 		"PROPOSE IT, and never do it instead of proposing it, which answers a request\n" +
 		"they did not make. `stand`'s own description says how to tell one from the work\n" +
-		"in front of you and how to say when.",
+		"in front of you and how to say when. Propose future intentions with prerequisites,\n" +
+		"scope and rails; respect their ratification.",
 	// AND THE ABSENT CASE NAMES NO VERB: a sentence naming a tool this belt does
 	// not carry is the lie the whole file exists to prevent (prompt_belt_test.go
 	// asks it of every shape). Neither case carries a heading any more, because

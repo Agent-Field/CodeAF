@@ -57,10 +57,10 @@ func TestRestoreMemoryReturnsOnlyForgottenMemoryAndSurvivesRebuild(t *testing.T)
 	if err := graph.RestoreMemory(forgotten.ID); err != nil {
 		t.Fatal(err)
 	}
-	if hits, err := graph.SearchMemories("amber archive", 5); err != nil || len(hits) != 1 || hits[0].ID != forgotten.ID {
+	if hits, err := graph.SearchMemories(memoryTestOwners(), "amber archive", 5); err != nil || len(hits) != 1 || hits[0].ID != forgotten.ID {
 		t.Fatalf("search restored = (%v, %v)", memoryIDs(hits), err)
 	}
-	if index, err := graph.MemoryIndex(0); err != nil || !containsMemoryStub(index, forgotten.ID) {
+	if index, err := graph.MemoryIndex(memoryTestOwners(), 0); err != nil || !containsMemoryStub(index, forgotten.ID) {
 		t.Fatalf("index lacks restored memory: (%+v, %v)", index, err)
 	}
 	for name, id := range map[string]string{"active": active.ID, "superseded": superseded.ID, "unknown": "mem_unknown"} {
@@ -83,7 +83,7 @@ func TestMemoryIndexRanksOlderUsedMemoryAheadOfNewerUnusedMemory(t *testing.T) {
 	if err := graph.RecordMemoryOutcome([]string{older.ID}, nil); err != nil {
 		t.Fatal(err)
 	}
-	index, err := graph.MemoryIndex(0)
+	index, err := graph.MemoryIndex(memoryTestOwners(), 0)
 	if err != nil || len(index) < 2 || index[0].ID != older.ID || index[1].ID != newer.ID {
 		t.Fatalf("ranked index = (%+v, %v)", index, err)
 	}
@@ -104,7 +104,10 @@ func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
 	graph := openTestStore(t, filepath.Join(t.TempDir(), "memories.db"))
 
 	pricing := mustAddMemory(t, graph, Memory{
-		Type: MemoryDecision, Scope: MemoryScopeProject,
+		// THE OWNER IS NAMED, the way a real caller now must: a project with a
+		// provable key, not the old bare scope word.
+		Owner: OwnerProject("test"),
+		Type:  MemoryDecision, Scope: MemoryScopeProject,
 		Title: "Pricing stays annual",
 		Text:  "We decided pricing is billed annually with no monthly plan.",
 		Tags:  []string{"pricing", "billing"},
@@ -128,7 +131,7 @@ func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
 		t.Errorf("added memory = %+v, want active with both sequences at creation", pricing)
 	}
 
-	hits, err := graph.SearchMemories("annual billing", 5)
+	hits, err := graph.SearchMemories(memoryTestOwners(), "annual billing", 5)
 	if err != nil {
 		t.Fatalf("SearchMemories: %v", err)
 	}
@@ -137,7 +140,7 @@ func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
 	}
 
 	// A tag is a search term too: it is indexed beside the title and the text.
-	tagged, err := graph.SearchMemories("deploy", 5)
+	tagged, err := graph.SearchMemories(memoryTestOwners(), "deploy", 5)
 	if err != nil {
 		t.Fatalf("SearchMemories by tag: %v", err)
 	}
@@ -145,14 +148,14 @@ func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
 		t.Fatalf("search by tag = %v, want just %q", memoryIDs(tagged), deploy.ID)
 	}
 
-	all, err := graph.ListMemories("", 0)
+	all, err := graph.ListMemories(nil, 0)
 	if err != nil {
 		t.Fatalf("ListMemories: %v", err)
 	}
 	if got := memoryIDs(all); !reflect.DeepEqual(got, []string{deploy.ID, editor.ID, pricing.ID}) {
 		t.Fatalf("ListMemories = %v, want newest touched first", got)
 	}
-	scoped, err := graph.ListMemories(MemoryScopeUser, 0)
+	scoped, err := graph.ListMemories([]string{OwnerUser}, 0)
 	if err != nil {
 		t.Fatalf("ListMemories(user): %v", err)
 	}
@@ -160,7 +163,7 @@ func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
 		t.Fatalf("ListMemories(user) = %v, want only the user-scoped memory", got)
 	}
 
-	index, err := graph.MemoryIndex(0)
+	index, err := graph.MemoryIndex(memoryTestOwners(), 0)
 	if err != nil {
 		t.Fatalf("MemoryIndex: %v", err)
 	}
@@ -174,7 +177,7 @@ func TestAddedMemoryIsReachableByEveryRoute(t *testing.T) {
 	}
 
 	// The router asks in the order it decided on, and gets that order back.
-	got, err := graph.GetMemories([]string{deploy.ID, pricing.ID, "mem_nothing"})
+	got, err := graph.GetMemories(memoryTestOwners(), []string{deploy.ID, pricing.ID, "mem_nothing"})
 	if err != nil {
 		t.Fatalf("GetMemories: %v", err)
 	}
@@ -203,14 +206,14 @@ func TestUpdatedMemoryIsFoundByItsNewWordsOnly(t *testing.T) {
 		t.Fatalf("UpdateMemory: %v", err)
 	}
 
-	stale, err := graph.SearchMemories("octopus", 5)
+	stale, err := graph.SearchMemories(memoryTestOwners(), "octopus", 5)
 	if err != nil {
 		t.Fatalf("SearchMemories(stale): %v", err)
 	}
 	if len(stale) != 0 {
 		t.Fatalf("the replaced word still finds %v, want nothing", memoryIDs(stale))
 	}
-	fresh, err := graph.SearchMemories("platypus", 5)
+	fresh, err := graph.SearchMemories(memoryTestOwners(), "platypus", 5)
 	if err != nil {
 		t.Fatalf("SearchMemories(fresh): %v", err)
 	}
@@ -218,7 +221,7 @@ func TestUpdatedMemoryIsFoundByItsNewWordsOnly(t *testing.T) {
 		t.Fatalf("the new word finds %v, want %q", memoryIDs(fresh), memory.ID)
 	}
 
-	read, err := graph.GetMemories([]string{memory.ID})
+	read, err := graph.GetMemories(memoryTestOwners(), []string{memory.ID})
 	if err != nil || len(read) != 1 {
 		t.Fatalf("GetMemories after update = (%v, %v)", read, err)
 	}
@@ -253,24 +256,24 @@ func TestSupersededMemoryLeavesTheViewsAndStaysReadableForAudit(t *testing.T) {
 		t.Fatalf("SupersedeMemory: %v", err)
 	}
 
-	if hits, err := graph.SearchMemories("kestrel", 5); err != nil || len(hits) != 0 {
+	if hits, err := graph.SearchMemories(memoryTestOwners(), "kestrel", 5); err != nil || len(hits) != 0 {
 		t.Fatalf("search for the superseded text = (%v, %v), want nothing", memoryIDs(hits), err)
 	}
-	if hits, err := graph.SearchMemories("albatross", 5); err != nil || len(hits) != 1 || hits[0].ID != fresh.ID {
+	if hits, err := graph.SearchMemories(memoryTestOwners(), "albatross", 5); err != nil || len(hits) != 1 || hits[0].ID != fresh.ID {
 		t.Fatalf("search for the new text = (%v, %v), want %q", memoryIDs(hits), err, fresh.ID)
 	}
-	list, err := graph.ListMemories("", 0)
+	list, err := graph.ListMemories(nil, 0)
 	if err != nil {
 		t.Fatalf("ListMemories: %v", err)
 	}
 	if ids := memoryIDs(list); !reflect.DeepEqual(ids, []string{fresh.ID}) {
 		t.Fatalf("ListMemories = %v, want only the replacement", ids)
 	}
-	index, err := graph.MemoryIndex(0)
+	index, err := graph.MemoryIndex(memoryTestOwners(), 0)
 	if err != nil || len(index) != 1 || index[0].ID != fresh.ID {
 		t.Fatalf("MemoryIndex = (%+v, %v), want only the replacement", index, err)
 	}
-	if got, err := graph.GetMemories([]string{old.ID}); err != nil || len(got) != 0 {
+	if got, err := graph.GetMemories(memoryTestOwners(), []string{old.ID}); err != nil || len(got) != 0 {
 		t.Fatalf("GetMemories(superseded) = (%v, %v), want nothing", memoryIDs(got), err)
 	}
 
@@ -307,16 +310,16 @@ func TestForgottenMemoryIsGoneEverywhereAndRefusesASecondForget(t *testing.T) {
 		t.Fatalf("ForgetMemory: %v", err)
 	}
 
-	if hits, err := graph.SearchMemories("schedule eleven", 5); err != nil || len(hits) != 0 {
+	if hits, err := graph.SearchMemories(memoryTestOwners(), "schedule eleven", 5); err != nil || len(hits) != 0 {
 		t.Fatalf("search after forgetting = (%v, %v), want nothing", memoryIDs(hits), err)
 	}
-	if list, err := graph.ListMemories("", 0); err != nil || len(list) != 0 {
+	if list, err := graph.ListMemories(nil, 0); err != nil || len(list) != 0 {
 		t.Fatalf("ListMemories after forgetting = (%v, %v), want nothing", memoryIDs(list), err)
 	}
-	if index, err := graph.MemoryIndex(0); err != nil || len(index) != 0 {
+	if index, err := graph.MemoryIndex(memoryTestOwners(), 0); err != nil || len(index) != 0 {
 		t.Fatalf("MemoryIndex after forgetting = (%+v, %v), want nothing", index, err)
 	}
-	if got, err := graph.GetMemories([]string{memory.ID}); err != nil || len(got) != 0 {
+	if got, err := graph.GetMemories(memoryTestOwners(), []string{memory.ID}); err != nil || len(got) != 0 {
 		t.Fatalf("GetMemories after forgetting = (%v, %v), want nothing", memoryIDs(got), err)
 	}
 	record, ok, err := graph.MemoryRecord(memory.ID)
@@ -398,13 +401,13 @@ func TestRebuildReproducesMemoriesAndTheirIndex(t *testing.T) {
 	if after := memoryFTSRows(t, graph); !reflect.DeepEqual(after, indexBefore) {
 		t.Fatalf("memory index after rebuild = %+v, want %+v", after, indexBefore)
 	}
-	if hits, err := graph.SearchMemories("continuously", 5); err != nil || len(hits) != 1 || hits[0].ID != fresh.ID {
+	if hits, err := graph.SearchMemories(memoryTestOwners(), "continuously", 5); err != nil || len(hits) != 1 || hits[0].ID != fresh.ID {
 		t.Fatalf("search after rebuild = (%v, %v), want %q", memoryIDs(hits), err, fresh.ID)
 	}
-	if hits, err := graph.SearchMemories("hangar", 5); err != nil || len(hits) != 0 {
+	if hits, err := graph.SearchMemories(memoryTestOwners(), "hangar", 5); err != nil || len(hits) != 0 {
 		t.Fatalf("the forgotten memory came back into search: (%v, %v)", memoryIDs(hits), err)
 	}
-	if got, err := graph.GetMemories([]string{kept.ID}); err != nil || len(got) != 1 {
+	if got, err := graph.GetMemories(memoryTestOwners(), []string{kept.ID}); err != nil || len(got) != 1 {
 		t.Fatalf("GetMemories after rebuild = (%v, %v)", memoryIDs(got), err)
 	}
 }
@@ -428,7 +431,7 @@ func TestMemoryOutcomesCountHelpAndMissSeparately(t *testing.T) {
 		[]string{second.ID}); err != nil {
 		t.Fatalf("RecordMemoryOutcome: %v", err)
 	}
-	got, err := graph.GetMemories([]string{first.ID, second.ID})
+	got, err := graph.GetMemories(memoryTestOwners(), []string{first.ID, second.ID})
 	if err != nil || len(got) != 2 {
 		t.Fatalf("GetMemories = (%v, %v)", memoryIDs(got), err)
 	}
@@ -447,7 +450,7 @@ func TestMemoryOutcomesCountHelpAndMissSeparately(t *testing.T) {
 	if err := graph.Rebuild(); err != nil {
 		t.Fatalf("Rebuild: %v", err)
 	}
-	rebuilt, err := graph.GetMemories([]string{first.ID, second.ID})
+	rebuilt, err := graph.GetMemories(memoryTestOwners(), []string{first.ID, second.ID})
 	if err != nil || len(rebuilt) != 2 {
 		t.Fatalf("GetMemories after rebuild = (%v, %v)", memoryIDs(rebuilt), err)
 	}
@@ -491,7 +494,7 @@ func TestASnapshotGivesARebuildARankingFloor(t *testing.T) {
 	if err := graph.Rebuild(); err != nil {
 		t.Fatalf("Rebuild: %v", err)
 	}
-	rebuilt, err := graph.GetMemories([]string{helped.ID, missed.ID})
+	rebuilt, err := graph.GetMemories(memoryTestOwners(), []string{helped.ID, missed.ID})
 	if err != nil || len(rebuilt) != 2 {
 		t.Fatalf("GetMemories after rebuild = (%v, %v)", memoryIDs(rebuilt), err)
 	}
@@ -552,7 +555,7 @@ func TestMemoryCapsAndEnumsRefuseWhatCannotBeStored(t *testing.T) {
 
 	// A refusal writes nothing: the only memories in the store are the two the
 	// rune checks above deliberately accepted.
-	list, err := graph.ListMemories("", 0)
+	list, err := graph.ListMemories(nil, 0)
 	if err != nil {
 		t.Fatalf("ListMemories: %v", err)
 	}
@@ -625,7 +628,7 @@ func TestConcurrentMemoryAddsAllLandExactlyOnce(t *testing.T) {
 	if len(ids) != writers*each {
 		t.Fatalf("memories added = %d, want %d", len(ids), writers*each)
 	}
-	index, err := second.MemoryIndex(0)
+	index, err := second.MemoryIndex(memoryTestOwners(), 0)
 	if err != nil {
 		t.Fatalf("MemoryIndex: %v", err)
 	}
@@ -641,9 +644,16 @@ func TestConcurrentMemoryAddsAllLandExactlyOnce(t *testing.T) {
 	if err := first.Rebuild(); err != nil {
 		t.Fatalf("Rebuild after contention: %v", err)
 	}
-	if rebuilt, err := first.MemoryIndex(0); err != nil || len(rebuilt) != writers*each {
+	if rebuilt, err := first.MemoryIndex(memoryTestOwners(), 0); err != nil || len(rebuilt) != writers*each {
 		t.Fatalf("index after rebuild = (%d rows, %v), want %d", len(rebuilt), err, writers*each)
 	}
+}
+
+// memoryTestOwners is the view every read in this file reads through: the
+// owners the tests write under, all of them visible together. Tests that
+// prove ISOLATION name single owners at their call sites.
+func memoryTestOwners() []string {
+	return []string{OwnerUser, OwnerMachine, OwnerProject("test"), OwnerLegacyProject}
 }
 
 func mustAddMemory(t *testing.T, graph *Store, m Memory) Memory {
@@ -741,7 +751,7 @@ func TestMemoryCandidatesFuseRelevanceImportanceAndRecency(t *testing.T) {
 	recent := mustAddMemory(t, graph, Memory{Type: MemoryProjectState, Scope: MemoryScopeProject,
 		Title: "Migration is next", Text: "The import landed; the migration is the next piece."})
 
-	pool, err := graph.MemoryCandidates("can you connect to postgres for me", MemoryCandidatesDefault)
+	pool, err := graph.MemoryCandidates(memoryTestOwners(), "can you connect to postgres for me", MemoryCandidatesDefault)
 	if err != nil {
 		t.Fatalf("MemoryCandidates: %v", err)
 	}
@@ -793,7 +803,7 @@ func TestMemoryCandidatesAnswerWithoutAnyLexicalMatch(t *testing.T) {
 	if err := graph.RecordMemoryOutcome([]string{helped.ID}, nil); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := graph.MemoryCandidates("!!! ?", 0)
+	pool, err := graph.MemoryCandidates(memoryTestOwners(), "!!! ?", 0)
 	if err != nil {
 		t.Fatalf("MemoryCandidates: %v", err)
 	}
@@ -822,7 +832,7 @@ func TestMemoryCandidatesBoundThePoolAndNotTheStore(t *testing.T) {
 			Title: fmt.Sprintf("Later %d", index),
 			Text:  fmt.Sprintf("Something else entirely, number %d.", index)})
 	}
-	pool, err := graph.MemoryCandidates("where is the amber archive key", 0)
+	pool, err := graph.MemoryCandidates(memoryTestOwners(), "where is the amber archive key", 0)
 	if err != nil {
 		t.Fatalf("MemoryCandidates: %v", err)
 	}
@@ -851,7 +861,7 @@ func TestMemoryCandidatesHoldOnlyActiveMemories(t *testing.T) {
 	if err := graph.ForgetMemory(forgotten.ID); err != nil {
 		t.Fatal(err)
 	}
-	pool, err := graph.MemoryCandidates("when do we deploy the amber archive", 0)
+	pool, err := graph.MemoryCandidates(memoryTestOwners(), "when do we deploy the amber archive", 0)
 	if err != nil {
 		t.Fatalf("MemoryCandidates: %v", err)
 	}
@@ -868,7 +878,7 @@ func TestAMemoryCarriesWhenItWasLastWritten(t *testing.T) {
 	before := time.Now().UTC().Add(-time.Second)
 	written := mustAddMemory(t, graph, Memory{Type: MemoryFact, Scope: MemoryScopeUser,
 		Title: "Amber key", Text: "The amber key opens the archive."})
-	got, err := graph.GetMemories([]string{written.ID})
+	got, err := graph.GetMemories(memoryTestOwners(), []string{written.ID})
 	if err != nil || len(got) != 1 {
 		t.Fatalf("GetMemories = (%v, %v)", memoryIDs(got), err)
 	}
@@ -878,7 +888,7 @@ func TestAMemoryCarriesWhenItWasLastWritten(t *testing.T) {
 	if err := graph.UpdateMemory(written.ID, "Amber key", "The amber key opens the east archive.", nil); err != nil {
 		t.Fatal(err)
 	}
-	after, err := graph.GetMemories([]string{written.ID})
+	after, err := graph.GetMemories(memoryTestOwners(), []string{written.ID})
 	if err != nil || len(after) != 1 {
 		t.Fatalf("GetMemories = (%v, %v)", memoryIDs(after), err)
 	}
@@ -893,13 +903,13 @@ func TestAMemoryCarriesWhenItWasLastWritten(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := applyMemoryAdd(tx, legacy, 1<<40); err != nil {
+	if err := applyMemoryAdd(tx, legacy, 1<<40, true); err != nil {
 		t.Fatal(err)
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	orphan, err := graph.GetMemories([]string{legacy.ID})
+	orphan, err := graph.GetMemories(memoryTestOwners(), []string{legacy.ID})
 	if err != nil || len(orphan) != 1 || !orphan[0].UpdatedAt.IsZero() {
 		t.Fatalf("a row with no event behind it = (%+v, %v), want an unknown age", orphan, err)
 	}

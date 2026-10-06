@@ -207,7 +207,7 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 	notFolderWrites := map[string]bool{
 		"bash": true, "read": true, "ls": true, "find": true, "grep": true,
 		"manual": true, "ask": true, "jobs": true, "watch": true,
-		"track": true, "commit": true, "recall": true, "remember": true, "forget": true,
+		"track": true, "commit": true, "recall": true, "remember": true, "forget": true, "memory_evidence": true,
 		"propose_task": true, "tasks": true, "quick_task": true,
 		"use_skill": true, "load_capability": true, "view_image": true,
 		"read_document": true, "search_conversations": true,

@@ -434,6 +434,45 @@ func ReadWorld(root string) World {
 // ReadHome is every project under this machine's state root.
 func ReadHome() World { return ReadWorld(PlacesRoot()) }
 
+// SessionWorkspaces answers where every recorded session ran: the session id
+// to its workspace, read off each folder's own meta.json — the one place a
+// session's workspace is stated as a fact (the bucket name above it is an
+// encoding, not an identity, and world.go's header says why it is one-way).
+//
+// It is the map the memory migration's re-home pass asks for: a quarantined
+// row's source session, looked up here, is the authoritative answer to WHICH
+// PROJECT this memory belonged to. A session whose meta cannot be read is
+// simply absent — an unreadable folder is not an owner anybody can prove.
+func SessionWorkspaces() map[string]string {
+	answered := map[string]string{}
+	root := PlacesRoot()
+	buckets, err := os.ReadDir(root)
+	if err != nil {
+		return answered
+	}
+	for _, bucket := range buckets {
+		if !bucket.IsDir() {
+			continue
+		}
+		sessions, err := os.ReadDir(filepath.Join(root, bucket.Name()))
+		if err != nil {
+			continue
+		}
+		for _, entry := range sessions {
+			if !entry.IsDir() {
+				continue
+			}
+			dir := filepath.Join(root, bucket.Name(), entry.Name())
+			meta, err := LoadMeta(dir)
+			if err != nil || meta.ID == "" || strings.TrimSpace(meta.Workspace) == "" {
+				continue
+			}
+			answered[meta.ID] = meta.Workspace
+		}
+	}
+	return answered
+}
+
 // ReadRows is the rows of the named conversations and of nothing else, keyed by
 // each transcript's cleaned path: one [readSessionRow] per name, read exactly as
 // the walk reads that folder.

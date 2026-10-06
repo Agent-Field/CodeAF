@@ -75,11 +75,13 @@ import (
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/lane"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/roles"
 	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 const (
@@ -268,6 +270,11 @@ type standingRunner struct {
 	// exactly one thing — the project inbox, road 4 of this file's delivery
 	// order — and an empty root simply means that road is closed.
 	root string
+	// memoryPath is the owner's brain, or empty when memory is off. A firing is
+	// built from a vision posture that deliberately opens no database, so this
+	// is handed in and opened lazily, for the length of one run, exactly as the
+	// dreaming pass is (chatv3_standing.go). An empty path is memory off.
+	memoryPath string
 	// child builds the headless session one firing's work runs in. It is [New]
 	// in every real build and it is a field for [newAgent]'s reason: it is the
 	// seam a test that wants a scripted child shares with the door that wants a
@@ -289,23 +296,97 @@ func NewStandingRunner(parent Config, root string) standing.Runner {
 	return &standingRunner{parent: parent, root: strings.TrimSpace(root)}
 }
 
+// NewStandingRunnerWithMemory is [NewStandingRunner] for the door that also
+// knows where the brain lives. The run it builds reads the owner's approved
+// binding rules before its first action WITHOUT gaining a memory write: the
+// brain is opened read-only for that one run and closed with it. An empty path
+// is memory off and behaves exactly like [NewStandingRunner].
+func NewStandingRunnerWithMemory(parent Config, root, memoryPath string) standing.Runner {
+	return &standingRunner{parent: parent, root: strings.TrimSpace(root), memoryPath: strings.TrimSpace(memoryPath)}
+}
+
+// withBindingMemory lends the run the canonical brain, owner-scoped to the
+// item's project, for reads only.
+//
+// MEMORY-ON IS A PROMISE, NOT A BEST EFFORT. When memory is configured, an
+// action-capable run must be bound before it can act: if the owner identity
+// cannot be proven, the brain cannot be opened, or the owner's binding read
+// fails, this returns an ERROR and the run never reaches a provider or a tool
+// call. The ticker then leaves the task's in-flight marker and a visible
+// needs-person line, so nothing is replayed blind and no action is claimed to
+// have run. A run that acted with none of the project's approved rules in front
+// of it because a database was unavailable is exactly the failure this refuses.
+//
+// MEMORY-OFF IS INTENTIONALLY ABSENT and stays that way.
+//
+// AN ALREADY-SUPPLIED BRAIN IS STILL BOUND, not bypassed: whether the caller
+// handed one in or this opened it, the run takes the read-only posture and the
+// item's own project identity, so an existing Memory never skips the binding
+// path or the owner scope.
+func (r *standingRunner) withBindingMemory(cfg Config, item standing.Item) (Config, func(), error) {
+	memoryOn := cfg.Memory != nil || strings.TrimSpace(r.memoryPath) != ""
+	if !memoryOn {
+		return cfg, func() {}, nil
+	}
+	key := standingProjectKey(item.Workspace)
+	if key == "" {
+		return cfg, func() {}, errors.New("a run with memory on cannot prove which project it is in, so it cannot be bound to its approved rules")
+	}
+	noop := func() {}
+	if cfg.Memory == nil {
+		brain, err := store.Open(r.memoryPath)
+		if err != nil {
+			return cfg, noop, fmt.Errorf("a run with memory on could not open its approved rules: %w", err)
+		}
+		cfg.Memory = brain
+		noop = func() { _ = brain.Close() }
+	}
+	// PROVE THE BINDING READ WORKS BEFORE ANY ACTION. An empty answer is a
+	// project with no rules; a query that FAILED is not, and must not become an
+	// unbound run.
+	if _, err := cfg.Memory.ContextualEvidenceApproved(store.OwnerProject(key), map[string]string{"project": key, "revision": ""}, time.Now(), 1); err != nil {
+		noop()
+		return cfg, func() {}, fmt.Errorf("a run with memory on could not read its approved rules: %w", err)
+	}
+	cfg.bindingOnlyMemory = true
+	cfg.MemoryProjectKey = key
+	return cfg, noop, nil
+}
+
+// standingProjectKey is the owner key a firing's project resolves to, read
+// through the same Git-rooted identity every other memory owner uses.
+func standingProjectKey(workspace string) string {
+	dir := strings.TrimSpace(workspace)
+	if dir == "" {
+		return ""
+	}
+	if root, ok := repositoryRoot(dir); ok {
+		dir = root
+	}
+	key, err := gitidentity.ProjectKey(dir)
+	if err != nil {
+		return ""
+	}
+	return key
+}
+
 // Probe takes one look at the world and answers what it saw, clipped from the
 // TAIL: a command's news is at the end of its output, and a probe clipped from
 // the front would hand the judgment the banner and drop the failure.
-func (r *standingRunner) Probe(ctx context.Context, item standing.Item) (string, error) {
+func (r *standingRunner) Probe(ctx context.Context, item standing.Item) (standing.ProbeReading, error) {
 	switch {
 	case strings.TrimSpace(item.When.Probe.Command) != "":
 		return r.probeCommand(ctx, item)
 	case strings.TrimSpace(item.When.Probe.Tool) != "":
 		return r.probeTool(ctx, item)
 	}
-	return "", errors.New("standing: this item has nothing to look at")
+	return standing.ProbeReading{}, errors.New("standing: this item has nothing to look at")
 }
 
 // probeCommand runs the shell the same way bash and a watch tick do: the same
 // shell, the same process group, the same kill. A probe that could see or do
 // anything bash could not would be a second set of hands nobody approved.
-func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (string, error) {
+func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (standing.ProbeReading, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, standingProbeWindow)
 	defer cancel()
 
@@ -336,7 +417,7 @@ func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (
 		// most informative outcome into nothing to judge.
 		seen += "\n(the command failed: " + err.Error() + ")"
 	}
-	return standingTail(seen, standing.ProbeClip), nil
+	return standingProbeReading(seen), nil
 }
 
 // probeTool runs one belt tool for the item's workspace, through the same
@@ -348,11 +429,11 @@ func (r *standingRunner) probeCommand(ctx context.Context, item standing.Item) (
 // model, so it is assembled the way [newAgent] assembles a belt and nothing
 // else. It is InTask because it is not a conversation — it must not hand work
 // out, change a setting, or start a watch that dies with the check.
-func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (string, error) {
+func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (standing.ProbeReading, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, standingProbeWindow)
 	defer cancel()
 
-	cfg := r.parent
+	cfg := standingPinnedConfig(r.parent, item)
 	cfg.Workspace = item.Workspace
 	cfg.Place = Place{}
 	// THE FOLDER GOES BECAUSE THE PROBE IS NOT THE SESSION; THE LITTER STAYS WITH
@@ -389,7 +470,7 @@ func (r *standingRunner) probeTool(ctx context.Context, item standing.Item) (str
 		},
 	}
 	result := agent.executeTool(probeCtx, agent.newEpisode(), nil, call, argsText(call))
-	return standingTail(result.text, standing.ProbeClip), nil
+	return standingProbeReading(result.text), nil
 }
 
 // standingProbeArgs is the arguments as the wire wants them: an absent object
@@ -405,13 +486,47 @@ func standingProbeArgs(raw json.RawMessage) string {
 
 // Say delivers one line, and the two roads it can take are the whole of this
 // file's header: the open window, or the inbox.
+//
+// IT ANSWERS THE ADDRESS ERROR. A line nobody could address is a line still
+// owed to the person, so it is reported rather than swallowed: the caller that
+// can keep the intent ([standing.Ticker] for [ActionSay]) must not read success
+// and drop the only record that the person is waiting for it. With no identity
+// to dedup on, [Say] is the LEGACY door; [Deliver] is the one the ticker uses.
 func (r *standingRunner) Say(ctx context.Context, item standing.Item, text string) (standing.Outcome, error) {
 	line := strings.TrimSpace(text)
 	if line == "" {
 		line = item.Words
 	}
-	r.deliver(item, "said", line, "")
+	if err := r.deliver(item, "said", line, "", ""); err != nil {
+		return standing.Outcome{}, err
+	}
 	return standing.Outcome{Kind: "said", Text: line}, nil
+}
+
+// Deliver carries out one [standing.Pending] whose identity was written to the
+// item before the line was carried out, and answers the same [standing.Outcome]
+// [Say] does. It is the door [standing.Ticker] uses when the Runner implements
+// [standing.Deliverer] (standing_run.go's header states why the core wants it).
+//
+// THE IDENTITY TRAVELS INTO THE NOTE, and it is the whole of what makes a
+// replay harmless: a note appended by an attempt whose acknowledgement was lost
+// carries the SAME id, and [standing.Drain] recognises it as spent rather than
+// showing the person the same line twice. The address is resolved the same way
+// [deliver] resolves it for a firing's own outcome; the only difference is the
+// id in the note.
+func (r *standingRunner) Deliver(ctx context.Context, item standing.Item, pending standing.Pending) (standing.Outcome, error) {
+	line := strings.TrimSpace(pending.Text)
+	if line == "" {
+		line = item.Words
+	}
+	kind := string(pending.Kind)
+	if strings.TrimSpace(kind) == "" {
+		kind = "said"
+	}
+	if err := r.deliver(item, kind, line, "", pending.ID); err != nil {
+		return standing.Outcome{}, err
+	}
+	return standing.Outcome{Kind: kind, Text: line}, nil
 }
 
 // deliver is the one door news comes through, so a firing's line and a firing's
@@ -427,29 +542,31 @@ func (r *standingRunner) Say(ctx context.Context, item standing.Item, text strin
 // the room and a person who reads the fold tomorrow are owed the same sentence,
 // so the line and the note are both built from the item's own words here and
 // never assembled twice.
-func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
-	origin := strings.TrimSpace(item.Origin.SessionID)
-	agent := liveSession(origin)
-	if agent == nil {
-		// The origin is closed, or was an exchange and was never a target at
-		// all. The window the person is actually sitting in is a better address
-		// than any file: any open conversation of the SAME PROJECT, most
-		// recently touched first.
-		agent = liveSessionIn(strings.TrimSpace(item.Workspace), origin)
-	}
-	if agent != nil {
-		// THE ROW FIRST, THE MODEL SECOND. The person is owed the news itself —
-		// one dim line in the conversation they are sitting in — and they are
-		// owed it whether or not the model has anything to add and whether or
-		// not the wake below is even allowed to start a turn (the rail, a turn
-		// already running, a session mid-close all decline it). Drawing it here,
-		// before the steering line goes on the queue, is what makes the order on
-		// screen the order it happened in: the firing, then whatever is said
-		// about it.
-		agent.emitStandingNews(standingUpdateWord(kind), item, text)
-		agent.enqueueSteering(standingSteeringLine(item, text))
-		return
-	}
+// id is the delivery identity when the caller has one (a [standing.Pending]),
+// and "" for a firing's own outcome or the legacy [Say]. THE IDENTITY IS STAMPED
+// INTO THE NOTE: a note appended by an attempt whose acknowledgement was lost
+// carries the SAME id, and the inbox dedups on it (standing.Deliver and
+// standing.Drain), so a restart or a retry does not put the same line in front
+// of the person twice. When there is no identity the note is passed through as
+// it always was.
+//
+// THE DURABLE NOTE IS WRITTEN BEFORE THE LINE IS OFFERED TO A WINDOW. The
+// address is resolved first and the note is appended and Sync'd before anything
+// is drawn or queued; only then is the line ALSO offered to an open window. If
+// the window is found and the line is offered there, the note still stands in
+// the inbox, so a crash or a window closing between the offer and the person
+// reading it cannot lose the line — the next fold carries it. THE HANDOFF TO A
+// LIVE WINDOW IS AT-LEAST-ONCE: a line offered live and then folded when the
+// window is reopened can be seen twice, because whether a screen actually drew
+// the row is not observable here and this file makes NO exactly-once claim about
+// user display. Loss is the direction this refuses to fail toward; a duplicate
+// is the stated cost.
+//
+// IT ANSWERS AN ERROR. A note that could not be made durable — no address, or a
+// folder that refused the write — is reported, so the caller that owns the
+// durable intent keeps it rather than dropping it on a success that did not
+// happen.
+func (r *standingRunner) deliver(item standing.Item, kind, text, run, id string) error {
 	note := standing.Note{
 		At:     time.Now(),
 		ItemID: item.ID,
@@ -457,21 +574,78 @@ func (r *standingRunner) deliver(item standing.Item, kind, text, run string) {
 		Kind:   kind,
 		Text:   text,
 		Run:    run,
+		ID:     strings.TrimSpace(id),
 	}
+	// ── THE NOTE IS MADE DURABLE FIRST ──────────────────────────────────────
+	//
 	// AN EXCHANGE'S FOLDER IS A DEAD LETTER OFFICE. Home lists what is under
 	// v3/projects, which is precisely what an errand's folder is kept out of,
 	// so a note written into it is a note no screen in this product ever opens.
 	// The project's inbox is the address that IS read: home draws it under the
 	// project, and the next ordinary conversation opened there folds it in.
+	fresh, err := r.makeNoteDurable(item, note)
+	if err != nil {
+		return err
+	}
+	if !fresh {
+		// ALREADY DRAINED AND ALREADY READ. The inbox recognised the identity as
+		// spent, so the person has the line; nothing was appended now and nothing
+		// may be offered live or steered into the model, or a retried one-shot is
+		// the last thing they see for a second time. The caller treats this as a
+		// settled delivery, which is exactly what it is.
+		return nil
+	}
+	// ── AND OFFERED TO THE WINDOW SOMEBODY IS SITTING IN ────────────────────
+	//
+	// The origin is tried first, then any open conversation of the same project
+	// most recently touched. This is an OFFER ON TOP OF the durable note, never
+	// an alternative to it: the offer makes the news immediate, and the note is
+	// what survives the window closing before it was read.
+	origin := strings.TrimSpace(item.Origin.SessionID)
+	agent := liveSession(origin)
+	if agent == nil {
+		agent = liveSessionIn(strings.TrimSpace(item.Workspace), origin)
+	}
+	if agent != nil {
+		// THE ROW FIRST, THE MODEL SECOND, so the order on screen is the order
+		// it happened in: the firing, then whatever is said about it.
+		agent.emitStandingNews(standingUpdateWord(kind), item, text)
+		agent.enqueueSteering(standingSteeringLine(item, text))
+	}
+	return nil
+}
+
+// makeNoteDurable appends the note at the item's address — the project inbox for
+// an exchange, this conversation's inbox otherwise — and answers whether it was
+// NEWLY made durable. An identity the inbox has already drained is answered as
+// (false, nil): the line is already in the person's hands, so it is settled and
+// must not be offered twice. A real error is answered as (false, err) and keeps
+// the caller's durable intent alive, exactly as [standing.Deliver] does.
+//
+// IT IS ONE DOOR FOR BOTH ADDRESSES, so the identity rule and the "already
+// drained is not a failure" rule cannot drift between them.
+func (r *standingRunner) makeNoteDurable(item standing.Item, note standing.Note) (bool, error) {
+	var err error
 	if strings.TrimSpace(item.Origin.Exchange) != "" && r.root != "" {
-		_ = standing.DeliverProject(r.root, item.Workspace, note)
-		return
+		err = standing.DeliverProject(r.root, item.Workspace, note)
+	} else {
+		dir := standingSessionDir(item)
+		if dir == "" {
+			// NOBODY IS OPEN AND THERE IS NO FOLDER TO FILE IT IN. That is not a
+			// delivery: the line has nowhere to go that a person reads, and
+			// saying so lets the caller keep the intent for a later, addressable
+			// pass.
+			return false, errors.New("standing: nothing is open and this item has no inbox address")
+		}
+		err = standing.Deliver(dir, note)
 	}
-	dir := standingSessionDir(item)
-	if dir == "" {
-		return
+	switch {
+	case errors.Is(err, standing.ErrAlreadyDrained):
+		return false, nil
+	case err != nil:
+		return false, err
 	}
-	_ = standing.Deliver(dir, note)
+	return true, nil
 }
 
 // standingUpdateWord maps a firing's outcome onto the word a surface draws a
@@ -546,36 +720,14 @@ func standingSessionDir(item standing.Item) string {
 // firing retains its worktree, including unfinished edits, with the run's
 // existing working-copy record. Neither grant nor reply prose is a policy.
 func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, evidence string) (standing.Outcome, error) {
-	cfg, err := standingRunConfig(r.parent, item, runDir)
+	// ── PREPARE: config, the lent brain, and the worktree ─────────────────────
+	cfg, closeMemory, tree, err := standingRunPrepare(r, item, runDir)
 	if err != nil {
 		return standing.Outcome{}, err
 	}
+	defer closeMemory()
 
-	var tree taskTree
-	if item.Does.Isolate {
-		root, ok := repositoryRoot(item.Workspace)
-		if !ok || !hasCommit(root) {
-			return standing.Outcome{}, errors.New("a separate Git worktree needs a repository with a commit")
-		}
-		name := "standing-" + slugify(item.Title()) + "-" + shortID()
-		dir := canonicalPath(filepath.Join(cfg.Place.Trees(), name))
-		tree, err = cutWorktreeAt(cfg.Place, root, dir, "standing/"+name, 0o700)
-		if err != nil {
-			return standing.Outcome{}, fmt.Errorf("cut standing worktree: %w", err)
-		}
-		cfg.Workspace = tree.dir
-		cfg.Place.Workspace = tree.dir
-		if err := rememberStandingIsolation(cfg, item.Workspace, tree); err != nil {
-			return standing.Outcome{}, fmt.Errorf("record standing worktree %s on %s: %w", tree.dir, tree.branch, err)
-		}
-		// Keep the copy even on cancellation, provider failure, or an unfinished
-		// edit. A successful turn is not evidence that every file was committed.
-	}
-
-	brief := standingEvidence(item.Does.Brief, evidence)
-	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
-		brief += "\n\nDONE WHEN: " + acceptance
-	}
+	brief := standingRunBrief(item, evidence)
 	// THE BRIEF IS BUILT BEFORE THE SESSION IS, because whether this firing may
 	// discover it is wide is read off the brief and has to be settled while the
 	// config can still carry the answer ([standingWideWork]).
@@ -599,87 +751,95 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		return standing.Outcome{}, err
 	}
 
-	steps, limit := 0, item.Does.MaxSteps
-	if limit <= 0 {
-		limit = standingRunSteps
-	}
-	reply := ""
-	needs, saved, capped := "", false, false
-	drain := func(events <-chan Event) {
-		var said strings.Builder
-		for event := range events {
-			switch event.Kind {
-			case EventTextDelta:
-				said.WriteString(event.Text)
-			case EventToolEnd:
-				// A CALL THAT SAVED SOMETHING IS THE LANDING, and [producedAFile]
-				// is the one place this build says which calls those are
-				// (task_run.go). It is read on the END of a call and never on its
-				// start: a `write` that failed saved nothing, and a run whose only
-				// act was a refused write came to exactly nothing.
-				//
-				// AND IT IS ASKED OF THE CALL, NOT OF THE HAND. edit_video is on
-				// the saving belt with one action that reads and three that write,
-				// so a wordless firing whose whole night's work was
-				// `{"action":"measure"}` used to report as landed — which is the
-				// one outcome the sweep may never reap, so its run folder was kept
-				// for ever by a call that left nothing in it.
-				if producedAFile(event.Tool, event.Args) {
-					saved = true
-				}
-			case EventToolFinished:
-				steps++
-				// THE STEP CAP IS A STOP AND NOT A REFUSAL. Whatever the run has
-				// already done stands; what it does not get is another call.
-				//
-				// THE MONEY IS CHECKED HERE TOO, at the one boundary where checking
-				// it can change anything: a turn's spend moves when a response
-				// lands, and the only thing an interrupt can still prevent is the
-				// NEXT request. Asking on every streamed delta would take this
-				// agent's lock a thousand times to learn the same figure.
-				if steps >= limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
-					capped = true
-					agent.InterruptFor(StopByWorkStopped)
-				}
-			case EventToolFailed:
-				if line := standingRefusal(event); line != "" && needs == "" {
-					needs = line
-				}
-			}
-		}
-		// THE OUTCOME IS THE LAST THING THIS FIRING ACTUALLY SAID. A run that
-		// divided opens by announcing that it split the work into three parts
-		// and closes by saying what came of them, and the person reads ONE
-		// clipped line ([standingOutcomeClip]) — so a later turn's words replace
-		// an earlier turn's rather than queueing behind them. A turn that said
-		// nothing replaces nothing: silence is not a newer account, and a run
-		// whose last re-entry was wordless still came to what it said before it.
-		if words := strings.TrimSpace(said.String()); words != "" {
-			reply = words
-		}
-	}
-	drain(events)
+	// ── RUN: the turn, its parts, and the rails across the whole firing ───────
+	watch := standingRunTurns(ctx, agent, events, item, graph, root)
 
-	// ── THE FIRING THAT HANDED PARTS OF ITS WORK OUT ────────────────────────
-	//
-	// A turn ends the moment the model has nothing left to say, and the parts it
-	// just named are still working: `divide_work` hands the ids back at once and
-	// tells the worker not to wait (task_divide.go). So THE TURN ENDING IS NOT
-	// THE FIRING ENDING — and this is the same tail loop a task node's runner
-	// holds open around exactly the same shape ([runTaskChild]), for the same
-	// three reasons. The parts' reports have to reach the model that has to fold
-	// them into one account. Their spend has to be in the ledger this run's
-	// figure is read off ([Agent.foldTaskUsage] posts it to this agent, and this
-	// agent is closed the moment Run returns). And an unattended run that
-	// returned while its own parts were still spending would be the pass writing
-	// a bill and a marker for work that had not happened yet.
-	//
-	// THE RAILS STILL BIND, and they bind across the whole firing rather than
-	// per turn: the step count and the spend carry into the fold, and a firing
-	// cut at either of them takes its unfinished parts down with it
-	// ([TaskGraph.stopChildren]) rather than leaving them spending for a run
-	// nobody is going to read.
-	for graph != nil && !capped && ctx.Err() == nil {
+	// ── REPORT: the outcome, the worktree's own facts, and the delivery ──────
+	outcome := standing.Outcome{
+		Kind: standingCameTo(watch.saved, watch.reply, watch.needs),
+		Text: clip(watch.reply, standingOutcomeClip),
+		USD:  agent.Usage().CostUSD,
+	}
+	if item.Does.Isolate {
+		outcome = standingIsolatedOutcome(tree, watch.reply, watch.needs, outcome)
+	}
+	outcome = standingNeedsOutcome(outcome, watch.needs)
+	return standingDeliverOutcome(r, item, outcome, runDir)
+}
+
+// standingRunPrepare builds the run's config, lends it the canonical brain when
+// the item asked, and cuts a worktree when the firing must be isolated. The
+// returned closeMemory is never nil once the config exists, so the caller
+// releases the brain on every road out.
+func standingRunPrepare(r *standingRunner, item standing.Item, runDir string) (Config, func(), taskTree, error) {
+	cfg, err := standingRunConfig(r.parent, item, runDir)
+	if err != nil {
+		return Config{}, nil, taskTree{}, err
+	}
+	cfg, closeMemory, err := r.withBindingMemory(cfg, item)
+	if err != nil {
+		return Config{}, nil, taskTree{}, err
+	}
+	if !item.Does.Isolate {
+		return cfg, closeMemory, taskTree{}, nil
+	}
+	root, ok := repositoryRoot(item.Workspace)
+	if !ok || !hasCommit(root) {
+		closeMemory()
+		return Config{}, nil, taskTree{}, errors.New("a separate Git worktree needs a repository with a commit")
+	}
+	name := "standing-" + slugify(item.Title()) + "-" + shortID()
+	dir := canonicalPath(filepath.Join(cfg.Place.Trees(), name))
+	tree, err := cutWorktreeAt(cfg.Place, root, dir, "standing/"+name, 0o700)
+	if err != nil {
+		closeMemory()
+		return Config{}, nil, taskTree{}, fmt.Errorf("cut standing worktree: %w", err)
+	}
+	cfg.Workspace = tree.dir
+	cfg.Place.Workspace = tree.dir
+	if err := rememberStandingIsolation(cfg, item.Workspace, tree); err != nil {
+		// Keep the copy even on cancellation, provider failure, or an unfinished
+		// edit. A successful turn is not evidence that every file was committed.
+		closeMemory()
+		return Config{}, nil, taskTree{}, fmt.Errorf("record standing worktree %s on %s: %w", tree.dir, tree.branch, err)
+	}
+	return cfg, closeMemory, tree, nil
+}
+
+// standingRunBrief is what one firing is told: whatever the item asked for, the
+// evidence the look carried, and the acceptance sentence when the order named
+// one.
+func standingRunBrief(item standing.Item, evidence string) string {
+	brief := standingEvidence(item.Does.Brief, evidence)
+	if acceptance := strings.TrimSpace(item.Does.Acceptance); acceptance != "" {
+		brief += "\n\nDONE WHEN: " + acceptance
+	}
+	return brief
+}
+
+// standingRunWatch is the whole state one firing's turn loop keeps: how deep the
+// rails let it go, what it has said and come to, and whether it was cut short.
+type standingRunWatch struct {
+	limit  int
+	steps  int
+	reply  string
+	needs  string
+	saved  bool
+	capped bool
+}
+
+// standingRunTurns drains the opening turn and then, while parts it handed out
+// are still working, holds the firing open around them: their reports reach the
+// model that folds them into one account, their spend lands in the ledger this
+// run's figure is read off, and a firing cut at a rail takes its unfinished
+// parts down with it rather than leaving them spending for a run nobody reads.
+func standingRunTurns(ctx context.Context, agent *Agent, events <-chan Event, item standing.Item, graph *TaskGraph, root *TaskNode) standingRunWatch {
+	watch := standingRunWatch{limit: item.Does.MaxSteps}
+	if watch.limit <= 0 {
+		watch.limit = standingRunSteps
+	}
+	watch.drain(events, agent, item)
+	for graph != nil && !watch.capped && ctx.Err() == nil {
 		// The generation is taken BEFORE the question, so a report landing
 		// between the two closes the channel this select is about to wait on.
 		news := agent.taskNewsWait()
@@ -706,65 +866,121 @@ func (r *standingRunner) Run(ctx context.Context, item standing.Item, runDir, ev
 		if next == nil {
 			break
 		}
-		drain(next)
+		watch.drain(next, agent, item)
 	}
-	if graph != nil && (capped || ctx.Err() != nil) {
+	if graph != nil && (watch.capped || ctx.Err() != nil) {
 		graph.stopChildren(root.id)
 	}
+	return watch
+}
 
-	outcome := standing.Outcome{
-		Kind: standingCameTo(saved, reply, needs),
-		Text: clip(reply, standingOutcomeClip),
-		USD:  agent.Usage().CostUSD,
+// drain reads one channel to close into the watch's state.
+func (w *standingRunWatch) drain(events <-chan Event, agent *Agent, item standing.Item) {
+	var said strings.Builder
+	for event := range events {
+		w.observe(event, agent, item, &said)
 	}
-	if item.Does.Isolate {
-		// Record Git facts rather than trying to classify the model's prose.
-		// Another session may advance the host branch while we run; that is
-		// not evidence that this worker changed it.
-		status, statusErr := git(tree.dir, "status", "--porcelain")
-		head, headErr := git(tree.dir, "rev-parse", "HEAD")
-		branch := currentBranch(tree.dir)
-		if statusErr != nil || headErr != nil || branch != tree.branch {
-			outcome.Kind = standing.OutcomeFailed
-			outcome.NeedsPerson = "the worktree's branch could not be confirmed; inspect the saved work"
-			outcome.Text = outcome.NeedsPerson
-		} else if strings.TrimSpace(status) != "" || strings.TrimSpace(head) != tree.checkBase {
-			outcome.Kind = standingCameTo(true, reply, needs)
-		}
-		// The location remains visible even when a wordless firing left only
-		// shell-written files, which producedAFile cannot recognize.
-		outcome.Text = strings.TrimSpace(outcome.Text + "\nWork kept on " + tree.branch + " in " + tree.dir)
-		if outcome.Kind == standing.OutcomeNothing {
-			// The retained location is a report, not evidence of changed work.
-			// It must remain discoverable rather than enter the no-output sweep.
-			outcome.Kind = "said"
-			outcome.Text = "No changes. " + outcome.Text
-		}
-	}
+	w.remember(said.String())
+}
 
-	if needs != "" {
-		// NOTHING PRETENDS THIS LANDED. A run that stopped on something only a
-		// person can allow is not a failure and is not a success; it is work
-		// waiting for them, and home sorts on exactly that.
-		outcome.NeedsPerson = needs
-		if outcome.Text == "" {
-			outcome.Text = needs
+// observe folds one event into the watch. A call that saved something is the
+// landing; a step counts against the rail at the boundary where checking it can
+// still prevent the NEXT request, never per streamed delta.
+func (w *standingRunWatch) observe(event Event, agent *Agent, item standing.Item, said *strings.Builder) {
+	switch event.Kind {
+	case EventTextDelta:
+		said.WriteString(event.Text)
+	case EventToolEnd:
+		if producedAFile(event.Tool, event.Args) {
+			w.saved = true
+		}
+	case EventToolFinished:
+		w.finished(agent, item)
+	case EventToolFailed:
+		if line := standingRefusal(event); line != "" && w.needs == "" {
+			w.needs = line
 		}
 	}
+}
+
+// finished counts one completed call against the step and money rails. The step
+// cap is a stop and not a refusal: whatever the run has done stands, and what it
+// does not get is another call.
+func (w *standingRunWatch) finished(agent *Agent, item standing.Item) {
+	w.steps++
+	if w.steps >= w.limit || (item.Rails.PerRunUSD > 0 && agent.Usage().CostUSD >= item.Rails.PerRunUSD) {
+		w.capped = true
+		agent.InterruptFor(StopByWorkStopped)
+	}
+}
+
+// remember keeps the last thing this firing actually said: a later turn's words
+// replace an earlier turn's, and a wordless re-entry replaces nothing.
+func (w *standingRunWatch) remember(words string) {
+	if words = strings.TrimSpace(words); words != "" {
+		w.reply = words
+	}
+}
+
+// standingIsolatedOutcome records Git facts rather than trying to classify the
+// model's prose. Another session may advance the host branch while we run; that
+// is not evidence that this worker changed it.
+func standingIsolatedOutcome(tree taskTree, reply, needs string, outcome standing.Outcome) standing.Outcome {
+	status, statusErr := git(tree.dir, "status", "--porcelain")
+	head, headErr := git(tree.dir, "rev-parse", "HEAD")
+	branch := currentBranch(tree.dir)
+	if statusErr != nil || headErr != nil || branch != tree.branch {
+		outcome.Kind = standing.OutcomeFailed
+		outcome.NeedsPerson = "the worktree's branch could not be confirmed; inspect the saved work"
+		outcome.Text = outcome.NeedsPerson
+	} else if strings.TrimSpace(status) != "" || strings.TrimSpace(head) != tree.checkBase {
+		outcome.Kind = standingCameTo(true, reply, needs)
+	}
+	// The location remains visible even when a wordless firing left only
+	// shell-written files, which producedAFile cannot recognize.
+	outcome.Text = strings.TrimSpace(outcome.Text + "\nWork kept on " + tree.branch + " in " + tree.dir)
 	if outcome.Kind == standing.OutcomeNothing {
-		// A RUN THAT CAME TO NOTHING TELLS NOBODY, because there is nothing to
-		// tell: no line, no landing, nothing waiting. Walking the delivery roads
-		// with an empty sentence would put `◦ keep main green: ` into the
-		// conversation somebody is sitting in, which is an interruption whose
-		// whole content is that it was not worth interrupting for.
-		//
-		// IT IS STILL RECORDED. The pass writes the ledger row, the item's log
-		// line and its `previous` list from this outcome whatever it says
-		// (internal/standing's tick.go), so the money and the fact that it ran
-		// survive the run folder the sweep will eventually reap.
+		// The retained location is a report, not evidence of changed work.
+		// It must remain discoverable rather than enter the no-output sweep.
+		outcome.Kind = "said"
+		outcome.Text = "No changes. " + outcome.Text
+	}
+	return outcome
+}
+
+// standingNeedsOutcome lands the one thing only a person can allow: it is not a
+// failure and not a success, it is work waiting for them.
+func standingNeedsOutcome(outcome standing.Outcome, needs string) standing.Outcome {
+	if needs == "" {
+		return outcome
+	}
+	outcome.NeedsPerson = needs
+	if outcome.Text == "" {
+		outcome.Text = needs
+	}
+	return outcome
+}
+
+// standingDeliverOutcome hands the outcome to the delivery roads, unless the run
+// came to nothing: a run that came to nothing tells nobody, because there is
+// nothing to tell. It is still recorded, because the pass writes the ledger row
+// and the item's log line from this outcome whatever it says.
+func standingDeliverOutcome(r *standingRunner, item standing.Item, outcome standing.Outcome, runDir string) (standing.Outcome, error) {
+	if outcome.Kind == standing.OutcomeNothing {
 		return outcome, nil
 	}
-	r.deliver(item, outcome.Kind, outcome.Text, runDir)
+	if err := r.deliver(item, outcome.Kind, outcome.Text, runDir, ""); err != nil {
+		// THE WORK LANDED AND ITS NEWS COULD NOT BE FILED. The outcome is still
+		// true, so it is returned with the person told why they are not reading
+		// it rather than as a failed run that would send the ticker down the
+		// task-replay path for work that already happened.
+		outcome.Text = strings.TrimSpace(outcome.Text)
+		note := "the run finished but its news could not be delivered: " + err.Error()
+		if outcome.NeedsPerson == "" {
+			outcome.NeedsPerson = note
+		}
+		return outcome, nil
+	}
 	return outcome, nil
 }
 
@@ -799,6 +1015,90 @@ func standingCameTo(saved bool, report, needs string) string {
 	return standing.OutcomeNothing
 }
 
+// standingPinnedConfig is the config one item's text seats must run under.
+//
+// A BACKGROUND PASS RELOADS A POSTURE OF ITS OWN. v3StandingTicker rebuilds the
+// pass from config.LoadKeyless every tick, and that posture's tiers, role pins
+// and fallback ladder are the PROFILE'S, not the ratifying conversation's. An
+// item made while the person ran `--one-model` therefore carries the promise on
+// its own origin ([standing.Origin.PinnedModel]) and it is applied HERE, at the
+// one place every firing's config is assembled, so the sentinel, the run and
+// every task child it hands out ride the model the yes was given on.
+//
+// IT CLEARS THE LADDER RATHER THAN ONLY SETTING THE MODEL. Setting Model alone
+// would leave a role pin, a tier row or a fallback chain to answer a seat and
+// move it back off the pinned model — which is exactly the silent re-routing
+// the pin exists to stop (applyV3Governance withholds the same fields under the
+// flag). An item with no pin is returned unchanged, so ordinary orders keep the
+// profile's routing exactly as before.
+func standingPinnedConfig(cfg Config, item standing.Item) Config {
+	if !item.Origin.OneModel {
+		return cfg
+	}
+	cfg.OneModel = true
+	if pinned := strings.TrimSpace(item.Origin.PinnedModel); pinned != "" {
+		cfg.Model = pinned
+	}
+	cfg.RolesSource = nil
+	cfg.ModelFallbacks = nil
+	cfg.NearestModels = nil
+	cfg.RouteCrew = nil
+	return cfg
+}
+
+// standingSentinelModel is which model one sentinel judgment runs on. A pinned
+// item answers with its own frozen model and never touches the ladder; every
+// other item resolves the sentinel role from the pass's own source and model.
+func standingSentinelModel(cfg Config, item standing.Item) (string, error) {
+	if cfg.OneModel {
+		if pinned := strings.TrimSpace(item.Origin.PinnedModel); pinned != "" {
+			return pinned, nil
+		}
+	}
+	return roles.Resolve(roles.Source(cfg.RolesSource), roles.RoleSentinel, cfg.Model)
+}
+
+// standingSeatSettings is the provider settings one text seat runs under, with
+// the routing and the fallback ladder a pinned seat must not carry.
+//
+// IT IS A NAMED FUNCTION AND NOT INLINE so the policy is testable without a
+// provider: the pinned/unpinned difference is the whole of "no alternate model
+// call" and it is asserted directly (standing_integration_test.go).
+func standingSeatSettings(cfg Config, model string) provider.Config {
+	return standingSeatPolicy(cfg, cfg.clientConfig(model, providerTimeout))
+}
+
+// standingSeatPolicy folds the routing and the fallback ladder onto settings
+// that already came from [Config.clientConfig]. It is split out so the one
+// place that actually builds a client — [standingSentinelCall]'s clientFor —
+// can call clientConfig itself and still share this policy, which is what the
+// gated-config law requires of every provider.NewClient.
+func standingSeatPolicy(cfg Config, settings provider.Config) provider.Config {
+	settings.Routing = provider.StaticRouting(cfg.Routing)
+	// The fallback seams travel the same way [newProviderClient] sends them, so
+	// the sentinel is a seat like any other. A PINNED SEAT THEN HAS THEM TAKEN
+	// AWAY: the chain and the catalog's nearest-model guess are exactly the two
+	// ways a one-model run stops being one, and they would fire on the refusal
+	// this judgment is most likely to meet.
+	settings.Fallbacks = cfg.ModelFallbacks
+	settings.NearestModels = cfg.NearestModels
+	if cfg.OneModel {
+		settings.Fallbacks = nil
+		settings.NearestModels = nil
+	}
+	return settings
+}
+
+// standingSeatKey is the client-cache key: the wire model AND whether the seat
+// is pinned. Two seats that name the same model but differ on the one-model
+// promise are different clients, because only one of them may fall back.
+func standingSeatKey(model string, pinned bool) string {
+	if pinned {
+		return "pinned\x00" + model
+	}
+	return model
+}
+
 // standingRunConfig is the run's own session: the parent launch, pointed at a
 // fresh folder in the item's project, with nobody to ask and nothing standing.
 //
@@ -813,7 +1113,7 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 		return Config{}, err
 	}
 	place := Place{Dir: runDir, Workspace: item.Workspace}
-	cfg := parent
+	cfg := standingPinnedConfig(parent, item)
 	cfg.Workspace = item.Workspace
 	cfg.Place = place
 	cfg.SessionFile = place.Transcript()
@@ -843,7 +1143,14 @@ func standingRunConfig(parent Config, item standing.Item, runDir string) (Config
 	// pile of one-run conversations and no way to say that they were all the same
 	// promise, kept every morning for a month (usage_ledger.go).
 	cfg.standingItemID = item.ID
-	if model := strings.TrimSpace(item.Does.Model); model != "" {
+	// THE PIN WINS OVER THE ITEM'S OWN MODEL. A steady order can name a model
+	// ([standing.Action.Model]) and ordinarily that choice is kept exactly as
+	// the person set it. But under the ONE-MODEL promise a per-item override
+	// would silently re-route the run and every child it hands out off the
+	// model the yes was given on — the very drift the pin exists to stop
+	// (standingPinnedConfig above). The pin therefore suppresses the override;
+	// an item with no pin keeps its explicit model untouched.
+	if model := strings.TrimSpace(item.Does.Model); model != "" && !cfg.OneModel {
 		cfg.Model = model
 	}
 	// ── how hard a firing thinks ────────────────────────────────────────────
@@ -1103,17 +1410,27 @@ func standingRefusalWant(event Event) string {
 	return clip(glossValue(args, glossField[tool]), hintLimit)
 }
 
-// standingTail keeps the LAST n bytes, on a line boundary where it can find
-// one. See [standingRunner.Probe] for why the tail is the interesting end.
-func standingTail(text string, n int) string {
+// standingTail keeps the LAST n bytes, on a line boundary where it can find one,
+// and says whether it had to. See [standingRunner.Probe] for why the tail is the
+// interesting end; see [standing.ProbeReading] for why the runner must report the
+// cut rather than let the shorter string pass for a whole one.
+func standingTail(text string, n int) (string, bool) {
 	if len(text) <= n {
-		return strings.TrimSpace(text)
+		return strings.TrimSpace(text), false
 	}
 	cut := text[len(text)-n:]
 	if at := strings.IndexByte(cut, '\n'); at >= 0 && at < len(cut)-1 {
 		cut = cut[at+1:]
 	}
-	return strings.TrimSpace("…\n" + cut)
+	return strings.TrimSpace("…\n" + cut), true
+}
+
+// standingProbeReading is the one door a probe's raw output becomes the reading
+// [standing.Probe] answers, so the command road and the tool road cannot disagree
+// about what it means to have kept only the tail.
+func standingProbeReading(text string) standing.ProbeReading {
+	tail, clipped := standingTail(text, standing.ProbeClip)
+	return standing.ProbeReading{Text: tail, Clipped: clipped}
 }
 
 // ── the sentinel ────────────────────────────────────────────────────────────
@@ -1124,11 +1441,15 @@ func standingTail(text string, n int) string {
 // would say rather than a verdict word.
 const standingSentinelPrompt = `You are a sentinel. You are given something a person asked to be told about, in their own words, and the evidence one check gathered. You decide ONE thing: has it happened?
 
-Answer with "yes" or "no" as the first word, then ONE plain sentence saying what you saw — the sentence a person reads, so write it as you would say it: "the last run on main failed", "nothing has changed since yesterday".
+Answer with "yes", "no" or "unknown" as the first word, then ONE plain sentence saying what you saw — the sentence a person reads, so write it as you would say it: "the last run on main failed", "nothing has changed since yesterday".
 
 You are also shown what you said the last few times and what came of it. Do not raise the same thing again when it has already been said and nothing has moved.
 
-When the evidence does not settle it, answer no. A wrong yes interrupts somebody for nothing.`
+THE PERSON'S SENTENCE IS THE ONLY CRITERION. A note of what a yes was expected to look like is the proposer's own guess, not their words, and a match to it does not settle what they asked. When the check shows something weaker than what they named — a host answering where they asked whether an application is ready, a process running where they asked whether the work finished — answer "unknown" and say what the check could not see.
+
+WHAT THE CHECK RAN IS PART OF THE EVIDENCE, AND IT SHOWS WHAT THE LOOK COULD SEE. The command or tool the look actually ran travels with the output: a probe that discarded the body — a status code, a ping, a port that answers — proves only that something answered, and answering is not the application being ready. Read the output as exactly what that look could print, never as the contract it was meant to stand for. A weaker reading than the person named is "unknown", and the sentence says what the check could not see. Answer "yes" only when the output itself carries the thing they named — a file's contents, a field in the JSON, the conclusion of a real run — or when the person's own words made that reading their criterion, as "tell me when it answers HTTP 200" does.
+
+When the evidence does not settle it — it is ambiguous, unreadable, or you cannot tell — answer "unknown" and say what stopped you. Never answer "no" for something you could not actually decide: a false no buries what the person asked to be told, and a wrong yes interrupts somebody for nothing.`
 
 // NO CEILING TRAVELS WITH A SENTINEL ANSWER. There was one — 1024, already
 // widened once from a figure sized for "yes plus a line" because on a model
@@ -1136,31 +1457,56 @@ When the evidence does not settle it, answer no. A wrong yes interrupts somebody
 // every check read as no clear answer forever. Widening a guess is still a
 // guess. The prompt asks for a verdict and a sentence.
 
-// NewStandingSentinel is the seam a door fills [standing.Ticker.Sentinel] with.
-// It builds its client ONCE and lazily: a machine with no key, or a pass with
-// no probe to judge, must not pay for a connection nobody used.
-func NewStandingSentinel(parent Config) standing.Sentinel {
+// standingSentinelCall builds the one lazy client-and-call both sentinel readers
+// share, and answers the RAW reply text and cost. [NewStandingSentinel] and
+// [NewStandingSentinelVerdict] wrap it, so the model, the ladder, the rails and
+// the purpose cannot drift between the binary reader and the three-way reader.
+func standingSentinelCall(parent Config) func(ctx context.Context, judgment standing.Judgment) (string, float64, error) {
 	var (
-		once   sync.Once
-		client Completer
-		model  string
-		built  error
+		mu      sync.Mutex
+		clients = map[string]Completer{}
 	)
-	return func(ctx context.Context, judgment standing.Judgment) (bool, string, float64, error) {
-		once.Do(func() {
-			model, built = roles.Resolve(roles.Source(parent.RolesSource), roles.RoleSentinel, parent.Model)
-			if built != nil {
-				return
-			}
-			settings := parent.clientConfig(model, providerTimeout)
-			// The request carries the chosen model explicitly, so keep the bare id
-			// the service door resolved instead of restoring its service prefix.
-			model = settings.Model
-			settings.Routing = provider.StaticRouting(parent.Routing)
-			client, built = provider.NewClient(settings)
-		})
-		if built != nil {
-			return false, "", 0, built
+	// clientFor builds (once per SEAT) the client one judgment runs on.
+	//
+	// THE KEY IS THE MODEL AND THE POLICY, NOT THE MODEL ALONE. A pinned item and
+	// an unpinned one that resolve to the SAME model are still different seats:
+	// the pinned client has its fallback chain and nearest-model ladder cleared,
+	// the unpinned one does not. A cache keyed on the model alone would hand the
+	// unpinned client — built first, with a chain — to a later pinned judgment
+	// and let it fall onto a model the one-model promise had withheld. So the
+	// policy is part of the key, and the wire model the service door returned is
+	// what goes in it so a pinned and an unpinned seat naming one id do not
+	// collide on two spellings.
+	clientFor := func(cfg Config, model string) (Completer, string, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		settings := standingSeatPolicy(cfg, cfg.clientConfig(model, providerTimeout))
+		model = settings.Model
+		key := standingSeatKey(model, cfg.OneModel)
+		if client, ok := clients[key]; ok {
+			return client, model, nil
+		}
+		client, err := provider.NewClient(settings)
+		if err != nil {
+			return nil, model, err
+		}
+		clients[key] = client
+		return client, model, nil
+	}
+	return func(ctx context.Context, judgment standing.Judgment) (string, float64, error) {
+		// THE RATIFYING CONVERSATION'S OWN MODEL, NOT THE PASS'S LADDER. An item
+		// that recorded the one-model promise at its yes is read off the item
+		// and wins outright: no role pin, no tier, no fallback. This is what
+		// keeps a background tick from silently answering on a different model
+		// than the yes was given on ([standing.Origin.PinnedModel]).
+		cfg := standingPinnedConfig(parent, judgment.Item)
+		model, err := standingSentinelModel(cfg, judgment.Item)
+		if err != nil {
+			return "", 0, err
+		}
+		client, model, err := clientFor(cfg, model)
+		if err != nil {
+			return "", 0, err
 		}
 		// THE SENTINEL ASKS THE LADDER, AND FOR AN ITEM NOBODY DIALLED THE
 		// LADDER SAYS NOTHING.
@@ -1213,30 +1559,72 @@ func NewStandingSentinel(parent Config) standing.Sentinel {
 				textMessage("user", standingSentinelQuestion(judgment)),
 			})
 		if err != nil {
-			return false, "", 0, err
+			return "", 0, err
 		}
 		if response == nil {
-			return false, "", 0, errors.New("standing: the sentinel answered nothing")
+			return "", 0, errors.New("standing: the sentinel answered nothing")
 		}
 		usd := 0.0
 		if response.Usage != nil && response.Usage.Cost != nil {
 			usd = *response.Usage.Cost
 		}
-		yes, line := standingVerdict(response.Text())
+		return response.Text(), usd, nil
+	}
+}
+
+// NewStandingSentinel is the seam a door fills [standing.Ticker.Sentinel] with:
+// the binary reader, which folds any non-yes into "no". It is kept for callers
+// that still speak in yes/no; the live ticker uses [NewStandingSentinelVerdict]
+// so an undecided check stays open.
+func NewStandingSentinel(parent Config) standing.Sentinel {
+	call := standingSentinelCall(parent)
+	return func(ctx context.Context, judgment standing.Judgment) (bool, string, float64, error) {
+		text, usd, err := call(ctx, judgment)
+		if err != nil {
+			return false, "", 0, err
+		}
+		yes, line := standingVerdict(text)
 		return yes, line, usd, nil
 	}
 }
 
+// NewStandingSentinelVerdict is the seam a door fills
+// [standing.Ticker.SentinelVerdict] with: the SAME call and the same pinned
+// model, read THREE ways. An ambiguous, empty, refused or timed-out reply is
+// [standing.VerdictUnknown] and the item stays due — it is never read as an
+// established no, which would consume the one opportunity the person is waiting
+// on and never look again.
+func NewStandingSentinelVerdict(parent Config) standing.SentinelVerdict {
+	call := standingSentinelCall(parent)
+	return func(ctx context.Context, judgment standing.Judgment) (standing.SentinelReading, string, float64, error) {
+		text, usd, err := call(ctx, judgment)
+		if err != nil {
+			return standing.VerdictUnknown, "", 0, err
+		}
+		verdict, line := standingVerdictThree(text)
+		return verdict, line, usd, nil
+	}
+}
+
 // standingSentinelQuestion is the judgment as the sentinel reads it: their
-// words, the hint the model wrote when the item was proposed, the evidence, and
-// the history — which is the only part that moves between checks, and the whole
-// reason a declined firing is not proposed again every wake forever.
+// words, the hint the model wrote when the item was proposed, the look the check
+// itself ran, the evidence, and the history — which is the only part that moves
+// between checks, and the whole reason a declined firing is not proposed again
+// every wake forever.
+//
+// THE LOOK TRAVELS WITH ITS OUTPUT. A status code and a body read to the end are
+// the same two characters on their own; what separates them is the command that
+// produced them, so it is shown, and the sentinel can see that a probe which
+// wrote to /dev/null never read the thing the person named.
 func standingSentinelQuestion(judgment standing.Judgment) string {
 	var out strings.Builder
-	out.WriteString("WHAT THEY ASKED FOR (their own words):\n")
+	out.WriteString("WHAT THEY ASKED FOR (the criterion, their own words):\n")
 	out.WriteString(strings.TrimSpace(judgment.Item.Words))
 	if hint := strings.TrimSpace(judgment.Item.When.Hint); hint != "" {
-		out.WriteString("\n\nWHAT A YES LOOKS LIKE:\n" + hint)
+		out.WriteString("\n\nWHAT A YES WAS EXPECTED TO LOOK LIKE (the proposer's guess at setup, not their words):\n" + hint)
+	}
+	if look := standingSentinelLook(judgment.Item); look != "" {
+		out.WriteString("\n\nWHAT THE CHECK RAN (the look's own command; whatever it did not print it never read):\n" + look)
 	}
 	evidence := strings.TrimSpace(judgment.Evidence)
 	if evidence == "" {
@@ -1249,8 +1637,33 @@ func standingSentinelQuestion(judgment standing.Judgment) string {
 			out.WriteString("- " + strings.TrimSpace(line) + "\n")
 		}
 	}
-	out.WriteString("\nHas it happened? Answer yes or no, then one plain sentence.")
+	out.WriteString("\nHas it happened? Answer yes, no or unknown as the first word, then one plain sentence.")
 	return out.String()
+}
+
+// standingSentinelLook is what the check itself ran, in the one form the
+// sentinel can read: the probe's shell command, or the belt tool and the
+// arguments it was called with. Empty when the item has no probe of its own —
+// a file watch or a rhythm — because there the evidence is the file or the
+// clock and there is no look to attribute it to.
+//
+// IT IS THE ITEM'S OWN RECORD, NEVER A RE-DERIVATION. The command the person
+// approved is [standing.When.Probe], stored whole; showing it here cannot start
+// anything, and nothing in this reading executes what it names.
+func standingSentinelLook(item standing.Item) string {
+	probe := item.When.Probe
+	if command := strings.TrimSpace(probe.Command); command != "" {
+		return command
+	}
+	tool := strings.TrimSpace(probe.Tool)
+	if tool == "" {
+		return ""
+	}
+	args := strings.TrimSpace(string(probe.Args))
+	if args == "" || args == "{}" {
+		return tool
+	}
+	return tool + " " + args
 }
 
 // standingVerdict reads the answer. It is v1's parse (cmd/codeaf/chat.go's
@@ -1261,20 +1674,54 @@ func standingSentinelQuestion(judgment standing.Judgment) string {
 // contract, and reading a "yes" out of the middle of a paragraph is how a watch
 // starts firing on the sentence "no, this is not yes".
 func standingVerdict(reply string) (bool, string) {
-	answer := strings.TrimSpace(reply)
-	lower := strings.ToLower(answer)
-	yes := strings.HasPrefix(lower, "yes")
-	if !yes && !strings.HasPrefix(lower, "no") {
-		return false, "there was no clear answer, so nothing was said"
+	word, line := standingVerdictWords(reply)
+	switch word {
+	case "yes":
+		return true, line
+	case "no":
+		return false, line
 	}
-	line := answer
-	if fields := strings.Fields(answer); len(fields) > 1 {
-		line = strings.TrimSpace(strings.Join(fields[1:], " "))
-	} else {
-		line = ""
+	return false, "there was no clear answer, so nothing was said"
+}
+
+// standingVerdictThree is the three-way reader: yes, no, and UNKNOWN. A reply
+// that says "unknown", or says none of the three at all, is
+// [standing.VerdictUnknown] with a line — never a decided no, which would close
+// an opportunity nobody actually decided.
+func standingVerdictThree(reply string) (standing.SentinelReading, string) {
+	word, line := standingVerdictWords(reply)
+	switch word {
+	case "yes":
+		return standing.VerdictYes, line
+	case "no":
+		return standing.VerdictNo, line
+	case "unknown":
+		return standing.VerdictUnknown, line
 	}
-	line = strings.TrimSpace(strings.TrimLeft(line, "—:-, "))
-	return yes, line
+	return standing.VerdictUnknown, "there was no clear answer, so nothing was said"
+}
+
+// standingVerdictWords reads a reply's verdict AS THE FIRST WHOLE WORD, and the
+// sentence after it as the line.
+//
+// IT IS NOT A PREFIX MATCH. "yesterday the run failed" and "nothing has changed"
+// both open with the letters of a verdict and mean neither, and a prefix reader
+// turned the first into a YES and the second into a decided NO — exactly the
+// two misreadings the tri-state reader exists to prevent. So the first field is
+// taken whole and stripped only of the punctuation a model hangs on it ("yes.",
+// "No — ..."), and anything that is not one of the three words is no verdict
+// at all. The line is the rest of the reply, with the same leading punctuation
+// taken off.
+func standingVerdictWords(reply string) (word, line string) {
+	fields := strings.Fields(strings.TrimSpace(reply))
+	if len(fields) == 0 {
+		return "", ""
+	}
+	word = strings.ToLower(strings.Trim(fields[0], " \t.,:;!?\"'()[]{}\u2014\u2013-"))
+	if len(fields) > 1 {
+		line = strings.TrimSpace(strings.TrimLeft(strings.Join(fields[1:], " "), "\u2014:-, "))
+	}
+	return word, line
 }
 
 // ── whether the machine is quiet ────────────────────────────────────────────
@@ -1319,41 +1766,222 @@ func StandingIdle() standing.Idle {
 // docs/AMBIENT.md calls "while you were away", and six separate lines would be
 // six separate things to read before the first sentence they came for.
 //
-// THE AMBIENT LANE AND NOT THE WAKING ONE ([Agent.enqueueAmbientNote]). This
-// runs before anybody has said anything, and an account of what happened while
-// they were gone is context for whatever they type next — not a reason for the
-// session to start talking to itself about last night.
+// THE AMBIENT LANE AND NOT THE WAKING ONE. This runs before anybody has said
+// anything, and an account of what happened while they were gone is context for
+// whatever they type next — not a reason for the session to start talking to
+// itself about last night.
 //
 // IT RUNS TWICE OVER AND THAT IS THE POINT. Construction is one of the two
 // moments a person arrives at a conversation; a SURFACE ATTACHING to one this
 // process never let go of is the other, and since #653 the second is the
 // ordinary one — the session host outlives the window and hands the next one
 // the same agent. So [Agent.WatchTaskUpdates] asks for this too, and the drain
-// is idempotent by construction: it empties the files it reads.
+// is idempotent because a file is HELD from the moment its fold is queued until
+// its acknowledgement runs ([Agent.holdStandingFile]): a second ask finds the
+// file held and neither queues nor acknowledges it again.
+//
+// THE ACKNOWLEDGEMENT FOLLOWS A RECORD THAT IS MADE AT ARRIVAL, NOT AT A TURN.
+// The fold is written into the conversation's own journal the moment it is
+// drained ([Agent.recordStandingFold]), so a reopen that never types still
+// settles the file before the second open — which is what stops a one-time
+// notice being replayed until somebody submits. A crash between the record and
+// the acknowledgement leaves the file staged, but the record already answers for
+// its identity ([Agent.hasRecorded]), so the next open retires the file without
+// folding it again: a note nobody was shown, never a note shown twice. This is
+// the durable at-least-once handoff, and no exactly-once claim is made about
+// what a screen drew.
 func (a *Agent) drainStandingInbox() {
 	if a.config.InTask {
 		return
 	}
-	var notes []standing.Note
+	var (
+		files    []standing.DrainFile
+		problems []error
+	)
 	dir := strings.TrimSpace(a.config.Place.Dir)
 	if dir == "" {
 		dir = filepath.Dir(strings.TrimSpace(a.config.SessionFile))
 	}
 	if dir != "" && dir != "." {
-		if mine, err := standing.Drain(dir); err == nil {
-			notes = mine
+		// THE NOTES ARE USED EVEN WHEN THE DRAIN REPORTED A FAILURE. [standing.Drain]
+		// hands back every file it read whole, and a malformed sibling must not
+		// cost the person the valid notes the same drain returned. The failure is
+		// still surfaced BELOW rather than swallowed.
+		mine, err := standing.Drain(dir)
+		files = append(files, mine...)
+		if err != nil {
+			problems = append(problems, err)
 		}
 	}
-	notes = append(notes, a.drainProjectInbox()...)
+	project, err := a.drainProjectInbox()
+	files = append(files, project...)
+	if err != nil {
+		problems = append(problems, err)
+	}
+	a.takeStandingFiles(files)
+	a.surfaceInboxProblems(problems)
+}
+
+// takeStandingFiles turns the files one drain handed over into the fold and the
+// durable deliveries that will retire them.
+//
+// A FILE A LIVE FOLD ALREADY OWNS IS LEFT ALONE. [Agent.holdStandingFile] answers
+// false for it, so the same notes are not queued twice and a second acknowledgement
+// cannot retire a file before the fold that owns it is journaled.
+//
+// A NOTE THE JOURNAL ALREADY HOLDS IS NOT SHOWN AGAIN. A crash between the fold's
+// journal line and the file's acknowledgement leaves both; the delivery id in the
+// record ([Agent.hasRecorded]) answers for it, so it is retired without a second
+// fold. A file whose every note is already durable is acknowledged at once.
+func (a *Agent) takeStandingFiles(files []standing.DrainFile) {
+	var (
+		notes      []standing.Note
+		deliveries []durableDelivery
+	)
+	for _, file := range files {
+		if !a.holdStandingFile(file.Path()) {
+			continue
+		}
+		live := make([]standing.Note, 0, len(file.Notes))
+		for _, note := range file.Notes {
+			if id := standingDeliveryID(note.ID); id != "" && a.hasRecorded(deliveryID(id)) {
+				continue
+			}
+			live = append(live, note)
+		}
+		if len(live) == 0 {
+			// EVERY NOTE IN THE FILE IS ALREADY IN THE RECORD: retire the file
+			// now rather than wait for a fold that would say nothing new.
+			a.settleStandingFile(file)
+			continue
+		}
+		notes = append(notes, live...)
+		// ONE DELIVERY PER NOTE, so a resume can ask the record about each id; all
+		// of them settle the same file once the fold is journaled.
+		settle := sync.OnceFunc(func() { a.settleStandingFile(file) })
+		for _, note := range live {
+			deliveries = append(deliveries, durableDelivery{id: deliveryID(standingDeliveryID(note.ID)), settled: settle})
+		}
+	}
 	if len(notes) == 0 {
 		return
 	}
-	// TWO INBOXES, ONE FOLD, IN ONE ORDER. What arrived is what arrived: a
-	// person who was away does not care which file a note waited in, and two
-	// folds with two openings would be the mailbox this note exists to avoid.
+	// TWO INBOXES, ONE FOLD, IN ONE ORDER. What arrived is what arrived: a person
+	// who was away does not care which file a note waited in, and two folds with
+	// two openings would be the mailbox this note exists to avoid.
 	sort.SliceStable(notes, func(i, j int) bool { return notes[i].At.Before(notes[j].At) })
-	a.enqueueAmbientNote(standingAwayNote(notes))
+	a.recordStandingFold(standingAwayNote(notes), deliveries)
 	a.queueStandingNews(notes)
+}
+
+// standingDeliveryID is the durable receipt of one inbox note in this session's
+// journal: the note's own identity under one prefix, so a resume can ask
+// [Agent.hasRecorded] whether the fold that carried it is already written down.
+func standingDeliveryID(noteID string) string {
+	id := strings.TrimSpace(noteID)
+	if id == "" {
+		return ""
+	}
+	return "standing-inbox/" + id
+}
+
+// recordStandingFold WRITES THE FOLD INTO THE CONVERSATION'S OWN RECORD AT
+// ARRIVAL and settles the inbox files it came from. This is the fix for the
+// reopen that never typed: an acknowledgement that waited for a turn meant a
+// person who merely reopened the window twice read the same one-time notice
+// twice, because nothing had journaled it between the two opens. Here the note
+// is recorded through the ordinary note door ([Agent.recordUserLocked]) the
+// moment it is drained, so the receipt is durable BEFORE the file it came from
+// is acknowledged ([durableDelivery] and [sessionFile.recorded]) — and the
+// second open finds the file gone.
+//
+// IT DOES NOT FIRE A TURN AND IT DOES NOT FABRICATE A PERSON. The line carries
+// [userMessage.authored] — the session's own mark — so the journal writes it in
+// the session's lane ([sessionEntry.Note]) and NOT as a person's message, and the
+// folder does not learn that the person spoke: no [Meta.LastUserAt] and no
+// placeholder title ([Agent.stampUserLocked] runs only on the person's own road).
+// The delivery ids ([userMessage.delivered]) ride the same marked line, so the
+// journal is the durable receipt a crash reads ([Agent.hasRecorded]). It is
+// recorded rather than queued, so the fold is in the transcript for the next
+// sentence the person types without anything having to start a turn for it. No
+// model call, no wake, and no user role the person did not type.
+//
+// A TURN ALREADY RUNNING IS THE ONE CASE THAT WAITS. A user line appended
+// between a tool call and its result is an illegal transcript, so when this
+// conversation is mid-request the fold stays queued and its file stays staged;
+// that turn's own drain records it and settles it a boundary later, which is
+// the old behaviour kept for the only shape that needs it.
+func (a *Agent) recordStandingFold(text string, deliveries []durableDelivery) {
+	// THE SESSION'S OWN LINE, NEVER THE PERSON'S. `authored` is what routes the
+	// record through the note door ([sessionFile.appendNote]) instead of the plain
+	// user-message door: the journal keeps the note mark and the delivery ids
+	// together, which is what makes hasRecorded true and stops a replay folding
+	// the same notice twice.
+	note := userText(text)
+	note.authored = true
+	note.delivered = deliveries
+	if !a.recordNoteAtRest(note) {
+		a.enqueueNote(note)
+		return
+	}
+	a.settleDeliveries()
+}
+
+// recordNoteAtRest records one session note into the transcript AND the journal
+// when no turn holds the transcript open, and answers false when a turn is
+// running (or the session is closed), leaving the caller to queue it instead.
+// The check and the append are one step under the agent's lock, so a turn
+// cannot start between them and open the illegal shape this refuses.
+func (a *Agent) recordNoteAtRest(note userMessage) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed || a.running {
+		return false
+	}
+	a.recordUserLocked(note)
+	return true
+}
+
+// holdStandingFile claims a staged file for a live fold, answering false when a
+// fold already owns it. The check and the claim are one step under the agent's
+// lock, so construction and a racing surface attach cannot both queue the same
+// notes.
+func (a *Agent) holdStandingFile(path string) bool {
+	if path == "" {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.standingHeld[path] {
+		return false
+	}
+	if a.standingHeld == nil {
+		a.standingHeld = make(map[string]bool)
+	}
+	a.standingHeld[path] = true
+	return true
+}
+
+// releaseStandingFile drops a file's hold once its acknowledgement has run.
+func (a *Agent) releaseStandingFile(path string) {
+	if path == "" {
+		return
+	}
+	a.mu.Lock()
+	delete(a.standingHeld, path)
+	a.mu.Unlock()
+}
+
+// settleStandingFile acknowledges one staged file and releases its hold. It is
+// idempotent, so a file retired from several delivery callbacks is retired once.
+func (a *Agent) settleStandingFile(file standing.DrainFile) {
+	if err := file.Ack(); err != nil {
+		// THE FILE STAYS AND THE FOLD STAYS OWED. The record could not be written,
+		// so the next open re-hands the notes rather than losing them; the failure
+		// is said in the ambient lane rather than swallowed.
+		a.surfaceInboxProblems([]error{err})
+	}
+	a.releaseStandingFile(file.Path())
 }
 
 // queueStandingNews turns the fold into what the SCREEN reads: one dim row per
@@ -1394,7 +2022,7 @@ func (a *Agent) queueStandingNews(notes []standing.Note) {
 	a.mu.Unlock()
 }
 
-// drainProjectInbox empties the PROJECT's inbox — what fired for this workspace
+// drainProjectInbox reads the PROJECT's inbox — what fired for this workspace
 // while no window of it was open, from an item whose own origin was an exchange
 // and had nowhere else to land ([standingRunner.deliver], road 4).
 //
@@ -1402,23 +2030,36 @@ func (a *Agent) queueStandingNews(notes []standing.Note) {
 // and is never reopened, so a fold drawn into one would be this build reading a
 // person's news out to nobody and then deleting it. It waits for a
 // conversation, which is a room they come back to.
-func (a *Agent) drainProjectInbox() []standing.Note {
+func (a *Agent) drainProjectInbox() ([]standing.DrainFile, error) {
 	if a.config.Errand {
-		return nil
+		return nil, nil
 	}
 	store := a.standingItems()
 	if store == nil {
-		return nil
+		return nil, nil
 	}
 	root, workspace := strings.TrimSpace(store.Root()), a.standingWorkspace()
 	if root == "" || workspace == "" {
-		return nil
+		return nil, nil
 	}
-	notes, err := standing.DrainProject(root, workspace)
-	if err != nil {
-		return nil
+	// THE PROJECT'S NOTES COME BACK THE SAME WAY: used even when the drain
+	// reported a failure, with the failure returned rather than hidden.
+	return standing.DrainProject(root, workspace)
+}
+
+// surfaceInboxProblems says, in the ambient lane the fold itself uses, that
+// something the person was owed could not be read. It is not silent and it is
+// not fatal: the valid notes are already queued, and this is the one dim line
+// that keeps a damaged inbox from reading as an empty one.
+func (a *Agent) surfaceInboxProblems(problems []error) {
+	if len(problems) == 0 {
+		return
 	}
-	return notes
+	joined := oneLine(errors.Join(problems...).Error())
+	if joined == "" {
+		return
+	}
+	a.enqueueAmbientNote("standing news could not be fully read and is still waiting: " + joined)
 }
 
 // standingAwayNote renders that fold: one opening line, then one line per note

@@ -16,6 +16,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
 	"github.com/Agent-Field/codeaf/internal/manual"
 	"github.com/Agent-Field/codeaf/internal/standing"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // ── a store this package can watch ──────────────────────────────────────────
@@ -29,7 +30,11 @@ type fakeStanding struct {
 	created []standing.Item
 	saved   []standing.Item
 	items   map[string]standing.Item
+	armed   []string
 	fail    error
+	saveErr error
+	armErr  error
+	noteErr error
 	next    int
 }
 
@@ -63,9 +68,45 @@ func (f *fakeStanding) Create(item standing.Item) (standing.Item, error) {
 	return item, nil
 }
 
+// Arm stands in for the store's baseline capture. The fake has no filesystem,
+// so it records the call and stamps a fingerprint the way a complete scan would.
+func (f *fakeStanding) Arm(id string) (standing.Item, error) {
+	item, found := f.items[id]
+	if !found {
+		return standing.Item{}, standing.ErrNotFound
+	}
+	if f.armErr != nil {
+		return standing.Item{}, f.armErr
+	}
+	f.armed = append(f.armed, id)
+	if item.When.Kind == standing.WhenFile {
+		item.Fingerprint = "armed-baseline"
+	}
+	f.items[id] = item
+	return item, nil
+}
+
+func (f *fakeStanding) NoteNeedsPerson(id, note string) error {
+	if f.noteErr != nil {
+		return f.noteErr
+	}
+	item, found := f.items[id]
+	if !found {
+		return standing.ErrNotFound
+	}
+	if strings.TrimSpace(item.NeedsPerson) == "" {
+		item.NeedsPerson = note
+	}
+	f.items[id] = item
+	return nil
+}
+
 func (f *fakeStanding) Save(item standing.Item) error {
 	if err := item.Validate(); err != nil {
 		return err
+	}
+	if f.saveErr != nil {
+		return f.saveErr
 	}
 	f.saved = append(f.saved, item)
 	f.items[item.ID] = item
@@ -513,6 +554,194 @@ func TestStandingItemMadeFromHomeIsFiledUnderItself(t *testing.T) {
 	}
 }
 
+// A HOME FILING THAT COULD NOT BE WRITTEN IS NOT REPORTED AS A NORMAL SETUP.
+// The item stands — Create wrote it — but its origin still names the exchange
+// it is leaving, so the door home opens is not silently claimed; the tool result
+// says so and the store carries a visible needs-person line.
+func TestStandingHomeFilingWriteFailureIsVisibleAndTruthful(t *testing.T) {
+	store := newFakeStanding(t)
+	store.saveErr = errors.New("standing: the record would not write")
+	exchange := "a1b2c3d4e5f60719"
+	dir := filepath.Join(standing.ExchangesRoot(store.Root()), exchange)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("the exchange folder: %v", err)
+	}
+	completer := &scriptedCompleter{steps: []step{
+		standCall("s1", aReminder()),
+		finalText("set up"),
+	}}
+	agent := standingAgent(t, completer, store, func(config *Config) {
+		config.SessionFile = filepath.Join(dir, "transcript.jsonl")
+	})
+
+	events, err := agent.Submit(context.Background(), "remind me at 6 to leave")
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	collected := drainAnsweringStanding(t, events, func(event Event) {
+		agent.ResolveStanding(event.Standing.ID, StandingAnswer{Approved: true})
+	})
+	if len(store.created) != 1 {
+		t.Fatalf("a yes created %d items", len(store.created))
+	}
+	item, err := store.Get(store.created[0].ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	// THE ITEM REALLY STANDS, and its recorded origin is the one actually on
+	// disk: not the folder it never got pointed at.
+	if item.Status != standing.StatusActive {
+		t.Fatalf("status = %q, want active", item.Status)
+	}
+	if item.Origin.Exchange != "" {
+		t.Fatalf("origin.Exchange = %q, an unpersisted filing was claimed", item.Origin.Exchange)
+	}
+	if item.NeedsPerson == "" {
+		t.Fatal("a filing that could not be saved left no visible needs-person line")
+	}
+	if output := toolOutput(t, collected, "stand"); !strings.Contains(output, "could not be saved") || !strings.Contains(output, "still needs you") {
+		t.Fatalf("tool result = %q, want the partial outcome told to the person", output)
+	}
+}
+
+// MEMORY-ON MUST FAIL CLOSED. If the approved rules cannot be loaded, the run
+// must not reach a provider or a tool call, and the ticker is left a visible
+// needs-person outcome rather than an unbound firing. Memory-off stays absent.
+func TestStandingRunFailsClosedWhenBindingCannotLoad(t *testing.T) {
+	dir := t.TempDir()
+	corrupt := filepath.Join(t.TempDir(), "brain.db")
+	if err := os.WriteFile(corrupt, []byte("this is not a sqlite database"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runner := &standingRunner{memoryPath: corrupt}
+	cfg, closeMemory, err := runner.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	closeMemory()
+	if err == nil || cfg.Memory != nil {
+		t.Fatalf("a corrupt brain was silently treated as an unbound run: cfg=%v err=%v", cfg.Memory, err)
+	}
+	// AND THE RUN ITSELF NEVER BUILDS A CHILD SESSION.
+	built := 0
+	runner = &standingRunner{memoryPath: corrupt, child: func(Config) (*Agent, error) {
+		built++
+		return nil, errors.New("a child must never be built when binding failed")
+	}}
+	if _, err := runner.Run(context.Background(), standing.Item{ID: "t", Workspace: dir,
+		Does: standing.Action{Kind: standing.ActionTask}}, t.TempDir(), ""); err == nil {
+		t.Fatal("a run whose binding could not load reported success")
+	}
+	if built != 0 {
+		t.Fatalf("a run whose binding could not load built %d child sessions", built)
+	}
+	// MEMORY-OFF IS INTENTIONALLY ABSENT, NOT AN ERROR.
+	off := &standingRunner{}
+	cfg, closeMemory, err = off.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	closeMemory()
+	if err != nil || cfg.Memory != nil || cfg.bindingOnlyMemory {
+		t.Fatalf("memory-off was not left intentionally absent: %v/%v", cfg.Memory, err)
+	}
+}
+
+// AN ALREADY-SUPPLIED BRAIN IS STILL BOUND READ-ONLY, AND AN UNPROVABLE PROJECT
+// FAILS CLOSED INSTEAD OF BYPASSING THE BINDING PATH.
+func TestStandingRunBindsSuppliedMemoryAndRequiresOwnerIdentity(t *testing.T) {
+	dir := t.TempDir()
+	brain, err := store.Open(filepath.Join(t.TempDir(), "supplied.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = brain.Close() })
+	runner := &standingRunner{}
+	cfg, closeMemory, err := runner.withBindingMemory(Config{Workspace: dir, Memory: brain}, standing.Item{Workspace: dir})
+	closeMemory()
+	if err != nil || cfg.Memory != brain || !cfg.bindingOnlyMemory || cfg.MemoryProjectKey != standingProjectKey(dir) {
+		t.Fatalf("a supplied brain bypassed the binding posture: %+v mem=%v err=%v", cfg, cfg.Memory == brain, err)
+	}
+	// AN EMPTY WORKSPACE CANNOT PROVE AN OWNER, so memory-on must not run.
+	_, _, err = runner.withBindingMemory(Config{Memory: brain}, standing.Item{})
+	if err == nil {
+		t.Fatal("an unprovable project was allowed to run with memory on")
+	}
+}
+
+// A FUTURE AUTHORIZED RUN IS BOUND BEFORE ITS FIRST ACTION. A firing is built
+// from a vision posture that opens no database, so without this seam it would
+// act with none of the project's approved binding rules in front of it. The run
+// is lent the canonical brain READ-ONLY: the rules and their conditional
+// exceptions ride the first provider request, an unrelated project's rules stay
+// absent, and the firing gains no remember/forget verb and no write.
+func TestStandingRunBindsApprovedRuleReadOnlyBeforeFirstRequest(t *testing.T) {
+	dir := t.TempDir()
+	brainPath := filepath.Join(t.TempDir(), "brain.db")
+	brain, err := store.Open(brainPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := standingProjectKey(dir)
+	owner := store.OwnerProject(key)
+	m, err := brain.AddMemory(store.Memory{ID: "rule", Owner: owner, Type: store.MemoryDecision,
+		Title: "offline release", Text: "Release runtime uses standard library only."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := brain.AppendContextualEvidence(store.ContextualEvidence{ID: "ev", MemoryID: m.ID,
+		Owner: owner, SessionID: "s", TurnID: "t", Actor: "user", Authority: "approved_rule",
+		Observation: "release artifacts must run offline", Verification: "asserted",
+		Applicability: []string{"release runtime only; development network allowed"},
+		Rationale:     "deploy without dependency downloads", SourceKey: "s:t", SourceHash: "h"}); err != nil {
+		t.Fatal(err)
+	}
+	otherOwner := store.OwnerProject("some-other-project")
+	other, err := brain.AddMemory(store.Memory{ID: "other", Owner: otherOwner, Type: store.MemoryDecision,
+		Title: "other rule", Text: "Other project indents with tabs."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := brain.AppendContextualEvidence(store.ContextualEvidence{ID: "ev-other", MemoryID: other.ID,
+		Owner: otherOwner, SessionID: "s", TurnID: "t", Actor: "user", Authority: "approved_rule",
+		Observation: "tabs", Verification: "asserted", SourceKey: "s:t", SourceHash: "h2"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := brain.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &standingRunner{memoryPath: brainPath}
+	cfg, closeMemory, err := runner.withBindingMemory(Config{Workspace: dir}, standing.Item{Workspace: dir})
+	if err != nil {
+		t.Fatalf("binding memory: %v", err)
+	}
+	defer closeMemory()
+	if cfg.Memory == nil || !cfg.bindingOnlyMemory || cfg.MemoryProjectKey != key {
+		t.Fatalf("run was not bound to its project brain: %+v", cfg.MemoryProjectKey)
+	}
+	script := &reflexScript{}
+	agent, _ := newTestAgent(t, script, func(c *Config) {
+		c.Memory = cfg.Memory
+		c.MemoryProjectKey = cfg.MemoryProjectKey
+		c.bindingOnlyMemory = cfg.bindingOnlyMemory
+	})
+	if agent.memoryWritable() {
+		t.Fatal("a binding-only posture allowed memory writes")
+	}
+	if len(agent.memoryTools()) != 0 {
+		t.Fatal("a binding-only posture lent the remember/forget verb")
+	}
+	collect(t, mustSubmit(t, agent, "finish the offline release work"))
+	script.mu.Lock()
+	requests := append([]string(nil), script.requests...)
+	script.mu.Unlock()
+	joined := strings.Join(requests, "\n")
+	if !strings.Contains(joined, "standard library only") {
+		t.Fatalf("first provider request lacked the approved rule:\n%s", joined)
+	}
+	if !strings.Contains(joined, "release runtime only") || !strings.Contains(joined, "deploy without dependency downloads") {
+		t.Fatalf("first provider request lost the conditional exception or rationale:\n%s", joined)
+	}
+	if strings.Contains(joined, "Other project indents with tabs") {
+		t.Fatalf("an unrelated project's rule was bound in:\n%s", joined)
+	}
+}
+
 // AND AN ORDINARY CONVERSATION IS NOT ONE. The only thing that makes a session
 // an errand is a transcript under the standing root's exchanges/, so a session
 // anywhere else keeps its own folder as its record.
@@ -938,10 +1167,11 @@ func TestStandingSayReachesALiveConversation(t *testing.T) {
 	registerLiveSession(agent)
 	t.Cleanup(func() { forgetLiveSession(agent) })
 
+	dir := t.TempDir()
 	runner := &standingRunner{}
 	outcome, err := runner.Say(context.Background(), standing.Item{
 		Words:  "tell me when CI goes red",
-		Origin: standing.Origin{SessionID: agent.id},
+		Origin: standing.Origin{SessionID: agent.id, Transcript: filepath.Join(dir, "transcript.jsonl")},
 	}, "the last run on main failed")
 	if err != nil || outcome.Kind != "said" {
 		t.Fatalf("Say = %+v err=%v", outcome, err)
@@ -960,6 +1190,14 @@ func TestStandingSayReachesALiveConversation(t *testing.T) {
 	// as a request ([TestTheSteeringLineReadsAsNewsAndNotAsARequest]).
 	if !strings.Contains(line, "◦ tell me when CI goes red: the last run on main failed") {
 		t.Fatalf("steering line = %q", line)
+	}
+	// AND THE LINE IS DURABLE BESIDE THE OFFER. An open window makes the news
+	// immediate, but the note is already on disk, so a crash or a window closing
+	// before it is read cannot lose it. This is the at-least-once handoff: the
+	// same line may be seen live and again in a fold, and it is never lost.
+	notes, err := drainStanding(t, dir)
+	if err != nil || len(notes) != 1 || notes[0].Text != "the last run on main failed" {
+		t.Fatalf("the durable note is %+v (err %v), want the line on disk before the live offer", notes, err)
 	}
 }
 
@@ -1075,15 +1313,29 @@ func TestStandingEvidenceIsFoldedIn(t *testing.T) {
 // output, and clipping from the front hands the judgment the banner.
 func TestStandingProbeIsClippedFromTheTail(t *testing.T) {
 	text := strings.Repeat("noise\n", 100) + "the last line"
-	got := standingTail(text, 40)
+	got, clipped := standingTail(text, 40)
+	if !clipped {
+		t.Fatal("a tail that was cut did not report the cut")
+	}
 	if !strings.HasSuffix(got, "the last line") {
 		t.Fatalf("the tail lost the tail: %q", got)
 	}
 	if len(got) > 60 {
 		t.Fatalf("the clip kept %d bytes", len(got))
 	}
-	if got := standingTail("short", 40); got != "short" {
-		t.Fatalf("a short output was changed: %q", got)
+	if got, clipped := standingTail("short", 40); got != "short" || clipped {
+		t.Fatalf("a short output was changed or called clipped: %q clipped=%v", got, clipped)
+	}
+	// THE PRODUCTION READING REPORTS THE CUT, so the core never hashes a tail as
+	// if it were the whole thing. A reading over the clip is the shape that must
+	// carry it; a short one must not.
+	big := strings.Repeat("noise\n", standing.ProbeClip/6+16)
+	reading := standingProbeReading(big)
+	if !reading.Clipped {
+		t.Fatalf("an over-clip reading did not report the cut: clipped=%v len=%d", reading.Clipped, len(reading.Text))
+	}
+	if short := standingProbeReading("short"); short.Clipped || short.Text != "short" {
+		t.Fatalf("a short reading was called clipped or changed: %+v", short)
 	}
 }
 
@@ -1248,6 +1500,23 @@ func standingQueued(agent *Agent) []string {
 	return lines
 }
 
+// standingRecordedFold is the fold as it reached the CONVERSATION'S OWN RECORD:
+// the newest transcript line that opens a "while you were away". The fold is
+// recorded at arrival now, not left on the queue, so this — and not
+// [standingQueued] — is where a drain that has run has put it.
+func standingRecordedFold(agent *Agent) string {
+	agent.mu.Lock()
+	defer agent.mu.Unlock()
+	fold := ""
+	for _, message := range agent.messages {
+		text := messageContentText(message)
+		if strings.HasPrefix(strings.TrimSpace(text), "while you were away") {
+			fold = text
+		}
+	}
+	return fold
+}
+
 // AN ERRAND IS NEVER STEERED INTO, AND THE PERSON IS TOLD ANYWAY.
 //
 // This is the firing that wrote the rule. A reminder made from home's `ask
@@ -1311,10 +1580,14 @@ func TestAFiringWhoseOriginIsClosedReachesAnotherWindowOfTheProject(t *testing.T
 	if queued := standingQueued(elsewhere); len(queued) != 0 {
 		t.Fatalf("a window of another project was steered into: %q", queued)
 	}
-	// AND NOTHING WAS FILED. A line delivered into a room is not also a line
-	// waiting in a fold tomorrow.
-	if _, err := os.Stat(standing.InboxPath(dir)); !os.IsNotExist(err) {
-		t.Fatalf("the origin's inbox was written as well: %v", err)
+	// AND THE DURABLE NOTE STANDS UNDER THE LIVE OFFER. The room heard it, and
+	// the origin's inbox holds it too: without the note, a window that closed
+	// between the offer and the person reading it would lose the line. This is
+	// the stated at-least-once handoff — the line can be seen live and again in
+	// the origin's fold — and loss is the direction this refuses to fail toward.
+	notes, err := drainStanding(t, dir)
+	if err != nil || len(notes) != 1 || notes[0].Text != "the last run on main failed" {
+		t.Fatalf("the origin's durable note is %+v (err %v)", notes, err)
 	}
 }
 
@@ -1406,12 +1679,12 @@ func TestAFiringFromAnExchangeWithNothingOpenWaitsOnTheProject(t *testing.T) {
 		config.Place = Place{Dir: t.TempDir(), Workspace: workspace}
 		config.SessionFile = config.Place.Transcript()
 	})
-	queued := standingQueued(agent)
-	if len(queued) != 1 {
-		t.Fatalf("the new conversation queued %d notes, want one fold", len(queued))
+	fold := standingRecordedFold(agent)
+	if !strings.HasPrefix(fold, "while you were away") || !strings.Contains(fold, item.Words) {
+		t.Fatalf("the fold reads %q", fold)
 	}
-	if !strings.HasPrefix(queued[0], "while you were away") || !strings.Contains(queued[0], item.Words) {
-		t.Fatalf("the fold reads %q", queued[0])
+	if queued := standingQueued(agent); len(queued) != 0 {
+		t.Fatalf("a fold was left queued for a turn nobody may start: %q", queued)
 	}
 	if left := standing.PeekProjectInbox(root, workspace); len(left) != 0 {
 		t.Fatalf("the project inbox still holds %d notes after a conversation drained it", len(left))
@@ -1434,7 +1707,7 @@ func TestAnOrdinaryOriginStillWaitsInItsOwnConversation(t *testing.T) {
 	if _, err := runner.Say(context.Background(), item, "the last run on main failed"); err != nil {
 		t.Fatalf("Say: %v", err)
 	}
-	notes, err := standing.Drain(dir)
+	notes, err := drainStanding(t, dir)
 	if err != nil || len(notes) != 1 {
 		t.Fatalf("the session inbox holds %d notes (err %v)", len(notes), err)
 	}
@@ -1910,7 +2183,9 @@ func TestAFiringThatNeedsSomebodyReportsItOnTheStandingLane(t *testing.T) {
 		Workspace: workspace,
 		Origin:    standing.Origin{SessionID: room.id, Transcript: room.config.SessionFile},
 	}
-	runner.deliver(item, "needs-you", "the fix touches migrations", "")
+	if err := runner.deliver(item, "needs-you", "the fix touches migrations", "", ""); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
 	event := standingNextUpdate(t, lane)
 	if event.Standing.Update != "needs-you" || event.Standing.Text != "the fix touches migrations" {
 		t.Fatalf("the row is %+v", event.Standing)
@@ -1958,10 +2233,14 @@ func TestWhatFiredWhileTheWindowWasShutIsDrawnWhenItOpens(t *testing.T) {
 		t.Fatalf("the second row is %+v", second.Standing)
 	}
 	// AND THE MODEL STILL GETS ONE FOLD AND NOT TWO NOTES. The two readers have
-	// two different laws (standing_run.go's queueStandingNews).
-	queued := standingQueued(agent)
-	if len(queued) != 1 || !strings.HasPrefix(queued[0], "while you were away") {
-		t.Fatalf("the model was handed %d notes: %q", len(queued), queued)
+	// two different laws (standing_run.go's queueStandingNews). The fold is in
+	// the RECORD at arrival now, so a later turn reads it from there.
+	fold := standingRecordedFold(agent)
+	if !strings.Contains(fold, "tell me when CI goes red") || !strings.Contains(fold, "keep main green") {
+		t.Fatalf("the recorded fold is %q", fold)
+	}
+	if queued := standingQueued(agent); len(queued) != 0 {
+		t.Fatalf("the fold was left queued as well as recorded: %q", queued)
 	}
 }
 

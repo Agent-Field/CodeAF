@@ -183,6 +183,25 @@ const (
 // one — no conversation asked for this.
 const consolidateSource = "memory-tidy"
 
+// consolidateOwners answers the authorized owner partitions a background
+// consolidation pass may touch. It never includes the quarantine: a pass cannot
+// prove what a quarantined row belongs to, and the architecture says quarantined
+// rows are never injected anywhere. The Config's project key is included only
+// when set — this pass has no project context of its own, but a caller that
+// provides one will have its project rows tidied as well.
+//
+// A nil or empty owners list means the pass does no work at all; the caller
+// should refuse rather than widen.
+func consolidateOwners(cfg Config) []string {
+	owners := []string{store.OwnerUser, store.OwnerMachine}
+	if key := strings.TrimSpace(cfg.MemoryProjectKey); key != "" {
+		if owner := store.OwnerProject(key); owner != store.OwnerLegacyProject && store.ValidOwner(owner) {
+			owners = append(owners, owner)
+		}
+	}
+	return owners
+}
+
 // ── the seam the tick fills ─────────────────────────────────────────────────
 
 // NewMemoryTidy is the seam a door fills [standing.Ticker.Tidy] with.
@@ -240,29 +259,60 @@ func NewMemoryTidy(parent Config, brainPath, root string, idle standing.Idle) st
 		if built != nil {
 			return standing.Tidied{}, built
 		}
-		return tidyPass{brain: brain, completer: client, model: model, root: root, mark: mark}.run(ctx)
+		// THE OWNERS A BACKGROUND PASS MAY TOUCH. A consolidate runs while
+		// nobody is at the machine and has no project context — it is a
+		// person-level and machine-level pass, and nothing else. If the Config
+		// carries a project key the pass may include that project explicitly;
+		// a pass that cannot prove what it is authorized to tidy does not tidy
+		// everything in reach — it refuses with no work done.
+		owners := consolidateOwners(parent)
+		return tidyPass{brain: brain, completer: client, model: model, root: root, mark: mark, owners: owners}.run(ctx)
 	}
 }
 
 // tidyPass is one pass with everything it needs already resolved: the store
-// open, the client built, and the watermark read.
+// open, the client built, the watermark read, and the OWNERS this pass may
+// touch.
 //
-// It is a type rather than six arguments because the SEAM above owns the two
+// IT IS A TYPE RATHER THAN SIX ARGUMENTS because the SEAM above owns the two
 // things a test cannot have — a database on the person's disk and a connection
 // to a provider — and this owns everything else. Splitting them there is what
 // lets the gate, the plan and every refusal be tested without either.
+//
+// OWNERS IS THE STRICT WRITE POLICY: only rows whose owner is in this list may
+// be refined or superseded. The pass never reads quarantine rows, never mutates
+// them, and never crosses owner boundaries with a plan that mentions another
+// owner's id. A nil or empty owners list fails closed with no work done, which
+// is the safe direction: a pass that cannot prove what it is authorized to touch
+// must never touch everything.
 type tidyPass struct {
 	brain     *store.Store
 	completer Completer
 	model     string
 	root      string
 	mark      consolidateMark
+	owners    []string
 }
 
-// run is the pass proper: read what is remembered, decide whether it is worth a
-// call, make it, apply what came back, stamp the clock and say one line.
+// run is the pass proper: read what is remembered within the OWNERS this pass
+// is allowed to touch, decide whether it is worth a call, make it, apply what
+// came back, stamp the clock and say one line.
+//
+// THE BATCH NEVER LEAVES THE AUTHORIZED OWNERS. The read is owner-scoped the
+// way every read that can put a memory in front of a model is, and the
+// quarantine — rows whose owner nobody can prove — is never in the list. A
+// nil or empty owners list is a fail-closed no-op: a pass that cannot prove
+// what it is allowed to touch does no work at all.
 func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
-	batch, err := p.brain.ListMemories("", consolidateBatch)
+	if len(p.owners) == 0 {
+		return standing.Tidied{}, errors.New("session: the tidy has no authorized owners to tidy")
+	}
+	for _, owner := range p.owners {
+		if !store.ValidOwner(owner) || owner == store.OwnerLegacyProject {
+			return standing.Tidied{}, errors.New("session: the tidy has an unauthorized owner")
+		}
+	}
+	batch, err := p.brain.ListMemories(p.owners, consolidateBatch)
 	if err != nil {
 		return standing.Tidied{}, err
 	}
@@ -280,15 +330,19 @@ func (p tidyPass) run(ctx context.Context) (standing.Tidied, error) {
 	if err != nil {
 		return standing.Tidied{USD: usd}, err
 	}
-	tidied := applyConsolidatePlan(p.brain, batch, plan)
+	tidied, err := applyConsolidatePlan(p.brain, batch, p.owners, plan)
 	tidied.USD = usd
+	if err != nil {
+		noticeLiveWindow("memory tidy failed · changes remain due for review")
+		return tidied, err
+	}
 
 	// THE WATERMARK IS TAKEN AFTER THE WRITES, from the store rather than from
 	// the batch, so the pass's own updates are not what the next pass reads as
 	// "something changed". A pass that re-triggered itself would tidy the same
 	// fifty lines every six hours forever.
 	_ = writeConsolidateMark(p.root, consolidateMark{
-		At: time.Now(), Seq: consolidateHighWater(p.brain, batch),
+		At: time.Now(), Seq: consolidateHighWater(p.brain, p.owners, batch),
 		Merged: tidied.Merged, Superseded: tidied.Superseded, USD: usd,
 	})
 
@@ -312,18 +366,19 @@ func consolidateChanged(batch []store.Memory, since int64) int {
 	return changed
 }
 
-// consolidateHighWater is the newest sequence the store holds after a pass. It
-// falls back to the batch's own highest when the read fails, which is the safe
-// direction: a watermark that is too NEW skips a pass, where one that is too old
-// pays for one that changes nothing.
-func consolidateHighWater(brain *store.Store, batch []store.Memory) int64 {
+// consolidateHighWater is the newest sequence the store holds after a pass,
+// scoped to the pass's authorized owners. It falls back to the batch's own
+// highest when the read fails, which is the safe direction: a watermark that is
+// too NEW skips a pass, where one that is too old pays for one that changes
+// nothing.
+func consolidateHighWater(brain *store.Store, owners []string, batch []store.Memory) int64 {
 	high := int64(0)
 	for _, memory := range batch {
 		if memory.UpdatedSeq > high {
 			high = memory.UpdatedSeq
 		}
 	}
-	newest, err := brain.ListMemories("", 1)
+	newest, err := brain.ListMemories(owners, 1)
 	if err == nil && len(newest) == 1 && newest[0].UpdatedSeq > high {
 		high = newest[0].UpdatedSeq
 	}
@@ -437,21 +492,31 @@ func consolidateScopeWord(scope string) string {
 
 // ── applying the plan ───────────────────────────────────────────────────────
 
-// applyConsolidatePlan writes the plan through the store's existing events and
-// answers what actually landed.
+// applyConsolidatePlan writes the plan through the store's OWNER-GUARDED events
+// and answers what actually landed.
 //
-// EVERY REFUSAL IS SILENT AND LOCAL. An operation naming a row that is not in
-// the batch, a row already touched by this plan, an empty title or a retirement
-// the pass is not allowed to make changes nothing and stops nothing else in the
-// plan — the model answered about fifty lines and got one of them wrong, which
-// is not a reason to throw away the other seven.
-func applyConsolidatePlan(brain *store.Store, batch []store.Memory, plan consolidatePlan) standing.Tidied {
+// Invalid model operations are skipped locally. Store write failures are
+// journaled and returned, preserving successful partial work without stamping
+// the pass as complete. Mutation doors use the row's observed owner alone.
+func applyConsolidatePlan(brain *store.Store, batch []store.Memory, owners []string, plan consolidatePlan) (standing.Tidied, error) {
 	known := map[string]store.Memory{}
 	for _, memory := range batch {
 		known[memory.ID] = memory
 	}
+	authorized := map[string]bool{}
+	for _, owner := range owners {
+		owner = strings.TrimSpace(owner)
+		if store.ValidOwner(owner) && owner != store.OwnerLegacyProject {
+			authorized[owner] = true
+		}
+	}
 	touched := map[string]bool{}
 	var tidied standing.Tidied
+	var failures error
+	recordFailure := func(id string, err error) {
+		failure := fmt.Errorf("tidy memory %s: %w", id, err)
+		failures = errors.Join(failures, failure, brain.JournalMemoryFailure(consolidateSource, failure))
+	}
 	for index, op := range plan.Ops {
 		if index >= consolidateOps {
 			break
@@ -459,6 +524,13 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, plan consoli
 		id := strings.TrimSpace(op.ID)
 		row, found := known[id]
 		if !found || touched[id] {
+			continue
+		}
+		// THE OWNER BOUNDARY IS CHECKED BEFORE ANY WRITE. A row whose owner is
+		// not among the authorized owners — a project the pass was not built
+		// for, or the quarantine — is refused here even though it sat in the
+		// batch. The pass never mutates what it was not authorized to.
+		if !authorized[row.Owner] {
 			continue
 		}
 		title, text := consolidateBody(op, row)
@@ -473,7 +545,8 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, plan consoli
 				// screen about a store that did not move.
 				continue
 			}
-			if err := brain.UpdateMemoryFromSession(id, title, text, row.Tags, consolidateSource); err != nil {
+			if err := brain.UpdateMemoryForOwners([]string{row.Owner}, id, title, text, row.Tags, consolidateSource); err != nil {
+				recordFailure(id, err)
 				continue
 			}
 			touched[id] = true
@@ -483,14 +556,17 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, plan consoli
 				continue
 			}
 			fresh := store.Memory{
-				Type: row.Type, Scope: row.Scope,
+				Owner: row.Owner, Type: row.Type, Scope: row.Scope,
 				Title: title, Text: text, Tags: row.Tags,
 				SourceSession: consolidateSource,
 			}
 			// THE TYPE AND THE SCOPE ARE THE RETIRED ROW'S. A replacement is the
 			// same memory said better; one that changed how far its truth
 			// reaches would be a different memory wearing the old one's place.
-			if _, err := brain.SupersedeMemory(id, fresh); err != nil {
+			// The owner is carried over the same way, and the ForOwners door
+			// re-proves it inside the transaction.
+			if _, err := brain.SupersedeMemoryForOwners([]string{row.Owner}, id, fresh); err != nil {
+				recordFailure(id, err)
 				continue
 			}
 			touched[id] = true
@@ -499,7 +575,7 @@ func applyConsolidatePlan(brain *store.Store, batch []store.Memory, plan consoli
 			continue
 		}
 	}
-	return tidied
+	return tidied, failures
 }
 
 // consolidateBody is the title and text an operation leaves behind, trimmed and

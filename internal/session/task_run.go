@@ -7531,13 +7531,20 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	if on = strings.TrimSpace(on); on != "" {
 		model = on
 	}
+	// A REPAIR OR RESOLVE ROUND IS STILL THIS NODE'S WORKER. Its observation
+	// label must carry the node id, or every repair and resolver of one
+	// session pairs under the single word `task` and a success of one is filed
+	// as the alternative to the failure of another. The task GRAPH is the
+	// node's own only for the node's ordinary worker; the id and depth are
+	// always the node's, and the worker's RUN identity is stamped beside the
+	// label by [Agent.adoptWorkerObservation].
 	var (
 		tasker *TaskGraph
-		nodeID uint64
-		depth  int
+		nodeID = node.id
+		depth  = node.familyDepth()
 	)
 	if suffix == "" {
-		tasker, nodeID, depth = node.graph, node.id, node.familyDepth()
+		tasker = node.graph
 	}
 	a.mu.Lock()
 	parent := a.config
@@ -7635,6 +7642,15 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	child, err := a.newChildAgent(Config{
 		// Search authority follows the work without enabling memory writes.
 		ConversationHistory: parent.conversationHistory(),
+		// AND THE PROJECT'S APPROVED BINDING RULES BEFORE THE FIRST ACTION. A
+		// worker has no brain of its own, so its parent's is LENT READ-ONLY: the
+		// same owner set, the same approved rules and confirmed decisions in front
+		// of the first provider request, and no write, extraction, import or verb
+		// (contextual_memory.go's [Agent.prepareWorkerBinding]). The node's own
+		// routed shortlist still arrives beside the work ([nodeMemory]); this is
+		// the half that may not be late, and a router outage cannot erase it.
+		bindingStore:     parent.bindingBrain(),
+		MemoryProjectKey: parent.MemoryProjectKey,
 		// The node learns from, and into, the PROJECT'S error→fix file rather
 		// than one of its own (fixstore.go states why a node cannot find it
 		// alone). A worker hammering a build in a worktree is the richest source
@@ -7873,8 +7889,68 @@ func (a *Agent) newTaskAgentOn(ctx context.Context, dir string, node *TaskNode, 
 	// on its next request if it has not. A worker built for a node whose run
 	// carries no reading — a store that is off, a test building one by hand —
 	// opens with exactly the prompt it always did.
+	// AND THE WORKER'S OBSERVATIONS HAVE A ROAD HOME, through the ONE primitive
+	// every worker constructor shares ([Agent.adoptWorkerObservation]). A node
+	// has no brain of its own, so its failing tools would be recorded nowhere
+	// without it. Only the task label is this node's own.
+	label := "task"
+	if nodeID != 0 {
+		label = fmt.Sprintf("task:%d", nodeID)
+	}
+	a.adoptWorkerObservation(child, label)
 	nodeMemoryOn(ctx, node).handTo(child)
 	return child, nil
+}
+
+// adoptWorkerObservation gives a freshly built child worker that node's OWN
+// road home: the root session's observation bridge and the frozen provenance
+// every receipt it forwards is stamped with. It is the ONE place a worker's
+// collector and origin are set, called by both worker constructors
+// ([Agent.newTaskAgentOn] and [orchestrateExec.newChild]), so an action-taking
+// node cannot be built carrying one half and not the other.
+//
+// IT LENDS THE BRIDGE, NEVER REBUILDS IT. The child has no brain, so it is
+// handed the root's collector and only ever passes it raw observations
+// (contextual_delegated.go); it gains no memory write from the pointer. The
+// child's own [Agent.Close] refuses to seal a collector it does not own, so a
+// node finishing cannot shut the bridge later nodes and turns still need — the
+// same one settlement every observation gets, never two.
+//
+// THE PROVENANCE IS FROZEN HERE, BEFORE THE WORKER RUNS. A first-level worker
+// inherits the root session's live binding circumstances; a nested worker
+// inherits its parent's already-frozen copy so a tree launched under one user
+// turn keeps that turn to the end. Only `task` — the node this worker belongs
+// to — is the caller's to name.
+func (a *Agent) adoptWorkerObservation(child *Agent, task string) {
+	if child == nil {
+		return
+	}
+	// THE WORKER'S OBSERVATIONS HAVE A ROAD HOME. The collector belongs to the
+	// root session and this worker only hands it raw observations.
+	child.outcomes = a.outcomes
+	origin := a.origin
+	if strings.TrimSpace(origin.Session) == "" && a.outcomes != nil {
+		origin = a.outcomes.rootOrigin()
+	}
+	if strings.TrimSpace(task) != "" {
+		origin.Task = task
+	} else {
+		origin.Task = "task"
+	}
+	// AND THIS WORKER'S OWN RUN IDENTITY. A node can have more than one worker
+	// Agent (a repair round, an auditor's sibling), and job ids restart per
+	// Agent, so the run identity — not the task label — is what keeps two
+	// workers' `job 1` from sharing one journal source.
+	origin.Run = child.sessionID()
+	if strings.TrimSpace(origin.Run) == "" || origin.Run == "unfiled" {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err == nil {
+			origin.Run = "worker-" + hex.EncodeToString(b[:])
+		} else {
+			origin.Run = "worker-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+		}
+	}
+	child.origin = origin
 }
 
 // seatTaskModelLocked answers the model a task worker may actually start on,

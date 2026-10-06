@@ -114,7 +114,7 @@ func (s *Store) Rebuild() error {
 		return fmt.Errorf("rebuild meta parameters: %w", err)
 	}
 	for _, event := range events {
-		if err := replayEvent(tx, event); err != nil {
+		if err := replayEvent(tx, event, s.fts); err != nil {
 			return fmt.Errorf("replay event %d (%s): %w", event.Seq, event.Kind, err)
 		}
 	}
@@ -159,7 +159,7 @@ func readEvents(tx *sql.Tx) ([]Event, error) {
 	return events, nil
 }
 
-func replayEvent(tx *sql.Tx, event Event) error {
+func replayEvent(tx *sql.Tx, event Event, fts bool) error {
 	switch event.Kind {
 	case EventSpineCreated:
 		var payload spinePayload
@@ -631,35 +631,57 @@ func replayEvent(tx *sql.Tx, event Event) error {
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemoryAdd(tx, payload, event.Seq)
+		payload.Owner = ownerForReplay(payload)
+		var exists int
+		if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, payload.ID).Scan(&exists); err != nil {
+			return err
+		}
+		if exists != 0 {
+			// ALREADY HERE. A re-applied remote add replays as the skip the
+			// fold made of it, so a journal that carries remote history
+			// rebuilds to exactly the fold's outcome.
+			return nil
+		}
+		return applyMemoryAdd(tx, payload, event.Seq, fts)
 
 	case EventMemoryUpdate:
 		var payload memoryUpdatePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemoryUpdate(tx, payload, event.Seq)
+		return applyMemoryUpdate(tx, payload, event.Seq, fts)
 
 	case EventMemorySupersede:
 		var payload memorySupersedePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemorySupersede(tx, payload, event.Seq)
+		return applyMemorySupersede(tx, payload, event.Seq, fts)
 
 	case EventMemoryForget:
 		var payload memoryForgetPayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemoryForget(tx, payload, event.Seq)
+		return applyMemoryForget(tx, payload, event.Seq, fts)
 
 	case EventMemoryRestore:
 		var payload memoryRestorePayload
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
 			return err
 		}
-		return applyMemoryRestore(tx, payload, event.Seq)
+		return applyMemoryRestore(tx, payload, event.Seq, fts)
+
+	case EventMemoryRehomed:
+		// A RE-HOME IS A PERMISSION CHANGE TO THE ROW, so the replay must
+		// reproduce it — a rebuild that dropped the move would hand the row
+		// back to quarantine on every rebuild.
+		return applyMemoryRehomed(tx, event.Payload, event.Seq)
+
+	case EventMemorySkipped, EventMemoryWriteFailed:
+		// Observability events: they name what a device went through and touch
+		// no view. Durable in the journal, a no-op in the views.
+		return nil
 
 	case EventMemoryRanking:
 		var payload memoryRankingPayload

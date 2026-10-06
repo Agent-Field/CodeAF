@@ -244,8 +244,11 @@ func TestTheRoutedMemoriesAreRenderedIntoTheBlock(t *testing.T) {
 	if !strings.Contains(block, "<memory>") || !strings.Contains(block, "</memory>") {
 		t.Fatalf("the block is not a <memory> block:\n%s", block)
 	}
-	if !strings.Contains(block, "prefers tabs: prefers tabs over spaces in Go") {
-		t.Fatalf("the routed memory is not in the block:\n%s", block)
+	// ONE QUOTED RECORD on one physical line: the title and the body are both
+	// safely quoted (memory.go's contextualMemoryField), so the assertion is the
+	// emitted format, not a bare unquoted title.
+	if !strings.Contains(block, `- "prefers tabs": "prefers tabs over spaces in Go (learned just now)"`) {
+		t.Fatalf("the routed memory is not in the block as one quoted record:\n%s", block)
 	}
 	if strings.Contains(block, "dark themes") {
 		t.Fatalf("a memory the router did not ask for is in the block:\n%s", block)
@@ -317,7 +320,7 @@ func TestTheRoutersRememberCommandWritesToTheStore(t *testing.T) {
 	agent.routedMemory(context.Background(), "remember that I always deploy on Fridays",
 		func(line string) { seen = append(seen, line) }, true)
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -346,7 +349,7 @@ func TestTheRoutersForgetCommandDropsTheMatchAndSaysWhich(t *testing.T) {
 
 	agent.routedMemory(context.Background(), "forget when standup is", nil, true)
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -369,7 +372,7 @@ func TestForgettingWhatIsNotThereSaysSo(t *testing.T) {
 	if len(seen) != 1 || !strings.Contains(seen[0], "nothing matched") {
 		t.Fatalf("the answer was %v, want one line saying nothing matched", seen)
 	}
-	kept, _ := brain.ListMemories("", 10)
+	kept, _ := brain.ListMemories(nil, 10)
 	if len(kept) != 1 {
 		t.Fatalf("a no-match forget changed the store: %v", titles(kept))
 	}
@@ -428,7 +431,7 @@ func TestAnExchangeWorthKeepingLandsWithNoDecisionToMake(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -486,8 +489,12 @@ func TestANeighbourTurnsTheWriteIntoADecision(t *testing.T) {
 				route:   `{"inject":[],"cmd":null}`,
 				extract: `{"mem":1,"type":"fact","scope":"project","title":"standup time","text":"standup is at 9:30","tags":[]}`,
 			}
-			agent, brain := brainAgent(t, script, nil)
-			existing := remember(t, brain, "standup time", "standup is at 9:15")
+			agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "standup-project" })
+			// Settlement may only change its own project partition.
+			existing, err := brain.AddMemory(store.Memory{Owner: store.OwnerProject("standup-project"), Type: store.MemoryFact, Title: "standup time", Text: "standup is at 9:15"})
+			if err != nil {
+				t.Fatal(err)
+			}
 			script.mu.Lock()
 			script.decide = probe.decide(existing.ID)
 			script.mu.Unlock()
@@ -497,7 +504,7 @@ func TestANeighbourTurnsTheWriteIntoADecision(t *testing.T) {
 				t.Fatalf("close: %v", err)
 			}
 
-			kept, err := brain.ListMemories("", 10)
+			kept, err := brain.ListMemories(nil, 10)
 			if err != nil {
 				t.Fatalf("list: %v", err)
 			}
@@ -514,7 +521,7 @@ func TestAnExchangeWithNothingInItWritesNothing(t *testing.T) {
 	collect(t, mustSubmit(t, agent, "what is the capital of France"))
 	_ = agent.Close()
 
-	kept, _ := brain.ListMemories("", 10)
+	kept, _ := brain.ListMemories(nil, 10)
 	if len(kept) != 0 {
 		t.Fatalf("an exchange worth nothing wrote %v", titles(kept))
 	}
@@ -529,7 +536,7 @@ func TestExtractedMemoryCarriesTheSessionID(t *testing.T) {
 	sessionID := agent.memorySourceSession()
 	collect(t, mustSubmit(t, agent, "I prefer tabs in Go"))
 	_ = agent.Close()
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil || len(kept) != 1 || kept[0].SourceSession != sessionID || kept[0].SourceSeq == 0 {
 		t.Fatalf("extracted memory = (%+v, %v), want source session %q", kept, err, sessionID)
 	}
@@ -547,7 +554,7 @@ func TestAFailedExtractionBreaksNothingAndWritesNothing(t *testing.T) {
 	}
 	_ = agent.Close()
 
-	kept, _ := brain.ListMemories("", 10)
+	kept, _ := brain.ListMemories(nil, 10)
 	if len(kept) != 0 {
 		t.Fatalf("a failed extraction wrote %v", titles(kept))
 	}
@@ -557,7 +564,7 @@ func TestAFailedExtractionBreaksNothingAndWritesNothing(t *testing.T) {
 // bore on the answer is counted as a use; one that was put in front of the
 // model and bore on nothing is counted AGAINST it, which is the same bargain
 // fixstore.go keeps with a fix it offered that then failed.
-func TestOnlyAMemoryThatHelpedIsCountedAsUsed(t *testing.T) {
+func TestModelReportedUseDoesNotCountAsObservedBenefit(t *testing.T) {
 	script := &reflexScript{}
 	// The ledger is about a block the turn CARRIED, so the turn waits for it.
 	script.aDeliberateFirstAnswer()
@@ -574,16 +581,16 @@ func TestOnlyAMemoryThatHelpedIsCountedAsUsed(t *testing.T) {
 	if err != nil || !found {
 		t.Fatalf("read back: %v, found=%v", err, found)
 	}
-	if helped.UseCount != 1 || helped.MissCount != 0 {
-		t.Fatalf("the memory that helped reads %d/%d, want one use and no miss",
+	if helped.UseCount != 0 || helped.MissCount != 0 {
+		t.Fatalf("the memory that helped reads %d/%d, want no observed use or miss",
 			helped.UseCount, helped.MissCount)
 	}
 	unused, found, err := brain.MemoryRecord(dark.ID)
 	if err != nil || !found {
 		t.Fatalf("read back: %v, found=%v", err, found)
 	}
-	if unused.UseCount != 0 || unused.MissCount != 1 {
-		t.Fatalf("the memory that bore on nothing reads %d/%d, want no use and one miss",
+	if unused.UseCount != 0 || unused.MissCount != 0 {
+		t.Fatalf("the memory that bore on nothing reads %d/%d, want no observed use or miss",
 			unused.UseCount, unused.MissCount)
 	}
 }
@@ -674,7 +681,7 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 
 	agent.importMemoryFile()
 
-	kept, err := brain.ListMemories("", 10)
+	kept, err := brain.ListMemories(nil, 10)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -694,7 +701,7 @@ func TestTheOldMemoryFileIsImportedOnceAndRenamed(t *testing.T) {
 		config.MemoryImport = path
 	})
 	second.importMemoryFile()
-	again, _ := brain.ListMemories("", 10)
+	again, _ := brain.ListMemories(nil, 10)
 	if len(again) != 2 {
 		t.Fatalf("a second run imported again: %v", titles(again))
 	}
@@ -1179,12 +1186,16 @@ func TestASupersessionSaysWhatItReplaced(t *testing.T) {
 		route:   `{"inject":[],"cmd":null}`,
 		extract: `{"mem":1,"type":"fact","scope":"project","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings.","tags":[]}`,
 	}
-	agent, brain := brainAgent(t, script, nil)
+	agent, brain := brainAgent(t, script, func(c *Config) { c.MemoryProjectKey = "deploy-project" })
 	// THE NEXT TURN'S RECALL IS WHAT SAYS IT, and that recall rides beside the
 	// turn: the conversation answers once it has landed, so the line is on the
 	// stream of the turn that said it rather than whichever turn came after.
 	watchReadings(t, agent)
-	fridays := remember(t, brain, "deploys on Fridays", "Deploys go out on Friday afternoons.")
+	// The changed deployment policy belongs to the observed project.
+	fridays, err := brain.AddMemory(store.Memory{Owner: store.OwnerProject("deploy-project"), Type: store.MemoryFact, Title: "deploys on Fridays", Text: "Deploys go out on Friday afternoons."})
+	if err != nil {
+		t.Fatal(err)
+	}
 	script.mu.Lock()
 	script.decide = `{"op":"supersede","target_id":"` + fridays.ID + `","title":"deploys on Tuesdays","text":"Deploys go out on Tuesday mornings."}`
 	script.mu.Unlock()

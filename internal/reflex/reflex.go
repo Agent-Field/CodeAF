@@ -151,6 +151,17 @@ type ExtractResult struct {
 	Title string
 	Text  string
 	Tags  []string
+	// Source names the independent evidence, rather than treating the assistant's
+	// own conclusion as corroboration. Quotes and receipts are checked by the caller.
+	Source      string
+	SourceQuote string
+	ReceiptID   string
+	Authority   string
+	Conditions  []string
+	Rationale   string
+	Rejected    []string
+	Reconsider  string
+	WorkStatus  string
 	// State is present only when the exchange MOVED the work. A turn that
 	// answered a question changed nothing about where the work stands.
 	State *StateDelta
@@ -422,14 +433,23 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, inj
 	var result ExtractResult
 	err := ask(provider.WithRole(ctx, lane.RoleMemory), c, extractPrompt, extractInput(userMsg, assistantMsg, injected), func(reply string) error {
 		var wire struct {
-			Mem   int      `json:"mem"`
-			Type  string   `json:"type"`
-			Scope string   `json:"scope"`
-			Title string   `json:"title"`
-			Text  string   `json:"text"`
-			Tags  []string `json:"tags"`
-			Used  []string `json:"used"`
-			State *struct {
+			Mem         int      `json:"mem"`
+			Type        string   `json:"type"`
+			Scope       string   `json:"scope"`
+			Title       string   `json:"title"`
+			Text        string   `json:"text"`
+			Tags        []string `json:"tags"`
+			Used        []string `json:"used"`
+			Source      string   `json:"source"`
+			SourceQuote string   `json:"source_quote"`
+			ReceiptID   string   `json:"receipt_id"`
+			Authority   string   `json:"authority"`
+			Conditions  []string `json:"conditions"`
+			Rationale   string   `json:"rationale"`
+			Rejected    []string `json:"rejected"`
+			Reconsider  string   `json:"reconsider"`
+			WorkStatus  string   `json:"work_status"`
+			State       *struct {
 				Goal     string   `json:"goal"`
 				Done     []string `json:"done"`
 				Inflight []string `json:"inflight"`
@@ -457,6 +477,15 @@ func Extract(ctx context.Context, c Completer, userMsg, assistantMsg string, inj
 			next.Title = strings.TrimSpace(wire.Title)
 			next.Text = strings.TrimSpace(wire.Text)
 			next.Tags = cleaned(wire.Tags)
+			next.Source = strings.TrimSpace(wire.Source)
+			next.SourceQuote = clip(wire.SourceQuote, messageLimit)
+			next.ReceiptID = strings.TrimSpace(wire.ReceiptID)
+			next.Authority = strings.TrimSpace(wire.Authority)
+			next.Conditions = cleaned(wire.Conditions)
+			next.Rationale = clip(wire.Rationale, messageLimit)
+			next.Rejected = cleaned(wire.Rejected)
+			next.Reconsider = clip(wire.Reconsider, messageLimit)
+			next.WorkStatus = strings.TrimSpace(wire.WorkStatus)
 		}
 		for _, id := range wire.Used {
 			id = strings.TrimSpace(id)
