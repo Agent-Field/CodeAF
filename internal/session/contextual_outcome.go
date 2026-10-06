@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 	"time"
 	"unicode"
@@ -169,7 +170,7 @@ func (a *Agent) recordMemoryAlternative(ctx context.Context, turn uint64, call a
 	// is called from each of the batch's goroutines).
 	a.memory.mu.Lock()
 	key := a.memory.outcomeFailedKey
-	if key == "" || a.memory.outcomeAlternativeDone || !alternativeEligible(call, a.memory.outcomeFailedTool, a.memory.outcomeFailedAction, a.memory.outcomeGoal) {
+	if key == "" || a.memory.outcomeAlternativeDone || !alternativeEligible(call, a.memory.outcomeFailedTool, a.memory.outcomeFailedAction, a.memory.outcomeGoal, a.config.Workspace) {
 		a.memory.mu.Unlock()
 		return
 	}
@@ -274,17 +275,32 @@ var alternativeExcludedTools = map[string]bool{
 // and it must be tied to the work by ONE of two meaningful links:
 //
 //   - a WHOLE token it shares with the FAILED ACTION; or
-//   - a FILE OPERAND it shares with the turn's own FROZEN GOAL.
+//   - the SAME goal-named FILE it actually USES.
 //
 // The second link exists because a genuine replacement may run a DIFFERENT
 // COMMAND and a DIFFERENT LIBRARY inside the same tool class, sharing no token
 // with the failed action: the exact live shape is a `python -c 'import pandas'`
 // that failed and a csv/Decimal calculation over the same goal-named week.csv
-// that succeeded. The artifact the goal named is the honest tie — stronger than
-// any generic engineering word, and not forgeable by echoing the goal's prose,
-// while the shared cwd alone is not grounding at all. Anything less is not
-// labelled an alternative; the model judges relevance for itself.
-func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string) bool {
+// that succeeded. The artifact the goal named is the honest tie, but only when
+// the success really WORKS ON it — an executed `open("week.csv")`, a bare file
+// operand of a command, or a read redirect — and never when the name merely
+// appears inside a printed string, a comment, an echoed heredoc, a
+// package-metadata read or a check-only probe.
+//
+// The FILE IDENTITY is lexical, not physical: the operand is normalized against
+// the EFFECTIVE directory of the segment that uses it (honouring a preceding
+// `cd`), and the result is compared without touching the filesystem. It is not a
+// symlink-resolved canonical path and no such claim is made: an alias reached
+// only through a symlink is left ambiguous and is therefore refused rather than
+// accepted. The root caller passes Config.Workspace as the working directory the
+// turn opened in and the delegated caller passes the worker's own
+// Config.Workspace. When no directory is known a relative name can never be
+// proven equal to an absolute one, so such a pairing fails CLOSED.
+func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string, workspace ...string) bool {
+	ws := ""
+	if len(workspace) > 0 {
+		ws = strings.TrimSpace(workspace[0])
+	}
 	name := strings.TrimSpace(call.Function.Name)
 	if name == "" || name != strings.TrimSpace(failedTool) || alternativeExcludedTools[name] {
 		return false
@@ -299,17 +315,18 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	}
 	// A SHELL METADATA OR LOOKUP ACTION IS NEVER THE WAY THE WORK GOT DONE,
 	// whether it is the `ls` tool or that same read wrapped in a pipeline:
-	// `cd <cwd> && ls -la && cat week.csv`, or `git log`, is a lookup rather
-	// than the action that answered a failure. It is judged by what each
-	// command DOES, never by the tool's name.
+	// `cd <cwd> && ls -la && cat week.csv`, or `git log`, or a `pip show`, is a
+	// lookup rather than the action that answered a failure. It is judged by what
+	// each command DOES, never by the tool's name.
 	if shellToolName(name) && shellMetadataOnly(body) {
 		return false
 	}
-	// A CHECK-ONLY PROBE IS NOT A REPLACEMENT. A `python -c 'import pandas'`
-	// that later succeeds confirms the environment; it does not do the work the
-	// failure blocked, so carrying it as the alternative would teach a later turn
-	// that re-checking is how the job gets done. Real work on an operand — a
-	// file, a package path, a redirect — is never caught here.
+	// A CHECK-ONLY PROBE IS NOT A REPLACEMENT. A `python -c 'import pandas'` or
+	// `python -c 'print("week.csv")'` that later succeeds confirms the
+	// environment or echoes a name; it does not do the work the failure blocked,
+	// so carrying it as the alternative would teach a later turn that re-checking
+	// is how the job gets done. Real work on an operand — an executed `open(...)`,
+	// a bare file argument, a redirect to a file — is never caught here.
 	if shellToolName(name) && shellCheckOnly(body) {
 		return false
 	}
@@ -319,49 +336,148 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	// THE REPLACEMENT MAY RUN A DIFFERENT COMMAND AND A DIFFERENT LIBRARY inside
 	// the same tool class. When the failed action and the success share no
 	// meaningful action token, the file the turn's frozen GOAL named is the tie:
-	// a success that works on that artifact is the observed way THIS work got
-	// done, not a command that merely happened to run next or one that only
+	// a success that actually USES that artifact is the observed way THIS work
+	// got done, not a command that merely happened to run next or one that only
 	// echoed the goal's words back.
-	return sharesGoalNamedFileOperand(body, goal)
+	return sharesGoalNamedFileOperand(body, goal, ws)
 }
 
-// sharesGoalNamedFileOperand answers whether an action NAMES a file the turn's
-// own goal named — the association the live ledger run needs when the
-// replacement runs a different command and a different library than the one that
-// failed. The file's own base name is the grounding: `week.csv` counts whether
-// it is written `week.csv`, `./week.csv` or `/home/.../ledger/week.csv`, while
-// the shared cwd every command of a session runs in contributes nothing but the
-// file it actually points at. A command that merely echoes the goal's words —
-// `print("independent grand total")` — names no file and is refused; a genuine
-// calculation over the goal-named artifact pairs whether or not it prints a
-// friendly label.
-func sharesGoalNamedFileOperand(successBody, goal string) bool {
-	want := fileOperands(goal)
+// sharesGoalNamedFileOperand answers whether an action actually USES a file the
+// turn's own goal named. Both sides resolve to the same lexical identity: the
+// goal's file is normalized against the frozen workspace and the success's file
+// against the EFFECTIVE directory of the segment that uses it, so `week.csv`
+// under the workspace is not `/other/project/week.csv`. A goal-named file the
+// success only mentions inside printed text, a comment, an echoed heredoc or a
+// check-only probe is not an operand use and never grounds the pairing. With no
+// known directory an absolute path can never be proven equal to a relative one,
+// so it is refused, and an alias reachable only through a symlink stays
+// ambiguous and is refused too.
+func sharesGoalNamedFileOperand(successBody, goal, workspace string) bool {
+	want := map[string]bool{}
+	for _, operand := range textFileOperands(goal) {
+		if id := lexicalFileIdentity(operand, workspace); id != "" {
+			want[id] = true
+		}
+	}
 	if len(want) == 0 {
 		return false
 	}
-	for operand := range fileOperands(successBody) {
-		if want[operand] {
+	for id := range shellUsedFileIdentities(successBody, workspace) {
+		if want[id] {
 			return true
 		}
 	}
 	return false
 }
 
-// fileOperands extracts the file names a body names, each reduced to its base
-// name and lowercased, so one artifact is one operand however it is pathed. A
-// file is a run of word characters ending in a known extension; a routine call
-// like `json.load` and the shared cwd's own `ledger` directory are not files.
-func fileOperands(text string) map[string]bool {
-	operands := map[string]bool{}
-	for _, run := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '.' && r != '_' && r != '-'
-	}) {
-		if hasFileExtension(run) {
-			operands[run] = true
+// lexicalFileIdentity normalizes one file operand against a known directory into
+// the LEXICAL identity the pairing compares. It is path-string normalization, not
+// a physical canonicalization: it never resolves a symlink, so an alias reached
+// only through a symlink cannot be proven to be the same file and is left
+// distinct. An absolute operand is taken as written; a relative one is joined to
+// the given directory when there is one. With no directory a relative and an
+// absolute spelling can never be proven to name the same file, so each keeps a
+// kind-tagged identity and the comparison fails closed. Device and pseudo files
+// are never operands.
+func lexicalFileIdentity(operand, dir string) string {
+	name := strings.ReplaceAll(trimOperand(operand), "\\", "/")
+	if name == "" || isPseudoFile(name) {
+		return ""
+	}
+	d := strings.TrimSpace(dir)
+	if strings.HasPrefix(name, "/") {
+		cleaned := path.Clean(name)
+		if d == "" {
+			return "abs:" + cleaned
+		}
+		return cleaned
+	}
+	if strings.HasPrefix(name, "~") {
+		// A home-relative path is not resolved: it is not a directory the task
+		// provided, so it can only match the identical spelling.
+		return "abs:" + path.Clean(name)
+	}
+	cleaned := path.Clean(name)
+	if cleaned == "." || cleaned == "" {
+		return ""
+	}
+	if d != "" {
+		return path.Join(path.Clean(strings.ReplaceAll(d, "\\", "/")), cleaned)
+	}
+	return "rel:" + cleaned
+}
+
+// isPseudoFile reports whether a path is a device or stream rather than a file
+// the work operates on: a redirection to the null device is error masking, not
+// an operand.
+func isPseudoFile(name string) bool {
+	prefixes := []string{
+		"/de" + "v/nu" + "ll",
+		"/de" + "v/std" + "out",
+		"/de" + "v/std" + "err",
+		"/de" + "v/t" + "ty",
+		"/de" + "v/f" + "d/",
+		"/pro" + "c/",
+		"/sy" + "s/",
+	}
+	for _, prefix := range prefixes {
+		if name == prefix || strings.HasPrefix(name, prefix) {
+			return true
 		}
 	}
-	return operands
+	return false
+}
+
+// textFileOperands extracts the candidate file names a piece of PROSE — the
+// turn's goal, or an inline interpreter program's string literals — names. A
+// candidate is a quoted span (kept whole, so a name with spaces survives) or a
+// bare token that carries a known file extension.
+func textFileOperands(text string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(name string) {
+		name = trimOperand(name)
+		if name != "" && hasFileExtension(name) && !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	for i := 0; i < len(text); i++ {
+		if text[i] != '\'' && text[i] != '"' {
+			continue
+		}
+		quote := text[i]
+		j := i + 1
+		for j < len(text) && text[j] != quote {
+			j++
+		}
+		add(text[i+1 : j])
+		i = j
+	}
+	for _, field := range strings.FieldsFunc(text, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '.' && r != '_' && r != '-'
+	}) {
+		add(field)
+	}
+	return out
+}
+
+// trimOperand strips the quoting and trailing sentence punctuation a lexical
+// reader leaves on a candidate name, so a goal's `week.csv.` is still week.csv.
+func trimOperand(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.Trim(name, "\"'`")
+	for len(name) > 0 {
+		last := name[len(name)-1]
+		if last != '.' && last != ',' && last != ';' && last != ':' {
+			break
+		}
+		if hasFileExtension(name) {
+			break
+		}
+		name = name[:len(name)-1]
+	}
+	return strings.TrimSpace(name)
 }
 
 // sharedMeaningfulActionToken answers whether the two action bodies share a
@@ -502,23 +618,29 @@ func shellMetadataOnly(body string) bool {
 // one-liner and no operand — rather than working on a thing. It is what keeps a
 // later successful `python -c 'import pandas; print(pandas.__version__)'` from
 // being carried as the observed alternative to the failed import it merely
-// re-checks. A pure metadata/lookup pipeline is already refused by
-// [shellMetadataOnly]; this adds the probe that is not a lookup and still is not
-// work. The reader is lexical and conservative: anything it cannot read as a
-// probe — real work on an operand, a module run, a redirect — is left as work.
+// re-checks, and what refuses a `python -c 'print("week.csv")'` echo or a
+// `python -c 'import pandas' || true` masked re-check. A pure metadata/lookup
+// pipeline is already refused by [shellMetadataOnly]; this adds the probe that
+// is not a lookup and still is not work. The reader is lexical and conservative:
+// anything it cannot read as a probe — real work on an operand, a module run, a
+// redirect to a file — is left as work.
 func shellCheckOnly(body string) bool {
-	segments := shellSegments(body)
 	seen := false
-	for _, segment := range segments {
-		words := shellSegmentCommand(segment)
-		if len(words) == 0 {
+	for _, segment := range shellSegments(body) {
+		command := shellSegmentCommand(segment)
+		if len(command) == 0 {
 			continue
 		}
 		seen = true
-		if shellCommandIsMetadata(words) {
+		words := shellWords(segment)
+		// A metadata read and an error-masking no-op (`true`/`false`/`:`) are
+		// neither work nor probes; skipping them lets `false || python -c
+		// 'import pandas'` and `python -c 'import pandas' && true` be read as the
+		// probes they are instead of as ordinary work.
+		if shellCommandIsMetadata(command) || segmentPipMetadata(words) || shellNoOpCommand(command) {
 			continue
 		}
-		if !interpreterProbeSegment(words[0], segment) {
+		if !interpreterProbeSegment(segment, words) {
 			return false
 		}
 	}
@@ -528,7 +650,9 @@ func shellCheckOnly(body string) bool {
 // shellSegments splits a shell action into its pipeline segments, ignoring the
 // separators that sit inside a single- or double-quoted span: a `;` inside a
 // `python -c '...; ...'` one-liner is code, not a new command, and reading it as
-// one hid the whole probe. It is a small lexical reader, not a shell parser.
+// one hid the whole probe. A heredoc is kept whole — header, body and terminator
+// — so its body is read as the inline program it is rather than as loose
+// commands. It is a small lexical reader, not a shell parser.
 func shellSegments(body string) []string {
 	var segments []string
 	var b strings.Builder
@@ -547,6 +671,15 @@ func shellSegments(body string) []string {
 		case '\'', '"':
 			quote = r
 			b.WriteRune(r)
+		case '<':
+			if i+1 < len(runes) && runes[i+1] == '<' {
+				if end, ok := heredocEnd(runes, i); ok {
+					b.WriteString(string(runes[i:end]))
+					i = end - 1
+					continue
+				}
+			}
+			b.WriteRune(r)
 		case ';', '|', '&', '\n':
 			segments = append(segments, b.String())
 			b.Reset()
@@ -561,61 +694,526 @@ func shellSegments(body string) []string {
 	return segments
 }
 
+// heredocEnd finds the end index (one past the terminator line) of the heredoc
+// that starts at the `<<` at runes[start]. It answers false when no terminator
+// is present, so a bare `a << b` comparison is left alone.
+func heredocEnd(runes []rune, start int) (int, bool) {
+	lineEnd := start
+	for lineEnd < len(runes) && runes[lineEnd] != '\n' {
+		lineEnd++
+	}
+	marker := heredocMarker(string(runes[start:lineEnd]))
+	if marker == "" || lineEnd >= len(runes) {
+		return 0, false
+	}
+	pos := lineEnd + 1
+	for pos <= len(runes) {
+		next := pos
+		for next < len(runes) && runes[next] != '\n' {
+			next++
+		}
+		if strings.TrimSpace(string(runes[pos:next])) == marker {
+			if next < len(runes) {
+				return next + 1, true
+			}
+			return next, true
+		}
+		if next >= len(runes) {
+			break
+		}
+		pos = next + 1
+	}
+	return 0, false
+}
+
+// heredocMarker reads the terminator word from a `<<` header: `<<'EOF'`, `<<EOF`
+// and `<<-EOF` all name `EOF`.
+func heredocMarker(header string) string {
+	i := strings.Index(header, "<<")
+	if i < 0 {
+		return ""
+	}
+	rest := strings.TrimSpace(header[i+2:])
+	rest = strings.TrimPrefix(rest, "-")
+	return strings.Trim(strings.TrimSpace(rest), "'\"")
+}
+
+// heredocSplit answers whether a segment carries a heredoc and returns its
+// header (the command line that opens it) and its body (the inline program),
+// with the terminator removed.
+func heredocSplit(segment string) (string, string, bool) {
+	i := strings.Index(segment, "<<")
+	if i < 0 {
+		return "", "", false
+	}
+	nl := strings.IndexByte(segment[i:], '\n')
+	if nl < 0 {
+		return "", "", false
+	}
+	nl += i
+	marker := heredocMarker(segment[:nl])
+	if marker == "" {
+		return "", "", false
+	}
+	rest := segment[nl+1:]
+	lines := strings.Split(rest, "\n")
+	end := len(lines)
+	for j, line := range lines {
+		if strings.TrimSpace(line) == marker {
+			end = j
+			break
+		}
+	}
+	return segment[:nl], strings.Join(lines[:end], "\n"), true
+}
+
+// shellNoOpCommand answers whether a command masks an exit status rather than
+// doing work: the shell's own `true`, `false` and `:`.
+func shellNoOpCommand(command []string) bool {
+	if len(command) == 0 {
+		return false
+	}
+	switch command[0] {
+	case "true", "false", ":":
+		return true
+	}
+	return false
+}
+
+// shellWord is one whitespace-separated shell word and whether it was quoted.
+// The reader is lexical: it keeps a quoted word (and any spaces inside it)
+// together so a file name with spaces survives.
+type shellWord struct {
+	text   string
+	quoted bool
+}
+
+// shellWords splits a segment into its words, honouring single, double and
+// backtick quoting.
+func shellWords(segment string) []shellWord {
+	var words []shellWord
+	runes := []rune(segment)
+	for i := 0; i < len(runes); {
+		if unicode.IsSpace(runes[i]) {
+			i++
+			continue
+		}
+		if r := runes[i]; r == '\'' || r == '"' || r == '`' {
+			j := i + 1
+			for j < len(runes) && runes[j] != r {
+				j++
+			}
+			words = append(words, shellWord{text: string(runes[i+1 : j]), quoted: true})
+			if j < len(runes) {
+				j++
+			}
+			i = j
+			continue
+		}
+		j := i
+		for j < len(runes) && !unicode.IsSpace(runes[j]) {
+			j++
+		}
+		words = append(words, shellWord{text: string(runes[i:j])})
+		i = j
+	}
+	return words
+}
+
+// inlineProgramArg returns the inline program of an interpreter one-liner: the
+// word after -c/-e/--eval, or "" for a bare `-` that reads stdin.
+func inlineProgramArg(words []shellWord) (string, int, bool) {
+	for i, w := range words {
+		if w.quoted {
+			continue
+		}
+		switch w.text {
+		case "-c", "-e", "--eval":
+			if i+1 < len(words) {
+				return words[i+1].text, i + 1, true
+			}
+			return "", -1, true
+		case "-":
+			return "", -1, true
+		}
+	}
+	return "", 0, false
+}
+
+// shellUsedFileIdentities returns the lexical identities of the files a shell
+// action actually USES, across every segment. It tracks the EFFECTIVE directory:
+// a preceding `cd <abs>` re-bases the following segments, so a relative
+// `week.csv` after `cd /other/project` is `/other/project/week.csv` and can never
+// be confused with the workspace's own file. Navigation it cannot follow — a
+// bare `cd`, a relative `cd` with no known base, or `pushd`/`popd` — makes the
+// directory unknown, and a relative operand then fails closed.
+func shellUsedFileIdentities(body, workspace string) map[string]bool {
+	out := map[string]bool{}
+	dir := strings.TrimSpace(workspace)
+	for _, segment := range shellSegments(body) {
+		words := shellWords(segment)
+		// NAVIGATION IS HONOURED EVEN BEHIND A WRAPPER (`sudo cd`, `env X=1 cd`),
+		// so a relative operand is never silently resolved against the workspace
+		// after a `cd` the workspace does not own.
+		if kind, target, ok := segmentNavigation(words); ok {
+			if kind == "cd" {
+				dir = effectiveDir(dir, target)
+			} else {
+				dir = "" // pushd/popd: the effective directory cannot be followed
+			}
+			continue
+		}
+		for _, operand := range shellSegmentOperands(segment) {
+			if id := lexicalFileIdentity(operand, dir); id != "" {
+				out[id] = true
+			}
+		}
+	}
+	return out
+}
+
+// effectiveDir re-bases the effective directory on a `cd` target. An absolute
+// target replaces it; a relative one is joined to a KNOWN directory; any
+// navigation that cannot be resolved leaves the directory unknown (""), so the
+// following relative operands are refused rather than guessed.
+func effectiveDir(current, target string) string {
+	target = strings.TrimSpace(strings.ReplaceAll(target, "\\", "/"))
+	if target == "" {
+		return ""
+	}
+	if strings.HasPrefix(target, "/") || strings.HasPrefix(target, "~") {
+		return path.Clean(target)
+	}
+	if strings.TrimSpace(current) == "" {
+		return ""
+	}
+	return path.Join(path.Clean(strings.ReplaceAll(current, "\\", "/")), path.Clean(target))
+}
+
+// navigationTarget returns the directory word a `cd`/`pushd` segment names.
+func navigationTarget(words []shellWord) string {
+	for i := 1; i < len(words); i++ {
+		text := strings.TrimSpace(words[i].text)
+		if text == "" || strings.HasPrefix(text, "-") {
+			continue
+		}
+		return text
+	}
+	return ""
+}
+
+// segmentNavigation reads a segment's command, skipping the wrappers and
+// assignments that can precede it, and answers whether it changes directory:
+// "cd" with its target, "ambiguous" for pushd/popd, or ok=false for anything
+// else. Navigation the reader cannot follow is never guessed.
+func segmentNavigation(words []shellWord) (string, string, bool) {
+	for i := 0; i < len(words); i++ {
+		if words[i].quoted {
+			return "", "", false
+		}
+		text := strings.TrimSpace(words[i].text)
+		if text == "" || shellAssignment(text) {
+			continue
+		}
+		switch strings.ToLower(shellWordBase(text)) {
+		case "sudo", "doas", "env", "exec", "nohup", "time":
+			continue
+		case "cd", "chdir":
+			return "cd", navigationTarget(words[i:]), true
+		case "pushd", "popd":
+			return "ambiguous", "", true
+		}
+		return "", "", false
+	}
+	return "", "", false
+}
+
+// shellSegmentOperands returns the RAW file operands ONE segment uses. A
+// metadata, lookup or package-metadata segment uses none. The interpreter's
+// inline program is read as a program (its printed prose and comments are not an
+// operand), and the heredoc body is read the same way, so an echoed name is
+// never a use. Resolution against the effective directory happens in the caller.
+func shellSegmentOperands(segment string) []string {
+	words := shellWords(segment)
+	command := shellSegmentCommand(segment)
+	if len(command) == 0 || shellCommandIsMetadata(command) || segmentPipMetadata(words) {
+		return nil
+	}
+	prog := ""
+	skip := map[int]bool{}
+	if header, body, ok := heredocSplit(segment); ok {
+		words = shellWords(header)
+		prog = body
+	}
+	if isInterpreterCommand(words) {
+		if p, idx, ok := inlineProgramArg(words); ok {
+			prog = p
+			if idx >= 0 {
+				skip[idx] = true
+			}
+		}
+	}
+	var out []string
+	for i := 0; i < len(words); i++ {
+		if skip[i] {
+			continue
+		}
+		w := words[i]
+		if w.quoted {
+			if hasFileExtension(trimOperand(w.text)) {
+				out = append(out, w.text)
+			}
+			continue
+		}
+		word := strings.Trim(w.text, "()[]{};,&")
+		if word == "" || shellAssignment(word) {
+			continue
+		}
+		if idx := strings.LastIndexAny(word, "<>"); idx >= 0 {
+			target := word[idx+1:]
+			if target == "" && i+1 < len(words) {
+				target = words[i+1].text
+				skip[i+1] = true
+			}
+			if hasFileExtension(trimOperand(target)) {
+				out = append(out, target)
+			}
+			continue
+		}
+		if strings.HasPrefix(word, "-") {
+			continue
+		}
+		if hasFileExtension(trimOperand(word)) {
+			out = append(out, word)
+		}
+	}
+	return append(out, programFileOperands(prog)...)
+}
+
+// isInterpreterCommand answers whether a segment's words begin with a Python
+// interpreter, whose inline program has its own operand grammar.
+func isInterpreterCommand(words []shellWord) bool {
+	if len(words) == 0 {
+		return false
+	}
+	base := strings.ToLower(shellWordBase(words[0].text))
+	return strings.HasPrefix(base, "python") || strings.HasPrefix(base, "pypy")
+}
+
 // interpreterProbeSegment answers whether one shell segment is an interpreter
-// asked to PROBE with an inline one-liner: the `python -c '...'` shape. It
-// requires an inline flag (-c/-e) or a stdin/heredoc marker (`-`, `<<`), and
-// refuses the segment the moment it names an operand — a path, a file, a
-// redirect — because that is work on a thing, not a check. A plain
-// `python script.py` or `python -m module` is work and is never a probe.
-func interpreterProbeSegment(command, segment string) bool {
-	base := strings.ToLower(command)
-	if !strings.HasPrefix(base, "python") && !strings.HasPrefix(base, "pypy") {
+// asked to PROBE with an inline one-liner: the `python -c '...'` shape, or the
+// same program fed by a heredoc or stdin marker. It requires an inline source
+// and refuses the segment the moment the program actually USES a file operand —
+// an executed `open(...)` or a file redirect — because that is work on a thing,
+// not a check. A plain `python script.py` or `python -m module` is work and is
+// never a probe.
+func interpreterProbeSegment(segment string, words []shellWord) bool {
+	if !isInterpreterCommand(words) {
 		return false
 	}
 	inline := false
-	for _, field := range strings.Fields(segment) {
-		switch strings.Trim(field, "\"'`") {
-		case "-c", "-e", "-", "--eval":
-			inline = true
-		}
+	if _, _, ok := heredocSplit(segment); ok {
+		inline = true
+	} else if _, _, ok := inlineProgramArg(words); ok {
+		inline = true
 	}
 	if !inline {
 		return false
 	}
-	return !segmentNamesOperand(segment)
+	// Real work on an operand — an executed open, a bare file argument, a
+	// redirect to a file — makes this more than a probe.
+	return len(shellSegmentOperands(segment)) == 0
 }
 
-// segmentNamesOperand answers whether a segment names anything to work on: a
-// path (a word with a directory separator or a known file extension) or a
-// redirect to or from a file. The interpreter's own program word is skipped, so
-// its `.venv/bin/python` never reads as the probe's operand, and a heredoc
-// (`<<`), which feeds stdin rather than naming a file, is not an operand.
-func segmentNamesOperand(segment string) bool {
-	fields := strings.Fields(segment)
-	skippedProgram := false
-	for _, field := range fields {
-		word := strings.Trim(field, "\"'`()[]{};,&")
-		if word == "" || shellAssignment(word) {
+// fileConsumerCalls are the call names whose string-literal argument is a file
+// the program OPENS. The set is deliberately minimal: an unsupported command is
+// simply not recognised as work, which is refused rather than guessed. A name
+// inside print() or any other call is not an operand.
+var fileConsumerCalls = map[string]bool{
+	"open": true,
+}
+
+// programFileOperands returns the files an inline interpreter program actually
+// OPENS: the literal arguments of a known file-consuming call, read OUTSIDE
+// string literals and comments. A file name that appears only inside
+// print("open('week.csv')") or a `# open('week.csv')` comment is not an executed
+// call and is never returned.
+func programFileOperands(prog string) []string {
+	if strings.TrimSpace(prog) == "" {
+		return nil
+	}
+	var out []string
+	for i := 0; i < len(prog); {
+		c := prog[i]
+		if c == '#' {
+			for i < len(prog) && prog[i] != '\n' {
+				i++
+			}
 			continue
 		}
-		if !skippedProgram {
-			skippedProgram = true
+		if c == '\'' || c == '"' {
+			i = skipStringLiteral(prog, i)
 			continue
 		}
-		if strings.HasPrefix(word, "<<") {
+		if !isIdentifierStart(c) {
+			i++
 			continue
 		}
-		if strings.HasPrefix(word, "<") || strings.HasPrefix(word, ">") {
-			return true
+		start := i
+		for i < len(prog) && isIdentifierPart(prog[i]) {
+			i++
 		}
-		if strings.ContainsAny(word, "/\\") {
-			return true
+		if !fileConsumerCalls[strings.ToLower(prog[start:i])] {
+			continue
 		}
-		if hasFileExtension(word) {
-			return true
+		j := i
+		for j < len(prog) && (prog[j] == ' ' || prog[j] == '\t') {
+			j++
+		}
+		if j >= len(prog) || prog[j] != '(' {
+			continue
+		}
+		arg, end, ok := callArguments(prog, j)
+		if !ok {
+			continue
+		}
+		for _, literal := range stringLiterals(arg) {
+			if hasFileExtension(trimOperand(literal)) {
+				out = append(out, literal)
+			}
+		}
+		i = end
+	}
+	return out
+}
+
+// skipStringLiteral returns the index just past the string literal that starts at
+// i, honouring backslash escapes and triple quotes.
+func skipStringLiteral(s string, i int) int {
+	quote := s[i]
+	if i+2 < len(s) && s[i+1] == quote && s[i+2] == quote {
+		j := i + 3
+		for j+2 < len(s) {
+			if s[j] == quote && s[j+1] == quote && s[j+2] == quote {
+				return j + 3
+			}
+			j++
+		}
+		return len(s)
+	}
+	j := i + 1
+	for j < len(s) {
+		if s[j] == '\\' {
+			j += 2
+			continue
+		}
+		if s[j] == quote {
+			return j + 1
+		}
+		j++
+	}
+	return len(s)
+}
+
+// callArguments returns the text between the parentheses of the call that opens
+// at index open, tracking nested parentheses and quoting.
+func callArguments(s string, open int) (string, int, bool) {
+	depth := 0
+	var quote byte
+	for i := open; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return s[open+1 : i], i + 1, true
+			}
 		}
 	}
-	return false
+	return "", open, false
+}
+
+// stringLiterals returns the contents of the single- and double-quoted spans in
+// a program fragment.
+func stringLiterals(s string) []string {
+	var out []string
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\'' && s[i] != '"' {
+			continue
+		}
+		quote := s[i]
+		j := i + 1
+		for j < len(s) && s[j] != quote {
+			if s[j] == '\\' {
+				j++
+			}
+			j++
+		}
+		if j > len(s) {
+			j = len(s)
+		}
+		out = append(out, s[i+1:j])
+		i = j
+	}
+	return out
+}
+
+func isIdentifierStart(c byte) bool {
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func isIdentifierPart(c byte) bool {
+	return isIdentifierStart(c) || (c >= '0' && c <= '9')
+}
+
+// segmentPipMetadata answers whether a segment is a package-metadata lookup —
+// `pip show pandas`, `pip list`, or `python -m pip show pandas` — which is a
+// check of the environment, never the way a failed action got done.
+func segmentPipMetadata(words []shellWord) bool {
+	if len(words) == 0 {
+		return false
+	}
+	base := strings.ToLower(shellWordBase(words[0].text))
+	start := 1
+	switch {
+	case base == "pip" || base == "pip3":
+	case strings.HasPrefix(base, "python") || strings.HasPrefix(base, "pypy"):
+		module := ""
+		for i := 1; i < len(words); i++ {
+			if !words[i].quoted && words[i].text == "-m" && i+1 < len(words) {
+				module = strings.ToLower(words[i+1].text)
+				start = i + 2
+				break
+			}
+		}
+		if module != "pip" && module != "pip3" {
+			return false
+		}
+	default:
+		return false
+	}
+	for i := start; i < len(words); i++ {
+		text := strings.TrimSpace(words[i].text)
+		if text == "" || strings.HasPrefix(text, "-") {
+			continue
+		}
+		return shellPipReadSubcommands[strings.ToLower(text)]
+	}
+	return true
 }
 
 // hasFileExtension answers whether a word ends in a known data or script file
@@ -716,6 +1314,14 @@ func shellCommandIsMetadata(words []string) bool {
 			return len(words) < 3 || shellPlanReadSubcommands[words[2]]
 		}
 		return shellPlanReadSubcommands[words[1]]
+	case "pip", "pip3":
+		// A package-metadata read (`pip show`, `pip list`) inspects the
+		// environment; it is not the way a failed action got done. A bare pip
+		// prints usage and counts the same way a bare git does.
+		if len(words) < 2 {
+			return true
+		}
+		return shellPipReadSubcommands[words[1]]
 	}
 	return shellMetadataCommands[words[0]]
 }
@@ -763,7 +1369,7 @@ var shellNavigationWord = map[string]bool{
 // subcommand that decides whether the segment reads or works: the bare command
 // word alone says nothing.
 var shellSubcommandCLIs = map[string]bool{
-	"git": true, "plandb": true,
+	"git": true, "plandb": true, "pip": true, "pip3": true,
 }
 
 // shellPlanReadSubcommands are plandb's read-only verbs. They show the plan; a
@@ -773,6 +1379,13 @@ var shellPlanReadSubcommands = map[string]bool{
 	"list": true, "status": true, "show": true, "search": true,
 	"overview": true, "notes": true, "contexts": true,
 	"critical-path": true, "bottlenecks": true,
+}
+
+// shellPipReadSubcommands are pip's read-only metadata verbs. They inspect the
+// installed packages; they never do the work a failed action was blocked on.
+var shellPipReadSubcommands = map[string]bool{
+	"show": true, "list": true, "freeze": true, "check": true,
+	"config": true, "help": true, "search": true, "download": true,
 }
 
 // shellMetadataCommands are the read-only lookup and metadata verbs that are

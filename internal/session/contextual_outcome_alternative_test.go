@@ -684,9 +684,29 @@ func TestGoalFileOperandGroundsReplacementNotEchoedProse(t *testing.T) {
 	// A PATH-QUALIFIED reference to the goal's file still grounds it: the file's
 	// own name is stronger than the shared cwd, and must not be discarded as if
 	// it were merely part of that cwd.
-	absolute := "cd /home/santosh/src/contextual-verified-work-20261005/ledger && .venv/bin/python -c '\nimport csv, decimal\nf = open(\"/home/santosh/src/contextual-verified-work-20261005/ledger/week.csv\")\nprint(sum(decimal.Decimal(r[1]) for r in list(csv.reader(f))[1:]))\n'"
-	if !alternativeEligible(delegatedBashCall("a", absolute), "bash", "bash: "+a4Failed, a4Goal) {
+	const work = "/home/santosh/src/contextual-verified-work-20261005/ledger"
+	absolute := "cd " + work + " && .venv/bin/python -c '\nimport csv, decimal\nf = open(\"/home/santosh/src/contextual-verified-work-20261005/ledger/week.csv\")\nprint(sum(decimal.Decimal(r[1]) for r in list(csv.reader(f))[1:]))\n'"
+	if !alternativeEligible(delegatedBashCall("a", absolute), "bash", "bash: "+a4Failed, a4Goal, work) {
 		t.Fatal("a path-qualified reference to the goal-named file did not ground the replacement")
+	}
+	// AN UNRELATED FILE WITH THE SAME BASE NAME UNDER ANOTHER DIRECTORY IS A
+	// DIFFERENT FILE: the identity is the lexical path inside the effective
+	// directory, never the base name alone.
+	other := "cd " + work + " && .venv/bin/python -c '\nimport csv, decimal\nf = open(\"/other/project/week.csv\")\nprint(list(csv.reader(f)))\n'"
+	if alternativeEligible(delegatedBashCall("o", other), "bash", "bash: "+a4Failed, a4Goal, work) {
+		t.Fatal("an unrelated same-basename file under another directory grounded the replacement")
+	}
+	// WITH NO WORKSPACE THE RELATIVE GOAL AND AN ABSOLUTE PATH CANNOT BE PROVEN
+	// TO NAME THE SAME FILE, so the comparison FAILS CLOSED.
+	if alternativeEligible(delegatedBashCall("a", absolute), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("an ambiguous absolute path grounded the pairing with no workspace")
+	}
+	// A QUOTED GOAL NAME WITH SPACES SURVIVES: it is kept whole, not split into
+	// two words, and the genuine open() over it is a real operand use.
+	const spacedGoal = "verify the totals for \"weekly report.csv\" and report them"
+	spaced := ".venv/bin/python -c '\nimport csv, decimal\nf = open(\"weekly report.csv\")\nprint(sum(decimal.Decimal(r[1]) for r in list(csv.reader(f))[1:]))\n'"
+	if !alternativeEligible(delegatedBashCall("sp", spaced), "bash", "bash: "+a4Failed, spacedGoal) {
+		t.Fatal("a quoted goal file name with spaces did not ground the genuine calculation")
 	}
 }
 
@@ -807,5 +827,227 @@ func TestOwnerTransitionInvalidatesPendingFailurePairing(t *testing.T) {
 	}
 	if !strings.Contains(rows[0].Observation, "pandas") {
 		t.Fatalf("the immutable failure receipt was altered: %q", rows[0].Observation)
+	}
+}
+
+// ── A4 HARDENING: the printed/echoed goal file, masked probes and metadata ──
+//
+// The independent review reproduced a false positive the A4 repair left open:
+// a command that only PRINTS the goal file name was stored as the failure's
+// AlternativeOf and could steal the one slot before the genuine work. These
+// tests pin the narrowing: a goal-named file grounds the pairing only when the
+// success really USES it — a genuine open(), a bare file operand or a read
+// redirect — never when the name merely appears inside printed prose, an echoed
+// heredoc, a package-metadata read or a masked check-only probe.
+
+const a4Echo = `.venv/bin/python -c 'print("week.csv")'`
+
+func TestAlternativeRefusesEchoedGoalFileAndMaskedProbes(t *testing.T) {
+	const work = "/home/santosh/src/contextual-verified-work-20261005/ledger"
+	failed := "bash: " + a4Failed
+
+	refuse := []struct {
+		name string
+		body string
+	}{
+		{"print echo of the goal file", a4Echo},
+		{"double-quoted print echo", `.venv/bin/python -c "print('week.csv')"`},
+		{"print echo of an absolute path", `.venv/bin/python -c 'print("/other/week.csv")'`},
+		{"unrelated absolute file opened", `.venv/bin/python -c 'open("/other/project/week.csv")'`},
+		{"multiline prose that also prints the name", `.venv/bin/python -c 'import sys\nprint("checking")\nprint("week.csv")'`},
+		{"an open() hidden inside a printed string", `.venv/bin/python -c 'print("open('week.csv')")'`},
+		{"an open() hidden in a double-quoted print string", `.venv/bin/python -c "print(\"open('week.csv')\")"`},
+		{"an open() only in a comment", ".venv/bin/python -c '# open(\"week.csv\")\nprint(1)'"},
+		{"heredoc that only echoes the name", ".venv/bin/python - <<'EOF'\nprint(\"week.csv\")\nEOF"},
+		{"heredoc that only imports (check-only)", ".venv/bin/python - <<'EOF'\nimport pandas\nprint(pandas.__version__)\nEOF"},
+		{"pip show metadata", "pip show pandas"},
+		{"python -m pip show metadata", ".venv/bin/python -m pip show pandas"},
+		{"masked failure with || true", `.venv/bin/python -c 'import pandas' || true`},
+		{"masked failure with false ||", `false || .venv/bin/python -c 'import pandas'`},
+		{"appended echo after the probe", `.venv/bin/python -c 'import pandas' && echo done`},
+		{"redirect to the null device", `.venv/bin/python -c 'import pandas' 2>/dev/null`},
+	}
+	for _, tc := range refuse {
+		if alternativeEligible(delegatedBashCall("r", tc.body), "bash", failed, a4Goal, work) {
+			t.Errorf("%s was eligible as the alternative: %q", tc.name, tc.body)
+		}
+	}
+
+	// THE GENUINE WORK STILL PAIRS. The stdlib calculation opens the goal file
+	// for real, and the ledger utility receives it as a bare operand.
+	if !alternativeEligible(delegatedBashCall("s", a4CSV), "bash", failed, a4Goal, work) {
+		t.Fatal("the genuine CSV/Decimal calculation was refused")
+	}
+	if !alternativeEligible(delegatedBashCall("l", a4Ledger), "bash", failed, a4Goal, work) {
+		t.Fatal("the genuine ledger utility run was refused")
+	}
+	// THE COMPATIBILITY BOUNDARY: with no workspace the relative goal file still
+	// grounds a relative open(), while an unrelated absolute name cannot.
+	if !alternativeEligible(delegatedBashCall("s", a4CSV), "bash", failed, a4Goal) {
+		t.Fatal("the relative genuine calculation was refused with no workspace")
+	}
+	if alternativeEligible(delegatedBashCall("o", `.venv/bin/python -c 'open("/other/project/week.csv")'`), "bash", failed, a4Goal) {
+		t.Fatal("an unrelated same-basename absolute file grounded the pairing with no workspace")
+	}
+}
+
+// A PRINT ECHO OF THE GOAL FILE MUST NOT CONSUME THE ONE SLOT: the genuine
+// calculation that follows is the stored alternative at the real root boundary.
+func TestBoundaryEchoDoesNotStealAlternativeSlot(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	ctx := context.Background()
+	a.prepareBindingContext(ctx, a4Goal)
+	pre := a.captureSourceSnapshot(ctx).Identity
+	a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+	// The cheap echo arrives first...
+	a.recordOutcome(ctx, 1, delegatedBashCall("e1", a4Echo), toolResult{text: "week.csv"}, pre)
+	// ...and the genuine CSV/Decimal work still gets the slot.
+	a.recordOutcome(ctx, 1, delegatedBashCall("s1", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35"}, pre)
+
+	rows := attemptsForProject(t, brain, a)
+	if len(rows) != 2 {
+		t.Fatalf("expected one failure and one alternative, got %+v", rows)
+	}
+	var stored string
+	for _, row := range rows {
+		if row.Status == store.AttemptSucceeded {
+			stored = row.Action
+		}
+	}
+	if !strings.HasPrefix(stored, "bash: .venv/bin/python -c '\nimport csv") {
+		t.Fatalf("the stored alternative was not the genuine calculation: %q", stored)
+	}
+}
+
+// A METADATA READ, THEN THE GENUINE WORK: the metadata success
+// writes nothing and the legitimate alternative is still kept.
+func TestBoundaryMetadataThenLegitimateKeepsAlternative(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	ctx := context.Background()
+	a.prepareBindingContext(ctx, a4Goal)
+	pre := a.captureSourceSnapshot(ctx).Identity
+	a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("m1", "pip show pandas"), toolResult{text: "Name: pandas\nVersion: 2.2.3"}, pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("e1", a4Echo), toolResult{text: "week.csv"}, pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("l1", "ls -la"), toolResult{text: "week.csv\nledger.py"}, pre)
+	a.recordOutcome(ctx, 1, delegatedBashCall("s1", a4Ledger), toolResult{text: "grand total: 12.35"}, pre)
+
+	rows := attemptsForProject(t, brain, a)
+	if len(rows) != 2 {
+		t.Fatalf("expected one failure and one alternative, got %+v", rows)
+	}
+	for _, row := range rows {
+		if row.Status == store.AttemptSucceeded && !strings.Contains(row.Action, "ledger.py week.csv") {
+			t.Fatalf("a metadata/echo success was stored instead of the genuine work: %q", row.Action)
+		}
+	}
+}
+
+// THE DELEGATED BOUNDARY REFUSES THE SAME ECHOES and keeps the genuine work.
+func TestDelegatedBoundaryEchoDoesNotStealAlternativeSlot(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	root.prepareBindingContext(context.Background(), a4Goal)
+	worker := spawnTaskWorker(t, root, dir)
+	ctx := context.Background()
+	pre := worker.captureSourceSnapshot(ctx).Identity
+	worker.recordOutcome(ctx, 0, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+	worker.recordOutcome(ctx, 0, delegatedBashCall("e1", a4Echo), toolResult{text: "week.csv"}, pre)
+	worker.recordOutcome(ctx, 0, delegatedBashCall("m1", `.venv/bin/python -c 'import pandas' || true`), toolResult{text: "2.2.3"}, pre)
+	worker.recordOutcome(ctx, 0, delegatedBashCall("s1", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35"}, pre)
+
+	rows := attemptsForProject(t, brain, root)
+	if len(rows) != 2 {
+		t.Fatalf("expected one delegated failure and one alternative, got %+v", rows)
+	}
+	for _, row := range rows {
+		if row.Status == store.AttemptSucceeded && !strings.HasPrefix(row.Action, "bash: .venv/bin/python -c '\nimport csv") {
+			t.Fatalf("a delegated echo/masked probe was stored instead of the genuine work: %q", row.Action)
+		}
+	}
+}
+
+// ONE SLOT UNDER A RACE OF ECHOES AND GENUINE WORK: however the batch
+// interleaves, exactly one alternative is stored and it is the genuine one.
+func TestConcurrentEchoesAndGenuineKeepOneGenuineAlternative(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+	ctx := context.Background()
+	a.prepareBindingContext(ctx, a4Goal)
+	pre := a.captureSourceSnapshot(ctx).Identity
+	a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+	batch := []string{a4Echo, a4CSV, a4Echo, a4Ledger, a4Echo, a4CSV}
+	parallelOutcomes(len(batch), func(i int) {
+		a.recordOutcome(ctx, 1, delegatedBashCall(fmt.Sprintf("b%d", i), batch[i]), toolResult{text: "grand total: 12.35"}, pre)
+	})
+
+	rows := attemptsForProject(t, brain, a)
+	succeeded := 0
+	for _, row := range rows {
+		if row.Status != store.AttemptSucceeded {
+			continue
+		}
+		succeeded++
+		if !strings.Contains(row.Action, "import csv") && !strings.Contains(row.Action, "ledger.py week.csv") {
+			t.Fatalf("an echo stole the slot under the race: %q", row.Action)
+		}
+	}
+	if succeeded != 1 {
+		t.Fatalf("expected exactly one stored alternative under the race, got %d: %+v", succeeded, rows)
+	}
+}
+
+// THE EFFECTIVE DIRECTORY IS TRACKED PER SEGMENT: a `cd` re-bases the relative
+// operands that follow, so `cd /other/project && python script.py week.csv` is
+// NOT the workspace's week.csv, while `cd <workspace> && ... week.csv` still is.
+func TestGoalFileIdentityTracksEffectiveDirectory(t *testing.T) {
+	const work = "/home/santosh/src/contextual-r2-work-20261005/ledger"
+	const goal = "cross-check week.csv ledger totals and report the exact grand total"
+	const failed = "bash: " + a4Failed
+
+	refuse := []struct {
+		name string
+		body string
+	}{
+		{"cd into an unrelated directory", "cd /other/project && .venv/bin/python script.py week.csv"},
+		{"cd into a subdirectory of the workspace", "cd " + work + "/sub && .venv/bin/python script.py week.csv"},
+		{"a bare cd with an unknown base", "cd && .venv/bin/python script.py week.csv"},
+		{"an unrelated cd with an open()", `cd /other/project && .venv/bin/python -c 'open("week.csv")'`},
+		{"an unrelated cd behind a wrapper", "sudo cd /other/project && .venv/bin/python script.py week.csv"},
+		{"pushd into an unrelated directory", "pushd /other/project && .venv/bin/python script.py week.csv"},
+	}
+	for _, tc := range refuse {
+		if alternativeEligible(delegatedBashCall("r", tc.body), "bash", failed, goal, work) {
+			t.Errorf("%s was eligible as the alternative: %q", tc.name, tc.body)
+		}
+	}
+
+	// The genuine b050 shape runs with no cd, in the workspace the turn opened
+	// in; a cd that lands ON the workspace is the same directory and still pairs.
+	direct := `.venv/bin/python -c 'open("week.csv")'`
+	if !alternativeEligible(delegatedBashCall("d", direct), "bash", failed, goal, work) {
+		t.Fatal("the direct workspace calculation was refused")
+	}
+	onWork := "cd " + work + " && .venv/bin/python script.py week.csv"
+	if !alternativeEligible(delegatedBashCall("w", onWork), "bash", failed, goal, work) {
+		t.Fatal("a cd onto the workspace itself stopped grounding the pairing")
+	}
+	// A relative cd whose base IS known resolves against the workspace, so a
+	// file directly in the workspace still grounds.
+	rel := "cd . && .venv/bin/python script.py week.csv"
+	if !alternativeEligible(delegatedBashCall("r", rel), "bash", failed, goal, work) {
+		t.Fatal("a cd . in the workspace stopped grounding the pairing")
+	}
+	// A wrapper before the cd does not hide the navigation when it lands on the
+	// workspace: the effective directory is still the workspace.
+	wrapped := "env FOO=1 cd " + work + " && .venv/bin/python script.py week.csv"
+	if !alternativeEligible(delegatedBashCall("e", wrapped), "bash", failed, goal, work) {
+		t.Fatal("a wrapped cd onto the workspace stopped grounding the pairing")
 	}
 }
