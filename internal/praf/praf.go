@@ -115,6 +115,17 @@ func crewFlags(crew delegate.Crew) []string {
 	return flags
 }
 
+// defaultMaxTurns is the most turns one of a review's agent sessions takes.
+//
+// IT IS 20, NOT THE 50 sec's AGENTS TAKE. A review's prompts already carry the
+// diff and the touched files, so a reviewer reads to confirm, not to find its
+// way; yet told only to stop when it was sure, nine of twelve sessions in a
+// live review of a two-file pull request read until the loop made them answer
+// at their fiftieth turn, at about twenty seconds a turn, and the review had
+// reached its challenge pass after an hour (2026-10-06). A session at its
+// limit is still made to answer, so a lower limit costs depth, not an answer.
+const defaultMaxTurns = 20
+
 // options is one run's flags and brief.
 type options struct {
 	brief       string
@@ -137,7 +148,7 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	fs.StringVar(&o.model, "model", "", "the model that reads the code (default: the run's work seat)")
 	fs.StringVar(&o.light, "light", "", "the model for single structured calls (default: --model)")
 	fs.IntVar(&o.sessions, "sessions", 8, "how many agent sessions run at once")
-	fs.IntVar(&o.maxTurns, "max-turns", 50, "the most turns one agent session takes")
+	fs.IntVar(&o.maxTurns, "max-turns", defaultMaxTurns, "the most turns one agent session takes")
 	fs.DurationVar(&o.sessionWall, "session-wall", 30*time.Minute, "the longest one agent session runs")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		o.brief = strings.Join(args, " ")

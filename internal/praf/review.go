@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -86,13 +87,41 @@ func defaultReviewer() reviewer {
 		workdir: func() (string, func(), error) {
 			// THE CHECKOUT IS THE RUN'S OWN AND GOES WHEN IT ENDS: never the
 			// person's folder, which the review only reads git config from,
-			// and never the record folder, which is kept.
-			dir, err := os.MkdirTemp("", "codeaf-pr-")
+			// and never the record folder, which is kept. A run killed outright
+			// cannot remove its own, so each run first sweeps away any left
+			// from a day or more ago.
+			sweepCheckouts(os.TempDir(), time.Now().Add(-checkoutStale))
+			dir, err := os.MkdirTemp("", checkoutPrefix)
 			if err != nil {
 				return "", func() {}, err
 			}
 			return dir, func() { _ = os.RemoveAll(dir) }, nil
 		},
+	}
+}
+
+// checkoutPrefix names a review's checkout folder, and checkoutStale is how
+// old one must be before a later run removes it as left behind: no review
+// runs anywhere near a day.
+const (
+	checkoutPrefix = "codeaf-pr-"
+	checkoutStale  = 24 * time.Hour
+)
+
+// sweepCheckouts removes the review checkouts in dir last changed before
+// cutoff: what runs killed outright left behind.
+func sweepCheckouts(dir string, cutoff time.Time) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), checkoutPrefix) {
+			continue
+		}
+		if info, err := entry.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.RemoveAll(filepath.Join(dir, entry.Name()))
+		}
 	}
 }
 

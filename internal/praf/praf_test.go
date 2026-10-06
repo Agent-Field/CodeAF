@@ -165,7 +165,7 @@ func testReviewer(sessions *fakeSessions, review func(ctx context.Context, deps 
 }
 
 func defaults() options {
-	return options{sessions: 8, maxTurns: 50}
+	return options{sessions: 8, maxTurns: defaultMaxTurns}
 }
 
 func TestProgramIsValid(t *testing.T) {
@@ -456,5 +456,34 @@ func TestASessionErrorIsOneFailedReviewer(t *testing.T) {
 		if _, err := review.Harness(ctx, "review", nil, nil, appxOptions()); err == nil {
 			t.Errorf("%v did not end the run", ends)
 		}
+	}
+}
+
+func TestSweepRemovesOnlyStaleCheckouts(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"codeaf-pr-old", "codeaf-pr-new", "something-else"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-48 * time.Hour)
+	for _, name := range []string{"codeaf-pr-old", "something-else"} {
+		if err := os.Chtimes(filepath.Join(dir, name), old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepCheckouts(dir, time.Now().Add(-checkoutStale))
+	for name, want := range map[string]bool{"codeaf-pr-old": false, "codeaf-pr-new": true, "something-else": true} {
+		if _, err := os.Stat(filepath.Join(dir, name)); (err == nil) != want {
+			t.Errorf("%s: present = %v, want %v", name, err == nil, want)
+		}
+	}
+}
+
+func TestReviewSessionsTakeTwentyTurns(t *testing.T) {
+	fs := flag.NewFlagSet("pr run", flag.ContinueOnError)
+	runCommand.Bind(fs)
+	if got := fs.Lookup("max-turns").DefValue; got != "20" {
+		t.Errorf("--max-turns default = %s, want 20", got)
 	}
 }
