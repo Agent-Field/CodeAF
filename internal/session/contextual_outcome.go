@@ -159,7 +159,7 @@ func (a *Agent) recordMemoryAlternative(ctx context.Context, turn uint64, call a
 	}
 	action := attemptAction(call)
 	receipt := redact.Secrets(contextualClip(result.text, contextualReceiptRunes))
-	if action == "" || strings.TrimSpace(receipt) == "" {
+	if action == "" || strings.TrimSpace(receipt) == "" || receiptShowsFailure(receipt) {
 		return
 	}
 	// RESERVE THE ONE SLOT BEFORE THE WRITE. The decision and the reservation
@@ -340,6 +340,15 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	// is how the job gets done. Real work on an operand — an executed `open(...)`,
 	// a bare file argument, a redirect to a file — is never caught here.
 	if shellToolName(name) && shellCheckOnly(body) {
+		return false
+	}
+	// A MASKED SUBSTEP IS NOT A DEMONSTRATED SUCCESS. When the shell swallows a
+	// failed command's exit (`|| true`, a redirect to the null device) the
+	// overall zero the tool boundary reports proves nothing about the step that
+	// was masked, so the call is refused before either link can claim it as the
+	// way the work got done. The honest receipt check in the writers refuses the
+	// complementary case — an unmasked command whose own receipt is a failure.
+	if shellToolName(name) && shellMasksExit(body) {
 		return false
 	}
 	if sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal) {
@@ -779,6 +788,86 @@ func heredocSplit(segment string) (string, string, bool) {
 	return segment[:nl], strings.Join(lines[:end], "\n"), true
 }
 
+// shellMasksExit answers whether a shell action MASKS a failed substep, so that
+// the overall exit the tool boundary reports cannot prove every step passed: a
+// `||` fallback swallows the left command's failure, and a redirection to the
+// null device throws away the diagnostic that would have said so. Both are the
+// error masking the turn's own prompt forbids. A masked substep is refused
+// before eligibility, so a global zero is never read as a demonstrated success.
+func shellMasksExit(body string) bool {
+	var quote byte
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if quote != 0 {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch {
+		case c == '\'' || c == '"' || c == '`':
+			quote = c
+		case c == '|' && i+1 < len(body) && body[i+1] == '|':
+			return true
+		case c == '/' && strings.HasPrefix(body[i:], "/dev/null"):
+			j := i - 1
+			for j >= 0 && body[j] == ' ' {
+				j--
+			}
+			if j >= 0 && body[j] == '>' {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// receiptShowsFailure answers whether a SUCCESS receipt still carries an
+// unmasked failure: a traceback or an interpreter exception class in the bytes
+// the tool boundary returned. The boundary's own isError can be false while a
+// substep actually raised — a `;` sequence, a suppressed diagnostic, any
+// wrapper that reports the last command's zero — so the receipt is read for what
+// it plainly says. A receipt that names a raised error is not the observed way
+// the work got solved and is never stored as an alternative.
+func receiptShowsFailure(receipt string) bool {
+	lower := strings.ToLower(receipt)
+	for _, marker := range receiptFailureMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// receiptFailureMarkers are the shapes an interpreter, a shell or a build tool
+// prints when a step actually raised. They are specific enough that a genuine
+// success — a grand total, a page of rows — carries none of them, and the check
+// fails closed when a receipt merely resembles one.
+var receiptFailureMarkers = []string{
+	"traceback (most recent call last)",
+	"command not found",
+	"no such file or directory",
+	"permission denied",
+	"modulenotfounderror:",
+	"importerror:",
+	"filenotfounderror:",
+	"permissionerror:",
+	"syntaxerror:",
+	"valueerror:",
+	"typeerror:",
+	"keyerror:",
+	"indexerror:",
+	"attributeerror:",
+	"nameerror:",
+	"runtimeerror:",
+	"oserror:",
+	"exception:",
+}
+
 // shellNoOpCommand answers whether a command masks an exit status rather than
 // doing work: the shell's own `true`, `false` and `:`.
 func shellNoOpCommand(command []string) bool {
@@ -951,6 +1040,13 @@ func shellSegmentOperands(segment string) []string {
 	if len(command) == 0 || shellCommandIsMetadata(command) || segmentPipMetadata(words) {
 		return nil
 	}
+	// ONLY A RECOGNISED READER'S FILE OPERAND IS WORK. A `rm week.csv` or an
+	// unknown `mytool week.csv` names the goal file but does not COMPUTE it, so
+	// its operand must never ground the pairing and steal the one slot from the
+	// genuine calculation that follows. Unsupported forms fail closed.
+	if !shellReadsFileOperands(command) {
+		return nil
+	}
 	prog := ""
 	skip := map[int]bool{}
 	if header, body, ok := heredocSplit(segment); ok {
@@ -1008,8 +1104,32 @@ func isInterpreterCommand(words []shellWord) bool {
 	if len(words) == 0 {
 		return false
 	}
-	base := strings.ToLower(shellWordBase(words[0].text))
-	return strings.HasPrefix(base, "python") || strings.HasPrefix(base, "pypy")
+	return shellInterpreterWord(strings.ToLower(shellWordBase(words[0].text)))
+}
+
+// shellInterpreterWord is the KNOWN EXECUTION TAXONOMY of inline interpreters:
+// the programs whose own file operand is read, imported or run as the work
+// itself. It is deliberately tiny and closed, because it is the POSITIVE half of
+// [shellReadsFileOperands] — a program this taxonomy does not recognise is refused
+// rather than guessed at, so the list never grows without a real shape behind it.
+func shellInterpreterWord(program string) bool {
+	return strings.HasPrefix(program, "python") || strings.HasPrefix(program, "pypy")
+}
+
+// shellReadsFileOperands answers whether one shell segment's PROGRAM is a
+// recognised reader/worker, so a bare file name it carries is the operation and
+// not a coincidence of the command line. The taxonomy is the interpreter family
+// above; nothing else is recognised. That is the whole point: a file-maintenance
+// hand (`rm`, `mv`, `chmod`, `touch` — taskoutside.go already names them in
+// writesEveryOperand and writesItsLastOperand) and an unknown tool (`mytool`)
+// contribute NO operand, because a bare name of a command that merely happens to
+// touch the goal file is not proof it REPLACED the failed work. An unsupported
+// form fails CLOSED rather than being guessed at.
+func shellReadsFileOperands(command []string) bool {
+	if len(command) == 0 {
+		return false
+	}
+	return shellInterpreterWord(command[0])
 }
 
 // interpreterProbeSegment answers whether one shell segment is an interpreter

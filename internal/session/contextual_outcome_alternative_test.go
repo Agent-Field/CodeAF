@@ -1107,3 +1107,241 @@ func TestDelegatedBoundaryWorkspaceGroundsGoalFileIdentity(t *testing.T) {
 		t.Fatalf("an unrelated same-basename file grounded the delegated pairing: %+v", foreign)
 	}
 }
+
+// ── A4 RESIDUAL HARDENING (F1/F2 of outcome-hardened-review-summary) ─────────
+//
+// The independent review reproduced two false positives the A4 hardening left
+// open; both CONSUMED THE ONE ALTERNATIVE SLOT before the genuine calculation.
+//
+//   F1 — a bare goal-file operand of ANY non-metadata command (a file-maintenance
+//        hand, or an unknown tool) was read as work. Only a recognised reader's
+//        operand is the operation; everything else fails closed.
+//   F2 — an error-masked command whose OWN receipt is a failure traceback was
+//        stored as a success because the shell's overall exit was zero.
+
+// F1: rm/touch/mv/chmod and an unknown tool are never the remedy, and the
+// genuine CSV/Decimal calculation still gets the single slot at BOTH boundaries.
+func TestA4BareOperandNonReadersDoNotStealAlternativeSlot(t *testing.T) {
+	controls := []string{
+		"rm week.csv",
+		"touch week.csv",
+		"mv week.csv /tmp/week.csv",
+		"chmod 000 week.csv",
+		"mytool week.csv",
+	}
+	for _, ctrl := range controls {
+		if alternativeEligible(delegatedBashCall("n", ctrl), "bash", "bash: "+a4Failed, a4Goal) {
+			t.Fatalf("a non-reader bare operand was eligible: %q", ctrl)
+		}
+	}
+	if !alternativeEligible(delegatedBashCall("l", a4Ledger), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatal("the genuine ledger utility (a real reader's operand) was refused")
+	}
+
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, a4Goal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+		for i, body := range controls {
+			a.recordOutcome(ctx, 1, delegatedBashCall(fmt.Sprintf("n%d", i), body), toolResult{text: "done"}, pre)
+		}
+		a.recordOutcome(ctx, 1, delegatedBashCall("s1", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35"}, pre)
+		rows := attemptsForProject(t, brain, a)
+		if len(rows) != 2 {
+			t.Fatalf("a non-reader operand stole the slot at the root: %+v", rows)
+		}
+		for _, row := range rows {
+			if row.Status == store.AttemptSucceeded && !strings.HasPrefix(row.Action, "bash: .venv/bin/python -c '\nimport csv") {
+				t.Fatalf("the stored root alternative was not the genuine calculation: %q", row.Action)
+			}
+		}
+	})
+
+	t.Run("delegated", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		root.prepareBindingContext(context.Background(), a4Goal)
+		worker := spawnTaskWorker(t, root, dir)
+		ctx := context.Background()
+		pre := worker.captureSourceSnapshot(ctx).Identity
+		worker.recordOutcome(ctx, 0, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+		for i, body := range controls {
+			worker.recordOutcome(ctx, 0, delegatedBashCall(fmt.Sprintf("n%d", i), body), toolResult{text: "done"}, pre)
+		}
+		worker.recordOutcome(ctx, 0, delegatedBashCall("s1", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35"}, pre)
+		rows := attemptsForProject(t, brain, root)
+		if len(rows) != 2 {
+			t.Fatalf("a non-reader operand stole the slot on the delegated path: %+v", rows)
+		}
+		for _, row := range rows {
+			if row.Status == store.AttemptSucceeded && !strings.HasPrefix(row.Action, "bash: .venv/bin/python -c '\nimport csv") {
+				t.Fatalf("the stored delegated alternative was not the genuine calculation: %q", row.Action)
+			}
+		}
+	})
+}
+
+// F2: a masked substep is refused before eligibility, and a success whose own
+// receipt is a failure traceback is refused by the writers — at BOTH boundaries.
+// Each control discriminates one half of the guard, and the genuine calculation
+// still gets the slot behind the noise.
+func TestA4MaskedOrFailedSubstepIsNeverTheAlternative(t *testing.T) {
+	const masked = `.venv/bin/python -c 'open("week.csv")' || true`
+	const unmasked = `.venv/bin/python -c 'open("week.csv")'`
+	const traceback = "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nFileNotFoundError: [Errno 2] No such file or directory: 'week.csv'"
+
+	// The taxonomy itself: a `||` fallback masks, a genuine multi-step `; echo`
+	// does not; a traceback is a failure, a grand total is not.
+	if !shellMasksExit(masked) || shellMasksExit(a4CSV) || shellMasksExit(a4Ledger) {
+		t.Fatal("the shell masking taxonomy is wrong")
+	}
+	if !receiptShowsFailure(traceback) || receiptShowsFailure("rows: 3\nindependent grand total: 12.35") {
+		t.Fatal("the receipt failure taxonomy is wrong")
+	}
+	// The masked body is refused by eligibility itself, with a happy receipt.
+	if alternativeEligible(delegatedBashCall("m", masked), "bash", "bash: "+a4Failed, a4Goal) {
+		t.Fatalf("a masked substep was eligible: %q", masked)
+	}
+
+	for _, tc := range []struct {
+		name   string
+		body   string
+		result toolResult
+	}{
+		{"masked substep with a failing receipt", masked, toolResult{text: traceback}},
+		{"masked substep with a happy receipt", masked, toolResult{text: "rows: 3\nindependent grand total: 12.35"}},
+		{"unmasked substep whose receipt raised", unmasked, toolResult{text: traceback}},
+	} {
+		t.Run("root/"+tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			initRepo(t, dir)
+			a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+			ctx := context.Background()
+			a.prepareBindingContext(ctx, a4Goal)
+			pre := a.captureSourceSnapshot(ctx).Identity
+			a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+			a.recordOutcome(ctx, 1, delegatedBashCall("x1", tc.body), tc.result, pre)
+			// The genuine work arrives after the noise and takes the one slot.
+			a.recordOutcome(ctx, 1, delegatedBashCall("s1", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35"}, pre)
+			rows := attemptsForProject(t, brain, a)
+			if len(rows) != 2 {
+				t.Fatalf("the masked/failed substep was stored as an alternative: %+v", rows)
+			}
+			for _, row := range rows {
+				if row.Status == store.AttemptSucceeded {
+					if !strings.HasPrefix(row.Action, "bash: .venv/bin/python -c '\nimport csv") {
+						t.Fatalf("the stored alternative was not the genuine calculation: %q", row.Action)
+					}
+					if row.AlternativeOf == "" {
+						t.Fatalf("the alternative lost its observed pair: %+v", row)
+					}
+				}
+			}
+		})
+		t.Run("delegated/"+tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			initRepo(t, dir)
+			root, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+			root.prepareBindingContext(context.Background(), a4Goal)
+			worker := spawnTaskWorker(t, root, dir)
+			ctx := context.Background()
+			pre := worker.captureSourceSnapshot(ctx).Identity
+			worker.recordOutcome(ctx, 0, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+			worker.recordOutcome(ctx, 0, delegatedBashCall("x1", tc.body), tc.result, pre)
+			worker.recordOutcome(ctx, 0, delegatedBashCall("s1", a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35"}, pre)
+			rows := attemptsForProject(t, brain, root)
+			if len(rows) != 2 {
+				t.Fatalf("the masked/failed substep was stored as a delegated alternative: %+v", rows)
+			}
+			for _, row := range rows {
+				if row.Status == store.AttemptSucceeded && !strings.HasPrefix(row.Action, "bash: .venv/bin/python -c '\nimport csv") {
+					t.Fatalf("the delegated stored alternative was not the genuine calculation: %q", row.Action)
+				}
+			}
+		})
+	}
+}
+
+// The residual F1/F2 noise under a CONCURRENT batch: however the siblings
+// interleave, exactly one alternative is stored and it is the genuine CSV/Decimal
+// calculation — never a file-maintenance hand and never a masked substep.
+func TestA4ResidualNoiseUnderRaceKeepsGenuineAlternative(t *testing.T) {
+	const maskedWithReceipt = `.venv/bin/python -c 'open("week.csv")' || true`
+	traceback := "Traceback (most recent call last):\nFileNotFoundError: [Errno 2] No such file or directory: 'week.csv'"
+	batch := []struct {
+		body   string
+		result toolResult
+	}{
+		{"rm week.csv", toolResult{text: "done"}},
+		{"mytool week.csv", toolResult{text: "done"}},
+		{maskedWithReceipt, toolResult{text: traceback}},
+		{`.venv/bin/python -c 'open("week.csv")'`, toolResult{text: traceback}},
+		{a4Echo, toolResult{text: "week.csv"}},
+	}
+	t.Run("root", func(t *testing.T) {
+		dir := t.TempDir()
+		initRepo(t, dir)
+		a, brain := brainAgent(t, &reflexScript{}, func(c *Config) { c.Workspace = dir; c.MemoryProjectKey = "p" })
+		ctx := context.Background()
+		a.prepareBindingContext(ctx, a4Goal)
+		pre := a.captureSourceSnapshot(ctx).Identity
+		a.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+		parallelOutcomes(16, func(i int) {
+			if i%3 == 0 {
+				a.recordOutcome(ctx, 1, delegatedBashCall(fmt.Sprintf("g%d", i), a4CSV), toolResult{text: "rows: 3\nindependent grand total: 12.35"}, pre)
+				return
+			}
+			tc := batch[i%len(batch)]
+			a.recordOutcome(ctx, 1, delegatedBashCall(fmt.Sprintf("n%d", i), tc.body), tc.result, pre)
+		})
+		rows := attemptsForProject(t, brain, a)
+		succeeded := 0
+		for _, row := range rows {
+			if row.Status != store.AttemptSucceeded {
+				continue
+			}
+			succeeded++
+			if !strings.HasPrefix(row.Action, "bash: .venv/bin/python -c '\nimport csv") {
+				t.Fatalf("residual noise stole the slot under the race: %q", row.Action)
+			}
+			if row.AlternativeOf == "" {
+				t.Fatalf("the kept alternative lost its observed pair (a mark with no cause): %+v", row)
+			}
+		}
+		if succeeded != 1 {
+			t.Fatalf("the race kept %d alternatives, want exactly one", succeeded)
+		}
+	})
+}
+
+// EXPECTED FAILURE: the taxonomy helpers are pinned so a later edit cannot
+// quietly widen what counts as a masked substep or a failing receipt.
+func TestA4GuardTaxonomyPins(t *testing.T) {
+	masked := []string{
+		`.venv/bin/python -c 'open("week.csv")' || true`,
+		`.venv/bin/python -c 'open("week.csv")' 2>/dev/null`,
+		`false || .venv/bin/python ledger.py week.csv`,
+	}
+	for _, body := range masked {
+		if !shellMasksExit(body) {
+			t.Fatalf("a masking shape was not recognised: %q", body)
+		}
+	}
+	clean := []string{a4CSV, a4Ledger, `.venv/bin/python -c 'print("week.csv")'`}
+	for _, body := range clean {
+		if shellMasksExit(body) {
+			t.Fatalf("a genuine action was misread as masking: %q", body)
+		}
+	}
+	if !receiptShowsFailure("Traceback (most recent call last):") || !receiptShowsFailure("ModuleNotFoundError: No module named 'pandas'") {
+		t.Fatal("a failing receipt was not recognised")
+	}
+	if receiptShowsFailure("rows: 3\nindependent grand total: 12.35") {
+		t.Fatal("a genuine success receipt was misread as a failure")
+	}
+}

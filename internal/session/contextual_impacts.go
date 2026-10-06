@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -240,23 +241,81 @@ var contextualFileConsumer = map[string]bool{
 	"include": true, "require": true, "source": true, "cat": true,
 }
 
-// contextualCodeOnly drops line comments, so a path merely mentioned in a
-// comment is never read as a reference. It is deliberately conservative: a `#`
-// inside a string is treated as a comment and the rest of the line is dropped,
-// which can only ever LOSE a candidate, never invent one.
+// contextualCodeOnly drops the text that is NEVER evaluated — line comments and
+// triple-quoted block strings — so a path merely mentioned in a comment, a
+// docstring or a printed block is never read as a reference. It is deliberately
+// conservative, and it always fails CLOSED: BOTH comment spellings the tree sees
+// are dropped (`#` for Python, `//` for the JavaScript the walk also reads) and
+// the triple-quoted forms (three single quotes, three double quotes) are
+// removed whole, so an unsupported
+// mention is lost rather than accepted. An ordinary quoted span is kept, because
+// a genuine consuming call's literal argument is the candidate; a `#` or `//`
+// inside a plain string is left alone there.
 func contextualCodeOnly(body string) string {
-	if !strings.Contains(body, "#") {
-		return body
-	}
 	var b strings.Builder
-	for _, line := range strings.Split(body, "\n") {
-		if idx := strings.IndexByte(line, '#'); idx >= 0 {
-			line = line[:idx]
+	for i := 0; i < len(body); {
+		c := body[i]
+		if c == '#' {
+			for i < len(body) && body[i] != '\n' {
+				i++
+			}
+			continue
 		}
-		b.WriteString(line)
-		b.WriteByte('\n')
+		if c == '/' && i+1 < len(body) && body[i+1] == '/' {
+			for i < len(body) && body[i] != '\n' {
+				i++
+			}
+			continue
+		}
+		if (c == '\'' || c == '"') && i+2 < len(body) && body[i+1] == c && body[i+2] == c {
+			i = contextualPastTripleQuoted(body, i, c)
+			continue
+		}
+		if c == '\'' || c == '"' || c == '`' {
+			end := contextualPastQuoted(body, i, c)
+			b.WriteString(body[i:end])
+			i = end
+			continue
+		}
+		b.WriteByte(c)
+		i++
 	}
 	return b.String()
+}
+
+// contextualPastQuoted returns the index just past one plain quoted span,
+// honouring backslash escapes.
+func contextualPastQuoted(s string, i int, quote byte) int {
+	i++
+	for i < len(s) {
+		if s[i] == '\\' {
+			i += 2
+			continue
+		}
+		if s[i] == quote {
+			return i + 1
+		}
+		i++
+	}
+	return len(s)
+}
+
+// contextualPastTripleQuoted returns the index just past a triple-quoted block
+// string. An unterminated block is dropped to the end, which can only ever lose
+// a candidate.
+func contextualPastTripleQuoted(s string, i int, quote byte) int {
+	i += 3
+	for i < len(s) {
+		if s[i] == '\\' {
+			i += 2
+			continue
+		}
+		if s[i] == quote && i+2 < len(s) && s[i+1] == quote && s[i+2] == quote {
+			return i + 3
+		}
+		i++
+	}
+	return len(s)
 }
 
 // contextualInsideQuoted answers whether offset sits inside a quoted string of
@@ -358,9 +417,16 @@ func contextualCallNameBefore(p string, bracket int) string {
 // can legitimately reference a producer from: the PARENT of the consumer's own
 // repository root, which holds its sibling repositories. The consumer's own
 // repository is inside it too. A path outside it is an arbitrary path named in
-// file text, not a reference this conversation's source scope authorizes, so the
-// framework neither reads it nor mints an owner for it. LOOKING UP A DIRECTORY
-// AND HASHING WHATEVER OWNER IT HAPPENS TO CARRY IS NOT A FROZEN ACCESS GRANT.
+// file text, not a reference this conversation's source scope DISCOVERS, so the
+// framework neither reads it nor mints an owner for it.
+//
+// LOOKING UP A DIRECTORY AND HASHING WHATEVER OWNER IT HAPPENS TO CARRY IS NOT A
+// FROZEN ACCESS GRANT, and neither is this neighbourhood. It is a DISCOVERY
+// bound only: it says where a source text is allowed to LOOK for a producer. The
+// authority to actually READ the resolved file comes from the EXISTING consent
+// policy ([Agent.contextualProducerReadAllowed], reusing the pure [Agent.decide]
+// gate), so a private sibling repository a policy denies is never opened just
+// because it shares a parent directory with the consumer.
 func contextualConsumerNeighborhood(consumerPath string) string {
 	base := filepath.Dir(consumerPath)
 	if root, ok := repositoryRoot(base); ok {
@@ -506,6 +572,30 @@ func contextualPathOwner(path string) string {
 	return store.OwnerProject(key)
 }
 
+// contextualProducerReadAllowed asks the EXISTING consent policy whether this
+// agent may read one canonical producer path, BEFORE the framework opens it. It
+// reuses the pure [Agent.decide] gate (the same [approval.Policy] the read tool
+// itself is judged by) rather than inventing a permission of its own: only an
+// explicit allow admits the read, and an ask or a deny is a SILENT refusal -- no
+// prompt is opened and no model is asked during this maintenance pass. A build
+// with no policy at all is the configured-nothing case the consent engine's own
+// law names allow. Because the live gate is read here, a revocation that lands
+// after a worker was admitted takes effect on its next observation.
+func (a *Agent) contextualProducerReadAllowed(producer string) bool {
+	args, err := json.Marshal(map[string]string{"path": producer})
+	if err != nil {
+		return false
+	}
+	call := ai.ToolCall{ID: "framework-verify-read", Type: "function"}
+	call.Function.Name = "read"
+	call.Function.Arguments = string(args)
+	decision, governed := a.decide(call)
+	if !governed {
+		return true
+	}
+	return decision.Action == approval.ActionAllow
+}
+
 func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 	if !a.remembers() {
 		return
@@ -533,6 +623,14 @@ func (a *Agent) observeContextualDependencies(source memoryTurnEvidence) {
 		}
 		for _, producer := range contextualReferencedProducers(consumer.Path, consumer.Body) {
 			if producer == consumer.Path || a.contextualDropping(producer) {
+				continue
+			}
+			// THE NEIGHBOURHOOD DISCOVERS; THE CONSENT POLICY AUTHORIZES. A path
+			// the policy does not plainly allow is refused here, before its owner
+			// is minted and before any byte is read, hashed or journaled -- so a
+			// genuine-looking consume of a private sibling repository the policy
+			// denies proves nothing.
+			if !a.contextualProducerReadAllowed(producer) {
 				continue
 			}
 			producerOwner := contextualPathOwner(producer)

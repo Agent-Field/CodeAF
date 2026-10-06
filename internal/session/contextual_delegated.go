@@ -434,7 +434,7 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 	}
 	action := attemptAction(call)
 	receipt := redact.Secrets(contextualClip(result.text, contextualReceiptRunes))
-	if action == "" || strings.TrimSpace(receipt) == "" {
+	if action == "" || strings.TrimSpace(receipt) == "" || receiptShowsFailure(receipt) {
 		return
 	}
 	originKey := delegatedOriginKey(origin)

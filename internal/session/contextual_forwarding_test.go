@@ -37,6 +37,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
 	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"github.com/Agent-Field/codeaf/internal/store"
 )
@@ -460,4 +461,175 @@ func TestContextualForwardingFrozenOwnerDoesNotBorrowPostAnchorReads(t *testing.
 	if links := contextualForwardEdges(t, s, otherProducer); len(links) != 0 {
 		t.Fatalf("a post-anchor read of another project was borrowed into the frozen origin: %+v", links)
 	}
+}
+
+// ── A4 RECEIPT AUTHORITY: the neighbourhood discovers, consent authorizes ─────
+//
+// The independent review of 34b4ecfa1 showed that contextualConsumerNeighborhood
+// (the consumer repository's parent) is NOT an authorization grant: a source that
+// genuinely LOOKS like it consumes a private sibling repository was read anyway.
+// The authority to read the resolved producer now comes from the EXISTING consent
+// policy (a.decide), and only an explicit ALLOW admits it.
+
+// A policy that DENIES reading the producer path is sufficient: the framework
+// mints no owner, reads and hashes nothing, and journals no row — for a direct
+// literal AND a pathlib chain.
+func TestContextualForwardingDeniedProducerPolicyIsNotRead(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body func(producer string) string
+	}{
+		{"direct literal", func(producer string) string {
+			return "data = open(\"" + producer + "\").read()\n"
+		}},
+		{"pathlib chain", func(string) string { return contextualForwardConsumerBody }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, s, producer, consumer := contextualForwardingFixture(t)
+			root.config.ApprovalPolicy = &approval.Policy{Tools: map[string]approval.Action{"read": approval.ActionDeny}}
+			if err := os.WriteFile(consumer, []byte(tc.body(producer)), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if root.contextualProducerReadAllowed(producer) {
+				t.Fatal("a denied producer read was authorized")
+			}
+			contextualForwardBoundaryRead(t, root, consumer, "root-read")
+			contextualForwardPostTurn(t, root, "inspect the report utility")
+			contextualForwardExpectNone(t, s, producer)
+		})
+	}
+}
+
+// An ASK is a silent refusal during maintenance: no edge, and no consent prompt
+// is opened (a.decide is pure policy, it never asks a person or a model).
+func TestContextualForwardingAskedProducerPolicyDoesNotPrompt(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	root.config.ApprovalPolicy = &approval.Policy{Tools: map[string]approval.Action{"read": approval.ActionPrompt}}
+	if root.contextualProducerReadAllowed(producer) {
+		t.Fatal("an asked producer read was authorized")
+	}
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	contextualForwardPostTurn(t, root, "inspect the report utility")
+	contextualForwardExpectNone(t, s, producer)
+}
+
+// An explicit ALLOW (the ordinary configuration) still forms the canonical edge,
+// and so does the configured-nothing build the rest of the suite runs with.
+func TestContextualForwardingAllowedProducerPolicyStillFormsEdge(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	root.config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+	if !root.contextualProducerReadAllowed(producer) {
+		t.Fatal("an allowed producer read was refused")
+	}
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	contextualForwardPostTurn(t, root, "inspect the report utility")
+	contextualForwardExpectEdge(t, s, producer, consumer)
+}
+
+// A REVOCATION lands on the next observation: a worker admitted while the read
+// was allowed does not keep a producer edge after the policy denies it.
+func TestContextualForwardingRevokedProducerPolicyDropsEdge(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	root.prepareBindingContext(context.Background(), "wire the report to its producer")
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	worker := spawnTaskWorker(t, root, filepath.Dir(consumer))
+	producerBody, err := os.ReadFile(producer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The revocation is in force before the worker's read reaches the framework.
+	root.config.ApprovalPolicy = &approval.Policy{Tools: map[string]approval.Action{"read": approval.ActionDeny}}
+	worker.recordOutcome(context.Background(), 0, delegatedReadCall(t, producer, "child-producer"), toolResult{text: string(producerBody)}, worker.captureSourceSnapshot(context.Background()).Identity)
+	contextualForwardExpectNone(t, s, producer)
+}
+
+// A CROSS-ANCHORED old job does not borrow a NEW root read permission: the root
+// anchor re-homes the conversation and gains a blanket allow, but the worker's
+// frozen origin only ever covers its own repository, never the post-anchor read
+// of another project.
+func TestContextualForwardingCrossAnchorDoesNotBorrowNewPermission(t *testing.T) {
+	root, s, producer, consumer := contextualForwardingFixture(t)
+	ctx := context.Background()
+	root.prepareBindingContext(ctx, "wire the report to its producer")
+	contextualForwardBoundaryRead(t, root, consumer, "root-read")
+	worker := spawnTaskWorker(t, root, filepath.Dir(consumer))
+
+	otherRoot := t.TempDir()
+	otherConsumerDir := filepath.Join(otherRoot, "other-report")
+	otherProducerDir := filepath.Join(otherRoot, "other-core")
+	for _, dir := range []string{otherConsumerDir, otherProducerDir} {
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+			t.Fatalf("init: %s %v", out, err)
+		}
+	}
+	otherProducer := filepath.Join(otherProducerDir, "other_export.py")
+	if err := os.WriteFile(otherProducer, []byte("def export(): return 7\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	otherConsumer := filepath.Join(otherConsumerDir, "other_report.py")
+	if err := os.WriteFile(otherConsumer, []byte("data = open(\""+otherProducer+"\").read()\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	otherKey, err := gitidentity.ProjectKey(otherConsumerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The anchor moves the conversation and grants a NEW blanket allow.
+	root.config.Workspace = otherConsumerDir
+	root.config.MemoryProjectKey = otherKey
+	root.config.ApprovalPolicy = &approval.Policy{Default: approval.ActionAllow}
+	contextualForwardBoundaryRead(t, root, otherConsumer, "anchor-read")
+
+	producerBody, err := os.ReadFile(producer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker.recordOutcome(ctx, 0, delegatedReadCall(t, producer, "child-producer"), toolResult{text: string(producerBody)}, worker.captureSourceSnapshot(ctx).Identity)
+	contextualForwardExpectEdge(t, s, producer, consumer)
+	if links := contextualForwardEdges(t, s, otherProducer); len(links) != 0 {
+		t.Fatalf("a cross-anchored job borrowed the new root read permission: %+v", links)
+	}
+}
+
+// ── UNSUPPORTED COMMENT/STRING FORMS FAIL CLOSED ─────────────────────────────
+//
+// A supporting consume construct counts only OUTSIDE comments and strings. A
+// JavaScript `//` comment and a Python triple-quoted block (a docstring or a
+// printed block) are unsupported forms, so a path inside them names no producer
+// and forms no edge. A genuine consuming call beside them still does.
+func TestContextualForwardingUnsupportedMentionFormsFailClosed(t *testing.T) {
+	mention := []struct {
+		name string
+		body string
+	}{
+		{"javascript line comment", "// open(\"PRODUCER\").read()\n"},
+		{"python triple-quoted docstring", "x = \"\"\"\nopen(\"PRODUCER\")\n\"\"\"\n"},
+		{"printed triple-quoted block", "print(\"\"\"open(\"PRODUCER\")\"\"\")\n"},
+	}
+	for _, tc := range mention {
+		t.Run(tc.name, func(t *testing.T) {
+			root, s, producer, consumer := contextualForwardingFixture(t)
+			body := strings.ReplaceAll(tc.body, "PRODUCER", producer)
+			if err := os.WriteFile(consumer, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			contextualForwardBoundaryRead(t, root, consumer, "root-read")
+			contextualForwardPostTurn(t, root, "inspect the report utility")
+			contextualForwardExpectNone(t, s, producer)
+		})
+	}
+	// THE GENUINE CONSUME BESIDE THE UNSUPPORTED FORM STILL FORMS THE EDGE.
+	t.Run("genuine consume still forms the edge", func(t *testing.T) {
+		root, s, producer, consumer := contextualForwardingFixture(t)
+		body := "// unrelated note about " + producer + "\ndata = open(\"" + producer + "\").read()\n"
+		if err := os.WriteFile(consumer, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		contextualForwardBoundaryRead(t, root, consumer, "root-read")
+		contextualForwardPostTurn(t, root, "inspect the report utility")
+		contextualForwardExpectEdge(t, s, producer, consumer)
+	})
 }
