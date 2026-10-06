@@ -500,3 +500,71 @@ func TestContextualDerivedHistoryCannotRepublishForgottenClaim(t *testing.T) {
 		t.Fatalf("a derived history lookup published a new claim: %+v", rows)
 	}
 }
+
+// A MIXED BATCH KEEPS ABSENCE AND EVIDENCE APART. Two memories under the SAME
+// exact owner are projected in ONE eligibility read: one carries an eligible
+// approved-rule row, the other is an ordinary record with no journal row at
+// all. The evidenced memory is annotated; the un-evidenced one keeps its legacy
+// body and its age and must never acquire the zero-valued "Evidence: /" a
+// missing row would render. Regression for the batch latest-by-memory mapping:
+// absence is not a zero evidence.
+func TestContextualMixedBatchAnnotatesOnlyMemoriesWithEvidence(t *testing.T) {
+	a, s := brainAgent(t, &reflexScript{}, func(c *Config) { c.MemoryProjectKey = "mixed" })
+	owner := store.OwnerProject("mixed")
+	body := "prefers tabs over spaces in Go"
+	plain, err := s.AddMemory(store.Memory{ID: "plain", Owner: owner, Type: store.MemoryFact,
+		Title: "prefers tabs", Text: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagged, err := s.AddMemory(store.Memory{ID: "tagged", Owner: owner, Type: store.MemoryDecision,
+		Title: "offline release", Text: "Release runtime uses the standard library only.", Tags: []string{contextualTag}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AppendContextualEvidence(store.ContextualEvidence{ID: "ev", MemoryID: tagged.ID,
+		Owner: owner, Actor: "user", Authority: "approved_rule", Observation: "release must run offline",
+		Verification: "asserted"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.GetMemories([]string{owner}, []string{plain.ID, tagged.ID})
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("rows=%v error=%v", rows, err)
+	}
+	got := a.contextualEligibleFor(s, rows, "", "mixed")
+	if len(got) != 2 {
+		t.Fatalf("eligible=%d want both kept: %+v", len(got), got)
+	}
+	byID := map[string]store.Memory{}
+	for _, m := range got {
+		byID[m.ID] = m
+	}
+	p, ok := byID[plain.ID]
+	if !ok {
+		t.Fatal("the un-evidenced memory was dropped")
+	}
+	if p.Text != body {
+		t.Fatalf("an un-evidenced memory gained provenance:\n%q", p.Text)
+	}
+	if strings.Contains(p.Text, "Memory id:") || strings.Contains(p.Text, "Evidence:") {
+		t.Fatalf("absence rendered as zero evidence:\n%q", p.Text)
+	}
+	tg, ok := byID[tagged.ID]
+	if !ok {
+		t.Fatal("the evidenced memory was dropped")
+	}
+	if !strings.Contains(tg.Text, "Memory id: "+tagged.ID) || !strings.Contains(tg.Text, "Evidence: approved_rule/asserted") {
+		t.Fatalf("the evidenced memory lost its provenance:\n%q", tg.Text)
+	}
+	// AND THE RENDERED BLOCK: the ordinary record keeps its legacy body and age
+	// and carries no provenance line, while the evidenced one still renders its
+	// own record whole.
+	block, kept := renderMemoryBlock([]store.Memory{p}, time.Now())
+	if len(kept) != 1 || !strings.Contains(block, body+" (learned just now)") {
+		t.Fatalf("the legacy record lost its body or age:\n%s", block)
+	}
+	if strings.Contains(block, "Evidence:") || strings.Contains(block, "Memory id:") {
+		t.Fatalf("the legacy block carries provenance:\n%s", block)
+	}
+	_ = a.Close()
+}

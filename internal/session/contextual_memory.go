@@ -1052,7 +1052,15 @@ func (a *Agent) contextualEligibleFor(st *store.Store, memories []store.Memory, 
 		if !contextualVerdictKeeps(m, verdict) {
 			continue
 		}
-		contextualAnnotateMemory(&m, verdict.evidence)
+		// ABSENCE IS NOT A ZERO EVIDENCE. A memory kept with no journal row at
+		// all (verdict.has false) is an ordinary legacy record: it retains its
+		// own body and age and carries NO provenance block. Only a memory whose
+		// OWN latest row passed the guards is annotated, so an absent row can
+		// never render the empty "Evidence: /" that a zero-valued struct would
+		// write. The other two annotate seams guard on has the same way.
+		if verdict.has {
+			contextualAnnotateMemory(&m, verdict.evidence)
+		}
 		result = append(result, m)
 	}
 	return result
