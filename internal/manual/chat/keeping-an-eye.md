@@ -255,9 +255,23 @@ end of it.
 
 The judgement is one sentence in plain words: "the last run on main failed". It
 carries the last few things it said, so something you have already been told
-about is not raised again every five minutes. When the answer is neither a clear
-yes nor a clear no, codeaf treats it as a no and the log says
-`there was no clear answer, so nothing was said`.
+about is not raised again every five minutes. A watch speaks the change: it
+stays quiet while the same reading still holds, and it tells you when the
+answer turns true. When the answer is neither a clear yes nor a clear no, codeaf
+writes nothing at all and looks again next time, so an unclear reading never
+consumes the moment you are waiting on.
+
+## Tell me once, when it first becomes true
+
+"Notify me once when ready becomes true" is a watch that speaks **once**: it
+tells you the first time the condition turns true, delivers that one line, and
+retires. It cannot tell you again if the condition later goes false and true
+again, and a reading that merely repeats is not a second notice.
+
+Drop the word `once` and a watch stays armed: it speaks each change, so
+false-then-true is another notice and a condition that is still true is not. A
+rhythm is `every` ("every Monday at 9"), which speaks on its schedule whether or
+not the answer changed.
 
 ## How long do I have to answer the card — the card does not time out
 

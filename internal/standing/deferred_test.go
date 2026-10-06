@@ -637,6 +637,11 @@ func TestPauseDuringProbeStopsTheDeliveryAndTheWrite(t *testing.T) {
 	if items[0].Status != StatusPaused {
 		t.Fatalf("the pause did not stick: %q", items[0].Status)
 	}
+	// THE PERSON'S ACT WINS COMPLETELY: no identity and no delivery intent
+	// survive a pause that landed while the probe was in flight.
+	if items[0].Positive != "" || len(items[0].Pending) != 0 || items[0].Runs != 0 {
+		t.Fatalf("a pause mid-probe left durable state behind: %+v", items[0])
+	}
 }
 
 func TestPauseThenResumeDuringProbeStillStopsTheDelivery(t *testing.T) {

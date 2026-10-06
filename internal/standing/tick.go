@@ -307,9 +307,16 @@ const (
 // sentence a person would read for it, and whatever evidence a firing should
 // carry with it.
 type sighting struct {
-	state    state
-	line     string
+	state state
+	line  string
+	// evidence is what a firing carries to the delivery and, for a say, into
+	// {{evidence}}.
 	evidence string
+	// positive is the WhenProbe identity a yes just earned, carried OUT of the
+	// look so it is committed in the SAME guarded save as the delivery intent
+	// rather than in the look's own copy. A yes that never reaches a durable
+	// intent must leave no identity behind.
+	positive string
 }
 
 // look decides whether an item wants to fire, and updates the parts of the item
@@ -476,8 +483,11 @@ func (t *Ticker) look(ctx context.Context, item *Item, now time.Time) (sighting,
 			item.Positive = ""
 			return sighting{state: stateQuiet, line: line}, nil
 		}
-		item.Positive = identity
-		return sighting{state: stateReady, line: line, evidence: evidence}, nil
+		// THE IDENTITY TRAVELS WITH THE FIRING, NOT INTO THE ITEM. [Ticker.fire]
+		// commits it in the one save that also writes the delivery intent, so a
+		// look whose intent could not be recorded leaves no identity that would
+		// suppress the notice forever without ever having delivered it.
+		return sighting{state: stateReady, line: line, evidence: evidence, positive: identity}, nil
 
 	default:
 		return sighting{}, errors.New("standing: an unknown kind of watch: " + string(item.When.Kind))
@@ -631,6 +641,12 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	// "firing". [Ticker.one] raised it and [Ticker.one] takes it down; this is
 	// the same marker changing its mind, not a second one.
 	t.Store.markRunning(item.ID, RunningFiring)
+	// THE IDENTITY A YES EARNED IS COMMITTED WITH THE INTENT, and only there.
+	// If the intent cannot be saved, this copy must go back to what it was so
+	// [Ticker.noteFailure] cannot persist a positive identity with no pending
+	// line, no run and no delivery — the state that would drop the one notice
+	// the person is still waiting on.
+	priorPositive := item.Positive
 	var (
 		outcome Outcome
 		runDir  string
@@ -651,11 +667,18 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 				return errors.New("standing: too many undelivered lines are waiting; not delivering another")
 			}
 		}
+		// THE INTENT AND THE CONDITION IDENTITY ARE ONE DURABLE UNIT. They are
+		// written by the same save: either both are on disk or neither is.
+		item.Positive = found.positive
 		// THE INTENT IS ON DISK BEFORE THE LINE IS CARRIED OUT. If this write
 		// fails, nothing is delivered: an external notification must never
-		// precede the durable state that lets a later pass reconcile it.
+		// precede the durable state that lets a later pass reconcile it. The
+		// in-memory identity goes back to what it was, because the document that
+		// comes back to disk in [Ticker.noteFailure] must not carry a positive
+		// with nothing to deliver.
 		if err := t.Store.saveActive(item); err != nil {
 			item.dropPending(pending.ID)
+			item.Positive = priorPositive
 			if errors.Is(err, errConsentChanged) {
 				return nil
 			}
@@ -686,8 +709,10 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 			attempts = item.TaskInflight.Attempts + 1
 		}
 		item.TaskInflight = &TaskInflight{RunDir: runDir, Started: now, Attempts: attempts}
+		item.Positive = found.positive
 		if err := t.Store.saveActive(item); err != nil {
 			item.TaskInflight = nil
+			item.Positive = priorPositive
 			if errors.Is(err, errConsentChanged) {
 				return nil
 			}
@@ -748,8 +773,13 @@ func (t *Ticker) fire(ctx context.Context, pass *Pass, item *Item, now time.Time
 	}
 	item.Previous = remember(item.Previous, found.line, outcome)
 
-	if item.When.Kind == WhenAt {
-		// A reminder is the smallest of these: it fires once and it retires.
+	if item.retiresOnFiring() {
+		// A reminder is the smallest of these: it fires once and it retires. A
+		// one-shot condition is the same request made of the world, and it is
+		// retired HERE — after the line was durably queued and delivered — so a
+		// later false-then-true cannot put a second notice in front of somebody
+		// who asked to be told once. A delivery that was lost is NOT retired:
+		// its pending intent is still on the item and a later pass settles it.
 		item.Status = StatusRetired
 		item.RetiredWhy = "fired"
 	}
@@ -872,7 +902,11 @@ func (t *Ticker) settleItem(ctx context.Context, pass *Pass, item *Item) {
 		item.LastOutcome = outcome.Kind
 		item.SpentUSD += outcome.USD
 		item.Previous = remember(item.Previous, pending.Text, outcome)
-		if item.When.Kind == WhenAt {
+		if item.retiresOnFiring() {
+			// THE TAIL OF A FIRING THAT NEVER GOT TO RETIRE ITSELF. A one-shot
+			// condition whose delivery was settled here after a crash retires now,
+			// exactly as a reminder does, so the pending repair does not leave a
+			// one-shot armed to fire a second time.
 			item.Status = StatusRetired
 			item.RetiredWhy = "fired"
 		}

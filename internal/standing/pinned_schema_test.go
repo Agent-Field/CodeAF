@@ -32,8 +32,8 @@ func TestAPinnedOrderIsFencedFromBaselineReaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create pinned: %v", err)
 	}
-	if got := schemaOnDisk(t, store, made.ID); got != Schema {
-		t.Fatalf("a pinned order was written at schema %d, not the barrier %d", got, Schema)
+	if got := schemaOnDisk(t, store, made.ID); got != schemaDeferred {
+		t.Fatalf("a pinned order was written at schema %d, not the deferred barrier %d", got, schemaDeferred)
 	}
 	back, err := store.Get(made.ID)
 	if err != nil {

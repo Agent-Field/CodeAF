@@ -96,7 +96,7 @@ func TestAnIsolatedOrderIsWrittenBeyondTheReachOfOlderBuilds(t *testing.T) {
 	// this build, so it carries the guarded-write revision a baseline reader
 	// would silently reset: the version is the deferred-delivery barrier's now,
 	// not isolation's.
-	if v := schemaOnDisk(t, store, isolated.ID); v != Schema {
-		t.Fatalf("a rewritten order was written at schema %d, not the barrier", v)
+	if v := schemaOnDisk(t, store, isolated.ID); v != schemaDeferred {
+		t.Fatalf("a rewritten order was written at schema %d, not the deferred barrier", v)
 	}
 }

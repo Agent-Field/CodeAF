@@ -102,7 +102,20 @@ import (
 // "nothing changed", and its write would reset the revision the guarded write
 // ([Store.saveActive]) relies on. So the fence is on the fields themselves and
 // not only on a pending line.
-const Schema = 3
+//
+// VERSION 4 IS THE PROBE-RECURRENCE BARRIER, and it is deliberately narrow. A
+// document carrying a [Item.Positive] identity or a one-shot condition
+// ([When.OneShot]) is written at 4, so the build that first landed the positive
+// identity at schema 3 — which decoded a document without the field and
+// re-reported an unchanged positive — SKIPS it rather than misreading it. The
+// fence is on the new fields themselves: version 3 cannot guard a field a
+// schema-3 reader already claims to understand.
+const Schema = 4
+
+// schemaDeferred is version 3, the deferred-delivery barrier. It stays its own
+// number because the fields it guards predate this build, and a reader that
+// knows only up to 2 must go on skipping exactly what it skipped before.
+const schemaDeferred = 3
 
 // SchemaOf is the version an item is written at: the oldest one whose readers
 // all keep its meaning.
@@ -118,7 +131,14 @@ const Schema = 3
 // Pending), so any item that carries them is written at 3 and an older build
 // SKIPS it rather than decoding the loss back.
 //
-// EVERY ITEM TOUCHED BY THIS BUILD'S NEW SEMANTICS IS VERSION 3, and an item
+// A POSITIVE IDENTITY OR A ONE-SHOT CONDITION IS VERSION 4, THE PROBE-
+// RECURRENCE BARRIER. Neither field can ride version 3: the build that
+// introduced the identity was itself a schema-3 reader, so it decodes a
+// schema-3 document without the field and re-reports an unchanged positive.
+// Version 4 is what that reader skips. The deferred fields keep version 3, so
+// the fence is only on the semantics that need it.
+//
+// EVERY ITEM TOUCHED BY THIS BUILD'S DEFERRED SEMANTICS STAYS VERSION 3, and an item
 // this build has never rewritten keeps the oldest version whose readers still
 // keep its meaning: a plain order created here is written at 1 and an isolated
 // order at 2, so an ordinary reminder an older build created is still read and
@@ -131,8 +151,11 @@ const Schema = 3
 // carries the baseline [Item.Fingerprint] it would silently drop, so both are
 // fenced at 3 rather than left at 1 for a reader that would lie about them.
 func SchemaOf(it Item) int {
-	if len(it.Pending) > 0 || it.TaskInflight != nil || it.Fingerprint != "" || it.Positive != "" || it.Revision > 1 || it.Origin.OneModel {
+	if it.Positive != "" || it.When.OneShot {
 		return Schema
+	}
+	if len(it.Pending) > 0 || it.TaskInflight != nil || it.Fingerprint != "" || it.Revision > 1 || it.Origin.OneModel {
+		return schemaDeferred
 	}
 	if it.Does.Isolate {
 		return 2
@@ -237,6 +260,15 @@ func (it Item) CardKindOf() CardKind {
 	}
 }
 
+// retiresOnFiring reports whether a successful firing ends an item's life. A
+// reminder retires because its whole content was the moment it named; a one-shot
+// condition ([When.OneShot]) retires for the same reason, once it has told the person
+// the one thing they asked to be told once. An ordinary watch speaks the change
+// and stays armed.
+func (it Item) retiresOnFiring() bool {
+	return it.When.Kind == WhenAt || (it.When.Kind == WhenProbe && it.When.OneShot)
+}
+
 // shortWordsRunes is how much of a cadence a button may carry. Past it the
 // label eats the row and the other answers disappear.
 const shortWordsRunes = 32
@@ -281,6 +313,17 @@ type When struct {
 	// Hint tells the sentinel what a yes looks like, in the model's words at
 	// proposal time: "yes when any run on main shows conclusion=failure".
 	Hint string `json:"hint,omitempty"`
+	// OneShot is a WhenProbe's one-shot intent: the condition watch fires when the
+	// condition FIRST turns true, delivers its one line, and retires. It is the
+	// compiled difference between "notify me once when ready becomes true" (set)
+	// and "tell me every time it is ready" (unset, the rising-edge default).
+	//
+	// IT IS A COMPILED FIELD, NOT A WORD MATCH. The model reads the sentence
+	// once, at proposal time, and this is what it wrote; nothing here scans the
+	// person's English on every pass. It rides the approval card and the stored
+	// document like every other field, and it is fenced at [Schema] so an older
+	// reader skips it rather than silently re-arming a one-shot forever.
+	OneShot bool `json:"once,omitempty"`
 }
 
 // Probe is one look at the world: a shell command in the workspace, OR a belt

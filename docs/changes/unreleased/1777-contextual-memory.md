@@ -25,6 +25,8 @@ invalidates:
   - "A firing that reached an open window wrote no inbox note. The note is now made durable before the live offer, so a crash or a window closing between the offer and the reading cannot lose the line."
   - "A file watch took its baseline at the first wake. Ratification now arms it at the yes, and a scan that could not read everything it matches sets no baseline and leaves a visible needs-person flag."
   - "An ambiguous, refused or timed-out judgment was folded into a decided no. The real tick now carries the three-way sentinel: an undecided look writes nothing and the item stays due."
+  - "An unchanged positive probe reading was reported again whenever the sentinel said yes, so \"notify me once when ready becomes true\" could put a second notice in front of the person for one observed state. The identity of the last affirmative reading is now the machinery's own fact: the same evidence stays quiet however the sentinel words its answer, a decided no re-arms, and a document carrying the identity or a one-shot intent is fenced at a newer schema so the build that preceded it skips rather than re-reports."
+  - "A condition watch could only speak the rising edge, so a literal \"notify me once\" re-notified on every false-then-true with no person action. The one-shot intent is now a compiled field the model sets once at proposal time — shown on the approval card and kept in the stored document — and a one-shot say delivers its one line and retires, including when a lost delivery is repaired under the same identity. A recurring watch (the field unset) re-arms as before, and an ambiguous one-shot task still stops for the person rather than replaying."
   - "A background pass reloaded the profile's tiers, role pins and fallback ladder, so an item ratified under `--one-model` could be answered by a different model. The item freezes the ratifying conversation's model policy on its origin and the pass honours it for the sentinel and every child seat."
   - "A run lent the canonical brain read-only still journaled project attempt rows: nested task workers and the run's own promoted jobs wrote through the delegated outcome collector, which checked no posture. The collector now refuses every observation when the root is binding-only, so the lent brain is read-only through every door while the binding read and the ordinary session's delegated continuity are unchanged. A session folder keeps exactly one persistent resident now that its inbox flock lives inside it, and the lock file's name is exported for callers that assert on a folder's contents."
   - "Only failures and blocks were ever written from the tool boundary. A success in the same turn and goal now attaches to the failure as its observed successful alternative, and no other success is retained."
@@ -44,6 +46,13 @@ not the whole utterance; the harness gained optional `--model`/`--one-model` and
 explicit `CODEAF_CALL_LOG_BODIES=1` opt-in, and a dedicated profile that pins every
 text seat; and the immutability law on the canonical journal is unchanged, so raw
 audit growth stays an explicit limit rather than something pruned.
+
+A probe watch is bounded by the identity of the evidence it was shown, not by
+the sentinel's wording: an unchanged positive reading is told once and stays
+quiet, and only a reading that moved is judged afresh. A watch that asks to be
+told once carries that as a compiled field — shown on the card, kept in the
+document — and retires after its one durable, delivered line; a watch without
+it speaks each change, and a rhythm keeps speaking on its schedule.
 
 Standing deliveries are durable-first with this head. A delivery is appended to
 its inbox under the pending identity and Sync'd before anything is drawn or

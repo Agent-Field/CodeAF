@@ -227,21 +227,21 @@ func (a *Agent) standingWatch() standing.Watch {
 // times while this comment is free. So the reasoning stays and the repetition
 // went: the last paragraph used to walk every argument a second time, and every
 // one of those sentences is now said ONCE, in the schema field it governs.
-var standDescription = "Set up something that keeps working after this window is closed — a reminder, a watch on the world, a rule, or work that runs overnight — and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
-	"THE DISCHARGE TEST decides it. Can this sentence be satisfied once and then forgotten? If it CAN, it is part of the work in front of you — an acceptance criterion, an instruction — and it does NOT stand, whatever words it is dressed in and even when it says \"make sure\": \"make sure this website you are building is 3 pages\" is discharged the moment the site has three pages. If it can NEVER be discharged — if work nobody has done yet could violate it tomorrow — it is standing: \"make sure the tests never break\".\n\n" +
-	"ANCHORING. A sentence about the artifact under construction RIGHT NOW binds the current work, whatever verbs it uses, and what anchors it is the GRAMMAR: a demonstrative pointing at the thing in front of you (\"this website you're building\"), or a present tense about work already under way (\"what you're doing\"). An \"always\", a \"never\" or an \"ensure\" inside such a sentence is EMPHASIS ON THIS WORK — a quality bar for the thing being built is acceptance, and acceptance is never a card.\n\n" +
-	"WAKING OR HOLDING. A standing sentence that names a moment, a rhythm or a condition gets the waking kind it names (\"remind me at 6\" is at, \"every Monday draft the update\" is every, \"tell me when CI goes red\" is probe, \"tonight run the suite\" is idle). One that names none of them — a rule, a convention, a preference — is when.kind hold.\n\n" +
-	"UNSURE MEANS INSTRUCTION PLUS AN OFFER. When the discharge test is genuinely unclear, bind the sentence to the work in front of you AND offer the standing version in one line of prose at the end of your reply. NEVER a card on a guess: a card they did not want costs their trust in every card after it.\n\n" +
-	"Doing a standing sentence once instead of proposing it answers a request they did not make: \"run the tests\" is work you do now, \"run the tests whenever I push\" is one of these. The `watch` tool is the near neighbour that is NOT this: a watch is a job inside this conversation and stops the moment the window closes, so anything that has to keep looking after they walk away belongs here and never there.\n\n" +
-	"Nothing stands until the person says yes: the card waits for them with no clock on it, and a session nobody is watching cannot set one up at all. Money is not yours to negotiate — omit rails and cost_words unless they named a limit. op=list shows what already stands here; op=pause, op=resume and op=stop take an id or the person's own words, and stop is permanent. op=change is not yours to call — it is what the card answers when they want it different."
+var standDescription = "Set up something that keeps working after this window is closed \u2014 a reminder, a watch, a rule, or overnight work \u2014 and manage the ones that already stand. THE PERSON NEVER NAMES THIS TOOL; you recognise it from what their sentence IS.\n\n" +
+	"THE DISCHARGE TEST decides it. Can this sentence be satisfied by the work in front of you and then forgotten? If it CAN, it does NOT stand, whatever words it is dressed in, even when it says \"make sure\": \"make sure this website you are building is 3 pages\" is discharged the moment the site has three pages. A REQUEST TO HEAR SOMETHING LATER IS NOT THAT: \"notify me once when ready becomes true\" stands, because the person asked to hear it after this window closes \u2014 a one-time reminder or a one-shot condition stands exactly as a recurring one does. If it can NEVER be discharged \u2014 if work nobody has done yet could violate it tomorrow \u2014 it is standing: \"make sure the tests never break\".\n\n" +
+	"ANCHORING. A sentence about the artifact under construction RIGHT NOW binds the current work, whatever verbs it uses: a demonstrative pointing at it (\"this website you're building\"), or a present tense about work under way. An \"always\", \"never\" or \"ensure\" in such a sentence is EMPHASIS ON THIS WORK, not a request to be told later.\n\n" +
+	"WAKING OR HOLDING. A standing sentence that names a moment, a rhythm or a condition gets the waking kind it names (\"remind me at 6\" is at, \"every Monday draft the update\" is every, \"tell me when CI goes red\" is probe, \"tonight run the suite\" is idle). A condition told ONCE is a probe with once set; told on each change, once is left unset. One that names none \u2014 a rule, convention or preference \u2014 is when.kind hold.\n\n" +
+	"UNSURE MEANS INSTRUCTION PLUS AN OFFER. When the discharge test is genuinely unclear, bind the sentence to the work in front of you AND offer the standing version in one line at the end of your reply. NEVER a card on a guess: one they did not want costs their trust in the next.\n\n" +
+	"Doing a standing sentence once instead of proposing it answers a request they did not make: \"run the tests\" is work now, \"run the tests whenever I push\" is one of these. A future tell is never discharged now, not even a one-time one. The `watch` tool is the near neighbour that is NOT this: a job inside this conversation that stops the moment the window closes.\n\n" +
+	"Nothing stands until the person says yes: the card waits for them, and a session nobody is watching cannot set one up at all. Money is not yours to negotiate \u2014 omit rails and cost_words unless they named a limit. op=list shows what already stands here; op=pause, op=resume and op=stop take an id or the person's own words, and stop is permanent. op=change is the card's answer when they want it different, not yours to call."
 
 var standSchemaJSON = `{"type":"object","properties":{` +
-	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"propose a new one, list what stands here, or pause, resume or stop one that does."},` +
-	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card, row and note leads with it. On pause, resume and stop it names an item instead of its id."},` +
+	`"op":{"type":"string","enum":["propose","list","pause","resume","stop","change"],"description":"propose one, list what stands, or pause, resume or stop one that does."},` +
+	`"words":{"type":"string","description":"THE PERSON'S OWN SENTENCE, verbatim, never a paraphrase: every card and row leads with it. On pause, resume and stop it names an item, not an id."},` +
 	`"when":{"type":"object","description":"What wakes it. Only the fields this kind names are read.","properties":{` +
-	`"kind":{"type":"string","enum":["at","every","file","idle","probe","hold"],"description":"at: once at a moment, then it retires. every: a rhythm. file: a glob changing. idle: the machine quiet a while. probe: a look at the world judged against the person's words; a condition watch speaks only the change — it tells the person once when the condition turns true and stays quiet while the SAME reading holds, so a request to be told each time a condition is still true is not a probe. hold: NEVER WAKES and so can never spend — the kind for a rule, a convention or a preference, a sentence with no moment, rhythm or condition in it; it rides automatically into the world of every conversation and task it reaches, which is how it is kept."},` +
-	`"at":{"type":"string","description":"The one moment of an at, a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). Work it out from the Now line in your instructions; NEVER shell out to read a clock. A moment ALREADY PASSED is refused, and the refusal says the time now — recompute from that, not from the Now line you already used. For a relative moment send in."},` +
-	`"in":{"type":"string","description":"An at's moment as a distance from RIGHT NOW: a Go duration (\"2m\", \"1h30m\"). codeaf resolves it at the instant you call and answers with the moment it landed on. Send at or in, never both."},` +
+	`"kind":{"type":"string","enum":["at","every","file","idle","probe","hold"],"description":"at: once at a moment, then it retires. every: a rhythm. file: a glob changing. idle: the machine quiet a while. probe: a look at the world judged against the person's words, speaking only the change; set once to be told the first time it turns true, or omit it to be told on each change. hold: never wakes, so it never spends: the kind for a rule, convention or preference with no moment, rhythm or condition, riding into the world of every conversation and task it reaches."},` +
+	`"at":{"type":"string","description":"The one moment of an at, a local RFC3339 stamp (\"2026-08-20T18:00:00+01:00\"). Work it out from the Now line; never shell out for a clock. A moment already passed is refused, with the time now in the refusal, so recompute from that. For a relative moment send in."},` +
+	`"in":{"type":"string","description":"An at's moment as a distance from now: a Go duration (\"2m\", \"1h30m\"). codeaf resolves it at the call and answers the moment it landed on. Send at or in, never both."},` +
 	`"every":{"type":"string","description":"An every's rhythm: a five-field cron line (\"0 9 * * 1\") or a Go duration of at least a minute (\"20m\", \"2h\")."},` +
 	`"glob":{"type":"string","description":"A file watch's pattern, relative to the project."},` +
 	`"idle_for":{"type":"string","description":"How quiet the machine must have been for an idle item: a Go duration (\"45m\")."},` +
@@ -251,10 +251,11 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"args":{"type":"object","description":"That tool's arguments."}` +
 	`},"additionalProperties":false},` +
 	`"probe_every":{"type":"string","description":"How often to take that look, a Go duration. Defaults to how often anything is checked."},` +
-	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."}` +
+	`"hint":{"type":"string","description":"What a yes looks like, for the cheap judgment that reads the probe's output: \"yes when any run on main shows conclusion=failure\"."},` +
+	`"once":{"type":"boolean","description":"Probe only: fire on the first true, deliver the one line, then retire. Omit to be told on each change instead."}` +
 	`},"additionalProperties":false},` +
 	`"does":{"type":"object","description":"What a firing does. Every waking kind needs one; a hold takes NONE, and sending one with a hold is refused.","properties":{` +
-	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: into this conversation when it is open, else whichever conversation of this project they are in, else waiting on home and in the next one they open. task runs a brief in its own session, with a copy of its own and a cost row, the way propose_task's work runs."},` +
+	`"kind":{"type":"string","enum":["say","task"],"description":"say delivers one line to the person: this conversation when open, else another of this project, else waiting on home for the next one. task runs a brief in its own session, with its own copy and a cost row, the way propose_task's work runs."},` +
 	`"say":{"type":"string","description":"The line to deliver. {{evidence}} in it is replaced by what the probe found."},` +
 	`"brief":{"type":"string","description":"THE WORK, self-contained as propose_task's brief is: nobody will be there to ask. {{evidence}} is replaced by what the probe found."},` +
 	`"acceptance":{"type":"string","description":"How anybody checks the work is done."},` +
@@ -262,7 +263,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"isolate":{"type":"boolean","description":"Task only: keep a separate Git worktree for review. Set true for branch-only or PR-without-merge requests; shown on approval."},` +
 	`"max_steps":{"type":"integer","description":"Tool calls one firing's work may take (default ` + strconv.Itoa(standingRunSteps) + `)."}` +
 	`},"additionalProperties":false},` +
-	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the machine-wide daily allowance. A hold takes none — it never wakes, so it never spends. Only expires means anything on one.","properties":{` +
+	`"rails":{"type":"object","description":"Optional quiet backstops. Name money only when the person did; otherwise the card quotes the shared daily allowance. A hold takes none. Only expires means anything on one.","properties":{` +
 	`"per_run_usd":{"type":"number","description":"The most one firing may spend, judgment included. Send only when they named a per-run limit; otherwise it quietly defaults to ` + strconv.FormatFloat(standDefaultPerRunUSD, 'f', 2, 64) + `."},` +
 	`"max_per_day":{"type":"integer","description":"Firings allowed in one local day. Send only when they named a count; otherwise it quietly defaults to ` + strconv.Itoa(standDefaultMaxPerDay) + `."},` +
 	`"expires":{"type":"string","description":"Local RFC3339 retirement time; omit for never. Must be future and at least one check (` + standing.Interval.String() + `) after its first firing, since expiry is checked before due work. One-offs retire on firing and need no end."}` +
@@ -270,7 +271,7 @@ var standSchemaJSON = `{"type":"object","properties":{` +
 	`"when_words":{"type":"string","description":"The cadence said back plainly — \"Mondays at 9am\". The card quotes this and never the spec, so never cron."},` +
 	`"cost_words":{"type":"string","description":"When the person named money, quote their limit in their words — \"at most a dollar a run\". Omit when they named none; codeaf quotes the shared allowance."},` +
 	`"guessed":{"type":"boolean","description":"True when YOU invented the cadence because they gave none. The card then asks rather than states."},` +
-	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"HOW FAR IT REACHES, and the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. THEIR OWN SCOPE WORDS CHOOSE IT — \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening it on your own judgment decides on their behalf."},` +
+	`"altitude":{"type":"string","enum":["conversation","project","machine"],"description":"How far it reaches; the card always names it. conversation: this chat alone, dying with it. project: every conversation and task here. machine: everything they do on this computer. Their own scope words choose it: \"just this chat\" is conversation, \"everywhere\" and \"all my projects\" are machine. Omit it when they said nothing about scope: widening on your own judgment decides for them."},` +
 	`"title":{"type":"string","description":"Three or four words for a row too narrow for their sentence — \"weekly update\". Their sentence still leads every screen."},` +
 	`"grant":{"type":"string","description":"One sentence, in their words, for what acting on this may do without asking — \"open a pull request but never merge it\". Send it only when they said something like it; with none, it may only tell them things."},` +
 	`"id":{"type":"string","description":"Which item pause, resume and stop are about. Their own words work too."}` +
@@ -301,6 +302,7 @@ type standArguments struct {
 		} `json:"probe"`
 		ProbeEvery string `json:"probe_every"`
 		Hint       string `json:"hint"`
+		OneShot    bool   `json:"once"`
 	} `json:"when"`
 	Does struct {
 		Isolate    bool   `json:"isolate"`
@@ -669,6 +671,18 @@ func (a *Agent) standingItem(parsed standArguments, now time.Time) (standing.Ite
 	if words := strings.TrimSpace(parsed.WhenWords); words != "" && when.Kind != standing.WhenHold {
 		when.Words = words
 	}
+	// THE ONE-SHOT INTENT IS ALWAYS ON THE CARD'S WHEN BAND, whatever cadence
+	// the model said back. The field is the compiled decision and the band is
+	// drawn from [When.Words], so the intent rides the same " \u00b7 " mark a check
+	// uses between its verb and its cadence: a narrow row keeps "once" when it
+	// drops the cadence, and a wide one reads "once \u00b7 every five minutes".
+	if when.OneShot {
+		if cadence := strings.TrimSpace(when.Words); cadence != "" {
+			when.Words = "once" + standingCadenceMark + cadence
+		} else {
+			when.Words = "once"
+		}
+	}
 	item := standing.Item{
 		Words:     words,
 		Workspace: a.standingWorkspace(),
@@ -756,6 +770,12 @@ func standingWhen(parsed standArguments, now time.Time) (standing.When, string) 
 		// rhythm, the glob and the probe are all fields about waking, and a rule
 		// has no waking to describe.
 	case standing.WhenProbe:
+		// THE ONE-SHOT INTENT IS COMPILED, NOT MATCHED. The model read the
+		// person's sentence once and says here whether they asked to be told
+		// once when the condition first turns true or every time it does. It is
+		// a field on the item and the card, never a scan of their English on a
+		// later pass.
+		when.OneShot = parsed.When.OneShot
 		when.Probe = standing.Probe{
 			Command: strings.TrimSpace(parsed.When.Probe.Command),
 			Tool:    strings.TrimSpace(parsed.When.Probe.Tool),

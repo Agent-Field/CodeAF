@@ -229,8 +229,8 @@ func TestSchemaThreeKeepsDurableStateOutOfOlderReaders(t *testing.T) {
 	if err := store.Save(held); err != nil {
 		t.Fatal(err)
 	}
-	if got := schemaOnDisk(t, store, ordinary.ID); got != Schema || got < 3 {
-		t.Fatalf("an item with a durable intent was written at schema %d, not the barrier", got)
+	if got := schemaOnDisk(t, store, ordinary.ID); got != schemaDeferred || got < 3 {
+		t.Fatalf("an item with a durable intent was written at schema %d, not the deferred barrier", got)
 	}
 	// Prove the old shape would drop it: decode with a struct that has no field.
 	raw, err := os.ReadFile(store.ItemPath(ordinary.ID))
