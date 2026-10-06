@@ -9,7 +9,7 @@ invalidates:
   - "Router failure or late recall could remove binding context from the first action. Supporting explicit user rules and decisions now have bounded local context before the first request, with lexical fallback and optional semantic routing."
   - "Assistant assertions and model-reported memory use were treated as outcome evidence. Ordinary extraction now keeps source words or independent receipts, conditions, rationale and revision eligibility; model self-report does not train benefit ranking."
   - "Forgetting only hid a saved row. It now suppresses all historical recorded sources and derived use; searchable original conversation history remains."
-  - "Cross-project names alone supplied no consequence evidence. Successful full reads can establish exact resolved dependencies, and bounded consumer rereads support actionable hypotheses with content-based dismissal. Dynamic or delegated-only dependencies remain unsupported."
+  - "Cross-project names alone supplied no consequence evidence. Successful full reads can establish exact resolved dependencies, and bounded consumer rereads support actionable hypotheses with content-based dismissal. Dynamic dependencies remain unsupported."
   - "An observed attempt hashed the raw tool receipt while the evidence row for the same receipt hashed the redacted one, so a secret-bearing receipt broke the memory-forget provenance join. Attempts now hash the redacted bytes on every writer (session, delegated, settled job), and a settled line is bounded to the store's own title and text caps instead of being refused when the decider answered longer than the candidate it merged."
   - "A changed producer needed one of a fixed list of words in the turn before a consequence was considered. Impact checks are now driven by the observed state, so an ordinary request is not missed, and an unchanged file stays quiet."
   - "A delegated paired re-read of a changed producer beside an unchanged consumer reset the recorded baseline and hid the consequence. The baseline is now kept until the consumer's own assumption changes."
@@ -22,6 +22,13 @@ invalidates:
   - "Machine scope was kept for any supported quote and its evidence was pinned to the origin project, so an explicit machine-wide rule became silently project-local. Machine scope now needs its own supporting span, carries no project condition, and applies across projects on the same authorized machine; a project span beside a global sentence, 'everywhere in this project', and any tool observation all stay project-local."
   - "A credential spoken beside a genuine constraint was persisted and rendered verbatim in the claim body and evidence. Literal support is still checked against the person's original words, but every persisted or rendered human-readable field is now passed through the existing secret redactor first."
   - "Dismissal matched a substring over every held notice. It now drops exactly what the person named, an unmistakable singleton, or an explicitly plural batch; a bare ambiguous dismiss drops nothing and a negated one keeps the offer. The held set is bounded and evictable, so nine or more historical notices cannot permanently block new material."
+  - "A firing that reached an open window wrote no inbox note. The note is now made durable before the live offer, so a crash or a window closing between the offer and the reading cannot lose the line."
+  - "A file watch took its baseline at the first wake. Ratification now arms it at the yes, and a scan that could not read everything it matches sets no baseline and leaves a visible needs-person flag."
+  - "An ambiguous, refused or timed-out judgment was folded into a decided no. The real tick now carries the three-way sentinel: an undecided look writes nothing and the item stays due."
+  - "A background pass reloaded the profile's tiers, role pins and fallback ladder, so an item ratified under `--one-model` could be answered by a different model. The item freezes the ratifying conversation's model policy on its origin and the pass honours it for the sentinel and every child seat."
+  - "A run lent the canonical brain read-only still journaled project attempt rows: nested task workers and the run's own promoted jobs wrote through the delegated outcome collector, which checked no posture. The collector now refuses every observation when the root is binding-only, so the lent brain is read-only through every door while the binding read and the ordinary session's delegated continuity are unchanged. A session folder keeps exactly one persistent resident now that its inbox flock lives inside it, and the lock file's name is exported for callers that assert on a folder's contents."
+  - "Only failures and blocks were ever written from the tool boundary. A success in the same turn and goal now attaches to the failure as its observed successful alternative, and no other success is retained."
+  - "A fresh turn shown a prior failure had no note of a path already known to work, so it could repeat dead work to rediscover it. An applicable observed alternative is now rendered beside its failure with its own receipt and source circumstances, as observed history rather than a cause or a ban."
 ---
 
 This draft starts from #1751 and keeps one canonical event journal. Source,
@@ -37,6 +44,34 @@ not the whole utterance; the harness gained optional `--model`/`--one-model` and
 explicit `CODEAF_CALL_LOG_BODIES=1` opt-in, and a dedicated profile that pins every
 text seat; and the immutability law on the canonical journal is unchanged, so raw
 audit growth stays an explicit limit rather than something pruned.
+
+Standing deliveries are durable-first with this head. A delivery is appended to
+its inbox under the pending identity and Sync'd before anything is drawn or
+queued, then offered to an open window on top of the note. The inbox dedups on
+the identity across retries and restarts. The live handoff is at least once: a
+line offered live and then folded when the window is reopened can be read twice,
+because whether a screen drew the row is not observable here, and loss is the
+direction this refuses to fail toward. A write that could not be made durable,
+or an item with no address at all, is reported so the caller keeps the intent
+rather than reading success. A ratified FILE watch is armed at the yes, so a
+change between the card and the first wake is a change; a bounded scan that could
+not read everything it matches sets no baseline, leaves a visible flag, and the
+first complete look clears it. A ratified item also keeps the model policy it
+was given on: when the session ran under `--one-model`, the origin records the
+promise and the model, the origin is written at the schema barrier so a build
+without those fields skips it, and the reloaded background pass resolves the
+sentinel and every child text seat from the item's pin with the role pins,
+tiers, fallback chain and nearest-model guess withheld. One behaviour changed
+for the keyless walk: an undecided look (for example, a machine with no API key)
+is counted as checked and writes nothing, rather than being published as a
+failed check; the item stays due and is retried next pass.
+
+A recorded failure can also carry the later observed success that answered it.
+The alternative is an `AttemptSucceeded` row whose `AlternativeOf` names the
+failed attempt's source key, so an explicit forget of either source retires the
+pair through the existing suppression join and the read side never shows a
+success on its own. A source snapshot is labelled as a snapshot, never as the
+live machine's own state.
 
 Final-head terminal acceptance is required; focused tests alone do not establish
 real work improved. See docs/contextual-memory.md for limitations and evidence.

@@ -380,35 +380,30 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 	if worker == nil || result.harness || result.refusedBy != "" || result.isError {
 		return
 	}
-	originKey := delegatedOriginKey(origin)
-	c.mu.Lock()
-	key, failedTool, failedAction, done := "", "", "", false
-	if !c.closed {
-		state := c.stateLocked(originKey)
-		key, failedTool, failedAction, done = state.altOf, state.altTool, state.altAction, state.altDone
-	}
-	c.mu.Unlock()
-	if key == "" || done || !alternativeEligible(call, failedTool, failedAction) {
-		return
-	}
 	action := attemptAction(call)
 	receipt := redact.Secrets(contextualClip(result.text, contextualReceiptRunes))
 	if action == "" || strings.TrimSpace(receipt) == "" {
 		return
 	}
-	// RESERVE THE SLOT AND THE EMISSION UNDER ONE LOCK. The pairing is still for
-	// the SAME failure and still open, so a race cannot attach two alternatives
-	// or lose the bound.
+	originKey := delegatedOriginKey(origin)
+	// RESERVE THE ONE-ALTERNATIVE SLOT AND THE EMISSION UNDER ONE LOCK, BEFORE
+	// the append. The pairing must still be for the SAME failure and still open,
+	// so the second of two eligible siblings of one concurrent tool batch sees
+	// the slot already taken and returns; marking the slot only after the write
+	// let every sibling append. The emission counter is reserved here too, so
+	// the per-origin bound cannot be lost to the race either.
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
 		return
 	}
 	state := c.stateLocked(originKey)
-	if state.altDone || state.altOf != key || state.emissions >= delegatedAttemptEmissionMax {
+	if state.altDone || state.altOf == "" || state.emissions >= delegatedAttemptEmissionMax || !alternativeEligible(call, state.altTool, state.altAction, origin.Goal) {
 		c.mu.Unlock()
 		return
 	}
+	key := state.altOf
+	state.altDone = true
 	state.emissions++
 	c.inflight.Add(1)
 	c.mu.Unlock()
@@ -441,17 +436,24 @@ func (c *outcomeCollector) observeAlternative(worker *Agent, origin delegatedOri
 		ValidFrom:     time.Now(),
 	}
 	if _, err := c.root.memory.store.AppendContextualAttempt(e); err != nil {
+		// A FAILED WRITE REOPENS THE PAIRING FOR THE SAME FAILURE and gives the
+		// reserved emission back, so a retry is neither blocked nor counted; a
+		// newer failure owns its own slot and is never cleared by this. The
+		// failure is exposed through the collector's own lane, never swallowed.
+		c.mu.Lock()
+		if !c.closed {
+			if latest := c.stateLocked(originKey); latest.altOf == key {
+				latest.altDone = false
+				if latest.emissions > 0 {
+					latest.emissions--
+				}
+			}
+		}
+		c.mu.Unlock()
 		c.fail(err)
 		c.root.journalMemoryFailure("delegated-alternative", err)
 		return
 	}
-	c.mu.Lock()
-	if !c.closed {
-		if latest := c.stateLocked(originKey); latest.altOf == key {
-			latest.altDone = true
-		}
-	}
-	c.mu.Unlock()
 }
 
 // observeRead forwards a successful, trusted full read to the root's dependency

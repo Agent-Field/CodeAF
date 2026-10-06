@@ -152,22 +152,27 @@ func (a *Agent) recordMemoryAlternative(ctx context.Context, turn uint64, call a
 	if result.harness || result.refusedBy != "" || result.isError {
 		return
 	}
-	a.memory.mu.Lock()
-	key := a.memory.outcomeFailedKey
-	failedTool := a.memory.outcomeFailedTool
-	failedAction := a.memory.outcomeFailedAction
-	done := a.memory.outcomeAlternativeDone
-	goal := a.memory.outcomeGoal
-	turnID := a.memory.outcomeTurnID
-	a.memory.mu.Unlock()
-	if key == "" || done || !alternativeEligible(call, failedTool, failedAction) {
-		return
-	}
 	action := attemptAction(call)
 	receipt := redact.Secrets(contextualClip(result.text, contextualReceiptRunes))
 	if action == "" || strings.TrimSpace(receipt) == "" {
 		return
 	}
+	// RESERVE THE ONE SLOT BEFORE THE WRITE. The decision and the reservation
+	// run under ONE lock, so two eligible siblings of a concurrent tool batch
+	// cannot both append: the second sees the slot already taken and returns.
+	// The earlier check-then-append-then-mark admitted every sibling, because
+	// the mark landed only after the journal write ([Agent.recordMemoryAttempt]
+	// is called from each of the batch's goroutines).
+	a.memory.mu.Lock()
+	key := a.memory.outcomeFailedKey
+	if key == "" || a.memory.outcomeAlternativeDone || !alternativeEligible(call, a.memory.outcomeFailedTool, a.memory.outcomeFailedAction, a.memory.outcomeGoal) {
+		a.memory.mu.Unlock()
+		return
+	}
+	a.memory.outcomeAlternativeDone = true
+	goal := a.memory.outcomeGoal
+	turnID := a.memory.outcomeTurnID
+	a.memory.mu.Unlock()
 	// THE ALTERNATIVE'S OWN CIRCUMSTANCES, taken before and after this call, the
 	// same way a failure's are: a tree that moved while the call ran is unknown.
 	post := a.captureSourceSnapshot(ctx).Identity
@@ -202,15 +207,19 @@ func (a *Agent) recordMemoryAlternative(ctx context.Context, turn uint64, call a
 		ValidFrom:     time.Now(),
 	}
 	if _, err := a.memory.store.AppendContextualAttempt(e); err != nil {
-		// A FAILED WRITE LEAVES THE PAIRING OPEN. The next success may try again,
-		// and the failure is exposed through the existing lane rather than
-		// swallowed; nothing is marked done until the journal holds the row.
+		// A FAILED WRITE REOPENS THE PAIRING, but only while the SAME failure is
+		// still the turn's most recent one: a newer failure owns the slot, and
+		// clearing it would let this dead row's sibling attach to the wrong
+		// work. The failure itself is exposed through the existing lane, never
+		// swallowed, and the reserved slot is given back so a retry can try.
+		a.memory.mu.Lock()
+		if a.memory.outcomeFailedKey == key {
+			a.memory.outcomeAlternativeDone = false
+		}
+		a.memory.mu.Unlock()
 		a.journalMemoryFailure("attempt-alternative", err)
 		return
 	}
-	a.memory.mu.Lock()
-	a.memory.outcomeAlternativeDone = true
-	a.memory.mu.Unlock()
 }
 
 // alternativeExcludedTools are the bare lookups and metadata calls that are
@@ -228,27 +237,264 @@ var alternativeExcludedTools = map[string]bool{
 // alternativeEligible is the whole association rule, and it is deliberately
 // lexical and narrow: the success must be the SAME tool class as the failure,
 // must not be a bare lookup or metadata call, and its action must share a
-// meaningful token with the failed action. Anything less is not labelled an
-// alternative; the model is left to judge relevance for itself.
-func alternativeEligible(call ai.ToolCall, failedTool, failedAction string) bool {
+// meaningful WHOLE token with the failed action. Anything less is not labelled
+// an alternative; the model is left to judge relevance for itself.
+func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string) bool {
 	name := strings.TrimSpace(call.Function.Name)
 	if name == "" || name != strings.TrimSpace(failedTool) || alternativeExcludedTools[name] {
 		return false
 	}
-	// THE TOOL NAME IS NOT A MEANINGFUL TOKEN. The stored action is
-	// "name: body", so matching on the whole string let every bash action share
-	// a token ("bash") with every other. The match runs on the two BODIES, and a
-	// call with no body is not an alternative to an action.
-	body := strings.ToLower(attemptActionBody(attemptAction(call)))
+	// THE TOOL NAME IS NOT A MEANINGFUL TOKEN. The stored action is "name: body",
+	// so matching on the whole string let every bash action share a token
+	// ("bash") with every other. The match runs on the two BODIES, and a call
+	// with no body is not an alternative to an action.
+	body := strings.TrimSpace(attemptActionBody(attemptAction(call)))
 	if body == "" {
 		return false
 	}
-	for term := range outcomeTerms(attemptActionBody(failedAction)) {
-		if strings.Contains(body, term) {
-			return true
+	// A SHELL METADATA OR LOOKUP ACTION IS NEVER THE WAY THE WORK GOT DONE,
+	// whether it is the `ls` tool or that same read wrapped in a pipeline:
+	// `cd <cwd> && ls -la && cat week.csv`, or `git log`, is a lookup rather
+	// than the action that answered a failure. It is judged by what each
+	// command DOES, never by the tool's name.
+	if shellToolName(name) && shellMetadataOnly(body) {
+		return false
+	}
+	return sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal)
+}
+
+// sharedMeaningfulActionToken answers whether the two action bodies share a
+// WHOLE, meaningful token. Matching is on tokens, never on a raw substring, so
+// `ledger` does not match inside `ledgering`. A token the success carries only
+// as part of a path (the shared cwd every command of one session runs in) never
+// counts; a token the failure carries only as part of a path counts only when
+// the turn's own GOAL named it, because a goal token is the purpose the work was
+// done for and a cwd part like the project name is not. Without both halves the
+// shared `cd /home/.../<project> &&` prefix alone would make any unrelated bash
+// command the alternative.
+func sharedMeaningfulActionToken(failedBody, successBody, goal string) bool {
+	failed := actionTokens(failedBody)
+	if len(failed) == 0 {
+		return false
+	}
+	success := actionTokens(successBody)
+	if len(success) == 0 {
+		return false
+	}
+	failedPaths := shellPathTokens(failedBody)
+	successPaths := shellPathTokens(successBody)
+	purpose := outcomeTerms(goal)
+	for token := range success {
+		if !failed[token] || successPaths[token] {
+			continue
 		}
+		if failedPaths[token] && !purpose[token] {
+			continue
+		}
+		return true
 	}
 	return false
+}
+
+// actionTokens splits a lowercased action body into its distinct WHOLE words.
+// A token is a maximal run of letters and digits; short fragments, the generic
+// engineering vocabulary and the shell/interpreter words that join any two
+// commands are dropped, so only a meaningful token can carry the association.
+func actionTokens(body string) map[string]bool {
+	tokens := map[string]bool{}
+	for _, field := range strings.FieldsFunc(strings.ToLower(body), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		if len([]rune(field)) < 3 || outcomeStopwords[field] || actionGenericTokens[field] {
+			continue
+		}
+		tokens[field] = true
+	}
+	return tokens
+}
+
+// shellPathTokens returns the words an action contributes ONLY through an
+// ABSOLUTE path-like span: the shared cwd. A word the body ALSO spells outside
+// a path (the `ledger` in `ledger.py`, beside the cwd's own `ledger`) is not
+// path-only, because the action named the thing itself. A relative `./target`
+// is the thing under test rather than a cwd part, so it is not collected.
+func shellPathTokens(body string) map[string]bool {
+	inPath := map[string]bool{}
+	elsewhere := map[string]bool{}
+	for _, field := range strings.Fields(body) {
+		word := strings.Trim(field, "\"'`()[]{};,&|")
+		parts := splitActionWord(word)
+		absolute := strings.HasPrefix(word, "/") || strings.HasPrefix(word, "~") || strings.HasPrefix(word, "$HOME")
+		for _, part := range parts {
+			if absolute {
+				inPath[part] = true
+			} else {
+				elsewhere[part] = true
+			}
+		}
+	}
+	for token := range elsewhere {
+		delete(inPath, token)
+	}
+	return inPath
+}
+
+// splitActionWord is the one whole-token splitter the association uses: a word
+// becomes its maximal runs of letters and digits.
+func splitActionWord(word string) []string {
+	return strings.FieldsFunc(strings.ToLower(word), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+}
+
+// actionGenericTokens are the shell, path and interpreter words an action
+// shares with any other action: navigation, the interpreters' own names and the
+// bare directory words a build sits in. They are never evidence of the same
+// work.
+var actionGenericTokens = map[string]bool{
+	"cd": true, "chdir": true, "pushd": true, "popd": true, "sudo": true,
+	"doas": true, "exec": true, "export": true, "source": true, "env": true,
+	"set": true, "unset": true, "echo": true, "exit": true, "nohup": true,
+	"then": true, "else": true, "done": true, "fi": true, "esac": true,
+	"and": true, "not": true, "true": true, "false": true,
+	"import": true, "from": true, "print": true, "return": true, "def": true,
+	"class": true, "func": true, "main": true, "args": true, "argv": true,
+	"python": true, "python3": true, "pip": true, "node": true, "ruby": true,
+	"perl": true, "java": true, "bash": true, "zsh": true, "dash": true,
+	"venv": true, "bin": true, "usr": true, "lib": true, "opt": true,
+	"tmp": true, "var": true, "etc": true, "local": true, "share": true,
+}
+
+// shellToolName reports whether a tool runs a shell command, so its action body
+// can be read as a pipeline.
+func shellToolName(name string) bool {
+	switch name {
+	case "bash", "sh", "shell", "zsh", "dash":
+		return true
+	}
+	return false
+}
+
+// shellMetadataOnly answers whether a shell action is nothing but metadata and
+// lookups: reading a directory, printing a file, asking git for history. Such a
+// command is never the way a failed piece of work got done, whether it is a
+// bare `ls` or the same read wrapped in a pipeline. A body it cannot read is
+// treated as ordinary work, never as metadata, so an unfamiliar command is
+// never mislabelled.
+func shellMetadataOnly(body string) bool {
+	replacer := strings.NewReplacer("&&", "\n", "||", "\n")
+	segments := strings.FieldsFunc(replacer.Replace(body), func(r rune) bool {
+		return r == '\n' || r == ';' || r == '|'
+	})
+	read := false
+	for _, segment := range segments {
+		words := shellSegmentCommand(segment)
+		if len(words) == 0 {
+			continue
+		}
+		read = true
+		if !shellCommandIsMetadata(words) {
+			return false
+		}
+	}
+	return read
+}
+
+// shellSegmentCommand returns the command word a shell segment runs, with
+// navigation, assignments and wrappers skipped so the real program is read. A
+// `git` segment also carries its subcommand. It is a small lexical reader, not
+// a shell parser.
+func shellSegmentCommand(segment string) []string {
+	fields := strings.Fields(segment)
+	for i := 0; i < len(fields); i++ {
+		word := strings.Trim(fields[i], "\"'`")
+		if word == "" || shellAssignment(word) {
+			continue
+		}
+		command := shellWordBase(word)
+		if shellCommandIgnored[command] {
+			continue
+		}
+		words := []string{command}
+		if command == "git" {
+			for j := i + 1; j < len(fields); j++ {
+				candidate := strings.Trim(fields[j], "\"'`")
+				if strings.HasPrefix(candidate, "-") || shellAssignment(candidate) || strings.ContainsAny(candidate, "/\\") {
+					continue
+				}
+				words = append(words, strings.ToLower(candidate))
+				break
+			}
+		}
+		return words
+	}
+	return nil
+}
+
+// shellCommandIsMetadata answers whether one command word is a metadata or
+// lookup action. A bare git counts (it prints usage); a git read subcommand
+// counts; anything else does not.
+func shellCommandIsMetadata(words []string) bool {
+	if len(words) == 0 {
+		return true
+	}
+	if words[0] == "git" {
+		return len(words) < 2 || shellGitReadSubcommands[words[1]]
+	}
+	return shellMetadataCommands[words[0]]
+}
+
+// shellWordBase is the program name at the end of a possibly relative or
+// absolute path, lowercased.
+func shellWordBase(word string) string {
+	if i := strings.LastIndexAny(word, "/\\"); i >= 0 {
+		word = word[i+1:]
+	}
+	return strings.ToLower(word)
+}
+
+// shellAssignment reports whether a word is a NAME=value binding rather than a
+// command.
+func shellAssignment(word string) bool {
+	i := strings.Index(word, "=")
+	if i <= 0 {
+		return false
+	}
+	for _, r := range word[:i] {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+// shellCommandIgnored are the shell words skipped before the real program is
+// read: navigation, wrappers and variable setting, never a lookup itself.
+var shellCommandIgnored = map[string]bool{
+	"cd": true, "chdir": true, "pushd": true, "popd": true, "sudo": true,
+	"doas": true, "env": true, "exec": true, "nohup": true, "time": true,
+	"then": true, "else": true, "done": true, "fi": true, "esac": true,
+	"do": true, "for": true, "while": true, "if": true, "and": true, "or": true,
+}
+
+// shellMetadataCommands are the read-only lookup and metadata verbs that are
+// never the way a failed action got done.
+var shellMetadataCommands = map[string]bool{
+	"ls": true, "cat": true, "head": true, "tail": true, "find": true,
+	"grep": true, "rg": true, "wc": true, "stat": true, "file": true,
+	"du": true, "df": true, "tree": true, "pwd": true, "echo": true,
+	"which": true, "whereis": true, "type": true,
+	"less": true, "more": true, "column": true, "realpath": true,
+	"readlink": true, "basename": true, "dirname": true, "whoami": true,
+	"uname": true, "date": true, "hostname": true, "id": true, "sort": true,
+	"uniq": true, "cut": true, "tr": true, "diff": true, "md5sum": true,
+	"sha256sum": true, "help": true, "man": true, "history": true,
+}
+
+// shellGitReadSubcommands are the git subcommands that only read history or
+// configuration; any other git command is treated as ordinary work.
+var shellGitReadSubcommands = map[string]bool{
+	"log": true, "status": true, "diff": true, "show": true, "branch": true,
+	"remote": true, "config": true, "ls-files": true, "rev-parse": true,
+	"describe": true, "blame": true, "tag": true, "shortlog": true,
+	"reflog": true, "cat-file": true, "ls-remote": true, "show-ref": true,
+	"symbolic-ref": true, "whatchanged": true,
 }
 
 // attemptActionBody strips the "tool: " prefix [attemptAction] adds and returns
