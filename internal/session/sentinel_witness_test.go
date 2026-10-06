@@ -1,10 +1,11 @@
 package session
 
-// sentinel_witness_test.go pins the authority half of the readiness-witness
-// repair: the person's own sentence is the sentinel's criterion, and what the
-// proposer guessed a yes would look like is a guess with provenance, never the
-// criterion itself. It is a mechanical reading of the composed prompt, not
-// evidence about a live model: the native proof is root's.
+// sentinel_witness_test.go pins the MECHANICAL half of the watch-grounding fix:
+// what the judgment carries, and that the prompt states the rule once. It is a
+// string reading of the composed prompt and question, NOT evidence about a live
+// model -- the production-seam matrix is TestStandingSentinelGroundingE2E
+// (internal/e2e/standing_sentinel_grounding_e2e_test.go), which drives the real
+// provider and is where the semantic claim is made.
 
 import (
 	"strings"
@@ -13,66 +14,78 @@ import (
 	"github.com/Agent-Field/codeaf/internal/standing"
 )
 
-// THE CRITERION AND THE GUESS ARE NAMED APART. The failing watch's hint said
-// "yes when the output is 200" while the person asked for readiness; the
-// question must hand the sentence to the sentinel as the thing to judge and the
-// hint as the proposer's own note, so a match to the note is not a match to the
-// ask.
-func TestTheSentinelIsGivenThePersonAsTheCriterionNotTheHint(t *testing.T) {
-	judgment := standing.Judgment{
+// statusOnlyWatch is the failing shape's judgment: the person asked for
+// readiness, the probe threw the body away, and only the status code came back.
+func statusOnlyWatch() standing.Judgment {
+	return standing.Judgment{
 		Item: standing.Item{
 			Words: "Notify me once when the health endpoint at http://127.0.0.1:18777/ready becomes ready.",
-			When:  standing.When{Kind: standing.WhenProbe, Hint: "yes when the output is 200"},
+			When: standing.When{
+				Kind: standing.WhenProbe,
+				Hint: "yes when the output is 200",
+				Probe: standing.Probe{
+					Command: "curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:18777/ready",
+				},
+			},
 		},
 		Evidence: "200",
 	}
-	question := standingSentinelQuestion(judgment)
-	if !strings.Contains(question, "the criterion, their own words") {
-		t.Fatalf("the person's sentence is not named as the criterion:\n%s", question)
-	}
-	if !strings.Contains(question, "Notify me once when the health endpoint") {
-		t.Fatalf("the person's own words are missing from the judgment:\n%s", question)
+}
+
+// THE CRITERION, THE GUESS, AND THE LOOK ARE NAMED APART. The person's sentence
+// is the thing judged; the hint is the proposer's note; and the command that
+// produced the evidence travels with it, so a status-only look cannot pass for a
+// reading of the body.
+func TestTheSentinelIsGivenThePersonTheGuessAndTheLook(t *testing.T) {
+	question := standingSentinelQuestion(statusOnlyWatch())
+	for _, want := range []string{
+		"the criterion, their own words",
+		"Notify me once when the health endpoint",
+		"the proposer's guess",
+		"WHAT THE CHECK RAN",
+		"curl -s -o /dev/null -w '%{http_code}'",
+		"WHAT THE CHECK FOUND:\n200",
+	} {
+		if !strings.Contains(question, want) {
+			t.Fatalf("the judgment is missing %q:\n%s", want, question)
+		}
 	}
 	if strings.Contains(question, "WHAT A YES LOOKS LIKE:") {
 		t.Fatalf("the hint still reads as the criterion:\n%s", question)
 	}
-	if !strings.Contains(question, "the proposer's guess") {
-		t.Fatalf("the hint carries no provenance:\n%s", question)
-	}
-	// The observed evidence travels whole, whatever it is.
-	if !strings.Contains(question, "WHAT THE CHECK FOUND:\n200") {
-		t.Fatalf("the evidence did not reach the sentinel:\n%s", question)
+	// The closing instruction must agree with the prompt's three-way contract.
+	if !strings.Contains(question, "Answer yes, no or unknown as the first word") {
+		t.Fatalf("the question still asks a two-way contract:\n%s", question)
 	}
 }
 
-// AND THE INSTRUCTION SAYS WHAT TO DO WITH A WEAKER FACT. A transport reading
-// where the person asked about readiness is the observed failure, and the
-// prompt names it: a match to the guess does not settle their condition.
-func TestTheSentinelPromptRefusesAMatchWeakerThanTheAsk(t *testing.T) {
-	if !strings.Contains(standingSentinelPrompt, "IS THE ONLY CRITERION") {
-		t.Fatalf("the prompt does not make the person's sentence the criterion:\n%s", standingSentinelPrompt)
-	}
-	if !strings.Contains(standingSentinelPrompt, "the proposer's own guess, not their words") {
-		t.Fatalf("the prompt does not distinguish the guess from their words:\n%s", standingSentinelPrompt)
-	}
-	if !strings.Contains(standingSentinelPrompt, "an application is ready") {
-		t.Fatalf("the prompt does not name the reachability-versus-readiness case:\n%s", standingSentinelPrompt)
+// THE INSTRUCTION SAYS WHAT A WEAKER READING IS. A status-only probe where the
+// person asked about the application is unknown, and the prompt states it as a
+// property of the look rather than of one endpoint.
+func TestTheSentinelPromptRefusesAReadingWeakerThanTheAsk(t *testing.T) {
+	for _, want := range []string{
+		"IS THE ONLY CRITERION",
+		"the proposer's own guess, not their words",
+		"proves only that something answered",
+		"an application is ready",
+		"when the person's own words made that reading their criterion",
+	} {
+		if !strings.Contains(standingSentinelPrompt, want) {
+			t.Fatalf("the prompt is missing %q:\n%s", want, standingSentinelPrompt)
+		}
 	}
 }
 
-// CLIPPING IS CARRIED, NOT ABSORBED. The reading a sentinel is handed says it
-// was cut, so no partial view can be compared with a whole one.
-func TestAProbeReadingKeepsTheClipItConfirmed(t *testing.T) {
-	text := strings.Repeat("x", standing.ProbeClip+64) + "\ntail line"
-	reading := standingProbeReading(text)
-	if !reading.Clipped {
-		t.Fatalf("an oversize reading was not marked clipped: %+v", reading)
+// A CHECK WITH NO PROBE OF ITS OWN CARRIES NO LOOK. A file watch or a rhythm has
+// its evidence in the file or the clock, so there is nothing to attribute and no
+// command is invented for it.
+func TestAFileWatchCarriesNoProbeCommand(t *testing.T) {
+	item := standing.Item{When: standing.When{Kind: standing.WhenFile, Glob: "*.sql"}}
+	if look := standingSentinelLook(item); look != "" {
+		t.Fatalf("a file watch invented a look: %q", look)
 	}
-	if !strings.Contains(reading.Text, "tail line") {
-		t.Fatalf("the clipped reading lost the tail:\n%s", reading.Text)
-	}
-	short := standingProbeReading("{\"ready\": true}")
-	if short.Clipped {
-		t.Fatalf("a small reading was marked clipped: %+v", short)
+	tool := standing.Item{When: standing.When{Probe: standing.Probe{Tool: "read", Args: []byte(`{"path":"a"}`)}}}
+	if look := standingSentinelLook(tool); look != `read {"path":"a"}` {
+		t.Fatalf("a tool probe's call was not carried: %q", look)
 	}
 }

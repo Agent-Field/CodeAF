@@ -1447,6 +1447,8 @@ You are also shown what you said the last few times and what came of it. Do not 
 
 THE PERSON'S SENTENCE IS THE ONLY CRITERION. A note of what a yes was expected to look like is the proposer's own guess, not their words, and a match to it does not settle what they asked. When the check shows something weaker than what they named — a host answering where they asked whether an application is ready, a process running where they asked whether the work finished — answer "unknown" and say what the check could not see.
 
+WHAT THE CHECK RAN IS PART OF THE EVIDENCE, AND IT SHOWS WHAT THE LOOK COULD SEE. The command or tool the look actually ran travels with the output: a probe that discarded the body — a status code, a ping, a port that answers — proves only that something answered, and answering is not the application being ready. Read the output as exactly what that look could print, never as the contract it was meant to stand for. A weaker reading than the person named is "unknown", and the sentence says what the check could not see. Answer "yes" only when the output itself carries the thing they named — a file's contents, a field in the JSON, the conclusion of a real run — or when the person's own words made that reading their criterion, as "tell me when it answers HTTP 200" does.
+
 When the evidence does not settle it — it is ambiguous, unreadable, or you cannot tell — answer "unknown" and say what stopped you. Never answer "no" for something you could not actually decide: a false no buries what the person asked to be told, and a wrong yes interrupts somebody for nothing.`
 
 // NO CEILING TRAVELS WITH A SENTINEL ANSWER. There was one — 1024, already
@@ -1605,15 +1607,24 @@ func NewStandingSentinelVerdict(parent Config) standing.SentinelVerdict {
 }
 
 // standingSentinelQuestion is the judgment as the sentinel reads it: their
-// words, the hint the model wrote when the item was proposed, the evidence, and
-// the history — which is the only part that moves between checks, and the whole
-// reason a declined firing is not proposed again every wake forever.
+// words, the hint the model wrote when the item was proposed, the look the check
+// itself ran, the evidence, and the history — which is the only part that moves
+// between checks, and the whole reason a declined firing is not proposed again
+// every wake forever.
+//
+// THE LOOK TRAVELS WITH ITS OUTPUT. A status code and a body read to the end are
+// the same two characters on their own; what separates them is the command that
+// produced them, so it is shown, and the sentinel can see that a probe which
+// wrote to /dev/null never read the thing the person named.
 func standingSentinelQuestion(judgment standing.Judgment) string {
 	var out strings.Builder
 	out.WriteString("WHAT THEY ASKED FOR (the criterion, their own words):\n")
 	out.WriteString(strings.TrimSpace(judgment.Item.Words))
 	if hint := strings.TrimSpace(judgment.Item.When.Hint); hint != "" {
 		out.WriteString("\n\nWHAT A YES WAS EXPECTED TO LOOK LIKE (the proposer's guess at setup, not their words):\n" + hint)
+	}
+	if look := standingSentinelLook(judgment.Item); look != "" {
+		out.WriteString("\n\nWHAT THE CHECK RAN (the look's own command; whatever it did not print it never read):\n" + look)
 	}
 	evidence := strings.TrimSpace(judgment.Evidence)
 	if evidence == "" {
@@ -1626,8 +1637,33 @@ func standingSentinelQuestion(judgment standing.Judgment) string {
 			out.WriteString("- " + strings.TrimSpace(line) + "\n")
 		}
 	}
-	out.WriteString("\nHas it happened? Answer yes or no, then one plain sentence.")
+	out.WriteString("\nHas it happened? Answer yes, no or unknown as the first word, then one plain sentence.")
 	return out.String()
+}
+
+// standingSentinelLook is what the check itself ran, in the one form the
+// sentinel can read: the probe's shell command, or the belt tool and the
+// arguments it was called with. Empty when the item has no probe of its own —
+// a file watch or a rhythm — because there the evidence is the file or the
+// clock and there is no look to attribute it to.
+//
+// IT IS THE ITEM'S OWN RECORD, NEVER A RE-DERIVATION. The command the person
+// approved is [standing.When.Probe], stored whole; showing it here cannot start
+// anything, and nothing in this reading executes what it names.
+func standingSentinelLook(item standing.Item) string {
+	probe := item.When.Probe
+	if command := strings.TrimSpace(probe.Command); command != "" {
+		return command
+	}
+	tool := strings.TrimSpace(probe.Tool)
+	if tool == "" {
+		return ""
+	}
+	args := strings.TrimSpace(string(probe.Args))
+	if args == "" || args == "{}" {
+		return tool
+	}
+	return tool + " " + args
 }
 
 // standingVerdict reads the answer. It is v1's parse (cmd/codeaf/chat.go's
