@@ -782,6 +782,17 @@ func shellSegments(body string) []string {
 					i = end - 1
 					continue
 				}
+				// AN UNTERMINATED HEREDOC: bash feeds the whole remainder of
+				// the input to the interpreter's stdin at EOF, so those lines
+				// are BODY, never loose shell commands. Keeping them in this
+				// segment is what stops a body line that happens to look like
+				// a reader from being scanned as a command that falsely names a
+				// file the interpreter only reads.
+				if end, ok := unterminatedHeredocRest(runes, i); ok {
+					b.WriteString(string(runes[i:end]))
+					i = end - 1
+					continue
+				}
 			}
 			b.WriteRune(r)
 		case ';', '|', '&', '\n':
@@ -849,6 +860,43 @@ func heredocMarker(header string) string {
 	rest := strings.TrimSpace(header[i+2:])
 	rest = strings.TrimPrefix(rest, "-")
 	return strings.Trim(strings.TrimSpace(rest), "'\"")
+}
+
+// plausibleHeredocMarker answers whether a `<<` header's terminator word is a
+// real heredoc delimiter and not the tail of an arithmetic shift (`$((1 << 2))`,
+// whose "marker" is `2))`). Only a word-shaped delimiter can open a body.
+func plausibleHeredocMarker(marker string) bool {
+	if marker == "" {
+		return false
+	}
+	for i := 0; i < len(marker); i++ {
+		c := marker[i]
+		if isIdentifierPart(c) || c == '.' || c == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// unterminatedHeredocRest answers whether the `<<` at runes[start] opens a
+// genuine heredoc whose terminator never arrives. When it does, EVERYTHING after
+// the header is the stdin body bash feeds the interpreter at EOF, so the caller
+// keeps it in the same segment rather than splitting it into phantom commands.
+// It answers false for a `<<` with no header line or an arithmetic shift, which
+// stay ordinary text.
+func unterminatedHeredocRest(runes []rune, start int) (int, bool) {
+	lineEnd := start
+	for lineEnd < len(runes) && runes[lineEnd] != '\n' {
+		lineEnd++
+	}
+	if lineEnd >= len(runes) {
+		return 0, false
+	}
+	if !plausibleHeredocMarker(heredocMarker(string(runes[start:lineEnd]))) {
+		return 0, false
+	}
+	return len(runes), true
 }
 
 // heredocOperators counts the stdin redirection operators (`<<` and `<<<`) a
@@ -1274,6 +1322,15 @@ func shellSegmentOperands(segment string) []string {
 			// included.
 			if p.provided {
 				prog = p.text
+				// AN EXPLICIT EMPTY PROGRAM EXECUTES NOTHING, so the file
+				// arguments left on the command line are the interpreter's own
+				// argv, never a file it reads: `.venv/bin/python -c '' vendor.csv`
+				// names no operand. A non-empty program keeps the ordinary
+				// command literal operands. This is the only case the guard
+				// covers, so `python ledger.py vendor.csv` is untouched.
+				if strings.TrimSpace(prog) == "" {
+					return nil
+				}
 			}
 			if p.idx >= 0 {
 				skip[p.idx] = true
@@ -1524,15 +1581,130 @@ func programFileOperands(prog string) []string {
 	return out
 }
 
-// programCallTopLevel answers whether the call beginning at offset start sits on
-// an UNINDENTED line, i.e. at module top level where a bare name is the global
-// the program declared rather than a block- or function-local shadow.
+// programCallTopLevel answers whether the call beginning at offset start sits at
+// MODULE top level: on an unindented line AND outside any single-line compound
+// suite. An unindented one-line body (`def f(): return open(path)`,
+// `if False: open(path)`, `lambda: open(path)`) is NOT top level: the call is in
+// a def/if/lambda body that may never run, so a bare name there could be a
+// parameter or local shadow and is left unknown. A `with open(path, ...)` header
+// keeps its call top level, because the call comes BEFORE the suite colon.
 func programCallTopLevel(prog string, start int) bool {
 	line := start
 	for line > 0 && prog[line-1] != '\n' {
 		line--
 	}
-	return line >= len(prog) || (prog[line] != ' ' && prog[line] != '\t')
+	if line < len(prog) && (prog[line] == ' ' || prog[line] == '\t') {
+		return false
+	}
+	return !programCallInCompoundSuite(prog, line, start)
+}
+
+// compoundStatementKeywords are the words that can open a single-line suite: the
+// colon that ends their header puts everything after it in a body this reader
+// must not treat as module top level.
+var compoundStatementKeywords = map[string]bool{
+	"def": true, "class": true, "if": true, "elif": true, "else": true,
+	"for": true, "while": true, "try": true, "except": true, "finally": true,
+	"with": true, "match": true, "case": true, "lambda": true,
+}
+
+// programCallInCompoundSuite answers whether the call at absolute offset start
+// sits inside a single-line compound suite on the line beginning at `line`. It
+// is true for a `lambda` expression before the call and for a call that comes
+// after the suite colon of a def/if/for/with/... header.
+func programCallInCompoundSuite(prog string, line, start int) bool {
+	end := line
+	for end < len(prog) && prog[end] != '\n' {
+		end++
+	}
+	text := prog[line:end]
+	if programTokenBefore(text, start-line, "lambda") {
+		return true
+	}
+	if colon := compoundHeaderColon(text); colon >= 0 && line+colon < start {
+		return true
+	}
+	return false
+}
+
+// compoundHeaderColon returns the index of the colon that ends a compound
+// statement header on an unindented line, or -1 when the line is not one. The
+// suite colon is the first top-level one outside a string or bracket, so a
+// `with open(path, newline="") as f:` header reports the colon AFTER its call
+// and the call stays top level.
+func compoundHeaderColon(line string) int {
+	i := 0
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	head := i
+	for i < len(line) && isIdentifierPart(line[i]) {
+		i++
+	}
+	if head == i || !compoundStatementKeywords[line[head:i]] {
+		return -1
+	}
+	depth := 0
+	var quote byte
+	for j := i; j < len(line); j++ {
+		c := line[j]
+		if quote != 0 {
+			if c == '\\' {
+				j++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			if depth > 0 {
+				depth--
+			}
+		case '#':
+			return -1
+		case ':':
+			if depth == 0 {
+				return j
+			}
+		}
+	}
+	return -1
+}
+
+// programTokenBefore answers whether the identifier token `tok` appears before
+// byte offset in text, read outside string literals and comments: the `lambda`
+// keyword of an expression that only BUILDS a function.
+func programTokenBefore(text string, offset int, tok string) bool {
+	for i := 0; i < offset && i < len(text); {
+		c := text[i]
+		if c == '#' {
+			return false
+		}
+		if c == '\'' || c == '"' {
+			i = skipStringLiteral(text, i)
+			continue
+		}
+		if isIdentifierStart(c) {
+			j := i
+			for j < len(text) && isIdentifierPart(text[j]) {
+				j++
+			}
+			if text[i:j] == tok {
+				return true
+			}
+			i = j
+			continue
+		}
+		i++
+	}
+	return false
 }
 
 // programCode masks the string-literal and comment spans of an inline program

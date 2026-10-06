@@ -368,6 +368,15 @@ print("no read")
 vendor.csv`,
 		"filename here-string":        `.venv/bin/python - <<<'vendor.csv'`,
 		"filename delimiter, no body": `.venv/bin/python - <<'week.csv'`,
+		// R-L2: an UNTERMINATED heredoc is fed to the interpreter's stdin to
+		// EOF, so its body lines are never loose shell commands. A reader line
+		// in that body must not falsely name the file.
+		"unterminated body, reader one-liner": `.venv/bin/python - <<'PY'
+.venv/bin/python -c 'open("vendor.csv")'`,
+		"unterminated body, ledger run": `.venv/bin/python - <<'PY'
+.venv/bin/python ledger.py vendor.csv`,
+		"unterminated body, filename delimiter": `.venv/bin/python - <<x.csv
+.venv/bin/python ledger.py vendor.csv`,
 	}
 	for name, body := range falseOpens {
 		if got := heredocOperands(body); len(got) != 0 {
@@ -411,6 +420,24 @@ def f():
     path = "vendor.csv"
     return open(path)
 PY`,
+		// R-L1: a ONE-LINE compound body is unindented yet still a suite the
+		// reader cannot prove runs, so its read names no operand.
+		"one-line def parameter shadow": `.venv/bin/python - <<'PY'
+path = "vendor.csv"
+def f(path): return open(path, "rb").read()
+PY`,
+		"one-line def body": `.venv/bin/python - <<'PY'
+path = "vendor.csv"
+def f(): return open(path, "rb").read()
+PY`,
+		"one-line if branch": `.venv/bin/python - <<'PY'
+path = "vendor.csv"
+if False: open(path, "rb").read()
+PY`,
+		"one-line lambda": `.venv/bin/python - <<'PY'
+path = "vendor.csv"
+x = lambda: open(path, "rb").read()
+PY`,
 	}
 	for name, body := range unexecuted {
 		if got := heredocOperands(body); len(got) != 0 {
@@ -433,5 +460,34 @@ milestone = Path(path).read_bytes()
 PY`
 	if got := heredocOperands(stillReads); len(got) == 0 || got[0] != "vendor.csv" {
 		t.Errorf("the top-level vendor shape stopped resolving: %v", got)
+	}
+
+	// R-L4: an EXPLICIT EMPTY inline program executes nothing, so the file
+	// arguments left on its command line are the interpreter's argv and name no
+	// operand. A non-empty inline program and an ordinary script run keep their
+	// ordinary command literal operands.
+	emptyInline := map[string]string{
+		"empty -c with bare file argument": `.venv/bin/python -c '' vendor.csv`,
+		"empty -c, bare arg and heredoc": `.venv/bin/python -c '' vendor.csv <<'PY'
+path = "vendor.csv"
+raw = open(path, "rb").read()
+PY`,
+	}
+	for name, body := range emptyInline {
+		if got := heredocOperands(body); len(got) != 0 {
+			t.Errorf("%s named an operand: %v", name, got)
+		}
+		if alternativeEligible(delegatedBashCall("l", body), "bash", "bash: "+heredocFailed, heredocGoal, "/w") {
+			t.Errorf("%s was eligible as the alternative", name)
+		}
+	}
+	for name, body := range map[string]string{
+		"ordinary script run":       `.venv/bin/python ledger.py vendor.csv`,
+		"real inline -c reader":     `.venv/bin/python -c 'open("vendor.csv")'`,
+		"non-empty -c and file arg": `.venv/bin/python -c 'open("week.csv")' vendor.csv`,
+	} {
+		if got := heredocOperands(body); len(got) == 0 {
+			t.Errorf("%s stopped naming its ordinary literal operand: %v", name, got)
+		}
 	}
 }
