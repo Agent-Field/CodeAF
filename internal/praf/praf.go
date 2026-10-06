@@ -138,8 +138,8 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	fs.StringVar(&o.model, "model", "", "the model that reads the code (default: the run's work seat)")
 	fs.StringVar(&o.light, "light", "", "the model for single structured calls (default: --model)")
 	fs.IntVar(&o.sessions, "sessions", sessionsAtOnce, "how many agent sessions run at once")
-	fs.IntVar(&o.maxTurns, "max-turns", 0, "the most turns every agent session takes (default: each agent's own)")
-	fs.DurationVar(&o.sessionWall, "session-wall", 0, "the longest every agent session runs (default: each agent's own)")
+	fs.IntVar(&o.maxTurns, "max-turns", 0, "most turns of any agent session (default: the agent's own)")
+	fs.DurationVar(&o.sessionWall, "session-wall", 0, "longest any agent session runs (default: the agent's own)")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		o.brief = strings.Join(args, " ")
 		run(ctx, host, o, os.Stderr)
