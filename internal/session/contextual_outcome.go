@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -34,7 +35,7 @@ const priorOutcomeLimit = 2
 // the RESULT, from any particular failed entrypoint. Being a constant, it is
 // counted against the one shared dynamic ceiling exactly once per request
 // ([frameworkCeiling]).
-const frameworkMethodPolicy = "Framework method policy, apart from the rows. When the goal leaves the method open, use a compatible observed working approach, run on the current inputs for a fresh result, rather than re-running a known-failed method only to reconfirm that it failed. A stated constraint — runtime, exactness, no edits — fixes the result, not a particular failed entrypoint; do not read it as a demand to run the exact command that failed. Delegating to a member: pass the observations and let the member choose the method. Re-run a failed method only when the person explicitly asks, when the work is explicitly to debug or test that method, or when actual evidence — not a matching source snapshot alone — confirms the circumstances changed."
+const frameworkMethodPolicy = "Framework method policy, apart from the rows. When the goal leaves the method open, use a compatible observed working approach, run on the current inputs for a fresh result, rather than re-running a known-failed method only to reconfirm that it failed. A stated constraint — runtime, exactness, no edits — fixes the result, not a particular failed entrypoint; do not read it as a demand to run the exact command that failed. Delegating to a member: pass the observations and let the member choose the method. Re-run a failed method only when the person explicitly asks for it, when the person's own goal is itself to debug, test or reproduce that method, or when actual evidence — not a matching source snapshot alone — confirms the circumstances changed."
 
 // recordMemoryAttempt writes one independently observed outcome at the
 // executeTool boundary, BEFORE any model has been asked what the turn meant. It
@@ -3715,7 +3716,7 @@ func (a *Agent) priorOutcomeBlock(st *store.Store, projectKey, cue, snapshot str
 	if len(terms) == 0 {
 		return ""
 	}
-	lines := priorOutcomeLines(attempts, terms, snapshot)
+	lines := priorOutcomeLines(attempts, cue, terms, snapshot, a.config.Workspace)
 	if len(lines) == 0 {
 		return ""
 	}
@@ -3739,33 +3740,151 @@ func (a *Agent) priorOutcomeRows(st *store.Store, key string) ([]store.Contextua
 	return attempts, true
 }
 
-// priorOutcomeLines renders the bounded history: A PAIR OUTRANKS RECENCY, so
-// the newest relevant failure whose OWN source key carries a genuine
-// alternative is rendered first and the remaining slots are then filled with
-// the newest remaining failures, paired or not.
-func priorOutcomeLines(attempts []store.ContextualAttempt, terms map[string]bool, snapshot string) []string {
+// priorOutcomeLines renders the bounded history. GROUNDED EVIDENCE OUTRANKS
+// RECENCY: the relevant failure whose action most nearly operates on the goal's
+// own artifact — it USES a file the goal names, and uses FEW non-goal,
+// non-program files besides — is ranked first, so a specific demonstrated
+// method is not crowded out by a newer command that merely read the goal file
+// on the way to failing elsewhere. This ranks evidence, it does not claim which
+// segment of a compound command failed. The second slot prefers a DISTINCT
+// method or input, held behind the same two-slot bound, so two rows never repeat
+// the same evidence; if every remaining row repeats the first row's method, the
+// one that carries a genuine observed success is still shown, and otherwise the
+// slot stays empty rather than duplicating a row. A working alternative stays
+// attached to its own failure in the same bullet.
+func priorOutcomeLines(attempts []store.ContextualAttempt, goal string, terms map[string]bool, snapshot, workspace string) []string {
 	alternatives := indexPriorAlternatives(attempts)
 	relevant := relevantFailures(attempts, terms)
-	lines := make([]string, 0, priorOutcomeLimit)
-	rendered := make([]bool, len(relevant))
-	for i, at := range relevant {
-		if len(alternatives[at.SourceKey]) == 0 {
-			continue
-		}
-		lines = append(lines, renderPriorAttempt(at, snapshot, alternatives[at.SourceKey]...))
-		rendered[i] = true
-		break
+	if len(relevant) == 0 {
+		return nil
 	}
-	for i, at := range relevant {
-		if len(lines) >= priorOutcomeLimit {
-			break
-		}
-		if rendered[i] {
-			continue
-		}
-		lines = append(lines, renderPriorAttempt(at, snapshot, alternatives[at.SourceKey]...))
+	ordered := rankPriorFailures(relevant, goal, workspace, alternatives)
+	lines := make([]string, 0, priorOutcomeLimit)
+	first := ordered[0]
+	lines = append(lines, renderPriorAttempt(first, snapshot, alternatives[first.SourceKey]...))
+	if len(lines) >= priorOutcomeLimit {
+		return lines
+	}
+	if second, ok := nextDistinctPriorFailure(ordered[1:], first, alternatives, workspace); ok {
+		lines = append(lines, renderPriorAttempt(second, snapshot, alternatives[second.SourceKey]...))
 	}
 	return lines
+}
+
+// priorFailureEvidence is the deterministic rank of one failure: whether its
+// action USES a file the goal names, how many non-goal, non-program files it
+// also uses, and whether its own source key carries an observed alternative.
+type priorFailureEvidence struct {
+	at       store.ContextualAttempt
+	grounded bool
+	extras   int
+	hasAlt   bool
+}
+
+// rankPriorFailures orders the relevant failures by evidence, newest-first
+// within a tie: grounded first, then fewest extra non-program inputs, then the
+// one that carries an alternative, then the journal's own order. The stable sort
+// keeps recency only as the last word. The goal-file tie is the pairing's own
+// lexical reader, so a different directory's same-named file does not ground.
+func rankPriorFailures(relevant []store.ContextualAttempt, goal, workspace string, alternatives map[string][]store.ContextualAttempt) []store.ContextualAttempt {
+	goalFiles := goalFileIdentities(goal, workspace)
+	ranked := make([]priorFailureEvidence, len(relevant))
+	for i, at := range relevant {
+		ranked[i] = priorFailureEvidenceOf(at, goalFiles, workspace, len(alternatives[at.SourceKey]) > 0)
+	}
+	sort.SliceStable(ranked, func(i, j int) bool {
+		a, b := ranked[i], ranked[j]
+		if a.grounded != b.grounded {
+			return a.grounded
+		}
+		if a.extras != b.extras {
+			return a.extras < b.extras
+		}
+		return a.hasAlt && !b.hasAlt
+	})
+	out := make([]store.ContextualAttempt, len(ranked))
+	for i := range ranked {
+		out[i] = ranked[i].at
+	}
+	return out
+}
+
+// priorFailureEvidenceOf measures one failure against the goal's files. A
+// non-program file the goal did not name is an EXTRA input: the method runs its
+// own script beside the goal artifact without that counting against it, while an
+// unrelated data read does. It describes how nearly the method is about the goal
+// artifact; it is never used to say which segment failed.
+func priorFailureEvidenceOf(at store.ContextualAttempt, goalFiles map[string]bool, workspace string, hasAlt bool) priorFailureEvidence {
+	e := priorFailureEvidence{at: at, hasAlt: hasAlt}
+	for id := range shellUsedFileIdentities(attemptActionBody(at.Action), workspace) {
+		if goalFiles[id] {
+			e.grounded = true
+			continue
+		}
+		if !priorProgramFileIdentity(id) {
+			e.extras++
+		}
+	}
+	return e
+}
+
+// priorProgramFileIdentity answers whether a used file is the program a method
+// RUNS rather than an input it reads. The extension is the whole test: an
+// interpreter's own script (ledger.py, calc.sh, main.go) is the method's program,
+// and a data artifact (week.csv, notes.md, config.json) is an input.
+func priorProgramFileIdentity(id string) bool {
+	i := strings.LastIndex(id, ".")
+	if i < 0 || i == len(id)-1 {
+		return false
+	}
+	return priorProgramFileExtensions[strings.ToLower(id[i+1:])]
+}
+
+// priorProgramFileExtensions are the file extensions an executed program carries.
+var priorProgramFileExtensions = map[string]bool{
+	"py": true, "sh": true, "bash": true, "go": true, "js": true, "ts": true,
+	"rb": true, "rs": true, "java": true, "c": true, "h": true, "cpp": true,
+}
+
+// nextDistinctPriorFailure picks the second row: the highest-ranked failure of a
+// DIFFERENT method or input. If every remaining row repeats the first row's
+// method, a row that carries an observed alternative still renders — a genuine
+// working method is never dropped — and otherwise no second row is shown.
+func nextDistinctPriorFailure(rest []store.ContextualAttempt, first store.ContextualAttempt, alternatives map[string][]store.ContextualAttempt, workspace string) (store.ContextualAttempt, bool) {
+	firstKey := priorFailureMethodKey(first, workspace)
+	for _, at := range rest {
+		if priorFailureMethodKey(at, workspace) != firstKey {
+			return at, true
+		}
+	}
+	for _, at := range rest {
+		if len(alternatives[at.SourceKey]) > 0 {
+			return at, true
+		}
+	}
+	return store.ContextualAttempt{}, false
+}
+
+// priorFailureMethodKey is the deterministic identity of what a failure DID: the
+// program families of its working segments plus the lexical files it actually
+// used. Two failures with the same key are the same evidence twice. An action
+// with NO shell structure at all (a different tool, an unknown action) is NOT
+// merged with another: its own text and source key make it unique, so distinct
+// failed tools are never suppressed as if they were one method.
+func priorFailureMethodKey(at store.ContextualAttempt, workspace string) string {
+	body := attemptActionBody(at.Action)
+	parts := make([]string, 0, 8)
+	for word := range actionProgramWords(body) {
+		parts = append(parts, "p:"+word)
+	}
+	for id := range shellUsedFileIdentities(body, workspace) {
+		parts = append(parts, "f:"+id)
+	}
+	if len(parts) == 0 {
+		return "action:" + strings.TrimSpace(at.Action) + "#" + at.SourceKey
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, " ")
 }
 
 // indexPriorAlternatives indexes succeeded rows by the failed attempt's source
