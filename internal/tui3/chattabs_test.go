@@ -421,7 +421,14 @@ func TestTheStripsPiecesStandOneGapApart(t *testing.T) {
 			}
 			var pieces []piece
 			if a.wall.chip.pressable() {
-				pieces = append(pieces, piece{from: a.wall.chip.from, to: a.wall.chip.to})
+				end := a.wall.chip.to
+				if a.wall.chipClear.pressable() {
+					if end != a.wall.chipClear.from {
+						t.Fatal("the chip's clear target is detached from its name")
+					}
+					end = a.wall.chipClear.to
+				}
+				pieces = append(pieces, piece{from: a.wall.chip.from, to: end})
 			}
 			for _, hit := range a.chatTabHits {
 				switch hit.kind {

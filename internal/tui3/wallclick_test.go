@@ -174,11 +174,11 @@ func TestTabTeamChipNamesTheShownTeam(t *testing.T) {
 	a.wall.activeID = i
 	a.touch()
 	row := plain(a.tabsRow(a.width))
-	if !strings.Contains(row, "● harbor ▾") || !a.wall.chip.pressable() {
+	if !strings.Contains(row, "● harbor "+a.tabCloseWord()) || !a.wall.chip.pressable() || !a.wall.chipClear.pressable() {
 		t.Fatalf("no chip: %q %+v", row, a.wall.chip)
 	}
 	for _, hit := range a.chatTabHits {
-		if hit.span.from < a.wall.chip.to {
+		if hit.span.from < a.wall.chipClear.to {
 			t.Fatalf("a tab was drawn under the chip: %+v", hit)
 		}
 	}

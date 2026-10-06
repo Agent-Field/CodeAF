@@ -181,10 +181,7 @@ func (a *app) teamMenuMotion(x, y int) {
 	if hit, ok := a.tabAt(x, y); ok && (hit.kind == tabTeam || hit.kind == tabTeamClear) {
 		hot = hoverAt{kind: hoverTab, index: hit.span.from}
 	}
-	if hot != a.hot {
-		a.hot = hot
-		a.touch()
-	}
+	a.setHoverTo(hot)
 	hit, _ := a.teamMenuHitAt(x, y)
 	if ref := hit.ref(); ref != a.teamMenu.hover {
 		a.teamMenu.hover = ref

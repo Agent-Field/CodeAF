@@ -392,6 +392,28 @@ func TestTeamOverlayClearChipTracksHoverAboveOpenMenu(t *testing.T) {
 	}
 }
 
+func TestTeamOverlayClearChipInvalidatesPriorTranscriptHover(t *testing.T) {
+	a, _, _ := menuApp(t)
+	a.entries = append(a.entries, entry{kind: entryAssistant, text: tblCut, settled: true})
+	at := len(a.entries) - 1
+	a.setHoverTo(hoverAt{kind: hoverTable, entry: at})
+	_ = a.entryRows(a.conversation(), at, 80)
+	if !a.entries[at].built || a.entries[at].stale {
+		t.Fatal("fixture did not cache the hovered transcript entry")
+	}
+	// A click can arrive without motion; the menu must retire that cached hover
+	// when its own controls next receive the pointer.
+	_, _ = a.Update(tea.MouseClickMsg{X: a.wall.chip.from + 1, Y: tabStripRow, Button: tea.MouseLeft})
+	if !a.teamMenu.on {
+		t.Fatal("chip did not open the menu")
+	}
+	_, _ = a.Update(tea.MouseMotionMsg{X: a.wall.chipClear.from, Y: tabStripRow})
+	_, _ = a.Update(pointerMsg{})
+	if !a.entries[at].stale || a.hot.kind != hoverTab || a.hot.index != a.wall.chipClear.from {
+		t.Fatal("menu motion left the previous transcript hover cached")
+	}
+}
+
 func TestTeamOverlayClearChipRestoresOrdinaryConversationAndDrafts(t *testing.T) {
 	a, harbor, orbit := menuApp(t)
 	ordinary := a.frontTabKey()
