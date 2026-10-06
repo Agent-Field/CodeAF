@@ -1,4 +1,4 @@
-package backing
+package agentsession
 
 // The tools an agent session is handed: four ways to read the repository and
 // none to change it.

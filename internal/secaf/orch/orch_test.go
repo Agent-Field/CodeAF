@@ -14,7 +14,7 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/compliance"
 	"github.com/Agent-Field/codeaf/internal/secaf/phases"
 	"github.com/Agent-Field/codeaf/internal/secaf/schemas"

@@ -32,8 +32,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/aix"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/harnessx"
 	"github.com/Agent-Field/codeaf/internal/secaf/schemas"
 )

@@ -6,8 +6,8 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/aix"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/config"
 	"github.com/Agent-Field/codeaf/internal/secaf/pyfmt"
 	"github.com/Agent-Field/codeaf/internal/secaf/schemas"

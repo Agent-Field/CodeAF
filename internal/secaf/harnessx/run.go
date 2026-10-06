@@ -6,7 +6,7 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/pyfmt"
 )
 

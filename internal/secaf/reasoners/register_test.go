@@ -19,7 +19,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 )
 
 // pythonSurface is the independent parity checklist: the 33 router reasoner

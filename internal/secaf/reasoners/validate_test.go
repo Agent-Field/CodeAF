@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 )
 
 // nestedMalformedArchitecture is the payload whose element is missing `path`

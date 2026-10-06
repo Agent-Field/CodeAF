@@ -1,4 +1,4 @@
-package backing
+package agentsession
 
 import (
 	"context"
@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 )
 
 // fakeAPI is the run's model API played by a script: each call is answered by
@@ -414,4 +414,26 @@ func TestSessionLabelsReadAsAPersonWouldSayThem(t *testing.T) {
 			t.Errorf("%q (%q) reads %q, want %q", tc.label, tc.cwd, got, tc.want)
 		}
 	}
+}
+
+// THE SHARED LOOP SAYS THE PROGRAM'S OWN WORK. It was sec's alone and told
+// every agent it was one of a security audit; a review's reviewers read the
+// code for the wrong thing when told that.
+func TestASessionIsToldTheWorkItsProgramNames(t *testing.T) {
+	audit := sessionSystem(SessionOrder{Root: "/repo", Work: "a security audit"})
+	if !strings.HasPrefix(audit, "You are one agent of a security audit of the repository at /repo. ") {
+		t.Fatalf("sec's sessions are told %q", firstLineOf(audit))
+	}
+	review := sessionSystem(SessionOrder{Root: "/repo", Work: "a code review"})
+	if !strings.HasPrefix(review, "You are one agent of a code review of the repository at /repo. ") || strings.Contains(review, "security") {
+		t.Fatalf("a review's sessions are told %q", firstLineOf(review))
+	}
+	if plain := sessionSystem(SessionOrder{Root: "/repo"}); !strings.HasPrefix(plain, "You are one agent working on the repository at /repo. ") {
+		t.Fatalf("a session with no work named is told %q", firstLineOf(plain))
+	}
+}
+
+func firstLineOf(text string) string {
+	line, _, _ := strings.Cut(text, "\n")
+	return line
 }

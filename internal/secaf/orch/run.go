@@ -9,10 +9,10 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	huntagent "github.com/Agent-Field/codeaf/internal/secaf/agents/hunt"
 	proveagent "github.com/Agent-Field/codeaf/internal/secaf/agents/prove"
 	reconagent "github.com/Agent-Field/codeaf/internal/secaf/agents/recon"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/config"
 	"github.com/Agent-Field/codeaf/internal/secaf/phases"
 	"github.com/Agent-Field/codeaf/internal/secaf/pyfmt"

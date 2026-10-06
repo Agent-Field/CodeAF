@@ -3,10 +3,10 @@ package reasoners
 import (
 	"context"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/afx"
 	proveagent "github.com/Agent-Field/codeaf/internal/secaf/agents/prove"
 	remediationagent "github.com/Agent-Field/codeaf/internal/secaf/agents/remediation"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/phases"
 	"github.com/Agent-Field/codeaf/internal/secaf/schemas"
 	"github.com/Agent-Field/codeaf/internal/secaf/scoring"

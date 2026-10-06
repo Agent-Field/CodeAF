@@ -12,7 +12,7 @@
 // and lives on only here (docs/design/security-audit/ABSORB.md). Its algorithm
 // — the phases, the twelve hunters, the four-agent proof chain, the prompts —
 // is in the packages below this one and is its own; what it runs on is
-// codeaf's (internal/secaf/backing).
+// codeaf's (internal/agentsession).
 //
 // IT HAS NO ENTRY POINT OF ITS OWN. What codeaf needs of it is a
 // delegate.Delegate value, and its command's body takes a delegate.Host, which
@@ -32,10 +32,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/programguide"
 	"github.com/Agent-Field/codeaf/internal/secaf/audit"
-	"github.com/Agent-Field/codeaf/internal/secaf/backing"
 )
 
 // Name is the program's name: its chat command and its shell verb.
@@ -219,7 +219,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		host.Stage(delegate.StageRecord{Stage: stageStarting, Status: "changes", Data: stageData(map[string]any{
 			"changed": len(read.Changed), "nearby": len(read.Nearby), "base": read.BaseName})})
 	}
-	client, err := backing.NewClient(host.Models())
+	client, err := agentsession.NewClient(host.Models())
 	if err != nil {
 		return delegate.Ending{Status: delegate.StatusFail, Message: "sec did not start: " + err.Error()}
 	}
@@ -232,8 +232,8 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		light = o.model
 	}
 	watching, phases := newWatch(host)
-	app := backing.New(client, backing.Config{
-		Root: root, SessionModel: o.model, AIModel: light,
+	app := agentsession.New(client, agentsession.Config{
+		Root: root, Work: "a security audit", SessionModel: o.model, AIModel: light,
 		Sessions: o.sessions, MaxTurns: o.maxTurns, SessionWall: o.sessionWall,
 		Watch: watching,
 	})
@@ -266,7 +266,7 @@ func runAudit(ctx context.Context, host delegate.Host, o options, notes io.Write
 		ending := delegate.Ending{CostUSD: spent, Reason: err.Error(),
 			Extra: map[string]any{"sessions": sessions, "calls": calls}}
 		switch {
-		case errors.Is(err, backing.ErrCeiling):
+		case errors.Is(err, agentsession.ErrCeiling):
 			ending.Status = delegate.StatusBudget
 			ending.Message = "sec reached the run's dollar ceiling before it finished, so it has no report"
 		case errors.Is(auditCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil:

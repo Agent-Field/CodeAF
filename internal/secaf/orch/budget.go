@@ -6,8 +6,8 @@ import (
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	proveagent "github.com/Agent-Field/codeaf/internal/secaf/agents/prove"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 )
 
 // BudgetExhaustedError ports `class BudgetExhausted(RuntimeError)`

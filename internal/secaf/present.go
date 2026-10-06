@@ -23,8 +23,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession"
 	"github.com/Agent-Field/codeaf/internal/delegate"
-	"github.com/Agent-Field/codeaf/internal/secaf/backing"
 )
 
 // stepWords is each stage as the one word its page prints at the head of the
@@ -54,9 +54,9 @@ type watch struct {
 	stage string
 }
 
-func newWatch(host delegate.Host) (*backing.Watch, *watch) {
+func newWatch(host delegate.Host) (*agentsession.Watch, *watch) {
 	w := &watch{host: host, stage: stageStarting}
-	return &backing.Watch{Session: w.session, Note: w.note, Call: w.call}, w
+	return &agentsession.Watch{Session: w.session, Note: w.note, Call: w.call}, w
 }
 
 // pagedCalls are the single structured calls that are an agent of sec-af's
@@ -85,7 +85,7 @@ func (w *watch) current() string {
 	return w.stage
 }
 
-func (w *watch) session(label string, result backing.SessionResult, err error) {
+func (w *watch) session(label string, result agentsession.SessionResult, err error) {
 	outcome := "answered"
 	switch {
 	case err != nil:

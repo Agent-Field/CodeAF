@@ -1,4 +1,4 @@
-package backing
+package agentsession
 
 // One agent session: what sec-af called a harness call. A coding-agent binary
 // used to be spawned for each one and told to write its answer to a file in
@@ -31,7 +31,10 @@ type SessionOrder struct {
 	Model  string
 	Thread string
 	// Root is the repository, absolute; every tool reads only below it.
-	Root   string
+	Root string
+	// Work is what the session is one agent of, as a noun phrase: sec's
+	// "a security audit". Empty says only that it works on the repository.
+	Work   string
 	Prompt string
 	// Schema is the JSON Schema the answer must meet; nil is a free-text
 	// answer, which sec-af's chain correlation asks for.
@@ -165,7 +168,14 @@ func RunSession(ctx context.Context, client *Client, order SessionOrder) (Sessio
 // and the one shape its answer takes.
 func sessionSystem(order SessionOrder) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "You are one agent of a security audit of the repository at %s. ", order.Root)
+	// THE WORK IS THE PROGRAM'S TO NAME. This loop is shared, and an agent of a
+	// code review told it was one of a security audit reads the code for the
+	// wrong thing.
+	if work := strings.TrimSpace(order.Work); work != "" {
+		fmt.Fprintf(&b, "You are one agent of %s of the repository at %s. ", work, order.Root)
+	} else {
+		fmt.Fprintf(&b, "You are one agent working on the repository at %s. ", order.Root)
+	}
 	b.WriteString("You can read it with the tools read_file, list_dir, glob and grep, and nothing else: you cannot change any file, and there is no shell. ")
 	b.WriteString("Paths are relative to the repository root. Do the task you are given and only that; read what you need to be sure, and stop when you are.\n\n")
 	if order.Schema == nil {

@@ -1,20 +1,24 @@
-// Package backing is what sec-af's agents run on inside codeaf: the
-// implementation of [appx.App] that the audit is handed in place of the
-// AgentField node it was written for.
+// Package agentsession is what a carried program's agents run on inside
+// codeaf: an implementation of [appx.App] over the run's model API, with a
+// small read-only agent loop ([Session]) for every agent session.
 //
-// sec-af was a node on a control plane. Its plain model calls went to a router
-// with a key it held, its agent sessions were a coding-agent binary it spawned
-// once per call, and every call between its own reasoners was an HTTP round
-// trip. Here all three are codeaf's: a model call goes to the run's model API
+// IT IS SHARED, AND IT IS CODEAF'S. It was written for sec-af, which was a node
+// on a control plane: its plain model calls went to a router with a key it
+// held, its agent sessions were a coding-agent binary it spawned once per call,
+// and every call between its own reasoners was an HTTP round trip. Here all
+// three are codeaf's: a model call goes to the run's model API
 // (internal/provider/modelapi), the only road to a model a program codeaf
-// carries has; an agent session is a small read-only loop in this process
-// ([Session]) whose every turn is one call on that same road; and a call
-// between reasoners stays in the process (internal/secaf/audit's local calls).
+// carries has; an agent session is a loop in this process whose every turn is
+// one call on that same road; and a call between reasoners stays in the
+// process (internal/secaf/audit's local calls). Nothing in it is one
+// program's, so it lives beside the programs that use it and not inside one
+// of them: a change here reaches every program that runs on it.
 //
-// IT CHANGES NOTHING IN THE FOLDER IT READS. The audit promises the person
-// their repository back exactly as it was, so the tools an agent session is
-// given read and search and never write, and there is no shell to write with.
-package backing
+// IT CHANGES NOTHING IN THE FOLDER IT READS. A program that lands text promises
+// the person their repository back exactly as it was, so the tools an agent
+// session is given read and search and never write, and there is no shell to
+// write with.
+package agentsession
 
 import (
 	"bytes"
@@ -55,7 +59,7 @@ type Client struct {
 // token, because a program with neither has no road to a model at all.
 func NewClient(api delegate.ModelAPI) (*Client, error) {
 	if strings.TrimSpace(api.BaseURL) == "" || strings.TrimSpace(api.Token) == "" {
-		return nil, errors.New("sec-af runs only inside codeaf, which serves its models; this process was handed no model API")
+		return nil, errors.New("a program codeaf carries runs only inside codeaf, which serves its models; this process was handed no model API")
 	}
 	return &Client{
 		base: api.BaseURL, token: api.Token,

@@ -1,4 +1,4 @@
-package backing
+package agentsession
 
 // The App the audit runs on: sec-af's four verbs answered by codeaf.
 
@@ -15,15 +15,18 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 )
 
 // Config is how the App runs: where, on which models, and how many sessions
 // at once.
 type Config struct {
-	// Root is the repository under audit, absolute. No session reads outside
-	// it, whatever a caller's options say.
+	// Root is the repository the run reads, absolute. No session reads
+	// outside it, whatever a caller's options say.
 	Root string
+	// Work is what every session is one agent of, as a noun phrase, said in its
+	// system prompt ([SessionOrder.Work]): sec's "a security audit".
+	Work string
 	// SessionModel answers the agent sessions — the hunters, tracers and
 	// provers that read the code — and AIModel the single structured calls:
 	// the duplicate checks, the exploit reasoning, the compliance mapping.
@@ -127,12 +130,12 @@ func (a *App) Harness(ctx context.Context, prompt string, schema map[string]any,
 	// folder it was handed; one that named another would be read nowhere.
 	if project := strings.TrimSpace(opts.ProjectDir); project != "" && filepath.Clean(project) != filepath.Clean(root) {
 		if real, err := filepath.EvalSymlinks(project); err != nil || !within(root, real) {
-			return nil, fmt.Errorf("%s asked to read %s, which is not the repository under audit", label, project)
+			return nil, fmt.Errorf("%s asked to read %s, which is not the repository this run reads", label, project)
 		}
 	}
 	thread := fmt.Sprintf("%s-%d", strings.ReplaceAll(label, " ", "-"), a.threads.Add(1))
 	result, err := RunSession(ctx, a.client, SessionOrder{
-		Model: a.config.SessionModel, Thread: thread, Root: root, Prompt: prompt, Schema: schema,
+		Model: a.config.SessionModel, Thread: thread, Root: root, Work: a.config.Work, Prompt: prompt, Schema: schema,
 		MaxTurns: a.config.MaxTurns, Wall: a.config.SessionWall,
 	})
 	a.spend(result.CostUSD, true)
@@ -218,7 +221,7 @@ func (a *App) Note(_ context.Context, message string, tags ...string) {
 // stay in the process (internal/secaf/audit's local calls), which wrap this
 // App. A call that reached it is a reasoner nobody registered.
 func (a *App) Call(_ context.Context, target string, _ map[string]any) (map[string]any, error) {
-	return nil, fmt.Errorf("no reasoner %s is carried in this audit", target)
+	return nil, fmt.Errorf("no reasoner %s is carried in this run", target)
 }
 
 // withSchemaInWords puts a schema the served model would not take as a

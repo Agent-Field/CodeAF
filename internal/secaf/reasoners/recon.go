@@ -3,9 +3,9 @@ package reasoners
 import (
 	"context"
 
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 	"github.com/Agent-Field/codeaf/internal/secaf/afx"
 	reconagent "github.com/Agent-Field/codeaf/internal/secaf/agents/recon"
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
 )
 
 // recon.go ports src/sec_af/reasoners/recon.py — the five RECON reasoner

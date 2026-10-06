@@ -1,5 +1,5 @@
-// Package appx declares the agent-capability seam every reasoner and phase in
-// the security audit depends on. The original Python code received the SDK
+// Package appx declares the agent-capability seam every reasoner and phase of
+// a carried program depends on: sec's first, which it was written for. The original Python code received the SDK
 // `Agent` (or the `AgentRouter` proxying to it) and called `.harness(...)`,
 // `.ai(...)`, `.note(...)` and `.call(...)` on it; the Go code receives an App.
 //

@@ -28,7 +28,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/Agent-Field/codeaf/internal/secaf/appx"
+	"github.com/Agent-Field/codeaf/internal/agentsession/appx"
 )
 
 // sdkPlaceholderSchema is what the SDK stamped on a reasoner registered with
