@@ -360,7 +360,7 @@ func alternativeEligible(call ai.ToolCall, failedTool, failedAction, goal string
 	if shellToolName(name) && shellMasksExit(body) {
 		return false
 	}
-	if sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal) {
+	if sharedMeaningfulActionToken(attemptActionBody(failedAction), body, goal, ws) {
 		return true
 	}
 	// THE REPLACEMENT MAY RUN A DIFFERENT COMMAND AND A DIFFERENT LIBRARY inside
@@ -519,7 +519,11 @@ func trimOperand(name string) string {
 // done for and a cwd part like the project name is not. Without both halves the
 // shared `cd /home/.../<project> &&` prefix alone would make any unrelated bash
 // command the alternative.
-func sharedMeaningfulActionToken(failedBody, successBody, goal string) bool {
+func sharedMeaningfulActionToken(failedBody, successBody, goal string, workspace ...string) bool {
+	ws := ""
+	if len(workspace) > 0 {
+		ws = strings.TrimSpace(workspace[0])
+	}
 	failed := actionTokens(failedBody)
 	if len(failed) == 0 {
 		return false
@@ -537,8 +541,30 @@ func sharedMeaningfulActionToken(failedBody, successBody, goal string) bool {
 	failedPaths := shellPathTokens(failedBody)
 	successPaths := shellPathTokens(successBody)
 	purpose := outcomeTerms(goal)
+	// A FILE-NAME FRAGMENT THE FAILURE CARRIES IS NOT PROOF OF THE SAME WORK. A
+	// token the failed action contributes ONLY through a recognised file operand
+	// — the `vendor`/`csv` in `ledger.py vendor.csv` — counts as the same work
+	// only when the success actually USES one of the failure's own files, judged
+	// by the same lexical identity the goal link uses. A read of a DIFFERENT file
+	// that merely shares a base name or a `.csv` extension is not the failed work
+	// done and must not steal the one alternative slot; its file identity is
+	// decided by [sharesGoalNamedFileOperand], never by the fragment alone.
+	failedFiles := fileOperandTokens(failedBody)
+	sameFile := false
+	if len(failedFiles) > 0 {
+		used := shellUsedFileIdentities(failedBody, ws)
+		for id := range shellUsedFileIdentities(successBody, ws) {
+			if used[id] {
+				sameFile = true
+				break
+			}
+		}
+	}
 	for token := range success {
 		if !failed[token] || successPaths[token] {
+			continue
+		}
+		if failedFiles[token] && !sameFile {
 			continue
 		}
 		if failedPaths[token] && !purpose[token] {
@@ -547,6 +573,23 @@ func sharedMeaningfulActionToken(failedBody, successBody, goal string) bool {
 		return true
 	}
 	return false
+}
+
+// fileOperandTokens returns the WHOLE tokens the file operands of a body carry,
+// read by the SAME reader [shellSegmentOperands] already uses so only a genuine
+// operand contributes. They are the file-name fragments — `ledger`, `vendor`,
+// `csv` — that the one-token link must weigh against real file identity rather
+// than accept on their own.
+func fileOperandTokens(body string) map[string]bool {
+	tokens := map[string]bool{}
+	for _, segment := range shellSegments(body) {
+		for _, operand := range shellSegmentOperands(segment) {
+			for _, token := range splitActionWord(operand) {
+				tokens[token] = true
+			}
+		}
+	}
+	return tokens
 }
 
 // actionWorkTokens returns the WHOLE tokens an action contributes through the
@@ -1286,19 +1329,44 @@ func interpreterProbeSegment(segment string, words []shellWord) bool {
 	return len(shellSegmentOperands(segment)) == 0
 }
 
-// fileConsumerCalls are the call names whose string-literal argument is a file
-// the program OPENS. The set is deliberately minimal: an unsupported command is
-// simply not recognised as work, which is refused rather than guessed. A name
-// inside print() or any other call is not an operand.
+// fileConsumerCalls are the call names whose literal argument is a file the
+// program OPENS or READS directly. The set is deliberately minimal: an
+// unsupported command is simply not recognised as work, which is refused rather
+// than guessed. A name inside print() or any other call is not an operand, and a
+// bare read method (`read_bytes()`) carries no literal of its own, so the
+// path-constructor chain below is what names the file it reads.
 var fileConsumerCalls = map[string]bool{
 	"open": true,
 }
 
+// programPathConstructors are the call names that build a path OBJECT from a
+// literal: the constructor half of the live
+// `pathlib.Path('vendor.csv').read_bytes()` shape. A path object built and then
+// merely printed, stat()ed or left unused reads nothing, so it is NOT an operand
+// on its own; the constructor names a file only when it is immediately chained
+// to a real read ([programPathReads]).
+var programPathConstructors = map[string]bool{
+	"path": true, "purepath": true, "posixpath": true, "windowspath": true,
+	"pureposixpath": true, "purewindowspath": true,
+}
+
+// programPathReads are the methods that actually READ a path object's file:
+// `Path('vendor.csv').read_bytes()`, `Path('vendor.csv').read_text()` and
+// `Path('vendor.csv').open(...)`. Metadata and existence probes (`.stat()`,
+// `.exists()`, `.is_file()`, `.name`) are deliberately absent, so a preview that
+// only inspects a path names no operand and grounds no pairing.
+var programPathReads = map[string]bool{
+	"read_bytes": true, "read_text": true, "open": true,
+}
+
 // programFileOperands returns the files an inline interpreter program actually
-// OPENS: the literal arguments of a known file-consuming call, read OUTSIDE
-// string literals and comments. A file name that appears only inside
-// print("open('week.csv')") or a `# open('week.csv')` comment is not an executed
-// call and is never returned.
+// USES: the literal arguments of a known file-consuming call, and the literal a
+// known path constructor names when the path object it builds is immediately
+// READ by a file-reading method (`pathlib.Path('vendor.csv').read_bytes()`), all
+// read OUTSIDE string literals and comments. A file name that appears only
+// inside print("open('week.csv')") or a `# open('week.csv')` comment is not an
+// executed call and is never returned, and a constructor that is only built,
+// printed or stat()ed reads nothing and names no operand.
 func programFileOperands(prog string) []string {
 	if strings.TrimSpace(prog) == "" {
 		return nil
@@ -1324,9 +1392,7 @@ func programFileOperands(prog string) []string {
 		for i < len(prog) && isIdentifierPart(prog[i]) {
 			i++
 		}
-		if !fileConsumerCalls[strings.ToLower(prog[start:i])] {
-			continue
-		}
+		name := strings.ToLower(prog[start:i])
 		j := i
 		for j < len(prog) && (prog[j] == ' ' || prog[j] == '\t') {
 			j++
@@ -1338,14 +1404,62 @@ func programFileOperands(prog string) []string {
 		if !ok {
 			continue
 		}
-		for _, literal := range stringLiterals(arg) {
-			if hasFileExtension(trimOperand(literal)) {
-				out = append(out, literal)
+		switch {
+		case fileConsumerCalls[name]:
+			out = appendProgramOperands(out, arg)
+			i = end
+		case programPathConstructors[name]:
+			if programPathRead(prog, end) {
+				out = appendProgramOperands(out, arg)
 			}
+			i = end
 		}
-		i = end
 	}
 	return out
+}
+
+// appendProgramOperands appends the file-extension-bearing string literals of a
+// call's argument list, so a name that is not a file — an encoding, a mode, a
+// bare word — is never returned.
+func appendProgramOperands(out []string, arg string) []string {
+	for _, literal := range stringLiterals(arg) {
+		if hasFileExtension(trimOperand(literal)) {
+			out = append(out, literal)
+		}
+	}
+	return out
+}
+
+// programPathRead answers whether the path object just built by a constructor is
+// IMMEDIATELY chained to a file-reading method call, ignoring whitespace and
+// newlines: `.read_bytes()`, `.read_text()` or `.open(...)`. Anything else — no
+// chain at all, a `.stat()`/`.exists()` metadata probe, a bare `.name`
+// attribute — reads nothing and is refused rather than guessed.
+func programPathRead(prog string, i int) bool {
+	for i < len(prog) && (prog[i] == ' ' || prog[i] == '\t' || prog[i] == '\n' || prog[i] == '\r') {
+		i++
+	}
+	if i >= len(prog) || prog[i] != '.' {
+		return false
+	}
+	i++
+	for i < len(prog) && (prog[i] == ' ' || prog[i] == '\t' || prog[i] == '\n' || prog[i] == '\r') {
+		i++
+	}
+	if i >= len(prog) || !isIdentifierStart(prog[i]) {
+		return false
+	}
+	start := i
+	for i < len(prog) && isIdentifierPart(prog[i]) {
+		i++
+	}
+	if !programPathReads[strings.ToLower(prog[start:i])] {
+		return false
+	}
+	for i < len(prog) && (prog[i] == ' ' || prog[i] == '\t') {
+		i++
+	}
+	return i < len(prog) && prog[i] == '('
 }
 
 // skipStringLiteral returns the index just past the string literal that starts at
