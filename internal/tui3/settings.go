@@ -1073,10 +1073,11 @@ type sheet struct {
 
 // sheetEdit is the one-line text submenu.
 type sheetEdit struct {
-	key    string
-	label  string
-	secret bool
-	box    editor
+	pending bool // A remote write keeps the draft until its acknowledgement.
+	key     string
+	label   string
+	secret  bool
+	box     editor
 }
 
 // sheetEditNote is what the panel says ABOUT the box a value is being typed
@@ -2684,7 +2685,7 @@ const gateNextSessionWord = "saved" + nextSessionWord
 // registry without ever writing it ([setupReviewKeys]) — and both run before this
 // window has a conversation to push a gate into. A push from there would be a
 // seam called with nothing on the other end.
-func (a *app) applySetting(item sheetItem, raw string) {
+func (a *app) applySetting(item sheetItem, raw string) bool {
 	if item.row.Key == config.KeySpendRail && !a.railRead {
 		// The panel's file write must not make the status line's first lazy
 		// read claim an active limit the engine has not accepted yet.
@@ -2692,7 +2693,7 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	}
 	if err := item.row.Apply(raw); err != nil {
 		a.sheet.msg = err.Error()
-		return
+		return false
 	}
 	if item.row.Key == config.KeyWork {
 		a.workMode = config.WorkAt(a.profileDir)
@@ -2776,6 +2777,7 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	a.sheet.msg = note
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
+	return true
 }
 
 // sheetEditKey drives the text submenu. enter saves, an empty box clears the
@@ -2795,10 +2797,14 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		s.edit = nil
+		s.msg = ""
 	case "enter":
+		if edit.pending {
+			return nil
+		}
+		s.msg = ""
 		row, ok := s.registry.Row(edit.key)
 		raw := edit.box.String()
-		s.edit = nil
 		if !ok {
 			return nil
 		}
@@ -2807,7 +2813,9 @@ func (a *app) sheetEditKey(msg tea.KeyPressMsg) tea.Cmd {
 		if cmd := a.writeHostTeamDefault(item, raw); cmd != nil || s.hostTeamRow(item) {
 			return cmd
 		}
-		a.applySetting(item, raw)
+		if a.applySetting(item, raw) {
+			s.edit = nil
+		}
 	case "backspace":
 		edit.box.deleteBackward()
 	case "delete":
@@ -2949,6 +2957,7 @@ func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
 		return nil
 	}
 	if a.sheet.farTeams == nil {
+		a.sheet.msg = "waiting for this machine’s AI team defaults"
 		return nil
 	}
 	door := a.teamsDisk.door.ApplyDefault
@@ -2957,11 +2966,18 @@ func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
 		return nil
 	}
 	key := item.row.Key
+	edit := a.sheet.edit
+	if edit != nil {
+		edit.pending = true
+	}
 	return a.offLoop(func() func(bool) tea.Cmd {
 		d, err := door(key, raw)
 		return func(here bool) tea.Cmd {
 			if !here || !a.at(pageSettings) {
 				return nil
+			}
+			if edit != nil && a.sheet.edit == edit {
+				edit.pending = false
 			}
 			if err != nil {
 				a.sheet.msg = err.Error()
@@ -2969,6 +2985,11 @@ func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
 				copied := d
 				a.sheet.farTeams = &copied
 				a.sheet.msg = ""
+				// Never close a replacement editor or discard text typed while the host
+				// was answering this earlier draft.
+				if edit != nil && a.sheet.edit == edit && edit.box.String() == raw {
+					a.sheet.edit = nil
+				}
 			}
 			a.sheet.build()
 			a.touch()

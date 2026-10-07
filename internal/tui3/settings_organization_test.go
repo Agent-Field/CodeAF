@@ -229,3 +229,38 @@ func TestSettingsOrganizationEditorsOwnPointer(t *testing.T) {
 		t.Fatal("underlying category click escaped model picker")
 	}
 }
+
+func TestSettingsOrganizationInvalidEditKeepsDraft(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.openSettings()
+	cursorTo(t, a, config.KeyTaskParallel)
+	row, _ := a.sheet.registry.Row(config.KeyTaskParallel)
+	before := row.Value()
+	a.activate()
+	if a.sheet.edit == nil {
+		t.Fatal("integer setting did not open editor")
+	}
+	a.sheet.edit.box.setText("not-a-number")
+	a.sheetEditKey(key("enter"))
+	if a.sheet.edit == nil || a.sheet.edit.box.String() != "not-a-number" {
+		t.Fatal("validation discarded the editable draft")
+	}
+	if row.Value() != before {
+		t.Fatal("invalid input changed persisted setting")
+	}
+	if a.sheet.msg == "" || !strings.Contains(plain(frame(a)), a.sheet.msg) {
+		t.Fatalf("validation error not visible while editor is open: %q", a.sheet.msg)
+	}
+	a.sheet.edit.box.setText("3")
+	a.sheetEditKey(key("enter"))
+	if a.sheet.edit != nil || row.Value() != "3" {
+		t.Fatal("correcting the draft did not save and close")
+	}
+	cursorTo(t, a, config.KeyTaskParallel)
+	a.activate()
+	a.sheet.edit.box.setText("4")
+	a.sheetEditKey(key("esc"))
+	if a.sheet.edit != nil || row.Value() != "3" || a.sheet.msg != "" {
+		t.Fatal("Escape did not cancel draft cleanly")
+	}
+}

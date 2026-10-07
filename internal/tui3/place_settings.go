@@ -223,6 +223,13 @@ func (placeSettings) box(a *app) *editor {
 func (placeSettings) note(a *app, width int) []string {
 	pal := a.pal
 	switch {
+	case a.sheet.msg != "":
+		lines := strings.Split(a.sheet.msg, "\n")
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			out = append(out, " "+pal.bad(noteFit(line, width-2)))
+		}
+		return out
 	case a.sheet.sel != nil:
 		return []string{" " + pal.dim(noteFit(a.sheet.sel.label, width-2))}
 	case a.sheet.edit != nil:
@@ -231,13 +238,7 @@ func (placeSettings) note(a *app, width int) []string {
 		// is typing in is THE composer, so what is left here is the one thing the
 		// box cannot say — which setting this is.
 		return []string{" " + pal.dim(noteFit(a.sheet.edit.label, width-2))}
-	case a.sheet.msg != "":
-		lines := strings.Split(a.sheet.msg, "\n")
-		out := make([]string, 0, len(lines))
-		for _, line := range lines {
-			out = append(out, " "+pal.bad(noteFit(line, width-2)))
-		}
-		return out
+
 	}
 	item, ok := settingsFocused(a)
 	scope := a.sheet.footNote()
