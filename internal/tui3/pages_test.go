@@ -316,8 +316,8 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// THE NUMBERS ARE ON THE TABS, and the two places off the bar are drawn
 	// after the six with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+7`…`alt+8` are on it.
-	if bar := after[navRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 AI teams") || !strings.Contains(bar, "3 chats") ||
-		!strings.Contains(bar, "6 settings") || !strings.Contains(bar, "7 standing") || !strings.Contains(bar, "8 memory") || strings.Contains(bar, "9 search") {
+	if bar := after[navRow]; !strings.Contains(bar, "1 Home") || !strings.Contains(bar, "2 AI teams") || !strings.Contains(bar, "3 Chats") ||
+		!strings.Contains(bar, "6 Settings") || !strings.Contains(bar, "7 Standing") || !strings.Contains(bar, "8 Memory") || strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
 	// AND THE CHORD LIST IS THE HINT LINE.
@@ -713,13 +713,13 @@ func TestATabWearsTheCountTheSeamGivesIt(t *testing.T) {
 		pageStanding.word(): 0,
 	}
 	bar := navPlaces(a, 160, false)
-	if !strings.Contains(bar, "activity 2") {
+	if !strings.Contains(bar, "Activity 2") {
 		t.Fatalf("the tasks tab does not wear its count: %q", bar)
 	}
-	if strings.Contains(bar, "spend 9") {
+	if strings.Contains(bar, "Spend 9") {
 		t.Fatalf("spend is a sum and wears a count anyway: %q", bar)
 	}
-	if strings.Contains(bar, "standing 0") {
+	if strings.Contains(bar, "Standing 0") {
 		t.Fatalf("a place with nothing new wears a zero: %q", bar)
 	}
 }
@@ -813,11 +813,11 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := navPlaces(a, width, false)
-		if !placeWordsInOrder(bar, "home", "chats", "AI teams", "activity", "memory", "spend", "settings") {
+		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Spend", "Settings") {
 			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding} {
-			if strings.Contains(bar, id.word()) {
+			if strings.Contains(bar, navLabel(id)) {
 				t.Fatalf("at %d columns the bar still carries %q: %q", width, id.word(), bar)
 			}
 		}
@@ -825,7 +825,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
 	walkTo(t, a, pageStanding)
-	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "settings  standing") {
+	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "Settings  Standing") {
 		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
 }

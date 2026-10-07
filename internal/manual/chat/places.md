@@ -4,7 +4,7 @@
 
 A **place** is a full-screen view in codeaf. The main bar groups your daily work first, then utilities:
 
-`home` · `chats` · `AI teams` · `activity` · `memory` · `spend` · `settings`
+`Home` · `Chats` · `AI teams` · `Activity` · `Memory` · `Spend` · `Settings`
 
 AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved. Standing orders remain accessible through `/standing`, their shortcut, and the map; their label appears when that view is open.
 
@@ -12,7 +12,7 @@ They are drawn on the **top line of every page**, right after the `codeaf` wordm
 place and in a conversation alike. This manual still calls that row of words **the bar**:
 
 ```
- >● codeaf   home  chats  AI teams  activity  memory  spend  settings      3 moving · $1.20  thu 10:31pm
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings      3 moving · $1.20  thu 10:31pm
 ──────────────────────────────────────────────────────────────────────────────────────────
 ```
 

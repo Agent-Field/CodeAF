@@ -4,7 +4,7 @@
 
 The **teams page** is where you run your teams: every team you have, what waits on you from
 them, and an overview of the team you choose. Member cards show activity and recent updates;
-interaction links take you into the conversation where an exchange happened. It follows Chats on the tab bar: `home  chats  AI teams  activity  memory  spend  settings`. Open it with
+interaction links take you into the conversation where an exchange happened. It follows Chats on the tab bar: `Home  Chats  AI teams  Activity  Memory  Spend  Settings`. Open it with
 `/teams`, `alt+2` (`opt+2` on a Mac), a click on `AI teams`, `tab` from Chats, or the map
 (`alt+.`). A number beside the word on the bar counts the decisions waiting on you that arrived
 since you last looked.

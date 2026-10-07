@@ -377,7 +377,7 @@ func TestTheHoverAndTheBarCursorCompose(t *testing.T) {
 	// Both marks are on the one row, and the row still says the same four words.
 	row := strings.Split(mustFrame(a), "\n")[navRow]
 	for _, id := range barPages(a.page, false) {
-		if !strings.Contains(plain(row), id.word()) {
+		if !strings.Contains(plain(row), navLabel(id)) {
 			t.Fatalf("the bar lost %q while wearing two marks: %q", id.word(), plain(row))
 		}
 	}

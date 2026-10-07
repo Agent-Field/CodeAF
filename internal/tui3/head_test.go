@@ -84,9 +84,9 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], pulse) {
 			t.Fatalf("at %dx%d the chat's first row is not the nav with the pulse at its end:\n%q", size.w, size.h, head[0])
 		}
-		words := []string{"home", "chats", "AI teams", "activity", "memory", "spend", "settings"}
+		words := []string{"Home", "Chats", "AI teams", "Activity", "Memory", "Spend", "Settings"}
 		if size.w == 80 {
-			words = []string{"home", "chats", "AI teams", "activity", "memory", "more"}
+			words = []string{"Home", "Chats", "AI teams", "Activity", "Memory", "More"}
 		}
 		if !placeWordsInOrder(head[0], words...) {
 			t.Fatalf("at %dx%d the chat's first row does not carry the places:\n%q", size.w, size.h, head[0])
@@ -245,7 +245,7 @@ func TestThePulseOverAChatIsThePulseOverAPlace(t *testing.T) {
 	if place[0] != chat {
 		t.Fatalf("the pulse over the tasks place is not the pulse over the chat:\n%q\n%q", place[0], chat)
 	}
-	if !strings.Contains(place[navRow], "home") || !strings.Contains(place[navRow], "activity") {
+	if !strings.Contains(place[navRow], "Home") || !strings.Contains(place[navRow], "Activity") {
 		t.Fatalf("the nav is not on the first row: %q", place[navRow])
 	}
 	if strings.Contains(place[tabStripRow], a.chatDisplayName()) || !strings.HasPrefix(place[tabStripRow], "─") {

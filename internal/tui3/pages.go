@@ -619,7 +619,7 @@ func (a *app) placeCount(id page) int {
 // measurement and the paint can never come to disagree about how wide a word
 // is.
 func (a *app) barChipWord(id page, numbered bool) string {
-	word := id.word()
+	word := navLabel(id)
 	if numbered {
 		word = itoa(placeDigitOf(id)) + " " + word
 	}

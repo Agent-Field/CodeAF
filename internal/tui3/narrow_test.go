@@ -33,7 +33,7 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 	for _, width := range []int{50, 60, 80, 120, 160} {
 		bar := navPlaces(a, width, false)
 		for _, id := range barPages(a.navLit(), false) {
-			if !strings.Contains(" "+bar+" ", " "+id.word()+" ") && !pagesHold(a.navMore.folded, id) {
+			if !strings.Contains(" "+bar+" ", " "+navLabel(id)+" ") && !pagesHold(a.navMore.folded, id) {
 				t.Fatalf("at %d columns the nav drew\n\t%q\nand a person cannot reach %q from it, on the row or behind `more`", width, bar, id.word())
 			}
 		}
@@ -42,7 +42,7 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 		}
 		// AND THE AIR IS HELD: two blank cells between two words, whatever the
 		// width, because what a narrow row gives up is words and never air.
-		if width >= 80 && !strings.Contains(bar, "home  chats  AI teams  activity  memory  spend  settings") {
+		if width >= 80 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memory  Spend  Settings") {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the six places two cells apart", width, bar)
 		}
 		if strings.Contains(bar, "   ") {
@@ -80,7 +80,7 @@ func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 		}
 		missing := 0
 		for _, id := range barPages(a.page, false) {
-			if !strings.Contains(" "+bar+" ", " "+id.word()+" ") {
+			if !strings.Contains(" "+bar+" ", " "+navLabel(id)+" ") {
 				missing++
 				if !pagesHold(a.navMore.folded, id) {
 					t.Fatalf("at %d columns %q is off the row and not behind `more`", width, id.word())
