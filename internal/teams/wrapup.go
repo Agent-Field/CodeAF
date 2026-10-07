@@ -64,26 +64,39 @@ func AcceptClosing(profileDir string, p Packet) (bool, error) {
 		return false, nil
 	}
 	closed := false
-	name := ""
-	err := Update(profileDir, func(f *File) error {
-		t, ok := f.Team(p.Origin)
-		if !ok || t.Closed() {
-			return nil
-		}
-		if err := f.Close(p.Origin, time.Now(), p.ID); err != nil {
+	err := withLock(profileDir, lockWait, func() error {
+		f, _, _, err := read(profileDir)
+		if err != nil {
 			return err
 		}
-		closed, name = true, t.Name
-		return nil
+		if f == nil {
+			return nil
+		}
+		t, ok := f.Team(p.Origin)
+		if !ok || t.Closed() && t.Report != p.ID {
+			return nil
+		}
+		if !t.Closed() {
+			if _, err = updateLocked(profileDir, func(f *File) error { return f.Close(p.Origin, time.Now(), p.ID) }); err != nil {
+				return err
+			}
+			closed = true
+		}
+		// A failed final append can be retried on the already closed report.
+		// Nothing else can append while the lifecycle lock is held.
+		entries, err := ReadTraffic(profileDir, p.Origin, "", 1)
+		if err != nil {
+			return err
+		}
+		if len(entries) > 0 && entries[len(entries)-1].Kind == KindClose && entries[len(entries)-1].Packet == p.ID {
+			return nil
+		}
+		by := FromYou
+		if p.DecidedBy != Person && p.DecidedBy != "" {
+			by = FromManager
+		}
+		_, err = appendTrafficLifecycleLocked(profileDir, p.Origin, Entry{Kind: KindClose, From: by, To: ToEveryone, Packet: p.ID, Text: "closed " + t.Name + " on its closing report"}, true)
+		return err
 	})
-	if err != nil || !closed {
-		return false, err
-	}
-	by := FromYou
-	if p.DecidedBy != Person && p.DecidedBy != "" {
-		by = FromManager
-	}
-	_ = AppendTraffic(profileDir, p.Origin, Entry{Kind: KindClose, From: by, To: ToEveryone,
-		Packet: p.ID, Text: "closed " + name + " on its closing report"})
-	return true, nil
+	return closed, err
 }

@@ -57,6 +57,8 @@ const (
 	teamStopToolName   = "team_stop"
 	teamStartToolName  = "team_start"
 	teamPostToolName   = "team_post"
+	teamAddToolName    = "team_add"
+	teamRemoveToolName = "team_remove"
 )
 
 // teamGroup is the group's word, and teamToolNames is the whole group, manager
@@ -67,7 +69,7 @@ const teamGroup = "team"
 var teamToolNames = []string{
 	teamStatusToolName, teamReadToolName, teamSendToolName, teamStopToolName, teamStartToolName,
 	teamDecideToolName, teamEscalateToolName, teamCloseReportToolName,
-	teamPostToolName, teamRaiseToolName,
+	teamPostToolName, teamRaiseToolName, teamAddToolName, teamRemoveToolName,
 }
 
 // The optional `team` argument every verb takes. It is needed only by a
@@ -140,13 +142,15 @@ const (
 // the digest a turn carries, because it was asked for.
 const teamStatusBudget = 6000
 
-// managerTools are the manager's five verbs.
+// managerTools are the manager's message, reading and membership verbs.
 func (a *Agent) managerTools() []bare.Tool {
 	return []bare.Tool{
 		{Name: teamStatusToolName, Description: teamStatusDescription, Schema: json.RawMessage(teamStatusSchema), Execute: a.teamStatusTool},
 		{Name: teamReadToolName, Description: teamReadDescription, Schema: json.RawMessage(teamReadSchema), Execute: a.teamReadTool},
 		{Name: teamSendToolName, Description: teamSendDescription, Schema: json.RawMessage(teamSendSchema), Execute: a.teamSendTool},
 		{Name: teamStopToolName, Description: teamStopDescription, Schema: json.RawMessage(teamStopSchema), Execute: a.teamStopTool},
+		{Name: teamAddToolName, Description: teamAddDescription, Schema: json.RawMessage(teamAddSchema), Execute: a.teamAddTool},
+		{Name: teamRemoveToolName, Description: teamRemoveDescription, Schema: json.RawMessage(teamRemoveSchema), Execute: a.teamRemoveTool},
 		{Name: teamStartToolName, Description: teamStartDescription, Schema: json.RawMessage(teamStartSchema), Execute: a.teamStartTool},
 	}
 }
@@ -555,6 +559,9 @@ func reportsElsewhere(file *teams.File, team teams.Team, member teams.Member) st
 		return ""
 	}
 	home, ok := file.Home(member.Key)
+	if !ok && member.Independent {
+		return "no team; this conversation is independent"
+	}
 	if !ok || home.Team == team.ID {
 		return ""
 	}
@@ -585,6 +592,9 @@ func splitByHome(file *teams.File, team teams.Team) ([]teams.Member, []string) {
 // linkRefusal is the honest sentence a link's directive or stop is refused
 // with: whose the member is, and what the manager may still do.
 func linkRefusal(member teams.Member, where, what string) string {
+	if member.Independent {
+		return fmt.Sprintf("@%s is independent: this membership permits notes and reading (team_read), but not %s. Nothing was sent. Send it a note (kind note).", member.Handle, what)
+	}
 	return fmt.Sprintf("@%s reports to the manager of %q, not to you: here you are a link, who may read it (team_read) and send it a note, but not %s. "+
 		"Nothing was sent. Send it a note (kind note), or raise it with its manager.", member.Handle, where, what)
 }

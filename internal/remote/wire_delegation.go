@@ -140,7 +140,8 @@ type SpendReading struct {
 
 // DeleteTeamArgs names the closed team to forget.
 type DeleteTeamArgs struct {
-	Team string `json:"team"`
+	Expected []string `json:"expected,omitempty"`
+	Team     string   `json:"team"`
 }
 
 // DeleteTeamReply is every team id forgotten and the teams file's stamp after.

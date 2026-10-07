@@ -315,8 +315,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
-| `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
-| `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
+| `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`, or `▦` under the box) |
+| `/teams` | | | the teams page: your teams as a tree, what waits on you, member previews and the selected team's interaction table (also `alt+2`, or `teams` on the tab bar) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/effort` | `/think`, `/thinking` | — | opens this conversation's thinking levels; says it is unavailable when the session has no dial |
 | `/effort` | `/think`, `/thinking` | `<rung>` | sets this conversation's thinking level; an unknown rung lists the accepted levels and changes nothing |

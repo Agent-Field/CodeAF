@@ -30,10 +30,7 @@ func drawKeysBand(a *app, ctx bandContext) []string {
 			clauses = []string{homeGoneWord, "ctrl+y copy path", "→ more"}
 			break
 		}
-		aside := "ctrl+e close"
-		if ctx.subject.row.Archived {
-			aside = "ctrl+e reopen"
-		}
+		aside := "ctrl+e delete"
 		clauses = []string{"enter open", "ctrl+t new chat here", "ctrl+o open folder", "ctrl+y copy path", aside, "→ more"}
 	case bandKindItem:
 		clauses = []string{"ctrl+e pause", "ctrl+x stop"}

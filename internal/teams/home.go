@@ -125,6 +125,7 @@ func setHomeFlag(teams []Team, key, id string) {
 		for j := range teams[i].Members {
 			if teams[i].Members[j].Key == key {
 				teams[i].Members[j].Home = teams[i].ID == id
+				teams[i].Members[j].Independent = false
 			}
 		}
 	}
@@ -228,6 +229,12 @@ func assignHomes(teams []Team) bool {
 				continue
 			}
 			done[m.Key] = true
+			if independent(teams, m.Key) {
+				if clearOrSet(teams, m.Key, "") {
+					changed = true
+				}
+				continue
+			}
 			if homeHolds(teams, m.Key) {
 				continue
 			}
@@ -347,4 +354,14 @@ func (f *File) LCA(keys ...string) (Team, bool) {
 		return Team{}, false
 	}
 	return f.Teams[best], true
+}
+
+// independent is retained on memberships so loading cannot invent authority.
+func independent(teams []Team, key string) bool {
+	for _, t := range teams {
+		if m, ok := t.Member(key); ok && m.Independent {
+			return true
+		}
+	}
+	return false
 }

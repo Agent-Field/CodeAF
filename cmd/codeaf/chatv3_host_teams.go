@@ -38,13 +38,14 @@ type hostTeams struct {
 	defaults func() (teamstore.Defaults, error)
 	// applyDefault writes one `teams.` row ([remote.Welcome.TeamSettings]).
 	// Nil leaves the settings Teams tab read-only.
-	applyDefault func(key, raw string) (teamstore.Defaults, error)
-	packets      func(scope, stamp string) (remote.PacketsReading, error)
-	raise        func(p teamstore.Packet) (teamstore.Packet, error)
-	decide       func(id, by, decision, reason string) (teamstore.Packet, error)
-	escalate     func(id, by, to, reason string) (teamstore.Packet, error)
-	spend        func(team, day, stamp string) (remote.SpendReading, error)
-	deleteOne    func(team string) (remote.DeleteTeamReply, error)
+	applyDefault  func(key, raw string) (teamstore.Defaults, error)
+	packets       func(scope, stamp string) (remote.PacketsReading, error)
+	raise         func(p teamstore.Packet) (teamstore.Packet, error)
+	decide        func(id, by, decision, reason string) (teamstore.Packet, error)
+	escalate      func(id, by, to, reason string) (teamstore.Packet, error)
+	spend         func(team, day, stamp string) (remote.SpendReading, error)
+	deleteOne     func(team string) (remote.DeleteTeamReply, error)
+	deleteChecked func(team string, expected []string) (remote.DeleteTeamReply, error)
 	// The wrap-up's two doors, nil when the engine does not answer them
 	// ([remote.Welcome.WrapUp]).
 	wrapUp        func(team, text string) error
@@ -76,8 +77,13 @@ func newHostTeams(far hostFar, delegation, wrapUp, settings bool) *hostTeams {
 	}
 	if delegation {
 		c := far.client
+		if c.Welcome().ConversationDelete {
+			h.deleteChecked = func(team string, expected []string) (remote.DeleteTeamReply, error) {
+				return c.TeamsDelete(team, expected)
+			}
+		}
 		h.defaults, h.packets, h.raise = c.TeamsDefaults, c.TeamsPackets, c.TeamsRaise
-		h.decide, h.escalate, h.spend, h.deleteOne = c.TeamsDecide, c.TeamsEscalate, c.TeamsSpend, c.TeamsDelete
+		h.decide, h.escalate, h.spend, h.deleteOne = c.TeamsDecide, c.TeamsEscalate, c.TeamsSpend, func(team string) (remote.DeleteTeamReply, error) { return c.TeamsDelete(team) }
 		if wrapUp {
 			h.wrapUp, h.acceptClosing = c.TeamsWrapUp, c.TeamsAcceptClosing
 		}
@@ -96,6 +102,9 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 	if far.client == nil || !welcome.Teams {
 		return tui3.TeamsSeam{}
 	}
+	if welcome.TeamMembershipVersion != remote.TeamMembershipVersion {
+		return tui3.TeamsSeam{}
+	}
 	return newHostTeams(far, welcome.Delegation, welcome.WrapUp, welcome.TeamSettings).seam()
 }
 
@@ -112,6 +121,9 @@ func (h *hostTeams) seam() tui3.TeamsSeam {
 	}
 	s.Defaults, s.Raise, s.Decide, s.Escalate = h.defaults, h.raise, h.decide, h.escalate
 	s.Packets, s.Spend, s.Delete = h.readPackets, h.readSpend, h.forget
+	if h.deleteChecked != nil {
+		s.DeleteChecked = h.forgetChecked
+	}
 	if h.wrapUp != nil && h.acceptClosing != nil {
 		s.WrapUp, s.AcceptClosing = h.wrapUp, h.closeOnReport
 	}
@@ -274,4 +286,15 @@ func cloneTeams(teams []teamstore.Team) []teamstore.Team {
 		out[i] = t.Clone()
 	}
 	return out
+}
+
+func (h *hostTeams) forgetChecked(team string, expected []string) ([]string, error) {
+	reply, err := h.deleteChecked(team, expected)
+	if err != nil {
+		return nil, err
+	}
+	if _, _, _, err := h.readSince("", h.reservedHues()); err != nil {
+		return reply.Gone, err
+	}
+	return reply.Gone, nil
 }

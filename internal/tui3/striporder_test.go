@@ -18,7 +18,7 @@ func TestTheStripReadsTheTeamThenItsTabs(t *testing.T) {
 	a.open = func(workspace, transcript string) (Conversation, error) { return Conversation{}, nil }
 	a.width, a.height = 160, 40
 	row := ansi.Strip(a.tabsRow(a.width))
-	chip, manager := strings.Index(row, "harbor ▾"), strings.Index(row, teamManagerGlyph+" Manager")
+	chip, manager := strings.Index(row, "harbor "+a.tabCloseWord()), strings.Index(row, teamManagerGlyph+" Manager")
 	if chip < 0 || manager < 0 || chip > manager {
 		t.Fatalf("the strip reads %q", row)
 	}
@@ -27,8 +27,8 @@ func TestTheStripReadsTheTeamThenItsTabs(t *testing.T) {
 	}
 	for _, hit := range a.chatTabHits {
 		if hit.kind == tabManager || hit.kind == tabHere || hit.kind == tabOther {
-			if hit.span.from < a.wall.chip.to {
-				t.Fatalf("a tab's hit %+v is before the chip's end %d", hit, a.wall.chip.to)
+			if hit.span.from < a.wall.chipClear.to {
+				t.Fatalf("a tab's hit %+v is before the chip's end %d", hit, a.wall.chipClear.to)
 			}
 		}
 	}

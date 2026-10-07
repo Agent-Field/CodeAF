@@ -84,5 +84,5 @@ func (a *app) headRows(width int, strip string, pal palette) []string {
 // its rows answer, then the place's own head is put over it (teamspagehost.go),
 // and a strip in the pane would be a second strip the place does not show.
 func (a *app) stripInHead() bool {
-	return !a.pageShowing() && !a.tp.forwarding
+	return !a.pageShowing()
 }

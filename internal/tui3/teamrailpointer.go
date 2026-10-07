@@ -37,7 +37,17 @@ func (a *app) trafficGo(key string) tea.Cmd {
 		return cmd
 	}
 	for _, t := range a.wall.teams {
-		if m, ok := t.Member(key); ok && m.File != "" {
+		var m teamMember
+		m, ok := t.Member(key)
+		if !ok {
+			for _, former := range t.FormerMembers {
+				if former.Key == key {
+					m, ok = former, true
+					break
+				}
+			}
+		}
+		if ok && m.File != "" {
 			return a.tabGo(chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word, full: m.Word})
 		}
 	}
@@ -71,24 +81,11 @@ func (a *app) trafficKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return a.trafficGo(t.Manager), true
 }
 
-// teamOfFront is the team the conversation in front belongs to and is run
-// from: the team shown when it holds it, else the first managed team that
-// does, else the team shown. Frame-safe: memory only.
+// teamOfFront is the explicit overlay holding this conversation. All never
+// infers an overlay from membership; the engine keeps its roles independently.
 func (a *app) teamOfFront() (team, bool) {
-	if !a.wall.loaded {
-		return team{}, false
-	}
-	front := a.frontTabKey()
-	shown, showing := a.teamActive()
-	if showing && teamHolds(shown, front) {
-		return shown, true
-	}
-	for _, t := range a.wall.teams {
-		if t.Manager != "" && teamHolds(t, front) {
-			return t, true
-		}
-	}
-	return shown, showing
+	t, ok := a.teamActive()
+	return t, ok && !t.Closed() && a.teamOverlayHolds(t, a.frontTabKey())
 }
 
 // trafficHint is the composer's placeholder in a managed team: the person's
@@ -99,20 +96,13 @@ func (a *app) trafficHint() string {
 	if a.teamsOff() || !a.wall.loaded || len(a.wall.teams) == 0 {
 		return ""
 	}
-	// On the teams page the box says which team as well as who.
-	if words := a.teamsComposerWord(); words != "" {
-		return words
-	}
-	if _, ok := a.teamFrontManaged(); ok {
-		return "to " + a.teamManagerMark() + " manager"
-	}
 	front := a.frontTabKey()
-	for _, t := range a.wall.teams {
-		if t.Manager == "" {
-			continue
+	if t, ok := a.teamOfFront(); ok && t.Manager != "" {
+		if t.Manager == front {
+			return "to " + a.teamManagerMark() + " manager of " + t.Name
 		}
 		if m, ok := t.Member(front); ok && m.Handle != "" {
-			return "to @" + m.Handle
+			return "to @" + m.Handle + " of " + t.Name
 		}
 	}
 	return ""

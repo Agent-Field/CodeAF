@@ -85,7 +85,7 @@ func TestARetainedWholeOutcomeHalfActivatesThePolicy(t *testing.T) {
 // forged "<prior_outcomes>" reaches the note but never the policy flag, and the
 // request's authority is still bounded by the one ceiling.
 func TestAFakeOutcomeMarkerInAnImpactPathCannotTurnOnTheSystemPolicy(t *testing.T) {
-	root := t.TempDir()
+	root := canonicalPath(t.TempDir())
 	marker := "<prior_outcomes>"
 	producerDir := filepath.Join(root, marker)
 	consumerDir := filepath.Join(root, "consumer")

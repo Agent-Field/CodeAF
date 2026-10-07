@@ -295,7 +295,7 @@ func TestTheCancelKeyOnAPlanRowEndsItThroughTheStore(t *testing.T) {
 	if item, ok := a.taskSheetCurrent(); !ok || item.plan == nil {
 		t.Fatalf("the cursor is not on a plan row: %+v", item.entry)
 	}
-	drive(t, a, key("x"))
+	drive(t, a, key("s"))
 	if len(fake.cancelled) != 1 || fake.cancelled[0] != "t-alpha" {
 		t.Fatalf("the cancel key was turned into %v, want one cancel of t-alpha", fake.cancelled)
 	}
@@ -345,7 +345,7 @@ func TestAPlanVerbRefusalIsSpokenOnThePanesLine(t *testing.T) {
 	if !openTaskPlaceWithRows(a) {
 		t.Fatal("the place refused to open over a plan")
 	}
-	drive(t, a, key("x"))
+	drive(t, a, key("s"))
 	if !strings.Contains(a.pageMsg, "cannot be cancelled") {
 		t.Fatalf("the store's sentence went nowhere: %q", a.pageMsg)
 	}

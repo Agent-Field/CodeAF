@@ -119,6 +119,8 @@ type RunSpec struct {
 	Admission RunAdmission
 	// OnHold announces the changed set of task ids whose starts are held.
 	OnHold func([]string)
+	// OnWorker identifies when each worker has finished its record writes.
+	OnWorker func(string, bool)
 	// ProfileDir is the person's profile directory, read by the engine's crew
 	// factory to seat a task on the model its role rides.
 	ProfileDir string
@@ -354,6 +356,7 @@ type beltRun struct {
 	// machineHeld is the set of starts refused on the latest pass. Readers
 	// take beltMu before copying membership onto live plan rows.
 	machineHeld map[string]bool
+	workers     map[string]chan struct{}
 	// cut ends the context the run's workers and every call they have out run
 	// under, and stopped and stopReason say a PERSON ended it and in what words
 	// (stoprun.go). cut is set once before the run starts; the other two are
@@ -371,6 +374,10 @@ type beltRun struct {
 	ending  bool
 	closing bool
 	over    chan struct{}
+	// closingFile is registered only after the conversation's other writers
+	// have stopped, so run completion releases its journal before waking a
+	// caller that may immediately reopen it. It is guarded by Agent.beltMu.
+	closingFile *sessionFile
 	// born is when this run started, off the conversation's own clock, and it is
 	// what the run's row in the work tree ages from ([Agent.beltRunWorkingNow]).
 	// It is the same reading the row published to the surface carries, so the
@@ -1039,6 +1046,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		// none. Run and node workers must charge that same conversation.
 		Admission:    admission,
 		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
+		OnWorker:     func(id string, on bool) { a.beltWorkerLifetime(run, id, on) },
 		ProfileDir:   a.config.ProfileDir,
 		Sources:      a.liveSources(),
 		WorkModel:    workSeat,
@@ -1694,7 +1702,7 @@ func keptRunProgram(g *TaskGraph, notice TaskNotice) string {
 // landing behind it, and a process killed during that wait writes nothing at
 // all. A crash writes nothing either way; that store is ended by the next
 // process to find it ([endOrphanedProgramRun]).
-func (a *Agent) cutBeltRun() {
+func (a *Agent) cutBeltRun() <-chan struct{} {
 	a.beltMu.Lock()
 	run := a.beltRun
 	var cut context.CancelFunc
@@ -1716,6 +1724,10 @@ func (a *Agent) cutBeltRun() {
 	if cut != nil {
 		cut()
 	}
+	if run != nil {
+		return run.over
+	}
+	return nil
 }
 
 // waitForBeltAdmission keeps a newly seeded run queued until the machine gate
@@ -1983,18 +1995,22 @@ func crewKept(outcome string, landing RunLanding) bool {
 	return true
 }
 
-// releaseBeltRun is the last thing every run does: it is cleared off the Agent,
-// its store is closed, and every hand-off that was waiting for it to be over is
-// let go to start a run of its own. The clearing comes first, so a waiter that
-// wakes finds no run on the Agent and opens a fresh one rather than meeting this
-// one again.
+// releaseBeltRun keeps the completion join reachable through the store's last
+// close. Clearing the run and signalling its end happen together, so neither
+// deletion nor another hand-off can mistake a still-closing store for no work.
 func (a *Agent) releaseBeltRun(run *beltRun) {
 	a.beltMu.Lock()
+	run.ending = true
+	a.beltMu.Unlock()
+	_ = run.store.Close()
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if run.closingFile != nil {
+		_ = run.closingFile.Close()
+	}
 	if a.beltRun == run {
 		a.beltRun = nil
 	}
-	a.beltMu.Unlock()
-	_ = run.store.Close()
 	if run.over != nil {
 		close(run.over)
 	}
@@ -2519,4 +2535,18 @@ func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
 		notice.Crew = kept.Crew
 	}
 	return notice
+}
+
+func (a *Agent) beltWorkerLifetime(run *beltRun, id string, on bool) {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if run.workers == nil {
+		run.workers = map[string]chan struct{}{}
+	}
+	if on {
+		run.workers[id] = make(chan struct{})
+	} else if done := run.workers[id]; done != nil {
+		close(done)
+		delete(run.workers, id)
+	}
 }

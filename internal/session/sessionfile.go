@@ -1669,6 +1669,9 @@ func partKey(part ai.ContentPart) string {
 // is the legacy flat layout, where nobody outside had an opinion and the file
 // names itself. A resumed file keeps the id it was written with either way.
 func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession, error) {
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), conversationDeletedFile)); err == nil {
+		return nil, replayedSession{}, errors.New("this conversation was permanently deleted")
+	}
 	if directory := filepath.Dir(path); directory != "" && directory != "." {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, replayedSession{}, fmt.Errorf("session file: %w", err)
@@ -1685,6 +1688,10 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 		return nil, replayedSession{}, err
 	}
 	journal := &sessionFile{file: file, locked: locked}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(path), conversationDeletedFile)); err == nil {
+		_ = journal.Close()
+		return nil, replayedSession{}, errors.New("this conversation was permanently deleted")
+	}
 
 	// Creating the file above does not make it an existing session: existed is
 	// "this file has lines in it", and a file this call just created has none.

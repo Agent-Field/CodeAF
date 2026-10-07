@@ -191,7 +191,8 @@ func TestContextualReviewObservedDependencyRequiresExactPath(t *testing.T) {
 
 func contextualReviewObservedFixture(t *testing.T) (*Agent, *store.Store, string, string) {
 	t.Helper()
-	root := t.TempDir()
+	// Read receipts resolve symlinks; fixture identities must use the same root.
+	root := canonicalPath(t.TempDir())
 	producerDir := filepath.Join(root, "producer")
 	consumerDir := filepath.Join(root, "consumer")
 	for _, dir := range []string{producerDir, consumerDir} {
@@ -366,7 +367,7 @@ func TestContextualDismissalAmbiguousMultipleDoesNothing(t *testing.T) {
 // NAMING ONE NOTICE DISMISSES ONLY THAT ONE, EVEN WITH SEVERAL HELD. Two
 // consumer projects depend on the same producer, so a name can be told apart.
 func TestContextualDismissalTargetsExactlyTheNamedNotice(t *testing.T) {
-	root := t.TempDir()
+	root := canonicalPath(t.TempDir())
 	dirs := map[string]string{}
 	for _, name := range []string{"producer", "alpha", "beta"} {
 		dir := filepath.Join(root, name)

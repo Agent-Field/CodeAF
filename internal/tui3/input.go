@@ -366,6 +366,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	// The move picker, over everything, and then a team's card have the
 	// keyboard while they are up (teammove.go, teamsheet.go).
+	if a.tcreate.on && !door {
+		return a.teamCreateKey(msg)
+	}
+	if a.tmembers.on && !door {
+		return a.teamMembershipKey(msg)
+	}
 	if a.tmove.on && !door {
 		return a.teamMoveKey(msg)
 	}
@@ -1426,6 +1432,10 @@ func (a *app) enter() tea.Cmd { return a.enterLine() }
 // — the transcript line, the turn number, the recall history, the draft file —
 // is the same whichever way the sentence was handed over.
 func (a *app) enterLine() tea.Cmd {
+	if a.tmemberStart.key == a.frontTabKey() && a.tmemberStart.said.pending {
+		a.note("The member is still being added")
+		return nil
+	}
 	if a.startingChat() {
 		return a.startChatEnter()
 	}

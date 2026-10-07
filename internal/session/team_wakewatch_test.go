@@ -23,14 +23,20 @@ import (
 // them when it starts, so they are set before any agent is made.
 func fastTeamWake(t *testing.T) {
 	t.Helper()
+	teamWatchClockMu.Lock()
 	every, settle := teamWatchEvery, teamWakeSettle
 	teamWatchEvery, teamWakeSettle = 20*time.Millisecond, 300*time.Millisecond
-	t.Cleanup(func() { teamWatchEvery, teamWakeSettle = every, settle })
+	teamWatchClockMu.Unlock()
+	t.Cleanup(func() {
+		teamWatchClockMu.Lock()
+		teamWatchEvery, teamWakeSettle = every, settle
+		teamWatchClockMu.Unlock()
+	})
 }
 
 // quietFor lets the watch run for a while so a test can assert nothing more
 // happened.
-func quietFor() { time.Sleep(15 * teamWatchEvery) }
+func quietFor() { time.Sleep(15 * teamWatchInterval()) }
 
 // trafficEvents is every event in the fixture's Traffic whose text holds want.
 func trafficEvents(t *testing.T, fixture teamFixture, want string) []teams.Entry {
@@ -190,7 +196,7 @@ func TestTeamWakeTheManagersWakeCoalescesABurst(t *testing.T) {
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "parser", To: teams.ToManager, State: teams.StateFailed, Text: "failed: boom"})
 	waitRequests(t, completer, 1)
 	waitIdle(t, manager)
-	time.Sleep(2 * teamWakeSettle)
+	time.Sleep(2 * teamWakeDelay())
 	if got := completer.requests(); got != 1 {
 		t.Fatalf("a burst of three replies started %d turns, want 1", got)
 	}
@@ -215,7 +221,7 @@ func TestTeamWakeAReplyAndItsFinishedTurnWakeTheManagerOnce(t *testing.T) {
 	waitRequests(t, completer, 1)
 	waitIdle(t, manager)
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateFinished, Text: "finished"})
-	time.Sleep(3*teamWakeSettle + 10*teamWatchEvery)
+	time.Sleep(3*teamWakeDelay() + 10*teamWatchInterval())
 	if got := trafficEvents(t, fixture, "woke ◆"); len(got) != 1 {
 		t.Fatalf("one reply and its ending woke the manager %d times", len(got))
 	}
@@ -249,7 +255,7 @@ func TestTeamWakeFinishedAfterReplyStillDeduplesAfterManagerRestart(t *testing.T
 	secondCalls := oneAnswer(1)
 	teamAgent(t, fixture, fixture.manager, secondCalls, nil)
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateFinished, Text: "finished"})
-	time.Sleep(3*teamWakeSettle + 10*teamWatchEvery)
+	time.Sleep(3*teamWakeDelay() + 10*teamWatchInterval())
 	if got := secondCalls.requests(); got != 0 {
 		t.Fatalf("the restarted manager made %d requests for the already answered ending", got)
 	}
@@ -272,11 +278,11 @@ func TestTeamWakeTheLoopBreakerCountsTenMemberReplies(t *testing.T) {
 		if !manager.teamWatchTick(fixture.profile, now) {
 			t.Fatal("the manager stopped watching its team")
 		}
-		now = now.Add(teamWakeSettle)
+		now = now.Add(teamWakeDelay())
 		if !manager.teamWatchTick(fixture.profile, now) {
 			t.Fatal("the manager stopped watching at the settle boundary")
 		}
-		now = now.Add(teamWakeSettle)
+		now = now.Add(teamWakeDelay())
 	}
 	posted := make(chan int, teamLoopRounds+1)
 	releases := make([]chan struct{}, teamLoopRounds+1)
@@ -418,7 +424,7 @@ func TestTeamStopIgnoresOldOtherAndSharedStops(t *testing.T) {
 	if err := teams.AppendTraffic(fixture.profile, sharedTeam, teams.Entry{Kind: teams.KindStop, From: teams.FromManager, To: "web", Member: convKeyOf(t, fixture.web)}); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(10 * teamWatchEvery)
+	time.Sleep(10 * teamWatchInterval())
 	web.mu.Lock()
 	running := web.running
 	web.mu.Unlock()
@@ -440,7 +446,7 @@ func TestTeamWakeTheManagerSleepsThroughLinesThatAskNothing(t *testing.T) {
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: "web", To: teams.ToManager, State: teams.StateRunning, Text: "no longer waiting"})
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToRoom, Text: "lunch"})
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindEvent, From: teams.FromManager, To: "web", State: teams.StateRunning, Text: "woke @web"})
-	time.Sleep(teamWakeSettle + 15*teamWatchEvery)
+	time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
 	if got := completer.requests(); got != 0 {
 		t.Fatalf("lines that ask nothing of the manager started %d turns", got)
 	}
@@ -510,7 +516,7 @@ func TestTeamWakeAWakeOffTeamWakesNobody(t *testing.T) {
 	manager := teamAgent(t, fixture, fixture.manager, managerAnswers, nil)
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindNote, From: "web", To: teams.ToManager, Text: "done"})
-	time.Sleep(teamWakeSettle + 15*teamWatchEvery)
+	time.Sleep(teamWakeDelay() + 15*teamWatchInterval())
 	if webAnswers.requests() != 0 || managerAnswers.requests() != 0 {
 		t.Fatalf("a team with wake off woke a conversation: web %d, manager %d", webAnswers.requests(), managerAnswers.requests())
 	}

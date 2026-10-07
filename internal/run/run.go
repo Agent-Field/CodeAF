@@ -105,6 +105,7 @@ type Supervisor struct {
 	factory   WorkerFactory
 	gate      AdmissionGate
 	onHold    func([]string)
+	onWorker  func(string, bool)
 	held      map[string]bool
 	passHeld  map[string]bool
 	blocked   bool
@@ -517,9 +518,20 @@ func (s *Supervisor) pass(ctx context.Context, rootID string) Outcome {
 // step cap and, when wake is not empty, the resume clause a woken parent opens
 // with. The goroutine reports back on the channel and ends.
 func (s *Supervisor) launch(ctx context.Context, task plandb.Task, wake string) {
+	// Reserve the lifetime before factory work can create any task records.
+	if s.onWorker != nil {
+		s.onWorker(task.ID, true)
+	}
+	current := s.store.Task(task.ID)
+	if current == nil || terminalStatus(current.Status) {
+		if s.onWorker != nil {
+			s.onWorker(task.ID, false)
+		}
+		return
+	}
 	// The factory can panic before a worker exists. A machine lane belongs only
 	// to a worker that can return it, so take the lane after the factory succeeds.
-	worker := s.factory(task)
+	worker := s.makeTrackedWorker(task)
 	if s.gate != nil {
 		s.gate.Started()
 	}
@@ -611,6 +623,9 @@ func (s *Supervisor) drain() {
 			s.cut[ret.task.ID] = true
 		}
 		s.settleSpend(ret)
+		if s.onWorker != nil {
+			s.onWorker(ret.task.ID, false)
+		}
 	}
 	s.workers.Wait()
 }
@@ -815,6 +830,9 @@ func (s *Supervisor) absorbQueued() {
 // that stays open would stall the whole run: nothing else can make it
 // terminal, and the run would wait on it forever.
 func (s *Supervisor) absorb(ret workerReturn) {
+	if s.onWorker != nil {
+		defer s.onWorker(ret.task.ID, false)
+	}
 	s.returned()
 	// A RETURN FOR A TASK THE STORE ALREADY ENDED is written as nothing. The
 	// ending the store carries — a cancellation that landed while the worker
@@ -1877,6 +1895,8 @@ type Spec struct {
 	Gate AdmissionGate
 	// OnHold announces the ids refused on a pass when their set changes.
 	OnHold func([]string)
+	// OnWorker tracks the lifetime through the last store write for one worker.
+	OnWorker func(string, bool)
 	// OnSpend observes the reconciled cumulative run spend whenever it rises.
 	OnSpend func(float64)
 }
@@ -2006,6 +2026,7 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 	supervisor.onSpend = spec.OnSpend
 	supervisor.gate = spec.Gate
 	supervisor.onHold = spec.OnHold
+	supervisor.onWorker = spec.OnWorker
 	outcome := supervisor.Run(ctx)
 	endRootOn(ctx, store, outcome)
 	result := supervisor.rootResult
@@ -2028,4 +2049,17 @@ func Start(ctx context.Context, spec Spec) (Outcome, Summary) {
 		TokensOut: supervisor.tokensOut,
 		Seconds:   time.Since(started).Seconds(),
 	}
+}
+
+// A factory failure releases its reservation before unwinding the run.
+func (s *Supervisor) makeTrackedWorker(task plandb.Task) Worker {
+	defer func() {
+		if r := recover(); r != nil {
+			if s.onWorker != nil {
+				s.onWorker(task.ID, false)
+			}
+			panic(r)
+		}
+	}()
+	return s.factory(task)
 }

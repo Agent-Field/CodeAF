@@ -138,7 +138,11 @@ func delegationAnswer(dir string, call Frame) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		gone, err := teamstore.Delete(dir, args.Team)
+		var expected [][]string
+		if args.Expected != nil {
+			expected = append(expected, args.Expected)
+		}
+		gone, err := teamstore.Delete(dir, args.Team, expected...)
 		if err != nil {
 			return nil, err
 		}
@@ -187,8 +191,12 @@ func (c *Client) TeamsSpend(team, day, stamp string) (SpendReading, error) {
 }
 
 // TeamsDelete forgets a closed team on the engine.
-func (c *Client) TeamsDelete(team string) (DeleteTeamReply, error) {
-	return delegationAsk[DeleteTeamReply](c, MethodTeamsDelete, DeleteTeamArgs{Team: team})
+func (c *Client) TeamsDelete(team string, expected ...[]string) (DeleteTeamReply, error) {
+	args := DeleteTeamArgs{Team: team}
+	if len(expected) > 0 {
+		args.Expected = expected[0]
+	}
+	return delegationAsk[DeleteTeamReply](c, MethodTeamsDelete, args)
 }
 
 // TeamsWrapUp asks the engine's manager of team to wrap up.

@@ -467,21 +467,18 @@ func appendTaskIndex(path string, entry TaskIndexEntry) {
 	if err != nil {
 		return
 	}
-	taskIndexMu.Lock()
-	defer taskIndexMu.Unlock()
-	if directory := filepath.Dir(path); directory != "" && directory != "." {
-		if err := os.MkdirAll(directory, 0o700); err != nil {
-			return
+	_ = withTaskIndexLock(path, func() error {
+		if taskIndexDeleted(path, entry) {
+			return nil
 		}
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	// ONE write, so O_APPEND's atomic offset covers the whole row: a line
-	// assembled by two writes is a line another process may split.
-	_, _ = file.Write(append(line, '\n'))
+		file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = file.Write(append(line, '\n'))
+		return err
+	})
 }
 
 // ReadTaskIndex reads the rows at path, NEWEST FIRST, and tolerates everything.
@@ -490,7 +487,13 @@ func appendTaskIndex(path string, entry TaskIndexEntry) {
 // and answers nil. A line that does not parse, or that parses into a row with
 // no title, is skipped: see this file's header for why that is a rule and not a
 // defect.
-func ReadTaskIndex(path string) []TaskIndexEntry {
+func ReadTaskIndex(path string) []TaskIndexEntry { return readTaskIndex(path, taskIndexRows) }
+
+func readTaskIndex(path string, limit int) []TaskIndexEntry {
+	return readTaskIndexRows(path, limit, true)
+}
+
+func readTaskIndexRows(path string, limit int, filter bool) []TaskIndexEntry {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
@@ -522,9 +525,12 @@ func ReadTaskIndex(path string) []TaskIndexEntry {
 	// scanner.Err() is deliberately unread: a truncated tail is the same
 	// tolerated case as an unparseable line, and the rows before it are good.
 	rows = lastPerNode(rows)
+	if filter {
+		rows = filterDeletedTaskIndex(path, rows)
+	}
 	sortTaskIndex(rows)
-	if len(rows) > taskIndexRows {
-		rows = rows[:taskIndexRows]
+	if limit > 0 && len(rows) > limit {
+		rows = rows[:limit]
 	}
 	return rows
 }

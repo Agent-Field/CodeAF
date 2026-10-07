@@ -55,13 +55,24 @@ func TestClickingATabWordWorksFromEveryPlace(t *testing.T) {
 // A wheel that moved a different number of rows per room — or none at all in
 // some of them — would be one gesture with seven meanings, which is what the
 // owner met when they turned it over the built binary.
-func TestTheWheelMovesEveryPlacesCursorLikeTheArrows(t *testing.T) {
+func TestTheWheelMovesListPlacesCursorAndLeavesTeamsFocusAlone(t *testing.T) {
 	for _, place := range everyPlaceTable() {
 		t.Run(place.id.word(), func(t *testing.T) {
 			// ONE LAB WALKED WITH THE ARROWS AND ANOTHER WITH THE WHEEL, because
 			// what is being compared is the two gestures' effect on the same
 			// starting cursor over the same body.
 			byKey, byWheel := place.open(t), place.open(t)
+			if place.id == pageTeams {
+				// Teams has two independent physical viewports; its wheel
+				// cannot imitate keys without redirecting to the focused side.
+				placeFrameText(byWheel)
+				start := byWheel.tp.cur
+				drive(t, byWheel, tea.MouseWheelMsg{X: 4, Y: placeHeadRows + 1, Button: tea.MouseWheelDown})
+				if byWheel.tp.cur != start {
+					t.Fatal("Teams wheel moved keyboard focus")
+				}
+				return
+			}
 			// BOTH START AT THE TOP OF THE LIST. A lab that opens with its cursor
 			// already on the last row proves nothing about a gesture that walks
 			// down, and home's own lab opens exactly there — with its fold held
@@ -329,7 +340,7 @@ func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 					}
 				}
 				if place.cursor(keyed) != target {
-					t.Fatalf("the arrows never reached body line %d on the %s place", target, place.id.word())
+					t.Fatalf("the arrows never reached body line %d on the %s place: cursor %d ref %+v targets %+v", target, place.id.word(), place.cursor(keyed), keyed.tp.cur, keyed.tp.targets)
 				}
 				drive(t, clicked, tea.MouseClickMsg{X: placeClickX(clicked), Y: y, Button: tea.MouseLeft})
 				drive(t, keyed, key("enter"))

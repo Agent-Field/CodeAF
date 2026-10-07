@@ -31,6 +31,7 @@ type state struct {
 	Notes    []Note
 	Contexts []ContextEntry
 	NextID   uint64
+	Deleted  map[string]bool
 }
 
 // sqliteBusyCode is SQLITE_BUSY, the refusal SQLite gives a writer while
@@ -61,6 +62,7 @@ var errNoChange = errors.New("no change")
 // requirements, artifacts, evidence — ride as JSON in a single column each.
 // The spend table is the ledger's, created empty and written by nothing here.
 var schemaStatements = []string{
+	`CREATE TABLE IF NOT EXISTS deleted_tasks (id TEXT PRIMARY KEY)`,
 	`CREATE TABLE IF NOT EXISTS meta (
 		id      INTEGER PRIMARY KEY CHECK (id = 1),
 		project TEXT    NOT NULL,
@@ -442,6 +444,24 @@ func loadState(tx *sql.Tx) (state, error) {
 		return state{}, err
 	}
 	value.Tasks, value.Order = tasks, order
+	value.Deleted = map[string]bool{}
+	deleted, err := tx.Query("SELECT id FROM deleted_tasks")
+	if err != nil {
+		return state{}, err
+	}
+	for deleted.Next() {
+		var id string
+		if err = deleted.Scan(&id); err != nil {
+			deleted.Close()
+			return state{}, err
+		}
+		value.Deleted[id] = true
+	}
+	err = deleted.Err()
+	deleted.Close()
+	if err != nil {
+		return state{}, err
+	}
 	if err := loadDeps(tx, value.Tasks); err != nil {
 		return state{}, err
 	}
@@ -726,6 +746,13 @@ func loadContexts(tx *sql.Tx) ([]ContextEntry, error) {
 // half-written one, which is the property the file's temp-and-rename used to
 // give.
 func saveState(tx *sql.Tx, value state) error {
+	for id, gone := range value.Deleted {
+		if gone {
+			if _, err := tx.Exec("INSERT OR IGNORE INTO deleted_tasks (id) VALUES (?)", id); err != nil {
+				return err
+			}
+		}
+	}
 	for _, table := range []string{"meta", "tasks", "deps", "notes", "contexts"} {
 		if _, err := tx.Exec("DELETE FROM " + table); err != nil {
 			return err
@@ -925,6 +952,9 @@ func cloneState(source state) state {
 
 func validateLoadedState(value state) error {
 	root := value.Tasks[value.RootID]
+	if root == nil && value.Deleted[value.RootID] && len(value.Tasks) == 0 {
+		return nil
+	}
 	if root == nil || root.ParentID != "" {
 		return errors.New("root task is missing or has a parent")
 	}

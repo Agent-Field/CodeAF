@@ -125,72 +125,34 @@ func plainCells(row string, from, to int) string {
 // the team shown it makes that conversation the manager; on the manager it
 // reads Remove manager and leaves it an ordinary member. The menu stays up so
 // the word is seen to flip.
-func TestTeamMenuMakesAndRemovesTheManager(t *testing.T) {
+func TestOverlayPickerCannotChangeManager(t *testing.T) {
 	a, harbor := managerApp(t)
-	front := a.frontTabKey()
-	if _, took := a.tabPress(a.wall.chip.from+1, tabStripRow); !took || !a.teamMenu.on {
-		t.Fatal("the chip did not open the switcher")
-	}
+	before := mustTeam(t, a, harbor).Manager
+	a.openTeamMenu()
 	frame, _ := menuFrame(t, a)
-	if !strings.Contains(frame, teamManagerGlyph+" Make this harbor's manager") {
-		t.Fatalf("the switcher does not offer Make manager:\n%s", frame)
+	if strings.Contains(frame, "Make this harbor's manager") || strings.Contains(frame, "ordinary member") {
+		t.Fatal(frame)
 	}
-	hit := menuHit(t, a, teamMenuManager, "")
-	_ = a.teamMenuPress(hit.x0+1, hit.y0)
-	if got := mustTeam(t, a, harbor); got.Manager != front {
-		t.Fatalf("Make manager left %q", got.Manager)
-	}
-	if !a.teamMenu.on {
-		t.Fatal("the switcher closed on Make manager")
-	}
-	frame, _ = menuFrame(t, a)
-	if !strings.Contains(frame, "Make an ordinary member") {
-		t.Fatalf("the row did not flip:\n%s", frame)
-	}
-	hit = menuHit(t, a, teamMenuManager, "")
-	_ = a.teamMenuPress(hit.x0+1, hit.y0)
-	got := mustTeam(t, a, harbor)
-	if got.Manager != "" || !got.Holds(front) {
-		t.Fatalf("Remove manager left manager %q, members %+v", got.Manager, got.Members)
+	if mustTeam(t, a, harbor).Manager != before {
+		t.Fatal("overlay picker changed manager")
 	}
 }
 
 // ON THE WALL, A TILE'S TEAMS POPOVER CARRIES THE SAME ROW for its one
 // conversation in the team shown, and the manager's tile is pinned first and
 // marked.
-func TestWallPopoverMakesTheManagerAndPinsItsTile(t *testing.T) {
+func TestConversationGridDoesNotPinTeamManagers(t *testing.T) {
 	a, harbor := managerApp(t)
+	tabs := a.tabList()
+	if err := a.teamToggleManager(harbor, tabs[len(tabs)-1]); err != nil {
+		t.Fatal(err)
+	}
+	a.teamViewSet(harbor)
 	_ = a.openWall()
 	tiles := a.wallShown(a.now())
-	if len(tiles) < 2 {
-		t.Fatalf("the wall shows %d tiles of harbor", len(tiles))
-	}
-	last := tiles[len(tiles)-1].tab
-	a.wallOpenMembers([]string{last.key}, wallPop{x: 2, y0: 2, y1: 3})
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, teamManagerGlyph+" Make this harbor's manager") {
-		t.Fatalf("the popover does not offer Make manager:\n%s", frame)
-	}
-	var row wallHit
-	for _, h := range a.wall.hits {
-		if h.kind == wallHitPopRow && h.arg == wallPopManager {
-			row = h
+	for i, tile := range tiles {
+		if tile.manager || tile.tab.key != tabs[i].key {
+			t.Fatal("grid reordered conversations around team manager")
 		}
-	}
-	if row.kind != wallHitPopRow {
-		t.Fatalf("no manager row among %+v", a.wall.hits)
-	}
-	_, _ = a.wallPress(row.x0+1, row.y0)
-	if got := mustTeam(t, a, harbor); got.Manager != last.key {
-		t.Fatalf("the popover's row left manager %q, want %q", got.Manager, last.key)
-	}
-	a.wall.pop = wallPop{}
-	tiles = a.wallShown(a.now())
-	if tiles[0].tab.key != last.key || !tiles[0].manager {
-		t.Fatalf("the manager's tile is not pinned first: %+v", tiles[0].tab)
-	}
-	frame = wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, teamManagerGlyph+" "+teamManagerWord+" · ") {
-		t.Fatalf("the manager's tile is not titled ◆ Manager · <title>:\n%s", frame)
 	}
 }

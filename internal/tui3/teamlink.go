@@ -303,7 +303,7 @@ func (a *app) openTeamFromLink(t team) tea.Cmd {
 	// The pointer was on a link in the chat that is no longer drawn; kept, it
 	// would leave that link's hint on a page that has no such link.
 	a.dropHover()
-	a.tp.sel = t.ID
+	a.teamsViewFromSelection(t.ID)
 	cmd := a.showPage(pageTeams)
 	a.tp.focus = true
 	a.tp.cur = teamsRef{act: teamsActSelect, id: t.ID}

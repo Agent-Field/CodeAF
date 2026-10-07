@@ -413,7 +413,7 @@ func TestClosingMovesHomesOnTheSameWrite(t *testing.T) {
 	}
 	must(t, Update(dir, func(f *File) error { return f.Close("aaaaaaaaaaaa", time.Time{}, "") }))
 	g, _ = Load(dir)
-	if h, _ := g.Home("k"); h.Team != "dddddddddddd" {
+	if h, ok := g.Home("k"); ok {
 		t.Fatalf("after the close k reports to %+v", h)
 	}
 	tm, _ := g.Team("aaaaaaaaaaaa")
@@ -428,7 +428,7 @@ func TestDeleteOnlyAClosedTeamAndItsFiles(t *testing.T) {
 	f := managed()
 	must(t, Save(dir, f.Teams))
 	must(t, AppendTraffic(dir, "bbbbbbbbbbbb", Entry{Kind: KindNote, From: FromManager, To: ToEveryone, Text: "x"}))
-	if _, err := Delete(dir, "aaaaaaaaaaaa"); err != ErrOpen {
+	if _, err := Delete(dir, "aaaaaaaaaaaa", []string{"aaaaaaaaaaaa"}); err == nil {
 		t.Fatalf("an open team was deleted: %v", err)
 	}
 	must(t, Update(dir, func(f *File) error { return f.Close("aaaaaaaaaaaa", time.Time{}, "") }))

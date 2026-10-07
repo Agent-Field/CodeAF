@@ -31,6 +31,12 @@ type Member struct {
 	// with a manager somewhere up its chain. [File.SetHome] moves it; tidy
 	// picks it when there is none and never moves a valid one.
 	Home bool `json:"home,omitempty"`
+	// Independent preserves the person's removal of a reporting membership.
+	// Other memberships remain links until SetHome explicitly assigns a manager.
+	Independent bool `json:"independent,omitempty"`
+	// JoinedAt bounds delivery for a conversation added through membership editing.
+	// An ended membership cannot regain directives from its previous lifetime.
+	JoinedAt time.Time `json:"joined_at,omitempty"`
 	// Started says this membership was made by the team manager's team_start
 	// (a [KindStart] the interface carried out), which is the second rule a
 	// home is picked by.
@@ -41,6 +47,8 @@ type Member struct {
 	// handle written before this was kept, and is read as the word list's
 	// ([Member.HandleDerived]).
 	HandleBy string `json:"handle_by,omitempty"`
+	// Unknown membership fields survive whole-file updates from this build.
+	extra map[string]json.RawMessage
 }
 
 // Team is one named set of conversations.
@@ -52,6 +60,9 @@ type Team struct {
 	Parent string
 	// Members are the conversations, in the order the person stored them.
 	Members []Member
+	// FormerMembers retain aliases for history links and confer no membership.
+	FormerMembers []Member
+	FormerManager string
 	// Manager is the conversation key of the member that manages the team, ""
 	// for none. It is always one of Members.
 	Manager string
@@ -92,6 +103,9 @@ type Team struct {
 type File struct {
 	Version int
 	Teams   []Team
+	// Only the engine that loaded local records may resolve filesystem aliases.
+	// A hosted window receives paths belonging to a different machine.
+	localIdentities bool
 }
 
 // knownFields is every key [Team] reads itself.
@@ -100,21 +114,23 @@ var knownFields = map[string]bool{
 	"hue": true, "tier": true, "made": true,
 	"state": true, "closed_at": true, "closed_with": true, "report": true, "root": true,
 	"questions_up": true, "cap_usd_day": true, "depth_limit": true, "sub_share": true, "wake": true,
-	"wrap": true,
+	"wrap": true, "former_members": true, "former_manager": true,
 }
 
 // wireTeam is the stored shape. Hue and Tier are pointers so a team with no
 // colour is written without one, and the next reader with a palette colours
 // it rather than reading 0 as a choice.
 type wireTeam struct {
-	ID      string    `json:"id"`
-	Name    string    `json:"name"`
-	Parent  string    `json:"parent"`
-	Members []Member  `json:"members"`
-	Manager string    `json:"manager"`
-	Hue     *float64  `json:"hue,omitempty"`
-	Tier    *int      `json:"tier,omitempty"`
-	Made    time.Time `json:"made"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Parent        string    `json:"parent"`
+	Members       []Member  `json:"members"`
+	FormerMembers []Member  `json:"former_members,omitempty"`
+	FormerManager string    `json:"former_manager,omitempty"`
+	Manager       string    `json:"manager"`
+	Hue           *float64  `json:"hue,omitempty"`
+	Tier          *int      `json:"tier,omitempty"`
+	Made          time.Time `json:"made"`
 	// The lifecycle, written only for a closed team.
 	State      string     `json:"state,omitempty"`
 	ClosedAt   *time.Time `json:"closed_at,omitempty"`
@@ -139,7 +155,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 	if err := json.Unmarshal(raw, &all); err != nil {
 		return err
 	}
-	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, Manager: w.Manager, Made: w.Made,
+	*t = Team{ID: w.ID, Name: w.Name, Parent: w.Parent, Members: w.Members, FormerMembers: w.FormerMembers, FormerManager: w.FormerManager, Manager: w.Manager, Made: w.Made,
 		Settings: w.Settings, State: w.State, ClosedWith: w.ClosedWith, Report: w.Report, Root: w.Root, Wrap: w.Wrap}
 	if w.ClosedAt != nil {
 		t.ClosedAt = *w.ClosedAt
@@ -165,7 +181,7 @@ func (t *Team) UnmarshalJSON(raw []byte) error {
 // MarshalJSON writes the known fields in their order, then any field a later
 // build wrote, sorted, exactly as it was read.
 func (t Team) MarshalJSON() ([]byte, error) {
-	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, Manager: t.Manager, Made: t.Made,
+	w := wireTeam{ID: t.ID, Name: t.Name, Parent: t.Parent, Members: t.Members, FormerMembers: t.FormerMembers, FormerManager: t.FormerManager, Manager: t.Manager, Made: t.Made,
 		Settings: t.Settings, ClosedWith: t.ClosedWith, Report: t.Report, Root: t.Root, Wrap: t.Wrap}
 	// A state this build does not know is written back as it was read, so a
 	// later build's word survives; open is written as nothing.
@@ -253,6 +269,7 @@ func (t Team) member(key string) int {
 // Clone is a copy of t that shares nothing with it.
 func (t Team) Clone() Team {
 	t.Members = append([]Member(nil), t.Members...)
+	t.FormerMembers = append([]Member(nil), t.FormerMembers...)
 	t.Settings = t.Settings.clone()
 	if t.Wrap != nil {
 		w := *t.Wrap
@@ -362,6 +379,11 @@ func (f *File) SetParent(id, parent string) error {
 			return errors.New("a team cannot sit under itself")
 		}
 	}
+	next := f.ManagementSnapshot()
+	next.Teams[i].Parent = parent
+	if err := next.CheckManagementChange(f); err != nil {
+		return err
+	}
 	f.Teams[i].Parent = parent
 	return nil
 }
@@ -400,6 +422,11 @@ func (f *File) AddMember(id string, m Member) error {
 	case m.HandleBy == "":
 		m.HandleBy = HandleByTyped
 	}
+	for _, other := range f.Teams {
+		if existing, ok := other.Member(m.Key); ok && existing.Independent {
+			m.Independent = true
+		}
+	}
 	t.Members = append(t.Members, m)
 	assignHandles(t)
 	return nil
@@ -413,10 +440,24 @@ func (f *File) RemoveMember(id, key string) error {
 		return err
 	}
 	t := &f.Teams[i]
+	if m, ok := t.Member(key); ok && m.Home {
+		for ti := range f.Teams {
+			for mi := range f.Teams[ti].Members {
+				if f.Teams[ti].Members[mi].Key == key {
+					f.Teams[ti].Members[mi].Independent = true
+					f.Teams[ti].Members[mi].Home = false
+				}
+			}
+		}
+	}
 	if j := t.member(key); j >= 0 {
+		m := t.Members[j]
+		m.Home, m.Independent = false, false
+		t.FormerMembers = append(t.FormerMembers, m)
 		t.Members = append(t.Members[:j:j], t.Members[j+1:]...)
 	}
 	if t.Manager == key {
+		t.FormerManager = key
 		t.Manager = ""
 	}
 	return nil
@@ -427,6 +468,9 @@ func (f *File) RemoveMember(id, key string) error {
 // is added first, with only its key; call [File.AddMember] before this to add
 // it with its title and file.
 func (f *File) SetManager(id, key string) error {
+	if err := f.CheckManager(id, key); err != nil {
+		return err
+	}
 	if key == "" {
 		return errors.New("a manager needs a conversation key")
 	}
@@ -434,8 +478,20 @@ func (f *File) SetManager(id, key string) error {
 		return err
 	}
 	idx := Index(f.Teams, id)
+	if old := f.Teams[idx].Manager; old != "" && old != key {
+		f.Teams[idx].FormerManager = old
+	}
 	f.Teams[idx].Manager = key
 	assignHandles(&f.Teams[idx])
+	if f.Teams[idx].Root {
+		// Explicitly assigning the optional global role reconnects its current
+		// top-level managers, including reports made independent by its deletion.
+		// Ordinary members and former managers keep their reporting choices.
+		seatTopManagers(f.Teams, id)
+		for _, m := range f.TopManagers() {
+			setHomeFlag(f.Teams, m.Key, id)
+		}
+	}
 	return nil
 }
 
@@ -445,6 +501,15 @@ func (f *File) ClearManager(id string) error {
 	i, err := f.at(id)
 	if err != nil {
 		return err
+	}
+	next := f.ManagementSnapshot()
+	next.Teams[i].Manager = ""
+	if err := next.CheckManagementChange(f); err != nil {
+		return err
+	}
+
+	if old := f.Teams[i].Manager; old != "" {
+		f.Teams[i].FormerManager = old
 	}
 	f.Teams[i].Manager = ""
 	return nil

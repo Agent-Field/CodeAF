@@ -1,44 +1,67 @@
 # Conversations and teams
 
-## The conversations view (the wall): every open conversation at once
+## All, team overlays, Teams dropdown and stable tabs
 
-To see all your conversations at once, open the **conversations view**: every conversation
-this window has open, as a grid of live tiles, so you can see at a glance which ones are working, which are waiting on you
-and which are at rest, and go to any of them with one press. It is also where you group
-conversations into **teams**.
+Ordinary Home, saved-session and conversation-switcher navigation opens the original conversation
+with no team overlay selected. Clearing the team's visual overlay does not end
+membership, change reporting authority, or stop background work.
+The composer has no team-recipient hint and the sidebar uses the ordinary task view.
 
-Open it any of these ways:
+With no overlay, the strip shows **Teams ▾**. Selecting a team replaces it with a coloured
+team chip and a separate **x**. Click the name to switch teams; click x to remove the
+overlay and restore ordinary Chats. Clearing selects **All teams** in Teams without
+changing membership or background work. The dropdown lists actual teams only, with no **None** option.
+The **▦ All** button still opens the independent conversation grid.
 
-- `alt+v` from anywhere in a conversation (on a Mac keyboard that is not sending alt,
-  `option+v` types `√`, and that works too)
+The Teams dropdown is the only team selector in Chats; there are no membership buttons
+below the strip. Choosing a team restores that team's last conversation and selects the
+same team in the Teams sidebar. Selecting a team in Teams selects its Chats overlay
+without opening a conversation from the overview. Returning through the Chats navigation
+word retains that selection and restores its conversation. Clearing the overlay in Chats selects the All teams
+overview. All teams in Teams selects the All teams overlay when the optional global
+manager exists; otherwise Chats remains without an overlay. Following a member or interaction from
+Teams selects its originating overlay, including conversations shared by several teams.
+
+An overlay shows every member as a tab, manager first, using aliases. Saved members have tabs
+before this window attaches their conversations; selecting one opens it and reports unavailable
+or locked sessions honestly. Team tabs have no close action: `ctrl+w` keeps them visible and
+points to removal in Teams. Without an overlay, ordinary tab close never removes membership.
+
+Each overlay remembers selection and strip browsing separately. Drafts and reading positions
+belong to the conversation and are shared across overlays. New members do not steal focus.
+Removing the selected membership selects the nearest remaining tab; if none remain, the view
+returns to ordinary Chats. Narrow strips keep their scroll arrows and a fixed `▦ All` grid button.
+
+## The conversations view (the wall): how do I see all my conversations at once?
+
+The **conversations view** on Chats shows every saved, non-deleted conversation, including
+conversations whose tabs are dismissed and older archived conversations. It reads the same
+conversation catalog as `alt+k`, without the switcher's visible-row limit. It is independent
+of teams: choosing an overlay does not filter the grid. Browsing and selecting saved cards
+never starts work or opens their tabs. Live held conversations update; other cards show saved
+previews. Over a hosted connection, saved previews are unavailable unless already cached.
+
+Open the grid with:
+
+- `alt+v` (or `√`, composed by `option+v` on some Mac keyboards)
 - `/wall`
-- `▦ All` at the right end of the row under the message box, drawn once a
-  second conversation is open (the word goes first when the row is narrow)
-- `▦ All` on the tab strip, after the new-chat `+` (not drawn under 60 columns). The strip
-  is the second line of a chat, not of a place, so from home or teams use `alt+v` or `/wall`
+- `▦ All` at the permanently right-aligned end of the Chats tab strip, including when tabs overflow
+- `▦ All` on the dock under the message box, drawn once a second conversation is open
 
-Close it with `alt+v` again, `esc`, the `‹ Back` button at the bottom left, or a press on
-the strip's `▦ All`. Nothing you do in the view ends any work: closing a tile closes its
-view in this window, and the conversation keeps running.
+The strip belongs to Chats; from a place use `alt+v` or `/wall`. On strips narrower than the
+12-column header floor it is absent. The title reads `Conversations · all saved conversations`.
+Membership dots on tiles are context; they do not filter the grid or edit teams.
+Hovering a conversation tab also highlights `▦ All`, revealing the alternate grid view.
+The toolbar offers `+ New team s`, `Filter /`, `Columns − +`, `Help ?` and `Back`.
 
-The view and the tab strip show **what is open in this window**. The title bar says so,
-`Conversations · open in this window`, or `open in this window · in harbor` while a team is
-shown, and counts what is running, what needs you and how many are open here. A team's
-members that this window does not have open are not tiles and not tabs; while the shown team
-has any, the title bar carries one quiet button, `2 more in harbor · Open them` (or `r`), that
-resumes them in the background, so they arrive as tiles and tabs while the conversation in
-front and your focus stay where they are. When every member is open the button is not there. Under it is the **Teams** row, which ends in `✦ Organize` while every conversation is
-shown, and at the bottom a toolbar with `Filter /`,
-`New team s`, `Columns − +` and `Help ?`. While the pointer rests on any control, the middle
-of the toolbar says in one dim line what it does and which key does the same; on a narrow
-window `Columns` and the other buttons step aside for that line so it is always whole, and
-come back when the pointer leaves. Pointing at `▦ All` says `The grid of your open tabs, and
-your teams · alt+v`; pointing at a square of the tabs dock under the box names that
-conversation (see below).
+Cancel with `alt+v`, `esc`, `Back`, or the strip's `▦ All`. Cancelling restores the original
+team overlay, conversation and draft. Opening any tile enters ordinary Chats with no overlay,
+even when it is the current conversation. You can select an overlay afterward with the Teams dropdown. Closing an open card's tab removes that tab; its conversation stays in the grid and work keeps running.
+A saved card without a tab offers no Close action.
 
-**`▦ All` and the `chats` place are two different doors.** `chats` on the top line is the
-place: every conversation, one at a time, with the tab strip over it. `▦ All` is this view:
-the tabs this window has open, all at once, as a grid.
+The grid also offers team creation from selected cards. Membership editing, manager assignment,
+settings and organization live on Teams. The grid has no team filter. Its hover hint reads
+`The grid of all your conversations · alt+v`.
 
 ## The tabs dock under the message box
 
@@ -51,7 +74,7 @@ while it is idle. Amber is only for waiting on you. One open conversation draws 
 Rest the pointer on a square and that square takes the hover ground. The hint line says
 `Go to Shipping the parser · running · click`, with `waiting on you` or `idle` in the
 middle. On the square in front it says `Shipping the parser · you are here`. On `▦ All`
-it says `The grid of your open tabs, and your teams · alt+v`, as the strip's `▦ All` does,
+it says `The grid of all your conversations · alt+v`, as the strip's `▦ All` does,
 and the hover ground covers the glyph and the word together: they are one button.
 
 A press on a square goes to that conversation and does not open this view. A press
@@ -86,13 +109,12 @@ title bar's `needs you` count does the same when pressed.
 
 ## Pointing, focusing and opening a tile
 
-A press on a tile opens its conversation, the way a thumbnail opens its window. The tile
-grows into the frame for a moment while the conversation is already live under it, so a key
-typed at once lands in its box.
+A press on a tile opens its conversation immediately, with no expansion animation.
+The first frame shows the full chat and its composer.
 
 The pointer resting on a tile lights it and turns its bottom border into its **action row**:
 
-`Open ↵ ── Select ␣ ── Teams m ── Close x`
+`Open ↵ ── Select ␣ ── Close x`
 
 `Open` becomes `Answer` on a tile waiting on you. The keyboard has its own **focus**, drawn as
 a heavy border; the arrows (or `h j k l`) move it, and the pointer never does. The focused tile
@@ -100,74 +122,59 @@ shows its action row too.
 
 ## Selecting several conversations
 
-`space` (or `Select` on a tile) picks the focused conversation. Once one is picked, the view is
-in **selection mode**: every tile shows its box, `☐` or `☑`, and a press anywhere on a tile
-picks it or puts it back instead of opening it.
+`space` (or `Select` on a tile) picks the focused conversation. Once one is picked, every
+tile shows its box, `☐` or `☑`, and a press toggles its selection instead of opening it.
 
-While anything is picked, a tray rises over the bottom of the grid:
-`2 selected   Make team s   Add to… ▾   Close views   Clear esc`.
-
-- **Make team** starts a new team from the picked conversations
-- **Add to…** opens the teams list for all of them
-- **Close views** closes their views in this window; the work keeps running, and one with
-  work in flight is asked about first
-- **Clear** (or `esc`) unpicks them all
+The tray offers `Create team` and `Clear esc`. Outside explicit New team selection, it also
+offers `Close views` when a picked conversation has an open tab. Closing views removes those
+tabs; the work keeps running, and work in flight is asked about first. Saved conversations
+stay in the grid. Clear or `esc` unpicks them all. During New team selection, cards offer only
+selection controls, including cards waiting for an answer.
 
 ## Teams: named groups of conversations
 
-A **team** is a group of conversations you name, like `harbor` for everything about one
-project. A conversation can be in any number of teams: a team is a grouping, not a place a
-conversation lives. Showing a team narrows both the conversations view and the **tab strip**
-to its members that are open in this window, and nothing else changes: no conversation is
-opened, closed or stopped. A team's whole membership, open here or not, lives on the team:
-each segment of the Teams row counts the members open here, and resting the pointer on it
-says both, `harbor · 1 open here · 3 members`.
+A **team** is a named group of conversations, such as `harbor`. A conversation can belong
+to several teams. The Chats overlay shows all the selected team's members, manager first;
+the `▦ All` grid always shows all saved conversations regardless of team.
 
-**Making a team.** Press `s` (or `+ New team` on the Teams row, `Make team` in the tray, or
-`+ New team…` in a tile's teams list). With nothing picked, the team starts with the focused
-conversation. A card opens with a name and a colour already chosen:
+Create a team with **+ New team** below the Teams sidebar list. **+ Add subteam** beside
+Add member creates one under the selected team. A dedicated dialog over Teams offers Name,
+Colour, and an optional searchable Name/Project member list. Click several rows to select them;
+filters keep earlier selections. Leave the list unselected to create an empty team and use
+Add member afterward. `tab` changes fields, arrows move through members or colours, `space`
+selects the highlighted member, `enter` creates, and `esc` cancels. Manager assignment stays
+separate. Duplicate team names are refused; Rename is in Settings.
 
-- if the conversations all sit in **one project folder**, the name is that folder's name
-- otherwise a pleasant word is there at once, and codeaf asks the model you use for names
-  (the same cheap one that names conversations) once, over the conversations' titles, for a
-  one to three word name; `naming…` shows beside the field while it asks. What comes back
-  replaces the word only if you have not started typing, and if it fails or takes more than five
-  seconds the word stays
+## Create a team from conversation cards in Chats
 
-Type to replace the name, `ctrl+r` for another word and colour, `←` `→` to pick among the
-colours offered, `enter` to create it or `esc` to put the card away. After that the name
-changes only when you change it, in the team's settings.
+In Chats, open **▦ All** and click **+ New team** (or press `s`). The grid enters selection
+mode with no conversation automatically picked. Card clicks and `space` toggle members;
+filtering keeps selections hidden by the filter. Click **Create team** or press `enter` to
+name the team and choose its colour. Zero selections creates an empty team. The naming card
+suggests a name; typing replaces the suggestion, `ctrl+r` shuffles it and its colour, and
+arrows change colour. `enter` creates and opens the new overview in Teams, without resuming
+its members. `esc` cancels naming, then selection, then the grid. Cancelling does not change
+memberships or the conversation's draft. Both creation routes use the same saved catalog and
+creation rules.
 
-**Colours.** Each team gets a generated colour, as far from the others' as it can be, and
-never the colours that already mean something here: the amber of a question, the colour of
-running work, the red of a failure and the cursor's accent. A team's colour is drawn as its
-dot, on the tiles it holds, on the rule under the tab strip while it is shown, and on the
-view's `▦` door. On a terminal without enough colours, the dot is the team's first letter.
+Use **+ Add member** in the team's overview to add an existing conversation or create one.
+Use the member card's **x** to remove that membership with confirmation. Current work finishes,
+and the conversation survives with its other memberships. Assign another manager before
+removing the current one. **Choose manager** selects an existing member; to use a new
+conversation, add it first, then choose it. A manager may manage its team's descendants but
+cannot also manage an unrelated team or be both the global and an ordinary team's manager.
 
-**Putting a conversation in and out of teams.** `m`, or `Teams` on a tile, opens a list of
-every team with a box: `☑` in it, `☐` not, `▣` when some of the picked conversations are and
-some are not. A box pressed is saved at once, and so is `+ New team…` at the foot.
+Selecting a team in the Chats dropdown enables its overlay; the chip's x removes it. Starting a new
+conversation while an overlay is selected joins that team; returning to an existing one
+changes no membership. Team colours mark memberships and overlays, not the global grid button.
 
-**Showing a team.** Press its segment on the Teams row, `tab` and `shift+tab` to step through
-the teams, or `1` to `9` for a team by its place (the digit of the team already shown goes
-back to All). Each team keeps its own focus and scroll while the view is up, so looking into
-one team and back to All returns you to where you were. The tab you are on never vanishes from
-the strip: if it is not in the team, it stays at the end.
+## Team settings and teams inside teams
 
-**A conversation started while a team is shown joins it.** `/new`, the strip's `+` and the
-start page, `ctrl+t`, and a folder typed on home all start a new conversation, and it goes into
-the team that is shown. Going back to a conversation that already exists changes no team.
-
-**Team settings.** `e`, the dot on a team's segment, or the `⋯` the pointer brings up where its
-count was, opens the team's **card**: its name, which you edit as you type, its colour,
-**`Inside: harbor ▾`** (which team it sits in; a press opens the Move into… picker), the
-settings it overrides (each one saying where an inherited value comes from) and
-**Close team…**. The **teams page** has the card whole.
-
-**Teams inside teams.** A team can sit inside another. The Teams row stays one flat row and
-names a team inside another with its parent first, `harbor › api`; the team switcher and the
-teams page draw the tree. You move a team on the **teams page** (`m`, Move into…, or a drag in
-its rail) or with `Inside` on its card, and every move can be undone for a few seconds.
+**Settings** at the right of a selected team's overview opens its name, colour, inherited
+settings and overrides. Move a team with
+`m` or a drag in the Teams sidebar; each move can be undone briefly. The sidebar and Chats
+Teams dropdown show the hierarchy. All teams nests smaller subteam cards inside parent cards.
+The grid offers no team settings or hierarchy controls.
 
 ## Moving a conversation between teams is written to Traffic
 
@@ -177,122 +184,79 @@ Moving a whole team under another writes the same kind of line on the team that 
 its new parent. A move that does not go through writes nothing. The manager of a team that
 gained or lost a member is told on its next wake, from the Traffic it already reads.
 
-**Closing a team.** `D` closes the team that is shown: at once, with Undo, when nothing in it
-is running, and with a card offering **Wrap up first**, **Close now** and **Cancel** when
-something is. A closed team leaves the Teams row and the switcher and waits under
-`▸ Closed · N` on the teams page, where it can be reopened, and deleted once you are sure.
-Closing or deleting a team never deletes a conversation.
+**Disbanding a team.** Select it on Teams and choose **Disband** (`c`). The confirmation
+names the selected team and every subteam. The conversation grid has no disband shortcut.
+Current work finishes. Conversations and other memberships survive; lost reporting memberships
+leave conversations independent. The bottom `Show closed` toggle reveals read-only history.
+Disbanded teams cannot be reopened. Permanent team deletion removes team records and history,
+never their conversations. Permanent conversation deletion removes all its memberships instead.
 
 ## Organize: teams suggested for your conversations
 
-While the view shows **All**, the Teams row ends in `✦ Organize`. Press it, or `o`, and a card
-suggests teams for the conversations that are open. Nothing changes until you apply it:
+Choose **All teams** on Teams and press **Organize**. Its card suggests groupings of open
+conversations. Nothing changes until Apply. Suggestions come from two sources:
 
-```
-╭─ Organize ────────────────────────────────────────────────╮
-│  New teams                                                │
-│  ☑ ● codeaf          5  from the folder                   │
-│  ☑ ● nvda research   3  cpu profiling, nvda deep…, 10-K   │
-│  Add to existing                                          │
-│  ☑ ● harbor        + 2  relay audit, footprint table      │
-│                                                           │
-│  about $0.0020                    Cancel esc   Apply ↵    │
-╰───────────────────────────────────────────────────────────╯
-```
+- **Folders:** two or more conversations sharing a project folder become a suggestion
+  named for it. An existing team of that name receives only missing conversations.
+  A folder already covered by one team is left alone. This pass is free.
+- **The naming model:** one request uses conversation titles, folders and current teams
+  for other groupings or additions. Folders win disagreements. It has ten seconds;
+  `thinking…` shows while it works, and a known estimated price appears below.
 
-The suggestions come from two places:
+If the model is unavailable, the card shows `suggestions from folders only`. With no
+suggestions it says `Everything is organized` beside Close. Rows start selected.
+Arrows move; space or a press toggles; enter or Apply takes the selected suggestions.
+Escape, Cancel or a press outside leaves everything unchanged. Suggestions can include
+one conversation in several teams. New teams use the offered names and colours.
 
-- **Folders.** Conversations that share a project folder, two or more of them, are suggested
-  as a team named after the folder (`from the folder`). If a team already has that name, the
-  ones it is missing are suggested for it instead, and a folder whose conversations are
-  already together in one team is left alone. This part is free and always the same.
-- **The model you use for names**, asked once per press (the same cheap one that names
-  conversations and teams), over the conversations' titles and folders and your teams, for
-  groupings a folder cannot see and conversations that belong in a team you already have.
-  `thinking…` shows while it works, and it is given ten seconds. Where the two disagree the
-  folders win. The line at the bottom says about what the ask cost.
-
-If the model cannot be asked or does not answer, the card shows the folder suggestions alone
-and says `suggestions from folders only`. With nothing to suggest it says
-`Everything is organized` beside a `Close`.
-
-Every row starts ticked. `↑` `↓` move, `space` or a press ticks and unticks a row, `enter` or
-**Apply** makes the ticked ones in one go, and `esc`, **Cancel** or a press off the card puts
-it away with nothing changed. A new team gets the name and the colour the card showed; each
-new team's colour is its own. A conversation can be suggested for several teams, as it can be
-in several.
-
-After an Apply the Teams row says what it did for a few seconds, like
-`Organized · 2 new teams, 2 added   Undo`. **Undo**, or `u` while it is there, puts your teams
-back exactly as they were.
-
-When some teams have had no activity for a week and nothing waiting on them, the card also
-offers **Close 3 quiet teams** under `Quiet for a week`, ticked like the rest; Apply closes
-them and Undo reopens them. Apart from that Organize only ever adds: it never renames a team
-and never takes a conversation out of one, so pressing it again is how you refresh the
-suggestions. Nothing runs by itself. The button
-counts the conversations in no team once there are five or more, `✦ Organize 7`, and after a
-run that found nothing to suggest it reads `Organized ✓` until your conversations or teams
-change; it can still be pressed.
+After Apply, All teams shows **Organized** and offers **Undo** briefly. Undo removes the
+new groups and membership additions from that organization pass. The card may also offer
+**Disband 3 quiet teams** for teams idle for a week with nothing waiting. Apply disbands
+them; Undo does not reopen them. Organization otherwise only adds memberships: it does
+not rename teams or remove conversations. Nothing runs automatically. Press Organize
+again to refresh suggestions. The conversation grid has no Organize or Undo control.
 
 ## The team switcher on the tab strip
 
-While a team is shown, the tab strip carries a chip naming it, `● harbor ▾`, first on the
-strip and right before the tabs it narrows, with the manager's place after it:
+The dropdown is first on the Chats tab strip. With no overlay its label is **Teams ▾**;
+with one selected it shows that team's name, colour and a separate **x** to clear it.
+The dropdown offers **All teams** when a global manager exists, then the active team hierarchy.
+All teams selects the global-manager overlay; it is separate from the team-agnostic `▦ All` grid.
+A root without a manager or with a known missing manager transcript has no All teams choice.
+The picker has no None option or management actions, and is absent when no overlay is available.
+Closed teams are available through Show closed on Teams, not through this picker.
 
-```
-   ● harbor ▾   ◆ Manager ×   Refactor the rail sco… ×   openrouter price scrape ×   +   ▦ All
-```
-
-The chip is a filter over the tabs, so it sits with them. There is no `home` on the strip:
-home is the first place on the top line, over the strip while a chat is in front. The
-strip is not drawn on a place. When the row runs
-short the chip goes, and never the tab in front. With teams but none shown, the chip is a quiet `teams ▾`; with no teams at all there
-is no chip. A press on the
-chip opens the **team switcher** under it, on any page the strip is on, the conversations view
-included:
-
-```
-╭─ Teams ────────────────────╮
-│ ◉ ● harbor              2  │
-│ ○   ● orbit             1  │
-│ ○ ● dock                0  │
-│ ○   All                 3  │
-│     Closed · 2 ▸           │
-│ ────────────────────────── │
-│ − Remove this conversation │
-│ + New team…                │
-│   Team settings…           │
-╰────────────────────────────╯
-```
-
-- a team, or **All**, narrows or widens the strip; the conversation in front stays in front
-  unless it is not in the team, and then the team's first conversation comes forward. The
-  teams are the tree: a team inside another stands indented under it
-- **+ Add this conversation** puts the conversation in front into the team that is shown, and
-  the row turns into **− Remove this conversation**
-- **Closed · 2** is there while you have closed teams: a press opens the teams page with its
-  Closed fold open. A closed team is never one of the switcher's teams
-- **+ New team…** opens the conversations view with the new-team card, the conversation in
-  front already picked
-- **Team settings…** opens the shown team's card, over whatever page you are on
-
-`↑` `↓` move, `enter` chooses, `esc` or a press anywhere off it puts it away.
+Selecting a team restores its conversation and horizontal strip position. A new overlay
+keeps the current conversation if it is a member, otherwise selects the manager first.
+The chip's x restores ordinary Chats and selects All teams in Teams. With no overlay,
+the keyboard starts on the first available team; none of the radio marks is selected.
+`↑` and `↓` move, `enter` chooses, and `esc` or a press
+outside cancels. Long pickers scroll with the arrows or wheel, keeping the selected row visible. On very narrow strips the dropdown gives way to the current tab and
+the fixed right-edge `▦ All` button. The grid button opens all saved conversations;
+it does not select an overlay.
 
 ## A team's manager
 
-A team can have one **manager**, a conversation that runs the team for you: you talk to it, it
-hands work to the members and tells you where things stand. While a team is shown, the first
-place on the tab strip is the manager's, pinned at the left: a quiet `+ Manager` until there is
-one and `◆ Manager` after; `◆ Make this harbor's manager` in the team switcher or in a tile's
-Teams list makes an existing conversation the manager. The right-hand
-column of a chat in a team has two words, `Tasks` and `Traffic` (what passes in the team). A
-Traffic row reads who it is from and who it is for, then how long ago, `◆ → @scrape +2  Please provide…  2m`, and in
-a member's chat that member is `you` (`◆ → you`, `you → ◆`). A press on the row opens that message in the chat it belongs to. The
-manager's opens on the Traffic, a member's on its tasks, `←` `→` switch them while the column has
-the keyboard, `alt+l` shows or hides it, and `alt+m` goes to the manager. What a manager can do, and how members talk to each other, is on the
-**team manager** page. The **teams page** (`/teams`, `alt+2`) lists every team as a tree
-and puts the chosen team's manager conversation beside it, with what waits on you.
+A **manager** is a conversation that runs the team: you talk to it, it sends work to members
+and reports progress. Teams offers **Choose manager** for existing members and **+ Manager**
+when a team has none. Add a new member first when you need a new conversation to replace
+an existing manager. All teams has a dedicated Global manager card. `+ Global manager` creates its optional
+conversation. Its reports are the managers of open top-level teams; subteam managers
+report to their parent. Its card's `x` deletes the global-manager conversation with the
+normal confirmation, preserving every team and its manager. The creation control returns.
+
+In a selected overlay the manager's tab is pinned at the left. It reads `◆ Manager`, or
+`+ Manager` while there is none. The grid does not pin managers or relabel their tiles.
+`alt+m` goes to the selected team's manager. A manager can manage descendants of its team,
+but cannot manage two unrelated teams. Ordinary memberships in multiple teams are allowed.
+
+A team chat's sidebar offers Tasks and Traffic. A traffic row names its sender and recipient;
+in a member's chat that member reads as `you`. Clicking a row opens the interaction in its
+conversation. `←` and `→` switch the sidebar view, and `alt+l` shows or hides it.
+
+The **team manager** manual describes manager capabilities. Teams (`/teams`, `alt+2`) shows
+member cards, saved updates, recent interactions and decisions waiting on you. Member aliases
+and interaction links open Chats with their originating overlay.
 
 ## What clicking a team name in a chat does, and how team names and handles are links
 
@@ -304,9 +268,8 @@ pointer on one puts a ground under it and the hint line says what a press does, 
 `Open @security · santosh dev2 branch code… · click`. A press opens that member, resuming it
 first when this window does not have it open. A press on a team's name opens the **teams
 page** with that team selected: the rail's cursor on it and the pane showing it. The hint
-says `Open harbor on the teams page · click`. A closed team is selected inside `Closed`, and
-that fold is opened. Over `--host`, against an engine that has no teams doors, the teams page
-cannot open, so the press opens the conversations view on that team instead and the hint says
+says `Open harbor on the teams page · click`. A closed team is selected with Show closed enabled. Over `--host`, against an engine that has no teams doors, the teams page
+cannot open, so the press opens the team-agnostic conversations view instead and the hint says
 so. An `@word` that is no member's handle is left as plain text.
 
 ## Mention a team or another conversation with @
@@ -326,7 +289,7 @@ Choosing a conversation inserts `@handle`, or a short slug of its title when it
 has none, and the row's hint is the full title. After you send, both stay links.
 A press on the team opens the teams page with it selected. A press on the
 conversation opens that conversation. Over `--host`, against an engine with no
-teams doors, a press on the team opens the conversations view on it instead.
+teams doors, a press on the team opens the team-agnostic conversations view instead.
 
 The model receives a short digest of each reference: for a team, its members,
 handles, states and recent traffic; for a chat, its title, its state and an excerpt
@@ -417,18 +380,11 @@ what its key does.
 | `g`, `G` (`home`, `end`) | First and last conversation |
 | `pgup`, `pgdown` | A screen of rows; the wheel moves one row |
 | `n` | Next conversation waiting on you |
-| `enter` | Open the focused conversation |
+| `enter` | Open the focused conversation; in team selection, name the selected set |
 | `space` | Pick the focused conversation, or put it back |
+| `s` | Begin team selection; with selections, open the naming card |
 | `x` | Close the focused view, or the picked ones; the work keeps running |
-| `m` | The teams list for the focused conversation, or the picked ones |
-| `s` | New team of the picked conversations, or the focused one |
-| `e` | The shown team's card: name, colour, settings, Close team… |
-| `r` | Resume the shown team's conversations that are not open here |
-| `D` | Close the shown team; its conversations stay open |
-| `o` | Organize: suggest teams for your conversations (while All is shown) |
-| `u` | Undo the last Organize, while the Teams row offers it |
-| `tab`, `shift+tab` | Next or previous team, then All |
-| `1` to `9` | That team; its digit again goes back to All |
+| `tab`, `shift+tab` | Next or previous conversation in the grid |
 | `/` | Filter conversations by name; `esc` clears it |
 | `-`, `+` or `=` | Fewer or more columns |
 | `0` | Columns back to automatic |
@@ -437,3 +393,30 @@ In the new-team card: type the name, `ctrl+r` another name and colour, `←` `�
 `enter` create, `esc` cancel.
 
 In the Organize card: `↑` `↓` move, `space` tick or untick, `enter` apply, `esc` cancel.
+
+## Does deleting a team close its conversations?
+
+No. Permanently deleting a team removes the selected team and every descendant record and
+their saved interactions and decisions. Active teams are disbanded first. Their conversations,
+context and current work survive as ordinary sessions. Other memberships survive too.
+The confirmation names every affected team. Deleting a conversation itself is separate:
+`/delete` stops that conversation, deletes its transcript and removes all its memberships.
+
+## Incomplete conversation deletion: retry and recovery
+
+Permanent conversation deletion waits for the owner and its task-run writers to stop before
+removing records. If they cannot stop within the deletion grace, the transcript and memberships
+remain and you can retry. A local owner without the safe deletion stop capability refuses:
+`This conversation cannot be safely stopped for deletion`. Symlinked task records that point elsewhere are refused before deletion.
+
+After deletion has been committed, a durable cleanup receipt survives any filesystem failure.
+The next local start retries those receipts through the same scope and ownership checks. Home
+keeps a `(deletion incomplete)` row until cleanup finishes, even if its journal has already gone.
+Open that row or use `x` to retry deletion; it cannot reopen the deleted conversation. Pending
+cleanup is omitted from the saved conversation grid and membership pickers.
+
+## Does conversation deletion forget saved memories?
+
+No. Deleting a conversation removes its transcript, task records and team memberships. Memories
+already saved for a user, project or machine remain available, with their source identity.
+Use the Memory page to forget a saved memory separately. Deleting a team also preserves those memories.

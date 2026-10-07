@@ -2,11 +2,13 @@ package tui3
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
@@ -45,9 +47,9 @@ const trafficOlderWords = "that message is older than this chat's history"
 // trafficJumpTo is a jump waiting for its conversation, and trafficLanding
 // the entry lifted after one, or the hint said when it found nothing.
 type trafficJumpTo struct {
-	key, id string
-	until   time.Time
-	waking  bool
+	key, id, team string
+	until         time.Time
+	waking        bool
 }
 
 type trafficLanding struct {
@@ -66,6 +68,12 @@ type trafficJumpDeadlineMsg struct{}
 // trafficJump opens member key's conversation at Traffic entry id, or in
 // front at id when key is "" or already in front.
 func (a *app) trafficJump(key, id string) tea.Cmd {
+	return a.trafficJumpFromTeam("", key, id)
+}
+
+// An overview link carries its originating team through an asynchronous open.
+// Numbers are scoped to that team even when the member belongs to several.
+func (a *app) trafficJumpFromTeam(teamID, key, id string) tea.Cmd {
 	var cmd tea.Cmd
 	if key != "" && key != a.frontTabKey() {
 		cmd = a.trafficGo(key)
@@ -73,7 +81,7 @@ func (a *app) trafficJump(key, id string) tea.Cmd {
 	if key == "" {
 		key = a.frontTabKey()
 	}
-	a.traffic.jump = trafficJumpTo{key: key, id: id, until: a.now().Add(trafficJumpWait)}
+	a.traffic.jump = trafficJumpTo{key: key, id: id, team: teamID, until: a.now().Add(trafficJumpWait)}
 	return tea.Batch(cmd, a.trafficLand())
 }
 
@@ -96,7 +104,7 @@ func (a *app) trafficLand() tea.Cmd {
 	}
 	at := -1
 	if a.now().Before(j.until) {
-		at = a.teamEntryAt(j.id)
+		at = a.teamEntryInTeamAt(j.id, j.team)
 	}
 	if at < 0 && (a.hostReplayLoading || a.hostReplayWaiting) && a.now().Before(j.until) {
 		if !j.waking {
@@ -149,45 +157,136 @@ func (a *app) revealTrafficEntry(at int) {
 
 // teamEntryAt is the newest entry of the conversation that carries Traffic
 // entry id, -1 for none.
-func (a *app) teamEntryAt(id string) int {
+func (a *app) teamEntryAt(id string) int { return a.teamEntryInTeamAt(id, "") }
+
+func (a *app) teamEntryInTeamAt(id, teamID string) int {
 	if id == "" {
 		return -1
+	}
+	shown, inTeam := a.teamOfFront()
+	if teamID != "" {
+		shown, inTeam = a.teamByID(teamID)
 	}
 	// A START ROOT IS ANSWERED BY ITS OWN TEAM'S MATCHER FIRST. Traffic numbers
 	// count per team, so a `team_send` into another team can carry the same
 	// `(#N)` as this team's start, and the newest-first search below would land
 	// on it; [app.teamStartEntryAt] checks the team, and that search cannot.
-	if at := a.teamStartEntryAt(id); at >= 0 {
-		return at
+	if inTeam {
+		if at := a.teamStartEntryInTeamAt(id, shown); at >= 0 {
+			return at
+		}
 	}
 	number := teamstore.ThreadNumber(id)
-	shown, inTeam := a.teamOfFront()
+	historical, historicalName, ambiguous := -1, "", false
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
 		switch e.kind {
 		case entryTeam:
 			for _, l := range e.team {
-				if l.Thread == id {
+				if l.Thread == id && (!inTeam || l.Team == "" || l.Team == shown.ID || l.Team == shown.Name) {
 					return i
+				}
+				if inTeam && a.teamHistoricalLineMatches(l, id, shown) {
+					if historical >= 0 && historicalName != l.Team {
+						ambiguous = true
+					}
+					if historical < 0 {
+						historical, historicalName = i, l.Team
+					}
 				}
 			}
 		case entryTool:
 			switch e.tool {
 			case "team_send":
-				if inTeam && sentElsewhere(e, shown) {
+				if inTeam && sentElsewhere(e, shown) && !a.teamHistoricalReceiptMatches(e, id, shown) {
 					continue
 				}
 				if strings.Contains(e.detail.Output, "("+number+")") {
 					return i
 				}
 			case "team_post":
+				if teamID != "" && inTeam && postedElsewhere(e, shown) && !a.teamHistoricalReceiptMatches(e, id, shown) {
+					continue
+				}
 				if strings.Contains(e.detail.Output, " as "+number+",") || strings.Contains(e.detail.Output, " as "+number+".") {
 					return i
 				}
 			}
 		}
 	}
+	if !ambiguous {
+		return historical
+	}
 	return -1
+}
+
+// Delivered messages retain the team's name at delivery time. After a rename,
+// the retained traffic can identify an old delivery by its number and contents.
+// A current other-team name or an identical entry in another team's cache is
+// ambiguous and must never redirect the person to that team's conversation.
+func (a *app) teamHistoricalLineMatches(line session.TeamLine, id string, shown team) bool {
+	if line.Thread != id || line.From == "" || line.Kind == "" || line.Text == "" {
+		return false
+	}
+	for _, other := range a.wall.teams {
+		if other.ID != shown.ID && (line.Team == other.ID || line.Team == other.Name) {
+			return false
+		}
+	}
+	matches := func(e teamstore.Entry) bool {
+		return e.ID == id && e.From == line.From && e.Kind == line.Kind && strings.TrimSpace(e.Text) == strings.TrimSpace(line.Text)
+	}
+	found := false
+	for teamID, rows := range a.traffic.rows {
+		for _, row := range rows {
+			if matches(row) {
+				if teamID != shown.ID {
+					return false
+				}
+				found = true
+			}
+		}
+	}
+	return found
+}
+
+// A sender's transcript may contain only its tool receipt, whose quoted team
+// name also predates a rename. Its arguments and retained entry must agree,
+// and the receipt must belong to this conversation's role in that team.
+func (a *app) teamHistoricalReceiptMatches(e *entry, id string, shown team) bool {
+	var args struct{ Text, Team string }
+	if e.status != toolOK || json.Unmarshal([]byte(e.detail.Args), &args) != nil || strings.TrimSpace(args.Text) == "" {
+		return false
+	}
+	oldName := strings.TrimSpace(args.Team)
+	if e.tool == "team_post" {
+		_, rest, named := strings.Cut(e.detail.Output, " in ")
+		if !named {
+			return false
+		}
+		quoted, err := strconv.QuotedPrefix(rest)
+		if err != nil {
+			return false
+		}
+		oldName, err = strconv.Unquote(quoted)
+		if err != nil {
+			return false
+		}
+	}
+	for _, root := range a.traffic.rows[shown.ID] {
+		if root.ID != id || strings.TrimSpace(root.Text) != strings.TrimSpace(args.Text) {
+			continue
+		}
+		if e.tool == "team_post" && (root.Kind != teamstore.KindNote || teamsInteractionMember(shown, root.From) != a.frontTabKey()) {
+			continue
+		}
+		if e.tool == "team_send" && (root.From != teamstore.FromManager || shown.Manager != a.frontTabKey()) {
+			continue
+		}
+		line := session.TeamLine{Team: oldName, Thread: root.ID, From: root.From, Kind: root.Kind, Text: root.Text}
+		return a.teamHistoricalLineMatches(line, id, shown)
+	}
+	return false
 }
 
 // sentElsewhere reports a `team_send` that named a team other than shown, whose
@@ -200,6 +299,21 @@ func sentElsewhere(e *entry, shown team) bool {
 	}
 	target := strings.TrimSpace(args.Team)
 	return target != "" && target != shown.ID && target != shown.Name
+}
+
+// A shared conversation can post to one team and receive another team's
+// message with the same number. The receipt's team name disambiguates it.
+func postedElsewhere(e *entry, shown team) bool {
+	_, rest, named := strings.Cut(e.detail.Output, " in ")
+	if !named {
+		return false
+	}
+	quoted, err := strconv.QuotedPrefix(rest)
+	if err != nil {
+		return false
+	}
+	name, err := strconv.Unquote(quoted)
+	return err == nil && name != shown.Name && name != shown.ID
 }
 
 // revealMiddle scrolls so entry's first row sits a third of the way down the

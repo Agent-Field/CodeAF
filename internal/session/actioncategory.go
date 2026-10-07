@@ -258,7 +258,7 @@ func ActionCategoryForTool(tool string) ActionCategory {
 	case "propose_task", "quick_task", "divide_work", "workspace_fork", "stand",
 		// A manager starting a member or ending its turn, or deciding what a
 		// member asked it.
-		"team_start", "team_stop", "team_decide":
+		"team_start", "team_stop", "team_decide", "team_add", "team_remove":
 		return ActionCoordinate
 
 	// Keeping the account of the work rather than doing it. `items` is a quick

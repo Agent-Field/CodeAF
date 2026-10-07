@@ -673,7 +673,7 @@ cannot send it delivers plain enter on many keyboards, or a newline on some.
 | `ctrl+.` | Open the sessions place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
-| `alt+v` (`opt+v`) | Open the **conversations view** (`/wall`): every open conversation as a live tile, and the teams you group them into. Press again or `esc` to close it. Its own keys are on the *Conversations and teams* page |
+| `alt+v` (`opt+v`) | Open the **conversations view** (`/wall`) on Chats: all saved, non-deleted conversations, with live or saved previews. Select cards to create a team. Press again or `esc` to close it. Its own keys are on the *Conversations and teams* page |
 | `ctrl+t` | Start a **new chat** — the same start page the `+` at the end of the tab strip opens. Nothing is created until you send the first message, `esc` comes back, and the conversation you were in keeps its draft, its attachments and its work. On a home row it starts the fresh chat in that row's own folder, while clicking a `projects` row selects the folder for the next message |
 | `ctrl+w` | **Close this tab** — the same thing the `✕` on it does. Selects the last-used remaining tab, or Home if none remain. Drafts are kept, and the conversation keeps running; a tab with work in it asks `keep running` / `stop work` / `cancel` first |
 | `alt+t` (`opt+t`) | Give the keyboard to the task roster. Press again or `esc` to take it back |
@@ -1859,9 +1859,9 @@ running) · `m` its teams · `s` a new team · `e` the shown team's settings · 
 **team switcher** under the strip's team chip takes `↑` `↓` `enter` `esc`. The whole map is on
 the *Conversations and teams* page.
 
-**Teams page** (`alt+2`, `/teams`): while the manager's conversation has the box, keys type
-into it; `alt+↑` `alt+↓` put the keyboard on the page's buttons and `esc` gives it back. On
-the buttons: `↑` `↓` walk, `←` `→` cross between the rail and the pane, `enter` presses,
+**Teams page** (`alt+2`, `/teams`): the overview owns its keyboard. Member cards and
+interaction links lead into Chats. `pgup` / `pgdown` scroll the interaction table.
+On its controls: `↑` `↓` walk, `←` `→` cross between the rail and the pane, `enter` presses,
 `s` the team's card · `c` close · `w` open on the conversations view · `n` new team (inside
 the chosen team) · `o` Organize · `m` Move into… another team · `space` pick a team for a
 move of several · `p` the members card · `M` a manager · `r` reopen · `d` delete a closed

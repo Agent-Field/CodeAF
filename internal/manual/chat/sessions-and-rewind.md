@@ -281,8 +281,8 @@ surface's own files — model cache, input history, drafts — sit in `~/.codeaf
 
 Coming back with no arguments opens the conversation **you spoke in most recently**, not
 the file that was written to most recently: work finishing in the background does not
-change which conversation you were having. A conversation you opened and never said
-anything in is reused rather than piled up, and the leftovers are cleaned away.
+change which conversation you were having. When only unused conversations remain, a launch creates a fresh identity and cleans
+up unassigned empty folders. Team conversations are preserved.
 
 ## What is saved in a conversation transcript — file contents and line types
 
@@ -887,3 +887,52 @@ status deck, the task page, and the task column's focus.
 Contrast that with what `/quit` and `ctrl+c` do, which is close for real: the turn is
 cancelled with a grace wait, background jobs are shut down, running tasks end, and the
 journal is synced and unlocked — see *Will I lose this if it crashes?*.
+
+## Permanently deleting any conversation or task — /delete and x delete
+
+`/delete` asks to stop the current conversation and permanently remove its transcript.
+Home's `delete` action (or `ctrl+e` on a conversation) and Sessions' `x delete` use
+that same confirmation. Its question is `Stop work and permanently delete?`.
+The question sits on the top border. Only `cancel` and `delete` appear, with `cancel` selected by default. The bottom-right hints
+are `enter choose · esc cancel`. Cancel changes nothing.
+
+A conversation that manages any active ordinary team cannot be deleted. After `delete`, the
+confirmation names every active team it manages: `This conversation manages <teams>.
+Assign another manager before deleting it.` Go to Teams, select each
+named team, and use `Choose manager` to select an existing member. To use a new
+conversation, first use `+ Add member`, then `Choose manager`. Return to Home, Chats or
+Sessions to delete the former manager. Deletion never appoints a manager, creates a
+conversation or disbands a team. Tasks inside manager conversations can still be deleted
+independently. The optional global-manager conversation can be deleted without a replacement;
+its teams and their managers remain. `+ Global manager` on All teams creates it again.
+
+The dialog disappears while deletion runs; a failure restores it with the reason.
+Deletion removes all team memberships and the conversation's tasks and transcripts.
+Earlier team exchanges and decisions remain in team history. Links to a deleted conversation
+say it is unavailable. Other conversations and their work survive. Deleted conversations
+cannot be reopened or recreated from a stale tab. This cannot be undone.
+
+## Delete a task or subtask from Sessions — no close or reopen
+
+Every saved Sessions row offers `x delete`. With an empty filter, `x` opens confirmation;
+while typing a filter it remains text. Task confirmation asks
+`Stop work and permanently delete?`, with the same default `cancel` and `delete` choices.
+Deleting a task stops and removes its own work and every descendant. A leaf subtask deletes
+only itself. The owning conversation and sibling tasks remain. A task inside a manager
+conversation does not need manager replacement. Deleted tasks stay absent after restart
+and cannot return through search or a late worker update.
+
+Deletion uses the connected engine when it supports it. An older engine without that
+capability does not offer the action. Only normal saved conversation folders can be deleted
+through this door; legacy flat transcripts cannot. This cannot be undone.
+
+## Empty conversations assigned to teams survive restart
+
+An empty conversation assigned to a team is intentional. Launch cleanup does not remove
+it or reuse it for a different conversation, even before its first message. References in
+retained team history also protect it. If team records cannot be read, empty conversations
+are kept. Unassigned empty conversations can still be cleaned up. A new launch uses a fresh identity
+rather than taking over an empty conversation that could acquire membership during launch.
+
+`Conversation unavailable` on a team card means its saved transcript is missing. A missing
+file is not recreated silently; add a new conversation and choose it as manager explicitly.

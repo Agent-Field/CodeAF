@@ -214,8 +214,8 @@ func TestAConversationRowIsNeitherRunnableNorCancellable(t *testing.T) {
 	if _, ok := a.taskSheetCurrent(); ok {
 		t.Fatal("a conversation answered the question every caller asks about a piece of work")
 	}
-	if verbs := a.taskSheet.verbs(a); len(verbs) != 0 {
-		t.Fatalf("the conversation was offered %d verbs of its own", len(verbs))
+	if verbs := a.taskSheet.verbs(a); len(verbs) != 1 || verbs[0].key != 'x' || verbs[0].word != "delete" {
+		t.Fatalf("conversation must offer deletion without task verbs: %+v", verbs)
 	}
 	if chat.row.Transcript != "/journals/room-a/session.jsonl" {
 		t.Fatalf("the conversation's door points at %q", chat.row.Transcript)

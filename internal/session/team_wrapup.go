@@ -297,14 +297,14 @@ func closingPacket(name, team string, report teams.ClosingReport) teams.Packet {
 		p.RaisedBy = teams.FromSystem
 		p.Question = fmt.Sprintf("close %s? (wrap-up incomplete)", name)
 		p.Options = []teams.Option{
-			{ID: teams.OptionCloseNow, Label: "Close now", Consequence: "every member's turn is stopped and " + name + " closes as it stands"},
+			{ID: teams.OptionCloseNow, Label: "Disband", Consequence: name + " and its subteams stop coordinating; conversations and their current work continue"},
 			{ID: teams.OptionKeepGoing, Label: "Keep going", Consequence: name + " stays open and its manager carries on"},
 		}
 		p.Recommendation = &teams.Recommendation{Option: teams.OptionKeepGoing, Reason: "the manager has not said the work is safe to leave"}
 		return p
 	}
 	p.Options = []teams.Option{
-		{ID: teams.OptionClose, Label: "Close", Consequence: name + " closes; its members, traffic and this report are kept under Closed"},
+		{ID: teams.OptionClose, Label: "Disband", Consequence: name + " and its subteams stop coordinating; conversations survive and this report is kept under Closed teams"},
 		{ID: teams.OptionKeepGoing, Label: "Keep going", Consequence: name + " stays open and its manager carries on"},
 	}
 	p.Recommendation = &teams.Recommendation{Option: teams.OptionClose, Reason: "the manager reports the work wrapped up"}

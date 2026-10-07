@@ -1129,8 +1129,14 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			}
 			return proc.Search.SearchConversations(terms, limit)
 		},
-		Memory:     v3MemorySeam(proc.Memory),
-		Archive:    session.SetArchived,
+		Memory:  v3MemorySeam(proc.Memory),
+		Archive: session.SetArchived,
+		DeleteTask: func(file, id string) error {
+			return session.DeleteTaskUnder(session.PlacesRoot(), file, id, proc.deleteOwnedTask)
+		},
+		DeleteConversation: func(file string, choices map[string]string, affected map[string][]string) error {
+			return session.DeleteConversationUnder(session.PlacesRoot(), proc.ProfileDir, file, choices, proc.stopConversation, affected)
+		},
 		PlacesRoot: session.PlacesRoot(),
 		// AND ONE ROW OF THAT RECORD, READ DEEPER THAN THE WALK READS IT. The
 		// card behind a task row draws the last thing that piece of work said,

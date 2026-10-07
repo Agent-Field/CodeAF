@@ -284,9 +284,13 @@ func (a *app) frame() (string, int, int) {
 	// The teams page's members card hangs over its pane (teamcrew.go), a
 	// team's card (teamsheet.go) over whatever is drawn under it, and the move
 	// picker (teammove.go) over both, since the card opens it.
+	body = a.teamsOrganizeOver(body)
 	body = a.teamCrewOver(body)
 	body = a.teamSheetOver(body)
 	body = a.teamMoveOver(body)
+	body = a.teamMembershipOver(body)
+	body = a.teamCreateOver(body)
+	body = a.conversationDeleteOver(body)
 	return norm.NFC.String(body), caretX, caretY
 }
 
@@ -504,12 +508,6 @@ func (a *app) chatFrameLines(width, height int) ([]string, int, int) {
 		rows = append(rows, a.roomKinRows(width)...)
 	}
 	rows = append(rows, strip...)
-	// AND THE TEAMS PAGE'S OWN ROWS, while it hosts this conversation: the team's
-	// header, members and inbox, pinned under the strip and charged in
-	// [app.topHeight] on the same terms (teamspagehost.go).
-	if a.teamsHosting() {
-		rows = append(rows, a.teamsHostTop(width)...)
-	}
 	// THE ROSTER TAKES THE BODY WHOLE on a frame with no columns to lend it: the
 	// same rows, the same folds, the same footer, laid out at the full width
 	// instead of squeezed into thirty columns that are not there (task.go's
@@ -1059,7 +1057,6 @@ func (a *app) size() (int, int) {
 	// pane hosts the conversation, the conversation's width is the terminal's
 	// less the rail, so every layout and hit test it makes resolves against the
 	// cells it is really drawn in.
-	width -= a.teamsHostRail()
 	if width < 8 {
 		width = 8
 	}
@@ -1269,7 +1266,7 @@ func (a *app) startPageBody() int {
 // about where the body starts. Neither of the two may ask [app.viewHeight] back,
 // which is why both answer from the terminal's size alone.
 func (a *app) topHeight() int {
-	return a.headHeight() + a.stripHeight() + a.teamsHostTopHeight()
+	return a.headHeight() + a.stripHeight()
 }
 
 // headHeight is what the pinned focus header costs the body region: one row

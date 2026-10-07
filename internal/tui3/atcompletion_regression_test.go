@@ -1198,7 +1198,9 @@ func completionRecentCommands(cmd tea.Cmd) []tea.Cmd {
 	if strings.Contains(name, ".loadMentionRecents.") {
 		return []tea.Cmd{cmd}
 	}
-	if !strings.Contains(name, ".Batch.") {
+	// Bubble Tea may return its generic compactCmds closure for Batch.
+	// Unwrap both forms so the test drives the actual recent reader.
+	if !strings.Contains(name, ".Batch.") && !strings.Contains(name, ".compactCmds[") {
 		return nil
 	}
 	var out []tea.Cmd

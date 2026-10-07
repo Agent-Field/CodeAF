@@ -22,6 +22,7 @@ import (
 // locked" shortcut here, because this place never read the flock: the open
 // reports it instead, which is what the resume picker has always done.
 func (a *app) openConversationRow(row session.SessionRow) tea.Cmd {
+	a.teamViewSet("")
 	switch {
 	case a.holding(row.Transcript):
 		// A conversation this terminal already has open: the one on screen, or one

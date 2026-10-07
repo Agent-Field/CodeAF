@@ -51,7 +51,8 @@ const contextualForwardConsumerBody = "#!/usr/bin/env python3\nimport json\nimpo
 // `Path(__file__).resolve().parent.parent / "expense-core" / "export.py"`.
 func contextualForwardingFixture(t *testing.T) (*Agent, *store.Store, string, string) {
 	t.Helper()
-	root := t.TempDir()
+	// Read receipts resolve symlinks; fixture identities must use the same root.
+	root := canonicalPath(t.TempDir())
 	producerDir := filepath.Join(root, "expense-core")
 	consumerDir := filepath.Join(root, "expense-report")
 	for _, dir := range []string{producerDir, consumerDir} {

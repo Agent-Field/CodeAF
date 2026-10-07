@@ -400,9 +400,15 @@ func orgHash(a, b string, kind byte) uint64 {
 // `thinking…` in the card until it answers. It does nothing while a team is
 // shown, where the button is not drawn.
 func (a *app) wallOrganizeOpen() tea.Cmd {
-	if a.wall.activeID != "" {
+	if !a.at(pageTeams) && a.wall.activeID != "" {
 		return nil
 	}
+	var opened tea.Cmd
+	if !a.at(pageTeams) {
+		a.closeWall()
+		opened = a.showPage(pageTeams)
+	}
+	a.tp.sel, a.tp.answering = teamsAllRow, ""
 	a.teamsEnsure()
 	o := &a.wall.org
 	o.gen++
@@ -420,16 +426,16 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	if proposer == nil || len(convs) < 2 {
 		a.wallOrganizeShow(nil, proposer == nil && len(convs) >= 2, "")
 		if quietAsk == nil {
-			return nil
+			return opened
 		}
 		gen := o.gen
-		return a.besideLine(func() func(here bool) tea.Cmd {
+		return tea.Batch(opened, a.besideLine(func() func(here bool) tea.Cmd {
 			ids := quietAsk()
 			return func(bool) tea.Cmd {
 				a.wallOrganizeQuietTake(gen, ids)
 				return nil
 			}
-		})
+		}))
 	}
 	in := session.TeamProposalInput{}
 	for _, c := range convs {
@@ -444,7 +450,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 	}
 	gen := o.gen
 	o.thinking = true
-	return a.besideLine(func() func(here bool) tea.Cmd {
+	return tea.Batch(opened, a.besideLine(func() func(here bool) tea.Cmd {
 		var quiet []string
 		if quietAsk != nil {
 			quiet = quietAsk()
@@ -457,7 +463,7 @@ func (a *app) wallOrganizeOpen() tea.Cmd {
 			a.wallOrganized(gen, res, err)
 			return nil
 		}
-	})
+	}))
 }
 
 // wallOrganizeQuietAsk is the question, to be asked off the loop in the same
@@ -472,7 +478,8 @@ func (a *app) wallOrganizeQuietAsk(gen int) func() []string {
 		return nil
 	}
 	dir, now := a.profileDir, a.now()
-	tree := &teamstore.File{Teams: teamsClone(a.wall.teams)}
+	tree := a.teamTree().ManagementSnapshot()
+	tree.Teams = teamsClone(a.wall.teams)
 	return func() []string {
 		ids, err := teamstore.Quiet(dir, tree, now, teamstore.QuietAfter)
 		if err != nil {
@@ -518,7 +525,7 @@ func (a *app) orgWithQuiet(props []orgProp) []orgProp {
 	if len(p.closes) == 0 {
 		return props
 	}
-	p.name = "Close " + strconv.Itoa(len(p.closes)) + " quiet team"
+	p.name = "Disband " + strconv.Itoa(len(p.closes)) + " quiet team"
 	if len(p.closes) != 1 {
 		p.name += "s"
 	}
@@ -753,10 +760,10 @@ func orgJoined(joins []orgJoin, id, key string) bool {
 // nothing written in between the list is back exactly as it was.
 func (a *app) wallOrganizeUndo() {
 	o := &a.wall.org
-	if o.undo == nil || o.doneAt.IsZero() || a.now().Sub(o.doneAt) >= wallOrganizedFor {
+	if len(o.undoMade)+len(o.undoJoins) == 0 || o.doneAt.IsZero() || a.now().Sub(o.doneAt) >= wallOrganizedFor {
 		return
 	}
-	made, joins, closed := o.undoMade, o.undoJoins, o.undoClosed
+	made, joins := o.undoMade, o.undoJoins
 	o.undo, o.doneAt = nil, time.Time{}
 	o.undoMade, o.undoJoins, o.undoClosed = nil, nil, nil
 	a.wall.hover = wallHitRef{}
@@ -774,14 +781,7 @@ func (a *app) wallOrganizeUndo() {
 				return err
 			}
 		}
-		for _, id := range closed {
-			if t, ok := f.Team(id); !ok || !t.Closed() {
-				continue
-			}
-			if err := f.Reopen(id); err != nil {
-				return err
-			}
-		}
+
 		return nil
 	})
 	if teamIndex(a.wall.teams, a.wall.activeID) < 0 {
@@ -915,7 +915,7 @@ func wallOrganizeButton(pal palette, g wallGlyphs, v wallView, y int) wallOrgPie
 			said = append(said, strconv.Itoa(o.added)+" added")
 		}
 		if o.closed > 0 {
-			said = append(said, strconv.Itoa(o.closed)+" closed")
+			said = append(said, strconv.Itoa(o.closed)+" disbanded")
 		}
 		word := "Organized " + g.sep + " " + strings.Join(said, ", ") + "  "
 		undo := wallButton{act: wallActOrgUndo, label: "Undo"}
@@ -961,7 +961,7 @@ const wallOrgNameCap = 16
 //	│  Add to existing                                         │
 //	│  ☑ ● harbor        + 2  relay audit, footprint table     │
 //	│                                                          │
-//	│  about $0.0020                      Cancel esc  Apply ↵  │
+//	│  up/down move · space select · esc cancel · enter apply │
 //	│                                                          │
 //	╰──────────────────────────────────────────────────────────╯
 //
@@ -981,21 +981,7 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 	var list []wallCardLine
 	cursorLine := -1
 	var tail []wallCardLine
-	button := func(lead string, bs ...wallButton) wallCardLine {
-		bw := wallBarWidth(bs, 1)
-		s, _, hits := wallLay(pal, bs, v.hover, inner+2-bw, 0, 1)
-		lw := ansi.StringWidth(lead)
-		if lead != "" && lw+2 > inner+2-bw {
-			lead = ""
-		}
-		pad := strings.Repeat(" ", max(inner+2-bw-lw-1, 0))
-		if lead == "" {
-			pad = strings.Repeat(" ", max(inner+2-bw, 0))
-			return wallCardLine{s: pad + s, hits: hits, bleed: true}
-		}
-		return wallCardLine{s: " " + pal.dim(lead) + pad + s, hits: hits, bleed: true}
-	}
-	cancel := wallButton{act: wallActOrgCancel, label: "Cancel", key: "esc"}
+	cancel := teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: int(wallActOrgCancel)})
 	switch {
 	case o.thinking:
 		word := "thinking…"
@@ -1003,10 +989,12 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 			word = "thinking..."
 		}
 		list = append(list, wallCardLine{s: pal.dim(word)})
-		tail = append(tail, wallCardLine{}, button("", cancel))
+		tail = append(tail, wallCardLine{})
+		tail = append(tail, teamFooter(pal, inner, cancel)...)
 	case len(o.props) == 0:
 		list = append(list, wallCardLine{s: pal.ink("Everything is organized")})
-		tail = append(tail, wallCardLine{}, button("", wallButton{act: wallActOrgCancel, label: "Close", key: "esc"}))
+		tail = append(tail, wallCardLine{})
+		tail = append(tail, teamFooter(pal, inner, teamHint("esc", "close", wallHit{kind: wallHitAction, arg: int(wallActOrgCancel)}))...)
 	default:
 		nameW, countW := 6, 1
 		for _, p := range o.props {
@@ -1034,8 +1022,12 @@ func wallOrgCard(pal palette, g wallGlyphs, v wallView, width, height int) wallC
 		if o.folderOnly {
 			tail = append(tail, wallCardLine{}, wallCardLine{s: pal.dim("suggestions from folders only")})
 		}
-		apply := wallButton{act: wallActOrgApply, label: "Apply", key: k.enter}
-		tail = append(tail, wallCardLine{}, button(o.cost, cancel, apply))
+		tail = append(tail, wallCardLine{})
+		if o.cost != "" {
+			tail = append(tail, wallCardLine{s: pal.dim(fit(o.cost, inner))})
+		}
+		tail = append(tail, teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("space", "select"), cancel,
+			teamHint("enter", "apply", wallHit{kind: wallHitAction, arg: int(wallActOrgApply)}))...)
 	}
 
 	top := wallGridTop

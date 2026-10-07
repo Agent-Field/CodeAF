@@ -242,6 +242,7 @@ const (
 	GlyphBoosted   = "⇡" // transient escalation of the work-role binding (8.2.16)
 	GlyphSeparator = "·" // telemetry separator
 	GlyphMissing   = "—" // missing data — never an estimate (10.2.8)
+	GlyphTeamDot   = "●" // a team identity in the navigation tree
 	GlyphEstimate  = "~" // estimated number (10.2.8)
 
 	// Structure (5.21). The accent rail groups a card's lines in its identity
@@ -545,6 +546,7 @@ func Glyphs() []GlyphInfo {
 		// with no byte twin elsewhere in this list and escaped the sweep
 		// entirely until it was added. It has one now — the blockquote's gutter
 		// moved onto it, off the box rule it shared with the spawn tree.
+		{"TeamDot", GlyphTeamDot, '●', true},
 		{"ProseBullet", GlyphProseBullet, '·', true},
 		{"ProseQuote", GlyphProseQuote, '▏', true},
 		{"CodeGutter", GlyphCodeGutter, '▏', true},

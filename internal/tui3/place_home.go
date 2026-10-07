@@ -221,9 +221,7 @@ func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 		if row.gone && v.answer == "" && (v.key == 'n' || v.key == 'o') {
 			continue
 		}
-		if v.key == 'x' && row.kind == switcherConversation && (row.session.Archived || line.cell != nil && line.cell.closed) {
-			v.word = "reopen"
-		}
+
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
 	}
 	return verbs
@@ -248,7 +246,7 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 			return cmd
 		}
 	case v.key == 'x':
-		do = func() tea.Cmd { return a.homeArchiveRow(row.session) }
+		do = func() tea.Cmd { return a.conversationDeleteOpen(row.session.Transcript, homeName(row.session)) }
 	case v.key == 'n':
 		do = func() tea.Cmd { return a.homeStartInProject(homeWhere(line)) }
 	case v.key == 'o':

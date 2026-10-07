@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // writeV3Session puts one conversation on disk the way the door writes it: a
@@ -73,10 +75,9 @@ func TestResumeOpensTheConversationThePersonSpokeInLast(t *testing.T) {
 	}
 }
 
-// An empty untitled session is REUSED rather than duplicated, and the other
-// empties are reaped on the way past: the flat layout left nineteen dead
-// session directories on the author's own machine, which is this law's case.
-func TestALaunchReusesOneEmptySessionAndReapsTheRest(t *testing.T) {
+// A fresh identity cannot race an assignment of a previously empty conversation.
+// Unassigned empty folders are still cleaned up instead of accumulating.
+func TestALaunchMintsOneSessionAndReapsUnassignedEmpties(t *testing.T) {
 	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
 	workspace := t.TempDir()
 	bucket, err := v3ProjectDir(workspace)
@@ -94,15 +95,20 @@ func TestALaunchReusesOneEmptySessionAndReapsTheRest(t *testing.T) {
 	if found.Resumed {
 		t.Fatal("a session nobody has spoken in was announced as resumed")
 	}
+	for _, old := range []string{"00000000000000b1", "00000000000000b2", "00000000000000b3"} {
+		if found.Place.Dir == filepath.Join(bucket, old) {
+			t.Fatal("launch reused an old identity")
+		}
+	}
 	entries, err := os.ReadDir(bucket)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 {
-		t.Fatalf("the bucket holds %d folders, want the one that was reused", len(entries))
+		t.Fatalf("the bucket holds %d folders, want the fresh conversation", len(entries))
 	}
 	if filepath.Join(bucket, entries[0].Name()) != found.Place.Dir {
-		t.Fatalf("the surviving folder is %s, want the reused one %s", entries[0].Name(), found.Place.Dir)
+		t.Fatalf("the surviving folder is %s, want the fresh one %s", entries[0].Name(), found.Place.Dir)
 	}
 }
 
@@ -391,5 +397,83 @@ func TestLaunchKeepsTaskOnlyConversationFolders(t *testing.T) {
 				t.Fatal("launch would reuse or reap saved task work")
 			}
 		})
+	}
+}
+
+func TestTeamConversationsSurviveEmptyCleanupAndCannotBeReused(t *testing.T) {
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CODEAF_PROFILE_DIR", t.TempDir())
+	workspace := t.TempDir()
+	bucket, err := v3ProjectDir(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := writeV3Session(t, bucket, "manager-empty", "", time.Time{})
+	member := writeV3Session(t, bucket, "member-empty", "", time.Time{})
+	unused := writeV3Session(t, bucket, "unused-empty", "", time.Time{})
+	file := func(dir string) string { return session.Place{Dir: dir}.Transcript() }
+	f := &teams.File{Version: teams.Version, Teams: []teams.Team{{ID: "aaaaaaaaaaaa", Name: "Interface cleanup", Manager: file(manager), Members: []teams.Member{{Key: file(manager), File: file(manager)}, {Key: file(member), File: file(member)}}}}}
+	if err := teams.Save(config.ProfileDir(), f.Teams); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{manager, member} {
+		if v3EmptySession(dir) {
+			t.Fatal("assigned conversation considered disposable")
+		}
+	}
+	_, empty := v3ScanBucket(bucket)
+	if len(empty) != 1 || empty[0].dir != unused {
+		t.Fatal("assigned empty conversation was offered for reuse")
+	}
+	// A stale cleanup snapshot made before membership must be rechecked.
+	v3ReapEmpty([]v3Folder{{dir: manager}, {dir: member}, {dir: unused}}, "")
+	for _, dir := range []string{manager, member} {
+		if _, err := os.Stat(file(dir)); err != nil {
+			t.Fatal("assigned transcript was removed", err)
+		}
+	}
+	if _, err := os.Stat(unused); !os.IsNotExist(err) {
+		t.Fatal("unassigned empty was no longer cleaned")
+	}
+	found, err := v3ResolveSession("", workspace, workspace, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.Place.Dir == manager || found.Place.Dir == member {
+		t.Fatal("new launch reused a team conversation")
+	}
+	// A later launch and an explicit resume keep the new empty manager intact.
+	if _, err := v3ResolveSession("", workspace, workspace, false); err != nil {
+		t.Fatal(err)
+	}
+	named, err := v3NamedSession(file(manager), workspace, false)
+	if err != nil || named.Transcript != file(manager) {
+		t.Fatal("manager did not survive restart", err)
+	}
+}
+
+func TestUnreadableTeamsNeverAuthorizeEmptyCleanupOrReuse(t *testing.T) {
+	t.Setenv("CODEAF_HOME", filepath.Join(t.TempDir(), "state"))
+	profile := t.TempDir()
+	t.Setenv("CODEAF_PROFILE_DIR", profile)
+	workspace := t.TempDir()
+	bucket, err := v3ProjectDir(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := writeV3Session(t, bucket, "keep-empty", "", time.Time{})
+	if err := os.WriteFile(teams.Path(profile), []byte("not json"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if v3EmptySession(dir) {
+		t.Fatal("unknown membership treated as disposable")
+	}
+	_, empty := v3ScanBucket(bucket)
+	if len(empty) != 0 {
+		t.Fatal("unknown membership was reused")
+	}
+	v3ReapEmpty([]v3Folder{{dir: dir}}, "")
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatal("unknown membership was removed")
 	}
 }

@@ -281,7 +281,7 @@ func (f *File) MoveEffects(ids []string, parent string, d Defaults) (MoveEffect,
 
 // tidyCopy is a copy of f that shares nothing with it, tidied.
 func (f *File) tidyCopy() *File {
-	g := &File{Version: f.Version, Teams: make([]Team, len(f.Teams))}
+	g := &File{Version: f.Version, localIdentities: f.localIdentities, Teams: make([]Team, len(f.Teams))}
 	for i, t := range f.Teams {
 		g.Teams[i] = t.Clone()
 	}

@@ -1,6 +1,7 @@
 package teams
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -230,7 +231,7 @@ func TestChooseHandleClashesAndTypedHandles(t *testing.T) {
 	if _, _, err := f.ChooseHandle("t1", "d", []string{"Two Words", "x", "manager"}, ""); err == nil {
 		t.Error("an unusable answer was taken")
 	}
-	if after, _ := f.Teams[0].Member("d"); after != before {
+	if after, _ := f.Teams[0].Member("d"); !reflect.DeepEqual(after, before) {
 		t.Errorf("an unusable answer changed the member: %+v", after)
 	}
 }

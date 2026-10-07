@@ -229,7 +229,7 @@ func (s *Store) AddMany(specs []TaskSpec) ([]*Task, error) {
 			if err := validateSpec(specs[i]); err != nil {
 				return fmt.Errorf("task %d: %w", i, err)
 			}
-			if next.Tasks[specs[i].ID] != nil || batch[specs[i].ID] {
+			if next.Tasks[specs[i].ID] != nil || next.Deleted[specs[i].ID] || batch[specs[i].ID] {
 				return fmt.Errorf("duplicate task id %q", specs[i].ID)
 			}
 			batch[specs[i].ID] = true

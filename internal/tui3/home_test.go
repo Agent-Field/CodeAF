@@ -3293,60 +3293,22 @@ func TestHomeCaretStaysInTheDraftWhenItWraps(t *testing.T) {
 // in it (switcher.go) — so the law the fold was protecting, that nothing a
 // person put away is LOST, is kept by the box instead: typing its name finds
 // it, exactly as typing any other name does, and ctrl+e there brings it back.
-func TestPuttingARowAwayTakesItOffTheListAndItsNameFindsItAgain(t *testing.T) {
+func TestHomeDeleteChordAsksBeforeRemovingARow(t *testing.T) {
 	lab := newHomeLab(t)
 	now := time.Now()
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "keep this one", lab.workspace("alpha"), now)
-	lab.session("-tmp-alpha", "aaaa000000000002", "the junk drawer plan", lab.workspace("alpha"), now.Add(-time.Minute))
+	target := lab.session("-tmp-alpha", "aaaa000000000002", "junk drawer", lab.workspace("alpha"), now.Add(-time.Minute))
 	a := lab.app(mine)
 	openHomeFixtureTabs(a)
 	a.openHome()
 	a.width, a.height = 100, 30
-
-	// Walk the cursor onto the junk row and press ctrl+e.
-	at := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeSession && strings.Contains(line.row.Title, "junk drawer") {
-			at = i
-			break
-		}
-	}
-	if at < 0 {
-		t.Fatalf("the junk row is not on home:\n%s", homeText(a))
-	}
-	a.home.cursor, a.home.picked = at, true
+	a.home.point(target)
 	drive(t, a, key("ctrl+e"))
-
-	_, closed := homeConversationLines(a)
-	if len(closed) != 1 || !closed[0].cell.closed {
-		t.Fatal("closed conversation did not become a dimmed row")
+	if !a.cdelete.on || a.cdelete.file != target {
+		t.Fatal("delete chord did not ask")
 	}
-	// AND THE SCREEN SAYS WHERE IT WENT. A row that vanished with no sentence
-	// would be the surface hiding something on a keystroke.
-	if !strings.Contains(a.home.msg, homeClosedWord) {
-		t.Fatalf("putting a row away said %q", a.home.msg)
-	}
-
-	// A search still finds it, which is the whole of the way back.
-	a.home.box.setText("junk")
-	a.home.build()
-	back := -1
-	for i, line := range a.home.lines {
-		if line.kind == homeSession && line.row.Archived {
-			back = i
-			break
-		}
-	}
-	if back < 0 {
-		t.Fatalf("typing its name does not find the put-away row:\n%s", homeText(a))
-	}
-	a.home.cursor, a.home.picked = back, true
-	drive(t, a, key("ctrl+e"))
-	drain(t, a, a.openHome())
+	drive(t, a, key("esc"))
 	assertHomeTabParity(t, a)
-	if a.file != closed[0].row.Transcript || a.tabShut[a.convKey(a.file)] {
-		t.Fatal("ctrl+e did not reopen the saved conversation's tab")
-	}
 }
 
 // A BARE LETTER ALWAYS TYPES. The foot promises "type to search or start

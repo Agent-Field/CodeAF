@@ -76,7 +76,7 @@ func TestAWorkspaceWithNoConversationKeysToNothingAndThenToWhatItOpened(t *testi
 	if err := os.WriteFile(found.Transcript, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// Nobody has spoken in it — this is the empty folder a launch reuses — and
+	// Nobody has spoken in it — this is the empty folder the host can join — and
 	// the key must still find it, or a second plain launch would open a second
 	// agent onto the journal the first one holds.
 	key := engineHelloKey(remote.Hello{Version: remote.Version, Workspace: workspace}, workspace, "")

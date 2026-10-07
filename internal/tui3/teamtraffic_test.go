@@ -160,7 +160,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 		t.Fatalf("the member's Traffic is not its own messages only:\n%s", joined)
 	}
 	// A member of a managed team is told where its words go too.
-	if got := a.trafficHint(); got != "to @"+price {
+	if got := a.trafficHint(); got != "to @"+price+" of harbor" {
 		t.Fatalf("a member's composer says %q", got)
 	}
 }

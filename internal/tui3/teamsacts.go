@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,42 +23,99 @@ import (
 func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	a.tp.msg = ""
 	a.tp.cur = t.ref()
+	if t.pane {
+		a.tp.paneWheel = false
+	} else {
+		a.tp.railWheel = false
+	}
 	switch t.act {
+	case teamsActSubteamsFold:
+		if a.tp.foldedSubteams == nil {
+			a.tp.foldedSubteams = make(map[string]bool)
+		}
+		a.tp.foldedSubteams[t.id] = !a.tp.foldedSubteams[t.id]
+		a.touch()
+		return nil
+	case teamsActChooseManager:
+		return a.teamChooseManagerOpen(t.id)
+	case teamsActAddMember:
+		return a.teamMembershipOpen(t.id, "")
+	case teamsActRemoveMember:
+		cmd := a.teamMembershipOpen(t.id, t.arg)
+		if a.tmembers.on {
+			a.tmembers.removing = true
+		}
+		return cmd
+	case teamsActAddSubteam:
+		return a.teamMenuNewTeamIn(t.id)
+	case teamsActInteractionToggle:
+		a.trafficToggle(trafficOpenKey(t.id, t.arg))
+		return nil
+	case teamsActInteractionJump:
+		if !a.trafficHeld(t.arg) && a.tp.previews[t.arg].missing {
+			a.tp.msg = "Conversation unavailable"
+			a.touch()
+			return nil
+		}
+		id := t.id
+		if team, ok := a.teamByID(id); ok && team.Closed() {
+			id = ""
+		}
+		a.teamViewSet(id)
+		a.leavePlace()
+		a.closeRoom()
+		return a.trafficJumpFromTeam(t.id, t.arg, t.opt)
+	case teamsActInteractionUp:
+		a.teamsInteractionsPage(-1)
+		return nil
+	case teamsActInteractionDown:
+		a.teamsInteractionsPage(1)
+		return nil
 	case teamsActSelect:
 		return a.teamsSelect(t.id)
 	case teamsActClosedFold:
 		a.tp.closedOpen = !a.tp.closedOpen
-		if !a.tp.closedOpen {
+		if a.tp.closedOpen {
+			// Reveal the added rows immediately, even beside a long active list.
+			a.tp.railOffset = len(a.teamsOpenTree())
+		} else {
+			a.tp.railOffset = 0
 			if sel, ok := a.teamsSelected(); ok && sel.Closed() {
-				a.tp.sel = ""
-				a.teamsSettle()
+				a.teamsViewFromSelection(teamsAllRow)
 			}
 		}
 		a.touch()
 		return nil
 	case teamsActNewTeam:
-		// On the rail with a team chosen, the new team is made inside it.
-		return a.teamMenuNewTeamIn(t.id)
+		return a.teamMenuNewTeamIn("")
 	case teamsActOrganize:
-		open := a.openWall()
-		a.wallSetTeam("")
-		return tea.Batch(open, a.wallOrganizeOpen())
+		return a.wallOrganizeOpen()
+	case teamsActOrganizeUndo:
+		a.wallOrganizeUndo()
+		return nil
 	case teamsActWall:
-		open := a.openWall()
-		a.wallSetTeam(t.id)
-		return open
+		return a.openWall()
 	case teamsActManager:
 		return a.teamsManagerStart(t.id)
 	case teamsActRootManager:
 		return a.teamsRootManagerStart()
+	case teamsActDeleteGlobalManager:
+		root, ok := a.teamsRoot()
+		if !ok || root.ID != t.id || root.Manager != t.arg {
+			return nil
+		}
+		if m, ok := root.Member(root.Manager); ok {
+			return a.conversationDeleteOpen(m.File, m.Word)
+		}
+		return nil
 	case teamsActSettings:
 		return a.teamSheetOpen(t.id, teamSheetSettings)
 	case teamsActClose:
 		return a.teamsCloseAsk(t.id)
 	case teamsActReopen:
-		return a.teamsReopen(t.id, false)
+		return nil
 	case teamsActReopenParent:
-		return a.teamsReopen(t.id, true)
+		return nil
 	case teamsActDelete:
 		return a.teamSheetOpen(t.id, teamSheetDelete)
 	case teamsActMember:
@@ -65,7 +123,6 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActOption:
 		if t.opt == "" {
 			a.tp.expand = t.arg
-			a.tp.top = teamsTopCache{}
 			a.touch()
 			return nil
 		}
@@ -73,17 +130,12 @@ func (a *app) teamsDo(t teamsTarget) tea.Cmd {
 	case teamsActOwnAnswer:
 		a.tp.answering = t.arg
 		a.tp.answer.reset()
-		a.tp.top = teamsTopCache{}
 		a.touch()
 		return nil
 	case teamsActPrompt:
 		return a.teamsPrompt(t.arg, t.opt)
 	case teamsActUndo:
 		return a.teamsUndoAny()
-	case teamsActRetryManager:
-		return a.teamsRetryManager()
-	case teamsActOpenInChats:
-		return a.teamsOpenInChats()
 	case teamsActMoveYes:
 		return a.teamMoveConfirm()
 	case teamsActMoveNo:
@@ -105,47 +157,39 @@ func (a *app) teamDraggable(t teamsTarget) bool {
 		return t.arg != ""
 	case teamsActSelect:
 		u, ok := a.teamByID(t.id)
-		return ok && !t.pane && !u.Root && !u.Closed()
+		return ok && !u.Root && !u.Closed()
 	}
 	return false
 }
 
-// teamsSelect puts the pane on team id and, when it has a manager, brings that
-// conversation in front, where the pane draws it. The keyboard goes back to the
-// composer: choosing a team is choosing whom to talk to.
+// Selecting a team synchronizes the Chats overlay without opening a chat
+// from the overview or disturbing any conversation's work or draft.
 func (a *app) teamsSelect(id string) tea.Cmd {
-	a.tp.sel = id
+	a.teamsViewFromSelection(id)
 	a.tp.expand, a.tp.answering = "", ""
-	a.tp.top = teamsTopCache{}
-	if t, ok := a.teamByID(id); ok && t.Manager != "" && !t.Closed() {
-		a.tp.focus = false
-	}
+	a.tp.focus = true
+	a.tp.cur = teamsRef{act: teamsActSelect, id: id}
 	a.touch()
-	return tea.Batch(a.teamsBringManager(), a.teamsRead(false))
+	return a.teamsRead(true)
 }
 
-// teamsMemberGo is a press on a member: one this window holds is opened, and
-// one it does not is resumed BEHIND, as its own tab, without moving the
-// person's focus (ruling c-b).
+// Member aliases lead to Chats with the originating team's overlay selected.
 func (a *app) teamsMemberGo(id, key string) tea.Cmd {
-	if a.trafficHeld(key) {
-		if key == a.frontTabKey() {
-			a.leavePlace()
-			return nil
-		}
-		cmd := a.trafficGo(key)
-		a.leavePlace()
-		return cmd
-	}
-	t, ok := a.teamByID(id)
-	if !ok {
+	if key == "" {
 		return nil
 	}
-	m, ok := t.Member(key)
-	if !ok || strings.TrimSpace(m.File) == "" {
+	if !a.trafficHeld(key) && a.tp.previews[key].missing {
+		a.tp.msg = "Conversation unavailable"
+		a.touch()
 		return nil
 	}
-	return a.teamsResumeBehind(m)
+	if t, ok := a.teamByID(id); ok && t.Closed() {
+		id = ""
+	}
+	a.teamViewSet(id)
+	a.leavePlace()
+	a.closeRoom()
+	return a.trafficGo(key)
 }
 
 // teamsResumeBehind opens one member's conversation behind the one in front,
@@ -193,7 +237,6 @@ func (a *app) teamsResumeBehind(m teamMember) tea.Cmd {
 			a.trafficBehindTop(key)
 			a.chatTabBar = tabBar{}
 			a.tp.msg = name + " is open behind, in its own tab"
-			a.tp.top = teamsTopCache{}
 			a.touch()
 			return cmd
 		}
@@ -217,13 +260,17 @@ func (a *app) teamsManagerStart(id string) tea.Cmd {
 	}
 	a.tp.focus = false
 	return a.teamsStartManager(a.teamWhere(t), func(tab chatTab) {
-		if err := a.teamMakeManager(id, tab); err != nil {
-			a.note("the manager is set for this window, but " + err.Error())
+		if err := a.teamMakeManager(id, tab, t.Manager); err != nil {
+			a.note("Could not assign manager: " + err.Error())
+			a.tp.sel = ""
+			return
 		}
+		a.teamsWatchManagerStart(tab.key)
+		a.tp.sel = id
 	})
 }
 
-// teamsRootManagerStart is `+ Manager` on the `All teams` row: the optional
+// teamsRootManagerStart is `+ Global manager` on the `All teams` row: the optional
 // global manager. It makes the root team (every top-level team moves under it,
 // internal/teams' root.go) and its manager in one edit.
 func (a *app) teamsRootManagerStart() tea.Cmd {
@@ -233,7 +280,7 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 		return nil
 	}
 	if root, ok := a.teamsRoot(); ok {
-		if root.Manager != "" {
+		if root.Manager != "" && !a.teamsManagerMissing(root) {
 			return a.teamsSelect(root.ID)
 		}
 		return a.teamsManagerStart(root.ID)
@@ -246,6 +293,9 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 		err := a.teamEdit(func(f *teamstore.File) error {
 			id := rootID
 			if r, ok := f.Root(); ok {
+				if r.ID != rootID || r.Manager != "" && r.Manager != tab.key {
+					return fmt.Errorf("The global manager changed; review it in Teams before assigning another")
+				}
 				id = r.ID
 			} else {
 				f.Teams = append([]teamstore.Team{{ID: rootID, Name: teamstore.RootName, Made: now, Root: true}}, f.Teams...)
@@ -263,8 +313,11 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 			return f.SetManager(id, tab.key)
 		})
 		if err != nil {
-			a.note("the manager is set for this window, but " + err.Error())
+			a.note("Could not assign global manager: " + err.Error())
+			a.tp.sel = ""
+			return
 		}
+		a.teamsWatchManagerStart(tab.key)
 		a.tp.sel = rootID
 		if r, ok := a.teamsRoot(); ok {
 			a.tp.sel = r.ID
@@ -278,8 +331,9 @@ func (a *app) teamsRootManagerStart() tea.Cmd {
 func (a *app) teamsStartManager(where string, made func(chatTab)) tea.Cmd {
 	take := func() {
 		made(chatTab{key: a.convKey(a.file), file: a.file, where: a.workspace})
+		a.teamViewSet(a.tp.sel)
+		a.leavePlace()
 		a.tp.focus = false
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	}
 	if a.start == nil || a.shared {
@@ -366,7 +420,6 @@ func (a *app) teamsDecide(id, opt, words string) tea.Cmd {
 		label = o.Label
 	}
 	a.tp.msg = "decided " + a.teamsDot() + " " + label
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	// A CLOSING REPORT'S `Close` closes the team (DESIGN.md 8.8). Every other
 	// decision, a cap's `Raise to $X` included, is the decision and nothing
@@ -393,7 +446,6 @@ func (a *app) teamsPrompt(file, key string) tea.Cmd {
 	cmd, took := a.sendAnswer(row, question, key)
 	if took {
 		a.tp.msg = answerSentWord + question.Label(key)
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	}
 	return cmd

@@ -302,7 +302,7 @@ func TestCtrlWOnTheSwitcherPutsTheRowAwayWithoutClosingIt(t *testing.T) {
 // spell three of the tabs it has, and a strip that went quiet about them would
 // be back to claiming this window holds exactly what fits — which is the defect
 // the whole header was built to fix (chattabs.go's opening).
-func TestTheRowsRightEndIsTheCountAndNothingElse(t *testing.T) {
+func TestTheCountEndsTheTabWindowBeforeTheFixedGridDoor(t *testing.T) {
 	a, _, _ := tabApp(t)
 	a.width = 40
 	a.touch()
@@ -321,8 +321,8 @@ func TestTheRowsRightEndIsTheCountAndNothingElse(t *testing.T) {
 	if fold.span.to == 0 {
 		t.Fatalf("the row hid tabs and drew no count:\n%q", strip)
 	}
-	// It still ends the run, after the tabs and the new-chat door.
-	if fold.span.to < ansi.StringWidth(strip)-1 {
+	// The count ends the tab window; the grid button owns the row's right edge.
+	if !a.wall.door.pressable() || a.wall.door.to != ansi.StringWidth(strip) || fold.span.to > a.wall.door.from || a.wall.door.from-fold.span.to > 1 {
 		t.Fatalf("the count is not right-aligned: %+v on a %d-cell row", fold.span, ansi.StringWidth(strip))
 	}
 	if fold.door(a) {

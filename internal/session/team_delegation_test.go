@@ -622,9 +622,15 @@ func holdDecisions(t *testing.T, profile, teamID string) func() {
 // used to leave it out: this process never tried again, and only a restart
 // sent the report. The next look tries again, and the report goes out once.
 func TestTeamWrapUpBusyDecisionsIsTriedAgain(t *testing.T) {
+	teamWatchClockMu.Lock()
 	every := teamWatchEvery
 	teamWatchEvery = time.Hour
-	t.Cleanup(func() { teamWatchEvery = every })
+	teamWatchClockMu.Unlock()
+	t.Cleanup(func() {
+		teamWatchClockMu.Lock()
+		teamWatchEvery = every
+		teamWatchClockMu.Unlock()
+	})
 	fixture := newTeamFixture(t, true)
 	stubCapSpend(t, &capSpend{usd: 0.5, stamp: "s1"})
 	manager := teamAgent(t, fixture, fixture.manager, nil, nil)
@@ -736,14 +742,14 @@ func TestTeamACapHoldsAWake(t *testing.T) {
 	webAnswers := oneAnswer(1)
 	teamAgent(t, fixture, fixture.web, webAnswers, nil)
 	appendTraffic(t, fixture, teams.Entry{Kind: teams.KindDirective, From: teams.FromManager, To: "web", Text: "Fix the header."})
-	deadline := time.Now().Add(teamWakeSettle + 40*teamWatchEvery)
+	deadline := time.Now().Add(teamWakeDelay() + 40*teamWatchInterval())
 	held := false
 	for time.Now().Before(deadline) && !held {
 		log, _ := teams.ReadTraffic(fixture.profile, fixture.teamID, "", 0)
 		for _, entry := range log {
 			held = held || strings.HasPrefix(entry.Text, "held @web: harbor reached its $5 cap today")
 		}
-		time.Sleep(teamWatchEvery)
+		time.Sleep(teamWatchInterval())
 	}
 	if !held {
 		t.Fatal("the Traffic never said the wake was held")

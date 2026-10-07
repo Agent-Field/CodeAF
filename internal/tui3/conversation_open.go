@@ -166,6 +166,7 @@ func (a *app) homeStartLater(text, place string) tea.Cmd {
 }
 
 func (a *app) homeOpenLater(line homeLine, takeover bool) tea.Cmd {
+	a.teamViewSet("")
 	where, file := homeWhere(line), line.row.Transcript
 	open, resume := a.open, a.resume
 	if open == nil && resume == nil {

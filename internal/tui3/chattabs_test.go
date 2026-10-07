@@ -421,7 +421,14 @@ func TestTheStripsPiecesStandOneGapApart(t *testing.T) {
 			}
 			var pieces []piece
 			if a.wall.chip.pressable() {
-				pieces = append(pieces, piece{from: a.wall.chip.from, to: a.wall.chip.to})
+				end := a.wall.chip.to
+				if a.wall.chipClear.pressable() {
+					if end != a.wall.chipClear.from {
+						t.Fatal("the chip's clear target is detached from its name")
+					}
+					end = a.wall.chipClear.to
+				}
+				pieces = append(pieces, piece{from: a.wall.chip.from, to: end})
 			}
 			for _, hit := range a.chatTabHits {
 				switch hit.kind {
@@ -435,11 +442,15 @@ func TestTheStripsPiecesStandOneGapApart(t *testing.T) {
 					// front of it is the window's; what follows it is packed.
 					pieces = append(pieces, piece{hit.span.from, hit.span.to, true})
 				default:
-					pieces = append(pieces, piece{from: hit.span.from, to: hit.span.to})
+					to := hit.span.to
+					if hit.tab.team != "" && !hit.tab.slot {
+						to += tabCloseCells
+					}
+					pieces = append(pieces, piece{from: hit.span.from, to: to})
 				}
 			}
 			if a.wall.door.pressable() {
-				pieces = append(pieces, piece{from: a.wall.door.from, to: a.wall.door.to})
+				pieces = append(pieces, piece{from: a.wall.door.from, to: a.wall.door.to, pinned: true})
 			}
 			if len(pieces) < 3 {
 				t.Fatalf("team=%v at %d the strip drew %d pieces: %q", team, width, len(pieces), row)

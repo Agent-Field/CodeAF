@@ -10,39 +10,18 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 )
 
-// ── A TEAM IS OPEN OR CLOSED, AND ONLY A CLOSED ONE CAN BE DELETED ──────────
-//
-// The ruling (c-9): a team the work is done with is CLOSED, not deleted. It
-// keeps its members, its Traffic, its packets and its closing report, it is
-// drawn folded under `Closed · N`, and it can be reopened. Deleting forgets
-// the grouping, its Traffic and its packets, and is offered only from Closed,
-// so nothing that is running is ever one keystroke from gone. The
-// conversations are never deleted; they stay in history.
-//
-// WHAT CLOSED MEANS TO THE REST OF THIS PACKAGE. A closed team is outside
-// every walk: it is never anybody's home and its manager is found by no walk
-// (home.go), it is never the team that decides between parties ([File.LCA]),
-// its overrides are skipped by a team under it ([File.Effective]) and its own
-// effective cap is none, because a closed team spends nothing. tidy re-runs
-// the home rule on the same write that closes a team, so a conversation whose
-// home closed reports to its next manager, or to nobody, from that write on.
-//
-// CLOSING CASCADES DOWN AND ONLY DOWN. Closing a team closes every open team
-// under it and records which close closed them ([Team.ClosedWith]), so
-// reopening the team reopens exactly those and not a sub-team the person had
-// closed on its own before. A sub-team may close alone; its parent stays open.
-// A team under a closed parent cannot be reopened until the parent is.
-//
-// THE SESSION'S WRAP-UP IS NOT HERE. What a manager does before a close (tell
-// members to finish, answer what it can, write the closing report as a
-// [KindClosing] packet) is internal/session's; stopping member turns and
-// closing tabs is the interface's. This file is the record those two write.
+// Disbanding ends coordination recursively and preserves history. The persisted
+// closed state remains compatible with earlier builds; it is read-only history
+// in the current surface. Conversations and their current work survive.
 
 // Team states.
 const (
 	TeamOpen   = "open"
 	TeamClosed = "closed"
 )
+
+// ErrClosed refuses new coordination in a team's preserved history.
+var ErrClosed = errors.New("teams: this team has been disbanded; its history is read-only")
 
 // ErrOpen is [Delete] asked to delete a team that is not closed.
 var ErrOpen = errors.New("teams: only a closed team can be deleted; close it first")
@@ -74,10 +53,10 @@ func (f *File) Descendants(id string) []Team {
 	return out
 }
 
-// Close closes team id at at, with report the id of its closing report packet
-// ("" for none), and every open team under it. A team already closed is left
-// as it was, and so is a sub-team already closed on its own.
-func (f *File) Close(id string, at time.Time, report string) error {
+// Disband releases the selected team's coordination and every descendant's.
+// Historical rosters stay with their records, while no closed membership can
+// confer authority. Losing a reporting manager never assigns another by itself.
+func (f *File) Disband(id string, at time.Time, report string) error {
 	i, err := f.at(id)
 	if err != nil {
 		return err
@@ -85,27 +64,41 @@ func (f *File) Close(id string, at time.Time, report string) error {
 	if f.Teams[i].Root {
 		return ErrRoot
 	}
-	if f.Teams[i].Closed() {
-		return nil
-	}
 	if at.IsZero() {
 		at = time.Now()
 	}
-	t := &f.Teams[i]
-	t.State, t.ClosedAt, t.ClosedWith, t.Report = TeamClosed, at, id, report
-	// A closed team has no wrap-up left to resume.
-	t.Wrap = nil
+	ids := map[string]bool{id: true}
 	for _, d := range f.Descendants(id) {
-		j := Index(f.Teams, d.ID)
-		if f.Teams[j].Closed() {
-			continue
+		ids[d.ID] = true
+	}
+	independent := map[string]bool{}
+	for _, t := range f.Teams {
+		for _, m := range t.Members {
+			if home, ok := f.Home(m.Key); ok && (ids[home.Via] || ids[home.Team]) {
+				independent[m.Key] = true
+			}
 		}
-		c := &f.Teams[j]
-		c.State, c.ClosedAt, c.ClosedWith = TeamClosed, at, id
-		c.Wrap = nil
+	}
+	for j := range f.Teams {
+		t := &f.Teams[j]
+		if ids[t.ID] && !t.Closed() {
+			t.State, t.ClosedAt, t.ClosedWith, t.Wrap = TeamClosed, at, id, nil
+			if t.ID == id {
+				t.Report = report
+			}
+		}
+		for k := range t.Members {
+			if independent[t.Members[k].Key] {
+				t.Members[k].Home, t.Members[k].Independent = false, true
+			}
+		}
 	}
 	return nil
 }
+
+// Close preserves the old store door for closing reports and older callers.
+// Its behavior follows disbanding: no session is stopped or implicitly reassigned.
+func (f *File) Close(id string, at time.Time, report string) error { return f.Disband(id, at, report) }
 
 // Reopen opens team id again, and every team under it that its own close
 // closed. Its closing report stays recorded; a team reopened and closed again
@@ -170,30 +163,30 @@ func TeamDir(profileDir, teamID string) string {
 	return config.ProfilePath(profileDir, filepath.Join("teams", teamID))
 }
 
-// Delete forgets closed team id and every team under it (closed with it, by
-// the cascade): their entries in the teams file, then their Traffic and packet
-// files. It answers the ids it deleted. A team that is open is [ErrOpen] and
-// nothing is changed; so is one with an open team under it, which only a
-// hand-edited file can have. The conversations are not touched.
-//
-// THE FILE IS WRITTEN FIRST. A crash between the two leaves directories no
-// team names, which cost a few kilobytes and are harmless; the other order
-// could leave a team whose Traffic was gone.
-func Delete(profileDir, id string) ([]string, error) {
+// Delete disbands and forgets a selected team and its descendants. The reviewed
+// scope is checked under the store lock before any mutation. Conversations survive.
+// Records are removed before their history directories so a cleanup failure cannot
+// leave an active team whose exchanges have vanished.
+func Delete(profileDir, id string, expected ...[]string) ([]string, error) {
 	var gone []string
 	err := Update(profileDir, func(f *File) error {
 		t, ok := f.Team(id)
 		if !ok {
 			return fmt.Errorf("no team %s", id)
 		}
-		if !t.Closed() {
-			return ErrOpen
+		if t.Root {
+			return ErrRoot
+		}
+		if len(expected) > 0 {
+			if err := f.CheckAffected(id, expected[0]); err != nil {
+				return err
+			}
+		}
+		if err := f.Disband(id, time.Now(), ""); err != nil {
+			return err
 		}
 		gone = []string{id}
 		for _, d := range f.Descendants(id) {
-			if !d.Closed() {
-				return ErrOpen
-			}
 			gone = append(gone, d.ID)
 		}
 		drop := map[string]bool{}
@@ -214,7 +207,9 @@ func Delete(profileDir, id string) ([]string, error) {
 	}
 	for _, g := range gone {
 		if safeTeamID(g) == nil {
-			_ = os.RemoveAll(TeamDir(profileDir, g))
+			if err := os.RemoveAll(TeamDir(profileDir, g)); err != nil {
+				return gone, err
+			}
 		}
 	}
 	forgetPackets(profileDir)
@@ -276,4 +271,22 @@ func lastActivity(profileDir string, t Team) time.Time {
 		later(modTime(m.Key))
 	}
 	return last
+}
+
+// CheckAffected keeps a confirmation about exactly the teams it named, even
+// when another writer adds or moves descendants while the card is open.
+func (f *File) CheckAffected(id string, expected []string) error {
+	actual := map[string]bool{id: true}
+	for _, t := range f.Descendants(id) {
+		actual[t.ID] = true
+	}
+	if len(actual) != len(expected) {
+		return errors.New("the affected teams changed; review the confirmation again")
+	}
+	for _, id := range expected {
+		if !actual[id] {
+			return errors.New("the affected teams changed; review the confirmation again")
+		}
+	}
+	return nil
 }

@@ -68,7 +68,13 @@ func teamIndex(teams []team, id string) int { return teamstore.Index(teams, id) 
 
 // teamTree is the loaded sets as the store's file, for its tree walks. It
 // shares the slice, so a change through it is a change to the loaded sets.
-func (a *app) teamTree() *teamstore.File { return &teamstore.File{Teams: a.wall.teams} }
+func (a *app) teamTree() *teamstore.File {
+	f := &teamstore.File{Teams: a.wall.teams}
+	if !a.hosted() {
+		f.UseLocalIdentities()
+	}
+	return f
+}
 
 // teamByID is the team with id. Frame-safe: memory only.
 func (a *app) teamByID(id string) (team, bool) { return a.teamTree().Team(id) }
@@ -334,7 +340,14 @@ func (a *app) teamEdit(change func(f *teamstore.File) error) error {
 	}
 	a.teamsEnsure()
 	mine := &teamstore.File{Version: teamstore.Version, Teams: teamsClone(a.wall.teams)}
+	if !a.hosted() {
+		mine.UseLocalIdentities()
+	}
+	previous := mine.ManagementSnapshot()
 	if err := change(mine); err != nil {
+		return err
+	}
+	if err := mine.CheckManagementChange(previous); err != nil {
 		return err
 	}
 	a.teamRefreshWords(mine.Teams)
@@ -422,15 +435,22 @@ func (a *app) teamMakeHued(name string, tabs []chatTab, hue teamHueSpec) (string
 // session's own sub-team start does, and a team remade under a name it
 // already has stays where it is.
 func (a *app) teamMakeIn(name string, tabs []chatTab, hue teamHueSpec, parent string) (string, error) {
+	return a.teamMakeInChecked(name, tabs, hue, parent, false)
+}
+
+// Both creation interfaces use the same store edit, refusing name collisions
+// and a parent that disappeared before the write reached the shared store.
+func (a *app) teamCreateIn(name string, tabs []chatTab, hue teamHueSpec, parent string) (string, error) {
+	return a.teamMakeInChecked(name, tabs, hue, parent, true)
+}
+
+func (a *app) teamMakeInChecked(name string, tabs []chatTab, hue teamHueSpec, parent string, freshOnly bool) (string, error) {
 	a.teamsEnsure()
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return "", errors.New("a team needs a name")
 	}
 	t := teamFromTabs(name, tabs, time.Now())
-	if len(t.Members) == 0 {
-		return "", errors.New("a team needs at least one conversation")
-	}
 	// The id is minted here, once, and the change below only uses it: the
 	// change is made twice ([app.teamEdit]) and must name the same team both
 	// times.
@@ -439,6 +459,18 @@ func (a *app) teamMakeIn(name string, tabs []chatTab, hue teamHueSpec, parent st
 	defaults := a.tp.defaults
 	err := a.teamEdit(func(f *teamstore.File) error {
 		at := teamNamed(f.Teams, name)
+		if freshOnly && at >= 0 {
+			return errors.New("a team already uses this name")
+		}
+		if freshOnly && parent != "" {
+			if p, ok := f.Team(parent); !ok || p.Closed() || p.Root {
+				return errors.New("the parent team is no longer active")
+			}
+			effective := f.Effective(parent, defaults)
+			if effective.DepthLimit > 0 && f.Depth(parent)+1 > effective.DepthLimit {
+				return errors.New("the parent team cannot take another level of subteams")
+			}
+		}
 		if at < 0 {
 			made := t.Clone()
 			made.ID = fresh
@@ -570,7 +602,12 @@ func (a *app) teamAdd(id string, tabs []chatTab) error {
 	id = a.wall.teams[i].ID
 	members := teamFromTabs("", tabs, time.Time{}).Members
 	return a.teamEdit(func(f *teamstore.File) error {
+		current, ok := f.Team(id)
+		if !ok || current.Closed() {
+			return errors.New("members can be added only in active teams")
+		}
 		for _, m := range members {
+			m.JoinedAt = time.Now()
 			// A member joins with a handle when it has a title
 			// ([teamstore.File.AddMember]); one already there is left as it is.
 			if err := f.AddMember(id, m); err != nil {
@@ -591,7 +628,14 @@ func (a *app) teamRemove(id string, keys []string) error {
 	}
 	id = a.wall.teams[i].ID
 	return a.teamEdit(func(f *teamstore.File) error {
+		current, ok := f.Team(id)
+		if !ok || current.Closed() || current.Root {
+			return errors.New("memberships can be edited only in active regular teams")
+		}
 		for _, k := range keys {
+			if current.Manager == k {
+				return errors.New(teamManagerRemovalWord)
+			}
 			// A manager taken out of its team is no longer its manager.
 			if err := f.RemoveMember(id, k); err != nil {
 				return err
@@ -601,29 +645,41 @@ func (a *app) teamRemove(id string, keys []string) error {
 	})
 }
 
-// teamActivate narrows the strip to team id, or widens it to every tab for
-// "" (or an id that is gone). It changes the view and nothing else. If the
-// conversation in front is not a member, the strip would be narrowed away
-// from the page the person is on, so it steps to the first member instead and
-// returns that switch.
-func (a *app) teamActivate(id string) tea.Cmd {
+// teamActivate switches the explicit Chats view and restores its last selection.
+func (a *app) teamActivate(id string) (cmd tea.Cmd) {
 	a.teamsEnsure()
-	t, ok := a.teamByID(id)
-	if !ok {
-		a.wall.activeID = ""
+	if t, ok := a.teamByID(id); !ok || t.Closed() {
+		id = ""
+	}
+	if id == a.teamViews.id && !a.teamViews.deferred {
+		a.teamsSelectionFromView(id)
 		return nil
 	}
-	a.wall.activeID = id
-	if len(t.Members) == 0 || teamHolds(t, a.frontTabKey()) {
+	a.teamViewSet(id)
+	if view, exists := a.teamViews.views[id]; exists {
+		defer func() { a.tabView = view.viewport }()
+	}
+	remembered := a.teamViews.views[id]
+	if id == "" {
+		if remembered.key != "" && !a.tabShut[remembered.key] {
+			return a.trafficGo(remembered.key)
+		}
 		return nil
 	}
-	// A team with nothing open here narrows the strip to the tab in front, and
-	// the front stays where it is: nothing to step to is not a reason to open.
-	tabs := teamTabs(t, a.tabList(), a.teamHeldOpen)
-	if len(tabs) == 0 {
+	t, _ := a.teamByID(id)
+	if a.teamOverlayHolds(t, remembered.key) {
+		return a.trafficGo(remembered.key)
+	}
+	if a.teamOverlayHolds(t, a.frontTabKey()) {
 		return nil
 	}
-	return a.tabGo(tabs[0])
+	if t.Manager != "" {
+		return a.trafficGo(t.Manager)
+	}
+	if len(t.Members) > 0 {
+		return a.trafficGo(t.Members[0].Key)
+	}
+	return nil
 }
 
 // teamActive is the team the strip is narrowed to. It reads only memory and
@@ -707,30 +763,36 @@ func (a *app) teamJoinNew(tab chatTab) {
 	}
 }
 
-// teamStripTabs is what the strip draws given the tabs it would draw with no
-// team. With a team active it is that team's members, plus the tab in front
-// when it is not one of them: THE TAB YOU ARE ON NEVER VANISHES, because a
-// strip that does not show where you are cannot show you the way back. With no
-// team active the tabs come back unchanged. Frame-safe: memory only.
+// teamStripTabs draws every selected membership, independently of All's hidden
+// tabs and presentation cap. A saved conversation can be selected before its
+// agent is attached; tabs make no claim about whether work is running.
 func (a *app) teamStripTabs(tabs []chatTab) []chatTab {
 	t, ok := a.teamActive()
-	if !ok {
+	if !ok || t.Closed() {
 		return tabs
 	}
-	out := a.teamStripManager(t, teamTabs(t, tabs, a.teamHeldOpen))
-	// A member held behind that the strip had no tab for yet (one the manager
-	// started) still says what it is doing, as every held tab does.
-	for i := range out {
-		if held := a.behind[out[i].key]; held != nil && !out[i].held {
-			out[i].held = true
-			out[i].signal = a.tabSignalFor(out[i].key, false)
+	front := a.frontTabKey()
+	out := make([]chatTab, 0, len(t.Members))
+	for _, m := range a.teamsCrewMembers(t) {
+		tab := chatTab{key: m.Key, file: m.File, where: m.Where, word: m.Word, full: m.Word, here: m.Key == front, team: t.ID}
+		for _, live := range tabs {
+			if live.key == m.Key {
+				tab = live
+				tab.team = t.ID
+				break
+			}
 		}
-	}
-	for _, tab := range tabs {
-		if tab.here && !teamHolds(t, tab.key) {
-			out = append(out, tab)
-			break
+		if m.Handle != "" {
+			tab.word = "@" + m.Handle
 		}
+		if tab.word == "" {
+			tab.word = "Conversation"
+		}
+		if held := a.behind[m.Key]; held != nil {
+			tab.held = true
+		}
+		tab.signal = a.tabSignalFor(m.Key, tab.here)
+		out = append(out, tab)
 	}
-	return out
+	return a.teamStripManager(t, out)
 }

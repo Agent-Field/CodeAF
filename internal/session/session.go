@@ -3133,6 +3133,11 @@ type Agent struct {
 	// ([Agent.settleDeliveries]).
 	settling []durableDelivery
 	closed   bool
+	// Permanent deletion holds the journal until all task-run writers have left.
+	deleting        bool
+	closingBeltDone <-chan struct{}
+	deletionGrace   time.Duration
+	closeFinalizer  bool
 	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
 	// the close complete for everybody rather than only for whoever got there
 	// first.
@@ -3544,6 +3549,9 @@ type Agent struct {
 	// a session that never speaks starts no goroutine (placemeta.go).
 	metaStampOnce   sync.Once
 	metaStampWriter *stampWriter
+	// Model choices have a separate writer so coalescing never drops a user stamp.
+	modelStampOnce   sync.Once
+	modelStampWriter *stampWriter
 
 	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
 	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its

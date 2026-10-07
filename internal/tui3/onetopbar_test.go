@@ -53,10 +53,10 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 			}
 		}
 		// THE STRIP IS UNDER THE NAV IN THE CHAT, and absent on the place.
-		if sy, _, _ := barGeometry(chat, "harbor ▾"); sy != tabStripRow {
+		if sy, _, _ := barGeometry(chat, "harbor "+a.tabCloseWord()); sy != tabStripRow {
 			t.Fatalf("at %d the chat's strip is on row %d", width, sy)
 		}
-		if py2, _, _ := barGeometry(frame, "harbor ▾"); py2 >= 0 {
+		if py2, _, _ := barGeometry(frame, "harbor "+a.tabCloseWord()); py2 >= 0 {
 			t.Fatalf("at %d the place drew the strip on row %d", width, py2)
 		}
 		placeRows := strings.Split(plain(frame), "\n")

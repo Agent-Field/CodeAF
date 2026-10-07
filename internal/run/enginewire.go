@@ -89,6 +89,7 @@ func (engine) Start(ctx context.Context, spec session.RunSpec) session.RunSummar
 		OnSpend:   spec.OnSpend,
 		Gate:      spec.Admission,
 		OnHold:    spec.OnHold,
+		OnWorker:  spec.OnWorker,
 	})
 	return session.RunSummary{
 		Outcome: string(outcome),

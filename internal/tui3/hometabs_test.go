@@ -93,34 +93,18 @@ func TestHomeConversationsShareOneSessionsListWithBullets(t *testing.T) {
 	assertHomeTabParity(t, a)
 }
 
-func TestHomeCloseClosesTheSelectedTabAndEnterReopensIt(t *testing.T) {
+func TestHomeDeleteAsksForConfirmationAndCancelKeepsTheConversation(t *testing.T) {
 	a, files := homeTabsFixture(t)
-	a.input.setText("keep the conversation draft")
+	a.input.setText("keep the draft")
 	a.home.point(files[1])
 	drive(t, a, key("right"), key("x"))
-	if !a.at(pageHome) {
-		t.Fatal("closing a Home row left Home")
+	if !a.cdelete.on || a.cdelete.file != files[1] || a.tabShut[a.convKey(files[1])] {
+		t.Fatal("delete did not ask first")
 	}
-	if !a.tabShut[a.convKey(files[1])] {
-		t.Fatal("the selected tab stayed open")
+	drive(t, a, key("esc"))
+	if a.cdelete.on || a.input.String() != "keep the draft" {
+		t.Fatal("cancel lost state")
 	}
-	assertHomeTabParity(t, a)
-	_, closed := homeConversationLines(a)
-	if len(closed) != 1 || closed[0].row.Transcript != files[1] {
-		t.Fatalf("wrong closed rows: %+v", closed)
-	}
-	if !strings.Contains(a.homeCellRow(closed[0], -1, 60, a.pal, true)[0], a.pal.dim(closed[0].cell.title)) {
-		t.Fatal("closed conversation is not dim")
-	}
-	if a.input.String() != "keep the conversation draft" {
-		t.Fatal("closing another row lost the draft")
-	}
-	a.home.point(files[1])
-	drive(t, a, key("enter"))
-	if a.at(pageHome) || a.file != files[1] || a.tabShut[a.convKey(files[1])] {
-		t.Fatal("Enter did not reopen the closed conversation and tab")
-	}
-	drain(t, a, a.openHome())
 	assertHomeTabParity(t, a)
 }
 
@@ -128,7 +112,8 @@ func TestHomeClosedConversationsAreBoundedAndNewestFirst(t *testing.T) {
 	a, files := homeTabsFixture(t)
 	for _, file := range files[:4] {
 		a.home.point(file)
-		drive(t, a, key("right"), key("x"))
+		line, _ := a.home.focusedLine()
+		drain(t, a, a.homeArchiveRow(line.row))
 	}
 	assertHomeTabParity(t, a)
 	open, closed := homeConversationLines(a)
@@ -183,33 +168,30 @@ func TestHomeShowsPersistedClosedConversationsAndSearchFindsOlderOnes(t *testing
 	}
 }
 
-func TestHomeCloseKeepsRunningWorkAndCurrentDraft(t *testing.T) {
+func TestHomeDeleteCancellationKeepsRunningWorkAndCurrentDraft(t *testing.T) {
 	a, files := homeTabsFixture(t)
 	busy := &busyAgent{fakeAgent: &fakeAgent{model: "m"}}
 	a.agent = busy
 	a.input.setText("unfinished message")
 	a.home.point(files[0])
-	drive(t, a, key("right"), key("x"))
-	if busy.closes != 0 || busy.stops != 0 || a.input.String() != "unfinished message" {
-		t.Fatal("closing the Home row stopped work or lost the draft")
+	drive(t, a, key("right"), key("x"), key("esc"))
+	if busy.closes != 0 || busy.stops != 0 || a.agent != busy || a.input.String() != "unfinished message" {
+		t.Fatal("cancel changed work or draft")
 	}
 	assertHomeTabParity(t, a)
-	a.home.point(files[0])
-	drive(t, a, key("enter"))
-	if a.at(pageHome) || a.agent != busy || a.input.String() != "unfinished message" {
-		t.Fatal("reopening the current tab did not retain its work and draft")
-	}
 }
 
-func TestHomeCloseRefusalLeavesAllThreeListsIntact(t *testing.T) {
+func TestHomeDeleteRefusalKeepsTheConversation(t *testing.T) {
 	a, files := homeTabsFixture(t)
-	a.archive = func(string, bool) error { return fmt.Errorf("read only") }
+	a.width, a.height = 100, 30
+	a.deleteConversation = func(string, map[string]string, map[string][]string) error { return fmt.Errorf("read only") }
 	a.home.point(files[1])
 	drive(t, a, key("right"), key("x"))
-	assertHomeTabParity(t, a)
-	if a.tabShut[a.convKey(files[1])] || a.home.msg != "could not close conversation" {
-		t.Fatal("a failed close removed the tab or lost its explanation")
+	drain(t, a, a.conversationDeleteChoose(len(a.conversationDeleteOptions())-1))
+	if a.tabShut[a.convKey(files[1])] || !a.cdelete.on || a.cdelete.message != "read only" {
+		t.Fatal("refusal lost the conversation or its explanation")
 	}
+	assertHomeTabParity(t, a)
 }
 
 func TestChatsMenuOpensRememberedTabsWithoutHeldAgents(t *testing.T) {
@@ -237,7 +219,8 @@ func TestHomeConversationListsStayInSyncAcrossWidths(t *testing.T) {
 			homeText(a)
 			assertHomeTabParity(t, a)
 			a.home.point(files[1])
-			drive(t, a, key("ctrl+e"))
+			line, _ := a.home.focusedLine()
+			drain(t, a, a.homeArchiveRow(line.row))
 			assertHomeTabParity(t, a)
 			_, closed := homeConversationLines(a)
 			if len(closed) != 1 || closed[0].row.Transcript != files[1] {
@@ -262,7 +245,8 @@ func TestARowThisTerminalHoldsNeverClaimsAnotherWindowAfterClose(t *testing.T) {
 	for _, closeIt := range []bool{false, true} {
 		if closeIt {
 			a.home.point(files[0])
-			drive(t, a, key("right"), key("x"))
+			line, _ := a.home.focusedLine()
+			drain(t, a, a.homeArchiveRow(line.row))
 		}
 		a.home.point(files[0])
 		frame := homeText(a)

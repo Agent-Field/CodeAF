@@ -309,9 +309,8 @@ func TestSharedChatRoundTripRestoresEachDraftAndCaret(t *testing.T) {
 	}
 }
 
-// A SHARED ENGINE'S WALL SHOWS ONLY ITS CURRENT CONVERSATION. Swapping the
-// single remote handle ends the old conversation; keeping its navigation name
-// must not make that ended conversation look open in this window.
+// A SHARED ENGINE'S GRID KEEPS SAVED CONVERSATIONS AS SNAPSHOTS. Swapping the
+// single remote handle must never make a remembered conversation look live.
 func TestSharedEngineWallDoesNotKeepTheSwappedConversationOpen(t *testing.T) {
 	a, _, _ := sharedSurface(t)
 	a.width, a.height = 160, 40
@@ -322,8 +321,13 @@ func TestSharedEngineWallDoesNotKeepTheSwappedConversationOpen(t *testing.T) {
 	}
 	drain(t, a, cmd)
 	tiles := a.wallTiles(a.now())
-	if len(tiles) != 1 || tiles[0].tab.key != "/srv/app/b.jsonl" {
+	if len(tiles) != 2 {
 		t.Fatalf("shared wall has %d tiles: %+v", len(tiles), tiles)
+	}
+	for _, tile := range tiles {
+		if tile.live != (tile.tab.key == "/srv/app/b.jsonl") {
+			t.Fatal("shared grid pretended the swapped conversation was live")
+		}
 	}
 }
 

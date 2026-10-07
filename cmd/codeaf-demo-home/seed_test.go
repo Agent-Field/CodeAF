@@ -25,6 +25,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
 	"github.com/Agent-Field/codeaf/internal/store"
+	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
 func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
@@ -107,6 +108,59 @@ func TestTheDemoHomeFillsEveryPlace(t *testing.T) {
 		if summary.Title == "" || summary.Opening == "" || summary.Asked == 0 {
 			t.Fatalf("session.Peek read %s as %+v — a row with nothing on it", row.Transcript, summary)
 		}
+	}
+
+	// The Teams fixture must resolve every conversation and interaction door,
+	// while keeping historical notes from waking an agent during a review.
+	teams, err := teamstore.Load(filepath.Join(dir, ".codeaf"))
+	if err != nil || len(teams.Teams) != 3 {
+		t.Fatalf("read the three demo teams: %+v, %v", teams, err)
+	}
+	if len(teams.ClosedTeams()) != 1 {
+		t.Fatal("demo must include one closed team so its category can be reviewed")
+	}
+	memberships := map[string]int{}
+	for _, team := range teams.Teams {
+		if team.Manager == "" || team.Settings.Wake == nil || *team.Settings.Wake {
+			t.Fatalf("team has no manager or can wake historical work: %+v", team)
+		}
+		for _, member := range team.Members {
+			if !team.Closed() {
+				memberships[member.Key]++
+			}
+			if _, err := os.Stat(member.File); err != nil {
+				t.Fatalf("team member has no conversation: %v", err)
+			}
+		}
+		if len(team.Members) == 6 {
+			traffic, err := teamstore.ReadTraffic(filepath.Join(dir, ".codeaf"), team.ID, "", 200)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var notes []teamstore.Entry
+			for _, entry := range traffic {
+				if entry.Kind == teamstore.KindNote {
+					notes = append(notes, entry)
+				}
+			}
+			if len(notes) != 48 {
+				t.Fatalf("demo has %d interaction notes, want 48", len(notes))
+			}
+			for i := 1; i < len(notes); i += 2 {
+				if notes[i].Answers != notes[i-1].ID {
+					t.Fatalf("demo reply is disconnected: %+v", notes[i])
+				}
+			}
+		}
+	}
+	shared := 0
+	for _, count := range memberships {
+		if count > 1 {
+			shared++
+		}
+	}
+	if shared != 2 {
+		t.Fatalf("demo has %d shared conversations, want two", shared)
 	}
 
 	// ── the tasks place: one running row, and landed work behind it ───────────

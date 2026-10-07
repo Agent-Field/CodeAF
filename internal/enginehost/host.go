@@ -128,6 +128,7 @@ type Host struct {
 
 	mu       sync.Mutex
 	sessions map[string]*remote.Session
+	deleting map[string]bool
 	// latest is the transcript this host opened for the last hello that named
 	// no conversation, and it is an ALIAS RATHER THAN AN IDENTITY: nothing is
 	// ever filed under it, [Host.open] simply resolves the empty key through it
@@ -304,6 +305,12 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	if h.closed || h.retiring {
 		return nil, errors.New("engine host: this host is shutting down")
 	}
+	if key == "" && !hello.New {
+		key = h.latest
+	}
+	if h.deleting[deletionKey(hello.Session)] || h.deleting[deletionKey(key)] {
+		return nil, errors.New("this conversation is being permanently deleted")
+	}
 	// A JOIN TAKES A CONVERSATION THAT IS ALREADY HERE AND NOTHING ELSE. It is
 	// matched on the transcript rather than on the key, and it never reaches the
 	// boot below — [remote.Hello.Join] says why both halves of that are the point.
@@ -341,7 +348,7 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	if key == "" {
 		key = h.latest
 	}
-	if existing := h.sessions[key]; existing != nil && !existing.Ended() {
+	if existing := h.sessions[key]; existing != nil && !existing.Ended() && !deletedJournal(existing.File()) {
 		// THE WHOLE PRODUCT IS THIS LINE: the conversation was already running,
 		// possibly mid-turn, and the surface is joining it rather than starting
 		// anything.
@@ -364,6 +371,7 @@ func (h *Host) open(hello remote.Hello) (*remote.Session, error) {
 	if engine == nil || engine.Agent == nil {
 		return nil, errors.New("engine host: the workspace opened no conversation")
 	}
+	h.wrapDeletion(engine)
 	sess := remote.NewSession(engine, true)
 	// The conversation is filed under the JOURNAL THE BOOT ACTUALLY OPENED,
 	// which is the one name every later hello can arrive at — by naming it, or
@@ -415,6 +423,7 @@ func (h *Host) mintedLocked(hello remote.Hello) (*remote.Session, error) {
 	if engine == nil || engine.Agent == nil {
 		return nil, errors.New("engine host: the workspace opened no conversation")
 	}
+	h.wrapDeletion(engine)
 	sess := remote.NewSession(engine, true)
 	h.sessions[h.freeKeyLocked(engine.SessionFile)] = sess
 	h.quiet = time.Time{}
@@ -447,7 +456,7 @@ func (h *Host) openLocked(file string) (*remote.Session, bool) {
 	}
 	want = filepath.Clean(want)
 	for _, sess := range h.sessions {
-		if sess == nil || sess.Ended() {
+		if sess == nil || sess.Ended() || deletedJournal(sess.File()) {
 			continue
 		}
 		if open := strings.TrimSpace(sess.File()); open != "" && filepath.Clean(open) == want {
@@ -503,7 +512,7 @@ func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
 	self.BuiltAt = h.binary.builtAt()
 	self.Surfaces = h.live - h.probes
 	for _, sess := range h.sessions {
-		if sess != nil && !sess.Ended() {
+		if sess != nil && !sess.Ended() && !deletedJournal(sess.File()) {
 			self.Conversations++
 		}
 	}
@@ -800,4 +809,83 @@ func releaseLock(file *os.File) error {
 		err = closeErr
 	}
 	return err
+}
+
+// Deletion excludes new joins to the same journal while its owner is stopped.
+// Sessions are closed outside the host lock so unrelated work stays reachable.
+func deletionKey(file string) string {
+	if file == "" {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(file); err == nil {
+		return resolved
+	}
+	return filepath.Clean(file)
+}
+
+func (h *Host) deleteConversation(file string, choices map[string]string, affected map[string][]string, remove func(string, map[string]string, map[string][]string) error) error {
+	key := deletionKey(file)
+	var owners []*remote.Session
+	err := func() error {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if h.deleting == nil {
+			h.deleting = map[string]bool{}
+		}
+		if h.deleting[key] {
+			return errors.New("this conversation is already being deleted")
+		}
+		h.deleting[key] = true
+		for _, sess := range h.sessions {
+			if deletionKey(sess.File()) == key {
+				owners = append(owners, sess)
+			}
+		}
+		return nil
+	}()
+	if err != nil {
+		return err
+	}
+	defer func() { h.mu.Lock(); defer h.mu.Unlock(); delete(h.deleting, key) }()
+	if err := remove(file, choices, affected); err != nil {
+		return err
+	}
+	for _, sess := range owners {
+		if err := sess.Close(); err != nil {
+			return err
+		}
+	}
+	func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		for name, sess := range h.sessions {
+			for _, owner := range owners {
+				if sess == owner {
+					delete(h.sessions, name)
+				}
+			}
+		}
+		if deletionKey(h.latest) == key {
+			h.latest = ""
+		}
+	}()
+	return nil
+}
+
+// Every boot door uses the same deletion reservation and cache retirement.
+func (h *Host) wrapDeletion(engine *remote.Engine) {
+	if remove := engine.DeleteConversation; remove != nil {
+		engine.DeleteConversation = func(file string, choices map[string]string, affected map[string][]string) error {
+			return h.deleteConversation(file, choices, affected, remove)
+		}
+	}
+}
+
+// The engine owns tombstones; the host checks them before returning a cached view.
+func deletedJournal(file string) bool {
+	if file == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(filepath.Dir(file), ".conversation-deleted"))
+	return err == nil
 }

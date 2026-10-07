@@ -690,7 +690,7 @@ const (
 	taskPlanRefusedWord = permDenyWord
 	// tasksPlanCancelWord is the cancel key on a plan row and its page, spelled
 	// from the roster's own cancel key and verb rather than re-invented here.
-	tasksPlanCancelWord = stopRaiseKey + " " + stopActWord
+	tasksPlanCancelWord = "s " + stopActWord
 	// tasksPlanPauseWord and tasksPlanResumeWord are the ONE key that holds a
 	// plan task and lets it go again, named for the state the row is in. It is
 	// `p` because nothing on a node row holds one today, and the pane's key line
@@ -851,7 +851,7 @@ func (a *app) taskPlanToggle(id string) tea.Cmd {
 // node — and `p` holds it or lets it go again. A letter is a letter the moment
 // there is a filter to type, so neither is taken once something is in the box.
 func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
-	if a.taskSheetFilter() != "" {
+	if a.taskSheet.query.String() != "" {
 		return nil, false
 	}
 	item, ok := a.taskSheetCurrent()
@@ -865,7 +865,7 @@ func (a *app) taskSheetPlanKey(key string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	switch key {
-	case stopRaiseKey:
+	case "s":
 		return a.taskPlanStop(*item.plan), true
 	case "p":
 		if planOwnTask(*item.plan) {
