@@ -4,6 +4,7 @@ title: Choose a provider during setup and pick only available models
 pr: 1789
 surface: [chat, docs]
 invalidates:
+  - "The later add-provider and /connect menus used to omit OpenRouter and treated every saved provider row as connected. Both now include all nine initial setup options and read actual credential availability; the add menu labels connected and not connected rows. OpenRouter can be connected after Ollama through its existing browser/key form without repeating onboarding, losing the draft or removing Ollama. Its profile key can also be disconnected with two-Enter confirmation and is revoked in the running session; shell keys remain connected until unset and restarted."
   - "Provider selection used to start on Ollama. OpenRouter is now first and initially selected, with Ollama second; the other seven options keep their order."
   - "Choosing Codex during setup used to start browser sign-in immediately. Codex now has the same enter connects in browser confirmation as OpenRouter; selecting the provider opens its connection screen and Enter starts sign-in."
   - "Provider setup used to divide supported providers between a first page and More providers, with a selectable Skip for now row. It now has one flat list showing all nine providers, with no scrolling viewport or page counter; Esc skips setup and no provider row skips it."

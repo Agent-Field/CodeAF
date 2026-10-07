@@ -150,9 +150,7 @@ func (a *app) connectionRows() []connect.Status {
 func (a *app) modelConnectionRows() []connect.Status {
 	connected := make(map[string]modelsource.Connected)
 	for _, service := range a.sources.All() {
-		if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
-			connected[strings.ToLower(service.Source.ID)] = service
-		}
+		connected[strings.ToLower(service.Source.ID)] = service
 	}
 	rows := make([]connect.Status, 0, len(a.modelCatalog)+len(connected))
 	seen := make(map[string]bool)
@@ -166,10 +164,12 @@ func (a *app) modelConnectionRows() []connect.Status {
 		if held {
 			source = service.Source
 		}
-		rows = append(rows, modelConnectionStatus(source, held))
+		rows = append(rows, modelConnectionStatus(source, held && service.HasCredentials()))
 	}
-	for _, source := range a.modelCatalog {
-		appendSource(source)
+	if len(a.modelCatalog) > 0 || !a.sources.Empty() {
+		for _, source := range providerCatalog(a.modelCatalog) {
+			appendSource(source)
+		}
 	}
 	for _, service := range a.sources.All() {
 		if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
@@ -210,8 +210,11 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	switch {
 	case source.ID == "ollama":
 		need = ""
-	case source.ID == "codex":
+	case source.ID == "codex" || source.ID == modelsource.DefaultID:
 		need = "browser"
+		if source.ID == modelsource.DefaultID {
+			need = "browser · key"
+		}
 	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
@@ -236,7 +239,7 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	}
 	if source.ID == "ollama" {
 		service.Auth = "none"
-	} else if source.ID == "codex" {
+	} else if source.ID == "codex" || source.ID == modelsource.DefaultID {
 		service.Auth = connect.AuthBrowser
 	}
 	return connect.Status{Service: service, Connected: held, Account: source.Written, KeyEnv: source.KeyEnv}
@@ -273,6 +276,9 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	source, ok := a.modelSource(id)
 	if !ok {
 		return nil
+	}
+	if id == modelsource.DefaultID {
+		return a.openDefaultProviderConnection()
 	}
 	persisted := config.PersistedSource{ID: source.ID, Written: source.Written, Order: a.nextModelServiceOrder()}
 	editing := false
@@ -323,6 +329,35 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 		draft.step = modelConnectKey
 		a.showModelEntry(newModelEntry(row.ID, source.Name, "key", nil, true), fromSheet)
 		return nil
+	}
+}
+
+// The default provider reuses setup's browser and masked-key form without
+// revisiting onboarding or changing its completion marker.
+func (a *app) openDefaultProviderConnection() tea.Cmd {
+	if a.hosted() {
+		a.note(connectRemoteWord)
+		return nil
+	}
+	fromAdd := a.addPanel.open
+	a.addPanel.close()
+	a.connPanel.close()
+	a.closeLists()
+	a.setup = setupFlow{open: true, provider: modelsource.DefaultID,
+		steps: []setupStep{setupKey}, connection: true, returnAdd: fromAdd}
+	a.touch()
+	return nil
+}
+
+// Connected picker rows lead to the existing two-press disconnect panel.
+func (a *app) openModelConnection(id string) {
+	a.openConnect()
+	for at := range a.connPanel.hits {
+		if row, ok := a.connPanel.at(at); ok && row.ID == modelConnectionID(id) {
+			a.connPanel.cursor = at
+			a.connPanel.follow(connectRowsMax)
+			break
+		}
 	}
 }
 
@@ -1231,7 +1266,11 @@ func (a *app) modelServiceFollowup(line string) {
 
 func (a *app) disconnectModelService(id string) {
 	connected, ok := a.sources.ByID(id)
-	if !ok || strings.EqualFold(id, modelsource.DefaultID) {
+	if !ok {
+		return
+	}
+	if id == modelsource.DefaultID {
+		a.disconnectDefaultProvider()
 		return
 	}
 	written := strings.ToLower(strings.TrimSpace(connected.Source.Written))
@@ -1267,6 +1306,28 @@ func (a *app) disconnectModelService(id string) {
 		a.sheet.sources = a.sources
 		a.sheet.build()
 	}
+}
+
+func (a *app) disconnectDefaultProvider() {
+	service, _ := a.sources.For(a.conversationModel())
+	if a.state == stateWorking && service.Source.ID == modelsource.DefaultID {
+		a.modelServiceMessage(serviceAnsweringWord(modelsource.DefaultID))
+		return
+	}
+	if source := config.APIKeySourceAt(a.profileDir); source != "" && source != config.APIKeySourceProfile {
+		a.modelServiceMessage("openrouter is connected through " + source + " · unset it and restart to disconnect")
+		return
+	}
+	row, ok := a.registry().Row(config.KeyAPIKey)
+	if !ok {
+		return
+	}
+	if err := row.Apply(""); err != nil {
+		a.modelServiceMessage(err.Error())
+		return
+	}
+	a.modelServiceMessage(serviceDisconnectedWord(modelsource.DefaultID))
+	a.refreshConnect()
 }
 
 func (a *app) modelIsDirect(model string) bool {

@@ -22,30 +22,36 @@ type setupProviderAttempt struct {
 type setupProviderHit struct{ x, y, width, at int }
 type setupProviderRow struct{ id, name string }
 
-// Provider ordering is a display policy over the same registry as /connect.
-func (a *app) setupProviderRows() []setupProviderRow {
-	catalog := a.modelCatalog
+// All provider doors use the same supported catalog and display order.
+func providerCatalog(catalog []modelsource.Source) []modelsource.Source {
 	if len(catalog) == 0 {
 		catalog = modelsource.Vendored()
 	}
-	names := map[string]string{modelsource.DefaultID: modelsource.DefaultSource("").Name}
+	byID := map[string]modelsource.Source{modelsource.DefaultID: modelsource.DefaultSource("")}
 	for _, source := range catalog {
-		names[source.ID] = source.Name
+		byID[source.ID] = source
 	}
-	primary := []string{modelsource.DefaultID, "ollama", "codex", "deepseek"}
-	rows := []setupProviderRow{}
+	var rows []modelsource.Source
 	seen := map[string]bool{}
-	for _, id := range primary {
-		if name := names[id]; name != "" {
-			rows = append(rows, setupProviderRow{id, name})
+	for _, id := range []string{modelsource.DefaultID, "ollama", "codex", "deepseek"} {
+		if source, ok := byID[id]; ok {
+			rows = append(rows, source)
 			seen[id] = true
 		}
 	}
 	for _, source := range catalog {
 		if !seen[source.ID] {
-			rows = append(rows, setupProviderRow{source.ID, source.Name})
+			rows = append(rows, source)
 			seen[source.ID] = true
 		}
+	}
+	return rows
+}
+
+func (a *app) setupProviderRows() []setupProviderRow {
+	var rows []setupProviderRow
+	for _, source := range providerCatalog(a.modelCatalog) {
+		rows = append(rows, setupProviderRow{source.ID, source.Name})
 	}
 	return rows
 }
@@ -120,6 +126,9 @@ func (a *app) cancelSetupProvider() {
 }
 
 func (a *app) backSetupProvider() tea.Cmd {
+	if a.setup.connection {
+		return a.endSetup(true)
+	}
 	a.cancelSetupAuth()
 	a.cancelSetupProvider()
 	a.setup.provider, a.setup.text, a.setup.refusal = "", "", ""

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 func TestAddProviderSelectionStaysVisibleInShortTerminal(t *testing.T) {
@@ -12,7 +14,7 @@ func TestAddProviderSelectionStaysVisibleInShortTerminal(t *testing.T) {
 	for _, height := range []int{1, 3, 5} {
 		t.Run(fmt.Sprintf("rows_%d", height), func(t *testing.T) {
 			p := addProviderPanel{open: true}
-			p.rebuild(nil, nil)
+			p.rebuild(nil, nil, modelsource.Set{})
 			assertVisible := func() {
 				t.Helper()
 				selected, ok := p.current()

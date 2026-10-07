@@ -3662,7 +3662,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		selected, hadSelection := p.current()
 		p.loading = false
-		p.rebuild(msg.probes, nil)
+		p.rebuild(msg.probes, a.modelCatalog, a.sources)
 		if hadSelection {
 			for i, item := range p.items {
 				if !item.heading && (selected.custom && item.custom || selected.sourceID != "" && item.sourceID == selected.sourceID) {

@@ -7,11 +7,13 @@ something else again: long-running background processes, covered by their own pa
 ## Add a key — connect a provider, add an api key, use a different provider
 
 An api key for another provider, or another model provider, is added here. Open `/connect` or
-`/connections`. The `providers` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex,
-Ollama and **Custom OpenAI-compatible API**, followed by any provider already connected and, once
+`/connections`. The `providers` group includes all nine setup options: OpenRouter, Ollama,
+Codex, DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen and **Custom OpenAI-compatible API**.
+Connected providers appear first, followed by the remaining options and any saved custom instances. Once
 a custom provider is connected, a `+ add a provider` row. Codex says `browser`; it signs
-in a ChatGPT plan instead of asking for an API key. Ollama needs no key. The other named vendors
-ask for theirs.
+in a ChatGPT plan instead of asking for an API key. OpenRouter offers the same browser/key
+screen as setup: `enter connects in browser`, or paste an existing key. Ollama needs no key.
+The other named vendors ask for theirs.
 Pick a row and answer its fields. A successful listed provider says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A provider with more than one billing door names the one it
@@ -21,6 +23,22 @@ then shows the provider, door, safe spelling of its key, region and order.
 
 The default provider remains first. With two or more providers, `/model` groups models by
 provider in that order; with only the default provider, the picker remains ungrouped.
+
+## Add OpenRouter after Ollama — add another provider from the model menu
+
+Open `/model` and choose `+ add a provider`. Its provider list shows the same nine
+options as initial setup, with `connected` or `not connected` beside each. Local servers
+found on this machine appear separately. An unconnected row starts its connection;
+a connected row says `enter manages` and opens `/connect` focused on that provider.
+The custom API option says `connected · add another` when a custom connection exists;
+it always adds another address, while `/connect` manages saved custom instances.
+
+To add OpenRouter while using Ollama, select **OpenRouter**, then press Enter to sign in
+in your browser or paste an existing key and press Enter to save it. `esc close`
+returns to the provider menu; during browser sign-in, Esc cancels the attempt first.
+This does not repeat onboarding or replace your draft. Ollama stays connected, and
+`/model` combines both providers' available models. Adding a provider does not change a
+current model that is still available.
 
 ## Using codeaf with only a direct provider — no OpenRouter key at all
 
@@ -197,6 +215,12 @@ A provider answering the current turn cannot be cut:
 the disconnected sentence first and then says
 `this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest`, or, when nothing can replace it,
 `this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a provider or pick a model`.
+
+OpenRouter uses the same two-Enter confirmation. A saved profile key is cleared from the
+profile and the running session; its models disappear, while Ollama and other connected
+providers remain usable. A shell credential cannot be removed by the menu: it names the
+shell variable and asks you to unset it and restart. A provider answering the current
+turn must finish before it can be disconnected.
 
 ## Model names carry the provider they came from
 

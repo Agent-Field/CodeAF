@@ -74,6 +74,9 @@ const (
 // had one, which is every launch but the first.
 type setupFlow struct {
 	open bool
+	// A later provider connection returns to its menu without completing setup.
+	connection bool
+	returnAdd  bool
 	// Provider selection precedes the numbered connection and controls steps.
 	provider        string
 	providerAt      int
@@ -255,6 +258,23 @@ func (s *setupFlow) step() setupStep { return s.steps[s.at] }
 func (a *app) endSetup(skipped bool) tea.Cmd {
 	if !a.setup.open {
 		return nil
+	}
+	if a.setup.connection {
+		fromAdd := a.setup.returnAdd
+		a.cancelSetupAuth()
+		a.cancelSetupProvider()
+		a.setup = setupFlow{}
+		var menu tea.Cmd
+		if fromAdd {
+			menu = a.openAddProvider(false)
+		} else {
+			a.openModelConnection(modelsource.DefaultID)
+		}
+		a.touch()
+		if !skipped {
+			return tea.Batch(menu, a.modelServiceMenuChoice(modelsource.DefaultID, "refresh"))
+		}
+		return menu
 	}
 	dir := strings.TrimSpace(a.profileDir)
 	_ = config.MarkSetupSeen(dir, a.now())
@@ -666,6 +686,10 @@ func (a *app) setupCommit() bool {
 	s := &a.setup
 	key := strings.TrimSpace(s.text)
 	if key == "" {
+		if s.connection {
+			s.refusal = "paste a key to connect"
+			return false
+		}
 		return true
 	}
 	if !config.LooksLikeAPIKey(key) {
@@ -964,6 +988,9 @@ const setupLead = "› "
 // setupTitle is the dim line over the question: where in the flow this is, in
 // the fewest words. One question needs no count.
 func setupTitle(s *setupFlow) string {
+	if s.connection {
+		return "connect a provider"
+	}
 	if len(s.steps) <= 1 {
 		return "setting up"
 	}
@@ -998,6 +1025,10 @@ const (
 // (onboarding.go's [app.setupControlsKeys]).
 func (a *app) setupKeysWord() string {
 	s := &a.setup
+	exit := setupSkipKeysWord
+	if s.connection {
+		exit = "esc close"
+	}
 	if s.step() == setupControls {
 		width, _ := a.size()
 		return a.setupControlsKeys(max(width-2*setupMargin, 1))
@@ -1010,17 +1041,15 @@ func (a *app) setupKeysWord() string {
 	}
 	if strings.TrimSpace(s.text) == "" {
 		if a.routerConnect != nil {
-			// `esc skips setup`, IN THE SAME WORDS AS EVERY OTHER BRANCH. It read
-			// `esc not now` here alone, which is a promise about a later — and
-			// what esc actually does is stamp `setup_seen_at` and retire the
-			// controls screen for good ([app.endSetup]). The key is named for what
-			// it does, and the note it leaves behind says where those choices live
-			// afterwards.
-			return setupBrowserConnectKeysWord + " · paste a key · " + setupSkipKeysWord
+			// Onboarding skips; a later connection returns to its provider menu.
+			return setupBrowserConnectKeysWord + " · paste a key · " + exit
 		}
-		return "enter goes on without a key · " + setupSkipKeysWord
+		if s.connection {
+			return "paste a key · " + exit
+		}
+		return "enter goes on without a key · " + exit
 	}
-	return "enter saves it · " + setupSkipKeysWord
+	return "enter saves it · " + exit
 }
 
 // maskTyped is the key as it is being typed: one bullet per character and the
@@ -1050,13 +1079,22 @@ func (a *app) handAPIKey() {
 	// A KEY WRITE CHANGES THE PICKER'S ACCESS TOO. The resolved default row
 	// otherwise retains its launch-time key until another provider connects.
 	a.sources = a.sources.WithDefaultKey(key)
+	if a.applyModelSources != nil {
+		a.applyModelSources(a.sources)
+	}
+	if a.at(pageSettings) {
+		a.sheet.sources = a.sources
+		a.sheet.build()
+	}
 	a.ensureAvailableModel()
-	if a.applyAPIKey == nil || key == "" {
+	if a.applyAPIKey == nil {
 		return
 	}
 	if err := a.applyAPIKey(key); err != nil {
 		a.note("the key is saved but this conversation could not take it · " + err.Error())
 	}
-	a.refreshCreditWarnings()
-	a.askCredits(credits.KeyChanged)
+	if key != "" {
+		a.refreshCreditWarnings()
+		a.askCredits(credits.KeyChanged)
+	}
 }
