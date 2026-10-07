@@ -58,3 +58,39 @@ func TestSettingsSearchAndHelpNameTheirCurrentScope(t *testing.T) {
 		t.Fatal("clearing search closed settings")
 	}
 }
+
+func TestSettingsActionHintsDescribeDoorsWithoutClaimingAWrite(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.openSettings()
+	for i, name := range settingTabs {
+		if name == tabMemory {
+			a.sheet.tab = i
+		}
+	}
+	a.sheet.build()
+	if !strings.Contains(a.sheet.keysLine(), "enter open") {
+		t.Fatal("memory door claims to change a setting")
+	}
+	if strings.Contains(strings.Join((placeSettings{}).note(a, 80), " "), "saved") {
+		t.Fatal("inspection claims to write the profile")
+	}
+	for i, name := range settingTabs {
+		if name == tabTasks {
+			a.sheet.tab = i
+		}
+	}
+	a.sheet.build()
+	for i, item := range a.sheet.items {
+		if item.advancedDoor {
+			a.sheet.cursor = i
+			break
+		}
+	}
+	if !strings.Contains(a.sheet.keysLine(), "enter expand") {
+		t.Fatal("Advanced does not name expansion")
+	}
+	a.activate()
+	if !strings.Contains(a.sheet.keysLine(), "enter collapse") {
+		t.Fatal("expanded Advanced does not name collapse")
+	}
+}

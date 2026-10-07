@@ -257,6 +257,10 @@ func (placeSettings) note(a *app, width int) []string {
 	}
 	item, ok := settingsFocused(a)
 	scope := a.sheet.footNote()
+	if ok && (item.memoryDoor || item.advancedDoor) {
+		// Opening another view or a disclosure writes no setting.
+		scope = ""
+	}
 	if ok && item.row.Key != "" {
 		if name, pinned := item.row.PinnedBy(); pinned {
 			scope = "held by " + name + " — unset it to change this here"

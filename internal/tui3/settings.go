@@ -3851,10 +3851,24 @@ func (s *sheet) keysLine() string {
 			}
 			return "↑↓ move · enter pin · del unpin · type to search all · " + back
 		}
-		if s.searching() {
-			return "↑↓ results · enter change · esc clear search"
+		action := "change"
+		if item, ok := s.current(); ok {
+			switch {
+			case item.memoryDoor, item.crewDoor:
+				action = "open"
+			case item.advancedDoor:
+				action = "expand"
+				if s.advanced[settingTabs[s.tab]] {
+					action = "collapse"
+				}
+			case item.role != nil:
+				action = "choose model"
+			}
 		}
-		return "↑↓ settings · ←→ categories · enter change · type to search all · esc close"
+		if s.searching() {
+			return "↑↓ results · enter " + action + " · esc clear search"
+		}
+		return "↑↓ settings · ←→ categories · enter " + action + " · type to search all · esc close"
 	}
 }
 
