@@ -8,10 +8,10 @@ import (
 
 func TestSettingsWordsKeepSavedChoicesAndSearchableReadings(t *testing.T) {
 	for _, test := range []struct{ key, raw, shown string }{
-		{config.KeyTaskStart, "sized", "assess the brief"},
-		{config.KeyTaskStart, "single", "start directly"},
+		{config.KeyTaskStart, "sized", "assess while working"},
+		{config.KeyTaskStart, "single", "skip assessment"},
 		{config.KeyTaskSettle, "auto", "let the chat decide"},
-		{config.KeyToolApprovalMode, "prompt", "ask each time"},
+		{config.KeyToolApprovalMode, "prompt", "ask by default"},
 		{config.KeyWork, "fold", "collapsed"},
 		{config.KeyModelPool, "read", "use only"},
 	} {

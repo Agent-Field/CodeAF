@@ -10,9 +10,9 @@ func settingValueWord(row config.Setting) string {
 	case config.KeyTaskStart:
 		switch row.Value() {
 		case "sized":
-			return "assess the brief"
+			return "assess while working"
 		case "single":
-			return "start directly"
+			return "skip assessment"
 		}
 	case config.KeyTaskSettle:
 		switch row.Value() {
@@ -26,7 +26,7 @@ func settingValueWord(row config.Setting) string {
 		case "allow":
 			return "allow by default"
 		case "prompt":
-			return "ask each time"
+			return "ask by default"
 		case "deny":
 			return "block by default"
 		}

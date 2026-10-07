@@ -81,7 +81,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Category, p.Label, p.Advanced = "Privacy", "model pool signing key", true
 	case KeyToolApprovalMode:
 		p.Label = "tool approvals"
-		p.Description = "Allow by default runs tools without asking. Ask each time requests approval. Block by default refuses tools. Tool exceptions override this choice; dangerous shell commands still require approval."
+		p.Description = "Allow by default runs tools without asking. Ask by default requests approval except for safe read-only calls and tools that ask for permission themselves. Block by default refuses tools. Tool exceptions override this choice; dangerous shell commands still require approval."
 	case KeyToolApprovals:
 		p.Label = "tool exceptions"
 	case KeyGuardian:
@@ -96,8 +96,8 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Category, p.Label = "Tasks", "when task results need a decision"
 		p.Description = "Ask me leaves the decision with you. Let the chat decide reviews the work and asks you only when it cannot decide."
 	case KeyTaskStart:
-		p.Label = "before starting a task"
-		p.Description = "Assess the brief checks its scope before starting a worker. Start directly skips that check. Either choice starts one worker; /task solo explicitly requests solo work."
+		p.Label = "task scope assessment"
+		p.Description = "Assesses the brief while the worker starts, helping it identify work to delegate. Skip assessment avoids that extra model call. Both start work immediately and can delegate parts already listed in the brief."
 	case KeyTaskAudit:
 		p.Label = "review task results"
 	case KeyTaskRepairRounds:

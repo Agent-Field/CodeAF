@@ -80,6 +80,6 @@ are disabled. Search accepts the old labels as well as the new organization.
 
 Search stays visible above the settings list and searches every category, including Advanced controls and connected apps. Model pickers have their own **Filter models** box. Escape clears a settings search first; another Escape closes settings. Hints stay under General as **show hints**: on shows contextual tips, off hides them. Keyboard instructions and setting explanations remain visible either way.
 
-Display choices use plain language while existing configuration values keep their meaning. For example, **before starting a task** offers **assess the brief** or **start directly**; **completed tool details** offers **collapsed** or **expanded**. **Shared model recommendations** can **use and contribute**, **use only**, or remain **off**.
+Display choices use plain language while existing configuration values keep their meaning. For example, **task scope assessment** offers **assess while working** or **skip assessment**; **completed tool details** offers **collapsed** or **expanded**. **Shared model recommendations** can **use and contribute**, **use only**, or remain **off**.
 
 Resident-only practice controls remain in the resident configuration. They do not appear in chat settings, and `/budget practice` cannot edit them from chat.
