@@ -148,7 +148,12 @@ func TestEveryPlaceIsRegisteredOnceAndInTabOrder(t *testing.T) {
 // registering.
 func TestOnePlaceOneFile(t *testing.T) {
 	for _, id := range pages() {
-		name := "place_" + id.word() + ".go"
+		// Source identity stays stable when product wording changes.
+		sourceName := id.word()
+		if legacy, ok := map[page]string{pageTeams: "teams", pageTasks: "sessions"}[id]; ok {
+			sourceName = legacy
+		}
+		name := "place_" + sourceName + ".go"
 		body, err := os.ReadFile(name)
 		if err != nil {
 			t.Errorf("the %s place has no %s: %v", id.word(), name, err)
@@ -573,6 +578,27 @@ func TestEachVerbWordIsSpelledOnce(t *testing.T) {
 	for _, word := range words {
 		if seen[word] == 0 {
 			t.Errorf("%q is spelled nowhere at all", word)
+		}
+	}
+}
+
+func TestPlaceNavigationNamesPreserveAliases(t *testing.T) {
+	for _, c := range []struct {
+		word string
+		want page
+	}{
+		{"AI teams", pageTeams}, {"ai teams", pageTeams}, {" AI TEAMS ", pageTeams},
+		{"teams", pageTeams}, {"team", pageTeams}, {"ai", pageTeams},
+		{"Activity", pageTasks}, {"activity", pageTasks}, {"act", pageTasks},
+		{"sessions", pageTasks}, {"sess", pageTasks},
+	} {
+		if got, ok := parsePageWord(c.word); !ok || got != c.want {
+			t.Errorf("%q = %v, %v; want %v", c.word, got, ok, c.want)
+		}
+	}
+	for _, word := range []string{"", "s", "unknown"} {
+		if _, ok := parsePageWord(word); ok {
+			t.Errorf("%q resolved despite being empty, ambiguous, or unknown", word)
 		}
 	}
 }

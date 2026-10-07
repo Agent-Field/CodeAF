@@ -535,20 +535,38 @@ func (p page) counted() bool {
 // at all — `s` is `standing`, `spend` and `settings` at once, and
 // offering the first of those would be the surface guessing. So an ambiguous
 // prefix offers nothing, and the person types one more letter.
+// placeNames keeps older typed destinations working when their display label changes.
+// These are navigation words, not slash-command aliases: /sessions still resumes a chat.
+func placeNames(id page) []string {
+	names := []string{strings.ToLower(id.word())}
+	switch id {
+	case pageTeams:
+		names = append(names, "teams")
+	case pageTasks:
+		names = append(names, "sessions")
+	}
+	return names
+}
+
 func parsePageWord(s string) (page, bool) {
 	word := strings.ToLower(strings.TrimSpace(s))
 	if word == "" {
 		return 0, false
 	}
 	for _, id := range pages() {
-		if id.word() == word {
-			return id, true
+		for _, name := range placeNames(id) {
+			if name == word {
+				return id, true
+			}
 		}
 	}
 	found, count := page(0), 0
 	for _, id := range pages() {
-		if strings.HasPrefix(id.word(), word) {
-			found, count = id, count+1
+		for _, name := range placeNames(id) {
+			if strings.HasPrefix(name, word) {
+				found, count = id, count+1
+				break // Several aliases for one destination are still one match.
+			}
 		}
 	}
 	return found, count == 1
