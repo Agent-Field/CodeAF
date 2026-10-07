@@ -232,7 +232,8 @@ func testFreshInstallSetup(t *testing.T) {
 	// enter will and will not do.
 	screen := r.waitFor(20*time.Second,
 		say(t, "setupTitleWord"), say(t, "setupProviderHeading"))
-	r.keys("Down", "Enter")
+	// OpenRouter is initially selected; Enter must open its connection step.
+	r.keys("Enter")
 	screen = r.waitFor(20*time.Second, say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
 	t.Logf("a fresh install, launched the ordinary way, is shown the door:\n%s", screen)
 

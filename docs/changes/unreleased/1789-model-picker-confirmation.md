@@ -18,3 +18,6 @@ invalidates:
 
 The draft is preserved when the model is chosen. A list with no matching model
 stays open; Enter inside provider controls keeps their existing navigation.
+
+The fresh-install terminal test confirms the initially selected OpenRouter row
+with Enter before checking its connection screen and setup count.
