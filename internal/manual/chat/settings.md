@@ -74,7 +74,7 @@ The proposed-task start timer has a different consequence: it starts the propose
 work when it expires. Read each control's consequence before changing its duration.
 **Tasks** contains scope assessment, review, repair and concurrency; machine
 resource limits are advanced controls. A one-off task does not require an AI team.
-**Task scope assessment** offers **assess while working** or **skip assessment**.
+Under Advanced, **task scope assessment** offers **assess while working** or **skip assessment**.
 Both start work immediately; assessment helps identify work to delegate.
 
 **Concurrent tasks: no limit** means no user-set count cap, not disabled tasks.

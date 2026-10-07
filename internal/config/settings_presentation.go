@@ -89,14 +89,14 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyConsentTimeout:
 		p.Label, p.Advanced = "pause approval timer after", true
 	case KeyBashBackgroundAfter:
-		p.Category, p.Label = "Tasks", "background shell commands after"
+		p.Category, p.Label, p.Advanced = "Tasks", "background shell commands after", true
 	case KeyTaskAutoApprove:
 		p.Category, p.Label = "Permissions", "start proposed tasks after"
 	case KeyTaskSettle:
 		p.Category, p.Label = "Tasks", "when task results need a decision"
 		p.Description = "Ask me leaves the decision with you. Let the chat decide reviews the work and asks you only when it cannot decide."
 	case KeyTaskStart:
-		p.Label = "task scope assessment"
+		p.Label, p.Advanced = "task scope assessment", true
 		p.Description = "Assesses the brief while the worker starts, helping it identify work to delegate. Skip assessment avoids that extra model call. Both start work immediately and can delegate parts already listed in the brief."
 	case KeyTaskAudit:
 		p.Label = "review task results"

@@ -868,6 +868,17 @@ func (s *sheet) finishCategory() {
 			shown = append(shown, item)
 		}
 	}
+	// Lead with the controls a developer commonly changes, not registry order.
+	if title == tabTasks {
+		priority := map[string]int{config.KeyTaskParallel: 0, config.KeyTaskModel: 1, config.KeyTaskAudit: 2, config.KeyTaskSettle: 3, config.KeyTaskRepairRounds: 4}
+		rank := func(item sheetItem) int {
+			if n, ok := priority[item.row.Key]; ok {
+				return n
+			}
+			return len(priority)
+		}
+		sort.SliceStable(shown, func(i, j int) bool { return rank(shown[i]) < rank(shown[j]) })
+	}
 	if len(advanced) > 0 {
 		shown = append(shown, sheetItem{advancedDoor: true, meta: settingMeta{label: "Advanced", about: "Less common controls. Search finds these even while collapsed."}})
 		if s.advanced[title] {

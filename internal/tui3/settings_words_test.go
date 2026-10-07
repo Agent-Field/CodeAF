@@ -94,3 +94,28 @@ func TestSettingsActionHintsDescribeDoorsWithoutClaimingAWrite(t *testing.T) {
 		t.Fatal("expanded Advanced does not name collapse")
 	}
 }
+
+func TestTasksLeadsWithEverydayControlsAndKeepsTuningSearchable(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.openSettings()
+	for i, name := range settingTabs {
+		if name == tabTasks {
+			a.sheet.tab = i
+		}
+	}
+	a.sheet.build()
+	want := []string{config.KeyTaskParallel, config.KeyTaskModel, config.KeyTaskAudit}
+	for i, key := range want {
+		if a.sheet.items[i].row.Key != key {
+			t.Fatalf("task row %d = %s, want %s", i, a.sheet.items[i].row.Key, key)
+		}
+	}
+	for _, item := range a.sheet.items {
+		if item.row.Key == config.KeyTaskStart || item.row.Key == config.KeyBashBackgroundAfter {
+			t.Fatal("analysis or timing tuning escaped Advanced")
+		}
+	}
+	if itemAt(searchItems(t, a, config.KeyTaskStart), config.KeyTaskStart) < 0 {
+		t.Fatal("task analysis cannot be found while Advanced is collapsed")
+	}
+}
