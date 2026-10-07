@@ -1522,6 +1522,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it said memory is off but I never turned it off", "what-i-remember"},
 		{"why does it say could not open graph.db", "what-i-remember"},
 		{"codeaf printed out of memory 14 on startup", "what-i-remember"},
+		// The upgraded-store failure a person saw on the terminal: the exact
+		// sentence has to reach the page that tells them the file is fine and
+		// what to restart.
+		{"it said no such column: owner when codeaf opened", "what-i-remember"},
+		{"memory is off for this session: initialize memories schema: no such column: owner", "what-i-remember"},
 		{"where is my memory file kept on disk", "what-i-remember"},
 		{"can I copy my memories to another machine", "what-i-remember"},
 		{"how do I see what codeaf remembers", "what-i-remember"},

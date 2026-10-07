@@ -142,26 +142,45 @@ func ownerFilterSQL(owners []string) (string, []any) {
 // that can do the proving ([Store.RehomeMemories]); everything else stays in
 // quarantine, visible to the person and to nobody's model.
 //
-// It is idempotent — a row that already has an owner is left alone — and it is
-// written in one transaction with the column it backfills.
+// It is idempotent — a row that already has an owner is left alone — and it
+// runs in one transaction on every open, whatever shape the table is in.
+//
+// THE BACKFILL IS NOT ONLY FOR THE OPEN THAT ADDS THE COLUMN, because a
+// pre-owner build can still be RUNNING against a store this build already
+// upgraded: it sees the column, never sets it, and writes its rows with the
+// empty default. Those rows carry a real scope and would be invisible to every
+// owner-filtered read forever, so every open re-runs the same scope-derived
+// mapping, each statement guarded by owner is empty. A row with an owner —
+// quarantined, machine, person, project — is never touched, by this pass or by
+// any later one.
+//
+// The owner index is created here rather than in [memoriesSchema] for the same
+// ordering reason: the schema runs FIRST, against a table that a database
+// written before owners existed already has, so an index declared there asks
+// for a column the migration has not added yet and the open dies with
+// `no such column: owner` (the failure every store already on disk hit).
+// Ensuring it here covers both shapes — the legacy store the backfill just
+// widened, and a store that already carries the column from an earlier or
+// interrupted upgrade.
 func migrateMemoriesOwner(db *sql.DB) error {
 	found, err := tableHasColumn(db, "memories", "owner")
 	if err != nil {
 		return err
-	}
-	if found {
-		return nil
 	}
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`ALTER TABLE memories ADD COLUMN owner TEXT NOT NULL DEFAULT ''`); err != nil {
-		return fmt.Errorf("migrate memory owners: %w", err)
+	if !found {
+		if _, err := tx.Exec(`ALTER TABLE memories ADD COLUMN owner TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("migrate memory owners: %w", err)
+		}
 	}
-	// The column lands empty and is filled from scope in one pass each, so no
-	// row is ever left with an owner the validator would refuse.
+	// Every statement below is guarded by owner = '', so this is the same pass
+	// whether it is owning a table that has just been widened or repairing the
+	// rows a still-running pre-owner build wrote into one that was widened
+	// months ago.
 	steps := []struct {
 		owner, scope string
 	}{
@@ -182,7 +201,7 @@ func migrateMemoriesOwner(db *sql.DB) error {
 	if _, err := tx.Exec(`UPDATE memories SET owner = ? WHERE owner = ''`, OwnerLegacyProject); err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
-	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS memories_owner_active ON memories (owner, updated_seq DESC) WHERE status = 'active'`); err != nil {
+	if _, err := tx.Exec(memoriesOwnerIndexDDL); err != nil {
 		return fmt.Errorf("migrate memory owners: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -190,6 +209,12 @@ func migrateMemoriesOwner(db *sql.DB) error {
 	}
 	return nil
 }
+
+// memoriesOwnerIndexDDL is the one spelling of the owner-keyed retrieval index.
+// It is a partial index because only active rows are ever retrieved, and it
+// lives beside the column it indexes — see [migrateMemoriesOwner] for why it
+// cannot be declared in [memoriesSchema].
+const memoriesOwnerIndexDDL = `CREATE INDEX IF NOT EXISTS memories_owner_active ON memories (owner, updated_seq DESC) WHERE status = 'active'`
 
 // quarantinedMemory is one legacy project row that cannot prove its owner.
 type quarantinedMemory struct {

@@ -152,6 +152,41 @@ that teaches rather than an error. It did not always: a first run once reported
 every reason a file will not open, and a build old enough to print it is a build
 worth replacing.
 
+## It said no such column: owner
+
+That sentence is the second half of `memory is off for this session:`, and it
+means the saved store was written by an older codeaf that the version you just
+opened did not know how to read. It is a mismatch between the file and the
+program, not damage to the file.
+
+The repair is the newer codeaf itself. Its first open of the file adds what the
+old file was missing and reads the same lines back, keeping each note's words,
+where it came from and whether it was still active. A note the old store kept as
+**this project** had no way to name its project, so it also gains the quarantine
+marker `legacy-project` and needs a proven owner before any conversation is
+shown it again. There is nothing to move aside and nothing to restore by hand.
+
+**A window whose conversation is held by an engine keeps talking to that engine
+until a newer build takes its place.** That engine is a process of its own on the
+machine holding the workspace; installing a newer codeaf beside it does not
+change it. So:
+
+- Update codeaf on the machine holding the workspace.
+- Reconnect or open a conversation in that workspace. On that same machine a
+  newer build replaces the older engine as the window connects, busy or not — a
+  turn it catches stops where it is and keeps its partial reply — and the new
+  engine repairs the file as it opens.
+- A window held by an engine on **another** machine is not reached by this
+  machine's reconnect: update codeaf there too, then when its work is safe run
+  `codeaf engine --stop --workspace <that folder>` there and reconnect.
+  `codeaf engine --status` names the engine if you are unsure which folder it is.
+
+A conversation on this machine that no engine is holding is simpler: quit codeaf
+and open it again, and the file is repaired as it opens. An idle engine of the
+same build may restart to pick up a changed terminal environment; a busy one
+keeps running and is only replaced when a newer build connects. Nothing already
+saved is at risk while it waits.
+
 ## Where is everything you remember kept
 
 In `~/.codeaf/graph.db`, one file, made the first time codeaf runs. Memories,
