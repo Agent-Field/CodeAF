@@ -557,12 +557,14 @@ const fixedPrefixTarget = 48_000
 // 2026-10-05, sec (sec-af's security audit), the second program codeaf
 // carries. Its guide (programguide.Sec, 386 bytes) is one more item of the
 // hand-off paragraph's list, which is all the prefix pays for a program: its
-// manual page and its report-turn wording ride no request. The fixed prefix
-// measures 57,584 bytes and the lean 49,819, 366 and 229 above their caps, and
-// both waivers rise by exactly that.
+// manual page and its report-turn wording ride no request. Measured against dev
+// 7e3033564 it cost the fixed prefix 366 bytes and the lean 229; 2026-10-07,
+// merged with dev baa2d7f0f, whose page carries a program's guide on the lean
+// arm too, it costs each 396 (dev measures 57,150 and 49,572; with sec,
+// 57,546 and 49,968). Both waivers are dev's plus exactly that 396.
 const (
-	fixedPrefixWaiver = 9_584
-	leanPrefixWaiver  = 18_319
+	fixedPrefixWaiver = 9_614
+	leanPrefixWaiver  = 18_486
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane

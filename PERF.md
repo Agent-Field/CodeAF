@@ -1504,8 +1504,10 @@ The lean cap remains **49,590** bytes. The dated fixed waiver in
 costs the fixed prefix one item of the hand-off paragraph's list — its guide, at
 most 400 bytes — and nothing else: its manual page and the wording of the turn its
 report wakes ride no request. sec's guide is 386 bytes, and the caps
-rise by exactly what it measured: the full cap is **57,584** bytes (366 more) and
-the lean cap **49,819** (229 more), both dated in `prefixWaivers`.
+rise by exactly what it measured: against dev on 2026-10-07 (baa2d7f0f) it costs
+both prefixes 396 bytes, so the full cap is **57,614** bytes and the lean cap
+**49,986**, both dated in `prefixWaivers`. (Against the dev of 2026-10-05 it cost
+the lean prefix only 229, before the page carried a program's guide there too.)
 
 ## Following through on a completion claim
 
