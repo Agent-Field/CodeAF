@@ -72,7 +72,10 @@ func TestFactoryDrawsTheFixtureByGroupWithThePane(t *testing.T) {
 		if cut < 0 {
 			continue
 		}
-		switch word := strings.TrimSpace(line[:cut]); word {
+		// A heading carries its count after a separator (`needs you · 1`);
+		// the order is read on the word.
+		word, _, _ := strings.Cut(strings.TrimSpace(line[:cut]), " · ")
+		switch word {
 		case "needs you", "streams", "new", "landed", "shipped":
 			headings = append(headings, word)
 		}

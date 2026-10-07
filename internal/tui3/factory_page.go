@@ -50,7 +50,7 @@ const factoryPaneNextWords = "stages, the running stream and the proof sheet arr
 //
 // THE NEXT PIECES OF THIS PAGE BUILD ON THESE FIELDS AND NO OTHERS: snap is the
 // only reading a draw may use, cursor names a position in the rail's WALK
-// ORDER ([factoryRailRows]'s item rows, top to bottom) rather than an index
+// ORDER ([app.factoryRows]'s item rows, top to bottom) rather than an index
 // into snap.Items, and railW is what the last body measured, so a press can be
 // told rail from pane without drawing again.
 type factoryPage struct {
@@ -75,6 +75,17 @@ type factoryPage struct {
 	// railW is the rail's columns at the last body, its separator included,
 	// and 0 when the rail took the whole width.
 	railW int
+
+	// THE RAIL'S NARROWINGS (factory_rail.go), each additive to the fields
+	// above. repo is 0 for every repo and i for snap.Repos[i-1]; query is what
+	// was typed into the `/` box and typing whether that box is open; backlog
+	// is `A`, the whole backlog under `new` rather than what is fresh; marked
+	// is the person's own marks on new items, by id, which a re-read keeps.
+	repo    int
+	query   string
+	typing  bool
+	backlog bool
+	marked  map[int]bool
 }
 
 // factoryRailCols is the rail's columns at width, its separator included, and
@@ -118,95 +129,19 @@ func (a *app) factoryRead() tea.Cmd {
 func (a *app) factoryFold(snap factory.Snapshot) {
 	was, had := a.factoryCursorItem()
 	a.fp.snap, a.fp.loaded, a.fp.err = snap, true, nil
-	walk := factoryWalk(snap)
-	if had {
-		for at, i := range walk {
-			if snap.Items[i].ID == was.ID {
-				a.fp.cursor = at
-				break
-			}
-		}
-	}
-	a.fp.cursor = moveCursor(a.fp.cursor, 0, len(walk))
-	a.touch()
+	a.factoryKeep(was, had)
 }
 
 // ── the rail's rows ─────────────────────────────────────────────────────────
 
-// factoryGroup is one heading of the rail and the states filed under it.
-type factoryGroup struct {
-	word   string
-	states []factory.State
-}
-
-// factoryGroups is the rail's order: what waits on the person first, then what
-// is running, then what is new, then what came back. Dismissed items are not on
-// the floor at all.
-var factoryGroups = []factoryGroup{
-	{word: "needs you", states: []factory.State{factory.StateNeedsYou}},
-	{word: "streams", states: []factory.State{factory.StateRunning, factory.StateQueued}},
-	{word: "new", states: []factory.State{factory.StateNew}},
-	{word: "landed", states: []factory.State{factory.StateLanded}},
-	{word: "shipped", states: []factory.State{factory.StateShipped}},
-}
-
-// factoryRailRow is one line of the rail: a heading, a blank between groups,
-// or an item, which names its index in snap.Items and its place in the walk.
-type factoryRailRow struct {
-	heading string
-	item    int // index into snap.Items, -1 for a heading or a blank
-	walk    int // position in the walk order, -1 for a heading or a blank
-}
-
-// factoryRailRows lays the snapshot out as rail lines. A group with nothing in
-// it draws nothing, heading included.
-func factoryRailRows(snap factory.Snapshot) []factoryRailRow {
-	var rows []factoryRailRow
-	walk := 0
-	for _, g := range factoryGroups {
-		first := true
-		for i, it := range snap.Items {
-			if !factoryIn(it.State, g.states) {
-				continue
-			}
-			if first {
-				if len(rows) > 0 {
-					rows = append(rows, factoryRailRow{item: -1, walk: -1})
-				}
-				rows = append(rows, factoryRailRow{heading: g.word, item: -1, walk: -1})
-				first = false
-			}
-			rows = append(rows, factoryRailRow{item: i, walk: walk})
-			walk++
-		}
-	}
-	return rows
-}
-
-func factoryIn(st factory.State, states []factory.State) bool {
-	for _, s := range states {
-		if s == st {
-			return true
-		}
-	}
-	return false
-}
-
-// factoryWalk is the items the cursor walks, as indexes into snap.Items.
-func factoryWalk(snap factory.Snapshot) []int {
-	var out []int
-	for _, r := range factoryRailRows(snap) {
-		if r.item >= 0 {
-			out = append(out, r.item)
-		}
-	}
-	return out
-}
+// The rail's rows — its groups, its view, the delta rule and the filter — are
+// factory_rail.go's. Everything below reads them through [app.factoryRows] and
+// [app.factoryWalkNow], so the cursor counts in the same list the rail draws.
 
 // factoryCursorItem is the item under the cursor, and false when the floor
 // holds none.
 func (a *app) factoryCursorItem() (factory.Item, bool) {
-	walk := factoryWalk(a.fp.snap)
+	walk := a.factoryWalkNow()
 	if a.fp.cursor < 0 || a.fp.cursor >= len(walk) {
 		return factory.Item{}, false
 	}
@@ -217,8 +152,8 @@ func (a *app) factoryCursorItem() (factory.Item, bool) {
 // place's stops.
 func (a *app) factoryLines() []int {
 	var out []int
-	for line, r := range factoryRailRows(a.fp.snap) {
-		if r.item >= 0 {
+	for line, r := range a.factoryRows() {
+		if r.kind == factoryRowItem {
 			out = append(out, line)
 		}
 	}
@@ -227,7 +162,7 @@ func (a *app) factoryLines() []int {
 
 // factoryMove walks the cursor by delta items.
 func (a *app) factoryMove(delta int) {
-	a.fp.cursor = moveCursor(a.fp.cursor, delta, len(factoryWalk(a.fp.snap)))
+	a.fp.cursor = moveCursor(a.fp.cursor, delta, len(a.factoryWalkNow()))
 	a.touch()
 }
 
@@ -278,47 +213,6 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	return rows
 }
 
-// factoryRail is the rail's window of at most room lines, each exactly width
-// cells, and the rail line each one shows (-1 for a heading or a blank). THE
-// WINDOW FOLLOWS THE CURSOR ([placeTop]) and is never scrolled on its own.
-func (a *app) factoryRail(width, room int) ([]string, []int) {
-	pal := a.pal
-	rows := factoryRailRows(a.fp.snap)
-	cursorLine := 0
-	for line, r := range rows {
-		if r.walk == a.fp.cursor && r.item >= 0 {
-			cursorLine = line
-			break
-		}
-	}
-	a.fp.top = placeTop(a.fp.top, cursorLine, len(rows), room)
-	end := min(a.fp.top+room, len(rows))
-	out := make([]string, 0, end-a.fp.top)
-	hits := make([]int, 0, end-a.fp.top)
-	for line := a.fp.top; line < end; line++ {
-		r := rows[line]
-		switch {
-		case r.heading != "":
-			out = append(out, factoryPad(pal.dim(" "+r.heading), width))
-			hits = append(hits, -1)
-		case r.item < 0:
-			out = append(out, strings.Repeat(" ", width))
-			hits = append(hits, -1)
-		default:
-			it := a.fp.snap.Items[r.item]
-			if r.walk == a.fp.cursor {
-				text := factoryPad(" "+it.Ref()+" "+it.Title, width)
-				out = append(out, pal.cursor(pal.ink(text), width))
-			} else {
-				out = append(out, factoryPad(" "+pal.muted(it.Ref())+" "+pal.ink(it.Title), width))
-			}
-			hits = append(hits, line)
-		}
-	}
-	a.fp.shown = len(out)
-	return out, hits
-}
-
 // factoryPress puts the cursor on the item drawn on screen row y, and answers
 // false for a row that holds no item. It reads the window the last body drew,
 // so a press lands on the row a person saw.
@@ -327,8 +221,8 @@ func (a *app) factoryPress(y int) bool {
 	if !ok {
 		return false
 	}
-	rows := factoryRailRows(a.fp.snap)
-	if line < 0 || line >= len(rows) || rows[line].item < 0 {
+	rows := a.factoryRows()
+	if line < 0 || line >= len(rows) || rows[line].kind != factoryRowItem {
 		return false
 	}
 	a.fp.cursor = rows[line].walk
