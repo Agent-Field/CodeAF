@@ -73,30 +73,23 @@ func itemAt(items []sheetItem, key string) int {
 // its key nor its about line carries the word — a person who knows what the
 // panel does and not what it is called searches the way this test does.
 func TestTheSettingsSearchFindsARowByItsCurrentValue(t *testing.T) {
-	a, dir := sheetApp(t)
+	a, _ := sheetApp(t)
 	a.openSettings()
-	// This search fixture exercises an explicitly saved prompt posture.
-	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
-	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
-		t.Fatalf("the gate did not start at prompt: %q", got)
+	cursorTo(t, a, config.KeyToolApprovals)
+	item, _ := a.sheet.current()
+	// A tool rule is user content, absent from the label, key, aliases and help.
+	// Using "prompt" here also matched the new approval explanation fuzzily.
+	if err := item.row.Apply("grep:deny"); err != nil {
+		t.Fatal(err)
 	}
-	// `prompt` is the probe: the gate's own label, key and about line carry no
-	// `p` at all, so the word cannot reach the row through any of them — not
-	// even as a scattered subsequence, which is the reach a fuzzy matcher
-	// always has — and only the value it holds can carry it.
-	if at := itemAt(searchItems(t, a, "prompt"), config.KeyToolApprovalMode); at < 0 {
-		t.Fatal("\"prompt\" did not find the gate holding it")
+	if at := itemAt(searchItems(t, a, "grep:deny"), config.KeyToolApprovals); at < 0 {
+		t.Fatal("search did not find the saved tool rule")
 	}
-	// Cycle the gate away from prompt, and the same word loses the row.
-	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter"))
-	if got := config.ToolApprovalModeAt(dir); got != "allow" {
-		t.Fatalf("the cycle wrote %q, want allow", got)
+	if err := item.row.Apply(""); err != nil {
+		t.Fatal(err)
 	}
-	if at := itemAt(searchItems(t, a, "prompt"), config.KeyToolApprovalMode); at >= 0 {
-		t.Fatal("\"prompt\" still found the gate after the gate stopped carrying it")
+	if at := itemAt(searchItems(t, a, "grep:deny"), config.KeyToolApprovals); at >= 0 {
+		t.Fatal("search retained a value that was cleared")
 	}
 }
 
