@@ -10,18 +10,24 @@ invalidates:
 ---
 
 A database that failed to open under the broken build keeps its notes: the
-failure happens before any memory row is deleted or rewritten, so the lines, their
-provenance, status and scope are all still in the file. There is no repair command
-and no backup to restore — the next open of this build adds the missing column,
-owns every row the way its old scope proves, creates the owner index, and reads
-the same lines back.
+failure happens before any memory row is deleted or rewritten, so a line's words,
+its provenance and whether it was still active are all still in the file. There
+is no repair command and no backup to restore — the next open of this build adds
+the missing column, gives every row the owner its old scope proves, creates the
+owner index, and reads the same lines back. A row the old store kept as a project
+cannot prove which project it was, so it also gains the `legacy-project`
+quarantine marker and needs a proven owner before a conversation sees it again;
+nothing else about it is rewritten.
 
-Recovery is a restart on the fixed build, and for a conversation held by a hosted
-engine that means stopping the engine rather than just reopening a window: update
-codeaf on the machine holding the workspace, and when its work is safe run
-`codeaf engine --stop --workspace <folder>` there (or `codeaf engine --stop-all`
-if the folder is unknown), then reconnect, which builds a fresh conversation on
-this build and repairs the file as it opens. A plain launch with no engine
-holding it repairs the file at its next open. Nothing restarts a running engine
-on its own, and an engine of the same build is never displaced by another: the
-stop is the step that always works, and it is the only one this note promises.
+Recovery is a launch of the fixed build, and installing it does not by itself
+change an engine already running. On the machine holding the workspace, updating
+codeaf and reconnecting or opening a conversation there is the whole repair: a
+newer build replaces an older engine as the window connects, busy or not (the
+turn it catches stops where it is and keeps its partial reply), and the new
+engine repairs the file as it opens. A window held by an engine on another
+machine is not reached by that reconnect — update codeaf there, and when its work
+is safe run `codeaf engine --stop --workspace <folder>` there first
+(`codeaf engine --status` names the engine if the folder is unclear). A plain
+launch with no engine holding it repairs the file at its next open. An idle
+engine of the same build may restart to pick up a changed terminal environment; a
+busy one keeps running and is only replaced when a newer build connects.

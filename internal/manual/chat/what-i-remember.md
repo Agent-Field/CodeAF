@@ -155,32 +155,36 @@ worth replacing.
 ## It said no such column: owner
 
 That sentence is the second half of `memory is off for this session:`, and it
-means one thing: the saved store was written by an older codeaf, and the codeaf
-you have just opened did not know how to read it. It is a mismatch between the
-file and the program, not damage to the file.
+means the saved store was written by an older codeaf that the version you just
+opened did not know how to read. It is a mismatch between the file and the
+program, not damage to the file.
 
 The repair is the newer codeaf itself. Its first open of the file adds what the
-old file was missing, keeps every note exactly as it was — its words, tags,
-where it came from, whether it was still active — and remembers from there.
-There is nothing to move aside and nothing to restore by hand.
+old file was missing and reads the same lines back, keeping each note's words,
+where it came from and whether it was still active. A note the old store kept as
+**this project** had no way to name its project, so it also gains the quarantine
+marker `legacy-project` and needs a proven owner before any conversation is
+shown it again. There is nothing to move aside and nothing to restore by hand.
 
-**A window whose conversation is held by an engine keeps that engine until the
-engine is stopped.** That engine is a process of its own on the machine holding
-the workspace, and it decided at its own startup that it had no memory; nothing
-about it changes because a newer codeaf was installed beside it. So:
+**A window whose conversation is held by an engine keeps talking to that engine
+until a newer build takes its place.** That engine is a process of its own on the
+machine holding the workspace; installing a newer codeaf beside it does not
+change it. So:
 
 - Update codeaf on the machine holding the workspace.
-- When its work is safe — stopping an engine stops the turn it is in, and keeps
-  the partial reply — run `codeaf engine --stop --workspace <the folder>` there.
-  `codeaf engine --status` names the engine first if you are unsure which folder
-  it is; `codeaf engine --stop-all` stands every one down.
-- Reconnect or open a conversation in that workspace, which builds a fresh
-  conversation on the new codeaf and repairs the file as it opens.
+- Reconnect or open a conversation in that workspace. On that same machine a
+  newer build replaces the older engine as the window connects, busy or not — a
+  turn it catches stops where it is and keeps its partial reply — and the new
+  engine repairs the file as it opens.
+- A window held by an engine on **another** machine is not reached by this
+  machine's reconnect: update codeaf there too, then when its work is safe run
+  `codeaf engine --stop --workspace <that folder>` there and reconnect.
+  `codeaf engine --status` names the engine if you are unsure which folder it is.
 
 A conversation on this machine that no engine is holding is simpler: quit codeaf
-and open it again, and the file is repaired as it opens. Nothing restarts a
-running engine on its own, and an engine of the same build is never displaced,
-so a window that did not restart keeps going without memory. Nothing already
+and open it again, and the file is repaired as it opens. An idle engine of the
+same build may restart to pick up a changed terminal environment; a busy one
+keeps running and is only replaced when a newer build connects. Nothing already
 saved is at risk while it waits.
 
 ## Where is everything you remember kept
