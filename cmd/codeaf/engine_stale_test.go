@@ -14,11 +14,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -30,20 +30,48 @@ import (
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
+// standInOptions are the two things an ordinary stand-in cannot model, and
+// each of them is a moment a real host can genuinely be in.
+type standInOptions struct {
+	// busyAfter makes the Nth question onward answer busy: a host that looked
+	// idle when it was asked what it is and is holding something by the time
+	// the stand-down arrives. It is the race the rule must lose gracefully.
+	busyAfter int
+	// vanishAfter makes the socket go after the Nth answer: a host that retired
+	// on its own between the question and the stand-down.
+	vanishAfter int
+	// ignoresWhenIdle is a host built before the note existed: it answers the
+	// question without acknowledging it, exactly as an installed older build
+	// does, and cannot retire at a quiet moment nobody told it about.
+	ignoresWhenIdle bool
+}
+
 // standInHost answers the version exchange with whatever it was told to say,
 // and takes down its own socket when it agrees to retire — which is what a real
 // host's shutdown looks like from the outside.
+//
+// IT KEEPS EVERY QUESTION IT WAS ASKED, because part of what is under test is
+// WHICH question arrived: an older engine holding work is asked to let go when
+// it is quiet and must never be asked to go anyway.
 type standInHost struct {
-	self remote.HostSelf
-	// older is a build from before the exchange: it refuses the question the
-	// way every one of them always has.
+	self  remote.HostSelf
 	older bool
+	opts  standInOptions
+
+	mu      sync.Mutex
+	asks    []remote.WhoIs
+	retired bool
 
 	listener net.Listener
 	once     sync.Once
 }
 
 func standIn(t *testing.T, workspace string, self remote.HostSelf, older bool) *standInHost {
+	t.Helper()
+	return standInAs(t, workspace, self, older, standInOptions{})
+}
+
+func standInAs(t *testing.T, workspace string, self remote.HostSelf, older bool, opts standInOptions) *standInHost {
 	t.Helper()
 	// A real host makes the directory it listens in ([enginehost.Run] takes Dir
 	// before SocketPath), because naming the socket makes nothing — asking
@@ -59,7 +87,7 @@ func standIn(t *testing.T, workspace string, self remote.HostSelf, older bool) *
 	if err != nil {
 		t.Fatalf("listen on the socket: %v", err)
 	}
-	host := &standInHost{self: self, older: older, listener: listener}
+	host := &standInHost{self: self, older: older, opts: opts, listener: listener}
 	t.Cleanup(host.close)
 	go host.serve()
 	return host
@@ -96,15 +124,60 @@ func (h *standInHost) answer(conn net.Conn) {
 	var ask remote.WhoIs
 	_ = json.Unmarshal(frame.Payload, &ask)
 
+	h.mu.Lock()
+	h.asks = append(h.asks, ask)
+	count := len(h.asks)
+	busy := h.self.Busy || (h.opts.busyAfter > 0 && count >= h.opts.busyAfter)
+	retired := h.retired
+	h.mu.Unlock()
+
 	self := h.self
-	if ask.StandDown && (ask.Anyway || !self.Busy) {
+	self.Busy = busy
+	self.StandDownWhenIdle = ask.StandDownWhenIdle && !h.opts.ignoresWhenIdle
+	if retired {
 		self.Retiring = true
+	}
+	if ask.StandDown && (ask.Anyway || !busy) {
+		self.Retiring = true
+		h.mu.Lock()
+		h.retired = true
+		h.mu.Unlock()
 	}
 	answer, _ := json.Marshal(remote.Frame{Kind: "whoami", Payload: mustStandInJSON(self)})
 	_, _ = conn.Write(append(answer, '\n'))
-	if self.Retiring {
+	if self.Retiring || (h.opts.vanishAfter > 0 && count >= h.opts.vanishAfter) {
 		h.close()
 	}
+}
+
+// questions is every question this stand-in was asked, oldest first.
+func (h *standInHost) questions() []remote.WhoIs {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]remote.WhoIs(nil), h.asks...)
+}
+
+// waitingSaid reports that a newer build asked this host for the slot without
+// asking it to end anything.
+func (h *standInHost) waitingSaid() bool {
+	for _, ask := range h.questions() {
+		if ask.StandDownWhenIdle {
+			return true
+		}
+	}
+	return false
+}
+
+// forced reports that something asked this host to go regardless of what it was
+// holding, which is a person's own `codeaf engine --stop` and must never be
+// this door.
+func (h *standInHost) forced() bool {
+	for _, ask := range h.questions() {
+		if ask.StandDown && ask.Anyway {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *standInHost) close() {
@@ -137,7 +210,7 @@ func shortEngineHome(t *testing.T) {
 	t.Setenv("CODEAF_HOME", root)
 }
 
-// ── the takeover rule: the older engine gives up the slot ───────────────────
+// ── the takeover rule: work is kept, and the slot is handed over quietly ────
 
 // window is a build of this binary at a moment, for the tests that need two
 // builds of one source and a test binary that is linked once.
@@ -149,6 +222,16 @@ var (
 	earlier = time.Date(2026, 9, 21, 9, 0, 0, 0, time.UTC)
 	later   = earlier.Add(48 * time.Hour)
 )
+
+// hostAnswers is whether anything is still listening on this workspace's socket.
+func hostAnswers(workspace string) bool {
+	conn, err := enginehost.Dial(workspace)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
 
 func TestAHostOfThisBuildIsSplicedOntoWithoutAWord(t *testing.T) {
 	shortEngineHome(t)
@@ -162,91 +245,241 @@ func TestAHostOfThisBuildIsSplicedOntoWithoutAWord(t *testing.T) {
 	if note != "" {
 		t.Fatalf("a host of this build owed a sentence: %q", note)
 	}
-	if conn, err := enginehost.Dial(workspace); err != nil {
-		t.Fatalf("a host of this build was asked to go: %v", err)
-	} else {
-		_ = conn.Close()
+	if !hostAnswers(workspace) {
+		t.Fatal("a host of this build was asked to go")
 	}
 }
 
-// THE CASE THIS RULE WAS WRITTEN FOR (2026-09-23): an engine two days older,
-// from another binary, HOLDING WORK, was deferred to — the new daemon exited
-// without a word and every window kept talking to the old one. Now it is
-// replaced, and the window is told in one line which process that was.
-func TestAnOlderEngineHoldingWorkIsReplacedAndNamed(t *testing.T) {
+// THE CASE THIS RULE WAS WRITTEN FOR (2026-09-23), turned right way up. An
+// engine two days older, from another binary, HOLDING WORK, used to be ended
+// whenever a newer window connected — a turn somebody was watching closed
+// because a rebuild happened. It is joined now, it keeps everything it has, and
+// it is asked to let go at its first quiet moment.
+func TestAnOlderEngineHoldingWorkKeepsItAndIsJoined(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{
+	host := standIn(t, workspace, remote.HostSelf{
 		Version: remote.Version, Build: "two-days-ago", Busy: true,
 		PID: 4242, Binary: "/home/somebody/.codeaf/bin/devaf", Revision: "a1b2c3d4 built 2026-09-21 09:00",
-		BuiltAt: earlier, Surfaces: 1, Conversations: 3,
+		BuiltAt: earlier, Surfaces: 1, Conversations: 3, Workspace: workspace,
 	}, false)
 
 	note, err := clearStaleEngineHostAs(workspace, window("today", later))
 	if err != nil {
-		t.Fatalf("an older engine holding work was refused rather than replaced: %v", err)
+		t.Fatalf("an older engine holding work was refused rather than joined: %v", err)
+	}
+	for _, want := range []string{"older codeaf", "still holding work", "picks up this build once it goes quiet"} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("the busy line %q does not say %q", note, want)
+		}
+	}
+	// NOBODY'S WORK ENDED AND THE PROCESS IS STILL THERE.
+	if !hostAnswers(workspace) {
+		t.Fatal("an older engine holding work was taken down")
+	}
+	// AND THE SLOT IS ASKED FOR, QUIETLY: the host is told a newer build is
+	// waiting, which is what makes the swap happen at its own first quiet
+	// moment rather than half an hour later.
+	if !host.waitingSaid() {
+		t.Fatal("the older engine was not asked to let go when it is quiet")
+	}
+	if host.forced() {
+		t.Fatal("an older engine holding work was asked to go regardless of it")
+	}
+}
+
+// THE OTHER HALF OF THE SAME LINE: the older engine was holding nothing, so it
+// is asked to go — through the host's own admission check, never a signal — and
+// the next connection starts a host from the binary on disk.
+func TestAnOlderEngineHoldingNothingIsRetiredWithoutBeingKilled(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	host := standIn(t, workspace, remote.HostSelf{
+		Version: remote.Version, Build: "two-days-ago", BuiltAt: earlier,
+		PID: 4242, Binary: "/home/somebody/.codeaf/bin/devaf", Revision: "a1b2c3d4 built 2026-09-21 09:00",
+	}, false)
+
+	note, err := clearStaleEngineHostAs(workspace, window("today", later))
+	if err != nil {
+		t.Fatalf("an idle older engine was refused rather than retired: %v", err)
 	}
 	for _, want := range []string{"replaced the older engine", "pid 4242", "a1b2c3d4", "/home/somebody/.codeaf/bin/devaf", "this build holds the workspace now"} {
 		if !strings.Contains(note, want) {
-			t.Fatalf("the takeover line %q does not say %q", note, want)
+			t.Fatalf("the handover line %q does not say %q", note, want)
 		}
 	}
-	if conn, err := enginehost.Dial(workspace); err == nil {
-		_ = conn.Close()
-		t.Fatal("the older engine was still answering after the takeover")
+	if hostAnswers(workspace) {
+		t.Fatal("the older engine was still answering after the handover")
+	}
+	// ATOMICITY IS IN THE QUESTION THAT WAS ASKED. The stand-down went with
+	// Anyway FALSE, so the host measured what it was holding under its own lock
+	// and agreed; a kill, or an Anyway, would have decided for it.
+	asked := host.questions()
+	if len(asked) < 2 || !asked[len(asked)-1].StandDown || asked[len(asked)-1].Anyway {
+		t.Fatalf("the stand-down was not the host's own decision: %+v", asked)
 	}
 }
 
-// Another wire and older is the same answer: replaced, not refused.
-func TestAnOlderEngineOnAnotherWireIsReplaced(t *testing.T) {
+// THE RACE THE RULE HAS TO LOSE GRACEFULLY: the host looked idle when it was
+// asked what it was, and it is holding something by the time the stand-down
+// arrives. The second question is the one that counts, the host refuses, and
+// this build joins it instead of killing it — which is exactly what a
+// status-then-kill pair used to get wrong.
+func TestAnOlderEngineThatRefusedTheStandDownKeepsItsWork(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
-	standIn(t, workspace, remote.HostSelf{Version: remote.Version - 1, Busy: true}, false)
+	host := standInAs(t, workspace, remote.HostSelf{
+		Version: remote.Version, Build: "two-days-ago", BuiltAt: earlier, Workspace: workspace,
+	}, false, standInOptions{busyAfter: 2})
+
+	note, err := clearStaleEngineHostAs(workspace, window("today", later))
+	if err != nil {
+		t.Fatalf("a host that kept its work was refused rather than joined: %v", err)
+	}
+	if !strings.Contains(note, "older codeaf") || !strings.Contains(note, "still holding work") {
+		t.Fatalf("the busy line %q does not say what happened", note)
+	}
+	if !hostAnswers(workspace) {
+		t.Fatal("a host that refused the stand-down was ended anyway")
+	}
+	if host.forced() {
+		t.Fatal("a host that refused the stand-down was asked to go regardless of it")
+	}
+	if !host.waitingSaid() {
+		t.Fatal("the host that refused was not asked to let go when it is quiet")
+	}
+}
+
+// AND A HOST OLDER THAN THE NOTE IS NOT PROMISED IT. The ask is additive, so an
+// already-installed older build ignores it and cannot retire at a quiet moment
+// nobody told it about — which the acknowledgement distinguishes, so the line a
+// person reads says what actually gets them onto this build.
+func TestAnOldHostThatIgnoresTheNoteIsNotPromisedAQuietMoment(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	host := standInAs(t, workspace, remote.HostSelf{
+		Version: remote.Version, Build: "two-days-ago", BuiltAt: earlier, Busy: true, Workspace: workspace,
+	}, false, standInOptions{ignoresWhenIdle: true})
+
+	note, err := clearStaleEngineHostAs(workspace, window("today", later))
+	if err != nil {
+		t.Fatalf("an old host was refused rather than joined: %v", err)
+	}
+	if strings.Contains(note, "once it goes quiet") {
+		t.Fatalf("the line promises a quiet-moment handover this host was never told about: %q", note)
+	}
+	for _, want := range []string{"older codeaf", "still holding work", "your next launch once the work is done"} {
+		if !strings.Contains(note, want) {
+			t.Fatalf("the line %q does not say %q", note, want)
+		}
+	}
+	if !hostAnswers(workspace) || host.forced() {
+		t.Fatal("an old host that cannot step aside on its own was ended rather than kept")
+	}
+	if !host.waitingSaid() {
+		t.Fatal("the note was not even delivered, so a newer host could not use it")
+	}
+}
+
+// THE LAUNCH ITSELF REFUSES, and that is the whole of this test: an engine
+// holding the workspace on a wire this build cannot speak must NOT fall through
+// to a conversation in this process, where it would be a second writer beside
+// the journal the engine is holding.
+func TestALaunchRefusesAnIncompatibleBusyEngineRatherThanFallingBack(t *testing.T) {
+	shortEngineHome(t)
+	workspace := t.TempDir()
+	standIn(t, workspace, remote.HostSelf{
+		Version: remote.Version - 1, Busy: true, Build: "ancient", BuiltAt: earlier, Workspace: workspace,
+	}, false)
+
+	err := openChatV3Local(localLaunch{workspace: workspace})
+	if err == nil {
+		t.Fatal("a launch against a busy engine on another wire came back with nothing to say")
+	}
+	var unreachable *hostUnreachable
+	if errors.As(err, &unreachable) {
+		t.Fatalf("the launch fell back to an in-process conversation beside a live engine: %q", unreachable.reason)
+	}
+	var refusal *hostRefusal
+	if !errors.As(err, &refusal) {
+		t.Fatalf("the launch answered %v, want the host's own refusal", err)
+	}
+	if !strings.Contains(refusal.sentence, "different protocol") || !strings.Contains(refusal.sentence, "engine --stop") {
+		t.Fatalf("the refusal %q does not say what is holding it and the way out", refusal.sentence)
+	}
+	// AND NOTHING WAS OPENED IN THIS PROCESS: no project tree, no journal.
+	if entries, readErr := os.ReadDir(workspace); readErr != nil || len(entries) != 0 {
+		t.Fatalf("the refused launch left something in the workspace: %v, %v", entries, readErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(os.Getenv("CODEAF_HOME"), "v3", "projects")); statErr == nil {
+		t.Fatal("the refused launch opened a conversation in this process")
+	}
+}
+
+// A BUILD WITH NO STAMP IS OLDER THAN EVERY STAMP, and older is not a reason to
+// end somebody's turn: it is joined like any other build this wire can speak.
+func TestAnOlderBuildWithNoStampHoldingWorkIsJoined(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	host := standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: "previous-build", Busy: true}, false)
 
 	note, err := clearStaleEngineHost(workspace)
 	if err != nil {
-		t.Fatalf("an older engine on another wire was refused: %v", err)
+		t.Fatalf("a stampless older build holding work was refused: %v", err)
 	}
-	if !strings.Contains(note, "replaced the older engine") {
-		t.Fatalf("the takeover said nothing: %q", note)
+	if !strings.Contains(note, "older codeaf") {
+		t.Fatalf("the notice did not say which engine this is: %q", note)
 	}
-	if conn, err := enginehost.Dial(workspace); err == nil {
-		_ = conn.Close()
-		t.Fatal("the older engine was still answering")
+	if strings.Contains(note, "--stop") {
+		t.Fatalf("the notice sends somebody off to stop something by hand: %q", note)
+	}
+	if !hostAnswers(workspace) || !host.waitingSaid() || host.forced() {
+		t.Fatal("a stampless older build was ended rather than joined")
 	}
 }
 
-// Idle or busy makes no difference to WHETHER an older engine is replaced, and
-// a stamp it does not carry reads as older than every stamp.
-func TestASameProtocolOlderBuildIsReplacedBusyOrNot(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		stamp string
-		busy  bool
-	}{
-		{"idle", "previous-build", false},
-		{"busy", "previous-build", true},
-		{"no-stamp", "", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			shortEngineHome(t)
-			workspace := "/home/somebody/api"
-			standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: tc.stamp, Busy: tc.busy}, false)
-			note, err := clearStaleEngineHost(workspace)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !strings.Contains(note, "replaced the older engine") {
-				t.Fatalf("the notice did not say an older engine was replaced: %q", note)
-			}
-			if strings.Contains(note, "--stop") {
-				t.Fatalf("the notice sends somebody off to stop something by hand: %q", note)
-			}
-			if conn, err := enginehost.Dial(workspace); err == nil {
-				_ = conn.Close()
-				t.Fatal("stale same-protocol host still answers")
-			}
-		})
+// A SECOND WINDOW MEETS THE SAME OLDER ENGINE AND THE TWO OF THEM DO NOTHING TO
+// IT: no kill, no replacement, one engine still holding the one conversation.
+// This is the half of #1788 that is about windows rather than turns — two
+// terminals opening codeaf must not race each other into ending anything.
+func TestTwoWindowsMeetingAnOlderEngineHoldingWorkBothJoinIt(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	host := standIn(t, workspace, remote.HostSelf{
+		Version: remote.Version, Build: "two-days-ago", BuiltAt: earlier, Busy: true, Workspace: workspace,
+	}, false)
+
+	for opened := 1; opened <= 2; opened++ {
+		note, err := clearStaleEngineHostAs(workspace, window("today", later))
+		if err != nil {
+			t.Fatalf("window %d was refused: %v", opened, err)
+		}
+		if !strings.Contains(note, "older codeaf") {
+			t.Fatalf("window %d was not told which engine it is on: %q", opened, note)
+		}
+	}
+	if !hostAnswers(workspace) {
+		t.Fatal("two windows ended the engine they joined")
+	}
+	if host.forced() {
+		t.Fatal("two windows asked a busy engine to go regardless of its work")
+	}
+}
+
+// AND A HOST THAT RETIRED ON ITS OWN BETWEEN THE QUESTION AND THE STAND-DOWN IS
+// NOT A FAILURE: nothing is holding the workspace, so the launch attaches and
+// starts a host from this build. It is the failed-replacement road.
+func TestAnIdleOlderEngineThatWentAwayLetsTheLaunchStartItsOwn(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	standInAs(t, workspace, remote.HostSelf{Version: remote.Version, Build: "two-days-ago", BuiltAt: earlier}, false, standInOptions{vanishAfter: 1})
+
+	note, err := clearStaleEngineHostAs(workspace, window("today", later))
+	if err != nil || note != "" {
+		t.Fatalf("a host that had already gone answered %q, %v — want a quiet go-ahead", note, err)
+	}
+	if hostAnswers(workspace) {
+		t.Fatal("something is still holding the workspace after it vanished")
 	}
 }
 
@@ -265,10 +498,8 @@ func TestANewerEngineIsJoinedAndNeverReplacedByAnOlderWindow(t *testing.T) {
 	if note != "" {
 		t.Fatalf("joining a newer engine owed no sentence, said %q", note)
 	}
-	if conn, err := enginehost.Dial(workspace); err != nil {
-		t.Fatalf("an older window took the slot from a newer engine: %v", err)
-	} else {
-		_ = conn.Close()
+	if !hostAnswers(workspace) {
+		t.Fatal("an older window took the slot from a newer engine")
 	}
 }
 
@@ -287,10 +518,63 @@ func TestANewerEngineOnAnotherWireIsRefusedAndLeftAlone(t *testing.T) {
 	if !strings.Contains(stale.reason, "newer codeaf") || !strings.Contains(stale.reason, "codeaf engine --status --workspace "+workspace) {
 		t.Fatalf("the refusal does not say this binary is the older one and how to see which is newer: %q", stale.reason)
 	}
-	if conn, err := enginehost.Dial(workspace); err != nil {
-		t.Fatalf("a newer engine was taken down: %v", err)
-	} else {
-		_ = conn.Close()
+	if !hostAnswers(workspace) {
+		t.Fatal("a newer engine was taken down")
+	}
+}
+
+// AN OLDER ENGINE ON ANOTHER WIRE, HOLDING WORK, IS REFUSED AND NEVER KILLED.
+// This build cannot speak to it, so there is nothing to join; and the work it
+// is holding is the reason there is nothing to end either. A person is told
+// which command says so.
+func TestAnOlderEngineOnAnotherWireHoldingWorkIsRefusedNotKilled(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	host := standIn(t, workspace, remote.HostSelf{
+		Version: remote.Version - 1, Busy: true, Build: "ancient", BuiltAt: earlier, Workspace: workspace,
+	}, false)
+
+	_, err := clearStaleEngineHostAs(workspace, window("today", later))
+	var stale *staleHost
+	if !errors.As(err, &stale) {
+		t.Fatalf("an older engine on another wire holding work answered %v, want a refusal", err)
+	}
+	// AND THE COMMAND IS COPY-PASTEABLE: the folder is quoted, because a path
+	// with a space in it typed out of a sentence has to be one argument.
+	for _, want := range []string{"different protocol", "engine --stop", "--workspace " + shellQuote(workspace)} {
+		if !strings.Contains(stale.reason, want) {
+			t.Fatalf("the refusal %q does not say %q", stale.reason, want)
+		}
+	}
+	if !hostAnswers(workspace) {
+		t.Fatal("an older engine on another wire was taken down while holding work")
+	}
+	if host.forced() {
+		t.Fatal("an older engine on another wire was asked to go regardless of its work")
+	}
+}
+
+// AND AN OLDER ENGINE ON ANOTHER WIRE THAT IS HOLDING NOTHING IS ASKED TO GO,
+// on the host's own terms: it cannot be joined, so the slot has to change hands
+// for the launch to work at all.
+func TestAnOlderEngineOnAnotherWireHoldingNothingIsRetired(t *testing.T) {
+	shortEngineHome(t)
+	workspace := "/home/somebody/api"
+	host := standIn(t, workspace, remote.HostSelf{Version: remote.Version - 1, Build: "ancient", BuiltAt: earlier}, false)
+
+	note, err := clearStaleEngineHostAs(workspace, window("today", later))
+	if err != nil {
+		t.Fatalf("an idle older engine on another wire was refused: %v", err)
+	}
+	if !strings.Contains(note, "replaced the older engine") {
+		t.Fatalf("the handover said nothing: %q", note)
+	}
+	if hostAnswers(workspace) {
+		t.Fatal("the older engine was still answering after the handover")
+	}
+	asked := host.questions()
+	if len(asked) == 0 || !asked[len(asked)-1].StandDown || asked[len(asked)-1].Anyway {
+		t.Fatalf("the stand-down was not the host's own decision: %+v", asked)
 	}
 }
 
@@ -310,16 +594,14 @@ func TestAHostBuiltFromTheSameSourceAnotherMinuteIsSplicedOnto(t *testing.T) {
 	if note != "" {
 		t.Fatalf("a host built from the same source owed a sentence: %q", note)
 	}
-	if conn, err := enginehost.Dial(workspace); err != nil {
-		t.Fatalf("the matching host was asked to retire: %v", err)
-	} else {
-		_ = conn.Close()
+	if !hostAnswers(workspace) {
+		t.Fatal("the matching host was asked to retire")
 	}
 }
 
-// SAME SOURCE, ANOTHER FILE, OLDER: replaced — `~/.codeaf/bin/devaf` and
-// `bin/codeaf` built from one commit two days apart are two builds.
-func TestTheSameSourceFromAnOlderOtherFileIsReplaced(t *testing.T) {
+// SAME SOURCE, ANOTHER FILE, OLDER, HOLDING NOTHING: retired — `~/.codeaf/bin/devaf`
+// and `bin/codeaf` built from one commit two days apart are two builds.
+func TestTheSameSourceFromAnOlderOtherFileIsRetired(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
 	standIn(t, workspace, remote.HostSelf{Version: remote.Version, Build: "c85e10a19", Binary: "/somewhere/else/devaf", BuiltAt: earlier}, false)
@@ -329,7 +611,7 @@ func TestTheSameSourceFromAnOlderOtherFileIsReplaced(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(note, "replaced the older engine") {
-		t.Fatalf("an older copy from another file was not replaced: %q", note)
+		t.Fatalf("an older copy from another file was not retired: %q", note)
 	}
 }
 
@@ -344,10 +626,8 @@ func TestTwoCopiesOfOneBuildDoNotTakeTheSlotFromEachOther(t *testing.T) {
 	if err != nil || note != "" {
 		t.Fatalf("a copy of the same build was replaced (%q, %v)", note, err)
 	}
-	if conn, err := enginehost.Dial(workspace); err != nil {
-		t.Fatalf("the copy was asked to go: %v", err)
-	} else {
-		_ = conn.Close()
+	if !hostAnswers(workspace) {
+		t.Fatal("the copy was asked to go")
 	}
 }
 
@@ -402,12 +682,13 @@ func TestHelperOldEngineHost(t *testing.T) {
 	}
 }
 
-// The build that trapped somebody for real cannot be asked anything at all, and
-// it used to be left in place with a sentence telling the person to stop it by
-// hand. It is older than everything, so it is replaced: the kernel names the
-// process on the other end of its socket and it is sent the signal it has
-// always answered by flushing and exiting.
-func TestAnEngineTooOldToBeAskedIsReplacedThroughItsPid(t *testing.T) {
+// THE BUILD THAT TRAPPED SOMEBODY FOR REAL cannot be asked anything at all: it
+// says nothing about what it holds or what it is doing. It used to be signalled
+// through the pid on its socket, which is a turn somebody may have been watching
+// ended by a rebuild. It is refused in words now — and the words are true,
+// because the one thing that still ends it is a person typing the stop, which is
+// the same test's second half.
+func TestAnEngineTooOldToBeAskedIsRefusedAndTheExplicitStopStillEndsIt(t *testing.T) {
 	shortEngineHome(t)
 	workspace := "/home/somebody/api"
 	if _, err := enginehost.Dir(workspace); err != nil {
@@ -454,17 +735,32 @@ func TestAnEngineTooOldToBeAskedIsReplacedThroughItsPid(t *testing.T) {
 		t.Fatalf("status of a too-old engine: %+v, %v — want unanswered, pid %d", held, err, pid)
 	}
 
-	note, err := clearStaleEngineHost(workspace)
-	if err != nil {
-		t.Fatalf("a too-old engine was refused rather than replaced: %v", err)
+	_, err = clearStaleEngineHost(workspace)
+	var stale *staleHost
+	if !errors.As(err, &stale) {
+		t.Fatalf("a too-old engine answered %v, want a refusal in words", err)
 	}
-	if !strings.Contains(note, "replaced the older engine") || !strings.Contains(note, fmt.Sprintf("pid %d", pid)) {
-		t.Fatalf("the takeover line did not name the process it replaced: %q", note)
+	for _, want := range []string{"cannot say what it is", "engine --stop", "--workspace " + shellQuote(workspace)} {
+		if !strings.Contains(stale.reason, want) {
+			t.Fatalf("the refusal %q does not say %q", stale.reason, want)
+		}
+	}
+	select {
+	case <-exited:
+		t.Fatal("a too-old engine was ended without being asked")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	// AND THE EXPLICIT STOP IS UNCHANGED: the pid road is still there for the
+	// one caller a person is. `codeaf engine --stop` is [enginehost.Stop].
+	stopped, err := enginehost.Stop(workspace)
+	if err != nil || !stopped {
+		t.Fatalf("the explicit stop answered %v, %v — want the host ended", stopped, err)
 	}
 	select {
 	case <-exited:
 	case <-time.After(10 * time.Second):
-		t.Fatal("the old engine was not ended")
+		t.Fatal("the explicit stop did not end the old engine")
 	}
 }
 

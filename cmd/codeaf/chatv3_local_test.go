@@ -693,7 +693,7 @@ func TestALongStatePathIsSaidInWordsAndNotInTheEnginesOwn(t *testing.T) {
 			t.Fatalf("the %s speaks in machinery words: %q", name, said)
 		}
 	}
-	written := busyEngineHostSentence(true)
+	written := busyEngineHostSentence("/home/somebody/api", true)
 	if got := hostFallbackReason(errors.New(written)); got != written {
 		t.Fatalf("a sentence already written for a person became %q, want %q", got, written)
 	}

@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -60,10 +61,20 @@ var ErrHostRunning = errors.New("engine host: another host already holds this wo
 // writes it.
 var sessionIdle = 30 * time.Minute
 
-const (
-	hostIdle   = 2 * time.Minute
-	sweepEvery = 30 * time.Second
-)
+const hostIdle = 2 * time.Minute
+
+// sweepEvery is how often the policy above looks: a product's half-minute, or a
+// test's override, since a test watching a host take its quiet moment should not
+// wait out a clock. It is atomic because one test sets it while another test's
+// host may still be starting its own ticker; nothing in the product writes it.
+var sweepEvery atomic.Int64
+
+func sweepSpan() time.Duration {
+	if span := time.Duration(sweepEvery.Load()); span > 0 {
+		return span
+	}
+	return 30 * time.Second
+}
 
 // The two numbers a stand-down is measured in.
 //
@@ -149,6 +160,10 @@ type Host struct {
 	// closes the door on new conversations, because a conversation opened into
 	// a process that is leaving is one the person watches vanish.
 	retiring bool
+	// wanted is a newer build asking for this slot without asking anybody to
+	// stop: the host keeps its work and retires at its first quiet moment
+	// ([Host.sweepOnce]) rather than waiting out the idle policy.
+	wanted bool
 	// quiet is when the host last had nothing to do, and zero while it has
 	// something. It is what [hostIdle] is measured against.
 	quiet  time.Time
@@ -503,6 +518,13 @@ func (h *Host) whois(ask remote.WhoIs) remote.HostSelf {
 	// anything is measured, so that the measurement is right.
 	h.probes++
 	self := remote.HostSelf{Workspace: h.workspace, Busy: !h.idleWithWatchGraceLocked(ask.StandDown && ask.IgnoreWatchGrace)}
+	// Recorded under the lock that is about to measure whether this host may
+	// go. It is a note and never a verdict: nothing about the work in flight
+	// changes, and the answer acknowledges it so the asker can tell this host
+	// apart from one too old to have heard of it.
+	if ask.StandDownWhenIdle {
+		h.wanted, self.StandDownWhenIdle = true, true
+	}
 	// AND WHAT THIS PROCESS IS, for `codeaf engine --status` and for the door
 	// deciding which of two builds is the older one. The counts are read under
 	// the same lock as busy, so the three never disagree with each other.
@@ -590,7 +612,7 @@ func (h *Host) standDown() {
 // sweep is the idle policy, run on a clock: retire the conversations nobody
 // wants any more, and then retire the host when there is nothing left to hold.
 func (h *Host) sweep() {
-	ticker := time.NewTicker(sweepEvery)
+	ticker := time.NewTicker(sweepSpan())
 	defer ticker.Stop()
 	for {
 		select {
@@ -648,7 +670,18 @@ func (h *Host) sweepOnce() bool {
 	leaving := h.live == 0 && len(h.sessions) == 0 &&
 		!h.quiet.IsZero() && time.Since(h.quiet) > hostIdle
 	replaced := !leaving && h.binary.replaced() && h.idleLocked()
-	if replaced {
+	// THE QUIET MOMENT A NEWER BUILD ASKED FOR, decided under the same lock the
+	// retirement is set under — so a conversation that arrived since the note
+	// keeps this host alive as surely as it keeps it from being asked to go.
+	//
+	// It ignores the watch grace, as an environment replacement does
+	// ([remote.WhoIs.IgnoreWatchGrace]): that grace covers a stalled window
+	// about to redial, and a redial is what this swap is safe under, because
+	// the client at the other end is whatever binary is on disk now. Nothing
+	// real is ignored — a surface, a turn, a waiting question, handed-off
+	// work each still holds this host.
+	waited := !leaving && !replaced && h.wanted && h.idleWithWatchGraceLocked(true)
+	if replaced || waited {
 		// The door closes under the same lock that decided, so a surface
 		// arriving in the moment between here and the stop is refused rather
 		// than handed a conversation that is about to end.
@@ -658,6 +691,9 @@ func (h *Host) sweepOnce() bool {
 
 	if replaced {
 		h.note("the file this host was started from has been replaced; retiring so the next connection starts the current one")
+	}
+	if waited {
+		h.note("a newer codeaf asked for this workspace; it is holding nothing now, so the next connection starts from the current build")
 	}
 	return leaving
 }
