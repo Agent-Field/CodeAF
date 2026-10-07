@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: a store written before memory owners existed opens again on the next launch
-pr: 0000
+pr: 1787
 surface: [chat, engine]
 invalidates:
   - "The memories schema ordered the owner index before the owner column existed, so opening any database written by an earlier release died with `initialize memories schema: no such column: owner` and the launch carried on with no brain. The index is now created beside the column by the owner migration, on a legacy store and a brand new one alike."
