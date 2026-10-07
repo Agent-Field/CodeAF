@@ -103,6 +103,17 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	}
 	rows = append(rows, placeRow{})
+	if s.edit != nil {
+		rows = append(rows, placeRow{text: "  " + pal.dim(fit(s.edit.label, max(1, width-4)))})
+		block, _, _ := s.editBlock(width, pal)
+		for _, line := range block {
+			rows = append(rows, placeRow{text: " " + line})
+		}
+		for len(rows) < room {
+			rows = append(rows, placeRow{})
+		}
+		return rows
+	}
 	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
 		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search all settings", "")
 		for _, line := range filter {
@@ -347,7 +358,15 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 	content := func(text string) string { return ansi.Strip(ansi.Cut(text, offset, offset+width)) }
 	if entry == nil {
 		if a.sheet.edit != nil {
-			return 0, 0, false
+			block, column, at := a.sheet.editBlock(width, a.pal)
+			if at >= 0 && at < len(block) {
+				for j, row := range rows {
+					if content(row.text) == ansi.Strip(" "+block[at]) {
+						return j, column + 1, true
+					}
+				}
+			}
+			return -1, 0, true
 		}
 		box, placeholder := &a.sheet.query, "Search all settings"
 		if a.sheet.sel != nil {
@@ -387,4 +406,18 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 	// rather than parked in the resting search box, which is not the box the
 	// person is typing into.
 	return -1, 0, true
+}
+
+// editBlock is the one rendering of an editable setting and its caret. Secret
+// text is masked in a copy, so neither drawing nor cursor movement exposes it.
+func (s *sheet) editBlock(width int, pal palette) ([]string, int, int) {
+	box := s.edit.box
+	if s.edit.secret {
+		mask := "•"
+		if pal.ascii {
+			mask = "*"
+		}
+		box.value = []rune(strings.Repeat(mask, len(box.value)))
+	}
+	return draftBlock(&box, pal, max(1, width-2), 3, "Enter value", "")
 }

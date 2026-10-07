@@ -264,3 +264,39 @@ func TestSettingsOrganizationInvalidEditKeepsDraft(t *testing.T) {
 		t.Fatal("Escape did not cancel draft cleanly")
 	}
 }
+
+func TestSettingsOrganizationRenderedEditorDraftAndCaret(t *testing.T) {
+	for _, width := range []int{80, 120} {
+		t.Run(string(rune(width)), func(t *testing.T) {
+			a, _ := sheetApp(t)
+			a.width, a.height = width, 30
+			a.openSettings()
+			cursorTo(t, a, config.KeyTaskParallel)
+			a.activate()
+			a.sheet.edit.box.setText("not-a-number")
+			a.sheetEditKey(key("enter"))
+			lines, _, x, y := a.sheetFrame(a.width, a.height)
+			if !a.caret || y < 0 || y >= len(lines) || !strings.Contains(plain(lines[y]), "not-a-number") || x <= 2 {
+				t.Fatalf("draft or caret absent at %d: %d,%d\n%s", width, x, y, plain(strings.Join(lines, "\n")))
+			}
+			a.sheet.edit.box.setText("3")
+			lines, _, _, y = a.sheetFrame(a.width, a.height)
+			if !strings.Contains(plain(lines[y]), "3") {
+				t.Fatal("corrected draft is invisible")
+			}
+			a.sheetEditKey(key("esc"))
+			cursorTo(t, a, config.KeyExaKey)
+			a.activate()
+			a.sheet.edit.box.setText("exa-private-value")
+			lines, _, end, y := a.sheetFrame(a.width, a.height)
+			if strings.Contains(plain(strings.Join(lines, "\n")), "exa-private-value") {
+				t.Fatal("credential leaked in editor frame")
+			}
+			a.sheet.edit.box.left()
+			_, _, left, newY := a.sheetFrame(a.width, a.height)
+			if !a.caret || y != newY || left >= end {
+				t.Fatal("masked editor caret does not follow cursor movement")
+			}
+		})
+	}
+}
