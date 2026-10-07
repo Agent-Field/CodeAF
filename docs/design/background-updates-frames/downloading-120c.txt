@@ -1,11 +1,11 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:07am
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:36am
 
    +
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
                                                                                           │ Tasks 0                alt+l
-    · resumed ~/v3/projects/-tmp-codeaf-update-drive.BPWtpZ-work-                         │ + /task
-      project/da0b5f30d42af71c/transcript.jsonl                                           │
+    · resumed ~/v3/projects/-tmp-codeaf-update-drive.YtHivL-work-                         │ + /task
+      project/40ac74e307af5a1c/transcript.jsonl                                           │
     · esc interrupts · ctrl+c quits · ? for help                                          │ + /standing
     · updating codeaf in the background · this session keeps running                      │
     · fixture · codeaf update states · CODEAF_UPDATE_DEMO=downloading · no network,       │

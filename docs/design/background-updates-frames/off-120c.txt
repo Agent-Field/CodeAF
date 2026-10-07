@@ -1,11 +1,11 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:07am
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:36am
 
    +
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
                                                                                           │ Tasks 0                alt+l
-    · resumed ~/v3/projects/-tmp-codeaf-update-drive.BPWtpZ-work-                         │ + /task
-      project/2092e8222d70aa5b/transcript.jsonl                                           │
+    · resumed ~/v3/projects/-tmp-codeaf-update-drive.YtHivL-work-                         │ + /task
+      project/eca78e9f47048bf6/transcript.jsonl                                           │
     · esc interrupts · ctrl+c quits · ? for help                                          │ + /standing
     · codeaf v0.9.3 is out · you have v0.9.2 · /update installs it for the next launch    │
     · fixture · codeaf update states · CODEAF_UPDATE_DEMO=off · no network, nothing       │

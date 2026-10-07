@@ -53,8 +53,8 @@ is out; the build holding this session is the one `/status` reports (its `build`
 row), and the note the offer writes names both (`codeaf <new> is out · you
 have <current>`). An install only replaces the file: nothing about the running
 session changes, and the new build is what opens the next time codeaf is started
-— so a window can be current and behind its channel at the same time, on
-purpose. The automatic road moves forward only: a duplicate is a quiet no-op, an
+— so a newly opened app can be up to date while its shared engine finishes work
+on an older build. The automatic road moves forward only: a duplicate is a quiet no-op, an
 older build is refused unless a person names the tag, and two same-day dev or
 staging builds whose published moment is not known are refused rather than
 guessed at. With `update.auto` off the launch check still runs and says the same

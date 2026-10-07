@@ -1,11 +1,11 @@
- >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:07am
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:36am
 
    ◐ tighten the retry loop in the sync client ×   +   ▦ All
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
                                                                                           │ Tasks 0                alt+l
-    · resumed ~/v3/projects/-tmp-codeaf-update-drive.BPWtpZ-work-                         │ + /task
-      project/8c7285c6057fd684/transcript.jsonl                                           │
+    · resumed ~/v3/projects/-tmp-codeaf-update-drive.YtHivL-work-                         │ + /task
+      project/da72b3aea7f2b4f4/transcript.jsonl                                           │
     · esc interrupts · ctrl+c quits · ? for help                                          │ + /standing
                                                                                           │
   › tighten the retry loop in the sync client                                             │
