@@ -61,3 +61,16 @@ mouse events to Save and Cancel and asserts the stored profile values.
 
 Full acceptance for the final source and refreshed gallery is recorded in the
 PR with its exact revision and fleet job; no local full suite was run.
+
+## Chat settings integration
+
+Chat tools now use the presentation metadata and shared choice labels. Focused
+tool tests verify new and legacy search names, exact accepted values, real
+registry writes/readback, persisted hints/work/memory values, protected/invalid
+write preservation, hidden controls and restart/project-override receipts.
+
+Spark `20261007-204140-001865-settings-live-ui` passed the live interface refresh
+regressions and related choice/hints/word tests. Full acceptance for the final
+revision, including the affected session package, is recorded in the draft PR.
+These are direct tool and runtime-boundary tests, not a claim that a live model
+conversation was used for this validation.

@@ -4,6 +4,7 @@ title: Clear settings categories and AI team navigation without resetting prefer
 pr: 1792
 surface: [chat, engine, docs]
 invalidates:
+  - "Chat settings tools now discover the same names and categories as the panel, explain legacy value mappings and restart requirements, and leave resident-only controls out of ordinary chat discovery. Interface preferences refresh after panel writes and at chat turn completion."
   - "Choice settings no longer silently cycle on activation. They show the saved selection and alternatives before committing; number and text fields keep clickable Save/Cancel and validation beside the draft."
   - "Chat settings used ten mixed tabs. Nine purpose-based categories now use a sidebar in wide terminals, a compact bar in narrow ones, searchable advanced controls and service options."
   - "Teams could imply human collaboration and Sessions obscured delegated work. The navigation now says AI teams and Activity, keeps Memory visible and preserves numbered shortcuts, typed aliases and saved visit keys."

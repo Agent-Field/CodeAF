@@ -15,7 +15,7 @@ A settings page should answer four questions together: what this changes, what i
 
 ## Compatibility and architecture
 
-`Setting.ChatPresentation()` supplies chat-only categories, labels, descriptions, aliases, scope and activation timing. The existing registry remains the source of validators, writers and saved values. The UI value adapter changes readings without migrating configuration. Existing profiles retain their keys, values, unknown fields and defaults; opening settings writes nothing.
+`Setting.ChatPresentation()` supplies categories, labels, descriptions, aliases, scope and activation timing to both the TUI and the chat settings tools. `config.ChatChoiceLabel` shares readable choice names while preserving raw registry values. The existing registry remains the source of validators, writers and saved values. The UI value adapter changes readings without migrating configuration. Existing profiles retain their keys, values, unknown fields and defaults; opening settings writes nothing.
 
 The shared settings surface combines registry controls with live connection and model-account catalogs. It uses the existing editors, provider picker, memory view and crew panel. Moving a setting does not create another settings store. Document-reader selection now reaches the v3 session configuration, closing a consumer wiring gap found during the audit.
 
@@ -170,3 +170,15 @@ The refreshed interaction captures show the real CLI after the editing pass:
 The capture checks that opening, previewing and cancelling do not write, a selected
 choice survives reopening, clicking Cancel preserves the old count, clicking Save
 persists 4, and invalid input leaves the stored value unchanged.
+
+## Settings through chat
+
+The chat can discover preferences with the same names as the TUI, read accepted
+values, and write supported preferences through the same registry. Tests exercise
+read → write → read for hiding/showing hints, expanded/collapsed tool details,
+and memory preferences, checking the persisted profile and restart receipts.
+
+The tool lists exact raw values beside readable choices, including the legacy
+inverse hints row. Invalid values, protected controls and hidden resident-only
+controls leave the profile unchanged. Interface preferences refresh immediately
+after a panel save and at chat turn completion.

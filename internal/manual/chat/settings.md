@@ -27,6 +27,34 @@ Saved. Remote AI team defaults wait for the host's acknowledgement; after Save
 has been sent, the editor says Saving and offers Close. Closing that editor does
 not undo the write already in progress.
 
+## Change settings by asking in chat
+
+You can ask codeaf to change supported preferences: “hide hints,” “expand completed
+tool details,” “turn timestamps off,” or “remember across chats.” It reads the
+`settings` tool first, then uses `change_setting` to save the requested value
+through the same registry as the panel. If these tools are not loaded, codeaf
+loads the `settings` capability group. It does not need to edit config files.
+
+Chat discovery uses the same categories and names as the panel, including old
+names as aliases. Tool details pair readable choices with the exact values to
+write; those raw values can differ from their labels. In particular, the legacy
+`ui.hints` row means **disable hints** to the registry, so its raw `on` hides tips
+and raw `off` shows them. codeaf should follow the returned mapping, not guess
+from the positive “show hints” label.
+
+Saved preferences appear when Settings is opened again. Interface preferences
+changed by chat refresh when the turn finishes; changes made directly in Settings
+refresh the interface immediately. Startup-only settings still need the CLI
+restart stated in their receipt. Saving memory preferences does not reopen a
+memory store already held by a running chat.
+
+Some controls remain yours to change in Settings: approvals, spending limits,
+task concurrency, review safeguards and credentials. Task workers do not have
+the settings tools. A refusal should be explained rather than bypassed with a
+file edit. Over `--host`, the chat changes its host's profile; the local Settings
+panel and remote AI team defaults retain the machine boundaries described in
+the commands manual.
+
 ## Did the update reset my settings — old profiles and existing preferences
 
 No configuration migration is needed for the new categories. Existing profile

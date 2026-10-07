@@ -6580,13 +6580,7 @@ func (a *app) settle() tea.Cmd {
 	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
 	a.col.open()
 	a.approval = a.approvalPosture()
-	a.mouse = config.MouseEnabledAt(a.profileDir)
-	a.timestamps = config.TimestampsAt(a.profileDir)
-	a.workMode = config.WorkAt(a.profileDir)
-	a.adoptIcons()
-	a.hopQuick = config.QuickSwitchAt(a.profileDir)
-	a.askWait = a.consentWait()
-	a.notices.enabled = config.HintsAt(a.profileDir)
+	a.refreshProfileUI()
 	// AND THE ANSWER HAS JUST ARRIVED, which is when somebody starts reading
 	// it: the conversation's tip waits its quiet out from here (notice.go).
 	a.stirred()

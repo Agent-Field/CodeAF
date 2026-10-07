@@ -2733,14 +2733,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 		a.sheet.msg = err.Error()
 		return false
 	}
-	if item.row.Key == config.KeyWork {
-		a.workMode = config.WorkAt(a.profileDir)
-		a.touch()
-	}
-	if item.row.Key == config.KeyIcons {
-		a.adoptIcons()
-		a.touch()
-	}
+	a.refreshProfileUI()
 	// THE TWO LANE ROWS LAND ON THE LIVE TRANSPORT, not at the next launch.
 	// They are the panel's half of what the picker does when somebody pins from
 	// it (lanes.go's laneRowChanged): a settings row that a person watched
@@ -3697,13 +3690,7 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// beside the default, rather than spelled again by every surface that draws
 	// a number ([config.Setting.Reading]).
 	value := settingValueWord(item.row)
-	if item.row.Key == config.KeyHints {
-		if item.row.Value() == "on" {
-			value = "off"
-		} else {
-			value = "on"
-		}
-	}
+
 	if hosted, ok := s.hostedTeamReading(item); ok {
 		value = hosted
 	}
