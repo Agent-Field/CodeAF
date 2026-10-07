@@ -10,7 +10,8 @@ Enter changes it. The pointer can select the same controls.
 
 Type to search across categories, including advanced controls and connection
 services. Old setting names and configuration keys remain searchable. Clear the
-query to return to browsing. Each category keeps uncommon controls behind
+query to return to browsing; Escape clears it first, then closes settings. Model
+pickers have their own **Filter models** box. Each category keeps uncommon controls behind
 `Advanced`; search can find them without opening that section first.
 
 Selected-row help explains the setting. Scope and activation details appear
@@ -31,6 +32,14 @@ resident: practice idle time, practice spending, arrival briefs and tenure.
 They are omitted here instead of suggesting that changing them teaches this chat.
 Their stored values remain intact. Internal model slots that this surface cannot
 change are omitted; supported model controls remain in Models.
+
+## General — interface preferences and hints
+
+**General** contains mouse interaction, completed tool details, tool icons, chat
+switching, the task sidebar, updates and background reminders. **Show hints** is
+positive: on shows contextual tips, off hides them. Keyboard instructions and
+setting explanations stay visible either way. **Completed tool details** offers
+**collapsed** or **expanded** without changing the meaning of an existing profile.
 
 ## AI teams settings versus an individual AI team
 
@@ -63,8 +72,19 @@ expires and keeps waiting; it does not silently approve a tool.
 
 The proposed-task start timer has a different consequence: it starts the proposed
 work when it expires. Read each control's consequence before changing its duration.
-**Tasks** contains task planning, review, repair and concurrency; machine resource
-limits are advanced controls. A one-off task does not require an AI team.
+**Tasks** contains scope assessment, review, repair and concurrency; machine
+resource limits are advanced controls. A one-off task does not require an AI team.
+**Task scope assessment** offers **assess while working** or **skip assessment**.
+Both start work immediately; assessment helps identify work to delegate.
+
+**Concurrent tasks: no limit** means no user-set count cap, not disabled tasks.
+A positive whole number caps simultaneous tasks, with the rest queued. Blank
+restores no limit. CPU, available memory and provider limits can still hold new
+work. Invalid input stays in the editor and does not change the saved preference.
+The current engine reads the count cap at startup: restart the CLI to apply a
+changed cap to already-open chats. Changing this preference does not stop a
+running task. An unset task model follows the configured worker, falling back to
+the current chat model when no worker model is set.
 
 ## Connect a service, change models or manage privacy
 
@@ -75,11 +95,10 @@ Ordinary account connection does not require you to create your own OAuth app.
 routing, internal role overrides and context limits.
 
 **Privacy** separates input history, unfinished drafts, anonymous usage reporting
-and Model Pool participation. Disabling one is not a promise that all the others
-are disabled. Search accepts the old labels as well as the new organization.
+and **shared model recommendations** (formerly Model Pool). Recommendations can
+**use and contribute**, **use only**, or remain **off**. Disabling one privacy
+control is not a promise that all the others are disabled. Search accepts old
+labels as well as the new organization.
 
-Search stays visible above the settings list and searches every category, including Advanced controls and connected apps. Model pickers have their own **Filter models** box. Escape clears a settings search first; another Escape closes settings. Hints stay under General as **show hints**: on shows contextual tips, off hides them. Keyboard instructions and setting explanations remain visible either way.
-
-Display choices use plain language while existing configuration values keep their meaning. For example, **task scope assessment** offers **assess while working** or **skip assessment**; **completed tool details** offers **collapsed** or **expanded**. **Shared model recommendations** can **use and contribute**, **use only**, or remain **off**.
-
-Resident-only practice controls remain in the resident configuration. They do not appear in chat settings, and `/budget practice` cannot edit them from chat.
+Resident-only practice controls remain in resident configuration. They do not
+appear in chat settings, and `/budget practice` cannot edit them from chat.
