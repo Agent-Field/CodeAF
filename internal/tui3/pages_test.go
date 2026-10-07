@@ -178,7 +178,7 @@ func TestEveryPlaceOpensOnAnEmptyMachine(t *testing.T) {
 		if lines := strings.Split(text, "\n"); len(lines) != a.height {
 			t.Fatalf("the empty %s place drew %d rows into %d", id.word(), len(lines), a.height)
 		}
-		if !strings.Contains(text, id.word()) {
+		if !strings.Contains(text, navLabel(id)) {
 			t.Fatalf("the empty %s place does not draw its own tab:\n%s", id.word(), text)
 		}
 	}
@@ -232,7 +232,7 @@ func TestTheNavFoldsRatherThanBeingCut(t *testing.T) {
 	shown := barPages(a.page, false)
 	wide := navPlaces(a, 160, false)
 	for _, id := range shown {
-		if !strings.Contains(wide, id.word()) {
+		if !strings.Contains(wide, navLabel(id)) {
 			t.Fatalf("the wide nav is missing %q: %q", id.word(), wide)
 		}
 	}
@@ -242,12 +242,12 @@ func TestTheNavFoldsRatherThanBeingCut(t *testing.T) {
 	}
 	// AND WHAT SURVIVES IS THE PLACE YOU ARE STANDING IN. Everything else is
 	// something you can still reach; this is the one fact the row exists for.
-	if !strings.Contains(narrow, a.page.word()) {
+	if !strings.Contains(narrow, navLabel(a.page)) {
 		t.Fatalf("the narrow nav dropped the place you are on: %q", narrow)
 	}
 	missing := 0
 	for _, id := range shown {
-		if !strings.Contains(narrow, id.word()) {
+		if !strings.Contains(narrow, navLabel(id)) {
 			missing++
 			if !pagesHold(a.navMore.folded, id) {
 				t.Fatalf("%q left the narrow nav and is not behind `more`: %q", id.word(), narrow)

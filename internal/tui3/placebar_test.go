@@ -298,7 +298,7 @@ func TestHoveringATabWordLiftsItsInkAndNothingElse(t *testing.T) {
 		t.Fatalf("the frame changed height under a pointer: %d rows became %d", len(beforeRows), len(afterRows))
 	}
 	hint := len(afterRows) - 1
-	if got := plain(afterRows[hint]); !strings.Contains(got, placeChord(pageSettings)+" settings") || !strings.Contains(got, placeFor(pageSettings).about()) {
+	if got := plain(afterRows[hint]); !strings.Contains(got, placeChord(pageSettings)+" "+navLabel(pageSettings)) || !strings.Contains(got, placeFor(pageSettings).about()) {
 		t.Fatalf("the hint line does not say what the hovered word opens: %q", got)
 	}
 	for at := range beforeRows {
