@@ -98,7 +98,11 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	// (PLACES-AUDIT.md finding 11); the filled chip and one blank row are the
 	// whole of what separates the bar from the rows.
 	if sidebar {
-		rows = append(rows, placeRow{text: "  " + placeHeading(settingTabs[s.tab], pal)})
+		heading := settingTabs[s.tab]
+		if s.searching() {
+			heading = "Search results"
+		}
+		rows = append(rows, placeRow{text: "  " + placeHeading(heading, pal)})
 	} else {
 		rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	}
@@ -125,7 +129,7 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		room = 1
 	}
 	if s.sel != nil {
-		filter, _, _ := draftBlock(&s.sel.pick.filter, pal, width-2, 1, "type to filter", "")
+		filter, _, _ := draftBlock(&s.sel.pick.filter, pal, width-2, 1, "Filter models", "")
 		for _, line := range filter {
 			rows = append(rows, placeRow{text: " " + line})
 		}
@@ -370,7 +374,7 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 		}
 		box, placeholder := &a.sheet.query, "Search all settings"
 		if a.sheet.sel != nil {
-			box, placeholder = &a.sheet.sel.pick.filter, "type to filter"
+			box, placeholder = &a.sheet.sel.pick.filter, "Filter models"
 		}
 		block, column, at := draftBlock(box, a.pal, width-2, 1, placeholder, "")
 		if at >= 0 && at < len(block) {

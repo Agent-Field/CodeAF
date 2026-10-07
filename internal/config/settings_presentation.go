@@ -56,6 +56,7 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Label = "mouse interaction"
 	case KeyWork:
 		p.Label = "completed tool details"
+		p.Description = "Collapsed keeps completed tool steps behind one summary. Expanded keeps those details visible."
 	case KeyIcons:
 		p.Label = "tool icons"
 	case KeyTaskColumn:
@@ -74,11 +75,13 @@ func (s Setting) ChatPresentation() SettingPresentation {
 	case KeyTelemetry:
 		p.Category, p.Label = "Privacy", "share anonymous usage reports"
 	case KeyModelPool:
-		p.Category, p.Label = "Privacy", "model pool participation"
+		p.Category, p.Label = "Privacy", "shared model recommendations"
+		p.Description = "Use and contribute receives model recommendations and shares text-free performance measurements. Use only sends nothing. Off does neither. Code, prompts and file paths are never included."
 	case KeyModelPoolPublicKey:
 		p.Category, p.Label, p.Advanced = "Privacy", "model pool signing key", true
 	case KeyToolApprovalMode:
 		p.Label = "tool approvals"
+		p.Description = "Allow by default runs tools without asking. Ask each time requests approval. Block by default refuses tools. Tool exceptions override this choice; dangerous shell commands still require approval."
 	case KeyToolApprovals:
 		p.Label = "tool exceptions"
 	case KeyGuardian:
@@ -91,8 +94,10 @@ func (s Setting) ChatPresentation() SettingPresentation {
 		p.Category, p.Label = "Permissions", "start proposed tasks after"
 	case KeyTaskSettle:
 		p.Category, p.Label = "Tasks", "when task results need a decision"
+		p.Description = "Ask me leaves the decision with you. Let the chat decide reviews the work and asks you only when it cannot decide."
 	case KeyTaskStart:
-		p.Label = "task planning"
+		p.Label = "before starting a task"
+		p.Description = "Assess the brief checks its scope before starting a worker. Start directly skips that check. Either choice starts one worker; /task solo explicitly requests solo work."
 	case KeyTaskAudit:
 		p.Label = "review task results"
 	case KeyTaskRepairRounds:

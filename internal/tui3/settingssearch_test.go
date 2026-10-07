@@ -132,9 +132,9 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 	cursorTo(t, a, config.KeyToolApprovalMode)
 	drive(t, a, key("enter")) // allow -> deny
 	drive(t, a, key("enter")) // deny -> prompt
-	typeQuery(t, a, "ask")
+	typeQuery(t, a, "tool")
 	// The approval row, kept by the search, and where the query landed on it:
-	// the label's own head, because "ask" is the word the row's name begins
+	// the label's own head, because "tool" is the word the row's name begins
 	// with — and not its middle, and not a whole word either.
 	at := -1
 	for i, item := range a.sheet.items {
@@ -144,7 +144,7 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 		}
 	}
 	if at < 0 {
-		t.Fatalf("\"ask\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
+		t.Fatalf("\"tool\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 	// Walk the cursor off the row: the cursor's row is bold whole already, and
 	// this test is about the resting rows a person scans down.
@@ -155,15 +155,15 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 		t.Fatal("the cursor never left the approval row")
 	}
 	hit := a.sheet.itemHit(a.sheet.items[at])
-	if len(hit) != 3 || hit[0] != 0 || hit[1] != 1 || hit[2] != 2 {
-		t.Fatalf("the approval row's label hit is %v; want its first three bytes, 0 1 2", hit)
+	if len(hit) != 4 || hit[0] != 0 || hit[1] != 1 || hit[2] != 2 || hit[3] != 3 {
+		t.Fatalf("the approval row's label hit is %v; want its first four bytes, 0 1 2 3", hit)
 	}
 	lines, _ := a.sheet.listLines(a.width, a.height, a.pal, -1)
 	// THE EMPHASIS IS EXACTLY THE MATCHED BYTES: bold over the row's own dim
-	// for "ask", plain dim after it — the whole label spelled out, so a bold
+	// for "tool", plain dim after it — the whole label spelled out, so a bold
 	// run that bled past the match, or one that skipped a matched byte, does
 	// not contain this string.
-	want := a.pal.bold(a.pal.dim("ask")) + a.pal.dim(" before running")
+	want := a.pal.bold(a.pal.dim("tool")) + a.pal.dim(" approvals")
 	found := false
 	for _, line := range lines {
 		if strings.Contains(line, want) {
@@ -176,7 +176,7 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 	}
 	// AND THE MATCH IS ON THE FIELD IT WON AND NOWHERE ELSE: "prompt" is
 	// the approval row's own VALUE — the word the gate carries — and a query
-	// of both words keeps the row with "ask" on its label and nothing else:
+	// of both words keeps the row with "tool" on its label and nothing else:
 	// the span names exactly the bytes of the term that won the label, and a
 	// term that won the value contributes no emphasis to a field it did not.
 	typeQuery(t, a, " prompt")
@@ -188,10 +188,10 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 		}
 	}
 	if at < 0 {
-		t.Fatalf("\"ask prompt\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
+		t.Fatalf("\"tool prompt\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
-	if hit := a.sheet.itemHit(a.sheet.items[at]); !reflect.DeepEqual(hit, []int{0, 1, 2}) {
-		t.Fatalf("\"ask prompt\" carried %v on the approval row's label; want exactly \"ask\"'s three bytes — the value's word stays on the value", hit)
+	if hit := a.sheet.itemHit(a.sheet.items[at]); !reflect.DeepEqual(hit, []int{0, 1, 2, 3}) {
+		t.Fatalf("\"tool prompt\" carried %v on the approval row's label; want exactly \"tool\"'s four bytes — the value's word stays on the value", hit)
 	}
 }
 

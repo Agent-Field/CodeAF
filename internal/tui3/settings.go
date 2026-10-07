@@ -850,7 +850,11 @@ func (s *sheet) finishCategory() {
 	}
 	advanced := make([]sheetItem, 0)
 	catalog := make([]sheetItem, 0)
-	for _, item := range s.items {
+	for at, item := range s.items {
+		if title == tabConnections && item.heading() && at+1 < len(s.items) && s.items[at+1].service != nil {
+			shown = append(shown, item)
+			continue
+		}
 		if title == tabConnections && (item.conn != nil || item.heading()) {
 			catalog = append(catalog, item)
 			continue
@@ -858,7 +862,7 @@ func (s *sheet) finishCategory() {
 		if item.row.Key != "" && item.row.ChatPresentation().Hidden {
 			continue
 		}
-		if item.row.ChatPresentation().Advanced || item.role != nil || item.autonomy != nil || item.crewDoor {
+		if item.heading() || item.row.ChatPresentation().Advanced || item.role != nil || item.autonomy != nil || item.crewDoor {
 			advanced = append(advanced, item)
 		} else if !item.heading() || title == tabConnections {
 			shown = append(shown, item)
@@ -1403,6 +1407,43 @@ func (s *sheet) searching() bool { return strings.TrimSpace(s.query.String()) !=
 // THE FIRST MATCH: a person who typed three letters and found the thing has
 // already been told which tab it lives on, so backing the search out leaves
 // them there instead of back where they started.
+// appendModelConnections keeps provider management available beside its API key
+// after the category move, using the same actions as the connection picker.
+func (s *sheet) appendModelConnections() {
+	if s.sources.Empty() {
+		return
+	}
+	// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services
+	// head, no connection row, no switcher (the emptiness test pins the
+	// absence of the section), because a row that could do nothing is
+	// decoration. The add row is an action, not decoration — a profile with
+	// no custom connection yet is the one that needs the door — so it stands
+	// alone when no service row stands beside it (customAddRow).
+	// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no
+	// providers head, no default row, no connection rows — a row
+	// that could do nothing is decoration, and the add row stands
+	// alone when no service row stands beside it (the emptiness law).
+	services := modelServiceRows(s.profileDir, s.sources)
+	if len(services) > 0 {
+		s.items = append(s.items, sheetItem{head: "providers"})
+		// THE DEFAULT PROVIDER LEADS: openrouter answers by default
+		// and is the row a person reads first.
+		if defaultRow := defaultServiceRow(s.profileDir, s.sources); defaultRow != nil {
+			s.items = append(s.items, sheetItem{service: defaultRow})
+		}
+		for _, service := range services {
+			s.items = append(s.items, sheetItem{service: service})
+		}
+		// THE SWITCHER RIDES BETWEEN THE CONNECTIONS AND THE DOOR:
+		// the add row is last, because the list reads as the
+		// providers you have, and the door to add another closes it.
+		if switcher := s.connectionSwitcherRow(); switcher != nil {
+			s.items = append(s.items, sheetItem{service: switcher})
+		}
+	}
+	s.items = append(s.items, sheetItem{service: customAddRow()})
+}
+
 func (s *sheet) build() {
 	s.items = s.items[:0]
 	// THE SEARCH'S SPAN STARTS EMPTY WITH THE LIST: every kept row's label
@@ -1425,6 +1466,9 @@ func (s *sheet) build() {
 		for _, row := range s.tabRows() {
 			meta, _ := s.metaFor(row)
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
+			if row.Key == config.KeyAPIKey {
+				s.appendModelConnections()
+			}
 		}
 		s.buildConnections()
 		s.finishCategory()
@@ -1463,37 +1507,10 @@ func (s *sheet) build() {
 				routingHeadDone = true
 			}
 			s.items = append(s.items, sheetItem{row: row, meta: meta})
-			if row.Key == config.KeyAPIKey && !s.sources.Empty() {
-				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no services
-				// head, no connection row, no switcher (the emptiness test pins the
-				// absence of the section), because a row that could do nothing is
-				// decoration. The add row is an action, not decoration — a profile with
-				// no custom connection yet is the one that needs the door — so it stands
-				// alone when no service row stands beside it (customAddRow).
-				// THE EMPTY PROFILE KEEPS THE DOOR AND DRAWS NOTHING ELSE: no
-				// providers head, no default row, no connection rows — a row
-				// that could do nothing is decoration, and the add row stands
-				// alone when no service row stands beside it (the emptiness law).
-				services := modelServiceRows(s.profileDir, s.sources)
-				if len(services) > 0 {
-					s.items = append(s.items, sheetItem{head: "providers"})
-					// THE DEFAULT PROVIDER LEADS: openrouter answers by default
-					// and is the row a person reads first.
-					if defaultRow := defaultServiceRow(s.profileDir, s.sources); defaultRow != nil {
-						s.items = append(s.items, sheetItem{service: defaultRow})
-					}
-					for _, service := range services {
-						s.items = append(s.items, sheetItem{service: service})
-					}
-					// THE SWITCHER RIDES BETWEEN THE CONNECTIONS AND THE DOOR:
-					// the add row is last, because the list reads as the
-					// providers you have, and the door to add another closes it.
-					if switcher := s.connectionSwitcherRow(); switcher != nil {
-						s.items = append(s.items, sheetItem{service: switcher})
-					}
-				}
-				s.items = append(s.items, sheetItem{service: customAddRow()})
+			if row.Key == config.KeyAPIKey {
+				s.appendModelConnections()
 			}
+
 			// THE ROLES SECTION HANGS OFF THE ROW IT WRITES. Every pin those rows
 			// set lands in "pinned roles" and nowhere else, so it is drawn
 			// directly under it: a person reading one is reading the other, and a
@@ -1730,6 +1747,7 @@ func (s *sheet) settingMatch(row config.Setting, meta settingMeta, tab string, t
 	fields[4] = tab
 	presentation := row.ChatPresentation()
 	fields = append(fields, presentation.Aliases...)
+	fields = append(fields, settingValueWord(row))
 	if old, ok := settingUI[row.Key]; ok {
 		fields = append(fields, old.label, old.tab)
 	}
@@ -3596,7 +3614,7 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// The unit is the registry's ([config.Setting.Unit]), so it is stated once,
 	// beside the default, rather than spelled again by every surface that draws
 	// a number ([config.Setting.Reading]).
-	value := item.row.Reading()
+	value := settingValueWord(item.row)
 	if item.row.Key == config.KeyHints {
 		if item.row.Value() == "on" {
 			value = "off"
@@ -3800,7 +3818,7 @@ func (s *sheet) footNote() string {
 func (s *sheet) keysLine() string {
 	switch {
 	case s.edit != nil:
-		return "enter save · empty clears · esc cancel"
+		return "enter save · esc cancel"
 	case s.sel != nil:
 		// THE LEGEND SAYS `→ providers` ONLY WHERE `→` OPENS THEM — on a row that
 		// has a provider row behind it. Offering the key on the drawing slot would
@@ -3827,9 +3845,16 @@ func (s *sheet) keysLine() string {
 		// says so on the row it works on and nowhere else — a line that offered
 		// del everywhere would be offering it on rows where it does nothing.
 		if item, ok := s.current(); ok && item.role != nil && item.role.pin != "" {
-			return "↑↓ move · enter pin · del unpin · type to search · esc close"
+			back := "esc close"
+			if s.searching() {
+				back = "esc clear search"
+			}
+			return "↑↓ move · enter pin · del unpin · type to search all · " + back
 		}
-		return "↑↓ settings · ←→ categories · enter change · type to search all · esc back"
+		if s.searching() {
+			return "↑↓ results · enter change · esc clear search"
+		}
+		return "↑↓ settings · ←→ categories · enter change · type to search all · esc close"
 	}
 }
 
