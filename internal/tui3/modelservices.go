@@ -1072,7 +1072,10 @@ func (a *app) moveConversationToConnectedModel(next string) {
 	}
 	was := a.model
 	a.switchModel(next, 0)
-	a.modelServiceFollowup(serviceMovedWord(was, next))
+	// A first connection has no previous model to name.
+	if strings.TrimSpace(was) != "" {
+		a.modelServiceFollowup(serviceMovedWord(was, next))
+	}
 }
 
 // applyDeferredModelServiceMove spends the one pending move only after the

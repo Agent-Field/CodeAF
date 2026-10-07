@@ -85,6 +85,7 @@ func TestOnboardingAnonymousCustomConnectsAndUsesItsListedModel(t *testing.T) {
 	defer backend.Close()
 	a, dir, _ := setupProviderApp(t, nil)
 	a.sources = modelsource.NewSet(testDefaultService(""))
+	a.model = ""
 	a.serviceModelRefresh = func(_ context.Context, _ modelsource.Connected, seed []Model) ([]Model, error) { return seed, nil }
 	a.selectSetupProvider("custom")
 	a.setupPaste(backend.URL + "/v1")
@@ -111,6 +112,11 @@ func TestOnboardingAnonymousCustomConnectsAndUsesItsListedModel(t *testing.T) {
 	source, ok := config.ResolveSources(dir, "", config.DefaultBaseURL).ByID("custom")
 	if !ok || !source.HasCredentials() || !source.Source.KeyOptional {
 		t.Fatal("anonymous connection was not saved")
+	}
+	for _, entry := range a.entries {
+		if strings.Contains(entry.text, "this conversation was on  ·") {
+			t.Fatal("first connection invented an empty previous model")
+		}
 	}
 	if got := a.modelList(); len(got) != 2 {
 		t.Fatalf("listed models: %#v", got)
