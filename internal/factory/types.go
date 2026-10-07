@@ -255,6 +255,7 @@ type Snapshot struct {
 	Rail    float64
 	Shift   Shift
 	Speed   time.Duration // the mock's clock; zero for a real engine
+	Sources []SourceInfo  // what is connected; the chat is always one
 }
 
 // RepoNamed finds a repo in the snapshot.
