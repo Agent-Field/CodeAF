@@ -32,14 +32,17 @@ func TestCachedContextWindowReadsTheProfilesOwnCatalog(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for model, want := range map[string]int{
-		"deepseek/deepseek-v4.1-flash":            1_048_576,
-		"openrouter/deepseek/deepseek-v4.1-flash": 1_048_576,
-		"vendor/small":                            16_384,
-		"vendor/never-listed":                     0,
+	for _, tc := range []struct {
+		model string
+		want  int
+	}{
+		{"deepseek/deepseek-v4.1-flash", 1_048_576},
+		{"openrouter/deepseek/deepseek-v4.1-flash", 1_048_576},
+		{"vendor/small", 16_384},
+		{"vendor/never-listed", 0},
 	} {
-		if got := CachedContextWindow(model); got != want {
-			t.Errorf("CachedContextWindow(%q) = %d, want %d", model, got, want)
+		if got := CachedContextWindow(tc.model); got != tc.want {
+			t.Errorf("CachedContextWindow(%q) = %d, want %d", tc.model, got, tc.want)
 		}
 	}
 	if got := CachedContextWindow("  "); got != 0 {
