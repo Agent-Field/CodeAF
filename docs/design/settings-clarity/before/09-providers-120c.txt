@@ -1,0 +1,48 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   wed 2:28pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams   Providers   Connections
+
+ › type to search
+ your model                                                              deepseek/deepseek-v4.1-flash
+    the model you are talking to. Everything below it is a model codeaf uses on your behalf.
+
+ routing
+ host                                                                                            auto
+ speed guard                                                                                       on
+ routing                                                                                       simple
+ prompt profile                                                                                  auto
+ reflex                                                                • deepseek/deepseek-v4.1-flash
+ small work                                                            • deepseek/deepseek-v4.1-flash
+ seats                                  auto · 3 pinned · models all · 1 of 1 providers · per task $5
+ pinned roles                                                                                    none
+
+ roles · reflex
+ reflex                                                                  deepseek/deepseek-v4.1-flash
+
+ roles · small work
+ caption                                                                 deepseek/deepseek-v4.1-flash
+ consolidate                                                             deepseek/deepseek-v4.1-flash
+ guardian                                                                deepseek/deepseek-v4.1-flash
+ intake                                                                  deepseek/deepseek-v4.1-flash
+ jobname                                                                 deepseek/deepseek-v4.1-flash
+ router                                                                  deepseek/deepseek-v4.1-flash
+ sentinel                                                                deepseek/deepseek-v4.1-flash
+ spellout                                                                deepseek/deepseek-v4.1-flash
+ taskname                                                                deepseek/deepseek-v4.1-flash
+ title                                                                   deepseek/deepseek-v4.1-flash
+
+ roles · worker
+ worker                                                                  deepseek/deepseek-v4.1-flash
+
+ roles · checker
+ checker                                                                 deepseek/deepseek-v4.1-flash
+ careful                                                                 deepseek/deepseek-v4.1-flash
+ repair                                                                  deepseek/deepseek-v4.1-flash
+ shaper                                                                  deepseek/deepseek-v4.1-flash
+ vision                                                                  deepseek/deepseek-v4.1-flash
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───────────────────────────────────────────
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

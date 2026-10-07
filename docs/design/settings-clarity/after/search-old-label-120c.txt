@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:03pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Search results
+  Models
+  Memory             › memory floor
+  Tasks              Tasks
+  AI teams           minimum available RAM                                                                      1536 MB
+  Permissions        task scope assessment                                                         assess while working
+  Spending
+  Connections        Memory
+  Privacy            remember across chats                                                                           on
+
+                     General
+                     automatic updates                                                                               on
+
+                     Models
+                     prompt profile                                                                                auto
+                     reasoning effort                                                                              auto
+                     compact context at                                                                             60%
+                     model provider                                                                                auto
+                     routing                                                                                     simple
+
+                     Connections
+                     openrouter key                                                                      • ••••••••used
+
+                     Spending
+                     daily spending limit                                                                          $500
+
+                     Privacy
+                     share anonymous usage reports                                                                   on
+                     model pool signing key                                                                    built in
+                     shared model recommendations                                                    use and contribute
+
+                     AI teams
+                     ask the AI manager first                                                                        on
+
+
+
+                      MB of memory that must be free before another task starts. 0 stops watching.
+
+
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ results · enter change · tab next place · esc clear search

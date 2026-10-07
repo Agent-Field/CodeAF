@@ -1,0 +1,48 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   wed 2:28pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams   Providers   Connections
+
+ › type to search
+ memory                                                                                            on
+    a few things are carried from one conversation to the next. Off, each one starts knowing nothing about you.
+ fallback models                                                               nearest in the catalog
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───────────────────────────────────────────
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

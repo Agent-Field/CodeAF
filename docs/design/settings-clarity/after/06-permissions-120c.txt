@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:03pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Permissions
+  Models
+  Memory             › Search all settings
+  Tasks              tool approvals                                                                    allow by default
+  AI teams           tool exceptions                                                                               none
+  Permissions        shell command rules                                                                           none
+  Spending           AI approval screening                                                                          off
+  Connections        start proposed tasks after                                                                     15s
+  Privacy            Advanced                                                                                      show
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      Allow by default runs tools without asking. Ask by default requests approval except for safe
+                      read-only calls and tools that ask for permission themselves. Block by default refuses tools.
+                      Tool exceptions override this choice; dangerous shell commands still require approval.
+
+
+
+─ Profile default; a project can override it ───────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · type to search all · tab next place · esc close

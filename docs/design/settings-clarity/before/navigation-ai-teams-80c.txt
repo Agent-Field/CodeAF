@@ -1,0 +1,48 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings           wed 2:29pm
+
+────────────────────────────────────────────────────────────────────────────────
+
+  All teams         │╭─ Global manager ──────────────────────────────────────╮
+ + New team          ││ Optional · coordinates the managers of top-level      │
+                     ││ teams                                                 │
+                     ││  + Global manager                                     │
+                     │╰───────────────────────────────────────────────────────╯
+                     │
+                     │ teams                                       ✦ Organize
+                     │
+                     │
+                     │  A team is a set of conversations you run together;
+                     │  give it a manager and you talk to the manager, which
+                     │  hands out the work and asks you only what it cannot
+                     │  decide.
+                     │
+                     │   ✦ Organize my conversations    + New team
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+                     │
+
+────────────────────────────────────────────────────────────────────────────────
+ Every team, and what waits on you from any of them · enter · tab next place

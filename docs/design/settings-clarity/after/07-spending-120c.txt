@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:03pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Spending
+  Models
+  Memory             › Search all settings
+  Tasks              daily spending limit                                                                          $500
+  AI teams           per-chat spending limit                                                                   no limit
+  Permissions        ask before a plan costs more than                                            asks first above $100
+  Spending           per task           $5 a task · set in /crew · it also spends against the day and this conversation
+  Connections        per standing run                                         $5 a firing · each order may name its own
+  Privacy
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      what codeaf may spend on your work in a day. When the day's calls reach it, new work waits for
+                      midnight or for you to raise it here. none removes the limit.
+
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · type to search all · tab next place · esc close

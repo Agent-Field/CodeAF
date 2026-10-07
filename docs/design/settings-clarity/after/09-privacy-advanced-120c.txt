@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:03pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Privacy
+  Models
+  Memory             › Search all settings
+  Tasks              shared model recommendations                                                    use and contribute
+  AI teams           save input history                                                                              on
+  Permissions        share anonymous usage reports                                                                   on
+  Spending           save unfinished drafts                                                                          on
+  Connections        Advanced                                                                                      hide
+  Privacy            model pool signing key                                                                    built in
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      Less common controls. Search finds these even while collapsed.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter collapse · type to search all · tab next place · esc close

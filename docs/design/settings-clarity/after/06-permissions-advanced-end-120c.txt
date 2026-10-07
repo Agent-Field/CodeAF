@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:03pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Permissions
+  Models
+  Memory             › Search all settings
+  Tasks              tool approvals                                                                    allow by default
+  AI teams           tool exceptions                                                                               none
+  Permissions        shell command rules                                                                           none
+  Spending           AI approval screening                                                                          off
+  Connections        start proposed tasks after                                                                     15s
+  Privacy            Advanced                                                                                      hide
+                     pause approval timer after                                                                     10s
+
+                     questions while you are away
+                     permission                                                                                  ask me
+                     choice                                                                                      ask me
+                     judgement                                                                                   ask me
+                     clarification                                                       ask me · never runs on a clock
+                     confirmation                                                      ask me · destructive always asks
+                     landing                                                                                     ask me
+                     assumption                                                                                  ask me
+                     ratify                                                                                      ask me
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      what happens to a question of this shape when nobody answers it · kept for this project ·
+                      /autonomy <kind> ask · recommend <duration> · decide
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · type to search all · tab next place · esc close

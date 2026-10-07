@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:03pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Connections
+  Models
+  Memory             › Search all settings
+  Tasks              web search provider                                                                           auto
+  AI teams           openrouter key                                                                      • ••••••••used
+  Permissions        + add a provider                                an OpenAI-compatible base URL · a name of your own
+  Spending           exa key                                                                                    not set
+  Connections        firecrawl key                                                                              not set
+  Privacy            jina key                                                                                   not set
+                     Advanced                                                                                      hide
+                     google sign-in id                                                                          not set
+                     google sign-in secret                                                                      not set
+                     slack sign-in id                                                                           not set
+                     SSH connection reuse                                                                          300s
+                     SSH keepalive interval                                                                          3s
+                     SSH missed keepalives                                                                            3
+                     SSH traffic priority                                                                      lowdelay
+
+                     providers
+                     · DeepSeek                                                                                     key
+                     · Z.ai                                                                                region · key
+                     · Moonshot                                                                            region · key
+                     · MiniMax                                                                                      key
+                     · Alibaba Qwen                                                                        region · key
+                     · Codex                                                                                    browser
+                     · Ollama
+                     · Custom OpenAI-compatible API                                                       address · key
+
+                     analytics
+                     · Amplitude                                                                                    key
+                     · ChartMogul                                                                                   key
+                     · Dovetail                                                                                     key
+                     · Geckoboard                                                                                   key
+                     · Mixpanel                                                                                     key
+                     · PostHog                                                                                  sign in
+
+                      Less common controls. Search finds these even while collapsed.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ move · ←→ categories · enter act · type to search all · tab next place · esc close

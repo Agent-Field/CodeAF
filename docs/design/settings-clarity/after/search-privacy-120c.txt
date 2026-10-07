@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:03pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Search results
+  Models
+  Memory             › privacy
+  Tasks              Privacy
+  AI teams           shared model recommendations                                                    use and contribute
+  Permissions        model pool signing key                                                                    built in
+  Spending           save input history                                                                              on
+  Connections        share anonymous usage reports                                                                   on
+  Privacy            save unfinished drafts                                                                          on
+
+                     Memory
+                     remember across chats                                                                           on
+
+                     Models
+                     routing                                                                                     simple
+
+                     Tasks
+                     task scope assessment                                                         assess while working
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      Use and contribute receives model recommendations and shares text-free performance measurements.
+                      Use only sends nothing. Off does neither. Code, prompts and file paths are never included.
+
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ results · enter change · tab next place · esc clear search
