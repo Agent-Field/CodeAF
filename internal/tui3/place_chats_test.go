@@ -12,7 +12,7 @@ func TestTheChatsOnTheBarGoBackToTheConversation(t *testing.T) {
 	a := placeApp(t)
 	front := a.file
 	bar := navPlaces(a, a.width, false)
-	if h, c, k := strings.Index(bar, "home"), strings.Index(bar, "chats"), strings.Index(bar, pageTasks.word()); h < 0 || c < h || k < c {
+	if h, c, k := strings.Index(bar, "Home"), strings.Index(bar, "Chats"), strings.Index(bar, navLabel(pageTasks)); h < 0 || c < h || k < c {
 		t.Fatalf("the bar does not read home, chats: %q", bar)
 	}
 	placeFrameText(a)

@@ -178,7 +178,7 @@ A task handed to senior-dev wears its name as a badge wherever a task is named:
   same number in this conversation wears.
 - **The task strip**, the row of chips that stands in for the side list under 100
   columns, wears `[sd]`.
-- **The `@` list, the sessions place and home** — its list of work, a landing under
+- **The `@` list, the activity page and home** — its list of work, a landing under
   `needs you` and a line under `since you left` — wear `[senior-dev]`, or `[sd]` where
   the row is short of room. The title is cut before the badge, and a `since you left`
   line cuts what the work came to first: `rewrite the auth middleware [senior-dev] · it…`.
@@ -1116,7 +1116,7 @@ tool, the conversation list's task counts and every other codeaf window on the p
 see it, and a window that has the run's conversation open says it is being worked on. The
 conversation that started the run lists it once, by the number its rail shows.
 
-**Another window can watch it, read-only.** On that window's sessions place the run's row
+**Another window can watch it, read-only.** On that window's activity page the run's row
 stands under `running` with `another window` beside it, and `enter read it as it runs`
 opens the page the conversation that started it shows: senior-dev's actions under their
 steps, the line over them with the step, the spend, the calls and the time, and `ctrl+y`

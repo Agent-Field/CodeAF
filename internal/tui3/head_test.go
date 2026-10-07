@@ -77,12 +77,18 @@ func TestTheConversationWearsThePlacesHead(t *testing.T) {
 		head := headOf(t, a)
 		pulse := headPulseWhole()
 		if size.w == 80 {
-			pulse = "2 ? · $0.14 / " + railFigure(20)
+			pulse = "2 ? · $0.14"
+		} else if size.w == 120 {
+			pulse = "2 want you · 1 moving · $0.14 / " + railFigure(20)
 		}
 		if !strings.HasPrefix(head[0], " "+plain(a.pal.wordmark(a.width))) || !strings.HasSuffix(head[0], pulse) {
 			t.Fatalf("at %dx%d the chat's first row is not the nav with the pulse at its end:\n%q", size.w, size.h, head[0])
 		}
-		if !placeWordsInOrder(head[0], "home", "teams", "chats", "sessions", "spend", "settings") {
+		words := []string{"Home", "Chats", "AI teams", "Activity", "Memory", "Spend", "Settings"}
+		if size.w == 80 {
+			words = []string{"Home", "Chats", "AI teams", "Activity", "Memory", "More"}
+		}
+		if !placeWordsInOrder(head[0], words...) {
 			t.Fatalf("at %dx%d the chat's first row does not carry the places:\n%q", size.w, size.h, head[0])
 		}
 		if strings.Contains(head[tabStripRow], " home ") || !strings.Contains(head[tabStripRow], a.chatDisplayName()) {
@@ -239,7 +245,7 @@ func TestThePulseOverAChatIsThePulseOverAPlace(t *testing.T) {
 	if place[0] != chat {
 		t.Fatalf("the pulse over the tasks place is not the pulse over the chat:\n%q\n%q", place[0], chat)
 	}
-	if !strings.Contains(place[navRow], "home") || !strings.Contains(place[navRow], "sessions") {
+	if !strings.Contains(place[navRow], "Home") || !strings.Contains(place[navRow], "Activity") {
 		t.Fatalf("the nav is not on the first row: %q", place[navRow])
 	}
 	if strings.Contains(place[tabStripRow], a.chatDisplayName()) || !strings.HasPrefix(place[tabStripRow], "─") {

@@ -105,22 +105,25 @@ func TestSettingsListsEveryRowByItsRegistryKey(t *testing.T) {
 	// The conversation's own row reads the model this session is actually on.
 	// Without the live seam it reads blank, and a sheet whose first row is empty
 	// is a sheet that looks broken.
-	if !strings.Contains(text, config.ModelSettingKey("talk")+" · conversation · anthropic/claude-opus-5") {
+	if !strings.Contains(text, config.ModelSettingKey("talk")+" · chat model · anthropic/claude-opus-5") {
 		t.Errorf("the conversation row does not name the model this session is on:\n%s", text)
 	}
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: profile})
 	for _, row := range registry.Rows() {
+		if row.ChatPresentation().Hidden {
+			continue
+		}
 		if !strings.Contains(text, row.Key) {
 			t.Errorf("the listing does not carry the row %s", row.Key)
 		}
 	}
-	for _, category := range config.SettingCategories {
+	for _, category := range []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Privacy"} {
 		if !strings.Contains(text, category) {
 			t.Errorf("the listing does not name the %q group", category)
 		}
 	}
 	// And the marker that stops a model spending a call to find out.
-	if !strings.Contains(text, config.KeyDailyBudget+" · daily budget") {
+	if !strings.Contains(text, config.KeyDailyBudget+" · daily spending limit") {
 		t.Errorf("the listing does not read as `key · label · value`:\n%s", text)
 	}
 	if !strings.Contains(text, "yours to change") {

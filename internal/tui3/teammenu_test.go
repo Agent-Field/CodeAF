@@ -188,7 +188,7 @@ func TestTeamMenuOffersOnlyOverlayChoices(t *testing.T) {
 	a, _, _ := menuApp(t)
 	a.openTeamMenu()
 	frame, _ := menuFrame(t, a)
-	for _, word := range []string{"None", "Add this conversation", "Remove this conversation", "New team", "Team settings", "Make manager", "Closed"} {
+	for _, word := range []string{"None", "Add this conversation", "Remove this conversation", "New AI team", "Team settings", "Make manager", "Closed"} {
 		if strings.Contains(frame, word) {
 			t.Fatalf("management action %q remains in overlay picker", word)
 		}

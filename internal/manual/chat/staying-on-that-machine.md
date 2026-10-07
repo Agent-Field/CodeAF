@@ -60,11 +60,7 @@ lives under this machine's codeaf state directory at `~/.codeaf/v3/ssh/` (moved 
 `CODEAF_HOME`). The same **103-byte** socket-path limit applies there: a state path too
 long disables reuse only; the ordinary ssh connection still opens.
 
-These network-dependent defaults are editable on `/settings`' **Workspace** tab as `ssh
-reuse` (`300s`), `ssh heartbeat` (`3s`), `ssh missed heartbeats` (`3`), and `ssh traffic`
-(`lowdelay`). They were on the Session tab and moved, because every one of them lands on
-the next launch rather than on the conversation in front of you; nothing you saved moved
-with them. Setting the heartbeat to 0 turns
+These network-dependent defaults are under `/settings` → **Connections** → **Advanced**: `SSH connection reuse` (`300s`), `SSH keepalive interval` (`3s`), `SSH missed keepalives` (`3`), and `SSH traffic priority` (`lowdelay`). Existing saved values are preserved. They apply to new connections. Setting the heartbeat to 0 turns
 dead-link probes off; setting reuse to 0 stops keeping a connection after its channel
 closes. Whole-stream ssh compression stays off because it usually slows a LAN attach;
 large transcript frames compress themselves only when both codeaf builds support it.

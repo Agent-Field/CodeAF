@@ -376,7 +376,7 @@ func TestNewTeamInTheChosenTeam(t *testing.T) {
 	if a.wall.on || !a.tcreate.on || a.tcreate.parent != harbor {
 		t.Fatalf("the new-team card is not for a team in harbor: on %v naming %v parent %q", a.wall.on, a.wall.naming, a.wall.nameParent)
 	}
-	if !strings.Contains(teamsFrameText(a), "New team in harbor") {
+	if !strings.Contains(teamsFrameText(a), "New AI team in harbor") {
 		t.Fatalf("the card does not say where the team goes:\n%s", teamsFrameText(a))
 	}
 	a.tcreate.name.setText("slip")
@@ -475,7 +475,7 @@ func TestTheTeamHeaderIsOneLineAndDropsInOrder(t *testing.T) {
 				t.Fatalf("the sidebar lost the selected team at %d:\n%s", width, text)
 			}
 			if width >= 110 {
-				add := strings.Index(line, "+ Add member")
+				add := strings.Index(line, "+ Add chat")
 				sub := strings.Index(line, "+ Add subteam")
 				if add < 0 || sub <= add || !strings.Contains(line, "Disband") {
 					t.Fatalf("the header lost its controls at %d: %q", width, line)

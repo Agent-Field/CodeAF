@@ -33,7 +33,7 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 	for _, width := range []int{50, 60, 80, 120, 160} {
 		bar := navPlaces(a, width, false)
 		for _, id := range barPages(a.navLit(), false) {
-			if !strings.Contains(" "+bar+" ", " "+id.word()+" ") && !pagesHold(a.navMore.folded, id) {
+			if !strings.Contains(" "+bar+" ", " "+navLabel(id)+" ") && !pagesHold(a.navMore.folded, id) {
 				t.Fatalf("at %d columns the nav drew\n\t%q\nand a person cannot reach %q from it, on the row or behind `more`", width, bar, id.word())
 			}
 		}
@@ -42,7 +42,7 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 		}
 		// AND THE AIR IS HELD: two blank cells between two words, whatever the
 		// width, because what a narrow row gives up is words and never air.
-		if width >= 80 && !strings.Contains(bar, "home  teams  chats  sessions  spend  settings") {
+		if width >= 80 && !strings.Contains(bar, "Home  Chats  AI teams  Activity  Memory  Spend  Settings") {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the six places two cells apart", width, bar)
 		}
 		if strings.Contains(bar, "   ") {
@@ -72,7 +72,7 @@ func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{34, 40, 48} {
 		bar := navPlaces(a, width, false)
-		if !strings.Contains(bar, a.page.word()) {
+		if !strings.Contains(bar, navLabel(a.page)) {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand folded the place you are standing in (%q)", width, bar, a.page.word())
 		}
 		if !strings.HasSuffix(bar, a.navMoreWord(a.pal)) || !a.navMore.span.pressable() {
@@ -80,7 +80,7 @@ func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 		}
 		missing := 0
 		for _, id := range barPages(a.page, false) {
-			if !strings.Contains(" "+bar+" ", " "+id.word()+" ") {
+			if !strings.Contains(" "+bar+" ", " "+navLabel(id)+" ") {
 				missing++
 				if !pagesHold(a.navMore.folded, id) {
 					t.Fatalf("at %d columns %q is off the row and not behind `more`", width, id.word())
@@ -326,7 +326,7 @@ func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 		if got := ansi.StringWidth(line); got > width {
 			t.Fatalf("at %d columns the top line is %d cells wide:\n\t%q", width, got, line)
 		}
-		if !strings.Contains(line, product) || !strings.Contains(line, " chats ") {
+		if !strings.Contains(line, product) || !strings.Contains(line, " "+navLabel(pageChats)+" ") {
 			t.Fatalf("at %d columns the top line lost the wordmark or the lit place:\n\t%q", width, line)
 		}
 		s := state{
@@ -416,7 +416,7 @@ func TestTheSettingsFootDropsWholeClausesNotCharacters(t *testing.T) {
 	if !strings.Contains(full, " · ") {
 		t.Fatalf("the settings foot is no longer two clauses and this test is about the wrong line: %q", full)
 	}
-	head := strings.SplitN(full, " · ", 2)[0]
+	head := "This profile"
 	for _, width := range []int{60, 80, 120, 160} {
 		note := plain(placeSettings{}.note(a, width)[0])
 		if strings.Contains(note, glyphMore) {
@@ -436,7 +436,7 @@ func TestTheSettingsFootDropsWholeClausesNotCharacters(t *testing.T) {
 	if got, want := plain(placeSettings{}.note(a, 60)[0]), " "+head; got != want {
 		t.Fatalf("at 60 columns the settings foot drew\n\t%q\nand it should be the answer alone:\n\t%q", got, want)
 	}
-	if got, want := plain(placeSettings{}.note(a, 160)[0]), " "+full; got != want {
+	if got, want := plain(placeSettings{}.note(a, 160)[0]), " "+head; got != want {
 		t.Fatalf("at 160 columns the settings foot drew\n\t%q\nand there was room for all of it:\n\t%q", got, want)
 	}
 }

@@ -82,7 +82,7 @@ func connectionTabRow(t *testing.T, a *app) *sheetItem {
 	a.prepareModelServices()
 	a.showPage(pageSettings)
 	for i, tab := range settingTabs {
-		if tab == tabProviders {
+		if tab == tabConnections {
 			a.sheet.tab = i
 		}
 	}

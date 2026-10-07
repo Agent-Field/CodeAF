@@ -657,7 +657,7 @@ nothing was lost while there was no key.
 
 ## Turn background checks off
 
-`/settings` → **Workspace** → **background checks**, or just say "turn off the
+`/settings` → **General** → **background reminders**, or just say "turn off the
 background checks" and the chat will do it. It is a two-word row — `on` or
 `off` — and `on` is the default.
 

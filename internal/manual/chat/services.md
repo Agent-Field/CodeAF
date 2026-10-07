@@ -16,7 +16,7 @@ Pick a row and answer its fields. A successful listed provider says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A provider with more than one billing door names the one it
 bound: `z-ai-direct is connected · coding plan · 4 models` or
-`z-ai-direct is connected · pay-as-you-go · 10 models`. The Providers tab in `/settings`
+`z-ai-direct is connected · pay-as-you-go · 10 models`. The Connections category in `/settings`
 then shows the provider, door, safe spelling of its key, region and order.
 
 The default provider remains first. With two or more providers, `/model` groups models by
@@ -39,7 +39,7 @@ default provider does have a key, those calls keep using their configured models
 
 ## What model do I get after connecting a provider — why did my model change
 
-A successful connection from `/connect`, or a reconnect from the Providers tab in
+A successful connection from `/connect`, or a reconnect from the Connections category in
 `/settings`, moves this conversation onto that provider in the same moment. A plan door's
 first documented model wins. Otherwise codeaf uses the vendor's preferred model when the
 provider listed it or published no list, then the first model the provider listed. With no
@@ -204,7 +204,7 @@ The default provider's model ids remain unchanged and unqualified. A model from 
 provider is written `<provider>/<model id>`, such as
 `deepseek-direct/deepseek-v4-pro`. That first segment is how the conversation remembers
 where the model can be reached. With two or more connected providers, `/model` shows a dim
-heading for each provider, default first, in the order shown in the Providers tab. A
+heading for each provider, default first, in the order shown in the Connections category. A
 custom provider's heading is the name you gave it.
 
 The status line uses the same spelling: an unqualified default-provider id, and
@@ -259,7 +259,7 @@ available spelling (`localhost-direct`, then numbered ones) and the connect line
 what it used.
 
 That name is the provider everywhere. It is the row's name in `/connect` and on the
-Providers tab, the heading its models sit under in `/model`, and the first segment of
+Connections category, the heading its models sit under in `/model`, and the first segment of
 every model id it serves, so a model on a provider named `homelab` reads
 `homelab/glm-5.3` and `/model homelab/glm-5.3` moves onto it. A refusal or a success
 names the provider by the name it was given; neither switches back to `custom`.
@@ -270,7 +270,7 @@ becomes that first provider's edit door once one is connected and a `+ add a
 provider` row connects a new one; with none connected yet, **Custom OpenAI-compatible API** is the
 door onto the first.
 
-On the Providers tab in `/settings` each custom provider is a row of its own. `enter`
+On the Connections category in `/settings` each custom provider is a row of its own. `enter`
 opens its available actions. Custom providers offer refresh, rename, change key,
 and disconnect; rename reopens the address and name with their saved values. An
 empty key box keeps the saved key. A changed name is a rename: every model id already picked under the old

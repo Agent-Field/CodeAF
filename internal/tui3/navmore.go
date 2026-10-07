@@ -179,7 +179,7 @@ func (a *app) navMoreCard(width, height int) wallCard {
 	pal := a.pal
 	words, keys := 0, 0
 	for _, id := range a.navMore.folded {
-		words = max(words, ansi.StringWidth(id.word()))
+		words = max(words, ansi.StringWidth(navLabel(id)))
 		keys = max(keys, ansi.StringWidth(a.chords.say(placeChord(id))))
 	}
 	const padX = 1
@@ -192,7 +192,7 @@ func (a *app) navMoreCard(width, height int) wallCard {
 	x := min(max(a.navMore.span.from, 1), width-1-w)
 	lines := make([]wallCardLine, 0, len(a.navMore.folded))
 	for i, id := range a.navMore.folded {
-		word := id.word()
+		word := navLabel(id)
 		key := a.chords.say(placeChord(id))
 		ink := pal.ink
 		if id == a.navLit() {

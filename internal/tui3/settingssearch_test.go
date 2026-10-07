@@ -42,7 +42,7 @@ func TestTheSettingsSearchFindsARowByItsAboutLine(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
 	labels := searchLabels(t, a, "dangerous")
-	if !screenHas(labels, "ask before running") {
+	if !screenHas(labels, "tool approvals") {
 		t.Fatalf("\"dangerous\" did not find the approval gate:\n%s", strings.Join(labels, "\n"))
 	}
 }
@@ -73,30 +73,23 @@ func itemAt(items []sheetItem, key string) int {
 // its key nor its about line carries the word — a person who knows what the
 // panel does and not what it is called searches the way this test does.
 func TestTheSettingsSearchFindsARowByItsCurrentValue(t *testing.T) {
-	a, dir := sheetApp(t)
+	a, _ := sheetApp(t)
 	a.openSettings()
-	// This search fixture exercises an explicitly saved prompt posture.
-	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
-	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
-		t.Fatalf("the gate did not start at prompt: %q", got)
+	cursorTo(t, a, config.KeyToolApprovals)
+	item, _ := a.sheet.current()
+	// A tool rule is user content, absent from the label, key, aliases and help.
+	// Using "prompt" here also matched the new approval explanation fuzzily.
+	if err := item.row.Apply("grep:deny"); err != nil {
+		t.Fatal(err)
 	}
-	// `prompt` is the probe: the gate's own label, key and about line carry no
-	// `p` at all, so the word cannot reach the row through any of them — not
-	// even as a scattered subsequence, which is the reach a fuzzy matcher
-	// always has — and only the value it holds can carry it.
-	if at := itemAt(searchItems(t, a, "prompt"), config.KeyToolApprovalMode); at < 0 {
-		t.Fatal("\"prompt\" did not find the gate holding it")
+	if at := itemAt(searchItems(t, a, "grep:deny"), config.KeyToolApprovals); at < 0 {
+		t.Fatal("search did not find the saved tool rule")
 	}
-	// Cycle the gate away from prompt, and the same word loses the row.
-	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter"))
-	if got := config.ToolApprovalModeAt(dir); got != "allow" {
-		t.Fatalf("the cycle wrote %q, want allow", got)
+	if err := item.row.Apply(""); err != nil {
+		t.Fatal(err)
 	}
-	if at := itemAt(searchItems(t, a, "prompt"), config.KeyToolApprovalMode); at >= 0 {
-		t.Fatal("\"prompt\" still found the gate after the gate stopped carrying it")
+	if at := itemAt(searchItems(t, a, "grep:deny"), config.KeyToolApprovals); at >= 0 {
+		t.Fatal("search retained a value that was cleared")
 	}
 }
 
@@ -130,11 +123,10 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 	a.openSettings()
 	// This search fixture exercises an explicitly saved prompt posture.
 	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
-	typeQuery(t, a, "ask")
+	chooseSheetValue(t, a, "prompt")
+	typeQuery(t, a, "tool")
 	// The approval row, kept by the search, and where the query landed on it:
-	// the label's own head, because "ask" is the word the row's name begins
+	// the label's own head, because "tool" is the word the row's name begins
 	// with — and not its middle, and not a whole word either.
 	at := -1
 	for i, item := range a.sheet.items {
@@ -144,7 +136,7 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 		}
 	}
 	if at < 0 {
-		t.Fatalf("\"ask\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
+		t.Fatalf("\"tool\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 	// Walk the cursor off the row: the cursor's row is bold whole already, and
 	// this test is about the resting rows a person scans down.
@@ -155,15 +147,15 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 		t.Fatal("the cursor never left the approval row")
 	}
 	hit := a.sheet.itemHit(a.sheet.items[at])
-	if len(hit) != 3 || hit[0] != 0 || hit[1] != 1 || hit[2] != 2 {
-		t.Fatalf("the approval row's label hit is %v; want its first three bytes, 0 1 2", hit)
+	if len(hit) != 4 || hit[0] != 0 || hit[1] != 1 || hit[2] != 2 || hit[3] != 3 {
+		t.Fatalf("the approval row's label hit is %v; want its first four bytes, 0 1 2 3", hit)
 	}
 	lines, _ := a.sheet.listLines(a.width, a.height, a.pal, -1)
 	// THE EMPHASIS IS EXACTLY THE MATCHED BYTES: bold over the row's own dim
-	// for "ask", plain dim after it — the whole label spelled out, so a bold
+	// for "tool", plain dim after it — the whole label spelled out, so a bold
 	// run that bled past the match, or one that skipped a matched byte, does
 	// not contain this string.
-	want := a.pal.bold(a.pal.dim("ask")) + a.pal.dim(" before running")
+	want := a.pal.bold(a.pal.dim("tool")) + a.pal.dim(" approvals")
 	found := false
 	for _, line := range lines {
 		if strings.Contains(line, want) {
@@ -176,7 +168,7 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 	}
 	// AND THE MATCH IS ON THE FIELD IT WON AND NOWHERE ELSE: "prompt" is
 	// the approval row's own VALUE — the word the gate carries — and a query
-	// of both words keeps the row with "ask" on its label and nothing else:
+	// of both words keeps the row with "tool" on its label and nothing else:
 	// the span names exactly the bytes of the term that won the label, and a
 	// term that won the value contributes no emphasis to a field it did not.
 	typeQuery(t, a, " prompt")
@@ -188,10 +180,10 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 		}
 	}
 	if at < 0 {
-		t.Fatalf("\"ask prompt\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
+		t.Fatalf("\"tool prompt\" did not keep the approval row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
-	if hit := a.sheet.itemHit(a.sheet.items[at]); !reflect.DeepEqual(hit, []int{0, 1, 2}) {
-		t.Fatalf("\"ask prompt\" carried %v on the approval row's label; want exactly \"ask\"'s three bytes — the value's word stays on the value", hit)
+	if hit := a.sheet.itemHit(a.sheet.items[at]); !reflect.DeepEqual(hit, []int{0, 1, 2, 3}) {
+		t.Fatalf("\"tool prompt\" carried %v on the approval row's label; want exactly \"tool\"'s four bytes — the value's word stays on the value", hit)
 	}
 }
 
@@ -220,17 +212,29 @@ func TestSpaceWhileSearchingTypesAndDoesNotPressTheRow(t *testing.T) {
 	a.openSettings()
 	// This search fixture exercises an explicitly saved prompt posture.
 	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
+	chooseSheetValue(t, a, "prompt")
 	cursorTo(t, a, config.KeyToolApprovalMode)
 	// The space with no search open is the panel's own gesture: it activates.
 	drive(t, a, key(" "))
+	if a.sheet.choice == nil {
+		t.Fatal("space out of a search did not open the choices")
+	}
+	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
+		t.Fatalf("opening choices changed the gate: %q", got)
+	}
+	drive(t, a, key("home"))
+	for _, value := range a.sheet.choice.item.row.Choices {
+		if value == "allow" {
+			break
+		}
+		drive(t, a, key("down"))
+	}
+	drive(t, a, key("enter"))
 	if got := config.ToolApprovalModeAt(dir); got != "allow" {
-		t.Fatalf("space out of a search did not activate the row: gate still %q", got)
+		t.Fatalf("saving the selected choice did not change the gate: %q", got)
 	}
 	// Put the gate back, start a search, and the same key is the box's.
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
+	chooseSheetValue(t, a, "prompt")
 	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
 		t.Fatalf("the gate did not come back around to prompt: %q", got)
 	}
@@ -265,8 +269,8 @@ func TestTheSettingsSearchRanksItsBestAnswerFirst(t *testing.T) {
 	if countdown < 0 || gate < 0 {
 		t.Fatalf("\"approval\" found only %d of its two rows", countdown+gate+2)
 	}
-	if countdown > gate {
-		t.Fatalf("the key hit (row %d) ranked above the label prefix (row %d)", gate, countdown)
+	if gate > countdown {
+		t.Fatalf("the direct tool approvals label (row %d) ranked below timer row %d", gate, countdown)
 	}
 }
 

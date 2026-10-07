@@ -59,7 +59,7 @@ There is no argument form. The screen is how you name what you want; a command t
 project name would be asking you to type out the very thing home exists to show you.
 
 Home is the **first place on the top line**, right after the `codeaf` wordmark:
-`home  teams  chats  sessions  spend  settings`.
+`home  chats  AI teams  activity  memory  spend  settings`.
 The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
@@ -188,7 +188,7 @@ watch that needs somebody, never age off home.
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 unread`. `enter` expands that group; the `sessions` heading opens the sessions place.
+`8 unread`. `enter` expands that group; the `sessions` heading opens the activity page.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
@@ -245,7 +245,7 @@ A conversation another terminal is holding is not refused: `enter` brings it her
 Work that landed as `your call` **waits until you decide about it**, however many days that
 is: nothing more happens to that work until somebody answers it. Only its row on home ages —
 two days after it landed it leaves `needs you` for the count on the panel's last line,
-`3 more`, and the sessions place still lists it; `enter` on that line opens the panel and shows
+`3 more`, and the activity page still lists it; `enter` on that line opens the panel and shows
 it again.
 
 Three ways to settle it, and they are the same door:
@@ -271,18 +271,18 @@ not where it is settled.**
 
 ## Sessions — the fifteen most recent conversations on Home and what is running on this machine right now
 
-The **sessions** section replaces the old list of individual tasks. It shows up to
+The **activity** section replaces the old list of individual tasks. It shows up to
 fifteen conversations across projects, newest conversation activity first, regardless
 of whether they have tasks. Closed conversations remain in history with dim titles.
 Each row uses the full conversation title, truncated to fit, and its age. Selecting a
 row opens that conversation; `→` offers the usual conversation actions.
 
-Click **sessions** to open the **sessions** tab (formerly tasks), which holds the full
+Click **activity** to open the **activity** tab (formerly tasks), which holds the full
 conversation trees under running and completed. The running section shows work in
 flight across projects. Short frames show fewer rows with a
 fold for the remainder of these fifteen. The heading leads to the full history.
 
-There is exactly one conversation list on Home, under **sessions**. Open tabs,
+There is exactly one conversation list on Home, under **activity**. Open tabs,
 recently closed conversations and saved history are combined by conversation identity
 before choosing the fifteen most recent, so each conversation appears once.
 The `opt+k` chats menu still lists open tabs; dismissing or reopening a tab
@@ -291,7 +291,7 @@ updates the tab and the row in Sessions together.
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
 **A conversation nothing has named yet reads `new conversation`** on home's sessions
-list, the same word the sessions place uses. It never reads as its session id, including
+list, the same word the activity page uses. It never reads as its session id, including
 the id with its first letter raised (`D53cceead3f99593`). A conversation that has a title
 keeps that title.
 
@@ -325,7 +325,7 @@ spinner. In screen-reader (linear) mode nothing turns at all.
 
 ## What did it do while I was away — the since you left panel, what happened while the terminal was shut
 
-**What happened on its own while you were not looking**, under `sessions` — in the field
+**What happened on its own while you were not looking**, under `activity` — in the field
 when it holds anything and in the rail when it does not — headed with how long you were
 away:
 
@@ -423,7 +423,7 @@ no right side at all on the resting screen.
 Where to go for the whole figure instead:
 
 - **`→` then `its chats`** on the row lists every conversation in the project as a search;
-- **the sessions place** for the work a project has run, which is the record rather than a
+- **the activity page** for the work a project has run, which is the record rather than a
   count;
 - **the spend place** for what it has cost.
 
@@ -533,7 +533,7 @@ put would move you onto something else between two glances.
 **It is not empty; the panels are waiting for their first rows.** On a machine that has
 done nothing yet, every panel but one keeps its heading and one dim line naming what
 arrives there — `questions from any chat or task land here · a digit answers them` under
-`needs you`, `work you send off with /task runs here on its own` under `sessions`, and so on
+`needs you`, `work you send off with /task runs here on its own` under `activity`, and so on
 (*See everything at once*). `projects` always has the folder this window opened in, and
 the conversation list has this conversation from its first minute.
 
@@ -590,7 +590,7 @@ panels, and `enter` again folds it. The box at the foot still searches every con
 the machine as you type — a project's name, a folder's name or a word from what a task came
 to all find them — whether or not a panel is drawing the row.
 
-Every panel's fold works the same way: `N more` under `sessions`, `since you left`, `standing`
+Every panel's fold works the same way: `N more` under `activity`, `since you left`, `standing`
 and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
 tab bar and their slash commands, not behind the folds.
 
@@ -608,7 +608,7 @@ there is no strip. The rule and a blank come next, three rows, and the page star
 row higher. **Inside a chat** and on every place but home the top line reads:
 
 ```
- >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
 **On home it drops the two counts** and keeps the budget and the clock, because the
@@ -644,7 +644,7 @@ cent — one reading of one file, wherever you are standing.
 
 ## Where did standing and memory go: the six words on the tab bar
 
-The top line reads `home  teams  chats  sessions  spend  settings`. `alt+1` through
+The top line reads `home  chats  AI teams  activity  memory  spend  settings`. `alt+1` through
 `alt+6` go to each; `chats` (`alt+3`) returns to your conversation.
 
 - `/standing` (or `/orders`) and `alt+7` open Standing.
@@ -1639,7 +1639,7 @@ reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spell
 map's own line names while it is live.
 
 Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
-sessions place, `/history`).
+activity page, `/history`).
 
 ## What landed while I was away — since you left, and the look stamp
 
@@ -1740,7 +1740,7 @@ rows on disk that say `running` forever.
 Home never repeats that claim. **It asks the session itself.** A live session says out
 loud, every few seconds, which task nodes it currently has out; the task details show it as running only while the session still names that node.
 Every other live-looking row is **work that was under way when the window went**, and it is
-on no panel: the sessions place and the card beside a search say `incomplete` against it.
+on no panel: the activity page and the card beside a search say `incomplete` against it.
 
 A session too old to keep that file, but whose journal a window is holding, falls back to
 the older answer: the lock is asked, and its rows are believed. That is the same rule with
@@ -2140,7 +2140,7 @@ Completed work can also appear under `since you left`.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
-**On the card beside a search, `▸ N more tasks` names the sessions place** out at the right
+**On the card beside a search, `▸ N more tasks` names the activity page** out at the right
 margin rather than unfolding, because a card is not the place that holds them; `ctrl+.`, or
 `tab` onto `sessions`, is the way there. A band of files or folders with more behind it says
 `▸ …3 more files`, and a click on that line — or `→` with the strip closed — opens it, and
@@ -2449,7 +2449,7 @@ On the card beside a search and on the phone sheet, a conversation's tasks form 
 their actual parents. Clicking a task opens that task's record. A child needing a person
 brings its family forward; work still moving comes before settled work. The compact preview
 keeps three task names in parent-first order, so it never shows a child without its visible
-ancestry, and `N more tasks` names the sessions place, which holds the full conversation tree.
+ancestry, and `N more tasks` names the activity page, which holds the full conversation tree.
 
 ## What home cannot do yet — stop another window's task, and a something is wrong panel
 

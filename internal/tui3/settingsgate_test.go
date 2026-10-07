@@ -62,12 +62,12 @@ func TestTheGateRowReachesTheRunningGateAndTheBadgeOnTheSameKeystroke(t *testing
 		return nil
 	}
 
-	// allow → deny → prompt, which is the registry's own order and two presses
-	// of the one key that answers a cycle row.
-	drive(t, a, key("enter"), key("enter"))
+	// Explicit choices reach the live gate only when saved.
+	chooseSheetValue(t, a, "deny")
+	chooseSheetValue(t, a, "prompt")
 
 	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
-		t.Fatalf("the profile row reads %q after two cycles, want prompt", got)
+		t.Fatalf("the profile row reads %q after two saved choices, want prompt", got)
 	}
 	if told != 2 {
 		t.Fatalf("the running gate was rebuilt %d times over two changes, want 2", told)
@@ -86,7 +86,7 @@ func TestTheGateRowReachesTheRunningGateAndTheBadgeOnTheSameKeystroke(t *testing
 
 	// AND THE OTHER DIRECTION, which is the dangerous one: the asking goes off
 	// and the badge has to appear on the same keystroke.
-	drive(t, a, key("enter"))
+	chooseSheetValue(t, a, "allow")
 	if got := config.ToolApprovalModeAt(dir); got != "allow" {
 		t.Fatalf("the profile row reads %q, want allow", got)
 	}
@@ -158,7 +158,7 @@ func TestAGateRowThatCouldNotBeRebuiltNamesTheNextSession(t *testing.T) {
 			a, dir := gateSheet(t, "allow")
 			a.applyApprovals = seam.push
 
-			drive(t, a, key("enter"), key("enter"))
+			chooseSheetValue(t, a, "prompt")
 
 			if got := config.ToolApprovalModeAt(dir); got != "prompt" {
 				t.Fatalf("the write did not stand: the row reads %q", got)

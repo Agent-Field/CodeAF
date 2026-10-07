@@ -42,18 +42,18 @@ team-agnostic conversations view instead, and the hint says so.
 
 ## Making a manager
 
-The **teams page** (`/teams`, `alt+2`) offers `+ Manager` on a team that has none, and
+The **teams page** (`/teams`, `alt+2`) offers `+ AI manager` on a team that has none, and
 `All teams` offers one manager over every team. Choose a team to talk to its manager
 beside the tree of teams.
 
 Managers cost nothing until you make one. A team's manager is pinned at the left of
 its tab strip and never scrolls away:
 
-- **`+ Manager`**, a quiet button, while the team has none. A press starts a new conversation
+- **`+ AI manager`**, a quiet button, while the team has none. A press starts a new conversation
   in the team's folder and makes it the manager. Its hint says so. Under 100 columns the
   button leaves the strip; Teams still offers manager controls.
-- **Choose manager** on Teams assigns an existing member. To use a new conversation,
-  first use Add member, then Choose manager. The Chats dropdown and conversation grid
+- **Choose AI manager** on Teams assigns an existing member. To use a new conversation,
+  first use Add chat, then Choose AI manager. The Chats dropdown and conversation grid
   offer no manager-assignment controls.
 
 The manager's place reads **`◆ Manager`**. Its tile in the team-agnostic grid keeps its ordinary title and position. The tab's hint names its team and title. `alt+m` goes to the
@@ -159,7 +159,7 @@ over the conversation, and `esc` or `alt+l` takes it off again.
 Over `--host` teams and the manager work as they do locally. The teams and their Traffic are
 kept on the machine the conversations run on, and the window reads and writes them there, so
 the Traffic is the team's own and a manager set from the laptop is the one the far session
-follows. Against a far machine running an older codeaf, `+ Manager` and the menus say managers
+follows. Against a far machine running an older codeaf, `+ AI manager` and the menus say managers
 are not available over `--host`, and the column has no Traffic word.
 
 ## When a manager starts a member — team_start and approvals
@@ -499,6 +499,6 @@ in the current team; ambiguous or missing history is not guessed.
 
 One conversation may manage a team and descendants of that team, while remaining an
 ordinary member of other teams. It cannot manage unrelated teams. The global manager is
-separate from every ordinary team's manager. Choose manager or a team move refuses a
+separate from every ordinary team's manager. Choose AI manager or a team move refuses a
 change that introduces conflicting responsibilities, naming the teams. Existing conflicts
 are retained until the person explicitly chooses replacements in Teams.

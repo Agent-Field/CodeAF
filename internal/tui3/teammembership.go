@@ -454,9 +454,9 @@ func (a *app) teamMembershipOver(frame string) string {
 		s.rect = wallRect{}
 		return frame
 	}
-	title := "Add member to " + t.Name
+	title := "Add chat to " + t.Name
 	if s.choosingManager {
-		title = "Choose manager for " + t.Name
+		title = "Choose AI manager for " + t.Name
 	}
 	var lines []wallCardLine
 	enterAction := "choose"

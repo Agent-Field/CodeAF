@@ -801,7 +801,7 @@ func TestEveryPlaceHoldsAtThePlainFloor(t *testing.T) {
 						width, id.word(), line)
 				}
 			}
-			if !strings.Contains(frame, id.word()) {
+			if !strings.Contains(frame, navLabel(id)) {
 				t.Fatalf("at %d the %s place does not say its own name with no colour to "+
 					"say it with:\n%s", width, id.word(), frame)
 			}

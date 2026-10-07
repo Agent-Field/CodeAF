@@ -962,6 +962,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		BaseURL:        settings.BaseURL,
 		Sources:        settings.Sources,
 		CompactEnabled: !opts.NoCompact,
+		// Carry the saved reader choice into the live chat and its tasks.
+		DocumentEngine: settings.DocumentEngine,
 		SessionFile:    transcript,
 		TaskLanded:     taskLanded,
 		// The folder this conversation keeps everything in (Decision 26). It is

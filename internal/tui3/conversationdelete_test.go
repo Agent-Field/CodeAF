@@ -386,7 +386,7 @@ func TestTeamsChooseManagerExistingMembersOnlyAndPersists(t *testing.T) {
 		}
 	}
 	text := ansi.Strip(a.teamMembershipOver(strings.Repeat("\n", 35)))
-	if !strings.Contains(text, "Choose manager for harbor") || strings.Contains(text, "+ New conversation") || !strings.Contains(text, "enter choose · esc cancel") {
+	if !strings.Contains(text, "Choose AI manager for harbor") || strings.Contains(text, "+ New conversation") || !strings.Contains(text, "enter choose · esc cancel") {
 		t.Fatal("manager picker includes creation or lacks hints")
 	}
 	a.teamMembershipChoose(0)

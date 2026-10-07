@@ -298,7 +298,7 @@ chip for as long as anything is open:
 ```
 
 `alt+y` raises the newest open question from **any page** — home, a room, the
-sessions place — and takes you back to the conversation it belongs to. The count
+activity page — and takes you back to the conversation it belongs to. The count
 includes the ones you folded: `esc` is later and not cancelled, so a question you
 put off is still a question the work is waiting on.
 
@@ -553,7 +553,7 @@ wildcard and all — the dialect has no escape for `*`.
 ## The approval modes, and the default — does changing "ask before running" affect the conversation I am in
 
 `tools.approvalMode` decides what happens when the model asks to run a tool and
-nothing more specific applies. It is in `/settings`, under **Safety**, on the row
+nothing more specific applies. It is in `/settings`, under **Permissions**, on the row
 labelled **"ask before running"**.
 
 | value | what it means |
@@ -700,7 +700,7 @@ legend above the message box names it after the thinking rung — `◇ asks`,
 The change is **live** — the next tool call is decided under it — and
 **sticky**: it is written into this session's `meta.json` and is still in force
 after `/resume`. It changes **this conversation only**; every other conversation
-follows the "ask before running" and guardian rows on `/settings`' Safety tab.
+follows the "ask before running" and guardian rows on `/settings`' Permissions category.
 
 What each posture is, in the gate's terms:
 
@@ -898,7 +898,7 @@ The whole list, by settings key:
   work costs.
 - **How hard this machine may be worked** — `task.parallel`, `task.max_load`,
   `task.min_free_mb`, `bash.background_after_seconds`. The last is labelled
-  **background after** on `/settings`' Safety tab and arms both the engine's handoff
+  **background after** on `/settings`' Permissions category and arms both the engine's handoff
   clock and the countdown for the next session.
 - **Whether codeaf's own work is checked** — `task.audit`. A session that can
   switch off the check can call anything done.
@@ -925,7 +925,7 @@ conversation's own model (`model.talk`) is changed with `/model`, and the other
 role slots — `model.plan`, `model.work`, `model.verify`, `model.scribe` — are
 bindings the running session holds rather than values in your profile, so
 neither `change_setting` nor the panel can write them. To send codeaf's own
-auxiliary calls somewhere, set the reflex or small work row on the Providers tab, pin a
+auxiliary calls somewhere, set the reflex or small work row on the Models category, pin a
 crew seat — worker, checker or planner — with `/crew pin` or on the `/crew` panel that the
 tab's one **seats** row opens, or pin one role in `models.roles`.
 
@@ -1055,7 +1055,7 @@ Delete the key from your profile's `config.json`, or unset the variable, and
 the note stops.
 
 **What you can still turn off is the model's name.** The **model in commits**
-row (`attribution.model`, on the Workspace tab of `/settings`), or
+row (`attribution.model`, on the General category of `/settings`), or
 `CODEAF_ATTRIBUTION_MODEL=0`, leaves `Assisted-by: CodeAF` with no brackets. A
 landing on the worker harness, the default belt, carries that bare line either way.
 codeaf cannot change the row for you — ask it to and it says so and points you

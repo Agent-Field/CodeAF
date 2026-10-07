@@ -95,7 +95,7 @@ this task has finished — say it to main
 
 The header reads the same record, keeping the name, state and elapsed correct.
 
-The room is one of two doors onto old work. The other is the sessions place (`ctrl+.`,
+The room is one of two doors onto old work. The other is the activity page (`ctrl+.`,
 `/history`), whose `enter` on a completed task's row opens a card with the task's report read off
 the same journal — and which says `its transcript is not on this disk any more` in the same
 case. If the room is empty, the card will be too; the file is the same file.

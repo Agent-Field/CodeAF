@@ -460,13 +460,13 @@ exact sentence each one says.
    travels on the wire like every other answer; nothing about it needs a browser or a
    port. This is the one entry on the list that is a capability, not a limit.
 
-5. **`/settings` opens anyway, and says whose rows these are.** Every tab but Teams writes
-   this machine. The Teams tab is saved on the other machine when that machine can take the
+5. **`/settings` opens anyway, and says whose rows these are.** Every category but AI teams writes
+   this machine. The AI teams category is saved on the other machine when that machine can take the
    change. Opening on any other tab says exactly:
-   `these rows belong to this machine; the Teams tab is saved on the other one.`
-   On the Teams tab it says only what is true there:
+   `these rows belong to this machine; the AI teams category is saved on the other one.`
+   On the AI teams category it says only what is true there:
    `these rows are saved on <machine>.`
-   An older engine, where the Teams tab cannot be saved over the connection, says exactly:
+   An older engine, where the AI teams category cannot be saved over the connection, says exactly:
    `these rows belong to this machine; this conversation reads its profile on the other one.`
 
 ## More of what does not work over --host
@@ -687,10 +687,10 @@ browser and no port, so that road stays open over `--host`.
 `/settings` opens over a connection. On any tab but Teams it says exactly:
 
 ```
-these rows belong to this machine; the Teams tab is saved on the other one.
+these rows belong to this machine; the AI teams category is saved on the other one.
 ```
 
-On the Teams tab it says only what is true there:
+On the AI teams category it says only what is true there:
 
 ```
 these rows are saved on <machine>.
@@ -703,13 +703,13 @@ these rows belong to this machine; this conversation reads its profile on the ot
 ```
 
 The rows on every tab but Teams are this machine's, and those changes apply to what you
-are looking at. The Teams tab is the other machine's when the connection can save it.
+are looking at. The AI teams category is the other machine's when the connection can save it.
 
 **Asking codeaf to change a setting goes the other way.** `settings` and `change_setting`
 run inside the session, which is on the far machine, so they read and write that
 machine's profile, which is the profile the conversation actually obeys. So over a
 connection the two doors land in two different files: the panel edits this laptop, and
-asking edits the machine the work is on. The Teams tab is the exception on the panel.
+asking edits the machine the work is on. The AI teams category is the exception on the panel.
 It saves on the other machine, the same place asking would write a team default.
 
 ## Can I change the Teams settings on another machine, and where do team defaults go over a connection

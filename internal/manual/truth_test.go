@@ -349,7 +349,7 @@ func quotedFacts(t *testing.T) []quotedFact {
 	}, {
 		fact: "what practice may take of the day", owner: "config.DefaultPracticeBudgetUSD",
 		value:  dollarsOwed(config.DefaultPracticeBudgetUSD),
-		quotes: []quotedIn{{"models-and-cost", "| **practice** | `$%s of the day` |"}},
+		quotes: []quotedIn{{"models-and-cost", "The separate resident’s practice default is `$%s of the day`"}},
 	}, {
 		// The pass, which the page states in words because a person asking how
 		// often their watch checks is not asking for a duration.

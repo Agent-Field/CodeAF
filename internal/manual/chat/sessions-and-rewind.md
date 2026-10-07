@@ -899,8 +899,8 @@ are `enter choose · esc cancel`. Cancel changes nothing.
 A conversation that manages any active ordinary team cannot be deleted. After `delete`, the
 confirmation names every active team it manages: `This conversation manages <teams>.
 Assign another manager before deleting it.` Go to Teams, select each
-named team, and use `Choose manager` to select an existing member. To use a new
-conversation, first use `+ Add member`, then `Choose manager`. Return to Home, Chats or
+named team, and use `Choose AI manager` to select an existing member. To use a new
+conversation, first use `+ Add chat`, then `Choose AI manager`. Return to Home, Chats or
 Sessions to delete the former manager. Deletion never appoints a manager, creates a
 conversation or disbands a team. Tasks inside manager conversations can still be deleted
 independently. The optional global-manager conversation can be deleted without a replacement;

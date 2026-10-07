@@ -22,7 +22,7 @@ func TestDefaultProviderMenuUsesDefaultRefreshAndKeySetting(t *testing.T) {
 	dir := t.TempDir()
 	a := modelServiceTestApp(t, dir, "openai/gpt-4.1-mini", config.ResolveSources(dir, "test-key", ""), pickerCatalog)
 	a.openSettings()
-	toProviders(t, a)
+	toConnections(t, a)
 	calls := 0
 	a.refreshModels = func(context.Context) ([]Model, time.Time, error) {
 		calls++

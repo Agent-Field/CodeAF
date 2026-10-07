@@ -593,20 +593,20 @@ func TestTheLaneRowsSitUnderTheModelRow(t *testing.T) {
 	laneLab(t, threeLanes())
 	a, _ := laneSheet(t)
 
-	want := []string{
-		config.ModelSettingKey(talkSlot),
-		config.LaneSettingKey(talkSlot),
-		config.KeyLaneGuard,
-		config.KeyRouting,
-	}
-	got := make([]string, 0, len(want))
+	want := []string{config.ModelSettingKey(talkSlot), config.LaneSettingKey(talkSlot), config.KeyLaneGuard, config.KeyRouting}
+	// Routing controls are grouped under Advanced, in their established order.
+	a.sheet.advanced = map[string]bool{tabProviders: true}
+	a.sheet.build()
+	got := []string{}
 	for _, item := range a.sheet.items {
-		if item.restful() && len(got) < len(want) {
-			got = append(got, item.row.Key)
+		for _, key := range want[1:] {
+			if item.row.Key == key {
+				got = append(got, key)
+			}
 		}
 	}
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Fatalf("the tab opens on %v, want %v", got, want)
+	if strings.Join(got, " ") != strings.Join(want[1:], " ") {
+		t.Fatalf("advanced routing order %v", got)
 	}
 	// AND ON ONE TAB ONLY. A row a person can meet in two places is two places
 	// to look for one answer.

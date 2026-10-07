@@ -589,7 +589,7 @@ quarantine — grouped by how far each one's truth reaches, and answers with at 
   true now in its place.
 
 **What it costs.** One call on the **small work** class — the `consolidate` role
-in `/settings` → Providers — a few times a day at most. It spends under the same
+in `/settings` → Models — a few times a day at most. It spends under the same
 daily budget as everything else that runs in the background, and it is the first
 thing a spent day stops paying for.
 
@@ -710,7 +710,7 @@ reading as three times the price of its neighbours. `/cost` also names how many
 of those paid requests were empty at their ceiling.
 
 You can point that row at a different model — the **reflex** row in
-`/settings` → Providers — or pin the
+`/settings` → Models — or pin the
 `reflex` role by itself under `pinned roles`. A change is live: the next turn's
 pair uses it.
 

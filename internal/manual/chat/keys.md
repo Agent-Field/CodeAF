@@ -670,7 +670,7 @@ cannot send it delivers plain enter on many keyboards, or a newline on some.
 | `ctrl+,` | Open the settings panel |
 | `alt+e` | Walk this conversation's thinking rung one step: auto → low → medium → high → xhigh → max, and back to auto. Works with a sentence half typed. On home and every other place it walks the rung of the **next** conversation instead — the effort word after the model’s colon on home’s seam |
 | `alt+a` | Walk what this conversation runs without asking one stop: asks → guardian → YOLO → asks. Never lands on `refuses`. Works with a sentence half typed; over `--host` it says the far machine's rules decide. On home and every other place it walks the gate of the **next** conversation — the `◇` cell on the rule above that box — and that pin is spent by the conversation that uses it |
-| `ctrl+.` | Open the sessions place (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
+| `ctrl+.` | Open the activity page (`/history`) — every task this machine has run, across every project and every session; type to filter it. It opens on a machine that has run nothing too, and the page says what tasks are |
 | `space` `space` | On an **empty** box: open home (`/home`) — every project and conversation on the machine the session runs on, and an empty home on a fresh one. Does nothing when the box has words in it |
 | `ctrl+l` | Jump back to the live edge of the conversation |
 | `alt+v` (`opt+v`) | Open the **conversations view** (`/wall`) on Chats: all saved, non-deleted conversations, with live or saved previews. Select cards to create a team. Press again or `esc` to close it. Its own keys are on the *Conversations and teams* page |
@@ -1369,8 +1369,8 @@ What it changes and what it does not:
   it. It is sticky, kept in this session's own `meta.json`, so it is still there after you
   close codeaf and `/resume`. `codeaf resume --yolo` outranks the saved word for that
   launch.
-- It does **not** change other conversations. Their answer is the **"ask before running"**
-  row and the **guardian** row on `/settings`' Safety tab, unless they have a saved
+- It does **not** change other conversations. Their answer is the **tool approvals**
+  row and the **AI approval screening** row on `/settings`' Permissions category, unless they have a saved
   posture of their own.
 - **Neither floor moves.** Dangerous shell commands and anything sent in your name are
   asked about at every stop, `YOLO` included, exactly as under `--yolo`.
@@ -1725,7 +1725,7 @@ follows what you type. Only these keys are taken from you:
 
 **Model picker** — opened by `/model` with no argument, by clicking the model name
 in the status row, or by `enter` on the **your model** row of the settings panel's
-Providers tab (the same list and the same keys, drawn in the panel's place):
+Models category (the same list and the same keys, drawn in the panel's place):
 
 `esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
 effort · `ctrl+r` fetch the newest model list (`/model` only — not the settings panel's
@@ -1757,7 +1757,7 @@ Every model picker column is two rungs — its own direction, then reversed — 
 `model ↑`, `via ↓`, `via ↑`, and so on back round to the name, skipping any column this list
 published nothing in; `alt+shift+s` retraces it. The list is always sorted and the sorted
 column always wears `↓` or `↑` in the heading. Inside an open provider fold the same key
-sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the sessions place gives:
+sorts the PROVIDERS, and the two tables keep their own orders. It is a chord and not a bare `s` for the reason the activity page gives:
 `s` is one of the commonest letters a filter starts with, and the list a person was
 narrowing would re-sort instead.
 
@@ -2331,8 +2331,8 @@ to filter, `↑↓` to walk, `enter` to use it, `esc` to go back to the layer.
 **Press the space bar twice with an empty message box.** That is the way back to home from
 inside a conversation, and `/home` opens it too.
 
-**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the six places on
-the top line, `home  teams  chats  sessions  spend  settings`, and each answers to its position there,
+**There is also a number: `alt+1` (`opt+1` on a Mac).** Home is the first of the seven main destinations on
+the top line, `home  chats  AI teams  activity  memory  spend  settings`, and each answers to its position there,
 `alt+1` through `alt+6`. **`alt+7` and `alt+8` are kept**, on the two places that
 are off the bar — standing and memory — so those keys still open a room rather than
 doing nothing; `alt+.` draws them all with their numbers. `alt+2` is the teams page, and
@@ -2365,7 +2365,7 @@ tasks, on standing orders and on memory alike: a foot that offered `enter` or `t
 filter` over a body with no rows would be naming a key with nothing to act on.
 
 There is no `ctrl+<letter>` chord for home: every one this surface could use is already
-taken, and `ctrl+.` is the sessions place (`/history`) from a conversation — while a place is
+taken, and `ctrl+.` is the activity page (`/history`) from a conversation — while a place is
 standing that same `ctrl+.` draws the map, on the terminals that can send it, because a place
 takes the whole frame and never reaches the conversation's keys. `esc` was not available either: on an idle conversation it
 already arms rewind and already clears messages waiting from the turn, and a third
@@ -2623,7 +2623,7 @@ column's two words, and elsewhere they do nothing.
 **The walk stops at this conversation's last job, after its last task.** The roster holds
 this conversation's work, then the jobs section under it, so `↓` walks both and clamps at
 the bottom rather than carrying on into the project's record. Old tasks from earlier
-sessions are on the sessions place, reached from the column's own `ctrl+. earlier` line, from
+sessions are on the activity page, reached from the column's own `ctrl+. earlier` line, from
 `ctrl+.` or from `/history`; `enter` on an `earlier` row there goes inside that task's
 card. In a directory whose earlier sessions ran tasks but where **this** conversation has
 run none and started no jobs, `alt+t` falls through: there is nothing on the column to
@@ -2751,7 +2751,7 @@ A program's task page — senior-dev's — opens on the actions it took, each un
 of its process. **`ctrl+y` turns it to the raw calls** it made to its model: what it sent,
 what the model answered, which model it was, and the call in flight. `ctrl+y` again turns
 it back. It works in the program's room, whichever door opened it — its row, its card, or
-the sessions place — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
+the activity page — and the key row names it: `ctrl+y calls` over the actions, `ctrl+y actions`
 over the calls. Every page opens on the actions.
 
 It is a chord, so it never costs a character: the room's box keeps what you typed. It is
@@ -2820,7 +2820,7 @@ or a part of one it handed out itself:
 whole of it, and no key on this surface ever does something that is not drawn on the screen
 in front of you. Where a landing draws each answer on a line of its own — the one road that
 does, because its `[a]` moves files of yours — `d you decide` is on it. The standing
-choice is `task.settle` in `/settings` under Session, and it is the right place for it: a
+choice is `task.settle` in `/settings` under Tasks, and it is the right place for it: a
 letter that hands one landing over changes nothing about the next one.
 
 While `task.settle` is `auto` the reason row also reads `codeaf is deciding`; the answers
@@ -3104,8 +3104,7 @@ press a key or press `ctrl+s` again. While the pointer is out, the row under the
 box reads exactly `drag to select · any key ends it`. That line is how you tell this apart
 from everything else here.
 
-**The `ui.mouse` setting is off.** It is **on** by default — `/settings`, the Display
-section, the row labelled `mouse`. With it off, codeaf never asks your terminal to report
+**The `ui.mouse` setting is off.** It is **on** by default — `/settings`, the General category, the row labelled `mouse interaction`. With it off, codeaf never asks your terminal to report
 the pointer at all: no hover, no click, no wheel, and your terminal keeps drag-select
 permanently. `/select` then says `your terminal already has the pointer — drag to select.`
 
@@ -3397,11 +3396,11 @@ This holds however the row was changed — in the panel, or by asking codeaf to 
 `change_setting`. The row is written straight away and the transcript says so; the screen
 picks it up when the turn ends.
 
-The **background after** row is different. Its key is
+The **background shell commands after** row is different. Its key is
 `bash.background_after_seconds`, and the session engine and the visible countdown arm
 from it together at launch. A change lands on the **next session**, not at the end of the
 current turn. Because this row controls how hard the machine may be worked,
-`change_setting` refuses it; open `/settings`, choose the Safety tab, and change the row
+`change_setting` refuses it; open `/settings`, choose the Tasks category, and change the row
 yourself.
 
 With `ui.mouse` off, every drag belongs to your terminal permanently, and `ctrl+s` has

@@ -85,7 +85,7 @@ func TestTheTaskPageOpensOnItsKeyAndTakesTheWholeFrame(t *testing.T) {
 	// title row, `history … esc close`, across its head; the router draws the
 	// seven places above the rule and the shared hint line says how to leave, so
 	// a title here would be the frame naming itself twice (pages.go).
-	if !strings.Contains(plain(frame), pageTasks.word()) {
+	if !strings.Contains(plain(frame), navLabel(pageTasks)) {
 		t.Fatalf("the frame is not the tasks place:\n%s", plain(frame))
 	}
 	// The conversation is not drawn under it, and neither is the box a person
@@ -231,7 +231,7 @@ func TestTheTaskPageCommandIsHistoryAndNothingSpellsItTasks(t *testing.T) {
 	// the manual both call it. The COMMAND keeps its own older word — /history
 	// still opens this, and [taskSheetWord] is still what that command is called
 	// — which is why the two are checked apart.
-	if text := taskSheetText(a); !strings.Contains(text, pageTasks.word()) {
+	if text := taskSheetText(a); !strings.Contains(text, navLabel(pageTasks)) {
 		t.Fatalf("the place does not say what it is:\n%s", text)
 	}
 }

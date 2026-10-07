@@ -142,7 +142,7 @@ func TestTeamsMemberAndGlobalPreviewsUseTheSameLatestExchange(t *testing.T) {
 	d = &teamsDraw{a: a}
 	rows := a.teamsGlobalManagerCard(d, 120, 3)
 	text = plain(strings.Join(rows, "\n"))
-	for _, want := range []string{a.pal.youGlyph() + "Global prompt", "Global reply begins.", "? Review global work", "+ Add member", "Settings"} {
+	for _, want := range []string{a.pal.youGlyph() + "Global prompt", "Global reply begins.", "? Review global work", "+ Add chat", "Settings"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("global missing %q: %s", want, text)
 		}

@@ -101,7 +101,7 @@ func TestTeamsIsTheSecondPlaceOnTheBarTheDigitsAndTheCommand(t *testing.T) {
 	}
 	a := placeApp(t)
 	bar := navPlaces(a, 120, false)
-	if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions") {
+	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity") {
 		t.Fatalf("the bar does not put teams after home: %q", bar)
 	}
 	drive(t, a, key("alt+2"))
@@ -122,7 +122,7 @@ func TestTeamsWithNoTeamsSaysWhatTheyAreAndOffersTwoWays(t *testing.T) {
 	a.width, a.height = 110, 24
 	drive(t, a, key("alt+2"))
 	text := teamsFrameText(a)
-	for _, want := range []string{"A team is a set of conversations", teamsOrganizeWord, teamsNewTeamWord} {
+	for _, want := range []string{"An AI team groups chats", teamsOrganizeWord, teamsNewTeamWord} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the empty page lost %q:\n%s", want, text)
 		}

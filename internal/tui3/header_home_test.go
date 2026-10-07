@@ -78,7 +78,7 @@ func TestTheHeadAroundTheStripIsInertAndHomeHasPlainHover(t *testing.T) {
 		if !a.navHover(x, navRow) || a.tabHover != pageHome {
 			t.Fatal("Home padding is not part of the target")
 		}
-		if !strings.Contains(plain(a.navLine(a.width, a.pal)), "·home ") {
+		if !strings.Contains(plain(a.navLine(a.width, a.pal)), "·"+navLabel(pageHome)+" ") {
 			t.Fatal("Home has no plain-terminal hover feedback")
 		}
 	}
@@ -195,7 +195,7 @@ func TestHomeTabKeepsItsSpellingAndPositionAcrossViews(t *testing.T) {
 				a.pal = newPalette(profile, false)
 				chat := headerHome(t, a)
 				nav := plain(a.navLine(width, a.pal))
-				if !strings.Contains(nav, " home ") || strings.Contains(nav, "Home") {
+				if !strings.Contains(nav, " "+navLabel(pageHome)+" ") || strings.Contains(nav, " home ") {
 					t.Fatalf("the nav's home is misspelled: %q", nav)
 				}
 				cmd, took := a.navPress(chat.from, navRow)
