@@ -233,7 +233,7 @@ func (a *app) modelsFetched(msg modelsFetchedMsg) {
 	//
 	// IT IS AFTER THE FAILURE CHECK because a fetch that failed wrote nothing:
 	// dropping the memo there would throw away a good reading to punish a bad
-	// call, and the next frame would fall to the built-ins.
+	// call, leaving the next frame with no known rows.
 	a.forgetModelList("", modelcatalog.DefaultBaseURL)
 	a.refreshCreditWarnings()
 	if a.pick.open && a.pick.refresh {

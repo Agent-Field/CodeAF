@@ -27,15 +27,17 @@ func TestHomeManualQualifiesTheFreshProjectConversationTab(t *testing.T) {
 	}
 }
 
-func TestModelManualCountsTheDefaultProviderWithoutAKey(t *testing.T) {
+func TestModelManualListsOnlyUsableProviderConnections(t *testing.T) {
 	answer := chatSection(t, "commands", "/model — pick a model")
-	for _, fact := range []string{"only the default provider", "even without its key", "Ollama", "headings"} {
+	for _, fact := range []string{"only OpenRouter connected", "absent without its key", "only Ollama connected", "installed models", "connected providers", "selects it and closes the list immediately"} {
 		if !strings.Contains(answer, fact) {
 			t.Errorf("model picker does not explain %q:\n%s", fact, answer)
 		}
 	}
-	if strings.Contains(answer, "With one connected provider") {
-		t.Error("model picker still counts connected providers instead of its registered default")
+	for _, stale := range []string{"even without its key", "Enter chooses and the list stays up"} {
+		if strings.Contains(answer, stale) {
+			t.Errorf("model picker still promises retired behavior: %q", stale)
+		}
 	}
 }
 

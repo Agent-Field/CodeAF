@@ -1065,15 +1065,14 @@ thinking control takes. enter switches.
 provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
-**Enter chooses and the list stays up; esc is the way out.** Pressing enter on a row
-switches to it there and then and leaves the list on screen, so you can compare two models
-by their prices, switch, and switch back without reopening anything — and the mark moves to
-whatever you just chose. The same is true of a provider inside a fold: enter pins it, the
-list stays.
+**Enter on a model selects it and closes the list immediately.** The keyboard returns
+to your half-typed draft or the settings page that opened the list. To compare another
+model, reopen the picker. Enter with no matching model leaves the list open and changes
+nothing. Enter inside a provider fold keeps its controls open, including when it opens
+OpenRouter's machines or pins a provider.
 
-esc itself changes **nothing** — it closes the list and gives your half-typed draft and the
-frame back as they were. What enter already did is already done; esc does not undo it. The
-filter is forgotten when the picker closes.
+Esc closes without choosing another model and restores the draft and frame. Provider
+changes already made stay done. The filter is forgotten when the picker closes.
 
 ## Where the /model cursor opens — Enter confirms the model in use
 
