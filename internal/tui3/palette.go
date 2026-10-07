@@ -162,9 +162,8 @@ type picker struct {
 	// underneath may move it, which is the whole of the freeze on this list.
 	//
 	// THE ONE THING THAT MOVES IT IS THE PERSON ([picker.restate]). Enter
-	// chooses and leaves the list up, so the model in use can change while it
-	// is open; a mark left on the row they had just left would be the one thing
-	// on this list that was no longer true.
+	// on a provider can also choose its model while leaving the controls open;
+	// the mark must follow that choice until the list is closed.
 	current string
 
 	// held is each model's row facts, frozen the first time this list drew

@@ -479,13 +479,9 @@ func TestASettingsSelectSubmenuSwitchesTheModel(t *testing.T) {
 		t.Fatalf("the walk did not reach the other model, it is on %q", chosen)
 	}
 	drive(t, a, key("enter"))
-	// ENTER WRITES AND LEAVES THE LIST UP ([app.pickerKey] argues it).
-	if a.sheet.sel == nil {
-		t.Fatal("enter closed the submenu; esc is the way out now")
-	}
-	drive(t, a, key("esc"))
+	// Enter confirms the model and returns to its settings row.
 	if a.sheet.sel != nil {
-		t.Fatal("esc left the submenu open")
+		t.Fatal("enter left the submenu open")
 	}
 	if a.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("the session is on %q", a.model)
