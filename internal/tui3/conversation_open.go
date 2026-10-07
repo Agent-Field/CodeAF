@@ -104,9 +104,6 @@ func (a *app) renewLater(say func(string), after func() tea.Cmd) tea.Cmd {
 }
 
 func (a *app) homeStartLater(text, place string) tea.Cmd {
-	if (strings.TrimSpace(text) != "" || place != "" || len(a.home.chips) > 0) && a.updateStopsTurn() {
-		return nil
-	}
 	say := func(text string) { a.home.say(text, "") }
 	if !a.canStart() {
 		say(newUnavailableWord)

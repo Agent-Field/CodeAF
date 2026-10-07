@@ -522,6 +522,11 @@ func (placeHome) about() string { return "what wants you and what is running" }
 
 func (placeHome) hint(a *app) string { return a.homeHint() }
 
+// showsOffer is YES: home draws the offer's own keys row where it is up, in
+// place of the resting hint ([app.homeFootLine], hometip.go), so a release
+// waiting on an answer is answerable from home as it is from a conversation.
+func (placeHome) showsOffer(a *app) bool { return true }
+
 // changed is ZERO AND THAT IS THE DESIGN. Home is where the "since you left"
 // ledger is DRAWN, in sentences that say what happened and open the place it
 // happened in — so a digit on its tab would be the same news said twice, once

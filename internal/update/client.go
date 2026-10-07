@@ -304,6 +304,18 @@ type Choice struct {
 	Channel string
 	Version string
 	Running string
+	// Published is THE MOMENT THE CALLER ALREADY KNOWS this exact release was
+	// published, and it means something only beside Version.
+	//
+	// A PINNED TAG IS RESOLVED WITHOUT THE API, so the release it answers would
+	// carry no publish moment at all — and the install record written from it
+	// could not be ordered against the file on disk, which is how a stale
+	// same-day dev or staging build gets written over a newer one
+	// ([recordSupersedes]). The road that pins has the fact already: the launch
+	// check read it from the API and the offer kept it, so it rides here rather
+	// than being guessed at under the lock. A caller resolving a CHANNEL leaves
+	// it zero, because the API's own answer is the fact on that road.
+	Published time.Time
 }
 
 // Release is one selected GitHub release and the repository that answered.
@@ -333,7 +345,7 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 		if Kind(version) == "other" {
 			return Release{}, fmt.Errorf("%q is not a codeaf release tag", version)
 		}
-		return Release{Tag: version, Repository: primaryRepository}, nil
+		return Release{Tag: version, Repository: primaryRepository, PublishedAt: choice.Published}, nil
 	}
 	channel := strings.TrimSpace(choice.Channel)
 	if channel == "" {
@@ -352,6 +364,47 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 		}
 	}
 	return Release{}, errors.New("no release repository answered")
+}
+
+// TagPublished asks the release API for ONE exact tag's publish moment, and it
+// is BEST-EFFORT BY CONTRACT. The moment is what the install record carries and
+// what orders two same-day dev or staging builds ([recordSupersedes]), so a
+// NAMED tag — which [Select] answers without the API — is worth one bounded
+// lookup before its install writes that record. A tag the API cannot answer for
+// — offline, rate-limited, deleted, or a release the API has not indexed —
+// leaves the moment UNKNOWN, which is never guessed at and never fails the
+// install: the file is still there to fetch, and a person naming it means it.
+func (c *Client) TagPublished(ctx context.Context, tag string) (time.Time, bool) {
+	tag = strings.TrimSpace(tag)
+	if c == nil || tag == "" || !installNamePattern.MatchString(tag) {
+		return time.Time{}, false
+	}
+	// AN EMPTY API BASE IS NO API TO ASK. A caller that built a client for
+	// downloads alone (or a test's stub) reads as unknown rather than as a
+	// relative address nothing can serve.
+	if strings.TrimSpace(c.APIBase) == "" {
+		return time.Time{}, false
+	}
+	for index, repository := range []string{primaryRepository, legacyRepository} { // legacy-name
+		rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + repository + "/releases/tags/" + url.PathEscape(tag)
+		body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
+		if err != nil {
+			if isStatus(err, http.StatusNotFound) && index == 0 {
+				continue
+			}
+			return time.Time{}, false
+		}
+		var row apiRelease
+		if json.Unmarshal(body, &row) != nil || strings.TrimSpace(row.TagName) != tag {
+			return time.Time{}, false
+		}
+		moment := row.stamp()
+		if moment.IsZero() {
+			return time.Time{}, false
+		}
+		return moment, true
+	}
+	return time.Time{}, false
 }
 
 func (c *Client) selectRepository(ctx context.Context, repository, channel, running string) (Release, error) {

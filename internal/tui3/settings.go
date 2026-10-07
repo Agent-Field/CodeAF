@@ -554,6 +554,14 @@ var settingUI = map[string]settingMeta{
 			everyWord(standing.Interval) + " with no window open. " +
 			"Off checks only while one is.",
 	},
+	// THE UPDATE ROW READS THE WAY UP ITS KEY DOES, unlike the hints row above:
+	// on means codeaf keeps itself current. It sits on Workspace beside
+	// `background checks`, because both answer what this MACHINE does on its own
+	// rather than how the surface draws itself.
+	config.KeyUpdateAuto: {
+		tab: tabWorkspace, label: "auto update", widget: widgetToggle,
+		// NO `about`: the registry's own hint is the sentence, said once.
+	},
 	// THE SIGNATURE HAS NO ROW, only the model's name inside it: codeaf always
 	// signs the commits and pull requests it writes, and what a person may
 	// choose is whether the `Assisted-by` line says which model it was.
@@ -2652,6 +2660,14 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	// banked rule through, and it rebuilds the policy from these same three rows.
 	note := ""
 	switch item.row.Key {
+	case config.KeyUpdateAuto:
+		// THE LIVE SESSION SEES THE ROW IT JUST CHANGED. The grace re-reads
+		// this flag, so turning it off in the panel must reach the running
+		// window and not only the file.
+		if a.updateAuto != nil {
+			a.updateAuto.Enabled = config.UpdateAutoAt(a.profileDir)
+		}
+		a.touch()
 	case config.LaneSettingKey(talkSlot), config.LaneBorrowKey(talkSlot):
 		a.laneRowChanged()
 	case config.KeyLaneGuard:

@@ -164,20 +164,25 @@ So before it hands your window over, `codeaf engine` asks whatever is already ho
 workspace which build it is. The check asks which source the running engine was built from,
 so building the same commit twice is the same build and your window attaches to it without
 a word; a build from a changed working tree, or one too old to report a stamp at all, counts
-as another build. Three things can be true:
+as another build. Four things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.
-- **It is an older build** — built earlier, from any file, or too old to answer the
-  question at all. It is replaced, busy or not: it closes its conversations, flushes their
-  transcripts, and a fresh one starts from the binary that is on disk now. The window says
-  `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build holds the
-  workspace now`.
+- **It is an older build, holding work.** Your window joins it and your work carries on. The
+  old process keeps what it was holding and steps aside at its first quiet moment; a host
+  built before this ask ignores the note, so for one of those the line says the work is kept
+  and **your next safe launch once the work is done and every window has left** opens from
+  the new build. An attached idle window counts as holding work, so close it before the
+  handover.
+- **It is an older build, holding nothing.** It hands the workspace over at once and the
+  window says `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build
+  holds the workspace now`.
 - **It is a newer build.** Your window joins it. If its wire is one this binary cannot
   speak, the connection is refused, naming this binary as the older one and
   `codeaf engine --status` as the way to see which is newer.
 
-Only if the older engine will not go is the connection refused, in these words:
+An older engine on another wire, or one too old to be asked at all, is refused, in these
+words:
 
 ```
 engine: spark is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on spark
