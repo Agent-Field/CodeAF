@@ -178,6 +178,8 @@ func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 // else, and the conversation's own model is untouched by it.
 func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 	a, fake := roomModelApp(t, "z-ai/glm-5.2")
+	// A room can choose only rows a provider actually listed.
+	a.models = func() []Model { return []Model{{ID: "z-ai/glm-5.2"}, {ID: "openai/gpt-4.1-mini"}} }
 	a.width, a.height = 120, 24
 	a.touch()
 

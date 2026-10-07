@@ -1644,8 +1644,8 @@ func TestDirectOnlyCommandsInventNoDefaultProviderUsage(t *testing.T) {
 	if !strings.Contains(rendered, "deepseek-direct") || !strings.Contains(rendered, "deepseek-direct/deepseek-v4-pro") {
 		t.Fatalf("/model lost the connected service and its model:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "openrouter") || !strings.Contains(rendered, config.DefaultModel) {
-		t.Fatalf("/model lost the keyless default service's existing group or model:\n%s", rendered)
+	if strings.Contains(rendered, "openrouter") || strings.Contains(rendered, config.DefaultModel) {
+		t.Fatalf("/model offered the unconnected default service's group or model:\n%s", rendered)
 	}
 }
 
