@@ -1038,11 +1038,12 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-With only the default provider in the list, models have no provider heading. The
-default provider stays in the list even without its key: adding a direct provider
-such as Ollama therefore draws headings, including the default provider's. Models
-sit under their provider's name as a dim heading, default provider first; a custom
-provider's heading is the name you gave it.
+With only OpenRouter connected, models have no provider heading. OpenRouter is
+absent without its key: with only Ollama connected, the list contains only Ollama's
+installed models. When direct providers are connected, models sit under their
+provider's name as a dim heading; OpenRouter comes first when it has a key, followed
+by the connected providers in your saved order. A custom provider's heading is the
+name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is

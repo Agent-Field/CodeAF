@@ -807,8 +807,8 @@ type Options struct {
 	// slice because the door's list may be warming: it is called the moment the
 	// picker opens, so a catalog that resolved after boot is on offer, and it
 	// MUST NOT block — a picker that waits on a fetch is a picker that answered
-	// a question with a spinner. Nil, or an empty answer, falls through to
-	// ~/.codeaf/v3/models.json and then to [BuiltinModels] (see models.go).
+	// a question with a spinner. Nil falls through to the provider's cached
+	// list; a known empty list stays empty, and no built-ins are offered.
 	//
 	// THE ONE FETCH IS ASKED FOR, AND IT STILL DOES NOT BLOCK: [Options.
 	// RefreshModels] runs as a command off the loop while the picker keeps

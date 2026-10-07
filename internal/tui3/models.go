@@ -330,8 +330,8 @@ func WriteModelCacheFor(source, base string, models []Model) error {
 	return os.Rename(name, path)
 }
 
-// BuiltinModels is the last rung: names this build remembers, in the order a
-// person is most likely to want them. No context lengths — these are not rows
+// BuiltinModels seeds model-author names for connection-name collision checks.
+// These names are never offered as picker rows. No context lengths — they are not rows
 // anybody fetched, and inventing a window for a model this process has never
 // heard back from is exactly the guess [Model.ContextLength]'s zero exists to
 // avoid.
