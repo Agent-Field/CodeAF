@@ -37,11 +37,13 @@ func TestCachedContextWindowReadsTheProfilesOwnCatalog(t *testing.T) {
 		"openrouter/deepseek/deepseek-v4.1-flash": 1_048_576,
 		"vendor/small":                            16_384,
 		"vendor/never-listed":                     0,
-		"":                                        0,
 	} {
 		if got := CachedContextWindow(model); got != want {
 			t.Errorf("CachedContextWindow(%q) = %d, want %d", model, got, want)
 		}
+	}
+	if got := CachedContextWindow("  "); got != 0 {
+		t.Errorf("a blank model answered %d, want 0", got)
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("the lookup reached the network %d times", calls.Load())
