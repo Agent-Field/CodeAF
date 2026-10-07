@@ -430,6 +430,14 @@ func (a *app) offerTick() tea.Cmd {
 // time is the whole reason the grace exists. The list is the states that TAKE
 // the slot away from the running conversation, not the conversation's own work.
 func (a *app) updateOfferHidden() bool {
+	// THE CONVERSATION-DELETE CONFIRMATION READS EVERY KEYPRESS AT THE TOP OF
+	// THE LOOP — above this file's own chord — so alt+n never reaches the offer
+	// while the card stands, and the countdown would run down behind a sheet
+	// the person cannot answer from (conversationdelete.go's
+	// [app.conversationDeleteKey]).
+	if a.cdelete.on {
+		return true
+	}
 	if a.questionRoomOpen() || a.setup.open || a.railPlanPending.id != "" {
 		return true
 	}

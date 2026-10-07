@@ -44,15 +44,16 @@ to its last key.
 
 The clock PAUSES wherever the offer cannot be read or answered: a question page,
 every place but home and the conversation (whose keys row is the offer's own —
-`/settings`, memory, standing, spend), the first-run sheet, a team's card, the
-move picker, the switcher's menu, the wall, the provider panel, the settings
-panel's own value box and model picker, the model picker and the thinking ladder
-and the session picker (whose keys take the offer's slot in the conversation),
-and the sheets that replace the frame whole — the folder chooser and, at phone
-width, the status sheet and the tool detail. The list is the keyboard states that
-take the keys slot or the frame away from the offer, and a test pins its scope in
-both directions: a running turn and a plain conversation MUST keep counting, with
-the offer's control on the keys row.
+`/settings`, memory, standing, spend), the first-run sheet, the
+conversation-delete confirmation (which reads every keypress before the offer's
+chord), a team's card, the move picker, the switcher's menu, the wall, the
+provider panel, the settings panel's own value box and model picker, the model
+picker and the thinking ladder and the session picker (whose keys take the
+offer's slot in the conversation), and the sheets that replace the frame whole —
+the folder chooser and, at phone width, the status sheet and the tool detail. The
+list is the keyboard states that take the keys slot or the frame away from the
+offer, and a test pins its scope in both directions: a running turn and a plain
+conversation MUST keep counting, with the offer's control on the keys row.
 
 The row is read LIVE. `/settings` updates the running window's flag, and a row
 turned off — or a release skipped — in ANOTHER window is seen because the

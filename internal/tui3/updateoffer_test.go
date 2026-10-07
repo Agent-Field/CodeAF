@@ -538,6 +538,10 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 		{"the team menu", func(a *app) { a.teamMenu.on = true }},
 		{"the provider panel", func(a *app) { a.addPanel.open = true }},
 		{"a question page", func(a *app) { a.qroom = &questionRoom{} }},
+		// THE CONFIRMATION SHEET READS THE KEY BEFORE THE OFFER'S CHORD, so it
+		// is the one state whose pause is decided by the loop rather than by the
+		// foot (app.go's tea.KeyPressMsg arm).
+		{"the conversation-delete sheet", func(a *app) { a.cdelete.on = true }},
 		// THE SHEETS THE FOOT REPLACES THE OFFER'S SENTENCE WITH, or that take
 		// the frame whole (the phone tier's status sheet and tool detail).
 		{"the model picker", func(a *app) { a.pick.open = true }},
@@ -594,6 +598,36 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 				t.Fatalf("the deadline did not fire over %s: cmd = %v in flight = %t", row.name, cmd, a.updateInFlight)
 			}
 		})
+	}
+}
+
+// TestTheDeleteConfirmationEatsTheOfferChordAndTheGraceWaits pins the premise
+// of the pause above it: the conversation-delete sheet reads EVERY keypress at
+// the top of the loop, before the offer's own chord is ever consulted, so alt+n
+// cannot answer the offer while the card stands — and the countdown must wait
+// rather than install behind a sheet the person is answering.
+func TestTheDeleteConfirmationEatsTheOfferChordAndTheGraceWaits(t *testing.T) {
+	lab := newOfferLab(t, offerAuto(&codeupdate.AutoState{}))
+	a := lab.app
+	a.offer.raise("v0.9.3", "v0.9.2", a.now())
+	a.cdelete.on = true
+	drive(t, a, key("alt+n"))
+	if !a.offer.offering() {
+		t.Fatalf("the delete sheet did not eat the offer's chord: %+v", a.offer)
+	}
+	if !a.cdelete.on {
+		t.Fatal("the skip chord closed the delete confirmation")
+	}
+	if lab.installed != 0 {
+		t.Fatal("a release installed behind the delete confirmation")
+	}
+	// THE GRACE WAITS AND IS GIVEN BACK WHOLE, and the deadline never fires.
+	a.offer.deadline = a.now().Add(-time.Second)
+	if cmd := a.tookOfferTick(); cmd == nil || !a.offer.offering() || lab.installed != 0 {
+		t.Fatalf("the grace fired behind the delete confirmation: cmd = %v offer = %+v installed = %d", cmd, a.offer, lab.installed)
+	}
+	if left := a.offer.deadline.Sub(a.now()); left <= 0 || left > codeupdate.AutoGrace || left < codeupdate.AutoGrace-time.Second {
+		t.Fatalf("the grace did not restart under the delete confirmation: %s left, want about %s", left, codeupdate.AutoGrace)
 	}
 }
 
