@@ -105,7 +105,7 @@ const (
 	widgetText settingWidget = iota
 	// widgetToggle flips in place on enter or space. Booleans only.
 	widgetToggle
-	// widgetCycle walks a short enum in place, in the registry's own order.
+	// widgetCycle opens the registry's short list of choices before saving.
 	widgetCycle
 	// widgetLane walks the four answers to "which machine behind this model" —
 	// auto, pinned, pinned but borrowable, and openrouter. It is not
@@ -1071,8 +1071,9 @@ type sheet struct {
 
 	// edit is the text submenu and sel the select submenu. At most one is open,
 	// and while one is, it owns the keyboard.
-	edit *sheetEdit
-	sel  *sheetSelect
+	edit   *sheetEdit
+	sel    *sheetSelect
+	choice *sheetChoice
 
 	// today is the Spending tab's first row: what the day has cost, against what
 	// it is allowed. It is TAKEN ONCE, when the panel opens (settingspend.go's
@@ -1083,7 +1084,8 @@ type sheet struct {
 	today *railReading
 
 	// msg is the last refusal, in the registry's own words.
-	msg string
+	msg      string
+	savedKey string // Set only after a setting write succeeds.
 }
 
 // sheetEdit is the one-line text submenu.
@@ -2263,6 +2265,7 @@ func formatModelRoles(pins map[string]string) string {
 // yet starts the same browser trip /connect starts, and a sign-in is a thing
 // that reaches the network (connectcaps.go).
 func (a *app) sheetKey(msg tea.KeyPressMsg) (cmd tea.Cmd, took bool) {
+	a.sheet.savedKey = ""
 	defer func() {
 		if bind := a.takeSpendRailBindCmd(); bind != nil {
 			cmd = tea.Batch(cmd, bind)
@@ -2432,6 +2435,7 @@ func (s *sheet) tabBy(delta int) {
 // answers it — and on the Connections tab, open an account, walk one of its
 // answers, or start a sign-in, which is the one of them that needs a command.
 func (a *app) activate() tea.Cmd {
+	a.sheet.savedKey = ""
 	s := &a.sheet
 	item, ok := s.current()
 	if !ok {
@@ -2550,18 +2554,17 @@ func (a *app) activate() tea.Cmd {
 		a.applySetting(item, next)
 
 	case widgetCycle:
-		choices := item.row.Choices
-		if len(choices) == 0 {
+		if len(item.row.Choices) == 0 {
 			return nil
 		}
-		at := 0
-		for i, choice := range choices {
-			if choice == item.row.Value() {
-				at = (i + 1) % len(choices)
+		choice := &sheetChoice{item: item, current: item.row.Value()}
+		for i, value := range item.row.Choices {
+			if value == choice.current {
+				choice.cursor = i
 				break
 			}
 		}
-		a.applySetting(item, choices[at])
+		s.choice = choice
 
 	case widgetLane:
 		// ENTER ON THIS ROW OPENS THE MACHINES. It used to walk four words —
@@ -2720,6 +2723,7 @@ const gateNextSessionWord = "saved" + nextSessionWord
 // window has a conversation to push a gate into. A push from there would be a
 // seam called with nothing on the other end.
 func (a *app) applySetting(item sheetItem, raw string) bool {
+	a.sheet.savedKey = ""
 	if item.row.Key == config.KeySpendRail && !a.railRead {
 		// The panel's file write must not make the status line's first lazy
 		// read claim an active limit the engine has not accepted yet.
@@ -2809,6 +2813,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 		}
 	}
 	a.sheet.msg = note
+	a.sheet.savedKey = item.row.Key
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
 	return true
@@ -2817,6 +2822,7 @@ func (a *app) applySetting(item sheetItem, raw string) bool {
 // sheetEditKey drives the text submenu. enter saves, an empty box clears the
 // row, esc leaves it exactly as it was.
 func (a *app) sheetEditKey(msg tea.KeyPressMsg) tea.Cmd {
+	a.sheet.savedKey = ""
 	s := &a.sheet
 	edit := s.edit
 	// The word and line jumps are the surface's, said once (editkeys.go).
@@ -2987,6 +2993,7 @@ func (a *app) readHostTeamDefaults() tea.Cmd {
 // A nil command with [sheet.hostTeamRow] false means this row is local and
 // the caller writes it the usual way.
 func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
+	a.sheet.savedKey = ""
 	if !a.sheet.hostTeamRow(item) {
 		return nil
 	}
@@ -3019,6 +3026,7 @@ func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
 				copied := d
 				a.sheet.farTeams = &copied
 				a.sheet.msg = ""
+				a.sheet.savedKey = key
 				// Never close a replacement editor or discard text typed while the host
 				// was answering this earlier draft.
 				if edit != nil && a.sheet.edit == edit && edit.box.String() == raw {
@@ -3038,6 +3046,7 @@ func (a *app) writeHostTeamDefault(item sheetItem, raw string) tea.Cmd {
 // the conversation. Everything else — the walk, the scroll, the filter — is
 // [picker.navigate], the same code /model runs.
 func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
+	a.sheet.savedKey = ""
 	s := &a.sheet
 	sel := s.sel
 	switch msg.String() {
@@ -3122,6 +3131,9 @@ const (
 	// sheetHitOption is one row of the select submenu; index is its position in
 	// that submenu's own hits.
 	sheetHitOption
+	sheetHitEditActions
+	sheetHitChoice
+	sheetHitChoiceCancel
 )
 
 type sheetHit struct {
@@ -3134,12 +3146,13 @@ type sheetHit struct {
 // selects and answers, anything else does nothing. It hands back a command for
 // the reason [app.sheetKey] does — a sign-in reaches the network.
 func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
+	a.sheet.savedKey = ""
 	defer func() {
 		if bind := a.takeSpendRailBindCmd(); bind != nil {
 			cmd = tea.Batch(cmd, bind)
 		}
 	}()
-	if a.sheet.conn.entry != nil || a.sheet.edit != nil {
+	if a.sheet.conn.entry != nil {
 		// A BOX BEING TYPED INTO IS NOT A LIST. Every press is swallowed and none
 		// of them acts — esc is the way out, which is the way out of every box on
 		// this surface (connectpanel.go's [app.connectPanelPress] says it first).
@@ -3151,6 +3164,33 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 		return nil
 	}
 	hit := hits[y]
+	if a.sheet.choice != nil {
+		switch hit.kind {
+		case sheetHitChoice:
+			a.sheet.choice.cursor = hit.index
+			cmd = a.saveSheetChoice()
+		case sheetHitChoiceCancel:
+			if x < 2 || x >= 12 {
+				return nil
+			}
+			cmd = a.choiceKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+		}
+		a.touch()
+		return cmd
+	}
+	if a.sheet.edit != nil {
+		if hit.kind != sheetHitEditActions {
+			return nil
+		}
+		switch sheetEditActionAt(x, width, a.sheet.edit.pending) {
+		case sheetEditSaveHover:
+			cmd = a.sheetEditKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+		case sheetEditCancelHover:
+			cmd = a.sheetEditKey(tea.KeyPressMsg{Code: tea.KeyEscape})
+		}
+		a.touch()
+		return cmd
+	}
 	if a.sheet.sel != nil && hit.kind != sheetHitOption {
 		return nil
 	}
@@ -3213,6 +3253,32 @@ func (a *app) sheetHoverAt(x, y int) {
 	width, height := a.size()
 	_, hits, _, _ := a.sheetFrame(width, height)
 	next := hoverAt{}
+	if a.sheet.choice != nil {
+		if y >= 0 && y < len(hits) && hits[y].kind == sheetHitChoice {
+			next = hoverAt{kind: hoverSheet, index: hits[y].index}
+		}
+		if y >= 0 && y < len(hits) && hits[y].kind == sheetHitChoiceCancel && x >= 2 && x < 12 {
+			next = hoverAt{kind: hoverSheet, index: sheetChoiceCancelHover}
+		}
+		if next != a.hot {
+			a.hot = next
+			a.touch()
+		}
+		return
+	}
+	if a.sheet.edit != nil {
+		if y >= 0 && y < len(hits) && hits[y].kind == sheetHitEditActions {
+			action := sheetEditActionAt(x, width, a.sheet.edit.pending)
+			if action != 0 && !(action == sheetEditSaveHover && a.sheet.edit.pending) {
+				next = hoverAt{kind: hoverSheet, index: action}
+			}
+		}
+		if next != a.hot {
+			a.hot = next
+			a.touch()
+		}
+		return
+	}
 	if a.sheetSidebar(width, height) && x < settingsSidebarWidth && y >= 0 && y < len(hits) && hits[y].category > 0 {
 		next = hoverAt{kind: hoverSheet, index: -1 - hits[y].category}
 	}
@@ -3833,6 +3899,10 @@ func (s *sheet) footNote() string {
 
 func (s *sheet) keysLine() string {
 	switch {
+	case s.edit != nil && s.edit.pending:
+		return "esc close · saving…"
+	case s.choice != nil:
+		return "↑↓ options · enter save · esc cancel"
 	case s.edit != nil:
 		return "enter save · esc cancel"
 	case s.sel != nil:
@@ -3897,7 +3967,7 @@ func (a *app) sheetLayerOwnsKeys() bool {
 		return false
 	}
 	s := &a.sheet
-	return s.edit != nil || s.sel != nil || s.conn.entry != nil
+	return s.edit != nil || s.sel != nil || s.choice != nil || s.conn.entry != nil
 }
 
 // hoveredSheetRow is the item the pointer is over, or -1.

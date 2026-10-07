@@ -17,7 +17,12 @@ pickers have their own **Filter models** box. Each category keeps uncommon contr
 Selected-row help explains the setting. Scope and activation details appear
 where known. A value controlled by an environment variable remains read-only;
 change the variable at launch rather than trying to override it in Settings.
-Escape backs out of an editor without applying its unfinished value.
+On/off controls change when activated. Settings with several values open a choice
+list, with the saved value marked; opening or cancelling the list writes nothing.
+Choose an option to save it. Text and number editors keep the setting explanation,
+input and Save/Cancel controls together. Enter saves; Escape or Cancel discards
+the draft. Invalid input stays beside its error without changing the saved value.
+Any restart requirement remains visible while editing.
 
 ## Did the update reset my settings — old profiles and existing preferences
 

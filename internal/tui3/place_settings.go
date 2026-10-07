@@ -59,7 +59,7 @@ const settingsSidebarWidth = 20
 
 func settingsSidebar(width, height int) bool { return width >= 100 && height >= 24 }
 func (a *app) sheetSidebar(width, height int) bool {
-	return settingsSidebar(width, height) && a.sheet.sel == nil && a.sheet.edit == nil
+	return settingsSidebar(width, height) && a.sheet.sel == nil && a.sheet.edit == nil && a.sheet.choice == nil
 }
 func (placeSettings) body(a *app, width, room int) []placeRow {
 	_, height := a.size()
@@ -107,23 +107,15 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	}
 	rows = append(rows, placeRow{})
-	if s.edit != nil {
-		rows = append(rows, placeRow{text: "  " + pal.dim(fit(s.edit.label, max(1, width-4)))})
-		block, _, _ := s.editBlock(width, pal)
-		for _, line := range block {
-			rows = append(rows, placeRow{text: " " + line})
-		}
-		// Validation belongs beside the editable value, not in a distant footer.
-		// The draft and its caret keep their position when an error appears.
-		if s.msg != "" {
-			for _, line := range wrap(s.msg, max(1, width-4)) {
-				rows = append(rows, placeRow{text: "  " + pal.bad(line)})
-			}
-		}
+	if s.choice != nil {
+		rows = append(rows, s.choiceRows(width, room-len(rows), pal, a.hoveredSheetRow())...)
 		for len(rows) < room {
 			rows = append(rows, placeRow{})
 		}
 		return rows
+	}
+	if s.edit != nil {
+		return settingsEditorBody(a, width, room, rows)
 	}
 	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
 		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search all settings", "")
@@ -197,6 +189,104 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	return rows
 }
 
+// settingsEditorBody keeps the field, explanation and actions together.
+// On short terminals the editable value and actions take priority over help.
+func settingsEditorBody(a *app, width, room int, rows []placeRow) []placeRow {
+	s := &a.sheet
+	pal := a.pal
+	label := s.edit.label
+	var details []string
+	if row, ok := s.registry.Row(s.edit.key); ok {
+		meta, _ := settingMetaFor(row)
+		label = meta.label
+		info := row.ChatPresentation()
+		if info.Activation != "" {
+			details = append(details, wrap(info.Activation, max(1, width-4))...)
+		}
+		details = append(details, wrap(meta.about, max(1, width-4))...)
+		scope := info.Scope
+		if s.host != "" && meta.tab == tabTeams {
+			scope = s.footNote()
+		}
+		details = append(details, wrap(scope, max(1, width-4))...)
+	}
+	rows = append(rows, placeRow{text: "  " + pal.ink(fit(label, max(1, width-4)))})
+	accepts := strings.TrimPrefix(s.edit.label, label+" · ")
+	if accepts != label {
+		for _, line := range wrap(accepts, max(1, width-4)) {
+			rows = append(rows, placeRow{text: "  " + pal.dim(line)})
+		}
+	}
+	block, _, _ := s.editBlock(width, pal)
+	for _, line := range block {
+		rows = append(rows, placeRow{text: " " + line})
+	}
+	// Validation stays immediately below the draft and never moves its caret.
+	if s.msg != "" {
+		for _, line := range wrap(s.msg, max(1, width-4)) {
+			rows = append(rows, placeRow{text: "  " + pal.bad(line)})
+		}
+	}
+	cancelWord := "Cancel"
+	if s.edit.pending {
+		cancelWord = "Close"
+		rows = append(rows, placeRow{text: "  " + pal.dim(fit("Saving on "+s.host+"…", max(1, width-4)))})
+	}
+	save, cancel := pal.ink("Save"), pal.ink(cancelWord)
+	if s.edit.pending {
+		save = pal.dim("Save")
+	} else if a.hot.kind == hoverSheet && a.hot.index == sheetEditSaveHover {
+		save = pal.underline(save)
+	}
+	if a.hot.kind == hoverSheet && a.hot.index == sheetEditCancelHover {
+		cancel = pal.underline(cancel)
+	}
+	saveHint, cancelHint := "", ""
+	if width >= 32 {
+		saveHint, cancelHint = pal.dim("  enter"), pal.dim("  esc")
+	}
+	rows = append(rows, placeRow{
+		text: "  " + save + saveHint + "    " + cancel + cancelHint,
+		hit:  sheetHit{kind: sheetHitEditActions},
+	})
+	if room-len(rows) > 1 {
+		rows = append(rows, placeRow{})
+		for _, line := range details {
+			if len(rows) >= room {
+				break
+			}
+			rows = append(rows, placeRow{text: "  " + pal.dim(line)})
+		}
+	}
+	for len(rows) < room {
+		rows = append(rows, placeRow{})
+	}
+	return rows
+}
+
+const (
+	sheetEditSaveHover   = -100
+	sheetEditCancelHover = -101
+)
+
+// Bounds match the visible words and key hints; blank space never saves.
+func sheetEditActionAt(x, width int, pending bool) int {
+	saveEnd, cancelStart, cancelEnd := 13, 17, 28
+	if width < 32 {
+		saveEnd, cancelStart, cancelEnd = 6, 10, 16
+	}
+	if pending {
+		cancelEnd--
+	}
+	if x >= 2 && x < saveEnd {
+		return sheetEditSaveHover
+	}
+	if x >= cancelStart && x < cancelEnd {
+		return sheetEditCancelHover
+	}
+	return 0
+}
+
 // stops is every item of the current section the cursor may rest on — the walk
 // `↑↓` takes. A heading is a label and a reading is a fact, and neither is
 // something `enter` could do anything to ([sheetItem.restful]).
@@ -245,6 +335,8 @@ func (placeSettings) box(a *app) *editor {
 func (placeSettings) note(a *app, width int) []string {
 	pal := a.pal
 	switch {
+	case a.sheet.choice != nil:
+		return nil
 	case a.sheet.edit != nil:
 		return nil // The label, accepted format and validation are beside the input.
 	case a.sheet.msg != "":
@@ -254,6 +346,8 @@ func (placeSettings) note(a *app, width int) []string {
 			out = append(out, " "+pal.bad(noteFit(line, width-2)))
 		}
 		return out
+	case a.sheet.savedKey != "":
+		return []string{" " + pal.dim("Saved")}
 	case a.sheet.sel != nil:
 		return []string{" " + pal.dim(noteFit(a.sheet.sel.label, width-2))}
 
@@ -331,6 +425,8 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	s := &a.sheet
 	var cmd tea.Cmd
 	switch {
+	case s.choice != nil:
+		cmd = a.choiceKey(msg)
 	case s.edit != nil:
 		cmd = a.sheetEditKey(msg)
 	case s.sel != nil:
@@ -359,6 +455,9 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // the line it answers among the rows the frame just built — the same painted
 // string, because both came from the same call.
 func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	if a.sheet.choice != nil {
+		return -1, 0, true
+	}
 	entry := a.sheet.conn.entry
 	_, height := a.size()
 	offset := 0

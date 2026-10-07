@@ -4173,6 +4173,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		if a.at(pageSettings) && a.sheet.edit != nil {
+			return a, nil
+		}
+		// A settings choice owns scrolling while its options are open.
+		if a.at(pageSettings) && a.sheet.choice != nil {
+			c := a.sheet.choice
+			c.cursor = max(0, min(len(c.item.row.Choices)-1, c.cursor+placeWheelDelta(msg.Mouse().Button)))
+			a.sheet.savedKey = ""
+			a.touch()
+			return a, nil
+		}
 		// A SETTINGS ROW'S MODEL LIST ANSWERS BEFORE THE PAGE, including
 		// its nav: the row being chosen must move, not the slot under it.
 		if a.at(pageSettings) && a.sheet.sel != nil && a.sheet.sel.pick.open {
@@ -9219,6 +9230,9 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.at(pageSettings) {
 		flat := strings.ReplaceAll(text, "\n", " ")
 		switch {
+		case a.sheet.choice != nil:
+			// Closed choices have no text field; do not alter the hidden search.
+			return nil
 		case a.sheet.edit != nil:
 			a.sheet.edit.box.insert(flat)
 		case a.sheet.sel != nil:

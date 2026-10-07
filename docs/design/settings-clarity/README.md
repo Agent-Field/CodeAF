@@ -10,6 +10,7 @@ A settings page should answer four questions together: what this changes, what i
 - General contains **show hints**, with a positive on/off reading. Turning tips off leaves keyboard instructions and setting explanations available. Selected and hovered controls share the same help area, whose fixed height prevents rows moving under the pointer.
 - Less common controls remain under Advanced. Search can find them while collapsed. Memory has a direct route to inspecting saved memories.
 - Names and values describe behavior: task scope assessment, assess while working, collapsed tool details, ask by default, and use-only model recommendations. Scope and restart requirements remain explicit.
+- Choice settings open a list marked with the current value; browsing or cancelling writes nothing. Number and text editors group the title, accepted format, input, validation and clickable Save/Cancel controls. A completed write shows Saved. A remote write already in flight shows Saving and Close instead of implying it can still be cancelled.
 - Invalid edits retain the draft and error. Escape cancels the editor; from search it clears the query first. Hosted team edits wait for acknowledgement.
 
 ## Compatibility and architecture

@@ -256,8 +256,8 @@ func TestASettingsToggleWritesTheRegistryKey(t *testing.T) {
 	}
 }
 
-// AN ENUM CYCLES IN PLACE, in the registry's own order.
-func TestASettingsCycleWritesTheRegistryKey(t *testing.T) {
+// AN ENUM OPENS ITS CHOICES AND SAVES THE EXPLICIT SELECTION.
+func TestASettingsChoiceWritesTheRegistryKey(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.openSettings()
 	cursorTo(t, a, config.KeyToolApprovalMode)
@@ -265,13 +265,13 @@ func TestASettingsCycleWritesTheRegistryKey(t *testing.T) {
 	if got := config.ToolApprovalModeAt(dir); got != "allow" {
 		t.Fatalf("the gate did not start at allow: %q", got)
 	}
-	drive(t, a, key("enter"))
+	chooseSheetValue(t, a, "deny")
 	if got := config.ToolApprovalModeAt(dir); got != "deny" {
-		t.Fatalf("the cycle wrote %q, want the next choice after allow", got)
+		t.Fatalf("the choice wrote %q, want the next choice after allow", got)
 	}
-	drive(t, a, key("enter"))
+	chooseSheetValue(t, a, "prompt")
 	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
-		t.Fatalf("the second cycle wrote %q, want prompt", got)
+		t.Fatalf("the second choice wrote %q, want prompt", got)
 	}
 }
 

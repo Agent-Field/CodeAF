@@ -7,6 +7,15 @@ sock='settings-proof-'+str(os.getpid())
 def tm(*args,check=True):return subprocess.run(['tmux','-L',sock,*args],text=True,capture_output=True,check=check).stdout
 def key(*keys):tm('send-keys','-t','proof',*keys);time.sleep(.15)
 def text(s):tm('send-keys','-t','proof','-l',s);time.sleep(.15)
+def click_word(word):
+ lines=tm('capture-pane','-p','-t','proof').splitlines()
+ matches=[(line.index(word)+1,i+1) for i,line in enumerate(lines) if word in line]
+ if len(matches)!=1:raise RuntimeError('ambiguous mouse target '+word+': '+str(matches))
+ x,y=matches[0]
+ for suffix in ('M','m'):
+  seq=f'\x1b[<0;{x};{y}{suffix}'
+  tm('send-keys','-t','proof','-H',*[f'{b:02x}' for b in seq.encode()])
+ time.sleep(.2)
 def grab(name):
  time.sleep(.25)
  plain=tm('capture-pane','-p','-t','proof');paint=tm('capture-pane','-p','-e','-t','proof')
@@ -42,9 +51,19 @@ with tempfile.TemporaryDirectory(prefix='codeaf-settings-proof-', ignore_cleanup
    key('C-u');text('ui.hints');grab('edit-hints-before');key('Enter');grab('edit-hints-after')
    saved=json.loads((profile/'config.json').read_text())
    if saved.get('ui.hints') is not False:raise RuntimeError('hints preference did not persist')
-   key('C-u');text('task.parallel');key('Enter');key('C-u');text('invalid');key('Enter');grab('edit-invalid-value')
+   key('C-u');text('ui.work');key('Enter');grab('choice-current')
+   original=json.loads((profile/'config.json').read_text()).get('ui.work')
+   key('Down');grab('choice-highlighted');key('Escape')
+   if json.loads((profile/'config.json').read_text()).get('ui.work')!=original:raise RuntimeError('cancelled choice changed preference')
+   key('Enter');key('Down');key('Enter');grab('choice-saved')
+   if json.loads((profile/'config.json').read_text()).get('ui.work')!='open':raise RuntimeError('selected choice did not persist')
+   key('Enter');grab('choice-reopened');key('Escape')
+   key('C-u');text('task.parallel');key('Enter');grab('edit-number-open')
+   key('C-u');text('7');click_word('Cancel');grab('edit-number-cancelled')
+   if json.loads((profile/'config.json').read_text()).get('task.parallel',0)!=0:raise RuntimeError('cancelled draft changed task limit')
+   key('Enter');key('C-u');text('invalid');key('Enter');grab('edit-invalid-value')
    if json.loads((profile/'config.json').read_text()).get('task.parallel',0)!=0:raise RuntimeError('invalid draft changed saved task limit')
-   key('C-u');text('4');key('Enter');grab('edit-limit-saved')
+   key('C-u');text('4');click_word('Save');grab('edit-limit-saved')
    if json.loads((profile/'config.json').read_text()).get('task.parallel')!=4:raise RuntimeError('valid task limit did not persist')
    key('Escape');key('Escape');text('/settings');key('Enter');text('task.parallel');key('Enter');grab('edit-limit-reopened')
    key('C-u');key('Enter');grab('edit-limit-cleared')

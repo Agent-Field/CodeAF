@@ -5,24 +5,27 @@ import "github.com/Agent-Field/codeaf/internal/config"
 // settingValueWord changes only the reading. Editors and persistence keep the
 // existing values, and search accepts both the reading and the saved spelling.
 func settingValueWord(row config.Setting) string {
-	value := row.Reading()
-	switch row.Key {
+	return settingChoiceWord(row.Key, row.Value(), row.Reading())
+}
+
+func settingChoiceWord(key, raw, fallback string) string {
+	switch key {
 	case config.KeyTaskStart:
-		switch row.Value() {
+		switch raw {
 		case "sized":
 			return "assess while working"
 		case "single":
 			return "skip assessment"
 		}
 	case config.KeyTaskSettle:
-		switch row.Value() {
+		switch raw {
 		case "ask":
 			return "ask me"
 		case "auto":
 			return "let the chat decide"
 		}
 	case config.KeyToolApprovalMode:
-		switch row.Value() {
+		switch raw {
 		case "allow":
 			return "allow by default"
 		case "prompt":
@@ -31,19 +34,19 @@ func settingValueWord(row config.Setting) string {
 			return "block by default"
 		}
 	case config.KeyWork:
-		switch row.Value() {
+		switch raw {
 		case "fold":
 			return "collapsed"
 		case "open":
 			return "expanded"
 		}
 	case config.KeyModelPool:
-		switch row.Value() {
+		switch raw {
 		case "on":
 			return "use and contribute"
 		case "read":
 			return "use only"
 		}
 	}
-	return value
+	return fallback
 }
