@@ -64,7 +64,7 @@ func (a Available) Notice() string {
 	if curl == "" {
 		curl = CurlCommand
 	}
-	return "codeaf " + a.Latest + " is out · you have " + a.Running + " · /update installs it and restarts · or: " + curl
+	return "codeaf " + a.Latest + " is out · you have " + a.Running + " · /update installs it for the next launch · or: " + curl
 }
 
 type checkCache struct {

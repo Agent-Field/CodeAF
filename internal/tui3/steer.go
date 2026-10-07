@@ -490,6 +490,13 @@ func (a *app) runHint() string {
 // Idle controls yield from the left to commands and home; running hints keep
 // their existing priority from the left. Every step removes at least one clause.
 func (a *app) hintShorter(slot string) string {
+	// THE UPDATE OFFER'S DEFER CLAUSE IS DROPPED FIRST. It is appended to a
+	// running turn's own keys, and the generic rule below cannot shorten a line
+	// that extends the run hint — it would delete the whole row, taking the
+	// turn's keys with it. Here the offer's clause goes and the turn's keys stay.
+	if full := a.runHint(); full != "" && strings.HasPrefix(slot, full+hintSegment) {
+		return full
+	}
 	idle := a.idleHint()
 	if slot != "" && (slot == idle || strings.HasSuffix(idle, hintSegment+slot)) {
 		parts := strings.Split(slot, hintSegment)

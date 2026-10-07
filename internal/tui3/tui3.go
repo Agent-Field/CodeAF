@@ -457,9 +457,12 @@ type Options struct {
 	ImplicitTalk bool
 	// ResolveUpdate and InstallUpdate are the two off-frame halves of /update.
 	// Keeping selection separate lets the surface name the tag before the
-	// download begins. Nil leaves the command with an honest refusal.
+	// download begins. InstallUpdate takes the whole InstallOptions so the
+	// surface can say whether a person asked for an exact tag — the one case
+	// where replacing the file with an older release is deliberate. Nil leaves
+	// the command with an honest refusal.
 	ResolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
-	InstallUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
+	InstallUpdate func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error)
 	// UpdateRunning is the exact revision of this process, without build-time
 	// decoration. UpdateArgs are its original arguments. Restart is the slot the
 	// surface fills before quitting and the door reads after the terminal is back.
@@ -467,6 +470,11 @@ type Options struct {
 	UpdateCurl    string
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
+	// UpdateAuto is the automatic updater's durable half: whether it is on, the
+	// release this profile already answered, the failure count that stops a
+	// retry loop, and the cross-terminal install lock. Nil leaves the launch
+	// notice as a one-line note with no offer behind it.
+	UpdateAuto *UpdateCoordinator
 
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the

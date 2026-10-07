@@ -622,6 +622,13 @@ var settingUI = map[string]settingMeta{
 		// NO `about` OF ITS OWN: the line under the row is the registry's hint,
 		// the owner's own wording (2026-09-24), said once ([settingMetaFor]).
 	},
+	// THE UPDATE ROW READS THE WAY UP ITS KEY DOES, unlike the hints row above:
+	// on means codeaf keeps itself current. It sits on Display with the other
+	// choices about what this surface does on its own.
+	config.KeyUpdateAuto: {
+		tab: tabDisplay, label: "auto update", widget: widgetToggle,
+		// NO `about`: the registry's own hint is the sentence, said once.
+	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,
 		about: "the chat pane's share of the frame while the task rail is open.",
@@ -2652,6 +2659,14 @@ func (a *app) applySetting(item sheetItem, raw string) {
 	// banked rule through, and it rebuilds the policy from these same three rows.
 	note := ""
 	switch item.row.Key {
+	case config.KeyUpdateAuto:
+		// THE LIVE SESSION SEES THE ROW IT JUST CHANGED. The grace re-reads
+		// this flag, so turning it off in the panel must reach the running
+		// window and not only the file.
+		if a.updateAuto != nil {
+			a.updateAuto.Enabled = config.UpdateAutoAt(a.profileDir)
+		}
+		a.touch()
 	case config.LaneSettingKey(talkSlot), config.LaneBorrowKey(talkSlot):
 		a.laneRowChanged()
 	case config.KeyLaneGuard:

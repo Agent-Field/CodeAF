@@ -127,7 +127,7 @@ func TestV3LaunchNoticeForChannelBuilds(t *testing.T) {
 				t.Fatalf("requests = %q, want one ending in %q", paths, row.wantPath)
 			}
 			if row.name == "older dev" {
-				want := "codeaf " + newDev + " is out · you have " + oldDev + " · /update installs it and restarts · or: curl -fsSL https://agentfield.ai/get/devaf | bash"
+				want := "codeaf " + newDev + " is out · you have " + oldDev + " · /update installs it for the next launch · or: curl -fsSL https://agentfield.ai/get/devaf | bash"
 				if got := answer.Notice(); got != want {
 					t.Fatalf("notice = %q, want %q", got, want)
 				}

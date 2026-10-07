@@ -151,7 +151,7 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 		t.Fatalf("surface exit: %v", err)
 	}
 
-	result, err := seen.InstallUpdate(context.Background(), codeupdate.Release{Tag: "v0.2.0", Repository: "Agent-Field/codeaf"})
+	result, err := seen.InstallUpdate(context.Background(), codeupdate.InstallOptions{Release: codeupdate.Release{Tag: "v0.2.0", Repository: "Agent-Field/codeaf"}})
 	if err != nil {
 		t.Fatal(err)
 	}

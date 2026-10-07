@@ -23,12 +23,20 @@ type InstallOptions struct {
 	Curl    string
 	GOOS    string
 	GOARCH  string
+	// AllowDowngrade says the PERSON chose this exact release by name — `/update
+	// <tag>` or `update --version <tag>` — and a rollback is what they asked
+	// for. An automatic or channel-following update never sets it, so a stale
+	// caller cannot silently downgrade a file another window advanced.
+	AllowDowngrade bool
 }
 
 // InstallResult is the release and executable path that are ready to restart.
 type InstallResult struct {
 	Release Release
 	Path    string
+	// Already is true when the target was already the requested release: a
+	// successful no-op, not a failure, and not something to alarm anyone about.
+	Already bool
 }
 
 // Install downloads, checks, and atomically replaces one executable.
@@ -66,6 +74,34 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	}
 	if release.Repository == "" {
 		release.Repository = primaryRepository
+	}
+	// ONE ACQUIRER, INSIDE THE SHARED INSTALLER. Every road that replaces this
+	// file — the chat surface's background install and `codeaf update` alike —
+	// comes through here, so the lock and the on-disk re-read cannot be
+	// forgotten by a caller and cannot race a second caller that took its own.
+	if refusal := InstallRefusal(target, curl); refusal != "" {
+		return InstallResult{}, &RefusalError{Reason: refusal}
+	}
+	lock, lockErr := TryTargetLock(target)
+	if lockErr != nil {
+		if errors.Is(lockErr, ErrInstallInFlight) {
+			return InstallResult{}, &RefusalError{Reason: "another codeaf is already installing an update"}
+		}
+		return InstallResult{}, fmt.Errorf("cannot replace %s: %w; install a release with: %s", target, lockErr, curl)
+	}
+	defer lock.Release()
+	// UNDER THE LOCK, WHAT IS ON DISK IS WHAT COUNTS. The record is trusted only
+	// while the file still hashes to it, so an externally replaced binary reads
+	// as unknown and a candidate newer than it is not refused on a stale fact.
+	if record, ok := lock.Record(); ok {
+		if record.Tag == release.Tag {
+			// ALREADY THERE IS SUCCESS. Nothing is downloaded, nothing is
+			// written, and the caller is told so it can stay quiet about it.
+			return InstallResult{Release: release, Path: target, Already: true}, nil
+		}
+		if recordSupersedes(record, release) && !options.AllowDowngrade {
+			return InstallResult{}, &RefusalError{Reason: "codeaf " + record.Tag + " is already the build on disk, newer than " + release.Tag}
+		}
 	}
 	var (
 		body      []byte
@@ -115,6 +151,9 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	if err := replaceExecutable(temporary, target); err != nil {
 		return InstallResult{}, fmt.Errorf("cannot replace %s: %w; install a release with: %s", target, err, curl)
 	}
+	// The record names the bytes just written, so the next caller can tell what
+	// is on disk from what it believes is on disk.
+	lock.RecordInstalled(release.Tag, actual, release.PublishedAt)
 	return InstallResult{Release: release, Path: target}, nil
 }
 

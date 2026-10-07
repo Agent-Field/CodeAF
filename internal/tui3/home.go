@@ -3615,9 +3615,6 @@ func (a *app) homeStartWithProject(text, place string) tea.Cmd {
 }
 
 func (a *app) homeStartWithProjectNow(text, place string) tea.Cmd {
-	if (strings.TrimSpace(text) != "" || place != "" || len(a.home.chips) > 0) && a.updateStopsTurn() {
-		return nil
-	}
 	if !a.canStart() {
 		a.home.say(newUnavailableWord, "")
 		return nil

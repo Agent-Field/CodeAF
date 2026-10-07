@@ -3,19 +3,43 @@
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
 At launch, a stable, dev or staging build behind the newest release of its own
-channel gets one dim line: `codeaf <newest> is out · you have <running> · /update
-installs it and restarts · or: <curl line>`. A release candidate gets that line
-when its stable line is published. An equal or ahead build gets no line. Source
-and unstamped builds make no launch request, and their `/update` answers `this
-codeaf was built from source · rebuild with make build, or install a release:
-curl -fsSL https://agentfield.ai/get/codeaf | bash`.
+channel is told about it, and with `auto update` on (the default) the install
+begins on its own after a brief pause: the sentence `codeaf <newest> is out ·
+installs in 10s · <skip chord> skip · /update` waits in the keys line, counted
+down from about ten seconds. It never blocks a keystroke. `/update` while it
+is up installs immediately; the skip chord, or `/update skip`, answers that one
+release and it is never offered again; `/update never` turns `auto update`
+off, and so does the row in `/settings`. A release whose automatic install failed
+three times stops being tried on its own.
 
-`/update` downloads the release, checks its sha256, replaces this executable and
-restarts the same conversation; `/upgrade` is its alias. With no channel word,
-a dev or staging build selects its own channel; stable and rc select stable. An
-explicit channel or tag wins. Finish a running turn or task first. An ahead dev
-build refuses with `this codeaf is <running>, ahead of the newest dev <newest> —
-/update <newest> installs it anyway`; naming the tag is the deliberate downgrade.
+A release candidate gets the notice when its stable line is published. An equal
+or ahead build gets nothing. Source and unstamped builds make no launch request,
+and their `/update` answers `this codeaf was built from source · rebuild with
+make build, or install a release: curl -fsSL https://agentfield.ai/get/codeaf |
+bash`. A codeaf owned by Homebrew, Nix or the system package manager, or one in a
+folder this account cannot write, is never replaced in place: the notice says so
+and names the manager and the curl line.
+
+With `auto update` off, the launch check still runs and still says `codeaf <newest>
+is out · you have <running> · /update installs it for the next launch`, but
+nothing is downloaded until you ask.
+
+`/update` downloads the release, checks its sha256 and replaces this executable
+IN THE BACKGROUND; `/upgrade` is its alias. It never quits, never restarts the
+conversation and never stops a running turn or task — the session keeps the build
+it started on, and the new one is what opens the next time codeaf is started.
+`/update` [skip|never] answers an open offer. With no channel word, a dev or
+staging build selects its own channel; stable and rc select stable. An explicit
+channel or tag wins. An ahead dev build refuses with `this codeaf is <running>,
+ahead of the newest dev <newest> — /update <newest> installs it anyway`; naming
+the tag is the deliberate downgrade, and it is the ONLY road that rolls a file
+back. An automatic or channel update never installs an older build than the one
+on disk, and a release already on disk is a quiet no-op. If the file is owned by
+Homebrew, Nix or the system package manager, or is in a folder this account
+cannot write, neither road replaces it in place. One install runs at a time per executable:
+two terminals, or two profiles sharing one codeaf, cannot replace it at once, and
+a window that resolves a release another terminal has already superseded installs
+nothing.
 
 Set `CODEAF_NO_UPDATE_CHECK=1` to skip only the launch check. Dev and staging
 answers are cached beside `config.json` for one hour in `update-check.dev.json`

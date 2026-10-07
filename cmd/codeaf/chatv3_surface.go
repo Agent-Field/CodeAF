@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -58,15 +59,35 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	options.UpdateRunning = revision
 	options.UpdateCurl = curl
 	options.UpdateArgs = surfaceArguments()
+	// THE AUTOMATIC UPDATER IS WIRED HERE AND NOWHERE ELSE, so all four doors
+	// that open this surface get one coordinator: one setting, one remembered
+	// dismissal, one failure count and one install lock per profile. The lock
+	// is what keeps two terminals from replacing this executable at once, and
+	// the surface hands back only a release closure so it never touches a file
+	// itself.
+	autoUpdate := config.UpdateAutoAt(options.ProfileDir)
+	options.UpdateAuto = &tui3.UpdateCoordinator{
+		Enabled: autoUpdate,
+		State:   func() codeupdate.AutoState { return codeupdate.LoadAutoState(options.ProfileDir) },
+		Dismiss: func(tag string) error { return codeupdate.DismissRelease(options.ProfileDir, tag) },
+		Failure: func(tag string, failure error) { codeupdate.AutoFailure(options.ProfileDir, tag, failure) },
+		Success: func() { codeupdate.AutoSuccess(options.ProfileDir) },
+		Disable: func() error { return config.SaveUpdateAuto(options.ProfileDir, false) },
+		// A BREW, DISTRO OR NIX FILE, OR ONE IN A FOLDER THIS ACCOUNT CANNOT
+		// WRITE, is not ours to replace in place.
+		Refusal: func() string { return codeupdate.InstallRefusal(executable, curl) },
+	}
 	options.UpdateCheck = func(check context.Context) (codeupdate.Available, bool) {
 		return codeupdate.CheckLaunch(check, codeupdate.CheckOptions{
 			Running: revision, ProfileDir: options.ProfileDir, Client: client,
-			Disabled:   internalenv.Get(codeupdate.NoUpdateCheckEnv) == "1",
+			// OFF MEANS NO REQUEST AT ALL, not a hidden one. The environment
+			// value keeps its one-launch meaning beside the standing setting.
+			Disabled:   !autoUpdate || internalenv.Get(codeupdate.NoUpdateCheckEnv) == "1",
 			Executable: executable,
 		})
 	}
 	options.ResolveUpdate = client.Select
-	options.InstallUpdate = func(install context.Context, release codeupdate.Release) (codeupdate.InstallResult, error) {
+	options.InstallUpdate = func(install context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 		// Resolution belongs to the off-frame installation command. A launch may
 		// live on a slow mount, but its first frame never has to wait for that
 		// mount merely because /update exists.
@@ -74,7 +95,10 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 		if err != nil {
 			return codeupdate.InstallResult{}, err
 		}
-		return codeupdate.Install(install, codeupdate.InstallOptions{Client: client, Release: release, Target: target, Curl: curl})
+		options.Client = client
+		options.Target = target
+		options.Curl = curl
+		return codeupdate.Install(install, options)
 	}
 	// The byte meter, off unless a developer named a log file (wire.go). It
 	// measures what this surface DRAWS and is therefore as local as the terminal

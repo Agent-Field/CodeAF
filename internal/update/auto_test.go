@@ -1,0 +1,234 @@
+package update
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+// TestDismissalAnswersOneReleaseAndNotTheNext is the heart of "never nags".
+func TestDismissalAnswersOneReleaseAndNotTheNext(t *testing.T) {
+	dir := t.TempDir()
+	if err := DismissRelease(dir, "v0.2.0"); err != nil {
+		t.Fatalf("dismiss: %v", err)
+	}
+	state := LoadAutoState(dir)
+	if !state.Dismissed("v0.2.0") {
+		t.Fatal("the dismissed release is not remembered")
+	}
+	if state.Dismissed("v0.3.0") {
+		t.Fatal("a dismissal answered a release it was never about")
+	}
+	now := time.Now()
+	if ShouldOffer(state, "v0.2.0", now) {
+		t.Fatal("the same release was offered again")
+	}
+	if !ShouldOffer(state, "v0.3.0", now) {
+		t.Fatal("a newer release was not offered")
+	}
+}
+
+// TestFailuresThrottleAndThenStop proves the bounded retries.
+func TestFailuresThrottleAndThenStop(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	failure := errors.New("the release host is away")
+
+	for attempt := 1; attempt <= maxAutoFailures; attempt++ {
+		state := AutoFailure(dir, "v0.2.0", failure)
+		if state.Failures != attempt {
+			t.Fatalf("attempt %d recorded %d failures", attempt, state.Failures)
+		}
+	}
+	state := LoadAutoState(dir)
+	if !state.Blocked("v0.2.0") {
+		t.Fatal("the exhausted release is still not blocked")
+	}
+	if ShouldOffer(state, "v0.2.0", now) {
+		t.Fatal("a release that failed out is still offered")
+	}
+	// A different release starts its own count, and a success clears the whole
+	// memory so the next release is tried cleanly.
+	if state.Blocked("v0.3.0") {
+		t.Fatal("one release's failures blocked another")
+	}
+	cleared := AutoSuccess(dir)
+	if cleared.Failures != 0 || cleared.Blocked("v0.2.0") {
+		t.Fatalf("success left %+v", cleared)
+	}
+}
+
+// TestBackoffGrowsAndCaps proves the quiet period after a failure.
+func TestBackoffGrowsAndCaps(t *testing.T) {
+	if got := autoBackoff(1); got != autoRetryBase {
+		t.Fatalf("first backoff = %s", got)
+	}
+	if got := autoBackoff(2); got != 2*autoRetryBase {
+		t.Fatalf("second backoff = %s", got)
+	}
+	if got := autoBackoff(12); got != autoRetryCap {
+		t.Fatalf("capped backoff = %s", got)
+	}
+	now := time.Now()
+	state := AutoState{FailedRelease: "v0.2.0", Failures: 1, LastAttemptAt: now}
+	if state.RetryDue("v0.2.0", now.Add(time.Minute)) {
+		t.Fatal("a fresh failure was due again immediately")
+	}
+	if !state.RetryDue("v0.2.0", now.Add(autoRetryBase+time.Minute)) {
+		t.Fatal("a failure was never due again")
+	}
+	if !state.RetryDue("v0.3.0", now) {
+		t.Fatal("an unrelated release inherited a backoff")
+	}
+}
+
+// TestCorruptStateReadsAsFresh proves a damaged file never breaks a launch.
+func TestCorruptStateReadsAsFresh(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(AutoStatePath(dir), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if state := LoadAutoState(dir); state.Dismissed("v0.2.0") || state.Failures != 0 {
+		t.Fatalf("corrupt state = %+v", state)
+	}
+}
+
+// TestInstallLockIsOnePerExecutable proves the cross-terminal, cross-profile
+// deduplication, the record of what is on disk, and that a released lock frees
+// the target at once. There is no stale-takeover case to test: the OS releases
+// the lock when its holder dies.
+func TestInstallLockIsOnePerExecutable(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "codeaf")
+	first, err := TryTargetLock(target)
+	if err != nil {
+		t.Fatalf("first lock: %v", err)
+	}
+	if _, err := TryTargetLock(target); !errors.Is(err, ErrInstallInFlight) {
+		t.Fatalf("second lock error = %v, want in flight", err)
+	}
+	// The record lives inside the lock and is trusted only while the file
+	// still hashes to it.
+	digest := sha256.Sum256([]byte("installed bytes"))
+	hexDigest := hex.EncodeToString(digest[:])
+	if err := os.WriteFile(target, []byte("installed bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first.RecordInstalled("v0.2.0", hexDigest, time.Now())
+	if record, ok := first.Record(); !ok || record.Tag != "v0.2.0" {
+		t.Fatalf("record = %+v, ok = %t", record, ok)
+	}
+	first.Release()
+	second, err := TryTargetLock(target)
+	if err != nil {
+		t.Fatalf("relock: %v", err)
+	}
+	if record, ok := second.Record(); !ok || record.Tag != "v0.2.0" {
+		t.Fatalf("the record did not survive release: %+v, ok = %t", record, ok)
+	}
+	// AN EXTERNALLY REPLACED FILE INVALIDATES THE RECORD.
+	if err := os.WriteFile(target, []byte("someone else's build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if record, ok := second.Record(); ok {
+		t.Fatalf("a replaced file still trusted %+v", record)
+	}
+	second.Release()
+
+	// A different target is a different lock and a different record.
+	other := filepath.Join(dir, "devaf")
+	otherLock, err := TryTargetLock(other)
+	if err != nil {
+		t.Fatalf("unrelated target: %v", err)
+	}
+	if _, ok := otherLock.Record(); ok {
+		t.Fatal("a fresh target trusted a record")
+	}
+	otherLock.Release()
+}
+
+// TestRecordSupersedesUsesPublishedOrdering proves the stale-caller guard and
+// the same-day dev case M1 asked about.
+func TestRecordSupersedesUsesPublishedOrdering(t *testing.T) {
+	older := time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC)
+	newer := older.Add(6 * time.Hour)
+	for _, row := range []struct {
+		name    string
+		record  installRecord
+		release Release
+		want    bool
+	}{
+		{"stable newer", installRecord{Tag: "v0.3.0"}, Release{Tag: "v0.2.0"}, true},
+		{"same tag", installRecord{Tag: "v0.2.0"}, Release{Tag: "v0.2.0"}, true},
+		{"stable older", installRecord{Tag: "v0.2.0"}, Release{Tag: "v0.3.0"}, false},
+		{"same-day dev, later publish", installRecord{Tag: "dev-20261006-bbbbbbbbbbbb", PublishedAt: newer}, Release{Tag: "dev-20261006-aaaaaaaaaaaa", PublishedAt: older}, true},
+		{"same-day dev, earlier publish", installRecord{Tag: "dev-20261006-aaaaaaaaaaaa", PublishedAt: older}, Release{Tag: "dev-20261006-bbbbbbbbbbbb", PublishedAt: newer}, false},
+		{"unorderable", installRecord{Tag: "dev-20261006-aaaaaaaaaaaa"}, Release{Tag: "staging-20261007-bbbbbbbbbbbb"}, false},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			if got := recordSupersedes(row.record, row.release); got != row.want {
+				t.Fatalf("recordSupersedes(%+v, %s) = %t", row.record, row.release.Tag, got)
+			}
+		})
+	}
+}
+
+// TestPackageManagedNamesTheOwner proves the exclusion list.
+func TestPackageManagedNamesTheOwner(t *testing.T) {
+	for _, row := range []struct{ path, want string }{
+		{"/opt/homebrew/bin/codeaf", "Homebrew"},
+		{"/nix/store/abc-codeaf/bin/codeaf", "Nix"},
+		{"/usr/bin/codeaf", "the system package manager"},
+		{"/home/somebody/.local/bin/codeaf", ""},
+		{"/tmp/codeaf", ""},
+	} {
+		if got := PackageManaged(row.path); got != row.want {
+			t.Errorf("PackageManaged(%q) = %q, want %q", row.path, got, row.want)
+		}
+	}
+}
+
+// TestInstallRefusesADuplicateAndAStaleDowngrade proves H4/M1 at the shared
+// installer: the record is tied to the bytes on disk, a duplicate is a quiet
+// no-op, an automatic stale downgrade is refused, and a NAMED tag may roll back.
+func TestInstallRefusesADuplicateAndAStaleDowngrade(t *testing.T) {
+	asset := []byte("codeaf v0.9.3 bytes")
+	digest := sha256.Sum256(asset)
+	server, _ := servedRelease(t, asset, hex.EncodeToString(digest[:]))
+	defer server.Close()
+	target := filepath.Join(t.TempDir(), "codeaf")
+
+	install := func(tag string, allow bool) (InstallResult, error) {
+		return Install(context.Background(), InstallOptions{
+			Client: releaseClient(server, tag), Release: Release{Tag: tag, Repository: primaryRepository},
+			Target: target, Curl: CurlCommand, AllowDowngrade: allow,
+		})
+	}
+	if _, err := install("v0.9.3", false); err != nil {
+		t.Fatalf("first install: %v", err)
+	}
+	// Same release again: SUCCESS, and nothing to alarm about.
+	again, err := install("v0.9.3", false)
+	if err != nil || !again.Already {
+		t.Fatalf("duplicate install = %+v, %v", again, err)
+	}
+	// An automatic older candidate is refused...
+	if _, err := install("v0.9.2", false); err == nil {
+		t.Fatal("an automatic downgrade was allowed")
+	} else {
+		var refusal *RefusalError
+		if !errors.As(err, &refusal) {
+			t.Fatalf("downgrade error = %v, want a refusal", err)
+		}
+	}
+	// ...but a person naming the tag is doing a rollback and it proceeds.
+	rolled, err := install("v0.9.2", true)
+	if err != nil || rolled.Already {
+		t.Fatalf("named rollback = %+v, %v", rolled, err)
+	}
+}

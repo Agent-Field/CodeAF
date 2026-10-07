@@ -280,6 +280,15 @@ const (
 	// because a person who has silenced the tips has said they know the surface,
 	// and being told about features is the same conversation.
 	KeyHints = "ui.hints"
+	// KeyUpdateAuto is whether codeaf checks for a new release at launch and
+	// installs it in the background on its own. ON is the default: the check is
+	// one small request after the first frame, and a person who does not want it
+	// has a row, an environment variable and one chord on the offer itself. Off
+	// means no launch request and no background install at all; `/update` still
+	// installs a release on request, because a person who typed it has said what
+	// they want. It is a boolean because there is no third answer between
+	// "keep me current" and "leave me alone until I ask".
+	KeyUpdateAuto = "update.auto"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
 	// KeyIcons selects the step icon repertoire independently of colour.
@@ -1184,6 +1193,12 @@ var OperatorEnvPins = []string{
 	// give the page real questions. A row offering to persist it would be
 	// offering to open a fixture over somebody's conversation every launch.
 	"CODEAF_QUESTION_DEMO",
+	// CODEAF_UPDATE_DEMO names one of the update offer's fixture states
+	// (internal/tui3/updatedemo.go), so the offer can be SEEN at every stage
+	// without waiting out a grace or paying for a download. Same terms as the
+	// question fixture beside it: no key, no command, no row, and it disables
+	// every updater hook so a capture machine needs no network at all.
+	"CODEAF_UPDATE_DEMO",
 	// CODEAF_SUITE_DIRLOCK_PATH names the older directory lock a heavy suite
 	// takes beside its file lock, so that a checkout too old to know about the
 	// file lock can still see the box is busy (scripts/one-suite.sh, #1307). It
@@ -1286,6 +1301,8 @@ var OperatorEnvPins = []string{
 	// shape, under `make demo-home`'s terms. A row offering to persist a
 	// fixture would put a demo question in front of a person every morning.
 	"CODEAF_QUESTION_DEMO",
+	// And the update offer's own fixture states (internal/tui3/updatedemo.go).
+	"CODEAF_UPDATE_DEMO",
 	// CODEAF_TASK_BELT sends a task worker BACK to the older node belt
 	// (internal/session's bashbelt.go, docs/design/worker-harness/DESIGN.md).
 	// The bash belt is the shipped default, so the variable is an escape
@@ -1480,6 +1497,13 @@ const (
 	// otherwise. The tips retire themselves the moment each is acted on, so the
 	// default costs a veteran one line per gesture they already know, once.
 	DefaultHints = true
+
+	// DefaultUpdateAuto keeps a profile that has never said otherwise on the
+	// newest codeaf. The whole cost is one small release check after the first
+	// frame, and the offer that follows waits in the keys line rather than over
+	// the box — it never blocks a keystroke, and a person who would rather
+	// decide for themselves turns it off once, from the offer or the sheet.
+	DefaultUpdateAuto = true
 )
 
 // Setting is one row: what it is called, what it reads now, and what happens
@@ -2642,6 +2666,19 @@ func (s *Settings) build() []Setting {
 				return writeProfileValue(dir, KeyHints, !disabled)
 			},
 		},
+		// THE ROW READS THE SAME WAY UP AS ITS KEY, unlike the hints row above:
+		// `update.auto` on means codeaf keeps itself current, and `auto update` on
+		// is that sentence. The offer's own "stop asking" writes through
+		// [SaveUpdateAuto], which is this row's writer by another door.
+		Setting{
+			Key: KeyUpdateAuto, Category: CategoryInterface, Kind: SettingBool,
+			Label: "auto update",
+			Hint: "check for a new codeaf at launch and install it in the background. " +
+				"The offer waits in the keys line for about ten seconds; it never blocks a keystroke. " +
+				"Off, nothing is checked or downloaded until you run /update.",
+			read:  func() string { return formatBool(UpdateAutoAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyUpdateAuto, raw) },
+		},
 		Setting{
 			Key: KeyAttributionModel, Category: CategoryInterface, Kind: SettingBool,
 			Label: "model in commits", Env: "CODEAF_ATTRIBUTION_MODEL",
@@ -3313,6 +3350,24 @@ func HintsAt(profileDir string) bool {
 		return value
 	}
 	return DefaultHints
+}
+
+// UpdateAutoAt resolves whether codeaf checks for and installs a new release on
+// its own, default on. A row that will not parse reads as the default rather
+// than as off, for [HintsAt]'s reason: a garbled row must not silently stop a
+// person's codeaf from being kept current.
+func UpdateAutoAt(profileDir string) bool {
+	if value, ok := persistedBool(profileDir, KeyUpdateAuto); ok {
+		return value
+	}
+	return DefaultUpdateAuto
+}
+
+// SaveUpdateAuto writes the row from a door that is not the sheet — the offer's
+// own "stop asking" answer — through the same writer the row's own does, so
+// there is one validation and one place the value lives.
+func SaveUpdateAuto(profileDir string, on bool) error {
+	return writeBool(profileDir, KeyUpdateAuto, formatBool(on))
 }
 
 // DocumentEngineAt resolves the document-reading rung.
