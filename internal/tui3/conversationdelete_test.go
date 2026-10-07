@@ -273,6 +273,14 @@ func TestHomeDeleteLastSavedRowThroughItsOptions(t *testing.T) {
 		t.Fatal("last saved Home row did not open deletion")
 	}
 	drain(t, a, a.conversationDeleteChoose(1))
+	if !a.cdelete.on || a.cdelete.message != "This conversation cannot be safely stopped for deletion" {
+		t.Fatal("owner without deletion completion capability was accepted")
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatal("capability refusal changed transcript")
+	}
+	a.agent = &deletionTestOwner{Agent: a.agent}
+	drain(t, a, a.conversationDeleteChoose(1))
 	if a.cdelete.on {
 		t.Fatalf("last saved row deletion failed: %s", a.cdelete.message)
 	}
@@ -667,4 +675,12 @@ func TestTeamsChooseManagerQueuedEditPreservesLocalAliases(t *testing.T) {
 	if child.Manager != file {
 		t.Fatal("valid descendant manager appointment was refused during persistence")
 	}
+}
+
+// This fake owns no asynchronous writers; its ordinary close is its completion.
+type deletionTestOwner struct{ Agent }
+
+func (o *deletionTestOwner) CloseForDeletion() error {
+	o.InterruptFor(session.StopByPerson)
+	return o.Close()
 }

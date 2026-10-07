@@ -2,6 +2,7 @@ package tui3
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"errors"
 	"github.com/Agent-Field/codeaf/internal/session"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"path/filepath"
@@ -100,8 +101,7 @@ func (a *app) conversationDeleteRun() tea.Cmd {
 					if local, ok := owner.(interface{ CloseForDeletion() error }); ok {
 						return local.CloseForDeletion()
 					}
-					owner.InterruptFor(session.StopByPerson)
-					return owner.Close()
+					return errors.New("This conversation cannot be safely stopped for deletion")
 				}
 				return nil
 			}, affected)

@@ -406,7 +406,8 @@ The confirmation names every affected team. Deleting a conversation itself is se
 
 Permanent conversation deletion waits for the owner and its task-run writers to stop before
 removing records. If they cannot stop within the deletion grace, the transcript and memberships
-remain and you can retry. Symlinked task records that point elsewhere are refused before deletion.
+remain and you can retry. A local owner without the safe deletion stop capability refuses:
+`This conversation cannot be safely stopped for deletion`. Symlinked task records that point elsewhere are refused before deletion.
 
 After deletion has been committed, a durable cleanup receipt survives any filesystem failure.
 The next local start retries those receipts through the same scope and ownership checks. Home

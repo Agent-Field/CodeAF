@@ -286,6 +286,14 @@ func purgeSelectedPlanFolders(file string, ids map[string]bool) error {
 // Validate every owned deletion path before a tombstone or store mutation. A
 // sibling reached through a symlink is not the record the person selected.
 func validateDeletionPaths(file, chat string, ids map[string]bool, rows []TaskIndexEntry) error {
+	if err := validateTaskFolders(file, ids); err != nil {
+		return err
+	}
+	return validateTaskJournals(file, chat, ids, rows)
+}
+
+// Folder containment is checked separately from journals kept in the index.
+func validateTaskFolders(file string, ids map[string]bool) error {
 	root := filepath.Join(filepath.Dir(file), "tasks")
 	real, err := filepath.EvalSymlinks(root)
 	if err == nil && real != root {
@@ -311,6 +319,11 @@ func validateDeletionPaths(file, chat string, ids map[string]bool, rows []TaskIn
 			return errors.New("task records are outside the conversation")
 		}
 	}
+	return nil
+}
+
+// Shared journals are kept; each journal being removed must name its own record.
+func validateTaskJournals(file, chat string, ids map[string]bool, rows []TaskIndexEntry) error {
 	for _, row := range rows {
 		if row.SessionID != chat || ids != nil && !ids[row.ID] || taskJournalShared(row, chat, ids, rows) {
 			continue

@@ -133,13 +133,8 @@ func deleteTaskRecord(file, id string, owner *Agent) (result error) {
 			rollback()
 		}
 	}()
-	if owner != nil {
-		if err = owner.stopDeletingPlanTasks(ids); err != nil {
-			return err
-		}
-		if err = owner.stopDeletingTasks(ids); err != nil {
-			return err
-		}
+	if err = stopDeletingOwnedTasks(owner, ids); err != nil {
+		return err
 	}
 	if err = saveTaskCleanup(file, id, ids, rows); err != nil {
 		return err
@@ -149,6 +144,17 @@ func deleteTaskRecord(file, id string, owner *Agent) (result error) {
 	}
 	committed = true
 	return finishTaskCleanup(owner, file, meta.ID, id)
+}
+
+// Both worker families settle before their shared records are marked deleted.
+func stopDeletingOwnedTasks(owner *Agent, ids map[string]bool) error {
+	if owner == nil {
+		return nil
+	}
+	if err := owner.stopDeletingPlanTasks(ids); err != nil {
+		return err
+	}
+	return owner.stopDeletingTasks(ids)
 }
 
 func (a *Agent) stopDeletingTasks(ids map[string]bool) error {
