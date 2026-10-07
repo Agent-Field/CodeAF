@@ -846,7 +846,7 @@ func (s *sheet) finishCategory() {
 	title := settingTabs[s.tab]
 	shown := make([]sheetItem, 0, len(s.items))
 	if title == tabMemory {
-		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "View saved memories", about: "Inspect remembered information, correct it, or forget it."}})
+		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "View saved memories", about: "Inspect, correct or remove saved memories."}})
 	}
 	advanced := make([]sheetItem, 0)
 	catalog := make([]sheetItem, 0)
@@ -3084,7 +3084,7 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 			cmd = tea.Batch(cmd, bind)
 		}
 	}()
-	if a.sheet.conn.entry != nil {
+	if a.sheet.conn.entry != nil || a.sheet.edit != nil {
 		// A BOX BEING TYPED INTO IS NOT A LIST. Every press is swallowed and none
 		// of them acts — esc is the way out, which is the way out of every box on
 		// this surface (connectpanel.go's [app.connectPanelPress] says it first).
@@ -3096,6 +3096,9 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 		return nil
 	}
 	hit := hits[y]
+	if a.sheet.sel != nil && hit.kind != sheetHitOption {
+		return nil
+	}
 	if a.sheetSidebar(width, height) && x < settingsSidebarWidth {
 		if hit.category > 0 && a.sheet.sel == nil && a.sheet.edit == nil {
 			a.sheet.tabBy(hit.category - 1 - a.sheet.tab)

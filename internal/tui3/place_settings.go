@@ -104,7 +104,7 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	}
 	rows = append(rows, placeRow{})
 	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
-		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search all settings and connections", "")
+		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search settings and services", "")
 		for _, line := range filter {
 			rows = append(rows, placeRow{text: " " + line})
 		}
@@ -129,6 +129,14 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		}
 		return rows
 	}
+	// Details occupy actual body rows: the shared note is deliberately a single
+	// rule caption and cannot carry wrapped explanations. Reserve constant room
+	// so changing focus never moves a control under the pointer.
+	detailRoom := 0
+	if s.edit == nil && s.conn.entry == nil {
+		detailRoom = min(6, max(0, room-3))
+	}
+	room -= detailRoom
 	body, owner := s.listLines(width, room, pal, a.hoveredSheetRow())
 	at := s.cursorLine(owner)
 	// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two lines —
@@ -152,6 +160,17 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 			hit = sheetHit{kind: sheetHitRow, index: owner[index]}
 		}
 		rows = append(rows, placeRow{text: body[index], hit: hit})
+	}
+	if detailRoom > 0 {
+		rows = append(rows, placeRow{})
+		details := settingsDetails(a, width)
+		for i := 0; i < detailRoom-1; i++ {
+			line := ""
+			if i < len(details) {
+				line = "  " + pal.dim(details[i])
+			}
+			rows = append(rows, placeRow{text: line})
+		}
 	}
 	return rows
 }
@@ -220,43 +239,50 @@ func (placeSettings) note(a *app, width int) []string {
 		}
 		return out
 	}
-	item, ok := a.sheet.current()
-	if at := a.hoveredSheetRow(); at >= 0 && at < len(a.sheet.items) {
-		item, ok = a.sheet.items[at], true
-	}
+	item, ok := settingsFocused(a)
 	scope := a.sheet.footNote()
-	about := ""
-	if ok {
-		about = item.meta.about
-		if item.conn != nil {
-			about = connAbout(item.conn)
-		}
-		if item.row.Key != "" && !(a.sheet.host != "" && item.meta.tab == tabTeams) {
-			info := item.row.ChatPresentation()
-			facts := []string{}
-			if info.Scope != "" {
-				facts = append(facts, info.Scope)
-			}
-			if info.Activation != "" {
-				facts = append(facts, info.Activation)
-			}
-			if len(facts) > 0 {
-				scope = strings.Join(facts, " · ")
+	if ok && item.row.Key != "" {
+		if name, pinned := item.row.PinnedBy(); pinned {
+			scope = "held by " + name + " — unset it to change this here"
+		} else if !(a.sheet.host != "" && item.meta.tab == tabTeams) {
+			if own := item.row.ChatPresentation().Scope; own != "" {
+				scope = own
 			}
 		}
 	}
-	out := []string{" " + pal.dim(noteFit(scope, width-2))}
-	details := settingAboutLines(about, width)
-	// Reserve the same detail space on every row. Hover and keyboard selection
-	// explain the same control without moving another control under the pointer.
-	for i := 0; i < settingAboutRows; i++ {
-		line := ""
-		if i < len(details) {
-			line = "  " + pal.dim(details[i])
-		}
-		out = append(out, line)
+	return []string{" " + pal.dim(noteFit(scope, width-2))}
+}
+
+// settingsFocused uses the same target for pointer and keyboard explanations.
+func settingsFocused(a *app) (sheetItem, bool) {
+	if at := a.hoveredSheetRow(); at >= 0 && at < len(a.sheet.items) {
+		return a.sheet.items[at], true
 	}
-	return out
+	return a.sheet.current()
+}
+
+func settingsDetails(a *app, width int) []string {
+	item, ok := settingsFocused(a)
+	if !ok {
+		return nil
+	}
+	about := item.meta.about
+	if item.conn != nil {
+		about = connAbout(item.conn)
+	}
+	lines := []string{}
+	if item.row.Key != "" {
+		info := item.row.ChatPresentation()
+		if info.Activation != "" {
+			lines = append(lines, wrap(info.Activation, max(1, width-4))...)
+		}
+	}
+	lines = append(lines, wrap(about, max(1, width-4))...)
+	if len(lines) > 5 {
+		lines = lines[:5]
+		lines[4] = fit(lines[4]+glyphMore, max(1, width-4))
+	}
+	return lines
 }
 
 func (placeSettings) about() string { return "how this machine is set" }
@@ -322,7 +348,7 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 		if a.sheet.edit != nil {
 			return 0, 0, false
 		}
-		box, placeholder := &a.sheet.query, "Search all settings and connections"
+		box, placeholder := &a.sheet.query, "Search settings and services"
 		if a.sheet.sel != nil {
 			box, placeholder = &a.sheet.sel.pick.filter, "type to filter"
 		}

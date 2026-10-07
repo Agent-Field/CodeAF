@@ -149,3 +149,83 @@ func TestSettingsOrganizationCaretAndMemoryDoor(t *testing.T) {
 		t.Fatal("inspect door did not open saved memories")
 	}
 }
+
+func TestSettingsOrganizationRenderedDetailsAndPinnedScope(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.width, a.height = 80, 30
+	t.Setenv("CODEAF_DAILY_BUDGET", "22")
+	a.openSettings()
+	cursorTo(t, a, config.KeyMemoryEnabled)
+	visible := strings.Join(strings.Fields(plain(frame(a))), " ")
+	for _, want := range []string{"Restart the CLI to apply this to already-open chats", "Turning this off does not delete saved memories."} {
+		if !strings.Contains(visible, want) {
+			t.Fatalf("critical memory detail absent from rendered 80-column frame: %s\n%s", want, visible)
+		}
+	}
+	cursorTo(t, a, config.KeyDailyBudget)
+	visible = strings.Join(strings.Fields(plain(frame(a))), " ")
+	if !strings.Contains(visible, "held by CODEAF_DAILY_BUDGET") || !strings.Contains(visible, "unset it to change this here") {
+		t.Fatalf("pinned scope remedy absent: %s", visible)
+	}
+}
+
+func TestSettingsOrganizationHoverKeepsRenderedTargetsStable(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.width, a.height = 80, 30
+	a.openSettings()
+	cursorTo(t, a, config.KeyHints)
+	_, before, _, _ := a.sheetFrame(a.width, a.height)
+	hovered := -1
+	for y, hit := range before {
+		if hit.kind == sheetHitRow && hit.index != a.sheet.cursor {
+			hovered = y
+			break
+		}
+	}
+	if hovered < 0 {
+		t.Fatal("no second visible row")
+	}
+	a.sheetHoverAt(3, hovered)
+	_, after, _, _ := a.sheetFrame(a.width, a.height)
+	for y, hit := range before {
+		if hit.kind == sheetHitRow && (after[y].kind != hit.kind || after[y].index != hit.index) {
+			t.Fatalf("hover moved target at row %d", y)
+		}
+	}
+}
+
+func TestSettingsOrganizationEditorsOwnPointer(t *testing.T) {
+	a, _ := sheetApp(t)
+	a.openSettings()
+	cursorTo(t, a, config.KeyDailyBudget)
+	a.activate()
+	if a.sheet.edit == nil {
+		t.Fatal("budget did not open editor")
+	}
+	tab := a.sheet.tab
+	_, hits, _, _ := a.sheetFrame(a.width, a.height)
+	for y, hit := range hits {
+		if hit.kind == sheetHitTabs || hit.kind == sheetHitRow {
+			a.sheetPress(2, y)
+		}
+	}
+	if a.sheet.tab != tab || a.sheet.edit == nil {
+		t.Fatal("underlying click escaped text editor")
+	}
+	a.sheet.edit = nil
+	cursorTo(t, a, config.ModelSettingKey(talkSlot))
+	a.activate()
+	if a.sheet.sel == nil {
+		t.Fatal("chat model did not open picker")
+	}
+	tab = a.sheet.tab
+	_, hits, _, _ = a.sheetFrame(a.width, a.height)
+	for y, hit := range hits {
+		if hit.kind == sheetHitTabs {
+			a.sheetPress(2, y)
+		}
+	}
+	if a.sheet.tab != tab || a.sheet.sel == nil {
+		t.Fatal("underlying category click escaped model picker")
+	}
+}
