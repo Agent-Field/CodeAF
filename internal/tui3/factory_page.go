@@ -41,11 +41,6 @@ const (
 // arrives here, never that the page is empty (the emptiness law's panel rule).
 const factoryUnconnectedWords = "nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected"
 
-// factoryPaneNextWords stands in for the rest of the pane, which is the next
-// piece of this page to be built. It says what will be there, so a person
-// reading the fixture is not left wondering whether something failed to load.
-const factoryPaneNextWords = "stages, the running stream and the proof sheet arrive in this pane next"
-
 // factoryPage is the page's own state, held on the app as `fp`.
 //
 // THE NEXT PIECES OF THIS PAGE BUILD ON THESE FIELDS AND NO OTHERS: snap is the
@@ -192,9 +187,10 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	if railW > 0 {
 		// THE PANE COLUMN IS THE HANDOVER, ONE BLANK ROW, THEN THE PANE. The
 		// handover ([app.factoryHead]) carries its own blank as its last row,
-		// so the pane starts on the row after it and the rail beside both
-		// keeps its own window.
-		pane = append(a.factoryHead(paneW), a.factoryPane(paneW)...)
+		// so the pane starts on the row after it and gets the room that is
+		// left; the rail beside both keeps its own window.
+		head := a.factoryHead(paneW)
+		pane = append(head, a.factoryPane(paneW, max(0, room-len(head)))...)
 	}
 	sep := a.pal.dim(a.linearMark("│", "|"))
 	rows := make([]placeRow, 0, room)
@@ -232,35 +228,6 @@ func (a *app) factoryPress(y int) bool {
 	a.fp.cursor = rows[line].walk
 	a.touch()
 	return true
-}
-
-// factoryPane is the item under the cursor: its ref and repository, its title,
-// and the factory's one-sentence read of it, then the line saying what arrives
-// here next. Each line is at most width cells.
-func (a *app) factoryPane(width int) []string {
-	pal := a.pal
-	it, ok := a.factoryCursorItem()
-	if !ok {
-		return nil
-	}
-	measure := max(width-2, 1)
-	out := []string{
-		" " + pal.muted(fit(it.Ref()+"  "+it.Repo, measure)),
-	}
-	for _, line := range wrap(it.Title, measure) {
-		out = append(out, " "+pal.bold(pal.ink(line)))
-	}
-	if read := strings.TrimSpace(it.Triage.Read); read != "" {
-		out = append(out, "")
-		for _, line := range wrap(read, measure) {
-			out = append(out, " "+pal.ink(line))
-		}
-	}
-	out = append(out, "")
-	for _, line := range wrap(factoryPaneNextWords, measure) {
-		out = append(out, " "+pal.dim(line))
-	}
-	return out
 }
 
 // factoryPad is s cut or padded to exactly width cells.
