@@ -47,6 +47,8 @@ var (
 	baseCommands   = append([]command(nil), commands...)
 	delegateRowsMu sync.Mutex
 	delegateRows   map[string]bool
+	// delegateBareRuns is the installed rows a bare `/<name>` runs.
+	delegateBareRuns map[string]bool
 )
 
 // installDelegateCommands rebuilds the live command table as the literal plus
@@ -59,23 +61,30 @@ func installDelegateCommands(rows []session.DelegateRow) []string {
 	delegateRowsMu.Lock()
 	defer delegateRowsMu.Unlock()
 	table := append([]command(nil), baseCommands...)
-	installed := map[string]bool{}
+	installed, optional := map[string]bool{}, map[string]bool{}
 	var refused []string
 	for _, row := range rows {
 		name := strings.TrimSpace(row.Name)
 		if name == "" {
 			continue
 		}
-		candidate := command{name: name, args: "<brief>", desc: row.Description}
+		args := strings.TrimSpace(row.Args)
+		if args == "" {
+			args = "<brief>"
+		}
+		candidate := command{name: name, args: args, desc: row.Description}
 		if err := checkCommands(append(append([]command(nil), table...), candidate)); err != nil || baseNames()[name] {
 			refused = append(refused, name+": its name is already a command here — not added")
 			continue
 		}
 		table = append(table, candidate)
 		installed[name] = true
+		if row.BriefOptional {
+			optional[name] = true
+		}
 	}
 	commands = table
-	delegateRows = installed
+	delegateRows, delegateBareRuns = installed, optional
 	return refused
 }
 
@@ -89,6 +98,14 @@ func baseNames() map[string]bool {
 		}
 	}
 	return names
+}
+
+// delegateRunsBare says a bare `/<name>` runs the program's own default brief
+// rather than asking for one (session.DelegateRow.BriefOptional).
+func delegateRunsBare(name string) bool {
+	delegateRowsMu.Lock()
+	defer delegateRowsMu.Unlock()
+	return delegateBareRuns[name]
 }
 
 // isDelegateCommand says whether a typed word is one of the installed rows.
@@ -128,7 +145,7 @@ func (a *app) installDelegates() tea.Cmd {
 // answer lands as a task start, on the message `/task` lands on.
 func (a *app) runDelegateCommand(name, brief string) tea.Cmd {
 	brief = strings.TrimSpace(brief)
-	if brief == "" {
+	if brief == "" && !delegateRunsBare(name) {
 		a.note("usage: /" + name + delegateUsageWordTail)
 		return nil
 	}

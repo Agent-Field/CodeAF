@@ -338,15 +338,18 @@ func TestConcurrentCallsReserveTheCeilingBeforeForwarding(t *testing.T) {
 	close(answers)
 	refused := 0
 	for got := range answers {
-		if got.status == http.StatusPaymentRequired {
+		// Refused at the ceiling (402) or held behind the calls in flight
+		// (429): either way the call was not made, and the answer names the
+		// ceiling.
+		if got.status == http.StatusPaymentRequired || got.status == http.StatusTooManyRequests {
 			refused++
 			if !strings.Contains(string(got.payload), "the run's dollar ceiling of $1.00") {
-				t.Fatalf("402 did not name the ceiling: %s", got.payload)
+				t.Fatalf("%d did not name the ceiling: %s", got.status, got.payload)
 			}
 		}
 	}
-	if spent := server.Spent(); spent > 1.40 || server.RefusedAtCeiling() == 0 {
-		t.Fatalf("eight calls spent $%.2f with %d refusals", spent, server.RefusedAtCeiling())
+	if spent := server.Spent(); spent > 1.40 || server.RefusedAtCeiling()+server.HeldAtCeiling() == 0 {
+		t.Fatalf("eight calls spent $%.2f with %d refusals and %d held", spent, server.RefusedAtCeiling(), server.HeldAtCeiling())
 	}
 	if refused == 0 {
 		t.Fatal("all eight calls were forwarded")
@@ -439,7 +442,9 @@ func TestPendingReceiptKeepsItsReservationUntilTheRealChargeArrives(t *testing.T
 	if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
 		t.Fatalf("first call got %d: %s", status, payload)
 	}
-	if status, payload := post(t, api, api.Token, body); status != http.StatusPaymentRequired {
+	// HELD, NOT REFUSED: the first call's reservation is all that stands in the
+	// way, and it is given back when its charge arrives.
+	if status, payload := post(t, api, api.Token, body); status != http.StatusTooManyRequests || !strings.Contains(string(payload), "is held by calls in flight") {
 		t.Fatalf("pending receipt admitted a second call: %d %s", status, payload)
 	}
 	close(gate)
@@ -1016,5 +1021,61 @@ func TestARunsCallsAskTheFunnelToSettleAnAnswerWithNoUsage(t *testing.T) {
 	}
 	if !<-armed {
 		t.Fatal("the call's context does not ask the funnel to settle an answer with no usage block")
+	}
+}
+
+// THE CEILING SAYS TWO KINDS OF NO. A call whose estimate alone crosses what is
+// left is refused (402), and asked again it is refused again. A call that only
+// waits on calls still in flight is held (429, Retry-After and the held
+// header), opens no turn, and is made once they have ended.
+func TestACallHeldByCallsInFlightIsAskedToWaitAndLaterMade(t *testing.T) {
+	release := make(chan struct{})
+	var first atomic.Bool
+	calls := &script{reply: func(ctx context.Context, model string, _ []ai.Message, _ ai.Request) (*ai.Response, error) {
+		if first.CompareAndSwap(false, true) {
+			<-release
+		}
+		bill(ctx, model, 1, 1, 0, 0.10)
+		return saying(model, "ok"), nil
+	}}
+	server, api := open(t, modelapi.Config{CompleterFor: calls.completerFor, Ceiling: 1,
+		ModelPrice: func(string) (float64, float64, bool) { return 0, 0.60, true },
+	})
+	body := `{"model":"priced/model","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":1}`
+	done := make(chan int, 1)
+	go func() {
+		status, _ := post(t, api, api.Token, body)
+		done <- status
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for len(calls.calls()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	request, _ := http.NewRequest(http.MethodPost, modelapi.ChatURL(api.BaseURL), strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+api.Token)
+	request.Header.Set("Content-Type", "application/json")
+	answer, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := io.ReadAll(answer.Body)
+	answer.Body.Close()
+	if answer.StatusCode != http.StatusTooManyRequests || answer.Header.Get(modelapi.HeldHeader) != "ceiling" ||
+		answer.Header.Get("Retry-After") == "" || !strings.Contains(string(payload), "is held by calls in flight") {
+		t.Fatalf("a call behind one in flight got %d %v: %s", answer.StatusCode, answer.Header, payload)
+	}
+	if server.HeldAtCeiling() != 1 || server.RefusedAtCeiling() != 0 {
+		t.Fatalf("held %d, refused %d", server.HeldAtCeiling(), server.RefusedAtCeiling())
+	}
+	close(release)
+	if status := <-done; status != http.StatusOK {
+		t.Fatalf("the first call got %d", status)
+	}
+	if status, payload := post(t, api, api.Token, body); status != http.StatusOK {
+		t.Fatalf("the held call, asked again, got %d: %s", status, payload)
+	}
+	tooBig := `{"model":"priced/model","messages":[{"role":"user","content":"hi"}],"max_completion_tokens":2}`
+	if status, payload := post(t, api, api.Token, tooBig); status != http.StatusPaymentRequired {
+		t.Fatalf("a call whose estimate alone crosses what is left got %d: %s", status, payload)
 	}
 }

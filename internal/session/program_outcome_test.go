@@ -506,3 +506,141 @@ func TestAProgramOutcomeCountsAHandBackAsFixingItYourself(t *testing.T) {
 		}
 	}
 }
+
+// A PROGRAM THAT ANSWERS WITH A REPORT IS NEVER SENT LOOKING FOR A BRANCH. Its
+// ending changed nothing in the folder, so its note carries none of the
+// worktree, check or merge advice a change gets: it says what the report is
+// for, the program's own offer, and that nothing starts on this turn.
+func TestAReportProgramsEndingAsksForASummaryAndStartsNothing(t *testing.T) {
+	const offer = "If it found problems, offer to hand them to senior-dev to fix."
+	note := func(verdict programVerdict, auto int) string {
+		return programOutcomeNote(programOutcome{row: 9, program: "sec", verdict: verdict,
+			report: true, followUp: offer, programAttempt: programAttempt{attempt: auto + 1, auto: auto}}, "done · ran 14m", 0.8)
+	}
+	passed := note(programPassed, 0)
+	for _, want := range []string{"[sec ended — for you to act on] task 9 · passed · run 1 · $0.80",
+		"it changed nothing in the folder", offer, "Start nothing on this turn."} {
+		if !strings.Contains(passed, want) {
+			t.Fatalf("a finished report's note lacks %q:\n%s", want, passed)
+		}
+	}
+	for _, verdict := range []programVerdict{programPassed, programFailed, programLimit, programCrashed} {
+		got := note(verdict, 0)
+		for _, unwanted := range []string{"worktree", "merge", "branch"} {
+			if strings.Contains(got, unwanted) {
+				t.Errorf("a %s report's note speaks of a %s:\n%s", verdict, unwanted, got)
+			}
+		}
+	}
+	if limit := note(programLimit, 0); !strings.Contains(limit, "ask whether to spend more") || strings.Contains(limit, offer) {
+		t.Fatalf("a report that stopped on a limit is not told to ask first:\n%s", limit)
+	}
+	if failed := note(programFailed, 0); strings.Contains(failed, "hand the same work") {
+		t.Fatalf("a report that did not finish is sent back on codeaf's own:\n%s", failed)
+	}
+	if crashed := note(programCrashed, programAutoRetries); strings.Contains(crashed, "hand the same work") {
+		t.Fatalf("a crash after the last retry is still sent back:\n%s", crashed)
+	}
+}
+
+// A report program's ending that named no `pass` is still a finished answer,
+// and its limit line points at nothing in the folder, because it changed
+// nothing there.
+func TestAReportProgramsRunReadsAsFinishedAndItsLimitLineNamesNoWork(t *testing.T) {
+	a := programConversation(t, nil)
+	program := testPrograms("sec")[0]
+	program.Lands = delegate.LandsText
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the audit", planRootID, "The audit", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	run := &beltRun{row: 2, root: planRootID, store: store, delegate: &program, ground: "/repo", costCeiling: 2}
+	note := a.programLandingNote(run, RunSummary{Outcome: beltRunOutcomeDone}, "done")
+	if note.programOutcome == nil || note.programOutcome.verdict != programPassed || !note.programOutcome.report {
+		t.Fatalf("a finished report reads as %+v, want a passed report", note.programOutcome)
+	}
+	line := programLimitLine(run, RunSummary{Outcome: "incomplete", Limit: RunLimitCost, USD: 2}, RunLanding{})
+	if !strings.Contains(line, "it changed nothing in /repo") || strings.Contains(line, "its work is") {
+		t.Fatalf("a report's limit line = %q", line)
+	}
+}
+
+// failingCompleter is a model that cannot answer at all: every call is
+// refused for want of a key, which ends a turn at once.
+type failingCompleter struct{ calls atomic.Int32 }
+
+func (f *failingCompleter) CompleteWithMessages(context.Context, []ai.Message, ...ai.Option) (*ai.Response, error) {
+	f.calls.Add(1)
+	return nil, provider.ErrNoAPIKey
+}
+
+// A PROGRAM'S ENDING IS NEVER LOST TO A FAILED REPLY. The turn its landing
+// wakes is the one that tells the person what the program found; when that turn
+// cannot finish an answer, the program's own account is written into the
+// conversation as the session's line — once, however many turns fail after it.
+func TestAProgramsEndingIsSaidWhenTheTurnItWokeCannotAnswer(t *testing.T) {
+	completer := &failingCompleter{}
+	agent, _ := newTestAgent(t, completer, func(config *Config) {
+		config.AskConsent = false
+		// THE JOURNAL IS WHAT MARKS A LINE AS THE SESSION'S, so the conversation
+		// has one, as every conversation a person opens does.
+		config.SessionFile = filepath.Join(t.TempDir(), "conversation.jsonl")
+	})
+	store, err := plandb.Open(filepath.Join(t.TempDir(), planStoreFilename), "the run", "1", "Audit", "whole repository")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	program := testPrograms("sec")[0]
+	program.Lands = delegate.LandsText
+	run := &beltRun{store: store, root: store.RootID(), row: 1, delegate: &program, ground: "/project"}
+	const account = "Found 2 problems: 1 confirmed and 1 likely.\n- critical · confirmed · Command injection · app/views.py:4"
+	agent.deliverBeltRunLanding(run, RunSummary{Outcome: beltRunOutcomeDone, Result: account}, RunLanding{})
+	beltRunWaitFor(t, "the failed outcome turn to end", func() bool {
+		agent.mu.Lock()
+		defer agent.mu.Unlock()
+		return completer.calls.Load() > 0 && !agent.running
+	})
+	said := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, "sec ended, but the chat could not finish its answer to it") {
+			said++
+			if entry.Role != "aside" || !strings.Contains(entry.Text, "app/views.py:4") {
+				t.Fatalf("the ending was said as %s: %q", entry.Role, entry.Text)
+			}
+		}
+	}
+	if said != 1 {
+		t.Fatalf("the program's ending was said %d times after the turn failed", said)
+	}
+	// A later failed turn does not say it again.
+	agent.mu.Lock()
+	agent.programOutcomeUnansweredLocked(nil, false, false)
+	agent.mu.Unlock()
+	again := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, "could not finish its answer") {
+			again++
+		}
+	}
+	if again != 1 {
+		t.Fatalf("the ending was said %d times", again)
+	}
+	// A TURN THE PERSON STOPPED IS TOLD AS THEIRS, and still keeps the account:
+	// their key did not make the chat fail.
+	agent.mu.Lock()
+	agent.programOutcomeNow = &programOutcome{row: 2, program: "sec", account: account}
+	agent.programOutcomeUnansweredLocked(nil, false, true)
+	agent.mu.Unlock()
+	stopped := 0
+	for _, entry := range agent.Transcript() {
+		if strings.Contains(entry.Text, "sec ended, and you stopped the chat's answer to it, so here is what sec said:") &&
+			strings.Contains(entry.Text, "app/views.py:4") {
+			stopped++
+		}
+	}
+	if stopped != 1 {
+		t.Fatalf("a stopped answer was said %d times as the person's stop", stopped)
+	}
+}

@@ -108,6 +108,65 @@ type Delegate struct {
 	// conversation's `say`. A program that does not listen is refused a message
 	// in so many words, never handed one nothing reads.
 	Listens bool
+	// Unattended is the ceilings a run of this program starts under when
+	// nobody set smaller ones: a conversation with no limit, or a shell line
+	// with no --max-cost or --max-hours. A zero field is no ceiling of the
+	// program's own, which leaves that run on whatever the conversation has
+	// left.
+	//
+	// A PROGRAM NOBODY WATCHES MUST STOP ON ITS OWN, AND HOW LONG IT MAY GO IS
+	// THE PROGRAM'S TO KNOW. senior-dev's change and sec's whole-repository
+	// audit are different shapes of work: an audit spends its hours long
+	// before its dollars, which a change does not ([SeniorDevCeilings] and
+	// secaf.Unattended say each one's figures and why). So the figure lives
+	// beside the program rather than in a branch of codeaf that names it
+	// ([Ceilings.CappedBy], [Ceilings.FilledFrom]).
+	Unattended Ceilings
+	// FollowUp is one sentence the conversation is handed when a run of a
+	// program that lands text finishes: what to offer the person next, in the
+	// program's own terms. Empty offers nothing. It is read only on that turn,
+	// so it costs the conversation's fixed prefix nothing.
+	//
+	// THE OFFER IS THE PROGRAM'S, AND THE DECISION THE PERSON'S. A report that
+	// found something to fix suggests its own next step better than codeaf can,
+	// and the wake turn starts nothing ([LandsText]).
+	FollowUp string
+	// DefaultBrief is the brief a bare `/<name>` or `codeaf <name>` runs.
+	// Empty is a program that needs one, and is refused without it.
+	//
+	// A BRIEF IS THE WORK, AND SOME WORK IS ALREADY SAID BY THE NAME. "Fix
+	// it" is no task for senior-dev, but an audit of the repository it is
+	// started in is exactly what a bare `/sec` means.
+	DefaultBrief string
+	// Words says the program's brief is a few words it reads itself, such as
+	// sec's `changes since main thorough`, and not a document for a model.
+	// Such a program is handed exactly the words it was asked with, from the
+	// chat's proposal as from a typed `/<name>`; false hands it the composed
+	// brief every task gets.
+	//
+	// A COMPOSED BRIEF OPENS ON ITS OWN HEADINGS, NOT ON THE WORK. A
+	// proposal's brief is the person's message, the work, the deliverable and
+	// lines from the conversation under capitals, and a program that read its
+	// scope off the first line read `WHAT THE PERSON ASKED FOR` there: a
+	// proposed `whole repository thorough` ran at standard depth, and a
+	// proposed `changes` audited the whole repository.
+	Words bool
+	// Title is the title a typed `/<name> <brief>` gives its task, from the
+	// brief as typed; nil takes the brief's own first words, as a task's
+	// title always has. A brief that is only a program's own scope words
+	// (`quick`, `changes`) says nothing as a title, so such a program names
+	// its run itself.
+	Title func(brief string) string
+	// Args is how the command row shows what follows the name, such as
+	// `[changes] [quick | thorough]`. Empty is `<brief>`.
+	Args string
+	// ModelFlag is the flag of the default command that names the models it
+	// works on (senior-dev's `high`, sec's `model`), without its
+	// dashes. A shell run resolves what the person typed there through the
+	// profile's own services before the program starts, and puts the
+	// profile's work seat on the line when they typed nothing. Empty is a
+	// program that takes no model.
+	ModelFlag string
 	// CrewFlags is the flags the default command takes to use the models of
 	// the conversation's crew ([Crew]), which codeaf puts on the line of every
 	// run it starts from a conversation. Nil is a program that picks its own
@@ -303,6 +362,9 @@ func (d Delegate) validateLineFlags() error {
 				return fmt.Errorf("%s: the crew flags %q are not flags its %s command takes", d.Name, strings.Join(flags, " "), command.Name)
 			}
 		}
+	}
+	if flag := strings.TrimSpace(d.ModelFlag); flag != "" && !parses([]string{"--" + flag, "vendor/model"}) {
+		return fmt.Errorf("%s: the model flag --%s is not a flag its %s command takes", d.Name, flag, command.Name)
 	}
 	if len(d.PlainFolder) > 0 && !parses(d.PlainFolder) {
 		return fmt.Errorf("%s: the plain folder flags %q are not flags its %s command takes", d.Name, strings.Join(d.PlainFolder, " "), command.Name)

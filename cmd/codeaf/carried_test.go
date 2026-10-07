@@ -76,7 +76,7 @@ func TestTheFrontPageFitsWithTheProgramsThisBuildCarries(t *testing.T) {
 
 func TestSeniorDevShellFirstLineNamesItsEffectiveCeiling(t *testing.T) {
 	program := fakeCarriedProgram()
-	program.Name = "senior-dev"
+	program.Name, program.Unattended = "senior-dev", delegate.SeniorDevCeilings
 	for _, tc := range []struct {
 		line []string
 		want string

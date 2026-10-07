@@ -173,6 +173,9 @@ type Server struct {
 	threads  threads
 	// refused counts the calls answered 402 at the ceiling.
 	refused int
+	// held counts the calls asked to wait while others in flight held the
+	// ceiling ([held]).
+	held int
 
 	// bankMu keeps charges in the order they were metered, one at a time, and
 	// logMu keeps two turns from sharing one write of the log.
@@ -498,40 +501,78 @@ func (r *record) close(fill func(turn *delegate.Turn)) delegate.Turn {
 	return r.turn
 }
 
+// admission is what the ceiling says to one call as it arrives.
+type admission int
+
+const (
+	// admitted is a call that fits: its estimate is reserved and it goes on.
+	admitted admission = iota
+	// refused is a call that could not fit even with nothing else in flight:
+	// the ceiling is reached, or its estimate alone would cross it.
+	refused
+	// held is a call that would fit once calls already in flight have ended
+	// and given back what they reserved. Asked again later it can go.
+	held
+)
+
 // open numbers one call, opens its turn with what the thread had not said
 // before, names the working the program handed back by the field its thread's
 // working last arrived on, and answers the run's spend at the moment the call
 // arrived — the figure its ceiling is asked against.
-func (s *Server) open(request *call, thread, served, model string) (*record, float64, float64, bool) {
+//
+// A HELD CALL OPENS NO TURN. It was not made, and it will be asked again, so
+// neither the log nor its thread's memory of what was last sent may count it:
+// a thread that remembered a held request would record nothing new when the
+// same request came back and was made.
+func (s *Server) open(request *call, thread, served, model string) (*record, float64, float64, admission) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	ceiling := s.config.Ceiling
+	reserve := 0.0
+	if ceiling > 0 {
+		var known bool
+		reserve, known = s.estimate(request, model)
+		if !known {
+			// An unpriced local or custom model can still spend real money. Once
+			// half the ceiling is spent, admit at most one such call in flight.
+			reserve = ceiling / 2
+			if left := ceiling - s.spent; reserve > left {
+				reserve = left
+			}
+		}
+		switch {
+		case ceilingReached(ceiling, s.spent) || reserve > ceiling-s.spent+ceilingDust:
+			s.refused++
+			return s.openTurn(request, thread, served), s.spent, 0, refused
+		case ceilingReached(ceiling, s.spent+s.reserved) ||
+			(!known && s.spent >= ceiling/2 && s.inflight > 0) ||
+			reserve > ceiling-s.spent-s.reserved+ceilingDust:
+			s.held++
+			return nil, s.spent, 0, held
+		}
+	}
+	entry := s.openTurn(request, thread, served)
+	s.reserved += reserve
+	s.inflight++
+	return entry, s.spent, reserve, admitted
+}
+
+// openTurn numbers one call that is being answered — made, or refused at the
+// ceiling — and opens its turn. The caller holds s.mu.
+func (s *Server) openTurn(request *call, thread, served string) *record {
 	s.seq++
 	entry := &record{turn: delegate.Turn{Seq: s.seq, Thread: thread, Started: time.Now(), Model: request.asked, Served: served}}
 	entry.turn.Sent, entry.turn.Restarted = s.threads.delta(thread, request.messages)
 	request.reasoning = s.threads.name(thread, request.reasoning)
-	ceiling := s.config.Ceiling
-	if ceiling <= 0 {
-		s.inflight++
-		return entry, s.spent, 0, true
-	}
-	reserve, known := s.estimate(request, model)
-	if !known {
-		// An unpriced local or custom model can still spend real money. Once
-		// half the ceiling is spent, admit at most one such call in flight.
-		reserve = ceiling / 2
-		if left := ceiling - s.spent; reserve > left {
-			reserve = left
-		}
-	}
-	if ceilingReached(ceiling, s.spent+s.reserved) ||
-		(!known && s.spent >= ceiling/2 && s.inflight > 0) ||
-		reserve > ceiling-s.spent-s.reserved+ceilingDust {
-		s.refused++
-		return entry, s.spent, 0, false
-	}
-	s.reserved += reserve
-	s.inflight++
-	return entry, s.spent, reserve, true
+	return entry
+}
+
+// HeldAtCeiling is how many calls were asked to wait because calls in flight
+// held what was left of the ceiling.
+func (s *Server) HeldAtCeiling() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.held
 }
 
 // defaultOutputCap is the conservative output allowance used for a request
@@ -645,9 +686,23 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request, request *call) {
 	if thread == "" {
 		thread = delegate.MainThread
 	}
-	entry, spent, reserved, admitted := s.open(request, thread, served, model)
+	entry, spent, reserved, verdict := s.open(request, thread, served, model)
 
-	if !admitted {
+	if verdict == held {
+		// 429 AND A TIME TO ASK AGAIN: what is left of the ceiling is held by
+		// calls still in flight, and once one ends this call fits. That IS
+		// weather — the one kind of "no" the ceiling gives that changes on its
+		// own — so it is said in the status every program's client already
+		// retries, with the header that says which weather it is. A program that
+		// makes one call at a time never meets it; one that makes many at once
+		// (sec) would otherwise be told its ceiling was reached at $0
+		// spent.
+		w.Header().Set("Retry-After", "2")
+		w.Header().Set(HeldHeader, "ceiling")
+		writeError(w, http.StatusTooManyRequests, heldSentence(s.config.Ceiling, spent))
+		return
+	}
+	if verdict == refused {
 		// 402 AND NOTHING THAT READS AS PASSING: a program's client retries a
 		// 408, a 409, a 429 and a 5xx as the weather, and a ceiling is not
 		// weather — asked again it answers the same.
@@ -1105,6 +1160,18 @@ func ceilingSentence(ceiling, spent float64) string {
 		return "the run's dollar ceiling of " + dollars(ceiling) + " would be reached by this call's estimated cost (" + dollars(spent) + " spent), so codeaf made no call"
 	}
 	return "the run's dollar ceiling of " + dollars(ceiling) + " is reached (" + dollars(spent) + " spent), so codeaf made no call"
+}
+
+// HeldHeader marks a 429 the ceiling gave because calls in flight hold what is
+// left of it ([held]): a program that makes calls at once waits and asks again,
+// for as long as its own bounds allow, where any other 429 is retried a few
+// times at most.
+const HeldHeader = "X-Codeaf-Held"
+
+// heldSentence is what a held call is told.
+func heldSentence(ceiling, spent float64) string {
+	return "the run's dollar ceiling of " + dollars(ceiling) + " is held by calls in flight (" + dollars(spent) +
+		" spent); ask again when one has ended"
 }
 
 // ceilingDust is the most a ceiling may still have left and be reached: a

@@ -253,6 +253,24 @@ What made dev about eight megabytes heavier than `main` on linux/amd64 by
 the CI size job) is not attributed here; #1694 finds it, cuts what is redundant,
 and lowers this number in the same commit as each cut.
 
+It was reset a seventh time on 2026-10-05, when sec — sec-af, the
+security auditor, copied in once at its tag `codeaf-absorb` — became the second
+program built into codeaf (`internal/secaf`). Like senior-dev's, this one is a
+decision: the programs codeaf hands a whole task to are built into every build.
+Measured on darwin/amd64 with its own furrow artifact staged, with the flags
+`make build` uses, the same tree with and without the program in the build's
+list (`internal/delegate/builtin`), on Go 1.27.0:
+
+| platform | without | with | what sec cost |
+| --- | --- | --- | --- |
+| darwin/amd64, furrow staged | 67,051,312 | 69,564,304 | 2,512,992 |
+
+About 1.4 megabytes of it is sec-af's own code and the schema and YAML readers
+it brings (`invopop/jsonschema`, `santhosh-tekuri/jsonschema`, `yaml/v4`); the
+rest is the type and line tables that code carries. The budget rises by exactly
+that cost, to 71,363,000 — this change's bill and nothing else. The tree without
+it was 1,798,688 under the sixth reset's 68,850,000, and still is.
+
 ## Adaptive run shutdown grace
 
 `Agent.Close` cancels adaptive runs and their name calls, then gives all accepted
@@ -1481,6 +1499,15 @@ The full page is 22,291 bytes and its 24 tools encode to 34,927 bytes, so the
 fixed cap is **57,218** bytes, exactly 94 above the previous measurement.
 The lean cap remains **49,590** bytes. The dated fixed waiver in
 `prefixWaivers` pays only that measured increase.
+
+**sec, the second program (sec-af's security audit), adds its guide (2026-10-05).** A program
+costs the fixed prefix one item of the hand-off paragraph's list — its guide, at
+most 400 bytes — and nothing else: its manual page and the wording of the turn its
+report wakes ride no request. sec's guide is 386 bytes, and the caps
+rise by exactly what it measured: against dev on 2026-10-07 (baa2d7f0f) it costs
+both prefixes 396 bytes, so the full cap is **57,614** bytes and the lean cap
+**49,986**, both dated in `prefixWaivers`. (Against the dev of 2026-10-05 it cost
+the lean prefix only 229, before the page carried a program's guide there too.)
 
 ## Following through on a completion claim
 

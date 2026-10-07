@@ -25,8 +25,11 @@ package session
 // index would be the same work named twice in one answer.
 
 import (
+	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Agent-Field/codeaf/internal/plandb"
 )
 
 // indexRunRow appends one published run row to the project's index. A job's
@@ -71,6 +74,9 @@ func (a *Agent) indexRunRow(notice TaskNotice) {
 		entry.Where, entry.Ground, entry.Mode, entry.Rung = where.Dir, where.Ground, where.Mode, where.Rung
 	}
 	entry.ArtifactURI = taskArtifactURI(worktree, notice.Branch, notice.Merge)
+	if records := a.beltRunReportFolder(notice.ID); records != "" {
+		entry.ArtifactURI = taskURI(records)
+	}
 	if notice.State.settled() {
 		entry.Cost = notice.CostUSD
 		if entry.Cost == 0 {
@@ -93,6 +99,25 @@ func (a *Agent) beltRunSpent(id uint64) float64 {
 		return run.spent
 	}
 	return 0
+}
+
+// beltRunReportFolder is the record folder of the live run with this id when
+// a program that answers with a report has it, and "" for any other run.
+//
+// A REPORT'S ROW POINTS AT THE REPORT. A program that lands text works on the
+// person's folder in place and changes nothing there, so the artifact the row
+// would otherwise name is the repository itself, which says nothing about where
+// the report went: another conversation reading this row searched the disk for
+// it, and opened a different run's report first. The report is written in the
+// task's record folder (delegate.EnvRecords), so that folder is the artifact.
+func (a *Agent) beltRunReportFolder(id uint64) string {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	run := a.beltRun
+	if run == nil || run.row != id || run.delegate == nil || run.delegate.LandsTree() || run.store == nil {
+		return ""
+	}
+	return plandb.TaskDir(filepath.Dir(run.store.Path()), run.root)
 }
 
 // presenceBeltRuns is the live run this conversation has out, and each hand-off

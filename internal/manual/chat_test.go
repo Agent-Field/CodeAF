@@ -1066,6 +1066,20 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't the delegate ask me anything", "delegates"},
 		{"why is there no command for my delegate", "delegates"},
 		{"where does a delegate's work go, does it squash the commits", "delegates"},
+		// sec, the auditing program codeaf carries, asked the way
+		// somebody wants a security review: by its job, not its name.
+		{"how do I run a security review of my repo", "sec"},
+		{"can codeaf scan my code for vulnerabilities", "sec"},
+		{"audit only my changes for security problems", "sec"},
+		{"where is the security audit report and the sarif file", "sec"},
+		{"will the security audit change or commit my files", "sec"},
+		{"how much does a security audit cost", "sec"},
+		{"fix the vulnerabilities the security audit found", "sec"},
+		{"why does the sec task page show the same hunter lines over and over", "sec"},
+		{"do I need to clear out the old security audit before running it again", "sec"},
+		{"how many turns does each security audit agent get", "sec"},
+		{"find the last security audit's report from another conversation", "sec"},
+		{"the program finished but the chat said nothing, no summary", "delegates"},
 		// senior-dev, the program codeaf carries, asked the ways somebody meets
 		// it: what the command does, whether it will stop to ask, where its
 		// commits went, what it cost, its flags, and why a Windows build has none.
@@ -1143,6 +1157,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't codeaf edit files while senior-dev is working", "senior-dev"},
 		{"my task was refused because senior-dev is working in the folder", "senior-dev"},
 		{"the delegate was refused because of uncommitted changes", "delegates"},
+		{"I pressed stop while the chat was answering a program that ended", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets

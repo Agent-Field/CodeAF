@@ -193,3 +193,37 @@ func TestReplyGuardOffLetsTheLeakThrough(t *testing.T) {
 		t.Fatal("no answer came back")
 	}
 }
+
+// A TOOL'S NAME IN A PERSON'S WRITING IS NOT A LEAK, however dense the text
+// around it: a path that runs through it, inline code, emphasis, a parenthesis.
+// The fixture is the reply that was cut on 2026-10-05 — a table of findings
+// and the report's path under `…/tasks/1/` — at a tenth symbols, spelling the
+// declared tool `tasks` between two slashes.
+func TestMachineryLeakLeavesAToolsNameInProseAlone(t *testing.T) {
+	request := &ai.Request{Tools: machineryTools("tasks", "read", "web_search")}
+	table := "Audit's done — full report at `/Users/a/.codeaf/v3/projects/-Users-a-Code-x/c33/tasks/1/sec-report.md`.\n\n" +
+		"| Severity | Finding | Where |\n|---|---|---|\n" +
+		"| Critical (likely) | `--merge-check` runs `/bin/sh -c` | `src/repository.rs:2344` |\n" +
+		"| High (confirmed) | SSH host into `ssh` (SSRF) | `src/remote.rs:131` |\n" +
+		"| Medium | `contents: write` token | `.github/workflows/release.yml:20` |\n"
+	if symbolDensity(table) < machineryDensityFloor {
+		t.Fatalf("the fixture is %.3f symbols, under the floor it has to be over to test anything", symbolDensity(table))
+	}
+	for name, text := range map[string]string{
+		"a path through the name": table,
+		"inline code":             table + "Ask `tasks` for the rest.",
+		"emphasis":                table + "See **tasks** above.",
+		"a parenthesis":           table + "(read) it.",
+	} {
+		if MachineryLeak(request, machineryAnswer(text)) {
+			t.Errorf("%s was cut as machinery", name)
+		}
+	}
+	// And the leak's own shapes are still read as the leak.
+	if !MachineryLeak(request, machineryAnswer(leakedGrammar)) {
+		t.Fatal("the live leak was no longer read as machinery")
+	}
+	if !MachineryLeak(request, machineryAnswer(`[TOOL_REQUEST]{"name":"tasks","arguments":{}}[END_TOOL_REQUEST]`)) {
+		t.Fatal("a quoted tool name in bracketed grammar was no longer read as machinery")
+	}
+}

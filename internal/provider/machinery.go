@@ -86,6 +86,25 @@ func machinerySymbol(r rune) bool {
 	return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsSpace(r) && r != '_'
 }
 
+// proseMarks are the symbols prose itself puts around a word: the separators
+// of a path, the backtick of inline code, the asterisk of emphasis, and the
+// punctuation of a sentence. A tool's name between two of them is a person's
+// writing, not a grammar's token.
+//
+// IT WAS FOUND BY A PATH. On 2026-10-05 a conversation summarising sec's
+// report — a table of findings, each at a backticked `file:line`, and the
+// report's own path, `…/tasks/1/sec-report.md` — read as a tenth symbols and
+// spelled the declared tool `tasks` between two slashes, and four models in a
+// row were cut for writing it. A leak fences a name in brackets, bars and
+// quotes (`｜_web_search>`, `"web_search"`), none of which is here.
+const proseMarks = "/\\`*.,:;()'!?-"
+
+// fenceRune is a symbol that can wall a name in a tool grammar: any symbol
+// but the marks prose uses ([proseMarks]).
+func fenceRune(r rune) bool {
+	return machinerySymbol(r) && !strings.ContainsRune(proseMarks, r)
+}
+
 func symbolDensity(text string) float64 {
 	total, symbols := 0, 0
 	for _, r := range text {
@@ -118,7 +137,7 @@ func fencedInSymbols(text, name string) bool {
 		// start too.
 		before, sizeBefore := utf8.DecodeLastRuneInString(strings.TrimRight(text[:at], "_"))
 		after, sizeAfter := utf8.DecodeRuneInString(strings.TrimLeft(text[at+len(name):], "_"))
-		if sizeBefore > 0 && sizeAfter > 0 && machinerySymbol(before) && machinerySymbol(after) {
+		if sizeBefore > 0 && sizeAfter > 0 && fenceRune(before) && fenceRune(after) {
 			return true
 		}
 		from = at + len(name)

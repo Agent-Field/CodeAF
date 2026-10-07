@@ -71,9 +71,10 @@ func runCostLeft(limit, spent float64) float64 {
 	return left
 }
 
-// seniorDevCeilings caps the conversation's remaining allowance at the
-// unattended run defaults, so an unset conversation limit is still finite.
-func (a *Agent) seniorDevCeilings(spent float64) delegate.Ceilings {
+// programCeilings caps the conversation's remaining allowance at the
+// program's unattended ceilings ([delegate.Delegate.Unattended]), so an unset
+// conversation limit is still finite for a program that names its own.
+func (a *Agent) programCeilings(program *delegate.Delegate, spent float64) delegate.Ceilings {
 	wallLeft, _ := a.config.Budget.Left()
 	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
 		wallLeft = a.config.Budget.Wall - time.Since(a.startedAt)
@@ -84,7 +85,33 @@ func (a *Agent) seniorDevCeilings(spent float64) delegate.Ceilings {
 	return (delegate.Ceilings{
 		CostUSD: runCostLeft(a.railCap(0), spent),
 		Hours:   wallLeft.Hours(),
-	}).SeniorDev()
+	}).CappedBy(programUnattended(program))
+}
+
+// programUnattended is a program's own ceilings, none for no program.
+func programUnattended(program *delegate.Delegate) delegate.Ceilings {
+	if program == nil {
+		return delegate.Ceilings{}
+	}
+	return program.Unattended
+}
+
+// holdProgramCeilings writes onto the run which ceilings it starts under and
+// whether the conversation's own limit, rather than the program's unattended
+// one, is the one that will stop it — the words its ending is told in. A run
+// of no program keeps none.
+//
+// A PROGRAM WITH NO CEILINGS OF ITS OWN IS STOPPED BY THE CONVERSATION'S, and
+// its ending says so. Skipping it left the run holding no ceiling and no
+// word for whose it was, and its ending named "the run's $0.00 limit".
+func (a *Agent) holdProgramCeilings(run *beltRun, spec RunSpec) {
+	if run.delegate == nil {
+		return
+	}
+	own := programUnattended(run.delegate)
+	run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
+	run.conversationCostLimit = a.railCap(0) > 0 && (own.CostUSD <= 0 || runCostLeft(a.railCap(0), a.Usage().CostUSD) <= own.CostUSD)
+	run.conversationTimeLimit = a.programConversationTimeLimit(own)
 }
 
 // RunSpec is one run as the door hands it to the engine: the store to drive,
@@ -677,11 +704,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 		Model: run.crewWorker(),
 	})
 	spec := a.beltRunSpec(run, brief)
-	if programName(via) == "senior-dev" {
-		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
-		run.conversationCostLimit = a.railCap(0) > 0 && runCostLeft(a.railCap(0), a.Usage().CostUSD) <= delegate.DefaultSeniorDevCostUSD
-		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
-	}
+	a.holdProgramCeilings(run, spec)
 	go a.driveBeltRun(runCtx, engine, run, spec)
 	return false, nil
 }
@@ -767,17 +790,21 @@ func (run *beltRun) wishedFrom(ctx context.Context) {
 	run.thinking, run.carry, run.crewEffort = wish.thinking, wish.carry, crewWishOf(ctx).effort
 }
 
-// seniorDevConversationTimeLimit reports whether the person's remaining wall
-// limit, rather than the unattended default, is the one that will stop the run.
-func (a *Agent) seniorDevConversationTimeLimit() bool {
+// programConversationTimeLimit reports whether the person's remaining wall
+// limit, rather than the program's unattended one, is the one that will stop
+// the run.
+func (a *Agent) programConversationTimeLimit(own delegate.Ceilings) bool {
 	if a.config.Budget.Wall <= 0 {
 		return false
+	}
+	if own.Hours <= 0 {
+		return true
 	}
 	remaining := a.config.Budget.Wall
 	if !a.startedAt.IsZero() {
 		remaining -= time.Since(a.startedAt)
 	}
-	return remaining <= time.Duration(delegate.DefaultSeniorDevHours*float64(time.Hour))
+	return remaining <= time.Duration(own.Hours*float64(time.Hour))
 }
 
 // lockBeltStart takes the conversation's start lock, the one door every road
@@ -1023,8 +1050,8 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		}
 	}
 	cost := runCostLeft(a.railCap(0), a.Usage().CostUSD)
-	if programName(run.delegate) == "senior-dev" {
-		ceilings := a.seniorDevCeilings(a.Usage().CostUSD)
+	if !programUnattended(run.delegate).IsZero() {
+		ceilings := a.programCeilings(run.delegate, a.Usage().CostUSD)
 		cost, wallLeft = ceilings.CostUSD, ceilings.Elapsed()
 	}
 	admission := run.admission
@@ -1835,11 +1862,7 @@ func (a *Agent) startPendingBeltRun(ctx context.Context, run *beltRun) (RunSpec,
 		return RunSpec{}, false
 	}
 	spec := a.beltRunSpec(run, run.brief)
-	if programName(run.delegate) == "senior-dev" {
-		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
-		run.conversationCostLimit = a.railCap(0) > 0 && runCostLeft(a.railCap(0), a.Usage().CostUSD) <= delegate.DefaultSeniorDevCostUSD
-		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
-	}
+	a.holdProgramCeilings(run, spec)
 	return spec, true
 }
 

@@ -731,6 +731,10 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	}
 	childEnv := append(delegate.ChildEnv(api.API()), "SENIOR_DEV_IGNORED_AT_START="+w.setup.IgnoredFile,
 		gitidentity.InputsEnv+"="+w.setup.InputsFile)
+	// THE TASK'S FOLDER IS THE PROGRAM'S RECORD FOLDER: a program that answers
+	// with a report leaves the report there, beside its conversation and its
+	// actions, rather than in the person's folder.
+	childEnv = append(childEnv, delegate.RecordsEnv(taskDir)...)
 	// THE INBOX STARTS EMPTY ON EVERY LAUNCH. It lives in the task's folder,
 	// which outlives a run, and a program reads it from its first line: a second
 	// worker of the same task would otherwise be handed the last run's messages
@@ -747,7 +751,10 @@ func (w *DelegateWorker) Run(ctx context.Context, task plandb.Task) (Report, err
 	if brief == "" {
 		brief = strings.TrimSpace(task.Title)
 	}
-	if note := strings.TrimSpace(w.setup.BriefNote); note != "" {
+	// A PROGRAM WHOSE BRIEF IS WORDS READS NO NOTE ABOVE THEM: it reads its
+	// scope off the brief's first line (delegate.Delegate.Words), and the
+	// folder it works in is its --dir.
+	if note := strings.TrimSpace(w.setup.BriefNote); note != "" && !w.program.Words {
 		brief = note + "\n\n" + brief
 	}
 	started = time.Now()

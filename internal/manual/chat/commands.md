@@ -282,6 +282,7 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
 | `/<program>` | — | `<brief>` | one row per program this build carries: starts a task that program does on its own |
 | `/senior-dev` | — | `<brief>` | when this build or far engine carries senior-dev, its named row hands the whole task to that program; with no brief, it shows the required `<brief>` usage |
+| `/sec` | — | `[changes [since <ref>]] [quick \| thorough]` | when this build or far engine carries sec, audits the whole repository for security problems, or with `changes` only the branch's changes; with nothing after it, the whole repository. It changes no files |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
