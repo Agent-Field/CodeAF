@@ -43,3 +43,14 @@ func settingOptions(row config.Setting) string {
 	}
 	return out.String()
 }
+
+// toolSettingActivation describes this writer, which saves the profile without
+// calling the TUI's live transport seams.
+func toolSettingActivation(row config.Setting) string {
+	switch row.Key {
+	case config.KeyRouting, config.KeyLaneGuard, config.LaneSettingKey(config.LaneSlotTalk), config.LaneBorrowKey(config.LaneSlotTalk):
+		return "Restart the CLI to ensure already-open chats use this change."
+	default:
+		return row.ChatPresentation().Activation
+	}
+}

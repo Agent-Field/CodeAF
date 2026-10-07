@@ -133,3 +133,44 @@ func TestChatSettingsHintNoticeUsesVisibleMeaning(t *testing.T) {
 		t.Fatalf("model receipt lost compatibility mapping: %s", receipt)
 	}
 }
+
+func TestChatSettingsTransportChangesNameTheirActivation(t *testing.T) {
+	agent, profile := settingsAgent(t)
+	read, write := settingsHands(t, agent)
+	const timing = "Restart the CLI to ensure already-open chats use this change."
+	for _, tc := range []struct{ key, value string }{
+		{config.KeyRouting, "price"},
+		{config.KeyLaneGuard, "off"},
+		{config.LaneSettingKey(config.LaneSlotTalk), "pinned: cloudflare, borrow when slow"},
+	} {
+		detail, bad := callSetting(t, read, map[string]string{"key": tc.key})
+		if bad || !strings.Contains(detail, timing) {
+			t.Fatalf("read %s omits tool-specific activation: %s", tc.key, detail)
+		}
+		for n := 0; n < 2; n++ {
+			receipt, bad := callSetting(t, write, map[string]string{"key": tc.key, "value": tc.value})
+			if bad || !strings.Contains(receipt, timing) || !strings.Contains(receipt, "saved") {
+				t.Fatalf("write %s omits scope/timing: %s", tc.key, receipt)
+			}
+		}
+	}
+	values := profileJSON(t, profile)
+	if values[config.KeyRouting] != "price" || values[config.KeyLaneGuard] != false || values[config.LaneBorrowKey(config.LaneSlotTalk)] != true || values[config.LaneSettingKey(config.LaneSlotTalk)] != "cloudflare" {
+		t.Fatalf("transport values not persisted: %v", values)
+	}
+	// Borrow is a persisted companion field, not a separately exposed registry row.
+	// It stays unavailable by exact key; the composite lane choice above owns it.
+	borrow := config.LaneBorrowKey(config.LaneSlotTalk)
+	if detail, bad := callSetting(t, read, map[string]string{"key": borrow}); !bad {
+		t.Fatalf("invented borrow row became readable: %s", detail)
+	}
+	if receipt, bad := callSetting(t, write, map[string]string{"key": borrow, "value": "off"}); !bad {
+		t.Fatalf("invented borrow row became writable: %s", receipt)
+	}
+	if !config.LaneBorrowAt(profile, config.LaneSlotTalk) {
+		t.Fatal("refused companion write altered borrow")
+	}
+	if toolSettingActivation(config.Setting{Key: borrow}) != timing {
+		t.Fatal("borrow timing differs if exposed later")
+	}
+}

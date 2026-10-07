@@ -240,9 +240,9 @@ func (a *Agent) settingChanged(registry *config.Settings, key, before string) st
 	}
 	after := row.Value()
 	label := settingLabel(row)
-	timing := row.ChatPresentation().Activation
+	timing := toolSettingActivation(row)
 	if timing != "" {
-		timing = " " + timing + "."
+		timing = " " + strings.TrimSuffix(timing, ".") + "."
 	}
 	warning := projectOverrideWarning(a.config.Workspace, key)
 	if after == before {
@@ -408,8 +408,8 @@ func settingDetail(row config.Setting) string {
 	fmt.Fprintf(&out, "now: %s\ntakes: %s\n", reading, row.Accepts())
 	out.WriteString(settingOptions(row))
 	fmt.Fprintf(&out, "scope: %s\n", p.Scope)
-	if p.Activation != "" {
-		out.WriteString(p.Activation + "\n")
+	if activation := toolSettingActivation(row); activation != "" {
+		out.WriteString(activation + "\n")
 	}
 	if p.Hidden {
 		out.WriteString("Unavailable in chat settings; legacy or resident-only control.\n")
