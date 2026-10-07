@@ -118,7 +118,6 @@ func (a *app) reloadModelSources() {
 	if a.applyModelSources != nil {
 		a.applyModelSources(a.sources)
 	}
-	a.ensureAvailableModel()
 	if a.at(pageSettings) {
 		a.sheet.sources = a.sources
 	}
@@ -903,6 +902,7 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	} else if renamedNext != "" {
 		a.moveConversationToConnectedModel(renamedNext)
 	}
+	a.ensureAvailableModel()
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
 	}
@@ -1215,6 +1215,7 @@ func (a *app) disconnectModelService(id string) {
 	} else {
 		a.modelServiceFollowup(serviceStrandedWord(was))
 	}
+	a.ensureAvailableModel()
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
 	}
