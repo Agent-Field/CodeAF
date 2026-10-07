@@ -374,6 +374,10 @@ type beltRun struct {
 	ending  bool
 	closing bool
 	over    chan struct{}
+	// closingFile is registered only after the conversation's other writers
+	// have stopped, so run completion releases its journal before waking a
+	// caller that may immediately reopen it. It is guarded by Agent.beltMu.
+	closingFile *sessionFile
 	// born is when this run started, off the conversation's own clock, and it is
 	// what the run's row in the work tree ages from ([Agent.beltRunWorkingNow]).
 	// It is the same reading the row published to the surface carries, so the
@@ -2001,6 +2005,9 @@ func (a *Agent) releaseBeltRun(run *beltRun) {
 	_ = run.store.Close()
 	a.beltMu.Lock()
 	defer a.beltMu.Unlock()
+	if run.closingFile != nil {
+		_ = run.closingFile.Close()
+	}
 	if a.beltRun == run {
 		a.beltRun = nil
 	}

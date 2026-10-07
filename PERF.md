@@ -2843,7 +2843,8 @@ Permanent deletion joins the task run's completion channel with
 `conversationDeletionGrace` (**30 seconds**), and keeps the journal lock on timeout.
 The cross-process deletion request uses the same grace while claiming the journal.
 Ordinary Close returns promptly but releases its journal only after the cancelled run's
-last store close; clearing the run and signalling completion happen together. Cleanup
+last store close, before signalling completion to a caller that may immediately reopen
+the conversation. Clearing the run and signalling completion happen together. Cleanup
 receipts are atomically replaced and synced before committing deletion. Startup recovery
 walks only the two saved-conversation directory levels, without following symlinked buckets.
 `internal/session/deletion_revision_test.go` drives completion and timeout with held

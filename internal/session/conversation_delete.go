@@ -64,6 +64,22 @@ func (a *Agent) finishCloseWhenStopped() {
 	a.closeFinalizer = true
 	done, file := a.closingBeltDone, a.file
 	a.mu.Unlock()
+	// Registration and completion share the run lock: a completed driver may
+	// be reopened immediately, without racing a separate journal finalizer.
+	a.beltMu.Lock()
+	if run := a.beltRun; run != nil && run.over == done {
+		run.closingFile = file
+	}
+	select {
+	case <-done:
+		a.beltMu.Unlock()
+		if file != nil {
+			_ = file.Close()
+		}
+		return
+	default:
+		a.beltMu.Unlock()
+	}
 	guard.Go("finishing a conversation deletion stop", func() {
 		<-done
 		if file != nil {

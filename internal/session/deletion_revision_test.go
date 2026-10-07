@@ -147,7 +147,12 @@ func TestConversationDeletionJoinRetainsLockAndCompletionAcrossTimeoutRetry(t *t
 	_, _, file := deletionFixture(t)
 	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = file })
 	done := make(chan struct{})
-	a.beltRun = &beltRun{over: done}
+	db, err := plandb.Open(filepath.Join(filepath.Dir(file), planStoreFilename), "project", "run", "run", "brief", "conversation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{over: done, store: db}
+	a.beltRun = run
 	if err := a.closeForDeletion(0); err == nil {
 		t.Fatal("unfinished run reported stopped")
 	}
@@ -160,7 +165,10 @@ func TestConversationDeletionJoinRetainsLockAndCompletionAcrossTimeoutRetry(t *t
 	if err := a.closeForDeletion(0); err == nil {
 		t.Fatal("lost run pointer bypassed completion join")
 	}
-	close(done)
+	a.releaseBeltRun(run)
+	if InUse(file) {
+		t.Fatal("completed driver left journal ownership for an asynchronous finalizer")
+	}
 	if err := a.CloseForDeletion(); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +197,12 @@ func TestNormalCloseRetainsJournalUntilRunStopsWithoutWaitingForIt(t *testing.T)
 	root, profile, file := deletionFixture(t)
 	a, _ := newTestAgent(t, &scriptedCompleter{}, func(c *Config) { c.SessionFile = file })
 	done := make(chan struct{})
-	a.beltRun = &beltRun{over: done}
+	db, err := plandb.Open(filepath.Join(filepath.Dir(file), planStoreFilename), "project", "run", "run", "brief", "conversation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &beltRun{over: done, store: db}
+	a.beltRun = run
 	if err := a.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +216,10 @@ func TestNormalCloseRetainsJournalUntilRunStopsWithoutWaitingForIt(t *testing.T)
 	if !f.Teams[0].Holds(file) {
 		t.Fatal("failed join removed membership")
 	}
-	close(done)
+	a.releaseBeltRun(run)
+	if InUse(file) {
+		t.Fatal("completed driver left journal ownership for an asynchronous finalizer")
+	}
 	if err := DeleteConversationUnder(root, profile, file, nil, func(string) error { return a.CloseForDeletion() }); err != nil {
 		t.Fatal(err)
 	}
