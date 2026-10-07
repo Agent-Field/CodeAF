@@ -14,17 +14,17 @@ terminal* page, under *How do I install or update codeaf*.
 ## Getting started — first time setup, what happens the first time I run codeaf
 
 The first time `codeaf` opens a new local conversation with no provider connected,
-setup begins with **choose a model provider**. Its one scrollable list contains
+setup begins with **choose a model provider**. Its one flat list shows all nine options:
 **Ollama**, **OpenRouter**, **Codex**, **DeepSeek**, **Z.ai**, **Moonshot**, **MiniMax**,
-**Alibaba Qwen**, and **Custom OpenAI-compatible API**. Six providers are visible at a
-time; very short windows show fewer. Arrow keys, mouse scrolling, `page up`/`page down`,
-`home` and `end` reach the whole list. Press `enter` or click a row to choose it.
-The counter below the list shows the visible range. No key is collected on the chooser.
+**Alibaba Qwen**, and **Custom OpenAI-compatible API**. There is no scrolling viewport
+or page counter. Arrow keys or the mouse wheel move the selection; `home` and `end`
+jump to either end. Press `enter` or click a row to choose it. No key is collected on the chooser.
 
 Choosing a provider opens its connection screen, followed by **Basic settings**:
 
 1. **Connect the chosen provider** — OpenRouter offers browser sign-in or an existing
-   key; Codex signs in to a ChatGPT plan in your browser; Ollama checks the local server
+   key; Codex signs in to a ChatGPT plan in your browser. Both connection screens
+   say `enter connects in browser` and wait for Enter before opening sign-in; Ollama checks the local server
    and loads its installed models without asking for a key. Other providers use their
    existing region and key flow. Custom API asks for an address and name, then a key
    only if that server requires one. Keys are masked on screen.

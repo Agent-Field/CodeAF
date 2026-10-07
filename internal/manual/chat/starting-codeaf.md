@@ -54,7 +54,7 @@ moved by hand:
 If you have seen “CodeAF” as the name of a coding harness in a benchmark table,
 that is a different program and nothing here talks to it.
 
-## Starting it
+## Starting it — how do I start codeaf
 
 | What you type | What you get |
 | --- | --- |
@@ -65,10 +65,11 @@ that is a different program and nothing here talks to it.
 | `codeaf chat --host devbox` | the chat here, the work on another machine |
 
 **The very first launch on a machine with nothing configured** begins with **choose a
-model provider**. The scrollable list shows six providers at a time: Ollama, OpenRouter, Codex, DeepSeek,
+model provider**. One flat list shows all nine options: Ollama, OpenRouter, Codex, DeepSeek,
 Z.ai, Moonshot, MiniMax, Alibaba Qwen and the custom API connection.
 The chosen provider's connection screen follows, then the chat model and daily limit.
-Ollama asks for no key. `alt+left` returns to provider choice; `esc` skips an idle setup
+Ollama asks for no key. OpenRouter and Codex say `enter connects in browser` on their
+connection screens and wait for Enter before opening sign-in. `alt+left` returns to provider choice; `esc` skips an idle setup
 screen. The preference questions appear once. When a later local conversation still
 needs a provider, the chooser returns without clearing its draft. A working connection
 bypasses provider selection. The getting-started page describes the whole flow.

@@ -76,7 +76,6 @@ type setupFlow struct {
 	open bool
 	// Provider selection precedes the numbered connection and controls steps.
 	provider        string
-	providerTop     int
 	providerAt      int
 	providerHits    []setupProviderHit
 	providerAttempt *setupProviderAttempt
@@ -321,6 +320,9 @@ const setupNoKeyWord = "no openrouter key yet · paste one into /settings, or ex
 // stamps `setup_seen_at` and the model and budget questions never open again
 // ([app.endSetup]).
 const setupSkipKeysWord = "esc skips setup"
+
+// Browser providers name the same action before opening the sign-in page.
+const setupBrowserConnectKeysWord = "enter connects in browser"
 
 // setupLaterWord leads the line [app.endSetup] leaves behind when esc walked
 // past a question. The doors follow it, and only the doors onto questions this
@@ -1014,7 +1016,7 @@ func (a *app) setupKeysWord() string {
 			// controls screen for good ([app.endSetup]). The key is named for what
 			// it does, and the note it leaves behind says where those choices live
 			// afterwards.
-			return "enter connects in browser · paste a key · " + setupSkipKeysWord
+			return setupBrowserConnectKeysWord + " · paste a key · " + setupSkipKeysWord
 		}
 		return "enter goes on without a key · " + setupSkipKeysWord
 	}

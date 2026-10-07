@@ -2,7 +2,6 @@ package tui3
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -24,8 +23,6 @@ type setupProviderHit struct{ x, y, width, at int }
 type setupProviderRow struct{ id, name string }
 
 // Provider ordering is a display policy over the same registry as /connect.
-const setupProviderRowsVisible = 6
-
 func (a *app) setupProviderRows() []setupProviderRow {
 	catalog := a.modelCatalog
 	if len(catalog) == 0 {
@@ -63,13 +60,9 @@ func (a *app) setupProviderKey(msg tea.KeyPressMsg) tea.Cmd {
 		s.providerAt = moveCursor(s.providerAt, -1, len(rows))
 	case "down", "ctrl+n", "tab":
 		s.providerAt = moveCursor(s.providerAt, 1, len(rows))
-	case "pgup":
-		s.providerAt = moveCursor(s.providerAt, -setupProviderRowsVisible, len(rows))
-	case "pgdown":
-		s.providerAt = moveCursor(s.providerAt, setupProviderRowsVisible, len(rows))
-	case "home":
+	case "home", "pgup":
 		s.providerAt = 0
-	case "end":
+	case "end", "pgdown":
 		s.providerAt = len(rows) - 1
 	case "enter":
 		if len(rows) > 0 {
@@ -86,7 +79,7 @@ func (a *app) selectSetupProvider(id string) tea.Cmd {
 	s.provider, s.text, s.refusal = id, "", ""
 	s.providerHits = nil
 	a.touch()
-	if id != modelsource.DefaultID {
+	if id != modelsource.DefaultID && id != "codex" {
 		return a.startSetupProvider()
 	}
 	return nil
@@ -194,7 +187,7 @@ func (a *app) adoptSetupProviderResult(msg modelConnectResultMsg) tea.Cmd {
 	return nil
 }
 
-// The pointer reads only the rows actually drawn, including a short viewport.
+// The pointer reads only the rows actually drawn, including a short window.
 func (a *app) setupProviderPress(x, y int) tea.Cmd {
 	for _, hit := range a.setup.providerHits {
 		if y != hit.y || x < hit.x || x >= hit.x+hit.width {
@@ -231,18 +224,8 @@ func (a *app) setupProvidersFrame(width, height int) ([]string, int, int) {
 		}
 	}
 	body = append(body, "")
-	room := max(1, min(setupProviderRowsVisible, height-len(body)-3))
-	first := min(max(0, a.setup.providerTop), max(0, len(rows)-room))
-	if a.setup.providerAt < first {
-		first = a.setup.providerAt
-	}
-	if a.setup.providerAt >= first+room {
-		first = a.setup.providerAt - room + 1
-	}
-	a.setup.providerTop = first
-	last := min(len(rows), first+room)
 	hits := []setupProviderHit{}
-	for at := first; at < last; at++ {
+	for at := range rows {
 		mark, ink := "  ", a.pal.dim
 		if at == a.setup.providerAt {
 			mark, ink = setupLead, a.pal.ink
@@ -254,7 +237,10 @@ func (a *app) setupProvidersFrame(width, height int) ([]string, int, int) {
 	if inner < 58 {
 		footer = "enter chooses · " + setupSkipKeysWord
 	}
-	body = append(body, a.pal.dim(fmt.Sprintf("%d-%d of %d", first+1, last, len(rows))), "", a.pal.dim(footer))
+	if height >= len(rows)+2 {
+		body = append(body, "")
+	}
+	body = append(body, a.pal.dim(footer))
 	return a.setupProviderBlock(body, hits, width, height, -1, 0)
 }
 
@@ -295,6 +281,10 @@ func (a *app) setupServiceFrame(width, height int) ([]string, int, int) {
 			caret, caretX = len(body), ansi.StringWidth(setupLead+shown)
 			body = append(body, a.pal.accent(setupLead)+a.pal.ink(shown))
 		}
+	} else if s.provider == "codex" {
+		for _, line := range wrap("sign in once in your browser with your ChatGPT plan.", inner) {
+			body = append(body, a.pal.dim(line))
+		}
 	} else {
 		hits = append(hits, setupProviderHit{y: len(body), at: -2})
 		body = append(body, a.pal.ink("enter tries again"))
@@ -308,6 +298,10 @@ func (a *app) setupServiceFrame(width, height int) ([]string, int, int) {
 	hits = append(hits, setupProviderHit{y: len(body), at: -1})
 	body = append(body, a.pal.dim("Back · alt+left"))
 	footer := "enter continues · " + setupSkipKeysWord
+	if s.provider == "codex" && !s.providerBusy {
+		footer = setupBrowserConnectKeysWord + " · " + setupSkipKeysWord
+		hits = append(hits, setupProviderHit{y: len(body), at: -2})
+	}
 	if s.providerBusy {
 		footer = "esc cancels · alt+left back"
 		if s.providerLink != "" {

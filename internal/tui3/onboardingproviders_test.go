@@ -37,7 +37,7 @@ func TestProviderChooserBackSkipPasteAndShortPointerRows(t *testing.T) {
 	hit := a.setup.providerHits[len(a.setup.providerHits)-1]
 	a.setupProviderPress(hit.x, hit.y)
 	if a.setup.provider != "custom" || a.connPanel.entry == nil || a.connPanel.entry.blank != "base URL" {
-		t.Fatal("short-screen click did not select the scrolled provider")
+		t.Fatal("short-screen click did not select the provider")
 	}
 	a.backSetupProvider()
 	a.setupProviderKey(key("esc"))
@@ -160,7 +160,16 @@ func TestOnboardingCodexSignInIsVisibleAndLateFlowsAreCancelled(t *testing.T) {
 	old := processOpener
 	processOpener = func(string) error { return nil }
 	t.Cleanup(func() { processOpener = old })
-	cmd := a.selectSetupProvider("codex")
+	if cmd := a.selectSetupProvider("codex"); cmd != nil || a.setup.providerBusy || a.setup.providerAttempt != nil {
+		t.Fatal("choosing Codex opened sign-in before confirming its connection screen")
+	}
+	if screen := setupScreen(a); !strings.Contains(screen, setupBrowserConnectKeysWord) || strings.Contains(screen, signInLinkWord) {
+		t.Fatal(screen)
+	}
+	cmd := a.setupServiceKey(key("enter"))
+	if cmd == nil || !a.setup.providerBusy {
+		t.Fatal("Enter did not start Codex browser sign-in")
+	}
 	flowMsg := cmd()
 	_, wait := a.Update(flowMsg)
 	if wait == nil || !strings.Contains(setupScreen(a), signInLinkWord) {
@@ -180,42 +189,27 @@ func TestOnboardingCodexSignInIsVisibleAndLateFlowsAreCancelled(t *testing.T) {
 	}
 }
 
-func TestProviderChooserShowsSixRowsAndScrollsToEverySupportedProvider(t *testing.T) {
+func TestProviderChooserShowsEverySupportedProviderInOneFlatList(t *testing.T) {
 	a, _, _ := setupProviderApp(t, nil)
 	rows := a.setupProviderRows()
 	if len(rows) != len(modelsource.Vendored())+1 {
 		t.Fatalf("registry providers=%v", rows)
 	}
-	for _, size := range []struct{ width, height int }{{120, 40}, {80, 24}, {40, 18}} {
+	for _, size := range []struct{ width, height int }{{120, 40}, {80, 24}, {40, 18}, {40, 12}, {40, 10}} {
 		a.width, a.height = size.width, size.height
-		a.setup.providerAt, a.setup.providerTop = 0, 0
-		a.touch()
-		screen := setupScreen(a)
-		if len(a.setup.providerHits) != 6 || strings.Contains(screen, "More providers") || strings.Contains(screen, "Skip for now") {
-			t.Fatalf("first viewport: %s", screen)
-		}
-		for at, row := range rows {
-			a.setup.providerAt = at
+		for _, selected := range []int{0, len(rows) - 1} {
+			a.setup.providerAt = selected
 			a.touch()
-			setupScreen(a)
-			visible := false
-			for _, hit := range a.setup.providerHits {
-				if hit.at == at {
-					visible = true
+			screen := setupScreen(a)
+			if len(a.setup.providerHits) != len(rows) || strings.Contains(screen, "More providers") || strings.Contains(screen, "Skip for now") || strings.Contains(screen, "of 9") {
+				t.Fatalf("flat list at %dx%d: %s", size.width, size.height, screen)
+			}
+			for at, row := range rows {
+				if a.setup.providerHits[at].at != at || !strings.Contains(screen, row.name) {
+					t.Fatalf("%q missing at %dx%d: %s", row.id, size.width, size.height, screen)
 				}
 			}
-			if !visible || len(a.setup.providerHits) != 6 {
-				t.Fatalf("%q unreachable or wrong viewport at %dx%d", row.id, size.width, size.height)
-			}
 		}
-	}
-	a.setup.providerAt, a.setup.providerTop = 0, 0
-	for i := 0; i < len(rows)-1; i++ {
-		a.setupWheel(true)
-	}
-	a.touch()
-	if screen := setupScreen(a); !strings.Contains(screen, "Custom OpenAI-compatible API") {
-		t.Fatal(screen)
 	}
 }
 
