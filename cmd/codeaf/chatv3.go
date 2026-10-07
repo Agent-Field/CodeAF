@@ -91,7 +91,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	flags := commandFlags(name)
 	model := flags.String("model", "", "model slug for this session; beats the configured default")
 	once := flags.String("once", "", "run one message non-interactively, print the reply, and exit")
-	file := flags.String("session", "", "session transcript to resume; empty resumes this directory's most recent")
+	file := flags.String("session", "", "session transcript to resume; overrides the saved local view")
 	noCompact := flags.Bool("no-compact", false, "never compact automatically")
 	yolo := flags.Bool("yolo", false, "run every tool without asking: the approval default becomes allow")
 	reasoning := flags.String("reasoning", "", "reasoning override: auto (inherit), low, medium, high, xhigh or max; off is an alias for auto")
@@ -268,6 +268,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// way it is shown on the surface's own notice line below rather than printed
 	// into a terminal the surface is about to take over.
 	entryNotice := ""
+	launchDir, _ := os.Getwd()
+	savedView := v3SavedView(config.ProfileDir(), launchDir, *file, *once, pickSession)
+	bootSession := *file
+	if savedView.Session != "" {
+		bootSession = savedView.Session
+	}
 	if workspace, take := v3HostRoad(v3HostChoice{
 		noHost: *noHost,
 		once:   strings.TrimSpace(*once) != "",
@@ -279,15 +285,19 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		debug: trace.Enabled(),
 		setup: !v3MachineIsSetUp(),
 	}); take {
+		if savedView.Workspace != "" {
+			workspace = savedView.Workspace
+		}
 		err := openChatV3Local(localLaunch{
-			workspace: workspace,
-			session:   strings.TrimSpace(*file),
-			model:     strings.TrimSpace(*model),
-			level:     level,
-			once:      strings.TrimSpace(*once),
-			pick:      pickSession,
-			shape:     v3LaunchShape(*yolo, *noCompact, *oneModel, *maxHours, *maxCost, strings.TrimSpace(*once) == ""),
-			restart:   restart,
+			workspace:    workspace,
+			session:      strings.TrimSpace(bootSession),
+			restorePlace: savedView.Place,
+			model:        strings.TrimSpace(*model),
+			level:        level,
+			once:         strings.TrimSpace(*once),
+			pick:         pickSession,
+			shape:        v3LaunchShape(*yolo, *noCompact, *oneModel, *maxHours, *maxCost, strings.TrimSpace(*once) == ""),
+			restart:      restart,
 		})
 		var taken *hostShapeTaken
 		var unreachable *hostUnreachable
@@ -338,7 +348,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		Budget:      chatBudget(*maxHours, *maxCost),
 	}
 	boot := seed
-	boot.Session = *file
+	boot.Session = bootSession
+	boot.Workspace = savedView.Workspace
 	launch, err := openV3Launch(proc, boot)
 	if err != nil {
 		return err
@@ -487,6 +498,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
 	// door gets them.
 	err = runSurface(ctx, tui3.Options{
+		RestorePlace:      savedView.Place,
 		Agent:             agent,
 		Build:             buildinfo.String(),
 		UnreadProfileKeys: append([]string(nil), proc.UnreadProfileKeys...),

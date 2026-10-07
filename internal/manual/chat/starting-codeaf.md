@@ -54,11 +54,37 @@ moved by hand:
 If you have seen “CodeAF” as the name of a coding harness in a benchmark table,
 that is a different program and nothing here talks to it.
 
+## Restore the last view after closing, quitting or restarting codeaf
+
+Bare `codeaf` and `codeaf chat` reopen the active conversation and main place
+you left: chat, home, teams, sessions, spend, settings, standing or memory. The
+bookmark belongs to your profile and the directory you launched from. If you
+open another project's chat inside that window, restarting from the original
+launch directory restores that chat too. A different launch directory has its
+own bookmark. The last local window to navigate or shut down wins when several
+windows were launched from the same directory.
+
+Navigation is saved when it changes and again on shutdown, including closing
+the terminal. This works both through the local background engine and with
+`--no-host`. It restores the view; it does not restart a stopped task or send an
+unsent message. Existing draft recovery still applies.
+
+Temporary dialogs, searches, scroll positions, selected settings rows and task
+drill-ins reset. A task drill-in returns to its main place. Other open tabs are
+not reopened. First-run setup and a chat held by another window keep their
+usual setup or takeover screen.
+
+`--session <path>`, `codeaf resume`, `--once`, `--host` and `--at` use their
+explicit startup behavior. Remote launches do not overwrite the local
+bookmark. A missing chat or workspace, or an unreadable bookmark, falls back to
+the usual startup choice. Without a saved view, home greets a terminal launch
+when there is another conversation on the machine; otherwise chat opens.
+
 ## Starting it
 
 | What you type | What you get |
 | --- | --- |
-| `codeaf` | the home screen, over this directory's most recent conversation |
+| `codeaf` | the last chat and place left from this launch directory; without a saved view, the usual greeting |
 | `codeaf chat` | the same thing |
 | `codeaf chat --session <path>` | that conversation, straight in, no home screen |
 | `codeaf resume` | the chat, opened on the picker of earlier conversations |
@@ -120,7 +146,7 @@ stale is running.
 | --- | --- |
 | `--model <slug>` | start on a particular model instead of the configured default |
 | `--reasoning <level>` | how hard the model is asked to think: `off`, `low`, `medium` or `high` |
-| `--session <path>` | open a particular conversation file instead of the most recent |
+| `--session <path>` | open that conversation instead of restoring the saved view |
 | `--host <host[:path]>` | run the conversation on another machine over ssh |
 | `--once "<text>"` | send one message and print its replies — normally it then exits; with `--yolo` and a budget it stays until handed-over work is home or the limit ends it |
 | `--no-compact` | never shorten the conversation automatically |

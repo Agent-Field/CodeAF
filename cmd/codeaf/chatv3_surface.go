@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	"github.com/Agent-Field/codeaf/internal/config"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/tui3"
 	codeupdate "github.com/Agent-Field/codeaf/internal/update"
@@ -43,6 +44,15 @@ var (
 // it would lack is everything below, which is why [TestOnlyTheSurfaceHelperRunsTheV3Surface]
 // reads this package's sources rather than trusting the next door to remember.
 func runSurface(ctx context.Context, options tui3.Options) error {
+	// The original launch directory owns the bookmark even after navigation
+	// opens another workspace. Far-machine views never replace local history.
+	if options.Host == "" {
+		if launchDir, err := os.Getwd(); err == nil {
+			options.SaveView = func(view config.ViewState) error {
+				return config.WriteViewState(options.ProfileDir, launchDir, view)
+			}
+		}
+	}
 	revision := surfaceRevision()
 	executable, executableErr := surfaceRunningExecutable()
 	curl := codeupdate.CurlCommand

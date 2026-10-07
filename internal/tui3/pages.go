@@ -1,10 +1,12 @@
 package tui3
 
 import (
+	"log"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -35,6 +37,53 @@ import (
 // room in the machine, and putting it in the bar would put a knife in the
 // cutlery drawer.
 type page uint8
+
+// restorePlace goes through the same room doors as navigation, including their
+// initial reads and clocks. Unknown words let the ordinary greeting decide.
+func (a *app) restorePlace(word string) bool {
+	if word == "" || a.hosted() || a.pickSession || a.takeOverAt != "" {
+		return false
+	}
+	if word == "chat" {
+		a.dismissWelcome()
+		return true
+	}
+	for _, room := range placeRegistry {
+		if room.word() == word && room.id() != pageChats {
+			a.dismissWelcome()
+			a.restoreViewCmd = a.showPage(room.id())
+			// Home's launch clocks and card reads are already armed by Init,
+			// just as on the ordinary greeting. Starting the door's commands
+			// too would leave two recurring ticks on the same generation.
+			if a.at(pageHome) {
+				a.restoreViewCmd = nil
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// keepView writes only when navigation changes, plus once on shutdown so the
+// last window closed wins. Failed writes are retried on navigation or shutdown,
+// never on every streamed token from a conversation that cannot save a file.
+func (a *app) keepView(force bool) {
+	if a.saveView == nil || a.hosted() || a.file == "" || a.workspace == "" {
+		return
+	}
+	word := "chat"
+	if room := a.showing(); room != nil {
+		word = room.word()
+	}
+	view := config.ViewState{Session: a.file, Workspace: a.workspace, Place: word}
+	if !force && view == a.keptView {
+		return
+	}
+	if err := a.saveView(view); err != nil {
+		log.Printf("keep last view: %v", err)
+	}
+	a.keptView = view
+}
 
 const (
 	// pageNone is THE CONVERSATION — no place at all. It is the zero value on
