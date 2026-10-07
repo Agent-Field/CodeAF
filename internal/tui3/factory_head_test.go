@@ -175,7 +175,9 @@ func TestFactoryPageStacksTheHandoverAboveThePane(t *testing.T) {
 		if head < 0 && strings.Contains(right, "handover · since") {
 			head = i
 		}
-		if pane < 0 && strings.Contains(right, "#1538  agentfield/codeaf") {
+		// The pane's first row is the stream's title line for the fixture's
+		// cursor item, which waits on a question.
+		if pane < 0 && strings.Contains(right, "#1538 budget caps per task") {
 			pane = i
 		}
 	}
