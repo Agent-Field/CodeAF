@@ -458,7 +458,7 @@ func TestEnforceWatermarksStubsTheSummaryOnlyWhenItAloneDoesNotFit(t *testing.T)
 	summaryFlag := true
 	summary := testAssistant(
 		"as", "uc",
-		textPart("as", testValidSummary("Fix src/a.ts")),
+		textPart("as", testValidSummary("Fixed src/a.ts and the build is green.")),
 		msgmodel.TextPart{
 			PartBase:  msgmodel.PartBase{ID: "pin", SessionID: "ses_1", MessageID: "as"},
 			Text:      BuildAuthoritativeTaskPin("Fix src/a.ts", "original user request"),
@@ -478,7 +478,9 @@ func TestEnforceWatermarksStubsTheSummaryOnlyWhenItAloneDoesNotFit(t *testing.T)
 	store := &memoryStore{messages: []msgmodel.WithParts{
 		testUser("u0", textPart("u0", "Fix src/a.ts")), parent, summary,
 	}}
-	sizes := []float64{90_000, 70_000, 20_000}
+	// The first, the tail-dropped and the bare-stub projections, then the
+	// stub carrying the newest record, which still fits.
+	sizes := []float64{90_000, 70_000, 20_000, 21_000}
 	deps := baseDeps(store)
 	deps.Sizer = ContextSizerFunc(func(
 		context.Context, []msgmodel.WithParts, Model,
@@ -487,7 +489,7 @@ func TestEnforceWatermarksStubsTheSummaryOnlyWhenItAloneDoesNotFit(t *testing.T)
 		sizes = sizes[1:]
 		return value, nil
 	})
-	previous := "## Working State\n### Completed\n- Fixed src/a.ts and the build is green."
+	previous := "## Working State\n### Completed\n- An OLDER record that must not be preferred."
 	changed := []string{"src/a.ts", "src/b.ts"}
 	decision, err := NewService(deps).enforceWatermarks(
 		context.Background(), "ses_1", 95_000, serviceModel(), watermarkTestConfig(),
@@ -497,7 +499,7 @@ func TestEnforceWatermarksStubsTheSummaryOnlyWhenItAloneDoesNotFit(t *testing.T)
 		t.Fatal(err)
 	}
 	if decision.Status != compactionStatusRebuilt || !decision.DroppedTail || !decision.StubbedSummary ||
-		decision.After != 20_000 || len(sizes) != 0 {
+		decision.After != 21_000 || decision.StubCarriedChars == 0 || len(sizes) != 0 {
 		t.Fatalf("decision = %#v; remaining sizes = %#v", decision, sizes)
 	}
 	fresh, _ := store.Messages(context.Background(), "ses_1")
@@ -505,15 +507,15 @@ func TestEnforceWatermarksStubsTheSummaryOnlyWhenItAloneDoesNotFit(t *testing.T)
 	if generated == nil || !strings.Contains(*generated, "retained history did not fit") {
 		t.Fatalf("generated fallback = %v", generated)
 	}
-	// The stub carries state forward: the previous summary verbatim and the
-	// changed-files list, never the old erase marker.
-	for _, want := range []string{"Fixed src/a.ts and the build is green.", "- src/a.ts", "- src/b.ts"} {
+	// The stub carries state forward: the NEWEST record (quoted as data) and
+	// the changed-files list, never the old erase marker.
+	for _, want := range []string{"> - Fixed src/a.ts and the build is green.", "### Files\n- src/a.ts\n- src/b.ts"} {
 		if !strings.Contains(*generated, want) {
-			t.Fatalf("fallback stub lost %q: %v", want, generated)
+			t.Fatalf("fallback stub lost %q: %v", want, *generated)
 		}
 	}
-	if strings.Contains(*generated, "- (none)") {
-		t.Fatalf("fallback stub erased the files list: %v", generated)
+	if strings.Contains(*generated, "OLDER record") || strings.Contains(*generated, "No generated completion claim") {
+		t.Fatalf("fallback stub carried the wrong record: %v", *generated)
 	}
 	evidenceRemoved := false
 	for _, raw := range fresh[2].Parts {
@@ -968,28 +970,55 @@ func TestProcessPinsSpecOnValidSummaryWhenTheRequestIsUnrecoverable(t *testing.T
 	}
 }
 
+// smallWindowConfig is a 20K capacity: high 12,000 and a continuation
+// headroom of 2,048, so the summary budget is decided by the window.
+func smallWindowConfig() overflow.Config {
+	capacity := 20_000.0
+	return overflow.Config{Compaction: &overflow.CompactionConfig{CapacityTokens: &capacity}}
+}
+
+// THE SUMMARY BUDGET IS WHAT THE REBUILD CAN HOLD, measured. The baseline is
+// the sizer's own count of the system prompt and tools plus the pins, never a
+// guess; a tail that leaves the summary too little room gives way to it; and
+// the budget never asks for more than the summarizer can say in one reply.
 func TestSummaryTokenBudgetFollowsTheWatermarks(t *testing.T) {
-	service := NewService(baseDeps(&memoryStore{}))
-	cfg := watermarkTestConfig() // capacity 100K: high 60,000, headroom 6,000
-	budget, ok := service.summaryTokenBudget(
-		context.Background(), cfg, serviceModel(), 10_000,
-	)
-	if !ok || budget != 41_952 {
-		t.Fatalf("budget = %v,%v want 41952 (60000-6000-10000-2048)", budget, ok)
+	deps := baseDeps(&memoryStore{})
+	fixed := 3_000.0
+	deps.Sizer = ContextSizerFunc(func(
+		_ context.Context, messages []msgmodel.WithParts, _ Model,
+	) (float64, error) {
+		if len(messages) == 0 {
+			return fixed, nil
+		}
+		return 0, nil
+	})
+	service := NewService(deps)
+	pins := strings.Repeat("x", 4_000) // 1,000 tokens of pins
+	ctx := context.Background()
+	// 12,000 - 2,048 headroom - 3,000 fixed - 1,000 pins = 5,952 of room.
+	if budget, ok := service.summaryTokenBudget(ctx, smallWindowConfig(), serviceModel(), serviceModel(), 2_000, pins); !ok || budget != 3_952 {
+		t.Fatalf("budget beside a 2,000-token tail = %v,%v want 3952", budget, ok)
 	}
-	// A tail that alone eats the window clamps to the floor, never negative.
-	floor, ok := service.summaryTokenBudget(
-		context.Background(), cfg, serviceModel(), 200_000,
-	)
-	if !ok || floor != 256 {
-		t.Fatalf("clamped budget = %v,%v want 256", floor, ok)
+	// A tail that would leave under 1,024 gives way: the summary is sized for
+	// the rebuild without it.
+	if budget, ok := service.summaryTokenBudget(ctx, smallWindowConfig(), serviceModel(), serviceModel(), 5_000, pins); !ok || budget != 5_952 {
+		t.Fatalf("budget beside a 5,000-token tail = %v,%v want 5952", budget, ok)
+	}
+	// Never more than the summarizer can say in one reply.
+	terse := serviceModel()
+	terse.Overflow.Limit.Output = 2_048
+	if budget, ok := service.summaryTokenBudget(ctx, smallWindowConfig(), serviceModel(), terse, 0, pins); !ok || budget != 2_048 {
+		t.Fatalf("budget for a 2,048-output summarizer = %v,%v want 2048", budget, ok)
+	}
+	// A baseline that eats the window clamps to the floor, never negative.
+	fixed = 50_000
+	if budget, ok := service.summaryTokenBudget(ctx, smallWindowConfig(), serviceModel(), serviceModel(), 0, pins); !ok || budget != summaryBudgetFloor {
+		t.Fatalf("clamped budget = %v,%v want %v", budget, ok, summaryBudgetFloor)
 	}
 	// An unbounded window carries no instruction at all.
 	unbounded := serviceModel()
 	unbounded.Overflow.Limit.Context = 0
-	if _, ok := service.summaryTokenBudget(
-		context.Background(), overflow.Config{}, unbounded, 0,
-	); ok {
+	if _, ok := service.summaryTokenBudget(ctx, overflow.Config{}, unbounded, unbounded, 0, ""); ok {
 		t.Fatal("an unbounded window must not carry a length budget")
 	}
 }
@@ -1050,15 +1079,10 @@ func TestSummaryPromptCarriesTheWatermarkLengthBudget(t *testing.T) {
 	if len(decisions) != 1 {
 		t.Fatalf("decisions = %#v", decisions)
 	}
-	want, ok := service.summaryTokenBudget(
-		context.Background(), cfg, serviceModel(), decisions[0].TailTokens,
-	)
-	if !ok {
-		t.Fatal("a bounded window must carry a length budget")
-	}
-	instruction := fmt.Sprintf(
-		"Length budget: keep the summary under %.0f tokens", want,
-	)
+	// The window here is 60,000 high against an 8,192-token summarizer, so the
+	// budget is the summarizer's own ceiling.
+	_ = decisions
+	instruction := "Length budget: keep the summary under 8192 tokens"
 	if !strings.Contains(prompt, instruction) {
 		t.Fatalf("summary prompt lacks %q: %q", instruction, prompt)
 	}

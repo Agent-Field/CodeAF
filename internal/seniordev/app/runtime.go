@@ -527,6 +527,12 @@ type modelAPIBackend struct {
 	config         *seniorDevConfig
 	router         *adaptive.AdaptiveModelRouter
 	catalog        modelsdev.Catalog
+	// windowFor answers a model's window from the catalog codeaf keeps for
+	// this profile (config.CachedContextWindow), zero when it cannot say. It
+	// is asked only when models.dev cannot size the model
+	// ([seniorDevModels.sizedModel]); nil leaves models.dev the only source,
+	// which is what an injected engine test wants.
+	windowFor func(model string) int
 	// events receives the records the backend emits on its own, after
 	// configureTurn: the compaction-capacity pins (compaction_pin.go).
 	events *eventWriter

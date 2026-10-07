@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
@@ -130,12 +131,20 @@ type carriedRoad struct {
 	seat          string
 	defaultSeat   func() (string, error)
 	signNamed     bool
+	// warmCatalog waits, within ctx, for the profile's model catalog to be
+	// resolved and written down. Nil for a road with no catalog.
+	warmCatalog func(ctx context.Context) bool
 }
 
 // carriedModels resolves a shell run's road. It is the person's own profile,
 // read the way `codeaf exec` reads it; a variable so a test can hand a
 // scripted road instead of a profile and a key.
 var carriedModels = profileRoad
+
+// carriedCatalogWarm bounds how long a senior-dev shell run waits for the
+// profile's model catalog to be written before it starts: the catalog's own
+// fetch timeout, so the wait is never longer than one fetch.
+const carriedCatalogWarm = catalog.FetchTimeout
 
 // profileRoad is the road through the person's profile: config.Load's
 // services and keys — so a machine with no key at all is answered with the
@@ -172,7 +181,8 @@ func profileRoad() (carriedRoad, error) {
 			}
 			return seats.Work.Model, nil
 		},
-		signNamed: config.AttributionModelAt(settings.ProfileDir),
+		signNamed:   config.AttributionModelAt(settings.ProfileDir),
+		warmCatalog: settings.Models.Warmed,
 	}, nil
 }
 
@@ -316,6 +326,19 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 			cut()
 		})
 		defer clock.Stop()
+	}
+	// SENIOR-DEV SIZES ITS MODELS FROM THE CATALOG THIS PROFILE KEEPS ON DISK
+	// whenever models.dev cannot answer (internal/config's
+	// CachedContextWindow), and it cannot fetch that catalog itself: it runs
+	// with no provider key. On a profile that has never listed its models the
+	// file is written by the catalog's first resolution, so the run waits for
+	// it, at most one catalog fetch's length. A profile that already holds the
+	// list answers at once, and a fetch that cannot land leaves the run to say
+	// it guessed.
+	if inv.Program.Name == "senior-dev" && road.warmCatalog != nil {
+		warmCtx, warmed := context.WithTimeout(runCtx, carriedCatalogWarm)
+		road.warmCatalog(warmCtx)
+		warmed()
 	}
 	ledger := session.UsageLedgerPath()
 	// A SHELL RUN'S ROWS NAME THE RUN. There is no conversation and no task

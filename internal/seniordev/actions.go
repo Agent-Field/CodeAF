@@ -275,6 +275,15 @@ func presentStage(stage, status string, facts stageFacts) (delegate.Shown, bool)
 			text = fmt.Sprintf("learned its model holds %s tokens", thousands(limit))
 		}
 		return delegate.Shown{Text: text}, true
+	case "compaction-capacity/guessed":
+		// Neither catalog could size the model, so the run started on the
+		// guess (app/window_check.go); a person seeing it compact every few
+		// steps is told why on the first line it writes.
+		text := "could not learn how much its model holds"
+		if limit := facts.whole("limit_tokens"); limit > 0 {
+			text += fmt.Sprintf("; assumed %s tokens", thousands(limit))
+		}
+		return delegate.Shown{Text: text}, true
 	case "compaction/summarized", "compaction/fallback":
 		shown := delegate.Shown{Text: "compacted its memory", Memory: true}
 		if status == "fallback" {

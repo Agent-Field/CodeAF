@@ -419,8 +419,10 @@ dependencies). `SENIOR_DEV_NET=off` withholds `webfetch` and `websearch` for tha
 drops the part of its instructions about installing anything, and makes its copy link
 your ignored dependency folders instead of having its own.
 Senior-dev also requests model sizes and capabilities from models.dev when its cached
-catalog is absent or stale. If that site cannot be reached, the run uses conservative
-model limits and still calls models through codeaf's loopback API.
+catalog is absent or stale. If that site cannot be reached, or has never listed the model,
+it reads the model's window from the model catalog codeaf keeps for your profile, which
+needs no network. Only when neither knows the model does it assume 16,384 tokens, and it
+says so. Every model call still goes through codeaf's loopback API.
 
 ## senior-dev and missing dependencies — pytest not installed, No module named, pip refuses, npm install, a virtual environment
 
@@ -932,10 +934,12 @@ with kimi-k2.6", or several: "with kimi-k2.6 and deepseek-v4-pro" — and senior
 with exactly those, routing among them call by call when there are several; the card and
 the task's first line name them. A name that fits more than one model is put to you to
 settle. A model none of your connected services can serve is refused before the card, by
-name, rather than swapped for another. When a catalog was loaded, a model it cannot size cannot be used: the
-run ends before its first call with `senior-dev cannot work with <model>: …`, and nothing
-is spent. If models.dev is unavailable and there is no cache, conservative limits let
-the run start. The models are fixed when the run starts; changing the crew later does not move
+name, rather than swapped for another. When a catalog was loaded, a model neither it nor
+codeaf's own model catalog can size cannot be used: the run ends before its first call with
+`senior-dev cannot work with <model>: …`, and nothing is spent. A model known to hold
+32,768 tokens or fewer is refused the same way (see the section on a model too small for
+senior-dev). If models.dev is unavailable and codeaf's catalog does not know the model
+either, the run starts on an assumed 16,384 tokens and says so. The models are fixed when the run starts; changing the crew later does not move
 a run already working. `/senior-dev` typed with a brief uses your crew.
 
 **Otherwise, from the chat it uses your crew.** codeaf hands senior-dev the worker
@@ -951,6 +955,31 @@ mastermind (brain) model is not used: every call senior-dev makes is either its
 work or a history summary.
 A crew model senior-dev's model catalog cannot size is left out, and its log says so;
 if that leaves no working model, it uses its own list instead.
+
+## senior-dev keeps compacting, or refused a model as too small — how much its model can hold, a 32K model, could not learn how much its model holds
+
+senior-dev keeps its brief, its tools, its checklist and its progress in its model's
+window, and compacts its history once it fills 60% of what the model can take in. It learns the window from models.dev
+first, then from the model catalog codeaf keeps for your profile, which it reads from
+disk with no network. A shell run waits up to 15 seconds for codeaf to list its models
+first on a profile that has never listed them.
+
+**A model known to hold 32,768 tokens or fewer is refused before its first call**, and
+nothing is spent: `senior-dev cannot work with <model> (16,384 tokens): a run needs a
+model that holds more than 32,768 tokens to keep its brief, its tools and its progress
+in view, so nothing was started; ask for a model with a larger window`. Ask for a
+larger model.
+
+**When nothing knows the model, it assumes 16,384 tokens and runs.** Its page says
+`could not learn how much its model holds; assumed 16,384 tokens`, and its log says
+which model. A run on that guess compacts every few steps. A real window that small
+is rare, so the guess is never refused. To give it the real figure, run `codeaf models`
+once on that machine while it can reach your model service; codeaf keeps the list it
+prints, and senior-dev reads the window from it.
+
+When a compacted history still does not fit, senior-dev keeps as much of its newest
+summary as fits beside the brief and the list of changed files. It never throws its
+progress away.
 
 ## Which model is my senior-dev run on — the models it was launched with, the foot of its task page
 

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
+	codeafconfig "github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/processgroup"
@@ -166,16 +167,19 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 			return refused("model catalog: " + err.Error())
 		}
 		client.catalog = catalog
+		// The second source of a model's window: the catalog codeaf keeps for
+		// this profile, read from disk, which knows the window of every model
+		// codeaf can list even where models.dev cannot be reached.
+		client.windowFor = codeafconfig.CachedContextWindow
 		model = client
+		models := seniorDevModels{backend: client}
+		// A model is known when something can size it: models.dev, codeaf's
+		// catalog or senior-dev's own config -- or, with models.dev unread,
+		// the guess, which is said at the start of the run below.
 		known := func(ref string) bool {
-			if len(catalog) == 0 {
-				return true
-			}
 			providerID, modelID := normalizeModelRef(splitModelID(ref))
-			if _, err := catalog.Resolve(providerID, modelID); err == nil {
-				return true
-			}
-			return len(loadedConfig.model(providerID, modelID)) > 0
+			_, _, err := models.sizedModel(providerID, modelID)
+			return err == nil
 		}
 		if options.Asked {
 			if refusal := askedRefusal(args.High, known); refusal != "" {
@@ -189,6 +193,13 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 				args.High = high
 			}
 		}
+		// A MODEL TOO SMALL TO WORK IN IS REFUSED BEFORE ITS FIRST CALL, by
+		// name and size, and nothing is spent ([windowCheck]).
+		refusal, guessed := windowCheck(args, models)
+		if refusal != "" {
+			return refused(refusal)
+		}
+		sayGuessedWindows(guessed, notes, events)
 	}
 
 	runner := newPipeline(args, workspace, pipelineDeps{
