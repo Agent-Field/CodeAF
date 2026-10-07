@@ -35,12 +35,10 @@ import (
 //     shrinks above it; nothing pops up over the middle of what somebody was
 //     reading.
 //   - ENTER ON A MODEL APPLIES AND CLOSES; esc closes without choosing a model.
-//     Two models can be compared on their prices, chosen between and changed
-//     back without the list going away ([app.pickerKey] argues it). What esc
-//     does give back is the draft that was being typed and the frame — the
-//     picker holds its own filter text, and the person's half-written sentence
-//     is never in it. It used to close on enter and restore the model in use,
-//     which made every comparison a round trip.
+//     Both return the draft and the frame because the picker holds its own
+//     filter text; the person's half-written sentence is never in it. A
+//     confirmed choice is immediately visible in the conversation or parent
+//     page, and another comparison starts by reopening the list.
 const pickerRows = 12
 
 // picker is the overlay's whole state. The zero value is closed.
