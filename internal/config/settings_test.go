@@ -901,6 +901,62 @@ func mustRow(t *testing.T, rows *Settings, key string) Setting {
 // the timer's own definition on disk, so a person who removed the agent by hand
 // is told `off` in the one place they went to check — and turning the row is
 // what installs and removes it.
+// THE AUTO UPDATE ROW IS READ NEXT TO BACKGROUND CHECKS, on the same
+// machine-and-project reading and the same category: both answer what codeaf
+// does HERE on its own, rather than how the surface draws itself. It used to be
+// filed under the interface group and drawn on the Display tab, which is about
+// appearance and typing; a person keeping an installation current looks where
+// the machine's own work is kept.
+func TestTheAutoUpdateRowReadsBesideBackgroundChecks(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	program := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(program, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	timer, err := standing.NewWatch(standing.WatchOptions{
+		Platform: "darwin", HomeDir: home, Executable: program, UID: 501,
+		Runner: quietRunner{},
+	})
+	if err != nil {
+		t.Fatalf("NewWatch: %v", err)
+	}
+	registry := NewSettings(SettingsOptions{ProfileDir: dir, BackgroundChecks: timer})
+	updateAt, checksAt := -1, -1
+	for at, row := range registry.Rows() {
+		switch row.Key {
+		case KeyUpdateAuto:
+			updateAt = at
+			if row.Category != CategoryPractice {
+				t.Fatalf("auto update is filed under %q, want %q", row.Category, CategoryPractice)
+			}
+		case KeyStandingBackground:
+			checksAt = at
+		}
+	}
+	if updateAt < 0 || checksAt < 0 {
+		t.Fatalf("both rows must be in the registry: auto update at %d, background checks at %d", updateAt, checksAt)
+	}
+	if updateAt+1 != checksAt {
+		t.Fatalf("auto update stands at %d and background checks at %d, want them adjacent", updateAt, checksAt)
+	}
+	// THE FIRST SENTENCE SAYS WHAT THE ROW DOES, and the rest says what off
+	// means: manual installation, while the one launch check still runs.
+	row, ok := registry.Row(KeyUpdateAuto)
+	if !ok {
+		t.Fatal("the registry has no auto update row")
+	}
+	for _, want := range []string{
+		"keeps this codeaf installation current in the background.",
+		"Off, installation is manual",
+		"still checks once",
+	} {
+		if !strings.Contains(row.Hint, want) {
+			t.Fatalf("the hint does not say %q: %s", want, row.Hint)
+		}
+	}
+}
+
 func TestTheBackgroundChecksRowReadsTheTimerAndTurnsIt(t *testing.T) {
 	dir := t.TempDir()
 	home := t.TempDir()

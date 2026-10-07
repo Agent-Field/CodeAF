@@ -115,6 +115,7 @@ ui.quick_switch
 ui.task_column
 ui.timestamps
 ui.work
+update.auto
 vision_model
 work.workers
 working_set_tokens

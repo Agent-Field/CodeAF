@@ -19,22 +19,26 @@ package remote
 // person to update a machine they had just updated. The two halves were the
 // same build. The half in the middle was not.
 //
-// So the splice stopped being a blind copy of bytes. Before it hands the
-// surface over, `codeaf engine` asks the socket what it is, and a host that
-// answers with another protocol is retired and replaced rather than attached
-// to. THE QUESTION IS ASKED BEFORE THE HELLO, on a connection that never
+// So the splice stopped being a blind copy of bytes: `codeaf engine` asks the
+// socket what it is and acts on the answer. An older host holding work is
+// joined and asked — [WhoIs.StandDownWhenIdle] — to let go when it is quiet; one
+// holding nothing is stood down. Nothing on this road kills a busy engine any
+// more, and cmd/codeaf's takeover rule has the whole table.
+//
+// THE QUESTION IS ASKED BEFORE THE HELLO, on a connection that never
 // becomes a surface, because a hello would open a conversation — which is the
 // expensive, journal-locking thing this exchange exists to avoid doing twice.
 //
 // ── AND WHY IT IS SAFE TO ASK A HOST TO LEAVE ───────────────────────────────
 //
 // The host answers the question about itself, so it is the host that decides.
-// A conversation with a surface attached, a turn running or a question waiting
-// is WORK IN FLIGHT and a host holding any of it says [HostSelf.Busy] and stays
-// exactly where it is; the door then refuses in words that say so. Nothing here
-// can end somebody else's turn by accident, because nothing here does the
-// ending — [WhoIs.StandDown] is a request, and the only process that knows
-// whether it may be granted is the one being asked.
+// Work in flight — a surface, a turn, a waiting question — reads [HostSelf.Busy]
+// and the door joins it rather than ending anything, because nothing here does
+// the ending: StandDown is a request and StandDownWhenIdle is a note. The
+// decision and the admission happen under one lock (internal/enginehost's
+// [Host.whois] and [Host.open]), so a host that agreed to go refuses the
+// conversation arriving a moment later and one that admitted a conversation
+// refuses to go.
 
 import (
 	"bufio"
@@ -61,6 +65,14 @@ type WhoIs struct {
 	// A stalled window may redial onto the replacement, with every journal
 	// flushed and reopened, exactly as an older-build replacement already does.
 	IgnoreWatchGrace bool `json:"ignoreWatchGrace,omitempty"`
+	// StandDownWhenIdle asks for the slot WITHOUT ending anybody's work: the
+	// host keeps everything it is holding and retires at its first quiet
+	// moment, instead of waiting out its idle policy (cmd/codeaf's takeover
+	// rule). It is a note and not a command — the answer never carries
+	// Retiring because of it. A host older than this field ignores it, as it
+	// ignores every field it does not know, so the answer says whether it was
+	// understood ([HostSelf.StandDownWhenIdle]).
+	StandDownWhenIdle bool `json:"standDownWhenIdle,omitempty"`
 	// Anyway asks for the retirement even with work in flight, and there is
 	// exactly one caller: a person typing `codeaf engine --stop` on the machine
 	// itself, who has been told what is running and said stop anyway. A turn
@@ -92,6 +104,12 @@ type HostSelf struct {
 	// Workspace is the directory this host holds, for a sentence that has to
 	// name it.
 	Workspace string `json:"workspace,omitempty"`
+
+	// StandDownWhenIdle says THIS HOST UNDERSTOOD the request of that name and
+	// has recorded it. Absence is false: a host older than the field ignored
+	// the ask and cannot retire at a quiet moment nobody told it about, so the
+	// door that asked reads this before it promises anything.
+	StandDownWhenIdle bool `json:"standDownWhenIdle,omitempty"`
 
 	// ── WHAT A PERSON TYPING `codeaf engine --status` IS TOLD ──────────────
 	//

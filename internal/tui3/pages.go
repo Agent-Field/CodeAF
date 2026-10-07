@@ -133,6 +133,18 @@ type place interface {
 	// line naming four keys nobody has, so the way out has to be a target rather
 	// than a legend.
 	bar(a *app, width int) (string, placeHit, bool)
+	// showsOffer is whether THIS PLACE DRAWS THE OFFER'S KEYS ROW — the line a
+	// launch release speaks in ([app.updateOfferHint]) — rather than a foot of
+	// its own. The countdown reads it to know whether its sentence can be read
+	// and its chord answered where the person is standing (updateoffer.go's
+	// [app.updateOfferHidden]).
+	//
+	// ONLY HOME ANSWERS TRUE, and the conversation answers by not being a place
+	// at all ([app.showing] is nil there). Every other place's keys row is its
+	// own sentence about the row under its cursor ([place.hint]), drawn by
+	// [placeFrame], and the offer is not on it — so its ten seconds are not
+	// spent behind a line the person cannot read.
+	showsOffer(a *app) bool
 	// ownFrame is the ONE ESCAPE from [placeFrame], and exactly two places take
 	// it. Home unpacks a second hit map — the pane a row shares with an errand —
 	// and below sixty columns is an inbox and a sheet rather than a list
@@ -316,6 +328,11 @@ func (placeBase) remote(a *app) string { return "" }
 func (placeBase) bar(a *app, width int) (string, placeHit, bool) {
 	return "", nil, false
 }
+
+// showsOffer is NO UNLESS A PLACE SAYS OTHERWISE: a place that has not told the
+// registry its foot is the offer's draws a foot of its own, and the countdown
+// waits there rather than spending its ten seconds invisibly ([place.showsOffer]).
+func (placeBase) showsOffer(a *app) bool { return false }
 func (placeBase) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
 	return nil, nil, 0, 0, false
 }

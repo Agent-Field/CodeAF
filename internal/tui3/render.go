@@ -3854,13 +3854,13 @@ func (a *app) footHint(width int) string {
 		return ""
 	}
 	if hint := a.hintWord(); hint != "" {
-		return hint
+		return a.withUpdateOffer(hint)
 	}
 	// A WORD OF THE HEAD UNDER THE POINTER says what it opens and its key
 	// (topnav.go's [app.headHint]), under a state's own keys and over every
 	// resting sentence.
 	if hint := a.headHint(); hint != "" {
-		return hint
+		return a.withUpdateOffer(hint)
 	}
 	// AND UNDER THE STATES, BUT OVER EVERY TIP AND DOOR: THE CHORD THAT DID NOT
 	// ARRIVE. A Mac whose Option key is composing accents answers the switcher's
@@ -3871,7 +3871,13 @@ func (a *app) footHint(width int) string {
 	// all on every other terminal (chords.go's [app.chordWatch] arms it only on a
 	// Mac, and only after a chord was actually aimed and missed).
 	if a.chordLost && a.chords.meta == chordMetaWord {
-		return a.chords.chordShortWords()
+		return a.withUpdateOffer(a.chords.chordShortWords())
+	}
+	// AND UNDER THOSE, THE UPDATE OFFER. While its grace is open it appends its
+	// defer clause to whatever outranks it (above), so the chance to say "not
+	// now" survives a running turn; at rest it takes the slot outright.
+	if hint := a.updateOfferHint(width); hint != "" {
+		return hint
 	}
 	return a.idleHint()
 }

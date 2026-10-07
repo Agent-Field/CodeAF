@@ -92,7 +92,15 @@ func (a *app) homeFootLine(width int, pal palette) string {
 	if warning != "" {
 		room -= ansi.StringWidth(warning) + 1
 	}
-	hint := hintFit(a.placeHint(), room)
+	// THE UPDATE OFFER TAKES THE KEYS ROW WHERE IT IS UP, on home as in a
+	// conversation: a release waiting on an answer must be answerable from
+	// wherever the person actually is (updateoffer.go).
+	hint := ""
+	if offer := a.updateOfferHint(room); offer != "" {
+		hint = offer
+	} else {
+		hint = hintFit(a.placeHint(), room)
+	}
 	line := " " + paintHint(hint, pal, pal.dim)
 	used := 1 + ansi.StringWidth(hint)
 	before := used

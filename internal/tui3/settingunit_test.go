@@ -136,6 +136,26 @@ func TestTheSshRowsAreOnTheTabAboutReachingAnotherMachine(t *testing.T) {
 	}
 }
 
+// THE AUTO UPDATE ROW IS ON THE TAB ABOUT THIS MACHINE, NOT ABOUT THE SURFACE.
+//
+// It sat on Display with the appearance-and-typing choices, while the question
+// it answers — keep this installation current — is the same kind of
+// question `background checks` answers, and that row is on Workspace. The key,
+// the label and the default are unchanged; only the tab it is read under moved.
+func TestTheAutoUpdateRowIsOnTheTabAboutThisMachine(t *testing.T) {
+	meta, ok := settingUI[config.KeyUpdateAuto]
+	if !ok {
+		t.Fatal("the auto update row has no place on the panel at all")
+	}
+	if meta.tab != tabWorkspace {
+		t.Fatalf("auto update is drawn under %q\n  drawn: %s tab · %s\n  want:  %s tab · %s",
+			meta.tab, meta.tab, meta.label, tabWorkspace, meta.label)
+	}
+	if meta.label != "auto update" {
+		t.Fatalf("the label moved to %q, want %q", meta.label, "auto update")
+	}
+}
+
 // THE TAB STRIP FOLLOWS THE CURSOR, AT EVERY WIDTH THIS SURFACE IS DRAWN AT.
 //
 // It was built from the first chip and cut on the right, so at eighty columns

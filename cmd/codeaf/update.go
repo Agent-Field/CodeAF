@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -107,11 +108,25 @@ func runUpdate(args []string) error {
 		}
 	}
 
+	// THE LOCK, THE ON-DISK RE-READ AND EVERY REFUSAL LIVE INSIDE
+	// [codeupdate.Install], so the command line and the chat surface are one
+	// acquirer with nothing to keep in step.
 	result, err := codeupdate.Install(context.Background(), codeupdate.InstallOptions{
 		Client: client, Release: release, Target: target, Curl: curl,
+		// A NAMED TAG IS A DELIBERATE ROLLBACK; a channel or the default is not.
+		AllowDowngrade: strings.TrimSpace(choice.Version) != "",
 	})
 	if err != nil {
+		var refusal *codeupdate.RefusalError
+		if errors.As(err, &refusal) {
+			fmt.Fprintln(updateErr, refusal.Reason)
+			return exitStatus(2)
+		}
 		return updateFailure(err, curl)
+	}
+	if result.Already {
+		fmt.Fprintf(updateOut, "codeaf: %s is already installed at %s\n", result.Release.Tag, result.Path)
+		return nil
 	}
 	fmt.Fprintf(updateOut, "codeaf: installed %s at %s\n", result.Release.Tag, result.Path)
 	if err := updateVersionLine(result.Path, updateOut, updateErr); err != nil {

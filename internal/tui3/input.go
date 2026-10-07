@@ -434,6 +434,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
+	// THE UPDATE OFFER'S THREE CHORDS, read above every place and below every
+	// modal. They are chords and never letters: an offer answered by `y` is an
+	// offer that eats the first word of somebody's sentence (updateoffer.go).
+	if cmd, taken := a.updateOfferKey(msg); taken {
+		return cmd
+	}
+
 	// THE CHIP'S CHORD IS READ ABOVE EVERY PLACE, because the chip is drawn on
 	// every page and a door that only opened from the conversation would be a
 	// door that is not there wherever a person is actually standing when the
@@ -1463,9 +1470,6 @@ func (a *app) enterLine() tea.Cmd {
 	// empty message — "what is this?" is often the picture itself — so the two
 	// tests below both ask about the tray as well as about the words.
 	held := len(a.chips) > 0
-	if !strings.HasPrefix(line, "/") && (line != "" || held) && a.updateStopsTurn() {
-		return nil
-	}
 	// An empty draft with a call selected is a reader, not a typist: enter
 	// opens what ↑/↓ picked out. A draft of any length is a sentence, and a
 	// sentence wins.
