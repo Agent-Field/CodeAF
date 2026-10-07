@@ -123,8 +123,7 @@ func TestTheSearchCarriesTheMatchedLettersInBold(t *testing.T) {
 	a.openSettings()
 	// This search fixture exercises an explicitly saved prompt posture.
 	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
+	chooseSheetValue(t, a, "prompt")
 	typeQuery(t, a, "tool")
 	// The approval row, kept by the search, and where the query landed on it:
 	// the label's own head, because "tool" is the word the row's name begins
@@ -213,17 +212,29 @@ func TestSpaceWhileSearchingTypesAndDoesNotPressTheRow(t *testing.T) {
 	a.openSettings()
 	// This search fixture exercises an explicitly saved prompt posture.
 	cursorTo(t, a, config.KeyToolApprovalMode)
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
+	chooseSheetValue(t, a, "prompt")
 	cursorTo(t, a, config.KeyToolApprovalMode)
 	// The space with no search open is the panel's own gesture: it activates.
 	drive(t, a, key(" "))
+	if a.sheet.choice == nil {
+		t.Fatal("space out of a search did not open the choices")
+	}
+	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
+		t.Fatalf("opening choices changed the gate: %q", got)
+	}
+	drive(t, a, key("home"))
+	for _, value := range a.sheet.choice.item.row.Choices {
+		if value == "allow" {
+			break
+		}
+		drive(t, a, key("down"))
+	}
+	drive(t, a, key("enter"))
 	if got := config.ToolApprovalModeAt(dir); got != "allow" {
-		t.Fatalf("space out of a search did not activate the row: gate still %q", got)
+		t.Fatalf("saving the selected choice did not change the gate: %q", got)
 	}
 	// Put the gate back, start a search, and the same key is the box's.
-	drive(t, a, key("enter")) // allow -> deny
-	drive(t, a, key("enter")) // deny -> prompt
+	chooseSheetValue(t, a, "prompt")
 	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
 		t.Fatalf("the gate did not come back around to prompt: %q", got)
 	}

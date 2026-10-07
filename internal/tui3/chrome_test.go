@@ -346,7 +346,7 @@ func TestAChangedSettingIsMarked(t *testing.T) {
 		t.Fatalf("an untouched row drew the mark: %q", line)
 	}
 
-	drive(t, a, key("enter"))
+	chooseSheetValue(t, a, "deny")
 	item, _ = a.sheet.current()
 	if !a.sheet.changed(item) {
 		t.Fatal("a row written by hand is not marked as changed")
