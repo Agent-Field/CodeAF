@@ -362,7 +362,7 @@ func (a *app) teamsTop(d *teamsDraw, width int) []string {
 		for _, control := range []struct {
 			word string
 			act  teamsAct
-		}{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}, {"Choose manager", teamsActChooseManager}} {
+		}{{"+ Add chat", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}, {"Choose AI manager", teamsActChooseManager}} {
 			if t.Root && control.act == teamsActAddSubteam {
 				continue
 			}

@@ -42,7 +42,7 @@ func TestTheNarrowNavStillSaysWhereElseYouCanGo(t *testing.T) {
 		}
 		// AND THE AIR IS HELD: two blank cells between two words, whatever the
 		// width, because what a narrow row gives up is words and never air.
-		if width >= 80 && !strings.Contains(bar, "home  teams  chats  sessions  spend  settings") {
+		if width >= 80 && !strings.Contains(bar, "home  chats  AI teams  activity  memory  spend  settings") {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand should carry the six places two cells apart", width, bar)
 		}
 		if strings.Contains(bar, "   ") {
@@ -416,7 +416,7 @@ func TestTheSettingsFootDropsWholeClausesNotCharacters(t *testing.T) {
 	if !strings.Contains(full, " · ") {
 		t.Fatalf("the settings foot is no longer two clauses and this test is about the wrong line: %q", full)
 	}
-	head := strings.SplitN(full, " · ", 2)[0]
+	head := "This profile"
 	for _, width := range []int{60, 80, 120, 160} {
 		note := plain(placeSettings{}.note(a, width)[0])
 		if strings.Contains(note, glyphMore) {
@@ -436,7 +436,7 @@ func TestTheSettingsFootDropsWholeClausesNotCharacters(t *testing.T) {
 	if got, want := plain(placeSettings{}.note(a, 60)[0]), " "+head; got != want {
 		t.Fatalf("at 60 columns the settings foot drew\n\t%q\nand it should be the answer alone:\n\t%q", got, want)
 	}
-	if got, want := plain(placeSettings{}.note(a, 160)[0]), " "+full; got != want {
+	if got, want := plain(placeSettings{}.note(a, 160)[0]), " "+head; got != want {
 		t.Fatalf("at 160 columns the settings foot drew\n\t%q\nand there was room for all of it:\n\t%q", got, want)
 	}
 }

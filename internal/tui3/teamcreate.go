@@ -262,9 +262,9 @@ func (a *app) teamCreateOver(frame string) string {
 	if inner < 28 || height < 14 {
 		return frame
 	}
-	title := "New team"
+	title := "New AI team"
 	if s.parent != "" {
-		title = "New team in " + a.teamNameOf(s.parent)
+		title = "New AI team in " + a.teamNameOf(s.parent)
 	}
 	text := func(value string, field int) string {
 		if s.field == field {

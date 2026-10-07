@@ -233,7 +233,7 @@ of the commands they named still works** — only the tips about them are gone.
 - `/attach lets you browse anywhere for files` was a second row about one command, which
   is one row too many.
 - `ctrl+. sees every task this project has run` came off on the owner's word, the last of
-  the three reads. The chord still opens the sessions place, `/history` still opens it too, and
+  the three reads. The chord still opens the activity page, `/history` still opens it too, and
   the *tasks* manual page still says so.
 
 Unless a line above says otherwise, a tip is true from the first minute on home and after
@@ -247,17 +247,9 @@ for a chord that works only in a conversation and only over a making-shaped sent
 
 ## Turn off hints — stop showing tips, disable the hints, the disable hints row
 
-Open the settings panel with `/settings` (or `ctrl+,`), go to the **Workspace** tab, and flip
-the **disable hints** row on. The line under the row reads
-`disable💡 tips everywhere (requires restart)`. Enter or space toggles it; it is off by
-default, which means the tips show. (Until 2026-09-22 it was a **hints** row on the Display
-tab, on by default.) Inside a running codeaf the change lands at the end of the next turn,
-in every conversation and on home alike; restarting codeaf is the only way to have it at once. On silences the tips — over a conversation's
-box and over home's alike — and the what's-new lines together; it does not touch the keys
-row's own words for a live state — `esc interrupt` and the rest are not hints and cannot
-be turned off.
+Open `/settings` (or `ctrl+,`), choose **General**, and turn **show hints** off. This hides contextual tips and what's-new notices; the keys row still explains available actions. Turn it on to show tips again. Tips already retired stay retired.
 
-Turning the row back off shows whatever is due. Tips you had already retired stay retired.
+Existing profiles retain their preference. If you previously turned **disable hints** on, **show hints** now appears off.
 
 ## What "news" lines are — what's new after an update
 
@@ -269,4 +261,4 @@ of the same build says nothing.
 
 There is nothing to announce yet, so no news line has ever been printed by this build. A
 first launch on a fresh profile says nothing either — nothing is new to somebody who never saw
-the older build. The **disable hints** row on the Workspace tab silences news lines along with the tips.
+the older build. Turning **show hints** off under General silences news lines along with tips.

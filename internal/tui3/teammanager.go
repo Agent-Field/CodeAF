@@ -48,7 +48,7 @@ const (
 // and `● harbor ▾  ◆ harbor` read as two harbors.
 const (
 	teamGlobalManagerSlotWord = "+ Global manager"
-	teamManagerSlotWord       = "+ Manager"
+	teamManagerSlotWord       = "+ AI manager"
 	teamManagerWord           = "Manager"
 )
 

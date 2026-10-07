@@ -177,7 +177,7 @@ func TestTheSwitcherSinceYouLeftLedgerDrawsOnlyRecordedDoors(t *testing.T) {
 	for _, row := range r.ledger {
 		doors[row.place] = true
 	}
-	for _, door := range []string{"standing", "memory", "sessions"} {
+	for _, door := range []string{"standing", "memory", "activity"} {
 		if !doors[door] {
 			t.Fatalf("%s was not a ledger door", door)
 		}

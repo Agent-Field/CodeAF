@@ -4945,7 +4945,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if a.at(pageSettings) {
-			a.sheetHover(msg.Mouse().Y)
+			a.sheetHoverAt(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
 		if a.at(pageTasks) {

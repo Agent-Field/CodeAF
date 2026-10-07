@@ -23,7 +23,7 @@ type placeTeams struct{ placeBase }
 func init() { registerPlace(placeTeams{}) }
 
 func (placeTeams) id() page     { return pageTeams }
-func (placeTeams) word() string { return "teams" }
+func (placeTeams) word() string { return "AI teams" }
 
 // counted is true: what is in here is a pile of things, and a packet waiting
 // on the person is news about this place.
@@ -124,7 +124,9 @@ func (placeTeams) note(a *app, width int) []string {
 
 // hint is what the pointer or the cursor is on, with its key, and otherwise
 // the page's keys.
-func (placeTeams) about() string { return "the teams you hand work to" }
+func (placeTeams) about() string {
+	return "AI chats grouped around ongoing work, with an optional AI manager"
+}
 
 func (placeTeams) hint(a *app) string {
 	if a.tmove.on {
@@ -151,7 +153,7 @@ func (placeTeams) hint(a *app) string {
 	if !a.teamsAny() {
 		return "o organize · n new team · " + homeDoorWord
 	}
-	return "↑↓ walk · enter open · m move into… · space pick · a add member · s settings · c disband · n new team · o organize · " + homeDoorWord
+	return "↑↓ walk · enter open · m move into… · space pick · a add chat · s settings · c disband · n new team · o organize · " + homeDoorWord
 }
 
 // changed is how many packets wait on the person, which is the count a person

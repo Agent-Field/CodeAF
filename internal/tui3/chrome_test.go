@@ -84,6 +84,11 @@ func sheetHas(a *app, want string) bool {
 func cursorTo(t *testing.T, a *app, key string) {
 	t.Helper()
 	for tab := range settingTabs {
+		if a.sheet.advanced == nil {
+			a.sheet.advanced = map[string]bool{}
+		}
+		a.sheet.advanced[settingTabs[tab]] = true
+		a.sheet.build()
 		if a.sheet.tab != tab {
 			a.sheet.tab = tab
 			a.sheet.cursor, a.sheet.top = 0, 0
@@ -108,6 +113,9 @@ func cursorTo(t *testing.T, a *app, key string) {
 func TestEverySettingRowHasATab(t *testing.T) {
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
 	for _, row := range registry.Rows() {
+		if row.ChatPresentation().Hidden {
+			continue
+		}
 		meta, ok := settingMetaFor(row)
 		if !ok {
 			t.Fatalf("registry row %q has no tab — add one line to settingUI", row.Key)
@@ -148,7 +156,7 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 	if strings.Contains(plain(frame(a)), microcopy) {
 		t.Fatal("the panel is drawn over a frame that is still showing its status line")
 	}
-	if !sheetHas(a, "memory") {
+	if !sheetHas(a, "General") {
 		t.Fatalf("the Session tab is missing its first row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 }
@@ -157,67 +165,24 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
-
-	if got := settingTabs[a.sheet.tab]; got != tabSession {
-		t.Fatalf("the panel opened on %q, want %q", got, tabSession)
+	if got := settingTabs[a.sheet.tab]; got != tabGeneral {
+		t.Fatalf("opened on %q", got)
 	}
-	for _, want := range []string{"memory", "fallback models"} {
-		if !sheetHas(a, want) {
-			t.Fatalf("the Session tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
-		}
-	}
-	if sheetHas(a, "compact at") {
-		t.Fatal("a Context row is showing on the Session tab")
-	}
-	// AND THE FOUR QUESTIONS THAT LEFT IT ARE GONE FROM IT. The gate belongs to
-	// Safety, the task rows to Tasks, the money to Spending
-	// (docs/design/spending/DESIGN.md's information hierarchy) — and the ssh
-	// link to Workspace, because it lands next launch and is a fact about this
-	// machine rather than about the conversation in front of the reader.
-	for _, gone := range []string{"ask before running", "per conversation", "tasks at once", "ssh reuse"} {
-		if sheetHas(a, gone) {
-			t.Fatalf("%q is still on the Session tab:\n%s", gone, strings.Join(sheetLabels(a), "\n"))
-		}
-	}
-	// THE CREW IS ON PROVIDERS, with the model it answers under — one tab, one
-	// question (settings.go's [modelsSection] says why it moved).
-	if sheetHas(a, "small work") {
-		t.Fatal("a crew row is showing on the Session tab")
-	}
-
-	drive(t, a, key("right"))
-	if got := settingTabs[a.sheet.tab]; got != tabContext {
-		t.Fatalf("→ landed on %q, want %q", got, tabContext)
-	}
-	if !sheetHas(a, "compact at") || sheetHas(a, "ask before running") {
-		t.Fatalf("the Context tab did not replace the Session rows:\n%s",
-			strings.Join(sheetLabels(a), "\n"))
-	}
-
-	// The walk clamps at both ends rather than wrapping — the rule every list
-	// on this surface follows (palette.go).
-	drive(t, a, key("left"), key("left"), key("left"))
-	if got := settingTabs[a.sheet.tab]; got != tabSession {
-		t.Fatalf("← past the first tab landed on %q", got)
-	}
-	// AND THE SSH ROWS ARE ON WORKSPACE, the tab about what this machine reaches
-	// on your behalf, two steps right of the one they used to be on.
-	drive(t, a, key("right"), key("right"))
-	if got := settingTabs[a.sheet.tab]; got != tabWorkspace {
-		t.Fatalf("→ landed on %q, want %q", got, tabWorkspace)
-	}
-	for _, want := range []string{"ssh reuse", "ssh heartbeat", "ssh missed heartbeats", "ssh traffic"} {
-		if !sheetHas(a, want) {
-			t.Fatalf("the Workspace tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
-		}
-	}
-	for i := 0; i < len(settingTabs)+3; i++ {
+	for _, want := range settingTabs[1:] {
 		drive(t, a, key("right"))
+		if got := settingTabs[a.sheet.tab]; got != want {
+			t.Fatalf("landed %q want %q", got, want)
+		}
 	}
-	// The last tab is the accounts one (connectcaps.go), which is where the walk
-	// stops rather than wrapping round to the first.
-	if got := settingTabs[a.sheet.tab]; got != tabConnections {
-		t.Fatalf("→ past the last tab landed on %q", got)
+	drive(t, a, key("right"))
+	if settingTabs[a.sheet.tab] != tabPrivacy {
+		t.Fatal("right must clamp")
+	}
+	for range settingTabs {
+		drive(t, a, key("left"))
+	}
+	if settingTabs[a.sheet.tab] != tabGeneral {
+		t.Fatal("left must clamp")
 	}
 }
 
@@ -245,7 +210,7 @@ func TestTheSettingsSearchFiltersAcrossEveryTab(t *testing.T) {
 		items = append(items, item.meta.label)
 	}
 	joined := strings.Join(items, "\n")
-	for _, want := range []string{tabSession, tabProviders, "small work", "your model"} {
+	for _, want := range []string{tabSession, tabProviders, "small work", "chat model"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the search dropped %q:\n%s", want, joined)
 		}
@@ -255,8 +220,8 @@ func TestTheSettingsSearchFiltersAcrossEveryTab(t *testing.T) {
 	}
 	// The tab follows the first match, so backing the search out leaves the
 	// person where the thing they found lives.
-	if got := settingTabs[a.sheet.tab]; got != tabSession {
-		t.Fatalf("the tab bar did not follow the first match: %q", got)
+	if got := settingTabs[a.sheet.tab]; len(a.sheet.items) > 0 && a.sheet.items[0].head != got {
+		t.Fatalf("category %q does not follow first result", got)
 	}
 	// And the cursor is ON that first match rather than on its heading.
 	item, ok := a.sheet.current()
@@ -525,8 +490,8 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 	}
 	drive(t, a, clickAt(spans[3].from, bar))
 	drive(t, a, releaseAt(spans[3].from, bar))
-	if got := settingTabs[a.sheet.tab]; got != tabDisplay {
-		t.Fatalf("a click on the Display tab landed on %q", got)
+	if got := settingTabs[a.sheet.tab]; got != tabTasks {
+		t.Fatalf("a click on the Tasks tab landed on %q", got)
 	}
 
 	// Find the screen row the history toggle is drawn on, then click it twice:

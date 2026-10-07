@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── THE SETTINGS PLACE ──────────────────────────────────────────────────────
@@ -52,7 +53,43 @@ func (placeSettings) close(a *app) { a.dropSettings() }
 
 // body is the panel's own tab bar, the rule under it, and one section's rows —
 // or, while a submenu is up, the options it is offering.
+// The sidebar uses the existing four-cell pane gutter. Compact terminals keep
+// the scrolling category bar so every category remains reachable.
+const settingsSidebarWidth = 20
+
+func settingsSidebar(width, height int) bool { return width >= 100 && height >= 24 }
+func (a *app) sheetSidebar(width, height int) bool {
+	return settingsSidebar(width, height) && a.sheet.sel == nil && a.sheet.edit == nil
+}
 func (placeSettings) body(a *app, width, room int) []placeRow {
+	_, height := a.size()
+	if !a.sheetSidebar(width, height) {
+		return settingsBody(a, width, room, false)
+	}
+	rows := settingsBody(a, width-settingsSidebarWidth, room, true)
+	for i := range rows {
+		left := ""
+		hit, _ := rows[i].hit.(sheetHit)
+		if i < len(settingTabs) {
+			title := settingTabs[i]
+			left = "  " + a.pal.dim(title)
+			if a.hot.kind == hoverSheet && a.hot.index == -2-i {
+				left = "  " + a.pal.underline(a.pal.dim(title))
+			}
+			if i == a.sheet.tab {
+				left = "  " + a.pal.chip(title)
+				if a.hot.kind == hoverSheet && a.hot.index == -2-i {
+					left = "  " + a.pal.underline(a.pal.chip(title))
+				}
+			}
+			hit.category = i + 1
+		}
+		rows[i].text = left + strings.Repeat(" ", max(0, settingsSidebarWidth-ansi.StringWidth(left))) + rows[i].text
+		rows[i].hit = hit
+	}
+	return rows
+}
+func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	s := &a.sheet
 	pal := a.pal
 	rows := make([]placeRow, 0, room)
@@ -60,10 +97,14 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 	// and a second one inside the body drew the page as two frames stacked
 	// (PLACES-AUDIT.md finding 11); the filled chip and one blank row are the
 	// whole of what separates the bar from the rows.
-	rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
+	if sidebar {
+		rows = append(rows, placeRow{text: "  " + placeHeading(settingTabs[s.tab], pal)})
+	} else {
+		rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
+	}
 	rows = append(rows, placeRow{})
 	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
-		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "type to search", "")
+		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search all settings and connections", "")
 		for _, line := range filter {
 			rows = append(rows, placeRow{text: " " + line})
 		}
@@ -179,7 +220,43 @@ func (placeSettings) note(a *app, width int) []string {
 		}
 		return out
 	}
-	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
+	item, ok := a.sheet.current()
+	if at := a.hoveredSheetRow(); at >= 0 && at < len(a.sheet.items) {
+		item, ok = a.sheet.items[at], true
+	}
+	scope := a.sheet.footNote()
+	about := ""
+	if ok {
+		about = item.meta.about
+		if item.conn != nil {
+			about = connAbout(item.conn)
+		}
+		if item.row.Key != "" && !(a.sheet.host != "" && item.meta.tab == tabTeams) {
+			info := item.row.ChatPresentation()
+			facts := []string{}
+			if info.Scope != "" {
+				facts = append(facts, info.Scope)
+			}
+			if info.Activation != "" {
+				facts = append(facts, info.Activation)
+			}
+			if len(facts) > 0 {
+				scope = strings.Join(facts, " · ")
+			}
+		}
+	}
+	out := []string{" " + pal.dim(noteFit(scope, width-2))}
+	details := settingAboutLines(about, width)
+	// Reserve the same detail space on every row. Hover and keyboard selection
+	// explain the same control without moving another control under the pointer.
+	for i := 0; i < settingAboutRows; i++ {
+		line := ""
+		if i < len(details) {
+			line = "  " + pal.dim(details[i])
+		}
+		out = append(out, line)
+	}
+	return out
 }
 
 func (placeSettings) about() string { return "how this machine is set" }
@@ -234,19 +311,26 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // string, because both came from the same call.
 func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
 	entry := a.sheet.conn.entry
+	_, height := a.size()
+	offset := 0
+	if a.sheetSidebar(width, height) {
+		offset = settingsSidebarWidth
+		width -= offset
+	}
+	content := func(text string) string { return ansi.Strip(ansi.Cut(text, offset, offset+width)) }
 	if entry == nil {
 		if a.sheet.edit != nil {
 			return 0, 0, false
 		}
-		box, placeholder := &a.sheet.query, "type to search"
+		box, placeholder := &a.sheet.query, "Search all settings and connections"
 		if a.sheet.sel != nil {
 			box, placeholder = &a.sheet.sel.pick.filter, "type to filter"
 		}
 		block, column, at := draftBlock(box, a.pal, width-2, 1, placeholder, "")
 		if at >= 0 && at < len(block) {
 			for j, row := range rows {
-				if row.text == " "+block[at] {
-					return j, column + 1, true
+				if content(row.text) == ansi.Strip(" "+block[at]) {
+					return j, column + 1 + offset, true
 				}
 			}
 		}
@@ -268,8 +352,8 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 		return -1, 0, true
 	}
 	for j, row := range rows {
-		if strings.HasPrefix(row.text, block[at]) {
-			return j, column, true
+		if strings.HasPrefix(content(row.text), ansi.Strip(block[at])) {
+			return j, column + offset, true
 		}
 	}
 	// The list window scrolled the box off this frame. The caret is hidden

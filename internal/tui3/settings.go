@@ -70,78 +70,28 @@ import (
 // palette and nothing new: the panel is a list, and this surface already knows
 // what a list looks like (palette.go's overlayRow draws every row here).
 
-// The tabs, in the order docs/CHAT-V3.md Decision 6 names them.
+// Category labels are presentation only; persisted setting keys stay unchanged.
 const (
-	// tabSession is this conversation and only this conversation: what it
-	// carries from the last one, and where it goes when its model will not
-	// answer. It is two rows, and that is the honest size of it — the models
-	// went to Providers, the money went to Spending, and the ssh link went to
-	// Workspace because it lands next launch rather than on this session.
-	tabSession = "Session"
-	// tabContext is what a model carries — the context law, whole.
-	tabContext = "Context"
-	// tabWorkspace is this machine and this project: what codeaf does with its
-	// own time here, and what it may reach on your behalf — a service it signs
-	// in to, and the ssh link it reaches another machine over. It is NOT where
-	// money lives any more, and that is the whole of
-	// docs/design/spending/DESIGN.md's first complaint — twenty rows answering
-	// four questions, with the dollar figures filed between `workers` and
-	// `memory floor`.
-	tabWorkspace = "Workspace"
-	// tabDisplay is how the surface draws itself and what it remembers of your
-	// typing.
-	tabDisplay = "Display"
-	// tabSpending is MONEY AND NOTHING ELSE: what codeaf may spend, per day, per
-	// conversation, per plan, and on its own practice — with what the day has
-	// actually cost at the top of it. It is the one editor money has, and every
-	// door on this surface that names a rail lands on one of its rows
-	// (settingspend.go).
-	tabSpending = "Spending"
-	// tabSafety is what codeaf may do without asking you first: the gate, its
-	// exceptions, the model that answers for you, and the two clocks that answer
-	// when nobody does.
-	tabSafety = "Safety"
-	// tabTasks is how work you can walk away from is run — how it starts, how it
-	// is checked, how much of it happens at once, and on whose hands.
-	tabTasks = "Tasks"
-	// tabTeams is what every team inherits when it says nothing of its own:
-	// who answers a member's question, what a team may spend in a day, what a
-	// new sub-team is given, and how deep teams may nest. A team's own
-	// overrides are on its card on the teams page; these are the defaults its
-	// `· from Settings` points at.
-	tabTeams = "Teams"
-	// tabProviders is which model answers what.
-	tabProviders = "Providers"
+	tabGeneral   = "General"
+	tabProviders = "Models"
+	tabMemory    = "Memory"
+	tabTasks     = "Tasks"
+	tabTeams     = "AI teams"
+	tabSafety    = "Permissions"
+	tabSpending  = "Spending"
+	tabPrivacy   = "Privacy"
+	// Compatibility names keep existing internal entry points on their new category.
+	tabSession   = tabMemory
+	tabContext   = tabProviders
+	tabWorkspace = tabGeneral
+	tabDisplay   = tabGeneral
 )
 
-// And the sixth, which is not a reading of the registry at all: the accounts
-// this profile has connected and what each of them may do (connectcaps.go). It
-// is last because the five before it are one object read five ways, and a
-// person walking the bar meets the knobs before their accounts.
-// Spending, Safety and Tasks stand between Display and Providers, and Spending
-// leads the three: "what may it spend" is asked before "on which machine", and
-// before either of the two questions that used to share its tab.
-//
-// Teams follows Tasks: both are about work you hand off, and its defaults are
-// read after the question of how one task runs.
-var settingTabs = []string{tabSession, tabContext, tabWorkspace, tabDisplay,
-	tabSpending, tabSafety, tabTasks, tabTeams, tabProviders, tabConnections}
-
-// settingTabCategory is the ONE-TO-ONE map between the four newer tabs and the
-// four registry categories behind them, and it is the seam that keeps the skin
-// honest about the one source of truth.
-//
-// The other tabs are a reading of the ROWS and not of the categories — "session
-// ceiling" is a dollar figure that answers "what may THIS conversation do" — and
-// that stays true of them. These four are different: the registry's own words
-// for them (`spending`, `safety`, `tasks`, `teams`) are already the product's words for
-// them, so a row that is filed under one and drawn under another would be two
-// answers to one question. chrome_test.go pins the map in both directions.
+var settingTabs = []string{tabGeneral, tabProviders, tabMemory, tabTasks, tabTeams,
+	tabSafety, tabSpending, tabConnections, tabPrivacy}
 var settingTabCategory = map[string]string{
-	tabSpending: config.CategorySpending,
-	tabSafety:   config.CategorySafety,
-	tabTasks:    config.CategoryTasks,
-	tabTeams:    config.CategoryTeams,
+	tabSpending: config.CategorySpending, tabSafety: config.CategorySafety,
+	tabTasks: config.CategoryTasks, tabTeams: config.CategoryTeams,
 }
 
 // settingWidget is how a row is ANSWERED, which is not quite how it reads.
@@ -868,13 +818,60 @@ func settingMetaFor(row config.Setting) (settingMeta, bool) {
 	if !ok {
 		return settingMeta{}, false
 	}
+	presentation := row.ChatPresentation()
+	if presentation.Hidden {
+		return settingMeta{}, false
+	}
+	if presentation.Category != "" {
+		meta.tab = presentation.Category
+	}
+	if presentation.Label != "" {
+		meta.label = presentation.Label
+	}
 	if meta.label == "" {
 		meta.label = row.Label
 	}
+	if presentation.Description != "" {
+		meta.about = presentation.Description
+	}
 	if meta.about == "" {
-		meta.about = firstSentence(row.Hint)
+		meta.about = row.Hint
 	}
 	return meta, true
+}
+
+// finishCategory keeps advanced controls discoverable without making the common
+// path a catalog of engine details. Search deliberately bypasses this fold.
+func (s *sheet) finishCategory() {
+	title := settingTabs[s.tab]
+	shown := make([]sheetItem, 0, len(s.items))
+	if title == tabMemory {
+		shown = append(shown, sheetItem{memoryDoor: true, meta: settingMeta{label: "View saved memories", about: "Inspect remembered information, correct it, or forget it."}})
+	}
+	advanced := make([]sheetItem, 0)
+	catalog := make([]sheetItem, 0)
+	for _, item := range s.items {
+		if title == tabConnections && (item.conn != nil || item.heading()) {
+			catalog = append(catalog, item)
+			continue
+		}
+		if item.row.Key != "" && item.row.ChatPresentation().Hidden {
+			continue
+		}
+		if item.row.ChatPresentation().Advanced || item.role != nil || item.autonomy != nil || item.crewDoor {
+			advanced = append(advanced, item)
+		} else if !item.heading() || title == tabConnections {
+			shown = append(shown, item)
+		}
+	}
+	if len(advanced) > 0 {
+		shown = append(shown, sheetItem{advancedDoor: true, meta: settingMeta{label: "Advanced", about: "Less common controls. Search finds these even while collapsed."}})
+		if s.advanced[title] {
+			shown = append(shown, advanced...)
+		}
+	}
+	s.items = append(shown, catalog...)
+	s.cursor = s.clampCursor(s.cursor)
 }
 
 // firstSentence is the registry hint cut to one line. A hint is written as
@@ -896,9 +893,11 @@ const sheetRows = 16
 // sheetItem is one line of the list: a row, or — while a search is on — the
 // faint tab heading a group of them sits under.
 type sheetItem struct {
-	head string
-	row  config.Setting
-	meta settingMeta
+	advancedDoor bool
+	memoryDoor   bool
+	head         string
+	row          config.Setting
+	meta         settingMeta
 	// conn is set on the rows of the Connections tab, which are accounts rather
 	// than registry rows (connectcaps.go). It hangs here so that the cursor
 	// walk, the scroll, the pointer and the hover need to know nothing about
@@ -946,7 +945,8 @@ func (i sheetItem) restful() bool { return i.head == "" && i.read == nil }
 // sheet is the panel's whole state. The zero value is closed and costs the
 // frame nothing.
 type sheet struct {
-	tab int
+	advanced map[string]bool
+	tab      int
 	// host is the machine the session runs on over --host, "" otherwise.
 	host string
 	// teamDefaultsWrite says the teams seam can change that machine's `teams.`
@@ -1420,8 +1420,13 @@ func (s *sheet) build() {
 	// the registry (connectcaps.go). It is one branch and no second list: what
 	// it appends is [sheetItem]s, so everything downstream of here — the cursor,
 	// the window, the pointer, the hover — is the code that was already there.
-	if s.onConnections() {
+	if s.onConnections() && query == "" {
+		for _, row := range s.tabRows() {
+			meta, _ := s.metaFor(row)
+			s.items = append(s.items, sheetItem{row: row, meta: meta})
+		}
 		s.buildConnections()
+		s.finishCategory()
 		return
 	}
 	if query == "" {
@@ -1431,6 +1436,7 @@ func (s *sheet) build() {
 		// (settingspend.go).
 		if settingTabs[s.tab] == tabSpending {
 			s.items = append(s.items, s.spendingItems()...)
+			s.finishCategory()
 			s.cursor = s.clampCursor(s.cursor)
 			return
 		}
@@ -1504,12 +1510,16 @@ func (s *sheet) build() {
 				s.items = append(s.items, s.autonomyItems(nil)...)
 			}
 		}
+		s.finishCategory()
 		s.cursor = s.clampCursor(s.cursor)
 		return
 	}
 	first := -1
+	type resultGroup struct{ start, end, tab, score int }
+	groups := []resultGroup{}
 	for tab, title := range settingTabs {
 		start := len(s.items)
+		best := 0
 		// THE ROWS A TAB KEEPS ARE RANKED BY HOW WELL THEY ANSWERED, best first
 		// and stable within equal scores on the registry's own order — so a
 		// search reads as an answer key rather than as the panel reordered. The
@@ -1525,6 +1535,7 @@ func (s *sheet) build() {
 			if !hit {
 				continue
 			}
+			best = max(best, score)
 			matched = append(matched, settingHit{row: row, meta: meta, score: score, hitAt: at, hitLen: n})
 		}
 		sort.SliceStable(matched, func(a, b int) bool { return matched[a].score > matched[b].score })
@@ -1566,9 +1577,27 @@ func (s *sheet) build() {
 				s.items = append(s.items, matched[1:]...)
 			}
 		}
+		if title == tabConnections {
+			s.buildConnections()
+		}
+		if len(s.items) > start {
+			groups = append(groups, resultGroup{start, len(s.items), tab, best})
+		}
 		if len(s.items) > start && first < 0 {
 			first, s.tab = start+1, tab
 		}
+	}
+	// Put the category with the strongest answer first, keeping its rows together.
+	// A weak match in General must not bury an exact match in Permissions.
+	if len(groups) > 0 {
+		sort.SliceStable(groups, func(i, j int) bool { return groups[i].score > groups[j].score })
+		ordered := make([]sheetItem, 0, len(s.items))
+		for _, group := range groups {
+			ordered = append(ordered, s.items[group.start:group.end]...)
+		}
+		s.items = ordered
+		s.tab = groups[0].tab
+		first = 0
 	}
 	// Clamped rather than taken, because the first item of a group is a heading
 	// and the second one can be a heading too: a search that matched only roles
@@ -1698,6 +1727,11 @@ func (s *sheet) settingMatch(row config.Setting, meta settingMeta, tab string, t
 	fields[2] = meta.about
 	fields[3] = rowText(row)
 	fields[4] = tab
+	presentation := row.ChatPresentation()
+	fields = append(fields, presentation.Aliases...)
+	if old, ok := settingUI[row.Key]; ok {
+		fields = append(fields, old.label, old.tab)
+	}
 	return s.matchHits(fields, terms)
 }
 
@@ -2368,7 +2402,35 @@ func (a *app) activate() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	if item.memoryDoor {
+		return a.showPage(pageMemory)
+	}
+	if item.advancedDoor {
+		if s.advanced == nil {
+			s.advanced = map[string]bool{}
+		}
+		s.advanced[settingTabs[s.tab]] = !s.advanced[settingTabs[s.tab]]
+		s.build()
+		return nil
+	}
 	if item.conn != nil {
+		// Service actions run on their category so asynchronous replies and Escape
+		// use the same account lifecycle as a service reached by browsing.
+		if s.searching() {
+			s.query.reset()
+			for at, title := range settingTabs {
+				if title == tabConnections {
+					s.tab = at
+				}
+			}
+			s.build()
+			for at, candidate := range s.items {
+				if candidate.conn != nil && candidate.conn.service == item.conn.service {
+					s.cursor = at
+					break
+				}
+			}
+		}
 		return a.connAct(item.conn)
 	}
 	if item.crewDoor {
@@ -3008,8 +3070,9 @@ const (
 )
 
 type sheetHit struct {
-	kind  sheetHitKind
-	index int
+	category int // One-based sidebar category, zero outside its rows.
+	kind     sheetHitKind
+	index    int
 }
 
 // sheetPress is a click inside the panel: a tab word switches tabs, a row
@@ -3032,7 +3095,16 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 	if y < 0 || y >= len(hits) {
 		return nil
 	}
-	switch hit := hits[y]; hit.kind {
+	hit := hits[y]
+	if a.sheetSidebar(width, height) && x < settingsSidebarWidth {
+		if hit.category > 0 && a.sheet.sel == nil && a.sheet.edit == nil {
+			a.sheet.tabBy(hit.category - 1 - a.sheet.tab)
+			a.saySettingsHost()
+			a.touch()
+		}
+		return nil
+	}
+	switch hit.kind {
 	case sheetHitTabs:
 		if tab, ok := tabAtColumn(x, width, a.sheet.tab); ok {
 			if a.sheet.searching() {
@@ -3077,11 +3149,16 @@ func (a *app) sheetPress(x, y int) (cmd tea.Cmd) {
 
 // sheetHover records which row the pointer is over, repainting only when the
 // answer changed (hover.go's rule, applied to the panel).
-func (a *app) sheetHover(y int) {
+func (a *app) sheetHover(y int) { a.sheetHoverAt(settingsSidebarWidth, y) }
+
+func (a *app) sheetHoverAt(x, y int) {
 	width, height := a.size()
 	_, hits, _, _ := a.sheetFrame(width, height)
 	next := hoverAt{}
-	if y >= 0 && y < len(hits) && hits[y].kind == sheetHitRow {
+	if a.sheetSidebar(width, height) && x < settingsSidebarWidth && y >= 0 && y < len(hits) && hits[y].category > 0 {
+		next = hoverAt{kind: hoverSheet, index: -1 - hits[y].category}
+	}
+	if (!a.sheetSidebar(width, height) || x >= settingsSidebarWidth) && y >= 0 && y < len(hits) && hits[y].kind == sheetHitRow {
 		next = hoverAt{kind: hoverSheet, index: hits[y].index}
 	}
 	if next == a.hot {
@@ -3100,59 +3177,8 @@ func (a *app) sheetHover(y int) {
 // and the pointer resolves against them, and two answers to "where is the tab
 // bar" is how a click lands on the wrong tab.
 func (a *app) sheetFrame(width, height int) ([]string, []sheetHit, int, int) {
-	// THE HEAD AND THE FOOT BELONG TO THE ROUTER (pages.go). This panel's title
-	// row is gone — the place tab bar above says `settings` — and so is its keys
-	// line, which is the one hint every place shares now. ITS OWN TAB BAR STAYS,
-	// as the first row of its body, and the two bars are not a repetition: the
-	// nav at the top is the places and this one is this place's sections.
-	s := &a.sheet
-	pal := a.pal
 	lines, hits, caretX, caretY := placeFrame(a, width, height,
-		func(width, room int) []placeRow {
-			rows := make([]placeRow, 0, room)
-			rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
-			rows = append(rows, placeRow{})
-			room -= len(rows)
-			if room < 1 {
-				room = 1
-			}
-			if s.sel != nil {
-				body, at := s.selectLines(width, room, pal, a.reasoningFor)
-				for i, line := range body {
-					hit := sheetHit{}
-					if at[i] >= 0 {
-						hit = sheetHit{kind: sheetHitOption, index: at[i]}
-					}
-					rows = append(rows, placeRow{text: line, hit: hit})
-				}
-				return rows
-			}
-			body, owner := s.listLines(width, room, pal, a.hoveredSheetRow())
-			at := s.cursorLine(owner)
-			// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two
-			// lines — the name and the value under it — and a window that pinned
-			// only the first would push the value off the bottom edge, leaving a
-			// selection band with one end cut off and the fact being changed off
-			// screen. The last line is pinned first and the first line second, so
-			// a row taller than the window still shows its name.
-			if last := s.cursorLastLine(owner, at, width); last != at {
-				s.top = listTop(last, s.top, len(body), room)
-			}
-			s.top = listTop(at, s.top, len(body), room)
-			for i := 0; i < room; i++ {
-				index := s.top + i
-				if index >= len(body) {
-					rows = append(rows, placeRow{})
-					continue
-				}
-				hit := sheetHit{}
-				if owner[index] >= 0 {
-					hit = sheetHit{kind: sheetHitRow, index: owner[index]}
-				}
-				rows = append(rows, placeRow{text: body[index], hit: hit})
-			}
-			return rows
-		})
+		func(width, room int) []placeRow { return (placeSettings{}).body(a, width, room) })
 	return lines, placeHitsOf(hits, sheetHit{}), caretX, caretY
 }
 
@@ -3404,25 +3430,6 @@ func (s *sheet) listLines(width, room int, pal palette, hover int) ([]string, []
 		for _, line := range s.rowLinesWithin(item, i == s.cursor, i == hover, width, connBoxRows(room), pal) {
 			put(line, i)
 		}
-		if i != s.cursor {
-			continue
-		}
-		// THE ONE DESCRIPTION THIS PANEL EVER SHOWS is the selected row's, and
-		// on the accounts tab it is the selected SERVICE'S — a catalog row's own
-		// line about what connecting it buys, drawn under the row a person has
-		// stopped on and under no other. Most rows of that tab have none: a
-		// sentence explaining "read your mail" would be this surface saying the
-		// same thing twice (connectcaps.go's [connAbout]).
-		about := item.meta.about
-		if item.conn != nil {
-			about = connAbout(item.conn)
-		}
-		if about == "" {
-			continue
-		}
-		for _, line := range settingAboutLines(about, width) {
-			put("    "+pal.dim(line), i)
-		}
 	}
 	return lines, owner
 }
@@ -3514,6 +3521,16 @@ func (s *sheet) rowLines(item sheetItem, selected, hovered bool, width int, pal 
 // connection box. Ordinary rows do not spend it; the one tall row may use it
 // before dropping the end of a wrapped answer list.
 func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, boxRows int, pal palette) []string {
+	if item.memoryDoor {
+		return overlayLines(item.meta.label, "open", selected, false, hovered, width, pal)
+	}
+	if item.advancedDoor {
+		value := "show"
+		if s.advanced[settingTabs[s.tab]] {
+			value = "hide"
+		}
+		return overlayLines(item.meta.label, value, selected, false, hovered, width, pal)
+	}
 	if item.conn != nil {
 		return s.connRowLines(item.conn, selected, hovered, width, boxRows, pal)
 	}
@@ -3556,6 +3573,13 @@ func (s *sheet) rowLinesWithin(item sheetItem, selected, hovered bool, width, bo
 	// beside the default, rather than spelled again by every surface that draws
 	// a number ([config.Setting.Reading]).
 	value := item.row.Reading()
+	if item.row.Key == config.KeyHints {
+		if item.row.Value() == "on" {
+			value = "off"
+		} else {
+			value = "on"
+		}
+	}
 	if hosted, ok := s.hostedTeamReading(item); ok {
 		value = hosted
 	}
@@ -3781,7 +3805,7 @@ func (s *sheet) keysLine() string {
 		if item, ok := s.current(); ok && item.role != nil && item.role.pin != "" {
 			return "↑↓ move · enter pin · del unpin · type to search · esc close"
 		}
-		return "↑↓ move · ←→ tabs · enter change · type to search · esc close"
+		return "↑↓ settings · ←→ categories · enter change · type to search all · esc back"
 	}
 }
 

@@ -42,7 +42,7 @@ func TestTheSettingsSearchFindsARowByItsAboutLine(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
 	labels := searchLabels(t, a, "dangerous")
-	if !screenHas(labels, "ask before running") {
+	if !screenHas(labels, "tool approvals") {
 		t.Fatalf("\"dangerous\" did not find the approval gate:\n%s", strings.Join(labels, "\n"))
 	}
 }
@@ -265,8 +265,8 @@ func TestTheSettingsSearchRanksItsBestAnswerFirst(t *testing.T) {
 	if countdown < 0 || gate < 0 {
 		t.Fatalf("\"approval\" found only %d of its two rows", countdown+gate+2)
 	}
-	if countdown > gate {
-		t.Fatalf("the key hit (row %d) ranked above the label prefix (row %d)", gate, countdown)
+	if gate > countdown {
+		t.Fatalf("the direct tool approvals label (row %d) ranked below timer row %d", gate, countdown)
 	}
 }
 

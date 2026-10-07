@@ -138,10 +138,10 @@ to several teams. The Chats overlay shows all the selected team's members, manag
 the `▦ All` grid always shows all saved conversations regardless of team.
 
 Create a team with **+ New team** below the Teams sidebar list. **+ Add subteam** beside
-Add member creates one under the selected team. A dedicated dialog over Teams offers Name,
+Add chat creates one under the selected team. A dedicated dialog over Teams offers Name,
 Colour, and an optional searchable Name/Project member list. Click several rows to select them;
 filters keep earlier selections. Leave the list unselected to create an empty team and use
-Add member afterward. `tab` changes fields, arrows move through members or colours, `space`
+Add chat afterward. `tab` changes fields, arrows move through members or colours, `space`
 selects the highlighted member, `enter` creates, and `esc` cancels. Manager assignment stays
 separate. Duplicate team names are refused; Rename is in Settings.
 
@@ -157,10 +157,10 @@ its members. `esc` cancels naming, then selection, then the grid. Cancelling doe
 memberships or the conversation's draft. Both creation routes use the same saved catalog and
 creation rules.
 
-Use **+ Add member** in the team's overview to add an existing conversation or create one.
+Use **+ Add chat** in the team's overview to add an existing conversation or create one.
 Use the member card's **x** to remove that membership with confirmation. Current work finishes,
 and the conversation survives with its other memberships. Assign another manager before
-removing the current one. **Choose manager** selects an existing member; to use a new
+removing the current one. **Choose AI manager** selects an existing member; to use a new
 conversation, add it first, then choose it. A manager may manage its team's descendants but
 cannot also manage an unrelated team or be both the global and an ordinary team's manager.
 
@@ -238,7 +238,7 @@ it does not select an overlay.
 ## A team's manager
 
 A **manager** is a conversation that runs the team: you talk to it, it sends work to members
-and reports progress. Teams offers **Choose manager** for existing members and **+ Manager**
+and reports progress. Teams offers **Choose AI manager** for existing members and **+ Manager**
 when a team has none. Add a new member first when you need a new conversation to replace
 an existing manager. All teams has a dedicated Global manager card. `+ Global manager` creates its optional
 conversation. Its reports are the managers of open top-level teams; subteam managers
@@ -246,7 +246,7 @@ report to their parent. Its card's `x` deletes the global-manager conversation w
 normal confirmation, preserving every team and its manager. The creation control returns.
 
 In a selected overlay the manager's tab is pinned at the left. It reads `◆ Manager`, or
-`+ Manager` while there is none. The grid does not pin managers or relabel their tiles.
+`+ AI manager` while there is none. The grid does not pin managers or relabel their tiles.
 `alt+m` goes to the selected team's manager. A manager can manage descendants of its team,
 but cannot manage two unrelated teams. Ordinary memberships in multiple teams are allowed.
 

@@ -316,7 +316,7 @@ func TestTheMapDrawsInTheCellsThatWereAlreadyThere(t *testing.T) {
 	// THE NUMBERS ARE ON THE TABS, and the two places off the bar are drawn
 	// after the six with theirs: the map is the one surface whose job is to show
 	// every key, so `alt+7`…`alt+8` are on it.
-	if bar := after[navRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 teams") || !strings.Contains(bar, "3 chats") ||
+	if bar := after[navRow]; !strings.Contains(bar, "1 home") || !strings.Contains(bar, "2 AI teams") || !strings.Contains(bar, "3 chats") ||
 		!strings.Contains(bar, "6 settings") || !strings.Contains(bar, "7 standing") || !strings.Contains(bar, "8 memory") || strings.Contains(bar, "9 search") {
 		t.Fatalf("the map put no numbers on the tab bar: %q", bar)
 	}
@@ -713,7 +713,7 @@ func TestATabWearsTheCountTheSeamGivesIt(t *testing.T) {
 		pageStanding.word(): 0,
 	}
 	bar := navPlaces(a, 160, false)
-	if !strings.Contains(bar, "sessions 2") {
+	if !strings.Contains(bar, "activity 2") {
 		t.Fatalf("the tasks tab does not wear its count: %q", bar)
 	}
 	if strings.Contains(bar, "spend 9") {
@@ -807,22 +807,16 @@ func TestTheNumbersOpenAPlaceFromTheConversationToo(t *testing.T) {
 	}
 }
 
-// THE TAB BAR CARRIES ITS SIX WORDS AT EVERY WIDTH A PERSON ACTUALLY USES, and
-// only those six: `home teams chats sessions spend settings` (DESIGN.md's law
-// 10, with teams after home by the teams page ruling, c-2, and the chats third,
-// the owner's order). The ladder
-// that gives words up is for terminals narrower than any of these
-// (topnav.go); at 80 columns and up nothing is folded. Standing,
-// memory and search are rooms reached by command, by their digit and by the
-// map — not words on the row a person reads a hundred times a day.
+// Daily work precedes utilities on the bar, including discoverable memory.
+// Numbered shortcuts retain their previous destinations.
 func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := navPlaces(a, width, false)
-		if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions", "spend", "settings") {
+		if !placeWordsInOrder(bar, "home", "chats", "AI teams", "activity", "memory", "spend", "settings") {
 			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
 		}
-		for _, id := range []page{pageStanding, pageMemory} {
+		for _, id := range []page{pageStanding} {
 			if strings.Contains(bar, id.word()) {
 				t.Fatalf("at %d columns the bar still carries %q: %q", width, id.word(), bar)
 			}
@@ -830,8 +824,8 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	}
 	// AND A ROOM OFF THE BAR IS ON IT WHILE YOU STAND IN IT. A bar with no word
 	// lit is a bar that does not know where you are.
-	walkTo(t, a, pageMemory)
-	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "settings  memory") {
+	walkTo(t, a, pageStanding)
+	if bar := navPlaces(a, 120, false); !strings.Contains(bar, "settings  standing") {
 		t.Fatalf("standing in memory, the bar does not say so: %q", bar)
 	}
 }

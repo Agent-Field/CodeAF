@@ -159,7 +159,7 @@ or the model; the task's room does, where the store's spend has them. The parts 
 row each, the finished ones included. Every one of those rows is a
 door: click the run's row, or select it and press `enter`, and its room opens over the
 conversation; click a part's row or a check's row and THAT task's room opens. It is the
-room the sessions place opens and the run's tab opens: what the task was asked, its steps,
+room the activity page opens and the run's tab opens: what the task was asked, its steps,
 its notes, and the box that leaves a note. A task handed to a program such as senior-dev
 opens its own program room instead (see *A program's task page is a conversation, not
 steps*). `esc` goes back to the conversation exactly as
@@ -283,7 +283,7 @@ to the column's width; the glyph and the `$` are never spent on it.
 **The line is there only while a step is in flight.** A task that has not started, one held
 behind named work, and one that has landed all draw their ordinary row and no live line — the
 store clears the step the moment its command ends. These rows are a run's **plan rows**, drawn
-in the sessions place (`/history`, `ctrl+.`, `alt+4`, and the roster raised over the frame), not
+in the activity page (`/history`, `ctrl+.`, `alt+4`, and the roster raised over the frame), not
 on the always-on column, which draws this conversation's own tree.
 
 ## What a run task's room shows while it runs
@@ -332,7 +332,7 @@ messages — say it to main`, or `<program> reads no more messages (…)` with i
 `enter` over a sentence says the same line and leaves your words in the box. Once the run has
 ended its foot and its box say `this task has finished — say it to main`.
 
-In the sessions place, `enter` on the program's row opens the same page as a page of that
+In the activity page, `enter` on the program's row opens the same page as a page of that
 place, with no box at all.
 
 ## Reading a program's actions — the step words down the side, how each came out, the call in flight, how long it has run
@@ -367,7 +367,7 @@ once more after its work has landed, so the note on where the work went is on th
 
 ## A program's raw calls — ctrl+y, the dialogue with its model, what it sent and what the model answered
 
-`ctrl+y` on a program's page — in its room or in the sessions place — turns it to the raw
+`ctrl+y` on a program's page — in its room or in the activity page — turns it to the raw
 calls the program made, and `ctrl+y` again turns it back to the actions; the key row says
 which: `ctrl+y calls` or `ctrl+y actions`. A page opens on the actions.
 
@@ -468,7 +468,7 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **pause** / **resume** — hold a task and everything under it out of the ready
   frontier without changing its rung, so running steps finish and nothing new in
   the subtree is launched; or release the hold. The key is `p`: a running row
-  reads `p pause` and a held one `p resume`. The key is on the sessions place's
+  reads `p pause` and a held one `p resume`. The key is on the activity page's
   rows only: in a task's room `p` is a letter in the box. A run cannot be paused
   as a whole, so its own row names no `p pause`.
 - **cancel** — end a task, its descendants and the work hard-depending on it. The

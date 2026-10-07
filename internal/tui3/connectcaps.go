@@ -456,6 +456,10 @@ func groupConnections(rows []connect.Status) []connGroup {
 	categorized := false
 	var loose []connect.Status
 	for _, row := range rows {
+		if row.Connected {
+			held.rows = append(held.rows, row)
+			continue
+		}
 		if _, ok := modelConnectionSource(row.ID); ok {
 			models.rows = append(models.rows, row)
 			continue
@@ -470,11 +474,11 @@ func groupConnections(rows []connect.Status) []connGroup {
 		}
 	}
 	out := make([]connGroup, 0, 8)
-	if len(models.rows) > 0 {
-		out = append(out, models)
-	}
 	if len(held.rows) > 0 {
 		out = append(out, held)
+	}
+	if len(models.rows) > 0 {
+		out = append(out, models)
 	}
 	if len(loose) == 0 {
 		return out
@@ -1013,11 +1017,8 @@ func (s *sheet) connKeysLine() string {
 			act = "enter connects"
 		}
 	}
-	line := "↑↓ move · ←→ tabs · " + act
-	if s.filterWorth() {
-		line += " · type to filter"
-	}
-	return line + " · esc close"
+	line := "↑↓ move · ←→ categories · " + act
+	return line + " · type to search all · esc back"
 }
 
 // ── acting on them ──────────────────────────────────────────────────────────

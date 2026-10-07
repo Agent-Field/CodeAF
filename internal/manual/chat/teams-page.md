@@ -1,17 +1,15 @@
-# The teams page
+# AI teams
 
 ## What the teams page is, and how to open it
 
 The **teams page** is where you run your teams: every team you have, what waits on you from
 them, and an overview of the team you choose. Member cards show activity and recent updates;
-interaction links take you into the conversation where an exchange happened. It is the second
-place on the tab bar, right after home: `home  teams  chats  sessions  spend  settings`. Open it with
-`/teams`, `alt+2` (`opt+2` on a Mac), a click on the word `teams`, `tab` from home, or the map
+interaction links take you into the conversation where an exchange happened. It follows Chats on the tab bar: `home  chats  AI teams  activity  memory  spend  settings`. Open it with
+`/teams`, `alt+2` (`opt+2` on a Mac), a click on `AI teams`, `tab` from Chats, or the map
 (`alt+.`). A number beside the word on the bar counts the decisions waiting on you that arrived
 since you last looked.
 
-A team is a group of conversations you name, and a team's **manager** is a conversation that
-runs it for you (the **team manager** page). The conversations view (`alt+v`) is where you see
+An AI team is a named group of AI chats, not a shared account or a group of human users. A chat can belong to several teams. An optional **AI manager** is a chat that coordinates the group (the **team manager** page). The conversations view (`alt+v`) is where you see
 every open conversation at once; All teams on this page is where you organize your teams.
 
 ## Where a team link in a chat opens
@@ -32,7 +30,7 @@ The left column is the **rail**:
  ● harbor ◆          ? 1 │
    ● orbit           ⠿   │
  ● docs                  │
- + New team              │
+ + New AI team           │
                          │
  ☐ Show closed · 2       │
 ```
@@ -47,8 +45,8 @@ The left column is the **rail**:
   working; an amber `? 2` says two things wait on you from it or from a team under it: a
   decision addressed to you, or a member stopped on a question only you can answer. A team
   where nothing is happening draws no mark at all.
-- **`+ New team`** stays visible below the active team list and always creates a top-level team.
-  **`+ Add subteam`**, beside and after **`+ Add member`** in a selected team's header,
+- **`+ New AI team`** stays visible below the active team list and always creates a top-level team.
+  **`+ Add subteam`**, beside and after **`+ Add chat`** in a selected team's header,
   creates inside that team. The depth limit still applies.
 - **`✦ Organize`** in the All teams header suggests groupings and disbanding quiet teams. Its dialog stays on Teams; nothing changes until Apply.
 - **`Show closed · N`** is a toggle at the bottom of the rail. Turn it on to include retained
@@ -152,7 +150,7 @@ for a remote conversation.
 
 ## Adding and removing team members
 
-`+ Add member` on the selected team's overview opens a searchable conversation picker.
+`+ Add chat` on the selected team's overview opens a searchable conversation picker.
 It lists existing saved conversations across projects, including ones already in other
 teams; members of this team are left out. Type a title or workspace to filter, use arrows
 and `enter`, or click a row. Adding an existing conversation keeps its context, other
@@ -169,7 +167,7 @@ with `x`. Before permanently deleting its conversation, assign another manager i
 for every active team it manages. There is no member Actions menu. Removing the reporting membership leaves that
 conversation independent; another manager is never assigned automatically.
 
-`a` opens Add member. The picker uses `Name` and `Project` columns and does not display IDs.
+`a` opens Add chat. The picker uses `Name` and `Project` columns and does not display IDs.
 
 ## Recent interactions: scrolling, expanding replies and opening their conversations
 
@@ -215,7 +213,7 @@ no message box. To talk to the manager, click its card and type in its normal ch
 
 Selecting a team no longer opens or locks its manager's conversation. The overview can be
 read without resuming any member. Clicking a member uses the ordinary Chats door, which
-says any refusal there. If a local manager's conversation is missing, `+ Manager` offers a
+says any refusal there. If a local manager's conversation is missing, `+ AI manager` offers a
 new manager. Starting a manager opens its fresh conversation in Chats immediately.
 
 ## What does +4 idle mean on a team
@@ -310,7 +308,7 @@ Teams owns its keyboard. Typing here does not edit a manager's draft.
 | `m` | Move into… |
 | `space` on a team | pick it for a move of several |
 | `p` | member list |
-| `a` | Add member picker |
+| `a` | Add chat picker |
 | `M` | start a manager when offered |
 | `d` | confirm permanent team deletion |
 | `u` | Undo a move while offered |
@@ -385,7 +383,7 @@ it does not reopen disbanded teams. Over `--host` quiet-team suggestions are not
 The Global manager card offers its optional creation button before the first team exists.
 Below it, the page says what a team is in one sentence and offers two buttons: **`✦ Organize my
 conversations`**, which suggests teams from the conversations you have open, and
-**`+ New team`**. `o` and `n` press them.
+**`+ New AI team`**. `o` and `n` press them.
 
 ## Over --host: why a closed team's report is not readable
 
@@ -422,9 +420,9 @@ The confirmation lists them. History stays read-only with Show closed; there is 
 
 ## New team placement and removing a member
 
-The Teams sidebar keeps `+ New team` directly after the displayed teams list. `Show closed`
-remains at the bottom of the sidebar. `+ Add member` and `+ Add subteam` stay together
-on the left of the selected team's header, followed by `Choose manager`; `Settings` and `Disband` sit on the right.
+The Teams sidebar keeps `+ New AI team` directly after the displayed teams list. `Show closed`
+remains at the bottom of the sidebar. `+ Add chat` and `+ Add subteam` stay together
+on the left of the selected team's header, followed by `Choose AI manager`; `Settings` and `Disband` sit on the right.
 
 A member card's `x` opens a confirmation naming the member and team. `cancel` is selected
 by default; choose `yes` to remove only that team's membership. Its work finishes and its
@@ -432,7 +430,7 @@ conversation remains. Removing the manager requires replacing it first.
 
 ## Create an empty team or select several conversations
 
-`+ New team` opens a creation dialog over Teams, keeping the overview behind it.
+`+ New AI team` opens a creation dialog over Teams, keeping the overview behind it.
 `+ Add subteam` uses the same dialog with the selected parent named in its title.
 Enter Name, choose Colour, and optionally select members from the searchable Name/Project list.
 Click several rows to toggle their checkboxes; filtering preserves hidden selections. `tab`
@@ -441,7 +439,7 @@ cancels. No internal IDs are shown. A duplicate name or invalid parent is refuse
 
 You may create an empty team and add members afterward. Creation never assigns a manager or
 opens its members. Both routes land on the new team overview. A failed save is reported there.
-Chats also offers `+ New team` in its full saved-conversation grid: select cards, then name
+Chats also offers `+ New AI team` in its full saved-conversation grid: select cards, then name
 and create. The full conversation grid itself lives only in Chats.
 
 ## Keyboard hints in team menus
@@ -449,21 +447,21 @@ and create. The full conversation grid itself lives only in Chats.
 Team menus show grey instructions together at the left of the box footer, with the key first:
 `up/down move · space select · esc cancel · enter create` in New team and
 Add subteam. Narrow boxes wrap the instructions rather than hiding them. Only text fields,
-colour, and members are tab stops; the creation hint stays in that footer. Add member and
-Choose manager show `up/down move · enter choose · esc cancel`; creating a new conversation
+colour, and members are tab stops; the creation hint stays in that footer. Add chat and
+Choose AI manager show `up/down move · enter choose · esc cancel`; creating a new conversation
 shows `enter create · esc cancel`. Settings, Move, Organize, and the Chats team-naming card
 use the same key-first format. Clickable action hints act on the same choices as their keys.
 
-## Choose manager — change a team's manager from existing members
+## Choose AI manager — change a team's manager from existing members
 
-`Choose manager` in the selected team's header opens a filtered Name/Project list of its
+`Choose AI manager` in the selected team's header opens a filtered Name/Project list of its
 existing members, excluding the current manager. `cancel` is selected by default. Choose
 a member with Enter or click; Esc cancels. Only this team's manager changes. The former
 manager remains a member, and both conversations keep their work and history.
 
 The picker cannot create a conversation or add membership. All teams also offers
-`+ Add member` for adding a global-manager candidate; automatic memberships stay protected. For a new manager, first use
-`+ Add member` to add or create its conversation, then use `Choose manager`.
+`+ Add chat` for adding a global-manager candidate; automatic memberships stay protected. For a new manager, first use
+`+ Add chat` to add or create its conversation, then use `Choose AI manager`.
 An ordinary team manager cannot be removed or permanently deleted while it manages an active team.
 The deletion confirmation names every active team it manages and says
 `Assign another manager before deleting it.` Replace it in every named
@@ -476,7 +474,7 @@ manage an unrelated team. Managing sibling teams requires also managing their co
 ancestor. The global All teams manager is a separate conversation; it cannot also manage
 an ordinary team. Ordinary membership in multiple teams remains allowed.
 
-Choose manager and team moves refuse changes that introduce conflicting responsibilities,
+Choose AI manager and team moves refuse changes that introduce conflicting responsibilities,
 naming the affected teams. Replacing a parent manager can also be refused if it would
 leave the former manager managing sibling teams without a managed ancestor. The refusal
 names the subteam managers to assign first, before changing the parent manager. Older conflicting assignments remain visible and can be repaired
@@ -489,7 +487,7 @@ missing, its card says `Conversation unavailable`; add or select a replacement e
 
 A blocked deletion names every active team the conversation manages. In a short terminal,
 scroll the message with the mouse wheel or Page Up/Page Down. Cancel/delete and the
-keyboard hints remain visible. Choose replacements through Teams → Choose manager first.
+keyboard hints remain visible. Choose replacements through Teams → Choose AI manager first.
 
 ## Global manager — create, delete and recreate
 
@@ -510,8 +508,8 @@ manage an ordinary team; conflicting old assignments must be repaired before del
 Without a global manager, the card shows only `Optional · coordinates the managers of
 top-level teams` and `+ Global manager`. This same state returns after deletion and when
 the saved manager conversation is missing. With a manager, the creation button disappears;
-`+ Add member` and `Settings` remain alongside the conversation's `x` delete control.
-`Choose manager` is unavailable for the global role. `Settings` retains global spending controls.
+`+ Add chat` and `Settings` remain alongside the conversation's `x` delete control.
+`Choose AI manager` is unavailable for the global role. `Settings` retains global spending controls.
 
 ## Model names on manager and member cards
 

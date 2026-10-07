@@ -443,10 +443,10 @@ func TestTheCountThatWantsYouNeverLeavesTheNav(t *testing.T) {
 	a.width = 80
 	a.navMemo = navMemo{}
 	row := plain(a.navLine(80, a.pal))
-	if !placeWordsInOrder(row, "home", "teams", "chats", "sessions", "spend", "settings") || a.navMore.span.pressable() {
+	if !placeWordsInOrder(row, "home", "chats", "AI teams", "activity", "memory", "more") || !a.navMore.span.pressable() {
 		t.Fatalf("at 80 the short count cost a place: %q", row)
 	}
-	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20 / "+railFigure(20)) {
+	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20") {
 		t.Fatalf("at 80 the pulse is not the short count and the allowance: %q", row)
 	}
 	// AND NOTHING WANTING YOU DRAWS NOTHING: no `0 ?`.

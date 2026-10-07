@@ -83,9 +83,9 @@ const (
 type place interface {
 	// id is which place this is, and it is the key the registry files it under.
 	id() page
-	// word is the one lowercase word this place is called, on the tab bar and in
-	// the manual. It is the whole of a place's name: a tab bar of two-word labels
-	// is a menu, and this is a bar.
+	// word is the concise label this place is called, on the tab bar and in
+	// the manual. A qualifier is retained when it prevents a different meaning,
+	// as AI teams distinguishes the destination from human collaboration.
 	word() string
 	// counted answers whether a number in front of this place would mean
 	// anything — see [page.counted].
@@ -393,38 +393,15 @@ func (placeBase) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
 // and a row of [placeOrder], and nothing else anywhere.
 var placeRegistry = map[page]place{}
 
-// placeOrder is the whole set, in the one order that matters: `alt+1` through
-// `alt+8`, and, for the first [placeBarPlaces] of them, left to right along
-// the tab bar and round the circle `tab` walks.
-//
-// THE BAR IS FOUR PLACES AND HOME IS THEIR SUMMARY (DESIGN.md's law 10). What
-// wants you and what is running (home), the work itself (sessions, the tasks
-// place), what it cost (spend), and how this machine is set (settings), with
-// teams and the way back to the chats between home and the work. Standing,
-// memory come after them: still rooms, still reached by
-// `/standing` and `/memory`, by the typed box's place offers, by
-// `alt+7`…`alt+8` and by the map, but not drawn on a bar a person reads a
-// hundred times a day, until they are the rooms a person walks into a hundred
-// times a day.
-//
-// THE TWO KEEP A DIGIT EACH so a hand that learned `alt+7` finds a room there
-// rather than a key that does nothing.
-//
-// IT IS A LIST HERE AND NOT AN `init` ORDER. Go runs a package's `init`s in
-// filename order, so a registry that took its order from them would put the tab
-// bar's reading order at the mercy of what a file happens to be called — and
-// `place_home.go` sorts after `place_tasks.go` would silently reorder the bar
-// and every number on it.
-//
-// TEAMS IS SECOND AND THE CHATS THIRD (the owner's order, 2026-09-24). Teams
-// is where a person runs the work they handed off (place_teams.go, DESIGN.md
-// section 8.4), so it is read as often as home is; the chats (place_chats.go)
-// are the room a person came from, and goes back to more than to any other.
+// placeOrder preserves the established numbered shortcuts for existing users.
+// Visual order is independent: moving a destination must not retrain a shortcut.
 var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory}
 
-// placeBarPlaces is how many of [placeOrder] the tab bar draws: the four a day
-// is read through, teams beside home, and the way back to the chats.
-const placeBarPlaces = 6
+// placeBarOrder groups daily work before utilities. Memory stays discoverable
+// even before the first saved memory; standing orders remain available in the map.
+var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageStanding}
+
+const placeBarPlaces = 7
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
@@ -433,10 +410,10 @@ const placeBarPlaces = 6
 // are off the bar are on the one surface whose job is to show every key.
 func barPages(here page, every bool) []page {
 	if every {
-		return placeOrder
+		return placeBarOrder
 	}
-	shown := placeOrder[:placeBarPlaces:placeBarPlaces]
-	for _, id := range placeOrder[placeBarPlaces:] {
+	shown := placeBarOrder[:placeBarPlaces:placeBarPlaces]
+	for _, id := range placeBarOrder[placeBarPlaces:] {
 		if id == here {
 			return append(shown, id)
 		}
@@ -501,7 +478,7 @@ func placeWordList() string {
 			words = append(words, pl.word())
 		}
 	}
-	return strings.Join(words, " ")
+	return strings.Join(words, " · ")
 }
 
 // placeFor is the place one id names, and nil for the conversation or for an id
@@ -520,7 +497,7 @@ func (a *app) showing() place { return placeRegistry[a.page] }
 // somewhere else.
 func (a *app) at(id page) bool { return a.page == id }
 
-// word is the one lowercase word a place is called.
+// word is the concise label a place is called.
 func (p page) word() string {
 	if pl := placeFor(p); pl != nil {
 		return pl.word()
@@ -532,6 +509,9 @@ func (p page) word() string {
 func (p page) lookKey() string {
 	if p == pageTasks {
 		return "tasks"
+	}
+	if p == pageTeams {
+		return "teams"
 	}
 	return p.word()
 }

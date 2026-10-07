@@ -32,8 +32,8 @@ did.
 ## Where a program's badge appears — and where it does not
 
 **Every program's tasks wear its name as a badge**: `[<name>]` after the task's title on
-the side list, the proposal card, the task's page, the `@` list, the sessions place and home, and its
-initials (`[sd]` for senior-dev, `[s]` for sec, `[r]` for review) where a list is narrow. A task codeaf's own worker does
+the side list, the proposal card, the task’s page, the `@` list, the activity page and home, and its
+initials (`[sd]` for senior-dev, `[s]` for sec, `[r]` for review) where a list is narrow. A task codeaf’s own worker does
 wears none, and a program added to codeaf later gets its own badge from its name.
 The landed card's head shows the title and outcome without a program badge.
 
