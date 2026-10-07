@@ -2991,7 +2991,7 @@ turn ended, the same moment `today` does.
 **Three are rows you can edit** — daily spending, per-chat spending and the plan approval threshold. `per task` and `per standing run` are **readings**: they are real rails, and
 neither is a number a settings row could hold. The sections below say why.
 
-Open **Spending** for monetary limits. Resident practice settings are absent from chat settings because they do not control this chat surface.
+Open **Spending** for monetary limits. Resident practice settings are absent from chat settings because they do not control this chat surface. The separate resident’s practice default is `$50 of the day`; it is not a chat setting.
 
 ## Where are the spending limits — the Spending tab, and every door onto it
 

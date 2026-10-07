@@ -97,8 +97,8 @@ func TestManualStatesHelpSettingsGreetingAndManagerDisplayTruth(t *testing.T) {
 	}{
 		{"commands", "codeaf <command> --help — asking one command what it takes, which is not a failure", []string{"run `codeaf --help` for every command, `codeaf help env` for the variables."}},
 		{"commands", "codeaf --help, and --help on any command — what does this command take, what are its flags, how do I see the usage", []string{"`codeaf help env`", "every variable and its default"}},
-		{"commands", "The ten settings tabs", []string{"Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections"}},
-		{"models-and-cost", "Where are the spending limits — the Spending tab, and every door onto it", []string{"Tasks · Teams · Providers"}},
+		{"commands", "Settings categories — where did Session, Context, Workspace, Display and Providers go", []string{"General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Privacy", "Old saved keys and values are unchanged"}},
+		{"models-and-cost", "Where are the spending limits — the Spending tab, and every door onto it", []string{"Tasks · AI teams · Permissions"}},
 		{"getting-started", "Getting started — first time setup, what happens the first time I run codeaf", []string{"nothing elsewhere", "What would you like to work on?", "home", "`--no-host`"}},
 		{"team-manager", "Making a manager", []string{"team's name", "`@second`", "`@lead`", "All teams"}},
 	} {

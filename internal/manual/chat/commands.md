@@ -1960,6 +1960,12 @@ key.
 While any of those layers is up — the value box, the model picker, the key box on the
 Connections tab — the foot drops `tab next place`, because the layer has taken that key.
 
+## Task model seats and their limits in Settings
+
+Models → Advanced includes the seats door to `/crew`. Its default summary is
+`per task $5 · crew daily cap $5.00`; actual saved limits appear when configured.
+Change those limits in `/crew`, which owns them, rather than a duplicate setting.
+
 ## The roles rows in settings — pinning a role, and del to unpin
 
 The **roles** list is in **Models → Advanced**, alongside "pinned roles". Each row is
