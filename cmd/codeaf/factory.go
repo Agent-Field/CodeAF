@@ -21,7 +21,13 @@ const factoryFixtureEnv = "CODEAF_FACTORY_FIXTURE"
 // ([factory.FixtureSeam]) so the floor can be looked at and driven by hand;
 // every verb on that seam is nil, so the fixture offers no act it cannot do.
 func factorySeam() factory.Seam {
-	// The mock lane's factoryMockSeam is asked first here, at the merge.
+	// The mock is asked first. It exists only in a build made with
+	// -tags factorymock (internal/factory/mock/REMOVING.md); the default build
+	// has a stub that always answers false, so the shipped binary carries none
+	// of it.
+	if seam, ok := factoryMockSeam(); ok {
+		return seam
+	}
 	if strings.TrimSpace(env.Get(factoryFixtureEnv)) == "1" {
 		return factory.FixtureSeam(time.Now())
 	}

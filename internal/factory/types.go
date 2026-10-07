@@ -72,25 +72,50 @@ const (
 	GateNone Gate = "none" // a banked habit; green proof ships itself
 )
 
-// Stage is one sentence the factory runs at its place in the recipe. The six
-// fields after Ask are the whole of what is structured about it.
+// StageKind is what runs a stage. There are four and there will not be a fifth:
+// a conversation, a command, a person, a write to a source.
+type StageKind string
+
+const (
+	StageChat  StageKind = "chat"  // a conversation with its crew and its nested tasks
+	StageCheck StageKind = "check" // a deterministic command; no model
+	StageGate  StageKind = "gate"  // a person: yes, no, or words as the stage's result
+	StagePost  StageKind = "post"  // a source write, consent-gated
+)
+
+// Stage is one sentence the factory runs at its place in the recipe. The
+// fields after Ask are the whole of what is structured about it. When is how
+// a recipe adapts without anyone touching it: a stage with a condition is
+// skipped, dim, with its reason, on an item the condition does not fit.
 type Stage struct {
-	Name   string   // plan · write · test · review · neaten · security · proof
-	Ask    string   // the sentence as typed; the brief is compiled from it
-	Effort string   // "" (the knee) · cheap · strong — the crew's one word
-	Fanout string   // one · per-file · per-finding · per-claim
-	Until  string   // done · clean · green · proven
-	Max    int      // rounds before it stops and asks; 0 means one
-	Gate   Gate     // none · plan (ask before going on) · ship (sign-off)
-	Proof  []string // what this stage must show
-	On     bool     // an item may switch a banked stage off
+	Name   string    // plan · write · test · review · neaten · security · proof
+	Kind   StageKind // chat unless said otherwise
+	Ask    string    // the sentence as typed; the brief is compiled from it
+	When   string    // "" or always · thin · large · touches auth · has ui
+	Effort string    // "" (the knee) · cheap · strong — the crew's one word
+	Fanout string    // one · per-file · per-finding · per-claim
+	Until  string    // done · clean · green · proven
+	Max    int       // rounds before it stops and asks; 0 means one
+	Gate   Gate      // none · plan (ask before going on) · ship (sign-off)
+	Proof  []string  // what this stage must show
+	On     bool      // an item may switch a banked stage off
 }
 
-// Recipe is what a repo or team banked: stages in order and the policy every
-// proof must show.
+// Recipe is what a product banked: stages in order, per kind of item, and the
+// policy every proof must show. Stages is the list for an issue and the
+// fallback for a kind ByKind does not name.
 type Recipe struct {
 	Stages []Stage
+	ByKind map[Kind][]Stage
 	Policy []string
+}
+
+// For is the stage list a kind runs.
+func (r Recipe) For(k Kind) []Stage {
+	if s, ok := r.ByKind[k]; ok && len(s) > 0 {
+		return s
+	}
+	return r.Stages
 }
 
 // Triage is the cheap read made on arrival.
@@ -106,10 +131,12 @@ type Triage struct {
 	Questions []string
 }
 
-// Repo is a connected repository and the team that owns it.
+// Repo is a connected repository and the product team that owns it. A
+// product owns many repos, one recipe and one policy; a repo may carry
+// exceptions. An item may span several repos, which are its places.
 type Repo struct {
 	Name   string
-	Team   string
+	Team   string // the product team
 	Areas  []string
 	Habits []string // banked sentences
 	Recipe Recipe
@@ -132,11 +159,16 @@ const (
 // tasks it fanned out into.
 type Phase struct {
 	Name  string
+	Kind  StageKind
 	State PhaseState
 	Note  string
 	Round int
 	Tasks int
 	Left  time.Duration
+	// Chat and Handle name the stage's conversation when the stage is one:
+	// the room a person walks into from the phase strip.
+	Chat   string
+	Handle string
 }
 
 // LogLine is one line of a stream's grain: a thought, a shell call, a test,
@@ -160,7 +192,7 @@ type Stream struct {
 	Paused   bool
 	Findings int
 	Bench    int
-	Room     string // the conversation id the stream lives in, when known
+	Room     string // the item team's id, when known; its Traffic is this log
 }
 
 // Claim is one row of a proof sheet: what was claimed, whether it was shown,
@@ -175,7 +207,9 @@ type Claim struct {
 // Item is one row on the floor.
 type Item struct {
 	ID       int
-	Repo     string
+	Repo     string   // the repo it arrived on
+	Product  string   // the product team that owns it
+	Places   []string // every repo it touches; Repo alone until the plan says more
 	Num      int
 	Kind     Kind
 	Title    string
