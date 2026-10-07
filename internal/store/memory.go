@@ -214,7 +214,13 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 CREATE INDEX IF NOT EXISTS memories_status_updated ON memories (status, updated_seq DESC);
 CREATE INDEX IF NOT EXISTS memories_status_scope ON memories (status, scope, updated_seq DESC);
-CREATE INDEX IF NOT EXISTS memories_owner_active ON memories (owner, updated_seq DESC) WHERE status = 'active';
+-- THE OWNER INDEX IS NOT HERE. owner is a migration column: a database written
+-- before owners existed already has this table, so CREATE TABLE IF NOT EXISTS
+-- leaves it alone, and an index declared here would be created against a column
+-- that does not exist yet — which is exactly the open that failed with
+-- "no such column: owner" on every store already on disk. It is created by
+-- [migrateMemoriesOwner], beside the column it indexes, on both a legacy store
+-- and a brand new one.
 `
 
 const memoriesFTSSchema = `

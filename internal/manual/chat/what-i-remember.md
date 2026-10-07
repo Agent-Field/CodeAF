@@ -152,6 +152,37 @@ that teaches rather than an error. It did not always: a first run once reported
 every reason a file will not open, and a build old enough to print it is a build
 worth replacing.
 
+## It said no such column: owner
+
+That sentence is the second half of `memory is off for this session:`, and it
+means one thing: the saved store was written by an older codeaf, and the codeaf
+you have just opened did not know how to read it. It is a mismatch between the
+file and the program, not damage to the file.
+
+The repair is the newer codeaf itself. Its first open of the file adds what the
+old file was missing, keeps every note exactly as it was — its words, tags,
+where it came from, whether it was still active — and remembers from there.
+There is nothing to move aside and nothing to restore by hand.
+
+**A window whose conversation is held by an engine keeps that engine until the
+engine is stopped.** That engine is a process of its own on the machine holding
+the workspace, and it decided at its own startup that it had no memory; nothing
+about it changes because a newer codeaf was installed beside it. So:
+
+- Update codeaf on the machine holding the workspace.
+- When its work is safe — stopping an engine stops the turn it is in, and keeps
+  the partial reply — run `codeaf engine --stop --workspace <the folder>` there.
+  `codeaf engine --status` names the engine first if you are unsure which folder
+  it is; `codeaf engine --stop-all` stands every one down.
+- Reconnect or open a conversation in that workspace, which builds a fresh
+  conversation on the new codeaf and repairs the file as it opens.
+
+A conversation on this machine that no engine is holding is simpler: quit codeaf
+and open it again, and the file is repaired as it opens. Nothing restarts a
+running engine on its own, and an engine of the same build is never displaced,
+so a window that did not restart keeps going without memory. Nothing already
+saved is at risk while it waits.
+
 ## Where is everything you remember kept
 
 In `~/.codeaf/graph.db`, one file, made the first time codeaf runs. Memories,
