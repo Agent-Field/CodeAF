@@ -81,6 +81,10 @@ type factoryPage struct {
 	typing  bool
 	backlog bool
 	marked  map[int]bool
+
+	// act is what the verbs leave behind (factory_keys.go): an open typing
+	// row, a habit offer, and the mock clock's beat.
+	act factoryActs
 }
 
 // factoryRailCols is the rail's columns at width, its separator included, and
@@ -181,16 +185,50 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	if railW > 0 {
 		listW = railW - 1
 	}
-	rail, hits := a.factoryRail(listW, room)
-	var pane []string
 	paneW := width - railW
+	// THE VERBS' ROWS STAND AT THE BOTTOM OF THE PANE COLUMN, inside the body
+	// and above the hint line: the habit offer, then the typing row
+	// (factory_keys.go's [app.factoryFootRows]). The pane is asked for the
+	// room above them, so they never cover its last lines. Under the rail
+	// floor there is no pane, and they stand under the rail instead.
+	footW := paneW
+	if railW == 0 {
+		footW = width
+	}
+	var foot []string
+	for _, row := range a.factoryFootRows(footW - factoryPaneLead) {
+		foot = append(foot, factoryPad(strings.Repeat(" ", factoryPaneLead)+row, footW))
+	}
+	if len(foot) > room {
+		foot = foot[len(foot)-room:]
+	}
+	above := room - len(foot)
+	railRoom := room
+	if railW == 0 {
+		railRoom = above
+	}
+	rail, hits := a.factoryRail(listW, railRoom)
+	var pane []string
 	if railW > 0 {
 		// THE PANE COLUMN IS THE HANDOVER, ONE BLANK ROW, THEN THE PANE. The
 		// handover ([app.factoryHead]) carries its own blank as its last row,
 		// so the pane starts on the row after it and gets the room that is
 		// left; the rail beside both keeps its own window.
 		head := a.factoryHead(paneW)
-		pane = append(head, a.factoryPane(paneW, max(0, room-len(head)))...)
+		if len(head) > above {
+			head = head[:above]
+		}
+		pane = append(head, a.factoryPane(paneW, max(0, above-len(head)))...)
+		pane = append(pane, foot...)
+	} else {
+		for len(rail) < above {
+			rail = append(rail, strings.Repeat(" ", listW))
+			hits = append(hits, -1)
+		}
+		rail = append(rail, foot...)
+		for range foot {
+			hits = append(hits, -1)
+		}
 	}
 	sep := a.pal.dim(a.linearMark("│", "|"))
 	rows := make([]placeRow, 0, room)

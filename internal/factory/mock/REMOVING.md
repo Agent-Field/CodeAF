@@ -1,12 +1,14 @@
 # Removing the factory mock
 
-The mock floor is exactly three paths. Deleting them removes it whole:
+The mock floor is exactly four paths. Deleting them removes it whole:
 
 - `internal/factory/mock/` (this package, its tests and this note)
 - `cmd/codeaf/factorymock.go` and `cmd/codeaf/factorymock_stub.go`
   (the stub may instead stay as a one-line absent door returning
   `factory.Seam{}, false`)
 - `cmd/factory-mock/` (the standalone hand-driven mock it was ported from)
+- `internal/tui3/factory_mock_test.go` (the floor's verbs driven end to end
+  over the mock; the surface itself never imports it)
 
 Whoever calls `factoryMockSeam()` (`cmd/codeaf/factory.go`'s `factorySeam()`)
 drops that call in the same change if the stub goes too.

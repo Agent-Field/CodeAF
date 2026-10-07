@@ -70,19 +70,56 @@ type Seam struct {
 	Sleep func(d time.Duration) error
 }
 
-// Has says whether a door exists.
+// Has says whether a door exists, by the door's name: the field's name in
+// lower case (`launch`, `signoff`, `addstage`, `tick`). A name that is not a
+// door answers false, so a misspelt door draws no key rather than a key that
+// calls nil.
 func (s Seam) Has(door string) bool {
 	switch door {
-	case "tick":
-		return s.Tick != nil
-	case "sleep":
-		return s.Sleep != nil
+	case "load":
+		return s.Load != nil
+	case "launch":
+		return s.Launch != nil
+	case "stop":
+		return s.Stop != nil
+	case "pause":
+		return s.Pause != nil
+	case "dismiss":
+		return s.Dismiss != nil
+	case "answer":
+		return s.Answer != nil
+	case "steer":
+		return s.Steer != nil
+	case "signoff":
+		return s.SignOff != nil
+	case "sendback":
+		return s.SendBack != nil
+	case "reverify":
+		return s.Reverify != nil
+	case "bank":
+		return s.Bank != nil
 	case "new":
 		return s.New != nil
 	case "sync":
 		return s.Sync != nil
-	case "bank":
-		return s.Bank != nil
+	case "askauthor":
+		return s.AskAuthor != nil
+	case "setstage":
+		return s.SetStage != nil
+	case "addstage":
+		return s.AddStage != nil
+	case "bankstages":
+		return s.BankStages != nil
+	case "setgate":
+		return s.SetGate != nil
+	case "setcap":
+		return s.SetCap != nil
+	case "seteffort":
+		return s.SetEffort != nil
+	case "tick":
+		return s.Tick != nil
+	case "sleep":
+		return s.Sleep != nil
 	}
-	return true
+	return false
 }

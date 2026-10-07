@@ -36,9 +36,9 @@ import (
 // handover strip (factory_head.go) can stack its own rows above it by asking
 // for less room. It reads the snapshot the page folded in and never the disk.
 //
-// THE KEYS IT DRAWS DO NOTHING YET except the walk the rail already has. They
-// are drawn so the layout is settled before the verbs arrive, and the manual's
-// "not yet" section says so in as many words.
+// THE KEYS IT DRAWS ARE THE VERBS' (factory_keys.go), which reads the same
+// item and asks the seam's doors. The hint line under the page is the one that
+// names only the keys the seam has; the pane draws the layout whole.
 
 // factoryPaneLead is the pane's left margin: the spacing ladder's 2-cell lead.
 const factoryPaneLead = 2
@@ -180,10 +180,17 @@ func (a *app) factoryChips(it factory.Item) string {
 	}
 	// THE EFFORT CHIP SAYS A DASH, which is the knee: no word on the item
 	// means the crew picks the effort it would pick for this class of work.
+	// It reads the stage `e` turns ([factoryEffortStage]), so the chip and
+	// the key are about the same stage.
+	effort := "—"
+	stages := factoryStages(a.fp.snap, it)
+	if at := factoryEffortStage(a.fp.snap, it); at >= 0 && at < len(stages) && stages[at].Effort != "" {
+		effort = stages[at].Effort
+	}
 	return strings.Join([]string{
 		chip("gate", string(it.Gate), "t"),
 		chip("cap", factoryMoney(it.Cap), "c"),
-		chip("effort", "—", "e"),
+		chip("effort", effort, "e"),
 	}, "   ")
 }
 

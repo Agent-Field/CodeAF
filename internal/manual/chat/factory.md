@@ -15,8 +15,10 @@ With something on the floor, the left column is the list of items and the right 
 handover (what happened while you were away) above the item under the cursor. On a terminal
 under 72 columns the list takes the whole width and the right column is not drawn.
 
-The keys on the floor, as the hint line names them:
-`↑↓ walk · space mark · / filter · [ ] repo · A backlog · esc back`.
+On the still made-up floor, which has no verbs, the bottom line names the walking keys:
+`↑↓ walk · space mark · / filter · [ ] repo · A backlog · esc back`. On a floor that can be
+changed it names the item's own keys first (see keys on the factory floor), and when the
+line is too long the list keys are the first to go.
 
 - `↑` and `↓` (or `ctrl+p` and `ctrl+n`, or the wheel) walk the items.
 - `space` marks or unmarks the new item under the cursor (offered only on a new item).
@@ -88,7 +90,8 @@ never drawn.
 
 `space` on a new item marks it, and its mark turns to an accent dot; `space` again unmarks it.
 Only new items can be marked. The marks are kept through every re-read
-and when you leave the page and come back, until codeaf exits. A mark does nothing yet: there is no key that launches the marked items.
+and when you leave the page and come back, until codeaf exits. `L` launches every marked item
+(or the item under the cursor when nothing is marked) and clears the marks.
 
 ## stages, not a pipeline
 
@@ -105,8 +108,11 @@ gate: `plan` comes back with the plan before any code, and `ship` waits for your
 A new item's card lists the stages it would run, numbered, and the stream of a running item
 shows them as a strip of phases. A stage can carry a condition (`thin`, `large`,
 `touches auth`, `has ui`); on an item it does not fit, the stage is drawn dim with
-`· skipped: not thin` (or the condition it missed) after it. You cannot change an item's stages
-from the page yet.
+`· skipped: not thin` (or the condition it missed) after it.
+
+On a new item, `1` to `9` switch the stage with that number on or off, `s` adds a stage in
+words (`after review, make it neater` puts it after review), and `b` banks the item's stages
+as its repository's recipe. A run keeps the stages it launched with.
 
 ## the handover
 
@@ -155,7 +161,8 @@ A new item on the factory floor is drawn as a **card** in the right column. From
   first`, or `self-ships when the proof is green`. Under it, dim: `[s] add a stage in words ·
   [b] bank · [w] chips in words · [g] also on github · [d] hide`.
 
-None of those keys work yet; see what the factory does not do yet.
+What each key does is under keys on the factory floor. A key the floor cannot perform is left
+off the bottom line and does nothing.
 
 ## the stream
 
@@ -170,8 +177,9 @@ Then the recipe in one line (`plan · write · test · review · neaten · proof
 newest lines of its log that fit, each with its time and a mark for what kind of line it is.
 
 When the item **needs you**, the question is drawn under the log with a `?`, and
-`[y] yes · [n] no · [a] answer in words · it waits; the other benches do not`. Those keys do not
-answer yet. A **queued** item says `queued · benches full · a bench frees it`.
+`[y] yes · [n] no · [a] answer in words · it waits; the other benches do not`. `y` and `n`
+answer it; `a` opens a row to answer in words. A **queued** item says
+`queued · benches full · a bench frees it`.
 
 ## the proof sheet
 
@@ -188,25 +196,58 @@ again · [s] the stream`. When any row was not shown, **send back is the default
 `[enter] send back — "prove survives a codeaf restart"`, with `[a] ship anyway · [o] check again`
 and the line `a failed claim makes the blocking action the default key`.
 
-None of these keys sign off or send back yet. A shipped item shows when it merged, what it cost,
-and `[enter] the room`, which does not open anything yet either.
+`enter` on a sheet with a failed row opens the `send back ›` row with `prove` and that row's
+words already typed; `enter` again sends it. A shipped item shows when it merged, what it cost,
+and `[enter] the room`, which says `the room opens here once streams are conversations` and
+opens nothing yet.
+
+## keys on the factory floor
+
+The bottom line of the factory page names only the keys that work for the item under the
+cursor, spelled like this:
+
+- **New:** `enter go · p plan first · r run · space mark · L launch marked · 1-9 stages ·
+  s stage · t c e chips · d hide · n new`. `enter` launches; `p` launches with the plan gate,
+  `r` with the ship gate. `t` cycles the gate plan, ship, none; `c` the cap $2, $5, $8, $15,
+  $30; `e` the first stage's effort: none, cheap, strong. `w` opens `in words ›` for chips
+  (`$8, plan first, stronger`). `g` puts a terminal-made item on github too, or takes it off.
+  `a` asks a thin item's author its questions. `d` hides the item.
+- **Running or queued:** `s steer · p pause · x stop · e effort · esc back`. `s` opens
+  `steer ›`; `p` pauses and resumes; `x` stops and keeps the branch; `e` cycles the running
+  stage's effort.
+- **Needs you:** `y n answer · a in words · s steer · x stop`. `a` opens `answer ›`.
+- **Landed:** `enter ship` when every row was shown, or `enter send back` when one was not;
+  `a ship anyway · o check again · d diff`, and `c send back` on a clean sheet. `d` says
+  `the diff is the appendix` and that it opens in your editor later.
+- **Anywhere:** `n new` opens `new work ›` on the repository the list shows (or the first one)
+  and puts the cursor on the new item. On the made-up moving floor, `S sleep 8h` jumps its
+  clock eight hours and starts a new handover.
+
+A key that takes words opens a one-line box at the bottom of the right column: `enter` sends,
+`backspace` edits, `esc` cancels. A refusal, such as `#1540 is on a bench; stop it first`, is
+said on the bottom line beside the keys.
+
+## bank a habit after clean sign-offs
+
+After three sign-offs in a row without edits, the bottom of the right column offers a habit:
+`habit forming — 3 sign-offs without edits on codeaf` and
+`factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet`.
+`y` writes that sentence into the repository's habits; `n` puts the offer away.
 
 ## what the factory does not do yet
 
 Be plain about this when asked:
 
+- **The verbs work only on the made-up moving floor**, which exists only in a development build
+  started with `CODEAF_FACTORY_MOCK=1`. Launching, steering, answering, signing off and sending
+  back change that made-up floor and nothing else. The shipped binary has no such floor.
 - **No GitHub, GitLab or Linear is connected.** There is no way to connect a repository yet, so
   no item arrives from one.
 - **Nothing posts anywhere.** The factory never comments, labels, opens a pull request or opens
-  an issue on any service.
-- **There are no verbs.** The page cannot launch, stop, pause, answer, steer, sign off or send
-  back an item. The keys walk, filter, pick a repository, show the backlog and mark new items;
-  a mark launches nothing. The card, the stream and the proof sheet draw their keys
-  (`[enter] go`, `[t]`, `[c]`, `[e]`, `[s]`, `[b]`, `[w]`, `[g]`, `[d]`, `[y]`, `[n]`, `[a]`,
-  `[o]`, `[enter] ship`, `[enter] send back`) so the layout is settled, but none of them does
-  anything yet.
-- **The page is empty on an ordinary launch** and draws the `nothing connected yet` line. When
-  codeaf is started with the environment variable `CODEAF_FACTORY_FIXTURE=1` the page reads a
-  still, made-up floor instead (three repositories, ten items, one in every group) so the page
-  can be looked at. That floor never changes and none of its items are real.
+  an issue on any service; `g`, `a` on a thin item and a sign-off only change the made-up floor.
+- **The room does not open yet.** `enter` on a running or shipped item says
+  `the room opens here once streams are conversations`, and the diff does not open either.
+- **The page is empty on an ordinary launch** and draws the `nothing connected yet` line. With
+  `CODEAF_FACTORY_FIXTURE=1` the page reads a still, made-up floor (three repositories, ten
+  items) that never changes and has no verbs: only the walking keys work on it.
 - **Over `--host`** the factory page draws the same `nothing connected yet` line.
