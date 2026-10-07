@@ -1,0 +1,40 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings          wed 11:07am
+
+   +
+────────────────────────────────────────────────────────────────────────────────
+
+
+    · updating codeaf in the background · this session keeps running
+    · fixture · codeaf update states · CODEAF_UPDATE_DEMO=manual · no network,
+      nothing installed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ deepseek/deepseek-v4.1-flash:auto · ◇ YOLO ─────────────────    $0.00   idle ─
+ ›
+
+
+ Updating codeaf in the background · keep working               project: codeaf

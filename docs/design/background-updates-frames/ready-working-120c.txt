@@ -1,0 +1,40 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:07am
+
+   ◐ tighten the retry loop in the sync client ×   +   ▦ All
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+                                                                                          │ Tasks 0                alt+l
+    · resumed ~/v3/projects/-tmp-codeaf-update-drive.BPWtpZ-work-                         │ + /task
+      project/8c7285c6057fd684/transcript.jsonl                                           │
+    · esc interrupts · ctrl+c quits · ? for help                                          │ + /standing
+                                                                                          │
+  › tighten the retry loop in the sync client                                             │
+                                                                                          │
+     running 1 command                                                                   │
+     Reading the retry loop now                                                          │
+                                                                                          │
+    · codeaf v0.9.3 installed · this session keeps running · new windows open the updated │
+      app; work already running keeps its current engine until all its windows and work   │
+      close                                                                               │
+    · fixture · codeaf update states · CODEAF_UPDATE_DEMO=ready-working · no network,     │
+      nothing installed                                                                   │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+
+─ deepseek/deepseek-v4.1-flash:auto · ◇ YOLO ────────────────────────────────────────────────────    $0.00   ⠋ working ─
+ › and keep the backoff capped
+
+
+ enter steers it in · ctrl+g backgrounds · esc interrupt                                                project: codeaf

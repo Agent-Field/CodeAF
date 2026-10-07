@@ -464,8 +464,14 @@ type Options struct {
 	ResolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
 	InstallUpdate func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error)
 	// UpdateRunning is the exact revision of this process, without build-time
-	// decoration. UpdateArgs are its original arguments. Restart is the slot the
-	// surface fills before quitting and the door reads after the terminal is back.
+	// decoration. UpdateArgs are its original arguments.
+	//
+	// Restart is the plan a quitting surface used to fill for the door to read
+	// after the terminal was back. NO INSTALL FILLS IT NOW: an install replaces
+	// the file and the next launch opens it, so nothing on this surface quits for
+	// an update. The field is still handed in by the four doors because the
+	// engine lane reads the same plan, and it is empty on every road that does
+	// not restart.
 	UpdateRunning string
 	UpdateCurl    string
 	UpdateArgs    []string

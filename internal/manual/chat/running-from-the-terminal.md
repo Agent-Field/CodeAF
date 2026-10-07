@@ -7,9 +7,12 @@ channel is told about it, and with `auto update` on (the default) the install
 begins on its own after a brief pause: the sentence `codeaf <newest> is out ·
 installs in 10s · <skip chord> skip · /update` waits in the keys line, counted
 down from about ten seconds. It never blocks a keystroke. `/update` while it
-is up installs immediately; the skip chord, or `/update skip`, answers that one
-release and it is never offered again; `/update never` turns `auto update`
-off, and so does the row in `/settings`. A release whose automatic install failed
+is up installs immediately — that is the release the offer is about, not a
+rollback; the skip chord, or `/update skip`, answers that one release, it is
+never offered again, and a later release is a new question; `/update never` turns
+`auto update` off, and so does the row in `/settings`. Turning it off does not
+cancel an install already downloading, and the launch check still makes its one
+request and names what is out. A release whose automatic install failed
 three times stops being tried on its own.
 
 A release candidate gets the notice when its stable line is published. An equal
@@ -33,7 +36,8 @@ staging build selects its own channel; stable and rc select stable. An explicit
 channel or tag wins. An ahead dev build refuses with `this codeaf is <running>,
 ahead of the newest dev <newest> — /update <newest> installs it anyway`; naming
 the tag is the deliberate downgrade, and it is the ONLY road that rolls a file
-back. An automatic or channel update never installs an older build than the one
+back — a bare `/update` you type while an offer is up installs what the offer is
+about and never steps the file backwards. An automatic or channel update never installs an older build than the one
 on disk, and a release already on disk is a quiet no-op. If the file is owned by
 Homebrew, Nix or the system package manager, or is in a folder this account
 cannot write, neither road replaces it in place. One install runs at a time per executable:

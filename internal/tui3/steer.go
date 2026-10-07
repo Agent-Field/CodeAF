@@ -490,10 +490,28 @@ func (a *app) runHint() string {
 // Idle controls yield from the left to commands and home; running hints keep
 // their existing priority from the left. Every step removes at least one clause.
 func (a *app) hintShorter(slot string) string {
-	// THE UPDATE OFFER'S DEFER CLAUSE IS DROPPED FIRST. It is appended to a
-	// running turn's own keys, and the generic rule below cannot shorten a line
-	// that extends the run hint — it would delete the whole row, taking the
-	// turn's keys with it. Here the offer's clause goes and the turn's keys stay.
+	// THE OFFER'S OWN CLAUSE SURVIVES THE TURN'S. It is appended to a running
+	// turn's keys, and the generic rule below cannot shorten a line that extends
+	// the run hint without deleting the whole row. So while the grace is open the
+	// line is shortened FROM THE TURN'S LEFT and the offer keeps its clause: with
+	// a ten-second countdown running, "not now" is the one thing a person still
+	// has a moment to say, and dropping it first would take away the only control
+	// the countdown has.
+	//
+	// WHEN THE TURN IS DOWN TO ITS LAST CLAUSE, the offer's clause is what goes,
+	// because a keys row cannot be shorter than the key that stops the turn —
+	// and the row must always shorten, or a narrow frame would spin here.
+	if full := a.runHint(); full != "" && strings.HasSuffix(slot, hintSegment+updateOfferDeferWords) && a.offer.offering() {
+		base := strings.TrimSuffix(slot, hintSegment+updateOfferDeferWords)
+		if base != "" && strings.HasSuffix(full, base) {
+			if parts := strings.Split(base, hintSegment); len(parts) > 1 {
+				return strings.Join(parts[1:], hintSegment) + hintSegment + updateOfferDeferWords
+			}
+		}
+		return base
+	}
+	// A DEFER CLAUSE LEFT OVER FROM A FINISHED OFFER FOLDS BACK to the turn's own
+	// keys rather than being shortened away with the line that carries them.
 	if full := a.runHint(); full != "" && strings.HasPrefix(slot, full+hintSegment) {
 		return full
 	}

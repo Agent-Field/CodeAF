@@ -153,6 +153,11 @@ var settingReaders = map[string]string{
 	// The hints row names its accessor too: the surface reads it at boot and at
 	// every turn end, beside the mouse row (internal/tui3's notice.go).
 	KeyHints: "HintsAt",
+	// The auto-update row is read outside this package by the surface's
+	// live reader (cmd/codeaf's runSurface hands [config.UpdateAutoAt] to the
+	// coordinator), which is exactly the "does anything use it" proof this
+	// table asks for: the countdown re-reads the row through it.
+	KeyUpdateAuto: "UpdateAutoAt",
 	// The two surface rows name their own KEY, because that is now what the
 	// far side touches: they resolve through the project layer
 	// (ProjectBoolAt), which takes the row by name and calls

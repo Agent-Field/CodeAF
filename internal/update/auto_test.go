@@ -5,8 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -230,5 +234,158 @@ func TestInstallRefusesADuplicateAndAStaleDowngrade(t *testing.T) {
 	rolled, err := install("v0.9.2", true)
 	if err != nil || rolled.Already {
 		t.Fatalf("named rollback = %+v, %v", rolled, err)
+	}
+}
+
+// TestTargetLockAnswersOneTargetThroughEverySpelling proves the canonicalization
+// the whole duplicate/downgrade guard rests on: a relative path, an absolute
+// path and a path through a symlinked folder are ONE target, so the second
+// spelling answers "in flight" rather than opening a second lock file beside a
+// path nothing else names.
+func TestTargetLockAnswersOneTargetThroughEverySpelling(t *testing.T) {
+	root := t.TempDir()
+	realDir := filepath.Join(root, "real")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(realDir, "codeaf")
+	if err := os.WriteFile(target, []byte("build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	held, err := TryTargetLock(target)
+	if err != nil {
+		t.Fatalf("lock the real path: %v", err)
+	}
+	defer held.Release()
+
+	spellings := map[string]string{"absolute": target, "dirty": realDir + "/./codeaf"}
+	if rel, err := filepath.Rel(mustGetwd(t), target); err == nil && !filepath.IsAbs(rel) {
+		spellings["relative"] = rel
+	}
+	if runtime.GOOS != "windows" {
+		alias := filepath.Join(root, "alias")
+		if err := os.Symlink(realDir, alias); err != nil {
+			t.Fatalf("symlink the folder: %v", err)
+		}
+		spellings["symlinked folder"] = filepath.Join(alias, "codeaf")
+	}
+	for name, spelling := range spellings {
+		t.Run(name, func(t *testing.T) {
+			second, err := TryTargetLock(spelling)
+			if !errors.Is(err, ErrInstallInFlight) {
+				t.Fatalf("TryTargetLock(%q) = %v, want in flight", spelling, err)
+			}
+			if second != nil {
+				t.Fatal("an alias of a held target handed back a lock")
+			}
+		})
+	}
+}
+
+func mustGetwd(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wd
+}
+
+// TestTargetLockSerialisesTwoRealProcesses is the cross-process half: a second
+// PROCESS, with its own file descriptors and its own address space, must find
+// the lock already held. The child is this test binary run again, so nothing is
+// simulated about it (see [TestTargetLockSecondProcessHelper]).
+func TestTargetLockSerialisesTwoRealProcesses(t *testing.T) {
+	if os.Getenv(targetLockHelperEnv) != "" {
+		t.Skip("helper process")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "codeaf")
+	if err := os.WriteFile(target, []byte("build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	held, err := TryTargetLock(target)
+	if err != nil {
+		t.Fatalf("hold the target: %v", err)
+	}
+
+	child := exec.Command(os.Args[0], "-test.run=^TestTargetLockSecondProcessHelper$", "-test.v")
+	child.Env = append(os.Environ(), targetLockHelperEnv+"="+target)
+	output, runErr := child.CombinedOutput()
+	if runErr != nil {
+		t.Fatalf("the child exited %v, want 0 (in flight):\n%s", runErr, output)
+	}
+	held.Release()
+
+	// AND WITH THE LOCK DROPPED, the same child takes it: the first answer was
+	// the other process's lock and not a child that cannot lock at all.
+	child = exec.Command(os.Args[0], "-test.run=^TestTargetLockSecondProcessHelper$", "-test.v")
+	child.Env = append(os.Environ(), targetLockHelperEnv+"="+target)
+	output, runErr = child.CombinedOutput()
+	if runErr == nil {
+		t.Fatalf("the child took a released lock with no error, so the guard proved nothing:\n%s", output)
+	}
+}
+
+// targetLockHelperEnv carries one target to the child process above.
+const targetLockHelperEnv = "CODEAF_UPDATE_LOCK_HELPER_TARGET"
+
+// TestTargetLockSecondProcessHelper is the child half of the test above. It
+// exits 0 when the target is already held by another process, and EXITS
+// NON-ZERO when it could take the lock, which the parent reads as "the lock did
+// not serialize".
+func TestTargetLockSecondProcessHelper(t *testing.T) {
+	targetPtr := strings.TrimSpace(os.Getenv(targetLockHelperEnv))
+	if targetPtr == "" {
+		t.Skip("not the helper")
+	}
+	lock, err := TryTargetLock(targetPtr)
+	switch {
+	case errors.Is(err, ErrInstallInFlight):
+		os.Exit(0)
+	case err != nil:
+		fmt.Fprintf(os.Stderr, "helper lock error: %v\n", err)
+		os.Exit(1)
+	}
+	lock.Release()
+	fmt.Fprintln(os.Stderr, "helper took the lock")
+	os.Exit(2)
+}
+
+// TestInstallRefusalFollowsASymlinkedTarget proves the ownership screen answers
+// about the file the replacement lands on, not about the alias that named it: a
+// launcher holding the running executable as a symlink into a folder this
+// account cannot write is refused, where the alias's own (writable) folder would
+// have answered "ordinary" and left the installer to refuse it a moment later.
+func TestInstallRefusalFollowsASymlinkedTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinked folders need a privilege this test cannot assume")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root may write into any folder, so there is no refusal to see")
+	}
+	root := t.TempDir()
+	realDir := filepath.Join(root, "real")
+	if err := os.MkdirAll(realDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realDir, "codeaf"), []byte("build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(realDir, alias); err != nil {
+		t.Fatal(err)
+	}
+	if !dirWritable(alias) {
+		t.Fatal("the alias's own folder is not writable; this test would prove nothing")
+	}
+	if err := os.Chmod(realDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(realDir, 0o755) })
+
+	refusal := InstallRefusal(filepath.Join(alias, "codeaf"), "curl -fsSL https://example.invalid/codeaf | bash")
+	if refusal == "" || !strings.Contains(refusal, "cannot write") {
+		t.Fatalf("a symlinked target in an unwritable folder = %q, want the write refusal", refusal)
 	}
 }

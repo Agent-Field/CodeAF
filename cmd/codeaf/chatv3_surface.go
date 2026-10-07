@@ -68,11 +68,15 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	autoUpdate := config.UpdateAutoAt(options.ProfileDir)
 	options.UpdateAuto = &tui3.UpdateCoordinator{
 		Enabled: autoUpdate,
-		State:   func() codeupdate.AutoState { return codeupdate.LoadAutoState(options.ProfileDir) },
-		Dismiss: func(tag string) error { return codeupdate.DismissRelease(options.ProfileDir, tag) },
-		Failure: func(tag string, failure error) { codeupdate.AutoFailure(options.ProfileDir, tag, failure) },
-		Success: func() { codeupdate.AutoSuccess(options.ProfileDir) },
-		Disable: func() error { return config.SaveUpdateAuto(options.ProfileDir, false) },
+		// THE LIVE READER IS THE PROFILE ITSELF, and it is what the countdown
+		// and the deadline ask: /settings updates this window's Enabled, while
+		// a row changed in ANOTHER window is only visible by reading it again.
+		EnabledLive: func() bool { return config.UpdateAutoAt(options.ProfileDir) },
+		State:       func() codeupdate.AutoState { return codeupdate.LoadAutoState(options.ProfileDir) },
+		Dismiss:     func(tag string) error { return codeupdate.DismissRelease(options.ProfileDir, tag) },
+		Failure:     func(tag string, failure error) { codeupdate.AutoFailure(options.ProfileDir, tag, failure) },
+		Success:     func() { codeupdate.AutoSuccess(options.ProfileDir) },
+		Disable:     func() error { return config.SaveUpdateAuto(options.ProfileDir, false) },
 		// A BREW, DISTRO OR NIX FILE, OR ONE IN A FOLDER THIS ACCOUNT CANNOT
 		// WRITE, is not ours to replace in place.
 		Refusal: func() string { return codeupdate.InstallRefusal(executable, curl) },
@@ -80,9 +84,15 @@ func runSurface(ctx context.Context, options tui3.Options) error {
 	options.UpdateCheck = func(check context.Context) (codeupdate.Available, bool) {
 		return codeupdate.CheckLaunch(check, codeupdate.CheckOptions{
 			Running: revision, ProfileDir: options.ProfileDir, Client: client,
-			// OFF MEANS NO REQUEST AT ALL, not a hidden one. The environment
-			// value keeps its one-launch meaning beside the standing setting.
-			Disabled:   !autoUpdate || internalenv.Get(codeupdate.NoUpdateCheckEnv) == "1",
+			// OFF STILL LOOKS, ONCE, AND ONLY THE ENVIRONMENT SILENCES THE
+			// REQUEST. `update.auto` off means codeaf never installs on its
+			// own and the surface says what is out on one dim line; the
+			// check itself is a read, not an act, and a person who turned the
+			// row off still deserves to know a release exists. Only
+			// CODEAF_NO_UPDATE_CHECK, which is a shell's decision to make no
+			// request at all, takes the look away — the launch check's own
+			// [codeupdate.CheckOptions.Disabled] contract.
+			Disabled:   internalenv.Get(codeupdate.NoUpdateCheckEnv) == "1",
 			Executable: executable,
 		})
 	}

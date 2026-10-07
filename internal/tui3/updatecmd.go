@@ -21,6 +21,19 @@ type updateResolveMsg struct {
 	// auto is true when the offer's own road raised this, in the background and
 	// for a release the person did not have to ask for.
 	auto bool
+	// named is true when a PERSON named what to install — `/update v0.9.0`, or
+	// a channel by hand. It is the only thing that makes replacing the file with
+	// an older release deliberate, and the only road that reaches the installer
+	// when its tag is the build already running. A tag THIS WINDOW pinned — the
+	// release the offer was about, used for a bare `/update` during the
+	// countdown — is not a person naming anything, which is why the intent is
+	// carried here and never derived from the choice's own tag.
+	named bool
+}
+
+// namedTag is whether the person named an exact release by hand.
+func (m updateResolveMsg) namedTag() bool {
+	return m.named && strings.TrimSpace(m.choice.Version) != ""
 }
 
 type updateInstallMsg struct {
@@ -101,7 +114,10 @@ func (a *app) runUpdateCommand(argument string) tea.Cmd {
 		a.note("an update is already running")
 		return nil
 	}
-	if a.resolveUpdate == nil || a.installUpdate == nil || a.restart == nil {
+	// NO RESTART PLAN IS ASKED FOR. An install replaces the file and the next
+	// launch opens it, so the ability to update here rests on the two doors
+	// that do the work and on nothing else.
+	if a.resolveUpdate == nil || a.installUpdate == nil {
 		a.note("this window cannot update codeaf here · install a release with: " + a.updateCurlLine())
 		return nil
 	}
@@ -118,17 +134,21 @@ func (a *app) runUpdateCommand(argument string) tea.Cmd {
 		return a.updateNowFromOffer()
 	}
 	a.offer.clear()
-	return a.beginUpdate(updateChoice(argument, a.updateRunning), false)
+	// A PERSON NAMED IT: the argument is a channel or an exact tag. That is the
+	// intent [updateResolveMsg.named] carries, and a bare `/update` is the
+	// default road that names nothing.
+	return a.beginUpdate(updateChoice(argument, a.updateRunning), false, argument != "")
 }
 
 // beginUpdate captures the resolver and leaves the loop. Every road installs in
-// the background; `auto` only changes what the completion says.
-func (a *app) beginUpdate(choice codeupdate.Choice, auto bool) tea.Cmd {
+// the background; `auto` and `named` only change what the completion says and
+// whether a rollback is deliberate.
+func (a *app) beginUpdate(choice codeupdate.Choice, auto, named bool) tea.Cmd {
 	resolve := a.resolveUpdate
 	a.updateInFlight = true
 	return func() tea.Msg {
 		release, err := resolve(context.Background(), choice)
-		return updateResolveMsg{release: release, choice: choice, err: err, auto: auto}
+		return updateResolveMsg{release: release, choice: choice, err: err, auto: auto, named: named}
 	}
 }
 
@@ -150,7 +170,26 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 	if message.err != nil {
 		return a.updateStopped(message.auto, message.choice.Version, message.err)
 	}
-	if message.release.Tag == a.updateRunning {
+	// THE AUTOMATIC ROAD ASKS ONCE MORE, HERE. The resolver is off-frame, so a
+	// row turned off or a tag another window dismissed can land between the
+	// deadline and the bytes: the decision is asked again before anything is
+	// downloaded. A command a person typed is theirs and is not re-checked.
+	if message.auto {
+		if withdrawn := a.updateAutoWithdrawn(message.release.Tag); withdrawn != "" {
+			a.updateInFlight = false
+			a.offer.clear()
+			a.note(withdrawn)
+			return nil
+		}
+	}
+	// AN EXPLICIT TAG DOES NOT STOP HERE. `a.updateRunning` is the stamp of this
+	// PROCESS; the file on disk can be something else entirely, because another
+	// window installed a newer build while this one kept working. `/update <tag>`
+	// is a person asking for that exact file, so it reaches the shared
+	// installer, which is idempotent when the disk already holds it and refuses
+	// a silent rollback otherwise. The automatic road and the default channel
+	// keep the quiet no-op, where the stamp really is the answer.
+	if message.release.Tag == a.updateRunning && !message.namedTag() {
 		a.updateInFlight = false
 		a.offer.clear()
 		a.note("you are on the newest codeaf, " + message.release.Tag)
@@ -175,15 +214,16 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 	// The lock, the on-disk re-read and the duplicate/downgrade refusal all live
 	// inside [codeupdate.Install], so the chat surface has no second acquirer to
 	// keep in step with the command line.
-	a.offer.downloading(message.auto)
+	a.offer.downloading()
 	a.offer.tag = strings.TrimSpace(message.release.Tag)
 	a.note(a.updateOfferNote())
 	install := a.installUpdate
 	release := message.release
-	// ONLY A NAMED TAG IS A DELIBERATE ROLLBACK. A channel or a bare /update
-	// follows the release line forward, so a file another window advanced is
-	// never stepped back by it.
-	allowDowngrade := !message.auto && strings.TrimSpace(message.choice.Version) != ""
+	// ONLY A PERSON NAMING AN EXACT TAG IS A DELIBERATE ROLLBACK. A channel, a
+	// bare `/update`, the automatic road and the bare `/update` that answers an
+	// open offer all follow the release line forward, so a file another window
+	// advanced is never stepped back by them.
+	allowDowngrade := message.namedTag()
 	return func() tea.Msg {
 		result, err := install(context.Background(), codeupdate.InstallOptions{
 			Release: release, AllowDowngrade: allowDowngrade,

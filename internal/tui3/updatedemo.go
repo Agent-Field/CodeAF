@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -47,7 +48,7 @@ func (a *app) openDemoUpdate(env func(string) string) {
 		a.offer.raise(released, running, a.now())
 		a.note(a.updateOfferNote())
 	case "downloading":
-		a.offer.downloading(false)
+		a.offer.downloading()
 		a.offer.tag = released
 		a.note(a.updateOfferNote())
 	case "ready":
@@ -69,16 +70,18 @@ func (a *app) openDemoUpdate(env func(string) string) {
 		a.offer.tag = released
 		a.note(a.updateOfferNote())
 	case "manual":
-		a.offer.downloading(true)
+		a.offer.downloading()
 		a.offer.tag = released
 		a.note(a.updateOfferNote())
 	case "off":
 		a.note(quietUpdateNotice(codeupdate.Available{Latest: released, Running: running}))
 	case "failure":
-		a.offer.failed(a.now())
-		a.offer.tag = released
-		a.note("codeaf " + released + " could not be installed · the checksum did not match")
-		a.note("/update tries again when you ask · or install a release with: " + updateFallbackCurl)
+		// THE PRODUCTION COMPLETION, DRAWN BY THE PRODUCTION HANDLER. A
+		// synthetic error goes through [app.updateStopped] on the automatic
+		// road, so the frame shows the sentence a real failed background
+		// install shows rather than a copy of it kept here: the fixture cannot
+		// promise more than the surface says.
+		a.updateStopped(true, released, errors.New("the checksum did not match"))
 	}
 	// EVERY CAPTURE SAYS WHAT IT IS, written LAST so it is the line still on
 	// screen whichever state the fixture drew. A frame taken from a fixture can

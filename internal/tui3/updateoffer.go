@@ -25,9 +25,15 @@ import (
 // [updateOffer] is a pure state machine; updatedemo.go raises it deterministically
 // for captures.
 type UpdateCoordinator struct {
-	// Enabled is the live value of the `update.auto` row. OFF means nothing is
-	// downloaded on its own; the launch check still says what is out.
+	// Enabled is the value of the `update.auto` row read when this window wired
+	// its coordinator. OFF means nothing is downloaded on its own; the launch
+	// check still says what is out.
 	Enabled bool
+	// EnabledLive re-reads the row from the profile, and it is the answer the
+	// AUTOMATIC road acts on: a row changed in /settings updates this window's
+	// Enabled, and a row changed in ANOTHER window is only visible here. Nil
+	// falls back to Enabled.
+	EnabledLive func() bool
 	// State reads the remembered dismissal, failure count and backoff.
 	State func() codeupdate.AutoState
 	// Dismiss records "not now" for one exact release.
@@ -75,12 +81,48 @@ type updateOffer struct {
 	deadline time.Time
 	// settleAt is when the ready or failed line folds away.
 	settleAt time.Time
-	// manual is true when a person typed the road rather than letting the offer
-	// run. It changes the words, not the behaviour.
-	manual bool
 }
 
 func (o updateOffer) active() bool { return o.phase != updateIdle }
+
+// updateAutoEnabledNow is the LIVE answer to whether the automatic road may
+// still spend, read from the profile where production supplied a reader and
+// from the captured flag otherwise.
+func (a *app) updateAutoEnabledNow() bool {
+	if a.updateAuto == nil {
+		return false
+	}
+	if a.updateAuto.EnabledLive != nil {
+		return a.updateAuto.EnabledLive()
+	}
+	return a.updateAuto.Enabled
+}
+
+// updateAutoMemory is the remembered answer — the dismissal, the failure
+// count and its backoff — read fresh, because another window writes those too.
+func (a *app) updateAutoMemory() codeupdate.AutoState {
+	if a.updateAuto == nil || a.updateAuto.State == nil {
+		return codeupdate.AutoState{}
+	}
+	return a.updateAuto.State()
+}
+
+// updateAutoWithdrawn is the ONE question the automatic road asks before it
+// spends anything, and the sentence to say when the answer is no. It is asked
+// at the deadline, on every countdown beat, and AGAIN after the resolver
+// answers: a person turning the row off or another window dismissing the tag
+// can land in any of those gaps, and the decision is not this window's to keep
+// once it is stale.
+func (a *app) updateAutoWithdrawn(tag string) string {
+	tag = strings.TrimSpace(tag)
+	if !a.updateAutoEnabledNow() {
+		return "auto update is off · nothing was installed · /update installs codeaf " + tag + " when you want it"
+	}
+	if !codeupdate.ShouldOffer(a.updateAutoMemory(), tag, a.now()) {
+		return "codeaf " + tag + " will not be installed on its own · /update installs it when you want it"
+	}
+	return ""
+}
 
 // raise opens the grace window for a release the launch check found.
 func (o *updateOffer) raise(tag, running string, now time.Time) {
@@ -89,7 +131,6 @@ func (o *updateOffer) raise(tag, running string, now time.Time) {
 	o.running = strings.TrimSpace(running)
 	o.deadline = now.Add(codeupdate.AutoGrace)
 	o.settleAt = time.Time{}
-	o.manual = false
 }
 
 func (o *updateOffer) expire() {
@@ -98,23 +139,24 @@ func (o *updateOffer) expire() {
 	}
 }
 
-func (o *updateOffer) downloading(manual bool) {
+// downloading marks the phase: the file is being fetched. WHICH ROAD ASKED is
+// not part of this state — the completion's words come from the message that
+// carried the install, and a second flag here would be a spelling of `auto`
+// that could only drift from it.
+func (o *updateOffer) downloading() {
 	o.phase = updateDownloading
 	o.settleAt = time.Time{}
-	o.manual = manual
 }
 
 // ready marks an install that landed, and starts the dwell that folds its line.
 func (o *updateOffer) ready(now time.Time) {
 	o.phase = updateReady
-	o.manual = false
 	o.settleAt = now.Add(updateOfferingDwell)
 }
 
 // failed marks an install that did not land, with the same dwell.
 func (o *updateOffer) failed(now time.Time) {
 	o.phase = updateFailed
-	o.manual = false
 	o.settleAt = now.Add(updateOfferingDwell)
 }
 
@@ -185,13 +227,17 @@ func spellGrace(left time.Duration) string {
 	return itoa(seconds) + "s"
 }
 
+// updateOfferDeferWords is the defer clause's own words, spelled once so the
+// shortener recognises exactly what this appended (steer.go's [app.hintShorter]).
+const updateOfferDeferWords = "/update skip"
+
 // updateOfferDefer is the clause appended to a running turn's own keys while
 // the grace is open, so the chance to defer survives work in the conversation.
 func (a *app) updateOfferDefer() string {
 	if !a.offer.offering() {
 		return ""
 	}
-	return " · /update skip"
+	return hintSegment + updateOfferDeferWords
 }
 
 // withUpdateOffer folds the defer clause into whatever the keys line was going
@@ -215,7 +261,7 @@ func (a *app) updateOfferNote() string {
 	case updateDownloading:
 		return "updating codeaf in the background · this session keeps running"
 	case updateReady:
-		return "codeaf " + o.tag + " installed · this session keeps running · new windows use the update; existing engines finish their work first, and an attached window keeps its engine current"
+		return "codeaf " + o.tag + " installed · this session keeps running · new windows open the updated app; work already running keeps its current engine until all its windows and work close"
 	case updateFailed:
 		return "codeaf " + o.tag + " could not be installed · this version keeps running · /update retries"
 	}
@@ -249,6 +295,11 @@ func (a *app) updateOfferKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 
 // updateNowFromOffer is `/update` while the grace is open: install now rather
 // than waiting the countdown out.
+//
+// IT IS THE MANUAL ROAD. A person typed it, so it is not re-checked against a
+// row another window may have just turned off, and its completion carries the
+// same checksum line every hand-run install does — the offer simply answered
+// early.
 func (a *app) updateNowFromOffer() tea.Cmd {
 	if !a.offer.offering() {
 		return nil
@@ -256,11 +307,15 @@ func (a *app) updateNowFromOffer() tea.Cmd {
 	tag := a.offer.tag
 	a.offer.clear()
 	a.note("installing codeaf " + tag + " now")
-	return a.beginUpdate(updateChoice(tag, a.updateRunning), true)
+	// THE TAG IS OURS, NOT THEIRS: the person typed bare `/update`, so this
+	// install may not roll the file back to the candidate this window pinned.
+	return a.beginUpdate(updateChoice(tag, a.updateRunning), false, false)
 }
 
 // skipUpdateOffer answers this release "not now", and only while it is being
-// offered. The answer is written down, so the tag is never offered again.
+// offered. The answer is written down for that EXACT tag, so this release is
+// never offered again — and a note that claimed more than the write proved
+// would be the surface lying about a file.
 func (a *app) skipUpdateOffer() {
 	if !a.offer.offering() {
 		return
@@ -268,14 +323,25 @@ func (a *app) skipUpdateOffer() {
 	tag := a.offer.tag
 	a.offer.clear()
 	if a.updateAuto != nil && a.updateAuto.Dismiss != nil && tag != "" {
-		_ = a.updateAuto.Dismiss(tag)
+		if err := a.updateAuto.Dismiss(tag); err != nil {
+			// THIS WINDOW KEEPS ITS ANSWER either way: the offer and its
+			// countdown are gone. Only the note changes, because only the
+			// durable half is in doubt.
+			a.note("skipped codeaf " + tag + " for this window · could not save the skip: " + err.Error() + " · it may be offered again at the next launch")
+			return
+		}
 	}
-	a.note("codeaf " + tag + " will not be offered again · this release only · /update installs it for the next launch whenever you want")
+	a.note("skipped codeaf " + tag + " · newer releases will still be offered · /update installs it anytime")
 }
 
-// declineUpdateOffer turns the automatic updater off for good, reached from the
-// settings row and from `/update never`.
+// declineUpdateOffer turns the automatic updater off for good, reached from
+// `/update never`.
+//
+// IT DOES NOT STOP AN INSTALL ALREADY RUNNING, and it does not say it did: the
+// road is about the next release, so a download in flight finishes and is
+// reported by the completion that owns its line.
 func (a *app) declineUpdateOffer() {
+	finishing := a.updateInFlight
 	a.offer.clear()
 	if a.updateAuto != nil && a.updateAuto.Disable != nil {
 		if err := a.updateAuto.Disable(); err != nil {
@@ -283,6 +349,10 @@ func (a *app) declineUpdateOffer() {
 			return
 		}
 		a.updateAuto.Enabled = false
+	}
+	if finishing {
+		a.note("auto update is off · the install already running finishes · /settings turns it back on · /update still installs a release when you ask")
+		return
 	}
 	a.note("auto update is off · /settings turns it back on · /update still installs a release for the next launch when you ask")
 }
@@ -320,16 +390,52 @@ func (a *app) offerTick() tea.Cmd {
 	return surfaceTick(wait, func(time.Time) tea.Msg { return updateOfferTickMsg{} })
 }
 
-// tookOfferTick repaints one second of the countdown, and pauses the grace
-// while a question page owns the frame: the offer cannot be seen there, so the
-// clock does not run out invisibly under it.
+// updateOfferHidden reports whether something other than the keys row owns the
+// keyboard right now, so the countdown cannot be read and its chord cannot be
+// answered. The clock WAITS there rather than spending the grace invisibly.
+//
+// THE LIST IS [app.key]'s RUNG ORDER AND NOT A GUESS. Every layer that takes the
+// whole keyboard above [app.updateOfferKey] — a team's card, the move picker,
+// the switcher's menu, the map's fold menu, the wall, the first-run sheet, a
+// rail plan still typing itself — a question page, every place but home and the
+// conversation (whose foot is the offer's own: /settings, memory, standing,
+// spend, a team's page, the chats switcher), and the two dialogs inside a place
+// that own every key: the settings sheet's value box and model picker, and the
+// provider panel's key box.
+//
+// A RUNNING TURN IS NOT ON THIS LIST. There the offer's defer clause is drawn
+// under the turn's own keys and its chord still works, which is exactly where
+// the countdown must keep running (steer.go's [app.hintShorter] keeps that
+// clause while it does).
+func (a *app) updateOfferHidden() bool {
+	if a.questionRoomOpen() || a.setup.open || a.railPlanPending.id != "" {
+		return true
+	}
+	if a.teamMenu.on || a.navMore.on || a.tsheet.on || a.tmove.on || a.wall.on {
+		return true
+	}
+	if pl := a.showing(); pl != nil && pl.id() != pageHome {
+		return true
+	}
+	return a.sheetLayerOwnsKeys() || a.addPanel.open
+}
+
+// tookOfferTick repaints one second of the countdown. It pauses where the offer
+// cannot be read, and it ENDS the grace the moment the automatic road has been
+// answered elsewhere, rather than counting ten seconds out for an answer that
+// is no longer wanted.
 func (a *app) tookOfferTick() tea.Cmd {
 	if !a.offer.offering() {
 		return nil
 	}
-	if a.questionRoomOpen() {
+	if a.updateOfferHidden() {
 		a.offer.deadline = a.now().Add(codeupdate.AutoGrace)
 		return a.offerTick()
+	}
+	if withdrawn := a.updateAutoWithdrawn(a.offer.tag); withdrawn != "" {
+		a.offer.clear()
+		a.note(withdrawn)
+		return nil
 	}
 	if !a.now().Before(a.offer.deadline) {
 		return a.tookUpdateGrace()
@@ -338,27 +444,20 @@ func (a *app) tookOfferTick() tea.Cmd {
 	return a.offerTick()
 }
 
-// tookUpdateGrace fires the automatic answer. It RE-READS the live setting and
-// the persisted memory first: a person who turned auto update off during the
-// window, or another window that dismissed the same tag, must not be installed
-// over by a decision this session made ten seconds ago.
+// tookUpdateGrace fires the automatic answer at the deadline. It asks the same
+// live question the countdown asks on every beat ([app.updateAutoWithdrawn]):
+// a person who turned auto update off during the window, or another window
+// that dismissed the same tag, must not be installed over by a decision this
+// session made ten seconds ago.
 func (a *app) tookUpdateGrace() tea.Cmd {
 	if !a.offer.offering() {
 		return nil
 	}
 	tag := a.offer.tag
-	if a.updateAuto == nil || !a.updateAuto.Enabled {
+	if withdrawn := a.updateAutoWithdrawn(tag); withdrawn != "" {
 		a.offer.clear()
-		a.note("auto update is off · nothing was installed · /update installs codeaf " + tag + " when you want it")
+		a.note(withdrawn)
 		return nil
-	}
-	if a.updateAuto.State != nil {
-		state := a.updateAuto.State()
-		if !codeupdate.ShouldOffer(state, tag, a.now()) {
-			a.offer.clear()
-			a.note("codeaf " + tag + " will not be installed on its own · /update installs it when you want it")
-			return nil
-		}
 	}
 	if refusal := a.updateRefusal(); refusal != "" {
 		a.offer.clear()
@@ -367,7 +466,7 @@ func (a *app) tookUpdateGrace() tea.Cmd {
 	}
 	a.offer.expire()
 	a.note(a.updateOfferNote())
-	return a.beginUpdate(updateChoice(tag, a.updateRunning), true)
+	return a.beginUpdate(updateChoice(tag, a.updateRunning), true, false)
 }
 
 // offerSettle schedules the fold of a finished line and clears it when due.

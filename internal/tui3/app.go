@@ -964,7 +964,10 @@ type app struct {
 	// one dim note it always was.
 	updateAuto *UpdateCoordinator
 	// offer is the launch offer's state machine (updateoffer.go).
-	offer   updateOffer
+	offer updateOffer
+	// restart is the plan a quitting surface used to fill for the door. Nothing
+	// on this surface quits for an update any more, so it is read by no code
+	// here; it stays a field because the door hands one in (tui3.Options).
 	restart *codeupdate.Plan
 	// THE OPENROUTER BALANCE (credits.go). readCredits is the door's reader and
 	// nil on every surface that cannot ask; the rest is what the loop keeps so

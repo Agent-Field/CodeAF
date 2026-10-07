@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -342,5 +343,130 @@ func TestTheCrashLogAndTheRunningLogAreOneFileUnderAProfile(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), want) && !strings.Contains(stderr.String(), displayPath(want)) {
 		t.Fatalf("the sentence on screen names %q, not the file both wrote: %s", stderr.String(), want)
+	}
+}
+
+// TestRunSurfaceChecksWithAutoOffAndNeverInstalls is the production regression
+// for the wiring the fixture tests cannot see: `update.auto` OFF must still make
+// the ONE launch request and say what is out (the quiet notice), while the
+// surface never offers a countdown and never replaces the file by itself. Only
+// CODEAF_NO_UPDATE_CHECK takes the look away.
+//
+// It drives [runSurface] itself, so the assertion is about the closure this door
+// hands the surface rather than about a seam a test built for itself.
+func TestRunSurfaceChecksWithAutoOffAndNeverInstalls(t *testing.T) {
+	asset := []byte("new executable")
+	digest := sha256.Sum256(asset)
+	var releases atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.HasSuffix(request.URL.Path, "/releases/latest"):
+			releases.Add(1)
+			fmt.Fprint(w, `{"tag_name":"v0.2.0"}`)
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		default:
+			_, _ = w.Write(asset)
+		}
+	}))
+	defer server.Close()
+
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("old executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldRun := runSurfaceProgram
+	oldClient, oldExecutable := surfaceUpdateClient, surfaceExecutable
+	oldRunningExecutable := surfaceRunningExecutable
+	oldRevision, oldArguments := surfaceRevision, surfaceArguments
+	t.Cleanup(func() {
+		runSurfaceProgram = oldRun
+		surfaceUpdateClient, surfaceExecutable = oldClient, oldExecutable
+		surfaceRunningExecutable = oldRunningExecutable
+		surfaceRevision, surfaceArguments = oldRevision, oldArguments
+	})
+	frame := &surfaceFrameWriter{ready: make(chan struct{})}
+	input, inputWriter := io.Pipe()
+	defer inputWriter.Close()
+	optionsSeen := make(chan tui3.Options, 1)
+	runSurfaceProgram = func(ctx context.Context, options tui3.Options) error {
+		optionsSeen <- options
+		options.Input = input
+		options.Output = frame
+		options.Width, options.Height = 80, 24
+		return tui3.Run(ctx, options)
+	}
+	surfaceUpdateClient = func(revision string, timeout time.Duration) *codeupdate.Client {
+		return &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL, Revision: revision}
+	}
+	surfaceExecutable = func(executable func() (string, error)) (string, error) { return target, nil }
+	surfaceRunningExecutable = func() (string, error) { return target, nil }
+	surfaceRevision = func() string { return "v0.1.1" }
+	surfaceArguments = func() []string { return []string{"chat"} }
+
+	profile := t.TempDir()
+	if err := config.SaveUpdateAuto(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	finished := make(chan error, 1)
+	go func() {
+		finished <- runSurface(ctx, tui3.Options{
+			Agent: &quietAgent{}, Workspace: "/tmp/lab", ProfileDir: profile, SessionFile: "/tmp/this.jsonl",
+		})
+	}()
+	seen := <-optionsSeen
+	if seen.UpdateAuto == nil || seen.UpdateAuto.Enabled || seen.UpdateAuto.EnabledLive == nil {
+		cancel()
+		t.Fatalf("auto off did not wire an off coordinator with a live reader: %+v", seen.UpdateAuto)
+	}
+
+	// THE ONE LOOK HAPPENS AND NAMES THE RELEASE. The offer's own countdown
+	// never appears, because the automatic road is off.
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(frame.String(), "is out") && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(frame.String(), "v0.2.0 is out") {
+		cancel()
+		t.Fatalf("the launch check did not say what is out with auto off:\n%s", frame.String())
+	}
+	if got := releases.Load(); got != 1 {
+		cancel()
+		t.Fatalf("release check requests = %d, want exactly 1", got)
+	}
+	if strings.Contains(frame.String(), "installs in") {
+		cancel()
+		t.Fatalf("auto off offered a countdown:\n%s", frame.String())
+	}
+	installed, err := os.ReadFile(target)
+	if err != nil || string(installed) != "old executable" {
+		cancel()
+		t.Fatalf("auto off replaced the executable: %q, %v", installed, err)
+	}
+	// AND THE COORDINATOR READS THE ROW FROM THE PROFILE, not from the value
+	// captured at wiring: another window's change is what the grace rechecks.
+	if err := config.SaveUpdateAuto(profile, true); err != nil {
+		t.Fatal(err)
+	}
+	if !seen.UpdateAuto.EnabledLive() {
+		cancel()
+		t.Fatal("the live reader did not see another window turn auto update on")
+	}
+	if err := config.SaveUpdateAuto(profile, false); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := <-finished; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("surface exit: %v", err)
+	}
+
+	// THE ENVIRONMENT IS THE ONLY THING THAT SILENCES THE LOOK.
+	t.Setenv(codeupdate.NoUpdateCheckEnv, "1")
+	if available, show := seen.UpdateCheck(context.Background()); show || available.Latest != "" {
+		t.Fatalf("CODEAF_NO_UPDATE_CHECK did not silence the check: %+v show=%t", available, show)
+	}
+	if got := releases.Load(); got != 1 {
+		t.Fatalf("a silenced check still made %d requests", got)
 	}
 }

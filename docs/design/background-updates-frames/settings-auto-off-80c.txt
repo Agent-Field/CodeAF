@@ -1,0 +1,40 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings          wed 11:08am
+
+────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams  …
+
+ › type to search
+ mouse                                                                       on
+ timestamps                                                             footers
+ turn work                                                                 fold
+ step icons                                                                auto
+ task column                                                                 on
+ quick switch                                                                on
+ input history                                                               on
+ telemetry                                                                   on
+ keep drafts                                                                 on
+ auto update                                                              • off
+    check for a new codeaf at launch and install it in the background.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

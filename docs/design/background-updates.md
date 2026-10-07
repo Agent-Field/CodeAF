@@ -18,20 +18,42 @@ The count is live — the line repaints once a second from the deadline — so i
 never show a frozen number. After [codeupdate.AutoGrace] the download begins by
 itself. The three answers are:
 
-- `/update` (or `/upgrade`) — install now; an explicit channel or tag wins, and
-  a NAMED tag is the one deliberate rollback.
-- `alt+n`, or `/update skip` — skip this release. It is written down and that
-  exact tag is never offered again.
+- `/update` (or `/upgrade`) — install now. Typed bare while the offer is up it
+  installs the release the offer is about, and it is NOT a rollback: the tag is
+  the surface's, not the person's. An explicit channel or tag wins, and only a
+  NAMED tag is the deliberate rollback.
+- `alt+n`, or `/update skip` — skip this release. It is written down for that
+  exact tag and that tag is never offered again; a newer release is a new
+  question. If the write itself fails, the note says so instead of claiming a
+  skip that was not saved — this window still stops offering it.
 - `/update never`, or the `auto update` row in `/settings` — stop installing
-  automatically. The launch check still runs and still says what is out.
+  automatically. It does not cancel an install already downloading and does not
+  say it did. The launch check still runs and still says what is out: with the
+  row off the one request is still made and the release is named on one dim
+  line. Only `CODEAF_NO_UPDATE_CHECK=1` takes the look away.
 
 The three are the ONLY commands the offer prints, and a test extracts every
 `/update` token from the hint and the note and checks the parser answers each as
 itself rather than as a tag. While the grace is open the offer stays reachable
 even over a running turn's own keys, because `footHint` appends a defer clause to
-whatever outranks it; `hintShorter` drops that clause first, so a narrow frame
-loses the offer and never the turn's keys. A question page owns the frame, so the
-grace PAUSES under one instead of counting out invisibly.
+whatever outranks it; `hintShorter` shortens the TURN's own clauses first and
+keeps the offer's, so a narrow frame under a countdown never loses the one
+control that countdown has — the offer's clause goes only when the turn is down
+to its last key.
+
+The clock PAUSES wherever the offer cannot be read or answered: a question page,
+every place but home and the conversation (whose keys row is the offer's own —
+`/settings`, memory, standing, spend), the first-run sheet, a team's card, the
+move picker, the switcher's menu, the wall, the provider panel, and the settings
+panel's own value box and model picker. The list is `[app.key]`'s rung order
+above the offer's chord, and a test pins its scope in both directions: a running
+turn and a plain conversation MUST keep counting.
+
+The row is read LIVE. `/settings` updates the running window's flag, and a row
+turned off — or a release skipped — in ANOTHER window is seen because the
+coordinator re-reads the profile on every countdown beat, at the deadline, and
+again after the resolver answers and before anything is downloaded. A stale
+ten-second-old decision never installs over a newer one.
 
 ## What a background install does and says
 
@@ -45,10 +67,11 @@ checksum matched · installed at <path>          (hand-run only)
 codeaf <tag> installed · this session keeps running
 ```
 
-The durable note adds: `new windows use the update; existing engines finish their
-work first, and an attached window keeps its engine current`. That is the engine
-lane's contract, stated without over-promising: a file replaced on disk does not
-force a running engine to hand over, and an idle line never claims it did.
+The durable note says what is true without the engine lane's vocabulary: `new
+windows open the updated app; work already running keeps its current engine until
+all its windows and work close`. A file replaced on disk does not force a
+running engine to hand over, so the line never claims it did, and it no longer
+leaves "current" to be guessed at.
 
 A finished line dwells for [updateOfferingDwell] and then folds; the transcript
 note is the durable record. A same-release candidate is a quiet successful no-op:
@@ -70,10 +93,18 @@ offer's own opt-out writes through the same writer the settings row does.
 ## One installer per executable
 
 The lock is an OS advisory lock on `<executable>.install.lock`, keyed on the
-resolved target and not on a profile: two profiles can share one codeaf file, and
-it is the file that must not be replaced twice at once. A process that dies
-releases the lock in the kernel, so nothing is ever taken over by guessing at an
-age.
+target and not on a profile: two profiles can share one codeaf file, and it is
+the file that must not be replaced twice at once. A process that dies releases
+the lock in the kernel, so nothing is ever taken over by guessing at an age.
+
+THE TARGET IS CANONICALIZED BEFORE THE LOCK, THE REFUSAL OR THE TEMPORARY FILE
+IS NAMED: absolute, cleaned, and resolved through symlinks (the directory too,
+for a target that does not exist yet). A relative path, a `..`, or a symlinked
+folder is therefore the SAME target as the real one, so holding an alias
+serializes against an installer using the real path — proved by a cross-process
+test and by a symlinked-folder test inside `internal/update`. The ownership
+screen (`InstallRefusal`) canonicalizes the same way, so a package-managed file
+reached through a symlink is still refused instead of answering "ordinary".
 
 THE LOCK IS TAKEN INSIDE `codeupdate.Install` AND NOWHERE ELSE, so the chat
 surface and `codeaf update` are one acquirer with nothing to keep in step. Under
@@ -83,7 +114,13 @@ person reads as unknown:
 
 - a candidate already on disk is a quiet successful no-op (`Already`);
 - a candidate older than what is on disk is refused UNLESS the person named that
-  exact tag, which is a deliberate rollback (`AllowDowngrade`);
+  exact tag, which is a deliberate rollback (`AllowDowngrade`). A channel, the
+  automatic road, and the bare `/update` that answers an offer all follow the
+  release line forward, so a file another window advanced is never stepped back;
+- a NAMED tag reaches the installer even when it matches the PROCESS's own
+  revision stamp, because the stamp is not the file on disk — another window may
+  have advanced the file while this one kept working, and a person asking for
+  that exact release is asking for that exact file;
 - a target another process is mid-install on is refused with `another codeaf is
   already installing an update`.
 
@@ -110,7 +147,17 @@ out a grace or paying for a download: `offer`, `downloading`, `ready`,
 `ready-working`, `manual`, `off`, `failure`. Every case first clears the updater
 seams, so a fixture cannot make a request or replace a file, and each says at the
 top of the transcript that it is a fixture. `scripts/update-drive.sh` captures
-them at 80 and 120 columns with the real binary.
+them at 80 and 120 columns with the real binary, and captures the REAL `/settings`
+page beside them (`settings-auto-on`, `settings-auto-off`): those two open the
+settings place through `/settings`, walk the tabs to Display and the cursor onto
+the row with the panel's own arrow keys, and the capture is only kept once the
+row's OWN hint is the sentence on screen — so what is drawn is the registry's
+row reading the profile's value, not whatever a fuzzy search happened to put
+first. The off capture's profile is the only thing that differs, and it carries
+the sheet's own changed marker. Every capture runs with an empty environment, an isolated
+home, a private tmux server, `--no-host`, `CODEAF_NO_UPDATE_CHECK=1` and a
+loopback `CODEAF_BASE_URL`, so no capture can reach a release host or a provider,
+and the drive removes only the directory it made.
 
 These are deterministic render fixtures, labelled in the frame itself, and they
 clear every updater seam so a capture machine needs no network and cannot install

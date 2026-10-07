@@ -233,20 +233,53 @@ type installRecord struct {
 	InstalledAt time.Time `json:"installed_at,omitempty"`
 }
 
+// canonicalTarget resolves a target to the ABSOLUTE, LINK-FREE path whose file
+// the installer will actually replace, so that two windows naming one
+// executable through different spellings — a relative path, a symlinked
+// folder, `..` — hold ONE lock and serialize against each other. It is
+// [ExecutableTarget]'s answer, applied again here because the installer also
+// runs for a target a caller handed in directly (`codeaf update`, a test).
+func canonicalTarget(target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ""
+	}
+	absolute, err := filepath.Abs(target)
+	if err != nil {
+		absolute = filepath.Clean(target)
+	}
+	absolute = filepath.Clean(absolute)
+	// THE WHOLE PATH FIRST: an executable that is already there is resolved
+	// exactly as [ExecutableTarget] resolves it, which is the file the
+	// replacement will land on.
+	if resolved, err := filepath.EvalSymlinks(absolute); err == nil {
+		return filepath.Clean(resolved)
+	}
+	// THE DIRECTORY OTHERWISE: a target that does not exist yet cannot be
+	// resolved itself, but its folder can, and two aliases of one folder must
+	// still point at one lock file.
+	dir, base := filepath.Split(absolute)
+	if resolved, err := filepath.EvalSymlinks(filepath.Clean(dir)); err == nil {
+		return filepath.Join(resolved, base)
+	}
+	return absolute
+}
+
 // installLockPath names the lock-and-record file for a target. It sits beside
 // the executable so a target directory that is not writable (which would fail
 // the install anyway) cannot be the reason two installers run; the file is left
 // in place after release, because unlinking it would let a fresh opener create
 // a second inode and hold a second lock.
 func installLockPath(target string) string {
-	target = filepath.Clean(strings.TrimSpace(target))
-	return target + ".install.lock"
+	return canonicalTarget(target) + ".install.lock"
 }
 
 // TryTargetLock claims the lock for one executable target, returning
-// ErrInstallInFlight when another process holds it.
+// ErrInstallInFlight when another process holds it. The target is canonicalized
+// first, so an alias of a file already held answers in flight rather than
+// opening a second lock file beside a path nothing else names.
 func TryTargetLock(target string) (*InstallLock, error) {
-	target = strings.TrimSpace(target)
+	target = canonicalTarget(target)
 	if target == "" {
 		return nil, errors.New("the running executable path is empty")
 	}
@@ -362,8 +395,13 @@ func recordSupersedes(record installRecord, release Release) bool {
 // InstallRefusal names why this target may not be replaced in place — a package
 // manager owns it, or its directory is not writable — or "" when an ordinary
 // install may proceed. The curl line is the road the refusal offers instead.
+//
+// THE TARGET IS CANONICALIZED FIRST, exactly as [Install] canonicalizes it: a
+// launcher that hands in a symlink (or a folder reached through one) must answer
+// about the file the replacement would land on, or a managed install answers
+// "ordinary" while the installer refuses it a moment later.
 func InstallRefusal(target, curl string) string {
-	target = strings.TrimSpace(target)
+	target = canonicalTarget(target)
 	if manager := PackageManaged(target); manager != "" {
 		return "this codeaf is managed by " + manager + " · update it there, or install a release with: " + curl
 	}

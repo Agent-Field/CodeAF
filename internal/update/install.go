@@ -44,7 +44,11 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	if options.Client == nil {
 		return InstallResult{}, errors.New("no release client is available")
 	}
-	target := strings.TrimSpace(options.Target)
+	// THE TARGET IS CANONICALIZED ONCE, HERE, BEFORE ANYTHING IS DECIDED FROM
+	// IT: the refusal, the lock, the temporary file beside it and the atomic
+	// replace all name the SAME absolute, link-free path, so a caller handing
+	// in a relative path or a symlinked folder is not a second target.
+	target := canonicalTarget(options.Target)
 	curl := strings.TrimSpace(options.Curl)
 	if curl == "" {
 		curl = CurlCommand
