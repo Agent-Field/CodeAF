@@ -366,6 +366,10 @@ func (a *app) factoryFilterKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+u":
 		a.factoryRefocus(func() { a.fp.query = "" })
 		return nil
+	case "ctrl+k":
+		// THE CARET STANDS AT THE END OF THE WORDS, so the kill to the end has
+		// nothing after it to take; the key is answered, and keeps the words.
+		return nil
 	}
 	k := msg.Key()
 	if k.Text == "" || k.Mod&(tea.ModAlt|tea.ModCtrl|tea.ModMeta|tea.ModSuper) != 0 {

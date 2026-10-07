@@ -5274,6 +5274,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// period, re-armed only while one of them is standing (placecounts.go).
 		return a, a.placeBeat(msg.gen)
 
+	case factoryBeatMsg:
+		// AND THE MOCK FACTORY FLOOR HAS A FASTER ONE, beating only while the
+		// factory page stands on a seam with a clock (factory_keys.go).
+		return a, a.factoryBeat(msg.gen)
+
 	case pulseTickMsg:
 		// THE PULSE'S COUNTS, KEPT WHILE NO HOME IS OPEN: a walk of the world
 		// asked off the loop, and the next beat (pulsebeat.go).

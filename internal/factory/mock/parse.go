@@ -10,22 +10,19 @@ package mock
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// THE FOUR CHIP WORDS ARE factory.Lift's (internal/factory/words.go), so the
+// surface lifting chips off a sentence and this parser read one spelling. What
+// is spelled here is what only the mock lifts: a security pass and the
+// constraints a proof must show held.
 var (
-	reCap      = regexp.MustCompile(`\$\s?(\d+(?:\.\d+)?)`)
-	reRounds   = regexp.MustCompile(`(?i)\b(\d+|one|two|three|four)\s+(?:review\s+)?rounds?\b`)
-	reGate     = regexp.MustCompile(`(?i)\b(?:gate[:\s]+)?(plan first|plan gate|design first|ship it|self[- ]ship|no gate|auto)\b`)
-	reEffort   = regexp.MustCompile(`(?i)\b(redo\s+)?(?:it\s+)?(stronger|strong|harder|cheaper|cheap|lighter)\b`)
 	reDont     = regexp.MustCompile(`(?i)\b(don'?t touch [a-z0-9/_. -]+?|keep [a-z0-9 ]+? compat(?:ible)?|no new deps?(?:endencies)?|stay in [a-z0-9/_.-]+)\b`)
 	reSecurity = regexp.MustCompile(`(?i)\b(?:with |and |a |do )?security(?: review| pass| check)?\b`)
 )
-
-var wordNums = map[string]int{"one": 1, "two": 2, "three": 3, "four": 4}
 
 // chips is what lift found in a sentence. A zero field was not said.
 type chips struct {
@@ -41,43 +38,9 @@ type chips struct {
 
 // lift reads chips out of words and returns what is left, tidied, as rest.
 func lift(words string) chips {
-	var c chips
-	rest := words
-	if m := reCap.FindStringSubmatch(rest); m != nil {
-		if f, err := strconv.ParseFloat(m[1], 64); err == nil {
-			c.cap = f
-		}
-		rest = strings.Replace(rest, m[0], "", 1)
-	}
-	if m := reRounds.FindStringSubmatch(rest); m != nil {
-		if n, ok := wordNums[strings.ToLower(m[1])]; ok {
-			c.rounds = n
-		} else if n, err := strconv.Atoi(m[1]); err == nil {
-			c.rounds = n
-		}
-		rest = strings.Replace(rest, m[0], "", 1)
-	}
-	if m := reGate.FindStringSubmatch(rest); m != nil {
-		switch strings.ToLower(m[1]) {
-		case "plan first", "plan gate", "design first":
-			c.gate = factory.GatePlan
-		case "ship it":
-			c.gate = factory.GateShip
-		default:
-			c.gate = factory.GateNone
-		}
-		rest = strings.Replace(rest, m[0], "", 1)
-	}
-	if m := reEffort.FindStringSubmatch(rest); m != nil {
-		c.redo = m[1] != ""
-		switch strings.ToLower(m[2]) {
-		case "stronger", "strong", "harder":
-			c.effort = "strong"
-		default:
-			c.effort = "cheap"
-		}
-		rest = strings.Replace(rest, m[0], "", 1)
-	}
+	f := factory.Lift(words)
+	c := chips{cap: f.Cap, gate: f.Gate, rounds: f.Rounds, effort: f.Effort, redo: f.Redo}
+	rest := f.Rest
 	if reSecurity.MatchString(rest) {
 		c.security = true
 		rest = reSecurity.ReplaceAllString(rest, "")
@@ -86,8 +49,7 @@ func lift(words string) chips {
 		c.constraints = append(c.constraints, strings.TrimSpace(m))
 		rest = strings.Replace(rest, m, "", 1)
 	}
-	rest = strings.Join(strings.Fields(strings.NewReplacer(",", " ", " and ", " ", " with ", " ").Replace(rest)), " ")
-	c.rest = strings.Trim(rest, " ,.;:")
+	c.rest = factory.TidyWords(rest)
 	return c
 }
 

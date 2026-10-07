@@ -3,9 +3,10 @@
 package main
 
 import (
-	"os"
+	"strings"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/mock"
 )
@@ -16,7 +17,7 @@ import (
 // a handover with something in it. THE SHIPPED BINARY NEVER CARRIES THIS FILE:
 // factorymock_stub.go is what an untagged build compiles.
 func factoryMockSeam() (factory.Seam, bool) {
-	if os.Getenv("CODEAF_FACTORY_MOCK") != "1" {
+	if strings.TrimSpace(env.Get("CODEAF_FACTORY_MOCK")) != "1" {
 		return factory.Seam{}, false
 	}
 	s := mock.New(7, 12, 400, 6, time.Now().Add(-9*time.Hour))
