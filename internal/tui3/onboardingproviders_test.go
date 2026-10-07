@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -25,19 +26,25 @@ func TestProviderChooserBackSkipPasteAndShortPointerRows(t *testing.T) {
 	if a.setup.provider != "" || a.setup.text != "" || config.APIKeyAt(dir) != "" {
 		t.Fatal("back saved or retained a secret")
 	}
+
 	a.width, a.height = 40, 12
-	a.selectSetupProvider("!more")
 	a.setup.providerAt = len(a.setupProviderRows()) - 1
 	a.touch()
 	screen := setupScreen(a)
-	if !strings.Contains(screen, "Skip for now") || !strings.Contains(screen, setupSkipKeysWord) {
+	if strings.Contains(screen, "Skip for now") || strings.Contains(screen, "More providers") || !strings.Contains(screen, setupSkipKeysWord) {
 		t.Fatal(screen)
 	}
 	hit := a.setup.providerHits[len(a.setup.providerHits)-1]
 	a.setupProviderPress(hit.x, hit.y)
-	if a.setup.open || config.SetupSeenAt(dir).IsZero() {
-		t.Fatal("short-screen click did not skip")
+	if a.setup.provider != "custom" || a.connPanel.entry == nil || a.connPanel.entry.blank != "base URL" {
+		t.Fatal("short-screen click did not select the scrolled provider")
 	}
+	a.backSetupProvider()
+	a.setupProviderKey(key("esc"))
+	if a.setup.open || config.SetupSeenAt(dir).IsZero() {
+		t.Fatal("Esc did not skip setup")
+	}
+
 }
 
 func TestProviderChooserReusesRegionsAndMasksKeys(t *testing.T) {
@@ -156,7 +163,7 @@ func TestOnboardingCodexSignInIsVisibleAndLateFlowsAreCancelled(t *testing.T) {
 	cmd := a.selectSetupProvider("codex")
 	flowMsg := cmd()
 	_, wait := a.Update(flowMsg)
-	if wait == nil || !strings.Contains(setupScreen(a), flow.URL()) {
+	if wait == nil || !strings.Contains(setupScreen(a), signInLinkWord) {
 		t.Fatal("browser link is hidden behind setup")
 	}
 	a.backSetupProvider()
@@ -170,5 +177,86 @@ func TestOnboardingCodexSignInIsVisibleAndLateFlowsAreCancelled(t *testing.T) {
 	a.Update(flowMsg)
 	if !flow.cancelled || a.codexFlow != nil {
 		t.Fatal("late flow was installed after back")
+	}
+}
+
+func TestProviderChooserShowsSixRowsAndScrollsToEverySupportedProvider(t *testing.T) {
+	a, _, _ := setupProviderApp(t, nil)
+	rows := a.setupProviderRows()
+	if len(rows) != len(modelsource.Vendored())+1 {
+		t.Fatalf("registry providers=%v", rows)
+	}
+	for _, size := range []struct{ width, height int }{{120, 40}, {80, 24}, {40, 18}} {
+		a.width, a.height = size.width, size.height
+		a.setup.providerAt, a.setup.providerTop = 0, 0
+		a.touch()
+		screen := setupScreen(a)
+		if len(a.setup.providerHits) != 6 || strings.Contains(screen, "More providers") || strings.Contains(screen, "Skip for now") {
+			t.Fatalf("first viewport: %s", screen)
+		}
+		for at, row := range rows {
+			a.setup.providerAt = at
+			a.touch()
+			setupScreen(a)
+			visible := false
+			for _, hit := range a.setup.providerHits {
+				if hit.at == at {
+					visible = true
+				}
+			}
+			if !visible || len(a.setup.providerHits) != 6 {
+				t.Fatalf("%q unreachable or wrong viewport at %dx%d", row.id, size.width, size.height)
+			}
+		}
+	}
+	a.setup.providerAt, a.setup.providerTop = 0, 0
+	for i := 0; i < len(rows)-1; i++ {
+		a.setupWheel(true)
+	}
+	a.touch()
+	if screen := setupScreen(a); !strings.Contains(screen, "Custom OpenAI-compatible API") {
+		t.Fatal(screen)
+	}
+}
+
+func TestBrowserSetupLinksStayOnOneRowAndCopyTheWholeAuthorizationURL(t *testing.T) {
+	target := "https://auth.example/authorize?state=" + strings.Repeat("proof", 120) + "&redirect_uri=http%3A%2F%2Flocalhost%3A9999"
+	for _, provider := range []string{"codex", "openrouter"} {
+		t.Run(provider, func(t *testing.T) {
+			a, _, _ := setupProviderApp(t, nil)
+			a.setup.provider = provider
+			if provider == "codex" {
+				a.modelCatalog = modelsource.Vendored()
+				a.setup.providerBusy = true
+				a.setup.providerLink = target
+			} else {
+				a.setup.authFlow = &setupOpenRouterFlow{url: target}
+				a.setup.authLink = target
+			}
+			for _, width := range []int{40, 80, 120} {
+				a.width, a.height = width, 30
+				a.touch()
+				rendered, _, _ := a.frame()
+				if strings.Count(rendered, linkOpen(target)) != 1 || strings.Count(plain(rendered), signInLinkWord) != 1 || strings.Contains(plain(rendered), "auth.example") {
+					t.Fatalf("URL was split or exposed: %q", rendered)
+				}
+			}
+			cmd, handled := a.setupKeyPress(tea.KeyPressMsg{Code: 'y', Mod: tea.ModCtrl})
+			if !handled || cmd == nil || !reflect.DeepEqual(cmd(), tea.Raw(osc52(target, a.tmux))()) {
+				t.Fatal("copy did not carry the complete authorization URL")
+			}
+		})
+	}
+}
+
+func TestAllBrowserWaitingCardsUseOneShortLinkWithTheCompleteTarget(t *testing.T) {
+	a := newTestApp(nil)
+	target := "https://accounts.example/authorize?state=" + strings.Repeat("x", 700)
+	e := &entry{kind: entryConnect, conn: &connectCard{name: "Google", state: connectWaiting, link: target}}
+	for _, width := range []int{24, 40, 80} {
+		rows := a.connectRows(e, width)
+		if len(rows) != 2 || !strings.Contains(rows[1], linkOpen(target)) || !strings.Contains(plain(rows[1]), signInLinkWord) || strings.Contains(plain(rows[1]), "accounts.example") {
+			t.Fatalf("waiting card: %q", rows)
+		}
 	}
 }

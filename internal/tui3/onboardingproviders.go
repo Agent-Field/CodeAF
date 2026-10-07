@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -22,57 +23,58 @@ type setupProviderAttempt struct {
 type setupProviderHit struct{ x, y, width, at int }
 type setupProviderRow struct{ id, name string }
 
-// The first page is an ordering policy, not a second provider catalog. Every
-// other supported provider comes from the same registry as /connect.
+// Provider ordering is a display policy over the same registry as /connect.
+const setupProviderRowsVisible = 6
+
 func (a *app) setupProviderRows() []setupProviderRow {
 	catalog := a.modelCatalog
 	if len(catalog) == 0 {
 		catalog = modelsource.Vendored()
 	}
-	names := map[string]string{modelsource.DefaultID: "OpenRouter"}
+	names := map[string]string{modelsource.DefaultID: modelsource.DefaultSource("").Name}
 	for _, source := range catalog {
 		names[source.ID] = source.Name
 	}
 	primary := []string{"ollama", modelsource.DefaultID, "codex", "deepseek"}
 	rows := []setupProviderRow{}
-	if !a.setup.providerMore {
-		for _, id := range primary {
-			if name := names[id]; name != "" {
-				rows = append(rows, setupProviderRow{id, name})
-			}
+	seen := map[string]bool{}
+	for _, id := range primary {
+		if name := names[id]; name != "" {
+			rows = append(rows, setupProviderRow{id, name})
+			seen[id] = true
 		}
-		rows = append(rows, setupProviderRow{"!more", "More providers"})
-	} else {
-		for _, source := range catalog {
-			main := false
-			for _, id := range primary {
-				if source.ID == id {
-					main = true
-					break
-				}
-			}
-			if !main {
-				rows = append(rows, setupProviderRow{source.ID, source.Name})
-			}
-		}
-		rows = append(rows, setupProviderRow{"!back", "Back"})
 	}
-	return append(rows, setupProviderRow{"!skip", "Skip for now"})
+	for _, source := range catalog {
+		if !seen[source.ID] {
+			rows = append(rows, setupProviderRow{source.ID, source.Name})
+			seen[source.ID] = true
+		}
+	}
+	return rows
 }
 
 func (a *app) setupProviderKey(msg tea.KeyPressMsg) tea.Cmd {
 	s := &a.setup
+	rows := a.setupProviderRows()
 	switch msg.String() {
 	case "esc":
 		return a.endSetup(true)
-	case "left", "alt+left":
-		s.providerMore, s.providerAt = false, 0
 	case "up", "ctrl+p":
-		s.providerAt = moveCursor(s.providerAt, -1, len(a.setupProviderRows()))
+		s.providerAt = moveCursor(s.providerAt, -1, len(rows))
 	case "down", "ctrl+n", "tab":
-		s.providerAt = moveCursor(s.providerAt, 1, len(a.setupProviderRows()))
+		s.providerAt = moveCursor(s.providerAt, 1, len(rows))
+	case "pgup":
+		s.providerAt = moveCursor(s.providerAt, -setupProviderRowsVisible, len(rows))
+	case "pgdown":
+		s.providerAt = moveCursor(s.providerAt, setupProviderRowsVisible, len(rows))
+	case "home":
+		s.providerAt = 0
+	case "end":
+		s.providerAt = len(rows) - 1
 	case "enter":
-		return a.selectSetupProvider(a.setupProviderRows()[s.providerAt].id)
+		if len(rows) > 0 {
+			return a.selectSetupProvider(rows[clampIndex(s.providerAt, len(rows))].id)
+		}
 	}
 	a.touch()
 	return nil
@@ -80,23 +82,13 @@ func (a *app) setupProviderKey(msg tea.KeyPressMsg) tea.Cmd {
 
 func (a *app) selectSetupProvider(id string) tea.Cmd {
 	s := &a.setup
-	switch id {
-	case "!more":
-		s.providerMore, s.providerAt = true, 0
-	case "!back":
-		s.providerMore, s.providerAt = false, 0
-	case "!skip":
-		return a.endSetup(true)
-	default:
-		a.cancelSetupProvider()
-		s.provider, s.text, s.refusal = id, "", ""
-		s.providerHits = nil
-		a.touch()
-		if id != modelsource.DefaultID {
-			return a.startSetupProvider()
-		}
-	}
+	a.cancelSetupProvider()
+	s.provider, s.text, s.refusal = id, "", ""
+	s.providerHits = nil
 	a.touch()
+	if id != modelsource.DefaultID {
+		return a.startSetupProvider()
+	}
 	return nil
 }
 
@@ -231,9 +223,6 @@ func (a *app) setupProvidersFrame(width, height int) ([]string, int, int) {
 	rows := a.setupProviderRows()
 	a.setup.providerAt = clampIndex(a.setup.providerAt, len(rows))
 	heading := setupProviderHeading
-	if a.setup.providerMore {
-		heading = "more model providers"
-	}
 	body := a.setupProviderHead(height)
 	body = append(body, a.pal.dim("setting up"), "", a.pal.ink(heading))
 	if height >= 18 {
@@ -242,8 +231,15 @@ func (a *app) setupProvidersFrame(width, height int) ([]string, int, int) {
 		}
 	}
 	body = append(body, "")
-	room := max(1, height-len(body)-2)
-	first := max(0, a.setup.providerAt-room+1)
+	room := max(1, min(setupProviderRowsVisible, height-len(body)-3))
+	first := min(max(0, a.setup.providerTop), max(0, len(rows)-room))
+	if a.setup.providerAt < first {
+		first = a.setup.providerAt
+	}
+	if a.setup.providerAt >= first+room {
+		first = a.setup.providerAt - room + 1
+	}
+	a.setup.providerTop = first
 	last := min(len(rows), first+room)
 	hits := []setupProviderHit{}
 	for at := first; at < last; at++ {
@@ -258,7 +254,7 @@ func (a *app) setupProvidersFrame(width, height int) ([]string, int, int) {
 	if inner < 58 {
 		footer = "enter chooses · " + setupSkipKeysWord
 	}
-	body = append(body, "", a.pal.dim(footer))
+	body = append(body, a.pal.dim(fmt.Sprintf("%d-%d of %d", first+1, last, len(rows))), "", a.pal.dim(footer))
 	return a.setupProviderBlock(body, hits, width, height, -1, 0)
 }
 
@@ -278,9 +274,7 @@ func (a *app) setupServiceFrame(width, height int) ([]string, int, int) {
 		}
 		body = append(body, a.pal.dim(word))
 		if s.providerLink != "" {
-			for _, line := range wrap(s.providerLink, inner) {
-				body = append(body, a.pal.dim(linkify(line, s.providerLink)))
-			}
+			body = append(body, a.pal.dim(linkify(fit(signInLinkWord, inner), s.providerLink)))
 		}
 	} else if entry := a.connPanel.entry; entry != nil {
 		body = append(body, a.pal.dim("your "+entry.blank), "")
@@ -316,6 +310,9 @@ func (a *app) setupServiceFrame(width, height int) ([]string, int, int) {
 	footer := "enter continues · " + setupSkipKeysWord
 	if s.providerBusy {
 		footer = "esc cancels · alt+left back"
+		if s.providerLink != "" {
+			footer = "ctrl+y copies link · esc cancels"
+		}
 	}
 	body = append(body, a.pal.dim(footer))
 	return a.setupProviderBlock(body, hits, width, height, caret, caretX)

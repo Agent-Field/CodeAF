@@ -27,7 +27,7 @@ provider in that order; with only the default provider, the picker remains ungro
 Yes. When the conversation is on a model from a connected provider, that provider can carry
 the turn without an OpenRouter key. Pressing `enter` sends the message; the setup screen
 does not open, and codeaf does not show
-`openrouter is not connected · enter on your message connects in a browser, or export OPENROUTER_API_KEY`.
+`no model provider is connected · enter on your message chooses a provider, or use /connect`.
 Ollama counts as connected without a key because its local provider explicitly needs none.
 
 The small background calls follow the same road — naming a session, titling a task, the

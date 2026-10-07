@@ -65,8 +65,8 @@ that is a different program and nothing here talks to it.
 | `codeaf chat --host devbox` | the chat here, the work on another machine |
 
 **The very first launch on a machine with nothing configured** begins with **choose a
-model provider**. Ollama, OpenRouter, Codex and DeepSeek are on the first list. **More
-providers** holds Z.ai, Moonshot, MiniMax, Alibaba Qwen and the custom API connection.
+model provider**. The scrollable list shows six providers at a time: Ollama, OpenRouter, Codex, DeepSeek,
+Z.ai, Moonshot, MiniMax, Alibaba Qwen and the custom API connection.
 The chosen provider's connection screen follows, then the chat model and daily limit.
 Ollama asks for no key. `alt+left` returns to provider choice; `esc` skips an idle setup
 screen. The preference questions appear once. When a later local conversation still

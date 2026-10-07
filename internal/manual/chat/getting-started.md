@@ -14,10 +14,12 @@ terminal* page, under *How do I install or update codeaf*.
 ## Getting started — first time setup, what happens the first time I run codeaf
 
 The first time `codeaf` opens a new local conversation with no provider connected,
-setup begins with **choose a model provider**. Pick **Ollama**, **OpenRouter**, **Codex**,
-or **DeepSeek**. **More providers** contains the other supported connections: **Z.ai**,
-**Moonshot**, **MiniMax**, **Alibaba Qwen**, and **Custom OpenAI-compatible API**.
-Use the arrow keys and `enter`, or click a row. No key is collected on the chooser.
+setup begins with **choose a model provider**. Its one scrollable list contains
+**Ollama**, **OpenRouter**, **Codex**, **DeepSeek**, **Z.ai**, **Moonshot**, **MiniMax**,
+**Alibaba Qwen**, and **Custom OpenAI-compatible API**. Six providers are visible at a
+time; very short windows show fewer. Arrow keys, mouse scrolling, `page up`/`page down`,
+`home` and `end` reach the whole list. Press `enter` or click a row to choose it.
+The counter below the list shows the visible range. No key is collected on the chooser.
 
 Choosing a provider opens its connection screen, followed by **Basic settings**:
 
@@ -61,8 +63,9 @@ conversation on a connected direct provider's model does not owe OpenRouter a ke
 step stays away.
 
 Codex is offered on the provider chooser. You can also add it later through `/connect`
-or `codeaf connect codex`. More providers has **Back** to return to the first list.
-**Skip for now**, or `esc` on an idle connection screen, skips setup.
+or `codeaf connect codex`. There is no separate More providers or Skip for now row.
+`esc` skips setup on the provider list or an idle connection screen. While a browser
+sign-in or provider check is running, `esc` cancels it; a second `esc` skips setup.
 
 The chooser reads `setting up` without a count. After a provider is chosen, the
 connection screen retains `setting up · 1 of 2` when both connection and controls are
@@ -84,9 +87,19 @@ profile and sends the browser back to codeaf. The browser says it is connected, 
 continues, and the running conversation can use the key immediately. No prompt is sent and
 no model is called during the connection.
 
-The address is also written on the waiting screen. If the browser cannot be opened, select
-or click that address yourself. `esc` while waiting cancels the return listener and leaves
+The waiting screen shows **open sign-in page**, a short hyperlink whose target is the
+complete authorization URL. If the browser cannot be opened, follow that link or press
+`ctrl+y` to copy the whole URL and paste it in your browser. `esc` while waiting cancels the return listener and leaves
 you on the default provider's OpenRouter step; another `enter` tries again.
+
+## Opening or copying a browser sign-in link — long authorization URLs
+
+OpenRouter and Codex setup show **open sign-in page** as one clickable line. The full
+URL, including every sign-in parameter, is the hyperlink target; it is not split across
+visible rows. `ctrl+y` copies that complete URL while waiting and says `sign-in link copied`.
+This also works when the terminal does not support clickable hyperlinks. `esc` cancels
+the sign-in; `alt+left` returns to the provider list. Outside setup, browser sign-in cards
+also use **open sign-in page** and a click on the waiting card copies its full URL.
 
 ## What the setup screen says when something goes wrong
 

@@ -130,7 +130,7 @@ func TestTheSetupOpensOverAnEmptyProfileAndNotOverAConfiguredOne(t *testing.T) {
 func TestFirstRunOffersSupportedProvidersBeforeAskingForAKey(t *testing.T) {
 	a, _, _ := setupProviderApp(t, nil)
 	screen := setupScreen(a)
-	for _, want := range []string{setupProviderHeading, "Ollama", "OpenRouter", "Codex", "DeepSeek", "More providers", "Skip for now"} {
+	for _, want := range []string{setupProviderHeading, "Ollama", "OpenRouter", "Codex", "DeepSeek", "Z.ai", "Moonshot"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("missing %q: %s", want, screen)
 		}
@@ -138,7 +138,6 @@ func TestFirstRunOffersSupportedProvidersBeforeAskingForAKey(t *testing.T) {
 	if strings.Contains(screen, "1 of 2") || strings.Contains(screen, "your openrouter key") {
 		t.Fatal("provider choice must precede key entry")
 	}
-	a.selectSetupProvider("!more")
 	rows := a.setupProviderRows()
 	seen := map[string]bool{}
 	for _, row := range rows {
@@ -146,7 +145,7 @@ func TestFirstRunOffersSupportedProvidersBeforeAskingForAKey(t *testing.T) {
 	}
 	for _, id := range []string{"z-ai", "moonshot", "minimax", "qwen", "custom"} {
 		if !seen[id] {
-			t.Fatalf("supported provider %q missing from More", id)
+			t.Fatalf("supported provider %q missing from the provider list", id)
 		}
 	}
 }
@@ -178,7 +177,7 @@ func TestEnterConnectsOpenRouterInTheBrowserAndHandsTheKeyToThisProcess(t *testi
 	if wait == nil || opened != flow.url {
 		t.Fatalf("the ready flow opened %q and returned wait %v", opened, wait != nil)
 	}
-	if screen := setupScreen(a); !strings.Contains(screen, "finish connecting openrouter") || !strings.Contains(screen, flow.url) {
+	if screen := setupScreen(a); !strings.Contains(screen, "finish connecting openrouter") || !strings.Contains(screen, signInLinkWord) {
 		t.Fatalf("the wait must carry the browser address; got:\n%s", screen)
 	}
 	// A key landing here goes on to the controls screen, and what comes back is

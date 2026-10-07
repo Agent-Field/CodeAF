@@ -76,7 +76,7 @@ type setupFlow struct {
 	open bool
 	// Provider selection precedes the numbered connection and controls steps.
 	provider        string
-	providerMore    bool
+	providerTop     int
 	providerAt      int
 	providerHits    []setupProviderHit
 	providerAttempt *setupProviderAttempt
@@ -366,6 +366,15 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	s := &a.setup
 	name := msg.String()
 	if s.step() == setupKey {
+		link := s.providerLink
+		if s.provider == modelsource.DefaultID {
+			link = s.authLink
+		}
+		if name == "ctrl+y" && link != "" {
+			s.refusal = "sign-in link copied"
+			a.touch()
+			return tea.Raw(osc52(link, a.tmux)), true
+		}
 		if s.provider == "" {
 			return a.setupProviderKey(msg), true
 		}
@@ -841,9 +850,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 			}
 			if s.authLink != "" {
 				add("")
-				for _, line := range wrap(s.authLink, inner) {
-					add(pal.dim(linkify(line, s.authLink)))
-				}
+				add(pal.dim(linkify(fit(signInLinkWord, inner), s.authLink)))
 			}
 		default:
 			heading := "your openrouter key"
@@ -994,6 +1001,9 @@ func (a *app) setupKeysWord() string {
 		return a.setupControlsKeys(max(width-2*setupMargin, 1))
 	}
 	if s.authStarting || s.authFlow != nil {
+		if s.authLink != "" {
+			return "ctrl+y copies link · esc cancel"
+		}
 		return "esc cancel"
 	}
 	if strings.TrimSpace(s.text) == "" {
