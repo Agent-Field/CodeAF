@@ -40,6 +40,46 @@ func (models seniorDevModels) windowOf(ref string) (float64, string, error) {
 	return metadata.Limit.Context, source, nil
 }
 
+// tinyWindow reports a model whose window is KNOWN to be at or under
+// [tinyWindowTokens], and that window. A guess is never tiny: it is what
+// senior-dev assumes when nothing could size the model.
+func (models seniorDevModels) tinyWindow(ref string) (float64, bool) {
+	window, source, err := models.windowOf(ref)
+	return window, err == nil && source != sizedByGuess && window > 0 && window <= tinyWindowTokens
+}
+
+// leaveOutTinyCrewSeats takes a crew seat too small to work in out of the
+// pools, with a note, exactly as [crewPools] takes out a seat nothing can
+// size, and routes on senior-dev's own list when that empties the coder's
+// pool. A crew is a standing choice nobody made for this brief, so its small
+// light seat must not refuse a run the person never named that model for.
+// keepHigh holds the coder's pool as it is: under --asked those are the
+// models the person named, and [windowCheck] refuses them by name instead.
+func leaveOutTinyCrewSeats(args cliArgs, keepHigh bool, models seniorDevModels, notes io.Writer) cliArgs {
+	keep := func(raw string) string {
+		var kept []string
+		for _, ref := range splitPool(raw) {
+			if window, tiny := models.tinyWindow(ref); tiny {
+				_, _ = fmt.Fprintf(notes,
+					"[senior-dev] the crew's %s holds only %s tokens, too few to work in; it is left out of this run\n",
+					ref, groupedTokens(window))
+				continue
+			}
+			kept = append(kept, ref)
+		}
+		return strings.Join(kept, ",")
+	}
+	args.Low, args.Frontier = keep(args.Low), keep(args.Frontier)
+	if keepHigh {
+		return args
+	}
+	if args.High = keep(args.High); args.High == "" {
+		_, _ = fmt.Fprintf(notes, "[senior-dev] none of the crew's models is large enough to work in; routing on senior-dev's own list\n")
+		args.High = DefaultHighModels
+	}
+	return args
+}
+
 // windowCheck reads the window of every model the run will call -- the
 // coder's pool, the light pool its history summaries run on, and the
 // frontier -- before anything is spent. It answers the refusal for models
@@ -61,14 +101,13 @@ func windowCheck(args cliArgs, models seniorDevModels) (refusal string, guessed 
 				continue
 			}
 			seen[name] = true
-			window, source, err := models.windowOf(ref)
+			_, source, err := models.windowOf(ref)
 			if err != nil {
 				continue
 			}
-			switch {
-			case source == sizedByGuess:
+			if source == sizedByGuess {
 				guessed = append(guessed, name)
-			case window > 0 && window <= tinyWindowTokens:
+			} else if window, small := models.tinyWindow(ref); small {
 				tiny = append(tiny, fmt.Sprintf("%s (%s tokens)", name, groupedTokens(window)))
 			}
 		}

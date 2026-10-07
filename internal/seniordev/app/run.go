@@ -192,6 +192,10 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 			if options.Asked {
 				args.High = high
 			}
+			// A crew seat too small to work in is left out the way one
+			// nothing can size is; the models a person asked for are not
+			// seats, and are refused below instead ([leaveOutTinyCrewSeats]).
+			args = leaveOutTinyCrewSeats(args, options.Asked, models, notes)
 		}
 		// A MODEL TOO SMALL TO WORK IN IS REFUSED BEFORE ITS FIRST CALL, by
 		// name and size, and nothing is spent ([windowCheck]).

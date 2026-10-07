@@ -936,9 +936,9 @@ the task's first line name them. A name that fits more than one model is put to 
 settle. A model none of your connected services can serve is refused before the card, by
 name, rather than swapped for another. When a catalog was loaded, a model neither it nor
 codeaf's own model catalog can size cannot be used: the run ends before its first call with
-`senior-dev cannot work with <model>: …`, and nothing is spent. A model known to hold
-32,768 tokens or fewer is refused the same way (see the section on a model too small for
-senior-dev). If models.dev is unavailable and codeaf's catalog does not know the model
+`senior-dev cannot work with <model>: …`, and nothing is spent. A model you asked for
+that is known to hold 32,768 tokens or fewer is refused the same way (see the section on
+a model too small for senior-dev). If models.dev is unavailable and codeaf's catalog does not know the model
 either, the run starts on an assumed 16,384 tokens and says so. The models are fixed when the run starts; changing the crew later does not move
 a run already working. `/senior-dev` typed with a brief uses your crew.
 
@@ -953,8 +953,9 @@ planner and checker routing and `/crew`'s per-task limit apply to codeaf's own
 tasks, not senior-dev's run. Change the crew and the next run follows. The
 mastermind (brain) model is not used: every call senior-dev makes is either its
 work or a history summary.
-A crew model senior-dev's model catalog cannot size is left out, and its log says so;
-if that leaves no working model, it uses its own list instead.
+A crew model senior-dev's model catalog cannot size is left out, and its log says so,
+and so is one known to hold 32,768 tokens or fewer; if that leaves no working model, it
+uses its own list instead.
 
 ## senior-dev keeps compacting, or refused a model as too small — how much its model can hold, a 32K model, could not learn how much its model holds
 
@@ -964,11 +965,12 @@ first, then from the model catalog codeaf keeps for your profile, which it reads
 disk with no network. A shell run waits up to 15 seconds for codeaf to list its models
 first on a profile that has never listed them.
 
-**A model known to hold 32,768 tokens or fewer is refused before its first call**, and
-nothing is spent: `senior-dev cannot work with <model> (16,384 tokens): a run needs a
-model that holds more than 32,768 tokens to keep its brief, its tools and its progress
-in view, so nothing was started; ask for a model with a larger window`. Ask for a
-larger model.
+**A model you asked for that is known to hold 32,768 tokens or fewer is refused before
+its first call**, and nothing is spent: `senior-dev cannot work with <model> (16,384
+tokens): a run needs a model that holds more than 32,768 tokens to keep its brief, its
+tools and its progress in view, so nothing was started; ask for a model with a larger
+window`. Ask for a larger model. **A crew model that small is left out instead**, with a
+note in the run's log; if that leaves no model for its work, it uses its own list.
 
 **When nothing knows the model, it assumes 16,384 tokens and runs.** Its page says
 `could not learn how much its model holds; assumed 16,384 tokens`, and its log says
@@ -978,8 +980,8 @@ once on that machine while it can reach your model service; codeaf keeps the lis
 prints, and senior-dev reads the window from it.
 
 When a compacted history still does not fit, senior-dev keeps as much of its newest
-summary as fits beside the brief and the list of changed files. It never throws its
-progress away.
+summary as fits beside the brief and the list of changed files. Only when none of the
+summary fits does the list of changed files carry over on its own.
 
 ## Which model is my senior-dev run on — the models it was launched with, the foot of its task page
 

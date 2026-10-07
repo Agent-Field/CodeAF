@@ -5,6 +5,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -139,5 +140,48 @@ func TestARunOnATinyModelIsRefusedBeforeItStarts(t *testing.T) {
 	}
 	if len(host.stages) != 0 {
 		t.Fatalf("a refused run reported stages: %v", host.stages)
+	}
+}
+
+// A CREW SEAT TOO SMALL TO WORK IN IS LEFT OUT, NOT REFUSED. The crew is a
+// standing choice nobody made for this brief, so its small light seat is
+// dropped with a note, as a seat nothing can size is, and a coder's pool it
+// empties routes on senior-dev's own list. Under --asked the coder's pool is
+// what the person named, so it is kept and refused by name instead.
+func TestATinyCrewSeatIsLeftOutAndAnAskedOneIsRefused(t *testing.T) {
+	backend := newModelAPIBackend(testModelAPI, "")
+	backend.catalog = modelsdev.Catalog{}
+	backend.windowFor = codeafKnows(map[string]int{
+		"vendor/hands": 262_144,
+		"vendor/small": 16_384,
+	})
+	models := seniorDevModels{backend: backend}
+
+	var notes bytes.Buffer
+	args := leaveOutTinyCrewSeats(cliArgs{
+		High: "openrouter/vendor/hands", Low: "openrouter/vendor/small", Frontier: "openrouter/vendor/small",
+	}, false, models, &notes)
+	if args.High != "openrouter/vendor/hands" || args.Low != "" || args.Frontier != "" {
+		t.Fatalf("pools = %+v, want the small seats left out", args)
+	}
+	if !strings.Contains(notes.String(), "the crew's openrouter/vendor/small holds only 16,384 tokens, too few to work in; it is left out of this run") {
+		t.Fatalf("notes = %q", notes.String())
+	}
+	if refusal, _ := windowCheck(args, models); refusal != "" {
+		t.Fatalf("a crew run whose small seat was left out was refused: %q", refusal)
+	}
+
+	notes.Reset()
+	if args := leaveOutTinyCrewSeats(cliArgs{High: "openrouter/vendor/small"}, false, models, &notes); args.High != DefaultHighModels ||
+		!strings.Contains(notes.String(), "routing on senior-dev's own list") {
+		t.Fatalf("a crew whose only working seat is small: High = %q, notes = %q", args.High, notes.String())
+	}
+
+	asked := leaveOutTinyCrewSeats(cliArgs{High: "openrouter/vendor/small", Low: "openrouter/vendor/small"}, true, models, io.Discard)
+	if asked.High != "openrouter/vendor/small" || asked.Low != "" {
+		t.Fatalf("asked pools = %+v, want the asked model kept and the light seat left out", asked)
+	}
+	if refusal, _ := windowCheck(asked, models); !strings.HasPrefix(refusal, "senior-dev cannot work with vendor/small (16,384 tokens)") {
+		t.Fatalf("an asked model too small to work in was not refused: %q", refusal)
 	}
 }
