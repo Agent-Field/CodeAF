@@ -370,12 +370,12 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · established shortcut order: home · AI teams · chats · activity · spend · settings · standing · memory
+alt+1…9        go to a place · established shortcut order: home · AI teams · chats · activity · spend · settings · standing · memory · factory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
 
-On a Mac those read `opt+1…8` and `opt+.`; the substitution happens once, at the moment of
+On a Mac those read `opt+1…9` and `opt+.`; the substitution happens once, at the moment of
 drawing, and the words are the same.
 
 **One gesture, one spelling.** Wherever the sheet names the escape key it writes `esc

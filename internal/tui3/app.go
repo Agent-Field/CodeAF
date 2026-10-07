@@ -20,6 +20,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/connect"
 	"github.com/Agent-Field/codeaf/internal/credits"
 	internalenv "github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -1462,6 +1463,10 @@ type app struct {
 	// tp is the teams page's own state: its selection, its reading of the
 	// store and the targets it drew (teamspage.go).
 	tp teamsPage
+	// factory is the factory page's seam and fp its own state: the last
+	// snapshot, the cursor and whether a read is out (factory_page.go).
+	factory factory.Seam
+	fp      factoryPage
 	// tsheet is a team's card: its settings, its close and its delete
 	// (teamsheet.go).
 	tsheet teamSheet
@@ -3009,6 +3014,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		shared:              opts.SharedAgent,
 		stands:              opts.Standing,
 		teamsDisk:           teamsDisk{door: opts.Teams},
+		factory:             opts.Factory,
 		link:                opts.Link,
 		conns:               opts.Connections,
 		harn:                opts.Harnesses,
@@ -7935,6 +7941,10 @@ func (a *app) slash(line string) tea.Cmd {
 	case "teams":
 		// THE TEAM-LEVEL VIEW, which is a place (place_teams.go).
 		return a.showPage(pageTeams)
+
+	case "factory":
+		// THE FACTORY FLOOR, which is a place (place_factory.go).
+		return a.showPage(pageFactory)
 
 	case "spend":
 		// AND THE WHOLE MACHINE'S BILL, which is a place and not a note. This word

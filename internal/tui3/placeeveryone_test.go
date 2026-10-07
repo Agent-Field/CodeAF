@@ -114,6 +114,15 @@ func everyPlaceTable() []everyPlace {
 			},
 		},
 		{
+			id:     pageFactory,
+			open:   factoryPlaceLab,
+			cursor: func(a *app) int { return placeFactory{}.cursorAt(a) },
+			hits: func(a *app) []int {
+				_, hits, _, _ := a.placeDraw(placeFor(pageFactory), a.width, a.height)
+				return placeLineHits(hits)
+			},
+		},
+		{
 			id:     pageSettings,
 			open:   settingsPlaceLab,
 			cursor: func(a *app) int { return a.sheet.cursor },

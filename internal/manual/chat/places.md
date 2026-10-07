@@ -56,13 +56,13 @@ Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
   the one before. The order follows the visible bar; Chats returns to the conversation.
-- **`alt+1`** … **`alt+8`** (**`opt+1`** … **`opt+8`** on a Mac) jump straight to one, **from a
+- **`alt+1`** … **`alt+9`** (**`opt+1`** … **`opt+9`** on a Mac) jump straight to one, **from a
   place or from a conversation**. Shortcuts preserve their established destinations even though the visual order changed: home (1), AI teams (2), chats (3), activity (4), spend (5), settings (6), standing (7), memory (8). Hold `alt` and press the digit. macOS draws the modifier as `opt`
   because that is the key's name on a Mac keycap; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
   place key that means the same thing wherever you are standing.
-- **`ctrl+1`** … **`ctrl+8`**: the same jump, on the terminals that can send it. `ctrl` and
+- **`ctrl+1`** … **`ctrl+9`**: the same jump, on the terminals that can send it. `ctrl` and
   a digit has no encoding in the scheme most terminals speak, so this is a second spelling and
   never the first: it works only where the terminal runs the kitty keyboard protocol and says
   so (kitty, ghostty, WezTerm, foot, Windows Terminal are the usual ones). `ctrl+.` draws the
@@ -112,7 +112,7 @@ lands on the **bar**, the row of place words on the top line, and from there:
 | `esc` | back into the page, on the row you walked up from |
 | `↑` | nothing. The bar is the top line; there is nothing above it |
 | `tab` `shift+tab` | the next and the previous place, exactly as everywhere else |
-| `alt+1` … `alt+8` | jump straight to one, exactly as everywhere else |
+| `alt+1` … `alt+9` | jump straight to one, exactly as everywhere else |
 | any printable key | goes to the composer, and the cursor comes back down into the page with it |
 
 **The word your cursor is on wears the cursor's band**, in place of the mark the word you
@@ -397,8 +397,8 @@ may not name a key it has not bound. Six classes, and a key belongs to exactly o
 | `↑` `↓` `enter` `esc` `tab` | move, open, back out, next place — and `↑` off the first row of the page moves onto the **tab bar**, which is a row the cursor can stand on (*How do I move between the tabs with the arrow keys*) |
 | any printable key | goes to the composer, always |
 | `alt+enter` | send what you typed off as a task |
-| `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) | jump straight to a place |
-| `ctrl+1` … `ctrl+8` | the same jump, only on terminals that report they can send it |
+| `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) | jump straight to a place |
+| `ctrl+1` … `ctrl+9` | the same jump, only on terminals that report they can send it |
 | `alt+<letter>` | change how THIS place is shown |
 | `alt+p` `alt+o` | inside the composer layer only: move the task, change its model |
 | `shift+←` `→` `↑` `↓` | move this place's time window |
@@ -515,7 +515,7 @@ Press `alt+.` and the whole key map appears **in the cells you were already read
 the keys for where I am standing. In a conversation the same key opens the `/help` sheet.
 
 **The chord list is built from the place you are on.** It reads
-`alt+1…8 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
+`alt+1…9 go to a place · alt+enter send it off as a task · → show what this row can do · esc close`
 — and the `→` clause is left out on a place whose rows have no verbs, such as an empty spend page, rather
 than naming a key that would open nothing there.
 
@@ -695,7 +695,8 @@ different thing — its head row stays, with the arrows that page it back.
 
 ## Search for an old conversation — use Home
 
-The separate Search tab, `/search` command and `alt+9` shortcut have been removed.
+The separate Search tab and `/search` command have been removed; `alt+9` opens
+the factory instead (the **factory** page).
 Open Home with `/home` or `alt+1` (`opt+1` on macOS), then type. Home matches
 conversation names, projects, folders, task titles and task outcomes. It does not
 search the full text of every message. Use `↑`/`↓` to choose and `enter` to open a
@@ -753,7 +754,7 @@ click goes there; `↑` `↓` and `enter` do the same from the keyboard; `esc`, 
 anywhere off the menu, puts it away and leaves everything else as it was.
 
 **The wordmark and the place you are standing in never fold**, and neither does the word the
-bar's cursor is on or a place wearing a count. `alt+1`…`alt+8` still go straight to a place
+bar's cursor is on or a place wearing a count. `alt+1`…`alt+9` still go straight to a place
 whether or not its word is on the row, and the numbers never move: the six on the bar are
 `alt+1`…`alt+6`, then standing and memory are `alt+7`…`alt+8`.
 

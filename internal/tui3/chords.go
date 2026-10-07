@@ -225,12 +225,12 @@ func (a *app) placeHint() string { return a.chords.say(a.placeHintSaid()) }
 
 // chordCtrlJumpWords is the alias clause the map grows where the terminal can
 // send it, and [chordSpelling.mapLine] is the only thing that adds it.
-const chordCtrlJumpWords = " or " + chordCtrlWord + "1…8"
+const chordCtrlJumpWords = " or " + chordCtrlWord + "1…9"
 
 // chordJumpWords is the map's own name for the jump class, and it is spelled
 // here so [chordSpelling.mapLine] and [placeMapWords] cannot drift apart about
 // where the alias clause goes.
-const chordJumpWords = chordAltWord + "1…8"
+const chordJumpWords = chordAltWord + "1…9"
 
 // chordMapAlias is `alt+.`'s second encoding, on the same terms as the digits:
 // live only where the terminal answered the keyboard query.

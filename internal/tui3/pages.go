@@ -55,6 +55,11 @@ const (
 	// pageChats is the bar's way back to the conversations (place_chats.go):
 	// never stood in, only walked out through.
 	pageChats
+	// pageFactory is the factory floor (place_factory.go): the work a chat
+	// split off or a repository sent, by where it stands. It is appended for
+	// pageTeams' reason, and it takes the ninth digit, the one the removed
+	// search place gave back.
+	pageFactory
 )
 
 // ── THE CONTRACT EVERY PLACE ANSWERS ────────────────────────────────────────
@@ -395,11 +400,12 @@ var placeRegistry = map[page]place{}
 
 // placeOrder preserves the established numbered shortcuts for existing users.
 // Visual order is independent: moving a destination must not retrain a shortcut.
-var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory}
+var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageFactory}
 
 // placeBarOrder groups daily work before utilities. Memory stays discoverable
-// even before the first saved memory; standing orders remain available in the map.
-var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageStanding}
+// even before the first saved memory; standing orders and the factory fold into
+// `more` and remain available in the map.
+var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageStanding, pageFactory}
 
 const placeBarPlaces = 7
 
@@ -1510,7 +1516,7 @@ const (
 	// it where the place declares no verbs).
 	//
 	// IT SAYS WHAT THE KEY DOES. It read `→ verbs on this row`, which named a
-	// CATEGORY on a line where `alt+1…8 go to a place`, `alt+enter send it off as
+	// CATEGORY on a line where `alt+1…9 go to a place`, `alt+enter send it off as
 	// a task` and `esc close` all name an act — and `verbs` is the machinery's
 	// word for the strip rather than anybody's word for what pressing `→` gets
 	// them. The card's own `→ verbs: pause, stop` keeps the noun because the acts
@@ -1519,7 +1525,7 @@ const (
 	placeMapVerbWords = "→ show what this row can do"
 	// placeMapWords is the hint line while the map is drawn (SCREEN 3b): the
 	// chord list, in the cells the hint was already in.
-	placeMapWords = "alt+1…8 go to a place · " + placeMapTaskWords + " · " +
+	placeMapWords = "alt+1…9 go to a place · " + placeMapTaskWords + " · " +
 		placeMapVerbWords + " · " + mapCloseWords
 	// placeMapTaskWords is the map's clause about the chord that starts a task,
 	// named so the line can be drawn WITHOUT it: only home starts things, so on
@@ -1656,7 +1662,7 @@ func (a *app) placeHintSaid() string {
 		// what the keys are — and the place's resting foot is four clauses that
 		// the design fixes word for word (FIDELITY.md item 3). A key bound on
 		// every place and drawn on none of them would break SCREEN 3a's clause,
-		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…8`
+		// and this is the line that keeps it, exactly as it keeps the `ctrl+1…9`
 		// alias ([chordSpelling.mapLine]).
 		line := a.chords.mapLine(a.placeMapSaid(), a.ctrlDigits())
 		if a.hopAvailable() {
