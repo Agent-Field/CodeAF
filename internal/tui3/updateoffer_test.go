@@ -39,9 +39,13 @@ type offerLab struct {
 func newOfferLab(t *testing.T, coordinator *UpdateCoordinator) *offerLab {
 	t.Helper()
 	lab := &offerLab{allow: new(bool)}
+	// A PROFILE OF ITS OWN, so this lab never sees a marker another test wrote
+	// (testprofilelaw_test.go). The two-window tests share their profile through
+	// the Coordinator's own callbacks ([productionAuto]) and write the file the
+	// other window writes, so no second surface needs the same directory here.
 	lab.app = newApp(context.Background(), Options{
 		Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab", UpdateRunning: "v0.9.2",
-		Restart: &codeupdate.Plan{}, UpdateAuto: coordinator,
+		Restart: &codeupdate.Plan{}, UpdateAuto: coordinator, ProfileDir: t.TempDir(),
 		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
 			return codeupdate.Release{Tag: "v0.9.3"}, nil
 		},

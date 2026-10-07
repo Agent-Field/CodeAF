@@ -414,7 +414,11 @@ func (a *app) updateOfferHidden() bool {
 	if a.teamMenu.on || a.navMore.on || a.tsheet.on || a.tmove.on || a.wall.on {
 		return true
 	}
-	if pl := a.showing(); pl != nil && pl.id() != pageHome {
+	// A PLACE WITH A FOOT OF ITS OWN IS NOT SHOWING THE OFFER. The question is
+	// the registry's and not this file's: a place says whether its keys row is
+	// the offer's ([place.showsOffer]), so a room added later answers it on the
+	// day it is registered rather than on the day somebody remembers this list.
+	if pl := a.showing(); pl != nil && !pl.showsOffer(a) {
 		return true
 	}
 	return a.sheetLayerOwnsKeys() || a.addPanel.open
