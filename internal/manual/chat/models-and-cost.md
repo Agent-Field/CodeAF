@@ -913,7 +913,7 @@ role**, grouped under the row answering it, saying which model comes out:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `checker` | checker | whether finished-looking work is actually finished (a saved pin still names this role `auditor`) |
+| `checker` | checker | whether finished-looking work is actually finished (older pins may keep their former spelling) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
 | `careful` | checker | a part of a task that needs judgement |

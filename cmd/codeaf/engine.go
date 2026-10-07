@@ -1121,10 +1121,13 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return remote.LedgerReading{Lines: lines, Held: held}
 		},
 		Search: func(terms string, limit int) ([]store.ConversationHit, error) {
-			if proc.Memory == nil {
-				return nil, errors.New("memory is off")
+			// THE SEARCH STORE, NOT THE MEMORY STORE. Memory off used to take
+			// this down with it; the process keeps the index open either way
+			// ([v3Process.Search]).
+			if proc.Search == nil {
+				return nil, errors.New("conversation search is unavailable")
 			}
-			return proc.Memory.SearchConversations(terms, limit)
+			return proc.Search.SearchConversations(terms, limit)
 		},
 		Memory:     v3MemorySeam(proc.Memory),
 		Archive:    session.SetArchived,

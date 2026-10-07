@@ -346,3 +346,88 @@ func TestLogWritesOneLinePerEvent(t *testing.T) {
 		t.Fatalf("a log line was not flattened: %q", lines[1])
 	}
 }
+
+// A PERSON'S EDIT TAKES THE RUNTIME STATE FROM DISK, EXACTLY. The row the person
+// acted on was read while the ticker had a delivery intent committed and a task
+// in flight; by the time the edit lands, the ticker has SETTLED both. Writing the
+// stale copy's fields back would resurrect work that is already done and block
+// the item until the person answers a line they have already seen. THE REVIEW'S
+// F4.
+func TestSaveNeverResurrectsSettledRuntimeState(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, err := store.Create(reminder("remind me at 6 to leave", now.Add(time.Hour)))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// The ticker commits an intent and an in-flight marker.
+	live, _ := store.Get(made.ID)
+	live.Pending = append(live.Pending, Pending{ID: "settled-1", Kind: ActionSay, Text: "a line", At: now})
+	live.TaskInflight = &TaskInflight{RunDir: "runs/0001", Started: now, Attempts: 1}
+	if err := store.saveActive(&live); err != nil {
+		t.Fatalf("ticker write: %v", err)
+	}
+	// THE ROW THE PERSON HAD OPEN, read after the commit: it carries both.
+	stale, _ := store.Get(made.ID)
+	if len(stale.Pending) != 1 || stale.TaskInflight == nil {
+		t.Fatalf("the fixture did not read the committed runtime state: %+v", stale)
+	}
+	// The ticker settles both: the line is delivered, the task reaches an
+	// outcome, and the disk document no longer holds either.
+	settled, _ := store.Get(made.ID)
+	settled.Pending = nil
+	settled.TaskInflight = nil
+	if err := store.saveActive(&settled); err != nil {
+		t.Fatalf("settlement write: %v", err)
+	}
+	// The person's edit lands from the stale row.
+	stale.Words = "remind me at seven"
+	if err := store.Save(stale); err != nil {
+		t.Fatalf("person edit: %v", err)
+	}
+	back, _ := store.Get(made.ID)
+	if len(back.Pending) != 0 {
+		t.Fatalf("an edit resurrected a settled delivery intent: %+v", back.Pending)
+	}
+	if back.TaskInflight != nil {
+		t.Fatalf("an edit resurrected a settled in-flight marker: %+v", back.TaskInflight)
+	}
+	if back.Words != "remind me at seven" {
+		t.Fatalf("the edit itself was lost: %q", back.Words)
+	}
+}
+
+// AND A MARKER THE TICKER REPLACED IN FLIGHT IS THE ONE THAT SURVIVES: the row's
+// older marker must not win over the newer one on disk, or the ambiguous-attempt
+// guard would point at the wrong run folder. THE REVIEW'S F4.
+func TestSaveTakesTheNewestInFlightMarkerFromDisk(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	made, err := store.Create(reminder("remind me at 6 to leave", now.Add(time.Hour)))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	first, _ := store.Get(made.ID)
+	first.TaskInflight = &TaskInflight{RunDir: "runs/0001", Started: now, Attempts: 1}
+	if err := store.saveActive(&first); err != nil {
+		t.Fatalf("first marker: %v", err)
+	}
+	stale, _ := store.Get(made.ID)
+	if stale.TaskInflight == nil || stale.TaskInflight.RunDir != "runs/0001" {
+		t.Fatalf("the fixture read the wrong marker: %+v", stale.TaskInflight)
+	}
+	// A second attempt replaces the marker after the person's row was read.
+	second, _ := store.Get(made.ID)
+	second.TaskInflight = &TaskInflight{RunDir: "runs/0002", Started: now.Add(time.Minute), Attempts: 2}
+	if err := store.saveActive(&second); err != nil {
+		t.Fatalf("second marker: %v", err)
+	}
+	stale.Words = "remind me at seven"
+	if err := store.Save(stale); err != nil {
+		t.Fatalf("person edit: %v", err)
+	}
+	back, _ := store.Get(made.ID)
+	if back.TaskInflight == nil || back.TaskInflight.RunDir != "runs/0002" {
+		t.Fatalf("an edit put the older marker back: %+v", back.TaskInflight)
+	}
+}

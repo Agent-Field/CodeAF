@@ -57,6 +57,11 @@ func parseConversationReference(ref string) (conversationReference, error) {
 }
 
 // conversationHistory preserves an explicit read-only source across descendants.
+//
+// THE ORDER IS THE DECOUPLING: an explicit reader wins, then the memory store
+// (which every pre-split caller handed for both purposes), then the
+// conversation index — so a session with memory OFF and an index still has
+// the search verb. MEMORY OFF IS NOT SEARCH OFF; it is not remembering.
 func (c Config) conversationHistory() ConversationHistoryReader {
 	if c.ConversationHistory != nil {
 		return c.ConversationHistory
@@ -64,7 +69,21 @@ func (c Config) conversationHistory() ConversationHistoryReader {
 	if c.Memory != nil {
 		return c.Memory
 	}
+	if c.MemoryIndex != nil {
+		return c.MemoryIndex
+	}
 	return nil
+}
+
+// conversationIndexStore is the store this session's conversation is INDEXED
+// into: the explicit index when the door opened one, else the memory store,
+// which every door before the split passed for both purposes. Nil indexes
+// nothing — and indexing nothing with memory off was the old defect.
+func (c Config) conversationIndexStore() *store.Store {
+	if c.MemoryIndex != nil {
+		return c.MemoryIndex
+	}
+	return c.Memory
 }
 
 func (c Config) hasConversationHistory() bool { return c.conversationHistory() != nil }

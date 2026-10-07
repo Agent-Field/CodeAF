@@ -158,6 +158,8 @@ func TestDefaultEngineMemoryOffIsNotAnEmptyEnabledStore(t *testing.T) {
 
 // The test uses the store's own rows for the place, the same translation the
 // executable's v3Brain supplies, so command writes and page reads share a brain.
+// ListMemories spells the scope words the wire carries, the way the executable's
+// door does.
 type engineMemoryRows struct{ *store.Store }
 
 func (m engineMemoryRows) Snapshot(limit int) (store.MemoryShelves, error) {
@@ -166,6 +168,22 @@ func (m engineMemoryRows) Snapshot(limit int) (store.MemoryShelves, error) {
 
 func (m engineMemoryRows) ChangedSince(at time.Time) (int, int, error) {
 	return m.MemoryChangedSince(at)
+}
+
+func (m engineMemoryRows) ListMemories(scope string, limit int) ([]store.Memory, error) {
+	switch strings.TrimSpace(scope) {
+	case "":
+		return m.Store.ListMemories(nil, limit)
+	case store.MemoryScopeUser:
+		return m.Store.ListMemories([]string{store.OwnerUser}, limit)
+	case store.MemoryScopeEnv:
+		return m.Store.ListMemories([]string{store.OwnerMachine}, limit)
+	case store.MemoryScopeProject:
+		// THE SAME ANSWER THE EXECUTABLE'S DOOR GIVES: every project's rows,
+		// the quarantine included ([store.Store.ListProjectMemories]).
+		return m.Store.ListProjectMemories(limit)
+	}
+	return nil, nil
 }
 
 // The recorder leaves the real memory implementation intact and only exposes

@@ -3384,3 +3384,20 @@ its own is retired. Failed tasks and work kept for review retain their copies
 and timelines. Old temporary conversations still follow the usual seven-day
 retention policy. Previously orphaned timelines are not automatically purged:
 a missing directory alone does not prove that its history is disposable.
+
+## Can bash tasks search the web and fetch pages?
+
+Yes. PlanDB run workers carry `web_search` and `web_fetch` as native tools,
+using the run profile's search settings and credentials. They resolve those
+settings again on each operation, including after a worker wakes. Files,
+commands and PlanDB coordination still use `bash`. Each response may contain
+one tool call: either bash or an available native tool.
+
+The shell commands `codeaf web search QUERY` and `codeaf web fetch URL` use
+the same web backends. Native calls also record their tool name, arguments
+and returned observation in the task's trajectory. A failed web call remains
+a failed observation, never evidence that a page was read.
+
+A child reads the overall ask for requirements it owns. Delegation instructions
+for the parent remain the parent's coordination work; a child repeats them only
+when its own work order assigns coordination.
