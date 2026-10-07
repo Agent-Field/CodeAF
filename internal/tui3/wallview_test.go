@@ -266,8 +266,8 @@ func TestWallRenderStates(t *testing.T) {
 	rows, _ := renderWall(pal, v, 180, 50)
 	frame := wallPlainFrame(rows)
 	for _, want := range []string{
-		"▦ Conversations", "open in this window · in port", "⠿ 2 running", "? 1 needs you", "6 open",
-		"Teams", "All 6", "port 3", "+ New team",
+		"▦ Conversations", "all saved conversations · in port", "⠿ 2 running", "? 1 needs you", "6 conversations",
+		"Filter /", "Help ?",
 		"Answer ↵", "seen 6m ago", "running bash " + wallGlyphsFor(false).sep + " 2m", "? waiting on you",
 		"updated 5m ago", "☑", "▌", tokens.Spinner(v.spin),
 	} {
@@ -292,13 +292,13 @@ func TestWallRenderStates(t *testing.T) {
 	}
 
 	empty, hits := renderWall(pal, wallView{}, 80, 24)
-	if len(empty) != 24 || len(hits) != 1 || hits[0].kind != wallHitAction || hits[0].arg != int(wallActBack) {
+	if len(empty) != 24 || len(hits) < 2 || hits[0].kind != wallHitAction || hits[0].arg != int(wallActBack) {
 		t.Fatalf("empty: %d rows, hits %+v", len(empty), hits)
 	}
 	if got := ansi.Strip(ansi.Cut(empty[hits[0].y0], hits[0].x0, hits[0].x1)); !strings.Contains(got, "Back") {
 		t.Fatalf("the empty frame's way back is drawn as %q", got)
 	}
-	if !strings.Contains(wallPlainFrame(empty), "No open conversations") {
+	if !strings.Contains(wallPlainFrame(empty), wallEmptyWord) {
 		t.Fatalf("the empty frame says nothing")
 	}
 
@@ -311,7 +311,7 @@ func TestWallRenderStates(t *testing.T) {
 	v.choices = teamHueChoices(wallViewHues(v), teamReservedFrom(darkRamp), 6)
 	rows, _ = renderWall(pal, v, 120, 40)
 	card := wallPlainFrame(rows)
-	for _, want := range []string{"─ New team ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "Cancel esc", "Create ↵", "Shuffle"} {
+	for _, want := range []string{"─ New team ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "esc cancel", "enter create", "ctrl+r shuffle"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the new-team card lacks %q\n%s", want, card)
 		}
@@ -320,6 +320,24 @@ func TestWallRenderStates(t *testing.T) {
 	rows, _ = renderWall(pal, v, 120, 9)
 	if got := ansi.Strip(rows[1]); !strings.Contains(got, "New team › night▌") || !strings.Contains(got, "2 picked") {
 		t.Errorf("naming row: %q", got)
+	}
+	rows, hits = renderWall(pal, v, 20, 9)
+	for _, action := range []struct {
+		label string
+		act   wallAct
+	}{{"esc cancel", wallActCancel}, {"enter create", wallActSave}} {
+		found := false
+		for _, hit := range hits {
+			if hit.kind == wallHitAction && hit.arg == int(action.act) {
+				found = true
+				if got := ansi.Strip(ansi.Cut(rows[hit.y0], hit.x0, hit.x1)); got != action.label {
+					t.Errorf("compact naming target %q draws %q", action.label, got)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("compact naming lost %q", action.label)
+		}
 	}
 }
 
@@ -449,7 +467,7 @@ func wallFrameVariants(t *testing.T, pal palette, n, w, h int, each func(name st
 func TestWallClickHitsSitOnTheirLabels(t *testing.T) {
 	labels := map[wallAct]string{
 		wallActBack: "Back", wallActNewTeam: "New team", wallActFilter: "Filter", wallActNext: "needs you",
-		wallActColsLess: "−", wallActColsMore: "+", wallActMakeTeam: "Make team", wallActAddTo: "Add to",
+		wallActColsLess: "−", wallActColsMore: "+", wallActMakeTeam: "Create team", wallActAddTo: "Add to",
 		wallActCloseViews: "Close views", wallActClear: "Clear", wallActSave: "Create", wallActCancel: "Cancel",
 		wallActFilterClear: "Clear", wallActShuffle: "Shuffle", wallActHelp: "Help",
 	}
@@ -466,6 +484,9 @@ func TestWallClickHitsSitOnTheirLabels(t *testing.T) {
 					}
 					if hit.kind == wallHitAction && hit.y1-hit.y0 == 1 && hit.arg != int(wallActFilter) {
 						want := labels[wallAct(hit.arg)]
+						if v.naming && (wallAct(hit.arg) == wallActSave || wallAct(hit.arg) == wallActCancel || wallAct(hit.arg) == wallActShuffle) {
+							want = strings.ToLower(want)
+						}
 						if pal.ascii && want == "−" {
 							want = "-"
 						}
@@ -503,7 +524,7 @@ func TestWallBarTrayIffMarked(t *testing.T) {
 					adds = true
 				}
 			}
-			if makes != marks || (marks && !adds) {
+			if makes != marks || adds {
 				t.Fatalf("%dx%d marks=%v: make team=%v add to=%v\n%s", sz[0], sz[1], marks, makes, adds, frame)
 			}
 			if bar := ansi.Strip(rows[len(rows)-1]); !strings.Contains(bar, "Back esc") {
@@ -666,8 +687,8 @@ func TestWallTileActionRowDropsFromTheRight(t *testing.T) {
 				t.Fatalf("%s width %d: the action row is %d cells", pname, w, got)
 			}
 		}
-		if n := len(wallTileActs(pal.ascii, v.tiles[0], 200)); n != 4 {
-			t.Fatalf("%s: a wide tile carries %d buttons, want 4", pname, n)
+		if n := len(wallTileActs(pal.ascii, v.tiles[0], 200)); n != 3 {
+			t.Fatalf("%s: a wide tile carries %d buttons, want 3", pname, n)
 		}
 	}
 }
@@ -756,24 +777,9 @@ func TestWallClickTeamsAndMinimap(t *testing.T) {
 		}
 		c, _, tileH := wallGrid(n, 120, 40, 0)
 		overflow := (n+c-1)/c > wallVisibleRows(40, tileH)
-		if len(chips) != 4 || !add || menus != 3 || (minis > 0) != overflow {
+		if len(chips) != 0 || add || menus != 0 || (minis > 0) != overflow {
 			t.Fatalf("n%d: chips %v, + New team %v, %d dots, %d minimap cells\n%s", n, chips, add, menus, minis, ansi.Strip(rows[1]))
 		}
-	}
-	v := wallUnmarked(wallFixture(6))
-	v.hover = wallHitRef{kind: wallHitChip, id: wallTestIDs[1]}
-	rows, hits := renderWall(pal, v, 120, 40)
-	if !strings.Contains(ansi.Strip(rows[1]), "infra ⋯ │") {
-		t.Fatalf("the hovered segment shows no ⋯: %q", ansi.Strip(rows[1]))
-	}
-	tails := 0
-	for _, hit := range hits {
-		if hit.kind == wallHitChipMenu && hit.id == wallTestIDs[1] {
-			tails++
-		}
-	}
-	if tails != 2 || strings.Count(ansi.Strip(rows[1]), "⋯") != 1 {
-		t.Fatalf("the hovered segment: %d settings targets, row %q", tails, ansi.Strip(rows[1]))
 	}
 }
 
@@ -955,31 +961,25 @@ func TestWallToolbarExplainsTheHover(t *testing.T) {
 
 // THE TEAMS ROW IS ONE SEGMENTED CONTROL: every separator has one blank cell
 // either side, and + New team is its last segment.
-func TestWallTeamsRowIsEvenlyPadded(t *testing.T) {
+func TestWallControlRowHasNoTeamNavigation(t *testing.T) {
 	for pname, pal := range wallTestPalettes() {
 		for _, hover := range []wallHitRef{{}, {kind: wallHitChip, id: wallTestIDs[1]}} {
 			v := wallUnmarked(wallFixture(6))
 			v.hover = hover
-			rows, _ := renderWall(pal, v, 120, 40)
+			rows, hits := renderWall(pal, v, 120, 40)
 			row := ansi.Strip(rows[1])
-			sep := "│"
-			if pal.ascii {
-				sep = "|"
-			}
-			parts := strings.Split(row, sep)
-			if len(parts) != 5 {
-				t.Fatalf("%s: %d segments in %q", pname, len(parts), row)
-			}
-			for i, p := range parts {
-				if i > 0 && (!strings.HasPrefix(p, " ") || strings.HasPrefix(p, "  ")) {
-					t.Fatalf("%s: segment %d is %q", pname, i, p)
-				}
-				if i < len(parts)-1 && (!strings.HasSuffix(p, " ") || strings.HasSuffix(p, "  ")) {
-					t.Fatalf("%s: segment %d is %q", pname, i, p)
+			for _, word := range []string{"New team", "infra", "port", "Organize"} {
+				if strings.Contains(row, word) {
+					t.Fatalf("%s grid control row offers %q: %q", pname, word, row)
 				}
 			}
-			if !strings.HasPrefix(parts[4], " + New team ") {
-				t.Fatalf("%s: + New team is not the last segment: %q", pname, row)
+			if ansi.StringWidth(row) != 120 {
+				t.Fatalf("%s row width %d", pname, ansi.StringWidth(row))
+			}
+			for _, hit := range hits {
+				if hit.kind == wallHitChipMenu {
+					t.Fatal("stale hover exposed team settings")
+				}
 			}
 		}
 	}
@@ -1104,7 +1104,7 @@ func TestWallNarrowedToNothing(t *testing.T) {
 			}
 			v.filter = ""
 			rows, _ = renderWall(pal, v, sz[0], sz[1])
-			if !strings.Contains(wallPlainFrame(rows), "No open conversations in port") {
+			if !strings.Contains(wallPlainFrame(rows), "No conversations in port") {
 				t.Fatalf("%s: the empty team:\n%s", name, wallPlainFrame(rows))
 			}
 		}
@@ -1121,7 +1121,7 @@ func TestWallTitleOffersTheTeamsMembersNotOpenHere(t *testing.T) {
 	v.away = 2
 	rows, hits := renderWall(pal, v, 180, 50)
 	title := ansi.Strip(rows[0])
-	for _, want := range []string{"open in this window · in port", "2 more in port · Open them", "6 open"} {
+	for _, want := range []string{"all saved conversations · in port", "2 more in port · Open them", "6 conversations"} {
 		if !strings.Contains(title, want) {
 			t.Fatalf("title %q lacks %q", title, want)
 		}

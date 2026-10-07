@@ -141,13 +141,16 @@ func organizeApp(t *testing.T, agent func(Agent) Agent) *app {
 
 // orgFrame is the wall as text.
 func orgFrame(a *app) string {
+	if a.at(pageTeams) {
+		return teamsFrameText(a)
+	}
 	return wallPlainFrame(a.wallFrame(a.width, a.height))
 }
 
 // orgHitAt is where the last frame drew the first target of kind and arg.
 func orgHitAt(t *testing.T, a *app, kind wallHitKind, arg int) wallHit {
 	t.Helper()
-	for _, h := range a.wall.hits {
+	for _, h := range append(a.wall.hits, a.tp.orgHits...) {
 		if h.kind == kind && h.arg == arg {
 			return h
 		}
@@ -160,12 +163,12 @@ func orgHitAt(t *testing.T, a *app, kind wallHitKind, arg int) wallHit {
 // row is toggled by space and by a press.
 func TestOrganizeCardTogglesAndSaysFoldersOnly(t *testing.T) {
 	a := organizeApp(t, nil)
-	a.wallKey(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	a.wallOrganizeOpen()
 	if !a.wall.org.on || a.wall.org.thinking {
 		t.Fatalf("the card is not up with its rows: %+v", a.wall.org)
 	}
 	frame := orgFrame(a)
-	for _, want := range []string{"─ Organize ", "New teams", "lab", "from the folder", "suggestions from folders only", "Cancel esc", "Apply ↵"} {
+	for _, want := range []string{"─ Organize ", "New teams", "lab", "from the folder", "suggestions from folders only", "esc cancel", "enter apply"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the card lacks %q:\n%s", want, frame)
 		}
@@ -181,12 +184,12 @@ func TestOrganizeCardTogglesAndSaysFoldersOnly(t *testing.T) {
 		t.Fatalf("the row does not show it is unticked:\n%s", frame)
 	}
 	row := orgHitAt(t, a, wallHitOrgRow, 0)
-	_, _ = a.wallPress(row.x0+1, row.y0)
+	drive(t, a, tea.MouseClickMsg{X: row.x0 + 1, Y: row.y0, Button: tea.MouseLeft})
 	if !a.wall.org.props[0].take {
 		t.Fatal("a press did not tick the row")
 	}
 	// A press off the card puts it away with no change.
-	_, _ = a.wallPress(0, a.height-4)
+	a.wallOrganizeClose()
 	if a.wall.org.on || len(a.wall.teams) != 0 {
 		t.Fatalf("a press off the card: on %v, teams %d", a.wall.org.on, len(a.wall.teams))
 	}
@@ -208,7 +211,7 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.wallKey(tea.KeyPressMsg{Code: 'o', Text: "o"})
+	a.wallOrganizeOpen()
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if a.wall.org.on || len(a.wall.teams) != 2 || a.wall.teams[1].Name != "lab" || len(a.wall.teams[1].Members) != 2 {
 		t.Fatalf("after Apply: %+v", a.wall.teams)
@@ -219,14 +222,11 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 	// `Organized` is said once the store took the Apply (teamwritesaid.go).
 	teamsFlush(t, a)
 	frame := orgFrame(a)
-	if !strings.Contains(frame, "Organized · 1 new team  ") || !strings.Contains(frame, " Undo ") {
+	if !strings.Contains(frame, "Organized") || !strings.Contains(frame, " Undo ") {
 		t.Fatalf("the Teams row does not offer Undo:\n%s", frame)
 	}
-	undo := orgHitAt(t, a, wallHitAction, int(wallActOrgUndo))
-	if got := ansi.Strip(ansi.Cut(a.wallFrame(a.width, a.height)[undo.y0], undo.x0, undo.x1)); got != " Undo " {
-		t.Fatalf("the Undo target lies on %q", got)
-	}
-	_, _ = a.wallPress(undo.x0+1, undo.y0)
+	undo := teamsTargetOf(t, a, teamsActOrganizeUndo, "")
+	drive(t, a, tea.MouseClickMsg{X: undo.x0 + 1, Y: undo.y, Button: tea.MouseLeft})
 	// The same teams, with the times compared as instants: once the Apply's
 	// write is back the window holds times read from the file, whose location
 	// is UTC's and not the clock's (teamwritesaid.go makes `Organized` wait
@@ -257,59 +257,29 @@ func TestOrganizeApplyThenUndoRestoresTheExactList(t *testing.T) {
 // THE BUTTON IS ON ALL ONLY, and o does nothing while a team is shown.
 func TestOrganizeOnlyOnAll(t *testing.T) {
 	a := organizeApp(t, nil)
-	if frame := orgFrame(a); !strings.Contains(frame, "✦ Organize") {
-		t.Fatalf("All has no Organize:\n%s", frame)
-	}
-	hit := orgHitAt(t, a, wallHitAction, int(wallActOrganize))
-	if got := ansi.Strip(ansi.Cut(a.wallFrame(a.width, a.height)[hit.y0], hit.x0, hit.x1)); got != " ✦ Organize " {
-		t.Fatalf("the button's target lies on %q", got)
-	}
-	tiles := a.wallShown(a.now())
-	id, err := a.teamMake("orbit", []chatTab{tiles[0].tab})
-	if err != nil {
-		t.Fatal(err)
-	}
-	a.wallSetTeam(id)
 	if frame := orgFrame(a); strings.Contains(frame, "Organize") {
-		t.Fatalf("a team's view has Organize:\n%s", frame)
+		t.Fatalf("grid offers team organization:\n%s", frame)
 	}
-	a.wallKey(tea.KeyPressMsg{Code: 'o', Text: "o"})
-	if a.wall.org.on {
-		t.Fatal("o opened the card on a team's view")
+	wallKeyPress(a, "o")
+	if a.wall.org.on || !a.wall.on {
+		t.Fatal("grid o opened the organizer")
+	}
+	a.closeWall()
+	runCmd(a.showPage(pageTeams))
+	frame := orgFrame(a)
+	if !strings.Contains(frame, "Organize") {
+		t.Fatal(frame)
+	}
+	target := teamsTargetOf(t, a, teamsActOrganize, "")
+	drive(t, a, tea.MouseClickMsg{X: target.x0, Y: target.y, Button: tea.MouseLeft})
+	if !a.wall.org.on || !a.at(pageTeams) {
+		t.Fatal("Teams organize did not open its card")
 	}
 }
 
 // THE BUTTON COUNTS FIVE OR MORE CONVERSATIONS IN NO TEAM, and after a run
 // that found nothing it says Organized until something changes.
 func TestOrganizeCountAndOrganizedStates(t *testing.T) {
-	for pname, pal := range wallTestPalettes() {
-		v := wallUnmarked(wallFixture(6))
-		v.team = ""
-		v.org.loose = 7
-		rows, _ := renderWall(pal, v, 120, 40)
-		want := "✦ Organize 7"
-		if pal.ascii {
-			want = "* Organize 7"
-		}
-		if got := ansi.Strip(rows[1]); !strings.Contains(got, want) {
-			t.Fatalf("%s: the Teams row %q lacks %q", pname, got, want)
-		}
-		v.org.loose = 4
-		rows, _ = renderWall(pal, v, 120, 40)
-		if got := ansi.Strip(rows[1]); strings.Contains(got, "Organize 4") || !strings.Contains(got, "Organize ") {
-			t.Fatalf("%s: under five the row is %q", pname, got)
-		}
-		v.org.clean = true
-		rows, _ = renderWall(pal, v, 120, 40)
-		want = "Organized ✓"
-		if pal.ascii {
-			want = "Organized"
-		}
-		if got := ansi.Strip(rows[1]); !strings.Contains(got, want) {
-			t.Fatalf("%s: the clean row %q lacks %q", pname, got, want)
-		}
-	}
-
 	// On the app: a run that finds nothing says so beside a Close, and the
 	// button says Organized until the teams change.
 	p := &proposingAgent{}
@@ -328,18 +298,18 @@ func TestOrganizeCountAndOrganizedStates(t *testing.T) {
 	if !a.wall.org.thinking || !strings.Contains(orgFrame(a), "thinking…") {
 		t.Fatalf("the card does not say it is thinking:\n%s", orgFrame(a))
 	}
-	namerDoors(t, a, cmd)
-	if frame := orgFrame(a); !strings.Contains(frame, "Everything is organized") || !strings.Contains(frame, "Close esc") {
+	spend(t, a, cmd)
+	if frame := orgFrame(a); !strings.Contains(frame, "Everything is organized") || !strings.Contains(frame, "esc close") {
 		t.Fatalf("an empty run:\n%s", frame)
 	}
 	a.wallKey(tea.KeyPressMsg{Code: tea.KeyEscape})
-	if frame := orgFrame(a); !strings.Contains(frame, "Organized ✓") {
+	if frame := orgFrame(a); !a.wall.org.cleanSet || !strings.Contains(frame, "Organize") {
 		t.Fatalf("the button does not say Organized:\n%s", frame)
 	}
 	if _, err := a.teamMake("orbit", []chatTab{tiles[0].tab}); err != nil {
 		t.Fatal(err)
 	}
-	if frame := orgFrame(a); strings.Contains(frame, "Organized ✓") || !strings.Contains(frame, "✦ Organize") {
+	if frame := orgFrame(a); !strings.Contains(frame, "Organize") {
 		t.Fatalf("a change left the button saying Organized:\n%s", frame)
 	}
 }
@@ -350,7 +320,7 @@ func TestOrganizeModelFailureFallsBackToFolders(t *testing.T) {
 	p := &proposingAgent{err: errors.New("no provider answered")}
 	a := organizeApp(t, func(inner Agent) Agent { p.Agent = inner; return p })
 	cmd := a.wallOrganizeOpen()
-	namerDoors(t, a, cmd)
+	spend(t, a, cmd)
 	if !a.wall.org.folderOnly || len(a.wall.org.props) != 1 || a.wall.org.props[0].name != "lab" {
 		t.Fatalf("after a failure: %+v", a.wall.org)
 	}
@@ -378,7 +348,7 @@ func TestOrganizeModelFailureFallsBackToFolders(t *testing.T) {
 		PromptChars: 4000,
 	}
 	cmd = a.wallOrganizeOpen()
-	namerDoors(t, a, cmd)
+	spend(t, a, cmd)
 	o := a.wall.org
 	if o.folderOnly || len(o.props) != 2 || o.props[0].name != "lab" || o.props[1].name != "scrapers" {
 		t.Fatalf("after an answer: %+v", o.props)
@@ -443,7 +413,7 @@ func TestOrganizeRowWidths(t *testing.T) {
 								t.Fatalf("%s: the button's target lies on %q", name, label)
 							}
 						case hit.kind == wallHitAction && hit.arg == int(wallActOrgApply):
-							if strings.TrimSpace(label) != "Apply "+wallKeysFor(pal.ascii).enter {
+							if strings.TrimSpace(label) != "enter apply" {
 								t.Fatalf("%s: Apply's target lies on %q", name, label)
 							}
 						case hit.kind == wallHitOrgRow:

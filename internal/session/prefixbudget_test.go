@@ -553,9 +553,23 @@ const fixedPrefixTarget = 48_000
 // block to 34,927 over 24 tools. The measured fixed prefix is 57,218 bytes:
 // 94 above its preceding cap. The fixed waiver rises by exactly 94 for this
 // combined belt; the lean arm remains within its 49,590-byte cap.
+//
+// 2026-10-05, sec (sec-af's security audit), the second program codeaf
+// carries. Its guide (programguide.Sec, 386 bytes) is one more item of the
+// hand-off paragraph's list, which is all the prefix pays for a program: its
+// manual page and its report-turn wording ride no request. Measured against dev
+// 7e3033564 it cost the fixed prefix 366 bytes and the lean 229; 2026-10-07,
+// merged with dev baa2d7f0f, whose page carries a program's guide on the lean
+// arm too, it costs each 396 (dev measures 57,150 and 49,572; with sec,
+// 57,546 and 49,968). Both waivers are dev's plus exactly that 396.
+//
+// 2026-10-06, review (pr-af's code review), the third. Its guide (programguide.Review,
+// 190 bytes) and its item's frame are 203 bytes in both arms; 2026-10-07, on
+// dev baa2d7f0f with sec, the fixed prefix measures 57,749 and the lean
+// 50,171, and both waivers are sec's plus exactly that 203.
 const (
-	fixedPrefixWaiver = 9_218
-	leanPrefixWaiver  = 18_090
+	fixedPrefixWaiver = 9_817
+	leanPrefixWaiver  = 18_689
 )
 
 // THE LEAN PROFILE GETS A BUDGET OF ITS OWN (2026-09-10, the prompt diet's lane
@@ -680,7 +694,11 @@ const leanWindow = 16_000
 // own guide but does not read the platform's carried registry: Windows carries
 // none, while this budget must still weigh the Unix shipping maximum.
 func prefixPrograms() []delegate.Delegate {
-	return []delegate.Delegate{{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree}}
+	return []delegate.Delegate{
+		{Name: "review", Guide: programguide.Review, Lands: delegate.LandsText},
+		{Name: "sec", Guide: programguide.Sec, Lands: delegate.LandsText},
+		{Name: "senior-dev", Guide: programguide.SeniorDev, Lands: delegate.LandsTree},
+	}
 }
 
 // widestPage is the page at its heaviest: prompts/system.md with every one of

@@ -159,7 +159,7 @@ or the model; the task's room does, where the store's spend has them. The parts 
 row each, the finished ones included. Every one of those rows is a
 door: click the run's row, or select it and press `enter`, and its room opens over the
 conversation; click a part's row or a check's row and THAT task's room opens. It is the
-room the sessions place opens and the run's tab opens: what the task was asked, its steps,
+room the activity page opens and the run's tab opens: what the task was asked, its steps,
 its notes, and the box that leaves a note. A task handed to a program such as senior-dev
 opens its own program room instead (see *A program's task page is a conversation, not
 steps*). `esc` goes back to the conversation exactly as
@@ -283,7 +283,7 @@ to the column's width; the glyph and the `$` are never spent on it.
 **The line is there only while a step is in flight.** A task that has not started, one held
 behind named work, and one that has landed all draw their ordinary row and no live line — the
 store clears the step the moment its command ends. These rows are a run's **plan rows**, drawn
-in the sessions place (`/history`, `ctrl+.`, `alt+4`, and the roster raised over the frame), not
+in the activity page (`/history`, `ctrl+.`, `alt+4`, and the roster raised over the frame), not
 on the always-on column, which draws this conversation's own tree.
 
 ## What a run task's room shows while it runs
@@ -332,7 +332,7 @@ messages — say it to main`, or `<program> reads no more messages (…)` with i
 `enter` over a sentence says the same line and leaves your words in the box. Once the run has
 ended its foot and its box say `this task has finished — say it to main`.
 
-In the sessions place, `enter` on the program's row opens the same page as a page of that
+In the activity page, `enter` on the program's row opens the same page as a page of that
 place, with no box at all.
 
 ## Reading a program's actions — the step words down the side, how each came out, the call in flight, how long it has run
@@ -367,7 +367,7 @@ once more after its work has landed, so the note on where the work went is on th
 
 ## A program's raw calls — ctrl+y, the dialogue with its model, what it sent and what the model answered
 
-`ctrl+y` on a program's page — in its room or in the sessions place — turns it to the raw
+`ctrl+y` on a program's page — in its room or in the activity page — turns it to the raw
 calls the program made, and `ctrl+y` again turns it back to the actions; the key row says
 which: `ctrl+y calls` or `ctrl+y actions`. A page opens on the actions.
 
@@ -468,23 +468,23 @@ this conversation's plan**, so a task another chat spawned is never reachable:
 - **pause** / **resume** — hold a task and everything under it out of the ready
   frontier without changing its rung, so running steps finish and nothing new in
   the subtree is launched; or release the hold. The key is `p`: a running row
-  reads `p pause` and a held one `p resume`. The key is on the sessions place's
+  reads `p pause` and a held one `p resume`. The key is on the activity page's
   rows only: in a task's room `p` is a letter in the box. A run cannot be paused
   as a whole, so its own row names no `p pause`.
 - **cancel** — end a task, its descendants and the work hard-depending on it. The
-  key is `x stop it` (the roster's own cancel key), on the row and in the room.
+  key is `s stop it` on a Sessions row and `x stop it` in the room.
+  Sessions also offers `x delete` for permanent deletion of the task and its descendants.
   In a room, `x` over an empty box raises the `Stop this task?` card first, for a
-  part as for the run. On the run's own row and room that key ends the whole run
+  part as for the run. On the run's own row and room the stop action ends the whole run
   and asks first; see "How do I stop a run?" below.
 - **amend** — prepend text to a task's description, the way the CLI's `task amend
   --prepend` does, so the plan learns while it runs.
 - **priority** — set a task's priority through the store's revision verb.
 
-`x` and `p` are read only over an **empty box**: the moment there is a note to
+`s` on a Sessions row, `x` in a task room, and `p` are read only over an **empty box**: the moment there is a note to
 type, a letter is a letter. A task that has ended, `done` or `incomplete`, is offered
-neither: its row and its room name no `x stop it` and no `p pause`, because the store
-would refuse both, **and neither key does anything there**. In an ended task's room
-both are letters in the box; on an ended row in the list they are letters too. No
+neither stop nor pause, because the store would refuse both. An ended Sessions row
+still offers `x delete`; in an ended task room these letters remain text. No
 `Stop this task?` card is raised over a run that has already finished.
 
 Two refusals are this layer's own, and they are the words the pane reads back:
@@ -635,8 +635,9 @@ A stop ends the run now: every part still open is ended, what it was running is 
 off, and no further model call is made for it. The row reads `stopped`. A second stop
 on a run that is already stopping answers that it is already stopping.
 
-`x` on one PART's row in the sessions place ends that part only, at once and without a
-card, and the rest of the run carries on. In a part's room `x` asks first, with the
+`s stop it` on one PART's verbs strip in Sessions ends that part only, without
+a card, and the rest of the run carries on. `x delete` instead asks confirmation
+and permanently removes that part and its contained subtasks. In a part's room `x` asks first, with the
 same card, and ends that part only. A row nothing drives any more is cleared the same way:
 the stop settles it as `stopped` and answers `stopped task N (<title>) — nothing was
 driving it any more`. A run cannot be paused as a whole, so under the run's own

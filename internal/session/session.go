@@ -2785,6 +2785,11 @@ type Agent struct {
 	// woken with, nil for every other turn: a hand-off it makes is a re-attempt
 	// of that run ([Agent.programRetryRefusal]). Cleared with owedAsks.
 	programOutcomeNow *programOutcome
+	// programAnsweredFor is the row whose program ending was last written
+	// into the conversation because the turn it woke did not finish its
+	// answer ([Agent.programOutcomeUnansweredLocked]), so a run's account is
+	// written once however many turns then fail.
+	programAnsweredFor uint64
 	// programHold is the last program ending since the person's own words. It
 	// survives wake turns and reloads from the conversation's sidecar record.
 	programHold    *programOutcome
@@ -3133,6 +3138,11 @@ type Agent struct {
 	// ([Agent.settleDeliveries]).
 	settling []durableDelivery
 	closed   bool
+	// Permanent deletion holds the journal until all task-run writers have left.
+	deleting        bool
+	closingBeltDone <-chan struct{}
+	deletionGrace   time.Duration
+	closeFinalizer  bool
 	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
 	// the close complete for everybody rather than only for whoever got there
 	// first.
@@ -3544,6 +3554,9 @@ type Agent struct {
 	// a session that never speaks starts no goroutine (placemeta.go).
 	metaStampOnce   sync.Once
 	metaStampWriter *stampWriter
+	// Model choices have a separate writer so coalescing never drops a user stamp.
+	modelStampOnce   sync.Once
+	modelStampWriter *stampWriter
 
 	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
 	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its

@@ -60,23 +60,31 @@ func (s *teamWriteSaid) settle(w teamsWrote) bool {
 // A notice's clock starts when its write comes back, not when it was made, so
 // a slow write over a connection still shows its notice for the whole time.
 func (a *app) teamsWriteSettled(w teamsWrote) {
+	a.tmemberStart.said.settle(w)
+	if a.tp.disbandSaid.settle(w) {
+		a.teamsDisbandSaid(a.tp.disbandName, a.tp.disbandSaid.why)
+	}
 	now := a.now()
 	if a.wall.madeSaid.settle(w) {
 		a.wall.madeAt = now
+		if a.at(pageTeams) {
+			if selected, ok := a.teamsSelected(); ok && selected.Name == a.wall.made {
+				if why := a.wall.madeSaid.why; why != "" {
+					a.tp.msg = teamNotSaved(a.wall.made, why)
+				} else {
+					a.tp.msg = "Created " + a.wall.made
+				}
+			}
+		}
 	}
 	if a.wall.org.said.settle(w) {
 		a.wall.org.doneAt = now
-	}
-	if a.tp.undo.said.settle(w) {
-		a.tp.undo.at = now
-		a.tp.top = teamsTopCache{}
 	}
 	if a.tmove.undo.said.settle(w) {
 		a.tmove.undo.at = now
 		if why := a.tmove.undo.said.why; why != "" {
 			a.tmove.undo.word = teamNotSaved("the move", why)
 		}
-		a.tp.top = teamsTopCache{}
 	}
 	a.touch()
 }

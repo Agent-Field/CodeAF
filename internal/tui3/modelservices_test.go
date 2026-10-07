@@ -334,7 +334,7 @@ func TestConnectingAServiceFromProvidersMovesTheConversationOntoItsPreferredMode
 		Source: connectedSource, Key: row.Key, Address: source.Doors[0].Address, Door: source.Doors[0],
 	})
 	a.openSettings()
-	toProviders(t, a)
+	toConnections(t, a)
 	found := false
 	for at, item := range a.sheet.items {
 		if item.service != nil && item.service.id == "z-ai" {
@@ -1707,7 +1707,7 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), nil)
 	a.raiseSettings()
 	for i, tab := range settingTabs {
-		if tab == tabProviders {
+		if tab == tabConnections {
 			a.sheet.tab = i
 		}
 	}
@@ -1741,7 +1741,7 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 	a.sources = modelsource.NewSet(testDefaultService("sk-default-1234567890"), testDirectService("https://api.deepseek.com/v1"))
 	a.raiseSettings()
 	for i, tab := range settingTabs {
-		if tab == tabProviders {
+		if tab == tabConnections {
 			a.sheet.tab = i
 		}
 	}

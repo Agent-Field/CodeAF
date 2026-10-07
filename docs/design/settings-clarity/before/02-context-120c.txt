@@ -1,0 +1,48 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   wed 2:28pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams   Providers   Connections
+
+ › type to search
+ searching                                                                                       auto
+    now firecrawl, keyless — set search.exaKey or search.firecrawlKey to raise it
+ exa key                                                                                      not set
+ firecrawl key                                                                                not set
+ jina key                                                                                     not set
+ compact at                                                                                       60%
+ answer room                                                                                65536 tok
+ working set                                                                               160000 tok
+ context reuse                                                                                   250%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───────────────────────────────────────────
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

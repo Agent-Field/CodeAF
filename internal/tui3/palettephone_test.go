@@ -415,8 +415,15 @@ func TestThePhoneSettingsRowPutsTheValueUnderTheName(t *testing.T) {
 	// selected, so the second press on either of its lines answers it.
 	before := config.ToolApprovalModeAt(dir)
 	a.sheetPress(2, at+1)
+	if a.sheet.choice == nil {
+		t.Fatal("a press on the value's line did not open choices")
+	}
+	if got := config.ToolApprovalModeAt(dir); got != before {
+		t.Fatalf("opening choices changed the saved value: %q", got)
+	}
+	drive(t, a, key("down"), key("enter"))
 	if got := config.ToolApprovalModeAt(dir); got == before {
-		t.Fatalf("a press on the value's line did nothing: still %q", got)
+		t.Fatalf("saving the next choice did not change the value: still %q", got)
 	}
 }
 

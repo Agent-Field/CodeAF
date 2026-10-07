@@ -177,7 +177,7 @@ func TestTheSwitcherSinceYouLeftLedgerDrawsOnlyRecordedDoors(t *testing.T) {
 	for _, row := range r.ledger {
 		doors[row.place] = true
 	}
-	for _, door := range []string{"standing", "memory", "sessions"} {
+	for _, door := range []string{"standing", "memory", "activity"} {
 		if !doors[door] {
 			t.Fatalf("%s was not a ledger door", door)
 		}
@@ -225,7 +225,7 @@ func TestSwitcherStopsAndVerbsCarryTheDoorTheyDescribe(t *testing.T) {
 	// whichever two answers came first — and on the consent lane, whose answers
 	// are `1 allow once · 2 always · 3 deny`, that put a widening approval
 	// under the key a person presses for yes (switcher.go).
-	if got := wordsOfSwitcherVerbs(switcherVerbsFor(switcherRowByID(t, r, "ask"))); !strings.Contains(got, "1 do it") || !strings.Contains(got, "2 leave it") || !strings.Contains(got, "x close") || !strings.Contains(got, "c copy name") {
+	if got := wordsOfSwitcherVerbs(switcherVerbsFor(switcherRowByID(t, r, "ask"))); !strings.Contains(got, "1 do it") || !strings.Contains(got, "2 leave it") || !strings.Contains(got, "x delete") || !strings.Contains(got, "c copy name") {
 		t.Fatalf("asking verbs are %q", got)
 	}
 	if got := wordsOfSwitcherVerbs(switcherVerbsFor(standingRow)); !strings.Contains(got, "p "+homeItemPauseWord) {

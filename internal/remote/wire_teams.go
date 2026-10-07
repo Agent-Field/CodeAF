@@ -68,8 +68,9 @@ type TeamsReading struct {
 // TeamsUpdateArgs is the whole list the window wants written, and the stamp
 // of the file it made that list from.
 type TeamsUpdateArgs struct {
-	Base  string           `json:"base"`
-	Teams []teamstore.Team `json:"teams"`
+	Base              string           `json:"base"`
+	Teams             []teamstore.Team `json:"teams"`
+	MembershipVersion int              `json:"membership_version,omitempty"`
 }
 
 // TeamsTrafficArgs is one team's log after a cursor: After "" is the tail,

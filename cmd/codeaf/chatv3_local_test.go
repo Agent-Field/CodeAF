@@ -63,7 +63,7 @@ func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
 		t.Fatalf("close on report: %v, %v", closed, err)
 	}
 	welcome := remote.Welcome{Version: remote.Version, Workspace: "/srv/app", ProfileDir: engineProfile,
-		Teams: true, Delegation: true, WrapUp: true}
+		Teams: true, TeamMembershipVersion: remote.TeamMembershipVersion, Delegation: true, WrapUp: true}
 	fleet := onePipeFleet("", hostedClient(t))
 	t.Cleanup(fleet.closeAll)
 	options, settings := hostOptions(fleet, welcome, false)
@@ -696,7 +696,7 @@ func TestALongStatePathIsSaidInWordsAndNotInTheEnginesOwn(t *testing.T) {
 			t.Fatalf("the %s speaks in machinery words: %q", name, said)
 		}
 	}
-	written := busyEngineHostSentence(true)
+	written := busyEngineHostSentence("/home/somebody/api", true)
 	if got := hostFallbackReason(errors.New(written)); got != written {
 		t.Fatalf("a sentence already written for a person became %q, want %q", got, written)
 	}

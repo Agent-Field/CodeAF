@@ -52,6 +52,16 @@ func programNamedSentence(name string) string {
 		"if they asked for it not to be used, or did not mean the program, propose it again unchanged"
 }
 
+// programWorkSentence is the same turn-back for a message that asked for a
+// program's work rather than naming it ([delegate.Delegate.Asked]): "take a
+// look at PR 123" names no program, and the sentence says which work was
+// heard so the model can weigh it.
+func programWorkSentence(name, summary string) string {
+	return "the person asked for " + strings.TrimSuffix(strings.TrimSpace(summary), ".") + ", which " + name +
+		" does: if they want it to do this work, propose this again with `via: \"" + name + "\"`; " +
+		"if they asked for it not to be used, or meant other work, propose it again unchanged"
+}
+
 // mayHandToProgram says a `via` on a proposal from this agent could be
 // honoured: it is a conversation rather than a task, and the run road a
 // program rides is linked. It is the one reading of that, asked by the
@@ -97,7 +107,7 @@ func (a *Agent) programAskBounce(spec taskSpec) *askBounce {
 	if a.programBounced.seq == heard.seq && a.programBounced.step < step {
 		return nil
 	}
-	bounce := &askBounce{agent: a, name: heard.named, prior: a.programBounced, mark: bounceMark{seq: heard.seq, step: step}}
+	bounce := &askBounce{agent: a, sentence: a.config.heardSentence(heard), prior: a.programBounced, mark: bounceMark{seq: heard.seq, step: step}}
 	a.programBounced = bounce.mark
 	return bounce
 }
@@ -116,7 +126,9 @@ type bounceMark struct {
 // that lets the next proposal through.
 type askBounce struct {
 	agent *Agent
-	name  string
+	// sentence is what the bounce hands over: [programNamedSentence], or
+	// [programWorkSentence] when it was the program's work that was heard.
+	sentence string
 	// mark is what this bounce wrote on [Agent.programBounced], and prior is
 	// what was there before it.
 	mark, prior bounceMark
@@ -124,7 +136,7 @@ type askBounce struct {
 
 // Commit hands the bounce over as the call's result.
 func (b *askBounce) Commit(context.Context) (string, bool, error) {
-	return programNamedSentence(b.name), true, nil
+	return b.sentence, true, nil
 }
 
 // Withdraw takes the mark back. A call withdrawn before it went ahead is one
@@ -147,7 +159,16 @@ func (b *askBounce) text() string {
 	if b == nil {
 		return ""
 	}
-	return programNamedSentence(b.name)
+	return b.sentence
+}
+
+// heardSentence is the turn-back for what a turn heard: the program's name, or
+// its work.
+func (c Config) heardSentence(heard programsHeard) string {
+	if program, ok := c.delegateNamed(heard.named); ok && heard.byWork {
+		return programWorkSentence(program.Name, program.Summary)
+	}
+	return programNamedSentence(heard.named)
 }
 
 // programMayLiftFloor says a proposal made on a trivial ask whose verb is verb
@@ -189,6 +210,9 @@ type programsHeard struct {
 	// that message's [Agent.personSeq], which the bounce is counted against.
 	named string
 	seq   uint64
+	// byWork is a message that asked for the named program's work rather than
+	// saying its name ([delegate.Delegate.Asked]), which its turn-back says.
+	byWork bool
 	// asked is every program a message of the turn asked to do the work
 	// ([Config.programsAskedIn]), which is what lifts the floor for a proposal
 	// whose `via` is one of them.
@@ -212,21 +236,38 @@ func (a *Agent) hearProgramsLocked(text string) {
 			a.programsHeard.asked = append(a.programsHeard.asked, name)
 		}
 	}
-	if name := a.config.programNamedIn(text); name != "" {
-		a.programsHeard.named, a.programsHeard.seq = name, a.personSeq
+	if name, byWork := a.config.programHeardIn(text); name != "" {
+		a.programsHeard.named, a.programsHeard.seq, a.programsHeard.byWork = name, a.personSeq, byWork
 	}
 }
 
 // programNamedIn is the first program, by name, that the person's words name,
 // or "" when they name none.
 func (c Config) programNamedIn(asked string) string {
+	name, _ := c.programHeardIn(asked)
+	return name
+}
+
+// programHeardIn is the first program the person's words name, and whether it
+// was heard by its work rather than its name. A program whose name is an
+// everyday word ([delegate.Delegate.Asked]) is heard by its command and by
+// its work, never by the bare word: "review this function" names nothing.
+func (c Config) programHeardIn(asked string) (name string, byWork bool) {
 	words := normalizedWords(asked)
 	for _, name := range c.delegateNames() {
-		if namesProgram(words, name) {
-			return name
+		program, _ := c.delegateNamed(name)
+		switch {
+		case program.Asked == nil:
+			if namesProgram(words, name) {
+				return name, false
+			}
+		case typedAsCommand(asked, name):
+			return name, false
+		case program.Asked(asked):
+			return name, true
 		}
 	}
-	return ""
+	return "", false
 }
 
 // namesProgram says the words hold a program's name the ways a person types
@@ -283,12 +324,19 @@ var programAskWords = map[string]bool{
 // command typed as a word of its own (`/senior-dev`), or its name first in the
 // message, as the one addressed, or right after one of [programAskWords]. A
 // possessive is never an ask ("revert senior-dev's commit"), and neither is
-// the name anywhere else ("undo what senior-dev did").
+// the name anywhere else ("undo what senior-dev did"). A program whose name is
+// an everyday word ([delegate.Delegate.Asked]) is asked for by its name only in
+// a message that asks for its work too: "review PR 123" asks for review, and
+// "review this function" does not.
 func (c Config) programsAskedIn(text string) []string {
 	words := normalizedWords(text)
 	var asked []string
 	for _, name := range c.delegateNames() {
-		if typedAsCommand(text, name) || addressedByName(words, normalizedWords(name)) {
+		program, _ := c.delegateNamed(name)
+		switch {
+		case typedAsCommand(text, name):
+			asked = append(asked, name)
+		case addressedByName(words, normalizedWords(name)) && (program.Asked == nil || program.Asked(text)):
 			asked = append(asked, name)
 		}
 	}

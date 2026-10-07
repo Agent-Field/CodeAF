@@ -134,7 +134,7 @@ leaves this line under the box and stays on the step:
 
 What it writes for the default provider: the `api_key` field of your profile's `config.json` (under `~/.codeaf`),
 owner-readable only. That is the same field the **openrouter key** row on the settings
-panel's Providers tab writes, and the one every later launch reads. The running
+panel's Connections category writes, and the one every later launch reads. The running
 conversation takes it at once — the next message rides it, no restart.
 
 ## Skip the default OpenRouter provider, retry later, and keep the message I typed
@@ -361,7 +361,7 @@ Every answer went through a settings row, so every answer has a door:
 
 | What you answered | Where to change it later |
 | --- | --- |
-| the default provider's openrouter key | clear or remove it and the next local interactive launch offers the provider chooser again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
+| the default provider's openrouter key | clear or remove it and the next local interactive launch offers the provider chooser again; `/settings`, Connections category, the **openrouter key** row still accepts a pasted replacement |
 | the crew | nothing was asked — it is auto. `/crew` shows it, and `/crew pin <seat> <model>` pins a seat |
 | the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `CODEAF_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |

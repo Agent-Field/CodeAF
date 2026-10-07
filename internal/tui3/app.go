@@ -951,12 +951,25 @@ type app struct {
 	resumed       bool
 	updateCheck   func(context.Context) (codeupdate.Available, bool)
 	resolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
-	installUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
+	installUpdate func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error)
 	updateRunning string
 	updateCurl    string
 	updateArgs    []string
-	updateActive  bool
-	restart       *codeupdate.Plan
+	// updateInFlight is any install running, hand-run or background, and it is
+	// the guard against a second installer in this window. It stops nothing
+	// else: an install never owns a turn on this surface.
+	updateInFlight bool
+	// updateAuto is the durable half of the automatic updater: the setting, the
+	// remembered dismissal, the failure count and the cross-terminal lock. Nil
+	// means this surface has no automatic updater and the launch check is the
+	// one dim note it always was.
+	updateAuto *UpdateCoordinator
+	// offer is the launch offer's state machine (updateoffer.go).
+	offer updateOffer
+	// restart is the plan a quitting surface used to fill for the door. Nothing
+	// on this surface quits for an update any more, so it is read by no code
+	// here; it stays a field because the door hands one in (tui3.Options).
+	restart *codeupdate.Plan
 	// THE OPENROUTER BALANCE (credits.go). readCredits is the door's reader and
 	// nil on every surface that cannot ask; the rest is what the loop keeps so
 	// the keys row never reads a file or scans a catalog while it draws.
@@ -1438,6 +1451,15 @@ type app struct {
 	teamsDisk teamsDisk
 	// teamMenu is the strip chip's team switcher (teammenu.go).
 	teamMenu teamMenu
+	// Overlay selection belongs to the view; conversation drafts stay in the keeper.
+	teamViews          teamOverlayViews
+	tmembers           teamMembershipSheet
+	tcreate            teamCreateSheet
+	cdelete            conversationDeleteSheet
+	deleteConversation func(file string, choices map[string]string, affected map[string][]string) error
+	deletedSessionRows map[tasksKey]bool
+	deleteTask         func(file, id string) error
+	tmemberStart       teamMemberStart
 	// tp is the teams page's own state: its selection, its reading of the
 	// store and the targets it drew (teamspage.go).
 	tp teamsPage
@@ -2958,6 +2980,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		updateRunning:       strings.TrimSpace(opts.UpdateRunning),
 		updateCurl:          strings.TrimSpace(opts.UpdateCurl),
 		updateArgs:          append([]string(nil), opts.UpdateArgs...),
+		updateAuto:          opts.UpdateAuto,
 		restart:             opts.Restart,
 		models:              opts.Models,
 		requireListedModel:  opts.RequireListedModel,
@@ -2997,6 +3020,8 @@ func newApp(ctx context.Context, opts Options) *app {
 		usageLedger:         opts.UsageLedger,
 		ledger:              opts.Ledger,
 		archive:             opts.Archive,
+		deleteConversation:  opts.DeleteConversation,
+		deleteTask:          opts.DeleteTask,
 		world:               opts.World,
 		farPlaces:           opts.WorldRoot,
 		farRecord:           opts.TaskRecord,
@@ -3261,6 +3286,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	// person presses; it exists so that the page a question opens into can be
 	// looked at on a real screen before anything raises a real one.
 	a.openDemoQuestion(env)
+	// AND THE UPDATE OFFER'S OWN, for the same reason and on the same terms
+	// (updatedemo.go).
+	a.openDemoUpdate(env)
 	// AND THE TERMINAL'S TITLE IS READ ONCE THE SURFACE KNOWS WHERE IT OPENED,
 	// which is only now — home, a picker or a conversation. [app.Init] sends it,
 	// and from then on [app.retitle] sends it again only when it moves.
@@ -3513,6 +3541,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// go away when that conversation comes forward (tabsignal.go). It is read
 	// BEFORE the title below, which is drawn from it.
 	a.frontWaits = needsPerson(a.agent)
+	// A Teams card can start working in another window while our own turn is
+	// idle. Its current signal wakes the same clock that keeps it animated.
+	if a.teamsSpinning() {
+		cmd = tea.Batch(cmd, a.wake())
+	}
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd
@@ -3563,6 +3596,9 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// length check when nothing was edited (teamseam.go).
 	if write := a.teamsWrite(); write != nil {
 		cmd = tea.Batch(cmd, write)
+	}
+	if send := a.teamMembershipSubmit(); send != nil {
+		cmd = tea.Batch(cmd, send)
 	}
 	// AND THE TEAMS PAGE SETTLES WHICH CONVERSATION ITS PANE HOSTS, after
 	// every message that could have moved the front (teamspagehost.go). One
@@ -3705,6 +3741,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.KeyPressMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteKey(msg)
+		}
 		// A repeated enter keeps the pending conversation; ctrl+enter does
 		// the same only on the start page, where it is another enter spelling.
 		// Any other key cancels the transition before editing or navigating.
@@ -3745,6 +3784,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// THE CLOSE-A-TAB CARD IS READ WHERE THE STOP CARD IS READ, and above it:
 		// they share one slot and one keyboard, and this one is up only when the
 		// other cannot be (tabclose.go).
+		// Team sheets and the visible own-answer box own their keys before the
+		// underlying task or stop card can take a typed letter.
+		if msg.String() != "ctrl+c" && (a.tcreate.on || a.tmembers.on || a.tmove.on || a.tsheet.on || a.teamMenu.on || (a.at(pageTeams) && a.tp.answering != "")) {
+			return a, tea.Batch(flushed, a.key(msg))
+		}
 		if cmd, took := a.tabCloseKey(msg); took {
 			return a, cmd
 		}
@@ -3962,6 +4006,10 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// window to let go of (takeover.go).
 		return a, a.takeoverTick(msg)
 
+	case wallSavedReadMsg:
+		a.wallTakeSavedRead(msg)
+		return a, nil
+
 	case wallReadMsg:
 		a.wallTakeRead(msg)
 		return a, nil
@@ -4027,16 +4075,35 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.historyPrefetched(msg)
 
 	case tea.MouseWheelMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
+		}
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		// A notch, a press and a release are never a still frame, even when the
 		// motion spent ahead of them in the same message was one (wall.go's
 		// [app.wallMotion]).
 		a.ptr.still = false
-		// A wheel under the switcher puts it away: it hangs from the strip,
-		// and the page under it is about to move.
+		// A long overlay picker keeps the wheel inside its own visible rows.
 		if a.teamMenu.on {
+			if a.teamMenu.card.holds(msg.Mouse().X, msg.Mouse().Y) {
+				a.teamMenu.cursor = min(max(a.teamMenu.cursor+placeWheelDelta(msg.Mouse().Button), 0), len(a.teamMenuRows())-1)
+				a.teamMenu.hover = wallHitRef{}
+				a.touch()
+				return a, nil
+			}
 			a.closeTeamMenu()
 		}
 		if a.tsheet.on || a.tmove.on {
+			if a.tsheet.on && a.tsheet.mode != teamSheetSettings {
+				a.tsheet.detailsTop = min(max(a.tsheet.detailsTop+placeWheelDelta(msg.Mouse().Button), 0), a.tsheet.detailsMax)
+				a.touch()
+			}
 			return a, nil
 		}
 		if a.setup.open {
@@ -4107,6 +4174,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// drawn beneath the layer, but a notch must walk the choice in front.
 		if a.composerShowing() && a.composer.pick.open {
 			a.composer.pick.move(placeWheelDelta(msg.Mouse().Button))
+			a.touch()
+			return a, nil
+		}
+		if a.at(pageSettings) && a.sheet.edit != nil {
+			return a, nil
+		}
+		// A settings choice owns scrolling while its options are open.
+		if a.at(pageSettings) && a.sheet.choice != nil {
+			c := a.sheet.choice
+			c.cursor = max(0, min(len(c.item.row.Choices)-1, c.cursor+placeWheelDelta(msg.Mouse().Button)))
+			a.sheet.savedKey = ""
 			a.touch()
 			return a, nil
 		}
@@ -4296,6 +4374,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseClickMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
+		}
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		if a.conversationOpening {
 			a.cancelConversationOpening()
 		}
@@ -4731,6 +4819,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseReleaseMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
+		}
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		a.ptr.still = false
 		// A RELEASE UNDER THE CHOOSER ENDS NOTHING, because nothing under it was
 		// started: the press it would close was taken by the sheet, and letting
@@ -4772,6 +4870,16 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case tea.MouseMotionMsg:
+		if a.cdelete.on {
+			return a, a.conversationDeleteMouse(msg, msg.Mouse())
+		}
+		if a.tcreate.on {
+			return a, a.teamCreateMouse(msg, msg.Mouse())
+		}
+		if a.tmembers.on {
+			cmd, _ := a.teamMembershipMouse(msg, msg.Mouse())
+			return a, cmd
+		}
 		a.sawAPerson()
 		// THE WALL OWNS MOTION WHILE IT IS UP, as it owns the press: its own
 		// targets light under the pointer, and the strip above it still does
@@ -4855,7 +4963,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if a.at(pageSettings) {
-			a.sheetHover(msg.Mouse().Y)
+			a.sheetHoverAt(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
 		if a.at(pageTasks) {
@@ -5483,6 +5591,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateCheckMsg:
 		return a, a.tookUpdateCheck(msg)
+
+	case updateOfferTickMsg:
+		return a, a.tookOfferTick()
+
+	case updateGraceMsg:
+		return a, a.tookUpdateGrace()
+
+	case offerSettleMsg:
+		return a, a.tookOfferSettle()
 	case creditWakeMsg:
 		if a.creditRecordPending.Swap(false) {
 			a.refreshCreditWarnings()
@@ -5496,9 +5613,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateInstallMsg:
 		return a, a.tookUpdateInstall(msg)
-
-	case updateRestartMsg:
-		return a, a.quit()
 
 	case frameMsg:
 		return a, a.paint()
@@ -5753,11 +5867,11 @@ func (a *app) paint() tea.Cmd {
 		}
 		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
-	// A WORKING TILE ON THE WALL turns its spinner at the spinner's own
-	// cadence and no faster: the glyph changes once a step, and a whole wall
+	// A WORKING TILE ON THE WALL OR A VISIBLE TEAMS CARD turns its spinner at
+	// the spinner's own cadence and no faster: the glyph changes once a step, and a whole wall
 	// drawn thirty times a second to move one glyph a quarter as often would be
 	// the costliest frame on this surface spent on nothing (wall.go).
-	if a.wallSpinning() {
+	if a.wallSpinning() || a.teamsSpinning() {
 		return tea.Batch(kick, surfaceTick(a.frameEvery()*spinnerStep, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false
@@ -6477,13 +6591,7 @@ func (a *app) settle() tea.Cmd {
 	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
 	a.col.open()
 	a.approval = a.approvalPosture()
-	a.mouse = config.MouseEnabledAt(a.profileDir)
-	a.timestamps = config.TimestampsAt(a.profileDir)
-	a.workMode = config.WorkAt(a.profileDir)
-	a.adoptIcons()
-	a.hopQuick = config.QuickSwitchAt(a.profileDir)
-	a.askWait = a.consentWait()
-	a.notices.enabled = config.HintsAt(a.profileDir)
+	a.refreshProfileUI()
 	// AND THE ANSWER HAS JUST ARRIVED, which is when somebody starts reading
 	// it: the conversation's tip waits its quiet out from here (notice.go).
 	a.stirred()
@@ -8087,6 +8195,8 @@ func (a *app) slash(line string) tea.Cmd {
 		// conversation, a search over it, and a look at the point before the cut.
 		return a.openRewindSheet()
 
+	case "delete":
+		return a.conversationDeleteOpen(a.file, a.sessionName())
 	case "new":
 		// The command that replaces the agent is the one command here that
 		// returns work: the standing task lane belongs to the agent that handed
@@ -9038,6 +9148,44 @@ func (a *app) paste(text string) tea.Cmd {
 	// at the door — CRLF first, then bare CR.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	// Creation and the grid own their clipboard input just as they own keys.
+	// A paste must never spill into the conversation draft behind them.
+	if a.tmembers.on {
+		if a.tmembers.member == "" && !a.tmembers.removing {
+			a.tmembers.filter.insert(strings.ReplaceAll(text, "\n", " "))
+			a.tmembers.cursor, a.tmembers.top = 0, 0
+		}
+		a.touch()
+		return nil
+	}
+	if a.tcreate.on {
+		text = strings.ReplaceAll(text, "\n", " ")
+		switch a.tcreate.field {
+		case 0:
+			a.tcreate.name.insert(text)
+		case 2:
+			a.tcreate.filter.insert(text)
+			a.tcreate.cursor, a.tcreate.top = 0, 0
+		}
+		a.touch()
+		return nil
+	}
+	if a.wall.on {
+		text = strings.ReplaceAll(text, "\n", " ")
+		if a.wall.naming {
+			if a.wall.nameFresh {
+				a.wall.name = ""
+			}
+			a.wall.name += text
+			a.wall.nameFresh, a.wall.nameAsking = false, false
+			a.wall.nameError = ""
+		} else if a.wall.filterOn {
+			a.wall.filter += text
+			a.wall.focus, a.wall.scroll = 0, 0
+		}
+		a.touch()
+		return nil
+	}
 	if a.pasteEdit.open {
 		before := a.pasteEdit.box.String()
 		a.pasteEdit.box.insert(text)
@@ -9091,6 +9239,9 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.at(pageSettings) {
 		flat := strings.ReplaceAll(text, "\n", " ")
 		switch {
+		case a.sheet.choice != nil:
+			// Closed choices have no text field; do not alter the hidden search.
+			return nil
 		case a.sheet.edit != nil:
 			a.sheet.edit.box.insert(flat)
 		case a.sheet.sel != nil:

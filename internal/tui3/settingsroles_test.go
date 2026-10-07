@@ -80,6 +80,10 @@ func toProviders(t *testing.T, a *app) {
 	for at, title := range settingTabs {
 		if title == tabProviders {
 			a.sheet.tab = at
+			if a.sheet.advanced == nil {
+				a.sheet.advanced = map[string]bool{}
+			}
+			a.sheet.advanced[tabProviders] = true
 			a.sheet.build()
 			return
 		}

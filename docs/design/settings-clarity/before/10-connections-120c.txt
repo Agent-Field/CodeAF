@@ -1,0 +1,48 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   wed 2:28pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams   Providers   Connections
+
+ › type to search
+ providers
+ · DeepSeek                                                                                       key
+    key
+ · Z.ai                                                                                  region · key
+ · Moonshot                                                                              region · key
+ · MiniMax                                                                                        key
+ · Alibaba Qwen                                                                          region · key
+ · Codex                                                                                      browser
+ · Ollama
+ · Custom OpenAI-compatible API                                                         address · key
+
+ analytics
+ · Amplitude                                                                                      key
+ · ChartMogul                                                                                     key
+ · Dovetail                                                                                       key
+ · Geckoboard                                                                                     key
+ · Mixpanel                                                                                       key
+ · PostHog                                                                                    sign in
+ · Segment                                                                                        key
+
+ billing
+ · Braintree                                                                                      key
+ · Chargebee                                                                                      key
+ · ChargeOver                                                                                     key
+ · FastSpring                                                                                     key
+ · Maxio                                                                                          key
+ · Odoo                                                                                           key
+ · Paddle                                                                                         key
+ · Paddle Sandbox                                                                                 key
+ · PayPal                                                                                     sign in
+ · Rebilly                                                                                        key
+ · Recurly                                                                                        key
+ · RevenueCat                                                                                     key
+ · Stripe                                                                                         key
+
+ calls & meetings
+ · Aircall                                                                                        key
+ · Avoma                                                                                          key
+
+─ enter opens a box for the key you already hold ───────────────────────────────────────────────────────────────────────
+ ↑↓ move · ←→ tabs · enter takes your key · type to filter · tab next place · esc close

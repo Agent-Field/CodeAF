@@ -675,6 +675,12 @@ var vocabulary = []GlyphBinding{
 		UsualTint: TextSecondary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
+	{
+		ID: GTeamDot, Name: "TeamDot", Meaning: "a team identity in the navigation tree",
+		Plain: GlyphTeamDot, NerdFont: "\uF111", NFName: "nf-fa-circle", ASCII: "o",
+		UsualTint: TextPrimary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
+	},
+
 	// -- the prose slots (code.go) -------------------------------------------
 	//
 	// Named in code.go because a slot is a MEANING and not a byte; bound HERE

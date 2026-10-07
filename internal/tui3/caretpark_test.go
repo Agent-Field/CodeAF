@@ -88,8 +88,10 @@ func TestTheSearchBoxParksItsCaretAfterTheQuery(t *testing.T) {
 		t.Fatalf("the caret stands at %d, after %q, want immediately after %q",
 			caretX, before, "provide")
 	}
-	if !strings.Contains(strings.Join(plainLines, "\n"), "saved to") {
-		t.Fatal("the settings frame lost its saved-profile note")
+	if item, ok := a.sheet.current(); ok && item.row.Key != "" {
+		if scope := item.row.ChatPresentation().Scope; scope != "" && !strings.Contains(strings.Join(plainLines, "\n"), scope) {
+			t.Fatalf("the selected setting lost its scope: %q", scope)
+		}
 	}
 }
 
@@ -102,7 +104,7 @@ func TestTheSearchBoxRestsItsCaretOnTheSameRow(t *testing.T) {
 	a.raiseSettings()
 	a.sheet.build()
 	lines, _, caretX, caretY, _ := a.placeFrameNow(90, 30)
-	boxRow, plainLines := caretRowOf(t, lines, "›", "type to search")
+	boxRow, plainLines := caretRowOf(t, lines, "›", "Search all settings")
 	if caretY != boxRow {
 		t.Fatalf("the resting caret is on row %d, want the box's row %d:\n%s",
 			caretY, boxRow, strings.Join(plainLines, "\n"))
@@ -164,7 +166,7 @@ func TestTheConnectionsEntryParksItsCaretInTheBox(t *testing.T) {
 	// AND NOT IN THE RESTING SEARCH BOX AT THE FOOT, which is where it stood
 	// before the sheet learned to answer for its own row's box.
 	for i, line := range plainLines {
-		if strings.Contains(line, "type to search") && i == caretY {
+		if strings.Contains(line, "Search all settings") && i == caretY {
 			t.Fatalf("the caret is parked in the resting search box at row %d", i)
 		}
 	}

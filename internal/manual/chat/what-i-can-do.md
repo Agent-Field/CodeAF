@@ -206,7 +206,7 @@ change it.** If the foreground command is still running then, the same process
 is kept as a background job; the call returns its output so far and a job id, and
 the chat moves on. Nothing is killed or restarted.
 
-The row is labelled **background after** on `/settings`' Safety tab; its key is
+The row is labelled **background shell commands after** in `/settings` → Tasks; its key is
 `bash.background_after_seconds`. The session engine and the visible countdown arm from
 it together at launch, so a change applies to the **next session**. It is a machine brake,
 so the model's `change_setting` tool refuses to widen it; change it yourself in the panel.
@@ -1000,7 +1000,7 @@ settings rather than keeping a launch-time copy.
 With `search.provider` on `auto`, an Exa key raises the next search to `exa`; a
 Firecrawl key keeps the provider named `firecrawl` and raises that provider's
 ceiling, so the visible change is `firecrawl · with your key`. The selected
-**searching** row in `/settings` → Context states the current answer. With no
+**web search provider** row in `/settings` → Connections states the current answer. With no
 keys it says `now firecrawl, keyless — set search.exaKey or
 search.firecrawlKey to raise it`.
 

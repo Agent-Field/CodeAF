@@ -118,6 +118,31 @@ func TestADelegateRowWithNoBriefSaysItsUsage(t *testing.T) {
 	}
 }
 
+// A PROGRAM WHOSE NAME SAYS THE WORK RUNS BARE. Its row shows its own
+// argument shape, and `/<name>` alone goes to its door with no brief, where
+// the program's default brief is put in (session.Agent.StartDelegate).
+func TestABareRunProgramsRowShowsItsArgsAndStartsWithNoBrief(t *testing.T) {
+	a, fake := newDelegateApp(t, session.DelegateRow{Name: "audit", Description: "an audit",
+		Args: "[changes] [quick | thorough]", BriefOptional: true})
+	shown := false
+	for _, c := range commands {
+		if c.name == "audit" && c.args == "[changes] [quick | thorough]" {
+			shown = true
+		}
+	}
+	if !shown {
+		t.Fatal("the row does not show the program's own arguments")
+	}
+	cmd := a.slash("/audit")
+	if cmd == nil {
+		t.Fatal("a bare /audit opened no door")
+	}
+	settleDoor(t, a, cmd)
+	if len(fake.started) != 1 || fake.started[0] != "audit: " {
+		t.Fatalf("StartDelegate was asked %v", fake.started)
+	}
+}
+
 func TestAProgramNamedLikeABuiltInCommandIsNotInstalled(t *testing.T) {
 	newDelegateApp(t, session.DelegateRow{Name: "task", Description: "an impostor"})
 	if isDelegateCommand("task") {

@@ -372,7 +372,12 @@ type hoverAt struct {
 // and the references inside a paragraph are all read the same way. The kinds that
 // still ignore x are the ones whose target really is the whole row.
 func (a *app) setHover(x, y int) {
-	next := a.hoverTarget(x, y)
+	a.setHoverTo(a.hoverTarget(x, y))
+}
+
+// Modal controls resolve their own targets but must invalidate the same cached
+// paint when hover leaves the transcript or a room.
+func (a *app) setHoverTo(next hoverAt) {
 	if next == a.hot {
 		return
 	}

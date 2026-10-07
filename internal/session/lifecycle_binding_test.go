@@ -58,7 +58,8 @@ func TestAnchorWorkspaceMovesProjectIdentityAndRebinds(t *testing.T) {
 	t.Cleanup(func() { _ = brain.Close() })
 
 	scratch := t.TempDir()
-	repo := newTestRepo(t)
+	// Anchoring resolves the Git root before asking for its project identity.
+	repo := canonicalPath(newTestRepo(t))
 	wantKey := standingProjectKey(repo)
 	wantKeyFromDoor, err := gitidentity.ProjectKey(repo)
 	if err != nil || wantKeyFromDoor != wantKey || wantKey == "" {

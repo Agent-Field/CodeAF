@@ -1,0 +1,280 @@
+// Package agentsession is what a carried program's agents run on inside
+// codeaf: an implementation of [appx.App] over the run's model API, with a
+// small read-only agent loop ([Session]) for every agent session.
+//
+// IT IS SHARED, AND IT IS CODEAF'S. It was written for sec-af, which was a node
+// on a control plane: its plain model calls went to a router with a key it
+// held, its agent sessions were a coding-agent binary it spawned once per call,
+// and every call between its own reasoners was an HTTP round trip. Here all
+// three are codeaf's: a model call goes to the run's model API
+// (internal/provider/modelapi), the only road to a model a program codeaf
+// carries has; an agent session is a loop in this process whose every turn is
+// one call on that same road; and a call between reasoners stays in the
+// process (internal/secaf/audit's local calls). Nothing in it is one
+// program's, so it lives beside the programs that use it and not inside one
+// of them: a change here reaches every program that runs on it.
+//
+// IT CHANGES NOTHING IN THE FOLDER IT READS. A program that lands text promises
+// the person their repository back exactly as it was, so the tools an agent
+// session is given read and search and never write, and there is no shell to
+// write with.
+package agentsession
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math/rand/v2"
+	"net/http"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/delegate"
+	"github.com/Agent-Field/codeaf/internal/provider/modelapi"
+)
+
+// Client is the run's model API as sec-af's calls reach it: one base URL, one
+// token, and the ceiling's refusal remembered once it has been heard.
+type Client struct {
+	base  string
+	token string
+	http  *http.Client
+	// retries is how many times a call that failed on the way is sent again:
+	// the program's own figure ([NewClient]).
+	retries int
+	// stopped is set by the first refusal that ends the run — the dollar
+	// ceiling, a key the service refused — so the dozens of calls still queued
+	// behind it learn the same answer without asking a server that already
+	// gave it.
+	stopped atomic.Pointer[error]
+	// pause is how long a retry waits, per attempt, and held how long a held
+	// call waits; a test shortens both.
+	pause func(attempt int) time.Duration
+	held  func() time.Duration
+}
+
+// NewClient opens the run's model API. It refuses an API with no address or no
+// token, because a program with neither has no road to a model at all.
+//
+// retries is how many times a call that failed on the way is sent again, and
+// it is the program's to state like every figure here ([Policy] says why);
+// zero is no retry. The model API already walks codeaf's own ladder of
+// services for every call, so a retry covers only what that cannot — a
+// connection dropped on this machine, a moment the API was busy.
+func NewClient(api delegate.ModelAPI, retries int) (*Client, error) {
+	if strings.TrimSpace(api.BaseURL) == "" || strings.TrimSpace(api.Token) == "" {
+		return nil, errors.New("a program codeaf carries runs only inside codeaf, which serves its models; this process was handed no model API")
+	}
+	if retries < 0 {
+		return nil, fmt.Errorf("agentsession: NewClient's retries is %d; it is how many times a failed call is sent again, zero or more", retries)
+	}
+	return &Client{
+		base: api.BaseURL, token: api.Token, retries: retries,
+		// NO CLIENT TIMEOUT: a thinking model can be quiet for minutes, and the
+		// call's own context (the session's wall, the run's stop) is what ends
+		// it.
+		http:  &http.Client{},
+		pause: func(attempt int) time.Duration { return time.Duration(2<<attempt) * time.Second },
+	}, nil
+}
+
+// Request is one model call: who is asking (the thread its turns are kept
+// under on the task's page), what, and in what shape the answer must come.
+type Request struct {
+	Model    string
+	Thread   string
+	Messages []ai.Message
+	Tools    []ai.ToolDefinition
+	// ResponseFormat asks for a JSON answer of one schema; nil is free text.
+	ResponseFormat *ai.ResponseFormat
+}
+
+// wireRequest is the body on the wire: the chat-completions shape the model
+// API reads, with the thread as its prompt_cache_key.
+type wireRequest struct {
+	Model          string              `json:"model,omitempty"`
+	Messages       []ai.Message        `json:"messages"`
+	Tools          []ai.ToolDefinition `json:"tools,omitempty"`
+	ToolChoice     string              `json:"tool_choice,omitempty"`
+	ResponseFormat *ai.ResponseFormat  `json:"response_format,omitempty"`
+	PromptCacheKey string              `json:"prompt_cache_key,omitempty"`
+}
+
+// ErrCeiling is the run's dollar ceiling, reached: the model API made no call.
+// It ends the program's model work everywhere at once, and what the program found
+// before it is still reported.
+var ErrCeiling = errors.New("the run's dollar ceiling is reached, so codeaf made no call")
+
+// RefusedError is an answer that ends the run's model work: the ceiling (402)
+// or a service that refused the key (401, 403). Nothing that follows it can
+// succeed, so nothing is retried and the client answers it to every call after.
+//
+// WHICH OF THE TWO IT IS IS DECIDED ONCE, where the answer arrives, and kept
+// as a fact: nothing downstream reads the status to decide again
+// (internal/taxonomy's law).
+type RefusedError struct {
+	// Ceiling is the run's dollar ceiling; otherwise the key was refused.
+	Ceiling bool
+	Code    int
+	Message string
+}
+
+func (e *RefusedError) Error() string {
+	if e.Ceiling {
+		return ErrCeiling.Error() + ": " + e.Message
+	}
+	return fmt.Sprintf("the model service refused the run (%d): %s", e.Code, e.Message)
+}
+
+// Is makes the ceiling match [ErrCeiling].
+func (e *RefusedError) Is(target error) bool { return target == ErrCeiling && e.Ceiling }
+
+// Complete sends one call and answers the model's reply.
+func (c *Client) Complete(ctx context.Context, request Request) (*ai.Response, error) {
+	if stopped := c.stopped.Load(); stopped != nil {
+		return nil, *stopped
+	}
+	wire := wireRequest{
+		Model: request.Model, Messages: request.Messages, Tools: request.Tools,
+		ResponseFormat: request.ResponseFormat, PromptCacheKey: request.Thread,
+	}
+	if len(wire.Tools) > 0 {
+		wire.ToolChoice = "auto"
+	}
+	body, err := json.Marshal(wire)
+	if err != nil {
+		return nil, fmt.Errorf("encode the call: %w", err)
+	}
+	var last error
+	for attempt := 0; attempt <= c.retries; {
+		response, err, again := c.send(ctx, body)
+		if err == nil {
+			return response, nil
+		}
+		var refused *RefusedError
+		if errors.As(err, &refused) {
+			c.stopped.CompareAndSwap(nil, &err)
+			return nil, err
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		// A CALL HELD BEHIND CALLS IN FLIGHT WAITS ITS TURN, for as long as
+		// the session's own bounds allow, and is not counted as a failure: a
+		// program runs many calls at once and the ceiling admits as many as it
+		// can price (modelapi's held answer).
+		if errors.Is(err, errHeld) {
+			if !c.wait(ctx, c.holdPause()) {
+				return nil, ctx.Err()
+			}
+			continue
+		}
+		if !again {
+			return nil, err
+		}
+		last = err
+		attempt++
+		if attempt > c.retries {
+			break
+		}
+		if !c.wait(ctx, c.pause(attempt)) {
+			return nil, ctx.Err()
+		}
+	}
+	return nil, last
+}
+
+// errHeld is the model API asking a call to wait while calls in flight hold
+// what is left of the run's ceiling.
+var errHeld = errors.New("the run's ceiling is held by calls in flight")
+
+// holdPause is how long a held call waits before it asks again: about the two
+// seconds the model API suggests, spread so that calls held together do not
+// all ask again together.
+func (c *Client) holdPause() time.Duration {
+	if c.held != nil {
+		return c.held()
+	}
+	return 2*time.Second + time.Duration(rand.Int64N(int64(2*time.Second)))
+}
+
+// wait sleeps d unless ctx ends first, and answers whether it slept.
+func (c *Client) wait(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// send is one attempt: the reply, or the error and whether another attempt
+// could answer differently.
+func (c *Client) send(ctx context.Context, body []byte) (*ai.Response, error, bool) {
+	call, err := http.NewRequestWithContext(ctx, http.MethodPost, modelapi.ChatURL(c.base), bytes.NewReader(body))
+	if err != nil {
+		return nil, err, false
+	}
+	call.Header.Set("Content-Type", "application/json")
+	call.Header.Set("Authorization", "Bearer "+c.token)
+	answer, err := c.http.Do(call)
+	if err != nil {
+		return nil, fmt.Errorf("reach the model API: %w", err), true
+	}
+	defer answer.Body.Close()
+	raw, err := io.ReadAll(answer.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read the model's reply: %w", err), true
+	}
+	if answer.StatusCode >= 400 {
+		message := apiMessage(raw)
+		if answer.Header.Get(modelapi.HeldHeader) != "" {
+			return nil, fmt.Errorf("%w: %s", errHeld, message), true
+		}
+		switch answer.StatusCode {
+		case http.StatusPaymentRequired:
+			return nil, &RefusedError{Ceiling: true, Code: answer.StatusCode, Message: message}, false
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return nil, &RefusedError{Code: answer.StatusCode, Message: message}, false
+		case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout, http.StatusInternalServerError:
+			return nil, fmt.Errorf("the model API answered %d: %s", answer.StatusCode, message), true
+		}
+		return nil, fmt.Errorf("the model API answered %d: %s", answer.StatusCode, message), false
+	}
+	var response ai.Response
+	if err := json.Unmarshal(raw, &response); err != nil {
+		return nil, fmt.Errorf("the model's reply does not parse: %w", err), true
+	}
+	if len(response.Choices) == 0 {
+		return nil, errors.New("the model's reply has no choices"), true
+	}
+	return &response, nil, false
+}
+
+// apiMessage is the one sentence an error body carries, or the body itself.
+func apiMessage(raw []byte) string {
+	var shaped ai.ErrorResponse
+	if json.Unmarshal(raw, &shaped) == nil && strings.TrimSpace(shaped.Error.Message) != "" {
+		return strings.TrimSpace(shaped.Error.Message)
+	}
+	text := strings.TrimSpace(string(raw))
+	if len(text) > 400 {
+		text = text[:400] + "…"
+	}
+	return text
+}
+
+// costOf is a reply's metered price, zero when it carries none.
+func costOf(response *ai.Response) float64 {
+	if response == nil || response.Usage == nil || response.Usage.Cost == nil {
+		return 0
+	}
+	return *response.Usage.Cost
+}

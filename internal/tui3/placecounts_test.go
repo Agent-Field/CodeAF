@@ -58,7 +58,7 @@ func TestATabWearsWhatChangedSinceYouLeftThatPlace(t *testing.T) {
 	// MEMORY IS OFF THE BAR, SO ITS NUMBER IS ON THE MAP — the one row that
 	// draws every place with its digit — and on the bar the moment you stand in
 	// it (pages.go's [barPages]).
-	if bar := navPlaces(a, 160, true); !strings.Contains(bar, itoa(placeDigitOf(pageMemory))+" memory 3") {
+	if bar := navPlaces(a, 160, true); !strings.Contains(bar, itoa(placeDigitOf(pageMemory))+" "+navLabel(pageMemory)+" 3") {
 		t.Fatalf("the map does not carry the count: %q", bar)
 	}
 }

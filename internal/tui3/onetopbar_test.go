@@ -33,11 +33,11 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 		a.width, a.height = width, 24
 		a.touch()
 		chat, _, _ := a.frame()
-		cy, cx, cgap := barGeometry(chat, " home ")
+		cy, cx, cgap := barGeometry(chat, " "+navLabel(pageHome)+" ")
 		chatSpans := append([]placeTabSpan(nil), a.tabs...)
 		walkTo(t, a, pageSpend)
 		frame, _, _ := a.frame()
-		py, px, pgap := barGeometry(frame, " home ")
+		py, px, pgap := barGeometry(frame, " "+navLabel(pageHome)+" ")
 		if cy != navRow || py != navRow || a.tabRow != navRow {
 			t.Fatalf("at %d the nav is on row %d in the chat and %d on the place", width, cy, py)
 		}
@@ -53,10 +53,10 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 			}
 		}
 		// THE STRIP IS UNDER THE NAV IN THE CHAT, and absent on the place.
-		if sy, _, _ := barGeometry(chat, "harbor ▾"); sy != tabStripRow {
+		if sy, _, _ := barGeometry(chat, "harbor "+a.tabCloseWord()); sy != tabStripRow {
 			t.Fatalf("at %d the chat's strip is on row %d", width, sy)
 		}
-		if py2, _, _ := barGeometry(frame, "harbor ▾"); py2 >= 0 {
+		if py2, _, _ := barGeometry(frame, "harbor "+a.tabCloseWord()); py2 >= 0 {
 			t.Fatalf("at %d the place drew the strip on row %d", width, py2)
 		}
 		placeRows := strings.Split(plain(frame), "\n")
@@ -64,7 +64,7 @@ func TestOneTopNavOnAChatAndOnAPlace(t *testing.T) {
 			t.Fatalf("at %d the place's head is not the nav, the air row, the rule and a blank", width)
 		}
 		lit := a.pal.onPlaces()
-		if !strings.Contains(frame, lit.bold(lit.accent(tabPad+"spend"+tabPad))) {
+		if !strings.Contains(frame, lit.bold(lit.accent(tabPad+navLabel(pageSpend)+tabPad))) {
 			t.Fatalf("at %d the place you stand in is not lit in the accent", width)
 		}
 		if a.tabActivePaint(" x ") != activeGround(a.pal, " x ") {

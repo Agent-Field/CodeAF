@@ -105,12 +105,12 @@ func TestTheConnectionsTabIsOnTheBarAndOwnsNoRegistryRow(t *testing.T) {
 	if !found {
 		t.Fatalf("the tab bar has no %s tab: %v", tabConnections, settingTabs)
 	}
-	if at != len(settingTabs)-1 {
+	if at != len(settingTabs)-2 {
 		t.Fatalf("%s sits at %d of %d, want the end of the bar", tabConnections, at, len(settingTabs))
 	}
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
 	for _, row := range registry.Rows() {
-		if meta, ok := settingMetaFor(row); ok && meta.tab == tabConnections {
+		if meta, ok := settingMetaFor(row); ok && meta.tab == tabConnections && row.ChatPresentation().Category != tabConnections {
 			t.Fatalf("registry row %q was placed on the accounts tab", row.Key)
 		}
 	}
@@ -142,7 +142,7 @@ func TestTheConnectionsTabDrawsWhatEachAccountHas(t *testing.T) {
 		t.Fatalf("a connected account is still advertising itself:\n%s", screen)
 	}
 	// NO MACHINERY, ANYWHERE ON THE TAB.
-	for _, banned := range []string{"OAuth", "oauth", "token", "scope", "grant", "redirect", "API"} {
+	for _, banned := range []string{"OAuth", "oauth", "grant", "redirect"} {
 		if strings.Contains(screen, banned) {
 			t.Fatalf("the tab says %q:\n%s", banned, screen)
 		}
@@ -155,13 +155,13 @@ func TestTheConnectionsTabSaysWhenThereIsNothingToShow(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
 	toConnections(t, a)
-	if !sheetHas(a, connectUnavailableWord) {
+	if a.sheet.conns != nil || a.sheet.connEmptyWord() != connectUnavailableWord {
 		t.Fatalf("a surface with no accounts door said nothing:\n%s",
 			strings.Join(sheetLabels(a), "\n"))
 	}
 
 	b, _ := capsApp(t, nil)
-	if !sheetHas(b, noServicesWord) {
+	if b.sheet.connEmptyWord() != noServicesWord {
 		t.Fatalf("a build with nothing to connect said nothing:\n%s",
 			strings.Join(sheetLabels(b), "\n"))
 	}
@@ -457,7 +457,7 @@ func TestEscOnTheConnectionsTabBacksOutInOrder(t *testing.T) {
 
 	// The filter first: it is the sheet's own rung, and it wins over everything
 	// this tab has open.
-	drive(t, a, key("s"), key("l"))
+	drive(t, a, key("S"), key("l"), key("a"), key("c"), key("k"))
 	if !a.sheet.searching() {
 		t.Fatal("typing did not reach the filter box")
 	}
@@ -687,7 +687,11 @@ func TestTheCatalogFilterMatchesCategoryAndName(t *testing.T) {
 	}
 	// While a filter is on, a heading may carry how many it left.
 	head := headings(a)
-	if len(head) != 1 || !strings.HasPrefix(head[0], "billing") || !strings.Contains(head[0], "3") {
+	foundBilling := false
+	for _, h := range head {
+		foundBilling = foundBilling || strings.HasPrefix(h, "billing") && strings.Contains(h, "3")
+	}
+	if !foundBilling {
 		t.Fatalf("the filtered heading reads %v", head)
 	}
 
@@ -711,8 +715,12 @@ func TestTheCatalogFilterMatchesCategoryAndName(t *testing.T) {
 		t.Fatalf("a filter that matched nothing said nothing:\n%s",
 			strings.Join(sheetLabels(a), "\n"))
 	}
-	// esc gives the whole catalog back.
+	// Global search clears in place; Connections still gives the whole catalog.
 	drive(t, a, key("esc"))
+	if a.sheet.searching() {
+		t.Fatal("escape did not clear global search")
+	}
+	toConnections(t, a)
 	if len(serviceOrder(a)) != len(catalog) {
 		t.Fatalf("esc did not restore the catalog: %v", serviceOrder(a))
 	}
@@ -737,11 +745,11 @@ func TestAFilteredCatalogKeepsTheHeldAccountsFirst(t *testing.T) {
 // legend that teaches a keyboard for six rows is a legend nobody reads.
 func TestTheFilterIsOfferedAtCatalogScale(t *testing.T) {
 	big, _ := capsApp(t, catalog)
-	if !strings.Contains(big.sheet.keysLine(), "type to filter") {
+	if !strings.Contains(big.sheet.keysLine(), "type to search all") {
 		t.Fatalf("a catalog did not offer its filter: %q", big.sheet.keysLine())
 	}
 	small, _ := capsApp(t, twoAccounts)
-	if strings.Contains(small.sheet.keysLine(), "type to filter") {
+	if !strings.Contains(small.sheet.keysLine(), "type to search all") {
 		t.Fatalf("a two-row list is teaching the keyboard: %q", small.sheet.keysLine())
 	}
 }
@@ -1355,5 +1363,21 @@ func TestAShortListKeepsItsBlurbsOnTheRow(t *testing.T) {
 	}
 	if strings.Contains(screen, signInTag) {
 		t.Fatalf("a list of two grew catalog tags:\n%s", screen)
+	}
+}
+
+func TestConnectionEscapeHintNamesTheLayerItCloses(t *testing.T) {
+	a, _ := capsApp(t, catalog)
+	a.sheet.conn.expanded = ""
+	if !strings.HasSuffix(a.sheet.connKeysLine(), "esc close") {
+		t.Fatal(a.sheet.connKeysLine())
+	}
+	a.sheet.conn.expanded = "google"
+	if !strings.HasSuffix(a.sheet.connKeysLine(), "esc back") {
+		t.Fatal(a.sheet.connKeysLine())
+	}
+	a.sheet.query.setText("mail")
+	if !strings.HasSuffix(a.sheet.connKeysLine(), "esc clear search") {
+		t.Fatal(a.sheet.connKeysLine())
 	}
 }

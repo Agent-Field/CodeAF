@@ -49,6 +49,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		{"create an empty team and add several saved conversations", "teams-page"},
+		{"how do I choose another manager before deleting its conversation", "teams-page"},
+		{"where is the model name and working spinner on team cards", "teams-page"},
+		{"previous and next page of recent interactions", "teams-page"},
+		{"how deep can I nest subteams and collapse their cards", "teams-page"},
+		{"how do I remove the team overlay with x in Chats", "conversations-and-teams"},
+		{"does the All grid include saved conversations without open tabs", "conversations-and-teams"},
+		{"how do I retry incomplete conversation deletion", "conversations-and-teams"},
+		{"does conversation deletion forget saved memories", "conversations-and-teams"},
+		{"why must I update an older client before editing memberships", "teams-page"},
 		// The teams page (teams-page.md).
 		{"how do I see all my teams and what waits on me", "teams-page"},
 		{"does renaming a team update the message box", "teams-page"},
@@ -1056,6 +1066,31 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't the delegate ask me anything", "delegates"},
 		{"why is there no command for my delegate", "delegates"},
 		{"where does a delegate's work go, does it squash the commits", "delegates"},
+		// sec, the auditing program codeaf carries, asked the way
+		// somebody wants a security review: by its job, not its name.
+		{"how do I run a security review of my repo", "sec"},
+		{"can codeaf scan my code for vulnerabilities", "sec"},
+		{"audit only my changes for security problems", "sec"},
+		{"where is the security audit report and the sarif file", "sec"},
+		{"will the security audit change or commit my files", "sec"},
+		{"how much does a security audit cost", "sec"},
+		{"fix the vulnerabilities the security audit found", "sec"},
+		{"why does the sec task page show the same hunter lines over and over", "sec"},
+		{"do I need to clear out the old security audit before running it again", "sec"},
+		{"how many turns does each security audit agent get", "sec"},
+		{"find the last security audit's report from another conversation", "sec"},
+		{"the program finished but the chat said nothing, no summary", "delegates"},
+		// review, the reviewing program codeaf carries, asked the way somebody
+		// wants a pull request reviewed: by its job, not its name.
+		{"review my pull request", "review"},
+		{"can codeaf do a code review of a github PR", "review"},
+		{"review the pull request for the branch I am on", "review"},
+		{"review a PR in a private repository, repository not found", "review"},
+		{"post the code review as comments on the pull request", "review"},
+		{"where is the full code review report", "review"},
+		{"how much does a pull request review cost and how long does it take", "review"},
+		{"fix the blocking findings from the code review", "review"},
+		{"can the review program look at my uncommitted changes or a gitlab merge request", "review"},
 		// senior-dev, the program codeaf carries, asked the ways somebody meets
 		// it: what the command does, whether it will stop to ask, where its
 		// commits went, what it cost, its flags, and why a Windows build has none.
@@ -1133,6 +1168,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why can't codeaf edit files while senior-dev is working", "senior-dev"},
 		{"my task was refused because senior-dev is working in the folder", "senior-dev"},
 		{"the delegate was refused because of uncommitted changes", "delegates"},
+		{"I pressed stop while the chat was answering a program that ended", "delegates"},
 		{"the harness I just had built is not in /subharness", "subharnesses"},
 		{"how do I run a harness I had designed", "subharnesses"},
 		// The card codeaf raises by itself, asked the three ways somebody meets

@@ -100,7 +100,6 @@ func (a *app) teamDragMotion(x, y int, held bool) bool {
 	over, ok, why := a.teamDropAt(x, y)
 	if over != d.over || ok != d.ok || why != d.why {
 		d.over, d.ok, d.why = over, ok, why
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	}
 	return true
@@ -110,10 +109,13 @@ func (a *app) teamDragMotion(x, y int, held bool) bool {
 // teams row or the empty rail under the tree (the top level), each with
 // whether it takes this drag and why not.
 func (a *app) teamDropAt(x, y int) (string, bool, string) {
+	if x < 0 || x >= a.width || y < placeHeadRows || y >= a.height-placeFootRowsFor(pageTeams, a.height) {
+		return "", false, ""
+	}
 	d := a.tdrag
 	lastTree := -1
 	for _, t := range a.tp.targets {
-		if t.pane || t.act != teamsActSelect {
+		if t.hidden || t.pane || t.act != teamsActSelect {
 			continue
 		}
 		if tt, ok := a.teamByID(t.id); ok && tt.Closed() {
@@ -122,7 +124,7 @@ func (a *app) teamDropAt(x, y int) (string, bool, string) {
 		lastTree = max(lastTree, t.y)
 	}
 	for _, t := range a.tp.targets {
-		if t.pane || y != t.y || x < t.x0 || x >= t.x1 {
+		if t.hidden || y != t.y || x < t.x0 || x >= t.x1 {
 			continue
 		}
 		switch {
@@ -201,7 +203,6 @@ func (a *app) teamDragRelease() (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.tdrag = teamDrag{}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	if !d.on {
 		if d.clicked {
@@ -252,7 +253,6 @@ func (a *app) teamDropMember(d teamDrag) tea.Cmd {
 // teamDragCancel drops the drag, and nothing happens.
 func (a *app) teamDragCancel() {
 	a.tdrag = teamDrag{}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 }
 

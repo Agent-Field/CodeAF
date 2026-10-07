@@ -16,7 +16,7 @@ func TestHomeCopyNameIsSecondAndCopiesTheFullCurrentTitle(t *testing.T) {
 	for _, v := range a.strip.verbs {
 		got = append(got, string(v.key)+" "+v.word)
 	}
-	want := []string{"x close", "c copy name", "n new in project", "o open folder"}
+	want := []string{"x delete", "c copy name", "n new in project", "o open folder"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("conversation options = %v, want %v", got, want)
 	}

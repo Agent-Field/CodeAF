@@ -43,7 +43,7 @@ func TestWallQuestionMarkIsHelpAndNIsNext(t *testing.T) {
 		t.Fatalf("?: help %v, focus %d from %d", a.wall.help, a.wall.focus, focus)
 	}
 	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	for _, want := range []string{"─ Conversations ─", "Navigate", "Organize", "Next needing you", "Automatic columns"} {
+	for _, want := range []string{"─ Conversations ─", "Navigate", "Select", "Next needing you", "Automatic columns"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the sheet lacks %q:\n%s", want, frame)
 		}
@@ -136,11 +136,6 @@ func TestWallHelpRowsDoWhatTheirKeysDo(t *testing.T) {
 	wallClick(t, a, wallHitFor(t, a, wallHitHelp, index("Filter")))
 	if a.wall.help || !a.wall.filterOn {
 		t.Fatalf("Filter: help %v filtering %v", a.wall.help, a.wall.filterOn)
-	}
-	a = open()
-	wallClick(t, a, wallHitFor(t, a, wallHitHelp, index("Add to teams")))
-	if a.wall.help || a.wall.pop.kind != wallPopMembers {
-		t.Fatalf("Add to teams: help %v pop %+v", a.wall.help, a.wall.pop)
 	}
 	a = open()
 	wallClick(t, a, wallHitFor(t, a, wallHitHelp, index("Back")))

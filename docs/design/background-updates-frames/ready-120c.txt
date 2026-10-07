@@ -1,0 +1,40 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:36am
+
+   +
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+                                                                                          │ Tasks 0                alt+l
+    · resumed ~/v3/projects/-tmp-codeaf-update-drive.YtHivL-work-                         │ + /task
+      project/d4f5d3f94e3f7ea2/transcript.jsonl                                           │
+    · esc interrupts · ctrl+c quits · ? for help                                          │ + /standing
+    · codeaf v0.9.3 installed · this session keeps running · new windows open the updated │
+      app; work already running keeps its current engine until all its windows and work   │
+      close                                                                               │
+    · fixture · codeaf update states · CODEAF_UPDATE_DEMO=ready · no network, nothing     │
+      installed                                                                           │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+
+─ deepseek/deepseek-v4.1-flash:auto · ◇ YOLO ─────────────────────────────────────────────────────────    $0.00   idle ─
+ ›
+
+
+ codeaf v0.9.3 installed · this session keeps running                                                   project: codeaf

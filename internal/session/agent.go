@@ -739,6 +739,9 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// session's own state; this is about a fetch somebody else will do, and a
 	// lock held across a hand-off is a lock held for no reason.
 	a.noteLaneModel(model)
+	// Other windows read the conversation model from its saved configuration.
+	// A model choice exists before another turn is sent, so publish it now.
+	a.stampModel()
 	return landing
 }
 
@@ -1945,6 +1948,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// terms. Everything else on the queue drains exactly as it always has.
 			a.liftSteersLocked(hub)
 			_, unanswered := a.drainSteeringLocked(hub)
+			// A PROGRAM'S ENDING THIS TURN COULD NOT ANSWER IS SAID ANYWAY, in
+			// the program's own words (program_outcome.go), and a person's stop
+			// is told as theirs. The cause is still the stop's: the turn's own
+			// cancel(nil) is deferred first, so it runs after this.
+			door, stopped := stopCause(turnCtx)
+			a.programOutcomeUnansweredLocked(hub, completed, stopped && door == StopByPerson)
 			// AND THE SECOND LOOK AT A YOUNG COMMAND IS LET GO OF WITH THE TURN
 			// IT WAS ARMED IN. It re-checks this turn's number before it touches
 			// anything, so a leftover is inert either way; stopping it here is
@@ -2524,7 +2533,10 @@ func (a *Agent) Close() error {
 	// held under its own ([Agent.beltMu]) and nothing else in this package takes
 	// the two together; the line above has already stopped anything new from
 	// being started against this conversation.
-	a.cutBeltRun()
+	beltDone := a.cutBeltRun()
+	a.mu.Lock()
+	a.closingBeltDone = beltDone
+	a.mu.Unlock()
 
 	// EVERY CANCEL FIRST, THEN THE JOINS. The naming errand may be asleep in a
 	// backoff or parked on a provider, and it is the one thing here that owes
@@ -2631,6 +2643,24 @@ func (a *Agent) Close() error {
 	// this waits on takes that lock.
 	a.SettleWrites()
 
+	a.mu.Lock()
+	deleting, deletionGrace := a.deleting, a.deletionGrace
+	a.mu.Unlock()
+	if deleting {
+		if err := waitDeletingBelt(beltDone, deletionGrace); err != nil {
+			return err
+		}
+	}
+	// Quit stays responsive, but another process must not claim this journal
+	// for deletion while a cancelled run still owns task record writers.
+	if !deleting && beltDone != nil {
+		select {
+		case <-beltDone:
+		default:
+			a.finishCloseWhenStopped()
+			return nil
+		}
+	}
 	if file == nil {
 		return nil
 	}

@@ -366,6 +366,12 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	// The move picker, over everything, and then a team's card have the
 	// keyboard while they are up (teammove.go, teamsheet.go).
+	if a.tcreate.on && !door {
+		return a.teamCreateKey(msg)
+	}
+	if a.tmembers.on && !door {
+		return a.teamMembershipKey(msg)
+	}
 	if a.tmove.on && !door {
 		return a.teamMoveKey(msg)
 	}
@@ -426,6 +432,13 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			cmd, _ := a.newChatKey(msg)
 			return cmd
 		}
+	}
+
+	// THE UPDATE OFFER'S THREE CHORDS, read above every place and below every
+	// modal. They are chords and never letters: an offer answered by `y` is an
+	// offer that eats the first word of somebody's sentence (updateoffer.go).
+	if cmd, taken := a.updateOfferKey(msg); taken {
+		return cmd
 	}
 
 	// THE CHIP'S CHORD IS READ ABOVE EVERY PLACE, because the chip is drawn on
@@ -1426,6 +1439,10 @@ func (a *app) enter() tea.Cmd { return a.enterLine() }
 // — the transcript line, the turn number, the recall history, the draft file —
 // is the same whichever way the sentence was handed over.
 func (a *app) enterLine() tea.Cmd {
+	if a.tmemberStart.key == a.frontTabKey() && a.tmemberStart.said.pending {
+		a.note("The member is still being added")
+		return nil
+	}
 	if a.startingChat() {
 		return a.startChatEnter()
 	}
@@ -1453,9 +1470,6 @@ func (a *app) enterLine() tea.Cmd {
 	// empty message — "what is this?" is often the picture itself — so the two
 	// tests below both ask about the tray as well as about the words.
 	held := len(a.chips) > 0
-	if !strings.HasPrefix(line, "/") && (line != "" || held) && a.updateStopsTurn() {
-		return nil
-	}
 	// An empty draft with a call selected is a reader, not a typist: enter
 	// opens what ↑/↓ picked out. A draft of any length is a sentence, and a
 	// sentence wins.

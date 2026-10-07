@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ── THE SETTINGS PLACE ──────────────────────────────────────────────────────
@@ -52,7 +53,43 @@ func (placeSettings) close(a *app) { a.dropSettings() }
 
 // body is the panel's own tab bar, the rule under it, and one section's rows —
 // or, while a submenu is up, the options it is offering.
+// The sidebar uses the existing four-cell pane gutter. Compact terminals keep
+// the scrolling category bar so every category remains reachable.
+const settingsSidebarWidth = 20
+
+func settingsSidebar(width, height int) bool { return width >= 100 && height >= 24 }
+func (a *app) sheetSidebar(width, height int) bool {
+	return settingsSidebar(width, height) && a.sheet.sel == nil && a.sheet.edit == nil && a.sheet.choice == nil
+}
 func (placeSettings) body(a *app, width, room int) []placeRow {
+	_, height := a.size()
+	if !a.sheetSidebar(width, height) {
+		return settingsBody(a, width, room, false)
+	}
+	rows := settingsBody(a, width-settingsSidebarWidth, room, true)
+	for i := range rows {
+		left := ""
+		hit, _ := rows[i].hit.(sheetHit)
+		if i < len(settingTabs) {
+			title := settingTabs[i]
+			left = "  " + a.pal.dim(title)
+			if a.hot.kind == hoverSheet && a.hot.index == -2-i {
+				left = "  " + a.pal.underline(a.pal.dim(title))
+			}
+			if i == a.sheet.tab {
+				left = "  " + a.pal.chip(title)
+				if a.hot.kind == hoverSheet && a.hot.index == -2-i {
+					left = "  " + a.pal.underline(a.pal.chip(title))
+				}
+			}
+			hit.category = i + 1
+		}
+		rows[i].text = left + strings.Repeat(" ", max(0, settingsSidebarWidth-ansi.StringWidth(left))) + rows[i].text
+		rows[i].hit = hit
+	}
+	return rows
+}
+func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	s := &a.sheet
 	pal := a.pal
 	rows := make([]placeRow, 0, room)
@@ -60,10 +97,46 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 	// and a second one inside the body drew the page as two frames stacked
 	// (PLACES-AUDIT.md finding 11); the filled chip and one blank row are the
 	// whole of what separates the bar from the rows.
-	rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
+	if sidebar {
+		heading := settingTabs[s.tab]
+		if s.searching() {
+			heading = "Search results"
+		}
+		rows = append(rows, placeRow{text: "  " + placeHeading(heading, pal)})
+	} else {
+		// Search can open a field from another category. Mark the field's own
+		// category while editing without changing where Cancel returns.
+		displayTab := s.tab
+		category := ""
+		if s.choice != nil {
+			category = s.choice.item.meta.tab
+		} else if s.edit != nil {
+			if row, ok := s.registry.Row(s.edit.key); ok {
+				meta, _ := settingMetaFor(row)
+				category = meta.tab
+			}
+		}
+		for i, title := range settingTabs {
+			if title == category {
+				displayTab = i
+				break
+			}
+		}
+		rows = append(rows, placeRow{text: sheetTabBar(width, displayTab, pal), hit: sheetHit{kind: sheetHitTabs}})
+	}
 	rows = append(rows, placeRow{})
+	if s.choice != nil {
+		rows = append(rows, s.choiceRows(width, room-len(rows), pal, a.hoveredSheetRow())...)
+		for len(rows) < room {
+			rows = append(rows, placeRow{})
+		}
+		return rows
+	}
+	if s.edit != nil {
+		return settingsEditorBody(a, width, room, rows)
+	}
 	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
-		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "type to search", "")
+		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search all settings", "")
 		for _, line := range filter {
 			rows = append(rows, placeRow{text: " " + line})
 		}
@@ -73,7 +146,7 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 		room = 1
 	}
 	if s.sel != nil {
-		filter, _, _ := draftBlock(&s.sel.pick.filter, pal, width-2, 1, "type to filter", "")
+		filter, _, _ := draftBlock(&s.sel.pick.filter, pal, width-2, 1, "Filter models", "")
 		for _, line := range filter {
 			rows = append(rows, placeRow{text: " " + line})
 		}
@@ -88,6 +161,14 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 		}
 		return rows
 	}
+	// Details occupy actual body rows: the shared note is deliberately a single
+	// rule caption and cannot carry wrapped explanations. Reserve constant room
+	// so changing focus never moves a control under the pointer.
+	detailRoom := 0
+	if s.edit == nil && s.conn.entry == nil {
+		detailRoom = min(6, max(0, room-3))
+	}
+	room -= detailRoom
 	body, owner := s.listLines(width, room, pal, a.hoveredSheetRow())
 	at := s.cursorLine(owner)
 	// THE CURSOR'S ROW IS SCROLLED IN WHOLE. At [tierPhone] it is two lines —
@@ -112,7 +193,116 @@ func (placeSettings) body(a *app, width, room int) []placeRow {
 		}
 		rows = append(rows, placeRow{text: body[index], hit: hit})
 	}
+	if detailRoom > 0 {
+		rows = append(rows, placeRow{})
+		details := settingsDetails(a, width)
+		for i := 0; i < detailRoom-1; i++ {
+			line := ""
+			if i < len(details) {
+				line = "  " + pal.dim(details[i])
+			}
+			rows = append(rows, placeRow{text: line})
+		}
+	}
 	return rows
+}
+
+// settingsEditorBody keeps the field, explanation and actions together.
+// On short terminals the editable value and actions take priority over help.
+func settingsEditorBody(a *app, width, room int, rows []placeRow) []placeRow {
+	s := &a.sheet
+	pal := a.pal
+	label := s.edit.label
+	var details []string
+	if row, ok := s.registry.Row(s.edit.key); ok {
+		meta, _ := settingMetaFor(row)
+		label = meta.label
+		info := row.ChatPresentation()
+		if info.Activation != "" {
+			details = append(details, wrap(info.Activation, max(1, width-4))...)
+		}
+		details = append(details, wrap(meta.about, max(1, width-4))...)
+		scope := info.Scope
+		if s.host != "" && meta.tab == tabTeams {
+			scope = s.footNote()
+		}
+		details = append(details, wrap(scope, max(1, width-4))...)
+	}
+	rows = append(rows, placeRow{text: "  " + pal.ink(fit(label, max(1, width-4)))})
+	accepts := strings.TrimPrefix(s.edit.label, label+" · ")
+	if accepts != label {
+		for _, line := range wrap(accepts, max(1, width-4)) {
+			rows = append(rows, placeRow{text: "  " + pal.dim(line)})
+		}
+	}
+	block, _, _ := s.editBlock(width, pal)
+	for _, line := range block {
+		rows = append(rows, placeRow{text: " " + line})
+	}
+	// Validation stays immediately below the draft and never moves its caret.
+	if s.msg != "" {
+		for _, line := range wrap(s.msg, max(1, width-4)) {
+			rows = append(rows, placeRow{text: "  " + pal.bad(line)})
+		}
+	}
+	cancelWord := "Cancel"
+	if s.edit.pending {
+		cancelWord = "Close"
+		rows = append(rows, placeRow{text: "  " + pal.dim(fit("Saving on "+s.host+"…", max(1, width-4)))})
+	}
+	save, cancel := pal.ink("Save"), pal.ink(cancelWord)
+	if s.edit.pending {
+		save = pal.dim("Save")
+	} else if a.hot.kind == hoverSheet && a.hot.index == sheetEditSaveHover {
+		save = pal.underline(save)
+	}
+	if a.hot.kind == hoverSheet && a.hot.index == sheetEditCancelHover {
+		cancel = pal.underline(cancel)
+	}
+	saveHint, cancelHint := "", ""
+	if width >= 32 {
+		saveHint, cancelHint = pal.dim("  enter"), pal.dim("  esc")
+	}
+	rows = append(rows, placeRow{
+		text: "  " + save + saveHint + "    " + cancel + cancelHint,
+		hit:  sheetHit{kind: sheetHitEditActions},
+	})
+	if room-len(rows) > 1 {
+		rows = append(rows, placeRow{})
+		for _, line := range details {
+			if len(rows) >= room {
+				break
+			}
+			rows = append(rows, placeRow{text: "  " + pal.dim(line)})
+		}
+	}
+	for len(rows) < room {
+		rows = append(rows, placeRow{})
+	}
+	return rows
+}
+
+const (
+	sheetEditSaveHover   = -100
+	sheetEditCancelHover = -101
+)
+
+// Bounds match the visible words and key hints; blank space never saves.
+func sheetEditActionAt(x, width int, pending bool) int {
+	saveEnd, cancelStart, cancelEnd := 13, 17, 28
+	if width < 32 {
+		saveEnd, cancelStart, cancelEnd = 6, 10, 16
+	}
+	if pending {
+		cancelEnd--
+	}
+	if x >= 2 && x < saveEnd {
+		return sheetEditSaveHover
+	}
+	if x >= cancelStart && x < cancelEnd {
+		return sheetEditCancelHover
+	}
+	return 0
 }
 
 // stops is every item of the current section the cursor may rest on — the walk
@@ -163,14 +353,10 @@ func (placeSettings) box(a *app) *editor {
 func (placeSettings) note(a *app, width int) []string {
 	pal := a.pal
 	switch {
-	case a.sheet.sel != nil:
-		return []string{" " + pal.dim(noteFit(a.sheet.sel.label, width-2))}
+	case a.sheet.choice != nil:
+		return nil
 	case a.sheet.edit != nil:
-		// THE LABEL IS THE NOTE AND THE VALUE IS THE COMPOSER. The panel used to
-		// draw both on one line of its own foot; under the router the box a person
-		// is typing in is THE composer, so what is left here is the one thing the
-		// box cannot say — which setting this is.
-		return []string{" " + pal.dim(noteFit(a.sheet.edit.label, width-2))}
+		return nil // The label, accepted format and validation are beside the input.
 	case a.sheet.msg != "":
 		lines := strings.Split(a.sheet.msg, "\n")
 		out := make([]string, 0, len(lines))
@@ -178,8 +364,60 @@ func (placeSettings) note(a *app, width int) []string {
 			out = append(out, " "+pal.bad(noteFit(line, width-2)))
 		}
 		return out
+	case a.sheet.savedKey != "":
+		return []string{" " + pal.dim("Saved")}
+	case a.sheet.sel != nil:
+		return []string{" " + pal.dim(noteFit(a.sheet.sel.label, width-2))}
+
 	}
-	return []string{" " + pal.dim(noteFit(a.sheet.footNote(), width-2))}
+	item, ok := settingsFocused(a)
+	scope := a.sheet.footNote()
+	if ok && (item.memoryDoor || item.advancedDoor) {
+		// Opening another view or a disclosure writes no setting.
+		scope = ""
+	}
+	if ok && item.row.Key != "" {
+		if name, pinned := item.row.PinnedBy(); pinned {
+			scope = "held by " + name + " — unset it to change this here"
+		} else if !(a.sheet.host != "" && item.meta.tab == tabTeams) {
+			if own := item.row.ChatPresentation().Scope; own != "" {
+				scope = own
+			}
+		}
+	}
+	return []string{" " + pal.dim(noteFit(scope, width-2))}
+}
+
+// settingsFocused uses the same target for pointer and keyboard explanations.
+func settingsFocused(a *app) (sheetItem, bool) {
+	if at := a.hoveredSheetRow(); at >= 0 && at < len(a.sheet.items) {
+		return a.sheet.items[at], true
+	}
+	return a.sheet.current()
+}
+
+func settingsDetails(a *app, width int) []string {
+	item, ok := settingsFocused(a)
+	if !ok {
+		return nil
+	}
+	about := item.meta.about
+	if item.conn != nil {
+		about = connAbout(item.conn)
+	}
+	lines := []string{}
+	if item.row.Key != "" {
+		info := item.row.ChatPresentation()
+		if info.Activation != "" {
+			lines = append(lines, wrap(info.Activation, max(1, width-4))...)
+		}
+	}
+	lines = append(lines, wrap(about, max(1, width-4))...)
+	if len(lines) > 5 {
+		lines = lines[:5]
+		lines[4] = fit(lines[4]+glyphMore, max(1, width-4))
+	}
+	return lines
 }
 
 func (placeSettings) about() string { return "how this machine is set" }
@@ -205,6 +443,8 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	s := &a.sheet
 	var cmd tea.Cmd
 	switch {
+	case s.choice != nil:
+		cmd = a.choiceKey(msg)
 	case s.edit != nil:
 		cmd = a.sheetEditKey(msg)
 	case s.sel != nil:
@@ -233,20 +473,38 @@ func (placeSettings) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // the line it answers among the rows the frame just built — the same painted
 // string, because both came from the same call.
 func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, bool) {
+	if a.sheet.choice != nil {
+		return -1, 0, true
+	}
 	entry := a.sheet.conn.entry
+	_, height := a.size()
+	offset := 0
+	if a.sheetSidebar(width, height) {
+		offset = settingsSidebarWidth
+		width -= offset
+	}
+	content := func(text string) string { return ansi.Strip(ansi.Cut(text, offset, offset+width)) }
 	if entry == nil {
 		if a.sheet.edit != nil {
-			return 0, 0, false
+			block, column, at := a.sheet.editBlock(width, a.pal)
+			if at >= 0 && at < len(block) {
+				for j, row := range rows {
+					if content(row.text) == ansi.Strip(" "+block[at]) {
+						return j, column + 1, true
+					}
+				}
+			}
+			return -1, 0, true
 		}
-		box, placeholder := &a.sheet.query, "type to search"
+		box, placeholder := &a.sheet.query, "Search all settings"
 		if a.sheet.sel != nil {
-			box, placeholder = &a.sheet.sel.pick.filter, "type to filter"
+			box, placeholder = &a.sheet.sel.pick.filter, "Filter models"
 		}
 		block, column, at := draftBlock(box, a.pal, width-2, 1, placeholder, "")
 		if at >= 0 && at < len(block) {
 			for j, row := range rows {
-				if row.text == " "+block[at] {
-					return j, column + 1, true
+				if content(row.text) == ansi.Strip(" "+block[at]) {
+					return j, column + 1 + offset, true
 				}
 			}
 		}
@@ -268,12 +526,26 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 		return -1, 0, true
 	}
 	for j, row := range rows {
-		if strings.HasPrefix(row.text, block[at]) {
-			return j, column, true
+		if strings.HasPrefix(content(row.text), ansi.Strip(block[at])) {
+			return j, column + offset, true
 		}
 	}
 	// The list window scrolled the box off this frame. The caret is hidden
 	// rather than parked in the resting search box, which is not the box the
 	// person is typing into.
 	return -1, 0, true
+}
+
+// editBlock is the one rendering of an editable setting and its caret. Secret
+// text is masked in a copy, so neither drawing nor cursor movement exposes it.
+func (s *sheet) editBlock(width int, pal palette) ([]string, int, int) {
+	box := s.edit.box
+	if s.edit.secret {
+		mask := "•"
+		if pal.ascii {
+			mask = "*"
+		}
+		box.value = []rune(strings.Repeat(mask, len(box.value)))
+	}
+	return draftBlock(&box, pal, max(1, width-2), 3, "Enter value", "")
 }

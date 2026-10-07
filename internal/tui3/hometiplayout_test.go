@@ -179,37 +179,32 @@ func TestHomeKeysRowCarriesTheProjectAtItsRight(t *testing.T) {
 	}
 }
 
-// The row that silences the tips is `disable hints` on the Workspace tab, off
-// by default, and it reads the other way up from the key underneath it.
-func TestDisableHintsIsAWorkspaceRowThatReadsTheOtherWayUp(t *testing.T) {
+// Hints live with interface preferences and read positively, while old profile
+// values keep their meaning. The registry's legacy inversion is not exposed.
+func TestShowHintsIsAGeneralPreferenceThatPreservesTheProfile(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.openSettings()
 	cursorTo(t, a, config.KeyHints)
 	item := a.sheet.items[a.sheet.cursor]
-	if item.meta.tab != tabWorkspace || item.meta.label != "disable hints" {
-		t.Fatalf("the hints row is %q on the %s tab, want \"disable hints\" on Workspace", item.meta.label, item.meta.tab)
+	if item.meta.tab != tabGeneral || item.meta.label != "show hints" {
+		t.Fatalf("hints row: %q on %s", item.meta.label, item.meta.tab)
 	}
-	// THE LINE UNDER IT IS THE OWNER'S OWN WORDING (2026-09-24).
-	if want := "disable💡 tips everywhere (requires restart)"; item.meta.about != want {
-		t.Fatalf("the line under the hints row reads %q, want %q", item.meta.about, want)
-	}
-	if !strings.Contains(plain(frame(a)), "disable💡 tips everywhere (requires restart)") {
-		t.Fatal("the panel does not draw the line under the selected hints row")
-	}
-	if got := item.row.Value(); got != "off" {
-		t.Fatalf("a fresh profile reads %q, want off (hints shown)", got)
+	if !strings.Contains(plain(frame(a)), "Show contextual tips while you work.") {
+		t.Fatal("selected hints row does not explain its effect")
 	}
 	if !config.HintsAt(dir) {
-		t.Fatal("a fresh profile has hints off underneath")
+		t.Fatal("fresh profile must show tips")
 	}
 	drive(t, a, key("enter"))
 	if config.HintsAt(dir) {
-		t.Fatal("flipping disable hints on did not silence the tips")
+		t.Fatal("turning show hints off did not persist")
 	}
 	a.closeSettings()
 	a.openSettings()
 	cursorTo(t, a, config.KeyHints)
-	if got := a.sheet.items[a.sheet.cursor].row.Value(); got != "on" {
-		t.Fatalf("after the flip the row reads %q, want on", got)
+	item = a.sheet.items[a.sheet.cursor]
+	shown := plain(strings.Join(a.sheet.rowLines(item, false, false, 80, a.pal), "\n"))
+	if !strings.Contains(shown, "off") {
+		t.Fatalf("reopened preference lost off state: %s", shown)
 	}
 }

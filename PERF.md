@@ -6,6 +6,29 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Teams overview reading bounds
+
+Visible teams’ member previews and latest-message times are read once per conversation
+key in the same serial batch, so shared membership does not duplicate journal reads.
+Member previews locate the latest human exchange off the UI loop by scanning journal
+record boundaries backwards. Unchanged size/mtime reuses the cached preview; remote
+journals are never opened on this machine. Reads use a **64 KiB** (`teamsPreviewBytes`)
+chunk and at most the first **64 KiB** of each record, including oversized JSON content
+strings. Finding the prompt can scan more than 64 KiB of a changed journal, but retained
+messages stay bounded to **64 KiB total** and **2 messages** (`teamsPreviewMessages`).
+The prompt retains up to one quarter of that byte budget, leaving space for the response's
+beginning. Front conversations use their displayed messages with the same retained bound.
+Manager cards remain capped at **14 rows** (`teamsManagerRows`), with an **8-row** minimum
+(`teamsManagerMinRows`). Interaction readings retain at most **200 entries** (`trafficKeep`),
+merged by id without consuming the live delivery cursor. The table paints at most **6 body
+rows** (`teamsInteractionRows`), reduced to fit the available pane, with a pinned header
+and independent paging. Sorting shares one subtree timestamp pass per frame, including
+live correction times. Mouse wheels move physical rows in the pane or sidebar under
+the pointer. Paint performs no filesystem or network reads.
+`TestTeamsPreviewRetainsBoundedTextAndFollowsUpdates`, the long-record exchange regressions,
+the overview navigation/geometry regressions and `TestTheFrameNeverReadsTheDisk` defend
+these bounds.
+
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;
@@ -229,6 +252,39 @@ What made dev about eight megabytes heavier than `main` on linux/amd64 by
 2026-09-27 (65,712,393 at `837b2b06a` against 57,921,801 at `e44650715`, both from
 the CI size job) is not attributed here; #1694 finds it, cuts what is redundant,
 and lowers this number in the same commit as each cut.
+
+It was reset a seventh time on 2026-10-05, when sec — sec-af, the
+security auditor, copied in once at its tag `codeaf-absorb` — became the second
+program built into codeaf (`internal/secaf`). Like senior-dev's, this one is a
+decision: the programs codeaf hands a whole task to are built into every build.
+Measured on darwin/amd64 with its own furrow artifact staged, with the flags
+`make build` uses, the same tree with and without the program in the build's
+list (`internal/delegate/builtin`), on Go 1.27.0:
+
+| platform | without | with | what sec cost |
+| --- | --- | --- | --- |
+| darwin/amd64, furrow staged | 67,051,312 | 69,564,304 | 2,512,992 |
+
+About 1.4 megabytes of it is sec-af's own code and the schema and YAML readers
+it brings (`invopop/jsonschema`, `santhosh-tekuri/jsonschema`, `yaml/v4`); the
+rest is the type and line tables that code carries. The budget rises by exactly
+that cost, to 71,363,000 — this change's bill and nothing else. The tree without
+it was 1,798,688 under the sixth reset's 68,850,000, and still is.
+
+It was reset an eighth time on 2026-10-06, when review — pr-af, the pull-request
+reviewer, copied in once at its tag `codeaf-absorb` — became the third program
+built into codeaf (`internal/praf`). Measured the same way, on darwin/amd64 with
+its own furrow staged, the same tree with and without the program in the build's
+list, on Go 1.27.0:
+
+| platform | without | with | what review cost |
+| --- | --- | --- | --- |
+| darwin/amd64, furrow staged | 69,630,224 | 70,663,008 | 1,032,784 |
+
+It brings no module codeaf did not already link — its agent sessions are sec's
+and its schema readers the ones sec brought — so the cost is pr-af's own code
+and prompts and the tables that code carries. The budget rises by exactly that
+cost, to 72,395,784.
 
 ## Adaptive run shutdown grace
 
@@ -1459,6 +1515,21 @@ fixed cap is **57,218** bytes, exactly 94 above the previous measurement.
 The lean cap remains **49,590** bytes. The dated fixed waiver in
 `prefixWaivers` pays only that measured increase.
 
+**sec, the second program (sec-af's security audit), adds its guide (2026-10-05).** A program
+costs the fixed prefix one item of the hand-off paragraph's list — its guide, at
+most 400 bytes — and nothing else: its manual page and the wording of the turn its
+report wakes ride no request. sec's guide is 386 bytes, and the caps
+rise by exactly what it measured: against dev on 2026-10-07 (baa2d7f0f) it costs
+both prefixes 396 bytes, so the full cap is **57,614** bytes and the lean cap
+**49,986**, both dated in `prefixWaivers`. (Against the dev of 2026-10-05 it cost
+the lean prefix only 229, before the page carried a program's guide there too.)
+
+**review, the third program (pr-af's code review), adds its guide (2026-10-06).** review's
+guide is 190 bytes and its item in the hand-off paragraph's list 203, the same in
+both arms, and the caps rise by exactly that over sec's: measured on dev
+`baa2d7f0f` with sec (2026-10-07), the full cap is **57,817** bytes and the lean
+cap **50,189**, both dated in `prefixWaivers`.
+
 ## Following through on a completion claim
 
 A turn may decline handoff once per request when its own continuation says no
@@ -2407,7 +2478,7 @@ include the complete tab identity and picker availability, not just rendered wor
 
 
 The navigation panel renders a separate transcript separator and, inside a task,
-a separate metadata row. Its tab candidate slice is bounded to 32 entries;
+a separate metadata row. Its ordinary All tab candidate slice is bounded to 32 entries; a team overlay draws its complete stored membership without applying that presentation cap. Overlay frames build membership tabs from memory and never open agents or transcripts; the membership picker captures its saved-session snapshot off-loop once when opened.
 the recency stack and held agents remain uncapped. Membership walks can still
 inspect recency keys when candidates are dismissed or missing, but the renderer
 no longer builds an unbounded temporary tab list and compares each entry against
@@ -2773,6 +2844,15 @@ capture retains at most **4 KiB** while continuing to drain. Regression fixtures
 cover both engines, direct runtime roots, aliases, broad globs, subprocess
 termination, source worktrees, and growth during a snapshot read.
 
+## Saved conversation cards
+
+The Chats grid reads the switcher's world metadata off-loop at most every
+`wallCatalogEvery` (**3 seconds**) and caches canonical conversation keys before painting.
+Only visible saved cards read transcript tails, one batch at a time, under the
+shared `teamsPreviewBytes` (**64 KiB per transcript**) budget. Transcript pieces
+are rendered only for visible cards. Hosted catalogs never read local transcript
+paths. No saved conversation is resumed to display or select its card.
+
 ## Contextual memory bounds
 
 One ordinary post-turn extraction can add one memory claim. It keeps at most eight
@@ -2804,3 +2884,16 @@ Exact duplicate settlement streams the active owner partition transactionally: i
 cost grows with that partition, rather than losing punctuation or older duplicates
 behind a retrieval ceiling. The canonical event journal is not periodically pruned;
 projection/context work is bounded, while durable history continues to grow.
+
+## Conversation deletion completion
+
+Permanent deletion joins the task run's completion channel with
+`conversationDeletionGrace` (**30 seconds**), and keeps the journal lock on timeout.
+The cross-process deletion request uses the same grace while claiming the journal.
+Ordinary Close returns promptly but releases its journal only after the cancelled run's
+last store close, before signalling completion to a caller that may immediately reopen
+the conversation. Clearing the run and signalling completion happen together. Cleanup
+receipts are atomically replaced and synced before committing deletion. Startup recovery
+walks only the two saved-conversation directory levels, without following symlinked buckets.
+`internal/session/deletion_revision_test.go` drives completion and timeout with held
+channels and a zero test grace rather than sleeping for the production deadline.

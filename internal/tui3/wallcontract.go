@@ -9,9 +9,9 @@ import (
 
 // ── THE WALL AND ITS TEAMS: THE SHAPES THE THREE HALVES AGREE ON ───────────
 //
-// The wall is a full-frame grid of every conversation this window has a tab
-// for, each drawn as a tile holding the live tail of its transcript. A team is
-// a named set of those conversations that the tab strip can be narrowed to.
+// The wall is a full-frame grid of all saved conversations plus live tabs,
+// each drawn from a cached live or saved transcript tail. A team is a named
+// set of conversations that the tab strip can be narrowed to.
 //
 // The wall is built in three halves that meet only through the types in this
 // file: the reading (walltail.go) turns what this process holds into tiles,
@@ -49,9 +49,11 @@ const wallSparkLen = 24
 type wallTile struct {
 	// tab is the strip's own record of this conversation. The wall's doors are
 	// the strip's doors: enter is [app.tabGo] and x is [app.tabDismiss].
-	tab  chatTab
-	name string
-	here bool
+	tab chatTab
+	// noTab identifies saved cards with no tab to dismiss in this window.
+	noTab bool
+	name  string
+	here  bool
 	// signal is [app.tabSignalFor]'s reading, never a second one.
 	signal tabSignal
 	// live is false for a tile whose tail is a snapshot this window cannot
@@ -118,8 +120,13 @@ type wallView struct {
 	filter    string
 	filtering bool
 	// naming is the new-team prompt; name is what is typed in it.
-	naming bool
-	name   string
+	naming        bool
+	selecting     bool
+	selectedN     int
+	selectedNames []string
+	loading       bool
+	name          string
+	nameError     string
 	// spin is the frame's pulse step, for the working mark.
 	spin int
 	now  time.Time
@@ -338,20 +345,31 @@ type (
 
 // wallState is the wall's whole footprint on the app: one field.
 type wallState struct {
+	// Cancellation restores the Chats strip before the grid borrowed its viewport.
+	returnTeam string
+	returnView tabViewport
 	// frontVer is the front conversation as the wall last read it for its tile
 	// (walltail.go's [app.wallFrontMoved]).
-	frontVer wallFrontVer
-	on       bool
-	focus    int
-	scroll   int
-	cols     int
-	marked   map[string]bool // by chatTab.key
-	filter   string
-	filterOn bool
-	naming   bool
-	name     string
-	openedAt time.Time
-	hits     []wallHit
+	frontVer                  wallFrontVer
+	on                        bool
+	focus                     int
+	scroll                    int
+	cols                      int
+	marked                    map[string]bool // by chatTab.key
+	selecting                 bool
+	catalog                   []conversationCandidate
+	catalogGen                int
+	catalogBusy, catalogKnown bool
+	catalogAt                 time.Time
+	savedReading              bool
+	savedAt                   map[string]time.Time
+	filter                    string
+	filterOn                  bool
+	naming                    bool
+	name                      string
+	nameError                 string
+	openedAt                  time.Time
+	hits                      []wallHit
 	// tails is the reading cache, by chatTab.key (walltail.go owns it).
 	tails map[string]*wallTail
 	// treeAsking says a ledger reading for the held tiles is out, treeAt when
@@ -381,6 +399,8 @@ type wallState struct {
 	// chip is where the strip drew its team chip, empty when it was not
 	// drawn.
 	chip hudSpan
+	// chipClear is the selected overlay's independent clear target.
+	chipClear hudSpan
 	// nameFresh, made, madeN and madeAt are the view's fields of those names.
 	// nameGen counts the suggestions asked for, so an answer to one the card
 	// has moved past is dropped, and nameAsking says one is on its way.

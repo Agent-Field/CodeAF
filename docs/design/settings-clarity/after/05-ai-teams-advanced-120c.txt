@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 4:27pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             AI teams
+  Models
+  Memory             › Search all settings
+  Tasks              ask the AI manager first                                                                        on
+  AI teams           run when team messages arrive                                                                   on
+  Permissions        daily spending limit                                                                        no cap
+  Spending           Advanced                                                                                      hide
+  Connections        maximum team nesting                                                                      3 levels
+  Privacy            new subteam budget share                                                                       50%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      Less common controls. Search finds these even while collapsed.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter collapse · type to search all · tab next place · esc close

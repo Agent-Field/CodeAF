@@ -223,15 +223,14 @@ func TestTheSearchingRowFollowsProviderAndKeyWrites(t *testing.T) {
 		t.Fatalf("the untouched searching row reads:\n%s", screen)
 	}
 
-	// V5: the first press is the safe keyless default, not a keyed pin.
-	drive(t, a, key("enter"))
+	// V5: choose the safe keyless provider explicitly.
+	chooseSheetValue(t, a, "firecrawl")
 	row, _ := a.sheet.registry.Row(config.KeySearchProvider)
 	if got := row.Value(); got != "firecrawl" {
-		t.Fatalf("one cycle from auto landed on %q, want firecrawl", got)
+		t.Fatalf("choosing firecrawl landed on %q, want firecrawl", got)
 	}
-	// The remaining order is duckduckgo, exa, which reaches the broken-pin
-	// explanation through the same cycle a person uses.
-	drive(t, a, key("enter"), key("enter"))
+	// Choosing the keyed provider exposes its missing-key explanation.
+	chooseSheetValue(t, a, "exa")
 	if screen := plain(frame(a)); !strings.Contains(strings.Join(strings.Fields(screen), " "), "exa is pinned but search.exaKey is not set — every search answers \"Search failed (exa): no API key\". Choose auto, or set the key.") {
 		t.Fatalf("the pinned searching row reads:\n%s", screen)
 	}

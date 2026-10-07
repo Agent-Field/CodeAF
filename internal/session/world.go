@@ -204,6 +204,8 @@ type SessionRow struct {
 	// is asked for.
 	Dir        string
 	Transcript string
+	// DeletionPending keeps an incomplete cleanup reachable without reopening it.
+	DeletionPending bool
 	// Project is the bucket's display name and ProjectDir its path, carried on
 	// the row so that a flattened list still cites where a hit came from.
 	Project    string
@@ -692,15 +694,28 @@ func readProject(dir, bucket string, now time.Time) (Project, bool) {
 // cannot say what it is, stays, because hiding somebody's conversation on the
 // strength of a lookup file is the more expensive mistake.
 func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
+	pending := false
+	if _, err := os.Stat(filepath.Join(dir, conversationDeletedFile)); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, conversationTaskCleanupFile)); err != nil {
+			return SessionRow{}, false
+		}
+		pending = true
+	}
 	place := Place{Dir: dir}
 	transcript := place.Transcript()
 	info, err := os.Stat(transcript)
+	if pending && os.IsNotExist(err) {
+		info, err = os.Stat(transcript + ".delete-pending")
+	}
+	if pending && os.IsNotExist(err) {
+		info, err = os.Stat(filepath.Join(dir, conversationTaskCleanupFile))
+	}
 	if err != nil || info.IsDir() {
 		return SessionRow{}, false
 	}
 	meta, _ := LoadMeta(dir)
 	named := strings.TrimSpace(meta.ID) != ""
-	if meta.LastUserAt.IsZero() {
+	if meta.LastUserAt.IsZero() && !pending {
 		saved, ok := savedTaskSummary(transcript)
 		if !ok && named {
 			return SessionRow{}, false
@@ -721,24 +736,29 @@ func readSessionRow(dir, id string, now time.Time) (SessionRow, bool) {
 	// guesses it). A conversation that is not live answers the zero presence,
 	// and every reader of this row asks Live before it asks anything else.
 	presence, live := ReadSessionPresence(dir, now)
+	if pending {
+		meta.Title = strings.TrimSpace(meta.Title + " (deletion incomplete)")
+		live = false
+	}
 	return SessionRow{
-		ID:            id,
-		Dir:           dir,
-		Transcript:    transcript,
-		Title:         strings.TrimSpace(meta.Title),
-		Workspace:     strings.TrimSpace(meta.Workspace),
-		Owned:         meta.Owned,
-		Model:         strings.TrimSpace(meta.Model),
-		At:            at,
-		Created:       meta.Created,
-		Spend:         meta.SpentUSD,
-		Tokens:        meta.Tokens,
-		Open:          InUse(transcript),
-		Presence:      presence,
-		Live:          live,
-		Archived:      meta.Archived,
-		ArchivedTasks: meta.ArchivedTasks,
-		Places:        metaPlaces(meta),
+		ID:              id,
+		Dir:             dir,
+		Transcript:      transcript,
+		DeletionPending: pending,
+		Title:           strings.TrimSpace(meta.Title),
+		Workspace:       strings.TrimSpace(meta.Workspace),
+		Owned:           meta.Owned,
+		Model:           strings.TrimSpace(meta.Model),
+		At:              at,
+		Created:         meta.Created,
+		Spend:           meta.SpentUSD,
+		Tokens:          meta.Tokens,
+		Open:            InUse(transcript),
+		Presence:        presence,
+		Live:            live,
+		Archived:        meta.Archived,
+		ArchivedTasks:   meta.ArchivedTasks,
+		Places:          metaPlaces(meta),
 	}, true
 }
 

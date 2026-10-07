@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 4:27pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Connections
+  Models
+  Memory             › Search all settings
+  Tasks              · Notion                                                                                   sign in
+  AI teams           · Todoist                                                                                  sign in
+  Permissions
+  Spending           sales & outreach
+  Connections        · Amplemarket                                                                                  key
+  Privacy            · Apollo                                                                                       key
+                     · Clari                                                                                        key
+                     · Crunchbase                                                                                   key
+                     · EmailBison                                                                                   key
+                     · HeyReach                                                                                     key
+                     · Hunter                                                                                       key
+                     · Instantly                                                                                    key
+                     · Instantly (Legacy V1)                                                                        key
+                     · Lemlist                                                                                      key
+                     · Mixmax                                                                                       key
+                     · Outplay                                                                                      key
+                     · Smartlead                                                                                    key
+                     · Super Send                                                                                   key
+
+                     support
+                     · ConnectWise                                                                                  key
+                     · Delighted                                                                                    key
+                     · Dixa                                                                                         key
+                     · Freshchat                                                                                    key
+                     · Freshdesk                                                                                    key
+                     · Freshservice                                                                                 key
+                     · Gladly                                                                                       key
+                     · GladlyQA                                                                                     key
+                     · HappyFox                                                                                     key
+                     · Kaseya VSAX                                                                                  key
+                     · Pylon                                                                                        key
+                     · SolarWinds Service Desk                                                                      key
+
+                      Reach your SolarWinds Service Desk account at api.samanage.com, with a key you already hold.
+
+
+
+
+
+─ enter opens a box for the key you already hold ───────────────────────────────────────────────────────────────────────
+ ↑↓ move · ←→ categories · enter takes your key · type to search all · tab next place · esc close

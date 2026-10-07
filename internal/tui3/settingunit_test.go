@@ -22,6 +22,10 @@ func sheetRowsDrawn(t *testing.T, a *app, width int) []string {
 		a.sheet.build()
 	}()
 	for tab := range settingTabs {
+		if a.sheet.advanced == nil {
+			a.sheet.advanced = map[string]bool{}
+		}
+		a.sheet.advanced[settingTabs[tab]] = true
 		a.sheet.tab = tab
 		a.sheet.cursor, a.sheet.top = 0, 0
 		a.sheet.build()
@@ -51,18 +55,17 @@ func TestEverySettingRowDrawsWhatItsNumberMeans(t *testing.T) {
 	drawn := sheetRowsDrawn(t, a, 120)
 
 	for _, want := range []string{
-		"ssh reuse", "300s",
-		"ssh heartbeat", "3s",
-		"approval countdown", "10s",
-		"background after", "30s",
-		"task countdown", "15s",
-		"compact at", "60%",
-		"answer room", "65536 tok",
-		"working set", "160000 tok",
-		"context reuse", "250%",
-		"memory floor", "1536 MB",
-		"busy machine", "1.5 per core",
-		"tenure after", "3 clean firings",
+		"SSH connection reuse", "300s",
+		"SSH keepalive interval", "3s",
+		"pause approval timer after", "10s",
+		"background shell commands after", "30s",
+		"start proposed tasks after", "15s",
+		"compact context at", "60%",
+		"tokens reserved for replies", "65536 tok",
+		"working context limit", "160000 tok",
+		"context reuse limit", "250%",
+		"minimum available RAM", "1536 MB",
+		"maximum load per CPU core", "1.5 per core",
 	} {
 		found := false
 		for _, row := range drawn {
@@ -87,8 +90,8 @@ func TestEverySettingRowDrawsWhatItsNumberMeans(t *testing.T) {
 			continue
 		}
 		key := strings.Join(fields[:len(fields)-1], " ")
-		if strings.Contains(key, "rounds") || strings.Contains(key, "tasks") ||
-			strings.Contains(key, "heartbeats") || strings.HasPrefix(row, "$") {
+		if strings.Contains(key, "rounds") || strings.Contains(key, "attempts") || strings.Contains(key, "tasks") ||
+			strings.Contains(key, "keepalives") || strings.HasPrefix(row, "$") {
 			// The label names what is counted, which is the other way a row may
 			// answer ([config.UnitInLabel]).
 			continue
@@ -121,18 +124,36 @@ func bareFigure(s string) bool {
 // stored moves: the keys are untouched and only the tab a row is drawn under
 // changed.
 func TestTheSshRowsAreOnTheTabAboutReachingAnotherMachine(t *testing.T) {
-	for _, key := range []string{
-		config.KeySSHControlPersist, config.KeySSHServerAlive,
-		config.KeySSHServerMisses, config.KeySSHIPQoS,
-	} {
-		meta, ok := settingUI[key]
+	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
+	for _, key := range []string{config.KeySSHControlPersist, config.KeySSHServerAlive, config.KeySSHServerMisses, config.KeySSHIPQoS} {
+		row, ok := registry.Row(key)
 		if !ok {
-			t.Fatalf("row %q has no place on the panel at all", key)
+			t.Fatalf("missing registry row %s", key)
 		}
-		if meta.tab != tabWorkspace {
-			t.Fatalf("row %q is drawn under %q\n  drawn: %s tab · %s\n  want:  %s tab · %s",
-				key, meta.tab, meta.tab, meta.label, tabWorkspace, meta.label)
+		meta, ok := settingMetaFor(row)
+		if !ok || meta.tab != tabConnections || !row.ChatPresentation().Advanced {
+			t.Fatalf("%s must be in Connections Advanced", key)
 		}
+	}
+}
+
+// THE AUTO UPDATE ROW IS ON THE TAB ABOUT THIS MACHINE, NOT ABOUT THE SURFACE.
+//
+// It sat on Display with the appearance-and-typing choices, while the question
+// it answers — keep this installation current — is the same kind of
+// question `background checks` answers, and that row is on Workspace. The key,
+// the label and the default are unchanged; only the tab it is read under moved.
+func TestTheAutoUpdateRowIsOnTheTabAboutThisMachine(t *testing.T) {
+	meta, ok := settingUI[config.KeyUpdateAuto]
+	if !ok {
+		t.Fatal("the auto update row has no place on the panel at all")
+	}
+	if meta.tab != tabWorkspace {
+		t.Fatalf("auto update is drawn under %q\n  drawn: %s tab · %s\n  want:  %s tab · %s",
+			meta.tab, meta.tab, meta.label, tabWorkspace, meta.label)
+	}
+	if meta.label != "auto update" {
+		t.Fatalf("the label moved to %q, want %q", meta.label, "auto update")
 	}
 }
 
@@ -276,6 +297,10 @@ func sheetRowDrawn(t *testing.T, a *app, label string, width int) (string, strin
 		a.sheet.build()
 	}()
 	for tab := range settingTabs {
+		if a.sheet.advanced == nil {
+			a.sheet.advanced = map[string]bool{}
+		}
+		a.sheet.advanced[settingTabs[tab]] = true
 		a.sheet.tab = tab
 		a.sheet.cursor, a.sheet.top = 0, 0
 		a.sheet.build()
@@ -347,12 +372,12 @@ func TestASettingsValueSitsInAColumnAndNeverButtsItsLabel(t *testing.T) {
 
 	// A HUNDRED AND SIXTY: the same function, the other end. The tail stops at
 	// the measure and the rest of the frame is left empty.
-	wide, _ := sheetRowDrawn(t, a, "ssh reuse", 160)
+	wide, _ := sheetRowDrawn(t, a, "SSH connection reuse", 160)
 	if got := ansi.StringWidth(wide); got > 102 {
 		t.Fatalf("at 160 cells the row is %d cells wide and reads\n  %q\n— the value is right-aligned to the frame "+
 			"rather than to the %d-cell measure", got, wide, overlayMeasure)
 	}
-	if !strings.Contains(wide, "ssh reuse") || !strings.Contains(wide, "300s") {
+	if !strings.Contains(wide, "SSH connection reuse") || !strings.Contains(wide, "300s") {
 		t.Fatalf("the 160-cell row is no longer the pair this test is about: %q", wide)
 	}
 

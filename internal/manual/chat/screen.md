@@ -105,7 +105,7 @@ navigation from reading. The strip is that chat's row. Home, teams, sessions, sp
 settings and every other place do not draw it:
 
 ```
- >● codeaf   home  teams  chats  sessions  spend  settings                 $1.20 / $20 · thu 10:31pm
+ >● codeaf   home  chats  AI teams  activity  memory  spend  settings                 $1.20 / $20 · thu 10:31pm
      openrouter price scrape       Refactor the rail scope...      Shipping the parser ×   +   ▦ All
   ──────────────────────────────────────────────────────────────────────────────────────────────────
 ```
@@ -1187,7 +1187,7 @@ expire on time.
 ## Why the bottom rows of a long list look dimmer — faded, greyed out or washed out rows
 
 The last three rows of a list that runs on past the bottom of its window are drawn a step
-fainter each, fading toward the background. It happens on the sessions place (`/history`,
+fainter each, fading toward the background. It happens on the activity page (`/history`,
 `ctrl+.`) and on the task column. Home's panels never fade: each one folds inside itself
 with `N more` instead.
 
@@ -1436,7 +1436,7 @@ The top line is the program's name and the places on the left, and the machine's
 signs on the right:
 
 ```
- >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  spend  settings   2 want you · 4 moving · $0.55 / $20 · thu 1:11pm
 ```
 
 When there is not room for all of it, things give way **one at a time, in a fixed order**
@@ -2389,7 +2389,7 @@ than the sentence it belongs to.
 ## Proper icons, missing icons, empty boxes, Nerd Font and the step icons setting
 
 The normal view uses the Font Awesome icons included in Nerd Fonts. Under
-`/settings` → Display → **step icons** (`ui.icons`), `auto` chooses those icons
+`/settings` → General → **tool icons** (`ui.icons`), `auto` chooses those icons
 unless terminal detection calls for plain symbols. Known console and locale
 limitations fall back; colour depth alone does not remove icons.
 
@@ -3240,7 +3240,7 @@ Finished work sits under `Done`, which starts folded to its heading: press `Done
 `enter` on it, to open it, and it stays open for the session.
 
 A background job is not a finished task row: it lives in the `jobs` section, and its log
-path is on the job's page. The full record of any task is on the sessions place (`ctrl+.`,
+path is on the job's page. The full record of any task is on the activity page (`ctrl+.`,
 `/history`).
 
 ## Scrolling the task column: the mouse wheel over the sidebar, and the keys that walk it

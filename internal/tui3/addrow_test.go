@@ -98,7 +98,7 @@ func TestProvidersTabShowsTheAddRowBeforeAnyCustomConnectionExists(t *testing.T)
 	a.prepareModelServices()
 	a.raiseSettings()
 	for i, tab := range settingTabs {
-		if tab == tabProviders {
+		if tab == tabConnections {
 			a.sheet.tab = i
 		}
 	}
