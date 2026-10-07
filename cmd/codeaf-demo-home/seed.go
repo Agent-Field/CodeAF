@@ -129,7 +129,7 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	}
 	built.Standing = orders
 
-	memories, err := writeMemories(brain)
+	memories, err := writeMemories(brain, projects[firstProjectName].dir)
 	if err != nil {
 		return built, err
 	}

@@ -255,9 +255,35 @@ end of it.
 
 The judgement is one sentence in plain words: "the last run on main failed". It
 carries the last few things it said, so something you have already been told
-about is not raised again every five minutes. When the answer is neither a clear
-yes nor a clear no, codeaf treats it as a no and the log says
-`there was no clear answer, so nothing was said`.
+about is not raised again every five minutes. A watch speaks the change: it
+stays quiet while the same reading still holds, and it tells you when the
+answer turns true. When the answer is neither a clear yes nor a clear no, codeaf
+writes nothing at all and looks again next time, so an unclear reading never
+consumes the moment you are waiting on.
+
+## Will a once watch pop a notification or toast
+
+"Notify me once when ready becomes true" is a watch that speaks **once**: it
+tells you the first time the condition turns true, delivers that one line, and
+retires. It cannot tell you again if the condition later goes false and true
+again, and a reading that merely repeats is not a second notice.
+
+With no window open there is no banner, toast, phone alert or email. Where the
+one line waits depends on the chat that set the watch up: one set from an
+ordinary conversation waits in **that conversation's own inbox**, folded under
+one `while you were away` the next time you open *that* chat; one set from home's
+`ask here` box has no conversation to come back to, so its line waits under the
+project instead — home shows it, and the next ordinary conversation you open in
+that project folds it into its own `while you were away`. An ordinary chat's note
+is **not** carried into some other new chat of the project. It is delivered once
+and never a second time, so a later reopen adds nothing — the line already in
+that transcript stays visible. If a window of that project is open when it fires,
+the line is drawn there at once.
+
+Drop the word `once` and a watch stays armed: it speaks each change, so
+false-then-true is another notice and a condition that is still true is not. A
+rhythm is `every` ("every Monday at 9"), which speaks on its schedule whether or
+not the answer changed.
 
 ## How long do I have to answer the card — the card does not time out
 
@@ -455,10 +481,13 @@ five minutes after it opened — nothing is checked at the moment you launch —
 set for one minute from now arrives on the check after it comes due, not on the second.
 Nothing is checked while the machine is **asleep**, and nothing is checked when **you are
 not logged in**: the timer runs under your own login and is not a system service. The
-machine's own timer is asked to catch a missed check up rather than skip it, so a laptop
-that was shut picks the pass up when it comes back — once, not once for every check it
-slept through. What was actually missed is on the item itself: its row says when it last
-ran.
+installed timer asks the operating system to run **one** check after the machine was
+off, and only while background checks are on — but that catch-up is a request, not a
+guarantee. Nothing runs while the machine is off or asleep, and whether a missed
+interval is run at all, and when, is the operating system's to decide: it can simply
+be skipped. What a pass never does is hand you a burst — when checking resumes, a due
+item is looked at once, not once for every check it slept through. What was actually
+missed is on the item itself: its row says when it last ran.
 
 The card you said yes to states the cadence back to you in words — "Mondays at 9am" — and
 an item's own row says when it last ran. Those two together are the honest answer to "when
@@ -536,7 +565,7 @@ In a conversation, asking "what do you have standing?" lists what stands here
 with its rails; the standing place, and an item's card on a frame wide enough to
 draw one, are where the counts are.
 
-## Does it keep working when I close the terminal or shut the laptop?
+## Does it keep working when the app is closed or the laptop is shut?
 
 **Yes — background checks are on out of the box, and nobody asks you first.**
 
@@ -549,7 +578,7 @@ For "no terminal open at all", the **first thing you ever set up** installs one
 small timer under your own login that runs `codeaf tick` every 5 minutes: a
 launchd agent called `ai.agentfield.codeaf.tick` on a Mac, a systemd user timer
 called `codeaf-tick.timer` on Linux. Nothing else is installed, ever — no
-server, no port, no account.
+server, no port, no account, and no separate helper to install.
 
 You are told, once, in one dim line under the card you just said yes to:
 
@@ -567,15 +596,24 @@ Either way it is said **once, ever**. The fact is written down beside your items
 **before** your machine is touched, so an install that half-worked is still one
 you were told about rather than one you are told about again tomorrow.
 
-**The limits are real.** Nothing runs while the machine is **asleep**; the timer
-is asked to catch one missed check up when the machine comes back rather than
-skip it. Nothing runs when **you are not logged in**: it is a per-user timer,
-not a system service. And
-on any host that is neither macOS nor Linux there is no timer to install, so
-things are checked only while a window is open and the settings row is not there
-at all.
+**`on` means installed, not that a pass has run.** The row and `/status` read the
+timer's definition on disk; to see it actually waking, `/status` carries
+`last check …`, and `codeaf doctor` prints the `background timer` row and says
+`checks look stalled` when an installed one has stopped waking.
 
-## Do the background checks run before I set an API key — the walk happens, the judgment does not
+**The limits are real.** Nothing runs while the machine is **asleep**, and nothing
+runs when **you are not logged in**: it is a per-user timer, not a system service.
+The installed timer asks the operating system to run one check after the machine was
+off — and only while background checks are on. That catch-up is requested rather than
+guaranteed: nothing runs while the computer is off or asleep, and whether a missed
+interval is run at all, and when, is the operating system's to decide, so it can
+simply be skipped. A pass never hands you a burst, though: when checking resumes a
+due item is looked at once, not once for every check it slept through. A clock-only
+reminder needs no key to fire; a watch that has to be judged needs one. On any host
+that is neither macOS nor Linux there is no timer to install, so things are checked
+only while a window is open and the settings row is not there at all.
+
+## Will a watch retry if my API key is missing or disconnected
 
 **Yes, the pass still walks.** On a machine that has never been given a key, the
 5-minute pass behaves exactly as it would with one: whichever window or timer takes the
@@ -590,8 +628,8 @@ to the window you are sitting in, or waits for you on home.
 
 **A watch that has to judge something stops on its own row.** "Tell me when the build
 goes red" runs its command first — that part costs nothing and needs nobody — and then
-needs a model to say whether what came back means yes. With no key, that item's `last
-look` reads
+needs a model to say whether what came back means yes. When no key is held for the
+model that item is judged on, its `last look` reads
 
 ```
 could not check: no API key: this session has not been given one yet
@@ -600,11 +638,22 @@ could not check: no API key: this session has not been given one yet
 the walk carries straight on to the next item, and nothing fires, because a firing
 needs a yes and nobody was able to say one. The item still records that it looked, so
 the count of what was examined is honest and the record of the pass carries one error.
+That look queues no inbox note and leaves the item active and due, so it is
+retried next pass rather than lost.
 
-Set the default key — `/settings` → **openrouter key**, say "set up my api key", or use
-the `providers` group in `/connect` to add a provider — and the
-next pass judges normally. Nothing has to be re-made and nothing was lost while there
-was no key.
+**It is the key for the model that watch judges on, not any connected account.**
+Every judged watch is read by a small, cheap model — the judging model your settings
+choose, falling back to the model codeaf is set up to talk with when nothing is pinned
+(and, for an item you ratified with `--one-model`, the model that item was frozen to).
+A check only runs when the service **that** model lives on holds a credential. So
+reconnect the one that serves your judge model: if your watch is judged on an
+OpenRouter model,
+reconnect **OpenRouter** — `/connect` → **providers**, say "set up my api key", or
+`codeaf connect openrouter`. If it is judged somewhere else, set the model you want
+it judged on and connect the matching service, because connecting something
+unrelated leaves the watch exactly where it was. Once your judge model's own
+service has the key, the next pass judges normally: nothing has to be re-made and
+nothing was lost while there was no key.
 
 ## Turn background checks off
 
@@ -661,10 +710,14 @@ or not, the timer runs `codeaf tick`, which takes a few seconds, does whatever i
 due, and exits. There is no daemon sitting in memory between those moments, and
 closing the terminal app changes nothing about it.
 
-When something fires with nothing open, it waits for you: it is on home the next
-time you open it, and it folds into the next conversation you open in that
-project under one "while you were away". Nothing reaches your phone, your email,
-or a notification — there is no outward lane at all.
+When something fires with nothing open, it waits for you: an item born in an
+ordinary conversation waits in that conversation's own inbox, folded under one
+"while you were away" the next time you open *that* chat; an item born in home's
+`ask here` exchange has no conversation to come back to, so it waits under the
+project — shown on home — and the next ordinary conversation you open there folds
+it in. An ordinary chat's item is not moved into a different, newly opened chat
+of the same project. Nothing reaches your phone, your email, or a notification —
+there is no outward lane at all.
 
 If the program itself moves — you rebuild it somewhere else and delete the old
 one, or an upgrade leaves the old path empty — the timer would be pointing at a
@@ -918,10 +971,12 @@ Every standing item remembers the conversation that made it, so the answer to
 
 If the conversation was open when it fired, the line arrived in it as it
 happened. If it was not, it went to whichever chat of that project you did have
-open; and if none was, the news waited, and the next time you open a conversation
-there it is folded into **one** note that begins `while you were away` — one line
-per thing, with when, your own words, what happened, and the run folder to open
-for the whole story. Two hours away with nothing to report is nothing at all:
+open; and if none was, the news waited in the inbox of the conversation that made
+it — or, for an item born in home's `ask here`, under the project — and the next
+time you open that conversation, or an ordinary chat of that project for an
+errand, it is folded into **one** note that begins `while you were away` — one
+line per thing, with when, your own words, what happened, and the run folder to
+open for the whole story. Two hours away with nothing to report is nothing at all:
 silence is the design. The four addresses in order are under "Where a reminder
 arrives".
 

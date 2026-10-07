@@ -951,7 +951,31 @@ func sealGroundWork(dir, title string) (string, error) {
 	// produce, and it reads the index and the tree rather than the working
 	// directory, so an ignore rule has nothing to say about it. [stageTaskWork]
 	// has always staged this way, for the same reason.
-	if out, err := withIndex("add", "-A", "--", "."); err != nil {
+	// AND THE HARNESS'S OWN MACHINERY IS KEPT OUT OF THE WALK, not merely reset
+	// out of the index after it. A legacy-layout part's worktree appears under
+	// the ground's own `.codeaf/tasks/` the instant it is cut, and while
+	// `git worktree add` is still checking it out that directory is a nested
+	// repository with no commit checked out — which makes a bare
+	// `git add -A -- .` FAIL OUTRIGHT ("error: '.../2/' does not have a commit
+	// checked out", "fatal: adding files failed"), taking this seal down with it
+	// and the node's whole world with it. That is the race two parts of one
+	// division lose alternately: whichever member seals while its sibling is
+	// mid-cut cannot make its copy, and the work that never started is reported
+	// as a failure to prepare a working copy.
+	//
+	// THE PATHSPEC IS ADDED ONLY WHEN THE PATH IS NOT ALREADY IGNORED, because
+	// git REFUSES an exclude pathspec that names an ignored path ("The following
+	// paths are ignored...", exit one) — and an ignored path is one a bare add
+	// already walks past, so no exclusion is needed for it. [hideFurrowMarker]
+	// puts `.furrow/` in `.git/info/exclude` for exactly this reason, and a
+	// person's repository that ignores `.codeaf/` gets the same treatment.
+	addArgs := []string{"add", "-A", "--", "."}
+	for _, dropping := range taskDroppingNames() {
+		if _, err := git(dir, "check-ignore", "-q", "--", dropping); err != nil {
+			addArgs = append(addArgs, ":(exclude)"+dropping)
+		}
+	}
+	if out, err := withIndex(addArgs...); err != nil {
 		return "", sealProblem(out, err)
 	}
 	private := append(taskDroppingNames(), furrowMarkerDir)

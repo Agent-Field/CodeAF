@@ -182,6 +182,16 @@ the same way. When the manager stops a member,
 its current turn ends the way your own Stop would, including when codeaf opened it in the
 background without a window. Starting a new member still needs a window holding the manager.
 
+The member runs in the team's folder, which is this workspace, so the workspace's
+approved rules and confirmed decisions are read locally before its first request
+and bind the member from its first turn, exactly as they do for any conversation
+there. The team itself owns none of them. The router's relevant-memory shortlist
+is the separate advisory path: it may arrive after the member has begun, and it is
+never what carries an approved rule. The manager reads the same workspace's
+binding rules the same way. Being placed first does not make them unlimited,
+though — the block in front of a request is bounded, so a very large set of
+approved lines is not all guaranteed to fit.
+
 ## Who a Traffic row is from and who it is to
 
 Every Traffic row reads `from → to`, then the words. The manager is `◆`. Several recipients

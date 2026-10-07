@@ -8,6 +8,34 @@ import (
 	"time"
 )
 
+// recordedDelivery reads a firing identity back out of the append-only ledger: a line
+// written for a pending means that exact line was carried out, and nothing else
+// does.
+func TestDeliveredReadsTheFiringIdentityFromTheLedger(t *testing.T) {
+	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
+	store := openStore(t, now)
+	if err := store.Append(Entry{At: now, ItemID: "aaaaaaaaaaaaaaaa", Kind: string(ActionSay), Pending: "p-delivered"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := store.recordedDelivery("aaaaaaaaaaaaaaaa", "p-delivered", now)
+	if err != nil || !got {
+		t.Fatalf("a recorded delivery was not found: got=%v err=%v", got, err)
+	}
+	// A different identity, a different item and an empty identity are not
+	// evidence of anything.
+	for _, probe := range []struct{ item, pending string }{
+		{"aaaaaaaaaaaaaaaa", "p-other"},
+		{"bbbbbbbbbbbbbbbb", "p-delivered"},
+		{"", "p-delivered"},
+		{"aaaaaaaaaaaaaaaa", ""},
+	} {
+		if found, err := store.recordedDelivery(probe.item, probe.pending, now); err != nil || found {
+			t.Fatalf("recordedDelivery(%q,%q) = %v,%v, wanted false,nil", probe.item, probe.pending, found, err)
+		}
+	}
+}
+
 func TestLedgerSumsTodayForOneItemAndForAll(t *testing.T) {
 	now := time.Date(2026, 8, 20, 10, 0, 0, 0, time.UTC)
 	store := openStore(t, now)
@@ -187,7 +215,7 @@ func TestRunsSinceIsEmptyWithNothingToCount(t *testing.T) {
 func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	sessionDir := filepath.Join(t.TempDir(), "sessions", "0123456789abcdef")
 
-	notes, err := Drain(sessionDir)
+	notes, err := drainAndAck(t, sessionDir)
 	if err != nil {
 		t.Fatalf("an absent inbox is not a failure: %v", err)
 	}
@@ -208,7 +236,7 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 		t.Fatalf("the inbox was not written: %v", err)
 	}
 
-	notes, err = Drain(sessionDir)
+	notes, err = drainAndAck(t, sessionDir)
 	if err != nil {
 		t.Fatalf("drain: %v", err)
 	}
@@ -227,11 +255,20 @@ func TestInboxDeliversDrainsAndIsEmptyWhenAbsent(t *testing.T) {
 	if _, err := os.Stat(InboxPath(sessionDir)); !os.IsNotExist(err) {
 		t.Fatalf("the inbox is still there after a drain: %v", err)
 	}
-	notes, err = Drain(sessionDir)
+	notes, err = drainAndAck(t, sessionDir)
 	if err != nil || len(notes) != 0 {
 		t.Fatalf("a second drain answered %d notes and %v", len(notes), err)
 	}
-	if entries, err := os.ReadDir(sessionDir); err != nil || len(entries) != 0 {
-		t.Fatalf("the drain left %v behind (%v)", entries, err)
+	if entries, err := os.ReadDir(sessionDir); err != nil {
+		t.Fatalf("the drain left the folder unreadable: %v", err)
+	} else {
+		for _, entry := range entries {
+			// The inbox flock file stays: it is the serialization point and not
+			// a note. Everything the drain owned must be gone.
+			if entry.Name() == InboxLockName {
+				continue
+			}
+			t.Fatalf("the drain left %s behind", entry.Name())
+		}
 	}
 }

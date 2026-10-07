@@ -238,7 +238,11 @@ only_my_file() { [ "$(git -C "$WORK" status --short)" = "?? notes.txt" ]; }
 one_copy() { [ "$(copies | wc -l | tr -d ' ')" = "1" ]; }
 second_on_the_list() { screen | cut -c119- | grep -q 'write README'; }
 first_on_the_list() { screen | cut -c119- | grep -q 'add Mul and Div'; }
-column_open() { screen | grep -Eq '│ Tasks [0-9]+.*alt\+l'; }
+# THE COLUMN'S KEY IS SPELLED FOR THE KEYBOARD IT IS DRAWN ON: `alt+l` on
+# Linux and `opt+l` on a Mac (internal/tui3/chords.go). A needle that knows
+# only one spelling reads an open column as closed on the other system, and the
+# key pressed to open it closes it instead.
+column_open() { screen | grep -Eq '│ Tasks [0-9]+.*(alt|opt)\+l'; }
 first_run_home() { [ -f "$WORK/README.md" ] && [ -f "$WORK/muldiv.go" ]; }
 one_new_commit() { [ "$(git -C "$WORK" log --oneline | wc -l | tr -d ' ')" = "2" ]; }
 my_file_untouched() { [ "$(cat "$WORK/notes.txt")" = "mine, unsaved" ] && only_my_file; }

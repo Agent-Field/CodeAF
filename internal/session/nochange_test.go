@@ -163,8 +163,8 @@ func TestACarryOnAnsweredNoChangeEndsItAndKeepsTheAnswer(t *testing.T) {
 		t.Fatalf("close: %v", err)
 	}
 	exchange := learnedExchange(t, learned)
-	if !strings.Contains(exchange, "ASSISTANT:\n| seat | model | why |") ||
-		!strings.Contains(exchange, "| seat 01 |") || strings.Contains(exchange, "ASSISTANT:\n"+NoChangeReply) {
+	if !strings.Contains(exchange, "ASSISTANT STATEMENT (not corroboration):\n| seat | model | why |") ||
+		!strings.Contains(exchange, "| seat 01 |") || strings.Contains(exchange, "ASSISTANT STATEMENT (not corroboration):\n"+NoChangeReply) {
 		t.Errorf("the memory reflex did not receive the answer before the withdrawn token:\n%s", exchange)
 	}
 }
@@ -246,7 +246,7 @@ func TestNoChangeAfterCallsMadeForTheNoteIsReadAgain(t *testing.T) {
 	if err := agent.Close(); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if exchange := learnedExchange(t, learned); !strings.Contains(exchange, "ASSISTANT:\n"+NoChangeReply) {
+	if exchange := learnedExchange(t, learned); !strings.Contains(exchange, "ASSISTANT STATEMENT (not corroboration):\n"+NoChangeReply) {
 		t.Errorf("the memory reflex was not handed the non-withdrawn token reply:\n%s", exchange)
 	}
 }
