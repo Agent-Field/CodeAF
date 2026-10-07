@@ -554,6 +554,14 @@ var settingUI = map[string]settingMeta{
 			everyWord(standing.Interval) + " with no window open. " +
 			"Off checks only while one is.",
 	},
+	// THE UPDATE ROW READS THE WAY UP ITS KEY DOES, unlike the hints row above:
+	// on means codeaf keeps itself current. It sits on Workspace beside
+	// `background checks`, because both answer what this MACHINE does on its own
+	// rather than how the surface draws itself.
+	config.KeyUpdateAuto: {
+		tab: tabWorkspace, label: "auto update", widget: widgetToggle,
+		// NO `about`: the registry's own hint is the sentence, said once.
+	},
 	// THE SIGNATURE HAS NO ROW, only the model's name inside it: codeaf always
 	// signs the commits and pull requests it writes, and what a person may
 	// choose is whether the `Assisted-by` line says which model it was.
@@ -621,13 +629,6 @@ var settingUI = map[string]settingMeta{
 		tab: tabWorkspace, label: "disable hints", widget: widgetToggle,
 		// NO `about` OF ITS OWN: the line under the row is the registry's hint,
 		// the owner's own wording (2026-09-24), said once ([settingMetaFor]).
-	},
-	// THE UPDATE ROW READS THE WAY UP ITS KEY DOES, unlike the hints row above:
-	// on means codeaf keeps itself current. It sits on Display with the other
-	// choices about what this surface does on its own.
-	config.KeyUpdateAuto: {
-		tab: tabDisplay, label: "auto update", widget: widgetToggle,
-		// NO `about`: the registry's own hint is the sentence, said once.
 	},
 	config.KeySplitPct: {
 		tab: tabDisplay, label: "chat width", widget: widgetText,

@@ -471,3 +471,225 @@ func TestRecordReadsThroughTheHeldHandle(t *testing.T) {
 		t.Fatalf("bytes past the read bound were trusted as %+v", record)
 	}
 }
+
+// TestAutoSuccessKeepsASkipItFound proves the merge AutoSuccess performs is over
+// the WHOLE state: a failure is cleared and a person's "not now" for another tag
+// is left standing, which is the field a lost read-modify-write used to erase.
+func TestAutoSuccessKeepsASkipItFound(t *testing.T) {
+	dir := t.TempDir()
+	if err := DismissRelease(dir, "v0.9.9"); err != nil {
+		t.Fatalf("dismiss: %v", err)
+	}
+	if state := AutoFailure(dir, "v0.9.8", errors.New("the release host is away")); state.Failures != 1 {
+		t.Fatalf("failure was not recorded: %+v", state)
+	}
+	state := AutoSuccess(dir)
+	if !state.Dismissed("v0.9.9") {
+		t.Fatalf("a success erased the saved skip: %+v", state)
+	}
+	if state.FailedRelease != "" || state.Failures != 0 || !state.LastAttemptAt.IsZero() || state.LastError != "" {
+		t.Fatalf("a success did not clear the failure: %+v", state)
+	}
+	// And it is the file, not only the returned value, that still holds the skip.
+	if !LoadAutoState(dir).Dismissed("v0.9.9") {
+		t.Fatal("the skip is not in the file after the success")
+	}
+}
+
+// autoStateHelperEnv carries the answer a child process must record to the
+// helper below; autoStateHelperMarker names a file the child touches once it is
+// started, so the parent can tell "queued on the lock" from "still loading".
+const (
+	autoStateHelperEnv    = "CODEAF_UPDATE_STATE_HELPER"
+	autoStateHelperMarker = "CODEAF_UPDATE_STATE_HELPER_MARKER"
+)
+
+// TestConcurrentSkipAndFailureSurviveInterleaving is the cross-process half of
+// the fix: one window (this process) holds the state lock in the middle of its
+// skip while a second REAL process records a success or a failure. The child
+// must WAIT, and once released it must merge its change with the skip rather
+// than save a state it read before the skip landed.
+//
+// The child is this test binary run again with an environment switch, so nothing
+// about the second process is simulated — it has its own address space and its
+// own file descriptors, exactly as two terminals do.
+func TestConcurrentSkipAndFailureSurviveInterleaving(t *testing.T) {
+	if os.Getenv(autoStateHelperEnv) != "" {
+		t.Skip("helper process")
+	}
+	for _, mode := range []string{"success", "failure"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			statePath := AutoStatePath(dir)
+			marker := filepath.Join(t.TempDir(), "started")
+
+			// W1's read-modify-write is in progress: it holds the profile lock.
+			held, err := lockAutoState(statePath)
+			if err != nil {
+				t.Fatalf("hold the state lock: %v", err)
+			}
+			released := false
+			defer func() {
+				if !released {
+					_ = held.Close()
+				}
+			}()
+
+			child := exec.Command(os.Args[0], "-test.run=^TestAutoStateSecondProcessHelper$", "-test.v")
+			child.Env = append(os.Environ(),
+				autoStateHelperEnv+"="+mode+":"+dir,
+				autoStateHelperMarker+"="+marker)
+			if err := child.Start(); err != nil {
+				t.Fatalf("start the second process: %v", err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- child.Wait() }()
+
+			// WAIT FOR THE CHILD TO BE PAST ITS STARTUP and about to write, so the
+			// next check observes it queued on the lock rather than still loading.
+			waitForFile(t, marker, 5*time.Second)
+			select {
+			case err := <-done:
+				t.Fatalf("the second process finished (%v) while the state lock was held, "+
+					"so its read-modify-write did not serialize", err)
+			case <-time.After(300 * time.Millisecond):
+			}
+
+			// W1 completes its skip while W2 waits.
+			state := LoadAutoState(dir)
+			state.DismissedRelease = "v0.9.9"
+			state.DismissedAt = time.Now()
+			if err := SaveAutoState(dir, state); err != nil {
+				t.Fatalf("write the dismissal: %v", err)
+			}
+			_ = held.Close()
+			released = true
+
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("the second process exited %v, want 0", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the second process never finished after the lock was released")
+			}
+			final := LoadAutoState(dir)
+			if !final.Dismissed("v0.9.9") {
+				t.Fatalf("the skip did not survive the concurrent %s: %+v", mode, final)
+			}
+			switch mode {
+			case "success":
+				if final.FailedRelease != "" || final.Failures != 0 {
+					t.Fatalf("a concurrent success did not clear the failure: %+v", final)
+				}
+			case "failure":
+				if final.FailedRelease != "v0.9.8" || final.Failures != 1 {
+					t.Fatalf("the concurrent failure was erased by the skip: %+v", final)
+				}
+			}
+		})
+	}
+}
+
+// TestAutoStateSecondProcessHelper is the child half of the test above: it
+// touches its marker, then records the answer the parent named while the parent
+// holds the lock. It exits 0 on success so the parent reads a clean Wait.
+func TestAutoStateSecondProcessHelper(t *testing.T) {
+	spec := strings.TrimSpace(os.Getenv(autoStateHelperEnv))
+	if spec == "" {
+		t.Skip("not the helper")
+	}
+	mode, dir, ok := strings.Cut(spec, ":")
+	if !ok || dir == "" {
+		fmt.Fprintln(os.Stderr, "helper spec malformed")
+		os.Exit(1)
+	}
+	if marker := strings.TrimSpace(os.Getenv(autoStateHelperMarker)); marker != "" {
+		if err := os.WriteFile(marker, []byte("ready"), 0o600); err != nil {
+			fmt.Fprintf(os.Stderr, "helper marker: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	switch mode {
+	case "success":
+		AutoSuccess(dir)
+	case "failure":
+		AutoFailure(dir, "v0.9.8", errors.New("the release host is away"))
+	default:
+		fmt.Fprintf(os.Stderr, "helper mode %q\n", mode)
+		os.Exit(1)
+	}
+	os.Exit(0)
+}
+
+// TestStateWritesSerializeInsideOneProcess proves the second lock: two
+// goroutines of ONE process cannot be inside the read-modify-write together,
+// whatever the platform's file lock does with two handles on one description.
+func TestStateWritesSerializeInsideOneProcess(t *testing.T) {
+	dir := t.TempDir()
+	autoStateMu.Lock()
+	done := make(chan struct{})
+	go func() {
+		if err := DismissRelease(dir, "v0.9.9"); err != nil {
+			t.Errorf("dismiss: %v", err)
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+		autoStateMu.Unlock()
+		t.Fatal("a state write finished while another goroutine held the in-process lock")
+	case <-time.After(200 * time.Millisecond):
+	}
+	autoStateMu.Unlock()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the state write never finished after the in-process lock was released")
+	}
+	if !LoadAutoState(dir).Dismissed("v0.9.9") {
+		t.Fatal("the dismissal did not land")
+	}
+}
+
+// TestStateLockIsAStableUnlinkedPath proves the lock is one inode beside the
+// state file and stays there: unlinking it on release would let a fresh opener
+// create a second file and hold a second lock.
+func TestStateLockIsAStableUnlinkedPath(t *testing.T) {
+	dir := t.TempDir()
+	statePath := AutoStatePath(dir)
+	lockPath := statePath + ".lock"
+	first, err := lockAutoState(statePath)
+	if err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("the lock is not at the stable path %s: %v", lockPath, err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("the lock file was removed on release: %v", err)
+	}
+	second, err := lockAutoState(statePath)
+	if err != nil {
+		t.Fatalf("relock the stable path: %v", err)
+	}
+	_ = second.Close()
+}
+
+// waitForFile waits until path exists, failing the test if it never does.
+func waitForFile(t *testing.T, path string, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the second process never signalled it had started: %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

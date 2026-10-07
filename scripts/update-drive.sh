@@ -123,7 +123,7 @@ capture() {
 
 # capture_settings <state> <cols> \u2014 the REAL /settings page with the real
 # `auto update` row, reached the way a person reaches it: the command, the
-# arrow keys that walk the tabs to Display, and the down key that walks the
+# arrow keys that walk the tabs to Workspace, and the down key that walks the
 # cursor onto the row. The row is confirmed selected by its OWN hint being on
 # screen, not by the label merely existing somewhere in the frame.
 capture_settings() {
@@ -136,11 +136,11 @@ capture_settings() {
   tmux -L "$SOCK" send-keys -t "$session" -l "/settings"
   tmux -L "$SOCK" send-keys -t "$session" Enter
   sleep 2
-  # THE DISPLAY TAB, BY THE PANEL'S OWN ARROW KEY: Session, Context, Workspace,
-  # Display. The panel's type-to-search is deliberately NOT used here — it ranks
-  # fuzzy matches from every tab, so the row under the cursor is usually the
-  # wrong one and the sentence drawn under it explains somebody else's setting.
-  tmux -L "$SOCK" send-keys -t "$session" Right
+  # THE WORKSPACE TAB, BY THE PANEL'S OWN ARROW KEY: Session, Context,
+  # Workspace. The panel's type-to-search is deliberately NOT used here — it
+  # ranks fuzzy matches from every tab, so the row under the cursor is usually
+  # the wrong one and the sentence drawn under it explains somebody else's
+  # setting.
   tmux -L "$SOCK" send-keys -t "$session" Right
   tmux -L "$SOCK" send-keys -t "$session" Right
   sleep 2
@@ -149,7 +149,7 @@ capture_settings() {
     # THE ROW'S OWN HINT IS THE PROOF THE CURSOR IS ON IT: the sheet draws the
     # hint only for the row under the cursor, and this row's hint opens with
     # these words.
-    if tmux -L "$SOCK" capture-pane -p -t "$session" | grep -q "check for a new codeaf at launch"; then
+    if tmux -L "$SOCK" capture-pane -p -t "$session" | grep -q "keeps this codeaf installation current in the background"; then
       landed=yes
       break
     fi
@@ -166,7 +166,7 @@ capture_settings() {
   # THE ROW ITSELF IS THE CHECK, not the fact that something drew: the registry's
   # label, the sentence the registry wrote for it, and the value its reader
   # resolved. A capture without all three is a failure.
-  grep -q "check for a new codeaf at launch" "$file" || {
+  grep -q "keeps this codeaf installation current in the background" "$file" || {
     echo "the settings capture at ${cols}c did not draw the row's own hint:" >&2
     cat "$file" >&2
     exit 1

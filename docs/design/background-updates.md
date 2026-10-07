@@ -26,7 +26,8 @@ itself. The three answers are:
   exact tag and that tag is never offered again; a newer release is a new
   question. If the write itself fails, the note says so instead of claiming a
   skip that was not saved — this window still stops offering it.
-- `/update never`, or the `auto update` row in `/settings` — stop installing
+- `/update never`, or the `auto update` row on `/settings`' **Workspace** tab
+  (beside `background checks`) — stop installing
   automatically. It does not cancel an install already downloading and does not
   say it did. The launch check still runs and still says what is out: with the
   row off the one request is still made and the release is named on one dim
@@ -67,7 +68,7 @@ checksum matched · installed at <path>          (hand-run only)
 codeaf <tag> installed · this session keeps running
 ```
 
-The durable note says what is true without the engine lane's vocabulary: `new
+The durable note says what is true without the engine's internal vocabulary: `new
 windows open the updated app; work already running keeps its current engine until
 all its windows and work close`. A file replaced on disk does not force a
 running engine to hand over, so the line never claims it did, and it no longer
@@ -149,7 +150,7 @@ seams, so a fixture cannot make a request or replace a file, and each says at th
 top of the transcript that it is a fixture. `scripts/update-drive.sh` captures
 them at 80 and 120 columns with the real binary, and captures the REAL `/settings`
 page beside them (`settings-auto-on`, `settings-auto-off`): those two open the
-settings place through `/settings`, walk the tabs to Display and the cursor onto
+settings place through `/settings`, walk the tabs to Workspace and the cursor onto
 the row with the panel's own arrow keys, and the capture is only kept once the
 row's OWN hint is the sentence on screen — so what is drawn is the registry's
 row reading the profile's value, not whatever a fuzzy search happened to put
@@ -164,3 +165,16 @@ clear every updater seam so a capture machine needs no network and cannot instal
 anything. They are not evidence that a background install preserves a real turn;
 that continuity is REQUIRED VALIDATION to be recorded from the E2E suite before
 this is treated as proved — a fixture shows the surface, never the continuity.
+
+## Maintainer note: shared storage is part of the wire contract
+
+The files this feature shares between windows and between builds —
+`update-state.json`, the `<executable>.install.lock` and the install record it
+carries — are read across codeaf versions, and the state root may live on a
+machine a surface only reaches over the engine wire. A change that BREAKS their
+storage contract (renaming or retyping a field, or changing what an existing one
+means) MUST bump the engine wire compatibility version (`remote.Version`): the
+door refuses a mismatch, and that refusal is the only honest answer when a newer
+surface would misread an older engine's storage. Joining an older engine is safe
+only WITHIN that compatibility contract — adding an optional field or reading
+one the older build already wrote is fine; redefining what is there is not.

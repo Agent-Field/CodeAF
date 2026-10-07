@@ -2560,6 +2560,23 @@ func (s *Settings) build() []Setting {
 			read:  func() string { return strconv.Itoa(TenureAfterAt(dir)) },
 			write: func(raw string) error { return writeTenure(dir, raw) },
 		},
+		// THE ROW READS THE SAME WAY UP AS ITS KEY, unlike the hints row above:
+		// `update.auto` on means codeaf keeps itself current, and `auto update` on
+		// is that sentence. It is the second row about what this machine does on
+		// its own, so it stands beside `background checks` rather than among the
+		// rows about how the surface draws itself. The offer's own "stop asking"
+		// writes through [SaveUpdateAuto], which is this row's writer by another
+		// door.
+		Setting{
+			Key: KeyUpdateAuto, Category: CategoryPractice, Kind: SettingBool,
+			Label: "auto update",
+			Hint: "keeps this codeaf installation current in the background. " +
+				"The offer waits in the keys line for about ten seconds; it never blocks a keystroke. " +
+				"Off, installation is manual — nothing is installed until you run /update — and codeaf " +
+				"still checks once and names a new release (CODEAF_NO_UPDATE_CHECK=1 makes no request at all).",
+			read:  func() string { return formatBool(UpdateAutoAt(dir)) },
+			write: func(raw string) error { return writeBool(dir, KeyUpdateAuto, raw) },
+		},
 	)
 
 	// THE SECOND ROW THAT IS NOT ALWAYS BUILT, on the divider's law below and
@@ -2668,20 +2685,6 @@ func (s *Settings) build() []Setting {
 				}
 				return writeProfileValue(dir, KeyHints, !disabled)
 			},
-		},
-		// THE ROW READS THE SAME WAY UP AS ITS KEY, unlike the hints row above:
-		// `update.auto` on means codeaf keeps itself current, and `auto update` on
-		// is that sentence. The offer's own "stop asking" writes through
-		// [SaveUpdateAuto], which is this row's writer by another door.
-		Setting{
-			Key: KeyUpdateAuto, Category: CategoryInterface, Kind: SettingBool,
-			Label: "auto update",
-			Hint: "check for a new codeaf at launch and install it in the background. " +
-				"The offer waits in the keys line for about ten seconds; it never blocks a keystroke. " +
-				"Off, nothing is installed until you run /update; codeaf still checks once and names a new release " +
-				"(CODEAF_NO_UPDATE_CHECK=1 makes no request at all).",
-			read:  func() string { return formatBool(UpdateAutoAt(dir)) },
-			write: func(raw string) error { return writeBool(dir, KeyUpdateAuto, raw) },
 		},
 		Setting{
 			Key: KeyAttributionModel, Category: CategoryInterface, Kind: SettingBool,

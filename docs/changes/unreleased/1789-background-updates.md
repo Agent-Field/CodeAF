@@ -8,9 +8,10 @@ invalidates:
   - "The launch notice used to be a single dim line whose only action was `/update`. With `update.auto` on (the default) a newer release now raises an offer in the keys line, counted down live from ten seconds, and then installs itself in the background; `alt+n` or `/update skip` skips that exact release, and `/update never` or the settings row turns the automatic road off."
   - "A version behind its channel with `update.auto` off still gets one quiet line naming the release and the hand-run road, instead of no check at all — and the launch request really is made, because the standing row no longer suppresses it; only `CODEAF_NO_UPDATE_CHECK=1` does that."
   - "A codeaf owned by Homebrew, Nix or a system package manager, or one in a folder the account cannot write, is refused in place by both the chat and `codeaf update`, and the refusal names the manager and the curl road."
-  - "The manuals `internal/manual/chat/staying-on-that-machine.md` and `running-on-another-machine.md` said a busy engine from an older build was replaced the moment a newer codeaf opened. They now say the truth the engine lane implements: an older engine holding work is joined and keeps it, and steps aside once it is quiet (or at the next safe launch for a host too old to know the ask); one holding nothing hands over at once; an attached idle window counts as holding work; and another wire, or one too old to be asked, is refused with `codeaf engine --stop --workspace '<path>'` named."
+  - "The manuals `internal/manual/chat/staying-on-that-machine.md` and `running-on-another-machine.md` said a busy engine from an older build was replaced the moment a newer codeaf opened. They now say the truth the engine implements: an older engine holding work is joined and keeps it, and steps aside once it is quiet (or at the next safe launch for a host too old to know the ask); one holding nothing hands over at once; an attached idle window counts as holding work; and another wire, or one too old to be asked, is refused with `codeaf engine --stop --workspace '<path>'` named."
   - "One install now runs at a time per executable, across terminals and profiles: the lock is an OS advisory lock keyed on the executable AND IS TAKEN INSIDE the shared installer, so the chat surface and `codeaf update` are one acquirer. The target is canonicalized first — absolute, cleaned, symlinks resolved — so a relative path or a symlinked folder is the same target and serializes against it, and the ownership refusal answers about the file the replacement would land on. Under the lock a sha256-tied record says what is on disk: a duplicate is a quiet no-op and a stale automatic downgrade is refused, while an explicitly named tag may still roll back."
   - "Only a tag a person named may install an older build. The bare `/update` that answers an open offer installs the release the offer is about and no longer carries rollback intent, and a named tag reaches the installer even when it matches the running process's own stamp, because the stamp is not the file on disk."
+  - "The `auto update` row in `/settings` (`update.auto`) moved from the Display tab to the Workspace tab, beside `background checks`: keeping this installation current is what codeaf does on this machine on its own, and Display is where the surface's own appearance and typing live. The key, the label and the default are unchanged; only the tab it is read under moved."
 ---
 
 The offer waits in the line that already carries the idle keys, so it never
@@ -48,11 +49,11 @@ and by executable, so the same release never asks twice and a release that faile
 three times stops being tried on its own.
 
 WHICH VERSION IS WHICH IS ON THE SCREEN. The offer's line names the release that
-is out; the build this window is RUNNING is the one the status row and `/status`
-report, and the note the offer writes names both (`codeaf <new> is out \u00b7 you
+is out; the build holding this session is the one `/status` reports (its `build`
+row), and the note the offer writes names both (`codeaf <new> is out · you
 have <current>`). An install only replaces the file: nothing about the running
 session changes, and the new build is what opens the next time codeaf is started
-\u2014 so a window can be current and behind its channel at the same time, on
+— so a window can be current and behind its channel at the same time, on
 purpose. The automatic road moves forward only: a duplicate is a quiet no-op, an
 older build is refused unless a person names the tag, and two same-day dev or
 staging builds whose published moment is not known are refused rather than

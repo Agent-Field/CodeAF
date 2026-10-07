@@ -5,13 +5,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/config"
+	"github.com/Agent-Field/codeaf/internal/filelock"
 )
 
 // The auto updater's durable memory: one small file in the profile holding the
@@ -99,9 +102,110 @@ func AutoStatePath(profileDir string) string {
 	return config.ProfilePath(profileDir, autoStateName)
 }
 
+// ── ONE WRITER PER PROFILE ─────────────────────────────────────────────────
+//
+// The remembered dismissal and failure count are one file, and changing it is a
+// read-modify-write: read the state, change one field, write it back. Two codeaf
+// processes that interleave that way — a skip pressed in one window while
+// another finishes an install — would let the later writer save a state it read
+// before the other wrote, silently dropping a person's skip (or a failure
+// count). Both halves are therefore taken under TWO locks at once:
+//
+//   - an in-process mutex, because flock and LockFileEx coordinate per open file
+//     description and this package must also serialize two goroutines of ONE
+//     process;
+//   - the profile's OS advisory lock on a STABLE `<update-state.json>.lock`
+//     beside the file, never unlinked, so the hold lives in the kernel's lock on
+//     one inode and a crashed writer releases it instead of leaving a file to be
+//     reclaimed by age.
+//
+// The wait is BOUNDED: a lock held by a process wedged on a slow mount cannot
+// hang the surface that pressed skip. A failed lock or write is REPORTED by
+// [DismissRelease] rather than dressed up as a saved answer; the automatic
+// [AutoFailure] and [AutoSuccess] keep their signatures and simply never claim a
+// write they did not make.
+
+// autoStateLockWait bounds how long a state write waits for another process to
+// release the profile's lock, so a write never hangs a chat forever.
+const autoStateLockWait = 2 * time.Second
+
+// autoStateMu serializes the read-modify-write inside one process; the file lock
+// below does the same across processes. It is a plain mutex and not an attempt at
+// the file lock from the same handle, because the file lock's contract is one
+// hold per open file description and a second acquisition in the same process
+// must queue rather than deadlock.
+var autoStateMu sync.Mutex
+
+// lockAutoState takes the profile's cross-process lock for update-state.json,
+// waiting at most [autoStateLockWait]. It reuses [filelock], the same
+// cross-platform advisory lock every other codeaf file coordination uses, and
+// the lock file is a stable path that is never unlinked — a fresh opener must
+// find the same inode the holder locked, not create a second one.
+func lockAutoState(statePath string) (*os.File, error) {
+	lockPath := statePath + ".lock"
+	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open update state lock: %w", err)
+	}
+	deadline := time.Now().Add(autoStateLockWait)
+	for {
+		err = filelock.Lock(file, true, true)
+		if err == nil {
+			return file, nil
+		}
+		if !filelock.IsBusy(err) {
+			_ = file.Close()
+			return nil, fmt.Errorf("lock update state: %w", err)
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			_ = file.Close()
+			return nil, fmt.Errorf("lock update state: timed out after %s", autoStateLockWait)
+		}
+		pause := 10 * time.Millisecond
+		if remaining < pause {
+			pause = remaining
+		}
+		time.Sleep(pause)
+	}
+}
+
+// mutateAutoState is the ONE read-modify-write of the coordinator's file, and
+// every change to it goes through here under both locks. It returns the state it
+// wrote, or the error that kept the write from landing — and a caller may not
+// report a change the returned error denies.
+func mutateAutoState(profileDir string, mutate func(*AutoState)) (AutoState, error) {
+	path := AutoStatePath(profileDir)
+	autoStateMu.Lock()
+	defer autoStateMu.Unlock()
+	// The lock file sits beside the state file, so the folder has to exist before
+	// the lock can be opened on a profile that has never written one.
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return AutoState{}, err
+	}
+	lock, err := lockAutoState(path)
+	if err != nil {
+		return AutoState{}, err
+	}
+	defer func() { _ = lock.Close() }()
+	state := loadAutoStateFile(path)
+	mutate(&state)
+	if err := saveAutoStateFile(path, state); err != nil {
+		return AutoState{}, err
+	}
+	return state, nil
+}
+
 // LoadAutoState reads the coordinator's file; a missing or corrupt one is empty.
 func LoadAutoState(profileDir string) AutoState {
-	raw, err := os.ReadFile(AutoStatePath(profileDir))
+	return loadAutoStateFile(AutoStatePath(profileDir))
+}
+
+// loadAutoStateFile is the raw read. It is safe without the lock because a
+// writer lands its whole file with one rename: a reader sees the version before
+// or the version after, never a half-written one.
+func loadAutoStateFile(path string) AutoState {
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return AutoState{}
 	}
@@ -112,9 +216,17 @@ func LoadAutoState(profileDir string) AutoState {
 	return state
 }
 
-// SaveAutoState writes the coordinator's file atomically.
+// SaveAutoState writes the coordinator's file atomically. It is the raw write
+// and does NOT take the profile lock: a caller with a read-modify-write to make
+// goes through [mutateAutoState], which holds both locks across the read and the
+// write.
 func SaveAutoState(profileDir string, state AutoState) error {
-	path := AutoStatePath(profileDir)
+	return saveAutoStateFile(AutoStatePath(profileDir), state)
+}
+
+// saveAutoStateFile writes one state with a temporary file and a rename, so a
+// reader or a crash never observes a partial file.
+func saveAutoStateFile(path string, state AutoState) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
@@ -154,44 +266,62 @@ func SaveAutoState(profileDir string, state AutoState) error {
 	return nil
 }
 
-// DismissRelease records "not now" for one exact release.
+// DismissRelease records "not now" for one exact release. A lock or write that
+// failed is returned, because the surface may not report a skip it did not save.
 func DismissRelease(profileDir, tag string) error {
 	tag = strings.TrimSpace(tag)
 	if tag == "" {
 		return errors.New("cannot dismiss an unnamed release")
 	}
-	state := LoadAutoState(profileDir)
-	state.DismissedRelease = tag
-	state.DismissedAt = time.Now()
-	return SaveAutoState(profileDir, state)
+	_, err := mutateAutoState(profileDir, func(state *AutoState) {
+		state.DismissedRelease = tag
+		state.DismissedAt = time.Now()
+	})
+	return err
 }
 
-// AutoFailure records one failed automatic install of a release.
+// AutoFailure records one failed automatic install of a release. Its signature
+// is unchanged — the caller only wants the note on the surface — but a write
+// that did not land returns what the file really holds rather than a fabricated
+// count, and a failure recorded by another window is not clobbered: the whole
+// state is read and rewritten under the lock.
 func AutoFailure(profileDir, tag string, err error) AutoState {
 	tag = strings.TrimSpace(tag)
-	state := LoadAutoState(profileDir)
-	if strings.TrimSpace(state.FailedRelease) != tag {
-		state.FailedRelease = tag
-		state.Failures = 0
+	state, saveErr := mutateAutoState(profileDir, func(state *AutoState) {
+		if strings.TrimSpace(state.FailedRelease) != tag {
+			state.FailedRelease = tag
+			state.Failures = 0
+		}
+		state.Failures++
+		state.LastAttemptAt = time.Now()
+		state.LastError = ""
+		if err != nil {
+			state.LastError = err.Error()
+		}
+	})
+	if saveErr != nil {
+		return LoadAutoState(profileDir)
 	}
-	state.Failures++
-	state.LastAttemptAt = time.Now()
-	state.LastError = ""
-	if err != nil {
-		state.LastError = err.Error()
-	}
-	_ = SaveAutoState(profileDir, state)
 	return state
 }
 
 // AutoSuccess clears the failure belonging to a release now installed.
+//
+// IT DOES NOT CLEAR A DISMISSAL. The person's "not now" for another tag is a
+// separate decision and survives — the read-modify-write reads the whole state
+// and empties only the failure fields — and doing so under the profile lock is
+// what keeps a concurrent skip from being erased by a success that read the file
+// a moment too early.
 func AutoSuccess(profileDir string) AutoState {
-	state := LoadAutoState(profileDir)
-	state.FailedRelease = ""
-	state.Failures = 0
-	state.LastAttemptAt = time.Time{}
-	state.LastError = ""
-	_ = SaveAutoState(profileDir, state)
+	state, saveErr := mutateAutoState(profileDir, func(state *AutoState) {
+		state.FailedRelease = ""
+		state.Failures = 0
+		state.LastAttemptAt = time.Time{}
+		state.LastError = ""
+	})
+	if saveErr != nil {
+		return LoadAutoState(profileDir)
+	}
 	return state
 }
 

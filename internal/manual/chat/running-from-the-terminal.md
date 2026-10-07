@@ -10,7 +10,7 @@ down from about ten seconds. It never blocks a keystroke. `/update` while it
 is up installs immediately — that is the release the offer is about, not a
 rollback; the skip chord, or `/update skip`, answers that one release, it is
 never offered again, and a later release is a new question; `/update never` turns
-`auto update` off, and so does the row in `/settings`. Turning it off does not
+`auto update` off, and so does the `auto update` row on `/settings`' **Workspace** tab. Turning it off does not
 cancel an install already downloading, and the launch check still makes its one
 request and names what is out. A release whose automatic install failed
 three times stops being tried on its own.
