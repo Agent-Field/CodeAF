@@ -34,7 +34,7 @@ import (
 //   - It is bottom-anchored and takes the input line's place. The conversation
 //     shrinks above it; nothing pops up over the middle of what somebody was
 //     reading.
-//   - ENTER APPLIES AND THE LIST STAYS UP; esc only closes, and undoes nothing.
+//   - ENTER ON A MODEL APPLIES AND CLOSES; esc closes without choosing a model.
 //     Two models can be compared on their prices, chosen between and changed
 //     back without the list going away ([app.pickerKey] argues it). What esc
 //     does give back is the draft that was being typed and the frame — the
@@ -3182,17 +3182,10 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		a.pick.close()
 
-	// ── ENTER CHOOSES AND THE LIST STAYS OPEN ───────────────────────────────
-	//
-	// It used to close on the press, which made every choice final and every
-	// comparison a round trip: pick a model, watch the list vanish, type
-	// `/model` again to see what the other one cost. The list is a TABLE now —
-	// a thing built to be read down and compared — and a table that shuts the
-	// moment you touch a row is a table you can use once.
-	//
-	// So enter applies and leaves it up, and `esc` is the way out. Applying is
-	// safe to repeat: switching a model twice lands on the second, and pinning
-	// a provider twice writes the second row.
+	// ENTER CONFIRMS A MODEL AND CLOSES THE LIST, so the next keystroke belongs
+	// to the draft again and the completed choice is visible in the conversation.
+	// Provider rows retain their navigation because a container can open another
+	// level instead of choosing a model.
 	case "enter":
 		chosen, ok := a.pick.choice()
 		task := a.pick.task
@@ -3215,7 +3208,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 		if ok {
 			// THE LAST ROW IS NOT A MODEL. It is the door to connect another
 			// provider, and enter on it opens that flow with the list behind
-			// it — a model row applies and stays, this row opens and leaves.
+			// it; neither kind of choice leaves this model list open.
 			if chosen.AddProvider {
 				a.pick.close()
 				return a.openAddProvider(false)
@@ -3228,7 +3221,7 @@ func (a *app) pickerKey(msg tea.KeyPressMsg) tea.Cmd {
 			} else {
 				a.switchModel(chosen.ID, chosen.ContextLength)
 			}
-			a.restatePicker(&a.pick, a.model)
+			a.pick.close()
 		}
 
 	// The reasoning cycle sits above the filter's default branch on purpose: it

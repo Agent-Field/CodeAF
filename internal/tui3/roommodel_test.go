@@ -217,6 +217,9 @@ func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 	if a.model != before {
 		t.Fatalf("retargeting a task moved the conversation's model to %q", a.model)
 	}
+	if a.pick.open || a.room == nil || a.room.id != 9 {
+		t.Fatal("choosing a task model must close the picker and keep its room open")
+	}
 	// And it is written down where every other model change is.
 	want, found := "task 9 · model · "+chosen.ID, false
 	for _, e := range a.entries {

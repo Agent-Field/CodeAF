@@ -225,9 +225,13 @@ func TestHomeSlashSmokeWalks(t *testing.T) {
 			t.Fatalf("the foot on a model row does not name %q: %q", want, a.targetPickFoot())
 		}
 	}
-	runCmd(a.key(key("esc")))
-	if a.target.pick.open {
-		t.Fatal("esc through the router did not close the model list")
+	chosen, ok := a.target.pick.choice()
+	if !ok {
+		t.Fatal("the home model list offered no selectable model")
+	}
+	runCmd(a.key(key("enter")))
+	if a.target.pick.open || !a.at(pageHome) || a.targetModel() != chosen.ID {
+		t.Fatal("enter must choose the draft's model and return to home")
 	}
 
 	// /help answers with a note, and the note is READ where it was typed.

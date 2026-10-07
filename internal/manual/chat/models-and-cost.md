@@ -175,10 +175,9 @@ written anywhere: the model a remote session opens on is resolved on that machin
 that machine's profile. And reasoning effort is kept per model for the session, not
 written to the profile.
 
-esc closes the picker and **undoes nothing**. It gives your half-typed draft and the frame
-back as they were — the picker holds its own filter text, and the filter is forgotten when
-it closes — but the model in use does not come back: enter already switched it, then and
-there, and esc is only the way out. To go back to the model you were on, choose it.
+Enter on a model switches to it and closes the picker. Your half-typed draft and the
+frame return as they were; the filter text is forgotten. Esc closes the picker without
+choosing another model. To go back to the model you were on, open the picker and choose it.
 
 ## Moving and filtering in the model picker
 
@@ -192,8 +191,8 @@ Type to filter. The keys:
 | ctrl+t | walk the reasoning effort of the model under the cursor |
 | tab, → | open the providers — the providers serving the model under the cursor — and move the cursor into them |
 | tab, ← | close them again, back on the model |
-| enter | switch to the row under the cursor — or, on an open provider, pin it — and **leave the list up** |
-| esc | close it; what enter already did stays done |
+| enter | choose the highlighted model and close the list; on an open provider, pin it and keep its controls open |
+| esc | close the list without choosing another model; provider changes already made stay done |
 | alt+s, alt+shift+s | order the list by the next column, and turn that column round |
 
 ## Why left and right arrows do the wrong thing in the model picker — the caret and the providers share one pair of keys
@@ -240,10 +239,12 @@ and the task composer walk three rows a notch, clamped at both ends, while the p
 beneath stays put. The cursor's row stays on screen with headings and extra lines
 included in the window's size.
 
-**Enter does not close the list.** It switches, the mark moves to the row you chose, and
-the list stays where it is — so two models can be compared on their prices, chosen between,
-and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
-what enter did is already done.
+**Enter on a model chooses it and closes the list immediately.** This applies to the
+conversation, a task's model, settings slots and roles, home's draft and the task composer.
+The keyboard returns to the draft or page you opened the list from. To compare another
+model, reopen the list. With no matching model, Enter leaves the list open and changes
+nothing. Enter inside a provider fold keeps those controls open, including when it opens
+the machines under OpenRouter.
 
 ## Searching the model picker by name
 

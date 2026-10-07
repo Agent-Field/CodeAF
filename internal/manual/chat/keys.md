@@ -1727,7 +1727,7 @@ follows what you type. Only these keys are taken from you:
 in the status row, or by `enter` on the **your model** row of the settings panel's
 Providers tab (the same list and the same keys, drawn in the panel's place):
 
-`esc` close · `enter` switch to the highlighted model · `ctrl+t` cycle the reasoning
+`esc` close · `enter` switch to the highlighted model and close the list · `ctrl+t` cycle the reasoning
 effort · `ctrl+r` fetch the newest model list (`/model` only — not the settings panel's
 rows) · `tab` and `→` open the providers under the model the cursor is on and move the
 cursor into them, `tab` and `←` close them and put it back on the model ·
