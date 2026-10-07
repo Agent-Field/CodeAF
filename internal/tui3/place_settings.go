@@ -104,7 +104,7 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 	}
 	rows = append(rows, placeRow{})
 	if s.sel == nil && s.edit == nil && s.conn.entry == nil {
-		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search settings and services", "")
+		filter, _, _ := draftBlock(&s.query, pal, width-2, 1, "Search all settings", "")
 		for _, line := range filter {
 			rows = append(rows, placeRow{text: " " + line})
 		}
@@ -349,7 +349,7 @@ func (placeSettings) caretRow(a *app, width int, rows []placeRow) (int, int, boo
 		if a.sheet.edit != nil {
 			return 0, 0, false
 		}
-		box, placeholder := &a.sheet.query, "Search settings and services"
+		box, placeholder := &a.sheet.query, "Search all settings"
 		if a.sheet.sel != nil {
 			box, placeholder = &a.sheet.sel.pick.filter, "type to filter"
 		}
