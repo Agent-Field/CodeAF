@@ -160,6 +160,16 @@ type Delegate struct {
 	// Args is how the command row shows what follows the name, such as
 	// `[changes] [quick | thorough]`. Empty is `<brief>`.
 	Args string
+	// Asked says a person's message asks for the program's work, for a program
+	// whose name is a word people use for much else (review). Nil hears the
+	// name itself as a word of the message, the way the chat hears senior-dev
+	// and sec. Set, the bare name is no longer heard: the command (`/<name>`)
+	// still is, and so is a message Asked holds, such as "review PR 123".
+	//
+	// A NAME THAT IS ALSO A VERB WOULD CLAIM EVERY MESSAGE THAT USES IT.
+	// "review this function" asks for no program; "take a look at PR 123"
+	// asks for review's work without its name.
+	Asked func(message string) bool
 	// ModelFlag is the flag of the default command that names the models it
 	// works on (senior-dev's `high`, sec's `model`), without its
 	// dashes. A shell run resolves what the person typed there through the

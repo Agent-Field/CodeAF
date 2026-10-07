@@ -299,8 +299,8 @@ other call.
 headings, in this order — **Talk to it**, **Hand it work**, **Hand it a whole task**,
 **Look at what happened**, **Housekeeping** and **Plan work by hand** — then five worked
 examples. **Hand it a whole task** lists the programs this build carries, such as
-`codeaf senior-dev` and `codeaf sec`; a build that carries none prints the
-other five.
+`codeaf senior-dev`, `codeaf sec` and `codeaf review`; a build that carries none
+prints the other five.
 
 **The environment table is not on that page**: it is `codeaf help env`, because it is a
 reference somebody consults and it used to be more than half of what `--help` printed.

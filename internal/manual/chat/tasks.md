@@ -2349,7 +2349,7 @@ $100.00 default.
 **An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
 Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
 past it is not made, whichever way the ordinary task was started, and the task stops there.
-**senior-dev and sec have their own dollar and time ceilings for each run**,
+**senior-dev, sec and review have their own dollar and time ceilings for each run**,
 separate from that `per task` row; see each program's page for its defaults and how to
 change them.
 

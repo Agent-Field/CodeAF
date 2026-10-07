@@ -1080,6 +1080,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how many turns does each security audit agent get", "sec"},
 		{"find the last security audit's report from another conversation", "sec"},
 		{"the program finished but the chat said nothing, no summary", "delegates"},
+		// review, the reviewing program codeaf carries, asked the way somebody
+		// wants a pull request reviewed: by its job, not its name.
+		{"review my pull request", "review"},
+		{"can codeaf do a code review of a github PR", "review"},
+		{"review the pull request for the branch I am on", "review"},
+		{"review a PR in a private repository, repository not found", "review"},
+		{"post the code review as comments on the pull request", "review"},
+		{"where is the full code review report", "review"},
+		{"how much does a pull request review cost and how long does it take", "review"},
+		{"fix the blocking findings from the code review", "review"},
+		{"can the review program look at my uncommitted changes or a gitlab merge request", "review"},
 		// senior-dev, the program codeaf carries, asked the ways somebody meets
 		// it: what the command does, whether it will stop to ask, where its
 		// commits went, what it cost, its flags, and why a Windows build has none.
