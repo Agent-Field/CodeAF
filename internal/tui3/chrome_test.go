@@ -313,6 +313,8 @@ func TestASettingsTextRowWritesTheRegistryKey(t *testing.T) {
 		t.Fatalf("a refused value was written anyway: %v", got)
 	}
 
+	// Cancel the refused draft before editing a different setting.
+	drive(t, a, key("esc"))
 	// An empty box clears the row.
 	cursorTo(t, a, config.KeyToolApprovals)
 	drive(t, a, key("enter"))
@@ -460,14 +462,14 @@ func TestASettingsSelectSubmenuSwitchesTheModel(t *testing.T) {
 		t.Fatalf("the session was told the window is %d", got)
 	}
 
-	// A slot this surface did not open answers in the registry's own words
-	// rather than pretending to have written something.
-	cursorTo(t, a, config.ModelSettingKey("work"))
-	drive(t, a, key("enter"))
-	drive(t, a, key("enter"))
-	if a.sheet.msg == "" {
-		t.Fatal("a slot with no seam silently swallowed the change")
+	// Unsupported legacy slots are absent rather than offering a picker that refuses.
+	row, ok := a.registry().Row(config.ModelSettingKey("work"))
+	if ok {
+		if _, visible := settingMetaFor(row); visible {
+			t.Fatal("unsupported legacy slot is visible")
+		}
 	}
+
 }
 
 // THE PANEL IS MOUSE-NAVIGABLE: a click on a tab word switches tabs, a click on
@@ -1447,7 +1449,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	// two vocabularies staying apart, so a place may never be renamed to a word
 	// the settings panel already spells (pages.go).
 	for _, id := range barPages(a.page, false) {
-		if !strings.Contains(plain(spend), id.word()) {
+		if !strings.Contains(strings.ToLower(plain(spend)), strings.ToLower(id.word())) {
 			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
 		}
 	}

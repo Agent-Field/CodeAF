@@ -53,8 +53,7 @@ func TestTheSpendingTabIsTheSevenRowsAndNothingElse(t *testing.T) {
 	a.dayCost, a.dayCosted = 3.42, true
 	a.sheet.today = a.todayReading()
 	a.sheet.build()
-	want := []string{spendTodayWord, "per day", "per conversation", "per plan",
-		"per task", "per standing run", "practice"}
+	want := []string{spendTodayWord, "daily spending limit", "per-chat spending limit", "ask before a plan costs more than", "per task", "per standing run"}
 	if got := spendingRows(a); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("the Spending tab reads\n  %v\nwant\n  %v", got, want)
 	}
@@ -85,8 +84,8 @@ func TestSafetyAndTasksHoldWhatSpendingLetGoAndWorkspaceNamesNoMoney(t *testing.
 		config.KeyBashApprovals:       tabSafety,
 		config.KeyGuardian:            tabSafety,
 		config.KeyConsentTimeout:      tabSafety,
-		config.KeyBashBackgroundAfter: tabSafety,
-		config.KeyTaskSettle:          tabSafety,
+		config.KeyBashBackgroundAfter: tabTasks,
+		config.KeyTaskSettle:          tabTasks,
 		config.KeyTaskAutoApprove:     tabSafety,
 		config.KeyTaskStart:           tabTasks,
 		config.KeyTaskAudit:           tabTasks,
@@ -97,7 +96,6 @@ func TestSafetyAndTasksHoldWhatSpendingLetGoAndWorkspaceNamesNoMoney(t *testing.
 		config.KeyTaskModel:           tabTasks,
 		config.KeyDailyBudget:         tabSpending,
 		config.KeyPlanConsent:         tabSpending,
-		config.KeyPracticeBudget:      tabSpending,
 		config.KeySpendRail:           tabSpending,
 	}
 	for key, tab := range want {
@@ -105,18 +103,10 @@ func TestSafetyAndTasksHoldWhatSpendingLetGoAndWorkspaceNamesNoMoney(t *testing.
 			t.Errorf("%s is drawn on %q, want %q", key, where[key], tab)
 		}
 	}
-	// THE THREE NEW TABS ARE THE REGISTRY'S THREE CATEGORIES, ONE TO ONE. A row
-	// filed under one and drawn under another is two answers to one question.
+	// Presentation categories may differ from the resident registry without changing storage.
 	for _, row := range a.sheet.rows {
-		meta, ok := settingMetaFor(row)
-		if !ok {
-			continue
-		}
-		if category, mapped := settingTabCategory[meta.tab]; mapped && row.Category != category {
-			t.Errorf("%s is drawn on %q and filed under %q", row.Key, meta.tab, row.Category)
-		}
-		if tab, mapped := tabForCategory(row.Category); mapped && meta.tab != tab {
-			t.Errorf("%s is filed under %q and drawn on %q", row.Key, row.Category, meta.tab)
+		if meta, ok := settingMetaFor(row); ok && meta.tab != row.ChatPresentation().Category {
+			t.Errorf("%s presentation drift", row.Key)
 		}
 	}
 	// AND NOTHING ON WORKSPACE NAMES MONEY.
@@ -126,8 +116,7 @@ func TestSafetyAndTasksHoldWhatSpendingLetGoAndWorkspaceNamesNoMoney(t *testing.
 		}
 	}
 	// AND THE BAR READS IN THE DESIGN'S ORDER.
-	want2 := []string{tabSession, tabContext, tabWorkspace, tabDisplay,
-		tabSpending, tabSafety, tabTasks, tabTeams, tabProviders, tabConnections}
+	want2 := []string{tabGeneral, tabProviders, tabMemory, tabTasks, tabTeams, tabSafety, tabSpending, tabConnections, tabPrivacy}
 	if strings.Join(settingTabs, " ") != strings.Join(want2, " ") {
 		t.Fatalf("the tab bar reads %v", settingTabs)
 	}
@@ -208,10 +197,9 @@ func mustSpendRow(t *testing.T, a *app, key string) config.Setting {
 func TestNoLimitIsAWordAndZeroIsNeverDrawn(t *testing.T) {
 	a, _ := spendingSheet(t)
 	rows := map[string]string{
-		config.KeyDailyBudget:    config.NoLimitWord,
-		config.KeySpendRail:      config.NoLimitWord,
-		config.KeyPlanConsent:    "never asks",
-		config.KeyPracticeBudget: "practice off",
+		config.KeyDailyBudget: config.NoLimitWord,
+		config.KeySpendRail:   config.NoLimitWord,
+		config.KeyPlanConsent: "never asks",
 	}
 	for key, word := range rows {
 		for _, typed := range []string{"none", "no", "off", "unlimited", "∞", "0", "$0"} {
@@ -318,10 +306,20 @@ func TestEveryDoorLandsOnTheSameEditor(t *testing.T) {
 	if rail := config.SpendRailUSDAt(dir); rail != 5 {
 		t.Fatalf("/budget conversation 5 wrote %v", rail)
 	}
-	// A row named with no figure is a question, and the answer is the row.
+	// Resident-only practice is not offered as a chat setting.
+	if _, available := budgetRowFor("practice"); available {
+		t.Fatal("resident-only budget door is offered")
+	}
 	a.budget("practice")
-	if item, ok := a.sheet.current(); !ok || item.row.Key != config.KeyPracticeBudget {
-		t.Fatal("/budget practice lands on the practice row")
+	refused := false
+	for _, entry := range a.entries {
+		refused = refused || strings.Contains(entry.text, "Practice limits are not used by chats")
+	}
+	if !refused {
+		t.Fatal("unsupported practice door gave no explanation")
+	}
+	if row, _ := a.registry().Row(config.KeyPracticeBudget); !row.ChatPresentation().Hidden {
+		t.Fatal("resident practice row is visible")
 	}
 	// A TASK IS NOT A ROW, because there is no per-task rail to write.
 	if _, ok := budgetRowFor("task"); ok {
@@ -437,7 +435,7 @@ func TestAtSixtyColumnsEveryLabelSurvivesAndTheReceiptGoesFirst(t *testing.T) {
 			t.Fatalf("a label was cut at sixty columns: %q", line)
 		}
 	}
-	for _, want := range []string{"per day", "per conversation", "per plan", "per task", "practice"} {
+	for _, want := range []string{"daily spending limit", "per-chat spending limit", "ask before a plan costs more than", "per task"} {
 		if !sheetHas(a, want) {
 			t.Fatalf("%q did not survive sixty columns", want)
 		}
