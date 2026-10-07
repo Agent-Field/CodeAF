@@ -123,6 +123,9 @@ func deleteTaskRecord(file, id string, owner *Agent) (result error) {
 	if err != nil {
 		return err
 	}
+	if err = validateDeletionPaths(file, meta.ID, ids, rows); err != nil {
+		return err
+	}
 	committed := false
 	rollback := taskDeleteRollback(owner, ids)
 	defer func() {
@@ -631,6 +634,9 @@ func purgeTaskCheckpoint(file string, ids map[string]bool, checkpointWrite bool)
 }
 
 func purgeTaskJournal(file, journal string) error {
+	if err := validateTaskJournal(file, journal); err != nil {
+		return err
+	}
 	real, e := filepath.EvalSymlinks(journal)
 	if os.IsNotExist(e) {
 		return nil
@@ -650,7 +656,7 @@ func purgeTaskJournal(file, journal string) error {
 		}
 	}
 	if allowed {
-		if e := os.Remove(real); e != nil && !os.IsNotExist(e) {
+		if e := os.Remove(journal); e != nil && !os.IsNotExist(e) {
 			return e
 		}
 	}

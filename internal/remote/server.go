@@ -1250,7 +1250,8 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Memory:             memoryCommandsKnown(sess.agent),
 		// Every engine of this build answers the teams doors from its own
 		// profile (teams.go), so the flag is about the build, not the agent.
-		Teams: true,
+		Teams:                 true,
+		TeamMembershipVersion: TeamMembershipVersion,
 		// And the delegation doors beside them (delegation.go), for the same
 		// reason: the build answers them, whatever agent is open.
 		Delegation: true,

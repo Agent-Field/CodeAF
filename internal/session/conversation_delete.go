@@ -17,6 +17,80 @@ import (
 // journal. Its companions remain available as deliverables; the transcript goes.
 const conversationDeletedFile = teams.ConversationDeletedFile
 
+const conversationDeletionGrace = 30 * time.Second
+
+// CloseForDeletion keeps the journal lock through the run's last write. A
+// timeout leaves the owner available for a later deletion attempt.
+func (a *Agent) CloseForDeletion() error {
+	return a.closeForDeletion(conversationDeletionGrace)
+}
+
+func (a *Agent) closeForDeletion(grace time.Duration) error {
+	a.InterruptFor(StopByPerson)
+	a.mu.Lock()
+	a.deleting = true
+	a.deletionGrace = grace
+	a.mu.Unlock()
+	if err := a.Close(); err != nil {
+		a.finishCloseWhenStopped()
+		return err
+	}
+	a.mu.Lock()
+	done := a.closingBeltDone
+	a.mu.Unlock()
+	if err := waitDeletingBelt(done, grace); err != nil {
+		a.finishCloseWhenStopped()
+		return err
+	}
+	a.mu.Lock()
+	file := a.file
+	a.mu.Unlock()
+	if file != nil {
+		if err := file.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+			return err
+		}
+	}
+	return nil
+}
+
+// A remote owner may lose its presence beat before a deletion times out. Once
+// its run does leave, release the journal without requiring another beat.
+func (a *Agent) finishCloseWhenStopped() {
+	a.mu.Lock()
+	if a.closeFinalizer || a.closingBeltDone == nil {
+		a.mu.Unlock()
+		return
+	}
+	a.closeFinalizer = true
+	done, file := a.closingBeltDone, a.file
+	a.mu.Unlock()
+	guard.Go("finishing a conversation deletion stop", func() {
+		<-done
+		if file != nil {
+			_ = file.Close()
+		}
+	})
+}
+
+func waitDeletingBelt(done <-chan struct{}, grace time.Duration) error {
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	default:
+	}
+	timer := time.NewTimer(grace)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return nil
+	case <-timer.C:
+		return errors.New("the conversation's workers are still stopping; try deleting it again")
+	}
+}
+
 // SessionPath identifies the journal a process owns without exposing its config.
 func (a *Agent) SessionPath() string { return a.config.SessionFile }
 
@@ -51,6 +125,47 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 	}
 	defer filelock.Unlock(deletionLock)
 	if _, err := os.Stat(filepath.Join(filepath.Dir(resolved), conversationDeletedFile)); err == nil {
+		saved, err := readConversationTaskCleanup(resolved)
+		if err != nil {
+			return err
+		}
+		if choices == nil {
+			choices = saved.Choices
+		}
+		if len(affected) == 0 && saved.Affected != nil {
+			affected = append(affected, saved.Affected)
+		}
+		f, err := teams.Load(profile)
+		if err != nil {
+			return err
+		}
+		canonicalizeDeletedMember(f, resolved, saved.Aliases)
+		if err = f.RemoveConversation(resolved, remainingDeletionChoices(f, resolved, choices), time.Now(), affected...); err != nil {
+			return err
+		}
+		if err = validateDeletionPaths(resolved, meta.ID, nil, saved.Rows); err != nil {
+			return err
+		}
+		if stop != nil {
+			if err = stop(resolved); err != nil {
+				return err
+			}
+		}
+		path := resolved + ".delete-pending"
+		journal, err := os.OpenFile(path, os.O_RDWR, 0)
+		if os.IsNotExist(err) {
+			journal, err = os.OpenFile(resolved, os.O_RDWR, 0)
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err == nil {
+			defer journal.Close()
+			if err = claimDeletionJournal(journal, filepath.Dir(resolved)); err != nil {
+				return err
+			}
+			defer filelock.Unlock(journal)
+		}
 		return finishConversationTaskCleanup(profile, resolved, meta.ID, choices, affected...)
 	}
 	f, err := teams.Load(profile)
@@ -60,6 +175,13 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 	aliases := deletedMemberAliases(f, resolved)
 	canonicalizeDeletedMember(f, resolved, aliases)
 	if err = f.RemoveConversation(resolved, choices, time.Now(), affected...); err != nil {
+		return err
+	}
+	taskRows, err := taskDeleteRows(resolved, meta.ID, nil)
+	if err != nil {
+		return err
+	}
+	if err = validateDeletionPaths(resolved, meta.ID, nil, taskRows); err != nil {
 		return err
 	}
 	if stop != nil {
@@ -76,11 +198,18 @@ func DeleteConversationUnder(root, profile, file string, choices map[string]stri
 		return err
 	}
 	defer filelock.Unlock(journal)
-	taskRows, err := taskDeleteRows(resolved, meta.ID, nil)
+	taskRows, err = taskDeleteRows(resolved, meta.ID, nil)
 	if err != nil {
 		return err
 	}
-	if err = saveConversationTaskCleanup(resolved, taskRows, aliases); err != nil {
+	if err = validateDeletionPaths(resolved, meta.ID, nil, taskRows); err != nil {
+		return err
+	}
+	intent := conversationTaskCleanup{Rows: taskRows, Aliases: aliases, Choices: choices}
+	if len(affected) > 0 {
+		intent.Affected = affected[0]
+	}
+	if err = writeConversationTaskCleanup(resolved, intent); err != nil {
 		return err
 	}
 	marker := filepath.Join(filepath.Dir(resolved), conversationDeletedFile)
@@ -143,7 +272,7 @@ func claimDeletionJournal(journal *os.File, dir string) error {
 	defer os.Remove(request)
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
-	deadline := time.NewTimer(30 * time.Second)
+	deadline := time.NewTimer(conversationDeletionGrace)
 	defer deadline.Stop()
 	for {
 		select {
@@ -178,7 +307,7 @@ func (a *Agent) drainConversationDeletion() {
 	if os.Remove(path) != nil {
 		return
 	}
-	guard.Go("stopping a permanently deleted conversation", func() { a.InterruptFor(StopByPerson); _ = a.Close() })
+	guard.Go("stopping a permanently deleted conversation", func() { _ = a.CloseForDeletion() })
 }
 
 // Full-path aliases must be resolved while the original journal still exists.

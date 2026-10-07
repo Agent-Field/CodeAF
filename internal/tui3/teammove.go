@@ -692,7 +692,7 @@ func (a *app) teamMoveConfirm() tea.Cmd {
 // teamMoveUndoing reports whether Undo is offered for the last move.
 func (a *app) teamMoveUndoing() bool {
 	u := a.tmove.undo
-	return len(u.back) > 0 && u.said.said() && a.now().Sub(u.at) < teamsUndoFor
+	return len(u.back) > 0 && u.said.said() && a.now().Sub(u.at) < wallOrganizedFor
 }
 
 // teamMoveUndo puts the last move back: every moved team under its parent

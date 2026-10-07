@@ -253,6 +253,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// empty list (chatv3_migrate.go). It is never fatal and never repeated —
 	// which is a promise this file is now the keeper of.
 	migrateV3Layout()
+	if err := session.RecoverConversationDeletions(session.PlacesRoot(), settings.ProfileDir); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\nRetry incomplete deletions from Home.\n", err)
+	}
 	// Model discovery starts here and is waited for NOWHERE. On a cold cache
 	// resolving it is a network round-trip, and everything it feeds has a good
 	// answer without it.
@@ -1010,8 +1013,7 @@ func (p *v3Process) stopConversation(file string) error {
 	for _, agent := range agents {
 		path, _ := filepath.EvalSymlinks(agent.SessionPath())
 		if path == file {
-			agent.InterruptFor(session.StopByPerson)
-			if err := agent.Close(); err != nil {
+			if err := agent.CloseForDeletion(); err != nil {
 				return err
 			}
 			p.forget(agent)

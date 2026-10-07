@@ -2,7 +2,6 @@ package tui3
 
 import (
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // The Teams overview owns its keyboard and pointer. Chat drafts and geometry
@@ -28,43 +27,14 @@ func (a *app) teamsNoticeRows(d *teamsDraw, width, y int) []string {
 	if p := a.tmove.pend; len(p.ids) > 0 && p.from == teamMoveFromPage {
 		return a.teamsMoveRows(d, width, y)
 	}
-	if a.teamsUndoMoveNewer() {
+	if a.teamMoveUndoing() && a.tmove.undo.from == teamMoveFromPage {
 		return a.teamsMoveRows(d, width, y)
 	}
-	return a.teamsUndoRow(d, width, y)
+	return nil
 }
 
-// teamsUndoMoveNewer reports whether the Undo on offer is a move's rather than a
-// close's.
-func (a *app) teamsUndoMoveNewer() bool {
-	if !a.teamMoveUndoing() || a.tmove.undo.from != teamMoveFromPage {
-		return false
-	}
-	return !a.teamsUndoing() || a.tmove.undo.at.After(a.tp.undo.at)
-}
-
-// teamsUndoAny is `u` and the Undo button: the move or the close on offer.
-func (a *app) teamsUndoAny() tea.Cmd {
-	if a.teamMoveUndoing() && (a.teamsUndoMoveNewer() || !a.teamsUndoing()) {
-		return a.teamMoveUndo()
-	}
-	return a.teamsUndoClose()
-}
-
-// teamsUndoRow is the one row that offers Undo for a close, while it is offered.
-func (a *app) teamsUndoRow(d *teamsDraw, width, y int) []string {
-	if !a.teamsUndoing() {
-		return nil
-	}
-	pal := a.pal
-	word := " " + pal.dim(a.tp.undo.name+" is closed") + "  "
-	if why := a.tp.undo.said.why; why != "" {
-		word = " " + pal.warn(teamNotSaved("the close of "+a.tp.undo.name, why)) + "  "
-	}
-	s, _ := d.button("Undo", teamsTarget{act: teamsActUndo, x0: ansi.StringWidth(word), y: y,
-		hint: "Reopen " + a.tp.undo.name + " and its tabs" + hintSegment + "u"}, pal.ink)
-	return []string{word + s}
-}
+// teamsUndoAny takes back only a move, never a disbanding.
+func (a *app) teamsUndoAny() tea.Cmd { return a.teamMoveUndo() }
 
 func (a *app) teamsRoute(msg tea.Msg) (tea.Cmd, bool) {
 	if a.at(pageTeams) && !a.wall.on && a.wall.org.on {
@@ -94,7 +64,7 @@ func (a *app) teamsRouteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if key == "ctrl+c" {
 		return nil, false
 	}
-	if key == "u" && (a.teamsUndoing() || a.teamMoveUndoing()) && a.teamsHasKeys() {
+	if key == "u" && a.teamMoveUndoing() && a.teamsHasKeys() {
 		return a.teamsUndoAny(), true
 	}
 	// A DRAG IS DROPPED BY esc, and nothing happens (teamdrag.go).

@@ -47,6 +47,8 @@ type Member struct {
 	// handle written before this was kept, and is read as the word list's
 	// ([Member.HandleDerived]).
 	HandleBy string `json:"handle_by,omitempty"`
+	// Unknown membership fields survive whole-file updates from this build.
+	extra map[string]json.RawMessage
 }
 
 // Team is one named set of conversations.

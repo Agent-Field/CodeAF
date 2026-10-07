@@ -1222,6 +1222,8 @@ type Welcome struct {
 	// with the sentence the window has always said; it never sends the window
 	// back to the laptop's own teams file, which the far session cannot see.
 	Teams bool `json:"teams,omitempty"`
+	// Membership writes require both halves to preserve reporting and delivery boundaries.
+	TeamMembershipVersion int `json:"team_membership_version,omitempty"`
 
 	// Delegation says this engine ANSWERS THE DELEGATION DOORS
 	// ([MethodTeamsDefaults], [MethodTeamsPackets], [MethodTeamsRaise],

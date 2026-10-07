@@ -100,3 +100,57 @@ func TestTeamsCrossPaneArrowsUseVisibleRowsAfterIndependentScrolling(t *testing.
 		t.Fatalf("cross-pane arrow chose hidden logical row: from %+v to %+v", from, selected)
 	}
 }
+
+func TestTeamsSheetsOwnStopShortcutDuringRunningTask(t *testing.T) {
+	for _, mode := range []string{"create", "member"} {
+		a, _ := railTaskPageApp(t, true)
+		a.input.setText("underlying draft")
+		if mode == "create" {
+			a.tcreate = teamCreateSheet{on: true}
+		} else {
+			a.tmembers = teamMembershipSheet{on: true}
+		}
+		for _, r := range "example" {
+			drive(t, a, key(string(r)))
+		}
+		got := a.tcreate.name.String()
+		if mode == "member" {
+			got = a.tmembers.filter.String()
+		}
+		if got != "example" || a.stopping() || a.input.String() != "underlying draft" {
+			t.Fatalf("%s keys escaped sheet: %q", mode, got)
+		}
+		drive(t, a, key("esc"))
+		if a.tcreate.on || a.tmembers.on || a.stopping() {
+			t.Fatal("escape did not cancel only the sheet")
+		}
+	}
+}
+
+func TestNarrowTeamsScrolledPaneDoesNotHitBlankSeparator(t *testing.T) {
+	a, _, _ := teamsPlaceLabIDs(t)
+	a.width, a.height = 60, 32
+	a.tp.sel = teamsAllRow
+	a.tp.paneOffset, a.tp.paneWheel = 4, true
+	a.touch()
+	teamsFrameText(a)
+	hidden := 0
+	for _, target := range a.tp.targets {
+		if !target.pane {
+			continue
+		}
+		inPane := target.y >= placeHeadRows+a.tp.paneTop && target.y < placeHeadRows+a.tp.paneTop+a.tp.paneRoom
+		if !inPane {
+			hidden++
+			if !target.hidden {
+				t.Fatalf("offscreen target is clickable: %+v", target)
+			}
+			if hit, ok := a.teamsTargetAt(target.x0, target.y); ok && hit.ref() == target.ref() {
+				t.Fatalf("blank row reaches clipped control: %+v", hit)
+			}
+		}
+	}
+	if hidden == 0 {
+		t.Fatal("fixture did not scroll any keyboard stops offscreen")
+	}
+}

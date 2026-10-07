@@ -1698,7 +1698,7 @@ func keptRunProgram(g *TaskGraph, notice TaskNotice) string {
 // landing behind it, and a process killed during that wait writes nothing at
 // all. A crash writes nothing either way; that store is ended by the next
 // process to find it ([endOrphanedProgramRun]).
-func (a *Agent) cutBeltRun() {
+func (a *Agent) cutBeltRun() <-chan struct{} {
 	a.beltMu.Lock()
 	run := a.beltRun
 	var cut context.CancelFunc
@@ -1720,6 +1720,10 @@ func (a *Agent) cutBeltRun() {
 	if cut != nil {
 		cut()
 	}
+	if run != nil {
+		return run.over
+	}
+	return nil
 }
 
 // waitForBeltAdmission keeps a newly seeded run queued until the machine gate
@@ -1987,18 +1991,19 @@ func crewKept(outcome string, landing RunLanding) bool {
 	return true
 }
 
-// releaseBeltRun is the last thing every run does: it is cleared off the Agent,
-// its store is closed, and every hand-off that was waiting for it to be over is
-// let go to start a run of its own. The clearing comes first, so a waiter that
-// wakes finds no run on the Agent and opens a fresh one rather than meeting this
-// one again.
+// releaseBeltRun keeps the completion join reachable through the store's last
+// close. Clearing the run and signalling its end happen together, so neither
+// deletion nor another hand-off can mistake a still-closing store for no work.
 func (a *Agent) releaseBeltRun(run *beltRun) {
 	a.beltMu.Lock()
+	run.ending = true
+	a.beltMu.Unlock()
+	_ = run.store.Close()
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
 	if a.beltRun == run {
 		a.beltRun = nil
 	}
-	a.beltMu.Unlock()
-	_ = run.store.Close()
 	if run.over != nil {
 		close(run.over)
 	}

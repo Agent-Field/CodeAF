@@ -1033,6 +1033,8 @@ func (a *app) teamsBody(width, room int) []placeRow {
 	a.tp.table.y += top + placeHeadRows
 	for i := mark; i < len(d.targets); i++ {
 		d.targets[i].pane = true
+		// Keyboard stops survive scrolling; pointer stops must match painted rows.
+		d.targets[i].hidden = d.targets[i].y < top || d.targets[i].y >= top+vis
 	}
 	sep := a.pal.dim(a.linearMark("│", "|"))
 	for i := 0; i < room-top; i++ {

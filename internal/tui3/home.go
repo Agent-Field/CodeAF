@@ -2796,11 +2796,8 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// CARET", and this is the narrowest guard that says so.
 		//
 		// AND IT IS THE CARET'S POSITION AND NOT THE BOX'S EMPTINESS THAT
-		// DECIDES, because the way back out of the archive runs through this
-		// key: a person types the name of a row they put away, the list finds
-		// it, and `ctrl+e` from there brings it back. The caret is at the end of
-		// what they just typed at that moment, so the key does what the card's
-		// legend promises — and mid-sentence, where the hand meant a jump, it
+		// DECIDES, because a row action is taken only from the end of the draft.
+		// The key does what the card's legend promises — and mid-sentence, where the hand meant a jump, it
 		// jumps. One press is never destructive; a second press, from the end of
 		// the line, is the row's.
 		if !h.box.empty() && h.box.cursor != h.box.lineEnd() {
@@ -2808,12 +2805,7 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.build()
 			return nil
 		}
-		// CTRL+E SETS THE ROW ASIDE, whichever kind of row it is: a
-		// conversation goes into the archive, a standing item is paused. On a
-		// put-away row it is its own undoing — the same key from inside the
-		// archive brings the row back to its project. The world is re-read on
-		// the spot so the row moves under the hand rather than on the next
-		// sweep.
+		// The row opens deletion confirmation for a conversation, or pauses a standing item.
 		if line, ok := h.previewLine(); ok {
 			switch line.kind {
 			case homeSession:
@@ -3277,6 +3269,10 @@ func (a *app) homeEnter() tea.Cmd {
 // cursor" is two answers to whether a project somewhere else may be opened, and
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
+	if line.row.DeletionPending {
+		a.conversationDeleteOpen(line.row.Transcript, homeName(line.row))
+		return nil
+	}
 	a.teamViewSet("")
 	h := &a.home
 	if line.row.Archived {

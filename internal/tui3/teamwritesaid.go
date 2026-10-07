@@ -80,9 +80,6 @@ func (a *app) teamsWriteSettled(w teamsWrote) {
 	if a.wall.org.said.settle(w) {
 		a.wall.org.doneAt = now
 	}
-	if a.tp.undo.said.settle(w) {
-		a.tp.undo.at = now
-	}
 	if a.tmove.undo.said.settle(w) {
 		a.tmove.undo.at = now
 		if why := a.tmove.undo.said.why; why != "" {

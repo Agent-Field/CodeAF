@@ -168,6 +168,8 @@ type teamSeat struct {
 	configAt fileStamp
 	defaults teams.Defaults
 	roles    []teamRole
+	// Released memberships are announced once, rather than on later role changes.
+	released map[string]bool
 	// cursors is the id of the last Traffic entry read, per team, and
 	// trafficAt is each log as it was when this conversation last caught up on
 	// it. cursorsRead says cursors has been loaded from the session folder.
@@ -471,7 +473,11 @@ func (a *Agent) teamBoundary() string {
 				continue
 			}
 			for _, key := range a.team.keys {
-				if t.Holds(key) {
+				if t.Holds(key) && !a.team.released[t.ID] {
+					if a.team.released == nil {
+						a.team.released = map[string]bool{}
+					}
+					a.team.released[t.ID] = true
 					releases = append(releases, "Team "+t.Name+" has been disbanded. Your membership in it has ended.")
 					break
 				}
@@ -479,10 +485,7 @@ func (a *Agent) teamBoundary() string {
 		}
 	}
 	if len(releases) > 0 {
-		if role == "" {
-			role = teamRoleWithdrawn + " You are independent."
-		}
-		role = strings.Join(releases, "\n") + "\n\n" + role
+		news = strings.TrimSpace(strings.Join(releases, "\n") + "\n\n" + news)
 	}
 	told := append([]string(nil), a.team.told...)
 	a.team.told = nil

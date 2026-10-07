@@ -150,3 +150,55 @@ func TestTeamMembershipRejoiningCannotDeliverTheFormerMembershipsDirective(t *te
 		t.Fatal("former directive wakes a rejoined member")
 	}
 }
+
+func TestDisbandNoticeIsNotRepeatedByLaterRoleChanges(t *testing.T) {
+	f := newTeamFixture(t, true)
+	member := teamAgent(t, f, f.web, nil, nil)
+	member.teamBoundary()
+	if err := teams.Update(f.profile, func(file *teams.File) error { return file.Disband(f.teamID, time.Now(), "") }); err != nil {
+		t.Fatal(err)
+	}
+	if news := member.teamBoundary(); !strings.Contains(news, "has been disbanded") {
+		t.Fatal("membership release was not announced")
+	}
+	if err := teams.Update(f.profile, func(file *teams.File) error {
+		file.Teams = append(file.Teams, teams.Team{ID: "cccccccccccc", Name: "New team", Manager: f.manager, Members: []teams.Member{{Key: f.manager}, {Key: f.web, Handle: "web"}}})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if news := member.teamBoundary(); strings.Contains(news, "has been disbanded") {
+		t.Fatal("historical disband repeated on another role change")
+	}
+}
+
+func TestUnreadableMembershipFileRefusesPostsWithoutWritingTraffic(t *testing.T) {
+	f := newTeamFixture(t, true)
+	member := teamAgent(t, f, f.web, nil, nil)
+	member.teamBoundary()
+	before, err := os.ReadFile(teams.TrafficPath(f.profile, f.teamID))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	original, err := os.ReadFile(teams.Path(f.profile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(teams.Path(f.profile), []byte("unreadable"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, failed, err := member.teamPostTool(context.Background(), json.RawMessage(`{"to":"room","text":"unsafe post"}`))
+	if !failed && err == nil {
+		t.Fatal("unreadable membership authorized post")
+	}
+	after, _ := os.ReadFile(teams.TrafficPath(f.profile, f.teamID))
+	if string(before) != string(after) {
+		t.Fatal("refused post changed traffic")
+	}
+	if err = os.WriteFile(teams.Path(f.profile), original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, failed, err := member.teamPostTool(context.Background(), json.RawMessage(`{"to":"room","text":"safe post"}`)); failed || err != nil {
+		t.Fatalf("repaired post: %v %v", failed, err)
+	}
+}

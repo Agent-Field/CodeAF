@@ -123,6 +123,9 @@ func (a *Agent) stopDeletingPlanTasks(ids map[string]bool) error {
 }
 
 func purgeDeletedPlanTasks(file, chat string, ids map[string]bool) error {
+	if err := validateDeletionPaths(file, chat, ids, nil); err != nil {
+		return err
+	}
 	path := filepath.Join(filepath.Dir(file), planStoreFilename)
 	paths := append(planArchivePaths(path), path)
 	for _, path := range paths {
@@ -200,7 +203,7 @@ func purgePlanTaskFolders(file string, removed []string) error {
 		if e != nil {
 			return e
 		}
-		if filepath.Clean(base) != filepath.Join(filepath.Dir(file), "tasks") || filepath.Dir(real) != base {
+		if filepath.Clean(base) != filepath.Join(filepath.Dir(file), "tasks") || real != dir || filepath.Dir(real) != base {
 			return errors.New("task records are outside the conversation")
 		}
 		if e = os.RemoveAll(real); e != nil {
@@ -278,4 +281,73 @@ func purgeSelectedPlanFolders(file string, ids map[string]bool) error {
 		return purgePlanTaskFolders(file, records)
 	}
 	return purgeConversationTaskDirectory(file)
+}
+
+// Validate every owned deletion path before a tombstone or store mutation. A
+// sibling reached through a symlink is not the record the person selected.
+func validateDeletionPaths(file, chat string, ids map[string]bool, rows []TaskIndexEntry) error {
+	root := filepath.Join(filepath.Dir(file), "tasks")
+	real, err := filepath.EvalSymlinks(root)
+	if err == nil && real != root {
+		return errors.New("task records are outside the conversation")
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, entry := range entries {
+		if ids != nil && !ids[planStoreID(entry.Name())] {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		real, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			return err
+		}
+		if real != dir {
+			return errors.New("task records are outside the conversation")
+		}
+	}
+	for _, row := range rows {
+		if row.SessionID != chat || ids != nil && !ids[row.ID] || taskJournalShared(row, chat, ids, rows) {
+			continue
+		}
+		journal := TaskRecordPath(row.TranscriptURI)
+		if journal == "" || journal == file {
+			continue
+		}
+		if err := validateTaskJournal(file, journal); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateTaskJournal(file, journal string) error {
+	real, err := filepath.EvalSymlinks(journal)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, root := range []string{filepath.Dir(file), filepath.Join(LooseTasksRoot(), filepath.Base(filepath.Dir(file)))} {
+		base, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			continue
+		}
+		rel, e := filepath.Rel(root, journal)
+		lexical := e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+		realRel, e := filepath.Rel(base, real)
+		owned := e == nil && realRel != ".." && !strings.HasPrefix(realRel, ".."+string(filepath.Separator))
+		if lexical || owned {
+			if !lexical || real != filepath.Join(base, rel) {
+				return errors.New("task journal points to another record")
+			}
+		}
+	}
+	return nil
 }

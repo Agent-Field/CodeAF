@@ -209,3 +209,19 @@ func TestGlobalManagerAssignmentReconnectsOnlyCurrentTopManagers(t *testing.T) {
 		}
 	}
 }
+
+func TestParentManagerReplacementExplainsChildFirstPath(t *testing.T) {
+	f := managementFixture()
+	for _, id := range []string{"parent", "child-a", "child-b"} {
+		must(t, f.SetManager(id, "manager"))
+	}
+	err := f.SetManager("parent", "replacement")
+	if err == nil || !strings.Contains(err.Error(), "before changing the manager of Interface cleanup") {
+		t.Fatalf("missing guidance: %v", err)
+	}
+	must(t, f.SetManager("child-a", "replacement"))
+	must(t, f.SetManager("parent", "replacement"))
+	if len(f.ManagedTeams("manager")) != 1 || len(f.ManagedTeams("replacement")) != 2 {
+		t.Fatal("child-first replacement did not preserve responsibility rule")
+	}
+}

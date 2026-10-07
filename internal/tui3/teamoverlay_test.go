@@ -519,7 +519,7 @@ func TestExternalDisbandClearsHiddenSelectionAndClosedToggleSelectsGlobal(t *tes
 	}
 }
 
-func TestExternalDisbandRetainsVisibleHistoryWithoutAnOverlayAndUndoSynchronizes(t *testing.T) {
+func TestExternalDisbandRetainsVisibleHistoryAndCannotBeUndone(t *testing.T) {
 	a, harbor, _ := menuApp(t)
 	_ = a.showPage(pageTeams)
 	_ = a.teamsSelect(harbor)
@@ -531,9 +531,9 @@ func TestExternalDisbandRetainsVisibleHistoryWithoutAnOverlayAndUndoSynchronizes
 	if a.tp.sel != harbor || a.teamViews.id != "" || a.wall.activeID != "" {
 		t.Fatal("external disband lost visible history or retained closed overlay")
 	}
-	a.tp.undo = teamsUndo{team: harbor, name: "harbor", at: a.now()}
-	_ = a.teamsUndoClose()
-	if a.tp.sel != harbor || a.teamViews.id != harbor || a.wall.activeID != harbor {
-		t.Fatal("Undo did not restore synchronized selection")
+	drive(t, a, key("u"))
+	closed, _ := a.teamByID(harbor)
+	if !closed.Closed() || a.tp.sel != harbor || a.teamViews.id != "" {
+		t.Fatal("Undo restored a disbanded team")
 	}
 }

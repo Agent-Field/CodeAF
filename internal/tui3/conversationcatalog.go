@@ -34,7 +34,7 @@ func (a *app) conversationCatalog(world session.World) []conversationCandidate {
 func conversationSavedCandidates(world session.World, hosted bool) []conversationCandidate {
 	var out []conversationCandidate
 	for _, row := range world.Sessions() {
-		if strings.TrimSpace(row.Transcript) == "" {
+		if row.DeletionPending || strings.TrimSpace(row.Transcript) == "" {
 			continue
 		}
 		key := filepath.Clean(row.Transcript)

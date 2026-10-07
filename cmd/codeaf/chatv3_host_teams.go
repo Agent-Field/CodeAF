@@ -102,6 +102,9 @@ func hostTeamsSeam(far hostFar, welcome remote.Welcome) tui3.TeamsSeam {
 	if far.client == nil || !welcome.Teams {
 		return tui3.TeamsSeam{}
 	}
+	if welcome.TeamMembershipVersion != remote.TeamMembershipVersion {
+		return tui3.TeamsSeam{}
+	}
 	return newHostTeams(far, welcome.Delegation, welcome.WrapUp, welcome.TeamSettings).seam()
 }
 

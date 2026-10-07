@@ -8,11 +8,15 @@ import (
 // ManagerRemovalInstruction keeps every deletion door clear about leadership.
 const ManagerRemovalInstruction = "Choose another member as manager before removing this one"
 
-// RemoveConversation removes every membership only after each managed team's
-// replacement or disbanding choice has been checked against the current file.
-// An empty replacement means recursive disbanding; the optional global manager
-// is removed without disbanding the root or its other teams.
+// RemoveConversation refuses ordinary managers at every deletion door, including
+// older clients that still send replacement or disbanding choices. The optional
+// global manager may be removed without disbanding the root or its other teams.
 func (f *File) RemoveConversation(key string, choices map[string]string, at time.Time, affected ...map[string][]string) error {
+	for _, t := range f.ManagedTeams(key) {
+		if !t.Root {
+			return fmt.Errorf("%s", f.ManagerRemovalMessage(key))
+		}
+	}
 	for _, t := range f.Teams {
 		if t.Closed() || t.Manager != key {
 			continue

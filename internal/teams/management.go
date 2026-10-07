@@ -122,6 +122,17 @@ func (f *File) CheckManagementChange(previous *File) error {
 		conflict := after[pair]
 		names := append([]string(nil), conflict.teams...)
 		sort.Strings(names)
+		// Removing an anchor must explain the child-first repair, not imply
+		// that choosing another parent manager can repair sibling responsibilities.
+		for _, old := range previous.Teams {
+			now, ok := f.Team(old.ID)
+			if !ok || old.Manager == "" || old.Manager == now.Manager || old.Closed() {
+				continue
+			}
+			if strings.HasPrefix(pair, previous.managerIdentity(old)+"\x00") {
+				return fmt.Errorf("assign another manager to %s in Teams before changing the manager of %s", strings.Join(names, " or "), old.Name)
+			}
+		}
 		return fmt.Errorf("a conversation can manage one team and its descendants; %s are separate responsibilities. Choose a different manager in Teams", strings.Join(names, " and "))
 	}
 	return nil

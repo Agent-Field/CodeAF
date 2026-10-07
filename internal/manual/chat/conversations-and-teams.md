@@ -184,7 +184,8 @@ Moving a whole team under another writes the same kind of line on the team that 
 its new parent. A move that does not go through writes nothing. The manager of a team that
 gained or lost a member is told on its next wake, from the Traffic it already reads.
 
-**Disbanding a team.** `D` asks for confirmation naming the selected team and every subteam.
+**Disbanding a team.** Select it on Teams and choose **Disband** (`c`). The confirmation
+names the selected team and every subteam. The conversation grid has no disband shortcut.
 Current work finishes. Conversations and other memberships survive; lost reporting memberships
 leave conversations independent. The bottom `Show closed` toggle reveals read-only history.
 Disbanded teams cannot be reopened. Permanent team deletion removes team records and history,
@@ -400,3 +401,21 @@ their saved interactions and decisions. Active teams are disbanded first. Their 
 context and current work survive as ordinary sessions. Other memberships survive too.
 The confirmation names every affected team. Deleting a conversation itself is separate:
 `/delete` stops that conversation, deletes its transcript and removes all its memberships.
+
+## Incomplete conversation deletion: retry and recovery
+
+Permanent conversation deletion waits for the owner and its task-run writers to stop before
+removing records. If they cannot stop within the deletion grace, the transcript and memberships
+remain and you can retry. Symlinked task records that point elsewhere are refused before deletion.
+
+After deletion has been committed, a durable cleanup receipt survives any filesystem failure.
+The next local start retries those receipts through the same scope and ownership checks. Home
+keeps a `(deletion incomplete)` row until cleanup finishes, even if its journal has already gone.
+Open that row or use `x` to retry deletion; it cannot reopen the deleted conversation. Pending
+cleanup is omitted from the saved conversation grid and membership pickers.
+
+## Does conversation deletion forget saved memories?
+
+No. Deleting a conversation removes its transcript, task records and team memberships. Memories
+already saved for a user, project or machine remain available, with their source identity.
+Use the Memory page to forget a saved memory separately. Deleting a team also preserves those memories.

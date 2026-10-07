@@ -155,11 +155,16 @@ func AppendTraffic(profileDir, teamID string, e Entry) error {
 // AppendTrafficID is [AppendTraffic], and the id the entry was given, which a
 // writer that will be answered keeps so the answer can name it.
 func appendTrafficIDLocked(profileDir, teamID string, e Entry) (string, error) {
+	return appendTrafficLifecycleLocked(profileDir, teamID, e, false)
+}
+
+// Only closing-report acceptance may append its final event after disbanding.
+func appendTrafficLifecycleLocked(profileDir, teamID string, e Entry, closing bool) (string, error) {
 	if f, _, _, err := read(profileDir); err != nil {
 		return "", err
 	} else if f != nil {
 		t, ok := f.Team(teamID)
-		if !ok || t.Closed() {
+		if !ok || t.Closed() && !(closing && e.Kind == KindClose && e.Packet != "" && e.Packet == t.Report) {
 			return "", ErrClosed
 		}
 		identity := func(who string) string {

@@ -349,8 +349,8 @@ disbanding remains on the main pane. Global settings have no deletion button.
 
 ## Disbanding a team — does current work stop?
 
-`Disband`, `c`, or `D` on the conversations view asks for
-confirmation. It lists the selected team and every descendant. Disbanding ends all their
+On Teams, select a team and choose `Disband` or press `c` for confirmation.
+The conversation grid does not disband teams. The confirmation lists the selected team and every descendant. Disbanding ends all their
 memberships and coordination. Current turns finish, conversations survive, and memberships
 in other active teams survive. A conversation losing its reporting manager becomes independent.
 An affected team overlay returns to ordinary Chats; the retained team history remains selected in Teams.
@@ -389,8 +389,9 @@ conversations`**, which suggests teams from the conversations you have open, and
 
 Over `--host` the page shows the teams of the machine the conversations run on: their
 decisions, their spend and their managers. The **Teams** tab of `/settings` edits that
-machine's defaults. Team Settings omit the repeated profile-default provenance. An older engine keeps the tab
-read only and says `changing them is not available over this connection`. A closed team's
+machine's defaults. Team Settings omit the repeated profile-default provenance. Hosted team
+editing requires both client and engine to support the current membership capability. Update
+an older engine before using Teams over that connection; its team controls are absent. A closed team's
 report is not read over the connection yet, and the page says
 `its closing report is kept where the team ran, and is not readable over this connection`
 where the report would be. A plain local launch reads the report from this machine's engine
@@ -398,8 +399,8 @@ profile and shows it in the closed team's pane.
 
 ## Why the page looks the way it does
 
-The overview keeps teams visible while their conversations work independently. Cards share
-the same geometry, with the manager distinguished by its role. Updates can be read without
+The overview keeps teams visible while their conversations work independently. The manager
+has a larger full-width preview; member cards stay compact and share one size. Updates can be read without
 opening a conversation; aliases and exchanges lead into Chats when detail is needed.
 The interaction table keeps many exchanges visible in one panel and expands replies inline.
 Choosing a team never changes the current chat or takes the keyboard into its draft.
@@ -475,8 +476,8 @@ an ordinary team. Ordinary membership in multiple teams remains allowed.
 
 Choose manager and team moves refuse changes that introduce conflicting responsibilities,
 naming the affected teams. Replacing a parent manager can also be refused if it would
-leave the former manager managing sibling teams without a managed ancestor; replace those
-subteam managers first. Older conflicting assignments remain visible and can be repaired
+leave the former manager managing sibling teams without a managed ancestor. The refusal
+names the subteam managers to assign first, before changing the parent manager. Older conflicting assignments remain visible and can be repaired
 explicitly in Teams. Loading them does not silently change managers.
 
 A new manager's empty conversation survives navigation and restart. If its transcript is
@@ -519,3 +520,12 @@ Live conversations use their current model; other conversations use their saved 
 refreshed with the Teams overview. Changing a model saves that choice immediately, so
 another window can reflect it without waiting for another message. The All teams sidebar
 row has a white circle; the selected main navigation tab is bold with the hover highlight.
+
+## Older clients and membership metadata
+
+Hosted membership writes require matching client and engine support. An older client cannot
+replace the whole teams file: the engine says `update the client before editing team memberships`.
+A new client refuses writes to an older engine and says `update the engine before editing team memberships`.
+Stop older local codeaf processes before editing the same profile with this build: an already
+running old binary cannot learn the new fields or store rules. Current builds preserve unknown
+member fields and existing join timestamps; new hosted memberships use the engine's clock.

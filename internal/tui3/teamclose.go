@@ -1,10 +1,6 @@
 package tui3
 
 import (
-	"sort"
-	"strings"
-	"time"
-
 	tea "charm.land/bubbletea/v2"
 
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
@@ -14,127 +10,7 @@ import (
 // Deletion removes the team's own history, never the conversations it held.
 // Closed records remain readable; the surface does not offer reopen or close undo.
 
-// teamsUndoFor is how long a close offers Undo: the wall's own span for an
-// Apply, so a person learns one length of time for taking a thing back.
-const teamsUndoFor = wallOrganizedFor
-
-// teamsUndo is the last close this window made, for Undo.
-type teamsUndo struct {
-	team string
-	name string
-	shut []string
-	at   time.Time
-	// said ties `harbor is closed` to the write that carried the close
-	// (teamwritesaid.go); a close the report's own door made is said already.
-	said teamWriteSaid
-}
-
-// teamsCloseKeys is every conversation a close of team id stops and whose tab
-// it closes: the members of the team and of every open team under it, less any
-// that is also in an open team outside them.
-func (a *app) teamsCloseKeys(id string) []string {
-	closing := map[string]bool{id: true}
-	for _, t := range a.teamTree().Descendants(id) {
-		if !t.Closed() {
-			closing[t.ID] = true
-		}
-	}
-	elsewhere := map[string]bool{}
-	for _, t := range a.wall.teams {
-		if closing[t.ID] || t.Closed() || t.Root {
-			continue
-		}
-		for _, m := range t.Members {
-			elsewhere[m.Key] = true
-		}
-	}
-	var keys []string
-	seen := map[string]bool{}
-	for _, t := range a.wall.teams {
-		if !closing[t.ID] {
-			continue
-		}
-		for _, m := range t.Members {
-			if elsewhere[m.Key] || seen[m.Key] {
-				continue
-			}
-			seen[m.Key] = true
-			keys = append(keys, m.Key)
-		}
-	}
-	return keys
-}
-
-// teamsClosingManagers includes the manager of each team being closed even
-// when that conversation is also a member of an open team above it.
-func (a *app) teamsClosingManagers(id string) map[string]bool {
-	closing := map[string]bool{id: true}
-	for _, t := range a.teamTree().Descendants(id) {
-		if !t.Closed() {
-			closing[t.ID] = true
-		}
-	}
-	managers := map[string]bool{}
-	for _, t := range a.wall.teams {
-		if closing[t.ID] && t.Manager != "" {
-			managers[t.Manager] = true
-		}
-	}
-	return managers
-}
-
-// teamsRunning is the members of team id (and the teams under it) that are
-// working now, by handle or name, and whether its manager is one of them or
-// has any running at all.
-func (a *app) teamsRunning(id string) (names []string, managed bool) {
-	t, ok := a.teamByID(id)
-	if !ok {
-		return nil, false
-	}
-	front := a.frontTabKey()
-	managers := a.teamsClosingManagers(id)
-	keys := a.teamsCloseKeys(id)
-	seen := map[string]bool{}
-	for _, key := range keys {
-		seen[key] = true
-	}
-	var extra []string
-	for key := range managers {
-		if !seen[key] {
-			extra = append(extra, key)
-		}
-	}
-	sort.Strings(extra)
-	keys = append(keys, extra...)
-	for _, key := range keys {
-		if !a.trafficHeld(key) || a.tabSignalFor(key, key == front) != tabWorking {
-			continue
-		}
-		name := key
-		if managers[key] {
-			name = a.teamManagerMark() + " manager"
-			names = append(names, name)
-			continue
-		}
-		for _, u := range a.wall.teams {
-			if m, ok := u.Member(key); ok {
-				name = m.Word
-				if m.Handle != "" {
-					name = "@" + m.Handle
-				}
-				if key == u.Manager {
-					name = a.teamManagerMark() + " manager"
-				}
-				break
-			}
-		}
-		names = append(names, name)
-	}
-	return names, t.Manager != "" && len(names) > 0
-}
-
-// teamsCloseAsk is `Close…`: at once with Undo when nothing runs, and the card
-// when something does.
+// teamsCloseAsk confirms disbanding before coordination ends.
 func (a *app) teamsCloseAsk(id string) tea.Cmd {
 	t, ok := a.teamByID(id)
 	if !ok || t.Closed() {
@@ -160,7 +36,6 @@ func (a *app) teamsCloseNow(id, report string, expected ...[]string) tea.Cmd {
 		return nil
 	}
 	now := a.now()
-	var shut []string
 	if err := a.teamEdit(func(f *teamstore.File) error {
 		if len(expected) > 0 {
 			if err := f.CheckAffected(id, expected[0]); err != nil {
@@ -173,57 +48,13 @@ func (a *app) teamsCloseNow(id, report string, expected ...[]string) tea.Cmd {
 		a.touch()
 		return nil
 	}
-	cmd := a.teamsAfterClose(t, shut, now, true)
+	cmd := a.teamsAfterClose(t, true)
 	return cmd
-}
-
-// teamsStopMembers is the interface's half of every close (DESIGN.md 8.5):
-// each member of team id (and of the open teams under it, less any shared
-// with an open team outside them) that is working has its turn stopped, and
-// every one but the conversation in front has its tab closed. It answers the
-// tabs it closed, for Undo.
-func (a *app) teamsStopMembers(id string) []string {
-	front := a.frontTabKey()
-	var shut []string
-	closing := a.teamsCloseKeys(id)
-	covered := map[string]bool{}
-	for _, key := range closing {
-		covered[key] = true
-		if !a.trafficHeld(key) {
-			continue
-		}
-		// THE PERSON'S OWN STOP, and nothing more: the current turn ends and
-		// nothing is deleted (teamtraffic.go's [app.trafficStop]).
-		if a.tabSignalFor(key, key == front) == tabWorking {
-			a.trafficStop(key)
-		}
-		// The conversation in front is what this page hosts; its tab stays,
-		// because closing it here would move the person's focus.
-		if key != front {
-			a.tabShutKey(key)
-			shut = append(shut, key)
-		}
-	}
-	var extra []string
-	for key := range a.teamsClosingManagers(id) {
-		extra = append(extra, key)
-	}
-	sort.Strings(extra)
-	for _, key := range extra {
-		if covered[key] || !a.trafficHeld(key) || a.tabSignalFor(key, key == front) != tabWorking {
-			continue
-		}
-		// A manager shared with an open team keeps its tab but cannot keep
-		// working on the team being closed.
-		a.trafficStop(key)
-	}
-	return shut
 }
 
 // teamsAfterClose releases the overlay and shows the preserved history. A
 // local edit announces completion only after its own store write succeeds.
-func (a *app) teamsAfterClose(t team, shut []string, now time.Time, tell bool) tea.Cmd {
-	a.tp.undo = teamsUndo{}
+func (a *app) teamsAfterClose(t team, tell bool) tea.Cmd {
 	a.tp.msg = ""
 	if tell {
 		a.tp.disbandName, a.tp.disbandSaid = t.Name, a.teamWriteWatch(nil)
@@ -248,95 +79,6 @@ func (a *app) teamsDisbandSaid(name, why string) {
 	if !a.at(pageTeams) {
 		a.note(word)
 	}
-}
-
-// teamsUndoing reports whether Undo is still offered for the last close.
-func (a *app) teamsUndoing() bool {
-	u := a.tp.undo
-	return u.team != "" && u.said.said() && a.now().Sub(u.at) < teamsUndoFor
-}
-
-// teamsUndoClose takes the last close back: the team reopened, and the tabs it
-// closed back on the strip (the conversations were held behind the whole time).
-func (a *app) teamsUndoClose() tea.Cmd {
-	if !a.teamsUndoing() {
-		return nil
-	}
-	u := a.tp.undo
-	a.tp.undo = teamsUndo{}
-	for _, key := range u.shut {
-		delete(a.tabShut, key)
-	}
-	a.chatTabBar = tabBar{}
-	if err := a.teamEdit(func(f *teamstore.File) error { return f.Reopen(u.team) }); err != nil {
-		a.tp.msg = "not reopened: " + err.Error()
-		a.touch()
-		return nil
-	}
-	a.tp.msg = u.name + " is open again"
-	a.teamsViewFromSelection(u.team)
-	a.touch()
-	return tea.Batch(a.teamsTell(u.team, teamstore.Entry{Kind: teamstore.KindReopen, From: teamstore.FromYou, To: teamstore.ToEveryone,
-		Text: "the person reopened the team"}))
-}
-
-// teamsReopen is `Reopen` on a closed team, and `Reopen <parent> too` on one
-// whose parent is closed: the closed teams above it are reopened first, top
-// down, because the store refuses a child under a closed parent
-// ([teamstore.ErrParentClosed]). Its members' tabs come back where this window
-// still holds them, and its manager resumes by being brought in front.
-func (a *app) teamsReopen(id string, withParents bool) tea.Cmd {
-	t, ok := a.teamByID(id)
-	if !ok || !t.Closed() {
-		return nil
-	}
-	var chain []string
-	if withParents {
-		ups := a.teamAncestors(id)
-		for i := len(ups) - 1; i >= 0; i-- {
-			if ups[i].Closed() {
-				chain = append(chain, ups[i].ID)
-			}
-		}
-	} else if p, closed := a.teamsParentClosed(t); closed {
-		a.tp.msg = t.Name + " sits under " + p.Name + ", which is closed: reopen " + p.Name + " too"
-		a.touch()
-		return nil
-	}
-	chain = append(chain, id)
-	err := a.teamEdit(func(f *teamstore.File) error {
-		for _, c := range chain {
-			if u, ok := f.Team(c); ok && !u.Closed() {
-				continue
-			}
-			if err := f.Reopen(c); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		a.tp.msg = "not reopened: " + err.Error()
-		a.touch()
-		return nil
-	}
-	for _, c := range chain {
-		if u, ok := a.teamByID(c); ok {
-			for _, m := range u.Members {
-				delete(a.tabShut, m.Key)
-			}
-		}
-	}
-	a.chatTabBar = tabBar{}
-	a.teamsViewFromSelection(id)
-	a.tp.msg = t.Name + " is open again"
-	a.touch()
-	var tells []tea.Cmd
-	for _, c := range chain {
-		tells = append(tells, a.teamsTell(c, teamstore.Entry{Kind: teamstore.KindReopen, From: teamstore.FromYou, To: teamstore.ToEveryone,
-			Text: "the person reopened the team"}))
-	}
-	return tea.Batch(tells...)
 }
 
 // teamsWrapUp is `Wrap up first`: the seam's wrap-up door appends the one
@@ -375,11 +117,9 @@ func (a *app) teamsWrapUp(id string) tea.Cmd {
 // no wrap-up door: an engine older than the doors, over --host.
 const teamsNoWrapUpWord = "Wrap up first is not offered over this connection: Close now, or Cancel"
 
-// teamsAcceptReport is the person's `Close` on a closing report: the interface
-// stops the team's turns and closes its tabs now, and the store closes the
-// team with the packet as its report (teamstore.AcceptClosing), after the
-// decision is written. The window then reads the teams again, because the
-// file moved under it.
+// teamsAcceptReport accepts the closing report after writing the decision.
+// Coordination ends while conversations and their current work survive. The
+// window reads the retained history again after the store changes.
 func (a *app) teamsAcceptReport(p teamstore.Packet, decision string) tea.Cmd {
 	t, ok := a.teamByID(p.Origin)
 	if !ok || t.Closed() {
@@ -391,8 +131,7 @@ func (a *app) teamsAcceptReport(p teamstore.Packet, decision string) tea.Cmd {
 		cmd := a.teamsCloseNow(p.Origin, p.ID)
 		return tea.Batch(cmd, a.teamsDecideOnly(seam, p.ID, decision))
 	}
-	var shut []string
-	reserved, now, id := teamReservedHues(a.pal), a.now(), p.ID
+	reserved, id := teamReservedHues(a.pal), p.ID
 	return a.offLoop(func() func(bool) tea.Cmd {
 		_, err := seam.Decide(id, teamstore.Person, decision, "")
 		closed := false
@@ -415,7 +154,7 @@ func (a *app) teamsAcceptReport(p teamstore.Packet, decision string) tea.Cmd {
 			a.traffic.stamp = stamp
 			var cmd tea.Cmd
 			if closed {
-				cmd = a.teamsAfterClose(t, shut, now, false)
+				cmd = a.teamsAfterClose(t, false)
 			}
 			return tea.Batch(cmd, a.teamsRead(false))
 		}
@@ -508,15 +247,4 @@ func (a *app) teamsDelete(id string, expected ...[]string) tea.Cmd {
 			return nil
 		}
 	})
-}
-
-// teamsCloseWords is the close card's sentence about what is running.
-func teamsCloseWords(names []string) string {
-	switch len(names) {
-	case 0:
-		return "nothing is running"
-	case 1:
-		return names[0] + " is still working"
-	}
-	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1] + " are still working"
 }

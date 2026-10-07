@@ -19,6 +19,10 @@ import (
 // window pages forward from its cursor, so a longer backlog is the next call's.
 const teamsPage = 500
 
+// This capability is independent of the transport version because older
+// clients may still read teams safely, but cannot replace membership metadata.
+const TeamMembershipVersion = 1
+
 // teamsWatch is the engine's stat-before-read memory of the Traffic logs it
 // has been asked about, shared by every connection to this process: two windows
 // on one team ask about the same log, and one stat answers both.
@@ -113,6 +117,9 @@ func teamsRead(dir string, args TeamsReadArgs) (TeamsReading, error) {
 // teamsUpdate is [MethodTeamsUpdate]: the list written whole, under the store's
 // lock, only while the file is at the window's base.
 func teamsUpdate(dir string, args TeamsUpdateArgs) (TeamsReading, error) {
+	if args.MembershipVersion != TeamMembershipVersion {
+		return TeamsReading{}, errors.New("update the client before editing team memberships")
+	}
 	f, stamp, err := teamstore.ChangeIf(dir, args.Base, func(f *teamstore.File) error {
 
 		// Delivery boundaries use the engine's clock, never a remote client's.
@@ -121,7 +128,9 @@ func teamsUpdate(dir string, args TeamsUpdateArgs) (TeamsReading, error) {
 			previous, _ := f.Team(args.Teams[i].ID)
 			for j := range args.Teams[i].Members {
 				member := &args.Teams[i].Members[j]
-				if !previous.Holds(member.Key) && !member.JoinedAt.IsZero() {
+				if old, exists := previous.Member(member.Key); exists {
+					member.JoinedAt = old.JoinedAt
+				} else {
 					member.JoinedAt = time.Now()
 				}
 			}
@@ -153,10 +162,13 @@ func (c *Client) TeamsRead(stamp string, reserved []float64) (TeamsReading, erro
 // TeamsUpdate writes teams as the engine machine's whole teams file while it is
 // still at stamp base. A reading with Stale set wrote nothing.
 func (c *Client) TeamsUpdate(base string, teams []teamstore.Team) (TeamsReading, error) {
+	if c.Welcome().TeamMembershipVersion != TeamMembershipVersion {
+		return TeamsReading{}, errors.New("update the engine before editing team memberships")
+	}
 	if teams == nil {
 		teams = []teamstore.Team{}
 	}
-	payload, err := c.call(nil, MethodTeamsUpdate, TeamsUpdateArgs{Base: base, Teams: teams})
+	payload, err := c.call(nil, MethodTeamsUpdate, TeamsUpdateArgs{Base: base, Teams: teams, MembershipVersion: TeamMembershipVersion})
 	if err != nil {
 		return TeamsReading{}, err
 	}

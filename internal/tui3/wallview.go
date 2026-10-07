@@ -793,7 +793,7 @@ func wallRowHot(v wallView, kind wallHitKind, i, y int) bool {
 //
 // and under the pointer or the focus its bottom border is the action row:
 //
-//	╰─ Open ↵ ── Select ␣ ── Teams m ── Close x ──╯
+//	╰─ Open ↵ ── Select ␣ ── Close x ─────────────╯
 func wallPaintTile(pal palette, g wallGlyphs, v wallView, t wallTile, i int, focused bool, w, h, y0 int) []string {
 	look := wallLookFor(pal, v, t, i, focused)
 	box, border, ground := look.box, look.border, look.ground

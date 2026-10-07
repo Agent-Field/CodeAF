@@ -97,7 +97,11 @@ func (a *app) conversationDeleteRun() tea.Cmd {
 		door = func(file string, choices map[string]string, affected map[string][]string) error {
 			return session.DeleteConversationUnder(root, profile, file, choices, func(string) error {
 				if owner != nil {
-					leaveAgentFor(owner, session.StopByPerson)
+					if local, ok := owner.(interface{ CloseForDeletion() error }); ok {
+						return local.CloseForDeletion()
+					}
+					owner.InterruptFor(session.StopByPerson)
+					return owner.Close()
 				}
 				return nil
 			}, affected)

@@ -172,33 +172,34 @@ func TestConversationDeleteStaleOwnerRequestIsDiscarded(t *testing.T) {
 	}
 }
 
-func TestConversationDeleteManagerCleanupIsIdempotent(t *testing.T) {
+func TestConversationDeleteManagerRequiresPriorAssignment(t *testing.T) {
+	root, profile, file := deletionFixture(t)
+	if err := teams.Update(profile, func(f *teams.File) error {
+		if err := f.AddMember("aaaaaaaaaaaa", teams.Member{Key: "replacement", Handle: "next"}); err != nil {
+			return err
+		}
+		return f.SetManager("aaaaaaaaaaaa", file)
+	}); err != nil {
+		t.Fatal(err)
+	}
 	for _, replacement := range []string{"", "replacement"} {
-		t.Run(replacement, func(t *testing.T) {
-			root, profile, file := deletionFixture(t)
-			if err := teams.Update(profile, func(f *teams.File) error {
-				if err := f.AddMember("aaaaaaaaaaaa", teams.Member{Key: "replacement", Handle: "next"}); err != nil {
-					return err
-				}
-				return f.SetManager("aaaaaaaaaaaa", file)
-			}); err != nil {
-				t.Fatal(err)
-			}
-			if err := DeleteConversationUnder(root, profile, file, map[string]string{"aaaaaaaaaaaa": replacement}, nil); err != nil {
-				t.Fatal(err)
-			}
-			f, err := teams.Load(profile)
-			if err != nil {
-				t.Fatal(err)
-			}
-			team := f.Teams[0]
-			if team.Holds(file) || (replacement == "" && !team.Closed()) || (replacement != "" && team.Manager != replacement) {
-				t.Fatalf("wrong manager result: %+v", team)
-			}
-			if _, err := os.Stat(file + ".delete-pending"); !os.IsNotExist(err) {
-				t.Fatal("pending journal survived")
-			}
-		})
+		stopped := false
+		if err := DeleteConversationUnder(root, profile, file, map[string]string{"aaaaaaaaaaaa": replacement}, func(string) error { stopped = true; return nil }); err == nil || stopped {
+			t.Fatalf("legacy manager choice stopped owner: %v", err)
+		}
+		if _, err := os.Stat(file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := teams.Update(profile, func(f *teams.File) error { return f.SetManager("aaaaaaaaaaaa", "replacement") }); err != nil {
+		t.Fatal(err)
+	}
+	if err := DeleteConversationUnder(root, profile, file, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	f, _ := teams.Load(profile)
+	if f.Teams[0].Manager != "replacement" || f.Teams[0].Closed() || f.Teams[0].Holds(file) {
+		t.Fatalf("wrong result: %+v", f.Teams[0])
 	}
 }
 
@@ -229,14 +230,20 @@ func TestConversationDeleteRetryPreservesCapturedManagerAliases(t *testing.T) {
 	if err = os.Rename(file, file+".delete-pending"); err != nil {
 		t.Fatal(err)
 	}
-	if err = DeleteConversationUnder(root, profile, file, map[string]string{"aaaaaaaaaaaa": ""}, nil); err != nil {
+	if err = DeleteConversationUnder(root, profile, file, map[string]string{"aaaaaaaaaaaa": ""}, nil); err == nil {
+		t.Fatal("retry bypassed manager refusal")
+	}
+	if err = teams.Update(profile, func(f *teams.File) error { return f.SetManager("aaaaaaaaaaaa", "replacement") }); err != nil {
+		t.Fatal(err)
+	}
+	if err = DeleteConversationUnder(root, profile, file, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	f, err = teams.Load(profile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !f.Teams[0].Closed() || f.Teams[0].Holds(alias) || f.Teams[0].Holds(file) {
+	if f.Teams[0].Closed() || f.Teams[0].Manager != "replacement" || f.Teams[0].Holds(alias) || f.Teams[0].Holds(file) {
 		t.Fatalf("alias survived retry: %+v", f.Teams[0])
 	}
 }

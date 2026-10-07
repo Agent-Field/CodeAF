@@ -2836,3 +2836,15 @@ Exact duplicate settlement streams the active owner partition transactionally: i
 cost grows with that partition, rather than losing punctuation or older duplicates
 behind a retrieval ceiling. The canonical event journal is not periodically pruned;
 projection/context work is bounded, while durable history continues to grow.
+
+## Conversation deletion completion
+
+Permanent deletion joins the task run's completion channel with
+`conversationDeletionGrace` (**30 seconds**), and keeps the journal lock on timeout.
+The cross-process deletion request uses the same grace while claiming the journal.
+Ordinary Close returns promptly but releases its journal only after the cancelled run's
+last store close; clearing the run and signalling completion happen together. Cleanup
+receipts are atomically replaced and synced before committing deletion. Startup recovery
+walks only the two saved-conversation directory levels, without following symlinked buckets.
+`internal/session/deletion_revision_test.go` drives completion and timeout with held
+channels and a zero test grace rather than sleeping for the production deadline.

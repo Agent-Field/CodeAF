@@ -25,22 +25,27 @@ func TestDisbandPreservesOtherMembershipsAndEndsReportingRecursively(t *testing.
 	}
 }
 
-func TestConversationDeleteChoicesAreExplicitAndReviewedScopeIsStable(t *testing.T) {
-	f := &File{Teams: []Team{
-		{ID: "aaaaaaaaaaaa", Name: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "replacement"}}},
-		{ID: "bbbbbbbbbbbb", Name: "child", Parent: "aaaaaaaaaaaa", Manager: "manager", Members: []Member{{Key: "manager"}}},
-	}}
-	if err := f.RemoveConversation("manager", nil, time.Now()); err == nil || err.Error() != f.ManagerRemovalMessage("manager") {
-		t.Fatalf("manager deletion must require replacement in Teams: %v", err)
-	}
-	choices := map[string]string{"aaaaaaaaaaaa": "", "bbbbbbbbbbbb": ""}
-	if f.RemoveConversation("manager", choices, time.Now(), map[string][]string{"aaaaaaaaaaaa": {"aaaaaaaaaaaa"}, "bbbbbbbbbbbb": {"bbbbbbbbbbbb"}}) == nil {
-		t.Fatal("unreviewed child was disbanded")
-	}
-	must(t, f.RemoveConversation("manager", choices, time.Now(), map[string][]string{"aaaaaaaaaaaa": {"aaaaaaaaaaaa", "bbbbbbbbbbbb"}, "bbbbbbbbbbbb": {"bbbbbbbbbbbb"}}))
-	for _, tm := range f.Teams {
-		if !tm.Closed() || tm.Holds("manager") {
-			t.Fatalf("cascade did not release manager: %+v", tm)
+func TestConversationDeleteRejectsLegacyManagerChoicesWithoutMutation(t *testing.T) {
+	for _, choices := range []map[string]string{nil, {"parent": "", "child": ""}, {"parent": "replacement", "child": "replacement"}} {
+		f := &File{Teams: []Team{
+			{ID: "parent", Name: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "replacement"}}},
+			{ID: "child", Name: "child", Parent: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "replacement"}}},
+		}}
+		if err := f.RemoveConversation("manager", choices, time.Now()); err == nil || err.Error() != f.ManagerRemovalMessage("manager") {
+			t.Fatalf("legacy deletion accepted: %v", err)
+		}
+		for _, team := range f.Teams {
+			if team.Closed() || team.Manager != "manager" || !team.Holds("manager") {
+				t.Fatalf("refusal mutated team: %+v", team)
+			}
+		}
+		must(t, f.SetManager("child", "replacement"))
+		must(t, f.SetManager("parent", "replacement"))
+		must(t, f.RemoveConversation("manager", nil, time.Now()))
+		for _, team := range f.Teams {
+			if team.Closed() || team.Manager != "replacement" || team.Holds("manager") {
+				t.Fatalf("reassigned deletion: %+v", team)
+			}
 		}
 	}
 }
@@ -66,7 +71,10 @@ func TestDisbandHistoryRejectsDecisionAndTrafficWrites(t *testing.T) {
 func TestConversationDeleteReplacesManagerAndKeepsHistoricalIdentity(t *testing.T) {
 	dir := packetTeams(t)
 	must(t, Update(dir, func(f *File) error {
-		return f.RemoveConversation("dm", map[string]string{"bbbbbbbbbbbb": "w1"}, time.Now())
+		if err := f.SetManager("bbbbbbbbbbbb", "w1"); err != nil {
+			return err
+		}
+		return f.RemoveConversation("dm", nil, time.Now())
 	}))
 	f, err := Load(dir)
 	must(t, err)

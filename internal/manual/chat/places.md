@@ -561,11 +561,10 @@ bullets on the conversation or task, with no separate `needs you` heading.
 The second place on the bar, right after home. On the left is a **rail**: your teams as a
 tree (a sub-team indented under its parent), each with its colour, and a mark only when
 something is happening in it: a dim `⠿` while one of its members is working, and an amber
-`? 2` while two things wait on you. Under the tree are `+ New team` and `✦ Organize`, and
-immediately below `All teams`, `Closed teams · N ▸` holds the teams you closed. On the right is the team
-you chose: its name, spending and settings; equal-sized member cards with manager and
-member updates; decisions and permissions waiting on you; and a scrollable interaction
-table whose exchanges expand inline. Clicking a member or exchange opens Chats with that
+`? 2` while two things wait on you. The sidebar keeps `+ New team` after the teams list and a `Show closed · N` toggle at its bottom.
+`✦ Organize` sits in the All teams main view. The selected team has spending and settings,
+a larger manager preview, a six-row interaction table with Prev and Next, and compact member
+cards. Decisions and permissions remain actionable, and exchanges expand inline. Clicking a member or exchange opens Chats with that
 team selected. Selecting the team itself leaves the current chat and draft untouched.
 `/teams`, `alt+2` and a click on `teams` open it. The **Teams page** has the details.
 

@@ -111,7 +111,6 @@ type teamsPage struct {
 	disbandName string
 	disbandSaid teamWriteSaid
 	// undo retains the older close record for compatibility helpers.
-	undo teamsUndo
 	// picked is the teams picked on the rail with `space`, which one `Move
 	// into…` moves together (teammove.go).
 	picked map[string]bool

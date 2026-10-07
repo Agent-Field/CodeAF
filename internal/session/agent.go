@@ -2527,7 +2527,10 @@ func (a *Agent) Close() error {
 	// held under its own ([Agent.beltMu]) and nothing else in this package takes
 	// the two together; the line above has already stopped anything new from
 	// being started against this conversation.
-	a.cutBeltRun()
+	beltDone := a.cutBeltRun()
+	a.mu.Lock()
+	a.closingBeltDone = beltDone
+	a.mu.Unlock()
 
 	// EVERY CANCEL FIRST, THEN THE JOINS. The naming errand may be asleep in a
 	// backoff or parked on a provider, and it is the one thing here that owes
@@ -2634,6 +2637,24 @@ func (a *Agent) Close() error {
 	// this waits on takes that lock.
 	a.SettleWrites()
 
+	a.mu.Lock()
+	deleting, deletionGrace := a.deleting, a.deletionGrace
+	a.mu.Unlock()
+	if deleting {
+		if err := waitDeletingBelt(beltDone, deletionGrace); err != nil {
+			return err
+		}
+	}
+	// Quit stays responsive, but another process must not claim this journal
+	// for deletion while a cancelled run still owns task record writers.
+	if !deleting && beltDone != nil {
+		select {
+		case <-beltDone:
+		default:
+			a.finishCloseWhenStopped()
+			return nil
+		}
+	}
 	if file == nil {
 		return nil
 	}

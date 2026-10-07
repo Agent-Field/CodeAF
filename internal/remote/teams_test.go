@@ -153,3 +153,46 @@ func TestTeamMembershipDeliveryBoundaryUsesTheEngineClock(t *testing.T) {
 		t.Fatal("unrelated write changed membership delivery boundary")
 	}
 }
+
+func TestHostedMembershipUpdatesRequireCapabilityAndKeepEngineJoinBoundaries(t *testing.T) {
+	loop, dir := teamsLoop(t)
+	joined := time.Unix(100, 0).UTC()
+	if err := teamstore.Save(dir, []teamstore.Team{{ID: "aaaaaaaaaaaa", Name: "team", Members: []teamstore.Member{{Key: "old", Handle: "old", JoinedAt: joined, Independent: true}}}}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := loop.Client.TeamsRead("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(teamstore.Path(dir))
+	if _, err = loop.Client.call(nil, MethodTeamsUpdate, TeamsUpdateArgs{Base: first.Stamp, Teams: []teamstore.Team{}}); err == nil {
+		t.Fatal("legacy writer accepted")
+	}
+	after, _ := os.ReadFile(teamstore.Path(dir))
+	if string(before) != string(after) {
+		t.Fatal("legacy writer changed memberships")
+	}
+	first.Teams[0].Members[0].JoinedAt = time.Time{}
+	first.Teams[0].Members = append(first.Teams[0].Members, teamstore.Member{Key: "new", Handle: "new"})
+	wrote, err := loop.Client.TeamsUpdate(first.Stamp, first.Teams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrote.Stale {
+		first, err = loop.Client.TeamsRead("", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first.Teams[0].Members[0].JoinedAt = time.Time{}
+		first.Teams[0].Members = append(first.Teams[0].Members, teamstore.Member{Key: "new", Handle: "new"})
+		wrote, err = loop.Client.TeamsUpdate(first.Stamp, first.Teams)
+	}
+	if err != nil || wrote.Stale || len(wrote.Teams) != 1 {
+		t.Fatalf("update: %+v %v", wrote, err)
+	}
+	old, _ := wrote.Teams[0].Member("old")
+	fresh, _ := wrote.Teams[0].Member("new")
+	if !old.JoinedAt.Equal(joined) || !old.Independent || fresh.JoinedAt.IsZero() {
+		t.Fatalf("join boundaries: %+v", wrote.Teams[0].Members)
+	}
+}
