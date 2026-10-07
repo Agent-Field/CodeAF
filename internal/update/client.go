@@ -366,6 +366,47 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 	return Release{}, errors.New("no release repository answered")
 }
 
+// TagPublished asks the release API for ONE exact tag's publish moment, and it
+// is BEST-EFFORT BY CONTRACT. The moment is what the install record carries and
+// what orders two same-day dev or staging builds ([recordSupersedes]), so a
+// NAMED tag — which [Select] answers without the API — is worth one bounded
+// lookup before its install writes that record. A tag the API cannot answer for
+// — offline, rate-limited, deleted, or a release the API has not indexed —
+// leaves the moment UNKNOWN, which is never guessed at and never fails the
+// install: the file is still there to fetch, and a person naming it means it.
+func (c *Client) TagPublished(ctx context.Context, tag string) (time.Time, bool) {
+	tag = strings.TrimSpace(tag)
+	if c == nil || tag == "" || !installNamePattern.MatchString(tag) {
+		return time.Time{}, false
+	}
+	// AN EMPTY API BASE IS NO API TO ASK. A caller that built a client for
+	// downloads alone (or a test's stub) reads as unknown rather than as a
+	// relative address nothing can serve.
+	if strings.TrimSpace(c.APIBase) == "" {
+		return time.Time{}, false
+	}
+	for index, repository := range []string{primaryRepository, legacyRepository} { // legacy-name
+		rawURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + repository + "/releases/tags/" + url.PathEscape(tag)
+		body, err := c.get(ctx, rawURL, "application/vnd.github+json", true, "release API")
+		if err != nil {
+			if isStatus(err, http.StatusNotFound) && index == 0 {
+				continue
+			}
+			return time.Time{}, false
+		}
+		var row apiRelease
+		if json.Unmarshal(body, &row) != nil || strings.TrimSpace(row.TagName) != tag {
+			return time.Time{}, false
+		}
+		moment := row.stamp()
+		if moment.IsZero() {
+			return time.Time{}, false
+		}
+		return moment, true
+	}
+	return time.Time{}, false
+}
+
 func (c *Client) selectRepository(ctx context.Context, repository, channel, running string) (Release, error) {
 	suffix := "releases/latest"
 	if channel != "stable" {

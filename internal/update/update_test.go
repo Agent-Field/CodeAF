@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -955,5 +956,287 @@ func TestSelectingAPinnedTagCarriesTheCallersPublishMoment(t *testing.T) {
 	blank, err := (&Client{}).Select(context.Background(), Choice{Version: "v0.2.0"})
 	if err != nil || blank.Tag != "v0.2.0" || !blank.PublishedAt.IsZero() {
 		t.Fatalf("unnamed moment = %+v, %v", blank, err)
+	}
+}
+
+// sameDayFixture is one channel build a test server serves: the bytes an install
+// writes and the moment the release API reports for the tag.
+type sameDayFixture struct {
+	asset []byte
+	at    time.Time
+}
+
+// sameDayReleaseServer serves one channel's release list, each tag's metadata and
+// each tag's asset and checksums, so a test can drive the REAL [Client.Select]
+// and [Install] end to end rather than hand-built releases.
+func sameDayReleaseServer(t *testing.T, fixtures map[string]sameDayFixture) *httptest.Server {
+	t.Helper()
+	tagOf := func(path string) string {
+		_, rest, _ := strings.Cut(path, "/download/")
+		tag, _, _ := strings.Cut(rest, "/")
+		return tag
+	}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/releases/tags/"):
+			tag := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+			fixture, ok := fixtures[tag]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			fmt.Fprintf(w, `{"tag_name":%q,"published_at":%q}`, tag, fixture.at.Format(time.RFC3339))
+		case strings.HasSuffix(r.URL.Path, "/releases"):
+			rows := make([]string, 0, len(fixtures))
+			for tag, fixture := range fixtures {
+				rows = append(rows, fmt.Sprintf(`{"tag_name":%q,"published_at":%q}`, tag, fixture.at.Format(time.RFC3339)))
+			}
+			fmt.Fprint(w, "["+strings.Join(rows, ",")+"]")
+		case strings.HasSuffix(r.URL.Path, "/checksums.txt"):
+			fixture, ok := fixtures[tagOf(r.URL.Path)]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			sum := sha256.Sum256(fixture.asset)
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", sum, runtime.GOOS, runtime.GOARCH)
+		case strings.Contains(r.URL.Path, "/releases/download/"):
+			fixture, ok := fixtures[tagOf(r.URL.Path)]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			_, _ = w.Write(fixture.asset)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+// TestAHandInstalledSameDayBuildKeepsTheChannelMovingForward proves the P2-1 fix
+// through the REAL resolver and installer: a PERSON naming a same-day dev tag
+// writes an install record that carries that tag's publish moment (the one
+// best-effort lookup the installer makes), so the next genuinely-newer same-day
+// channel build is installed rather than refused as if the disk build were
+// newer, and the stale reverse is still refused \u2014 WITH the fact that says so.
+func TestAHandInstalledSameDayBuildKeepsTheChannelMovingForward(t *testing.T) {
+	const (
+		earlyDev = "dev-20261007-aaaaaaaaaaaa"
+		lateDev  = "dev-20261007-bbbbbbbbbbbb"
+	)
+	earlyAt := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+	lateAt := earlyAt.Add(2 * time.Hour)
+	earlyBytes, lateBytes := []byte("dev early bytes"), []byte("dev late bytes")
+	server := sameDayReleaseServer(t, map[string]sameDayFixture{
+		earlyDev: {asset: earlyBytes, at: earlyAt},
+		lateDev:  {asset: lateBytes, at: lateAt},
+	})
+	defer server.Close()
+	client := releaseClient(server, "dev-20261006-000000000000")
+	target := filepath.Join(t.TempDir(), "codeaf")
+
+	// A PERSON NAMES THE EARLIER TAG. Select answers a pinned tag WITHOUT the
+	// API, so the moment the record needs can only come from the installer.
+	named, err := client.Select(context.Background(), Choice{Version: earlyDev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !named.PublishedAt.IsZero() {
+		t.Fatalf("the pinned select invented a moment: %s", named.PublishedAt)
+	}
+	if _, err := Install(context.Background(), InstallOptions{
+		Client: client, Release: named, Target: target, AllowDowngrade: true,
+	}); err != nil {
+		t.Fatalf("the named install: %v", err)
+	}
+	lock, err := TryTargetLock(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok := lock.Record()
+	lock.Release()
+	if !ok || record.Tag != earlyDev {
+		t.Fatalf("record = %+v, ok = %t", record, ok)
+	}
+	if !record.PublishedAt.Equal(earlyAt) {
+		t.Fatalf("the named install recorded %s, want the looked-up moment %s", record.PublishedAt, earlyAt)
+	}
+
+	// THE AUTOMATIC ROAD THEN FINDS THE NEWER SAME-DAY BUILD, and the record's
+	// moment orders it as older, so the candidate installs.
+	candidate, err := client.Select(context.Background(), Choice{Channel: "dev", Running: earlyDev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Tag != lateDev || !candidate.PublishedAt.Equal(lateAt) {
+		t.Fatalf("candidate = %+v", candidate)
+	}
+	if _, err := Install(context.Background(), InstallOptions{
+		Client: client, Release: candidate, Target: target,
+	}); err != nil {
+		t.Fatalf("the same-day forward install was refused: %v", err)
+	}
+	if onDisk, err := os.ReadFile(target); err != nil || string(onDisk) != string(lateBytes) {
+		t.Fatalf("on disk after the forward install = %q, %v", onDisk, err)
+	}
+
+	// AND THE STALE REVERSE IS REFUSED, naming the fact it really has.
+	_, err = Install(context.Background(), InstallOptions{
+		Client:  client,
+		Release: Release{Tag: earlyDev, Repository: primaryRepository, PublishedAt: earlyAt},
+		Target:  target,
+	})
+	var refusal *RefusalError
+	if !errors.As(err, &refusal) || !strings.Contains(refusal.Reason, "newer than "+earlyDev) {
+		t.Fatalf("stale reverse = %v", err)
+	}
+	if onDisk, err := os.ReadFile(target); err != nil || string(onDisk) != string(lateBytes) {
+		t.Fatalf("the stale reverse wrote the disk: %q, %v", onDisk, err)
+	}
+}
+
+// TestANamedTagInstallsOfflineAndSaysUnknownRatherThanNewer proves the second
+// half of P2-1: a NAMED exact tag installs when the release API cannot answer at
+// all (the lookup is best-effort and never blocks the asset), the record it
+// writes is honestly moment-less, and a later same-day candidate is then kept
+// back with a sentence that says the moment is unknown instead of claiming the
+// disk build is newer.
+func TestANamedTagInstallsOfflineAndSaysUnknownRatherThanNewer(t *testing.T) {
+	const (
+		earlyDev = "dev-20261007-aaaaaaaaaaaa"
+		lateDev  = "dev-20261007-bbbbbbbbbbbb"
+	)
+	asset := []byte("dev early bytes")
+	digest := sha256.Sum256(asset)
+	server, _ := servedRelease(t, asset, hex.EncodeToString(digest[:]))
+	defer server.Close()
+	// THE API IS UNREACHABLE AND THE DOWNLOAD HOST IS NOT: the lookup is the
+	// only thing that fails.
+	client := &Client{HTTP: server.Client(), APIBase: "http://127.0.0.1:1", DownloadBase: server.URL, Revision: earlyDev}
+	target := filepath.Join(t.TempDir(), "codeaf")
+
+	release, err := client.Select(context.Background(), Choice{Version: earlyDev})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(context.Background(), InstallOptions{
+		Client: client, Release: release, Target: target, AllowDowngrade: true,
+	}); err != nil {
+		t.Fatalf("an offline named install failed: %v", err)
+	}
+	lock, err := TryTargetLock(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok := lock.Record()
+	lock.Release()
+	if !ok || record.Tag != earlyDev || !record.PublishedAt.IsZero() {
+		t.Fatalf("offline record = %+v, ok = %t; the moment must be honestly unknown", record, ok)
+	}
+
+	// THE NEXT SAME-DAY CANDIDATE IS KEPT, AND SAID TO BE UNKNOWN-NOT-NEWER.
+	lateAt := time.Date(2026, 10, 7, 11, 0, 0, 0, time.UTC)
+	_, err = Install(context.Background(), InstallOptions{
+		Client:  client,
+		Release: Release{Tag: lateDev, Repository: primaryRepository, PublishedAt: lateAt},
+		Target:  target,
+	})
+	var refusal *RefusalError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("the unknown-moment candidate = %v, want a refusal", err)
+	}
+	if strings.Contains(refusal.Reason, "newer than") || !strings.Contains(refusal.Reason, "release order could not be confirmed") {
+		t.Fatalf("the refusal claimed an order it does not have: %q", refusal.Reason)
+	}
+	// THE EXPLICIT NAMED-TAG ESCAPE STAYS ON THE SENTENCE: the way to install
+	// the release a person means is named rather than left to be guessed.
+	if !strings.Contains(refusal.Reason, "/update "+lateDev) {
+		t.Fatalf("the refusal left off the named escape: %q", refusal.Reason)
+	}
+	if onDisk, err := os.ReadFile(target); err != nil || string(onDisk) != string(asset) {
+		t.Fatalf("the unknown-moment candidate wrote the disk: %q, %v", onDisk, err)
+	}
+}
+
+// TestALegacyDevCacheWithoutItsMomentIsRefreshedAndStillOffersOffline proves the
+// check-cache half of P2-1. A dev cache written before the moment was kept
+// cannot order two same-day builds, so it is refreshed once and the REAL
+// timestamp is persisted; a stable cache is left alone because its channel
+// orders by the tag; and when the API cannot answer the cached offer still
+// stands rather than vanishing.
+func TestALegacyDevCacheWithoutItsMomentIsRefreshedAndStillOffersOffline(t *testing.T) {
+	const (
+		runningDev = "dev-20261007-aaaaaaaaaaaa"
+		latestDev  = "dev-20261007-bbbbbbbbbbbb"
+	)
+	publishedAt := time.Date(2026, 10, 7, 11, 0, 0, 0, time.UTC)
+	now := publishedAt.Add(time.Minute)
+	var hits atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		fmt.Fprintf(w, `[{"tag_name":%q,"published_at":%q},{"tag_name":%q,"published_at":%q}]`,
+			runningDev, publishedAt.Add(-2*time.Hour).Format(time.RFC3339),
+			latestDev, publishedAt.Format(time.RFC3339))
+	}))
+	defer server.Close()
+	client := releaseClient(server, runningDev)
+	clock := func() time.Time { return now }
+
+	// A DEV CACHE A PRE-PR CODEAF WROTE: the latest tag and the checked moment,
+	// no published moment.
+	profile := t.TempDir()
+	path := filepath.Join(profile, "update-check.dev.json")
+	if err := saveCheckCache(path, checkCache{CheckedAt: now.Add(-time.Minute), Latest: latestDev, Running: runningDev}); err != nil {
+		t.Fatal(err)
+	}
+	answer, show := CheckLaunch(context.Background(), CheckOptions{Running: runningDev, ProfileDir: profile, Client: client, Now: clock})
+	if !show || answer.Latest != latestDev {
+		t.Fatalf("the refreshed answer = %+v, %t", answer, show)
+	}
+	if !answer.LatestPublished.Equal(publishedAt) {
+		t.Fatalf("the refreshed answer carried moment %s, want %s", answer.LatestPublished, publishedAt)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("the metadata-less dev cache made %d requests, want the one refresh", hits.Load())
+	}
+	persisted, ok := loadCheckCache(path)
+	if !ok || !persisted.LatestPublished.Equal(publishedAt) {
+		t.Fatalf("the refresh did not persist the timestamp: %+v, %t", persisted, ok)
+	}
+	// THE SECOND LAUNCH USES THE REFRESHED CACHE, which now carries the fact.
+	if _, show := CheckLaunch(context.Background(), CheckOptions{Running: runningDev, ProfileDir: profile, Client: client, Now: clock}); !show {
+		t.Fatal("the refreshed cache did not answer")
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("a cache WITH its moment still asked %d times", hits.Load())
+	}
+
+	// A STABLE CACHE WITHOUT A MOMENT IS NOT REFRESHED: stable orders by tag.
+	stableProfile := t.TempDir()
+	stablePath := filepath.Join(stableProfile, "update-check.json")
+	if err := saveCheckCache(stablePath, checkCache{CheckedAt: now.Add(-time.Minute), Latest: "v0.2.0", Running: "v0.1.0"}); err != nil {
+		t.Fatal(err)
+	}
+	before := hits.Load()
+	stableAnswer, stableShow := CheckLaunch(context.Background(), CheckOptions{Running: "v0.1.0", ProfileDir: stableProfile, Client: client, Now: clock})
+	if !stableShow || stableAnswer.Latest != "v0.2.0" {
+		t.Fatalf("the stable cache answer = %+v, %t", stableAnswer, stableShow)
+	}
+	if hits.Load() != before {
+		t.Fatalf("a stable cache asked the API %d times", hits.Load()-before)
+	}
+
+	// AND WHEN THE API CANNOT ANSWER, THE OFFER STANDS. The unreachable API
+	// makes the refresh fail; the moment stays unknown and the installer will
+	// resolve it when it writes the record.
+	offline := &Client{HTTP: server.Client(), APIBase: "http://127.0.0.1:1", DownloadBase: server.URL, Revision: runningDev}
+	offlineProfile := t.TempDir()
+	if err := saveCheckCache(filepath.Join(offlineProfile, "update-check.dev.json"),
+		checkCache{CheckedAt: now.Add(-time.Minute), Latest: latestDev, Running: runningDev}); err != nil {
+		t.Fatal(err)
+	}
+	offlineAnswer, offlineShow := CheckLaunch(context.Background(), CheckOptions{Running: runningDev, ProfileDir: offlineProfile, Client: offline, Now: clock})
+	if !offlineShow || offlineAnswer.Latest != latestDev {
+		t.Fatalf("the offline fallback lost the offer: %+v, %t", offlineAnswer, offlineShow)
 	}
 }

@@ -44,9 +44,10 @@ question — and a skip the profile could not save says so rather than claiming 
 durable answer it did not write.
 
 `update.auto`, `auto update` in `/settings`, is on by default. The dismissal and
-the failure count live in one small file beside `config.json`, keyed by release
-and by executable, so the same release never asks twice and a release that failed
-three times stops being tried on its own.
+the failure count live in one small PROFILE file beside `config.json`, keyed by
+release, so the same release never asks twice and a release that failed three
+times stops being tried on its own. (The install lock, not this file, is the one
+keyed by the executable.)
 
 WHICH VERSION IS WHICH IS ON THE SCREEN. The offer's line names the release that
 is out; the build holding this session is the one `/status` reports (its `build`
@@ -57,6 +58,10 @@ session changes, and the new build is what opens the next time codeaf is started
 on an older build. The automatic road moves forward only: a duplicate is a quiet no-op, an
 older build is refused unless a person names the tag, and two same-day dev or
 staging builds whose published moment is not known are refused rather than
-guessed at. With `update.auto` off the launch check still runs and says the same
+guessed at — with a sentence that says the order could not be confirmed rather
+than calling either one newer. A dev or staging tag resolved without the API
+looks its own publish moment up once, best-effort, so a hand-installed same-day
+build is still ordered by fact instead of blocking the next one, and an offline
+or unindexed tag installs without it. With `update.auto` off the launch check still runs and says the same
 two versions in one quiet line; `CODEAF_NO_UPDATE_CHECK=1` is what makes no
 request at all.

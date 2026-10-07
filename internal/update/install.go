@@ -97,14 +97,51 @@ func Install(ctx context.Context, options InstallOptions) (InstallResult, error)
 	// UNDER THE LOCK, WHAT IS ON DISK IS WHAT COUNTS. The record is trusted only
 	// while the file still hashes to it, so an externally replaced binary reads
 	// as unknown and a candidate newer than it is not refused on a stale fact.
-	if record, ok := lock.Record(); ok {
-		if record.Tag == release.Tag {
-			// ALREADY THERE IS SUCCESS. Nothing is downloaded, nothing is
-			// written, and the caller is told so it can stay quiet about it.
-			return InstallResult{Release: release, Path: target, Already: true}, nil
+	record, recorded := lock.Record()
+	if recorded && record.Tag == release.Tag {
+		// ALREADY THERE IS SUCCESS. Nothing is downloaded, nothing is written,
+		// and the caller is told so it can stay quiet about it.
+		return InstallResult{Release: release, Path: target, Already: true}, nil
+	}
+	// ONE BEST-EFFORT MOMENT FOR THE RELEASE BEING INSTALLED, AND ONLY WHERE IT
+	// IS THE FACT THAT ORDERS: a NAMED dev or staging tag is resolved without
+	// the API ([Client.Select]), so the record written from it would carry no
+	// moment at all — and a same-day channel build whose record is dateless
+	// blocks the next genuinely-newer one for the rest of the day
+	// ([recordCompare]). Stable and rc releases order by the tag itself, so they
+	// ask the release API for nothing. The lookup is bounded by the client's api
+	// window and its failure is not fatal: an unknown moment is never guessed
+	// at, and a person naming a tag still gets that exact file.
+	if release.PublishedAt.IsZero() && channelBuildNeedsMoment(release.Tag) {
+		if moment, found := options.Client.TagPublished(ctx, release.Tag); found {
+			release.PublishedAt = moment
 		}
-		if recordSupersedes(record, release) && !options.AllowDowngrade {
-			return InstallResult{}, &RefusalError{Reason: "codeaf " + record.Tag + " is already the build on disk, newer than " + release.Tag}
+	}
+	if recorded && !options.AllowDowngrade {
+		// AND ONE FOR THE RECORD, for the same reason read the other way: a
+		// record a pre-PR codeaf or an offline install wrote without a moment
+		// must not block a candidate whose own moment proves it is newer. The
+		// lookup is skipped when the person deliberately named a tag — a rollback
+		// is not a question about which build is ahead — and when the two tags
+		// are not one channel pair, because only a same-channel pair is ordered
+		// by the moment at all.
+		if record.PublishedAt.IsZero() && channelBuildNeedsMoment(record.Tag) && Kind(record.Tag) == Kind(release.Tag) {
+			if moment, found := options.Client.TagPublished(ctx, record.Tag); found {
+				record.PublishedAt = moment
+			}
+		}
+		if supersedes, certain := recordCompare(record, release); supersedes {
+			reason := "codeaf " + record.Tag + " is already the build on disk"
+			if certain {
+				reason += ", newer than " + release.Tag
+			} else {
+				// NEVER CLAIM AN ORDER THE FACTS DO NOT CARRY, and never blame
+				// one side for a moment nobody has: the two builds share a day
+				// and their order could not be confirmed, so the disk build is
+				// kept without calling it newer.
+				reason += " · their release order could not be confirmed, so " + release.Tag + " was not written over it · /update " + release.Tag + " installs that exact tag"
+			}
+			return InstallResult{}, &RefusalError{Reason: reason}
 		}
 	}
 	var (

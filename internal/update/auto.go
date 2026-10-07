@@ -510,49 +510,72 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
+// channelBuildNeedsMoment reports whether a tag carries the dev or staging
+// channel whose BUILDS are ordered by their publish moment. Stable and release
+// candidate tags carry their own order, so nothing has to be looked up for them.
+func channelBuildNeedsMoment(tag string) bool {
+	channel := Kind(tag)
+	return channel == "dev" || channel == "staging"
+}
+
 // recordSupersedes reports whether the build on disk is newer than the release
-// this process resolved. It uses PUBLISHED ordering where the facts exist — the
-// same CompareChannelBuilds the launch check uses — and falls back to the tag
+// this process resolved. It is [recordCompare]'s verdict alone, and it is the
+// installer's guard against a stale caller stepping the file back.
+func recordSupersedes(record installRecord, release Release) bool {
+	supersedes, _ := recordCompare(record, release)
+	return supersedes
+}
+
+// recordCompare orders the build on disk against the release this process
+// resolved, and it says whether that answer is a FACT or the conservative
+// same-day tie. It uses PUBLISHED ordering where the facts exist — the same
+// CompareChannelBuilds the launch check uses — and falls back to the tag
 // grammar only when it must; two tags it cannot order are not guessed at.
 //
 // TWO SAME-DAY CHANNEL BUILDS WITH AN UNKNOWN MOMENT ARE ONE OF THE TAGS IT
 // CANNOT ORDER. The date inside them is equal and says nothing about which came
 // second, so the permissive answer — proceed — would step a file another
 // window advanced back to a stale same-day dev or staging build. The build on
-// disk therefore wins; a person who means to roll back names the tag, which
-// sets [InstallOptions.AllowDowngrade] and never comes through here for an
-// answer.
-func recordSupersedes(record installRecord, release Release) bool {
+// disk therefore wins (supersedes) while certain is FALSE, so the refusal can
+// say what is really known instead of claiming the disk build is newer. A
+// person who means to roll back names the tag, which sets
+// [InstallOptions.AllowDowngrade] and never comes through here for an answer.
+//
+// THE INSTALLER FILLS THE MOMENTS BEFORE IT ASKS, with ONE best-effort
+// [Client.TagPublished] lookup for a tag whose moment is unknown, so a
+// same-day candidate that really is newer is not blocked by a record written
+// before the moment was kept (install.go).
+func recordCompare(record installRecord, release Release) (supersedes, certain bool) {
 	installed, candidate := strings.TrimSpace(record.Tag), strings.TrimSpace(release.Tag)
 	if installed == "" || candidate == "" {
-		return false
+		return false, false
 	}
 	if installed == candidate {
-		return true
+		return true, true
 	}
 	installedChannel, installedDate, installedOK := ParseChannel(installed)
 	candidateChannel, candidateDate, candidateOK := ParseChannel(candidate)
 	if installedOK && candidateOK && installedChannel == candidateChannel {
 		if !record.PublishedAt.IsZero() && !release.PublishedAt.IsZero() {
 			comparison, ok := CompareChannelBuilds(installed, record.PublishedAt, candidate, release.PublishedAt)
-			return ok && comparison > 0
+			return ok && comparison > 0, ok
 		}
 		if installedDate != candidateDate {
 			// THE DATE IS A FACT WHEN THEY DIFFER: the older-dated build is the
 			// older one whatever the clock said on the day.
-			return installedDate > candidateDate
+			return installedDate > candidateDate, true
 		}
 		// SAME DAY, AND ONE OF THE TWO MOMENTS IS UNKNOWN. There is no fact
 		// left to order them with, and guessing would be permissive in exactly
-		// the case this refusal exists for ([codeupdate.Choice.Published] is
-		// how the pinned road hands the moment over, so a correct install
-		// carries it).
-		return true
+		// the case this refusal exists for ([codeupdate.Choice.Published] and
+		// [Client.TagPublished] are how the pinned and named roads hand the
+		// moment over).
+		return true, false
 	}
 	if comparison, ok := CompareSemverTags(installed, candidate); ok {
-		return comparison > 0
+		return comparison > 0, true
 	}
-	return false
+	return false, false
 }
 
 // InstallRefusal names why this target may not be replaced in place — a package

@@ -413,10 +413,22 @@ func (a *app) offerTick() tea.Cmd {
 // that own every key: the settings sheet's value box and model picker, and the
 // provider panel's key box.
 //
+// AND THE SHEETS THAT TAKE THE KEYS SLOT OR THE WHOLE FRAME ARE ON IT TOO. The
+// three typed lists put their own sentence in the slot the countdown is READ
+// from — [app.hintWord] outranks [app.updateOfferHint], so the release and the
+// seconds are not drawn and only the defer clause survives beside them — the
+// folder chooser shades the frame it keeps underneath (view.go's
+// [app.contextModalShowing]), and the phone tier's status sheet and tool detail
+// replace the frame outright. In all of them the countdown cannot be watched,
+// and the clock WAITS rather than running down out of sight. A door added beside
+// these should ask its own question here.
+//
 // A RUNNING TURN IS NOT ON THIS LIST. There the offer's defer clause is drawn
 // under the turn's own keys and its chord still works, which is exactly where
 // the countdown must keep running (steer.go's [app.hintShorter] keeps that
-// clause while it does).
+// clause while it does): keeping work moving and staying current at the same
+// time is the whole reason the grace exists. The list is the states that TAKE
+// the slot away from the running conversation, not the conversation's own work.
 func (a *app) updateOfferHidden() bool {
 	if a.questionRoomOpen() || a.setup.open || a.railPlanPending.id != "" {
 		return true
@@ -429,6 +441,21 @@ func (a *app) updateOfferHidden() bool {
 	// the offer's ([place.showsOffer]), so a room added later answers it on the
 	// day it is registered rather than on the day somebody remembers this list.
 	if pl := a.showing(); pl != nil && !pl.showsOffer(a) {
+		return true
+	}
+	// THE INPUT LINE'S OWN OVERLAYS take the keys slot with their own sentence:
+	// the model picker, the thinking ladder and the session picker all answer
+	// through [app.hintWord], which outranks [app.updateOfferHint] — so the
+	// release and the seconds are replaced, and only the defer clause rides
+	// beside their keys.
+	if a.pick.open || a.effPick.open || a.roster.open {
+		return true
+	}
+	// AND THE FRAME-TAKING SHEETS: the context chooser draws over what stays
+	// underneath, and the phone tier's status sheet and tool detail are pages of
+	// their own ([app.contextModalShowing], [app.deckShowing],
+	// [app.expandShowing]).
+	if a.contextModalShowing() || a.deckShowing() || a.expandShowing() {
 		return true
 	}
 	return a.sheetLayerOwnsKeys() || a.addPanel.open

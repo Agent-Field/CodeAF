@@ -469,9 +469,11 @@ type Options struct {
 	// Restart is the plan a quitting surface used to fill for the door to read
 	// after the terminal was back. NO INSTALL FILLS IT NOW: an install replaces
 	// the file and the next launch opens it, so nothing on this surface quits for
-	// an update. The field is still handed in by the four doors because the
-	// engine lane reads the same plan, and it is empty on every road that does
-	// not restart.
+	// an update, and no code here reads the plan. It is handed in by the four
+	// doors so the shared launch keeps one empty plan rather than four, and it is
+	// RETIRED IN PLACE rather than deleted while the door's own detach-then-
+	// restart road (cmd/codeaf/chatv3.go's [finishChatRestart]) is still written
+	// and tested — see the change summary for why that road is kept.
 	UpdateRunning string
 	UpdateCurl    string
 	UpdateArgs    []string

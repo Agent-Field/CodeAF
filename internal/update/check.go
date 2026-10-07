@@ -109,21 +109,44 @@ func CheckLaunch(ctx context.Context, options CheckOptions) (Available, bool) {
 		now = options.Now
 	}
 	path := config.ProfilePath(options.ProfileDir, cacheName)
-	if cached, ok := loadCheckCache(path); ok && cached.Running == running {
+	cached, cachedOK := loadCheckCache(path)
+	cachedForRunning := cachedOK && cached.Running == running
+	if cachedForRunning {
 		age := now().Sub(cached.CheckedAt)
-		if age >= 0 && age < lifetime {
-			answer := Available{
-				Latest: cached.Latest, Running: running, Curl: curl,
-				LatestPublished: cached.LatestPublished, RunningPublished: cached.RunningPublished,
-			}
-			return answer, answer.Newer()
+		cachedForRunning = age >= 0 && age < lifetime
+	}
+	// A DEV OR STAGING ANSWER IS ONLY AS GOOD AS ITS MOMENT. That is the one
+	// channel whose comparison orders two BUILDS BY THE MOMENT rather than by
+	// the tag, so a cache a pre-PR codeaf wrote — or any answer that arrived
+	// without a timestamp — cannot order a same-day pair at all. It is
+	// REFRESHED rather than reused whole: an entry with no fact behind it must
+	// not decide the offer for the rest of its lifetime. The stable and rc
+	// channels order by the tag itself, so a missing moment costs them nothing
+	// and they keep their cache untouched.
+	needsMoment := (channel == "dev" || channel == "staging") && cached.LatestPublished.IsZero()
+	if cachedForRunning && !needsMoment {
+		answer := Available{
+			Latest: cached.Latest, Running: running, Curl: curl,
+			LatestPublished: cached.LatestPublished, RunningPublished: cached.RunningPublished,
 		}
+		return answer, answer.Newer()
 	}
 	if options.Client == nil {
 		return Available{}, false
 	}
 	release, err := options.Client.Check(ctx, Choice{Channel: channel, Running: running})
 	if err != nil {
+		// THE REFRESH IS BEST-EFFORT. A release the API cannot answer for must
+		// not turn a known offer into no offer at all: a usable cache is still
+		// the answer, moment or no moment, and the installer resolves the
+		// moment it needs when it writes the record.
+		if cachedForRunning {
+			answer := Available{
+				Latest: cached.Latest, Running: running, Curl: curl,
+				LatestPublished: cached.LatestPublished, RunningPublished: cached.RunningPublished,
+			}
+			return answer, answer.Newer()
+		}
 		return Available{}, false
 	}
 	answer := Available{

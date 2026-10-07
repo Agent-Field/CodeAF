@@ -538,6 +538,14 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 		{"the team menu", func(a *app) { a.teamMenu.on = true }},
 		{"the provider panel", func(a *app) { a.addPanel.open = true }},
 		{"a question page", func(a *app) { a.qroom = &questionRoom{} }},
+		// THE SHEETS THE FOOT REPLACES THE OFFER'S SENTENCE WITH, or that take
+		// the frame whole (the phone tier's status sheet and tool detail).
+		{"the model picker", func(a *app) { a.pick.open = true }},
+		{"the thinking ladder", func(a *app) { a.effPick.open = true }},
+		{"the session picker", func(a *app) { a.roster.open = true }},
+		{"the folder chooser", func(a *app) { a.folder.open = true }},
+		{"the status sheet", func(a *app) { a.width = phoneWidth; a.deck.open = true }},
+		{"the tool detail", func(a *app) { a.width = phoneWidth; a.expand.open = true }},
 	}
 	for _, row := range hidden {
 		t.Run("waits under "+row.name, func(t *testing.T) {
@@ -549,8 +557,11 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 			if cmd := a.tookOfferTick(); cmd == nil || !a.offer.offering() {
 				t.Fatalf("the grace was spent under %s: cmd = %v offer = %+v", row.name, cmd, a.offer)
 			}
-			if !a.offer.deadline.After(a.now()) {
-				t.Fatalf("the deadline was not moved on under %s: %s", row.name, a.offer.deadline)
+			// THE GRACE IS GIVEN BACK WHOLE, not merely kept alive: the clock
+			// restarts at the full window from the moment the offer is readable
+			// again, so a person who leaves the sheet gets the whole countdown.
+			if left := a.offer.deadline.Sub(a.now()); left <= 0 || left > codeupdate.AutoGrace || left < codeupdate.AutoGrace-time.Second {
+				t.Fatalf("the grace did not restart under %s: %s left, want about %s", row.name, left, codeupdate.AutoGrace)
 			}
 			if lab.installed != 0 {
 				t.Fatalf("%s installed a release", row.name)
@@ -560,10 +571,11 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 	counting := []struct {
 		name string
 		seat func(*app)
+		keys func(*app, int) string
 	}{
-		{"the conversation", func(a *app) {}},
-		{"home", func(a *app) { a.raisePlace(pageHome) }},
-		{"a running turn", func(a *app) { a.state = stateWorking; a.turn = 1; a.input.setText("work") }},
+		{"the conversation", func(a *app) {}, func(a *app, width int) string { return a.footHint(width) }},
+		{"home", func(a *app) { a.raisePlace(pageHome) }, func(a *app, width int) string { return a.homeFootLine(width, a.pal) }},
+		{"a running turn", func(a *app) { a.state = stateWorking; a.turn = 1; a.input.setText("work") }, func(a *app, width int) string { return a.footHint(width) }},
 	}
 	for _, row := range counting {
 		t.Run("counts over "+row.name, func(t *testing.T) {
@@ -571,6 +583,12 @@ func TestTheGraceWaitsWhereTheOfferCannotBeAnswered(t *testing.T) {
 			a := lab.app
 			a.offer.raise("v0.9.3", "v0.9.2", a.now())
 			row.seat(a)
+			// THE CONTROL STAYS ON THE ROW WHERE THE CLOCK KEEPS RUNNING: a
+			// countdown that cannot be skipped is a countdown a person cannot
+			// answer, which is the whole reason the pause list exists.
+			if hint := row.keys(a, 200); !strings.Contains(hint, "skip") {
+				t.Fatalf("the offer's control left the keys row over %s: %q", row.name, hint)
+			}
 			a.offer.deadline = a.now().Add(-time.Second)
 			if cmd := a.tookOfferTick(); cmd == nil || !a.updateInFlight {
 				t.Fatalf("the deadline did not fire over %s: cmd = %v in flight = %t", row.name, cmd, a.updateInFlight)
@@ -877,5 +895,62 @@ func TestASameDayDevWindowDoesNotStepBackTheBuildAnotherWindowInstalled(t *testi
 	}
 	if state := codeupdate.LoadAutoState(profile); state.Failures != 0 {
 		t.Fatalf("a refusal was counted as a failure: %+v", state)
+	}
+}
+
+// TestATypedNamedTagRecordsTheLookedUpPublishMoment proves the MANUAL named road
+// end to end through the surface's own wiring: `/update <dev-tag>` resolves a
+// PINNED tag without the API, the shared installer looks the tag's publish
+// moment up once (best-effort) and writes it into the record \u2014 which is the fact
+// a later same-day channel update needs to move forward safely.
+func TestATypedNamedTagRecordsTheLookedUpPublishMoment(t *testing.T) {
+	const running = "dev-20261007-aaaaaaaaaaaa"
+	publishedAt := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+	asset := []byte("dev early bytes")
+	digest := sha256.Sum256(asset)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.Contains(request.URL.Path, "/releases/tags/"):
+			fmt.Fprintf(w, `{"tag_name":%q,"published_at":%q}`, running, publishedAt.Format(time.RFC3339))
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", digest, runtime.GOOS, runtime.GOARCH)
+		case strings.Contains(request.URL.Path, "/releases/download/"):
+			_, _ = w.Write(asset)
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL, Revision: running}
+	target := filepath.Join(t.TempDir(), "codeaf")
+
+	lab := newOfferLab(t, offerAuto(&codeupdate.AutoState{}))
+	a := lab.app
+	a.updateRunning = running
+	a.resolveUpdate = client.Select
+	a.installUpdate = func(install context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
+		options.Client = client
+		options.Target = target
+		return codeupdate.Install(install, options)
+	}
+	command := a.runUpdateCommand(running)
+	if command == nil {
+		t.Fatal("the typed named tag was refused")
+	}
+	drive(t, a, command())
+	if a.updateInFlight {
+		t.Fatal("the named install never finished")
+	}
+	if !strings.Contains(updateNotes(a), "checksum matched") {
+		t.Fatalf("the manual completion was not said:\n%s", updateNotes(a))
+	}
+	lock, err := codeupdate.TryTargetLock(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, ok := lock.Record()
+	lock.Release()
+	if !ok || record.Tag != running || !record.PublishedAt.Equal(publishedAt) {
+		t.Fatalf("the typed install recorded %+v, ok = %t; want the looked-up moment %s", record, ok, publishedAt)
 	}
 }
