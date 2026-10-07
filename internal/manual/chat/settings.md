@@ -45,7 +45,10 @@ from the positive “show hints” label.
 Saved preferences appear when Settings is opened again. Interface preferences
 changed by chat refresh when the turn finishes; changes made directly in Settings
 refresh the interface immediately. Startup-only settings still need the CLI
-restart stated in their receipt. Saving memory preferences does not reopen a
+restart stated in their receipt. Chat-written routing, speed guard and pinned-host
+preferences also recommend restarting the CLI to ensure already-open chats use
+them; the panel has separate live controls for those settings. Saving memory
+preferences does not reopen a
 memory store already held by a running chat.
 
 Some controls remain yours to change in Settings: approvals, spending limits,

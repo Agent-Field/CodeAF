@@ -74,3 +74,7 @@ regressions and related choice/hints/word tests. Full acceptance for the final
 revision, including the affected session package, is recorded in the draft PR.
 These are direct tool and runtime-boundary tests, not a claim that a live model
 conversation was used for this validation.
+
+Chat-written routing, speed guard and pinned-host preferences explicitly recommend
+a restart to ensure activation in already-open chats. This wording is specific
+to the tool path; the panel retains its live transport update hooks.
