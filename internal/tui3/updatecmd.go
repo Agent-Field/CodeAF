@@ -40,6 +40,14 @@ type updateInstallMsg struct {
 	result codeupdate.InstallResult
 	err    error
 	auto   bool
+	// tag is the release THIS WINDOW asked for. The installer answers an empty
+	// [codeupdate.InstallResult] on every error ([codeupdate.Install]), so a
+	// failure tag read from the result alone would be "", and the automatic
+	// road would record no failure and name no release. It is carried from the
+	// resolve, which is the last place both the answer and the offer's tag are
+	// in hand ([app.tookUpdateInstall] falls back to the offer for a message
+	// built before this field existed).
+	tag string
 }
 
 // checkForUpdate starts after the app is ready to draw, so a slow or absent
@@ -84,6 +92,10 @@ func (a *app) tookUpdateCheck(message updateCheckMsg) tea.Cmd {
 		return nil
 	}
 	a.offer.raise(tag, a.updateRunning, a.now())
+	// THE MOMENT IS KEPT WITH THE TAG, because the automatic road resolves the
+	// tag itself rather than the channel and the install record needs the fact
+	// (see [updateOffer.published] and [app.pinnedChoice]).
+	a.offer.published = message.available.LatestPublished
 	a.note(a.updateOfferNote())
 	return a.offerTick()
 }
@@ -152,6 +164,17 @@ func (a *app) beginUpdate(choice codeupdate.Choice, auto, named bool) tea.Cmd {
 	}
 }
 
+// pinnedChoice is the request for ONE exact tag this window is holding, with the
+// publish moment the launch check gave it ([updateOffer.published]). It is the
+// automatic road's own answer and bare `/update` answered from an open offer:
+// both pin a tag, both install with AllowDowngrade false, so both must hand the
+// installer the fact that orders two same-day channel builds.
+func (a *app) pinnedChoice(tag string) codeupdate.Choice {
+	choice := updateChoice(tag, a.updateRunning)
+	choice.Published = a.offer.published
+	return choice
+}
+
 func updateChoice(argument, running string) codeupdate.Choice {
 	argument = strings.TrimSpace(argument)
 	switch argument {
@@ -214,8 +237,16 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 	// The lock, the on-disk re-read and the duplicate/downgrade refusal all live
 	// inside [codeupdate.Install], so the chat surface has no second acquirer to
 	// keep in step with the command line.
+	// THE TAG IS COMPUTED ONCE, AND THE OFFER KEEPS IT WHEN THE RESOLVE COULD
+	// NOT. A resolver that answers a bare tag (the pinned road) always names
+	// one; a resolver that errored may not, and the offer's own tag is the last
+	// fact either road has.
+	tag := strings.TrimSpace(message.release.Tag)
+	if tag == "" {
+		tag = strings.TrimSpace(a.offer.tag)
+	}
 	a.offer.downloading()
-	a.offer.tag = strings.TrimSpace(message.release.Tag)
+	a.offer.tag = tag
 	a.note(a.updateOfferNote())
 	install := a.installUpdate
 	release := message.release
@@ -228,7 +259,7 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 		result, err := install(context.Background(), codeupdate.InstallOptions{
 			Release: release, AllowDowngrade: allowDowngrade,
 		})
-		return updateInstallMsg{result: result, err: err, auto: message.auto}
+		return updateInstallMsg{result: result, err: err, auto: message.auto, tag: tag}
 	}
 }
 
@@ -237,20 +268,28 @@ func (a *app) tookUpdateResolve(message updateResolveMsg) tea.Cmd {
 // launch opens the new one.
 func (a *app) tookUpdateInstall(message updateInstallMsg) tea.Cmd {
 	a.updateInFlight = false
+	// THE TAG SURVIVES A FAILURE. Every error out of the installer carries an
+	// empty result, so the tag this window asked for is read from the message,
+	// then the result, and last from the offer that raised it — never from the
+	// empty result alone. Without this the automatic road recorded no failure
+	// and drew `codeaf  could not be installed`: no count, no backoff, and no
+	// release named in the line a person reads.
+	tag := strings.TrimSpace(message.tag)
+	if tag == "" {
+		tag = strings.TrimSpace(message.result.Release.Tag)
+	}
+	if tag == "" {
+		tag = strings.TrimSpace(a.offer.tag)
+	}
 	if message.err != nil {
-		return a.updateStopped(message.auto, message.result.Release.Tag, message.err)
+		return a.updateStopped(message.auto, tag, message.err)
 	}
 	if message.result.Already {
 		// ALREADY INSTALLED IS SUCCESS, SAID QUIETLY: the build on disk is the
 		// one this window was about to write, so there is nothing to alarm.
-		tag := strings.TrimSpace(message.result.Release.Tag)
 		a.offer.clear()
 		a.note("codeaf " + tag + " is already the build on disk · this session is untouched")
 		return nil
-	}
-	tag := strings.TrimSpace(message.result.Release.Tag)
-	if tag == "" {
-		tag = a.offer.tag
 	}
 	a.offer.ready(a.now())
 	a.offer.tag = tag

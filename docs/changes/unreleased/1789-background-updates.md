@@ -46,3 +46,16 @@ durable answer it did not write.
 the failure count live in one small file beside `config.json`, keyed by release
 and by executable, so the same release never asks twice and a release that failed
 three times stops being tried on its own.
+
+WHICH VERSION IS WHICH IS ON THE SCREEN. The offer's line names the release that
+is out; the build this window is RUNNING is the one the status row and `/status`
+report, and the note the offer writes names both (`codeaf <new> is out \u00b7 you
+have <current>`). An install only replaces the file: nothing about the running
+session changes, and the new build is what opens the next time codeaf is started
+\u2014 so a window can be current and behind its channel at the same time, on
+purpose. The automatic road moves forward only: a duplicate is a quiet no-op, an
+older build is refused unless a person names the tag, and two same-day dev or
+staging builds whose published moment is not known are refused rather than
+guessed at. With `update.auto` off the launch check still runs and says the same
+two versions in one quiet line; `CODEAF_NO_UPDATE_CHECK=1` is what makes no
+request at all.

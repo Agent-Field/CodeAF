@@ -173,6 +173,17 @@ func TestRecordSupersedesUsesPublishedOrdering(t *testing.T) {
 		{"same-day dev, later publish", installRecord{Tag: "dev-20261006-bbbbbbbbbbbb", PublishedAt: newer}, Release{Tag: "dev-20261006-aaaaaaaaaaaa", PublishedAt: older}, true},
 		{"same-day dev, earlier publish", installRecord{Tag: "dev-20261006-aaaaaaaaaaaa", PublishedAt: older}, Release{Tag: "dev-20261006-bbbbbbbbbbbb", PublishedAt: newer}, false},
 		{"unorderable", installRecord{Tag: "dev-20261006-aaaaaaaaaaaa"}, Release{Tag: "staging-20261007-bbbbbbbbbbbb"}, false},
+		// SAME DAY AND ONE MOMENT UNKNOWN IS NOT A FACT TO ORDER BY. The
+		// permissive answer would step a file another window advanced back to a
+		// stale same-day build, so the record wins in BOTH directions and the
+		// caller must name a tag to roll back (auto.go's [recordSupersedes]).
+		{"same-day dev, record's moment unknown", installRecord{Tag: "dev-20261006-bbbbbbbbbbbb"}, Release{Tag: "dev-20261006-aaaaaaaaaaaa", PublishedAt: older}, true},
+		{"same-day dev, candidate's moment unknown", installRecord{Tag: "dev-20261006-bbbbbbbbbbbb", PublishedAt: newer}, Release{Tag: "dev-20261006-aaaaaaaaaaaa"}, true},
+		{"same-day dev, both moments unknown", installRecord{Tag: "dev-20261006-bbbbbbbbbbbb"}, Release{Tag: "dev-20261006-aaaaaaaaaaaa"}, true},
+		// DIFFERENT DATES ARE A FACT whatever the moments say, in both channels
+		// that carry them.
+		{"dev one day newer", installRecord{Tag: "dev-20261007-aaaaaaaaaaaa"}, Release{Tag: "dev-20261006-bbbbbbbbbbbb"}, true},
+		{"dev one day older", installRecord{Tag: "dev-20261006-aaaaaaaaaaaa"}, Release{Tag: "dev-20261007-bbbbbbbbbbbb"}, false},
 	} {
 		t.Run(row.name, func(t *testing.T) {
 			if got := recordSupersedes(row.record, row.release); got != row.want {

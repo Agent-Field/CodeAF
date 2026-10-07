@@ -923,3 +923,37 @@ func TestC14RestartArgumentsReopenTheSameConversation(t *testing.T) {
 		})
 	}
 }
+
+// TestSelectingAPinnedTagCarriesTheCallersPublishMoment proves the pinned road's
+// half of the resolution contract: an exact tag is answered WITHOUT the API, and
+// the moment the caller already knows rides into the Release. The install record
+// is written from that moment, and without it two same-day dev or staging builds
+// could not be ordered under the lock (auto.go's [recordSupersedes]) — the guard
+// that stops a stale offer from writing an older same-day build over a newer
+// file another window installed.
+func TestSelectingAPinnedTagCarriesTheCallersPublishMoment(t *testing.T) {
+	published := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	// THE ADDRESS IS UNREACHABLE ON PURPOSE: a pinned tag is resolved from the
+	// request alone, and a test that needed a server here would be proving a
+	// contract the pinned road does not have.
+	client := &Client{APIBase: "http://127.0.0.1:1", DownloadBase: "http://127.0.0.1:1"}
+	release, err := client.Select(context.Background(), Choice{
+		Version: "dev-20261006-aaaaaaaaaaaa", Running: "dev-20261006-bbbbbbbbbbbb", Published: published,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if release.Tag != "dev-20261006-aaaaaaaaaaaa" || release.Repository != primaryRepository {
+		t.Fatalf("pinned resolve = %+v", release)
+	}
+	if !release.PublishedAt.Equal(published) {
+		t.Fatalf("pinned resolve carried published_at %s, want %s", release.PublishedAt, published)
+	}
+	// AND NOTHING IS INVENTED WHEN THE CALLER HAS NOTHING. A named tag with no
+	// known moment answers zero, which the installer reads as unknown rather
+	// than as old.
+	blank, err := (&Client{}).Select(context.Background(), Choice{Version: "v0.2.0"})
+	if err != nil || blank.Tag != "v0.2.0" || !blank.PublishedAt.IsZero() {
+		t.Fatalf("unnamed moment = %+v, %v", blank, err)
+	}
+}

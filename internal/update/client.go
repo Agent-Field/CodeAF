@@ -304,6 +304,18 @@ type Choice struct {
 	Channel string
 	Version string
 	Running string
+	// Published is THE MOMENT THE CALLER ALREADY KNOWS this exact release was
+	// published, and it means something only beside Version.
+	//
+	// A PINNED TAG IS RESOLVED WITHOUT THE API, so the release it answers would
+	// carry no publish moment at all — and the install record written from it
+	// could not be ordered against the file on disk, which is how a stale
+	// same-day dev or staging build gets written over a newer one
+	// ([recordSupersedes]). The road that pins has the fact already: the launch
+	// check read it from the API and the offer kept it, so it rides here rather
+	// than being guessed at under the lock. A caller resolving a CHANNEL leaves
+	// it zero, because the API's own answer is the fact on that road.
+	Published time.Time
 }
 
 // Release is one selected GitHub release and the repository that answered.
@@ -333,7 +345,7 @@ func (c *Client) Select(ctx context.Context, choice Choice) (Release, error) {
 		if Kind(version) == "other" {
 			return Release{}, fmt.Errorf("%q is not a codeaf release tag", version)
 		}
-		return Release{Tag: version, Repository: primaryRepository}, nil
+		return Release{Tag: version, Repository: primaryRepository, PublishedAt: choice.Published}, nil
 	}
 	channel := strings.TrimSpace(choice.Channel)
 	if channel == "" {

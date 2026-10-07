@@ -3,6 +3,7 @@ package tui3
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -681,4 +682,200 @@ func TestBareUpdateDuringTheOfferDoesNotRollBackAFileAnotherWindowAdvanced(t *te
 			t.Fatalf("the process stamp was mistaken for the file on disk:\n%s", updateNotes(lab.app))
 		}
 	})
+}
+
+// TestAFailedAutomaticInstallKeepsItsTagAndStopsAfterThree is P2-1 through the
+// REAL installer: every error it answers carries an empty
+// [codeupdate.InstallResult], so the tag has to survive in the surface or the
+// automatic road records no failure against the release — no count, no backoff,
+// and a line naming nobody. The release host here answers nothing, which is
+// exactly where the empty result comes from.
+//
+// THE WALL CLOCK IS COMPRESSED, NOT THE COUNTER. Between attempts the test
+// clears LastAttemptAt in the profile so the backoff window has passed, the way
+// three launches on three days would; the failure count, the release it belongs
+// to and the block at the end are the production ones.
+func TestAFailedAutomaticInstallKeepsItsTagAndStopsAfterThree(t *testing.T) {
+	profile := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		http.NotFound(w, request)
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("the running build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const tag = "v0.9.3"
+	lab := newOfferLab(t, productionAuto(profile))
+	a := lab.app
+	var asked []string
+	a.resolveUpdate = client.Select
+	a.installUpdate = func(install context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
+		options.Client = client
+		options.Target = target
+		asked = append(asked, strings.TrimSpace(options.Release.Tag))
+		result, err := codeupdate.Install(install, options)
+		if err == nil {
+			return result, errors.New("the release host answered an install it should not have")
+		}
+		// THE INSTALLER'S OWN CONTRACT, ASSERTED HERE: a failure names no
+		// release, so a surface reading the result alone loses the tag.
+		if result.Release.Tag != "" {
+			return result, fmt.Errorf("the installer returned a tagged result on an error: %+v", result)
+		}
+		return result, err
+	}
+	// THE FIRST ATTEMPT IS THE PRODUCTION ONE: the launch check raises the offer
+	// and the grace runs out.
+	drive(t, a, offerCheck(tag))
+	if !a.offer.offering() {
+		t.Fatal("the launch check raised no offer")
+	}
+	a.offer.deadline = a.now().Add(-time.Second)
+	drive(t, a, updateOfferTickMsg{})
+	state := codeupdate.LoadAutoState(profile)
+	if state.FailedRelease != tag || state.Failures != 1 || state.LastError == "" {
+		t.Fatalf("the failed release was not remembered: %+v", state)
+	}
+	if !strings.Contains(updateNotes(a), "codeaf "+tag+" could not be installed") {
+		t.Fatalf("the failure line did not name the release:\n%s", updateNotes(a))
+	}
+	// THE BACKOFF IS REAL: the same check on the next launch does not offer it.
+	if err := codeupdate.SaveAutoState(profile, state); err != nil {
+		t.Fatal(err)
+	}
+	drive(t, a, offerCheck(tag))
+	if a.offer.offering() {
+		t.Fatal("a release inside its failure backoff was offered again")
+	}
+	// TWO MORE FAILURES, the way later launches reach the same release, exhaust
+	// the count.
+	for attempt := 2; attempt <= 3; attempt++ {
+		state := codeupdate.LoadAutoState(profile)
+		state.LastAttemptAt = time.Time{} // the backoff window has passed
+		if err := codeupdate.SaveAutoState(profile, state); err != nil {
+			t.Fatal(err)
+		}
+		drive(t, a, offerCheck(tag))
+		if !a.offer.offering() {
+			t.Fatalf("attempt %d was not offered after its backoff", attempt)
+		}
+		a.offer.deadline = a.now().Add(-time.Second)
+		drive(t, a, updateOfferTickMsg{})
+		if got := codeupdate.LoadAutoState(profile).Failures; got != attempt {
+			t.Fatalf("attempt %d recorded %d failures", attempt, got)
+		}
+	}
+	final := codeupdate.LoadAutoState(profile)
+	if !final.Blocked(tag) || codeupdate.ShouldOffer(final, tag, a.now()) {
+		t.Fatalf("the exhausted release is still offered: %+v", final)
+	}
+	drive(t, a, offerCheck(tag))
+	if a.offer.offering() {
+		t.Fatal("a release that failed out was offered again")
+	}
+	if len(asked) != 3 {
+		t.Fatalf("the installer was asked for %d releases, want 3", len(asked))
+	}
+	for _, requested := range asked {
+		if requested != tag {
+			t.Fatalf("an attempt carried %q, want %q", requested, tag)
+		}
+	}
+}
+
+// TestASameDayDevWindowDoesNotStepBackTheBuildAnotherWindowInstalled is P2-3 end
+// to end through the REAL resolver and the REAL installer, on the automatic
+// road: window A installs dev-b at 11:00 (the record keeps that moment), and
+// window B's stale check — cached before b was published — offers dev-a at
+// 10:00. AllowDowngrade is false there, so the published ordering the record
+// now carries refuses the rollback instead of writing the older file.
+func TestASameDayDevWindowDoesNotStepBackTheBuildAnotherWindowInstalled(t *testing.T) {
+	const aTag, bTag = "dev-20261006-aaaaaaaaaaaa", "dev-20261006-bbbbbbbbbbbb"
+	publishedA := time.Date(2026, 10, 6, 10, 0, 0, 0, time.UTC)
+	publishedB := publishedA.Add(time.Hour)
+	aBytes, bBytes := []byte("dev-a bytes"), []byte("dev-b bytes")
+	aSum, bSum := sha256.Sum256(aBytes), sha256.Sum256(bBytes)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case strings.Contains(request.URL.Path, "/releases?") || strings.HasSuffix(request.URL.Path, "/releases"):
+			fmt.Fprintf(w, `[{"tag_name":%q,"published_at":%q},{"tag_name":%q,"published_at":%q}]`,
+				aTag, publishedA.Format(time.RFC3339), bTag, publishedB.Format(time.RFC3339))
+		case strings.HasSuffix(request.URL.Path, "/checksums.txt"):
+			sum := bSum
+			if strings.Contains(request.URL.Path, aTag) {
+				sum = aSum
+			}
+			fmt.Fprintf(w, "%x  codeaf-%s-%s\n", sum, runtime.GOOS, runtime.GOARCH)
+		case strings.Contains(request.URL.Path, "/releases/download/"):
+			asset := bBytes
+			if strings.Contains(request.URL.Path, aTag) {
+				asset = aBytes
+			}
+			_, _ = w.Write(asset)
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client := &codeupdate.Client{HTTP: server.Client(), APIBase: server.URL, DownloadBase: server.URL}
+
+	target := filepath.Join(t.TempDir(), "codeaf")
+	if err := os.WriteFile(target, []byte("a before-this-morning build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// WINDOW A: the ordinary channel road (what `codeaf update --dev` and a bare
+	// /update resolve), so the install record is written with the API's own
+	// publish moment for dev-b.
+	releaseB, err := client.Select(context.Background(), codeupdate.Choice{Channel: "dev", Running: aTag})
+	if err != nil || releaseB.Tag != bTag || !releaseB.PublishedAt.Equal(publishedB) {
+		t.Fatalf("the channel resolve = %+v, %v", releaseB, err)
+	}
+	if _, err := codeupdate.Install(context.Background(), codeupdate.InstallOptions{
+		Client: client, Release: releaseB, Target: target,
+	}); err != nil {
+		t.Fatalf("window A's install: %v", err)
+	}
+
+	// WINDOW B: a surface holding the STALE check, with production's own seams
+	// pointed at the one shared executable.
+	profile := t.TempDir()
+	lab := newOfferLab(t, productionAuto(profile))
+	a := lab.app
+	var resolved codeupdate.Release
+	a.resolveUpdate = client.Select
+	a.installUpdate = func(install context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
+		options.Client = client
+		options.Target = target
+		resolved = options.Release
+		return codeupdate.Install(install, options)
+	}
+	drive(t, a, updateCheckMsg{available: codeupdate.Available{
+		Latest: aTag, Running: bTag, LatestPublished: publishedA, RunningPublished: publishedB,
+	}, show: true})
+	if !a.offer.offering() {
+		t.Fatal("the stale check raised no offer")
+	}
+	a.offer.deadline = a.now().Add(-time.Second)
+	drive(t, a, updateOfferTickMsg{})
+
+	if resolved.Tag != aTag {
+		t.Fatalf("the resolver was asked for %q", resolved.Tag)
+	}
+	// THE MOMENT RODE WITH THE PINNED TAG. Without it the record and the
+	// candidate could not be ordered under the lock and the older build would
+	// have been written over the newer one.
+	if !resolved.PublishedAt.Equal(publishedA) {
+		t.Fatalf("the pinned resolve carried published_at %s, want %s", resolved.PublishedAt, publishedA)
+	}
+	if onDisk, err := os.ReadFile(target); err != nil || string(onDisk) != string(bBytes) {
+		t.Fatalf("the older same-day build was written: %q, %v", onDisk, err)
+	}
+	if !strings.Contains(updateNotes(a), "newer than "+aTag) {
+		t.Fatalf("the refusal was not said:\n%s", updateNotes(a))
+	}
+	if state := codeupdate.LoadAutoState(profile); state.Failures != 0 {
+		t.Fatalf("a refusal was counted as a failure: %+v", state)
+	}
 }

@@ -384,6 +384,14 @@ func sha256File(path string) (string, error) {
 // this process resolved. It uses PUBLISHED ordering where the facts exist — the
 // same CompareChannelBuilds the launch check uses — and falls back to the tag
 // grammar only when it must; two tags it cannot order are not guessed at.
+//
+// TWO SAME-DAY CHANNEL BUILDS WITH AN UNKNOWN MOMENT ARE ONE OF THE TAGS IT
+// CANNOT ORDER. The date inside them is equal and says nothing about which came
+// second, so the permissive answer — proceed — would step a file another
+// window advanced back to a stale same-day dev or staging build. The build on
+// disk therefore wins; a person who means to roll back names the tag, which
+// sets [InstallOptions.AllowDowngrade] and never comes through here for an
+// answer.
 func recordSupersedes(record installRecord, release Release) bool {
 	installed, candidate := strings.TrimSpace(record.Tag), strings.TrimSpace(release.Tag)
 	if installed == "" || candidate == "" {
@@ -399,7 +407,17 @@ func recordSupersedes(record installRecord, release Release) bool {
 			comparison, ok := CompareChannelBuilds(installed, record.PublishedAt, candidate, release.PublishedAt)
 			return ok && comparison > 0
 		}
-		return installedDate > candidateDate
+		if installedDate != candidateDate {
+			// THE DATE IS A FACT WHEN THEY DIFFER: the older-dated build is the
+			// older one whatever the clock said on the day.
+			return installedDate > candidateDate
+		}
+		// SAME DAY, AND ONE OF THE TWO MOMENTS IS UNKNOWN. There is no fact
+		// left to order them with, and guessing would be permissive in exactly
+		// the case this refusal exists for ([codeupdate.Choice.Published] is
+		// how the pinned road hands the moment over, so a correct install
+		// carries it).
+		return true
 	}
 	if comparison, ok := CompareSemverTags(installed, candidate); ok {
 		return comparison > 0

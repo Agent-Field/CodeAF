@@ -75,10 +75,17 @@ const (
 
 // updateOffer is the launch offer's whole state.
 type updateOffer struct {
-	phase    updatePhase
-	tag      string
-	running  string
-	deadline time.Time
+	phase   updatePhase
+	tag     string
+	running string
+	// published is the moment the launch check said this exact release was
+	// published, kept so the pinned resolve can hand it to the installer
+	// ([codeupdate.Choice.Published]): an install record written without it
+	// cannot order two same-day dev or staging builds, and a stale one would be
+	// written over a newer file on disk. A raise with no check behind it leaves
+	// it zero, which the installer treats as "unknown" rather than as old.
+	published time.Time
+	deadline  time.Time
 	// settleAt is when the ready or failed line folds away.
 	settleAt time.Time
 }
@@ -305,11 +312,14 @@ func (a *app) updateNowFromOffer() tea.Cmd {
 		return nil
 	}
 	tag := a.offer.tag
+	// THE MOMENT IS TAKEN BEFORE THE OFFER IS CLEARED, because the pinned
+	// resolve still has to name it (see [app.pinnedChoice]).
+	choice := a.pinnedChoice(a.offer.tag)
 	a.offer.clear()
 	a.note("installing codeaf " + tag + " now")
 	// THE TAG IS OURS, NOT THEIRS: the person typed bare `/update`, so this
 	// install may not roll the file back to the candidate this window pinned.
-	return a.beginUpdate(updateChoice(tag, a.updateRunning), false, false)
+	return a.beginUpdate(choice, false, false)
 }
 
 // skipUpdateOffer answers this release "not now", and only while it is being
@@ -470,7 +480,7 @@ func (a *app) tookUpdateGrace() tea.Cmd {
 	}
 	a.offer.expire()
 	a.note(a.updateOfferNote())
-	return a.beginUpdate(updateChoice(tag, a.updateRunning), true, false)
+	return a.beginUpdate(a.pinnedChoice(tag), true, false)
 }
 
 // offerSettle schedules the fold of a finished line and clears it when due.

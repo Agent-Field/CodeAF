@@ -280,14 +280,17 @@ const (
 	// because a person who has silenced the tips has said they know the surface,
 	// and being told about features is the same conversation.
 	KeyHints = "ui.hints"
-	// KeyUpdateAuto is whether codeaf checks for a new release at launch and
-	// installs it in the background on its own. ON is the default: the check is
-	// one small request after the first frame, and a person who does not want it
-	// has a row, an environment variable and one chord on the offer itself. Off
-	// means no launch request and no background install at all; `/update` still
-	// installs a release on request, because a person who typed it has said what
-	// they want. It is a boolean because there is no third answer between
-	// "keep me current" and "leave me alone until I ask".
+	// KeyUpdateAuto is whether codeaf INSTALLS a new release in the background on
+	// its own. ON is the default: the check is one small request after the first
+	// frame, and a person who does not want it has a row, an environment variable
+	// and one chord on the offer itself. OFF means nothing is installed until the
+	// person asks — `/update` still installs a release on request, because a
+	// person who typed it has said what they want — but the LAUNCH CHECK STILL
+	// RUNS and still names the release on one dim line, because knowing is not
+	// acting (cmd/codeaf's surface wires the check separately from this row).
+	// CODEAF_NO_UPDATE_CHECK=1 is the switch that makes no request at all. It is a
+	// boolean because there is no third answer between "keep me current" and
+	// "leave me alone until I ask".
 	KeyUpdateAuto = "update.auto"
 	// KeyWork controls whether completed turn machinery starts folded or open.
 	KeyWork = "ui.work"
@@ -2675,7 +2678,8 @@ func (s *Settings) build() []Setting {
 			Label: "auto update",
 			Hint: "check for a new codeaf at launch and install it in the background. " +
 				"The offer waits in the keys line for about ten seconds; it never blocks a keystroke. " +
-				"Off, nothing is checked or downloaded until you run /update.",
+				"Off, nothing is installed until you run /update; codeaf still checks once and names a new release " +
+				"(CODEAF_NO_UPDATE_CHECK=1 makes no request at all).",
 			read:  func() string { return formatBool(UpdateAutoAt(dir)) },
 			write: func(raw string) error { return writeBool(dir, KeyUpdateAuto, raw) },
 		},
