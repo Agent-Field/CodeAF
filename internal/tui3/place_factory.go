@@ -1,9 +1,12 @@
 package tui3
 
 import (
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // ── THE FACTORY PLACE ───────────────────────────────────────────────────────
@@ -24,7 +27,13 @@ func (placeFactory) word() string { return "factory" }
 // open starts the first read of the floor and arms the place's beat. THE BEAT
 // IS ARMED WITH NOTHING CONNECTED TOO, as on every place but home: the read it
 // asks for is nil then, and a seam wired later is read on the next beat.
+//
+// A words box left open by walking away is shut on the way back in, with its
+// words kept: the narrowed rail is still what the person left, and the next
+// letter they press is a key again rather than a character in a box they
+// cannot remember opening.
 func (placeFactory) open(a *app) tea.Cmd {
+	a.fp.typing = false
 	return tea.Batch(a.armPlaceClock(), a.factoryRead())
 }
 
@@ -69,13 +78,36 @@ func (placeFactory) note(a *app, width int) []string {
 
 func (placeFactory) about() string { return "the work in flight, by where it stands" }
 
-// hint names the keys the page has. With nothing connected there is nothing to
-// walk, and only the way out is named.
+// hint names the keys the page has, for the row under the cursor. With nothing
+// on the floor there is nothing to walk, and only the way out is named; with
+// the words box open the keys are the box's.
+//
+// `space mark` is offered only on a new item, the one kind a mark means
+// anything on, and `[ ] repo` only when there is more than one repo to cycle.
+// `esc` says clear while anything narrows the rail, because that is what the
+// first press does.
 func (placeFactory) hint(a *app) string {
-	if len(factoryWalk(a.fp.snap)) == 0 {
+	if a.fp.typing {
+		return "type to filter · enter keep · esc clear"
+	}
+	if !a.factoryFloorHas() {
 		return "esc back"
 	}
-	return "↑↓ walk · esc back"
+	parts := []string{"↑↓ walk"}
+	if it, ok := a.factoryCursorItem(); ok && it.State == factory.StateNew {
+		parts = append(parts, "space mark")
+	}
+	parts = append(parts, "/ filter")
+	if len(a.fp.snap.Repos) > 1 {
+		parts = append(parts, "[ ] repo")
+	}
+	parts = append(parts, "A backlog")
+	if a.factoryNarrowed() {
+		parts = append(parts, "esc clear")
+	} else {
+		parts = append(parts, "esc back")
+	}
+	return strings.Join(parts, " · ")
 }
 
 // press is a press on a row: the cursor lands on the item drawn there. A press
@@ -93,15 +125,55 @@ func (placeFactory) wheel(a *app, delta int) (tea.Cmd, bool) {
 	return nil, true
 }
 
-// key is the cursor and the way out; the router's classes are read first.
+// owns is the words box, which has the whole keyboard while it is open, as
+// every box inside a place does; and `space` on a new item, which marks it.
+//
+// SPACE IS CLAIMED HERE AND NOT IN key BECAUSE THE ROUTER READS A BARE SPACE
+// AS HALF OF THE DOOR HOME before a place's own keys are asked
+// ([app.placeHomeGesture]). It is claimed only on a new item, so everywhere
+// else on the floor two spaces still go home.
+func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// The box keeps every key but the router's walk between places and its alt
+	// chords, which the hint line goes on naming while the box is open.
+	if a.fp.typing {
+		switch k := msg.String(); {
+		case k == "tab" || k == "shift+tab" || msg.Key().Mod&tea.ModAlt != 0:
+			return nil, false
+		}
+		return a.factoryFilterKey(msg), true
+	}
+	if msg.String() == "space" && a.factoryMark() {
+		return nil, true
+	}
+	return nil, false
+}
+
+// key is the cursor, the rail's narrowings and the way out; the router's
+// classes are read first. `esc` CLEARS A NARROWED RAIL BEFORE IT LEAVES, so a
+// person who filtered does not lose the page to the same key that drops the
+// filter.
 func (placeFactory) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
-	switch msg.String() {
+	switch k := msg.String(); k {
 	case "esc":
+		if a.factoryNarrowed() {
+			a.factoryClear()
+			return nil
+		}
 		a.leavePlace()
 	case "up", "ctrl+p":
 		a.factoryMove(-1)
 	case "down", "ctrl+n":
 		a.factoryMove(1)
+	case "/":
+		if a.factoryFloorHas() {
+			a.factoryOpenFilter()
+		}
+	case "[":
+		a.factoryCycleRepo(-1)
+	case "]":
+		a.factoryCycleRepo(1)
+	case "A", "shift+a":
+		a.factoryToggleBacklog()
 	}
 	return nil
 }
