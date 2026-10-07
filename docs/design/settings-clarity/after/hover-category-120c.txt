@@ -1,4 +1,4 @@
- >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 3:04pm
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 4:27pm
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -7,7 +7,7 @@
   Memory             › Search all settings
   Tasks              mouse interaction                                                                               on
   AI teams           timestamps                                                                                 footers
-  Permissions        completed tool details                                                                   collapsed
+  Permissions        completed tool details                                                                  • expanded
   Spending           tool icons                                                                                    auto
   Connections        automatic updates                                                                               on
   Privacy            background reminders                                                                           off

@@ -156,3 +156,17 @@ Each pair below shows the primary former location and the new category. The comp
 ## Behavior verification
 
 See [verification.md](verification.md) for tested revisions, Spark job IDs, results, and limitations.
+
+## Changing a setting
+
+The refreshed interaction captures show the real CLI after the editing pass:
+
+| Choose a value | Edit a number |
+| --- | --- |
+| ![Current choice](after/choice-current-80c.png) | ![Number editor](after/edit-number-open-80c.png) |
+
+[Preview another choice](after/choice-highlighted-80c.png) · [Saved choice](after/choice-saved-80c.png) · [Reopened choice](after/choice-reopened-80c.png) · [Cancelled number edit](after/edit-number-cancelled-80c.png) · [Validation](after/edit-invalid-value-80c.png) · [Mouse save](after/edit-limit-saved-80c.png)
+
+The capture checks that opening, previewing and cancelling do not write, a selected
+choice survives reopening, clicking Cancel preserves the old count, clicking Save
+persists 4, and invalid input leaves the stored value unchanged.

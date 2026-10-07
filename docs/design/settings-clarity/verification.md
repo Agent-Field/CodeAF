@@ -5,7 +5,7 @@ All builds, full suites and acceptance runs used Spark. No full suite or model c
 ## Revisions and evidence
 
 - Baseline screenshots: `4fd9cfaa0fb63b1c78db5aa6ebe9479e512d1640`.
-- Final screenshot source: `24d8d436f5003fd8a8a0eec098943df0d130802c`.
+- Initial screenshot source: `24d8d436f5003fd8a8a0eec098943df0d130802c`.
 - Full `make pr-ready` passed on `ec65c91ccc3f2ba87f189c4842abb9f4672f7538`, Spark job `20261007-185348-001853-settings-final-proof`. Build, vet, packed/manual checks, 139 layout/law files across 30 packages, and complete affected packages (`cmd/codeaf`, `internal/config`, `internal/manual`, `internal/tui3`) passed. All selected package tests passed on their first run.
 - After that run, the final editor adjustment moved validation beside the input and explained empty optional counts. Its rendered-frame, preservation, valid-save, reopen, and clear tests passed at both 80 and 120 columns: `20261007-185636-001854`.
 - Everyday task controls were then placed first, with task analysis and shell timing under Advanced. Focused settings/configuration tests and all 67 final captures passed in `20261007-190236-001856`. Both widths verify the task order, adjacent validation, valid save/reopen and blank clear/reopen.
@@ -43,3 +43,21 @@ Credit-warning tests failed identically on the base and changed revisions when h
 This verifies the settings surface, persistence and named runtime boundaries. It does not claim live end-to-end coverage of every external provider, OAuth service or billing account. Screenshots use dummy data and a loopback endpoint. Settings captured at process startup still require restarting already-open CLI chats, as their help states. The shared resident registry and CLI configuration vocabulary remain compatible; this is a redesign of the live chat surface.
 
 The PR remains a draft for owner review. These changes are not installed or merged by this task.
+
+## Interaction refinement
+
+Source revision: `746af81a7b9af9ba3839d8674dacb508678d6f13`.
+Final clean build and refreshed real CLI screenshots: Spark job
+`20261007-202643-001862-settings-interaction-final`.
+An earlier successful capture (`001861`) prompted one final correction: an editor
+opened through global search highlights its setting's category while preserving
+the search on return.
+
+Focused Spark checks cover explicit choice preview/cancel/save/reopen, mouse
+save/cancel, unchanged invalid drafts, successful-save receipts, pending remote
+Close wording, 24-column controls and short terminals, approval-gate updates,
+masked editors, and paste/wheel isolation. The real CLI capture sends terminal
+mouse events to Save and Cancel and asserts the stored profile values.
+
+Full acceptance for the final source and refreshed gallery is recorded in the
+PR with its exact revision and fleet job; no local full suite was run.

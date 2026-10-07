@@ -22,7 +22,10 @@ list, with the saved value marked; opening or cancelling the list writes nothing
 Choose an option to save it. Text and number editors keep the setting explanation,
 input and Save/Cancel controls together. Enter saves; Escape or Cancel discards
 the draft. Invalid input stays beside its error without changing the saved value.
-Any restart requirement remains visible while editing.
+Any restart requirement remains visible while editing. A successful write shows
+Saved. Remote AI team defaults wait for the host's acknowledgement; after Save
+has been sent, the editor says Saving and offers Close. Closing that editor does
+not undo the write already in progress.
 
 ## Did the update reset my settings — old profiles and existing preferences
 
