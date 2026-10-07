@@ -12,7 +12,7 @@ Today nothing is connected, so the page draws one dim line:
 The only key it offers then is `esc back`.
 
 With something on the floor, the left column is the list of items and the right column is the
-item under the cursor. `↑` and `↓` (or `ctrl+p` and `ctrl+n`, or the wheel) walk the items;
+handover (what happened while you were away) above the item under the cursor. `↑` and `↓` (or `ctrl+p` and `ctrl+n`, or the wheel) walk the items;
 the hint line says `↑↓ walk · esc back`. On a terminal under 72 columns the list takes the
 whole width and the right column is not drawn.
 
@@ -55,12 +55,28 @@ page has not been built; the right column says
 
 ## the handover
 
-The **handover** is what happened on the factory floor since you last looked: how many items
-shipped, how many arrived, how many asked you something, and what it cost. It is meant to be
-the first thing the factory page shows after you have been away.
+The **handover** is what happened on the factory floor since you last looked. It is the top of
+the right column, four rows and a blank row above the item under the cursor, and it is drawn
+only when the right column is (72 columns and wider).
 
-It is not drawn yet. The factory page today shows the floor's rows and the item under the
-cursor, and nothing else.
+1. A muted heading with a line out to the edge: `◆ handover · since 23:12 · 7h 12m · $8.44`,
+   when the stretch began, how long ago, and what it spent. The spend is left off when nothing
+   was spent.
+2. What happened: `✓ 2 shipped #1661 #1663 · 3 arrived · 1 question handled`. A part whose
+   count is zero is left off. When nothing at all happened the row says
+   `quiet · nothing happened while you were away`.
+3. What waits on you: `? 2 waiting on you`, in the question colour, or
+   `nothing waits on you`. At the right, labelled `24h`, a sparkline of the last
+   twenty-four hours of activity, one cell an hour, the current hour last. It is not drawn on
+   a right column under 60 columns, or when no hour had anything in it.
+4. The floor in one dim line: `3 repos · github · chat · benches 2/6 · polled 4m ago`, how many
+   repositories, which sources are connected, how many benches are busy out of how many, and
+   when a source was last read. At the right, the day's money: `$11.31 / $60 today`, what was
+   spent against the day's limit. With nothing spent today it draws only `/ $60 today`. The
+   made-up moving floor adds how fast its clock runs, such as `· 150×`; a real floor never does.
+
+A narrow column drops the shipped items' names first, then the last facts on a row; the money
+keeps its place.
 
 ## the proof sheet
 
