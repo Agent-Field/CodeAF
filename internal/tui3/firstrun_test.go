@@ -130,7 +130,7 @@ func TestTheSetupOpensOverAnEmptyProfileAndNotOverAConfiguredOne(t *testing.T) {
 func TestFirstRunOffersSupportedProvidersBeforeAskingForAKey(t *testing.T) {
 	a, _, _ := setupProviderApp(t, nil)
 	screen := setupScreen(a)
-	for _, want := range []string{setupProviderHeading, "Ollama", "OpenRouter", "Codex", "DeepSeek", "Z.ai", "Moonshot", "MiniMax", "Alibaba Qwen", "Custom OpenAI-compatible API"} {
+	for _, want := range []string{setupProviderHeading, "OpenRouter", "Ollama", "Codex", "DeepSeek", "Z.ai", "Moonshot", "MiniMax", "Alibaba Qwen", "Custom OpenAI-compatible API"} {
 		if !strings.Contains(screen, want) {
 			t.Fatalf("missing %q: %s", want, screen)
 		}

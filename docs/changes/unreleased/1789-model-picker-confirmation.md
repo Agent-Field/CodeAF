@@ -4,6 +4,7 @@ title: Choose a provider during setup and pick only available models
 pr: 1789
 surface: [chat, docs]
 invalidates:
+  - "Provider selection used to start on Ollama. OpenRouter is now first and initially selected, with Ollama second; the other seven options keep their order."
   - "Choosing Codex during setup used to start browser sign-in immediately. Codex now has the same enter connects in browser confirmation as OpenRouter; selecting the provider opens its connection screen and Enter starts sign-in."
   - "Provider setup used to divide supported providers between a first page and More providers, with a selectable Skip for now row. It now has one flat list showing all nine providers, with no scrolling viewport or page counter; Esc skips setup and no provider row skips it."
   - "Browser authorization URLs used to wrap across several visible rows. Codex, OpenRouter and the shared browser sign-in cards now show one short hyperlink retaining the complete URL. Setup adds Ctrl+Y to copy the complete sign-in URL; waiting cards retain their full-link copy action."

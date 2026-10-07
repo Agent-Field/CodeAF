@@ -32,7 +32,7 @@ func (a *app) setupProviderRows() []setupProviderRow {
 	for _, source := range catalog {
 		names[source.ID] = source.Name
 	}
-	primary := []string{"ollama", modelsource.DefaultID, "codex", "deepseek"}
+	primary := []string{modelsource.DefaultID, "ollama", "codex", "deepseek"}
 	rows := []setupProviderRow{}
 	seen := map[string]bool{}
 	for _, id := range primary {
