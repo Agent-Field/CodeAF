@@ -1,7 +1,7 @@
 ---
 kind: changed
 title: launches offer a new codeaf in a quieter, non-blocking way, and installs run in the background
-pr: 1789
+pr: 1790
 surface: [chat]
 invalidates:
   - "`/update` used to refuse while a turn or task was running and then quit the program so the door could restart on the new build. It now installs in the background on the same road the automatic updater uses: nothing quits, nothing restarts, and a running turn or task is untouched. The new build is what opens the next time codeaf is started."
