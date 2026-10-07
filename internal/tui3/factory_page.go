@@ -255,7 +255,11 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	var pane []string
 	paneW := width - railW
 	if railW > 0 {
-		pane = a.factoryPane(paneW)
+		// THE PANE COLUMN IS THE HANDOVER, ONE BLANK ROW, THEN THE PANE. The
+		// handover ([app.factoryHead]) carries its own blank as its last row,
+		// so the pane starts on the row after it and the rail beside both
+		// keeps its own window.
+		pane = append(a.factoryHead(paneW), a.factoryPane(paneW)...)
 	}
 	sep := a.pal.dim(a.linearMark("│", "|"))
 	rows := make([]placeRow, 0, room)
