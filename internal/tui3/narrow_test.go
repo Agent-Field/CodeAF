@@ -72,7 +72,7 @@ func TestANavTooNarrowForEveryWordFoldsIntoMore(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{34, 40, 48} {
 		bar := navPlaces(a, width, false)
-		if !strings.Contains(bar, a.page.word()) {
+		if !strings.Contains(bar, navLabel(a.page)) {
 			t.Fatalf("at %d columns the nav drew\n\t%q\nand folded the place you are standing in (%q)", width, bar, a.page.word())
 		}
 		if !strings.HasSuffix(bar, a.navMoreWord(a.pal)) || !a.navMore.span.pressable() {
@@ -326,7 +326,7 @@ func TestTheTopLineGivesThingsUpInTheOwnersOrder(t *testing.T) {
 		if got := ansi.StringWidth(line); got > width {
 			t.Fatalf("at %d columns the top line is %d cells wide:\n\t%q", width, got, line)
 		}
-		if !strings.Contains(line, product) || !strings.Contains(line, " chats ") {
+		if !strings.Contains(line, product) || !strings.Contains(line, " "+navLabel(pageChats)+" ") {
 			t.Fatalf("at %d columns the top line lost the wordmark or the lit place:\n\t%q", width, line)
 		}
 		s := state{
