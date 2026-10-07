@@ -1,0 +1,40 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:36am
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams   Providers   Connections
+
+ › type to search
+ google sign-in id                                                                            not set
+ google sign-in secret                                                                        not set
+ slack sign-in id                                                                             not set
+ quiet before practice                                                                            20m
+ arrival brief after                                                                               4h
+ tenure after                                                                         3 clean firings
+ auto update                                                                                       on
+    keeps this codeaf installation current in the background.
+ background checks                                                                                off
+ disable hints                                                                                    off
+ model in commits                                                                                  on
+ ssh reuse                                                                                       300s
+ ssh heartbeat                                                                                     3s
+ ssh missed heartbeats                                                                              3
+ ssh traffic                                                                                 lowdelay
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───────────────────────────────────────────
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

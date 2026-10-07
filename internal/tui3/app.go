@@ -950,12 +950,25 @@ type app struct {
 	resumed       bool
 	updateCheck   func(context.Context) (codeupdate.Available, bool)
 	resolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
-	installUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
+	installUpdate func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error)
 	updateRunning string
 	updateCurl    string
 	updateArgs    []string
-	updateActive  bool
-	restart       *codeupdate.Plan
+	// updateInFlight is any install running, hand-run or background, and it is
+	// the guard against a second installer in this window. It stops nothing
+	// else: an install never owns a turn on this surface.
+	updateInFlight bool
+	// updateAuto is the durable half of the automatic updater: the setting, the
+	// remembered dismissal, the failure count and the cross-terminal lock. Nil
+	// means this surface has no automatic updater and the launch check is the
+	// one dim note it always was.
+	updateAuto *UpdateCoordinator
+	// offer is the launch offer's state machine (updateoffer.go).
+	offer updateOffer
+	// restart is the plan a quitting surface used to fill for the door. Nothing
+	// on this surface quits for an update any more, so it is read by no code
+	// here; it stays a field because the door hands one in (tui3.Options).
+	restart *codeupdate.Plan
 	// THE OPENROUTER BALANCE (credits.go). readCredits is the door's reader and
 	// nil on every surface that cannot ask; the rest is what the loop keeps so
 	// the keys row never reads a file or scans a catalog while it draws.
@@ -2965,6 +2978,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		updateRunning:       strings.TrimSpace(opts.UpdateRunning),
 		updateCurl:          strings.TrimSpace(opts.UpdateCurl),
 		updateArgs:          append([]string(nil), opts.UpdateArgs...),
+		updateAuto:          opts.UpdateAuto,
 		restart:             opts.Restart,
 		models:              opts.Models,
 		modelsForService:    opts.ModelsForService,
@@ -3268,6 +3282,9 @@ func newApp(ctx context.Context, opts Options) *app {
 	// person presses; it exists so that the page a question opens into can be
 	// looked at on a real screen before anything raises a real one.
 	a.openDemoQuestion(env)
+	// AND THE UPDATE OFFER'S OWN, for the same reason and on the same terms
+	// (updatedemo.go).
+	a.openDemoUpdate(env)
 	// AND THE TERMINAL'S TITLE IS READ ONCE THE SURFACE KNOWS WHERE IT OPENED,
 	// which is only now — home, a picker or a conversation. [app.Init] sends it,
 	// and from then on [app.retitle] sends it again only when it moves.
@@ -5553,6 +5570,15 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateCheckMsg:
 		return a, a.tookUpdateCheck(msg)
+
+	case updateOfferTickMsg:
+		return a, a.tookOfferTick()
+
+	case updateGraceMsg:
+		return a, a.tookUpdateGrace()
+
+	case offerSettleMsg:
+		return a, a.tookOfferSettle()
 	case creditWakeMsg:
 		if a.creditRecordPending.Swap(false) {
 			a.refreshCreditWarnings()
@@ -5566,9 +5592,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case updateInstallMsg:
 		return a, a.tookUpdateInstall(msg)
-
-	case updateRestartMsg:
-		return a, a.quit()
 
 	case frameMsg:
 		return a, a.paint()

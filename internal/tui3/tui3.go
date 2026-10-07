@@ -457,16 +457,32 @@ type Options struct {
 	ImplicitTalk bool
 	// ResolveUpdate and InstallUpdate are the two off-frame halves of /update.
 	// Keeping selection separate lets the surface name the tag before the
-	// download begins. Nil leaves the command with an honest refusal.
+	// download begins. InstallUpdate takes the whole InstallOptions so the
+	// surface can say whether a person asked for an exact tag — the one case
+	// where replacing the file with an older release is deliberate. Nil leaves
+	// the command with an honest refusal.
 	ResolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
-	InstallUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
+	InstallUpdate func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error)
 	// UpdateRunning is the exact revision of this process, without build-time
-	// decoration. UpdateArgs are its original arguments. Restart is the slot the
-	// surface fills before quitting and the door reads after the terminal is back.
+	// decoration. UpdateArgs are its original arguments.
+	//
+	// Restart is the plan a quitting surface used to fill for the door to read
+	// after the terminal was back. NO INSTALL FILLS IT NOW: an install replaces
+	// the file and the next launch opens it, so nothing on this surface quits for
+	// an update, and no code here reads the plan. It is handed in by the four
+	// doors so the shared launch keeps one empty plan rather than four, and it is
+	// RETIRED IN PLACE rather than deleted while the door's own detach-then-
+	// restart road (cmd/codeaf/chatv3.go's [finishChatRestart]) is still written
+	// and tested — see the change summary for why that road is kept.
 	UpdateRunning string
 	UpdateCurl    string
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
+	// UpdateAuto is the automatic updater's durable half: whether it is on, the
+	// release this profile already answered, the failure count that stops a
+	// retry loop, and the cross-terminal install lock. Nil leaves the launch
+	// notice as a one-line note with no offer behind it.
+	UpdateAuto *UpdateCoordinator
 
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
