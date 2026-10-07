@@ -507,7 +507,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
 		// It reads the shelf, which ctrl+r in /model refills with today's list.
-		Models:                  func() []tui3.Model { return v3Models(proc.Shelf) },
+		Models:                  proc.Shelf.pickerModels,
 		RefreshModels:           proc.refreshDefaultModels,
 		ModelsForService:        proc.Shelf.modelsForService,
 		RefreshModelsForService: proc.Shelf.refreshService,

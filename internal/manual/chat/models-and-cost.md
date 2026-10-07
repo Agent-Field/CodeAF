@@ -246,6 +246,20 @@ model, reopen the list. With no matching model, Enter leaves the list open and c
 nothing. Enter inside a provider fold keeps those controls open, including when it opens
 the machines under OpenRouter.
 
+## Which models appear — only connected providers, Ollama without OpenRouter, multiple providers
+
+Model lists offer only models from connections with a key, a signed-in account, or an
+explicitly anonymous endpoint such as connected Ollama. A public catalog or a leftover
+cache does not connect a provider. With only Ollama connected, only its installed models
+appear; with only OpenRouter connected, only its models appear. With several providers
+connected, their lists appear together in provider groups. Removing a connection or its
+key removes its models from subsequent lists. A cold catalog never adds built-in guesses.
+
+This applies to `/model`, task rooms, settings slots and roles, Home drafts and the task
+composer. Each slot still keeps only models with the capabilities it needs. A provider
+that cannot list models has a non-selectable notice; `+ add a provider` opens connection
+setup and is not a model. `ctrl+r` refreshes the known lists.
+
 ## Searching the model picker by name
 
 **The model picker's box searches the model's name and nothing else.** Filtering splits what you type on
@@ -261,10 +275,9 @@ At launch, codeaf fetches a connected provider's model list once if it has an em
 Pressing `ctrl+r` in the picker asks for a fresh list (the *commands* page,
 "Refreshing the model list"). Otherwise
 the list comes from what is already known, in this order: the
-catalog the door passed in, then `~/.codeaf/v3/models.json`, then five names this build
-remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
-`anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
-tried only when the one above it came back empty after filtering.
+catalog the door passed in, or that provider's cached list while discovery is warming.
+A known catalog is authoritative. A cold list offers no
+built-in guesses; connect a provider or refresh to discover its models.
 
 **The `/model` you typed stays in the box**, drawn as the chip it was, with the filter after
 it: `› /model filter by name`. The list is a different box from the one you typed the command

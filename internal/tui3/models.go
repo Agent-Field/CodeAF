@@ -27,11 +27,10 @@ import (
 //     as [Options.Models] (see cmd/codeaf/chatv3.go);
 //  2. this package's own cache, ~/.codeaf/v3/models.json, written whenever a
 //     catalog fetch elsewhere succeeded;
-//  3. [BuiltinModels], five names this build remembers.
 //
-// The third rung is what makes the first launch on a cold machine still open a
-// picker rather than an empty box, and the second is what makes the launch
-// after it show the whole catalog instantly.
+// Only connections with credentials, or an explicitly anonymous service, may
+// contribute rows. A cold list stays empty until discovery answers; built-in
+// names are not evidence that this account can use a model.
 //
 // [app.modelList] is where that order is actually applied; the pieces live here.
 
@@ -208,7 +207,7 @@ func readModelCacheName(name string) []Model {
 // cachedModelsFor is THE FRAME'S DOOR onto a service's cached rows: the memo,
 // and nothing else. An empty answer is "nobody has read that file yet" as much
 // as it is "the file holds nothing", and both draw the same thing — the rung
-// below, which is the built-ins (see this file's head). The loop fills the memo
+// below, which holds no invented models (see this file's head). The loop fills the memo
 // at `open` ([app.learnModelLists]), on the pulse's beat and whenever a fetch
 // rewrites a file ([app.forgetModelList]).
 func (a *app) cachedModelsFor(source, base string) []Model {
@@ -461,7 +460,7 @@ func keepModels(models []Model, keep modelFilter) []Model {
 //
 // The list a slot actually draws is resolved by [app.modelsFor], which applies
 // that slot's own predicate to EVERY rung of the source order — the door's
-// catalog, the disk cache and the built-ins alike — because the rule is about
+// catalog and disk cache alike — because the rule is about
 // what a row IS and not about where it came from.
 func chatModels(models []Model) []Model { return keepModels(models, chatModel) }
 

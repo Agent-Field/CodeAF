@@ -1130,13 +1130,15 @@ model a remote session opens on is that machine's to resolve.
 
 At launch, codeaf fetches a connected provider's model list once if it has an empty cached list.
 After that, `ctrl+r` asks for a fresh list (see "Refreshing the model list" below).
-The list is what is already known, tried in this order,
-each rung used only when the one above it came back empty after filtering:
+The list offers models only from usable provider connections: a key, a signed-in
+account, or an explicitly anonymous connection such as Ollama. With only Ollama
+connected, only its installed models appear. With several providers connected, their
+models appear together. An unconnected provider contributes no rows, even when its
+public catalog or cache is available.
 
-1. the catalog handed in at launch,
-2. `~/.codeaf/v3/models.json`,
-3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
-   `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
+Each provider contributes its known catalog, or its own cached list while discovery
+is warming. A known catalog is authoritative; an empty list never adds built-in
+model guesses. Slots still keep only models with their required capabilities.
 
 Filtering is over the model's **name** and nothing else — no word in the box means
 anything but itself. It splits your text on whitespace and every word must match, each

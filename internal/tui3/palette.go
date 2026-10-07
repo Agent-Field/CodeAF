@@ -2904,14 +2904,14 @@ func (a *app) openTaskPicker(id uint64) {
 
 // modelList is the source order stated in models.go, applied once here: the
 // door's list (the catalog, when it can answer without a fetch), then the disk
-// cache, then the built-ins. Each rung is tried only if the one above it came
+// cache. Each rung is tried only if the one above it came
 // back empty, and none of them can block.
 //
 // EVERY RUNG IS FILTERED THE SAME WAY ([chatModels]): a row on offer here is a
 // model you can talk to. The filter sits at the join rather than on any one
-// source because all three of them have carried a drawing model at some point —
+// source because both have carried a drawing model at some point —
 // the door's catalog publishes them, the cache is a file the door wrote before
-// this rule existed — and a rule enforced at two of three places is a rule with
+// this rule existed — and a rule enforced on only one source is a rule with
 // a way round it.
 func (a *app) modelList() []Model { return a.modelsFor(chatModel) }
 
@@ -2942,11 +2942,25 @@ func (a *app) modelPickerList() []Model {
 // model falls through for /model.
 func (a *app) modelsFor(keep modelFilter) []Model {
 	services := a.sources.All()
-	if len(services) < 2 {
+	if len(services) == 0 {
+		// Older doors supply their catalog without service metadata. Local
+		// launches always resolve a set and take the access checks below.
+		return a.modelsForDefault(keep)
+	}
+	if len(services) == 1 {
+		if !services[0].HasCredentials() {
+			return nil
+		}
 		return a.modelsForDefault(keep)
 	}
 	grouped := make([]Model, 0)
 	for order, service := range services {
+		// ACCESS COMES BEFORE THE CATALOG AND ITS CACHE. The default service
+		// is always in the routing set, even with no key, and a disconnected
+		// account's cached names are not models this person can choose.
+		if !service.HasCredentials() {
+			continue
+		}
 		var models []Model
 		if order == 0 {
 			models = a.modelsForDefault(keep)
@@ -2994,18 +3008,22 @@ func (a *app) modelsFor(keep modelFilter) []Model {
 	return grouped
 }
 
-// modelsForDefault is the exact pre-service ladder. Keeping it whole makes the
-// one-service path and each slot's fallback byte-for-byte what they were.
+// modelsForDefault reads the default provider's known catalog or cache. No
+// built-in model is evidence that this account can use it, so a cold list stays
+// empty until discovery answers.
 func (a *app) modelsForDefault(keep modelFilter) []Model {
 	if a.models != nil {
-		if list := keepModels(a.models(), keep); len(list) > 0 {
-			return list
+		if models := a.models(); models != nil {
+			// A known catalog is authoritative even when this slot has no
+			// matches; older cached rows must not enlarge what it serves.
+			return keepModels(cleanModels(models), keep)
 		}
 	}
-	if list := keepModels(a.cachedModels(), keep); len(list) > 0 {
-		return list
+	if !a.sources.Empty() {
+		service := a.sources.Default()
+		return keepModels(a.cachedModelsFor(service.Source.ID, service.Address), keep)
 	}
-	return keepModels(BuiltinModels(), keep)
+	return keepModels(a.cachedModels(), keep)
 }
 
 // nonChatWarning is what `/model <slug>` says instead of switching, and it is

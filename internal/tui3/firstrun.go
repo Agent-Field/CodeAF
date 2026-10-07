@@ -994,11 +994,11 @@ func maskTyped(text string) string {
 // the environment still outranks the file and the session must get the one
 // Load would.
 func (a *app) handAPIKey() {
-	if a.applyAPIKey == nil {
-		return
-	}
 	key := config.APIKeyAt(a.profileDir)
-	if key == "" {
+	// A KEY WRITE CHANGES THE PICKER'S ACCESS TOO. The resolved default row
+	// otherwise retains its launch-time key until another provider connects.
+	a.sources = a.sources.WithDefaultKey(key)
+	if a.applyAPIKey == nil || key == "" {
 		return
 	}
 	if err := a.applyAPIKey(key); err != nil {

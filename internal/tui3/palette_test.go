@@ -279,14 +279,13 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	}
 }
 
-func TestTheModelListFallsBackToTheCacheThenTheBuiltins(t *testing.T) {
+func TestTheModelListUsesKnownRowsAndNeverInventsBuiltins(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newTestApp(&fakeAgent{model: "m"})
 
-	// Nothing from the door, nothing on disk: the built-ins are the floor, and
-	// the picker still opens onto a list.
-	if got := a.modelList(); len(got) != len(BuiltinModels()) || got[0].ID != BuiltinModels()[0].ID {
-		t.Fatalf("with no source the list is %v, want the built-ins", got)
+	// Nothing from the door or disk means no known model can be offered.
+	if got := a.modelList(); len(got) != 0 {
+		t.Fatalf("with no known catalog the list invented models: %v", got)
 	}
 
 	cached := []Model{{ID: "cached/one", ContextLength: 32_000}, {ID: "cached/two"}}

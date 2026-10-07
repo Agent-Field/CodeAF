@@ -717,7 +717,7 @@ func hostOptions(fleet *engineFleet, welcome remote.Welcome, pick bool) (tui3.Op
 		// timer that is already armed around a far process.
 		BashBackgroundAfterSeconds: welcome.BashBackgroundAfterSeconds,
 		ContextWindow:              v3Window(models, welcome.Model),
-		Models:                     func() []tui3.Model { return v3Models(shelf) },
+		Models:                     shelf.pickerModels,
 		RefreshModels:              shelf.refresh,
 		ProviderFetchError:         shelf.fetchErrorFor,
 		// /export writes on THIS machine (host.go's honesty table), so its row

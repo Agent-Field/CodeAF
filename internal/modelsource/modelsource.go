@@ -179,6 +179,12 @@ type Connected struct {
 	PlanPaused string
 }
 
+// HasCredentials reports whether the connection can authenticate, or explicitly
+// accepts anonymous requests. A public catalog alone never connects an account.
+func (c Connected) HasCredentials() bool {
+	return strings.TrimSpace(c.Key) != "" || c.Source.KeyOptional
+}
+
 // Set is the services this profile talks to, in the person's own order, the
 // default service first and always present.
 type Set struct {

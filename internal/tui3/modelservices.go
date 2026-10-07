@@ -97,9 +97,9 @@ func (a *app) modelsForConnectedService(service modelsource.Connected) []Model {
 		return nil
 	}
 	if a.modelsForService != nil {
-		if models := cleanModels(a.modelsForService(service)); len(models) > 0 {
-			return models
-		}
+		// THE SHELF OWNS THIS PROVIDER'S ANSWER. Falling through an empty
+		// current list would resurrect models from an older surface cache.
+		return cleanModels(a.modelsForService(service))
 	}
 	if models := cleanModels(a.sourceModels[service.Source.ID]); len(models) > 0 {
 		return models
@@ -1241,7 +1241,7 @@ func (a *app) defaultServiceHasKey() bool {
 		return true
 	}
 	service := a.sources.Default()
-	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+	return service.HasCredentials()
 }
 
 // defaultProviderNeeded is the ONE answer to "does this person still owe us an
@@ -1266,7 +1266,7 @@ func (a *app) connectedServiceCarriesModel() bool {
 	if service.Source.ID == "" || strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
 		return false
 	}
-	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+	return service.HasCredentials()
 }
 
 func modelUsesService(model, written string) bool {
