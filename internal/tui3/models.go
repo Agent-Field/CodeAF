@@ -280,6 +280,7 @@ func (a *app) serviceModelsLanded(source, address string) {
 		a.forgetModelList("", modelcatalog.DefaultBaseURL)
 		a.modelLists.learn(modelCacheNameFor("", modelcatalog.DefaultBaseURL))
 	}
+	a.ensureAvailableModel()
 	if a.pick.open {
 		a.pick.restock(a.modelPickerList())
 	}

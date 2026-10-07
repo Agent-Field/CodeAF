@@ -118,6 +118,7 @@ func (a *app) reloadModelSources() {
 	if a.applyModelSources != nil {
 		a.applyModelSources(a.sources)
 	}
+	a.ensureAvailableModel()
 	if a.at(pageSettings) {
 		a.sheet.sources = a.sources
 	}
@@ -1276,24 +1277,8 @@ func modelUsesService(model, written string) bool {
 }
 
 func (a *app) reachableModelAfterDisconnect() (string, bool) {
-	services := a.sources.All()
-	if len(services) == 0 {
-		return "", false
-	}
-	if strings.TrimSpace(services[0].Key) != "" {
-		return config.ChatDefaultAt(a.profileDir), true
-	}
-	for _, service := range services[1:] {
-		if strings.TrimSpace(service.Key) == "" && service.Source.ID != "ollama" {
-			continue
-		}
-		for _, model := range a.sourceModels[service.Source.ID] {
-			if chatModel(model) {
-				return service.Qualify(model.ID), true
-			}
-		}
-	}
-	return "", false
+	model, ok := availableConversationModel("", a.modelList())
+	return model.ID, ok
 }
 
 // modelServiceRows is the Providers tab's compact reading: one ordinary sheet

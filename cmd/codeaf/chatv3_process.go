@@ -459,6 +459,15 @@ func (p *v3Process) warmEmptyProviders(ctx context.Context) {
 		return
 	}
 	p.Shelf.warmAll(ctx, true, p.noteServiceModels)
+	// The default catalog warms independently. Deliver its answer on the same
+	// subscription as direct providers so a cold opening can acquire a model
+	// without a keystroke or a second fetch.
+	service := p.Shelf.sourcesNow().Default()
+	if service.HasCredentials() {
+		if models := p.Shelf.current.Load(); models != nil && models.Warmed(ctx) {
+			p.noteServiceModels(service)
+		}
+	}
 }
 
 // registerServiceNotice subscribes one window and returns its removal function.

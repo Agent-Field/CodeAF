@@ -508,6 +508,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// use, and one that has not resolved answers nil instead of waiting.
 		// It reads the shelf, which ctrl+r in /model refills with today's list.
 		Models:                  proc.Shelf.pickerModels,
+		RequireListedModel:      true,
 		RefreshModels:           proc.refreshDefaultModels,
 		ModelsForService:        proc.Shelf.modelsForService,
 		RefreshModelsForService: proc.Shelf.refreshService,

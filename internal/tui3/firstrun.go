@@ -998,6 +998,7 @@ func (a *app) handAPIKey() {
 	// A KEY WRITE CHANGES THE PICKER'S ACCESS TOO. The resolved default row
 	// otherwise retains its launch-time key until another provider connects.
 	a.sources = a.sources.WithDefaultKey(key)
+	a.ensureAvailableModel()
 	if a.applyAPIKey == nil || key == "" {
 		return
 	}

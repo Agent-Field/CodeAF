@@ -815,6 +815,11 @@ type Options struct {
 	// answering, and this function goes on returning what it returned until
 	// the door has swapped in what that fetch brought back.
 	Models func() []Model
+	// RequireListedModel makes the opening model and every automatic replacement
+	// come from the same available chat catalog as /model. A cold or empty list
+	// shows no model and holds sends until discovery or a connection supplies one.
+	// Local doors own these catalogs; remote doors leave the engine's choice alone.
+	RequireListedModel bool
 	// ModelsForService is the process shelf's never-waiting reading for one
 	// connected service. Keeping it beside Models makes the picker read one
 	// shelf for every group instead of a surface-only map that a restart happens

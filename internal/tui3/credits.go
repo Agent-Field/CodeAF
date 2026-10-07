@@ -165,7 +165,8 @@ func (a *app) refreshCreditWarnings() {
 	want := config.ChatDefaultAt(a.profileDir)
 	if a.readCredits != nil && !a.creditsExpired && !a.creditSwitching && a.implicitTalk && a.model != want &&
 		(a.model == config.DefaultModel || a.model == config.FreeChatModel) &&
-		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" {
+		a.freshAndEmpty() && config.ChatModelAt(a.profileDir) == "" &&
+		(!a.requireListedModel || a.isAvailableModel(want)) {
 		a.creditSwitching = true
 		a.switchModel(want, 0)
 		a.creditSwitching = false

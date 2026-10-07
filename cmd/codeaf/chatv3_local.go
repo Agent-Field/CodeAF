@@ -377,6 +377,7 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		}
 	}
 	options.EngineRoad = true
+	options.RequireListedModel = true
 	options.ReadCredits = v3LocalCreditReader(settings)
 	options.Connections = v3Connections(v3Connect(profileDir))
 	options.Harnesses = subharness.Default()

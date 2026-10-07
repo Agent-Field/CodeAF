@@ -1123,7 +1123,9 @@ row under the cursor.
 Choosing a model in `/model` sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
 notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
-opens on it. Over `--host` the switch takes for the session and is not written down: the
+opens on it if it is still in the available model list. Otherwise a local launch chooses
+an available chat model; with no known models, it holds the draft until discovery supplies
+one. Over `--host` the switch takes for the session and is not written down: the
 model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do

@@ -78,6 +78,25 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
+## Which model is the default — Ollama only, a removed model, or no available models
+
+On a local launch, the opening model comes from the same available chat list as
+`/model`. A saved choice, environment value, command-line choice or shipped preference
+is kept only if that model is listed. Otherwise codeaf selects the first available
+chat model in provider order. With only Ollama connected, that is an installed Ollama
+model. With several providers, the default still belongs to their combined list.
+Automatic replacements do not overwrite your saved preference.
+
+While every catalog is cold or empty, no default model is displayed and a message
+stays in the draft. The picker opens with:
+`no available model · connect a provider or refresh /model`.
+When a provider's list arrives, codeaf selects an available model. Press Enter again
+to send the draft. Refreshing a list or removing a connection also replaces a model
+that is no longer listed; existing requests finish on the model they started with.
+
+Remote sessions keep the engine's opening model; this laptop's catalog does not
+choose a default for another machine.
+
 ## Sign in with ChatGPT and use my Codex plan — models, context window, price, limits and expiry
 
 Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way
