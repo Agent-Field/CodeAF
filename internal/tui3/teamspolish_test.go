@@ -101,28 +101,48 @@ func TestTeamsCrossPaneArrowsUseVisibleRowsAfterIndependentScrolling(t *testing.
 	}
 }
 
-func TestTeamsSheetsOwnStopShortcutDuringRunningTask(t *testing.T) {
-	for _, mode := range []string{"create", "member"} {
-		a, _ := railTaskPageApp(t, true)
-		a.input.setText("underlying draft")
-		if mode == "create" {
-			a.tcreate = teamCreateSheet{on: true}
-		} else {
-			a.tmembers = teamMembershipSheet{on: true}
-		}
-		for _, r := range "example" {
-			drive(t, a, key(string(r)))
-		}
-		got := a.tcreate.name.String()
-		if mode == "member" {
-			got = a.tmembers.filter.String()
-		}
-		if got != "example" || a.stopping() || a.input.String() != "underlying draft" {
-			t.Fatalf("%s keys escaped sheet: %q", mode, got)
-		}
-		drive(t, a, key("esc"))
-		if a.tcreate.on || a.tmembers.on || a.stopping() {
-			t.Fatal("escape did not cancel only the sheet")
+func TestTeamsTextInputsOwnStopShortcutDuringRunningTask(t *testing.T) {
+	for _, mode := range []string{"create", "member", "answer"} {
+		for _, draft := range []string{"", "underlying draft"} {
+			t.Run(mode+"/"+draft, func(t *testing.T) {
+				a, _ := railTaskPageApp(t, true)
+				a.input.setText(draft)
+				switch mode {
+				case "create":
+					a.tcreate = teamCreateSheet{on: true}
+				case "member":
+					a.tmembers = teamMembershipSheet{on: true}
+				case "answer":
+					drive(t, a, runCmd(a.showPage(pageTeams))...)
+					a.teamsDo(teamsTarget{act: teamsActOwnAnswer, arg: "packet"})
+				}
+				if a.stopHere().empty() {
+					t.Fatal("fixture has no stoppable work")
+				}
+				for _, r := range "fix the parser" {
+					drive(t, a, key(string(r)))
+				}
+				got := a.tcreate.name.String()
+				switch mode {
+				case "member":
+					got = a.tmembers.filter.String()
+				case "answer":
+					got = a.tp.answer.String()
+				}
+				if got != "fix the parser" || a.stopping() || a.input.String() != draft {
+					t.Fatalf("keys escaped %s: text=%q stop=%v draft=%q", mode, got, a.stopping(), a.input.String())
+				}
+				drive(t, a, key("esc"))
+				if a.tcreate.on || a.tmembers.on || a.tp.answering != "" || a.stopping() || a.input.String() != draft {
+					t.Fatal("escape did not cancel only the text input")
+				}
+				if draft == "" {
+					drive(t, a, key("x"))
+					if !a.stopping() {
+						t.Fatal("stop shortcut did not return after cancellation")
+					}
+				}
+			})
 		}
 	}
 }

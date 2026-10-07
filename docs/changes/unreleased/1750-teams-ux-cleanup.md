@@ -15,7 +15,7 @@ invalidates:
   - "Conversation closing released the journal while cancelled task-run workers could still write, and interrupted cleanup was hidden. Journal ownership now lasts through run completion, deletion joins with a bounded grace, unsafe task symlinks are refused before mutation, and durable pending cleanup is retried on startup and remains reachable from Home. Saved memories remain independent of transcript deletion."
   - "Closing-report acceptance could omit its terminal interaction after closing the team. The matching terminal event now lands under the lifecycle lock and is retryable without admitting ordinary writes to closed history."
   - "Older hosted whole-file writers could erase membership authority and delivery boundaries. Membership writes now require a capability on both ends; current builds preserve unknown member JSON and existing join timestamps, omit absent timestamps, and stamp new hosted joins at the engine."
-  - "A running task's stop shortcut could capture typing in team dialogs, and narrow scrolled panes retained pointer targets on blank rows. Team sheets own their keys and clipped pane targets remain keyboard stops only."
+  - "A running task's stop shortcut could capture typing in team dialogs or the Teams own-answer box, and narrow scrolled panes retained pointer targets on blank rows. Team text inputs own their keys and clipped pane targets remain keyboard stops only."
   - "A conversation could newly manage unrelated teams and manager deletion offered follow-up replacements. New leadership must belong to one managed anchor and its descendants; ordinary manager deletion requires reassignment from existing members in Teams first, while the optional global manager can be deleted and recreated independently."
 ---
 

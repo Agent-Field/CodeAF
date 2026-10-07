@@ -195,7 +195,9 @@ says `that message is older than this chat's history`.
 
 Expanded decisions and member permission prompts have a bounding box on the overview.
 Each box groups the question with its answer choices. Click an option to decide, or `Your own answer…`
-to enter your own response (`enter` submits, `esc` cancels). The newest three cards show
+to enter your own response (`enter` submits, `esc` cancels). While this answer box is open,
+letters such as `x` are answer text, even when a task is running; they do not stop work.
+The newest three cards show
 whole; older cards collapse to one line and can be expanded. Each shows who raised it,
 what waits on you, its options and any recommendation.
 

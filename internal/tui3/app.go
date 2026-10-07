@@ -3763,8 +3763,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// THE CLOSE-A-TAB CARD IS READ WHERE THE STOP CARD IS READ, and above it:
 		// they share one slot and one keyboard, and this one is up only when the
 		// other cannot be (tabclose.go).
-		// A team sheet owns every key before the underlying task or stop card.
-		if msg.String() != "ctrl+c" && (a.tcreate.on || a.tmembers.on || a.tmove.on || a.tsheet.on || a.teamMenu.on) {
+		// Team sheets and the visible own-answer box own their keys before the
+		// underlying task or stop card can take a typed letter.
+		if msg.String() != "ctrl+c" && (a.tcreate.on || a.tmembers.on || a.tmove.on || a.tsheet.on || a.teamMenu.on || (a.at(pageTeams) && a.tp.answering != "")) {
 			return a, tea.Batch(flushed, a.key(msg))
 		}
 		if cmd, took := a.tabCloseKey(msg); took {
