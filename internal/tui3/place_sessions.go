@@ -341,6 +341,28 @@ func (p *tasksPlace) lineOf(a *app, want tasksKey) (int, bool) {
 // place is holding at this instant.
 func (p *tasksPlace) filtered(a *app) tasksReading {
 	r := p.reading
+	undeletedItems := r.items[:0:0]
+	for _, item := range r.items {
+		if !a.deletedSessionRows[tasksKeyOf(item.entry)] && !a.deletedSessionRows[tasksChatKey(item.row.ID)] {
+			undeletedItems = append(undeletedItems, item)
+		}
+	}
+	r.items = undeletedItems
+	undeletedChats := r.chats[:0:0]
+	for _, row := range r.chats {
+		if !a.deletedSessionRows[tasksChatKey(row.ID)] {
+			undeletedChats = append(undeletedChats, row)
+		}
+	}
+	r.chats = undeletedChats
+	if len(undeletedItems) != len(p.reading.items) || len(undeletedChats) != len(p.reading.chats) {
+		tree := tasksTreeOf(undeletedItems, r.now, r.order, undeletedChats...)
+		r.shape = &tree
+		r.whole, r.wholeChats, r.wholeCost = len(undeletedItems), len(tree.groups), 0
+		for _, item := range undeletedItems {
+			r.wholeCost += item.entry.Cost
+		}
+	}
 	r.chatViews = make(map[string]tasksChatView)
 	for _, tab := range a.tabList() {
 		if tab.work {
@@ -919,6 +941,14 @@ func (a *app) taskSheetKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if editorWordKill(&a.taskSheet.query, key) {
 		a.taskSheetTyped()
 		return nil, true
+	}
+	if key == "x" && a.taskSheet.query.String() == "" {
+		if chat, ok := a.taskSheetChat(); ok {
+			return a.conversationDeleteOpen(chat.row.Transcript, chat.title), true
+		}
+		if item, ok := a.taskSheetCurrent(); ok {
+			return a.taskDeleteOpen(item.row, item.entry), true
+		}
 	}
 	// A PLAN ROW'S OWN KEYS, the cancel and the hold, read over an EMPTY box the
 	// way the roster reads its bare letters (stop.go's own law). It is ahead of
@@ -1606,6 +1636,9 @@ func (p *tasksPlace) hint(a *app) string {
 	// AND A PLAN ROW'S OWN KEYS, beside the door its enter takes: the cancel and
 	// the one key that holds the task, named where a person reads what a row can
 	// do ([app.tasksPlanKeyWords] says why they are `x` and `p`).
+	if ok && (a.deleteTask != nil || !a.hosted()) {
+		parts = append(parts, "x delete")
+	}
 	if ok && item.plan != nil {
 		parts = append(parts, a.tasksPlanKeyWords(*item.plan)...)
 	}
@@ -1648,6 +1681,9 @@ func (a *app) taskSheetKeysLine() string { return a.taskSheet.hint(a) }
 //     absent, not broken — so the verb is not named here, and the foot does not
 //     promise it.
 func (p *tasksPlace) verbs(a *app) []verb {
+	if chat, ok := a.taskSheetChat(); ok && chat.row.Transcript != "" {
+		return []verb{{key: 'x', word: "delete", do: func() tea.Cmd { return a.conversationDeleteOpen(chat.row.Transcript, chat.title) }}}
+	}
 	item, ok := a.taskSheetCurrent()
 	if !ok {
 		return nil

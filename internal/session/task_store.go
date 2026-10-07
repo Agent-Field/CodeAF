@@ -902,6 +902,7 @@ func (s *taskStore) writeLocked(document taskDocument) error {
 	if s.duringWrite != nil {
 		s.duringWrite()
 	}
+	document = filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(s.path), placeTranscript)))
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return err
@@ -1064,7 +1065,7 @@ func (g *TaskGraph) documentLocked() taskDocument {
 	document := taskDocument{Type: taskDocumentType, Version: taskFileVersion, Seq: g.seq}
 	for _, id := range g.order {
 		node := g.nodes[id]
-		if node == nil {
+		if node == nil || g.deleted[id] {
 			continue
 		}
 		document.Nodes = append(document.Nodes, node.recordLocked())
@@ -1339,7 +1340,7 @@ func loadTaskCheckpoint(path string) (taskDocument, bool) {
 		log.Printf("session: ignoring corrupt task checkpoint %s: %v", path, err)
 		return taskDocument{}, false
 	}
-	return document, true
+	return filterDeletedDocument(document, taskDeletions(filepath.Join(filepath.Dir(path), placeTranscript))), true
 }
 
 // recordOwesAcceptance reports whether a node record is one this file should

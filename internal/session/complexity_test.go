@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -445,5 +446,126 @@ func closes(events chan int) {
 		if got := cyclomatic(function.Body); got != want[function.Name.Name] {
 			t.Errorf("%s measured %d, want %d", function.Name.Name, got, want[function.Name.Name])
 		}
+	}
+}
+
+// ── AND THE SAME RATCHET OVER THE CONTEXTUAL AND STANDING ENGINE ─────────
+//
+// The ceiling above covered `task*.go` while the contextual memory work landed
+// in files whose names carry no such prefix, so four dozen functions over the
+// ceiling were invisible to it — and the defects the external review filed
+// were sitting in exactly those functions. The surface below is the files that
+// work actually landed in: the contextual reader, writer and outcome reader in
+// internal/session, the contextual store and its owner/sync/write doors, and
+// the standing ticker and inbox.
+//
+// NO NEW CODE GETS A ROW. Every function in these files is new with the
+// contextual work except the standing ones ([Ticker.fire], [Ticker.one],
+// [Ticker.judge], [fingerprint], [boundedGlob], [standingRunner.Run]), and those
+// were either under the ceiling at dev's baseline or are held to it now rather
+// than given a number: the ratchet's whole value is that the next function over
+// is a function somebody has to split, not a figure somebody gets to write
+// down. The ledger is therefore empty and has to stay that way.
+var contextualSurface = []struct {
+	dir      string
+	pkg      string
+	prefixes []string
+}{
+	{dir: ".", pkg: "session", prefixes: []string{"contextual", "standing_run"}},
+	{dir: "../store", pkg: "store", prefixes: []string{"contextual", "memory_owner", "memory_sync", "memory_write"}},
+	{dir: "../standing", pkg: "standing", prefixes: []string{"tick", "inbox"}},
+}
+
+// contextualDebt is the ledger for the wider surface. It is EMPTY on purpose:
+// the legacy debt in `task*.go` is the debt this gate was fitted around, and no
+// new code gets a row. A row added here needs a dev baseline figure and a reason
+// in whyTheDebtIsStillThere, not a number chosen to make this test pass.
+var contextualDebt = map[string]int{}
+
+// TestNoRoadInTheContextualEngineHasMoreEndingsThanTheCeiling is the ratchet
+// over that wider surface. Its complaints name the file and the number, so the
+// owning lane can act on one without reading this test.
+func TestNoRoadInTheContextualEngineHasMoreEndingsThanTheCeiling(t *testing.T) {
+	measured := measureContextualComplexity(t)
+	for _, complaint := range judgeComplexity(measured, contextualDebt) {
+		t.Error(complaint)
+	}
+	for name := range contextualDebt {
+		if strings.TrimSpace(whyTheDebtIsStillThere[name]) == "" {
+			t.Errorf("contextualDebt carries %q and whyTheDebtIsStillThere does not say what that debt is", name)
+		}
+	}
+}
+
+// measureContextualComplexity walks every declared surface and answers what each
+// function in it measures. Functions are keyed by their package as well as their
+// name, because two packages may perfectly well answer the same verb.
+func measureContextualComplexity(t *testing.T) map[string]measuredFunction {
+	t.Helper()
+	measured := map[string]measuredFunction{}
+	files := 0
+	for _, surface := range contextualSurface {
+		forEachSourceFile(t, surface.dir, func(name string, file *ast.File) {
+			if !hasAnyPrefix(name, surface.prefixes) {
+				return
+			}
+			files++
+			for _, declaration := range file.Decls {
+				function, ok := declaration.(*ast.FuncDecl)
+				if !ok || function.Body == nil {
+					continue
+				}
+				key := surface.pkg + "." + functionName(function)
+				found := measuredFunction{file: surface.pkg + "/" + name, at: cyclomatic(function.Body)}
+				if seen, already := measured[key]; already && seen.at >= found.at {
+					continue
+				}
+				measured[key] = found
+			}
+		})
+	}
+	// The floor guards against a walk that quietly stops finding anything — a
+	// renamed package, a moved file — which would turn the ratchet into a test
+	// that always passes.
+	if files < 12 {
+		t.Fatalf("only %d contextual source files were scanned; the surface holds more, so the walk is broken rather than clean", files)
+	}
+	return measured
+}
+
+// hasAnyPrefix reports whether a Go source file's base name starts with one of
+// the surface's prefixes.
+func hasAnyPrefix(name string, prefixes []string) bool {
+	if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+		return false
+	}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// forEachSourceFile parses every non-test Go file in one directory and visits
+// it with its base name.
+func forEachSourceFile(t *testing.T, dir string, visit func(name string, file *ast.File)) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading %s: %v", dir, err)
+	}
+	fset := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		parsed, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		visit(name, parsed)
 	}
 }

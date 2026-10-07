@@ -3,7 +3,8 @@
 ## What the teams page is, and how to open it
 
 The **teams page** is where you run your teams: every team you have, what waits on you from
-them, and the manager of the team you choose, which you talk to right there. It is the second
+them, and an overview of the team you choose. Member cards show activity and recent updates;
+interaction links take you into the conversation where an exchange happened. It is the second
 place on the tab bar, right after home: `home  teams  chats  sessions  spend  settings`. Open it with
 `/teams`, `alt+2` (`opt+2` on a Mac), a click on the word `teams`, `tab` from home, or the map
 (`alt+.`). A number beside the word on the bar counts the decisions waiting on you that arrived
@@ -11,165 +12,224 @@ since you last looked.
 
 A team is a group of conversations you name, and a team's **manager** is a conversation that
 runs it for you (the **team manager** page). The conversations view (`alt+v`) is where you see
-every conversation at once and group them; this page is where you steer the teams you made.
+every open conversation at once; All teams on this page is where you organize your teams.
 
 ## Where a team link in a chat opens
 
 A team link in a chat opens this page. That is a team's name written as a team (`team harbor`,
 `the harbor team`, `"harbor"`), a team name on a team card or in a team tool's row, and a
 `●harbor` you sent with `@`. A press selects that team: the rail's cursor on it, the pane
-showing it. A closed team is selected inside `Closed`, and that fold is opened. The hint says
+showing it. A closed team turns on `Show closed` and selects its retained history. The hint says
 `Open harbor on the teams page · click`. Over `--host`, when the engine has no teams doors,
-the press opens the conversations view on that team instead, and the hint says so.
+the press opens the team-agnostic conversations view instead, and the hint says so.
 
 ## The rail: your teams as a tree
 
 The left column is the **rail**:
 
 ```
- All teams     + Manager │
+ All teams               │
  ● harbor ◆          ? 1 │
    ● orbit           ⠿   │
  ● docs                  │
+ + New team              │
                          │
- + New team in harbor    │
- ✦ Organize              │
-                         │
- ▸ Closed · 2            │
+ ☐ Show closed · 2       │
 ```
 
-- **`All teams`** is the top row. With no manager over every team it offers `+ Manager`,
-  which starts one conversation that manages all of your teams: you talk to it, and it talks
-  to each team's own manager. Once there is one, the row is that manager's.
+- **`All teams`** is the top row. With no manager over every team, its Global manager card offers `+ Global manager`,
+  which starts a separate global manager conversation: you talk to it, and it talks
+  to the managers of open top-level teams. Subteam managers report to their parent team.
+  Once there is one, All teams still opens the overview; its Global manager card opens that conversation.
 - **Every open team**, a sub-team indented under the team it belongs to, with its colour dot.
   A team with a manager wears a dim `◆`.
 - **A mark only when something is happening.** A dim `⠿` says a member of the team is
   working; an amber `? 2` says two things wait on you from it or from a team under it: a
   decision addressed to you, or a member stopped on a question only you can answer. A team
   where nothing is happening draws no mark at all.
-- **`+ New team`** makes a team of the conversation in front (the new-team card of the
-  conversations view). With a team chosen it reads **`+ New team in harbor`** and the new team
-  is made inside that team; on a narrow rail it takes two rows, `+ New team` and `in harbor`.
-  A team already at its depth limit dims it and says why. **`✦ Organize`** suggests teams for
-  your conversations and offers to close the quiet ones (see *Organize closes quiet teams*
-  below).
-- **`▸ Closed · N`**, folded at the foot, holds the teams you closed. A press opens the fold
-  and lists them; a press on one shows what it left behind.
+- **`+ New team`** stays visible below the active team list and always creates a top-level team.
+  **`+ Add subteam`**, beside and after **`+ Add member`** in a selected team's header,
+  creates inside that team. The depth limit still applies.
+- **`✦ Organize`** in the All teams header suggests groupings and disbanding quiet teams. Its dialog stays on Teams; nothing changes until Apply.
+- **`Show closed · N`** is a toggle at the bottom of the rail. Turn it on to include retained
+  teams in the list and All teams cards, marked `closed · read-only history`. The toggle stays
+  visible while long lists scroll, and turning it on reveals the retained sidebar rows.
+  Each record shows its full ancestry, such as `harbor › orbit`; long paths wrap. Turning it
+  off hides those teams again; it never deletes their history.
 
 `↑` `↓` walk the rail, `enter` or a press chooses a team, and `←` `→` cross between the rail
-and the pane beside it. Choosing a team with a manager brings that manager's conversation in
-front, in the pane. The tab strip is not drawn on this place. The conversation you were
-in stays open behind: `chats` on the top line, or `tab`, brings it back, and its tab is
-on the strip once that chat is in front.
+and the pane beside it. Choosing a team changes the overview without changing the chat in
+front or its draft. The Chats dropdown selects the same team; returning to Chats restores
+its last conversation. A team chosen in Chats also selects its Teams overview. Clearing
+the team chip with its x in Chats maps to All teams here. Choosing All teams here enables its global overlay when the
+optional global manager exists. Clicking a member opens Chats with that team's view selected.
+
+## All teams overview: parent cards and nested subteams
+
+Choose **All teams** in the Teams sidebar to see one card per top-level team, newest conversation message first.
+A parent includes activity in its subteams; siblings share this ordering with the sidebar.
+All teams stays first in the sidebar. Equal or unknown message times keep their previous order.
+Each card shows the team's name, conversation count, activity and unread counts separately,
+spending when available, the manager's alias and conversation title, and up to two lines
+of its latest saved assistant update. Subteam cards stack in one column inside their parent,
+under `Subteams of <team name> · <count>`, with grey branch guides joining child headings.
+At most two box levels nest inside a top-level card. Deeper descendants, or children whose
+boxes would be narrower than 36 columns, appear as compact tree rows. These start expanded;
+click a row's arrow (or focus it and press `enter`) to collapse or expand its children.
+Boxed cards have the same arrow beside their Subteams heading. Collapsed children
+stay collapsed across refreshes and resizing between boxes and compact rows.
+Click the team name to open that team's overview. Indentation is bounded at narrow widths,
+and the focused row's footer hint names its full ancestry. Folding changes only this view;
+it does not change membership, the sidebar, or the configured depth limit.
+`Show closed` includes retained teams in this hierarchy;
+their cards lead to read-only history. Wide panes alternate cards left/right, with each
+column stacked independently and one blank row between cards. Narrow panes use one column. The existing preview limits
+and remote restrictions described below also apply here.
+
+The wheel scrolls the area under the pointer: left of the sidebar divider scrolls the team
+list; right of it scrolls the main overview, regardless of keyboard focus. Main scrolling
+reaches the bottom border of the last card and returns to the top. Arrow keys still reveal
+the focused control. At narrow widths, the list above the overview scrolls independently.
+Saved message timestamps include assistant replies; older or remote records without them
+use the known last user-message time. Changing a title or model does not reorder teams.
+
+Click a team's name or card background to inspect its Teams overview without opening a chat.
+Click a manager alias to open its conversation with that team's Chats overlay. Reading a
+preview does not mark a conversation read. The dedicated Global manager card precedes the team cards;
+it shows its alias, saved update, activity, spending and reporting teams. Its alias and
+preview lead to its conversation. Pending decisions remain directly actionable below the global manager and above the team cards.
+A bold white `teams` heading separates the global manager from the team cards.
+
+Arrow keys walk the cards; `space` picks teams and `m` moves the focused or picked teams.
+Drag a team card onto another card or sidebar team to move it; the empty sidebar below the
+team list means Top level. Drag a manager alias onto a team to add that conversation as a
+member. A membership drag never removes other memberships. Long overviews reveal the card
+reached by the keyboard. Move confirmations and Undo remain on Teams.
+
+**Organize** opens its suggestions here, including when reached from the conversation grid.
+Apply changes only the checked suggestions; Undo appears here after the change is saved.
+Closing the dialog returns to All teams without changing the Chats overlay or draft.
 
 ## The pane: the team you chose
 
-The right side is the team you chose, from the top:
+The sidebar selection names the team; the pane does not repeat that title. Its controls row
+shows today's spending and its cap when available. `Settings`
+opens the team's settings and spending controls. Member cards provide the conversation
+links directly; there is no separate `Members` button. `p` opens the keyboard member list
+for dragging a conversation onto another team.
 
-**The header** is one line:
+The manager comes first in a full-width card, eight to fourteen rows tall. The Recent
+interactions panel follows it and separates it from the compact ordinary member cards.
+Card sizes stay unchanged. A white alias leads the first row with the conversation title
+in grey parentheses and the grey model beside it; narrow cards use a second model row.
+Idle ages and excerpt labels do not consume preview space.
 
-```
- ● harbor  ◆ Manager   @news ⠿ working   @review ? asking   +4 idle     $0.42 today   Settings  Close…  Open ▦
-```
+Manager, Global manager and member previews show the latest user message and the beginning
+of its assistant response. User words use Chats' blue prompt glyph and muted blue body;
+assistant words use Chats' Markdown renderer and ordinary answer ink. Long messages end in
+`...`. A new unanswered prompt never borrows the previous response. Without a user prompt
+in the saved conversation, the latest team delivery or assistant update appears instead.
+Messages displayed in the front conversation take precedence over saved previews; other
+conversations use the saved transcript, which can lag running work. Looking at a
+preview does not mark the conversation read. Clicking the alias, title or preview opens
+Chats with this team's view selected. On short windows, Down on a manager
+card reveals its preview; Up returns to the alias. The wheel moves the whole main overview.
 
-The team's name; **`◆ Manager`**, a door to its manager (the conversation below it on this
-page); then only the members that are doing something, each a door with its title and state
-in the hint (`@news · weekly news digest · working · click opens`): `⠿ working`, `? asking` in
-amber when a member is stopped on a question for you, `✗ failed` in red when its last turn
-failed. Everyone else is one quiet word, **`+4 idle`**, or **`6 members`** when nobody is doing
-anything, and a press on it opens the members card. Then what the team spent today, shown
-only when there is a spend or a cap to compare it with: `$0.42 today`, or `$0.42 of $5 today`
-under a daily cap. The `daily cap per team` default is each ordinary team's own pool; `All
-teams` has no cap from that default. When a cap is inherited from the team above, the header
-names whose it is, `$1.20 of $5 today · harbor's cap`, because an explicitly set cap is one
-pool for a team and every team under it. Then three word buttons: **`Settings`** (the team's
-card, `s`), **`Close…`** (`c`),
-and **`Open ▦`** (the conversations view narrowed to this team, `w`).
+An active question gives the card a yellow border and a yellow `?` heading on its top edge,
+shortened with `...` when necessary. Permission choices and team decisions remain directly
+answerable in their existing decision cards. Live working, failed and unread facts stay
+compact on the card’s top edge; idle ages are omitted. While a member, manager or
+Global manager responds or runs work, `working` has the same animated spinner as
+Chats. It stops when the conversation needs your input or becomes idle or failed.
+ASCII and screen-reader views use a static work mark instead of animation.
 
-On a narrow screen the line gives up its parts in order: the idle word first, then the spend,
-then the members' chips from the last, then `◆ Manager`, then the buttons from the right. The
-team's name always stays. `p` opens the members card whatever the width.
+A preview locates the latest user exchange in a local transcript off the UI loop, retaining
+at most 64 KiB of message beginnings. `Updates appear here` means no user message or assistant
+update was found. `Conversation unavailable` means the file could
+not be found. Saved remote transcript previews are not available over `--host`; the front conversation
+can still show its already displayed messages. Local files are never read as substitutes
+for a remote conversation.
 
-**The members card** (`+4 idle`, `6 members`, or `p`) is titled the way the header counts,
-`harbor · ◆ Manager · 1 member`, and lists every member, one row each: its
-handle, its title, what it is doing, when it last moved, and **`Open`** for a conversation this
-window has open or **`Resume`** for one it does not. A member that reports to another team's
-manager carries a small `also in test` tag, and its hint says `reports to test's manager`.
-`Open` goes to the conversation. `Resume` opens it **behind**, in a tab of its own, without
-moving you: the page says `@docs is open behind, in its own tab`, and the row turns to `Open`.
-`↑` `↓` walk the rows, `enter` opens or resumes, `esc` or `Close` puts the card away. The
-page never says `not open`: whether a conversation is open is a fact about this window, not
-about the team.
+## Adding and removing team members
 
-**What waits on you.** Each decision addressed to you is a card, led by the same `?` the rail
-and the tabs use for something that needs you:
+`+ Add member` on the selected team's overview opens a searchable conversation picker.
+It lists existing saved conversations across projects, including ones already in other
+teams; members of this team are left out. Type a title or workspace to filter, use arrows
+and `enter`, or click a row. Adding an existing conversation keeps its context, other
+memberships and reporting manager.
 
-```
- ? conflict · raised by @boss                         waiting on you
- Which lexer do we keep?
-   @parser   the new lexer is 3x faster and passes every test
-   @model    the old one is what the grammar tool emits
-  Keep the new lexer   we maintain a fork  ✓ recommended
-  Keep the old lexer   3x slower, no fork
-   recommended because speed is the goal of this team
-  Your own answer…
-```
+`+ New conversation` in the picker asks for its first assignment. `enter create`
+creates a session in the team's workspace, adds its membership, opens it in Chats with this
+team's overlay, and submits the assignment. It follows the conversation's ordinary tool
+approval rules. `esc cancel` dismisses the sheet; Esc also cancels a pending creation.
 
-One press on an option's word decides it, and the answer goes back to whoever raised it.
-`Your own answer…` opens a line for words of your own; `enter` decides with them and `esc`
-puts it away. A closing report shows what the team did, what is left, where the files are and
-what it spent; a cap card shows `spent $5.20 of $5.00 today · harbor's cap` and offers
-`Raise to $10` or `Stop for today`, which only you can decide. A member stopped on a
-permission prompt shows `? @web asks` with the same answer buttons home offers for it, the
-prompt's own options. The newest three cards show whole; older ones fold to one line each,
-`▸ question · which port?   waiting on you`, and a press unfolds one. While the manager's
-conversation is under them, the cards take about a third of the window: the newest (or the
-one you unfolded) is whole, older ones stay whole while they fit, and the rest fold, so
-there is always room to read and steer the manager. A card waiting on a manager instead of
-you leads with `◆`, reads `waiting on ◆ harbor`, dim, and you can still decide it: you
-outrank every manager. The **team questions and caps** page says what a packet is and where questions
-go.
+Each ordinary member card has a small `x` that removes only this membership. Its session,
+draft, transcript, running work and other memberships survive. A manager cannot be removed
+with `x`. Before permanently deleting its conversation, assign another manager in Teams
+for every active team it manages. There is no member Actions menu. Removing the reporting membership leaves that
+conversation independent; another manager is never assigned automatically.
 
-**The manager's conversation.** Under all of that is the team manager's own conversation, the
-real one, with its transcript, its prompts and its message box, which says
-`to ◆ harbor manager`. Typing talks to the manager. The conversation's right-hand column
-(`Tasks` and `Traffic`) is folded on this page, because the teams rail already has the left;
-`alt+l` or its edge unfolds it. A press on a handle in the Traffic goes to that member's
-conversation, off the page, exactly as it does in the conversation's own screen.
+`a` opens Add member. The picker uses `Name` and `Project` columns and does not display IDs.
+
+## Recent interactions: scrolling, expanding replies and opening their conversations
+
+`Recent interactions` is one boxed table with a fixed header and compact exchange rows.
+The table has no lines between rows. Its log keeps the latest 200 entries, grouped by
+exchange, with the most recently active exchange first. A reply count counts messages,
+not work-status events. Click the disclosure at the start of a row to expand the full
+message and its replies inline; click it again to collapse them.
+
+The wheel over the panel scrolls the main overview. `Prev` and `Next` move backward or
+forward by a full viewport: with six rows, 1–6, 7–12, then 13 onward. A short final page
+does not repeat the previous page's rows. Both controls remain visible; the unavailable
+direction is grey and stays at the first or last page when chosen. `pgup` /
+`pgdown` move back or forward by a page. The rest of the overview stays in place. At smaller heights,
+walk into the panel with the arrow keys to bring it into view.
+
+Clicking a participant opens that participant's conversation at the exchange. Clicking
+the message opens its sender's conversation; a reply opens its author's conversation.
+When the retained chat history has no copy of that message, Chats opens at the bottom and
+says `that message is older than this chat's history`.
+
+## What waits on you: decisions, permissions and spending controls
+
+Expanded decisions and member permission prompts have a bounding box on the overview.
+Each box groups the question with its answer choices. Click an option to decide, or `Your own answer…`
+to enter your own response (`enter` submits, `esc` cancels). While this answer box is open,
+letters such as `x` are answer text, even when a task is running; they do not stop work.
+The newest three cards show
+whole; older cards collapse to one line and can be expanded. Each shows who raised it,
+what waits on you, its options and any recommendation.
+
+Members stopped on permission prompts show the prompt's actual answer options, including
+the conversation already in front. Cap decisions retain `Raise to $10` and `Stop for today`
+when those are the offered actions. Closing reports keep their account of completed work,
+remaining work, files and spending. A long overview scrolls as you walk its controls.
 
 ## Renaming a team updates the message box
 
-The box reads the team's name when it draws. After a rename it says
-`to ◆ <the new name> manager` on the next frame, and a Traffic line
-`to run <name>` does the same. Neither keeps the name from when the page opened.
-
-While the manager's conversation is on its way in, the pane says `opening ◆ harbor's
-manager…`. It never waits silently: if the conversation cannot be opened, or has not answered
-within four seconds, the pane says why, `couldn't open ◆ harbor's manager: <reason>`, and
-offers **`Retry`** and **`Open in chats`** (the manager as an ordinary conversation, off the
-page, where anything else wrong is said on its own line). When the manager's conversation is
-gone from the disk, the pane offers **`+ Manager`** instead, which starts a new conversation and
-makes it the team's manager.
+Renaming a team updates the overview's name and the team labels in Chats. Teams itself has
+no message box. To talk to the manager, click its card and type in its normal chat.
 
 ## The pane said the manager was open in another window
 
-A refusal about a conversation this window already holds is not said. That includes
-a connection that keeps one conversation at a time: if the swap is told the
-transcript is locked and this window already holds that manager, behind or in
-front, the pane does not say `open in another window`. The manager is brought
-forward instead.
+Selecting a team no longer opens or locks its manager's conversation. The overview can be
+read without resuming any member. Clicking a member uses the ordinary Chats door, which
+says any refusal there. If a local manager's conversation is missing, `+ Manager` offers a
+new manager. Starting a manager opens its fresh conversation in Chats immediately.
 
-**A team with no manager** shows `+ Manager` under its members, beside one line on what a
-manager does; a press starts a new conversation in the team's folder and makes it the manager.
-Choosing `All teams` shows every decision waiting on you from any team.
+## What does +4 idle mean on a team
+
+The earlier overview grouped idle members into `+4 idle`. Every member now has its own
+card, including idle members. `p` still opens the keyboard member list; aliases lead to
+Chats without a separate `Open` or `Resume` button.
 
 ## Moving a team inside another team, and adding a chat to a team
 
 Teams nest: a team can sit inside another, the way `orbit` sits inside `harbor` on the rail.
 You move a team by choosing where it goes.
 
-**Move into…** Choose a team on the rail and press `m`, or open the team's card and press its
-**`Inside: harbor ▾`** row. A picker opens with every team as a tree and `Top level` first:
+**Move into…** Choose a team on the rail and press `m`, or drag its team card onto another team. A picker opens with every team as a tree and `Top level` first:
 
 ```
 ╭─ Move dock into ─────────────────────────────╮
@@ -232,116 +292,98 @@ already reads. The move does not start a wake of its own.
 
 ## Keys on the teams page
 
-While the manager's conversation has the message box, keys type into it, as in any
-conversation. The page keeps these:
+Teams owns its keyboard. Typing here does not edit a manager's draft.
 
 | Key | What it does |
 |---|---|
-| `alt+↑` `alt+↓` | put the keyboard on the page's buttons and walk them (`opt+↑` `opt+↓` on a Mac) |
-| `esc` | from the page's buttons, back to the message box |
-| `tab`, `shift+tab` | the next or previous place |
-| `alt+1` … `alt+8`, `alt+.` | jump to a place, draw the map |
-
-On the page's buttons, and on a team with no manager in the pane:
-
-| Key | What it does |
-|---|---|
-| `↑` `↓` | walk the rail, or the pane |
-| `←` `→` | along a row, and across between the rail and the pane |
-| `enter`, `space` | press the button the cursor is on |
-| `s` | the chosen team's card (its settings) |
-| `c` | close the chosen team |
-| `w` | open the conversations view on the chosen team |
-| `n` | new team (inside the chosen team) |
+| `↑` `↓` | walk the rail or overview |
+| `←` `→` | move along a row or between the rail and overview |
+| `enter`, `space` | activate the selected control |
+| `pgup`, `pgdown` | previous or next interaction page |
+| `tab`, `shift+tab` | next or previous place |
+| `alt+1` … `alt+8`, `alt+.` | jump to a place, show the map |
+| `s` | team settings |
+| `c` | confirm disbanding the selected team |
+| `w` | conversations view for this team |
+| `n` | new top-level team |
 | `o` | Organize |
-| `m` | Move into…: move the chosen team, or the picked ones, inside another team |
-| `space` | on a team's row, pick it for a move of several |
-| `p` | the members card |
-| `M` | start a manager for the chosen team |
-| `r` | reopen a closed team |
-| `d` | delete a closed team (it asks first) |
-| `u` | Undo a close or a move, while it is offered |
-| `esc` | cancel a drag or a move's question, clear the picks, then back to the message box, or home when there is none |
+| `m` | Move into… |
+| `space` on a team | pick it for a move of several |
+| `p` | member list |
+| `a` | Add member picker |
+| `M` | start a manager when offered |
+| `d` | confirm permanent team deletion |
+| `u` | Undo a move while offered |
+| `esc` | cancel a drag, pending move or picks; otherwise return to Chats |
 
-Any letter not in that list goes back to the message box and types there.
-After `M` starts a manager, the new manager's message box receives the keyboard immediately;
-letters you type are sent to that manager, not interpreted as page actions.
+After `M` starts a manager, Chats opens and its message box receives the keyboard.
 
 ## A team's card: its settings, and where each value comes from
 
-`Settings` on the header, `Team settings…` in the team switcher on the tab strip, `e` on the
-conversations view, or `s` here opens the team's **card**:
+`Settings` on the Teams header or `s` here opens the team's **card**:
 
 ```
 ╭─ Team settings ────────────────────────────────────────────╮
 │  Name      orbit                                           │
 │  Colour    ◉ ● ● ● ● ●                                     │
 │  ────────────────────────────────────────────────────────  │
-│  questions go to the manager    on · from Settings         │
-│  team messages wake             on · from Settings         │
+│  questions go to the manager    on                            │
+│  team messages wake             on                            │
 │  daily cap                      $5.00 a day · from harbor  │
 │  team depth                     2 levels        reset      │
-│  sub-team share                 50% · from Settings        │
+│  sub-team share                 50%                          │
 │  ────────────────────────────────────────────────────────  │
-│  Close team…                                     Done ⏎    │
+│  Delete team                                              │
+│  up/down move · enter choose · esc done                    │
 ╰────────────────────────────────────────────────────────────╯
 ```
 
 The card holds only what the team **overrides**. A value the team takes from somewhere else
-is dim and says where: `· from Settings` for the defaults under **Teams** in `/settings`, or
-`· from harbor` when a team above it set it. A value the team sets itself is drawn plain with
+is dim. Profile defaults omit the repeated provenance; an inherited parent override still
+says `· from harbor` so spending and depth constraints remain clear. A value the team sets itself is drawn plain with
 `reset` beside it, which gives the value back to what it inherits. `enter` on a row changes
 it (the two on and off rows flip; the others take a figure), and `r` resets the row the
-cursor is on. A cap is dollars a day (0 for none), a depth is 1 to 10 levels, a share is 1 to
+cursor is on. Wake follows the same styling, reset control and `r` shortcut as the other rows.
+Team movement remains on Teams with `m` or dragging; Settings has no Inside field. A cap is dollars a day (0 for none), a depth is 1 to 10 levels, a share is 1 to
 100 percent. The name is edited as you type and kept with `enter` or when the card is put
-away; `←` `→` choose a colour. `esc` or `Done` puts the card away.
+away; `←` `→` choose a colour. `esc` puts the card away. `Delete team` is its only button for an ordinary team;
+disbanding remains on the main pane. Global settings have no deletion button.
 
-## Closing a team — will closing a sub-team stop its manager if also in the parent team
+## Disbanding a team — does current work stop?
 
-`Close…`, `c`, `Close team…` on the card, or `D` on the conversations view closes a team.
+On Teams, select a team and choose `Disband` or press `c` for confirmation.
+The conversation grid does not disband teams. The confirmation lists the selected team and every descendant. Disbanding ends all their
+memberships and coordination. Current turns finish, conversations survive, and memberships
+in other active teams survive. A conversation losing its reporting manager becomes independent.
+An affected team overlay returns to ordinary Chats; the retained team history remains selected in Teams.
 
-- **Nothing running:** it closes at once, and `harbor is closed   Undo` stays at the top of the
-  pane for a few seconds. `Undo` or `u` reopens it with its tabs.
-- **Something running:** a card says who is still working and offers **Wrap up first**,
-  **Close now** and **Cancel**. When the team has a manager, `Wrap up first` leads: the manager
-  is asked to have everyone finish and commit and to bring you a closing report, which arrives
-  as a card on this page with `Close` and `Keep going`; the team closes when you choose Close.
-  A working manager is named on the card even when it is also in a team above this one.
-  `Close now` stops every member's turn, including that manager's, and closes tabs belonging
-  only to the closing teams. A manager also in an open team above keeps its tab. `Cancel` or `esc`
-  changes nothing.
+Long confirmations scroll with `pgup`, `pgdown` or the wheel. Cancel changes nothing.
+Disbanding cannot be undone or reopened. `Show closed` reveals the disbanded history.
 
-Closing a team closes the teams under it. Other conversations that are also in another open team
-are not stopped by the close. The conversation you are looking at keeps its tab, so a close never
-moves you. A closed team spends nothing, is not on the conversations view or the strip, and
-waits under `▸ Closed · N`.
+## Closed teams: read-only history and permanent deletion
 
-Over `--host`, against an engine that does not offer the wrap-up, the card says
-`Wrap up first is not offered over this connection` and offers `Close now` and `Cancel`.
+Turn on the bottom `Show closed · N` toggle and choose a retained team in the list or
+All teams cards. The pane retains its
+roster, interactions, decisions, report and spending history. Surviving conversation links
+open bare Chats. Deleted conversations are unavailable, while copied exchanges and decisions
+remain readable. New messages and decisions cannot change disbanded history.
 
-## Closed teams: reopening, reports and deleting
+`Delete` (`d`) permanently deletes the selected team and every descendant, including their
+interactions and decisions. Settings offers `Delete team` for active teams too: they are
+first disbanded. The confirmation names all affected teams and stacks `Keep` above `Delete`,
+with `Keep` selected by default and `up/down` choosing between them. Conversations and current work
+survive. Deletion cannot be undone. Older hosted engines without checked deletion refuse it.
 
-Open `▸ Closed · N` on the rail and choose a team. On this machine, the pane shows when it was
-opened and closed, its `closing report` when it closed on one (`done`, `left`, `files`, and
-`spent`), and its members, each still a door to its conversation. Two buttons:
+## Organize disbands quiet teams
 
-- **`Reopen`** (`r`) opens the team again: its members' tabs come back and its manager is
-  brought in front. A team whose parent is closed too offers **`Reopen harbor too`**, because a
-  sub-team cannot be open under a closed team.
-- **`Delete…`** (`d`) asks first, then forgets the team, its Traffic and its decisions. Its
-  conversations stay in your history. Only a closed team can be deleted.
-
-## Organize closes quiet teams
-
-`✦ Organize` on the rail (or on the conversations view) suggests teams for your conversations,
-and when some teams have had no activity for a week and nothing waiting, it also suggests
-**`Close 3 quiet teams`**, ticked like every other suggestion. Nothing closes until you Apply,
-and `Undo` on the Teams row for a few seconds after reopens them. Organize never closes a team
-by itself. Over `--host` this suggestion is not offered yet.
+`✦ Organize` suggests groupings and **`Disband 3 quiet teams`** when teams have no activity
+for a week and nothing waiting. Nothing changes until Apply. Undo restores grouping changes;
+it does not reopen disbanded teams. Over `--host` quiet-team suggestions are not offered yet.
 
 ## With no teams yet
 
-The page says what a team is in one sentence and offers two buttons: **`✦ Organize my
+The Global manager card offers its optional creation button before the first team exists.
+Below it, the page says what a team is in one sentence and offers two buttons: **`✦ Organize my
 conversations`**, which suggests teams from the conversations you have open, and
 **`+ New team`**. `o` and `n` press them.
 
@@ -349,8 +391,9 @@ conversations`**, which suggests teams from the conversations you have open, and
 
 Over `--host` the page shows the teams of the machine the conversations run on: their
 decisions, their spend and their managers. The **Teams** tab of `/settings` edits that
-machine's defaults, and each value says `from Settings`. An older engine keeps the tab
-read only and says `changing them is not available over this connection`. A closed team's
+machine's defaults. Team Settings omit the repeated profile-default provenance. Hosted team
+editing requires both client and engine to support the current membership capability. Update
+an older engine before using Teams over that connection; its team controls are absent. A closed team's
 report is not read over the connection yet, and the page says
 `its closing report is kept where the team ran, and is not readable over this connection`
 where the report would be. A plain local launch reads the report from this machine's engine
@@ -358,17 +401,133 @@ profile and shows it in the closed team's pane.
 
 ## Why the page looks the way it does
 
-- **Marks appear only when something happens**, so a glance down the rail finds the one team
-  that needs you. Amber means a person is needed, and nothing else on the page is amber.
-- **The pane is the manager's own conversation**, not a copy of it, because talking to the
-  team means talking to its manager. Everything you could do in that conversation you can do
-  here.
-- **Choosing a team is the one thing that changes which conversation is in front.** Nothing
-  else on the page moves you, and resuming a member opens it behind.
-- **A team moves by choosing where it goes**, not by indenting it: the rail keeps teams in the
-  order they were made, so a move changes one team's place and nothing else's. A drag adds a
-  chat and never removes one, so a slip of the pointer cannot lose a conversation from a team.
-- **`m` is Move into…, so starting a manager is `M`.** The move is the everyday gesture; a
-  manager is started once per team.
-- **A team is deleted only once it is closed**, so the everyday gesture is a close you can undo,
-  and the one that forgets things asks first.
+The overview keeps teams visible while their conversations work independently. The manager
+has a larger full-width preview; member cards stay compact and share one size. Updates can be read without
+opening a conversation; aliases and exchanges lead into Chats when detail is needed.
+The interaction table keeps many exchanges visible in one panel and expands replies inline.
+Choosing a team never changes the current chat or takes the keyboard into its draft.
+
+## Reporting after membership removal
+
+A conversation has one reporting manager, chosen by its reporting membership. Removing that
+membership or disbanding its team leaves it independent. Other memberships remain links.
+There is no reporting-assignment action on the member cards.
+
+## Will closing a sub-team stop its manager if that manager is also in the parent team?
+
+The former Close/Reopen actions have been replaced by Disband. Disbanding a sub-team lets
+its manager's current work finish, preserves its conversation and keeps its parent-team
+membership. It recursively disbands only the selected sub-team and its descendants.
+The confirmation lists them. History stays read-only with Show closed; there is no Reopen.
+
+## New team placement and removing a member
+
+The Teams sidebar keeps `+ New team` directly after the displayed teams list. `Show closed`
+remains at the bottom of the sidebar. `+ Add member` and `+ Add subteam` stay together
+on the left of the selected team's header, followed by `Choose manager`; `Settings` and `Disband` sit on the right.
+
+A member card's `x` opens a confirmation naming the member and team. `cancel` is selected
+by default; choose `yes` to remove only that team's membership. Its work finishes and its
+conversation remains. Removing the manager requires replacing it first.
+
+## Create an empty team or select several conversations
+
+`+ New team` opens a creation dialog over Teams, keeping the overview behind it.
+`+ Add subteam` uses the same dialog with the selected parent named in its title.
+Enter Name, choose Colour, and optionally select members from the searchable Name/Project list.
+Click several rows to toggle their checkboxes; filtering preserves hidden selections. `tab`
+changes fields, arrows move, `space` selects a highlighted member, `enter` creates, and `esc`
+cancels. No internal IDs are shown. A duplicate name or invalid parent is refused.
+
+You may create an empty team and add members afterward. Creation never assigns a manager or
+opens its members. Both routes land on the new team overview. A failed save is reported there.
+Chats also offers `+ New team` in its full saved-conversation grid: select cards, then name
+and create. The full conversation grid itself lives only in Chats.
+
+## Keyboard hints in team menus
+
+Team menus show grey instructions together at the left of the box footer, with the key first:
+`up/down move · space select · esc cancel · enter create` in New team and
+Add subteam. Narrow boxes wrap the instructions rather than hiding them. Only text fields,
+colour, and members are tab stops; the creation hint stays in that footer. Add member and
+Choose manager show `up/down move · enter choose · esc cancel`; creating a new conversation
+shows `enter create · esc cancel`. Settings, Move, Organize, and the Chats team-naming card
+use the same key-first format. Clickable action hints act on the same choices as their keys.
+
+## Choose manager — change a team's manager from existing members
+
+`Choose manager` in the selected team's header opens a filtered Name/Project list of its
+existing members, excluding the current manager. `cancel` is selected by default. Choose
+a member with Enter or click; Esc cancels. Only this team's manager changes. The former
+manager remains a member, and both conversations keep their work and history.
+
+The picker cannot create a conversation or add membership. All teams also offers
+`+ Add member` for adding a global-manager candidate; automatic memberships stay protected. For a new manager, first use
+`+ Add member` to add or create its conversation, then use `Choose manager`.
+An ordinary team manager cannot be removed or permanently deleted while it manages an active team.
+The deletion confirmation names every active team it manages and says
+`Assign another manager before deleting it.` Replace it in every named
+team before deleting its conversation. Missing conversations are not replacement candidates.
+
+## Can one conversation manage multiple teams?
+
+A conversation can manage one team and any descendants of that team. It cannot also
+manage an unrelated team. Managing sibling teams requires also managing their common
+ancestor. The global All teams manager is a separate conversation; it cannot also manage
+an ordinary team. Ordinary membership in multiple teams remains allowed.
+
+Choose manager and team moves refuse changes that introduce conflicting responsibilities,
+naming the affected teams. Replacing a parent manager can also be refused if it would
+leave the former manager managing sibling teams without a managed ancestor. The refusal
+names the subteam managers to assign first, before changing the parent manager. Older conflicting assignments remain visible and can be repaired
+explicitly in Teams. Loading them does not silently change managers.
+
+A new manager's empty conversation survives navigation and restart. If its transcript is
+missing, its card says `Conversation unavailable`; add or select a replacement explicitly.
+
+## Reading a long manager deletion refusal
+
+A blocked deletion names every active team the conversation manages. In a short terminal,
+scroll the message with the mouse wheel or Page Up/Page Down. Cancel/delete and the
+keyboard hints remain visible. Choose replacements through Teams → Choose manager first.
+
+## Global manager — create, delete and recreate
+
+All teams shows a dedicated **Global manager** card above its team cards. The global
+manager is optional. `+ Global manager` appears only in this card and creates a separate
+conversation; the managers of open top-level teams become its reports automatically.
+Ordinary members and subteam managers are not direct reports. The card shows the current
+reporting teams and the latest user message with the beginning of its assistant response. Read the preview
+without marking the conversation read; click its alias or preview to open and respond.
+
+The card's top-right `x` permanently deletes the global-manager conversation with the usual
+`cancel` / `delete` confirmation. Its teams, their managers, running work and history remain.
+This same optional-global-manager exception works from Home, Chats and Sessions.
+`+ Global manager` reappears so it can be created again; assigning it reconnects current
+top-level managers as reports. Ordinary members retain their reporting choices. A global manager cannot also
+manage an ordinary team; conflicting old assignments must be repaired before deletion.
+
+Without a global manager, the card shows only `Optional · coordinates the managers of
+top-level teams` and `+ Global manager`. This same state returns after deletion and when
+the saved manager conversation is missing. With a manager, the creation button disappears;
+`+ Add member` and `Settings` remain alongside the conversation's `x` delete control.
+`Choose manager` is unavailable for the global role. `Settings` retains global spending controls.
+
+## Model names on manager and member cards
+
+Every manager and member card shows its conversation model beside the white alias, such as
+`@picker (Conversation title) · ~deepseek/deepseek-v4-flash-latest`. The title, separator and model are grey. A long model
+ends in `...` to fit the card; the alias keeps its space. Unknown models show no label.
+Live conversations use their current model; other conversations use their saved model,
+refreshed with the Teams overview. Changing a model saves that choice immediately, so
+another window can reflect it without waiting for another message. The All teams sidebar
+row has a white circle; the selected main navigation tab is bold with the hover highlight.
+
+## Older clients and membership metadata
+
+Hosted membership writes require matching client and engine support. An older client cannot
+replace the whole teams file: the engine says `update the client before editing team memberships`.
+A new client refuses writes to an older engine and says `update the engine before editing team memberships`.
+Stop older local codeaf processes before editing the same profile with this build: an already
+running old binary cannot learn the new fields or store rules. Current builds preserve unknown
+member fields and existing join timestamps; new hosted memberships use the engine's clock.

@@ -292,3 +292,9 @@ scattered over six files with an ASCII twin beside each. They disagreed, and the
 disagreement was visible: a stopped task drew `⊘` on the roster and `✗` on its
 own page, a run held at its spend gate drew the banned `⏸`, and the fold mark
 `▸` and the working mark were the same character on the page that used both.
+
+### Team navigation identities
+
+`GTeamDot` marks a team identity in the Teams sidebar: `●` in the plain tier,
+`nf-fa-circle` in the Nerd Font tier, and `o` in ASCII. All teams uses white ink.
+The navigation tree separates this circle from work-state dots by position.

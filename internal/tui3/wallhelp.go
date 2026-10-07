@@ -45,9 +45,9 @@ type wallHelpGroup struct {
 // wallHelpList is the sheet's groups, with the keys in the palette's tier.
 func wallHelpList(ascii bool) []wallHelpGroup {
 	k := wallKeysFor(ascii)
-	arrows, span := "←↑↓→", "1–9"
+	arrows := "←↑↓→"
 	if ascii {
-		arrows, span = "arrows", "1-9"
+		arrows = "arrows"
 	}
 	row := func(label, key, press, hint string) wallHelpRow {
 		return wallHelpRow{label: label, key: key, press: press, hint: hint}
@@ -62,18 +62,11 @@ func wallHelpList(ascii bool) []wallHelpGroup {
 		{name: "Open", rows: []wallHelpRow{
 			row("Open", k.enter, "enter", "Open the focused conversation"),
 			row("Answer", k.enter, "enter", "Open the focused conversation to answer it"),
-			row("Open the rest", "r", "r", "Resume the shown team's conversations not open here"),
 			row("Back", "esc", "esc", "Back one step"),
 		}},
-		{name: "Organize", rows: []wallHelpRow{
+		{name: "Select", rows: []wallHelpRow{
 			row("Select", k.pick, "space", "Select the focused conversation"),
-			row("New team", "s", "s", "Make a team"),
-			row("Organize", "o", "o", "Suggest teams for your conversations"),
-			row("Add to teams", "m", "m", "Add the focused conversation to teams"),
-			row("Make manager", "m", "m", "In the Teams list: make the focused conversation the shown team's manager"),
-			row("Team settings", "e", "e", "Rename, recolour or change the shown team's settings"),
-			row("Close team", "D", "D", "Close the shown team; reopen it from Closed on the teams page"),
-			row("Switch team", "tab / "+span, "tab", "Show the next team"),
+			row("New team", "s", "s", "Select conversations for a new team"),
 			row("Close view", "x", "x", "Close the focused view; the work keeps running"),
 		}},
 		{name: "View", rows: []wallHelpRow{

@@ -72,7 +72,9 @@ were reading.
 
 Choosing a model does four things: the model is set on the session, the machine running
 the session learns that model's context window for compaction, a note appears reading
-`model · <model>`, and the choice is written into your profile.
+`model · <model>`, and the choice is written into your profile and the conversation's
+saved configuration immediately. Other windows can see that saved model without waiting
+for another message.
 
 Over `--host`, the picker and its prices are this laptop's catalog, while the context
 window used for compaction comes from the far machine's catalog. The machine doing the
@@ -913,7 +915,7 @@ role**, grouped under the row answering it, saying which model comes out:
 | `router` | small work | whether a turn should have been work |
 | `consolidate` | small work | tidies what is remembered while nobody is here |
 | `taskname` | small work | the two or three words a task is called |
-| `checker` | checker | whether finished-looking work is actually finished (a saved pin still names this role `auditor`) |
+| `checker` | checker | whether finished-looking work is actually finished (older pins may keep their former spelling) |
 | `vision` | checker | reads images for a model that cannot see them |
 | `shaper` | checker | the brief a task you started yourself is given |
 | `careful` | checker | a part of a task that needs judgement |

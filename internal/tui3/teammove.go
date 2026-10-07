@@ -449,7 +449,8 @@ func (a *app) teamMoveCard(width, height int) wallCard {
 	rows := a.teamMoveRows()
 	// The rows the card holds: the frame less the border, the padding, the
 	// filter, two rules and the foot.
-	room := max(height-2-2*wallCardPadY-5, 3)
+	footer := teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("enter", "choose"), teamHint("esc", "cancel"))
+	room := max(height-2-2*wallCardPadY-5-len(footer), 1)
 	at := 0
 	for i, r := range rows {
 		if r.parent == a.tmove.cursor {
@@ -497,17 +498,16 @@ func (a *app) teamMoveCard(width, height int) wallCard {
 		})
 	}
 	lines = append(lines, wallCardLine{rule: true})
-	foot := "esc cancel"
+	foot := ""
 	if r, ok := a.teamMoveFocus(); ok {
 		if r.ok {
-			foot = pal.muted(fit(a.teamMoveDoing(a.tmove.ids, r.parent), inner-8)) + pal.dim("  enter")
+			foot = pal.muted(fit(a.teamMoveDoing(a.tmove.ids, r.parent), inner))
 		} else {
 			foot = pal.muted(fit(r.why, inner))
 		}
-	} else {
-		foot = pal.dim(foot)
 	}
 	lines = append(lines, wallCardLine{s: foot})
+	lines = append(lines, footer...)
 	title := "Move " + a.teamMoveSubject(a.tmove.ids) + " into"
 	w := inner + 2 + 2*wallCardPadX
 	h := len(lines) + 2 + 2*wallCardPadY
@@ -540,7 +540,6 @@ func (a *app) teamMoveAsk(ids []string, parent string, from int) tea.Cmd {
 	} else {
 		a.tsheet.cursor = tsMoveYes
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	return nil
 }
@@ -632,7 +631,8 @@ func (a *app) teamMoveApply(ids []string, parent string, from int) tea.Cmd {
 	// it. The edit runs twice (teams.go), so the append is not inside it: it
 	// would be written twice, and the first time on the loop. One command
 	// writes them, through the store, after the move has been accepted.
-	before := &teamstore.File{Teams: teamsClone(a.wall.teams)}
+	before := a.teamTree().ManagementSnapshot()
+	before.Teams = teamsClone(a.wall.teams)
 	if err := a.teamEdit(func(f *teamstore.File) error { return f.Move(roots, target) }); err != nil {
 		a.tp.msg = "not moved: " + err.Error()
 		a.touch()
@@ -641,7 +641,6 @@ func (a *app) teamMoveApply(ids []string, parent string, from int) tea.Cmd {
 	a.tmove.pend = teamMovePend{}
 	a.tmove.undo = teamMoveUndo{back: back, homes: homes, word: word, from: from, at: a.now(), said: a.teamWriteWatch(nil)}
 	a.tp.msg = ""
-	a.tp.top = teamsTopCache{}
 	if a.tp.cur.act == teamsActMoveYes || a.tp.cur.act == teamsActMoveNo {
 		a.tp.cur = teamsRef{act: teamsActUndo}
 	}
@@ -678,7 +677,6 @@ func (a *app) teamMoveCancel() {
 	if a.tsheet.cursor == tsMoveYes || a.tsheet.cursor == tsMoveNo {
 		a.tsheet.cursor = tsInside
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 }
 
@@ -694,7 +692,7 @@ func (a *app) teamMoveConfirm() tea.Cmd {
 // teamMoveUndoing reports whether Undo is offered for the last move.
 func (a *app) teamMoveUndoing() bool {
 	u := a.tmove.undo
-	return len(u.back) > 0 && u.said.said() && a.now().Sub(u.at) < teamsUndoFor
+	return len(u.back) > 0 && u.said.said() && a.now().Sub(u.at) < wallOrganizedFor
 }
 
 // teamMoveUndo puts the last move back: every moved team under its parent
@@ -729,7 +727,6 @@ func (a *app) teamMoveUndo() tea.Cmd {
 	} else {
 		a.tp.msg = "moved back"
 	}
-	a.tp.top = teamsTopCache{}
 	if a.tp.cur.act == teamsActUndo {
 		a.teamsCursorHome()
 	}

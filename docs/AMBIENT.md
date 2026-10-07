@@ -51,6 +51,12 @@ account (mail, calendar, Linear, Notion, Slack, anything a signed-in service bri
 v1 built its watches before codeaf had accounts; v3 has them, and that is what makes
 half of this list possible.
 
+Say **once** and a watch is one notification: "Notify me once when ready becomes true"
+tells you the first time the condition turns true, and then retires. Without it a watch
+speaks each change — it stays quiet while the same reading still holds, and a condition
+that goes false and true again is a second notice. A rhythm is `every` ("every Monday
+at 9"), which speaks on its schedule whether or not anything changed.
+
 ### Rules you stop thinking about
 
 - "Keep main green." — on red, a task investigates in its own worktree and either lands

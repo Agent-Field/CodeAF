@@ -6,6 +6,29 @@ two thirds off the embedded corpora. This file is what keeps it. Every win below
 is defended by something that goes red locally, in `go test` or in `make check`,
 with a message that says what happened.
 
+## Teams overview reading bounds
+
+Visible teams’ member previews and latest-message times are read once per conversation
+key in the same serial batch, so shared membership does not duplicate journal reads.
+Member previews locate the latest human exchange off the UI loop by scanning journal
+record boundaries backwards. Unchanged size/mtime reuses the cached preview; remote
+journals are never opened on this machine. Reads use a **64 KiB** (`teamsPreviewBytes`)
+chunk and at most the first **64 KiB** of each record, including oversized JSON content
+strings. Finding the prompt can scan more than 64 KiB of a changed journal, but retained
+messages stay bounded to **64 KiB total** and **2 messages** (`teamsPreviewMessages`).
+The prompt retains up to one quarter of that byte budget, leaving space for the response's
+beginning. Front conversations use their displayed messages with the same retained bound.
+Manager cards remain capped at **14 rows** (`teamsManagerRows`), with an **8-row** minimum
+(`teamsManagerMinRows`). Interaction readings retain at most **200 entries** (`trafficKeep`),
+merged by id without consuming the live delivery cursor. The table paints at most **6 body
+rows** (`teamsInteractionRows`), reduced to fit the available pane, with a pinned header
+and independent paging. Sorting shares one subtree timestamp pass per frame, including
+live correction times. Mouse wheels move physical rows in the pane or sidebar under
+the pointer. Paint performs no filesystem or network reads.
+`TestTeamsPreviewRetainsBoundedTextAndFollowsUpdates`, the long-record exchange regressions,
+the overview navigation/geometry regressions and `TestTheFrameNeverReadsTheDisk` defend
+these bounds.
+
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;
@@ -2452,7 +2475,7 @@ include the complete tab identity and picker availability, not just rendered wor
 
 
 The navigation panel renders a separate transcript separator and, inside a task,
-a separate metadata row. Its tab candidate slice is bounded to 32 entries;
+a separate metadata row. Its ordinary All tab candidate slice is bounded to 32 entries; a team overlay draws its complete stored membership without applying that presentation cap. Overlay frames build membership tabs from memory and never open agents or transcripts; the membership picker captures its saved-session snapshot off-loop once when opened.
 the recency stack and held agents remain uncapped. Membership walks can still
 inspect recency keys when candidates are dismissed or missing, but the renderer
 no longer builds an unbounded temporary tab list and compares each entry against
@@ -2817,3 +2840,57 @@ kill and reap the child so `Wait` cannot hang behind a full stdout pipe. Stderr
 capture retains at most **4 KiB** while continuing to drain. Regression fixtures
 cover both engines, direct runtime roots, aliases, broad globs, subprocess
 termination, source worktrees, and growth during a snapshot read.
+
+## Saved conversation cards
+
+The Chats grid reads the switcher's world metadata off-loop at most every
+`wallCatalogEvery` (**3 seconds**) and caches canonical conversation keys before painting.
+Only visible saved cards read transcript tails, one batch at a time, under the
+shared `teamsPreviewBytes` (**64 KiB per transcript**) budget. Transcript pieces
+are rendered only for visible cards. Hosted catalogs never read local transcript
+paths. No saved conversation is resumed to display or select its card.
+
+## Contextual memory bounds
+
+One ordinary post-turn extraction can add one memory claim. It keeps at most eight
+independent receipts per turn, each clipped to 2,000 runes, and eight metadata items
+of 240 runes each. The existing 512-rune memory body stays unchanged; rich source
+words and reasoning live in the canonical journal. Approved context and direct
+lexical fallback together take at most eight claims, within the existing 4,800-rune
+memory block. Local source revision queries get a two-second cancellation bound.
+Only clean tracked revisions establish current outcome evidence.
+
+Binding retrieval spends its bounded window on authority: approved rules and
+confirmed decisions are read through a partial index (`events_contextual_approved`)
+that holds only binding rows, so the newest-128 window is a seek over the rule
+count rather than a walk of the owner's evidence partition. A projection that asks
+for many memories' latest evidence does so in ONE indexed read per owner through
+`events_contextual_memory` (an expression index over the memory id), and the live
+guards (validity, memory suppression, source retirement, derivation ancestry and
+conditions) are answered for the whole candidate set in batched, owner-scoped
+reads rather than a query per row. The per-memory latest read is NOT windowed to a
+record count: a live rule whose newest evidence sits behind a burst of newer rows
+is still answered, so no hidden total-claim ceiling can drop it. Source suppression
+still checks the owner journal to avoid old-source resurrection, and the ancestry
+it walks is bounded by the candidates' derivation closure, not by a fixed count.
+Dependency projections inspect 128 events and return at most eight links/notices.
+Only successful full reads of files up to 64 KiB can establish an exact-path link.
+At most eight source reads per pass can establish eight edges. Consumer probes are
+bounded to eight producer/consumer pairs; they make no provider calls or edits.
+Exact duplicate settlement streams the active owner partition transactionally: its
+cost grows with that partition, rather than losing punctuation or older duplicates
+behind a retrieval ceiling. The canonical event journal is not periodically pruned;
+projection/context work is bounded, while durable history continues to grow.
+
+## Conversation deletion completion
+
+Permanent deletion joins the task run's completion channel with
+`conversationDeletionGrace` (**30 seconds**), and keeps the journal lock on timeout.
+The cross-process deletion request uses the same grace while claiming the journal.
+Ordinary Close returns promptly but releases its journal only after the cancelled run's
+last store close, before signalling completion to a caller that may immediately reopen
+the conversation. Clearing the run and signalling completion happen together. Cleanup
+receipts are atomically replaced and synced before committing deletion. Startup recovery
+walks only the two saved-conversation directory levels, without following symlinked buckets.
+`internal/session/deletion_revision_test.go` drives completion and timeout with held
+channels and a zero test grace rather than sleeping for the production deadline.

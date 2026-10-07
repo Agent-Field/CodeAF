@@ -325,3 +325,77 @@ func TestTheProposedOrderCarriesItsAltitudeTitleAndGrant(t *testing.T) {
 		t.Fatalf("an unknown altitude was admitted: %v", err)
 	}
 }
+
+// THE ONE-SHOT INTENT IS COMPILED, CARRIED AND STORED.
+//
+// "Notify me once when ready becomes true" is ONE fulfilled notification, not an
+// alert every time the condition is still true. The model reads the sentence once
+// at proposal time and sets a field, which is what the card is drawn from and
+// what the document keeps; nothing matches the person's English on a later pass.
+func TestTheCompiledOneShotConditionRidesTheCardAndTheDocument(t *testing.T) {
+	agent, _ := ordersAgent(t)
+	parsed := standArguments{Words: "notify me once when ready becomes true", WhenWords: "every five minutes"}
+	parsed.When.Kind = "probe"
+	parsed.When.Probe.Command = "curl -s localhost:8080/ready"
+	parsed.When.OneShot = true
+	parsed.Does.Kind = "say"
+	parsed.Does.Say = "ready is up"
+
+	item, problem := agent.standingItem(parsed, time.Now())
+	if problem != "" {
+		t.Fatalf("the call was refused: %s", problem)
+	}
+	if !item.When.OneShot {
+		t.Fatal("the compiled one-shot intent did not ride the item")
+	}
+	// THE INTENT IS VISIBLE IN THE CARD'S WHEN BAND: it is the compiled field,
+	// not a word the model happened to send. The cadence beside it is the TYPED
+	// one (the probe named no probe_every, so the native five-minute pass
+	// stands), never the model's own when_words prose. The approval notice
+	// quotes [When.Words], and the stored manifest is the same item.
+	if item.When.Words != "once \u00b7 every 5 minutes" {
+		t.Fatalf("the one-shot when band reads %q, wanted the intent and the typed cadence", item.When.Words)
+	}
+	notice := StandingNotice{Item: item, WhenWords: item.When.Words}
+	if !strings.HasPrefix(notice.WhenWords, "once") {
+		t.Fatalf("the approval plan does not show the one-shot intent: %q", notice.WhenWords)
+	}
+	// THE PERSON'S OWN SENTENCE IS UNTOUCHED.
+	if item.Words != "notify me once when ready becomes true" {
+		t.Fatalf("the canonical words were rewritten: %q", item.Words)
+	}
+	// THE CARD SAYS WHAT THE ONE-SHOT WATCH DOES, beside the intent.
+	shown := false
+	for _, option := range StandingOptions(item) {
+		if option.Key == "1" && strings.Contains(option.Consequence, "once") {
+			shown = true
+		}
+	}
+	if !shown {
+		t.Fatalf("the one-shot watch card does not say it tells once: %+v", StandingOptions(item))
+	}
+	// The schema fence keeps an older reader from silently re-arming it.
+	if item.Schema != standing.Schema {
+		t.Fatalf("a one-shot condition is schema %d, wanted %d", item.Schema, standing.Schema)
+	}
+	// THE FIELD IS ON THE SCHEMA the model writes to, and the description says
+	// what it is for. Without it the model has no way to compile the intent.
+	if !strings.Contains(standSchemaJSON, `"once"`) {
+		t.Fatal("the stand schema has no once field, so the intent cannot be compiled")
+	}
+	if !strings.Contains(standSchemaJSON, "fire on the first true") {
+		t.Fatalf("the once field does not say what it means:\n%s", standSchemaJSON)
+	}
+
+	// And on a rhythm the intent has nothing to do: it is not a condition. The
+	// field is left unset rather than silently changing a scheduled order.
+	parsed.When.Kind = "every"
+	parsed.When.Every = "20m"
+	item, problem = agent.standingItem(parsed, time.Now())
+	if problem != "" {
+		t.Fatalf("the rhythm call was refused: %s", problem)
+	}
+	if item.When.OneShot {
+		t.Fatal("a rhythm grew a one-shot intent it cannot honour")
+	}
+}

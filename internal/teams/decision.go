@@ -297,7 +297,7 @@ func DecisionsPath(profileDir, teamID string) string {
 // crossing write one line: the second is handed the packet already there, and
 // no second line of Traffic is written. Any other kind is a new packet every
 // time it is raised.
-func Raise(profileDir string, p Packet) (Packet, error) {
+func raiseLocked(profileDir string, p Packet) (Packet, error) {
 	if !packetKinds[p.Kind] {
 		return Packet{}, fmt.Errorf("teams: %q is not a packet kind", p.Kind)
 	}
@@ -363,7 +363,7 @@ func Raise(profileDir string, p Packet) (Packet, error) {
 // own words. by is the handle of the manager of the team the packet waits on,
 // or [Person], who may decide any packet. A packet already decided is
 // [ErrDecided], and nothing is written.
-func Decide(profileDir, id, by, decision, reason string) (Packet, error) {
+func decideLocked(profileDir, id, by, decision, reason string) (Packet, error) {
 	if strings.TrimSpace(decision) == "" {
 		return Packet{}, errors.New("teams: a decision needs an answer")
 	}
@@ -412,7 +412,7 @@ func Decide(profileDir, id, by, decision, reason string) (Packet, error) {
 
 // Told records that a decided packet's answer reached its raiser. A duplicate
 // delivery changes nothing, and the append uses the packet file's own lock.
-func Told(profileDir, id string) error {
+func toldLocked(profileDir, id string) error {
 	origin, err := packetOrigin(profileDir, id)
 	if err != nil {
 		return err
@@ -436,7 +436,7 @@ func Told(profileDir, id string) error {
 // Escalate sends packet id up: to an open team above the one it waits on, or
 // to [Person]. by is as for [Decide]. Down, sideways or to a closed team is
 // [ErrSideways]; a decided packet is [ErrDecided].
-func Escalate(profileDir, id, by, to, reason string) (Packet, error) {
+func escalateLocked(profileDir, id, by, to, reason string) (Packet, error) {
 	var out Packet
 	f, err := Load(profileDir)
 	if err != nil {
@@ -496,6 +496,9 @@ func raiserWord(by string) string {
 // recorded under: [Person], or the handle of the manager p waits on, which
 // by may give as its handle or as [FromManager].
 func mayDecide(f *File, p Packet, by string) (string, bool) {
+	if origin, ok := f.Team(p.Origin); !ok || origin.Closed() {
+		return "", false
+	}
 	if by == Person {
 		return Person, true
 	}
@@ -555,14 +558,14 @@ func rule(profileDir string, f *File, p Packet) {
 		if party.Team == "" {
 			continue
 		}
-		if _, ok := f.Team(party.Team); !ok {
+		if t, ok := f.Team(party.Team); !ok || t.Closed() {
 			continue
 		}
 		to := party.Handle
 		if to == "" {
 			to = ToRoom
 		}
-		_ = AppendTraffic(profileDir, party.Team, Entry{Kind: KindDirective, From: from, To: to, Member: party.Key,
+		_ = appendTrafficLocked(profileDir, party.Team, Entry{Kind: KindDirective, From: from, To: to, Member: party.Key,
 			Text: text, Packet: p.ID, State: PacketDecided})
 	}
 }
@@ -633,6 +636,13 @@ func capAlready(path string, p *Packet) (Packet, bool) {
 func appendDecision(profileDir, teamID string, e *decisionEvent, check func(Packet) error) error {
 	if err := safeTeamID(teamID); err != nil {
 		return err
+	}
+	if f, _, _, err := read(profileDir); err != nil {
+		return err
+	} else if f != nil {
+		if t, ok := f.Team(teamID); !ok || t.Closed() {
+			return ErrClosed
+		}
 	}
 	path := DecisionsPath(profileDir, teamID)
 	return lockedAt(strings.TrimSuffix(path, ".jsonl")+".lock", lockWait, func() error {
@@ -771,10 +781,10 @@ func logPacket(profileDir string, f *File, p Packet, teams []string, text string
 			continue
 		}
 		seen[id] = true
-		if _, ok := f.Team(id); !ok {
+		if t, ok := f.Team(id); !ok || t.Closed() {
 			continue
 		}
-		_ = AppendTraffic(profileDir, id, Entry{Kind: KindPacket, From: FromSystem, To: ToManager,
+		_ = appendTrafficLocked(profileDir, id, Entry{Kind: KindPacket, From: FromSystem, To: ToManager,
 			Text: text, Packet: p.ID, State: p.State})
 	}
 }
@@ -1082,4 +1092,42 @@ func (f *folded) copy() *folded {
 		out.byID[id] = p
 	}
 	return out
+}
+
+// Raise serializes decision history with membership and lifecycle changes.
+func Raise(profileDir string, p Packet) (Packet, error) {
+	var result Packet
+	err := withLock(profileDir, lockWait, func() error {
+		var err error
+		result, err = raiseLocked(profileDir, p)
+		return err
+	})
+	return result, err
+}
+
+// Decide serializes decision history with membership and lifecycle changes.
+func Decide(profileDir, id, by, decision, reason string) (Packet, error) {
+	var result Packet
+	err := withLock(profileDir, lockWait, func() error {
+		var err error
+		result, err = decideLocked(profileDir, id, by, decision, reason)
+		return err
+	})
+	return result, err
+}
+
+// Escalate serializes decision history with membership and lifecycle changes.
+func Escalate(profileDir, id, by, to, reason string) (Packet, error) {
+	var result Packet
+	err := withLock(profileDir, lockWait, func() error {
+		var err error
+		result, err = escalateLocked(profileDir, id, by, to, reason)
+		return err
+	})
+	return result, err
+}
+
+// Told records delivery under the same lifecycle lock as decisions.
+func Told(profileDir, id string) error {
+	return withLock(profileDir, lockWait, func() error { return toldLocked(profileDir, id) })
 }

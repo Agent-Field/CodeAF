@@ -1142,6 +1142,7 @@ func (a *app) lastConversation() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	a.teamViewSet("")
 	cmd, _ := a.bringForward(a.behind[key].conv.SessionFile)
 	return cmd
 }
@@ -1295,7 +1296,12 @@ func leaveAgent(agent Agent) {
 		_ = hosted.Detach()
 		return
 	}
-	agent.InterruptFor(session.StopByLeaving)
+	leaveAgentFor(agent, session.StopByLeaving)
+}
+
+// Permanent deletion closes the owner rather than detaching its view.
+func leaveAgentFor(agent Agent, door session.StopDoor) {
+	agent.InterruptFor(door)
 	_ = agent.Close()
 }
 

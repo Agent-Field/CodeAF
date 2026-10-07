@@ -30,6 +30,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,17 @@ type v3Process struct {
 	// answer to give. Each conversation still gets its own memory pass and its
 	// own context, which is per-agent already.
 	Memory *store.Store
+	// Search is the store the CONVERSATION INDEX lives in — the same file as
+	// Memory when memory is on, and the same file opened alone when it is off.
+	// THAT IS THE WHOLE DECOUPLING: the memory row turns off what the session
+	// REMEMBERS, never what the next conversation can SEARCH. It used to be
+	// one field and one decision, so turning memory off also closed the
+	// conversation index and the search verb with it — a person who turned
+	// memory off lost a feature they never asked to lose.
+	//
+	// Search is legitimately PROFILE-scoped, for Memory's reason (one handle
+	// per file per process; two pools on one file arbitrate through a timeout).
+	Search *store.Store
 	// Skills is the skill shelf every conversation this process opens reads:
 	// the Memory store itself when memory is on, and otherwise a store of its
 	// own that holds nothing but the skills the folders on disk hold
@@ -241,6 +253,9 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	// empty list (chatv3_migrate.go). It is never fatal and never repeated —
 	// which is a promise this file is now the keeper of.
 	migrateV3Layout()
+	if err := session.RecoverConversationDeletions(session.PlacesRoot(), settings.ProfileDir); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\nRetry incomplete deletions from Home.\n", err)
+	}
 	// Model discovery starts here and is waited for NOWHERE. On a cold cache
 	// resolving it is a network round-trip, and everything it feeds has a good
 	// answer without it.
@@ -256,6 +271,16 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 	wirePoolIndex(settings.ProfileDir)
 	shelf := newV3ModelShelf(models, discovery)
 	shelf.setSources(settings.Sources)
+	memory := v3Memory(settings.ProfileDir)
+	// THE SEARCH STORE IS THE MEMORY STORE WHEN MEMORY IS ON — one handle, one
+	// file — and its own handle of the same file when memory is off. Never two
+	// handles at once: [v3Process.Memory]'s law is about one file, one pool.
+	var search *store.Store
+	if memory != nil {
+		search = memory
+	} else {
+		search = v3SearchStore(settings.ProfileDir)
+	}
 	process := &v3Process{
 		Settings:          settings,
 		ProfileDir:        settings.ProfileDir,
@@ -265,12 +290,20 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		processStop:       processStop,
 		Shelf:             shelf,
 		Harnesses:         subharness.Default(),
-		Memory:            v3Memory(settings.ProfileDir),
+		Memory:            memory,
+		Search:            search,
 		Artifacts:         artifactsIndexPath(),
 		Conns:             v3Connect(settings.ProfileDir),
 		LaunchDir:         launchDir,
 	}
 	process.Skills, process.skillsDir = v3SkillShelf(process.Memory)
+	// AND THE QUARANTINE IS GIVEN ITS OWNERS BACK, once per process, only when
+	// there is something to give: rows the migration could not attribute are
+	// re-homed to the project their source session provably ran in. This is
+	// the "recover authoritative source ownership" half of the migration — the
+	// store quarantined rather than guessed, and the disk (where a session's
+	// workspace is a fact) is what does the proving.
+	v3RehomeLegacyMemories(memory)
 	process.creditWatcher = newV3CreditWatcher(process)
 	process.startPlaceSweep()
 	return process, nil
@@ -657,6 +690,14 @@ func (p *v3Process) closeAll() {
 	if p.Memory != nil {
 		_ = p.Memory.Close()
 	}
+	// THE SEARCH HANDLE CLOSES ONLY WHEN IT IS NOT THE MEMORY'S. When memory
+	// is on the two fields are one handle and the close above already took
+	// it; when memory is off the search store was opened on its own, and a
+	// handle left open here is a WAL that never checkpoints and a file the
+	// next process reads mid-write.
+	if p.Search != nil && p.Search != p.Memory {
+		_ = p.Search.Close()
+	}
 	// The memory-off shelf goes with the process that built it: it was only
 	// ever a reading of the skill folders, and the next launch reads them
 	// again.
@@ -933,6 +974,11 @@ func (s *v3Seam) anchor(agent interface {
 	s.boot.Config.Workspace = resolved
 	s.boot.Config.Place.Workspace = resolved
 	s.boot.Config.Place.Owned = false
+	// AND THE PROJECT KEY FOLLOWS THE WORKSPACE here too, through the one mint
+	// [v3PointAt] uses: the anchor moved the boot config's subject, and a key left
+	// on the scratch folder would scope every later launch's project reads and
+	// writes to a project this conversation is no longer in.
+	s.boot.Config.MemoryProjectKey = v3ProjectKey(resolved)
 	s.boot.Place = s.boot.Config.Place
 	if bucket, bucketErr := v3ProjectDir(resolved); bucketErr == nil {
 		s.boot.Bucket = bucket
@@ -953,5 +999,82 @@ func (p *v3Process) liveSettings(base config.Config) func() config.Config {
 		live := base
 		live.APIKey, live.Sources = p.currentAccount()
 		return live
+	}
+}
+
+// Permanent deletion stops every owner this process built for the journal.
+// Snapshotting avoids holding the process lock while a turn finishes leaving.
+func (p *v3Process) stopConversation(file string) error {
+	agents := func() []*session.Agent {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return append([]*session.Agent(nil), p.agents...)
+	}()
+	for _, agent := range agents {
+		path, _ := filepath.EvalSymlinks(agent.SessionPath())
+		if path == file {
+			if err := agent.CloseForDeletion(); err != nil {
+				return err
+			}
+			p.forget(agent)
+		}
+	}
+	return nil
+}
+
+// deleteOwnedTask keeps other conversations and sibling tasks running.
+func (p *v3Process) deleteOwnedTask(file, id string) (bool, error) {
+	agents := func() []*session.Agent {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return append([]*session.Agent(nil), p.agents...)
+	}()
+	for _, agent := range agents {
+		path, _ := filepath.EvalSymlinks(agent.SessionPath())
+		if path == file {
+			return true, agent.DeleteTask(id)
+		}
+	}
+	return false, nil
+}
+
+// v3RehomeLegacyMemories moves every quarantined memory whose source session
+// can be proven to a workspace into that workspace's project owner, and leaves
+// the rest in quarantine — a row whose session cannot be found has an owner
+// nobody can name, and attributing it anyway is the guess the migration
+// refused to make.
+//
+// It runs at process open, after the store is open and before the first
+// conversation builds, and only when the quarantine holds rows: one pass, a
+// bounded read of the places root, and nothing when the migration's work was
+// already done.
+func v3RehomeLegacyMemories(brain *store.Store) {
+	if brain == nil {
+		return
+	}
+	rows, err := brain.QuarantinedMemories(500)
+	if err != nil || len(rows) == 0 {
+		return
+	}
+	bySession := session.SessionWorkspaces()
+	owners := map[string][]string{}
+	for _, row := range rows {
+		workspace := bySession[row.SourceSession]
+		if workspace == "" {
+			continue
+		}
+		key, err := gitidentity.ProjectKey(workspace)
+		if err != nil || strings.TrimSpace(key) == "" {
+			continue
+		}
+		owner := store.OwnerProject(key)
+		owners[owner] = append(owners[owner], row.ID)
+	}
+	for owner, ids := range owners {
+		if _, err := brain.RehomeMemories(ids, owner); err != nil {
+			// A failed re-home is not fatal and not silent: the rows stay in
+			// quarantine, and the complaint names where.
+			fmt.Fprintln(os.Stderr, "memory: could not re-home quarantined rows: "+err.Error())
+		}
 	}
 }
