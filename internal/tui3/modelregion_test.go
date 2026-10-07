@@ -51,7 +51,7 @@ func modelRegionBlock(a *app) string {
 
 func regionUnderCursor(block, name string) bool {
 	for _, line := range strings.Split(block, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "› "+name) {
+		if strings.HasSuffix(strings.TrimSpace(line), "› "+name) {
 			return true
 		}
 	}
@@ -225,7 +225,7 @@ func TestTheProvidersSheetAsksWithTheSameChoice(t *testing.T) {
 	}
 	a.sources = modelsource.NewSet(testDefaultService("sk-default-1234567890"), connected)
 	a.openSettings()
-	toProviders(t, a)
+	toConnections(t, a)
 	found := false
 	for at, item := range a.sheet.items {
 		if item.service != nil && item.service.id == "z-ai" {

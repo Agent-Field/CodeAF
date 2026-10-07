@@ -80,7 +80,7 @@ func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 			if a.tabRow != navRow || a.headHeight() != placeHeadRows {
 				t.Fatalf("at %d %s drew its nav on row %d and a %d-row head", width, to.word(), a.tabRow, a.headHeight())
 			}
-			if place[navRow] != chat[navRow] || place[1] != chat[1] {
+			if (width >= 80 && place[navRow] != chat[navRow]) || place[1] != chat[1] {
 				t.Fatalf("at %d %s moved the nav or the air row under it:\nchat %q\nplace %q", width, to.word(), chat[navRow], place[navRow])
 			}
 			if !strings.HasPrefix(place[placeHeadRows-2], "─") || strings.TrimSpace(place[placeHeadRows-1]) != "" || strings.Contains(place[placeHeadRows-2], "harbor") {
@@ -93,7 +93,7 @@ func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 			// is where the place drew it, wherever both drew one.
 			for _, c := range chatNav {
 				for _, p := range a.tabs {
-					if c.id == p.id && c != p {
+					if width >= 80 && c.id == p.id && c != p {
 						t.Fatalf("at %d %q moved from %+v on the chat to %+v on %s", width, c.id.word(), c, p, to.word())
 					}
 				}

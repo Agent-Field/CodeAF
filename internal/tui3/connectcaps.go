@@ -1018,7 +1018,13 @@ func (s *sheet) connKeysLine() string {
 		}
 	}
 	line := "↑↓ move · ←→ categories · " + act
-	return line + " · type to search all · esc back"
+	escape := "esc close"
+	if s.searching() {
+		escape = "esc clear search"
+	} else if s.conn.expanded != "" || s.conn.armed {
+		escape = "esc back"
+	}
+	return line + " · type to search all · " + escape
 }
 
 // ── acting on them ──────────────────────────────────────────────────────────
@@ -1390,10 +1396,19 @@ func (a *app) connTabSettled(service, name string, connected bool, why string) {
 	mine := s.conn.pending == service
 	keyed := s.conn.pendingKey
 	s.conn.pending, s.conn.pendingKey = "", false
-	if !a.at(pageSettings) || !s.onConnections() {
+	if !a.at(pageSettings) {
 		return
 	}
 	s.reloadConnections()
+	// Global search can rank another category first while still displaying
+	// accounts. Keep its cached catalog current without moving its category.
+	if !s.onConnections() {
+		if s.searching() {
+			s.build()
+		}
+		a.touch()
+		return
+	}
 	if !mine {
 		// Somebody else's sign-in, landing while this page happens to be open.
 		// The list is re-read so the row is honest, and nothing moves: a cursor

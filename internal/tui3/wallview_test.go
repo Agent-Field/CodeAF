@@ -311,14 +311,14 @@ func TestWallRenderStates(t *testing.T) {
 	v.choices = teamHueChoices(wallViewHues(v), teamReservedFrom(darkRamp), 6)
 	rows, _ = renderWall(pal, v, 120, 40)
 	card := wallPlainFrame(rows)
-	for _, want := range []string{"─ New AI team ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "esc cancel", "enter create", "ctrl+r shuffle"} {
+	for _, want := range []string{"─ New team ─", "Name    night▌", "Colour  ◉ ● ● ● ● ●", "2 · ship the port, crew reprice", "esc cancel", "enter create", "ctrl+r shuffle"} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the new-team card lacks %q\n%s", want, card)
 		}
 	}
 	// Too short for the card, the prompt falls back to the Teams row.
 	rows, _ = renderWall(pal, v, 120, 9)
-	if got := ansi.Strip(rows[1]); !strings.Contains(got, "New AI team › night▌") || !strings.Contains(got, "2 picked") {
+	if got := ansi.Strip(rows[1]); !strings.Contains(got, "New team › night▌") || !strings.Contains(got, "2 picked") {
 		t.Errorf("naming row: %q", got)
 	}
 	rows, hits = renderWall(pal, v, 20, 9)
