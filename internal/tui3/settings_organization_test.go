@@ -300,3 +300,55 @@ func TestSettingsOrganizationRenderedEditorDraftAndCaret(t *testing.T) {
 		})
 	}
 }
+
+func TestSettingsOrganizationCountEditorInlineValidationAndClearing(t *testing.T) {
+	for _, size := range []struct {
+		name  string
+		width int
+	}{{"narrow", 80}, {"wide", 120}} {
+		t.Run(size.name, func(t *testing.T) {
+			a, dir := sheetApp(t)
+			a.width, a.height = size.width, 30
+			a.openSettings()
+			cursorTo(t, a, config.KeyTaskParallel)
+			a.activate()
+			a.sheet.edit.box.setText("invalid")
+			a.sheetEditKey(key("enter"))
+			if a.sheet.edit == nil || config.TaskParallelAt(dir) != 0 {
+				t.Fatal("invalid draft changed stored count or closed editor")
+			}
+			lines, _, _, y := a.sheetFrame(a.width, a.height)
+			if !strings.Contains(plain(lines[y]), "invalid") || y+1 >= len(lines) || !strings.Contains(plain(lines[y+1]), "not a whole number") {
+				t.Fatalf("error is not directly below input:\n%s", plain(strings.Join(lines, "\n")))
+			}
+			frame := plain(strings.Join(lines, "\n"))
+			if strings.Count(frame, "not a whole number") != 1 || !strings.Contains(frame, "blank for no limit") {
+				t.Fatalf("missing blank semantics or duplicate error:\n%s", frame)
+			}
+			a.sheet.edit.box.setText("4")
+			a.sheetEditKey(key("enter"))
+			if a.sheet.edit != nil || config.TaskParallelAt(dir) != 4 {
+				t.Fatal("valid count was not saved")
+			}
+			cursorTo(t, a, config.KeyTaskParallel)
+			a.activate()
+			if a.sheet.edit == nil || a.sheet.edit.box.String() != "4" {
+				t.Fatal("reopened count did not retain 4")
+			}
+			a.sheet.edit.box.reset()
+			a.sheetEditKey(key("enter"))
+			if a.sheet.edit != nil || config.TaskParallelAt(dir) != 0 {
+				t.Fatal("blank did not remove the count cap")
+			}
+			cursorTo(t, a, config.KeyTaskParallel)
+			a.activate()
+			if a.sheet.edit == nil || a.sheet.edit.box.String() != "" {
+				t.Fatal("unlimited count did not reopen as blank")
+			}
+		})
+	}
+	ordinary := config.Setting{Kind: config.SettingCount, Label: "repair attempts"}
+	if strings.Contains(sheetEditNote("repair attempts", ordinary), "blank for no limit") {
+		t.Fatal("nonoptional count promises incorrect blank semantics")
+	}
+}

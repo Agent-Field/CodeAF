@@ -113,6 +113,13 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		for _, line := range block {
 			rows = append(rows, placeRow{text: " " + line})
 		}
+		// Validation belongs beside the editable value, not in a distant footer.
+		// The draft and its caret keep their position when an error appears.
+		if s.msg != "" {
+			for _, line := range wrap(s.msg, max(1, width-4)) {
+				rows = append(rows, placeRow{text: "  " + pal.bad(line)})
+			}
+		}
 		for len(rows) < room {
 			rows = append(rows, placeRow{})
 		}
@@ -238,6 +245,8 @@ func (placeSettings) box(a *app) *editor {
 func (placeSettings) note(a *app, width int) []string {
 	pal := a.pal
 	switch {
+	case a.sheet.edit != nil:
+		return nil // The label, accepted format and validation are beside the input.
 	case a.sheet.msg != "":
 		lines := strings.Split(a.sheet.msg, "\n")
 		out := make([]string, 0, len(lines))
@@ -247,12 +256,6 @@ func (placeSettings) note(a *app, width int) []string {
 		return out
 	case a.sheet.sel != nil:
 		return []string{" " + pal.dim(noteFit(a.sheet.sel.label, width-2))}
-	case a.sheet.edit != nil:
-		// THE LABEL IS THE NOTE AND THE VALUE IS THE COMPOSER. The panel used to
-		// draw both on one line of its own foot; under the router the box a person
-		// is typing in is THE composer, so what is left here is the one thing the
-		// box cannot say — which setting this is.
-		return []string{" " + pal.dim(noteFit(a.sheet.edit.label, width-2))}
 
 	}
 	item, ok := settingsFocused(a)

@@ -1103,6 +1103,11 @@ func sheetEditNote(label string, row config.Setting) string {
 		return label
 	}
 	accepts := row.Accepts()
+	// Only optional counts with the registry's no-limit reading can make this
+	// promise; other blank values may restore a default or have another meaning.
+	if row.Kind == config.SettingCount && row.EmptyLabel == config.NoLimitWord {
+		accepts += " · blank for no limit"
+	}
 	if accepts == "" {
 		return label
 	}
