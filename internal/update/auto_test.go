@@ -389,3 +389,74 @@ func TestInstallRefusalFollowsASymlinkedTarget(t *testing.T) {
 		t.Fatalf("a symlinked target in an unwritable folder = %q, want the write refusal", refusal)
 	}
 }
+
+// TestRecordReadsThroughTheHeldHandle proves the record is read on the handle
+// the installer already holds — the property Windows' LockFileEx makes a
+// requirement rather than a preference (see [InstallLock.Record]). Reading must not disturb that handle's write
+// cursor (a second RecordInstalled after a read must land at offset zero, not
+// append), no second handle is opened to a name another process may replace, and
+// what the read cannot make sense of reads as NO record rather than as bytes.
+func TestRecordReadsThroughTheHeldHandle(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "codeaf")
+	if err := os.WriteFile(target, []byte("first bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := TryTargetLock(target)
+	if err != nil {
+		t.Fatalf("lock: %v", err)
+	}
+	defer lock.Release()
+
+	digest := func(body string) string {
+		sum := sha256.Sum256([]byte(body))
+		return hex.EncodeToString(sum[:])
+	}
+	lock.RecordInstalled("v0.1.0", digest("first bytes"), time.Now())
+	if record, ok := lock.Record(); !ok || record.Tag != "v0.1.0" {
+		t.Fatalf("the record just written = %+v, ok = %t", record, ok)
+	}
+
+	// A SECOND WRITE AFTER A READ IS STILL THE WHOLE FILE.
+	if err := os.WriteFile(target, []byte("second bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lock.RecordInstalled("v0.2.0", digest("second bytes"), time.Now())
+	record, ok := lock.Record()
+	if !ok || record.Tag != "v0.2.0" {
+		t.Fatalf("the record after a read = %+v, ok = %t", record, ok)
+	}
+
+	// A FILE THAT NO LONGER MATCHES IS NOT A FACT ABOUT THE FILE.
+	if err := os.WriteFile(target, []byte("somebody else's build"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if record, ok := lock.Record(); ok {
+		t.Fatalf("a replaced file still trusted %+v", record)
+	}
+
+	// NOTHING THE READ CANNOT PARSE IS A RECORD.
+	if err := lock.file.Truncate(0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock.file.WriteAt([]byte("{not json"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if record, ok := lock.Record(); ok {
+		t.Fatalf("a corrupt record file trusted %+v", record)
+	}
+	// AND IT IS READ BOUNDED: the object the installer writes sits at offset
+	// zero, so bytes beyond the ceiling are not read whole and cannot turn into
+	// a trusted record.
+	valid := fmt.Sprintf(`{"tag":"v0.9.9","sha256":"%s"}`, digest("somebody else's build"))
+	padded := strings.Repeat(" ", maxInstallRecordBytes*2) + valid
+	if err := lock.file.Truncate(0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lock.file.WriteAt([]byte(padded), 0); err != nil {
+		t.Fatal(err)
+	}
+	if record, ok := lock.Record(); ok {
+		t.Fatalf("bytes past the read bound were trusted as %+v", record)
+	}
+}

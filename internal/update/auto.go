@@ -294,14 +294,29 @@ func TryTargetLock(target string) (*InstallLock, error) {
 	return &InstallLock{target: target, file: file}, nil
 }
 
+// maxInstallRecordBytes bounds the record read: the file holds one small JSON
+// object and nothing else, so a corrupted or replaced file is not read whole
+// into memory.
+const maxInstallRecordBytes = 4 << 10
+
 // Record reads the last install this target recorded, and reports false unless
 // the record still matches the file on disk. A tag written by bytes that are no
 // longer there is not a fact about the file.
+//
+// THE BYTES COME THROUGH THE HELD HANDLE, and the read does not move its cursor
+// (io.NewSectionReader). A second handle would be a second look-up of a name
+// another process may be replacing, and on Windows it would be unreadable to the
+// process that locked it: LockFileEx's own documentation says that a process
+// which locks a region with one handle — which is what [lockFileExclusive]
+// does — cannot access that region through a second handle until it unlocks it
+// (learn.microsoft.com/windows/win32/api/fileapi/nf-fileapi-lockfileex). A record
+// written by the lock holder would then be the one thing it could not read, so
+// the record is read from the handle that holds the lock.
 func (l *InstallLock) Record() (installRecord, bool) {
 	if l == nil || l.file == nil {
 		return installRecord{}, false
 	}
-	raw, err := os.ReadFile(l.file.Name())
+	raw, err := io.ReadAll(io.NewSectionReader(l.file, 0, maxInstallRecordBytes))
 	if err != nil {
 		return installRecord{}, false
 	}
