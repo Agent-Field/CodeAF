@@ -1277,7 +1277,7 @@ func modelUsesService(model, written string) bool {
 }
 
 func (a *app) reachableModelAfterDisconnect() (string, bool) {
-	model, ok := availableConversationModel("", a.modelList())
+	model, ok := availableConversationModel(config.ChatDefaultAt(a.profileDir), a.modelList())
 	return model.ID, ok
 }
 
