@@ -87,6 +87,21 @@ func (a *Agent) metaStamp() *stampWriter {
 	return a.metaStampWriter
 }
 
+// Model persistence runs beside the UI. Earlier user stamps finish first so
+// their captured configuration cannot overwrite a newer model choice. The
+// callback reads the current configuration, and repeated choices coalesce.
+func (a *Agent) modelStamp() *stampWriter {
+	a.modelStampOnce.Do(func() { a.modelStampWriter = &stampWriter{} })
+	return a.modelStampWriter
+}
+
+func (a *Agent) stampModel() {
+	a.modelStamp().Owe(func() {
+		a.metaStamp().settle()
+		a.stampMeta()
+	})
+}
+
 // SettleWrites waits until everything this session owes a file BEHIND a person's
 // path has landed: the meta.json stamp, the delta reading's told.json stamp, the
 // fix shelf's counters, and the working copy of any folder referred but not yet
@@ -109,6 +124,7 @@ func (a *Agent) SettleWrites() {
 		return
 	}
 	a.metaStamp().settle()
+	a.modelStamp().settle()
 	a.toldStamp().settle()
 	a.fixShelfFor().settle()
 	a.treesAhead().Settle()

@@ -63,7 +63,7 @@ func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
 		t.Fatalf("close on report: %v, %v", closed, err)
 	}
 	welcome := remote.Welcome{Version: remote.Version, Workspace: "/srv/app", ProfileDir: engineProfile,
-		Teams: true, Delegation: true, WrapUp: true}
+		Teams: true, TeamMembershipVersion: remote.TeamMembershipVersion, Delegation: true, WrapUp: true}
 	fleet := onePipeFleet("", hostedClient(t))
 	t.Cleanup(fleet.closeAll)
 	options, settings := hostOptions(fleet, welcome, false)

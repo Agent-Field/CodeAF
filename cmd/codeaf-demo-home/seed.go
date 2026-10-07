@@ -98,6 +98,10 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 		built.Messages += 2 * len(talk.turns)
 	}
 
+	if err := writeTeams(root, projects, ids, now); err != nil {
+		return built, err
+	}
+
 	if err := writePlan(projects, ids); err != nil {
 		return built, err
 	}
@@ -125,7 +129,7 @@ func seedDemoHome(dir string, now time.Time) (builtHome, error) {
 	}
 	built.Standing = orders
 
-	memories, err := writeMemories(brain)
+	memories, err := writeMemories(brain, projects[firstProjectName].dir)
 	if err != nil {
 		return built, err
 	}

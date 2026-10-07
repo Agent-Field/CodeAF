@@ -13,7 +13,7 @@ The model receives every character; your transcript keeps the short chip instead
 dumping the pasted document onto the screen. Sent paste chips cannot currently be opened
 from the transcript.
 
-## Paste chip — why did my paste turn into a tag
+## Paste chip — why did my paste turn into a tag, or the model says it cannot see what I pasted
 
 `[paste 1 · 42 lines]` means a large paste is folded, not lost. The number lets you refer
 to it in the rest of the message, and the line count says how much it holds. The threshold

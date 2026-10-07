@@ -383,7 +383,7 @@ func (a *app) wallTakeRead(msg wallReadMsg) {
 	if msg.key == "" {
 		return
 	}
-	if a.shared && msg.key != a.frontTabKey() {
+	if a.shared && msg.live && msg.key != a.frontTabKey() {
 		return
 	}
 	if a.wall.tails == nil {
@@ -452,7 +452,7 @@ func (a *app) wallTick() tea.Cmd {
 	if a.wallSpinning() {
 		next = tea.Batch(next, a.wake())
 	}
-	next = tea.Batch(next, a.wallTreeCmd())
+	next = tea.Batch(next, a.wallTreeCmd(), a.wallCatalogRead(), a.wallSavedReadCmd())
 	if read := a.wallReadCmd(keys...); read != nil {
 		return tea.Batch(read, next)
 	}
@@ -487,34 +487,48 @@ func (a *app) wallFrontMoved() bool {
 // IT IS CALLED BY THE FRAME and reads only memory: the strip's list, the
 // cache, the signal and the wall's own state. A tab never read yet is a tile
 // with no lines, which the painter draws as an empty tile rather than a lie.
-func (a *app) wallTiles(now time.Time) []wallTile {
-	tabs := a.tabList()
-	var terms []fuzzy.Term
-	if strings.TrimSpace(a.wall.filter) != "" {
-		terms = fuzzy.Terms(a.wall.filter)
+func (a *app) wallTiles(now time.Time) []wallTile { return a.wallTilesForFilter(now, a.wall.filter) }
+
+func (a *app) wallTilesUnfiltered() []wallTile { return a.wallTilesForFilter(a.now(), "") }
+
+func (a *app) wallTilesForFilter(now time.Time, filter string) []wallTile {
+	candidates := a.wallCandidates()
+	front := a.frontTabKey()
+	tabbed := map[string]bool{}
+	for _, tab := range a.tabList() {
+		tabbed[tab.key] = !a.tabShut[tab.key]
 	}
-	tiles := make([]wallTile, 0, len(tabs))
-	for _, tab := range tabs {
+	var terms []fuzzy.Term
+	if strings.TrimSpace(filter) != "" {
+		terms = fuzzy.Terms(filter)
+	}
+	tiles := make([]wallTile, 0, len(candidates))
+	for _, candidate := range candidates {
+		tab := candidate.tab
 		if tab.start || tab.work {
 			continue
 		}
-		// THE WALL IS THE OPEN SET, not the strip's remembered history. A tab
-		// without the front or a keeper entry belongs to another window now, or
-		// was merely visited; drawing it here would let this wall act on it.
-		if !tab.here && a.behind[tab.key] == nil {
-			continue
-		}
+
 		if len(terms) > 0 {
-			if _, ok := fuzzy.ScoreFields([]string{tab.word, tab.full}, terms); !ok {
+			if _, ok := fuzzy.ScoreFields([]string{tab.word, tab.full, tab.where}, terms); !ok {
 				continue
 			}
 		}
-		_, live := a.wallAgentFor(tab.key)
+		live := tab.key == front && a.agent != nil || !a.shared && a.behind[tab.key] != nil && a.behind[tab.key].conv.Agent != nil
+		signal := a.tabSignalFor(tab.key, tab.here)
+		if !tab.here && a.behind[tab.key] == nil {
+			if candidate.saved.NeedsPerson() {
+				signal = tabNeedsPerson
+			} else if candidate.saved.Tasks.Running > 0 || candidate.saved.Live && candidate.saved.Presence.State == session.PresenceWorking {
+				signal = tabWorking
+			}
+		}
 		tile := wallTile{
 			tab:    tab,
 			name:   tab.word,
 			here:   tab.here,
-			signal: a.tabSignalFor(tab.key, tab.here),
+			signal: signal,
+			noTab:  !tabbed[tab.key],
 			live:   live,
 			marked: a.wall.marked[tab.key],
 		}
@@ -534,7 +548,17 @@ func (a *app) wallTiles(now time.Time) []wallTile {
 		if tile.signal == tabNeedsPerson {
 			tile.question = a.wallQuestion(tab, tail)
 		}
-		tile.spent = a.wallSpent(tab.key, tail)
+		if tab.key == front {
+			tile.spent = a.spendShown()
+		} else if tail != nil {
+			tile.spent = spendOf(tail.books, tail.tree)
+		}
+		if tile.spent == 0 {
+			tile.spent = candidate.saved.Spend + candidate.saved.Tasks.Spend
+		}
+		if tile.age == "" && !candidate.saved.At.IsZero() {
+			tile.age = wallAge(now.Sub(candidate.saved.At))
+		}
 		tiles = append(tiles, tile)
 	}
 	return tiles

@@ -23,7 +23,9 @@ once under one id — interrupted, then resumed — opens on the latest run.
 Nothing about this changes what the room is while a task is **running**: that page is the
 live edge, and history comes off the same journal as it always did.
 
-## Task page is empty — I opened a task and there is nothing in it
+## Task page is empty
+
+I opened a task and there is nothing in it: the room draws what the task already knows.
 
 An open room that shows nothing but `this task has finished — say it to main` used to be what a
 finished task looked like after a restart: the transcript was on disk, but the resumed
@@ -42,6 +44,8 @@ this task has finished — say it to main
 That line means the file itself is gone: a session folder you deleted, or work that
 happened on another machine. It is a fact about the disk, not a fault in the task. A room
 with even one block in it never shows the line.
+
+## Nothing on this page yet: a queued or newly started task
 
 When the task has **not landed** — it is queued behind the running ones, or it has only
 just started and nothing has been written for it yet — the page says the other half of

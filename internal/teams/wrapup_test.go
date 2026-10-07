@@ -217,10 +217,46 @@ func TestWrapUpMarkerAndAcceptingAClosingReport(t *testing.T) {
 		t.Fatalf("dock after accepting: %+v", dock)
 	}
 	log, _ := ReadTraffic(dir, "bbbbbbbbbbbb", "", 0)
-	if last := log[len(log)-1]; last.Kind != KindClose || !strings.Contains(last.Text, "closed dock") {
-		t.Fatalf("no close line: %+v", last)
+	if last := log[len(log)-1]; last.Kind != KindClose || last.Packet != p.ID {
+		t.Fatalf("no preserved decision line: %+v", last)
 	}
 	if _, err := AcceptClosing(dir, Packet{Kind: PacketCap}); err != ErrNotClosing {
 		t.Fatalf("a cap packet: %v", err)
+	}
+}
+
+func TestClosingReportRetriesMissingTerminalTrafficWithoutDuplicateHistory(t *testing.T) {
+	dir := packetTeams(t)
+	p, err := Raise(dir, Packet{Team: Person, Origin: "bbbbbbbbbbbb", Kind: PacketClosing, RaisedBy: FromManager, Question: "done?", Report: &ClosingReport{Done: "done"}, Options: []Option{{ID: OptionClose, Label: "Close", Consequence: "coordination ends"}, {ID: OptionKeepGoing, Label: "Keep going", Consequence: "work continues"}}})
+	must(t, err)
+	p, err = Decide(dir, p.ID, Person, OptionClose, "")
+	must(t, err)
+	path := TrafficPath(dir, p.Origin)
+	must(t, os.Rename(path, path+".kept"))
+	must(t, os.Mkdir(path, 0700))
+	if closed, err := AcceptClosing(dir, p); !closed || err == nil {
+		t.Fatalf("missing traffic failure: closed=%v err=%v", closed, err)
+	}
+	must(t, os.Remove(path))
+	must(t, os.Rename(path+".kept", path))
+	if closed, err := AcceptClosing(dir, p); closed || err != nil {
+		t.Fatalf("retry: closed=%v err=%v", closed, err)
+	}
+	if _, err := AcceptClosing(dir, p); err != nil {
+		t.Fatal(err)
+	}
+	log, err := ReadTraffic(dir, p.Origin, "", 0)
+	must(t, err)
+	count := 0
+	for _, entry := range log {
+		if entry.Kind == KindClose && entry.Packet == p.ID {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("terminal events=%d: %+v", count, log)
+	}
+	if err := AppendTraffic(dir, p.Origin, Entry{Kind: KindNote, Text: "late"}); err != ErrClosed {
+		t.Fatalf("ordinary closed write accepted: %v", err)
 	}
 }

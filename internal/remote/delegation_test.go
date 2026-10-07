@@ -90,14 +90,6 @@ func TestTheDelegationDoorsCrossFromTheEnginesProfile(t *testing.T) {
 		t.Fatalf("a quiet spend: %+v, %v", quiet, err)
 	}
 
-	if _, err := loop.Client.TeamsDelete("0a0a0a0a0a0a"); err == nil {
-		t.Fatal("an open team was deleted over the wire")
-	}
-	if err := teamstore.Update(dir, func(f *teamstore.File) error {
-		return f.Close("0a0a0a0a0a0a", time.Time{}, p.ID)
-	}); err != nil {
-		t.Fatal(err)
-	}
 	gone, err := loop.Client.TeamsDelete("0a0a0a0a0a0a")
 	if err != nil || len(gone.Gone) != 1 {
 		t.Fatalf("delete: %+v, %v", gone, err)

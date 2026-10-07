@@ -45,11 +45,12 @@ const teamCrewLetter = "p"
 type teamsCrewRow struct {
 	key, handle, title string
 	// word is the state in one word: working, asking, failed or idle.
-	word    string
-	asking  bool
-	manager bool
-	held    bool
-	at      time.Time
+	word        string
+	asking      bool
+	manager     bool
+	held        bool
+	independent bool
+	at          time.Time
 	// also is the team whose manager a shared member reports to, "" for this
 	// team's own.
 	also string
@@ -98,7 +99,7 @@ func (a *app) teamsCrew(t team) []teamsCrewRow {
 			}
 			st := a.teamsMember(m)
 			r := teamsCrewRow{key: m.Key, handle: m.Handle, title: strings.TrimSpace(m.Word), word: "idle",
-				manager: m.Key == t.Manager, held: a.trafficHeld(m.Key), at: st.at, file: m.File}
+				manager: m.Key == t.Manager, independent: m.Independent, held: a.trafficHeld(m.Key), at: st.at, file: m.File}
 			switch {
 			case st.asking:
 				r.word, r.asking = "asking", true
@@ -110,8 +111,8 @@ func (a *app) teamsCrew(t team) []teamsCrewRow {
 			if home, ok := tree.Home(m.Key); ok && home.Team != t.ID && home.Via != t.ID && !r.manager {
 				r.also = a.teamNameOf(home.Team)
 			}
-			if r.title == "" && r.handle == "" {
-				continue
+			if row, known := a.tp.world[m.File]; known && strings.TrimSpace(row.Title) != "" {
+				r.title = row.Title
 			}
 			out = append(out, r)
 		}
@@ -181,7 +182,7 @@ func (a *app) teamsCrewHint(r teamsCrewRow) string {
 	if r.held {
 		return words + hintSegment + "click opens"
 	}
-	return words + hintSegment + "click resumes it behind, in its own tab"
+	return words + hintSegment + "click opens in Chats"
 }
 
 // ── THE HEADER ──────────────────────────────────────────────────────────────
@@ -206,25 +207,22 @@ func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
 	if t.Root {
 		name = teamstore.RootName
 	}
-	left := " " + a.tabTeamDot(t) + " " + pal.bold(pal.ink(name))
+	left := " "
+	if !t.Closed() {
+		left += a.tabTeamDot(t) + " " + pal.bold(pal.ink(name))
+	}
 	type btn struct {
 		word string
 		t    teamsTarget
 	}
 	var bs []btn
 	if t.Closed() {
-		bs = append(bs,
-			btn{"Reopen", teamsTarget{act: teamsActReopen, id: t.ID, hint: "Reopen " + t.Name + ": its tabs come back and its manager resumes" + hintSegment + "r"}},
-			btn{"Delete" + a.linearMark("…", "..."), teamsTarget{act: teamsActDelete, id: t.ID, hint: "Forget this team, its Traffic and its packets; the conversations stay" + hintSegment + "d"}})
-		if p, ok := a.teamsParentClosed(t); ok {
-			bs = append([]btn{{"Reopen " + p.Name + " too", teamsTarget{act: teamsActReopenParent, id: t.ID,
-				hint: t.Name + " sits under " + p.Name + ", which is closed" + hintSegment + "r"}}}, bs[1:]...)
-		}
+		bs = append(bs, btn{"Delete", teamsTarget{act: teamsActDelete, id: t.ID, hint: "Permanently delete the retained team record; conversations stay" + hintSegment + "d"}})
 	} else {
 		bs = append(bs,
 			btn{"Settings", teamsTarget{act: teamsActSettings, id: t.ID, hint: "What this team overrides, and what it inherits" + hintSegment + "s"}})
 		if !t.Root {
-			bs = append(bs, btn{"Close" + a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, hint: "Close " + t.Name + ": wrap up first, or now" + hintSegment + "c"}})
+			bs = append(bs, btn{"Disband" + a.linearMark("…", "..."), teamsTarget{act: teamsActClose, id: t.ID, hint: "Close " + t.Name + ": wrap up first, or now" + hintSegment + "c"}})
 		}
 		bs = append(bs, btn{"Open " + a.linearMark("▦", "#"), teamsTarget{act: teamsActWall, id: t.ID, hint: "The wall, showing " + name + "'s open conversations" + hintSegment + "w"}})
 	}
@@ -249,11 +247,7 @@ func (a *app) teamsHeader(d *teamsDraw, t team, width, y int) string {
 					hint += hintSegment + r.word
 				}
 			}
-			if a.teamsHosting() {
-				hint += hintSegment + "it is the conversation below"
-			} else {
-				hint += hintSegment + "click brings it in front"
-			}
+			hint += hintSegment + "click opens Chats"
 			pieces = append(pieces, teamsHeadPiece{s: word, w: ansi.StringWidth(word),
 				t: teamsTarget{act: teamsActManagerGo, id: t.ID, hint: hint}, btn: true, drop: dropBoss})
 		}
@@ -392,15 +386,7 @@ func (a *app) teamsManagerGo(id string) tea.Cmd {
 	if !ok || t.Manager == "" {
 		return nil
 	}
-	if t.Manager == a.frontTabKey() {
-		// It is in front already: the keyboard goes to its box.
-		a.tp.focus = false
-		a.tp.top = teamsTopCache{}
-		a.touch()
-		return nil
-	}
-	a.tp.sel = id
-	return a.teamsBringManager()
+	return a.teamsMemberGo(id, t.Manager)
 }
 
 // ── THE MEMBERS CARD ────────────────────────────────────────────────────────
@@ -477,9 +463,7 @@ func (a *app) teamCrewKey(msg tea.KeyPressMsg) tea.Cmd {
 // stays, so the person sees it change to `Open`.
 func (a *app) teamCrewGo(r teamsCrewRow) tea.Cmd {
 	id := a.tcrew.team
-	if r.held {
-		a.teamCrewShut()
-	}
+	a.teamCrewShut()
 	return a.teamsMemberGo(id, r.key)
 }
 
@@ -524,7 +508,7 @@ func (a *app) teamCrewMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		default:
 			if hit.arg >= 0 && hit.arg < len(rows) {
 				c.cursor = hit.arg
-				a.teamDragPress(m.X, m.Y, true, c.team, rows[hit.arg].key, teamsTarget{}, false)
+				a.teamDragPress(m.X, m.Y, true, c.team, rows[hit.arg].key, teamsTarget{act: teamsActMember, id: c.team, arg: rows[hit.arg].key}, true)
 				a.touch()
 			}
 		}
@@ -630,7 +614,7 @@ func (a *app) teamCrewOver(frame string) string {
 //	╭─ harbor · 6 members ──────────────────────────────────────────────╮
 //	│  ◆ @boss    harbor's manager      working             Open        │
 //	│  @review    code review           asking    also in test  Resume  │
-//	│                                                         Close esc │
+//	│                    up/down move · enter open · esc close          │
 //	╰───────────────────────────────────────────────────────────────────╯
 func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 	pal := a.pal
@@ -645,7 +629,8 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 	}
 	const padX = 1
 	inner := w - 2 - 2*padX
-	room := max(h-4, 1)
+	footer := teamFooter(pal, inner, teamHint("up/down", "move"), teamHint("enter", "open"), teamHint("esc", "close", wallHit{kind: crewHitClose, arg: -1}))
+	room := max(h-2-len(footer), 1)
 	c := &a.tcrew
 	c.cursor = min(max(c.cursor, 0), max(len(rows)-1, 0))
 	top := min(c.top, max(len(rows)-room, 0))
@@ -658,7 +643,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 	c.top = top
 	// The columns: handle, state and age, the tag and the button are sized;
 	// the title takes what is left.
-	const nameW, stateW, ageW, buttonW = 13, 10, 5, 8
+	const nameW, stateW, ageW, buttonW = 13, 10, 5, 0
 	tagW := 0
 	for _, r := range rows {
 		if r.also != "" {
@@ -693,7 +678,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 		text := pal.ink(teamsPad(fitConversationTitle(name, nameW-1), nameW)) +
 			pal.muted(teamsPad(fitConversationTitle(title, max(titleW-2, 1)), titleW)) +
 			ink(teamsPad(r.word, stateW)) + pal.dim(teamsPad(age, ageW))
-		hits := []wallHit{{x0: 0, x1: inner - buttonW, y1: 1, kind: crewHitRow, arg: at}}
+		hits := []wallHit{{x0: 0, x1: inner, y1: 1, kind: crewHitRow, arg: at}}
 		if tagW > 0 {
 			tag := ""
 			if r.also != "" {
@@ -702,20 +687,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 			}
 			text += pal.dim(teamsPad(fit(tag, tagW-2), tagW))
 		}
-		word := "Resume"
-		if r.held {
-			word = "Open"
-		}
-		chip := " " + word + " "
-		lit := c.hot == at && c.hotButton
-		switch {
-		case lit:
-			chip = pal.cursor(pal.ink(chip), 0)
-		default:
-			chip = pal.ink(chip)
-		}
-		text = teamsPad(text, inner-buttonW) + chip
-		hits = append(hits, wallHit{x0: inner - buttonW, x1: inner - buttonW + ansi.StringWidth(" "+word+" "), y1: 1, kind: crewHitButton, arg: at})
+		text = teamsPad(text, inner)
 		if at == c.cursor || (c.hot == at && !c.hotButton) {
 			text = pal.cursor(teamsPad(text, inner), inner)
 		}
@@ -725,14 +697,7 @@ func (a *app) teamCrewCard(x, y, w, h int) wallCard {
 		}
 		lines = append(lines, wallCardLine{s: text, hits: hits})
 	}
-	closeWord := " Close " + pal.dim("esc") + " "
-	cw := ansi.StringWidth(" Close esc ")
-	cs := closeWord
-	if c.hotClose {
-		cs = pal.cursor(" Close esc ", 0)
-	}
-	lines = append(lines, wallCardLine{s: strings.Repeat(" ", max(inner-cw, 0)) + cs,
-		hits: []wallHit{{x0: inner - cw, x1: inner, y1: 1, kind: crewHitClose, arg: -1}}})
+	lines = append(lines, footer...)
 	// THE COUNT IS THE HEADER'S COUNT: the members beside the manager, with
 	// the manager named apart, so the header's `◆ Manager  1 member` and this
 	// title never disagree about the same team.

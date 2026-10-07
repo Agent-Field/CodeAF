@@ -2796,11 +2796,8 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 		// CARET", and this is the narrowest guard that says so.
 		//
 		// AND IT IS THE CARET'S POSITION AND NOT THE BOX'S EMPTINESS THAT
-		// DECIDES, because the way back out of the archive runs through this
-		// key: a person types the name of a row they put away, the list finds
-		// it, and `ctrl+e` from there brings it back. The caret is at the end of
-		// what they just typed at that moment, so the key does what the card's
-		// legend promises — and mid-sentence, where the hand meant a jump, it
+		// DECIDES, because a row action is taken only from the end of the draft.
+		// The key does what the card's legend promises — and mid-sentence, where the hand meant a jump, it
 		// jumps. One press is never destructive; a second press, from the end of
 		// the line, is the row's.
 		if !h.box.empty() && h.box.cursor != h.box.lineEnd() {
@@ -2808,16 +2805,11 @@ func (a *app) homeKey(msg tea.KeyPressMsg) tea.Cmd {
 			h.build()
 			return nil
 		}
-		// CTRL+E SETS THE ROW ASIDE, whichever kind of row it is: a
-		// conversation goes into the archive, a standing item is paused. On a
-		// put-away row it is its own undoing — the same key from inside the
-		// archive brings the row back to its project. The world is re-read on
-		// the spot so the row moves under the hand rather than on the next
-		// sweep.
+		// The row opens deletion confirmation for a conversation, or pauses a standing item.
 		if line, ok := h.previewLine(); ok {
 			switch line.kind {
 			case homeSession:
-				return a.homeArchiveRow(line.row)
+				return a.conversationDeleteOpen(line.row.Transcript, homeName(line.row))
 			case homeItem:
 				return a.homeItemWrite(line, standing.StatusPaused)
 			}
@@ -3277,6 +3269,11 @@ func (a *app) homeEnter() tea.Cmd {
 // cursor" is two answers to whether a project somewhere else may be opened, and
 // the phone tier had the older one.
 func (a *app) homeOpenLine(line homeLine) tea.Cmd {
+	if line.row.DeletionPending {
+		a.conversationDeleteOpen(line.row.Transcript, homeName(line.row))
+		return nil
+	}
+	a.teamViewSet("")
 	h := &a.home
 	if line.row.Archived {
 		if err := a.writeHomeArchived(line.row, false); err != nil {
@@ -3411,6 +3408,7 @@ func (a *app) homeOpenDoor(line homeLine) tea.Cmd {
 // road, and reading the refusal is the only way to tell those apart
 // ([app.homeHeldEnter]).
 func (a *app) homeWalkIn(line homeLine) (tea.Cmd, string) {
+	a.teamViewSet("")
 	where := homeWhere(line)
 	if !homeFolderThere(where) {
 		// ONE os.Stat, ON THE KEYSTROKE, in the same place the flock probe puts
@@ -3601,6 +3599,7 @@ func (a *app) homeStartInProject(project string) tea.Cmd {
 // opens. The shared legacy connection still swaps in place and keeps its
 // existing transition semantics.
 func (a *app) homeStartWithProject(text, place string) tea.Cmd {
+	a.teamViewSet("")
 	// THE SHELL REFUSAL COMES BEFORE THE ROAD IS CHOSEN, so a line home will not
 	// run is refused the same way whichever road would have opened it.
 	if _, bash := session.BashCommand(text); bash {

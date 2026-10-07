@@ -68,7 +68,7 @@ func LoadHued(profileDir string, reserved []float64) (*File, error) {
 func load(profileDir string, colour bool, reserved []float64) (*File, error) {
 	f, legacy, stale, err := read(profileDir)
 	if err != nil || f == nil {
-		return &File{Version: Version}, err
+		return &File{Version: Version, localIdentities: true}, err
 	}
 	changed := tidy(f.Teams)
 	if colour && f.Colour(reserved) {
@@ -130,7 +130,7 @@ func read(profileDir string) (f *File, legacy, stale bool, err error) {
 	if legacy || (d.Version < Version && len(teams) == 0) {
 		teams = d.Legacy
 	}
-	return &File{Version: Version, Teams: teams}, legacy, !legacy && d.Version < Version, nil
+	return &File{Version: Version, Teams: teams, localIdentities: true}, legacy, !legacy && d.Version < Version, nil
 }
 
 // Save writes teams as the whole file, under the lock. It puts the list in
@@ -142,7 +142,23 @@ func read(profileDir string) (f *File, legacy, stale bool, err error) {
 // caller that shares the file should change it with [Update] instead.
 func Save(profileDir string, teams []Team) error {
 	tidy(teams)
-	return withLock(profileDir, lockWait, func() error { return write(profileDir, teams) })
+	return withLock(profileDir, lockWait, func() error {
+		before, _, _, err := read(profileDir)
+		if err != nil {
+			return err
+		}
+		if before == nil {
+			before = &File{Version: Version, localIdentities: true}
+		}
+		next := &File{Version: Version, Teams: teams, localIdentities: true}
+		if err := next.checkIntroducedConversations(before); err != nil {
+			return err
+		}
+		if err := next.CheckManagementChange(before); err != nil {
+			return err
+		}
+		return write(profileDir, teams)
+	})
 }
 
 // Update is the one read-modify-write: under the exclusive lock it loads the
@@ -170,9 +186,10 @@ func updateLocked(profileDir string, fn func(*File) error) (*File, error) {
 	}
 	missing := f == nil
 	if missing {
-		f = &File{Version: Version}
+		f = &File{Version: Version, localIdentities: true}
 	}
 	tidy(f.Teams)
+	previous := f.ManagementSnapshot()
 	if err := fn(f); err != nil {
 		return nil, err
 	}
@@ -180,6 +197,12 @@ func updateLocked(profileDir string, fn func(*File) error) (*File, error) {
 		return f, nil
 	}
 	tidy(f.Teams)
+	if err := f.checkIntroducedConversations(previous); err != nil {
+		return nil, err
+	}
+	if err := f.CheckManagementChange(previous); err != nil {
+		return nil, err
+	}
 	if err := write(profileDir, f.Teams); err != nil {
 		return nil, err
 	}
@@ -187,6 +210,31 @@ func updateLocked(profileDir string, fn func(*File) error) (*File, error) {
 		_ = os.Rename(legacyPath(profileDir), legacyPath(profileDir)+".migrated")
 	}
 	return f, nil
+}
+
+// Snapshot reads references without repairs, migration, locking or writes.
+// Launch discovery must not change a profile merely to inspect conversations.
+func Snapshot(profileDir string) (*File, error) {
+	f, _, _, err := read(profileDir)
+	if f == nil {
+		f = &File{Version: Version, localIdentities: true}
+	}
+	return f, err
+}
+
+// Inspect reads a fresh snapshot under the writer's lock without saving it.
+// Cleanup uses this door so a team assignment cannot arrive during removal.
+func Inspect(profileDir string, fn func(*File) error) error {
+	return strictlyLockedAt(lockPath(profileDir), lockWait, func() error {
+		f, _, _, err := read(profileDir)
+		if err != nil {
+			return err
+		}
+		if f == nil {
+			f = &File{Version: Version, localIdentities: true}
+		}
+		return fn(f)
+	})
 }
 
 // SetAside moves an unreadable teams file out of the way, to
@@ -274,6 +322,28 @@ func lockedAt(path string, wait time.Duration, fn func() error) error {
 	if held {
 		defer filelock.Unlock(gate)
 	}
+	return fn()
+}
+
+// strictlyLockedAt never authorizes destructive cleanup without an exclusive
+// lock. Ordinary writes retain their older filesystem fallback independently.
+func strictlyLockedAt(path string, wait time.Duration, fn func() error) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	gate, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	defer gate.Close()
+	held, err := take(gate, wait)
+	if err != nil {
+		return err
+	}
+	if !held {
+		return fmt.Errorf("teams: cleanup requires an exclusive lock")
+	}
+	defer filelock.Unlock(gate)
 	return fn()
 }
 

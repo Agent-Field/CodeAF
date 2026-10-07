@@ -1398,6 +1398,8 @@ that same turn beside the successful reports, so the parent integrates what land
 what is missing or retries it. The failed part does not stop the parent, and delayed steps
 from before the report landed cannot spend the fresh allowance before the parent reads it.
 
+## Is my task stuck while it waits for a build or test suite?
+
 **A task waiting for a command it started is not being stuck either.** A foreground `bash`
 call that runs past `background after` keeps running as a job (`still running as job 3`) —
 and inside a task the work then *waits* for that command instead of asking what to do next.

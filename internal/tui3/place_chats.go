@@ -40,11 +40,17 @@ func (placeChats) hint(a *app) string   { return "back to your chats" }
 func (placeChats) open(a *app) tea.Cmd  { return nil }
 func (placeChats) enter(a *app) tea.Cmd { return a.goChats() }
 
-// goChats is the way back: the place closes and the conversation in front is
-// in front again, or, with none open, the new-chat page opens.
+// Returning to Chats retains the shared team selection and restores its last
+// conversation. With None selected and no open chats, the new-chat page opens.
 func (a *app) goChats() tea.Cmd {
 	a.showPage(pageNone)
 	a.touch()
+	if cmd := a.teamOverlaySync(); cmd != nil {
+		return cmd
+	}
+	if a.teamViews.id != "" {
+		return nil
+	}
 	if len(a.tabList()) == 0 && a.canStart() {
 		return a.openChatStart()
 	}

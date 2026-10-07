@@ -217,12 +217,19 @@ func (a *Agent) teamStartSubTeam(team teams.Team, role teamRole, handle, brief, 
 			pool = owner.Name
 		}
 		for _, m := range members {
+			reporting := m.Home
 			m.Home, m.Started = false, false
 			if err := f.AddMember(child.ID, m); err != nil {
 				return err
 			}
 			if err := f.RemoveMember(parent.ID, m.Key); err != nil {
 				return err
+			}
+			// Moving the reporting membership into a sub-team is an explicit reassignment.
+			if reporting {
+				if err := f.SetHome(m.Key, child.ID); err != nil {
+					return err
+				}
 			}
 			moved = append(moved, "@"+m.Handle)
 		}

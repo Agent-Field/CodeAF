@@ -1302,6 +1302,25 @@ type Config struct {
 	// memory.enabled row is read. A door that turns memory off hands nothing
 	// here, which is what makes "no calls" structural.
 	Memory *store.Store
+	// bindingStore is the brain a TASK WORKER is LENT READ-ONLY, so its first
+	// provider request carries the project's approved binding rules without the
+	// worker gaining any memory write, extraction, import or the remember/forget
+	// verbs ([Config.bindingOnlyMemory]'s posture, expressed here as a store that
+	// is never [Config.Memory]). It is the parent conversation's own brain handed
+	// down the worker tree, so every node and auditor reads the SAME owner set the
+	// conversation that started it reads. NIL IS NO BINDING, which is memory off
+	// and every caller that predates this field; a worker then opens exactly as it
+	// did, with no approved block and no new authority. It is read-only by the
+	// plumbing that uses it ([Agent.prepareWorkerBinding] never writes it).
+	bindingStore *store.Store
+	// bindingOnlyMemory makes a brain READ-ONLY. It exists for the authorized
+	// standing run, which must see the owner's approved binding rules before
+	// its first action without gaining any general memory write: extraction,
+	// dependency observation, dismissal, import and the remember/forget verbs
+	// are all refused, while the same canonical identity, query and context
+	// machinery answers the read. Nothing is written from a posture that only
+	// borrowed the brain to be bound.
+	bindingOnlyMemory bool
 	// Skills is the store the skill shelf is read from: the catalog section,
 	// the skills a message carries, and `use_skill`. NIL FALLS BACK TO
 	// Memory, so a door that names no shelf of its own reads the shelf in the
@@ -1328,6 +1347,34 @@ type Config struct {
 	// (memory.go). Empty imports nothing, which is every caller but the v3 door
 	// and every machine that has already been through it.
 	MemoryImport string
+
+	// MemoryProjectKey is THIS SESSION'S PROVABLE PROJECT IDENTITY — the key
+	// internal/gitidentity.ProjectKey mints from the workspace's origin remote
+	// (or its canonical path, when there is no remote) — and it is what turns
+	// the scope word `project` into the owner a memory really belongs to.
+	// Empty means the door could not prove a project, and a project write from
+	// this session lands in quarantine rather than somewhere guessed
+	// (memory.go's ownerForScope).
+	//
+	// IT IS A CONFIG FIELD AND NOT A STORE FIELD for the reason every other
+	// where-does-this-live answer is: the door decides where a session's state
+	// lives, the session carries its identity, and the store holds rows. A task
+	// worker is HAND-BUILT from a Config literal that names no brain of its own;
+	// the key is copied onto it explicitly ([Agent.newTaskAgentOn],
+	// [orchestrateExec.newChild], [Agent.newAuditor]) so its read-only binding
+	// read is scoped to the conversation's project, and it is NEVER inherited by
+	// a config copy that was not written to carry it.
+	MemoryProjectKey string
+
+	// MemoryIndex is the store THIS SESSION'S CONVERSATION is indexed into,
+	// and it is deliberately not [Config.Memory]: with memory off, the session
+	// writes nothing about the person and still writes its own words where the
+	// next search can find them. Nil indexes nothing, which is a session built
+	// by a caller that opens no store at all.
+	//
+	// Every reader falls back to Memory when this is unset, so a door that
+	// never adopted the split behaves exactly as it did.
+	MemoryIndex *store.Store
 
 	// ApprovalPolicy decides whether a tool call runs, asks, or is refused
 	// (internal/approval, gated in consent.go). NIL ALLOWS EVERYTHING, which is
@@ -2532,6 +2579,16 @@ type Agent struct {
 	memoryStop context.CancelFunc
 	memoryJobs sync.WaitGroup
 
+	// outcomes is the observation-only bridge from delegated workers to this
+	// conversation's journal (contextual_delegated.go). It is shared with every
+	// worker this session builds; a worker only hands it a raw observation and
+	// gains no memory write, approval or promotion power from it. `origin` is
+	// the worker's FROZEN provenance — root session, user turn, goal, task and
+	// owner, captured before it launched — so nothing it reports is attributed
+	// to whatever turn is live when the report lands.
+	outcomes *outcomeCollector
+	origin   delegatedOrigin
+
 	// laneStop cancels the session's lane context, including probes. laneDone
 	// joins the optional sheet beat, whose cache writes must finish before Close
 	// returns. Both are established before the agent is published.
@@ -2837,6 +2894,28 @@ type Agent struct {
 	// transcript's first message, and it is REPLACED per turn rather than
 	// appended to — a turn's memories are that turn's.
 	memoryText string
+	// bindingText is the project's APPROVED BINDING BLOCK as read before the
+	// first request of a task worker (contextual_memory.go's
+	// [Agent.prepareWorkerBinding]). It is a note of its OWN rather than the
+	// routed block's, because a node hands the worker its semantic shortlist
+	// asynchronously ([Agent.takeMemory]) and that hand may land at any moment;
+	// keeping the binding rules in their own field and their own note is what
+	// lets the deterministic, may-not-be-late half survive a late router answer.
+	// It is empty for every conversation, which lands nothing.
+	bindingText string
+	// frameworkPolicy says the note this turn's request carries has relevant
+	// prior-outcome rows, which is the ONE condition under which the
+	// source-authored [frameworkMethodPolicy] rides the request's SYSTEM message.
+	// It is set BESIDE the rows themselves, under the SAME a.mu mutation, by the
+	// before-request reads ([Agent.prepareBindingContext],
+	// [Agent.prepareWorkerBinding], [Agent.refreshMemory] via
+	// [Agent.withBindingContextMeta]), and it is TAKEN WITH the message snapshot
+	// at the request seam ([Agent.snapshotWithReasoning]) so
+	// [Agent.withFrameworkPolicy] never rereads a later flag against older
+	// messages. The policy and the rows therefore always travel together and the
+	// same bit serves a conversation, a manager and a task worker. False is the
+	// ordinary state and adds nothing.
+	frameworkPolicy bool
 	// cardText is the <state> block (card.go): what this conversation is doing,
 	// as the post-turn pass has folded it. It sits under mu because it is
 	// rendered into the transcript — at the TAIL, in the volatile note
@@ -3059,6 +3138,11 @@ type Agent struct {
 	// ([Agent.settleDeliveries]).
 	settling []durableDelivery
 	closed   bool
+	// Permanent deletion holds the journal until all task-run writers have left.
+	deleting        bool
+	closingBeltDone <-chan struct{}
+	deletionGrace   time.Duration
+	closeFinalizer  bool
 	// closeDone is closed by [Agent.Close] as its LAST act, and it is what makes
 	// the close complete for everybody rather than only for whoever got there
 	// first.
@@ -3448,6 +3532,14 @@ type Agent struct {
 	// empty list of watchers and the person would open a conversation with news
 	// in it and see nothing. The first [Agent.TaskUpdates] takes it.
 	standingNews []Event
+	// standingHeld are the staged standing-inbox files a live, unsettled fold
+	// already owns, keyed by the staged file's path ([standing.DrainFile.Path]).
+	// A drain hands a file over; until the fold it fed is durably journaled and
+	// the file acknowledged, a repeat drain — construction and every surface
+	// attach both ask ([Agent.WatchTaskUpdates]) — must NOT queue the same notes
+	// again or acknowledge a file another fold is still waiting to retire. A
+	// path leaves this map when its acknowledgement runs.
+	standingHeld map[string]bool
 	// jobRows is the roster id minted for each background job, keyed by the
 	// registry's own number for it. The two numberings are separate counters and
 	// a row keyed on the registry's would collide with a task's, which is why
@@ -3462,6 +3554,9 @@ type Agent struct {
 	// a session that never speaks starts no goroutine (placemeta.go).
 	metaStampOnce   sync.Once
 	metaStampWriter *stampWriter
+	// Model choices have a separate writer so coalescing never drops a user stamp.
+	modelStampOnce   sync.Once
+	modelStampWriter *stampWriter
 
 	// toldStampWriter is the deferred write the elsewhere reading owes told.json,
 	// and toldStampOnce builds it on the first reading (taskdelta.go). It is its

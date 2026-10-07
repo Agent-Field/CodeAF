@@ -54,7 +54,7 @@ page instead, so the word never leads nowhere.
 It is not a room. It is the lit word while you are in a conversation, because that is where
 the tab strip of your chats is drawn; `tab` and `shift+tab` step over it (they walk the rooms), and it has
 no count. Its hint says `every conversation, one at a time`, which is how it differs from
-`▦ All` on the strip: that one is the grid of the tabs you have open, all at once. `esc` still goes to home, as on every place.
+`▦ All` on the strip: that one is the grid of all saved conversations. `esc` still goes to home, as on every place.
 `alt+k` is a different key: it opens the chats switcher to choose *which* conversation, while
 `chats` on the bar goes straight back to the one you were in.
 
@@ -159,7 +159,7 @@ back.
 **The hint line says what the word opens and its key** while the pointer rests on it:
 `alt+2 teams · the teams you hand work to`, `alt+3 chats · every conversation, one at a
 time`. On `more ▾` it says `more · the places this row has no room for`; on the strip's
-`▦ All` it says `The grid of your open tabs, and your teams · alt+v`.
+`▦ All` it says `The grid of all your conversations · alt+v`.
 
 **A resize drops that hint.** Widening the window so `more ▾` is no longer drawn clears
 the hover, and the hint line stops saying `more · the places this row has no room for`
@@ -199,7 +199,7 @@ page, which repeated the teams rail and home's sessions. Now:
 - **The top line** is the wordmark, the six places, and the machine's signs on the far end.
   It is identical on every page; only which word is lit changes. It never moves.
 - **The second line of a chat** is the tab strip: the team chip (` ● harbor ▾ `, or a quiet
-  ` teams ▾ `), `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece, since home
+  ` Teams ▾ `), `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece, since home
   is the first word of the line above.
 - **On a place the second line is the rule**, then a blank, and the page starts on the next
   row. A click there is the page's. There is no invisible tab under it.
@@ -208,7 +208,7 @@ page, which repeated the teams rail and home's sessions. Now:
 
 **The tab strip is a chat's row.** Teams is a place, like home, sessions, spend and
 settings, so the row under the top line is the rule, then a blank, and the page starts
-there. The manager's conversation in the pane does not bring the strip back. `chats` on
+there. The overview shows member cards and interactions. `chats` on
 the top line, `alt+k`, and home's sessions list open a conversation, and the strip is on
 that chat.
 
@@ -441,7 +441,7 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `c copy name`, `n new in project`, `o open folder`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -561,13 +561,12 @@ bullets on the conversation or task, with no separate `needs you` heading.
 The second place on the bar, right after home. On the left is a **rail**: your teams as a
 tree (a sub-team indented under its parent), each with its colour, and a mark only when
 something is happening in it: a dim `⠿` while one of its members is working, and an amber
-`? 2` while two things wait on you. Under the tree are `+ New team` and `✦ Organize`, and
-at the foot a folded `▸ Closed · N` holds the teams you closed. On the right is the team
-you chose: a header with what it has spent today against its cap and three buttons,
-`Settings`, `Close…` and `Open ▦`; a line of its members, every one of them, open in this
-window or not; the decisions waiting on you, as cards you answer with one press; and the
-team manager's own conversation, which you talk to right there. `/teams`, `alt+2` and a
-click on the word open it. The **Teams page** of this manual has the whole of it.
+`? 2` while two things wait on you. The sidebar keeps `+ New team` after the teams list and a `Show closed · N` toggle at its bottom.
+`✦ Organize` sits in the All teams main view. The selected team has spending and settings,
+a larger manager preview, a six-row interaction table with Prev and Next, and compact member
+cards. Decisions and permissions remain actionable, and exchanges expand inline. Clicking a member or exchange opens Chats with that
+team selected. Selecting the team itself leaves the current chat and draft untouched.
+`/teams`, `alt+2` and a click on `teams` open it. The **Teams page** has the details.
 
 ## sessions — the sessions page for tasks and history, and how to get to it without a command
 
@@ -588,7 +587,7 @@ rather than home's `› type to search or start something new`. It used to show 
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's options: `x close`, `n new in project`, `o open folder`, and
+the row's options: `x delete`, `n new in project`, `o open folder`, and
 `p copy project` where the local conversation and project are available. A task this
 conversation is holding that is still queued or running also offers `s stop it`. Everything starts expanded; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
@@ -596,22 +595,18 @@ the list already draws, and it says `nothing matches` only when your filter has 
 page — and the foot names only what is true of the row you are on: `enter open its room ·
 → verbs: stop it`.
 
-## Close or put away a task, find an archived task, or reopen it
+## Delete a task, subtask, or conversation — replaces close, put away, and reopen
 
-On home or the Sessions list, select the task, press `→`, then `x close`.
-The task disappears immediately from the Sessions list, including the current filter
-results, and from home's panels. Its work continues if it is running; its record,
-conversation, and other tasks are unchanged. The choice is saved with the conversation
-and survives reopening the app.
+On Home or Sessions, select any conversation or task row, press `→`, then `x delete`.
+On Sessions an empty filter also permits the bare `x` key. Typing a filter keeps `x` as text.
+The confirmation defaults to `cancel`; `delete` permanently deletes the selected row.
+A conversation deletes its transcript and every task underneath it. A task deletes only
+its own records and descendants. Deleting a leaf subtask deletes only that subtask.
+Surviving siblings and their conversations remain. Deleted records cannot be recovered by search or reopened.
 
-To recover it, change the Sessions filter or reopen the page and type its name. Search
-includes put-away tasks within the selected time window; expand that window if the task is older. Select the matching
-task and use `→`, then `x reopen`. `enter` can still open its record.
-
-`n new in project`, `o open folder`, and `p copy project` use the project of the conversation
-that owns the selected task. A new chat is independent of the task. These folder actions
-and per-task put-away are local capabilities; a connected remote window does not offer
-them. Its existing stop action remains available when that engine supports it.
+`n new in project`, `o open folder`, and `p copy project` use the selected task's owner project.
+Folder actions are local. Permanent deletion is also available over a connection when
+that engine advertises the capability. Stopping work without deletion remains a separate action.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
@@ -937,7 +932,8 @@ conversation, the commands and page say
 
 ## Can I put away a conversation on the other machine from home
 
-Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
+Yes. `x delete` on the row menu or `ctrl+e` opens the same default-cancel confirmation.
+Choosing `delete` stops and permanently deletes that conversation and its tasks on the machine whose Home you are viewing.
 `enter` on a far conversation opens it in this window. `c copy name` copies its current
 name to this computer’s clipboard. `o open folder` and starting a new conversation in that
 folder are absent on far rows because those paths do not name local folders.

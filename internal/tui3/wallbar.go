@@ -192,8 +192,8 @@ func wallBarIn(pal palette, v wallView, width, inset, y int) (string, []wallHit)
 	const gap = 2
 	left := []wallButton{{act: wallActBack, label: k.back + " Back", key: "esc"}}
 	acts := []wallButton{
+		{act: wallActNewTeam, label: "+ New team", key: "s"},
 		{act: wallActFilter, label: "Filter", key: "/"},
-		{act: wallActNewTeam, label: "New team", key: "s"},
 	}
 	cols := []wallButton{{act: wallActColsLess, label: k.minus}, {act: wallActColsMore, label: "+"}}
 	const colsWord = "Columns"
@@ -350,9 +350,9 @@ func wallHint(v wallView, ascii bool) string {
 			return ""
 		}
 		switch {
-		case marked > 0 && v.tiles[h.arg].marked:
+		case (v.selecting || marked > 0) && v.tiles[h.arg].marked:
 			return keyed("Click to take out of the selection", "space")
-		case marked > 0:
+		case v.selecting || marked > 0:
 			return keyed("Click to add to the selection", "space")
 		case h.arg == min(max(v.focus, 0), len(v.tiles)-1):
 			return keyed("Click to open "+name(h.arg), "enter")
@@ -376,7 +376,7 @@ func wallHint(v wallView, ascii bool) string {
 		// tab steps through the teams rather than naming one, so no key is
 		// offered for a single segment.
 		if h.id == "" {
-			return "Show every conversation open in this window"
+			return "Show all saved conversations"
 		}
 		// The team's segment counts what is open here, and the hint says what
 		// the team is beside it, so the two numbers are never read as one.
@@ -418,7 +418,7 @@ func wallHint(v wallView, ascii bool) string {
 			switch {
 			case v.filter != "":
 				return keyed("Clear the filter", "esc")
-			case marked > 0:
+			case v.selecting || marked > 0:
 				return keyed("Clear the selection", "esc")
 			}
 			return keyed("Back to the conversation", "esc")
@@ -493,7 +493,7 @@ func wallNewTeamHint(marked int) string {
 	if marked > 0 {
 		return "Make a team of the " + strconv.Itoa(marked) + " selected"
 	}
-	return "Make a team, starting with the focused conversation"
+	return "Select conversations for a new team"
 }
 
 // wallEmptyRow is the whisper an empty wall draws, with the way back beside it
@@ -520,7 +520,7 @@ func wallNoneRow(pal palette, v wallView, width, y int) (string, []wallHit) {
 	if i := v.teamRow(v.team); i >= 0 {
 		name = v.teams[i].name
 	}
-	word := "No open conversations in " + name
+	word := "No conversations in " + name
 	btn := wallButton{act: wallActFilterClear, label: "Clear", key: "esc"}
 	kind, arg := wallHitAction, int(wallActFilterClear)
 	if v.filter != "" {
@@ -592,18 +592,23 @@ func wallTeamsRow(pal palette, g wallGlyphs, v wallView, width, height, inset, c
 
 	switch {
 	case v.naming && !wallNameCardFits(width, height):
-		// The card has no room on this frame; the prompt is drawn here instead,
-		// with the same two buttons.
+		// The compact prompt keeps its key-first hints visible ahead of its name.
 		lead := pal.muted("New team "+g.gt+" ") + pal.ink(v.name) + pal.ink(g.cursor)
-		if v.asking {
-			lead += pal.dim(wallNamingWord(pal.ascii))
+		lead += pal.dim(" · " + strconv.Itoa(wallMarked(v)) + " picked")
+		footer := teamFooter(pal, min(width, 25),
+			teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: int(wallActCancel)}),
+			teamHint("enter", "create", wallHit{kind: wallHitAction, arg: int(wallActSave)}))
+		if len(footer) == 0 {
+			return "", nil
 		}
-		put(lead, ansi.StringWidth(lead))
-		count := "   " + pal.dim(strconv.Itoa(wallMarked(v))+" picked") + "  "
-		put(count, ansi.StringWidth(count))
-		button(wallButton{act: wallActCancel, label: "Cancel", key: "esc"})
-		button(wallButton{act: wallActSave, label: "Create", key: k.enter})
-		return ansi.Truncate(b.String(), width, ""), wallHitsWithin(hits, width)
+		if len(footer) > 1 {
+			return footer[0].s, teamFooterHitsAt(footer[0].hits, 0, y)
+		}
+		room := max(width-26, 0)
+		if room > 0 {
+			return fit(lead, room) + " " + footer[0].s, teamFooterHitsAt(footer[0].hits, room+1, y)
+		}
+		return footer[0].s, teamFooterHitsAt(footer[0].hits, 0, y)
 	case v.filtering || v.filter != "":
 		put(pal.dim("Filter  "), 8)
 		w := 2 + ansi.StringWidth(v.filter)
@@ -880,8 +885,10 @@ func wallTileActs(ascii bool, t wallTile, w int) []wallTileAct {
 	all := []wallTileAct{
 		{kind: wallHitOpen, btn: first},
 		{kind: wallHitSelect, btn: wallButton{label: "Select", key: k.pick}},
-		{kind: wallHitTeams, btn: wallButton{label: "Teams", key: "m"}},
 		{kind: wallHitClose, btn: wallButton{label: "Close", key: "x"}},
+	}
+	if t.noTab {
+		all = all[:2]
 	}
 	// The row keeps "╰─" before the first button and at least one rule cell
 	// and the corner after the last.
@@ -900,6 +907,21 @@ func wallTileActs(ascii bool, t wallTile, w int) []wallTileAct {
 		x += bw
 	}
 	return out
+}
+
+// Explicit team selection makes every card control select, rather than open.
+func wallTileActsIn(v wallView, ascii bool, t wallTile, w int) []wallTileAct {
+	acts := wallTileActs(ascii, t, w)
+	if !v.selecting {
+		return acts
+	}
+	for _, act := range acts {
+		if act.kind == wallHitSelect {
+			act.x = 2
+			return []wallTileAct{act}
+		}
+	}
+	return nil
 }
 
 // wallActRow is the bottom border as the action row: each button a verb in
@@ -986,7 +1008,7 @@ func wallTileHits(pal palette, v wallView, t wallTile, i int, focused bool, x0, 
 	// A waiting tile's Answer is the tile's open, cut out of the body around
 	// it so the two never share a cell.
 	last := y0 + h - 1
-	if dx, dy, bw, ok := wallAnswerAt(pal.ascii, t, w, h); ok && y0+dy < last {
+	if dx, dy, bw, ok := wallAnswerAt(pal.ascii, t, w, h); !v.selecting && ok && y0+dy < last {
 		ay := y0 + dy
 		body(y0+1, ay, x0, x0+w)
 		body(ay, ay+1, x0, x0+dx)
@@ -998,7 +1020,7 @@ func wallTileHits(pal palette, v wallView, t wallTile, i int, focused bool, x0, 
 	}
 	var bottom []wallHit
 	if look.rowOn {
-		for _, act := range wallTileActs(pal.ascii, t, w) {
+		for _, act := range wallTileActsIn(v, pal.ascii, t, w) {
 			bottom = append(bottom, wallHit{x0: x0 + act.x, x1: x0 + act.x + wallButtonW(act.btn), kind: act.kind})
 		}
 	}
@@ -1038,16 +1060,22 @@ type wallCardLine struct {
 // the lines, each padded padX cells inside the border and padY blank rows
 // above and below them, cut to fit.
 func wallCardBuild(pal palette, title string, lines []wallCardLine, x, y, w, padX, padY int) wallCard {
+	return wallCardBuildWithBorder(pal, title, lines, x, y, w, padX, padY, pal.muted)
+}
+
+// Alert cards change only their frame ink; message and control colours keep
+// their ordinary meanings inside the same geometry.
+func wallCardBuildWithBorder(pal palette, title string, lines []wallCardLine, x, y, w, padX, padY int, border func(string) string) wallCard {
 	box := wallBoxLight
 	if pal.ascii {
 		box = wallBoxLightASCII
 	}
-	border := pal.muted
 	inner := w - 2 - 2*padX
 	card := wallCard{x: x, y: y, w: w}
 	top := border(box.tl + strings.Repeat(box.h, w-2) + box.tr)
 	if title != "" {
-		t := " " + title + " "
+		// Titles share the frame's width budget even for long Unicode names.
+		t := " " + ansi.Truncate(title, max(w-5, 0), "...") + " "
 		top = border(box.tl+box.h) + pal.ink(t) + border(strings.Repeat(box.h, max(w-3-ansi.StringWidth(t), 0))+box.tr)
 	}
 	card.rows = append(card.rows, top)
@@ -1099,18 +1127,24 @@ const (
 // can be done to them, the most used first.
 func wallTray(pal palette, g wallGlyphs, v wallView, width, height int) wallCard {
 	n := wallMarked(v)
-	if n == 0 || height < 8 {
+	k := wallKeysFor(pal.ascii)
+	if n == 0 && !v.selecting || height < 8 {
 		return wallCard{}
 	}
-	k := wallKeysFor(pal.ascii)
 	word := strconv.Itoa(n) + " selected"
 	lead := pal.accent(g.marked) + " " + pal.ink(word) + "  "
 	leadW := ansi.StringWidth(g.marked) + 1 + len(word) + 2
 	bs := []wallButton{
-		{act: wallActMakeTeam, label: "Make team", key: "s"},
-		{act: wallActAddTo, label: "Add to" + k.more + " " + k.caret},
-		{act: wallActCloseViews, label: "Close views"},
+		{act: wallActMakeTeam, label: "Create team", key: k.enter},
 		{act: wallActClear, label: "Clear", key: "esc"},
+	}
+	if !v.selecting {
+		for _, tile := range v.tiles {
+			if tile.marked && !tile.noTab {
+				bs = append(bs[:1], append([]wallButton{{act: wallActCloseViews, label: "Close views"}}, bs[1:]...)...)
+				break
+			}
+		}
 	}
 	room := width - 2 - 2 - 2*wallCardPadX
 	// Close views leaves first, then Add to: Make team and Clear are the two a
@@ -1148,8 +1182,8 @@ func wallNamingWord(ascii bool) string {
 }
 
 // wallNameCardRows is the new-team card's height: two borders, the padding
-// above and below, and four lines.
-const wallNameCardRows = 2 + 2*wallCardPadY + 4
+// above and below, and five lines, including the wrapped keyboard hints.
+const wallNameCardRows = 2 + 2*wallCardPadY + 5
 
 // wallNameCardFits reports whether the new-team card has room on a frame.
 func wallNameCardFits(width, height int) bool {
@@ -1194,10 +1228,11 @@ func wallSwatches(pal palette, v wallView, choices []teamHueSpec, choice, x int)
 //
 //	╭─ New team ────────────────────────────────────╮
 //	│                                                │
-//	│  Name    harbor▌                    ↻ Shuffle  │
+//	│  Name    harbor▌                               │
 //	│  Colour  ◉ ● ● ● ● ●                           │
 //	│  3 · the tree walk, ship the port, relay au…   │
-//	│                         Cancel esc   Create ↵  │
+//	│            left/right colour · ctrl+r shuffle  │
+//	│                    esc cancel · enter create  │
 //	│                                                │
 //	╰────────────────────────────────────────────────╯
 //
@@ -1207,17 +1242,10 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	if !wallNameCardFits(width, height) {
 		return wallCard{}
 	}
-	k := wallKeysFor(pal.ascii)
 	w := min(60, width-4)
 	inner := w - 2 - 2*wallCardPadX
-
-	shuffle := wallButton{act: wallActShuffle, label: k.shuffle + " Shuffle", key: "ctrl+r"}
-	if inner < 46 {
-		shuffle.key = ""
-	}
-	sw := wallButtonW(shuffle)
 	const labelW = 8
-	nameRoom := max(inner-labelW-sw-2-ansi.StringWidth(g.cursor), 1)
+	nameRoom := max(inner-labelW-ansi.StringWidth(g.cursor), 1)
 	name := v.name
 	if ansi.StringWidth(name) > nameRoom {
 		// The end of a long name is the part being typed.
@@ -1233,15 +1261,12 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	// field, and only where it fits whole.
 	if v.asking {
 		word := wallNamingWord(pal.ascii)
-		if ww := ansi.StringWidth(word); inner+1-sw-fieldW >= ww+1 {
+		if ww := ansi.StringWidth(word); inner-fieldW >= ww+1 {
 			field += pal.dim(word)
 			fieldW += ww
 		}
 	}
-	// The Name row and the button row bleed (wallCardLine), so Shuffle and
-	// Create end on the text's right edge; the label takes the cell back.
-	s, _, sh := wallLay(pal, []wallButton{shuffle}, v.hover, inner+2-sw, 0, 1)
-	l1 := wallCardLine{s: " " + pal.dim("Name    ") + field + strings.Repeat(" ", max(inner+1-sw-fieldW, 0)) + s, hits: sh, bleed: true}
+	l1 := wallCardLine{s: pal.dim("Name    ") + field}
 
 	sws, _, swh := wallSwatches(pal, v, v.choices, v.choice, labelW)
 	l2 := wallCardLine{s: pal.dim("Colour  ") + sws, hits: swh}
@@ -1252,19 +1277,23 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 			names = append(names, t.name)
 		}
 	}
+	if v.selectedNames != nil {
+		names = v.selectedNames
+	}
 	who := strconv.Itoa(len(names)) + " " + g.sep + " " + strings.Join(names, ", ")
 	if ansi.StringWidth(who) > inner {
 		who = ansi.Truncate(who, inner, g.more)
 	}
 	l3 := wallCardLine{s: pal.dim(who)}
-
-	bs := []wallButton{
-		{act: wallActCancel, label: "Cancel", key: "esc"},
-		{act: wallActSave, label: "Create", key: k.enter},
+	if v.nameError != "" {
+		l3.s = pal.warn(ansi.Truncate(v.nameError, inner, g.more))
 	}
-	bw := wallBarWidth(bs, 1)
-	bstr, _, bh := wallLay(pal, bs, v.hover, inner+2-bw, 0, 1)
-	l4 := wallCardLine{s: strings.Repeat(" ", max(inner+2-bw, 0)) + bstr, hits: bh, bleed: true}
+
+	lines := []wallCardLine{l1, l2, l3}
+	lines = append(lines, teamFooter(pal, inner,
+		teamHint("left/right", "colour"), teamHint("ctrl+r", "shuffle", wallHit{kind: wallHitAction, arg: int(wallActShuffle)}),
+		teamHint("esc", "cancel", wallHit{kind: wallHitAction, arg: int(wallActCancel)}),
+		teamHint("enter", "create", wallHit{kind: wallHitAction, arg: int(wallActSave)}))...)
 
 	x := (width - w) / 2
 	gridH := height - wallChromeRows
@@ -1273,7 +1302,7 @@ func wallNameCard(pal palette, g wallGlyphs, v wallView, width, height int) wall
 	if v.nameIn != "" {
 		title += " in " + v.nameIn
 	}
-	return wallCardBuild(pal, title, []wallCardLine{l1, l2, l3, l4}, x, y, w, wallCardPadX, wallCardPadY)
+	return wallCardBuild(pal, title, lines, x, y, w, wallCardPadX, wallCardPadY)
 }
 
 // ── POPOVERS ────────────────────────────────────────────────────────────────

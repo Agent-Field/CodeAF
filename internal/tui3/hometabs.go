@@ -48,8 +48,8 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 		return row
 	}
 	for _, tab := range h.tabs() {
-		// A run tab is a view of its conversation, not another conversation.
-		if tab.work {
+		// Only saved conversations belong in Home; the start tab has no transcript.
+		if tab.work || tab.start || tab.file == "" {
 			continue
 		}
 		seen[filepath.Clean(tab.file)] = true
@@ -59,6 +59,9 @@ func (h *homeView) conversationRows() (open, closed []switcherRow) {
 		tabs := h.closedTabs()
 		for i := len(tabs) - 1; i >= 0 && len(closed) < homeClosedLimit; i-- {
 			tab := tabs[i]
+			if tab.work || tab.start || tab.file == "" {
+				continue
+			}
 			file := filepath.Clean(tab.file)
 			if seen[file] {
 				continue

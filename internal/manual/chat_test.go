@@ -49,6 +49,16 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I switch teams from the tab strip", "conversations-and-teams"},
 		{"does deleting a team close its conversations", "conversations-and-teams"},
 		{"where are my teams saved", "conversations-and-teams"},
+		{"create an empty team and add several saved conversations", "teams-page"},
+		{"how do I choose another manager before deleting its conversation", "teams-page"},
+		{"where is the model name and working spinner on team cards", "teams-page"},
+		{"previous and next page of recent interactions", "teams-page"},
+		{"how deep can I nest subteams and collapse their cards", "teams-page"},
+		{"how do I remove the team overlay with x in Chats", "conversations-and-teams"},
+		{"does the All grid include saved conversations without open tabs", "conversations-and-teams"},
+		{"how do I retry incomplete conversation deletion", "conversations-and-teams"},
+		{"does conversation deletion forget saved memories", "conversations-and-teams"},
+		{"why must I update an older client before editing memberships", "teams-page"},
 		// The teams page (teams-page.md).
 		{"how do I see all my teams and what waits on me", "teams-page"},
 		{"does renaming a team update the message box", "teams-page"},
@@ -1537,6 +1547,11 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"it said memory is off but I never turned it off", "what-i-remember"},
 		{"why does it say could not open graph.db", "what-i-remember"},
 		{"codeaf printed out of memory 14 on startup", "what-i-remember"},
+		// The upgraded-store failure a person saw on the terminal: the exact
+		// sentence has to reach the page that tells them the file is fine and
+		// what to restart.
+		{"it said no such column: owner when codeaf opened", "what-i-remember"},
+		{"memory is off for this session: initialize memories schema: no such column: owner", "what-i-remember"},
 		{"where is my memory file kept on disk", "what-i-remember"},
 		{"can I copy my memories to another machine", "what-i-remember"},
 		{"how do I see what codeaf remembers", "what-i-remember"},
@@ -1553,6 +1568,12 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does it clean up old memories", "what-i-remember"},
 		{"why did it say superseded", "what-i-remember"},
 		{"does it know if a memory actually helped", "what-i-remember"},
+		// The contextual wave's own two limits: a forgotten line is not brought
+		// back by the same evidence, and there is no team shelf to share one in.
+		{"can a forgotten memory come back", "what-i-remember"},
+		{"is memory shared with my team", "what-i-remember"},
+		{"does a new team member see my project memory", "what-i-remember"},
+		{"does the team manager get my remembered rules", "team-manager"},
 
 		// The eleventh wave: the words are no longer only carried, they can be
 		// SEARCHED. Somebody asking either of these is asking about the
@@ -2545,6 +2566,14 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"i have two copies of codeaf, which one runs the background checks", "keeping-an-eye"},
 		{"two copies of codeaf and my reminders fired twice", "keeping-an-eye"},
 		{"does CODEAF_HOME move the background timer", "keeping-an-eye"},
+		// App-closed watch with no window and no helper, a key that is missing or
+		// disconnected, the one-shot that must not toast, and a pass the machine
+		// slept through. Each is the question a person asks about the ambient
+		// side's real limits.
+		{"does a watch keep running with the app closed, is there a helper", "keeping-an-eye"},
+		{"my key is missing or disconnected will my reminder retry", "keeping-an-eye"},
+		{"will a once watch pop a desktop notification or toast", "keeping-an-eye"},
+		{"what happens to a check missed while my computer was off", "keeping-an-eye"},
 		// The wave that gave the ambient side a reach: an order that governs one
 		// chat, one project, or everything. Each of these is what somebody types
 		// looking at the page, at the card's `where` band, or at the one line a
@@ -3665,5 +3694,168 @@ func TestGuideKeysAnswerNamesBothLaddersAndTheEnvironmentRestart(t *testing.T) {
 		if !strings.Contains(answer, needle) {
 			t.Errorf("guide keys answer omits %q", needle)
 		}
+	}
+}
+
+// The realnative rerun exposed four answers that were materially wrong or could
+// not be found. These probes assert that each question reaches the section that
+// now carries the correction, and that the section distinguishes the right
+// answer from the wrong one rather than merely sharing a topic.
+func TestTheRerunQuestionsReachTheirCorrectedSections(t *testing.T) {
+	asked := []struct {
+		question string
+		page     string
+		title    string
+		says     []string
+	}{
+		{
+			// q2: a judge is a model, and only the provider serving that model
+			// opens the door — not any connected provider.
+			question: "my codeaf background watch stopped after disconnecting OpenRouter what happens and how do I restore it",
+			page:     "keeping-an-eye",
+			title:    "Will a watch retry if my API key is missing or disconnected",
+			says:     []string{"judges on", "OpenRouter", "lives on holds a credential", "connecting something\nunrelated"},
+		},
+		{
+			// q5: the task's approved/confirmed binding is a local read before
+			// the first request, separate from the router's advisory shortlist.
+			question: "do saved memories and restrictions reach team managers, team members, and tasks",
+			page:     "what-i-remember",
+			title:    "Where is it kept, and does a task see it?",
+			says:     []string{"approved rules and confirmed", "no model, no router, no provider needed", "advisory lookup", "bounded"},
+		},
+		{
+			// q5: the member page carries the same boundary at the start door.
+			question: "when a manager starts a member do the workspace's saved rules apply before its first request",
+			page:     "team-manager",
+			title:    "When a manager starts a member",
+			says:     []string{"before its first request", "advisory path", "not all guaranteed to fit"},
+		},
+		{
+			// q4: the purpose-built forgetting section, reached by the words a
+			// person actually uses, and answering that a search is reading only.
+			question: "search old conversations re-activate saved context decision memory",
+			page:     "what-i-remember",
+			title:    "Can a forgotten thing come back or will it be relearned",
+			says:     []string{"Searching an old conversation does not bring it back", "reading, not remembering", "suppression above that makes forgetting hold"},
+		},
+		{
+			// q1: the catch-up is requested, not guaranteed, while off or asleep.
+			question: "what happens to a check missed while my computer was off",
+			page:     "keeping-an-eye",
+			title:    "When will it run next, and how often does it check",
+			says:     []string{"a request, not a", "operating system's to decide", "simply\nbe skipped"},
+		},
+	}
+	for _, ask := range asked {
+		reached := false
+		for _, section := range Chat().Search(ask.question, DefaultResults) {
+			if section.Page != ask.page || !strings.Contains(section.Title, ask.title) {
+				continue
+			}
+			reached = true
+			for _, needle := range ask.says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", ask.question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			found := Chat().Search(ask.question, DefaultResults)
+			where := make([]string, 0, len(found))
+			for _, section := range found {
+				where = append(where, section.Page+" \u00b7 "+section.Title)
+			}
+			t.Errorf("%q does not reach %s \u00b7 %q; it reached %v", ask.question, ask.page, ask.title, where)
+		}
+	}
+}
+
+// q3's rerun answer got the bottom line right — a remembered failure is not a
+// ban — but was materially wrong about the architecture and overpromised: it
+// said the line only reaches the model if it survives the router's ranking and
+// small relevance model, and that with changed inputs it WILL try the tool again.
+// The prior-OBSERVED-outcome advisory is read locally from the saved memories
+// before the first request, ranked by its own relevance to the turn, and does not
+// depend on that router path; it bans nothing, so the agent MAY retry or adapt
+// when the circumstances change, and the line never promises a retry. This probe
+// reaches that section by the actual question and a natural paraphrase, and
+// asserts the distinguishing content rather than a shared topic.
+func TestAFailedMethodQuestionReachesTheObservedOutcomeAdvisory(t *testing.T) {
+	asks := []string{
+		"Does codeaf remembering a failed method mean it will never try that tool again? What if inputs change?",
+		"will codeaf avoid retrying a tool that failed before if my inputs have changed",
+	}
+	const title = "Remembering a failed method or tool"
+	says := []string{
+		"read\n**locally**, from your saved memories, before the first request goes out",
+		"it does not\ndepend on the router's ranking or its small relevance model",
+		"It never bans the tool, and nothing reads a memory to block\na call.",
+		"When the inputs, the tree or the circumstances have changed the agent is\nfree to try it again",
+		"It never promises a retry either",
+	}
+	for _, question := range asks {
+		reached := false
+		for _, section := range Chat().Search(question, DefaultResults) {
+			if section.Page != "what-i-remember" || !strings.Contains(section.Title, title) {
+				continue
+			}
+			reached = true
+			for _, needle := range says {
+				if !strings.Contains(section.Body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", question, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			found := Chat().Search(question, DefaultResults)
+			where := make([]string, 0, len(found))
+			for _, section := range found {
+				where = append(where, section.Page+" \u00b7 "+section.Title)
+			}
+			t.Errorf("%q does not reach what-i-remember \u00b7 %q; it reached %v", question, title, where)
+		}
+	}
+}
+
+// q7's answer overpromised: asked what happens to a last week's failure when
+// the data file has changed, it guaranteed a rerun and said the stale failure
+// would be "retired rather than carried forward". Neither is promised. A
+// changed input does not automatically erase or retire the recorded history and
+// does not force a tool rerun; the past result stays a historical advisory, and
+// a fresh inspection of the changed file is what is needed before the prior
+// result may be called current. The agent may rerun, read or adapt. This probe
+// reaches the dedicated section by the asker's actual words and asserts the
+// retained-history-versus-current-proof distinction rather than the topic.
+func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
+	const question = "If a command failed last week but the data file has changed, how will codeaf use that experience now?"
+	const title = "What happens to old command results when input files change?"
+	says := []string{
+		"command failed last week and the data file has changed",
+		"historical advisory",
+		"does not automatically erase or retire that history",
+		"does not force a rerun",
+		"fresh inspection of the\nchanged file",
+		"may rerun the command, read the changed file, or adapt",
+	}
+	reached := false
+	for _, section := range Chat().Search(question, DefaultResults) {
+		if section.Page != "what-i-remember" || !strings.Contains(section.Title, title) {
+			continue
+		}
+		reached = true
+		for _, needle := range says {
+			if !strings.Contains(section.Body, needle) {
+				t.Errorf("%q reached %q but its body omits %q", question, section.Title, needle)
+			}
+		}
+	}
+	if !reached {
+		found := Chat().Search(question, DefaultResults)
+		where := make([]string, 0, len(found))
+		for _, section := range found {
+			where = append(where, section.Page+" · "+section.Title)
+		}
+		t.Errorf("%q does not reach what-i-remember · %q; it reached %v", question, title, where)
 	}
 }

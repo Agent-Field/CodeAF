@@ -1121,13 +1121,22 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return remote.LedgerReading{Lines: lines, Held: held}
 		},
 		Search: func(terms string, limit int) ([]store.ConversationHit, error) {
-			if proc.Memory == nil {
-				return nil, errors.New("memory is off")
+			// THE SEARCH STORE, NOT THE MEMORY STORE. Memory off used to take
+			// this down with it; the process keeps the index open either way
+			// ([v3Process.Search]).
+			if proc.Search == nil {
+				return nil, errors.New("conversation search is unavailable")
 			}
-			return proc.Memory.SearchConversations(terms, limit)
+			return proc.Search.SearchConversations(terms, limit)
 		},
-		Memory:     v3MemorySeam(proc.Memory),
-		Archive:    session.SetArchived,
+		Memory:  v3MemorySeam(proc.Memory),
+		Archive: session.SetArchived,
+		DeleteTask: func(file, id string) error {
+			return session.DeleteTaskUnder(session.PlacesRoot(), file, id, proc.deleteOwnedTask)
+		},
+		DeleteConversation: func(file string, choices map[string]string, affected map[string][]string) error {
+			return session.DeleteConversationUnder(session.PlacesRoot(), proc.ProfileDir, file, choices, proc.stopConversation, affected)
+		},
 		PlacesRoot: session.PlacesRoot(),
 		// AND ONE ROW OF THAT RECORD, READ DEEPER THAN THE WALK READS IT. The
 		// card behind a task row draws the last thing that piece of work said,

@@ -174,10 +174,9 @@ func TestWallOpeningRevealsRowByRowAndAKeyFinishesIt(t *testing.T) {
 	}
 }
 
-// AN OPENED TILE GROWS INTO THE FRAME over a few frames, around a conversation
-// that is already in front, and a key ends the growing at once.
-func TestWallOpenedTileZoomsIntoTheFrame(t *testing.T) {
-	a, now := wallPinned(t)
+// Grid opening lands immediately so the first frame is the full conversation.
+func TestWallOpenedTileLandsWithoutExpansion(t *testing.T) {
+	a, _ := wallPinned(t)
 	_ = a.openWall()
 	a.wallSettle()
 	_ = a.wallFrame(a.width, a.height)
@@ -190,32 +189,16 @@ func TestWallOpenedTileZoomsIntoTheFrame(t *testing.T) {
 	}
 	a.wallMove(target, len(tiles))
 	_ = a.wallFrame(a.width, a.height)
-	from, _ := a.wallTileRect(target)
 	wallKeyPress(a, "enter")
 	if a.wall.on || a.frontTabKey() != tiles[target].tab.key {
-		t.Fatal("enter did not open the tile")
+		t.Fatal("tile did not open")
 	}
-	if !a.wallAnimating() {
-		t.Fatal("the zoom does not keep the paint clock turning")
+	if !a.wall.zoomAt.IsZero() || a.wallAnimating() {
+		t.Fatal("tile opening still animates")
 	}
 	lines := screenLines(a)
-	if from.y0 == 0 || strings.TrimSpace(lines[0]) != "" {
-		t.Fatalf("the first frame of the zoom drew outside the tile: %q", lines[0])
-	}
-	if !strings.HasPrefix(strings.TrimLeft(lines[from.y0], " "), "╭") {
-		t.Fatalf("the zoom's edge is not on the tile's top row: %q", lines[from.y0])
-	}
-	*now = now.Add(wallZoomFor)
-	_ = screenLines(a)
-	if !a.wall.zoomAt.IsZero() || a.wallAnimating() {
-		t.Fatal("the zoom outlived its time")
-	}
-
-	// A key ends it on the spot.
-	a.wall.zoomFrom, a.wall.zoomAt = from, *now
-	a.key(key("h"))
-	if !a.wall.zoomAt.IsZero() {
-		t.Fatal("a key did not end the zoom")
+	if !strings.Contains(plain(lines[0]), "codeaf") {
+		t.Fatal("first conversation frame is clipped by expansion")
 	}
 }
 
@@ -235,15 +218,15 @@ func TestWallEscClosesTheInnermostLayerFirst(t *testing.T) {
 		t.Fatalf("filter %q on %v", a.wall.filter, a.wall.filterOn)
 	}
 	wallKeyPress(a, " ")
-	wallKeyPress(a, "m")
-	if a.wall.pop.kind != wallPopMembers || len(a.wall.marked) != 1 {
+	wallKeyPress(a, "?")
+	if !a.wall.help || len(a.wall.marked) != 1 {
 		t.Fatalf("the setup: pop %+v marked %v", a.wall.pop, a.wall.marked)
 	}
 	steps := []struct {
 		name string
 		gone func() bool
 	}{
-		{"the popover", func() bool { return a.wall.pop.kind == wallPopNone && len(a.wall.marked) == 1 }},
+		{"the popover", func() bool { return !a.wall.help && len(a.wall.marked) == 1 }},
 		{"the selection", func() bool { return len(a.wall.marked) == 0 && a.wall.filter != "" }},
 		{"the filter", func() bool { return a.wall.filter == "" && a.wall.on }},
 		{"the wall", func() bool { return !a.wall.on }},
@@ -259,7 +242,7 @@ func TestWallEscClosesTheInnermostLayerFirst(t *testing.T) {
 	// The card goes before the selection under it.
 	_ = a.openWall()
 	_ = a.wallFrame(a.width, a.height)
-	wallKeyPress(a, "s")
+	a.wallStartNaming(a.wallShown(a.now()))
 	wallKeyPress(a, "esc")
 	if a.wall.naming || len(a.wall.marked) != 1 || !a.wall.on {
 		t.Fatalf("esc on the card: naming %v marked %v on %v", a.wall.naming, a.wall.marked, a.wall.on)
@@ -274,14 +257,14 @@ func TestWallPressOffACardPutsItAway(t *testing.T) {
 	a.wallSettle()
 	_ = a.wallFrame(a.width, a.height)
 	focus := a.wall.focus
-	wallKeyPress(a, "m")
+	wallKeyPress(a, "?")
 	_ = a.wallFrame(a.width, a.height)
 	card := a.wall.card
 	if card.w() == 0 {
 		t.Fatal("the popover's place was not recorded")
 	}
 	// Its own border is on the card and answers nothing.
-	if _, took := a.wallPress(card.x0, card.y0); !took || a.wall.pop.kind == wallPopNone {
+	if _, took := a.wallPress(card.x0, card.y0); !took || !a.wall.help {
 		t.Fatal("a press on the popover's border put it away")
 	}
 	x, y := a.width-3, a.height-3
@@ -291,11 +274,11 @@ func TestWallPressOffACardPutsItAway(t *testing.T) {
 	if _, took := a.wallPress(x, y); !took {
 		t.Fatal("the wall did not take the press")
 	}
-	if a.wall.pop.kind != wallPopNone || !a.wall.on || a.wall.focus != focus {
+	if a.wall.help || !a.wall.on || a.wall.focus != focus {
 		t.Fatalf("a press off the popover: pop %+v on %v focus %d", a.wall.pop, a.wall.on, a.wall.focus)
 	}
 
-	wallKeyPress(a, "s")
+	a.wallStartNaming(a.wallShown(a.now()))
 	_ = a.wallFrame(a.width, a.height)
 	if a.wall.card.w() == 0 {
 		t.Fatal("the card's place was not recorded")
@@ -308,7 +291,7 @@ func TestWallPressOffACardPutsItAway(t *testing.T) {
 // CLOSING A TILE HANDS THE FOCUS TO ITS RIGHT, or at the end of the list to
 // its left, and never back to the start; closing another tile keeps the
 // focus on the conversation it was on.
-func TestWallCloseHandsTheFocusToTheNeighbour(t *testing.T) {
+func TestWallCloseTabKeepsCardAndDeletionHandsFocusToNeighbour(t *testing.T) {
 	// The fixture is two conversations behind and the one in front, last.
 	fresh := func() (*app, []wallTile) {
 		a, _, _ := tabApp(t)
@@ -325,8 +308,8 @@ func TestWallCloseHandsTheFocusToTheNeighbour(t *testing.T) {
 	a, tiles := fresh()
 	a.wallMove(0, len(tiles))
 	wallKeyPress(a, "x")
-	if got := focused(a); got != tiles[1].tab.key {
-		t.Fatalf("closing the focused tile focused %q, want its right neighbour %q", got, tiles[1].tab.key)
+	if got := focused(a); got != tiles[0].tab.key {
+		t.Fatalf("closing a tab lost its conversation card: focused %q, want %q", got, tiles[0].tab.key)
 	}
 
 	a, tiles = fresh()
@@ -345,35 +328,26 @@ func TestWallCloseHandsTheFocusToTheNeighbour(t *testing.T) {
 	}
 }
 
-// EACH TEAM KEEPS ITS PLACE while the wall is up: All, then harbor, then All
-// again, returns to the tile that was focused.
-func TestWallTeamsKeepTheirPlace(t *testing.T) {
+// Tab walks conversations rather than changing team overlays.
+func TestWallTabWalksConversationsWithoutTeamFilters(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
-	_ = a.wallFrame(a.width, a.height)
 	tiles := a.wallShown(a.now())
-	id, err := a.teamMake("harbor", []chatTab{tiles[0].tab, tiles[1].tab})
-	if err != nil {
+	if _, err := a.teamMake("harbor", []chatTab{tiles[0].tab}); err != nil {
 		t.Fatal(err)
 	}
 	a.wallMove(2, len(tiles))
-	all := tiles[2].tab.key
 	wallKeyPress(a, "1")
-	if a.wall.activeID != id || a.wall.focus != 0 {
-		t.Fatalf("1: team %q focus %d", a.wall.activeID, a.wall.focus)
-	}
-	wallKeyPress(a, "right")
-	harbor := a.wallShown(a.now())[a.wall.focus].tab.key
-	wallKeyPress(a, "1")
-	if a.wall.activeID != "" {
-		t.Fatalf("the shown team's digit did not go back to All: %q", a.wall.activeID)
-	}
-	if got := a.wallShown(a.now())[a.wall.focus].tab.key; got != all {
-		t.Fatalf("All came back on %q, want %q", got, all)
+	if a.wall.activeID != "" || a.wall.focus != 2 {
+		t.Fatal("digit selected a team")
 	}
 	wallKeyPress(a, "tab")
-	if got := a.wallShown(a.now())[a.wall.focus].tab.key; a.wall.activeID != id || got != harbor {
-		t.Fatalf("harbor came back on %q, want %q", got, harbor)
+	if a.wall.focus != 0 || len(a.wallShown(a.now())) != len(tiles) {
+		t.Fatal("Tab did not wrap the whole grid")
+	}
+	wallKeyPress(a, "shift+tab")
+	if a.wall.focus != 2 {
+		t.Fatal("Shift+Tab did not wrap backwards")
 	}
 }
 
@@ -400,8 +374,7 @@ func TestWallFilterFocusesTheFirstMatchAndClearingKeepsIt(t *testing.T) {
 	}
 }
 
-// THE PICKED ARE ACTED ON BY THE SAME KEYS AS THE TRAY'S BUTTONS: m is Add
-// to…, x is Close views; e opens the shown team's settings.
+// Closing picked views uses the tray's door. Retired team keys do nothing.
 func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 	a, _, _ := tabApp(t)
 	_ = a.openWall()
@@ -417,16 +390,15 @@ func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 		a.wallToggle(tiles, i)
 	}
 	wallKeyPress(a, "m")
-	if a.wall.pop.kind != wallPopMembers || len(a.wall.pop.targets) != len(behind) {
+	if a.wall.pop.kind != wallPopNone || len(a.wall.marked) != len(behind) {
 		t.Fatalf("m with %d picked: %+v", len(behind), a.wall.pop)
 	}
-	wallKeyPress(a, "esc")
 	wallKeyPress(a, "x")
-	if n := len(a.wallShown(a.now())); n != len(tiles)-len(behind) {
+	if n := len(a.wallShown(a.now())); n != len(tiles) {
 		t.Fatalf("x with %d picked left %d of %d", len(behind), n, len(tiles))
 	}
 
-	harbor, err := a.teamMake("harbor", []chatTab{tiles[0].tab})
+	_, err := a.teamMake("harbor", []chatTab{tiles[0].tab})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +409,7 @@ func TestWallKeysDoWhatTheButtonsDo(t *testing.T) {
 	wallKeyPress(a, "1")
 	_ = a.wallFrame(a.width, a.height)
 	wallKeyPress(a, "e")
-	if !a.tsheet.on || a.tsheet.team != harbor {
+	if a.tsheet.on || a.wall.activeID != "" {
 		t.Fatalf("e: %+v", a.tsheet)
 	}
 }

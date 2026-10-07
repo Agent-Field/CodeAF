@@ -81,6 +81,7 @@ var commands = []command{
 	// and both of them mean the thing this surface calls /new — so all three land
 	// on it rather than on "unknown command: /clear".
 	{name: "new", desc: "start another conversation in this project", alias: []string{"clear", "clean", "reset"}},
+	{name: "delete", desc: "permanently delete this conversation · asks first"},
 	{name: "resume", desc: "open an earlier conversation", alias: []string{"sessions"}},
 	{name: "compact", desc: "shorten the conversation now"},
 	{name: "drafts", desc: "cleared-but-kept drafts · enter restores one, d lets one go"},
@@ -1136,7 +1137,7 @@ func helpText(file string, chords chordSpelling) string {
 		// THE TEAMS PAGE'S LETTERS, each the button of the same word on the
 		// selected team, and the chord that puts the keyboard on those buttons
 		// while the manager's conversation has the box (teamspagehost.go).
-		"s c w n o M m p r d u  in /teams: settings · close · wall · new team · organize · manager · move · members · reopen · delete · undo",
+		"s c w n o M m p d u  in /teams: settings · disband · wall · new team · organize · manager · move · members · delete · undo",
 		helpKeyRow(chords.say("alt+↑↓"), "in /teams: onto the page's buttons while the manager has the box · esc back"),
 		"ctrl+r ctrl+y  in /files: reveal the folder it is in · copy it somewhere",
 	)

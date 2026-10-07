@@ -74,6 +74,22 @@ import (
 // seconds; nothing in the product writes it.
 var teamWatchEvery = time.Second
 
+// Test clocks are changed between fixtures while an older watch may still be
+// finishing. All readers share the lock with those test-only writers.
+var teamWatchClockMu sync.RWMutex
+
+func teamWatchInterval() time.Duration {
+	teamWatchClockMu.RLock()
+	defer teamWatchClockMu.RUnlock()
+	return teamWatchEvery
+}
+
+func teamWakeDelay() time.Duration {
+	teamWatchClockMu.RLock()
+	defer teamWatchClockMu.RUnlock()
+	return teamWakeSettle
+}
+
 // teamWakeSettle is how long a manager's wake waits after the first reply
 // that asks for it, gathering whatever else arrives. Five seconds: long enough
 // that members finishing on one burst of work (a fan-out's replies land within
@@ -162,7 +178,7 @@ func (a *Agent) watchTeamTraffic(profile string) {
 }
 
 func (a *Agent) teamWatchLoop(profile string) {
-	ticker := time.NewTicker(teamWatchEvery)
+	ticker := time.NewTicker(teamWatchInterval())
 	defer ticker.Stop()
 	for range ticker.C {
 		if !a.teamWatchTick(profile, time.Now()) {
@@ -221,7 +237,7 @@ func (a *Agent) teamWatchTick(profile string, now time.Time) bool {
 				a.team.watch.pending = map[string][]teams.Entry{}
 			}
 			if a.team.watch.due.IsZero() {
-				a.team.watch.due = now.Add(teamWakeSettle)
+				a.team.watch.due = now.Add(teamWakeDelay())
 			}
 			a.team.watch.pending[role.id] = append(a.team.watch.pending[role.id], waking...)
 			continue
@@ -413,6 +429,9 @@ func (a *Agent) teamWatchReadLocked(profile string, role teamRole) []teams.Entry
 // asking event, for the manager. The watch suppresses a finished event when
 // the same turn already posted a reply.
 func teamWakes(role teamRole, entry teams.Entry) bool {
+	if !role.joinedAt.IsZero() && entry.At.Before(role.joinedAt) {
+		return false
+	}
 	if role.manager && teams.IsWrapUp(entry) {
 		return true
 	}
@@ -782,7 +801,7 @@ func sharedTeamsStamp(profile string) fileStamp {
 	if teamsStampMemo.at == nil {
 		teamsStampMemo.at = map[string]memoStamp{}
 	}
-	if held, ok := teamsStampMemo.at[path]; ok && time.Since(held.taken) < teamWatchEvery {
+	if held, ok := teamsStampMemo.at[path]; ok && time.Since(held.taken) < teamWatchInterval() {
 		return held.stamp
 	}
 	stamp := stampOf(path)
