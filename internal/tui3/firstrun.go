@@ -12,6 +12,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 // THE FIRST-RUN SETUP, AND THE MODEL DOOR THAT MAY COME BACK.
@@ -19,7 +20,7 @@ import (
 // A fresh install used to open on an empty chat and the first thing the product
 // said was a provider error. Now the door lets that launch open with no key
 // (cmd/codeaf's chatv3.go) and this screen asks for what a first day needs, in
-// TWO steps: the key every model call rides, and then one screen of controls —
+// A provider choice precedes TWO steps: its connection, and one screen of controls —
 // the day's spending limit and the model you talk to. The crew is not asked:
 // a task's crew is picked per task, and /crew is where it is seen. Under a
 // minute; every control opens on the value already in force; the way out is
@@ -48,9 +49,9 @@ import (
 //     only before anything has been typed. A returning key door may stand over
 //     an existing conversation, but an attempted send opens it before the draft
 //     is cleared, so connecting and pressing enter again sends the same words.
-//   - IT SPENDS NOTHING. A pasted key is checked only for shape. The browser
-//     exchange creates a key but makes no model call, so no prompt is sent and
-//     no model charge can be made during setup.
+//   - THE CONNECTION USES ITS EXISTING CHECKS. OpenRouter checks a pasted key
+//     only for shape, Ollama lists installed models, and direct providers use
+//     the same account checks as /connect, including their small model probes.
 //
 // IT PRECEDES THE WELCOME BOX. The box is what an empty conversation shows; this
 // is what it shows before that, and the box's arrival animation starts fresh the
@@ -73,6 +74,14 @@ const (
 // had one, which is every launch but the first.
 type setupFlow struct {
 	open bool
+	// Provider selection precedes the numbered connection and controls steps.
+	provider        string
+	providerMore    bool
+	providerAt      int
+	providerHits    []setupProviderHit
+	providerAttempt *setupProviderAttempt
+	providerBusy    bool
+	providerLink    string
 	// steps is the questions still worth asking, in order; at is the index of
 	// the one on screen.
 	steps []setupStep
@@ -251,6 +260,7 @@ func (a *app) endSetup(skipped bool) tea.Cmd {
 	dir := strings.TrimSpace(a.profileDir)
 	_ = config.MarkSetupSeen(dir, a.now())
 	a.cancelSetupAuth()
+	a.cancelSetupProvider()
 	// THE QUESTIONS THIS ESC WALKED PAST GET A DOOR. `setup_seen_at` is stamped
 	// whichever way this screen ended and only the key-only form ever reopens,
 	// so the chat model and the day's limit are retired here — silently, until this
@@ -338,7 +348,7 @@ func setupStepLater(step setupStep) string {
 // setupNoKeyConnectWord is the local default-provider form. It points at the
 // next ordinary act rather than at a buried settings row: the draft is kept,
 // and enter brings the browser connection back before anything is submitted.
-const setupNoKeyConnectWord = "openrouter is not connected · enter on your message connects in a browser, or export " + config.APIKeyEnv
+const setupNoKeyConnectWord = "no model provider is connected · enter on your message chooses a provider, or use /connect"
 
 // ── the keyboard ────────────────────────────────────────────────────────────
 
@@ -355,6 +365,17 @@ func (a *app) setupKeyPress(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	s := &a.setup
 	name := msg.String()
+	if s.step() == setupKey {
+		if s.provider == "" {
+			return a.setupProviderKey(msg), true
+		}
+		if name == "alt+left" {
+			return a.backSetupProvider(), true
+		}
+		if s.provider != modelsource.DefaultID {
+			return a.setupServiceKey(msg), true
+		}
+	}
 	if s.step() == setupKey && (s.authStarting || s.authFlow != nil) {
 		if name == "esc" {
 			a.cancelSetupAuth()
@@ -485,6 +506,17 @@ func (a *app) setupPaste(text string) bool {
 		if a.setup.control == controlLimit && !a.setup.anyOpen() {
 			a.setup.limitText += strings.TrimSpace(text)
 			a.setup.limitTyped = true
+			a.setup.refusal = ""
+			a.touch()
+		}
+		return true
+	}
+	if a.setup.provider == "" {
+		return true
+	}
+	if a.setup.provider != modelsource.DefaultID {
+		if entry := a.connPanel.entry; entry != nil && !entry.choosing() && !a.setup.providerBusy {
+			entry.box.insert(strings.TrimSpace(text))
 			a.setup.refusal = ""
 			a.touch()
 		}
@@ -738,6 +770,12 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	if s.step() == setupControls {
 		return a.setupControlsFrame(width, height)
 	}
+	if s.provider == "" {
+		return a.setupProvidersFrame(width, height)
+	}
+	if s.provider != modelsource.DefaultID {
+		return a.setupServiceFrame(width, height)
+	}
 	// ── ONE RULE, ONE MEASURE, FOR THE TWO SCREENS THE WORDMARK IS DRAWN ON ───
 	//
 	// This block and the greeting that replaces it are the ONLY two screens that
@@ -833,6 +871,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 	} else {
 		add("")
 	}
+	add(pal.dim("Back · alt+left"))
 	add(pal.dim(a.setupKeysWord()))
 
 	// A SHADE ABOVE THE MIDDLE, WHICH IS WHERE A CENTRED THING LOOKS CENTRED, and
@@ -866,6 +905,7 @@ func (a *app) setupFrame(width, height int) ([]string, int, int) {
 		lines = lines[over:]
 		caretY -= over
 	}
+	a.setup.providerHits = []setupProviderHit{{x: lead, y: top + len(body) - 2 - max(0, top+len(body)-height), width: inner, at: -1}}
 	a.caret = caretRow >= 0
 	return lines, lead + caretX, caretY
 }

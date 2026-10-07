@@ -834,13 +834,14 @@ type (
 		err     error
 	}
 	modelConnectResultMsg struct {
-		service string
-		name    string
-		written string
-		keyEnv  string
-		outcome modelsource.Outcome
-		models  []Model
-		err     error
+		setupAttempt *setupProviderAttempt
+		service      string
+		name         string
+		written      string
+		keyEnv       string
+		outcome      modelsource.Outcome
+		models       []Model
+		err          error
 		// browser says this result owns a waiting browser card. Word is the
 		// shared terminal-and-panel sentence that settles that card.
 		browser bool
@@ -4368,6 +4369,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The controls screen answers a press on its own rows the way the
 			// keys would (onboarding.go's [app.setupPress]); the key step, which
 			// is one box, takes nothing from the pointer.
+			if msg.Mouse().Button == tea.MouseLeft && a.setup.step() == setupKey {
+				return a, a.setupProviderPress(msg.Mouse().X, msg.Mouse().Y)
+			}
 			if msg.Mouse().Button == tea.MouseLeft && a.setupPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, a.endSetup(false)
 			}
@@ -5239,6 +5243,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.adoptCodexFlow(msg)
 
 	case modelConnectResultMsg:
+		if msg.setupAttempt != nil {
+			return a, a.adoptSetupProviderResult(msg)
+		}
 		a.adoptModelConnectResult(msg)
 		return a, nil
 

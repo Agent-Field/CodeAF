@@ -35,7 +35,7 @@ func (f *setupOpenRouterFlow) Cancel() { f.cancelled = true }
 // profile `seed` has prepared first. It is [sheetApp] with the setup allowed
 // and the seed run BEFORE the app, because the setup is decided inside newApp
 // and a file written afterwards would be a file it never saw.
-func setupApp(t *testing.T, seed func(dir string)) (*app, string, *[]string) {
+func setupProviderApp(t *testing.T, seed func(dir string)) (*app, string, *[]string) {
 	t.Helper()
 	for _, pin := range []string{config.APIKeyEnv, "OPENAI_API_KEY", "CODEAF_DAILY_BUDGET", "CODEAF_PROFILE_DIR"} {
 		t.Setenv(pin, "")
@@ -65,6 +65,16 @@ func setupApp(t *testing.T, seed func(dir string)) (*app, string, *[]string) {
 	a.width, a.height = 90, 30
 	a.pal = newPalette(tokens.ANSI256, false)
 	a.touch()
+	return a, dir, handed
+}
+
+// Key-entry tests start after the person chooses OpenRouter. Provider tests use
+// setupProviderApp to exercise the actual first frame.
+func setupApp(t *testing.T, seed func(dir string)) (*app, string, *[]string) {
+	a, dir, handed := setupProviderApp(t, seed)
+	if a.setup.open && a.setup.step() == setupKey {
+		a.selectSetupProvider("openrouter")
+	}
 	return a, dir, handed
 }
 
@@ -117,16 +127,27 @@ func TestTheSetupOpensOverAnEmptyProfileAndNotOverAConfiguredOne(t *testing.T) {
 	}
 }
 
-func TestC19FirstrunRendersOpenRouterAndNoCodexOffer(t *testing.T) {
-	// C19: this is the frame a person sees on a fresh profile, not merely a
-	// constructor seam. Codex belongs behind /connect and is absent here.
-	a, _, _ := setupApp(t, nil)
+func TestFirstRunOffersSupportedProvidersBeforeAskingForAKey(t *testing.T) {
+	a, _, _ := setupProviderApp(t, nil)
 	screen := setupScreen(a)
-	if !strings.Contains(screen, "openrouter") {
-		t.Fatalf("first-run setup lost its OpenRouter offer:\n%s", screen)
+	for _, want := range []string{setupProviderHeading, "Ollama", "OpenRouter", "Codex", "DeepSeek", "More providers", "Skip for now"} {
+		if !strings.Contains(screen, want) {
+			t.Fatalf("missing %q: %s", want, screen)
+		}
 	}
-	if strings.Contains(strings.ToLower(screen), "codex") {
-		t.Fatalf("first-run setup exposed Codex:\n%s", screen)
+	if strings.Contains(screen, "1 of 2") || strings.Contains(screen, "your openrouter key") {
+		t.Fatal("provider choice must precede key entry")
+	}
+	a.selectSetupProvider("!more")
+	rows := a.setupProviderRows()
+	seen := map[string]bool{}
+	for _, row := range rows {
+		seen[row.id] = true
+	}
+	for _, id := range []string{"z-ai", "moonshot", "minimax", "qwen", "custom"} {
+		if !seen[id] {
+			t.Fatalf("supported provider %q missing from More", id)
+		}
 	}
 }
 
@@ -224,7 +245,7 @@ func TestAMissingDefaultProviderReturnsOverAResumedProfileAndKeepsTheDraft(t *te
 	if !a.setup.open || a.input.String() != "keep these exact words" {
 		t.Fatalf("enter must reopen the provider without clearing the draft; open=%v draft=%q", a.setup.open, a.input.String())
 	}
-	if got := noteSaying(t, a, "connects in a browser"); !strings.Contains(got, config.APIKeyEnv) {
+	if got := noteSaying(t, a, "chooses a provider"); !strings.Contains(got, "/connect") {
 		t.Fatalf("the not-now note must name both direct roads, got %q", got)
 	}
 }

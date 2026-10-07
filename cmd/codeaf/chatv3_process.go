@@ -229,7 +229,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		}
 		fmt.Fprintln(os.Stderr, "codeaf "+door+" needs a model to talk with.")
 		if keyless, loadErr := config.LoadKeyless(); loadErr == nil && v3UsesDefaultOpenRouter(keyless) {
-			fmt.Fprintln(os.Stderr, "run `codeaf` in a terminal to connect OpenRouter, or export "+config.APIKeyEnv+" and run it again.")
+			fmt.Fprintln(os.Stderr, "run `codeaf` in a terminal to choose a model provider, or export "+config.APIKeyEnv+" and run it again.")
 		} else {
 			fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" and run it again.")
 		}

@@ -135,8 +135,8 @@ An expired sign-in says:
 codex sign-in has expired · /connect or codeaf connect codex signs in again
 ```
 
-This sign-in does not add an OpenAI API key, cannot connect a custom endpoint, does not
-put Codex on first-run setup, and does not replace codeaf's own instructions with the
+Codex is available on the first-run provider chooser and later through `/connect`.
+This sign-in does not add an OpenAI API key, cannot connect a custom endpoint, and does not replace codeaf's own instructions with the
 Codex CLI's base instructions. Use the custom-service row for an OpenAI-compatible API.
 
 ## Can I switch models while it is replying — I changed the model in the middle of an answer, does it change now or wait?

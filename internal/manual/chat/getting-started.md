@@ -13,23 +13,35 @@ terminal* page, under *How do I install or update codeaf*.
 
 ## Getting started — first time setup, what happens the first time I run codeaf
 
-The first time `codeaf` opens a new local conversation on a profile with nothing in it,
-setup appears in the chat instead of an empty prompt and a provider error. When the
-default provider needs a key and no daily limit is configured, it has **two screens** — under a minute,
-nothing else on the frame:
+The first time `codeaf` opens a new local conversation with no provider connected,
+setup begins with **choose a model provider**. Pick **Ollama**, **OpenRouter**, **Codex**,
+or **DeepSeek**. **More providers** contains the other supported connections: **Z.ai**,
+**Moonshot**, **MiniMax**, **Alibaba Qwen**, and **Custom OpenAI-compatible API**.
+Use the arrow keys and `enter`, or click a row. No key is collected on the chooser.
 
-1. **connect openrouter** — the default provider; `enter` signs in in your browser, and pasting an existing key also works
-2. **Basic settings** — one screen with two controls on it, **Daily limit** and
-   **Chat model**, each already showing the value that is in force
+Choosing a provider opens its connection screen, followed by **Basic settings**:
 
-**With a key already found, there is no setup screen.** When a provider key is saved in
-the profile or set in the environment, such as `OPENROUTER_API_KEY`, a plain launch skips
-the connection screen and **Basic settings**. With nothing elsewhere to show, it
-opens the chat's greeting, `What would you like to work on?`; when other conversations
-are available, it opens home. `/budget` sets a daily limit
-later. A `--no-host` launch on such a profile skips only the connection screen,
-and still opens **Basic settings** while no daily limit is set. A resumed conversation,
-or one on another machine, never opens first-run setup.
+1. **Connect the chosen provider** — OpenRouter offers browser sign-in or an existing
+   key; Codex signs in to a ChatGPT plan in your browser; Ollama checks the local server
+   and loads its installed models without asking for a key. Other providers use their
+   existing region and key flow. Custom API asks for an address and name, then a key
+   only if that server requires one. Keys are masked on screen.
+2. **Basic settings** — **Daily limit** and **Chat model**, each showing its current value.
+
+**With a key already found**, a plain launch skips the chooser and **Basic settings**.
+With nothing elsewhere to show it opens `What would you like to work on?`; with other
+conversations it opens home. `/budget` sets a daily limit later. `--no-host` still shows
+**Basic settings** when the daily limit is unset. A working direct connection also
+bypasses provider selection.
+
+## Back to provider selection and existing connections
+
+`alt+left` returns from a connection screen to provider selection. **Back** is also
+clickable on the direct-provider forms. Leaving an unfinished connection cancels it;
+a late browser response cannot switch the model or advance setup. Provider connection
+checks use the same checks as `/connect`; some direct services need a small model probe
+when they do not expose a model listing. Ollama's setup only lists models.
+
 
 The second screen's way out is **`Start a conversation`**. Every control on it opens on
 the value you already have, so pressing `enter` there agrees to exactly what is on the
@@ -48,14 +60,14 @@ returns on the next local interactive launch because that model cannot work with
 conversation on a connected direct provider's model does not owe OpenRouter a key, so that
 step stays away.
 
-Codex is deliberately not another first-run step. After setup, its browser sign-in is
-available from the Codex row in `/connect`, or from `codeaf connect codex` without
-opening the chat.
+Codex is offered on the provider chooser. You can also add it later through `/connect`
+or `codeaf connect codex`. More providers has **Back** to return to the first list.
+**Skip for now**, or `esc` on an idle connection screen, skips setup.
 
-The header reads `codeaf`, with `setting up · 1 of 2` under the wordmark on the first of two
-steps. With only one step it reads `setting up`, without a count. The foot names the keys that work on the row you
-are standing on — `tab` walks the rows, `?` opens a control's detail — and on a narrow
-window it is cut by whole clauses rather than mid-word.
+The chooser reads `setting up` without a count. After a provider is chosen, the
+connection screen retains `setting up · 1 of 2` when both connection and controls are
+needed; a connection-only flow reads `setting up`. Existing working connections bypass
+the provider chooser, including while their model catalog is loading.
 
 **On a window too short for the whole screen the explanations are what go**, a whole
 sentence at a time and never half of one. The two values, `Start a conversation` and
@@ -64,7 +76,7 @@ can answer and leave.
 
 ## Set up my api key — the default provider's openrouter key step, and what happens with no key
 
-On a local interactive launch using codeaf's built-in default model provider, the first step reads
+On a local interactive launch using codeaf's built-in default model provider, choose **OpenRouter** on the provider chooser to open
 *connect openrouter*. Press `enter`: codeaf opens OpenRouter in your browser, waits on a
 random return address bound only to `127.0.0.1`, and uses an S256 proof key for the trip.
 After you sign in and approve it, OpenRouter makes a user-controlled API key for the default provider in this
@@ -98,7 +110,7 @@ can act on.
 
 ## Paste an existing OpenRouter API key for the default provider instead of connecting in the browser
 
-Already have a key? Paste it on the same first screen instead of pressing `enter` on an
+Already have a key? Choose **OpenRouter** and paste it on the connection screen instead of pressing `enter` on an
 empty box. The key is masked while it is typed, and the manual-key address remains on the
 screen: `https://openrouter.ai/settings/keys`. A pasted key is checked for **shape only** —
 it has to start with `sk-`, be at least 20 characters long, and hold no spaces. Nothing is
@@ -116,9 +128,8 @@ conversation takes it at once — the next message rides it, no restart.
 
 `esc` on the idle step skips setup. When the conversation is using the default provider, it
 then says one dim line:
-`openrouter is not connected · enter on your message connects in a browser, or export
-OPENROUTER_API_KEY`. Your draft is not sacrificed to a provider error: type it normally and
-press `enter`, and the one-step connection opens over the conversation before the draft is
+`no model provider is connected · enter on your message chooses a provider, or use /connect`. Your draft is not sacrificed to a provider error: type it normally and
+press `enter`, and the provider chooser opens over the conversation before the draft is
 cleared. Connect, then press `enter` again to send those same words.
 
 When the conversation is on a connected direct provider's model, pressing `enter` sends
@@ -305,9 +316,9 @@ closes — finished or skipped — `setup_seen_at` is written into `config.json`
 and no later launch asks those preference questions again. Skipping with `esc` counts as
 shown.
 
-The **OpenRouter connection is a prerequisite, not a preference**, and is not suppressed by
-that marker. It returns as a one-step screen on a later eligible launch while the key is
-still missing. It can also return in the same launch when an unsent model message reaches
+The **provider connection is a prerequisite, not a preference**, and is not suppressed by
+that marker. The provider chooser returns on a later eligible launch while the conversation
+has no usable provider. It can also return in the same launch when an unsent model message reaches
 `enter`; the draft stays in the box.
 
 That prerequisite is only for the default provider during first run. A second provider is
@@ -337,7 +348,7 @@ Every answer went through a settings row, so every answer has a door:
 
 | What you answered | Where to change it later |
 | --- | --- |
-| the default provider's openrouter key | clear or remove it and the next local interactive launch offers **connect openrouter** again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
+| the default provider's openrouter key | clear or remove it and the next local interactive launch offers the provider chooser again; `/settings`, Providers tab, the **openrouter key** row still accepts a pasted replacement |
 | the crew | nothing was asked — it is auto. `/crew` shows it, and `/crew pin <seat> <model>` pins a seat |
 | the daily limit | `/budget` (also `/limits`), or `/settings` → **Spending**. `CODEAF_DAILY_BUDGET` in your shell outranks the row |
 | the model you talk to | `/model`, or the **Chat model** row on the setup screen — the same settings row either way |

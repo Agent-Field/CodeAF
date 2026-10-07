@@ -64,19 +64,18 @@ that is a different program and nothing here talks to it.
 | `codeaf resume` | the chat, opened on the picker of earlier conversations |
 | `codeaf chat --host devbox` | the chat here, the work on another machine |
 
-**The very first launch on a machine with nothing configured** opens on a short setup
-instead — connect OpenRouter in your browser, check the chat model, set the spending rails —
-and then on the empty conversation. The preference questions are shown once. The
-OpenRouter step returns on any later local interactive launch while no key exists,
-including a named or resumed conversation using the default service, and `enter` on an
-unsent message brings it back without clearing the draft. A conversation on a connected
-direct service's model sends without an OpenRouter key and does not open that step. The
-getting-started page has the whole flow. First run does not offer Codex; connect a
-ChatGPT plan later from the Codex row in `/connect` or with `codeaf connect codex`.
+**The very first launch on a machine with nothing configured** begins with **choose a
+model provider**. Ollama, OpenRouter, Codex and DeepSeek are on the first list. **More
+providers** holds Z.ai, Moonshot, MiniMax, Alibaba Qwen and the custom API connection.
+The chosen provider's connection screen follows, then the chat model and daily limit.
+Ollama asks for no key. `alt+left` returns to provider choice; `esc` skips an idle setup
+screen. The preference questions appear once. When a later local conversation still
+needs a provider, the chooser returns without clearing its draft. A working connection
+bypasses provider selection. The getting-started page describes the whole flow.
 
 A `--once` or piped run cannot open a browser. When its model uses the keyless default
 service it stops at the door with `codeaf chat needs a model to talk with.` Its next line
-says to run bare `codeaf` in a terminal to connect OpenRouter, or to export
+says to run bare `codeaf` in a terminal to choose a model provider, or to export
 `OPENROUTER_API_KEY`. A connected direct service can carry that run
 instead. A custom `CODEAF_BASE_URL` is never offered the OpenRouter connection.
 That variable still changes only the default service. To add a supported second place

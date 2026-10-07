@@ -36,6 +36,7 @@ const (
 // on the Providers tab. The profile is not touched until every answer is here
 // and internal/config has accepted the service.
 type modelConnectDraft struct {
+	setupAttempt  *setupProviderAttempt
 	source        modelsource.Source
 	row           config.PersistedSource
 	step          modelConnectStep
@@ -293,6 +294,9 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	if !editing {
 		draft.renamedFrom = ""
 	}
+	if a.setup.open && a.setup.step() == setupKey && a.setup.provider == source.ID {
+		draft.setupAttempt = a.setup.providerAttempt
+	}
 	a.modelDraft = draft
 	switch {
 	case len(source.Regions) > 0:
@@ -324,6 +328,10 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 
 func (a *app) beginCodexConnect(draft modelConnectDraft) tea.Cmd {
 	connect, ctx := a.codexConnect, a.ctx
+	if draft.setupAttempt != nil {
+		ctx = draft.setupAttempt.ctx
+		a.setup.providerBusy = true
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -341,11 +349,19 @@ func (a *app) beginCodexConnect(draft modelConnectDraft) tea.Cmd {
 // model-service adoption path, so the picker, live sources and preferred-model
 // move have one implementation.
 func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
+	attempt := msg.draft.setupAttempt
+	if attempt != nil && !a.setupProviderCurrent(attempt) {
+		if msg.flow != nil {
+			msg.flow.Cancel()
+		}
+		return nil
+	}
 	if msg.err != nil || msg.flow == nil {
 		reason := "the browser sign-in did not start"
 		if msg.err != nil {
 			reason = codexFailureReason(msg.err)
 		}
+		a.setup.providerBusy = false
 		a.modelServiceMessage("codex did not connect · " + reason)
 		return nil
 	}
@@ -353,17 +369,32 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 		a.codexFlow.Cancel()
 	}
 	a.codexFlow = msg.flow
-	a.openConnectFlow("codex", "codex", msg.flow.URL())
+	if attempt != nil {
+		a.setup.providerLink = msg.flow.URL()
+		if err := processOpener(msg.flow.URL()); err != nil {
+			a.setup.refusal = "could not open your browser · open the link above"
+		}
+		a.touch()
+	} else {
+		a.openConnectFlow("codex", "codex", msg.flow.URL())
+	}
 	flow, ctx, dir := msg.flow, a.ctx, a.profileDir
+	if attempt != nil {
+		ctx = attempt.ctx
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return func() tea.Msg {
 		defer flow.Cancel()
 		tokens, err := flow.Wait(ctx)
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			return modelConnectResultMsg{
-				service: "codex", name: "Codex", written: "codex", browser: true,
+				setupAttempt: attempt,
+				service:      "codex", name: "Codex", written: "codex", browser: true,
 				word: "codex did not connect · " + codexFailureReason(err), err: err,
 			}
 		}
@@ -378,7 +409,7 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 		}
 		return modelConnectResultMsg{
 			service: "codex", name: "Codex", written: "codex", outcome: outcome,
-			models: models, err: err, browser: true, word: word,
+			models: models, err: err, browser: true, word: word, setupAttempt: attempt,
 		}
 	}
 }
@@ -699,6 +730,11 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if draft.setupAttempt != nil {
+		ctx = draft.setupAttempt.ctx
+		a.setup.providerBusy = true
+		a.touch()
+	}
 	dir := a.profileDir
 	instance := draft.row.ID
 	authors := modelAuthorSegments(a.defaultServiceModels())
@@ -745,7 +781,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 		return modelConnectResultMsg{
 			service: instance, name: draft.source.Name, written: draft.row.Written,
 			keyEnv: draft.row.KeyEnv, outcome: outcome, models: models, err: err,
-			renamedFrom: draft.renamedFrom,
+			renamedFrom: draft.renamedFrom, setupAttempt: draft.setupAttempt,
 		}
 	}
 }
@@ -1155,6 +1191,11 @@ func serviceStrandedWord(was string) string {
 
 func (a *app) modelServiceMessage(line string) {
 	line = strings.TrimSpace(line)
+	if a.setup.open && a.setup.step() == setupKey && a.setup.provider != "" && a.setup.provider != modelsource.DefaultID {
+		a.setup.refusal = line
+		a.touch()
+		return
+	}
 	if a.addPanel.open {
 		a.addPanel.err = line
 		return
@@ -1256,7 +1297,19 @@ func (a *app) defaultProviderNeeded() bool {
 	if a.routerConnect == nil || a.defaultServiceHasKey() {
 		return false
 	}
-	return !a.connectedServiceCarriesModel()
+	if a.connectedServiceCarriesModel() {
+		return false
+	}
+	// A cold catalog may not have chosen a model yet. A saved connection still
+	// bypasses the provider question while its own models are being discovered.
+	if strings.TrimSpace(a.model) == "" {
+		for _, service := range a.sources.All() {
+			if service.Source.ID != modelsource.DefaultID && service.HasCredentials() {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // connectedServiceCarriesModel is the service half of the prerequisite: the

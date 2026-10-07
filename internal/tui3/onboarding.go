@@ -502,6 +502,15 @@ func (a *app) setupPress(x, y int) bool {
 // list — the one thing on the screen that scrolls — and nothing else.
 func (a *app) setupWheel(down bool) {
 	s := &a.setup
+	if s.step() == setupKey && s.provider == "" {
+		delta := -1
+		if down {
+			delta = 1
+		}
+		s.providerAt = moveCursor(s.providerAt, delta, len(a.setupProviderRows()))
+		a.touch()
+		return
+	}
 	if s.step() != setupControls || !s.modelOpen {
 		return
 	}

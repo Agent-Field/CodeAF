@@ -231,7 +231,9 @@ func testFreshInstallSetup(t *testing.T) {
 	// the heading of the step, and the sentence under it that says what pressing
 	// enter will and will not do.
 	screen := r.waitFor(20*time.Second,
-		say(t, "setupTitleWord"), say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
+		say(t, "setupTitleWord"), say(t, "setupProviderHeading"))
+	r.keys("Down", "Enter")
+	screen = r.waitFor(20*time.Second, say(t, "setupConnectHeading"), say(t, "setupConnectSentence"))
 	t.Logf("a fresh install, launched the ordinary way, is shown the door:\n%s", screen)
 
 	// AND IT IS ASKING FOR BOTH. A machine with nothing on it has answered no
