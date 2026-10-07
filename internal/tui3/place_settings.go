@@ -104,7 +104,25 @@ func settingsBody(a *app, width, room int, sidebar bool) []placeRow {
 		}
 		rows = append(rows, placeRow{text: "  " + placeHeading(heading, pal)})
 	} else {
-		rows = append(rows, placeRow{text: sheetTabBar(width, s.tab, pal), hit: sheetHit{kind: sheetHitTabs}})
+		// Search can open a field from another category. Mark the field's own
+		// category while editing without changing where Cancel returns.
+		displayTab := s.tab
+		category := ""
+		if s.choice != nil {
+			category = s.choice.item.meta.tab
+		} else if s.edit != nil {
+			if row, ok := s.registry.Row(s.edit.key); ok {
+				meta, _ := settingMetaFor(row)
+				category = meta.tab
+			}
+		}
+		for i, title := range settingTabs {
+			if title == category {
+				displayTab = i
+				break
+			}
+		}
+		rows = append(rows, placeRow{text: sheetTabBar(width, displayTab, pal), hit: sheetHit{kind: sheetHitTabs}})
 	}
 	rows = append(rows, placeRow{})
 	if s.choice != nil {
