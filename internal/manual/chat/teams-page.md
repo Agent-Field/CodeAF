@@ -299,7 +299,7 @@ Teams owns its keyboard. Typing here does not edit a manager's draft.
 | `enter`, `space` | activate the selected control |
 | `pgup`, `pgdown` | previous or next interaction page |
 | `tab`, `shift+tab` | next or previous place |
-| `alt+1` … `alt+8`, `alt+.` | jump to a place, show the map |
+| `alt+1` … `alt+9`, `alt+.` | jump to a place, show the map |
 | `s` | team settings |
 | `c` | confirm disbanding the selected team |
 | `w` | conversations view for this team |

@@ -155,6 +155,9 @@ var commands = []command{
 	// conversations big, and this is the team-level view, every member open or
 	// not, the manager's conversation and what waits on you (place_teams.go).
 	{name: "teams", desc: "your teams, their managers and what waits on you · " + placeChord(pageTeams)},
+	// THE FACTORY FLOOR, beside the teams: the work a chat split off or a
+	// repository sent, by where it stands (place_factory.go).
+	{name: "factory", desc: "the work in flight, by where it stands · " + placeChord(pageFactory)},
 	{name: "spend", desc: "what this machine has cost, by the day · " + placeChord(pageSpend)},
 	// It sits AFTER /compact and before /help because those two are the pair a
 	// person reads together when a conversation has gone wrong: compacting is

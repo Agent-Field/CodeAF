@@ -35,7 +35,7 @@ func Fixture(now time.Time) Snapshot {
 
 	running := &Stream{Started: m(26), Spent: 1.42, Bench: 1, Activity: []int{1, 2, 5, 3, 6, 4, 2, 5},
 		Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "write", State: PhaseDone, Tasks: 3}, {Name: "test", State: PhaseDone}, {Name: "review", State: PhaseRunning, Round: 1, Left: 4 * time.Minute, Note: "3 findings"}, {Name: "neaten", State: PhasePending}, {Name: "proof", State: PhasePending}},
-		Cur: 3,
+		Cur:    3,
 		Log: []LogLine{
 			{At: m(26), Glyph: "✳", Tone: "thought", Text: "reading #1551 · the filter is read before the tree exists; ordering, not state"},
 			{At: m(21), Glyph: "»", Tone: "said", Text: "plan: one measure at the seam, a test that pins the width, no new state"},
@@ -98,4 +98,15 @@ func Fixture(now time.Time) Snapshot {
 		Rail:    60,
 		Shift:   Shift{Since: h(8), Shipped: 1, Arrived: 4, Asked: 1, Handled: 0, Spent: 8.44, Hours: hours, Shipping: []string{"#1663"}},
 	}
+}
+
+// FixtureSeam is a seam whose one door is a read of [Fixture], taken at now.
+// Every verb is nil, so the surface draws no key for any of them: a still
+// floor that cannot be changed is shown as exactly that, and nothing on the
+// page promises an act the fixture cannot perform.
+//
+// It is what `CODEAF_FACTORY_FIXTURE=1` hands the surface while no real
+// engine stands behind the factory page.
+func FixtureSeam(now time.Time) Seam {
+	return Seam{Load: func() (Snapshot, error) { return Fixture(now), nil }}
 }

@@ -75,6 +75,7 @@ func TestEveryPlaceTitlesTheTabWithItsWord(t *testing.T) {
 		pageStanding: "standing · codeaf",
 		pageMemory:   "memory · codeaf",
 		pageSpend:    "spend · codeaf",
+		pageFactory:  "factory · codeaf",
 
 		pageSettings: "settings · codeaf",
 	}

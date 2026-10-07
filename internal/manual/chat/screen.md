@@ -49,7 +49,7 @@ once the session has tasks to come back to and no running-turn line owns that ro
 
 **Seven places take the whole frame instead of sharing it**, at every width: home, teams,
 sessions, standing, memory, spend and settings. Five are on the tab bar with the way back to the chats, `home  teams  chats
-sessions  spend  settings`, and `tab` walks the five rooms; `alt+1` … `alt+8` (`opt+1` … `opt+8` on a Mac) jump
+sessions  spend  settings`, and `tab` walks the five rooms; `alt+1` … `alt+9` (`opt+1` … `opt+9` on a Mac) jump
 straight to any of those seven or back to the chats from wherever you are standing, a place or a conversation,
 and each
 has commands of its own (`/home`, `/teams`, `/history`, `/standing`,
@@ -2998,10 +2998,10 @@ back to plain ASCII (`!` `*` `o` `-` `+`) and the screen still reads.
 ## alt or option or opt — how the chords are spelled on a Mac, on Linux and on Windows, and why not the option symbol
 
 **It is one key and two spellings, and codeaf picks the spelling from the platform it is
-running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+8`, `opt+.`,
+running on.** On macOS every chord is drawn with `opt+`, `opt+1`…`opt+9`, `opt+.`,
 `opt+enter`, `opt+g`, `opt+q`, `opt+s`, `opt+w`, `opt+o` — because the key that Mac keycap
 calls **option** is the key you press. On Linux, on Windows, and everywhere else the same
-chords are drawn `alt+1`…`alt+8`, `alt+.`, `alt+enter` and so on. Every hint line, the key
+chords are drawn `alt+1`…`alt+9`, `alt+.`, `alt+enter` and so on. Every hint line, the key
 map, the composer layer's rows and the key sheet `/help` draws read that one spelling, so
 what is on your screen is what is on your keyboard.
 
@@ -3066,8 +3066,8 @@ are worth the one setting.
 
 **And on kitty, ghostty and WezTerm there is a way in that needs no setting at all.** Those
 terminals run the kitty keyboard protocol and report it, and where that report arrives codeaf
-binds `ctrl+1` … `ctrl+8` as a second spelling of the jump and `ctrl+.` as a second spelling of
-the map. The map's own line says `alt+1…8 or ctrl+1…8 go to a place` exactly when the alias is
+binds `ctrl+1` … `ctrl+9` as a second spelling of the jump and `ctrl+.` as a second spelling of
+the map. The map's own line says `alt+1…9 or ctrl+1…9 go to a place` exactly when the alias is
 live, so you never have to guess. `ctrl+<digit>` has no encoding in the older scheme, which is
 why it can only ever be the second spelling and never the first — a terminal that has said
 nothing is never promised it.

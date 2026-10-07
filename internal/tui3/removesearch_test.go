@@ -21,10 +21,14 @@ func TestSearchIsAbsentFromNavigationAndCommands(t *testing.T) {
 			t.Fatal("the navigation still offers Search")
 		}
 	}
+	// THE NINTH DIGIT IS THE FACTORY NOW, and what this asks is that it never
+	// reaches the place search used to be.
 	for _, chord := range []string{"alt+9", "ctrl+9"} {
-		drive(t, a, key(chord))
-		if !a.at(pageHome) {
-			t.Fatalf("%s left Home for a removed destination", chord)
+		b := placeApp(t)
+		b.keysDisambiguated = true
+		drive(t, b, key(chord))
+		if !b.at(pageFactory) {
+			t.Fatalf("%s reached %q, not the factory that took search's digit", chord, b.page.word())
 		}
 	}
 	if hits := placeMatches("search"); len(hits) != 0 {

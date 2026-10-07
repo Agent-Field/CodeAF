@@ -61,8 +61,8 @@ func placeFrameText(a *app) string {
 // agree with is the registry rather than a literal seven this file counted. What
 // is left here is the two facts that are about the EDGES of that list.
 func TestThePlacesAreOneList(t *testing.T) {
-	if len(pages()) != 7 {
-		t.Fatalf("there are %d places, and the design has seven rooms", len(pages()))
+	if len(pages()) != 8 {
+		t.Fatalf("there are %d places, and the design has eight rooms", len(pages()))
 	}
 	// AND alt+0 IS NOTHING, rather than a tenth place: the eight digits are the
 	// seven rooms and the way back to the chats, teams second and the chats
@@ -76,8 +76,9 @@ func TestThePlacesAreOneList(t *testing.T) {
 	if got, ok := placeDigit("alt+3"); !ok || got != pageChats {
 		t.Fatalf("alt+3 reaches %q, not the chats", got.word())
 	}
-	if _, ok := placeDigit("alt+9"); ok {
-		t.Fatal("alt+9 still reaches the removed search place")
+	// AND alt+9 IS THE FACTORY, the digit the removed search place gave back.
+	if got, ok := placeDigit("alt+9"); !ok || got != pageFactory {
+		t.Fatalf("alt+9 reaches %q, not the factory", got.word())
 	}
 }
 

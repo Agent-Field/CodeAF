@@ -52,6 +52,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/credits"
 	"github.com/Agent-Field/codeaf/internal/effort"
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/leave"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -1168,6 +1169,15 @@ type Options struct {
 	// window keeps no teams at all rather than keeping them here, where the far
 	// session would never read them (host.go).
 	Teams TeamsSeam
+
+	// Factory is the factory page's seam: the one read of the floor and the
+	// verbs that change it ([factory.Seam] says what each door owes). Every
+	// door is called off the update loop.
+	//
+	// The zero value is a page with nothing connected, and it is off the way
+	// every optional capability here is off: the page draws one dim line naming
+	// what arrives there and offers no key that would need a door.
+	Factory factory.Seam
 
 	// Link is what the door can tell this surface about the connection the
 	// conversation is on the far end of: the sentence to draw while a dropped

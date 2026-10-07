@@ -559,6 +559,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// pause and stop keys, and /status's keeping-watch line, all off the
 		// same store the conversation proposes into (chatv3_standing.go).
 		Standing: v3StandingSeam(cfg.Standing),
+		// The factory page's one door. It is the zero seam on every launch until
+		// an engine stands behind it, and a still fixture when
+		// CODEAF_FACTORY_FIXTURE=1 (factory.go).
+		Factory: factorySeam(),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {

@@ -1635,7 +1635,7 @@ it from any other place. `/home` opens it too.
 `alt+<digit>` arrives in every terminal codeaf runs in — it is sent as escape-then-digit and
 has been for forty years — which is why the place keys are on `alt`. `ctrl+<digit>` has no
 encoding in the scheme most terminals speak; a terminal running the kitty keyboard protocol
-reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spelling that the
+reports that it can send one, and there `ctrl+1` … `ctrl+9` are a second spelling that the
 map's own line names while it is live.
 
 Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
