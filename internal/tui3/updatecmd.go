@@ -72,11 +72,14 @@ func (a *app) tookUpdateCheck(message updateCheckMsg) tea.Cmd {
 		a.note(message.available.Notice())
 		return nil
 	}
+	// A MANAGED OR UNWRITABLE FILE IS TOLD THE RELEASE IS OUT AND THEN WHY IT
+	// CANNOT BE REPLACED, ON BOTH SETTINGS. The row's own state does not change
+	// what is true of the file, and the `/update` clause is left off the notice
+	// because the refusal below it has already said that road answers with
+	// itself — advice the product knows it will refuse is not guidance.
 	if refusal := a.updateRefusal(); refusal != "" {
-		a.note(quietUpdateNotice(message.available))
-		if a.updateAuto.Enabled {
-			a.note(refusal)
-		}
+		a.note(refusedUpdateNotice(message.available))
+		a.note(refusal)
 		return nil
 	}
 	if !a.updateAuto.Enabled {
@@ -110,9 +113,13 @@ func (a *app) runUpdateCommand(argument string) tea.Cmd {
 		switch {
 		case a.offer.offering():
 			a.skipUpdateOffer()
-		case a.offer.active():
+		case a.updateInFlight:
 			// AN INSTALL ALREADY RUNNING IS NOT OURS TO CANCEL, and saying it
 			// was skipped would be a lie the download immediately contradicts.
+			// THE PREDICATE IS THE INSTALL, NOT THE OFFER: a finished or failed
+			// install keeps its line on screen for a few seconds
+			// ([updateOfferingDwell]), and `offer.active()` is true through that
+			// dwell even though nothing is running to interrupt.
 			a.note("an install is already running · it finishes in the background · /update never stops the next one")
 		default:
 			a.note("there is no update offer to skip · /update installs one for the next launch when you want it")

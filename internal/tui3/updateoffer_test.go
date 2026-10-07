@@ -115,22 +115,97 @@ func TestSkipOnlyAnswersTheOfferingRelease(t *testing.T) {
 }
 
 // TestSkipCannotCancelARunningInstall proves the honest answer while a download
-// is already in flight.
+// is GENUINELY in flight. `/update` leaves the loop: the returned command is the
+// resolver and the download, and NOT running it is exactly the state a person
+// types into while the bytes are being fetched off-frame. (The old shape drove
+// the grace to completion first, so the install had already finished and the
+// assertion held for the wrong reason.)
 func TestSkipCannotCancelARunningInstall(t *testing.T) {
 	state := codeupdate.AutoState{}
 	lab := newOfferLab(t, offerAuto(&state))
 	a := lab.app
-	drive(t, a, offerCheck("v0.9.3"))
-	// The grace expiring starts the install; the seam answers on the next drive.
-	drive(t, a, updateGraceMsg{})
-	if lab.installed == 0 {
-		t.Fatal("the background install did not run")
+	command := a.slash("/update")
+	if command == nil || !a.updateInFlight {
+		t.Fatalf("the update did not start: command = %t in flight = %t", command != nil, a.updateInFlight)
 	}
 	// A person types skip afterwards: it must not claim to have cancelled.
-	command := a.slash("/update skip")
-	_ = command
-	if !strings.Contains(updateNotes(a), "already running") {
+	a.slash("/update skip")
+	if !strings.Contains(updateNotes(a), "an install is already running \u00b7 it finishes in the background") {
 		t.Fatalf("skip lied about a running install:\n%s", updateNotes(a))
+	}
+	if a.offer.active() {
+		t.Fatalf("skip raised or kept an offer while an install ran: %+v", a.offer)
+	}
+}
+
+// TestSkipOnAFinishedOrFailedDwellSaysThereIsNoOffer proves finding 1: the few
+// seconds a finished or failed install keeps its line on screen are NOT an
+// install in flight, and `/update skip` says there is no offer rather than
+// calling an install that already landed "already running".
+func TestSkipOnAFinishedOrFailedDwellSaysThereIsNoOffer(t *testing.T) {
+	t.Run("finished", func(t *testing.T) {
+		lab := newOfferLab(t, offerAuto(&codeupdate.AutoState{}))
+		a := lab.app
+		drive(t, a, offerCheck("v0.9.3"))
+		drive(t, a, updateGraceMsg{})
+		if lab.installed != 1 || a.updateInFlight || a.offer.phase != updateReady {
+			t.Fatalf("the install did not land in its dwell: installed = %d in flight = %t offer = %+v", lab.installed, a.updateInFlight, a.offer)
+		}
+		a.slash("/update skip")
+		if strings.Contains(updateNotes(a), "an install is already running") {
+			t.Fatalf("a finished install was called running:\n%s", updateNotes(a))
+		}
+		if !strings.Contains(updateNotes(a), "there is no update offer to skip") {
+			t.Fatalf("the finished dwell did not get the no-offer answer:\n%s", updateNotes(a))
+		}
+	})
+	t.Run("failed", func(t *testing.T) {
+		lab := newOfferLab(t, offerAuto(&codeupdate.AutoState{}))
+		lab.failWith = errors.New("the checksum did not match")
+		a := lab.app
+		drive(t, a, offerCheck("v0.9.3"))
+		drive(t, a, updateGraceMsg{})
+		if a.updateInFlight || a.offer.phase != updateFailed {
+			t.Fatalf("the failure did not land in its dwell: in flight = %t offer = %+v", a.updateInFlight, a.offer)
+		}
+		a.slash("/update skip")
+		if strings.Contains(updateNotes(a), "an install is already running") {
+			t.Fatalf("a failed install was called running:\n%s", updateNotes(a))
+		}
+		if !strings.Contains(updateNotes(a), "there is no update offer to skip") {
+			t.Fatalf("the failed dwell did not get the no-offer answer:\n%s", updateNotes(a))
+		}
+	})
+}
+
+// TestARefusedLaunchNamesTheReleaseOnBothSettings proves finding 2: a managed or
+// unwritable executable is told what is out and why it cannot be replaced, with
+// `update.auto` ON or OFF, and the notice never sends a person to `/update` that
+// the refusal it is printed beside has already said will not work.
+func TestARefusedLaunchNamesTheReleaseOnBothSettings(t *testing.T) {
+	const refusal = "this codeaf is managed by Homebrew \u00b7 update it there, or install a release with: curl -fsSL https://agentfield.ai/get/codeaf | bash"
+	for _, enabled := range []bool{true, false} {
+		name := "auto on"
+		if !enabled {
+			name = "auto off"
+		}
+		t.Run(name, func(t *testing.T) {
+			coordinator := offerAuto(&codeupdate.AutoState{})
+			coordinator.Enabled = enabled
+			coordinator.Refusal = func() string { return refusal }
+			lab := newOfferLab(t, coordinator)
+			drive(t, lab.app, offerCheck("v0.9.3"))
+			notes := updateNotes(lab.app)
+			if lab.app.offer.active() || lab.installed != 0 {
+				t.Fatalf("offer = %+v installed = %d for a managed file", lab.app.offer, lab.installed)
+			}
+			if !strings.Contains(notes, "codeaf v0.9.3 is out \u00b7 you have v0.9.2") || !strings.Contains(notes, refusal) {
+				t.Fatalf("the release or the refusal was not said:\n%s", notes)
+			}
+			if strings.Contains(notes, "/update installs it") {
+				t.Fatalf("a refused file was told /update installs it:\n%s", notes)
+			}
+		})
 	}
 }
 

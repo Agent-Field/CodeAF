@@ -20,8 +20,8 @@ or ahead build gets nothing. Source and unstamped builds make no launch request,
 and their `/update` answers `this codeaf was built from source · rebuild with
 make build, or install a release: curl -fsSL https://agentfield.ai/get/codeaf |
 bash`. A codeaf owned by Homebrew, Nix or the system package manager, or one in a
-folder this account cannot write, is never replaced in place: the notice says so
-and names the manager and the curl line.
+folder this account cannot write, is never replaced in place: with `auto update`
+on or off the launch names the manager and the curl line, not `/update`.
 
 With `auto update` off, the launch check still runs and still says `codeaf <newest>
 is out · you have <running> · /update installs it for the next launch`, but

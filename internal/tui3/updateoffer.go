@@ -279,11 +279,25 @@ func (a *app) updateOfferNote() string {
 // automatic updater is off: knowing is still worth one dim line, acting is not
 // offered until it is asked for.
 func quietUpdateNotice(available codeupdate.Available) string {
+	return updateAheadNotice(available) + " · /update installs it for the next launch"
+}
+
+// refusedUpdateNotice names the same release for an executable this account may
+// not replace in place. IT STOPS BEFORE THE `/update` CLAUSE ON PURPOSE: the
+// refusal said right after it that the in-place road answers with itself, and
+// offering a road the product knows it will refuse is not guidance.
+func refusedUpdateNotice(available codeupdate.Available) string {
+	return updateAheadNotice(available)
+}
+
+// updateAheadNotice is the head both launch notices open with: what is out and
+// what this build is. The two roads differ only in the clause that follows.
+func updateAheadNotice(available codeupdate.Available) string {
 	running := strings.TrimSpace(available.Running)
 	if running == "" {
 		running = "an unstamped build"
 	}
-	return "codeaf " + available.Latest + " is out · you have " + running + " · /update installs it for the next launch"
+	return "codeaf " + available.Latest + " is out · you have " + running
 }
 
 // ── THE ANSWERS ─────────────────────────────────────────────────────────────
