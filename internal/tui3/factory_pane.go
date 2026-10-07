@@ -736,14 +736,6 @@ func factoryPack(segs []string, sep string, measure int) []string {
 	return out
 }
 
-// factoryRepoShort is a repo's name without its owner.
-func factoryRepoShort(name string) string {
-	if i := strings.LastIndex(name, "/"); i >= 0 {
-		return name[i+1:]
-	}
-	return name
-}
-
 // factoryMoney is an amount as the pane says it: whole dollars without cents,
 // and NOTHING for zero (the emptiness law).
 func factoryMoney(usd float64) string {
