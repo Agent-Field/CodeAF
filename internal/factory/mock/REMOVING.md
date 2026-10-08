@@ -22,3 +22,14 @@ compiles the stub. A dev build with the mock, on Spark:
 go build -tags factorymock -o bin/codeaf-mock ./cmd/codeaf
 CODEAF_FACTORY_MOCK=1 bin/codeaf-mock
 ```
+
+## What the mock does not claim
+
+Its opened floor has no sleep door: sleep is not a floor verb, so `cmd/codeaf`
+opens it with `mock.NewAfter`, which sleeps first and drops the door. Tests
+that want a clock call `mock.New` and use `Sleep`.
+
+Its running items keep stage conversations: small transcripts seeded with
+`session.SeedConversation` under a temp folder (`rooms.go`), so `enter` on a
+running chat stage opens a room. The package imports `internal/session` for
+that, and deleting the mock drops the import with it.

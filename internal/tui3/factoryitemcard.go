@@ -59,6 +59,11 @@ import (
 // conversation holding a live item card is in front.
 const factoryCardPollEvery = 3 * time.Second
 
+// factoryCardMargin is the cells a card keeps back from the transcript's
+// right edge: the margin task.go's head leaves (width - head - title - 3, and
+// the one space before the rule).
+const factoryCardMargin = 2
+
 // factoryCardPollMsg is one beat of that clock.
 type factoryCardPollMsg struct{}
 
@@ -179,6 +184,10 @@ func (a *app) factoryLiveTake(it factory.Item) {
 // factoryItemCardRows is a live-only card: the item's two rows inside a frame
 // of their own, the head corner leading the first and the foot closing it.
 func (a *app) factoryItemCardRows(l *factoryItemLive, width int, sel bool) []string {
+	// THE BOX STOPS WHERE A TASK ELEMENT'S HEAD STOPS: [app.taskHead] keeps
+	// factoryCardMargin cells back from the transcript's edge, so a card never
+	// runs into the side divider.
+	width = max(width-factoryCardMargin, 4)
 	corner, foot, rule := taskHeadCorner, taskFootCorner, a.blockRule()
 	if a.pal.ascii {
 		corner, foot = taskCornerASCII, taskCornerASCII

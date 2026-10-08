@@ -42,6 +42,7 @@ type World struct {
 	shift   factory.Shift
 	habits  int // clean sign-offs in a row, for the banking offer
 	speed   time.Duration
+	home    string        // the temp folder the stage conversations live in (rooms.go)
 	acc     time.Duration // a Tick shorter than a minute is carried, not lost
 	// set is the floor's own settings, as the mock keeps them (settings.go).
 	set settings
@@ -87,16 +88,17 @@ type repoSeed struct {
 type seedStep struct {
 	words string
 	on    bool
+	name  string // the stage's name on the floor, a real recipe word
 }
 
 var repoSeeds = []repoSeed{
 	{"agentfield/codeaf", "codeaf-core", []string{"tui", "standing", "plandb", "spend", "relay", "skills", "router"},
 		[]string{"every PR on dev gets a review pass", "issues labelled factory are briefs", "keep main green"},
 		[]string{"complexity within +10% of main", "no new dependencies without asking", "labels · milestone · attribution"},
-		[]seedStep{{"after review, make the code neater, same behaviour", true}, {"before proof, screenshot when the UI moves", true}, {"after write, update the manual page in the same change", false}}},
+		[]seedStep{{"after review, make the code neater, same behaviour", true, "tidy"}, {"before proof, screenshot when the UI moves", true, "shots"}, {"after write, update the manual page in the same change", false, "manual"}}},
 	{"agentfield/agentfield", "platform", []string{"api", "auth", "billing", "sdk", "docs"},
 		[]string{"review every PR, comment-only"}, []string{"migrations reversible", "no secrets in logs"},
-		[]seedStep{{"after review, security pass on anything touching auth", true}}},
+		[]seedStep{{"after review, security pass on anything touching auth", true, "audit"}}},
 	{"santoshkumar/whisper", "", []string{"messages", "sync", "ui", "crypto"}, nil, nil, nil},
 	{"agentfield/relay", "platform", []string{"kv", "dns", "worker", "auth"}, []string{"keep main green"}, []string{"no new dependencies without asking"}, nil},
 	{"agentfield/furrow", "platform", []string{"snapshot", "sync", "cli"}, nil, []string{"tests pass"}, nil},
@@ -122,12 +124,19 @@ func prStages() []factory.Stage { return factory.DefaultRecipe().ByKind[factory.
 
 func ciStages() []factory.Stage { return factory.DefaultRecipe().ByKind[factory.KindCI] }
 
+// THE TITLES ARE BUILT FROM WHOLE PHRASES. A subject is a noun phrase, a
+// "when" is a whole prepositional phrase that carries its own preposition, so
+// no template can double an article or stack two prepositions. Bugs and
+// questions pair a subject with a when; features and chores pair two subjects.
 var titleVerbs = map[string][]string{
-	"bug":      {"%s lost on %s", "%s crashes when %s", "%s shows stale %s", "%s double-fires after %s", "%s ignores %s", "%s leaks on %s", "%s misaligned at %s", "%s returns empty %s"},
-	"feat":     {"add %s to %s", "let %s %s", "%s should remember %s", "expose %s in %s", "batch %s for %s", "%s needs a %s"},
-	"chore":    {"bump %s in %s", "remove dead %s from %s", "rename %s across %s", "document %s for %s", "flake: %s in %s"},
-	"question": {"how does %s handle %s?", "is %s supposed to %s?", "why does %s %s?"},
+	"bug":      {"%[1]s lost %[3]s", "%[1]s crashes %[3]s", "%[1]s shows stale data %[3]s", "%[1]s double-fires %[3]s", "%[1]s ignored %[3]s", "%[1]s leaks %[3]s", "%[1]s misaligned %[3]s", "%[1]s returns empty %[3]s"},
+	"feat":     {"add %[1]s to %[2]s", "expose %[1]s in %[2]s", "batch %[1]s for %[2]s", "%[1]s should remember %[2]s", "show %[1]s beside %[2]s", "let %[2]s read %[1]s"},
+	"chore":    {"bump %[1]s in %[2]s", "remove dead %[1]s from %[2]s", "rename %[1]s across %[2]s", "document %[1]s for %[2]s", "flake: %[1]s in %[2]s"},
+	"question": {"how does %[1]s behave %[3]s?", "is %[1]s supposed to change %[3]s?", "why does %[1]s reset %[3]s?"},
 }
+
+// whens are whole phrases, each leading with its own preposition.
+var whens = []string{"in compact", "after a restart", "after a resize", "with a second window open", "on a cold start", "with 2k rows", "in an empty repo", "after ctrl+c twice", "on a slow network", "in dark terminals", "on the 16-colour profile", "with pasted newlines", "after midnight rollover", "after a branch rename", "after a team is deleted", "after an ssh drop", "with 100 repos", "when a stranger comments", "at narrow widths", "at zero budget"}
 
 var nouns = []string{"filters", "the tree", "spend ledger", "probe", "standing order", "composer", "cursor", "cache", "retry", "session", "wall tile", "team rail", "token count", "cap", "receipt", "draft", "hug", "attachment", "paste", "scroll", "meter", "sparkline", "worktree", "merge", "label", "milestone", "webhook", "invoice", "tax row", "push token", "handshake", "snapshot", "rsync", "job id", "lighthouse", "sitemap", "DOM diff", "frame", "eval set", "checkpoint"}
 var conds = []string{"compact", "restart", "resize", "a second window", "narrow widths", "a cold start", "2k rows", "an empty repo", "ctrl+c twice", "a slow network", "dark terminals", "the 16-colour profile", "a paste with newlines", "midnight rollover", "a renamed branch", "a deleted team", "ssh drop", "100 repos", "a stranger's comment", "zero budget"}
@@ -166,7 +175,8 @@ func NewWorld(seed int64, repos, issues, benches int, start time.Time) *World {
 		r.Recipe.Policy = append([]string(nil), s.policy...)
 		for _, st := range s.steps {
 			r.Recipe.Stages = addStage(r.Recipe.Stages, st.words)
-			r.Recipe.Stages[stageAt(r.Recipe.Stages, st.words)].On = st.on
+			at := stageAt(r.Recipe.Stages, st.words)
+			r.Recipe.Stages[at].Name, r.Recipe.Stages[at].On = st.name, st.on
 		}
 		w.repos = append(w.repos, r)
 		w.nextNum[r.Name] = 20 + w.rng.Intn(1800)
@@ -259,11 +269,16 @@ func (w *World) genItem(r *factory.Repo, kind factory.Kind, created time.Time) *
 	area := r.Areas[w.rng.Intn(len(r.Areas))]
 	it := &factory.Item{ID: w.nextID, Repo: r.Name, Num: w.nextNum[r.Name], Kind: kind, Author: a.Name, Tier: a.Tier, Origin: factory.OriginForge, Synced: true, Created: created, Changed: created, State: factory.StateNew}
 	n1, n2 := nouns[w.rng.Intn(len(nouns))], conds[w.rng.Intn(len(conds))]
+	n4 := nouns[w.rng.Intn(len(nouns))]
+	for n4 == n1 {
+		n4 = nouns[w.rng.Intn(len(nouns))]
+	}
+	n3 := whens[w.rng.Intn(len(whens))]
 	switch kind {
 	case factory.KindIssue:
 		typ := pickWeighted(w.rng, []string{"bug", "feat", "chore", "question"}, []float64{0.5, 0.28, 0.14, 0.08})
 		tmpl := titleVerbs[typ][w.rng.Intn(len(titleVerbs[typ]))]
-		it.Title = fmt.Sprintf(tmpl, n1, n2)
+		it.Title = fmt.Sprintf(tmpl, n1, n4, n3)
 		it.Body = fmt.Sprintf(bodies[w.rng.Intn(len(bodies))], n1, n2, nouns[w.rng.Intn(len(nouns))])
 		it.Triage = w.triage(typ, area)
 		if w.rng.Float64() < 0.3 {
@@ -273,7 +288,7 @@ func (w *World) genItem(r *factory.Repo, kind factory.Kind, created time.Time) *
 			it.Labels = append(it.Labels, "factory")
 		}
 	case factory.KindPR:
-		it.Title = fmt.Sprintf("%s(%s): %s", pickWeighted(w.rng, []string{"fix", "feat", "refactor", "docs", "chore"}, []float64{0.45, 0.25, 0.15, 0.1, 0.05}), area, fmt.Sprintf(titleVerbs["feat"][w.rng.Intn(len(titleVerbs["feat"]))], n1, n2))
+		it.Title = fmt.Sprintf("%s(%s): %s", pickWeighted(w.rng, []string{"fix", "feat", "refactor", "docs", "chore"}, []float64{0.45, 0.25, 0.15, 0.1, 0.05}), area, fmt.Sprintf(titleVerbs["feat"][w.rng.Intn(len(titleVerbs["feat"]))], n1, n4, n3))
 		it.Body = fmt.Sprintf(prBodies[w.rng.Intn(len(prBodies))], n1, n2)
 		if strings.Contains(it.Body, "%!d") {
 			it.Body = fmt.Sprintf(prBodies[1], w.nextNum[r.Name]-w.rng.Intn(40)-1, n1, n2)
@@ -288,6 +303,7 @@ func (w *World) genItem(r *factory.Repo, kind factory.Kind, created time.Time) *
 		it.Tier = factory.TierOwner
 		it.Triage = factory.Triage{Type: "ci", Size: "S", Area: area, Readiness: 95, Est: 1.5, Read: "same test, three runs in a row; a real regression, not a flake"}
 	}
+	w.rank(it)
 	w.defaultOrder(it, r)
 	return it
 }

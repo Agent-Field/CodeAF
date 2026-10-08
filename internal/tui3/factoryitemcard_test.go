@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
@@ -255,4 +257,39 @@ func TestFactoryItemCardStaysLive(t *testing.T) {
 	if len(rows) < 2 || !strings.Contains(rows[1], "new · gate plan · cap $8") {
 		t.Fatalf("the card did not take the news:\n%s", strings.Join(rows, "\n"))
 	}
+}
+
+// THE CARD STOPS SHORT OF THE TRANSCRIPT'S EDGE by the margin a task element's
+// head keeps, so it never runs into the side divider.
+func TestFactoryItemCardKeepsTheTaskMargin(t *testing.T) {
+	lab := newQuestionLab(t)
+	a := lab.a
+	liveFloor(a, liveItem())
+	for _, w := range []int{160, 100} {
+		for i, row := range liveCardRows(a, 1, w) {
+			if got := ansi.StringWidth(row); got > w-factoryCardMargin {
+				t.Fatalf("width %d row %d is %d cells, over %d: %q", w, i, got, w-factoryCardMargin, row)
+			}
+		}
+	}
+}
+
+// A MARKDOWN HEADING IN THE PEEK IS BOLD, not a body line: the fixture's
+// `## Claims` is drawn with the bold attribute on.
+func TestFactoryPeekHeadingIsBold(t *testing.T) {
+	a := factoryPlaceLab(t)
+	factoryNoForge(t, a, 4)
+	for at, i := range factoryWalk(a.fp.snap) {
+		if a.fp.snap.Items[i].ID != 4 {
+			continue
+		}
+		a.fp.cursor = at
+		for _, row := range a.factoryPane(factoryPaneW(150), 30) {
+			if strings.Contains(ansi.Strip(row), "Claims") && strings.Contains(row, "\x1b[1m") {
+				return
+			}
+		}
+		t.Fatal("the heading `Claims` is not drawn bold in the peek")
+	}
+	t.Fatal("item 4 is not on the floor")
 }

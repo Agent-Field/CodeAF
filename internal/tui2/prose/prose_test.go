@@ -105,10 +105,10 @@ func TestHeadingsPromoteByTier(t *testing.T) {
 		bold bool
 	}{
 		{"# one", tokens.TextPrimary, true},
-		{"## two", tokens.TextPrimary, false},
-		{"### three", tokens.TextSecondary, false},
-		{"#### four", tokens.TextTertiary, false},
-		{"##### five", tokens.TextTertiary, false},
+		{"## two", tokens.TextPrimary, true},
+		{"### three", tokens.TextSecondary, true},
+		{"#### four", tokens.TextTertiary, true},
+		{"##### five", tokens.TextTertiary, true},
 	}
 	for _, w := range want {
 		rows := render(t, w.src, Options{Width: 40, Styler: st})
@@ -332,5 +332,16 @@ func TestLinksAsTextDrawsTheWordsAlone(t *testing.T) {
 	without := strings.Join(Render(src, Options{Width: 80}), "\n")
 	if !strings.Contains(without, "example.com") {
 		t.Errorf("the default drew %q; want the address beside the label", without)
+	}
+}
+
+// EVERY HEADING LEVEL IS BOLD: a heading drawn in plain ink read as a short
+// body line.
+func TestHeadingsAreBold(t *testing.T) {
+	for _, src := range []string{"# One", "## Claims", "### Three", "#### Four"} {
+		rows := render(t, src, Options{Width: 40, Styler: styler(tokens.TrueColor)})
+		if len(rows) == 0 || !strings.Contains(rows[0], "\x1b[1m") {
+			t.Fatalf("%q is not bold: %q", src, rows)
+		}
 	}
 }
