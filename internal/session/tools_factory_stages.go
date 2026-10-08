@@ -83,7 +83,7 @@ const (
 )
 
 const factoryStagesDescription = "Offer to change the stages of the ONE factory item this conversation is about, when the person settles on it: \"skip review on this one\", \"add a security pass\", \"switch neaten on\". " +
-	"Use it only for the item this conversation was opened for, by its floor id; never for another item. " +
+	"Use it only for the item this conversation was opened for; never for another item. The floor id goes in the item field and nowhere else: in words, name the item by its ref (#12), never by its floor id. " +
 	"add is new stage sentences, a place word first when it matters (\"after test, read it for auth holes\"); skip and on are stage names the item already has. " +
 	"NOTHING CHANGES BY CALLING THIS: the person is shown a card, and only their key changes anything. " +
 	"The recipe's bounds hold whatever is asked: proof, a person's gate and a stage the policy names are never skipped, a stage that already ran is never touched, and a `fixed` recipe refuses every change; a refusal comes back with its reason. " +
@@ -91,7 +91,7 @@ const factoryStagesDescription = "Offer to change the stages of the ONE factory 
 
 func factoryStagesSchemaJSON() string {
 	return `{"type":"object","properties":{` +
-		`"item":{"type":"integer","description":"The floor id of the item this conversation is about."},` +
+		`"item":{"type":"integer","description":"The floor id the conversation was told for this item (a store number, not the ref the person says)."},` +
 		`"add":{"type":"array","items":{"type":"string"},"description":"Stage sentences to add, e.g. \"after review, read it for auth holes\"."},` +
 		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off for this item."},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names to switch on for this item."},` +

@@ -371,6 +371,11 @@ var callSiteRoles = map[string]lane.Role{
 	"intake":   lane.RoleAuxiliary,
 	"careful":  lane.RoleAuxiliary,
 	"distill":  lane.RoleAuxiliary,
+	// cmd/codeaf/factory_triage.go: the factory floor's read of one waiting
+	// item, one item every couple of seconds on the small-work seat, with no
+	// stream open and nobody waiting on its first word. An errand, which is
+	// what the table's default for a side call is, said out loud.
+	"factory triage": lane.RoleAuxiliary,
 }
 
 // requestOf turns a replayed request into the one a chooser is asked.

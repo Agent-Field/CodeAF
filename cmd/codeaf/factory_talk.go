@@ -117,8 +117,31 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 		}
 		id := teams.NewID()
 		f.Teams = append(f.Teams, teams.Team{ID: id, Name: name, Parent: parent, Made: now})
-		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, JoinedAt: now})
+		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: talkHandle(it), JoinedAt: now})
 	})
+}
+
+// talkHandle is the one handle an item's conversation has for good, made from
+// its ref (`#1` is `item1`). A handle that arrives with a member is a given
+// one, so the title model never chooses it again and the team's Traffic never
+// announces `@twice is now @doublecount` into a conversation about an item
+// the person calls by its number. A ref with no digits has no handle given, and
+// the word list's guess stands as for any member.
+func talkHandle(it factory.Item) string {
+	var digits strings.Builder
+	for _, r := range it.Ref() {
+		if r >= '0' && r <= '9' {
+			digits.WriteRune(r)
+		}
+	}
+	if digits.Len() == 0 {
+		return ""
+	}
+	h := "item" + digits.String()
+	if teams.ValidHandle(h) != nil {
+		return ""
+	}
+	return h
 }
 
 // factoryItemRecipe is the recipe an item runs under: its repository's file
@@ -156,7 +179,6 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	add("repo ", it.Repo)
 	add("author ", it.Author)
 	add("tier ", string(it.Tier))
-	add("floor id ", strconv.Itoa(it.ID))
 	line(strings.Join(facts, " · "))
 	var chips []string
 	add2 := func(s string) {
@@ -192,7 +214,7 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 		}
 	}
 	line(it.Triage.Read)
-	line(fmt.Sprintf("To change this item's stages, propose it with factory_stages (item %d); nothing changes until the person presses a key on the card.", it.ID))
+	line(fmt.Sprintf("Call this item %s in everything you say; the person knows it by that name. To change its stages, propose it with factory_stages; the floor id for factory_stages is %d, and it goes in the tool's item field only, never in your words. Nothing changes until the person presses a key on the card.", it.Ref(), it.ID))
 	line(talkClosing)
 	return strings.TrimSpace(b.String())
 }

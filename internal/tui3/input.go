@@ -872,6 +872,14 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 			a.recallCancel()
 			return nil
 		}
+		// THE WAY BACK TO THE FACTORY FLOOR, once, from the conversation its
+		// `T` opened, when there is nothing to stop (factory_talk.go). IT IS
+		// READ BEFORE THE REWIND'S ARM, because the arm answers the first esc
+		// of any conversation that has turns, and a conversation the model has
+		// answered in would then say `esc again to rewind` instead of going back.
+		if back, ok := a.factoryTalkBack(); ok {
+			return back
+		}
 		// THE DOUBLE ESC IS THE REWIND'S DOOR, and it is read here rather than
 		// above the interrupt because the interrupt is not for sale (rewind.go):
 		// the first esc means exactly what it always meant and ARMS the mode on its
@@ -880,11 +888,6 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		cmd, taken := a.escRewind()
 		if taken {
 			return cmd
-		}
-		// AND THE WAY BACK TO THE FACTORY FLOOR, once, from the conversation
-		// its `T` opened, when there is nothing to stop (factory_talk.go).
-		if back, ok := a.factoryTalkBack(); ok {
-			return back
 		}
 		a.interrupt()
 		return cmd

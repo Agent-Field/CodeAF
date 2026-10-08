@@ -137,3 +137,31 @@ func TestFactoryOrderKeyIsTheFloorsOnly(t *testing.T) {
 		t.Fatalf("O on the item page changed the order to %q", a.fp.order.word())
 	}
 }
+
+// AT 160 COLUMNS THE `first` ORDER SHOWS ITS REASON at a row's end and the hint
+// still names the order: the reason takes the cells the facts leave free at
+// this width, and the hint sheds `/ filter` and `A backlog` before the order.
+func TestFactoryOrderFirstShowsReasonAndHintAt160(t *testing.T) {
+	a := factoryOrderLab(t)
+	a.width, a.height = 160, 44
+	drive(t, a, key("O"))
+	if a.fp.order != factoryOrderFirst {
+		t.Fatalf("O did not reach the first order: %q", a.fp.order.word())
+	}
+	frame := ansi.Strip(strings.Join(factoryFrameLines(a), "\n"))
+	if !strings.Contains(frame, "main is red") {
+		t.Fatalf("no reason on any row at 160 columns:\n%s", frame)
+	}
+	if hint := (placeFactory{}).hint(a); !strings.Contains(hint, "O order · first") {
+		t.Fatalf("the hint lost the order clause at 160: %q", hint)
+	}
+}
+
+// `tab` ON THE FLOOR WALKS TO THE NEXT PLACE, as its hint says.
+func TestFactoryTabWalksToTheNextPlace(t *testing.T) {
+	a := factoryOrderLab(t)
+	drive(t, a, key("tab"))
+	if a.at(pageFactory) {
+		t.Fatal("tab on the floor stayed on the floor")
+	}
+}
