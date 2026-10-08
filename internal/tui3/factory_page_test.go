@@ -72,18 +72,18 @@ func TestFactoryDrawsTheFixtureByGroupWithThePane(t *testing.T) {
 		if cut < 0 {
 			continue
 		}
-		// A heading carries its count after a separator (`needs you · 1`);
-		// the order is read on the word.
+		// A heading carries its count after a separator (`NEEDS YOU · 1`)
+		// and a hairline after that; the order is read on the word.
 		word, _, _ := strings.Cut(strings.TrimSpace(line[:cut]), " · ")
 		switch word {
-		case "needs you", "streams", "new", "landed", "shipped":
-			headings = append(headings, word)
+		case "NEEDS YOU", "STREAMS", "NEW", "LANDED", "SHIPPED":
+			headings = append(headings, strings.ToLower(word))
 		}
 	}
 	if got := strings.Join(headings, ","); got != "needs you,streams,new,landed,shipped" {
 		t.Fatalf("the rail's groups are %q:\n%s", got, text)
 	}
-	for _, want := range []string{"#1538", "budget caps per task", "plan is ready · go, or change it?", "[a] answer in words"} {
+	for _, want := range []string{"#1538", "budget caps per task", "plan is ready · go, or change it?", "[a] in words"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the frame is missing %q:\n%s", want, text)
 		}
@@ -95,13 +95,14 @@ func TestFactoryDrawsTheFixtureByGroupWithThePane(t *testing.T) {
 	}
 }
 
-// THE RAIL RULE: no rail under the floor, and a bounded rail above it.
-func TestFactoryRailColumns(t *testing.T) {
+// THE ROWS' COLUMNS: the whole width under the peek's floor, and above it
+// fifty-eight percent of the width, never under seventy.
+func TestFactoryRowsColumns(t *testing.T) {
 	for _, c := range []struct{ width, want int }{
-		{44, 0}, {71, 0}, {72, 24}, {100, 30}, {120, 36}, {200, 40},
+		{44, 44}, {80, 80}, {100, 100}, {119, 119}, {120, 70}, {150, 87}, {200, 116},
 	} {
-		if got := factoryRailCols(c.width); got != c.want {
-			t.Errorf("factoryRailCols(%d) = %d, want %d", c.width, got, c.want)
+		if got := factoryRowsCols(c.width); got != c.want {
+			t.Errorf("factoryRowsCols(%d) = %d, want %d", c.width, got, c.want)
 		}
 	}
 }

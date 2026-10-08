@@ -133,6 +133,12 @@ func (placeFactory) wheel(a *app, delta int) (tea.Cmd, bool) {
 // ([app.placeHomeGesture]). It is claimed only on a new item, so everywhere
 // else on the floor two spaces still go home.
 func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// THE LAYOUT'S KEYS ARE READ FIRST, here rather than in key, because the
+	// item page walks its stages with `↑` and the router would otherwise read
+	// `↑` off the first row as the way onto the tab bar (factory_item.go).
+	if cmd, took := a.factoryLayoutKey(msg); took {
+		return cmd, true
+	}
 	// The box keeps every key but the router's walk between places and its alt
 	// chords, which the hint line goes on naming while the box is open.
 	if a.fp.typing {

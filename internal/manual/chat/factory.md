@@ -4,21 +4,34 @@
 
 The **factory** is a place, like home, activity and spend: the floor where work a chat splits
 off, or that a connected repository sends, stands in rows grouped by where each item is. Open
-it with `/factory`, `alt+9` (`opt+9` on a Mac), or the map (`alt+.`). On a narrow tab bar it
-folds into `More`. `esc` goes back to the conversation.
+it with `/factory`, `alt+9` (`opt+9` on a Mac), the map (`alt+.`), or the `Factory` button on the
+tab bar, third after `Home` and `Chats`. `esc` goes back to the conversation.
 
 Today nothing is connected, so the page draws one dim line:
 `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`.
 The only key it offers then is `esc back`.
 
-With something on the floor, the left column is the list of items and the right column is the
-handover (what happened while you were away) above the item under the cursor. On a terminal
-under 72 columns the list takes the whole width and the right column is not drawn.
+The floor is one layout in three widths:
 
-The keys on the floor, as the hint line names them:
+- **120 columns and wider**: the handover runs across the whole width at the top, then a blank
+  row, then two columns: the rows on the left (58% of the width, never under 70 columns), a dim
+  `│`, and the **peek** on the right, which shows the item under the cursor.
+- **90 to 119 columns**: the handover on top, then the rows across the full width, with no peek.
+  Press `enter` on a row to see the item whole.
+- **Under 90 columns**: no handover; each row is only its mark, its short name and its title.
+
+The rows window follows the cursor when they do not all fit.
+
+## the keys on the factory floor
+
+The keys on the factory floor, as the hint line names them:
 `↑↓ walk · space mark · / filter · [ ] repo · A backlog · esc back`.
 
 - `↑` and `↓` (or `ctrl+p` and `ctrl+n`, or the wheel) walk the items.
+- `enter` opens the item under the cursor on its own page (see the item page).
+- `z` switches between compact rows (one line each, the default) and comfortable rows (a dim
+  second line under each row with the factory's one-sentence read of it, and a blank row between
+  items). The choice is not saved; every launch starts compact.
 - `space` marks or unmarks the new item under the cursor (offered only on a new item).
 - `/` opens a filter box at the top of the list.
 - `[` and `]` show one repository at a time, then all of them again (offered with two or more).
@@ -28,30 +41,31 @@ The keys on the floor, as the hint line names them:
 ## what a row is
 
 A row on the factory floor is one **item**: an issue, a pull request, a red CI run, a chore,
-or work a chat split off. It is written as a mark, its short name and its title, cut with `…`
-when it does not fit: `#1538 budget caps per task`. A red CI run is written `ci`.
+or work a chat split off. Rows are laid out in fixed columns so they line up down the page:
+a mark, the short name right-aligned (`#1538`, or `ci` for a red CI run), the title (cut with
+`…`), the repository's short name (`codeaf`), the facts, and at the far right how long ago the
+item last moved (`12m`, `7h`, `3d`). Under 90 columns a row is only the mark, the short name and
+the title.
 
-The rows are grouped under muted headings that carry a count, in this order, and a group with
-nothing in it is not drawn at all:
+The rows are grouped under muted capital headings with a count and a dim line out to the edge
+(`NEEDS YOU · 1 ───`), in this order, with one blank row between groups. A group with nothing in
+it is not drawn at all:
 
-- `needs you · 1`: an item waiting on your answer, such as a plan to approve. Its mark is `?`.
-- `streams · 2`: items running now (a half-filled circle) and items queued behind them (`○`).
-- `new · 5`: items that arrived and have not started. They carry no mark; a red CI run wears `✕`.
-- `landed · 1`: items that finished and wait for your sign-off (`✓`).
-- `shipped · 1`: items you signed off (a dim dot).
+- `NEEDS YOU`: waiting on your answer. Its mark is `?`; its first fact is the question itself,
+  in the question colour, and `[y/n]` stands just before the age.
+- `STREAMS`: running items (a half-filled circle) and queued ones (`○`). A running row's first
+  fact is a strip with one mark per stage (`●` done, `◐` running, `○` to come) and the stage it is
+  in with how long it has run: `review 26m`. A queued row says `queued`.
+- `NEW`: arrived and not started; no mark, except `✕` on a red CI run. The first fact is its kind
+  and size: `bug · S`, `pr · ci ✓`, or `ci red`.
+- `LANDED`: finished, waiting for your sign-off (`✓`). The first fact counts its claims: `3✓ 1✕`.
+- `SHIPPED`: signed off (a dim dot), with `shipped 06:00`.
 
-At the right of each row is the one fact its group is about: how long a `needs you` item has
-waited (`7h`), the stage a running item is in and what it has spent (`review · $1.42`), the
-word `queued`, a new item's kind and size (`bug M`, or `pr`, or `ci`), how many of a landed
-item's claims were shown and not (`3✓ 1✕`), and the time an item shipped (`06:00`). When the
-list is narrower than 30 columns the fact is left off and the title gets the room.
-
-The right column shows the item under the cursor, drawn by where it stands: a new item as its
-**card**, a running, queued or waiting item as its **stream**, a landed item as its **proof
-sheet**, and a shipped item as one line saying when it merged. The page re-reads the floor every three seconds while
-you are on it, and the cursor stays on the same item when the floor changes under it. If a
-read fails, the floor read before stays on screen and the line above the hint says
-`the factory could not be read` with the reason.
+After the first fact come, in this order: the money (`$1.42/$5`, spent against the cap, or `~$3`
+estimated), the author (`olu (stranger)` when the author is a stranger), and tags: `factory`,
+`thin` (too underspecified to run without questions), `dup #950?`, `from chat ▸` and
+`terminal only`. A row carries at most four facts and never wraps: as the window narrows, facts
+are dropped whole from the right. The row under the cursor sits on a lifted background.
 
 ## filter the factory floor, search for an item
 
@@ -102,17 +116,18 @@ A stage can repeat until a condition holds (until green, until clean) up to a nu
 and then it stops and asks you. Nothing inside a stage can add a stage. A stage can also be a
 gate: `plan` comes back with the plan before any code, and `ship` waits for your sign-off.
 
-A new item's card lists the stages it would run, numbered, and the stream of a running item
-shows them as a strip of phases. A stage can carry a condition (`thin`, `large`,
-`touches auth`, `has ui`); on an item it does not fit, the stage is drawn dim with
-`· skipped: not thin` (or the condition it missed) after it. You cannot change an item's stages
-from the page yet.
+The peek shows a new item's stages as one line of names and a running item's as a strip of
+marks; the item page lists them down its stage rail. A stage can carry a condition (`thin`,
+`large`, `touches auth`, `has ui`); on an item it does not fit, the stage is drawn dim, with
+`· skipped` on the stage rail and `skipped · not thin` (or the condition it missed) beside it.
+You cannot change an item's stages from the page yet.
 
 ## the handover
 
-The **handover** is what happened on the factory floor since you last looked. It is the top of
-the right column, four rows and a blank row above the item under the cursor, and it is drawn
-only when the right column is (72 columns and wider).
+The **handover** is what happened on the factory floor since you last looked. It is four rows
+and a blank row across the whole width at the top of the floor, above the rows and the peek. It
+is drawn at 90 columns and wider, and only when the window is tall enough to leave the rows at
+least six lines under it.
 
 1. A muted heading with a line out to the edge: `◆ handover · since 23:12 · 7h 12m · $8.44`,
    when the stretch began, how long ago, and what it spent. The spend is left off when nothing
@@ -122,74 +137,71 @@ only when the right column is (72 columns and wider).
    `quiet · nothing happened while you were away`.
 3. What waits on you: `? 2 waiting on you`, in the question colour, or
    `nothing waits on you`. At the right, labelled `24h`, a sparkline of the last
-   twenty-four hours of activity, one cell an hour, the current hour last. It is not drawn on
-   a right column under 60 columns, or when no hour had anything in it.
+   twenty-four hours of activity, one cell an hour, the current hour last. It is not drawn
+   when no hour had anything in it.
 4. The floor in one dim line: `3 repos · github · chat · benches 2/6 · polled 4m ago`, how many
    repositories, which sources are connected, how many benches are busy out of how many, and
    when a source was last read. At the right, the day's money: `$11.31 / $60 today`, what was
    spent against the day's limit. With nothing spent today it draws only `/ $60 today`. The
    made-up moving floor adds how fast its clock runs, such as `· 150×`; a real floor never does.
 
-A narrow column drops the shipped items' names first, then the last facts on a row; the money
+A narrow window drops the shipped items' names first, then the last facts on a row; the money
 keeps its place.
 
-## the card
+## the peek
 
-A new item on the factory floor is drawn as a **card** in the right column. From the top:
+At 120 columns and wider, the right column of the factory floor shows the item under the cursor.
+It has the same shape for every item: five fixed rows, a rule, what that item's state has to say,
+and one dim line of keys on the bottom row.
 
-- Its short name and title, and on the right the repository, the kind, the author and how far
-  they are trusted (`priya (collaborator)`), how long ago it arrived, and where it came from:
-  `github`, `from a chat`, `terminal only`, or `github` with a check when it is on GitHub too.
-- Up to two lines of its body, with `…` when there is more.
-- The factory's read: one line of facts (`bug · M · tui · ready 72% · ~$3 · risk low`, or for a
-  pull request `pr · +218 −44 · 6 files · ci` and its checks), then one sentence of what it makes of
-  the item. A thin item adds `thin · it would ask` the author its questions, and
-  `nothing posts without you`. An item from a stranger says their words may be drafted on, never
-  shipped on, without you.
-- The chips: `gate ship [t]   cap $5 [c]   effort — [e]`. The dash means no effort word, so the
-  crew picks the effort it would for that kind of work.
-- The stages, numbered: `●` for a stage that is on, `○` dim for one switched off, and a skipped
-  stage dim with its reason. `×2` is the rounds a stage may take, `until clean` its condition.
-- `must show:` and the repository's policy lines.
-- `[enter] go` and what the gate means: `runs to a PR · you sign off`, `comes back with the plan
-  first`, or `self-ships when the proof is green`. Under it, dim: `[s] add a stage in words ·
-  [b] bank · [w] chips in words · [g] also on github · [d] hide`.
+1. Its short name and title, and on the right the repository, the kind, the author and how far
+   they are trusted (`priya (collaborator)`), how long ago it arrived, and where it came from:
+   `github`, `from a chat`, `terminal only`, or `github` with a check when it is on GitHub too.
+2. The factory's one-sentence read of it.
+3. The chips: `gate ship · cap $5 · effort —`. The dash means no effort word, so the crew picks the
+   effort it would for that kind of work.
+4. For an item on a bench, its stages as a strip: `● plan  ◐ review 1/2 · 4m left  ○ proof`, with
+   rounds (`1/2`), how many tasks a stage split into (`×3`) and the most rounds a stage to come may
+   take (`×2`). For a new item, the names of the stages it would run, with a stage that is
+   switched off or does not fit the item drawn dim.
+5. A rule.
 
-None of those keys work yet; see what the factory does not do yet.
+Under the rule: the question and `[y] yes · [n] no · [a] in words` when it needs you; the newest
+log lines of a running item, with its activity as a sparkline and its spend on the first one;
+`queued · benches full · a bench frees it`; a landed item's claims, then the repository's policy
+lines; two lines of a new item's description, the questions it would ask the author when it is
+thin, and a note when the author is a stranger; or `merged 06:00 · $1.90` for a shipped one.
 
-## the stream
+The bottom line names the keys for that item: `enter open · space mark · L launch · p plan first ·
+d hide` for a new item, `y n answer · a in words · x stop` when it needs you,
+`enter open · s steer · x stop` while it runs, and
+`enter open · a ship anyway · c send back · o check again` once it has landed.
 
-A running, queued or waiting item is drawn as its **stream**. The first line is a mark (working,
-`?` when it waits on you, `○` queued, paused), the item, and on the right the repository, the
-bench it is on, how long it has run, and what it has spent over its cap (`$1.42 / $5`).
+## the item page
 
-Under it is the **phase strip**: each stage as a mark and its name, with its round (`1/2`) and how
-many tasks it split into (`×3`). The running stage says its minutes left (`review 1/2 · 4m left`);
-done stages are muted, pending ones dim, a stage waiting on you in amber, a failed one in red.
-Then the recipe in one line (`plan · write · test · review · neaten · proof`), a rule, and the
-newest lines of its log that fit, each with its time and a mark for what kind of line it is.
+`enter` on a row of the factory floor opens that item on its own page, across the full width;
+`esc` closes it and puts the cursor back on the same row. Nothing about the floor (filter,
+repository, marks) changes while it is open.
 
-When the item **needs you**, the question is drawn under the log with a `?`, and
-`[y] yes · [n] no · [a] answer in words · it waits; the other benches do not`. Those keys do not
-answer yet. A **queued** item says `queued · benches full · a bench frees it`.
+The top two rows are the item: its short name, title, repository, author, where it stands and for
+how long (`running 26m`), with spend over the cap on the right (`$1.42 / $5`); then the chips with
+their keys, `gate ship [t] · cap $5 [c] · effort — [e] · places: codeaf`.
 
-## the proof sheet
+Below them, on the left, is the **stage rail**: one row per stage, `●` done (with `×3` when it split
+into tasks), `◐` running (with its round, `review 1/2`), `○` to come, a stage switched off dim, and a
+stage whose condition does not fit dim with `· skipped`. It opens on the running stage of a running
+item, the stage waiting on you for an item that needs you, `proof` for a landed item, and the
+first stage otherwise. `↑` and `↓` (or `←` and `→`) walk it. Under 72 columns the stages are one
+line above the stage instead of a column beside it.
 
-When an item lands, the right column draws its **proof sheet**: `sign-off ·` the item, and
-`its claims` (or for a pull request `their claims, from the PR body`). Each claim is one row,
-`✓` when it was shown and `✕` when it was not, with the evidence on the right in the claim's own
-medium (`test · 0.3s`, a screenshot with `[▦ view]`). A claim nothing showed is listed with
-` — not shown` after it, never left out. The repository's policy follows as
-`policy · every PR on codeaf must show`, the same way. Then how long it ran, what it cost, and
-`diff +218 −44 — the appendix` with `[d] open diff`.
+On the right is the stage under the cursor: its settings
+(`review · chat · until clean · max 2 · fanout per-finding · when always`), what it is asked to do,
+a rule, then what it has to say: `runs after test` for a stage still to come, the log for the
+running one, the question for one waiting on you, its result once done, and the claims on `proof`.
+The bottom line names its keys, such as `enter open @review · s steer · w edit the ask · esc floor`.
 
-When every row was shown, the last line is `[enter] ship`, then `[c] send back · [o] check
-again · [s] the stream`. When any row was not shown, **send back is the default key**:
-`[enter] send back — "prove survives a codeaf restart"`, with `[a] ship anyway · [o] check again`
-and the line `a failed claim makes the blocking action the default key`.
-
-None of these keys sign off or send back yet. A shipped item shows when it merged, what it cost,
-and `[enter] the room`, which does not open anything yet either.
+`enter` on a stage does not open it yet; it says
+`the stage's conversation opens here once streams are conversations`.
 
 ## what the factory does not do yet
 
@@ -200,13 +212,23 @@ Be plain about this when asked:
 - **Nothing posts anywhere.** The factory never comments, labels, opens a pull request or opens
   an issue on any service.
 - **There are no verbs.** The page cannot launch, stop, pause, answer, steer, sign off or send
-  back an item. The keys walk, filter, pick a repository, show the backlog and mark new items;
-  a mark launches nothing. The card, the stream and the proof sheet draw their keys
-  (`[enter] go`, `[t]`, `[c]`, `[e]`, `[s]`, `[b]`, `[w]`, `[g]`, `[d]`, `[y]`, `[n]`, `[a]`,
-  `[o]`, `[enter] ship`, `[enter] send back`) so the layout is settled, but none of them does
-  anything yet.
+  back an item. The keys walk, filter, pick a repository, show the backlog, mark new items,
+  switch the row density (`z`) and open and close the item page (`enter`, `esc`); a mark
+  launches nothing. The peek and the item page name the keys an item will take (`L`, `p`, `d`,
+  `y`, `n`, `a`, `x`, `s`, `c`, `o`, `w`, and the chips' `[t]`, `[c]`, `[e]`) so the layout is
+  settled, but none of them does anything yet.
 - **The page is empty on an ordinary launch** and draws the `nothing connected yet` line. When
   codeaf is started with the environment variable `CODEAF_FACTORY_FIXTURE=1` the page reads a
   still, made-up floor instead (three repositories, ten items, one in every group) so the page
   can be looked at. That floor never changes and none of its items are real.
 - **Over `--host`** the factory page draws the same `nothing connected yet` line.
+
+## the Factory button on the tab bar
+
+The tab bar at the top of every page shows `Factory` third, after `Home` and `Chats`. When items
+on the factory floor wait on your answer it carries their count in the question colour:
+`Factory ? 5`. With nothing waiting it carries no number at all. The count is what the floor said
+the last time it was read, and the floor is read while the factory page is open, so it appears
+after you have opened `/factory` once. On a narrow bar the places after it fold into `More ▾`
+first; a `Factory` with a count stays on the bar. `alt+9` still opens it, whatever its place on
+the bar.

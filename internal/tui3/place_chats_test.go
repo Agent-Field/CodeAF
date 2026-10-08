@@ -41,8 +41,12 @@ func TestTheChatsOnTheBarGoBackToTheConversation(t *testing.T) {
 	// And `tab`, which walks the rooms, steps over it.
 	a.openHome()
 	drive(t, a, key("tab"))
-	if a.page != pageTeams {
+	if a.page != pageFactory {
 		t.Fatalf("tab from home landed on %q", a.page.word())
+	}
+	drive(t, a, key("tab"))
+	if a.page != pageTeams {
+		t.Fatalf("tab from the factory landed on %q", a.page.word())
 	}
 	drive(t, a, key("tab"))
 	if a.page != pageTasks {

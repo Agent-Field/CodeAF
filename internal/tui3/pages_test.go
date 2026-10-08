@@ -814,7 +814,7 @@ func TestTheTabBarCarriesTheFourAtEveryUsableWidth(t *testing.T) {
 	a := placeApp(t)
 	for _, width := range []int{80, 120, 200} {
 		bar := navPlaces(a, width, false)
-		if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity", "Memory", "Spend", "Settings") {
+		if !placeWordsInOrder(bar, "Home", "Chats", "Factory", "AI teams", "Activity", "Memory", "Spend", "Settings") {
 			t.Fatalf("at %d columns the bar is not the six places in order: %q", width, bar)
 		}
 		for _, id := range []page{pageStanding} {

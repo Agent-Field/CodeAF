@@ -65,35 +65,43 @@ func TestFactoryRailGroupsAndCountsTheFixture(t *testing.T) {
 	}
 }
 
-// THE ROW CARRIES ITS STATE'S ONE FACT, and drops it on a rail under thirty.
+// THE ROW CARRIES ITS STATE'S FACT FIRST, and with no columns it carries only
+// its lead, its ref and its title.
 func TestFactoryRailRowFacts(t *testing.T) {
 	a := factoryPlaceLab(t)
 	a.fp.cursor = -1
+	a.fp.refW = factoryRefWidth(a.fp.snap)
 	want := map[string]string{
-		"#1538": "7h",
-		"#1551": "review · $1.42",
+		"#1538": "plan is ready",
+		"#1551": "review 26m",
 		"#1660": "queued",
-		"#1662": "pr",
-		"ci":    "ci",
-		"#31":   "bug M",
+		"#1662": "pr · ci ✓",
+		"ci":    "ci red",
+		"#31":   "bug · M",
 		"#1661": "3" + a.icon(tokens.GSettled) + " 1" + a.icon(tokens.GFailed),
-		"#1663": "06:00",
+		"#1663": "shipped 06:00",
+		"#1540": "bug · S",
 	}
 	for _, it := range a.fp.snap.Items {
 		fact, ok := want[it.Ref()]
 		if !ok {
 			continue
 		}
-		row := ansi.Strip(a.factoryRailItem(it, 39, false))
-		if ansi.StringWidth(row) != 39 {
+		a.fp.columns = true
+		row := ansi.Strip(a.factoryRailItem(it, 110, false))
+		if ansi.StringWidth(row) != 110 {
 			t.Fatalf("%s's row is %d cells: %q", it.Ref(), ansi.StringWidth(row), row)
 		}
-		if !strings.HasSuffix(strings.TrimRight(row, " "), fact) {
-			t.Errorf("%s's row does not end on %q: %q", it.Ref(), fact, row)
+		if !strings.Contains(row, fact) {
+			t.Errorf("%s's row does not carry %q: %q", it.Ref(), fact, row)
 		}
-		narrow := ansi.Strip(a.factoryRailItem(it, factoryFactFloor-1, false))
-		if fact != "ci" && strings.Contains(narrow, fact) {
-			t.Errorf("%s keeps its fact on a %d-cell rail: %q", it.Ref(), factoryFactFloor-1, narrow)
+		a.fp.columns = false
+		narrow := strings.TrimRight(ansi.Strip(a.factoryRailItem(it, 60, false)), " ")
+		if strings.Contains(narrow, fact) && !strings.Contains(it.Title, fact) {
+			t.Errorf("%s keeps its fact with no columns: %q", it.Ref(), narrow)
+		}
+		if !strings.Contains(narrow, it.Ref()) {
+			t.Errorf("%s's narrow row lost its ref: %q", it.Ref(), narrow)
 		}
 	}
 }

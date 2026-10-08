@@ -403,7 +403,7 @@ func TestTheWheelOverTheBarWalksThePlaces(t *testing.T) {
 	a.frame()
 	drive(t, a, tea.MouseWheelMsg{X: 4, Y: navRow, Button: tea.MouseWheelDown})
 	drive(t, a, tea.MouseWheelMsg{X: 4, Y: navRow, Button: tea.MouseWheelDown})
-	if want := pages()[2]; a.page != want {
+	if want := nextPage(nextPage(pageHome, false), false); a.page != want {
 		t.Fatalf("two notches walked to %q, want %q", a.page.word(), want.word())
 	}
 }

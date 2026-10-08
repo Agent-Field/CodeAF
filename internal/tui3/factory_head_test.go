@@ -161,27 +161,25 @@ func TestFactoryHeadPlainFloorHasNoSGR(t *testing.T) {
 	}
 }
 
-// THE PAGE STACKS THE HANDOVER ABOVE THE PANE in the pane column.
-func TestFactoryPageStacksTheHandoverAboveThePane(t *testing.T) {
+// THE HANDOVER SPANS THE WHOLE WIDTH ABOVE BOTH COLUMNS: its heading starts
+// at the frame's left edge with no rule to its left, and the two columns start
+// on the row after its blank, with the peek's first row on that same row.
+func TestFactoryPageStacksTheHandoverAboveTheColumns(t *testing.T) {
 	a := factoryPlaceLab(t)
-	a.height = 40
-	head, pane := -1, -1
+	a.width, a.height = 150, 40
+	head, cols := -1, -1
 	for i, line := range strings.Split(factoryFrameText(a), "\n") {
-		cut := strings.Index(line, "│")
-		if cut < 0 {
-			continue
-		}
-		right := line[cut:]
-		if head < 0 && strings.Contains(right, "handover · since") {
+		if head < 0 && strings.Contains(line, "handover · since") {
+			if strings.Contains(line, "│") {
+				t.Fatalf("the handover shares its row with the column rule: %q", line)
+			}
 			head = i
 		}
-		// The pane's first row is the stream's title line for the fixture's
-		// cursor item, which waits on a question.
-		if pane < 0 && strings.Contains(right, "#1538 budget caps per task") {
-			pane = i
+		if cols < 0 && strings.Contains(line, "│") {
+			cols = i
 		}
 	}
-	if head < 0 || pane < 0 || pane != head+5 {
-		t.Fatalf("the pane does not start five rows under the handover (head %d, pane %d):\n%s", head, pane, factoryFrameText(a))
+	if head < 0 || cols != head+5 {
+		t.Fatalf("the columns do not start five rows under the handover (head %d, columns %d):\n%s", head, cols, factoryFrameText(a))
 	}
 }

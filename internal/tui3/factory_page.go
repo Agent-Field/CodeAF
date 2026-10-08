@@ -12,8 +12,8 @@ import (
 // ── THE FACTORY PAGE ────────────────────────────────────────────────────────
 //
 // The factory floor: every item a chat split off or a repository sent, grouped
-// by where it stands, on a rail at the left, and the item under the cursor in a
-// pane at the right. place_factory.go is the handle the registry files; this
+// by where it stands, as rows under the handover, and on a wide terminal the
+// item under the cursor in a peek at the right. place_factory.go is the handle the registry files; this
 // file is the page's state, its one read and its drawing.
 //
 // THE PAGE READS ONE SEAM AND ONLY OFF THE LOOP. [factory.Seam.Load] may touch
@@ -26,16 +26,41 @@ import (
 // in one dim line rather than drawing an empty rail. That is every launch until
 // an engine stands behind the page, and every launch over --host.
 
-// factoryRailFloor is the narrowest terminal that still splits a rail and a
-// pane; under it the rail takes the whole width.
-const factoryRailFloor = 72
+// ── THE FLOOR IS ONE OBJECT IN THREE GEOMETRIES ─────────────────────────────
+//
+// At [factoryPaneFloor] columns and wider the floor is two columns: the rows at
+// the left, [factoryRowsShare] percent of the width and never under
+// [factoryRowsMin], a dim rule, and the peek at the right. From
+// [factoryFactsFloor] up to that it is the rows alone, at the full width, with
+// every column a row carries. Under [factoryFactsFloor] a row is its lead, its
+// ref and its title and nothing else. THE HANDOVER SPANS THE WHOLE WIDTH ABOVE
+// ALL OF IT ([app.factoryHead]) wherever the rows carry their columns, so it is
+// one strip over the floor rather than the head of one column.
+//
+// The item page (factory_item.go) is how a person sees an item whole at any
+// width; the peek is a glance, drawn only where there is room for one beside
+// rows that still carry their facts.
 
-// factoryRailMin and factoryRailMax bound the rail's columns, its separator
-// included.
+// factoryPaneFloor is the narrowest terminal that draws the peek beside the
+// rows.
+const factoryPaneFloor = 120
+
+// factoryFactsFloor is the narrowest terminal whose rows carry the repo, the
+// facts and the age. Under it a row is its lead, its ref and its title.
+const factoryFactsFloor = 90
+
+// factoryRowsShare and factoryRowsMin size the rows' column beside the peek:
+// a share of the width in percent, and the fewest columns it may have.
 const (
-	factoryRailMin = 24
-	factoryRailMax = 40
+	factoryRowsShare = 58
+	factoryRowsMin   = 70
 )
+
+// factoryHeadLeaves is the fewest rows the floor keeps for its own rows under
+// the handover. A frame shorter than the handover and these draws no handover,
+// because a floor whose strip ate the rows answers "what is happening" and
+// hides "what is it happening to".
+const factoryHeadLeaves = 6
 
 // factoryUnconnectedWords is the page with no seam behind it. It names what
 // arrives here, never that the page is empty (the emptiness law's panel rule).
@@ -46,8 +71,8 @@ const factoryUnconnectedWords = "nothing connected yet · the factory floor arri
 // THE NEXT PIECES OF THIS PAGE BUILD ON THESE FIELDS AND NO OTHERS: snap is the
 // only reading a draw may use, cursor names a position in the rail's WALK
 // ORDER ([app.factoryRows]'s item rows, top to bottom) rather than an index
-// into snap.Items, and railW is what the last body measured, so a press can be
-// told rail from pane without drawing again.
+// into snap.Items, and rowsW is what the last body measured, so a press can be
+// told rows from peek without drawing again.
 type factoryPage struct {
 	// snap is the last floor the seam handed back, and loaded whether one has
 	// arrived at all: a page that has not heard yet draws nothing rather than
@@ -67,9 +92,16 @@ type factoryPage struct {
 	// is resolved against ([placeBodyLine]).
 	top   int
 	shown int
-	// railW is the rail's columns at the last body, its separator included,
-	// and 0 when the rail took the whole width.
-	railW int
+	// headRows is how many rows the handover took above the rows at the last
+	// body, so a press is counted from the first row of the floor itself.
+	headRows int
+	// rowsW is the rows' columns at the last body, the rule beside the peek
+	// not included, and columns whether those rows carried the repo, the
+	// facts and the age ([factoryFactsFloor]); refW is the ref column the
+	// last draw measured, so every row's title starts in the same cell.
+	rowsW   int
+	columns bool
+	refW    int
 
 	// THE RAIL'S NARROWINGS (factory_rail.go), each additive to the fields
 	// above. repo is 0 for every repo and i for snap.Repos[i-1]; query is what
@@ -81,15 +113,27 @@ type factoryPage struct {
 	typing  bool
 	backlog bool
 	marked  map[int]bool
+
+	// THE LAYOUT'S OWN STATE (factory_item.go), additive like the narrowings.
+	// comfy is `z`, a second line under each row and air between rows; open is
+	// the item page standing over the floor, stage the stage its rail's cursor
+	// is on, and said whether `enter` on that stage has drawn its note. The
+	// floor's cursor is left exactly where it was, so `esc` lands on the row
+	// the page was opened from. Nothing here is persisted.
+	comfy bool
+	open  bool
+	stage int
+	said  bool
 }
 
-// factoryRailCols is the rail's columns at width, its separator included, and
-// 0 under [factoryRailFloor].
-func factoryRailCols(width int) int {
-	if width < factoryRailFloor {
-		return 0
+// factoryRowsCols is the rows' columns at width: the whole width under
+// [factoryPaneFloor], and otherwise [factoryRowsShare] percent of it, never
+// under [factoryRowsMin].
+func factoryRowsCols(width int) int {
+	if width < factoryPaneFloor {
+		return width
 	}
-	return min(max(width*3/10, factoryRailMin), factoryRailMax)
+	return max(width*factoryRowsShare/100, factoryRowsMin)
 }
 
 // factoryConnected says whether a floor stands behind the page at all.
@@ -133,6 +177,15 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 // factory_rail.go's. Everything below reads them through [app.factoryRows] and
 // [app.factoryWalkNow], so the cursor counts in the same list the rail draws.
 
+// factoryWaiting is how many items on the last floor read wait on the
+// person, and 0 before the first read: the tab bar's `? 5` ([app.barAsk]).
+func (a *app) factoryWaiting() int {
+	if !a.fp.loaded {
+		return 0
+	}
+	return a.fp.snap.Count(factory.StateNeedsYou)
+}
+
 // factoryCursorItem is the item under the cursor, and false when the floor
 // holds none.
 func (a *app) factoryCursorItem() (factory.Item, bool) {
@@ -157,6 +210,10 @@ func (a *app) factoryLines() []int {
 
 // factoryMove walks the cursor by delta items.
 func (a *app) factoryMove(delta int) {
+	if a.fp.open {
+		a.factoryStageMove(delta)
+		return
+	}
 	a.fp.cursor = moveCursor(a.fp.cursor, delta, len(a.factoryWalkNow()))
 	a.touch()
 }
@@ -164,51 +221,67 @@ func (a *app) factoryMove(delta int) {
 // ── the body ────────────────────────────────────────────────────────────────
 
 // factoryBody is the page, exactly room rows of exactly width cells: the one
-// dim line when nothing is connected, and otherwise the rail and the pane. Every
-// rail row that holds an item carries its rail line as its hit; every other row
-// carries -1.
+// dim line when nothing is connected, the item page while one is open, and
+// otherwise the handover over the floor in whichever of its three geometries
+// the width allows. Every row that holds an item carries its rail line as its
+// hit; every other row carries -1.
 func (a *app) factoryBody(width, room int) []placeRow {
 	if room <= 0 {
 		return nil
 	}
 	if !a.factoryConnected() {
-		a.fp.railW, a.fp.shown = 0, 0
+		a.fp.rowsW, a.fp.shown = 0, 0
 		return placeTeachRows(placeTeachProse(factoryUnconnectedWords, width, a.pal), room)
 	}
-	railW := factoryRailCols(width)
-	a.fp.railW = railW
-	listW := width
-	if railW > 0 {
-		listW = railW - 1
+	if a.fp.open {
+		if it, ok := a.factoryCursorItem(); ok {
+			a.fp.shown = 0
+			return a.factoryItemBody(it, width, room)
+		}
+		a.fp.open = false
 	}
-	rail, hits := a.factoryRail(listW, room)
+	a.fp.columns = width >= factoryFactsFloor
+	rowsW := factoryRowsCols(width)
+	a.fp.rowsW = rowsW
+	paneW := 0
+	if rowsW < width {
+		paneW = width - rowsW - 1
+	}
+	rows := make([]placeRow, 0, room)
+	// THE HANDOVER SPANS THE WHOLE WIDTH, ABOVE BOTH COLUMNS. It carries its
+	// own blank as its last row, so the columns start on the row after it.
+	var head []string
+	if a.fp.columns {
+		if h := a.factoryHead(width); len(h)+factoryHeadLeaves <= room {
+			head = h
+		}
+	}
+	for _, line := range head {
+		rows = append(rows, placeRow{text: line, hit: -1})
+	}
+	a.fp.headRows = len(head)
+	left := room - len(head)
+	rail, hits := a.factoryRail(rowsW, left)
 	var pane []string
-	paneW := width - railW
-	if railW > 0 {
-		// THE PANE COLUMN IS THE HANDOVER, ONE BLANK ROW, THEN THE PANE. The
-		// handover ([app.factoryHead]) carries its own blank as its last row,
-		// so the pane starts on the row after it and gets the room that is
-		// left; the rail beside both keeps its own window.
-		head := a.factoryHead(paneW)
-		pane = append(head, a.factoryPane(paneW, max(0, room-len(head)))...)
+	if paneW > 0 {
+		pane = a.factoryPane(paneW, left)
 	}
 	sep := a.pal.dim(a.linearMark("│", "|"))
-	rows := make([]placeRow, 0, room)
-	for i := 0; i < room; i++ {
-		left := strings.Repeat(" ", listW)
+	for i := 0; i < left; i++ {
+		line := strings.Repeat(" ", rowsW)
 		hit := -1
 		if i < len(rail) {
-			left, hit = rail[i], hits[i]
+			line, hit = rail[i], hits[i]
 		}
-		if railW == 0 {
-			rows = append(rows, placeRow{text: left, hit: hit})
+		if paneW == 0 {
+			rows = append(rows, placeRow{text: factoryPad(line, width), hit: hit})
 			continue
 		}
 		right := ""
 		if i < len(pane) {
 			right = pane[i]
 		}
-		rows = append(rows, placeRow{text: left + sep + factoryPad(right, paneW), hit: hit})
+		rows = append(rows, placeRow{text: line + sep + factoryPad(right, paneW), hit: hit})
 	}
 	return rows
 }
@@ -217,12 +290,15 @@ func (a *app) factoryBody(width, room int) []placeRow {
 // false for a row that holds no item. It reads the window the last body drew,
 // so a press lands on the row a person saw.
 func (a *app) factoryPress(y int) bool {
-	line, ok := placeBodyLine(y, a.fp.top, a.fp.shown)
+	if a.fp.open {
+		return false
+	}
+	line, ok := placeBodyLine(y-a.fp.headRows, a.fp.top, a.fp.shown)
 	if !ok {
 		return false
 	}
 	rows := a.factoryRows()
-	if line < 0 || line >= len(rows) || rows[line].kind != factoryRowItem {
+	if line < 0 || line >= len(rows) || rows[line].walk < 0 {
 		return false
 	}
 	a.fp.cursor = rows[line].walk

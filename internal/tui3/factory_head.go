@@ -13,10 +13,11 @@ import (
 
 // ── THE HANDOVER ────────────────────────────────────────────────────────────
 //
-// The strip at the top of the factory page's pane column: what happened on the
-// floor since the person last looked, what waits on them now, and what the
-// floor is made of and has cost today. It is four rows and a blank, and the
-// page stacks the pane under it ([app.factoryBody]).
+// The strip across the top of the factory floor: what happened on the floor
+// since the person last looked, what waits on them now, and what the floor is
+// made of and has cost today. It is four rows and a blank, it spans the whole
+// width above the rows and the peek, and the page lays the floor under it
+// ([app.factoryBody]).
 //
 //	◆ handover · since 23:12 · 7h 12m · $8.44 ──────────────────────────
 //	✓ 2 shipped #1661 #1663 · 3 arrived · 1 question handled
@@ -73,8 +74,8 @@ func (a *app) factoryHead(width int) []string {
 	if width <= 0 {
 		return nil
 	}
-	// THE STRIP STANDS ONE CELL OFF THE RAIL'S SEPARATOR, as the pane under it
-	// does ([app.factoryPane]), so the two read as one column.
+	// THE STRIP STANDS ONE CELL IN FROM THE FRAME'S EDGE, so its marks sit
+	// beside the rows' leads rather than on the frame's first cell.
 	snap, inner := a.fp.snap, width-1
 	rows := []string{
 		a.factoryHeadTitle(snap, inner),
