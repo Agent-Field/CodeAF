@@ -468,7 +468,7 @@ func TestFactoryEnterOnAStreamSaysWhereTheRoomWillBe(t *testing.T) {
 			t.Fatalf("enter on item %d did not open its page", id)
 		}
 		drive(t, a, key("enter"))
-		if text := factoryFrameText(a); !strings.Contains(text, factoryStageNoteWords) || a.pageMsg != factoryStageNoteWords {
+		if text := factoryFrameText(a); !strings.Contains(text, factoryStageNoteWords) || !a.fp.said {
 			t.Fatalf("enter on a stage of item %d does not say where the conversation will be:\n%s", id, text)
 		}
 		if got := f.said(); len(got) != 0 {
