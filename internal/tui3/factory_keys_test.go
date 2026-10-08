@@ -347,6 +347,9 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 		}
 	}
 	a := factoryVerbLab(t, f)
+	// THE OFFER'S SENTENCE IS LONG; the page is wide enough that the pane
+	// beside the verbs' column holds it whole.
+	a.width = 200
 	factoryOn(t, a, 9)
 	if strip := factoryStripOf(t, a); !strings.HasPrefix(strip, "enter proof · s approve · B request changes") {
 		t.Fatalf("the clean landed strip is %q", strip)

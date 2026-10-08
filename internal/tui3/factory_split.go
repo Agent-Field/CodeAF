@@ -234,6 +234,10 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if a.fp.open {
+		// A PRESS ON THE VERBS' COLUMN IS THE ROW'S KEY (factory_verbs.go).
+		if v, ok := a.factoryVerbAt(m.X, row); ok {
+			return a.factoryVerbPress(v), true
+		}
 		return a.factoryItemPress(m.X, m.Y, row), true
 	}
 	paneW := a.fp.bodyW - a.fp.rowsW - 1
@@ -283,7 +287,8 @@ func (a *app) factoryOverBody(x, row int) bool {
 		if a.fp.bodyW < factoryStageFloor {
 			return a.fp.railShown > 0 && row > a.fp.railTop
 		}
-		return row >= a.fp.railTop && x > factoryRailW
+		// The verbs' column on the right, and its rule, are not the body.
+		return row >= a.fp.railTop && x > factoryRailW && (!a.factoryVerbsDrawn() || x < a.fp.verbX-factoryRuleW)
 	}
 	return a.fp.bodyW-a.fp.rowsW-1 > 0 && row >= a.fp.headRows && x > a.fp.rowsW
 }

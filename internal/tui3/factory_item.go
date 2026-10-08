@@ -541,6 +541,12 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	a.fp.stage = moveCursor(a.fp.stage, 0, len(rows))
 	a.fp.pageRows, a.fp.bodyW = room, width
 	a.fp.railTop, a.fp.railFirst, a.fp.railShown = 0, 0, 0
+	a.fp.verbX, a.fp.verbHits = 0, nil
+	// THE VERBS STAND ON THE RIGHT on a page wide enough for them
+	// (factory_verbs.go), and the chips they carry leave the head.
+	// AN ITEM WITH NO VERB AT ALL DRAWS NO COLUMN (the emptiness law), and
+	// its page is drawn as a narrow one is.
+	verbs := width >= factoryVerbRailMinW && width >= factoryStageFloor && len(a.factoryVerbGroups(it)) > 0
 	// THE PAGE STOPS [factoryMargin] BEFORE THE FRAME'S EDGE (factory_grid.go's
 	// THE RIGHT MARGIN), the head and the pane alike.
 	measure := max(width-factoryMargins, 0)
@@ -552,7 +558,11 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	// A PARKED ITEM'S SECOND ROW IS ITS QUESTION (factory_run.go's
 	// [app.factoryItemQuestion]), where the gate, cap and effort stand on every other item.
 	second := a.factoryItemQuestion(it, measure)
-	if second == "" {
+	switch {
+	case second != "":
+	case verbs:
+		second = fit(a.factoryItemOthers(it), measure)
+	default:
 		second = a.factoryItemChips(it, measure)
 	}
 	lines := []string{a.factoryItemTitle(it, measure), second, ""}
@@ -577,7 +587,20 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 			lines = append(lines, factoryPad(lead+line, width))
 		}
 	default:
-		paneW := width - factoryRailW - 1
+		paneW := width - factoryRailW - factoryRuleW
+		var verbLines []string
+		if verbs {
+			// THE VERBS' COLUMN TAKES ITS WIDTH, ITS RULE AND THE PAGE'S RIGHT
+			// MARGIN FROM THE PANE, and is placed before the pane is drawn,
+			// so the pane knows to leave its action line to the column.
+			paneW -= factoryRuleW + factoryVerbRailW + factoryMargin
+			a.fp.verbX = factoryRailW + factoryRuleW + paneW + factoryRuleW
+			var hits []factoryVerbHit
+			verbLines, hits = a.factoryVerbLines(it, left)
+			for _, h := range hits {
+				a.fp.verbHits = append(a.fp.verbHits, factoryVerbHit{row: len(lines) + h.row, verb: h.verb})
+			}
+		}
 		rail, first := a.factoryCellRail(cells, a.fp.stage, left)
 		a.fp.railTop, a.fp.railFirst, a.fp.railShown = len(lines), first, min(len(cells)-first, left)
 		pane := a.factoryPagePane(it, rows, max(paneW-factoryMargins, 0), left)
@@ -590,7 +613,15 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 			if a.factoryHasMore(right) {
 				a.fp.moreRow = len(lines)
 			}
-			lines = append(lines, rail[i]+sep+factoryPad(right, paneW))
+			line := rail[i] + sep + factoryPad(right, paneW)
+			if verbs {
+				verb := ""
+				if i < len(verbLines) {
+					verb = verbLines[i]
+				}
+				line += sep + factoryPad(verb, factoryVerbRailW)
+			}
+			lines = append(lines, line)
 		}
 	}
 	out := make([]placeRow, room)
@@ -657,7 +688,18 @@ func (a *app) factoryCrumbs(repo string) string {
 // same word twice with a label to read first. An item the plan spread over
 // more repos names the others, `also harness, agentfield`, dim.
 func (a *app) factoryItemChips(it factory.Item, measure int) string {
-	pal := a.pal
+	line := a.factoryChipRow(it, true, measure)
+	if others := a.factoryItemOthers(it); others != "" {
+		line += factorySpaces(factoryFactGap) + others
+	}
+	return fit(line, measure)
+}
+
+// factoryItemOthers is the other repos the item touches, dim, `also harness,
+// agentfield`, and nothing for an item on one repo (the emptiness law). With
+// the verbs on the right it is all the head's second row says, because the
+// chips stand in the column's `set` group.
+func (a *app) factoryItemOthers(it factory.Item) string {
 	home := factoryRepoShort(it.Repo)
 	var others []string
 	for _, p := range it.Places {
@@ -665,11 +707,10 @@ func (a *app) factoryItemChips(it factory.Item, measure int) string {
 			others = append(others, short)
 		}
 	}
-	line := a.factoryChipRow(it, true, measure)
-	if len(others) > 0 {
-		line += factorySpaces(factoryFactGap) + pal.dim("also "+strings.Join(others, ", "))
+	if len(others) == 0 {
+		return ""
 	}
-	return fit(line, measure)
+	return a.pal.dim("also " + strings.Join(others, ", "))
 }
 
 // factoryStageLabel is one stage as the rail names it, plain, and its paint:
@@ -966,6 +1007,18 @@ func (a *app) factoryPageAction(it factory.Item, measure int, extra ...string) s
 	return a.pal.dim(fit(strings.Join(words, " · "), measure))
 }
 
+// factoryPaneAction is the pane's action line as the page draws it: the
+// item's keys ([app.factoryPageAction]), and NOTHING WHILE THE VERBS STAND ON
+// THE RIGHT (factory_verbs.go), because the column says them and the pane
+// does not say them a second time. Under [factoryVerbRailMinW] the line is
+// back.
+func (a *app) factoryPaneAction(it factory.Item, measure int, extra ...string) string {
+	if a.factoryVerbsDrawn() {
+		return ""
+	}
+	return a.factoryPageAction(it, measure, extra...)
+}
+
 // factoryIssuePane is the whole issue: its body wrapped at [factoryPageProseW],
 // then the factory's read and the facts, then the questions it would put to
 // the author when the item is thin — one document, scrolled with `J` and `K`
@@ -1029,7 +1082,7 @@ func (a *app) factoryIssueAction(it factory.Item, measure int, extra ...string) 
 	if a.fp.said {
 		return a.pal.dim(fit(a.factoryNothingToOpen(it), measure))
 	}
-	return a.factoryPageAction(it, measure, extra...)
+	return a.factoryPaneAction(it, measure, extra...)
 }
 
 // factoryTalkPane is the item's conversation as the item page shows it: its
@@ -1054,7 +1107,7 @@ func (a *app) factoryStagePane(it factory.Item, views []factoryStageView, at, me
 	if v.stage.Name == "proof" && len(it.Proof)+len(it.Policy) > 0 {
 		return a.factoryProofPane(it, head, measure, room)
 	}
-	action := a.factoryPageAction(it, measure)
+	action := a.factoryPaneAction(it, measure)
 	// `ENTER` ON A STAGE WITH NO ROOM SAYS WHY ON THIS LINE, where the keys
 	// stand, until the cursor moves or another key is pressed.
 	if a.fp.said && strings.TrimSpace(v.phase.Chat) == "" {
