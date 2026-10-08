@@ -17,8 +17,13 @@ import (
 // the surface already has (owner ruling, 2026-10-08): the braille spinner a
 // genuinely in-flight row wears in the transcript (formingblock.go), a dim
 // word after it, and NOTHING AT ALL WHEN NOTHING IS IN FLIGHT (the emptiness
-// law). No clock is armed for it: the spinner turns on the frames the place's
-// own beat already draws, at the transcript's own rate.
+// law). WHILE SOMETHING IS IN FLIGHT THE FLOOR ASKS FOR FRAMES AT THE
+// SPINNER'S OWN CADENCE, AND WHILE NOTHING IS IT ASKS FOR NONE
+// ([app.factorySpinning], the paint clock's twentieth reason). The spinner
+// counts painted frames, and the place's own beat paints once in three
+// seconds, so a floor that left the turning to that beat drew a spinner that
+// stood still: the owner looked at `⠸ asking gh…` and could not tell anything
+// was running (2026-10-08). A still floor still costs nothing.
 //
 // Three kinds of flight are drawn, each from what the floor itself says rather
 // than from a guess:
@@ -67,6 +72,45 @@ func (a *app) factoryBusy(id int) (string, bool) {
 		return "", false
 	}
 	return word, true
+}
+
+// factorySpinning says whether the floor is drawing a spinner that has to
+// turn: the factory place is the one showing (the picker and the recipe page
+// stand over it on the same place) and something on it is in flight. Each
+// term is a spinner this file's header names, read from the fact that draws
+// it: a door a key asked, out ([app.factoryDoingNote]); an item being read,
+// whose row, peek and read line spin ([app.factoryRowSpins]; a row waiting
+// its turn wears a still dot and turns nothing); the whole floor read again,
+// or a source mid-poll ([app.factoryHeadFresh]); and a running stage on the
+// open item page ([app.factoryStageMark]). The linear tier draws one still
+// mark ([app.formingMark]), so it turns nothing either.
+func (a *app) factorySpinning() bool {
+	if !a.at(pageFactory) || a.linear {
+		return false
+	}
+	if a.fp.act.doing != "" || strings.TrimSpace(a.fp.snap.BusyAll) != "" {
+		return true
+	}
+	for id := range a.fp.snap.Busy {
+		if a.factoryRowSpins(id) {
+			return true
+		}
+	}
+	for _, src := range a.fp.snap.Sources {
+		if src.Polling && src.Name != "" {
+			return true
+		}
+	}
+	if a.fp.open {
+		if it, ok := a.factoryCursorItem(); ok && it.Stream != nil {
+			for i := range it.Stream.Phases {
+				if factoryPhaseKind(it, i) == factoryMarkRunning {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // factorySpin is the spinner's frame now: the transcript's own braille, on
