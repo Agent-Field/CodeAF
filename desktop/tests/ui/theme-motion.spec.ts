@@ -87,6 +87,8 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
  await page.reload(); await expect(trigger).toContainText('Dark appearance');
  const outside = await page.getByRole('heading',{name:'A space for what’s next.'}).boundingBox();
  await trigger.click(); await expect(page.getByRole('option',{name:'Dark appearance'})).toHaveAttribute('aria-selected','true');
+ await expect(page.getByRole('option',{name:'Dark appearance'})).toBeFocused();
+ await expectThemedSurface(page, page.getByRole('listbox'));
  await page.mouse.click(outside!.x+outside!.width/2,outside!.y+outside!.height/2);
  await expect(page.getByRole('listbox')).not.toBeVisible();
  await page.getByRole('button',{name:'Activity',exact:true}).click();
