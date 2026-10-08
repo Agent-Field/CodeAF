@@ -391,6 +391,13 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.pageMsg = ""
 		return a.factoryOpenForge(it), true
 	}
+	// THE SETTINGS' KEYS ANSWER ON THE SETTINGS ROW ONLY on the item page:
+	// on any other row `s`, `w`, `b` and `1-9` do nothing, and change
+	// nothing on the screen, so a letter meant for the manager never opens
+	// the add-a-stage row.
+	if a.factorySettingsOnlyKey(it, k) && !a.factoryOnSettingsRow(it) {
+		return nil, true
+	}
 	a.pageMsg = ""
 	a.fp.said = false
 	var cmd tea.Cmd
@@ -417,6 +424,32 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 	}
 	return cmd, took
+}
+
+// factorySettingsOnlyKey says whether k is one of the settings row's own
+// keys for the item: add a stage, set in words, save the stages as the
+// recipe and the stage toggles, on a new or dismissed item. `t`, `e` and `c`
+// are not among them: the page's knobs answer on every row.
+func (a *app) factorySettingsOnlyKey(it factory.Item, k string) bool {
+	if it.State != factory.StateNew && it.State != factory.StateDismissed {
+		return false
+	}
+	switch k {
+	case keyAddStage, keyInWordsSet, keySaveRecipe, "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		return true
+	}
+	return false
+}
+
+// factoryOnSettingsRow says whether the settings' keys answer where the
+// person stands: on the floor, which has no rows of the page, and on the
+// item page's settings row.
+func (a *app) factoryOnSettingsRow(it factory.Item) bool {
+	if !a.fp.open {
+		return true
+	}
+	r, ok := a.factoryPageRowAt(it)
+	return ok && r.kind == factoryPageSettings
 }
 
 // factoryNewKey is a key on a new (or dismissed) item: its card's keys.
@@ -751,15 +784,23 @@ func (a *app) factoryOpenAsk(ask factoryAsk) {
 
 // factoryAskKey is a key while the typing row is open, which has the whole
 // keyboard: letters type, `backspace` takes one back, `ctrl+u` clears, `enter`
-// submits and `esc` cancels.
+// submits and `esc` cancels. THE MANAGER'S BOX IS NOT CANCELLED BY `esc`: it
+// gives the keys back and keeps its words as the box's draft
+// (factory_timeline.go), which `enter` spends.
 func (a *app) factoryAskKey(msg tea.KeyPressMsg) tea.Cmd {
 	ask := a.fp.act.ask
 	switch msg.String() {
 	case "esc":
+		if ask.kind == factoryAskManager && a.fp.tl.id == ask.id {
+			a.fp.tl.draft = ask.text
+		}
 		a.fp.act.ask = nil
 		a.touch()
 		return nil
 	case "enter":
+		if ask.kind == factoryAskManager && a.fp.tl.id == ask.id {
+			a.fp.tl.draft = ""
+		}
 		a.fp.act.ask = nil
 		a.touch()
 		words := strings.TrimSpace(ask.text)
@@ -1118,8 +1159,12 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 }
 
 // factoryAskHint is the hint line while the typing row is open: its own keys
-// and nothing else, because every other key types.
+// and nothing else, because every other key types. The manager's box says
+// `esc back to keys`, because its `esc` keeps the words.
 func factoryAskHint(ask *factoryAsk) string {
+	if ask.kind == factoryAskManager {
+		return "type · " + factoryHintClause(keyOpen, wordSend) + " · " + factoryHintClause(keyBack, wordBackToKeys)
+	}
 	verb := "send"
 	switch ask.kind {
 	case factoryAskStage:

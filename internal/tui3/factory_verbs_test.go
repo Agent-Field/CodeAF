@@ -221,9 +221,26 @@ func TestFactoryVerbsHoverPaintsOneRow(t *testing.T) {
 // one cell on every row, its group names at one cell, its keys end at one
 // cell, and nothing passes the page's right margin.
 func TestFactoryAlignVerbs(t *testing.T) {
+	for _, focused := range []bool{false, true} {
+		factoryAlignVerbsAt(t, focused)
+	}
+}
+
+// factoryAlignVerbsAt is the audit with the manager's box holding the keys
+// or not: a dimmed column stands where a lit one does.
+func factoryAlignVerbsAt(t *testing.T, focused bool) {
+	t.Helper()
 	for _, width := range []int{100, 120, 150} {
 		a := factoryVerbsLab(t, &factoryFake{}, width)
 		factoryVerbsOpen(t, a, 4)
+		if focused {
+			factoryRowNamed(t, a, wordFacetManager)
+			drive(t, a, key("enter"))
+			if !a.factoryBoxFocused() {
+				t.Fatalf("at %d enter on the manager row did not focus the box", width)
+			}
+			frame(a)
+		}
 		if !a.factoryVerbsDrawn() {
 			t.Fatalf("at %d the page drew no column", width)
 		}
@@ -259,5 +276,59 @@ func TestFactoryAlignVerbs(t *testing.T) {
 				t.Errorf("at %d the key of %q ends at %d, not %d", width, name, end, factoryVerbRailW)
 			}
 		}
+	}
+}
+
+// THE COLUMN IS DIMMED WHILE THE BOX HAS THE KEYS: every row's word in the
+// dim tier, plain again after `esc`; the pointer still wears its ground on
+// a dimmed row, and a press on one runs nothing and types nothing.
+func TestFactoryVerbsDimWhileTheBoxTypes(t *testing.T) {
+	f := &factoryFake{}
+	a := factoryVerbsLab(t, f, 120)
+	a.pal = newPalette(tokens.TrueColor, false)
+	factoryVerbsOpen(t, a, 4)
+	factoryRowNamed(t, a, wordFacetManager)
+	words := func() []string {
+		var out []string
+		for _, g := range a.factoryVerbGroups(factoryTLItem(t, a)) {
+			for _, r := range g.rows {
+				out = append(out, r.word)
+			}
+		}
+		return out
+	}
+	painted := func(paint func(string) string) bool {
+		screen := frame(a)
+		for _, w := range words() {
+			if !strings.Contains(screen, paint(factoryPad(w, factoryVerbWordW+factoryVerbValueW))) {
+				return false
+			}
+		}
+		return true
+	}
+	if !painted(a.pal.ink) {
+		t.Fatal("the column is not in ink before the box has the keys")
+	}
+	drive(t, a, key("enter"))
+	if !a.factoryBoxFocused() || !painted(a.pal.dim) {
+		t.Fatalf("the column is not dimmed while the box has the keys (focused %v)", a.factoryBoxFocused())
+	}
+	f.said()
+	x, y := factoryVerbsHit(t, a, wordRun)
+	drive(t, a, tea.MouseMotionMsg{X: x, Y: y})
+	if a.fp.verbHover != wordRun {
+		t.Fatalf("the pointer on a dimmed row left the hover at %q", a.fp.verbHover)
+	}
+	drive(t, a, clickAt(x, y), releaseAt(x, y))
+	if got := f.said(); len(got) != 0 {
+		t.Fatalf("a press on a dimmed run asked %v", got)
+	}
+	if ask := a.fp.act.ask; ask == nil || ask.text != "" {
+		t.Fatalf("a press on a dimmed row typed into the box: %+v", ask)
+	}
+	drive(t, a, tea.MouseMotionMsg{X: factoryRailW + 4, Y: y})
+	drive(t, a, key("esc"))
+	if !painted(a.pal.ink) {
+		t.Fatal("the column did not light up again after esc")
 	}
 }
