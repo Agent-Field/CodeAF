@@ -55,6 +55,11 @@ type Job struct {
 	// stage order, so a review reads what write produced and a post reads
 	// whether the checks were green.
 	Prior []factory.StageResult
+	// Last is this same stage's result from the round before, nil on round 1.
+	// A chat stage that loops on `until clean`, `green` or `proven` reads it
+	// to fix what that round found before it looks again. The rounds lane
+	// added it, additively.
+	Last *factory.StageResult
 	// Dir is the repository's checkout on this machine, "" when unknown.
 	Dir string
 	// Steer delivers the person's words while the round runs; a chat stage

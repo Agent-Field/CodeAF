@@ -32,6 +32,16 @@ so the round is counted and the stage stops at its max and asks you.
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
+## a second round — the review found the same thing again, fix then check
+
+A second round fixes what the first found, then checks again. When review (or anything that
+runs until clean, green or proven) goes round again, round 2's brief adds `round 2 of review.
+The last round found: … Fix those in the checkout first, run the tests, then review again and
+report only what remains.`, carrying what the last round said and the claims it could not show
+(the first 1,500 characters), so a round never just looks at the same unchanged checkout
+again. Nothing is added on a run until done, and a check just runs its command again. When
+the rounds run out, it asks you `one more round, or go on as is?`.
+
 ## where a stage's conversation opens — watch a running stage, open it afterwards
 
 A stage's conversation is made when the stage starts, in the folder of the repository's
@@ -58,6 +68,10 @@ Two floors still hold under it, as they do under `--yolo`: a critical command su
 `mkfs` or `shutdown`, and a call that acts in your name such as `gmail_send`, would ask, and in a
 stage that ask is refused with `needs approval but no resolver is attached: <rule>`. Nothing in a
 stage ever waits on you.
+
+A stage cannot post to its team either: its brief says `You have no team_post tool; report
+through stage_result only. Ignore team notices about renames.`, so a renamed teammate does not
+send it hunting for a way to answer.
 
 To run stages narrower, set `CODEAF_FACTORY_POSTURE` to another posture (`ask`, `guardian`,
 `deny`, or `auto` for your own settings rows) in the environment codeaf's host starts in; under

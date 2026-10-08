@@ -268,6 +268,7 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 	a.factoryFoldBusy()
 	a.factoryFoldPhases()
 	a.factoryKeep(was, had)
+	a.factoryFoldLaunchNote()
 }
 
 // ── the rail's rows ─────────────────────────────────────────────────────────
@@ -277,12 +278,13 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 // [app.factoryWalkNow], so the cursor counts in the same list the rail draws.
 
 // factoryWaiting is how many items on the last floor read wait on the
-// person, and 0 before the first read: the tab bar's `? 5` ([app.barAsk]).
+// person, a landed one included ([factoryWaitingIn]), and 0 before the first
+// read: the tab bar's `? 5` ([app.barAsk]).
 func (a *app) factoryWaiting() int {
 	if !a.fp.loaded {
 		return 0
 	}
-	return a.fp.snap.Count(factory.StateNeedsYou)
+	return factoryWaitingIn(a.fp.snap)
 }
 
 // factoryCursorItem is the item under the cursor, and false when the floor

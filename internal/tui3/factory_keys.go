@@ -107,6 +107,16 @@ type factoryActs struct {
 	// launch is `L`'s question while marks stand, nil when none does
 	// (factory_run.go).
 	launch *factoryLaunchAsk
+	// launched is a launch's note the fold still owes, nil when none is
+	// ([app.factoryLaunchNote]).
+	launched *factoryLaunchNote
+}
+
+// factoryLaunchNote is a launch whose note waits on the floor's next read:
+// the item, and what the note says after its state (`· plan first`).
+type factoryLaunchNote struct {
+	id   int
+	tail string
 }
 
 // ── the clock ───────────────────────────────────────────────────────────────
@@ -231,6 +241,42 @@ func factoryLaunchedWords(it factory.Item) string {
 		return it.Ref() + " is waiting on you"
 	}
 	return it.Ref() + " is running"
+}
+
+// factoryLaunchNote is what the note line says the moment a launch's door has
+// answered: the item's state words when the floor already reads it past the
+// queue, and nothing yet when it reads it queued, which the next fold resolves
+// ([app.factoryFoldLaunchNote]).
+//
+// A LAUNCH IS QUEUED FOR AN INSTANT EVEN ON A FREE BENCH. The door writes
+// queued and the bench takes the item a moment later, so the read the door's
+// own ask makes sees queued; on the 2026-10-08 hand run `r` said `#1 is queued
+// · a bench frees it` while #1 started that second. The note waits for the
+// floor's next read, and says queued only when the item is still there.
+func (a *app) factoryLaunchNote(it factory.Item, tail string) string {
+	if it.State == factory.StateQueued {
+		a.fp.act.launched = &factoryLaunchNote{id: it.ID, tail: tail}
+		return ""
+	}
+	a.fp.act.launched = nil
+	return factoryLaunchedWords(it) + tail
+}
+
+// factoryFoldLaunchNote says the note a launch left owing, on the first fold
+// after it: running, waiting on you, or queued behind full benches. A note
+// somebody put on the line since is not written over.
+func (a *app) factoryFoldLaunchNote() {
+	n := a.fp.act.launched
+	if n == nil {
+		return
+	}
+	a.fp.act.launched = nil
+	if a.pageMsg != "" {
+		return
+	}
+	if it, ok := a.factoryItemByID(n.id); ok {
+		a.factorySay(factoryLaunchedWords(it) + n.tail)
+	}
 }
 
 // factorySteerable says whether `S` steers the item: a stream to hand words
@@ -437,11 +483,11 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 				}
 				return s.Launch(id)
 			}, func(it factory.Item) string {
-				w := factoryLaunchedWords(it)
+				tail := ""
 				if g == factory.GatePlan {
-					w += rowSep + "plan first"
+					tail = rowSep + "plan first"
 				}
-				return w
+				return a.factoryLaunchNote(it, tail)
 			}), true
 		}
 	case "L", "shift+l":
@@ -453,7 +499,9 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 				a.factoryOpenLaunch(ids)
 				return nil, true
 			}
-			return a.factoryVerb(id, func(s factory.Seam) error { return s.Launch(id) }, factoryLaunchedWords), true
+			return a.factoryVerb(id, func(s factory.Seam) error { return s.Launch(id) }, func(it factory.Item) string {
+				return a.factoryLaunchNote(it, "")
+			}), true
 		}
 	case "t":
 		if seam.Has("setgate") {

@@ -36,7 +36,7 @@ func factoryHeadPlain(a *app, width int) []string {
 
 // THE FIXTURE'S HANDOVER CARRIES THE FIXTURE'S COUNTS: the shift's start and
 // length and spend on the heading, what shipped by name and what arrived, the
-// one item waiting, and the floor's repos, benches and money.
+// two items waiting (a question and a landed sheet), and the floor's repos, benches and money.
 func TestFactoryHeadCarriesTheFixturesCounts(t *testing.T) {
 	a := factoryHeadLab(t, factory.Fixture(factoryTestNow))
 	rows := factoryHeadPlain(a, 110)
@@ -46,7 +46,7 @@ func TestFactoryHeadCarriesTheFixturesCounts(t *testing.T) {
 	for i, want := range []string{
 		"handover · since 04:00 · 8h · $8.44 ─",
 		"1 shipped #1663 · 4 arrived",
-		"? 1 waiting on you",
+		"? 2 waiting on you",
 		"3 repos · github · chat · benches 1/6 · polled 14s ago",
 	} {
 		if !strings.Contains(rows[i], want) {
@@ -200,5 +200,38 @@ func TestFactoryHeadSaysASourceIsInTrouble(t *testing.T) {
 	got := ansi.Strip(rowTail(factoryHeadFacts(snap), 200))
 	if !strings.Contains(got, "github · not reachable") || !strings.Contains(got, "polled 4m ago") {
 		t.Fatalf("the facts line reads %q", got)
+	}
+}
+
+// A LANDED ITEM WAITS ON YOU: its sheet waits for the sign-off, so a floor
+// whose only item has landed does not say `nothing waits on you`, and the
+// handover, its full form and the tab bar count it alike. The 2026-10-08
+// hand run landed #1 under `nothing waits on you`.
+func TestFactoryALandedItemCountsAsWaiting(t *testing.T) {
+	full := factory.Fixture(factoryTestNow)
+	var landed factory.Item
+	for _, it := range full.Items {
+		if it.State == factory.StateLanded {
+			landed = it
+		}
+	}
+	snap := full
+	snap.Items = []factory.Item{landed}
+	a := factoryHeadLab(t, snap)
+	a.fp.loaded = true
+	text := strings.Join(factoryHeadPlain(a, 110), "\n")
+	if strings.Contains(text, factoryHeadNoWaitWords) || !strings.Contains(text, "? 1 waiting on you") {
+		t.Fatalf("a landed item is not counted as waiting:\n%s", text)
+	}
+	a.fp.headFull = false
+	if line := strings.Join(factoryHeadPlain(a, 150), "\n"); !strings.Contains(line, "? 1 waiting") {
+		t.Fatalf("the one-line handover does not count the landed item:\n%s", line)
+	}
+	if n := a.factoryWaiting(); n != 1 {
+		t.Fatalf("the tab bar counts %d waiting, want 1", n)
+	}
+	a.fp.snap = full
+	if n, want := a.factoryWaiting(), full.Count(factory.StateNeedsYou)+full.Count(factory.StateLanded); n != want || n != 2 {
+		t.Fatalf("the fixture counts %d waiting, want %d", n, want)
 	}
 }
