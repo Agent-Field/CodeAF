@@ -110,3 +110,31 @@ func LiftChips(words string) (gate *Gate, cap *float64, rounds *int, effort stri
 	}
 	return gate, cap, rounds, c.Effort, TidyWords(c.Rest)
 }
+
+// reSecurity is a request for a security pass: `security`, `with security`,
+// `a security review`. It is not one of the four chips because it is not a
+// knob on the item; it switches a banked stage on.
+var reSecurity = regexp.MustCompile(`(?i)\b(?:with |and |a |do )?security(?: review| pass| check)?\b`)
+
+// LiftSecurity says whether rest asks for a security pass and answers rest
+// with that request taken out, NOT YET TIDIED, the same way [Lift] leaves its
+// own rest.
+func LiftSecurity(rest string) (bool, string) {
+	if !reSecurity.MatchString(rest) {
+		return false, rest
+	}
+	return true, reSecurity.ReplaceAllString(rest, "")
+}
+
+// GuessType is the triage type a person's own words imply: a bug when they say
+// fix or bug, a feature otherwise. It is the cheap guess a terminal-made item
+// carries until something reads it properly, and it never guesses a kind: a
+// sentence typed on the floor is an issue, because a pull request or a red
+// run arrives from a source and is never typed.
+func GuessType(words string) string {
+	low := strings.ToLower(words)
+	if strings.Contains(low, "fix") || strings.Contains(low, "bug") {
+		return "bug"
+	}
+	return "feat"
+}
