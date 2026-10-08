@@ -20,10 +20,9 @@ import "strings"
 //	thin       the readiness is under 55
 //	mine       the author is santosh
 //
-// THE MATCHER LIVES HERE AND NOT IN THE MOCK because the surface must not
-// import the mock (it is built only under the factorymock tag), and a filter
-// is a fact about the floor's vocabulary, not about one fake floor. The empty
-// query matches everything.
+// THE MATCHER LIVES HERE, beside the vocabulary, because a filter is a fact
+// about the floor's vocabulary, not about one seam behind it. The empty query
+// matches everything.
 func Match(q string) func(Item) bool {
 	terms := strings.Fields(strings.ToLower(q))
 	if len(terms) == 0 {

@@ -5318,11 +5318,6 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// period, re-armed only while one of them is standing (placecounts.go).
 		return a, a.placeBeat(msg.gen)
 
-	case factoryBeatMsg:
-		// AND THE MOCK FACTORY FLOOR HAS A FASTER ONE, beating only while the
-		// factory page stands on a seam with a clock (factory_keys.go).
-		return a, a.factoryBeat(msg.gen)
-
 	case factoryCardPollMsg:
 		// AND THE LIVE ITEM CARDS IN A CONVERSATION HAVE THEIR OWN, reading the
 		// floor every three seconds while one is on screen and stopping the
