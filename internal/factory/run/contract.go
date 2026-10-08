@@ -69,6 +69,11 @@ type Job struct {
 	Log func(line string)
 	// Spend reports model cost the round incurred, in dollars, as it happens.
 	Spend func(usd float64)
+
+	// dirErr is why Options.Workdir could not answer a folder. The round is
+	// then not run: it fails with this sentence, because a round run in the
+	// person's checkout instead is the very thing the worktree is for.
+	dirErr error
 }
 
 // EventKind names what moved on an item.
@@ -112,6 +117,12 @@ type Options struct {
 	SpentToday func() float64
 	// RepoDir maps a repo's short name to its checkout, "" when unknown.
 	RepoDir func(repo string) string
+	// Workdir answers the folder an item's rounds run in: its own worktree
+	// on its own branch (workdir.go), so no item ever works in the person's
+	// checkout and two items never share one. When it is set, a Job's Dir
+	// comes from it and its error fails the round with its sentence; when it
+	// is nil, Dir is RepoDir's. The workdir lane added it, additively.
+	Workdir func(it factory.Item) (dir string, err error)
 	// Recipe answers the repo's recipe (its file, else the default), which
 	// the plan stage's edits are bounded by.
 	Recipe func(repo string) factory.Recipe
