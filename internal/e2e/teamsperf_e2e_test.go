@@ -64,6 +64,9 @@ func TestTeamsLargeOverviewPointerAndLivePreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := start(t, "teams_perf", home, ws, 160, 55, "chat", "--session", manager, "--model", model, "--one-model", "--no-host")
+	if strings.Contains(r.capture(), "Tasks 0") {
+		r.keys("M-l")
+	}
 	r.lit("Reply with exactly these words: Teams live check passed. Do not use tools or delegate.")
 	r.keys("Enter")
 	cleanChatWaitAnswer(t, r, "Teams live check passed", 3*time.Minute)
@@ -96,7 +99,7 @@ func TestTeamsLargeOverviewPointerAndLivePreview(t *testing.T) {
 	r.lit(wheel.String())
 	r.waitFor(20*time.Second, "@member-010")
 	r.resize(90, 32)
-	screen = r.waitFor(20*time.Second, "+ Add chat", "@member-")
+	screen = r.waitFor(20*time.Second, "Performance fixture", "@member-")
 	// Open a visible member after scrolling and resizing: hits must follow the
 	// actual card geometry, and chat navigation must survive the pointer burst.
 	for row, line := range strings.Split(screen, "\n") {
@@ -106,7 +109,7 @@ func TestTeamsLargeOverviewPointerAndLivePreview(t *testing.T) {
 		col := ansi.StringWidth(line[:strings.Index(line, "@member-")]) + 1
 		r.mouseClick(col+1, row+1)
 		r.waitFor(20*time.Second, "Please review fixture", "Review")
-		if strings.Contains(r.capture(), "+ Add chat") {
+		if strings.Contains(r.capture(), "tab next place") {
 			t.Fatal("member click stayed in the overview")
 		}
 		if evidence := os.Getenv("CODEAF_E2E_EVIDENCE_DIR"); evidence != "" {
