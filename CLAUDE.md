@@ -421,3 +421,14 @@ recipe for driving the surface and killing the link on purpose.
 ## Learned Workspace Facts
 
 - Concurrent full runs of `internal/tui3` or `internal/session` (and full-tree `make test` / `test-report`) take the per-box lock in `scripts/one-suite.sh` and refuse instead of stacking; `make test-focus` and lighter checks stay unlocked.
+
+## Desktop application
+
+The desktop scaffold lives in `desktop/`. Read `desktop/AGENTS.md` and
+`desktop/docs/DESIGN.md` before editing it. Run its commands from `desktop/`
+or with `npm --prefix desktop`. Root Go gates exclude its nested health
+placeholder module; `npm --prefix desktop run check` checks that module.
+The benchmarked coding loop, task splitting and prompts stay in this root
+engine. Do not implement a second agent loop in the desktop scaffold.
+Responsive layouts and the shared design contract are required for every UI
+change. Branch names provide no privacy in this public repository.

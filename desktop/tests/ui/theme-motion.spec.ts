@@ -105,7 +105,7 @@ for (const theme of ['Light','Dark']) {
   await expect(quick).toHaveAttribute('aria-pressed','true');
   await expect(quick).toHaveCSS('background-color',await tokenColor(page,'control-selected'));
   await expect(page.getByRole('button',{name:'Open Workspace'})).toHaveAttribute('aria-pressed','false');
-  const address=page.getByRole('button',{name:'CodeAF',exact:true});
+  const address=page.getByRole('button',{name:'codeaf',exact:true});
   await address.hover(); await expect(address).toHaveCSS('background-color',await tokenColor(page,'control-hover'));
   await page.getByRole('button',{name:'Design system',exact:true}).click();
   const secondary=page.getByRole('button',{name:'Secondary action',exact:true});

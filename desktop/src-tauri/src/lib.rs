@@ -19,7 +19,7 @@ async fn engine_health(app: tauri::AppHandle) -> Result<EngineHealth, String> {
         .await
         .map_err(|e| e.to_string())?;
     if !output.status.success() {
-        return Err("The CodeAF engine health check failed".into());
+        return Err("The codeaf engine health check failed".into());
     }
     serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
 }
@@ -30,5 +30,5 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![engine_health])
         .run(tauri::generate_context!())
-        .expect("error while running CodeAF");
+        .expect("error while running codeaf");
 }

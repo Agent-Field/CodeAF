@@ -20,7 +20,8 @@
     "predev": "npm run design:generate",
     "prebuild": "npm run design:check",
     "design:test": "node --test scripts/check-design.test.mjs",
-    "test:ui": "playwright test"
+    "test:ui": "playwright test",
+    "upstream:sync": "node scripts/sync-dev.mjs"
   },
   "dependencies": {
     "@animateicons/react": "0.12.0",

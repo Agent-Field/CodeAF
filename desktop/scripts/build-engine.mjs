@@ -15,4 +15,4 @@ mkdirSync('src-tauri/binaries', { recursive: true });
 execFileSync('go', ['build', '-trimpath', '-o', `../src-tauri/binaries/codeaf-engine-${target}${GOOS === 'windows' ? '.exe' : ''}`, './cmd/codeaf-engine'], {
  cwd: 'engine', env: { ...process.env, GOOS, GOARCH, CGO_ENABLED: '0' }, stdio: 'inherit',
 });
-console.log(`Built CodeAF engine for ${target}`);
+console.log(`Built codeaf engine for ${target}`);
