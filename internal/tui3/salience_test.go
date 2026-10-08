@@ -151,6 +151,10 @@ var salienceTable = []salienceCase{
 	{name: "EventSubharnessStep", chatOnly: "one step of the run behind that question", ev: session.Event{Kind: session.EventSubharnessStep}},
 	{name: "EventSubharnessProposal", chatOnly: "the proposal that question settles into", ev: session.Event{Kind: session.EventSubharnessProposal}},
 	{name: "EventSubharnessProposalOff", chatOnly: "that proposal withdrawn", ev: session.Event{Kind: session.EventSubharnessProposalOff}},
+	{name: "EventFactoryProposal", chatOnly: "a factory card is the conversation's own question, and its " +
+		"question rides the questions lane", ev: session.Event{Kind: session.EventFactoryProposal}},
+	{name: "EventFactoryAdded", chatOnly: "news for the factory floor, which re-reads itself",
+		ev: session.Event{Kind: session.EventFactoryAdded}},
 	{name: "EventTakeover", chatOnly: "a checkpoint take-over is the session's own act on the turn the person " +
 		"typed", ev: session.Event{Kind: session.EventTakeover}},
 	{name: "EventMoved", chatOnly: "a conversation walking to another terminal is a fact about this WINDOW, " +

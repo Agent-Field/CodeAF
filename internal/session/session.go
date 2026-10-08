@@ -635,6 +635,22 @@ const (
 	// EventToolOutput carries literal stdout/stderr in Text while a user shell
 	// command is running. CallID owns the bytes; its result still ends the call.
 	EventToolOutput
+	// EventFactoryProposal is the card `factory_add` raises: the chat wants to
+	// put one piece of work on the factory floor (tools_factory.go). Factory
+	// carries the card, and its ID is the token a surface hands back to
+	// [Agent.ResolveFactory]. The same kind comes again, once, when the card is
+	// settled, with Decided or Withdrawn set, so a surface can draw the outcome
+	// where the question stood.
+	//
+	// IT RIDES THE TASK LANE ([Agent.WatchTaskUpdates]) and the question rides
+	// the questions lane beside it. There is NO CLOCK THAT ADDS: silence puts
+	// nothing on the floor, and a surface that ignores this kind adds nothing,
+	// which is the correct behaviour rather than a degradation.
+	EventFactoryProposal
+	// EventFactoryAdded says one item has just been written to the factory
+	// floor from a chat. Factory.Item is the floor's own id for it, so the
+	// surface re-reads the floor rather than drawing a row from the card.
+	EventFactoryAdded
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -946,6 +962,12 @@ type Event struct {
 	// (subharness_contract.go). It is nil on every other kind, and the ID beside
 	// it is the token a surface hands back to [Agent.ResolveSubharness].
 	Subharness *SubharnessCard
+
+	// Factory carries one EventFactoryProposal's card or one EventFactoryAdded's
+	// news (factory_contract.go). It is nil on every other kind, and it rides
+	// behind a json tag of its own so a peer built before it simply does not
+	// see it.
+	Factory *FactoryNotice `json:"Factory,omitempty"`
 
 	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
 	// model was being asked, how far into its patience the step is, why the
@@ -1522,6 +1544,15 @@ type Config struct {
 	// Standing is the ambient side (standing_contract.go, internal/standing).
 	// Nil is off: no belt tool, no card, no ticking from this process.
 	Standing *Standing
+
+	// Factory is the door onto the factory floor (factory_contract.go). NIL IS
+	// NO DOOR: `factory_add` is off the belt and the page says nothing about
+	// it, because a capability with nothing behind it is absent, not broken.
+	Factory FactoryDoor
+
+	// factoryWindow overrides how long one factory card holds its tool call
+	// open, for tests that watch the window end. Zero is [factoryCardWindow].
+	factoryWindow time.Duration
 
 	// standingItems overrides where [Standing.Store] would be read, and it is
 	// unexported because it exists for THIS PACKAGE'S TESTS and for nothing
@@ -3367,6 +3398,14 @@ type Agent struct {
 	// to — would otherwise wait forever on a card that is already up.
 	subharnessSeq    uint64
 	subharnessOffers map[uint64]*subharnessOffer
+
+	// factoryOffers is the factory cards chat has raised and nobody has
+	// answered yet, keyed by the proposal id the EventFactoryProposal carried,
+	// and factorySeq is what names them (tools_factory.go). Each entry keeps
+	// its own card for the reason subharnessOffers does: a surface that
+	// subscribes while the question stands must still be able to draw it.
+	factorySeq    uint64
+	factoryOffers map[string]*factoryOffer
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just

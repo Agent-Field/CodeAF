@@ -1477,6 +1477,17 @@ func questionAsked(event Event) (string, bool) {
 			return "", false
 		}
 		return questionToken(QuestionConnect, id), true
+
+	case EventFactoryProposal:
+		if event.Factory == nil || strings.TrimSpace(event.Factory.ID) == "" {
+			return "", false
+		}
+		if event.Factory.Decided != nil || event.Factory.Withdrawn != "" {
+			// The settled card restates its outcome and asks nothing, as a
+			// settled task proposal does.
+			return "", false
+		}
+		return questionToken(QuestionFactory, strings.TrimSpace(event.Factory.ID)), true
 	}
 	return "", false
 }
@@ -1877,6 +1888,8 @@ func questionGoneReason(q Question) string {
 		return "the work settled"
 	case QuestionFuel:
 		return "the run is no longer at its gate"
+	case QuestionFactory:
+		return factoryGoneReason
 	}
 	// The model's own question and everything else: the turn that raised it
 	// has ended — interrupted, or finished around it — which is the one way a
@@ -2262,6 +2275,27 @@ func (a *Agent) applyToLane(answer Answer) error {
 	case QuestionSubharness:
 		a.ResolveSubharness(answer.ID, key == "1", nil)
 		return nil
+	case QuestionFactory:
+		// WORDS ARE A CHANGE AND NEVER A YES (tools_factory.go). Words with no
+		// key are the whole answer; words beside `add it` still mean the card
+		// was not right as it stood, so they travel as the change and nothing
+		// is written. `not now` with words is still not now.
+		if key == "" {
+			if strings.TrimSpace(words) == "" {
+				return errAnswerEmpty
+			}
+			a.ResolveFactory(answer.Ref, FactoryAnswer{Change: words})
+			return nil
+		}
+		action, ok := AnswerFromKey(QuestionFactory, key)
+		if !ok {
+			return errAnswerEmpty
+		}
+		if action.Factory.Approved {
+			action.Factory.Change = strings.TrimSpace(words)
+		}
+		a.ResolveFactory(answer.Ref, action.Factory)
+		return nil
 	case QuestionSubharnessAsk:
 		// A RUNNING SUB-HARNESS IS ANSWERED IN WORDS, not with a key: its
 		// question is its own and this engine never wrote answers for it. Taking
@@ -2449,6 +2483,12 @@ func (a *Agent) OpenQuestions() []Question {
 			proposals[id] = proposal.notice
 		}
 	}
+	factories := make([]factoryOffer, 0, len(a.factoryOffers))
+	for _, offer := range a.factoryOffers {
+		if offer != nil {
+			factories = append(factories, *offer)
+		}
+	}
 	offers := make(map[uint64]Event, len(a.subharnessOffers))
 	for id, offer := range a.subharnessOffers {
 		if offer != nil {
@@ -2495,6 +2535,9 @@ func (a *Agent) OpenQuestions() []Question {
 	}
 	for id, ask := range askers {
 		open = append(open, a.subharnessAskQuestion(id, ask))
+	}
+	for _, offer := range factories {
+		open = append(open, a.factoryQuestion(offer.notice.ID, offer.notice, offer.asked))
 	}
 	for id, live := range runs {
 		if snap := live.run.Snapshot(); snap.Paused {
