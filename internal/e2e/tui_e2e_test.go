@@ -116,6 +116,8 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("TaskOnTheRunEngine", testTaskOnTheRunEngine)
 	t.Run("TaskOnTheDefaultBelt", testTaskOnTheDefaultBelt)
 	t.Run("foreign_skills_reach_the_conversation", testForeignSkills)
+	t.Run("FactoryFloorOpensConnected", testFactoryFloorOpensConnected)
+	t.Run("FactoryFromChat", testFactoryFromChat)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
@@ -2465,4 +2467,197 @@ func runBranch(t *testing.T, ws string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// ── the factory floor, from the chat ────────────────────────────────────────
+
+// testFactoryFloorOpensConnected is the cheap half: no model call. On
+// `--no-host` the window holds this machine's own factory store, so `/factory`
+// opens the floor itself, handover first, and never the one dim line the page
+// draws when no floor is behind it (internal/tui3's factory_page.go,
+// factoryUnconnectedWords).
+func testFactoryFloorOpensConnected(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "floorws", false)
+	r := start(t, "afe2e_floor", home, ws, tuiPlain, 40, "chat", "--one-model", "--no-host")
+	statesPastTheDoor(t, r)
+	floor := factoryOpen(t, r)
+	if strings.Contains(floor, say(t, "factoryUnconnectedWord")) {
+		t.Fatalf("the floor on --no-host says nothing is connected:\n%s", floor)
+	}
+	t.Logf("an empty floor on --no-host opens on its handover:\n%s", floor)
+	r.keys("Escape")
+	r.quit()
+}
+
+// testFactoryFromChat is the whole road a person walks to put work on the
+// factory floor from a conversation, against a real model: they say so, the
+// chat raises the `factory_add` card, `1` writes the item, the floor shows it
+// under NEW, and a second window on the same home still shows it.
+//
+// THE SENTENCE IS THE PERSON'S AND NOT THE TOOL'S NAME. The tool's description
+// tells the model to call it "when the person says the work belongs on the
+// factory floor", so the first sentence is exactly that. A model that answers
+// in prose gets one nudge naming the tool, and the log says which happened.
+func testFactoryFromChat(t *testing.T) {
+	home := newHome(t, nil)
+	ws := newWorkspace(t, "ledgerws", false)
+	// [tuiWide] AND NOT [tuiPlain]: the floor's rows take 58% of the width and
+	// cut the title with `…`, and at a hundred and twenty cells the model's
+	// title lost its last word, which is the word this test reads the row by.
+	first := start(t, "afe2e_factory1", home, ws, tuiWide, 40, "chat", "--one-model", "--no-host")
+	statesPastTheDoor(t, first)
+
+	first.lit("put fixing the double count in the ledger on the factory floor")
+	time.Sleep(600 * time.Millisecond)
+	first.keys("Enter")
+	lead := say(t, "factoryCardLead")
+	card, ok := first.glimpse(modelPatience, lead)
+	if ok {
+		t.Logf("FIRST SENTENCE: the model called factory_add on the person's own words:\n%s", card)
+	} else {
+		t.Logf("NUDGED: the model answered without the card; sending one follow-up:\n%s", first.capture())
+		first.lit("use factory_add for it")
+		time.Sleep(600 * time.Millisecond)
+		first.keys("Enter")
+		card = first.waitFor(modelPatience, lead)
+		t.Logf("the card after the nudge:\n%s", card)
+	}
+	if t.Failed() {
+		return
+	}
+	first.waitFor(10*time.Second, say(t, "factoryAddOffer"))
+
+	// `1` on an empty box is the card's yes. A question takes no key for its
+	// first quarter second on screen (internal/tui3's questionSettle), and the
+	// card is caught within a poll of arriving, so the press waits a beat the
+	// way a person reading the card does.
+	time.Sleep(1500 * time.Millisecond)
+	first.keys("1")
+	settled := first.waitFor(30*time.Second, say(t, "factoryAddedWord"))
+	t.Logf("the card settled on the floor's number:\n%s", settled)
+	if t.Failed() {
+		return
+	}
+	// THE TOOL'S OWN SENTENCE, `#<id> <title> is on the factory floor`, in the
+	// transcript. A failure here does not stop the floor half below: the item
+	// is written whether or not the sentence is drawn, and the run is worth
+	// its evidence either way.
+	told := first.waitFor(modelPatience, say(t, "factoryOnTheFloorWord"))
+	t.Logf("and the chat was told the item is on the floor:\n%s", told)
+	if items, _ := filepath.Glob(filepath.Join(home, "v3", "factory", "*.json")); len(items) == 0 {
+		t.Errorf("the yes wrote no item under %s", filepath.Join(home, "v3", "factory"))
+	}
+
+	floor := factoryOpen(t, first)
+	row := factoryRowUnderNew(t, floor, "ledger", "double")
+	bar := factoryBarLine(floor, say(t, "factoryBarWord"))
+	if bar == "" {
+		t.Errorf("the tab bar draws no %q:\n%s", say(t, "factoryBarWord"), floor)
+	}
+	if ask := say(t, "factoryBarWord") + " " + say(t, "factoryBarAskWord"); strings.Contains(bar, ask) {
+		t.Errorf("the bar says something waits on the person (%q) after a plain add:\n%s", ask, bar)
+	}
+	t.Logf("the item's row on the floor: %s", strings.TrimSpace(row))
+	t.Logf("the floor after the add:\n%s", floor)
+
+	first.keys("Escape")
+	time.Sleep(700 * time.Millisecond)
+	first.quit()
+
+	// ── and a second window on the same home ────────────────────────────────
+	second := start(t, "afe2e_factory2", home, ws, tuiWide, 40, "chat", "--one-model", "--no-host")
+	statesPastTheDoor(t, second)
+	again := factoryOpen(t, second)
+	factoryRowUnderNew(t, again, "ledger", "double")
+	t.Logf("the floor in a second window on the same home:\n%s", again)
+	second.keys("Escape")
+	second.quit()
+
+	t.Logf("factory from chat cost %.2f cents", 100*usageUSD(home))
+}
+
+// factoryOpen opens `/factory` and waits for the connected floor: its handover
+// heading and the line that says nothing waits on the person.
+func factoryOpen(t *testing.T, r *rig) string {
+	t.Helper()
+	r.lit("/factory")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
+	return r.waitFor(30*time.Second, say(t, "factoryHandoverWord"), say(t, "factoryNoWaitWord"))
+}
+
+// factoryHeadingLine is a floor group's heading as the rail draws it: the
+// group's word in capitals and its count, at the start of the line.
+var factoryHeadingLine = regexp.MustCompile(`^\s*([A-Z][A-Z ]*[A-Z]) · \d+`)
+
+// factoryRowUnderNew finds the item's row (the line carrying every word,
+// case folded) and asserts the nearest group heading above it is NEW.
+//
+// ONLY THE ROWS COLUMN IS READ. At this width the peek stands to the right of
+// a dim `│` and names the item under the cursor too, so a search over whole
+// lines found the peek's title and called it the row.
+func factoryRowUnderNew(t *testing.T, screen string, words ...string) string {
+	t.Helper()
+	lines := strings.Split(screen, "\n")
+	for i, line := range lines {
+		if cut := strings.Index(line, " │"); cut >= 0 {
+			lines[i] = line[:cut]
+		}
+	}
+	at := -1
+	for i, line := range lines {
+		low := strings.ToLower(line)
+		hit := strings.Contains(line, "#")
+		for _, w := range words {
+			hit = hit && strings.Contains(low, w)
+		}
+		if hit {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		t.Errorf("no row on the floor carries %q:\n%s", words, screen)
+		return ""
+	}
+	for i := at - 1; i >= 0; i-- {
+		if m := factoryHeadingLine.FindStringSubmatch(lines[i]); m != nil {
+			if m[1] != say(t, "factoryNewHeading") {
+				t.Errorf("the item's row stands under %q, not %q:\n%s", m[1], say(t, "factoryNewHeading"), screen)
+			}
+			return lines[at]
+		}
+	}
+	t.Errorf("no group heading above the item's row:\n%s", screen)
+	return lines[at]
+}
+
+// factoryBarLine is the first line of the screen that carries the factory's
+// button, which is the head's place bar.
+func factoryBarLine(screen, word string) string {
+	for _, line := range strings.Split(screen, "\n") {
+		if strings.Contains(line, word) {
+			return line
+		}
+	}
+	return ""
+}
+
+// usageUSD is what this home's usage ledger says was spent, summed.
+func usageUSD(home string) float64 {
+	raw, err := os.ReadFile(filepath.Join(home, "v3", "usage.jsonl"))
+	if err != nil {
+		return 0
+	}
+	total := 0.0
+	for _, line := range strings.Split(string(raw), "\n") {
+		var row struct {
+			USD float64 `json:"usd"`
+		}
+		if json.Unmarshal([]byte(line), &row) == nil {
+			total += row.USD
+		}
+	}
+	return total
 }
