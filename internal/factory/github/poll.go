@@ -29,12 +29,19 @@ type Watcher interface {
 	Watch(repos []string)
 }
 
+// Progresser is a source that can say, repository by repository, where its
+// read is ([Source.SetProgress]).
+type Progresser interface {
+	SetProgress(fn func(full string, done, of int))
+}
+
 // Poll reads src every tick until ctx ends, folding what it reads into st.
 // It is meant to run on its own goroutine, one per process. Before each read
 // the watched repositories are read again off the store, so a repository
 // watched mid-session is read on the next tick; with none watched the tick
 // does nothing at all. After a failure the wait doubles, from every up to ten
-// minutes, and the first good read puts it back.
+// minutes, and the first good read puts it back. A NUDGE ([Nudge]) ENDS THE
+// WAIT EARLY, so a repository watched in the picker is read at once.
 //
 // NOTHING IS POSTED BY THE POLL. It calls Read and never Write. log, when not
 // nil, is told about a failure in words with every secret taken out.
@@ -45,15 +52,10 @@ func Poll(ctx context.Context, src factory.Source, st *store.Store, every time.D
 	cursor := ""
 	wait := time.Duration(0)
 	failed := 0
+	waker := NewWaker(st)
 	for {
-		if wait > 0 {
-			t := time.NewTimer(wait)
-			select {
-			case <-ctx.Done():
-				t.Stop()
-				return
-			case <-t.C:
-			}
+		if wait > 0 && !waker.Wait(ctx, wait) {
+			return
 		}
 		if ctx.Err() != nil {
 			return
@@ -110,13 +112,22 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	// THE READ IS MARKED IN FLIGHT for the length of it, so the floor can say
 	// github is being read; a crash mid-read is cleared by the next process
 	// to start (store.ClearBusy).
+	// AND WHERE THE READ IS, repository by repository, when the source can
+	// say (Reading, Read and Of on the source's record); they are taken off
+	// with Polling at the end.
 	_ = st.SetPolling(src.Name(), true)
+	if p, ok := src.(Progresser); ok {
+		name := src.Name()
+		p.SetProgress(func(full string, done, of int) { _ = st.SetReading(name, full, done, of) })
+		defer p.SetProgress(nil)
+	}
 	items, next, readErr := src.Read(ctx, cursor)
 	mergeErr := Merge(st, src.Name(), items)
 	at := now()
 	meta, _ := st.SourceMeta(src.Name())
 	meta.Tried = at
 	meta.Polling = false
+	meta.Reading, meta.Read, meta.Of = "", 0, 0
 	if readErr == nil {
 		meta.Polled, meta.Trouble = at, ""
 	} else {
@@ -338,5 +349,6 @@ func SourceFacts(st *store.Store, now time.Time) (factory.SourceInfo, bool) {
 	}
 	// Writes stays false: Write exists, but only a post stage would call it,
 	// and none runs yet, so the floor offers nothing that would post.
-	return factory.SourceInfo{Name: Name, Repos: repos, Polled: meta.Polled, Trouble: meta.Trouble, Polling: meta.Polling}, true
+	return factory.SourceInfo{Name: Name, Repos: repos, Polled: meta.Polled, Trouble: meta.Trouble, Polling: meta.Polling,
+		Reading: meta.Reading, Read: meta.Read, Of: meta.Of}, true
 }

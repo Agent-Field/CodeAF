@@ -784,6 +784,10 @@ The floor reads open issues and open pull requests from the GitHub repositories 
   `{"repos": ["acme/api"]}` or a plain `["acme/api"]`. The file can still be edited by hand. A
   running poll reads the list on every tick, and a window with no poll yet looks again every 30
   seconds, so a change reaches the floor without a relaunch.
+- **Why your issues are not showing up yet after you watched a repository:** the first read
+  starts the moment you save the picker (`enter` on `R`), within about a second, wherever the
+  poll on this machine runs; while it reads, the floor says which repository it is on and how
+  many of how many are done. GitHub is polled every minute after that.
 - **The token, in this order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then a token kept in
   the profile, then what `gh auth token` answers, and `gh` is asked only after you have said yes
   to it on the floor. The token is never shown or logged.
