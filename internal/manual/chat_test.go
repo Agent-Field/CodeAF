@@ -44,6 +44,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"can the chat raise the cap on a factory item and make it plan first", "factory"},
 		{"how do I leave a note for a factory item's stages", "factory"},
 		{"what is the live item card in a conversation", "factory"},
+		{"who is the foreman on the factory floor", "factory"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},

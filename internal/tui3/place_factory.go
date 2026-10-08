@@ -192,6 +192,11 @@ func (placeFactory) hint(a *app) string {
 	for _, t := range a.factorySettingsHint() {
 		rail = append(rail, clause{t, 3})
 	}
+	// THE FOREMAN IS A VERB OF THE WHOLE FLOOR, so its clause sits with the
+	// floor's own and drops with the settings keys (factory_foreman.go).
+	for _, t := range a.factoryForemanHint() {
+		rail = append(rail, clause{t, 3})
+	}
 	out := "esc back"
 	if a.factoryNarrowed() {
 		out = "esc clear"

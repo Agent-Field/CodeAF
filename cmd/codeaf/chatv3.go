@@ -394,6 +394,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// And `factory_item`'s door, the one onto an item already on the floor,
 	// which an item's own conversation (`T`, factory_talk.go) proposes through.
 	cfg.FactoryItem = itemDoor(floor, workspace)
+	// And `factory_floor`'s door, the foreman's read of the floor and its
+	cfg.Floor = floorDoor(floor, workspace)
 	// And the floor's GitHub poll, when repositories are watched and a token
 	// resolves; nothing starts otherwise (factory.go's [startFactoryPoll]).
 	startFactoryPoll(floor, settings.ProfileDir)

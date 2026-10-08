@@ -102,6 +102,16 @@ type Seam struct {
 	// default.
 	Talk func(ctx context.Context, id int) (chat string, err error)
 
+	// Mark sets or takes off the floor's own marks on items by id, kept by
+	// the store, so a mark made outside this window (the foreman's, through
+	// `factory_floor`) is on every window's next Load as [Snapshot.Marked].
+	// Only a new item takes a mark; anything else is refused.
+	Mark func(ids []int, on bool) error
+	// Foreman is the floor's own conversation, the foreman's: the one already
+	// made, or one made now, and the same one on every ask after. chat is its
+	// session file. NOTHING IS MADE UNTIL A PERSON ASKS (`m` on the floor).
+	Foreman func(ctx context.Context) (chat string, err error)
+
 	// Refresh reads one item again from its source now (for a GitHub item: the
 	// issue or pull request by its number, its last comments, and a pull
 	// request's files and checks), folds what it read into the floor, and
@@ -192,6 +202,10 @@ func (s Seam) Has(door string) bool {
 		return s.SetRail != nil
 	case "talk":
 		return s.Talk != nil
+	case "mark":
+		return s.Mark != nil
+	case "foreman":
+		return s.Foreman != nil
 	case "refresh":
 		return s.Refresh != nil
 	case "refreshall":

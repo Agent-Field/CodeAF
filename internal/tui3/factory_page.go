@@ -257,6 +257,7 @@ func (a *app) factoryLaunchRead() tea.Cmd {
 // about work in flight is folded in on the same pass ([app.factoryFoldBusy]).
 func (a *app) factoryFold(snap factory.Snapshot) {
 	was, had := a.factoryCursorItem()
+	a.factoryFoldStoreMarks(a.fp.snap, &snap)
 	a.fp.snap, a.fp.loaded, a.fp.err = snap, true, nil
 	a.factoryPlace(false)
 	a.factoryFoldBusy()
