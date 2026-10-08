@@ -35,3 +35,23 @@ Commit and pull changes, then run `npm run desktop:dev` on the Mac. It starts Vi
 ## Verification boundaries
 
 A browser on Linux can verify layout and React interactions. It cannot validate macOS WebView rendering, native menus, permissions, signing, or sidecar packaging. Run native checks on both OSes; macOS distribution needs signing/notarization configuration before public release.
+
+## This workspace
+
+The scaffold is at `/home/santosh/codeaf-app` on Spark and `/Users/santoshkumar/codeaf-app` on Blackmac. The Mac copy was transferred over SSH because its GitHub SSH credential cannot currently clone this private repository; it is not a Git checkout yet. Once repository access is configured, clone into a fresh directory and use that checkout for ongoing work.
+
+With `npm run dev` running on Spark, open a second Spark terminal:
+
+```sh
+ssh -N -R 1420:127.0.0.1:1420 blackmac
+```
+
+Then in a Blackmac terminal:
+
+```sh
+export PATH=/opt/homebrew/bin:/usr/local/go/bin:$HOME/.cargo/bin:$PATH
+cd ~/codeaf-app
+npm run desktop:remote
+```
+
+This reverse tunnel avoids requiring inbound SSH from Blackmac to Spark. If Mac port 1420 is already occupied, stop that development server or choose another forwarded port and set `CODEAF_DEV_URL` accordingly. First native launch can take 1–3 minutes; frontend edits then hot-reload. The Go toolchain is selected automatically from `engine/go.mod`.
