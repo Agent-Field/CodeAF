@@ -20,9 +20,5 @@ func factoryMockSeam() (factory.Seam, bool) {
 	if strings.TrimSpace(env.Get("CODEAF_FACTORY_MOCK")) != "1" {
 		return factory.Seam{}, false
 	}
-	s := mock.New(7, 12, 400, 6, time.Now().Add(-9*time.Hour))
-	if err := s.Sleep(9 * time.Hour); err != nil {
-		return factory.Seam{}, false
-	}
-	return s, true
+	return mock.NewAfter(7, 12, 400, 6, time.Now().Add(-9*time.Hour), 9*time.Hour), true
 }

@@ -1,7 +1,9 @@
 package mock
 
 import (
+	"os"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -354,5 +356,109 @@ func TestSteerRedoStronger(t *testing.T) {
 	}
 	if !logged {
 		t.Fatal("the steer was not logged")
+	}
+}
+
+// THE MOCK RANKS ITS ITEMS: the made-up floor spreads 1..4 with a reason on
+// most, and leaves a few unranked, so the priority column shows bars.
+func TestMockRanksItems(t *testing.T) {
+	snap := load(t, world(t))
+	seen := map[int]int{}
+	for _, it := range snap.Items {
+		p := it.Triage.Priority
+		seen[p]++
+		if p == 0 && it.Triage.Reason != "" {
+			t.Fatalf("%s is unranked and has a reason", it.Ref())
+		}
+		if len(strings.Fields(it.Triage.Reason)) > 5 {
+			t.Fatalf("%s: reason is over five words: %q", it.Ref(), it.Triage.Reason)
+		}
+	}
+	for p := 0; p <= 4; p++ {
+		if seen[p] == 0 {
+			t.Fatalf("no item at priority %d: %v", p, seen)
+		}
+	}
+	reasoned := 0
+	for _, it := range snap.Items {
+		if it.Triage.Reason != "" {
+			reasoned++
+		}
+	}
+	if reasoned == 0 {
+		t.Fatal("no item carries a reason")
+	}
+}
+
+// A RUNNING ITEM'S CHAT STAGE HAS A ROOM: a transcript the talk lane's writer
+// made, under the mock's temp home.
+func TestMockKeepsAStageConversation(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	w := NewWorld(7, 6, 60, 6, start)
+	seam := w.Seam()
+	first, _ := w.Load()
+	launched := 0
+	for _, it := range first.Items {
+		if it.State == factory.StateNew && it.Kind == factory.KindIssue && launched < 3 {
+			if err := seam.Launch(it.ID); err != nil {
+				t.Fatal(err)
+			}
+			launched++
+		}
+	}
+	if err := seam.Tick(20 * time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := w.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rooms := 0
+	for _, it := range snap.Items {
+		if it.State != factory.StateRunning || it.Stream == nil {
+			continue
+		}
+		for _, ph := range it.Stream.Phases {
+			if ph.Chat == "" {
+				continue
+			}
+			rooms++
+			if !strings.HasPrefix(ph.Chat, w.Home()) {
+				t.Fatalf("room %q is outside the mock's home %q", ph.Chat, w.Home())
+			}
+			raw, err := os.ReadFile(ph.Chat)
+			if err != nil || !strings.Contains(string(raw), it.Ref()) {
+				t.Fatalf("room %q: %v %q", ph.Chat, err, raw)
+			}
+		}
+	}
+	if rooms == 0 {
+		t.Fatal("no running item has a stage conversation")
+	}
+}
+
+// THE MADE-UP WORDS READ AS REAL ONES: stages carry recipe-sounding names, no
+// title doubles an article, and the opened floor has no sleep door.
+func TestMockWordsReadAsReal(t *testing.T) {
+	snap := load(t, world(t))
+	for _, r := range snap.Repos {
+		for _, st := range r.Recipe.Stages {
+			if st.Name == "make code" || st.Name == "screenshot when" {
+				t.Fatalf("%s: stage %q reads as a placeholder", r.Name, st.Name)
+			}
+		}
+	}
+	doubled := regexp.MustCompile(`(?i)\b(a|an|the) (a|an|the)\b`)
+	for _, it := range snap.Items {
+		if it.Kind == factory.KindCI {
+			continue
+		}
+		if m := doubled.FindString(it.Title); m != "" {
+			t.Fatalf("title %q doubles a word: %q", it.Title, m)
+		}
+	}
+	s := NewAfter(7, 6, 60, 6, start, 2*time.Hour)
+	if s.Sleep != nil || s.Has("sleep") {
+		t.Fatal("the opened mock floor offers sleep, which the real floor does not")
 	}
 }

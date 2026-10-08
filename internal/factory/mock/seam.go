@@ -14,6 +14,17 @@ func New(seed int64, repos, issues, benches int, now time.Time) factory.Seam {
 	return NewWorld(seed, repos, issues, benches, now).Seam()
 }
 
+// NewAfter is [New] after the world has slept through slept, as the factorymock
+// build opens it, WITHOUT THE CLOCK'S SLEEP DOOR: sleep is not a floor verb on
+// the real floor, so the hint must not name a key the real floor lacks.
+func NewAfter(seed int64, repos, issues, benches int, now time.Time, slept time.Duration) factory.Seam {
+	w := NewWorld(seed, repos, issues, benches, now)
+	w.sleep(slept)
+	s := w.Seam()
+	s.Sleep = nil
+	return s
+}
+
 // Seam is the world's doors. Each takes the world's one lock for the whole of
 // its work, so two doors called at once see each other's result whole.
 func (w *World) Seam() factory.Seam {
@@ -262,6 +273,7 @@ func (w *World) with(id int, f func(*factory.Item) error) error {
 func (w *World) Load() (factory.Snapshot, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.keepRooms()
 	snap := factory.Snapshot{
 		Now:     w.now,
 		Benches: w.benches,
