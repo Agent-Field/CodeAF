@@ -2738,7 +2738,13 @@ func testFactoryRunsAnIssue(t *testing.T) {
 			t.Fatalf("#1 left the run as %q:\n%s\n%s", it.State, strings.Join(it.logLines(), "\n"), r.capture())
 		}
 		if it.State == "needs you" && it.Question != "" {
-			r.waitFor(30*time.Second, say(t, "factoryAnswerKeys"))
+			if strings.HasPrefix(it.Question, say(t, "factoryShapeAsk")) {
+				// THE SHAPING QUESTION: the stages stand under it and `n` keeps the recipe.
+				r.waitFor(30*time.Second, say(t, "factoryShapeAsk"))
+				r.waitFor(30*time.Second, say(t, "factoryShapeKeep"))
+			} else {
+				r.waitFor(30*time.Second, say(t, "factoryAnswerKeys"))
+			}
 			key := "y"
 			if strings.Contains(it.Question, say(t, "factoryRoundsAsk")) {
 				key = "n"
@@ -2759,6 +2765,13 @@ func testFactoryRunsAnIssue(t *testing.T) {
 		time.Sleep(3 * time.Second)
 	}
 	logs := it.logLines()
+	// THE RUNNER'S SHAPING LINES, where the run shaped: named so the words
+	// table stays the one list of them.
+	for _, name := range []string{"factoryShapeSet", "factoryRecipeStands", "factoryStageOneWord", "factoryNineStages"} {
+		if strings.Contains(strings.Join(logs, "\n"), say(t, name)) {
+			t.Logf("the stream said %q", say(t, name))
+		}
+	}
 	for _, stage := range []string{"plan: ", "test: "} {
 		if !hasPrefixLine(logs, stage) {
 			t.Errorf("the stream has no %q line:\n%s", stage, strings.Join(logs, "\n"))

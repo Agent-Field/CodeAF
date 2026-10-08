@@ -383,11 +383,19 @@ func (a *app) factoryItemQuestion(it factory.Item, measure int) string {
 	if it.State != factory.StateNeedsYou || q == "" {
 		return ""
 	}
-	left := pal.ask(a.icon(tokens.GNeedsHuman)) + " " + pal.ink(q)
 	right := ""
 	if a.factory.Has("answer") {
 		right = pal.dim(factoryAnswerKeys)
 	}
+	if factoryIsShaping(it) {
+		// The head keeps its two rows: the question alone, and the stages are
+		// in the pane under the run's waiting stage.
+		q = wordRunTheseStages
+		if right != "" {
+			right = pal.dim(factoryShapingHint())
+		}
+	}
+	left := pal.ask(a.icon(tokens.GNeedsHuman)) + " " + pal.ink(q)
 	if right != "" && ansi.StringWidth(left)+factoryGutter+ansi.StringWidth(right) <= measure {
 		return factorySpread(left, right, measure)
 	}

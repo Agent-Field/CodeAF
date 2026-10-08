@@ -119,11 +119,18 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			})
 		},
 		AddStage: func(id int, words string) error {
-			if ParseStage(words).Ask == "" {
-				return errors.New("say what the stage should do")
+			if _, _, err := StageSentence(words); err != nil {
+				return err
 			}
 			return st.Update(id, func(it *Item) error {
-				it.Stages = AddStageWords(it.Stages, words)
+				next, err := AddStageSentence(it.Stages, words)
+				if err != nil {
+					return err
+				}
+				if added, _, _ := StageSentence(words); StageIndex(next, added.Name) >= 0 {
+					next[StageIndex(next, added.Name)].By = ByYou
+				}
+				it.Stages = next
 				return nil
 			})
 		},

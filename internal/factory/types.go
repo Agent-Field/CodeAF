@@ -108,6 +108,12 @@ type Stage struct {
 	GateWhen string
 	Proof    []string // what this stage must show
 	On       bool     // an item may switch a banked stage off
+	// Why is one line saying why this stage is here, or changed, for this
+	// item; "" for the recipe's own stage.
+	Why string
+	// By is who put the stage here or last changed it: `recipe`, `manager`,
+	// `plan` or `you` ([ByRecipe] and its siblings). "" is the recipe.
+	By string
 }
 
 // Recipe is what a product banked: stages in order, per kind of item, and the
@@ -297,9 +303,11 @@ type Item struct {
 	Labels   []string
 	Checks   string
 	Diff     string
-	// Adapted is what the plan stage changed about the item's stages, one
-	// line each in the order it changed them, `why: …` last: the record
-	// [Adapt] writes and the surface draws under the stages line.
+	// Adapted is what was changed about the item's stages, one line each in
+	// the order it changed them, each starting with who changed them
+	// (`manager set review: …`, `plan added arch`), `why: …` last: the record
+	// [Edit] writes and the surface draws under the stages line
+	// ([AdaptedLine]).
 	Adapted []string
 	// Notes are sentences a person settled on in the item's own conversation
 	// for the stages to read (session's `factory_item`), oldest first. They

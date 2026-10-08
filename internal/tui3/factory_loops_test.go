@@ -129,17 +129,19 @@ func TestFactoryStageRowAsksWhereTheRunStops(t *testing.T) {
 // column; `?` wins the one cell where the run also asks there. Its reason is
 // the dim `why:` line under its open head.
 func TestFactoryStageRowAddedByAnother(t *testing.T) {
-	factoryStageMetaFake = func(s factory.Stage) (string, string) {
-		switch s.Name {
-		case "neaten", "proof":
-			return stageByManager, "the change touches the billing cache"
-		case "write":
-			return "recipe", ""
+	f := &factoryFake{}
+	factoryShapeItem(f, 2, func(it *factory.Item) {
+		it.Stages = append([]factory.Stage(nil), it.Stages...)
+		for i := range it.Stages {
+			switch it.Stages[i].Name {
+			case "neaten", "proof":
+				it.Stages[i].By, it.Stages[i].Why = factory.ByManager, "the change touches the billing cache"
+			case "write":
+				it.Stages[i].By = factory.ByRecipe
+			}
 		}
-		return "", ""
-	}
-	t.Cleanup(func() { factoryStageMetaFake = nil })
-	a := factoryVerbLab(t, &factoryFake{})
+	})
+	a := factoryVerbLab(t, f)
 	rows, body := factoryStageRowsAt(t, a, 2, 120)
 	glyph := func(name string) string {
 		return strings.TrimSpace(string([]rune(rows[name])[factoryRailW-factoryStageGlyphW:]))

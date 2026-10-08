@@ -144,7 +144,10 @@ func Parse(text string) (Recipe, []Problem) {
 			for _, why := range whys {
 				bad(why)
 			}
-			if ok {
+			switch {
+			case ok && len(got[Kind(section)]) >= StageMost:
+				bad(ErrNineStages.Error())
+			case ok:
 				got[Kind(section)] = append(got[Kind(section)], st)
 			}
 		}
@@ -216,6 +219,10 @@ func parseStageLine(k Kind, line string) (st Stage, whys []string, ok bool) {
 	name := strings.TrimSpace(segs[0])
 	if name == "" {
 		return Stage{}, []string{"a stage needs a name"}, false
+	}
+	name, err := StageWord(name)
+	if err != nil {
+		return Stage{}, []string{err.Error()}, false
 	}
 	var kind StageKind
 	var ask string

@@ -97,6 +97,20 @@ as the manager's own message and marked as the run's (a surface may draw them as
 A line is never written into the middle of the manager's own turn: while it is answering you,
 or while another codeaf has the chat open, the line waits and is written afterwards, in order.
 
+## the manager did not answer — shaping a run, manager set, the recipe stands
+
+When `ask me at` is plan, the runner lets the manager shape the run before the first stage and
+then pauses on `run these stages? <what it set>`. The item's stream writes what the manager did:
+
+- `manager set review: thorough on security, code and architecture · added arch after review ·
+  skipped neaten · why: touches the call row`: the same line the Adapted row of the item page
+  shows, one clause for each change and the reason last;
+- `the recipe stands` after `n` (keep the recipe), and when the manager changed nothing;
+- `the manager did not answer · the recipe stands` when the manager's conversation ended
+  without a plan_edit: the run asks you about the recipe as it is;
+- `a stage is one word` when a stage name has a space in it, and
+  `the run has nine stages already` when a tenth is asked for; the stages stay as they were.
+
 ## talk to the manager — what you type is the brief before a run and the steer during it
 
 What you type into the item's chat goes to the run; nothing else is needed.
