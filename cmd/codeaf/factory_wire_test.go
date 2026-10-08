@@ -1,11 +1,14 @@
 package main
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
+	"github.com/Agent-Field/codeaf/internal/remote"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // factoryDoors is every door a seam can carry, by the name [factory.Seam.Has]
@@ -134,8 +137,9 @@ func TestFactoryStoreIsUnderTheCodeafHome(t *testing.T) {
 
 // THE TOOL WAITS FOR A PERSON, so the shared assembly never hands it out: a
 // headless launch, an engine's launch and a --once run all come out of
-// [openV3Launch] with no factory door, and only the interactive door sets one
-// (chatv3.go).
+// [openV3Launch] with no factory door. Two doors set one afterwards: the
+// in-process interactive door (chatv3.go), and the engine when the hello is a
+// window on this machine ([engineFactoryHere], asserted below).
 func TestFactoryDoorIsAbsentFromEveryAssembledConfig(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv(home.EnvVar, t.TempDir())
@@ -156,5 +160,56 @@ func TestFactoryDoorIsAbsentFromEveryAssembledConfig(t *testing.T) {
 				t.Fatalf("%s (interactive %v): the shared assembly handed out a factory door", door, interactive)
 			}
 		}
+	}
+}
+
+// THE ORDINARY LAUNCH CARRIES THE TOOL. Bare `codeaf` with a key runs its
+// conversation in the session host, so the engine is where `factory_add` has to
+// be: a window on this machine (the local dial's interactive shape) gets it, and
+// a window over --host or --at (no shape), a --once probe (a shape that is not
+// interactive) and a headless caller do not, because none of them can see the
+// floor the tool would write to.
+func TestTheEngineHandsTheFactoryDoorOnlyToAWindowOnThisMachine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEAF_HOME", filepath.Join(home, "state"))
+	t.Setenv(config.ProfileDirEnv, "")
+	t.Setenv("OPENROUTER_API_KEY", "test-key")
+	t.Setenv(factoryFixtureEnv, "")
+	t.Chdir(home)
+	freshEngineProcess(t)
+
+	for _, c := range []struct {
+		name  string
+		hello remote.Hello
+		want  bool
+	}{
+		{"a window on this machine", remote.Hello{Version: remote.Version, Launch: &remote.LaunchShape{Interactive: true}}, true},
+		{"a window over --host or --at", remote.Hello{Version: remote.Version}, false},
+		{"a --once probe", remote.Hello{Version: remote.Version, Launch: &remote.LaunchShape{Yolo: true}}, false},
+		{"a headless caller", remote.Hello{Version: remote.Version, Headless: true, Launch: &remote.LaunchShape{Interactive: true}}, false},
+	} {
+		if got := engineFactoryHere(c.hello); got != c.want {
+			t.Fatalf("%s: engineFactoryHere is %v, want %v", c.name, got, c.want)
+		}
+		c.hello.New = true
+		engine, err := bootEngine(c.hello, "", "")
+		if err != nil {
+			t.Fatalf("%s: the engine door did not open: %v", c.name, err)
+		}
+		agent, ok := engine.Agent.(*session.Agent)
+		if !ok {
+			t.Fatalf("%s: the engine serves a %T, not a session agent", c.name, engine.Agent)
+		}
+		got := agent.ToolOnBelt("factory_add")
+		_ = agent.Close()
+		if got != c.want {
+			t.Fatalf("%s: factory_add on the belt is %v, want %v", c.name, got, c.want)
+		}
+	}
+	// And the store it writes to is this machine's own floor, the one the
+	// page reads ([v3FactoryRoot]).
+	if st := engineFactory(); st == nil || st.Root() != v3FactoryRoot() {
+		t.Fatalf("the engine's factory store is not this machine's floor: %v", st)
 	}
 }

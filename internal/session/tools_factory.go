@@ -36,6 +36,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -279,6 +280,38 @@ func (a *Agent) askFactory(ctx context.Context, notice *FactoryNotice) (FactoryA
 	case <-ctx.Done():
 		return FactoryAnswer{}, ctx.Err()
 	}
+}
+
+// standingFactoryCardsLocked is every factory card still waiting on somebody,
+// as the events that raised them, oldest first. a.mu is held.
+//
+// IT IS WHAT A WINDOW THAT ARRIVES LATE IS HANDED. The card goes out on the task
+// lane once, to whoever is subscribed at that moment, and a window that opens
+// while the tool call is still parked — a conversation switched back to, the
+// session host's next window, a link repaired — would otherwise hold a question
+// whose card it never drew ([Agent.WatchTaskUpdates] replays these). A card
+// that was answered or came down is out of the map already, so a settled card
+// is never replayed as a standing one.
+func (a *Agent) standingFactoryCardsLocked() []Event {
+	if len(a.factoryOffers) == 0 {
+		return nil
+	}
+	offers := make([]*factoryOffer, 0, len(a.factoryOffers))
+	for _, offer := range a.factoryOffers {
+		offers = append(offers, offer)
+	}
+	sort.Slice(offers, func(i, j int) bool {
+		if !offers[i].asked.Equal(offers[j].asked) {
+			return offers[i].asked.Before(offers[j].asked)
+		}
+		return offers[i].notice.ID < offers[j].notice.ID
+	})
+	cards := make([]Event, 0, len(offers))
+	for _, offer := range offers {
+		card := offer.notice
+		cards = append(cards, Event{Kind: EventFactoryProposal, Tool: "factory_add", Text: card.Title, Factory: &card})
+	}
+	return cards
 }
 
 // errFactoryUnanswered is the window ending with the card still up.

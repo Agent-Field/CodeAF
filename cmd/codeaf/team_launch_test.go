@@ -137,6 +137,10 @@ func freshEngineProcess(t *testing.T) {
 		engineProcess.once = sync.Once{}
 		engineProcess.proc = nil
 		engineProcess.err = nil
+		// The factory store is the engine process's too, and a test home
+		// that is removed must not leave the next test writing into it.
+		engineFactoryStore.once = sync.Once{}
+		engineFactoryStore.store = nil
 	}
 	reset()
 	t.Cleanup(reset)

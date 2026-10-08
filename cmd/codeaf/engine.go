@@ -55,6 +55,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
+	factorystore "github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/standing"
@@ -972,6 +973,20 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// and it is the one fact the shared assembly cannot know for itself.
 	cfg := launch.Config
 	cfg.AskConsent = !hello.Headless
+	// AND THE FACTORY FLOOR, ONLY FOR A WINDOW ON THIS MACHINE. `factory_add`
+	// holds its call open for a person's yes and writes into this machine's
+	// floor, and the person's own page reads that same folder; both halves are
+	// true only for the local dial, which is the one caller that fills the
+	// launch shape and marks it interactive ([engineFactoryHere]). Bare `codeaf`
+	// with a key arrives here, so this is the line that puts the tool on the
+	// ordinary launch. A window over --host or --at sends no shape and a --once
+	// probe sends one that is not interactive, and both leave the door nil, so
+	// the verb is absent rather than writing to a floor nobody there can see.
+	// Conversations this engine opens later for the same window inherit it from
+	// cfg ([remote.Engine.Fresh] and Open below both start from it).
+	if engineFactoryHere(hello) {
+		cfg.Factory = factoryDoor(engineFactory())
+	}
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
 	// through the very pair [remote.Engine.Fresh] below is written from
@@ -1306,6 +1321,31 @@ func openEngineProcess() (*v3Process, error) {
 		engineProcess.proc, engineProcess.err = openV3Process("engine")
 	})
 	return engineProcess.proc, engineProcess.err
+}
+
+// engineFactoryHere says whether this hello is a person's window on this
+// machine, which is the one window the factory door is handed to. The local
+// dial is the only caller that fills [remote.Hello.Launch] (chatv3_local.go's
+// [v3LaunchShape]), and it marks the shape interactive for a screen and not for
+// a --once probe; every remote surface sends nil.
+func engineFactoryHere(hello remote.Hello) bool {
+	return !hello.Headless && hello.Launch != nil && hello.Launch.Interactive
+}
+
+// engineFactoryStore is the factory store this engine process opened, once,
+// for every conversation it serves. NIL IS THE FACTORY OFF ([v3Factory]); it is
+// opened on the first hello that asks for it and never for a process that only
+// ever serves remote windows.
+var engineFactoryStore struct {
+	once  sync.Once
+	store *factorystore.Store
+}
+
+func engineFactory() *factorystore.Store {
+	engineFactoryStore.once.Do(func() {
+		engineFactoryStore.store = v3Factory()
+	})
+	return engineFactoryStore.store
 }
 
 // closeEngineProcess closes the once-per-process resources after the serving

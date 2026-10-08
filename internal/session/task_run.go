@@ -4930,6 +4930,7 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	a.taskWatchers = append(a.taskWatchers, stream)
 	news := a.standingNews
 	a.standingNews = nil
+	factoryCards := a.standingFactoryCardsLocked()
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its
@@ -4945,6 +4946,13 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	// attached a moment late still sees the card rather than a lane that looks
 	// like it never fired.
 	for _, event := range news {
+		stream.send(event)
+	}
+	// AND A FACTORY CARD STILL STANDING, for the same reason: it went out on
+	// this lane once, and a window that arrived after that holds the question
+	// with no card above it (tools_factory.go). A window that already drew it
+	// hears the same id again, which is one card (tui3's factoryProposal).
+	for _, event := range factoryCards {
 		stream.send(event)
 	}
 	var once sync.Once

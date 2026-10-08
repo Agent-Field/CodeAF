@@ -1352,7 +1352,8 @@ func factsMoved(kind session.EventKind) bool {
 		session.EventStandingProposal, session.EventStandingUpdate,
 		session.EventHarnessOffer, session.EventHarnessRun, session.EventHarnessDesignDone,
 		session.EventHarnessDesignRevising, session.EventOrchestratePause, session.EventOrchestrateFuel,
-		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff:
+		session.EventSubharnessAsk, session.EventSubharnessProposal, session.EventSubharnessProposalOff,
+		session.EventFactoryProposal, session.EventFactoryAdded:
 		return true
 	}
 	return false
