@@ -784,6 +784,11 @@ func (s *v3Seam) launch(workspace string) (*v3Launch, error) {
 		if launch, err = openV3Launch(s.proc, opts); err != nil {
 			return nil, err
 		}
+		// THE FACTORY DOOR IS THE WINDOW'S, not the project's: the floor is one
+		// store under the codeaf home, opened once by the door that holds a
+		// person, so a conversation opened on another project carries the same
+		// door the boot does (and none when the boot has none).
+		launch.Config.Factory = s.boot.Config.Factory
 	}
 	// THE KEY IS THE ONE FIELD READ BACK FROM THE PROCESS rather than from the
 	// launch. A boot that opened keyless and was handed a key on the first
