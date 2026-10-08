@@ -58,6 +58,31 @@ const factoryUnconnectedWords = "nothing connected yet · the factory floor arri
 // key for new work, and the foot rows it opens still stand under this line.
 const factoryBareWords = "work arrives here from chat, from n, and from the repositories you connect"
 
+// THE BARE FLOOR SAYS WHICH OF ITS STATES IT IS IN, one sentence each (one
+// output, one meaning; owner screenshot, 2026-10-08, where three repositories
+// had just been saved and the floor said only what arrives there):
+//
+//   - a read of the watched repositories in flight and nothing on the floor
+//     yet: [factoryBareReadingWords], while the handover's line carries where
+//     the read is, `⠋ reading Agent-Field/CodeAF · 1 of 3`;
+//   - repositories watched, read, and nothing open in them:
+//     [factoryBareReadWords], with how many and what brings work anyway;
+//   - connected with no repository watched: [factoryBareWords];
+//   - nothing connected: [factoryUnconnectedWords], drawn by [app.factoryBody].
+const factoryBareReadingWords = "reading the repositories you watch · rows stand here as issues and pull requests arrive"
+
+// factoryBareByHandWords is the clause a read floor with nothing open ends on:
+// what brings work to it anyway.
+const factoryBareByHandWords = "n adds work by hand"
+
+// factoryBareReadWords is a floor whose n watched repositories were read and
+// hold nothing open: `nothing open in 3 repositories · github polls every
+// minute · n adds work by hand`.
+func factoryBareReadWords(n int) string {
+	return "nothing open in " + itoa(n) + " " + factoryPlural(n, "repository", "repositories") +
+		rowSep + factoryPollWords + rowSep + factoryBareByHandWords
+}
+
 // factoryPage is the page's own state, held on the app as `fp`.
 //
 // THE NEXT PIECES OF THIS PAGE BUILD ON THESE FIELDS AND NO OTHERS: snap is the
@@ -565,14 +590,35 @@ func (a *app) factoryBare() bool {
 	return a.fp.loaded && a.fp.err == nil && len(a.fp.snap.Items) == 0
 }
 
-// factoryBareRail is the rail of a bare floor: [factoryBareWords], dim, wrapped
+// factoryBareSentence is which of the bare floor's sentences this snapshot
+// says: reading while a source is mid-read, nothing open once a source with
+// watched repositories has answered, and what arrives here otherwise. A source
+// that watches repositories but has never answered and is not reading says
+// what arrives here: `nothing open` would be a guess.
+func factoryBareSentence(snap factory.Snapshot) string {
+	if _, ok := factoryPollingSource(snap); ok {
+		return factoryBareReadingWords
+	}
+	watched := 0
+	for _, src := range snap.Sources {
+		if len(src.Repos) > 0 && !src.Polled.IsZero() && src.Trouble == "" {
+			watched += len(src.Repos)
+		}
+	}
+	if watched > 0 {
+		return factoryBareReadWords(watched)
+	}
+	return factoryBareWords
+}
+
+// factoryBareRail is the rail of a bare floor: [factoryBareSentence], dim, wrapped
 // to the rows' column and never more than room rows, with no row a press can
 // land on. The cursor's window is emptied with it, so a click finds no item.
 func (a *app) factoryBareRail(width, room int) ([]string, []int) {
 	a.fp.top, a.fp.shown, a.fp.pinned = 0, 0, 0
 	var out []string
 	var hits []int
-	for _, line := range placeTeachProse(factoryBareWords, width, a.pal) {
+	for _, line := range placeTeachProse(factoryBareSentence(a.fp.snap), width, a.pal) {
 		if len(out) >= room {
 			break
 		}
