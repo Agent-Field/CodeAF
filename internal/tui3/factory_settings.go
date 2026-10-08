@@ -31,10 +31,16 @@ import (
 // store keeps no repositories offers no `R`, one that keeps no rail offers no
 // `$`, and a recipe whose checkout is unknown is drawn but not edited.
 
-// factoryPollWords is what the picker says after it saves, and the figure is
-// the poll's own (cmd/codeaf's factoryPollEvery, and factory.md's `##
-// connecting github`).
+// factoryPollWords is how often github is read, and the figure is the poll's
+// own (cmd/codeaf's factoryPollEvery, and factory.md's `## connecting
+// github`). A read floor with nothing open says it ([factoryBareReadWords]);
+// the picker's receipt does not, because a person who just saved wants to
+// hear that the read has begun, not when the next one is.
 const factoryPollWords = "github polls every minute"
+
+// factoryReadingNowWords is the picker's receipt's second clause: the save
+// starts the first read, and the handover and the bare floor say where it is.
+const factoryReadingNowWords = "reading them now"
 
 // factoryForgeWait is how long the picker's read may take: a token's whole
 // list of repositories is several pages on a busy account.
@@ -317,7 +323,8 @@ func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 // factorySaveRepos is `enter` on the picker: the ticked repositories are the
-// watched ones now, and the note line says how many and how often.
+// watched ones now, and the note line says how many and that they are being
+// read.
 func (a *app) factorySaveRepos() tea.Cmd {
 	list := a.fp.pick.watching()
 	a.fp.act.doing = "saving…"
@@ -330,12 +337,14 @@ func (a *app) factorySaveRepos() tea.Cmd {
 	})
 }
 
-// factoryWatchingWords is the picker's receipt.
+// factoryWatchingWords is the picker's receipt: how many are watched and that
+// the read has begun. The progress itself is the handover's
+// ([app.factoryHeadFresh]) and the bare floor's ([factoryBareReadingWords]).
 func factoryWatchingWords(n int) string {
 	if n == 0 {
 		return "watching no repositories · the floor keeps what chat and n bring"
 	}
-	return "watching " + itoa(n) + " " + factoryPlural(n, "repository", "repositories") + rowSep + factoryPollWords
+	return "watching " + itoa(n) + " " + factoryPlural(n, "repository", "repositories") + rowSep + factoryReadingNowWords
 }
 
 // factoryPickerBody is the picker as exactly room rows of exactly width cells:
