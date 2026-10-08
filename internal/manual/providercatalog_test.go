@@ -37,6 +37,7 @@ func TestManualProviderListsDoNotPinTheCatalogSize(t *testing.T) {
 
 var providerCount = regexp.MustCompile(`\b(?:[0-9]+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?\s+(?:(?:built-in|supported|initial|setup|model|provider)\s+)*(?:providers|options)\b`)
 var providerCountLead = regexp.MustCompile(`\b(?:all|same|shows?|includes?|supports?|offers?|lists?|holds?|contains?|has|there are)\s+(?:exactly\s+)?$`)
+var providerOptionCatalog = regexp.MustCompile(`\b(?:provider (?:list|catalog|chooser|menu)|providers (?:group|list|catalog|menu)|flat list)\b`)
 
 // Match catalog claims, including wrapped sentences and Markdown emphasis,
 // while allowing quantities about connected providers or a router's endpoints.
@@ -47,6 +48,11 @@ func pinsProviderCount(paragraph string) bool {
 	}
 	for _, at := range providerCount.FindAllStringIndex(text, -1) {
 		claim := text[at[0]:at[1]]
+		// A provider can offer counted connection choices without counting the
+		// catalog. Only provider options or a catalog list pin its size.
+		if strings.HasSuffix(claim, "options") && !strings.Contains(claim, "provider options") && !providerOptionCatalog.MatchString(text) {
+			continue
+		}
 		for _, catalogWord := range []string{"built-in", "supported", "initial", "setup"} {
 			if strings.Contains(claim, catalogWord) {
 				return true
@@ -81,6 +87,9 @@ func TestProviderCountGuardRecognizesCatalogClaims(t *testing.T) {
 		"Probe each of the two providers your next message may reach.",
 		"Choose between two connected providers.",
 		"The provider returns 10 models.",
+		"The provider offers two options: browser sign-in or an API key.",
+		"For this provider, setup offers two options: sign in or paste a key.",
+		"Two providers each offer two options: browser sign-in or an API key.",
 		"The router tried nine endpoints behind the provider.",
 		"Compare two options.",
 	} {
