@@ -1,8 +1,11 @@
 package factory
 
 import (
+	"errors"
+	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // DefaultRecipe is the recipe a repo starts from before anybody banks one of
@@ -106,12 +109,21 @@ func StageWhen(words string) string {
 var stageStop = map[string]bool{"it": true, "the": true, "a": true, "an": true, "this": true, "that": true, "them": true}
 var stageLead = map[string]bool{"then": true, "please": true, "run": true}
 
-// stageName is the first two meaningful words of an ask, for a rail:
-// `make it neater` is `make neater` and `check the docs build` is `check docs`.
+// stageName is the first meaningful word of an ask, as a stage's one word
+// ([StageWord]): `make it neater` is `make` and `please read the history` is
+// `read`. Only letters and digits are kept, a word is cut at twelve cells, and
+// a word too short to be a name gives way to the next; an ask with no word
+// that can be a name is `stage`.
 func stageName(ask string) string {
 	var raw []string
 	for _, w := range strings.Fields(strings.ToLower(ask)) {
-		if w = strings.Trim(w, ",:;.!?\"'()"); w != "" {
+		w = strings.Map(func(r rune) rune {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				return r
+			}
+			return -1
+		}, w)
+		if w != "" {
 			raw = append(raw, w)
 		}
 	}
@@ -126,24 +138,84 @@ func stageName(ask string) string {
 			kept = append(kept, w)
 		}
 	}
-	if len(kept) == 0 {
-		kept = raw
+	for _, w := range append(kept, raw...) {
+		if r := []rune(w); len(r) > stageWordMost {
+			w = string(r[:stageWordMost])
+		}
+		if name, err := StageWord(w); err == nil {
+			return name
+		}
 	}
-	if len(kept) > 2 {
-		kept = kept[:2]
+	return "stage"
+}
+
+// stageNamed is the `name: ask` a typed stage sentence may start with: one or
+// two words before a colon that a space or the end follows. Two words are
+// still read as a name, so that [StageWord] refuses them in its own sentence
+// rather than the colon quietly becoming part of the ask.
+var stageNamed = regexp.MustCompile(`^([\pL\pN]+(?:\s+[\pL\pN]+)?)\s*:(?:\s+|$)`)
+
+// StageSentence reads a typed stage sentence: an optional place
+// (`after review,`, `before proof,`, `first,`, `last,`), an optional one-word
+// name with a colon (`arch:`), and the ask. `after review, arch: read it for
+// the architecture` is a stage named arch placed after review. A sentence with
+// no name is named by its ask's first meaningful word ([stageName]), so
+// `after review, make it neater` is `make`. It answers the stage, the place
+// ([StageWhen]'s words), and an error when the name is not one word or there
+// is no ask.
+func StageSentence(words string) (Stage, string, error) {
+	when, rest := stagePlacementOf(words)
+	name := ""
+	if m := stageNamed.FindStringSubmatch(rest); m != nil {
+		w, err := StageWord(m[1])
+		if err != nil {
+			return Stage{}, when, err
+		}
+		name, rest = w, rest[len(m[0]):]
 	}
-	return strings.Join(kept, " ")
+	ask := strings.Trim(strings.TrimSpace(rest), " ,:;.")
+	if ask == "" {
+		return Stage{}, when, errors.New("say what the stage should do")
+	}
+	if askCells(ask) > AskMost {
+		return Stage{}, when, ErrAskTooLong
+	}
+	if name == "" {
+		name = stageName(ask)
+	}
+	return Stage{Name: name, Kind: StageChat, Ask: ask, Until: "done", On: true}, when, nil
 }
 
 // ParseStage reads "after review, make it neater" into a stage: a
-// conversation whose ask is the words with the placement clause taken off, and
-// whose name is [stageName] of that ask. Its place comes from [StageWhen]
-// and [PlaceStage], because A STAGE CARRIES NO TIME WORD: its place in the
-// list is its time. An empty Ask is a sentence that said only when.
+// conversation whose ask is the words with the placement clause (and a
+// `name:`) taken off, and whose name is one word ([StageSentence]). Its place
+// comes from [StageWhen] and [PlaceStage], because A STAGE CARRIES NO TIME
+// WORD: its place in the list is its time. An empty Ask is a sentence that
+// said only when, or one [StageSentence] refused (a two-word name); a caller
+// that wants the refusal's own words calls [StageSentence].
 func ParseStage(words string) Stage {
-	_, ask := stagePlacementOf(words)
-	ask = strings.Trim(strings.TrimSpace(ask), " ,:;.")
-	return Stage{Name: stageName(ask), Kind: StageChat, Ask: ask, Until: "done", On: true}
+	st, _, err := StageSentence(words)
+	if err != nil {
+		return Stage{}
+	}
+	return st
+}
+
+// AddStageSentence is [StageSentence] and [PlaceStage] together, within the
+// bounds every stage list keeps: a one-word name the list does not have yet,
+// and at most [StageMost] stages.
+func AddStageSentence(stages []Stage, words string) ([]Stage, error) {
+	st, when, err := StageSentence(words)
+	if err != nil {
+		return stages, err
+	}
+	if len(stages) >= StageMost {
+		return stages, ErrNineStages
+	}
+	if StageIndex(stages, st.Name) >= 0 {
+		return stages, fmt.Errorf("there is already a stage named %s; give this one its own word, `word: ask`", st.Name)
+	}
+	return PlaceStage(stages, st, when), nil
 }
 
 // PlaceStage inserts st at the place when names. `after X` is directly after
@@ -184,7 +256,11 @@ func PlaceStage(stages []Stage, st Stage, when string) []Stage {
 // AddStageWords is [ParseStage] and [PlaceStage] together: what the AddStage
 // door does to an item's own copy of the recipe.
 func AddStageWords(stages []Stage, words string) []Stage {
-	return PlaceStage(stages, ParseStage(words), StageWhen(words))
+	st := ParseStage(words)
+	if st.Ask == "" {
+		return stages
+	}
+	return PlaceStage(stages, st, StageWhen(words))
 }
 
 // The until words are a stage's exit contract: the condition a runner checks

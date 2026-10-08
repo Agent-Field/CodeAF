@@ -339,7 +339,7 @@ func TestThePlanEditIsAppliedUnderAdaptAndAskedUnderAsk(t *testing.T) {
 			mu.Unlock()
 			res := done("")
 			if job.Stage.Name == "plan" && job.Round == 1 {
-				res.Edit = &factory.PlanEdit{Add: []factory.Stage{{Ask: "after write, make it neater"}}, Skip: []string{"review"}, Why: "small change"}
+				res.Edit = &factory.PlanEdit{Add: []factory.Stage{{Ask: "after write, neaten: make it neater"}}, Skip: []string{"review"}, Why: "small change"}
 			}
 			return res, nil
 		}),
@@ -354,10 +354,10 @@ func TestThePlanEditIsAppliedUnderAdaptAndAskedUnderAsk(t *testing.T) {
 	got := strings.Join(ran, ",")
 	ran = nil
 	mu.Unlock()
-	if got != "plan,write,make neater,proof" {
+	if got != "plan,write,neaten,proof" {
 		t.Fatalf("ran %s", got)
 	}
-	if strings.Join(it.Adapted, "|") != "plan added make neater|plan skipped review|why: small change" {
+	if strings.Join(it.Adapted, "|") != "plan added neaten|plan skipped review|why: small change" {
 		t.Fatalf("adapted = %q", it.Adapted)
 	}
 
