@@ -61,6 +61,13 @@ type floorLoop struct {
 	// extra are phases a send-back appended, by name, which are not in the
 	// item's stages: their ask is kept here because a phase's note changes.
 	extra map[int]map[string]factory.Stage
+
+	// sayMu keeps each item's manager lines in order (manager.go): owed are
+	// the lines a conversation could not take yet, and retrying says a retry
+	// is already on its way.
+	sayMu    sync.Mutex
+	owed     map[int][]owedLine
+	retrying map[int]bool
 }
 
 // loopCtl is one item's controls, reached by the doors.
@@ -76,6 +83,14 @@ type loopCtl struct {
 	askMu sync.Mutex
 	// reverify says the control runs the checks again, holding no bench.
 	reverify bool
+	// hearMu keeps one reading of the manager conversation at a time
+	// (manager.go). phase, phaseAt and phaseSpent are the phase whose first
+	// round started last, when, and what the item had spent then, for its
+	// done line; only the item's own goroutine touches them.
+	hearMu     sync.Mutex
+	phase      int
+	phaseAt    time.Time
+	phaseSpent float64
 
 	// Guarded by floorLoop.mu.
 	pending     string // the question the item waits on: "" is none
@@ -95,12 +110,14 @@ type loopAnswer struct {
 func (r *Runner) loop() *floorLoop {
 	r.loopOnce.Do(func() {
 		r.floor = &floorLoop{
-			r:       r,
-			ctls:    map[int]*loopCtl{},
-			bench:   map[int]int{},
-			results: map[int]map[int]factory.StageResult{},
-			notes:   map[int][]string{},
-			extra:   map[int]map[string]factory.Stage{},
+			r:        r,
+			ctls:     map[int]*loopCtl{},
+			bench:    map[int]int{},
+			results:  map[int]map[int]factory.StageResult{},
+			notes:    map[int][]string{},
+			extra:    map[int]map[string]factory.Stage{},
+			owed:     map[int][]owedLine{},
+			retrying: map[int]bool{},
 		}
 	})
 	return r.floor
@@ -147,23 +164,41 @@ func (r *Runner) Launch(id int) error {
 		return fmt.Errorf("%s is already running", it.Ref())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1)}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
 	delete(lp.extra, id)
 	lp.mu.Unlock()
 
+	// THE MANAGER IS MADE BEFORE THE RUN IS, and what the person told it
+	// before this run is the run's brief: it goes on the item's notes, which
+	// open every stage's brief (manager.go).
+	talk, unmade := r.manage(it)
+	brief := r.brief(talk, it.Heard)
 	now := r.now()
 	err = lp.move(c, "", EventQueued, "queued", func(it *factory.Item) error {
 		if err := launchable(*it); err != nil {
 			return err
+		}
+		if strings.TrimSpace(it.Talk) == "" && talk != "" {
+			it.Talk = talk
+		}
+		for _, h := range brief {
+			if !h.At.After(it.Heard) {
+				continue
+			}
+			if words := strings.TrimSpace(h.Words); words != "" {
+				it.Notes = append(it.Notes, words)
+			}
+			it.Heard = h.At
 		}
 		it.State = factory.StateQueued
 		it.Question, it.QKind = "", ""
 		it.Proof, it.Policy = nil, nil
 		it.Stream = &factory.Stream{Started: now, Phases: loopPhases(*it)}
 		loopSay(it, now, "said", "queued")
+		loopSay(it, now, "fail", unmade)
 		return nil
 	})
 	if err != nil {
@@ -355,6 +390,11 @@ func (lp *floorLoop) drive(c *loopCtl) {
 	}); err != nil {
 		return
 	}
+	if lp.r.opts.Talk != nil {
+		watching := make(chan struct{})
+		defer close(watching)
+		go lp.watchTalk(c, watching)
+	}
 	for {
 		it, err := lp.r.opts.Store.Get(c.id)
 		if err != nil || it.Stream == nil {
@@ -401,7 +441,10 @@ func (lp *floorLoop) stageAt(it factory.Item, i int) (factory.Stage, int) {
 // ask parks the item on a question and waits for the person. The phase
 // takes state (waiting, or failed with note when the stage could not go on),
 // and the item needs you. It answers false when the item was stopped.
-func (lp *floorLoop) ask(c *loopCtl, i int, pending, qkind, question string, state factory.PhaseState, note string) (loopAnswer, bool) {
+//
+// said is the manager's line for the question (manager.go), "" for the plain
+// `asking you: <question>`; the answer is said back to it as `answered: …`.
+func (lp *floorLoop) ask(c *loopCtl, i int, pending, qkind, question string, state factory.PhaseState, note, said string) (loopAnswer, bool) {
 	c.askMu.Lock()
 	defer c.askMu.Unlock()
 	lp.mu.Lock()
@@ -434,13 +477,18 @@ func (lp *floorLoop) ask(c *loopCtl, i int, pending, qkind, question string, sta
 		lp.emit(c.id, name, EventFailed, note)
 	}
 	lp.emit(c.id, name, EventWaiting, question)
+	if said == "" {
+		said = askLine("", question)
+	}
+	lp.tell(c.id, said)
 	var a loopAnswer
 	select {
 	case a = <-c.answers:
 	case <-c.ctx.Done():
 		return loopAnswer{}, false
 	}
-	said := "no"
+	lp.tell(c.id, fmt.Sprintf(sayAnswered, answeredWord(a)))
+	said = "no"
 	switch {
 	case a.words != "":
 		said = "noted: " + a.words
@@ -462,7 +510,7 @@ func (lp *floorLoop) ask(c *loopCtl, i int, pending, qkind, question string, sta
 // gate is a person's yes before a stage: yes goes on, words go on with the
 // words in the notes, no stops the item.
 func (lp *floorLoop) gate(c *loopCtl, i int, name string) bool {
-	a, ok := lp.ask(c, i, "gate", "gate", name+" is ready · go, or change it?", factory.PhaseWaiting, "")
+	a, ok := lp.ask(c, i, "gate", "gate", name+" is ready · go, or change it?", factory.PhaseWaiting, "", "")
 	if !ok {
 		return false
 	}
@@ -485,7 +533,8 @@ func (lp *floorLoop) addNote(id int, words string) {
 
 // finish marks phase i done, with an event.
 func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
-	return lp.move(c, name, EventDone, note, func(it *factory.Item) error {
+	spent := 0.0
+	err := lp.move(c, name, EventDone, note, func(it *factory.Item) error {
 		if i < len(it.Stream.Phases) {
 			it.Stream.Phases[i].State = factory.PhaseDone
 			it.Stream.Phases[i].Left = 0
@@ -493,8 +542,25 @@ func (lp *floorLoop) finish(c *loopCtl, i int, name, note string) bool {
 				it.Stream.Phases[i].Note = note
 			}
 		}
+		spent = it.Stream.Spent
 		return nil
-	}) == nil
+	})
+	if err != nil {
+		return false
+	}
+	// THE MANAGER HEARS EVERY STAGE THAT ENDS: how long it took, what it cost
+	// and what it said, `plan done · 2m · $0.04 · …`.
+	var took time.Duration
+	cost := 0.0
+	if c.phase == i && !c.phaseAt.IsZero() {
+		took = lp.r.now().Sub(c.phaseAt)
+		cost = spent - c.phaseSpent
+	}
+	lp.mu.Lock()
+	res := lp.results[c.id][i]
+	lp.mu.Unlock()
+	lp.tell(c.id, doneLine(name, took, cost, lp.summary(res)))
+	return true
 }
 
 // skip leaves phase i failed and goes on, as the person said.
@@ -537,7 +603,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	exec := lp.r.opts.Exec[kindOf(st)]
 	if exec == nil {
 		note := fmt.Sprintf("codeaf cannot run a %s stage here", kindOf(st))
-		a, ok := lp.ask(c, i, "cannot", "scope", name+" cannot run here · skip it, or stop?", factory.PhaseFailed, note)
+		a, ok := lp.ask(c, i, "cannot", "scope", name+" cannot run here · skip it, or stop?", factory.PhaseFailed, note, askLine(failedLead(name, ""), name+" cannot run here · skip it, or stop?"))
 		if !ok {
 			return false
 		}
@@ -553,6 +619,12 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 	planAsked := false
 	for {
 		if !lp.held(c) {
+			return false
+		}
+		// WHAT THE PERSON TOLD THE MANAGER SINCE THE LAST ROUND IS THIS
+		// ROUND'S STEER, read at the boundary so the brief carries it.
+		lp.hear(c)
+		if c.ctx.Err() != nil {
 			return false
 		}
 		kind, text := EventStarted, fmt.Sprintf("%s · round %d", name, round)
@@ -573,6 +645,13 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		}); err != nil {
 			return false
 		}
+		if c.phase != i {
+			c.phase, c.phaseAt = i, now
+			if cur, err := lp.r.opts.Store.Get(c.id); err == nil && cur.Stream != nil {
+				c.phaseSpent = cur.Stream.Spent
+			}
+			lp.tell(c.id, fmt.Sprintf(sayStarted, name))
+		}
 		job := lp.job(c, st, index, i, round)
 		res, again, err := lp.round(c, exec, job)
 		if c.ctx.Err() != nil {
@@ -582,7 +661,8 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			continue
 		}
 		if err != nil {
-			a, ok := lp.ask(c, i, "failed", "scope", fmt.Sprintf("%s did not finish: %s · skip it, or stop?", name, loopFirstLine(err.Error())), factory.PhaseFailed, name+" did not finish")
+			q := fmt.Sprintf("%s did not finish: %s · skip it, or stop?", name, loopFirstLine(err.Error()))
+			a, ok := lp.ask(c, i, "failed", "scope", q, factory.PhaseFailed, name+" did not finish", askLine(failedLead(name, ""), q))
 			if !ok {
 				return false
 			}
@@ -617,7 +697,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 			if q != "" {
 				planAsked = true
-				a, ok := lp.ask(c, i, "plan", "plan", q, factory.PhaseWaiting, "")
+				a, ok := lp.ask(c, i, "plan", "plan", q, factory.PhaseWaiting, "", "")
 				if !ok {
 					return false
 				}
@@ -641,7 +721,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			}
 			note := fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round))
 			q := note + ": " + shortfall(res) + " · one more round, or go on as is?"
-			a, ok := lp.ask(c, i, "rounds", "scope", q, factory.PhaseFailed, note)
+			a, ok := lp.ask(c, i, "rounds", "scope", q, factory.PhaseFailed, note, askLine(failedLead(name, failCount(res)), q))
 			if !ok {
 				return false
 			}
@@ -812,7 +892,7 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	if !reached {
 		return true
 	}
-	a, ok := lp.ask(c, i, "cap", kind, q, factory.PhaseWaiting, "")
+	a, ok := lp.ask(c, i, "cap", kind, q, factory.PhaseWaiting, "", fmt.Sprintf(sayCapAsk, loopUSD(it.Cap)))
 	if !ok {
 		return false
 	}
@@ -1016,6 +1096,9 @@ func (lp *floorLoop) land(c *loopCtl) {
 	})
 	if err == nil && shipped {
 		lp.emit(c.id, "", EventShipped, "shipped")
+		lp.tell(c.id, sayShipped)
+	} else if err == nil {
+		lp.tell(c.id, sayLanded)
 	}
 }
 
@@ -1062,6 +1145,7 @@ func (lp *floorLoop) stop(c *loopCtl) {
 		if err == nil {
 			lp.emit(c.id, "", EventStopped, "stopped")
 		}
+		defer lp.tell(c.id, sayStopped)
 	}
 	c.wmu.Unlock()
 	lp.release(c)
@@ -1097,6 +1181,7 @@ func (r *Runner) Stop(id int) error {
 			return err
 		}
 		lp.emit(id, "", EventStopped, "stopped")
+		lp.tell(id, sayStopped)
 		return nil
 	}
 	return fmt.Errorf("%s is not running", it.Ref())
@@ -1123,16 +1208,20 @@ func (r *Runner) Pause(id int) error {
 		c.resume = nil
 	}
 	lp.mu.Unlock()
-	kind, word := EventResumed, "resumed"
+	kind, word := EventResumed, sayResumed
 	if paused {
-		kind, word = EventPaused, "paused"
+		kind, word = EventPaused, sayPaused
 	}
 	now := r.now()
-	return lp.move(c, "", kind, word, func(it *factory.Item) error {
+	if err := lp.move(c, "", kind, word, func(it *factory.Item) error {
 		it.Stream.Paused = paused
 		loopSay(it, now, "said", word)
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	lp.tell(id, word)
+	return nil
 }
 
 func (r *Runner) notRunning(id int) error {
@@ -1175,12 +1264,7 @@ func (r *Runner) Steer(id int, words string) error {
 	if c == nil || c.reverify {
 		return r.notRunning(id)
 	}
-	select {
-	case c.steer <- words:
-	default:
-	}
-	lp.addNote(id, words)
-	lp.say(c, "said", "steer: "+words)
+	lp.steer(c, words, true)
 	return nil
 }
 
@@ -1225,6 +1309,7 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 		return false, err
 	}
 	lp.emit(id, "", EventShipped, "shipped")
+	lp.tell(id, sayShipped)
 	if edited {
 		return false, nil
 	}
@@ -1262,7 +1347,7 @@ func (r *Runner) SendBack(id int, words string) error {
 		return r.notLanded(id)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1)}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
@@ -1299,6 +1384,7 @@ func (r *Runner) SendBack(id int, words string) error {
 		lp.forget(c)
 		return err
 	}
+	lp.tell(id, fmt.Sprintf(sayChanges, words))
 	lp.enqueue(c)
 	return nil
 }
@@ -1330,7 +1416,7 @@ func (r *Runner) Reverify(id int) error {
 		return r.notLanded(id)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), reverify: true}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), reverify: true, phase: -1}
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()

@@ -138,6 +138,19 @@ type Options struct {
 	// plain reckoning: Stream.Spent grows by what is reported, and the cap is
 	// reached when it is spent.
 	Pool Pool
+	// Manager answers the item's manager conversation (manager.go): the item's
+	// own conversation, made the way the floor's `T` makes it when the item
+	// has none, and named the lead of the item's team either way. Launch calls
+	// it; nil makes none, and an item with no conversation runs unmanaged.
+	// The manager lane added it, additively.
+	Manager func(ctx context.Context, it factory.Item) (transcript string, err error)
+	// Talk is the manager conversation's file, read and written: the runner's
+	// lines go in through it, and what the person typed comes out. Nil is a
+	// runner that neither reports nor listens.
+	Talk Talk
+	// TalkPoll is how often a running item reads its manager conversation for
+	// a steer or an answer; 0 is two seconds.
+	TalkPoll time.Duration
 }
 
 // Pool is what the loop needs of the money, and money.go's *Money answers
