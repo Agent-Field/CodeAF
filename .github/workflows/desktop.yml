@@ -41,7 +41,12 @@ jobs:
       - run: npm run test:ui
       - run: npm run engine:build
       - run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
-      - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      - name: Linux native compilation
+        if: runner.os == 'Linux'
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      - name: Mac native build with platform configuration
+        if: runner.os == 'macOS'
+        run: npm run desktop:build -- --debug --no-bundle
   engine-contract:
     runs-on: ubuntu-24.04
     steps:
