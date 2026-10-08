@@ -216,7 +216,11 @@ func TestFactoryTimelineDrawsTheRunsStory(t *testing.T) {
 	read := factoryTLRowWith(rows, "internal/session/session.go")
 	edit := factoryTLRowWith(rows, "internal/session/trees.go")
 	bash := factoryTLRowWith(rows, "go build ./...")
-	if read != write+1 || edit != write+2 || bash != write+3 {
+	// THE OPEN HEAD'S FIRST LINE IS ITS ASK, dim, and its steps follow.
+	if ask := rows[write+1]; !strings.HasPrefix(strings.TrimSpace(ask), wordAskLabel+" ") {
+		t.Fatalf("the open write's first line is not its ask: %q", ask)
+	}
+	if read != write+2 || edit != write+3 || bash != write+4 {
 		t.Fatalf("the write's steps are not under its head in order (%d %d %d):\n%s", read, edit, bash, strings.Join(rows, "\n"))
 	}
 	if !strings.Contains(rows[read], a.actionMarkFor(session.ActionRead)+" read") || !strings.HasPrefix(strings.TrimSpace(rows[bash]), a.factorySpin()+" bash") {
@@ -282,10 +286,10 @@ func TestFactoryTimelineLiveSectionGrows(t *testing.T) {
 	rows = factoryTLPlain(t, a, 120, 40)
 	more := factoryTLRowWith(rows, wordMoreAbove)
 	head := factoryTLRowWith(rows, " write")
-	if more != head+1 || !strings.Contains(rows[more], "… 13 "+wordMoreAbove) {
+	if more != head+2 || !strings.Contains(rows[more], "… 13 "+wordMoreAbove) {
 		t.Fatalf("the older steps are not counted under the head:\n%s", strings.Join(rows, "\n"))
 	}
-	if last := factoryTLRowWith(rows, "f19.go"); last != head+factoryTimelineLiveRows {
+	if last := factoryTLRowWith(rows, "f19.go"); last != head+1+factoryTimelineLiveRows {
 		t.Fatalf("the newest step is not the section's last of %d rows: %d after %d", factoryTimelineLiveRows, last, head)
 	}
 }

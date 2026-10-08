@@ -196,7 +196,8 @@ func TestFactoryPhaseStatesAndRoundsDraw(t *testing.T) {
 	}
 	drive(t, a, key("enter"))
 	body := strings.Join(factoryBodyPlain(a, a.width, 30), "\n")
-	if !strings.Contains(body, a.factorySpin()+" review 2/2") {
+	// THE RAIL SAYS THE ROUND IN ITS ROUNDS COLUMN, after the name.
+	if row := factoryLineWith(body, a.factorySpin()+" review"); !strings.Contains(row, " 2/2") {
 		t.Fatalf("the running row does not wear the spinner and its round:\n%s", body)
 	}
 }
