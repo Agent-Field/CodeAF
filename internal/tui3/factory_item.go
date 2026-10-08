@@ -55,10 +55,6 @@ import (
 // typing row and the habit offer, stand at the bottom of the pane, as they
 // stand at the bottom of the peek on the floor.
 
-// factoryStageNoteWords is what `enter` on a stage says until a stage's
-// conversation can be walked into from here.
-const factoryStageNoteWords = "the stage's conversation opens here once streams are conversations"
-
 // factoryStageView is one stage as the item page draws it: the stage, how it
 // stands on this item, and the phase that ran it when one has.
 type factoryStageView struct {
@@ -68,6 +64,9 @@ type factoryStageView struct {
 	ran     bool // a phase of the stream stands behind it
 	off     bool // switched off on this item
 	skipped bool // its condition does not fit the item
+	// elapsed is how long a running phase has been seen running, one short
+	// word (factory_run.go's [app.factoryPhaseElapsed]), and "" otherwise.
+	elapsed string
 }
 
 // factoryItemStages is the item's stages in order, each matched by name to the
@@ -86,6 +85,9 @@ func (a *app) factoryItemStages(it factory.Item) []factoryStageView {
 		for i, ph := range phases {
 			if !used[i] && ph.Name == st.Name {
 				used[i], v.phase, v.state, v.ran = true, ph, ph.State, true
+				if ph.State == factory.PhaseRunning {
+					v.elapsed = a.factoryPhaseElapsed(it.ID, i, ph.Name)
+				}
 				break
 			}
 		}
@@ -101,6 +103,8 @@ const (
 	factoryPageIssue factoryPageKind = iota // the issue itself, always first
 	factoryPageTalk                         // the item's conversation, when it has one
 	factoryPageStage                        // one stage of its recipe
+	factoryPageProof                        // the sheet, when no stage is named proof
+	factoryPageLog                          // the stream's log, when it has one
 )
 
 // factoryPageRow is one row of the item page's rail: what it stands for, and
@@ -112,16 +116,34 @@ type factoryPageRow struct {
 }
 
 // factoryItemRows is the rail's rows top to bottom: the issue, the talk row
-// when the item has a conversation, and its stages.
+// when the item has a conversation, its stages, a `proof` row when the item
+// carries a sheet and no stage is named proof (a recipe without one, or a
+// send-back's `prove`), and `log` when its stream has said anything. A ROW
+// WITH NOTHING BEHIND IT IS NOT ON THE RAIL: an item that never ran has no log
+// row (the emptiness law).
 func (a *app) factoryItemRows(it factory.Item) []factoryPageRow {
 	rows := []factoryPageRow{{kind: factoryPageIssue, at: -1}}
 	if strings.TrimSpace(it.Talk) != "" {
 		rows = append(rows, factoryPageRow{kind: factoryPageTalk, at: -1})
 	}
+	proofStage := false
 	for i, v := range a.factoryItemStages(it) {
 		rows = append(rows, factoryPageRow{kind: factoryPageStage, view: v, at: i})
+		proofStage = proofStage || v.stage.Name == "proof"
+	}
+	if !proofStage && len(it.Proof)+len(it.Policy) > 0 {
+		rows = append(rows, factoryPageRow{kind: factoryPageProof, at: -1})
+	}
+	if it.Stream != nil && len(it.Stream.Log) > 0 {
+		rows = append(rows, factoryPageRow{kind: factoryPageLog, at: -1})
 	}
 	return rows
+}
+
+// factoryIsProofRow says whether a rail row is the item's sheet: the stage
+// named proof, or the proof row that stands in for one.
+func factoryIsProofRow(r factoryPageRow) bool {
+	return r.kind == factoryPageProof || (r.kind == factoryPageStage && r.view.stage.Name == "proof")
 }
 
 // factoryStageFor is the rail row the page opens on: the stage waiting on the
@@ -144,10 +166,16 @@ func (a *app) factoryStageFor(it factory.Item) int {
 		return at
 	}
 	if it.State == factory.StateLanded {
-		if at := find(func(r factoryPageRow) bool { return r.view.stage.Name == "proof" }); at >= 0 {
-			return at
+		last := -1
+		for i, r := range rows {
+			if factoryIsProofRow(r) {
+				return i
+			}
+			if r.kind == factoryPageStage {
+				last = i
+			}
 		}
-		if last := len(rows) - 1; rows[last].kind == factoryPageStage {
+		if last >= 0 {
 			return last
 		}
 	}
@@ -204,18 +232,19 @@ func (a *app) factoryStageSelect(at int) {
 // `z` turns the density, `enter` opens the item under the cursor, `{` `}` and
 // `|` move the divider (factory_split.go), `J` and `K` (and `pgdn` and `pgup`)
 // scroll the item's body; and while the item page is open the arrows walk its
-// rail, `enter` says what a stage will open on the place's note line, and
-// `esc` closes it. It answers false for every other key, which goes on to mean
+// rail, `enter` walks into a stage's conversation (or says why it has none),
+// and `esc` closes it. It answers false for every other key, which goes on to mean
 // what it meant before.
 //
 // `ENTER` ON A FLOOR ROW OPENS THE ITEM PAGE AND NEVER LAUNCHES: launching is
 // `r`, `p` and `L` (factory_keys.go). The one `enter` on the item page that
 // acts is on the proof of a landed item, which IS the item's sheet, so the
-// sheet's default key keeps its meaning there ([app.factoryLandedKey]): ship
-// when every claim was shown, and the send-back row otherwise. Every other
-// stage says, on the place's note line ([placeFactory.note]), what it will
-// open: a line of its own above the hint, so the keys beside it keep their
-// room. `enter` on the issue or the talk row does nothing here.
+// sheet's default key keeps its meaning there ([app.factoryLandedKey]): sign
+// off when every claim was shown, and the send-back row otherwise. A STAGE
+// THAT RAN AS A CONVERSATION IS A ROOM, and `enter` walks into it
+// (factory_run.go's [app.factoryOpenRoom]); every other stage says why it has
+// none on the pane's action line. `enter` on the issue, the talk row and the
+// log does nothing here.
 //
 // IT STANDS ASIDE for the map, the tab bar's cursor, the words box and a
 // verb's typing row, each of which has the keyboard while it is up.
@@ -265,15 +294,20 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // factoryItemEnter is `enter` on the item page, and a double press on a row of
-// its rail: the proof of a landed item answers as its sheet, every other stage
-// says what it will open, and the issue and the talk row do nothing here.
+// its rail: the proof of a landed item answers as its sheet, a stage with a
+// room opens it, every other stage says why it has none, and the issue, the
+// talk row and the log do nothing here.
 func (a *app) factoryItemEnter() tea.Cmd {
 	it, ok := a.factoryCursorItem()
 	if !ok {
 		return nil
 	}
 	rows := a.factoryItemRows(it)
-	if a.fp.stage < 0 || a.fp.stage >= len(rows) || rows[a.fp.stage].kind != factoryPageStage {
+	if a.fp.stage < 0 || a.fp.stage >= len(rows) {
+		return nil
+	}
+	r := rows[a.fp.stage]
+	if r.kind != factoryPageStage && r.kind != factoryPageProof {
 		return nil
 	}
 	// A SHEET WITH NO DOOR FOR ITS `enter` (the still fixture) says the
@@ -283,6 +317,13 @@ func (a *app) factoryItemEnter() tea.Cmd {
 		if cmd, took := a.factoryLandedKey(it, "enter"); took {
 			return cmd
 		}
+	}
+	if factoryRoomOf(r) != "" {
+		a.pageMsg = ""
+		return a.factoryOpenRoom(it, r.view)
+	}
+	if r.kind != factoryPageStage {
+		return nil
 	}
 	a.fp.said = true
 	a.touch()
@@ -362,15 +403,19 @@ func (a *app) factoryScrollKey(k string) bool {
 }
 
 // factoryOnProof says whether the item page stands on the proof of a landed
-// item, the one stage whose `enter` is the sheet's. It is the row the page
-// opens a landed item on ([app.factoryStageFor]): `proof`, or the last stage
-// of a recipe that has none.
+// item, the one row whose `enter` is the sheet's: `proof`, or the last stage of
+// a recipe that has no sheet at all, which is the row the page opens a landed
+// item on ([app.factoryStageFor]).
 func (a *app) factoryOnProof(it factory.Item) bool {
-	if !a.fp.open || it.State != factory.StateLanded || a.fp.stage != a.factoryStageFor(it) {
+	if !a.fp.open || it.State != factory.StateLanded {
 		return false
 	}
 	rows := a.factoryItemRows(it)
-	return a.fp.stage < len(rows) && rows[a.fp.stage].kind == factoryPageStage
+	if a.fp.stage < 0 || a.fp.stage >= len(rows) {
+		return false
+	}
+	r := rows[a.fp.stage]
+	return factoryIsProofRow(r) || (r.kind == factoryPageStage && a.fp.stage == a.factoryStageFor(it))
 }
 
 // ── drawing ─────────────────────────────────────────────────────────────────
@@ -391,7 +436,13 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	// its pane from row 3, so the page's regions start on the same rows
 	// whatever the item. What the plan stage changed is the issue pane's,
 	// beside the stages it changed.
-	lines := []string{a.factoryItemTitle(it, measure), a.factoryItemChips(it, measure), ""}
+	// A PARKED ITEM'S SECOND ROW IS ITS QUESTION (factory_run.go's
+	// [app.factoryItemQuestion]), where the chips stand on every other item.
+	second := a.factoryItemQuestion(it, measure)
+	if second == "" {
+		second = a.factoryItemChips(it, measure)
+	}
+	lines := []string{a.factoryItemTitle(it, measure), second, ""}
 	lead := factoryMarginPad()
 	for i, line := range lines {
 		if line != "" {
@@ -449,6 +500,13 @@ func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 	}
 	ref := it.Ref()
 	left := a.factoryCrumbs(it.Repo) + a.factoryRefLink(it, pal.ink(ref)) + pal.ink(" "+it.Title)
+	// ON A STAGE WITH A ROOM THE TRAIL GOES ONE CRUMB DEEPER, the way `enter`
+	// will take: `Factory › codeaf › #12 › review`, the item's title after it,
+	// muted. `esc` from the room climbs back to this page.
+	if r, ok := a.factoryRoomRow(it); ok {
+		sep := " " + a.linearMark("›", ">") + " "
+		left = a.factoryCrumbs(it.Repo) + a.factoryRefLink(it, pal.ink(ref)) + pal.dim(sep) + pal.ink(r.view.stage.Name) + factorySpaces(factoryGutter) + pal.muted(it.Title)
+	}
 	// THE MONEY AT THE RIGHT IS SPEND OVER THE CAP, so an item with no stream
 	// draws none: its cap is the chip on the row under it, and saying it twice
 	// is a second number to read for one fact.
@@ -503,6 +561,11 @@ func (a *app) factoryStageLabel(v factoryStageView) (string, func(string) string
 		return label, pal.dim
 	}
 	mark, _ := a.factoryPhaseMark(v.state)
+	if v.state == factory.PhaseRunning {
+		// A RUNNING PHASE WEARS THE TRANSCRIPT'S SPINNER where its mark
+		// stands: a shape that moves says it is moving (PRESENCE OVER LABELS).
+		mark = a.factorySpin()
+	}
 	words := v.stage.Name
 	if v.ran {
 		words = factoryPhaseWords(factory.Phase{Name: v.stage.Name, State: v.state, Round: v.phase.Round, Tasks: v.phase.Tasks}, max(v.stage.Max, 1))
@@ -534,24 +597,46 @@ type factoryRailCell struct {
 	rest      string
 	paint     func(string) string
 	flat      bool
+	// tail is what follows the words, already painted, and tailPlain its
+	// plain spelling: a stage room's conversation mark and a running
+	// phase's elapsed. THE WORDS ARE CUT BEFORE THE TAIL IS, so the room's
+	// mark is never what a narrow rail loses.
+	tail, tailPlain string
 }
 
 // label is the cell's plain words, mark and all.
 func (c factoryRailCell) label() string {
 	if c.flat {
-		return c.rest
+		return c.rest + c.tailPlain
 	}
-	return c.mark + c.rest
+	return c.mark + c.rest + c.tailPlain
 }
 
-// factoryStageCell is one stage as a rail cell.
+// factoryStageCell is one stage as a rail cell: its mark, its words, and
+// after them, dim, the conversation's mark when the stage has a room and how
+// long a running one has run. The elapsed is the first thing a narrow rail
+// drops.
 func (a *app) factoryStageCell(v factoryStageView) factoryRailCell {
 	label, paint := a.factoryStageLabel(v)
 	if v.off || v.skipped {
 		return factoryRailCell{rest: label, paint: paint, markPaint: paint, flat: true}
 	}
 	mark, markPaint := a.factoryPhaseMark(v.state)
-	return factoryRailCell{mark: mark, markPaint: markPaint, rest: strings.TrimPrefix(label, mark), paint: paint}
+	if v.state == factory.PhaseRunning {
+		mark = a.factorySpin()
+	}
+	c := factoryRailCell{mark: mark, markPaint: markPaint, rest: strings.TrimPrefix(label, mark), paint: paint}
+	if v.ran && strings.TrimSpace(v.phase.Chat) != "" {
+		room := " " + a.icon(tokens.GActionCommunicate)
+		c.tail, c.tailPlain = a.pal.dim(room), room
+	}
+	if v.elapsed != "" {
+		e := rowSep + v.elapsed
+		if ansi.StringWidth(c.label())+ansi.StringWidth(e) <= factoryRailW-factoryMargin {
+			c.tail, c.tailPlain = c.tail+a.pal.dim(e), c.tailPlain+e
+		}
+	}
+	return c
 }
 
 // factoryPageCells is the item page's rail as cells: the issue with the
@@ -565,6 +650,10 @@ func (a *app) factoryPageCells(rows []factoryPageRow) []factoryRailCell {
 			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GFileDocument), markPaint: pal.muted, rest: " issue", paint: pal.ink})
 		case factoryPageTalk:
 			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionCommunicate), markPaint: pal.muted, rest: " talk", paint: pal.ink})
+		case factoryPageProof:
+			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionTest), markPaint: pal.muted, rest: " proof", paint: pal.ink})
+		case factoryPageLog:
+			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GShell), markPaint: pal.muted, rest: " log", paint: pal.ink})
 		default:
 			cells = append(cells, a.factoryStageCell(r.view))
 		}
@@ -608,10 +697,11 @@ func (a *app) factoryCellRail(cells []factoryRailCell, cursor, room int) ([]stri
 		}
 		c := cells[at]
 		text := ""
+		tailW := ansi.StringWidth(c.tailPlain)
 		if c.flat {
-			text = c.paint(fit(c.rest, factoryRailW-factoryMargin))
+			text = c.paint(fit(c.rest, factoryRailW-factoryMargin-tailW)) + c.tail
 		} else {
-			text = c.markPaint(c.mark) + c.paint(fit(c.rest, factoryRailW-factoryMargin-ansi.StringWidth(c.mark)))
+			text = c.markPaint(c.mark) + c.paint(fit(c.rest, factoryRailW-factoryMargin-ansi.StringWidth(c.mark)-tailW)) + c.tail
 		}
 		row := factoryPad(factorySpaces(factoryMargin)+text, factoryRailW)
 		if at == cursor {
@@ -630,7 +720,7 @@ func (a *app) factoryCellStrip(cells []factoryRailCell, cursor, measure int) str
 	var segs, plains []string
 	for i, c := range cells {
 		label := c.label()
-		seg := c.paint(label)
+		seg := c.paint(strings.TrimSuffix(label, c.tailPlain)) + c.tail
 		if i == cursor {
 			seg = a.pal.selected(seg, ansi.StringWidth(label))
 		}
@@ -673,6 +763,10 @@ func (a *app) factoryPagePane(it factory.Item, rows []factoryPageRow, measure, r
 		lines = a.factoryIssuePane(it, measure, body)
 	case factoryPageTalk:
 		lines = a.factoryTalkPane(it, measure, body)
+	case factoryPageProof:
+		lines = a.factoryProofPane(it, nil, measure, body)
+	case factoryPageLog:
+		lines = a.factoryLogPane(it, measure, body)
 	default:
 		views := a.factoryItemStages(it)
 		lines = a.factoryStagePane(it, views, r.at, measure, body)
@@ -793,7 +887,15 @@ func (a *app) factoryStagePane(it factory.Item, views []factoryStageView, at, me
 	if ask := strings.TrimSpace(v.stage.Ask); ask != "" {
 		head = append(head, pal.ink(fit(ask, measure)))
 	}
+	if v.stage.Name == "proof" && len(it.Proof)+len(it.Policy) > 0 {
+		return a.factoryProofPane(it, head, measure, room)
+	}
 	action := a.factoryPageAction(it, measure)
+	// `ENTER` ON A STAGE WITH NO ROOM SAYS WHY ON THIS LINE, where the keys
+	// stand, until the cursor moves or another key is pressed.
+	if a.fp.said && strings.TrimSpace(v.phase.Chat) == "" {
+		action = pal.dim(fit(factoryNoRoomWords(v), measure))
+	}
 	tailRoom := room - len(head) - 1
 	if action != "" {
 		tailRoom -= factoryActionRows
@@ -850,19 +952,12 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 	pal := a.pal
 	var out []string
 	switch {
-	case v.stage.Name == "proof" && len(it.Proof)+len(it.Policy) > 0:
-		for _, c := range it.Proof {
-			out = append(out, a.factoryClaimRow(c, "", measure))
-		}
-		for _, c := range it.Policy {
-			out = append(out, a.factoryClaimRow(c, "policy", measure))
-		}
 	case v.off:
 		out = append(out, pal.dim(fit("switched off on this item", measure)))
 	case v.skipped:
 		out = append(out, pal.dim(fit("skipped · not "+strings.TrimSpace(v.stage.When), measure)))
 	case v.state == factory.PhaseRunning:
-		if line := factoryStageCounts(v); line != "" {
+		if line := strings.Join(nonEmpty([]string{factoryStageCounts(v), v.elapsed}), rowSep); line != "" {
 			out = append(out, pal.muted(fit(line, measure)))
 		}
 		if s := it.Stream; s != nil {
@@ -871,7 +966,7 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 				log = log[len(log)-max(left, 0):]
 			}
 			for _, l := range log {
-				out = append(out, a.factoryLogLine(l, measure))
+				out = append(out, a.factoryLogRow(l, measure))
 			}
 		}
 	case v.state == factory.PhaseWaiting:
@@ -880,9 +975,14 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 			q = strings.TrimSpace(v.phase.Note)
 		}
 		if q != "" {
-			out = append(out, a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ask, measure)...)
+			out = append(out, a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ink, measure)...)
 		}
-		out = append(out, pal.dim(fit(factoryAnswerKeys, measure)))
+		if a.factory.Has("answer") {
+			out = append(out, pal.dim(fit(factoryAnswerKeys, measure)))
+		}
+		if note := strings.TrimSpace(v.phase.Note); note != "" && note != q && note != strings.TrimSpace(v.stage.Ask) {
+			out = append(out, pal.dim(fit(note, measure)))
+		}
 	case v.state == factory.PhaseDone:
 		result := strings.TrimSpace(v.phase.Note)
 		if result == "" {
@@ -890,7 +990,7 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 		}
 		out = append(out, pal.muted(fit(strings.Join(nonEmpty([]string{result, factoryStageCounts(v)}), rowSep), measure)))
 	case v.state == factory.PhaseFailed:
-		out = append(out, pal.bad(fit(factoryOr(v.phase.Note, "failed"), measure)))
+		out = append(out, pal.dim(fit(factoryOr(v.phase.Note, "failed"), measure)))
 	default:
 		after := "runs first"
 		for i := at - 1; i >= 0; i-- {
@@ -914,8 +1014,8 @@ func factoryStageCounts(v factoryStageView) string {
 	if n := v.phase.Tasks; n > 0 {
 		parts = append(parts, strconv.Itoa(n)+" "+factoryPlural(n, "task", "tasks"))
 	}
-	if r := v.phase.Round; r > 0 {
-		parts = append(parts, "round "+strconv.Itoa(r)+"/"+strconv.Itoa(max(v.stage.Max, 1)))
+	if r := factoryRoundWords(v.phase.Round, v.stage.Max); r != "" {
+		parts = append(parts, "round "+r)
 	}
 	return strings.Join(parts, rowSep)
 }

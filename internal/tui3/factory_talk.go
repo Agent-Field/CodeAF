@@ -2,13 +2,11 @@ package tui3
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 // ── TALK IT THROUGH: `T`, THE ITEM'S OWN CONVERSATION ───────────────────────
@@ -46,9 +44,7 @@ func (a *app) factoryTalk(it factory.Item) tea.Cmd {
 			// THE CONVERSATION'S FOLDER IS READ HERE, off the loop: the open
 			// is asked about the folder the conversation works in, which its
 			// session folder's meta says.
-			if meta, merr := session.LoadMeta(filepath.Dir(chat)); merr == nil {
-				where = strings.TrimSpace(meta.Workspace)
-			}
+			where = factoryChatFolder(chat)
 		}
 		var snap factory.Snapshot
 		var lerr error
@@ -68,15 +64,7 @@ func (a *app) factoryTalk(it factory.Item) tea.Cmd {
 				a.touch()
 				return nil
 			}
-			a.fp.act.talk = a.convKey(chat)
-			cmd := a.openConversationRow(session.SessionRow{Transcript: chat, ProjectDir: where})
-			if a.pageShowing() {
-				// The open refused, and said why on the floor's note line: there
-				// is no conversation in front to come back from.
-				a.fp.act.talk = ""
-			}
-			a.touch()
-			return tea.Batch(cmd, a.factoryTeamsRead())
+			return a.factoryEnterChat(chat, where)
 		}
 	})
 }

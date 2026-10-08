@@ -143,19 +143,23 @@ func TestFactoryVerbsAskTheRightDoors(t *testing.T) {
 		{6, []string{"a"}, "AskAuthor(6)"},
 		{6, []string{"g"}, ""},
 		// A stream.
-		{2, []string{"p"}, "Pause(2)"},
+		{2, []string{" "}, "Pause(2)"},
+		{2, []string{"p"}, ""},
 		{2, []string{"x"}, "Stop(2)"},
 		{2, []string{"e"}, "SetEffort(2,3,cheap)"},
 		{2, []string{"enter"}, ""},
 		// A queued item cannot pause.
-		{3, []string{"p"}, ""},
+		{3, []string{" "}, ""},
 		// An item waiting on the person.
 		{1, []string{"y"}, "Answer(1,true,)"},
 		{1, []string{"n"}, "Answer(1,false,)"},
 		{1, []string{"x"}, "Stop(1)"},
 		// A landed item with a claim nothing showed.
-		{9, []string{"a"}, "SignOff(9,true)"},
-		{9, []string{"o"}, "Reverify(9)"},
+		{9, []string{"e"}, "SignOff(9,true)"},
+		{9, []string{"s"}, "SignOff(9,false)"},
+		{9, []string{"v"}, "Reverify(9)"},
+		{9, []string{"a"}, ""},
+		{9, []string{"o"}, ""},
 		{9, []string{"d"}, ""},
 		{9, []string{"enter"}, ""},
 	} {
@@ -206,6 +210,10 @@ func TestFactoryLaunchKeepsTheCursorAndSpendsTheMarks(t *testing.T) {
 	factoryOn(t, b, 8)
 	drive(t, b, key(" "))
 	drive(t, b, key("L"))
+	if got := f2.said(); len(got) != 0 || b.fp.act.launch == nil {
+		t.Fatalf("L with marks asked %v before its question was answered", got)
+	}
+	drive(t, b, key("y"))
 	if got := strings.Join(f2.said(), " "); got != "Launch(7) Launch(8)" {
 		t.Fatalf("L asked %q", got)
 	}
@@ -263,7 +271,7 @@ func TestFactoryTypingRowSubmitsAndCancels(t *testing.T) {
 
 	// A steer on a stream, an answer in words, a send back.
 	factoryOn(t, a, 2)
-	drive(t, a, key("s"))
+	drive(t, a, key("S"))
 	factoryType(t, a, "redo it stronger")
 	drive(t, a, key("enter"))
 	factoryOn(t, a, 1)
@@ -271,7 +279,7 @@ func TestFactoryTypingRowSubmitsAndCancels(t *testing.T) {
 	factoryType(t, a, "keep the flag")
 	drive(t, a, key("enter"))
 	factoryOn(t, a, 9)
-	drive(t, a, key("c"))
+	drive(t, a, key("B"))
 	factoryType(t, a, "prove it twice")
 	drive(t, a, key("enter"))
 	if got := strings.Join(f.said(), " "); got != "Steer(2,redo it stronger) Answer(1,false,keep the flag) SendBack(9,prove it twice)" {
@@ -302,14 +310,14 @@ func TestFactoryEnterOnAFailedClaimSendsBack(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	factoryOn(t, a, 9)
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "enter open · a ship anyway · c send back · o check again · d diff") {
+	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "enter open · e sign off with changes · B send back · v check again · d diff") {
 		t.Fatalf("the landed hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
 	if !a.fp.open || f.said() != nil {
 		t.Fatal("enter on the landed row did not open its page, or asked a door")
 	}
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "↑↓ stages · enter send back · a ship anyway · c send back · o check again · d diff") {
+	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "↑↓ stages · enter send back · e sign off with changes · B send back · v check again · d diff") {
 		t.Fatalf("the proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -340,11 +348,11 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	}
 	a := factoryVerbLab(t, f)
 	factoryOn(t, a, 9)
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "enter open · c send back") {
+	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "enter open · s sign off · B send back") {
 		t.Fatalf("the clean landed hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "↑↓ stages · enter ship · c send back") {
+	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "↑↓ stages · enter sign off · s sign off · B send back") {
 		t.Fatalf("the clean proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -366,7 +374,7 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	}
 
 	// `n` puts the offer away and asks nothing.
-	drive(t, a, key("a"))
+	drive(t, a, key("s"))
 	f.said()
 	if a.fp.act.habit == "" {
 		t.Fatal("the second sign-off drew no offer")
@@ -411,8 +419,8 @@ func TestFactoryHintByState(t *testing.T) {
 		want string
 	}{
 		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t gate · c cap · e effort · d hide · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · S sleep 8h · E recipe · esc back"},
-		{2, "enter open · s steer · p pause · x stop · e effort · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · S sleep 8h · E recipe · esc back"},
-		{1, "enter open · y n answer · a in words · s steer · x stop · / filter · [ ] repo · A backlog · z density · O order · priority · S sleep 8h · E recipe · esc back"},
+		{2, "enter open · S steer · space pause · x stop · e effort · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
+		{1, "enter open · y n answer · a in words · S steer · x stop · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
 	} {
 		factoryOn(t, a, c.id)
 		if got := (placeFactory{}).hint(a); got != c.want {
@@ -431,7 +439,7 @@ func TestFactoryHintByState(t *testing.T) {
 	a.width = 400
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
-	if got, want := (placeFactory{}).hint(a), "↑↓ stages · s steer · p pause · x stop · e effort · n new item · S sleep 8h · esc floor"; got != want {
+	if got, want := (placeFactory{}).hint(a), "↑↓ stages · S steer · space pause · x stop · e effort · n new item · esc floor"; got != want {
 		t.Fatalf("on the item page the hint is\n%q\nwant\n%q", got, want)
 	}
 }
@@ -455,10 +463,10 @@ func TestFactoryRefusalReachesTheNoteLine(t *testing.T) {
 	}
 }
 
-// A STAGE'S CONVERSATION DOES NOT OPEN YET, AND SAYS SO on the note line:
-// `enter` on a stream's row opens its page, and `enter` on a stage says where
-// the conversation will be, asking no door. `esc` puts the floor back.
-func TestFactoryEnterOnAStreamSaysWhereTheRoomWillBe(t *testing.T) {
+// A STAGE WITH NO CONVERSATION SAYS WHY on the pane's action line: `enter` on
+// a stream's row opens its page, and `enter` on a stage that has no room names
+// the reason, asking no door. `esc` puts the floor back.
+func TestFactoryEnterOnAStageWithNoRoomSaysWhy(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	for _, id := range []int{2, 10} {
@@ -472,8 +480,10 @@ func TestFactoryEnterOnAStreamSaysWhereTheRoomWillBe(t *testing.T) {
 			drive(t, a, key("down"))
 		}
 		drive(t, a, key("enter"))
-		if text := factoryFrameText(a); !strings.Contains(text, factoryStageNoteWords) || !a.fp.said {
-			t.Fatalf("enter on a stage of item %d does not say where the conversation will be:\n%s", id, text)
+		it, _ := a.factoryCursorItem()
+		want := factoryNoRoomWords(a.factoryItemRows(it)[a.fp.stage].view)
+		if text := factoryFrameText(a); !strings.Contains(text, want) || !a.fp.said {
+			t.Fatalf("enter on a stage of item %d does not say %q:\n%s", id, want, text)
 		}
 		if got := f.said(); len(got) != 0 {
 			t.Fatalf("enter on a stage of item %d asked %v", id, got)

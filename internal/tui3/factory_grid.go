@@ -78,6 +78,14 @@ const (
 	factoryDividerW = 2
 	// factoryHeadHours is the handover sparkline's cells, one an hour.
 	factoryHeadHours = 24
+	// factoryStampW is a log line's time at the margin, `12:04` and its
+	// space, so every line's mark stands in one column whether it carries a
+	// time or not.
+	factoryStampW = 6
+	// factoryMediumW is a proof row's medium chip at the right, wide enough
+	// for `screenshot` and `transcript`, so the evidence beside it ends in
+	// one column on every row of the sheet.
+	factoryMediumW = 10
 )
 
 // THE VERTICAL RHYTHM.
