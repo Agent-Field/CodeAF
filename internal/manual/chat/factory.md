@@ -908,11 +908,12 @@ list's last line says so for the repository under the cursor:
 `codeaf does not know where owner/name is checked out · it is watched and read, and its stages
 wait until it is cloned`, or `checked out at <folder>` for one that is.
 
-- `↑` `↓` walk, `space` ticks or unticks, `enter` saves, `o` orders every section by how many
-  are open (the most first) and again back to the last push, `backspace` takes a letter off the
-  filter, `esc` clears the filter and then closes without saving:
-  `space watch · enter save · o by open · esc close · type to filter`. Once the filter has words
-  in it, `o` is a letter; `o` is offered only when some repository has an open count.
+- `↑` `↓` walk, `space` ticks or unticks, `enter` saves, `ctrl+o` orders every section by how
+  many are open (the most first) and again back to the last push, `backspace` takes a letter off
+  the filter, `esc` clears the filter and then closes without saving:
+  `space watch · enter save · ctrl+o by open · esc close · type to filter`. `o` is always a
+  letter, so a name that starts with one is typed like any other; `ctrl+o` is offered only when
+  some repository has an open count.
 - Saving writes `repos.json`, starts the first read and says
   `watching 3 repositories · reading them now`
   (or `watching no repositories · the floor keeps what chat and n bring`); see after connecting

@@ -174,7 +174,7 @@ func TestFactoryPickerRowsToggleSaveAndCancel(t *testing.T) {
 			t.Fatalf("the picker is missing %q:\n%s", want, body)
 		}
 	}
-	if hint := factoryHint(a); hint != "space watch · enter save · o by open · esc close · type to filter" {
+	if hint := factoryHint(a); hint != "space watch · enter save · ctrl+o by open · esc close · type to filter" {
 		t.Fatalf("picker hint = %q", hint)
 	}
 
@@ -262,9 +262,9 @@ func factoryPickHeadings(t *testing.T, a *app, width, room int) string {
 }
 
 // THE SECTIONS AND THEIR ORDER: WATCHING first, then one block per owner,
-// owners by their newest push, repositories by their last push; `o` orders
+// owners by their newest push, repositories by their last push; `ctrl+o` orders
 // every block by how many are open, keeps the cursor on its repository, and
-// the hint says the order `o` would change to.
+// the hint says the order `ctrl+o` would change to.
 func TestFactoryPickerSectionsAndOrder(t *testing.T) {
 	a := factorySettingsLab(t, newPickerFake(), 150)
 	drive(t, a, key("R"))
@@ -279,9 +279,9 @@ func TestFactoryPickerSectionsAndOrder(t *testing.T) {
 	if a.fp.pick.rows[a.fp.pick.visible()[a.fp.pick.cursor]].full != "agent-field/docs" {
 		t.Fatal("the cursor is not on agent-field/docs")
 	}
-	drive(t, a, key("o"))
+	drive(t, a, key("ctrl+o"))
 	if a.fp.pick.query != "" || !a.fp.pick.byOpen {
-		t.Fatalf("o typed %q instead of ordering", a.fp.pick.query)
+		t.Fatalf("ctrl+o typed %q instead of ordering", a.fp.pick.query)
 	}
 	want = "agent-field/codeaf santoshkumarradha/dotfiles gone/old santoshkumarradha/notes agent-field/docs agent-field/agentfield xagent-field/mirror"
 	if got := factoryPickOrder(a); got != want {
@@ -290,7 +290,7 @@ func TestFactoryPickerSectionsAndOrder(t *testing.T) {
 	if a.fp.pick.rows[a.fp.pick.visible()[a.fp.pick.cursor]].full != "agent-field/docs" {
 		t.Fatal("o moved the cursor off its repository")
 	}
-	if hint := factoryHint(a); !strings.Contains(hint, "o by pushed") {
+	if hint := factoryHint(a); !strings.Contains(hint, "ctrl+o by pushed") {
 		t.Fatalf("the hint does not say o goes back to the push: %q", hint)
 	}
 }
@@ -356,12 +356,12 @@ func TestFactoryPickerTypingNarrows(t *testing.T) {
 }
 
 // KEYS BOUND BEFORE TYPING NEVER ENTER THE FILTER: the arrows, space,
-// backspace, `o` (while an open count is drawn) and a first `/`; once words
-// are typed `o` and `/` are letters like any other.
+// backspace, `ctrl+o` and a first `/`; once words are typed `/` is a letter
+// like any other, and `o` always is.
 func TestFactoryPickerBoundKeysNeverEnterTheFilter(t *testing.T) {
 	a := factorySettingsLab(t, newPickerFake(), 150)
 	drive(t, a, key("R"))
-	drive(t, a, key("down"), key("up"), key(" "), key("backspace"), key("o"), key("/"), key("o"))
+	drive(t, a, key("down"), key("up"), key(" "), key("backspace"), key("ctrl+o"), key("/"), key("ctrl+o"))
 	if q := a.fp.pick.query; q != "" {
 		t.Fatalf("bound keys typed %q", q)
 	}
@@ -369,18 +369,25 @@ func TestFactoryPickerBoundKeysNeverEnterTheFilter(t *testing.T) {
 	if q := a.fp.pick.query; q != "agent-field/co" {
 		t.Fatalf("typing after words kept %q", q)
 	}
-	// With no open count drawn, `o` orders nothing, so it is a letter.
+	// `o` is a letter even with open counts drawn, so a name that starts with
+	// one is typed like any other.
+	drive(t, a, key("esc"))
+	drive(t, a, key("o"))
+	if a.fp.pick.query != "o" {
+		t.Fatalf("o typed %q", a.fp.pick.query)
+	}
+	// With no open count drawn, `ctrl+o` orders nothing and is not offered.
 	b := factorySettingsLab(t, newSettingsFake(), 150)
 	drive(t, b, key("R"))
 	for i := range b.fp.pick.rows {
 		b.fp.pick.rows[i].open = -1
 	}
-	drive(t, b, key("o"))
-	if b.fp.pick.query != "o" {
-		t.Fatalf("o with no open counts typed %q", b.fp.pick.query)
+	drive(t, b, key("ctrl+o"))
+	if b.fp.pick.query != "" || b.fp.pick.byOpen {
+		t.Fatalf("ctrl+o with no open counts typed %q or ordered", b.fp.pick.query)
 	}
 	if hint := factoryHint(b); strings.Contains(hint, "o by") {
-		t.Fatalf("the hint offers o with nothing to order by: %q", hint)
+		t.Fatalf("the hint offers ctrl+o with nothing to order by: %q", hint)
 	}
 }
 

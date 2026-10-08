@@ -76,7 +76,7 @@ type factoryPicker struct {
 	// until the picker opens again and the cursor never jumps.
 	on, was map[string]bool
 	// byOpen orders every section by how many issues and pull requests are
-	// open, the most first, instead of by the last push (`o`).
+	// open, the most first, instead of by the last push (`ctrl+o`).
 	byOpen bool
 	cursor int
 	top    int
@@ -303,7 +303,7 @@ func (p *factoryPicker) matches(r factoryPickRow) bool {
 // sections is the picker's blocks as drawn: WATCHING, what was watched when
 // the picker opened, then one block per owner, owners ordered by their most
 // recently pushed repository. Inside each block the repositories go by the
-// last push, or by how many are open under `o`. A block the filter empties is
+// last push, or by how many are open under `ctrl+o`. A block the filter empties is
 // not drawn.
 func (p *factoryPicker) sections() []factoryPickSection {
 	var watching []int
@@ -345,7 +345,7 @@ func (p *factoryPicker) sections() []factoryPickSection {
 }
 
 // ordered is rows by the picker's order: the last push, the newest first, or
-// under `o` the open count, the most first and the last push after it.
+// under `ctrl+o` the open count, the most first and the last push after it.
 func (p *factoryPicker) ordered(rows []int) []int {
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := p.rows[rows[i]], p.rows[rows[j]]
@@ -405,8 +405,9 @@ func (p *factoryPicker) watching() []string {
 // printable key the picker does not bind goes into the filter, so a person who
 // knows the name types it. The bound keys are the arrows, `space` (watch),
 // `enter` (save), `backspace`, `esc` (clear the filter, then close without
-// saving) and `o` (order by open), which is a letter like any other once the
-// filter has words in it, or when nothing carries an open count. A `/` with
+// saving) and `ctrl+o` (order by open, when something carries an open count),
+// so `o` stays a letter and a name that starts with one is typed like any
+// other (one key, one meaning). A `/` with
 // nothing typed yet is answered and kept out, for the person who tries it
 // first; after words it is the owner's slash.
 func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
@@ -439,17 +440,15 @@ func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+k":
 		// THE CARET STANDS AT THE END OF THE WORDS, so the kill to the end
 		// has nothing after it to take; the key is answered and keeps them.
-	case "o":
-		if p.query == "" && p.anyOpen() {
+	case "ctrl+o":
+		if p.anyOpen() {
 			row := -1
 			if p.cursor >= 0 && p.cursor < len(vis) {
 				row = vis[p.cursor]
 			}
 			p.byOpen = !p.byOpen
 			p.keep(row)
-			break
 		}
-		p.query, p.cursor = p.query+"o", 0
 	case "/":
 		if p.query != "" {
 			p.query, p.cursor = p.query+"/", 0
@@ -776,7 +775,7 @@ func factoryPushedAgo(now, then time.Time) string {
 	return strconv.Itoa(int(d/(365*day))) + "y"
 }
 
-// factoryPickerHint is the hint line while the picker stands: the keys, `o`
+// factoryPickerHint is the hint line while the picker stands: the keys, `ctrl+o`
 // only where an open count is drawn and saying the order it would change to,
 // and `type to filter` while nothing is typed.
 func (a *app) factoryPickerHint() string {
@@ -787,9 +786,9 @@ func (a *app) factoryPickerHint() string {
 	parts := []string{"space watch", "enter save"}
 	if p.anyOpen() {
 		if p.byOpen {
-			parts = append(parts, "o by pushed")
+			parts = append(parts, "ctrl+o by pushed")
 		} else {
-			parts = append(parts, "o by open")
+			parts = append(parts, "ctrl+o by open")
 		}
 	}
 	return strings.Join(append(parts, "esc close", "type to filter"), rowSep)
