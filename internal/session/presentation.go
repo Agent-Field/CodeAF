@@ -19,8 +19,15 @@ import (
 // every word. It is memory only: new journal writes keep the typed words, so
 // those restored messages need no mark. An older compacted journal can still
 // carry the saved block without a mark.
+//
+// Kind is what the producer says the message IS, beside who it is for: the
+// factory runner writes `factory-progress` on the lines it puts into an item's
+// own conversation, so a page can tell the run's progress from the
+// conversation around it by record rather than by its words. "" is an
+// ordinary message.
 type messagePresentation struct {
 	Audience    string  `json:"audience"`
+	Kind        string  `json:"kind,omitempty"`
 	Text        *string `json:"text,omitempty"`
 	Interrupted bool    `json:"interrupted,omitempty"`
 	SkillsBlock string  `json:"-"`
