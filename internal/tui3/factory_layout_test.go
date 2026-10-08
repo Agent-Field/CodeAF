@@ -282,7 +282,10 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 	for i := 1; i <= 40; i++ {
 		lines = append(lines, "paragraph line "+itoa(i))
 	}
-	it.Body = strings.Join(lines, "\n")
+	// EACH LINE IS ITS OWN PARAGRAPH: the body renders as Markdown, which folds
+	// single line breaks into one paragraph, so a blank row between them keeps
+	// forty rows that overflow the pane.
+	it.Body = strings.Join(lines, "\n\n")
 	it.Stages = factoryPaneItem(t, a, 1).Stages
 	factoryOn(t, a, 6)
 	drive(t, a, key("enter"))
@@ -299,7 +302,9 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 	}
 	drive(t, a, key("J"), key("J"))
 	frame = strings.Join(factoryFrameLines(a), "\n")
-	if strings.Contains(frame, "paragraph line 2 ") || !strings.Contains(frame, "paragraph line 3") {
+	// Two rows down is the blank after line 1 and then line 2: line 1 is gone,
+	// line 2 leads the pane.
+	if strings.Contains(frame, "paragraph line 1 ") || !strings.Contains(frame, "paragraph line 2 ") {
 		t.Fatalf("J twice did not scroll the issue two rows:\n%s", frame)
 	}
 	for i := 0; i < 10; i++ {

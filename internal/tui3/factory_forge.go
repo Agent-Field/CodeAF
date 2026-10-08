@@ -27,7 +27,6 @@ import (
 //	checks     one row per check run: its mark, its name, its state
 //	files      a pull request's `+N −M`, then up to six paths with theirs, dim
 //	activity   one dim line per event, newest last, at most five
-//	links      `github ↗`
 //
 // Each block is headed by its own word, dim, so a block a person did not
 // expect still says what it is. The peek and the item page's issue pane draw
@@ -75,7 +74,6 @@ func (a *app) factoryForgeBlocks(it factory.Item, w, commentRows int) [][]string
 		a.factoryChecksBlock(it, w),
 		a.factoryFilesBlock(it, w),
 		a.factoryActivityBlock(it, w),
-		a.factoryLinksBlock(it, w),
 	}
 }
 
@@ -224,14 +222,4 @@ func (a *app) factoryActivityBlock(it factory.Item, w int) []string {
 		return nil
 	}
 	return out
-}
-
-// factoryLinksBlock is where the item lives off this machine: its page on the
-// forge, as `github ↗`.
-func (a *app) factoryLinksBlock(it factory.Item, w int) []string {
-	mark, mw := a.factoryGitHubMark(it)
-	if mw == 0 || mw > w {
-		return nil
-	}
-	return []string{a.factoryBlockHead("links", w), mark}
 }

@@ -389,7 +389,7 @@ func TestFactoryForgeBlocks(t *testing.T) {
 			heads = append(heads, ansi.Strip(b[0]))
 		}
 	}
-	if got := strings.Join(heads, ","); got != "comments,checks,files,activity,links" {
+	if got := strings.Join(heads, ","); got != "comments,checks,files,activity" {
 		t.Fatalf("the blocks are %s", got)
 	}
 	files := ansi.Strip(strings.Join(a.factoryFilesBlock(it, factoryProseW), "\n"))
