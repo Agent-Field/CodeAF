@@ -237,7 +237,13 @@ func TestFactoryLogPaneThreeKinds(t *testing.T) {
 			pane = append(pane, strings.TrimSpace(right))
 		}
 	}
-	if len(pane) < 2 || !strings.HasPrefix(pane[0], thought.At.Format("15:04")) || !strings.Contains(pane[len(pane)-2], "steer: keep the old flag") {
+	// The newest line is the pane's last, over the action line when the
+	// page is too narrow for the verbs on the right.
+	newest := len(pane) - 1
+	if !a.factoryVerbsDrawn() {
+		newest--
+	}
+	if len(pane) < 2 || !strings.HasPrefix(pane[0], thought.At.Format("15:04")) || !strings.Contains(pane[newest], "steer: keep the old flag") {
 		t.Fatalf("the log pane is not oldest first, newest last, stamped:\n%s", strings.Join(pane, "\n"))
 	}
 }
@@ -313,6 +319,21 @@ func TestFactoryProofSheetBothWays(t *testing.T) {
 		want := "1 of 6 not shown · e approve with changes · B request changes"
 		if clean {
 			want = "all 6 shown · s approve"
+		}
+		// WITH THE VERBS ON THE RIGHT the line is its count, and the keys are
+		// the column's: the sheet's line does not name them a second time.
+		if a.factoryVerbsDrawn() {
+			count, keys, _ := strings.Cut(want, " · ")
+			for _, clause := range strings.Split(keys, " · ") {
+				_, word, _ := strings.Cut(clause, " ")
+				if !strings.Contains(text, word) {
+					t.Fatalf("clean %v: the verbs on the right do not name %q:\n%s", clean, word, text)
+				}
+			}
+			if strings.Contains(text, want) {
+				t.Fatalf("clean %v: the sheet's line names the column's keys again:\n%s", clean, text)
+			}
+			want = count
 		}
 		if !strings.Contains(text, want) {
 			t.Fatalf("clean %v: the sheet does not end %q:\n%s", clean, want, text)

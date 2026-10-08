@@ -145,6 +145,7 @@ const (
 	wordClose              = "close"
 	wordSheet              = "keys"
 	wordConversation       = "conversation"
+	wordOf                 = "of"
 )
 
 // The `?` sheet's group names, in the order the sheet draws them.
