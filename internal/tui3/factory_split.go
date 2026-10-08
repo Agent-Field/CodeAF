@@ -227,6 +227,12 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	if row < 0 || row >= a.fp.bodyRows() {
 		return nil, false
 	}
+	// `▾ MORE` IS A WORD A PERSON CAN PRESS: a press on its row, in the
+	// peek's or the issue's column, scrolls the body a page.
+	if row == a.fp.moreRow && a.factoryOverBody(m.X, row) {
+		a.factoryScrollBy(max(a.fp.scrollPage, 1))
+		return nil, true
+	}
 	if a.fp.open {
 		return a.factoryItemPress(m.X, m.Y, row), true
 	}
@@ -246,6 +252,40 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		a.factoryOpenItem()
 	}
 	return nil, true
+}
+
+// factoryWheel is the wheel over the factory, answered before the place's
+// own wheel. OVER THE PEEK, or over the issue on the item page, it scrolls
+// the body [placeWheelRows] rows a tick ([app.factoryScrollBy]); over the
+// rows and the rail it answers false, and the place's wheel walks the cursor
+// as it always has. An item page standing on a stage has no body to scroll,
+// so the wheel walks its rail wherever it is turned.
+func (a *app) factoryWheel(m tea.Mouse, delta int) (tea.Cmd, bool) {
+	if delta == 0 || !a.at(pageFactory) || a.composer.open || !a.factoryConnected() || a.fp.pick != nil || a.fp.recipe != nil {
+		return nil, false
+	}
+	row := m.Y - placeHeadRows
+	if row < 0 || row >= a.fp.bodyRows() || !a.factoryOverBody(m.X, row) {
+		return nil, false
+	}
+	if !a.factoryScrollBy(delta) {
+		return nil, false
+	}
+	return nil, true
+}
+
+// factoryOverBody says whether screen column x on body row row is over the
+// item's body as the last draw placed it: the peek's column beside the rows on
+// the floor, and on the item page the pane beside the rail (under the stage
+// floor, the rows under the rail's one line).
+func (a *app) factoryOverBody(x, row int) bool {
+	if a.fp.open {
+		if a.fp.bodyW < factoryStageFloor {
+			return a.fp.railShown > 0 && row > a.fp.railTop
+		}
+		return row >= a.fp.railTop && x > factoryRailW
+	}
+	return a.fp.bodyW-a.fp.rowsW-1 > 0 && row >= a.fp.headRows && x > a.fp.rowsW
 }
 
 // bodyRows is how many rows of the screen the last body drew under the head:

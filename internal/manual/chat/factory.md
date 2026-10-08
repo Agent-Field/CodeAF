@@ -48,11 +48,12 @@ keys about the whole floor (`n new item`, `L launch marked`, `T talk`, `u read a
 `g github`, `d hide`, the stage keys), so the item's own knobs, `t gate · c cap · e effort`,
 still show at 120 columns.
 
-- `↑` and `↓` (or `ctrl+p`, `ctrl+n`, the wheel) walk the items. Resting the pointer on a row
-  selects it and the peek previews it. A click selects a row, a second click opens it; a click in
-  the peek moves nothing.
+- `↑` and `↓` (or `ctrl+p`, `ctrl+n`, the wheel over the rows) walk the items. Resting the
+  pointer on a row selects it and the peek previews it. A click selects a row, a second click
+  opens it; a click in the peek moves nothing, except on `▾ more`.
 - `enter` opens the item on its own page (see the item page).
-- `J` and `K` scroll the peek's description, `pgdn` and `pgup` a page.
+- `J` and `K` scroll the peek's description, `pgdn` and `pgup` a page; so does the wheel over the
+  peek.
 - `{` and `}` move the divider, `|` puts it back (see resize the split).
 - `h` switches the handover between one line (the default) and four rows; remembered.
 - `z` switches compact rows (one line each, the default) and comfortable rows (a long title on
@@ -382,8 +383,15 @@ nothing.
 ## read the whole issue — J K on the peek, the issue row on the item page
 
 The peek shows at most six rows of an item's description. When there is more, its last row ends
-in `…` with a dim `▾ more` at the right. `J` scrolls it down a row and `K` up a row; `pgdn` and
-`pgup` move a page. Moving to another item starts that item at its top.
+in `…` with a dim `▾ more` at the right. To see the rest:
+
+- `J` scrolls it down a row and `K` up a row; `pgdn` and `pgup` move a page.
+- The wheel over the peek scrolls it three rows a notch. Over the rows the wheel walks the items.
+- A click on `▾ more` scrolls it a page.
+- `enter` opens the item's page, where the whole description stands (below).
+
+The scroll stays where you left it while the floor reads itself again. Moving to another item
+starts that item at its top.
 
 To read everything, open the item (`enter`, or click its row twice). The item page's rail starts
 with `issue`, and its pane is the whole description rendered from Markdown at 72 columns, then
@@ -392,7 +400,8 @@ waits its turn, `not read yet · u reads it` before the first read, and `u reads
 the time of the read was not kept), the factory's read, the
 facts, for a thin item the questions it would ask the author, what plan changed about the
 stages, and then the comments (each whole), checks, files, activity and links. `J`, `K`, `pgdn`
-and `pgup` scroll it, and its bottom row says `J K scroll` while there is more to see.
+and `pgup` scroll it, so do the wheel over the pane and a click on `▾ more`, and its bottom row
+says `J K scroll` while there is more to see. Over the rail the wheel walks the rail.
 
 ## the item page
 
