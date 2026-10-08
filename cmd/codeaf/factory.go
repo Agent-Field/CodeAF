@@ -13,6 +13,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/home"
 	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/session"
@@ -223,9 +224,9 @@ func recordWorkspaceCheckout(st *store.Store, workspace string) {
 	if st == nil || strings.TrimSpace(workspace) == "" {
 		return
 	}
-	go func() {
+	guard.Go("factory/record-checkout", func() {
 		_ = recordWorkspaceCheckoutNow(st, workspace)
-	}()
+	})
 }
 
 func recordWorkspaceCheckoutNow(st *store.Store, workspace string) error {
@@ -341,7 +342,7 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 		return
 	}
 	factoryPoll.Do(func() {
-		go func() {
+		guard.Go("factory/github-poll", func() {
 			ctx := context.Background()
 			token := func(ctx context.Context) string {
 				t, _ := factorygithub.TokenAt(ctx, profileDir)
@@ -355,7 +356,7 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 			// and in the engine stdout is the protocol. A failure is the facts
 			// line's `github · not reachable`, read off the store.
 			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil)
-		}()
+		})
 	})
 }
 

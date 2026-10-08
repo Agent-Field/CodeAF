@@ -269,6 +269,9 @@ func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		case "ctrl+u":
 			p.query, p.cursor = "", 0
+		case "ctrl+k":
+			// THE CARET STANDS AT THE END OF THE WORDS, so the kill to the end
+			// has nothing after it to take; the key is answered and keeps them.
 		default:
 			if t := msg.Key().Text; t != "" && t != " " && msg.Key().Mod&(tea.ModCtrl|tea.ModMeta|tea.ModSuper) == 0 {
 				p.query += t
