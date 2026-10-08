@@ -897,8 +897,9 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// this lane because the turn that asked is parked inside its own batch
 		// (session's tools_factory.go calls emitFactory). The card is drawn, or
 		// settled in place when the same kind comes back with an answer or a
-		// withdrawal on it (factorycard.go).
-		a.factoryProposal(ev)
+		// withdrawal on it (factorycard.go). A card that settles reads the floor
+		// again, so the live cards on screen say what it came to.
+		floor = a.factoryProposal(ev)
 	case session.EventFactoryAdded:
 		// AND THE FLOOR HAS ONE MORE ROW. The card says its number, and the
 		// floor is read again so the bar's count and the page are true within
@@ -912,14 +913,17 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// AND THE LINE IS IN THE FILE: the card says so and the floor, whose
 		// stages are read from that file, is read again ([app.recipeBanked]).
 		floor = a.recipeBanked(ev)
-	case session.EventStagesProposal:
-		// THE CHAT OFFERING TO CHANGE ONE ITEM'S STAGES, from the item's own
-		// conversation, on the same lane and card as the recipe offer.
-		a.stagesProposal(ev)
-	case session.EventStagesChanged:
-		// AND THE ITEM IS CHANGED: the card says so and the floor is read
-		// again ([app.stagesChanged]).
-		floor = a.stagesChanged(ev)
+	case session.EventItemProposal:
+		// THE CHAT OFFERING TO CHANGE ONE ITEM — its stages, gate, cap, effort
+		// or a note for its stages — from the item's own conversation, on the
+		// same lane and card as the recipe offer (factorycard.go). A card that
+		// settles reads the floor again.
+		floor = a.itemProposal(ev)
+	case session.EventItemChanged:
+		// AND THE ITEM IS CHANGED: the card says so, the live cards take the
+		// item the news carried, and the floor is read again
+		// ([app.itemChanged]).
+		floor = a.itemChanged(ev)
 	case session.EventNotice:
 		// A program's limit ending reaches this standing lane even when the
 		// same limit refuses the model turn that would otherwise announce it.
@@ -967,7 +971,11 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// too, as the first thing on it.
 		a.standingUpdate(ev)
 	}
-	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions, floor)
+	// AND THE LIVE ITEM CARDS' CLOCK, armed here because this lane is the one
+	// every conversation opens with — its roster arrives first on every attach
+	// — so a conversation whose replay drew a live card starts its clock on
+	// the first event, and one with none never starts it (factoryitemcard.go).
+	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions, floor, a.factoryCardPollArm())
 }
 
 // ── the pilot lanes ─────────────────────────────────────────────────────────

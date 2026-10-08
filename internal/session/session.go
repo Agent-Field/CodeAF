@@ -661,16 +661,18 @@ const (
 	// EventRecipeBanked says the line is in the repository's
 	// `.codeaf/factory.md` now, so a surface reading the recipe reads it again.
 	EventRecipeBanked
-	// EventStagesProposal is the card `factory_stages` raises: the chat wants to
-	// change the stages of the one item its conversation is about
-	// (tools_factory_stages.go). Stages carries the card, and its ID is the
-	// token a surface hands back to [Agent.ResolveStages]. It comes again, once,
-	// when the card is settled, with Decided or Withdrawn set, exactly as
-	// EventRecipeProposal does, and on the same task lane.
-	EventStagesProposal
-	// EventStagesChanged says the item's stages are changed on the floor now,
-	// so a surface drawing the floor reads it again.
-	EventStagesChanged
+	// EventItemProposal is the card `factory_item` raises: the chat wants to
+	// change the ONE floor item its conversation is about — its stages, gate,
+	// cap or effort — or leave its stages a note (tools_factory_item.go).
+	// FactoryItem carries the card, and its ID is the token a surface hands back
+	// to [Agent.ResolveItem]. It comes again, once, when the card is settled,
+	// with Decided or Withdrawn set, exactly as EventRecipeProposal does, and on
+	// the same task lane.
+	EventItemProposal
+	// EventItemChanged says the item is changed on the floor now. FactoryItem's
+	// Now is the item as the floor holds it after the change, so a surface with
+	// no floor of its own (a window over --host) still draws the live card.
+	EventItemChanged
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -994,10 +996,10 @@ type Event struct {
 	// Factory's is.
 	Recipe *RecipeNotice `json:"Recipe,omitempty"`
 
-	// Stages carries one EventStagesProposal's card or one EventStagesChanged's
-	// news (factory_contract.go), behind a json tag of its own for the reason
-	// Factory's is.
-	Stages *StagesNotice `json:"Stages,omitempty"`
+	// FactoryItem carries one EventItemProposal's card or one
+	// EventItemChanged's news (factory_contract.go), behind a json tag of its
+	// own for the reason Factory's is.
+	FactoryItem *ItemNotice `json:"FactoryItem,omitempty"`
 
 	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
 	// model was being asked, how far into its patience the step is, why the
@@ -1586,10 +1588,10 @@ type Config struct {
 	// --host or --at.
 	Recipe RecipeDoor
 
-	// Stages is the door onto one floor item's stages (factory_contract.go).
-	// NIL IS NO DOOR: `factory_stages` is off the belt. It is set exactly where
-	// Factory is, and never on --once, a task node, --host or --at.
-	Stages StagesDoor
+	// FactoryItem is the door onto one floor item (factory_contract.go). NIL IS
+	// NO DOOR: `factory_item` is off the belt. It is set exactly where Factory
+	// is, and never on --once, a task node, --host or --at.
+	FactoryItem ItemDoor
 
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
@@ -3454,10 +3456,10 @@ type Agent struct {
 	recipeSeq    uint64
 	recipeOffers map[string]*recipeOffer
 
-	// stagesOffers and stagesSeq are the same book for `factory_stages`'
-	// cards (tools_factory_stages.go), kept apart for the recipe book's reason.
-	stagesSeq    uint64
-	stagesOffers map[string]*stagesOffer
+	// itemOffers and itemSeq are the same book for `factory_item`'s cards
+	// (tools_factory_item.go), kept apart for the recipe book's reason.
+	itemSeq    uint64
+	itemOffers map[string]*itemOffer
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just

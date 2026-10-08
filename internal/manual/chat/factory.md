@@ -432,13 +432,15 @@ a conversation while its card is still up is shown the card. It is absent over `
 to another machine (that machine's floor is not the one your page reads), from `--once`, and
 inside a task; add work there with `n` on your own floor.
 
-Calling it adds nothing. A card asks you first:
-`wants to put this on the factory floor: <title>`, with the repo, kind and size under it and
-the chat's reason. It answers to `1 add it`, `2 not now`, or words typed into its box
+Calling it adds nothing. A card asks you first, in one question: `put this on the factory floor?`.
+Under it is the item drawn the way the floor will show it (the title with `repo · kind · size`
+on the right, then `new` and the estimate with the stages it would run), then the chat's reason.
+It answers to `1 add it`, `2 not now`, or words typed into its box
 (`say what to change… (enter sends it)`).
 
 - **`add it`** writes one item to the floor as `new`, from chat, and the chat is told
-  `#<id> <title> is on the factory floor`. The floor redraws with it.
+  `#<id> <title> is on the factory floor`. The card's foot says `added · #<id>` and its body
+  becomes the item's live card (see the item card in a conversation).
 - **`not now`** writes nothing: `nothing was added: the person said no.`
 - **Words** write nothing either. The chat is told `the person changed it: <your words>` and
   `Nothing is on the floor yet. Propose it again with that`, and asks again with a new card.
@@ -462,9 +464,11 @@ It offers a single line: a stage for `issue`, `pr` or `ci` in the file's grammar
 A stage line the file cannot read is refused before any card, with the reason. A stage of the
 same name already in that section is replaced where it stands; otherwise it is added at the end.
 
-**Nothing is written before `1`.** A card asks first:
-`wants to add to <repo>'s recipe for <kind>: <line>` (or `wants to add to <repo>'s policy: …`,
-`wants to add to <repo>'s habits: …`), with `recipe · <repo> · <kind>` under it. It answers to
+**Nothing is written before `1`.** A card asks first, in one question:
+`add this to <repo>'s recipe for <kind>?` (or `add this to <repo>'s policy?`,
+`add this to <repo>'s habits?`). For a stage its body says `now:` with the stages that kind runs
+today and `after:` with the new one marked `+`, then the line itself; for a policy or a habit,
+the sentence; and `why:` with the reason when the chat gave one. It answers to
 `1 bank it`, `2 not now`, or words (`say what to change… (enter sends it)`).
 
 - **`bank it`** writes the line; codeaf is told `<line> is in <repo>'s recipe for <kind>`
@@ -508,31 +512,53 @@ items talked through are one `factory` row until you stand in it. When the item 
 `T` is not named, and does nothing, over `--host` or `--at` to another machine, from `--once`,
 or on the still made-up floor: nothing there can make a conversation.
 
-## changing an item's stages from its conversation — factory_stages
+## changing an item from its conversation — factory_item, skip a stage, plan first, raise the cap, leave a note
 
-In an item's conversation codeaf can propose a change to that item's stages with the
-`factory_stages` tool: stages to add (a sentence, `after review, read it for auth holes`),
-stages to skip, stages to switch on, and why. It is for the item the conversation is about, and
-it is on the belt wherever `factory_add` is.
+An item's own conversation (`T`) is the item's hub. In it codeaf can propose a change to that
+item with the `factory_item` tool: stages to add (`after review, read it for auth holes`), skip
+or switch on; its gate (`plan`, `ship`, `none`); its cap in dollars; its effort (`cheap`,
+`strong`, `default`); or a note its stages will read. It is for the item the conversation is
+about, and it is on the belt wherever `factory_add` is. (It replaced `factory_stages`, which
+could change only the stages.)
 
-**Nothing changes before `1`.** A card asks first:
-`wants to change #12's stages: +security · −neaten` (a plus for a stage added or switched on, a
-minus for one skipped), with `stages · #12 · <why>` under it. It answers to `1 change it`,
-`2 not now`, or words (`say what to change… (enter sends it)`). There is no clock on it.
+**Nothing changes before `1`.** A card asks one question built from what changes:
+`#1 · skip the review stage?`, `#1 · plan first with a $8 cap?`, `#1 · add a note for the stages?`,
+or `#1 · change the plan?` for several. Its body is only what changes: `now:` and `after:` for the
+stages, `gate  ship → plan`, `cap  $5 → $8`, `effort  — → strong`, `note: …` and `why: …`.
+It answers to `1 yes`, `2 keep it`, or words (`say what to change… (enter sends it)`). There is
+no clock on it.
 
-- **`change it`** applies the change and codeaf is told
-  `#12's stages are now: plan · write · test · review · security · proof`; the card says
-  `changed` and the item page shows the new stages when you go back.
-- **`not now`**: `nothing changed: the person said no.`
-- **Words**: `the person changed it: <your words>` and
-  `Nothing changed. Propose it again with that` (card: `changed in words`).
-- **No answer** for fifteen minutes: `nothing changed: the card was never answered`
-  (card: `expired · nothing changed`).
+- **`yes`** applies it and codeaf is told the item now, only what is set:
+  `#1 now: plan · write · test · proof · gate plan · cap $8`, and that the change is made. The
+  card says `changed`.
+- **`keep it`**: `nothing changed: the person said no.` (card: `kept as it was`).
+- **Words**: `the person changed it: <your words>` and `Nothing changed. Propose it again with that`.
+- **No answer** for fifteen minutes: `nothing changed: the card was never answered`.
+- A change that leaves the item as it is asks nothing: `nothing changed: the item already runs that way`.
 
-The recipe's bounds hold (see adapt): proof, a person's gate and a stage the policy names are
-never skipped, a stage that has run is never touched, and under `fixed` every change is refused
-with `nothing changed: the recipe for issue is fixed; plan may not change the stages`. It never
-touches the cap, the gate or a launch.
+The recipe's bounds hold before any card: proof, a person's gate and a stage the policy names are
+never skipped, a stage that has run is never touched, and under `fixed` a stage change is refused
+with `nothing changed: the recipe for issue is fixed; plan may not change the stages` (and nothing
+else in that card changes). Notes are kept on the item; the stages' briefs will carry them once the
+runner lands. Nothing launches from it.
+
+## the item card in a conversation — live item status, #12 in a reply
+
+Wherever a conversation is about an item on the floor, the item is drawn as one live card:
+`▤ #1 <title>` with `repo · kind · size` on the right, and under it where it stands —
+`new · gate ship · cap $5`, `running 24m · $1.42 / $5`, `? plan is ready`, `landed · 3✓ 1✕`,
+`shipped · $1.90` — with its stages on the right (`○ plan  ○ write  ○ test  ○ proof`, the running
+one lit).
+
+It appears in three places: after `factory_add` adds the item (as that card's body); at the top
+of an item's own conversation (`T`), in place of the opening note the model reads; and under a
+reply that names an item the floor knows, `#12` in the current repository, once per item per
+turn.
+
+It stays live: the floor is read again when a card settles and every three seconds while a
+conversation with a card is on screen. `enter` on the selected card, or a click on it, opens the
+item page, as `enter` on the floor does. Over `--host` it draws from the same news the engine
+sends, and opens nothing, because there is no floor page there.
 
 ## connecting github — watch a repository, issues and pull requests on the floor
 
