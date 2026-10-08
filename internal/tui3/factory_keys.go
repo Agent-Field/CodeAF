@@ -773,8 +773,15 @@ func (a *app) factoryFootRows(measure int) []string {
 			text = a.factoryMask(text)
 		}
 		if w := ansi.StringWidth(text); w > room {
-			// The row keeps the newest words in view, as a box does.
-			text = ansi.Cut(text, w-room, w)
+			// The row keeps the newest words in view, as a box does, and its
+			// first cell is a `…` so a window that does not start at the
+			// beginning says so. The cursor cell is outside the room, so it
+			// stays drawn.
+			if room > 1 {
+				text = "…" + ansi.Cut(text, w-(room-1), w)
+			} else {
+				text = ansi.Cut(text, w-room, w)
+			}
 		}
 		row := label + pal.ink(text) + pal.cursor(" ", 1)
 		if ask.text == "" && ask.example != "" {

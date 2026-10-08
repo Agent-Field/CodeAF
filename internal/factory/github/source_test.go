@@ -481,3 +481,31 @@ func (failing) Me(context.Context) (string, error) { return "", errors.New("dial
 func (failing) ListIssues(context.Context, string, string, time.Time, string) ([]forge.Issue, string, error) {
 	return nil, "", errors.New("dial tcp: no route")
 }
+
+// AN ISSUE'S KIND WORD COMES FROM ITS LABEL, and from its title only when no
+// label names one.
+func TestIssueTypeReadsLabelsThenTitle(t *testing.T) {
+	cases := []struct {
+		title, label, want string
+	}{
+		{"Total double-counts an entry added twice", "bug", "bug"},
+		{"Add a CSV export to the ledger command", "feat", "feat"},
+		{"Flaky TestTotal on an empty ledger", "bug", "bug"},
+		{"Should Add refuse a negative amount?", "question", "question"},
+		{"Rename Total to Sum across the package", "chore", "chore"},
+		{"Ledger loses entries after 1000 adds", "bug", "bug"},
+	}
+	for _, c := range cases {
+		labelled := forge.Issue{Title: c.title, Labels: []string{"help wanted", c.label}}
+		if got := issueType(labelled); got != c.want {
+			t.Errorf("labelled %q = %q, want %q", c.title, got, c.want)
+		}
+		// A label that disagrees with the title wins.
+		if got := issueType(forge.Issue{Title: "Add a thing", Labels: []string{"bug"}}); got != "bug" {
+			t.Errorf("label did not beat the title: %q", got)
+		}
+		if got := issueType(forge.Issue{Title: c.title}); got != c.want {
+			t.Errorf("unlabelled %q = %q, want %q", c.title, got, c.want)
+		}
+	}
+}
