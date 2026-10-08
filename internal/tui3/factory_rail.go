@@ -421,10 +421,28 @@ func (a *app) factoryRail(width, room int) ([]string, []int) {
 			break
 		}
 	}
-	a.fp.top = placeTop(a.fp.top, cursorLine, len(rows), room)
-	end := min(a.fp.top+room, len(rows))
-	out := make([]string, 0, max(end-a.fp.top, 0))
-	hits := make([]int, 0, max(end-a.fp.top, 0))
+	// THE REPO LINE AND THE WORDS LINE STAY PUT when the rows do not fit: they
+	// say what the list below them is narrowed to, and a window that scrolled
+	// them away left a narrowed list that looked like the whole floor. They
+	// are drawn first, and the window follows the cursor through the rest.
+	pinned := 0
+	if len(rows) > room {
+		for pinned < len(rows) && (rows[pinned].kind == factoryRowStrip || rows[pinned].kind == factoryRowQuery) {
+			pinned++
+		}
+		if pinned >= room {
+			pinned = 0
+		}
+	}
+	a.fp.pinned = pinned
+	out := make([]string, 0, room)
+	hits := make([]int, 0, room)
+	for line := 0; line < pinned; line++ {
+		out = append(out, factoryPad(a.factoryRailLine(rows[line], width), width))
+		hits = append(hits, -1)
+	}
+	a.fp.top = pinned + placeTop(a.fp.top-pinned, max(cursorLine-pinned, 0), len(rows)-pinned, room-pinned)
+	end := min(a.fp.top+room-pinned, len(rows))
 	for line := a.fp.top; line < end; line++ {
 		r := rows[line]
 		hit := -1
