@@ -227,3 +227,38 @@ func TestTheRunnerWinsOverTheMailbox(t *testing.T) {
 		t.Fatal("a seam with no runner and no mailbox draws runner doors")
 	}
 }
+
+// THE CLONE DOOR IS A DOOR LIKE ANY OTHER: Has names it, and nil is absent.
+// AND THE FLOOR SAYS WHERE EACH REPOSITORY IS CHECKED OUT only when the seam
+// was told: nil without WithRepoDirs, and the known folders with it.
+func TestSeamHasCloneAndLoadCarriesCheckouts(t *testing.T) {
+	if (factory.Seam{}).Has("clone") {
+		t.Fatal("the zero seam has a clone door")
+	}
+	s := factory.Seam{Clone: func(context.Context, string) (string, error) { return "", nil }}
+	if !s.Has("clone") {
+		t.Fatal("a seam with Clone does not say it has a clone door")
+	}
+
+	_, st := openLocal(t)
+	if _, err := st.Add(context.Background(), factory.Item{Repo: "acme/api", Title: "one"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Add(context.Background(), factory.Item{Repo: "acme/web", Title: "two"}); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := factory.LocalSeam(st, time.Now()).Load()
+	if err != nil || snap.Checkouts != nil {
+		t.Fatalf("a seam with no dirs said checkouts %v (%v)", snap.Checkouts, err)
+	}
+	dirs := func(repo string) string {
+		if repo == "acme/api" {
+			return "/work/api"
+		}
+		return ""
+	}
+	snap, err = factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(dirs)).Load()
+	if err != nil || len(snap.Checkouts) != 1 || snap.Checkouts["acme/api"] != "/work/api" {
+		t.Fatalf("checkouts = %v (%v), want only acme/api", snap.Checkouts, err)
+	}
+}

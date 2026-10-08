@@ -485,23 +485,9 @@ func (a *app) factoryLaunchKey(k string) tea.Cmd {
 		a.fp.act.launch = nil
 		a.touch()
 		ids := q.ids
-		// THE MARKS ARE SPENT BY THE LAUNCH: an item that is now a stream has
-		// nothing left for a mark to mean.
-		for _, m := range ids {
-			delete(a.fp.marked, m)
-		}
-		return a.factoryDo(func(s factory.Seam) error {
-			for _, m := range ids {
-				if err := s.Launch(m); err != nil {
-					return err
-				}
-			}
-			return nil
-		}, func(err error) {
-			if err == nil {
-				a.factorySay("launched " + itoa(len(ids)))
-			}
-		})
+		// EVERY MARKED ITEM NEEDS A CHECKOUT, through the one gate `r` uses
+		// (factory_clone.go): one clone question per missing repository.
+		return a.factoryRunIDs(ids, factoryRunMarked)
 	case "n", "esc":
 		a.fp.act.launch = nil
 		a.touch()

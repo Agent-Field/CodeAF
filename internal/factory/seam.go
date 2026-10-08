@@ -128,6 +128,16 @@ type Seam struct {
 	// Open is the item's page on its source, for a person's browser, or the
 	// error `this item is not on github` for work that was never there.
 	Open func(id int) (url string, err error)
+
+	// Clone checks a repository out on this machine, `owner/name` (or the
+	// short name the floor shows, when only one watched repository has it),
+	// into the factory's own folder, and records the folder as the
+	// repository's checkout, so the next Load's [Snapshot.Checkouts] and every
+	// run read it. dir is the folder. It may take a minute; the surface asks
+	// it off the loop, and only when a person said yes to it. A REPOSITORY
+	// THIS MACHINE ALREADY KNOWS A FOLDER FOR IS NEVER CLONED AGAIN: the door
+	// answers that folder.
+	Clone func(ctx context.Context, repo string) (dir string, err error)
 }
 
 // Has says whether a door exists, by the door's name: the field's name in
@@ -204,6 +214,8 @@ func (s Seam) Has(door string) bool {
 		return s.RefreshAll != nil
 	case "open":
 		return s.Open != nil
+	case "clone":
+		return s.Clone != nil
 	}
 	return false
 }
