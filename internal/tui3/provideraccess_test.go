@@ -61,7 +61,7 @@ func TestLaterProviderMenusShowTheInitialCatalogAndActualConnectionStatus(t *tes
 		for _, row := range a.setupProviderRows() {
 			initialIDs, initialNames = append(initialIDs, row.id), append(initialNames, row.name)
 		}
-		if len(ids) != 9 || !reflect.DeepEqual(ids, initialIDs) || !reflect.DeepEqual(names, initialNames) {
+		if len(ids) != len(modelsource.Vendored())+1 || !reflect.DeepEqual(ids, initialIDs) || !reflect.DeepEqual(names, initialNames) {
 			t.Fatalf("later catalog = %v/%v, initial = %v/%v", ids, names, initialIDs, initialNames)
 		}
 		seen := map[string]bool{}

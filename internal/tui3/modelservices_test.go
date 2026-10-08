@@ -177,7 +177,7 @@ func modelServiceTestApp(t *testing.T, dir string, model string, sources modelso
 
 func modelServiceTestAppWithAgent(t *testing.T, dir string, model string, sources modelsource.Set, models []Model, agent Agent) *app {
 	t.Helper()
-	for _, env := range []string{"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY"} {
+	for _, env := range []string{"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "AIAND_API_KEY"} {
 		t.Setenv(env, "")
 	}
 	t.Setenv("CODEAF_HOME", t.TempDir())
