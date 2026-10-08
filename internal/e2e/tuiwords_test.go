@@ -1150,6 +1150,53 @@ var tuiWords = map[string]tuiWord{
 			"default silently is a run whose decision nobody can find afterwards",
 	},
 
+	// ── the factory floor, from the chat ─────────────────────────────────────
+	"factoryCardLead": {
+		screen: "wants to put this on the factory floor",
+		pkg:    "internal/session",
+		why:    "the head of the card `factory_add` raises: the chat asks before anything reaches the floor",
+	},
+	"factoryAddOffer": {
+		screen: "1  add it",
+		source: "add it",
+		pkg:    "internal/session",
+		why: "the card's yes on the question panel above the box. The panel's stacked rows put two " +
+			"spaces between the key and its word (keyedWord's one-space grammar is the answers row's), " +
+			"so this needle spells the panel's own",
+	},
+	"factoryAddedWord": {
+		screen: "added · #",
+		source: "added · ",
+		why:    "the card's foot once the floor took the item, with the floor's own number after it",
+	},
+	"factoryHandoverWord": {
+		screen: "handover",
+		why:    "the floor's handover heading: the page opened on a connected floor",
+	},
+	"factoryNoWaitWord": {
+		screen: "nothing waits on you",
+		why:    "the handover's third row on a floor where nothing needs the person",
+	},
+	"factoryUnconnectedWord": {
+		screen: "nothing connected yet",
+		why:    "the one dim line of a page with no floor behind it, which --no-host must never draw",
+	},
+	"factoryNewHeading": {
+		screen: "NEW",
+		source: "new",
+		why:    "the group a freshly added item stands under; the rail draws the word in capitals",
+	},
+	"factoryBarWord": {
+		screen: "Factory",
+		source: "factory",
+		why:    "the factory's button on the tab bar; the bar capitalises the place's word",
+	},
+	"factoryBarAskWord": {
+		screen: "?",
+		source: "? ",
+		why:    "the chip the bar's Factory button wears when items wait on the person; absent after a plain add",
+	},
+
 	"setupNotConnectedNote": {
 		screen: "openrouter is not connected",
 		why: "the dim line the conversation says after esc, which is the other half of a front door: " +
