@@ -1205,6 +1205,31 @@ var tuiWords = map[string]tuiWord{
 			"y and n are offered only then. The strip composes each clause from factory_words.go's " +
 			"key and word, so the row names the key and holds the word",
 	},
+	"factoryShapeAsk": {
+		screen: "run these stages?",
+		why:    "the question the runner stops on after the manager shapes a run whose `ask me at` is plan; the floor draws it as the stages it asks about",
+	},
+	"factoryShapeKeep": {
+		screen: "keep the recipe",
+		key:    "n",
+		why:    "what `n` does on that question: the stages stay as the recipe has them",
+	},
+	"factoryShapeSet": {
+		screen: "manager set",
+		why:    "the head of the Adapted line the manager's edit writes, under the stages on the question",
+	},
+	"factoryRecipeStands": {
+		screen: "the recipe stands",
+		why:    "the stream line after `n`, or after the manager did not answer (`the manager did not answer · the recipe stands`)",
+	},
+	"factoryStageOneWord": {
+		screen: "a stage is one word",
+		why:    "the runner's refusal of a stage name that is not one word",
+	},
+	"factoryNineStages": {
+		screen: "the run has nine stages already",
+		why:    "the runner's refusal to add a tenth stage; the digit keys stop at 9",
+	},
 	"factoryAnsweredWord": {
 		screen: "answered #",
 		source: "answered ",
