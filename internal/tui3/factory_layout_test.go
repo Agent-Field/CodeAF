@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -207,15 +209,30 @@ func TestFactoryLayoutFactsDropFromTheRight(t *testing.T) {
 	}
 }
 
-// ENTER OPENS THE ITEM PAGE on the running stage of a running item and on the
-// proof of a landed one; ESC PUTS THE FLOOR BACK ON THE SAME ROW.
+// factoryPageRowName is the rail row under the item page's cursor, by name:
+// `issue`, `talk`, or the stage's own name.
+func factoryPageRowName(a *app, it factory.Item) string {
+	rows := a.factoryItemRows(it)
+	r := rows[a.fp.stage]
+	switch r.kind {
+	case factoryPageIssue:
+		return "issue"
+	case factoryPageTalk:
+		return "talk"
+	}
+	return r.view.stage.Name
+}
+
+// ENTER OPENS THE ITEM PAGE where the item is moving: the stage waiting on the
+// person, else the running one, else the proof of a landed item, else the
+// issue; ESC PUTS THE FLOOR BACK ON THE SAME ROW.
 func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 	a := factoryPlaceLab(t)
 	a.width, a.height = 150, 44
 	for _, c := range []struct {
 		id    int
 		stage string
-	}{{2, "review"}, {9, "proof"}, {1, "plan"}, {4, "read"}} {
+	}{{2, "review"}, {9, "proof"}, {1, "plan"}, {4, "issue"}, {10, "issue"}, {3, "issue"}} {
 		for at, i := range a.factoryWalkNow() {
 			if a.fp.snap.Items[i].ID == c.id {
 				a.fp.cursor = at
@@ -227,7 +244,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("enter on item %d did not open its page", c.id)
 		}
 		it, _ := a.factoryCursorItem()
-		if got := a.factoryItemStages(it)[a.fp.stage].stage.Name; got != c.stage {
+		if got := factoryPageRowName(a, it); got != c.stage {
 			t.Fatalf("item %d opened on %q, want %q", c.id, got, c.stage)
 		}
 		text := strings.Join(factoryFrameLines(a), "\n")
@@ -238,13 +255,92 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("item %d's page still draws the floor:\n%s", c.id, text)
 		}
 		drive(t, a, key("enter"))
-		if text := strings.Join(factoryFrameLines(a), "\n"); !strings.Contains(text, factoryStageNoteWords) {
-			t.Fatalf("enter on a stage did not say what it will open:\n%s", text)
+		said := strings.Contains(strings.Join(factoryFrameLines(a), "\n"), factoryStageNoteWords)
+		if c.stage != "issue" && !said {
+			t.Fatalf("enter on item %d's stage did not say what it will open", c.id)
+		}
+		if c.stage == "issue" && said {
+			t.Fatalf("enter on item %d's issue said a stage's note", c.id)
 		}
 		drive(t, a, key("esc"))
 		if a.fp.open || !a.at(pageFactory) || a.fp.cursor != was {
 			t.Fatalf("esc from item %d: open %v, on the factory %v, cursor %d want %d", c.id, a.fp.open, a.at(pageFactory), a.fp.cursor, was)
 		}
+	}
+}
+
+// THE RAIL STARTS WITH THE ISSUE, then the talk row when the item has a
+// conversation, then the stages. The issue's pane is the whole body, then the
+// read and the facts, a blank row between each, scrolled with J and K; a
+// stage's pane is its knobs, its ask, a blank, and its tail.
+func TestFactoryItemPageIssueRow(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.width, a.height = 150, 44
+	it := factoryPaneItem(t, a, 6)
+	var lines []string
+	for i := 1; i <= 40; i++ {
+		lines = append(lines, "paragraph line "+itoa(i))
+	}
+	it.Body = strings.Join(lines, "\n")
+	it.Stages = factoryPaneItem(t, a, 1).Stages
+	factoryOn(t, a, 6)
+	drive(t, a, key("enter"))
+	cur, _ := a.factoryCursorItem()
+	rows := a.factoryItemRows(cur)
+	if rows[0].kind != factoryPageIssue || rows[1].kind != factoryPageStage || a.fp.stage != 0 {
+		t.Fatalf("the rail does not start with the issue, or the cursor is not on it: %+v at %d", rows[:2], a.fp.stage)
+	}
+	frame := strings.Join(factoryFrameLines(a), "\n")
+	for _, want := range []string{a.icon(tokens.GFileDocument) + " issue", "paragraph line 1", a.icon(tokens.GExpanded) + " more", "J K scroll"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("the issue pane is missing %q:\n%s", want, frame)
+		}
+	}
+	drive(t, a, key("J"), key("J"))
+	frame = strings.Join(factoryFrameLines(a), "\n")
+	if strings.Contains(frame, "paragraph line 2 ") || !strings.Contains(frame, "paragraph line 3") {
+		t.Fatalf("J twice did not scroll the issue two rows:\n%s", frame)
+	}
+	for i := 0; i < 10; i++ {
+		drive(t, a, key("pgdown"))
+	}
+	frame = strings.Join(factoryFrameLines(a), "\n")
+	gap := strings.Repeat(" ", factoryFactGap)
+	for _, want := range []string{"paragraph line 40", "underspecified; two questions for the author first", "mid risk" + gap + "thin" + gap + "stranger"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("the end of the issue is missing %q:\n%s", want, frame)
+		}
+	}
+	// A conversation puts the talk row second, and the cursor still lands on
+	// the issue of an item nothing is happening to.
+	drive(t, a, key("esc"))
+	factoryPaneItem(t, a, 6).Talk = "chat-6"
+	drive(t, a, key("enter"))
+	cur, _ = a.factoryCursorItem()
+	if rows := a.factoryItemRows(cur); rows[1].kind != factoryPageTalk || a.fp.stage != 0 {
+		t.Fatalf("the talk row is not second: %+v", rows[:2])
+	}
+	drive(t, a, key("down"))
+	if frame := strings.Join(factoryFrameLines(a), "\n"); !strings.Contains(frame, a.icon(tokens.GActionCommunicate)+" talk") {
+		t.Fatalf("the talk row has no pane:\n%s", frame)
+	}
+	// A stage's pane: knobs, ask, a blank, the tail.
+	drive(t, a, key("down"))
+	var pane []string
+	for _, r := range a.factoryItemBody(cur, 150, 30) {
+		text := ansi.Strip(r.text)
+		if j := strings.Index(text, "│"); j >= 0 {
+			pane = append(pane, strings.TrimSpace(text[j+len("│"):]))
+		}
+	}
+	at := -1
+	for i, p := range pane {
+		if strings.HasPrefix(p, "plan · chat") {
+			at = i
+		}
+	}
+	if at < 0 || pane[at+1] != "read the issue and say how" || pane[at+2] != "" || pane[at+3] != "runs first" {
+		t.Fatalf("the stage pane is not knobs, ask, blank, tail:\n%s", strings.Join(pane, "\n"))
 	}
 }
 
@@ -293,7 +389,7 @@ func TestFactoryLayoutItemPageIsExact(t *testing.T) {
 		}
 		return out
 	}(), "\n"))
-	if strings.Contains(strip, "│") || !strings.Contains(strip, "test") {
+	if strings.Contains(strip, "│") || !strings.Contains(strip, "test") || !strings.Contains(strip, "issue") {
 		t.Fatalf("under the stage floor the rail is not one line of stages:\n%s", strip)
 	}
 }
@@ -394,4 +490,166 @@ func TestFactoryPeekStripKeepsTheRunningPhase(t *testing.T) {
 		return
 	}
 	t.Fatal("the fixture has no item 2")
+}
+
+// ── the split ───────────────────────────────────────────────────────────────
+
+// factoryDividerX is the column the divider was last drawn on.
+func factoryDividerX(t *testing.T, a *app) int {
+	t.Helper()
+	factoryFrameLines(a)
+	return a.fp.rowsW
+}
+
+// `{` AND `}` MOVE THE DIVIDER FOUR COLUMNS, `|` PUTS IT BACK AT 58%, and
+// neither key takes the rows under seventy columns or the peek under forty;
+// the frame stays exact wherever it stands.
+func TestFactorySplitKeysAndLimits(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.width, a.height = 150, 44
+	start := factoryDividerX(t, a)
+	if start != factoryRowsCols(150) {
+		t.Fatalf("the divider starts at %d, want %d", start, factoryRowsCols(150))
+	}
+	drive(t, a, key("{"))
+	if got := factoryDividerX(t, a); got != start-factorySplitStep {
+		t.Fatalf("{ put the divider at %d from %d", got, start)
+	}
+	drive(t, a, key("}"), key("}"))
+	if got := factoryDividerX(t, a); got != start+factorySplitStep {
+		t.Fatalf("} twice put the divider at %d from %d", got, start-factorySplitStep)
+	}
+	for i := 0; i < 30; i++ {
+		drive(t, a, key("}"))
+	}
+	if got := factoryDividerX(t, a); got != 150-1-factoryPeekMin {
+		t.Fatalf("the divider went to %d, leaving the peek %d columns", got, 150-1-got)
+	}
+	for _, width := range []int{150, 120} {
+		a.width = width
+		for _, line := range factoryFrameLines(a) {
+			if w := ansi.StringWidth(line); w > width {
+				t.Fatalf("at %d with the divider right the frame is %d cells: %q", width, w, line)
+			}
+		}
+		if peek := width - 1 - a.fp.rowsW; peek < factoryPeekMin || a.fp.rowsW < factoryRowsMin {
+			t.Fatalf("at %d the rows are %d and the peek %d", width, a.fp.rowsW, peek)
+		}
+	}
+	a.width = 150
+	factoryFrameLines(a)
+	for i := 0; i < 30; i++ {
+		drive(t, a, key("{"))
+	}
+	if got := factoryDividerX(t, a); got != factoryRowsMin {
+		t.Fatalf("the divider went to %d, under the rows' floor", got)
+	}
+	drive(t, a, key("|"))
+	if got := factoryDividerX(t, a); got != start {
+		t.Fatalf("| put the divider at %d, want %d", got, start)
+	}
+	// Under the peek's floor the keys move nothing and the rows are the width.
+	a.width = 100
+	drive(t, a, key("{"))
+	if got := factoryDividerX(t, a); got != 100 {
+		t.Fatalf("at 100 the rows are %d", got)
+	}
+}
+
+// THE DIVIDER IS REMEMBERED PER HOME: it is written to factory.json beside the
+// profile's config and read back on the next launch's first read.
+func TestFactorySplitIsRemembered(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.width, a.height = 150, 44
+	factoryFrameLines(a)
+	drive(t, a, key("}"), key("}"))
+	moved := factoryDividerX(t, a)
+	p := readFactoryPrefs(factoryPrefsPath(a.profileDir))
+	if p.Split <= float64(factoryRowsShare) {
+		t.Fatalf("factory.json holds %v after } twice", p.Split)
+	}
+	// The next launch: nothing chosen, nothing read yet.
+	a.fp.split, a.fp.splitRead = 0, false
+	drive(t, a, runCmd(a.factoryRead())...)
+	if got := factoryDividerX(t, a); got != moved {
+		t.Fatalf("the remembered divider came back at %d, want %d", got, moved)
+	}
+	drive(t, a, key("|"))
+	if p := readFactoryPrefs(factoryPrefsPath(a.profileDir)); p.Split != 0 {
+		t.Fatalf("| left factory.json at %v", p.Split)
+	}
+}
+
+// THE POINTER DRAGS THE DIVIDER: a press on its column, motion with the button
+// held, and the release; the release writes it down.
+func TestFactorySplitMouseDrag(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.width, a.height = 150, 44
+	x := factoryDividerX(t, a)
+	y := placeHeadRows + a.fp.headRows + 2
+	cursor := a.fp.cursor
+	drive(t, a, clickAt(x, y))
+	if !a.fp.dragging || a.fp.cursor != cursor {
+		t.Fatalf("a press on the divider did not start a drag (dragging %v, cursor %d from %d)", a.fp.dragging, a.fp.cursor, cursor)
+	}
+	drive(t, a, tea.MouseMotionMsg{X: x - 9, Y: y + 3, Button: tea.MouseLeft})
+	if got := factoryDividerX(t, a); got != x-9 {
+		t.Fatalf("the drag put the divider at %d, want %d", got, x-9)
+	}
+	drive(t, a, tea.MouseMotionMsg{X: 10, Y: y, Button: tea.MouseLeft})
+	if got := factoryDividerX(t, a); got != factoryRowsMin {
+		t.Fatalf("a drag past the floor put the divider at %d", got)
+	}
+	drive(t, a, tea.MouseMotionMsg{X: x + 5, Y: y, Button: tea.MouseLeft}, releaseAt(x+5, y))
+	if a.fp.dragging {
+		t.Fatal("the release did not end the drag")
+	}
+	if got := factoryDividerX(t, a); got != x+5 {
+		t.Fatalf("the divider let go at %d, want %d", got, x+5)
+	}
+	if p := readFactoryPrefs(factoryPrefsPath(a.profileDir)); p.Split == 0 {
+		t.Fatal("the release did not write the divider down")
+	}
+}
+
+// A PRESS ON A ROW PUTS THE CURSOR THERE AND OPENS NOTHING; a second press on
+// it opens the item; a press in the peek moves nothing; on the item page a
+// press on a rail row selects it.
+func TestFactoryClickMovesTheCursorAndDoubleOpens(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.width, a.height = 150, 44
+	factoryFrameLines(a)
+	from := a.fp.cursor
+	y := -1
+	for row := placeHeadRows; row < a.height; row++ {
+		a.fp.cursor = from
+		if a.factoryPress(row) && a.fp.cursor != from {
+			y = row
+			break
+		}
+	}
+	if y < 0 {
+		t.Fatal("no row of the floor holds another item")
+	}
+	a.fp.cursor = from
+	want := func() int { a.factoryPress(y); c := a.fp.cursor; a.fp.cursor = from; return c }()
+	drive(t, a, clickAt(a.fp.rowsW+10, y))
+	if a.fp.cursor != from || a.fp.open {
+		t.Fatalf("a press in the peek moved the cursor to %d or opened the page", a.fp.cursor)
+	}
+	a.clickAt = time.Time{}
+	drive(t, a, clickAt(5, y), releaseAt(5, y))
+	if a.fp.cursor != want || a.fp.open {
+		t.Fatalf("one press: cursor %d want %d, open %v", a.fp.cursor, want, a.fp.open)
+	}
+	drive(t, a, clickAt(5, y), releaseAt(5, y))
+	if !a.fp.open {
+		t.Fatal("a second press on the row did not open it")
+	}
+	factoryFrameLines(a)
+	a.clickAt = time.Time{}
+	drive(t, a, clickAt(3, placeHeadRows+a.fp.railTop+2))
+	if a.fp.stage != a.fp.railFirst+2 || !a.fp.open {
+		t.Fatalf("a press on the rail's third row put the cursor at %d", a.fp.stage)
+	}
 }

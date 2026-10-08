@@ -213,14 +213,14 @@ func (a *app) factoryItemHint(it factory.Item, head []string) string {
 	return line()
 }
 
-// press is a press on a row: the cursor lands on the item drawn there and its
-// page opens, because a press is `enter` on the row (pages.go's [place.press])
-// and `enter` on a row opens the item page. A press on a row that holds no
+// press is a press on a row: the cursor lands on the item drawn there, and
+// the peek beside the rows shows it. THE FLOOR SELECTS ON ONE PRESS AND OPENS
+// ON TWO (owner ruling, 2026-10-08), and the second press, the divider and the
+// item page's rail are read with the column before this is asked
+// (factory_split.go's [app.factoryPointer]). A press on a row that holds no
 // item, or on the item page itself, does nothing.
 func (placeFactory) press(a *app, y int) (tea.Cmd, bool) {
-	if a.factoryPress(y) {
-		a.factoryOpenItem()
-	}
+	a.factoryPress(y)
 	return nil, true
 }
 

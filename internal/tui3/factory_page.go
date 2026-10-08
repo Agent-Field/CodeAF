@@ -29,8 +29,9 @@ import (
 // ── THE FLOOR IS ONE OBJECT IN THREE GEOMETRIES ─────────────────────────────
 //
 // At [factoryPaneFloor] columns and wider the floor is two columns: the rows at
-// the left, [factoryRowsShare] percent of the width and never under
-// [factoryRowsMin], a dim rule, and the peek at the right. From
+// the left, [factoryRowsShare] percent of the width until the person moves the
+// divider (factory_split.go), never under [factoryRowsMin] and never leaving
+// the peek under [factoryPeekMin], a dim rule, and the peek at the right. From
 // [factoryFactsFloor] up to that it is the rows alone, at the full width, with
 // every column a row carries. Under [factoryFactsFloor] a row is its lead, its
 // ref and its title and nothing else. THE HANDOVER SPANS THE WHOLE WIDTH ABOVE
@@ -145,17 +146,41 @@ type factoryPage struct {
 	pick    *factoryPicker
 	recipe  *factoryRecipePage
 	ghOffer string
+
+	// THE DOCUMENT'S OWN STATE (factory_pane.go, factory_item.go), additive
+	// like the rest. scroll is how far `J` and `K` have moved the item's body
+	// down, and scrollID the item it is about, so a cursor that moves to
+	// another item starts that one at its top; scrollMax and scrollPage are
+	// what the last draw measured, the farthest the body can go and the rows
+	// one page is. railTop, railFirst and railShown are the item page's rail
+	// as the last draw placed it: the body row it starts on, the first entry
+	// drawn, and how many, and pageRows the page's whole room, so a press
+	// lands on the row a person saw.
+	scroll     int
+	scrollID   int
+	scrollMax  int
+	scrollPage int
+	railTop    int
+	railFirst  int
+	railShown  int
+	pageRows   int
+
+	// THE SPLIT (factory_split.go). split is the rows' share of the width in
+	// percent, 0 for [factoryRowsShare]; splitRead says the remembered one has
+	// been read, or a key has already chosen one this launch; dragging is a
+	// press on the divider not yet let go; bodyW is the width the last body
+	// was drawn at, which the keys and the pointer move the divider within.
+	split     float64
+	splitRead bool
+	dragging  bool
+	bodyW     int
 }
 
-// factoryRowsCols is the rows' columns at width: the whole width under
-// [factoryPaneFloor], and otherwise [factoryRowsShare] percent of it, never
-// under [factoryRowsMin].
-func factoryRowsCols(width int) int {
-	if width < factoryPaneFloor {
-		return width
-	}
-	return max(width*factoryRowsShare/100, factoryRowsMin)
-}
+// factoryRowsCols is the rows' columns at width with the divider where it
+// starts: the whole width under [factoryPaneFloor], and otherwise
+// [factoryRowsShare] percent of it, never under [factoryRowsMin]. Where the
+// person has moved it is [app.factoryRowsAt] (factory_split.go).
+func factoryRowsCols(width int) int { return factoryRowsColsAt(width, 0) }
 
 // factoryConnected says whether a floor stands behind the page at all.
 func (a *app) factoryConnected() bool { return a.factory.Load != nil }
@@ -169,10 +194,23 @@ func (a *app) factoryRead() tea.Cmd {
 		return nil
 	}
 	a.fp.reading = true
+	// THE REMEMBERED SPLIT IS READ ON THE SAME TRIP, once a launch, off the
+	// loop like the floor (factory_split.go's [readFactoryPrefs]).
+	prefsPath := ""
+	if !a.fp.splitRead {
+		prefsPath = factoryPrefsPath(a.profileDir)
+	}
 	return a.besideLine(func() func(bool) tea.Cmd {
 		snap, err := load()
+		prefs, read := factoryPrefs{}, prefsPath != ""
+		if read {
+			prefs = readFactoryPrefs(prefsPath)
+		}
 		return func(bool) tea.Cmd {
 			a.fp.reading = false
+			if read && !a.fp.splitRead {
+				a.fp.split, a.fp.splitRead = prefs.Split, true
+			}
 			if err != nil {
 				a.fp.err = err
 				return nil
@@ -258,6 +296,9 @@ func (a *app) factoryMove(delta int) {
 		return
 	}
 	a.fp.cursor = moveCursor(a.fp.cursor, delta, len(a.factoryWalkNow()))
+	// THE NEXT ITEM IS READ FROM ITS TOP: the body's scroll belonged to the
+	// item the cursor left.
+	a.fp.scroll = 0
 	a.touch()
 }
 
@@ -294,8 +335,11 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		a.fp.open = false
 	}
 	a.fp.columns = width >= factoryFactsFloor
-	rowsW := factoryRowsCols(width)
-	a.fp.rowsW = rowsW
+	// THE DIVIDER STANDS WHERE THE PERSON PUT IT ([app.factoryRowsAt]): `{`,
+	// `}`, `|` and a drag move it, inside the limits that keep both columns
+	// readable.
+	rowsW := a.factoryRowsAt(width)
+	a.fp.rowsW, a.fp.bodyW = rowsW, width
 	paneW := 0
 	if rowsW < width {
 		paneW = width - rowsW - 1
@@ -424,6 +468,9 @@ func (a *app) factoryPress(y int) bool {
 	rows := a.factoryRows()
 	if line < 0 || line >= len(rows) || rows[line].walk < 0 {
 		return false
+	}
+	if rows[line].walk != a.fp.cursor {
+		a.fp.scroll = 0
 	}
 	a.fp.cursor = rows[line].walk
 	a.touch()
