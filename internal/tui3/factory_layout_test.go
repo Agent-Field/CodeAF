@@ -306,7 +306,7 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 	}
 	frame = strings.Join(factoryFrameLines(a), "\n")
 	gap := strings.Repeat(" ", factoryFactGap)
-	for _, want := range []string{"paragraph line 40", "underspecified; two questions for the author first", "mid risk" + gap + "thin" + gap + "stranger"} {
+	for _, want := range []string{"paragraph line 40", "underspecified; two questions for the author first", "thin" + gap + "stranger"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the end of the issue is missing %q:\n%s", want, frame)
 		}

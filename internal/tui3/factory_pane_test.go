@@ -189,6 +189,7 @@ func TestFactoryPeekFacts(t *testing.T) {
 	a := factoryPlaceLab(t)
 	it := factoryPaneItem(t, a, 6) // thin, from a stranger
 	it.Triage.Dup = "7"
+	it.Triage.Risk = []string{"mid risk"}
 	gap := strings.Repeat(" ", factoryFactGap)
 	want := "mid risk" + gap + "maybe a duplicate of #7" + gap + "thin" + gap + "stranger"
 	// Sixty cells is one too few for all four, so the last goes, whole.
@@ -250,7 +251,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 		"#1538 budget caps per task",
 		q,
 		"touches three packages; wants a plan first",
-		"mid risk",
+		"touches money",
 		"gate  plan      cap  $8      effort  —",
 		factoryWaitingMark(a)+" plan")
 	if blocks[1][1] != factoryAnswerKeys {
