@@ -1216,7 +1216,7 @@ var tuiWords = map[string]tuiWord{
 		why:    "the runner's question when a stage hits its max; the run answers it no, which goes on as is",
 	},
 	"factoryLandedLog": {
-		screen: "landed · proof sheet ready · your sign-off",
+		screen: "landed · proof sheet ready · your approval",
 		pkg:    "internal/factory/run",
 		why:    "the stream's last line when every stage is done and the proof sheet is up",
 	},
