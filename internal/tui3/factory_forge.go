@@ -83,8 +83,15 @@ func (a *app) factoryBlockHead(word string, w int) string { return a.pal.dim(fit
 // factoryCommentsBlock is the last [factoryCommentsShown] comments, oldest of
 // them first: who and how long ago, dim, then the words rendered, cut to
 // rows with an ellipsis when rows is not 0.
+//
+// A GITHUB ITEM WHOSE COMMENTS ARE NOT READ YET SAYS SO, dim, rather than
+// draw as an item nobody said anything on: a busy repository's first read
+// folds its items first and reads their comments over the next minutes.
 func (a *app) factoryCommentsBlock(it factory.Item, w, rows int) []string {
 	cs := it.Comments
+	if cs == nil && it.Origin == factory.OriginForge && it.Num > 0 && w > 0 {
+		return []string{a.pal.dim(fit("comments not read yet", w))}
+	}
 	if len(cs) == 0 || w <= 0 {
 		return nil
 	}

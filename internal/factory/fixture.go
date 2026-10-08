@@ -100,6 +100,13 @@ func Fixture(now time.Time) Snapshot {
 			Adapted: []string{"plan added security", "plan skipped neaten", "why: touches the billing cache"},
 			Triage:  Triage{Type: "bug", Size: "S", Area: "spend", Readiness: 80, Est: 2}},
 	}
+	// The fixture's floor is read through: a GitHub item with no comments
+	// had none, which is an empty list (nil is not read yet).
+	for i := range items {
+		if items[i].Origin == OriginForge && items[i].Num > 0 && items[i].Comments == nil {
+			items[i].Comments = []Comment{}
+		}
+	}
 	var hours [24]int
 	hours[(now.Hour()+24-6)%24] = 3
 	hours[(now.Hour()+24-4)%24] = 5

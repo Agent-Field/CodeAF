@@ -36,7 +36,8 @@ func factoryPaneOn(t *testing.T, a *app, id, width, room int) []string {
 func factoryNoForge(t *testing.T, a *app, id int) {
 	t.Helper()
 	it := factoryPaneItem(t, a, id)
-	it.URL, it.Comments, it.Files, it.CheckRuns, it.Activity = "", nil, nil, nil, nil
+	// Comments read and none: nil would be not read yet, which draws a line.
+	it.URL, it.Comments, it.Files, it.CheckRuns, it.Activity = "", []factory.Comment{}, nil, nil, nil
 }
 
 func factoryPaneItem(t *testing.T, a *app, id int) *factory.Item {
@@ -488,5 +489,24 @@ func TestFactoryFits(t *testing.T) {
 		if !factory.Fits(factory.Stage{When: when}, it) {
 			t.Errorf("Fits(%q) refused an item it describes", when)
 		}
+	}
+}
+
+// A GITHUB ITEM WHOSE COMMENTS ARE NOT READ YET SAYS SO, dim, and one read
+// with none says nothing: the two are not the same output.
+func TestFactoryCommentsNotReadYetIsNotNone(t *testing.T) {
+	a := factoryPlaceLab(t)
+	it := *factoryPaneItem(t, a, 2)
+	it.Comments = nil
+	if got := a.factoryCommentsBlock(it, 60, 0); len(got) != 1 || ansi.Strip(got[0]) != "comments not read yet" || got[0] != a.pal.dim("comments not read yet") {
+		t.Fatalf("not read yet drew %q", got)
+	}
+	it.Comments = []factory.Comment{}
+	if got := a.factoryCommentsBlock(it, 60, 0); got != nil {
+		t.Fatalf("read and none drew %q", got)
+	}
+	it.Origin, it.Comments = factory.OriginTerminal, nil
+	if got := a.factoryCommentsBlock(it, 60, 0); got != nil {
+		t.Fatalf("an item never on github drew %q", got)
 	}
 }

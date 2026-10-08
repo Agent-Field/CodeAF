@@ -234,7 +234,7 @@ func factoryPollingSource(snap factory.Snapshot) (factory.SourceInfo, bool) {
 }
 
 // factorySourceProgress is where a source's read is: the repository it is on
-// now and `1 of 3`, or "" for either it does not know.
+// now and `1 of 3 · 200 items so far`, or "" for either it does not know.
 func factorySourceProgress(src factory.SourceInfo) (repo, count string) {
 	repo = strings.TrimSpace(src.Reading)
 	if repo == "" {
@@ -242,6 +242,16 @@ func factorySourceProgress(src factory.SourceInfo) (repo, count string) {
 	}
 	if src.Of > 0 {
 		count = itoa(min(max(src.Read, 0), src.Of)) + " of " + itoa(src.Of)
+	}
+	// THE ITEMS SO FAR ARE THE SAME CLAUSE: a busy repository lists for a
+	// while before its rows stand, and the count is what says the read moves.
+	if src.Items > 0 {
+		items := itoa(src.Items) + " items so far"
+		if count != "" {
+			count += rowSep + items
+		} else {
+			count = items
+		}
 	}
 	return repo, count
 }
