@@ -438,6 +438,11 @@ type Snapshot struct {
 	// LastReadCost is what the last triage read cost in dollars, the figure
 	// the floor's `~$0.0004` note quotes; 0 is not known, and draws nothing.
 	LastReadCost float64
+	// Marked is the floor's own marks, by item id: the new items the foreman
+	// (or anything else behind [Seam.Mark]) proposed for the next launch,
+	// kept by the store so every window reads the same ones. Each is also
+	// drawn as its item's Marked. Nil is nothing marked.
+	Marked []int
 }
 
 // RepoNamed finds a repo in the snapshot.

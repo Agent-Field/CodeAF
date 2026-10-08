@@ -192,6 +192,8 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 			})
 		})))
 	local = talkPutAway(local, st, profileDir)
+	// AND THE FOREMAN (`m`, factory_foreman.go), on the Talk door's law.
+	local = withForeman(local, st, workspace, profileDir)
 	return factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir)
 }
 

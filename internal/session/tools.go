@@ -252,6 +252,9 @@ func (a *Agent) belt() []bare.Tool {
 	tools = append(tools, a.factoryTools()...)
 	// A factory stage's two verbs (tools_stage.go), absent unless this conversation is one.
 	tools = append(tools, a.stageTools()...)
+	// factory_floor (tools_floor.go) is the foreman's read of the whole floor
+	// and its marks, absent on the same law: no floor behind it, no verb.
+	tools = append(tools, a.floorTools()...)
 	tools = append(tools, a.harnessTools()...)
 	// The saved PROGRAMS, and the list that says which ones there are
 	// (tools_subharness.go). They are conditional on the same terms the three

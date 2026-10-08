@@ -49,6 +49,7 @@ factory's verbs), and when the line is too long the list keys are the first to g
 - `u` reads the item again; `U` reads every item again, after asking (see when the floor is
   doing something).
 - `space` marks or unmarks a new item. `T` opens the item's own conversation.
+- `m` opens the foreman, the floor's own conversation for what to take first (see the foreman).
 - `/` filters, `[` and `]` show one repository at a time, `A` shows the whole backlog.
 - `esc` clears a filter or a repository first; pressed again, it goes back to the conversation.
 - `R` repos, `E` recipe and `$` rail are named last and are the first to go.
@@ -117,7 +118,8 @@ never drawn.
 `space` on a new item marks it, and its mark turns to an accent dot; `space` again unmarks it.
 Only new items can be marked. The marks are kept through every re-read
 and when you leave the page and come back, until codeaf exits. `L` launches every marked item
-(or the item under the cursor when nothing is marked) and clears the marks.
+(or the item under the cursor when nothing is marked) and clears the marks. Marks the foreman
+makes (`m`) are kept with the floor on this machine and are still there after a restart.
 
 ## stages, not a pipeline
 
@@ -524,6 +526,33 @@ items talked through are one `factory` row until you stand in it. When the item 
 `T` is not named, and does nothing, over `--host` or `--at` to another machine, from `--once`,
 or on the still made-up floor: nothing there can make a conversation.
 
+## the foreman — m, what should I take first, factory_floor
+
+`m` on the factory floor opens the foreman: one conversation for the whole floor, for deciding
+what to take first ("what should I take first this morning and why?", "mark the three cheapest
+bugs"). **It is never made by default.** The first `m` makes it and every later `m` opens the
+same one. It is named `foreman`, sits in the one `factory` team beside the items' own teams, and
+opens with `You are the foreman of this factory floor.` and each repository's policy lines.
+You land in it as with `T`, and the first `esc` on its empty box goes back to the floor.
+
+It reads the floor with the `factory_floor` tool: `waiting` (items that need you), `risky`,
+`cheapest` (ten, by estimate), `oldest` (ten), `all` (up to fifty), or one `item` in full (its
+read, facts, stages, the question it waits on and the first 2000 characters of its body). A row
+is the ref, title, kind, repository, size, estimate, priority and its reason, state, age and
+risk; what is not known is left out.
+
+**It proposes by marking.** It marks new items, and is told
+`marked #1 #4 #6 · press L on the floor to launch them`. On the floor a marked row wears the
+accent lead, as a `space` mark does. Its marks are kept with the floor on this machine, so they
+survive a restart, until you launch or unmark them; a mark on an item that is no longer new is
+dropped.
+
+**It never launches, ships or posts.** Only a new item takes a mark (`#3 is running, and only a
+new item takes a mark`), and `L` on the floor is the only launch (see what the factory does not
+do yet). `factory_floor` is on the belt wherever `factory_add` is, so any conversation can read
+the floor. `m` does nothing over `--host` or `--at`, from `--once`, or on the still made-up
+floor.
+
 ## changing an item from its conversation — factory_item, skip a stage, plan first, raise the cap, leave a note
 
 An item's own conversation (`T`) is the item's hub. In it codeaf can propose a change to that
@@ -770,8 +799,8 @@ Be plain about this when asked:
 - **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage
   says `the stage's conversation opens here once streams are conversations`.
 - **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
-- **The foreman does not open yet.** There is no conversation with the factory itself; there
-  is one per item, made only when you press `T` on it (see talk it through).
+- **The foreman only reads and marks.** `m` opens it (see the foreman); it cannot launch,
+  ship, post or change an item, and the person's `L` is the only launch.
 - **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
   in place of yours, with no verbs.
 - **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, the

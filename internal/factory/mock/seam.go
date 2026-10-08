@@ -19,6 +19,22 @@ func New(seed int64, repos, issues, benches int, now time.Time) factory.Seam {
 func (w *World) Seam() factory.Seam {
 	s := factory.Seam{
 		Load: w.Load,
+		// THE FLOOR'S OWN MARKS are the items' own Marked here, since the
+		// made-up floor has no store to keep them in; only a new item takes one.
+		Mark: func(ids []int, on bool) error {
+			for _, id := range ids {
+				if err := w.with(id, func(it *factory.Item) error {
+					if on && it.State != factory.StateNew {
+						return fmt.Errorf("only a new item takes a mark")
+					}
+					it.Marked = on
+					return nil
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 		Launch: func(id int) error {
 			return w.with(id, func(it *factory.Item) error {
 				if it.State == factory.StateLanded || it.State == factory.StateShipped {

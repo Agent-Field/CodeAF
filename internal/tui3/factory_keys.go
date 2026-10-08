@@ -276,6 +276,9 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, false
 		}
 		return a.factoryRereadAll(), true
+	case "m":
+		// `m` opens the foreman, the floor's own conversation (factory_foreman.go).
+		return a.factoryForemanKey()
 	case "S", "shift+s":
 		if a.factory.Has("sleep") {
 			a.pageMsg = ""

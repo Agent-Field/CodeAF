@@ -43,6 +43,12 @@ type metaDoc struct {
 	ReadCost float64 `json:"read_cost,omitempty"`
 	ReadSum  float64 `json:"read_sum,omitempty"`
 	Reads    int     `json:"reads,omitempty"`
+	// Marked is the floor's own marks, by item id, in the order they were
+	// made, and Foreman the floor's own conversation by its session file
+	// (marks.go). Both are the floor's and not an item's, so they live in
+	// this one record for the reason Rail does.
+	Marked  []int  `json:"marked,omitempty"`
+	Foreman string `json:"foreman,omitempty"`
 }
 
 // MetaPath is <root>/sources.json.
