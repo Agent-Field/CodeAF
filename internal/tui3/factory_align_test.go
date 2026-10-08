@@ -183,7 +183,7 @@ func TestFactoryAlignItemPage(t *testing.T) {
 			body := factoryBodyPlain(a, width, 40)
 			// A PARKED ITEM'S SECOND ROW IS ITS QUESTION, where every other
 			// item's chips stand.
-			second := "gate"
+			second := wordAskAt
 			if it, _ := a.factoryCursorItem(); it.State == factory.StateNeedsYou {
 				second = "?"
 			}
@@ -211,7 +211,7 @@ func TestFactoryAlignChips(t *testing.T) {
 		at := map[string]int{}
 		for _, id := range []int{1, 2, 4, 9} {
 			row := ansi.Strip(a.factoryChipRow(*factoryPaneItem(t, a, id), keys, 120))
-			for _, label := range []string{"gate", "cap", "effort"} {
+			for _, label := range []string{wordAskAt, wordBudget, wordThinking} {
 				x := strings.Index(row, label+"  ")
 				if x < 0 {
 					t.Fatalf("item %d's chips have no %s: %q", id, label, row)
@@ -618,23 +618,28 @@ func TestFactoryAlignTitleKeepsItsWidthAndFactsDropAsAColumn(t *testing.T) {
 	_ = comfy
 }
 
-// (10) AT 120 THE HINT KEEPS THE ITEM'S OWN KNOBS: `t gate · c cap · e effort`
-// outlive the verbs of the whole floor.
-func TestFactoryAlignHintKeepsTheKnobsAt120(t *testing.T) {
-	a := factoryBigLab(t)
-	a.width, a.height = 120, 40
-	factoryOn(t, a, 8)
-	if it, _ := a.factoryCursorItem(); it.State != factory.StateNew {
-		t.Fatalf("item 8 is %s, not new", it.State)
-	}
-	hint := ""
-	for _, line := range factoryFrameLines(a) {
-		if strings.Contains(line, "enter open") && !strings.Contains(line, "│") {
-			hint = line
+// (10) THE PEEK'S STRIP SHEDS FROM ITS RIGHT: at 120 and at 160 the strip on
+// a new item's peek is a whole-clause prefix of its five verbs, `enter open`
+// first, so a narrow peek loses `t ask me at …` before `r run`.
+func TestFactoryAlignStripShedsFromTheRight(t *testing.T) {
+	for _, width := range []int{120, 160} {
+		a := factoryBigLab(t)
+		a.width, a.height = width, 40
+		factoryOn(t, a, 8)
+		it, _ := a.factoryCursorItem()
+		if it.State != factory.StateNew {
+			t.Fatalf("item 8 is %s, not new", it.State)
 		}
-	}
-	if !strings.Contains(hint, "t gate · c cap · e effort") {
-		t.Errorf("at 120 the hint lost the item's knobs: %q", hint)
+		full := strings.Join(a.factoryVerbRail(it), rowSep)
+		strip := ""
+		for _, line := range factoryFrameLines(a) {
+			if at := strings.Index(line, "enter open"); at >= 0 {
+				strip = strings.TrimSpace(strings.TrimRight(line[at:], " │"))
+			}
+		}
+		if strip == "" || !strings.HasPrefix(full, strip) {
+			t.Errorf("at %d the peek's strip %q is not a prefix of %q", width, strip, full)
+		}
 	}
 }
 

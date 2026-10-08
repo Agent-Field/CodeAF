@@ -35,7 +35,7 @@ func talkSeam(t *testing.T, f *factoryFake) (factory.Seam, *int, string) {
 	return seam, &made, chat
 }
 
-// WITH NO TALK DOOR THERE IS NO KEY: the hint does not name `T talk`, on the
+// WITH NO TALK DOOR THERE IS NO KEY: the hint does not name `T chat`, on the
 // floor or on the item page, and `T` asks nothing.
 func TestFactoryTalkWithNoDoorDrawsNoKey(t *testing.T) {
 	f := &factoryFake{}
@@ -45,7 +45,7 @@ func TestFactoryTalkWithNoDoorDrawsNoKey(t *testing.T) {
 		if page {
 			drive(t, a, key("enter"))
 		}
-		if hint := (placeFactory{}).hint(a); strings.Contains(hint, "T talk") {
+		if hint := (placeFactory{}).hint(a) + " · " + factoryVerbsShown(t, a); strings.Contains(hint, "T chat") {
 			t.Fatalf("a seam with no talk door names it (item page %v): %q", page, hint)
 		}
 		drive(t, a, key("T"))
@@ -77,8 +77,8 @@ func TestFactoryTalkOpensTheChatAndEscReturnsToTheSameRow(t *testing.T) {
 		if page {
 			drive(t, a, key("enter"))
 		}
-		if hint := (placeFactory{}).hint(a); !strings.Contains(hint, "T talk") {
-			t.Fatalf("the hint does not name T talk (item page %v): %q", page, hint)
+		if words := factoryVerbsShown(t, a); !strings.Contains(words, "T chat") {
+			t.Fatalf("the verbs do not name T chat (item page %v): %q", page, words)
 		}
 		drive(t, a, key("T"))
 		if *made != 1 || opened != chat {
@@ -236,7 +236,7 @@ func factoryIssueHint(t *testing.T, a *app) string {
 // as `T` does (owner, 2026-10-08: "enter does not seem to take me to a
 // conversation"): the Talk door is asked, the person lands in the chat, and
 // `esc` comes back to the item page. The hint on the row starts with
-// `enter talk` and still names `T talk`.
+// `enter chat` and still names `T chat`.
 func TestFactoryEnterOnTheIssueRowOpensTheItemsConversation(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
@@ -253,8 +253,8 @@ func TestFactoryEnterOnTheIssueRowOpensTheItemsConversation(t *testing.T) {
 		t.Fatal("enter on the floor row did not open the item page")
 	}
 	hint := factoryIssueHint(t, a)
-	if !strings.HasPrefix(hint, "enter talk · ") || !strings.Contains(hint, "T talk") {
-		t.Fatalf("the issue row's hint does not start with enter talk and keep T talk: %q", hint)
+	if !strings.Contains(hint, " · enter chat · ") || !strings.Contains(factoryVerbsShown(t, a), "T chat") {
+		t.Fatalf("the issue row's hint does not say enter chat, or its verbs lost T chat: %q", hint)
 	}
 	drive(t, a, key("enter"))
 	if got := f.said(); len(got) != 1 || !strings.HasPrefix(got[0], "Talk(4") {
@@ -286,7 +286,7 @@ func TestFactoryEnterOnARoomStillOpensTheRoomWithATalkDoor(t *testing.T) {
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
 	factoryRowNamed(t, a, "plan")
-	if hint := (placeFactory{}).hint(a); strings.Contains(hint, "enter talk") {
+	if hint := (placeFactory{}).hint(a); strings.Contains(hint, "enter chat") {
 		t.Fatalf("a stage's hint names the issue row's enter: %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -296,13 +296,13 @@ func TestFactoryEnterOnARoomStillOpensTheRoomWithATalkDoor(t *testing.T) {
 }
 
 // WITH NO TALK DOOR AND A GITHUB DOOR, `enter` on the issue row opens the
-// item's page through `g`'s door, and the hint says `enter github`.
+// item's page through `g`'s door, and the hint says `enter open on github`.
 func TestFactoryEnterOnTheIssueRowOpensGitHubWithoutATalkDoor(t *testing.T) {
 	a, lab := newFactoryPolishLab(t)
 	factoryOn(t, a, 4)
 	drive(t, a, key("enter"))
-	if hint := factoryIssueHint(t, a); !strings.HasPrefix(hint, "enter github · ") {
-		t.Fatalf("the issue row's hint does not start with enter github: %q", hint)
+	if hint := factoryIssueHint(t, a); !strings.Contains(hint, " · enter open on github · ") {
+		t.Fatalf("the issue row's hint does not say enter open on github: %q", hint)
 	}
 	drive(t, a, key("enter"))
 	if len(lab.opened) != 1 || lab.opened[0] != "https://github.com/agentfield/codeaf/pull/1662" {
@@ -320,11 +320,11 @@ func TestFactoryEnterOnTheIssueRowWithNothingToOpenSaysSo(t *testing.T) {
 	a.factory.Open = nil
 	factoryOn(t, a, 4)
 	drive(t, a, key("enter"))
-	if hint := factoryIssueHint(t, a); strings.HasPrefix(hint, "enter ") {
+	if hint := factoryIssueHint(t, a); strings.Contains(hint, "enter ") {
 		t.Fatalf("an enter that opens nothing is named: %q", hint)
 	}
 	drive(t, a, key("enter"))
-	if got := factoryActionLine(a); got != "nothing to open yet · r runs it" {
+	if got := factoryActionLine(a); got != "nothing to open yet · r run" {
 		t.Fatalf("the action line is %q", got)
 	}
 	if len(lab.opened) != 0 || !a.fp.open {

@@ -2765,7 +2765,7 @@ over the calls. Every page opens on the actions.
 It is a chord, so it never costs a character: the room's box keeps what you typed. It is
 not bound on any other task's page.
 
-## Stopping work with `x` — the confirmation card, why the stop card needs enter as well as the number
+## Stopping work with `x` — stop a task from the chat without opening it, the confirmation card, why the stop card needs enter as well as the number
 
 `x` raises one card above the message box:
 

@@ -343,7 +343,7 @@ func (a *app) factoryIssueEnter(it factory.Item) factoryIssueDoor {
 func (a *app) factoryNothingToOpen(it factory.Item) string {
 	words := "nothing to open yet"
 	if a.factoryCanRun() && (it.State == factory.StateNew || it.State == factory.StateDismissed) {
-		words += rowSep + "r runs it"
+		words += rowSep + factoryHintClause(keyRun, wordRun)
 	}
 	return words
 }
@@ -798,7 +798,7 @@ func (a *app) factoryPageCells(rows []factoryPageRow) []factoryRailCell {
 		case factoryPageIssue:
 			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GFileDocument), markPaint: pal.muted, rest: " issue", paint: pal.ink})
 		case factoryPageTalk:
-			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionCommunicate), markPaint: pal.muted, rest: " talk", paint: pal.ink})
+			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionCommunicate), markPaint: pal.muted, rest: " " + wordChat, paint: pal.ink})
 		case factoryPageProof:
 			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionTest), markPaint: pal.muted, rest: " proof", paint: pal.ink})
 		case factoryPageLog:
@@ -951,10 +951,15 @@ func factoryPaneLadder(blocks [][]string, action string, room int) []string {
 }
 
 // factoryPageAction is the item's keys on the item page's pane, dim: the
-// verbs that work on it where it stands ([app.factoryVerbHint]), and nothing
-// when there are none.
+// verbs that work on it where it stands ([app.factoryVerbHint], the peek's
+// strip without its `enter`, which the bottom line names), AT MOST
+// [factoryStripMost] clauses with extra, and nothing when there are none.
+// Every other key is on the `?` sheet.
 func (a *app) factoryPageAction(it factory.Item, measure int, extra ...string) string {
 	words := append(append([]string{}, extra...), a.factoryVerbHint(it)...)
+	if len(words) > factoryStripMost {
+		words = words[:factoryStripMost]
+	}
 	if len(words) == 0 {
 		return ""
 	}
@@ -968,7 +973,7 @@ func (a *app) factoryPageAction(it factory.Item, measure int, extra ...string) s
 //
 // THE BODY IS MARKDOWN, rendered (factory_forge.go's [app.factoryMarkdown]),
 // and the forge's blocks follow the read, each comment whole. Over the read
-// stands the line that says when it was made, `read 3m ago · u again`, which
+// stands the line that says when it was made, `read 3m ago · u refresh`, which
 // spins while a read is out ([app.factoryReadLine]).
 func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	pal := a.pal
@@ -1012,7 +1017,7 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	shown := a.factoryScrolled(it, doc, w, window)
 	extra := []string{}
 	if a.fp.scrollMax > 0 {
-		extra = append(extra, "J K scroll")
+		extra = append(extra, factoryHintClause(keyScroll, wordScroll))
 	}
 	return factoryPaneLadder([][]string{shown}, a.factoryIssueAction(it, measure, extra...), room)
 }
@@ -1082,7 +1087,7 @@ func factoryKnobs(st factory.Stage) string {
 		knobs = append(knobs, "fanout "+f)
 	}
 	if e := strings.TrimSpace(st.Effort); e != "" {
-		knobs = append(knobs, "effort "+e)
+		knobs = append(knobs, wordThinking+" "+e)
 	}
 	when := strings.TrimSpace(st.When)
 	if when == "" {

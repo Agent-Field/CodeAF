@@ -126,8 +126,10 @@ func TestFactoryVerbsAskTheRightDoors(t *testing.T) {
 	}{
 		// A new item, made in the terminal: the card's keys.
 		{8, []string{"enter"}, ""},
-		{8, []string{"p"}, "SetGate(8,plan) Launch(8)"},
-		{8, []string{"r"}, "SetGate(8,ship) Launch(8)"},
+		// `r` RUNS THE ITEM AS IT STANDS; `p` is no verb any more, and `t`
+		// moves where the run stops.
+		{8, []string{"p"}, ""},
+		{8, []string{"r"}, "Launch(8)"},
 		{8, []string{"t"}, "SetGate(8,none)"},
 		{8, []string{"c"}, "SetCap(8,8)"},
 		{8, []string{"e"}, "SetEffort(8,0,cheap)"},
@@ -308,14 +310,14 @@ func TestFactoryEnterOnAFailedClaimSendsBack(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	factoryOn(t, a, 9)
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "enter open · e sign off with changes · B send back · v check again · d diff") {
-		t.Fatalf("the landed hint is %q", hint)
+	if strip := factoryStripOf(t, a); !strings.HasPrefix(strip, "enter proof · e approve with changes · B request changes · v re-run checks") {
+		t.Fatalf("the landed strip is %q", strip)
 	}
 	drive(t, a, key("enter"))
 	if !a.fp.open || f.said() != nil {
 		t.Fatal("enter on the landed row did not open its page, or asked a door")
 	}
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "↑↓ stages · enter send back · e sign off with changes · B send back · v check again · d diff") {
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ stages · enter request changes · esc floor · ? keys" {
 		t.Fatalf("the proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -325,7 +327,7 @@ func TestFactoryEnterOnAFailedClaimSendsBack(t *testing.T) {
 	if got := f.said(); len(got) != 0 {
 		t.Fatalf("opening send back asked %v", got)
 	}
-	if text := factoryFrameText(a); !strings.Contains(text, "send back › prove survives a codeaf restart") {
+	if text := factoryFrameText(a); !strings.Contains(text, "request changes › prove survives a codeaf restart") {
 		t.Fatalf("the send-back row is not drawn:\n%s", text)
 	}
 	drive(t, a, key("enter"))
@@ -346,11 +348,11 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	}
 	a := factoryVerbLab(t, f)
 	factoryOn(t, a, 9)
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "enter open · s sign off · B send back") {
-		t.Fatalf("the clean landed hint is %q", hint)
+	if strip := factoryStripOf(t, a); !strings.HasPrefix(strip, "enter proof · s approve · B request changes") {
+		t.Fatalf("the clean landed strip is %q", strip)
 	}
 	drive(t, a, key("enter"))
-	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, "↑↓ stages · enter sign off · s sign off · B send back") {
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ stages · enter approve · esc floor · ? keys" {
 		t.Fatalf("the clean proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -358,7 +360,7 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 		t.Fatalf("enter on a clean sheet asked %q", got)
 	}
 	text := factoryFrameText(a)
-	for _, want := range []string{"habit forming — 3 sign-offs without edits on codeaf", "factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet"} {
+	for _, want := range []string{"habit forming — 3 approvals without edits on codeaf", "factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the offer is missing %q:\n%s", want, text)
 		}
@@ -389,16 +391,16 @@ func TestFactoryNilDoorDrawsNoKeyAndIgnoresThePress(t *testing.T) {
 	a := factoryVerbLab(t, f)
 	a.factory.Dismiss, a.factory.SetGate, a.factory.New = nil, nil, nil
 	factoryOn(t, a, 8)
-	hint := (placeFactory{}).hint(a)
-	for _, gone := range []string{"d hide", "p plan first", "r run", "n new", "t gate"} {
+	hint := (placeFactory{}).hint(a) + " · " + factoryStripOf(t, a) + " · " + factorySheetText(a)
+	for _, gone := range []string{"d dismiss", "n new", "t ask me at"} {
 		if strings.Contains(hint, gone) {
-			t.Fatalf("the hint names %q with no door behind it: %q", gone, hint)
+			t.Fatalf("the hint, strip or sheet names %q with no door behind it: %q", gone, hint)
 		}
 	}
-	if !strings.Contains(hint, "L launch marked") || !strings.Contains(hint, "c cap · e effort") {
-		t.Fatalf("the hint lost the keys that do work: %q", hint)
+	if !strings.Contains(hint, "L run selected") || !strings.Contains(hint, "c budget · e thinking") {
+		t.Fatalf("the sheet lost the keys that do work: %q", hint)
 	}
-	for _, k := range []string{"d", "p", "r", "t", "S", "n"} {
+	for _, k := range []string{"d", "p", "t", "S", "n"} {
 		drive(t, a, key(k))
 	}
 	if got := f.said(); len(got) != 0 || a.fp.act.ask != nil {
@@ -406,38 +408,37 @@ func TestFactoryNilDoorDrawsNoKeyAndIgnoresThePress(t *testing.T) {
 	}
 }
 
-// THE HINT NAMES THE KEYS FOR THE STATE, and the rail's keys go first when the
-// line is too long.
+// THE STRIP NAMES THE ROW'S VERBS FOR ITS STATE, at most five, and the bottom
+// bar is the floor's navigation whatever row the cursor is on (owner
+// decision, 2026-10-08). `n new` is not on it while the row needs you, where
+// `n` answers no.
 func TestFactoryHintByState(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	a.width = 400
 	for _, c := range []struct {
-		id   int
-		want string
+		id          int
+		strip, hint string
 	}{
-		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t gate · c cap · e effort · d hide · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
-		{2, "enter open · S steer · space pause · x stop · e effort · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
-		{1, "enter open · y n answer · a in words · S steer · x stop · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
+		{8, "enter open · r run · space select · t ask me at pull request", "n new · / filter · esc back · ? keys"},
+		{2, "enter open · x stop · space pause · S steer", "n new · / filter · esc back · ? keys"},
+		{1, "enter open · y yes · n no · a in words", "/ filter · esc back · ? keys"},
 	} {
 		factoryOn(t, a, c.id)
-		if got := (placeFactory{}).hint(a); got != c.want {
-			t.Errorf("item %d: the hint is\n%q\nwant\n%q", c.id, got, c.want)
+		if got := factoryStripOf(t, a); got != c.strip {
+			t.Errorf("item %d: the strip is\n%q\nwant\n%q", c.id, got, c.strip)
+		}
+		if got := (placeFactory{}).hint(a); got != c.hint {
+			t.Errorf("item %d: the hint is\n%q\nwant\n%q", c.id, got, c.hint)
 		}
 	}
-	a.width = 150
-	factoryOn(t, a, 8)
-	got := (placeFactory{}).hint(a)
-	if !strings.HasPrefix(got, "enter open · r run · p plan first") || !strings.HasSuffix(got, "esc back") {
-		t.Fatalf("at 150 columns the hint is %q", got)
-	}
 
-	// THE ITEM PAGE'S LINE IS THE PAGE'S: the stage walk, the item's verbs,
-	// and the way back to the floor, with no rail keys.
+	// THE ITEM PAGE'S LINE IS THE PAGE'S: the stage walk, what enter does
+	// on the row, the way back to the floor and the sheet, nothing else.
 	a.width = 400
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
-	if got, want := (placeFactory{}).hint(a), "↑↓ stages · S steer · space pause · x stop · e effort · n new item · esc floor"; got != want {
+	if got, want := (placeFactory{}).hint(a), "↑↓ stages · esc floor · ? keys"; got != want {
 		t.Fatalf("on the item page the hint is\n%q\nwant\n%q", got, want)
 	}
 }
@@ -534,11 +535,12 @@ func TestFactoryLaunchNoteWaitsForTheNextRead(t *testing.T) {
 		next factory.State
 		key  string
 		want string
+		gate factory.Gate
 	}{
-		{factory.StateRunning, "r", "#1540 is running"},
-		{factory.StateRunning, "p", "#1540 is running · plan first"},
-		{factory.StateQueued, "r", "#1540 is queued · a bench frees it"},
-		{factory.StateNeedsYou, "L", "#1540 is waiting on you"},
+		{factory.StateRunning, "r", "#1540 is running", ""},
+		{factory.StateRunning, "r", "#1540 is running · " + wordAskAt + " " + wordGatePlan, factory.GatePlan},
+		{factory.StateQueued, "r", "#1540 is queued · a bench frees it", ""},
+		{factory.StateNeedsYou, "L", "#1540 is waiting on you", ""},
 	} {
 		f := &factoryFake{}
 		a := factoryVerbLab(t, f)
@@ -548,6 +550,9 @@ func TestFactoryLaunchNoteWaitsForTheNextRead(t *testing.T) {
 			for i := range s.Items {
 				if s.Items[i].ID == 8 {
 					s.Items[i].State = state
+					if c.gate != "" {
+						s.Items[i].Gate = c.gate
+					}
 				}
 			}
 		}

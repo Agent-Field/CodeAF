@@ -132,6 +132,14 @@ const (
 	factoryActionRows = factoryBlockGap + 1
 )
 
+// THE `?` SHEET'S COLUMNS (factory_keysheet.go): the key column, the widest
+// a group's column is drawn, and the air between two group columns.
+const (
+	factorySheetKeyW   = 8
+	factorySheetColW   = 34
+	factorySheetColGap = 2
+)
+
 // THE FRAME'S OWN LINES, which the place draws and the floor writes into.
 const (
 	// factoryHintInset is the cells the place's note and hint lines leave:

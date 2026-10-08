@@ -158,7 +158,7 @@ func (a *app) factoryFoldBusy() {
 		if it, ok := a.factoryItemByID(id); ok {
 			ref = it.Ref()
 		}
-		words := ref + " read again"
+		words := ref + " refreshed"
 		if cost := factoryCostWord(usd); cost != "" {
 			words += rowSep + "~" + cost
 		}
@@ -238,7 +238,7 @@ func (a *app) factoryRereadAll() tea.Cmd {
 			case err != nil:
 				a.pageMsg = strings.TrimSpace(err.Error())
 			case n <= 0:
-				a.pageMsg = "nothing on the floor to read again"
+				a.pageMsg = "nothing on the floor to " + wordRefresh
 			default:
 				a.fp.act.refresh = &factoryRefreshAsk{items: n, usd: usd}
 			}
@@ -301,11 +301,11 @@ func (a *app) factoryDoingNote() string {
 }
 
 // factoryReadLine is the item page's line about the cheap read: when it was
-// made and the key that makes it again, `read 3m ago · u again`; while one is
+// made and the key that makes it again, `read 3m ago · u refresh`; while one is
 // in flight, the spinner and the seconds it has taken, `⠋ reading · 4s`; while
 // it waits its turn, `waiting to read`, still. A read never made says so, `not
-// read yet · u reads it`, and a read whose time nobody kept says only `u reads
-// it again`. THE KEY IS NEVER A LINE ON ITS OWN: a bare `u again` under the
+// read yet · u refresh`, and a read whose time nobody kept says only `u
+// refresh`. THE KEY IS NEVER A LINE ON ITS OWN: a bare `u refresh` under the
 // body read as a placeholder. A seam with no door to read says no key, and an
 // unread item on one is no line.
 func (a *app) factoryReadLine(it factory.Item, measure int) string {
@@ -332,13 +332,13 @@ func (a *app) factoryReadLine(it factory.Item, measure int) string {
 			parts = append(parts, "read "+ago+" ago")
 		}
 		if door {
-			parts = append(parts, "u again")
+			parts = append(parts, factoryHintClause(keyRefresh, wordRefresh))
 		}
 	case !door:
 	case strings.TrimSpace(it.Triage.Read) == "":
-		parts = append(parts, "not read yet", "u reads it")
+		parts = append(parts, "not read yet", factoryHintClause(keyRefresh, wordRefresh))
 	default:
-		parts = append(parts, "u reads it again")
+		parts = append(parts, factoryHintClause(keyRefresh, wordRefresh))
 	}
 	if len(parts) == 0 {
 		return ""

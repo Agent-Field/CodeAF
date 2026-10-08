@@ -288,7 +288,7 @@ func TestFactoryRereadNoteSequence(t *testing.T) {
 	}
 	delete(lab.busy, 6)
 	factoryLabRead(t, a)
-	if a.pageMsg != "#31 read again · ~$0.0004" {
+	if a.pageMsg != "#31 refreshed · ~$0.0004" {
 		t.Fatalf("the read's end says %q", a.pageMsg)
 	}
 	if note := (placeFactory{}).note(a, 150); len(note) != 0 {
@@ -432,7 +432,7 @@ func TestFactoryGOpensTheForgePage(t *testing.T) {
 	// With no door, no key and no clause.
 	a.factory.Open = nil
 	factoryOn(t, a, 4)
-	if strings.Contains((placeFactory{}).hint(a), "g github") {
+	if strings.Contains((placeFactory{}).hint(a), "g open on github") {
 		t.Fatal("the hint names g with no door")
 	}
 }

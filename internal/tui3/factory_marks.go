@@ -359,19 +359,9 @@ func (a *app) factoryFlightFact(id int) string {
 
 // ── the item's keys, one list at two widths ─────────────────────────────────
 
-// factoryVerbRail is the keys that work on the item under the cursor, in ONE
-// ORDER for every place that names them: the peek's key line and the floor's
-// bottom key line both draw this list, and both drop from its right end as
-// they narrow, so the two lose THE SAME KEYS IN THE SAME ORDER. `enter open`
-// leads, because on the floor `enter` opens the item page; the item page's own
-// line takes [app.factoryVerbHint], which is this list without it.
-func (a *app) factoryVerbRail(it factory.Item) []string {
-	return append([]string{"enter open"}, a.factoryVerbHint(it)...)
-}
-
-// factoryVerbLine is [app.factoryVerbRail] in at most measure cells, plain,
-// whole clauses kept from the left: the peek's key line. A clause is never
-// cut in half.
+// factoryVerbLine is [app.factoryVerbRail] (factory_keys.go: the row's
+// strip, at most five clauses) in at most measure cells, plain, whole clauses
+// kept from the left: the peek's key line. A clause is never cut in half.
 func (a *app) factoryVerbLine(it factory.Item, measure int) string {
 	return factoryVerbsWithin(a.factoryVerbRail(it), measure)
 }
