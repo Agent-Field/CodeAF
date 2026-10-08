@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -32,6 +33,11 @@ type fixture struct {
 	sinces    []string
 	posted    []map[string]any
 	paths     []string
+	// comments is how many comments issue 7 has; the fixture serves that
+	// many, numbered `comment 1` onward.
+	comments int
+	// label is issue 7's one label.
+	label string
 }
 
 func newFixture() *fixture {
@@ -42,6 +48,8 @@ func newFixture() *fixture {
 		pullTag:   `"p1"`,
 		checksRun: true,
 		hits:      map[string]int{},
+		comments:  4,
+		label:     "bug",
 	}
 }
 
@@ -87,8 +95,7 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 	case key == "GET /repos/acme/api/issues":
 		f.sinces = append(f.sinces, r.URL.Query().Get("since"))
 		tagged(f.issueTag, []map[string]any{
-			{"number": 7, "title": "fix the ledger double count", "body": f.issueBody, "user": map[string]any{"login": "bob"},
-				"labels": []map[string]any{{"name": "bug"}}, "created_at": at(0), "updated_at": at(1), "html_url": "https://github.com/acme/api/issues/7"},
+			f.issue7(at),
 			{"number": 9, "title": "the pull request as an issue", "user": map[string]any{"login": "santosh"},
 				"created_at": at(0), "updated_at": at(2), "pull_request": map[string]any{"url": "x"}},
 		})
@@ -101,7 +108,24 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 				"html_url": "https://github.com/acme/api/pull/9", "head": map[string]any{"sha": "abc"}},
 		})
 	case key == "GET /repos/acme/api/pulls/9":
-		js(map[string]any{"number": 9, "additions": 30, "deletions": 25, "changed_files": 2, "head": map[string]any{"sha": "abc"}, "updated_at": at(2)})
+		js(map[string]any{"number": 9, "additions": 30, "deletions": 25, "changed_files": 2, "head": map[string]any{"sha": "abc"}, "updated_at": at(2),
+			"title": "feat: tree rails", "body": "rails", "user": map[string]any{"login": "santosh"}, "labels": []map[string]any{{"name": "ui"}},
+			"created_at": at(0), "html_url": "https://github.com/acme/api/pull/9", "comments": 1})
+	case key == "GET /repos/acme/api/issues/7":
+		js(f.issue7(at))
+	case key == "GET /repos/acme/api/issues/7/comments":
+		var rows []map[string]any
+		for i := 1; i <= f.comments; i++ {
+			rows = append(rows, map[string]any{"user": map[string]any{"login": "carol"}, "body": "comment " + strconv.Itoa(i), "created_at": at(i)})
+		}
+		js(rows)
+	case key == "GET /repos/acme/api/issues/9/comments":
+		js([]map[string]any{{"user": map[string]any{"login": "bob"}, "body": "looks right", "created_at": at(2)}})
+	case key == "GET /repos/acme/api/pulls/9/files":
+		js([]map[string]any{
+			{"filename": "small.go", "additions": 1, "deletions": 1},
+			{"filename": "big.go", "additions": 29, "deletions": 24},
+		})
 	case key == "GET /repos/acme/api/collaborators/bob/permission":
 		w.WriteHeader(http.StatusNotFound)
 	case key == "GET /repos/acme/api/collaborators/santosh/permission":
@@ -109,9 +133,9 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 	case key == "GET /repos/acme/api/commits/abc/status":
 		js(map[string]any{"state": "success", "statuses": []map[string]any{{"state": "success"}}})
 	case key == "GET /repos/acme/api/commits/abc/check-runs":
-		run := map[string]any{"status": "completed", "conclusion": "success"}
+		run := map[string]any{"name": "build", "status": "completed", "conclusion": "success", "html_url": "https://github.com/acme/api/runs/1"}
 		if f.checksRun {
-			run = map[string]any{"status": "in_progress"}
+			run = map[string]any{"name": "build", "status": "in_progress", "html_url": "https://github.com/acme/api/runs/1"}
 		}
 		js(map[string]any{"check_runs": []map[string]any{run}})
 	case key == "GET /user/repos":
@@ -132,6 +156,14 @@ func (f *fixture) handle(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}
+}
+
+// issue7 is the fixture's one issue as GitHub writes it, in the list and by
+// its number alike.
+func (f *fixture) issue7(at func(int) string) map[string]any {
+	return map[string]any{"number": 7, "title": "fix the ledger double count", "body": f.issueBody, "user": map[string]any{"login": "bob"},
+		"labels": []map[string]any{{"name": f.label}}, "created_at": at(0), "updated_at": at(1), "html_url": "https://github.com/acme/api/issues/7",
+		"comments": f.comments}
 }
 
 func (f *fixture) hit(key string) int {

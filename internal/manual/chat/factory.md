@@ -553,16 +553,56 @@ The floor reads open issues and open pull requests from the GitHub repositories 
   failure the wait doubles, up to 10 minutes. Only one window polls at a time. An unchanged
   list costs no rate limit.
 - **What is read:** number, title, the first 2000 characters of the text, author, labels,
-  times; for a pull request also its checks (`ci ✓`, `ci running`, `ci ✕`) and `+N −M`
-  lines. Size is S, M or L (up to 50, 400 changed lines, or more). The author is `owner` for
-  your own login with write access, `collaborator` for others with write access, otherwise
-  `stranger`.
-- **A change on GitHub updates the row's words** (title, text, labels, checks, lines) and never
-  your gate, cap, stages or triage. A dismissed item that changes comes back as new.
+  times, its page on GitHub and its last three comments; for a pull request also its checks
+  (`ci ✓`, `ci running`, `ci ✕`), `+N −M` lines, its 20 most changed files and each check run
+  by name (see what github gives an item). Size is S, M or L (up to 50, 400 changed lines, or
+  more). The author is `owner` for your own login with write access, `collaborator` for others
+  with write access, otherwise `stranger`.
+- **A change on GitHub updates the row's words** (title, text, labels, checks, lines, comments)
+  and never your gate, cap or stages. A changed title or text clears the item's read so triage
+  reads it again; a label change alone keeps the read. A dismissed item that changes comes
+  back as new.
 - **The facts line** says `github` and `polled 4m ago`; a failed read says
   `github · not reachable` (or `token refused`, `repository not found`).
 - **Nothing is ever written to GitHub by itself.** The poll only reads: no comment, label,
   close or pull request is made by it.
+
+## what github gives an item — comments, changed files, check runs, its page
+
+Each GitHub item on the floor carries, beside its row's words:
+
+- **Its page:** the issue's or pull request's address on GitHub, which opens it in your
+  browser. An item typed in the terminal or split off a chat has none, and opening it says
+  `this item is not on github`.
+- **The last three comments**, oldest first, each kept to its first 1000 characters, with who
+  said them and when. They are read only when the item is new or its comment count changed, so
+  an item nobody commented on costs no extra request.
+- **For a pull request, the changed files:** the 20 with the most changed lines, each with its
+  added and removed lines, read once each time the pull request changes.
+- **For a pull request, the check runs** on its head, by name, each with its state (`success`,
+  `failure`, `in_progress`, `queued`) and its page. The row's short `ci ✓` stays the summary.
+- **Its activity**, the last 20 things that happened to it: `arrived from github`,
+  `changed on github` (its title, text or labels changed), `read` (triage read it), `talked` (its
+  own conversation was made with `T`), and `stages changed by plan`.
+- **While github is being read** the floor says so; it is marked for the length of each read and
+  cleared when the read ends, or when codeaf next starts after a crash.
+
+## refresh an item — u, the whole floor — U
+
+`u` reads the item in front of you again from GitHub now, without waiting for the next poll: the
+issue or pull request by its number, its last three comments (read even when the count did not
+move), and a pull request's files and check runs. Then its read is cleared, so triage reads it
+again. A terminal item has nothing upstream; `u` only clears its
+read. While it runs the row says `refreshing`; while triage reads an item it says `reading`.
+
+`U` does the same for every item on the floor except the dismissed, in turn, and says
+`refreshing 8 items · 3 done` while it runs. **Before it starts, the floor shows what it would
+cost:** the number of items times the average cost of a triage read here, or $0.0005
+an item when no read has been priced yet. Nothing is read or spent until you say yes. Each read it
+causes is a call on the cheapest seat, and a row on the spend ledger named `factory triage`.
+
+With no GitHub connected, `u` on a GitHub item says `github is not connected`. `u` and `U` are on
+your own floor only, never on the still fixture.
 
 ## choose which repositories the floor watches — R
 
@@ -629,7 +669,8 @@ token can be changed there.
 
 Every new item on the floor is read once, by one call on the cheapest seat (the `small work`
 row in /settings; a row you cleared follows the conversation's model). The call sees the item's
-title, its text cut to 3000 characters, its labels, its kind and its repository, and answers:
+title, its text cut to 3000 characters, its labels, its kind, its repository and its last three
+comments (each cut to 600 characters, so the read sees where the discussion stands), and answers:
 
 - a one-sentence read (shown under the row in the comfortable density, `z`, and on the peek),
 - a type (`bug`, `feat`, `chore`, `question`) and a size (`S`, `M`, `L`),
@@ -643,7 +684,9 @@ It only fills what is empty: a type GitHub's labels gave, a size the poll measur
 you set win over the model. One item is read every two seconds, newest first; with nothing new it
 looks again every thirty seconds. Each item is read ONCE: an answer that cannot be understood is
 not asked for again, and the item simply has no read. A call that fails is tried three times.
-Reading does not change a row's age.
+Reading does not change a row's age. An item whose title or text changes on GitHub, or that you
+refresh with `u` or `U`, is read again; the row says `reading` while its call runs, and the floor
+quotes the last read's cost.
 
 What it never does: launch, hide, dismiss, label, comment, change a gate, cap or stage, or ask you
 anything. It is facts drawn dim, never a decision. It runs only in the window that opened the
@@ -700,8 +743,8 @@ Factory items are saved on this machine, in the v3 factory folder under the code
 `~/.codeaf/v3/factory`, or `v3/factory` under `CODEAF_HOME` when that is set. Each item is one
 small file named by its number, such as `1.json`, and a change rewrites that file. They are not
 in any repository and not on any server; nothing is posted, synced or uploaded. The same folder
-holds `repos.json` (the GitHub repositories you watch) and `sources.json` (when GitHub was last
-read). A chat's
+holds `repos.json` (the GitHub repositories you watch), `sources.json` (when GitHub was last
+read, the day rail and what a triage read costs) and `busy.json` (what is being read right now). A chat's
 `factory_add` and the page's `n` write to the same folder, so an item added from a chat is a row
 on the floor straight away. Deleting the folder empties the floor.
 

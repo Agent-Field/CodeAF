@@ -21,6 +21,10 @@ type SourceMeta struct {
 	Polled  time.Time `json:"polled,omitzero"`
 	Tried   time.Time `json:"tried,omitzero"`
 	Trouble string    `json:"trouble,omitempty"`
+	// Polling is true while a read is in flight. The poll writes it at the
+	// start and the end of each read, and [Store.ClearBusy] takes it off when
+	// a process starts, so a poll a crash cut short never reads as running.
+	Polling bool `json:"polling,omitempty"`
 }
 
 type metaDoc struct {
@@ -31,6 +35,14 @@ type metaDoc struct {
 	// sources because it is the floor's, not an item's, and a second file for
 	// one number is a second lock for one number.
 	Rail float64 `json:"rail,omitempty"`
+	// ReadCost is what the last triage read cost in dollars, and ReadSum and
+	// Reads the running total and count, whose quotient is the average a
+	// whole-floor refresh is estimated at. They are the same dollars the read
+	// put on the spend ledger, kept here so the floor never scans the ledger
+	// to draw one figure.
+	ReadCost float64 `json:"read_cost,omitempty"`
+	ReadSum  float64 `json:"read_sum,omitempty"`
+	Reads    int     `json:"reads,omitempty"`
 }
 
 // MetaPath is <root>/sources.json.
@@ -163,4 +175,67 @@ func (st *Store) tryLock(name string) (release func(), ok bool) {
 		_ = filelock.Unlock(lock)
 		_ = lock.Close()
 	}, true
+}
+
+// changeMeta is one read-modify-write of the meta record under its flock.
+func (st *Store) changeMeta(change func(*metaDoc)) error {
+	if st == nil {
+		return errors.New("factory store: no store")
+	}
+	if err := os.MkdirAll(st.root, 0o700); err != nil {
+		return err
+	}
+	return st.underLock(filepath.Join(st.root, "sources.lock"), func() error {
+		d, err := st.readMeta()
+		if err != nil {
+			return err
+		}
+		change(&d)
+		d.Schema = Schema
+		data, err := json.MarshalIndent(d, "", "  ")
+		if err != nil {
+			return err
+		}
+		return writeAtomic(st.MetaPath(), append(data, '\n'))
+	})
+}
+
+// SetPolling marks one source's read as in flight, or no longer, keeping the
+// rest of its record.
+func (st *Store) SetPolling(name string, on bool) error {
+	return st.changeMeta(func(d *metaDoc) {
+		if d.Sources == nil {
+			d.Sources = map[string]SourceMeta{}
+		}
+		m := d.Sources[name]
+		m.Polling = on
+		d.Sources[name] = m
+	})
+}
+
+// NoteReadCost remembers one triage read's cost: the last, and the running
+// total and count. A read nobody priced (0 or less) is not counted, so the
+// average is of real figures only.
+func (st *Store) NoteReadCost(usd float64) error {
+	if usd <= 0 {
+		return nil
+	}
+	return st.changeMeta(func(d *metaDoc) {
+		d.ReadCost = usd
+		d.ReadSum += usd
+		d.Reads++
+	})
+}
+
+// ReadCost is the last triage read's cost and the average of every one
+// noted; both are 0 when none was.
+func (st *Store) ReadCost() (last, avg float64, err error) {
+	if st == nil {
+		return 0, 0, nil
+	}
+	d, err := st.readMeta()
+	if err != nil || d.Reads == 0 {
+		return d.ReadCost, 0, err
+	}
+	return d.ReadCost, d.ReadSum / float64(d.Reads), nil
 }

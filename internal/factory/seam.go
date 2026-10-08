@@ -102,6 +102,24 @@ type Seam struct {
 	// default.
 	Talk func(ctx context.Context, id int) (chat string, err error)
 
+	// Refresh reads one item again from its source now (for a GitHub item: the
+	// issue or pull request by its number, its last comments, and a pull
+	// request's files and checks), folds what it read into the floor, and
+	// takes the item's read off so the triage reads it again. An item that
+	// came from the terminal or a chat has no source to read, so only its
+	// read is taken off.
+	Refresh func(ctx context.Context, id int) error
+	// RefreshAll is Refresh for every item on the floor except the dismissed.
+	// With a ctx marked by [DryRun] it does NOTHING and answers how many items
+	// it would read again and what their triage would cost in dollars (the
+	// count times the last average read, or [DefaultReadCost] each when no
+	// read was priced yet), so the floor can say the cost before `U` spends
+	// it. Unmarked, it does the whole of it and answers the same two figures.
+	RefreshAll func(ctx context.Context) (count int, est float64, err error)
+	// Open is the item's page on its source, for a person's browser, or the
+	// error `this item is not on github` for work that was never there.
+	Open func(id int) (url string, err error)
+
 	// Tick advances a mock clock by d. A real engine leaves it nil and the
 	// surface draws no speed, no sleep.
 	Tick func(d time.Duration) error
@@ -174,6 +192,12 @@ func (s Seam) Has(door string) bool {
 		return s.SetRail != nil
 	case "talk":
 		return s.Talk != nil
+	case "refresh":
+		return s.Refresh != nil
+	case "refreshall":
+		return s.RefreshAll != nil
+	case "open":
+		return s.Open != nil
 	case "tick":
 		return s.Tick != nil
 	case "sleep":

@@ -61,6 +61,9 @@ type Issue struct {
 	Updated time.Time
 	URL     string
 	Pull    bool
+	// Comments is how many comments the issue has, as the list says it; the
+	// comments themselves are [client.IssueComments]'s.
+	Comments int
 }
 
 // Pull is one open pull request. Additions, Deletions and Files are filled by
@@ -79,6 +82,9 @@ type Pull struct {
 	Additions int
 	Deletions int
 	Files     int
+	// Comments is how many issue comments the pull request has; like the line
+	// counts, only [client.Pull] fills it, because the list leaves it out.
+	Comments int
 }
 
 // RepoInfo is one repository a token can see, for the picker.
@@ -125,6 +131,7 @@ type issueJSON struct {
 	UpdatedAt   time.Time   `json:"updated_at"`
 	HTMLURL     string      `json:"html_url"`
 	PullRequest *struct{}   `json:"pull_request"`
+	Comments    int         `json:"comments"`
 }
 
 type pullJSON struct {
@@ -143,6 +150,7 @@ type pullJSON struct {
 	Additions    int `json:"additions"`
 	Deletions    int `json:"deletions"`
 	ChangedFiles int `json:"changed_files"`
+	Comments     int `json:"comments"`
 }
 
 func labelNames(in []labelJSON) []string {
@@ -168,6 +176,7 @@ func (p pullJSON) pull() Pull {
 		Labels: labelNames(p.Labels), Created: p.CreatedAt, Updated: p.UpdatedAt,
 		URL: p.HTMLURL, HeadSHA: p.Head.SHA, Draft: p.Draft,
 		Additions: p.Additions, Deletions: p.Deletions, Files: p.ChangedFiles,
+		Comments: p.Comments,
 	}
 }
 
@@ -307,7 +316,7 @@ func (c *client) ListIssues(ctx context.Context, owner, repo string, since time.
 			out = append(out, Issue{
 				Number: r.Number, Title: r.Title, Body: deref(r.Body), User: r.User.Login,
 				Labels: labelNames(r.Labels), Created: r.CreatedAt, Updated: r.UpdatedAt,
-				URL: r.HTMLURL, Pull: r.PullRequest != nil,
+				URL: r.HTMLURL, Pull: r.PullRequest != nil, Comments: r.Comments,
 			})
 		}
 		if len(rows) < 100 {
@@ -410,67 +419,8 @@ func (c *client) Me(ctx context.Context) (string, error) {
 // failure is a failure, else anything unfinished is running, else anything
 // that passed is passed, and a commit nothing checked is [ChecksNone].
 func (c *client) Checks(ctx context.Context, owner, repo, sha string) (CheckState, error) {
-	if sha == "" {
-		return ChecksNone, nil
-	}
-	body, _, err := c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/status"), "")
-	if err != nil {
-		return ChecksNone, err
-	}
-	var combined struct {
-		State    string `json:"state"`
-		Statuses []struct {
-			State string `json:"state"`
-		} `json:"statuses"`
-	}
-	if err := json.Unmarshal(body, &combined); err != nil {
-		return ChecksNone, err
-	}
-	failed, running, passed := false, false, false
-	for _, s := range combined.Statuses {
-		switch s.State {
-		case "failure", "error":
-			failed = true
-		case "pending":
-			running = true
-		case "success":
-			passed = true
-		}
-	}
-	body, _, err = c.read(ctx, c.repoURL(owner, repo, "/commits/"+url.PathEscape(sha)+"/check-runs?per_page=100"), "")
-	if err != nil {
-		return ChecksNone, err
-	}
-	var runs struct {
-		CheckRuns []struct {
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-		} `json:"check_runs"`
-	}
-	if err := json.Unmarshal(body, &runs); err != nil {
-		return ChecksNone, err
-	}
-	for _, r := range runs.CheckRuns {
-		if r.Status != "completed" {
-			running = true
-			continue
-		}
-		switch r.Conclusion {
-		case "failure", "timed_out", "cancelled", "action_required", "startup_failure":
-			failed = true
-		case "success":
-			passed = true
-		}
-	}
-	switch {
-	case failed:
-		return ChecksFailed, nil
-	case running:
-		return ChecksRunning, nil
-	case passed:
-		return ChecksPassed, nil
-	}
-	return ChecksNone, nil
+	state, _, err := c.CheckRuns(ctx, owner, repo, sha)
+	return state, err
 }
 
 // Repos is every repository the token can see as an owner, a collaborator or

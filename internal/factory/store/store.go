@@ -292,13 +292,20 @@ func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) er
 			return err
 		}
 		it := current.Item
+		before := current.Item
 		if err := change(&it); err != nil {
 			return err
 		}
 		it.ID = id
+		now := st.now()
 		if stamp {
-			it.Changed = st.now()
+			it.Changed = now
 		}
+		// THE ACTIVITY IS WRITTEN HERE, ON EVERY WRITE, by comparing the
+		// document before the change with after it, so the triage worker, the
+		// Talk door and the adapt door each get their event (`read`, `talked`,
+		// `stages changed by plan`) without one of them having to remember.
+		factory.NoteChanges(before, &it, now)
 		data, err := marshalDoc(doc{Revision: current.Revision + 1, Item: it})
 		if err != nil {
 			return err
