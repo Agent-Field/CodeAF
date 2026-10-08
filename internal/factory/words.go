@@ -10,9 +10,9 @@ import (
 // Words become chips. THIS IS THE ONE PLACE THE CHIP WORDS ARE SPELLED: a
 // person's sentence carries a cap (`$8`), a gate (`plan first`, `ship it`,
 // `self-ship`), a round count (`two review rounds`) or an effort (`stronger`,
-// `cheaper`), and whatever reads a sentence, the mock's parser or the surface
-// lifting chips off a new item the mock cannot steer, reads it with these
-// regexes so the two can never disagree about what a word means.
+// `cheaper`), and whatever reads a sentence, the local seam's new item or the
+// surface lifting chips off an item that cannot be steered, reads it with
+// these regexes so the two can never disagree about what a word means.
 //
 // It is a small, honest parser. It lifts what it recognizes and leaves the rest
 // as words; a real engine would let a cheap model do the lifting.
@@ -28,8 +28,7 @@ var wordNums = map[string]int{"one": 1, "two": 2, "three": 3, "four": 4}
 
 // Chips is what [Lift] found in a sentence. A zero field was not said. Rest is
 // what is left of the sentence with the chips taken out, NOT YET TIDIED, so a
-// reader that lifts more words of its own (the mock's security pass and its
-// constraints) can go on reading it before [TidyWords].
+// reader that lifts more words of its own (a security pass, say) can go on reading it before [TidyWords].
 type Chips struct {
 	Cap    float64
 	Gate   Gate

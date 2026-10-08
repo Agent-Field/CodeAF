@@ -52,8 +52,8 @@ func TestLocalLoadReflectsAdds(t *testing.T) {
 	if snap.Shift.Arrived != 1 || !snap.Shift.Since.Equal(started) {
 		t.Fatalf("Shift = %+v, want one arrival since the window opened", snap.Shift)
 	}
-	if snap.Benches != 0 || snap.Speed != 0 {
-		t.Fatalf("a real floor drew benches %d, speed %v", snap.Benches, snap.Speed)
+	if snap.Benches != 0 {
+		t.Fatalf("a real floor drew benches %d", snap.Benches)
 	}
 	if len(snap.Sources) != 2 || snap.Sources[0].Name != "chat" || snap.Sources[0].Writes || snap.Sources[1].Name != "terminal" {
 		t.Fatalf("Sources = %+v", snap.Sources)
@@ -159,7 +159,7 @@ func TestLocalSeamOnNilStoreIsZero(t *testing.T) {
 func TestLocalSeamEngineDoorsAbsent(t *testing.T) {
 	_, st := openLocal(t)
 	seam := factory.LocalSeam(st, time.Now())
-	for _, door := range []string{"launch", "stop", "pause", "answer", "steer", "signoff", "sendback", "reverify", "bank", "sync", "askauthor", "bankstages", "tick", "sleep"} {
+	for _, door := range []string{"launch", "stop", "pause", "answer", "steer", "signoff", "sendback", "reverify", "bank", "sync", "askauthor", "bankstages"} {
 		if seam.Has(door) {
 			t.Errorf("door %s is present on the local seam", door)
 		}

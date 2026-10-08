@@ -3,7 +3,6 @@ package tui3
 import (
 	"strconv"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
@@ -28,8 +27,7 @@ import (
 // page never crashes on a refusal and never reads the disk in a frame.
 //
 // A VERB IS A GESTURE, SO IT STANDS IN THE ORDERED LINE ([app.offLoop]). The
-// read nobody pressed for (the three-second re-read, the mock clock's beat) is
-// asked beside it ([app.besideLine]); a launch and the steer typed after it are
+// read nobody pressed for (the three-second re-read) is asked beside it ([app.besideLine]); a launch and the steer typed after it are
 // seen by the floor in the order they were made.
 
 // `ENTER` IS NOT A VERB HERE: on a floor row it opens the item page
@@ -80,19 +78,14 @@ type factoryAsk struct {
 
 // factoryActs is the verbs' own state on the page, held on `a.fp.act`.
 //
-// THE PAGE'S OTHER FIELDS ARE THE RAIL'S AND THE READ'S; these are the three
-// things only a verb leaves behind: an open typing row, a habit offer waiting
-// for `y` or `n`, and the mock clock's beat.
+// THE PAGE'S OTHER FIELDS ARE THE RAIL'S AND THE READ'S; these are what only
+// a verb leaves behind, such as an open typing row or a habit offer waiting
+// for `y` or `n`.
 type factoryActs struct {
 	// ask is the open typing row, and nil when none is open.
 	ask *factoryAsk
 	// habit is the repo a habit offer is about, and "" when none is drawn.
 	habit string
-	// beatGen is the generation of the mock clock's beat: a beat from an
-	// earlier opening of the page finds a newer generation and stops.
-	beatGen int
-	// ticking is true while a Tick is out, so a slow tick is never stacked.
-	ticking bool
 	// talk is the conversation `T` last opened from the floor, by its key
 	// ([app.convKey]): while it is the one in front, `esc` on its empty box
 	// with nothing running goes back to the floor ([app.factoryTalkBack]).
@@ -117,64 +110,6 @@ type factoryActs struct {
 type factoryLaunchNote struct {
 	id   int
 	tail string
-}
-
-// ── the clock ───────────────────────────────────────────────────────────────
-
-// factoryBeatMsg is one beat of the mock floor's clock, carrying the
-// generation that armed it.
-type factoryBeatMsg struct{ gen int }
-
-// factoryBeatAfter is the next beat, [factoryMockBeat] from now.
-func factoryBeatAfter(gen int) tea.Cmd {
-	return surfaceTick(factoryMockBeat, func(time.Time) tea.Msg { return factoryBeatMsg{gen: gen} })
-}
-
-// factoryArmBeat starts the mock clock for a page that just opened. A SEAM
-// WITH NO CLOCK GETS NO BEAT: a real engine keeps its own time, and the page
-// draws no speed for it either ([factorySpeedWord]).
-func (a *app) factoryArmBeat() tea.Cmd {
-	if !a.factory.Has("tick") {
-		return nil
-	}
-	a.fp.act.beatGen++
-	return factoryBeatAfter(a.fp.act.beatGen)
-}
-
-// factoryBeat is one beat arriving. The clock moves by the snapshot's own
-// speed every [factoryMockBeat], WHICH IS THE ONE FIGURE THE HANDOVER'S `150×`
-// IS DERIVED FROM, so the speed drawn and the speed run cannot disagree. The
-// beat stops for good when the page is not showing; opening the page again
-// arms a new one.
-func (a *app) factoryBeat(gen int) tea.Cmd {
-	if gen != a.fp.act.beatGen || !a.at(pageFactory) || !a.factory.Has("tick") {
-		return nil
-	}
-	next := factoryBeatAfter(gen)
-	speed := a.fp.snap.Speed
-	if a.fp.act.ticking || speed <= 0 {
-		return next
-	}
-	tick, load := a.factory.Tick, a.factory.Load
-	a.fp.act.ticking = true
-	return tea.Batch(next, a.besideLine(func() func(bool) tea.Cmd {
-		err := tick(speed)
-		var snap factory.Snapshot
-		if err == nil && load != nil {
-			snap, err = load()
-		}
-		return func(bool) tea.Cmd {
-			a.fp.act.ticking = false
-			if err != nil {
-				a.fp.err = err
-				return nil
-			}
-			if load != nil {
-				a.factoryFold(snap)
-			}
-			return nil
-		}
-	}))
 }
 
 // ── asking a door ───────────────────────────────────────────────────────────
@@ -376,8 +311,8 @@ func (a *app) factoryOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // here, so the rail's own arms still see it.
 func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k := msg.String()
-	// THE ANYWHERE KEYS come first: new work and the mock's sleep, which need
-	// no item under the cursor.
+	// THE ANYWHERE KEYS come first: new work and the floor's settings, which
+	// need no item under the cursor.
 	if cmd, took := a.factorySettingsKey(k); took {
 		return cmd, true
 	}
@@ -400,15 +335,11 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.factoryForemanKey()
 	case "S", "shift+s":
 		// `S` STEERS THE ITEM UNDER THE CURSOR WHEREVER IT CAN BE STEERED, in
-		// words; on every other item it is the mock clock's sleep.
+		// words, and means nothing on any other item.
 		if it, ok := a.factoryCursorItem(); ok && a.factorySteerable(it) {
 			a.pageMsg = ""
 			a.factoryOpenAsk(factoryAsk{kind: factoryAskSteer, id: it.ID, label: "steer ›", example: "“redo it stronger, keep the old flag”"})
 			return nil, true
-		}
-		if a.factory.Has("sleep") {
-			a.pageMsg = ""
-			return a.factoryDo(func(s factory.Seam) error { return s.Sleep(8 * time.Hour) }, nil), true
 		}
 		return nil, false
 	}
@@ -900,8 +831,7 @@ func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
 
 // factoryWords is chips in words on a new item. AN ITEM WITH A STREAM IS
 // STEERED, which lifts the chips and folds the rest into the work. AN ITEM
-// THAT HAS NEVER RUN HAS NO STREAM TO STEER (the mock refuses it in so many
-// words), so the surface lifts the chips itself with the floor's own reader
+// THAT HAS NEVER RUN HAS NO STREAM TO STEER, so the surface lifts the chips itself with the floor's own reader
 // ([factory.LiftChips]) and turns each one through its own door. What no door
 // can hold before a launch, a round count and the loose words, is said on the
 // note line rather than dropped silently.

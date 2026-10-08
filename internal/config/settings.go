@@ -1113,14 +1113,12 @@ var OperatorEnvPins = []string{
 	// redirect GitHub traffic for a mirror or a test. Persisting any of them in
 	// the profile would make a temporary network posture outlive its reason.
 	"CODEAF_NO_UPDATE_CHECK",
-	// The factory page's two developer switches (cmd/codeaf/factory.go and
-	// factorymock.go). CODEAF_FACTORY_FIXTURE puts a still, made-up floor on the
-	// page in place of the person's own, and CODEAF_FACTORY_MOCK starts the
-	// moving mock, which exists only in a -tags factorymock build. Both are for
-	// the people who build the page; a row offering to hide your real floor
-	// behind a fixture is not a preference, so plumbing.
+	// The factory page's developer switch (cmd/codeaf/factory.go).
+	// CODEAF_FACTORY_FIXTURE puts a still, made-up floor on the page in place
+	// of the person's own. It is for the people who build the page; a row
+	// offering to hide your real floor behind a fixture is not a preference, so
+	// plumbing.
 	"CODEAF_FACTORY_FIXTURE",
-	"CODEAF_FACTORY_MOCK",
 	// How many factory items run at once on this machine (cmd/codeaf's
 	// factory_run.go; the manual quotes the default). It tunes the process
 	// that runs the floor, and the floor has no settings row for it yet, so it

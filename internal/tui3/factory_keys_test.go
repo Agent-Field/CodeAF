@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -74,7 +73,6 @@ func (f *factoryFake) seam() factory.Seam {
 		SetGate:    func(id int, g factory.Gate) error { return f.rec("SetGate", id, g) },
 		SetCap:     func(id int, usd float64) error { return f.rec("SetCap", id, usd) },
 		SetEffort:  func(id, stage int, effort string) error { return f.rec("SetEffort", id, stage, effort) },
-		Sleep:      func(d time.Duration) error { return f.rec("Sleep", d) },
 	}
 }
 
@@ -138,7 +136,7 @@ func TestFactoryVerbsAskTheRightDoors(t *testing.T) {
 		{8, []string{"g"}, "Sync(8,true)"},
 		{8, []string{"d"}, "Dismiss(8)"},
 		{8, []string{"L"}, "Launch(8)"},
-		{8, []string{"S"}, "Sleep(8h0m0s)"},
+		{8, []string{"S"}, ""},
 		// A thin item asks its author; one from github does not sync.
 		{6, []string{"a"}, "AskAuthor(6)"},
 		{6, []string{"g"}, ""},
@@ -389,10 +387,10 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 func TestFactoryNilDoorDrawsNoKeyAndIgnoresThePress(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
-	a.factory.Dismiss, a.factory.SetGate, a.factory.Sleep, a.factory.New = nil, nil, nil, nil
+	a.factory.Dismiss, a.factory.SetGate, a.factory.New = nil, nil, nil
 	factoryOn(t, a, 8)
 	hint := (placeFactory{}).hint(a)
-	for _, gone := range []string{"d hide", "p plan first", "r run", "S sleep", "n new", "t gate"} {
+	for _, gone := range []string{"d hide", "p plan first", "r run", "n new", "t gate"} {
 		if strings.Contains(hint, gone) {
 			t.Fatalf("the hint names %q with no door behind it: %q", gone, hint)
 		}
@@ -418,7 +416,7 @@ func TestFactoryHintByState(t *testing.T) {
 		id   int
 		want string
 	}{
-		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t gate · c cap · e effort · d hide · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · S sleep 8h · E recipe · esc back"},
+		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t gate · c cap · e effort · d hide · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
 		{2, "enter open · S steer · space pause · x stop · e effort · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
 		{1, "enter open · y n answer · a in words · S steer · x stop · / filter · [ ] repo · A backlog · z density · O order · priority · E recipe · esc back"},
 	} {
@@ -430,7 +428,7 @@ func TestFactoryHintByState(t *testing.T) {
 	a.width = 150
 	factoryOn(t, a, 8)
 	got := (placeFactory{}).hint(a)
-	if strings.Contains(got, "S sleep") || !strings.HasPrefix(got, "enter open · r run · p plan first") || !strings.HasSuffix(got, "esc back") {
+	if !strings.HasPrefix(got, "enter open · r run · p plan first") || !strings.HasSuffix(got, "esc back") {
 		t.Fatalf("at 150 columns the hint is %q", got)
 	}
 

@@ -367,8 +367,7 @@ func TestFactoryRunKeysAbsentWithoutDoors(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
 	s := &a.factory
-	// The sleep goes too: with no steer door `S` would be the mock's sleep.
-	s.Pause, s.Steer, s.Stop, s.Answer, s.SignOff, s.SendBack, s.Reverify, s.Sleep = nil, nil, nil, nil, nil, nil, nil, nil
+	s.Pause, s.Steer, s.Stop, s.Answer, s.SignOff, s.SendBack, s.Reverify = nil, nil, nil, nil, nil, nil, nil
 	for _, c := range []struct {
 		id   int
 		keys []string

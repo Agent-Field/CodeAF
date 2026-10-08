@@ -4,8 +4,7 @@ import "time"
 
 // Fixture is a small, still floor for drawing and tests: three repos, a dozen
 // items in every state, a handover with something in it. It never changes
-// under a frame, which is what a golden test wants. The mock seam
-// (internal/factory/mock) is the one that moves.
+// under a frame, which is what a golden test wants.
 func Fixture(now time.Time) Snapshot {
 	codeaf := Repo{Name: "agentfield/codeaf", Team: "codeaf-core", Areas: []string{"tui", "standing", "spend"},
 		Habits: []string{"every PR on dev gets a review pass", "issues labelled factory are briefs"},
