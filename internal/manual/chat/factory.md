@@ -215,12 +215,12 @@ the stage's side.
 ## ship or send back from the item page
 
 `enter` on a stage of the item page does not open it yet; it says
-`the stage's conversation opens here once streams are conversations` beside the keys. The one
-exception is `proof` on a landed item, which is the item's sheet: there `enter` ships when every
-claim was shown (`enter ship`), and when any was not, **send back is the default key**
-(`enter send back`) and opens the `send back ›` row with `prove` and that claim's words already
-typed; `enter` again sends it. `a` ships anyway, `c` sends back in your own words, `o` checks
-again.
+`the stage's conversation opens here once streams are conversations` on its own line above the
+keys. The one exception is `proof` on a landed item, which is the item's sheet: there `enter`
+ships when every claim was shown (`enter ship`), and when any was not, **send back is the default
+key** (`enter send back`) and opens the `send back ›` row with `prove` and that claim's words
+already typed; `enter` again sends it. `a` ships anyway, `c` sends back in your own words, `o`
+checks again.
 
 ## the factory's verbs, keys that change an item
 
