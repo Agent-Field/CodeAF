@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,15 @@ const CommentsMost = 3
 
 // commentLimit is how much of one comment the floor keeps.
 const commentLimit = 1000
+
+// commentBudget is how many requests one Read may spend on the per-item reads
+// the lists leave out: an issue's or pull request's comments (one request) and
+// a pull request's line counts and files (two). PAST IT THE ITEMS ARE FOLDED
+// WITHOUT THEM and owed to the next Read, so a first read of a repository
+// with three hundred open items lands its rows in seconds and fills their
+// comments in over the next minutes, forty requests a tick, instead of
+// keeping the floor empty for the whole walk.
+const commentBudget = 40
 
 // API is what this source needs of a GitHub client; internal/praf/github's
 // client answers it, and a test serves that same client from an
@@ -96,8 +106,25 @@ type Source struct {
 	// once per change.
 	files map[string][]factory.FileChange
 	// progress, when set, is told before each repository is read which one
-	// and how many of how many are done ([Source.SetProgress]).
-	progress func(full string, done, of int)
+	// and how many of how many are done, and again as each of its lists is
+	// in with how many items the read has listed so far
+	// ([Source.SetProgress], [Source.SetProgressItems]).
+	progress func(full string, done, of, items int)
+	// sink, when set, is handed each batch of items the moment a list is in,
+	// before the slow per-item reads ([Source.SetSink]).
+	sink func(items []factory.Item)
+	// budget is [commentBudget] unless a test sets less.
+	budget int
+	// owed is, per repository, the issues listed whose comments the budget
+	// did not reach, kept by number with the listing they came in. They are
+	// read on a later Read even though a list asked since the cursor will
+	// not carry them again.
+	owed map[string]map[int]forge.Issue
+	// undetailed is the pull requests whose line counts and files the budget
+	// did not reach, and pullOwed the ones whose comments it did not; each
+	// is read on a later Read and its item handed over again then.
+	undetailed map[string]bool
+	pullOwed   map[string]bool
 }
 
 type seenComments struct {
@@ -124,7 +151,8 @@ func New(api API, repos []string, now func() time.Time) *Source {
 		issueTags: map[string]string{}, pullTags: map[string]string{},
 		pulls: map[string][]forge.Pull{}, checks: map[string]seenChecks{},
 		tiers: map[string]factory.Tier{}, comments: map[string]seenComments{},
-		files: map[string][]factory.FileChange{},
+		files: map[string][]factory.FileChange{}, budget: commentBudget,
+		owed: map[string]map[int]forge.Issue{}, undetailed: map[string]bool{}, pullOwed: map[string]bool{},
 	}
 }
 
@@ -140,12 +168,39 @@ func (s *Source) Watch(repos []string) {
 }
 
 // SetProgress hands the source a function told, before each repository a
-// Read reads, which one it is and how many of how many are done, so the poll
-// can write where the read is ([PollOnce]). nil takes it off.
+// Read reads and again as each of its lists is in, which one it is and how
+// many of how many are done, so the poll can write where the read is
+// ([PollOnce]). nil takes it off. [Source.SetProgressItems] is the same with
+// the items listed so far.
 func (s *Source) SetProgress(fn func(full string, done, of int)) {
+	if fn == nil {
+		s.SetProgressItems(nil)
+		return
+	}
+	s.SetProgressItems(func(full string, done, of, _ int) { fn(full, done, of) })
+}
+
+// SetProgressItems is [Source.SetProgress] with how many issues and pull
+// requests this Read has listed so far, across every repository, so a big
+// repository's read says `200 items so far` rather than go quiet. nil takes
+// it off.
+func (s *Source) SetProgressItems(fn func(full string, done, of, items int)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.progress = fn
+}
+
+// SetSink hands the source a function a Read gives each batch of items to the
+// moment it has them: a repository's issues as soon as their list is in
+// (before any comment is read), and its pull requests once theirs are. The
+// poll folds each batch into the store at once ([PollOnce]), so THE FLOOR
+// FILLS AS THE READ GOES. Read still answers every item at the end; a batch
+// handed early is handed again there, which [Merge] skips when nothing moved.
+// nil takes it off.
+func (s *Source) SetSink(fn func(items []factory.Item)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sink = fn
 }
 
 // Watched is the repositories this source reads.
@@ -190,15 +245,49 @@ func (c cursor) String() string {
 	return string(b)
 }
 
+// readRun is one Read's running state: what it may still spend, how many
+// items it has listed, and where to hand batches and progress.
+type readRun struct {
+	left     int
+	items    int
+	done, of int
+	sink     func([]factory.Item)
+	progress func(full string, done, of, items int)
+}
+
+// take spends n requests of the budget, and says whether there were n left.
+func (r *readRun) take(n int) bool {
+	if r.left < n {
+		return false
+	}
+	r.left -= n
+	return true
+}
+
+func (r *readRun) hand(items []factory.Item) {
+	if r.sink != nil && len(items) > 0 {
+		r.sink(items)
+	}
+}
+
+func (r *readRun) tell(full string) {
+	if r.progress != nil {
+		r.progress(full, r.done, r.of, r.items)
+	}
+}
+
 // Read lists what changed in every watched repository since the mark. A
 // repository that cannot be read is skipped with its error joined into the
 // answer and its mark left where it was, so the next Read asks it again from
-// the same place; the other repositories' items still come back.
+// the same place; the other repositories' items still come back. Items the
+// per-read budget did not reach come back without their comments (nil, not
+// read yet) or a pull request without its line counts and files (Files nil),
+// and are read on a later Read.
 func (s *Source) Read(ctx context.Context, since string) ([]factory.Item, string, error) {
 	marks, all := parseCursor(since)
 	s.mu.Lock()
 	repos := append([]string(nil), s.repos...)
-	progress := s.progress
+	run := &readRun{left: s.budget, of: len(repos), sink: s.sink, progress: s.progress}
 	s.mu.Unlock()
 	s.whoAmI(ctx)
 
@@ -213,14 +302,13 @@ func (s *Source) Read(ctx context.Context, since string) ([]factory.Item, string
 		if !ok {
 			continue
 		}
-		if progress != nil {
-			progress(full, i, len(repos))
-		}
+		run.done = i
+		run.tell(full)
 		mark, ok := marks[full]
 		if !ok {
 			mark = all
 		}
-		got, newest, err := s.readRepo(ctx, owner, name, full, mark)
+		got, newest, err := s.readRepo(ctx, run, owner, name, full, mark)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", full, err))
 			continue
@@ -253,7 +341,13 @@ func (s *Source) whoAmI(ctx context.Context) {
 	s.mu.Unlock()
 }
 
-func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark time.Time) ([]factory.Item, time.Time, error) {
+// readRepo reads one repository: its issues list, handed to the sink at once;
+// their comments within the budget; its pull requests with their line counts,
+// files and checks, handed to the sink once they are in. THE LISTS' ETAGS ARE
+// KEPT ONLY WHEN THE WHOLE REPOSITORY READ WELL, so a repository that fails
+// halfway is listed in full again next time rather than answered with a 304
+// that would hide what this read never finished.
+func (s *Source) readRepo(ctx context.Context, run *readRun, owner, name, full string, mark time.Time) ([]factory.Item, time.Time, error) {
 	var items []factory.Item
 	newest := mark
 
@@ -261,17 +355,15 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 	issueTag, pullTag := s.issueTags[full], s.pullTags[full]
 	s.mu.Unlock()
 
-	issues, tag, err := s.api.ListIssues(ctx, owner, name, mark, issueTag)
+	issues, newIssueTag, err := s.api.ListIssues(ctx, owner, name, mark, issueTag)
 	switch {
 	case errors.Is(err, forge.ErrNotModified):
-		issues = nil
+		issues, newIssueTag = nil, issueTag
 	case err != nil:
 		return nil, mark, err
-	default:
-		s.mu.Lock()
-		s.issueTags[full] = tag
-		s.mu.Unlock()
 	}
+	var listed []factory.Item
+	var listedIssues []forge.Issue
 	for _, is := range issues {
 		if is.Updated.After(newest) {
 			newest = is.Updated
@@ -279,26 +371,76 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 		if is.Pull {
 			continue
 		}
-		it := s.issueItem(ctx, owner, name, is)
-		if it.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, false); err != nil {
+		listed = append(listed, s.issueItem(ctx, owner, name, is))
+		listedIssues = append(listedIssues, is)
+	}
+	// THE ROWS FIRST: the issues as listed, comments not read yet, so the
+	// floor has them while their comments are read.
+	run.items += len(listed)
+	run.hand(listed)
+	run.tell(full)
+	s.mu.Lock()
+	owed := s.owed[full]
+	if owed == nil {
+		owed = map[int]forge.Issue{}
+		s.owed[full] = owed
+	}
+	s.mu.Unlock()
+	for i, is := range listedIssues {
+		it := listed[i]
+		list, ok, err := s.commentsWithin(ctx, run, owner, name, is.Number, is.Comments)
+		if err != nil {
 			return nil, mark, err
 		}
+		s.mu.Lock()
+		if ok {
+			it.Comments = list
+			delete(owed, is.Number)
+		} else {
+			owed[is.Number] = is
+		}
+		s.mu.Unlock()
+		items = append(items, it)
+	}
+	// AND THE ISSUES AN EARLIER READ OWED, which a list asked since the
+	// cursor no longer carries, oldest number first, while the budget lasts.
+	s.mu.Lock()
+	var due []forge.Issue
+	for n, is := range owed {
+		if !listedNumber(listedIssues, n) {
+			due = append(due, is)
+		}
+	}
+	s.mu.Unlock()
+	sort.Slice(due, func(i, j int) bool { return due[i].Number < due[j].Number })
+	for _, is := range due {
+		list, ok, err := s.commentsWithin(ctx, run, owner, name, is.Number, is.Comments)
+		if err != nil {
+			return nil, mark, err
+		}
+		if !ok {
+			break
+		}
+		it := s.issueItem(ctx, owner, name, is)
+		it.Comments = list
+		s.mu.Lock()
+		delete(owed, is.Number)
+		s.mu.Unlock()
 		items = append(items, it)
 	}
 
-	pulls, tag, err := s.api.ListPulls(ctx, owner, name, pullTag)
+	pulls, newPullTag, err := s.api.ListPulls(ctx, owner, name, pullTag)
 	switch {
 	case errors.Is(err, forge.ErrNotModified):
 		s.mu.Lock()
 		pulls = append([]forge.Pull(nil), s.pulls[full]...)
 		s.mu.Unlock()
+		newPullTag = pullTag
 	case err != nil:
 		return nil, mark, err
-	default:
-		s.mu.Lock()
-		s.pullTags[full] = tag
-		s.mu.Unlock()
 	}
+	run.items += len(pulls)
+	run.tell(full)
 	s.mu.Lock()
 	known := map[int]forge.Pull{}
 	for _, p := range s.pulls[full] {
@@ -306,6 +448,7 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 	}
 	s.mu.Unlock()
 	kept := make([]forge.Pull, 0, len(pulls))
+	var pullItems []factory.Item
 	for _, p := range pulls {
 		if p.Updated.After(newest) {
 			newest = p.Updated
@@ -313,12 +456,20 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 		// GitHub's since is inclusive, so the mark itself is a change this source
 		// has already seen, and only a later one is a move.
 		moved := mark.IsZero() || p.Updated.After(mark)
+		key := fmt.Sprintf("%s#%d", full, p.Number)
+		s.mu.Lock()
+		undetailed, owedComments := s.undetailed[key], s.pullOwed[key]
+		s.mu.Unlock()
 		// THE LINE COUNTS ARE READ ONCE PER CHANGE. The list leaves them out, so
 		// a pull request read before and unchanged since keeps the counts it
-		// had, and only one that moved costs a second request.
-		key := fmt.Sprintf("%s#%d", full, p.Number)
-		if old, ok := known[p.Number]; ok && old.Updated.Equal(p.Updated) {
+		// had, and only one that moved costs a second request. One the budget
+		// did not reach keeps the list's zero counts and is marked undetailed,
+		// so its counts are read on a later Read.
+		detailed := false
+		if old, ok := known[p.Number]; ok && old.Updated.Equal(p.Updated) && !undetailed {
 			p.Additions, p.Deletions, p.Files, p.Comments = old.Additions, old.Deletions, old.Files, old.Comments
+		} else if !run.take(2) {
+			undetailed = true
 		} else if whole, err := s.api.Pull(ctx, owner, name, p.Number); err == nil {
 			p.Additions, p.Deletions, p.Files, p.Comments = whole.Additions, whole.Deletions, whole.Files, whole.Comments
 			if whole.HeadSHA != "" {
@@ -330,12 +481,20 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 			if err != nil {
 				return nil, mark, err
 			}
+			detailed, undetailed = true, false
 			s.mu.Lock()
 			s.files[key] = fileChanges(changed)
 			s.mu.Unlock()
 		} else {
 			return nil, mark, err
 		}
+		s.mu.Lock()
+		if undetailed {
+			s.undetailed[key] = true
+		} else {
+			delete(s.undetailed, key)
+		}
+		s.mu.Unlock()
 		kept = append(kept, p)
 		// THE CHECKS ARE ASKED AGAIN WHILE THEY RUN. A head that went green
 		// does not change the pull request's own updated time, so one whose
@@ -355,22 +514,77 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 			s.checks[key] = seenChecks{sha: p.HeadSHA, state: state, runs: runs}
 			s.mu.Unlock()
 		}
-		if moved || !had || seen.state != state || seen.sha != p.HeadSHA {
+		if moved || !had || seen.state != state || seen.sha != p.HeadSHA || detailed || owedComments {
 			it := s.pullItem(ctx, owner, name, p, state)
 			it.CheckRuns = runs
-			s.mu.Lock()
-			it.Files = s.files[key]
-			s.mu.Unlock()
-			if it.Comments, err = s.lastComments(ctx, owner, name, p.Number, p.Comments, false); err != nil {
-				return nil, mark, err
+			if undetailed {
+				// Not read yet: no files, no line counts, no comment count.
+				it.Diff, it.Files, it.Comments = "", nil, nil
+				s.mu.Lock()
+				s.pullOwed[key] = true
+				s.mu.Unlock()
+			} else {
+				s.mu.Lock()
+				it.Files = s.files[key]
+				s.mu.Unlock()
+				list, ok, err := s.commentsWithin(ctx, run, owner, name, p.Number, p.Comments)
+				if err != nil {
+					return nil, mark, err
+				}
+				s.mu.Lock()
+				if ok {
+					it.Comments = list
+					delete(s.pullOwed, key)
+				} else {
+					s.pullOwed[key] = true
+				}
+				s.mu.Unlock()
 			}
-			items = append(items, it)
+			pullItems = append(pullItems, it)
 		}
 	}
+	run.hand(pullItems)
+	items = append(items, pullItems...)
 	s.mu.Lock()
 	s.pulls[full] = kept
+	if newIssueTag != "" {
+		s.issueTags[full] = newIssueTag
+	}
+	if newPullTag != "" {
+		s.pullTags[full] = newPullTag
+	}
 	s.mu.Unlock()
 	return items, newest, nil
+}
+
+func listedNumber(issues []forge.Issue, n int) bool {
+	for _, is := range issues {
+		if is.Number == n {
+			return true
+		}
+	}
+	return false
+}
+
+// commentsWithin is [Source.lastComments] on the read's budget: the comments
+// and true when they cost nothing (none, or the count this process already
+// read them at) or the budget had a request left, and nil and false when it
+// did not, so the item is folded with its comments not read yet.
+func (s *Source) commentsWithin(ctx context.Context, run *readRun, owner, name string, number, count int) ([]factory.Comment, bool, error) {
+	if count > 0 {
+		key := strings.ToLower(fmt.Sprintf("%s/%s#%d", owner, name, number))
+		s.mu.Lock()
+		seen, ok := s.comments[key]
+		s.mu.Unlock()
+		if !(ok && seen.count == count) && !run.take(1) {
+			return nil, false, nil
+		}
+	}
+	list, err := s.lastComments(ctx, owner, name, number, count, false)
+	if err != nil {
+		return nil, false, err
+	}
+	return list, true, nil
 }
 
 func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Issue) factory.Item {
@@ -422,14 +636,15 @@ func (s *Source) pullItem(ctx context.Context, owner, name string, p forge.Pull,
 // lastComments is an item's last [CommentsMost] comments: the ones this
 // process already read when the count is the one it read them at, and a
 // fresh read otherwise, or always when force is set (a person's refresh). A
-// count of none is none, and costs nothing.
+// count of none is none, and costs nothing. THE ANSWER IS NEVER NIL: an empty
+// list is read and nothing said, and nil on an item is not read yet.
 func (s *Source) lastComments(ctx context.Context, owner, name string, number, count int, force bool) ([]factory.Comment, error) {
 	key := strings.ToLower(fmt.Sprintf("%s/%s#%d", owner, name, number))
 	if count <= 0 {
 		s.mu.Lock()
 		delete(s.comments, key)
 		s.mu.Unlock()
-		return nil, nil
+		return []factory.Comment{}, nil
 	}
 	s.mu.Lock()
 	seen, ok := s.comments[key]
@@ -451,10 +666,11 @@ func (s *Source) lastComments(ctx context.Context, owner, name string, number, c
 	return list, nil
 }
 
-// fileChanges converts the forge's files to the floor's.
+// fileChanges converts the forge's files to the floor's. It is never nil: a
+// pull request's Files nil is its files not read yet.
 func fileChanges(in []forge.FileChange) []factory.FileChange {
 	if len(in) == 0 {
-		return nil
+		return []factory.FileChange{}
 	}
 	out := make([]factory.FileChange, 0, len(in))
 	for _, f := range in {
@@ -501,6 +717,9 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 		if out.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, true); err != nil {
 			return factory.Item{}, err
 		}
+		s.mu.Lock()
+		delete(s.owed[owner+"/"+name], is.Number)
+		s.mu.Unlock()
 		return out, nil
 	}
 	p, err := s.api.Pull(ctx, owner, name, it.Num)
@@ -519,6 +738,8 @@ func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, er
 	s.mu.Lock()
 	s.files[key] = fileChanges(changed)
 	s.checks[key] = seenChecks{sha: p.HeadSHA, state: state, runs: checkRuns(runs)}
+	delete(s.undetailed, key)
+	delete(s.pullOwed, key)
 	s.mu.Unlock()
 	out := s.pullItem(ctx, owner, name, p, state)
 	out.Files, out.CheckRuns = fileChanges(changed), checkRuns(runs)

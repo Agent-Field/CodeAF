@@ -98,6 +98,10 @@ func Prompt(it factory.Item) string {
 			b.WriteString("- " + who + ": " + text + "\n")
 		}
 		b.WriteString("\n")
+	} else if it.Comments == nil && it.Origin == factory.OriginForge && it.Num > 0 {
+		// Not read yet is not nothing said: a busy repository's comments
+		// are read over several minutes after its items arrive.
+		b.WriteString("comments: not read yet\n\n")
 	}
 	b.WriteString(`Answer exactly this shape:
 {"read": "...", "type": "...", "size": "...", "est_usd": 0, "risk": [], "dup": "", "priority": 0, "reason": "..."}
