@@ -255,7 +255,9 @@ one line across the top of the floor, then a blank row:
 `◆ 2 shipped · 3 arrived · ? 5 waiting · $8.44 / $60 · polled 14s ago`
 
 what shipped and arrived this stretch, what waits on you (in the question colour), the day's
-spend against the day's rail, and when a source was last read. A part whose count is zero is
+spend against the day's rail, and when a source was last read. **Waiting counts the items that
+ask a question;** a landed item waiting for your sign-off stands under `LANDED` on the floor and
+is not in that count, nor in the tab bar's `?`. A part whose count is zero is
 left off; a narrow window drops parts from the right. While a source is being read the last part
 says `github · ⠋ polling`, and while every item is read again, `⠋ refreshing 8 items · 3 done`.
 
@@ -900,7 +902,9 @@ claim was shown.
   With no known checkout it says `codeaf does not know where <repo> is checked out`.
 - A **post** stage writes through the connected GitHub account (comment, label, pr, close),
   when the recipe's policy allows it.
-- A **chat** stage (plan, write, review) is a conversation, named `#12 · review`, made in the
+- A **chat** stage (plan, write, review; in codeaf's default recipe test and proof too, so test
+  runs what the change implies itself, and `3. test · check · go test ./...` in the recipe file
+  makes it a check) is a conversation, named `#12 · review`, made in the
   item's own team under `factory` in the team menu, where you can open it. It works unattended,
   for at most two hours, and ends with `stage_result` (see a stage is a conversation).
 - A **gate** waits for you.
