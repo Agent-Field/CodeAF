@@ -181,11 +181,14 @@ type factoryPage struct {
 	// one page is. railTop, railFirst and railShown are the item page's rail
 	// as the last draw placed it: the body row it starts on, the first entry
 	// drawn, and how many, and pageRows the page's whole room, so a press
-	// lands on the row a person saw.
+	// lands on the row a person saw. moreRow is the body row the last draw
+	// put `▾ more` on, -1 when it drew none, so a press on the word is read
+	// against what was painted ([app.factoryPointer]).
 	scroll     int
 	scrollID   int
 	scrollMax  int
 	scrollPage int
+	moreRow    int
 	railTop    int
 	railFirst  int
 	railShown  int
@@ -370,10 +373,14 @@ func (a *app) factoryMove(delta int) {
 		a.factoryStageMove(delta)
 		return
 	}
+	was := a.fp.cursor
 	a.fp.cursor = moveCursor(a.fp.cursor, delta, len(a.factoryWalkNow()))
 	// THE NEXT ITEM IS READ FROM ITS TOP: the body's scroll belonged to the
-	// item the cursor left.
-	a.fp.scroll = 0
+	// item the cursor left. A move that went nowhere, against the rail's end,
+	// leaves it where it was.
+	if a.fp.cursor != was {
+		a.fp.scroll = 0
+	}
 	a.touch()
 }
 
@@ -388,6 +395,7 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	if room <= 0 {
 		return nil
 	}
+	a.fp.moreRow = -1
 	if !a.factoryConnected() {
 		a.fp.rowsW, a.fp.shown = 0, 0
 		return placeTeachRows(placeTeachProse(factoryUnconnectedWords, width, a.pal), room)
@@ -508,6 +516,9 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		right := ""
 		if i < len(pane) {
 			right = pane[i]
+			if a.factoryHasMore(right) {
+				a.fp.moreRow = len(head) + i
+			}
 		}
 		if at := i - (left - len(rowsFoot)); at >= 0 && at < len(rowsFoot) {
 			line, hit = rowsFoot[at], -1
