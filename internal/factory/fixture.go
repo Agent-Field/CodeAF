@@ -49,8 +49,16 @@ func Fixture(now time.Time) Snapshot {
 	landed := &Stream{Started: h(3), Ended: h(1), Spent: 2.87, Bench: 3, Activity: []int{0, 0, 0, 0, 0, 0, 0, 0}, Cur: 5,
 		Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "write", State: PhaseDone, Tasks: 2}, {Name: "test", State: PhaseDone}, {Name: "review", State: PhaseDone, Round: 2}, {Name: "neaten", State: PhaseDone}, {Name: "proof", State: PhaseDone}},
 		Log:    []LogLine{{At: h(1), Glyph: "»", Tone: "said", Text: "landed · proof sheet ready · your sign-off"}}}
+	// THE SHIPPED ITEM IS THE ONE PLAN ADAPTED: it added a security pass after
+	// review and skipped neaten, and its stream ran the stages it was left
+	// with, so the record under its stages line has something true to say.
 	shipped := &Stream{Started: h(9), Ended: h(6), Spent: 1.9, Bench: 4, Activity: make([]int, 8), Cur: 5,
-		Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "write", State: PhaseDone}, {Name: "test", State: PhaseDone}, {Name: "review", State: PhaseDone}, {Name: "neaten", State: PhaseDone}, {Name: "proof", State: PhaseDone}}}
+		Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "write", State: PhaseDone}, {Name: "test", State: PhaseDone}, {Name: "review", State: PhaseDone}, {Name: "security", State: PhaseDone}, {Name: "proof", State: PhaseDone}}}
+	adapted := func(r Repo) []Stage {
+		out := PlaceStage(stages(r), Stage{Name: "security", Kind: StageChat, Ask: "secrets, injection and authz", Until: "clean", On: true}, "after review")
+		out[StageIndex(out, "neaten")].On = false
+		return out
+	}
 
 	items := []Item{
 		{ID: 1, Repo: codeaf.Name, Num: 1538, Kind: KindIssue, Title: "budget caps per task", Author: "santosh", Tier: TierOwner, Origin: OriginForge, Created: h(9), Changed: h(7), State: StateNeedsYou, Stream: waiting, Question: "plan is ready · go, or change it?", QKind: "plan", Cap: 8, Gate: GatePlan, Stages: stages(codeaf),
@@ -82,8 +90,9 @@ func Fixture(now time.Time) Snapshot {
 			},
 			Policy: []Claim{{Text: "complexity within +10% of main", OK: true, Evidence: "complexity +3%", Medium: "policy"}, {Text: "no new dependencies without asking", OK: true, Evidence: "go.mod unchanged", Medium: "policy"}},
 			Triage: Triage{Type: "bug", Size: "M", Area: "standing", Readiness: 85, Est: 3, Risk: "low"}},
-		{ID: 10, Repo: codeaf.Name, Num: 1663, Kind: KindIssue, Title: "spend row shows stale after compact", Author: "mateo", Tier: TierCollab, Origin: OriginForge, Created: h(9), Changed: h(6), State: StateShipped, Stream: shipped, Cap: 5, Gate: GateNone, Stages: stages(codeaf),
-			Triage: Triage{Type: "bug", Size: "S", Area: "spend", Readiness: 80, Est: 2, Risk: "low"}},
+		{ID: 10, Repo: codeaf.Name, Num: 1663, Kind: KindIssue, Title: "spend row shows stale after compact", Author: "mateo", Tier: TierCollab, Origin: OriginForge, Created: h(9), Changed: h(6), State: StateShipped, Stream: shipped, Cap: 5, Gate: GateNone, Stages: adapted(codeaf),
+			Adapted: []string{"plan added security", "plan skipped neaten", "why: touches the billing cache"},
+			Triage:  Triage{Type: "bug", Size: "S", Area: "spend", Readiness: 80, Est: 2, Risk: "low"}},
 	}
 	var hours [24]int
 	hours[(now.Hour()+24-6)%24] = 3

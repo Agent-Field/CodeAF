@@ -49,7 +49,8 @@ const factoryPaneLead = 2
 // right-aligned meta. Under it the meta is dropped rather than jammed.
 const factoryPaneGap = 2
 
-// factoryPaneFixed is the peek's fixed rows, the rule included.
+// factoryPaneFixed is the peek's fixed rows, the rule included, on an item
+// the plan stage never changed; an adapted item draws one more.
 const factoryPaneFixed = 5
 
 // factoryPane is the item under the cursor as EXACTLY room rows of EXACTLY
@@ -98,20 +99,37 @@ func (a *app) factoryPane(width, room int) []string {
 }
 
 // factoryPeekFixed is the peek's five fixed rows. A row with nothing to say is
-// blank rather than closed up, so row four is row four on every item.
+// blank rather than closed up, so row four is row four on every item. An item
+// the plan stage changed has one row more, its record under the stages line
+// ([app.factoryAdaptedRow]), and the rule moves down one.
 func (a *app) factoryPeekFixed(it factory.Item, measure int) []string {
 	pal := a.pal
 	read := ""
 	if r := strings.TrimSpace(it.Triage.Read); r != "" {
 		read = fit(pal.muted(a.icon(tokens.GThought))+" "+pal.ink(r), measure)
 	}
-	return []string{
+	rows := []string{
 		a.factoryTitleRow(it, measure),
 		read,
 		fit(a.factoryChips(it, false), measure),
 		a.factoryPeekStrip(it, measure),
-		pal.dim(strings.Repeat(a.linearMark("─", "-"), measure)),
 	}
+	if adapted := a.factoryAdaptedRow(it, measure); adapted != "" {
+		rows = append(rows, adapted)
+	}
+	return append(rows, pal.dim(strings.Repeat(a.linearMark("─", "-"), measure)))
+}
+
+// factoryAdaptedRow is what the plan stage changed about the item's stages,
+// one dim line drawn under the stages line on the peek and the item page:
+// `plan added security · skipped neaten · why: touches billing`. AN ITEM PLAN
+// NEVER CHANGED DRAWS NOTHING, not a line saying so (the emptiness law).
+func (a *app) factoryAdaptedRow(it factory.Item, measure int) string {
+	line := factory.AdaptedLine(it)
+	if line == "" || measure <= 0 {
+		return ""
+	}
+	return a.pal.dim(fit(line, measure))
 }
 
 // factoryTitleRow is the peek's first row: the ref and the title at the left
