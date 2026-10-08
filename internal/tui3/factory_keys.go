@@ -92,6 +92,11 @@ type factoryActs struct {
 	beatGen int
 	// ticking is true while a Tick is out, so a slow tick is never stacked.
 	ticking bool
+	// talk is the conversation `T` last opened from the floor, by its key
+	// ([app.convKey]): while it is the one in front, `esc` on its empty box
+	// with nothing running goes back to the floor ([app.factoryTalkBack]).
+	// "" when `T` has opened nothing, or the way back was taken.
+	talk string
 }
 
 // ── the clock ───────────────────────────────────────────────────────────────
@@ -255,6 +260,12 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	it, ok := a.factoryCursorItem()
+	// `T` IS THE ITEM'S OWN CONVERSATION in every state, on the floor and on
+	// the item page alike: it is talk about the item, never a change to it.
+	if ok && (k == "T" || k == "shift+t") && a.factory.Has("talk") {
+		a.pageMsg = ""
+		return a.factoryTalk(it), true
+	}
 	if k == "n" && (!ok || it.State != factory.StateNeedsYou) {
 		if a.factory.Has("new") && a.factoryConnected() {
 			a.factoryOpenAsk(factoryAsk{kind: factoryAskNew, repo: a.factoryNewRepo(), label: "new work ›", example: "“fix the meter at midnight, $5, plan first”"})
@@ -856,6 +867,7 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 		add(seam.Has("reverify"), "o check again")
 		add(it.Diff != "", "d diff")
 	}
+	add(seam.Has("talk"), "T talk")
 	add(it.State != factory.StateNeedsYou && seam.Has("new"), "n new")
 	return out
 }

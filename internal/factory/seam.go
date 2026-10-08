@@ -94,6 +94,14 @@ type Seam struct {
 	// takes it off.
 	SetRail func(usd float64) error
 
+	// Talk is the item's own conversation: the one already made, or one made
+	// now — inside the item's own team, with the item in front of it — and
+	// kept on the item ([Item.Talk]), so a second ask answers the same one.
+	// chat is the conversation's session file, which is how the surface opens
+	// a conversation. NOTHING IS MADE UNTIL A PERSON ASKS: no item has one by
+	// default.
+	Talk func(ctx context.Context, id int) (chat string, err error)
+
 	// Tick advances a mock clock by d. A real engine leaves it nil and the
 	// surface draws no speed, no sleep.
 	Tick func(d time.Duration) error
@@ -164,6 +172,8 @@ func (s Seam) Has(door string) bool {
 		return s.SaveRecipe != nil
 	case "setrail":
 		return s.SetRail != nil
+	case "talk":
+		return s.Talk != nil
 	case "tick":
 		return s.Tick != nil
 	case "sleep":

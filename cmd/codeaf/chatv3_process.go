@@ -789,6 +789,10 @@ func (s *v3Seam) launch(workspace string) (*v3Launch, error) {
 		// person, so a conversation opened on another project carries the same
 		// door the boot does (and none when the boot has none).
 		launch.Config.Factory = s.boot.Config.Factory
+		// And the stages door beside it, for the same reason: an item's own
+		// conversation opens in the item's checkout, which is often another
+		// project than the boot's (factory_talk.go).
+		launch.Config.Stages = s.boot.Config.Stages
 	}
 	// THE KEY IS THE ONE FIELD READ BACK FROM THE PROCESS rather than from the
 	// launch. A boot that opened keyless and was handed a key on the first

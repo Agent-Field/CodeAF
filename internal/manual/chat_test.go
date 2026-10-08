@@ -39,6 +39,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I connect github to the factory floor", "factory"},
 		{"which github repositories does the factory watch", "factory"},
 		{"how do I make this repo always run a security review", "factory"},
+		{"how do I talk through a factory item before I launch it", "factory"},
+		{"can the chat skip review on one factory item", "factory"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},

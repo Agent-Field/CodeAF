@@ -301,9 +301,9 @@ type Item struct {
 	// line each in the order it changed them, `why: …` last: the record
 	// [Adapt] writes and the surface draws under the stages line.
 	Adapted []string
-	// Talk names the item's own conversation once one has been made for it,
-	// and is "" until then: the surface draws the talk row only when it says
-	// something.
+	// Talk is the item's own conversation, by its session file: the one `T`
+	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
+	// a person asks for one — the conversation is never made by default.
 	Talk string
 }
 

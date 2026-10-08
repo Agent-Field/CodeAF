@@ -58,9 +58,15 @@ func onNames(stages []factory.Stage) []string {
 	return out
 }
 
+// EVERY DOOR BUT TALK: an item's own conversation is made by the launch over
+// the session engine and the teams file (cmd/codeaf's factory_talk.go), and the
+// made-up floor has neither, so its `T` is absent rather than broken.
 func TestEveryDoorIsFilled(t *testing.T) {
 	v := reflect.ValueOf(world(t))
 	for i := 0; i < v.NumField(); i++ {
+		if v.Type().Field(i).Name == "Talk" {
+			continue
+		}
 		if v.Field(i).IsNil() {
 			t.Errorf("door %s is nil", v.Type().Field(i).Name)
 		}

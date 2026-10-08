@@ -1497,6 +1497,15 @@ func questionAsked(event Event) (string, bool) {
 			return "", false
 		}
 		return questionToken(QuestionRecipe, strings.TrimSpace(event.Recipe.ID)), true
+
+	case EventStagesProposal:
+		if event.Stages == nil || strings.TrimSpace(event.Stages.ID) == "" {
+			return "", false
+		}
+		if event.Stages.Decided != nil || event.Stages.Withdrawn != "" {
+			return "", false
+		}
+		return questionToken(QuestionStages, strings.TrimSpace(event.Stages.ID)), true
 	}
 	return "", false
 }
@@ -1901,6 +1910,8 @@ func questionGoneReason(q Question) string {
 		return factoryGoneReason
 	case QuestionRecipe:
 		return recipeGoneReason
+	case QuestionStages:
+		return stagesGoneReason
 	}
 	// The model's own question and everything else: the turn that raised it
 	// has ended — interrupted, or finished around it — which is the one way a
@@ -2326,6 +2337,25 @@ func (a *Agent) applyToLane(answer Answer) error {
 		}
 		a.ResolveRecipe(answer.Ref, action.Recipe)
 		return nil
+	case QuestionStages:
+		// The factory card's reading, word for word: words are a change and
+		// never a yes, and words beside `change it` still change nothing.
+		if key == "" {
+			if strings.TrimSpace(words) == "" {
+				return errAnswerEmpty
+			}
+			a.ResolveStages(answer.Ref, StagesAnswer{Change: words})
+			return nil
+		}
+		action, ok := AnswerFromKey(QuestionStages, key)
+		if !ok {
+			return errAnswerEmpty
+		}
+		if action.Stages.Approved {
+			action.Stages.Change = strings.TrimSpace(words)
+		}
+		a.ResolveStages(answer.Ref, action.Stages)
+		return nil
 	case QuestionSubharnessAsk:
 		// A RUNNING SUB-HARNESS IS ANSWERED IN WORDS, not with a key: its
 		// question is its own and this engine never wrote answers for it. Taking
@@ -2525,6 +2555,12 @@ func (a *Agent) OpenQuestions() []Question {
 			recipes = append(recipes, *offer)
 		}
 	}
+	stageCards := make([]stagesOffer, 0, len(a.stagesOffers))
+	for _, offer := range a.stagesOffers {
+		if offer != nil {
+			stageCards = append(stageCards, *offer)
+		}
+	}
 	offers := make(map[uint64]Event, len(a.subharnessOffers))
 	for id, offer := range a.subharnessOffers {
 		if offer != nil {
@@ -2577,6 +2613,9 @@ func (a *Agent) OpenQuestions() []Question {
 	}
 	for _, offer := range recipes {
 		open = append(open, a.recipeQuestion(offer.notice.ID, offer.notice, offer.asked))
+	}
+	for _, offer := range stageCards {
+		open = append(open, a.stagesQuestion(offer.notice.ID, offer.notice, offer.asked))
 	}
 	for id, live := range runs {
 		if snap := live.run.Snapshot(); snap.Paused {

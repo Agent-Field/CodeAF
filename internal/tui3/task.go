@@ -912,6 +912,14 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// AND THE LINE IS IN THE FILE: the card says so and the floor, whose
 		// stages are read from that file, is read again ([app.recipeBanked]).
 		floor = a.recipeBanked(ev)
+	case session.EventStagesProposal:
+		// THE CHAT OFFERING TO CHANGE ONE ITEM'S STAGES, from the item's own
+		// conversation, on the same lane and card as the recipe offer.
+		a.stagesProposal(ev)
+	case session.EventStagesChanged:
+		// AND THE ITEM IS CHANGED: the card says so and the floor is read
+		// again ([app.stagesChanged]).
+		floor = a.stagesChanged(ev)
 	case session.EventNotice:
 		// A program's limit ending reaches this standing lane even when the
 		// same limit refuses the model turn that would otherwise announce it.
