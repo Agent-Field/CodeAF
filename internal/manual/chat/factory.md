@@ -638,6 +638,34 @@ is `after 1 round`, one finding `1 finding`),
 item that is not waiting says `#12 is not waiting on you` on the bottom line and changes nothing
 (`n` there is new work, and `a` on a thin new item asks its author).
 
+## run these stages? — what the manager set, y runs, n keeps the recipe, a says it in words
+
+When the manager has shaped a run and `ask me at` is plan, the run stops before the first stage
+and asks `run these stages?`. The item moves to **needs you**, and the peek and the item page draw
+the question as the stages it asks about, not one long line:
+
+```
+? run these stages?
+  1 read · the diff and its claims
+  2 review · thorough on security, code and architecture
+  manager set review: thorough on security, code and architecture · why: touches the call row
+  y run · n keep the recipe · a in words
+```
+
+Each stage line is its number (the key that switches it on the item page), its one-word name and
+its ask. A stage switched off is not drawn and its number is not reused. The dim line under the
+stages is what the manager changed, `manager set …`, and why. A pane with too few rows cuts the
+asks first and then ends the stages on `… 4 more`.
+
+- `y` runs the stages as drawn. The bottom line says `answered #12 · yes`.
+- `n` keeps the recipe: the stages go back to what the recipe has and the run goes on. The stream
+  says `the recipe stands`.
+- `a` opens `answer ›` for words (`drop review, add arch`); your words go to the manager, and the
+  bottom line says `answered #12 in words`.
+
+If the manager has not set anything, the question is the ordinary `plan is ready · go, or change
+it?` described under answering a question.
+
 ## approve, request changes, re-run checks — s, B, v, how do I approve a landed item
 
 A landed item's page opens on its **proof** sheet: one row per claim and policy row, `✓` shown or
