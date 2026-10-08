@@ -28,7 +28,7 @@ import (
 )
 
 // loopLogMost is how many lines a stream keeps, the newest last: the same
-// window the mock floor keeps, so the stream view scrolls the same way.
+// window the floor keeps, so the stream view scrolls the same way.
 const loopLogMost = 400
 
 // habitEvery is how many clean sign-offs on one repo offer a habit, and the

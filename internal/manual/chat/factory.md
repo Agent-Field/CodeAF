@@ -322,7 +322,7 @@ the codeaf home, beside the split:
    `quiet · nothing happened while you were away`.
 3. `? 2 waiting on you` or `nothing waits on you`, and at the right a `24h` sparkline.
 4. `3 repos · github · chat · benches 2/6 · polled 4m ago`, and `$11.31 / $60 today` at the
-   right. The made-up moving floor adds its clock's speed, `· 150×`.
+   right.
 
 The handover is drawn at 90 columns and wider, when the window leaves the rows six lines.
 
@@ -520,7 +520,7 @@ and to every round after it (`keep the old flag`). The bottom line says
 `steered #12`, and the log shows `steer: …` in ink. `space` pauses a running item (`#12 paused`)
 and resumes it (`#12 resumed`); a round cut by the pause starts over. `x` stops it and keeps the
 branch: `#12 stopped · branch kept`, and the item is new again. On an item that cannot be
-steered, `S` is the made-up floor's `S sleep 8h`.
+steered, `S` does nothing.
 
 ## the factory's verbs, keys that change an item
 
@@ -551,8 +551,7 @@ process runs the floor's items. `enter` on a row never launches; it opens the it
   floor and on the item page alike; it is named only where the floor can make one.
 - **Anywhere:** `n new item` opens `new work ›`, at the bottom of the rows column, on the repository the list shows (or the first one;
   on a floor with no items yet, the name of the folder this window was opened in), and the new
-  item's card is under the cursor when it is made. On the made-up moving floor,
-  `S sleep 8h` jumps its clock eight hours and starts a new handover.
+  item's card is under the cursor when it is made.
 
 A key that takes words opens a one-line box at the bottom of the right column, just above the
 peek's key line (which stays the column's last row, one blank row between them), except `n`'s,

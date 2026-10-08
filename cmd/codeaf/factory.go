@@ -144,17 +144,10 @@ func (d fileRecipeDoor) BankHabit(_ context.Context, repo, sentence string) erro
 // launch it cannot do. A nil store is the zero seam, whose page is the one dim
 // line saying nothing is connected yet.
 //
-// Two switches stand in front of it, and both win over the store when they are
-// on. The moving mock exists only in a -tags factorymock build with
-// CODEAF_FACTORY_MOCK=1 (factorymock.go); CODEAF_FACTORY_FIXTURE=1 hands the
-// page a still fixture ([factory.FixtureSeam]) whose every verb is nil.
+// One switch stands in front of it and wins over the store when it is on:
+// CODEAF_FACTORY_FIXTURE=1 hands the page a still fixture
+// ([factory.FixtureSeam]) whose every verb is nil.
 func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
-	// The mock is asked first. The default build has a stub that always
-	// answers false, so the shipped binary carries none of it
-	// (internal/factory/mock/REMOVING.md).
-	if seam, ok := factoryMockSeam(); ok {
-		return seam
-	}
 	if strings.TrimSpace(env.Get(factoryFixtureEnv)) == "1" {
 		return factory.FixtureSeam(time.Now())
 	}
@@ -169,8 +162,8 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// THE PICKER AND THE CONNECT DOORS ARE HUNG HERE and only here: the local
 	// seam is handed the forge's list over the profile's token
 	// (factorygithub.Lister), and the result is wrapped with Connect so the
-	// `github`, `ghlogin` and `connectgithub` doors exist. The mock and fixture
-	// seams above return before this line and are never wrapped.
+	// `github`, `ghlogin` and `connectgithub` doors exist. The fixture seam
+	// above returns before this line and is never wrapped.
 	profileDir = factoryProfile(profileDir)
 	// AND THE ITEM'S OWN CONVERSATION (`T`, factory_talk.go) is made on this
 	// machine, so its door is hung only here, where the floor is this

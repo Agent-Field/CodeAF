@@ -1,12 +1,9 @@
 package factory
 
-import (
-	"context"
-	"time"
-)
+import "context"
 
 // Seam is every door the surface has onto the factory, as a struct of funcs
-// so a mock, a local engine and a hosted one are the same shape (the pattern
+// so a fixture, a local engine and a hosted one are the same shape (the pattern
 // tui3.TeamsSeam set). Every func may touch disk, the network and the clock:
 // the surface calls them OFF THE LOOP and folds the result in as a message.
 // Load is the one read; everything else is a verb that changes the floor and
@@ -129,13 +126,6 @@ type Seam struct {
 	// Open is the item's page on its source, for a person's browser, or the
 	// error `this item is not on github` for work that was never there.
 	Open func(id int) (url string, err error)
-
-	// Tick advances a mock clock by d. A real engine leaves it nil and the
-	// surface draws no speed, no sleep.
-	Tick func(d time.Duration) error
-	// Sleep jumps the clock by d and starts a new shift, so the handover
-	// shows what happened while nobody looked. Mock only.
-	Sleep func(d time.Duration) error
 }
 
 // Has says whether a door exists, by the door's name: the field's name in
@@ -212,10 +202,6 @@ func (s Seam) Has(door string) bool {
 		return s.RefreshAll != nil
 	case "open":
 		return s.Open != nil
-	case "tick":
-		return s.Tick != nil
-	case "sleep":
-		return s.Sleep != nil
 	}
 	return false
 }

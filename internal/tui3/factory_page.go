@@ -124,7 +124,7 @@ type factoryPage struct {
 	said  bool
 
 	// act is what the verbs leave behind (factory_keys.go): an open typing
-	// row, a habit offer, and the mock clock's beat.
+	// row, a habit offer and the like.
 	act factoryActs
 
 	// THE FLOOR'S OWN SETTINGS (factory_settings.go), additive like the rest:

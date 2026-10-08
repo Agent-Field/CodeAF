@@ -35,8 +35,6 @@ type ItemStore interface {
 // CANNOT WORK IS ABSENT, NOT BROKEN. [WithRunner] binds the eight runner doors
 // directly in the one process that runs the floor's items, and [WithMailbox]
 // binds the same eight in every other window as asks posted to that process.
-// Tick and Sleep are nil too, because a real floor keeps no clock of its own
-// and draws no speed.
 //
 // A NIL STORE IS NO FLOOR: the zero Seam, whose every door is absent.
 //
@@ -457,8 +455,8 @@ func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Re
 // localNew makes an item from words typed on the floor. The chips lift out
 // (a cap, a gate, a round count, an effort, a security pass) and what is left,
 // tidied, is the title. The stages are the repo's recipe for an issue, with
-// the chips written onto them the way the mock writes them: rounds onto
-// review, the effort onto write, security switched on.
+// the chips written onto them: rounds onto review, the effort onto write,
+// security switched on.
 func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {

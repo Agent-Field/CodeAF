@@ -138,8 +138,7 @@ func factoryPhaseKey(id, at int, name string) string {
 }
 
 // factoryFoldPhases notes when each running phase was FIRST SEEN RUNNING, on
-// the floor's own clock (the snapshot's Now, so the mock's fast clock counts
-// fast), and forgets every phase that is not running any more. The runner
+// the floor's own clock (the snapshot's Now), and forgets every phase that is not running any more. The runner
 // keeps no start on a phase, so this is what the surface saw: a page opened
 // mid-phase counts from its opening, which is the honest reading of a clock
 // nobody wrote down.

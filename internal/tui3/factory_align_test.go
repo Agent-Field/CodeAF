@@ -307,7 +307,7 @@ func factoryPeekTitleRow(body []string) (int, int) {
 // (1) THE PEEK STANDS ON ONE FIXED ROW: walked to the foot of a long list, its
 // title is on the row it stood on at the top, and it keeps its height.
 func TestFactoryAlignPeekKeepsItsRowWithTheCursorLow(t *testing.T) {
-	a := factoryMockLab(t)
+	a := factoryBigLab(t)
 	a.pal = newPalette(tokens.NoColor, false)
 	a.width, a.height = 160, 50
 	body := factoryBodyPlain(a, 160, 44)
@@ -327,21 +327,30 @@ func TestFactoryAlignPeekKeepsItsRowWithTheCursorLow(t *testing.T) {
 	if inked < 6 {
 		t.Errorf("with the cursor low the peek collapsed to %d rows:\n%s", inked, strings.Join(body, "\n"))
 	}
-	if left, _, _ := factorySplitAt(body[at]); !strings.Contains(left, "#") && !strings.Contains(left, "───") && strings.TrimSpace(left) != "" {
-		t.Errorf("the rows beside the peek's title are not rows: %q", left)
+	if left, _, _ := factorySplitAt(body[at]); !strings.Contains(left, "───") && strings.TrimSpace(left) != "" {
+		isRow := false
+		for _, it := range a.fp.snap.Items {
+			if factoryRowOf([]string{left}, it.Ref()) != "" {
+				isRow = true
+				break
+			}
+		}
+		if !isRow {
+			t.Errorf("the rows beside the peek's title are not rows: %q", left)
+		}
 	}
 }
 
 // (2) THE LIST'S TOP COMES BACK: under a repo filter, walked down and back up
 // to the first row, the window is at its top and the first heading shows.
 func TestFactoryAlignListTopComesBackUnderAFilter(t *testing.T) {
-	a := factoryMockLab(t)
+	a := factoryBigLab(t)
 	a.pal = newPalette(tokens.NoColor, false)
 	a.width, a.height = 160, 50
 	drive(t, a, key("]"))
 	n := len(a.factoryWalkNow())
 	if n < 30 {
-		t.Fatalf("the filtered mock floor holds %d items, too few to scroll", n)
+		t.Fatalf("the filtered floor holds %d items, too few to scroll", n)
 	}
 	for i := 0; i < n; i++ {
 		drive(t, a, key("down"))
@@ -559,7 +568,7 @@ func TestFactoryAlignLandedSitsBesideNeedsYou(t *testing.T) {
 // row of the floor carries the same count of them, or all it has), and the
 // comfortable density's second line is as wide as its first.
 func TestFactoryAlignTitleKeepsItsWidthAndFactsDropAsAColumn(t *testing.T) {
-	for name, lab := range map[string]func(*testing.T) *app{"fixture": factoryPlaceLab, "mock": factoryMockLab} {
+	for name, lab := range map[string]func(*testing.T) *app{"fixture": factoryPlaceLab} {
 		a := lab(t)
 		a.pal = newPalette(tokens.NoColor, false)
 		a.fp.columns = true
@@ -612,14 +621,11 @@ func TestFactoryAlignTitleKeepsItsWidthAndFactsDropAsAColumn(t *testing.T) {
 // (10) AT 120 THE HINT KEEPS THE ITEM'S OWN KNOBS: `t gate · c cap · e effort`
 // outlive the verbs of the whole floor.
 func TestFactoryAlignHintKeepsTheKnobsAt120(t *testing.T) {
-	a := factoryMockLab(t)
+	a := factoryBigLab(t)
 	a.width, a.height = 120, 40
-	for i := 0; i < 4; i++ {
-		drive(t, a, key("down"))
-	}
-	it, _ := a.factoryCursorItem()
-	if it.State != factory.StateNew {
-		t.Skipf("the mock's fifth row is %s, not new", it.State)
+	factoryOn(t, a, 8)
+	if it, _ := a.factoryCursorItem(); it.State != factory.StateNew {
+		t.Fatalf("item 8 is %s, not new", it.State)
 	}
 	hint := ""
 	for _, line := range factoryFrameLines(a) {

@@ -20,9 +20,8 @@ import (
 //
 // SECURITY IS BANKED OFF and switched on per item, so an item that asks for a
 // security pass gains the stage without the recipe changing. THIS IS THE ONE
-// PLACE THE DEFAULT STAGES ARE SPELLED: the mock's generated world and the
-// local seam both start from it, so the two floors cannot disagree about what
-// a fresh repo runs.
+// PLACE THE DEFAULT STAGES ARE SPELLED: the local seam starts from it, so no
+// floor can disagree with another about what a fresh repo runs.
 func DefaultRecipe() Recipe {
 	return Recipe{
 		Stages: []Stage{
