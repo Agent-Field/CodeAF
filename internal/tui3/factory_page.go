@@ -115,8 +115,8 @@ type factoryPage struct {
 	// THE LAYOUT'S OWN STATE (factory_item.go), additive like the narrowings.
 	// comfy is `z`, a second line under each row and air between rows; open is
 	// the item page standing over the floor, stage the stage its rail's cursor
-	// is on, and said whether `enter` on that stage has put its note on the
-	// place's note line ([placeFactory.note]). The floor's cursor is left exactly where it was, so `esc` lands on the row
+	// is on, and said whether `enter` on a stage with no conversation has put
+	// why on the pane's action line (factory_run.go's [factoryNoRoomWords]). The floor's cursor is left exactly where it was, so `esc` lands on the row
 	// the page was opened from. Nothing here is persisted.
 	comfy bool
 	open  bool
@@ -188,6 +188,10 @@ type factoryPage struct {
 	// costs, kept until the floor says the read is over.
 	busySince map[int]time.Time
 	rereads   map[int]float64
+	// phaseSince is when each running phase was first seen running, by
+	// [factoryPhaseKey], on the floor's own clock (factory_run.go), so its
+	// rail row can say how long it has run.
+	phaseSince map[string]time.Time
 }
 
 // factoryRowsCols is the rows' columns at width with the divider where it
@@ -261,6 +265,7 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 	a.fp.snap, a.fp.loaded, a.fp.err = snap, true, nil
 	a.factoryPlace(false)
 	a.factoryFoldBusy()
+	a.factoryFoldPhases()
 	a.factoryKeep(was, had)
 }
 

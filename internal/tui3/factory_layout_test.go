@@ -126,7 +126,7 @@ func TestFactoryLayoutThreeGeometries(t *testing.T) {
 	if sep != len(wide)-5 {
 		t.Fatalf("at 150 only %d of %d floor rows stand beside a peek:\n%s", sep, len(wide)-5, strings.Join(wide, "\n"))
 	}
-	if !strings.Contains(strings.Join(wide, "\n"), "y n answer · a in words") {
+	if !strings.Contains(strings.Join(wide, "\n"), "touches three packages") {
 		t.Fatalf("at 150 there is no peek:\n%s", strings.Join(wide, "\n"))
 	}
 
@@ -249,15 +249,15 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("item %d opened on %q, want %q", c.id, got, c.stage)
 		}
 		text := strings.Join(factoryFrameLines(a), "\n")
-		if !strings.Contains(text, it.Ref()+" "+it.Title) || !strings.Contains(text, "places") {
+		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State != factory.StateNeedsYou && !strings.Contains(text, "places")) {
 			t.Fatalf("item %d's page has no head:\n%s", c.id, text)
 		}
 		if strings.Contains(text, "NEEDS YOU") {
 			t.Fatalf("item %d's page still draws the floor:\n%s", c.id, text)
 		}
 		drive(t, a, key("enter"))
-		said := strings.Contains(strings.Join(factoryFrameLines(a), "\n"), factoryStageNoteWords)
-		if c.stage != "issue" && !said {
+		said := a.fp.said
+		if c.stage != "issue" && c.stage != "proof" && !said {
 			t.Fatalf("enter on item %d's stage did not say what it will open", c.id)
 		}
 		if c.stage == "issue" && said {

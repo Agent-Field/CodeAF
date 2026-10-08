@@ -32,13 +32,14 @@ import (
 // asked beside it ([app.besideLine]); a launch and the steer typed after it are
 // seen by the floor in the order they were made.
 
-// factoryRoomWords is what `s` says on a landed item, whose stream's room
-// would open: the stream's conversation is a later lane, so the key says where
-// the room will be rather than opening nothing silently. `ENTER` IS NOT A VERB
-// HERE: on a floor row it opens the item page (factory_item.go), and on that
-// page it is the stage's own, except on a landed item's proof, which calls
-// [app.factoryLandedKey] with it.
-const factoryRoomWords = "the room opens here once streams are conversations"
+// `ENTER` IS NOT A VERB HERE: on a floor row it opens the item page
+// (factory_item.go), and on that page it walks into a stage's room, except on a
+// landed item's proof, which calls [app.factoryLandedKey] with it.
+//
+// EVERY VERB SAYS WHAT BECAME OF THE ITEM on the note line once its door has
+// answered (`#12 is running`, `#12 stopped · branch kept`), read off the floor
+// the same ask folded in ([app.factoryVerb]); a door that refuses says its own
+// sentence there instead, verbatim.
 
 // factoryHabitSentence is the habit the offer banks after three clean
 // sign-offs. It is spelled once so the offer, the door and the tests agree.
@@ -103,6 +104,9 @@ type factoryActs struct {
 	doing string
 	// refresh is `U`'s question while it stands, nil when none does.
 	refresh *factoryRefreshAsk
+	// launch is `L`'s question while marks stand, nil when none does
+	// (factory_run.go).
+	launch *factoryLaunchAsk
 }
 
 // ── the clock ───────────────────────────────────────────────────────────────
@@ -200,6 +204,67 @@ func (a *app) factoryDo(act func(s factory.Seam) error, then func(err error)) te
 	})
 }
 
+// factoryVerb asks one verb's doors like [app.factoryDo] and, when they
+// answered without a refusal, says on the note line what became of the item:
+// said reads the item as the fold left it, and "" says nothing.
+func (a *app) factoryVerb(id int, act func(s factory.Seam) error, said func(it factory.Item) string) tea.Cmd {
+	return a.factoryDo(act, func(err error) {
+		if err != nil || said == nil {
+			return
+		}
+		if it, ok := a.factoryItemByID(id); ok {
+			if w := said(it); w != "" {
+				a.factorySay(w)
+			}
+		}
+	})
+}
+
+// factoryLaunchedWords is what the note line says after a launch, from where
+// the item stands once the floor was read again: queued behind full benches,
+// parked on a question already, or running.
+func factoryLaunchedWords(it factory.Item) string {
+	switch it.State {
+	case factory.StateQueued:
+		return it.Ref() + " is queued" + rowSep + "a bench frees it"
+	case factory.StateNeedsYou:
+		return it.Ref() + " is waiting on you"
+	}
+	return it.Ref() + " is running"
+}
+
+// factorySteerable says whether `S` steers the item: a stream to hand words
+// to, on a bench, waiting for one or parked on a question, and a door.
+func (a *app) factorySteerable(it factory.Item) bool {
+	if !a.factory.Has("steer") || it.Stream == nil {
+		return false
+	}
+	switch it.State {
+	case factory.StateQueued, factory.StateRunning, factory.StateNeedsYou:
+		return true
+	}
+	return false
+}
+
+// factoryPauseKey is `space` on a running item: it pauses, and on a paused
+// one resumes, through the one Pause door. It answers false on any other
+// item, where `space` goes on meaning what it meant.
+func (a *app) factoryPauseKey() (tea.Cmd, bool) {
+	it, ok := a.factoryCursorItem()
+	if !ok || it.State != factory.StateRunning || !a.factory.Has("pause") {
+		return nil, false
+	}
+	a.pageMsg = ""
+	a.fp.said = false
+	paused := it.Stream != nil && it.Stream.Paused
+	return a.factoryVerb(it.ID, func(s factory.Seam) error { return s.Pause(it.ID) }, func(it factory.Item) string {
+		if paused {
+			return it.Ref() + " resumed"
+		}
+		return it.Ref() + " paused"
+	}), true
+}
+
 // factorySay puts a sentence on the note line beside the hint.
 func (a *app) factorySay(words string) {
 	a.pageMsg = words
@@ -231,6 +296,14 @@ func (a *app) factoryOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, false
 		}
 		return a.factoryRefreshKey(msg.String()), true
+	}
+	// `L`'S QUESTION HAS THE KEYBOARD ON THE SAME TERMS (factory_run.go).
+	if a.fp.act.launch != nil {
+		switch k := msg.String(); {
+		case k == "tab" || k == "shift+tab" || msg.Key().Mod&tea.ModAlt != 0:
+			return nil, false
+		}
+		return a.factoryLaunchKey(msg.String()), true
 	}
 	if a.fp.act.ask != nil {
 		switch k := msg.String(); {
@@ -280,6 +353,13 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		// `m` opens the foreman, the floor's own conversation (factory_foreman.go).
 		return a.factoryForemanKey()
 	case "S", "shift+s":
+		// `S` STEERS THE ITEM UNDER THE CURSOR WHEREVER IT CAN BE STEERED, in
+		// words; on every other item it is the mock clock's sleep.
+		if it, ok := a.factoryCursorItem(); ok && a.factorySteerable(it) {
+			a.pageMsg = ""
+			a.factoryOpenAsk(factoryAsk{kind: factoryAskSteer, id: it.ID, label: "steer ›", example: "“redo it stronger, keep the old flag”"})
+			return nil, true
+		}
 		if a.factory.Has("sleep") {
 			a.pageMsg = ""
 			return a.factoryDo(func(s factory.Seam) error { return s.Sleep(8 * time.Hour) }, nil), true
@@ -338,32 +418,29 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 			if k == "r" {
 				g = factory.GateShip
 			}
-			return a.factoryDo(func(s factory.Seam) error {
+			return a.factoryVerb(id, func(s factory.Seam) error {
 				if err := s.SetGate(id, g); err != nil {
 					return err
 				}
 				return s.Launch(id)
-			}, nil), true
+			}, func(it factory.Item) string {
+				w := factoryLaunchedWords(it)
+				if g == factory.GatePlan {
+					w += rowSep + "plan first"
+				}
+				return w
+			}), true
 		}
 	case "L", "shift+l":
 		if seam.Has("launch") {
-			ids := a.factoryMarkedIDs()
-			if len(ids) == 0 {
-				ids = []int{id}
+			// MARKS ARE ASKED ABOUT FIRST, with what they would cost in all
+			// (factory_run.go's [app.factoryOpenLaunch]); with none, `L`
+			// launches the item under the cursor as it stands.
+			if ids := a.factoryMarkedIDs(); len(ids) > 0 {
+				a.factoryOpenLaunch(ids)
+				return nil, true
 			}
-			// THE MARKS ARE SPENT BY THE LAUNCH: an item that is now a stream
-			// has nothing left for a mark to mean.
-			for _, m := range ids {
-				delete(a.fp.marked, m)
-			}
-			return a.factoryDo(func(s factory.Seam) error {
-				for _, m := range ids {
-					if err := s.Launch(m); err != nil {
-						return err
-					}
-				}
-				return nil
-			}, nil), true
+			return a.factoryVerb(id, func(s factory.Seam) error { return s.Launch(id) }, factoryLaunchedWords), true
 		}
 	case "t":
 		if seam.Has("setgate") {
@@ -428,18 +505,11 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 func (a *app) factoryStreamKey(it factory.Item, k string) (tea.Cmd, bool) {
 	seam, id := a.factory, it.ID
 	switch k {
-	case "s":
-		if seam.Has("steer") && it.Stream != nil {
-			a.factoryOpenAsk(factoryAsk{kind: factoryAskSteer, id: id, label: "steer ›", example: "“redo it stronger, keep the old flag”"})
-			return nil, true
-		}
-	case "p":
-		if seam.Has("pause") && it.State == factory.StateRunning {
-			return a.factoryDo(func(s factory.Seam) error { return s.Pause(id) }, nil), true
-		}
 	case "x":
 		if seam.Has("stop") {
-			return a.factoryDo(func(s factory.Seam) error { return s.Stop(id) }, nil), true
+			return a.factoryVerb(id, func(s factory.Seam) error { return s.Stop(id) }, func(it factory.Item) string {
+				return it.Ref() + " stopped" + rowSep + "branch kept"
+			}), true
 		}
 	case "e":
 		return a.factoryCycleEffort(it)
@@ -454,25 +524,36 @@ func (a *app) factoryNeedsKey(it factory.Item, k string) (tea.Cmd, bool) {
 	case "y", "n":
 		if seam.Has("answer") {
 			yes := k == "y"
-			return a.factoryDo(func(s factory.Seam) error { return s.Answer(id, yes, "") }, nil), true
+			return a.factoryVerb(id, func(s factory.Seam) error { return s.Answer(id, yes, "") }, func(it factory.Item) string {
+				if yes {
+					return "answered " + it.Ref() + rowSep + "yes"
+				}
+				return "answered " + it.Ref() + rowSep + "no"
+			}), true
 		}
 	case "a":
 		if seam.Has("answer") {
 			a.factoryOpenAsk(factoryAsk{kind: factoryAskAnswer, id: id, label: "answer ›", example: "“go, but keep the old flag”"})
 			return nil, true
 		}
-	case "s", "x":
+	case "x":
 		return a.factoryStreamKey(it, k)
 	}
 	return nil, false
 }
 
-// factoryLandedKey is a key on a landed item's proof sheet. A FAILED CLAIM
-// MAKES THE BLOCKING ACTION THE DEFAULT KEY: `enter` ships only when every
-// claim and policy row was shown, and otherwise opens the send-back row with
-// the first row nothing showed already named in it. That `enter` reaches here
-// only from the proof stage of the item page ([app.factoryLayoutKey]); on the
-// floor `enter` opens the page.
+// factoryLandedKey is a key on a landed item's proof sheet: `s` signs off,
+// `e` signs off with changes (the one a sheet with a row nothing showed takes),
+// `B` sends it back in words, `v` checks it again. A FAILED CLAIM MAKES THE
+// BLOCKING ACTION THE DEFAULT KEY: `enter` signs off only when every claim and
+// policy row was shown, and otherwise opens the send-back row with the first
+// row nothing showed already named in it. That `enter` reaches here only from
+// the proof of the item page ([app.factoryLayoutKey]); on the floor `enter`
+// opens the page.
+//
+// `s` ASKS THE DOOR WHATEVER THE SHEET SAYS: the runner refuses a plain
+// sign-off on a row not shown, in its own sentence (`#9 has a claim not
+// shown`), and that sentence is what the note line says.
 func (a *app) factoryLandedKey(it factory.Item, k string) (tea.Cmd, bool) {
 	seam, id := a.factory, it.ID
 	switch k {
@@ -487,27 +568,30 @@ func (a *app) factoryLandedKey(it factory.Item, k string) (tea.Cmd, bool) {
 		if seam.Has("signoff") {
 			return a.factorySignOff(it, false), true
 		}
-	case "a":
+	case "s":
 		if seam.Has("signoff") {
+			return a.factorySignOff(it, false), true
+		}
+	case "e":
+		if seam.Has("signoff") && factoryFirstFailed(it) != "" {
 			return a.factorySignOff(it, true), true
 		}
-	case "c":
+	case "B", "shift+b":
 		if seam.Has("sendback") {
 			a.factoryOpenAsk(factoryAsk{kind: factoryAskSendBack, id: id, label: "send back ›", example: "“prove restart survival”"})
 			return nil, true
 		}
-	case "o":
+	case "v":
 		if seam.Has("reverify") {
-			return a.factoryDo(func(s factory.Seam) error { return s.Reverify(id) }, nil), true
+			return a.factoryVerb(id, func(s factory.Seam) error { return s.Reverify(id) }, func(it factory.Item) string {
+				return it.Ref() + " is being checked again"
+			}), true
 		}
 	case "d":
 		if it.Diff != "" {
 			a.factorySay("the diff is the appendix · " + it.Diff + " · opens in your editor later")
 			return nil, true
 		}
-	case "s":
-		a.factorySay(factoryRoomWords)
-		return nil, true
 	}
 	return nil, false
 }
@@ -522,7 +606,15 @@ func (a *app) factorySignOff(it factory.Item, edited bool) tea.Cmd {
 		due, err = s.SignOff(id, edited)
 		return err
 	}, func(err error) {
-		if err == nil && due && a.factory.Has("bank") {
+		if err != nil {
+			return
+		}
+		if edited {
+			a.factorySay(it.Ref() + " shipped with changes")
+		} else {
+			a.factorySay(it.Ref() + " shipped")
+		}
+		if due && a.factory.Has("bank") {
 			a.fp.act.habit = repo
 		}
 	})
@@ -713,11 +805,17 @@ func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
 	case factoryAskStage:
 		return a.factoryDo(func(s factory.Seam) error { return s.AddStage(id, words) }, nil)
 	case factoryAskSteer:
-		return a.factoryDo(func(s factory.Seam) error { return s.Steer(id, words) }, nil)
+		return a.factoryVerb(id, func(s factory.Seam) error { return s.Steer(id, words) }, func(it factory.Item) string {
+			return "steered " + it.Ref()
+		})
 	case factoryAskAnswer:
-		return a.factoryDo(func(s factory.Seam) error { return s.Answer(id, false, words) }, nil)
+		return a.factoryVerb(id, func(s factory.Seam) error { return s.Answer(id, false, words) }, func(it factory.Item) string {
+			return "answered " + it.Ref() + " in words"
+		})
 	case factoryAskSendBack:
-		return a.factoryDo(func(s factory.Seam) error { return s.SendBack(id, words) }, nil)
+		return a.factoryVerb(id, func(s factory.Seam) error { return s.SendBack(id, words) }, func(it factory.Item) string {
+			return it.Ref() + " sent back" + rowSep + words
+		})
 	case factoryAskNew:
 		repo, made := ask.repo, 0
 		return a.factoryDo(func(s factory.Seam) error {
@@ -817,7 +915,7 @@ func (a *app) factoryFootRows(measure int) []string {
 // THE ROWS' COLUMN, the whole of its width (owner ruling, 2026-10-08): under
 // the peek they read as being about the item the peek shows.
 func (a *app) factoryFootOnRows() bool {
-	return a.fp.act.refresh != nil || (a.fp.act.ask != nil && a.fp.act.ask.kind == factoryAskNew)
+	return a.fp.act.refresh != nil || a.fp.act.launch != nil || (a.fp.act.ask != nil && a.fp.act.ask.kind == factoryAskNew)
 }
 
 // factoryFootRowsWhere is the foot rows of one side: rows false is the
@@ -831,6 +929,9 @@ func (a *app) factoryFootRowsWhere(measure int, rows bool) []string {
 	var out []string
 	if rows {
 		if q := a.factoryRefreshRow(measure); q != "" {
+			out = append(out, q)
+		}
+		if q := a.factoryLaunchRow(measure); q != "" {
 			out = append(out, q)
 		}
 		if ask := a.fp.act.ask; ask == nil || ask.kind != factoryAskNew {
@@ -937,25 +1038,26 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 		add(seam.Has("seteffort"), "e effort")
 		add(seam.Has("dismiss"), "d hide")
 	case factory.StateQueued, factory.StateRunning:
-		add(seam.Has("steer") && it.Stream != nil, "s steer")
+		add(a.factorySteerable(it), "S steer")
 		paused := it.Stream != nil && it.Stream.Paused
-		add(seam.Has("pause") && it.State == factory.StateRunning && !paused, "p pause")
-		add(seam.Has("pause") && it.State == factory.StateRunning && paused, "p resume")
+		add(seam.Has("pause") && it.State == factory.StateRunning && !paused, "space pause")
+		add(seam.Has("pause") && it.State == factory.StateRunning && paused, "space resume")
 		add(seam.Has("stop"), "x stop")
 		add(seam.Has("seteffort"), "e effort")
 	case factory.StateNeedsYou:
 		add(seam.Has("answer"), "y n answer")
 		add(seam.Has("answer"), "a in words")
-		add(seam.Has("steer") && it.Stream != nil, "s steer")
+		add(a.factorySteerable(it), "S steer")
 		add(seam.Has("stop"), "x stop")
 	case factory.StateLanded:
 		// THE SHEET'S `enter` IS ON THE ITEM PAGE'S PROOF ([app.factoryItemHint]
-		// names it there); on the floor `enter` opens the page.
-		if factoryFirstFailed(it) != "" {
-			add(seam.Has("signoff"), "a ship anyway")
-		}
-		add(seam.Has("sendback"), "c send back")
-		add(seam.Has("reverify"), "o check again")
+		// names it there); on the floor `enter` opens the page. A clean sheet
+		// signs off with `s`, one with a row nothing showed with `e`.
+		clean := factoryFirstFailed(it) == ""
+		add(clean && seam.Has("signoff"), "s sign off")
+		add(!clean && seam.Has("signoff"), "e sign off with changes")
+		add(seam.Has("sendback"), "B send back")
+		add(seam.Has("reverify"), "v check again")
 		add(it.Diff != "", "d diff")
 	}
 	add(it.URL != "" && it.Origin != factory.OriginTerminal && seam.Has("open"), "g github")
