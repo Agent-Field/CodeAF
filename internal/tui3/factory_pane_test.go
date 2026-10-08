@@ -188,7 +188,7 @@ func TestFactoryPeekNewItemLadder(t *testing.T) {
 			t.Fatalf("the peek's chips name a key: %q", blocks[2][0])
 		}
 	}
-	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · space mark · d hide" {
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · space mark" {
 		t.Fatalf("the action line is %q", last)
 	}
 }
@@ -267,8 +267,14 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 		"touches money",
 		"gate  plan    cap  $8      effort  —",
 		factoryWaitingMark(a)+" plan")
-	if blocks[1][1] != factoryAnswerKeys {
-		t.Fatalf("the question's keys are %q", blocks[1][1])
+	// THE STILL FIXTURE HAS NO ANSWER DOOR, so the question draws no keys;
+	// over a floor that can answer, they stand under it.
+	if len(blocks[1]) != 1 {
+		t.Fatalf("a question with no answer door draws keys: %q", blocks[1])
+	}
+	a.factory = (&factoryFake{}).seam()
+	if keys := factoryPeekBlocks(t, factoryPaneOn(t, a, 1, factoryPaneW(150), 30))[1]; len(keys) != 2 || keys[1] != factoryAnswerKeys {
+		t.Fatalf("the question's keys are %q", keys)
 	}
 	// THE AMBER IS ON THE MARK, the words are ink.
 	it := *factoryPaneItem(t, a, 1)
@@ -291,12 +297,17 @@ func TestFactoryPeekLandedLadder(t *testing.T) {
 		factoryDoneMark(a)+" plan",
 		a.icon(tokens.GSettled)+" fires on first true, never again")
 	claims := strings.Join(blocks[3], "\n")
-	for _, want := range []string{"survives a codeaf restart — not shown", "go.mod unchanged · policy", "view]"} {
+	for _, want := range []string{"survives a codeaf restart — not shown", "go.mod unchanged  policy", "view]"} {
 		if !strings.Contains(claims, want) {
 			t.Fatalf("the claims are missing %q:\n%s", want, claims)
 		}
 	}
-	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · a ship anyway · c send back · o check again" {
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open" {
+		t.Fatalf("the still fixture's landed keys are %q", last)
+	}
+	a.factory = (&factoryFake{}).seam()
+	rows = factoryPaneOn(t, a, 9, factoryPaneW(150), 30)
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · e sign off · B send back · v check again" {
 		t.Fatalf("the action line is %q", last)
 	}
 }
@@ -420,7 +431,7 @@ func TestFactoryPaneDrawsADismissedItemAsNew(t *testing.T) {
 	a := factoryPlaceLab(t)
 	it := *factoryPaneItem(t, a, 8)
 	it.State = factory.StateDismissed
-	if got := a.factoryActionWords(it); !strings.Contains(got, "enter open · space mark · d hide") {
+	if got := a.factoryActionWords(it); got != "enter open" {
 		t.Fatalf("a dismissed item's keys are %q", got)
 	}
 	a.factory = (&factoryFake{}).seam()

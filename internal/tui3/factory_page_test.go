@@ -83,7 +83,7 @@ func TestFactoryDrawsTheFixtureByGroupWithThePane(t *testing.T) {
 	if got := strings.Join(headings, ","); got != "needs you,streams,new,landed,shipped" {
 		t.Fatalf("the rail's groups are %q:\n%s", got, text)
 	}
-	for _, want := range []string{"#1538", "budget caps per task", "plan is ready · go, or change it?", "[a] in words"} {
+	for _, want := range []string{"#1538", "budget caps per task", "plan is ready · go, or change it?"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the frame is missing %q:\n%s", want, text)
 		}
