@@ -198,7 +198,7 @@ func TestFactoryItemCardSettles(t *testing.T) {
 			t.Fatalf("%s: the card was not drawn", c.name)
 		}
 		rows := plain(strings.Join(FactoryCardRows(a, card, 100, false), "\n"))
-		for _, want := range []string{"#1 · plan first with a $8 cap?", "gate  ship → plan", "cap  $5 → $8", "why: plan first"} {
+		for _, want := range []string{"#1 · ask me at plan, budget $8?", "ask me at  pull request → plan", "budget  $5 → $8", "why: plan first"} {
 			if !strings.Contains(rows, want) {
 				t.Fatalf("%s: the standing card lacks %q:\n%s", c.name, want, rows)
 			}
