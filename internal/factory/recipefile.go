@@ -40,6 +40,13 @@ import (
 // fixed` ([AdaptMode]). No word is adapt, and [Format] writes the word only
 // when it is not adapt.
 //
+// A STAGE LINE MAY END `· fixed`, and then the file binds that stage for
+// everyone ([Stage.Fixed]): the manager, plan and the person may not change
+// its ask, thinking or loop, or switch it off. A `## issue · fixed` heading
+// marks every stage of its section fixed as well as keeping plan's hands off
+// the list. The law changes only by changing the file, and the file is read
+// from the repository's main branch ([RecipeSource]).
+//
 // THE FILE NEVER FAILS TO LOAD. A line the reader cannot make sense of is a
 // [Problem] that names it, and everything else loads; a missing section is
 // the default recipe's for that kind, and a missing file is the default recipe.
@@ -85,6 +92,7 @@ func Parse(text string) (Recipe, []Problem) {
 	var policy, habits []string
 	section := ""
 	skip := false
+	sectionFixed := false
 	for i, raw := range strings.Split(text, "\n") {
 		line := strings.TrimSpace(strings.TrimSuffix(raw, "\r"))
 		n := i + 1
@@ -95,6 +103,7 @@ func Parse(text string) (Recipe, []Problem) {
 		case strings.HasPrefix(line, "## "):
 			name, word := sectionWord(line)
 			skip = true
+			sectionFixed = false
 			switch {
 			case said[name]:
 				bad("this section is already in the file; the first one is read")
@@ -114,6 +123,7 @@ func Parse(text string) (Recipe, []Problem) {
 						adapt = map[Kind]AdaptMode{}
 					}
 					adapt[Kind(name)] = AdaptMode(word)
+					sectionFixed = AdaptMode(word) == AdaptFixed
 				}
 			}
 			said[name] = true
@@ -148,6 +158,9 @@ func Parse(text string) (Recipe, []Problem) {
 			case ok && len(got[Kind(section)]) >= StageMost:
 				bad(ErrNineStages.Error())
 			case ok:
+				if sectionFixed {
+					st.Fixed = true
+				}
 				got[Kind(section)] = append(got[Kind(section)], st)
 			}
 		}
@@ -162,6 +175,22 @@ func Parse(text string) (Recipe, []Problem) {
 		}
 	}
 	r.Policy, r.Habits, r.Adapt = policy, habits, adapt
+	// A FIXED SECTION WITH NO LINES OF ITS OWN still binds the stages its
+	// kind falls back to, copied so the default recipe stays as it was.
+	for k, m := range adapt {
+		if m != AdaptFixed || len(got[k]) > 0 {
+			continue
+		}
+		ss := CopyStages(r.For(k))
+		for i := range ss {
+			ss[i].Fixed = true
+		}
+		if k == KindIssue {
+			r.Stages = ss
+		} else {
+			r.ByKind[k] = ss
+		}
+	}
 	// A section that fell back to the default says its kind out loud too, so
 	// a recipe read from a file is the same value it is once written back.
 	chat := func(ss []Stage) {
@@ -291,6 +320,12 @@ func parseKnob(seg string) (knob func(*Stage), isKnob bool, why string) {
 	word, rest, _ := strings.Cut(low, " ")
 	rest = strings.TrimSpace(rest)
 	switch word {
+	case "fixed":
+		// `fixed` alone is the knob; `fixed bugs get a test` is an ask.
+		if rest != "" {
+			return nil, false, ""
+		}
+		return func(s *Stage) { s.Fixed = true }, true, ""
 	case "off":
 		if rest != "" {
 			return nil, true, "off takes no words"
@@ -400,11 +435,16 @@ func Format(r Recipe) string {
 	}
 	kindSection := func(k Kind, stages []Stage) {
 		head := string(k)
-		if m := r.AdaptFor(k); m != AdaptFree {
+		m := r.AdaptFor(k)
+		if m != AdaptFree {
 			head += " · " + string(m)
 			if len(stages) == 0 {
 				stages = r.For(k)
 			}
+		}
+		if m == AdaptFixed {
+			// The heading says fixed for every line; a line need not.
+			stages = unfixed(stages)
 		}
 		section(head, StageLines(stages))
 	}
@@ -427,6 +467,16 @@ func Format(r Recipe) string {
 	section(sectionPolicy, bullets(r.Policy))
 	section(sectionHabits, bullets(r.Habits))
 	return b.String()
+}
+
+// unfixed is a copy of stages with no stage marked fixed, for a section whose
+// heading already says it.
+func unfixed(stages []Stage) []Stage {
+	out := CopyStages(stages)
+	for i := range out {
+		out[i].Fixed = false
+	}
+	return out
 }
 
 func bullets(in []string) []string {
@@ -454,7 +504,7 @@ func StageLines(stages []Stage) []string {
 }
 
 // stageLine is one stage after its number. The knobs come in one order: when,
-// until, max, fanout, gate, effort, proof, off. A gate with a condition of its
+// until, max, fanout, gate, effort, proof, off, fixed. A gate with a condition of its
 // own ([Stage.GateWhen]) writes it as `gate plan when large`, the way the owner
 // spells it, and the stage's own when stays its own knob.
 func stageLine(s Stage) string {
@@ -494,26 +544,31 @@ func stageLine(s Stage) string {
 	if !s.On {
 		parts = append(parts, "off")
 	}
+	if s.Fixed {
+		parts = append(parts, "fixed")
+	}
 	return strings.Join(parts, " · ")
 }
 
-// Load reads <repoDir>/.codeaf/factory.md. A missing file is the
-// default recipe and no error; a file that cannot be read is the default
-// recipe and the error, so a caller drawing a floor can still draw it.
+// Load reads the recipe of the repository checked out at repoDir, through
+// [RecipeSource]: the main branch's copy of .codeaf/factory.md, the working
+// file only when there is no git or no main branch to read, and the default
+// recipe when neither has one. A missing file is the default recipe and no
+// error; a file that cannot be read is the default recipe and the error, so a
+// caller drawing a floor can still draw it.
 //
-// THE RECIPE IS READ FROM THE TRUNK CHECKOUT, NEVER FROM AN ITEM'S BRANCH, so
-// a stranger's PR cannot rewrite policy. repoDir is the person's own working
-// tree, read as it stands; nothing here checks out, fetches or reads a ref,
-// and a caller must never hand in a worktree an item's run made.
+// THE RECIPE IS READ FROM THE MAIN BRANCH, NEVER FROM AN ITEM'S BRANCH, so a
+// pull request cannot change the law for its own review. A caller must never
+// hand in a worktree an item's run made.
 func Load(repoDir string) (Recipe, []Problem, error) {
-	data, err := os.ReadFile(filepath.Join(repoDir, RecipeFile))
-	if errors.Is(err, fs.ErrNotExist) {
-		return DefaultRecipe(), nil, nil
-	}
+	text, _, err := RecipeSource(repoDir)
 	if err != nil {
 		return DefaultRecipe(), nil, err
 	}
-	r, probs := Parse(string(data))
+	if text == "" {
+		return DefaultRecipe(), nil, nil
+	}
+	r, probs := Parse(text)
 	return r, probs, nil
 }
 
@@ -574,6 +629,11 @@ func BankRecipeStages(repoDir string, kind Kind, stages []Stage) error {
 		return err
 	}
 	f := splitSections(text)
+	if i := f.find(string(kind)); i >= 0 {
+		if _, word := sectionWord(f.secs[i].head); AdaptMode(word) == AdaptFixed {
+			stages = unfixed(stages)
+		}
+	}
 	f.replace(string(kind), StageLines(stages))
 	return writeRecipeText(repoDir, f.join())
 }

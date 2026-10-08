@@ -262,8 +262,9 @@ may change its stages (see who may change an item's stages); no word is `adapt`.
 `## habits` are sentences kept word for word. A line codeaf cannot read is named with its line
 number and why, and the rest of the file still loads.
 
-**The recipe is read from your own checkout of the trunk, never from an item's branch**, so a
-stranger's pull request cannot rewrite the policy it is held to. Policy and habit lines are
+**The recipe is read from the repository's main branch, never from an item's branch** (see the
+recipe is read from the main branch), so a stranger's pull request cannot rewrite the policy it
+is held to. Policy and habit lines are
 applied by codeaf's own code; they are never handed to the model as instructions.
 
 `b` on a new item writes its stages into its kind's section of this file and leaves every other
@@ -274,7 +275,7 @@ codeaf reads the file for the repository you opened it in, and for any watched G
 repository whose checkout it has seen you open. Open codeaf inside a repository you watch once
 and its recipe is read from then on.
 
-## recipe file knobs — kind, when, until, max, fanout, gate, effort, proof, off
+## recipe file knobs — kind, when, until, max, fanout, gate, effort, proof, off, fixed
 
 In a `.codeaf/factory.md` stage line, after the name:
 
@@ -298,6 +299,10 @@ The file keeps these words; the screen says them its own way. `gate plan`, `gate
 the item page, `effort` is `thinking`, and an item's `cap` is its `budget`.
 - `proof a test, a screenshot`: what the stage must show, separated by commas.
 - `off`: the stage is written but does not run. Every other stage is on.
+- `fixed`: the team's law. Nobody may change the stage's ask, thinking or rounds, or switch it
+  off: not the manager, not plan, not you (see who may change an item's stages). It may be
+  switched on. `## issue · fixed` marks every stage of its section fixed as well. `fixed`
+  followed by more words, as in `fixed bugs get a test`, is an ask, not the knob.
 
 A line with only a name, such as `4. proof`, is codeaf's default stage of that name for that
 kind; a name with knobs and no ask is that default with the knobs laid over it. A knob word
@@ -322,6 +327,13 @@ one set of bounds held by codeaf's own code, never asked of a model:
     `the recipe for issue is fixed; plan may not change the stages`.
 - **you, always**: from the item's settings, or in words. The adapt word holds plan, not you.
 
+**A stage marked `fixed` in `.codeaf/factory.md` binds all three hands, you too**, before a run
+and during it: its ask, its thinking and its rounds never change and it is never skipped or
+switched off, from the manager, from plan, from the item's settings or from a chip like
+`rounds 3` on `n`. Switching a fixed stage on is allowed. Every road refuses with one sentence:
+`security is fixed by the recipe · change .codeaf/factory.md to change it`. The law changes only
+by changing the file on the main branch.
+
 The common bounds, in every case:
 
 - a stage is one word (`a stage is one word · "do through" is two`);
@@ -342,6 +354,15 @@ the item page's head, who first:
 `manager set review: thorough on security, code and architecture · added arch after review ·
 skipped neaten · why: touches the call row`. A later change by someone else names them
 (`· you switched on neaten`). An item nobody changed draws nothing there.
+
+## the recipe is read from the main branch — a pull request cannot change the law for its own review
+
+codeaf reads `.codeaf/factory.md` from the checkout's main branch, the copy git holds at
+`origin/HEAD` (else `main`, else `master`), never from the branch you have checked out and never
+from a pull request's branch. An edit to the file counts once it is merged. Only when there is
+no git or no main branch to read is the working file read; a main branch without the file runs
+the default recipe. codeaf's log says which, once per checkout: `recipe from main branch`,
+`recipe from working tree` or `recipe from default`.
 
 ## the handover
 
