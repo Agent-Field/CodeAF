@@ -12,7 +12,8 @@ import (
 )
 
 // factoryFixing fixes the stages named for the test's length, through the
-// accessor's hook (factory_stagefixed.go), until the field exists.
+// accessor's hook (factory_stagefixed.go), since the fixture's items are not
+// the test's to build.
 func factoryFixing(t *testing.T, names ...string) {
 	t.Helper()
 	fixed := map[string]bool{}
