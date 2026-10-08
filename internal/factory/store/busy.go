@@ -102,7 +102,7 @@ func (st *Store) Busy() (map[int]string, string, error) {
 }
 
 // ClearBusy is a process starting: every entry whose process is gone is
-// dropped, and every source's polling mark is taken off, so the floor never
+// dropped, and every source's polling mark (and where its read was) is taken off, so the floor never
 // draws work a process that crashed was doing. Entries a live process wrote
 // stay, because another window may be in the middle of them.
 func (st *Store) ClearBusy() error {
@@ -125,6 +125,7 @@ func (st *Store) ClearBusy() error {
 	return st.changeMeta(func(d *metaDoc) {
 		for name, m := range d.Sources {
 			m.Polling = false
+			m.Reading, m.Read, m.Of = "", 0, 0
 			d.Sources[name] = m
 		}
 	})

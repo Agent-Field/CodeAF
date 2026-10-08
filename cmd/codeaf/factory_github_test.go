@@ -217,3 +217,33 @@ func TestFactorySeamRefreshWithNoGitHub(t *testing.T) {
 		t.Fatal("a terminal item's refresh kept its read")
 	}
 }
+
+// The picker's save wakes a process waiting for repositories at once, not a
+// factoryWatchEvery later: THE FIRST READ STARTS ON SAVE.
+func TestThePickersSaveWakesTheWaitAtOnce(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := func(context.Context) string { return "tok" }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got := make(chan *factorygithub.Source, 1)
+	go func() { got <- waitForFactoryGitHub(ctx, st, token, time.Hour) }()
+	time.Sleep(20 * time.Millisecond)
+	seam := nudgeOnWatch(factory.Seam{SetRepos: st.SetRepos}, st)
+	if err := seam.SetRepos([]string{"acme/api"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case src := <-got:
+		if src == nil || len(src.Watched()) != 1 {
+			t.Fatalf("source = %v", src)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the save did not wake the wait")
+	}
+	if st.PollNudged().IsZero() {
+		t.Fatal("the save left no mark for a poll in another process")
+	}
+}

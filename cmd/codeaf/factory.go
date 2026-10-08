@@ -192,7 +192,28 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	local = talkPutAway(local, st, profileDir)
 	// AND THE FOREMAN (`m`, factory_foreman.go), on the Talk door's law.
 	local = withForeman(local, st, workspace, profileDir)
-	return factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir)
+	return nudgeOnWatch(factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir), st)
+}
+
+// nudgeOnWatch wraps the picker's save so that, once repos.json is written,
+// the poll on this machine reads at once ([factorygithub.Nudge]) instead of on
+// its next tick: THE FIRST READ STARTS ON SAVE. On the ordinary launch the
+// window saves and the engine polls, and the nudge reaches it as the store's
+// `poll-now` mark, which a waiting poll looks at every second. A failed save
+// nudges nothing.
+func nudgeOnWatch(seam factory.Seam, st *store.Store) factory.Seam {
+	if seam.SetRepos == nil || st == nil {
+		return seam
+	}
+	set := seam.SetRepos
+	seam.SetRepos = func(repos []string) error {
+		if err := set(repos); err != nil {
+			return err
+		}
+		factorygithub.Nudge(st)
+		return nil
+	}
+	return seam
 }
 
 // factoryProfile is the profile directory the connection doors are hung over.
@@ -328,17 +349,18 @@ var factoryBusyClear sync.Once
 // only after the person has said yes to it on the floor. So a person who has
 // not connected, or has connected but watches nothing, costs no `gh` call on
 // any tick.
+//
+// A NUDGE ENDS THE WAIT EARLY ([factorygithub.Nudge]): the picker's save
+// nudges, so a person who watches their first repository is read at once and
+// not up to [factoryWatchEvery] later.
 func waitForFactoryGitHub(ctx context.Context, st *store.Store, token func(context.Context) string, every time.Duration) *factorygithub.Source {
+	waker := factorygithub.NewWaker(st)
 	for {
 		if src := factoryGitHub(ctx, st, token); src != nil {
 			return src
 		}
-		t := time.NewTimer(every)
-		select {
-		case <-ctx.Done():
-			t.Stop()
+		if !waker.Wait(ctx, every) {
 			return nil
-		case <-t.C:
 		}
 	}
 }
@@ -351,7 +373,7 @@ func waitForFactoryGitHub(ctx context.Context, st *store.Store, token func(conte
 // A small loop ([waitForFactoryGitHub]) looks again every [factoryWatchEvery]
 // and starts the poll the first time both exist, so the picker's save (which
 // writes repos.json after a yes to gh or a token) brings rows in without a
-// relaunch. Once the poll is alive it reads repos.json itself on every tick
+// relaunch; the save nudges ([nudgeOnWatch]), so neither loop waits its tick. Once the poll is alive it reads repos.json itself on every tick
 // (factorygithub.PollOnce). Two processes on one machine share the floor's
 // poller lock, so only one of them reads at a time (store.TryPoller). It is
 // called only where a person's window on this machine opened the store

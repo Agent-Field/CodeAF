@@ -3887,3 +3887,28 @@ func TestChangedInputQuestionReachesRetainedHistory(t *testing.T) {
 		t.Errorf("%q does not reach what-i-remember · %q; it reached %v", question, title, where)
 	}
 }
+
+// The first read after watching is immediate, and a person who watched a
+// repository and sees nothing yet asks in these words; they reach the
+// connecting section that says so.
+func TestWhyNothingArrivedAfterWatchingReachesConnectingGitHub(t *testing.T) {
+	for _, asked := range []string{
+		"why are my issues not showing up after I watched a repo",
+		"I ticked three repositories and nothing arrived on the factory floor",
+		"how long until github issues show up after I save the picker",
+	} {
+		found := false
+		var where []string
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			where = append(where, section.Page+" · "+section.Title)
+			if section.Page == "factory" && strings.HasPrefix(section.Title, "connecting github") &&
+				strings.Contains(section.Body, "the moment you save the picker") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach factory · connecting github; it reached %v", asked, where)
+		}
+	}
+}
