@@ -183,3 +183,17 @@ func TestFactoryPageStacksTheHandoverAboveTheColumns(t *testing.T) {
 		t.Fatalf("the columns do not start five rows under the handover (head %d, columns %d):\n%s", head, cols, factoryFrameText(a))
 	}
 }
+
+// A source whose last read failed says so beside its name and keeps the
+// time of its last good read.
+func TestFactoryHeadSaysASourceIsInTrouble(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, time.UTC)
+	snap := factory.Snapshot{Now: now, Sources: []factory.SourceInfo{
+		{Name: "chat"}, {Name: "terminal"},
+		{Name: "github", Polled: now.Add(-4 * time.Minute), Trouble: "not reachable"},
+	}}
+	got := ansi.Strip(rowTail(factoryHeadFacts(snap), 200))
+	if !strings.Contains(got, "github · not reachable") || !strings.Contains(got, "polled 4m ago") {
+		t.Fatalf("the facts line reads %q", got)
+	}
+}

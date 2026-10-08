@@ -1344,6 +1344,9 @@ var engineFactoryStore struct {
 func engineFactory() *factorystore.Store {
 	engineFactoryStore.once.Do(func() {
 		engineFactoryStore.store = v3Factory()
+		// The floor's GitHub poll belongs to the process that opened the floor
+		// for a person's window, which on the ordinary launch is this one.
+		startFactoryPoll(engineFactoryStore.store)
 	})
 	return engineFactoryStore.store
 }
