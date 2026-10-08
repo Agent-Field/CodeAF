@@ -64,7 +64,7 @@ Sizes: xs 13px for trailing hints, sm 14px for navigation, md 16px for controls,
 
 ## Components and specimens
 
-The app uses Button (quiet/secondary/primary/loading/disabled), IconButton, NavigationItem, SidebarAction, TextInput, Select, ThemeSelect, Typography, Surface, Separator, KeyboardShortcut, BrandMark and CommandPalette. The Design system screen presents live colors, fonts, monospaced text, icon choices, button states and spacing. Add new reusable primitives there before using them widely.
+The app uses Button (quiet/secondary/primary/loading/disabled), IconButton, NavigationItem, SidebarAction, TextInput, TextArea, Select, ThemeSelect, ContextMenu, DropdownMenu, HoverPreview, Typography, Surface, Separator, KeyboardShortcut, BrandMark and CommandPalette. The Design system screen presents live colors, fonts, monospaced text, icon choices, button states and spacing. Add new reusable primitives there before using them widely.
 
 ## Brand
 
@@ -82,7 +82,7 @@ All timings, curves, travel and scale originate in tokens. Control colors settle
 
 Hover is quiet neutral feedback; pressed is slightly stronger. Favorite tiles indicate the active view with aria-pressed; navigation uses aria-current. Secondary buttons have hover, press, visible keyboard focus and disabled states. Selection is meaningful state, not a permanent highlight on every control.
 
-App-owned dropdowns use shared Select with token-colored popup, highlight and checkmark; the background is inert while open. Keyboard focus uses a thin ring; the palette search uses a subtle underline instead of a large box. Native OS dialogs retain their platform appearance.
+App-owned choices use shared Select; action menus use shared ContextMenu and DropdownMenu with token-colored popups, highlights and checkmarks; the background is inert while open. Keyboard focus uses a thin ring; the palette search uses a subtle underline instead of a large box. Native OS dialogs retain their platform appearance.
 
 ## Browser regression gate
 
@@ -93,3 +93,66 @@ Run npm run test:ui for Chromium and WebKit. The reusable contracts check themed
 The native window keeps its 800×560 minimum, while browser layouts remain usable down to 320px width. At or below the central small breakpoint (600px), navigation becomes a modal drawer and content uses the full available width. Opening it traps focus; Escape, an outside click or choosing a page dismisses it. Theme menus stay in the drawer's native modal layer. Resizing preserves the desktop sidebar preference rather than turning a narrow-screen temporary choice into a desktop setting.
 
 Content panes scroll independently, specimen collections wrap, and overlays fit both viewport width and height. Never hide overflow to mask inaccessible controls or horizontal layout failures. Future chat tabs, graphs and split panes must collapse or scroll deliberately at narrow widths without shrinking the primary content into a sidebar-sized column. New screens must pass the responsive browser matrix at 320, 480, 600, 800 and 1200px, including a short viewport, both themes, keyboard dismissal and reduced motion. Geometry, breakpoints and animation continue to come from the shared tokens.
+
+## Horizontal conversation tabs
+
+Conversation tabs sit above the workspace content. This deliberately adapts
+Arc's quiet organization to a horizontal strip, leaving the sidebar as
+navigation. Selected tabs have a restrained neutral surface; inactive tabs
+remain quiet until hover or keyboard focus. Pinned tabs lead the strip and
+groups remain contiguous with a compact disclosure label and count. A
+collapsed group retains its active tab so the visible selection is honest.
+
+Tabs support named right-click actions and the same shared themed overflow
+menu. Arrow keys, Home and End navigate the strip; keyboard context menus
+must be usable without a pointer. New tab and All tabs stay outside the
+scrolling region so they remain reachable on narrow screens. Reordering
+needs a menu alternative to dragging. Avoid idle animation and content
+flourishes: group disclosure communicates state and shared surface motion
+communicates menu entry. Respect reduced motion throughout.
+
+The current workspace stores local drafts as a UI preview. Switching tabs
+preserves drafts; closing a view does not mean cancelling a task. Future
+engine integration must keep that distinction. No preview may fabricate AI
+messages, progress or task execution. Document local storage as local UI
+state, not cross-device synchronization.
+
+Organization references: Arc's [pinned tabs](https://resources.arc.net/hc/en-us/articles/19231060187159-Pinned-Tabs-Tabs-you-want-to-stick-around)
+and [folders](https://resources.arc.net/hc/en-us/articles/19228419623447-Folders-Stash-Similar-Tabs-Together).
+
+## Chrome hierarchy and many-tab behavior
+
+Workspace has one top row: the tab strip and fixed workspace actions. Do not
+add a second Workspace title/search row. The sidebar already names the view;
+command search remains available through its address action and Cmd/Ctrl+K.
+The sidebar visibility control joins the strip only when navigation is hidden.
+Keep unused native chrome draggable and actual controls outside drag regions.
+
+Keep tabs readable within the central minimum/maximum widths and scroll only
+the strip as capacity grows. Never squeeze every tab to fit or hide overflow
+behind clipped content. Reveal selection automatically; keep New tab and All
+tabs reachable independently. Compact pinned tabs, group disclosure and a
+scrollable overview provide complementary ways to manage many tabs.
+
+Hover previews are delayed and noninteractive; they never steal focus or
+block selection. Preview content reflects the local draft, not fabricated
+conversation output. Ctrl+Tab traverses recently used tabs with an explicit
+selection preview; modifier release commits and Escape cancels. The overview
+uses the same theme, shared menu controls and reduced-motion behavior as the
+rest of the interface. All essential actions remain possible without hover.
+
+## Quiet overflow and overview
+
+The tab strip has no exposed scrollbar. Native horizontal trackpad movement
+remains available, with small direction controls appearing only when more tabs
+exist offscreen. Do not intercept vertical wheel movement or animate tab
+selection into a long travel. Active tabs reveal themselves immediately.
+Readable widths take precedence over fitting every tab at once.
+
+The overview is one compact toolbar and one flat preview grid. Show each title
+once, beneath the preview; keep group metadata subdued. Remove repeated group
+headings, status captions, faux window chrome and decorative colored cards.
+Search uses an understated focus underline. Only selection earns a persistent
+preview border. Organization actions appear on hover/focus and stay visible
+for coarse pointers. The preview contains actual draft text or a quiet empty
+state, never fabricated conversation content.

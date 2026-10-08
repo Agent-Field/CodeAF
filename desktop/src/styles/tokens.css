@@ -111,6 +111,24 @@
   --drawer-max-width: 260px;
   --workspace-min-height: 300px;
   --palette-max-height: 480px;
+  --menu-max-width: 320px;
+  --z-menu: 30;
+  --tab-strip-height: 44px;
+  --tab-height: 36px;
+  --tab-min-width: 120px;
+  --tab-max-width: 200px;
+  --tab-pinned-width: 36px;
+  --tab-group-max-width: 120px;
+  --tab-composer-max-width: 560px;
+  --tab-composer-min-height: 96px;
+  --overview-max-width: 1040px;
+  --overview-card-min-width: 220px;
+  --overview-preview-height: 156px;
+  --preview-width: 240px;
+  --preview-line-clamp: 3;
+  --switcher-width: 320px;
+  --switcher-max-height: 360px;
+  --switcher-inset: 64px;
   --canvas: #f0e4d0;
   --sidebar: #e9d9c2;
   --surface: #fdfdfc;
@@ -142,6 +160,10 @@
   --control-selected: #ffffffad;
   --control-pressed: #35332f16;
   --control-border-hover: #35332f30;
+  --tab-selected: #fdfdfc;
+  --tab-hover: #35332f0c;
+  --tab-strip: #7c61320a;
+  --group-mark: #716b62;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -176,6 +198,10 @@
   --control-selected: #ffffff18;
   --control-pressed: #ffffff20;
   --control-border-hover: #ffffff30;
+  --tab-selected: #202020;
+  --tab-hover: #ffffff0e;
+  --tab-strip: #0000000a;
+  --group-mark: #aaa39a;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
@@ -211,8 +237,12 @@
   --control-selected: #ffffff18;
   --control-pressed: #ffffff20;
   --control-border-hover: #ffffff30;
+  --tab-selected: #202020;
+  --tab-hover: #ffffff0e;
+  --tab-strip: #0000000a;
+  --group-mark: #aaa39a;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --duration: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); }
+  :root { --duration: var(--duration-none); --duration-fast: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); }
 }
