@@ -299,6 +299,9 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	for _, block := range talkBlocks(it) {
 		line(block)
 	}
+	// THE RECIPE LAW is one more line of the brief (factory_law.go): a fixed
+	// stage is the team's, not the manager's.
+	line(talkLawLine())
 	gap()
 	line(talkTeamName(it))
 	var facts []string

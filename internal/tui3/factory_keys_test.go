@@ -20,6 +20,7 @@ type factoryFake struct {
 	fail  map[string]error
 	shape func(*factory.Snapshot)
 	habit bool
+	note  string // what BankNote answers; "" means the seam has only Bank
 	made  int
 }
 
@@ -61,9 +62,15 @@ func (f *factoryFake) seam() factory.Seam {
 		SignOff: func(id int, edited bool) (bool, error) {
 			return f.habit, f.rec("SignOff", id, edited)
 		},
-		SendBack:   func(id int, words string) error { return f.rec("SendBack", id, words) },
-		Reverify:   func(id int) error { return f.rec("Reverify", id) },
-		Bank:       func(repo, sentence string) error { return f.rec("Bank", repo, sentence) },
+		SendBack: func(id int, words string) error { return f.rec("SendBack", id, words) },
+		Reverify: func(id int) error { return f.rec("Reverify", id) },
+		Bank:     func(repo, sentence string) error { return f.rec("Bank", repo, sentence) },
+		BankNote: func(repo, sentence string) (string, error) {
+			if f.note == "" {
+				return "", f.rec("Bank", repo, sentence)
+			}
+			return f.note, f.rec("BankNote", repo, sentence)
+		},
 		New:        func(repo, words string) (int, error) { return f.made, f.rec("New", repo, words) },
 		Sync:       func(id int, on bool) error { return f.rec("Sync", id, on) },
 		AskAuthor:  func(id int) error { return f.rec("AskAuthor", id) },
@@ -398,6 +405,14 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 	drive(t, a, key("n"))
 	if got := f.said(); len(got) != 0 || a.fp.act.habit != "" {
 		t.Fatalf("n on the offer asked %v or left it drawn", got)
+	}
+	// A SEAM THAT ANSWERS WHAT BECAME OF THE LINE has its note on the note
+	// line instead of `banked on`.
+	f.note = "written · pull request #7 opened for the team"
+	a.fp.act.habit = "agentfield/codeaf"
+	drive(t, a, key("y"))
+	if a.pageMsg != f.note {
+		t.Fatalf("the note line says %q, not the bank's note", a.pageMsg)
 	}
 }
 
