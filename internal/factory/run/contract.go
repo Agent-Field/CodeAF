@@ -16,6 +16,7 @@ package run
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -116,6 +117,23 @@ type Options struct {
 	Events chan<- Event
 	// Clock is time.Now unless a test says otherwise.
 	Clock func() time.Time
+	// Pool is the money (money.go): what a round's dollars are written
+	// through and whether the item's cap is reached. Nil is the loop's own
+	// plain reckoning: Stream.Spent grows by what is reported, and the cap is
+	// reached when it is spent.
+	Pool Pool
+}
+
+// Pool is what the loop needs of the money, and money.go's *Money answers
+// it. THE LOOP ASKS AFTER EVERY ROUND whether the cap is reached, and when it
+// is, it parks the item on CapQuestion's sentence; the money decides nothing.
+type Pool interface {
+	// Spend is the Job.Spend hook for one item.
+	Spend(id int) func(usd float64)
+	// CapReached says whether the item has spent what its cap allows.
+	CapReached(it factory.Item) bool
+	// CapQuestion is the sentence the item waits on, and its QKind.
+	CapQuestion(it factory.Item) (q string, kind string)
 }
 
 // Runner is the one per process. Its doors are the engine half of
@@ -126,6 +144,12 @@ type Options struct {
 // and may grow there.
 type Runner struct {
 	opts Options
+
+	// loopOnce makes floor, the state machine's own state (loop.go), on the
+	// first door anybody calls, so New stays the one-line constructor the
+	// lanes were handed.
+	loopOnce sync.Once
+	floor    *floorLoop
 }
 
 // New makes a runner. It starts nothing until Launch.
