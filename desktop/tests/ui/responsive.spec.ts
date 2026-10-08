@@ -17,6 +17,8 @@ async function openNavigation(page: Page) {
 
 for (const theme of ['Light', 'Dark']) {
  test(`${theme}: layouts stay usable from 320px browser to native minimum`, async ({ page }) => {
+  // This matrix runs fifteen page/accessibility checks in one browser session.
+  test.setTimeout(60_000);
   await page.goto('/');
   await page.getByRole('combobox', { name: 'Theme' }).click();
   await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
