@@ -17,12 +17,9 @@ import (
 
 // THE FOUR CHIP WORDS ARE factory.Lift's (internal/factory/words.go), so the
 // surface lifting chips off a sentence and this parser read one spelling. What
-// is spelled here is what only the mock lifts: a security pass and the
-// constraints a proof must show held.
-var (
-	reDont     = regexp.MustCompile(`(?i)\b(don'?t touch [a-z0-9/_. -]+?|keep [a-z0-9 ]+? compat(?:ible)?|no new deps?(?:endencies)?|stay in [a-z0-9/_.-]+)\b`)
-	reSecurity = regexp.MustCompile(`(?i)\b(?:with |and |a |do )?security(?: review| pass| check)?\b`)
-)
+// is spelled here is what only the mock lifts: the constraints a proof must
+// show held. The security pass is factory.LiftSecurity's, for the same reason.
+var reDont = regexp.MustCompile(`(?i)\b(don'?t touch [a-z0-9/_. -]+?|keep [a-z0-9 ]+? compat(?:ible)?|no new deps?(?:endencies)?|stay in [a-z0-9/_.-]+)\b`)
 
 // chips is what lift found in a sentence. A zero field was not said.
 type chips struct {
@@ -40,11 +37,8 @@ type chips struct {
 func lift(words string) chips {
 	f := factory.Lift(words)
 	c := chips{cap: f.Cap, gate: f.Gate, rounds: f.Rounds, effort: f.Effort, redo: f.Redo}
-	rest := f.Rest
-	if reSecurity.MatchString(rest) {
-		c.security = true
-		rest = reSecurity.ReplaceAllString(rest, "")
-	}
+	security, rest := factory.LiftSecurity(f.Rest)
+	c.security = security
 	for _, m := range reDont.FindAllString(rest, -1) {
 		c.constraints = append(c.constraints, strings.TrimSpace(m))
 		rest = strings.Replace(rest, m, "", 1)
@@ -93,71 +87,15 @@ func usd(f float64) string {
 	return fmt.Sprintf("$%.2f", f)
 }
 
-// timeWords are where a sentence may place a stage, in recipe order. With no
-// time word a stage runs after review, which is where most of them belong.
-var timeWords = []string{"after plan", "after write", "after test", "after review", "before proof"}
+// The stage sentence ("after review, make it neater") is read and placed by
+// the factory package (internal/factory/recipe.go), so the mock and the local
+// seam put a stage said in the same words at the same place. These names are
+// the mock's own spellings of those doors.
 
-// whenOf is the time word the sentence starts with, or "after review".
-func whenOf(words string) string {
-	low := strings.ToLower(strings.TrimSpace(words))
-	for _, w := range timeWords {
-		if strings.HasPrefix(low, w) {
-			return w
-		}
-	}
-	return "after review"
-}
+func parseStage(words string) factory.Stage { return factory.ParseStage(words) }
 
-// parseStage reads "after review, make it neater" into a stage. Its name is
-// the first two words of the ask; its place comes from whenOf and placeStage,
-// because A STAGE CARRIES NO TIME WORD: its place in the list is its time.
-func parseStage(words string) factory.Stage {
-	ask := strings.TrimSpace(words)
-	low := strings.ToLower(ask)
-	for _, w := range timeWords {
-		if strings.HasPrefix(low, w) {
-			ask = ask[len(w):]
-			break
-		}
-	}
-	ask = strings.Trim(strings.TrimSpace(ask), " ,:;.")
-	f := strings.Fields(strings.ToLower(ask))
-	if len(f) > 2 {
-		f = f[:2]
-	}
-	return factory.Stage{Name: strings.Join(f, " "), Ask: ask, Until: "done", On: true}
-}
-
-// anchors are the stages a time word names. A stage placed "after X" goes
-// after X and after whatever already sits between X and the next anchor, so
-// stages banked at the same moment keep the order they were said in.
-var anchors = map[string]bool{"plan": true, "write": true, "test": true, "review": true, "proof": true}
-
-// placeStage inserts st at the moment when names. A recipe without the named
-// stage (a pull request has no plan) takes it just before proof, and a recipe
-// without proof takes it at the end.
-func placeStage(stages []factory.Stage, st factory.Stage, when string) []factory.Stage {
-	at := len(stages)
-	if p := stageIndex(stages, "proof"); p >= 0 {
-		at = p
-	}
-	if after, ok := strings.CutPrefix(when, "after "); ok {
-		if i := stageIndex(stages, after); i >= 0 {
-			at = i + 1
-			for at < len(stages) && !anchors[stages[at].Name] {
-				at++
-			}
-		}
-	}
-	out := make([]factory.Stage, 0, len(stages)+1)
-	out = append(out, stages[:at]...)
-	out = append(out, st)
-	return append(out, stages[at:]...)
-}
-
-// addStage is parseStage and placeStage together: the AddStage door.
 func addStage(stages []factory.Stage, words string) []factory.Stage {
-	return placeStage(stages, parseStage(words), whenOf(words))
+	return factory.AddStageWords(stages, words)
 }
 
 // Match turns a filter sentence into a predicate over items. Mocked: a

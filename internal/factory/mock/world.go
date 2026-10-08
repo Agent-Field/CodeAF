@@ -104,41 +104,14 @@ var repoSeeds = []repoSeed{
 	{"oss/tinyvec", "", []string{"index", "quant", "io"}, nil, nil, nil},
 }
 
-// issueRecipe is the recipe every generated repo starts from. Security is
-// banked OFF and switched on per item, so a risky item gains the stage
-// without the recipe changing.
-func issueRecipe() []factory.Stage {
-	return []factory.Stage{
-		{Name: "plan", Ask: "read the issue and say how", Until: "done", On: true},
-		{Name: "write", Ask: "do it in a worktree", Fanout: "per-file", Until: "done", On: true},
-		{Name: "test", Ask: "run what the change implies", Until: "green", Max: 2, On: true},
-		{Name: "review", Ask: "read it as a stranger would", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
-		{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
-		{Name: "proof", Ask: "show each claim in its own medium", Until: "proven", Gate: factory.GateShip, On: true},
-	}
-}
+// issueRecipe, prStages and ciStages are factory.DefaultRecipe's three
+// shapes: an issue's stages, with security banked off and switched on per
+// item, and the fixed shapes for a pull request and a red main.
+func issueRecipe() []factory.Stage { return factory.DefaultRecipe().Stages }
 
-// prStages and ciStages are the fixed shapes for the two kinds a repo's issue
-// recipe does not describe: a pull request is read and checked, a red main is
-// bisected and fixed.
-func prStages() []factory.Stage {
-	return []factory.Stage{
-		{Name: "read", Ask: "the diff and its claims", Until: "done", On: true},
-		{Name: "checks", Ask: "run what the claims imply", Fanout: "per-claim", Until: "done", On: true},
-		{Name: "review", Ask: "findings as a comment", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
-		{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
-		{Name: "proof", Ask: "the sheet", Until: "proven", Gate: factory.GateShip, On: true},
-	}
-}
+func prStages() []factory.Stage { return factory.DefaultRecipe().ByKind[factory.KindPR] }
 
-func ciStages() []factory.Stage {
-	return []factory.Stage{
-		{Name: "bisect", Ask: "the three red runs", Until: "done", On: true},
-		{Name: "fix", Ask: "the smallest change that turns them green", Until: "done", On: true},
-		{Name: "test", Ask: "the red test and its neighbours", Until: "green", Max: 2, On: true},
-		{Name: "proof", Ask: "the sheet", Until: "proven", Gate: factory.GateShip, On: true},
-	}
-}
+func ciStages() []factory.Stage { return factory.DefaultRecipe().ByKind[factory.KindCI] }
 
 var titleVerbs = map[string][]string{
 	"bug":      {"%s lost on %s", "%s crashes when %s", "%s shows stale %s", "%s double-fires after %s", "%s ignores %s", "%s leaks on %s", "%s misaligned at %s", "%s returns empty %s"},
@@ -402,14 +375,7 @@ func (w *World) defaultOrder(it *factory.Item, r *factory.Repo) {
 }
 
 // stageIndex is the first stage with that name, or -1.
-func stageIndex(stages []factory.Stage, name string) int {
-	for i, s := range stages {
-		if s.Name == name {
-			return i
-		}
-	}
-	return -1
-}
+func stageIndex(stages []factory.Stage, name string) int { return factory.StageIndex(stages, name) }
 
 func pickWeighted(r *rand.Rand, xs []string, ws []float64) string {
 	t := 0.0
@@ -436,11 +402,7 @@ func (w *World) newFromWords(r *factory.Repo, words string) (*factory.Item, erro
 	w.nextID++
 	w.nextNum[r.Name]++
 	it := &factory.Item{ID: w.nextID, Repo: r.Name, Num: w.nextNum[r.Name], Kind: factory.KindIssue, Title: c.rest, Body: "Written in the terminal. Not on github yet.", Author: "santosh", Tier: factory.TierOwner, Origin: factory.OriginTerminal, Created: w.now, Changed: w.now, State: factory.StateNew}
-	it.Triage = factory.Triage{Type: "feat", Size: "M", Area: r.Areas[0], Readiness: 70, Est: 4, Risk: "low", Read: "your own words; no triage needed beyond sizing"}
-	low := strings.ToLower(c.rest)
-	if strings.Contains(low, "fix") || strings.Contains(low, "bug") {
-		it.Triage.Type = "bug"
-	}
+	it.Triage = factory.Triage{Type: factory.GuessType(c.rest), Size: "M", Area: r.Areas[0], Readiness: 70, Est: 4, Risk: "low", Read: "your own words; no triage needed beyond sizing"}
 	w.defaultOrder(it, r)
 	c.apply(it, stageIndex(it.Stages, "write"))
 	w.items = append(w.items, it)
