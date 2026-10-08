@@ -657,8 +657,13 @@ func (a *app) factoryPeekBody(it factory.Item, measure, room int) []string {
 // factoryScrolled is lines, already painted, seen through a window of room
 // rows from the item's scroll, the last row marked when more is below.
 // The scroll is the item's: a cursor that moved to another item starts that
-// item at its top. The window it drew is kept, so `J`, `K` and the page keys
-// know how far there is to go ([app.factoryScroll]).
+// item at its top. The window it drew is kept, so every road to the rest
+// knows how far there is to go ([app.factoryScrollBy]).
+//
+// THE DRAW NEVER WRITES THE SCROLL BACK. A re-read that drew the body shorter
+// for one beat, or a room that grew for one frame, shows the window at the
+// end; the scroll a person made stands, and comes back when the body does. Only
+// a cursor on another item starts it at the top.
 func (a *app) factoryScrolled(it factory.Item, lines []string, measure, room int) []string {
 	if len(lines) == 0 || room <= 0 {
 		a.fp.scrollMax = 0
@@ -669,11 +674,11 @@ func (a *app) factoryScrolled(it factory.Item, lines []string, measure, room int
 	}
 	n := min(room, len(lines))
 	a.fp.scrollMax, a.fp.scrollPage = len(lines)-n, n
-	a.fp.scroll = max(min(a.fp.scroll, a.fp.scrollMax), 0)
-	window := lines[a.fp.scroll : a.fp.scroll+n]
+	at := max(min(a.fp.scroll, a.fp.scrollMax), 0)
+	window := lines[at : at+n]
 	out := make([]string, 0, n)
 	for i, line := range window {
-		if i == n-1 && a.fp.scroll+n < len(lines) {
+		if i == n-1 && at+n < len(lines) {
 			more := a.pal.dim(a.icon(tokens.GExpanded) + " more")
 			cut := fit(line, max(measure-ansi.StringWidth(more)-factoryGutter-factoryLeadW, 1))
 			// A CUT THAT FALLS ON A BLANK ROW puts the ellipsis at the margin,
@@ -689,6 +694,13 @@ func (a *app) factoryScrolled(it factory.Item, lines []string, measure, room int
 		out = append(out, line)
 	}
 	return out
+}
+
+// factoryHasMore says whether a painted line ends with the dim `▾ more` that
+// [app.factoryScrolled] puts on a cut body's last row: the row a press on the
+// word scrolls a page from.
+func (a *app) factoryHasMore(line string) bool {
+	return strings.HasSuffix(strings.TrimRight(ansi.Strip(line), " "), a.icon(tokens.GExpanded)+" more")
 }
 
 // factoryTalkRow is the item's conversation, one row, only when the item has

@@ -4298,6 +4298,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// fell through from one of them would scroll a transcript nobody can see,
 		// which is what a person turning it over the standing list actually got.
 		if delta := placeWheelDelta(msg.Mouse().Button); delta != 0 {
+			// THE FACTORY READS THE COLUMN FIRST: over its peek, or the issue
+			// on its item page, the wheel scrolls the body rather than walking
+			// the cursor (factory_split.go's [app.factoryWheel]).
+			if cmd, took := a.factoryWheel(msg.Mouse(), delta); took {
+				return a, cmd
+			}
 			if cmd, took := a.placeBodyWheel(delta); took {
 				return a, cmd
 			}
