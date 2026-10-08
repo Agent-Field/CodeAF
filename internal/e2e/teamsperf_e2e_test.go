@@ -100,6 +100,15 @@ func TestTeamsLargeOverviewPointerAndLivePreview(t *testing.T) {
 	r.waitFor(20*time.Second, "@member-010")
 	r.resize(90, 32)
 	screen = r.waitFor(20*time.Second, "Performance fixture", "@member-")
+	if evidence := os.Getenv("CODEAF_E2E_EVIDENCE_DIR"); evidence != "" {
+		frame, err := exec.Command("tmux", "capture-pane", "-p", "-e", "-t", r.name).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(evidence, "teams-scrolled-overview.ansi"), frame, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// Open a visible member after scrolling and resizing: hits must follow the
 	// actual card geometry, and chat navigation must survive the pointer burst.
 	for row, line := range strings.Split(screen, "\n") {
@@ -107,8 +116,9 @@ func TestTeamsLargeOverviewPointerAndLivePreview(t *testing.T) {
 			continue
 		}
 		col := ansi.StringWidth(line[:strings.Index(line, "@member-")]) + 1
+		alias := strings.Fields(line[strings.Index(line, "@member-"):])[0]
 		r.mouseClick(col+1, row+1)
-		r.waitFor(20*time.Second, "Please review fixture", "Review")
+		r.waitFor(20*time.Second, "to "+alias, "The rendering preserves layout and navigation.")
 		if strings.Contains(r.capture(), "tab next place") {
 			t.Fatal("member click stayed in the overview")
 		}
@@ -124,6 +134,7 @@ func TestTeamsLargeOverviewPointerAndLivePreview(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		cleanChatAuditModels(t, home, model, "teams-final")
 		t.Log("120-member overview: live manager preview, pointer burst, pane wheel, resize and member click passed")
 		return
 	}
