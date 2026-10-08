@@ -287,7 +287,11 @@ func (a *Agent) factoryRecipeTool() bare.Tool {
 				return recipeDeclined, false, nil
 			}
 			door := a.config.Recipe
+			note := ""
+			noter, noting := door.(RecipeNoter)
 			switch {
+			case noting:
+				note, err = noter.BankNote(ctx, notice)
 			case notice.Policy != "":
 				err = door.BankPolicy(ctx, notice.Repo, notice.Policy)
 			case notice.Habit != "":
@@ -299,7 +303,11 @@ func (a *Agent) factoryRecipeTool() bare.Tool {
 				return recipeRefusedLead + oneLine(err.Error()), true, nil
 			}
 			banked := notice
+			banked.Note = note
 			a.emitFactory(Event{Kind: EventRecipeBanked, Tool: "factory_recipe", Text: RecipeHead(notice), Recipe: &banked})
+			if note != "" {
+				return recipeBanked(notice) + "\n" + note, false, nil
+			}
 			return recipeBanked(notice), false, nil
 		},
 	}

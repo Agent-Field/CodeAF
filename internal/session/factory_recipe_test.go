@@ -397,3 +397,58 @@ func TestFactoryRecipeCardSaysNowAndAfter(t *testing.T) {
 		t.Error("an unreadable recipe still banked")
 	}
 }
+
+// notedRecipeDoor is a door that banks as a change for the team and says so.
+type notedRecipeDoor struct {
+	fakeRecipeDoor
+	note string
+	got  []RecipeNotice
+}
+
+func (d *notedRecipeDoor) BankNote(_ context.Context, n RecipeNotice) (string, error) {
+	d.got = append(d.got, n)
+	return d.note, nil
+}
+
+func TestFactoryRecipeAnswerSaysWhatHappenedToTheLine(t *testing.T) {
+	for _, note := range []string{
+		"written · pull request #12 opened for the team",
+		"written · branch factory/recipe-security pushed · open the pull request when you want",
+		"written · committed on factory/recipe-security · no remote to push to",
+		"written · .codeaf/factory.md (not a git repository)",
+	} {
+		door := &notedRecipeDoor{note: note}
+		agent := newRecipeAgent(t, door, 0)
+		questions, stopQ := agent.WatchQuestions()
+		lane, stopT := agent.WatchTaskUpdates()
+		results := runFactoryRecipe(t, agent, context.Background(), `{"repo":"web","habit":"ship when proof is green","why":"proof is the bar"}`)
+		q := awaitRecipeQuestion(t, questions)
+		if err := agent.ResolveQuestion(Answer{Kind: QuestionRecipe, Ref: q.Ref, Key: "1"}); err != nil {
+			t.Fatal(err)
+		}
+		want := "ship when proof is green is in web's habits\n" + note
+		if out := awaitResult(t, results); out != want {
+			t.Errorf("result = %q, want %q", out, want)
+		}
+		if len(door.got) != 1 || door.got[0].Habit != "ship when proof is green" || door.got[0].Why != "proof is the bar" || len(door.written()) != 0 {
+			t.Errorf("door got %+v, plain writes %q", door.got, door.written())
+		}
+		deadline := time.After(5 * time.Second)
+	wait:
+		for {
+			select {
+			case event := <-lane:
+				if event.Kind == EventRecipeBanked {
+					if event.Recipe == nil || event.Recipe.Note != note {
+						t.Fatalf("banked news = %+v", event.Recipe)
+					}
+					break wait
+				}
+			case <-deadline:
+				t.Fatal("EventRecipeBanked never reached the task lane")
+			}
+		}
+		stopQ()
+		stopT()
+	}
+}

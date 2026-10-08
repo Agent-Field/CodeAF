@@ -115,6 +115,14 @@ type RecipeDoor interface {
 	BankHabit(ctx context.Context, repo, sentence string) error
 }
 
+// RecipeNoter is what a [RecipeDoor] may also be: one that banks a notice as a
+// change for the team (a branch and a pull request in a git repository) and
+// answers what happened, in one of four sentences (factory.RecipeNote*). The
+// tool prefers it to the three Bank methods, which stay the plain write.
+type RecipeNoter interface {
+	BankNote(ctx context.Context, n RecipeNotice) (string, error)
+}
+
 // mayRecipe says whether `factory_recipe` belongs on this belt: there is a door
 // behind it. It is the belt's predicate and the page's, asked of one field.
 func (c Config) mayRecipe() bool { return c.Recipe != nil }
@@ -146,6 +154,9 @@ type RecipeNotice struct {
 	After []string
 	// Why is the model's one sentence for the line, when it gave one.
 	Why string
+	// Note is what happened to the line after a yes, set on the banked event:
+	// `written · pull request #N opened for the team` and its three siblings.
+	Note string
 	// Decided is set on the one rebroadcast of a card somebody answered.
 	Decided *RecipeAnswer
 	// Withdrawn is set on the one rebroadcast of a card that came down

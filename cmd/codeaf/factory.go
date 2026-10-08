@@ -97,6 +97,12 @@ func (d fileRecipeDoor) BankStage(_ context.Context, repo string, kind factory.K
 	if err != nil {
 		return err
 	}
+	return bankStageAt(dir, kind, line)
+}
+
+// bankStageAt is BankStage's write, in whichever checkout it is handed: the
+// repository's own, or the worktree a change for the team is made in.
+func bankStageAt(dir string, kind factory.Kind, line string) error {
 	parsed, problems := factory.Parse("## " + string(kind) + "\n1. " + line)
 	if len(problems) > 0 {
 		return errors.New(problems[0].Why)
@@ -116,6 +122,27 @@ func (d fileRecipeDoor) BankStage(_ context.Context, repo string, kind factory.K
 		stages = append(stages, add[0])
 	}
 	return factory.BankRecipeStages(dir, kind, stages)
+}
+
+// BankNote is the road a yes takes: the line is written on a branch of its
+// own and opened as a change for the team where the checkout is a git
+// repository ([factory.BankRecipeChange]), and the answer says what happened.
+func (d fileRecipeDoor) BankNote(ctx context.Context, n session.RecipeNotice) (string, error) {
+	dir, err := d.dir(n.Repo)
+	if err != nil {
+		return "", err
+	}
+	switch {
+	case n.Policy != "":
+		return factory.BankRecipeChange(ctx, dir, n.Policy, n.Why, "- "+n.Policy,
+			func(d string) error { return factory.BankRecipePolicy(d, n.Policy) })
+	case n.Habit != "":
+		return factory.BankRecipeChange(ctx, dir, n.Habit, n.Why, "- "+n.Habit,
+			func(d string) error { return factory.BankRecipeHabit(d, n.Habit) })
+	}
+	kind := factory.Kind(n.Kind)
+	return factory.BankRecipeChange(ctx, dir, n.Line, n.Why, n.Line,
+		func(d string) error { return bankStageAt(d, kind, n.Line) })
 }
 
 // BankPolicy adds one sentence under `## policy`.
