@@ -129,8 +129,9 @@ func TestVendoredRowsCarryTheCodexServiceInItsDecidedPlace(t *testing.T) {
 	// C12: Codex is a model service whose models are qualified on every surface.
 	rows := Vendored()
 	want := []string{"deepseek", "z-ai", "moonshot", "minimax", "qwen", "codex", "ollama", "custom"}
-	if len(rows) != len(want) {
-		t.Fatalf("vendored rows = %d, want %d", len(rows), len(want))
+	// The established order stays fixed, but an appended provider is welcome.
+	if len(rows) < len(want) {
+		t.Fatalf("vendored rows = %d, want at least %d", len(rows), len(want))
 	}
 	for i := range want {
 		if rows[i].ID != want[i] {

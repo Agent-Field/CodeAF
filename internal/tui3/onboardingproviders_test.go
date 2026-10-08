@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -28,13 +29,18 @@ func TestProviderChooserBackSkipPasteAndShortPointerRows(t *testing.T) {
 	}
 
 	a.width, a.height = 40, 12
-	a.setup.providerAt = len(a.setupProviderRows()) - 1
+	for at, row := range a.setupProviderRows() {
+		if row.id == modelsource.CustomID {
+			a.setup.providerAt = at
+			break
+		}
+	}
 	a.touch()
 	screen := setupScreen(a)
 	if strings.Contains(screen, "Skip for now") || strings.Contains(screen, "More providers") || !strings.Contains(screen, setupSkipKeysWord) {
 		t.Fatal(screen)
 	}
-	hit := a.setup.providerHits[len(a.setup.providerHits)-1]
+	hit := a.setup.providerHits[a.setup.providerAt]
 	a.setupProviderPress(hit.x, hit.y)
 	if a.setup.provider != "custom" || a.connPanel.entry == nil || a.connPanel.entry.blank != "base URL" {
 		t.Fatal("short-screen click did not select the provider")
@@ -191,6 +197,7 @@ func TestOnboardingCodexSignInIsVisibleAndLateFlowsAreCancelled(t *testing.T) {
 
 func TestProviderChooserShowsEverySupportedProviderInOneFlatList(t *testing.T) {
 	a, _, _ := setupProviderApp(t, nil)
+	pageCounter := regexp.MustCompile(`\bof \d+\b`)
 	rows := a.setupProviderRows()
 	if len(rows) != len(modelsource.Vendored())+1 {
 		t.Fatalf("registry providers=%v", rows)
@@ -201,13 +208,39 @@ func TestProviderChooserShowsEverySupportedProviderInOneFlatList(t *testing.T) {
 			a.setup.providerAt = selected
 			a.touch()
 			screen := setupScreen(a)
-			if len(a.setup.providerHits) != len(rows) || strings.Contains(screen, "More providers") || strings.Contains(screen, "Skip for now") || strings.Contains(screen, "of 9") {
+			if len(a.setup.providerHits) != len(rows) || strings.Contains(screen, "More providers") || strings.Contains(screen, "Skip for now") || pageCounter.MatchString(screen) {
 				t.Fatalf("flat list at %dx%d: %s", size.width, size.height, screen)
 			}
 			for at, row := range rows {
 				if a.setup.providerHits[at].at != at || !strings.Contains(screen, row.name) {
 					t.Fatalf("%q missing at %dx%d: %s", row.id, size.width, size.height, screen)
 				}
+			}
+		}
+	}
+}
+
+func TestProviderChooserYieldsTheFooterBeforeAnAddedProvider(t *testing.T) {
+	a, _, _ := setupProviderApp(t, nil)
+	a.modelCatalog = append(modelsource.Vendored(), modelsource.Source{ID: "extra", Name: "Extra provider"})
+	rows := a.setupProviderRows()
+	for _, height := range []int{len(rows), len(rows) + 1} {
+		a.width, a.height = 40, height
+		for _, selected := range []int{0, len(rows) - 1} {
+			a.setup.providerAt = selected
+			a.touch()
+			screen := setupScreen(a)
+			if len(a.setup.providerHits) != len(rows) {
+				t.Fatalf("provider rows clipped at 40x%d: %s", height, screen)
+			}
+			for at, row := range rows {
+				hit := a.setup.providerHits[at]
+				if hit.at != at || hit.y < 0 || hit.y >= height || !strings.Contains(screen, row.name) {
+					t.Fatalf("%q missing at 40x%d: %s", row.id, height, screen)
+				}
+			}
+			if got, want := strings.Contains(screen, setupSkipKeysWord), height > len(rows); got != want {
+				t.Fatalf("footer visible=%v, want %v at 40x%d: %s", got, want, height, screen)
 			}
 		}
 	}
