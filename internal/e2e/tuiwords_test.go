@@ -1197,6 +1197,32 @@ var tuiWords = map[string]tuiWord{
 		why:    "the chip the bar's Factory button wears when items wait on the person; absent after a plain add",
 	},
 
+	// ── the factory floor, an item run end to end ───────────────────────────
+	"factoryAnswerKeys": {
+		screen: "y n answer",
+		why:    "the item page's keys while the run waits on the person: y and n are offered only then",
+	},
+	"factoryAnsweredWord": {
+		screen: "answered #",
+		source: "answered ",
+		why:    "the bottom line after y or n on a waiting item: the answer reached the runner",
+	},
+	"factoryRoundsAsk": {
+		screen: "one more round, or go on as is?",
+		pkg:    "internal/factory/run",
+		why:    "the runner's question when a stage hits its max; the run answers it no, which goes on as is",
+	},
+	"factoryLandedLog": {
+		screen: "landed · proof sheet ready · your sign-off",
+		pkg:    "internal/factory/run",
+		why:    "the stream's last line when every stage is done and the proof sheet is up",
+	},
+	"factoryLandedHeading": {
+		screen: "LANDED",
+		source: "landed",
+		why:    "the rail group a landed item stands under; the rail draws the word in capitals",
+	},
+
 	"setupNotConnectedNote": {
 		screen: "openrouter is not connected",
 		why: "the dim line the conversation says after esc, which is the other half of a front door: " +
