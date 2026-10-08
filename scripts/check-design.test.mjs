@@ -23,3 +23,9 @@ test('rejects named colors and per-screen stroke/font overrides', () => {
  const errors = inspectCss('src/features/new.css', '.card { color: red; stroke-width: 3; font-family: Arial; }', design);
  assert.equal(errors.length, 3);
 });
+
+test('rejects native selects and Radix imports outside the themed boundary', () => {
+ assert.ok(inspectSource('src/components/ui/Bad.tsx', 'const view = <select />;').length > 0);
+ assert.ok(inspectSource('src/features/new.tsx', "import * as Select from '@radix-ui/react-select';").length > 0);
+ assert.deepEqual(inspectSource('src/components/ui/Select.tsx', "import * as Select from '@radix-ui/react-select';"), []);
+});

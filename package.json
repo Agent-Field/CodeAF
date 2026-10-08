@@ -19,15 +19,19 @@
     "brand:icons": "node scripts/generate-brand-icons.mjs",
     "predev": "npm run design:generate",
     "prebuild": "npm run design:check",
-    "design:test": "node --test scripts/check-design.test.mjs"
+    "design:test": "node --test scripts/check-design.test.mjs",
+    "test:ui": "playwright test"
   },
   "dependencies": {
     "@animateicons/react": "0.12.0",
+    "@radix-ui/react-select": "^2.3.8",
     "@tauri-apps/api": "^2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.64.0",
     "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

@@ -17,7 +17,7 @@ ${dark}
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --duration: var(--duration-none); }
+  :root { --duration: var(--duration-none); --duration-sidebar: var(--duration-none); --duration-overlay: var(--duration-none); --duration-directional: var(--duration-none); --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); }
 }
 `;
 const b = design.brand;

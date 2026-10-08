@@ -8,3 +8,4 @@ export { KeyboardShortcut } from './KeyboardShortcut';
 export { ThemeSelect } from './ThemeSelect';
 export { SidebarAction } from './SidebarAction';
 export { TextInput } from './TextInput';
+export { Select } from './Select';

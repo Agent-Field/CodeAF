@@ -28,3 +28,6 @@ src-tauri/binaries/codeaf-engine-*
 .env
 .env.*
 !.env.example
+
+playwright-report/
+test-results/
