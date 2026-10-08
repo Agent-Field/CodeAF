@@ -15,12 +15,14 @@ func TestAddProviderSelectionStaysVisibleInShortTerminal(t *testing.T) {
 		t.Run(fmt.Sprintf("rows_%d", height), func(t *testing.T) {
 			p := addProviderPanel{open: true}
 			p.rebuild(nil, nil, modelsource.Set{})
+			seenCustom := false
 			assertVisible := func() {
 				t.Helper()
 				selected, ok := p.current()
 				if !ok {
 					t.Fatal("selection landed on a heading")
 				}
+				seenCustom = seenCustom || selected.custom
 				rows := p.draw(100, height, a.pal, -1)
 				if len(rows) > height {
 					t.Fatalf("%d rows exceeds %d", len(rows), height)
@@ -33,7 +35,7 @@ func TestAddProviderSelectionStaysVisibleInShortTerminal(t *testing.T) {
 				assertVisible()
 				p.move(1)
 			}
-			if selected, _ := p.current(); !selected.custom {
+			if !seenCustom {
 				t.Fatal("custom address row was not reachable")
 			}
 			for range len(p.items) {
@@ -49,7 +51,13 @@ func TestProviderDiscoveryPreservesSelectionAndIgnoresOldPanel(t *testing.T) {
 	a.openAddProvider(false)
 	old := a.addPanel.probeContext
 	for range len(a.addPanel.items) {
+		if item, _ := a.addPanel.current(); item.custom {
+			break
+		}
 		a.addPanel.move(1)
+	}
+	if item, _ := a.addPanel.current(); !item.custom {
+		t.Fatal("custom provider is absent before discovery")
 	}
 	a.Update(localServersProbedMsg{ctx: old, probes: []LocalServerProbe{{Name: "local example", Address: "http://127.0.0.1:1234/v1"}}})
 	if item, _ := a.addPanel.current(); !item.custom {

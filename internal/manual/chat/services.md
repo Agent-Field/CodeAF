@@ -7,8 +7,8 @@ something else again: long-running background processes, covered by their own pa
 ## Add a key — connect a provider, add an api key, use a different provider
 
 An api key for another provider, or another model provider, is added here. Open `/connect` or
-`/connections`. The `providers` group includes all nine setup options: OpenRouter, Ollama,
-Codex, DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen and **Custom OpenAI-compatible API**.
+`/connections`. The `providers` group includes every built-in provider from setup,
+including **Custom OpenAI-compatible API**.
 Connected providers appear first, followed by the remaining options and any saved custom instances. Once
 a custom provider is connected, a `+ add a provider` row. Codex says `browser`; it signs
 in a ChatGPT plan instead of asking for an API key. OpenRouter offers the same browser/key
@@ -26,8 +26,8 @@ provider in that order; with only the default provider, the picker remains ungro
 
 ## Add OpenRouter after Ollama — add another provider from the model menu
 
-Open `/model` and choose `+ add a provider`. Its provider list shows the same nine
-options as initial setup, with `connected` or `not connected` beside each. Local servers
+Open `/model` and choose `+ add a provider`. Its flat list shows every built-in
+provider from initial setup, with `connected` or `not connected` beside each. Local servers
 found on this machine appear separately. An unconnected row starts its connection;
 a connected row says `enter manages` and opens `/connect` focused on that provider.
 The custom API option says `connected · add another` when a custom connection exists;

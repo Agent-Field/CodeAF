@@ -279,7 +279,7 @@ key removes its models from subsequent lists. A cold catalog never adds built-in
 This applies to `/model`, task rooms, settings slots and roles, Home drafts and the task
 composer. Each slot still keeps only models with the capabilities it needs. A provider
 that cannot list models has a non-selectable notice; `+ add a provider` opens connection
-setup and is not a model. That menu includes all nine initial provider options, including
+setup and is not a model. That menu includes every built-in provider from initial setup, including
 OpenRouter, and labels each `connected` or `not connected`. You can add OpenRouter after
 Ollama without repeating onboarding; both catalogs then appear together. `ctrl+r`
 refreshes the known lists.
