@@ -296,7 +296,7 @@ stands level with the first group heading on the left. In order:
 9. `talk`, when the item has its own conversation.
 10. What the forge says, each block absent when empty: `comments` (the last three, `author · 2h`
     then the words), `checks` (one row per check: mark, name, state), `files` (`+218 −44 · 6
-    files`, then up to six paths), `activity` (the last five events) and `links` (`github ↗`).
+    files`, then up to six paths), `activity` (the last five events). The item's page on GitHub is the `github ↗` link in the meta row.
 
 The bottom row names the keys, starting with `enter open`, with one blank row above it, and
 only keys the floor can do: a still floor with no verbs says just `enter open`.
