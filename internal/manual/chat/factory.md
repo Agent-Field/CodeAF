@@ -882,7 +882,13 @@ After three approvals in a row without edits, the bottom of the right column off
 `habit forming — 3 approvals without edits on codeaf` and
 `factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet`.
 `y` writes that sentence into the repository's habits, under `## habits` in its
-`.codeaf/factory.md`; `n` puts the offer away. The offer comes only where banking can be written.
+`.codeaf/factory.md`, the way a taught line is written: on a branch `factory/recipe-<word>` in a
+temporary worktree, committed as `recipe: <the sentence>`, pushed when a remote exists and opened
+as a pull request when `gh` exists, so a teammate reviews it like code. The note line says exactly
+one of `written · pull request #<N> opened for the team`,
+`written · branch factory/recipe-<word> pushed · open the pull request when you want`,
+`written · committed on factory/recipe-<word> · no remote to push to` or
+`written · .codeaf/factory.md (not a git repository)`. `n` puts the offer away. The offer comes only where banking can be written.
 
 ## from chat to the factory floor — factory_add
 
@@ -935,7 +941,22 @@ today and `after:` with the new one marked `+`, then the line itself; for a poli
 the sentence; and `why:` with the reason when the chat gave one. It answers to
 `1 bank it`, `2 not now`, or words (`say what to change… (enter sends it)`).
 
-- **`bank it`** writes the line; codeaf is told `<line> is in <repo>'s recipe for <kind>`
+- **`bank it`** writes the line and, in a checkout that is a git repository, **opens a change for
+  the team** instead of writing silently, because `.codeaf/factory.md` is the team's law and a
+  teammate should review a taught line like code. The line is written on a branch
+  `factory/recipe-<word>` (the first word of the line; a taken name gets `-2`, `-3`) cut from the
+  default branch, committed as `recipe: <the sentence as typed>` with no trailers, pushed when a
+  remote exists, and opened as a pull request with `gh pr create` when `gh` exists (the title is
+  the sentence, the body the one-line why and the line it adds). It is made in a temporary
+  worktree that is removed afterwards, so your working tree, even a dirty one, is not touched and
+  the checkout stays on the branch it was on. What happened is said once, on the card's line and
+  in the answer, as exactly one of:
+  - `written · pull request #<N> opened for the team`: the branch was pushed and `gh` opened the pull request.
+  - `written · branch factory/recipe-<word> pushed · open the pull request when you want`: pushed, and `gh` is not there.
+  - `written · committed on factory/recipe-<word> · no remote to push to`: committed on the branch, kept in the checkout's repository.
+  - `written · .codeaf/factory.md (not a git repository)`: the file was written in place.
+  A line the file already has changes nothing: `already in .codeaf/factory.md · nothing to change`.
+  codeaf is told `<line> is in <repo>'s recipe for <kind>`
   (or `… is in <repo>'s policy`, `… is in <repo>'s habits`) and the card says `banked`.
 - **`not now`**: `nothing was banked: the person said no.`
 - **Words**: `the person changed it: <your words>` and
