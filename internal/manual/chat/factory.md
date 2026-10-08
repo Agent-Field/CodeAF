@@ -39,14 +39,18 @@ left alone on the last row with its rows below the edge.
 
 ## the keys on the factory floor
 
-The bottom line names the keys that work for the item under the cursor. On the still made-up
-floor, which has no verbs, it names the walking keys:
-`↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · O order · priority · h handover · E recipe · esc back`.
-On a floor that can be changed it names `enter open` and the item's own keys first (see the
-factory's verbs), and when the line is too long the list keys are the first to go, then the
-keys about the whole floor (`n new item`, `L launch marked`, `T talk`, `u read again`,
-`g github`, `d hide`, the stage keys), so the item's own knobs, `t gate · c cap · e effort`,
-still show at 120 columns.
+The floor names its keys in three places, each short:
+
+- **The bottom bar is the way around**, never the row's verbs:
+  `n new · R repos · m foreman · / filter · tab next place · esc back · ? keys`. A clause whose
+  door is not there is left out (`n new` too while the row under the cursor needs you, where `n`
+  answers no), and when the line is too long it drops clauses from the right of the floor's own,
+  keeping `esc back` and `? keys`. `esc` says `esc clear` while a filter or a repository narrows
+  the rows.
+- **The peek's last row names the row's verbs**, at most five (see the peek's verbs).
+- **`?` opens the key sheet**: every key with its word (see the ? key sheet).
+
+The keys themselves:
 
 - `↑` and `↓` (or `ctrl+p`, `ctrl+n`, the wheel over the rows) walk the items. Resting the
   pointer on a row selects it and the peek previews it. A click selects a row, a second click
@@ -58,26 +62,35 @@ still show at 120 columns.
 - `h` switches the handover between one line (the default) and four rows; remembered.
 - `z` switches compact rows (one line each, the default) and comfortable rows (a long title on
   two lines, a dim line with the factory's read, a blank row between items). Not saved.
-- `O` re-sorts the rows inside each group (see order the floor).
+- `O` re-sorts the rows inside each group (see order the floor); the `?` sheet says the order
+  in use, `O order · priority`.
 - `g` opens the item on github (see open the item on github).
-- `u` reads the item again; `U` reads every item again, after asking (see when the floor is
-  doing something).
-- `space` marks or unmarks a new item, and pauses or resumes a running one. `T` opens the
-  item's own conversation.
+- `u` refreshes the item; `U` refreshes all, after asking (see when the floor is doing
+  something).
+- `space` selects or unselects a new item, and pauses or resumes a running one. `T` opens a chat
+  about the item.
 - `m` opens the foreman, the floor's own conversation for what to take first (see the foreman).
 - `/` filters, `[` and `]` show one repository at a time, `A` shows the whole backlog.
 - `esc` clears a filter or a repository first; pressed again, it goes back to the conversation.
-- `R` repos, `E` recipe and `$` rail are named last and are the first to go.
+- `R` repos, `E` recipe and `$` rail open the floor's settings.
 
-## the peek's keys and the bottom line — one list of keys
+## the peek's verbs — at most five, by the row's state
 
-The peek's last row and the bottom line are **one list of keys at two widths**: the same keys,
-in the same order, `enter open` first, then the item's own verbs, then `T talk`, then what shapes
-a run (stages, gate, cap, effort), then `d hide`, `g github`, `u read again` and `n new item`.
-When either line is too narrow it drops keys from the end of that list, so the two always lose
-the same keys in the same order, and a key is spelled one way on both (`e sign off with
-changes`). The floor's own keys (`/ filter`, `A backlog`, `z density` and the rest) follow on
-the bottom line only, and go first when it is too long.
+The peek's last row names what you can do to the item under the cursor, **at most five**, in the
+order a person reaches for them, and only keys the floor can do:
+
+- **New:** `enter open · r run · T chat · space select · t ask me at plan` (the last one says
+  where this item's run will stop: `ask me at pull request`, `ask me at never`). While a row is
+  selected, `L run selected` takes the fifth place.
+- **Running:** `enter open · x stop · T chat · space pause · S steer` (`space resume` while
+  paused). Queued: the same without pause.
+- **Needs you:** `enter open · y yes · n no · a in words · T chat`.
+- **Landed:** `enter proof · s approve · B request changes · v re-run checks · T chat`, with
+  `e approve with changes` in place of `s approve` when a row on the sheet was not shown.
+
+When the peek is narrow the row drops whole clauses from its right end, never half of one. Every
+other key (the budget, the thinking, the stages, dismiss, refresh, open on github) is on the
+`?` sheet and the item page.
 
 ## what a row is
 
@@ -98,7 +111,7 @@ On a forge item the short name is a link to its page where the terminal takes li
 
 Groups have muted capital headings (`NEEDS YOU · 1 ───`) and one blank row between them, in
 this order: `NEEDS YOU` (the question in its colour, `[y/n]` before the age), `LANDED`
-(`3✓ 1✕`, waiting for your sign-off, so it sits beside what waits on you, above the backlog),
+(`3✓ 1✕`, waiting for you to approve, so it sits beside what waits on you, above the backlog),
 `STREAMS` (a stage strip `●●◐○` and `review 26m`, or `queued`), `NEW` (`bug · S`,
 `pr · ci ✓`, `ci red`) and `SHIPPED` (`shipped 06:00`). An empty group is not drawn.
 
@@ -163,18 +176,19 @@ leaves the page.
 
 The `new` group shows only what arrived in the last three days. Older open items are kept back,
 and a dim line at the end of the group says how many, such as `12 older open items behind A`.
-`A` shows the whole backlog under `new`; `A` again hides the older ones. Dismissed items are
-never drawn.
+`A` shows the whole backlog under `new`; `A` again keeps the older ones back. Dismissed items
+(`d`) are never drawn.
 
-## mark new items
+## select new items and run them together — space and L, what is select
 
-`space` on a new item marks it, and its mark turns to an accent dot; `space` again unmarks it.
-Only new items can be marked. The marks are kept through every re-read
-and when you leave the page and come back, until codeaf exits. `L` with marks asks first, with
-the triage estimates summed: `launch 3 marked · ~$7? [y] go · [n] not now`. `y` launches every
-marked item, clears the marks and says `launched 3`; `n` or `esc` keeps them. With nothing
-marked `L` launches the item under the cursor. Marks the foreman
-makes (`m`) are kept with the floor on this machine and are still there after a restart.
+`space` on a new item selects it, and its lead turns to an accent dot; `space` again unselects
+it. Only new items can be selected. The selection is kept through every re-read and when you
+leave the page and come back, until codeaf exits. While anything is selected the peek's verbs
+offer `L run selected`, and `L` asks first, with the triage estimates summed:
+`run 3 selected · ~$7? [y] go · [n] not now`. `y` runs every selected item, clears the
+selection and says `launched 3`; `n` or `esc` keeps it. With nothing selected `L` runs the item
+under the cursor. What the foreman selects (`m`) is kept with the floor on this machine and is
+still there after a restart.
 
 ## stages, not a pipeline
 
@@ -182,13 +196,13 @@ An item runs through **stages** in a fixed order that a repository or team write
 example plan, write, test, review, neaten, proof. Each stage is one sentence ("read it as a
 stranger would"), and it runs as an ordinary task with the ordinary crew picked for that kind of
 work. There is no graph to draw and no model to choose per stage; the one word a stage may carry
-is its effort, cheap or strong.
+is its thinking (`effort` in the recipe file), cheap or strong.
 
 A stage can repeat until a condition holds (until green, until clean, until proven) up to a
 number of rounds, and then it stops and asks you. A second round fixes what the first found, then
 checks again: its brief names what the last round found and says to fix it in the checkout, run
 the tests, and look again, so a review that found one thing does not just find it twice. Nothing inside a stage can add a stage, except plan, within the
-bounds its recipe word allows (see adapt). A stage can also be a gate: `plan` comes back with the plan before any code, and `ship` waits for your sign-off.
+bounds its recipe word allows (see adapt). A stage can also be a gate, which is where `ask me at` stops: `plan` comes back with the plan before any code, and `ship` (the screen's `pull request`) waits for you to approve.
 
 The peek shows a new item's stages as one line of names and a running item's as a strip of
 marks; the item page lists them down its stage rail. A stage can carry a condition (`thin`,
@@ -196,7 +210,8 @@ marks; the item page lists them down its stage rail. A stage can carry a conditi
 skip stroke `–` and `· skipped` on the stage rail, and `skipped · not thin` (or the condition it
 missed) beside it. A stage switched off, or one the run went on past, is drawn the same way.
 
-On a new item, `1` to `9` switch the stage with that number on or off, `s` adds a stage in
+On a new item, `1` to `9` switch the stage with that number on or off (`1-9 stages` on the `?`
+sheet), `s` adds a stage in
 words (`after review, make it neater` puts it after review), and `b` banks the item's stages
 as its repository's recipe, into `.codeaf/factory.md` (see the recipe file). A new item starts
 from its repository's recipe file, or codeaf's default when there is none. A run keeps the
@@ -268,6 +283,10 @@ In a `.codeaf/factory.md` stage line, after the name:
   `when` alone, so `when thin · gate plan when large` is a stage for thin items that asks first
   when one is also large.
 - `effort cheap` or `effort strong`.
+
+The file keeps these words; the screen says them its own way. `gate plan`, `gate ship` and
+`gate none` are `ask me at plan`, `ask me at pull request` and `ask me at never` on the floor and
+the item page, `effort` is `thinking`, and an item's `cap` is its `budget`.
 - `proof a test, a screenshot`: what the stage must show, separated by commas.
 - `off`: the stage is written but does not run. Every other stage is on.
 
@@ -292,8 +311,8 @@ The bounds are held by codeaf's own code, not asked of the model. Plan may add o
 conversation stage with an ask, placed by a time word (`after test, …`) or after review. It may
 never skip a gate stage, the stage named `proof`, or a stage a policy line names
 (`tests pass before anything posts` names test). It may never touch a stage that is done or
-running, nor add one before it. It has no way to change the cap, the gate, the effort or the
-rounds. One refused part refuses the whole change.
+running, nor add one before it. It has no way to change the budget, where the run asks you,
+the thinking or the rounds. One refused part refuses the whole change.
 
 What plan changed is kept on the item and drawn as one dim line under the stages on the peek and
 in the item page's head, `plan added security · skipped neaten · why: touches billing`. An item
@@ -311,7 +330,7 @@ one line across the top of the floor, then a blank row:
 
 what shipped and arrived this stretch, what waits on you (in the question colour), the day's
 spend against the day's rail, and when a source was last read. **Waiting counts the items that
-ask a question and the landed items waiting for your sign-off,** so `? 2 waiting` is one
+ask a question and the landed items waiting for you to approve,** so `? 2 waiting` is one
 question and one proof sheet; the full strip's `? 2 waiting on you` and the tab bar's `? 2`
 count the same, and `nothing waits on you` means neither. A part whose count is zero is
 left off; a narrow window drops parts from the right. While a source is being read the last part
@@ -344,8 +363,9 @@ stays there while the rows scroll under the cursor, so the peek keeps its whole 
    words in ink) and, where the floor can answer, `[y] yes · [n] no · [a] in words`.
 3. The factory's one-sentence read, or `⠋ reading…` while the first read is out.
 4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
-5. The gate, cap and effort in fixed slots, so their values line up from item to item: `gate  ship`,
-   `cap  $5`, `effort  —`. A cap of nothing is a blank slot.
+5. Where it asks you, the budget and the thinking in fixed slots, so their values line up from
+   item to item: `ask me at  pull request`, `budget  $5`, `thinking  —`. A budget of nothing is
+   a blank slot.
 6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, the pause
    mark held, the stop square where a person stopped it, and `–` skipped, every cell of the
    strip one width (its longest name, at most 16 columns; a longer name ends in `…`), with the
@@ -358,15 +378,15 @@ stays there while the rows scroll under the cursor, so the peek keeps its whole 
 8. The description, rendered from Markdown (headings, lists, code, links as their words, never
    raw backticks), 60 columns wide, at most six rows, cut with `…` and `▾ more`. A landed item
    shows its claims here instead.
-9. `talk`, when the item has its own conversation.
+9. `chat`, when the item has its own conversation.
 10. What the forge says, each block absent when empty: `comments` (the last three, `author · 2h`
     then the words), `checks` (one row per check: mark, name, state), `files` (`+218 −44 · 6
     files`, then up to six paths), `activity` (the last five events). The item's page on GitHub is the `github ↗` link in the meta row.
 
-The bottom row names the keys, starting with `enter open`, with one blank row above it, and
-only keys the floor can do: a still floor with no verbs says just `enter open`. It is the same
-list as the bottom line, in the same order, cut from its end to the peek's width (see the keys
-on the factory floor).
+The bottom row names the row's verbs, at most five, starting with `enter open` (`enter proof`
+on a landed item), with one blank row above it, and only keys the floor can do: a still floor
+with no verbs says just `enter open`. It is cut from its end to the peek's width (see the peek's
+verbs).
 
 ## resize the split — { } |
 
@@ -407,19 +427,20 @@ says `J K scroll` while there is more to see. Over the rail the wheel walks the 
 
 `enter` on a row of the factory floor (or a second click on it) opens that item on its own page,
 across the full width; `esc` closes it and puts the cursor back on the same row. Nothing about
-the floor (filter, repository, marks) changes while it is open.
+the floor (filter, repository, selection) changes while it is open.
 
 The top row is a trail: `Factory › codeaf › #1551 filters lost on compact`, the crumbs dim and
 the item in ink, with where it stands and for how long (`running 26m`) and the spend over the
-cap (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row is
-the gate, cap and effort with their keys, `gate  ship [t]  cap  $5 [c]  effort  — [e]`. The
+budget (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row is
+where it asks you, the budget and the thinking with their keys,
+`ask me at  pull request [t]  budget  $5 [c]  thinking  — [e]`. The
 repository is the crumb above and is not said again; an item that touches more repositories
 names the others, dim, `also harness, agentfield`;
 on an item waiting on you it is the question instead (see answering a question). Then a blank
 row; the rail and its pane start on the fourth row on every item. What plan changed about the
 stages is in the issue pane (see adapt).
 
-On the left is the **rail**: `issue` first (see read the whole issue), then `talk` when the item
+On the left is the **rail**: `issue` first (see read the whole issue), then `chat` when the item
 has its own conversation, then one row per stage, then `proof` when the item has a sheet and no
 stage is named proof, then `log` once the run has said anything (see the log). A stage reads `●`
 done (with `×3` when it split into tasks), the braille spinner while it runs (with its round,
@@ -444,23 +465,26 @@ lines under it grow as the stage works, the newest at the bottom. The floor read
 second while you watch it, and goes back to its own beat when the stage ends or you press `esc`.
 
 Every verb key keeps working on the item while its page is open (see the factory's verbs), and
-`1` to `9` switch stages. The hint line names them, after `↑↓ stages` (and `enter conversation`
-on a stage that has one), and ends with `esc floor`. A box that takes words opens on the last
-row of the pane.
+`1` to `9` switch stages. The pane's last row names the item's verbs, at most five, as the peek
+does. The bottom line is only `↑↓ stages · enter <what enter does here> · esc floor · ? keys`
+(`enter chat` on the issue row, `enter conversation` on a stage that has one, `enter approve`
+or `enter request changes` on a landed item's proof; no `enter` where it does nothing), with the
+router's `tab next place` before `esc`. `?` lists every key. A box that takes words opens on the
+last row of the pane.
 
 ## start a conversation about an issue — enter on the issue row, when enter on the item page does nothing
 
-To talk an item through before anything runs, open it and press `enter` on its `issue` row (or
-its `talk` row): that opens the item's own conversation, exactly as `T` does from anywhere on
-the floor (see talk it through). On the issue row the hint starts with `enter talk`, and
-`T talk` stays in the item's keys. While it opens the line above the keys says
+To chat about an item before anything runs, open it and press `enter` on its `issue` row (or
+its `chat` row): that opens the item's own conversation, exactly as `T` does from anywhere on
+the floor (see chat about an item). On the issue row the bottom line says `enter chat`, and
+`T chat` stays in the item's verbs. While it opens the line above the keys says
 `⠋ opening #12's conversation…`; the first `esc` on its empty box comes back to the item page.
 
-Where this window cannot make the item's conversation (its keys then have no `T talk`; see
-talk it through), `enter` on the issue row opens the item on github, as `g` does, and the hint says
-`enter github`. Where neither works, `enter` says on the pane's last row
-`nothing to open yet · r runs it` (without `r runs it` where `r` does nothing), and the next key
-puts the keys back. `enter` on the `log` row opens nothing.
+Where this window cannot make the item's conversation (its verbs then have no `T chat`; see
+chat about an item), `enter` on the issue row opens the item on github, as `g` does, and the
+bottom line says `enter open on github`. Where neither works, `enter` says on the pane's last row
+`nothing to open yet · r run` (without `r run` where `r` does nothing), and the next key
+puts the verbs back. `enter` on the `log` row opens nothing.
 
 ## a stage is a room — enter on a stage
 
@@ -503,7 +527,7 @@ is `after 1 round`, one finding `1 finding`),
 
 - `y` answers yes: go on, one more round, $5 more, skip it. The bottom line says
   `answered #12 · yes`.
-- `n` answers no: for a plan or a cap that stops the item; for rounds it goes on as is. It says
+- `n` answers no: for a plan or a spent budget that stops the item; for rounds it goes on as is. It says
   `answered #12 · no`.
 - `a` opens `answer ›` for words (`go, but keep the old flag`); they reach the next round's
   brief and it says `answered #12 in words`.
@@ -512,24 +536,25 @@ is `after 1 round`, one finding `1 finding`),
 item that is not waiting says `#12 is not waiting on you` on the bottom line and changes nothing
 (`n` there is new work, and `a` on a thin new item asks its author).
 
-## sign off, send back, check again — s, B, v
+## approve, request changes, re-run checks — s, B, v, how do I approve a landed item
 
 A landed item's page opens on its **proof** sheet: one row per claim and policy row, `✓` shown or
 `✕` with `— not shown`, its evidence dim at the right and its medium (`test`, `screenshot`,
 `policy`) as a chip in its own column at the right edge. The evidence never repeats the medium:
 a test row reads `0.3s` beside `test`, not `test · 0.3s`. The sheet's last line counts it and names its keys:
-`all 6 shown · s sign off`, or `1 of 6 not shown · e sign off with changes · B send back`.
+`all 6 shown · s approve`, or `1 of 6 not shown · e approve with changes · B request changes`.
 
-- `s` signs off and ships it: `#12 shipped`. On a sheet with a row not shown the run refuses,
-  in its words: `#12 has a claim not shown`.
-- `e` signs off saying you changed something first, the one that ships a sheet with a row not
+- `s` **approves** it and ships it: `#12 shipped`. On a sheet with a row not shown the run
+  refuses, in its words: `#12 has a claim not shown`.
+- `e` approves saying you changed something first, the one that ships a sheet with a row not
   shown: `#12 shipped with changes`. It does not count toward a habit.
-- `B` opens `send back ›` for what to prove (`prove restart survival`); the item goes back on a
-  bench with one more stage, `prove`, and says `#12 sent back · prove restart survival`.
-- `v` runs every check stage again and puts what they show on the sheet:
-  `#12 is being checked again`.
-- `enter` on the sheet is the default: sign off when every row was shown, and when any was not,
-  **send back** (`enter send back`), with `prove` and that row's words already typed.
+- `B` **requests changes**: it opens `request changes ›` for what to prove
+  (`prove restart survival`); the item goes back on a bench with one more stage, `prove`, and
+  says `#12 changes requested · prove restart survival`.
+- `v` **re-runs the checks**: every check stage runs again and puts what it shows on the sheet:
+  `#12's checks are running again`.
+- `enter` on the sheet is the default: approve when every row was shown, and when any was not,
+  request changes (`enter request changes`), with `prove` and that row's words already typed.
 
 `d` says `the diff is the appendix` and that it opens in your editor later. Each key is named only
 where the floor can do it.
@@ -556,48 +581,90 @@ steered, `S` does nothing.
 
 ## the factory's verbs, keys that change an item
 
-The bottom line names only the keys that work for the item under the cursor. On your own floor
-the keys that change an item's own words always work (`n`, `t` gate, `c` cap, `e` effort, `w`,
-`1-9` and `s` stages, `space`, `d`), and `r`, `p` and `L` launch (see running an item). Stop,
-pause, answers, steering, sign-off, send back and check again work in every window too, whichever
-process runs the floor's items. `enter` on a row never launches; it opens the item page.
+On your own floor the keys that change an item's own settings always work (`n`, `t` ask me at,
+`c` budget, `e` thinking, `w`, the stages, `space`, `d`), and `r` and `L` run it (see running an
+item). Stop, pause, answers, steering, approve, request changes and re-run checks work in every
+window too, whichever process runs the floor's items. `enter` on a row never runs anything; it
+opens the item page. The peek names at most five of these for the row's state (see the peek's
+verbs); `?` lists them all.
 
-- **New:** `r run · p plan first · space mark · T talk · L launch marked · 1-9 stages ·
-  s stage · t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the
-  plan gate; the bottom line says `#12 is running` once the floor's next read sees it start, and
-  `#12 is queued · a bench frees it` only when that read still finds it queued behind full
-  benches. `L` launches this item, or asks first about the marked ones (see mark new
-  items). `t` cycles the gate plan, ship, none; `c` the
-  cap $2, $5, $8, $15, $30; `e` the first stage's effort: none, cheap, strong. `w` opens
-  `in words ›` for the gate, cap and effort at once (`$8, plan first, stronger`). On a
-  terminal-made item `g` puts it on github too, or takes it off; on any other item with a page
-  on github, `g` opens that page. `a` asks a thin item's author its questions. `d` hides the item.
-- **Running or queued:** `S steer · space pause · x stop · T talk · e effort` (see steer a
-  running item); `e` cycles the running stage's effort.
-- **Needs you:** `y n answer · a in words · S steer · x stop · T talk` (see answering a
-  question).
-- **Landed:** `s sign off` on a clean sheet, `e sign off with changes` when a row was not shown
-  (spelled the same in the peek and on the bottom line), `B send back`, `v check again`,
-  `T talk`, `d diff` (see sign off, send back, check again).
-- **Any state:** `T talk` opens the item's own conversation (see talk it through), on the
-  floor and on the item page alike; it is named only where the floor can make one.
-- **Anywhere:** `n new item` opens `new work ›`, at the bottom of the rows column, on the repository the list shows (or the first one;
+- **New:** `r` runs it. `t` sets where the run stops to ask you: it cycles `ask me at plan`,
+  `ask me at pull request`, `ask me at never`. `c` sets the **budget**, the most it may spend:
+  $2, $5, $8, $15, $30. `e` sets the **thinking**, how hard the first stage's model thinks:
+  none, cheap, strong. `w` opens `in words ›` for all three at once
+  (`$8, ask me at the plan, stronger`). The digit keys `1` to `9` switch a stage on or off and
+  `s` adds a stage (named on the `?` sheet). `space` selects, `L` runs the selected (see select
+  new items). On a terminal-made item `g` puts it on github too, or takes it off; on any other
+  item with a page on github, `g` opens that page. `a` asks a thin item's author its questions.
+  `d` **dismisses** the item: it leaves the floor until it changes.
+- **Running or queued:** `x stop · space pause · S steer` (see steer a running item); `e` steps
+  the running stage's thinking.
+- **Needs you:** `y yes · n no · a in words`, and `S steer`, `x stop` (see answering a question).
+- **Landed:** `s approve` on a clean sheet, `e approve with changes` when a row was not shown,
+  `B request changes`, `v re-run checks`, `d diff` (see approve, request changes, re-run checks).
+- **Any state:** `T chat` opens a chat about the item (see chat about an item), on the floor and
+  on the item page alike; it is named only where the floor can make one. `u` refreshes it.
+- **Anywhere:** `n new` opens `new work ›`, at the bottom of the rows column, on the repository the list shows (or the first one;
   on a floor with no items yet, the name of the folder this window was opened in), and the new
   item's card is under the cursor when it is made.
 
 A key that takes words opens a one-line box at the bottom of the right column, just above the
-peek's key line (which stays the column's last row, one blank row between them), except `n`'s,
+peek's verbs (which stay the column's last row, one blank row between them), except `n`'s,
 which stands at the bottom of the rows (and every box stands under the rows when there is no
 peek): `enter` sends, `backspace` edits, `esc` cancels. After a key the bottom line says what
 became of the item (`#12 is running`, `#12 stopped · branch kept`); a refusal, such as
 `#1540 is on a bench; stop it first`, is said there in the floor's own words instead.
+
+## what does ask me at mean, how do I make it stop after the plan
+
+`ask me at` is where an item's run stops to ask you. The chip on the item page reads
+`ask me at  plan [t]`, and `t` cycles it:
+
+- `ask me at plan`: the run comes back with the plan before any code, and waits for `y`.
+- `ask me at pull request` (the default): every stage runs, and it stops before the pull
+  request, on the proof sheet, for you to approve.
+- `ask me at never`: a banked habit; a green proof ships by itself.
+
+So to make a run stop after the plan, press `t` until the chip says `ask me at plan`, then `r`.
+There is no separate key for it: `r` always runs, and stops where `ask me at` says. The recipe
+file still spells these `gate plan`, `gate ship` and `gate none` (see recipe file knobs).
+
+## what is chat on an item, what is select, what is dismiss — the floor's words
+
+The floor names each key by what it does:
+
+- `r` **run**: run every stage; it stops where `ask me at` says.
+- `t` **ask me at**: plan, pull request or never.
+- `T` **chat**: a conversation about this item with the issue loaded (see chat about an item).
+- `space` **select**: tick the row to run several together; `L` **run selected**.
+- `e` **thinking**: how hard the model thinks, the chat's Thinking dial.
+- `c` **budget**: the most this item may spend.
+- `1`-`9` **stages**: turn a stage on or off.
+- `g` **open on github**, `u` **refresh** (read the issue again: size, cost, priority), `d`
+  **dismiss** (take the row off the floor; it is then `dismissed`).
+- On a landed item: `s` **approve**, `B` **request changes**, `v` **re-run checks**.
+- `m` **foreman**, `U` **refresh all**, `h` **handover**.
+
+These replaced older words on 2026-10-08: `T` was talk, `space` was mark, `t` was gate, `c` was
+cap, `e` was effort, `u` was read again, `d` was hide, and the landed keys were sign off, send
+back and check again; `p` (plan first) is gone, because `t` and `r` do it.
+
+## the ? key sheet — what the question mark key shows, every key on the factory floor and the item page
+
+`?` on the floor or on the item page opens the key sheet over the page: every key that works
+where you stand, beside its word, in four groups, `do` (the row's verbs), `set` (ask me at,
+budget, thinking, stages, in words), `also` (open on github, refresh, dismiss, new, foreman,
+refresh all, handover, repos, recipe, rail, backlog, density, order, repo, the split, scroll)
+and `move` (walk, open, filter, tab next place, esc back, ? keys). Only keys the floor can do are
+listed. The hint says `esc close`; `esc` or `?` puts it away and leaves you where you were. Other
+letters do nothing while it is up.
 
 ## open the item on github — g
 
 An item that came from GitHub has a page there, and the floor offers it three ways: its short
 name on the row and on the peek is a link (where the terminal takes links, it opens on click,
 and takes no extra room), the peek's dim meta row ends `github ↗`, and `g` on the item opens the
-page in your browser. The bottom line says `g github` where it works. After `g` the bottom line
+page in your browser. The `?` sheet names it `g open on github` where it works. After `g` the bottom line
 says `opened #1662 on github`; on a machine with no browser it says
 `could not open your browser` with the address to copy.
 
@@ -616,9 +683,10 @@ spinner that moves is work still going:
   or `refreshing…`. An item waiting its turn in a whole-floor re-read does not spin: it shows a
   still dim `·` and `waiting to read`. The peek's read says `⠋ reading…` while the first read is out, and the item
   page's read line says `⠋ reading · 4s`.
-- **`u` reads the item under the cursor again.** The line above the keys says `re-reading #6…`
-  until the read is over, then the bottom line says `#6 read again · ~$0.0004`.
-- **`U` reads every item again, and asks first:** `re-read 8 items · ~$0.004? [y] go · [n] not
+- **`u` refreshes the item under the cursor.** The line above the keys says `re-reading #6…`
+  until the read is over, then the bottom line says `#6 refreshed · ~$0.0004`. The item page's
+  read line says when it was made and the key, `read 3m ago · u refresh`.
+- **`U` refreshes all, and asks first:** `re-read 8 items · ~$0.004? [y] go · [n] not
   now` stands at the bottom of the rows. `y` goes, `n` or `esc` does not. While it runs the
   handover says `⠋ refreshing 8 items · 3 done`.
 - **A source being read:** the handover says `⠋ reading Agent-Field/CodeAF · 1 of 3` (or
@@ -631,10 +699,10 @@ spinner that moves is work still going:
 
 `u` and `U` are offered only where the floor can read items again.
 
-## bank a habit after clean sign-offs
+## bank a habit after clean approvals
 
-After three sign-offs in a row without edits, the bottom of the right column offers a habit:
-`habit forming — 3 sign-offs without edits on codeaf` and
+After three approvals in a row without edits, the bottom of the right column offers a habit:
+`habit forming — 3 approvals without edits on codeaf` and
 `factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet`.
 `y` writes that sentence into the repository's habits, under `## habits` in its
 `.codeaf/factory.md`; `n` puts the offer away. The offer comes only where banking can be written.
@@ -701,20 +769,21 @@ the sentence; and `why:` with the reason when the chat gave one. It answers to
 It writes only where codeaf knows the checkout; otherwise the answer is
 `codeaf does not know where <repo> is checked out; open codeaf there once`.
 
-## talk it through — T, the item's own conversation
+## chat about an item — T, the item's own conversation
 
-`T` on an item, on the floor or on its page, opens a conversation that belongs to that item, so
-you can talk it over or plan it before you launch it, or while it runs. **It is never made
-by default.** The first `T` makes it and every later `T` opens the same one; the item keeps it.
+`T` (**chat**) on an item, on the floor or on its page, opens a conversation that belongs to
+that item, so you can talk it over or plan it before you run it, or while it runs. **It is never
+made by default.** The first `T` makes it and every later `T` opens the same one; the item keeps
+it.
 
 The first press makes, on this machine and without asking any model:
 
 - a team named by the item, `#12 · fix the ledger double count`, nested under one team named
-  `factory` (made once, the first time any item is talked through);
+  `factory` (made once, the first time any item gets a chat);
 - one conversation in that team, in the folder where the item's repository is checked out (or
   this window's folder when codeaf does not know the checkout). It opens with the item in front
-  of it: the title, the repository, author and tier, its gate, cap and labels, the
-  body, its stages as numbered lines, the factory's read, and the sentence
+  of it: the title, the repository, author and tier, where it asks you, its budget and labels,
+  the body, its stages as numbered lines, the factory's read, and the sentence
   `This is the item's own conversation on the factory floor. Nothing here launches it; the person does that on the floor.`
 
 You land in the conversation, as when you open one from its tab; the one you were in goes on
@@ -725,7 +794,7 @@ what it always means, so a first `esc` arms the rewind (`esc again to rewind`).
 
 **Where it appears:** a tab on the tab strip, like any conversation you open. Its team sits under
 the one `factory` team in the team menu and on the teams rail, and that team is folded: a hundred
-items talked through are one `factory` row until you stand in it. When the item is hidden with
+items with a chat are one `factory` row until you stand in it. When the item is dismissed with
 `d`, its conversation is put away (home's archive line) and its team is closed.
 
 `T` is not named, and does nothing, over `--host` or `--at` to another machine, from `--once`,
@@ -734,8 +803,8 @@ or on the still made-up floor: nothing there can make a conversation.
 ## the foreman — m, what should I take first, factory_floor, why can't my chat read the floor
 
 `m` on the factory floor opens the foreman: one conversation for the whole floor, for deciding
-what to take first ("what should I take first this morning and why?", "mark the three cheapest
-bugs"). **It is never made by default.** The first `m` makes it and every later `m` opens the
+what to take first ("what should I take first this morning and why?", "select the three
+cheapest bugs"). **It is never made by default.** The first `m` makes it and every later `m` opens the
 same one. It is named `foreman`, sits in the one `factory` team beside the items' own teams, and
 opens with `You are the foreman of this factory floor.` and each repository's policy lines.
 You land in it as with `T`, and the first `esc` on its empty box goes back to the floor.
@@ -746,15 +815,15 @@ read, facts, stages, the question it waits on and the first 2000 characters of i
 is the ref, title, kind, repository, size, estimate, priority and its reason, state, age and
 risk; what is not known is left out.
 
-**It proposes by marking.** It marks new items, and is told
-`marked #1 #4 #6 · press L on the floor to launch them`. On the floor a marked row wears the
-accent lead, as a `space` mark does. Its marks are kept with the floor on this machine, so they
-survive a restart, until you launch or unmark them; a mark on an item that is no longer new is
-dropped.
+**It proposes by selecting.** It selects new items, and the tool tells it
+`marked #1 #4 #6 · press L on the floor to launch them`. On the floor a row it selected wears the
+accent lead, as a `space` select does, and the peek offers `L run selected`. What it selects is
+kept with the floor on this machine, so it survives a restart, until you run or unselect it; a
+selection on an item that is no longer new is dropped.
 
-**It never launches, ships or posts.** Only a new item takes a mark (`#3 is running, and only a
-new item takes a mark`), and `L` on the floor is the only launch (see what the factory does not
-do yet).
+**It never runs, ships or posts.** Only a new item can be selected (the tool says
+`#3 is running, and only a new item takes a mark`), and `L` on the floor is the only way to run
+them (see what the factory does not do yet).
 
 **Only the foreman reads the floor.** `factory_floor` is on the foreman's belt and on no other
 conversation's: an ordinary chat, an item's own conversation (`T`) and a stage do not have it.
@@ -763,12 +832,14 @@ conversation changes its item with `factory_item`, and to ask about the whole fl
 foreman with `m`. `m` does nothing over `--host` or `--at`, from `--once`, or on the still made-up
 floor.
 
-## changing an item from its conversation — factory_item, skip a stage, plan first, raise the cap, leave a note
+## changing an item from its conversation — factory_item, skip a stage, ask me at the plan, raise the budget, leave a note
 
 An item's own conversation (`T`) is the item's hub. In it codeaf can propose a change to that
 item with the `factory_item` tool: stages to add (`after review, read it for auth holes`), skip
-or switch on; its gate (`plan`, `ship`, `none`); its cap in dollars; its effort (`cheap`,
-`strong`, `default`); or a note its stages will read. It is for the item the conversation is
+or switch on; where it asks you (the tool's `gate`: `plan`, `ship` for the pull request,
+`none` for never); its budget in dollars (the tool's `cap`); its thinking (the tool's `effort`:
+`cheap`, `strong`, `default`); or a note its stages will read. The card speaks the engine's own
+words, below; the floor shows the same settings as `ask me at`, `budget` and `thinking`. It is for the item the conversation is
 about, and it is on the belt wherever `factory_add` is. (It replaced `factory_stages`, which
 could change only the stages.)
 
@@ -797,7 +868,7 @@ Nothing launches from it.
 
 Wherever a conversation is about an item on the floor, the item is drawn as one live card:
 `▤ #1 <title>` with `repo · kind · size` on the right, and under it where it stands —
-`new · gate ship · cap $5`, `running 24m · $1.42 / $5`, `? plan is ready`, `landed · 3✓ 1✕`,
+`new · ask me at pull request · budget $5`, `running 24m · $1.42 / $5`, `? plan is ready`, `landed · 3✓ 1✕`,
 `shipped · $1.90` — with its stages on the right (`○ plan  ○ write  ○ test  ○ proof`, the running
 one lit).
 
@@ -854,7 +925,7 @@ The floor reads open issues and open pull requests from the GitHub repositories 
   more). The author is `owner` for your own login with write access, `collaborator` for others
   with write access, otherwise `stranger`.
 - **A change on GitHub updates the row's words** (title, text, labels, checks, lines, comments)
-  and never your gate, cap or stages. A changed title or text clears the item's read so triage
+  and never where it asks you, its budget or its stages. A changed title or text clears the item's read so triage
   reads it again; a label change alone keeps the read. A dismissed item that changes comes
   back as new.
 - **The facts line** says `github` and `polled 4m ago`; a failed read says
@@ -941,15 +1012,15 @@ Each GitHub item on the floor carries, beside its row's words:
 - **While github is being read** the floor says so; it is marked for the length of each read and
   cleared when the read ends, or when codeaf next starts after a crash.
 
-## refresh an item — u, the whole floor — U
+## refresh an item — u, refresh all — U
 
-`u` reads the item in front of you again from GitHub now, without waiting for the next poll: the
+`u` (**refresh**) reads the item in front of you again from GitHub now, without waiting for the next poll: the
 issue or pull request by its number, its last three comments (read even when the count did not
 move), and a pull request's files and check runs. Then its read is cleared, so triage reads it
 again. A terminal item has nothing upstream; `u` only clears its
 read. While it runs the row says `refreshing`; while triage reads an item it says `reading`.
 
-`U` does the same for every item on the floor except the dismissed, in turn, and says
+`U` (**refresh all**) does the same for every item on the floor except the dismissed, in turn, and says
 `refreshing 8 items · 3 done` while it runs. **Before it starts, the floor shows what it would
 cost:** the number of items times the average cost of a triage read here, or $0.0005
 an item when no read has been priced yet. Nothing is read or spent until you say yes. Each read it
@@ -1018,8 +1089,9 @@ the right (its knobs, its sentence, `runs first` or `runs after <stage>`, or
 above the rail, `line 7: until is one of done, clean, green, proven`.
 
 - `[` `]` (or `h` `l`) switch the kind, `↑` `↓` walk the stages, `esc floor` goes back.
-- Where codeaf knows the checkout: `1-9` switch a stage on or off, `s` adds one in words
-  (`+ stage ›`), `e` steps its effort, `w` sets its knobs in the recipe file's own words
+- Where codeaf knows the checkout: `1-9 stages` switch a stage on or off, `s add a stage` adds
+  one in words (`+ stage ›`), `e thinking` steps its thinking, `w` sets its knobs in the recipe
+  file's own words
   (`until clean, max 3, effort strong`; a word it cannot read says why), and `b` saves the whole
   recipe, every kind, to `.codeaf/factory.md`:
   `saved to .codeaf/factory.md · new work on codeaf runs it`.
@@ -1070,7 +1142,7 @@ Reading does not change a row's age. An item whose title or text changes on GitH
 refresh with `u` or `U`, is read again; the row says `reading` while its call runs, and the floor
 quotes the last read's cost.
 
-What it never does: launch, hide, dismiss, label, comment, change a gate, cap or stage, or ask you
+What it never does: run, dismiss, label, comment, change where an item asks you, its budget or a stage, or ask you
 anything. It is facts drawn dim, never a decision. It runs only in the window that opened the
 floor, one window per machine, and only while a key resolves; with no key there is no reading
 at all. Each call is a row on the spend ledger named `factory triage`, on the low seat.
@@ -1098,8 +1170,9 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **Items run on this machine only.** `r`, `p` and `L` launch (see running an item), and stop,
-  pause, answers, steering, sign-off, send back and check again work from any window on it.
+- **Items run on this machine only.** `r` and `L` run them (see running an item), and stop,
+  pause, answers, steering, approve, request changes and re-run checks work from any window on
+  it.
 - **Only GitHub is connected.** No GitLab or Linear.
 - **The recipe file is read only where codeaf knows the checkout.** It is read for the
   repository you opened codeaf in, and for any watched GitHub repository whose checkout codeaf
@@ -1112,21 +1185,25 @@ Be plain about this when asked:
   the connected GitHub account, and only what the recipe's policy allows.
 - **The diff does not open yet.** `d` on a landed item says where it will be.
 - **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
-- **The foreman only reads and marks.** `m` opens it (see the foreman); it cannot launch,
-  ship, post or change an item, and the person's `L` is the only launch.
+- **The foreman only reads and selects.** `m` opens it (see the foreman); it cannot run,
+  ship, post or change an item, and the person's `L` is the only way to run its selection.
 - **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
   in place of yours, with no verbs.
 - **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, the
   chat has no `factory_add`, and nothing polls GitHub.
 - **`Factory ? N` on the tab bar appears only after the first open** of `/factory`.
 
-## running an item — r, p and L
+## running an item — r and L, where the run stops
 
-`r` launches the item under the cursor with the ship gate, `p` with the plan gate, and `L`
-launches every marked item (or this one). A launched item is `queued`, takes one of the floor's
+`r` runs the item under the cursor: every stage, stopping where its `ask me at` says (`t` sets
+that; see what does ask me at mean). `L` runs every selected item (or this one). There is no
+plan-first key any more: set `ask me at plan` and press `r`. The bottom line says `#12 is running`
+once the floor's next read sees it start (`#12 is running · ask me at plan` when it will stop
+after the plan), and `#12 is queued · a bench frees it` only when that read still finds it queued
+behind full benches. A run item is `queued`, takes one of the floor's
 benches (four at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its stages in
-order. It lands with its proof sheet for your sign-off, or ships by itself on gate none when every
-claim was shown.
+order. It lands with its proof sheet for you to approve, or ships by itself on `ask me at never`
+when every claim was shown.
 
 **What runs today:**
 
@@ -1145,7 +1222,7 @@ claim was shown.
 **Every verb works from any window.** One process on this machine runs the floor's items, the
 owner: on the ordinary launch it is the session host, so items keep running when the terminal
 closes; with `--no-host` it is the first window that opened the floor. Every window still has every
-verb: launch, stop, pause, answer, steer, sign-off, send back and check again. A window that is not
+verb: run, stop, pause, answer, steer, approve, request changes and re-run checks. A window that is not
 the owner hands the verb to the owner, which carries it out within about a second, and a refusal
 (the day rail, `#12 has landed · sign it off, or send it back`) is said on that window's bottom
 line in the owner's own words. If nothing answers within five seconds the window says
@@ -1158,7 +1235,7 @@ item's own worktree, never your checkout, so it edits files and runs commands wi
 settings do not narrow it (see what a stage may do).
 
 **Spend.** A chat stage's calls are on the spend ledger under its own conversation, and the
-item's spend counts them against its cap and the day rail.
+item's spend counts them against its budget and the day rail.
 
 ## where an item's work lives — a worktree and a branch per item
 
@@ -1179,7 +1256,7 @@ force, then opens the pull request from it. A failed push says
 `#12 has no remote to push to`. A worktree git could not make says
 `could not make a worktree for #12: <git's last line>`, and the stage does not run.
 
-Stop, ship and send back all keep the worktree and the branch. Nothing deletes either yet: to
+Stop, approve and request changes all keep the worktree and the branch. Nothing deletes either yet: to
 clean one up, `git worktree remove <folder>` in your checkout, and the branch stays.
 
 ## where factory items are saved

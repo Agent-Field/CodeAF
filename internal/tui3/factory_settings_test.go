@@ -501,7 +501,7 @@ func TestFactoryRecipePageTabsProblemAndSave(t *testing.T) {
 			t.Fatalf("the recipe page is missing %q:\n%s", want, joined)
 		}
 	}
-	if hint := factoryHint(a); hint != "[ ] kind · ↑↓ stages · 1-9 stages · s stage · e effort · w in words · b save · esc floor" {
+	if hint := factoryHint(a); hint != "[ ] kind · ↑↓ stages · 1-9 stages · s add a stage · e thinking · w in words · b save · esc floor" {
 		t.Fatalf("recipe hint = %q", hint)
 	}
 
@@ -626,16 +626,16 @@ func TestFactorySettingsNilDoorsDrawNoKey(t *testing.T) {
 
 	s := newSettingsFake()
 	b := factorySettingsLab(t, s, 400)
-	hint = factoryHint(b)
+	hint = factorySheetText(b)
 	for _, want := range []string{"R repos", "E recipe", "$ rail"} {
 		if !strings.Contains(hint, want) {
-			t.Fatalf("the floor's hint is missing %q: %s", want, hint)
+			t.Fatalf("the ? sheet is missing %q: %s", want, hint)
 		}
 	}
-	// On a narrow floor they are the first to go.
-	b.width = 100
-	if hint := factoryHint(b); strings.Contains(hint, "$ rail") && !strings.Contains(hint, "A backlog") {
-		t.Fatalf("the settings keys outlived the rail's own: %s", hint)
+	// On a narrow floor the bar sheds its own clauses and keeps the way out.
+	b.width = 40
+	if hint := factoryHint(b); !strings.Contains(hint, "esc back") || !strings.Contains(hint, "? keys") {
+		t.Fatalf("the narrow bar lost the way out: %s", hint)
 	}
 }
 

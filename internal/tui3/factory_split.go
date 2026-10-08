@@ -212,7 +212,7 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	// place's own hover because the floor's rows share their screen rows with
 	// the peek, and only the column says which of the two the pointer is on.
 	if _, motion := msg.(tea.MouseMotionMsg); motion && m.Button == tea.MouseNone {
-		if !a.at(pageFactory) || a.composer.open || !a.factoryConnected() {
+		if !a.at(pageFactory) || a.composer.open || !a.factoryConnected() || a.fp.keys {
 			return nil, false
 		}
 		return nil, a.factoryHover(m.X, m.Y)
@@ -220,7 +220,7 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	if _, click := msg.(tea.MouseClickMsg); !click || m.Button != tea.MouseLeft {
 		return nil, false
 	}
-	if !a.at(pageFactory) || a.composer.open || !a.factoryConnected() || a.fp.pick != nil || a.fp.recipe != nil {
+	if !a.at(pageFactory) || a.composer.open || !a.factoryConnected() || a.fp.pick != nil || a.fp.recipe != nil || a.fp.keys {
 		return nil, false
 	}
 	row := m.Y - placeHeadRows

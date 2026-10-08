@@ -250,8 +250,7 @@ func TestFactoryRunKeysSayTheirSentence(t *testing.T) {
 		keys       []string
 		call, note string
 	}{
-		{8, []string{"r"}, "SetGate(8,ship) Launch(8)", "#1540 is running"},
-		{8, []string{"p"}, "SetGate(8,plan) Launch(8)", "#1540 is running · plan first"},
+		{8, []string{"r"}, "Launch(8)", "#1540 is running"},
 		{8, []string{"L"}, "Launch(8)", "#1540 is running"},
 		{2, []string{"x"}, "Stop(2)", "#1551 stopped · branch kept"},
 		{2, []string{" "}, "Pause(2)", "#1551 paused"},
@@ -259,7 +258,7 @@ func TestFactoryRunKeysSayTheirSentence(t *testing.T) {
 		{1, []string{"n"}, "Answer(1,false,)", "answered #1538 · no"},
 		{9, []string{"s"}, "SignOff(9,false)", "#1661 shipped"},
 		{9, []string{"e"}, "SignOff(9,true)", "#1661 shipped with changes"},
-		{9, []string{"v"}, "Reverify(9)", "#1661 is being checked again"},
+		{9, []string{"v"}, "Reverify(9)", "#1661's checks are running again"},
 		{9, append([]string{"B"}, strings.Split("prove it", "")...), "", ""},
 		{2, append([]string{"S"}, strings.Split("stronger", "")...), "", ""},
 	} {
@@ -276,7 +275,7 @@ func TestFactoryRunKeysSayTheirSentence(t *testing.T) {
 			}
 			drive(t, a, key("enter"))
 			c.call = map[string]string{"B": "SendBack(9,prove it)", "S": "Steer(2,stronger)"}[c.keys[0]]
-			c.note = map[string]string{"B": "#1661 sent back · prove it", "S": "steered #1551"}[c.keys[0]]
+			c.note = map[string]string{"B": "#1661 changes requested · prove it", "S": "steered #1551"}[c.keys[0]]
 		}
 		if got := strings.Join(f.said(), " "); got != c.call {
 			t.Errorf("item %d %v asked %q, want %q", c.id, c.keys, got, c.call)
@@ -311,9 +310,9 @@ func TestFactoryProofSheetBothWays(t *testing.T) {
 		factoryOn(t, a, 9)
 		drive(t, a, key("enter"))
 		text := strings.Join(factoryBodyPlain(a, a.width, 30), "\n")
-		want := "1 of 6 not shown · e sign off with changes · B send back"
+		want := "1 of 6 not shown · e approve with changes · B request changes"
 		if clean {
-			want = "all 6 shown · s sign off"
+			want = "all 6 shown · s approve"
 		}
 		if !strings.Contains(text, want) {
 			t.Fatalf("clean %v: the sheet does not end %q:\n%s", clean, want, text)
@@ -344,7 +343,7 @@ func TestFactoryLaunchMarkedAsksWithTheEstimate(t *testing.T) {
 		drive(t, a, key(" "))
 	}
 	drive(t, a, key("L"))
-	if text := factoryFrameText(a); !strings.Contains(text, "launch 2 marked · ~$8? [y] go · [n] not now") {
+	if text := factoryFrameText(a); !strings.Contains(text, "run 2 selected · ~$8? [y] go · [n] not now") {
 		t.Fatalf("the L question is not drawn:\n%s", text)
 	}
 	if got := (placeFactory{}).hint(a); got != "y go · n not now" {
@@ -375,7 +374,7 @@ func TestFactoryRunKeysAbsentWithoutDoors(t *testing.T) {
 		factoryOn(t, a, c.id)
 		it, _ := a.factoryCursorItem()
 		hint := (placeFactory{}).hint(a) + " | " + a.factoryActionWords(it)
-		for _, gone := range []string{"space pause", "S steer", "x stop", "y n answer", "a in words", "s sign off", "e sign off", "B send back", "v check again"} {
+		for _, gone := range []string{"space pause", "S steer", "x stop", "y yes", "a in words", "s approve", "e approve", "B request changes", "v re-run checks"} {
 			if strings.Contains(hint, gone) {
 				t.Fatalf("item %d names %q with no door: %q", c.id, gone, hint)
 			}

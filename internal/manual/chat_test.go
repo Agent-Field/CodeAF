@@ -54,6 +54,10 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I sign off a landed factory item or send it back", "factory"},
 		{"how do I answer a factory item's question", "factory"},
 		{"how do I steer a running factory item", "factory"},
+		{"what is talk on the factory floor", "factory"},
+		{"how do I approve a landed item", "factory"},
+		{"what does ask me at mean on a factory item", "factory"},
+		{"what is select on the factory floor", "factory"},
 		{"what does the factory item log show", "factory"},
 		{"which branch does a factory item work on, does it touch my checkout", "factory"},
 		{"where is the factory item's worktree", "factory"},
@@ -3953,6 +3957,33 @@ func TestTheFirstReadQuestionsReachTheFloorsThreeSentences(t *testing.T) {
 		}
 		if !reached {
 			t.Errorf("%q does not reach the after-connecting-github section", asked)
+		}
+	}
+}
+
+// THE FACTORY'S WORDS WERE RESPELLED (owner decision, 2026-10-08), and a person
+// still asks in the old ones: `talk` reaches the section that says it is now
+// chat, and the new words reach the sections that explain them.
+func TestFactoryVerbWordsReachTheirSection(t *testing.T) {
+	for _, c := range []struct{ asked, title string }{
+		{"what is talk on the factory floor", "what is chat on an item"},
+		{"what is chat on an item", "what is chat on an item"},
+		{"how do I approve a landed item", "approve, request changes, re-run checks"},
+		{"how do I make the run stop after the plan", "what does ask me at mean"},
+		{"what does ask me at mean", "what does ask me at mean"},
+		{"what does the question mark key show on the factory floor", "the ? key sheet"},
+	} {
+		found := false
+		var where []string
+		for _, section := range Chat().Search(c.asked, DefaultResults) {
+			where = append(where, section.Page+" · "+section.Title)
+			if section.Page == "factory" && strings.HasPrefix(section.Title, c.title) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach factory · %s; it reached %v", c.asked, c.title, where)
 		}
 	}
 }

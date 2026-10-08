@@ -238,15 +238,15 @@ func TestFactoryMarkCursorGroundMatchesTeams(t *testing.T) {
 
 // THE PEEK AND THE FOOT ARE ONE LIST: the peek's key line is always a whole-
 // clause prefix of the list, in order, and the foot carries the same list in
-// the same order. `T talk` is on it wherever the floor can talk.
+// the same order. `T chat` is on it wherever the floor can talk.
 func TestFactoryMarkPeekAndFootShareOneVerbList(t *testing.T) {
 	a := factoryMarkLab(t, nil)
 	for _, id := range []int{1, 2, 3, 4, 8, 9} {
 		factoryOn(t, a, id)
 		it := factoryMarkItem(t, a, id)
 		rail := a.factoryVerbRail(it)
-		if !strings.Contains(strings.Join(rail, rowSep), "T talk") {
-			t.Fatalf("item %d's keys do not name T talk: %q", id, rail)
+		if !strings.Contains(strings.Join(rail, rowSep), "T chat") {
+			t.Fatalf("item %d's keys do not name T chat: %q", id, rail)
 		}
 		full := strings.Join(rail, rowSep)
 		for _, w := range []int{20, 40, 65, 90, 400} {
@@ -255,9 +255,11 @@ func TestFactoryMarkPeekAndFootShareOneVerbList(t *testing.T) {
 				t.Fatalf("item %d's peek at %d is not a whole prefix of the list:\n%q\n%q", id, w, peek, full)
 			}
 		}
+		// THE FOOT NO LONGER REPEATS THE STRIP (owner decision, 2026-10-08):
+		// it is the floor's navigation, and the strip is the row's alone.
 		a.width = 1000
-		if foot := (placeFactory{}).hint(a); !strings.Contains(foot, full) {
-			t.Fatalf("item %d's foot does not carry the list in order:\n%q\n%q", id, foot, full)
+		if foot := (placeFactory{}).hint(a); strings.Contains(foot, rail[len(rail)-1]) {
+			t.Fatalf("item %d's foot repeats the strip:\n%q\n%q", id, foot, full)
 		}
 		a.width = 160
 	}
@@ -283,15 +285,15 @@ func TestFactoryMarkReadLineSaysWhatItKnows(t *testing.T) {
 	a := factoryMarkLab(t, nil)
 	it := factoryMarkItem(t, a, 4)
 	it.Triage.TriagedAt = a.fp.snap.Now.Add(-3 * time.Minute)
-	if got := ansi.Strip(a.factoryReadLine(it, 80)); got != "read 3m ago · u again" {
+	if got := ansi.Strip(a.factoryReadLine(it, 80)); got != "read 3m ago · u refresh" {
 		t.Fatalf("a timed read says %q", got)
 	}
 	it.Triage.TriagedAt, it.Triage.Read = time.Time{}, ""
-	if got := ansi.Strip(a.factoryReadLine(it, 80)); got != "not read yet · u reads it" {
+	if got := ansi.Strip(a.factoryReadLine(it, 80)); got != "not read yet · u refresh" {
 		t.Fatalf("an unread item says %q", got)
 	}
 	it.Triage.Read = "a read"
-	if got := ansi.Strip(a.factoryReadLine(it, 80)); got != "u reads it again" {
+	if got := ansi.Strip(a.factoryReadLine(it, 80)); got != "u refresh" {
 		t.Fatalf("an untimed read says %q", got)
 	}
 }
