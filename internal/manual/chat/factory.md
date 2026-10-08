@@ -364,8 +364,8 @@ row of the pane.
 
 ## a stage is a room — enter on a stage
 
-A stage that ran as a conversation (plan, write, review: see a stage is a conversation) is a
-room you can walk into. On the item page its rail row has the conversation's mark after its
+A stage that runs or ran as a conversation (plan, write, review: see a stage is a conversation)
+is a room you can walk into. On the item page its rail row has the conversation's mark after its
 name, the trail reads `Factory › codeaf › #12 › review`, and the hint says `enter conversation`.
 `enter` opens it the way `T` opens the item's own conversation: you land in it, the one you were
 in goes on running behind, and the first `esc` on its empty box, with nothing running, comes
@@ -373,8 +373,9 @@ back to the item page on the same stage. While it opens the line above the keys 
 `⠋ opening #12 › review…`.
 
 A stage with no room says why on the pane's last row instead, and opens nothing:
-`review has not started`, `review has no conversation yet · it opens when a round ends` (a
-round's conversation is kept once the round ends), `test is a check · its log is below`,
+`review has not started`, `review has no conversation yet · it opens as the round starts` (a
+round's conversation is on its row from the moment it is made, so you can walk into a stage while
+it works and watch), `test is a check · its log is below`,
 `plan is your answer · it has no conversation` for a gate, `post is a write to github · it has
 no conversation`, `neaten is off on this item`, `neaten is skipped on this item`. The next key
 or a move of the cursor puts the keys back.

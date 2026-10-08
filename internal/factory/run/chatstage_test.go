@@ -287,3 +287,33 @@ func (brokenConv) Captions(context.Context) <-chan string { return nil }
 func (brokenConv) ID() string                             { return "broken" }
 func (brokenConv) Close()                                 {}
 func (brokenConv) Spent() float64                         { return 0.25 }
+
+func TestTheRoomIsNamedBeforeTheRoundEnds(t *testing.T) {
+	var mu sync.Mutex
+	var rooms []string
+	seen := make(chan []string, 1)
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		// The executor names the room right after Open answers, which may be
+		// a moment after this script starts, and always before it reports.
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+			mu.Lock()
+			n := len(rooms)
+			mu.Unlock()
+			if n > 0 {
+				break
+			}
+		}
+		mu.Lock()
+		seen <- append([]string(nil), rooms...)
+		mu.Unlock()
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	job := reviewJob()
+	job.Room = func(chat string) { mu.Lock(); rooms = append(rooms, chat); mu.Unlock() }
+	if _, err := NewChatExecutor(maker).Run(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-seen; len(got) != 1 || got[0] != "fake-1" {
+		t.Fatalf("while the round worked, the room recorded was %q, want [fake-1]", got)
+	}
+}
