@@ -71,7 +71,7 @@ func TestFactoryMockFloorRunsAnItemFromWordsToShipped(t *testing.T) {
 		drive(t, a, key("enter"), key("enter"))
 		a.factoryCloseItem()
 	} else {
-		drive(t, a, key("a"))
+		drive(t, a, key("e"))
 	}
 	if it, _ := a.factoryCursorItem(); it.ID != id || it.State != factory.StateShipped {
 		t.Fatalf("the sign-off left %s in %s", it.Ref(), it.State)

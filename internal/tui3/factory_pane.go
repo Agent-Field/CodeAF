@@ -247,7 +247,10 @@ func (a *app) factoryPeekQuestion(it factory.Item, measure int) []string {
 	if q := strings.TrimSpace(it.Question); q != "" {
 		out = a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ink, factoryPeekWidth(measure))
 	}
-	return append(out, pal.dim(fit(factoryAnswerKeys, measure)))
+	if a.factory.Has("answer") {
+		out = append(out, pal.dim(fit(factoryAnswerKeys, measure)))
+	}
+	return out
 }
 
 // factoryPeekRead is the factory's one-sentence read of the item, in ink with
@@ -415,6 +418,11 @@ func (a *app) factoryPeekChips(it factory.Item, measure int) string {
 // plan stage changed when it changed something ([app.factoryAdaptedRow]).
 func (a *app) factoryPeekStages(it factory.Item, measure int) []string {
 	out := []string{a.factoryPeekStrip(it, measure)}
+	// THE PHASE THAT STOPPED SAYS WHY UNDER THE STRIP, dim: a waiting phase's
+	// note, or the latest failed one's (factory_run.go).
+	if note := factoryPhaseNoteLine(it, factoryStages(a.fp.snap, it)); note != "" {
+		out = append(out, a.pal.dim(fit(note, measure)))
+	}
 	if adapted := a.factoryAdaptedRow(it, measure); adapted != "" {
 		out = append(out, adapted)
 	}
@@ -555,8 +563,8 @@ func factoryRunningLine(it factory.Item, stages []factory.Stage) string {
 		return ""
 	}
 	head := ph.Name
-	if ph.Round > 0 {
-		head += " " + strconv.Itoa(ph.Round) + "/" + strconv.Itoa(max(factoryStageMax(stages, ph.Name), 1))
+	if r := factoryRoundWords(ph.Round, factoryStageMax(stages, ph.Name)); r != "" {
+		head += " " + r
 	}
 	parts := []string{head}
 	seen := map[string]bool{head: true}
@@ -586,13 +594,7 @@ func (a *app) factoryPeekBody(it factory.Item, measure, room int) []string {
 		return nil
 	}
 	if it.State == factory.StateLanded {
-		var out []string
-		for _, c := range it.Proof {
-			out = append(out, a.factoryClaimRow(c, "", measure))
-		}
-		for _, c := range it.Policy {
-			out = append(out, a.factoryClaimRow(c, "policy", measure))
-		}
+		out := a.factorySheetRows(it, measure)
 		if len(out) > room {
 			out = out[:room]
 		}
@@ -658,15 +660,14 @@ func (a *app) factoryTalkRow(it factory.Item, measure int) string {
 func (a *app) factoryTalkFacts(it factory.Item) []string { return nil }
 
 // factoryPhaseWords is a phase's name with what is countable about it: its
-// round over its most when it has one, how many tasks it split into, the
+// round over its most where a stage may run more than one (`review 2/2`,
+// factory_run.go's [factoryRoundWords]), how many tasks it split into, the
 // minutes a running one has left, and a pending one's most rounds.
 func factoryPhaseWords(ph factory.Phase, most int) string {
 	words := ph.Name
 	if ph.Round > 0 {
-		if most > 0 {
-			words += " " + strconv.Itoa(ph.Round) + "/" + strconv.Itoa(most)
-		} else {
-			words += " " + strconv.Itoa(ph.Round)
+		if r := factoryRoundWords(ph.Round, most); r != "" {
+			words += " " + r
 		}
 	} else if ph.State == factory.PhasePending && most > 1 {
 		words += " ×" + strconv.Itoa(most)
@@ -744,9 +745,10 @@ func factoryMergedLine(it factory.Item) string {
 
 // factoryActionWords is the one dim line that names the keys that apply to an
 // item where it stands, in the hint grammar (`key verb · key verb`). THE KEYS
-// ARE THE VERBS' (factory_keys.go); this line only says them. `enter` OPENS
-// THE ITEM PAGE ON EVERY ROW and never launches; a new item runs on `r` or `p`,
-// and a landed one ships from its proof on the item page.
+// ARE THE VERBS' (factory_keys.go); this line only says them, and EACH ONLY
+// WHERE ITS DOOR EXISTS. `enter` OPENS THE ITEM PAGE ON EVERY ROW and never
+// launches; a new item runs on `r` or `p`, and a landed one is signed off with
+// `s`, or with `e` when its sheet has a row nothing showed.
 //
 // `r run` AND `p plan first` ARE SAID ONLY WHERE A LAUNCH STANDS BEHIND THEM,
 // asked of the same predicate the hint line asks ([app.factoryCanRun]). The
@@ -754,26 +756,45 @@ func factoryMergedLine(it factory.Item) string {
 // peek that offered `r run` there named a key that does nothing, in the place
 // a person looks for what to press next.
 func (a *app) factoryActionWords(it factory.Item) string {
+	seam := a.factory
+	words := []string{"enter open"}
+	add := func(ok bool, w string) {
+		if ok {
+			words = append(words, w)
+		}
+	}
+	steer := seam.Has("steer") && it.Stream != nil
 	switch it.State {
 	case factory.StateNeedsYou:
-		return "enter open · y n answer · a in words · x stop"
+		add(seam.Has("answer"), "y n answer")
+		add(seam.Has("answer"), "a in words")
+		add(steer, "S steer")
+		add(seam.Has("stop"), "x stop")
 	case factory.StateRunning:
-		return "enter open · s steer · p pause · x stop"
+		paused := it.Stream != nil && it.Stream.Paused
+		add(steer, "S steer")
+		add(seam.Has("pause") && !paused, "space pause")
+		add(seam.Has("pause") && paused, "space resume")
+		add(seam.Has("stop"), "x stop")
 	case factory.StateQueued:
-		return "enter open · x stop"
+		add(steer, "S steer")
+		add(seam.Has("stop"), "x stop")
 	case factory.StateLanded:
-		if factoryFirstFailed(it) != "" {
-			return "enter open · a ship anyway · c send back · o check again"
-		}
-		return "enter open · c send back · o check again"
+		clean := factoryFirstFailed(it) == ""
+		add(clean && seam.Has("signoff"), "s sign off")
+		// THE PEEK SAYS `e sign off` SHORT, so its narrow last row keeps
+		// every key; the hint line and the sheet say `with changes`.
+		add(!clean && seam.Has("signoff"), "e sign off")
+		add(seam.Has("sendback"), "B send back")
+		add(seam.Has("reverify"), "v check again")
 	case factory.StateShipped:
-		return "enter open"
+	default:
+		add(a.factoryCanRun(), "r run")
+		add(a.factoryCanRun(), "p plan first")
+		add(it.State == factory.StateNew, "space mark")
+		add(seam.Has("dismiss"), "d hide")
 	}
-	words := []string{"enter open"}
-	if a.factoryCanRun() {
-		words = append(words, "r run", "p plan first")
-	}
-	return strings.Join(append(words, "space mark", "d hide"), " · ")
+	return strings.Join(words, " · ")
 }
 
 // ── the pieces ──────────────────────────────────────────────────────────────
@@ -788,18 +809,6 @@ func factoryBodyLines(body string, measure int) []string {
 		}
 	}
 	return out
-}
-
-// factoryLogLine is one line of a stream's grain: the time, a mark for what
-// kind of line it is, coloured by its tone, and the words.
-func (a *app) factoryLogLine(l factory.LogLine, measure int) string {
-	pal := a.pal
-	mark, paint, text := a.factoryTone(l)
-	stamp := ""
-	if !l.At.IsZero() {
-		stamp = pal.dim(l.At.Format("15:04")) + " "
-	}
-	return fit(stamp+paint(mark)+" "+text(l.Text), measure)
 }
 
 // factoryTone is the mark for a log line's tone, through the vocabulary's door,
@@ -832,21 +841,44 @@ func (a *app) factoryTone(l factory.LogLine) (string, func(string) string, func(
 	return mark, pal.muted, pal.muted
 }
 
-// factoryClaimRow is one claim: its mark, its words, and its evidence on the
-// right, with the way to look at a screenshot after one. A claim nothing showed
-// says so in its own row, in the words a person uses: NOT SHOWN.
+// factoryClaimRow is one row of the proof sheet: its mark (`✓` shown, `✕` not,
+// through the vocabulary's door), its words in ink, and at the right its
+// evidence, dim, then its MEDIUM AS A CHIP in a slot of [factoryMediumW], so
+// the evidence ends in one column down the sheet. A row with no medium wears
+// tag (`policy`) in the slot, or air when it has no tag either. A claim
+// nothing showed says so in its own row, in the words a person uses: NOT
+// SHOWN.
 func (a *app) factoryClaimRow(c factory.Claim, tag string, measure int) string {
 	pal := a.pal
 	left := pal.add(a.icon(tokens.GSettled)) + " " + pal.ink(c.Text)
 	if !c.OK {
 		left = pal.bad(a.icon(tokens.GFailed)) + " " + pal.ink(c.Text) + pal.bad(" — not shown")
 	}
-	right := pal.muted(c.Evidence)
-	if tag != "" {
-		right = pal.muted(strings.Join(nonEmpty([]string{c.Evidence, tag}), " · "))
+	medium := strings.TrimSpace(c.Medium)
+	if medium == "" {
+		medium = tag
+	}
+	var parts []string
+	if ev := strings.TrimSpace(c.Evidence); ev != "" {
+		parts = append(parts, pal.dim(ev))
 	}
 	if c.Medium == "screenshot" {
-		right += " " + pal.accent("["+a.linearMark("▦", "#")+" view]")
+		parts = append(parts, pal.accent("["+a.linearMark("▦", "#")+" view]"))
+	}
+	right := strings.Join(parts, " ")
+	// A ROW WITH NO MEDIUM KEEPS THE CHIP'S SLOT AS AIR, so its evidence ends
+	// in the column every other row's does.
+	chip := factorySpaces(factoryMediumW)
+	if medium != "" {
+		chip = pal.muted(fit(medium, factoryMediumW)) + factorySpaces(factoryMediumW-ansi.StringWidth(fit(medium, factoryMediumW)))
+	}
+	switch {
+	case right != "" && (medium != "" || ansi.StringWidth(left)+ansi.StringWidth(right)+factoryGutter*2+factoryMediumW <= measure):
+		// The air is spent only where the row has room for it: a narrow
+		// peek keeps the words `not shown` before it keeps a column.
+		right += factorySpaces(factoryGutter) + chip
+	case right == "" && medium != "":
+		right = chip
 	}
 	return factorySpread(left, right, measure)
 }

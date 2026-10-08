@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
@@ -180,7 +181,13 @@ func TestFactoryAlignItemPage(t *testing.T) {
 			factoryOn(t, a, id)
 			drive(t, a, key("enter"))
 			body := factoryBodyPlain(a, width, 40)
-			if !strings.HasPrefix(strings.TrimSpace(body[0]), "Factory ›") || !strings.HasPrefix(strings.TrimSpace(body[1]), "gate") || strings.TrimSpace(body[2]) != "" {
+			// A PARKED ITEM'S SECOND ROW IS ITS QUESTION, where every other
+			// item's chips stand.
+			second := "gate"
+			if it, _ := a.factoryCursorItem(); it.State == factory.StateNeedsYou {
+				second = "?"
+			}
+			if !strings.HasPrefix(strings.TrimSpace(body[0]), "Factory ›") || !strings.HasPrefix(strings.TrimSpace(body[1]), second) || strings.TrimSpace(body[2]) != "" {
 				t.Errorf("at %d item %d's head is not crumbs, chips, blank:\n%s", width, id, strings.Join(body[:4], "\n"))
 			}
 			left, right, div := factorySplitAt(body[3])
@@ -214,6 +221,62 @@ func TestFactoryAlignChips(t *testing.T) {
 				}
 				at[label] = x
 			}
+		}
+	}
+}
+
+// (h) THE LOG'S TIMES STAND AT THE PANE'S MARGIN AND ITS MARKS ONE STAMP
+// LATER on every line, and (i) THE PROOF SHEET'S MEDIUM CHIPS START IN ONE
+// COLUMN down the sheet, at 160, 120 and 100.
+func TestFactoryAlignLogAndSheet(t *testing.T) {
+	for _, width := range factoryAlignWidths {
+		f := &factoryFake{}
+		a := factoryVerbLab(t, f)
+		a.pal = newPalette(tokens.NoColor, false)
+		a.width = width
+		factoryOn(t, a, 2)
+		drive(t, a, key("enter"))
+		factoryRowNamed(t, a, "log")
+		lines := 0
+		for _, row := range factoryBodyPlain(a, width, 30)[3:] {
+			_, right, div := factorySplitAt(row)
+			if div < 0 || !strings.Contains(right, ":") || strings.Contains(right, " · enter") {
+				continue
+			}
+			r := []rune(right)
+			if x := factoryFirstInk(right); x != factoryMargin || r[factoryMargin+factoryStampW-1] != ' ' || r[factoryMargin+factoryStampW] == ' ' {
+				t.Errorf("at %d a log line's time or mark is out of its column: %q", width, right)
+			}
+			lines++
+		}
+		if lines == 0 {
+			t.Fatalf("at %d the log pane drew no line", width)
+		}
+		drive(t, a, key("esc"))
+
+		factoryOn(t, a, 9)
+		drive(t, a, key("enter"))
+		col := -1
+		for _, row := range factoryBodyPlain(a, width, 30)[3:] {
+			_, right, div := factorySplitAt(row)
+			if div < 0 {
+				continue
+			}
+			for _, medium := range []string{"test", "policy", "screenshot"} {
+				trimmed := strings.TrimRight(right, " ")
+				if !strings.HasSuffix(trimmed, " "+medium) {
+					continue
+				}
+				x := len([]rune(trimmed)) - len([]rune(medium))
+				if col < 0 {
+					col = x
+				} else if x != col {
+					t.Errorf("at %d a medium chip starts at %d, not %d: %q", width, x, col, right)
+				}
+			}
+		}
+		if col < 0 {
+			t.Fatalf("at %d the sheet drew no medium chip", width)
 		}
 	}
 }
