@@ -531,7 +531,7 @@ func factoryFirstReadLab(t *testing.T, shape func(*factory.SourceInfo)) *app {
 // spinning once and never `quiet`, and the bare floor says the read is out.
 func TestFactoryFirstReadSaysWhereTheReadIs(t *testing.T) {
 	a := factoryFirstReadLab(t, func(gh *factory.SourceInfo) {
-		gh.Polling, gh.Reading, gh.Read, gh.Of = true, "Agent-Field/CodeAF", 1, 3
+		gh.Polling, gh.Reading, gh.Read, gh.Of, gh.Items = true, "Agent-Field/CodeAF", 1, 3, 200
 	})
 	spin := a.factorySpin()
 	for _, width := range []int{150, 120, 100} {
@@ -544,7 +544,7 @@ func TestFactoryFirstReadSaysWhereTheReadIs(t *testing.T) {
 				break
 			}
 		}
-		if !strings.Contains(head, spin+" reading Agent-Field/CodeAF · 1 of 3") {
+		if !strings.Contains(head, spin+" reading Agent-Field/CodeAF · 1 of 3 · 200 items so far") {
 			t.Fatalf("at %d the handover does not say where the read is: %q\n%s", width, head, frame)
 		}
 		if strings.Count(head, spin) != 1 {

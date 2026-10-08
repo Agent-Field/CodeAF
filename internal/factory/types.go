@@ -317,11 +317,13 @@ type Item struct {
 	// floor's `g` knows there is nowhere to open.
 	URL string
 	// Comments are the last few things said on the item, oldest first, as its
-	// source keeps them (internal/factory/github reads the last three). Nil is
-	// nothing said, or nothing read yet.
+	// source keeps them (internal/factory/github reads the last three). NIL IS
+	// NOT READ YET and an empty list is read and nothing said: a busy
+	// repository's first read folds its items before their comments.
 	Comments []Comment
 	// Files are a pull request's changed files, the most changed first, at
-	// most twenty; nil for anything that is not a pull request.
+	// most twenty; nil for anything that is not a pull request, or for one
+	// whose files are not read yet (its Diff is then not read yet either).
 	Files []FileChange
 	// CheckRuns are the checks on a pull request's head, one per run. Checks
 	// stays the one-word summary the row draws; these are what the page lists.

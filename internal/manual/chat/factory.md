@@ -799,8 +799,18 @@ The floor reads open issues and open pull requests from the GitHub repositories 
   seconds, so a change reaches the floor without a relaunch.
 - **Why your issues are not showing up yet after you watched a repository:** the first read
   starts the moment you save the picker (`enter` on `R`), within about a second, wherever the
-  poll on this machine runs; while it reads, the floor says which repository it is on and how
-  many of how many are done. GitHub is polled every minute after that.
+  poll on this machine runs; while it reads, the floor says which repository it is on, how
+  many of how many are done and how many items it has listed so far. GitHub is polled every
+  minute after that.
+- **Rows arrive repository by repository as the read goes.** A repository's issues stand on
+  the floor as soon as its list is in, before any comment is read, and its pull requests once
+  theirs are; you do not wait for every repository to finish. A repository that fails to read
+  keeps no one else's rows off the floor and is read again from where it was on the next tick.
+- **On a busy repository the comments fill in over the next minutes.** One read spends at most
+  40 requests on comments and on pull requests' lines and files; past that, items arrive
+  without them and the next reads, a minute apart, fetch the next ones until all are in. An
+  item whose comments are not read yet says `comments not read yet` on its page; one with
+  none says nothing.
 - **The token, in this order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then a token kept in
   the profile, then what `gh auth token` answers, and `gh` is asked only after you have said yes
   to it on the floor. The token is never shown or logged.
@@ -836,10 +846,12 @@ and from then until rows stand the floor says which of four things is true, one 
   anything, the handover's line is `⠋ reading the repositories you watch`, the floor reads
   itself every second, and it keeps saying so until the read reports where it is or rows stand.
   Once the read reports, the handover's line says where it is,
-  `⠋ reading Agent-Field/CodeAF · 1 of 3`, and under it the floor says
+  `⠋ reading Agent-Field/CodeAF · 1 of 3`, and counts the items listed so far once there are
+  some, `⠋ reading Agent-Field/CodeAF · 2 of 3 · 200 items so far`; under it the floor says
   `reading the repositories you watch · rows stand here as issues and pull requests arrive`.
   It does not say `quiet` while a read is out: quiet means nothing is happening and nothing
-  happened. Each open issue and pull request becomes a row as its repository is read.
+  happened. Each open issue and pull request becomes a row as its repository is read, one
+  repository's rows at a time, and comments keep filling in for a few minutes after.
 - **The read has not answered.** After half a minute with no word, the spinner stops and the
   handover's line says `no word from the read yet` (then the source's trouble, if any), and under
   it `the read was asked for and has not answered · R to check the repositories · if codeaf was just updated, restart it`.
@@ -860,6 +872,12 @@ handover (`h`) the facts row carries the same progress in the source's own claus
 `nothing happened while you were away` without `quiet` while the read is out, unanswered or
 failing; a failing read's line says `github · not reachable`.
 
+## does the floor show only new issues or every open one
+
+Every open one. The first read takes every open issue and pull request of each repository you
+watch, however old, and later reads take what changed. `NEW` on the floor means codeaf has not
+done anything with the item yet, not that it is new on GitHub.
+
 ## what github gives an item — comments, changed files, check runs, its page
 
 Each GitHub item on the floor carries, beside its row's words:
@@ -869,7 +887,8 @@ Each GitHub item on the floor carries, beside its row's words:
   `this item is not on github`.
 - **The last three comments**, oldest first, each kept to its first 1000 characters, with who
   said them and when. They are read only when the item is new or its comment count changed, so
-  an item nobody commented on costs no extra request.
+  an item nobody commented on costs no extra request. On a busy repository they arrive over
+  the minutes after the row does, and until then the page says `comments not read yet`.
 - **For a pull request, the changed files:** the 20 with the most changed lines, each with its
   added and removed lines, read once each time the pull request changes.
 - **For a pull request, the check runs** on its head, by name, each with its state (`success`,
