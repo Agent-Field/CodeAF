@@ -465,9 +465,11 @@ landed item, else `issue`. `↑` and `↓` (or `←` and `→`) walk every row, 
 and a click selects one. Under 72 columns the left column is one line above the center.
 
 The bottom line is `↑↓ rows · enter <what enter does here> · esc floor · ? keys`: `enter chat`
-on the issue and the manager, `enter conversation` on a stage with a room, `enter approve` or
+on the issue, `enter talk` on the manager (it puts your keys in the manager's box; see typing to
+the manager), `enter conversation` on a stage with a room, `enter approve` or
 `enter request changes` on a landed item's proof stage; `enter` on `result`, `settings` and
-`log` does nothing. Every verb key works from any row.
+`log` does nothing. Every verb key on the right works from any row; the settings' own keys
+answer only on the `settings` row (see the settings of an item).
 
 ## the verbs on the right of the item page — do, also
 
@@ -485,7 +487,8 @@ There is no `set` group: ask me at, thinking, budget and the stages are the `set
 the left (see the settings of an item).
 
 Click a row or press its key: a click does exactly what the key does. Resting the pointer on a
-row highlights it. The column has no cursor, because every row already has its key. Only what
+row highlights it. While the manager's box has your keys the column is dimmed: every key types
+then, and a click on a dimmed row does nothing (see typing to the manager). The column has no cursor, because every row already has its key. Only what
 works is listed, and a group with nothing in it is not drawn. On a page narrower than 100
 columns there is no column: ask me at, the budget and the thinking stand on the head's second
 row with their keys, and the pane's last row names the verbs. `?` lists every key either way.
@@ -507,8 +510,11 @@ budget     $3            c
 ```
 
 `t` moves where the run stops to ask (plan, pull request, never), `e` turns how hard the model
-thinks, `c` raises the budget, `1` to `9` switch that stage on or off, and `s` adds a stage in
-words. The keys work from any row of the page; this is where you read what they turn. A key is
+thinks, `c` raises the budget, `1` to `9` switch that stage on or off, `s` adds a stage in
+words, `w` sets them in words and `b` saves the stages as the repository's recipe. `t`, `e` and
+`c` work from any row of the page. `1-9`, `s`, `w` and `b` answer on this row only: on any other
+row they do nothing at all, so a letter typed toward the manager never opens
+`+ stage › “after review, make it neater”`. A key is
 shown only where it works: a running item's ask me at and budget have no key, because they
 cannot change mid-run, and its stages carry no numbers. `enter` here does nothing.
 
@@ -522,9 +528,10 @@ number is not a button. Resting the pointer on a crumb highlights it.
 
 ## start a conversation about an issue — enter on the issue row, when enter on the item page does nothing
 
-To chat about an item before anything runs, open it and press `enter` on its `issue` row (or
-its `manager` row): that opens the item's own conversation, exactly as `T` does from anywhere on
-the floor (see chat about an item). On the issue row the bottom line says `enter chat`, and
+To chat about an item before anything runs, open it and press `enter` on its `issue` row: that
+opens the item's own conversation, exactly as `T` does from anywhere on the floor (see chat
+about an item). `enter` on the `manager` row puts your keys in the manager's box instead (see
+typing to the manager). On the issue row the bottom line says `enter chat`, and
 `T chat` stays in the item's verbs. While it opens the line above the keys says
 `⠋ opening #12's conversation…`; the first `esc` on its empty box comes back to the item page.
 
@@ -588,11 +595,28 @@ a second `enter` opens it as a real conversation (once its round has ended), and
 back to the story on the same section. A click on a head opens or folds it; `↑` and `↓` walk
 the heads.
 
-**The box:** the last row is `› say something to the manager`. `enter` on it (or a click) opens
-it for typing; `enter` then opens the item's own conversation, as `T` does, with your words typed
-in its box for you to send there. Before a run the box says
-`› r runs it · or tell me what you want first`, under the issue's one line. Where this window
-cannot make the item's conversation, there is no box.
+**The box:** the last row is `› enter or click to talk to the manager`; before a run it says
+`› enter or click to talk · r runs it`, under the issue's one line. Where this window cannot
+make the item's conversation, there is no box (see typing to the manager).
+
+## typing to the manager — enter the box, the keys type, esc gives the keys back
+
+The manager's box is the last row of the run's story. Your keys go into it four ways: `enter` on
+the `manager` row, `enter` on the box itself (walk down to it with `↓` on the story), `tab` from
+any row whose center is the story (the manager, the run, a stage), or a click on the box.
+
+While the box has your keys:
+
+- every key types, letters that are verbs elsewhere (`s`, `r`, `t`) included;
+- the verbs on the right are dimmed, which means exactly that the keys type now, and a click on
+  a dimmed row does nothing;
+- the empty box says `› say it`, with its cursor drawn;
+- the bottom line is `type · enter send · tab next place · esc back to keys`.
+
+`enter` sends: the item's own conversation opens, as `T` does, with your words typed in its box
+for you to send there. `esc` gives the keys back: the verbs light up, the bottom line comes back,
+and what you typed is kept, so the next `enter` on the box shows it again. `tab` from inside the
+box walks on to the next place. `T chat` still opens the whole conversation from any row.
 
 ## answering a question — y, n, a
 

@@ -117,7 +117,8 @@ func factoryType(t *testing.T, a *app, words string) {
 // EVERY VERB ASKS THE RIGHT DOOR WITH THE RIGHT ARGUMENTS, by the state of the
 // item under the cursor, AND THE SAME ON THE ITEM PAGE: every case is pressed
 // once on the floor and once with the item's page open over it. `enter` on a
-// row opens the page and launches nothing.
+// row opens the page and launches nothing. THE SETTINGS' OWN KEYS (`1-9`,
+// `b`) are pressed on the page's settings row, the one row they answer on.
 func TestFactoryVerbsAskTheRightDoors(t *testing.T) {
 	for _, c := range []struct {
 		id   int
@@ -171,6 +172,9 @@ func TestFactoryVerbsAskTheRightDoors(t *testing.T) {
 				drive(t, a, key("enter"))
 				if !a.fp.open {
 					t.Fatalf("enter on item %d did not open its page", c.id)
+				}
+				if it, _ := a.factoryCursorItem(); a.factorySettingsOnlyKey(it, c.keys[0]) {
+					factoryRowNamed(t, a, wordFacetSettings)
 				}
 			}
 			for _, k := range c.keys {
@@ -586,5 +590,33 @@ func TestFactoryLaunchNoteWaitsForTheNextRead(t *testing.T) {
 		if a.pageMsg != "" {
 			t.Errorf("a second read said the launch again: %q", a.pageMsg)
 		}
+	}
+}
+
+// THE SETTINGS' KEYS ANSWER ON THE SETTINGS ROW ONLY: on the manager row
+// `s`, `w`, `b` and `1` ask nothing, open no row and change nothing on the
+// screen; on the settings row `s` opens the add-a-stage row.
+func TestFactorySettingsKeysOnlyOnTheSettingsRow(t *testing.T) {
+	f := &factoryFake{}
+	a := factoryVerbsLab(t, f, 150)
+	factoryVerbsOpen(t, a, 8)
+	for _, row := range []string{wordFacetManager, wordFacetIssue, wordFacetRun} {
+		factoryRowNamed(t, a, row)
+		before := frame(a)
+		f.said()
+		for _, k := range []string{keyAddStage, keyInWordsSet, keySaveRecipe, "1"} {
+			drive(t, a, key(k))
+			if got := f.said(); len(got) != 0 || a.fp.act.ask != nil {
+				t.Fatalf("%s on the %s row asked %v or opened %+v", k, row, got, a.fp.act.ask)
+			}
+			if after := frame(a); after != before {
+				t.Fatalf("%s on the %s row changed the screen", k, row)
+			}
+		}
+	}
+	factoryRowNamed(t, a, wordFacetSettings)
+	drive(t, a, key(keyAddStage))
+	if ask := a.fp.act.ask; ask == nil || ask.kind != factoryAskStage {
+		t.Fatalf("s on the settings row opened %+v, not the add-a-stage row", ask)
 	}
 }
