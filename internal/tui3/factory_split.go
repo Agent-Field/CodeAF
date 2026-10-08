@@ -37,12 +37,6 @@ import (
 // the cursor there, two open it, a press on the item page's rail selects that
 // row, and a press in the peek's column moves nothing.
 
-// factorySplitStep is how far one press of `{` or `}` moves the divider.
-const factorySplitStep = 4
-
-// factoryPeekMin is the fewest columns the peek may be left with.
-const factoryPeekMin = 40
-
 // factoryPrefsName is the file the floor's own layout is remembered in.
 const factoryPrefsName = "factory.json"
 
@@ -50,6 +44,9 @@ const factoryPrefsName = "factory.json"
 // percent; 0, or a file that is not there, is [factoryRowsShare].
 type factoryPrefs struct {
 	Split float64 `json:"split,omitempty"`
+	// Handover is `h`: true draws the handover's four rows, false (and a file
+	// written before it existed) its one line (factory_head.go).
+	Handover bool `json:"handover,omitempty"`
 }
 
 // factoryPrefsPath is where the floor's layout is remembered for the profile
@@ -183,9 +180,10 @@ func (a *app) factorySplitShown() bool {
 	return !a.fp.open && a.fp.pick == nil && a.fp.recipe == nil && a.factoryFloorHas() && a.factorySplitWidth() >= factoryPaneFloor
 }
 
-// factorySaveSplit writes the divider's share off the loop.
+// factorySaveSplit writes the floor's layout off the loop: the divider's share
+// and the handover's height, both, because the file is replaced whole.
 func (a *app) factorySaveSplit() tea.Cmd {
-	path, p := factoryPrefsPath(a.profileDir), factoryPrefs{Split: a.fp.split}
+	path, p := factoryPrefsPath(a.profileDir), factoryPrefs{Split: a.fp.split, Handover: a.fp.headFull}
 	return func() tea.Msg {
 		_ = writeFactoryPrefs(path, p)
 		return nil

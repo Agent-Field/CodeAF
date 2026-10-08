@@ -45,6 +45,12 @@ type World struct {
 	acc     time.Duration // a Tick shorter than a minute is carried, not lost
 	// set is the floor's own settings, as the mock keeps them (settings.go).
 	set settings
+	// reading is every item a re-read is out on, by id, with the mock
+	// moment it finishes (refresh.go).
+	reading map[int]time.Time
+	// readingAll is how many items the last whole-floor re-read asked for,
+	// 0 when none is out.
+	readingAll int
 }
 
 // run is the simulation's private bookkeeping for one stream: which of the

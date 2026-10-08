@@ -158,8 +158,15 @@ func (a *app) factorySettingsOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // factoryOpenRepos is `R`: who the token is, then the list. NO TOKEN IS THE
 // CONNECT PROMPT and not an empty list, because an empty list would say this
 // account can see nothing, which is not what is true.
+//
+// GITHUB AND gh ARE ASKED WHILE THE NOTE LINE SAYS SO, `⠋ asking gh…`, until
+// the list or the prompt stands (factory_busy.go).
 func (a *app) factoryOpenRepos() tea.Cmd {
 	seam := a.factory
+	a.fp.act.doing = "asking gh…"
+	if seam.GitHub == nil || seam.ConnectGitHub == nil {
+		a.fp.act.doing = "asking github…"
+	}
 	return a.offLoop(func() func(bool) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), factoryForgeWait)
 		defer cancel()
@@ -170,6 +177,7 @@ func (a *app) factoryOpenRepos() tea.Cmd {
 			if err != nil || !link.Connected() {
 				login := factoryGHLogin(ctx, seam)
 				return func(bool) tea.Cmd {
+					a.fp.act.doing = ""
 					a.factoryConnectPrompt(login)
 					return nil
 				}
@@ -177,6 +185,7 @@ func (a *app) factoryOpenRepos() tea.Cmd {
 		}
 		watched, available, err := seam.Repos(ctx)
 		return func(bool) tea.Cmd {
+			a.fp.act.doing = ""
 			if err != nil {
 				a.factorySay("github did not list the repositories · " + strings.TrimSpace(err.Error()))
 				return nil
@@ -311,6 +320,7 @@ func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 // watched ones now, and the note line says how many and how often.
 func (a *app) factorySaveRepos() tea.Cmd {
 	list := a.fp.pick.watching()
+	a.fp.act.doing = "saving…"
 	return a.factoryDo(func(s factory.Seam) error { return s.SetRepos(list) }, func(err error) {
 		if err != nil {
 			return
@@ -338,7 +348,7 @@ func factoryWatchingWords(n int) string {
 //	[ ] santoshkumarradha/notes                                     pushed 3w
 func (a *app) factoryPickerBody(width, room int) []placeRow {
 	pal, p := a.pal, a.fp.pick
-	measure := max(width-2, 0)
+	measure := max(width-factoryMargin, 0)
 	heading := "watch" + rowSep + "repositories"
 	if p.login != "" {
 		heading += " github sees as " + p.login
@@ -380,7 +390,7 @@ func (a *app) factoryPickerBody(width, room int) []placeRow {
 			}
 			row := factorySpread(mark+" "+name, pal.dim(factoryPickFacts(r, now)), measure)
 			if i == p.cursor {
-				row = pal.cursor(factoryPad(row, measure), measure)
+				row = pal.selected(factoryPad(row, measure), measure)
 			}
 			lines = append(lines, row)
 			p.shown++
@@ -773,6 +783,7 @@ func factoryKnobSegments(words string) []string {
 func (a *app) factorySaveRecipe() tea.Cmd {
 	p := a.fp.recipe
 	repo, r := p.repo, factoryCopyRecipe(p.recipe)
+	a.fp.act.doing = "saving…"
 	return a.factoryDo(func(s factory.Seam) error { return s.SaveRecipe(repo, r) }, func(err error) {
 		if err == nil {
 			a.factorySay("saved to " + factory.RecipeFile + rowSep + "new work on " + factoryRepoShort(repo) + " runs it")
@@ -786,15 +797,15 @@ func (a *app) factorySaveRecipe() tea.Cmd {
 // stage's pane as the item page draws them (or one line of stages above it
 // under [factoryStageFloor]).
 //
-//	issue · pr · ci                                         recipe · codeaf
+//	Factory › codeaf › recipe                               issue · pr · ci
 //	line 7: until is one of done, clean, green, proven
 //
 //	● plan              │ plan · chat · gate plan · when large
 //	○ write             │ make the change
 func (a *app) factoryRecipeBody(width, room int) []placeRow {
 	pal, p := a.pal, a.fp.recipe
-	measure := max(width-factoryPaneLead, 0)
-	lead := strings.Repeat(" ", factoryPaneLead)
+	measure := max(width-factoryMargin, 0)
+	lead := factorySpaces(factoryMargin)
 	var tabs []string
 	for i, k := range factoryRecipeKinds {
 		if i == p.kind {
@@ -803,7 +814,10 @@ func (a *app) factoryRecipeBody(width, room int) []placeRow {
 			tabs = append(tabs, pal.dim(string(k)))
 		}
 	}
-	lines := []string{lead + factorySpread(strings.Join(tabs, pal.dim(rowSep)), pal.muted("recipe"+rowSep+factoryRepoShort(p.repo)), measure)}
+	// THE HEAD IS THE TRAIL OF CRUMBS the item page wears (factory_item.go's
+	// [app.factoryCrumbs]), `Factory › codeaf › recipe`, with the kind tabs
+	// at the right.
+	lines := []string{lead + factorySpread(a.factoryCrumbs(p.repo)+pal.ink("recipe"), strings.Join(tabs, pal.dim(rowSep)), measure)}
 	if len(p.problems) > 0 {
 		pr := p.problems[0]
 		words := "line " + itoa(pr.Line) + ": " + pr.Why
@@ -828,9 +842,9 @@ func (a *app) factoryRecipeBody(width, room int) []placeRow {
 			lines = append(lines, lead+line)
 		}
 	default:
-		paneW := width - factoryStageCols - 1
+		paneW := width - factoryRailW - 1
 		rail := a.factoryStageRail(views, left)
-		pane := a.factoryRecipePane(views, max(paneW-factoryPaneLead, 0), left)
+		pane := a.factoryRecipePane(views, max(paneW-factoryMargin, 0), left)
 		sep := pal.dim(a.linearMark("│", "|"))
 		for i := 0; i < left; i++ {
 			right := ""

@@ -102,6 +102,17 @@ type Seam struct {
 	// default.
 	Talk func(ctx context.Context, id int) (chat string, err error)
 
+	// THE FORGE'S OWN DOORS ON ONE ITEM. Open is the item's page on its
+	// source, "" when it has none; the surface hands it to the platform's
+	// opener. Refresh reads one item again (its words, its thread, its checks
+	// and the cheap read), and RefreshAll every item on the floor; each
+	// answers what it costs, and under [DryRun] answers that without doing
+	// anything, so the surface can ask first. The work runs on; the snapshot's
+	// Busy says while it does.
+	Open       func(id int) (url string)
+	Refresh    func(ctx context.Context, id int) (usd float64, err error)
+	RefreshAll func(ctx context.Context) (items int, usd float64, err error)
+
 	// Tick advances a mock clock by d. A real engine leaves it nil and the
 	// surface draws no speed, no sleep.
 	Tick func(d time.Duration) error
@@ -174,6 +185,12 @@ func (s Seam) Has(door string) bool {
 		return s.SetRail != nil
 	case "talk":
 		return s.Talk != nil
+	case "open":
+		return s.Open != nil
+	case "refresh":
+		return s.Refresh != nil
+	case "refreshall":
+		return s.RefreshAll != nil
 	case "tick":
 		return s.Tick != nil
 	case "sleep":

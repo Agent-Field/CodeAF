@@ -1,7 +1,7 @@
 package tui3
 
 import (
-	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -41,21 +41,6 @@ import (
 // The item page (factory_item.go) is how a person sees an item whole at any
 // width; the peek is a glance, drawn only where there is room for one beside
 // rows that still carry their facts.
-
-// factoryPaneFloor is the narrowest terminal that draws the peek beside the
-// rows.
-const factoryPaneFloor = 120
-
-// factoryFactsFloor is the narrowest terminal whose rows carry the repo, the
-// facts and the age. Under it a row is its lead, its ref and its title.
-const factoryFactsFloor = 90
-
-// factoryRowsShare and factoryRowsMin size the rows' column beside the peek:
-// a share of the width in percent, and the fewest columns it may have.
-const (
-	factoryRowsShare = 58
-	factoryRowsMin   = 70
-)
 
 // factoryHeadLeaves is the fewest rows the floor keeps for its own rows under
 // the handover. A frame shorter than the handover and these draws no handover,
@@ -176,6 +161,33 @@ type factoryPage struct {
 	splitRead bool
 	dragging  bool
 	bodyW     int
+
+	// THE STABLE ORDER (factory_order.go). pos is each item's place inside
+	// its section, by id, lower first; posState the state it had when it was
+	// placed, so a move to another section is seen; posTop the lowest place
+	// handed out, which the next arrival goes above. A re-read keeps every
+	// place it finds; only `O`, an arrival and a change of state hand out a
+	// new one. Nothing here is persisted.
+	pos      map[int]int
+	posState map[int]factory.State
+	posTop   int
+	// firstHeading is the drawn row the rail's first section heading stood
+	// on at the last draw, -1 for none: the peek's title stands level with it.
+	firstHeading int
+	// titleCols is the title column the last rail draw measured, which the
+	// comfortable density wraps a long title at ([factoryRowTitle2]).
+	titleCols int
+
+	// headFull is `h`: the handover's four rows rather than its one line,
+	// remembered with the split in `factory.json` (factory_split.go).
+	headFull bool
+
+	// THE FLOOR'S WORK IN FLIGHT (factory_busy.go). busySince is when each
+	// busy item was first seen busy, so its row can count up; rereads are the
+	// items `u` asked to read again, by id, with what the door said the read
+	// costs, kept until the floor says the read is over.
+	busySince map[int]time.Time
+	rereads   map[int]float64
 }
 
 // factoryRowsCols is the rows' columns at width with the divider where it
@@ -211,7 +223,7 @@ func (a *app) factoryRead() tea.Cmd {
 		return func(bool) tea.Cmd {
 			a.fp.reading = false
 			if read && !a.fp.splitRead {
-				a.fp.split, a.fp.splitRead = prefs.Split, true
+				a.fp.split, a.fp.headFull, a.fp.splitRead = prefs.Split, prefs.Handover, true
 			}
 			if err != nil {
 				a.fp.err = err
@@ -238,9 +250,16 @@ func (a *app) factoryLaunchRead() tea.Cmd {
 // factoryFold takes one snapshot in. THE CURSOR STAYS ON THE ITEM IT WAS ON, by
 // id, because a re-read three seconds later may have moved that item to another
 // group and a cursor kept by position would land on a stranger.
+//
+// AND THE ROWS STAY WHERE THEY STOOD (factory_order.go's [app.factoryPlace]):
+// a re-read that changed an item's priority or its age moves nothing, and only
+// an arrival or a change of state hands a row a new place. What the floor says
+// about work in flight is folded in on the same pass ([app.factoryFoldBusy]).
 func (a *app) factoryFold(snap factory.Snapshot) {
 	was, had := a.factoryCursorItem()
 	a.fp.snap, a.fp.loaded, a.fp.err = snap, true, nil
+	a.factoryPlace(false)
+	a.factoryFoldBusy()
 	a.factoryKeep(was, had)
 }
 
@@ -344,7 +363,7 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	a.fp.rowsW, a.fp.bodyW = rowsW, width
 	paneW := 0
 	if rowsW < width {
-		paneW = width - rowsW - 1
+		paneW = width - rowsW - factoryRuleW
 	}
 	rows := make([]placeRow, 0, room)
 	// THE HANDOVER SPANS THE WHOLE WIDTH, ABOVE BOTH COLUMNS. It carries its
@@ -370,33 +389,46 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		footW = width
 	}
 	foot := a.factoryFoot(footW, left)
+	// THE FLOOR'S OWN FOOT ROWS (`n`, and `U`'s question) stand under the
+	// rows instead, at the rows' whole width, when there is a peek to leave
+	// alone ([app.factoryFootOnRows]).
+	var rowsFoot []string
+	if paneW > 0 && a.factoryFootOnRows() {
+		foot = a.factoryFootSide(paneW, left, false)
+		rowsFoot = a.factoryFootSide(rowsW, left, true)
+	}
 	above := left - len(foot)
-	railRoom := left
+	railRoom := left - len(rowsFoot)
 	if paneW == 0 {
 		railRoom = above
 	}
-	// THE ROWS STAND ONE CELL IN FROM THE FRAME'S EDGE, like the handover
-	// above them and the hint below, so a group's heading and the handover's
-	// mark share a column; and beside the peek they keep one cell of air before
-	// the rule, so an age never touches it.
-	railW := rowsW - 1
+	// THE ROWS STAND [factoryMargin] IN FROM THE FRAME'S EDGE, like the
+	// handover above them, so a group's heading and the handover's mark share
+	// a column; and beside the peek the divider's air cell keeps an age off
+	// the rule.
+	railW := rowsW - factoryMargin
 	if paneW > 0 {
-		railW--
+		railW -= factoryDividerW - factoryRuleW
 	}
 	rail, hits := a.factoryRail(max(railW, 0), railRoom)
 	if a.factoryBare() {
 		rail, hits = a.factoryBareRail(max(railW, 0), railRoom)
 	}
 	for i := range rail {
-		rail[i] = factoryPad(" "+rail[i], rowsW)
+		rail[i] = factoryPad(factoryMarginPad()+rail[i], rowsW)
 	}
+	// THE PEEK'S TITLE STANDS LEVEL WITH THE ROWS' FIRST SECTION HEADING
+	// (owner ruling, 2026-10-08), so the two columns start their content on
+	// one row; the repo line above the heading has nothing beside it.
 	var pane []string
 	if paneW > 0 {
-		pane = append(a.factoryPane(paneW, above), foot...)
+		off := min(max(a.fp.firstHeading, 0), max(above, 0))
+		pane = append(make([]string, off), a.factoryPane(paneW, above-off)...)
+		pane = append(pane, foot...)
 	}
 	sep := a.pal.dim(a.linearMark("│", "|"))
 	for i := 0; i < left; i++ {
-		line := strings.Repeat(" ", rowsW)
+		line := factorySpaces(rowsW)
 		hit := -1
 		if i < len(rail) {
 			line, hit = rail[i], hits[i]
@@ -411,6 +443,9 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		right := ""
 		if i < len(pane) {
 			right = pane[i]
+		}
+		if at := i - (left - len(rowsFoot)); at >= 0 && at < len(rowsFoot) {
+			line, hit = rowsFoot[at], -1
 		}
 		rows = append(rows, placeRow{text: line + sep + factoryPad(right, paneW), hit: hit})
 	}
@@ -445,9 +480,20 @@ func (a *app) factoryBareRail(width, room int) ([]string, []int) {
 // exactly width cells, each on the pane's lead, and never more than room of
 // them: the newest, the typing row, are the ones kept.
 func (a *app) factoryFoot(width, room int) []string {
+	return a.factoryFootFrom(a.factoryFootRows(width-factoryMargin), width, room)
+}
+
+// factoryFootSide is one side's foot rows ([app.factoryFootRowsWhere]) laid
+// out as [app.factoryFoot] lays them.
+func (a *app) factoryFootSide(width, room int, rows bool) []string {
+	return a.factoryFootFrom(a.factoryFootRowsWhere(width-factoryMargin, rows), width, room)
+}
+
+// factoryFootFrom pads foot rows to whole rows on the pane's lead, newest kept.
+func (a *app) factoryFootFrom(rows []string, width, room int) []string {
 	var foot []string
-	for _, row := range a.factoryFootRows(width - factoryPaneLead) {
-		foot = append(foot, factoryPad(strings.Repeat(" ", factoryPaneLead)+row, width))
+	for _, row := range rows {
+		foot = append(foot, factoryPad(factorySpaces(factoryMargin)+row, width))
 	}
 	if len(foot) > room {
 		foot = foot[len(foot)-max(room, 0):]
@@ -485,5 +531,5 @@ func factoryPad(s string, width int) string {
 		return ""
 	}
 	s = fit(s, width)
-	return s + strings.Repeat(" ", max(width-ansi.StringWidth(s), 0))
+	return s + factorySpaces(max(width-ansi.StringWidth(s), 0))
 }

@@ -305,6 +305,45 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+
+	// WHAT THE FORGE SAYS ABOUT THE ITEM, beyond its words, each empty when the
+	// source does not know it (the emptiness law: the surface draws no block
+	// for an empty one). URL is the item's own page on its source, "" for work
+	// that lives only on this machine; Comments are its thread, oldest first;
+	// Files is a pull request's changed files; CheckRuns its checks; Activity
+	// what happened to it, oldest first.
+	URL       string
+	Comments  []Comment
+	Files     []FileChange
+	CheckRuns []CheckRun
+	Activity  []Event
+}
+
+// Comment is one comment on an item's thread: who wrote it, its words in
+// Markdown as they were written, and when.
+type Comment struct {
+	Author, Body string
+	At           time.Time
+}
+
+// FileChange is one file a pull request changes, with its lines added and
+// removed.
+type FileChange struct {
+	Path           string
+	Added, Removed int
+}
+
+// CheckRun is one check on a pull request or a commit: its name, its state as
+// the forge says it (`success`, `failure`, `pending`, …), and its page.
+type CheckRun struct {
+	Name, State, URL string
+}
+
+// Event is one thing that happened to an item, in a few words: `labelled
+// factory`, `closed by santosh`.
+type Event struct {
+	At   time.Time
+	What string
 }
 
 // Ref is the item's short name: #123, or ci.
@@ -371,6 +410,13 @@ type Snapshot struct {
 	Shift   Shift
 	Speed   time.Duration // the mock's clock; zero for a real engine
 	Sources []SourceInfo  // what is connected; the chat is always one
+	// Busy is every item something is being done to right now, by id, in one
+	// word the surface draws after a spinner: `reading` while its first read
+	// is out, `refreshing` while a person's re-read is. An item not in it is
+	// at rest. BusyAll is a re-read of the whole floor in flight, in the words
+	// the handover draws (`refreshing 8 items · 3 done`), "" when none is.
+	Busy    map[int]string
+	BusyAll string
 }
 
 // RepoNamed finds a repo in the snapshot.

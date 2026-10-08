@@ -16,11 +16,21 @@ import (
 // THE CHOICE LASTS THE SESSION. The density toggle (`z`) is not saved either,
 // and the two are the same kind of thing: how a person likes to look at the
 // floor right now, not a setting to manage.
+//
+// AND AN ORDER IS APPLIED, NOT KEPT (owner ruling, 2026-10-08, after a demo
+// floor shuffled under the cursor on every read). The rows are sorted when
+// the floor is first read and when `O` is pressed; after that a row keeps its
+// place across every re-read, whatever the read changed about it. Two things
+// move a row: an ARRIVAL, which slides in at the top of its section, and a
+// CHANGE OF STATE, which moves it to the top of its new one ([app.factoryPlace]).
 type factoryOrder int
 
 const (
-	// factoryOrderObligation is today's order: the store's, newest first.
-	factoryOrderObligation factoryOrder = iota
+	// factoryOrderPriority is the default: the cheap read's priority, 1
+	// first and an item with none after every item with one, then the forge
+	// number descending, the newest issue first (the floor's own id for work
+	// a chat or a terminal made, which has no forge number).
+	factoryOrderPriority factoryOrder = iota
 	// factoryOrderFirst is the cheap read's guess at what to take first:
 	// priority 1 before 5, then the older item first, and an item with no
 	// priority after every item with one. Rows draw the read's reason.
@@ -35,7 +45,7 @@ const (
 )
 
 // factoryOrderWords is each order as the hint line names it.
-var factoryOrderWords = [factoryOrders]string{"by obligation", "first", "age", "cost"}
+var factoryOrderWords = [factoryOrders]string{"priority", "first", "age", "cost"}
 
 func (o factoryOrder) word() string {
 	if o < 0 || o >= factoryOrders {
@@ -50,17 +60,91 @@ func (o factoryOrder) next() factoryOrder { return (o + 1) % factoryOrders }
 // floor is in now: `O order · first`.
 func (a *app) factoryOrderHint() string { return "O order · " + a.fp.order.word() }
 
-// factoryCycleOrder is `O`: the next order, with the cursor kept on the item
-// it stood on.
+// factoryCycleOrder is `O`: the next order, applied now, with the cursor kept
+// on the item it stood on.
 func (a *app) factoryCycleOrder() {
-	a.factoryRefocus(func() { a.fp.order = a.fp.order.next() })
+	a.factoryRefocus(func() {
+		a.fp.order = a.fp.order.next()
+		a.factoryPlace(true)
+	})
+}
+
+// factoryNumber is the number the default order counts down: the forge's
+// number, and the floor's own id for an item that has none.
+func factoryNumber(it factory.Item) int {
+	if it.Num > 0 && (it.Origin == factory.OriginForge || it.Origin == "") {
+		return it.Num
+	}
+	return it.ID
+}
+
+// factoryPlace hands each item on the floor its place inside its section. ON
+// THE FIRST READ, OR WHEN all IS SET (`O`), every item is placed by the order
+// the floor is in. Otherwise an item keeps the place it has, and only an item
+// the floor has not placed yet, or one whose state changed, is placed again,
+// above every place handed out so far; several arriving on one read stand in
+// the order's own order among themselves.
+func (a *app) factoryPlace(all bool) {
+	snap := a.fp.snap
+	if all || a.fp.pos == nil {
+		a.fp.pos, a.fp.posState, a.fp.posTop = map[int]int{}, map[int]factory.State{}, 0
+		for _, g := range factoryGroups {
+			var in []int
+			for i, it := range snap.Items {
+				if factoryIn(it.State, g.states) {
+					in = append(in, i)
+				}
+			}
+			for _, i := range factoryOrdered(snap, in, a.fp.order) {
+				it := snap.Items[i]
+				a.fp.pos[it.ID] = len(a.fp.pos)
+				a.fp.posState[it.ID] = it.State
+			}
+		}
+		return
+	}
+	var fresh []int
+	for i, it := range snap.Items {
+		if st, ok := a.fp.posState[it.ID]; !ok || st != it.State {
+			fresh = append(fresh, i)
+		}
+	}
+	fresh = factoryOrdered(snap, fresh, a.fp.order)
+	for n := len(fresh) - 1; n >= 0; n-- {
+		it := snap.Items[fresh[n]]
+		a.fp.posTop--
+		a.fp.pos[it.ID] = a.fp.posTop
+		a.fp.posState[it.ID] = it.State
+	}
+}
+
+// factoryPlaced sorts one section's rows by the places the page handed out,
+// stably, so a row with no place keeps the order's own position after every
+// row that has one. A view with no places is the order alone.
+func factoryPlaced(snap factory.Snapshot, in []int, pos map[int]int) []int {
+	if len(pos) == 0 || len(in) < 2 {
+		return in
+	}
+	at := func(i int) (int, bool) {
+		p, ok := pos[snap.Items[i].ID]
+		return p, ok
+	}
+	out := append([]int(nil), in...)
+	sort.SliceStable(out, func(i, j int) bool {
+		pi, oki := at(out[i])
+		pj, okj := at(out[j])
+		if oki != okj {
+			return oki
+		}
+		return oki && pi < pj
+	})
+	return out
 }
 
 // factoryOrdered sorts one section's rows (indexes into snap.Items) by o. The
-// sort is stable, so ties keep the store's order, and the default order is
-// the rows untouched.
+// sort is stable, so ties keep the store's order.
 func factoryOrdered(snap factory.Snapshot, in []int, o factoryOrder) []int {
-	if o == factoryOrderObligation || len(in) < 2 {
+	if len(in) < 2 {
 		return in
 	}
 	items := snap.Items
@@ -73,6 +157,17 @@ func factoryOrdered(snap factory.Snapshot, in []int, o factoryOrder) []int {
 	}
 	var less func(x, y factory.Item) bool
 	switch o {
+	case factoryOrderPriority:
+		less = func(x, y factory.Item) bool {
+			px, py := x.Triage.Priority, y.Triage.Priority
+			if (px == 0) != (py == 0) {
+				return px != 0
+			}
+			if px != py {
+				return px < py
+			}
+			return factoryNumber(x) > factoryNumber(y)
+		}
 	case factoryOrderFirst:
 		less = func(x, y factory.Item) bool {
 			px, py := x.Triage.Priority, y.Triage.Priority
@@ -125,9 +220,9 @@ func (a *app) factoryOrderReason(it factory.Item, room int) (string, int) {
 	if r == "" {
 		return "", 0
 	}
-	w := ansi.StringWidth(r) + 2
+	w := ansi.StringWidth(r) + factoryGutter
 	if w > room {
 		return "", 0
 	}
-	return a.pal.dim(r) + "  ", w
+	return a.pal.dim(r) + factorySpaces(factoryGutter), w
 }
