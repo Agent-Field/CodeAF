@@ -3592,6 +3592,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if soon := a.factoryReadSoonWake(); soon != nil {
 		cmd = tea.Batch(cmd, soon)
 	}
+	// AND THE OPEN ITEM PAGE'S TIMELINE READS WHAT ITS STAGE TRANSCRIPTS
+	// GREW BY, off the loop, on the same beat (factory_timeline.go).
+	if grew := a.factoryTimelineWake(); grew != nil {
+		cmd = tea.Batch(cmd, grew)
+	}
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd

@@ -276,13 +276,18 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 		}
 		drive(t, a, key("enter"))
 		said := a.fp.said
-		if c.stage != "issue" && c.stage != "result" && !said {
-			t.Fatalf("enter on item %d's stage did not say what it will open", c.id)
+		// `enter` on a stage dives into its story (factory_timeline.go) when
+		// it has one, and otherwise says what it will open.
+		if c.stage != "issue" && c.stage != "result" && !said && !a.fp.tl.diving {
+			t.Fatalf("enter on item %d's stage neither dived in nor said what it will open", c.id)
 		}
 		// `enter` on the issue opens the item's conversation (or its github
 		// page), and says there is nothing to open only where neither door is.
 		if c.stage == "issue" && said != (a.factoryIssueEnter(it) == factoryIssueNone) {
 			t.Fatalf("enter on item %d's issue: said %v with door %v", c.id, said, a.factoryIssueEnter(it))
+		}
+		if a.fp.tl.diving {
+			drive(t, a, key("esc")) // climbs out of the stage's story first
 		}
 		drive(t, a, key("esc"))
 		if a.fp.open || !a.at(pageFactory) || a.fp.cursor != was {

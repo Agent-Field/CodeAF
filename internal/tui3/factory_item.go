@@ -282,6 +282,7 @@ func (a *app) factoryStageSelect(at int) {
 	a.fp.stage = at
 	a.fp.said = false
 	a.pageMsg = ""
+	a.factoryTLFollowRow()
 	a.touch()
 }
 
@@ -311,6 +312,15 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	k := msg.String()
 	if a.fp.open {
+		// A DIVE INTO A STAGE hears `esc` first: it climbs back to the story
+		// (factory_timeline.go), and only the story's `esc` leaves the page.
+		if a.fp.tl.diving && k == "esc" {
+			if it, ok := a.factoryCursorItem(); ok {
+				if cmd, took := a.factoryTimelineKey(it, msg); took {
+					return cmd, true
+				}
+			}
+		}
 		switch k {
 		case "esc":
 			a.factoryCloseItem()

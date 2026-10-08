@@ -101,6 +101,12 @@ func TestFactoryStageRoomOpensAndEscComesBack(t *testing.T) {
 	if hint := (placeFactory{}).hint(a); !strings.Contains(hint, "enter conversation") {
 		t.Fatalf("the hint does not name the room: %q", hint)
 	}
+	// THE FIRST `enter` DIVES INTO THE STAGE'S STORY in the centre
+	// (factory_timeline.go); the second opens the conversation itself.
+	drive(t, a, key("enter"))
+	if !a.fp.tl.diving || opened != "" {
+		t.Fatalf("the first enter did not dive in (diving %v, opened %q)", a.fp.tl.diving, opened)
+	}
 	drive(t, a, key("enter"))
 	if opened != chat || a.pageShowing() {
 		t.Fatalf("enter on the room opened %q (page showing %v), want %q", opened, a.pageShowing(), chat)
