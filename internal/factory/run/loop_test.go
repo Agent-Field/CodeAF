@@ -267,18 +267,18 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "review is not clean after 2 round(s): 2 findings · one more round, or go on as is?"
+	q := "review is not clean after 2 rounds: 2 findings · one more round, or go on as is?"
 	it := g.asked(id, q)
 	if calls.Load() != 2 || it.QKind != "scope" {
 		t.Fatalf("calls %d, kind %q", calls.Load(), it.QKind)
 	}
-	if ph := it.Stream.Phases[0]; ph.State != factory.PhaseFailed || ph.Note != "review is not clean after 2 round(s)" || ph.Round != 2 {
+	if ph := it.Stream.Phases[0]; ph.State != factory.PhaseFailed || ph.Note != "review is not clean after 2 rounds" || ph.Round != 2 {
 		t.Fatalf("phase = %+v", ph)
 	}
 	if err := g.r.Answer(id, true, ""); err != nil {
 		t.Fatal(err)
 	}
-	g.asked(id, "review is not clean after 3 round(s): 2 findings · one more round, or go on as is?")
+	g.asked(id, "review is not clean after 3 rounds: 2 findings · one more round, or go on as is?")
 	if calls.Load() != 3 {
 		t.Fatalf("one more round ran %d calls", calls.Load())
 	}
@@ -286,7 +286,7 @@ func TestUntilCleanWithMaxTwoLoopsTwiceThenAsks(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateLanded)
-	if it.Stream.Phases[0].State != factory.PhaseDone || !logHas(it, "going on as is · review is not clean after 3 round(s)") {
+	if it.Stream.Phases[0].State != factory.PhaseDone || !logHas(it, "going on as is · review is not clean after 3 rounds") {
 		t.Fatalf("going on = %+v", it.Stream)
 	}
 }
@@ -737,5 +737,19 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 	it = g.waitState(id, factory.StateLanded)
 	if it.Cap != 2 || !logHas(it, "cap raised to $2 · carrying on") {
 		t.Fatalf("cap %v log %+v", it.Cap, it.Stream.Log)
+	}
+}
+
+// TestARoundCountIsSaidTheWayAPersonSaysIt pins the stop note's count: `after 1
+// round` and `after 2 rounds`, never `round(s)`, and a shortfall of one
+// finding is `1 finding`.
+func TestARoundCountIsSaidTheWayAPersonSaysIt(t *testing.T) {
+	for n, want := range map[int]string{1: "1 round", 2: "2 rounds", 3: "3 rounds"} {
+		if got := roundsWord(n); got != want {
+			t.Errorf("roundsWord(%d) = %q, want %q", n, got, want)
+		}
+	}
+	if got := shortfall(factory.StageResult{Done: true, Findings: 1}); got != "1 finding" {
+		t.Errorf("one finding reads %q", got)
 	}
 }

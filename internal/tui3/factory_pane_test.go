@@ -303,12 +303,12 @@ func TestFactoryPeekLandedLadder(t *testing.T) {
 			t.Fatalf("the claims are missing %q:\n%s", want, claims)
 		}
 	}
-	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open" {
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · d diff" {
 		t.Fatalf("the still fixture's landed keys are %q", last)
 	}
 	a.factory = (&factoryFake{}).seam()
 	rows = factoryPaneOn(t, a, 9, factoryPaneW(150), 30)
-	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · e sign off · B send back · v check again" {
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · e sign off with changes · B send back" {
 		t.Fatalf("the action line is %q", last)
 	}
 }

@@ -27,6 +27,12 @@ import (
 //     priority cell spins and its last fact is `reading…` or `refreshing…`;
 //     the peek's read block says `reading…` while the read is still empty;
 //     the item page's read line counts up the seconds.
+//   - AN ITEM WAITING ITS TURN, which the floor says with any other busy word
+//     ([factory.BusyWaiting]): ONLY THE ROW BEING READ SPINS. A row merely
+//     queued behind it wears a still dim dot in the priority cell and `waiting
+//     to read` as its last fact, because a whole floor's re-read that spun
+//     every row it would reach made "queued" and "reading now" one mark, and
+//     spent the accent once per row (factory_marks.go's [app.factoryRowSpins]).
 //   - THE WHOLE FLOOR BEING READ AGAIN, from [factory.Snapshot.BusyAll], and a
 //     source mid-poll, from [factory.SourceInfo.Polling]: the handover's facts
 //     clause spins.
@@ -241,10 +247,17 @@ func (a *app) factoryDoingNote() string {
 
 // factoryReadLine is the item page's line about the cheap read: when it was
 // made and the key that makes it again, `read 3m ago · u again`; while one is
-// in flight, the spinner and the seconds it has taken, `⠋ reading · 4s`. A
-// read never made, on a seam with no door to make it, is no line.
+// in flight, the spinner and the seconds it has taken, `⠋ reading · 4s`; while
+// it waits its turn, `waiting to read`, still. A read never made says so, `not
+// read yet · u reads it`, and a read whose time nobody kept says only `u reads
+// it again`. THE KEY IS NEVER A LINE ON ITS OWN: a bare `u again` under the
+// body read as a placeholder. A seam with no door to read says no key, and an
+// unread item on one is no line.
 func (a *app) factoryReadLine(it factory.Item, measure int) string {
 	pal := a.pal
+	if a.factoryRowWaits(it.ID) {
+		return pal.dim(fit(factoryWaitWords, measure))
+	}
 	if word, busy := a.factoryBusy(it.ID); busy {
 		line := word
 		if at, ok := a.fp.busySince[it.ID]; ok {
@@ -254,16 +267,23 @@ func (a *app) factoryReadLine(it factory.Item, measure int) string {
 		}
 		return fit(pal.accent(a.factorySpin())+" "+pal.dim(line), measure)
 	}
+	door := a.factory.Has("refresh")
 	var parts []string
-	if at := it.Triage.TriagedAt; !at.IsZero() && !a.fp.snap.Now.IsZero() {
+	switch at := it.Triage.TriagedAt; {
+	case !at.IsZero() && !a.fp.snap.Now.IsZero():
 		if ago := factoryAgo(a.fp.snap.Now.Sub(at)); ago == "now" {
 			parts = append(parts, "read just now")
 		} else {
 			parts = append(parts, "read "+ago+" ago")
 		}
-	}
-	if a.factory.Has("refresh") {
-		parts = append(parts, "u again")
+		if door {
+			parts = append(parts, "u again")
+		}
+	case !door:
+	case strings.TrimSpace(it.Triage.Read) == "":
+		parts = append(parts, "not read yet", "u reads it")
+	default:
+		parts = append(parts, "u reads it again")
 	}
 	if len(parts) == 0 {
 		return ""

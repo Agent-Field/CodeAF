@@ -111,7 +111,7 @@ func (a *app) factoryPeek(it factory.Item, measure, room int) []string {
 	if room == 1 {
 		return title[:1]
 	}
-	action := a.pal.dim(fit(a.factoryActionWords(it), measure))
+	action := a.pal.dim(a.factoryVerbLine(it, measure))
 	avail := room - 1
 	if room >= 3 {
 		avail = room - factoryActionRows
@@ -262,6 +262,9 @@ func (a *app) factoryPeekQuestion(it factory.Item, measure int) []string {
 // leaving a hole the person would read as a floor that has nothing to say.
 func (a *app) factoryPeekRead(it factory.Item, measure int) []string {
 	if strings.TrimSpace(it.Triage.Read) == "" {
+		if a.factoryRowWaits(it.ID) {
+			return []string{a.pal.dim(fit(factoryWaitWords, measure))}
+		}
 		if word, busy := a.factoryBusy(it.ID); busy {
 			return []string{a.pal.accent(a.factorySpin()) + " " + a.pal.dim(fit(word+"…", max(measure-factoryLeadW, 0)))}
 		}
@@ -463,23 +466,10 @@ func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 	moving := -1
 	if it.Stream != nil && len(it.Stream.Phases) > 0 {
 		for i, ph := range it.Stream.Phases {
-			mark, paint := a.factoryPhaseMark(ph.State)
-			// THE MINUTES LEFT ARE THE RUNNING LINE'S, not the cell's: a cell
-			// that carried them was the one wide cell every other cell was
-			// widened to ([factoryRunningLine] says them).
-			named := ph
-			named.Left = 0
-			c := factoryStripPart{mark: mark, words: factoryPhaseWords(named, factoryStageMax(stages, ph.Name))}
-			switch ph.State {
-			case factory.PhaseRunning:
-				c.markPaint, c.wordPaint = pal.accent, pal.accent
-			case factory.PhaseDone, factory.PhaseFailed:
-				c.markPaint, c.wordPaint = paint, pal.ink
-			case factory.PhaseWaiting:
-				c.markPaint, c.wordPaint = pal.ask, pal.ink
-			default:
-				c.markPaint, c.wordPaint = pal.dim, pal.dim
-			}
+			// THE CELL'S MARK AND WORDS ARE THE MARKS' (factory_marks.go), so a
+			// held, stopped or skipped stage reads as that here too; the minutes
+			// left are the running line's, not the cell's.
+			c := a.factoryPhasePart(it, i, factoryStageMax(stages, ph.Name))
 			if moving < 0 && (ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting) {
 				moving = i
 			}
@@ -584,6 +574,9 @@ func (a *app) factoryPeekState(it factory.Item, measure int) string {
 	pal := a.pal
 	switch it.State {
 	case factory.StateRunning:
+		if line := a.factoryStateLine(it); line != "" {
+			return pal.muted(fit(line, measure))
+		}
 		if line := factoryRunningLine(it, factoryStages(a.fp.snap, it)); line != "" {
 			return pal.muted(fit(line, measure))
 		}
@@ -801,58 +794,10 @@ func factoryMergedLine(it factory.Item) string {
 	return strings.Join(facts, rowSep)
 }
 
-// factoryActionWords is the one dim line that names the keys that apply to an
-// item where it stands, in the hint grammar (`key verb · key verb`). THE KEYS
-// ARE THE VERBS' (factory_keys.go); this line only says them, and EACH ONLY
-// WHERE ITS DOOR EXISTS. `enter` OPENS THE ITEM PAGE ON EVERY ROW and never
-// launches; a new item runs on `r` or `p`, and a landed one is signed off with
-// `s`, or with `e` when its sheet has a row nothing showed.
-//
-// `r run` AND `p plan first` ARE SAID ONLY WHERE A LAUNCH STANDS BEHIND THEM,
-// asked of the same predicate the hint line asks ([app.factoryCanRun]). The
-// person's own floor has no engine door yet (factory.go's LocalSeam), and a
-// peek that offered `r run` there named a key that does nothing, in the place
-// a person looks for what to press next.
+// factoryActionWords is the peek's key line, whole: [app.factoryVerbRail]
+// joined, the ONE list the bottom line also draws (factory_marks.go).
 func (a *app) factoryActionWords(it factory.Item) string {
-	seam := a.factory
-	words := []string{"enter open"}
-	add := func(ok bool, w string) {
-		if ok {
-			words = append(words, w)
-		}
-	}
-	steer := seam.Has("steer") && it.Stream != nil
-	switch it.State {
-	case factory.StateNeedsYou:
-		add(seam.Has("answer"), "y n answer")
-		add(seam.Has("answer"), "a in words")
-		add(steer, "S steer")
-		add(seam.Has("stop"), "x stop")
-	case factory.StateRunning:
-		paused := it.Stream != nil && it.Stream.Paused
-		add(steer, "S steer")
-		add(seam.Has("pause") && !paused, "space pause")
-		add(seam.Has("pause") && paused, "space resume")
-		add(seam.Has("stop"), "x stop")
-	case factory.StateQueued:
-		add(steer, "S steer")
-		add(seam.Has("stop"), "x stop")
-	case factory.StateLanded:
-		clean := factoryFirstFailed(it) == ""
-		add(clean && seam.Has("signoff"), "s sign off")
-		// THE PEEK SAYS `e sign off` SHORT, so its narrow last row keeps
-		// every key; the hint line and the sheet say `with changes`.
-		add(!clean && seam.Has("signoff"), "e sign off")
-		add(seam.Has("sendback"), "B send back")
-		add(seam.Has("reverify"), "v check again")
-	case factory.StateShipped:
-	default:
-		add(a.factoryCanRun(), "r run")
-		add(a.factoryCanRun(), "p plan first")
-		add(it.State == factory.StateNew, "space mark")
-		add(seam.Has("dismiss"), "d hide")
-	}
-	return strings.Join(words, " · ")
+	return strings.Join(a.factoryVerbRail(it), rowSep)
 }
 
 // ── the pieces ──────────────────────────────────────────────────────────────

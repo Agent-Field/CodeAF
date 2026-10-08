@@ -556,21 +556,6 @@ func factoryOrphanHeading(rows []factoryRailRow, line, end int) bool {
 	return rows[line].kind == factoryRowHeading && line == end-1 && line+1 < len(rows)
 }
 
-// factoryRowSpins says whether a row's priority cell draws the spinner: only
-// while something is being done to that one item now (`reading`,
-// `refreshing`), never for a row that only waits its turn in a queue, so 38
-// queued rows under `U` are not 38 spinners for one read.
-//
-// THE MARKS LANE OWNS THIS in factory_busy.go; this is the same check, kept
-// here until the two meet, and is deleted then.
-func (a *app) factoryRowSpins(id int) bool {
-	switch a.fp.snap.Busy[id] {
-	case "reading", "refreshing":
-		return true
-	}
-	return false
-}
-
 // factoryBare says whether the floor has been read and holds no item at all.
 // A floor that has not been read yet draws nothing rather than a line that may
 // be false, and a read that failed keeps the note line's sentence instead.

@@ -393,7 +393,7 @@ func TestFactoryRunKeysAbsentWithoutDoors(t *testing.T) {
 // THE QUESTION STANDS IN THE ITEM PAGE'S HEAD, the runner's own sentence, its
 // mark amber and its words ink, where the chips stand on every other item.
 func TestFactoryQuestionInTheItemPageHead(t *testing.T) {
-	q := "review is not clean after 2 round(s): 3 findings · one more round, or go on as is?"
+	q := "review is not clean after 2 rounds: 3 findings · one more round, or go on as is?"
 	f := &factoryFake{}
 	factoryShapeItem(f, 1, func(it *factory.Item) { it.Question = q })
 	a := factoryVerbLab(t, f)

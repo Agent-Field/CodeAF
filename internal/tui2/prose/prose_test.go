@@ -107,8 +107,8 @@ func TestHeadingsPromoteByTier(t *testing.T) {
 		{"# one", tokens.TextPrimary, true},
 		{"## two", tokens.TextPrimary, true},
 		{"### three", tokens.TextSecondary, true},
-		{"#### four", tokens.TextTertiary, true},
-		{"##### five", tokens.TextTertiary, true},
+		{"#### four", tokens.TextTertiary, false},
+		{"##### five", tokens.TextTertiary, false},
 	}
 	for _, w := range want {
 		rows := render(t, w.src, Options{Width: 40, Styler: st})
@@ -335,10 +335,10 @@ func TestLinksAsTextDrawsTheWordsAlone(t *testing.T) {
 	}
 }
 
-// EVERY HEADING LEVEL IS BOLD: a heading drawn in plain ink read as a short
-// body line.
+// THE FIRST THREE HEADING LEVELS ARE BOLD: a heading drawn in plain ink read
+// as a short body line; level four and below step down the ramp unweighted.
 func TestHeadingsAreBold(t *testing.T) {
-	for _, src := range []string{"# One", "## Claims", "### Three", "#### Four"} {
+	for _, src := range []string{"# One", "## Claims", "### Three"} {
 		rows := render(t, src, Options{Width: 40, Styler: styler(tokens.TrueColor)})
 		if len(rows) == 0 || !strings.Contains(rows[0], "\x1b[1m") {
 			t.Fatalf("%q is not bold: %q", src, rows)

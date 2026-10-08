@@ -216,17 +216,19 @@ func (r *renderer) block(n ast.Node) {
 }
 
 // heading promotes by TIER (5.13). A terminal has one type size, so the whole
-// of a heading's loudness is where it stands on the grey ramp, the bold on every
-// level (a plain heading read as a body line), and the whitespace [renderer.container] already put around it.
-// Level 3 and below step back DOWN through [tokens.Demote], because a document
-// whose every heading was primary would have no hierarchy at all.
+// of a heading's loudness is where it stands on the grey ramp, the bold on the
+// first three levels (a plain `## Claims` read as a short body line), and the
+// whitespace [renderer.container] already put around it. Level 3 and below
+// step back DOWN through [tokens.Demote], and level 4 and below lose the bold
+// too, because a document whose every heading was primary would have no
+// hierarchy at all.
 func (r *renderer) heading(n *ast.Heading) {
 	st := r.base
 	st.tok = tokens.TextPrimary
 	for i := 3; i <= n.Level; i++ {
 		st.tok = tokens.Demote(st.tok)
 	}
-	st.bold = true
+	st.bold = n.Level <= 3
 	r.wrapInline(n, st, r.proseWidth())
 }
 
