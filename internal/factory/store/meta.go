@@ -221,8 +221,60 @@ func (st *Store) SetPolling(name string, on bool) error {
 		}
 		m := d.Sources[name]
 		m.Polling = on
+		if !on {
+			m.Reading, m.Read, m.Of = "", 0, 0
+		}
 		d.Sources[name] = m
 	})
+}
+
+// SetReading writes where one source's read is: the repository it is on now
+// and how many of how many it has finished, keeping the rest of its record.
+// The floor reads it while Polling to say where the read is.
+func (st *Store) SetReading(name, repo string, done, of int) error {
+	return st.changeMeta(func(d *metaDoc) {
+		if d.Sources == nil {
+			d.Sources = map[string]SourceMeta{}
+		}
+		m := d.Sources[name]
+		m.Reading, m.Read, m.Of = repo, done, of
+		d.Sources[name] = m
+	})
+}
+
+// NudgePath is <root>/poll-now, the mark a window touches to ask the poll on
+// this machine to read now rather than on its next tick.
+func (st *Store) NudgePath() string { return filepath.Join(st.root, "poll-now") }
+
+// NudgePoll asks whichever process polls this floor to read now. IT IS A FILE
+// AND NOT A MESSAGE because the window that saves the picker is not always the
+// process that polls: on the ordinary launch the engine polls, and it watches
+// this mark's time while it waits.
+func (st *Store) NudgePoll() error {
+	if st == nil {
+		return errors.New("factory store: no store")
+	}
+	if err := os.MkdirAll(st.root, 0o700); err != nil {
+		return err
+	}
+	now := time.Now()
+	if err := os.WriteFile(st.NudgePath(), []byte(now.UTC().Format(time.RFC3339Nano)+"\n"), 0o600); err != nil {
+		return err
+	}
+	return os.Chtimes(st.NudgePath(), now, now)
+}
+
+// PollNudged is when the poll was last asked to read now, and the zero time
+// when it never was.
+func (st *Store) PollNudged() time.Time {
+	if st == nil {
+		return time.Time{}
+	}
+	fi, err := os.Stat(st.NudgePath())
+	if err != nil {
+		return time.Time{}
+	}
+	return fi.ModTime()
 }
 
 // NoteReadCost remembers one triage read's cost: the last, and the running

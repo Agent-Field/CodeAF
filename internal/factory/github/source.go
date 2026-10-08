@@ -95,6 +95,9 @@ type Source struct {
 	// files is each pull request's changed files, read with its line counts,
 	// once per change.
 	files map[string][]factory.FileChange
+	// progress, when set, is told before each repository is read which one
+	// and how many of how many are done ([Source.SetProgress]).
+	progress func(full string, done, of int)
 }
 
 type seenComments struct {
@@ -134,6 +137,15 @@ func (s *Source) Watch(repos []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.repos = append([]string(nil), repos...)
+}
+
+// SetProgress hands the source a function told, before each repository a
+// Read reads, which one it is and how many of how many are done, so the poll
+// can write where the read is ([PollOnce]). nil takes it off.
+func (s *Source) SetProgress(fn func(full string, done, of int)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.progress = fn
 }
 
 // Watched is the repositories this source reads.
@@ -186,6 +198,7 @@ func (s *Source) Read(ctx context.Context, since string) ([]factory.Item, string
 	marks, all := parseCursor(since)
 	s.mu.Lock()
 	repos := append([]string(nil), s.repos...)
+	progress := s.progress
 	s.mu.Unlock()
 	s.whoAmI(ctx)
 
@@ -195,10 +208,13 @@ func (s *Source) Read(ctx context.Context, since string) ([]factory.Item, string
 	}
 	var items []factory.Item
 	var errs []error
-	for _, full := range repos {
+	for i, full := range repos {
 		owner, name, ok := strings.Cut(full, "/")
 		if !ok {
 			continue
+		}
+		if progress != nil {
+			progress(full, i, len(repos))
 		}
 		mark, ok := marks[full]
 		if !ok {
