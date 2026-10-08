@@ -41,6 +41,10 @@ type Seam struct {
 	Reverify func(id int) error
 	// Bank writes a sentence into the repo's habits.
 	Bank func(repo, sentence string) error
+	// BankNote is Bank answering what happened to the line: one of the
+	// Recipe* note sentences (recipechange.go), a pull request for the team
+	// where the checkout is a git repository. Nil where Bank is nil.
+	BankNote func(repo, sentence string) (string, error)
 
 	// New makes an item from words typed in the terminal, on a repo. Chips
 	// lift out of the sentence. The id comes back so the surface can open it.

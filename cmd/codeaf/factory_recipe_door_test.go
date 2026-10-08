@@ -7,12 +7,14 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
+	"github.com/Agent-Field/codeaf/internal/session"
 )
 
 func TestFactoryRecipeDoorOfANilStoreIsNil(t *testing.T) {
@@ -92,4 +94,61 @@ func TestFactoryRecipeDoorRefusesAnUnknownCheckout(t *testing.T) {
 			t.Fatalf("err = %v, want %q", err, want)
 		}
 	}
+}
+
+func TestFactoryRecipeDoorBanksANoteOnABranchInAGitCheckout(t *testing.T) {
+	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
+		t.Setenv(k, "t")
+	}
+	for _, k := range []string{"GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL"} {
+		t.Setenv(k, "t@example.com")
+	}
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	web := filepath.Join(t.TempDir(), "web")
+	if err := os.MkdirAll(web, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = web
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	os.WriteFile(filepath.Join(web, "README"), []byte("x\n"), 0o644)
+	git("add", "README")
+	git("commit", "-q", "-m", "init")
+	// No gh on PATH, no remote.
+	t.Setenv("PATH", filepath.Dir(mustLookPath(t, "git")))
+	door := recipeDoor(st, web).(session.RecipeNoter)
+	note, err := door.BankNote(context.Background(), session.RecipeNotice{Repo: "web", Kind: "issue", Line: "security · chat · read it for auth holes · when touches auth"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "written · committed on factory/recipe-security · no remote to push to"; note != want {
+		t.Fatalf("note = %q", note)
+	}
+	if _, err := os.Stat(filepath.Join(web, factory.RecipeFile)); err == nil {
+		t.Fatal("the checkout's file was written")
+	}
+	cmd := exec.Command("git", "show", "factory/recipe-security:"+factory.RecipeFile)
+	cmd.Dir = web
+	out, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "security · chat") {
+		t.Fatalf("branch file: %v\n%s", err, out)
+	}
+}
+
+func mustLookPath(t *testing.T, name string) string {
+	t.Helper()
+	p, err := exec.LookPath(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
