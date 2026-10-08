@@ -4802,6 +4802,13 @@ type DisplayEntry struct {
 	// who sent it rather than as the aside's first line. Nil on every other
 	// entry; the aside's Text still holds the whole delivery as the model read it.
 	Team []TeamLine
+
+	// Kind is what the record says an assistant message IS, from the line's own
+	// presentation mark ([messagePresentation.Kind]): `factory-progress` on
+	// the progress lines the factory runner writes into an item's
+	// conversation, and "" on everything else. It is the producer's word,
+	// never a reading of the text.
+	Kind string
 }
 
 // SteerMark is what the record keeps about one steer that LANDED: when the
@@ -4938,8 +4945,9 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		if role == "user" {
 			displayText = presentation.personWords(msg)
 		}
-		interrupted, explicitlyHuman := false, false
+		interrupted, explicitlyHuman, kind := false, false, ""
 		if mark := presentation.of(msg); role == "assistant" && mark != nil {
+			kind = mark.Kind
 			interrupted = mark.Interrupted
 			explicitlyHuman = mark.Audience == "human"
 			if mark.Audience == "operational" {
@@ -4976,6 +4984,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			// model has to read it as (steer.go).
 			Steer: journal.steerMark(msg),
 			Team:  team,
+			Kind:  kind,
 		})
 		for callIndex := range msg.ToolCalls {
 			call := &msg.ToolCalls[callIndex]

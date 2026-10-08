@@ -544,6 +544,36 @@ that is not for the proof sheet is a `claimed: …` line, and a batch of reads h
 task is one line, `read ×4 · find handed to quick task 1`. An item that never ran has no log
 row. The log keeps the last 400 lines.
 
+## what is happening on my item right now — the run's story in the middle of the page
+
+Once an item runs, the middle of its item page tells the run as it happened, one section per
+stage, top to bottom. A finished stage is folded to its head, `● plan · 2m · $0.04`, then what
+it came to in at most two lines (the stage's own note, else the first sentence or two of the
+last thing its conversation said), and at the right a dim `▸ 14 steps` (`▸ open` before its
+conversation is read). The time and money are what this window saw. The running stage is open: its head wears the spinner,
+`⠋ write · 4m · $0.27`, and its steps stream under it, newest at the bottom in the chat's step
+gutter, `read   internal/session/session.go`, the call still going on the spinner. At most 12 lines show,
+under a dim `… 23 more above`. Stages still to come fold into one dim line,
+`○ test ×2 · ○ review · ○ proof`; a skipped stage is one dim line, `– security · skipped`; a
+stage waiting on you shows its question and `y yes · n no · a in words` under its head.
+
+The manager's progress lines from the item's own conversation stand between the sections, dim,
+after the stage they are about: `manager · test failed 1 of 2 · asking you`, and your replies
+there as `you · …`. An item with no conversation has none.
+
+**Dive in:** `enter` on a section head, or a click on `▸ 14 steps`, shows that stage's whole
+conversation in the middle, drawn as a task page draws one and following it while the stage
+runs; `J` and `K` scroll it. The last row says `enter opens the conversation · esc back`:
+a second `enter` opens it as a real conversation (once its round has ended), and `esc` comes
+back to the story on the same section. A click on a head opens or folds it; `↑` and `↓` walk
+the heads.
+
+**The box:** the last row is `› say something to the manager`. `enter` on it (or a click) opens
+it for typing; `enter` then opens the item's own conversation, as `T` does, with your words typed
+in its box for you to send there. Before a run the box says
+`› r runs it · or tell me what you want first`, under the issue's one line. Where this window
+cannot make the item's conversation, there is no box.
+
 ## answering a question — y, n, a
 
 A run stops and asks when it cannot go on alone, and the item moves to **needs you**. The

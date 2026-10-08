@@ -119,12 +119,20 @@ func factoryChatFolder(chat string) string {
 // factoryEnterChat opens a conversation from the floor, on the loop, and
 // keeps the way back: `T`'s and a stage room's one shared door.
 func (a *app) factoryEnterChat(chat, where string) tea.Cmd {
+	return a.factoryEnterChatSaying(chat, where, "")
+}
+
+// factoryEnterChatSaying is [app.factoryEnterChat] with words left typed in
+// the conversation's box once it is in front, for the person to send.
+func (a *app) factoryEnterChatSaying(chat, where, words string) tea.Cmd {
 	a.fp.act.talk = a.convKey(chat)
 	cmd := a.openConversationRow(session.SessionRow{Transcript: chat, ProjectDir: where})
 	if a.pageShowing() {
 		// The open refused, and said why on the floor's note line: there is
 		// no conversation in front to come back from.
 		a.fp.act.talk = ""
+	} else if words = strings.TrimSpace(words); words != "" {
+		a.input.setText(words)
 	}
 	a.touch()
 	return tea.Batch(cmd, a.factoryTeamsRead())

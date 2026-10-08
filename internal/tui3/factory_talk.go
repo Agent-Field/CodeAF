@@ -33,6 +33,13 @@ import (
 
 // factoryTalk asks the item's conversation off the loop and opens it.
 func (a *app) factoryTalk(it factory.Item) tea.Cmd {
+	return a.factoryTalkSaying(it, "")
+}
+
+// factoryTalkSaying is [app.factoryTalk] with words to put in the
+// conversation's box once it is open, typed and not sent: the timeline's box
+// hands its words over this way (factory_timeline.go). "" puts nothing there.
+func (a *app) factoryTalkSaying(it factory.Item, words string) tea.Cmd {
 	seam, id := a.factory, it.ID
 	// THE NOTE LINE SPINS WHILE THE CONVERSATION IS MADE OR FOUND, which can
 	// take a beat on the first ask (factory_busy.go).
@@ -64,7 +71,7 @@ func (a *app) factoryTalk(it factory.Item) tea.Cmd {
 				a.touch()
 				return nil
 			}
-			return a.factoryEnterChat(chat, where)
+			return a.factoryEnterChatSaying(chat, where, words)
 		}
 	})
 }

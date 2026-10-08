@@ -148,6 +148,22 @@ const (
 	wordOf                 = "of"
 )
 
+// The timeline's words: the run's story in the middle of the item page
+// (factory_timeline.go).
+const (
+	wordManager      = "manager"
+	wordYou          = "you"
+	wordStep         = "step"
+	wordSteps        = "steps"
+	wordSaid         = "said"
+	wordSkipped      = "skipped"
+	wordMoreAbove    = "more above"
+	wordSaySomething = "say something to the manager"
+	wordRunsIt       = "runs it"
+	wordTellMeFirst  = "or tell me what you want first"
+	wordOpensTheChat = "opens the conversation"
+)
+
 // The `?` sheet's group names, in the order the sheet draws them.
 const (
 	wordGroupDo   = "do"
