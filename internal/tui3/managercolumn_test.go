@@ -12,7 +12,7 @@ import (
 // remembered open.
 func managerColumnApp(t *testing.T) *app {
 	t.Helper()
-	a, _, _, _ := trafficApp(t)
+	a, _, _, _ := teamChatApp(t)
 	a.width, a.height = 160, 40
 	a.railAway = false
 	a.welcome.open = false
@@ -52,51 +52,47 @@ func sideWordAt(t *testing.T, a *app, view int) (int, int) {
 	return 0, 0
 }
 
-// WITH THE MANAGER IN FRONT THE ONE COLUMN OPENS ON THE TRAFFIC, and its
-// header offers the manager's own tasks as the other word, with its count,
-// even at zero. A press on the word lays the tasks in the same column at the
-// same width with the header where it was, and a press on the Traffic word
-// takes it back. There is no second column and no special case.
-func TestManagerColumnOpensOnTheTrafficAndOffersItsTasks(t *testing.T) {
+// A TEAM OVERLAY OPENS ON TASKS, with Traffic still selectable. Switching
+// either word leaves the column, header and conversation in place.
+func TestManagerColumnOpensOnTasksAndOffersTraffic(t *testing.T) {
 	a := managerColumnApp(t)
+	if _, ok := a.teamActive(); !ok || a.teamViews.id == "" {
+		t.Fatal("the fixture has no active team overlay")
+	}
 	rows := railLines(t, a)
 	head := railRowOf(rows, sideTasksWord+" 0"+sideWordSep+sideTrafficWord)
-	if head < 0 || a.sideView() != sideTraffic {
-		t.Fatalf("the manager's column does not open on the Traffic with both words:\n%s", strings.Join(rows, "\n"))
+	if head < 0 || a.sideView() != sideTasks {
+		t.Fatalf("the team overlay does not open on Tasks with both words:\n%s", strings.Join(rows, "\n"))
 	}
 	managerTasks(a, 2)
 	rows = railLines(t, a)
-	if railRowOf(rows, sideTasksWord+" 2"+sideWordSep) != head || railRowOf(rows, "Task 1") >= 0 {
-		t.Fatalf("the Tasks word does not count the work behind it:\n%s", strings.Join(rows, "\n"))
+	if railRowOf(rows, sideTasksWord+" 2"+sideWordSep) != head || railRowOf(rows, "Task 1") <= head {
+		t.Fatalf("the default Tasks view does not show the manager's work:\n%s", strings.Join(rows, "\n"))
 	}
 	body, cols := a.bodyWidth(), a.railWidth()
-
-	x, y := sideWordAt(t, a, sideTasks)
-	a.setHover(x, y)
-	if a.hot.kind != hoverSide || a.hot.key != sideHeadKey || a.hot.index < 0 {
-		t.Fatalf("the Tasks word does not answer the pointer: %+v", a.hot)
-	}
-	if words := a.dockHoverWords(); !strings.Contains(words, "tasks") || !strings.Contains(words, "click") {
-		t.Fatalf("the Tasks word's hint says %q", words)
-	}
-	a.dropHover()
-	sideClick(t, a, x, y)
-	if a.sideView() != sideTasks {
-		t.Fatal("a press on Tasks did not bring the tasks to the front")
-	}
-	rows = railLines(t, a)
-	if a.bodyWidth() != body || a.railWidth() != cols || railRowOf(rows, sideTasksWord+" 2") != head || railRowOf(rows, "Task 1") <= head {
-		t.Fatalf("the tasks are not in the same column under the same header (body %d->%d, cols %d->%d):\n%s", body, a.bodyWidth(), cols, a.railWidth(), strings.Join(rows, "\n"))
-	}
-	x, y = sideWordAt(t, a, sideTraffic)
-	sideClick(t, a, x, y)
-	if a.sideView() != sideTraffic || a.bodyWidth() != body {
-		t.Fatal("a press on Traffic did not take the column back, or moved the body")
+	for _, view := range []int{sideTraffic, sideTasks} {
+		x, y := sideWordAt(t, a, view)
+		a.setHover(x, y)
+		if a.hot.kind != hoverSide || a.hot.key != sideHeadKey || a.hot.index < 0 {
+			t.Fatalf("view %d does not answer the pointer: %+v", view, a.hot)
+		}
+		if words := a.dockHoverWords(); !strings.Contains(words, "click") {
+			t.Fatalf("view %d has no click hint: %q", view, words)
+		}
+		a.dropHover()
+		sideClick(t, a, x, y)
+		rows = railLines(t, a)
+		if a.sideView() != view || a.bodyWidth() != body || a.railWidth() != cols || railRowOf(rows, sideTasksWord+" 2") != head {
+			t.Fatalf("view %d did not switch in the same column:\n%s", view, strings.Join(rows, "\n"))
+		}
+		if shown := railRowOf(rows, "Task 1") > head; shown != (view == sideTasks) {
+			t.Fatalf("view %d shows tasks=%v:\n%s", view, shown, strings.Join(rows, "\n"))
+		}
 	}
 }
 
 // THE WORD IN FRONT IS REMEMBERED PER KIND OF CHAT, for the session: a
-// manager opens on the Traffic, a member and a chat in no team on the tasks,
+// manager, a member and a chat in no team open on the tasks,
 // and a word the person chose in one kind of chat is what that kind opens on
 // next, whatever the other kind was left on. A chat in no team has only the
 // one word.
@@ -105,24 +101,35 @@ func TestTheColumnsWordIsRememberedPerKindOfChat(t *testing.T) {
 	harbor := a.wall.teams[0].ID
 	manager := a.frontTabKey()
 	_, priceKey := trafficHandle(t, a, harbor, "openrouter")
-	if a.sideView() != sideTraffic {
-		t.Fatal("a manager does not open on the Traffic")
+	if a.sideView() != sideTasks {
+		t.Fatal("a manager does not open on Tasks")
 	}
-	a.sideSetView(sideTasks)
+	a.sideSetView(sideTraffic)
 
 	spend(t, a, a.trafficGo(priceKey))
 	if a.sideKind() != sideKindMember || a.sideView() != sideTasks {
 		t.Fatalf("a member opens on view %d", a.sideView())
 	}
 	a.sideSetView(sideTraffic)
+	a.sideSetView(sideTasks)
 
 	spend(t, a, a.trafficGo(manager))
-	if a.sideKind() != sideKindManager || a.sideView() != sideTasks {
+	if a.sideKind() != sideKindManager || a.sideView() != sideTraffic {
 		t.Fatalf("the manager forgot its word: kind %d view %d", a.sideKind(), a.sideView())
 	}
 	spend(t, a, a.trafficGo(priceKey))
-	if a.sideView() != sideTraffic {
+	if a.sideView() != sideTasks {
 		t.Fatal("the member forgot its word")
+	}
+
+	spend(t, a, a.trafficGo(manager))
+	a.teamViewSet("")
+	if a.sideKind() != sideKindPlain || a.sideView() != sideTasks {
+		t.Fatal("clearing the overlay did not restore ordinary Tasks")
+	}
+	spend(t, a, a.teamActivate(harbor))
+	if a.sideView() != sideTraffic {
+		t.Fatal("reactivating the overlay forgot the chosen Traffic view")
 	}
 
 	plainChat, _, _ := tabApp(t)
@@ -148,7 +155,7 @@ func TestLeftAndRightSwitchTheColumnsWords(t *testing.T) {
 	managerTasks(a, 2)
 	front := a.frontTabKey()
 	drive(t, a, key("right"))
-	if a.sideView() != sideTraffic {
+	if a.sideView() != sideTasks {
 		t.Fatal("an arrow with the keyboard in the draft switched the column")
 	}
 	drive(t, a, altT())
@@ -156,12 +163,12 @@ func TestLeftAndRightSwitchTheColumnsWords(t *testing.T) {
 		t.Fatal("alt+t did not give the column the keyboard")
 	}
 	drive(t, a, key("right"))
-	if a.sideView() != sideTasks || !a.railHold || a.frontTabKey() != front {
-		t.Fatalf("right did not switch to the tasks in place: view %d hold %v", a.sideView(), a.railHold)
+	if a.sideView() != sideTraffic || !a.railHold || a.frontTabKey() != front {
+		t.Fatalf("right did not switch to Traffic in place: view %d hold %v", a.sideView(), a.railHold)
 	}
 	drive(t, a, key("left"))
-	if a.sideView() != sideTraffic || !a.railHold {
-		t.Fatal("left did not switch back to the Traffic")
+	if a.sideView() != sideTasks || !a.railHold {
+		t.Fatal("left did not switch back to Tasks")
 	}
 	drive(t, a, key("esc"))
 	if a.railHold {

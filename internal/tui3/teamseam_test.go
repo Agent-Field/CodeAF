@@ -205,6 +205,7 @@ func TestTeamsOverAHostedSeamRefuseNothingAndLeaveTheLaptopFileAlone(t *testing.
 	// nothing on the laptop.
 	a.width, a.height = 160, 40
 	a.welcome.open = false
+	a.sideSetView(sideTraffic)
 	if col := strings.Join(railLines(t, a), "\n"); !strings.Contains(col, "take the lexer") || a.sideView() != sideTraffic {
 		t.Fatalf("the column over --host does not draw the engine's Traffic:\n%s", col)
 	}

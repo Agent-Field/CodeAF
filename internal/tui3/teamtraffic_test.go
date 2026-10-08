@@ -14,10 +14,10 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
-// trafficApp is the strip's three conversations as one team, harbor, on a
+// teamChatApp is the strip's three conversations as one team, harbor, on a
 // profile of the test's own, with the conversation in front its manager and
 // the two behind it its members. older and newer are the agents behind.
-func trafficApp(t *testing.T) (a *app, harbor string, older, newer *fakeAgent) {
+func teamChatApp(t *testing.T) (a *app, harbor string, older, newer *fakeAgent) {
 	t.Helper()
 	a, older, newer = tabApp(t)
 	a.profileDir = t.TempDir()
@@ -38,6 +38,15 @@ func trafficApp(t *testing.T) (a *app, harbor string, older, newer *fakeAgent) {
 	if got := mustTeam(t, a, harbor); got.Manager != front {
 		t.Fatalf("the fixture's manager is %q", got.Manager)
 	}
+	return a, harbor, older, newer
+}
+
+// trafficApp selects Traffic for tests of its rows and controls, independently
+// of the initial view a team chat offers.
+func trafficApp(t *testing.T) (a *app, harbor string, older, newer *fakeAgent) {
+	t.Helper()
+	a, harbor, older, newer = teamChatApp(t)
+	a.sideSetView(sideTraffic)
 	return a, harbor, older, newer
 }
 
@@ -75,7 +84,7 @@ func trafficReadNow(t *testing.T, a *app) {
 	teamsFlush(t, a)
 }
 
-// THE COLUMN IS THE CACHE, BESIDE THE MANAGER, AND IT OPENS ON THE TRAFFIC.
+// THE TRAFFIC COLUMN IS THE CACHE, BESIDE THE MANAGER.
 // With the manager in front on a wide frame the right of the body is the side
 // column, its header `Tasks 0 · Traffic N` with the Traffic in front; the
 // directive is a row of work, the note that answers nothing is General's; the
@@ -98,7 +107,7 @@ func TestTrafficColumnBesideTheManager(t *testing.T) {
 		t.Fatalf("the cache holds %d entries", got)
 	}
 	if a.sideView() != sideTraffic {
-		t.Fatal("a manager's column does not open on the Traffic")
+		t.Fatal("the selected Traffic view is not in front")
 	}
 	a.sideToggleThread(sideThreadKey(harbor, sideGeneral))
 	rows := railLines(t, a)

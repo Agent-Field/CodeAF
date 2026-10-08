@@ -1986,10 +1986,10 @@ click`); press the other word to bring it to the front. A count of `0` is dim. A
 of the header is the column's own key, `alt+l` (`opt+l` on a Mac), and it is a button too:
 press it and the column goes away (*Hiding the task column* below).
 
-**Which word is in front is remembered for the session, per kind of chat.** A manager's
-chat opens on the Traffic and every other chat opens on the Tasks. Change it in a member's
-chat and every member's chat you visit this session opens the same way; the manager's chat
-keeps its own answer. The team manager page has the Traffic view.
+**Which word is in front is remembered for the session, per kind of chat.** Every chat
+opens on the Tasks, including the manager and members in a team overlay. Change it in a
+member's chat and every member's chat you visit this session opens the same way; the
+manager's chat keeps its own answer. Tasks and Traffic remain selectable. The team manager page has the Traffic view.
 
 **Under the header is the needs-you band**, when anything needs you, and nothing at all
 when nothing does:

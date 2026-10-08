@@ -36,8 +36,8 @@ import (
 // hover ground and a hint. The other word keeps its count, so what arrived in
 // the Traffic while the tasks are in front is still on screen (`Traffic 3
 // new`). Which word is in front is remembered for the session per kind of chat
-// ([sideState.view]): a manager chat opens on the Traffic, every other chat on
-// the tasks.
+// ([sideState.view]): every chat opens on the tasks until the person chooses
+// otherwise.
 //
 // THE BAND IS WHAT NEEDS THE PERSON NOW, from both sources ([app.sideBand]):
 // a question or a packet waiting on them, a task whose next step is theirs,
@@ -240,8 +240,7 @@ func (a *app) sideKind() int {
 }
 
 // sideView is the word in front: the person's own choice for this kind of
-// chat, else the Traffic in a manager chat and the tasks everywhere else. A
-// chat in no team has only the tasks.
+// chat, else the tasks. A chat in no team has only the tasks.
 func (a *app) sideView() int {
 	kind := a.sideKind()
 	if kind == sideKindPlain {
@@ -249,9 +248,6 @@ func (a *app) sideView() int {
 	}
 	if v := a.side.view[kind]; v != 0 {
 		return v
-	}
-	if kind == sideKindManager {
-		return sideTraffic
 	}
 	return sideTasks
 }
