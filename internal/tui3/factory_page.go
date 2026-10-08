@@ -116,12 +116,14 @@ type factoryPage struct {
 
 	// THE LAYOUT'S OWN STATE (factory_item.go), additive like the narrowings.
 	// comfy is `z`, a second line under each row and air between rows; open is
-	// the item page standing over the floor, and stage the stage its rail's
-	// cursor is on. The floor's cursor is left exactly where it was, so `esc` lands on the row
+	// the item page standing over the floor, stage the stage its rail's cursor
+	// is on, and said whether `enter` on that stage has put its note on the
+	// place's note line ([placeFactory.note]). The floor's cursor is left exactly where it was, so `esc` lands on the row
 	// the page was opened from. Nothing here is persisted.
 	comfy bool
 	open  bool
 	stage int
+	said  bool
 
 	// act is what the verbs leave behind (factory_keys.go): an open typing
 	// row, a habit offer, and the mock clock's beat.
@@ -278,7 +280,18 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	if paneW == 0 {
 		railRoom = above
 	}
-	rail, hits := a.factoryRail(rowsW, railRoom)
+	// THE ROWS STAND ONE CELL IN FROM THE FRAME'S EDGE, like the handover
+	// above them and the hint below, so a group's heading and the handover's
+	// mark share a column; and beside the peek they keep one cell of air before
+	// the rule, so an age never touches it.
+	railW := rowsW - 1
+	if paneW > 0 {
+		railW--
+	}
+	rail, hits := a.factoryRail(max(railW, 0), railRoom)
+	for i := range rail {
+		rail[i] = factoryPad(" "+rail[i], rowsW)
+	}
 	var pane []string
 	if paneW > 0 {
 		pane = append(a.factoryPane(paneW, above), foot...)

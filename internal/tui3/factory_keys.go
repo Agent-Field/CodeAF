@@ -256,6 +256,7 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	a.pageMsg = ""
+	a.fp.said = false
 	switch it.State {
 	case factory.StateNew, factory.StateDismissed:
 		return a.factoryNewKey(it, k)

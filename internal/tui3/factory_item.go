@@ -123,7 +123,7 @@ func (a *app) factoryOpenItem() bool {
 	if !ok {
 		return false
 	}
-	a.fp.open, a.fp.stage = true, a.factoryStageFor(it)
+	a.fp.open, a.fp.stage, a.fp.said = true, a.factoryStageFor(it), false
 	a.pageMsg = ""
 	a.touch()
 	return true
@@ -132,19 +132,20 @@ func (a *app) factoryOpenItem() bool {
 // factoryCloseItem is `esc` on the item page: the floor comes back with its
 // cursor on the row the page was opened from, because nothing moved it.
 func (a *app) factoryCloseItem() {
-	a.fp.open = false
+	a.fp.open, a.fp.said = false, false
 	a.pageMsg = ""
 	a.touch()
 }
 
 // factoryStageMove walks the stage rail's cursor by delta and lets go of the
-// note the last stage said on the note line.
+// note the last stage put on the place's note line.
 func (a *app) factoryStageMove(delta int) {
 	it, ok := a.factoryCursorItem()
 	if !ok {
 		return
 	}
 	a.fp.stage = moveCursor(a.fp.stage, delta, len(a.factoryItemStages(it)))
+	a.fp.said = false
 	a.pageMsg = ""
 	a.touch()
 }
@@ -152,7 +153,7 @@ func (a *app) factoryStageMove(delta int) {
 // factoryLayoutKey is the layout's own keys, read before the place's others:
 // `z` turns the density, `enter` opens the item under the cursor, and while the
 // item page is open the arrows walk its stages, `enter` says what a stage will
-// open, and `esc` closes it. It answers false for every other key, which goes
+// open on the place's note line, and `esc` closes it. It answers false for every other key, which goes
 // on to mean what it meant before.
 //
 // `ENTER` ON A FLOOR ROW OPENS THE ITEM PAGE AND NEVER LAUNCHES: launching is
@@ -160,7 +161,9 @@ func (a *app) factoryStageMove(delta int) {
 // acts is on the proof of a landed item, which IS the item's sheet, so the
 // sheet's default key keeps its meaning there ([app.factoryLandedKey]): ship
 // when every claim was shown, and the send-back row otherwise. Every other
-// stage says, on the place's note line, what it will open.
+// stage says, on the place's note line ([placeFactory.note]), what it will
+// open: a line of its own above the hint, so the keys beside it keep their
+// room.
 //
 // IT STANDS ASIDE for the map, the tab bar's cursor, the words box and a
 // verb's typing row, each of which has the keyboard while it is up.
@@ -182,7 +185,8 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 					return cmd, true
 				}
 			}
-			a.factorySay(factoryStageNoteWords)
+			a.fp.said = true
+			a.touch()
 		case "up", "ctrl+p", "left":
 			a.factoryStageMove(-1)
 		case "down", "ctrl+n", "right":
@@ -276,8 +280,11 @@ func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 	}
 	meta := nonEmpty([]string{factoryRepoShort(it.Repo), it.Author, state})
 	left := pal.ink(it.Ref()+" "+it.Title) + pal.muted(rowSep+strings.Join(meta, rowSep))
+	// THE MONEY AT THE RIGHT IS SPEND OVER THE CAP, so an item with no stream
+	// draws none: its cap is the chip on the row under it, and saying it twice
+	// is a second number to read for one fact.
 	right := ""
-	if spend := factorySpend(it.Stream, it.Cap); spend != "" {
+	if spend := factorySpend(it.Stream, it.Cap); spend != "" && it.Stream != nil {
 		right = placeMoneyInk(pal)(spend)
 	}
 	return factorySpread(left, right, measure)

@@ -74,13 +74,18 @@ func (placeFactory) rowID(a *app) string {
 	return ""
 }
 
-// note is the one line the place says when the last read failed. The floor
-// drawn above it is the one read before.
+// note is the one line the place says when the last read failed, the floor
+// drawn above it being the one read before; and on the item page, after
+// `enter` on a stage, what that stage will open ([factoryStageNoteWords]).
+// A failed read is the louder of the two and wins the line.
 func (placeFactory) note(a *app, width int) []string {
-	if a.fp.err == nil {
-		return nil
+	switch {
+	case a.fp.err != nil:
+		return []string{" " + a.pal.dim(noteFit("the factory could not be read · "+a.fp.err.Error(), width-2))}
+	case a.fp.open && a.fp.said:
+		return []string{" " + a.pal.dim(noteFit(factoryStageNoteWords, width-2))}
 	}
-	return []string{" " + a.pal.dim(noteFit("the factory could not be read · "+a.fp.err.Error(), width-2))}
+	return nil
 }
 
 func (placeFactory) about() string { return "the work in flight, by where it stands" }
