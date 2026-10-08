@@ -625,7 +625,33 @@ and to every round after it (`keep the old flag`). The bottom line says
 `steered #12`, and the log shows `steer: …` in ink. `space` pauses a running item (`#12 paused`)
 and resumes it (`#12 resumed`); a round cut by the pause starts over. `x` stops it and keeps the
 branch: `#12 stopped · branch kept`, and the item is new again. On an item that cannot be
-steered, `S` does nothing.
+steered, `S` does nothing. Words typed into the item's chat while it runs steer it the same way
+(see talk to the manager).
+
+## who is the manager of an issue — the item's chat runs it
+
+Every item's run has a manager: the item's own chat, the conversation `T` opens. When you run an
+item (`r` or `L`) that has no chat yet, the run makes it first, exactly as `T` would, without
+asking any model. Either way the chat is the **lead** of the item's team (`#12 · <title>`, under
+the one `factory` team), and each stage's conversation joins that team as a member, so the teams
+rail and the team menu show the manager above its stages.
+
+Its opening brief tells it so: `You are the manager of this item. The runner reports each stage
+here. What the person says here is the brief before a run and the steer during one; use
+factory_item to change the item. While the run waits on a question, a yes or a no the person
+types here answers it, and the runner's next line here says so.`
+
+What the manager does:
+
+- **It hears every stage.** The run writes one line into the chat per event (`plan started`,
+  `plan done · 2m · $0.04 · …`, `landed · proof sheet ready · your approval`); the lines are
+  listed under what the manager hears (the stage conversations page).
+- **What you type there reaches the run** as its brief or its steer (see talk to the manager).
+- **It changes the item only through `factory_item`**, whose card still asks you before anything
+  lands. It cannot run, stop, approve or post: those stay your keys on the floor.
+
+An item whose chat cannot be made (no folder known for it) runs without a manager; its log says
+`the item's conversation could not be made: …`.
 
 ## the factory's verbs, keys that change an item
 
@@ -678,7 +704,7 @@ So to make a run stop after the plan, press `t` until it says `ask me at plan`, 
 There is no separate key for it: `r` always runs, and stops where `ask me at` says. The recipe
 file still spells these `gate plan`, `gate ship` and `gate none` (see recipe file knobs).
 
-## what is chat on an item, what is select, what is dismiss — the floor's words
+## what is chat on an item, what was talk on the factory floor, what is select, what is dismiss — the floor's words
 
 The floor names each key by what it does:
 
@@ -821,9 +847,9 @@ It writes only where codeaf knows the checkout; otherwise the answer is
 ## chat about an item — T, the item's own conversation
 
 `T` (**chat**) on an item, on the floor or on its page, opens a conversation that belongs to
-that item, so you can talk it over or plan it before you run it, or while it runs. **It is never
-made by default.** The first `T` makes it and every later `T` opens the same one; the item keeps
-it.
+that item, so you can talk it over or plan it before you run it, or while it runs. **It is the
+item's manager** (see who is the manager of an issue). Nothing makes it before the first `T` or
+the item's first run; after that every `T` opens the same one, and the item keeps it.
 
 The first press makes, on this machine and without asking any model:
 
@@ -832,7 +858,8 @@ The first press makes, on this machine and without asking any model:
 - one conversation in that team, in the folder where the item's repository is checked out (or
   this window's folder when codeaf does not know the checkout). It opens with the item in front
   of it: the title, the repository, author and tier, where it asks you, its budget and labels,
-  the body, its stages as numbered lines, the factory's read, and the sentence
+  the body, its stages as numbered lines, the factory's read, the sentence that makes it the
+  manager (`You are the manager of this item. …`), and
   `This is the item's own conversation on the factory floor. Nothing here runs it; the person does that on the floor.`
 
 You land in the conversation, as when you open one from its tab; the one you were in goes on
