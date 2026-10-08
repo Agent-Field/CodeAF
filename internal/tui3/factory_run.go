@@ -298,8 +298,8 @@ func factorySheetCount(it factory.Item) (all, bad int) {
 }
 
 // factorySignOffLine is the sheet's last line: how much of it was shown and
-// the keys that settle it, `all 4 shown · s sign off` or `1 of 4 not shown ·
-// e sign off with changes · B send back`. THE COUNT IS THE WHOLE SHEET, policy
+// the keys that settle it, `all 4 shown · s approve` or `1 of 4 not shown ·
+// e approve with changes · B request changes`. THE COUNT IS THE WHOLE SHEET, policy
 // rows included, because the runner refuses a plain sign-off on any row not
 // shown. The keys are drawn only on a landed item, and each only where its
 // door exists; a sheet with no rows is no line.
@@ -314,15 +314,15 @@ func (a *app) factorySignOffLine(it factory.Item, measure int) string {
 	if bad == 0 {
 		parts = append(parts, "all "+itoa(all)+" shown")
 		if landed && seam.Has("signoff") {
-			parts = append(parts, "s sign off")
+			parts = append(parts, factoryHintClause(keyApprove, wordApprove))
 		}
 	} else {
 		parts = append(parts, itoa(bad)+" of "+itoa(all)+" not shown")
 		if landed && seam.Has("signoff") {
-			parts = append(parts, "e sign off with changes")
+			parts = append(parts, factoryHintClause(keyApproveWithChanges, wordApproveWithChanges))
 		}
 		if landed && seam.Has("sendback") {
-			parts = append(parts, "B send back")
+			parts = append(parts, factoryHintClause(keyRequestChanges, wordRequestChanges))
 		}
 	}
 	return a.pal.dim(fit(strings.Join(parts, rowSep), measure))
@@ -507,14 +507,14 @@ func (a *app) factoryLaunchKey(k string) tea.Cmd {
 }
 
 // factoryLaunchRow is `L`'s question as the one row it is drawn on:
-// `launch 3 marked · ~$7? [y] go · [n] not now`.
+// `run 3 selected · ~$7? [y] go · [n] not now`.
 func (a *app) factoryLaunchRow(measure int) string {
 	q := a.fp.act.launch
 	if q == nil || measure <= 0 {
 		return ""
 	}
 	pal := a.pal
-	words := "launch " + itoa(len(q.ids)) + " marked"
+	words := wordRun + " " + itoa(len(q.ids)) + " selected"
 	if est := factoryEstWord(q.usd); est != "" {
 		words += rowSep + "~" + est
 	}

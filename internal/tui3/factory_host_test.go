@@ -49,19 +49,19 @@ func TestFactoryBareFloorNamesWhatArrivesAndNStillWorks(t *testing.T) {
 	}
 }
 
-// THE PEEK'S KEY LINE SAYS `r run` AND `p plan first` ONLY WHERE A LAUNCH
-// STANDS BEHIND THEM, by the same predicate as the hint line under the page.
+// THE PEEK'S KEY LINE SAYS `r run` ONLY WHERE A LAUNCH STANDS BEHIND IT,
+// and the bottom bar never says it: the bar is the floor's navigation.
 func TestFactoryPeekKeysNeedALaunch(t *testing.T) {
 	// The still fixture has no engine door, like the person's own floor.
 	a := factoryPlaceLab(t)
 	it := *factoryPaneItem(t, a, 4)
 	words := a.factoryActionWords(it)
-	for _, gone := range []string{"r run", "p plan first", "L launch"} {
+	for _, gone := range []string{"r run", "L run"} {
 		if strings.Contains(words, gone) {
 			t.Fatalf("with no launch the peek says %q: %q", gone, words)
 		}
 	}
-	if !strings.HasPrefix(words, "enter open") || !strings.Contains(words, "space mark") {
+	if !strings.HasPrefix(words, "enter open") || !strings.Contains(words, "space select") {
 		t.Fatalf("the peek lost the keys that need no launch: %q", words)
 	}
 	rows := factoryPaneOn(t, a, 4, factoryPaneW(150), 20)
@@ -77,11 +77,11 @@ func TestFactoryPeekKeysNeedALaunch(t *testing.T) {
 	b := factoryVerbLab(t, f)
 	factoryOn(t, b, 4)
 	got, _ := b.factoryCursorItem()
-	if words := b.factoryActionWords(got); !strings.Contains(words, "r run · p plan first") {
+	if words := b.factoryActionWords(got); !strings.HasPrefix(words, "enter open · r run") {
 		t.Fatalf("with a launch the peek does not say r run: %q", words)
 	}
-	if hint := (placeFactory{}).hint(b); !strings.Contains(hint, "r run") {
-		t.Fatalf("with a launch the hint does not say r run: %q", hint)
+	if hint := (placeFactory{}).hint(b); strings.Contains(hint, "r run") {
+		t.Fatalf("with a launch the bottom bar repeats the strip: %q", hint)
 	}
 }
 

@@ -304,7 +304,7 @@ func (a *app) factoryItemState(it factory.Item) string {
 		}
 		return out
 	case factory.StateDismissed:
-		return pal.dim("put away")
+		return pal.dim(wordDismissed)
 	case "":
 		return ""
 	}
@@ -312,10 +312,10 @@ func (a *app) factoryItemState(it factory.Item) string {
 	// estimate when no cap says what it may spend.
 	parts := []string{string(it.State)}
 	if it.Gate != "" {
-		parts = append(parts, "gate "+string(it.Gate))
+		parts = append(parts, factoryAskAtWords(it.Gate))
 	}
 	if c := factoryMoney(it.Cap); c != "" {
-		parts = append(parts, "cap "+c)
+		parts = append(parts, wordBudget+" "+c)
 	} else if est := factoryMoney(it.Triage.Est); est != "" {
 		parts = append(parts, "~"+est)
 	}

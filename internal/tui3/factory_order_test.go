@@ -73,8 +73,8 @@ func TestFactoryOrderCyclesAndSortsWithinSections(t *testing.T) {
 		if got := strings.Join(factoryNewRefs(a), ","); got != s.new {
 			t.Fatalf("order %q sorts new as %s, want %s", s.word, got, s.new)
 		}
-		if hint := (placeFactory{}).hint(a); !strings.Contains(hint, "O order · "+s.word) {
-			t.Fatalf("order %q: the hint does not name it: %q", s.word, hint)
+		if sheet := factorySheetText(a); !strings.Contains(sheet, "O order · "+s.word) {
+			t.Fatalf("order %q: the ? sheet does not name it: %q", s.word, sheet)
 		}
 		// THE SECTIONS NEVER MOVE: the question is first in every order.
 		if first, _ := a.factoryWalkNow(), 0; len(first) == 0 || a.fp.snap.Items[first[0]].State != factory.StateNeedsYou {
@@ -155,8 +155,8 @@ func TestFactoryOrderFirstShowsReasonAndHintAt160(t *testing.T) {
 	if !strings.Contains(frame, "main is red") {
 		t.Fatalf("no reason on any row at 160 columns:\n%s", frame)
 	}
-	if hint := (placeFactory{}).hint(a); !strings.Contains(hint, "O order · first") {
-		t.Fatalf("the hint lost the order clause at 160: %q", hint)
+	if sheet := factorySheetText(a); !strings.Contains(sheet, "O order · first") {
+		t.Fatalf("the ? sheet lost the order at 160: %q", sheet)
 	}
 }
 

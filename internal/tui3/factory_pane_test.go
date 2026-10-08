@@ -172,7 +172,7 @@ func TestFactoryPeekNewItemLadder(t *testing.T) {
 	factoryWantBlocks(t, "the new item", blocks,
 		"#1662 fix(media): tree rails on narrow widths",
 		"claims are testable; three checks cover them",
-		"gate  ship    cap  $3      effort  —",
+		"ask me at  pull request  budget  $3      thinking  —",
 		a.factoryPendingMark()+" read",
 		"Claims",
 		"· rails follow the tree")
@@ -190,7 +190,7 @@ func TestFactoryPeekNewItemLadder(t *testing.T) {
 			t.Fatalf("the peek's chips name a key: %q", blocks[2][0])
 		}
 	}
-	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · space mark" {
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · space select" {
 		t.Fatalf("the action line is %q", last)
 	}
 }
@@ -238,7 +238,7 @@ func TestFactoryPeekRunningItemLadder(t *testing.T) {
 	factoryWantBlocks(t, "the running item", blocks,
 		"#1551 filters lost on compact",
 		"the filter is read before the tree exists",
-		"gate  ship    cap  $5      effort  —",
+		"ask me at  pull request  budget  $5      thinking  —",
 		factoryDoneMark(a),
 		"review 1/2 · 3 findings · fixing · 4m left")
 	if strip := blocks[3][0]; !strings.Contains(strip, "review 1/2") || !strings.Contains(strip, "write ×3") && !strings.Contains(strip, "test") {
@@ -267,7 +267,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 		q,
 		"touches three packages; wants a plan first",
 		"touches money",
-		"gate  plan    cap  $8      effort  —",
+		"ask me at  plan          budget  $8      thinking  —",
 		factoryWaitingMark(a)+" plan")
 	// THE STILL FIXTURE HAS NO ANSWER DOOR, so the question draws no keys;
 	// over a floor that can answer, they stand under it.
@@ -295,7 +295,7 @@ func TestFactoryPeekLandedLadder(t *testing.T) {
 	blocks := factoryPeekBlocks(t, rows)
 	factoryWantBlocks(t, "the landed item", blocks,
 		"#1661 probes fire once, then retire",
-		"gate  ship    cap  $5      effort  —",
+		"ask me at  pull request  budget  $5      thinking  —",
 		factoryDoneMark(a)+" plan",
 		a.icon(tokens.GSettled)+" fires on first true, never again")
 	claims := strings.Join(blocks[3], "\n")
@@ -304,12 +304,12 @@ func TestFactoryPeekLandedLadder(t *testing.T) {
 			t.Fatalf("the claims are missing %q:\n%s", want, claims)
 		}
 	}
-	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · d diff" {
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter proof" {
 		t.Fatalf("the still fixture's landed keys are %q", last)
 	}
 	a.factory = (&factoryFake{}).seam()
 	rows = factoryPaneOn(t, a, 9, factoryPaneW(150), 30)
-	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · e sign off with changes · B send back" {
+	if last := strings.TrimSpace(rows[len(rows)-1]); !strings.HasPrefix(last, "enter proof · e approve with changes · B request changes") {
 		t.Fatalf("the action line is %q", last)
 	}
 }
@@ -337,7 +337,7 @@ func TestFactoryPeekEmptyBlocksVanish(t *testing.T) {
 	it := factoryPaneItem(t, a, 8)
 	it.Triage.Read, it.Body, it.Cap = "", "", 0
 	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 8, factoryPaneW(150), 30))
-	factoryWantBlocks(t, "the bare item", blocks, "#1540 meter crashes", "gate  ship                 effort  —", a.factoryPendingMark()+" plan")
+	factoryWantBlocks(t, "the bare item", blocks, "#1540 meter crashes", "ask me at  pull request                  thinking  —", a.factoryPendingMark()+" plan")
 }
 
 // THE BODY IS SIX ROWS AT MOST, its last row cut with the ellipsis and a dim
@@ -394,13 +394,13 @@ func TestFactoryPeekBodyScrolls(t *testing.T) {
 // block above the action line.
 func TestFactoryPeekTalkRow(t *testing.T) {
 	a := factoryPlaceLab(t)
-	if text := strings.Join(factoryPaneOn(t, a, 4, factoryPaneW(150), 30), "\n"); strings.Contains(text, " talk") {
-		t.Fatalf("an item with no conversation draws a talk row:\n%s", text)
+	if text := strings.Join(factoryPaneOn(t, a, 4, factoryPaneW(150), 30), "\n"); strings.Contains(text, a.icon(tokens.GActionCommunicate)+" "+wordChat) {
+		t.Fatalf("an item with no conversation draws a chat row:\n%s", text)
 	}
 	factoryPaneItem(t, a, 4).Talk = "chat-1"
 	factoryNoForge(t, a, 4)
 	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 4, factoryPaneW(150), 30))
-	if last := blocks[len(blocks)-1]; len(last) != 1 || last[0] != a.icon(tokens.GActionCommunicate)+" talk" {
+	if last := blocks[len(blocks)-1]; len(last) != 1 || last[0] != a.icon(tokens.GActionCommunicate)+" "+wordChat {
 		t.Fatalf("the talk row is %q", last)
 	}
 }
@@ -437,7 +437,7 @@ func TestFactoryPaneDrawsADismissedItemAsNew(t *testing.T) {
 		t.Fatalf("a dismissed item's keys are %q", got)
 	}
 	a.factory = (&factoryFake{}).seam()
-	if got := a.factoryActionWords(it); !strings.Contains(got, "r run · p plan first") {
+	if got := a.factoryActionWords(it); !strings.Contains(got, "r run") || strings.Contains(got, "space select") {
 		t.Fatalf("a dismissed item's keys over a launch are %q", got)
 	}
 }
