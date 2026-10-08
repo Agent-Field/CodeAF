@@ -890,8 +890,20 @@ func waitTask(ch <-chan session.Event, gen int) tea.Cmd {
 // belongs under "running" and a node that has just landed belongs in the project
 // index, and this is the one lane that knows either happened (taskmention.go).
 func (a *app) taskEvent(ev session.Event) tea.Cmd {
-	var pilot, mentions tea.Cmd
+	var pilot, mentions, floor tea.Cmd
 	switch ev.Kind {
+	case session.EventFactoryProposal:
+		// THE CHAT OFFERING WORK TO THE FACTORY FLOOR, raised and settled on
+		// this lane because the turn that asked is parked inside its own batch
+		// (session's tools_factory.go calls emitFactory). The card is drawn, or
+		// settled in place when the same kind comes back with an answer or a
+		// withdrawal on it (factorycard.go).
+		a.factoryProposal(ev)
+	case session.EventFactoryAdded:
+		// AND THE FLOOR HAS ONE MORE ROW. The card says its number, and the
+		// floor is read again so the bar's count and the page are true within
+		// one read rather than one beat ([app.factoryAdded]).
+		floor = a.factoryAdded(ev)
 	case session.EventNotice:
 		// A program's limit ending reaches this standing lane even when the
 		// same limit refuses the model turn that would otherwise announce it.
@@ -939,7 +951,7 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// too, as the first thing on it.
 		a.standingUpdate(ev)
 	}
-	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions)
+	return tea.Batch(waitTask(a.taskLane, a.taskGen), pilot, a.wake(), mentions, floor)
 }
 
 // ── the pilot lanes ─────────────────────────────────────────────────────────

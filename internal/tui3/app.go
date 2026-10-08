@@ -187,6 +187,16 @@ const (
 	// cards it is (teamcard.go) rather than as the session's dim lane or the
 	// person's own line.
 	entryTeam
+	// entryFactory is ONE OFFER TO PUT WORK ON THE FACTORY FLOOR (factorycard.go):
+	// the card `factory_add` raised while it is a question, and the one line it
+	// settles into — added with the floor's own number, not now, changed in
+	// words, or expired with nothing added.
+	//
+	// It is a kind of its own rather than a second [entryStanding] because the
+	// two cards are answered by different lanes and settle into different
+	// records: a standing item stands in this conversation, and a floor item
+	// leaves it for a page with its own keys.
+	entryFactory
 )
 
 // toolState is where one call is in its life, and it is the whole of what the
@@ -611,6 +621,11 @@ type entry struct {
 	// POINTER for [entry.card]'s reason: the answer lane holds the same card,
 	// and the row and the verdict on it must never be able to disagree.
 	stand *standingCard
+	// fac is the factory offer this entry draws, for kind entryFactory and for
+	// nothing else (factorycard.go). It is a POINTER for [entry.card]'s reason:
+	// the task lane settles the same card in place when its answer and its floor
+	// number arrive, and the row and that state must never disagree.
+	fac *factoryCard
 
 	// pending says this is the PERSON'S OWN LINE, echoed before the engine has
 	// agreed to take it — the gap a connection puts between pressing enter and
@@ -3463,7 +3478,13 @@ func (a *app) Init() tea.Cmd {
 		a.news.waitRing(), a.leaving.waitRing(), a.landedBell.waitRing(),
 		// AND THE TEAMS' FIRST READ, when the seam held nothing to load above
 		// (teamseam.go); nil on every local launch.
-		a.teamsWrite()}
+		a.teamsWrite(),
+		// AND THE FACTORY FLOOR, ONCE, HERE, so the bar's `Factory ? N` is
+		// there from the first frame after the read rather than only after the
+		// first `/factory` (factory_page.go's [app.factoryLaunchRead]). It is
+		// beside the door line like every other read of the floor, and nil when
+		// no floor is behind this window.
+		a.factoryLaunchRead()}
 	if a.warmEmptyProviders != nil {
 		warm := a.warmEmptyProviders
 		standing = append(standing, func() tea.Msg {
