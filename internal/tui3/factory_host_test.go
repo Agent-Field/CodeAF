@@ -85,8 +85,9 @@ func TestFactoryPeekKeysNeedALaunch(t *testing.T) {
 	}
 }
 
-// AT 150 COLUMNS THE TITLE KEEPS ITS WORDS AND THE META YIELDS, dropping its
-// facts from the right, before the title is cut at all.
+// THE TITLE HAS A ROW OF ITS OWN AND THE META THE ROW UNDER IT: at 150
+// columns the title keeps its words, and a meta too wide for the column drops
+// its facts from the right, whole, before its first one is cut.
 func TestFactoryPeekTitleOutlastsTheMeta(t *testing.T) {
 	a := factoryPlaceLab(t)
 	it := *factoryPaneItem(t, a, 4)
@@ -94,25 +95,28 @@ func TestFactoryPeekTitleOutlastsTheMeta(t *testing.T) {
 	it.Repo = "ledger"
 	it.Origin = factory.OriginChat
 	measure := factoryPaneW(150) - factoryPaneLead
-	row := ansi.Strip(a.factoryTitleRow(it, measure))
-	if ansi.StringWidth(row) != measure {
-		t.Fatalf("the title row is %d cells, want %d: %q", ansi.StringWidth(row), measure, row)
+	block := a.factoryPeekTitle(it, measure)
+	if len(block) != 2 {
+		t.Fatalf("the title block is %d rows: %q", len(block), block)
 	}
-	if !strings.Contains(row, it.Ref()+" "+it.Title) {
-		t.Fatalf("the title was cut while the meta kept facts: %q", row)
+	if got := ansi.Strip(block[0]); got != it.Ref()+" "+it.Title {
+		t.Fatalf("the title row is %q", got)
 	}
 	meta := a.factoryMeta(it)
-	if !strings.Contains(row, meta[0]) {
-		t.Fatalf("the meta dropped its first fact while there was room for it: %q", row)
+	if got := ansi.Strip(block[1]); got != strings.Join(meta, rowSep) {
+		t.Fatalf("the meta row is %q, want %q", got, strings.Join(meta, rowSep))
 	}
-	if strings.Contains(row, "from a chat") && !strings.Contains(row, strings.Join(meta, rowSep)) {
-		t.Fatalf("the meta dropped from the left rather than the right: %q", row)
+	if block[1] != a.pal.dim(ansi.Strip(block[1])) {
+		t.Fatalf("the meta row is not dim: %q", block[1])
 	}
-
-	// A title too long for any meta beside it is cut, and only then.
+	// Narrow, the meta drops from the right and keeps its first fact.
+	narrow := ansi.Strip(a.factoryPeekTitle(it, 14)[1])
+	if !strings.HasPrefix(narrow, meta[0]) || strings.Contains(narrow, meta[len(meta)-1]) {
+		t.Fatalf("a narrow meta did not drop from the right: %q", narrow)
+	}
+	// A title too long for the column is cut on its own row.
 	it.Title = strings.Repeat("a long title ", 10)
-	row = ansi.Strip(a.factoryTitleRow(it, measure))
-	if strings.Contains(row, meta[0]) || ansi.StringWidth(row) > measure {
-		t.Fatalf("a title with no room kept meta beside it: %q", row)
+	if row := ansi.Strip(a.factoryPeekTitle(it, measure)[0]); ansi.StringWidth(row) > measure {
+		t.Fatalf("a long title overflowed its row: %q", row)
 	}
 }

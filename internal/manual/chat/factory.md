@@ -19,8 +19,9 @@ The only key it offers then is `esc back`.
 The floor is one layout in three widths:
 
 - **120 columns and wider**: the handover runs across the whole width at the top, then a blank
-  row, then two columns: the rows on the left (58% of the width, never under 70 columns), a dim
-  `│`, and the **peek** on the right, which shows the item under the cursor.
+  row, then two columns: the rows on the left (58% of the width to start with, never under 70
+  columns), a dim `│`, and the **peek** on the right (never under 40 columns), which shows the
+  item under the cursor. The divider moves (see resize the split).
 - **90 to 119 columns**: the handover on top, then the rows across the full width, with no peek.
   Press `enter` on a row to see the item whole.
 - **Under 90 columns**: no handover; each row is only its mark, its short name and its title.
@@ -36,7 +37,13 @@ On a floor that can be changed it names `enter open` and the item's own keys fir
 factory's verbs), and when the line is too long the list keys are the first to go.
 
 - `↑` and `↓` (or `ctrl+p` and `ctrl+n`, or the wheel) walk the items.
+- A click on a row moves the cursor there and the peek shows it; a second click on the same row
+  opens it. A click in the peek moves nothing.
 - `enter` opens the item under the cursor on its own page (see the item page).
+- `J` and `K` scroll the peek's description a row down and up, `pgdn` and `pgup` a page
+  (see read the whole issue).
+- `{` and `}` move the divider between the rows and the peek, and `|` puts it back (see resize
+  the split).
 - `z` switches between compact rows (one line each, the default) and comfortable rows (a dim
   second line under each row with the factory's one-sentence read of it, and a blank row between
   items). The choice is not saved; every launch starts compact.
@@ -269,63 +276,99 @@ keeps its place.
 
 ## the peek
 
-At 120 columns and wider, the right column of the factory floor shows the item under the cursor.
-It has the same shape for every item: five fixed rows, a rule, what that item's state has to say,
-and one dim line of keys on the bottom row. An item whose plan changed its stages has one dim row
-more under row 4, such as `plan added security · skipped neaten · why: touches billing`.
+At 120 columns and wider, the right column of the factory floor shows the item under the cursor
+as a short document: blocks with one blank row between each; a block with nothing to say, or a
+zero, is left out along with its blank row. In order:
 
-1. Its short name and title, and on the right the repository, the kind, the author and how far
-   they are trusted (`priya (collaborator)`), how long ago it arrived, and where it came from:
-   `github`, `from a chat`, `terminal only`, or `github` with a check when it is on GitHub too.
-   Short of room, those facts drop from the right before the title is cut.
-2. The factory's one-sentence read of it.
-3. The chips: `gate ship · cap $5 · effort —`. The effort is the word on the stage `e` turns; a
-   dash means none, so the crew picks the effort it would for that kind of work.
-4. For an item on a bench, its stages as a strip: `● plan  ◐ review 1/2 · 4m left  ○ proof`, with
-   rounds (`1/2`), how many tasks a stage split into (`×3`) and the most rounds a stage to come may
-   take (`×2`); when it is too wide, stages before the running one go first. For a new item,
-   the names of the stages it would run, a stage switched off or not fitting drawn dim.
-5. A rule.
+```
+#1 Total double-counts an entry added twice
+factory-demo · bug · S · santosh · 8h
 
-Under the rule: the question and `[y] yes · [n] no · [a] in words` when it needs you; the newest
-log lines of a running item, with its activity as a sparkline and its spend on the first one;
-`queued · benches full · a bench frees it`; a landed item's claims, then the repository's policy
-lines; two lines of a new item's description, the questions it would ask the author when it is
-thin, and a note when the author is a stranger; or `merged 06:00 · $1.90` for a shipped one.
+Add appends without checking the id, so Total sums the pair.
 
-The bottom line names the item's keys, always starting with `enter open`: then
-`r run · p plan first · space mark · d hide` for a new item (your own floor cannot launch
-yet, so it leaves off `r run` and `p plan first`), `y n answer · a in words · x stop`
-when it needs you, `s steer · p pause · x stop` while it runs, and
-`a ship anyway · c send back · o check again` once it has landed with a claim not shown.
+touches money      maybe a duplicate of #7      thin
+
+gate  ship      cap  $5      effort  —
+
+● plan    ◐ write    ○ test    ○ review    ○ proof
+
+When the same entry id is added twice, Total counts it
+twice. The ledger should treat the second Add as a no-op …
+
+» talk
+
+enter open · space mark · d hide
+```
+
+1. The short name and title, then dim: repository, kind, size, author, age.
+2. For an item that needs you, the question (`?` in amber) and `[y] yes · [n] no · [a] in words`.
+3. The factory's one-sentence read of it.
+4. Facts, dim, with no labels: what risky ground it touches, `maybe a duplicate of #7`, `thin`,
+   `stranger`. Too wide, they drop from the right.
+5. The chips: `gate`, `cap` and `effort`; no cap when there is none, `—` for no effort word.
+6. The stages: `●` done, `◐` running (round, minutes left), `○` to come; a new item's are the
+   ones it would run. What plan changed follows on a dim row.
+7. A running item's stage line, such as `review 1/2 · 3 findings · fixing`;
+   `queued · benches full · a bench frees it`; or `merged 06:00 · $1.90`.
+8. The description, at most six rows, cut with `…` and a dim `▾ more`. A landed item shows its
+   claims and policy rows here instead.
+9. `talk`, only when the item has its own conversation.
+
+The bottom row names the keys, starting with `enter open`: `space mark · d hide` for a new item
+(plus `r run · p plan first` where a floor can launch), `y n answer · a in words · x stop`,
+`s steer · p pause · x stop`, or `a ship anyway · c send back · o check again`.
+
+## resize the split — { } |
+
+The divider between the floor's rows and the peek can be moved at 120 columns and wider. `{`
+moves it 4 columns left (a wider peek), `}` 4 columns right (wider rows), and `|` puts it back at
+58% of the width. You can also drag the divider with the mouse: press on the `│`, move, let go.
+
+The rows never get narrower than 70 columns and the peek never narrower than 40; a key or a drag
+past either stops there. The position is remembered as a share of the width in `factory.json`
+in the codeaf home, beside `config.json`, so it comes back on the next launch and keeps its
+proportion on a narrower or wider terminal. Under 120 columns there is no peek and the keys do
+nothing.
+
+## read the whole issue — J K on the peek, the issue row on the item page
+
+The peek shows at most six rows of an item's description. When there is more, its last row ends
+in `…` with a dim `▾ more` at the right. `J` scrolls it down a row and `K` up a row; `pgdn` and
+`pgup` move a page. Moving to another item starts that item at its top.
+
+To read everything, open the item (`enter`, or click its row twice). The item page's rail starts
+with `issue`, and its pane is the whole description wrapped at 72 columns, then the factory's
+read, the facts, and, for a thin item, the questions it would ask the author. `J`, `K`, `pgdn`
+and `pgup` scroll it, and its bottom row says `J K scroll` while there is more to see.
 
 ## the item page
 
-`enter` on a row of the factory floor opens that item on its own page, across the full width;
-`esc` closes it and puts the cursor back on the same row. Nothing about the floor (filter,
-repository, marks) changes while it is open.
+`enter` on a row of the factory floor (or a second click on it) opens that item on its own page,
+across the full width; `esc` closes it and puts the cursor back on the same row. Nothing about
+the floor (filter, repository, marks) changes while it is open.
 
 The top two rows are the item: its short name, title, repository, author, where it stands and for
 how long (`running 26m`), with spend over the cap on the right (`$1.42 / $5`); then the chips with
 their keys, `gate ship [t] · cap $5 [c] · effort — [e] · places: codeaf`. When plan changed the
-item's stages, a third dim row says what it changed (see adapt).
+item's stages, a third dim row says what it changed (see adapt). A blank row follows.
 
-Below them, on the left, is the **stage rail**: one row per stage, `●` done (with `×3` when it split
-into tasks), `◐` running (with its round, `review 1/2`), `○` to come, a stage switched off dim, and a
-stage whose condition does not fit dim with `· skipped`. It opens on the running stage of a running
-item, the stage waiting on you for an item that needs you, `proof` for a landed item, and the
-first stage otherwise. `↑` and `↓` (or `←` and `→`) walk it. Under 72 columns the stages are one
-line above the stage instead of a column beside it.
+On the left is the **rail**: `issue` first (see read the whole issue), then `talk` when the item
+has its own conversation, then one row per stage: `●` done (with `×3` when it split into
+tasks), `◐` running (with its round, `review 1/2`), `○` to come, a stage switched off dim, and a
+stage whose condition does not fit dim with `· skipped`. The page opens on the stage waiting on
+you, else the running stage, else `proof` for a landed item, else `issue`. `↑` and `↓` (or `←`
+and `→`) walk it, and a click on a rail row selects it. Under 72 columns the rail is one line
+above the pane.
 
-On the right is the stage under the cursor: its settings
-(`review · chat · until clean · max 2 · fanout per-finding · when always`), what it is asked to do,
-a rule, then what it has to say: `runs after test` for a stage still to come, the log for the
-running one, the question for one waiting on you, its result once done, and the claims on `proof`.
+On the right is the row under the cursor. For a stage: its settings, dim
+(`review · chat · until clean · max 2 · fanout per-finding · when always`), what it is asked to
+do, a blank row, what it has to say (`runs after test`, the running log, the question waiting on
+you, its result, or the claims on `proof`), a blank row, and the item's keys on the last row.
 
 Every verb key keeps working on the item while its page is open (see the factory's verbs):
-`t c e s w b g a d x y n o p r L`, and `1` to `9` switch stages. The bottom line names them,
+`t c e s w b g a d x y n o p r L`, and `1` to `9` switch stages. The hint line names them,
 after `↑↓ stages`, and ends with `esc floor`. A box that takes words opens on the last row of
-the stage's side.
+the pane.
 
 ## ship or send back from the item page
 
