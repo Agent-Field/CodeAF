@@ -3927,6 +3927,8 @@ func TestTheFirstReadQuestionsReachTheFloorsThreeSentences(t *testing.T) {
 		"⠋ reading Agent-Field/CodeAF · 1 of 3",
 		"reading the repositories you watch · rows stand here as issues and pull requests arrive",
 		"nothing open in 3 repositories · github polls every minute · n adds work by hand",
+		"no word from the read yet",
+		"the read was asked for and has not answered · R to check the repositories · if codeaf was just updated, restart it",
 		"nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected",
 	}
 	for _, asked := range []string{

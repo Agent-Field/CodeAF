@@ -819,20 +819,25 @@ The floor reads open issues and open pull requests from the GitHub repositories 
 
 ## after connecting github — I selected repositories but see no issues and nothing loading, what do I do now
 
-Nothing: once you watch repositories the floor reads them for you, starting the moment you save
+Nothing: an empty floor right after you watched repos is the read starting. Once you watch
+repositories the floor reads them for you, starting the moment you save
 with `R`, and it says the read is loading while it runs. The bottom line says
-`watching 3 repositories · reading them now`, and from then until rows stand the floor says
-which of three things is true, one sentence each:
+`watching 3 repositories · reading them now` for as long as the handover says it is reading,
+and from then until rows stand the floor says which of four things is true, one sentence each:
 
 - **The first read is under way.** From the moment you save, before the read has said
   anything, the handover's line is `⠋ reading the repositories you watch`, the floor reads
-  itself every second, and it keeps saying so until the read reports where it is or rows stand
-  (after half a minute with no word from the read, the floor's usual words return). Once the
-  read reports, the handover's line says where it is,
+  itself every second, and it keeps saying so until the read reports where it is or rows stand.
+  Once the read reports, the handover's line says where it is,
   `⠋ reading Agent-Field/CodeAF · 1 of 3`, and under it the floor says
   `reading the repositories you watch · rows stand here as issues and pull requests arrive`.
   It does not say `quiet` while a read is out: quiet means nothing is happening and nothing
   happened. Each open issue and pull request becomes a row as its repository is read.
+- **The read has not answered.** After half a minute with no word, the spinner stops and the
+  handover's line says `no word from the read yet` (then the source's trouble, if any), and under
+  it `the read was asked for and has not answered · R to check the repositories · if codeaf was just updated, restart it`.
+  The bottom line keeps `watching 3 repositories` without `reading them now`. Never `quiet`:
+  check the list with `R`, and restart codeaf if it was just updated.
 - **The read is done and nothing is open.** The floor says
   `nothing open in 3 repositories · github polls every minute · n adds work by hand`: the
   repositories you watch have no open issue or pull request. A new one arrives within a minute of
@@ -845,7 +850,8 @@ A floor with a source but no watched repository says
 `work arrives here from chat, from n, and from the repositories you connect`. With the four-row
 handover (`h`) the facts row carries the same progress in the source's own clause,
 `github · ⠋ reading Agent-Field/CodeAF · 1 of 3`, and the shift row says
-`nothing happened while you were away` without `quiet` while the read is out.
+`nothing happened while you were away` without `quiet` while the read is out, unanswered or
+failing; a failing read's line says `github · not reachable`.
 
 ## what github gives an item — comments, changed files, check runs, its page
 

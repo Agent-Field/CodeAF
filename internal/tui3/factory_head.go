@@ -43,7 +43,8 @@ import (
 const (
 	factoryHeadWord = "handover"
 	// factoryHeadNothingWords is the shift's row while nothing happened but a
-	// read is in flight: the floor is not quiet, so it does not say quiet.
+	// read is in flight, asked for with no word yet, or failing: the floor is
+	// not quiet, so it does not say quiet.
 	factoryHeadNothingWords = "nothing happened while you were away"
 	// factoryHeadQuietWords is said only on a floor where nothing is happening
 	// AND nothing happened.
@@ -148,8 +149,11 @@ func (a *app) factoryHeadLine(snap factory.Snapshot, width int) string {
 // painted: a whole-floor re-read in flight, `⠋ refreshing 8 items · 3 done`;
 // else a source mid-read that says where it is, `⠋ reading
 // Agent-Field/CodeAF · 1 of 3`, the repository muted and the rest dim; else a
-// source mid-poll that does not, `github · ⠋ polling`; else when a source last
-// answered, `polled 14s ago`; and "" when none of these is known.
+// source mid-poll that does not, `github · ⠋ polling`; else the save's first
+// read, `⠋ reading the repositories you watch`; else, past its wait with no
+// word, `no word from the read yet`, no spinner; else when a source last
+// answered, `polled 14s ago`, led by a source's trouble, `github · not
+// reachable`; and "" when none of these is known.
 //
 // THE PROGRESS IS THIS CLAUSE, not a second one: the line spins once, here,
 // and a read with nothing on the floor yet stands as the line on its own
@@ -177,6 +181,17 @@ func (a *app) factoryHeadFresh(snap factory.Snapshot) (string, string) {
 		w := a.factorySpin() + " " + factoryFirstReadWords
 		return w, pal.dim(w)
 	}
+	// A SOURCE IN TROUBLE IS SAID ON THE ONE LINE, items or none: a failing
+	// read is never `quiet`, and the four-row strip's facts row already says
+	// it the same way, `github · not reachable`.
+	trouble := factoryHeadTrouble(snap)
+	if a.factoryNoWord() {
+		w := factoryNoWordWords
+		if trouble != "" {
+			w += rowSep + trouble
+		}
+		return w, pal.dim(w)
+	}
 	var polled time.Time
 	for _, src := range snap.Sources {
 		if src.Polled.After(polled) {
@@ -186,13 +201,26 @@ func (a *app) factoryHeadFresh(snap factory.Snapshot) (string, string) {
 	var w string
 	switch ago := reltime.Short(polled, snap.Now); ago {
 	case "":
-		return "", ""
 	case "now":
 		w = "polled just now"
 	default:
 		w = "polled " + ago + " ago"
 	}
+	if trouble != "" {
+		w = strings.TrimSuffix(trouble+rowSep+w, rowSep)
+	}
 	return w, pal.dim(w)
+}
+
+// factoryHeadTrouble is the first named source whose last read failed, as the
+// facts row says it, `github · not reachable`, and "" when none did.
+func factoryHeadTrouble(snap factory.Snapshot) string {
+	for _, src := range snap.Sources {
+		if src.Name != "" && src.Name != string(factory.OriginChat) && strings.TrimSpace(src.Trouble) != "" {
+			return src.Name + rowSep + strings.TrimSpace(src.Trouble)
+		}
+	}
+	return ""
 }
 
 // factoryPollingSource is the first named source a read is in flight on.
@@ -298,7 +326,7 @@ func (a *app) factoryHeadShift(snap factory.Snapshot, width int) string {
 	}
 	if len(fields) == 0 {
 		words := factoryHeadQuietWords
-		if factoryInFlight(snap) || a.factoryFirstReading() {
+		if factoryInFlight(snap) || !a.fp.readingSince.IsZero() || factoryHeadTrouble(snap) != "" {
 			words = factoryHeadNothingWords
 		}
 		return factorySpaces(factoryLeadW) + pal.dim(fit(words, width-factoryLeadW))
