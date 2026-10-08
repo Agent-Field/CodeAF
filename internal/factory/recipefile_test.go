@@ -50,7 +50,7 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 		t.Fatalf("plan = %+v", p)
 	}
 	// A line with no ask copies the default's stage and lays its knobs over.
-	if w := is[1]; w.Ask != "do it in a worktree" || w.Fanout != "3" || w.Until != "done" {
+	if w := is[1]; w.Ask != "make the change in the checkout" || w.Fanout != "3" || w.Until != "done" {
 		t.Fatalf("write = %+v", w)
 	}
 	if ts := is[2]; ts.Kind != factory.StageCheck || ts.Ask != "go test ./..." || ts.Until != "clean" || ts.Max != 2 {
