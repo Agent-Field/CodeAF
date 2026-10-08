@@ -640,9 +640,10 @@ type Mailbox interface {
 
 // ErrRunnerSilent is what a door posted through the mailbox answers when the
 // process that runs the floor wrote no reply in time: nothing on this machine
-// is draining the mailbox, which is almost always codeaf's own host having
-// gone. The manual quotes it (internal/manual/chat/factory.md).
-var ErrRunnerSilent = errors.New("the floor's runner did not answer · is codeaf running?")
+// is draining the mailbox. The common cause is a window attached to an engine
+// of another build, one with no runner for the floor, so the sentence names it
+// and the way out. The manual quotes it (internal/manual/chat/factory.md).
+var ErrRunnerSilent = errors.New("the floor's runner did not answer · this window's engine may be another build · restart codeaf")
 
 // MailboxWait is how long a window waits for the owner's reply before it says
 // [ErrRunnerSilent]. The owner drains about once a second, so this is several
