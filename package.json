@@ -13,19 +13,26 @@
     "desktop:build": "node scripts/desktop.mjs build",
     "engine:build": "node scripts/build-engine.mjs",
     "engine:test": "cd engine && go test ./...",
-    "check": "npm run build && npm run engine:test"
+    "check": "npm run build && npm run design:test && npm run engine:test",
+    "design:generate": "node scripts/generate-design.mjs",
+    "design:check": "node scripts/check-design.mjs",
+    "brand:icons": "node scripts/generate-brand-icons.mjs",
+    "predev": "npm run design:generate",
+    "prebuild": "npm run design:check",
+    "design:test": "node --test scripts/check-design.test.mjs"
   },
   "dependencies": {
+    "@animateicons/react": "0.12.0",
+    "@tauri-apps/api": "^2",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "@tauri-apps/api": "^2"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16",
-    "@tauri-apps/cli": "^2"
+    "vite": "^8.0.16"
   }
 }

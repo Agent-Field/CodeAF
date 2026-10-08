@@ -24,6 +24,8 @@ The build script generates a sidecar matching the Rust target triple. Set `CARGO
 
 ## Design
 
+The final icon family is AnimateIcons Lucide outline. All theme/type/spacing/brand/window geometry values live in `src/design/tokens.json`. Shared controls live in `src/components/ui/`, and `npm run design:check` is a required pre-build gate. Read [the contributor contract](AGENTS.md) before editing. Claude contributors follow the same contract through `CLAUDE.md`.
+
 Read [the design standard](docs/DESIGN.md). System fonts, warm neutral light theme, charcoal dark theme, graphite accent, spacing/radius/motion tokens, native window controls, visible focus, and reduced motion are the defaults. No custom fonts or external asset requests.
 
 ## Checks
