@@ -54,6 +54,44 @@ func floorDoor(st *store.Store, workspace string) session.FloorDoor {
 	return seamFloorDoor{seam: seam}
 }
 
+// foremanFloorDoor is `factory_floor`'s door for ONE conversation: the floor's
+// door when transcript is the foreman's session file as the store names it
+// ([store.Store.Foreman]), and nil for every other conversation, so the tool is
+// on the foreman's belt and on no other. Another conversation that wants the
+// floor reaches it through `factory_item` and `factory_add`, or the person
+// opens the foreman with `m`. A nil store, a store that names no foreman yet,
+// or a store that cannot be read is a nil door, by [floorDoor]'s law.
+func foremanFloorDoor(st *store.Store, workspace, transcript string) session.FloorDoor {
+	if st == nil || strings.TrimSpace(transcript) == "" {
+		return nil
+	}
+	chat, err := st.Foreman()
+	if err != nil || !sameSessionFile(chat, transcript) {
+		return nil
+	}
+	return floorDoor(st, workspace)
+}
+
+// sameSessionFile says whether two paths name one session file: cleaned, and
+// with symlinks resolved where the file is there to resolve, which is the key
+// [foremanJoinTeam] files the foreman under.
+func sameSessionFile(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	resolve := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			p = real
+		}
+		return filepath.Clean(p)
+	}
+	return resolve(a) == resolve(b)
+}
+
 // seamFloorDoor answers the foreman's door from a seam's Load and Mark.
 type seamFloorDoor struct {
 	seam factory.Seam
