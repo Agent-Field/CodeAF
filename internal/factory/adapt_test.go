@@ -263,7 +263,7 @@ func TestAdaptAddsOnlyConversationsWithAnAsk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := factory.StageIndex(got.Stages, "check the")
+	i := factory.StageIndex(got.Stages, "check docs")
 	if i < 0 || got.Stages[i+1].Name != "proof" || got.Stages[i].Gate != "" || got.Stages[i].Until != factory.UntilDone {
 		t.Fatalf("placed = %+v", got.Stages)
 	}
