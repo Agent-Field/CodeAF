@@ -438,6 +438,20 @@ Every verb key keeps working on the item while its page is open (see the factory
 on a stage that has one), and ends with `esc floor`. A box that takes words opens on the last
 row of the pane.
 
+## start a conversation about an issue — enter on the issue row, when enter on the item page does nothing
+
+To talk an item through before anything runs, open it and press `enter` on its `issue` row (or
+its `talk` row): that opens the item's own conversation, exactly as `T` does from anywhere on
+the floor (see talk it through). On the issue row the hint starts with `enter talk`, and
+`T talk` stays in the item's keys. While it opens the line above the keys says
+`⠋ opening #12's conversation…`; the first `esc` on its empty box comes back to the item page.
+
+Where this window cannot make the item's conversation (its keys then have no `T talk`; see
+talk it through), `enter` on the issue row opens the item on github, as `g` does, and the hint says
+`enter github`. Where neither works, `enter` says on the pane's last row
+`nothing to open yet · r runs it` (without `r runs it` where `r` does nothing), and the next key
+puts the keys back. `enter` on the `log` row opens nothing.
+
 ## a stage is a room — enter on a stage
 
 A stage that ran as a conversation (plan, write, review: see a stage is a conversation) is a
@@ -1121,7 +1135,9 @@ verb: launch, stop, pause, answer, steer, sign-off, send back and check again. A
 the owner hands the verb to the owner, which carries it out within about a second, and a refusal
 (the day rail, `#12 has landed · sign it off, or send it back`) is said on that window's bottom
 line in the owner's own words. If nothing answers within five seconds the window says
-`the floor's runner did not answer · is codeaf running?` and nothing happens later.
+`the floor's runner did not answer · this window's engine may be another build · restart codeaf`
+and nothing happens later. The usual cause is a window attached to an engine of another codeaf
+build, one that does not run the floor; quit codeaf and start it again so both are the same build.
 
 **What a stage may do.** A chat stage runs with the allow posture (what `--yolo` gives) in the
 item's own worktree, never your checkout, so it edits files and runs commands without asking; your own approval

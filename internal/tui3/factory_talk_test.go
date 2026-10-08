@@ -212,3 +212,126 @@ func TestFactoryItemCardSettles(t *testing.T) {
 		}
 	}
 }
+
+// factoryActionLine is the last words on the item page's right pane: the
+// action line under the row the rail stands on.
+func factoryActionLine(a *app) string {
+	last := ""
+	for _, row := range factoryBodyPlain(a, a.width, 30) {
+		if _, right, div := factorySplitAt(row); div >= 0 && strings.TrimSpace(right) != "" {
+			last = strings.TrimSpace(right)
+		}
+	}
+	return last
+}
+
+// factoryIssueHint is the item page's hint with the rail on the issue row.
+func factoryIssueHint(t *testing.T, a *app) string {
+	t.Helper()
+	factoryRowNamed(t, a, "issue")
+	return (placeFactory{}).hint(a)
+}
+
+// `ENTER` ON THE ISSUE ROW OF A NEW ITEM OPENS ITS OWN CONVERSATION, exactly
+// as `T` does (owner, 2026-10-08: "enter does not seem to take me to a
+// conversation"): the Talk door is asked, the person lands in the chat, and
+// `esc` comes back to the item page. The hint on the row starts with
+// `enter talk` and still names `T talk`.
+func TestFactoryEnterOnTheIssueRowOpensTheItemsConversation(t *testing.T) {
+	f := &factoryFake{}
+	a := factoryVerbLab(t, f)
+	seam, made, chat := talkSeam(t, f)
+	a.factory = seam
+	var opened string
+	a.open = func(where, file string) (Conversation, error) {
+		opened = file
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: file, Workspace: where}, nil
+	}
+	factoryOn(t, a, 4)
+	drive(t, a, key("enter"))
+	if !a.fp.open {
+		t.Fatal("enter on the floor row did not open the item page")
+	}
+	hint := factoryIssueHint(t, a)
+	if !strings.HasPrefix(hint, "enter talk · ") || !strings.Contains(hint, "T talk") {
+		t.Fatalf("the issue row's hint does not start with enter talk and keep T talk: %q", hint)
+	}
+	drive(t, a, key("enter"))
+	if got := f.said(); len(got) != 1 || !strings.HasPrefix(got[0], "Talk(4") {
+		t.Fatalf("enter on the issue row asked %v, want the Talk door for #1662", got)
+	}
+	if *made != 1 || opened != chat || a.pageShowing() {
+		t.Fatalf("enter on the issue row made %d and opened %q (page showing %v), want %q", *made, opened, a.pageShowing(), chat)
+	}
+	drive(t, a, key("esc"))
+	if !a.at(pageFactory) || !a.fp.open {
+		t.Fatalf("esc did not come back to the item page (page %v, open %v)", a.page, a.fp.open)
+	}
+}
+
+// A STAGE WITH A ROOM STILL OPENS THE ROOM with a Talk door on the seam:
+// `enter` on the issue row is the item's conversation, on a stage its room.
+func TestFactoryEnterOnARoomStillOpensTheRoomWithATalkDoor(t *testing.T) {
+	room := factoryStageChat(t)
+	f := &factoryFake{}
+	factoryShapeItem(f, 2, func(it *factory.Item) { it.Stream.Phases[0].Chat = room })
+	a := factoryVerbLab(t, f)
+	seam, made, _ := talkSeam(t, f)
+	a.factory = seam
+	var opened string
+	a.open = func(where, file string) (Conversation, error) {
+		opened = file
+		return Conversation{Agent: &fakeAgent{model: "m"}, SessionFile: file, Workspace: where}, nil
+	}
+	factoryOn(t, a, 2)
+	drive(t, a, key("enter"))
+	factoryRowNamed(t, a, "plan")
+	if hint := (placeFactory{}).hint(a); strings.Contains(hint, "enter talk") {
+		t.Fatalf("a stage's hint names the issue row's enter: %q", hint)
+	}
+	drive(t, a, key("enter"))
+	if opened != room || *made != 0 {
+		t.Fatalf("enter on the room opened %q and asked Talk %d times, want the room and none", opened, *made)
+	}
+}
+
+// WITH NO TALK DOOR AND A GITHUB DOOR, `enter` on the issue row opens the
+// item's page through `g`'s door, and the hint says `enter github`.
+func TestFactoryEnterOnTheIssueRowOpensGitHubWithoutATalkDoor(t *testing.T) {
+	a, lab := newFactoryPolishLab(t)
+	factoryOn(t, a, 4)
+	drive(t, a, key("enter"))
+	if hint := factoryIssueHint(t, a); !strings.HasPrefix(hint, "enter github · ") {
+		t.Fatalf("the issue row's hint does not start with enter github: %q", hint)
+	}
+	drive(t, a, key("enter"))
+	if len(lab.opened) != 1 || lab.opened[0] != "https://github.com/agentfield/codeaf/pull/1662" {
+		t.Fatalf("enter on the issue row opened %q", lab.opened)
+	}
+	if a.pageMsg != "opened #1662 on github" {
+		t.Fatalf("the note is %q", a.pageMsg)
+	}
+}
+
+// WITH NEITHER DOOR, `enter` on the issue row says so on the action line, and
+// the hint names no `enter` there.
+func TestFactoryEnterOnTheIssueRowWithNothingToOpenSaysSo(t *testing.T) {
+	a, lab := newFactoryPolishLab(t)
+	a.factory.Open = nil
+	factoryOn(t, a, 4)
+	drive(t, a, key("enter"))
+	if hint := factoryIssueHint(t, a); strings.HasPrefix(hint, "enter ") {
+		t.Fatalf("an enter that opens nothing is named: %q", hint)
+	}
+	drive(t, a, key("enter"))
+	if got := factoryActionLine(a); got != "nothing to open yet · r runs it" {
+		t.Fatalf("the action line is %q", got)
+	}
+	if len(lab.opened) != 0 || !a.fp.open {
+		t.Fatalf("enter with nothing to open opened %q or left the page", lab.opened)
+	}
+	drive(t, a, key("down"))
+	if got := factoryActionLine(a); got == "nothing to open yet · r runs it" {
+		t.Fatal("moving the cursor did not put the keys back")
+	}
+}

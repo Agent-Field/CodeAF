@@ -120,7 +120,7 @@ func TestAWindowWithNobodyDrainingSaysTheRunnerDidNotAnswer(t *testing.T) {
 	t.Cleanup(func() { factory.MailboxWait = held })
 	seam := factory.LocalSeam(st, time.Now(), factory.WithMailbox(st.Mailbox()))
 	err := seam.Stop(3)
-	if !errors.Is(err, factory.ErrRunnerSilent) || err.Error() != "the floor's runner did not answer · is codeaf running?" {
+	if !errors.Is(err, factory.ErrRunnerSilent) || err.Error() != "the floor's runner did not answer · this window's engine may be another build · restart codeaf" {
 		t.Fatalf("stop with nobody draining = %v", err)
 	}
 }
