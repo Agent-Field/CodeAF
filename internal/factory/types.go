@@ -1,7 +1,7 @@
 // Package factory is the vocabulary of the factory floor: what the surface
 // draws and what a person may do to it, with NO engine behind it. The engine
-// arrives through [Seam]; a mock seam (internal/factory/mock) stands in until
-// the plan store, the forge and the crew are wired.
+// arrives through [Seam]: [LocalSeam] over the person's own store, or
+// [FixtureSeam]'s still floor for drawing and tests.
 //
 // THE TWO LAYERS. A [Recipe] is a fixed, ordered list of stages written once
 // per repo or team. A run is that recipe compiled into tasks; the inside of a
@@ -424,8 +424,7 @@ type Snapshot struct {
 	Daily   float64
 	Rail    float64
 	Shift   Shift
-	Speed   time.Duration // the mock's clock; zero for a real engine
-	Sources []SourceInfo  // what is connected; the chat is always one
+	Sources []SourceInfo // what is connected; the chat is always one
 
 	// Busy is what is in flight on single items right now, by item id:
 	// `reading` while the triage worker is on it, `refreshing` while a

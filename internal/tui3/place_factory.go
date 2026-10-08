@@ -34,10 +34,6 @@ func (placeFactory) word() string { return "factory" }
 // letter they press is a key again rather than a character in a box they
 // cannot remember opening. A verb's typing row is shut the same way, and its
 // words go with it, because they were about an item that may have moved on.
-//
-// AND THE MOCK FLOOR'S CLOCK IS ARMED HERE, only on a seam that has one
-// (factory_keys.go's [app.factoryArmBeat]); it stops by itself once the page
-// is not showing.
 func (placeFactory) open(a *app) tea.Cmd {
 	a.fp.typing = false
 	a.fp.act.ask = nil
@@ -45,7 +41,7 @@ func (placeFactory) open(a *app) tea.Cmd {
 	// reason: they were about a moment that has passed, and the picker's
 	// ticks were never saved.
 	a.fp.pick, a.fp.recipe, a.fp.ghOffer = nil, nil, ""
-	return tea.Batch(a.armPlaceClock(), a.factoryRead(), a.factoryArmBeat())
+	return tea.Batch(a.armPlaceClock(), a.factoryRead())
 }
 
 // tick re-reads the floor on the three-second beat, off the loop, so a stream
@@ -166,7 +162,7 @@ func (placeFactory) hint(a *app) string {
 	// rank first. `/ filter` and `A backlog` go first because the manual
 	// names them too; the floor's settings follow (visited once in a while,
 	// where the rest of the line is about the item a person stands on), then
-	// the sleep, the density and the repo walk. THE ORDER CLAUSE IS THE LAST
+	// the density and the repo walk. THE ORDER CLAUSE IS THE LAST
 	// OF THE RAIL TO GO: it names a state a person is in, which no other
 	// corner of the floor says.
 	type clause struct {
@@ -178,11 +174,6 @@ func (placeFactory) hint(a *app) string {
 		rail = append(rail, clause{"[ ] repo", 6})
 	}
 	rail = append(rail, clause{"A backlog", 0}, clause{"z density", 5}, clause{a.factoryOrderHint(), 7})
-	// `S` STEERS A STEERABLE ITEM, so the sleep is named only where `S`
-	// would sleep (factory_keys.go).
-	if a.factory.Has("sleep") && !(ok && a.factorySteerable(it)) {
-		rail = append(rail, clause{"S sleep 8h", 4})
-	}
 	if a.factory.Has("refreshall") {
 		rail = append(rail, clause{"U read all again", 2})
 	}
@@ -258,8 +249,7 @@ var factoryVerbDrop = map[string]int{
 // (a stage with a room, which it walks into, and the proof of a landed item,
 // whose sheet it is), the item's verbs, and the way back to the floor. A
 // stage's `enter` that only says why it has no room is not named, because a
-// key that opens nothing is not a verb. `S sleep 8h` is the first to go when
-// the line is too long.
+// key that opens nothing is not a verb.
 func (a *app) factoryItemHint(it factory.Item, head []string) string {
 	parts := append(append([]string{}, head...), "↑↓ stages")
 	if _, room := a.factoryRoomRow(it); room {
@@ -273,17 +263,7 @@ func (a *app) factoryItemHint(it factory.Item, head []string) string {
 		}
 	}
 	parts = append(parts, a.factoryVerbHint(it)...)
-	tail := []string{}
-	if a.factory.Has("sleep") && !a.factorySteerable(it) {
-		tail = append(tail, "S sleep 8h")
-	}
-	line := func() string {
-		return strings.Join(append(append(append([]string{}, parts...), tail...), "esc floor"), " · ")
-	}
-	for len(tail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-factoryHintInset {
-		tail = tail[:len(tail)-1]
-	}
-	return line()
+	return strings.Join(append(parts, "esc floor"), " · ")
 }
 
 // press is a press on a row: the cursor lands on the item drawn there, and

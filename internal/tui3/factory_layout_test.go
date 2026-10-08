@@ -10,38 +10,45 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
-	"github.com/Agent-Field/codeaf/internal/factory/mock"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE FLOOR'S GEOMETRY, AT THE FRAME ──────────────────────────────────────
 //
-// These read the whole frame the router draws, on the still fixture and on a
-// moving mock world, at the four widths a person meets: two columns at 150 and
-// 120, full-width rows at 100, and ref and title alone at 80.
+// These read the whole frame the router draws, on the still fixture, at the
+// four widths a person meets: two columns at 150 and 120, full-width rows at
+// 100, and ref and title alone at 80. The tests that need a list too long for
+// the window read [factoryBigLab]'s floor.
 
 // factoryLayoutWidths are the four widths, each with the height it is looked
 // at.
 var factoryLayoutWidths = []struct{ width, height int }{{150, 44}, {120, 40}, {100, 40}, {80, 30}}
 
-// factoryMockLab is the factory place over a generated mock world that has
-// slept through nine hours, as the factorymock build opens it.
-func factoryMockLab(t *testing.T) *app {
+// factoryBigCopies is how many times [factoryBigLab] repeats the fixture's
+// items beside the originals.
+const factoryBigCopies = 6
+
+// factoryBigLab is the factory place over the fake seam ([factoryFake]) whose
+// every read is the fixture with its items repeated [factoryBigCopies] more
+// times under fresh ids and numbers: a floor long enough to scroll at every
+// height, with every door the verbs need, opened at 150×44.
+func factoryBigLab(t *testing.T) *app {
 	t.Helper()
-	seam := mock.New(7, 12, 400, 6, factoryTestNow.Add(-9*time.Hour))
-	if err := seam.Sleep(9 * time.Hour); err != nil {
-		t.Fatalf("the mock world would not sleep: %v", err)
-	}
-	a := placeApp(t)
-	a.factory = seam
-	a.width, a.height = 150, 44
-	if cmd := a.showPage(pageFactory); cmd != nil {
-		drive(t, a, runCmd(cmd)...)
-	}
-	if !a.at(pageFactory) || !a.fp.loaded {
-		t.Fatal("the factory place did not open over the mock world")
-	}
-	return a
+	f := &factoryFake{shape: func(s *factory.Snapshot) {
+		base := s.Items
+		for k := 1; k <= factoryBigCopies; k++ {
+			for _, it := range base {
+				it.ID += 100 * k
+				if it.Num > 0 {
+					it.Num += 10000 * k
+				}
+				it.URL = ""
+				it.Title = it.Title + " " + itoa(k+1)
+				s.Items = append(s.Items, it)
+			}
+		}
+	}}
+	return factoryVerbLab(t, f)
 }
 
 // factoryFrameLines is the whole frame, plain, one string per row.
@@ -74,10 +81,9 @@ func factoryRowOf(rows []string, ref string) string {
 	return ""
 }
 
-// AT EVERY WIDTH THE FRAME IS EXACTLY HEIGHT × WIDTH, on the fixture and on the
-// mock world, and at the plain floor the body carries no SGR at all.
+// AT EVERY WIDTH THE FRAME IS EXACTLY HEIGHT × WIDTH, on the fixture, and at the plain floor the body carries no SGR at all.
 func TestFactoryLayoutFrameIsExactAtEveryWidth(t *testing.T) {
-	for name, lab := range map[string]func(*testing.T) *app{"fixture": factoryPlaceLab, "mock": factoryMockLab} {
+	for name, lab := range map[string]func(*testing.T) *app{"fixture": factoryPlaceLab} {
 		for _, sz := range factoryLayoutWidths {
 			a := lab(t)
 			a.width, a.height = sz.width, sz.height
@@ -165,7 +171,7 @@ func TestFactoryLayoutThreeGeometries(t *testing.T) {
 // facts a row carries are a leading run of its ranked facts, and narrowing
 // never brings a later one back.
 func TestFactoryLayoutFactsDropFromTheRight(t *testing.T) {
-	for name, lab := range map[string]func(*testing.T) *app{"fixture": factoryPlaceLab, "mock": factoryMockLab} {
+	for name, lab := range map[string]func(*testing.T) *app{"fixture": factoryPlaceLab} {
 		a := lab(t)
 		a.pal = newPalette(tokens.NoColor, false)
 		for _, it := range a.fp.snap.Items {
@@ -454,7 +460,7 @@ func TestFactoryLayoutBarShowsFactoryThird(t *testing.T) {
 // and walked far down still says which repo it is narrowed to, on the first
 // row of the floor, and a press on an item row below it lands on that item.
 func TestFactoryLayoutRepoLineStaysWhenTheRowsScroll(t *testing.T) {
-	a := factoryMockLab(t)
+	a := factoryBigLab(t)
 	a.width, a.height = 150, 30
 	drive(t, a, key("]"))
 	if a.fp.repo == 0 {

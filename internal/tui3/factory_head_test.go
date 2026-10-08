@@ -90,13 +90,12 @@ func TestFactoryHeadDrawsNoZeroClause(t *testing.T) {
 	// And each clause that does count is said, a question in the singular.
 	snap = factory.Fixture(factoryTestNow)
 	snap.Shift.Shipped, snap.Shift.Shipping, snap.Shift.Handled = 2, []string{"#1661", "#1663"}, 1
-	snap.Speed = 30 * time.Second
 	rows = factoryHeadPlain(factoryHeadLab(t, snap), 110)
 	if !strings.Contains(rows[1], "2 shipped #1661 #1663 · 4 arrived · 1 question handled") {
 		t.Errorf("the shift row is %q", rows[1])
 	}
-	if !strings.HasSuffix(strings.TrimRight(rows[3], " "), "$11.31 / $60 today · 150×") {
-		t.Errorf("the mock clock's speed is not after the money:\n%q", rows[3])
+	if !strings.HasSuffix(strings.TrimRight(rows[3], " "), "$11.31 / $60 today") {
+		t.Errorf("the money is not at the right of the floor's facts:\n%q", rows[3])
 	}
 }
 
@@ -123,7 +122,6 @@ func TestFactoryHeadQuietShift(t *testing.T) {
 // the sparkline's floor, and under that floor the sparkline is gone.
 func TestFactoryHeadRowsAreExactlyTheWidth(t *testing.T) {
 	snap := factory.Fixture(factoryTestNow)
-	snap.Speed = 30 * time.Second
 	snap.Sources = []factory.SourceInfo{
 		{Name: "chat"},
 		{Name: "github", Writes: true, Polled: factoryTestNow.Add(-4 * time.Minute)},
@@ -149,7 +147,6 @@ func TestFactoryHeadRowsAreExactlyTheWidth(t *testing.T) {
 // THE PLAIN FLOOR DRAWS NO SGR, on a full shift and on an empty one.
 func TestFactoryHeadPlainFloorHasNoSGR(t *testing.T) {
 	full := factory.Fixture(factoryTestNow)
-	full.Speed = 30 * time.Second
 	quiet := full
 	quiet.Shift, quiet.Daily = factory.Shift{}, 0
 	for _, snap := range []factory.Snapshot{full, quiet} {

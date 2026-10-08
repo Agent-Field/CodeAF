@@ -38,11 +38,6 @@ import (
 // says `nothing waits on you` rather than nothing at all, because "is anything
 // mine?" is the one question a person opens this page to ask.
 
-// factoryMockBeat is how much real time the mock floor's clock takes to move
-// by [factory.Snapshot.Speed], so a speed of thirty seconds a beat is a floor
-// running at 150×. A real engine has no speed and the strip draws none.
-const factoryMockBeat = 200 * time.Millisecond
-
 // The words the strip says when there is nothing to count. They are named so
 // the manual and the tests quote the code's own spelling.
 const (
@@ -136,9 +131,6 @@ func (a *app) factoryHeadLine(snap factory.Snapshot, width int) string {
 	}
 	if fresh := a.factoryHeadFresh(snap); fresh != "" {
 		add(fresh, pal.dim(fresh))
-	}
-	if x := factorySpeedWord(snap.Speed, a.linearMark("×", "x")); x != "" {
-		add(x, pal.dim(x))
 	}
 	mark := a.linearMark("◆", "*")
 	if len(segs) == 0 {
@@ -326,7 +318,7 @@ func (a *app) factoryHeadSpark(snap factory.Snapshot) string {
 // factoryHeadFloor is the floor's facts in one dim line: how many repos, which
 // sources, how many benches are busy, and when a source was last polled; and
 // at the right the day's money, the spent figure in money's ink and the rail
-// muted, with the mock clock's speed after it. The money keeps its cells and
+// muted. The money keeps its cells and
 // the facts give way, the last first ([rowTail]).
 func (a *app) factoryHeadFloor(snap factory.Snapshot, width int) string {
 	pal := a.pal
@@ -432,8 +424,7 @@ func factoryHeadFactsSpun(snap factory.Snapshot, spin string) []rowField {
 // factoryHeadMoney is the day's money and what it measures: `$11.31 / $60
 // today`, the spent figure in money's ink and the rest muted. NOTHING SPENT IS
 // NO FIGURE, so a day that has spent nothing draws only `/ $60 today`, and a
-// floor with no rail draws only the spend. The mock clock's speed follows,
-// dim.
+// floor with no rail draws only the spend.
 func (a *app) factoryHeadMoney(snap factory.Snapshot) (string, int) {
 	pal := a.pal
 	var out strings.Builder
@@ -452,12 +443,6 @@ func (a *app) factoryHeadMoney(snap factory.Snapshot) (string, int) {
 	case snap.Rail > 0:
 		put("/ "+factoryRailWord(snap.Rail)+" today", pal.muted)
 	}
-	if x := factorySpeedWord(snap.Speed, a.linearMark("×", "x")); x != "" {
-		if w > 0 {
-			put(rowSep, pal.dim)
-		}
-		put(x, pal.dim)
-	}
 	return out.String(), w
 }
 
@@ -468,16 +453,6 @@ func factoryRailWord(usd float64) string {
 		return "$" + groupDigits(itoa(int(usd)))
 	}
 	return dollars(usd)
-}
-
-// factorySpeedWord is the mock clock's speed as a multiple of real time, and
-// "" for a real engine, whose speed is zero.
-func factorySpeedWord(speed time.Duration, times string) string {
-	if speed <= 0 {
-		return ""
-	}
-	x := int((speed + factoryMockBeat/2) / factoryMockBeat)
-	return itoa(max(x, 1)) + times
 }
 
 // factoryPlural is one or many.

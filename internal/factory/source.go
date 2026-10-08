@@ -6,7 +6,7 @@ import (
 )
 
 // Source is the connector contract: where items come from and where results
-// go back. A chat, GitHub, GitLab, Linear, a mail folder and a mock are all
+// go back. A chat, GitHub, GitLab, Linear, a mail folder and a fixture are all
 // the same shape, so the floor never learns a vendor. Every item carries the
 // source's name in [Item.Origin], which is an open string for that reason.
 //
