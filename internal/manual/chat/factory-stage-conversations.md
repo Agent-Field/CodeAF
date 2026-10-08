@@ -44,8 +44,8 @@ the rounds run out, it asks you `one more round, or go on as is?`.
 
 ## where a stage's conversation opens — watch a running stage, open it afterwards
 
-A stage's conversation is made when the stage starts, in the folder of the repository's
-checkout, and joins the item's team (`#12 · <title>`) under the one `factory` team in the team
+A stage's conversation is made when the stage starts, in the item's own worktree (a folder
+of its own on its own branch, never your checkout), and joins the item's team (`#12 · <title>`) under the one `factory` team in the team
 menu. Nobody is at its keyboard: it runs unattended for at most two hours. It has no
 `factory_add`, `factory_recipe` or `factory_item`, because those wait on a card. The round is
 over when it has been idle, with no task it started still running.
@@ -59,7 +59,8 @@ on the row, or the team menu, opens it like any other conversation.
 ## what a stage may do — edit files and run commands, the allow posture
 
 A stage conversation runs with the allow posture, the same open gate `--yolo` gives, inside the
-folder of the repository's checkout. So it edits and writes files and runs commands (builds,
+item's own worktree, `~/.codeaf/v3/factory/work/<repo>-<number>`, on its branch
+`factory/<number>-<slug>`, never in your checkout. So it edits and writes files and runs commands (builds,
 tests, `git`) there without asking anyone. Your own approval settings
 (the tool approval mode, the tool rules, the command rules) do not narrow it: a rule that says
 "ask me" would only ever be refused there, because nobody is at its keyboard to answer.

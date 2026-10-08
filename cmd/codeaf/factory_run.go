@@ -174,13 +174,22 @@ func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker fac
 	}
 	source := factorySource(st, profileDir)
 	money := factoryrun.NewMoney(st, nil, time.Now)
+	// EVERY ITEM WORKS IN ITS OWN WORKTREE, never in the person's checkout:
+	// `<factory folder>/work/<repo>-<number>` on `factory/<number>-<slug>`,
+	// made from the checkout the first round that needs it. Its `branch:`
+	// line goes on the item's log through the store, and a `pr` pushes that
+	// branch before it opens the pull request.
+	workdirs := factoryWorkdirs(st)
+	git := factoryrun.ExecGit{}
 	return factoryrun.New(factoryrun.Options{
 		Store: st,
 		Exec: map[factory.StageKind]factoryrun.Executor{
 			factory.StageChat:  factoryChatStage(st, profileDir, factoryrun.NewChatExecutor(maker)),
 			factory.StageCheck: factoryrun.NewCheckExecutor(factoryrun.CheckOptions{}),
-			factory.StagePost: factoryrun.NewPostExecutor(source, func(repo string) []string {
-				return recipe(repo).Policy
+			factory.StagePost: factoryrun.NewPostExecutorWith(factoryrun.PostOptions{
+				Source: source,
+				Policy: func(repo string) []string { return recipe(repo).Policy },
+				Push:   factoryrun.GitPush(git),
 			}),
 			// A GATE IS A PERSON, and the loop answers it before it would look
 			// for an executor, so there is none to give.
@@ -189,14 +198,24 @@ func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker fac
 		Rail:       money.Rail,
 		SpentToday: money.SpentToday,
 		RepoDir:    dirs,
-		Recipe:     recipe,
-		Source:     source,
+		Workdir: func(it factory.Item) (string, error) {
+			return workdirs.For(it, dirs(it.Repo))
+		},
+		Recipe: recipe,
+		Source: source,
 		// EVENTS ARE DROPPED. The loop writes every move to the store before
 		// it would send one, and every window reads the store, so nothing on
 		// this machine is waiting to hear them.
 		Events: nil,
 		Pool:   money,
 	})
+}
+
+// factoryWorkdirs is the items' worktrees under the factory folder's `work`.
+func factoryWorkdirs(st *store.Store) *factoryrun.Workdirs {
+	w := factoryrun.NewWorkdirs(filepath.Join(st.Root(), "work"), factoryrun.ExecGit{})
+	w.Log = factoryrun.StoreLog(st, time.Now)
+	return w
 }
 
 // factoryBenches is how many items run at once: [factoryBenchesEnv] when it
