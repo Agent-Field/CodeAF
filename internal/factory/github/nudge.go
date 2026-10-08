@@ -18,9 +18,10 @@ var nudged = make(chan struct{}, 1)
 // Nudge asks the poll to read now rather than on its next tick: THE FIRST
 // READ AFTER THE PICKER'S SAVE IS IMMEDIATE. It wakes a poll waiting in this
 // process at once and touches the store's mark (`poll-now`), which wakes the
-// poll in any other process on this machine within [NudgeEvery]; on the
-// ordinary launch that is the engine, while the window is what saved. A poll
-// mid-read reads again as soon as it finishes. st may be nil.
+// poll in any other process on this machine within [NudgeEvery]. The window
+// that saved runs a poll of its own, so the in-process wake is the common
+// case; the mark is for an engine that polls the same floor. A poll mid-read
+// reads again as soon as it finishes. st may be nil.
 func Nudge(st *store.Store) {
 	select {
 	case nudged <- struct{}{}:

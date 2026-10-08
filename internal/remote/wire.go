@@ -990,8 +990,14 @@ type Welcome struct {
 	Resumed     bool   `json:"resumed"`
 	Model       string `json:"model"`
 	Build       string `json:"build,omitempty"`
-	Title       string `json:"title,omitempty"`
-	ShortTitle  string `json:"shortTitle,omitempty"`
+	// Identity is the engine's [buildinfo.Identity]: its source revision, or
+	// for a modified or unstamped build the moment it was made. A window on
+	// this machine compares it with its own and says once when the engine
+	// that serves its chats is another build (cmd/codeaf's hostBuildNote).
+	// Empty from an engine that predates the field.
+	Identity   string `json:"identity,omitempty"`
+	Title      string `json:"title,omitempty"`
+	ShortTitle string `json:"shortTitle,omitempty"`
 	// Note is a sentence worth showing once — "session open elsewhere, started
 	// a new one" travels here.
 	Note string `json:"note,omitempty"`
