@@ -147,7 +147,7 @@ func (d fileRecipeDoor) BankHabit(_ context.Context, repo, sentence string) erro
 // on. The moving mock exists only in a -tags factorymock build with
 // CODEAF_FACTORY_MOCK=1 (factorymock.go); CODEAF_FACTORY_FIXTURE=1 hands the
 // page a still fixture ([factory.FixtureSeam]) whose every verb is nil.
-func factorySeam(st *store.Store, workspace string) factory.Seam {
+func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// The mock is asked first. The default build has a stub that always
 	// answers false, so the shipped binary carries none of it
 	// (internal/factory/mock/REMOVING.md).
@@ -164,7 +164,30 @@ func factorySeam(st *store.Store, workspace string) factory.Seam {
 	// machine is keeping the store's record of it fresh (factorygithub.Facts),
 	// which is how the window on the ordinary launch learns what the engine
 	// behind it is doing without a word on the wire.
-	return factorygithub.Facts(factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(factoryRepoDirs(st, workspace))), st, nil)
+	//
+	// THE PICKER AND THE CONNECT DOORS ARE HUNG HERE and only here: the local
+	// seam is handed the forge's list over the profile's token
+	// (factorygithub.Lister), and the result is wrapped with Connect so the
+	// `github`, `ghlogin` and `connectgithub` doors exist. The mock and fixture
+	// seams above return before this line and are never wrapped.
+	profileDir = factoryProfile(profileDir)
+	local := factory.LocalSeam(st, time.Now(),
+		factory.WithRepoDirs(factoryRepoDirs(st, workspace)),
+		factory.WithRepoLister(factorygithub.Lister(profileDir)))
+	return factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir)
+}
+
+// factoryProfile is the profile directory the connection doors are hung over.
+// AN EMPTY PROFILE IS THE ORDINARY ONE: [config.Config.ProfileDir] is empty
+// unless CODEAF_PROFILE_DIR moves it, and every profile reader reads empty as
+// the codeaf home. [factorygithub.Connect] declines an empty directory, which
+// would leave the ordinary launch with no connect prompt, so the home is named
+// here.
+func factoryProfile(profileDir string) string {
+	if p := strings.TrimSpace(profileDir); p != "" {
+		return p
+	}
+	return home.Join()
 }
 
 // factoryRepoDirs answers where a repository is checked out, by the name the
@@ -240,6 +263,11 @@ func remoteRepoName(url string) string {
 	return rest
 }
 
+// factoryWatchEvery is how often a process with no poll running looks again
+// for the two things a poll needs: a watched repository and a token. It is a
+// variable so a test can shorten it.
+var factoryWatchEvery = 30 * time.Second
+
 // factoryPollEvery is how often the GitHub source is read when nothing is
 // failing. The manual says the same figure (factory.md, `## connecting
 // github`).
@@ -248,8 +276,7 @@ const factoryPollEvery = 60 * time.Second
 // factoryGitHub is the GitHub source for this floor, or nil.
 //
 // NIL IS GITHUB OFF, and it is the answer unless BOTH halves are there: a
-// store that watches at least one repository, and a token (GH_TOKEN, then
-// GITHUB_TOKEN, then `gh auth token`). Without either, nothing is built and
+// store that watches at least one repository, and a token ([factorygithub.TokenAt]). Without either, nothing is built and
 // nothing polls, so the floor's facts line says only `terminal · chat`: A
 // CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. The token goes into the
 // client and nowhere else.
@@ -271,23 +298,56 @@ func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Cont
 // factoryPoll is the one GitHub poll this process runs, started at most once.
 var factoryPoll sync.Once
 
-// startFactoryPoll starts this process's GitHub poll over st, when there is a
-// source to poll, and returns at once: the token lookup can ask `gh`, which
-// may take seconds, and a launch never waits on it. ONE POLL PER PROCESS,
-// STOPPED WITH THE PROCESS: it runs for the process's life and nothing else
-// owns it. Two processes on one machine (two windows, or a window and an
-// engine) share the floor's poller lock, so only one of them reads at a time
-// (store.TryPoller). It is called only where a person's window on this machine
-// opened the store (chatv3.go's interactive launch and engine.go's local
-// hello), so --once, a task node, --host and --at never start one.
-func startFactoryPoll(st *store.Store) {
+// waitForFactoryGitHub looks for a source now and then every `every` until one
+// can be built or ctx ends, and answers nil only when ctx ended first.
+//
+// THE ORDER IS THE CONSENT: [factoryGitHub] asks the store for repositories
+// before it asks for a token, and the token is [factorygithub.TokenAt], which
+// reads GH_TOKEN, GITHUB_TOKEN and a token kept in the profile, and runs `gh`
+// only after the person has said yes to it on the floor. So a person who has
+// not connected, or has connected but watches nothing, costs no `gh` call on
+// any tick.
+func waitForFactoryGitHub(ctx context.Context, st *store.Store, token func(context.Context) string, every time.Duration) *factorygithub.Source {
+	for {
+		if src := factoryGitHub(ctx, st, token); src != nil {
+			return src
+		}
+		t := time.NewTimer(every)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return nil
+		case <-t.C:
+		}
+	}
+}
+
+// startFactoryPoll starts this process's GitHub poll over st and returns at
+// once: the token lookup can ask `gh`, which may take seconds, and a launch
+// never waits on it. ONE POLL PER PROCESS, STOPPED WITH THE PROCESS.
+//
+// The poll is not started only when the launch finds repositories and a token.
+// A small loop ([waitForFactoryGitHub]) looks again every [factoryWatchEvery]
+// and starts the poll the first time both exist, so the picker's save (which
+// writes repos.json after a yes to gh or a token) brings rows in without a
+// relaunch. Once the poll is alive it reads repos.json itself on every tick
+// (factorygithub.PollOnce). Two processes on one machine share the floor's
+// poller lock, so only one of them reads at a time (store.TryPoller). It is
+// called only where a person's window on this machine opened the store
+// (chatv3.go's interactive launch and engine.go's local hello), so --once, a
+// task node, --host and --at never start one.
+func startFactoryPoll(st *store.Store, profileDir string) {
 	if st == nil {
 		return
 	}
 	factoryPoll.Do(func() {
 		go func() {
 			ctx := context.Background()
-			src := factoryGitHub(ctx, st, forge.Token)
+			token := func(ctx context.Context) string {
+				t, _ := factorygithub.TokenAt(ctx, profileDir)
+				return t
+			}
+			src := waitForFactoryGitHub(ctx, st, token, factoryWatchEvery)
 			if src == nil {
 				return
 			}
