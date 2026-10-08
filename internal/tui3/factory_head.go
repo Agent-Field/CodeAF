@@ -41,8 +41,13 @@ import (
 // The words the strip says when there is nothing to count. They are named so
 // the manual and the tests quote the code's own spelling.
 const (
-	factoryHeadWord        = "handover"
-	factoryHeadQuietWords  = "quiet · nothing happened while you were away"
+	factoryHeadWord = "handover"
+	// factoryHeadNothingWords is the shift's row while nothing happened but a
+	// read is in flight: the floor is not quiet, so it does not say quiet.
+	factoryHeadNothingWords = "nothing happened while you were away"
+	// factoryHeadQuietWords is said only on a floor where nothing is happening
+	// AND nothing happened.
+	factoryHeadQuietWords  = "quiet · " + factoryHeadNothingWords
 	factoryHeadNoWaitWords = "nothing waits on you"
 	factoryHeadHoursWord   = "24h"
 )
@@ -129,8 +134,8 @@ func (a *app) factoryHeadLine(snap factory.Snapshot, width int) string {
 		w := "/ " + factoryRailWord(snap.Rail)
 		add(w, pal.muted(w))
 	}
-	if fresh := a.factoryHeadFresh(snap); fresh != "" {
-		add(fresh, pal.dim(fresh))
+	if fresh, painted := a.factoryHeadFresh(snap); fresh != "" {
+		add(fresh, painted)
 	}
 	mark := a.linearMark("◆", "*")
 	if len(segs) == 0 {
@@ -139,31 +144,81 @@ func (a *app) factoryHeadLine(snap factory.Snapshot, width int) string {
 	return pal.muted(mark) + " " + factoryJoinWhole(segs, plains, pal.dim(rowSep), max(width-factoryLeadW, 0))
 }
 
-// factoryHeadFresh is how fresh the floor is, as one clause: a whole-floor
-// re-read in flight, `⠋ refreshing 8 items · 3 done`; else a source mid-poll,
-// `github · ⠋ polling`; else when a source last answered, `polled 14s ago`;
-// and "" when none of the three is known.
-func (a *app) factoryHeadFresh(snap factory.Snapshot) string {
+// factoryHeadFresh is how fresh the floor is, as one clause, plain and
+// painted: a whole-floor re-read in flight, `⠋ refreshing 8 items · 3 done`;
+// else a source mid-read that says where it is, `⠋ reading
+// Agent-Field/CodeAF · 1 of 3`, the repository muted and the rest dim; else a
+// source mid-poll that does not, `github · ⠋ polling`; else when a source last
+// answered, `polled 14s ago`; and "" when none of these is known.
+//
+// THE PROGRESS IS THIS CLAUSE, not a second one: the line spins once, here,
+// and a read with nothing on the floor yet stands as the line on its own
+// rather than under the quiet sentence.
+func (a *app) factoryHeadFresh(snap factory.Snapshot) (string, string) {
+	pal := a.pal
 	if all := strings.TrimSpace(snap.BusyAll); all != "" {
-		return a.factorySpin() + " " + all
+		w := a.factorySpin() + " " + all
+		return w, pal.dim(w)
+	}
+	if src, ok := factoryPollingSource(snap); ok {
+		if repo, count := factorySourceProgress(src); repo != "" {
+			lead := a.factorySpin() + " reading "
+			plain, painted := lead+repo, pal.dim(lead)+pal.muted(repo)
+			if count != "" {
+				plain += rowSep + count
+				painted += pal.dim(rowSep + count)
+			}
+			return plain, painted
+		}
+		w := src.Name + rowSep + a.factorySpin() + " polling"
+		return w, pal.dim(w)
 	}
 	var polled time.Time
 	for _, src := range snap.Sources {
-		if src.Polling && src.Name != "" {
-			return src.Name + rowSep + a.factorySpin() + " polling"
-		}
 		if src.Polled.After(polled) {
 			polled = src.Polled
 		}
 	}
+	var w string
 	switch ago := reltime.Short(polled, snap.Now); ago {
 	case "":
-		return ""
+		return "", ""
 	case "now":
-		return "polled just now"
+		w = "polled just now"
 	default:
-		return "polled " + ago + " ago"
+		w = "polled " + ago + " ago"
 	}
+	return w, pal.dim(w)
+}
+
+// factoryPollingSource is the first named source a read is in flight on.
+func factoryPollingSource(snap factory.Snapshot) (factory.SourceInfo, bool) {
+	for _, src := range snap.Sources {
+		if src.Polling && src.Name != "" {
+			return src, true
+		}
+	}
+	return factory.SourceInfo{}, false
+}
+
+// factorySourceProgress is where a source's read is: the repository it is on
+// now and `1 of 3`, or "" for either it does not know.
+func factorySourceProgress(src factory.SourceInfo) (repo, count string) {
+	repo = strings.TrimSpace(src.Reading)
+	if repo == "" {
+		return "", ""
+	}
+	if src.Of > 0 {
+		count = itoa(min(max(src.Read, 0), src.Of)) + " of " + itoa(src.Of)
+	}
+	return repo, count
+}
+
+// factoryInFlight says whether the floor is being read right now: a
+// whole-floor re-read, or a source mid-poll.
+func factoryInFlight(snap factory.Snapshot) bool {
+	_, polling := factoryPollingSource(snap)
+	return polling || strings.TrimSpace(snap.BusyAll) != ""
 }
 
 // factoryToggleHead is `h`: the handover's one line or its four rows, the
@@ -238,7 +293,11 @@ func (a *app) factoryHeadShift(snap factory.Snapshot, width int) string {
 		fields = append(fields, rowSay(itoa(sh.Handled)+" "+factoryPlural(sh.Handled, "question", "questions")+" handled"))
 	}
 	if len(fields) == 0 {
-		return factorySpaces(factoryLeadW) + pal.dim(fit(factoryHeadQuietWords, width-factoryLeadW))
+		words := factoryHeadQuietWords
+		if factoryInFlight(snap) {
+			words = factoryHeadNothingWords
+		}
+		return factorySpaces(factoryLeadW) + pal.dim(fit(words, width-factoryLeadW))
 	}
 	leadW := factoryLeadW
 	if mark != "" {
@@ -391,14 +450,23 @@ func factoryHeadFacts(snap factory.Snapshot) []rowField {
 
 // factoryHeadFactsSpun is [factoryHeadFacts] with work in flight said in
 // place of the freshness: a whole-floor re-read as `spin refreshing 8 items`,
-// a source mid-poll as `github · spin polling` with no polled clause after it.
+// a source mid-poll as `github · spin polling`, or `github · spin reading
+// Agent-Field/CodeAF · 1 of 3` when the read says where it is, with no polled
+// clause after it. The progress is the source's own clause, so the row spins
+// once.
 func factoryHeadFactsSpun(snap factory.Snapshot, spin string) []rowField {
 	fields := factoryHeadFacts(snap)
 	busy := strings.TrimSpace(snap.BusyAll)
-	var polling string
+	var polling, doing string
 	for _, src := range snap.Sources {
 		if src.Polling && src.Name != "" && src.Name != string(factory.OriginChat) {
-			polling = src.Name
+			polling, doing = src.Name, "polling"
+			if repo, count := factorySourceProgress(src); repo != "" {
+				doing = "reading " + repo
+				if count != "" {
+					doing += rowSep + count
+				}
+			}
 			break
 		}
 	}
@@ -411,7 +479,7 @@ func factoryHeadFactsSpun(snap factory.Snapshot, spin string) []rowField {
 		case strings.HasPrefix(f.full, "polled "):
 			continue
 		case polling != "" && (f.full == polling || strings.HasPrefix(f.full, polling+rowSep)):
-			f = rowSay(f.full + rowSep + spin + " polling")
+			f = rowSay(f.full + rowSep + spin + " " + doing)
 		}
 		out = append(out, f)
 	}

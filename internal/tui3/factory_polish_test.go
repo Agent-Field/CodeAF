@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
@@ -506,5 +507,136 @@ func TestFactoryComfortableTitlesWrap(t *testing.T) {
 	drive(t, a, key("z"))
 	if text := strings.Join(factoryBodyPlain(a, 100, 60), "\n"); strings.Contains(text, "dropped on the floor") {
 		t.Fatalf("the compact density wrapped a title:\n%s", text)
+	}
+}
+
+// factoryFirstReadLab is a floor the moment repositories are saved: no item,
+// no shift, no money, and github watching three repositories.
+func factoryFirstReadLab(t *testing.T, shape func(*factory.SourceInfo)) *app {
+	t.Helper()
+	f := &factoryFake{shape: func(s *factory.Snapshot) {
+		s.Items, s.Shift, s.Daily, s.Rail = nil, factory.Shift{}, 0, 0
+		gh := factory.SourceInfo{Name: "github", Writes: true,
+			Repos: []string{"Agent-Field/CodeAF", "Agent-Field/platform", "Agent-Field/whisper"}}
+		shape(&gh)
+		s.Sources = []factory.SourceInfo{gh, {Name: string(factory.OriginChat)}}
+	}}
+	a := factoryVerbLab(t, f)
+	a.pal = newPalette(tokens.NoColor, false)
+	return a
+}
+
+// THE FIRST READ IS SAID FROM THE MOMENT REPOSITORIES ARE SAVED (owner
+// screenshot, 2026-10-08): the handover's one line is the read's own clause,
+// spinning once and never `quiet`, and the bare floor says the read is out.
+func TestFactoryFirstReadSaysWhereTheReadIs(t *testing.T) {
+	a := factoryFirstReadLab(t, func(gh *factory.SourceInfo) {
+		gh.Polling, gh.Reading, gh.Read, gh.Of = true, "Agent-Field/CodeAF", 1, 3
+	})
+	spin := a.factorySpin()
+	for _, width := range []int{150, 120, 100} {
+		a.width = width
+		frame := factoryFrameText(a)
+		head := ""
+		for _, row := range strings.Split(frame, "\n") {
+			if strings.Contains(row, "reading Agent-Field/CodeAF") {
+				head = row
+				break
+			}
+		}
+		if !strings.Contains(head, spin+" reading Agent-Field/CodeAF · 1 of 3") {
+			t.Fatalf("at %d the handover does not say where the read is: %q\n%s", width, head, frame)
+		}
+		if strings.Count(head, spin) != 1 {
+			t.Fatalf("at %d the handover spins more than once: %q", width, head)
+		}
+		if strings.Contains(frame, "quiet") {
+			t.Fatalf("at %d a floor being read says quiet:\n%s", width, frame)
+		}
+		if !strings.Contains(strings.Join(strings.Fields(frame), " "), factoryBareReadingWords) {
+			t.Fatalf("at %d the bare floor does not say the read is out:\n%s", width, frame)
+		}
+		for i, row := range strings.Split(frame, "\n") {
+			if w := ansi.StringWidth(row); w > width {
+				t.Fatalf("at %d row %d is %d cells: %q", width, i, w, row)
+			}
+		}
+	}
+	// The four-row strip carries the progress in the source's own clause,
+	// and its shift row drops `quiet` while the read is out.
+	a.width = 150
+	a.fp.headFull = true
+	rows := a.factoryHead(150)
+	if facts := ansi.Strip(rows[3]); !strings.Contains(facts, "github · "+spin+" reading Agent-Field/CodeAF · 1 of 3") || strings.Count(facts, spin) != 1 {
+		t.Fatalf("the facts row while reading is %q", facts)
+	}
+	if shift := strings.TrimSpace(ansi.Strip(rows[1])); shift != factoryHeadNothingWords {
+		t.Fatalf("the shift row while reading is %q", shift)
+	}
+	for i, r := range rows {
+		if got := ansi.StringWidth(r); got != 150 {
+			t.Errorf("row %d of the strip is %d cells: %q", i, got, ansi.Strip(r))
+		}
+	}
+}
+
+// A SOURCE POLLING WITHOUT SAYING WHERE keeps `github · ⠋ polling`, and the
+// bare floor still says the read is out.
+func TestFactoryFirstReadWithoutProgressSaysPolling(t *testing.T) {
+	a := factoryFirstReadLab(t, func(gh *factory.SourceInfo) { gh.Polling = true })
+	frame := factoryFrameText(a)
+	if !strings.Contains(frame, "github · "+a.factorySpin()+" polling") || strings.Contains(frame, "quiet") {
+		t.Fatalf("a poll with no progress reads:\n%s", frame)
+	}
+	if !strings.Contains(strings.Join(strings.Fields(frame), " "), factoryBareReadingWords) {
+		t.Fatalf("the bare floor does not say the read is out:\n%s", frame)
+	}
+}
+
+// A READ FLOOR WITH NOTHING OPEN says how many repositories it read and what
+// brings work anyway, not what arrives from where.
+func TestFactoryFirstReadDoneSaysNothingOpen(t *testing.T) {
+	a := factoryFirstReadLab(t, func(gh *factory.SourceInfo) { gh.Polled = factoryTestNow.Add(-5 * time.Second) })
+	text := strings.Join(strings.Fields(factoryFrameText(a)), " ")
+	want := "nothing open in 3 repositories · github polls every minute · n adds work by hand"
+	if factoryBareReadWords(3) != want || !strings.Contains(text, want) {
+		t.Fatalf("a read floor with nothing open reads:\n%s", factoryFrameText(a))
+	}
+	if strings.Contains(text, factoryBareWords) || strings.Contains(text, factoryBareReadingWords) {
+		t.Fatalf("a read floor says two of its sentences:\n%s", factoryFrameText(a))
+	}
+
+	// One repository is one repository.
+	if got := factoryBareReadWords(1); !strings.HasPrefix(got, "nothing open in 1 repository ·") {
+		t.Fatalf("one repository reads %q", got)
+	}
+
+	// Watched but never read and not reading: `nothing open` would be a guess.
+	b := factoryFirstReadLab(t, func(*factory.SourceInfo) {})
+	if text := strings.Join(strings.Fields(factoryFrameText(b)), " "); !strings.Contains(text, factoryBareWords) {
+		t.Fatalf("a floor never read says:\n%s", factoryFrameText(b))
+	}
+}
+
+// THE UNCONNECTED FLOOR IS UNCHANGED by the first read's sentences.
+func TestFactoryFirstReadLeavesTheUnconnectedFloor(t *testing.T) {
+	if factoryUnconnectedWords != "nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected" {
+		t.Fatalf("the unconnected sentence moved: %q", factoryUnconnectedWords)
+	}
+	a := placeApp(t)
+	if cmd := a.showPage(pageFactory); cmd != nil {
+		drive(t, a, runCmd(cmd)...)
+	}
+	text := strings.Join(strings.Fields(factoryFrameText(a)), " ")
+	if !strings.Contains(text, factoryUnconnectedWords) || strings.Contains(text, factoryBareReadingWords) {
+		t.Fatalf("the unconnected floor reads:\n%s", factoryFrameText(a))
+	}
+}
+
+// THE PICKER'S RECEIPT SAYS THE READ HAS BEGUN; how often github is read is
+// the manual's and the read floor's, not the receipt's.
+func TestFactoryWatchingWordsSayTheReadBegan(t *testing.T) {
+	if got := factoryWatchingWords(3); got != "watching 3 repositories · reading them now" {
+		t.Fatalf("the receipt is %q", got)
 	}
 }
