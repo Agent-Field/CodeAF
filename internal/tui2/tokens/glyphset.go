@@ -215,6 +215,11 @@ const (
 	// come wears, because a skipped stage drawn as one to come is a promise the
 	// run will not keep (internal/tui3's factory_marks.go).
 	GSkipped
+	// GLocked is a stage the recipe file fixes, which no key on the floor
+	// switches off or edits (internal/tui3's factory_stagefixed.go). It is
+	// deliberately not [GPinned], which is a seat a PERSON pinned and can
+	// unpin: this one only the file changes.
+	GLocked
 	glyphIDCount
 )
 

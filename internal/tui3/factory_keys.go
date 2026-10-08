@@ -88,6 +88,11 @@ type factoryActs struct {
 	ask *factoryAsk
 	// habit is the repo a habit offer is about, and "" when none is drawn.
 	habit string
+	// recipeOffer is the repo the first offer of a recipe file is about, ""
+	// when none stands, and recipeAsked the repos this window has asked the
+	// seam about already (factory_recipeoffer.go).
+	recipeOffer string
+	recipeAsked map[string]bool
 	// talk is the conversation `T` last opened from the floor, by its key
 	// ([app.convKey]): while it is the one in front, `esc` on its empty box
 	// with nothing running goes back to the floor ([app.factoryTalkBack]).
@@ -324,6 +329,11 @@ func (a *app) factoryOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 	}
+	// THE FIRST OFFER OF A RECIPE FILE takes `y` and `n` on the same terms,
+	// under a habit offer when both stand (factory_recipeoffer.go).
+	if cmd, took := a.factoryRecipeOfferKey(msg.String()); took {
+		return cmd, true
+	}
 	return nil, false
 }
 
@@ -493,6 +503,12 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 			at := int(k[0] - '1')
 			stages := factoryStages(a.fp.snap, it)
 			if at >= len(stages) {
+				return nil, true
+			}
+			// A STAGE THE RECIPE FIXES IS NOT SWITCHED OFF: the note line says
+			// why, and no door is asked (factory_stagefixed.go).
+			if stageLocked(stages[at]) {
+				a.factorySay(factoryFixedWords(stages[at].Name))
 				return nil, true
 			}
 			on := !stages[at].On
@@ -986,6 +1002,9 @@ func (a *app) factoryFootRowsWhere(measure int, rows bool) []string {
 		out = append(out,
 			pal.ink(fit("habit forming — 3 approvals without edits on "+factoryRepoShort(repo), measure)),
 			fit(pal.muted(factoryHabitSentence+"? ")+pal.accent("[y] bank it")+pal.dim(" · [n] not yet"), measure))
+	}
+	if !rows {
+		out = append(out, a.factoryRecipeOfferRows(measure)...)
 	}
 	if !rows {
 		out = append(out, a.factoryOfferRows(measure)...)

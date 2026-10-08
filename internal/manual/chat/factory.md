@@ -538,6 +538,13 @@ row they do nothing at all, so a letter typed toward the manager never opens
 shown only where it works: a running item's ask me at and budget have no key, because they
 cannot change mid-run, and its stages carry no numbers. `enter` here does nothing.
 
+A stage the recipe file fixes is the team's law, and it shows it: the lock `§` stands where its
+`on` would, the row is dim, and its number does not switch it off. Pressing it says
+`security is fixed by the recipe · change .codeaf/factory.md to change it` on the note line,
+with the stage's own name. The recipe page `E` refuses the same way: its number, `w` on it, and
+`s` words that name it all say that sentence, and its pane shows the lock with the ask dim.
+Switching a fixed stage that is off on is never refused.
+
 ## breadcrumbs on the item page — how to get back to the floor from an item
 
 The item page's top row, `Factory › codeaf › #1551`, is a row of buttons. Click `Factory` to go
@@ -883,6 +890,18 @@ After three approvals in a row without edits, the bottom of the right column off
 `factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet`.
 `y` writes that sentence into the repository's habits, under `## habits` in its
 `.codeaf/factory.md`; `n` puts the offer away. The offer comes only where banking can be written.
+
+## no recipe in the repo yet — write it so the team shares it
+
+When an item of a repository lands and that repository's checkout has no `.codeaf/factory.md`,
+the bottom of the right column offers, once, where the habit offer stands:
+`no recipe in codeaf yet` and
+`write the recipe into the repo so the team shares it? [y] write it · [n] not now`.
+`y` writes the recipe the floor runs for it today into the checkout's `.codeaf/factory.md`, and
+the note line says `recipe written · .codeaf/factory.md on main` with the branch the checkout
+stands on. `n` puts the offer away for that repository for good: the factory's store keeps the
+no, so no window asks again. The offer comes only where the recipe can be written, a file that is
+there already is never written over, and a habit offer standing at the same time is answered first.
 
 ## from chat to the factory floor — factory_add
 
