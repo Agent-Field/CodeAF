@@ -289,7 +289,8 @@ func TestFactoryEnterOnARoomStillOpensTheRoomWithATalkDoor(t *testing.T) {
 	if hint := (placeFactory{}).hint(a); strings.Contains(hint, "enter chat") {
 		t.Fatalf("a stage's hint names the issue row's enter: %q", hint)
 	}
-	drive(t, a, key("enter"))
+	drive(t, a, key("enter")) // dives into the stage's story
+	drive(t, a, key("enter")) // opens the conversation itself
 	if opened != room || *made != 0 {
 		t.Fatalf("enter on the room opened %q and asked Talk %d times, want the room and none", opened, *made)
 	}

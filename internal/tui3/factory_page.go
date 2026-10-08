@@ -259,6 +259,10 @@ type factoryPage struct {
 	// clock, so a running phase's elapsed counts on between reads
 	// ([app.factoryFloorNow]).
 	snapAt time.Time
+	// tl is the item page's timeline, the run's story in the middle of the
+	// page: its cursor, what is folded, what is dived into, and the stage
+	// transcripts as last read (factory_timeline.go).
+	tl factoryTimeline
 }
 
 // factoryRowsCols is the rows' columns at width with the divider where it

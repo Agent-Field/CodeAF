@@ -64,6 +64,7 @@ const (
 	factoryAskAnswer                         // Answer with words
 	factoryAskSendBack                       // SendBack
 	factoryAskNew                            // New on a repo
+	factoryAskManager                        // the item's manager, from the timeline's box
 )
 
 // factoryAsk is the one typing row at the bottom of the pane: what it is for,
@@ -833,6 +834,8 @@ func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
 		})
 	case factoryAskWords:
 		return a.factoryWords(id, words, seam)
+	case factoryAskManager:
+		return a.factoryTimelineSend(id, words)
 	}
 	return nil
 }
@@ -946,33 +949,43 @@ func (a *app) factoryFootRowsWhere(measure int, rows bool) []string {
 	if !rows {
 		out = append(out, a.factoryOfferRows(measure)...)
 	}
-	if ask := a.fp.act.ask; ask != nil && (ask.kind == factoryAskNew) == rows {
-		label := pal.accent(ask.label) + " "
-		room := max(measure-ansi.StringWidth(ask.label)-2, 0)
-		text := ask.text
-		// A TOKEN IS NEVER DRAWN: one mark a character, as every secret
-		// typed on this surface is ([keyLine]).
-		if factoryAskSecret(ask) {
-			text = a.factoryMask(text)
-		}
-		if w := ansi.StringWidth(text); w > room {
-			// The row keeps the newest words in view, as a box does, and its
-			// first cell is a `…` so a window that does not start at the
-			// beginning says so. The cursor cell is outside the room, so it
-			// stays drawn.
-			if room > 1 {
-				text = "…" + ansi.Cut(text, w-(room-1), w)
-			} else {
-				text = ansi.Cut(text, w-room, w)
-			}
-		}
-		row := label + pal.ink(text) + pal.cursor(" ", 1)
-		if ask.text == "" && ask.example != "" {
-			row += " " + pal.dim(ask.example)
-		}
-		out = append(out, fit(row, measure))
+	// THE MANAGER'S BOX IS THE TIMELINE'S OWN LAST ROW (factory_timeline.go),
+	// so its typing row is drawn there and never a second time down here.
+	if ask := a.fp.act.ask; ask != nil && ask.kind != factoryAskManager && (ask.kind == factoryAskNew) == rows {
+		out = append(out, a.factoryAskLine(ask, measure))
 	}
 	return out
+}
+
+// factoryAskLine is one typing row as it is drawn: its label in the accent,
+// the words in ink with the newest in view, the cursor cell, and the dim
+// example while nothing is typed.
+func (a *app) factoryAskLine(ask *factoryAsk, measure int) string {
+	pal := a.pal
+	label := pal.accent(ask.label) + " "
+	room := max(measure-ansi.StringWidth(ask.label)-2, 0)
+	text := ask.text
+	// A TOKEN IS NEVER DRAWN: one mark a character, as every secret
+	// typed on this surface is ([keyLine]).
+	if factoryAskSecret(ask) {
+		text = a.factoryMask(text)
+	}
+	if w := ansi.StringWidth(text); w > room {
+		// The row keeps the newest words in view, as a box does, and its
+		// first cell is a `…` so a window that does not start at the
+		// beginning says so. The cursor cell is outside the room, so it
+		// stays drawn.
+		if room > 1 {
+			text = "…" + ansi.Cut(text, w-(room-1), w)
+		} else {
+			text = ansi.Cut(text, w-room, w)
+		}
+	}
+	row := label + pal.ink(text) + pal.cursor(" ", 1)
+	if ask.text == "" && ask.example != "" {
+		row += " " + pal.dim(ask.example)
+	}
+	return fit(row, measure)
 }
 
 // factoryOpenForge is `g` on an item with a page on its forge: the seam's

@@ -95,6 +95,10 @@ const (
 	// for `screenshot` and `transcript`, so the evidence beside it ends in
 	// one column on every row of the sheet.
 	factoryMediumW = 10
+	// factoryTimelineVerbW is a step's verb on the item page's timeline,
+	// wide enough for `search`, so every step's object starts in one column
+	// whatever its verb (factory_timeline.go).
+	factoryTimelineVerbW = 6
 )
 
 // THE REPO PICKER'S GRID (`R`, factory_settings.go). A row is its mark, the
