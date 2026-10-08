@@ -101,7 +101,7 @@ func TestTeamsIsTheSecondPlaceOnTheBarTheDigitsAndTheCommand(t *testing.T) {
 	}
 	a := placeApp(t)
 	bar := navPlaces(a, 120, false)
-	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity") {
+	if !placeWordsInOrder(bar, "Home", "Chats", "Factory", "AI teams", "Activity") {
 		t.Fatalf("the bar does not put teams after home: %q", bar)
 	}
 	drive(t, a, key("alt+2"))

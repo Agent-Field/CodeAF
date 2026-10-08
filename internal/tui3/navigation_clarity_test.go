@@ -18,7 +18,7 @@ func TestNavigationClarityPreservesExistingIdentities(t *testing.T) {
 		}
 	}
 	shown := barPages(pageHome, false)
-	want := []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings}
+	want := []page{pageHome, pageChats, pageFactory, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings}
 	if len(shown) != len(want) {
 		t.Fatalf("main destinations: %v", shown)
 	}

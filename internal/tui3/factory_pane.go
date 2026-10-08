@@ -11,304 +11,435 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// ── THE FACTORY PANE ────────────────────────────────────────────────────────
+// ── THE PEEK ────────────────────────────────────────────────────────────────
 //
-// The right-hand column of the factory page: the item under the rail's cursor,
-// drawn by where it stands. There are four drawings and an item is always in
-// exactly one of them.
+// The right-hand column of the factory floor at [factoryPaneFloor] columns and
+// wider: the item under the rows' cursor, at a glance. The item page
+// (factory_item.go) is where an item is seen whole; the peek is the same item
+// in the shape a person can read without moving their eyes off the rows.
 //
-//   - THE CARD is a new item (or a dismissed one): what it is, the factory's
-//     read of it, the chips a person can turn, the stages it would run, and the
-//     one key that starts it.
-//   - THE STREAM is an item on a bench, waiting for one, or waiting on the
-//     person: its phases, its recipe, and the tail of its log, with the
-//     question under it when there is one.
-//   - THE PROOF SHEET is a landed item: one row per claim, shown or not, the
-//     policy rows the same way, and the sign-off line.
-//   - THE SHIPPED LINE is an item that merged: when, what it cost, and the way
-//     into its room.
+// ONE SHAPE FOR EVERY STATE. Five fixed rows, so a person's eye learns where
+// each answer is and finds it there on every item:
 //
-// THE PANE IS PROSE AND ROWS, NOT BOXES (docs/DESIGN-LANGUAGE.md). It has no
-// border, a 2-cell lead, one blank row between blocks, and headings in muted.
-// The one hairline it draws is the rule over a stream's log.
+//  1. the ref and the title, and at the right repo · kind · author · age · origin
+//  2. the factory's read of it, led by the thought mark
+//  3. the chips: gate, cap and effort
+//  4. the phase strip for anything on a bench, or the stages a new item would run
+//  5. the one rule
 //
-// THE PANE IS A FUNCTION OF ITS WIDTH AND ITS ROOM AND NOTHING ELSE, so the
-// handover strip (factory_head.go) can stack its own rows above it by asking
-// for less room. It reads the snapshot the page folded in and never the disk.
+// then a tail that is the state's own (the question, the log, the claims, the
+// body, the merge), and the line naming the keys that apply PINNED TO THE LAST
+// ROW, so it is in the same place whatever the tail held.
 //
-// THE KEYS IT DRAWS ARE THE VERBS' (factory_keys.go), which reads the same
-// item and asks the seam's doors. The hint line under the page is the one that
-// names only the keys the seam has; the pane draws the layout whole.
+// THE PEEK IS PROSE AND ROWS, NOT BOXES (docs/DESIGN-LANGUAGE.md): no border, a
+// 2-cell lead, and one hairline. THE PEEK IS A FUNCTION OF ITS WIDTH AND ITS
+// ROOM AND NOTHING ELSE, and it reads the snapshot the page folded in and never
+// the disk.
+//
+// THE KEYS ON ITS LAST ROW ARE DRAWN HERE AND ACTED ON ELSEWHERE: what each one
+// does is the verbs' (factory_keys.go), which reads the same item and asks the
+// seam's doors. The hint line under the page is the one that names only the
+// keys the seam has; the peek draws the layout whole.
 
-// factoryPaneLead is the pane's left margin: the spacing ladder's 2-cell lead.
+// factoryPaneLead is the peek's left margin: the spacing ladder's 2-cell lead.
 const factoryPaneLead = 2
 
 // factoryPaneGap is the least air between a row's left words and its
 // right-aligned meta. Under it the meta is dropped rather than jammed.
 const factoryPaneGap = 2
 
-// factoryPane is the item under the cursor, drawn by its state, as EXACTLY
-// room rows of EXACTLY width cells. A floor with no items, or no room, is room
-// blank rows.
+// factoryPaneFixed is the peek's fixed rows, the rule included.
+const factoryPaneFixed = 5
+
+// factoryPane is the item under the cursor as EXACTLY room rows of EXACTLY
+// width cells. A floor with no items, or no room, is room blank rows. The
+// action line takes the last row whenever there are two rows or more.
 func (a *app) factoryPane(width, room int) []string {
 	if room <= 0 {
 		return nil
 	}
-	var lines []string
+	lines := make([]string, room)
 	if it, ok := a.factoryCursorItem(); ok && width > factoryPaneLead {
 		measure := width - factoryPaneLead
-		switch it.State {
-		case factory.StateRunning, factory.StateQueued, factory.StateNeedsYou:
-			lines = a.factoryStream(it, measure, room)
-		case factory.StateLanded:
-			lines = a.factorySheet(it, measure)
-		case factory.StateShipped:
-			lines = a.factoryShipped(it, measure)
-		default:
-			lines = a.factoryCard(it, measure)
+		top := a.factoryPeekFixed(it, measure)
+		action := a.pal.dim(fit(factoryActionWords(it), measure))
+		body := room
+		if room >= 2 {
+			body = room - 1
+			lines[room-1] = action
+		}
+		n := 0
+		for _, line := range top {
+			if n >= body {
+				break
+			}
+			lines[n] = line
+			n++
+		}
+		for _, line := range a.factoryPeekTail(it, measure, body-n) {
+			if n >= body {
+				break
+			}
+			lines[n] = line
+			n++
 		}
 	}
 	lead := strings.Repeat(" ", factoryPaneLead)
 	out := make([]string, room)
-	for i := range out {
+	for i, line := range lines {
 		row := ""
-		if i < len(lines) && lines[i] != "" {
-			row = lead + lines[i]
+		if line != "" {
+			row = lead + line
 		}
 		out[i] = factoryPad(row, width)
 	}
 	return out
 }
 
-// ── the card ────────────────────────────────────────────────────────────────
-
-// factoryCard is a new item: what it is, what the factory makes of it, the
-// chips, the stages it would run, the policy its proof must show, and the line
-// that starts it. Each line is at most measure cells.
-func (a *app) factoryCard(it factory.Item, measure int) []string {
+// factoryPeekFixed is the peek's five fixed rows. A row with nothing to say is
+// blank rather than closed up, so row four is row four on every item.
+func (a *app) factoryPeekFixed(it factory.Item, measure int) []string {
 	pal := a.pal
-	snap := a.fp.snap
-	var out []string
-
-	// Line 1: what it is, and where it came from on the right.
-	meta := []string{factoryRepoShort(it.Repo), string(it.Kind)}
-	if who := factoryAuthor(it); who != "" {
-		meta = append(meta, who)
+	read := ""
+	if r := strings.TrimSpace(it.Triage.Read); r != "" {
+		read = fit(pal.muted(a.icon(tokens.GThought))+" "+pal.ink(r), measure)
 	}
-	if age := factoryAge(snap.Now, it.Created); age != "" {
-		meta = append(meta, age)
+	return []string{
+		factorySpread(pal.ink(it.Ref()+" "+it.Title), pal.muted(strings.Join(a.factoryMeta(it), rowSep)), measure),
+		read,
+		fit(a.factoryChips(it, false), measure),
+		a.factoryPeekStrip(it, measure),
+		pal.dim(strings.Repeat(a.linearMark("─", "-"), measure)),
 	}
-	if origin := a.factoryOrigin(it); origin != "" {
-		meta = append(meta, origin)
-	}
-	out = append(out, factorySpread(pal.ink(it.Ref()+" "+it.Title), pal.muted(strings.Join(nonEmpty(meta), " · ")), measure))
-
-	// Up to two lines of the body, the rest marked as cut.
-	if body := factoryBodyLines(it.Body, measure); len(body) > 0 {
-		cut := len(body) > 2
-		if cut {
-			body = body[:2]
-			body[1] = fit(body[1]+" "+a.icon(tokens.GEllipsis), measure)
-		}
-		for _, line := range body {
-			out = append(out, pal.muted(line))
-		}
-	}
-
-	// The read: the triage facts, then the one sentence.
-	out = append(out, "")
-	if facts := factoryFacts(it); facts != "" {
-		out = append(out, pal.muted(fit(facts, measure)))
-	}
-	if read := strings.TrimSpace(it.Triage.Read); read != "" {
-		out = append(out, a.factoryLed(pal.muted(a.icon(tokens.GThought)), read, pal.ink, measure)...)
-	}
-	if qs := nonEmpty(it.Triage.Questions); len(qs) > 0 {
-		ask := "thin · it would ask " + factoryOr(it.Author, "the author") + ": " + strings.Join(qs, " / ")
-		for _, line := range wrap(ask, measure) {
-			out = append(out, pal.ask(line))
-		}
-		out = append(out, pal.muted(fit("nothing posts without you", measure)))
-	}
-	if it.Tier == factory.TierStranger {
-		for _, line := range wrap(factoryOr(it.Author, "the author")+" is a stranger here · their words may be drafted on, never shipped on, without you", measure) {
-			out = append(out, pal.muted(line))
-		}
-	}
-
-	// The chips.
-	out = append(out, "")
-	out = append(out, fit(a.factoryChips(it), measure))
-
-	// The stages it would run.
-	if rows := a.factoryStageRows(it, measure); len(rows) > 0 {
-		out = append(out, "")
-		out = append(out, rows...)
-	}
-
-	// The policy its proof must show.
-	if policy := nonEmpty(factoryRecipe(snap, it).Policy); len(policy) > 0 {
-		out = append(out, "")
-		for _, line := range wrap("must show: "+strings.Join(policy, " · "), measure) {
-			out = append(out, pal.muted(line))
-		}
-	}
-
-	// The line that starts it.
-	out = append(out, "")
-	go1 := pal.accent("[enter] go")
-	if means := factoryGateMeans(it.Gate); means != "" {
-		go1 += "  " + pal.muted(means)
-	}
-	out = append(out, fit(go1, measure))
-	for _, line := range wrap("[s] add a stage in words · [b] bank · [w] chips in words · [g] also on github · [d] hide", measure) {
-		out = append(out, pal.dim(line))
-	}
-	return out
 }
 
-// factoryChips is the card's one chip line: the gate, the cap and the effort,
-// each with the key that will turn it.
-func (a *app) factoryChips(it factory.Item) string {
+// factoryMeta is what an item is beside its title: the repo, the kind, the
+// author and how far they are trusted, how long ago it arrived, and where it
+// came from. A fact that is not known is left out.
+func (a *app) factoryMeta(it factory.Item) []string {
+	meta := []string{factoryRepoShort(it.Repo), string(it.Kind), factoryAuthor(it)}
+	meta = append(meta, factoryAge(a.fp.snap.Now, it.Created), a.factoryOrigin(it))
+	return nonEmpty(meta)
+}
+
+// factoryChips is the item's chips: the gate, the cap and the effort, muted
+// labels and ink values. keys adds the dim key that turns each one, which the
+// item page draws and the peek does not. THE EFFORT CHIP READS THE STAGE `e`
+// TURNS ([factoryEffortStage]), so the chip and the key are about the same
+// stage, and it says a dash when that stage carries no word, which is the
+// knee: the crew picks the effort it would pick for this class of work. A cap
+// of nothing is no cap chip (the emptiness law).
+func (a *app) factoryChips(it factory.Item, keys bool) string {
 	pal := a.pal
 	chip := func(label, value, key string) string {
-		s := pal.muted(label)
-		if value != "" {
-			s += " " + pal.ink(value)
+		s := pal.muted(label) + " " + pal.ink(value)
+		if keys {
+			s += " " + pal.dim("["+key+"]")
 		}
-		return s + " " + pal.dim("["+key+"]")
+		return s
 	}
-	// THE EFFORT CHIP SAYS A DASH, which is the knee: no word on the item
-	// means the crew picks the effort it would pick for this class of work.
-	// It reads the stage `e` turns ([factoryEffortStage]), so the chip and
-	// the key are about the same stage.
+	chips := []string{}
+	if it.Gate != "" {
+		chips = append(chips, chip("gate", string(it.Gate), "t"))
+	}
+	if c := factoryMoney(it.Cap); c != "" {
+		chips = append(chips, chip("cap", c, "c"))
+	}
 	effort := "—"
 	stages := factoryStages(a.fp.snap, it)
 	if at := factoryEffortStage(a.fp.snap, it); at >= 0 && at < len(stages) && stages[at].Effort != "" {
 		effort = stages[at].Effort
 	}
-	return strings.Join([]string{
-		chip("gate", string(it.Gate), "t"),
-		chip("cap", factoryMoney(it.Cap), "c"),
-		chip("effort", effort, "e"),
-	}, "   ")
+	chips = append(chips, chip("effort", effort, "e"))
+	return strings.Join(chips, pal.dim(rowSep))
 }
 
-// factoryStageRows is one row per stage the item would run, numbered. A stage
-// switched off draws dim; a stage whose condition does not fit the item draws
-// dim with the reason after it ([factory.Fits]).
-func (a *app) factoryStageRows(it factory.Item, measure int) []string {
+// factoryPeekStrip is row four: for an item on a bench, each phase as its mark
+// and its name, `●` done, `◐` running with its round and the minutes it has
+// left, `○` pending with its most rounds; for an item with no stream yet, the
+// stages it would run as one line of names, a stage switched off or skipped
+// dim. SEGMENTS ARE DROPPED FROM THE RIGHT, WHOLE, when the row is too narrow.
+func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 	pal := a.pal
 	stages := factoryStages(a.fp.snap, it)
-	if len(stages) == 0 {
-		return nil
-	}
-	nameW := 0
-	for _, st := range stages {
-		nameW = max(nameW, ansi.StringWidth(factoryStageName(st)))
-	}
-	nameW = min(nameW, max(measure/3, 6))
-	var out []string
-	for i, st := range stages {
-		fits := factory.Fits(st, it)
-		lit := st.On && fits
-		mark := a.icon(tokens.GStepDone)
-		if !st.On {
-			mark = a.icon(tokens.GStepPending)
-		}
-		num := "[" + strconv.Itoa(i+1) + "]"
-		// The name column is plain and padded first, then painted in two
-		// parts, so the column lines up whatever the paint adds.
-		nameCol := factoryPad(fit(factoryStageName(st), nameW), nameW)
-		var extra []string
-		if st.Max > 1 {
-			extra = append(extra, "×"+strconv.Itoa(st.Max))
-		}
-		if u := strings.TrimSpace(st.Until); u != "" && u != "done" {
-			extra = append(extra, "until "+u)
-		}
-		if !fits {
-			extra = append(extra, "· skipped: not "+strings.TrimSpace(st.When))
-		}
-		tail := strings.Join(extra, " ")
-		head := num + " " + mark + " " + nameCol + "  "
-		askW := measure - ansi.StringWidth(head)
-		if tail != "" {
-			askW -= ansi.StringWidth(tail) + 2
-		}
-		ask := fit(strings.TrimSpace(st.Ask), max(askW, 0))
-		if !lit {
-			row := head + ask
-			if tail != "" {
-				row += "  " + tail
+	var segs, plains []string
+	if it.Stream != nil && len(it.Stream.Phases) > 0 {
+		for _, ph := range it.Stream.Phases {
+			mark, paint := a.factoryPhaseMark(ph.State)
+			words := factoryPhaseWords(ph, factoryStageMax(stages, ph.Name))
+			name := pal.muted(words)
+			switch ph.State {
+			case factory.PhaseRunning:
+				name = pal.ink(words)
+			case factory.PhasePending:
+				name = pal.dim(words)
+			case factory.PhaseWaiting:
+				name = pal.ask(words)
 			}
-			out = append(out, pal.dim(fit(row, measure)))
-			continue
+			segs = append(segs, paint(mark)+" "+name)
+			plains = append(plains, mark+" "+words)
 		}
-		name, kind := nameCol, ""
-		if cut := len(st.Name); cut < len(nameCol) && strings.HasPrefix(nameCol, st.Name) {
-			name, kind = nameCol[:cut], nameCol[cut:]
+		return factoryJoinWhole(segs, plains, "  ", measure)
+	}
+	for _, st := range stages {
+		if st.On && factory.Fits(st, it) {
+			segs = append(segs, pal.muted(st.Name))
+		} else {
+			segs = append(segs, pal.dim(st.Name))
 		}
-		row := pal.dim(num) + " " + pal.muted(mark) + " " + pal.ink(name) + pal.dim(kind) + "  " + pal.muted(ask)
-		if tail != "" {
-			row += "  " + pal.dim(tail)
+		plains = append(plains, st.Name)
+	}
+	return factoryJoinWhole(segs, plains, pal.dim(rowSep), measure)
+}
+
+// factoryPhaseWords is a phase's name with what is countable about it: its
+// round over its most when it has one, how many tasks it split into, the
+// minutes a running one has left, and a pending one's most rounds.
+func factoryPhaseWords(ph factory.Phase, most int) string {
+	words := ph.Name
+	if ph.Round > 0 {
+		if most > 0 {
+			words += " " + strconv.Itoa(ph.Round) + "/" + strconv.Itoa(most)
+		} else {
+			words += " " + strconv.Itoa(ph.Round)
 		}
-		out = append(out, fit(row, measure))
+	} else if ph.State == factory.PhasePending && most > 1 {
+		words += " ×" + strconv.Itoa(most)
+	}
+	if ph.Tasks > 1 {
+		words += " ×" + strconv.Itoa(ph.Tasks)
+	}
+	if ph.State == factory.PhaseRunning && ph.Left > 0 {
+		words += " · " + factoryMinutes(ph.Left) + " left"
+	}
+	return words
+}
+
+// factoryStageMax is the most rounds the stage named name may take, and 0 when
+// the item runs no stage of that name.
+func factoryStageMax(stages []factory.Stage, name string) int {
+	for _, st := range stages {
+		if st.Name == name {
+			return max(st.Max, 1)
+		}
+	}
+	return 0
+}
+
+// factoryJoinWhole joins painted segments with sep, keeping as many WHOLE
+// segments from the left as fit in measure cells. plains are the segments'
+// own widths' source, so the paint never changes what fits.
+func factoryJoinWhole(segs, plains []string, sep string, measure int) string {
+	sepW := ansi.StringWidth(sep)
+	out, used := "", 0
+	for i, seg := range segs {
+		w := ansi.StringWidth(plains[i])
+		if i > 0 {
+			w += sepW
+		}
+		if used+w > measure {
+			if i == 0 {
+				return fit(seg, measure)
+			}
+			break
+		}
+		if i > 0 {
+			out += sep
+		}
+		out += seg
+		used += w
 	}
 	return out
 }
 
-// factoryStageName is the stage's name column: its name, and its kind when the
-// kind is not a conversation.
-func factoryStageName(st factory.Stage) string {
-	if k := factoryStageKindWord(st.Kind); k != "" {
-		return st.Name + " " + k
+// factoryPeekTail is the state's own rows under the rule, at most room of
+// them.
+//
+//	needs you  the question, then `[y] yes · [n] no · [a] in words`
+//	running    the newest log lines, the activity and spend on the first
+//	queued     what frees it
+//	landed     a row per claim, then the policy rows
+//	new        two lines of the body, the author's questions when thin, the
+//	           stranger note when the author is one
+//	shipped    when it merged and what it cost
+func (a *app) factoryPeekTail(it factory.Item, measure, room int) []string {
+	if room <= 0 {
+		return nil
 	}
-	return st.Name
+	pal := a.pal
+	var out []string
+	switch it.State {
+	case factory.StateNeedsYou:
+		if q := strings.TrimSpace(it.Question); q != "" {
+			out = append(out, a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ask, measure)...)
+		}
+		out = append(out, pal.dim(fit(factoryAnswerKeys, measure)))
+	case factory.StateRunning:
+		out = a.factoryPeekLog(it, measure, room)
+	case factory.StateQueued:
+		out = append(out, pal.dim(fit("queued · benches full · a bench frees it", measure)))
+	case factory.StateLanded:
+		for _, c := range it.Proof {
+			out = append(out, a.factoryClaimRow(c, "", measure))
+		}
+		for _, c := range it.Policy {
+			out = append(out, a.factoryClaimRow(c, "policy", measure))
+		}
+	case factory.StateShipped:
+		if line := factoryMergedLine(it); line != "" {
+			out = append(out, pal.muted(fit(line, measure)))
+		}
+	default:
+		out = a.factoryPeekNew(it, measure)
+	}
+	if len(out) > room {
+		out = out[:room]
+	}
+	return out
 }
 
-// factoryStageKindWord is a stage's kind as the pane says it, and nothing for
-// a conversation, which is what a stage is unless said otherwise.
-func factoryStageKindWord(k factory.StageKind) string {
-	if k == "" || k == factory.StageChat {
+// factoryAnswerKeys is the question's keys, as the peek and the item page
+// both name them.
+const factoryAnswerKeys = "[y] yes · [n] no · [a] in words"
+
+// factoryPeekLog is a running item's newest log lines that fit in room, oldest
+// first, with the stream's activity as a sparkline and its spend at the right
+// of the first of them.
+func (a *app) factoryPeekLog(it factory.Item, measure, room int) []string {
+	s := it.Stream
+	if s == nil {
+		return nil
+	}
+	pal := a.pal
+	log := s.Log
+	if len(log) > room {
+		log = log[len(log)-room:]
+	}
+	right := a.factoryActivity(s)
+	if m := factoryMoneyFact(it); m != "" {
+		right = strings.TrimSpace(right + "  " + placeMoneyInk(pal)(m))
+	}
+	var out []string
+	for i, l := range log {
+		if i == 0 && right != "" {
+			out = append(out, a.factoryLogSpread(l, right, measure))
+			continue
+		}
+		out = append(out, a.factoryLogLine(l, measure))
+	}
+	if len(out) == 0 && right != "" {
+		out = append(out, factorySpread("", right, measure))
+	}
+	return out
+}
+
+// factoryLogSpread is a log line with right-aligned meta, the line cut first
+// so the meta keeps its cells.
+func (a *app) factoryLogSpread(l factory.LogLine, right string, measure int) string {
+	rw := ansi.StringWidth(right)
+	if rw+factoryPaneGap+12 > measure {
+		return a.factoryLogLine(l, measure)
+	}
+	left := a.factoryLogLine(l, measure-rw-factoryPaneGap)
+	return left + strings.Repeat(" ", measure-ansi.StringWidth(left)-rw) + right
+}
+
+// factoryActivity is a stream's activity, oldest first, as one sparkline cell
+// per beat in muted, and nothing for a stream that has done nothing.
+func (a *app) factoryActivity(s *factory.Stream) string {
+	steps := factorySparkSteps
+	if a.linear || a.pal.ascii {
+		steps = factorySparkASCII
+	}
+	top := len(steps) - 1
+	any := false
+	cells := make([]string, 0, len(s.Activity))
+	for _, n := range s.Activity {
+		any = any || n > 0
+		cells = append(cells, steps[min(top, max(0, n))])
+	}
+	if !any {
 		return ""
 	}
-	return string(k)
+	return a.pal.muted(strings.Join(cells, ""))
 }
 
-// factoryGateMeans is what the gate means for a person, in their words.
-func factoryGateMeans(g factory.Gate) string {
-	switch g {
-	case factory.GateShip:
-		return "runs to a PR · you sign off"
-	case factory.GatePlan:
-		return "comes back with the plan first"
-	case factory.GateNone:
-		return "self-ships when the proof is green"
+// factoryPeekNew is a new item's tail: two lines of its body, the questions
+// the factory would put to the author when it is thin, and the stranger note
+// when the author is one.
+func (a *app) factoryPeekNew(it factory.Item, measure int) []string {
+	pal := a.pal
+	var out []string
+	body := factoryBodyLines(it.Body, measure)
+	if len(body) > 2 {
+		body = body[:2]
+		body[1] = fit(body[1]+" "+a.icon(tokens.GEllipsis), measure)
 	}
-	return ""
+	for _, line := range body {
+		out = append(out, pal.muted(line))
+	}
+	if r := it.Triage.Readiness; r > 0 && r < factory.ThinReadiness {
+		if qs := nonEmpty(it.Triage.Questions); len(qs) > 0 {
+			ask := "thin · it would ask " + factoryOr(it.Author, "the author") + ": " + strings.Join(qs, " / ")
+			for _, line := range wrap(ask, measure) {
+				out = append(out, pal.ask(line))
+			}
+		}
+	}
+	if it.Tier == factory.TierStranger {
+		for _, line := range wrap(factoryOr(it.Author, "the author")+" is a stranger here · their words may be drafted on, never shipped on, without you", measure) {
+			out = append(out, pal.dim(line))
+		}
+	}
+	return out
 }
 
-// factoryFacts is the triage on one line: the type, size, area, readiness,
-// estimate and risk of an issue, or the diff and checks of a pull request. A
-// fact that is not known is left out rather than drawn as a zero.
-func factoryFacts(it factory.Item) string {
-	t := it.Triage
-	if it.Kind == factory.KindPR {
-		return strings.Join(nonEmpty([]string{string(it.Kind), it.Diff, it.Checks}), " · ")
+// factoryMergedLine is a shipped item's one line: when it merged and what it
+// cost, and nothing when neither is known.
+func factoryMergedLine(it factory.Item) string {
+	when := it.Changed
+	var spent float64
+	if s := it.Stream; s != nil {
+		if !s.Ended.IsZero() {
+			when = s.Ended
+		}
+		spent = s.Spent
 	}
-	facts := []string{t.Type, t.Size, t.Area}
-	if t.Readiness > 0 {
-		facts = append(facts, "ready "+strconv.Itoa(t.Readiness)+"%")
+	var facts []string
+	if !when.IsZero() {
+		facts = append(facts, "merged "+when.Format("15:04"))
 	}
-	if est := factoryMoney(t.Est); est != "" {
-		facts = append(facts, "~"+est)
+	if spent > 0 {
+		facts = append(facts, dollars(spent))
 	}
-	if t.Risk != "" {
-		facts = append(facts, "risk "+t.Risk)
-	}
-	return strings.Join(nonEmpty(facts), " · ")
+	return strings.Join(facts, rowSep)
 }
+
+// factoryActionWords is the one dim line that names the keys that apply to an
+// item where it stands, in the hint grammar (`key verb · key verb`). THE KEYS
+// ARE THE VERBS' (factory_keys.go); this line only says them. `enter` OPENS
+// THE ITEM PAGE ON EVERY ROW and never launches; a new item runs on `r` or `p`,
+// and a landed one ships from its proof on the item page.
+func factoryActionWords(it factory.Item) string {
+	switch it.State {
+	case factory.StateNeedsYou:
+		return "enter open · y n answer · a in words · x stop"
+	case factory.StateRunning:
+		return "enter open · s steer · p pause · x stop"
+	case factory.StateQueued:
+		return "enter open · x stop"
+	case factory.StateLanded:
+		if factoryFirstFailed(it) != "" {
+			return "enter open · a ship anyway · c send back · o check again"
+		}
+		return "enter open to ship · c send back · o check again"
+	case factory.StateShipped:
+		return "enter open"
+	}
+	return "enter open · r run · p plan first · space mark · d hide"
+}
+
+// ── the pieces ──────────────────────────────────────────────────────────────
 
 // factoryOrigin is where the item came from, and a check after github when
 // it is on github too.
@@ -348,156 +479,6 @@ func factoryBodyLines(body string, measure int) []string {
 		}
 	}
 	return out
-}
-
-// ── the stream ──────────────────────────────────────────────────────────────
-
-// factoryStream is an item on a bench, queued for one, or waiting on the
-// person: its head line, its phases, its recipe, the tail of its log, and the
-// question or the queue line under it. THE LOG TAKES WHAT ROOM IS LEFT and
-// keeps its newest lines, so the question is never pushed off the bottom by
-// the grain above it.
-func (a *app) factoryStream(it factory.Item, measure, room int) []string {
-	pal := a.pal
-	snap := a.fp.snap
-	s := it.Stream
-
-	// Line 1: the state, the item, and the bench on the right.
-	var lead string
-	switch {
-	case it.State == factory.StateNeedsYou:
-		lead = pal.ask(a.icon(tokens.GNeedsHuman))
-	case it.State == factory.StateQueued:
-		lead = pal.muted(a.icon(tokens.GQueued))
-	case s != nil && s.Paused:
-		lead = pal.muted(a.icon(tokens.GPaused))
-	default:
-		lead = pal.accent(a.icon(tokens.GWorking))
-	}
-	meta := []string{factoryRepoShort(it.Repo)}
-	if s != nil && s.Bench > 0 {
-		meta = append(meta, "bench "+strconv.Itoa(s.Bench))
-	}
-	if s != nil {
-		meta = append(meta, factoryElapsed(s.Started, factoryEnd(s, snap.Now)))
-	}
-	meta = append(meta, factorySpend(s, it.Cap))
-	head := []string{factorySpread(lead+" "+pal.ink(it.Ref()+" "+it.Title), pal.muted(strings.Join(nonEmpty(meta), " · ")), measure)}
-
-	// The phase strip, then the recipe.
-	head = append(head, a.factoryPhaseStrip(it, measure)...)
-	if recipe := factoryRecipeWords(factoryStages(snap, it)); recipe != "" {
-		head = append(head, pal.muted(fit(recipe, measure)))
-	}
-
-	// What waits under the log.
-	var foot []string
-	switch it.State {
-	case factory.StateNeedsYou:
-		foot = append(foot, "")
-		if q := strings.TrimSpace(it.Question); q != "" {
-			foot = append(foot, a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ask, measure)...)
-		}
-		for _, line := range wrap("[y] yes · [n] no · [a] answer in words · it waits; the other benches do not", measure) {
-			foot = append(foot, pal.dim(line))
-		}
-	case factory.StateQueued:
-		foot = append(foot, "", pal.dim(fit("queued · benches full · a bench frees it", measure)))
-	}
-
-	// The rule and the log, in the room between.
-	var log []string
-	if s != nil {
-		for _, l := range s.Log {
-			log = append(log, a.factoryLogLine(l, measure))
-		}
-	}
-	out := head
-	if left := room - len(head) - len(foot) - 1; len(log) > 0 && left > 0 {
-		out = append(out, pal.dim(strings.Repeat(a.linearMark("─", "-"), measure)))
-		if len(log) > left {
-			log = log[len(log)-left:]
-		}
-		out = append(out, log...)
-	}
-	return append(out, foot...)
-}
-
-// factoryPhaseStrip is the stream's phases on one line, or more when the pane
-// is too narrow for them: each one its mark and its name, its round and task
-// count when it has them, the running one in ink with the minutes it has left.
-// An item with no stream yet draws its stages as pending.
-func (a *app) factoryPhaseStrip(it factory.Item, measure int) []string {
-	pal := a.pal
-	stages := factoryStages(a.fp.snap, it)
-	var phases []factory.Phase
-	if it.Stream != nil {
-		phases = it.Stream.Phases
-	}
-	if len(phases) == 0 {
-		for _, st := range stages {
-			if st.On && factory.Fits(st, it) {
-				phases = append(phases, factory.Phase{Name: st.Name, Kind: st.Kind, State: factory.PhasePending})
-			}
-		}
-	}
-	maxOf := func(name string) int {
-		for _, st := range stages {
-			if st.Name == name {
-				return max(st.Max, 1)
-			}
-		}
-		return 0
-	}
-	var segs []string
-	for _, ph := range phases {
-		words := ph.Name
-		if ph.Round > 0 {
-			if m := maxOf(ph.Name); m > 0 {
-				words += " " + strconv.Itoa(ph.Round) + "/" + strconv.Itoa(m)
-			} else {
-				words += " " + strconv.Itoa(ph.Round)
-			}
-		}
-		if ph.Tasks > 1 {
-			words += " ×" + strconv.Itoa(ph.Tasks)
-		}
-		var seg string
-		switch ph.State {
-		case factory.PhaseRunning:
-			if ph.Left > 0 {
-				words += " · " + factoryMinutes(ph.Left) + " left"
-			}
-			seg = pal.accent(a.icon(tokens.GStepRunning)) + " " + pal.ink(words)
-		case factory.PhaseDone:
-			seg = pal.muted(a.icon(tokens.GStepDone) + " " + words)
-		case factory.PhaseWaiting:
-			seg = pal.ask(a.icon(tokens.GNeedsHuman) + " " + words)
-		case factory.PhaseFailed:
-			seg = pal.bad(a.icon(tokens.GFailed) + " " + words)
-		default:
-			seg = pal.dim(a.icon(tokens.GStepPending) + " " + words)
-		}
-		segs = append(segs, seg)
-	}
-	return factoryPack(segs, "   ", measure)
-}
-
-// factoryRecipeWords is the stage names in order, joined, each with its effort
-// word when one is set. A stage switched off is not in it.
-func factoryRecipeWords(stages []factory.Stage) string {
-	var names []string
-	for _, st := range stages {
-		if !st.On {
-			continue
-		}
-		name := st.Name
-		if e := strings.TrimSpace(st.Effort); e != "" {
-			name += " (" + e + ")"
-		}
-		names = append(names, name)
-	}
-	return strings.Join(names, " · ")
 }
 
 // factoryLogLine is one line of a stream's grain: the time, a mark for what
@@ -542,73 +523,6 @@ func (a *app) factoryTone(l factory.LogLine) (string, func(string) string, func(
 	return mark, pal.muted, pal.muted
 }
 
-// ── the proof sheet ─────────────────────────────────────────────────────────
-
-// factorySheet is a landed item: a row per claim, shown or not, the policy rows
-// the same way, what the run cost, and the sign-off line. A FAILED CLAIM MAKES
-// THE BLOCKING ACTION THE DEFAULT KEY: enter sends the work back naming the
-// first claim nothing showed, and shipping it anyway takes a different key on
-// purpose.
-func (a *app) factorySheet(it factory.Item, measure int) []string {
-	pal := a.pal
-	snap := a.fp.snap
-	note := "its claims"
-	if it.Kind == factory.KindPR {
-		note = "their claims, from the PR body"
-	}
-	out := []string{factorySpread(pal.muted("sign-off · "+it.Ref()+" · "+it.Title), pal.dim(note), measure)}
-
-	failed := ""
-	for _, c := range it.Proof {
-		out = append(out, a.factoryClaimRow(c, "", measure))
-		if !c.OK && failed == "" {
-			failed = c.Text
-		}
-	}
-	if len(it.Policy) > 0 {
-		out = append(out, "", pal.muted(fit("policy · every PR on "+factoryRepoShort(it.Repo)+" must show", measure)))
-		for _, c := range it.Policy {
-			out = append(out, a.factoryClaimRow(c, "policy", measure))
-			if !c.OK && failed == "" {
-				failed = c.Text
-			}
-		}
-	}
-
-	// What the run took.
-	var took []string
-	if s := it.Stream; s != nil {
-		took = append(took, factoryElapsed(s.Started, factoryEnd(s, snap.Now)))
-	}
-	if words := factoryEffortWords(factoryStages(snap, it)); words != "" {
-		took = append(took, words)
-	}
-	if it.Stream != nil {
-		took = append(took, factoryMoney(it.Stream.Spent))
-	}
-	if it.Diff != "" {
-		took = append(took, "diff "+it.Diff+" — the appendix")
-	}
-	if line := strings.Join(nonEmpty(took), " · "); line != "" {
-		row := pal.muted(line)
-		if it.Diff != "" {
-			row += "  " + pal.dim("[d] open diff")
-		}
-		out = append(out, "", fit(row, measure))
-	}
-
-	// The sign-off.
-	out = append(out, "")
-	if failed == "" {
-		out = append(out, fit(pal.accent("[enter] ship")+"  "+pal.dim("[c] send back · [o] check again · [s] the stream"), measure))
-		return out
-	}
-	out = append(out, pal.warn(fit("[enter] send back — \"prove "+failed+"\"", measure)))
-	out = append(out, pal.dim(fit("[a] ship anyway · [o] check again", measure)))
-	out = append(out, pal.dim(fit("a failed claim makes the blocking action the default key", measure)))
-	return out
-}
-
 // factoryClaimRow is one claim: its mark, its words, and its evidence on the
 // right, with the way to look at a screenshot after one. A claim nothing showed
 // says so in its own row, in the words a person uses: NOT SHOWN.
@@ -627,46 +541,6 @@ func (a *app) factoryClaimRow(c factory.Claim, tag string, measure int) string {
 	}
 	return factorySpread(left, right, measure)
 }
-
-// factoryEffortWords is the effort words the stages carried, each beside its
-// stage, and nothing when every stage ran at the knee.
-func factoryEffortWords(stages []factory.Stage) string {
-	var words []string
-	for _, st := range stages {
-		if e := strings.TrimSpace(st.Effort); e != "" && st.On {
-			words = append(words, e+" "+st.Name)
-		}
-	}
-	return strings.Join(words, ", ")
-}
-
-// ── the shipped line ────────────────────────────────────────────────────────
-
-// factoryShipped is an item that merged: when, what it cost, and the way into
-// the room that did it.
-func (a *app) factoryShipped(it factory.Item, measure int) []string {
-	pal := a.pal
-	out := []string{fit(pal.ink(it.Ref()+" "+it.Title), measure)}
-	when := it.Changed
-	var spent float64
-	if s := it.Stream; s != nil {
-		if !s.Ended.IsZero() {
-			when = s.Ended
-		}
-		spent = s.Spent
-	}
-	var facts []string
-	if !when.IsZero() {
-		facts = append(facts, "merged "+when.Format("15:04"))
-	}
-	facts = append(facts, factoryMoney(spent))
-	if line := strings.Join(nonEmpty(facts), " · "); line != "" {
-		out = append(out, pal.muted(fit(line, measure)))
-	}
-	return append(out, "", pal.dim(fit("[enter] the room", measure)))
-}
-
-// ── the pieces ──────────────────────────────────────────────────────────────
 
 // factoryStages is the stages the item runs: its own copy when it has one, and
 // otherwise what its repo banked for its kind.
@@ -712,35 +586,6 @@ func factorySpread(left, right string, measure int) string {
 		}
 	}
 	return left + strings.Repeat(" ", measure-lw-rw) + right
-}
-
-// factoryPack lays segments on as few lines of measure cells as they fit,
-// joined by sep, cutting a segment wider than a whole line.
-func factoryPack(segs []string, sep string, measure int) []string {
-	var out []string
-	line, lineW := "", 0
-	sepW := ansi.StringWidth(sep)
-	for _, seg := range segs {
-		w := ansi.StringWidth(seg)
-		if lineW > 0 && lineW+sepW+w > measure {
-			out = append(out, line)
-			line, lineW = "", 0
-		}
-		if lineW > 0 {
-			line += sep
-			lineW += sepW
-		}
-		if w > measure-lineW {
-			seg = fit(seg, measure-lineW)
-			w = ansi.StringWidth(seg)
-		}
-		line += seg
-		lineW += w
-	}
-	if lineW > 0 {
-		out = append(out, line)
-	}
-	return out
 }
 
 // factoryMoney is an amount as the pane says it: whole dollars without cents,

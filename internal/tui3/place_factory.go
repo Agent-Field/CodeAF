@@ -6,6 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
 // ── THE FACTORY PLACE ───────────────────────────────────────────────────────
@@ -94,10 +96,12 @@ func (placeFactory) about() string { return "the work in flight, by where it sta
 // the verbs are about the item a person is standing on and the rail's keys
 // are about the list they already know how to walk.
 //
-// `space mark` is offered only on a new item, the one kind a mark means
-// anything on, and `[ ] repo` only when there is more than one repo to cycle.
-// `esc` says clear while anything narrows the rail, because that is what the
-// first press does.
+// `enter open` leads on every row, because `enter` opens the item page and
+// nothing else. `space mark` is offered only on a new item, the one kind a
+// mark means anything on, and `[ ] repo` only when there is more than one repo
+// to cycle. `esc` says clear while anything narrows the rail, because that is
+// what the first press does. WHILE THE ITEM PAGE IS OPEN THE LINE IS THE
+// PAGE'S ([app.factoryItemHint]).
 func (placeFactory) hint(a *app) string {
 	if a.fp.typing {
 		return "type to filter · enter keep · esc clear"
@@ -109,6 +113,11 @@ func (placeFactory) hint(a *app) string {
 	if a.fp.act.habit != "" {
 		head = append(head, "y bank it", "n not yet")
 	}
+	if a.fp.open {
+		if it, ok := a.factoryCursorItem(); ok {
+			return a.factoryItemHint(it, head)
+		}
+	}
 	if !a.factoryFloorHas() {
 		if a.factoryConnected() && a.factory.Has("new") {
 			head = append(head, "n new")
@@ -118,18 +127,18 @@ func (placeFactory) hint(a *app) string {
 	it, ok := a.factoryCursorItem()
 	var verbs []string
 	if ok {
-		verbs = a.factoryVerbHint(it)
+		verbs = append([]string{"enter open"}, a.factoryVerbHint(it)...)
 	}
 	// A FLOOR WITH NO DOORS AT ALL (the still fixture) keeps the walk at the
 	// front, because walking is then the whole of what the page does.
-	if len(verbs) == 0 || (len(verbs) == 1 && verbs[0] == "space mark") {
+	if len(verbs) <= 1 || (len(verbs) == 2 && verbs[1] == "space mark") {
 		verbs = append([]string{"↑↓ walk"}, verbs...)
 	}
 	rail := []string{"/ filter"}
 	if len(a.fp.snap.Repos) > 1 {
 		rail = append(rail, "[ ] repo")
 	}
-	rail = append(rail, "A backlog")
+	rail = append(rail, "A backlog", "z density")
 	if a.factory.Has("sleep") {
 		rail = append(rail, "S sleep 8h")
 	}
@@ -147,11 +156,44 @@ func (placeFactory) hint(a *app) string {
 	return line()
 }
 
-// press is a press on a row: the cursor lands on the item drawn there. A press
-// is `enter` on the row (pages.go's [place.press]), and an item opens nothing
-// yet, so landing the cursor is the whole of it.
+// factoryItemHint is the hint line while the item page is open: the habit
+// offer's keys when one is drawn, the stage walk, `enter` only where it acts
+// (the proof of a landed item, whose sheet it is), the item's verbs, and the
+// way back to the floor. The page's own stage note is not named, because a
+// key that only says it cannot open yet is not a verb. `S sleep 8h` is the
+// first to go when the line is too long.
+func (a *app) factoryItemHint(it factory.Item, head []string) string {
+	parts := append(append([]string{}, head...), "↑↓ stages")
+	if a.factoryOnProof(it) {
+		switch {
+		case factoryFirstFailed(it) != "" && a.factory.Has("sendback"):
+			parts = append(parts, "enter send back")
+		case factoryFirstFailed(it) == "" && a.factory.Has("signoff"):
+			parts = append(parts, "enter ship")
+		}
+	}
+	parts = append(parts, a.factoryVerbHint(it)...)
+	tail := []string{}
+	if a.factory.Has("sleep") {
+		tail = append(tail, "S sleep 8h")
+	}
+	line := func() string {
+		return strings.Join(append(append(append([]string{}, parts...), tail...), "esc floor"), " · ")
+	}
+	for len(tail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-2 {
+		tail = tail[:len(tail)-1]
+	}
+	return line()
+}
+
+// press is a press on a row: the cursor lands on the item drawn there and its
+// page opens, because a press is `enter` on the row (pages.go's [place.press])
+// and `enter` on a row opens the item page. A press on a row that holds no
+// item, or on the item page itself, does nothing.
 func (placeFactory) press(a *app, y int) (tea.Cmd, bool) {
-	a.factoryPress(y)
+	if a.factoryPress(y) {
+		a.factoryOpenItem()
+	}
 	return nil, true
 }
 
@@ -170,6 +212,12 @@ func (placeFactory) wheel(a *app, delta int) (tea.Cmd, bool) {
 // ([app.placeHomeGesture]). It is claimed only on a new item, so everywhere
 // else on the floor two spaces still go home.
 func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// THE LAYOUT'S KEYS ARE READ FIRST, here rather than in key, because the
+	// item page walks its stages with `↑` and the router would otherwise read
+	// `↑` off the first row as the way onto the tab bar (factory_item.go).
+	if cmd, took := a.factoryLayoutKey(msg); took {
+		return cmd, true
+	}
 	// The box keeps every key but the router's walk between places and its alt
 	// chords, which the hint line goes on naming while the box is open.
 	if a.fp.typing {
@@ -196,9 +244,15 @@ func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // answers false for every key it does not take). `esc` CLEARS A NARROWED RAIL
 // BEFORE IT LEAVES, so a person who filtered does not lose the page to the
 // same key that drops the filter.
+//
+// WHILE THE ITEM PAGE IS OPEN only the verbs are asked: the rail's narrowings
+// are about the floor, which is underneath.
 func (placeFactory) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	if cmd, took := a.factoryKey(msg); took {
 		return cmd
+	}
+	if a.fp.open {
+		return nil
 	}
 	switch k := msg.String(); k {
 	case "esc":
