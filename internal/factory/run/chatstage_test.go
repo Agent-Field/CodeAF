@@ -287,3 +287,23 @@ func (brokenConv) Captions(context.Context) <-chan string { return nil }
 func (brokenConv) ID() string                             { return "broken" }
 func (brokenConv) Close()                                 {}
 func (brokenConv) Spent() float64                         { return 0.25 }
+
+func TestTheBriefSaysWhichStageOfTheRunThisIs(t *testing.T) {
+	job := reviewJob()
+	job.Stage = factory.DefaultRecipe().Stages[0]
+	job.Index = 0
+	job.Prior = nil
+	job.Item.Stream.Phases = []factory.Phase{{Name: "plan"}, {Name: "write"}, {Name: "test"}, {Name: "review"}, {Name: "proof"}}
+	want := "stages: plan › write › test › review › proof · this is plan: do this stage's part, and leave the rest to the stages after it"
+	if brief := stageBrief(job); !strings.Contains(brief, want) {
+		t.Fatalf("the brief does not say where plan stands:\n%s", brief)
+	}
+	job.Stage = factory.DefaultRecipe().Stages[5]
+	if brief := stageBrief(job); !strings.Contains(brief, "· this is proof, the last: do this stage's part") {
+		t.Fatalf("the last stage is not told it is the last:\n%s", brief)
+	}
+	job.Item.Stream.Phases = job.Item.Stream.Phases[:1]
+	if brief := stageBrief(job); strings.Contains(brief, "stages:") {
+		t.Fatalf("a one-stage run names its stages:\n%s", brief)
+	}
+}

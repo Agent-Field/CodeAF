@@ -118,6 +118,7 @@ func TestTUIE2E(t *testing.T) {
 	t.Run("foreign_skills_reach_the_conversation", testForeignSkills)
 	t.Run("FactoryFloorOpensConnected", testFactoryFloorOpensConnected)
 	t.Run("FactoryFromChat", testFactoryFromChat)
+	t.Run("FactoryRunsAnIssue", testFactoryRunsAnIssue)
 }
 
 // testPlainLaunchConnectionsAndHarnesses is the engine-road regression: the
@@ -2596,6 +2597,12 @@ var factoryHeadingLine = regexp.MustCompile(`^\s*([A-Z][A-Z ]*[A-Z]) · \d+`)
 // lines found the peek's title and called it the row.
 func factoryRowUnderNew(t *testing.T, screen string, words ...string) string {
 	t.Helper()
+	return factoryRowUnder(t, screen, say(t, "factoryNewHeading"), words...)
+}
+
+// factoryRowUnder is [factoryRowUnderNew] for any group heading.
+func factoryRowUnder(t *testing.T, screen, heading string, words ...string) string {
+	t.Helper()
 	lines := strings.Split(screen, "\n")
 	for i, line := range lines {
 		if cut := strings.Index(line, " │"); cut >= 0 {
@@ -2620,14 +2627,240 @@ func factoryRowUnderNew(t *testing.T, screen string, words ...string) string {
 	}
 	for i := at - 1; i >= 0; i-- {
 		if m := factoryHeadingLine.FindStringSubmatch(lines[i]); m != nil {
-			if m[1] != say(t, "factoryNewHeading") {
-				t.Errorf("the item's row stands under %q, not %q:\n%s", m[1], say(t, "factoryNewHeading"), screen)
+			if m[1] != heading {
+				t.Errorf("the item's row stands under %q, not %q:\n%s", m[1], heading, screen)
 			}
 			return lines[at]
 		}
 	}
 	t.Errorf("no group heading above the item's row:\n%s", screen)
 	return lines[at]
+}
+
+// ── the factory floor, an item run end to end ───────────────────────────────
+
+// The demo repository the run is driven against, and the issue it runs. They
+// are the SCENARIO'S words, not the product's: a public repository seeded on
+// 2026-10-07 with six issues and two pull requests over a tiny Go ledger,
+// whose #1 is a real bug (Total counts a repeated entry twice) with a test the
+// issue asks for.
+const (
+	factoryDemoRepo  = "santoshkumarradha/factory-demo"
+	factoryDemoName  = "factory-demo"
+	factoryDemoIssue = "#1 Total double-counts"
+)
+
+// factoryRunPatience is the most one item's run is given, launch to landed.
+// The hand run on 2026-10-08 (z-ai/glm-5.3, five chat stages, two review
+// rounds) landed in sixteen minutes; a cheaper model and a loaded box take
+// longer, and the subtest's own ceiling is thirty.
+const factoryRunPatience = 26 * time.Minute
+
+// testFactoryRunsAnIssue is the whole floor on a real issue with a real model:
+// the demo repository is watched and checked out, its issues arrive from
+// GitHub, `r` on #1 launches it, and every stage of codeaf's default recipe
+// runs as a conversation in the checkout until the item lands with its proof
+// sheet. A question the run asks is answered the way a person in a hurry
+// would: yes, except `one more round` of a stage at its max, which is no (go
+// on as is), so a review that keeps one finding open cannot loop the bill.
+//
+// WHAT IS ASSERTED IS WHAT THE RUN LEFT, NOT WHAT THE MODEL SAID: the row
+// under LANDED, a plan line and a test line in the item's stream, the landed
+// line, and a non-empty diff in the checkout against the commit it was cloned
+// at (the stage may commit, or may leave the change in the tree; the diff
+// against the base counts both).
+//
+// It SKIPS without gh, or when the clone fails (no network, gh logged out).
+// It costs a few dollars and runs alone:
+//
+//	go test -tags e2e -run 'TestTUIE2E/FactoryRunsAnIssue' -count=1 -timeout 40m -v ./internal/e2e/
+func testFactoryRunsAnIssue(t *testing.T) {
+	if _, err := exec.LookPath("gh"); err != nil {
+		t.Skip("no gh on PATH: the run clones the demo repository and reads its issues through it")
+	}
+	home := newHome(t, map[string]any{"github_via": "gh"})
+	checkout := filepath.Join(t.TempDir(), factoryDemoName)
+	if out, err := exec.Command("gh", "repo", "clone", factoryDemoRepo, checkout, "--", "-q").CombinedOutput(); err != nil {
+		t.Skipf("cannot clone %s (no network, or gh is not logged in): %v\n%s", factoryDemoRepo, err, out)
+	}
+	base := strings.TrimSpace(gitOut(t, checkout, "rev-parse", "HEAD"))
+	floorDir := filepath.Join(home, "v3", "factory")
+	if err := os.MkdirAll(floorDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, filepath.Join(floorDir, "repos.json"), map[string]any{"schema": 1, "repos": []string{factoryDemoRepo}})
+	writeJSON(t, filepath.Join(floorDir, "checkouts.json"), map[string]any{"schema": 1, "checkouts": map[string]string{factoryDemoName: checkout}})
+
+	// THE CHILD'S HOME IS THE HOST GUARD'S, NOT THE DEVELOPER'S (#1631), so
+	// gh's own login is pointed at by GH_CONFIG_DIR, which is how the floor's
+	// poll and its `github_via: gh` row find a token. The belt is the shipped
+	// default, as a person launching an item has it ([startDefault]'s reason).
+	ghDir := os.Getenv("GH_CONFIG_DIR")
+	if ghDir == "" {
+		ghDir = filepath.Join(developerHome, ".config", "gh")
+	}
+	// --no-host: the window holds the floor's run lock and runs the item
+	// itself, so the run dies with the rig and nothing outlives the test.
+	r := startWithEnv(t, []string{config.APIKeyEnv + "=" + liveKey(t), "GH_CONFIG_DIR=" + ghDir},
+		"afe2e_factoryrun", home, checkout, tuiWide, 50, "chat", "--one-model", "--no-host")
+	r.skipSetup(t)
+	statesPastTheDoor(t, r)
+	// NOT [factoryOpen]: that waits for the four-row handover an empty floor
+	// draws, and a floor with rows on it opens on the one-line handover.
+	r.lit("/factory")
+	time.Sleep(700 * time.Millisecond)
+	r.keys("Enter")
+	r.waitFor(3*time.Minute, factoryDemoIssue)
+	if !factoryCursorOn(r, factoryDemoIssue, 12) {
+		t.Fatalf("the cursor never reached %s:\n%s", factoryDemoIssue, r.capture())
+	}
+	r.keys("r")
+	// THE STORE SAYS IT RAN, NOT THE NOTE LINE: `r` answers `#1 is queued · a
+	// bench frees it` even when a bench is free and the run starts that second.
+	for wait := time.Now().Add(30 * time.Second); factoryItemNum(t, home, 1).State == "new"; time.Sleep(time.Second) {
+		if time.Now().After(wait) {
+			t.Fatalf("`r` on #1 did not launch it:\n%s", r.capture())
+		}
+	}
+	t.Logf("#1 launched:\n%s", r.capture())
+	time.Sleep(time.Second)
+	r.keys("Enter") // the item page, where its questions are answered
+
+	deadline := time.Now().Add(factoryRunPatience)
+	var it factoryRunItem
+	for {
+		it = factoryItemNum(t, home, 1)
+		if it.State == "landed" {
+			break
+		}
+		switch it.State {
+		case "shipped", "stopped", "new":
+			t.Fatalf("#1 left the run as %q:\n%s\n%s", it.State, strings.Join(it.logLines(), "\n"), r.capture())
+		}
+		if it.State == "needs you" && it.Question != "" {
+			r.waitFor(30*time.Second, say(t, "factoryAnswerKeys"))
+			key := "y"
+			if strings.Contains(it.Question, say(t, "factoryRoundsAsk")) {
+				key = "n"
+			}
+			t.Logf("the run asked %q · answering %s", it.Question, key)
+			r.keys(key)
+			r.waitFor(15*time.Second, say(t, "factoryAnsweredWord")+"1")
+			for wait := time.Now().Add(30 * time.Second); time.Now().Before(wait); time.Sleep(time.Second) {
+				if factoryItemNum(t, home, 1).Question != it.Question {
+					break
+				}
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("#1 did not land within %v; it is %q:\n%s\n%s", factoryRunPatience, it.State,
+				strings.Join(it.logLines(), "\n"), r.capture())
+		}
+		time.Sleep(3 * time.Second)
+	}
+	logs := it.logLines()
+	for _, stage := range []string{"plan: ", "test: "} {
+		if !hasPrefixLine(logs, stage) {
+			t.Errorf("the stream has no %q line:\n%s", stage, strings.Join(logs, "\n"))
+		}
+	}
+	if !hasPrefixLine(logs, say(t, "factoryLandedLog")) {
+		t.Errorf("the stream does not end on %q:\n%s", say(t, "factoryLandedLog"), strings.Join(logs, "\n"))
+	}
+	t.Logf("the item page on landing:\n%s", r.capture())
+
+	r.keys("Escape")
+	floor := r.waitFor(10*time.Second, say(t, "factoryLandedHeading"))
+	row := factoryRowUnder(t, floor, say(t, "factoryLandedHeading"), "#1", "total", "double")
+	t.Logf("#1 on the floor: %s", strings.TrimSpace(row))
+
+	stat := strings.TrimSpace(gitOut(t, checkout, "diff", "--stat", base))
+	if stat == "" {
+		t.Errorf("the checkout has no change against %s after #1 landed", base)
+	}
+	t.Logf("the change #1 left in the checkout, against %s:\n%s", base, stat)
+	t.Logf("factory run cost: item $%.2f, usage ledger $%.2f", it.Stream.Spent, usageUSD(home))
+	r.quit()
+}
+
+// factoryRunItem is the slice of a stored factory item this run reads.
+type factoryRunItem struct {
+	Num      int
+	State    string
+	Question string
+	Stream   struct {
+		Log []struct {
+			Text string
+		}
+		Spent float64
+	}
+}
+
+func (it factoryRunItem) logLines() []string {
+	out := make([]string, 0, len(it.Stream.Log))
+	for _, l := range it.Stream.Log {
+		out = append(out, l.Text)
+	}
+	return out
+}
+
+// factoryItemNum reads the floor's stored item for the forge number num,
+// straight off the store's files: what the runner wrote, not what a frame drew.
+func factoryItemNum(t *testing.T, home string, num int) factoryRunItem {
+	t.Helper()
+	paths, _ := filepath.Glob(filepath.Join(home, "v3", "factory", "*.json"))
+	for _, p := range paths {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var doc struct {
+			Item *factoryRunItem `json:"item"`
+		}
+		if json.Unmarshal(raw, &doc) == nil && doc.Item != nil && doc.Item.Num == num {
+			return *doc.Item
+		}
+	}
+	return factoryRunItem{}
+}
+
+// factoryCursorOn walks the floor's cursor down until the peek, right of the
+// rows' dim `│`, is headed by the item, at most moves times.
+func factoryCursorOn(r *rig, title string, moves int) bool {
+	peekHas := func() bool {
+		for _, line := range strings.Split(r.capture(), "\n") {
+			if _, right, ok := strings.Cut(line, " │"); ok && strings.HasPrefix(strings.TrimSpace(right), title) {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 0; i <= moves; i++ {
+		if peekHas() {
+			return true
+		}
+		r.keys("Down")
+		time.Sleep(400 * time.Millisecond)
+	}
+	return peekHas()
+}
+
+func hasPrefixLine(lines []string, prefix string) bool {
+	for _, l := range lines {
+		if strings.HasPrefix(l, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).Output()
+	if err != nil {
+		t.Fatalf("git %v: %v", args, err)
+	}
+	return string(out)
 }
 
 // factoryBarLine is the first line of the screen that carries the factory's
