@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 	"github.com/Agent-Field/codeaf/internal/teams"
@@ -34,6 +36,14 @@ import (
 //     not known), whose journal opens with the item in front of it
 //     ([talkBrief]) as the session's own note ([session.SeedConversation]).
 //
+// THE CONVERSATION IS THE MANAGER OF THE ITEM'S RUN (the owner's decision of
+// 2026-10-08). It is the LEAD of the item's team, the stages' conversations
+// its members; a launch makes it when nobody pressed `T` first, through the
+// same maker ([managerMaker], wired as the runner's Options.Manager); the
+// runner reports each stage into it; and what the person types into it is the
+// brief before a run and the steer during one (internal/factory/run's
+// manager.go).
+//
 // The conversation's belt is every other conversation's on this launch: the
 // factory tools, and `factory_item` beside them ([itemDoor]), which is how the
 // conversation proposes a change to the item — its stages, ask me at, budget, thinking,
@@ -48,6 +58,10 @@ const factoryTeamName = "factory"
 // talkClosing is the brief's last sentence, said once so the brief and the
 // manual quote the same words.
 const talkClosing = "This is the item's own conversation on the factory floor. Nothing here runs it; the person does that on the floor."
+
+// talkManager is the brief's sentence that makes the conversation the item's
+// manager, said once so the brief and the manual quote the same words.
+const talkManager = "You are the manager of this item. The runner reports each stage here. What the person says here is the brief before a run and the steer during one; use factory_item to change the item. While the run waits on a question, a yes or a no the person types here answers it, and the runner's next line here says so."
 
 // talkMaker is the Talk door's maker for this machine's floor: st is the store
 // the item lives in, workspace the window's own folder, and profileDir the
@@ -82,16 +96,74 @@ func talkMaker(st *store.Store, workspace, profileDir string) func(context.Conte
 	}
 }
 
+// managerMaker is the runner's Options.Manager: the item's own conversation,
+// made by the Talk door's own maker ([talkMaker]) when the item has none, and
+// named the lead of the item's team either way, so a conversation `T` made
+// before this build, or before the team had a lead, is the lead from its next
+// run on.
+func managerMaker(st *store.Store, workspace, profileDir string) func(context.Context, factory.Item) (string, error) {
+	mint := talkMaker(st, workspace, profileDir)
+	dirs := factoryRepoDirs(st, workspace)
+	return func(ctx context.Context, it factory.Item) (string, error) {
+		chat := strings.TrimSpace(it.Talk)
+		if chat == "" {
+			return mint(ctx, it)
+		}
+		where := strings.TrimSpace(dirs(it.Repo))
+		if where == "" {
+			where = strings.TrimSpace(workspace)
+		}
+		if err := talkJoinTeam(profileDir, it, chat, where, talkTeamName(it)); err != nil {
+			return "", err
+		}
+		return chat, nil
+	}
+}
+
+// sessionTalk is the runner's [factoryrun.Talk] over internal/session's
+// journal doors: a line goes in as the manager's own message, marked
+// factory-progress, and what the person typed comes out by its instant.
+type sessionTalk struct{}
+
+// Say appends one line; a conversation that is not there any more is
+// [factoryrun.ErrTalkGone], so the runner stops owing it lines.
+func (sessionTalk) Say(transcript, line string) error {
+	err := session.AppendProgress(transcript, line)
+	if errors.Is(err, os.ErrNotExist) {
+		return factoryrun.ErrTalkGone
+	}
+	return err
+}
+
+// Heard is what the person typed after the instant after.
+func (sessionTalk) Heard(transcript string, after time.Time) ([]factoryrun.Heard, error) {
+	lines, err := session.PersonLines(transcript, after)
+	out := make([]factoryrun.Heard, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, factoryrun.Heard{At: l.At, Words: l.Words})
+	}
+	return out, err
+}
+
+// LastSaid is the last sentence a conversation's model said.
+func (sessionTalk) LastSaid(transcript string) string { return session.LastSaid(transcript) }
+
 // talkTeamName is the item's team's name and its conversation's: the floor's
 // ref and the title, `#12 · fix the ledger double count`.
 func talkTeamName(it factory.Item) string {
 	return it.Ref() + " · " + strings.Join(strings.Fields(it.Title), " ")
 }
 
-// talkJoinTeam writes the item's team, under the one `factory` team, and the
-// conversation into it, in ONE read-modify-write of the teams file. The
+// talkJoinTeam puts the conversation in the item's team, under the one
+// `factory` team, AS ITS LEAD, in ONE read-modify-write of the teams file. The
+// item's team is the open one of its name under `factory` when a run already
+// made it for its stages ([factoryItemTeam]), and is made here otherwise; the
 // `factory` team is the open top-level team of that name, made here the first
-// time any item asks for one.
+// time any item asks for one. Called again it changes nothing.
+//
+// A LEAD THE TEAMS FILE REFUSES (one conversation leads one team and the
+// teams under it) leaves the conversation a member: the item still has its
+// conversation, and the Teams place says who leads.
 func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name string) error {
 	key := transcript
 	if real, err := filepath.EvalSymlinks(transcript); err == nil {
@@ -100,11 +172,33 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.Update(profileDir, func(f *teams.File) error {
-		parent := factoryParentTeam(f, now)
-		id := teams.NewID()
-		f.Teams = append(f.Teams, teams.Team{ID: id, Name: name, Parent: parent, Made: now})
-		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: talkHandle(it), JoinedAt: now})
+		id := itemTeamIn(f, name, now)
+		if err := f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: talkHandle(it), JoinedAt: now}); err != nil {
+			return err
+		}
+		if t, ok := f.Team(id); ok && t.Manager == key {
+			return nil
+		}
+		if f.CheckManager(id, key) == nil {
+			_ = f.SetManager(id, key)
+		}
+		return nil
 	})
+}
+
+// itemTeamIn is the item's team in f, named name under the one `factory`
+// team: the open one there, or one made now. It is called inside a
+// teams.Update, so finding and making are one read-modify-write.
+func itemTeamIn(f *teams.File, name string, now time.Time) string {
+	parent := factoryParentTeam(f, now)
+	for _, t := range f.Teams {
+		if t.Parent == parent && t.Name == name && !t.Closed() {
+			return t.ID
+		}
+	}
+	id := teams.NewID()
+	f.Teams = append(f.Teams, teams.Team{ID: id, Name: name, Parent: parent, Made: now})
+	return id
 }
 
 // factoryParentTeam is the one open `factory` team every item's team sits
@@ -236,6 +330,7 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 		line("note for the stages: " + note)
 	}
 	line(fmt.Sprintf("Call this item %s in everything you say; the person knows it by that name. This conversation is %s's hub: through factory_item you can change its stages, where the run asks the person (the person calls it \"ask me at\"; the tool's field is gate), its budget (field cap) and its thinking (field effort), and leave notes its stages will read. The floor id for factory_item is %d, and it goes in the tool's item field only, never in your words. Nothing changes until the person presses a key on the card. Once %s runs, its stages will report into this conversation.", it.Ref(), it.Ref(), it.ID, it.Ref()))
+	line(talkManager)
 	line(talkClosing)
 	return strings.TrimSpace(b.String())
 }

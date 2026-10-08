@@ -77,3 +77,39 @@ send it hunting for a way to answer.
 To run stages narrower, set `CODEAF_FACTORY_POSTURE` to another posture (`ask`, `guardian`,
 `deny`, or `auto` for your own settings rows) in the environment codeaf's host starts in; under
 any of them a call that would ask is refused the same way.
+
+## what the manager hears — the progress lines in the item's chat
+
+The run reports into the item's chat (its manager, opened with `T`) one line per event, written
+as the manager's own message and marked as the run's (a surface may draw them as a timeline):
+
+- `plan started` when a stage's first round starts;
+- `plan done · 2m · $0.04 · <what it said>`: how long, what it cost, and the notes the stage left
+  for the stages after it (else the last sentence its conversation said); a part with nothing in
+  it is left out, so a free instant stage is `plan done · <what it said>`;
+- `asking you: plan is ready · go, or change it?` when the run waits on you, and after a stage
+  that fell short, `test failed 1 of 2 · asking you: <question>`;
+- `budget of $5 reached · asking you`;
+- `answered: yes`, `answered: no` or `answered: <your words>`, however you answered;
+- `steer: <words>`, `changes requested: <words>`;
+- `landed · proof sheet ready · your approval`, `shipped`, `stopped`, `paused`, `resumed`.
+
+A line is never written into the middle of the manager's own turn: while it is answering you,
+or while another codeaf has the chat open, the line waits and is written afterwards, in order.
+
+## talk to the manager — what you type is the brief before a run and the steer during it
+
+What you type into the item's chat goes to the run; nothing else is needed.
+
+- **Before a run**, everything you typed there since the last run becomes the item's notes when
+  you press `r`, and every stage's brief opens with them (`keep the old API`).
+- **During a run**, what you type is the steer: at the next stage (or round) it is folded into
+  that stage's brief, a round already running is handed it, the item's log says
+  `steer: <words>`, and the chat gets the same line. It is the same as `S` on the floor.
+- **While the run waits on a question**, a line that starts with `yes` (`yes, go`) answers yes
+  and a plain `no` answers no; for a plan, a gate or a stage that fell short, any other words
+  (`no, use the other file`) answer it in words, as `a` does. The chat then says `answered: yes`. Words that do not answer a budget question are
+  taken as a steer instead.
+
+Each line is taken once. The chat's model still answers you, and still changes the item only
+through `factory_item`'s card.

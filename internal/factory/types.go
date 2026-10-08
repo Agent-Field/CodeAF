@@ -311,6 +311,11 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+	// Heard is the instant of the last thing the person typed into Talk that
+	// the runner has taken: as the brief before a run (into Notes), as the
+	// steer during one, or as the answer to a question it asked. Zero is
+	// nothing taken yet, so a first run reads the whole conversation.
+	Heard time.Time
 
 	// URL is the item's page on its source (an issue's or pull request's
 	// html_url), and "" for work that was never on one, which is how the

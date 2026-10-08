@@ -366,15 +366,7 @@ func factoryItemTeam(profileDir string, it factory.Item) (string, error) {
 	now := time.Now()
 	id := ""
 	err := teams.Update(profileDir, func(f *teams.File) error {
-		parent := factoryParentTeam(f, now)
-		for _, t := range f.Teams {
-			if t.Parent == parent && t.Name == name && !t.Closed() {
-				id = t.ID
-				return nil
-			}
-		}
-		id = teams.NewID()
-		f.Teams = append(f.Teams, teams.Team{ID: id, Name: name, Parent: parent, Made: now})
+		id = itemTeamIn(f, name, now)
 		return nil
 	})
 	return id, err
