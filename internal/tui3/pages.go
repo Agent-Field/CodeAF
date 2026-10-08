@@ -402,12 +402,16 @@ var placeRegistry = map[page]place{}
 // Visual order is independent: moving a destination must not retrain a shortcut.
 var placeOrder = []page{pageHome, pageTeams, pageChats, pageTasks, pageSpend, pageSettings, pageStanding, pageMemory, pageFactory}
 
-// placeBarOrder groups daily work before utilities. Memory stays discoverable
-// even before the first saved memory; standing orders and the factory fold into
-// `more` and remain available in the map.
-var placeBarOrder = []page{pageHome, pageChats, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageStanding, pageFactory}
+// placeBarOrder groups daily work before utilities. The factory stands third,
+// after home and the chats, because it is where work that waits on a person
+// is; memory stays discoverable even before the first saved memory; standing
+// orders fold into `more` and remain available in the map.
+//
+// THE BAR'S ORDER IS NOT THE DIGITS' ORDER. The factory is `alt+9` wherever it
+// stands on the bar ([placeOrder]).
+var placeBarOrder = []page{pageHome, pageChats, pageFactory, pageTeams, pageTasks, pageMemory, pageSpend, pageSettings, pageStanding}
 
-const placeBarPlaces = 7
+const placeBarPlaces = 8
 
 // barPages is the places the bar draws while a person stands at `here`: the
 // first [placeBarPlaces], and the room they are standing in when it is one of
@@ -632,7 +636,33 @@ func (a *app) barChipWord(id page, numbered bool) string {
 	if n := a.placeCount(id); n > 0 {
 		word += " " + itoa(n)
 	}
+	if ask := a.barAskWord(id); ask != "" {
+		word += " " + ask
+	}
 	return word
+}
+
+// barAsk is how many things in one place wait on the person's answer, and 0
+// for a place that holds no questions. Only the factory does today: its
+// needs-you items, as the last read of the floor counted them. A floor that
+// has never been read counts nothing, which the emptiness law draws as no
+// chip at all.
+func (a *app) barAsk(id page) int {
+	if id != pageFactory {
+		return 0
+	}
+	return a.factoryWaiting()
+}
+
+// barAskWord is the chip a place's button wears for what waits on the person,
+// `? 5`, painted in the asking colour by the nav ([app.navChipPaint]), and ""
+// at zero.
+func (a *app) barAskWord(id page) string {
+	n := a.barAsk(id)
+	if n <= 0 {
+		return ""
+	}
+	return "? " + itoa(n)
 }
 
 // placeMachineLead is the word in front of the machine's name on the nav's far

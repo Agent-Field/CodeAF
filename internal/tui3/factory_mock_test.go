@@ -64,9 +64,12 @@ func TestFactoryMockFloorRunsAnItemFromWordsToShipped(t *testing.T) {
 		drive(t, a, factoryBeatMsg{gen: a.fp.act.beatGen})
 	}
 
+	// A CLEAN SHEET SHIPS FROM ITS PROOF on the item page: `enter` on the row
+	// opens the page on the proof, and `enter` there signs off.
 	it, _ = a.factoryCursorItem()
 	if factoryFirstFailed(it) == "" {
-		drive(t, a, key("enter"))
+		drive(t, a, key("enter"), key("enter"))
+		a.factoryCloseItem()
 	} else {
 		drive(t, a, key("a"))
 	}

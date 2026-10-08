@@ -129,6 +129,7 @@ type navMemo struct {
 	minute                 int64
 	host                   string
 	counts                 [16]int
+	asks                   [16]int
 	profile                tokens.Profile
 	ascii, linear, places  bool
 	accent, muted          hue
@@ -150,6 +151,7 @@ func (a *app) navMemoKey(width int, pal palette) navMemo {
 	for i, id := range placeOrder {
 		if i < len(m.counts) {
 			m.counts[i] = a.placeCount(id)
+			m.asks[i] = a.barAsk(id)
 		}
 	}
 	return m
@@ -158,7 +160,7 @@ func (a *app) navMemoKey(width int, pal palette) navMemo {
 func (m navMemo) same(k navMemo) bool {
 	return m.line != "" && m.width == k.width && m.ink == k.ink && m.page == k.page && m.hover == k.hover &&
 		m.bar == k.bar && m.every == k.every && m.moreOn == k.moreOn && m.moreHot == k.moreHot &&
-		m.facts == k.facts && m.minute == k.minute && m.host == k.host && m.counts == k.counts &&
+		m.facts == k.facts && m.minute == k.minute && m.host == k.host && m.counts == k.counts && m.asks == k.asks &&
 		m.profile == k.profile && m.ascii == k.ascii && m.linear == k.linear && m.places == k.places &&
 		m.accent == k.accent && m.muted == k.muted
 }
@@ -217,7 +219,7 @@ func (a *app) navLay(width int, pal palette) string {
 	// THEN THE TRAILING PLACES FOLD INTO `more ▾`, from the right, with the
 	// day's figure still on the row, and last of all the figure goes too,
 	// leaving the count that wants you, which never goes.
-	keep := func(id page) bool { return id == lit || a.barKeeps(id) || a.placeCount(id) > 0 }
+	keep := func(id page) bool { return id == lit || a.barKeeps(id) || a.placeCount(id) > 0 || a.barAsk(id) > 0 }
 	moreCost := ansi.StringWidth(a.navMoreWord(pal)) + tabPadCols
 	fixed := 0
 	var free []page
@@ -343,6 +345,11 @@ func (a *app) navChipPaint(pal palette, id page, word string, lit bool) string {
 		ink = func(s string) string { return pal.bold(pal.accent(s)) }
 		hover = ink
 	}
+	// WHAT WAITS ON THE PERSON IS IN THE ASKING COLOUR, and only that chip:
+	// the place's own word keeps the ink every other button wears.
+	if ask := a.barAskWord(id); ask != "" {
+		ink, hover = navAskInk(pal, ask, ink), navAskInk(pal, ask, hover)
+	}
 	switch {
 	case a.bar.on && id == a.bar.at:
 		// THE CURSOR'S OWN BAND, and it replaces the hover and the lit ink
@@ -360,6 +367,26 @@ func (a *app) navChipPaint(pal palette, id page, word string, lit bool) string {
 		return a.navHoverPaint(pal, word, ink)
 	}
 	return ink(chip)
+}
+
+// navAskInk is base with the last spelling of ask painted in the asking
+// colour instead, so a button's `? 5` says what it is about whatever ground
+// the button stands on.
+func navAskInk(pal palette, ask string, base func(string) string) func(string) string {
+	return func(s string) string {
+		i := strings.LastIndex(s, ask)
+		if i < 0 {
+			return base(s)
+		}
+		out := pal.ask(ask)
+		if i > 0 {
+			out = base(s[:i]) + out
+		}
+		if rest := s[i+len(ask):]; rest != "" {
+			out += base(rest)
+		}
+		return out
+	}
 }
 
 // navHoverPaint is a word button under the pointer: the strip's own hover

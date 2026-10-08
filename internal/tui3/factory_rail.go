@@ -1,7 +1,6 @@
 package tui3
 
 import (
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -15,8 +14,9 @@ import (
 
 // ── THE FACTORY RAIL ────────────────────────────────────────────────────────
 //
-// The left column of the factory page: the floor as a list, grouped by where
-// each item stands, one compact row per item. factory_page.go owns the page's
+// The rows of the factory floor: the floor as a list, grouped by where each
+// item stands, one row per item on a fixed grid of columns, with the factory's
+// read under it in the comfortable density (`z`). factory_page.go owns the page's
 // read, its body and its pane; this file owns what the rail lays out, how a
 // row is drawn, and the four ways a person narrows it (a repo, typed words,
 // the backlog, and the marks they put on new work).
@@ -34,10 +34,25 @@ import (
 // factoryFresh is how recent a new item has to be to draw without the backlog.
 const factoryFresh = 72 * time.Hour
 
-// factoryFactFloor is the narrowest rail that still carries the right-hand
-// fact on an item row. Under it the title gets the cells instead, because a
-// title cut to three letters to make room for `review · $1.42` says nothing.
-const factoryFactFloor = 30
+// THE ROW'S GRID. A row is a fixed set of columns so the eye scans down them:
+// a 2-cell lead, the ref right-aligned in [factoryRefCols] (wider when the
+// floor holds a longer ref), one space, the title in a column whose width is
+// what the others leave and never under [factoryTitleMin], two spaces, the
+// repo's short name in [factoryRepoCols], two spaces, the facts, and the age
+// right-aligned in the last [factoryAgeCols]. Under [factoryFactsFloor] the
+// row is the lead, the ref and the title alone.
+const (
+	factoryLeadCols  = 2
+	factoryRefCols   = 5
+	factoryTitleMin  = 24
+	factoryRepoCols  = 11
+	factoryAgeCols   = 4
+	factoryFactsMost = 4
+)
+
+// factoryAnswerWord is the needs-you row's reminder that the question takes a
+// yes or a no, drawn right before the age.
+const factoryAnswerWord = "[y/n]"
 
 // factoryView is every narrowing of the floor at once: the repo (its name, ""
 // for all of them), the typed words, whether the words box is open, and
@@ -47,6 +62,9 @@ type factoryView struct {
 	query   string
 	typing  bool
 	backlog bool
+	// comfy is `z`: each item row carries the factory's read under it, and
+	// a blank row stands between two items.
+	comfy bool
 }
 
 // factoryRowKind is what one rail line is.
@@ -60,6 +78,7 @@ const (
 	factoryRowQuery // the words it is narrowed by
 	factoryRowMore  // how many older new items the delta rule kept back
 	factoryRowNone  // the words matched nothing
+	factoryRowRead  // the factory's read under an item, in the comfortable density
 )
 
 // factoryGroup is one heading of the rail and the states filed under it.
@@ -170,8 +189,16 @@ func factoryRailRows(snap factory.Snapshot, views ...factoryView) []factoryRailR
 		rows = append(rows,
 			factoryRailRow{kind: factoryRowBlank, item: -1, walk: -1},
 			factoryRailRow{kind: factoryRowHeading, heading: g.word, count: len(in), item: -1, walk: -1})
-		for _, i := range in {
+		for n, i := range in {
+			// IN THE COMFORTABLE DENSITY a blank stands between two items and
+			// the read is a row of its own, which a press counts as its item's.
+			if v.comfy && n > 0 {
+				rows = append(rows, factoryRailRow{kind: factoryRowBlank, item: -1, walk: -1})
+			}
 			rows = append(rows, factoryRailRow{kind: factoryRowItem, item: i, walk: walk})
+			if v.comfy && strings.TrimSpace(snap.Items[i].Triage.Read) != "" {
+				rows = append(rows, factoryRailRow{kind: factoryRowRead, item: i, walk: walk})
+			}
 			walk++
 		}
 		if kept > 0 {
@@ -213,7 +240,7 @@ func factoryWalk(snap factory.Snapshot, views ...factoryView) []int {
 // has reads as every repo, so a floor whose repos changed under the filter
 // shows everything rather than nothing.
 func (a *app) factoryViewNow() factoryView {
-	v := factoryView{query: a.fp.query, typing: a.fp.typing, backlog: a.fp.backlog}
+	v := factoryView{query: a.fp.query, typing: a.fp.typing, backlog: a.fp.backlog, comfy: a.fp.comfy}
 	if r := a.fp.repo; r > 0 && r <= len(a.fp.snap.Repos) {
 		v.repo = a.fp.snap.Repos[r-1].Name
 	}
@@ -381,11 +408,12 @@ func (a *app) factoryFilterKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // ── drawing ─────────────────────────────────────────────────────────────────
 
-// factoryRail is the rail's window of at most room lines, each exactly width
-// cells, and the rail line each one shows (-1 for anything but an item). THE
-// WINDOW FOLLOWS THE CURSOR ([placeTop]) and is never scrolled on its own.
+// factoryRail is the rows' window of at most room lines, each exactly width
+// cells, and the rail line each one shows (-1 for a line that holds no item).
+// THE WINDOW FOLLOWS THE CURSOR ([placeTop]) and is never scrolled on its own.
 func (a *app) factoryRail(width, room int) ([]string, []int) {
 	rows := a.factoryRows()
+	a.fp.refW = factoryRefWidth(a.fp.snap)
 	cursorLine := 0
 	for line, r := range rows {
 		if r.kind == factoryRowItem && r.walk == a.fp.cursor {
@@ -400,7 +428,7 @@ func (a *app) factoryRail(width, room int) ([]string, []int) {
 	for line := a.fp.top; line < end; line++ {
 		r := rows[line]
 		hit := -1
-		if r.kind == factoryRowItem {
+		if r.walk >= 0 {
 			hit = line
 		}
 		out = append(out, factoryPad(a.factoryRailLine(r, width), width))
@@ -410,7 +438,23 @@ func (a *app) factoryRail(width, room int) ([]string, []int) {
 	return out, hits
 }
 
-// factoryRailLine draws one rail row, at most width cells.
+// factoryRefWidth is the ref column's cells: [factoryRefCols], or the widest
+// ref on the floor when one is wider, so no row's title starts a cell late.
+func factoryRefWidth(snap factory.Snapshot) int {
+	w := factoryRefCols
+	for _, it := range snap.Items {
+		w = max(w, ansi.StringWidth(it.Ref()))
+	}
+	return w
+}
+
+// factoryTitleCol is the cell the title column starts on: after the lead, the
+// ref and the one space.
+func (a *app) factoryTitleCol() int {
+	return factoryLeadCols + max(a.fp.refW, factoryRefCols) + 1
+}
+
+// factoryRailLine draws one line of the rows, at most width cells.
 func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 	pal := a.pal
 	switch r.kind {
@@ -418,33 +462,50 @@ func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 		return ""
 	case factoryRowStrip:
 		if r.heading == "" {
-			return " " + pal.muted("all repos")
+			return pal.dim("all repos")
 		}
 		word := factoryRepoShort(r.heading)
 		if r.count > 0 {
 			word += " · " + itoa(r.count)
 		}
-		return " " + pal.muted(fit(word, max(width-1, 0)))
+		return pal.muted(fit(word, width))
 	case factoryRowQuery:
-		words := fit("/ "+a.fp.query, max(width-2, 0))
+		words := fit("/ "+a.fp.query, max(width-1, 0))
 		if a.fp.typing {
-			return " " + pal.ink(words) + pal.cursor(" ", 1)
+			return pal.ink(words) + pal.cursor(" ", 1)
 		}
-		return " " + pal.muted(words)
+		return pal.muted(words)
 	case factoryRowHeading:
-		word := r.heading
-		if r.count > 0 {
-			word += " · " + itoa(r.count)
-		}
-		return " " + pal.muted(word)
+		return a.factoryHeading(r, width)
 	case factoryRowMore:
 		word := itoa(r.count) + " older open " + plural("item", r.count) + " behind A"
-		return "   " + pal.dim(fit(word, max(width-3, 0)))
+		lead := a.factoryTitleCol()
+		return strings.Repeat(" ", lead) + pal.dim(fit(word, max(width-lead, 0)))
 	case factoryRowNone:
-		return " " + pal.dim(fit("no item on the floor matches", max(width-1, 0)))
+		return pal.dim(fit("no item on the floor matches", width))
+	case factoryRowRead:
+		lead := a.factoryTitleCol()
+		read := strings.TrimSpace(a.fp.snap.Items[r.item].Triage.Read)
+		return strings.Repeat(" ", lead) + pal.dim(fit(read, max(width-lead, 0)))
 	}
 	it := a.fp.snap.Items[r.item]
 	return a.factoryRailItem(it, width, r.walk == a.fp.cursor)
+}
+
+// factoryHeading is a section's heading: its name in muted capitals with its
+// count, and a dim hairline out to the row's right edge. HEADINGS ARE
+// FURNITURE, so they never light (THE ACCENT BUDGET).
+func (a *app) factoryHeading(r factoryRailRow, width int) string {
+	word := strings.ToUpper(r.heading)
+	if r.count > 0 {
+		word += " · " + itoa(r.count)
+	}
+	word = fit(word, width)
+	line := a.pal.muted(word)
+	if rest := width - ansi.StringWidth(word) - 1; rest > 0 {
+		line += " " + a.pal.dim(strings.Repeat(a.linearMark("─", "-"), rest))
+	}
+	return line
 }
 
 // factoryRepoShort is a repo's last path segment: `codeaf` for
@@ -456,45 +517,83 @@ func factoryRepoShort(name string) string {
 	return name
 }
 
-// factoryRailItem is one item row, exactly width cells: a 2-cell lead, the
-// ref, the title cut with an ellipsis, and the one fact its state is about at
-// the right edge. THE CURSOR ROW WEARS THE CURSOR GROUND AND NOTHING ELSE
-// CHANGES ON IT; a marked item's lead turns accent.
+// factoryGrid is one row's columns at a width: the ref's cells, the title's,
+// and the facts' (0 when the row carries none).
+type factoryGrid struct {
+	refW, titleW, factsW int
+	columns              bool
+}
+
+// factoryGridAt lays the grid out for a row of width cells. With columns the
+// title and the facts split what the fixed columns leave, the title taking the
+// larger half and never under [factoryTitleMin]; without, the title takes
+// everything after the ref.
+func (a *app) factoryGridAt(width int) factoryGrid {
+	g := factoryGrid{refW: max(a.fp.refW, factoryRefCols), columns: a.fp.columns}
+	head := factoryLeadCols + g.refW + 1
+	if !g.columns {
+		g.titleW = max(width-head, 0)
+		return g
+	}
+	rest := width - head - 2 - factoryRepoCols - 2 - 2 - factoryAgeCols
+	g.titleW = max(factoryTitleMin, (rest+1)/2)
+	g.factsW = max(rest-g.titleW, 0)
+	return g
+}
+
+// factoryRailItem is one item row, exactly width cells, on the grid of
+// [factoryGridAt]. THE CURSOR ROW WEARS THE CURSOR GROUND AND NOTHING ELSE
+// CHANGES ON IT; a marked item's lead turns accent ([app.factoryLead]).
 func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 	pal := a.pal
-	lead := "   "
-	if g := a.factoryLead(it); g != "" {
-		lead = " " + g + " "
+	g := a.factoryGridAt(width)
+	lead := strings.Repeat(" ", factoryLeadCols)
+	if m := a.factoryLead(it); m != "" {
+		lead = m + " "
 	}
 	ref := it.Ref()
-	fact := ""
-	if width >= factoryFactFloor {
-		fact = a.factoryFact(it)
-	}
-	factW := ansi.StringWidth(fact)
-	room := width - 3 - ansi.StringWidth(ref) - 2
-	if fact != "" {
-		room -= factW + 2
-	}
+	text := lead + strings.Repeat(" ", max(g.refW-ansi.StringWidth(ref), 0)) + pal.muted(ref) + " "
 	title := it.Title
-	if room < 1 {
-		title = ""
-	} else if ansi.StringWidth(title) > room {
-		title = ansi.Truncate(title, room, a.icon(tokens.GEllipsis))
+	if ansi.StringWidth(title) > g.titleW {
+		title = ansi.Truncate(title, g.titleW, a.icon(tokens.GEllipsis))
 	}
-	text := lead + pal.muted(ref)
-	if title != "" {
-		text += " " + pal.ink(title)
-	}
-	if fact != "" {
-		gap := width - ansi.StringWidth(text) - factW - 1
-		text += strings.Repeat(" ", max(gap, 1)) + pal.muted(fact)
+	text += pal.ink(title)
+	if g.columns {
+		text += strings.Repeat(" ", max(g.titleW-ansi.StringWidth(title), 0)) + "  "
+		text += pal.muted(factoryPad(fit(factoryRepoShort(it.Repo), factoryRepoCols), factoryRepoCols)) + "  "
+		// THE RIGHT EDGE: the age in its own cells, and on a question the
+		// reminder that it takes a yes or a no right before it.
+		age := ""
+		if now, at := a.fp.snap.Now, factoryChanged(it); !now.IsZero() && !at.IsZero() {
+			age = factoryAgo(now.Sub(at))
+		}
+		right := strings.Repeat(" ", max(factoryAgeCols-ansi.StringWidth(age), 0)) + pal.dim(age)
+		rightW := factoryAgeCols
+		factsW := g.factsW
+		if it.State == factory.StateNeedsYou {
+			right = pal.dim(factoryAnswerWord) + "  " + right
+			rightW += ansi.StringWidth(factoryAnswerWord) + 2
+			factsW -= ansi.StringWidth(factoryAnswerWord) + 2
+		}
+		facts := a.factoryFactsLine(it, factsW)
+		text += facts
+		gap := width - ansi.StringWidth(text) - rightW
+		text += strings.Repeat(" ", max(gap, 0)) + right
 	}
 	text = factoryPad(text, width)
 	if cur {
 		return pal.cursor(text, width)
 	}
 	return text
+}
+
+// factoryChanged is when an item last moved, and when it arrived when it
+// never has: the moment a row's age counts from.
+func factoryChanged(it factory.Item) time.Time {
+	if !it.Changed.IsZero() {
+		return it.Changed
+	}
+	return it.Created
 }
 
 // factoryLead is an item's one-cell mark, painted, and "" for a new item at
@@ -538,46 +637,143 @@ func (a *app) factoryLead(it factory.Item) string {
 	return paint(glyph)
 }
 
-// factoryFact is the one fact on the right of an item row, plain, and "" when
-// the state has nothing to say (the emptiness law: no `$0.00`, no `0✓`).
+// ── the facts ───────────────────────────────────────────────────────────────
+
+// factoryFactPart is one fact on a row: what it says plain, which is what it
+// measures, and what it says painted.
+type factoryFactPart struct {
+	plain, painted string
+}
+
+// factoryFactsLine is a row's facts in at most width cells, joined by a dim
+// middle dot. FACTS ARE DROPPED FROM THE RIGHT, WHOLE, AS THE WIDTH SHRINKS,
+// never cut mid-fact: the state fact first, then the money, then the author,
+// then the tags. The one exception is a state fact wider than the whole
+// column on its own, which is cut with an ellipsis, because it is the one fact
+// a row exists to carry.
+func (a *app) factoryFactsLine(it factory.Item, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	parts := a.factoryRowFacts(it)
+	sep := a.pal.dim(rowSep)
+	sepW := ansi.StringWidth(rowSep)
+	out, used := "", 0
+	for i, p := range parts {
+		w := ansi.StringWidth(p.plain)
+		if i == 0 {
+			if w > width {
+				return fit(p.painted, width)
+			}
+			out, used = p.painted, w
+			continue
+		}
+		if used+sepW+w > width {
+			break
+		}
+		out += sep + p.painted
+		used += sepW + w
+	}
+	return out
+}
+
+// factoryRowFacts is an item's facts in rank order, at most [factoryFactsMost]
+// of them, and none that would say nothing (the emptiness law: no `$0.00`, no
+// `0✓`).
 //
-//	needs you  how long it has waited          7h
-//	running    the phase it is in and its spend review · $1.42
-//	queued     the word                        queued
-//	new        its triage type and size        bug M · pr · ci
-//	landed     the proof, shown and not        3✓ 1✕
-//	shipped    the time it shipped             06:00
-func (a *app) factoryFact(it factory.Item) string {
+//	1  the state fact   the question · ●●◐○○ review 26m · queued · 3✓ 1✕ · bug · S · ci red
+//	2  the money        $1.42/$5 spent against the cap, or ~$3 estimated
+//	3  the author       priya, or olu (stranger)
+//	4  the tags         factory · thin · dup #950? · from chat ▸ · terminal only
+func (a *app) factoryRowFacts(it factory.Item) []factoryFactPart {
+	pal := a.pal
+	var out []factoryFactPart
+	add := func(plain string, paint func(string) string) {
+		if strings.TrimSpace(plain) != "" {
+			out = append(out, factoryFactPart{plain: plain, painted: paint(plain)})
+		}
+	}
+	if st, ok := a.factoryStateFact(it); ok {
+		out = append(out, st)
+	}
+	add(factoryMoneyFact(it), placeMoneyInk(pal))
+	if it.Author != "" {
+		who := it.Author
+		if it.Tier == factory.TierStranger {
+			who += " (" + string(factory.TierStranger) + ")"
+		}
+		add(who, pal.dim)
+	}
+	for _, l := range it.Labels {
+		if strings.EqualFold(l, "factory") {
+			add("factory", pal.accent)
+			break
+		}
+	}
+	if r := it.Triage.Readiness; r > 0 && r < factory.ThinReadiness {
+		add("thin", pal.ask)
+	}
+	if it.Triage.DupOf > 0 {
+		add("dup #"+itoa(it.Triage.DupOf)+"?", pal.dim)
+	}
+	switch {
+	case it.Origin == factory.OriginChat:
+		add("from chat "+a.linearMark("▸", ">"), pal.accent)
+	case it.Origin == factory.OriginTerminal && !it.Synced:
+		add("terminal only", pal.dim)
+	}
+	if len(out) > factoryFactsMost {
+		out = out[:factoryFactsMost]
+	}
+	return out
+}
+
+// factoryStateFact is the one fact a row's state is about, and false when the
+// state has nothing to say.
+func (a *app) factoryStateFact(it factory.Item) (factoryFactPart, bool) {
+	pal := a.pal
+	one := func(plain string, paint func(string) string) (factoryFactPart, bool) {
+		if strings.TrimSpace(plain) == "" {
+			return factoryFactPart{}, false
+		}
+		return factoryFactPart{plain: plain, painted: paint(plain)}, true
+	}
 	now := a.fp.snap.Now
 	switch it.State {
 	case factory.StateNeedsYou:
-		if now.IsZero() || it.Changed.IsZero() {
-			return ""
-		}
-		return factoryAgo(now.Sub(it.Changed))
+		return one(strings.TrimSpace(it.Question), pal.ask)
 	case factory.StateRunning:
 		s := it.Stream
 		if s == nil {
-			return ""
+			return factoryFactPart{}, false
 		}
-		var parts []string
-		if s.Cur >= 0 && s.Cur < len(s.Phases) && s.Phases[s.Cur].Name != "" {
-			parts = append(parts, s.Phases[s.Cur].Name)
+		plain, painted := a.factoryStripCells(it)
+		word := ""
+		if s.Paused {
+			word = "paused"
+		} else if s.Cur >= 0 && s.Cur < len(s.Phases) {
+			word = s.Phases[s.Cur].Name
 		}
-		if s.Spent > 0 {
-			parts = append(parts, fmt.Sprintf("$%.2f", s.Spent))
+		if !s.Started.IsZero() && !now.IsZero() && now.After(s.Started) {
+			word = strings.TrimSpace(word + " " + factoryAgo(now.Sub(s.Started)))
 		}
-		return strings.Join(parts, " · ")
+		if word != "" {
+			if plain != "" {
+				plain, painted = plain+" ", painted+" "
+			}
+			plain, painted = plain+word, painted+pal.muted(word)
+		}
+		return factoryFactPart{plain: plain, painted: painted}, plain != ""
 	case factory.StateQueued:
-		return "queued"
+		return one("queued", pal.muted)
 	case factory.StateNew:
 		switch it.Kind {
 		case factory.KindCI:
-			return "ci"
+			return one("ci red", pal.bad)
 		case factory.KindPR:
-			return "pr"
+			return one(strings.Join(nonEmpty([]string{"pr", it.Checks}), rowSep), pal.muted)
 		}
-		return strings.TrimSpace(it.Triage.Type + " " + it.Triage.Size)
+		return one(strings.Join(nonEmpty([]string{it.Triage.Type, it.Triage.Size}), rowSep), pal.muted)
 	case factory.StateLanded:
 		shown, not := 0, 0
 		for _, c := range it.Proof {
@@ -587,29 +783,83 @@ func (a *app) factoryFact(it factory.Item) string {
 				not++
 			}
 		}
-		var parts []string
+		var plain, painted []string
 		if shown > 0 {
-			parts = append(parts, itoa(shown)+a.icon(tokens.GSettled))
+			w := itoa(shown) + a.icon(tokens.GSettled)
+			plain, painted = append(plain, w), append(painted, pal.muted(w))
 		}
 		if not > 0 {
-			parts = append(parts, itoa(not)+a.icon(tokens.GFailed))
+			w := itoa(not) + a.icon(tokens.GFailed)
+			plain, painted = append(plain, w), append(painted, pal.bad(w))
 		}
-		return strings.Join(parts, " ")
+		return factoryFactPart{plain: strings.Join(plain, " "), painted: strings.Join(painted, " ")}, len(plain) > 0
 	case factory.StateShipped:
 		at := it.Changed
 		if it.Stream != nil && !it.Stream.Ended.IsZero() {
 			at = it.Stream.Ended
 		}
 		if at.IsZero() {
-			return ""
+			return factoryFactPart{}, false
 		}
+		word := at.Format("15:04")
 		if !now.IsZero() {
 			at = at.In(now.Location())
+			word = at.Format("15:04")
 			if now.Sub(at) >= 24*time.Hour {
-				return at.Format("2 Jan")
+				word = at.Format("2 Jan")
 			}
 		}
-		return at.Format("15:04")
+		return one("shipped "+word, pal.muted)
+	}
+	return factoryFactPart{}, false
+}
+
+// factoryStripCells is a stream's phases as one cell each, plain and painted:
+// done `●` muted, the running one `◐` in accent, a stage waiting on the person
+// `?` in the asking colour, a failed one `✕` in red, the rest `○` dim. An item
+// with no stream has no strip.
+func (a *app) factoryStripCells(it factory.Item) (string, string) {
+	if it.Stream == nil {
+		return "", ""
+	}
+	var plain, painted strings.Builder
+	for _, ph := range it.Stream.Phases {
+		mark, paint := a.factoryPhaseMark(ph.State)
+		plain.WriteString(mark)
+		painted.WriteString(paint(mark))
+	}
+	return plain.String(), painted.String()
+}
+
+// factoryPhaseMark is one phase state's mark and its paint, the one mapping the
+// row's strip, the peek's strip and the item page's stage rail all draw with.
+func (a *app) factoryPhaseMark(st factory.PhaseState) (string, func(string) string) {
+	pal := a.pal
+	switch st {
+	case factory.PhaseDone:
+		return a.icon(tokens.GStepDone), pal.muted
+	case factory.PhaseRunning:
+		return a.icon(tokens.GStepRunning), pal.accent
+	case factory.PhaseWaiting:
+		return a.icon(tokens.GNeedsHuman), pal.ask
+	case factory.PhaseFailed:
+		return a.icon(tokens.GFailed), pal.bad
+	}
+	return a.icon(tokens.GStepPending), pal.dim
+}
+
+// factoryMoneyFact is the row's money: what a stream spent over its cap when
+// it has spent anything, and otherwise the triage's estimate with a tilde.
+func factoryMoneyFact(it factory.Item) string {
+	if s := it.Stream; s != nil && s.Spent > 0 {
+		spent := dollars(s.Spent)
+		if c := factoryMoney(it.Cap); c != "" {
+			return spent + "/" + c
+		}
+		return spent
+	}
+	if est := factoryMoney(it.Triage.Est); est != "" {
+		return "~" + est
 	}
 	return ""
 }

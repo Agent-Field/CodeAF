@@ -423,7 +423,10 @@ func TestTheNavsFoldIsAWordDoorNotACount(t *testing.T) {
 // THE COUNT THAT WANTS YOU NEVER LEAVES THE ROW. At every width from a split
 // pane to a wide screen the nav carries the number of things stopped on the
 // person, in amber: `2 want you` where it fits and `2 ?` where it does not.
-// And at eighty columns the short count costs no place: all six words stay.
+// And at eighty columns the short count costs no place the first five: home,
+// the chats, the factory, teams and activity stay on the row and the rest are
+// behind `more`, one press away. (Memory stood fifth on the row until the
+// factory took the third place on the bar.)
 func TestTheCountThatWantsYouNeverLeavesTheNav(t *testing.T) {
 	a := navChat(t)
 	a.machine = machineFacts{wants: 2, hands: 1, spent: 1.2, ceiling: 20}
@@ -443,7 +446,7 @@ func TestTheCountThatWantsYouNeverLeavesTheNav(t *testing.T) {
 	a.width = 80
 	a.navMemo = navMemo{}
 	row := plain(a.navLine(80, a.pal))
-	if !placeWordsInOrder(row, "Home", "Chats", "AI teams", "Activity", "Memory", "More") || !a.navMore.span.pressable() {
+	if !placeWordsInOrder(row, "Home", "Chats", "Factory", "AI teams", "Activity", "More") || !a.navMore.span.pressable() {
 		t.Fatalf("at 80 the short count cost a place: %q", row)
 	}
 	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20") {

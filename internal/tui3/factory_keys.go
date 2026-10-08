@@ -32,9 +32,12 @@ import (
 // asked beside it ([app.besideLine]); a launch and the steer typed after it are
 // seen by the floor in the order they were made.
 
-// factoryRoomWords is what `enter` says on an item whose room would open: the
-// stream's conversation is a later lane, so the key says where the room will
-// be rather than opening nothing silently.
+// factoryRoomWords is what `s` says on a landed item, whose stream's room
+// would open: the stream's conversation is a later lane, so the key says where
+// the room will be rather than opening nothing silently. `ENTER` IS NOT A VERB
+// HERE: on a floor row it opens the item page (factory_item.go), and on that
+// page it is the stage's own, except on a landed item's proof, which calls
+// [app.factoryLandedKey] with it.
 const factoryRoomWords = "the room opens here once streams are conversations"
 
 // factoryHabitSentence is the habit the offer banks after three clean
@@ -226,8 +229,8 @@ func (a *app) factoryOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// factoryKey is one key on the floor that the rail did not take, read against
-// the item under the cursor. It answers false for a key that means nothing
+// factoryKey is one key on the floor or the item page that the layout did not
+// take, read against the item under the cursor. It answers false for a key that means nothing
 // here, so the rail's own arms still see it.
 func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k := msg.String()
@@ -262,11 +265,6 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return a.factoryNeedsKey(it, k)
 	case factory.StateLanded:
 		return a.factoryLandedKey(it, k)
-	case factory.StateShipped:
-		if k == "enter" {
-			a.factorySay(factoryRoomWords)
-			return nil, true
-		}
 	}
 	return nil, false
 }
@@ -275,10 +273,6 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 	seam, id := a.factory, it.ID
 	switch k {
-	case "enter":
-		if seam.Has("launch") {
-			return a.factoryDo(func(s factory.Seam) error { return s.Launch(id) }, nil), true
-		}
 	case "p", "r":
 		if seam.Has("launch") && seam.Has("setgate") {
 			g := factory.GatePlan
@@ -374,9 +368,6 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 func (a *app) factoryStreamKey(it factory.Item, k string) (tea.Cmd, bool) {
 	seam, id := a.factory, it.ID
 	switch k {
-	case "enter":
-		a.factorySay(factoryRoomWords)
-		return nil, true
 	case "s":
 		if seam.Has("steer") && it.Stream != nil {
 			a.factoryOpenAsk(factoryAsk{kind: factoryAskSteer, id: id, label: "steer ›", example: "“redo it stronger, keep the old flag”"})
@@ -410,7 +401,7 @@ func (a *app) factoryNeedsKey(it factory.Item, k string) (tea.Cmd, bool) {
 			a.factoryOpenAsk(factoryAsk{kind: factoryAskAnswer, id: id, label: "answer ›", example: "“go, but keep the old flag”"})
 			return nil, true
 		}
-	case "s", "x", "enter":
+	case "s", "x":
 		return a.factoryStreamKey(it, k)
 	}
 	return nil, false
@@ -419,7 +410,9 @@ func (a *app) factoryNeedsKey(it factory.Item, k string) (tea.Cmd, bool) {
 // factoryLandedKey is a key on a landed item's proof sheet. A FAILED CLAIM
 // MAKES THE BLOCKING ACTION THE DEFAULT KEY: `enter` ships only when every
 // claim and policy row was shown, and otherwise opens the send-back row with
-// the first row nothing showed already named in it.
+// the first row nothing showed already named in it. That `enter` reaches here
+// only from the proof stage of the item page ([app.factoryLayoutKey]); on the
+// floor `enter` opens the page.
 func (a *app) factoryLandedKey(it factory.Item, k string) (tea.Cmd, bool) {
 	seam, id := a.factory, it.ID
 	switch k {
@@ -669,7 +662,11 @@ func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
 			made, err = s.New(repo, words)
 			return err
 		}, func(err error) {
+			// NEW WORK LANDS ON THE FLOOR, with the cursor on its row and its
+			// card in the peek, even when it was typed from an item page: the
+			// page was about another item.
 			if err == nil {
+				a.fp.open = false
 				a.factoryFocus(made)
 			}
 		})
@@ -788,9 +785,8 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 	}
 	switch it.State {
 	case factory.StateNew, factory.StateDismissed:
-		add(seam.Has("launch"), "enter go")
-		add(seam.Has("launch") && seam.Has("setgate"), "p plan first")
 		add(seam.Has("launch") && seam.Has("setgate"), "r run")
+		add(seam.Has("launch") && seam.Has("setgate"), "p plan first")
 		add(it.State == factory.StateNew, "space mark")
 		add(seam.Has("launch"), "L launch marked")
 		add(seam.Has("setstage") && len(factoryStages(a.fp.snap, it)) > 0, "1-9 stages")
@@ -816,13 +812,12 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 		add(seam.Has("steer") && it.Stream != nil, "s steer")
 		add(seam.Has("stop"), "x stop")
 	case factory.StateLanded:
+		// THE SHEET'S `enter` IS ON THE ITEM PAGE'S PROOF ([app.factoryItemHint]
+		// names it there); on the floor `enter` opens the page.
 		if factoryFirstFailed(it) != "" {
-			add(seam.Has("sendback"), "enter send back")
 			add(seam.Has("signoff"), "a ship anyway")
-		} else {
-			add(seam.Has("signoff"), "enter ship")
-			add(seam.Has("sendback"), "c send back")
 		}
+		add(seam.Has("sendback"), "c send back")
 		add(seam.Has("reverify"), "o check again")
 		add(it.Diff != "", "d diff")
 	}
