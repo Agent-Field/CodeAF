@@ -140,6 +140,36 @@ const (
 	factorySheetColGap = 2
 )
 
+// THE ITEM PAGE'S VERBS ON THE RIGHT (factory_verbs.go): a column beside the
+// pane, past one more rule, grouped `do / set / also` the way the `?` sheet
+// is. A group's name stands [factoryVerbLeadW] past the rule and its rows
+// [factoryVerbIndentW] further in; a `set` row is its word in a column of
+// [factoryVerbWordW], its value in one of [factoryVerbValueW], and every
+// row's key right-aligned in [factoryVerbKeyW] at the column's end, so the
+// values start at one cell and the keys end at one cell on every row:
+//
+//	│l│ii│word       │value       │g│  key│
+//	 1  2      11          12      1    5
+//
+// THE WORD AND VALUE COLUMNS TOGETHER HOLD THE LONGEST VERB WHOLE (`approve
+// with changes`), and the value column the longest value (`pull request`),
+// so no verb on the column is ever cut. The key column holds `space` whole,
+// the one spelling the `?` sheet uses.
+const (
+	factoryVerbLeadW   = 1
+	factoryVerbIndentW = 2
+	factoryVerbWordW   = 11
+	factoryVerbValueW  = 12
+	factoryVerbKeyGap  = 1
+	factoryVerbKeyW    = 5
+	// factoryVerbRailW is the whole column, the rule before it not included.
+	factoryVerbRailW = factoryVerbLeadW + factoryVerbIndentW + factoryVerbWordW + factoryVerbValueW + factoryVerbKeyGap + factoryVerbKeyW
+	// factoryVerbRailMinW is the narrowest item page that draws the column:
+	// under it the column is not drawn, the chips stand on the head's second
+	// row and the pane keeps its action line, as before the column existed.
+	factoryVerbRailMinW = 100
+)
+
 // THE FRAME'S OWN LINES, which the place draws and the floor writes into.
 const (
 	// factoryHintInset is the cells the place's note and hint lines leave:

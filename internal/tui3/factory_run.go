@@ -256,7 +256,7 @@ func (a *app) factoryLogRow(l factory.LogLine, measure int) string {
 // factoryLogPane is the `log` row's pane: the stream's log, oldest at the top
 // and THE NEWEST AT THE BOTTOM, the last lines that fit, then the item's keys.
 func (a *app) factoryLogPane(it factory.Item, measure, room int) []string {
-	action := a.factoryPageAction(it, measure)
+	action := a.factoryPaneAction(it, measure)
 	avail := room
 	if action != "" {
 		avail = room - 1
@@ -309,7 +309,10 @@ func (a *app) factorySignOffLine(it factory.Item, measure int) string {
 		return ""
 	}
 	seam := a.factory
-	landed := it.State == factory.StateLanded
+	// WITH THE VERBS ON THE RIGHT the line is the count alone: the column
+	// names approve and request changes, and the pane does not name them
+	// twice (factory_verbs.go).
+	landed := it.State == factory.StateLanded && !a.factoryVerbsDrawn()
 	var parts []string
 	if bad == 0 {
 		parts = append(parts, "all "+itoa(all)+" shown")
@@ -348,7 +351,7 @@ func (a *app) factorySheetRows(it factory.Item, measure int) []string {
 // the last row.
 func (a *app) factoryProofPane(it factory.Item, head []string, measure, room int) []string {
 	blocks := [][]string{head, a.factorySheetRows(it, measure)}
-	action := a.factoryPageAction(it, measure)
+	action := a.factoryPaneAction(it, measure)
 	if it.State == factory.StateLanded {
 		action = a.factorySignOffLine(it, measure)
 	} else if line := a.factorySignOffLine(it, measure); line != "" {

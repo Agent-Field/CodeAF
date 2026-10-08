@@ -35,15 +35,32 @@ func factoryAlignLab(t *testing.T, width int) (*app, []string) {
 }
 
 // factorySplitAt is a body row cut at the divider: the rows' column and the
-// peek's, and the divider's cell (-1 for a row with none).
+// peek's, and the divider's cell (-1 for a row with none). On an item page
+// wide enough for the verbs on the right, the right column stops at the
+// second rule: it is the pane, and [factoryVerbsAt] is the column past it.
 func factorySplitAt(row string) (left, right string, div int) {
 	r := []rune(row)
 	for i, c := range r {
 		if string(c) == "│" {
-			return string(r[:i]), string(r[i+1:]), i
+			right := string(r[i+1:])
+			if pane, _, ok := strings.Cut(right, "│"); ok {
+				right = pane
+			}
+			return string(r[:i]), right, i
 		}
 	}
 	return row, "", -1
+}
+
+// factoryVerbsAt is the verbs' column of an item page's body row, past its
+// second rule, and false for a row with no second rule.
+func factoryVerbsAt(row string) (string, bool) {
+	_, rest, ok := strings.Cut(row, "│")
+	if !ok {
+		return "", false
+	}
+	_, verbs, ok := strings.Cut(rest, "│")
+	return verbs, ok
 }
 
 // factoryFirstInk is the cell of a row's first character that is not air, -1
@@ -182,13 +199,21 @@ func TestFactoryAlignItemPage(t *testing.T) {
 			drive(t, a, key("enter"))
 			body := factoryBodyPlain(a, width, 40)
 			// A PARKED ITEM'S SECOND ROW IS ITS QUESTION, where every other
-			// item's chips stand.
+			// item's chips stand; with the verbs on the right the chips are
+			// the column's, and the second row draws none.
+			it, _ := a.factoryCursorItem()
 			second := wordAskAt
-			if it, _ := a.factoryCursorItem(); it.State == factory.StateNeedsYou {
+			switch {
+			case it.State == factory.StateNeedsYou:
 				second = "?"
+			case a.factoryVerbsDrawn():
+				second = ""
 			}
 			if !strings.HasPrefix(strings.TrimSpace(body[0]), "Factory ›") || !strings.HasPrefix(strings.TrimSpace(body[1]), second) || strings.TrimSpace(body[2]) != "" {
 				t.Errorf("at %d item %d's head is not crumbs, chips, blank:\n%s", width, id, strings.Join(body[:4], "\n"))
+			}
+			if a.factoryVerbsDrawn() && it.State != factory.StateNeedsYou && strings.Contains(body[1], wordAskAt) {
+				t.Errorf("at %d item %d's second row keeps the chips beside the verbs: %q", width, id, body[1])
 			}
 			left, right, div := factorySplitAt(body[3])
 			if div < 0 || strings.TrimSpace(left) == "" || strings.TrimSpace(right) == "" {
