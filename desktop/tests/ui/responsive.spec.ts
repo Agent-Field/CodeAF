@@ -58,7 +58,7 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  await expect(page.getByRole('button', { name: 'Hide sidebar' })).toBeFocused();
  await expectAccessible(page);
  // Native modals may allow browser-chrome focus, but background app controls stay inert.
- await page.getByRole('button', { name: 'Search commands', includeHidden: true }).evaluate(el => (el as HTMLElement).focus());
+ await page.locator('.workspace-tab-actions').getByRole('button', { name: 'New tab', exact: true, includeHidden: true }).evaluate(el => (el as HTMLElement).focus());
  await expect(page.getByRole('button', { name: 'Hide sidebar' })).toBeFocused();
  await page.getByRole('combobox', { name: 'Theme' }).click();
  await expectThemedSurface(page, page.getByRole('listbox'));

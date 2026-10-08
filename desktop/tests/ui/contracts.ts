@@ -13,6 +13,11 @@ export async function expectThemedSurface(page: Page, surface: Locator) {
  await expect(surface).toHaveCSS('color', await tokenColor(page, 'text'));
 }
 export async function expectAccessible(page: Page) {
+ // Contrast is meaningful after entry/exit motion settles; transient opacity is not a theme color.
+ await page.evaluate(async () => {
+  const animations = document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity);
+  await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
+ });
  const result = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
  expect(result.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>n.target)}))).toEqual([]);
 }

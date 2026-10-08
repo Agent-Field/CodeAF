@@ -1,3 +1,10 @@
+import { ChevronLeftIcon } from '@animateicons/react/lucide/chevron-left-icon';
+import { XIcon } from '@animateicons/react/lucide/x-icon';
+import { PinIcon } from '@animateicons/react/lucide/pin-icon';
+import { FolderIcon } from '@animateicons/react/lucide/folder-icon';
+import { EllipsisIcon } from '@animateicons/react/lucide/ellipsis-icon';
+import { MessageSquareIcon } from '@animateicons/react/lucide/message-square-icon';
+import { ChevronRightIcon } from '@animateicons/react/lucide/chevron-right-icon';
 import { PanelLeftIcon } from '@animateicons/react/lucide/panel-left-icon';
 import { PlusIcon } from '@animateicons/react/lucide/plus-icon';
 import { SearchIcon } from '@animateicons/react/lucide/search-icon';
@@ -10,10 +17,10 @@ import { ChevronDownIcon } from '@animateicons/react/lucide/chevron-down-icon';
 import { CheckIcon } from '@animateicons/react/lucide/check-icon';
 import { useTheme } from '../../design/ThemeProvider';
 import design from '../../design/tokens.json';
-export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check'] as const;
+export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check','close','pin','folder','more','split','tab','chevronRight','chevronLeft'] as const;
 export type IconName = typeof iconNames[number];
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg';
-const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon };
+const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon, close: XIcon, pin: PinIcon, folder: FolderIcon, more: EllipsisIcon, split: PanelLeftIcon, tab: MessageSquareIcon, chevronRight: ChevronRightIcon, chevronLeft: ChevronLeftIcon };
 export function Icon({ name, size = 'md', motion = 'none' }: { name: IconName; size?: IconSize; motion?: 'none' | 'directional' | 'disclosure' }) {
  const { reducedMotion } = useTheme();
  // Upstream glyph choreography is disabled. Only approved, state-meaningful motion is allowed.

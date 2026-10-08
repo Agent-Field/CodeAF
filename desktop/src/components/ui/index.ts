@@ -9,3 +9,6 @@ export { ThemeSelect } from './ThemeSelect';
 export { SidebarAction } from './SidebarAction';
 export { TextInput } from './TextInput';
 export { Select } from './Select';
+export { ContextMenu, DropdownMenu, type MenuEntry } from './Menu';
+export { TextArea } from './TextArea';
+export { HoverPreview } from './HoverPreview';

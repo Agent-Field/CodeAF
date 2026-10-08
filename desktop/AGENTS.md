@@ -16,11 +16,11 @@ Read `docs/DESIGN.md` and inspect the live Design system screen. Reuse existing 
 
 ## 3. Non-negotiable design rules
 
-Use shared Button, IconButton, NavigationItem, SidebarAction, TextInput, Select, ThemeSelect, Typography, Surface, Separator and KeyboardShortcut components. Add or extend a shared primitive when needed; do not clone one into a feature. No inline styles or arbitrary CSS color/length/type/opacity values. The only fixed media-query thresholds are the declared breakpoints, checked against tokens. Proportional layout values such as percentages, fractions and viewport units are permitted.
+Use shared Button, IconButton, NavigationItem, SidebarAction, TextInput, TextArea, Select, ThemeSelect, ContextMenu, DropdownMenu, HoverPreview, Typography, Surface, Separator and KeyboardShortcut components. Add or extend a shared primitive when needed; do not clone one into a feature. No inline styles or arbitrary CSS color/length/type/opacity values. The only fixed media-query thresholds are the declared breakpoints, checked against tokens. Proportional layout values such as percentages, fractions and viewport units are permitted.
 
 Lucide outline through `src/components/ui/Icon.tsx` is the ONLY UI icon family. The implementation is `@animateicons/react` with explicit per-icon imports. Add semantic names in that central registry. No direct icon-package imports elsewhere; no mixed Heroicons/Tabler/Phosphor/Hugeicons, emoji icons, icon fonts, inline hand-drawn SVGs or per-screen stroke overrides. Icons use currentColor, the declared size roles and one central stroke weight. Only the shared BrandMark may render our own SVG artwork.
 
-Motion must communicate a state change. Navigation, favorite, search, settings and plus glyphs stay still. Only explicitly opted-in directional arrows translate; disclosure chevrons rotate with open state. Durations, curves and keyframe distances come from tokens; shared keyframes live in ui.css. Sidebar collapse uses the central layout transition and makes hidden controls inert. Reduced motion removes interpolation while preserving instant state indicators. No idle loops, decorative morphs, per-screen keyframes or upstream default icon animations. Every interactive control must implement themed hover, pressed, focus-visible and disabled states; persistent selection uses aria-current or aria-pressed. Use shared Select for app menus; native HTML select and direct Radix imports outside its boundary are prohibited. Icon-only controls require an accessible name. Keep visible keyboard focus, modal focus restoration, native window controls and drag regions. Never simulate Mac traffic lights on Linux. Avoid promotional hero cards, gradients within content, large saturated navigation states, unnecessary borders or decorative UI. Preserve macOS native sidebar material and Linux's honest tinted fallback.
+Motion must communicate a state change. Navigation, favorite, search, settings and plus glyphs stay still. Only explicitly opted-in directional arrows translate; disclosure chevrons rotate with open state. Durations, curves and keyframe distances come from tokens; shared keyframes live in ui.css. Sidebar collapse uses the central layout transition and makes hidden controls inert. Reduced motion removes interpolation while preserving instant state indicators. No idle loops, decorative morphs, per-screen keyframes or upstream default icon animations. Every interactive control must implement themed hover, pressed, focus-visible and disabled states; persistent selection uses aria-current or aria-pressed. Use shared Select for choices and shared ContextMenu/DropdownMenu for action menus and HoverPreview for delayed tab previews. Native HTML select and direct Radix imports outside those shared boundaries are prohibited. Icon-only controls require an accessible name. Keep visible keyboard focus, modal focus restoration, native window controls and drag regions. Never simulate Mac traffic lights on Linux. Avoid promotional hero cards, gradients within content, large saturated navigation states, unnecessary borders or decorative UI. Preserve macOS native sidebar material and Linux's honest tinted fallback.
 
 ## 4. Required gate
 
@@ -60,3 +60,41 @@ on dismissal and honor reduced motion. Use centralized breakpoints and
 geometry tokens. Verify Light and Dark at 320, 480, 600, 800 and 1200px,
 including short-height windows and nested themed menus. New screens must
 extend the responsive browser contracts rather than assume desktop width.
+
+## Tab workspace contract
+
+Tabs belong in the horizontal strip above workspace content. Keep the sidebar
+for navigation; do not duplicate conversation tabs there. Use the shared menu
+primitives for right-click and overflow actions, with keyboard equivalents.
+Selected tabs use aria-selected and a roving keyboard focus; grouping uses
+an explicit disclosure control. Keep the selected tab visible when its group
+collapses. Pinning and grouping must have predictable ordering and names.
+
+Closing a tab detaches its view; it must never silently stop engine work.
+The current workspace is a local UI preview: preserve each draft across tab
+switches and reloads, disclose that no request runs, and do not invent assistant
+responses or running statuses. Future engine attachment must retain that
+separation. Persisted UI state requires validation and safe fallback.
+
+Only the strip may scroll horizontally. New-tab and overflow actions remain
+reachable at 320px; every hover action needs a keyboard or menu equivalent.
+Reuse theme tokens for tab geometry, selected/hover/pressed states, group
+markers and motion. Never add per-tab colors or feature-local keyframes.
+Extend browser coverage for tab isolation, close/reopen, grouping, keyboard
+menus, persistence and narrow-screen overflow before publishing changes.
+
+Workspace chrome must remain one row. Do not restore a duplicate page title or
+command-search row above tabs. Large tab collections scroll at readable widths;
+New tab and overview controls stay fixed. Preserve held-modifier MRU switching,
+Escape cancellation, delayed noninteractive hover previews and accessible
+scrollable overview cards. Preview text must come from the actual local draft.
+All overview organization actions use shared menus and remain reachable by
+keyboard. Verify nested menu dismissal restores focus to its owning overview.
+
+Keep tab overflow quiet: no exposed scrollbar, no unreadable slivers, and no
+vertical-wheel hijacking. Direction controls appear only when needed; all
+content stays reachable through scrolling, keyboard navigation or overview.
+The overview has one compact toolbar and a flat grid with one title per tab.
+Do not reintroduce duplicate headings/captions, faux window chrome or decorative
+card colors. Organization actions require hover, focus and coarse-pointer
+access. New tabs and overview actions must remain visible at 320px.

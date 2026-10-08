@@ -31,3 +31,8 @@ src-tauri/binaries/codeaf-engine-*
 
 playwright-report/
 test-results/
+
+# TypeScript project-reference build outputs
+*.tsbuildinfo
+/vite.config.js
+/vite.config.d.ts

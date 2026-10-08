@@ -29,3 +29,15 @@ test('rejects native selects and Radix imports outside the themed boundary', () 
  assert.ok(inspectSource('src/features/new.tsx', "import * as Select from '@radix-ui/react-select';").length > 0);
  assert.deepEqual(inspectSource('src/components/ui/Select.tsx', "import * as Select from '@radix-ui/react-select';"), []);
 });
+
+test('allows only the precise Radix package for each shared control', () => {
+ assert.deepEqual(inspectSource('src/components/ui/Menu.tsx', "import * as Menu from '@radix-ui/react-context-menu'; import * as Dropdown from '@radix-ui/react-dropdown-menu';"), []);
+ assert.ok(inspectSource('src/components/ui/Menu.tsx', "import * as Select from '@radix-ui/react-select';").length > 0);
+ assert.ok(inspectSource('src/features/Tabs.tsx', "import * as Menu from '@radix-ui/react-context-menu';").length > 0);
+});
+
+test('keeps delayed previews inside their approved primitive boundary', () => {
+ assert.deepEqual(inspectSource('src/components/ui/HoverPreview.tsx', "import * as Preview from '@radix-ui/react-hover-card';"), []);
+ assert.ok(inspectSource('src/features/Tabs.tsx', "import * as Preview from '@radix-ui/react-hover-card';").length > 0);
+ assert.ok(inspectSource('src/components/ui/HoverPreview.tsx', "import * as Menu from '@radix-ui/react-context-menu';").length > 0);
+});
