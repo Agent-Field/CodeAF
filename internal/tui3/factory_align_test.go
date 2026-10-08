@@ -62,9 +62,9 @@ func factoryFirstInk(s string) int {
 func TestFactoryAlignRowsColumns(t *testing.T) {
 	for _, width := range factoryAlignWidths {
 		a, body := factoryAlignLab(t, width)
-		railW := a.fp.rowsW - factoryMargin
+		railW := a.fp.rowsW - factoryMargins
 		if a.fp.rowsW < width {
-			railW -= factoryDividerW - factoryRuleW
+			railW = a.fp.rowsW - factoryMargin - (factoryDividerW - factoryRuleW)
 		}
 		g := a.factoryGridAt(railW)
 		titleX := factoryMargin + a.factoryTitleCol()
@@ -77,7 +77,7 @@ func TestFactoryAlignRowsColumns(t *testing.T) {
 			if len(r) <= factsX || !strings.ContainsRune(left, '#') && !strings.Contains(left, " ci ") {
 				continue
 			}
-			if r[factsX-1] != ' ' || r[factsX] == ' ' {
+			if g.factsN >= 0 && (r[factsX-1] != ' ' || r[factsX] == ' ') {
 				t.Errorf("at %d the facts do not start at cell %d:\n%q", width, factsX, left)
 			}
 			if r[refEnd-1] == ' ' || r[refEnd] != ' ' {
@@ -277,6 +277,417 @@ func TestFactoryAlignLogAndSheet(t *testing.T) {
 		}
 		if col < 0 {
 			t.Fatalf("at %d the sheet drew no medium chip", width)
+		}
+	}
+}
+
+// ── THE REVIEW'S FIXES, EACH AS THE FRAME IT DRAWS ──────────────────────────
+//
+// A fresh-eyes review of the floor at 160, 120 and 100 columns found a dozen
+// places where the frame was not what the grid meant (2026-10-08). Each test
+// below renders the case it found and asserts the frame.
+
+// factoryPeekTitleRow is the body row the peek's first words stand on, and
+// how many of the peek's rows carry words, -1 and 0 with no peek.
+func factoryPeekTitleRow(body []string) (int, int) {
+	at, inked := -1, 0
+	for i, row := range body {
+		_, right, div := factorySplitAt(row)
+		if div < 0 || strings.TrimSpace(right) == "" {
+			continue
+		}
+		if at < 0 {
+			at = i
+		}
+		inked++
+	}
+	return at, inked
+}
+
+// (1) THE PEEK STANDS ON ONE FIXED ROW: walked to the foot of a long list, its
+// title is on the row it stood on at the top, and it keeps its height.
+func TestFactoryAlignPeekKeepsItsRowWithTheCursorLow(t *testing.T) {
+	a := factoryMockLab(t)
+	a.pal = newPalette(tokens.NoColor, false)
+	a.width, a.height = 160, 50
+	body := factoryBodyPlain(a, 160, 44)
+	topAt, topInk := factoryPeekTitleRow(body)
+	if topAt < 0 || topInk < 6 {
+		t.Fatalf("at the top the peek is not drawn whole:\n%s", strings.Join(body, "\n"))
+	}
+	a.fp.cursor = len(a.factoryWalkNow()) - 1
+	body = factoryBodyPlain(a, 160, 44)
+	if a.fp.top == 0 {
+		t.Fatal("the cursor at the foot did not scroll the rows")
+	}
+	at, inked := factoryPeekTitleRow(body)
+	if at != topAt {
+		t.Errorf("with the cursor low the peek's title is on row %d, not %d:\n%s", at, topAt, strings.Join(body, "\n"))
+	}
+	if inked < 6 {
+		t.Errorf("with the cursor low the peek collapsed to %d rows:\n%s", inked, strings.Join(body, "\n"))
+	}
+	if left, _, _ := factorySplitAt(body[at]); !strings.Contains(left, "#") && !strings.Contains(left, "───") && strings.TrimSpace(left) != "" {
+		t.Errorf("the rows beside the peek's title are not rows: %q", left)
+	}
+}
+
+// (2) THE LIST'S TOP COMES BACK: under a repo filter, walked down and back up
+// to the first row, the window is at its top and the first heading shows.
+func TestFactoryAlignListTopComesBackUnderAFilter(t *testing.T) {
+	a := factoryMockLab(t)
+	a.pal = newPalette(tokens.NoColor, false)
+	a.width, a.height = 160, 50
+	drive(t, a, key("]"))
+	n := len(a.factoryWalkNow())
+	if n < 30 {
+		t.Fatalf("the filtered mock floor holds %d items, too few to scroll", n)
+	}
+	for i := 0; i < n; i++ {
+		drive(t, a, key("down"))
+		factoryBodyPlain(a, 160, 44)
+	}
+	for i := 0; i < n; i++ {
+		drive(t, a, key("up"))
+		factoryBodyPlain(a, 160, 44)
+	}
+	if a.fp.cursor != 0 {
+		t.Fatalf("the cursor is on %d, not the first row", a.fp.cursor)
+	}
+	body := factoryBodyPlain(a, 160, 44)
+	if a.fp.top != a.fp.pinned {
+		t.Errorf("with the cursor on the first row the window starts at %d, not at its top (%d)", a.fp.top, a.fp.pinned)
+	}
+	heading := a.fp.headRows + a.factoryPeekTop()
+	if left, _, _ := factorySplitAt(body[heading]); !strings.Contains(left, "───") {
+		t.Errorf("the first heading is not on row %d:\n%s", heading, strings.Join(body[:heading+2], "\n"))
+	}
+}
+
+// (7) NO ORPHAN HEADING: at every height, with the cursor on the first row,
+// the rows' last row is never a heading whose rows are under the edge; and
+// walking onto a section's first row brings its heading with it.
+func TestFactoryAlignNoOrphanHeading(t *testing.T) {
+	a, _ := factoryAlignLab(t, 160)
+	isHeading := func(s string) bool { return strings.Contains(s, "───") }
+	for room := 8; room < 30; room++ {
+		a.fp.cursor, a.fp.top = 0, 0
+		body := factoryBodyPlain(a, 160, room)
+		last := ""
+		for _, row := range body {
+			if l, _, _ := factorySplitAt(row); strings.TrimSpace(l) != "" {
+				last = l
+			}
+		}
+		if isHeading(last) {
+			t.Errorf("at %d rows a heading is the rows' last row, its rows off screen:\n%s", room, strings.Join(body, "\n"))
+		}
+	}
+	// Walk down a short window: every time the cursor stands on a section's
+	// first row, the row above it is that section's heading.
+	a.fp.cursor, a.fp.top = 0, 0
+	rows := a.factoryRows()
+	for walk := 0; walk < len(a.factoryWalkNow()); walk++ {
+		a.fp.cursor = walk
+		body := factoryBodyPlain(a, 160, 10)
+		for line, r := range rows {
+			if r.kind != factoryRowItem || r.walk != walk || line == 0 || rows[line-1].kind != factoryRowHeading {
+				continue
+			}
+			at := a.fp.headRows + a.fp.pinned + line - a.fp.top
+			if l, _, _ := factorySplitAt(body[at-1]); !isHeading(l) {
+				t.Errorf("on a section's first row (walk %d) its heading is not above it:\n%s", walk, strings.Join(body, "\n"))
+			}
+		}
+	}
+}
+
+// (3) EVERY CELL OF ONE STRIP IS ONE WIDTH, the first as wide as the rest; a
+// name longer than the cap ends in an ellipsis, and a strip that lost cells
+// says so with one.
+func TestFactoryAlignStripCellsShareOneWidth(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.pal = newPalette(tokens.NoColor, false)
+	more := a.icon(tokens.GEllipsis)
+	it := factory.Item{ID: 99, Stream: &factory.Stream{Phases: []factory.Phase{
+		{Name: "read", State: factory.PhaseDone},
+		{Name: "checks", State: factory.PhaseDone},
+		{Name: "screenshot when the page moves", State: factory.PhaseRunning, Round: 1},
+		{Name: "review", State: factory.PhasePending},
+		{Name: "proof", State: factory.PhasePending},
+	}}}
+	strip := a.factoryPeekStrip(it, 200)
+	r := []rune(strip)
+	var marks []int
+	for i, c := range r {
+		if i == 0 || r[i-1] == ' ' && i+1 < len(r) && r[i+1] == ' ' && c != ' ' && (i < 2 || r[i-2] == ' ') {
+			marks = append(marks, i)
+		}
+	}
+	if len(marks) != 5 {
+		t.Fatalf("the strip's marks are at %v: %q", marks, strip)
+	}
+	step := marks[1] - marks[0]
+	if want := factoryStripCellMax + factoryStripGap; step != want {
+		t.Errorf("the first cell is %d wide with its gap, not %d: %q", step, want, strip)
+	}
+	for i := 2; i < len(marks); i++ {
+		if marks[i]-marks[i-1] != step {
+			t.Errorf("cell %d steps %d, not %d like the first: %q", i, marks[i]-marks[i-1], step, strip)
+		}
+	}
+	if !strings.Contains(strip, more) {
+		t.Errorf("the cut name carries no ellipsis: %q", strip)
+	}
+	narrow := a.factoryPeekStrip(it, 40)
+	if !strings.HasSuffix(narrow, more) || ansi.StringWidth(narrow) > 40 {
+		t.Errorf("a strip that dropped cells does not end in an ellipsis, or is too wide: %q", narrow)
+	}
+	if !strings.Contains(narrow, "screenshot") {
+		t.Errorf("the narrow strip lost its running cell: %q", narrow)
+	}
+	// AND THE ITEM PAGE'S STAGE RAIL cuts a long name with the ellipsis.
+	cells := []factoryRailCell{{mark: "○ ", markPaint: a.pal.dim, rest: "screenshot when the page moves", paint: a.pal.dim}}
+	rail, _ := a.factoryCellRail(cells, 0, 1)
+	if got := strings.TrimRight(ansi.Strip(rail[0]), " "); !strings.HasSuffix(got, more) || ansi.StringWidth(rail[0]) != factoryRailW {
+		t.Errorf("the rail's long name is %q, not cut with an ellipsis in %d cells", got, factoryRailW)
+	}
+}
+
+// (4) THE PROOF SHEET'S EVIDENCE NEVER REPEATS ITS MEDIUM, and the medium is a
+// column of its own at the right.
+func TestFactoryAlignProofSheetEvidenceAndMedium(t *testing.T) {
+	for _, width := range factoryAlignWidths {
+		f := &factoryFake{}
+		a := factoryVerbLab(t, f)
+		a.pal = newPalette(tokens.NoColor, false)
+		a.width = width
+		factoryOn(t, a, 9)
+		drive(t, a, key("enter"))
+		seen := 0
+		for _, row := range factoryBodyPlain(a, width, 30)[3:] {
+			_, right, div := factorySplitAt(row)
+			if div < 0 {
+				continue
+			}
+			for _, medium := range []string{"test", "screenshot"} {
+				if strings.HasSuffix(strings.TrimRight(right, " "), " "+medium) {
+					seen++
+					if strings.Contains(right, medium+" · ") || strings.Count(right, medium) > 1 {
+						t.Errorf("at %d the evidence repeats the medium %q: %q", width, medium, right)
+					}
+				}
+			}
+		}
+		if seen == 0 {
+			t.Fatalf("at %d the sheet drew no test or screenshot row", width)
+		}
+	}
+	if got := factoryEvidence("test · 0.3s", "test"); got != "0.3s" {
+		t.Errorf("`test · 0.3s` under `test` is %q, want 0.3s", got)
+	}
+	if got := factoryEvidence("screenshot", "screenshot"); got != "" {
+		t.Errorf("evidence that is only the medium is %q, want none", got)
+	}
+}
+
+// (5) THE RIGHT MARGIN: at 160, 120 and 100 the rows, the peek and the item
+// page stop [factoryMargin] before the frame's edge. The handover's hairline
+// is the one row drawn to the edge.
+func TestFactoryAlignRightMarginAtEveryWidth(t *testing.T) {
+	inkEnd := func(s string) int { return len([]rune(strings.TrimRight(s, " "))) }
+	for _, width := range factoryAlignWidths {
+		a, body := factoryAlignLab(t, width)
+		for i, row := range body[a.fp.headRows:] {
+			if end := inkEnd(row); end > width-factoryMargin {
+				t.Errorf("at %d floor row %d ends at %d, past %d:\n%q", width, i, end, width-factoryMargin, row)
+			}
+		}
+		for _, id := range []int{1, 2, 9} {
+			factoryOn(t, a, id)
+			drive(t, a, key("enter"))
+			for i, row := range factoryBodyPlain(a, width, 40) {
+				if end := inkEnd(row); end > width-factoryMargin {
+					t.Errorf("at %d item %d's page row %d ends at %d, past %d:\n%q", width, id, i, end, width-factoryMargin, row)
+				}
+			}
+			drive(t, a, key("esc"))
+		}
+	}
+}
+
+// (6) KEYS LAST: a box opened on the peek stands above its key line, which
+// stays the column's last row, one blank between them.
+func TestFactoryAlignTextBoxOpensAboveTheKeys(t *testing.T) {
+	for _, width := range factoryAlignWidths[:2] {
+		f := &factoryFake{}
+		a := factoryVerbLab(t, f)
+		a.pal = newPalette(tokens.NoColor, false)
+		a.width = width
+		factoryOn(t, a, 1)
+		drive(t, a, key("a"))
+		var pane []string
+		for _, row := range factoryBodyPlain(a, width, 36) {
+			if _, right, div := factorySplitAt(row); div >= 0 {
+				pane = append(pane, strings.TrimSpace(right))
+			}
+		}
+		last := len(pane) - 1
+		if !strings.HasPrefix(pane[last], "enter open") {
+			t.Errorf("at %d the key line is not the last row:\n%s", width, strings.Join(pane, "\n"))
+			continue
+		}
+		if pane[last-1] != "" || !strings.Contains(pane[last-2], "›") {
+			t.Errorf("at %d the box does not stand above the keys with one blank between:\n%s", width, strings.Join(pane[last-3:], "\n"))
+		}
+	}
+}
+
+// (8) LANDED SITS BESIDE NEEDS YOU, above what runs and the backlog.
+func TestFactoryAlignLandedSitsBesideNeedsYou(t *testing.T) {
+	var words []string
+	for _, g := range factoryGroups {
+		words = append(words, g.word)
+	}
+	if got := strings.Join(words, ","); got != "needs you,landed,streams,new,shipped" {
+		t.Fatalf("the sections stand %q", got)
+	}
+}
+
+// (9) THE TITLE KEEPS ITS WIDTH: at every width a row with facts gives the
+// title at least [factoryTitleMinW], the facts drop as whole columns (every
+// row of the floor carries the same count of them, or all it has), and the
+// comfortable density's second line is as wide as its first.
+func TestFactoryAlignTitleKeepsItsWidthAndFactsDropAsAColumn(t *testing.T) {
+	for name, lab := range map[string]func(*testing.T) *app{"fixture": factoryPlaceLab, "mock": factoryMockLab} {
+		a := lab(t)
+		a.pal = newPalette(tokens.NoColor, false)
+		a.fp.columns = true
+		for width := 70; width <= 200; width++ {
+			a.factoryGridForget()
+			g := a.factoryGridAt(width)
+			if g.factsN >= 0 && g.titleW < factoryTitleMinW {
+				t.Fatalf("%s at %d: the title is %d cells while the row keeps %d fact columns", name, width, g.titleW, g.factsN)
+			}
+			for _, it := range a.fp.snap.Items {
+				if !factoryOnFloor(it) || it.State == factory.StateNeedsYou {
+					continue
+				}
+				parts := a.factoryRowFacts(it)
+				k := len(parts)
+				switch {
+				case g.factsN < 0:
+					k = 0
+				case g.factsN > 0:
+					k = min(g.factsN, k)
+				}
+				var plains []string
+				for _, p := range parts[:k] {
+					plains = append(plains, p.plain)
+				}
+				want := strings.Join(plains, rowSep)
+				got := ansi.Strip(a.factoryFactsLine(it, g.factsW, g.factsN))
+				if got != want && !(k == 1 && ansi.StringWidth(want) > g.factsW) {
+					t.Fatalf("%s at %d: %s carries %q, not its first %d facts %q", name, width, it.Ref(), got, k, want)
+				}
+			}
+		}
+	}
+	// AT 120 THE TITLE IS NEVER CUT TO 18 while the facts keep their width.
+	a, body := factoryAlignLab(t, 120)
+	g := a.factoryGridAt(a.fp.rowsW - factoryMargin - (factoryDividerW - factoryRuleW))
+	if g.titleW < factoryTitleMinW {
+		t.Errorf("at 120 the title column is %d cells:\n%s", g.titleW, strings.Join(body, "\n"))
+	}
+	// The comfortable second line wraps at the first line's width.
+	a.fp.comfy = true
+	a.factoryGridForget()
+	comfy := factoryBodyPlain(a, 120, 40)
+	if a.fp.titleCols != a.factoryGridAt(a.fp.rowsW-factoryMargin-(factoryDividerW-factoryRuleW)).titleW {
+		t.Errorf("the comfortable title wraps at %d, not the first line's width", a.fp.titleCols)
+	}
+	_ = comfy
+}
+
+// (10) AT 120 THE HINT KEEPS THE ITEM'S OWN KNOBS: `t gate · c cap · e effort`
+// outlive the verbs of the whole floor.
+func TestFactoryAlignHintKeepsTheKnobsAt120(t *testing.T) {
+	a := factoryMockLab(t)
+	a.width, a.height = 120, 40
+	for i := 0; i < 4; i++ {
+		drive(t, a, key("down"))
+	}
+	it, _ := a.factoryCursorItem()
+	if it.State != factory.StateNew {
+		t.Skipf("the mock's fifth row is %s, not new", it.State)
+	}
+	hint := ""
+	for _, line := range factoryFrameLines(a) {
+		if strings.Contains(line, "enter open") && !strings.Contains(line, "│") {
+			hint = line
+		}
+	}
+	if !strings.Contains(hint, "t gate · c cap · e effort") {
+		t.Errorf("at 120 the hint lost the item's knobs: %q", hint)
+	}
+}
+
+// (11) `U` SPINS ONE ROW: only an item being read now draws the spinner in its
+// priority cell, never one waiting its turn.
+func TestFactoryAlignOnlyTheReadRowSpins(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.fp.snap.Busy = map[int]string{1: "refreshing", 2: "queued"}
+	spin := a.factorySpin()
+	if cell := a.factoryPrioCell(*factoryPaneItem(t, a, 1)); !strings.Contains(cell, spin) {
+		t.Errorf("the row being read does not spin: %q", cell)
+	}
+	if cell := a.factoryPrioCell(*factoryPaneItem(t, a, 2)); strings.Contains(cell, spin) {
+		t.Errorf("a queued row spins: %q", cell)
+	}
+}
+
+// (13) AN ESTIMATE WEARS THE FACTS' MUTED TONE; money's green is for spend.
+func TestFactoryAlignEstimateIsMutedAndSpendIsMoney(t *testing.T) {
+	a := factoryPlaceLab(t)
+	for _, it := range a.fp.snap.Items {
+		money := factoryMoneyFact(it)
+		if money == "" {
+			continue
+		}
+		for _, p := range a.factoryRowFacts(it) {
+			if p.plain != money {
+				continue
+			}
+			want := placeMoneyInk(a.pal)(money)
+			if strings.HasPrefix(money, "~") {
+				want = a.pal.muted(money)
+			}
+			if p.painted != want {
+				t.Errorf("%s's %q is painted %q, want %q", it.Ref(), money, p.painted, want)
+			}
+		}
+	}
+	if a.pal.muted("~$2") == placeMoneyInk(a.pal)("~$2") {
+		t.Skip("the palette paints muted and money alike")
+	}
+}
+
+// (14) AN EMPTY FLOOR DRAWS NO DIVIDER: with nothing to show in a peek there is
+// no `│` and no column of air beside the rows.
+func TestFactoryAlignEmptyFloorHasNoDivider(t *testing.T) {
+	f := &factoryFake{shape: func(s *factory.Snapshot) { s.Items, s.Repos = nil, nil }}
+	a := factoryVerbLab(t, f)
+	a.pal = newPalette(tokens.NoColor, false)
+	for _, width := range factoryAlignWidths {
+		a.width = width
+		body := factoryBodyPlain(a, width, 30)
+		for i, row := range body {
+			if strings.Contains(row, "│") {
+				t.Fatalf("at %d an empty floor draws the divider on row %d: %q", width, i, row)
+			}
+		}
+		if a.fp.rowsW != width {
+			t.Errorf("at %d an empty floor's rows are %d wide, not the whole width", width, a.fp.rowsW)
 		}
 	}
 }

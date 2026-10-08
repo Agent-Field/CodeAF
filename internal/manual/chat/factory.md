@@ -21,12 +21,20 @@ The floor is one layout in three widths:
 - **120 columns and wider**: the handover runs across the whole width at the top (one line, or
   four rows after `h`; see the handover), then a blank row, then two columns: the rows on the left (58% of the width to start with, never under 70
   columns), a dim `│`, and the **peek** on the right (never under 40 columns), which shows the
-  item under the cursor. The divider moves (see resize the split).
+  item under the cursor. The divider moves (see resize the split). With no item under the
+  cursor (an empty floor, or a filter that matches nothing) there is no peek and no `│`: the rows
+  take the whole width.
 - **90 to 119 columns**: the handover on top, then the rows across the full width, with no peek.
   Press `enter` on a row to see the item whole.
 - **Under 90 columns**: no handover; each row is only its mark, its short name and its title.
 
-The rows window follows the cursor when they do not all fit.
+At every width the rows, the peek and the item page stop 2 columns short of the right edge, as
+they start 2 columns in from the left.
+
+The rows window follows the cursor when they do not all fit. With the cursor on the first item
+the list is back at its top, its first group heading showing. A group heading moves with its
+first row: walking onto a group's first item shows its heading above it, and a heading is never
+left alone on the last row with its rows below the edge.
 
 ## the keys on the factory floor
 
@@ -34,7 +42,10 @@ The bottom line names the keys that work for the item under the cursor. On the s
 floor, which has no verbs, it names the walking keys:
 `↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · O order · priority · h handover · E recipe · esc back`.
 On a floor that can be changed it names `enter open` and the item's own keys first (see the
-factory's verbs), and when the line is too long the list keys are the first to go.
+factory's verbs), and when the line is too long the list keys are the first to go, then the
+keys about the whole floor (`n new item`, `L launch marked`, `T talk`, `u read again`,
+`g github`, `d hide`, the stage keys), so the item's own knobs, `t gate · c cap · e effort`,
+still show at 120 columns.
 
 - `↑` and `↓` (or `ctrl+p`, `ctrl+n`, the wheel) walk the items. A click selects a row, a second
   click opens it; a click in the peek moves nothing.
@@ -71,15 +82,20 @@ is a spinner instead.
 
 On a forge item the short name is a link to its page where the terminal takes links.
 
-Groups have muted capital headings (`NEEDS YOU · 1 ───`) and one blank row between them:
-`NEEDS YOU` (the question in its colour, `[y/n]` before the age), `STREAMS` (a stage strip
-`●●◐○` and `review 26m`, or `queued`), `NEW` (`bug · S`, `pr · ci ✓`, `ci red`), `LANDED`
-(`3✓ 1✕`) and `SHIPPED` (`shipped 06:00`). An empty group is not drawn.
+Groups have muted capital headings (`NEEDS YOU · 1 ───`) and one blank row between them, in
+this order: `NEEDS YOU` (the question in its colour, `[y/n]` before the age), `LANDED`
+(`3✓ 1✕`, waiting for your sign-off, so it sits beside what waits on you, above the backlog),
+`STREAMS` (a stage strip `●●◐○` and `review 26m`, or `queued`), `NEW` (`bug · S`,
+`pr · ci ✓`, `ci red`) and `SHIPPED` (`shipped 06:00`). An empty group is not drawn.
 
-After the first fact come the money (`$1.42/$5`, or `~$3` estimated), the author, tags (`thin`,
-`dup #950?`, `from chat ▸`, `terminal only`), and `reading…` or `refreshing…` while the item is
-being read. A long title takes width from the facts before it is cut; the facts drop whole from
-the right, the state fact last. The row under the cursor sits on the same lifted background the
+After the first fact come the money (`$1.42/$5` spent, in money's green, or `~$3` estimated,
+muted like the other facts, because it is a guess), the author, tags (`thin`, `dup #950?`,
+`from chat ▸`, `terminal only`), and `reading…` or `refreshing…` while the item is being read.
+The title keeps at least 28 columns: when a row is too narrow for the title and every fact, the
+facts drop as a column, the same fact from every row at once, the rightmost first and the state
+fact last, so a fact missing from a row means the row has none, never that it ran out of room.
+A long title then takes the width the facts leave. In the comfortable density (`z`) the title's
+second line is as wide as its first. The row under the cursor sits on the same lifted background the
 Chats list and the Teams page use.
 
 ## filter the factory floor, search for an item
@@ -275,7 +291,8 @@ The handover is drawn at 90 columns and wider, when the window leaves the rows s
 
 At 120 columns and wider, the right column shows the item under the cursor as a short document:
 blocks with one blank row between each, and a block with nothing to say is left out. Its title
-stands level with the first group heading on the left. In order:
+stands on one fixed row, level with the first group heading when the list is at its top, and
+stays there while the rows scroll under the cursor, so the peek keeps its whole height. In order:
 
 1. The short name and title (the short name is a link to the item's page), then dim: repository,
    kind, size, author, age, and `github ↗` when the item has a page there.
@@ -285,8 +302,10 @@ stands level with the first group heading on the left. In order:
 4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
 5. The gate, cap and effort in fixed slots, so their values line up from item to item: `gate  ship`,
    `cap  $5`, `effort  —`. A cap of nothing is a blank slot.
-6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, each in an
-   even cell, with the round as `2/2` on a stage that may run more than one. Under them, dim,
+6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, every cell
+   of the strip one width (its longest name, at most 16 columns; a longer name ends in `…`),
+   with the round as `2/2` on a stage that may run more than one. When the strip does not fit,
+   whole cells drop and a dim `…` stands where they were; the running stage always stays. Under them, dim,
    why a stage stopped: `review · review is not clean after 2 round(s)`.
 7. A running stage's line (`review 1/2 · 3 findings · fixing`), what frees a queued item, or
    `merged 06:00 · $1.90`.
@@ -412,7 +431,8 @@ waiting refuses with `#12 is not waiting on you`, said on the bottom line.
 
 A landed item's page opens on its **proof** sheet: one row per claim and policy row, `✓` shown or
 `✕` with `— not shown`, its evidence dim at the right and its medium (`test`, `screenshot`,
-`policy`) as a chip in one column. The sheet's last line counts it and names its keys:
+`policy`) as a chip in its own column at the right edge. The evidence never repeats the medium:
+a test row reads `0.3s` beside `test`, not `test · 0.3s`. The sheet's last line counts it and names its keys:
 `all 6 shown · s sign off`, or `1 of 6 not shown · e sign off with changes · B send back`.
 
 - `s` signs off and ships it: `#12 shipped`. On a sheet with a row not shown the run refuses,
@@ -467,7 +487,8 @@ process runs the floor's items. `enter` on a row never launches; it opens the it
   item's card is under the cursor when it is made. On the made-up moving floor,
   `S sleep 8h` jumps its clock eight hours and starts a new handover.
 
-A key that takes words opens a one-line box at the bottom of the right column, except `n`'s,
+A key that takes words opens a one-line box at the bottom of the right column, just above the
+peek's key line (which stays the column's last row, one blank row between them), except `n`'s,
 which stands at the bottom of the rows (and every box stands under the rows when there is no
 peek): `enter` sends, `backspace` edits, `esc` cancels. After a key the bottom line says what
 became of the item (`#12 is running`, `#12 stopped · branch kept`); a refusal, such as
@@ -492,7 +513,8 @@ Everything the floor does in the background says it is happening, with the same 
 the transcript uses (`⠋`), and nothing is drawn when nothing is in flight:
 
 - **An item being read:** its priority cell spins and its last fact says `reading…` or
-  `refreshing…`. The peek's read says `⠋ reading…` while the first read is out, and the item
+  `refreshing…`. Only the item a read is on spins; one that is only waiting its turn
+  does not. The peek's read says `⠋ reading…` while the first read is out, and the item
   page's read line says `⠋ reading · 4s`.
 - **`u` reads the item under the cursor again.** The line above the keys says `re-reading #6…`
   until the read is over, then the bottom line says `#6 read again · ~$0.0004`.

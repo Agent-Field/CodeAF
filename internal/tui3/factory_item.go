@@ -430,7 +430,9 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	a.fp.stage = moveCursor(a.fp.stage, 0, len(rows))
 	a.fp.pageRows, a.fp.bodyW = room, width
 	a.fp.railTop, a.fp.railFirst, a.fp.railShown = 0, 0, 0
-	measure := max(width-factoryMargin, 0)
+	// THE PAGE STOPS [factoryMargin] BEFORE THE FRAME'S EDGE (factory_grid.go's
+	// THE RIGHT MARGIN), the head and the pane alike.
+	measure := max(width-factoryMargins, 0)
 	// THE HEAD IS TWO ROWS AND A BLANK ON EVERY ITEM (owner ruling,
 	// 2026-10-08): the crumbs on row 0, the chips on row 1, and the rail and
 	// its pane from row 3, so the page's regions start on the same rows
@@ -464,7 +466,7 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 		paneW := width - factoryRailW - 1
 		rail, first := a.factoryCellRail(cells, a.fp.stage, left)
 		a.fp.railTop, a.fp.railFirst, a.fp.railShown = len(lines), first, min(len(cells)-first, left)
-		pane := a.factoryPagePane(it, rows, max(paneW-factoryMargin, 0), left)
+		pane := a.factoryPagePane(it, rows, max(paneW-factoryMargins, 0), left)
 		sep := a.pal.dim(a.linearMark("│", "|"))
 		for i := 0; i < left; i++ {
 			right := ""

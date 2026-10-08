@@ -101,7 +101,7 @@ func TestFactoryOrderFirstRowDrawsTheReasonAndDropsItFirst(t *testing.T) {
 	if got := ansi.StringWidth(wide); got != 150 {
 		t.Fatalf("the row is %d cells, want 150", got)
 	}
-	want := "✕ ▇     ci main is red · sync · TestCompactKeepsFilters                 whisper      ci red · ~$1.50 · ci                            main is red    6h"
+	want := "✕ ▇     ci main is red · sync · TestCompactKeepsFilters         whisper      ci red · ~$1.50 · ci                                    main is red    6h"
 	if wide != want {
 		t.Fatalf("the first-order row is\n%q\nwant\n%q\n(before O it was %q)", wide, want, plainBefore)
 	}

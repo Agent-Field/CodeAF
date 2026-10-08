@@ -119,11 +119,11 @@ func TestFactoryRailFilterWordsNarrow(t *testing.T) {
 		{"spend", "#1538,#702,#1663"},
 		{"ui", "#1551,#1662,#1540"},
 		{"prs", "#1662"},
-		{"bugs", "#1551,#1660,#1540,#31,#1661,#1663"},
+		{"bugs", "#1661,#1551,#1660,#1540,#31,#1663"},
 		{"thin", "#31"},
-		{"mine", "#1538,#1540,#702,#1661"},
+		{"mine", "#1538,#1661,#1540,#702"},
 		{"whisper", "ci,#31"},
-		{"mine bugs", "#1540,#1661"},
+		{"mine bugs", "#1661,#1540"},
 		{"nothing-matches-this", ""},
 	} {
 		got := strings.Join(factoryWalkRefs(snap, factoryWalk(snap, factoryView{query: c.q, backlog: true})), ",")
