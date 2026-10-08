@@ -365,9 +365,8 @@ checks again.
 The bottom line names only the keys that work for the item under the cursor. On your own floor
 the keys that change an item's own words always work (`n`, `t` gate, `c` cap, `e` effort, `w`,
 `1-9` and `s` stages, `space`, `d`), and `r`, `p` and `L` launch (see running an item). Stop,
-pause, answers, steering, sign-off, send back and check again are offered only in the window whose
-process runs the floor's items; in any other window those keys are not drawn. `enter` on a row
-never launches; it opens the item page.
+pause, answers, steering, sign-off, send back and check again work in every window too, whichever
+process runs the floor's items. `enter` on a row never launches; it opens the item page.
 
 - **New:** `r run · p plan first · space mark · L launch marked · 1-9 stages · s stage ·
   t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the plan gate, and
@@ -785,9 +784,8 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **Items run on this machine only.** `r`, `p` and `L` launch (see running an item). Stop,
-  pause, answers, steering and sign-off work only in the window whose process runs the floor;
-  every other window can only launch.
+- **Items run on this machine only.** `r`, `p` and `L` launch (see running an item), and stop,
+  pause, answers, steering, sign-off, send back and check again work from any window on it.
 - **Only GitHub is connected.** No GitLab or Linear.
 - **The recipe file is read only where codeaf knows the checkout.** It is read for the
   repository you opened codeaf in, and for any watched GitHub repository whose checkout codeaf
@@ -830,11 +828,18 @@ claim was shown.
   for at most two hours, and ends with `stage_result` (see a stage is a conversation).
 - A **gate** waits for you.
 
-**Which window runs items.** One process on this machine runs the floor: on the ordinary launch
-it is the session host, so items keep running when the terminal closes; with `--no-host` it is the
-first window that opened the floor. In any other window `r`, `p` and `L` mark the item `queued`
-and the running process starts it within about three seconds; if it refuses (the day rail, a
-stranger's write), the item goes back to new with `did not start: ` and the reason in its log.
+**Every verb works from any window.** One process on this machine runs the floor's items, the
+owner: on the ordinary launch it is the session host, so items keep running when the terminal
+closes; with `--no-host` it is the first window that opened the floor. Every window still has every
+verb: launch, stop, pause, answer, steer, sign-off, send back and check again. A window that is not
+the owner hands the verb to the owner, which carries it out within about a second, and a refusal
+(the day rail, `#12 has landed · sign it off, or send it back`) is said on that window's bottom
+line in the owner's own words. If nothing answers within five seconds the window says
+`the floor's runner did not answer · is codeaf running?` and nothing happens later.
+
+**What a stage may do.** A chat stage runs with the allow posture (what `--yolo` gives) in the
+repository's checkout, so it edits files and runs commands without asking; your own approval
+settings do not narrow it (see what a stage may do).
 
 **Spend.** A chat stage's calls are on the spend ledger under its own conversation, and the
 item's spend counts them against its cap and the day rail.

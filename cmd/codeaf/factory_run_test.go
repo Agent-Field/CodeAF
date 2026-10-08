@@ -150,89 +150,45 @@ func TestAnOwnerLaunchRunsACheckItemToLanded(t *testing.T) {
 	}
 }
 
-// TestANonOwnerLaunchIsQueuedAndTheOwnerPicksItUp: a window that does not run
-// the floor has Launch alone, which writes `queued`; the owner's scan launches
-// it and it lands.
-func TestANonOwnerLaunchIsQueuedAndTheOwnerPicksItUp(t *testing.T) {
+// TestANonOwnerLaunchReachesTheOwnerAndLands: a window that does not run the
+// floor launches through the mailbox, the owner's drain carries it through
+// the real runner, and the item lands. A second launch of the same item hears
+// the runner's own refusal back.
+func TestANonOwnerLaunchReachesTheOwnerAndLands(t *testing.T) {
 	g := newRunRig(t)
-	window := factory.LocalSeam(g.st, time.Now(), factory.WithQueuedLaunch())
-	if !window.Has("launch") {
-		t.Fatal("a window that does not run the floor cannot even queue")
-	}
-	for _, door := range []string{"stop", "pause", "answer", "steer", "signoff", "sendback", "reverify"} {
-		if window.Has(door) {
-			t.Errorf("a window that does not run the floor draws %s with nothing behind it", door)
-		}
-	}
-	id := g.checkItem(t)
-	if err := window.Launch(id); err != nil {
-		t.Fatal(err)
-	}
-	if it, _ := g.st.Get(id); it.State != factory.StateQueued {
-		t.Fatalf("a queued launch left the item %s", it.State)
-	}
-	if err := window.Launch(id); err == nil || !strings.Contains(err.Error(), "is already running") {
-		t.Fatalf("a second queue of the same item = %v", err)
-	}
-
+	window := factory.LocalSeam(g.st, time.Now(), factory.WithMailbox(g.st.Mailbox()))
 	owner := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil)
 	stopAll(t, g.st, owner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go scanFactoryQueue(ctx, g.st, owner, 5*time.Millisecond)
+	go drainFactoryMailbox(ctx, g.st.Mailbox(), owner, 5*time.Millisecond)
+
+	id := g.checkItem(t)
+	if err := window.Launch(id); err != nil {
+		t.Fatal(err)
+	}
 	g.waitFor(t, id, factory.StateLanded)
+	if err := window.Launch(id); err == nil || !strings.Contains(err.Error(), "has landed · sign it off, or send it back") {
+		t.Fatalf("a second launch from the window = %v, not the runner's own sentence", err)
+	}
 }
 
-// TestTheOwnerDoesNotLaunchWhatItQueuedItself: an item the owner's own runner
-// queued is not launched a second time by the scan.
-func TestTheOwnerDoesNotLaunchWhatItQueuedItself(t *testing.T) {
-	g := newRunRig(t)
-	block := make(chan struct{})
-	r := factoryrun.New(factoryrun.Options{Store: g.st, Benches: 1, Exec: map[factory.StageKind]factoryrun.Executor{
-		factory.StageCheck: factoryrun.ExecutorFunc(func(ctx context.Context, job factoryrun.Job) (factory.StageResult, error) {
-			select {
-			case <-block:
-			case <-ctx.Done():
-				return factory.StageResult{}, ctx.Err()
-			}
-			return factory.StageResult{Done: true}, nil
-		}),
-	}})
-	stopAll(t, g.st, r)
-	first, second := g.checkItem(t), g.checkItem(t)
-	if err := r.Launch(first); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.Launch(second); err != nil {
-		t.Fatal(err)
-	}
-	if it, _ := g.st.Get(second); it.State != factory.StateQueued || !r.Running(second) {
-		t.Fatalf("the second item is %s, running %v; want queued behind the one bench", it.State, r.Running(second))
-	}
-	pickUpFactoryQueue(g.st, r)
-	if it, _ := g.st.Get(second); it.State != factory.StateQueued {
-		t.Fatalf("the scan moved an item its own runner queued: %s", it.State)
-	}
-	close(block)
-	g.waitFor(t, second, factory.StateLanded)
-}
-
-// TestARefusedPickUpSaysWhyOnTheItem: the owner's refusal (here the day rail)
-// is the item's own log line, and the item is new again.
-func TestARefusedPickUpSaysWhyOnTheItem(t *testing.T) {
+// TestARefusedLaunchFromAWindowSaysTheRunnersReason: the day rail's refusal
+// comes back to the window that asked, word for word.
+func TestARefusedLaunchFromAWindowSaysTheRunnersReason(t *testing.T) {
 	g := newRunRig(t)
 	r := factoryrun.New(factoryrun.Options{Store: g.st, Rail: func() float64 { return 1 }, SpentToday: func() float64 { return 2 }})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go drainFactoryMailbox(ctx, g.st.Mailbox(), r, 5*time.Millisecond)
+	window := factory.LocalSeam(g.st, time.Now(), factory.WithMailbox(g.st.Mailbox()))
 	id := g.checkItem(t)
-	if err := factory.QueueLaunch(g.st, id); err != nil {
-		t.Fatal(err)
+	err := window.Launch(id)
+	if err == nil || err.Error() != "the day rail is $1 and today's spend has reached it" {
+		t.Fatalf("the window heard %v", err)
 	}
-	pickUpFactoryQueue(g.st, r)
-	it, _ := g.st.Get(id)
-	if it.State != factory.StateNew || it.Stream == nil || len(it.Stream.Log) == 0 {
-		t.Fatalf("item = %s, stream %+v", it.State, it.Stream)
-	}
-	if got := it.Stream.Log[len(it.Stream.Log)-1].Text; got != "did not start: the day rail is $1 and today's spend has reached it" {
-		t.Fatalf("the refusal reads %q", got)
+	if it, _ := g.st.Get(id); it.State != factory.StateNew {
+		t.Fatalf("a refused launch left the item %s", it.State)
 	}
 }
 
@@ -275,7 +231,8 @@ func TestTheBenchesPinIsRegisteredAndRead(t *testing.T) {
 }
 
 // TestTheSeamOptionFollowsWhoRunsTheFloor: with no runner in this process the
-// seam option is the queued launch; with one, it is the runner's doors.
+// seam option is the mailbox, which still draws all eight runner doors; with
+// one, it is the runner's own doors.
 func TestTheSeamOptionFollowsWhoRunsTheFloor(t *testing.T) {
 	g := newRunRig(t)
 	factoryRunner.mu.Lock()
@@ -287,13 +244,23 @@ func TestTheSeamOptionFollowsWhoRunsTheFloor(t *testing.T) {
 		factoryRunner.r = held
 		factoryRunner.mu.Unlock()
 	})
-	if seam := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors()); !seam.Has("launch") || seam.Has("stop") {
-		t.Fatal("a window that does not run the floor should queue and draw no stop")
+	doors := []string{"launch", "stop", "pause", "answer", "steer", "signoff", "sendback", "reverify"}
+	window := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors(g.st))
+	for _, door := range doors {
+		if !window.Has(door) {
+			t.Errorf("a window that does not run the floor has no %s", door)
+		}
+	}
+	if factoryRunnerDoors(nil) != nil {
+		t.Error("no store still bound a mailbox")
 	}
 	factoryRunner.mu.Lock()
 	factoryRunner.r = buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil)
 	factoryRunner.mu.Unlock()
-	if seam := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors()); !seam.Has("stop") || !seam.Has("signoff") {
-		t.Fatal("the window that runs the floor has no runner doors")
+	owner := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors(g.st))
+	for _, door := range doors {
+		if !owner.Has(door) {
+			t.Errorf("the window that runs the floor has no %s", door)
+		}
 	}
 }

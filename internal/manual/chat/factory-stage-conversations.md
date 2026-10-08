@@ -32,8 +32,22 @@ so the round is counted and the stage stops at its max and asks you.
 **Where it opens.** It is made when the stage starts, in the folder of the repository's checkout,
 and joins the item's team (`#12 · <title>`) under the one `factory` team in the team menu, where
 you can open it while it runs or after. Nobody is at its keyboard: it runs unattended for at most
-two hours, and its approvals are the ones `codeaf chat --once` has: a tool that would ask you is
-refused with `needs approval but no resolver is attached: <rule>` unless your tool approval mode
-or rules let it run (`stage_result` and `plan_edit` never ask). It has no `factory_add`, `factory_recipe` or
-`factory_item`, because those wait on a card. The round is over when it has been idle, with no
-task it started still running.
+two hours. It has no `factory_add`, `factory_recipe` or `factory_item`, because those wait on a
+card. The round is over when it has been idle, with no task it started still running.
+
+## what a stage may do — edit files and run commands, the allow posture
+
+A stage conversation runs with the allow posture, the same open gate `--yolo` gives, inside the
+folder of the repository's checkout. So it edits and writes files and runs commands (builds,
+tests, `git`) there without asking anyone. Your own approval settings
+(the tool approval mode, the tool rules, the command rules) do not narrow it: a rule that says
+"ask me" would only ever be refused there, because nobody is at its keyboard to answer.
+
+Two floors still hold under it, as they do under `--yolo`: a critical command such as `rm -rf /`,
+`mkfs` or `shutdown`, and a call that acts in your name such as `gmail_send`, would ask, and in a
+stage that ask is refused with `needs approval but no resolver is attached: <rule>`. Nothing in a
+stage ever waits on you.
+
+To run stages narrower, set `CODEAF_FACTORY_POSTURE` to another posture (`ask`, `guardian`,
+`deny`, or `auto` for your own settings rows) in the environment codeaf's host starts in; under
+any of them a call that would ask is refused the same way.

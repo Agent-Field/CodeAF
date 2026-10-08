@@ -176,11 +176,11 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// machine, so its door is hung only here, where the floor is this
 	// machine's: --once and --host never build this seam.
 	local := factory.LocalSeam(st, time.Now(),
-		// THE RUNNER'S DOORS ARE HUNG ONLY IN THE PROCESS THAT RUNS THE FLOOR
-		// (factory_run.go): there `r`, `p`, `L`, stop, pause, answers, steering
-		// and sign-off are the runner's own. Every other window only queues a
-		// launch, which the owner picks up within a few seconds.
-		factoryRunnerDoors(),
+		// THE RUNNER'S DOORS ARE HUNG IN EVERY WINDOW (factory_run.go): in the
+		// process that runs the floor they are the runner's own, and in every
+		// other window the same eight are asks posted to that process's
+		// mailbox and answered within about a second.
+		factoryRunnerDoors(st),
 		factory.WithRepoDirs(factoryRepoDirs(st, workspace)),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),

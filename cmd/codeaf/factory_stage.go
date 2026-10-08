@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/approval"
+	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
 	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
@@ -32,7 +34,11 @@ import (
 //     belt (internal/session's tools_stage.go);
 //   - it is UNATTENDED, under a wall of [factoryStageWall]: nobody is at its
 //     keyboard, so it keeps going on its own until its work, and the tasks it
-//     handed out, are done, and its approvals are the headless gate's;
+//     handed out, are done;
+//   - it runs at the ALLOW POSTURE, what --yolo gives, behind the headless
+//     gate ([stageApprovalGate]): a stage that writes must be able to edit and
+//     run things in its checkout, and nothing it does may wait on a person who
+//     is not there;
 //   - the doors that raise a card for a person (factory_add, factory_recipe,
 //     factory_item) are taken off, because no person is there to answer one
 //     and a card nobody answers holds the round forever.
@@ -78,8 +84,9 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
 	cfg.AskConsent = false
 	cfg.Factory, cfg.Recipe, cfg.FactoryItem = nil, nil, nil
-	gate := v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}
+	gate := stageApprovalGate{rows: v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
+	cfg.ApprovalPosture = gate.posture
 	if cfg.ApprovalPolicy, cfg.Guardian, err = gate.Build(cfg.ApprovalPosture); err != nil {
 		return nil, err
 	}
@@ -111,6 +118,56 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	guard.Go("factory/stage-conversation", func() { c.follow(events) })
 	return c, nil
 }
+
+// factoryPostureEnv pins the posture a stage conversation runs at, in the
+// words `/approvals` takes. Unset, or a word that is not a posture, is
+// [session.PostureAllow].
+const factoryPostureEnv = "CODEAF_FACTORY_POSTURE"
+
+// factoryStagePosture is the posture every stage conversation runs at.
+func factoryStagePosture() string {
+	word := strings.ToLower(strings.TrimSpace(env.Get(factoryPostureEnv)))
+	for _, p := range session.ApprovalPostures {
+		if word == p {
+			return word
+		}
+	}
+	return session.PostureAllow
+}
+
+// stageApprovalGate is a stage conversation's door onto its gate. Every
+// posture but allow is the person's own rows, headless (rows); allow is the
+// open gate WITHOUT the person's rows under it.
+//
+// A STAGE'S ALLOW IS NOT NARROWED BY THE PERSON'S OWN SETTINGS. A tool row or
+// a bash rule a person wrote saying `ask` is a question for them at their
+// keyboard, and a stage has no keyboard: under --yolo's gate that row would be
+// a refusal (`needs approval but no resolver is attached`), and a write stage
+// whose `edit` or `bash` is refused cannot do the one thing it is for. So the
+// stage's allow is the built-in floor and nothing else. internal/approval's
+// own floors (the critical-command table, the calls that act in the person's
+// name) still hold, because they sit under every policy and they are not a
+// person's preference. A person who wants a stage narrower says so with
+// [factoryPostureEnv].
+type stageApprovalGate struct {
+	rows    v3ApprovalGate
+	posture string
+}
+
+// Build is the gate for one posture.
+func (g stageApprovalGate) Build(posture string) (*approval.Policy, bool, error) {
+	if posture != session.PostureAllow {
+		return g.rows.Build(posture)
+	}
+	policy, err := approval.Load(map[string]any{"default": string(approval.ActionAllow), "tools": v3BuiltinApprovals()})
+	if err != nil {
+		return nil, false, err
+	}
+	return &policy, false, nil
+}
+
+// Standing is the posture the stage stands at.
+func (g stageApprovalGate) Standing() string { return g.posture }
 
 // stageJoinTeam adds the conversation to the item's team, by the name the
 // executor gave it (`#12 · review`).

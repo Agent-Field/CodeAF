@@ -33,8 +33,10 @@ func TestFactorySeamWithNoStoreIsTheZeroSeam(t *testing.T) {
 }
 
 // The person's own floor has the doors the local seam can keep. In a process
-// that does not run the floor (no runner here), Launch only queues, and every
-// other engine door is absent, so the page offers nothing it cannot do.
+// that does not run the floor (no runner here), the eight runner doors are
+// asks to the process that does (factory_run.go's mailbox), and the doors
+// nothing on this machine can keep are absent, so the page offers nothing it
+// cannot do.
 func TestFactorySeamOverAStoreIsTheLocalFloor(t *testing.T) {
 	t.Setenv(factoryFixtureEnv, "")
 	st, err := store.Open(t.TempDir())
@@ -47,10 +49,12 @@ func TestFactorySeamOverAStoreIsTheLocalFloor(t *testing.T) {
 			t.Fatalf("the floor over a store is missing %q", door)
 		}
 	}
-	if !seam.Has("launch") {
-		t.Fatal("the floor over a store cannot even queue a launch")
+	for _, door := range []string{"launch", "stop", "pause", "answer", "steer", "signoff", "sendback", "reverify"} {
+		if !seam.Has(door) {
+			t.Fatalf("the floor over a store has no %q to ask the runner through", door)
+		}
 	}
-	for _, door := range []string{"stop", "pause", "answer", "steer", "signoff", "sync", "askauthor"} {
+	for _, door := range []string{"sync", "askauthor"} {
 		if seam.Has(door) {
 			t.Fatalf("the floor over a store carries the engine door %q with nothing behind it", door)
 		}

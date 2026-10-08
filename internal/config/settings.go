@@ -1126,6 +1126,11 @@ var OperatorEnvPins = []string{
 	// that runs the floor, and the floor has no settings row for it yet, so it
 	// is plumbing rather than a row that would promise a dial.
 	"CODEAF_FACTORY_BENCHES",
+	// The posture a factory stage conversation runs at (cmd/codeaf's
+	// factory_stage.go; the manual quotes the default, allow). Plumbing for the
+	// benches pin's reason: it tunes the process that runs the floor, and no
+	// settings row promises it.
+	"CODEAF_FACTORY_POSTURE",
 	"CODEAF_GITHUB_API",
 	"CODEAF_GITHUB_DOWNLOAD",
 	// CODEAF_INSTALL_NAME belongs to the shell installer and not to this

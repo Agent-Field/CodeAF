@@ -31,11 +31,13 @@ import (
 // process that finds the lock taken looks again every [factoryWatchEvery] and
 // becomes the owner when the old one goes.
 //
-// EVERY OTHER WINDOW ONLY QUEUES. Its Launch writes the item `queued`
-// ([factory.QueueLaunch]) and the owner's scan, every [factoryQueueEvery],
-// launches each queued item it is not already running. Its other runner doors
-// (stop, pause, answer, steer, sign-off, send back, check again) are absent,
-// because only the owner holds the item's round.
+// EVERY OTHER WINDOW ASKS. Its eight runner doors (launch, stop, pause,
+// answer, steer, sign-off, send back, check again) post an ask to the store's
+// mailbox and wait for the reply (internal/factory's [factory.WithMailbox]);
+// the owner drains the mailbox every [factoryMailboxEvery], carries each ask
+// through its runner's own door and writes the door's answer back. So every
+// verb works from every window, and a refusal reads the same wherever the key
+// was pressed. The owner's own window keeps the direct doors.
 
 // factoryBenchesEnv pins how many items run at once on this machine's floor.
 const factoryBenchesEnv = "CODEAF_FACTORY_BENCHES"
@@ -44,9 +46,10 @@ const factoryBenchesEnv = "CODEAF_FACTORY_BENCHES"
 // The manual quotes it (internal/manual/chat/factory.md).
 const factoryBenchesDefault = 4
 
-// factoryQueueEvery is how often the owner looks for items another window
-// queued. A variable so a test can shorten it.
-var factoryQueueEvery = 3 * time.Second
+// factoryMailboxEvery is how often the owner drains the mailbox other windows
+// post their asks to. A window waits [factory.MailboxWait] for its reply, which
+// is several of these. A variable so a test can shorten it.
+var factoryMailboxEvery = time.Second
 
 // factoryStageWall is the most one stage conversation runs for, which is also
 // what makes it an unattended conversation that keeps going until its work is
@@ -80,8 +83,8 @@ func setFactoryRunner(r *factoryrun.Runner, lock *os.File) {
 }
 
 // startFactoryRunner builds this process's runner over st when it can take
-// the floor's run lock, and starts the scan that picks up what other windows
-// queued. It answers the runner, or nil when another process owns the floor
+// the floor's run lock, and starts the drain that answers what other windows
+// ask of it. It answers the runner, or nil when another process owns the floor
 // for now (a small loop keeps trying). ONCE PER PROCESS, STOPPED WITH THE
 // PROCESS. parent is the conversation config the launch built, which every
 // stage conversation is opened from.
@@ -96,9 +99,13 @@ func startFactoryRunner(st *store.Store, workspace, profileDir string, parent se
 				return false
 			}
 			r := buildFactoryRunner(st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent))
+			// AN ASK THE PREVIOUS OWNER NEVER ANSWERED IS NOT CARRIED OUT NOW:
+			// its window has already said nobody answered.
+			mb := st.Mailbox()
+			_ = mb.Clear()
 			setFactoryRunner(r, lock)
-			guard.Go("factory/run-queue", func() {
-				scanFactoryQueue(context.Background(), st, r, factoryQueueEvery)
+			guard.Go("factory/run-mailbox", func() {
+				drainFactoryMailbox(context.Background(), mb, r, factoryMailboxEvery)
 			})
 			return true
 		}
@@ -117,13 +124,18 @@ func startFactoryRunner(st *store.Store, workspace, profileDir string, parent se
 	return factoryRunnerHere()
 }
 
-// factoryRunnerDoors is the seam option for this process: the runner's eight
-// doors when it runs the floor, the queued launch otherwise.
-func factoryRunnerDoors() factory.LocalOption {
+// factoryRunnerDoors is the seam option for this process over st: the
+// runner's eight doors when it runs the floor, the same eight through st's
+// mailbox otherwise.
+func factoryRunnerDoors(st *store.Store) factory.LocalOption {
 	if r := factoryRunnerHere(); r != nil {
 		return factory.WithRunner(r)
 	}
-	return factory.WithQueuedLaunch()
+	// A typed nil inside the interface would read as a mailbox.
+	if mb := st.Mailbox(); mb != nil {
+		return factory.WithMailbox(mb)
+	}
+	return nil
 }
 
 // tryFactoryRunLock takes the floor's run lock without waiting, and answers
@@ -216,11 +228,11 @@ func factorySource(st *store.Store, profileDir string) func(repo string) factory
 	}
 }
 
-// scanFactoryQueue launches, every `every`, each item another window queued
-// that r is not already running, until ctx ends.
-func scanFactoryQueue(ctx context.Context, st *store.Store, r *factoryrun.Runner, every time.Duration) {
+// drainFactoryMailbox answers, every `every`, what other windows asked of r,
+// until ctx ends.
+func drainFactoryMailbox(ctx context.Context, mb *store.Mailbox, r factory.RunnerDoors, every time.Duration) {
 	for {
-		pickUpFactoryQueue(st, r)
+		answerFactoryAsks(mb, r, time.Now())
 		t := time.NewTimer(every)
 		select {
 		case <-ctx.Done():
@@ -231,39 +243,21 @@ func scanFactoryQueue(ctx context.Context, st *store.Store, r *factoryrun.Runner
 	}
 }
 
-// pickUpFactoryQueue is one pass of the scan. A queued item goes back to new
-// first, because the runner launches only from new, and is launched at once;
-// when the launch is refused (the day rail, a stranger's write) the refusal
-// is the item's own log line, so the window that queued it can read why.
-func pickUpFactoryQueue(st *store.Store, r *factoryrun.Runner) {
-	items, err := st.List()
+// answerFactoryAsks is one pass of the drain: every ask taken, oldest first,
+// is carried through r's door and its reply written. AN ASK NOBODY IS WAITING
+// FOR ANY MORE IS NOT CARRIED OUT: its window stopped waiting after
+// [factory.MailboxWait] and told the person the runner did not answer, and a
+// launch or a stop that happened anyway a minute later would make that
+// sentence a lie.
+func answerFactoryAsks(mb *store.Mailbox, r factory.RunnerDoors, now time.Time) {
+	asks, err := mb.Take()
 	if err != nil {
 		return
 	}
-	for _, it := range items {
-		if it.State != factory.StateQueued || r.Running(it.ID) {
+	for _, ask := range asks {
+		if !ask.At.IsZero() && now.Sub(ask.At) > factory.MailboxWait {
 			continue
 		}
-		taken := false
-		_ = st.Update(it.ID, func(cur *factory.Item) error {
-			if cur.State != factory.StateQueued {
-				return nil
-			}
-			cur.State, taken = factory.StateNew, true
-			return nil
-		})
-		if !taken {
-			continue
-		}
-		if err := r.Launch(it.ID); err != nil {
-			now := time.Now()
-			_ = st.Update(it.ID, func(cur *factory.Item) error {
-				if cur.Stream == nil {
-					cur.Stream = &factory.Stream{}
-				}
-				cur.Stream.Log = append(cur.Stream.Log, factory.LogLine{At: now, Tone: "fail", Text: "did not start: " + err.Error()})
-				return nil
-			})
-		}
+		_ = mb.Answer(ask.Seq, factory.Carry(r, ask))
 	}
 }
