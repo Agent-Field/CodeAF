@@ -140,6 +140,10 @@ type Triage struct {
 	Risk      string // low · mid · high
 	Read      string // one sentence
 	Questions []string
+	// Dup is the item this one may repeat, as the triage read named it (`#7`
+	// or `7`); "" when it named none. DupOf is the number form older reads
+	// wrote, and the surface draws whichever says something.
+	Dup string
 }
 
 // Repo is a connected repository and the product team that owns it. A
@@ -249,6 +253,10 @@ type Item struct {
 	// line each in the order it changed them, `why: …` last: the record
 	// [Adapt] writes and the surface draws under the stages line.
 	Adapted []string
+	// Talk names the item's own conversation once one has been made for it,
+	// and is "" until then: the surface draws the talk row only when it says
+	// something.
+	Talk string
 }
 
 // Ref is the item's short name: #123, or ci.

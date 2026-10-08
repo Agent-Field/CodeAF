@@ -10,8 +10,9 @@ import (
 // factoryAdaptedWords is the fixture's adapted item's record as one line.
 const factoryAdaptedWords = "plan added security · skipped neaten · why: touches the billing cache"
 
-// WHAT PLAN CHANGED IS ONE DIM LINE UNDER THE STAGES LINE, on the peek and in
-// the item page's head; an item plan never changed draws nothing in its place.
+// WHAT PLAN CHANGED IS ONE DIM LINE UNDER THE STAGES LINE, on the peek in the
+// stages block and in the item page's head; an item plan never changed draws
+// nothing in its place.
 func TestFactoryAdaptedLineUnderTheStages(t *testing.T) {
 	a := factoryPlaceLab(t)
 	peek := factoryPaneOn(t, a, 10, 150, 20)
@@ -21,16 +22,13 @@ func TestFactoryAdaptedLineUnderTheStages(t *testing.T) {
 			at = i
 		}
 	}
-	if at != 4 || !strings.Contains(peek[3], "security") || !strings.Contains(peek[5], "─") {
-		t.Fatalf("the adapted line is not row five, under the stages and over the rule:\n%s", strings.Join(peek, "\n"))
+	if at < 1 || !strings.Contains(peek[at-1], "security") || strings.TrimSpace(peek[at+1]) != "" {
+		t.Fatalf("the adapted line is not directly under the stages, closing their block:\n%s", strings.Join(peek, "\n"))
 	}
 	for _, id := range []int{1, 2, 8, 9} {
 		peek := strings.Join(factoryPaneOn(t, a, id, 150, 20), "\n")
 		if strings.Contains(peek, "plan added") || strings.Contains(peek, "why:") {
 			t.Fatalf("item %d was never adapted and draws a record:\n%s", id, peek)
-		}
-		if rows := a.factoryPeekFixed(*factoryPaneItem(t, a, id), 80); len(rows) != factoryPaneFixed {
-			t.Fatalf("item %d's fixed rows are %d", id, len(rows))
 		}
 	}
 

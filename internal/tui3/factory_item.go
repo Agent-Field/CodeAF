@@ -21,24 +21,39 @@ import (
 //	#1551 filters lost on compact · codeaf · priya · running 26m      $1.42 / $5
 //	gate ship [t] · cap $5 [c] · effort — [e] · places: codeaf
 //
-//	● plan              │ review · chat · until clean · max 2 · fanout per-finding · when always
-//	● write ×3          │ read it as a stranger would
-//	● test              │ ────────────────────────────────────────────────
-//	◐ review 1/2        │ 1 task · round 1/2
-//	○ neaten            │ 09:16 ◎ go test ./internal/tui3/ · 12/12
-//	○ proof             │
+//	▤ issue             │ review · chat · until clean · max 2 · fanout per-finding
+//	● plan              │ read it as a stranger would
+//	● write ×3          │
+//	● test              │ 1 task · round 1/2
+//	◐ review 1/2        │ 09:16 ◎ go test ./internal/tui3/ · 12/12
+//	○ neaten            │
+//	○ proof             │ s steer · p pause · x stop
 //
-// THE STATE LIVES ON a.fp (open, stage) AND NOWHERE ELSE, so the floor's
-// own cursor, window and narrowings are untouched while the page stands over
-// them. THE PAGE READS THE SNAPSHOT AND NOTHING ELSE, like the rest of the
-// factory (the framedisk law).
+// IT IS THE PEEK'S LADDER AT THE SCALE OF A PAGE (factory_pane.go): the head
+// is two rows and a blank, and every pane on the right is blocks with ONE
+// BLANK ROW BETWEEN THEM. The rail on the left starts with the `issue` row,
+// whose pane is the whole issue — the body wrapped at [factoryPageWrap] and
+// scrollable with `J` and `K`, then the read and the facts — then `talk` when
+// the item has a conversation, then the stages. A stage's pane is its knobs,
+// dim; its ask, in ink; a blank; what its state has to say; a blank; and the
+// keys that work on the item, pinned to the pane's last row.
+//
+// THE CURSOR LANDS WHERE THE ITEM IS MOVING: the stage waiting on the person,
+// else the running one, else the proof of a landed item, else the issue
+// ([app.factoryStageFor]). An item nothing is happening to opens on what it
+// says.
+//
+// THE STATE LIVES ON a.fp (open, stage, scroll) AND NOWHERE ELSE, so the
+// floor's own cursor, window and narrowings are untouched while the page
+// stands over them. THE PAGE READS THE SNAPSHOT AND NOTHING ELSE, like the rest
+// of the factory (the framedisk law).
 //
 // ITS KEYS ARE NAMED ON THE PLACE'S HINT LINE, not on a line of its own
-// (place_factory.go's [app.factoryItemHint]): walking the stages, `enter` on
-// one and `esc` are this file's; every verb is factory_keys.go's and keeps
-// working on the item while the page is open. THE VERBS' ROWS, the typing row
-// and the habit offer, stand at the bottom of the stage's pane, as they stand
-// at the bottom of the peek on the floor.
+// (place_factory.go's [app.factoryItemHint]): walking the rail, `enter` on a
+// stage, `J` and `K`, and `esc` are this file's; every verb is factory_keys.go's
+// and keeps working on the item while the page is open. THE VERBS' ROWS, the
+// typing row and the habit offer, stand at the bottom of the pane, as they
+// stand at the bottom of the peek on the floor.
 
 // factoryStageCols is the stage rail's columns, the rule beside it not
 // included.
@@ -87,43 +102,76 @@ func (a *app) factoryItemStages(it factory.Item) []factoryStageView {
 	return out
 }
 
-// factoryStageFor is the stage the page opens on: the running stage of a
-// running item, the waiting stage of an item that needs the person, the proof
-// of a landed one, and the first stage of everything else.
+// factoryPageKind is what one row of the item page's rail stands for.
+type factoryPageKind int
+
+const (
+	factoryPageIssue factoryPageKind = iota // the issue itself, always first
+	factoryPageTalk                         // the item's conversation, when it has one
+	factoryPageStage                        // one stage of its recipe
+)
+
+// factoryPageRow is one row of the item page's rail: what it stands for, and
+// for a stage, the stage as it stands on the item and where it is among them.
+type factoryPageRow struct {
+	kind factoryPageKind
+	view factoryStageView
+	at   int // the stage's place in [app.factoryItemStages]; -1 for the others
+}
+
+// factoryItemRows is the rail's rows top to bottom: the issue, the talk row
+// when the item has a conversation, and its stages.
+func (a *app) factoryItemRows(it factory.Item) []factoryPageRow {
+	rows := []factoryPageRow{{kind: factoryPageIssue, at: -1}}
+	if strings.TrimSpace(it.Talk) != "" {
+		rows = append(rows, factoryPageRow{kind: factoryPageTalk, at: -1})
+	}
+	for i, v := range a.factoryItemStages(it) {
+		rows = append(rows, factoryPageRow{kind: factoryPageStage, view: v, at: i})
+	}
+	return rows
+}
+
+// factoryStageFor is the rail row the page opens on: the stage waiting on the
+// person, else the running one, else the proof of a landed item (its last
+// stage when the recipe has no proof), else the issue.
 func (a *app) factoryStageFor(it factory.Item) int {
-	views := a.factoryItemStages(it)
-	find := func(ok func(factoryStageView) bool) int {
-		for i, v := range views {
-			if ok(v) {
+	rows := a.factoryItemRows(it)
+	find := func(ok func(factoryPageRow) bool) int {
+		for i, r := range rows {
+			if r.kind == factoryPageStage && ok(r) {
 				return i
 			}
 		}
 		return -1
 	}
-	at := -1
-	switch it.State {
-	case factory.StateRunning:
-		at = find(func(v factoryStageView) bool { return v.state == factory.PhaseRunning })
-	case factory.StateNeedsYou:
-		at = find(func(v factoryStageView) bool { return v.state == factory.PhaseWaiting })
-	case factory.StateLanded, factory.StateShipped:
-		at = find(func(v factoryStageView) bool { return v.stage.Name == "proof" })
-		if at < 0 {
-			at = len(views) - 1
+	if at := find(func(r factoryPageRow) bool { return r.view.state == factory.PhaseWaiting }); at >= 0 {
+		return at
+	}
+	if at := find(func(r factoryPageRow) bool { return r.view.state == factory.PhaseRunning }); at >= 0 {
+		return at
+	}
+	if it.State == factory.StateLanded {
+		if at := find(func(r factoryPageRow) bool { return r.view.stage.Name == "proof" }); at >= 0 {
+			return at
+		}
+		if last := len(rows) - 1; rows[last].kind == factoryPageStage {
+			return last
 		}
 	}
-	return max(at, 0)
+	return 0
 }
 
 // factoryOpenItem is `enter` on a row: the item page opens over the floor on
-// the stage [app.factoryStageFor] names. It answers false with no item under
-// the cursor.
+// the row [app.factoryStageFor] names, with the issue read from its top. It
+// answers false with no item under the cursor.
 func (a *app) factoryOpenItem() bool {
 	it, ok := a.factoryCursorItem()
 	if !ok {
 		return false
 	}
 	a.fp.open, a.fp.stage, a.fp.said = true, a.factoryStageFor(it), false
+	a.fp.scroll, a.fp.scrollID = 0, it.ID
 	a.pageMsg = ""
 	a.touch()
 	return true
@@ -133,28 +181,40 @@ func (a *app) factoryOpenItem() bool {
 // cursor on the row the page was opened from, because nothing moved it.
 func (a *app) factoryCloseItem() {
 	a.fp.open, a.fp.said = false, false
+	a.fp.scroll = 0
 	a.pageMsg = ""
 	a.touch()
 }
 
-// factoryStageMove walks the stage rail's cursor by delta and lets go of the
-// note the last stage put on the place's note line.
+// factoryStageMove walks the rail's cursor by delta and lets go of the note
+// the last stage put on the place's note line. The issue is read from its top
+// again each time it is arrived at.
 func (a *app) factoryStageMove(delta int) {
 	it, ok := a.factoryCursorItem()
 	if !ok {
 		return
 	}
-	a.fp.stage = moveCursor(a.fp.stage, delta, len(a.factoryItemStages(it)))
+	a.factoryStageSelect(moveCursor(a.fp.stage, delta, len(a.factoryItemRows(it))))
+}
+
+// factoryStageSelect puts the rail's cursor on row at.
+func (a *app) factoryStageSelect(at int) {
+	if at != a.fp.stage {
+		a.fp.scroll = 0
+	}
+	a.fp.stage = at
 	a.fp.said = false
 	a.pageMsg = ""
 	a.touch()
 }
 
 // factoryLayoutKey is the layout's own keys, read before the place's others:
-// `z` turns the density, `enter` opens the item under the cursor, and while the
-// item page is open the arrows walk its stages, `enter` says what a stage will
-// open on the place's note line, and `esc` closes it. It answers false for every other key, which goes
-// on to mean what it meant before.
+// `z` turns the density, `enter` opens the item under the cursor, `{` `}` and
+// `|` move the divider (factory_split.go), `J` and `K` (and `pgdn` and `pgup`)
+// scroll the item's body; and while the item page is open the arrows walk its
+// rail, `enter` says what a stage will open on the place's note line, and
+// `esc` closes it. It answers false for every other key, which goes on to mean
+// what it meant before.
 //
 // `ENTER` ON A FLOOR ROW OPENS THE ITEM PAGE AND NEVER LAUNCHES: launching is
 // `r`, `p` and `L` (factory_keys.go). The one `enter` on the item page that
@@ -163,7 +223,7 @@ func (a *app) factoryStageMove(delta int) {
 // when every claim was shown, and the send-back row otherwise. Every other
 // stage says, on the place's note line ([placeFactory.note]), what it will
 // open: a line of its own above the hint, so the keys beside it keep their
-// room.
+// room. `enter` on the issue or the talk row does nothing here.
 //
 // IT STANDS ASIDE for the map, the tab bar's cursor, the words box and a
 // verb's typing row, each of which has the keyboard while it is up.
@@ -172,21 +232,15 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	k := msg.String()
+	if took := a.factoryScrollKey(k); took {
+		return nil, true
+	}
 	if a.fp.open {
 		switch k {
 		case "esc":
 			a.factoryCloseItem()
 		case "enter":
-			// A SHEET WITH NO DOOR FOR ITS `enter` (the still fixture) says the
-			// stage's note like any other stage, rather than nothing.
-			if it, ok := a.factoryCursorItem(); ok && a.factoryOnProof(it) {
-				a.pageMsg = ""
-				if cmd, took := a.factoryLandedKey(it, "enter"); took {
-					return cmd, true
-				}
-			}
-			a.fp.said = true
-			a.touch()
+			return a.factoryItemEnter(), true
 		case "up", "ctrl+p", "left":
 			a.factoryStageMove(-1)
 		case "down", "ctrl+n", "right":
@@ -195,6 +249,9 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, false
 		}
 		return nil, true
+	}
+	if cmd, took := a.factorySplitKey(k); took {
+		return cmd, true
 	}
 	switch k {
 	case "z":
@@ -209,23 +266,127 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// factoryItemEnter is `enter` on the item page, and a double press on a row of
+// its rail: the proof of a landed item answers as its sheet, every other stage
+// says what it will open, and the issue and the talk row do nothing here.
+func (a *app) factoryItemEnter() tea.Cmd {
+	it, ok := a.factoryCursorItem()
+	if !ok {
+		return nil
+	}
+	rows := a.factoryItemRows(it)
+	if a.fp.stage < 0 || a.fp.stage >= len(rows) || rows[a.fp.stage].kind != factoryPageStage {
+		return nil
+	}
+	// A SHEET WITH NO DOOR FOR ITS `enter` (the still fixture) says the
+	// stage's note like any other stage, rather than nothing.
+	if a.factoryOnProof(it) {
+		a.pageMsg = ""
+		if cmd, took := a.factoryLandedKey(it, "enter"); took {
+			return cmd
+		}
+	}
+	a.fp.said = true
+	a.touch()
+	return nil
+}
+
+// factoryItemPress is a press on the item page at screen cell (x, y), body row
+// row: a press on a row of the rail selects it, and a second press on the same
+// row is `enter` on it. Every other press on the page moves nothing.
+func (a *app) factoryItemPress(x, y, row int) tea.Cmd {
+	at := row - a.fp.railTop
+	if at < 0 || at >= a.fp.railShown {
+		return nil
+	}
+	if a.fp.bodyW >= factoryStageFloor && x >= factoryStageCols {
+		return nil
+	}
+	// Under the stage floor the rail is one line; a press on it selects
+	// nothing, because which word is where is the line's own arithmetic.
+	if a.fp.bodyW < factoryStageFloor {
+		return nil
+	}
+	it, ok := a.factoryCursorItem()
+	if !ok {
+		return nil
+	}
+	pick := a.fp.railFirst + at
+	if pick >= len(a.factoryItemRows(it)) {
+		return nil
+	}
+	again := pick == a.fp.stage
+	a.factoryStageSelect(pick)
+	if a.countClick(x, y) >= 2 && again {
+		return a.factoryItemEnter()
+	}
+	return nil
+}
+
+// factoryScrollKey is `J` and `K`, one row down and up the item's body, and
+// `pgdn` and `pgup`, a page: on the floor the peek's body, and on the item
+// page the issue while the rail stands on it. It answers false for every other
+// key, and takes these four wherever there is an item, so a body with nothing
+// below it does not hand them on to mean something else.
+func (a *app) factoryScrollKey(k string) bool {
+	step := 0
+	switch k {
+	case "J", "shift+j":
+		step = 1
+	case "K", "shift+k":
+		step = -1
+	case "pgdown":
+		step = max(a.fp.scrollPage, 1)
+	case "pgup":
+		step = -max(a.fp.scrollPage, 1)
+	default:
+		return false
+	}
+	it, ok := a.factoryCursorItem()
+	if !ok || a.fp.pick != nil || a.fp.recipe != nil {
+		return false
+	}
+	if a.fp.open {
+		rows := a.factoryItemRows(it)
+		if a.fp.stage < 0 || a.fp.stage >= len(rows) || rows[a.fp.stage].kind != factoryPageIssue {
+			return true
+		}
+	}
+	if a.fp.scrollID != it.ID {
+		a.fp.scrollID, a.fp.scroll = it.ID, 0
+	}
+	next := max(min(a.fp.scroll+step, a.fp.scrollMax), 0)
+	if next != a.fp.scroll {
+		a.fp.scroll = next
+		a.touch()
+	}
+	return true
+}
+
 // factoryOnProof says whether the item page stands on the proof of a landed
-// item, the one stage whose `enter` is the sheet's. It is the stage the page
+// item, the one stage whose `enter` is the sheet's. It is the row the page
 // opens a landed item on ([app.factoryStageFor]): `proof`, or the last stage
 // of a recipe that has none.
 func (a *app) factoryOnProof(it factory.Item) bool {
-	return a.fp.open && it.State == factory.StateLanded && a.fp.stage == a.factoryStageFor(it)
+	if !a.fp.open || it.State != factory.StateLanded || a.fp.stage != a.factoryStageFor(it) {
+		return false
+	}
+	rows := a.factoryItemRows(it)
+	return a.fp.stage < len(rows) && rows[a.fp.stage].kind == factoryPageStage
 }
 
 // ── drawing ─────────────────────────────────────────────────────────────────
 
 // factoryItemBody is the item page as exactly room rows of exactly width
 // cells: two head rows (three when plan changed the stages), a blank, and the
-// stages beside the stage's pane (or one line of stages above it under
-// [factoryStageFloor]). No row is a hit.
+// rail beside the pane of the row under its cursor (or one line of the rail
+// above it under [factoryStageFloor]). No row is a hit; a press is read
+// against the rail the draw placed ([app.factoryItemPress]).
 func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
-	views := a.factoryItemStages(it)
-	a.fp.stage = moveCursor(a.fp.stage, 0, len(views))
+	rows := a.factoryItemRows(it)
+	a.fp.stage = moveCursor(a.fp.stage, 0, len(rows))
+	a.fp.pageRows, a.fp.bodyW = room, width
+	a.fp.railTop, a.fp.railFirst, a.fp.railShown = 0, 0, 0
 	measure := max(width-factoryPaneLead, 0)
 	lines := []string{a.factoryItemTitle(it, measure), a.factoryItemChips(it, measure)}
 	// What the plan stage changed sits in the head under the chips, above the
@@ -241,19 +402,21 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 		}
 	}
 	left := room - len(lines)
+	cells := a.factoryPageCells(rows)
 	switch {
 	case left <= 0:
-	case len(views) == 0:
 	case width < factoryStageFloor:
-		strip := lead + a.factoryStageStrip(views, measure)
+		strip := lead + a.factoryCellStrip(cells, a.fp.stage, measure)
+		a.fp.railTop, a.fp.railShown = len(lines), 1
 		lines = append(lines, strip)
-		for _, line := range a.factoryStagePane(it, views, measure, left-1) {
+		for _, line := range a.factoryPagePane(it, rows, measure, left-1) {
 			lines = append(lines, factoryPad(lead+line, width))
 		}
 	default:
 		paneW := width - factoryStageCols - 1
-		rail := a.factoryStageRail(views, left)
-		pane := a.factoryStagePane(it, views, max(paneW-factoryPaneLead, 0), left)
+		rail, first := a.factoryCellRail(cells, a.fp.stage, left)
+		a.fp.railTop, a.fp.railFirst, a.fp.railShown = len(lines), first, min(len(cells)-first, left)
+		pane := a.factoryPagePane(it, rows, max(paneW-factoryPaneLead, 0), left)
 		sep := a.pal.dim(a.linearMark("│", "|"))
 		for i := 0; i < left; i++ {
 			right := ""
@@ -263,15 +426,15 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 			lines = append(lines, rail[i]+sep+factoryPad(right, paneW))
 		}
 	}
-	rows := make([]placeRow, room)
-	for i := range rows {
+	out := make([]placeRow, room)
+	for i := range out {
 		text := ""
 		if i < len(lines) {
 			text = lines[i]
 		}
-		rows[i] = placeRow{text: factoryPad(text, width), hit: -1}
+		out[i] = placeRow{text: factoryPad(text, width), hit: -1}
 	}
-	return rows
+	return out
 }
 
 // factoryItemTitle is the head's first row: the ref and the title in ink, the
@@ -352,59 +515,122 @@ func (a *app) factoryPendingMark() string {
 	return mark
 }
 
-// factoryStageRail is the stage rail: one row per stage, [factoryStageCols]
-// wide, the window following the stage cursor, and the cursor's row on the
-// cursor ground and nothing else changed on it. The mark carries the stage's
-// colour; the name is ink while running and the reading tiers otherwise.
-func (a *app) factoryStageRail(views []factoryStageView, room int) []string {
+// factoryRailCell is one row of a rail as it is drawn: its mark and the paint
+// the mark wears, the words after it and theirs, and flat when the whole row
+// is one paint (a stage switched off or skipped).
+type factoryRailCell struct {
+	mark      string
+	markPaint func(string) string
+	rest      string
+	paint     func(string) string
+	flat      bool
+}
+
+// label is the cell's plain words, mark and all.
+func (c factoryRailCell) label() string {
+	if c.flat {
+		return c.rest
+	}
+	return c.mark + c.rest
+}
+
+// factoryStageCell is one stage as a rail cell.
+func (a *app) factoryStageCell(v factoryStageView) factoryRailCell {
+	label, paint := a.factoryStageLabel(v)
+	if v.off || v.skipped {
+		return factoryRailCell{rest: label, paint: paint, markPaint: paint, flat: true}
+	}
+	mark, markPaint := a.factoryPhaseMark(v.state)
+	return factoryRailCell{mark: mark, markPaint: markPaint, rest: strings.TrimPrefix(label, mark), paint: paint}
+}
+
+// factoryPageCells is the item page's rail as cells: the issue with the
+// document's mark, the talk row with the conversation's, and the stages.
+func (a *app) factoryPageCells(rows []factoryPageRow) []factoryRailCell {
 	pal := a.pal
-	top := placeTop(0, a.fp.stage, len(views), room)
+	cells := make([]factoryRailCell, 0, len(rows))
+	for _, r := range rows {
+		switch r.kind {
+		case factoryPageIssue:
+			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GFileDocument), markPaint: pal.muted, rest: " issue", paint: pal.ink})
+		case factoryPageTalk:
+			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionCommunicate), markPaint: pal.muted, rest: " talk", paint: pal.ink})
+		default:
+			cells = append(cells, a.factoryStageCell(r.view))
+		}
+	}
+	return cells
+}
+
+// factoryStageRail is the recipe page's stage rail (factory_settings.go): the
+// stages as rail cells under the stage cursor.
+func (a *app) factoryStageRail(views []factoryStageView, room int) []string {
+	cells := make([]factoryRailCell, 0, len(views))
+	for _, v := range views {
+		cells = append(cells, a.factoryStageCell(v))
+	}
+	rail, _ := a.factoryCellRail(cells, a.fp.stage, room)
+	return rail
+}
+
+// factoryStageStrip is the recipe page's stage rail as one line.
+func (a *app) factoryStageStrip(views []factoryStageView, measure int) string {
+	cells := make([]factoryRailCell, 0, len(views))
+	for _, v := range views {
+		cells = append(cells, a.factoryStageCell(v))
+	}
+	return a.factoryCellStrip(cells, a.fp.stage, measure)
+}
+
+// factoryCellRail is a rail: one row per cell, [factoryStageCols] wide, the
+// window following the cursor, and the cursor's row on the cursor ground and
+// nothing else changed on it. The mark carries the row's colour; the words
+// wear the reading tiers. It answers the rows and the first cell drawn.
+func (a *app) factoryCellRail(cells []factoryRailCell, cursor, room int) ([]string, int) {
+	pal := a.pal
+	top := placeTop(0, cursor, len(cells), room)
 	out := make([]string, room)
 	for i := range out {
 		at := top + i
-		if at >= len(views) {
+		if at >= len(cells) {
 			out[i] = strings.Repeat(" ", factoryStageCols)
 			continue
 		}
-		v := views[at]
-		label, paint := a.factoryStageLabel(v)
-		mark, markPaint := a.factoryPhaseMark(v.state)
+		c := cells[at]
 		text := ""
-		if v.off || v.skipped {
-			text = paint(fit(label, factoryStageCols-factoryPaneLead))
+		if c.flat {
+			text = c.paint(fit(c.rest, factoryStageCols-factoryPaneLead))
 		} else {
-			rest := strings.TrimPrefix(label, mark)
-			text = markPaint(mark) + paint(fit(rest, factoryStageCols-factoryPaneLead-ansi.StringWidth(mark)))
+			text = c.markPaint(c.mark) + c.paint(fit(c.rest, factoryStageCols-factoryPaneLead-ansi.StringWidth(c.mark)))
 		}
 		row := factoryPad(strings.Repeat(" ", factoryPaneLead)+text, factoryStageCols)
-		if at == a.fp.stage {
+		if at == cursor {
 			row = pal.cursor(row, factoryStageCols)
 		}
 		out[i] = row
 	}
-	return out
+	return out, top
 }
 
-// factoryStageStrip is the stage rail as one line, for a terminal under
-// [factoryStageFloor]: the stages left to right, the cursor's on its ground,
-// as many WHOLE stages as fit from the cursor's side.
-func (a *app) factoryStageStrip(views []factoryStageView, measure int) string {
+// factoryCellStrip is a rail as one line, for a terminal under
+// [factoryStageFloor]: the cells left to right, the cursor's on its ground,
+// as many WHOLE cells as fit from the cursor's side. THE CURSOR'S CELL IS
+// ALWAYS ON THE LINE: cells before it are dropped from the left until it fits.
+func (a *app) factoryCellStrip(cells []factoryRailCell, cursor, measure int) string {
 	var segs, plains []string
-	for i, v := range views {
-		label, paint := a.factoryStageLabel(v)
-		seg := paint(label)
-		if i == a.fp.stage {
+	for i, c := range cells {
+		label := c.label()
+		seg := c.paint(label)
+		if i == cursor {
 			seg = a.pal.cursor(seg, ansi.StringWidth(label))
 		}
 		segs = append(segs, seg)
 		plains = append(plains, label)
 	}
-	// THE CURSOR'S STAGE IS ALWAYS ON THE LINE: stages before it are dropped
-	// from the left until it fits.
 	from := 0
-	for from < a.fp.stage {
+	for from < cursor && cursor < len(cells) {
 		w := 0
-		for i := from; i <= a.fp.stage; i++ {
+		for i := from; i <= cursor; i++ {
 			w += ansi.StringWidth(plains[i]) + 2
 		}
 		if w <= measure {
@@ -415,21 +641,14 @@ func (a *app) factoryStageStrip(views []factoryStageView, measure int) string {
 	return factoryJoinWhole(segs[from:], plains[from:], "  ", measure)
 }
 
-// factoryStagePane is the stage under the rail's cursor as exactly room lines
-// of at most measure cells: its knobs, its ask in ink, the rule, the tail its
-// state draws, and the verbs' rows ([app.factoryFootRows]) on the last rows,
-// so a typing row opened on the item page stands under the stage it is about.
-func (a *app) factoryStagePane(it factory.Item, views []factoryStageView, measure, room int) []string {
+// factoryPagePane is the pane of the rail row under the cursor as exactly room
+// lines of at most measure cells, the verbs' rows ([app.factoryFootRows]) on
+// its last lines, so a typing row opened on the item page stands under what
+// it is about.
+func (a *app) factoryPagePane(it factory.Item, rows []factoryPageRow, measure, room int) []string {
 	out := make([]string, max(room, 0))
-	if room <= 0 || a.fp.stage >= len(views) {
+	if room <= 0 || a.fp.stage >= len(rows) {
 		return out
-	}
-	pal := a.pal
-	v := views[a.fp.stage]
-	top := []string{
-		pal.muted(fit(factoryKnobs(v.stage), measure)),
-		pal.ink(fit(strings.TrimSpace(v.stage.Ask), measure)),
-		pal.dim(strings.Repeat(a.linearMark("─", "-"), measure)),
 	}
 	foot := a.factoryFootRows(measure)
 	if room <= len(foot) {
@@ -437,12 +656,142 @@ func (a *app) factoryStagePane(it factory.Item, views []factoryStageView, measur
 		return out
 	}
 	body := room - len(foot)
-	lines := append(top, a.factoryStageTail(it, views, v, measure, max(body-len(top), 0))...)
-	for i := 0; i < body && i < len(lines); i++ {
-		out[i] = lines[i]
+	r := rows[a.fp.stage]
+	var lines []string
+	switch r.kind {
+	case factoryPageIssue:
+		lines = a.factoryIssuePane(it, measure, body)
+	case factoryPageTalk:
+		lines = a.factoryTalkPane(it, measure, body)
+	default:
+		views := a.factoryItemStages(it)
+		lines = a.factoryStagePane(it, views, r.at, measure, body)
 	}
+	copy(out, lines)
 	copy(out[body:], foot)
 	return out
+}
+
+// factoryPaneLadder lays blocks over room lines with the action line pinned
+// to the last of them and a blank row above it: the peek's shape at the scale
+// of the item page's pane. The blocks are cut from their foot when they do
+// not fit; an action line with nothing to say leaves its rows to the blocks.
+func factoryPaneLadder(blocks [][]string, action string, room int) []string {
+	out := make([]string, max(room, 0))
+	if room <= 0 {
+		return out
+	}
+	avail := room
+	if action != "" {
+		avail = room - 1
+		if room >= 3 {
+			avail = room - 2
+		}
+		out[room-1] = action
+	}
+	lines := factoryStack(blocks)
+	if len(lines) > avail {
+		lines = lines[:max(avail, 0)]
+	}
+	copy(out, lines)
+	return out
+}
+
+// factoryPageAction is the item's keys on the item page's pane, dim: the
+// verbs that work on it where it stands ([app.factoryVerbHint]), and nothing
+// when there are none.
+func (a *app) factoryPageAction(it factory.Item, measure int, extra ...string) string {
+	words := append(append([]string{}, extra...), a.factoryVerbHint(it)...)
+	if len(words) == 0 {
+		return ""
+	}
+	return a.pal.dim(fit(strings.Join(words, " · "), measure))
+}
+
+// factoryIssuePane is the whole issue: its body wrapped at [factoryPageWrap],
+// then the factory's read and the facts, then the questions it would put to
+// the author when the item is thin — one document, scrolled with `J` and `K`
+// from where they left it, its last row marked when more is below.
+func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
+	pal := a.pal
+	w := max(min(measure, factoryPageWrap), 1)
+	var body []string
+	blank := false
+	for _, line := range wrap(strings.TrimSpace(it.Body), w) {
+		// A blank line in the body is a paragraph break and stays one, but a
+		// run of them is one: A GAP ASKED FOR TWICE IS STILL ONE GAP.
+		if strings.TrimSpace(line) == "" {
+			if !blank && len(body) > 0 {
+				body = append(body, "")
+			}
+			blank = true
+			continue
+		}
+		blank = false
+		body = append(body, pal.ink(line))
+	}
+	var read []string
+	for _, line := range wrap(strings.TrimSpace(it.Triage.Read), w) {
+		if strings.TrimSpace(line) != "" {
+			read = append(read, pal.ink(line))
+		}
+	}
+	var facts []string
+	if f := factoryFacts(it); len(f) > 0 {
+		facts = []string{pal.dim(factoryJoinWhole(f, f, strings.Repeat(" ", factoryFactGap), measure))}
+	}
+	var asks []string
+	if r := it.Triage.Readiness; r > 0 && r < factory.ThinReadiness {
+		if qs := nonEmpty(it.Triage.Questions); len(qs) > 0 {
+			for _, line := range wrap("it would ask "+factoryOr(it.Author, "the author")+" "+strings.Join(qs, " / "), w) {
+				asks = append(asks, pal.muted(line))
+			}
+		}
+	}
+	doc := factoryStack([][]string{body, read, facts, asks})
+	if len(doc) == 0 {
+		return make([]string, max(room, 0))
+	}
+	// THE DOCUMENT IS WINDOWED FIRST, so the action line knows whether `J`
+	// and `K` have anywhere to go before it names them.
+	window := room
+	if room >= 3 {
+		window = room - 2
+	}
+	shown := a.factoryScrolled(it, doc, w, window)
+	extra := []string{}
+	if a.fp.scrollMax > 0 {
+		extra = append(extra, "J K scroll")
+	}
+	return factoryPaneLadder([][]string{shown}, a.factoryPageAction(it, measure, extra...), room)
+}
+
+// factoryTalkPane is the item's conversation as the item page shows it: its
+// row, and the item's keys.
+func (a *app) factoryTalkPane(it factory.Item, measure, room int) []string {
+	return factoryPaneLadder([][]string{{a.factoryTalkRow(it, measure)}}, a.factoryPageAction(it, measure), room)
+}
+
+// factoryStagePane is the stage at views[at] as exactly room lines of at most
+// measure cells: its knobs, dim; its ask, in ink; what its state has to say;
+// and the item's keys on the last line, a blank row between each.
+func (a *app) factoryStagePane(it factory.Item, views []factoryStageView, at, measure, room int) []string {
+	if room <= 0 || at < 0 || at >= len(views) {
+		return make([]string, max(room, 0))
+	}
+	pal := a.pal
+	v := views[at]
+	head := []string{pal.dim(fit(factoryKnobs(v.stage), measure))}
+	if ask := strings.TrimSpace(v.stage.Ask); ask != "" {
+		head = append(head, pal.ink(fit(ask, measure)))
+	}
+	action := a.factoryPageAction(it, measure)
+	tailRoom := room - len(head) - 1
+	if action != "" {
+		tailRoom -= 2
+	}
+	tail := a.factoryStageTail(it, views, at, measure, max(tailRoom, 0))
+	return factoryPaneLadder([][]string{head, tail}, action, room)
 }
 
 // factoryKnobs is the stage's structured words on one line: its name, its
@@ -474,8 +823,8 @@ func factoryKnobs(st factory.Stage) string {
 	return strings.Join(nonEmpty(knobs), rowSep)
 }
 
-// factoryStageTail is what a stage's own state draws under the rule, at most
-// room lines.
+// factoryStageTail is what the stage at views[at] has to say about its own
+// state, at most room lines.
 //
 //	proof     the claim rows, then the policy rows
 //	off       that it is switched off on this item
@@ -485,10 +834,11 @@ func factoryKnobs(st factory.Stage) string {
 //	waiting   the question, then its keys
 //	done      its result and what it took
 //	failed    what failed
-func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, v factoryStageView, measure, room int) []string {
-	if room <= 0 {
+func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, measure, room int) []string {
+	if room <= 0 || at < 0 || at >= len(views) {
 		return nil
 	}
+	v := views[at]
 	pal := a.pal
 	var out []string
 	switch {
@@ -535,7 +885,7 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, v fact
 		out = append(out, pal.bad(fit(factoryOr(v.phase.Note, "failed"), measure)))
 	default:
 		after := "runs first"
-		for i := a.fp.stage - 1; i >= 0; i-- {
+		for i := at - 1; i >= 0; i-- {
 			if !views[i].off && !views[i].skipped {
 				after = "runs after " + views[i].stage.Name
 				break
