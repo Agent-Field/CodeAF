@@ -1,6 +1,12 @@
 package tui3
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/Agent-Field/codeaf/internal/factory"
+)
 
 // ── THE FLOOR'S GRID ────────────────────────────────────────────────────────
 //
@@ -40,14 +46,16 @@ const (
 	factoryRepoW = 11
 	// factoryAgeW is the age, right-aligned at the row's end.
 	factoryAgeW = 4
-	// factoryTitleMin is the narrowest a title column is ever made.
-	factoryTitleMin = 24
-	// factoryTitleFloor is how far a title column narrows on a tight floor so
-	// the widest state fact stands whole beside it ([app.factoryGridAt]).
-	factoryTitleFloor = 18
-	// factoryFactsKeep is the fewest cells the facts give up to a long title
-	// ([app.factoryGridAt]), and never less than the widest state fact.
-	factoryFactsKeep = 22
+	// factoryTitleMinW is the narrowest a title column is made while the
+	// facts beside it still hold more than the state fact: THE TITLE IS THE
+	// ROW'S SUBJECT, so a narrow floor drops whole fact columns, the rightmost
+	// first, before it cuts a title under this ([app.factoryGridAt]).
+	factoryTitleMinW = 28
+	// factoryStateMinW is the narrowest the state fact's column is kept
+	// once it is the only fact left: under it the state fact drops as a
+	// column too, because `shippe…` says less than the row's lead mark, and
+	// the peek and the item page say the state whole.
+	factoryStateMinW = 12
 	// factoryFactGap is the air between two facts, and between two chips, on
 	// one row: wide enough that three short phrases read as three things with
 	// no separator mark between them.
@@ -60,10 +68,11 @@ const (
 	factoryChipValueW = 6
 	factoryChipGap    = 2
 	// factoryStripGap is the air between two cells of the stage strip, and
-	// factoryStripClass the step a cell's width is rounded up to, so a strip
-	// of short and long stage names is regular rather than ragged.
-	factoryStripGap   = 2
-	factoryStripClass = 6
+	// factoryStripCellMax the widest one cell is made: every cell of one
+	// strip shares the width of its longest name up to this, and a longer
+	// name is cut to it with an ellipsis ([factoryStripCellW]).
+	factoryStripGap     = 2
+	factoryStripCellMax = 16
 	// factoryProseW is the peek's measure: sixty cells is a line read without
 	// losing the start of the next, and a wider peek spends the rest as air.
 	factoryProseW = 60
@@ -102,10 +111,15 @@ const (
 	// factoryHintInset is the cells the place's note and hint lines leave:
 	// one at each edge.
 	factoryHintInset = 2
-	// factoryTitleShare is the title's share of what a row's fixed columns
-	// leave, as a divisor: the title takes half, rounded up.
-	factoryTitleShare = 2
 )
+
+// THE RIGHT MARGIN. EVERY REGION STOPS [factoryMargin] BEFORE THE FRAME'S
+// RIGHT EDGE AT EVERY WIDTH (owner ruling, 2026-10-08, after the floor ended
+// five cells short at 160 and flush with the edge at 120 and 100): the rows
+// when they are the whole width, the peek, and the item page. The handover's
+// hairline is the one thing drawn to the edge, because it is a rule and not
+// words. factoryMargins is a region's two margins together.
+const factoryMargins = factoryMargin * 2
 
 // THE GEOMETRIES: the widths at which the floor changes shape.
 const (
@@ -142,3 +156,140 @@ func factorySpaces(n int) string {
 
 // factoryMarginPad is a region's left margin.
 func factoryMarginPad() string { return factorySpaces(factoryMargin) }
+
+// factoryGrid is one row's columns at a width: the ref's cells, the title's,
+// the facts' (0 when the row carries none), and factsN, how many fact columns
+// every row carries: 0 for as many as it has, -1 for none.
+type factoryGrid struct {
+	refW, titleW, factsW, factsN int
+	columns                      bool
+}
+
+// factoryGridMemo is the last grid measured, and what it was measured for:
+// the grid reads every item on the floor, and every row of a frame asks for
+// it, so a frame measures it once ([app.factoryGridAt]).
+type factoryGridMemo struct {
+	width, items, refW int
+	columns, comfy     bool
+	grid               factoryGrid
+	ok                 bool
+}
+
+// factoryGridAt lays the grid out for a row of width cells. Without columns
+// the title takes everything after the ref. With them, THE TITLE AND THE FACTS
+// SHARE WHAT THE FIXED COLUMNS LEAVE IN THIS ORDER OF CLAIM (owner ruling,
+// 2026-10-08, after a floor at 120 cut every title to 18 cells while the
+// facts kept their width):
+//
+//  1. the title, up to [factoryTitleMinW] or the floor's longest title when
+//     that is shorter;
+//  2. the facts, as many WHOLE COLUMNS as fit beside it, the rightmost
+//     dropped first, so every row drops the same fact at the same width;
+//  3. the title again, up to the floor's longest title;
+//  4. the facts again, which may then carry one more column.
+//
+// When not even the state fact fits whole beside the title's floor, the title
+// keeps its floor and the state fact is cut with an ellipsis in what is left,
+// down to [factoryStateMinW]; under that the row carries no facts at all and
+// the title takes the column. The comfortable density wraps its second title
+// line at the same width.
+func (a *app) factoryGridAt(width int) factoryGrid {
+	m := &a.fp.gridMemo
+	if m.ok && m.width == width && m.items == len(a.fp.snap.Items) && m.refW == a.fp.refW && m.columns == a.fp.columns && m.comfy == a.fp.comfy {
+		return m.grid
+	}
+	g := a.factoryGridMeasure(width)
+	*m = factoryGridMemo{width: width, items: len(a.fp.snap.Items), refW: a.fp.refW, columns: a.fp.columns, comfy: a.fp.comfy, grid: g, ok: true}
+	return g
+}
+
+// factoryGridForget drops the measured grid, so the next row measures the
+// floor it is drawn on: every body draw and every fold asks it.
+func (a *app) factoryGridForget() { a.fp.gridMemo = factoryGridMemo{} }
+
+func (a *app) factoryGridMeasure(width int) factoryGrid {
+	g := factoryGrid{refW: max(a.fp.refW, factoryRefW), columns: a.fp.columns}
+	head := factoryLeadW + factoryPriorityW + g.refW + 1
+	if !g.columns {
+		g.titleW = max(width-head, 0)
+		return g
+	}
+	rest := max(width-head-factoryGutter-factoryRepoW-factoryGutter-factoryGutter-factoryAgeW, 0)
+	need, longest := a.factoryFactsNeed()
+	if len(need) == 0 {
+		g.titleW = rest
+		return g
+	}
+	want := min(min(longest, factoryTitleMinW), rest)
+	cols := func(room int) int {
+		n := 0
+		for n < len(need) && need[n] <= room {
+			n++
+		}
+		return n
+	}
+	n := cols(rest - want)
+	factsW := 0
+	switch {
+	case n > 0:
+		factsW = need[n-1]
+	case rest-want >= factoryStateMinW:
+		factsW = rest - want
+	default:
+		// NO FACT COLUMN AT ALL; a question's `[y/n]` still keeps its
+		// cells before the age.
+		keep := 0
+		for _, it := range a.fp.snap.Items {
+			if factoryOnFloor(it) && it.State == factory.StateNeedsYou {
+				keep = ansi.StringWidth(factoryAnswerWord) + factoryGutter
+				break
+			}
+		}
+		g.titleW, g.factsW, g.factsN = rest-keep, keep, -1
+		return g
+	}
+	g.titleW = min(rest-factsW, max(longest, want))
+	g.factsW = rest - g.titleW
+	g.factsN = max(cols(g.factsW), 1)
+	// THE AIR A COLUMN THAT DID NOT FIT LEFT BEHIND GOES BACK TO THE TITLE,
+	// so the facts end where their last whole column does.
+	if g.factsN <= len(need) && need[g.factsN-1] <= g.factsW {
+		g.titleW = min(rest-need[g.factsN-1], max(longest, want))
+		g.factsW = rest - g.titleW
+	}
+	return g
+}
+
+// factoryFactsNeed is, for each count k of fact columns, the cells the widest
+// row's first k facts take, never narrower for more columns; and the floor's
+// longest title. A question is left out of the facts: it is a sentence, cut to
+// whatever the column holds, and the peek and the item page say it whole.
+func (a *app) factoryFactsNeed() ([]int, int) {
+	var need []int
+	longest := 0
+	sepW := ansi.StringWidth(rowSep)
+	for _, it := range a.fp.snap.Items {
+		if !factoryOnFloor(it) {
+			continue
+		}
+		longest = max(longest, ansi.StringWidth(it.Title))
+		if it.State == factory.StateNeedsYou {
+			continue
+		}
+		w := 0
+		for k, p := range a.factoryRowFacts(it) {
+			if k > 0 {
+				w += sepW
+			}
+			w += ansi.StringWidth(p.plain)
+			if k >= len(need) {
+				need = append(need, 0)
+			}
+			need[k] = max(need[k], w)
+		}
+	}
+	for k := 1; k < len(need); k++ {
+		need[k] = max(need[k], need[k-1])
+	}
+	return need, longest
+}

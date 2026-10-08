@@ -171,9 +171,9 @@ type factoryPage struct {
 	pos      map[int]int
 	posState map[int]factory.State
 	posTop   int
-	// firstHeading is the drawn row the rail's first section heading stood
-	// on at the last draw, -1 for none: the peek's title stands level with it.
-	firstHeading int
+	// gridMemo is the row grid the frame measured once for all its rows
+	// (factory_grid.go's [app.factoryGridAt]).
+	gridMemo factoryGridMemo
 	// titleCols is the title column the last rail draw measured, which the
 	// comfortable density wraps a long title at ([factoryRowTitle2]).
 	titleCols int
@@ -263,6 +263,7 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 	was, had := a.factoryCursorItem()
 	a.factoryFoldStoreMarks(a.fp.snap, &snap)
 	a.fp.snap, a.fp.loaded, a.fp.err = snap, true, nil
+	a.factoryGridForget()
 	a.factoryPlace(false)
 	a.factoryFoldBusy()
 	a.factoryFoldPhases()
@@ -362,10 +363,18 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		a.fp.open = false
 	}
 	a.fp.columns = width >= factoryFactsFloor
+	a.factoryGridForget()
 	// THE DIVIDER STANDS WHERE THE PERSON PUT IT ([app.factoryRowsAt]): `{`,
 	// `}`, `|` and a drag move it, inside the limits that keep both columns
 	// readable.
 	rowsW := a.factoryRowsAt(width)
+	// AND IT STANDS ONLY BESIDE A PEEK THAT HAS AN ITEM TO SHOW (owner
+	// ruling, 2026-10-08): a floor with nothing under the cursor draws its
+	// rows at the whole width, as Teams and Home draw nothing where they
+	// have nothing, rather than a rule beside forty empty rows.
+	if _, ok := a.factoryCursorItem(); !ok {
+		rowsW = width
+	}
 	a.fp.rowsW, a.fp.bodyW = rowsW, width
 	paneW := 0
 	if rowsW < width {
@@ -410,11 +419,12 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	}
 	// THE ROWS STAND [factoryMargin] IN FROM THE FRAME'S EDGE, like the
 	// handover above them, so a group's heading and the handover's mark share
-	// a column; and beside the peek the divider's air cell keeps an age off
-	// the rule.
-	railW := rowsW - factoryMargin
+	// a column; beside the peek the divider's air cell keeps an age off the
+	// rule, and at the whole width they stop [factoryMargin] before the
+	// frame's right edge (factory_grid.go's THE RIGHT MARGIN).
+	railW := rowsW - factoryMargins
 	if paneW > 0 {
-		railW -= factoryDividerW - factoryRuleW
+		railW = rowsW - factoryMargin - (factoryDividerW - factoryRuleW)
 	}
 	rail, hits := a.factoryRail(max(railW, 0), railRoom)
 	if a.factoryBare() {
@@ -423,14 +433,16 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	for i := range rail {
 		rail[i] = factoryPad(factoryMarginPad()+rail[i], rowsW)
 	}
-	// THE PEEK'S TITLE STANDS LEVEL WITH THE ROWS' FIRST SECTION HEADING
-	// (owner ruling, 2026-10-08), so the two columns start their content on
-	// one row; the repo line above the heading has nothing beside it.
+	// THE PEEK'S TITLE STANDS ON ONE FIXED ROW: the row the rows' first
+	// section heading stands on when the list is at its top (owner ruling,
+	// 2026-10-08), so the two columns start their content on one row, and the
+	// list scrolls under it without moving it. Pinned to the first heading
+	// still on screen, the peek shrank to a title and a key line whenever the
+	// cursor walked low.
 	var pane []string
 	if paneW > 0 {
-		off := min(max(a.fp.firstHeading, 0), max(above, 0))
-		pane = append(make([]string, off), a.factoryPane(paneW, above-off)...)
-		pane = append(pane, foot...)
+		off := min(a.factoryPeekTop(), max(left, 0))
+		pane = append(make([]string, off), a.factoryPaneWithFoot(paneW, left-off, foot)...)
 	}
 	sep := a.pal.dim(a.linearMark("│", "|"))
 	for i := 0; i < left; i++ {
@@ -456,6 +468,107 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		rows = append(rows, placeRow{text: line + sep + factoryPad(right, paneW), hit: hit})
 	}
 	return rows
+}
+
+// factoryPaneWithFoot is the peek over room rows with the verbs' foot rows
+// (a typing box, a habit offer) set in above its key line: THE KEY LINE STAYS
+// THE COLUMN'S LAST ROW whatever opens (owner ruling, 2026-10-08, after a box
+// opened under the keys and left them stale above it), with one blank between
+// the box and the keys when the room allows it.
+func (a *app) factoryPaneWithFoot(width, room int, foot []string) []string {
+	if len(foot) == 0 {
+		return a.factoryPane(width, room)
+	}
+	peekRoom := room - len(foot)
+	gap := 0
+	if peekRoom-factoryBlockGap >= factoryActionRows+1 {
+		gap = factoryBlockGap
+	}
+	peek := a.factoryPane(width, peekRoom-gap)
+	if len(peek) < factoryActionRows {
+		return append(peek, foot...)
+	}
+	last := len(peek) - 1
+	out := append(append([]string{}, peek[:last]...), foot...)
+	for i := 0; i < gap; i++ {
+		out = append(out, factorySpaces(width))
+	}
+	return append(out, peek[last])
+}
+
+// factoryPeekTop is the body row the peek's title stands on: the row of the
+// rows' first section heading when the list is scrolled to its top, which is
+// that heading's place in the rail's lines, and 0 for a rail with none.
+func (a *app) factoryPeekTop() int {
+	for line, r := range a.factoryRows() {
+		if r.kind == factoryRowHeading {
+			return line
+		}
+	}
+	return 0
+}
+
+// factoryWindowTop is the rail line the rows' window starts on, given the
+// cursor's line and the pinned lines above the window. THE WINDOW FOLLOWS THE
+// CURSOR ([placeTop]) WITH TWO LAWS ON TOP (owner ruling, 2026-10-08):
+//
+//   - THE LIST'S TOP COMES BACK WITH ITS FIRST ITEM. With the cursor on the
+//     first item of the walk the window is at its top, the first heading and
+//     the air above it on screen; a window that only kept the cursor's row in
+//     view scrolled back up to the row and left the heading above it.
+//   - A SECTION'S HEADING MOVES WITH ITS FIRST ROW: the cursor on a section's
+//     first item shows the heading over it, and a heading that would stand on
+//     the window's last row with its rows under the edge is not drawn there
+//     ([factoryOrphanHeading]).
+//
+// The rows an item carries under it (a second title line, the read) come into
+// view with it.
+func (a *app) factoryWindowTop(rows []factoryRailRow, cursor, pinned, room int) int {
+	span, n := room-pinned, len(rows)-pinned
+	if span < 1 || n <= span || cursor < 0 || cursor >= len(rows) {
+		return pinned
+	}
+	lo, hi := cursor, cursor
+	for hi+1 < len(rows) && rows[hi+1].kind != factoryRowItem && rows[hi+1].walk >= 0 && rows[hi+1].walk == rows[cursor].walk {
+		hi++
+	}
+	switch {
+	case rows[cursor].walk == 0:
+		lo = pinned
+	case cursor-1 >= pinned && rows[cursor-1].kind == factoryRowHeading:
+		lo = cursor - 1
+	}
+	top := min(max(a.fp.top-pinned, 0), n-span)
+	lo, hi = max(lo-pinned, 0), hi-pinned
+	if lo < top {
+		top = lo
+	}
+	if hi >= top+span {
+		top = hi - span + 1
+	}
+	return pinned + top
+}
+
+// factoryOrphanHeading says whether rail line sits on the window's last row
+// (end is one past it) as a section heading whose rows are all under the
+// edge. It is drawn as air instead, and comes back with its first row.
+func factoryOrphanHeading(rows []factoryRailRow, line, end int) bool {
+	return rows[line].kind == factoryRowHeading && line == end-1 && line+1 < len(rows)
+}
+
+// factoryRowSpins says whether a row's priority cell draws the spinner: only
+// while something is being done to that one item now (`reading`,
+// `refreshing`), never for a row that only waits its turn in a queue, so 38
+// queued rows under `U` are not 38 spinners for one read.
+//
+// THE MARKS LANE OWNS THIS in factory_busy.go; this is the same check, kept
+// here until the two meet, and is deleted then.
+func (a *app) factoryRowSpins(id int) bool {
+	switch a.fp.snap.Busy[id] {
+	case "reading", "refreshing":
+		return true
+	}
+	return false
 }
 
 // factoryBare says whether the floor has been read and holds no item at all.
@@ -486,13 +599,13 @@ func (a *app) factoryBareRail(width, room int) ([]string, []int) {
 // exactly width cells, each on the pane's lead, and never more than room of
 // them: the newest, the typing row, are the ones kept.
 func (a *app) factoryFoot(width, room int) []string {
-	return a.factoryFootFrom(a.factoryFootRows(width-factoryMargin), width, room)
+	return a.factoryFootFrom(a.factoryFootRows(width-factoryMargins), width, room)
 }
 
 // factoryFootSide is one side's foot rows ([app.factoryFootRowsWhere]) laid
 // out as [app.factoryFoot] lays them.
 func (a *app) factoryFootSide(width, room int, rows bool) []string {
-	return a.factoryFootFrom(a.factoryFootRowsWhere(width-factoryMargin, rows), width, room)
+	return a.factoryFootFrom(a.factoryFootRowsWhere(width-factoryMargins, rows), width, room)
 }
 
 // factoryFootFrom pads foot rows to whole rows on the pane's lead, newest kept.

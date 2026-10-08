@@ -178,7 +178,7 @@ func TestFactoryLayoutFactsDropFromTheRight(t *testing.T) {
 			}
 			last := len(parts)
 			for w := 80; w >= 1; w-- {
-				got := a.factoryFactsLine(it, w)
+				got := a.factoryFactsLine(it, w, 0)
 				if ansi.StringWidth(got) > w {
 					t.Fatalf("%s %s at %d: the facts are %d cells: %q", name, it.Ref(), w, ansi.StringWidth(got), got)
 				}

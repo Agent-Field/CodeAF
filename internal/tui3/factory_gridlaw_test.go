@@ -89,7 +89,8 @@ var factoryWidthCalls = map[string]bool{
 	"strings.Repeat": true, "fit": true, "factoryPad": true, "factorySpread": true,
 	"ansi.Truncate": true, "ansi.Cut": true, "wrap": true, "factoryJoinWhole": true,
 	"factoryMetaLine": true, "noteFit": true, "factoryLed": true, "factorySpaces": true,
-	"placeTeachProse": true, "factoryPeekWidth": true,
+	"placeTeachProse": true, "factoryPeekWidth": true, "factoryStripRow": true,
+	"factoryPaneWithFoot": true, "factoryPane": true,
 }
 
 // factoryWidthNames are names that hold a width, a measure or a room.

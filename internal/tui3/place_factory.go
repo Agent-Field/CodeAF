@@ -217,7 +217,40 @@ func (placeFactory) hint(a *app) string {
 		}
 		rail = append(rail[:lo], rail[lo+1:]...)
 	}
+	// THEN THE VERBS ABOUT THE WHOLE FLOOR GO, before the item's own knobs
+	// (owner ruling, 2026-10-08): at 120 columns the frame's own cut took the
+	// line's tail, which was `t gate · c cap · e effort`, and kept `T talk`.
+	// A verb [factoryVerbDrop] does not rank is never dropped here.
+	for a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-factoryHintInset {
+		lo, rank := -1, 0
+		for i, v := range verbs {
+			if r, ok := factoryVerbDrop[v]; ok && (lo < 0 || r < rank) {
+				lo, rank = i, r
+			}
+		}
+		if lo < 0 {
+			break
+		}
+		verbs = append(verbs[:lo], verbs[lo+1:]...)
+	}
 	return line()
+}
+
+// factoryVerbDrop is the order a long hint line sheds the verbs that are not
+// the item's own knobs, lowest first: the verbs of the whole floor (a new item,
+// the marked launch), then the ways out to other places, then the item's
+// lesser verbs. The item's answer, its run, its knobs and its stop are not in
+// it and are never dropped by the floor; the frame's own cut is their limit.
+var factoryVerbDrop = map[string]int{
+	"n new item":      0,
+	"L launch marked": 1,
+	"T talk":          2,
+	"u read again":    3,
+	"g github":        4,
+	"1-9 stages":      5,
+	"s stage":         6,
+	"d hide":          7,
+	"d diff":          7,
 }
 
 // factoryItemHint is the hint line while the item page is open: the habit

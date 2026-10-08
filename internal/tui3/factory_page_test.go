@@ -80,7 +80,7 @@ func TestFactoryDrawsTheFixtureByGroupWithThePane(t *testing.T) {
 			headings = append(headings, strings.ToLower(word))
 		}
 	}
-	if got := strings.Join(headings, ","); got != "needs you,streams,new,landed,shipped" {
+	if got := strings.Join(headings, ","); got != "needs you,landed,streams,new,shipped" {
 		t.Fatalf("the rail's groups are %q:\n%s", got, text)
 	}
 	for _, want := range []string{"#1538", "budget caps per task", "plan is ready · go, or change it?"} {
@@ -90,7 +90,8 @@ func TestFactoryDrawsTheFixtureByGroupWithThePane(t *testing.T) {
 	}
 	// AND ↓ MOVES THE PANE WITH THE CURSOR.
 	drive(t, a, key("down"))
-	if text := factoryFrameText(a); !strings.Contains(text, "the filter is read before the tree exists") {
+	// The next item is the landed one, which sits beside NEEDS YOU.
+	if text := factoryFrameText(a); !strings.Contains(text, "fires on first true") {
 		t.Fatalf("↓ did not bring the next item into the pane:\n%s", text)
 	}
 }
