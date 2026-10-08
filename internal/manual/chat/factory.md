@@ -179,6 +179,10 @@ applied by codeaf's own code; they are never handed to the model as instructions
 section as written; banking a habit adds a `- ` line under `## habits`. Both are offered only when
 codeaf knows where the repository is checked out; otherwise `b` is not on the bottom line.
 
+codeaf reads the file for the repository you opened it in, and for any watched GitHub
+repository whose checkout it has seen you open. Open codeaf inside a repository you watch once
+and its recipe is read from then on.
+
 ## recipe file knobs — kind, when, until, max, fanout, gate, effort, proof, off
 
 In a `.codeaf/factory.md` stage line, after the name:
@@ -403,10 +407,10 @@ Be plain about this when asked:
   verbs work only on the made-up moving floor, which needs a development build made with
   `-tags factorymock` and started with `CODEAF_FACTORY_MOCK=1`.
 - **Only GitHub is connected.** No GitLab or Linear.
-- **The recipe file is not read on your own floor yet.** codeaf does not yet know where a
-  floor repository is checked out, so every repository runs the default recipe, `b` is not
-  offered, and no habit is offered for banking. `.codeaf/factory.md` is read and written once
-  it does.
+- **The recipe file is read only where codeaf knows the checkout.** It is read for the
+  repository you opened codeaf in, and for any watched GitHub repository whose checkout codeaf
+  has seen you open. Every other repository runs the default recipe until then, and for those
+  `b` is not offered and no habit is offered for banking.
 - **Nothing posts anywhere.** Writing to GitHub (a comment, labels, a close, a pull request)
   happens only from a post stage, and post stages do not run yet.
 - **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage

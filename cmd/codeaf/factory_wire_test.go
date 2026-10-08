@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -23,7 +24,7 @@ var factoryDoors = []string{
 // the one dim line saying nothing is connected yet.
 func TestFactorySeamWithNoStoreIsTheZeroSeam(t *testing.T) {
 	t.Setenv(factoryFixtureEnv, "")
-	seam := factorySeam(nil)
+	seam := factorySeam(nil, "")
 	for _, door := range factoryDoors {
 		if seam.Has(door) {
 			t.Fatalf("a seam over no store carries %q", door)
@@ -39,7 +40,7 @@ func TestFactorySeamOverAStoreIsTheLocalFloor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seam := factorySeam(st)
+	seam := factorySeam(st, "")
 	for _, door := range []string{"load", "new", "dismiss", "setgate", "setstage", "setcap"} {
 		if !seam.Has(door) {
 			t.Fatalf("the floor over a store is missing %q", door)
@@ -97,7 +98,7 @@ func TestFactoryFixtureWinsOverAStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seam := factorySeam(st)
+	seam := factorySeam(st, "")
 	if seam.Has("new") {
 		t.Fatal("the fixture switch was on and the store's own `new` door answered")
 	}
@@ -211,5 +212,79 @@ func TestTheEngineHandsTheFactoryDoorOnlyToAWindowOnThisMachine(t *testing.T) {
 	// page reads ([v3FactoryRoot]).
 	if st := engineFactory(); st == nil || st.Root() != v3FactoryRoot() {
 		t.Fatalf("the engine's factory store is not this machine's floor: %v", st)
+	}
+}
+
+// The dir function answers the workspace for its own folder name, a recorded
+// checkout for a watched repository, and nothing for a stranger.
+func TestFactoryRepoDirsRules(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetCheckout("acme/billing", "/src/billing"); err != nil {
+		t.Fatal(err)
+	}
+	dir := factoryRepoDirs(st, "/home/you/ledger")
+	if got := dir("ledger"); got != "/home/you/ledger" {
+		t.Fatalf("workspace: %q", got)
+	}
+	if got := dir("billing"); got != "/src/billing" {
+		t.Fatalf("recorded: %q", got)
+	}
+	if got := dir("acme/billing"); got != "/src/billing" {
+		t.Fatalf("recorded full name: %q", got)
+	}
+	if got := dir("stranger"); got != "" {
+		t.Fatalf("unknown: %q", got)
+	}
+}
+
+// A workspace whose origin names a watched repository is recorded; one that
+// names another repository is not.
+func TestRecordWorkspaceCheckoutFromOrigin(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetRepos([]string{"acme/ledger"}); err != nil {
+		t.Fatal(err)
+	}
+	ws := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "git@github.com:acme/ledger.git"}} {
+		if out, err := exec.Command("git", append([]string{"-C", ws}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if err := recordWorkspaceCheckoutNow(st, ws); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.CheckoutDir("ledger"); got != filepath.Clean(ws) {
+		t.Fatalf("recorded %q, want %q", got, ws)
+	}
+	other := t.TempDir()
+	exec.Command("git", "-C", other, "init", "-q").Run()
+	exec.Command("git", "-C", other, "remote", "add", "origin", "https://github.com/acme/else").Run()
+	_ = recordWorkspaceCheckoutNow(st, other)
+	if got := st.CheckoutDir("else"); got != "" {
+		t.Fatalf("unwatched repo recorded: %q", got)
+	}
+}
+
+// The bank door is on the shipped seam only when a workspace gives it a folder.
+func TestFactorySeamBankStagesDoor(t *testing.T) {
+	t.Setenv(factoryFixtureEnv, "")
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !factorySeam(st, "/home/you/ledger").Has("bankstages") {
+		t.Fatal("no bankstages with a workspace")
+	}
+	// The door is on whenever the dir function is wired, because a recorded
+	// checkout can answer for a repository with no workspace; with neither,
+	// the function answers "" and the bank refuses by name.
+	if err := factorySeam(st, "").BankStages(1); err == nil {
+		t.Fatal("bank accepted with no folder known")
 	}
 }

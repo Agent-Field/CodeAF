@@ -17,7 +17,7 @@ func TestFactoryMockWinsOverAStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seam := factorySeam(st)
+	seam := factorySeam(st, "")
 	if !seam.Has("launch") || !seam.Has("sleep") {
 		t.Fatal("the mock was switched on and the floor is not the moving mock")
 	}

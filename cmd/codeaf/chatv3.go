@@ -390,6 +390,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// And the floor's GitHub poll, when repositories are watched and a token
 	// resolves; nothing starts otherwise (factory.go's [startFactoryPoll]).
 	startFactoryPoll(floor)
+	// And the workspace as a watched repository's checkout, when its origin
+	// names one, so the recipe is read from it ([recordWorkspaceCheckout]).
+	recordWorkspaceCheckout(floor, workspace)
 	// AND THAT SURFACE HOLDS EVERY STANDING LANE, which is a second fact and not
 	// the same one: a design card, a subharness intake card and an adaptive
 	// run's fuel gate each arrive on a subscription opened on the agent itself
@@ -576,7 +579,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the mock or a still fixture when one is switched on, with this
 		// workspace as the repo new work lands on when the floor has none yet
 		// (factory.go).
-		Factory: factoryHere(factorySeam(floor), workspace),
+		Factory: factoryHere(factorySeam(floor, workspace), workspace),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {

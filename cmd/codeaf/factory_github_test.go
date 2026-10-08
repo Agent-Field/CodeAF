@@ -54,7 +54,7 @@ func TestFactorySeamNamesGitHubOnlyWhileItPolls(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = st.SetRepos([]string{"acme/api"})
-	snap, err := factorySeam(st).Load()
+	snap, err := factorySeam(st, "").Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestFactorySeamNamesGitHubOnlyWhileItPolls(t *testing.T) {
 	}
 	now := time.Now()
 	_ = st.SetSourceMeta("github", store.SourceMeta{Polled: now, Tried: now})
-	snap, _ = factorySeam(st).Load()
+	snap, _ = factorySeam(st, "").Load()
 	found := false
 	for _, src := range snap.Sources {
 		found = found || src.Name == "github"

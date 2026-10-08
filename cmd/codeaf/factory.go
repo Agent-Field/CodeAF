@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -65,7 +66,7 @@ func factoryDoor(st *store.Store) session.FactoryDoor {
 // on. The moving mock exists only in a -tags factorymock build with
 // CODEAF_FACTORY_MOCK=1 (factorymock.go); CODEAF_FACTORY_FIXTURE=1 hands the
 // page a still fixture ([factory.FixtureSeam]) whose every verb is nil.
-func factorySeam(st *store.Store) factory.Seam {
+func factorySeam(st *store.Store, workspace string) factory.Seam {
 	// The mock is asked first. The default build has a stub that always
 	// answers false, so the shipped binary carries none of it
 	// (internal/factory/mock/REMOVING.md).
@@ -82,7 +83,80 @@ func factorySeam(st *store.Store) factory.Seam {
 	// machine is keeping the store's record of it fresh (factorygithub.Facts),
 	// which is how the window on the ordinary launch learns what the engine
 	// behind it is doing without a word on the wire.
-	return factorygithub.Facts(factory.LocalSeam(st, time.Now()), st, nil)
+	return factorygithub.Facts(factory.LocalSeam(st, time.Now(), factory.WithRepoDirs(factoryRepoDirs(st, workspace))), st, nil)
+}
+
+// factoryRepoDirs answers where a repository is checked out, by the name the
+// floor shows. THREE RULES, IN ORDER: the workspace's own folder when repo is
+// that folder's name (the person opened codeaf inside it), else the folder the
+// store has recorded for it, else "" (unknown, and the default recipe runs).
+func factoryRepoDirs(st *store.Store, workspace string) func(repo string) string {
+	here := ""
+	if w := strings.TrimSpace(workspace); w != "" {
+		here = filepath.Clean(w)
+	}
+	return func(repo string) string {
+		repo = strings.TrimSpace(repo)
+		if repo == "" {
+			return ""
+		}
+		if here != "" {
+			base := filepath.Base(here)
+			if short := repo[strings.LastIndex(repo, "/")+1:]; base != "." && base != string(filepath.Separator) && (repo == base || short == base) {
+				return here
+			}
+		}
+		return st.CheckoutDir(repo)
+	}
+}
+
+// recordWorkspaceCheckout notes the workspace as a watched repository's
+// checkout when its origin remote names a repository in repos.json, so a
+// person who opens codeaf inside the repo they watch gets `b` for free. It
+// returns at once and never fails the launch: the git call is bounded to two
+// seconds and every error is dropped.
+func recordWorkspaceCheckout(st *store.Store, workspace string) {
+	if st == nil || strings.TrimSpace(workspace) == "" {
+		return
+	}
+	go func() {
+		_ = recordWorkspaceCheckoutNow(st, workspace)
+	}()
+}
+
+func recordWorkspaceCheckoutNow(st *store.Store, workspace string) error {
+	repos, err := st.Repos()
+	if err != nil || len(repos) == 0 {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "git", "-C", workspace, "remote", "get-url", "origin").Output()
+	if err != nil {
+		return err
+	}
+	full := remoteRepoName(strings.TrimSpace(string(out)))
+	for _, r := range repos {
+		if full != "" && strings.EqualFold(r, full) {
+			return st.SetCheckout(r, filepath.Clean(workspace))
+		}
+	}
+	return nil
+}
+
+// remoteRepoName reads `owner/name` off a GitHub remote URL (https or ssh
+// form), or "" when it is not one.
+func remoteRepoName(url string) string {
+	url = strings.TrimSuffix(strings.TrimSuffix(url, "/"), ".git")
+	i := strings.Index(url, "github.com")
+	if i < 0 {
+		return ""
+	}
+	rest := strings.TrimLeft(url[i+len("github.com"):], ":/")
+	if !store.RepoName(rest) {
+		return ""
+	}
+	return rest
 }
 
 // factoryPollEvery is how often the GitHub source is read when nothing is
