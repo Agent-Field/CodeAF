@@ -710,6 +710,16 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphPriorityFourth, NerdFont: "\uF103", NFName: "nf-fa-angle_double_down", ASCII: " ",
 		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
 	},
+	// A SKIPPED STAGE IS A LEVEL STROKE AT EVERY TIER: the en dash on the
+	// floor, nf-fa-minus on the tier (the same stroke at the icon's weight),
+	// and a hyphen for a reader. It does NOT auto-upgrade, because a cell that
+	// is exactly an en dash is as likely to be a range in a sentence as a
+	// stage mark; the one consumer reaches it by name.
+	{
+		ID: GSkipped, Name: "Skipped", Meaning: "a stage that will not run here, or that the run went past",
+		Plain: GlyphSkipped, NerdFont: "\uF068", NFName: "nf-fa-minus", ASCII: "-",
+		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
+	},
 
 	// -- the prose slots (code.go) -------------------------------------------
 	//

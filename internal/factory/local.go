@@ -241,10 +241,14 @@ type annotator interface {
 // items carried their address.
 var ErrNotOnSource = errors.New("this item is not on github")
 
-// The busy words the floor draws, spelled once.
+// The busy words the floor draws, spelled once. Reading and refreshing are an
+// item being read RIGHT NOW, and only those spin on the floor; waiting is an
+// item queued for a read that has not reached it yet, which a whole floor's
+// re-read may write for every item behind the one it is on.
 const (
 	BusyReading    = "reading"
 	BusyRefreshing = "refreshing"
+	BusyWaiting    = "waiting"
 )
 
 // localRefresh hangs the three source doors over st.

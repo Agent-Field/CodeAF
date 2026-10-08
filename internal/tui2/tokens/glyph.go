@@ -253,6 +253,11 @@ const (
 	GlyphPriorityFourth = "▁"
 	GlyphEstimate       = "~" // estimated number (10.2.8)
 
+	// GlyphSkipped is a stage that will not run, or that the run went past:
+	// a short level stroke, the shape a struck-out line leaves, which says
+	// "not this one" without claiming it failed or that it is still to come.
+	GlyphSkipped = "–"
+
 	// Structure (5.21). The accent rail groups a card's lines in its identity
 	// hue; the drag handle marks a reorderable pending row (5.22).
 	GlyphAccentRail = "▎"
@@ -559,6 +564,7 @@ func Glyphs() []GlyphInfo {
 		{"PrioritySecond", GlyphPrioritySecond, '▅', true},
 		{"PriorityThird", GlyphPriorityThird, '▃', true},
 		{"PriorityFourth", GlyphPriorityFourth, '▁', true},
+		{"Skipped", GlyphSkipped, '–', true},
 		{"ProseBullet", GlyphProseBullet, '·', true},
 		{"ProseQuote", GlyphProseQuote, '▏', true},
 		{"CodeGutter", GlyphCodeGutter, '▏', true},

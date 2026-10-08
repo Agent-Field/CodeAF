@@ -15,7 +15,7 @@ import (
 // ── THE FACTORY'S VERBS ─────────────────────────────────────────────────────
 //
 // The keys that change the floor: launch, stop, pause, answer, steer, sign
-// off, send back, the chips and the stages. place_factory.go routes a key here
+// off, send back, the gate, the cap, the effort and the stages. place_factory.go routes a key here
 // once the rail has had its own keys; this file reads the item under the
 // cursor, picks the door its state allows, and asks it.
 //
@@ -60,7 +60,7 @@ type factoryAskKind int
 
 const (
 	factoryAskStage    factoryAskKind = iota // AddStage
-	factoryAskWords                          // chips in words on a new item
+	factoryAskWords                          // the gate, cap and effort in words on a new item
 	factoryAskSteer                          // Steer on a stream
 	factoryAskAnswer                         // Answer with words
 	factoryAskSendBack                       // SendBack
@@ -395,17 +395,30 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	a.pageMsg = ""
 	a.fp.said = false
+	var cmd tea.Cmd
+	took := false
 	switch it.State {
 	case factory.StateNew, factory.StateDismissed:
-		return a.factoryNewKey(it, k)
+		cmd, took = a.factoryNewKey(it, k)
 	case factory.StateQueued, factory.StateRunning:
-		return a.factoryStreamKey(it, k)
+		cmd, took = a.factoryStreamKey(it, k)
 	case factory.StateNeedsYou:
-		return a.factoryNeedsKey(it, k)
+		cmd, took = a.factoryNeedsKey(it, k)
 	case factory.StateLanded:
-		return a.factoryLandedKey(it, k)
+		cmd, took = a.factoryLandedKey(it, k)
 	}
-	return nil, false
+	// AN ANSWER KEY ON AN ITEM ASKING NOTHING SAYS SO, rather than doing
+	// nothing a person could read as a missed key: `#12 is not waiting on
+	// you`. Only the keys this item did not take for something of its own
+	// (a new item's `a` asks its author, and `n` makes new work above).
+	if !took && it.State != factory.StateNeedsYou && a.factory.Has("answer") {
+		switch k {
+		case "y", "n", "a":
+			a.factorySay(factoryNotWaiting(it))
+			return nil, true
+		}
+	}
+	return cmd, took
 }
 
 // factoryNewKey is a key on a new (or dismissed) item: its card's keys.
@@ -670,7 +683,7 @@ func factoryEffortStage(snap factory.Snapshot, it factory.Item) int {
 	return -1
 }
 
-// factoryNextGate, factoryNextCap and factoryNextEffort are the three chips'
+// factoryNextGate, factoryNextCap and factoryNextEffort are the gate's, the cap's and the effort's
 // ladders, each wrapping to its first rung.
 func factoryNextGate(g factory.Gate) factory.Gate {
 	for i, x := range factoryGates {
@@ -883,9 +896,9 @@ func (a *app) factoryWords(id int, words string, seam factory.Seam) tea.Cmd {
 		switch {
 		case err != nil:
 		case none:
-			a.factorySay("no chip in those words · a gate, a $cap or an effort word turns one")
+			a.factorySay("those words set nothing · say a gate, a $cap or an effort")
 		case len(kept) > 0:
-			a.factorySay(strings.Join(kept, " and ") + " wait for a stream · s steers it once it runs")
+			a.factorySay(strings.Join(kept, " and ") + " wait for a stream · S steers it once it runs")
 		}
 	})
 }
@@ -1011,9 +1024,19 @@ func (a *app) factoryCanRun() bool {
 	return a.factory.Has("launch") && a.factory.Has("setgate")
 }
 
-// factoryVerbHint is the hint line's clauses for the item under the cursor:
-// only keys that work for its state on this seam, in the order the card, the
-// stream and the sheet draw them. `space mark` sits among them on a new item.
+// factoryVerbHint is the item's keys in ONE ORDER, the order every key line
+// on the floor draws and drops them in: the peek's last row and the bottom
+// key line both build from it ([app.factoryVerbRail] puts `enter open` in
+// front), and both drop from its right end as they narrow, so a narrow peek
+// and a narrow foot lose the same keys in the same order. Only keys that work
+// for the item's state on this seam are in it.
+//
+// THE ORDER IS WHAT A PERSON REACHES FOR FIRST: the verbs of the item's state
+// (run it, answer it, steer it, sign it off); then `T talk`, the item's own
+// conversation, which every state has and which used to stand last and be the
+// first thing a line lost; then what shapes a run before it starts (stages,
+// gate, cap, effort); then hiding it, opening it on its forge, reading it
+// again, and new work, which is not about this item at all.
 func (a *app) factoryVerbHint(it factory.Item) []string {
 	seam := a.factory
 	var out []string
@@ -1022,17 +1045,19 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 			out = append(out, words)
 		}
 	}
+	talk := func() { add(seam.Has("talk"), "T talk") }
 	switch it.State {
 	case factory.StateNew, factory.StateDismissed:
 		add(a.factoryCanRun(), "r run")
 		add(a.factoryCanRun(), "p plan first")
 		add(it.State == factory.StateNew, "space mark")
+		talk()
 		add(seam.Has("launch"), "L launch marked")
 		add(seam.Has("setstage") && len(factoryStages(a.fp.snap, it)) > 0, "1-9 stages")
 		add(seam.Has("addstage"), "s stage")
-		// THE CHIPS ARE NAMED BY WHAT EACH TURNS (owner ruling, 2026-10-08):
-		// the word chips named a shape on the screen rather than a thing a
-		// person wants to change.
+		// THE GATE, THE CAP AND THE EFFORT ARE NAMED BY WHAT EACH TURNS
+		// (owner ruling, 2026-10-08), never by the shape the screen draws
+		// them in.
 		add(seam.Has("setgate"), "t gate")
 		add(seam.Has("setcap"), "c cap")
 		add(seam.Has("seteffort"), "e effort")
@@ -1043,26 +1068,31 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 		add(seam.Has("pause") && it.State == factory.StateRunning && !paused, "space pause")
 		add(seam.Has("pause") && it.State == factory.StateRunning && paused, "space resume")
 		add(seam.Has("stop"), "x stop")
+		talk()
 		add(seam.Has("seteffort"), "e effort")
 	case factory.StateNeedsYou:
 		add(seam.Has("answer"), "y n answer")
 		add(seam.Has("answer"), "a in words")
 		add(a.factorySteerable(it), "S steer")
 		add(seam.Has("stop"), "x stop")
+		talk()
 	case factory.StateLanded:
 		// THE SHEET'S `enter` IS ON THE ITEM PAGE'S PROOF ([app.factoryItemHint]
 		// names it there); on the floor `enter` opens the page. A clean sheet
-		// signs off with `s`, one with a row nothing showed with `e`.
+		// signs off with `s`, one with a row nothing showed with `e`, and the
+		// key is spelled ONE WAY on every line that names it.
 		clean := factoryFirstFailed(it) == ""
 		add(clean && seam.Has("signoff"), "s sign off")
 		add(!clean && seam.Has("signoff"), "e sign off with changes")
 		add(seam.Has("sendback"), "B send back")
 		add(seam.Has("reverify"), "v check again")
+		talk()
 		add(it.Diff != "", "d diff")
+	default:
+		talk()
 	}
 	add(it.URL != "" && it.Origin != factory.OriginTerminal && seam.Has("open"), "g github")
 	add(seam.Has("refresh"), "u read again")
-	add(seam.Has("talk"), "T talk")
 	add(it.State != factory.StateNeedsYou && seam.Has("new"), "n new item")
 	return out
 }

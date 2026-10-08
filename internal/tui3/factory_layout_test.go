@@ -249,7 +249,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("item %d opened on %q, want %q", c.id, got, c.stage)
 		}
 		text := strings.Join(factoryFrameLines(a), "\n")
-		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State != factory.StateNeedsYou && !strings.Contains(text, "places")) {
+		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State != factory.StateNeedsYou && !strings.Contains(text, "gate")) {
 			t.Fatalf("item %d's page has no head:\n%s", c.id, text)
 		}
 		if strings.Contains(text, "NEEDS YOU") {
