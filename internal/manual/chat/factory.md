@@ -438,10 +438,12 @@ The floor reads open issues and open pull requests from the GitHub repositories 
 - **Which repositories:** the ones you tick with `R` on the floor (see choose which
   repositories the floor watches), kept in `repos.json` in the factory folder
   (`~/.codeaf/v3/factory/repos.json`), each written `owner/name`, as
-  `{"repos": ["acme/api"]}` or a plain `["acme/api"]`. The file can still be edited by hand. The
-  poll reads the list when codeaf starts, so a change reaches it on the next start.
-- **The token, in this order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then what `gh auth token`
-  answers. The token is never shown or logged.
+  `{"repos": ["acme/api"]}` or a plain `["acme/api"]`. The file can still be edited by hand. A
+  running poll reads the list on every tick, and a window with no poll yet looks again every 30
+  seconds, so a change reaches the floor without a relaunch.
+- **The token, in this order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then a token kept in
+  the profile, then what `gh auth token` answers, and `gh` is asked only after you have said yes
+  to it on the floor. The token is never shown or logged.
 - **No watched repository or no token: nothing is connected.** Nothing polls, and the floor's
   facts line says only `terminal · chat`.
 - **How often:** every 60 seconds while a codeaf window is open on this machine; after a
@@ -527,9 +529,6 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **The picker lists only what is already watched** until this window is wired to ask GitHub
-  for every repository the account can see; the connect prompt and the settings `github` row
-  appear with that wiring too. A ticked change reaches the poll on the next start.
 - **Chips and stages can be set; nothing launches.** On your own floor `t c e`, `w`, `1-9`, `s`
   and `d` change an item, and no key launches, steers, answers, signs off or sends back. Those
   verbs work only on the made-up moving floor, which needs a development build made with

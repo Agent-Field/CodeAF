@@ -985,9 +985,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// Conversations this engine opens later for the same window inherit it from
 	// cfg ([remote.Engine.Fresh] and Open below both start from it).
 	if engineFactoryHere(hello) {
-		cfg.Factory = factoryDoor(engineFactory())
+		cfg.Factory = factoryDoor(engineFactory(proc.ProfileDir))
 		// And `factory_recipe`'s door, on the same law and the same store.
-		cfg.Recipe = recipeDoor(engineFactory(), workspace)
+		cfg.Recipe = recipeDoor(engineFactory(proc.ProfileDir), workspace)
 	}
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
@@ -1343,12 +1343,12 @@ var engineFactoryStore struct {
 	store *factorystore.Store
 }
 
-func engineFactory() *factorystore.Store {
+func engineFactory(profileDir string) *factorystore.Store {
 	engineFactoryStore.once.Do(func() {
 		engineFactoryStore.store = v3Factory()
 		// The floor's GitHub poll belongs to the process that opened the floor
 		// for a person's window, which on the ordinary launch is this one.
-		startFactoryPoll(engineFactoryStore.store)
+		startFactoryPoll(engineFactoryStore.store, profileDir)
 	})
 	return engineFactoryStore.store
 }

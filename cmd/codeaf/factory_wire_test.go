@@ -24,7 +24,7 @@ var factoryDoors = []string{
 // the one dim line saying nothing is connected yet.
 func TestFactorySeamWithNoStoreIsTheZeroSeam(t *testing.T) {
 	t.Setenv(factoryFixtureEnv, "")
-	seam := factorySeam(nil, "")
+	seam := factorySeam(nil, "", "")
 	for _, door := range factoryDoors {
 		if seam.Has(door) {
 			t.Fatalf("a seam over no store carries %q", door)
@@ -40,7 +40,7 @@ func TestFactorySeamOverAStoreIsTheLocalFloor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seam := factorySeam(st, "")
+	seam := factorySeam(st, "", "")
 	for _, door := range []string{"load", "new", "dismiss", "setgate", "setstage", "setcap"} {
 		if !seam.Has(door) {
 			t.Fatalf("the floor over a store is missing %q", door)
@@ -98,7 +98,7 @@ func TestFactoryFixtureWinsOverAStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seam := factorySeam(st, "")
+	seam := factorySeam(st, "", "")
 	if seam.Has("new") {
 		t.Fatal("the fixture switch was on and the store's own `new` door answered")
 	}
@@ -214,7 +214,7 @@ func TestTheEngineHandsTheFactoryDoorOnlyToAWindowOnThisMachine(t *testing.T) {
 	}
 	// And the store it writes to is this machine's own floor, the one the
 	// page reads ([v3FactoryRoot]).
-	if st := engineFactory(); st == nil || st.Root() != v3FactoryRoot() {
+	if st := engineFactory(""); st == nil || st.Root() != v3FactoryRoot() {
 		t.Fatalf("the engine's factory store is not this machine's floor: %v", st)
 	}
 }
@@ -282,13 +282,13 @@ func TestFactorySeamBankStagesDoor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !factorySeam(st, "/home/you/ledger").Has("bankstages") {
+	if !factorySeam(st, "/home/you/ledger", "").Has("bankstages") {
 		t.Fatal("no bankstages with a workspace")
 	}
 	// The door is on whenever the dir function is wired, because a recorded
 	// checkout can answer for a repository with no workspace; with neither,
 	// the function answers "" and the bank refuses by name.
-	if err := factorySeam(st, "").BankStages(1); err == nil {
+	if err := factorySeam(st, "", "").BankStages(1); err == nil {
 		t.Fatal("bank accepted with no folder known")
 	}
 }

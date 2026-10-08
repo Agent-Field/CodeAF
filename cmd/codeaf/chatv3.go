@@ -393,7 +393,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	cfg.Recipe = recipeDoor(floor, workspace)
 	// And the floor's GitHub poll, when repositories are watched and a token
 	// resolves; nothing starts otherwise (factory.go's [startFactoryPoll]).
-	startFactoryPoll(floor)
+	startFactoryPoll(floor, settings.ProfileDir)
 	// And the workspace as a watched repository's checkout, when its origin
 	// names one, so the recipe is read from it ([recordWorkspaceCheckout]).
 	recordWorkspaceCheckout(floor, workspace)
@@ -583,7 +583,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// the mock or a still fixture when one is switched on, with this
 		// workspace as the repo new work lands on when the floor has none yet
 		// (factory.go).
-		Factory: factoryHere(factorySeam(floor, workspace), workspace),
+		Factory: factoryHere(factorySeam(floor, workspace, settings.ProfileDir), workspace),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {

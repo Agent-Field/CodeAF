@@ -432,7 +432,7 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	// a yes on the card and `n` on the floor both land on the floor drawn here.
 	// --host and --at never reach this line: the floor there is the other
 	// machine's, and their window has no factory seam at all (factory.go).
-	options.Factory = factoryHere(factorySeam(v3Factory(), welcome.Workspace), welcome.Workspace)
+	options.Factory = factoryHere(factorySeam(v3Factory(), welcome.Workspace, profileDir), welcome.Workspace)
 	if profileDir == settings.ProfileDir {
 		options.Sources = settings.Sources
 	} else {
