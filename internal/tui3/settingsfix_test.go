@@ -107,11 +107,9 @@ func TestASettingsSlotOpensTheModelPickerAndWritesTheRow(t *testing.T) {
 	// Enter writes the row through the registry, which for the conversation's
 	// own slot is the running session — one door, the same one /model takes.
 	drive(t, a, key("enter"))
-	// ENTER WRITES AND LEAVES THE LIST UP ([app.pickerKey] argues it).
-	if a.sheet.sel == nil {
-		t.Fatal("enter closed the picker; esc is the way out now")
+	if a.sheet.sel != nil || !a.at(pageSettings) {
+		t.Fatal("enter must close the model list and return to settings")
 	}
-	drive(t, a, key("esc"))
 	if a.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("the slot wrote %q", a.model)
 	}

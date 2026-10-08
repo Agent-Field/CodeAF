@@ -81,8 +81,8 @@ func TestArrowWalksIntoTheFoldAndBringsItIntoView(t *testing.T) {
 
 	// With a machine pinned, the walk lands on THAT row instead. The cursor is
 	// already on cloudflare — the second `→` walked it there — so enter pins it.
-	// Enter chooses and leaves the list up, so it is closed before it is
-	// opened again ([app.pickerKey]).
+	// Enter on a provider keeps its controls open, so Esc closes the list
+	// before it is opened again.
 	drive(t, a, key("enter"), key("esc"))
 	typeLine(t, a, "/model")
 	drive(t, a, key("right"))

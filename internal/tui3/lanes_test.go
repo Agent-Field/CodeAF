@@ -460,8 +460,8 @@ func TestEnterOnALanePinsItAndAutoTakesItBack(t *testing.T) {
 	drive(t, a, key("down"), key("right")) // openrouter, then into its machines
 	drive(t, a, key("enter"))
 
-	// ENTER CHOOSES AND LEAVES THE LIST UP ([app.pickerKey] argues it), so the
-	// pin is written with the list still on screen and esc is the way out.
+	// Enter on a provider keeps its controls open, so the pin is written
+	// with the list still on screen and Esc is the way out.
 	if !a.pick.open {
 		t.Fatal("pinning a lane closed the picker")
 	}

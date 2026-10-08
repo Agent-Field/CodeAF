@@ -36,6 +36,7 @@ const (
 // on the Providers tab. The profile is not touched until every answer is here
 // and internal/config has accepted the service.
 type modelConnectDraft struct {
+	setupAttempt  *setupProviderAttempt
 	source        modelsource.Source
 	row           config.PersistedSource
 	step          modelConnectStep
@@ -97,9 +98,9 @@ func (a *app) modelsForConnectedService(service modelsource.Connected) []Model {
 		return nil
 	}
 	if a.modelsForService != nil {
-		if models := cleanModels(a.modelsForService(service)); len(models) > 0 {
-			return models
-		}
+		// THE SHELF OWNS THIS PROVIDER'S ANSWER. Falling through an empty
+		// current list would resurrect models from an older surface cache.
+		return cleanModels(a.modelsForService(service))
 	}
 	if models := cleanModels(a.sourceModels[service.Source.ID]); len(models) > 0 {
 		return models
@@ -149,9 +150,7 @@ func (a *app) connectionRows() []connect.Status {
 func (a *app) modelConnectionRows() []connect.Status {
 	connected := make(map[string]modelsource.Connected)
 	for _, service := range a.sources.All() {
-		if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
-			connected[strings.ToLower(service.Source.ID)] = service
-		}
+		connected[strings.ToLower(service.Source.ID)] = service
 	}
 	rows := make([]connect.Status, 0, len(a.modelCatalog)+len(connected))
 	seen := make(map[string]bool)
@@ -165,10 +164,12 @@ func (a *app) modelConnectionRows() []connect.Status {
 		if held {
 			source = service.Source
 		}
-		rows = append(rows, modelConnectionStatus(source, held))
+		rows = append(rows, modelConnectionStatus(source, held && service.HasCredentials()))
 	}
-	for _, source := range a.modelCatalog {
-		appendSource(source)
+	if len(a.modelCatalog) > 0 || !a.sources.Empty() {
+		for _, source := range providerCatalog(a.modelCatalog) {
+			appendSource(source)
+		}
 	}
 	for _, service := range a.sources.All() {
 		if !strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
@@ -209,8 +210,11 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	switch {
 	case source.ID == "ollama":
 		need = ""
-	case source.ID == "codex":
+	case source.ID == "codex" || source.ID == modelsource.DefaultID:
 		need = "browser"
+		if source.ID == modelsource.DefaultID {
+			need = "browser · key"
+		}
 	case modelsource.IsCustomID(source.ID):
 		need = "address · key"
 	case len(source.Regions) > 0:
@@ -235,7 +239,7 @@ func modelConnectionStatus(source modelsource.Source, held bool) connect.Status 
 	}
 	if source.ID == "ollama" {
 		service.Auth = "none"
-	} else if source.ID == "codex" {
+	} else if source.ID == "codex" || source.ID == modelsource.DefaultID {
 		service.Auth = connect.AuthBrowser
 	}
 	return connect.Status{Service: service, Connected: held, Account: source.Written, KeyEnv: source.KeyEnv}
@@ -273,6 +277,9 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	if id == modelsource.DefaultID {
+		return a.openDefaultProviderConnection()
+	}
 	persisted := config.PersistedSource{ID: source.ID, Written: source.Written, Order: a.nextModelServiceOrder()}
 	editing := false
 	for _, existing := range config.PersistedSources(a.profileDir) {
@@ -292,6 +299,9 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	}
 	if !editing {
 		draft.renamedFrom = ""
+	}
+	if a.setup.open && a.setup.step() == setupKey && a.setup.provider == source.ID {
+		draft.setupAttempt = a.setup.providerAttempt
 	}
 	a.modelDraft = draft
 	switch {
@@ -322,8 +332,41 @@ func (a *app) startModelConnect(row connect.Status, fromSheet bool) tea.Cmd {
 	}
 }
 
+// The default provider reuses setup's browser and masked-key form without
+// revisiting onboarding or changing its completion marker.
+func (a *app) openDefaultProviderConnection() tea.Cmd {
+	if a.hosted() {
+		a.note(connectRemoteWord)
+		return nil
+	}
+	fromAdd := a.addPanel.open
+	a.addPanel.close()
+	a.connPanel.close()
+	a.closeLists()
+	a.setup = setupFlow{open: true, provider: modelsource.DefaultID,
+		steps: []setupStep{setupKey}, connection: true, returnAdd: fromAdd}
+	a.touch()
+	return nil
+}
+
+// Connected picker rows lead to the existing two-press disconnect panel.
+func (a *app) openModelConnection(id string) {
+	a.openConnect()
+	for at := range a.connPanel.hits {
+		if row, ok := a.connPanel.at(at); ok && row.ID == modelConnectionID(id) {
+			a.connPanel.cursor = at
+			a.connPanel.follow(connectRowsMax)
+			break
+		}
+	}
+}
+
 func (a *app) beginCodexConnect(draft modelConnectDraft) tea.Cmd {
 	connect, ctx := a.codexConnect, a.ctx
+	if draft.setupAttempt != nil {
+		ctx = draft.setupAttempt.ctx
+		a.setup.providerBusy = true
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -341,11 +384,19 @@ func (a *app) beginCodexConnect(draft modelConnectDraft) tea.Cmd {
 // model-service adoption path, so the picker, live sources and preferred-model
 // move have one implementation.
 func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
+	attempt := msg.draft.setupAttempt
+	if attempt != nil && !a.setupProviderCurrent(attempt) {
+		if msg.flow != nil {
+			msg.flow.Cancel()
+		}
+		return nil
+	}
 	if msg.err != nil || msg.flow == nil {
 		reason := "the browser sign-in did not start"
 		if msg.err != nil {
 			reason = codexFailureReason(msg.err)
 		}
+		a.setup.providerBusy = false
 		a.modelServiceMessage("codex did not connect · " + reason)
 		return nil
 	}
@@ -353,17 +404,32 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 		a.codexFlow.Cancel()
 	}
 	a.codexFlow = msg.flow
-	a.openConnectFlow("codex", "codex", msg.flow.URL())
+	if attempt != nil {
+		a.setup.providerLink = msg.flow.URL()
+		if err := processOpener(msg.flow.URL()); err != nil {
+			a.setup.refusal = "could not open your browser · open the link above"
+		}
+		a.touch()
+	} else {
+		a.openConnectFlow("codex", "codex", msg.flow.URL())
+	}
 	flow, ctx, dir := msg.flow, a.ctx, a.profileDir
+	if attempt != nil {
+		ctx = attempt.ctx
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	return func() tea.Msg {
 		defer flow.Cancel()
 		tokens, err := flow.Wait(ctx)
+		if err == nil {
+			err = ctx.Err()
+		}
 		if err != nil {
 			return modelConnectResultMsg{
-				service: "codex", name: "Codex", written: "codex", browser: true,
+				setupAttempt: attempt,
+				service:      "codex", name: "Codex", written: "codex", browser: true,
 				word: "codex did not connect · " + codexFailureReason(err), err: err,
 			}
 		}
@@ -378,7 +444,7 @@ func (a *app) adoptCodexFlow(msg codexFlowMsg) tea.Cmd {
 		}
 		return modelConnectResultMsg{
 			service: "codex", name: "Codex", written: "codex", outcome: outcome,
-			models: models, err: err, browser: true, word: word,
+			models: models, err: err, browser: true, word: word, setupAttempt: attempt,
 		}
 	}
 }
@@ -699,6 +765,11 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if draft.setupAttempt != nil {
+		ctx = draft.setupAttempt.ctx
+		a.setup.providerBusy = true
+		a.touch()
+	}
 	dir := a.profileDir
 	instance := draft.row.ID
 	authors := modelAuthorSegments(a.defaultServiceModels())
@@ -745,7 +816,7 @@ func (a *app) beginModelConnect(draft modelConnectDraft) tea.Cmd {
 		return modelConnectResultMsg{
 			service: instance, name: draft.source.Name, written: draft.row.Written,
 			keyEnv: draft.row.KeyEnv, outcome: outcome, models: models, err: err,
-			renamedFrom: draft.renamedFrom,
+			renamedFrom: draft.renamedFrom, setupAttempt: draft.setupAttempt,
 		}
 	}
 }
@@ -902,6 +973,7 @@ func (a *app) adoptModelConnectResult(msg modelConnectResultMsg) {
 	} else if renamedNext != "" {
 		a.moveConversationToConnectedModel(renamedNext)
 	}
+	a.ensureAvailableModel()
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
 	}
@@ -1035,7 +1107,10 @@ func (a *app) moveConversationToConnectedModel(next string) {
 	}
 	was := a.model
 	a.switchModel(next, 0)
-	a.modelServiceFollowup(serviceMovedWord(was, next))
+	// A first connection has no previous model to name.
+	if strings.TrimSpace(was) != "" {
+		a.modelServiceFollowup(serviceMovedWord(was, next))
+	}
 }
 
 // applyDeferredModelServiceMove spends the one pending move only after the
@@ -1154,6 +1229,11 @@ func serviceStrandedWord(was string) string {
 
 func (a *app) modelServiceMessage(line string) {
 	line = strings.TrimSpace(line)
+	if a.setup.open && a.setup.step() == setupKey && a.setup.provider != "" && a.setup.provider != modelsource.DefaultID {
+		a.setup.refusal = line
+		a.touch()
+		return
+	}
 	if a.addPanel.open {
 		a.addPanel.err = line
 		return
@@ -1186,7 +1266,11 @@ func (a *app) modelServiceFollowup(line string) {
 
 func (a *app) disconnectModelService(id string) {
 	connected, ok := a.sources.ByID(id)
-	if !ok || strings.EqualFold(id, modelsource.DefaultID) {
+	if !ok {
+		return
+	}
+	if id == modelsource.DefaultID {
+		a.disconnectDefaultProvider()
 		return
 	}
 	written := strings.ToLower(strings.TrimSpace(connected.Source.Written))
@@ -1214,6 +1298,7 @@ func (a *app) disconnectModelService(id string) {
 	} else {
 		a.modelServiceFollowup(serviceStrandedWord(was))
 	}
+	a.ensureAvailableModel()
 	if a.connPanel.open {
 		a.connPanel.adopt(a.connectionRows())
 	}
@@ -1221,6 +1306,28 @@ func (a *app) disconnectModelService(id string) {
 		a.sheet.sources = a.sources
 		a.sheet.build()
 	}
+}
+
+func (a *app) disconnectDefaultProvider() {
+	service, _ := a.sources.For(a.conversationModel())
+	if a.state == stateWorking && service.Source.ID == modelsource.DefaultID {
+		a.modelServiceMessage(serviceAnsweringWord(modelsource.DefaultID))
+		return
+	}
+	if source := config.APIKeySourceAt(a.profileDir); source != "" && source != config.APIKeySourceProfile {
+		a.modelServiceMessage("openrouter is connected through " + source + " · unset it and restart to disconnect")
+		return
+	}
+	row, ok := a.registry().Row(config.KeyAPIKey)
+	if !ok {
+		return
+	}
+	if err := row.Apply(""); err != nil {
+		a.modelServiceMessage(err.Error())
+		return
+	}
+	a.modelServiceMessage(serviceDisconnectedWord(modelsource.DefaultID))
+	a.refreshConnect()
 }
 
 func (a *app) modelIsDirect(model string) bool {
@@ -1241,7 +1348,7 @@ func (a *app) defaultServiceHasKey() bool {
 		return true
 	}
 	service := a.sources.Default()
-	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+	return service.HasCredentials()
 }
 
 // defaultProviderNeeded is the ONE answer to "does this person still owe us an
@@ -1254,7 +1361,19 @@ func (a *app) defaultProviderNeeded() bool {
 	if a.routerConnect == nil || a.defaultServiceHasKey() {
 		return false
 	}
-	return !a.connectedServiceCarriesModel()
+	if a.connectedServiceCarriesModel() {
+		return false
+	}
+	// A cold catalog may not have chosen a model yet. A saved connection still
+	// bypasses the provider question while its own models are being discovered.
+	if strings.TrimSpace(a.model) == "" {
+		for _, service := range a.sources.All() {
+			if service.Source.ID != modelsource.DefaultID && service.HasCredentials() {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // connectedServiceCarriesModel is the service half of the prerequisite: the
@@ -1266,7 +1385,7 @@ func (a *app) connectedServiceCarriesModel() bool {
 	if service.Source.ID == "" || strings.EqualFold(service.Source.ID, modelsource.DefaultID) {
 		return false
 	}
-	return strings.TrimSpace(service.Key) != "" || service.Source.KeyOptional
+	return service.HasCredentials()
 }
 
 func modelUsesService(model, written string) bool {
@@ -1276,24 +1395,8 @@ func modelUsesService(model, written string) bool {
 }
 
 func (a *app) reachableModelAfterDisconnect() (string, bool) {
-	services := a.sources.All()
-	if len(services) == 0 {
-		return "", false
-	}
-	if strings.TrimSpace(services[0].Key) != "" {
-		return config.ChatDefaultAt(a.profileDir), true
-	}
-	for _, service := range services[1:] {
-		if strings.TrimSpace(service.Key) == "" && service.Source.ID != "ollama" {
-			continue
-		}
-		for _, model := range a.sourceModels[service.Source.ID] {
-			if chatModel(model) {
-				return service.Qualify(model.ID), true
-			}
-		}
-	}
-	return "", false
+	model, ok := availableConversationModel(config.ChatDefaultAt(a.profileDir), a.modelList())
+	return model.ID, ok
 }
 
 // modelServiceRows is the Providers tab's compact reading: one ordinary sheet

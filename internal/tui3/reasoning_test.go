@@ -238,9 +238,8 @@ func TestTheLevelIsPerModelAndSurvivesASwitchAwayAndBack(t *testing.T) {
 	typeInto(t, a, "sonnet")
 	drive(t, a, ctrlT()) // low
 	drive(t, a, ctrlT()) // medium
-	// Enter chooses and leaves the list up ([app.pickerKey]); the frame is read
-	// below for what the SEAM says, so the list is closed first.
-	drive(t, a, key("enter"), key("esc"))
+	// Enter confirms the model and closes the list, exposing the seam below.
+	drive(t, a, key("enter"))
 	if agent.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("model is %q, want the sonnet row", agent.model)
 	}

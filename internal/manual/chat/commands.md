@@ -1042,11 +1042,12 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-With only the default provider in the list, models have no provider heading. The
-default provider stays in the list even without its key: adding a direct provider
-such as Ollama therefore draws headings, including the default provider's. Models
-sit under their provider's name as a dim heading, default provider first; a custom
-provider's heading is the name you gave it.
+With only OpenRouter connected, models have no provider heading. OpenRouter is
+absent without its key: with only Ollama connected, the list contains only Ollama's
+installed models. When direct providers are connected, models sit under their
+provider's name as a dim heading; OpenRouter comes first when it has a key, followed
+by the connected providers in your saved order. A custom provider's heading is the
+name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -1068,15 +1069,14 @@ thinking control takes. enter switches.
 provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
-**Enter chooses and the list stays up; esc is the way out.** Pressing enter on a row
-switches to it there and then and leaves the list on screen, so you can compare two models
-by their prices, switch, and switch back without reopening anything — and the mark moves to
-whatever you just chose. The same is true of a provider inside a fold: enter pins it, the
-list stays.
+**Enter on a model selects it and closes the list immediately.** The keyboard returns
+to your half-typed draft or the settings page that opened the list. To compare another
+model, reopen the picker. Enter with no matching model leaves the list open and changes
+nothing. Enter inside a provider fold keeps its controls open, including when it opens
+OpenRouter's machines or pins a provider.
 
-esc itself changes **nothing** — it closes the list and gives your half-typed draft and the
-frame back as they were. What enter already did is already done; esc does not undo it. The
-filter is forgotten when the picker closes.
+Esc closes without choosing another model and restores the draft and frame. Provider
+changes already made stay done. The filter is forgotten when the picker closes.
 
 ## Where the /model cursor opens — Enter confirms the model in use
 
@@ -1127,20 +1127,24 @@ row under the cursor.
 Choosing a model in `/model` sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
 notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
-opens on it. Over `--host` the switch takes for the session and is not written down: the
+opens on it if it is still in the available model list. Otherwise a local launch chooses
+an available chat model; with no known models, it holds the draft until discovery supplies
+one. Over `--host` the switch takes for the session and is not written down: the
 model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
 At launch, codeaf fetches a connected provider's model list once if it has an empty cached list.
 After that, `ctrl+r` asks for a fresh list (see "Refreshing the model list" below).
-The list is what is already known, tried in this order,
-each rung used only when the one above it came back empty after filtering:
+The list offers models only from usable provider connections: a key, a signed-in
+account, or an explicitly anonymous connection such as Ollama. With only Ollama
+connected, only its installed models appear. With several providers connected, their
+models appear together. An unconnected provider contributes no rows, even when its
+public catalog or cache is available.
 
-1. the catalog handed in at launch,
-2. `~/.codeaf/v3/models.json`,
-3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
-   `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
+Each provider contributes its known catalog, or its own cached list while discovery
+is warming. A known catalog is authoritative; an empty list never adds built-in
+model guesses. Slots still keep only models with their required capabilities.
 
 Filtering is over the model's **name** and nothing else — no word in the box means
 anything but itself. It splits your text on whitespace and every word must match, each

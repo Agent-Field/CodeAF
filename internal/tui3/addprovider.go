@@ -188,7 +188,8 @@ type addProviderItem struct {
 	// flow the add row started.
 	custom bool
 	// sourceID is the vendored provider a row starts (startModelConnect).
-	sourceID string
+	sourceID  string
+	connected bool
 }
 
 type addProviderPanel struct {
@@ -209,7 +210,7 @@ type addProviderPanel struct {
 	err string
 }
 
-func (p *addProviderPanel) rebuild(probes []LocalServerProbe, catalog []modelsource.Source) {
+func (p *addProviderPanel) rebuild(probes []LocalServerProbe, catalog []modelsource.Source, sources modelsource.Set) {
 	var items []addProviderItem
 	if p.loading {
 		items = append(items, addProviderItem{heading: true, title: "looking on this machine…"})
@@ -225,27 +226,39 @@ func (p *addProviderPanel) rebuild(probes []LocalServerProbe, catalog []modelsou
 		}
 	}
 	items = append(items, addProviderItem{heading: true, title: "providers"})
-	if len(catalog) == 0 {
-		catalog = modelsource.Vendored()
-	}
-	for _, source := range catalog {
+	for _, source := range providerCatalog(catalog) {
+		service, held := sources.ByID(source.ID)
+		connected := held && service.HasCredentials()
+		detail := "key"
 		switch {
-		case strings.EqualFold(source.ID, modelsource.CustomID), strings.EqualFold(source.ID, modelsource.DefaultID):
-			// Custom has its own typed-address row below; openrouter is the
-			// default service and connects through its own key, not here.
-		case source.ID == "codex":
-			items = append(items, addProviderItem{title: source.Name, detail: "browser", sourceID: source.ID})
+		case source.ID == modelsource.DefaultID || source.ID == "codex":
+			detail = "browser"
 		case source.KeyOptional:
-			items = append(items, addProviderItem{title: source.Name, detail: "address", sourceID: source.ID})
+			detail = "address"
 		case len(source.Regions) > 0:
-			items = append(items, addProviderItem{title: source.Name, detail: "region · key", sourceID: source.ID})
-		default:
-			items = append(items, addProviderItem{title: source.Name, detail: "key", sourceID: source.ID})
+			detail = "region · key"
+		case source.ID == modelsource.CustomID:
+			detail = "address · key"
 		}
+		custom := source.ID == modelsource.CustomID
+		if custom {
+			for _, instance := range customInstances(sources) {
+				connected = connected || instance.HasCredentials()
+			}
+		}
+		if connected {
+			detail = "connected · enter manages"
+			if custom {
+				detail = "connected · add another"
+			}
+		} else {
+			detail = "not connected · " + detail
+		}
+		items = append(items, addProviderItem{
+			title: source.Name, detail: detail, sourceID: source.ID,
+			custom: custom, connected: connected,
+		})
 	}
-	items = append(items, addProviderItem{
-		title: "any OpenAI-compatible server", detail: "address · key", custom: true,
-	})
 	p.items = items
 	p.cursor = 0
 	for i, it := range p.items {
@@ -323,6 +336,10 @@ func (a *app) addPanelKey(msg tea.KeyPressMsg) tea.Cmd {
 		switch {
 		case item.custom:
 			return a.startCustomAdd(false)
+		case item.connected:
+			p.close()
+			a.openModelConnection(item.sourceID)
+			return nil
 		case item.sourceID != "":
 			source, found := a.modelSource(item.sourceID)
 			if !found {
@@ -446,7 +463,7 @@ func (a *app) openAddProvider(inSheet bool) tea.Cmd {
 	p.probeContext, p.probeCancel = context.WithCancel(ctx)
 	p.open = true
 	p.loading = true
-	p.rebuild(nil, nil)
+	p.rebuild(nil, a.modelCatalog, a.sources)
 	a.touch()
 	// THE FRAME AND THE WALK GO OUT TOGETHER: the panel is up this frame, and
 	// the probe's landing rebuilds it with what the machine answered.

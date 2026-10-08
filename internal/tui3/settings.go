@@ -3045,9 +3045,8 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 	switch msg.String() {
 	case "esc":
 		s.sel = nil
-	// ENTER WRITES AND LEAVES THE LIST UP, which is /model's own rule and for
-	// its reason ([app.pickerKey]); esc is the way out and still changes
-	// nothing itself.
+	// ENTER CONFIRMS AND CLOSES THE MODEL LIST, as it does in the conversation,
+	// so the settings row immediately shows the model that was chosen.
 	case "enter":
 		// ENTER INSIDE AN OPEN FOLD IS A LANE AND NOT A SLOT.
 		if lane, onLane := sel.pick.laneUnder(); onLane {
@@ -3060,7 +3059,7 @@ func (a *app) sheetSelectKey(msg tea.KeyPressMsg) {
 		if !ok || !found {
 			return
 		}
-		a.restatePicker(&sel.pick, chosen)
+		s.sel = nil
 		// A role writes ONE PAIR of the row it shares with every other pin;
 		// everything else writes the row whole.
 		if role != "" {
