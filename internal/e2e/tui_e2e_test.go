@@ -2534,17 +2534,14 @@ func testFactoryFromChat(t *testing.T) {
 	// way a person reading the card does.
 	time.Sleep(1500 * time.Millisecond)
 	first.keys("1")
+	// THE CARD'S FOOT IS THE SURFACE'S PROOF OF THE ADD. The tool's result
+	// sentence is for the model and is never drawn; what the chat says about
+	// it afterwards is the model's own paraphrase, so it is not waited for.
 	settled := first.waitFor(30*time.Second, say(t, "factoryAddedWord"))
 	t.Logf("the card settled on the floor's number:\n%s", settled)
 	if t.Failed() {
 		return
 	}
-	// THE TOOL'S OWN SENTENCE, `#<id> <title> is on the factory floor`, in the
-	// transcript. A failure here does not stop the floor half below: the item
-	// is written whether or not the sentence is drawn, and the run is worth
-	// its evidence either way.
-	told := first.waitFor(modelPatience, say(t, "factoryOnTheFloorWord"))
-	t.Logf("and the chat was told the item is on the floor:\n%s", told)
 	if items, _ := filepath.Glob(filepath.Join(home, "v3", "factory", "*.json")); len(items) == 0 {
 		t.Errorf("the yes wrote no item under %s", filepath.Join(home, "v3", "factory"))
 	}
