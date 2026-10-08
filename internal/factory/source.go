@@ -83,4 +83,8 @@ type SourceInfo struct {
 	Reading string
 	Read    int
 	Of      int
+	// Items is how many issues and pull requests the read has listed so far,
+	// so a big repository's read says `200 items so far` rather than go
+	// quiet; zero when no read is in flight.
+	Items int
 }

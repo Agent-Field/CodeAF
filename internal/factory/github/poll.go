@@ -35,6 +35,18 @@ type Progresser interface {
 	SetProgress(fn func(full string, done, of int))
 }
 
+// ItemProgresser is a [Progresser] that can also say how many items its read
+// has listed so far ([Source.SetProgressItems]). The poll prefers it.
+type ItemProgresser interface {
+	SetProgressItems(fn func(full string, done, of, items int))
+}
+
+// Sinker is a source that can hand over its items batch by batch while a
+// read is still going ([Source.SetSink]).
+type Sinker interface {
+	SetSink(fn func(items []factory.Item))
+}
+
 // Poll reads src every tick until ctx ends, folding what it reads into st.
 // It is meant to run on its own goroutine, one per process. Before each read
 // the watched repositories are read again off the store, so a repository
@@ -92,6 +104,14 @@ func Backoff(every time.Duration, failed int) time.Duration {
 // cursor, fold the items in, and write the source's record. It answers the
 // next cursor and the read's error. Items a partly failed read did bring are
 // still folded in.
+//
+// THE ITEMS ARE FOLDED AS THEY COME when the source can hand them over in
+// batches ([Sinker]): each batch is merged the moment the source has it, so
+// the floor fills repository by repository, and the whole answer is merged
+// once more at the end, which skips every item a batch already brought. A
+// read that fails on a later repository keeps what the earlier batches
+// folded; the cursor is what Read answered, so the failed repository is read
+// again from its old mark next tick.
 func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor string, now func() time.Time) (string, error) {
 	repos, err := st.Repos()
 	if err != nil {
@@ -116,10 +136,17 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	// say (Reading, Read and Of on the source's record); they are taken off
 	// with Polling at the end.
 	_ = st.SetPolling(src.Name(), true)
-	if p, ok := src.(Progresser); ok {
-		name := src.Name()
+	name := src.Name()
+	if p, ok := src.(ItemProgresser); ok {
+		p.SetProgressItems(func(full string, done, of, items int) { _ = st.SetReadingItems(name, full, done, of, items) })
+		defer p.SetProgressItems(nil)
+	} else if p, ok := src.(Progresser); ok {
 		p.SetProgress(func(full string, done, of int) { _ = st.SetReading(name, full, done, of) })
 		defer p.SetProgress(nil)
+	}
+	if k, ok := src.(Sinker); ok {
+		k.SetSink(func(items []factory.Item) { _ = Merge(st, name, items) })
+		defer k.SetSink(nil)
 	}
 	items, next, readErr := src.Read(ctx, cursor)
 	mergeErr := Merge(st, src.Name(), items)
@@ -127,7 +154,7 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	meta, _ := st.SourceMeta(src.Name())
 	meta.Tried = at
 	meta.Polling = false
-	meta.Reading, meta.Read, meta.Of = "", 0, 0
+	meta.Reading, meta.Read, meta.Of, meta.Items = "", 0, 0, 0
 	if readErr == nil {
 		meta.Polled, meta.Trouble = at, ""
 	} else {
@@ -172,6 +199,12 @@ func TroubleWords(err error) string {
 // takes the type again from the labels. Either is `changed on github` in the
 // item's activity; a new comment, file or check is not, because the row's own
 // words did not move.
+//
+// WHAT WAS NOT READ YET IS NOT A CHANGE. An item whose Comments are nil
+// keeps the comments the floor has, and a pull request whose Files are nil
+// keeps its files and line counts: the source handed it over before reading
+// them (the per-read budget, [Source.SetSink]), and an empty list is the one
+// that says there are none.
 func Merge(st *store.Store, origin string, items []factory.Item) error {
 	if len(items) == 0 {
 		return nil
@@ -210,13 +243,21 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 				}
 				it.Title, it.Body = in.Title, in.Body
 				it.Labels = append([]string(nil), in.Labels...)
-				it.Checks, it.Diff = in.Checks, in.Diff
+				it.Checks = in.Checks
 				if in.URL != "" {
 					it.URL = in.URL
 				}
-				it.Comments = in.Comments
+				if in.Comments != nil {
+					it.Comments = in.Comments
+				}
+				if in.Kind != factory.KindPR || in.Files != nil {
+					it.Diff = in.Diff
+				}
 				if in.Kind == factory.KindPR {
-					it.Files, it.CheckRuns = in.Files, in.CheckRuns
+					if in.Files != nil {
+						it.Files = in.Files
+					}
+					it.CheckRuns = in.CheckRuns
 				}
 				if in.Tier != "" {
 					it.Tier = in.Tier
@@ -256,7 +297,10 @@ func itemKey(it factory.Item) string {
 
 // forgeChanged says whether any word the forge owns differs.
 func forgeChanged(old, in factory.Item) bool {
-	if old.Title != in.Title || old.Body != in.Body || old.Checks != in.Checks || old.Diff != in.Diff {
+	// A pull request handed over before its files were read says nothing
+	// about its files or line counts.
+	detailed := in.Kind != factory.KindPR || in.Files != nil
+	if old.Title != in.Title || old.Body != in.Body || old.Checks != in.Checks || (detailed && old.Diff != in.Diff) {
 		return true
 	}
 	if in.Tier != "" && old.Tier != in.Tier {
@@ -268,10 +312,10 @@ func forgeChanged(old, in factory.Item) bool {
 	if in.URL != "" && old.URL != in.URL {
 		return true
 	}
-	if !reflect.DeepEqual(old.Comments, in.Comments) {
+	if in.Comments != nil && !reflect.DeepEqual(old.Comments, in.Comments) {
 		return true
 	}
-	if in.Kind == factory.KindPR && (!reflect.DeepEqual(old.Files, in.Files) || !reflect.DeepEqual(old.CheckRuns, in.CheckRuns)) {
+	if in.Kind == factory.KindPR && ((in.Files != nil && !reflect.DeepEqual(old.Files, in.Files)) || !reflect.DeepEqual(old.CheckRuns, in.CheckRuns)) {
 		return true
 	}
 	return false
@@ -350,5 +394,5 @@ func SourceFacts(st *store.Store, now time.Time) (factory.SourceInfo, bool) {
 	// Writes stays false: Write exists, but only a post stage would call it,
 	// and none runs yet, so the floor offers nothing that would post.
 	return factory.SourceInfo{Name: Name, Repos: repos, Polled: meta.Polled, Trouble: meta.Trouble, Polling: meta.Polling,
-		Reading: meta.Reading, Read: meta.Read, Of: meta.Of}, true
+		Reading: meta.Reading, Read: meta.Read, Of: meta.Of, Items: meta.Items}, true
 }

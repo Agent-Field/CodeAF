@@ -31,6 +31,9 @@ type SourceMeta struct {
 	Reading string `json:"reading,omitempty"`
 	Read    int    `json:"read,omitempty"`
 	Of      int    `json:"of,omitempty"`
+	// Items is how many issues and pull requests the read has listed so far,
+	// across every repository, zeroed with the rest.
+	Items int `json:"items,omitempty"`
 }
 
 type metaDoc struct {
@@ -222,7 +225,7 @@ func (st *Store) SetPolling(name string, on bool) error {
 		m := d.Sources[name]
 		m.Polling = on
 		if !on {
-			m.Reading, m.Read, m.Of = "", 0, 0
+			m.Reading, m.Read, m.Of, m.Items = "", 0, 0, 0
 		}
 		d.Sources[name] = m
 	})
@@ -232,12 +235,19 @@ func (st *Store) SetPolling(name string, on bool) error {
 // and how many of how many it has finished, keeping the rest of its record.
 // The floor reads it while Polling to say where the read is.
 func (st *Store) SetReading(name, repo string, done, of int) error {
+	return st.SetReadingItems(name, repo, done, of, 0)
+}
+
+// SetReadingItems is [Store.SetReading] with how many items the read has
+// listed so far, so the floor can say `200 items so far` while one big
+// repository is read.
+func (st *Store) SetReadingItems(name, repo string, done, of, items int) error {
 	return st.changeMeta(func(d *metaDoc) {
 		if d.Sources == nil {
 			d.Sources = map[string]SourceMeta{}
 		}
 		m := d.Sources[name]
-		m.Reading, m.Read, m.Of = repo, done, of
+		m.Reading, m.Read, m.Of, m.Items = repo, done, of, items
 		d.Sources[name] = m
 	})
 }

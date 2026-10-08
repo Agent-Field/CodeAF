@@ -125,7 +125,7 @@ func (st *Store) ClearBusy() error {
 	return st.changeMeta(func(d *metaDoc) {
 		for name, m := range d.Sources {
 			m.Polling = false
-			m.Reading, m.Read, m.Of = "", 0, 0
+			m.Reading, m.Read, m.Of, m.Items = "", 0, 0, 0
 			d.Sources[name] = m
 		}
 	})

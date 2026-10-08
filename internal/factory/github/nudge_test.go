@@ -98,21 +98,22 @@ type progressWatcher struct {
 	seen []store.SourceMeta
 }
 
-func (p *progressWatcher) SetProgress(fn func(full string, done, of int)) {
+func (p *progressWatcher) SetProgressItems(fn func(full string, done, of, items int)) {
 	if fn == nil {
-		p.Source.SetProgress(nil)
+		p.Source.SetProgressItems(nil)
 		return
 	}
-	p.Source.SetProgress(func(full string, done, of int) {
-		fn(full, done, of)
+	p.Source.SetProgressItems(func(full string, done, of, items int) {
+		fn(full, done, of, items)
 		m, _ := p.st.SourceMeta(Name)
 		p.seen = append(p.seen, m)
 	})
 }
 
 // While a read is in flight the source's record says which repository it is
-// on and how many of how many are done, the floor's facts carry it, and all
-// three are taken off with Polling at the end.
+// on and how many of how many are done (at its start and again as each of
+// its lists is in), the floor's facts carry it, and all of it is taken off
+// with Polling at the end.
 func TestProgressIsWrittenPerRepositoryAndClearedAtTheEnd(t *testing.T) {
 	f := newFixture()
 	_, api := f.serve(t)
@@ -121,13 +122,18 @@ func TestProgressIsWrittenPerRepositoryAndClearedAtTheEnd(t *testing.T) {
 	_ = st.SetSourceMeta(Name, store.SourceMeta{Tried: time.Now()})
 	w := &progressWatcher{Source: New(api, nil, nil), st: st}
 	_, _ = PollOnce(context.Background(), w, st, "", time.Now)
-	if len(w.seen) != 2 {
-		t.Fatalf("progress written %d times, want 2: %+v", len(w.seen), w.seen)
+	// acme/api at its start, its issues in, its pull requests in; acme/gone
+	// at its start, where its read fails.
+	if len(w.seen) != 4 {
+		t.Fatalf("progress written %d times, want 4: %+v", len(w.seen), w.seen)
 	}
 	if m := w.seen[0]; !m.Polling || m.Reading != "acme/api" || m.Read != 0 || m.Of != 2 {
 		t.Fatalf("first repository: %+v", m)
 	}
-	if m := w.seen[1]; !m.Polling || m.Reading != "acme/gone" || m.Read != 1 || m.Of != 2 {
+	if m := w.seen[2]; m.Reading != "acme/api" || m.Items != 2 {
+		t.Fatalf("first repository's lists in: %+v", m)
+	}
+	if m := w.seen[3]; !m.Polling || m.Reading != "acme/gone" || m.Read != 1 || m.Of != 2 {
 		t.Fatalf("second repository: %+v", m)
 	}
 	m, _ := st.SourceMeta(Name)
