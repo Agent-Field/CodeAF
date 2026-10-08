@@ -7,7 +7,10 @@ off, or that a connected repository sends, stands in rows grouped by where each 
 it with `/factory`, `alt+9` (`opt+9` on a Mac), the map (`alt+.`), or the `Factory` button on the
 tab bar, third after `Home` and `Chats`. `esc` goes back to the conversation.
 
-Today nothing is connected, so the page draws one dim line:
+On this machine the page reads your own factory floor: the items you made with `n` on the page
+or added from a chat, kept under the codeaf home (see where factory items are saved). Until the
+first one arrives the floor has no rows and the bottom line offers `n new`. Only when that floor
+cannot be opened, or over `--host`, does the page draw one dim line:
 `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`.
 The only key it offers then is `esc back`.
 
@@ -225,7 +228,10 @@ checks again.
 ## the factory's verbs, keys that change an item
 
 On the made-up moving floor every key below works; the bottom line names only the keys that
-work for the item under the cursor. `enter` on a row never launches; it opens the item page.
+work for the item under the cursor. On your own floor in the shipped binary the keys that change
+an item's own words work (`n`, `t c e` chips, `w`, `1-9` and `s` stages, `space`, `d`) and
+nothing that launches, steers, answers or ships is offered on the bottom line, because nothing
+can launch yet. `enter` on a row never launches; it opens the item page.
 
 - **New:** `r run · p plan first · space mark · L launch marked · 1-9 stages · s stage ·
   t c e chips · d hide · n new`. `r` launches with the ship gate, `p` with the plan gate, and
@@ -239,8 +245,9 @@ work for the item under the cursor. `enter` on a row never launches; it opens th
 - **Landed:** `a ship anyway` when a claim failed, `c send back`, `o check again`, `d diff`.
   Shipping from a clean sheet is `enter` on its proof, on the item page. `d` says
   `the diff is the appendix` and that it opens in your editor later.
-- **Anywhere:** `n new` opens `new work ›` on the repository the list shows (or the first one),
-  and the new item's card is under the cursor when it is made. On the made-up moving floor,
+- **Anywhere:** `n new` opens `new work ›` on the repository the list shows (or the first one;
+  on a floor with no items yet, the name of the folder this window was opened in), and the new
+  item's card is under the cursor when it is made. On the made-up moving floor,
   `S sleep 8h` jumps its clock eight hours and starts a new handover.
 
 A key that takes words opens a one-line box at the bottom of the right column (or under the
@@ -259,7 +266,10 @@ After three sign-offs in a row without edits, the bottom of the right column off
 A conversation can offer a piece of work to the factory floor with the `factory_add` tool. The
 chat calls it when you say something belongs on the factory floor, or when it judges a piece of
 work is self-contained enough to run on its own later. It is there only when this conversation
-has a factory floor behind it; without one the chat has no such tool and says it cannot.
+has a factory floor behind it; without one the chat has no such tool and says it cannot. Today
+that is a conversation running in this window's own process (first-run setup, `--no-host`,
+`--debug`). On the ordinary launch the conversation runs in the session host and has no
+`factory_add`, and neither does `--once`, `--host`, `--at` or a task; add work there with `n`.
 
 Calling it adds nothing. A card asks you first:
 `wants to put this on the factory floor: <title>`, with the repo, kind and size under it and
@@ -282,28 +292,32 @@ until you launch it from the factory page.
 
 Be plain about this when asked:
 
-- **The verbs work only on the made-up moving floor**, which exists only in a development build
-  started with `CODEAF_FACTORY_MOCK=1`. Launching, steering, answering, signing off and sending
-  back change that made-up floor and nothing else. The shipped binary has no such floor.
-- **No GitHub, GitLab or Linear is connected.** There is no way to connect a repository yet, so
-  no item arrives from one.
-- **Nothing posts anywhere.** The factory never comments, labels, opens a pull request or opens
-  an issue on any service; `g`, `a` on a thin item and a sign-off only change the made-up floor.
-- **A stage's conversation does not open yet.** `enter` on a stage of the item page says
-  `the stage's conversation opens here once streams are conversations`, `s` on a landed item
-  says `the room opens here once streams are conversations`, and the diff does not open either.
-- **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`,
-  after you answer its card; starting the work is the factory page's, never the conversation's.
-- **The foreman does not open yet.** There is no conversation with the factory itself, and no
-  key on the page reaches one.
-- **The page is empty on an ordinary launch** and draws the `nothing connected yet` line. With
-  `CODEAF_FACTORY_FIXTURE=1` the page reads a still, made-up floor (three repositories, ten
-  items) that never changes and has no verbs: only the walking keys, `z`, and opening and
-  closing the item page work on it.
-- **Over `--host`** the factory page draws the same `nothing connected yet` line.
-- **`Factory ? N` on the tab bar appears only after the first open.** The count is what the floor
-  said the last time the factory page read it, so before `/factory` has been opened once in a
-  session the button carries no number.
+- **Items arrive two ways only:** from a chat with `factory_add` (after you answer its card) and
+  from `n` on the floor. They are kept on this machine and are still there next launch.
+- **Chips and stages can be set; nothing launches.** On your own floor `t c e`, `w`, `1-9`, `s`
+  and `d` change an item, and no key launches, steers, answers, signs off or sends back. Those
+  verbs work only on the made-up moving floor, which needs a development build made with
+  `-tags factorymock` and started with `CODEAF_FACTORY_MOCK=1`.
+- **No repository is connected.** No GitHub, GitLab or Linear; a repo on the floor is only a
+  name, so no item arrives from one.
+- **Nothing posts anywhere.** No comment, label, pull request or issue on any service.
+- **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage
+  says `the stage's conversation opens here once streams are conversations`.
+- **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
+- **The foreman does not open yet.** There is no conversation with the factory itself.
+- **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
+  in place of yours, with no verbs.
+- **Over `--host`** the page draws `nothing connected yet`.
+- **`Factory ? N` on the tab bar appears only after the first open** of `/factory`.
+
+## where factory items are saved
+
+Factory items are saved on this machine, in the v3 factory folder under the codeaf home:
+`~/.codeaf/v3/factory`, or `v3/factory` under `CODEAF_HOME` when that is set. Each item is one
+small file named by its number, such as `1.json`, and a change rewrites that file. They are not
+in any repository and not on any server; nothing is posted, synced or uploaded. A chat's
+`factory_add` and the page's `n` write to the same folder, so an item added from a chat is a row
+on the floor straight away. Deleting the folder empties the floor.
 
 ## the Factory button on the tab bar
 
