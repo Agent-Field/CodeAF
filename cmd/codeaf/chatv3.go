@@ -378,6 +378,15 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// Interactive: there is a surface, and it answers (internal/tui3's
 	// consent.go). This is the ONLY path that sets it.
 	cfg.AskConsent = true
+	// AND THE FACTORY FLOOR IS OPENED ONCE, HERE, for both of its readers: the
+	// page below draws it and the chat's `factory_add` writes into it, so a yes
+	// on the card is a row on the floor the same moment (factory.go). It is set
+	// on this path and no other because the tool holds its call open for a
+	// person's answer; --once returned above, and a task node or a firing never
+	// copies this config. Conversations this window opens later inherit it from
+	// the boot launch ([v3Seam.launch]).
+	floor := v3Factory()
+	cfg.Factory = factoryDoor(floor)
 	// AND THAT SURFACE HOLDS EVERY STANDING LANE, which is a second fact and not
 	// the same one: a design card, a subharness intake card and an adaptive
 	// run's fuel gate each arrive on a subscription opened on the agent itself
@@ -559,10 +568,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// pause and stop keys, and /status's keeping-watch line, all off the
 		// same store the conversation proposes into (chatv3_standing.go).
 		Standing: v3StandingSeam(cfg.Standing),
-		// The factory page's one door. It is the zero seam on every launch until
-		// an engine stands behind it, and a still fixture when
-		// CODEAF_FACTORY_FIXTURE=1 (factory.go).
-		Factory: factorySeam(),
+		// The factory page's one door: the person's own floor over the store
+		// opened above, the zero seam when that store could not be opened, and
+		// the mock or a still fixture when one is switched on, with this
+		// workspace as the repo new work lands on when the floor has none yet
+		// (factory.go).
+		Factory: factoryHere(factorySeam(floor), workspace),
 		Fresh: func() (tui3.Agent, string, error) {
 			conv, err := seam.start("")
 			if err != nil {
