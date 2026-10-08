@@ -38,6 +38,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can you do", "what-i-can-do"},
 		{"how do I connect github to the factory floor", "factory"},
 		{"which github repositories does the factory watch", "factory"},
+		{"I watched repos but the floor is empty", "factory"},
+		{"what should I do after connecting github", "factory"},
 		{"how do I make this repo always run a security review", "factory"},
 		{"how do I talk through a factory item before I launch it", "factory"},
 		{"can the chat skip review on one factory item", "factory"},
@@ -3909,6 +3911,42 @@ func TestWhyNothingArrivedAfterWatchingReachesConnectingGitHub(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%q does not reach factory · connecting github; it reached %v", asked, where)
+		}
+	}
+}
+
+// THE FIRST READ IS SAID (owner screenshot, 2026-10-08): right after ticking
+// three repositories in `R` the floor said only what arrives there, and the
+// person asked what to do from here. The question reaches the section that
+// names the floor's three sentences in the code's own spelling.
+func TestTheFirstReadQuestionsReachTheFloorsThreeSentences(t *testing.T) {
+	says := []string{
+		"watching 3 repositories · reading them now",
+		"⠋ reading Agent-Field/CodeAF · 1 of 3",
+		"reading the repositories you watch · rows stand here as issues and pull requests arrive",
+		"nothing open in 3 repositories · github polls every minute · n adds work by hand",
+		"nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected",
+	}
+	for _, asked := range []string{
+		"I watched repos but the floor is empty",
+		"what should I do after connecting github",
+		"I selected repositories and see no issues or loading",
+	} {
+		reached := false
+		for _, section := range Chat().Search(asked, DefaultResults) {
+			if section.Page != "factory" || !strings.Contains(section.Title, "after connecting github") {
+				continue
+			}
+			reached = true
+			body := strings.Join(strings.Fields(section.Body), " ")
+			for _, needle := range says {
+				if !strings.Contains(body, needle) {
+					t.Errorf("%q reached %q but its body omits %q", asked, section.Title, needle)
+				}
+			}
+		}
+		if !reached {
+			t.Errorf("%q does not reach the after-connecting-github section", asked)
 		}
 	}
 }

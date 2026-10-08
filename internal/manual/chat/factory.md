@@ -10,7 +10,8 @@ tab bar, third after `Home` and `Chats`. `esc` goes back to the conversation.
 On this machine the page reads your own factory floor: the items you made with `n` on the page
 or added from a chat, kept under the codeaf home (see where factory items are saved). Until the
 first one arrives the floor draws one dim line under the handover,
-`work arrives here from chat, from n, and from the repositories you connect`, and `n new` still
+`work arrives here from chat, from n, and from the repositories you connect` (or, with
+repositories watched, what their read is doing; see after connecting github), and `n new` still
 works. Only when that floor cannot be opened, or over `--host` or `--at` to another machine,
 does the page draw
 `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`.
@@ -312,7 +313,9 @@ ask a question and the landed items waiting for your sign-off,** so `? 2 waiting
 question and one proof sheet; the full strip's `? 2 waiting on you` and the tab bar's `? 2`
 count the same, and `nothing waits on you` means neither. A part whose count is zero is
 left off; a narrow window drops parts from the right. While a source is being read the last part
-says `github · ⠋ polling`, and while every item is read again, `⠋ refreshing 8 items · 3 done`.
+says where the read is, `⠋ reading Agent-Field/CodeAF · 1 of 3`, or `github · ⠋ polling` when
+the source does not say; while every item is read again, `⠋ refreshing 8 items · 3 done`. A
+floor with nothing on it while a read is out shows that part alone, never `quiet`.
 
 `h` switches to the four-row strip and back, and the choice is remembered in `factory.json` in
 the codeaf home, beside the split:
@@ -589,7 +592,8 @@ spinner that moves is work still going:
 - **`U` reads every item again, and asks first:** `re-read 8 items · ~$0.004? [y] go · [n] not
   now` stands at the bottom of the rows. `y` goes, `n` or `esc` does not. While it runs the
   handover says `⠋ refreshing 8 items · 3 done`.
-- **A source being read:** the handover says `github · ⠋ polling`, then `polled 14s ago`.
+- **A source being read:** the handover says `⠋ reading Agent-Field/CodeAF · 1 of 3` (or
+  `github · ⠋ polling` when the source does not say where it is), then `polled 14s ago`.
 - **A key waiting on its answer:** `T` says `⠋ opening #1's conversation…`, `b` says
   `⠋ banking…`, saving the repositories or the recipe says `⠋ saving…`, and `R` says
   `⠋ asking gh…`, each until the answer arrives.
@@ -813,6 +817,32 @@ The floor reads open issues and open pull requests from the GitHub repositories 
 - **Nothing is ever written to GitHub by itself.** The poll only reads: no comment, label,
   close or pull request is made by it.
 
+## after connecting github — I selected repositories but see no issues and nothing loading, what do I do now
+
+Nothing: once you watch repositories the floor reads them for you, starting the moment you save
+with `R`, and it says the read is loading while it runs. The bottom line says
+`watching 3 repositories · reading them now`, and from then until rows stand the floor says
+which of three things is true, one sentence each:
+
+- **The first read is under way.** The handover's line says where it is,
+  `⠋ reading Agent-Field/CodeAF · 1 of 3`, and under it the floor says
+  `reading the repositories you watch · rows stand here as issues and pull requests arrive`.
+  It does not say `quiet` while a read is out: quiet means nothing is happening and nothing
+  happened. Each open issue and pull request becomes a row as its repository is read.
+- **The read is done and nothing is open.** The floor says
+  `nothing open in 3 repositories · github polls every minute · n adds work by hand`: the
+  repositories you watch have no open issue or pull request. A new one arrives within a minute of
+  being opened on GitHub, and `n` makes an item by hand meanwhile.
+- **Nothing is connected.** The page says
+  `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`;
+  see connecting github.
+
+A floor with a source but no watched repository says
+`work arrives here from chat, from n, and from the repositories you connect`. With the four-row
+handover (`h`) the facts row carries the same progress in the source's own clause,
+`github · ⠋ reading Agent-Field/CodeAF · 1 of 3`, and the shift row says
+`nothing happened while you were away` without `quiet` while the read is out.
+
 ## what github gives an item — comments, changed files, check runs, its page
 
 Each GitHub item on the floor carries, beside its row's words:
@@ -859,8 +889,10 @@ that is not. Watched repositories GitHub no longer lists stay at the top so you 
 
 - `↑` `↓` walk, `space` ticks or unticks, `/` filters by name, `enter` saves, `esc` clears the
   filter and then closes without saving: `↑↓ walk · space watch · / filter · enter save · esc cancel`.
-- Saving writes `repos.json` and says `watching 3 repositories · github polls every minute`
-  (or `watching no repositories · the floor keeps what chat and n bring`).
+- Saving writes `repos.json`, starts the first read and says
+  `watching 3 repositories · reading them now`
+  (or `watching no repositories · the floor keeps what chat and n bring`); see after connecting
+  github for what the floor says while the read runs.
 - **With no GitHub token** `R` asks first. When `gh auth status` answers within 3 seconds it asks
   `connect github: gh is logged in as <login>, use it? [y]` (`y use gh · n a token instead ·
   esc not now`); otherwise it opens a row `github token ›` whose words are drawn as dots. A yes

@@ -188,7 +188,7 @@ func TestFactoryPickerRowsToggleSaveAndCancel(t *testing.T) {
 	if a.fp.pick != nil {
 		t.Fatal("the picker stayed after saving")
 	}
-	if a.pageMsg != "watching 2 repositories · github polls every minute" {
+	if a.pageMsg != "watching 2 repositories · reading them now" {
 		t.Fatalf("note line = %q", a.pageMsg)
 	}
 
