@@ -149,6 +149,24 @@ type Seam struct {
 	// THIS MACHINE ALREADY KNOWS A FOLDER FOR IS NEVER CLONED AGAIN: the door
 	// answers that folder.
 	Clone func(ctx context.Context, repo string) (dir string, err error)
+
+	// THE FIRST OFFER OF A RECIPE FILE: a repository with no
+	// `.codeaf/factory.md` is asked once, when its first item lands, whether
+	// to write one so the team shares it. Three doors, one offer:
+	//
+	// RecipeOffer says whether repo is owed the offer: this machine knows its
+	// checkout, the checkout has no recipe file, and the offer was never put
+	// away. A repository with no known checkout is owed nothing, because there
+	// is nowhere to write.
+	RecipeOffer func(ctx context.Context, repo string) (due bool, err error)
+	// WriteRecipe writes the recipe the floor runs for repo today (the
+	// default one, since there is no file) into its checkout's
+	// `.codeaf/factory.md`, and answers the branch the checkout stands on, ""
+	// when that is not a branch. A file already there is never written over.
+	WriteRecipe func(ctx context.Context, repo string) (branch string, err error)
+	// RecipeNotNow puts the offer away for repo for good: the no is kept by
+	// the store, so it is asked once.
+	RecipeNotNow func(repo string) error
 }
 
 // Has says whether a door exists, by the door's name: the field's name in
@@ -229,6 +247,12 @@ func (s Seam) Has(door string) bool {
 		return s.Open != nil
 	case "clone":
 		return s.Clone != nil
+	case "recipeoffer":
+		return s.RecipeOffer != nil
+	case "writerecipe":
+		return s.WriteRecipe != nil
+	case "recipenotnow":
+		return s.RecipeNotNow != nil
 	}
 	return false
 }

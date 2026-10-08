@@ -223,6 +223,25 @@ const (
 	wordNineStagesAlready = "the run has nine stages already"
 )
 
+// The words of a stage the recipe fixes (factory_stagefixed.go): the refusal
+// every key on the floor says for it, after the stage's name.
+const (
+	wordFixedByRecipe       = "is fixed by the recipe"
+	wordChangeTheRecipeFile = "change " + factory.RecipeFile + " to change it"
+)
+
+// The first offer of a recipe file (factory_recipeoffer.go): a repository with
+// no `.codeaf/factory.md` whose first item lands is asked once whether to
+// write one, at the bottom of the right column where the habit offer stands.
+const (
+	wordNoRecipe       = "no recipe in"
+	wordYet            = "yet"
+	wordWriteRecipeAsk = "write the recipe into the repo so the team shares it?"
+	wordWriteIt        = "write it"
+	wordNotNow         = "not now"
+	wordRecipeWritten  = "recipe written"
+)
+
 // The `?` sheet's group names, in the order the sheet draws them.
 const (
 	wordGroupDo   = "do"
