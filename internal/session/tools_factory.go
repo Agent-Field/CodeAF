@@ -142,6 +142,11 @@ func (a *Agent) factoryTools() []bare.Tool {
 	if a.config.mayItem() {
 		tools = append(tools, a.factoryItemTool())
 	}
+	// `factory_run` (tools_factory_run.go), the manager's pen on its item's
+	// stages, rides on a fourth door, absent on the same law.
+	if a.config.mayRun() {
+		tools = append(tools, a.factoryRunTool())
+	}
 	return tools
 }
 

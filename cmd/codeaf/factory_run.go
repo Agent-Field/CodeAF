@@ -98,7 +98,7 @@ func startFactoryRunner(st *store.Store, workspace, profileDir string, parent se
 			if !ok {
 				return false
 			}
-			r := buildFactoryRunner(st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent))
+			r := buildFactoryRunner(st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent), factoryShapeTurns(st, workspace, profileDir, parent))
 			// AN ASK THE PREVIOUS OWNER NEVER ANSWERED IS NOT CARRIED OUT NOW:
 			// its window has already said nobody answered.
 			mb := st.Mailbox()
@@ -167,7 +167,7 @@ func tryFactoryRunLock(st *store.Store) (*os.File, bool) {
 // `factory run` row beside them would count every dollar twice. So the money
 // is handed no ledger: what a round spent goes on the item (its spend, its
 // cap, today's rail) and nowhere else.
-func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker) *factoryrun.Runner {
+func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker factoryrun.ConversationMaker, shape *shapeTurns) *factoryrun.Runner {
 	dirs := factoryRepoDirs(st, workspace)
 	recipe := func(repo string) factory.Recipe {
 		return factoryItemRecipe(dirs, factory.Item{Repo: repo})
@@ -181,7 +181,7 @@ func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker fac
 	// branch before it opens the pull request.
 	workdirs := factoryWorkdirs(st)
 	git := factoryrun.ExecGit{}
-	return factoryrun.New(factoryrun.Options{
+	opts := factoryrun.Options{
 		Store: st,
 		Exec: map[factory.StageKind]factoryrun.Executor{
 			factory.StageChat:  factoryChatStage(st, profileDir, factoryrun.NewChatExecutor(maker)),
@@ -213,7 +213,15 @@ func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker fac
 		// stage, and listened to for the brief, the steer and an answer.
 		Manager: managerMaker(st, workspace, profileDir),
 		Talk:    sessionTalk{},
-	})
+	}
+	// AND THE MANAGER SHAPES THE RUN: one turn of its conversation at launch,
+	// before the first stage, and one on each thing the person says during
+	// the run (factory_shape.go). Nil shapes nothing; the recipe stands.
+	if shape != nil {
+		opts.Shape = shape.Shape
+		opts.Reshape = shape.Reshape
+	}
+	return factoryrun.New(opts)
 }
 
 // factoryWorkdirs is the items' worktrees under the factory folder's `work`.

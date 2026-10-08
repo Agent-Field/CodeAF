@@ -46,22 +46,40 @@ import (
 //
 // The conversation's belt is every other conversation's on this launch: the
 // factory tools, and `factory_item` beside them ([itemDoor]), which is how the
-// conversation proposes a change to the item — its stages, ask me at, budget, thinking,
-// or a note for its stages — and the person's key makes it. THE CONVERSATION IS
-// THE ITEM'S HUB, and the brief says so: the model is told it may change the
-// item through the card, leave notes the stages will read, and that the stages
-// will report into this conversation once they run.
+// conversation proposes a change to the item — ask me at, budget, thinking, or a
+// note for its stages — and the person's key makes it; and `factory_run` beside
+// that ([runDoor]), the manager's own pen on the run's stages, which raises no
+// card. THE CONVERSATION IS THE MANAGER OF THE RUN, and its brief is the
+// owner's five blocks ([talkBlocks]) followed by the item's facts.
 
 // factoryTeamName is the one team every item's team sits under.
 const factoryTeamName = "factory"
 
-// talkClosing is the brief's last sentence, said once so the brief and the
-// manual quote the same words.
-const talkClosing = "This is the item's own conversation on the factory floor. Nothing here runs it; the person does that on the floor."
+// THE MANAGER'S BRIEF, the owner's five blocks (2026-10-08), word for word:
+// who it is, what it knows, what it does, how it shapes the run, and how it
+// speaks. The manual quotes them (internal/manual/chat/factory.md); a block
+// respelled here is respelled there in the same change.
+const (
+	talkBlockWho   = "You are the manager of %s in %s."
+	talkBlockKnow  = "You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here."
+	talkBlockDo    = "You do: shape the run, start it when asked, report each stage here, answer the person, and ask only when ask-me-at says so."
+	talkBlockShape = "Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof or a gate stage. Nothing posts outward before ask-me-at."
+	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate."
+)
 
-// talkManager is the brief's sentence that makes the conversation the item's
-// manager, said once so the brief and the manual quote the same words.
-const talkManager = "You are the manager of this item. The runner reports each stage here. What the person says here is the brief before a run and the steer during one; use factory_item to change the item. While the run waits on a question, a yes or a no the person types here answers it, and the runner's next line here says so."
+// talkBlocks is the five blocks for one item, the ref and the repository
+// filled in.
+func talkBlocks(it factory.Item) []string {
+	repo := strings.TrimSpace(it.Repo)
+	if repo == "" {
+		repo = "this repository"
+	}
+	return []string{fmt.Sprintf(talkBlockWho, it.Ref(), repo), talkBlockKnow, talkBlockDo, talkBlockShape, talkBlockSay}
+}
+
+// talkItemDoor is the brief's one sentence about `factory_item`, which keeps
+// what is not the stages: the budget, ask me at, thinking and notes.
+const talkItemDoor = "factory_item changes the budget (its field is cap), ask me at (its field is gate), the thinking of every stage (its field is effort) and notes for the stages, behind a card the person answers. Its item field is %d; never say that number, call the item %s."
 
 // talkMaker is the Talk door's maker for this machine's floor: st is the store
 // the item lives in, workspace the window's own folder, and profileDir the
@@ -257,8 +275,11 @@ func factoryItemRecipe(dirs func(string) string, it factory.Item) factory.Recipe
 	return factory.DefaultRecipe()
 }
 
-// talkBrief is the opening note: the item as the floor knows it, then the
-// sentence that says what this conversation is and is not.
+// talkBrief is the opening note: the marker, the manager's five blocks
+// ([talkBlocks]), and then the item as the floor knows it: its name and
+// facts, ask me at, budget and thinking, its body, what codeaf read of it,
+// its stages with their asks and loops, the recipe's policy and habits, the
+// notes for its stages, and the one sentence about `factory_item`.
 //
 // EVERY LINE IS LEFT OUT WHEN THERE IS NOTHING TO SAY (the emptiness law): an
 // item with no body, no author, no cap or no read says nothing about them.
@@ -270,10 +291,15 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 			b.WriteByte('\n')
 		}
 	}
+	gap := func() { b.WriteByte('\n') }
 	// THE MARKER IS THE FIRST LINE, and a surface draws the item's live card
 	// in its place (internal/tui3's factoryitemcard.go), so the person sees the
 	// item where the model sees its brief.
 	line(talkMarker(it))
+	for _, block := range talkBlocks(it) {
+		line(block)
+	}
+	gap()
 	line(talkTeamName(it))
 	var facts []string
 	add := func(label, value string) {
@@ -285,6 +311,7 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	add("author ", it.Author)
 	add("tier ", string(it.Tier))
 	line(strings.Join(facts, " · "))
+	staged := session.ItemStaged(it, recipe)
 	// THE GATE AND THE CAP ARE SAID AS WHAT THEY ARE, `ask me at pull request · budget $5`,
 	// and the labels on a line of their own: the conversation is read by a
 	// model and by a person, and neither knows a "chip" as anything but a
@@ -301,6 +328,9 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	if it.Cap > 0 {
 		add2(&set, "budget $"+strconv.FormatFloat(it.Cap, 'f', -1, 64))
 	}
+	if e := session.ItemEffort(staged); e != "" {
+		add2(&set, "thinking "+e)
+	}
 	for _, label := range it.Labels {
 		add2(&labels, label)
 	}
@@ -311,27 +341,35 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 		line("labels: " + strings.Join(labels, " · "))
 	}
 	if body := strings.TrimSpace(it.Body); body != "" {
-		b.WriteByte('\n')
+		gap()
 		line(body)
-		b.WriteByte('\n')
+		gap()
 	}
-	stages := it.Stages
-	if len(stages) == 0 {
-		stages = recipe.For(it.Kind)
+	if read := strings.TrimSpace(it.Triage.Read); read != "" {
+		line("codeaf read it: " + read)
 	}
-	if lines := factory.StageLines(stages); len(lines) > 0 {
+	if lines := factory.StageLines(staged.Stages); len(lines) > 0 {
 		line("stages:")
 		for _, l := range lines {
 			line(l)
 		}
 	}
-	line(it.Triage.Read)
+	if len(recipe.Policy) > 0 {
+		line("policy:")
+		for _, p := range recipe.Policy {
+			line("- " + p)
+		}
+	}
+	if len(recipe.Habits) > 0 {
+		line("habits:")
+		for _, h := range recipe.Habits {
+			line("- " + h)
+		}
+	}
 	for _, note := range it.Notes {
 		line("note for the stages: " + note)
 	}
-	line(fmt.Sprintf("Call this item %s in everything you say; the person knows it by that name. This conversation is %s's hub: through factory_item you can change its stages, where the run asks the person (the person calls it \"ask me at\"; the tool's field is gate), its budget (field cap) and its thinking (field effort), and leave notes its stages will read. The floor id for factory_item is %d, and it goes in the tool's item field only, never in your words. Nothing changes until the person presses a key on the card. Once %s runs, its stages will report into this conversation.", it.Ref(), it.Ref(), it.ID, it.Ref()))
-	line(talkManager)
-	line(talkClosing)
+	line(fmt.Sprintf(talkItemDoor, it.ID, it.Ref()))
 	return strings.TrimSpace(b.String())
 }
 

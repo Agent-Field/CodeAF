@@ -83,6 +83,11 @@ type loopCtl struct {
 	askMu sync.Mutex
 	// reverify says the control runs the checks again, holding no bench.
 	reverify bool
+	// launch says the control is a run that Launch began, which the manager
+	// shapes before its first stage (shape.go), and said is what the person
+	// typed into the manager conversation before it, which that turn is told.
+	launch bool
+	said   []string
 	// hearMu keeps one reading of the manager conversation at a time
 	// (manager.go). phase, phaseAt and phaseSpent are the phase whose first
 	// round started last, when, and what the item had spent then, for its
@@ -164,7 +169,7 @@ func (r *Runner) Launch(id int) error {
 		return fmt.Errorf("%s is already running", it.Ref())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1}
+	c := &loopCtl{id: id, ctx: ctx, cancel: cancel, steer: make(chan string, 16), answers: make(chan loopAnswer, 1), phase: -1, launch: true}
 	lp.ctls[id] = c
 	lp.results[id] = map[int]factory.StageResult{}
 	lp.notes[id] = nil
@@ -177,10 +182,12 @@ func (r *Runner) Launch(id int) error {
 	talk, unmade := r.manage(it)
 	brief := r.brief(talk, it.Heard)
 	now := r.now()
+	var said []string
 	err = lp.move(c, "", EventQueued, "queued", func(it *factory.Item) error {
 		if err := launchable(*it); err != nil {
 			return err
 		}
+		said = nil
 		if strings.TrimSpace(it.Talk) == "" && talk != "" {
 			it.Talk = talk
 		}
@@ -190,6 +197,7 @@ func (r *Runner) Launch(id int) error {
 			}
 			if words := strings.TrimSpace(h.Words); words != "" {
 				it.Notes = append(it.Notes, words)
+				said = append(said, words)
 			}
 			it.Heard = h.At
 		}
@@ -205,6 +213,7 @@ func (r *Runner) Launch(id int) error {
 		lp.forget(c)
 		return err
 	}
+	c.said = said
 	lp.enqueue(c)
 	return nil
 }
@@ -225,7 +234,9 @@ func launchable(it factory.Item) error {
 
 // loopPhases compiles an item's stages into its phases, in order: a stage
 // that is on and fits the item is a pending phase, and one that does not is
-// left out. A RUN IS ITS STAGES AT LAUNCH; only plan changes the tail.
+// left out. The tail is re-read at each round: what has not started yet is
+// compiled again from the item's stages as they stand then ([tailPhases]), so
+// the manager's edit during a run (shape.go) reaches the stages after it.
 func loopPhases(it factory.Item) []factory.Phase {
 	var out []factory.Phase
 	for _, s := range it.Stages {
@@ -390,12 +401,18 @@ func (lp *floorLoop) drive(c *loopCtl) {
 	}); err != nil {
 		return
 	}
+	// THE MANAGER SHAPES THE RUN FIRST, before any stage and before the
+	// conversation is watched, so its one turn is the only one it takes.
+	if c.launch && !lp.shape(c) {
+		return
+	}
 	if lp.r.opts.Talk != nil {
 		watching := make(chan struct{})
 		defer close(watching)
 		go lp.watchTalk(c, watching)
 	}
 	for {
+		lp.retailTail(c)
 		it, err := lp.r.opts.Store.Get(c.id)
 		if err != nil || it.Stream == nil {
 			return

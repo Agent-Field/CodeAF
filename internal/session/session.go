@@ -1593,6 +1593,12 @@ type Config struct {
 	// is, and never on --once, a task node, --host or --at.
 	FactoryItem ItemDoor
 
+	// FactoryRun is the manager's door onto its item's run
+	// (tools_factory_run.go). NIL IS NO DOOR: `factory_run` is off the belt.
+	// It is set where FactoryItem is, and on the one turn the runner gives an
+	// item's manager to shape its run.
+	FactoryRun RunDoor
+
 	// Stage is the door a factory stage's own conversation reports through
 	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
 	// the belt. Only the factory's runner sets it, on a stage round it opened.
