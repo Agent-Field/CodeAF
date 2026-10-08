@@ -423,6 +423,13 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	// around it: a seam handed only to [openChatV3] is a seam the default road
 	// does not have.
 	options.ConnectCodex = v3CodexConnection(true)
+	// AND THE FACTORY PAGE READS THIS MACHINE'S FLOOR, for the reason the
+	// Codex row above gives: the store is a folder under the codeaf home on
+	// the machine both halves of this road stand on, and a seam handed only to
+	// the in-process door is a page the ordinary launch draws as nothing
+	// connected. The chat's `factory_add` is not on the engine's belt on this
+	// road, so items arrive here from `n` on the floor (factory.go).
+	options.Factory = factoryHere(factorySeam(v3Factory()), welcome.Workspace)
 	if profileDir == settings.ProfileDir {
 		options.Sources = settings.Sources
 	} else {
