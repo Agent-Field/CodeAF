@@ -264,8 +264,9 @@ func (a *app) factoryStageSelect(at int) {
 // off when every claim was shown, and the send-back row otherwise. A STAGE
 // THAT RAN AS A CONVERSATION IS A ROOM, and `enter` walks into it
 // (factory_run.go's [app.factoryOpenRoom]); every other stage says why it has
-// none on the pane's action line. `enter` on the issue, the talk row and the
-// log does nothing here.
+// none on the pane's action line. `enter` on the issue and on the talk row
+// opens the item's own conversation, as `T` does ([app.factoryItemEnter]);
+// `enter` on the log does nothing here.
 //
 // IT STANDS ASIDE for the map, the tab bar's cursor, the words box and a
 // verb's typing row, each of which has the keyboard while it is up.
@@ -314,10 +315,43 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
+// factoryIssueDoor is what `enter` on the issue row does on this seam.
+type factoryIssueDoor int
+
+const (
+	factoryIssueNone  factoryIssueDoor = iota // nothing to open yet
+	factoryIssueTalk                          // the item's own conversation, as `T`
+	factoryIssueForge                         // the item's page on github, as `g`
+)
+
+// factoryIssueEnter is the door `enter` on the issue row opens: the Talk door
+// when the seam has it, else `g`'s door when the item has a page on its forge,
+// else none. The hint and the key both ask it, so they cannot disagree.
+func (a *app) factoryIssueEnter(it factory.Item) factoryIssueDoor {
+	switch {
+	case a.factory.Has("talk"):
+		return factoryIssueTalk
+	case it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Has("open"):
+		return factoryIssueForge
+	}
+	return factoryIssueNone
+}
+
+// factoryNothingToOpen is the action line's sentence for `enter` on the issue
+// row when the seam has neither the Talk door nor `g`'s: `r runs it` only
+// where `r` does.
+func (a *app) factoryNothingToOpen(it factory.Item) string {
+	words := "nothing to open yet"
+	if a.factoryCanRun() && (it.State == factory.StateNew || it.State == factory.StateDismissed) {
+		words += rowSep + "r runs it"
+	}
+	return words
+}
+
 // factoryItemEnter is `enter` on the item page, and a double press on a row of
-// its rail: the proof of a landed item answers as its sheet, a stage with a
-// room opens it, every other stage says why it has none, and the issue, the
-// talk row and the log do nothing here.
+// its rail: the issue and the talk row open the item's own conversation, the
+// proof of a landed item answers as its sheet, a stage with a room opens it,
+// every other stage says why it has none, and the log does nothing here.
 func (a *app) factoryItemEnter() tea.Cmd {
 	it, ok := a.factoryCursorItem()
 	if !ok {
@@ -328,6 +362,24 @@ func (a *app) factoryItemEnter() tea.Cmd {
 		return nil
 	}
 	r := rows[a.fp.stage]
+	// `ENTER` ON THE ISSUE (AND ON THE TALK ROW) OPENS THE ITEM'S OWN
+	// CONVERSATION, exactly as `T` does (factory_talk.go): a new item is
+	// started by talking it through, and `enter` is the key a person tries
+	// first. With no Talk door it opens the item on github through `g`'s door,
+	// and with neither the action line says there is nothing to open yet.
+	if r.kind == factoryPageIssue || r.kind == factoryPageTalk {
+		switch a.factoryIssueEnter(it) {
+		case factoryIssueTalk:
+			a.pageMsg = ""
+			return a.factoryTalk(it)
+		case factoryIssueForge:
+			a.pageMsg = ""
+			return a.factoryOpenForge(it)
+		}
+		a.fp.said = true
+		a.touch()
+		return nil
+	}
 	if r.kind != factoryPageStage && r.kind != factoryPageProof {
 		return nil
 	}
@@ -962,13 +1014,23 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	if a.fp.scrollMax > 0 {
 		extra = append(extra, "J K scroll")
 	}
-	return factoryPaneLadder([][]string{shown}, a.factoryPageAction(it, measure, extra...), room)
+	return factoryPaneLadder([][]string{shown}, a.factoryIssueAction(it, measure, extra...), room)
+}
+
+// factoryIssueAction is the action line under the issue and the talk row: the
+// item's keys, or, after an `enter` that had nothing to open, the sentence
+// that says so, until the cursor moves or another key is pressed.
+func (a *app) factoryIssueAction(it factory.Item, measure int, extra ...string) string {
+	if a.fp.said {
+		return a.pal.dim(fit(a.factoryNothingToOpen(it), measure))
+	}
+	return a.factoryPageAction(it, measure, extra...)
 }
 
 // factoryTalkPane is the item's conversation as the item page shows it: its
 // row, and the item's keys.
 func (a *app) factoryTalkPane(it factory.Item, measure, room int) []string {
-	return factoryPaneLadder([][]string{{a.factoryTalkRow(it, measure)}}, a.factoryPageAction(it, measure), room)
+	return factoryPaneLadder([][]string{{a.factoryTalkRow(it, measure)}}, a.factoryIssueAction(it, measure), room)
 }
 
 // factoryStagePane is the stage at views[at] as exactly room lines of at most

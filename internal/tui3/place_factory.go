@@ -246,13 +246,25 @@ var factoryVerbDrop = map[string]int{
 }
 
 // factoryItemHint is the hint line while the item page is open: the habit
-// offer's keys when one is drawn, the stage walk, `enter` only where it acts
-// (a stage with a room, which it walks into, and the proof of a landed item,
-// whose sheet it is), the item's verbs, and the way back to the floor. A
+// offer's keys when one is drawn, `enter talk` on the issue row, the stage
+// walk, `enter` only where it acts (a stage with a room, which it walks into,
+// and the proof of a landed item, whose sheet it is), the item's verbs, and the way back to the floor. A
 // stage's `enter` that only says why it has no room is not named, because a
 // key that opens nothing is not a verb.
 func (a *app) factoryItemHint(it factory.Item, head []string) string {
-	parts := append(append([]string{}, head...), "↑↓ stages")
+	parts := append([]string{}, head...)
+	// ON THE ISSUE ROW `enter` IS THE FIRST CLAUSE: it opens the item's own
+	// conversation, the word `T talk` already uses ([app.factoryItemEnter]),
+	// or its page on github where there is no Talk door.
+	if a.factoryOnIssueRow(it) {
+		switch a.factoryIssueEnter(it) {
+		case factoryIssueTalk:
+			parts = append(parts, "enter talk")
+		case factoryIssueForge:
+			parts = append(parts, "enter github")
+		}
+	}
+	parts = append(parts, "↑↓ stages")
 	if _, room := a.factoryRoomRow(it); room {
 		parts = append(parts, "enter conversation")
 	} else if a.factoryOnProof(it) {
@@ -265,6 +277,20 @@ func (a *app) factoryItemHint(it factory.Item, head []string) string {
 	}
 	parts = append(parts, a.factoryVerbHint(it)...)
 	return strings.Join(append(parts, "esc floor"), " · ")
+}
+
+// factoryOnIssueRow says whether the item page's rail stands on the issue or
+// the talk row, the rows whose `enter` opens the item's own conversation.
+func (a *app) factoryOnIssueRow(it factory.Item) bool {
+	if !a.fp.open {
+		return false
+	}
+	rows := a.factoryItemRows(it)
+	if a.fp.stage < 0 || a.fp.stage >= len(rows) {
+		return false
+	}
+	k := rows[a.fp.stage].kind
+	return k == factoryPageIssue || k == factoryPageTalk
 }
 
 // press is a press on a row: the cursor lands on the item drawn there, and

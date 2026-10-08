@@ -266,8 +266,10 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 		if c.stage != "issue" && c.stage != "proof" && !said {
 			t.Fatalf("enter on item %d's stage did not say what it will open", c.id)
 		}
-		if c.stage == "issue" && said {
-			t.Fatalf("enter on item %d's issue said a stage's note", c.id)
+		// `enter` on the issue opens the item's conversation (or its github
+		// page), and says there is nothing to open only where neither door is.
+		if c.stage == "issue" && said != (a.factoryIssueEnter(it) == factoryIssueNone) {
+			t.Fatalf("enter on item %d's issue: said %v with door %v", c.id, said, a.factoryIssueEnter(it))
 		}
 		drive(t, a, key("esc"))
 		if a.fp.open || !a.at(pageFactory) || a.fp.cursor != was {
