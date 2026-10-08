@@ -465,15 +465,30 @@ func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 // factorySaveRepos is `enter` on the picker: the ticked repositories are the
 // watched ones now, and the note line says how many and that they are being
 // read.
+//
+// FROM THE SAVE UNTIL THE FLOOR SHOWS THE READ, THE FLOOR SAYS IT IS READING
+// (recording, 2026-10-08: the foot said `reading them now` while the head
+// above still said quiet for the one to three seconds before the next beat).
+// A non-empty save stands [factoryPage.readingSince] and reads the floor every
+// second until it clears ([app.factoryReadSoon]); an empty one owes no read,
+// so it stands nothing.
 func (a *app) factorySaveRepos() tea.Cmd {
 	list := a.fp.pick.watching()
+	saved := a.now()
 	a.fp.act.doing = "saving…"
-	return a.factoryDo(func(s factory.Seam) error { return s.SetRepos(list) }, func(err error) {
+	return a.factoryDoThen(func(s factory.Seam) error { return s.SetRepos(list) }, func(err error) tea.Cmd {
 		if err != nil {
-			return
+			return nil
 		}
 		a.fp.pick = nil
 		a.factorySay(factoryWatchingWords(len(list)))
+		if len(list) == 0 {
+			return nil
+		}
+		a.fp.readingSince = saved
+		a.fp.readingGen++
+		a.factoryFoldFirstRead()
+		return a.factoryReadSoonArm()
 	})
 }
 
@@ -485,6 +500,71 @@ func factoryWatchingWords(n int) string {
 		return "watching no repositories · the floor keeps what chat and n bring"
 	}
 	return "watching " + itoa(n) + " " + factoryPlural(n, "repository", "repositories") + rowSep + factoryReadingNowWords
+}
+
+// ── the first read, from the save ───────────────────────────────────────────
+
+// factoryFirstReadWords is the handover's fresh clause, after the spinner,
+// from the picker's save until the floor shows the read.
+const factoryFirstReadWords = "reading the repositories you watch"
+
+// factoryFirstReadWait is how long a save's reading moment stands with no
+// snapshot showing the read. A poller that never comes does not spin forever:
+// past it the floor's own words return.
+const factoryFirstReadWait = 30 * time.Second
+
+// factoryReadSoonEvery is the re-read's beat while the reading moment stands,
+// quicker than the floor's own ([homeEvery]) and armed only by a save.
+const factoryReadSoonEvery = time.Second
+
+// factoryReadSoonMsg is one beat of that re-read, carrying the save it is for.
+type factoryReadSoonMsg struct{ gen int }
+
+// factoryFirstReading says whether the save's reading moment stands now.
+func (a *app) factoryFirstReading() bool {
+	at := a.fp.readingSince
+	return !at.IsZero() && a.now().Sub(at) < factoryFirstReadWait
+}
+
+// factoryFoldFirstRead clears the reading moment once the snapshot shows the
+// read is known: a source mid-poll (its own clause says where), a source that
+// answered after the save, or any item on the floor.
+func (a *app) factoryFoldFirstRead() {
+	at := a.fp.readingSince
+	if at.IsZero() {
+		return
+	}
+	snap := a.fp.snap
+	known := len(snap.Items) > 0
+	for _, src := range snap.Sources {
+		if src.Polling || src.Polled.After(at) {
+			known = true
+		}
+	}
+	if known || !a.factoryFirstReading() {
+		a.fp.readingSince = time.Time{}
+	}
+}
+
+// factoryReadSoonArm arms the next one-second re-read for the save standing.
+func (a *app) factoryReadSoonArm() tea.Cmd {
+	gen := a.fp.readingGen
+	return surfaceTick(factoryReadSoonEvery, func(time.Time) tea.Msg { return factoryReadSoonMsg{gen: gen} })
+}
+
+// factoryReadSoon is that beat, arriving: the floor is read and the beat
+// re-armed while the reading moment stands, and nothing once it has cleared,
+// lapsed or been replaced by a later save.
+func (a *app) factoryReadSoon(gen int) tea.Cmd {
+	if gen != a.fp.readingGen || a.fp.readingSince.IsZero() {
+		return nil
+	}
+	if !a.factoryFirstReading() {
+		a.fp.readingSince = time.Time{}
+		a.touch()
+		return nil
+	}
+	return tea.Batch(a.factoryRead(), a.factoryReadSoonArm())
 }
 
 // The picker's fact columns, left to right ([factoryPickCols]).

@@ -5322,6 +5322,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// period, re-armed only while one of them is standing (placecounts.go).
 		return a, a.placeBeat(msg.gen)
 
+	case factoryReadSoonMsg:
+		// AND THE FLOOR, FROM THE PICKER'S SAVE UNTIL IT SHOWS THE READ, reads
+		// every second rather than on the three-second beat (factory_settings.go).
+		return a, a.factoryReadSoon(msg.gen)
+
 	case factoryCardPollMsg:
 		// AND THE LIVE ITEM CARDS IN A CONVERSATION HAVE THEIR OWN, reading the
 		// floor every three seconds while one is on screen and stopping the
