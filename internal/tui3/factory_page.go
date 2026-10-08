@@ -123,6 +123,8 @@ type factoryPage struct {
 	typing  bool
 	backlog bool
 	marked  map[int]bool
+	// order is `O`, how rows sit within each section (factory_order.go).
+	order factoryOrder
 
 	// THE LAYOUT'S OWN STATE (factory_item.go), additive like the narrowings.
 	// comfy is `z`, a second line under each row and air between rows; open is

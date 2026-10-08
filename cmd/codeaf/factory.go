@@ -341,6 +341,10 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 	if st == nil {
 		return
 	}
+	// THE CHEAP READ OF NEW ITEMS STARTS BESIDE THE POLL, in the same process
+	// and under the same rule, and only once a key resolves
+	// (factory_triage.go).
+	startFactoryTriage(st)
 	factoryPoll.Do(func() {
 		guard.Go("factory/github-poll", func() {
 			ctx := context.Background()

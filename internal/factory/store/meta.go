@@ -135,14 +135,23 @@ func (st *Store) readMeta() (metaDoc, error) {
 // release when this process may poll now, false when another process on this
 // machine already is. TWO WINDOWS MUST NOT BOTH POLL ONE FLOOR: they would
 // race to create the same forge item twice, and spend the rate limit twice.
-func (st *Store) TryPoller() (release func(), ok bool) {
+func (st *Store) TryPoller() (release func(), ok bool) { return st.tryLock("poll.lock") }
+
+// TryTriager takes the floor's one triage lock without waiting, as
+// [Store.TryPoller] takes the poll's: TWO WINDOWS MUST NOT BOTH READ ONE NEW
+// ITEM, because each read is a model call somebody pays for. It is a lock of
+// its own rather than the poller's, so the process that triages is free to be
+// a different one from the process that polls.
+func (st *Store) TryTriager() (release func(), ok bool) { return st.tryLock("triage.lock") }
+
+func (st *Store) tryLock(name string) (release func(), ok bool) {
 	if st == nil {
 		return func() {}, false
 	}
 	if err := os.MkdirAll(st.root, 0o700); err != nil {
 		return func() {}, false
 	}
-	lock, err := os.OpenFile(filepath.Join(st.root, "poll.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := os.OpenFile(filepath.Join(st.root, name), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return func() {}, false
 	}

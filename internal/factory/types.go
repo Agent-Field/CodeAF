@@ -19,7 +19,11 @@
 // ONE POOL. Money is the item's cap and the day's rail, never a knob per stage.
 package factory
 
-import "time"
+import (
+	"bytes"
+	"encoding/json"
+	"time"
+)
 
 // Kind is what a floor item is. It is a string and open: an issue, a pull
 // request, a red CI run, a chore, a standing order's firing, work a chat split
@@ -129,7 +133,10 @@ func (r Recipe) For(k Kind) []Stage {
 	return r.Stages
 }
 
-// Triage is the cheap read made on arrival.
+// Triage is the cheap read made on arrival (internal/factory/triage): dim
+// facts a person reads, NEVER A DECISION. Nothing in the factory launches,
+// hides, gates or spends because of a triage field; the floor only draws them
+// and orders by them when a person asks it to.
 type Triage struct {
 	Type      string // bug · feat · chore · question · review
 	Size      string // S · M · L
@@ -137,9 +144,54 @@ type Triage struct {
 	Readiness int // 0..100; under 55 the item is thin and wants questions
 	Est       float64
 	DupOf     int
-	Risk      string // low · mid · high
+	// Risk is what the work touches that a person would want to know before it
+	// runs, in short phrases: `touches money`, `touches auth`, `has ui`,
+	// `migration`. Empty is "nothing said", never "safe".
+	Risk      []string
 	Read      string // one sentence
 	Questions []string
+	// Dup is the issue or pull request this item may repeat, as the read wrote
+	// it (`#950`, `acme/api#12`), and "" when it named none.
+	Dup string
+	// Priority is the read's guess at what to take first: 1 first to 5 later,
+	// and 0 when nobody said.
+	Priority int
+	// Reason is the priority's why in at most five words, drawn dim at the
+	// right of a row while the floor is ordered `first`.
+	Reason string
+	// TriagedAt is when the read was made, and stays set on a read that could
+	// not be understood, so ONE ITEM IS NEVER TRIAGED TWICE. Zero is never.
+	TriagedAt time.Time
+}
+
+// UnmarshalJSON reads a triage document, including one written before Risk
+// was a list.
+//
+// AN OLD DOCUMENT MUST NOT EMPTY THE FLOOR. Risk used to be one level word
+// (`low`, `mid`, `high`) and every item on disk carries it, if only as "".
+// Decoding that string into a list would fail the whole document, and the
+// store skips a document it cannot read, so every row written before this
+// field changed shape would vanish. A string is read as no risk said: the old
+// level is not a phrase about what the work touches.
+func (t *Triage) UnmarshalJSON(data []byte) error {
+	type plain Triage
+	var raw struct {
+		plain
+		Risk json.RawMessage
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*t = Triage(raw.plain)
+	t.Risk = nil
+	if r := bytes.TrimSpace(raw.Risk); len(r) > 0 && r[0] == '[' {
+		var list []string
+		if err := json.Unmarshal(r, &list); err != nil {
+			return err
+		}
+		t.Risk = list
+	}
+	return nil
 }
 
 // Repo is a connected repository and the product team that owns it. A

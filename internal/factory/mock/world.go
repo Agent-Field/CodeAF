@@ -16,6 +16,7 @@ package mock
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -279,7 +280,7 @@ func (w *World) genItem(r *factory.Repo, kind factory.Kind, created time.Time) *
 		it.Body = "The last three runs on main failed in the same test. Started after the merge at 02:14."
 		it.Author = "ci"
 		it.Tier = factory.TierOwner
-		it.Triage = factory.Triage{Type: "ci", Size: "S", Area: area, Readiness: 95, Est: 1.5, Risk: "mid", Read: "same test, three runs in a row; a real regression, not a flake"}
+		it.Triage = factory.Triage{Type: "ci", Size: "S", Area: area, Readiness: 95, Est: 1.5, Read: "same test, three runs in a row; a real regression, not a flake"}
 	}
 	w.defaultOrder(it, r)
 	return it
@@ -300,7 +301,9 @@ func (w *World) triage(typ, area string) factory.Triage {
 	default:
 		t.Est = 6 + w.rng.Float64()*10
 	}
-	t.Risk = pickWeighted(w.rng, []string{"low", "mid", "high"}, []float64{0.55, 0.33, 0.12})
+	if risk := pickWeighted(w.rng, []string{"", "has ui", "touches auth"}, []float64{0.55, 0.33, 0.12}); risk != "" {
+		t.Risk = []string{risk}
+	}
 	if w.rng.Float64() < 0.08 {
 		t.DupOf = 100 + w.rng.Intn(1500)
 	}
@@ -354,7 +357,7 @@ func (w *World) defaultOrder(it *factory.Item, r *factory.Repo) {
 		it.Gate, it.Cap = factory.GateShip, 3
 	}
 	switch {
-	case it.Triage.Risk == "high", it.Triage.Area == "auth", it.Triage.Area == "crypto", it.Triage.Area == "billing":
+	case slices.Contains(it.Triage.Risk, "touches auth"), it.Triage.Area == "auth", it.Triage.Area == "crypto", it.Triage.Area == "billing":
 		security = true
 		rounds = max(rounds, 2)
 	}
@@ -404,7 +407,7 @@ func (w *World) newFromWords(r *factory.Repo, words string) (*factory.Item, erro
 	w.nextID++
 	w.nextNum[r.Name]++
 	it := &factory.Item{ID: w.nextID, Repo: r.Name, Num: w.nextNum[r.Name], Kind: factory.KindIssue, Title: c.rest, Body: "Written in the terminal. Not on github yet.", Author: "santosh", Tier: factory.TierOwner, Origin: factory.OriginTerminal, Created: w.now, Changed: w.now, State: factory.StateNew}
-	it.Triage = factory.Triage{Type: factory.GuessType(c.rest), Size: "M", Area: r.Areas[0], Readiness: 70, Est: 4, Risk: "low", Read: "your own words; no triage needed beyond sizing"}
+	it.Triage = factory.Triage{Type: factory.GuessType(c.rest), Size: "M", Area: r.Areas[0], Readiness: 70, Est: 4, Read: "your own words; no triage needed beyond sizing"}
 	w.defaultOrder(it, r)
 	c.apply(it, stageIndex(it.Stages, "write"))
 	w.items = append(w.items, it)

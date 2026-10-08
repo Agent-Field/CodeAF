@@ -161,7 +161,7 @@ func (placeFactory) hint(a *app) string {
 	if len(a.fp.snap.Repos) > 1 {
 		rail = append(rail, "[ ] repo")
 	}
-	rail = append(rail, "A backlog", "z density")
+	rail = append(rail, "A backlog", "z density", a.factoryOrderHint())
 	if a.factory.Has("sleep") {
 		rail = append(rail, "S sleep 8h")
 	}

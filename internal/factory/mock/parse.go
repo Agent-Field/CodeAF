@@ -10,6 +10,7 @@ package mock
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -116,7 +117,7 @@ func Match(q string) func(factory.Item) bool {
 		for _, t := range terms {
 			switch t {
 			case "risky", "risk", "dangerous":
-				if it.Triage.Risk != "high" && it.Triage.Size != "L" && !security {
+				if !slices.Contains(it.Triage.Risk, "touches auth") && it.Triage.Size != "L" && !security {
 					return false
 				}
 			case "cheap", "quick", "small", "easy":

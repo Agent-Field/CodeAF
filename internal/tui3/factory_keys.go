@@ -240,6 +240,13 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 	switch k {
+	case "O", "shift+o":
+		// `O` cycles the floor's order within each section (factory_order.go).
+		if a.fp.open || !a.factoryFloorHas() {
+			return nil, false
+		}
+		a.factoryCycleOrder()
+		return nil, true
 	case "S", "shift+s":
 		if a.factory.Has("sleep") {
 			a.pageMsg = ""
