@@ -71,6 +71,13 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if keeper, ok := st.(ReadCoster); ok && err == nil {
 				snap.LastReadCost, _, _ = keeper.ReadCost()
 			}
+			// WHERE EACH REPOSITORY IS CHECKED OUT is read with the floor, so
+			// `r` can see an item has nowhere to run before it starts one
+			// ([Snapshot.Checkouts]). Only a seam told where repositories are
+			// checked out says anything; one that was not says nothing (nil).
+			if o.dirs != nil && err == nil {
+				snap.Checkouts = localCheckouts(snap.Repos, o.dirs)
+			}
 			return snap, err
 		},
 		New: func(repo, words string) (int, error) {
@@ -168,6 +175,18 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		}
 	}
 	return seam
+}
+
+// localCheckouts is the folder each repository on the floor is checked out
+// in, by its name, leaving out the ones dir does not know. Never nil.
+func localCheckouts(repos []Repo, dir func(repo string) string) map[string]string {
+	out := make(map[string]string, len(repos))
+	for _, r := range repos {
+		if d := strings.TrimSpace(dir(r.Name)); d != "" {
+			out[r.Name] = d
+		}
+	}
+	return out
 }
 
 // LocalOption changes how [LocalSeam] is built.

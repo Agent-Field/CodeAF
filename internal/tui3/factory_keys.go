@@ -104,6 +104,9 @@ type factoryActs struct {
 	// launched is a launch's note the fold still owes, nil when none is
 	// ([app.factoryLaunchNote]).
 	launched *factoryLaunchNote
+	// clone is the question a launch asks when its repository has no
+	// checkout here, nil when none stands (factory_clone.go).
+	clone *factoryCloneAsk
 }
 
 // factoryLaunchNote is a launch whose note waits on the floor's next read:
@@ -287,6 +290,14 @@ func (a *app) factoryOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		return a.factoryRefreshKey(msg.String()), true
 	}
+	// THE CLONE QUESTION HAS IT ON THE SAME TERMS (factory_clone.go).
+	if a.fp.act.clone != nil {
+		switch k := msg.String(); {
+		case k == "tab" || k == "shift+tab" || msg.Key().Mod&tea.ModAlt != 0:
+			return nil, false
+		}
+		return a.factoryCloneKey(msg.String()), true
+	}
 	// `L`'S QUESTION HAS THE KEYBOARD ON THE SAME TERMS (factory_run.go).
 	if a.fp.act.launch != nil {
 		switch k := msg.String(); {
@@ -415,14 +426,10 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 		// `r` RUNS THE ITEM AS IT STANDS: every stage, stopping where its
 		// `ask me at` says ([factoryGateWord]). There is no second run key; `t`
 		// moves the stop (owner decision, 2026-10-08).
+		// AND NEVER WITHOUT A CHECKOUT: the gate asks to clone first
+		// (factory_clone.go).
 		if a.factoryCanRun() {
-			return a.factoryVerb(id, func(s factory.Seam) error { return s.Launch(id) }, func(it factory.Item) string {
-				tail := ""
-				if it.Gate == factory.GatePlan {
-					tail = rowSep + factoryAskAtWords(it.Gate)
-				}
-				return a.factoryLaunchNote(it, tail)
-			}), true
+			return a.factoryRunIDs([]int{id}, factoryRunItem), true
 		}
 	case "L", "shift+l":
 		if seam.Has("launch") {
@@ -433,9 +440,7 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 				a.factoryOpenLaunch(ids)
 				return nil, true
 			}
-			return a.factoryVerb(id, func(s factory.Seam) error { return s.Launch(id) }, func(it factory.Item) string {
-				return a.factoryLaunchNote(it, "")
-			}), true
+			return a.factoryRunIDs([]int{id}, factoryRunOne), true
 		}
 	case "t":
 		if seam.Has("setgate") {
@@ -909,7 +914,7 @@ func (a *app) factoryFootRows(measure int) []string {
 // THE ROWS' COLUMN, the whole of its width (owner ruling, 2026-10-08): under
 // the peek they read as being about the item the peek shows.
 func (a *app) factoryFootOnRows() bool {
-	return a.fp.act.refresh != nil || a.fp.act.launch != nil || (a.fp.act.ask != nil && a.fp.act.ask.kind == factoryAskNew)
+	return a.fp.act.refresh != nil || a.fp.act.launch != nil || a.fp.act.clone != nil || (a.fp.act.ask != nil && a.fp.act.ask.kind == factoryAskNew)
 }
 
 // factoryFootRowsWhere is the foot rows of one side: rows false is the
@@ -928,6 +933,7 @@ func (a *app) factoryFootRowsWhere(measure int, rows bool) []string {
 		if q := a.factoryLaunchRow(measure); q != "" {
 			out = append(out, q)
 		}
+		out = append(out, a.factoryCloneRows(measure)...)
 		if ask := a.fp.act.ask; ask == nil || ask.kind != factoryAskNew {
 			return out
 		}
