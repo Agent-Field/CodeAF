@@ -55,6 +55,16 @@ factory's verbs), and when the line is too long the list keys are the first to g
 - `esc` clears a filter or a repository first; pressed again, it goes back to the conversation.
 - `R` repos, `E` recipe and `$` rail are named last and are the first to go.
 
+## the peek's keys and the bottom line — one list of keys
+
+The peek's last row and the bottom line are **one list of keys at two widths**: the same keys,
+in the same order, `enter open` first, then the item's own verbs, then `T talk`, then what shapes
+a run (stages, gate, cap, effort), then `d hide`, `g github`, `u read again` and `n new item`.
+When either line is too narrow it drops keys from the end of that list, so the two always lose
+the same keys in the same order, and a key is spelled one way on both (`e sign off with
+changes`). The floor's own keys (`/ filter`, `A backlog`, `z density` and the rest) follow on
+the bottom line only, and go first when it is too long.
+
 ## what a row is
 
 A row on the factory floor is one **item**: an issue, a pull request, a red CI run, a chore,
@@ -67,7 +77,8 @@ short name and the title.
 The priority is the cheap read's guess at what to take first: `▇` first (in the accent), `▅`
 second, `▃` third, `▁` fourth, dim; nothing for an item nobody ranked. A patched font draws
 chevrons instead; a screen reader hears `!`, `:` and `.`. While the item is being read the cell
-is a spinner instead.
+is a spinner instead. During a whole-floor re-read (`U`) only the row being read right now spins;
+a row still waiting its turn shows a still dim `·` in that cell and `waiting to read`.
 
 On a forge item the short name is a link to its page where the terminal takes links.
 
@@ -77,10 +88,32 @@ Groups have muted capital headings (`NEEDS YOU · 1 ───`) and one blank ro
 (`3✓ 1✕`) and `SHIPPED` (`shipped 06:00`). An empty group is not drawn.
 
 After the first fact come the money (`$1.42/$5`, or `~$3` estimated), the author, tags (`thin`,
-`dup #950?`, `from chat ▸`, `terminal only`), and `reading…` or `refreshing…` while the item is
-being read. A long title takes width from the facts before it is cut; the facts drop whole from
-the right, the state fact last. The row under the cursor sits on the same lifted background the
-Chats list and the Teams page use.
+`dup #950?`, `from chat ▸`, `terminal only`). While the item is being read, `reading…` or
+`refreshing…` (or `waiting to read`) stands right after the state fact in place of the money,
+author and tags, so it shows at full width, and it is the first fact a narrow row drops. A long
+title takes width from the facts before it is cut; the facts drop whole from the right, the
+state fact last. The row under the cursor sits on the same lifted background the Teams page and
+home's lists put under their cursor row.
+
+## paused, stopped and skipped — what the marks mean
+
+Each mark on the floor means one thing, so a held, ended or skipped stage never looks like one
+that is running, failed or still to come:
+
+- **Paused** (`space` on a running item): the row's lead mark and the held stage are a pause
+  mark (`=` on a plain font, a pause icon on a patched one), muted. The row says `paused 13m`,
+  counted from when the floor first saw it paused; the peek says `paused 13m · write ×3` and
+  never `13m left` or what it was editing. The item page's head says `paused 13m`.
+- **Stopped** (`x`): the item is new again and its lead mark is a stop square (`■`, or a stop
+  icon), muted. The row says `stopped · branch kept`, the stage it stopped on wears the square
+  with `· stopped`, and the line under the peek's stages says `test · stopped · branch kept`,
+  never `✕` or the failure the stage was in the middle of.
+- **Skipped**: a stage switched off, one whose condition does not fit (`when thin`), or one the
+  run went on past, is a dim stroke (`–`, or a minus icon; `-` for a screen reader) with
+  `· skipped`, never the `○` a stage still to come wears. On a shipped item a stage plan
+  skipped reads `– neaten · skipped`.
+- **Waiting to read**: during `U`, a row the read has not reached yet shows a still dim `·` and
+  `waiting to read`; only the row being read spins.
 
 ## filter the factory floor, search for an item
 
@@ -138,8 +171,9 @@ bounds its recipe word allows (see adapt). A stage can also be a gate: `plan` co
 
 The peek shows a new item's stages as one line of names and a running item's as a strip of
 marks; the item page lists them down its stage rail. A stage can carry a condition (`thin`,
-`large`, `touches auth`, `has ui`); on an item it does not fit, the stage is drawn dim, with
-`· skipped` on the stage rail and `skipped · not thin` (or the condition it missed) beside it.
+`large`, `touches auth`, `has ui`); on an item it does not fit, the stage is drawn dim with the
+skip stroke `–` and `· skipped` on the stage rail, and `skipped · not thin` (or the condition it
+missed) beside it. A stage switched off, or one the run went on past, is drawn the same way.
 
 On a new item, `1` to `9` switch the stage with that number on or off, `s` adds a stage in
 words (`after review, make it neater` puts it after review), and `b` banks the item's stages
@@ -285,11 +319,12 @@ stands level with the first group heading on the left. In order:
 4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
 5. The gate, cap and effort in fixed slots, so their values line up from item to item: `gate  ship`,
    `cap  $5`, `effort  —`. A cap of nothing is a blank slot.
-6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, each in an
-   even cell, with the round as `2/2` on a stage that may run more than one. Under them, dim,
-   why a stage stopped: `review · review is not clean after 2 round(s)`.
-7. A running stage's line (`review 1/2 · 3 findings · fixing`), what frees a queued item, or
-   `merged 06:00 · $1.90`.
+6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, the pause
+   mark held, the stop square where a person stopped it, and `–` skipped, each in an even cell,
+   with the round as `2/2` on a stage that may run more than one. Under them, dim, why a stage
+   stopped: `review · review is not clean after 2 rounds`, or `test · stopped · branch kept`.
+7. A running stage's line (`review 1/2 · 3 findings · fixing`), a paused one's
+   `paused 13m · write ×3`, what frees a queued item, or `merged 06:00 · $1.90`.
 8. The description, rendered from Markdown (headings, lists, code, links as their words, never
    raw backticks), 60 columns wide, at most six rows, cut with `…` and `▾ more`. A landed item
    shows its claims here instead.
@@ -299,7 +334,9 @@ stands level with the first group heading on the left. In order:
     files`, then up to six paths), `activity` (the last five events) and `links` (`github ↗`).
 
 The bottom row names the keys, starting with `enter open`, with one blank row above it, and
-only keys the floor can do: a still floor with no verbs says just `enter open`.
+only keys the floor can do: a still floor with no verbs says just `enter open`. It is the same
+list as the bottom line, in the same order, cut from its end to the peek's width (see the keys
+on the factory floor).
 
 ## resize the split — { } |
 
@@ -321,7 +358,9 @@ in `…` with a dim `▾ more` at the right. `J` scrolls it down a row and `K` u
 
 To read everything, open the item (`enter`, or click its row twice). The item page's rail starts
 with `issue`, and its pane is the whole description rendered from Markdown at 72 columns, then
-`read 3m ago · u again` (or `⠋ reading · 4s` while a read is out), the factory's read, the
+`read 3m ago · u again` (or `⠋ reading · 4s` while a read is out, `waiting to read` while it
+waits its turn, `not read yet · u reads it` before the first read, and `u reads it again` when
+the time of the read was not kept), the factory's read, the
 facts, for a thin item the questions it would ask the author, what plan changed about the
 stages, and then the comments (each whole), checks, files, activity and links. `J`, `K`, `pgdn`
 and `pgup` scroll it, and its bottom row says `J K scroll` while there is more to see.
@@ -335,7 +374,9 @@ the floor (filter, repository, marks) changes while it is open.
 The top row is a trail: `Factory › codeaf › #1551 filters lost on compact`, the crumbs dim and
 the item in ink, with where it stands and for how long (`running 26m`) and the spend over the
 cap (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row is
-the gate, cap and effort with their keys, `gate  ship [t]  cap  $5 [c]  effort  — [e]  places  codeaf`;
+the gate, cap and effort with their keys, `gate  ship [t]  cap  $5 [c]  effort  — [e]`. The
+repository is the crumb above and is not said again; an item that touches more repositories
+names the others, dim, `also harness, agentfield`;
 on an item waiting on you it is the question instead (see answering a question). Then a blank
 row; the rail and its pane start on the fourth row on every item. What plan changed about the
 stages is in the issue pane (see adapt).
@@ -344,8 +385,10 @@ On the left is the **rail**: `issue` first (see read the whole issue), then `tal
 has its own conversation, then one row per stage, then `proof` when the item has a sheet and no
 stage is named proof, then `log` once the run has said anything (see the log). A stage reads `●`
 done (with `×3` when it split into tasks), the braille spinner while it runs (with its round,
-`review 2/2`, and how long it has run, `4m`), `?` waiting on you, `✕` failed, `○` to come, a
-stage switched off dim, and a stage whose condition does not fit dim with `· skipped`; a stage
+`review 2/2`, and how long it has run, `4m`), `?` waiting on you, `✕` failed, `○` to come, the
+pause mark with `· paused` while it is held, the stop square with `· stopped` where a person
+stopped it, and a stage switched off, one whose condition does not fit, or one the run went on
+past dim with `–` and `· skipped` (see paused, stopped and skipped); a stage
 with a conversation has its mark after the name (see a stage is a room). The page opens on the stage waiting on you, else
 the running stage, else `proof` for a landed item, else `issue`. `↑` and `↓` (or `←` and `→`)
 walk it, and a click on a rail row selects it. Under 72 columns the rail is one line above the
@@ -395,7 +438,8 @@ ran has no log row. The log keeps the last 400 lines.
 A run stops and asks when it cannot go on alone, and the item moves to **needs you**. The
 question is the run's own sentence, drawn as is in the peek (under the title) and on the item
 page's second row, its `?` amber: `plan is ready · go, or change it?`,
-`review is not clean after 2 round(s): 3 findings · one more round, or go on as is?`,
+`review is not clean after 2 rounds: 3 findings · one more round, or go on as is?` (one round
+is `after 1 round`, one finding `1 finding`),
 `cap of $5 reached · $5 more, or stop?`, `review did not finish: … · skip it, or stop?`.
 
 - `y` answers yes: go on, one more round, $5 more, skip it. The bottom line says
@@ -405,14 +449,15 @@ page's second row, its `?` amber: `plan is ready · go, or change it?`,
 - `a` opens `answer ›` for words (`go, but keep the old flag`); they reach the next round's
   brief and it says `answered #12 in words`.
 
-`[y] yes · [n] no · [a] in words` is drawn only where the floor can answer. A run that is not
-waiting refuses with `#12 is not waiting on you`, said on the bottom line.
+`[y] yes · [n] no · [a] in words` is drawn only where the floor can answer. `y`, or `a`, on an
+item that is not waiting says `#12 is not waiting on you` on the bottom line and changes nothing
+(`n` there is new work, and `a` on a thin new item asks its author).
 
 ## sign off, send back, check again — s, B, v
 
 A landed item's page opens on its **proof** sheet: one row per claim and policy row, `✓` shown or
 `✕` with `— not shown`, its evidence dim at the right and its medium (`test`, `screenshot`,
-`policy`) as a chip in one column. The sheet's last line counts it and names its keys:
+`policy`) in one column. The sheet's last line counts it and names its keys:
 `all 6 shown · s sign off`, or `1 of 6 not shown · e sign off with changes · B send back`.
 
 - `s` signs off and ships it: `#12 shipped`. On a sheet with a row not shown the run refuses,
@@ -446,8 +491,8 @@ the keys that change an item's own words always work (`n`, `t` gate, `c` cap, `e
 pause, answers, steering, sign-off, send back and check again work in every window too, whichever
 process runs the floor's items. `enter` on a row never launches; it opens the item page.
 
-- **New:** `r run · p plan first · space mark · L launch marked · 1-9 stages · s stage ·
-  t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the
+- **New:** `r run · p plan first · space mark · T talk · L launch marked · 1-9 stages ·
+  s stage · t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the
   plan gate; the bottom line says `#12 is running` (`#12 is queued · a bench frees it` when the
   benches are full). `L` launches this item, or asks first about the marked ones (see mark new
   items). `t` cycles the gate plan, ship, none; `c` the
@@ -455,11 +500,13 @@ process runs the floor's items. `enter` on a row never launches; it opens the it
   `in words ›` for the gate, cap and effort at once (`$8, plan first, stronger`). On a
   terminal-made item `g` puts it on github too, or takes it off; on any other item with a page
   on github, `g` opens that page. `a` asks a thin item's author its questions. `d` hides the item.
-- **Running or queued:** `S steer · space pause · x stop · e effort` (see steer a running
-  item); `e` cycles the running stage's effort.
-- **Needs you:** `y n answer · a in words · S steer · x stop` (see answering a question).
-- **Landed:** `s sign off` on a clean sheet, `e sign off with changes` when a row was not shown,
-  `B send back`, `v check again`, `d diff` (see sign off, send back, check again).
+- **Running or queued:** `S steer · space pause · x stop · T talk · e effort` (see steer a
+  running item); `e` cycles the running stage's effort.
+- **Needs you:** `y n answer · a in words · S steer · x stop · T talk` (see answering a
+  question).
+- **Landed:** `s sign off` on a clean sheet, `e sign off with changes` when a row was not shown
+  (spelled the same in the peek and on the bottom line), `B send back`, `v check again`,
+  `T talk`, `d diff` (see sign off, send back, check again).
 - **Any state:** `T talk` opens the item's own conversation (see talk it through), on the
   floor and on the item page alike; it is named only where the floor can make one.
 - **Anywhere:** `n new item` opens `new work ›`, at the bottom of the rows column, on the repository the list shows (or the first one;
@@ -491,8 +538,9 @@ it puts the item on GitHub too, or takes it off.
 Everything the floor does in the background says it is happening, with the same braille spinner
 the transcript uses (`⠋`), and nothing is drawn when nothing is in flight:
 
-- **An item being read:** its priority cell spins and its last fact says `reading…` or
-  `refreshing…`. The peek's read says `⠋ reading…` while the first read is out, and the item
+- **An item being read:** its priority cell spins and the fact after its state says `reading…`
+  or `refreshing…`. An item waiting its turn in a whole-floor re-read does not spin: it shows a
+  still dim `·` and `waiting to read`. The peek's read says `⠋ reading…` while the first read is out, and the item
   page's read line says `⠋ reading · 4s`.
 - **`u` reads the item under the cursor again.** The line above the keys says `re-reading #6…`
   until the read is over, then the bottom line says `#6 read again · ~$0.0004`.

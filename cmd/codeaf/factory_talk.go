@@ -191,23 +191,30 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	add("author ", it.Author)
 	add("tier ", string(it.Tier))
 	line(strings.Join(facts, " · "))
-	var chips []string
-	add2 := func(s string) {
+	// THE GATE AND THE CAP ARE SAID AS WHAT THEY ARE, `gate ship · cap $5`,
+	// and the labels on a line of their own: the conversation is read by a
+	// model and by a person, and neither knows a "chip" as anything but a
+	// shape some screen draws.
+	var set, labels []string
+	add2 := func(list *[]string, s string) {
 		if s = strings.TrimSpace(s); s != "" {
-			chips = append(chips, s)
+			*list = append(*list, s)
 		}
 	}
 	if it.Gate != "" {
-		add2("gate " + string(it.Gate))
+		add2(&set, "gate "+string(it.Gate))
 	}
 	if it.Cap > 0 {
-		add2("cap $" + strconv.FormatFloat(it.Cap, 'f', -1, 64))
+		add2(&set, "cap $"+strconv.FormatFloat(it.Cap, 'f', -1, 64))
 	}
 	for _, label := range it.Labels {
-		add2(label)
+		add2(&labels, label)
 	}
-	if len(chips) > 0 {
-		line("chips: " + strings.Join(chips, " · "))
+	if len(set) > 0 {
+		line(strings.Join(set, " · "))
+	}
+	if len(labels) > 0 {
+		line("labels: " + strings.Join(labels, " · "))
 	}
 	if body := strings.TrimSpace(it.Body); body != "" {
 		b.WriteByte('\n')

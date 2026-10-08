@@ -64,6 +64,11 @@ type factoryStageView struct {
 	ran     bool // a phase of the stream stands behind it
 	off     bool // switched off on this item
 	skipped bool // its condition does not fit the item
+	// kind is how the phase behind it draws (factory_marks.go): held,
+	// stopped and passed over are told apart from running, failed and still
+	// to come. A stage nothing ran is pending, or passed over when the run
+	// went on past it.
+	kind factoryMarkKind
 	// elapsed is how long a running phase has been seen running, one short
 	// word (factory_run.go's [app.factoryPhaseElapsed]), and "" otherwise.
 	elapsed string
@@ -85,13 +90,29 @@ func (a *app) factoryItemStages(it factory.Item) []factoryStageView {
 		for i, ph := range phases {
 			if !used[i] && ph.Name == st.Name {
 				used[i], v.phase, v.state, v.ran = true, ph, ph.State, true
-				if ph.State == factory.PhaseRunning {
+				v.kind = factoryPhaseKind(it, i)
+				if v.kind == factoryMarkRunning {
 					v.elapsed = a.factoryPhaseElapsed(it.ID, i, ph.Name)
 				}
 				break
 			}
 		}
 		out = append(out, v)
+	}
+	// A STAGE THE RUN WENT PAST IS SKIPPED, whether a pending phase stands
+	// behind it or none does: a stage still drawn to come after a later one
+	// has started, or on an item that has landed, is a promise the run will
+	// not keep (factory_marks.go).
+	moved := it.State == factory.StateLanded || it.State == factory.StateShipped
+	for i := len(out) - 1; i >= 0; i-- {
+		v := &out[i]
+		if v.ran && v.state != factory.PhasePending {
+			moved = true
+			continue
+		}
+		if moved && it.Stream != nil && !v.off && !v.skipped {
+			v.kind = factoryMarkSkipped
+		}
 	}
 	return out
 }
@@ -432,12 +453,12 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	a.fp.railTop, a.fp.railFirst, a.fp.railShown = 0, 0, 0
 	measure := max(width-factoryMargin, 0)
 	// THE HEAD IS TWO ROWS AND A BLANK ON EVERY ITEM (owner ruling,
-	// 2026-10-08): the crumbs on row 0, the chips on row 1, and the rail and
+	// 2026-10-08): the crumbs on row 0, the gate, cap and effort on row 1, and the rail and
 	// its pane from row 3, so the page's regions start on the same rows
 	// whatever the item. What the plan stage changed is the issue pane's,
 	// beside the stages it changed.
 	// A PARKED ITEM'S SECOND ROW IS ITS QUESTION (factory_run.go's
-	// [app.factoryItemQuestion]), where the chips stand on every other item.
+	// [app.factoryItemQuestion]), where the gate, cap and effort stand on every other item.
 	second := a.factoryItemQuestion(it, measure)
 	if second == "" {
 		second = a.factoryItemChips(it, measure)
@@ -492,8 +513,10 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 // money's ink. `esc` climbs one crumb, back to the floor.
 func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 	pal := a.pal
-	state := string(it.State)
-	if s := it.Stream; s != nil {
+	state := factoryStateWord(it)
+	if factoryPaused(it) {
+		state = a.factoryPausedFor(it)
+	} else if s := it.Stream; s != nil {
 		if e := factoryElapsed(s.Started, factoryEnd(s, a.fp.snap.Now)); e != "" {
 			state += " " + e
 		}
@@ -508,7 +531,7 @@ func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 		left = a.factoryCrumbs(it.Repo) + a.factoryRefLink(it, pal.ink(ref)) + pal.dim(sep) + pal.ink(r.view.stage.Name) + factorySpaces(factoryGutter) + pal.muted(it.Title)
 	}
 	// THE MONEY AT THE RIGHT IS SPEND OVER THE CAP, so an item with no stream
-	// draws none: its cap is the chip on the row under it, and saying it twice
+	// draws none: its cap is on the row under it, and saying it twice
 	// is a second number to read for one fact.
 	right := pal.muted(state)
 	if spend := factorySpend(it.Stream, it.Cap); spend != "" && it.Stream != nil {
@@ -528,21 +551,25 @@ func (a *app) factoryCrumbs(repo string) string {
 	return a.pal.dim(trail)
 }
 
-// factoryItemChips is the head's second row: the chips with the key that turns
-// each, and the places the item touches.
+// factoryItemChips is the head's second row: the gate, the cap and the
+// effort with the key that turns each, and the OTHER repos the item touches.
+//
+// THE REPO IT ARRIVED ON IS THE CRUMB AND NOTHING ELSE: the trail above
+// already says `Factory › codeaf ›`, and a `places  codeaf` under it said the
+// same word twice with a label to read first. An item the plan spread over
+// more repos names the others, `also harness, agentfield`, dim.
 func (a *app) factoryItemChips(it factory.Item, measure int) string {
 	pal := a.pal
-	places := it.Places
-	if len(places) == 0 && it.Repo != "" {
-		places = []string{it.Repo}
-	}
-	short := make([]string, 0, len(places))
-	for _, p := range places {
-		short = append(short, factoryRepoShort(p))
+	home := factoryRepoShort(it.Repo)
+	var others []string
+	for _, p := range it.Places {
+		if short := factoryRepoShort(p); short != "" && short != home {
+			others = append(others, short)
+		}
 	}
 	line := a.factoryChipRow(it, true, measure)
-	if len(short) > 0 {
-		line += factorySpaces(factoryFactGap) + pal.muted("places") + factorySpaces(factoryLabelGap) + pal.ink(strings.Join(short, ", "))
+	if len(others) > 0 {
+		line += factorySpaces(factoryFactGap) + pal.dim("also "+strings.Join(others, ", "))
 	}
 	return fit(line, measure)
 }
@@ -553,39 +580,59 @@ func (a *app) factoryItemChips(it factory.Item, measure int) string {
 // A stage switched off or skipped is dim with the pending mark.
 func (a *app) factoryStageLabel(v factoryStageView) (string, func(string) string) {
 	pal := a.pal
-	if v.off || v.skipped {
-		label := a.factoryPendingMark() + " " + v.stage.Name
-		if v.skipped {
-			label += rowSep + "skipped"
-		}
-		return label, pal.dim
+	if v.off || v.skipped || v.kind == factoryMarkSkipped {
+		// A STAGE THAT WILL NOT RUN WEARS THE SKIP STROKE AND SAYS SO, switched
+		// off, its condition missed or passed over alike: the pending ring
+		// it used to wear promised a stage still to come (factory_marks.go).
+		mark, _ := a.factoryKindMark(factoryMarkSkipped)
+		return mark + " " + v.stage.Name + rowSep + "skipped", pal.dim
 	}
-	mark, _ := a.factoryPhaseMark(v.state)
-	if v.state == factory.PhaseRunning {
-		// A RUNNING PHASE WEARS THE TRANSCRIPT'S SPINNER where its mark
-		// stands: a shape that moves says it is moving (PRESENCE OVER LABELS).
-		mark = a.factorySpin()
-	}
+	mark, _ := a.factoryStageMark(v)
 	words := v.stage.Name
 	if v.ran {
 		words = factoryPhaseWords(factory.Phase{Name: v.stage.Name, State: v.state, Round: v.phase.Round, Tasks: v.phase.Tasks}, max(v.stage.Max, 1))
 	} else if v.stage.Max > 1 {
 		words += " ×" + strconv.Itoa(v.stage.Max)
 	}
+	switch v.kind {
+	case factoryMarkPaused:
+		words += rowSep + "paused"
+	case factoryMarkStopped:
+		words += rowSep + "stopped"
+	}
 	paint := pal.muted
-	switch v.state {
-	case factory.PhaseRunning:
+	switch {
+	case v.kind == factoryMarkPaused:
+	case v.state == factory.PhaseRunning:
 		paint = pal.ink
-	case factory.PhasePending:
+	case v.state == factory.PhasePending:
 		paint = pal.dim
 	}
 	return mark + " " + words, paint
 }
 
-// factoryPendingMark is the pending stage's mark, the one an off stage wears.
+// factoryPendingMark is the pending stage's mark, the one a stage still to
+// come wears.
 func (a *app) factoryPendingMark() string {
 	mark, _ := a.factoryPhaseMark(factory.PhasePending)
 	return mark
+}
+
+// factoryStageMark is a stage's mark on the item page's rail and its paint:
+// the mark of the phase behind it ([app.phaseMark]'s mapping), and A RUNNING
+// PHASE WEARS THE TRANSCRIPT'S SPINNER where its mark stands, because a shape
+// that moves says it is moving (PRESENCE OVER LABELS). A held phase does not
+// move, so it wears the pause mark and never the spinner.
+func (a *app) factoryStageMark(v factoryStageView) (string, func(string) string) {
+	kind := v.kind
+	if !v.ran && kind != factoryMarkSkipped {
+		kind = factoryMarkPending
+	}
+	mark, paint := a.factoryKindMark(kind)
+	if kind == factoryMarkRunning {
+		mark = a.factorySpin()
+	}
+	return mark, paint
 }
 
 // factoryRailCell is one row of a rail as it is drawn: its mark and the paint
@@ -618,13 +665,17 @@ func (c factoryRailCell) label() string {
 // drops.
 func (a *app) factoryStageCell(v factoryStageView) factoryRailCell {
 	label, paint := a.factoryStageLabel(v)
-	if v.off || v.skipped {
+	if v.off || v.skipped || v.kind == factoryMarkSkipped {
+		// A NAME TOO LONG FOR THE RAIL BESIDE ITS WORD KEEPS THE NAME WHOLE and
+		// lets the word go: the stroke still says skipped, and `security ·
+		// skip…` said less than `security` does.
+		if ansi.StringWidth(label) > factoryRailW-factoryMargin {
+			mark, _ := a.factoryKindMark(factoryMarkSkipped)
+			label = mark + " " + v.stage.Name
+		}
 		return factoryRailCell{rest: label, paint: paint, markPaint: paint, flat: true}
 	}
-	mark, markPaint := a.factoryPhaseMark(v.state)
-	if v.state == factory.PhaseRunning {
-		mark = a.factorySpin()
-	}
+	mark, markPaint := a.factoryStageMark(v)
 	c := factoryRailCell{mark: mark, markPaint: markPaint, rest: strings.TrimPrefix(label, mark), paint: paint}
 	if v.ran && strings.TrimSpace(v.phase.Chat) != "" {
 		room := " " + a.icon(tokens.GActionCommunicate)
@@ -705,7 +756,7 @@ func (a *app) factoryCellRail(cells []factoryRailCell, cursor, room int) ([]stri
 		}
 		row := factoryPad(factorySpaces(factoryMargin)+text, factoryRailW)
 		if at == cursor {
-			row = pal.selected(row, factoryRailW)
+			row = pal.cursorRow(row, factoryRailW)
 		}
 		out[i] = row
 	}
@@ -722,7 +773,7 @@ func (a *app) factoryCellStrip(cells []factoryRailCell, cursor, measure int) str
 		label := c.label()
 		seg := c.paint(strings.TrimSuffix(label, c.tailPlain)) + c.tail
 		if i == cursor {
-			seg = a.pal.selected(seg, ansi.StringWidth(label))
+			seg = a.pal.cursorRow(seg, ansi.StringWidth(label))
 		}
 		segs = append(segs, seg)
 		plains = append(plains, label)
@@ -938,7 +989,9 @@ func factoryKnobs(st factory.Stage) string {
 //
 //	proof     the claim rows, then the policy rows
 //	off       that it is switched off on this item
-//	skipped   the condition it missed
+//	skipped   the condition it missed, or that the run went on past it
+//	paused    how long it has been held
+//	stopped   that a person stopped it and the branch is kept
 //	pending   the stage it runs after
 //	running   its task count and round, then the stream's newest log lines
 //	waiting   the question, then its keys
@@ -956,6 +1009,13 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 		out = append(out, pal.dim(fit("switched off on this item", measure)))
 	case v.skipped:
 		out = append(out, pal.dim(fit("skipped · not "+strings.TrimSpace(v.stage.When), measure)))
+	case v.kind == factoryMarkSkipped:
+		out = append(out, pal.dim(fit("skipped · the run went on past it", measure)))
+	case v.kind == factoryMarkPaused:
+		line := strings.Join(nonEmpty([]string{a.factoryPausedFor(it), factoryStageCounts(v)}), rowSep)
+		out = append(out, pal.muted(fit(line, measure)))
+	case v.kind == factoryMarkStopped:
+		out = append(out, pal.muted(fit(factoryStoppedWords, measure)))
 	case v.state == factory.PhaseRunning:
 		if line := strings.Join(nonEmpty([]string{factoryStageCounts(v), v.elapsed}), rowSep); line != "" {
 			out = append(out, pal.muted(fit(line, measure)))

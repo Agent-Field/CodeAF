@@ -530,7 +530,7 @@ func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 		}
 		text := factoryPad(factorySpaces(lead)+a.pal.ink(rest), width)
 		if r.walk == a.fp.cursor {
-			return pal.selected(text, width)
+			return pal.cursorRow(text, width)
 		}
 		return text
 	}
@@ -592,7 +592,7 @@ func (a *app) factoryGridAt(width int) factoryGrid {
 		// a row exists to carry is never what a title took. A question is
 		// the one exception, kept to [factoryFactsKeep]: it is a sentence,
 		// and the peek and the item page say it whole.
-		need, keep := 0, max(factoryFactsKeep, a.factoryStateWidest())
+		need, keep := 0, max(factoryFactsKeep, a.factoryStateWidest(), a.factoryFlightKeep())
 		for _, it := range a.fp.snap.Items {
 			if factoryOnFloor(it) {
 				need = max(need, ansi.StringWidth(it.Title))
@@ -683,22 +683,29 @@ func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 		text += factorySpaces(max(gap, 0)) + right
 	}
 	text = factoryPad(text, width)
-	// THE CURSOR ROW WEARS THE SELECTED STEP, the one the Chats list and the
-	// Teams page put under the row a person is on, so the floor's cursor reads
-	// as the same thing it is everywhere else (owner ruling, 2026-10-08).
+	// THE CURSOR ROW WEARS THE CURSOR STEP, the one the Teams page and home's
+	// lists put under the row a person is on, so the floor's cursor reads as
+	// the same thing it is everywhere else (owner ruling, 2026-10-08). The
+	// SELECTED step is one rung louder and means "the chosen one", which the
+	// Teams page gives only to the row that is chosen, never to the cursor.
 	if cur {
-		return pal.selected(text, width)
+		return pal.cursorRow(text, width)
 	}
 	return text
 }
 
 // factoryPrioCell is the priority column's one cell: the four marks first to
 // fourth, the first in the accent and the rest dim, and a blank for an item
-// nobody ranked. AN ITEM SOMETHING IS BEING DONE TO draws the spinner there
-// instead (factory_busy.go), which is the row's one claim that it is moving.
+// nobody ranked. AN ITEM BEING READ RIGHT NOW draws the spinner there instead
+// (factory_busy.go), which is the row's one claim that it is moving; AN ITEM
+// WAITING ITS TURN draws a still dim dot, because a row that is only queued
+// is not moving and must not say it is (factory_marks.go).
 func (a *app) factoryPrioCell(it factory.Item) string {
-	if _, busy := a.factoryBusy(it.ID); busy {
+	if a.factoryRowSpins(it.ID) {
 		return a.pal.accent(a.factorySpin())
+	}
+	if a.factoryRowWaits(it.ID) {
+		return a.pal.dim(a.icon(tokens.GSeparator))
 	}
 	switch it.Triage.Priority {
 	case 1:
@@ -734,45 +741,9 @@ func factoryChanged(it factory.Item) time.Time {
 }
 
 // factoryLead is an item's one-cell mark, painted, and "" for a new item at
-// rest, which draws nothing in its lead.
-//
-//	needs you  ? in the asking colour
-//	running    the working mark in accent
-//	queued     the queued ring, dim
-//	new        nothing; a red CI run wears the failed cross
-//	landed     the settled check
-//	shipped    a dim dot
-//	marked     the dot, or the state's own mark, in accent
-func (a *app) factoryLead(it factory.Item) string {
-	pal := a.pal
-	glyph, paint := "", pal.muted
-	switch it.State {
-	case factory.StateNeedsYou:
-		glyph, paint = a.icon(tokens.GNeedsHuman), pal.ask
-	case factory.StateRunning:
-		glyph, paint = a.icon(tokens.GWorking), pal.accent
-	case factory.StateQueued:
-		glyph, paint = a.icon(tokens.GQueued), pal.dim
-	case factory.StateNew:
-		if it.Kind == factory.KindCI {
-			glyph, paint = a.icon(tokens.GFailed), pal.bad
-		}
-	case factory.StateLanded:
-		glyph = a.icon(tokens.GSettled)
-	case factory.StateShipped:
-		glyph, paint = a.icon(tokens.GDoneCell), pal.dim
-	}
-	if a.factoryMarked(it) {
-		if glyph == "" {
-			glyph = a.icon(tokens.GDoneCell)
-		}
-		paint = pal.accent
-	}
-	if glyph == "" {
-		return ""
-	}
-	return paint(glyph)
-}
+// rest. THE MAPPING IS factory_marks.go's ([app.itemLeadMark]), which names
+// the paused and the stopped apart from the running and the new.
+func (a *app) factoryLead(it factory.Item) string { return a.itemLeadMark(it) }
 
 // ── the facts ───────────────────────────────────────────────────────────────
 
@@ -863,9 +834,16 @@ func (a *app) factoryRowFacts(it factory.Item) []factoryFactPart {
 		out = out[:factoryFactsMost]
 	}
 	// WORK IN FLIGHT IS THE LAST FACT, so it is the first a narrow row drops:
-	// the spinner in the priority cell still says it.
-	if word, busy := a.factoryBusy(it.ID); busy {
-		out = append(out, factoryFactPart{plain: word + "…", painted: pal.dim(word + "…")})
+	// the spinner in the priority cell still says it. AND WHILE IT IS IN
+	// FLIGHT IT STANDS RIGHT AFTER THE STATE FACT, in place of the money, the
+	// author and the tags, which the read in flight is about to say again: at
+	// the floor's widest the facts column is already full with them, and a
+	// flight fact queued behind three others never fit at any width.
+	if word := a.factoryFlightFact(it.ID); word != "" {
+		if len(out) > 1 {
+			out = out[:1]
+		}
+		out = append(out, factoryFactPart{plain: word, painted: pal.dim(word)})
 	}
 	return out
 }
@@ -891,13 +869,17 @@ func (a *app) factoryStateFact(it factory.Item) (factoryFactPart, bool) {
 		}
 		plain, painted := a.factoryStripCells(it)
 		word := ""
-		if s.Paused {
-			word = "paused"
-		} else if s.Cur >= 0 && s.Cur < len(s.Phases) {
+		if s.Cur >= 0 && s.Cur < len(s.Phases) {
 			word = s.Phases[s.Cur].Name
 		}
 		if !s.Started.IsZero() && !now.IsZero() && now.After(s.Started) {
 			word = strings.TrimSpace(word + " " + factoryAgo(now.Sub(s.Started)))
+		}
+		// A HELD ITEM SAYS HOW LONG IT HAS BEEN HELD, never how long it ran:
+		// `paused 24m` beside a stream that started 24 minutes ago read as a
+		// hold of 24 minutes (factory_marks.go).
+		if factoryPaused(it) {
+			word = a.factoryPausedFor(it)
 		}
 		if word != "" {
 			if plain != "" {
@@ -909,6 +891,11 @@ func (a *app) factoryStateFact(it factory.Item) (factoryFactPart, bool) {
 	case factory.StateQueued:
 		return one("queued", pal.muted)
 	case factory.StateNew:
+		// A STOPPED ITEM SAYS IT WAS STOPPED, never what its last phase said
+		// as it was stopped (factory_marks.go).
+		if factoryStopped(it) {
+			return one(factoryStoppedWords, pal.muted)
+		}
 		switch it.Kind {
 		case factory.KindCI:
 			return one("ci red", pal.bad)
@@ -956,38 +943,41 @@ func (a *app) factoryStateFact(it factory.Item) (factoryFactPart, bool) {
 	return factoryFactPart{}, false
 }
 
-// factoryStripCells is a stream's phases as one cell each, plain and painted:
-// done `●` muted, the running one `◐` in accent, a stage waiting on the person
-// `?` in the asking colour, a failed one `✕` in red, the rest `○` dim. An item
-// with no stream has no strip.
+// factoryStripCells is a stream's phases as one cell each, plain and painted,
+// each the mark factory_marks.go's [app.phaseMark] gives it: done muted, the
+// running one in accent, a stage waiting on the person in the asking colour,
+// a failed one in red, a held one the pause mark, a stopped one the stop
+// square, one the run went past the skip stroke, the rest the pending ring.
+// An item with no stream has no strip.
 func (a *app) factoryStripCells(it factory.Item) (string, string) {
 	if it.Stream == nil {
 		return "", ""
 	}
 	var plain, painted strings.Builder
-	for _, ph := range it.Stream.Phases {
-		mark, paint := a.factoryPhaseMark(ph.State)
+	for i := range it.Stream.Phases {
+		mark, paint := a.phaseMark(it, i)
 		plain.WriteString(mark)
 		painted.WriteString(paint(mark))
 	}
 	return plain.String(), painted.String()
 }
 
-// factoryPhaseMark is one phase state's mark and its paint, the one mapping the
-// row's strip, the peek's strip and the item page's stage rail all draw with.
+// factoryPhaseMark is one phase STATE's mark and its paint, for a drawing
+// that has a state and no item: a stage not yet run on the recipe page, the
+// pending ring an off stage used to wear. A PHASE OF AN ITEM'S STREAM IS DRAWN
+// THROUGH [app.phaseMark], which also knows held, stopped and passed over.
 func (a *app) factoryPhaseMark(st factory.PhaseState) (string, func(string) string) {
-	pal := a.pal
 	switch st {
 	case factory.PhaseDone:
-		return a.icon(tokens.GStepDone), pal.muted
+		return a.factoryKindMark(factoryMarkDone)
 	case factory.PhaseRunning:
-		return a.icon(tokens.GStepRunning), pal.accent
+		return a.factoryKindMark(factoryMarkRunning)
 	case factory.PhaseWaiting:
-		return a.icon(tokens.GNeedsHuman), pal.ask
+		return a.factoryKindMark(factoryMarkWaiting)
 	case factory.PhaseFailed:
-		return a.icon(tokens.GFailed), pal.bad
+		return a.factoryKindMark(factoryMarkFailed)
 	}
-	return a.icon(tokens.GStepPending), pal.dim
+	return a.factoryKindMark(factoryMarkPending)
 }
 
 // factoryMoneyFact is the row's money: what a stream spent over its cap when

@@ -151,6 +151,7 @@ var explicitOnlySlots = map[GlyphID]string{
 	GPrioritySecond: "a block element the gauge and the sparkline draw a cell at a time",
 	GPriorityThird:  "a block element the gauge and the sparkline draw a cell at a time",
 	GPriorityFourth: "the gauge's own lowest cell; a whole-cell rewrite would turn a gauge into a priority",
+	GSkipped:        "an en dash, which is a range or a pause in a sentence as often as it is a stage mark",
 }
 
 // TestTheASCIITierNamesACharacterForEveryIcon is the third tier's own gate.

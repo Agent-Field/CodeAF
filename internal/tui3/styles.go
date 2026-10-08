@@ -1403,6 +1403,15 @@ func (p palette) cursor(s string, width int) string {
 	return p.background(s, width, p.ramp.cursor)
 }
 
+// cursorRow paints the cursor step under a KEYBOARD cursor: the row of a list
+// a person has walked to with the arrows. It is the same rung [palette.cursor]
+// paints, so a list's cursor reads the same on every page, and it is NOT gated
+// on the linear tier, because a keyboard position is a fact for every reader
+// (the note above, acted on for the factory floor, 2026-10-08).
+func (p palette) cursorRow(s string, width int) string {
+	return p.background(s, width, p.ramp.cursor)
+}
+
 // selected paints the ladder's selected step: this is the chosen thing.
 //
 // It is NOT gated on the linear tier the way the cursor step is, and the reason
