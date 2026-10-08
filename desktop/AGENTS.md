@@ -1,6 +1,6 @@
-# CodeAF repository contract — all contributors and agents
+# codeaf repository contract — all contributors and agents
 
-These rules apply to every change in this repository, including nested features. Preserve the approved minimal Arc-like design. A new screen is not permission to introduce a new visual language.
+These rules supplement the parent repository contract and apply to every change under desktop/, including nested features. Preserve the approved minimal Arc-like design. A new screen is not permission to introduce a new visual language.
 
 ## 1. Read before changing UI
 
@@ -24,7 +24,7 @@ Motion must communicate a state change. Navigation, favorite, search, settings a
 
 ## 4. Required gate
 
-Run `npm run check` before committing: it checks generated assets, design policy, TypeScript/frontend build, policy regression tests and Go contracts. Do not bypass, silence or weaken `design:check` to make a feature pass. A deliberate standard change must update tokens/components, documentation and the live specimen together; explain the reason in review.
+Run commands from desktop/ (or use npm --prefix desktop). Run `npm run check` before committing: it checks generated assets, design policy, TypeScript/frontend build, policy regression tests and Go contracts. Do not bypass, silence or weaken `design:check` to make a feature pass. A deliberate standard change must update tokens/components, documentation and the live specimen together; explain the reason in review.
 
 For UI changes also run `npm run test:ui` in Chromium and WebKit. Extend the reusable theme/accessibility contracts for new controls; verify Light, Dark, System, reduced motion, keyboard navigation and control states. Do not suppress accessibility failures or treat these checks as a substitute for visual review.
 
@@ -33,3 +33,30 @@ For native changes also run `npm run engine:build` and `cargo fmt --check --mani
 ## 5. Architecture and evidence
 
 Stack: Tauri 2 shell, React/TypeScript UI, Go sidecar. Rust stays a narrow typed native bridge. Do not grant renderer arbitrary shell access. No model/agent execution exists yet: do not depict fixtures as live sessions. Keep screenshots and recordings outside the source tree; attach review evidence directly to the relevant PR or report the attachment blocker. Production brand icons are app assets, not review evidence. Keep private infrastructure details out of public review content.
+
+## Shared engine and branch policy
+
+The root codeaf repository owns the real session engine, storage, model calls,
+task splitting, prompts and harnesses. The desktop engine/ folder is only a
+health placeholder. Do not extend it into an independent AI implementation.
+Future packaging must use the canonical root make build output and preserve
+its packed manuals, furrow runtime and build identity. Views attach to the
+same persistent engine; closing a tab detaches, while Stop explicitly cancels.
+
+This public integration branch is work/8f3c2a9d. Its name is not a privacy
+boundary. The user explicitly requested no PR for this integration branch.
+Preserve dev/main/staging; merge upstream/dev into this branch rather than
+rebasing or force pushing shared history. Never copy secrets, evidence, native
+build directories or private machine instructions into source commits.
+
+## Responsive layout contract
+
+Responsiveness is mandatory. Preserve the native 800 x 560 minimum while
+supporting browser widths from 320px to wide desktop windows. At the declared
+small breakpoint use the shared navigation drawer, not a squeezed sidebar.
+Keep every control reachable; deliberate vertical scrolling and wrapping are
+allowed, horizontal page overflow and clipped actions are not. Restore focus
+on dismissal and honor reduced motion. Use centralized breakpoints and
+geometry tokens. Verify Light and Dark at 320, 480, 600, 800 and 1200px,
+including short-height windows and nested themed menus. New screens must
+extend the responsive browser contracts rather than assume desktop width.

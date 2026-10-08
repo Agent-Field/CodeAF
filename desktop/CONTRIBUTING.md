@@ -1,4 +1,4 @@
-# Contributing to CodeAF desktop
+# Contributing to codeaf desktop
 
 Read [the repository contract](AGENTS.md) and [the visual standard](docs/DESIGN.md) before implementation. Humans and coding agents use the same rules.
 
@@ -18,3 +18,5 @@ Read [the repository contract](AGENTS.md) and [the visual standard](docs/DESIGN.
 | `npm run check` | Required build, policy and contract verification |
 
 GitHub CI runs the same checks. Configure this workflow as a required branch check when repository administration/billing permits; a committed workflow alone does not enforce branch protection.
+
+Run commands from desktop/. Use [the monorepo workflow](../docs/DESKTOP.md) to merge upstream/dev and validate before pushing the integration branch. The root contributor contract also applies.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CodeAF",
+  "productName": "codeaf",
   "version": "0.1.0",
   "identifier": "com.codeaf.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "CodeAF",
+        "title": "codeaf",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

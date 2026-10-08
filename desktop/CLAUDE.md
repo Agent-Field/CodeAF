@@ -1,4 +1,4 @@
-# CodeAF contributor instructions
+# codeaf contributor instructions
 
 @AGENTS.md
 

@@ -1,4 +1,4 @@
-# CodeAF visual standard
+# codeaf visual standard
 
 Match the classic Arc desktop reference: a slim tinted sidebar and a single inset content pane. Minimize visible chrome. The content belongs to the user, not a dashboard of promotional cards.
 
@@ -68,7 +68,7 @@ The app uses Button (quiet/secondary/primary/loading/disabled), IconButton, Navi
 
 ## Brand
 
-The CodeAF C is one vector arc, not a text glyph. The same geometry produces the monochrome UI mark, SVG favicon, Safari mask icon and desktop app icons. Brand colors are graphite and off-white, independent of the warm sidebar material; no remaining violet branding. It is decorative inside the labeled CodeAF control and does not substitute for an accessible name.
+The codeaf C is one vector arc, not a text glyph. The same geometry produces the monochrome UI mark, SVG favicon, Safari mask icon and desktop app icons. Brand colors are graphite and off-white, independent of the warm sidebar material; no remaining violet branding. It is decorative inside the labeled codeaf control and does not substitute for an accessible name.
 
 ## Enforcement and limits
 
@@ -87,3 +87,9 @@ App-owned dropdowns use shared Select with token-colored popup, highlight and ch
 ## Browser regression gate
 
 Run npm run test:ui for Chromium and WebKit. The reusable contracts check themed surfaces, absence of visible native selects/unwrapped controls, WCAG accessibility, theme persistence and system changes, menu keyboard/dismissal/focus behavior, hover/press/selection/disabled states, intentional icon motion and reduced motion. New controls must extend these contracts. These checks catch covered regressions; they cannot universally judge aesthetics or prove native desktop materials.
+
+## Responsive layout contract
+
+The native window keeps its 800×560 minimum, while browser layouts remain usable down to 320px width. At or below the central small breakpoint (600px), navigation becomes a modal drawer and content uses the full available width. Opening it traps focus; Escape, an outside click or choosing a page dismisses it. Theme menus stay in the drawer's native modal layer. Resizing preserves the desktop sidebar preference rather than turning a narrow-screen temporary choice into a desktop setting.
+
+Content panes scroll independently, specimen collections wrap, and overlays fit both viewport width and height. Never hide overflow to mask inaccessible controls or horizontal layout failures. Future chat tabs, graphs and split panes must collapse or scroll deliberately at narrow widths without shrinking the primary content into a sidebar-sized column. New screens must pass the responsive browser matrix at 320, 480, 600, 800 and 1200px, including a short viewport, both themes, keyboard dismissal and reduced motion. Geometry, breakpoints and animation continue to come from the shared tokens.

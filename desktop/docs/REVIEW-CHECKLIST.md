@@ -1,4 +1,4 @@
-Describe the user-visible change and why it belongs in CodeAF.
+Describe the user-visible change and why it belongs in codeaf.
 
 - [ ] Reused shared UI controls, semantic icons and centralized tokens.
 - [ ] `npm run check` passes; any intentional standard change updates the standard and specimen.

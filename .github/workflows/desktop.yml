@@ -1,9 +1,17 @@
-name: Check foundation
-on: [push, pull_request]
+name: Desktop foundation
+on:
+  push:
+    branches: ['work/8f3c2a9d']
+  pull_request:
+    paths: ['desktop/**', '.github/workflows/desktop.yml']
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   foundation:
+    defaults:
+      run:
+        working-directory: desktop
     strategy:
       fail-fast: false
       matrix:
@@ -15,6 +23,7 @@ jobs:
         with:
           node-version: '24'
           cache: npm
+          cache-dependency-path: desktop/package-lock.json
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.x'
@@ -30,3 +39,14 @@ jobs:
       - run: npm run engine:build
       - run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
       - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+  engine-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: true
+      - run: make pr-ready BASE=origin/dev

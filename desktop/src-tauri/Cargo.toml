@@ -1,7 +1,7 @@
 [package]
 name = "codeaf-app"
 version = "0.1.0"
-description = "CodeAF desktop workspace"
+description = "codeaf desktop workspace"
 authors = ["Santosh Kumar Radha"]
 edition = "2021"
 
