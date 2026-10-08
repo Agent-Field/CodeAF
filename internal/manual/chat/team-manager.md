@@ -80,8 +80,8 @@ On the right is the conversation's column, the same one every chat has. Its head
 words, `Tasks 14 · Traffic 8` with `alt+l` at its right: the word in front is in bold ink and
 the other is dim, each is a button (point at it for what it shows, press it to bring it to
 the front), and while the tasks are in front the Traffic word keeps counting what arrived,
-`Traffic 3 new`. With the manager in front the column opens on the **Traffic**; with a member
-in front it opens on the tasks. Each kind of chat remembers the word you last chose for the
+`Traffic 3 new`. With a team overlay active in Chats, the column opens on **Tasks** for
+both the manager and members; **Traffic** remains selectable. Each kind of chat remembers the word you last chose for the
 rest of the session. With the column holding the keyboard (`alt+t`), `←` and `→` switch the
 words. Nothing here moves the conversation: both words are drawn in the same columns.
 

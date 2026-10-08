@@ -3305,7 +3305,7 @@ ctrl+. earlier
   in front is bold ink and the other dim; each is a button with a hover ground and a hint,
   and the other word keeps its count, so what arrives on the Traffic while you read the
   tasks still says `2 new`. Which word is in front is remembered for the session per kind
-  of chat: a manager's chat opens on the Traffic, every other chat on the Tasks. The `alt+l`
+  of chat: every chat starts on Tasks, including team overlays, and Traffic stays selectable. The `alt+l`
   at the right closes the column.
 - **The needs-you band** is everything that needs you now, from both views: a task whose
   next step is yours, a member's question to you, a decision put to you (each led by `?` in
