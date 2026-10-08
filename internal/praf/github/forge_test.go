@@ -140,12 +140,16 @@ func TestReposPagesAndSorts(t *testing.T) {
 			_, _ = w.Write([]byte(b.String()))
 			return
 		}
-		_, _ = w.Write([]byte(`[{"full_name":"o/new","name":"new","owner":{"login":"o"},"private":true,"pushed_at":"2026-10-01T00:00:00Z"}]`))
+		_, _ = w.Write([]byte(`[{"full_name":"o/new","name":"new","owner":{"login":"o"},"private":true,"pushed_at":"2026-10-01T00:00:00Z","open_issues_count":12}]`))
 	}))
 	defer srv.Close()
 	repos, err := testClient(srv.URL, "tok").Repos(context.Background())
 	if err != nil || len(repos) != 101 || repos[0].Full != "o/new" || !repos[0].Private {
 		t.Fatalf("repos %d, first %+v, %v", len(repos), repos[0], err)
+	}
+	// open_issues_count is carried, and a row that leaves it out says -1.
+	if repos[0].Open != 12 || repos[1].Open != -1 {
+		t.Fatalf("open counts %d and %d, want 12 and -1", repos[0].Open, repos[1].Open)
 	}
 }
 

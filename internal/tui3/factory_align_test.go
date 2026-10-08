@@ -697,3 +697,58 @@ func TestFactoryAlignEmptyFloorHasNoDivider(t *testing.T) {
 		}
 	}
 }
+
+// (7) THE REPO PICKER STANDS ON ITS OWN NAMED GRID at 80, 120 and 150: every
+// heading and mark at the margin, every name at one cell past the mark, every
+// fact column ending at one cell on every row that has it, the last ending
+// [factoryMargin] before the frame's edge.
+func TestFactoryAlignRepoPicker(t *testing.T) {
+	for _, width := range []int{80, 120, 150} {
+		a := factorySettingsLab(t, newPickerFake(), width)
+		a.pal = newPalette(tokens.NoColor, false)
+		drive(t, a, key("R"))
+		body := factoryExactBody(t, a, width, 30)
+		t.Logf("picker at %d:\n%s", width, strings.Join(body, "\n"))
+		ends := map[string]int{}
+		rows := 0
+		for _, row := range body {
+			r := []rune(row)
+			if !strings.Contains(row, "[x]") && !strings.Contains(row, "[ ]") {
+				if strings.Contains(row, " ─") && factoryFirstInk(row) != factoryMargin {
+					t.Errorf("at %d a heading starts at %d, not %d:\n%q", width, factoryFirstInk(row), factoryMargin, row)
+				}
+				continue
+			}
+			rows++
+			if factoryFirstInk(row) != factoryMargin {
+				t.Errorf("at %d a mark starts at %d:\n%q", width, factoryFirstInk(row), row)
+			}
+			if at := factoryMargin + factoryPickMarkW; len(r) <= at || r[at-1] != ' ' || r[at] == ' ' {
+				t.Errorf("at %d a name does not start at %d:\n%q", width, at, row)
+			}
+			if end := len(r); end > width-factoryMargin {
+				t.Errorf("at %d a row ends at %d, past %d:\n%q", width, end, width-factoryMargin, row)
+			}
+			for _, fact := range []string{" open", "private", "here", "pushed "} {
+				i := strings.LastIndex(row, fact)
+				if i < 0 {
+					continue
+				}
+				end := len([]rune(row[:i])) + len([]rune(fact))
+				if fact == "pushed " {
+					end = len(r)
+				}
+				if was, ok := ends[fact]; ok && was != end {
+					t.Errorf("at %d %q ends at %d, not %d:\n%q", width, fact, end, was, row)
+				}
+				ends[fact] = end
+			}
+		}
+		if rows == 0 {
+			t.Fatalf("at %d no picker row was found", width)
+		}
+		if end, ok := ends["pushed "]; ok && end != width-factoryMargin {
+			t.Errorf("at %d the last column ends at %d, not %d", width, end, width-factoryMargin)
+		}
+	}
+}

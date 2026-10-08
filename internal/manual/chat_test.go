@@ -38,6 +38,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"what can you do", "what-i-can-do"},
 		{"how do I connect github to the factory floor", "factory"},
 		{"which github repositories does the factory watch", "factory"},
+		{"how do I find a repo in the list", "factory"},
+		{"why does a repo say here", "factory"},
 		{"how do I make this repo always run a security review", "factory"},
 		{"how do I talk through a factory item before I launch it", "factory"},
 		{"can the chat skip review on one factory item", "factory"},

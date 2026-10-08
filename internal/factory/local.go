@@ -517,6 +517,13 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 				return watched, nil, err
 			}
 			available, err := list(ctx)
+			// EACH REPOSITORY CARRIES WHERE IT IS CHECKED OUT, when this
+			// machine knows, because the floor's stages run only there.
+			if o.dirs != nil {
+				for i := range available {
+					available[i].Dir = strings.TrimSpace(o.dirs(available[i].Full))
+				}
+			}
 			return watched, available, err
 		}
 		seam.SetRepos = keeper.SetRepos
