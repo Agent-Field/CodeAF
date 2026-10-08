@@ -216,6 +216,17 @@ type StageResult struct {
 	Claims   []Claim
 	Output   string
 	Exit     int
+	// Notes are sentences the stage leaves for the stages after it; the
+	// runner folds them into the next job's Notes.
+	Notes []string
+	// Edit is a plan stage's proposal to change the item's stages, applied by
+	// the runner through Adapt under the recipe's adapt word; nil otherwise.
+	Edit *PlanEdit
+	// Spent is what the round cost in dollars, 0 when nothing was priced.
+	Spent float64
+	// Chat names the stage's conversation when the stage ran as one, so the
+	// phase strip can open it.
+	Chat string
 }
 
 // Met says whether a round's result meets the stage's until. An empty until
