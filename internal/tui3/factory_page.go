@@ -209,6 +209,11 @@ type factoryPage struct {
 	verbX     int
 	verbHits  []factoryVerbHit
 	verbHover string
+	// THE CRUMBS ARE BUTTONS (factory_item.go): crumbHits each crumb as the
+	// last draw placed it on the page's first row, and crumbHover the one the
+	// pointer rests on.
+	crumbHits  []factoryCrumbHit
+	crumbHover factoryCrumb
 
 	// THE SPLIT (factory_split.go). split is the rows' share of the width in
 	// percent, 0 for [factoryRowsShare]; splitRead says the remembered one has
@@ -761,10 +766,16 @@ func (a *app) factoryHover(x, y int) bool {
 	case a.fp.recipe != nil:
 		return false
 	case a.fp.open:
-		// THE VERBS' COLUMN ON THE RIGHT ANSWERS FIRST: the row under the
-		// pointer wears its ground (factory_verbs.go); anywhere else the
-		// column's ground is let go and the stage rail is asked.
-		if a.factoryVerbHover(x, y) {
+		// THE CRUMBS AND THE VERBS' COLUMN ON THE RIGHT ANSWER FIRST: the
+		// crumb or row under the pointer wears its ground (factory_item.go,
+		// factory_verbs.go); anywhere else their ground is let go, the run's
+		// story is asked over the center, and then the left column.
+		crumb := a.factoryCrumbHover(x, y)
+		verb := a.factoryVerbHover(x, y)
+		if crumb || verb {
+			return true
+		}
+		if a.factoryPaneHover(x, y) {
 			return true
 		}
 		return a.factoryStageHover(x, y)

@@ -146,6 +146,22 @@ const (
 	wordSheet              = "keys"
 	wordConversation       = "conversation"
 	wordOf                 = "of"
+	wordRows               = "rows"
+	wordOn                 = "on"
+	wordOff                = "off"
+)
+
+// The item page's rows, one per facet of the item (factory_item.go): what a
+// person reads on its left column and on the `?` sheet.
+const (
+	wordFacetIssue    = "issue"
+	wordFacetManager  = "manager"
+	wordFacetRun      = "run"
+	wordFacetLog      = "log"
+	wordFacetResult   = "result"
+	wordFacetSettings = "settings"
+	// wordFloorCrumb is the first crumb of the item page's trail, the floor.
+	wordFloorCrumb = "Factory"
 )
 
 // The `?` sheet's group names, in the order the sheet draws them.

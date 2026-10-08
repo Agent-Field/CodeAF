@@ -76,9 +76,10 @@ func factoryPlanPane(a *app) string {
 	return strings.Join(pane, "\n")
 }
 
-// THE RUNNING STAGE TURNS: its mark on the rail and at the head of its pane's
-// running line is the transcript's spinner, and it moves from one spinner
-// step to the next. The floor's row keeps the working mark.
+// THE RUNNING STAGE TURNS: its mark on the left column is the transcript's
+// spinner, and it moves from one spinner step to the next. The floor's row
+// keeps the working mark. (The center is the run's story, factory_timeline.go,
+// which draws its own.)
 func TestFactoryItemPageRunningStageSpins(t *testing.T) {
 	a, _, _, _ := factoryPlanLab(t)
 	if !a.factorySpinning() {
@@ -89,9 +90,6 @@ func TestFactoryItemPageRunningStageSpins(t *testing.T) {
 	if !strings.HasPrefix(cell, first+" plan") {
 		t.Fatalf("the running plan row does not wear the spinner %q: %q", first, cell)
 	}
-	if pane := factoryPlanPane(a); !strings.Contains(pane, first) {
-		t.Fatalf("the running pane does not lead with the spinner %q:\n%s", first, pane)
-	}
 	for range spinnerStep {
 		a.paint()
 	}
@@ -101,9 +99,6 @@ func TestFactoryItemPageRunningStageSpins(t *testing.T) {
 	}
 	if cell2 := factoryPlanCell(t, a); cell2 == cell || !strings.HasPrefix(cell2, second+" plan") {
 		t.Fatalf("the running plan row stood still: %q then %q", cell, cell2)
-	}
-	if pane := factoryPlanPane(a); !strings.Contains(pane, second) {
-		t.Fatalf("the pane's spinner stood still:\n%s", pane)
 	}
 	it, _ := a.factoryCursorItem()
 	if lead := ansi.Strip(a.itemLeadMark(it)); lead != a.icon(tokens.GWorking) {
@@ -169,15 +164,13 @@ func TestFactoryItemPageElapsedCounts(t *testing.T) {
 	if cell := factoryPlanCell(t, a); !strings.HasSuffix(cell, "plan · 16s") {
 		t.Fatalf("a second later with no read, the plan row says %q", cell)
 	}
-	if pane := factoryPlanPane(a); !strings.Contains(pane, "16s") {
-		t.Fatalf("the pane's time did not count:\n%s", pane)
-	}
 }
 
-// THE LOG GROWS: a line the runner appended is on the running pane after the
-// beat's read, newest last.
+// THE LOG GROWS: a line the runner appended is on the log row's pane after
+// the beat's read, newest last.
 func TestFactoryItemPageLogGrows(t *testing.T) {
 	a, _, _, log := factoryPlanLab(t)
+	factoryRowNamed(t, a, wordFacetLog)
 	const fresh = "read ×4 · factory_item.go"
 	if strings.Contains(factoryPlanPane(a), fresh) {
 		t.Fatal("the lab's log already holds the fresh line")

@@ -158,7 +158,7 @@ func TestFactoryHintsAreShort(t *testing.T) {
 			t.Errorf("%s (%s): the item page's action line names more than five: %q", it.Ref(), it.State, words)
 		}
 		hint := (placeFactory{}).hint(a)
-		if !strings.HasPrefix(hint, factoryHintClause(keyWalk, wordWalkStages)) || !strings.HasSuffix(hint, factoryHintClause(keyBack, wordFloorName)+" · "+factoryHintClause(keySheet, wordSheet)) || strings.Count(hint, " · ") > 3 {
+		if !strings.HasPrefix(hint, factoryHintClause(keyWalk, wordRows)) || !strings.HasSuffix(hint, factoryHintClause(keyBack, wordFloorName)+" · "+factoryHintClause(keySheet, wordSheet)) || strings.Count(hint, " · ") > 3 {
 			t.Errorf("%s (%s): the item page's bottom line is %q", it.Ref(), it.State, hint)
 		}
 		drive(t, a, key("esc"))
