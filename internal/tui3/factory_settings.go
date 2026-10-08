@@ -100,6 +100,9 @@ type factoryPickRow struct {
 	// when that is not known.
 	open int
 	dir  string
+	// clone says the seam has a Clone door, so a repository with no checkout
+	// here is cloned on its first run rather than waiting for one.
+	clone bool
 }
 
 // factoryPickSection is one block of the picker: WATCHING, or one owner's
@@ -246,6 +249,7 @@ func factoryGHLogin(ctx context.Context, seam factory.Seam) string {
 // see is still one a person can stop watching.
 func (a *app) factoryOpenPicker(login string, watched []string, available []factory.RepoInfo) {
 	p := &factoryPicker{login: login, on: map[string]bool{}, was: map[string]bool{}}
+	clone := a.factory.Has("clone")
 	listed := map[string]bool{}
 	for _, r := range available {
 		listed[strings.ToLower(r.Full)] = true
@@ -254,7 +258,7 @@ func (a *app) factoryOpenPicker(login string, watched []string, available []fact
 		name := strings.ToLower(w)
 		p.on[name], p.was[name] = true, true
 		if !listed[name] {
-			p.rows = append(p.rows, factoryPickRow{full: w, owner: factoryRepoOwner(w), open: -1})
+			p.rows = append(p.rows, factoryPickRow{full: w, owner: factoryRepoOwner(w), open: -1, clone: clone})
 		}
 	}
 	for _, r := range available {
@@ -265,7 +269,7 @@ func (a *app) factoryOpenPicker(login string, watched []string, available []fact
 		if owner == "" {
 			owner = factoryRepoOwner(r.Full)
 		}
-		p.rows = append(p.rows, factoryPickRow{full: r.Full, owner: owner, private: r.Private, pushed: r.Pushed, open: r.Open, dir: r.Dir})
+		p.rows = append(p.rows, factoryPickRow{full: r.Full, owner: owner, private: r.Private, pushed: r.Pushed, open: r.Open, dir: r.Dir, clone: clone})
 	}
 	a.fp.pick = p
 	a.touch()
@@ -674,7 +678,8 @@ type factoryPickCol struct {
 
 // factoryPickCols are the facts that choose: how much is waiting, whether it
 // is private, whether it is checked out here (`here`, where the floor's
-// stages can run), and when it was last pushed to.
+// stages can run, else `clone on first run` when the seam can clone it), and
+// when it was last pushed to.
 var factoryPickCols = []factoryPickCol{
 	factoryPickColOpen: {factoryPickOpenW, func(r factoryPickRow, _ time.Time) string {
 		if r.open <= 0 {
@@ -689,8 +694,11 @@ var factoryPickCols = []factoryPickCol{
 		return ""
 	}},
 	factoryPickColHere: {factoryPickHereW, func(r factoryPickRow, _ time.Time) string {
-		if r.dir != "" {
+		switch {
+		case r.dir != "":
 			return "here"
+		case r.clone:
+			return factoryPickCloneWords
 		}
 		return ""
 	}},
@@ -942,8 +950,15 @@ func (a *app) factoryPickFoot(r factoryPickRow, measure int) string {
 	if r.dir != "" {
 		return a.pal.dim(fit("checked out at "+r.dir, measure))
 	}
+	if r.clone {
+		return a.pal.dim(fit("not checked out here"+rowSep+"it is cloned on the first run", measure))
+	}
 	return a.pal.dim(fit(factoryNoCheckoutWords(r.full)+rowSep+"it is watched and read, and its stages wait until it is cloned", measure))
 }
+
+// factoryPickCloneWords is the `here` column of a repository with no checkout
+// on a seam that clones one on its first run (factory_clone.go).
+const factoryPickCloneWords = "clone on first run"
 
 // factoryPushedAgo is how long ago, in the largest unit that is at least one:
 // `40m`, `5h`, `2d`, `3w`, `4mo`, `2y`. Nothing for an unknown time.

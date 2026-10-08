@@ -444,6 +444,13 @@ type Snapshot struct {
 	// kept by the store so every window reads the same ones. Each is also
 	// drawn as its item's Marked. Nil is nothing marked.
 	Marked []int
+	// Checkouts is where this machine has each of the floor's repositories
+	// checked out, by the name the floor shows, for the repositories it knows
+	// a folder for; a repository not in it has no checkout here, and a run of
+	// its items waits for one ([Seam.Clone]). NIL IS A SEAM THAT DOES NOT SAY,
+	// which the surface reads as nothing to check; a seam that knows where
+	// repositories are checked out answers a map, empty when it knows none.
+	Checkouts map[string]string
 }
 
 // RepoNamed finds a repo in the snapshot.
