@@ -36,6 +36,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"codeaf ignores my OPENAI_API_KEY", "starting-codeaf"},
 
 		{"what can you do", "what-i-can-do"},
+		{"how do I connect github to the factory floor", "factory"},
+		{"which github repositories does the factory watch", "factory"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},

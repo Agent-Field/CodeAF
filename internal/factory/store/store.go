@@ -200,6 +200,12 @@ func (st *Store) List() ([]factory.Item, error) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
 			continue
 		}
+		// ONLY A NUMBER NAMES AN ITEM. The folder also keeps the watched repos
+		// and the sources' poll record (repos.go, meta.go), and those documents
+		// must never be read back as a blank row on the floor.
+		if _, err := strconv.Atoi(strings.TrimSuffix(entry.Name(), ".json")); err != nil {
+			continue
+		}
 		d, err := st.read(filepath.Join(st.root, entry.Name()))
 		if err != nil {
 			continue
