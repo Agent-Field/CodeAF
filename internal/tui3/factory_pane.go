@@ -82,8 +82,10 @@ func (a *app) factoryPane(width, room int) []string {
 		return nil
 	}
 	lines := make([]string, room)
-	if it, ok := a.factoryCursorItem(); ok && width > factoryMargin {
-		copy(lines, a.factoryPeek(it, width-factoryMargin, room))
+	// THE PEEK STOPS [factoryMargin] BEFORE THE FRAME'S EDGE, as it starts
+	// [factoryMargin] past the divider (factory_grid.go's THE RIGHT MARGIN).
+	if it, ok := a.factoryCursorItem(); ok && width > factoryMargins {
+		copy(lines, a.factoryPeek(it, width-factoryMargins, room))
 	}
 	lead := factorySpaces(factoryMargin)
 	out := make([]string, room)
@@ -441,85 +443,138 @@ func (a *app) factoryAdaptedRow(it factory.Item, measure int) string {
 	return a.pal.dim(fit(line, measure))
 }
 
-// factoryPeekStrip is the stage strip, cells [factoryStripGap] apart: for an
-// item on a bench, each phase as its mark and its words, the running cell in
-// the accent, done cells ink and the rest dim, a phase waiting on the person
-// with its mark in amber; for an item with no stream yet, the stages it would
-// run, each with the pending mark, dim. A STAGE SWITCHED OFF OR SKIPPED IS NOT
-// ON THE STRIP: it will not run, and the item page says why. Cells are dropped
-// from the right, whole, when the row is too narrow, and THE PHASE THAT IS
-// MOVING IS ALWAYS ON THE ROW.
+// factoryPeekStrip is the stage strip: for an item on a bench, each phase as
+// its mark and its words, the running cell in the accent, done cells ink and
+// the rest dim, a phase waiting on the person with its mark in amber; for an
+// item with no stream yet, the stages it would run, each with the pending
+// mark, dim. A STAGE SWITCHED OFF OR SKIPPED IS NOT ON THE STRIP: it will not
+// run, and the item page says why.
+//
+// EVERY CELL OF ONE STRIP IS ONE WIDTH ([factoryStripCellW]), [factoryStripGap]
+// apart, so the marks stand at even steps and the first cell is as wide as
+// the rest (owner ruling, 2026-10-08); a name longer than the cell ends in an
+// ellipsis. Cells are dropped whole when the row is too narrow, and A STRIP
+// THAT DROPPED CELLS SAYS SO with an ellipsis at the end it lost them from.
+// THE PHASE THAT IS MOVING IS ALWAYS ON THE ROW: the cells before it go first.
 func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 	pal := a.pal
 	stages := factoryStages(a.fp.snap, it)
-	gap := factorySpaces(factoryStripGap)
-	var segs, plains []string
+	var cells []factoryStripPart
+	moving := -1
 	if it.Stream != nil && len(it.Stream.Phases) > 0 {
-		for _, ph := range it.Stream.Phases {
+		for i, ph := range it.Stream.Phases {
 			mark, paint := a.factoryPhaseMark(ph.State)
-			words := factoryPhaseWords(ph, factoryStageMax(stages, ph.Name))
-			var seg string
+			// THE MINUTES LEFT ARE THE RUNNING LINE'S, not the cell's: a cell
+			// that carried them was the one wide cell every other cell was
+			// widened to ([factoryRunningLine] says them).
+			named := ph
+			named.Left = 0
+			c := factoryStripPart{mark: mark, words: factoryPhaseWords(named, factoryStageMax(stages, ph.Name))}
 			switch ph.State {
 			case factory.PhaseRunning:
-				seg = pal.accent(mark + " " + words)
-			case factory.PhaseDone:
-				seg = paint(mark) + " " + pal.ink(words)
+				c.markPaint, c.wordPaint = pal.accent, pal.accent
+			case factory.PhaseDone, factory.PhaseFailed:
+				c.markPaint, c.wordPaint = paint, pal.ink
 			case factory.PhaseWaiting:
-				seg = pal.ask(mark) + " " + pal.ink(words)
-			case factory.PhaseFailed:
-				seg = paint(mark) + " " + pal.ink(words)
+				c.markPaint, c.wordPaint = pal.ask, pal.ink
 			default:
-				seg = pal.dim(mark + " " + words)
+				c.markPaint, c.wordPaint = pal.dim, pal.dim
 			}
-			seg, plain := factoryStripCell(seg, mark+" "+words)
-			segs = append(segs, seg)
-			plains = append(plains, plain)
+			if moving < 0 && (ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting) {
+				moving = i
+			}
+			cells = append(cells, c)
 		}
-		// Phases before the moving one are dropped from the left until it
-		// fits, because a strip cut from the right lost the very phase a
-		// person looks for.
-		from, at := 0, -1
-		for i, ph := range it.Stream.Phases {
-			if ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting {
-				at = i
-				break
+	} else {
+		mark := a.factoryPendingMark()
+		for _, st := range stages {
+			if !st.On || !factory.Fits(st, it) {
+				continue
 			}
+			words := st.Name
+			if st.Max > 1 {
+				words += " ×" + strconv.Itoa(st.Max)
+			}
+			cells = append(cells, factoryStripPart{mark: mark, words: words, markPaint: pal.dim, wordPaint: pal.dim})
 		}
-		for from < at {
-			w := 0
-			for i := from; i <= at; i++ {
-				w += ansi.StringWidth(plains[i]) + factoryStripGap
-			}
-			if w-factoryStripGap <= measure {
-				break
-			}
-			from++
-		}
-		return strings.TrimRight(factoryJoinWhole(segs[from:], plains[from:], gap, measure), " ")
 	}
-	mark := a.factoryPendingMark()
-	for _, st := range stages {
-		if !st.On || !factory.Fits(st, it) {
-			continue
-		}
-		words := st.Name
-		if st.Max > 1 {
-			words += " ×" + strconv.Itoa(st.Max)
-		}
-		seg, plain := factoryStripCell(pal.dim(mark+" "+words), mark+" "+words)
-		segs = append(segs, seg)
-		plains = append(plains, plain)
-	}
-	return strings.TrimRight(factoryJoinWhole(segs, plains, gap, measure), " ")
+	return a.factoryStripRow(cells, moving, measure)
 }
 
-// factoryStripCell pads one stage cell to its LENGTH CLASS, the next multiple
-// of [factoryStripClass], so a strip of short and long stage names stands in
-// regular cells rather than a ragged run.
-func factoryStripCell(seg, plain string) (string, string) {
-	w := ansi.StringWidth(plain)
-	pad := (w+factoryStripClass-1)/factoryStripClass*factoryStripClass - w
-	return seg + factorySpaces(pad), plain + factorySpaces(pad)
+// factoryStripPart is one cell of a stage strip before it is laid out: its
+// mark and its words, and the paint of each.
+type factoryStripPart struct {
+	mark, words          string
+	markPaint, wordPaint func(string) string
+}
+
+func (c factoryStripPart) plain() string { return c.mark + " " + c.words }
+
+// factoryStripCellW is one strip's cell width: its longest cell, never wider
+// than [factoryStripCellMax].
+func factoryStripCellW(plains []string) int {
+	w := 0
+	for _, p := range plains {
+		w = max(w, ansi.StringWidth(p))
+	}
+	return min(w, factoryStripCellMax)
+}
+
+// factoryStripRow lays the cells out in measure cells on one width
+// ([factoryStripCellW]), the cell at moving (-1 for none) kept on the row.
+func (a *app) factoryStripRow(cells []factoryStripPart, moving, measure int) string {
+	if len(cells) == 0 || measure <= 0 {
+		return ""
+	}
+	plains := make([]string, len(cells))
+	for i, c := range cells {
+		plains[i] = c.plain()
+	}
+	cellW := factoryStripCellW(plains)
+	more := a.icon(tokens.GEllipsis)
+	moreW := ansi.StringWidth(more)
+	n := len(cells)
+	// shown is how many cells from `from` fit, with room kept for the
+	// ellipsis at each end that lost cells.
+	shown := func(from int) int {
+		lead := 0
+		if from > 0 {
+			lead = moreW + factoryStripGap
+		}
+		k := n - from
+		for ; k > 1; k-- {
+			w := lead + k*cellW + (k-1)*factoryStripGap
+			if from+k < n {
+				w += factoryStripGap + moreW
+			}
+			if w <= measure {
+				break
+			}
+		}
+		return k
+	}
+	from, k := 0, shown(0)
+	for from < moving && moving >= from+k {
+		from++
+		k = shown(from)
+	}
+	gap := factorySpaces(factoryStripGap)
+	var parts []string
+	if from > 0 {
+		parts = append(parts, a.pal.dim(more))
+	}
+	for _, c := range cells[from : from+k] {
+		words := c.words
+		if room := cellW - ansi.StringWidth(c.mark) - 1; ansi.StringWidth(words) > room {
+			words = ansi.Truncate(words, max(room, 0), more)
+		}
+		seg := c.markPaint(c.mark) + " " + c.wordPaint(words)
+		parts = append(parts, seg+factorySpaces(cellW-ansi.StringWidth(c.mark+" "+words)))
+	}
+	if from+k < n {
+		parts = append(parts, a.pal.dim(more))
+	}
+	return strings.TrimRight(fit(strings.Join(parts, gap), measure), " ")
 }
 
 // factoryPeekState is the one line an item's state adds under its stages:
@@ -543,9 +598,9 @@ func (a *app) factoryPeekState(it factory.Item, measure int) string {
 }
 
 // factoryRunningLine is what the running stage is doing, as one line:
-// `review 1/2 · 3 findings · fixing`. It is the stage and its round, the
-// phase's own note, and the newest thing the stream said, with what the said
-// line repeats of the first two left out.
+// `review 1/2 · 3 findings · fixing · 4m left`. It is the stage and its round,
+// the phase's own note, the newest thing the stream said, with what the said
+// line repeats of the first two left out, and the minutes it has left.
 func factoryRunningLine(it factory.Item, stages []factory.Stage) string {
 	s := it.Stream
 	if s == nil {
@@ -581,6 +636,9 @@ func factoryRunningLine(it factory.Item, stages []factory.Stage) string {
 		said := strings.TrimSpace(s.Log[n-1].Text)
 		said = strings.TrimSpace(strings.TrimPrefix(said, head+":"))
 		add(said)
+	}
+	if ph.Left > 0 {
+		add(factoryMinutes(ph.Left) + " left")
 	}
 	return strings.Join(parts, rowSep)
 }
@@ -859,7 +917,7 @@ func (a *app) factoryClaimRow(c factory.Claim, tag string, measure int) string {
 		medium = tag
 	}
 	var parts []string
-	if ev := strings.TrimSpace(c.Evidence); ev != "" {
+	if ev := factoryEvidence(c.Evidence, medium); ev != "" {
 		parts = append(parts, pal.dim(ev))
 	}
 	if c.Medium == "screenshot" {
@@ -881,6 +939,23 @@ func (a *app) factoryClaimRow(c factory.Claim, tag string, measure int) string {
 		right = chip
 	}
 	return factorySpread(left, right, measure)
+}
+
+// factoryEvidence is a claim's evidence as the sheet draws it, WITHOUT THE
+// MEDIUM IT REPEATS: the medium has its own column, so `test · 0.3s` under a
+// `test` chip is `0.3s`, and evidence that is only the medium's name is none.
+func factoryEvidence(evidence, medium string) string {
+	ev := strings.TrimSpace(evidence)
+	if medium == "" {
+		return ev
+	}
+	if strings.EqualFold(ev, medium) {
+		return ""
+	}
+	if head, rest, ok := strings.Cut(ev, rowSep); ok && strings.EqualFold(strings.TrimSpace(head), medium) {
+		return strings.TrimSpace(rest)
+	}
+	return ev
 }
 
 // factoryStages is the stages the item runs: its own copy when it has one, and

@@ -86,14 +86,17 @@ type factoryGroup struct {
 	states []factory.State
 }
 
-// factoryGroups is the rail's order: what waits on the person first, then what
-// is running, then what is new, then what came back. Dismissed items are not on
-// the floor at all.
+// factoryGroups is the rail's order: what waits on the person first, a
+// question and then a landed item waiting for its sign-off, then what is
+// running, then what is new, then what has shipped. LANDED SITS BESIDE NEEDS
+// YOU (owner ruling, 2026-10-08): an item waiting for a sign-off is the second
+// thing a person is there for, and under the backlog it was the last thing on
+// the floor. Dismissed items are not on the floor at all.
 var factoryGroups = []factoryGroup{
 	{word: "needs you", states: []factory.State{factory.StateNeedsYou}},
+	{word: "landed", states: []factory.State{factory.StateLanded}},
 	{word: "streams", states: []factory.State{factory.StateRunning, factory.StateQueued}},
 	{word: "new", states: []factory.State{factory.StateNew}},
-	{word: "landed", states: []factory.State{factory.StateLanded}},
 	{word: "shipped", states: []factory.State{factory.StateShipped}},
 }
 
@@ -453,19 +456,21 @@ func (a *app) factoryRail(width, room int) ([]string, []int) {
 		out = append(out, factoryPad(a.factoryRailLine(rows[line], width), width))
 		hits = append(hits, -1)
 	}
-	a.fp.top = pinned + placeTop(a.fp.top-pinned, max(cursorLine-pinned, 0), len(rows)-pinned, room-pinned)
+	// THE WINDOW KEEPS A SECTION'S HEADING WITH ITS FIRST ROW, and the list's
+	// own top with its first item (factory_page.go's [app.factoryWindowTop]).
+	a.fp.top = a.factoryWindowTop(rows, cursorLine, pinned, room)
 	end := min(a.fp.top+room-pinned, len(rows))
-	a.fp.firstHeading = -1
 	for line := a.fp.top; line < end; line++ {
 		r := rows[line]
 		hit := -1
 		if r.walk >= 0 {
 			hit = line
 		}
-		if r.kind == factoryRowHeading && a.fp.firstHeading < 0 {
-			a.fp.firstHeading = len(out)
+		text := a.factoryRailLine(r, width)
+		if factoryOrphanHeading(rows, line, end) {
+			text = ""
 		}
-		out = append(out, factoryPad(a.factoryRailLine(r, width), width))
+		out = append(out, factoryPad(text, width))
 		hits = append(hits, hit)
 	}
 	a.fp.shown = len(out)
@@ -563,70 +568,7 @@ func factoryRepoShort(name string) string {
 	return name
 }
 
-// factoryGrid is one row's columns at a width: the ref's cells, the title's,
-// and the facts' (0 when the row carries none).
-type factoryGrid struct {
-	refW, titleW, factsW int
-	columns              bool
-}
-
-// factoryGridAt lays the grid out for a row of width cells. With columns the
-// title and the facts split what the fixed columns leave, the title taking the
-// larger half and never under [factoryTitleMin]; without, the title takes
-// everything after the ref.
-func (a *app) factoryGridAt(width int) factoryGrid {
-	g := factoryGrid{refW: max(a.fp.refW, factoryRefW), columns: a.fp.columns}
-	head := factoryLeadW + factoryPriorityW + g.refW + 1
-	if !g.columns {
-		g.titleW = max(width-head, 0)
-		return g
-	}
-	rest := width - head - factoryGutter - factoryRepoW - factoryGutter - factoryGutter - factoryAgeW
-	g.titleW = max(factoryTitleMin, (rest+1)/factoryTitleShare)
-	g.factsW = max(rest-g.titleW, 0)
-	// THE GIVE-BACK, in the compact density only: the longest title on the
-	// floor widens the column, out of the facts' cells, down to
-	// [factoryFactsKeep] of them.
-	if !a.fp.comfy && g.factsW > factoryFactsKeep {
-		// THE FACTS KEEP THE WIDEST STATE FACT ON THE FLOOR, so the one fact
-		// a row exists to carry is never what a title took. A question is
-		// the one exception, kept to [factoryFactsKeep]: it is a sentence,
-		// and the peek and the item page say it whole.
-		need, keep := 0, max(factoryFactsKeep, a.factoryStateWidest())
-		for _, it := range a.fp.snap.Items {
-			if factoryOnFloor(it) {
-				need = max(need, ansi.StringWidth(it.Title))
-			}
-		}
-		if give := min(need-g.titleW, g.factsW-keep); give > 0 {
-			g.titleW += give
-			g.factsW -= give
-		}
-	}
-	// AND ON A TIGHT FLOOR THE TITLE GIVES BACK, down to [factoryTitleFloor],
-	// so the widest state fact is never cut mid-word: `rev…` says less than a
-	// shorter title does.
-	if take := min(a.factoryStateWidest()-g.factsW, g.titleW-factoryTitleFloor); take > 0 {
-		g.titleW -= take
-		g.factsW += take
-	}
-	return g
-}
-
-// factoryStateWidest is the widest state fact on the floor, a question left
-// out: it is a sentence, and the peek and the item page say it whole.
-func (a *app) factoryStateWidest() int {
-	w := 0
-	for _, it := range a.fp.snap.Items {
-		if !factoryOnFloor(it) || it.State == factory.StateNeedsYou {
-			continue
-		}
-		if st, ok := a.factoryStateFact(it); ok {
-			w = max(w, ansi.StringWidth(st.plain))
-		}
-	}
-	return w
-}
+// THE ROW'S GRID, [factoryGrid] and [app.factoryGridAt], is factory_grid.go's.
 
 // factoryRailItem is one item row, exactly width cells, on the grid of
 // [factoryGridAt]. THE CURSOR ROW WEARS THE CURSOR GROUND AND NOTHING ELSE
@@ -675,7 +617,7 @@ func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 		// the room the row has, and the reason takes what they did not use
 		// (factory_order.go). Measured against the facts at their widest
 		// there was never room, at any width.
-		facts := a.factoryFactsLine(it, factsW)
+		facts := a.factoryFactsLine(it, factsW, g.factsN)
 		reason, reasonW := a.factoryOrderReason(it, factsW-ansi.StringWidth(facts))
 		right, rightW = reason+right, rightW+reasonW
 		text += facts
@@ -697,7 +639,7 @@ func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 // nobody ranked. AN ITEM SOMETHING IS BEING DONE TO draws the spinner there
 // instead (factory_busy.go), which is the row's one claim that it is moving.
 func (a *app) factoryPrioCell(it factory.Item) string {
-	if _, busy := a.factoryBusy(it.ID); busy {
+	if a.factoryRowSpins(it.ID) {
 		return a.pal.accent(a.factorySpin())
 	}
 	switch it.Triage.Priority {
@@ -788,11 +730,21 @@ type factoryFactPart struct {
 // then the tags. The one exception is a state fact wider than the whole
 // column on its own, which is cut with an ellipsis, because it is the one fact
 // a row exists to carry.
-func (a *app) factoryFactsLine(it factory.Item, width int) string {
+func (a *app) factoryFactsLine(it factory.Item, width, most int) string {
 	if width <= 0 {
 		return ""
 	}
 	parts := a.factoryRowFacts(it)
+	// THE FACTS DROP AS A COLUMN: the grid says how many fact columns the
+	// floor carries at this width ([factoryGrid].factsN), and no row draws
+	// one more, so one column never says a fact on one row and nothing on
+	// the next.
+	if most < 0 {
+		return ""
+	}
+	if most > 0 && len(parts) > most {
+		parts = parts[:most]
+	}
 	sep := a.pal.dim(rowSep)
 	sepW := ansi.StringWidth(rowSep)
 	out, used := "", 0
@@ -833,7 +785,14 @@ func (a *app) factoryRowFacts(it factory.Item) []factoryFactPart {
 	if st, ok := a.factoryStateFact(it); ok {
 		out = append(out, st)
 	}
-	add(factoryMoneyFact(it), placeMoneyInk(pal))
+	// AN ESTIMATE IS A GUESS AND WEARS THE FACTS' MUTED TONE; money's green
+	// is kept for what a stream actually spent, so the colour is not spent
+	// on a guess on every row.
+	money := placeMoneyInk(pal)
+	if m := factoryMoneyFact(it); strings.HasPrefix(m, "~") {
+		money = pal.muted
+	}
+	add(factoryMoneyFact(it), money)
 	if it.Author != "" {
 		who := it.Author
 		if it.Tier == factory.TierStranger {

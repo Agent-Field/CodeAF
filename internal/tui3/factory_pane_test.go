@@ -180,7 +180,8 @@ func TestFactoryPeekNewItemLadder(t *testing.T) {
 	}
 	strip := blocks[3][0]
 	mark := a.factoryPendingMark()
-	if want := mark + " read  " + mark + " checks      " + mark + " review"; strip != want {
+	// EVERY CELL OF THE STRIP IS ONE WIDTH, its longest name's (`○ checks`).
+	if want := mark + " read    " + mark + " checks  " + mark + " review"; strip != want {
 		t.Fatalf("the would-run strip is %q, want %q", strip, want)
 	}
 	for _, key := range []string{"[t]", "[c]", "[e]"} {
@@ -238,17 +239,17 @@ func TestFactoryPeekRunningItemLadder(t *testing.T) {
 		"the filter is read before the tree exists",
 		"gate  ship    cap  $5      effort  —",
 		factoryDoneMark(a),
-		"review 1/2 · 3 findings · fixing")
-	if strip := blocks[3][0]; !strings.Contains(strip, "review 1/2 · 4m left") || !strings.Contains(strip, "write ×3") && !strings.Contains(strip, "test") {
+		"review 1/2 · 3 findings · fixing · 4m left")
+	if strip := blocks[3][0]; !strings.Contains(strip, "review 1/2") || !strings.Contains(strip, "write ×3") && !strings.Contains(strip, "test") {
 		t.Fatalf("the strip is %q", strip)
 	}
 	it := *factoryPaneItem(t, a, 2)
 	painted := a.factoryPeekStrip(it, 200)
 	mark, _ := a.factoryPhaseMark(factory.PhaseRunning)
-	if !strings.Contains(painted, a.pal.accent(mark+" review 1/2 · 4m left")) {
+	if !strings.Contains(painted, a.pal.accent(mark)+" "+a.pal.accent("review 1/2")) {
 		t.Fatalf("the running cell is not in the accent: %q", painted)
 	}
-	if !strings.Contains(painted, a.pal.dim(a.factoryPendingMark()+" neaten")) {
+	if !strings.Contains(painted, a.pal.dim(a.factoryPendingMark())+" "+a.pal.dim("neaten")) {
 		t.Fatalf("a pending cell is not dim: %q", painted)
 	}
 }
@@ -289,7 +290,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 func TestFactoryPeekLandedLadder(t *testing.T) {
 	a := factoryPlaceLab(t)
 	factoryNoForge(t, a, 9)
-	rows := factoryPaneOn(t, a, 9, factoryPaneW(150), 30)
+	rows := factoryPaneOn(t, a, 9, factoryPaneW(160), 30)
 	blocks := factoryPeekBlocks(t, rows)
 	factoryWantBlocks(t, "the landed item", blocks,
 		"#1661 probes fire once, then retire",
