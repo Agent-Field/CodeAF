@@ -49,6 +49,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I answer a factory item's question", "factory"},
 		{"how do I steer a running factory item", "factory"},
 		{"what does the factory item log show", "factory"},
+		{"which branch does a factory item work on, does it touch my checkout", "factory"},
+		{"where is the factory item's worktree", "factory"},
 		{"who is the foreman on the factory floor", "factory"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).

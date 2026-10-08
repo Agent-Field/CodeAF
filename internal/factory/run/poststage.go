@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -9,13 +10,37 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
 
+// PostOptions builds a post executor.
+type PostOptions struct {
+	// Source answers the item's source, nil when none.
+	Source func(repo string) factory.Source
+	// Policy answers the repo's recipe policy lines.
+	Policy func(repo string) []string
+	// Push publishes the item's branch from its folder before a `pr` is
+	// opened from it; the wire hands [GitPush]. Nil pushes nothing, and the
+	// pull request is opened from whatever the remote already has.
+	Push func(dir, branch string) error
+}
+
 // NewPostExecutor runs a post stage: one write through the item's source.
+func NewPostExecutor(source func(repo string) factory.Source, policy func(repo string) []string) Executor {
+	return NewPostExecutorWith(PostOptions{Source: source, Policy: policy})
+}
+
+// NewPostExecutorWith runs a post stage: one write through the item's source.
 //
 // A POST IS NEVER RETRIED. A write that errored may still have landed, and a
 // second call could post twice; the error goes back to the runner and a
 // person decides. Policy is read first, by code, and a refusal is a result
 // with its reason on the proof sheet, not an error.
-func NewPostExecutor(source func(repo string) factory.Source, policy func(repo string) []string) Executor {
+//
+// A PR PUSHES ITS BRANCH FIRST, and never with force: the branch is the one
+// the item's worktree was made on (its `branch:` log line), pushed with
+// `git push -u origin <branch>` from the round's folder, and only then is the
+// pull request opened from it. A push that fails is an error like a write
+// that fails, with git's own last line.
+func NewPostExecutorWith(o PostOptions) Executor {
+	source, policy := o.Source, o.Policy
 	return ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
 		if err := ctx.Err(); err != nil {
 			return factory.StageResult{}, err
@@ -53,6 +78,11 @@ func NewPostExecutor(source func(repo string) factory.Source, policy func(repo s
 					Output: "post refused: " + why,
 					Claims: []factory.Claim{{Text: verb + " refused by policy", OK: false, Evidence: why, Medium: "policy"}},
 				}, nil
+			}
+		}
+		if verb == "pr" && o.Push != nil {
+			if err := push(o.Push, job.Dir, it, action.Branch); err != nil {
+				return factory.StageResult{}, err
 			}
 		}
 		rcpt, err := src.Write(ctx, action)
@@ -127,8 +157,24 @@ func proofList(it factory.Item, prior []factory.StageResult) string {
 	return strings.Join(lines, "\n")
 }
 
-// branchFor is the branch write named in the item's stream log
-// (`branch: <name>`), else factory/<digits>-<slug>.
+// push runs the push and says what went wrong in a sentence.
+func push(run func(dir, branch string) error, dir string, it factory.Item, branch string) error {
+	if strings.TrimSpace(dir) == "" {
+		return fmt.Errorf("codeaf does not know where %s is checked out", strings.TrimSpace(it.Repo))
+	}
+	err := run(dir, branch)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, ErrNoRemote):
+		return fmt.Errorf("%s has no remote to push to", it.Ref())
+	}
+	return fmt.Errorf("could not push %s: %s", branch, lastLine(err.Error()))
+}
+
+// branchFor is the branch the item's worktree was made on, as its stream log
+// names it (`branch: <name>`, written once when the worktree is made), else
+// the name the worktree would have: factory/<digits>-<slug>.
 func branchFor(it factory.Item) string {
 	if it.Stream != nil {
 		for i := len(it.Stream.Log) - 1; i >= 0; i-- {
@@ -140,24 +186,5 @@ func branchFor(it factory.Item) string {
 			}
 		}
 	}
-	digits := strings.TrimPrefix(it.Ref(), "#")
-	var slug []rune
-	dash := false
-	for _, r := range strings.ToLower(it.Title) {
-		if r < 128 && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
-			slug = append(slug, r)
-			dash = false
-		} else if !dash && len(slug) > 0 {
-			slug = append(slug, '-')
-			dash = true
-		}
-		if len(slug) >= 40 {
-			break
-		}
-	}
-	s := strings.Trim(string(slug), "-")
-	if s == "" {
-		return "factory/" + digits
-	}
-	return "factory/" + digits + "-" + s
+	return itemBranch(it)
 }
