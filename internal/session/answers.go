@@ -133,6 +133,10 @@ const (
 	QuestionFuel QuestionKind = "fuel"
 	// QuestionAsk is the model's own question, raised through the ask tool.
 	QuestionAsk QuestionKind = "ask"
+	// QuestionFactory is a card the chat raised to put one piece of work on the
+	// factory floor (tools_factory.go, [Agent.ResolveFactory]). Its token is a
+	// string, the proposal's own id, so an answer names it by Ref.
+	QuestionFactory QuestionKind = "factory"
 )
 
 // AnswerOption is one answer a question will take: the key that gives it and
@@ -246,6 +250,15 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 		// the repeating check, the shape a bare key still has to name, and the
 		// yes carries no cadence because there is no when to read one from.
 		return standingCheckOptions("")
+	case QuestionFactory:
+		// THE YES WRITES ONE ROW AND STARTS NOTHING, and the no changes nothing
+		// at all, so it is the safe one. Words are the third answer and have no
+		// key: they arrive through the card's box as a change (question.go's
+		// [Agent.applyToLane]).
+		return []AnswerOption{
+			{Key: FactoryAddKey, Label: FactoryAddLabel},
+			{Key: FactoryNotNowKey, Label: FactoryNotNowLabel, Safe: true},
+		}
 	case QuestionConnect:
 		return []AnswerOption{
 			{Key: "1", Label: "connect"},
@@ -605,6 +618,8 @@ type AnswerAction struct {
 	Task TaskAnswer
 	// Standing is the standing lane's answer, for [Agent.ResolveStanding].
 	Standing StandingAnswer
+	// Factory is the factory card's answer, for [Agent.ResolveFactory].
+	Factory FactoryAnswer
 }
 
 // AnswerFromKey is the whole mapping, and it is the one place it is written.
@@ -661,6 +676,15 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 			// the day one of them learns something the line to change is
 			// visible.
 			action.Standing = StandingAnswer{}
+		}
+	case QuestionFactory:
+		switch key {
+		case FactoryAddKey:
+			action.Factory = FactoryAnswer{Approved: true}
+		case FactoryNotNowKey:
+			// Written out for the standing arm's reason: the zero value is
+			// already the no, and a reader counting answers must find both.
+			action.Factory = FactoryAnswer{}
 		}
 	}
 	return action, true

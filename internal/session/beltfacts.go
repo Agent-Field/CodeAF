@@ -612,6 +612,16 @@ var handoffFacts = []beltFact{{
 	present: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`.",
 	shelved: "AND A SHAPE OF WORK A SAVED PROGRAM ALREADY DOES: `propose_subharness`, in the `harnesses` group.",
 	absent:  "",
+}, {
+	// THE FACTORY FLOOR, on the door's own predicate (tools_factory.go). One
+	// short sentence, because the mechanics ride with the verb's description
+	// and every byte here is paid on every request (prefixbudget_test.go); and
+	// nothing at all where there is no door, because a sentence denying a floor
+	// nobody mentioned is a sentence about machinery the model never needed.
+	tools:   []string{"factory_add"},
+	holds:   Config.mayFactory,
+	present: "AND THE FACTORY FLOOR: `factory_add`; a card asks, nothing starts.",
+	absent:  "",
 }}
 
 // programFacts is the ROUTING LINE for saved recipes and saved programs: which
