@@ -895,12 +895,16 @@ done anything with the item yet, not that it is new on GitHub.
 ## my chats run but the factory never fills — the engine is another build
 
 The background engine that runs your chats outlives the codeaf that started it, so after you
-install or build a new codeaf, a window can attach to an engine from an older build. Your window
-reads the floor itself either way, so watched repositories still fill. When the two builds
-differ, the chat's notice line says so once, for example
-`this workspace's engine is another build (0ld0ld00 built 2026-10-06 09:00) · it keeps running your chats; restart it to match: codeaf engine --stop --workspace /srv/app, then codeaf`.
-Nothing is stopped for you: the engine keeps your chats until you stop it. Run that command
-when nothing is running in it, then open codeaf again, and the engine starts from your build.
+install or build a new codeaf, the engine can still be an older build, without the factory's
+tools or its manual page. Your window attaches only to an engine of its own build.
+Any other engine, including one built from a changed working tree, a `dev` build, or one that
+cannot say which build it is, does not get your conversations: the window opens them in itself,
+the way `codeaf chat --no-host` does, reads the floor itself, and says so once on the notice
+line, for example
+`this workspace's engine is another build (0ld0ld00 built 2026-10-06 09:00) · this window runs its own · the old engine keeps the chats it already has; stop it when they are done: codeaf engine --stop --workspace '/srv/app'`.
+The old engine keeps every chat it was already running, and nothing is stopped for you. When
+those chats are done, run that command; the next codeaf you open starts the engine from your
+build.
 
 ## what github gives an item — comments, changed files, check runs, its page
 

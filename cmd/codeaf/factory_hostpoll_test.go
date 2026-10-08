@@ -7,7 +7,8 @@ package main
 // poll. The window took the host road, which never started a poll of its own,
 // so the three repositories the owner watched were never read. These tests hold
 // the host road to the same start the in-process launch makes, and the window
-// to saying once when the engine it is attached to is another build.
+// to knowing when the engine on its socket is another build
+// (factory_hostbuild_test.go holds the launch road to leaving it).
 
 import (
 	"path/filepath"
@@ -56,37 +57,47 @@ func TestTheHostRoadStartsTheFloorsPollAndTriage(t *testing.T) {
 	}
 }
 
-func TestTheWindowSaysOnceWhenTheEngineIsAnotherBuild(t *testing.T) {
+func TestTheWindowKnowsWhenTheEngineIsAnotherBuild(t *testing.T) {
 	const ws = "/srv/app"
 	cases := []struct {
 		name    string
 		welcome remote.Welcome
 		mine    string
 		rev     string
-		says    bool
+		other   bool
 	}{
 		{"same identity", remote.Welcome{Identity: "abc12345", Build: "abc12345 built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", false},
 		{"another identity", remote.Welcome{Identity: "0ld0ld00", Build: "0ld0ld00 built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", true},
 		{"same source built later", remote.Welcome{Identity: "abc12345", Build: "abc12345 built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", false},
 		{"older engine, another revision", remote.Welcome{Build: "0ld0ld00 built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", true},
 		{"older engine, same revision", remote.Welcome{Build: "abc12345 built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", false},
-		{"older engine, dirty", remote.Welcome{Build: "0ld0ld00 (dirty) built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", false},
-		{"older engine, names nothing", remote.Welcome{Workspace: ws}, "abc12345", "abc12345", false},
-		{"older engine, dev", remote.Welcome{Build: "dev", Workspace: ws}, "abc12345", "abc12345", false},
+		{"older engine, dirty", remote.Welcome{Build: "abc12345 (dirty) built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", true},
+		{"older engine, names nothing", remote.Welcome{Workspace: ws}, "abc12345", "abc12345", true},
+		{"older engine, dev", remote.Welcome{Build: "dev", Workspace: ws}, "abc12345", "abc12345", true},
+		{"engine dirty identity", remote.Welcome{Identity: "abc12345/true/2026-10-06T09:00:00Z", Build: "abc12345 (dirty) built 2026-10-06 09:00", Workspace: ws}, "abc12345", "abc12345", true},
+		{"window dirty", remote.Welcome{Identity: "abc12345", Build: "abc12345 built 2026-10-06 09:00", Workspace: ws}, "abc12345/true/2026-10-08T09:00:00Z", "abc12345", true},
+		{"same dirty binary", remote.Welcome{Identity: "abc12345/true/2026-10-08T09:00:00Z", Workspace: ws}, "abc12345/true/2026-10-08T09:00:00Z", "abc12345", false},
+		{"both dirty, one revision, no identity", remote.Welcome{Build: "abc12345 (dirty) built 2026-10-06 09:00", Workspace: ws}, "abc12345/true/2026-10-08T09:00:00Z", "abc12345", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			note := hostBuildNote(c.welcome, c.mine, c.rev)
-			if (note != "") != c.says {
-				t.Fatalf("note = %q, want said=%v", note, c.says)
+			named, other := hostIsAnotherBuildThan(c.welcome, c.mine, c.rev)
+			if other != c.other {
+				t.Fatalf("other = %v (named %q), want %v", other, named, c.other)
 			}
-			if !c.says {
+			if !c.other {
 				return
 			}
+			note := hostAnotherBuildSentence(named, c.welcome.Workspace)
+			build := c.welcome.Build
+			if build == "" {
+				build = "a build it does not name"
+			}
 			for _, want := range []string{
-				"this workspace's engine is another build (" + c.welcome.Build + ")",
-				"it keeps running your chats; restart it to match",
-				"codeaf engine --stop --workspace " + ws,
+				"this workspace's engine is another build (" + build + ")",
+				"this window runs its own",
+				"the old engine keeps the chats it already has; stop it when they are done",
+				"codeaf engine --stop --workspace '" + ws + "'",
 			} {
 				if !strings.Contains(note, want) {
 					t.Fatalf("note %q does not say %q", note, want)

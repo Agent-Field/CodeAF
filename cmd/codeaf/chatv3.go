@@ -291,9 +291,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		})
 		var taken *hostShapeTaken
 		var unreachable *hostUnreachable
+		var another *hostAnotherBuild
 		switch {
 		case errors.As(err, &taken):
 			entryNotice = taken.sentence
+		case errors.As(err, &another):
+			entryNotice = another.sentence
 		case errors.As(err, &unreachable):
 			entryNotice = "this conversation opened in this terminal instead, and ends with it: " + unreachable.reason
 		default:
