@@ -1,6 +1,7 @@
 package run
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -85,10 +86,10 @@ func TestCapReachedAndQuestion(t *testing.T) {
 		t.Fatal("at the cap")
 	}
 	q, kind := m.CapQuestion(it)
-	if q != "cap of $5 reached · $5 more, or stop?" || kind != "cap" {
+	if q != "budget of $5 reached · $5 more, or stop?" || kind != "cap" {
 		t.Fatalf("%q %q", q, kind)
 	}
-	if q, _ := m.CapQuestion(factory.Item{Cap: 2.5}); q != "cap of $2.50 reached · $2.50 more, or stop?" {
+	if q, _ := m.CapQuestion(factory.Item{Cap: 2.5}); q != "budget of $2.50 reached · $2.50 more, or stop?" {
 		t.Fatal(q)
 	}
 }
@@ -122,5 +123,21 @@ func TestRailRead(t *testing.T) {
 	}
 	if m.Rail() != 60 {
 		t.Fatalf("Rail = %v", m.Rail())
+	}
+}
+
+// THE RUNNER SAYS BUDGET: the sentence the item waits on, and the stored
+// question kind, which stays the key `cap` the floor already writes.
+func TestBudgetQuestionSpeaksTheFloorsWord(t *testing.T) {
+	m := NewMoney(nil, nil, nil)
+	q, kind := m.CapQuestion(factory.Item{Cap: 5})
+	if q != "budget of $5 reached · $5 more, or stop?" {
+		t.Fatalf("question = %q", q)
+	}
+	if strings.Contains(q, "cap") {
+		t.Fatalf("the question still says cap: %q", q)
+	}
+	if kind != "cap" {
+		t.Fatalf("the stored kind changed to %q", kind)
 	}
 }

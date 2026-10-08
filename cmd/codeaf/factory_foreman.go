@@ -19,8 +19,8 @@ import (
 // `m` on the factory floor opens the foreman: ONE conversation per home (later
 // one per product), the product-level judgment about what to take first. It is
 // never the runner. It reads the floor through `factory_floor` and proposes by
-// marking items; the person launches what is marked with `L`. It never
-// launches, ships or posts, and its belt has no verb that could.
+// selecting items; the person runs what is selected with `L`. It never
+// runs, ships or posts, and its belt has no verb that could.
 //
 // Like an item's own conversation (`T`, factory_talk.go) it is OPTIONAL AND
 // NEVER MADE BY DEFAULT: the first `m` makes it, every later `m` opens the same
@@ -34,7 +34,7 @@ const foremanName = "foreman"
 
 // foremanOpening is the brief's fixed part, said once so the brief, the test
 // and the manual quote the same words.
-const foremanOpening = "You are the foreman of this factory floor. The floor's items, their reads and stages come through factory_floor. Propose a morning batch by marking items; the person launches with L. Never launch, ship or post. Name items by their ref."
+const foremanOpening = "You are the foreman of this factory floor. The floor's items, their reads and stages come through factory_floor. Propose a morning batch by selecting items; the person runs them with L. Never launch, ship or post. Name items by their ref."
 
 // floorDoor is `factory_floor`'s door over the store, or nil.
 //
