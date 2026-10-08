@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { checkEngine } from './lib/engine';
+import { connectDesktopTabs } from './lib/desktopTabs';
 import { BrandMark, Button, IconButton, Icon, NavigationItem, SidebarAction, PageHeading, SectionHeading, Text, CodeText, Surface, Separator, ThemeSelect, KeyboardShortcut, ContextMenu, DropdownMenu, iconNames } from './components/ui';
 import { CommandPalette } from './components/CommandPalette';
 import design from './design/tokens.json';
@@ -14,6 +15,7 @@ const desktop = isTauri();
 const mac = desktop && /Mac/.test(navigator.platform);
 document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? 'desktop' : 'browser';
 function App() {
+ useEffect(connectDesktopTabs, []);
  const [page, setPage] = useState<Page>('Workspace');
  const [palette, setPalette] = useState(false);
  const [collapsed, setCollapsed] = useState(false);
@@ -74,7 +76,7 @@ function App() {
     <span className="page-title">{page}</span>
     <IconButton label="Search commands" icon="search" onClick={openPalette}/>
    </header>}
-   <div className="workspace-page" hidden={page !== 'Workspace'}><Workspace enabled={page === 'Workspace'} onExplore={() => setPage('Design system')} leading={sidebarHidden ? <IconButton ref={sidebarToggle} label="Show sidebar" icon="sidebar" title="Show sidebar (⌘/Ctrl B)" onClick={toggleSidebar}/> : undefined}/></div>
+   <div className="workspace-page" hidden={page !== 'Workspace'}><Workspace onActivate={() => { setPalette(false); navigate('Workspace'); }} enabled={page === 'Workspace'} onExplore={() => setPage('Design system')} leading={sidebarHidden ? <IconButton ref={sidebarToggle} label="Show sidebar" icon="sidebar" title="Show sidebar (⌘/Ctrl B)" onClick={toggleSidebar}/> : undefined}/></div>
    {page === 'Activity' && <div className="page-content"><PageHeading>Activity</PageHeading><Text className="intro">Your workspace is quiet. No sessions yet.</Text><Surface><div><SectionHeading>Local engine</SectionHeading><Text role="status">{engine}</Text></div><Button variant="secondary" loading={busy} onClick={health}>{busy ? 'Checking…' : 'Check engine'}</Button></Surface></div>}
    {page === 'Design system' && <div className="page-content"><PageHeading>Less, but considered.</PageHeading><Text className="intro">Soft chrome. Native type. Space to focus.</Text><Surface direction="column"><SectionHeading>Surfaces</SectionHeading><div className="swatches">{['canvas','surface','accent','text'].map(s => <div key={s}><div className={`swatch ${s}`}/><small>{s}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Typography</SectionHeading><Text className="type-sample">The font your device calls home.</Text><Text>System sans for the interface. System monospace for code.</Text><CodeText>const workspace = "codeaf";</CodeText></Surface><Surface direction="column"><SectionHeading>Icon family</SectionHeading><Text>AnimateIcons · Lucide · one monochrome stroke style.</Text><div className="icon-specimens">{iconNames.map(name => <IconButton key={name} label={`${name} icon`} icon={name}/>)}</div></Surface><Surface direction="column"><SectionHeading>Shared controls</SectionHeading><div className="control-specimens"><Button variant="primary">Primary action</Button><Button variant="secondary">Secondary action</Button><Button>Quiet action</Button><Button variant="secondary" disabled>Disabled</Button></div></Surface><Surface direction="column"><SectionHeading>Menus and motion</SectionHeading><Text>Menus use the same quiet surfaces, focus, and keyboard controls.</Text><div className="control-specimens"><DropdownMenu label="Menu specimen" items={[{ id: 'workspace', label: 'Open workspace', icon: 'tab', onSelect: () => navigate('Workspace') }, { id: 'disabled', label: 'Unavailable action', disabled: true, onSelect: () => {} }]}><Button variant="secondary">Open themed menu <Icon name="chevron" size="xs" motion="disclosure"/></Button></DropdownMenu><ContextMenu label="Context menu specimen" items={[{ id: 'workspace', label: 'Open workspace', onSelect: () => navigate('Workspace') }]}><Button variant="quiet">Right-click or Shift F10</Button></ContextMenu></div></Surface><Surface direction="column"><SectionHeading>Spacing</SectionHeading><div className="spacing-specimens">{[1,2,3,4,6,8,12].map(n => <div key={n}><div className={`spacing-sample spacing-sample-${n}`}/><small>{design.foundation[`space-${n}` as keyof typeof design.foundation]}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Built-in care</SectionHeading><Text>Keyboard navigation, visible focus, reduced motion, and system appearance.</Text><Button variant="quiet" className="quiet-action" onClick={openPalette}>Open command palette <Icon name="arrow" size="xs" motion="directional"/></Button></Surface></div>}
   </main>

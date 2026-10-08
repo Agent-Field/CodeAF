@@ -2,11 +2,13 @@ import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { BrandMark, Button, Icon, IconButton, PageHeading, Text, TextInput, TextArea, HoverPreview, ContextMenu, DropdownMenu, type MenuEntry } from '../../components/ui';
 import { readWorkspace, storageKey, workspaceReducer, type Tab } from './model';
 import './workspace.css';
+import { desktopTabEvent, isDesktopTabAction } from '../../lib/desktopTabs';
 import { TabOverview } from './TabOverview';
 import design from '../../design/tokens.json';
+import { tabShortcuts, overviewShortcut, isOverviewShortcut, sequentialTabDirection, tabActionShortcut } from '../../design/keyboard';
 
-type Props = { enabled: boolean; onExplore: () => void; leading?: ReactNode };
-export function Workspace({ enabled, onExplore, leading }: Props) {
+type Props = { enabled: boolean; onExplore: () => void; onActivate: () => void; leading?: ReactNode };
+export function Workspace({ enabled, onExplore, onActivate, leading }: Props) {
  const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
  const [overviewOpen, setOverviewOpen] = useState(false);
  const [switcher, setSwitcher] = useState<{ ids: string[]; index: number } | null>(null);
@@ -67,11 +69,20 @@ export function Workspace({ enabled, onExplore, leading }: Props) {
   if (!enabled) { switcherRef.current = null; setSwitcher(null); return; }
   const onKey = (event: KeyboardEvent) => {
    if (event.key === 'Escape' && switcherRef.current) { event.preventDefault(); switcherRef.current = null; setSwitcher(null); return; }
-   if (!(event.metaKey || event.ctrlKey) || document.querySelector('dialog[open]')) return;
+   const modalOpen = !!document.querySelector('dialog[open]');
+   if (isOverviewShortcut(event) && (!modalOpen || overviewOpen)) { event.preventDefault(); setOverviewOpen(open => !open); return; }
+   if (!(event.metaKey || event.ctrlKey) || modalOpen) return;
+   const direction = sequentialTabDirection(event);
+   if (direction) {
+    event.preventDefault();
+    const index = visible.findIndex(tab => tab.id === state.activeId);
+    dispatch({ type: 'select', id: visible[(index + direction + visible.length) % visible.length].id });
+    return;
+   }
    const key = event.key.toLowerCase();
-   if (key === 't') { event.preventDefault(); dispatch({ type: event.shiftKey ? 'reopen' : 'new' }); }
-   if (key === 'w') { event.preventDefault(); closeTab(state.activeId); }
-   if (key === 'tab') {
+   const action = tabActionShortcut(event);
+   if (action) { event.preventDefault(); if (action === 'close') closeTab(state.activeId); else dispatch({ type: action }); return; }
+   if (key === 'tab' && event.ctrlKey && !event.metaKey && !event.altKey) {
     event.preventDefault();
     const current = switcherRef.current;
     const ids = current?.ids ?? [state.activeId, ...state.recentIds.filter(id => id !== state.activeId)];
@@ -90,7 +101,24 @@ export function Workspace({ enabled, onExplore, leading }: Props) {
   const onBlur = () => { switcherRef.current = null; setSwitcher(null); };
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', onRelease); window.addEventListener('blur', onBlur);
   return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onRelease); window.removeEventListener('blur', onBlur); };
- }, [enabled, state.activeId, state.recentIds, visible]);
+ }, [enabled, overviewOpen, state.activeId, state.recentIds, visible]);
+ useEffect(() => {
+  const onMenuAction = (event: Event) => {
+   const action: unknown = (event as CustomEvent).detail;
+   if (!isDesktopTabAction(action) || rename) return;
+   onActivate();
+   if (action === 'overview') setOverviewOpen(open => !open);
+   else if (action === 'close') { setOverviewOpen(false); closeTab(state.activeId); }
+   else if (action === 'new' || action === 'reopen') { setOverviewOpen(false); dispatch({ type: action }); }
+   else {
+    setOverviewOpen(false);
+    const index = visible.findIndex(tab => tab.id === state.activeId);
+    dispatch({ type: 'select', id: visible[(index + (action === 'next' ? 1 : -1) + visible.length) % visible.length].id });
+   }
+  };
+  window.addEventListener(desktopTabEvent, onMenuAction);
+  return () => window.removeEventListener(desktopTabEvent, onMenuAction);
+ }, [onActivate, rename, state.activeId, visible]);
  function closeTab(id: string) {
   const restore = !!document.activeElement?.closest('.workspace-tab');
   dispatch({ type: 'close', id });
@@ -107,8 +135,8 @@ export function Workspace({ enabled, onExplore, leading }: Props) {
     { id: 'no-group', label: 'No group', disabled: !tab.groupId, onSelect: () => dispatch({ type: 'move-group', id: tab.id }) },
    ] },
    { kind: 'separator', id: 'close-separator' },
-   { id: 'close', label: 'Close tab', icon: 'close', shortcut: '⌘/Ctrl W', onSelect: () => closeTab(tab.id) },
-   { id: 'reopen', label: 'Reopen closed tab', shortcut: '⌘/Ctrl ⇧ T', disabled: !state.closed.length, onSelect: () => dispatch({ type: 'reopen' }) },
+   { id: 'close', label: 'Close tab', icon: 'close', shortcut: tabShortcuts.close, onSelect: () => closeTab(tab.id) },
+   { id: 'reopen', label: 'Reopen closed tab', shortcut: tabShortcuts.reopen, disabled: !state.closed.length, onSelect: () => dispatch({ type: 'reopen' }) },
    { kind: 'submenu', id: 'order', label: 'Move tab', disabled: state.tabs.length < 2, items: state.tabs.filter(t => t.id !== tab.id).map(target => ({ id: target.id, label: `Before ${target.title}`, onSelect: () => dispatch({ type: 'reorder', id: tab.id, targetId: target.id }) })) },
   ];
  }
@@ -123,7 +151,7 @@ export function Workspace({ enabled, onExplore, leading }: Props) {
   </div></ContextMenu>;
  }
  const overflowItems: MenuEntry[] = [
-  { id: 'new', label: 'New tab', icon: 'plus', shortcut: '⌘/Ctrl T', onSelect: () => dispatch({ type: 'new' }) },
+  { id: 'new', label: 'New tab', icon: 'plus', shortcut: tabShortcuts.new, onSelect: () => dispatch({ type: 'new' }) },
   { id: 'reopen', label: 'Reopen closed tab', disabled: !state.closed.length, onSelect: () => dispatch({ type: 'reopen' }) },
   { kind: 'separator', id: 'tabs-separator' },
   ...state.tabs.map(tab => ({ id: tab.id, label: tab.title, checked: tab.id === state.activeId, onSelect: () => dispatch({ type: 'select', id: tab.id }) })),
@@ -144,7 +172,7 @@ export function Workspace({ enabled, onExplore, leading }: Props) {
     </div>)}
    </div>
    {scrollEdges.right && <IconButton className="workspace-scroll-tabs" label="Scroll tabs right" icon="chevronRight" iconSize="xs" onClick={() => scrollTabs(1)}/>}
-   <div className="workspace-tab-actions"><IconButton label="New tab" title="New tab (⌘/Ctrl T)" icon="plus" onClick={() => dispatch({ type: 'new' })}/><IconButton ref={overviewTrigger} label="All tabs" icon="grid" onClick={() => setOverviewOpen(true)}/><DropdownMenu label="Tab actions" items={overflowItems}><IconButton label="Tab actions" icon="more"/></DropdownMenu></div>
+   <div className="workspace-tab-actions"><IconButton label="New tab" title={`New tab (${tabShortcuts.new})`} icon="plus" onClick={() => dispatch({ type: 'new' })}/><IconButton ref={overviewTrigger} label="All tabs" title={`All tabs (${overviewShortcut})`} icon="grid" onClick={() => setOverviewOpen(true)}/><DropdownMenu label="Tab actions" items={overflowItems}><IconButton label="Tab actions" icon="more"/></DropdownMenu></div>
   </div>
   <div className="workspace-conversation" role="tabpanel" id="workspace-tab-panel" aria-labelledby={`tab-${active.id}`} tabIndex={0}>
    <div className="conversation-empty"><BrandMark size="hero"/><PageHeading>A space for what’s next.</PageHeading><Text>One thought at a time. Keep another close by.</Text></div>
