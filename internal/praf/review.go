@@ -9,14 +9,12 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/agentsession"
 	"github.com/Agent-Field/codeaf/internal/delegate"
-	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/praf/afx"
 	"github.com/Agent-Field/codeaf/internal/praf/config"
 	"github.com/Agent-Field/codeaf/internal/praf/github"
@@ -132,24 +130,11 @@ func defaultGitHub() func(token string) gitHub {
 // githubToken is the GitHub token for a private repository: GH_TOKEN, then
 // GITHUB_TOKEN, then what `gh auth token` answers; "" for none, which reads a
 // public repository. codeaf passes both variables through to a program
-// (delegate.ChildEnv takes out only model keys).
+// (delegate.ChildEnv takes out only model keys). The order lives in
+// internal/praf/github's Token, which the factory's GitHub source shares; this
+// package keeps its own gh lookup so its tests can still say gh is absent.
 func githubToken(ctx context.Context) string {
-	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
-		if token := strings.TrimSpace(env.Value(name)); token != "" {
-			return token
-		}
-	}
-	gh, err := ghLookPath("gh")
-	if err != nil {
-		return ""
-	}
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, gh, "auth", "token").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return github.TokenWith(ctx, ghLookPath)
 }
 
 // runReview is one review from its brief to its ending.

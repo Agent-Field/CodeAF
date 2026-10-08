@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/env"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/home"
+	forge "github.com/Agent-Field/codeaf/internal/praf/github"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -74,7 +78,70 @@ func factorySeam(st *store.Store) factory.Seam {
 	if st == nil {
 		return factory.Seam{}
 	}
-	return factory.LocalSeam(st, time.Now())
+	// The floor's facts line names GitHub only while a poll somewhere on this
+	// machine is keeping the store's record of it fresh (factorygithub.Facts),
+	// which is how the window on the ordinary launch learns what the engine
+	// behind it is doing without a word on the wire.
+	return factorygithub.Facts(factory.LocalSeam(st, time.Now()), st, nil)
+}
+
+// factoryPollEvery is how often the GitHub source is read when nothing is
+// failing. The manual says the same figure (factory.md, `## connecting
+// github`).
+const factoryPollEvery = 60 * time.Second
+
+// factoryGitHub is the GitHub source for this floor, or nil.
+//
+// NIL IS GITHUB OFF, and it is the answer unless BOTH halves are there: a
+// store that watches at least one repository, and a token (GH_TOKEN, then
+// GITHUB_TOKEN, then `gh auth token`). Without either, nothing is built and
+// nothing polls, so the floor's facts line says only `terminal · chat`: A
+// CAPABILITY THAT CANNOT WORK IS ABSENT, NOT BROKEN. The token goes into the
+// client and nowhere else.
+func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Context) string) *factorygithub.Source {
+	if st == nil || token == nil {
+		return nil
+	}
+	repos, err := st.Repos()
+	if err != nil || len(repos) == 0 {
+		return nil
+	}
+	tok := token(ctx)
+	if tok == "" {
+		return nil
+	}
+	return factorygithub.New(forge.NewClient(tok), repos, nil)
+}
+
+// factoryPoll is the one GitHub poll this process runs, started at most once.
+var factoryPoll sync.Once
+
+// startFactoryPoll starts this process's GitHub poll over st, when there is a
+// source to poll, and returns at once: the token lookup can ask `gh`, which
+// may take seconds, and a launch never waits on it. ONE POLL PER PROCESS,
+// STOPPED WITH THE PROCESS: it runs for the process's life and nothing else
+// owns it. Two processes on one machine (two windows, or a window and an
+// engine) share the floor's poller lock, so only one of them reads at a time
+// (store.TryPoller). It is called only where a person's window on this machine
+// opened the store (chatv3.go's interactive launch and engine.go's local
+// hello), so --once, a task node, --host and --at never start one.
+func startFactoryPoll(st *store.Store) {
+	if st == nil {
+		return
+	}
+	factoryPoll.Do(func() {
+		go func() {
+			ctx := context.Background()
+			src := factoryGitHub(ctx, st, forge.Token)
+			if src == nil {
+				return
+			}
+			// NOTHING IS LOGGED TO THE SCREEN: in the window the surface owns it,
+			// and in the engine stdout is the protocol. A failure is the facts
+			// line's `github · not reachable`, read off the store.
+			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil)
+		}()
+	})
 }
 
 // factoryHere names the repository new work lands on when the floor itself

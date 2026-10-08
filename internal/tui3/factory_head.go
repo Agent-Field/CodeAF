@@ -270,7 +270,14 @@ func factoryHeadFacts(snap factory.Snapshot) []rowField {
 			continue
 		}
 		if src.Name != "" {
-			fields = append(fields, rowSay(src.Name))
+			// A source whose last read failed says so beside its name, `github ·
+			// not reachable`, and keeps its polled time: the floor is as stale as
+			// its last good read.
+			name := src.Name
+			if src.Trouble != "" {
+				name += rowSep + src.Trouble
+			}
+			fields = append(fields, rowSay(name))
 		}
 	}
 	if chat {

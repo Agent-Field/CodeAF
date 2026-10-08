@@ -57,6 +57,10 @@ type APIError struct {
 	StatusCode int
 	Body       string
 	URL        string
+	// RetryAfter is how long GitHub asked to be left alone, read off
+	// Retry-After or, for a spent rate limit, X-RateLimit-Reset; zero when it
+	// said nothing. The factory's reads sleep it rather than guess.
+	RetryAfter time.Duration
 }
 
 func (e *APIError) Error() string {
@@ -137,6 +141,17 @@ func (c *client) sleep(ctx context.Context, d time.Duration) error {
 // failure it returns (*transportError). jsonBody, when non-nil, is JSON-encoded
 // as the request body with Content-Type: application/json.
 func (c *client) request(ctx context.Context, method, rawurl string, headers map[string]string, jsonBody any, timeout time.Duration) ([]byte, error) {
+	data, _, err := c.requestTagged(ctx, method, rawurl, headers, jsonBody, timeout, "")
+	return data, err
+}
+
+// requestTagged is [client.request] with a conditional read: etag, when it is
+// not empty, is sent as If-None-Match, and a 304 answers [ErrNotModified] with
+// no body. The response's own ETag comes back beside the body so the caller
+// can ask the same question next time for nothing: GITHUB DOES NOT COUNT A 304
+// AGAINST THE RATE LIMIT, which is what lets a poll of an unchanged list run
+// every minute all day.
+func (c *client) requestTagged(ctx context.Context, method, rawurl string, headers map[string]string, jsonBody any, timeout time.Duration, etag string) ([]byte, string, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -144,13 +159,13 @@ func (c *client) request(ctx context.Context, method, rawurl string, headers map
 	if jsonBody != nil {
 		b, err := json.Marshal(jsonBody)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		body = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(reqCtx, method, rawurl, body)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -158,20 +173,26 @@ func (c *client) request(ctx context.Context, method, rawurl string, headers map
 	if jsonBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if etag != "" {
+		req.Header.Set("If-None-Match", etag)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, &transportError{err: err}
+		return nil, "", &transportError{err: err}
 	}
 	defer resp.Body.Close()
 	data, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
-		return nil, &transportError{err: readErr}
+		return nil, "", &transportError{err: readErr}
+	}
+	if resp.StatusCode == http.StatusNotModified {
+		return nil, etag, ErrNotModified
 	}
 	if resp.StatusCode >= 400 {
-		return data, &APIError{StatusCode: resp.StatusCode, Body: string(data), URL: rawurl}
+		return data, "", &APIError{StatusCode: resp.StatusCode, Body: string(data), URL: rawurl, RetryAfter: retryAfter(resp.Header, time.Now())}
 	}
-	return data, nil
+	return data, resp.Header.Get("ETag"), nil
 }
 
 // headersForRepo builds request headers: the token when there is one, and
