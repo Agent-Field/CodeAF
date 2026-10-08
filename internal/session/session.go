@@ -661,6 +661,16 @@ const (
 	// EventRecipeBanked says the line is in the repository's
 	// `.codeaf/factory.md` now, so a surface reading the recipe reads it again.
 	EventRecipeBanked
+	// EventStagesProposal is the card `factory_stages` raises: the chat wants to
+	// change the stages of the one item its conversation is about
+	// (tools_factory_stages.go). Stages carries the card, and its ID is the
+	// token a surface hands back to [Agent.ResolveStages]. It comes again, once,
+	// when the card is settled, with Decided or Withdrawn set, exactly as
+	// EventRecipeProposal does, and on the same task lane.
+	EventStagesProposal
+	// EventStagesChanged says the item's stages are changed on the floor now,
+	// so a surface drawing the floor reads it again.
+	EventStagesChanged
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -983,6 +993,11 @@ type Event struct {
 	// news (factory_contract.go), behind a json tag of its own for the reason
 	// Factory's is.
 	Recipe *RecipeNotice `json:"Recipe,omitempty"`
+
+	// Stages carries one EventStagesProposal's card or one EventStagesChanged's
+	// news (factory_contract.go), behind a json tag of its own for the reason
+	// Factory's is.
+	Stages *StagesNotice `json:"Stages,omitempty"`
 
 	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
 	// model was being asked, how far into its patience the step is, why the
@@ -1570,6 +1585,11 @@ type Config struct {
 	// Factory is, by a window on this machine, and never on --once, a task node,
 	// --host or --at.
 	Recipe RecipeDoor
+
+	// Stages is the door onto one floor item's stages (factory_contract.go).
+	// NIL IS NO DOOR: `factory_stages` is off the belt. It is set exactly where
+	// Factory is, and never on --once, a task node, --host or --at.
+	Stages StagesDoor
 
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
@@ -3433,6 +3453,11 @@ type Agent struct {
 	// answered by different resolvers and write to different places.
 	recipeSeq    uint64
 	recipeOffers map[string]*recipeOffer
+
+	// stagesOffers and stagesSeq are the same book for `factory_stages`'
+	// cards (tools_factory_stages.go), kept apart for the recipe book's reason.
+	stagesSeq    uint64
+	stagesOffers map[string]*stagesOffer
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just

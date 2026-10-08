@@ -135,6 +135,11 @@ func (a *Agent) factoryTools() []bare.Tool {
 	if a.config.mayRecipe() {
 		tools = append(tools, a.factoryRecipeTool())
 	}
+	// `factory_stages` (tools_factory_stages.go) rides on a third door, the
+	// one onto an item already on the floor, absent on the same law.
+	if a.config.mayStages() {
+		tools = append(tools, a.factoryStagesTool())
+	}
 	return tools
 }
 

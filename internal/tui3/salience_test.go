@@ -159,6 +159,10 @@ var salienceTable = []salienceCase{
 		"card's twin", ev: session.Event{Kind: session.EventRecipeProposal}},
 	{name: "EventRecipeBanked", chatOnly: "news for the factory floor, which re-reads itself",
 		ev: session.Event{Kind: session.EventRecipeBanked}},
+	{name: "EventStagesProposal", chatOnly: "a stages card is the conversation's own question, the recipe " +
+		"card's twin", ev: session.Event{Kind: session.EventStagesProposal}},
+	{name: "EventStagesChanged", chatOnly: "news for the factory floor, which re-reads itself",
+		ev: session.Event{Kind: session.EventStagesChanged}},
 	{name: "EventTakeover", chatOnly: "a checkpoint take-over is the session's own act on the turn the person " +
 		"typed", ev: session.Event{Kind: session.EventTakeover}},
 	{name: "EventMoved", chatOnly: "a conversation walking to another terminal is a fact about this WINDOW, " +

@@ -163,3 +163,73 @@ func (a *Agent) ResolveRecipe(id string, answer RecipeAnswer) {
 	}
 	offer.answers <- answer
 }
+
+// ── the stages card ─────────────────────────────────────────────────────────
+
+// StagesDoor is the one thing a conversation may do to one item already on
+// the floor: change which stages it runs. The launch implements it over the
+// store (cmd/codeaf's factory.go): it loads the item, reads its repository's
+// recipe, applies the edit through [factory.Adapt] — WHICH IS WHERE EVERY
+// BOUND IS HELD, never a prompt — and saves it. Apply answers the stage names
+// the item runs after the change, in order, or the reason it did not change in
+// a person's words (a `fixed` recipe's refusal is Adapt's own sentence).
+//
+// IT CHANGES STAGES AND NOTHING ELSE. There is no field for the cap, the gate
+// or a launch: [factory.PlanEdit] is the whole of what travels.
+type StagesDoor interface {
+	Apply(ctx context.Context, item int, edit factory.PlanEdit) ([]string, error)
+}
+
+// mayStages says whether `factory_stages` belongs on this belt: there is a
+// door behind it. It is the belt's predicate, asked of one field.
+func (c Config) mayStages() bool { return c.Stages != nil }
+
+// StagesNotice is the stages card. It is the payload of EventStagesProposal
+// (ID is the token a surface hands back to [Agent.ResolveStages]) and of
+// EventStagesChanged, whose Now is the item's stages after the change.
+type StagesNotice struct {
+	// ID is THE PROPOSAL'S id; nothing about the item changes until the person
+	// says yes.
+	ID string
+	// Item is the floor's own id for the item, and Ref how the floor names it
+	// (`#12`), which is what the card's head says.
+	Item int
+	Ref  string
+	// Add, Skip and On are the edit as the model asked for it: stage sentences
+	// to add, and stage names to skip or switch on.
+	Add  []string
+	Skip []string
+	On   []string
+	// Why is the model's one sentence for the change.
+	Why string
+	// Now is the item's stage names after the change, set on
+	// EventStagesChanged and empty on a proposal.
+	Now []string
+	// Decided is set on the one rebroadcast of a card somebody answered.
+	Decided *StagesAnswer
+	// Withdrawn is set on the one rebroadcast of a card that came down
+	// unanswered, in a person's words.
+	Withdrawn string
+}
+
+// StagesAnswer is what the person said to a stages card.
+type StagesAnswer struct {
+	// Approved changes the stages exactly as the card showed it.
+	Approved bool
+	// Change is the person's correction. NOTHING CHANGES ON A CHANGE.
+	Change string
+}
+
+// ResolveStages answers one EventStagesProposal. An id nobody is waiting on is
+// ignored, as [Agent.ResolveFactory] ignores one.
+func (a *Agent) ResolveStages(id string, answer StagesAnswer) {
+	id = strings.TrimSpace(id)
+	a.mu.Lock()
+	offer := a.stagesOffers[id]
+	delete(a.stagesOffers, id)
+	a.mu.Unlock()
+	if offer == nil {
+		return
+	}
+	offer.answers <- answer
+}
