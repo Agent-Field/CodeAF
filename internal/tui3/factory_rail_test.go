@@ -251,7 +251,7 @@ func TestFactoryRailKeys(t *testing.T) {
 		t.Fatal("a second space did not unmark")
 	}
 
-	if got := (placeFactory{}).hint(a); got != "↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · esc back" {
+	if got := (placeFactory{}).hint(a); got != "↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · E recipe · esc back" {
 		t.Fatalf("the hint is %q", got)
 	}
 	drive(t, a, key("esc"))

@@ -41,6 +41,10 @@ func (placeFactory) word() string { return "factory" }
 func (placeFactory) open(a *app) tea.Cmd {
 	a.fp.typing = false
 	a.fp.act.ask = nil
+	// THE FLOOR'S SETTINGS ARE SHUT ON THE WAY BACK IN, for the typing row's
+	// reason: they were about a moment that has passed, and the picker's
+	// ticks were never saved.
+	a.fp.pick, a.fp.recipe, a.fp.ghOffer = nil, nil, ""
 	return tea.Batch(a.armPlaceClock(), a.factoryRead(), a.factoryArmBeat())
 }
 
@@ -84,6 +88,8 @@ func (placeFactory) note(a *app, width int) []string {
 		return []string{" " + a.pal.dim(noteFit("the factory could not be read · "+a.fp.err.Error(), width-2))}
 	case a.fp.open && a.fp.said:
 		return []string{" " + a.pal.dim(noteFit(factoryStageNoteWords, width-2))}
+	case a.fp.recipe != nil && a.factoryRecipeNoDir() != "":
+		return []string{" " + a.pal.dim(noteFit(a.factoryRecipeNoDir(), width-2))}
 	}
 	return nil
 }
@@ -108,11 +114,20 @@ func (placeFactory) about() string { return "the work in flight, by where it sta
 // what the first press does. WHILE THE ITEM PAGE IS OPEN THE LINE IS THE
 // PAGE'S ([app.factoryItemHint]).
 func (placeFactory) hint(a *app) string {
+	if a.fp.pick != nil {
+		return a.factoryPickerHint()
+	}
 	if a.fp.typing {
 		return "type to filter · enter keep · esc clear"
 	}
 	if ask := a.fp.act.ask; ask != nil {
 		return factoryAskHint(ask)
+	}
+	if a.fp.ghOffer != "" {
+		return "y use gh · n a token instead · esc not now"
+	}
+	if a.fp.recipe != nil {
+		return a.factoryRecipeHint()
 	}
 	var head []string
 	if a.fp.act.habit != "" {
@@ -126,6 +141,9 @@ func (placeFactory) hint(a *app) string {
 	if !a.factoryFloorHas() {
 		if a.factoryConnected() && a.factory.Has("new") {
 			head = append(head, "n new")
+		}
+		if a.factoryConnected() {
+			head = append(head, a.factorySettingsHint()...)
 		}
 		return strings.Join(append(head, "esc back"), " · ")
 	}
@@ -147,6 +165,10 @@ func (placeFactory) hint(a *app) string {
 	if a.factory.Has("sleep") {
 		rail = append(rail, "S sleep 8h")
 	}
+	// THE FLOOR'S SETTINGS ARE THE LAST OF THE RAIL'S KEYS and so the first to
+	// go when the line is too long: they are visited once in a while, and the
+	// rest of the line is about the item a person is standing on.
+	rail = append(rail, a.factorySettingsHint()...)
 	out := "esc back"
 	if a.factoryNarrowed() {
 		out = "esc clear"
@@ -217,6 +239,12 @@ func (placeFactory) wheel(a *app, delta int) (tea.Cmd, bool) {
 // ([app.placeHomeGesture]). It is claimed only on a new item, so everywhere
 // else on the floor two spaces still go home.
 func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// THE PICKER, THE GH OFFER AND THE RECIPE PAGE HAVE THE KEYBOARD while one
+	// stands, before the layout reads `enter` as opening an item underneath
+	// (factory_settings.go).
+	if cmd, took := a.factorySettingsOwns(msg); took {
+		return cmd, true
+	}
 	// THE LAYOUT'S KEYS ARE READ FIRST, here rather than in key, because the
 	// item page walks its stages with `↑` and the router would otherwise read
 	// `↑` off the first row as the way onto the tab bar (factory_item.go).
