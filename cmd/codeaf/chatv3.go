@@ -399,12 +399,12 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// is the one the floor names as its foreman, and every conversation the
 	// seam opens later decides the same question for itself ([v3Seam.open]).
 	cfg.Floor = foremanFloorDoor(floor, workspace, transcript)
-	// And the floor's GitHub poll, when repositories are watched and a token
-	// resolves; nothing starts otherwise (factory.go's [startFactoryPoll]).
-	startFactoryPoll(floor, settings.ProfileDir)
-	// And the workspace as a watched repository's checkout, when its origin
-	// names one, so the recipe is read from it ([recordWorkspaceCheckout]).
-	recordWorkspaceCheckout(floor, workspace)
+	// And the floor's GitHub poll and triage, when repositories are watched
+	// and a token (or key) resolves, and the workspace as a watched
+	// repository's checkout, when its origin names one. The session-host road
+	// starts the same three (chatv3_local.go's [localDoors]); factory.go's
+	// [factoryFloorHere] is the one call both make.
+	factoryFloorHere(floor, workspace, settings.ProfileDir)
 	// AND THAT SURFACE HOLDS EVERY STANDING LANE, which is a second fact and not
 	// the same one: a design card, a subharness intake card and an adaptive
 	// run's fuel gate each arrive on a subscription opened on the agent itself

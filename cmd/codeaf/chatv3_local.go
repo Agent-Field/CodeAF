@@ -26,6 +26,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Agent-Field/codeaf/internal/buildinfo"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/enginehost"
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -309,6 +310,14 @@ func openChatV3Local(launch localLaunch) error {
 	// rather than inside that function because it is a fact about THIS ROAD's
 	// dial and not about the conversation the engine opened.
 	options.Notice = joinNotice(options.Notice, link.said())
+	// AND WHEN THE ENGINE IS ANOTHER BUILD, SAID ONCE. The dial joins a host of
+	// another build without a word when it is newer, or when its own sentence
+	// was not needed, and a window running against a binary it is not is the
+	// shape of 2026-10-08 (an older daemon with no factory poll). When the
+	// dial already said something about the host, that line is the one.
+	if link.said() == "" {
+		options.Notice = joinNotice(options.Notice, hostBuildNote(welcome, buildinfo.Identity(), buildinfo.Revision()))
+	}
 	// AND HOME CAN ASK SOMETHING WITHOUT OPENING A CONVERSATION. `ask here` is
 	// the second action row on home, and it is answered by an agent this process
 	// builds against a folder under the standing root ([localErrandDoor],
@@ -432,7 +441,15 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	// a yes on the card and `n` on the floor both land on the floor drawn here.
 	// --host and --at never reach this line: the floor there is the other
 	// machine's, and their window has no factory seam at all (factory.go).
-	options.Factory = factoryHere(factorySeam(v3Factory(), welcome.Workspace, profileDir), welcome.Workspace)
+	floor := v3Factory()
+	options.Factory = factoryHere(factorySeam(floor, welcome.Workspace, profileDir), welcome.Workspace)
+	// AND THIS WINDOW POLLS THE FLOOR IT DRAWS, whatever the engine does. The
+	// engine on the other half of this road may be a build from days ago with
+	// no poll at all (2026-10-08: a window with the factory attached to an
+	// older daemon, watched three repositories, and the floor stayed quiet for
+	// good). An engine that does poll takes turns with this window through the
+	// floor's locks (factory.go's [startFactoryPoll] says how).
+	factoryFloorHere(floor, welcome.Workspace, profileDir)
 	if profileDir == settings.ProfileDir {
 		options.Sources = settings.Sources
 	} else {
@@ -485,6 +502,59 @@ func localAskAgainAfterRefusal(launch localLaunch, err error) (string, bool) {
 		return named, true
 	}
 	return path, true
+}
+
+// hostBuildNote is the one line a window says when the engine serving its
+// chats is another build than the window, and "" when it is the same one or
+// cannot tell.
+//
+// THE IDENTITY DECIDES, never the build moment: two builds of one clean source
+// are one engine ([buildinfo.Identity] says why). An engine that predates the
+// welcome's Identity is judged by the revision at the front of its Build, and
+// only when both sides name a clean one; an engine that names nothing says
+// nothing. Nothing is restarted from here: the engine is holding somebody's
+// chats, and the person decides when it goes.
+func hostBuildNote(welcome remote.Welcome, mine, myRevision string) string {
+	theirs := strings.TrimSpace(welcome.Identity)
+	mine = strings.TrimSpace(mine)
+	differs := false
+	switch {
+	case theirs != "" && mine != "":
+		differs = theirs != mine
+	case theirs == "":
+		rev, clean := buildRevision(welcome.Build)
+		mineRev := strings.TrimSpace(myRevision)
+		differs = clean && rev != "" && mineRev != "" && mine == mineRev && rev != mineRev
+	}
+	if !differs {
+		return ""
+	}
+	named := strings.TrimSpace(welcome.Build)
+	if named == "" {
+		named = theirs
+	}
+	// THE COMMAND NAMES THE WORKSPACE, for [staleEngineHostSentence]'s reason:
+	// a bare --stop resolves to the home directory's host, not this one.
+	stop := "codeaf engine --stop"
+	if ws := strings.TrimSpace(welcome.Workspace); ws != "" {
+		stop += " --workspace " + ws
+	}
+	return "this workspace's engine is another build (" + named + ") · it keeps running your chats; restart it to match: " + stop + ", then codeaf"
+}
+
+// buildRevision reads the revision off the front of a [buildinfo.String], and
+// whether the build was clean. "dev" is no revision.
+func buildRevision(build string) (string, bool) {
+	build = strings.TrimSpace(build)
+	if i := strings.Index(build, " built "); i >= 0 {
+		build = build[:i]
+	}
+	clean := !strings.HasSuffix(build, " (dirty)")
+	build = strings.TrimSpace(strings.TrimSuffix(build, " (dirty)"))
+	if build == "dev" {
+		return "", false
+	}
+	return build, clean
 }
 
 // joinNotice puts two entry-notice clauses on one line in the separator the
