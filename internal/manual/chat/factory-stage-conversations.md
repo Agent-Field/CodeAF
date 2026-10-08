@@ -5,7 +5,10 @@
 On the factory floor, a stage like plan, write or review runs as one ordinary conversation,
 made in the item's own team and named by the item and the stage: `#12 · review`, or
 `#12 · review 1/2` when the stage may run more than one round. It opens with a brief: the
-stage's ask, the item's title and body (the first 2,000 characters), your notes, one line for
+stage's ask, the item's title and body (the first 2,000 characters), the run's stages in order
+with this one named (`stages: plan › write › test › review › proof · this is plan: do this
+stage's part, and leave the rest to the stages after it`), so plan plans and leaves the code to
+write, your notes, one line for
 each stage that ran before it (`write: done · 3 claims`), the stage's settings in words
 (`until clean · max 2 · fanout per-finding`), and the sentence `End by calling stage_result once.`
 

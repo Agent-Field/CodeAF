@@ -297,6 +297,7 @@ func stageBrief(job Job) string {
 		head += " · " + r
 	}
 	para(head, cutBody(job.Item.Body))
+	para(stagePlace(job))
 	var notes []string
 	for _, n := range job.Notes {
 		if n = oneLine(n); n != "" {
@@ -312,6 +313,38 @@ func stageBrief(job Job) string {
 	para(stageKnobs(job))
 	para(briefClosing)
 	return b.String()
+}
+
+// stagePlace is the run's stages in order and which one this is, with the
+// sentence that keeps a stage to its own part: `stages: plan › write › test ›
+// review › proof · this is plan: do this stage's part, and leave the rest to
+// the stages after it`. "" when the item carries no phases to name.
+//
+// A STAGE THAT DOES NOT KNOW IT IS ONE OF SEVERAL DOES ALL OF THEM. On the
+// 2026-10-08 run on factory-demo, plan's brief said only `plan: read the
+// issue and say how`, and the conversation (unattended, at the allow posture,
+// told its work is judged on being done) wrote the fix and its test before
+// write had started. The order is read off the item's phases, which are the
+// stages that fit this item, so a skipped stage is not named.
+func stagePlace(job Job) string {
+	if job.Item.Stream == nil || len(job.Item.Stream.Phases) < 2 {
+		return ""
+	}
+	names := make([]string, 0, len(job.Item.Stream.Phases))
+	for _, ph := range job.Item.Stream.Phases {
+		if n := oneLine(ph.Name); n != "" {
+			names = append(names, n)
+		}
+	}
+	me := stageLabel(job.Stage)
+	if len(names) < 2 || me == "" {
+		return ""
+	}
+	line := "stages: " + strings.Join(names, " › ") + " · this is " + me
+	if names[len(names)-1] == me {
+		return line + ", the last: do this stage's part"
+	}
+	return line + ": do this stage's part, and leave the rest to the stages after it"
 }
 
 // cutBody is the item's body, at most [briefBodyMost] characters, cut at a
