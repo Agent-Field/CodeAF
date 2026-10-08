@@ -155,7 +155,7 @@ func (placeFactory) hint(a *app) string {
 	it, ok := a.factoryCursorItem()
 	var verbs []string
 	if ok {
-		verbs = append([]string{"enter open"}, a.factoryVerbHint(it)...)
+		verbs = a.factoryVerbRail(it)
 	}
 	// A FLOOR WITH NO DOORS AT ALL (the still fixture) keeps the walk at the
 	// front, because walking is then the whole of what the page does.

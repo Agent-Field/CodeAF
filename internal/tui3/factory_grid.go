@@ -288,6 +288,16 @@ func (a *app) factoryFactsNeed() ([]int, int) {
 			need[k] = max(need[k], w)
 		}
 	}
+	// THE FLIGHT FACT'S CELLS ARE RESERVED, not raised while a read is out
+	// ([app.factoryFlightKeep]), so the grid does not move every time an
+	// arrival is read: the second column is never narrower than the widest
+	// at-rest state fact with `· refreshing…` behind it.
+	if keep := a.factoryFlightKeep(); keep > 0 && len(need) > 0 {
+		if len(need) == 1 {
+			need = append(need, 0)
+		}
+		need[1] = max(need[1], keep)
+	}
 	for k := 1; k < len(need); k++ {
 		need[k] = max(need[k], need[k-1])
 	}

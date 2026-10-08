@@ -179,13 +179,13 @@ func TestFactoryPriorityColumn(t *testing.T) {
 	}
 }
 
-// THE CURSOR ROW wears the selected step, as the Chats list and the Teams
-// page do, and nothing else changes on it.
-func TestFactoryCursorRowWearsTheSelectedGround(t *testing.T) {
+// THE CURSOR ROW wears the cursor step, as the Teams page's cursor row and
+// home's lists do, and nothing else changes on it.
+func TestFactoryCursorRowWearsTheCursorGround(t *testing.T) {
 	a := factoryPlaceLab(t)
 	a.fp.columns = true
 	it := *factoryPaneItem(t, a, 2)
-	if got, want := a.factoryRailItem(it, 150, true), a.pal.selected(a.factoryRailItem(it, 150, false), 150); got != want {
+	if got, want := a.factoryRailItem(it, 150, true), a.pal.cursorRow(a.factoryRailItem(it, 150, false), 150); got != want {
 		t.Fatalf("the cursor row is\n%q\nwant\n%q", got, want)
 	}
 }

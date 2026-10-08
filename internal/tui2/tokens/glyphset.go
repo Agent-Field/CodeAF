@@ -209,6 +209,12 @@ const (
 	GPrioritySecond
 	GPriorityThird
 	GPriorityFourth
+	// GSkipped is a stage that WILL NOT RUN on this item, or that the run went
+	// past: switched off, its condition not met, or passed over. It is
+	// deliberately not [GQueued] or [GStepPending], the ring a stage still to
+	// come wears, because a skipped stage drawn as one to come is a promise the
+	// run will not keep (internal/tui3's factory_marks.go).
+	GSkipped
 	glyphIDCount
 )
 

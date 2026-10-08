@@ -636,7 +636,7 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 			if until == "" {
 				until = factory.UntilDone
 			}
-			note := fmt.Sprintf("%s is not %s after %d round(s)", name, until, round)
+			note := fmt.Sprintf("%s is not %s after %s", name, until, roundsWord(round))
 			q := note + ": " + shortfall(res) + " · one more round, or go on as is?"
 			a, ok := lp.ask(c, i, "rounds", "scope", q, factory.PhaseFailed, note)
 			if !ok {
@@ -654,6 +654,16 @@ func (lp *floorLoop) runPhase(c *loopCtl, i int) bool {
 		lp.say(c, "fail", fmt.Sprintf("%s %d/%d: %s · going again", name, round, limit, shortfall(res)))
 		round++
 	}
+}
+
+// roundsWord is a count of rounds as a person says it, `1 round` and `2
+// rounds`. A NOTE A PERSON READS NEVER SPELLS A PLURAL IN PARENTHESES: `round(s)`
+// is the machine admitting it did not count, on a line that has the count.
+func roundsWord(n int) string {
+	if n == 1 {
+		return "1 round"
+	}
+	return strconv.Itoa(n) + " rounds"
 }
 
 // shortfall says in a few words why a round did not meet its until.

@@ -25,7 +25,7 @@ import (
 // into it.
 //
 // THE SENTENCES ARE THE RUNNER'S. A question is drawn exactly as loop.go wrote
-// it (`review is not clean after 2 round(s): 3 findings · one more round, or go
+// it (`review is not clean after 2 rounds: 3 findings · one more round, or go
 // on as is?`, `cap of $5 reached · $5 more, or stop?`, `plan is ready · go, or
 // change it?`), and a door that refuses says its own sentence on the note line.
 // The surface never paraphrases the runner, because a person who reads one
@@ -148,6 +148,19 @@ func (a *app) factoryFoldPhases() {
 	for _, it := range a.fp.snap.Items {
 		if it.Stream == nil {
 			continue
+		}
+		// A HELD ITEM IS TIMED THE SAME WAY, from the first snapshot that said
+		// it was paused, so its row can say `paused 13m` and not how long it
+		// ran (factory_marks.go's [app.factoryPausedFor]).
+		if factoryPaused(it) {
+			k := factoryPausedKey(it.ID)
+			seen[k] = true
+			if _, ok := a.fp.phaseSince[k]; !ok {
+				if a.fp.phaseSince == nil {
+					a.fp.phaseSince = map[string]time.Time{}
+				}
+				a.fp.phaseSince[k] = a.fp.snap.Now
+			}
 		}
 		for i, ph := range it.Stream.Phases {
 			if ph.State != factory.PhaseRunning {
@@ -331,7 +344,8 @@ func (a *app) factoryProofPane(it factory.Item, head []string, measure, room int
 // the person: the runner's question, its mark in amber and its words in ink
 // (COLOUR IS STROKE, NEVER FILL), and the answers at the right when both fit.
 // THE HEAD STAYS TWO ROWS (owner ruling, 2026-10-08): the question stands
-// where the chips stand, because no chip turns while the item is parked, and
+// where the gate, cap and effort stand, because none of them turns while the
+// item is parked, and
 // the pane's waiting stage repeats the answers under it.
 func (a *app) factoryItemQuestion(it factory.Item, measure int) string {
 	pal := a.pal
@@ -352,13 +366,19 @@ func (a *app) factoryItemQuestion(it factory.Item, measure int) string {
 
 // factoryPhaseNoteLine is the one dim line under the peek's strip about the
 // phase that stopped: the waiting phase's note, else the latest failed one's,
-// as `review · review is not clean after 2 round(s)`. A note that is only the
+// as `review · review is not clean after 2 rounds`. A note that is only the
 // stage's own ask (what the runner compiles a phase with) says nothing new and
 // is not drawn.
 func factoryPhaseNoteLine(it factory.Item, stages []factory.Stage) string {
 	s := it.Stream
 	if s == nil {
 		return ""
+	}
+	// A STOPPED RUN SAYS IT WAS STOPPED, never the note its last phase
+	// carried as it was stopped: `test · 9/12 · TestRelay failed` under a stop
+	// read as a failure nobody found (factory_marks.go).
+	if at := factoryStoppedAt(it); at >= 0 {
+		return s.Phases[at].Name + rowSep + factoryStoppedWords
 	}
 	pick := -1
 	for i, ph := range s.Phases {
