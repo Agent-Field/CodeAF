@@ -14,9 +14,9 @@ import (
 // SourceMeta is what a polling source last said about itself: when a read
 // last succeeded, when one was last tried, and the trouble when the last try
 // failed. It lives on disk beside the items, at <root>/sources.json, because
-// THE PROCESS THAT POLLS IS NOT ALWAYS THE ONE THAT DRAWS: on the ordinary
-// launch the engine polls and the window reads the floor, and both read this
-// one file.
+// THE PROCESS THAT POLLS IS NOT ALWAYS THE ONE THAT DRAWS: a window and the
+// engine behind it may both poll, taking turns through the poller lock, and
+// whichever read last, every window draws from this one file.
 type SourceMeta struct {
 	Polled  time.Time `json:"polled,omitzero"`
 	Tried   time.Time `json:"tried,omitzero"`
@@ -258,7 +258,7 @@ func (st *Store) NudgePath() string { return filepath.Join(st.root, "poll-now") 
 
 // NudgePoll asks whichever process polls this floor to read now. IT IS A FILE
 // AND NOT A MESSAGE because the window that saves the picker is not always the
-// process that polls: on the ordinary launch the engine polls, and it watches
+// only process that polls: an engine may poll the same floor, and it watches
 // this mark's time while it waits.
 func (st *Store) NudgePoll() error {
 	if st == nil {

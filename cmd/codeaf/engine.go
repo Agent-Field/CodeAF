@@ -1364,8 +1364,10 @@ var engineFactoryStore struct {
 func engineFactory(profileDir string) *factorystore.Store {
 	engineFactoryStore.once.Do(func() {
 		engineFactoryStore.store = v3Factory()
-		// The floor's GitHub poll belongs to the process that opened the floor
-		// for a person's window, which on the ordinary launch is this one.
+		// The engine polls the floor it opened for a person's window, and so
+		// does that window (chatv3_local.go's [localDoors]): a window never
+		// counts on the engine, which may be an older build with no poll. The
+		// two take turns through the floor's locks ([startFactoryPoll]).
 		startFactoryPoll(engineFactoryStore.store, profileDir)
 	})
 	return engineFactoryStore.store
