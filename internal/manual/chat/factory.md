@@ -431,13 +431,14 @@ the floor (filter, repository, selection) changes while it is open.
 
 The top row is a trail: `Factory › codeaf › #1551 filters lost on compact`, the crumbs dim and
 the item in ink, with where it stands and for how long (`running 26m`) and the spend over the
-budget (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row is
-where it asks you, the budget and the thinking with their keys,
-`ask me at  pull request [t]  budget  $5 [c]  thinking  — [e]`. The
-repository is the crumb above and is not said again; an item that touches more repositories
-names the others, dim, `also harness, agentfield`;
-on an item waiting on you it is the question instead (see answering a question). Then a blank
-row; the rail and its pane start on the fourth row on every item. What plan changed about the
+budget (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row
+names the other repositories an item touches, dim, `also harness, agentfield` (the repository
+it arrived on is the crumb above and is not said again); on an item waiting on you it is the
+question instead (see answering a question). Where it asks you, the budget and the thinking
+stand in the verbs on the right (see the verbs on the right of the item page); on a page
+narrower than 100 columns they stand on this second row instead, with their keys,
+`ask me at  pull request [t]  budget  $5 [c]  thinking  — [e]`. Then a blank row; the rail and
+its pane start on the fourth row on every item. What plan changed about the
 stages is in the issue pane (see adapt).
 
 On the left is the **rail**: `issue` first (see read the whole issue), then `chat` when the item
@@ -456,8 +457,8 @@ pane.
 On the right is the row under the cursor. For a stage: its settings, dim
 (`review · chat · until clean · max 2 · fanout per-finding · when always`), what it is asked to
 do, a blank row, what it has to say (`runs after test`, its round and its newest log lines, the
-question waiting on you, its result, why it failed, or the sheet on `proof`), a blank row, and
-the item's keys on the last row.
+question waiting on you, its result, why it failed, or the sheet on `proof`), and, on a page
+narrower than 100 columns, a blank row and the item's keys on the last row.
 
 While a stage runs and its page is open, the page is alive: the stage's spinner turns on the rail
 and at the head of its pane (`⠋ 1 task · 15s`), its time counts up every second, and the log
@@ -465,12 +466,39 @@ lines under it grow as the stage works, the newest at the bottom. The floor read
 second while you watch it, and goes back to its own beat when the stage ends or you press `esc`.
 
 Every verb key keeps working on the item while its page is open (see the factory's verbs), and
-`1` to `9` switch stages. The pane's last row names the item's verbs, at most five, as the peek
-does. The bottom line is only `↑↓ stages · enter <what enter does here> · esc floor · ? keys`
+`1` to `9` switch stages. The verbs on the right name them (on a page narrower than 100 columns,
+the pane's last row names at most five, as the peek does). The bottom line is only `↑↓ stages · enter <what enter does here> · esc floor · ? keys`
 (`enter chat` on the issue row, `enter conversation` on a stage that has one, `enter approve`
 or `enter request changes` on a landed item's proof; no `enter` where it does nothing), with the
 router's `tab next place` before `esc`. `?` lists every key. A box that takes words opens on the
 last row of the pane.
+
+## the verbs on the right of the item page — do, set, also
+
+On an item page 100 columns wide or wider, a column on the right lists what you can do to the
+item, so you never have to decode the bottom line. It has three groups, each under its dim
+name, and each row has its key at the right edge:
+
+- **do:** the item's verbs for where it stands. A new item: `run r`, `chat T`, `select space`
+  (and `run selected L` while rows are selected). A running one: `stop x`, `chat T`,
+  `pause space` (`resume` while paused), `steer S`. One waiting on you: `yes y`, `no n`,
+  `in words a`, `chat T`. A landed one: `approve s` (or `approve with changes e`),
+  `request changes B`, `re-run checks v`, `chat T`.
+- **set:** the settings with their values: `ask me at  plan  t`, `thinking  —  e`,
+  `budget  $3  c`, and `stages  6 of 8`, how many of the item's stages are on.
+- **also:** `open on github g`, `refresh u`, `dismiss d`.
+
+Click a row or press its key: a click does exactly what the key does, so a click on `ask me at`
+moves it to the next stop, as `t` does. A click on `stages` walks the rail on the left to the
+first stage, where `1` to `9` switch stages on and off. Resting the pointer on a row highlights
+it. `↑` and `↓` still walk the rail on the left; the column on the right has no cursor, because
+every row already has its key.
+
+Only what works is listed: a verb this item's state or this floor cannot do is not there, and a
+group with nothing in it is not drawn (a landed item has no `set`). On a page narrower than 100
+columns there is no column: where it asks you, the budget and the thinking stand on the head's
+second row with their keys, and the pane's last row names the verbs, as before. `?` lists every
+key either way.
 
 ## start a conversation about an issue — enter on the issue row, when enter on the item page does nothing
 
@@ -617,15 +645,16 @@ became of the item (`#12 is running`, `#12 stopped · branch kept`); a refusal, 
 
 ## what does ask me at mean, how do I make it stop after the plan
 
-`ask me at` is where an item's run stops to ask you. The chip on the item page reads
-`ask me at  plan [t]`, and `t` cycles it:
+`ask me at` is where an item's run stops to ask you. On the item page it reads
+`ask me at  plan  t` in the verbs on the right (`ask me at  plan [t]` on the second row of a
+page narrower than 100 columns), and `t`, or a click on it, cycles it:
 
 - `ask me at plan`: the run comes back with the plan before any code, and waits for `y`.
 - `ask me at pull request` (the default): every stage runs, and it stops before the pull
   request, on the proof sheet, for you to approve.
 - `ask me at never`: a banked habit; a green proof ships by itself.
 
-So to make a run stop after the plan, press `t` until the chip says `ask me at plan`, then `r`.
+So to make a run stop after the plan, press `t` until it says `ask me at plan`, then `r`.
 There is no separate key for it: `r` always runs, and stops where `ask me at` says. The recipe
 file still spells these `gate plan`, `gate ship` and `gate none` (see recipe file knobs).
 

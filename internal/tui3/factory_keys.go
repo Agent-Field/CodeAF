@@ -1020,15 +1020,31 @@ func (a *app) factoryCanRun() bool {
 // the strip is the row's verbs, never the whole keyboard. Only keys that work
 // for the item's state on this seam are on it.
 func (a *app) factoryVerbRail(it factory.Item) []string {
-	seam := a.factory
 	open := factoryHintClause(keyOpen, wordOpen)
 	if it.State == factory.StateLanded {
 		open = factoryHintClause(keyOpen, wordProof)
 	}
 	out := []string{open}
+	for _, r := range a.factoryVerbRows(it) {
+		out = append(out, factoryHintClause(r.key, r.word))
+	}
+	if len(out) > factoryStripMost {
+		out = out[:factoryStripMost]
+	}
+	return out
+}
+
+// factoryVerbRows is the item's verbs as key and word, in the strip's order
+// and without its `enter` clause or its cut: THE ONE LIST the peek's strip,
+// the item page's action line and the item page's verbs on the right
+// (factory_verbs.go) all read, so the three cannot name different verbs for
+// one item.
+func (a *app) factoryVerbRows(it factory.Item) []factorySheetRow {
+	seam := a.factory
+	var out []factorySheetRow
 	add := func(ok bool, key, word string) {
 		if ok {
-			out = append(out, factoryHintClause(key, word))
+			out = append(out, factorySheetRow{key, word})
 		}
 	}
 	chat := func() { add(seam.Has("talk"), keyChat, wordChat) }
@@ -1062,9 +1078,6 @@ func (a *app) factoryVerbRail(it factory.Item) []string {
 		chat()
 	default:
 		chat()
-	}
-	if len(out) > factoryStripMost {
-		out = out[:factoryStripMost]
 	}
 	return out
 }

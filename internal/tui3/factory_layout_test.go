@@ -255,7 +255,9 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("item %d opened on %q, want %q", c.id, got, c.stage)
 		}
 		text := strings.Join(factoryFrameLines(a), "\n")
-		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State != factory.StateNeedsYou && !strings.Contains(text, wordAskAt)) {
+		// `ask me at` stands on every item that can still move it: in the
+		// verbs' column on a page this wide, and only where `t` works.
+		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State == factory.StateNew && a.factory.Has("setgate") && !strings.Contains(text, wordAskAt)) {
 			t.Fatalf("item %d's page has no head:\n%s", c.id, text)
 		}
 		if strings.Contains(text, "NEEDS YOU") {
@@ -303,7 +305,12 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 		t.Fatalf("the rail does not start with the issue, or the cursor is not on it: %+v at %d", rows[:2], a.fp.stage)
 	}
 	frame := strings.Join(factoryFrameLines(a), "\n")
-	for _, want := range []string{a.icon(tokens.GFileDocument) + " issue", "paragraph line 1", a.icon(tokens.GExpanded) + " more", "J K scroll"} {
+	// AT 150 THE VERBS STAND ON THE RIGHT and the pane draws no action line,
+	// so `J K scroll` is the `?` sheet's to name, not the pane's.
+	if a.factoryVerbsDrawn() == strings.Contains(frame, "J K scroll") {
+		t.Fatalf("verbs on the right %v, and the pane names J K scroll %v:\n%s", a.factoryVerbsDrawn(), strings.Contains(frame, "J K scroll"), frame)
+	}
+	for _, want := range []string{a.icon(tokens.GFileDocument) + " issue", "paragraph line 1", a.icon(tokens.GExpanded) + " more"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the issue pane is missing %q:\n%s", want, frame)
 		}
@@ -342,9 +349,8 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 	drive(t, a, key("down"))
 	var pane []string
 	for _, r := range a.factoryItemBody(cur, 150, 30) {
-		text := ansi.Strip(r.text)
-		if j := strings.Index(text, "│"); j >= 0 {
-			pane = append(pane, strings.TrimSpace(text[j+len("│"):]))
+		if _, right, div := factorySplitAt(ansi.Strip(r.text)); div >= 0 {
+			pane = append(pane, strings.TrimSpace(right))
 		}
 	}
 	at := -1

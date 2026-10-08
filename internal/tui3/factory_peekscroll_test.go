@@ -48,6 +48,10 @@ func factoryLongLab(t *testing.T) *app {
 func factoryMoreRowY(a *app) int {
 	more := a.icon(tokens.GExpanded) + " more"
 	for y, line := range factoryFrameLines(a) {
+		// The pane's last cell is before the verbs' column when one stands.
+		if _, pane, div := factorySplitAt(line); div >= 0 && strings.HasSuffix(strings.TrimRight(pane, " "), more) {
+			return y
+		}
 		if strings.HasSuffix(strings.TrimRight(line, " "), more) {
 			return y
 		}
@@ -161,7 +165,7 @@ func TestFactoryItemPageIssueScrollsByWheelAndMore(t *testing.T) {
 	a := factoryLongLab(t)
 	drive(t, a, key("enter"))
 	factoryFrameLines(a)
-	if !a.fp.open || !factoryFrameHas(a, "J K scroll") || !factoryFrameHas(a, "para 01") {
+	if !a.fp.open || !factoryFrameHas(a, "para 01") {
 		t.Fatalf("the item page does not show the issue with J K scroll:\n%s", strings.Join(factoryFrameLines(a), "\n"))
 	}
 	y := factoryMoreRowY(a)
@@ -169,15 +173,21 @@ func TestFactoryItemPageIssueScrollsByWheelAndMore(t *testing.T) {
 		t.Fatalf("the issue is not cut with more:\n%s", strings.Join(factoryFrameLines(a), "\n"))
 	}
 	stage := a.fp.stage
-	drive(t, a, tea.MouseWheelMsg{X: a.width - 10, Y: y, Button: tea.MouseWheelDown})
+	// THE PANE'S RIGHT EDGE is the verbs' column's rule while the column
+	// stands, and the frame's otherwise.
+	edge := a.width
+	if a.factoryVerbsDrawn() {
+		edge = a.fp.verbX
+	}
+	drive(t, a, tea.MouseWheelMsg{X: edge - 10, Y: y, Button: tea.MouseWheelDown})
 	factoryFrameLines(a)
 	if a.fp.stage != stage || a.fp.scroll != placeWheelRows {
 		t.Fatalf("the wheel over the issue: stage %d (was %d), scroll %d", a.fp.stage, stage, a.fp.scroll)
 	}
-	drive(t, a, tea.MouseWheelMsg{X: a.width - 10, Y: y, Button: tea.MouseWheelUp})
+	drive(t, a, tea.MouseWheelMsg{X: edge - 10, Y: y, Button: tea.MouseWheelUp})
 	factoryFrameLines(a)
 	page := a.fp.scrollPage
-	drive(t, a, clickAt(a.width-4, y), releaseAt(a.width-4, y))
+	drive(t, a, clickAt(edge-4, y), releaseAt(edge-4, y))
 	factoryFrameLines(a)
 	if a.fp.scroll != page || a.fp.stage != stage {
 		t.Fatalf("a press on more: scroll %d want %d, stage %d", a.fp.scroll, page, a.fp.stage)

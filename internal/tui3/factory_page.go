@@ -201,6 +201,14 @@ type factoryPage struct {
 	railFirst  int
 	railShown  int
 	pageRows   int
+	// THE VERBS ON THE RIGHT (factory_verbs.go) as the last draw placed
+	// them: verbX the column the rail's cells start on, 0 when the page was
+	// too narrow to draw it; verbHits each drawn verb row and the body row it
+	// stands on; verbHover the word of the row the pointer rests on, "" for
+	// none.
+	verbX     int
+	verbHits  []factoryVerbHit
+	verbHover string
 
 	// THE SPLIT (factory_split.go). split is the rows' share of the width in
 	// percent, 0 for [factoryRowsShare]; splitRead says the remembered one has
@@ -753,6 +761,12 @@ func (a *app) factoryHover(x, y int) bool {
 	case a.fp.recipe != nil:
 		return false
 	case a.fp.open:
+		// THE VERBS' COLUMN ON THE RIGHT ANSWERS FIRST: the row under the
+		// pointer wears its ground (factory_verbs.go); anywhere else the
+		// column's ground is let go and the stage rail is asked.
+		if a.factoryVerbHover(x, y) {
+			return true
+		}
 		return a.factoryStageHover(x, y)
 	}
 	next := -1
