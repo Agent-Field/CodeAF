@@ -1,6 +1,6 @@
 # CodeAF desktop
 
-Private foundation for the next CodeAF desktop app: Tauri 2 + React/TypeScript + Go. Arc-inspired restraint with native OS window controls, system fonts, semantic themes, and keyboard-first navigation.
+Private foundation for the next CodeAF desktop app: Tauri 2 + React/TypeScript + Go. Arc-inspired restraint with native OS window controls, system fonts, semantic themes, and keyboard-first navigation. The macOS shell uses native sidebar vibrancy and real traffic lights; Linux retains native decorations with a tinted opaque fallback.
 
 ## Start
 
@@ -24,7 +24,7 @@ The build script generates a sidecar matching the Rust target triple. Set `CARGO
 
 ## Design
 
-Read [the design standard](docs/DESIGN.md). System fonts, warm neutral light theme, charcoal dark theme, violet accent, spacing/radius/motion tokens, native decorations, visible focus, and reduced motion are the defaults. No custom fonts or external asset requests.
+Read [the design standard](docs/DESIGN.md). System fonts, warm neutral light theme, charcoal dark theme, graphite accent, spacing/radius/motion tokens, native window controls, visible focus, and reduced motion are the defaults. No custom fonts or external asset requests.
 
 ## Checks
 

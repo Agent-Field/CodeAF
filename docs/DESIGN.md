@@ -1,32 +1,25 @@
 # CodeAF visual standard
 
-An Arc-inspired quiet workspace: compact sidebar, generous content space, a single accent, native window chrome. Reference the restraint, not Arc branding.
+Match the classic Arc desktop reference: a slim tinted sidebar and a single inset content pane. Minimize visible chrome. The content belongs to the user, not a dashboard of promotional cards.
 
-## Tokens
+## Geometry
 
-All primitives live in `src/styles/tokens.css`. Components consume semantic names.
+Sidebar 216px (190px for smaller windows), 6px outer frame, 6px content corners. Navigation rows 34px; top controls 28px. No full-width page header divider, profile card, uppercase section labels, hero banners, or default large filled CTA. Sidebar selections use a softly translucent neutral surface, never a saturated accent block.
 
-| Role | Light | Dark |
-| --- | --- | --- |
-| Canvas | #f8f7f5 | #1c1b20 |
-| Sidebar | #f0eeeb | #232127 |
-| Surface | #ffffff | #28262e |
-| Text | #28262d | #eeecf2 |
-| Secondary text | #6f6a76 | #b0aab9 |
-| Primary accent | #6850b8 | #b7a0f2 |
+## Typography and colors
 
-## Typography
+System sans only: SF Pro on macOS, system-ui on Linux. Interface 12px, supporting labels 10–11px, page heading 25px with medium weight. System monospace for code. Warm sand/peach chrome in light mode; warm charcoal in dark mode. White/off-white content is opaque. The primary accent is graphite: reserve stronger color for meaningful status or actual project identities. All colors and geometry primitives originate in `src/styles/tokens.css`.
 
-Use OS system sans: SF Pro on macOS, Segoe UI on Windows, the installed system sans on Linux. Never bundle Apple's fonts. Use system monospace for code. Body 14–15px, secondary 12px, labels 10px, headings 32–46px. Body line-height 1.6–1.8. Reserve tight tracking for headings; do not reduce body legibility.
+## Native materials
 
-## Geometry & interaction
+macOS uses a real NSVisualEffect sidebar material through Tauri windowEffects, a transparent WebView, native traffic lights and overlay titlebar. CSS paints only a light tint over the native material. Linux uses native decorations and a solid soft tint; Tauri does not support Linux backdrop effects. Never draw fake macOS traffic lights.
 
-Spacing scale: 4, 8, 12, 16, 24, 32, 48px. Corners: 8px controls, 12px panels, 20px major surfaces. Sidebar 248px; native window minimum 800×560. Use borders before shadows; avoid gradients and decorative blur. Primary actions use the accent; navigation uses its soft surface. Motion 140ms and disabled for reduced motion. Visible focus required; Cmd/Ctrl+K opens the command palette. Use OS window controls and dialogs for future filesystem actions.
+Browser preview renders a quiet sand-to-peach background as an approximation of tinted chrome. It cannot blur the desktop behind the browser. Do not present browser screenshots as proof of native translucency.
 
-## Appearance
+## Interaction
 
-System is the default; Light and Dark persist locally. Listen through CSS to OS appearance changes while System is selected. Native feel is a design goal, not a claim that React controls are platform-native widgets. Tauri uses the platform WebView; validate font metrics and behavior on each OS.
+Cmd/Ctrl+K opens the command palette; Cmd/Ctrl+B toggles the sidebar. Theme defaults to System, persists locally, and synchronizes the native window appearance. Keep visible focus, semantic controls, modal focus restoration, and reduced motion. Use the top chrome as a native drag region. Sidebar collapse removes hidden controls from keyboard navigation.
 
-## Foundation components
+## Distribution note
 
-Application shell, sidebar navigation, toolbar, primary button, empty state, status panel, theme selector, modal command palette. The Design system screen shows live tokens. Build future screens from these primitives and extract shared components as real reuse appears.
+The current macOS transparent WebView uses Tauri's macOSPrivateApi mode, which is not compatible with Mac App Store acceptance. Direct signed/notarized distribution remains the intended option for this scaffold. If App Store distribution becomes a requirement, reassess the transparent WebView approach rather than silently retaining private API use.
