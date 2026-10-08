@@ -1,6 +1,8 @@
 package factory_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -263,8 +265,212 @@ func TestAdaptAddsOnlyConversationsWithAnAsk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	i := factory.StageIndex(got.Stages, "check docs")
+	i := factory.StageIndex(got.Stages, "check")
 	if i < 0 || got.Stages[i+1].Name != "proof" || got.Stages[i].Gate != "" || got.Stages[i].Until != factory.UntilDone {
 		t.Fatalf("placed = %+v", got.Stages)
+	}
+}
+
+// THE MANAGER'S PROGRAM, before anything runs: a new ask on a stage, a stage
+// added after a named one, a skip, each stage it touched carrying who and why,
+// and the record saying so in one line. The recipe's adapt word is a bound on
+// a run, not on the program written before one.
+func TestEditBeforeRunSetsAnAskAndAddsAfterANamedStage(t *testing.T) {
+	it := adaptItem()
+	it.Stream = nil
+	r := factory.DefaultRecipe()
+	r.Adapt = map[factory.Kind]factory.AdaptMode{factory.KindIssue: factory.AdaptFixed}
+	e := factory.RunEdit{
+		By:   factory.ByManager,
+		Ask:  map[string]string{"review": "thorough on security, code and architecture"},
+		Add:  []factory.Added{{Stage: factory.Stage{Name: "arch", Ask: "read it for the architecture"}, After: "review"}},
+		Skip: []string{"neaten"},
+		Why:  "touches the call row",
+	}
+	got, lines, err := factory.Edit(it, e, r, factory.EditBeforeRun)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"manager set review: thorough on security, code and architecture", "manager added arch after review", "manager skipped neaten", "why: touches the call row"}
+	if !reflect.DeepEqual(lines, want) || !reflect.DeepEqual(got.Adapted, want) {
+		t.Fatalf("lines = %q", lines)
+	}
+	if line := factory.AdaptedLine(got); line != "manager set review: thorough on security, code and architecture · added arch after review · skipped neaten · why: touches the call row" {
+		t.Fatalf("line = %q", line)
+	}
+	a := factory.StageIndex(got.Stages, "arch")
+	if a != 4 || got.Stages[a-1].Name != "review" || got.Stages[a].Kind != factory.StageChat || !got.Stages[a].On {
+		t.Fatalf("arch placed = %+v", got.Stages)
+	}
+	for _, name := range []string{"review", "arch", "neaten"} {
+		st := got.Stages[factory.StageIndex(got.Stages, name)]
+		if st.By != factory.ByManager || st.Why != "touches the call row" {
+			t.Fatalf("%s carries by %q why %q", name, st.By, st.Why)
+		}
+	}
+	if st := got.Stages[factory.StageIndex(got.Stages, "write")]; st.By != "" || st.Why != "" {
+		t.Fatalf("an untouched stage carries %q %q", st.By, st.Why)
+	}
+	if got.Stages[factory.StageIndex(got.Stages, "review")].Ask != "thorough on security, code and architecture" {
+		t.Fatal("the ask did not land")
+	}
+	// The added stage's own why wins over the edit's.
+	e2 := factory.RunEdit{By: factory.ByManager, Why: "the edit's", Add: []factory.Added{{Stage: factory.Stage{Name: "docs", Ask: "say it in the manual", Why: "the manual is law"}, After: "write"}}}
+	got2, _, err := factory.Edit(it, e2, r, factory.EditBeforeRun)
+	if err != nil || got2.Stages[2].Name != "docs" || got2.Stages[2].Why != "the manual is law" {
+		t.Fatalf("own why = %+v %v", got2.Stages, err)
+	}
+	// The same edit during a run is held to the recipe's fixed word.
+	it.Stream = adaptItem().Stream
+	if _, _, err := factory.Edit(it, e, r, factory.EditInRun); err == nil || err.Error() != "the recipe for issue is fixed; manager may not change the stages" {
+		t.Fatalf("in a run under fixed = %v", err)
+	}
+}
+
+// IN A RUN, A STAGE THAT HAS RUN IS NOT TOUCHED: not its ask, not its
+// thinking, and nothing goes in before it.
+func TestEditInRunRefusesTouchingADoneStage(t *testing.T) {
+	it := adaptItem()
+	it.Stream.Phases = []factory.Phase{{Name: "plan", State: factory.PhaseDone}, {Name: "write", State: factory.PhaseRunning}}
+	for _, c := range []struct {
+		e    factory.RunEdit
+		want string
+	}{
+		{factory.RunEdit{Ask: map[string]string{"plan": "say it again"}}, "plan may not change plan, which has already run"},
+		{factory.RunEdit{Thinking: map[string]string{"write": "strong"}}, "plan may not change write, which has already run"},
+		{factory.RunEdit{Add: []factory.Added{{Stage: factory.Stage{Name: "sketch", Ask: "sketch it"}, After: "plan"}}}, "plan may not add sketch before write, which has already run"},
+		{factory.RunEdit{Skip: []string{"plan"}}, "plan may not skip plan, which has already run"},
+	} {
+		got, lines, err := factory.Edit(it, c.e, factory.DefaultRecipe(), factory.EditInRun)
+		if err == nil || err.Error() != c.want || lines != nil || !reflect.DeepEqual(got, it) {
+			t.Fatalf("%+v = %v, want %q", c.e, err, c.want)
+		}
+	}
+	// What is still to come is the plan's to change.
+	got, lines, err := factory.Edit(it, factory.RunEdit{Ask: map[string]string{"review": "read it twice"}, Thinking: map[string]string{"review": "strong"}}, factory.DefaultRecipe(), factory.EditInRun)
+	if err != nil || len(lines) != 2 || lines[1] != "plan set review thinking strong" || got.Stages[3].Effort != "strong" || got.Stages[3].By != factory.ByPlan {
+		t.Fatalf("to come = %q %v %+v", lines, err, got.Stages[3])
+	}
+}
+
+// ONE WORD PER STAGE on all three roads that make a name: an edit, the recipe
+// file, and a typed sentence.
+func TestStageNamesAreOneWordOnEveryRoad(t *testing.T) {
+	const want = `a stage is one word · "do through" is two`
+	it := adaptItem()
+	if _, _, err := factory.Edit(it, factory.RunEdit{Add: []factory.Added{{Stage: factory.Stage{Name: "do through", Ask: "walk it end to end"}}}}, factory.DefaultRecipe(), factory.EditBeforeRun); err == nil || err.Error() != want {
+		t.Fatalf("edit = %v", err)
+	}
+	if _, _, err := factory.Edit(it, factory.RunEdit{Add: []factory.Added{{Stage: factory.Stage{Ask: "after review, do through: walk it end to end"}}}}, factory.DefaultRecipe(), factory.EditBeforeRun); err == nil || err.Error() != want {
+		t.Fatalf("edit by sentence = %v", err)
+	}
+	r, probs := factory.Parse("## issue\n1. plan\n2. do through · chat · walk it end to end\n3. proof\n")
+	if len(probs) != 1 || probs[0].Line != 3 || probs[0].Why != want || len(r.Stages) != 2 {
+		t.Fatalf("recipe file = %+v %+v", probs, r.Stages)
+	}
+	if _, _, err := factory.StageSentence("after review, do through: walk it end to end"); err == nil || err.Error() != want {
+		t.Fatalf("sentence = %v", err)
+	}
+	// A sentence with no name of its own is named by one word of its ask.
+	got, _, err := factory.Adapt(it, factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, check the migration reverses"}}}, factory.DefaultRecipe())
+	if err != nil || factory.StageIndex(got.Stages, "check") != 3 {
+		t.Fatalf("unnamed = %+v %v", got.Stages, err)
+	}
+}
+
+// AT MOST NINE STAGES: an edit, and a recipe file, stop at nine.
+func TestNineStagesAtMost(t *testing.T) {
+	it := adaptItem() // eight stages
+	add := func(names ...string) factory.RunEdit {
+		e := factory.RunEdit{By: factory.ByManager}
+		for _, n := range names {
+			e.Add = append(e.Add, factory.Added{Stage: factory.Stage{Name: n, Ask: "look at " + n}, After: "review"})
+		}
+		return e
+	}
+	if _, _, err := factory.Edit(it, add("arch"), factory.DefaultRecipe(), factory.EditBeforeRun); err != nil {
+		t.Fatalf("the ninth = %v", err)
+	}
+	got, _, err := factory.Edit(it, add("arch", "docs"), factory.DefaultRecipe(), factory.EditBeforeRun)
+	if err == nil || err.Error() != "the run has nine stages already" || len(got.Stages) != 8 {
+		t.Fatalf("the tenth = %v", err)
+	}
+	text := "## issue\n"
+	for i, n := range []string{"plan", "write", "test", "review", "neaten", "security", "docs", "arch", "proof", "extra"} {
+		text += fmt.Sprintf("%d. %s · chat · do %s\n", i+1, n, n)
+	}
+	r, probs := factory.Parse(text)
+	if len(probs) != 1 || probs[0].Line != 11 || probs[0].Why != "the run has nine stages already" || len(r.Stages) != 9 {
+		t.Fatalf("recipe file = %+v", probs)
+	}
+}
+
+// PROOF IS NEVER SKIPPED, by anyone, in either mode; nor a gate.
+func TestEditNeverSkipsProofOrAGate(t *testing.T) {
+	it := adaptItem()
+	it.Stream = nil
+	for _, by := range []string{factory.ByManager, factory.ByPlan, factory.ByYou} {
+		for _, mode := range []factory.EditMode{factory.EditBeforeRun, factory.EditInRun} {
+			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"proof"}}, factory.DefaultRecipe(), mode); err == nil || err.Error() != by+" may not skip proof" {
+				t.Fatalf("%s %s skipped proof: %v", by, mode, err)
+			}
+			if _, _, err := factory.Edit(it, factory.RunEdit{By: by, Skip: []string{"sign"}}, factory.DefaultRecipe(), mode); err == nil || !strings.Contains(err.Error(), "person's gate") {
+				t.Fatalf("%s %s skipped the gate: %v", by, mode, err)
+			}
+		}
+	}
+}
+
+// AN ASK IS AT MOST 240 CELLS and thinking is one of three words; one refused
+// part refuses the whole edit.
+func TestEditCapsTheAskAndTheThinking(t *testing.T) {
+	it := adaptItem()
+	it.Stream = nil
+	long := strings.Repeat("a", 241)
+	for _, e := range []factory.RunEdit{
+		{Ask: map[string]string{"review": long}},
+		{Add: []factory.Added{{Stage: factory.Stage{Name: "arch", Ask: long}}}},
+	} {
+		if _, _, err := factory.Edit(it, e, factory.DefaultRecipe(), factory.EditBeforeRun); err == nil || err.Error() != "an ask is at most 240 cells" {
+			t.Fatalf("long ask = %v", err)
+		}
+	}
+	if _, _, err := factory.Edit(it, factory.RunEdit{Ask: map[string]string{"review": strings.Repeat("a", 240)}}, factory.DefaultRecipe(), factory.EditBeforeRun); err != nil {
+		t.Fatalf("240 cells = %v", err)
+	}
+	got, _, err := factory.Edit(it, factory.RunEdit{Thinking: map[string]string{"review": "furious"}, Skip: []string{"neaten"}}, factory.DefaultRecipe(), factory.EditBeforeRun)
+	if err == nil || err.Error() != "thinking is cheap, strong, or nothing" || !got.Stages[4].On {
+		t.Fatalf("thinking = %v", err)
+	}
+}
+
+// THE RECORD SAYS WHO FIRST, and says it again only when who changes.
+func TestAdaptedLineSaysWhoOnce(t *testing.T) {
+	it := factory.Item{Adapted: []string{"manager added arch after review", "manager skipped neaten", "why: touches the call row", "plan set review thinking strong", "you switched on neaten"}}
+	if got := factory.AdaptedLine(it); got != "manager added arch after review · skipped neaten · why: touches the call row · plan set review thinking strong · you switched on neaten" {
+		t.Fatalf("line = %q", got)
+	}
+}
+
+// THE OLD EDIT STILL COMPILES and is the plan's RunEdit.
+func TestPlanEditIsTheRunEditByPlan(t *testing.T) {
+	old := factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, check it"}}, On: []string{"security"}, Skip: []string{"neaten"}, Why: "why"}
+	e := old.RunEdit()
+	if e.By != factory.ByPlan || len(e.Add) != 1 || e.Add[0].Stage.Ask != "after test, check it" || e.Add[0].After != "" || e.Why != "why" || old.Empty() {
+		t.Fatalf("run edit = %+v", e)
+	}
+	var _ = factory.Adapt
+}
+
+// WHY AND BY ARE IN THE DOCUMENT THE STORE WRITES, and a document written
+// before them reads as the recipe's own.
+func TestStageWhyAndByRoundTrip(t *testing.T) {
+	data, err := json.Marshal(factory.Stage{Name: "arch", Why: "touches the call row", By: factory.ByManager})
+	if err != nil || !strings.Contains(string(data), `"Why":"touches the call row"`) || !strings.Contains(string(data), `"By":"manager"`) {
+		t.Fatalf("marshal = %s %v", data, err)
+	}
+	var old factory.Stage
+	if err := json.Unmarshal([]byte(`{"Name":"review","Ask":"read it","On":true}`), &old); err != nil || old.Why != "" || old.By != "" || old.Name != "review" {
+		t.Fatalf("old document = %+v %v", old, err)
 	}
 }
