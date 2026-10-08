@@ -34,21 +34,9 @@ import (
 // factoryFresh is how recent a new item has to be to draw without the backlog.
 const factoryFresh = 72 * time.Hour
 
-// THE ROW'S GRID. A row is a fixed set of columns so the eye scans down them:
-// a 2-cell lead, the ref right-aligned in [factoryRefCols] (wider when the
-// floor holds a longer ref), one space, the title in a column whose width is
-// what the others leave and never under [factoryTitleMin], two spaces, the
-// repo's short name in [factoryRepoCols], two spaces, the facts, and the age
-// right-aligned in the last [factoryAgeCols]. Under [factoryFactsFloor] the
-// row is the lead, the ref and the title alone.
-const (
-	factoryLeadCols  = 2
-	factoryRefCols   = 5
-	factoryTitleMin  = 24
-	factoryRepoCols  = 11
-	factoryAgeCols   = 4
-	factoryFactsMost = 4
-)
+// THE ROW'S GRID is factory_grid.go's, and every width a row is laid out in
+// is named there. A row carries at most [factoryFactsMost] facts.
+const factoryFactsMost = 4
 
 // factoryAnswerWord is the needs-you row's reminder that the question takes a
 // yes or a no, drawn right before the age.
@@ -67,6 +55,12 @@ type factoryView struct {
 	comfy bool
 	// order is `O`: how rows sit within each section (factory_order.go).
 	order factoryOrder
+	// pos is the places the page handed out (factory_order.go's
+	// [app.factoryPlace]), which keep a row where it stood across a re-read;
+	// nil sorts by the order alone.
+	pos map[int]int
+	// titleW is the title column a comfortable row wraps at, 0 for none.
+	titleW int
 }
 
 // factoryRowKind is what one rail line is.
@@ -81,6 +75,9 @@ const (
 	factoryRowMore  // how many older new items the delta rule kept back
 	factoryRowNone  // the words matched nothing
 	factoryRowRead  // the factory's read under an item, in the comfortable density
+	// factoryRowTitle2 is the rest of a long title, under its row, in the
+	// comfortable density: one more line, cut with an ellipsis.
+	factoryRowTitle2
 )
 
 // factoryGroup is one heading of the rail and the states filed under it.
@@ -188,7 +185,7 @@ func factoryRailRows(snap factory.Snapshot, views ...factoryView) []factoryRailR
 		if len(in) == 0 && kept == 0 {
 			continue
 		}
-		in = factoryOrdered(snap, in, v.order)
+		in = factoryPlaced(snap, factoryOrdered(snap, in, v.order), v.pos)
 		rows = append(rows,
 			factoryRailRow{kind: factoryRowBlank, item: -1, walk: -1},
 			factoryRailRow{kind: factoryRowHeading, heading: g.word, count: len(in), item: -1, walk: -1})
@@ -199,6 +196,9 @@ func factoryRailRows(snap factory.Snapshot, views ...factoryView) []factoryRailR
 				rows = append(rows, factoryRailRow{kind: factoryRowBlank, item: -1, walk: -1})
 			}
 			rows = append(rows, factoryRailRow{kind: factoryRowItem, item: i, walk: walk})
+			if v.comfy && v.titleW > 0 && len(wrap(snap.Items[i].Title, v.titleW)) > 1 {
+				rows = append(rows, factoryRailRow{kind: factoryRowTitle2, item: i, walk: walk})
+			}
 			if v.comfy && strings.TrimSpace(snap.Items[i].Triage.Read) != "" {
 				rows = append(rows, factoryRailRow{kind: factoryRowRead, item: i, walk: walk})
 			}
@@ -243,7 +243,10 @@ func factoryWalk(snap factory.Snapshot, views ...factoryView) []int {
 // has reads as every repo, so a floor whose repos changed under the filter
 // shows everything rather than nothing.
 func (a *app) factoryViewNow() factoryView {
-	v := factoryView{query: a.fp.query, typing: a.fp.typing, backlog: a.fp.backlog, comfy: a.fp.comfy, order: a.fp.order}
+	v := factoryView{query: a.fp.query, typing: a.fp.typing, backlog: a.fp.backlog, comfy: a.fp.comfy, order: a.fp.order, pos: a.fp.pos}
+	if v.comfy {
+		v.titleW = a.fp.titleCols
+	}
 	if r := a.fp.repo; r > 0 && r <= len(a.fp.snap.Repos) {
 		v.repo = a.fp.snap.Repos[r-1].Name
 	}
@@ -415,8 +418,14 @@ func (a *app) factoryFilterKey(msg tea.KeyPressMsg) tea.Cmd {
 // cells, and the rail line each one shows (-1 for a line that holds no item).
 // THE WINDOW FOLLOWS THE CURSOR ([placeTop]) and is never scrolled on its own.
 func (a *app) factoryRail(width, room int) ([]string, []int) {
-	rows := a.factoryRows()
 	a.fp.refW = factoryRefWidth(a.fp.snap)
+	// THE GRID IS MEASURED BEFORE THE ROWS ARE LAID OUT, because a
+	// comfortable row's second title line is a row of its own.
+	a.fp.titleCols = 0
+	if a.fp.comfy {
+		a.fp.titleCols = a.factoryGridAt(width).titleW
+	}
+	rows := a.factoryRows()
 	cursorLine := 0
 	for line, r := range rows {
 		if r.kind == factoryRowItem && r.walk == a.fp.cursor {
@@ -446,11 +455,15 @@ func (a *app) factoryRail(width, room int) ([]string, []int) {
 	}
 	a.fp.top = pinned + placeTop(a.fp.top-pinned, max(cursorLine-pinned, 0), len(rows)-pinned, room-pinned)
 	end := min(a.fp.top+room-pinned, len(rows))
+	a.fp.firstHeading = -1
 	for line := a.fp.top; line < end; line++ {
 		r := rows[line]
 		hit := -1
 		if r.walk >= 0 {
 			hit = line
+		}
+		if r.kind == factoryRowHeading && a.fp.firstHeading < 0 {
+			a.fp.firstHeading = len(out)
 		}
 		out = append(out, factoryPad(a.factoryRailLine(r, width), width))
 		hits = append(hits, hit)
@@ -459,10 +472,10 @@ func (a *app) factoryRail(width, room int) ([]string, []int) {
 	return out, hits
 }
 
-// factoryRefWidth is the ref column's cells: [factoryRefCols], or the widest
+// factoryRefWidth is the ref column's cells: [factoryRefW], or the widest
 // ref on the floor when one is wider, so no row's title starts a cell late.
 func factoryRefWidth(snap factory.Snapshot) int {
-	w := factoryRefCols
+	w := factoryRefW
 	for _, it := range snap.Items {
 		w = max(w, ansi.StringWidth(it.Ref()))
 	}
@@ -472,7 +485,7 @@ func factoryRefWidth(snap factory.Snapshot) int {
 // factoryTitleCol is the cell the title column starts on: after the lead, the
 // ref and the one space.
 func (a *app) factoryTitleCol() int {
-	return factoryLeadCols + max(a.fp.refW, factoryRefCols) + 1
+	return factoryLeadW + factoryPriorityW + max(a.fp.refW, factoryRefW) + 1
 }
 
 // factoryRailLine draws one line of the rows, at most width cells.
@@ -501,13 +514,25 @@ func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 	case factoryRowMore:
 		word := itoa(r.count) + " older open " + plural("item", r.count) + " behind A"
 		lead := a.factoryTitleCol()
-		return strings.Repeat(" ", lead) + pal.dim(fit(word, max(width-lead, 0)))
+		return factorySpaces(lead) + pal.dim(fit(word, max(width-lead, 0)))
 	case factoryRowNone:
 		return pal.dim(fit("no item on the floor matches", width))
 	case factoryRowRead:
 		lead := a.factoryTitleCol()
 		read := strings.TrimSpace(a.fp.snap.Items[r.item].Triage.Read)
-		return strings.Repeat(" ", lead) + pal.dim(fit(read, max(width-lead, 0)))
+		return factorySpaces(lead) + pal.dim(fit(read, max(width-lead, 0)))
+	case factoryRowTitle2:
+		lead := a.factoryTitleCol()
+		w := a.factoryGridAt(width).titleW
+		rest := strings.Join(wrap(a.fp.snap.Items[r.item].Title, w)[1:], " ")
+		if ansi.StringWidth(rest) > w {
+			rest = ansi.Truncate(rest, w, a.icon(tokens.GEllipsis))
+		}
+		text := factoryPad(factorySpaces(lead)+a.pal.ink(rest), width)
+		if r.walk == a.fp.cursor {
+			return pal.selected(text, width)
+		}
+		return text
 	}
 	it := a.fp.snap.Items[r.item]
 	return a.factoryRailItem(it, width, r.walk == a.fp.cursor)
@@ -550,16 +575,57 @@ type factoryGrid struct {
 // larger half and never under [factoryTitleMin]; without, the title takes
 // everything after the ref.
 func (a *app) factoryGridAt(width int) factoryGrid {
-	g := factoryGrid{refW: max(a.fp.refW, factoryRefCols), columns: a.fp.columns}
-	head := factoryLeadCols + g.refW + 1
+	g := factoryGrid{refW: max(a.fp.refW, factoryRefW), columns: a.fp.columns}
+	head := factoryLeadW + factoryPriorityW + g.refW + 1
 	if !g.columns {
 		g.titleW = max(width-head, 0)
 		return g
 	}
-	rest := width - head - 2 - factoryRepoCols - 2 - 2 - factoryAgeCols
-	g.titleW = max(factoryTitleMin, (rest+1)/2)
+	rest := width - head - factoryGutter - factoryRepoW - factoryGutter - factoryGutter - factoryAgeW
+	g.titleW = max(factoryTitleMin, (rest+1)/factoryTitleShare)
 	g.factsW = max(rest-g.titleW, 0)
+	// THE GIVE-BACK, in the compact density only: the longest title on the
+	// floor widens the column, out of the facts' cells, down to
+	// [factoryFactsKeep] of them.
+	if !a.fp.comfy && g.factsW > factoryFactsKeep {
+		// THE FACTS KEEP THE WIDEST STATE FACT ON THE FLOOR, so the one fact
+		// a row exists to carry is never what a title took. A question is
+		// the one exception, kept to [factoryFactsKeep]: it is a sentence,
+		// and the peek and the item page say it whole.
+		need, keep := 0, max(factoryFactsKeep, a.factoryStateWidest())
+		for _, it := range a.fp.snap.Items {
+			if factoryOnFloor(it) {
+				need = max(need, ansi.StringWidth(it.Title))
+			}
+		}
+		if give := min(need-g.titleW, g.factsW-keep); give > 0 {
+			g.titleW += give
+			g.factsW -= give
+		}
+	}
+	// AND ON A TIGHT FLOOR THE TITLE GIVES BACK, down to [factoryTitleFloor],
+	// so the widest state fact is never cut mid-word: `rev…` says less than a
+	// shorter title does.
+	if take := min(a.factoryStateWidest()-g.factsW, g.titleW-factoryTitleFloor); take > 0 {
+		g.titleW -= take
+		g.factsW += take
+	}
 	return g
+}
+
+// factoryStateWidest is the widest state fact on the floor, a question left
+// out: it is a sentence, and the peek and the item page say it whole.
+func (a *app) factoryStateWidest() int {
+	w := 0
+	for _, it := range a.fp.snap.Items {
+		if !factoryOnFloor(it) || it.State == factory.StateNeedsYou {
+			continue
+		}
+		if st, ok := a.factoryStateFact(it); ok {
+			w = max(w, ansi.StringWidth(st.plain))
+		}
+	}
+	return w
 }
 
 // factoryRailItem is one item row, exactly width cells, on the grid of
@@ -568,33 +634,41 @@ func (a *app) factoryGridAt(width int) factoryGrid {
 func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 	pal := a.pal
 	g := a.factoryGridAt(width)
-	lead := strings.Repeat(" ", factoryLeadCols)
+	lead := factorySpaces(factoryLeadW)
 	if m := a.factoryLead(it); m != "" {
 		lead = m + " "
 	}
+	lead += a.factoryPrioCell(it) + " "
 	ref := it.Ref()
-	text := lead + strings.Repeat(" ", max(g.refW-ansi.StringWidth(ref), 0)) + pal.muted(ref) + " "
+	text := lead + factorySpaces(max(g.refW-ansi.StringWidth(ref), 0)) + a.factoryRefLink(it, pal.muted(ref)) + " "
 	title := it.Title
+	if a.fp.comfy {
+		// A COMFORTABLE ROW CARRIES ITS TITLE'S FIRST LINE, and the rest is
+		// the row under it ([factoryRowTitle2]).
+		if lines := wrap(title, g.titleW); len(lines) > 0 {
+			title = lines[0]
+		}
+	}
 	if ansi.StringWidth(title) > g.titleW {
 		title = ansi.Truncate(title, g.titleW, a.icon(tokens.GEllipsis))
 	}
 	text += pal.ink(title)
 	if g.columns {
-		text += strings.Repeat(" ", max(g.titleW-ansi.StringWidth(title), 0)) + "  "
-		text += pal.muted(factoryPad(fit(factoryRepoShort(it.Repo), factoryRepoCols), factoryRepoCols)) + "  "
+		text += factorySpaces(g.titleW-ansi.StringWidth(title)) + factorySpaces(factoryGutter)
+		text += pal.muted(factoryPad(fit(factoryRepoShort(it.Repo), factoryRepoW), factoryRepoW)) + factorySpaces(factoryGutter)
 		// THE RIGHT EDGE: the age in its own cells, and on a question the
 		// reminder that it takes a yes or a no right before it.
 		age := ""
 		if now, at := a.fp.snap.Now, factoryChanged(it); !now.IsZero() && !at.IsZero() {
 			age = factoryAgo(now.Sub(at))
 		}
-		right := strings.Repeat(" ", max(factoryAgeCols-ansi.StringWidth(age), 0)) + pal.dim(age)
-		rightW := factoryAgeCols
+		right := factorySpaces(max(factoryAgeW-ansi.StringWidth(age), 0)) + pal.dim(age)
+		rightW := factoryAgeW
 		factsW := g.factsW
 		if it.State == factory.StateNeedsYou {
-			right = pal.dim(factoryAnswerWord) + "  " + right
-			rightW += ansi.StringWidth(factoryAnswerWord) + 2
-			factsW -= ansi.StringWidth(factoryAnswerWord) + 2
+			right = pal.dim(factoryAnswerWord) + factorySpaces(factoryGutter) + right
+			rightW += ansi.StringWidth(factoryAnswerWord) + factoryGutter
+			factsW -= ansi.StringWidth(factoryAnswerWord) + factoryGutter
 		}
 		// The `first` order's reason stands before the age, only in the cells
 		// the facts leave free AT THIS WIDTH: the facts are drawn first, at
@@ -606,13 +680,48 @@ func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 		right, rightW = reason+right, rightW+reasonW
 		text += facts
 		gap := width - ansi.StringWidth(text) - rightW
-		text += strings.Repeat(" ", max(gap, 0)) + right
+		text += factorySpaces(max(gap, 0)) + right
 	}
 	text = factoryPad(text, width)
+	// THE CURSOR ROW WEARS THE SELECTED STEP, the one the Chats list and the
+	// Teams page put under the row a person is on, so the floor's cursor reads
+	// as the same thing it is everywhere else (owner ruling, 2026-10-08).
 	if cur {
-		return pal.cursor(text, width)
+		return pal.selected(text, width)
 	}
 	return text
+}
+
+// factoryPrioCell is the priority column's one cell: the four marks first to
+// fourth, the first in the accent and the rest dim, and a blank for an item
+// nobody ranked. AN ITEM SOMETHING IS BEING DONE TO draws the spinner there
+// instead (factory_busy.go), which is the row's one claim that it is moving.
+func (a *app) factoryPrioCell(it factory.Item) string {
+	if _, busy := a.factoryBusy(it.ID); busy {
+		return a.pal.accent(a.factorySpin())
+	}
+	switch it.Triage.Priority {
+	case 1:
+		return a.pal.accent(a.icon(tokens.GPriorityFirst))
+	case 2:
+		return a.pal.dim(a.icon(tokens.GPrioritySecond))
+	case 3:
+		return a.pal.dim(a.icon(tokens.GPriorityThird))
+	case 4, 5:
+		return a.pal.dim(a.icon(tokens.GPriorityFourth))
+	}
+	return " "
+}
+
+// factoryRefLink is an item's painted ref as a hyperlink to its page on the
+// forge, where it has one and the terminal takes links (pathlink.go's
+// [terminalTakesLinks]); the label untouched otherwise. A hyperlink takes no
+// cells, so the grid does not move.
+func (a *app) factoryRefLink(it factory.Item, painted string) string {
+	if it.URL == "" || !a.pathLinks {
+		return painted
+	}
+	return linkify(painted, it.URL)
 }
 
 // factoryChanged is when an item last moved, and when it arrived when it
@@ -752,6 +861,11 @@ func (a *app) factoryRowFacts(it factory.Item) []factoryFactPart {
 	}
 	if len(out) > factoryFactsMost {
 		out = out[:factoryFactsMost]
+	}
+	// WORK IN FLIGHT IS THE LAST FACT, so it is the first a narrow row drops:
+	// the spinner in the priority cell still says it.
+	if word, busy := a.factoryBusy(it.ID); busy {
+		out = append(out, factoryFactPart{plain: word + "…", painted: pal.dim(word + "…")})
 	}
 	return out
 }

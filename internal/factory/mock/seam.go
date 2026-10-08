@@ -208,6 +208,7 @@ func (w *World) Seam() factory.Seam {
 		},
 	}
 	w.settingsDoors(&s)
+	w.refreshDoors(&s)
 	return s
 }
 
@@ -261,8 +262,11 @@ func (w *World) Load() (factory.Snapshot, error) {
 	}
 	snap.Items = make([]factory.Item, 0, len(w.items))
 	for _, it := range w.items {
-		snap.Items = append(snap.Items, copyItem(*it))
+		c := copyItem(*it)
+		c.URL = itemURL(c)
+		snap.Items = append(snap.Items, c)
 	}
+	w.busyInto(&snap)
 	snap.Sources = []factory.SourceInfo{
 		{Name: string(factory.OriginChat), Writes: false},
 		{Name: string(factory.OriginForge), Writes: true, Repos: names, Polled: w.now},

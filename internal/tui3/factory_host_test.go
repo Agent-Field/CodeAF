@@ -94,7 +94,8 @@ func TestFactoryPeekTitleOutlastsTheMeta(t *testing.T) {
 	it.Title = "fix the double count in the ledger"
 	it.Repo = "ledger"
 	it.Origin = factory.OriginChat
-	measure := factoryPaneW(150) - factoryPaneLead
+	it.URL = ""
+	measure := factoryPaneW(150) - factoryMargin
 	block := a.factoryPeekTitle(it, measure)
 	if len(block) != 2 {
 		t.Fatalf("the title block is %d rows: %q", len(block), block)

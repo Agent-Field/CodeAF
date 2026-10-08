@@ -133,6 +133,20 @@ a click can remove the attachment, and is resolved explicitly through the vocabu
 | --- | --- | --- | --- | --- |
 | working context shortened | `GCompacted` | `⚭` | nf-fa-compress | `#` |
 
+The factory floor's priority column has four slots, one per rank the cheap read
+gives. They are the one carve-out from the upgrade rule: the bars are ink a
+person reads as a height, so a font that has the chevrons draws them only when
+the Display row asks for nerd icons outright, and the plain floor keeps the bars.
+The first rank is tinted the accent; the rest are dim. An unranked item draws
+nothing in the cell.
+
+| Rank | Slot | Plain | Nerd font | ASCII |
+| --- | --- | --- | --- | --- |
+| first | `GPriorityFirst` | `▇` | nf-fa-angle_double_up | `!` |
+| second | `GPrioritySecond` | `▅` | nf-fa-angle_up | `:` |
+| third | `GPriorityThird` | `▃` | nf-fa-angle_down | `.` |
+| fourth | `GPriorityFourth` | `▁` | nf-fa-angle_double_down | ` ` (a space) |
+
 The Font Awesome 4 `fa-compress` mark is U+F066. Both the automatic pass line and
 the `/compact` reply resolve this slot through the chat surface's glyph door.
 

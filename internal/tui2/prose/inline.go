@@ -152,7 +152,7 @@ func (r *renderer) link(n ast.Node, w *wrapper, st style, label, dest string) {
 	linked := st
 	linked.underline = true
 	w.push(label, linked)
-	if dest == "" || dest == label {
+	if dest == "" || dest == label || r.opts.LinksAsText {
 		return
 	}
 	w.space()

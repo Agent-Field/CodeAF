@@ -65,7 +65,7 @@ func factoryBodyPlain(a *app, width, room int) []string {
 func factoryRowOf(rows []string, ref string) string {
 	for _, r := range rows {
 		f := strings.Fields(r)
-		for i := 0; i < len(f) && i < 2; i++ {
+		for i := 0; i < len(f) && i < 3; i++ {
 			if f[i] == ref {
 				return r
 			}
@@ -108,6 +108,7 @@ func TestFactoryLayoutFrameIsExactAtEveryWidth(t *testing.T) {
 // row is its ref and its title and nothing else.
 func TestFactoryLayoutThreeGeometries(t *testing.T) {
 	a := factoryPlaceLab(t)
+	a.fp.headFull = true
 
 	wide := factoryBodyPlain(a, 150, 36)
 	if !strings.Contains(wide[0], "handover · since") || strings.Contains(wide[0], "│") {
@@ -248,7 +249,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("item %d opened on %q, want %q", c.id, got, c.stage)
 		}
 		text := strings.Join(factoryFrameLines(a), "\n")
-		if !strings.Contains(text, it.Ref()+" "+it.Title) || !strings.Contains(text, "places:") {
+		if !strings.Contains(text, it.Ref()+" "+it.Title) || !strings.Contains(text, "places") {
 			t.Fatalf("item %d's page has no head:\n%s", c.id, text)
 		}
 		if strings.Contains(text, "NEEDS YOU") {

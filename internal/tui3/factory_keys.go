@@ -97,6 +97,12 @@ type factoryActs struct {
 	// with nothing running goes back to the floor ([app.factoryTalkBack]).
 	// "" when `T` has opened nothing, or the way back was taken.
 	talk string
+	// doing is what a door a key asked is doing while it is out, in the
+	// words the note line says after the spinner (`banking…`), and "" when
+	// none is (factory_busy.go).
+	doing string
+	// refresh is `U`'s question while it stands, nil when none does.
+	refresh *factoryRefreshAsk
 }
 
 // ── the clock ───────────────────────────────────────────────────────────────
@@ -173,6 +179,9 @@ func (a *app) factoryDo(act func(s factory.Seam) error, then func(err error)) te
 			snap, lerr = seam.Load()
 		}
 		return func(bool) tea.Cmd {
+			// THE DOOR HAS ANSWERED, so whatever the note line said it was
+			// doing is over (factory_busy.go).
+			a.fp.act.doing = ""
 			switch {
 			case lerr != nil:
 				a.fp.err = lerr
@@ -214,6 +223,15 @@ func (a *app) factoryFocus(id int) {
 // takes every key but the router's walk between places and its alt chords, as
 // the rail's words box does, and a habit offer takes `y` and `n`.
 func (a *app) factoryOwns(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// `U`'S QUESTION HAS THE KEYBOARD while it stands, on the typing row's
+	// terms: `y` goes, `n` and `esc` do not (factory_busy.go).
+	if a.fp.act.refresh != nil {
+		switch k := msg.String(); {
+		case k == "tab" || k == "shift+tab" || msg.Key().Mod&tea.ModAlt != 0:
+			return nil, false
+		}
+		return a.factoryRefreshKey(msg.String()), true
+	}
 	if a.fp.act.ask != nil {
 		switch k := msg.String(); {
 		case k == "tab" || k == "shift+tab" || msg.Key().Mod&tea.ModAlt != 0:
@@ -252,6 +270,12 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		a.factoryCycleOrder()
 		return nil, true
+	case "U", "shift+u":
+		// `U` reads the whole floor again, and asks first (factory_busy.go).
+		if a.fp.open || !a.factory.Has("refreshall") || !a.factoryFloorHas() {
+			return nil, false
+		}
+		return a.factoryRereadAll(), true
 	case "S", "shift+s":
 		if a.factory.Has("sleep") {
 			a.pageMsg = ""
@@ -275,6 +299,16 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	if !ok {
 		return nil, false
+	}
+	// `u` READS THE ITEM AGAIN in every state, and `g` OPENS IT ON ITS FORGE
+	// wherever it has a page there and the seam has the door; on an item
+	// that lives only on this machine `g` keeps its sync meaning, below.
+	if k == "u" && a.factory.Has("refresh") {
+		return a.factoryReread(it), true
+	}
+	if k == "g" && it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Has("open") {
+		a.pageMsg = ""
+		return a.factoryOpenForge(it), true
 	}
 	a.pageMsg = ""
 	a.fp.said = false
@@ -363,6 +397,7 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 	case "b":
 		if seam.Has("bankstages") {
 			repo := factoryRepoShort(it.Repo)
+			a.fp.act.doing = "banking…"
 			return a.factoryDo(func(s factory.Seam) error { return s.BankStages(id) }, func(err error) {
 				if err == nil {
 					a.factorySay("these stages are " + repo + "'s recipe now")
@@ -770,18 +805,44 @@ func (a *app) factoryItemByID(id int) (factory.Item, bool) {
 // habit offer's two lines, then the typing row. Each row is at most measure
 // cells and carries no lead; the body puts the pane's lead on it.
 func (a *app) factoryFootRows(measure int) []string {
+	return append(a.factoryFootRowsWhere(measure, false), a.factoryFootRowsWhere(measure, true)...)
+}
+
+// factoryFootOnRows says whether a foot row is about the floor rather than the
+// item under the cursor: the `n` typing row, which makes new work, and `U`'s
+// question, which reads every item. ON THE FLOOR THOSE STAND AT THE BOTTOM OF
+// THE ROWS' COLUMN, the whole of its width (owner ruling, 2026-10-08): under
+// the peek they read as being about the item the peek shows.
+func (a *app) factoryFootOnRows() bool {
+	return a.fp.act.refresh != nil || (a.fp.act.ask != nil && a.fp.act.ask.kind == factoryAskNew)
+}
+
+// factoryFootRowsWhere is the foot rows of one side: rows false is the
+// item's (the habit offer, the settings' offers, every typing row but `n`'s),
+// rows true the floor's ([app.factoryFootOnRows]).
+func (a *app) factoryFootRowsWhere(measure int, rows bool) []string {
 	if measure <= 0 {
 		return nil
 	}
 	pal := a.pal
 	var out []string
-	if repo := a.fp.act.habit; repo != "" {
+	if rows {
+		if q := a.factoryRefreshRow(measure); q != "" {
+			out = append(out, q)
+		}
+		if ask := a.fp.act.ask; ask == nil || ask.kind != factoryAskNew {
+			return out
+		}
+	}
+	if repo := a.fp.act.habit; repo != "" && !rows {
 		out = append(out,
 			pal.ink(fit("habit forming — 3 sign-offs without edits on "+factoryRepoShort(repo), measure)),
 			fit(pal.muted(factoryHabitSentence+"? ")+pal.accent("[y] bank it")+pal.dim(" · [n] not yet"), measure))
 	}
-	out = append(out, a.factoryOfferRows(measure)...)
-	if ask := a.fp.act.ask; ask != nil {
+	if !rows {
+		out = append(out, a.factoryOfferRows(measure)...)
+	}
+	if ask := a.fp.act.ask; ask != nil && (ask.kind == factoryAskNew) == rows {
 		label := pal.accent(ask.label) + " "
 		room := max(measure-ansi.StringWidth(ask.label)-2, 0)
 		text := ask.text
@@ -808,6 +869,32 @@ func (a *app) factoryFootRows(measure int) []string {
 		out = append(out, fit(row, measure))
 	}
 	return out
+}
+
+// factoryOpenForge is `g` on an item with a page on its forge: the seam's
+// Open door names the page, and the platform's opener (opener.go) opens it,
+// both off the loop. The note line says where it went, or why it did not.
+func (a *app) factoryOpenForge(it factory.Item) tea.Cmd {
+	open, id, ref := a.factory.Open, it.ID, it.Ref()
+	return a.offLoop(func() func(bool) tea.Cmd {
+		url := strings.TrimSpace(open(id))
+		var err error
+		if url != "" {
+			err = processOpener(url)
+		}
+		return func(bool) tea.Cmd {
+			switch {
+			case url == "":
+				a.pageMsg = ref + " has no page on github"
+			case err != nil:
+				a.pageMsg = "could not open your browser" + rowSep + url
+			default:
+				a.pageMsg = "opened " + ref + " on github"
+			}
+			a.touch()
+			return nil
+		}
+	})
 }
 
 // factoryCanRun says whether `r run` and `p plan first` do anything on this
@@ -837,13 +924,12 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 		add(seam.Has("launch"), "L launch marked")
 		add(seam.Has("setstage") && len(factoryStages(a.fp.snap, it)) > 0, "1-9 stages")
 		add(seam.Has("addstage"), "s stage")
-		var chips []string
-		for _, c := range []struct{ door, key string }{{"setgate", "t"}, {"setcap", "c"}, {"seteffort", "e"}} {
-			if seam.Has(c.door) {
-				chips = append(chips, c.key)
-			}
-		}
-		add(len(chips) > 0, strings.Join(chips, " ")+" chips")
+		// THE CHIPS ARE NAMED BY WHAT EACH TURNS (owner ruling, 2026-10-08):
+		// the word chips named a shape on the screen rather than a thing a
+		// person wants to change.
+		add(seam.Has("setgate"), "t gate")
+		add(seam.Has("setcap"), "c cap")
+		add(seam.Has("seteffort"), "e effort")
 		add(seam.Has("dismiss"), "d hide")
 	case factory.StateQueued, factory.StateRunning:
 		add(seam.Has("steer") && it.Stream != nil, "s steer")
@@ -867,8 +953,10 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 		add(seam.Has("reverify"), "o check again")
 		add(it.Diff != "", "d diff")
 	}
+	add(it.URL != "" && it.Origin != factory.OriginTerminal && seam.Has("open"), "g github")
+	add(seam.Has("refresh"), "u read again")
 	add(seam.Has("talk"), "T talk")
-	add(it.State != factory.StateNeedsYou && seam.Has("new"), "n new")
+	add(it.State != factory.StateNeedsYou && seam.Has("new"), "n new item")
 	return out
 }
 
@@ -880,7 +968,7 @@ func factoryAskHint(ask *factoryAsk) string {
 	case factoryAskStage:
 		verb = "add the stage"
 	case factoryAskWords:
-		verb = "turn the chips"
+		verb = "set them"
 	case factoryAskSteer:
 		verb = "steer"
 	case factoryAskAnswer:
