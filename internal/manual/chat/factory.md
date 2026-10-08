@@ -169,8 +169,8 @@ and one dim line of keys on the bottom row.
    dash means none, so the crew picks the effort it would for that kind of work.
 4. For an item on a bench, its stages as a strip: `● plan  ◐ review 1/2 · 4m left  ○ proof`, with
    rounds (`1/2`), how many tasks a stage split into (`×3`) and the most rounds a stage to come may
-   take (`×2`). For a new item, the names of the stages it would run, with a stage that is
-   switched off or does not fit the item drawn dim.
+   take (`×2`); when it is too wide, stages before the running one go first. For a new item,
+   the names of the stages it would run, a stage switched off or not fitting drawn dim.
 5. A rule.
 
 Under the rule: the question and `[y] yes · [n] no · [a] in words` when it needs you; the newest
@@ -179,11 +179,10 @@ log lines of a running item, with its activity as a sparkline and its spend on t
 lines; two lines of a new item's description, the questions it would ask the author when it is
 thin, and a note when the author is a stranger; or `merged 06:00 · $1.90` for a shipped one.
 
-The bottom line names the keys for that item: `enter open · r run · p plan first · space mark ·
-d hide` for a new item, `enter open · y n answer · a in words · x stop` when it needs you,
-`enter open · s steer · p pause · x stop` while it runs, and
-`enter open · a ship anyway · c send back · o check again` once it has landed with a claim that
-was not shown (`enter open to ship · c send back · o check again` when every claim was).
+The bottom line names the item's keys, always starting with `enter open`: then
+`r run · p plan first · space mark · d hide` for a new item, `y n answer · a in words · x stop`
+when it needs you, `s steer · p pause · x stop` while it runs, and
+`a ship anyway · c send back · o check again` once it has landed with a claim not shown.
 
 ## the item page
 

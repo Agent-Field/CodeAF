@@ -343,3 +343,55 @@ func TestFactoryLayoutBarShowsFactoryThird(t *testing.T) {
 		t.Fatalf("with nothing waiting the factory wears a chip: %q", line)
 	}
 }
+
+// THE REPO LINE STAYS PUT WHEN THE ROWS SCROLL: a floor narrowed to one repo
+// and walked far down still says which repo it is narrowed to, on the first
+// row of the floor, and a press on an item row below it lands on that item.
+func TestFactoryLayoutRepoLineStaysWhenTheRowsScroll(t *testing.T) {
+	a := factoryMockLab(t)
+	a.width, a.height = 150, 30
+	drive(t, a, key("]"))
+	if a.fp.repo == 0 {
+		t.Fatal("] narrowed to no repo")
+	}
+	for i := 0; i < 40; i++ {
+		drive(t, a, key("down"))
+	}
+	room := 20
+	rows := factoryBodyPlain(a, 150, room)
+	if a.fp.top <= a.fp.pinned {
+		t.Fatalf("forty steps down did not scroll the rows (top %d, pinned %d)", a.fp.top, a.fp.pinned)
+	}
+	repo := factoryRepoShort(a.fp.snap.Repos[a.fp.repo-1].Name)
+	if first := strings.TrimSpace(rows[a.fp.headRows]); !strings.HasPrefix(first, repo+" · ") {
+		t.Fatalf("the scrolled floor's first row is %q, not the repo line for %s", first, repo)
+	}
+	// A press on the last row of the window lands on the item drawn there.
+	last := a.fp.headRows + a.fp.shown - 1
+	plainRow := rows[last]
+	if !a.factoryPress(last + placeHeadRows) {
+		t.Fatalf("a press on the window's last row %q landed on nothing", plainRow)
+	}
+	it, _ := a.factoryCursorItem()
+	if !strings.Contains(plainRow, it.Ref()) {
+		t.Fatalf("a press on %q put the cursor on %s", plainRow, it.Ref())
+	}
+}
+
+// THE PEEK'S STRIP KEEPS THE PHASE THAT IS MOVING: too narrow for every phase,
+// it drops the finished ones before it rather than the running one.
+func TestFactoryPeekStripKeepsTheRunningPhase(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.pal = newPalette(tokens.NoColor, false)
+	for _, it := range a.fp.snap.Items {
+		if it.ID != 2 {
+			continue
+		}
+		strip := ansi.Strip(a.factoryPeekStrip(it, 26))
+		if !strings.Contains(strip, "review") || ansi.StringWidth(strip) > 26 {
+			t.Fatalf("a narrow strip lost the running review or overflowed: %q", strip)
+		}
+		return
+	}
+	t.Fatal("the fixture has no item 2")
+}
