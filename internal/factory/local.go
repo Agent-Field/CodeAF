@@ -59,6 +59,16 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			if keeper, ok := st.(RailKeeper); ok && err == nil {
 				snap.Rail, _ = keeper.Rail()
 			}
+			// WHAT IS IN FLIGHT IS THE STORE'S TOO, because the process doing
+			// the work (the triage worker, a refresh) is not always the one
+			// drawing it: the window reads it here, within one poll of it
+			// starting.
+			if keeper, ok := st.(BusyKeeper); ok && err == nil {
+				snap.Busy, snap.BusyAll, _ = keeper.Busy()
+			}
+			if keeper, ok := st.(ReadCoster); ok && err == nil {
+				snap.LastReadCost, _, _ = keeper.ReadCost()
+			}
 			return snap, err
 		},
 		New: func(repo, words string) (int, error) {
@@ -129,6 +139,9 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			return localTalk(ctx, st, id, o.talk)
 		}
 	}
+	if o.refetch != nil {
+		localRefresh(&seam, st, o.refetch)
+	}
 	if o.dirs != nil {
 		seam.BankStages = func(id int) error {
 			it, err := localItem(st, id)
@@ -176,9 +189,138 @@ func WithTalk(maker func(ctx context.Context, it Item) (string, error)) LocalOpt
 }
 
 type localOptions struct {
-	dirs   func(repo string) string
-	lister RepoLister
-	talk   func(ctx context.Context, it Item) (string, error)
+	dirs    func(repo string) string
+	lister  RepoLister
+	talk    func(ctx context.Context, it Item) (string, error)
+	refetch func(ctx context.Context, it Item) error
+}
+
+// WithRefetch gives the local seam its three source doors, [Seam.Refresh],
+// [Seam.RefreshAll] and [Seam.Open]: refetch reads one item again from the
+// source it came from and folds what it read into the store
+// (internal/factory/github's Refetcher is the one for GitHub). It is a func
+// handed in because THIS PACKAGE KNOWS NO VENDOR. A seam built without it has
+// none of the three doors, and the floor draws no `u`, `U` or `g`.
+func WithRefetch(refetch func(ctx context.Context, it Item) error) LocalOption {
+	return func(o *localOptions) { o.refetch = refetch }
+}
+
+// BusyKeeper is a store that keeps what is in flight on the floor, so a
+// window can draw work another process is doing. internal/factory/store's
+// *Store is one; a word of "" clears an item, and an empty all clears the
+// floor's line.
+type BusyKeeper interface {
+	SetBusy(id int, word string) error
+	SetBusyAll(words string) error
+	Busy() (items map[int]string, all string, err error)
+}
+
+// ReadCoster is a store that remembers what triage reads cost: the last one,
+// and the average of every one it was told about. Zero is not known.
+type ReadCoster interface {
+	ReadCost() (last, avg float64, err error)
+}
+
+// annotator is a store that can write an item without stamping Changed,
+// which is how a read taken off for a refresh leaves the row's age alone.
+type annotator interface {
+	Annotate(id int, change func(*Item) error) error
+}
+
+// ErrNotOnSource is what [Seam.Open] answers for an item that has no page on
+// any source: work typed in the terminal, split off a chat, or read before
+// items carried their address.
+var ErrNotOnSource = errors.New("this item is not on github")
+
+// The busy words the floor draws, spelled once.
+const (
+	BusyReading    = "reading"
+	BusyRefreshing = "refreshing"
+)
+
+// localRefresh hangs the three source doors over st.
+func localRefresh(seam *Seam, st ItemStore, refetch func(context.Context, Item) error) {
+	busy, _ := st.(BusyKeeper)
+	refresh := func(ctx context.Context, it Item) error {
+		if busy != nil {
+			_ = busy.SetBusy(it.ID, BusyRefreshing)
+			defer func() { _ = busy.SetBusy(it.ID, "") }()
+		}
+		// ONLY AN ITEM WITH A PLACE ON ITS SOURCE IS READ AGAIN. A terminal or
+		// chat item has nothing upstream; its refresh is a fresh read alone.
+		if it.Origin == OriginForge && it.Num > 0 {
+			if err := refetch(ctx, it); err != nil {
+				return err
+			}
+		}
+		unread := func(cur *Item) error {
+			ClearRead(&cur.Triage)
+			return nil
+		}
+		if a, ok := st.(annotator); ok {
+			return a.Annotate(it.ID, unread)
+		}
+		return st.Update(it.ID, unread)
+	}
+	seam.Refresh = func(ctx context.Context, id int) error {
+		it, err := localItem(st, id)
+		if err != nil {
+			return err
+		}
+		return refresh(ctx, it)
+	}
+	seam.RefreshAll = func(ctx context.Context) (int, float64, error) {
+		items, err := st.List()
+		if err != nil {
+			return 0, 0, err
+		}
+		var todo []Item
+		for _, it := range items {
+			if it.State != StateDismissed {
+				todo = append(todo, it)
+			}
+		}
+		each := DefaultReadCost
+		if c, ok := st.(ReadCoster); ok {
+			if _, avg, err := c.ReadCost(); err == nil && avg > 0 {
+				each = avg
+			}
+		}
+		count, est := len(todo), float64(len(todo))*each
+		if IsDryRun(ctx) || count == 0 {
+			return count, est, nil
+		}
+		line := func(done int) {
+			if busy != nil {
+				_ = busy.SetBusyAll(fmt.Sprintf("refreshing %d items · %d done", count, done))
+			}
+		}
+		if busy != nil {
+			defer func() { _ = busy.SetBusyAll("") }()
+		}
+		var errs []error
+		for i, it := range todo {
+			line(i)
+			if ctx.Err() != nil {
+				errs = append(errs, ctx.Err())
+				break
+			}
+			if err := refresh(ctx, it); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", it.Ref(), err))
+			}
+		}
+		return count, est, errors.Join(errs...)
+	}
+	seam.Open = func(id int) (string, error) {
+		it, err := localItem(st, id)
+		if err != nil {
+			return "", err
+		}
+		if u := strings.TrimSpace(it.URL); u != "" {
+			return u, nil
+		}
+		return "", ErrNotOnSource
+	}
 }
 
 // localTalk is the Talk door: the item's conversation when it has one, and

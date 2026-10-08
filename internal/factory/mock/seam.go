@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -19,6 +20,41 @@ func New(seed int64, repos, issues, benches int, now time.Time) factory.Seam {
 func (w *World) Seam() factory.Seam {
 	s := factory.Seam{
 		Load: w.Load,
+		// THE SOURCE DOORS ON A MADE-UP FLOOR read nothing upstream, because
+		// there is no upstream: a refresh writes the item's activity, the
+		// whole-floor refresh answers its count and estimate, and Open answers
+		// the address an item was made with.
+		Refresh: func(_ context.Context, id int) error {
+			return w.with(id, func(it *factory.Item) error {
+				it.Note(w.now, factory.EventRead)
+				return nil
+			})
+		},
+		RefreshAll: func(ctx context.Context) (int, float64, error) {
+			snap, err := w.Load()
+			if err != nil {
+				return 0, 0, err
+			}
+			n := 0
+			for _, it := range snap.Items {
+				if it.State != factory.StateDismissed {
+					n++
+				}
+			}
+			return n, float64(n) * factory.DefaultReadCost, nil
+		},
+		Open: func(id int) (string, error) {
+			snap, err := w.Load()
+			if err != nil {
+				return "", err
+			}
+			for _, it := range snap.Items {
+				if it.ID == id && it.URL != "" {
+					return it.URL, nil
+				}
+			}
+			return "", factory.ErrNotOnSource
+		},
 		Launch: func(id int) error {
 			return w.with(id, func(it *factory.Item) error {
 				if it.State == factory.StateLanded || it.State == factory.StateShipped {

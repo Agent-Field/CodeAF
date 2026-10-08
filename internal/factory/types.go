@@ -305,6 +305,55 @@ type Item struct {
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
 	Talk string
+
+	// URL is the item's page on its source (an issue's or pull request's
+	// html_url), and "" for work that was never on one, which is how the
+	// floor's `g` knows there is nowhere to open.
+	URL string
+	// Comments are the last few things said on the item, oldest first, as its
+	// source keeps them (internal/factory/github reads the last three). Nil is
+	// nothing said, or nothing read yet.
+	Comments []Comment
+	// Files are a pull request's changed files, the most changed first, at
+	// most twenty; nil for anything that is not a pull request.
+	Files []FileChange
+	// CheckRuns are the checks on a pull request's head, one per run. Checks
+	// stays the one-word summary the row draws; these are what the page lists.
+	CheckRuns []CheckRun
+	// Activity is the item's own short history, oldest first: it arrived, it
+	// changed upstream, it was read, a conversation was made, its stages
+	// changed. At most [ActivityMost] are kept; the oldest go first.
+	Activity []Event
+}
+
+// Comment is one thing said on an item, by its author's login.
+type Comment struct {
+	Author string
+	Body   string
+	At     time.Time
+}
+
+// FileChange is one file a pull request changes, with its line counts.
+type FileChange struct {
+	Path    string
+	Added   int
+	Removed int
+}
+
+// CheckRun is one check on a pull request's head: its name, its state (the
+// run's conclusion when it finished, otherwise its status: `success`,
+// `failure`, `in_progress`, `queued`), and its page.
+type CheckRun struct {
+	Name  string
+	State string
+	URL   string
+}
+
+// Event is one line of an item's activity: when, and what, in a few plain
+// words (`arrived from github`, `read`, `talked`).
+type Event struct {
+	At   time.Time
+	What string
 }
 
 // Ref is the item's short name: #123, or ci.
@@ -371,6 +420,18 @@ type Snapshot struct {
 	Shift   Shift
 	Speed   time.Duration // the mock's clock; zero for a real engine
 	Sources []SourceInfo  // what is connected; the chat is always one
+
+	// Busy is what is in flight on single items right now, by item id:
+	// `reading` while the triage worker is on it, `refreshing` while a
+	// [Seam.Refresh] of it runs. An item not in it is idle. Nil is nothing in
+	// flight.
+	Busy map[int]string
+	// BusyAll is the whole floor's refresh while it runs, in the words the
+	// floor draws (`refreshing 8 items · 3 done`), and "" otherwise.
+	BusyAll string
+	// LastReadCost is what the last triage read cost in dollars, the figure
+	// the floor's `~$0.0004` note quotes; 0 is not known, and draws nothing.
+	LastReadCost float64
 }
 
 // RepoNamed finds a repo in the snapshot.

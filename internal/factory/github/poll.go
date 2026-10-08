@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -106,11 +107,16 @@ func PollOnce(ctx context.Context, src factory.Source, st *store.Store, cursor s
 	}
 	defer release()
 
+	// THE READ IS MARKED IN FLIGHT for the length of it, so the floor can say
+	// github is being read; a crash mid-read is cleared by the next process
+	// to start (store.ClearBusy).
+	_ = st.SetPolling(src.Name(), true)
 	items, next, readErr := src.Read(ctx, cursor)
 	mergeErr := Merge(st, src.Name(), items)
 	at := now()
 	meta, _ := st.SourceMeta(src.Name())
 	meta.Tried = at
+	meta.Polling = false
 	if readErr == nil {
 		meta.Polled, meta.Trouble = at, ""
 	} else {
@@ -140,12 +146,21 @@ func TroubleWords(err error) string {
 
 // Merge folds items read from one source into the store. An item already on
 // the floor (the same source, owner, repository and number) has its forge
-// words brought up to date: title, body, labels, checks, diff and the
-// author's standing. EVERYTHING A PERSON SET IS KEPT: its state, stages, gate,
-// cap and triage are never touched, so a poll cannot undo an edit. The one
-// exception is a dismissed item that changed on the forge, which comes back
-// as new, because dismissing hides an item until it changes. An item not yet
-// on the floor is created as new with the default stages for its kind.
+// words brought up to date: title, body, labels, checks, diff, the author's
+// standing, its address, its last comments, and a pull request's files and
+// check runs. EVERYTHING A PERSON SET IS KEPT: its state, stages, gate and cap
+// are never touched, so a poll cannot undo an edit. The one exception is a
+// dismissed item that changed on the forge, which comes back as new, because
+// dismissing hides an item until it changes. An item not yet on the floor is
+// created as new with the default stages for its kind, and its activity
+// begins `arrived from github`.
+//
+// A CHANGED TITLE OR BODY IS A NEW ITEM TO READ: the triage's read is taken
+// off ([factory.ClearRead]) so the worker reads it again, and the type is the
+// fresh read's (the size, a cheap guess the person may have read by, stays). A change of labels alone keeps the read and
+// takes the type again from the labels. Either is `changed on github` in the
+// item's activity; a new comment, file or check is not, because the row's own
+// words did not move.
 func Merge(st *store.Store, origin string, items []factory.Item) error {
 	if len(items) == 0 {
 		return nil
@@ -166,10 +181,32 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 			if !forgeChanged(old, in) {
 				continue
 			}
+			at := time.Now()
 			errs = append(errs, st.Update(old.ID, func(it *factory.Item) error {
+				words := it.Title != in.Title || it.Body != in.Body
+				labels := !sameLabels(it.Labels, in.Labels)
+				switch {
+				case words:
+					factory.ClearRead(&it.Triage)
+					if in.Triage.Type != "" {
+						it.Triage.Type = in.Triage.Type
+					}
+				case labels && in.Triage.Type != "":
+					it.Triage.Type = in.Triage.Type
+				}
+				if words || labels {
+					it.Note(at, factory.EventChanged)
+				}
 				it.Title, it.Body = in.Title, in.Body
 				it.Labels = append([]string(nil), in.Labels...)
 				it.Checks, it.Diff = in.Checks, in.Diff
+				if in.URL != "" {
+					it.URL = in.URL
+				}
+				it.Comments = in.Comments
+				if in.Kind == factory.KindPR {
+					it.Files, it.CheckRuns = in.Files, in.CheckRuns
+				}
 				if in.Tier != "" {
 					it.Tier = in.Tier
 				}
@@ -191,6 +228,8 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 		if len(in.Places) == 0 && in.Repo != "" {
 			in.Places = []string{in.Repo}
 		}
+		in.Activity = nil
+		in.Note(time.Now(), factory.EventArrived)
 		made, err := st.Create(in)
 		if err == nil {
 			index[itemKey(made)] = made
@@ -212,15 +251,51 @@ func forgeChanged(old, in factory.Item) bool {
 	if in.Tier != "" && old.Tier != in.Tier {
 		return true
 	}
-	if len(old.Labels) != len(in.Labels) {
+	if !sameLabels(old.Labels, in.Labels) {
 		return true
 	}
-	for i := range old.Labels {
-		if old.Labels[i] != in.Labels[i] {
-			return true
-		}
+	if in.URL != "" && old.URL != in.URL {
+		return true
+	}
+	if !reflect.DeepEqual(old.Comments, in.Comments) {
+		return true
+	}
+	if in.Kind == factory.KindPR && (!reflect.DeepEqual(old.Files, in.Files) || !reflect.DeepEqual(old.CheckRuns, in.CheckRuns)) {
+		return true
 	}
 	return false
+}
+
+func sameLabels(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Refetcher is the floor's way to read one GitHub item again
+// ([factory.WithRefetch]): source answers a source over the person's token
+// at the moment of asking (nil when none resolves), the item is read again
+// through it ([Source.Refetch]) and folded into st ([Merge]). IT IS BUILT
+// FRESH ON EVERY ASK because the window that draws the floor is not the
+// process that polls, and a token connected a minute ago is the one to use.
+func Refetcher(st *store.Store, source func(ctx context.Context) *Source) func(context.Context, factory.Item) error {
+	return func(ctx context.Context, it factory.Item) error {
+		src := source(ctx)
+		if src == nil {
+			return errors.New("github is not connected")
+		}
+		fresh, err := src.Refetch(ctx, it)
+		if err != nil {
+			return err
+		}
+		return Merge(st, src.Name(), []factory.Item{fresh})
+	}
 }
 
 // Facts wraps a seam's Load so the floor's facts line names this source: its
@@ -263,5 +338,5 @@ func SourceFacts(st *store.Store, now time.Time) (factory.SourceInfo, bool) {
 	}
 	// Writes stays false: Write exists, but only a post stage would call it,
 	// and none runs yet, so the floor offers nothing that would post.
-	return factory.SourceInfo{Name: Name, Repos: repos, Polled: meta.Polled, Trouble: meta.Trouble}, true
+	return factory.SourceInfo{Name: Name, Repos: repos, Polled: meta.Polled, Trouble: meta.Trouble, Polling: meta.Polling}, true
 }

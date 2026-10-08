@@ -178,7 +178,19 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	local := factory.LocalSeam(st, time.Now(),
 		factory.WithRepoDirs(factoryRepoDirs(st, workspace)),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
-		factory.WithTalk(talkMaker(st, workspace, profileDir)))
+		factory.WithTalk(talkMaker(st, workspace, profileDir)),
+		// THE REFRESH DOORS (`u`, `U`, `g`) read through a GitHub source built
+		// at the moment of asking over the profile's token and the watched
+		// repositories, because the poll may be running in another process
+		// and a token connected a minute ago is the one to use. With no token
+		// or nothing watched, a GitHub item's refresh says github is not
+		// connected; a terminal or chat item is only read again.
+		factory.WithRefetch(factorygithub.Refetcher(st, func(ctx context.Context) *factorygithub.Source {
+			return factoryGitHub(ctx, st, func(ctx context.Context) string {
+				t, _ := factorygithub.TokenAt(ctx, profileDir)
+				return t
+			})
+		})))
 	local = talkPutAway(local, st, profileDir)
 	return factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir)
 }
@@ -304,6 +316,9 @@ func factoryGitHub(ctx context.Context, st *store.Store, token func(context.Cont
 // factoryPoll is the one GitHub poll this process runs, started at most once.
 var factoryPoll sync.Once
 
+// factoryBusyClear is this process's one clearing of stale in-flight marks.
+var factoryBusyClear sync.Once
+
 // waitForFactoryGitHub looks for a source now and then every `every` until one
 // can be built or ctx ends, and answers nil only when ctx ended first.
 //
@@ -349,6 +364,10 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 	// THE CHEAP READ OF NEW ITEMS STARTS BESIDE THE POLL, in the same process
 	// and under the same rule, and only once a key resolves
 	// (factory_triage.go).
+	// A PROCESS STARTING CLEARS THE FLOOR'S IN-FLIGHT MARKS a crashed one left
+	// behind (store.ClearBusy), before it starts any work of its own, so no
+	// row spins for work nobody is doing.
+	factoryBusyClear.Do(func() { _ = st.ClearBusy() })
 	startFactoryTriage(st)
 	factoryPoll.Do(func() {
 		guard.Go("factory/github-poll", func() {

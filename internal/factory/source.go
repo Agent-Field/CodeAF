@@ -73,4 +73,7 @@ type SourceInfo struct {
 	// the last read was good. Polled stays the last GOOD read, so a source in
 	// trouble still says how stale the floor is.
 	Trouble string
+	// Polling is true while a read of the source is in flight, so the floor
+	// can say it is being read rather than leave a person guessing.
+	Polling bool
 }

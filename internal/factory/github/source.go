@@ -33,6 +33,13 @@ const Name = string(factory.OriginForge)
 // bodyLimit is how much of an issue's or pull request's text the floor keeps.
 const bodyLimit = 2000
 
+// CommentsMost is how many of an item's comments the floor keeps: the last
+// three, which is the discussion's latest turn and all a read needs.
+const CommentsMost = 3
+
+// commentLimit is how much of one comment the floor keeps.
+const commentLimit = 1000
+
 // API is what this source needs of a GitHub client; internal/praf/github's
 // client answers it, and a test serves that same client from an
 // httptest.Server.
@@ -43,6 +50,10 @@ type API interface {
 	Pull(ctx context.Context, owner, repo string, number int) (forge.Pull, error)
 	Permission(ctx context.Context, owner, repo, user string) (string, error)
 	Checks(ctx context.Context, owner, repo, sha string) (forge.CheckState, error)
+	CheckRuns(ctx context.Context, owner, repo, sha string) (forge.CheckState, []forge.CheckRun, error)
+	Issue(ctx context.Context, owner, repo string, number int) (forge.Issue, error)
+	IssueComments(ctx context.Context, owner, repo string, number, count, most int) ([]forge.Comment, error)
+	PullFiles(ctx context.Context, owner, repo string, number int) ([]forge.FileChange, error)
 	Repos(ctx context.Context) ([]forge.RepoInfo, error)
 	Comment(ctx context.Context, owner, repo string, number int, body string) (forge.Posted, error)
 	AddLabels(ctx context.Context, owner, repo string, number int, labels []string) (forge.Posted, error)
@@ -76,11 +87,25 @@ type Source struct {
 	checks map[string]seenChecks
 	// tiers is each repository and login's standing, for the process.
 	tiers map[string]factory.Tier
+	// comments is each item's last comments and the count they were read at.
+	// THE COMMENTS ARE READ ONLY WHEN THE COUNT MOVES: the list already says
+	// how many an issue has, so an item whose count is the one this process
+	// last read at costs no request, and an item with none costs none ever.
+	comments map[string]seenComments
+	// files is each pull request's changed files, read with its line counts,
+	// once per change.
+	files map[string][]factory.FileChange
+}
+
+type seenComments struct {
+	count int
+	list  []factory.Comment
 }
 
 type seenChecks struct {
 	sha   string
 	state forge.CheckState
+	runs  []factory.CheckRun
 }
 
 var _ factory.Source = (*Source)(nil)
@@ -95,7 +120,8 @@ func New(api API, repos []string, now func() time.Time) *Source {
 		api: api, now: now, repos: append([]string(nil), repos...),
 		issueTags: map[string]string{}, pullTags: map[string]string{},
 		pulls: map[string][]forge.Pull{}, checks: map[string]seenChecks{},
-		tiers: map[string]factory.Tier{},
+		tiers: map[string]factory.Tier{}, comments: map[string]seenComments{},
+		files: map[string][]factory.FileChange{},
 	}
 }
 
@@ -237,7 +263,11 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 		if is.Pull {
 			continue
 		}
-		items = append(items, s.issueItem(ctx, owner, name, is))
+		it := s.issueItem(ctx, owner, name, is)
+		if it.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, false); err != nil {
+			return nil, mark, err
+		}
+		items = append(items, it)
 	}
 
 	pulls, tag, err := s.api.ListPulls(ctx, owner, name, pullTag)
@@ -270,13 +300,23 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 		// THE LINE COUNTS ARE READ ONCE PER CHANGE. The list leaves them out, so
 		// a pull request read before and unchanged since keeps the counts it
 		// had, and only one that moved costs a second request.
+		key := fmt.Sprintf("%s#%d", full, p.Number)
 		if old, ok := known[p.Number]; ok && old.Updated.Equal(p.Updated) {
-			p.Additions, p.Deletions, p.Files = old.Additions, old.Deletions, old.Files
+			p.Additions, p.Deletions, p.Files, p.Comments = old.Additions, old.Deletions, old.Files, old.Comments
 		} else if whole, err := s.api.Pull(ctx, owner, name, p.Number); err == nil {
-			p.Additions, p.Deletions, p.Files = whole.Additions, whole.Deletions, whole.Files
+			p.Additions, p.Deletions, p.Files, p.Comments = whole.Additions, whole.Deletions, whole.Files, whole.Comments
 			if whole.HeadSHA != "" {
 				p.HeadSHA = whole.HeadSHA
 			}
+			// THE FILES ARE READ WITH THE LINE COUNTS, once per change, for
+			// the same reason: the list carries neither.
+			changed, err := s.api.PullFiles(ctx, owner, name, p.Number)
+			if err != nil {
+				return nil, mark, err
+			}
+			s.mu.Lock()
+			s.files[key] = fileChanges(changed)
+			s.mu.Unlock()
 		} else {
 			return nil, mark, err
 		}
@@ -284,22 +324,31 @@ func (s *Source) readRepo(ctx context.Context, owner, name, full string, mark ti
 		// THE CHECKS ARE ASKED AGAIN WHILE THEY RUN. A head that went green
 		// does not change the pull request's own updated time, so one whose
 		// checks were still running is asked again every Read until they end.
-		key := fmt.Sprintf("%s#%d", full, p.Number)
 		s.mu.Lock()
 		seen, had := s.checks[key]
 		s.mu.Unlock()
-		state := seen.state
+		state, runs := seen.state, seen.runs
 		if !had || seen.sha != p.HeadSHA || seen.state == forge.ChecksRunning || moved {
-			state, err = s.api.Checks(ctx, owner, name, p.HeadSHA)
+			var got []forge.CheckRun
+			state, got, err = s.api.CheckRuns(ctx, owner, name, p.HeadSHA)
 			if err != nil {
 				return nil, mark, err
 			}
+			runs = checkRuns(got)
 			s.mu.Lock()
-			s.checks[key] = seenChecks{sha: p.HeadSHA, state: state}
+			s.checks[key] = seenChecks{sha: p.HeadSHA, state: state, runs: runs}
 			s.mu.Unlock()
 		}
 		if moved || !had || seen.state != state || seen.sha != p.HeadSHA {
-			items = append(items, s.pullItem(ctx, owner, name, p, state))
+			it := s.pullItem(ctx, owner, name, p, state)
+			it.CheckRuns = runs
+			s.mu.Lock()
+			it.Files = s.files[key]
+			s.mu.Unlock()
+			if it.Comments, err = s.lastComments(ctx, owner, name, p.Number, p.Comments, false); err != nil {
+				return nil, mark, err
+			}
+			items = append(items, it)
 		}
 	}
 	s.mu.Lock()
@@ -319,6 +368,7 @@ func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Iss
 		Created: is.Created, Changed: is.Updated,
 		State:  factory.StateNew,
 		Labels: is.Labels,
+		URL:    is.URL,
 		Triage: factory.Triage{Type: issueType(is), Size: issueSize(is.Body)},
 	}
 }
@@ -346,10 +396,120 @@ func (s *Source) pullItem(ctx context.Context, owner, name string, p forge.Pull,
 		Created: p.Created, Changed: p.Updated,
 		State:  factory.StateNew,
 		Labels: p.Labels,
+		URL:    p.URL,
 		Checks: ChecksWords(state),
 		Diff:   DiffWords(p.Additions, p.Deletions),
 		Triage: factory.Triage{Type: "review", Size: pullSize(p.Additions + p.Deletions)},
 	}
+}
+
+// lastComments is an item's last [CommentsMost] comments: the ones this
+// process already read when the count is the one it read them at, and a
+// fresh read otherwise, or always when force is set (a person's refresh). A
+// count of none is none, and costs nothing.
+func (s *Source) lastComments(ctx context.Context, owner, name string, number, count int, force bool) ([]factory.Comment, error) {
+	key := strings.ToLower(fmt.Sprintf("%s/%s#%d", owner, name, number))
+	if count <= 0 {
+		s.mu.Lock()
+		delete(s.comments, key)
+		s.mu.Unlock()
+		return nil, nil
+	}
+	s.mu.Lock()
+	seen, ok := s.comments[key]
+	s.mu.Unlock()
+	if ok && seen.count == count && !force {
+		return seen.list, nil
+	}
+	got, err := s.api.IssueComments(ctx, owner, name, number, count, CommentsMost)
+	if err != nil {
+		return nil, err
+	}
+	list := make([]factory.Comment, 0, len(got))
+	for _, c := range got {
+		list = append(list, factory.Comment{Author: c.User, Body: clip(strings.TrimSpace(c.Body), commentLimit), At: c.Created})
+	}
+	s.mu.Lock()
+	s.comments[key] = seenComments{count: count, list: list}
+	s.mu.Unlock()
+	return list, nil
+}
+
+// fileChanges converts the forge's files to the floor's.
+func fileChanges(in []forge.FileChange) []factory.FileChange {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]factory.FileChange, 0, len(in))
+	for _, f := range in {
+		out = append(out, factory.FileChange{Path: f.Path, Added: f.Additions, Removed: f.Deletions})
+	}
+	return out
+}
+
+// checkRuns converts the forge's check runs to the floor's: a finished run
+// says its conclusion, an unfinished one its status.
+func checkRuns(in []forge.CheckRun) []factory.CheckRun {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]factory.CheckRun, 0, len(in))
+	for _, r := range in {
+		state := r.Conclusion
+		if r.Status != "completed" || state == "" {
+			state = r.Status
+		}
+		out = append(out, factory.CheckRun{Name: r.Name, State: state, URL: r.URL})
+	}
+	return out
+}
+
+// Refetch reads one item again from GitHub now, whatever this source last
+// saw: the issue or pull request by its number, its last comments (read even
+// when the count did not move, because a person asked), and for a pull
+// request its line counts, files and check runs. It answers the item as a
+// fresh read would make it, for [Merge] to fold in. An item that is not from
+// GitHub, or has no number, is refused.
+func (s *Source) Refetch(ctx context.Context, it factory.Item) (factory.Item, error) {
+	if it.Origin != factory.OriginForge || it.Num <= 0 || it.Product == "" || it.Repo == "" {
+		return factory.Item{}, factory.ErrNotOnSource
+	}
+	owner, name := it.Product, it.Repo
+	s.whoAmI(ctx)
+	if it.Kind != factory.KindPR {
+		is, err := s.api.Issue(ctx, owner, name, it.Num)
+		if err != nil {
+			return factory.Item{}, err
+		}
+		out := s.issueItem(ctx, owner, name, is)
+		if out.Comments, err = s.lastComments(ctx, owner, name, is.Number, is.Comments, true); err != nil {
+			return factory.Item{}, err
+		}
+		return out, nil
+	}
+	p, err := s.api.Pull(ctx, owner, name, it.Num)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	changed, err := s.api.PullFiles(ctx, owner, name, it.Num)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	state, runs, err := s.api.CheckRuns(ctx, owner, name, p.HeadSHA)
+	if err != nil {
+		return factory.Item{}, err
+	}
+	key := fmt.Sprintf("%s/%s#%d", owner, name, p.Number)
+	s.mu.Lock()
+	s.files[key] = fileChanges(changed)
+	s.checks[key] = seenChecks{sha: p.HeadSHA, state: state, runs: checkRuns(runs)}
+	s.mu.Unlock()
+	out := s.pullItem(ctx, owner, name, p, state)
+	out.Files, out.CheckRuns = fileChanges(changed), checkRuns(runs)
+	if out.Comments, err = s.lastComments(ctx, owner, name, p.Number, p.Comments, true); err != nil {
+		return factory.Item{}, err
+	}
+	return out, nil
 }
 
 // tier is an author's standing on one repository, asked once per process.

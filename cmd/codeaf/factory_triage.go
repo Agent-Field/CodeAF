@@ -67,7 +67,10 @@ func startFactoryTriage(st *store.Store) {
 // `every`, and nil only when ctx ended first.
 func waitForFactoryTriage(ctx context.Context, st *store.Store, load func() (config.Config, error), every time.Duration) (triage.Call, func()) {
 	for {
-		if call, ok := factoryTriageCall(load); ok {
+		// EACH READ'S PRICE IS NOTED ON THE FLOOR TOO (store.NoteReadCost), the
+		// same dollars it puts on the ledger, so the floor can quote the last
+		// read and estimate a whole-floor refresh without scanning the ledger.
+		if call, ok := factoryTriageCallNoting(load, func(usd float64) { _ = st.NoteReadCost(usd) }); ok {
 			if release, held := st.TryTriager(); held {
 				return call, release
 			}
@@ -95,6 +98,12 @@ func waitForFactoryTriage(ctx context.Context, st *store.Store, load func() (con
 // key the next read carries. Every call puts one row on the spend ledger under
 // [factoryTriageName], on the low seat.
 func factoryTriageCall(load func() (config.Config, error)) (triage.Call, bool) {
+	return factoryTriageCallNoting(load, nil)
+}
+
+// factoryTriageCallNoting is [factoryTriageCall] that also hands each priced
+// read's dollars to noted, when noted is not nil.
+func factoryTriageCallNoting(load func() (config.Config, error), noted func(usd float64)) (triage.Call, bool) {
 	if load == nil {
 		return nil, false
 	}
@@ -119,7 +128,9 @@ func factoryTriageCall(load func() (config.Config, error)) (triage.Call, bool) {
 		if err != nil {
 			return "", err
 		}
-		recordFactoryTriageUsage(settings, model, response)
+		if usd := recordFactoryTriageUsage(settings, model, response); usd > 0 && noted != nil {
+			noted(usd)
+		}
 		if response == nil || strings.TrimSpace(response.Text()) == "" {
 			return "", errors.New("the model answered nothing")
 		}
@@ -141,7 +152,9 @@ func factoryTriageModel(settings config.Config) string {
 // ran on. The dollars are the provider's own receipt when one arrived,
 // otherwise the model's published price over the tokens, and a call nobody
 // priced writes no row ([session.RecordUsage] refuses an all-zero line).
-func recordFactoryTriageUsage(settings config.Config, model string, response *ai.Response) {
+//
+// It answers the dollars it wrote, 0 when none were known.
+func recordFactoryTriageUsage(settings config.Config, model string, response *ai.Response) float64 {
 	line := session.UsageLine{Model: model, Calls: 1}
 	if response != nil && response.Usage != nil {
 		used := response.Usage
@@ -153,4 +166,5 @@ func recordFactoryTriageUsage(settings config.Config, model string, response *ai
 		}
 	}
 	session.RecordUsage(session.UsageLedgerPath(), session.TagUsage(line, roles.Role(factoryTriageName), session.SeatLow))
+	return line.USD
 }

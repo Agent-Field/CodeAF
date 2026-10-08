@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	factorygithub "github.com/Agent-Field/codeaf/internal/factory/github"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
@@ -165,7 +167,7 @@ func TestFactorySeamHangsTheConnectionDoorsOnlyOverAStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	seam := factorySeam(st, "", t.TempDir())
-	for _, door := range []string{"repos", "github", "connectgithub"} {
+	for _, door := range []string{"repos", "github", "connectgithub", "refresh", "refreshall", "open"} {
 		if !seam.Has(door) {
 			t.Fatalf("a floor over a store has no %q door", door)
 		}
@@ -179,13 +181,39 @@ func TestFactorySeamHangsTheConnectionDoorsOnlyOverAStore(t *testing.T) {
 		t.Fatal("an empty (ordinary) profile hung no connection doors")
 	}
 	bare := factorySeam(nil, "", t.TempDir())
-	for _, door := range []string{"repos", "github", "connectgithub"} {
+	for _, door := range []string{"repos", "github", "connectgithub", "refresh", "refreshall", "open"} {
 		if bare.Has(door) {
 			t.Fatalf("a floor over no store has a %q door", door)
 		}
 	}
 	t.Setenv(factoryFixtureEnv, "1")
-	if factorySeam(st, "", t.TempDir()).Has("github") {
-		t.Fatal("the fixture was wrapped with the connection doors")
+	if fixture := factorySeam(st, "", t.TempDir()); fixture.Has("github") || fixture.Has("refresh") || fixture.Has("open") {
+		t.Fatal("the fixture was wrapped with the connection or source doors")
+	}
+}
+
+// With nothing watched and no token, a GitHub item's refresh says github is
+// not connected, and a terminal item's refresh only takes its read off.
+func TestFactorySeamRefreshWithNoGitHub(t *testing.T) {
+	t.Setenv(factoryFixtureEnv, "")
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seam := factorySeam(st, "", t.TempDir())
+	ctx := context.Background()
+	forgeID, _ := st.Add(ctx, factory.Item{Title: "from github", Repo: "api", Product: "acme", Num: 3, Origin: factory.OriginForge})
+	mineID, _ := st.Add(ctx, factory.Item{Title: "typed", Repo: "api", Origin: factory.OriginTerminal})
+	_ = st.Annotate(mineID, func(it *factory.Item) error { it.Triage.Read = "a read"; return nil })
+	if err := seam.Refresh(ctx, forgeID); err == nil || !strings.Contains(err.Error(), "not connected") {
+		t.Fatalf("a github item refreshed with no github: %v", err)
+	}
+	if err := seam.Refresh(ctx, mineID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := st.Get(mineID); got.Triage.Read != "" {
+		t.Fatal("a terminal item's refresh kept its read")
 	}
 }

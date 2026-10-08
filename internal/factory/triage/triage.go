@@ -52,9 +52,17 @@ var (
 	Sizes = []string{"S", "M", "L"}
 )
 
+// CommentMost is how much of one comment the prompt carries, and Comments how
+// many: the last three, so the read sees where the discussion stands.
+const (
+	CommentMost = 600
+	Comments    = 3
+)
+
 // Prompt is the fixed question one item is asked. It is the same words for
 // every item, with the item's own facts in the middle: the title, the body
-// cut to [BodyMost], the labels, the kind and the repository.
+// cut to [BodyMost], the labels, the kind, the repository, and the last
+// [Comments] comments each cut to [CommentMost].
 func Prompt(it factory.Item) string {
 	body := strings.TrimSpace(it.Body)
 	if r := []rune(body); len(r) > BodyMost {
@@ -73,6 +81,24 @@ func Prompt(it factory.Item) string {
 		b.WriteString("labels: " + labels + "\n")
 	}
 	b.WriteString("body:\n" + body + "\n\n")
+	if said := it.Comments; len(said) > 0 {
+		if len(said) > Comments {
+			said = said[len(said)-Comments:]
+		}
+		b.WriteString("latest comments, oldest first:\n")
+		for _, c := range said {
+			text := strings.Join(strings.Fields(c.Body), " ")
+			if r := []rune(text); len(r) > CommentMost {
+				text = string(r[:CommentMost]) + "…"
+			}
+			who := c.Author
+			if who == "" {
+				who = "someone"
+			}
+			b.WriteString("- " + who + ": " + text + "\n")
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString(`Answer exactly this shape:
 {"read": "...", "type": "...", "size": "...", "est_usd": 0, "risk": [], "dup": "", "priority": 0, "reason": "..."}
 
@@ -423,6 +449,13 @@ func (w *worker) once(ctx context.Context) tick {
 	if !found {
 		return tickIdle
 	}
+	// THE READ IS MARKED IN FLIGHT on the store, when the store keeps such
+	// marks, so a window drawing the floor shows `reading` on this row for
+	// as long as the call takes.
+	if b, ok := w.st.(busyMarker); ok {
+		_ = b.SetBusy(it.ID, factory.BusyReading)
+		defer func() { _ = b.SetBusy(it.ID, "") }()
+	}
 	reply, callErr := w.call(ctx, Prompt(it))
 	if ctx.Err() != nil {
 		// A call cut short by the process closing is not this item's failure,
@@ -462,3 +495,9 @@ func (w *worker) once(ctx context.Context) tick {
 }
 
 var errAlreadyRead = errors.New("triage: already read")
+
+// busyMarker is a store that keeps what is in flight (factory.BusyKeeper's
+// writing half); *store.Store is one.
+type busyMarker interface {
+	SetBusy(id int, word string) error
+}
