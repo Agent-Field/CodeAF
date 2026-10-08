@@ -2,6 +2,7 @@ package tui3
 
 import (
 	"context"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── THE FLOOR'S OWN SETTINGS ────────────────────────────────────────────────
@@ -68,21 +70,39 @@ type factoryPicker struct {
 	login string
 	rows  []factoryPickRow
 	// on is the watched set as the person has it now, by lower-cased name,
-	// which is GitHub's own rule for a repository's name.
-	on     map[string]bool
+	// which is GitHub's own rule for a repository's name, and was is the set
+	// the picker opened with: the WATCHING section. THE SECTIONS DO NOT MOVE
+	// UNDER A TICK, so a repository ticked now stays in its owner's group
+	// until the picker opens again and the cursor never jumps.
+	on, was map[string]bool
+	// byOpen orders every section by how many issues and pull requests are
+	// open, the most first, instead of by the last push (`o`).
+	byOpen bool
 	cursor int
 	top    int
 	shown  int
-	// query is the `/` filter, and typing whether its box has the keyboard.
-	query  string
-	typing bool
+	// query is the filter, typed straight into the list.
+	query string
 }
 
 // factoryPickRow is one repository the picker lists.
 type factoryPickRow struct {
 	full    string
+	owner   string
 	private bool
 	pushed  time.Time
+	// open is how many issues and pull requests are open on it, -1 when the
+	// forge did not say; dir is where it is checked out on this machine, ""
+	// when that is not known.
+	open int
+	dir  string
+}
+
+// factoryPickSection is one block of the picker: WATCHING, or one owner's
+// repositories, as indexes into the picker's rows in the order drawn.
+type factoryPickSection struct {
+	heading string
+	rows    []int
 }
 
 // factoryRecipePage is `E`'s page, standing over the floor while it is open.
@@ -217,41 +237,157 @@ func factoryGHLogin(ctx context.Context, seam factory.Seam) string {
 	return strings.TrimSpace(login)
 }
 
-// factoryOpenPicker stands the list over the floor. THE WATCHED REPOSITORIES
-// COME FIRST that GitHub did not list, so a repository the token can no longer
-// see is still one a person can stop watching; then everything GitHub listed,
-// most recently pushed first.
+// factoryOpenPicker stands the list over the floor. A WATCHED REPOSITORY
+// GITHUB DID NOT LIST IS STILL A ROW, so a repository the token can no longer
+// see is still one a person can stop watching.
 func (a *app) factoryOpenPicker(login string, watched []string, available []factory.RepoInfo) {
-	p := &factoryPicker{login: login, on: map[string]bool{}}
+	p := &factoryPicker{login: login, on: map[string]bool{}, was: map[string]bool{}}
 	listed := map[string]bool{}
 	for _, r := range available {
 		listed[strings.ToLower(r.Full)] = true
 	}
 	for _, w := range watched {
-		p.on[strings.ToLower(w)] = true
-		if !listed[strings.ToLower(w)] {
-			p.rows = append(p.rows, factoryPickRow{full: w})
+		name := strings.ToLower(w)
+		p.on[name], p.was[name] = true, true
+		if !listed[name] {
+			p.rows = append(p.rows, factoryPickRow{full: w, owner: factoryRepoOwner(w), open: -1})
 		}
 	}
 	for _, r := range available {
-		if strings.TrimSpace(r.Full) != "" {
-			p.rows = append(p.rows, factoryPickRow{full: r.Full, private: r.Private, pushed: r.Pushed})
+		if strings.TrimSpace(r.Full) == "" {
+			continue
 		}
+		owner := r.Owner
+		if owner == "" {
+			owner = factoryRepoOwner(r.Full)
+		}
+		p.rows = append(p.rows, factoryPickRow{full: r.Full, owner: owner, private: r.Private, pushed: r.Pushed, open: r.Open, dir: r.Dir})
 	}
 	a.fp.pick = p
 	a.touch()
 }
 
-// factoryPickVisible is the picker's rows the filter keeps, as indexes.
-func (p *factoryPicker) visible() []int {
+// factoryRepoOwner is a repository's first path segment: `agentfield` for
+// `agentfield/codeaf`, and "" for a name with no owner.
+func factoryRepoOwner(full string) string {
+	if i := strings.IndexByte(full, '/'); i >= 0 {
+		return full[:i]
+	}
+	return ""
+}
+
+// matches says whether the filter keeps r. KEEP IT PREDICTABLE: `owner/`
+// narrows to that owner and anything after the slash is looked for in the
+// name; plain words are looked for anywhere in `owner/name`. Case never
+// matters, and nothing is scored or reordered by how well it matched.
+func (p *factoryPicker) matches(r factoryPickRow) bool {
 	q := strings.ToLower(strings.TrimSpace(p.query))
-	out := make([]int, 0, len(p.rows))
+	if q == "" {
+		return true
+	}
+	full := strings.ToLower(r.full)
+	i := strings.IndexByte(q, '/')
+	if i < 0 {
+		return strings.Contains(full, q)
+	}
+	owner, name := q[:i], q[i+1:]
+	if owner != "" && strings.ToLower(r.owner) != owner {
+		return false
+	}
+	if j := strings.IndexByte(full, '/'); j >= 0 {
+		full = full[j+1:]
+	}
+	return strings.Contains(full, name)
+}
+
+// sections is the picker's blocks as drawn: WATCHING, what was watched when
+// the picker opened, then one block per owner, owners ordered by their most
+// recently pushed repository. Inside each block the repositories go by the
+// last push, or by how many are open under `o`. A block the filter empties is
+// not drawn.
+func (p *factoryPicker) sections() []factoryPickSection {
+	var watching []int
+	groups := map[string][]int{}
+	var owners []string
 	for i, r := range p.rows {
-		if q == "" || strings.Contains(strings.ToLower(r.full), q) {
-			out = append(out, i)
+		if !p.matches(r) {
+			continue
 		}
+		if p.was[strings.ToLower(r.full)] {
+			watching = append(watching, i)
+			continue
+		}
+		k := strings.ToLower(r.owner)
+		if _, ok := groups[k]; !ok {
+			owners = append(owners, k)
+		}
+		groups[k] = append(groups[k], i)
+	}
+	latest := func(rows []int) time.Time {
+		var t time.Time
+		for _, i := range rows {
+			if p.rows[i].pushed.After(t) {
+				t = p.rows[i].pushed
+			}
+		}
+		return t
+	}
+	sort.SliceStable(owners, func(i, j int) bool { return latest(groups[owners[i]]).After(latest(groups[owners[j]])) })
+	var out []factoryPickSection
+	if len(watching) > 0 {
+		out = append(out, factoryPickSection{heading: "watching", rows: p.ordered(watching)})
+	}
+	for _, k := range owners {
+		rows := p.ordered(groups[k])
+		out = append(out, factoryPickSection{heading: p.rows[rows[0]].owner, rows: rows})
 	}
 	return out
+}
+
+// ordered is rows by the picker's order: the last push, the newest first, or
+// under `o` the open count, the most first and the last push after it.
+func (p *factoryPicker) ordered(rows []int) []int {
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := p.rows[rows[i]], p.rows[rows[j]]
+		if p.byOpen && a.open != b.open {
+			return a.open > b.open
+		}
+		return a.pushed.After(b.pushed)
+	})
+	return rows
+}
+
+// visible is the picker's rows the filter keeps, as indexes, in the order
+// the cursor walks them: section by section, top to bottom.
+func (p *factoryPicker) visible() []int {
+	var out []int
+	for _, s := range p.sections() {
+		out = append(out, s.rows...)
+	}
+	return out
+}
+
+// anyOpen says whether any repository carries an open count, which is when
+// ordering by it means anything.
+func (p *factoryPicker) anyOpen() bool {
+	for _, r := range p.rows {
+		if r.open > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// keep puts the cursor back on row after the list reorders, or on the top
+// when the row is no longer listed.
+func (p *factoryPicker) keep(row int) {
+	p.cursor = 0
+	for i, v := range p.visible() {
+		if v == row {
+			p.cursor = i
+			return
+		}
+	}
 }
 
 // watching is the repositories the person has ticked, in the list's order.
@@ -265,45 +401,26 @@ func (p *factoryPicker) watching() []string {
 	return out
 }
 
-// factoryPickKey is a key while the picker stands: the arrows walk, `space`
-// watches, `/` filters, `enter` saves and `esc` clears the filter, then
-// closes without saving anything.
+// factoryPickKey is a key while the picker stands. TYPING FILTERS: every
+// printable key the picker does not bind goes into the filter, so a person who
+// knows the name types it. The bound keys are the arrows, `space` (watch),
+// `enter` (save), `backspace`, `esc` (clear the filter, then close without
+// saving) and `o` (order by open), which is a letter like any other once the
+// filter has words in it, or when nothing carries an open count. A `/` with
+// nothing typed yet is answered and kept out, for the person who tries it
+// first; after words it is the owner's slash.
 func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 	p := a.fp.pick
-	k := msg.String()
-	if p.typing {
-		switch k {
-		case "esc":
-			p.query, p.typing, p.cursor = "", false, 0
-		case "enter":
-			p.typing = false
-		case "backspace":
-			if r := []rune(p.query); len(r) > 0 {
-				p.query = string(r[:len(r)-1])
-				p.cursor = 0
-			}
-		case "ctrl+u":
-			p.query, p.cursor = "", 0
-		case "ctrl+k":
-			// THE CARET STANDS AT THE END OF THE WORDS, so the kill to the end
-			// has nothing after it to take; the key is answered and keeps them.
-		default:
-			if t := msg.Key().Text; t != "" && t != " " && msg.Key().Mod&(tea.ModCtrl|tea.ModMeta|tea.ModSuper) == 0 {
-				p.query += t
-				p.cursor = 0
-			}
-		}
-		a.touch()
-		return nil
-	}
 	vis := p.visible()
-	switch k {
+	switch k := msg.String(); k {
 	case "esc":
 		if p.query != "" {
 			p.query, p.cursor = "", 0
 		} else {
 			a.fp.pick = nil
 		}
+	case "enter":
+		return a.factorySaveRepos()
 	case "up", "ctrl+p":
 		p.cursor = moveCursor(p.cursor, -1, len(vis))
 	case "down", "ctrl+n":
@@ -313,10 +430,34 @@ func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 			name := strings.ToLower(p.rows[vis[p.cursor]].full)
 			p.on[name] = !p.on[name]
 		}
+	case "backspace":
+		if r := []rune(p.query); len(r) > 0 {
+			p.query, p.cursor = string(r[:len(r)-1]), 0
+		}
+	case "ctrl+u":
+		p.query, p.cursor = "", 0
+	case "ctrl+k":
+		// THE CARET STANDS AT THE END OF THE WORDS, so the kill to the end
+		// has nothing after it to take; the key is answered and keeps them.
+	case "o":
+		if p.query == "" && p.anyOpen() {
+			row := -1
+			if p.cursor >= 0 && p.cursor < len(vis) {
+				row = vis[p.cursor]
+			}
+			p.byOpen = !p.byOpen
+			p.keep(row)
+			break
+		}
+		p.query, p.cursor = p.query+"o", 0
 	case "/":
-		p.typing = true
-	case "enter":
-		return a.factorySaveRepos()
+		if p.query != "" {
+			p.query, p.cursor = p.query+"/", 0
+		}
+	default:
+		if t := msg.Key().Text; t != "" && t != " " && msg.Key().Mod&(tea.ModCtrl|tea.ModMeta|tea.ModSuper) == 0 {
+			p.query, p.cursor = p.query+t, 0
+		}
 	}
 	a.touch()
 	return nil
@@ -347,87 +488,269 @@ func factoryWatchingWords(n int) string {
 	return "watching " + itoa(n) + " " + factoryPlural(n, "repository", "repositories") + rowSep + factoryReadingNowWords
 }
 
-// factoryPickerBody is the picker as exactly room rows of exactly width cells:
-// its heading with how many are watched at the right, the filter's line, and
-// one row per repository, the cursor's on the cursor ground.
+// The picker's fact columns, left to right ([factoryPickCols]).
+const (
+	factoryPickColOpen = iota
+	factoryPickColPrivate
+	factoryPickColHere
+	factoryPickColPushed
+)
+
+// factoryPickCol is one fact column: its cells, and what a row says in it,
+// "" for nothing.
+type factoryPickCol struct {
+	w    int
+	cell func(r factoryPickRow, now time.Time) string
+}
+
+// factoryPickCols are the facts that choose: how much is waiting, whether it
+// is private, whether it is checked out here (`here`, where the floor's
+// stages can run), and when it was last pushed to.
+var factoryPickCols = []factoryPickCol{
+	factoryPickColOpen: {factoryPickOpenW, func(r factoryPickRow, _ time.Time) string {
+		if r.open <= 0 {
+			return ""
+		}
+		return factoryOpenCount(r.open) + " open"
+	}},
+	factoryPickColPrivate: {factoryPickPrivateW, func(r factoryPickRow, _ time.Time) string {
+		if r.private {
+			return "private"
+		}
+		return ""
+	}},
+	factoryPickColHere: {factoryPickHereW, func(r factoryPickRow, _ time.Time) string {
+		if r.dir != "" {
+			return "here"
+		}
+		return ""
+	}},
+	factoryPickColPushed: {factoryPickPushedW, func(r factoryPickRow, now time.Time) string {
+		if ago := factoryPushedAgo(now, r.pushed); ago != "" {
+			return "pushed " + ago
+		}
+		return ""
+	}},
+}
+
+// factoryPickDrop is the order the fact columns give way on a narrow picker:
+// the least deciding first, and the open count, what a maintainer chooses
+// by, last.
+var factoryPickDrop = []int{factoryPickColPrivate, factoryPickColPushed, factoryPickColHere, factoryPickColOpen}
+
+// factoryOpenCount is an open count in at most four cells: `12`, `999`,
+// `12k`.
+func factoryOpenCount(n int) string {
+	const thousand = 1000
+	if n < thousand {
+		return itoa(n)
+	}
+	return itoa(n/thousand) + "k"
+}
+
+// factoryPickColumns is the fact columns the picker draws over rows at
+// measure, and the name's width beside them. A COLUMN NO ROW HAS ANYTHING IN
+// IS NOT DRAWN (the emptiness law), and while the name would be narrower than
+// [factoryPickNameMinW] the columns give way in [factoryPickDrop]'s order.
+func (p *factoryPicker) columns(rows []int, now time.Time, measure int) ([]int, int) {
+	keep := map[int]bool{}
+	for c, col := range factoryPickCols {
+		for _, i := range rows {
+			if col.cell(p.rows[i], now) != "" {
+				keep[c] = true
+				break
+			}
+		}
+	}
+	nameW := func() int {
+		w := measure - factoryPickMarkW
+		for c := range keep {
+			w -= factoryGutter + factoryPickCols[c].w
+		}
+		return w
+	}
+	for _, c := range factoryPickDrop {
+		if nameW() >= factoryPickNameMinW {
+			break
+		}
+		delete(keep, c)
+	}
+	var out []int
+	for c := range factoryPickCols {
+		if keep[c] {
+			out = append(out, c)
+		}
+	}
+	return out, max(nameW(), 0)
+}
+
+// factoryPickLine is one line of the picker's list: a section's heading, the
+// blank between two sections, or a repository's row.
+type factoryPickLine struct {
+	heading string
+	count   int
+	row     int // index into the picker's rows, -1 for a heading or a blank
+	walk    int // the row's place in [factoryPicker.visible], -1 otherwise
+}
+
+// factoryPickerBody is the picker as exactly room rows of exactly width
+// cells: its heading with how many are watched and listed at the right, the
+// filter line, then the sections, each under its heading, the cursor's row on
+// the cursor ground, and at the foot the cursor's repository's checkout.
 //
-//	watch · repositories github sees as santoshkumarradha             3 watched
-//	/ codeaf
-//	[x] agentfield/codeaf                                 private · pushed 2d
-//	[ ] santoshkumarradha/notes                                     pushed 3w
+//	watch · repositories github sees as santoshkumarradha   1 watching · 143 listed
+//	› ▌ type to filter
+//
+//	WATCHING · 1 ──────────────────────────────────────────────────────────────
+//	[x] agentfield/codeaf                       12 open  private  here   pushed 2d
+//
+//	AGENTFIELD · 1 ────────────────────────────────────────────────────────────
+//	[ ] agentfield/agentfield                    3 open                  pushed 5h
+//
+//	checked out at /work/codeaf
 func (a *app) factoryPickerBody(width, room int) []placeRow {
 	pal, p := a.pal, a.fp.pick
-	measure := max(width-factoryMargin, 0)
+	measure := max(width-factoryMargins, 0)
 	heading := "watch" + rowSep + "repositories"
 	if p.login != "" {
 		heading += " github sees as " + p.login
 	}
-	count := ""
+	var counts []string
 	if n := len(p.watching()); n > 0 {
-		count = itoa(n) + " watched"
+		counts = append(counts, itoa(n)+" watching")
 	}
-	lines := []string{factorySpread(pal.muted(heading), pal.muted(count), measure)}
-	switch {
-	case p.typing:
-		lines = append(lines, pal.accent("/ ")+pal.ink(p.query)+pal.cursor(" ", 1))
-	case p.query != "":
-		lines = append(lines, pal.dim("/ "+p.query))
-	default:
-		lines = append(lines, "")
+	if n := len(p.rows); n > 0 {
+		counts = append(counts, itoa(n)+" listed")
 	}
-	vis := p.visible()
-	left := max(room-len(lines), 0)
+	lines := []string{
+		factorySpread(pal.muted(heading), pal.muted(strings.Join(counts, rowSep)), measure),
+		a.factoryPickFilter(measure),
+		"",
+	}
+	head := len(lines)
+	secs := p.sections()
+	var vis []int
+	for _, s := range secs {
+		vis = append(vis, s.rows...)
+	}
+	p.shown = 0
+	foot := ""
 	switch {
 	case len(vis) == 0 && p.query != "":
-		lines = append(lines, pal.dim("nothing matches"))
+		lines = append(lines, pal.dim(fit("no repository matches "+p.query, measure)))
 	case len(vis) == 0:
-		lines = append(lines, pal.dim("the repositories github shows this account are listed here"))
+		lines = append(lines, pal.dim(fit("the repositories github shows this account are listed here", measure)))
 	default:
 		p.cursor = moveCursor(p.cursor, 0, len(vis))
-		p.top = placeTop(p.top, p.cursor, len(vis), left)
-		p.shown = 0
+		foot = a.factoryPickFoot(p.rows[vis[p.cursor]], measure)
+		left := room - len(lines)
+		if foot != "" {
+			left -= factoryActionRows
+		}
 		now := a.fp.snap.Now
 		if now.IsZero() {
 			now = time.Now()
 		}
-		for i := p.top; i < len(vis) && p.shown < left; i++ {
-			r := p.rows[vis[i]]
-			on := p.on[strings.ToLower(r.full)]
-			mark, name := pal.dim("[ ]"), pal.muted(r.full)
-			if on {
-				mark, name = pal.ink("[x]"), pal.ink(r.full)
+		cols, nameW := p.columns(vis, now, measure)
+		var list []factoryPickLine
+		cur, walk := 0, 0
+		for i, s := range secs {
+			if i > 0 {
+				list = append(list, factoryPickLine{row: -1, walk: -1})
 			}
-			row := factorySpread(mark+" "+name, pal.dim(factoryPickFacts(r, now)), measure)
-			if i == p.cursor {
-				row = pal.selected(factoryPad(row, measure), measure)
+			list = append(list, factoryPickLine{heading: s.heading, count: len(s.rows), row: -1, walk: -1})
+			for _, r := range s.rows {
+				if walk == p.cursor {
+					cur = len(list)
+				}
+				list = append(list, factoryPickLine{row: r, walk: walk})
+				walk++
 			}
-			lines = append(lines, row)
-			p.shown++
+		}
+		p.top = placeTop(p.top, cur, len(list), max(left, 0))
+		// A SECTION'S FIRST ROW NEVER STANDS WITHOUT ITS HEADING above it.
+		if p.top > 0 && p.top == cur && list[cur-1].heading != "" {
+			p.top--
+		}
+		for i := p.top; i < len(list) && i-p.top < left; i++ {
+			l := list[i]
+			switch {
+			case l.heading != "":
+				lines = append(lines, a.factoryHeading(factoryRailRow{heading: l.heading, count: l.count}, measure))
+			case l.row < 0:
+				lines = append(lines, "")
+			default:
+				lines = append(lines, a.factoryPickRowText(p.rows[l.row], cols, nameW, now, measure, l.walk == p.cursor))
+				p.shown++
+			}
 		}
 	}
 	rows := make([]placeRow, room)
 	for i := range rows {
 		text := ""
 		if i < len(lines) && lines[i] != "" {
-			text = " " + lines[i]
+			text = factoryMarginPad() + lines[i]
 		}
 		rows[i] = placeRow{text: factoryPad(text, width), hit: -1}
+	}
+	if foot != "" && room >= head+factoryActionRows {
+		rows[room-1] = placeRow{text: factoryPad(factoryMarginPad()+foot, width), hit: -1}
 	}
 	return rows
 }
 
-// factoryPickFacts is a repository's facts at the right of its row: private
-// when it is, and when it was last pushed to. A repository GitHub did not
-// list has neither, and says nothing.
-func factoryPickFacts(r factoryPickRow, now time.Time) string {
-	var parts []string
-	if r.private {
-		parts = append(parts, "private")
+// factoryPickRowText is one repository's row, exactly measure cells: its mark,
+// its full name in the name's column, and its facts each right-aligned in its
+// own column. The cursor's row wears the cursor ground and nothing else
+// changes on it.
+func (a *app) factoryPickRowText(r factoryPickRow, cols []int, nameW int, now time.Time, measure int, cur bool) string {
+	pal := a.pal
+	mark, name := pal.dim("[ ]"), pal.muted(fit(r.full, nameW))
+	if a.fp.pick.on[strings.ToLower(r.full)] {
+		mark, name = pal.ink("[x]"), pal.ink(fit(r.full, nameW))
 	}
-	if ago := factoryPushedAgo(now, r.pushed); ago != "" {
-		parts = append(parts, "pushed "+ago)
+	row := factoryPad(factoryPad(mark, factoryPickMarkW)+name, factoryPickMarkW+nameW)
+	for _, c := range cols {
+		col := factoryPickCols[c]
+		cell := fit(col.cell(r, now), col.w)
+		row += factorySpaces(factoryGutter + col.w - ansi.StringWidth(cell))
+		switch c {
+		case factoryPickColOpen, factoryPickColHere:
+			// THE FACTS THAT CHOOSE are one step louder than the rest.
+			row += pal.muted(cell)
+		default:
+			row += pal.dim(cell)
+		}
 	}
-	return strings.Join(parts, rowSep)
+	row = factoryPad(row, measure)
+	if cur {
+		return pal.cursorRow(row, measure)
+	}
+	return row
+}
+
+// factoryPickFilter is the filter line, in the typing row's look
+// (factory_keys.go): the prompt mark, the words and the cursor, or the
+// cursor and a dim `type to filter` while nothing is typed.
+func (a *app) factoryPickFilter(measure int) string {
+	pal, p := a.pal, a.fp.pick
+	label := pal.accent(a.icon(tokens.GPromptChat)) + " "
+	if p.query == "" {
+		return fit(label+pal.cursor(" ", 1)+" "+pal.dim("type to filter"), measure)
+	}
+	return fit(label+pal.ink(p.query)+pal.cursor(" ", 1), measure)
+}
+
+// factoryPickFoot is the picker's last line, about the repository under the
+// cursor: where it is checked out, or, in the recipe page's own words
+// ([factoryNoCheckoutWords]), that this machine does not know, and what that
+// means for it. THE FLOOR'S STAGES RUN ONLY IN A CHECKOUT, so a repository
+// without one is watched and read, and its stages wait until it is cloned.
+func (a *app) factoryPickFoot(r factoryPickRow, measure int) string {
+	if r.dir != "" {
+		return a.pal.dim(fit("checked out at "+r.dir, measure))
+	}
+	return a.pal.dim(fit(factoryNoCheckoutWords(r.full)+rowSep+"it is watched and read, and its stages wait until it is cloned", measure))
 }
 
 // factoryPushedAgo is how long ago, in the largest unit that is at least one:
@@ -453,16 +776,23 @@ func factoryPushedAgo(now, then time.Time) string {
 	return strconv.Itoa(int(d/(365*day))) + "y"
 }
 
-// factoryPickerHint is the hint line while the picker stands.
+// factoryPickerHint is the hint line while the picker stands: the keys, `o`
+// only where an open count is drawn and saying the order it would change to,
+// and `type to filter` while nothing is typed.
 func (a *app) factoryPickerHint() string {
-	if a.fp.pick.typing {
-		return "type to filter · enter keep · esc clear"
+	p := a.fp.pick
+	if p.query != "" {
+		return "space watch · enter save · esc clear"
 	}
-	out := "esc cancel"
-	if a.fp.pick.query != "" {
-		out = "esc clear"
+	parts := []string{"space watch", "enter save"}
+	if p.anyOpen() {
+		if p.byOpen {
+			parts = append(parts, "o by pushed")
+		} else {
+			parts = append(parts, "o by open")
+		}
 	}
-	return "↑↓ walk · space watch · / filter · enter save · " + out
+	return strings.Join(append(parts, "esc close", "type to filter"), rowSep)
 }
 
 // ── the connect prompt ──────────────────────────────────────────────────────
@@ -665,7 +995,13 @@ func (a *app) factoryRecipeNoDir() string {
 	if p == nil || !p.read || p.dir != "" {
 		return ""
 	}
-	return "codeaf does not know where " + p.repo + " is checked out"
+	return factoryNoCheckoutWords(p.repo)
+}
+
+// factoryNoCheckoutWords is the sentence for a repository this machine has
+// no checkout of, said by the recipe page and the repo picker alike.
+func factoryNoCheckoutWords(repo string) string {
+	return "codeaf does not know where " + repo + " is checked out"
 }
 
 // factoryRecipeKey is a key on the recipe page. EVERY KEY IS THE PAGE'S while

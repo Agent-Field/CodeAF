@@ -94,6 +94,9 @@ type RepoInfo struct {
 	Owner   string
 	Private bool
 	Pushed  time.Time
+	// Open is the API's open_issues_count, which counts open issues and open
+	// pull requests together, and -1 when the API left it out.
+	Open int
 }
 
 // CheckState is what the checks on one commit add up to.
@@ -440,12 +443,17 @@ func (c *client) Repos(ctx context.Context) ([]RepoInfo, error) {
 			Owner    userJSON  `json:"owner"`
 			Private  bool      `json:"private"`
 			PushedAt time.Time `json:"pushed_at"`
+			Open     *int      `json:"open_issues_count"`
 		}
 		if err := json.Unmarshal(body, &rows); err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
-			out = append(out, RepoInfo{Full: r.FullName, Name: r.Name, Owner: r.Owner.Login, Private: r.Private, Pushed: r.PushedAt})
+			open := -1
+			if r.Open != nil {
+				open = *r.Open
+			}
+			out = append(out, RepoInfo{Full: r.FullName, Name: r.Name, Owner: r.Owner.Login, Private: r.Private, Pushed: r.PushedAt, Open: open})
 		}
 		if len(rows) < 100 {
 			break

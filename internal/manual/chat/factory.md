@@ -880,15 +880,39 @@ causes is a call on the cheapest seat, and a row on the spend ledger named `fact
 With no GitHub connected, `u` on a GitHub item says `github is not connected`. `u` and `U` are on
 your own floor only, never on the still fixture.
 
-## choose which repositories the floor watches — R
+## choose which repositories the floor watches — R, find a repo in the list, why a repo says here
 
 `R` on the floor opens a list over the floor headed
-`watch · repositories github sees as <login>` (with how many are watched at the right), one row
-per repository: `[x] owner/name   private · pushed 2d` for a watched one, `[ ] owner/name` for one
-that is not. Watched repositories GitHub no longer lists stay at the top so you can untick them.
+`watch · repositories github sees as <login>`, with `3 watching · 143 listed` at the right. Under
+it is the filter line, `› type to filter`, and then the repositories in sections:
 
-- `↑` `↓` walk, `space` ticks or unticks, `/` filters by name, `enter` saves, `esc` clears the
-  filter and then closes without saving: `↑↓ walk · space watch · / filter · enter save · esc cancel`.
+- **`WATCHING` first:** every repository you already watch, in one place at the top, so the
+  ticks are never scattered through a long list. A watched repository GitHub no longer lists
+  stays here so you can untick it. A repository you tick now stays where it is until the list
+  opens again, so the cursor never jumps.
+- **Then one section per owner** (your account and each organisation), owners ordered by their
+  most recently pushed repository, and inside each the most recently pushed first.
+- **Each row** is `[x] owner/name` (watched) or `[ ] owner/name`, then, each in its own column:
+  `12 open` (open issues and pull requests together, as GitHub counts them), `private`, `here`
+  and `pushed 3m`. A column no row has anything in is not drawn.
+
+To find a repository in the list, just type: any key the list does not use goes into the
+filter, no `/` first (a `/` typed first works too). Words match anywhere in `owner/name`, case
+aside; `agent-field/` keeps only that owner's repositories, and `agent-field/api` that owner's
+repositories with `api` in the name. Nothing is scored: the list keeps its sections and order.
+
+A repository says `here` when it is checked out on this machine and codeaf knows where. The
+floor's stages run only in a checkout, so a repository without `here` can still be watched and
+its issues and pull requests read onto the floor, but its stages wait until it is cloned. The
+list's last line says so for the repository under the cursor:
+`codeaf does not know where owner/name is checked out · it is watched and read, and its stages
+wait until it is cloned`, or `checked out at <folder>` for one that is.
+
+- `↑` `↓` walk, `space` ticks or unticks, `enter` saves, `o` orders every section by how many
+  are open (the most first) and again back to the last push, `backspace` takes a letter off the
+  filter, `esc` clears the filter and then closes without saving:
+  `space watch · enter save · o by open · esc close · type to filter`. Once the filter has words
+  in it, `o` is a letter; `o` is offered only when some repository has an open count.
 - Saving writes `repos.json`, starts the first read and says
   `watching 3 repositories · reading them now`
   (or `watching no repositories · the floor keeps what chat and n bring`); see after connecting

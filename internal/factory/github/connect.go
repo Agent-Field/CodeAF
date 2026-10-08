@@ -139,7 +139,7 @@ func Lister(profileDir string) factory.RepoLister {
 func RepoInfos(in []RepoInfo) []factory.RepoInfo {
 	out := make([]factory.RepoInfo, 0, len(in))
 	for _, r := range in {
-		out = append(out, factory.RepoInfo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed})
+		out = append(out, factory.RepoInfo{Full: r.Full, Name: r.Name, Owner: r.Owner, Private: r.Private, Pushed: r.Pushed, Open: r.Open})
 	}
 	return out
 }

@@ -97,6 +97,32 @@ const (
 	factoryMediumW = 10
 )
 
+// THE REPO PICKER'S GRID (`R`, factory_settings.go). A row is its mark, the
+// repository's full name, and the facts that choose, each in its own
+// right-aligned column so a number stands under a number on every row:
+//
+//	│mark│owner/name …                    │gg│  open│gg│private│gg│here│gg│     pushed│
+//	   4                                     2     9    2     7    2    4   2        11
+//
+// A COLUMN NO VISIBLE ROW HAS ANYTHING IN IS NOT DRAWN, and while the name
+// would be narrower than [factoryPickNameMinW] the columns drop in
+// [factoryPickDrop]'s order, so every row drops the same fact at one width.
+const (
+	// factoryPickMarkW is the `[x]` or `[ ]` mark and its space.
+	factoryPickMarkW = 4
+	// factoryPickNameMinW is the narrowest the name is made before a fact
+	// column gives way: THE NAME IS WHAT A PERSON IS LOOKING FOR.
+	factoryPickNameMinW = 24
+	// factoryPickOpenW is `12 open`, as wide as `999k open`.
+	factoryPickOpenW = 9
+	// factoryPickPrivateW is `private`.
+	factoryPickPrivateW = 7
+	// factoryPickHereW is `here`: checked out on this machine.
+	factoryPickHereW = 4
+	// factoryPickPushedW is `pushed 3m`, as wide as `pushed 11mo`.
+	factoryPickPushedW = 11
+)
+
 // THE VERTICAL RHYTHM.
 const (
 	// factoryBlockGap is the blank rows between two blocks, and above an
