@@ -25,6 +25,12 @@ type SourceMeta struct {
 	// start and the end of each read, and [Store.ClearBusy] takes it off when
 	// a process starts, so a poll a crash cut short never reads as running.
 	Polling bool `json:"polling,omitempty"`
+	// Reading, Read and Of are the read's progress while Polling: the
+	// repository being read now and how many of how many are done. They are
+	// zeroed with Polling.
+	Reading string `json:"reading,omitempty"`
+	Read    int    `json:"read,omitempty"`
+	Of      int    `json:"of,omitempty"`
 }
 
 type metaDoc struct {
