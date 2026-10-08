@@ -12,7 +12,7 @@ func Fixture(now time.Time) Snapshot {
 		Recipe: Recipe{
 			Stages: []Stage{
 				{Name: "plan", Ask: "read the issue and say how", Until: "done", Gate: GatePlan, On: true},
-				{Name: "write", Ask: "do it in a worktree", Fanout: "per-file", Until: "done", On: true},
+				{Name: "write", Ask: "make the change in the checkout", Fanout: "per-file", Until: "done", On: true},
 				{Name: "test", Ask: "run what the change implies", Until: "green", Max: 2, On: true},
 				{Name: "review", Ask: "read it as a stranger would", Until: "clean", Max: 2, Fanout: "per-finding", On: true},
 				{Name: "neaten", Ask: "make the code neater, same behaviour", Until: "done", On: true},
