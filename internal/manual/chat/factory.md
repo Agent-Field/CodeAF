@@ -362,11 +362,12 @@ checks again.
 
 ## the factory's verbs, keys that change an item
 
-On the made-up moving floor every key below works; the bottom line names only the keys that
-work for the item under the cursor. On your own floor in the shipped binary the keys that change
-an item's own words work (`n`, `t` gate, `c` cap, `e` effort, `w`, `1-9` and `s` stages, `space`, `d`) and
-nothing that launches, steers, answers or ships is offered on the bottom line, because nothing
-can launch yet. `enter` on a row never launches; it opens the item page.
+The bottom line names only the keys that work for the item under the cursor. On your own floor
+the keys that change an item's own words always work (`n`, `t` gate, `c` cap, `e` effort, `w`,
+`1-9` and `s` stages, `space`, `d`), and `r`, `p` and `L` launch (see running an item). Stop,
+pause, answers, steering, sign-off, send back and check again are offered only in the window whose
+process runs the floor's items; in any other window those keys are not drawn. `enter` on a row
+never launches; it opens the item page.
 
 - **New:** `r run · p plan first · space mark · L launch marked · 1-9 stages · s stage ·
   t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the plan gate, and
@@ -580,8 +581,8 @@ no clock on it.
 The recipe's bounds hold before any card: proof, a person's gate and a stage the policy names are
 never skipped, a stage that has run is never touched, and under `fixed` a stage change is refused
 with `nothing changed: the recipe for issue is fixed; plan may not change the stages` (and nothing
-else in that card changes). Notes are kept on the item; the stages' briefs will carry them once the
-runner lands. Nothing launches from it.
+else in that card changes). Notes are kept on the item, and every stage's brief opens with them.
+Nothing launches from it.
 
 ## the item card in a conversation — live item status, #12 in a reply
 
@@ -720,8 +721,9 @@ that is not a figure says `a rail is a dollar figure, like $60`.
 
 The rail is kept with the floor's store (`sources.json` in the factory folder) and the
 handover's money reads it: `$11.31 / $60 today`, or `/ $60 today` before anything is spent. With
-no rail set there is no `/ $N` at all. The rail is a figure to read against; nothing stops at it
-yet. `$` is not offered on a floor whose store cannot keep it.
+no rail set there is no `/ $N` at all. Once today's spend has reached the rail, a launch is refused
+with `the day rail is $60 and today's spend has reached it`; an item already running is not
+stopped by it. `$` is not offered on a floor whose store cannot keep it.
 
 ## connections on the settings page — github
 
@@ -783,21 +785,23 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **The gate, cap, effort and stages can be set; nothing launches.** On your own floor `t`, `c`, `e`, `w`, `1-9`, `s`
-  and `d` change an item, and no key launches, steers, answers, signs off or sends back. Those
-  verbs work only on the made-up moving floor, which needs a development build made with
-  `-tags factorymock` and started with `CODEAF_FACTORY_MOCK=1`.
+- **Items run on this machine only.** `r`, `p` and `L` launch (see running an item). Stop,
+  pause, answers, steering and sign-off work only in the window whose process runs the floor;
+  every other window can only launch.
 - **Only GitHub is connected.** No GitLab or Linear.
 - **The recipe file is read only where codeaf knows the checkout.** It is read for the
   repository you opened codeaf in, and for any watched GitHub repository whose checkout codeaf
   has seen you open. Every other repository runs the default recipe until then, and for those
   `b` is not offered, no habit is offered for banking, and the recipe page (`E`) is drawn but
   not changed.
-- **The day rail is read, not enforced.** Nothing stops when the day's spend passes it.
-- **Nothing posts anywhere.** Writing to GitHub (a comment, labels, a close, a pull request)
-  happens only from a post stage, and post stages do not run yet.
-- **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage
-  says `the stage's conversation opens here once streams are conversations`.
+- **The day rail stops launches, not running items.** A launch past it is refused; an item
+  already running goes on.
+- **Only a post stage writes to GitHub** (a comment, labels, a close, a pull request), through
+  the connected GitHub account, and only what the recipe's policy allows.
+- **A stage's conversation opens in the team menu, not from the item page.** Each chat stage
+  is a conversation in the item's team under `factory` (see running an item). `enter` on a
+  stage of the item page still says `the stage's conversation opens here once streams are
+  conversations`, and the diff does not open yet.
 - **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
 - **The foreman only reads and marks.** `m` opens it (see the foreman); it cannot launch,
   ship, post or change an item, and the person's `L` is the only launch.
@@ -806,6 +810,34 @@ Be plain about this when asked:
 - **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, the
   chat has no `factory_add`, and nothing polls GitHub.
 - **`Factory ? N` on the tab bar appears only after the first open** of `/factory`.
+
+## running an item — r, p and L
+
+`r` launches the item under the cursor with the ship gate, `p` with the plan gate, and `L`
+launches every marked item (or this one). A launched item is `queued`, takes one of the floor's
+benches (four at once; `CODEAF_FACTORY_BENCHES` pins another number) and runs its stages in
+order. It lands with its proof sheet for your sign-off, or ships by itself on gate none when every
+claim was shown.
+
+**What runs today:**
+
+- A **check** stage runs its command in the repository's checkout; the exit code is the answer.
+  With no known checkout it says `codeaf does not know where <repo> is checked out`.
+- A **post** stage writes through the connected GitHub account (comment, label, pr, close),
+  when the recipe's policy allows it.
+- A **chat** stage (plan, write, review) is a conversation, named `#12 · review`, made in the
+  item's own team under `factory` in the team menu, where you can open it. It works unattended,
+  for at most two hours, and ends with `stage_result` (see a stage is a conversation).
+- A **gate** waits for you.
+
+**Which window runs items.** One process on this machine runs the floor: on the ordinary launch
+it is the session host, so items keep running when the terminal closes; with `--no-host` it is the
+first window that opened the floor. In any other window `r`, `p` and `L` mark the item `queued`
+and the running process starts it within about three seconds; if it refuses (the day rail, a
+stranger's write), the item goes back to new with `did not start: ` and the reason in its log.
+
+**Spend.** A chat stage's calls are on the spend ledger under its own conversation, and the
+item's spend counts them against its cap and the day rail.
 
 ## where factory items are saved
 

@@ -992,6 +992,11 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		cfg.FactoryItem = itemDoor(engineFactory(proc.ProfileDir), workspace)
 		// And `factory_floor`'s door, on the same law and the same store.
 		cfg.Floor = floorDoor(engineFactory(proc.ProfileDir), workspace)
+		// AND THE FLOOR'S RUNNER, which on the ordinary launch is this
+		// process's: it outlives the window, so an item keeps running when the
+		// terminal closes (factory_run.go). Every stage conversation is opened
+		// from this hello's config.
+		startFactoryRunner(engineFactory(proc.ProfileDir), workspace, proc.ProfileDir, cfg)
 	}
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,

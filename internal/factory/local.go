@@ -28,10 +28,13 @@ type ItemStore interface {
 // and stages. started is when this window opened, which is where the
 // handover's shift begins.
 //
-// EVERY ENGINE DOOR IS NIL. Nothing here launches, stops, pauses, answers,
-// steers, signs off, sends back, re-checks, banks, syncs or asks an author,
-// so the surface draws no key for any of those: A CAPABILITY THAT CANNOT WORK
-// IS ABSENT, NOT BROKEN. Tick and Sleep are nil too, because a real floor
+// EVERY ENGINE DOOR IS NIL unless the launch hands one in. Without
+// [WithRunner] nothing here launches, stops, pauses, answers, steers, signs
+// off, sends back or re-checks, and nothing ever syncs or asks an author, so
+// the surface draws no key for any of those: A CAPABILITY THAT CANNOT WORK IS
+// ABSENT, NOT BROKEN. [WithRunner] binds the eight runner doors in the one
+// process that runs the floor's items, and [WithQueuedLaunch] binds Launch
+// alone in every other window. Tick and Sleep are nil too, because a real floor
 // keeps no clock of its own and draws no speed.
 //
 // A NIL STORE IS NO FLOOR: the zero Seam, whose every door is absent.
@@ -134,6 +137,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		},
 	}
 	localSettings(&seam, st, o)
+	localRunner(&seam, st, o)
 	// THE FLOOR'S OWN MARKS, kept by the store when it keeps them (marks.go).
 	localMarks(&seam, st)
 	if o.talk != nil {
@@ -191,6 +195,8 @@ func WithTalk(maker func(ctx context.Context, it Item) (string, error)) LocalOpt
 }
 
 type localOptions struct {
+	runner  RunnerDoors
+	queued  bool
 	dirs    func(repo string) string
 	lister  RepoLister
 	talk    func(ctx context.Context, it Item) (string, error)
@@ -538,4 +544,72 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 		}
 		return Save(dir, r)
 	}
+}
+
+// RunnerDoors is the engine half of the seam: the eight doors that move an
+// item through its stages. internal/factory/run's *Runner answers it; it is an
+// interface here because that package imports this one.
+type RunnerDoors interface {
+	Launch(id int) error
+	Stop(id int) error
+	Pause(id int) error
+	Answer(id int, yes bool, words string) error
+	Steer(id int, words string) error
+	SignOff(id int, edited bool) (bool, error)
+	SendBack(id int, words string) error
+	Reverify(id int) error
+}
+
+// WithRunner binds the eight runner doors onto the seam. ONLY THE PROCESS THAT
+// RUNS THE FLOOR'S ITEMS IS HANDED ONE (cmd/codeaf's factory_run.go): a
+// second runner over the same store would run the same item twice. A nil r
+// binds nothing.
+func WithRunner(r RunnerDoors) LocalOption {
+	return func(o *localOptions) { o.runner = r }
+}
+
+// WithQueuedLaunch binds Launch alone, for a window whose process does not run
+// the floor's items: its launch writes the item `queued`, and the process that
+// does run them picks the mark up within a few seconds. Every other runner
+// door stays nil there, so the floor draws no key it cannot keep.
+func WithQueuedLaunch() LocalOption {
+	return func(o *localOptions) { o.queued = true }
+}
+
+// localRunner hangs the runner's doors, or the queued launch, over st.
+func localRunner(seam *Seam, st ItemStore, o localOptions) {
+	if r := o.runner; r != nil {
+		seam.Launch = r.Launch
+		seam.Stop = r.Stop
+		seam.Pause = r.Pause
+		seam.Answer = r.Answer
+		seam.Steer = r.Steer
+		seam.SignOff = r.SignOff
+		seam.SendBack = r.SendBack
+		seam.Reverify = r.Reverify
+		return
+	}
+	if o.queued {
+		seam.Launch = func(id int) error { return QueueLaunch(st, id) }
+	}
+}
+
+// QueueLaunch marks an item `queued` for the process that runs the floor to
+// pick up. It refuses, in the runner's own words, an item that cannot be
+// launched from where it stands, so a window that only queues says the same
+// sentence the owner would have said.
+func QueueLaunch(st ItemStore, id int) error {
+	return st.Update(id, func(it *Item) error {
+		switch it.State {
+		case StateNew, StateDismissed, "":
+		case StateLanded:
+			return fmt.Errorf("%s has landed · sign it off, or send it back", it.Ref())
+		case StateShipped:
+			return fmt.Errorf("%s has shipped", it.Ref())
+		default:
+			return fmt.Errorf("%s is already running", it.Ref())
+		}
+		it.State = StateQueued
+		return nil
+	})
 }
