@@ -881,6 +881,11 @@ func (a *app) key(msg tea.KeyPressMsg) tea.Cmd {
 		if taken {
 			return cmd
 		}
+		// AND THE WAY BACK TO THE FACTORY FLOOR, once, from the conversation
+		// its `T` opened, when there is nothing to stop (factory_talk.go).
+		if back, ok := a.factoryTalkBack(); ok {
+			return back
+		}
 		a.interrupt()
 		return cmd
 

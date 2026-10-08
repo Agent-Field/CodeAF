@@ -91,6 +91,10 @@ type factoryCard struct {
 	// recipe. notice.ID is then the recipe proposal's id, so the one lookup
 	// ([app.factoryCardFor]) finds both kinds of card.
 	recipe *session.RecipeNotice
+	// stages is set when this card is `factory_stages`'s: a change to the
+	// stages of one item already on the floor (the stages card, below), found
+	// by the same lookup on its proposal's id.
+	stages *session.StagesNotice
 }
 
 // settled reports whether this offer has been answered or has come down.
@@ -234,6 +238,9 @@ func FactoryCardRows(a *app, card *factoryCard, width int, sel bool) []string {
 	if card.recipe != nil {
 		return append(append(out, a.recipeCardBody(card.recipe, stem, room)...), a.factoryCardFoot(card, width))
 	}
+	if card.stages != nil {
+		return append(append(out, a.stagesCardBody(card.stages, stem, room)...), a.factoryCardFoot(card, width))
+	}
 	if meta := factoryCardMeta(card.notice); meta != "" {
 		out = append(out, stem+a.pal.dim(fit(meta, room)))
 	}
@@ -346,6 +353,9 @@ func (a *app) factoryCardHead(card *factoryCard, width int, sel bool) string {
 	words := session.FactoryCardLead + strings.Join(strings.Fields(card.notice.Title), " ")
 	if card.recipe != nil {
 		words = strings.Join(strings.Fields(session.RecipeHead(*card.recipe)), " ")
+	}
+	if card.stages != nil {
+		words = strings.Join(strings.Fields(session.StagesHead(*card.stages)), " ")
 	}
 	title := fit(words, max(width-ansi.StringWidth(lead)-2, 1))
 	line := paint(lead)
@@ -500,6 +510,117 @@ func (a *app) recipeCardBody(n *session.RecipeNotice, stem string, room int) []s
 		out = append(out, stem+a.pal.dim(fit(where, room)))
 	}
 	for _, line := range a.factoryCardBody(session.RecipeWords(*n), room) {
+		out = append(out, stem+a.pal.ink(line))
+	}
+	return out
+}
+
+// ── the stages card ─────────────────────────────────────────────────────────
+
+// THE STAGES OFFER, IN THE ITEM'S OWN CONVERSATION: THE RECIPE CARD'S SHAPE.
+//
+// `factory_stages` asks to change the stages of the one item a conversation is
+// about (internal/session's tools_factory_stages.go). Its card is drawn by
+// [FactoryCardRows] with the factory card's corner, hue, head and foot, and a
+// body of its own: one dim row naming the item and the reason, and the change
+// in ink, a plus for a stage added or switched on and a minus for one skipped.
+//
+//	╭─ ? wants to change #12's stages: +security · −neaten ──────────────────
+//	│ stages · #12 · touches billing
+//	│ +security · −neaten
+//	╰──────────────────────────────────────────────────────────────────────────
+//
+// AFTERWARDS IT FOLDS TO ITS HEAD AND ONE FOOT, in the factory card's place:
+//
+//	changed                    the item's stages are changed on the floor
+//	not now                    the person said no
+//	changed in words           they typed a correction; nothing was changed
+//	expired · nothing changed  the card came down unanswered
+//
+// The answers and the words box are the question's, drawn once above the box
+// (question.go's [app.questionDrawnHere]), exactly as on the factory card.
+
+// The words a settled stages card keeps.
+const (
+	// stagesChangedWord is the item changed on the floor. It arrives on
+	// EventStagesChanged after the yes; between the two the foot says the
+	// answer that was given.
+	stagesChangedWord = "changed"
+	// stagesNotNowWord is the person's no, in the card's own word for it.
+	stagesNotNowWord = session.StagesNotNowLabel
+	// stagesExpiredWord is a card that came down unanswered, and NOTHING
+	// CHANGED, which is the half a person looking back needs.
+	stagesExpiredWord = "expired · nothing changed"
+)
+
+// stagesProposal folds one EventStagesProposal in: a new card, or the
+// rebroadcast that settles one already drawn — [app.recipeProposal]'s reading.
+func (a *app) stagesProposal(ev session.Event) {
+	notice := ev.Stages
+	if notice == nil || strings.TrimSpace(notice.ID) == "" {
+		return
+	}
+	card := a.factoryCardFor(notice.ID, "")
+	switch {
+	case notice.Decided != nil:
+		if card == nil || card.settled() {
+			return
+		}
+		switch {
+		case strings.TrimSpace(notice.Decided.Change) != "":
+			// WORDS ARE A CHANGE, NOT A YES: the engine changes nothing on one.
+			card.verdict = factoryChangedWord
+		case notice.Decided.Approved:
+			card.answer = session.StagesChangeLabel
+		default:
+			card.verdict = stagesNotNowWord
+		}
+	case strings.TrimSpace(notice.Withdrawn) != "":
+		if card == nil || card.settled() {
+			return
+		}
+		card.verdict = stagesExpiredWord
+	default:
+		if card != nil {
+			return
+		}
+		held := *notice
+		card = &factoryCard{notice: session.FactoryNotice{ID: notice.ID}, stages: &held}
+		a.closeLive()
+		a.entries = append(a.entries, entry{kind: entryFactory, turn: a.turn, fac: card})
+		a.follow()
+		a.touch()
+		return
+	}
+	a.markFactoryStale(card)
+	a.touch()
+}
+
+// stagesChanged folds one EventStagesChanged in: the card that asked says
+// `changed`, and the floor is read again, so the item page standing behind
+// this conversation draws the new stages the moment the person goes back.
+func (a *app) stagesChanged(ev session.Event) tea.Cmd {
+	if notice := ev.Stages; notice != nil {
+		if card := a.factoryCardFor(notice.ID, ""); card != nil && card.stages != nil {
+			if card.answer == "" {
+				card.answer = session.StagesChangeLabel
+			}
+			card.verdict = stagesChangedWord
+			a.markFactoryStale(card)
+			a.touch()
+		}
+	}
+	return a.factoryRead()
+}
+
+// stagesCardBody is the stages card's body: the dim row naming the item and
+// the reason, then the change in ink, wrapped at the factory body's height.
+func (a *app) stagesCardBody(n *session.StagesNotice, stem string, room int) []string {
+	var out []string
+	if where := session.StagesSubject(*n); where != "" {
+		out = append(out, stem+a.pal.dim(fit(where, room)))
+	}
+	for _, line := range a.factoryCardBody(session.StagesWords(*n), room) {
 		out = append(out, stem+a.pal.ink(line))
 	}
 	return out

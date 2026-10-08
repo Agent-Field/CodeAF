@@ -124,6 +124,11 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		},
 	}
 	localSettings(&seam, st, o)
+	if o.talk != nil {
+		seam.Talk = func(ctx context.Context, id int) (string, error) {
+			return localTalk(ctx, st, id, o.talk)
+		}
+	}
 	if o.dirs != nil {
 		seam.BankStages = func(id int) error {
 			it, err := localItem(st, id)
@@ -159,9 +164,55 @@ func WithRepoDirs(dir func(repo string) string) LocalOption {
 	return func(o *localOptions) { o.dirs = dir }
 }
 
+// WithTalk gives the local seam its [Seam.Talk] door: maker is what makes an
+// item's conversation and answers its session file. It is a func handed in
+// rather than anything this package builds, because a conversation is the
+// session engine's and its team is the teams file's, and THIS PACKAGE IMPORTS
+// NEITHER. A seam built without it has no Talk door, and the floor draws no
+// `T`: a launch with no conversations to make (--once, a far host) leaves it
+// out.
+func WithTalk(maker func(ctx context.Context, it Item) (string, error)) LocalOption {
+	return func(o *localOptions) { o.talk = maker }
+}
+
 type localOptions struct {
 	dirs   func(repo string) string
 	lister RepoLister
+	talk   func(ctx context.Context, it Item) (string, error)
+}
+
+// localTalk is the Talk door: the item's conversation when it has one, and
+// otherwise one made by maker and kept on the item. ONE PER ITEM: the store's
+// read-modify-write keeps the first conversation written, so two asks that
+// raced to make one both answer the same file.
+func localTalk(ctx context.Context, st ItemStore, id int, maker func(context.Context, Item) (string, error)) (string, error) {
+	it, err := localItem(st, id)
+	if err != nil {
+		return "", err
+	}
+	if chat := strings.TrimSpace(it.Talk); chat != "" {
+		return chat, nil
+	}
+	chat, err := maker(ctx, it)
+	if err != nil {
+		return "", err
+	}
+	if chat = strings.TrimSpace(chat); chat == "" {
+		return "", errors.New("the item's conversation could not be made")
+	}
+	kept := chat
+	err = st.Update(id, func(it *Item) error {
+		if held := strings.TrimSpace(it.Talk); held != "" {
+			kept = held
+			return nil
+		}
+		it.Talk = chat
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return kept, nil
 }
 
 // dir is where repo is checked out, or an error that says it is not known.

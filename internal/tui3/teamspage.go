@@ -232,7 +232,9 @@ func (a *app) teamsOpenTree() []teamsRailRow {
 				continue
 			}
 			out = append(out, teamsRailRow{kind: railRowTeam, id: t.ID, depth: depth})
-			if depth < 10 {
+			// THE `factory` TEAM IS FOLDED until a person stands in it, so the
+			// items talked through on the floor are one row (factory_talk.go).
+			if depth < 10 && !a.teamFoldedHere(t) {
 				walk(t.ID, depth+1)
 			}
 		}
