@@ -1,7 +1,7 @@
 ---
 kind: fixed
 title: Keep AI team hover responsive with large conversation previews
-pr: 1750
+pr: 1794
 surface: [chat]
 invalidates:
   - "AI team hover and spinner paints reparsed every member's Markdown response, including cards below the screen. Unchanged fitted excerpts now reuse bounded rendered rows, and offscreen member cards keep navigation targets without formatting their previews or borders."
