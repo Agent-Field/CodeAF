@@ -101,13 +101,24 @@ func (a *app) factorySpinning() bool {
 			return true
 		}
 	}
-	if a.fp.open {
-		if it, ok := a.factoryCursorItem(); ok && it.Stream != nil {
-			for i := range it.Stream.Phases {
-				if factoryPhaseKind(it, i) == factoryMarkRunning {
-					return true
-				}
-			}
+	return a.factoryPageRunning()
+}
+
+// factoryPageRunning says whether the item page is open, on the place
+// showing, over an item with a stage running: the one moment the page is
+// alive, its stage spinning ([app.factoryStageMark]) and its time and log
+// read every second ([app.factoryWantsSecondBeat]).
+func (a *app) factoryPageRunning() bool {
+	if !a.at(pageFactory) || !a.fp.open {
+		return false
+	}
+	it, ok := a.factoryCursorItem()
+	if !ok || it.Stream == nil {
+		return false
+	}
+	for i := range it.Stream.Phases {
+		if factoryPhaseKind(it, i) == factoryMarkRunning {
+			return true
 		}
 	}
 	return false

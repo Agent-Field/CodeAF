@@ -428,6 +428,11 @@ do, a blank row, what it has to say (`runs after test`, its round and its newest
 question waiting on you, its result, why it failed, or the sheet on `proof`), a blank row, and
 the item's keys on the last row.
 
+While a stage runs and its page is open, the page is alive: the stage's spinner turns on the rail
+and at the head of its pane (`⠋ 1 task · 15s`), its time counts up every second, and the log
+lines under it grow as the stage works, the newest at the bottom. The floor reads the item every
+second while you watch it, and goes back to its own beat when the stage ends or you press `esc`.
+
 Every verb key keeps working on the item while its page is open (see the factory's verbs), and
 `1` to `9` switch stages. The hint line names them, after `↑↓ stages` (and `enter conversation`
 on a stage that has one), and ends with `esc floor`. A box that takes words opens on the last
@@ -594,6 +599,8 @@ spinner that moves is work still going:
   handover says `⠋ refreshing 8 items · 3 done`.
 - **A source being read:** the handover says `⠋ reading Agent-Field/CodeAF · 1 of 3` (or
   `github · ⠋ polling` when the source does not say where it is), then `polled 14s ago`.
+- **A stage running on the open item page:** its rail mark and the head of its pane spin, and
+  its time counts up each second (see the item page).
 - **A key waiting on its answer:** `T` says `⠋ opening #1's conversation…`, `b` says
   `⠋ banking…`, saving the repositories or the recipe says `⠋ saving…`, and `R` says
   `⠋ asking gh…`, each until the answer arrives.

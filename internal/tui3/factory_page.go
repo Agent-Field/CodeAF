@@ -163,8 +163,12 @@ type factoryPage struct {
 	// ([app.factoryFoldFirstRead]) or [factoryFirstReadWait] passes, the floor
 	// says it is reading. readingGen is which save the one-second re-read
 	// belongs to ([factoryReadSoonMsg]), so a second save retires the first's.
+	// THE SAME BEAT keeps the open item page alive while a stage runs on it
+	// ([app.factoryWantsSecondBeat]); readingArmed says one is in the air,
+	// so the loop never arms a second beside it.
 	readingSince time.Time
 	readingGen   int
+	readingArmed bool
 
 	// THE DOCUMENT'S OWN STATE (factory_pane.go, factory_item.go), additive
 	// like the rest. scroll is how far `J` and `K` have moved the item's body
@@ -224,6 +228,10 @@ type factoryPage struct {
 	// [factoryPhaseKey], on the floor's own clock (factory_run.go), so its
 	// rail row can say how long it has run.
 	phaseSince map[string]time.Time
+	// snapAt is when the last snapshot was folded in, on the surface's
+	// clock, so a running phase's elapsed counts on between reads
+	// ([app.factoryFloorNow]).
+	snapAt time.Time
 }
 
 // factoryRowsCols is the rows' columns at width with the divider where it
@@ -295,6 +303,7 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 	was, had := a.factoryCursorItem()
 	a.factoryFoldStoreMarks(a.fp.snap, &snap)
 	a.fp.snap, a.fp.loaded, a.fp.err = snap, true, nil
+	a.fp.snapAt = a.now()
 	a.factoryGridForget()
 	a.factoryPlace(false)
 	a.factoryFoldBusy()
