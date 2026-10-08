@@ -513,8 +513,8 @@ const factoryFirstReadWords = "reading the repositories you watch"
 // past it the floor's own words return.
 const factoryFirstReadWait = 30 * time.Second
 
-// factoryReadSoonEvery is the re-read's beat while the reading moment stands,
-// quicker than the floor's own ([homeEvery]) and armed only by a save.
+// factoryReadSoonEvery is the floor's one-second beat, quicker than its own
+// ([homeEvery]), armed only while [app.factoryWantsSecondBeat] says so.
 const factoryReadSoonEvery = time.Second
 
 // factoryReadSoonMsg is one beat of that re-read, carrying the save it is for.
@@ -524,6 +524,16 @@ type factoryReadSoonMsg struct{ gen int }
 func (a *app) factoryFirstReading() bool {
 	at := a.fp.readingSince
 	return !at.IsZero() && a.now().Sub(at) < factoryFirstReadWait
+}
+
+// factoryWantsSecondBeat says whether the floor is read every second rather
+// than on its three-second beat. ONE BEAT, TWO REASONS: a save's reading
+// moment stands, or THE OPEN ITEM PAGE HAS A STAGE RUNNING (owner's
+// screenshot, 2026-10-08: `plan · 15s` and its log tail moved once in three
+// seconds while a person sat watching it work), so its time counts and its
+// log grows as the stage works ([app.factoryPageRunning]).
+func (a *app) factoryWantsSecondBeat() bool {
+	return a.factoryFirstReading() || a.factoryPageRunning()
 }
 
 // factoryFoldFirstRead clears the reading moment once the snapshot shows the
@@ -549,19 +559,34 @@ func (a *app) factoryFoldFirstRead() {
 // factoryReadSoonArm arms the next one-second re-read for the save standing.
 func (a *app) factoryReadSoonArm() tea.Cmd {
 	gen := a.fp.readingGen
+	a.fp.readingArmed = true
 	return surfaceTick(factoryReadSoonEvery, func(time.Time) tea.Msg { return factoryReadSoonMsg{gen: gen} })
 }
 
-// factoryReadSoon is that beat, arriving: the floor is read and the beat
-// re-armed while the reading moment stands, and nothing once it has cleared,
-// lapsed or been replaced by a later save.
-func (a *app) factoryReadSoon(gen int) tea.Cmd {
-	if gen != a.fp.readingGen || a.fp.readingSince.IsZero() {
+// factoryReadSoonWake arms the beat when the floor wants it and none is in
+// the air: the loop asks it after every message, so an item page opened on a
+// running stage, or a stage that starts under an open page, starts the beat.
+func (a *app) factoryReadSoonWake() tea.Cmd {
+	if a.fp.readingArmed || !a.factoryWantsSecondBeat() {
 		return nil
 	}
-	if !a.factoryFirstReading() {
+	return a.factoryReadSoonArm()
+}
+
+// factoryReadSoon is that beat, arriving: the floor is read and the beat
+// re-armed while [app.factoryWantsSecondBeat] holds, and nothing once the
+// reading moment has cleared or lapsed and no stage runs on an open page. A
+// beat a later save replaced asks nothing.
+func (a *app) factoryReadSoon(gen int) tea.Cmd {
+	if gen != a.fp.readingGen {
+		return nil
+	}
+	a.fp.readingArmed = false
+	if !a.fp.readingSince.IsZero() && !a.factoryFirstReading() {
 		a.fp.readingSince = time.Time{}
 		a.touch()
+	}
+	if !a.factoryWantsSecondBeat() {
 		return nil
 	}
 	return tea.Batch(a.factoryRead(), a.factoryReadSoonArm())

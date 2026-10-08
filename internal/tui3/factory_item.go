@@ -995,7 +995,8 @@ func factoryKnobs(st factory.Stage) string {
 //	paused    how long it has been held
 //	stopped   that a person stopped it and the branch is kept
 //	pending   the stage it runs after
-//	running   its task count and round, then the stream's newest log lines
+//	running   the spinner, its task count, round and time, then the stream's
+//	          newest log lines
 //	waiting   the question, then its keys
 //	done      its result and what it took
 //	failed    what failed
@@ -1019,9 +1020,12 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 	case v.kind == factoryMarkStopped:
 		out = append(out, pal.muted(fit(factoryStoppedWords, measure)))
 	case v.state == factory.PhaseRunning:
-		if line := strings.Join(nonEmpty([]string{factoryStageCounts(v), v.elapsed}), rowSep); line != "" {
-			out = append(out, pal.muted(fit(line, measure)))
-		}
+		// THE PANE'S RUNNING LINE LEADS WITH THE SAME SPINNER THE RAIL WEARS
+		// ([app.factoryStageMark]), turning, and its time counts up every
+		// second ([app.factoryWantsSecondBeat]).
+		mark, markPaint := a.factoryStageMark(v)
+		line := strings.Join(nonEmpty([]string{factoryStageCounts(v), v.elapsed}), rowSep)
+		out = append(out, markPaint(mark)+" "+pal.muted(fit(line, max(measure-factoryLeadW, 0))))
 		if s := it.Stream; s != nil {
 			log := s.Log
 			if left := room - len(out); len(log) > left {
