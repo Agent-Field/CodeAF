@@ -31,8 +31,14 @@ import (
 // ([app.factoryVerbPress]), so a press and a key cannot do two different
 // things.
 //
+// WHILE A TYPING ROW HAS THE KEYS THE COLUMN IS DIMMED (owner decision,
+// 2026-10-08): every row and every group's name in the dim tier, drawn but
+// off, and a press on a row does nothing. A dim column means exactly one
+// thing, the keys type now; the manager's box (factory_timeline.go) is the
+// typing row a person meets most.
+//
 // THE POINTER RESTING ON A ROW PAINTS IT WITH THE POINTER'S GROUND, as the
-// floor's rows wear it. THE KEYBOARD DOES NOT WALK THIS COLUMN: `↑↓` stay the
+// floor's rows wear it, dimmed or not. THE KEYBOARD DOES NOT WALK THIS COLUMN: `↑↓` stay the
 // left column's, and every row here already has its own key.
 //
 // UNDER [factoryVerbRailMinW] THE COLUMN IS NOT DRAWN: the chips come back on
@@ -133,7 +139,11 @@ func (a *app) factoryVerbLines(it factory.Item, room int) ([]string, []factoryVe
 // pointer's ground.
 func (a *app) factoryVerbRowLine(r factoryVerbRow) string {
 	pal := a.pal
-	body := pal.ink(factoryPad(r.word, factoryVerbWordW+factoryVerbValueW))
+	paint := pal.ink
+	if a.factoryVerbsOff() {
+		paint = pal.dim
+	}
+	body := paint(factoryPad(r.word, factoryVerbWordW+factoryVerbValueW))
 	key := factorySpaces(factoryVerbKeyW-ansi.StringWidth(r.key)) + pal.dim(r.key)
 	content := factorySpaces(factoryVerbIndentW) + body + factorySpaces(factoryVerbKeyGap) + key
 	if r.word == a.fp.verbHover {
@@ -141,6 +151,10 @@ func (a *app) factoryVerbRowLine(r factoryVerbRow) string {
 	}
 	return factorySpaces(factoryVerbLeadW) + content
 }
+
+// factoryVerbsOff says whether the column is drawn but off: a typing row
+// has the keys.
+func (a *app) factoryVerbsOff() bool { return a.fp.act.ask != nil }
 
 // factoryVerbAt is the row the last draw put at screen column x on body row
 // row, and false off the column or on a row that is no verb.
@@ -174,8 +188,13 @@ func (a *app) factoryVerbHover(x, y int) bool {
 
 // factoryVerbPress is a press on a row: ITS KEY, sent down the place's own
 // key path (place_factory.go's owns, then key), so the press runs the very
-// function the key runs and never a copy of it.
+// function the key runs and never a copy of it; while the column is dimmed,
+// nothing.
 func (a *app) factoryVerbPress(v factoryVerbRow) tea.Cmd {
+	// A DIMMED ROW RUNS NOTHING: its key would type into the box.
+	if a.factoryVerbsOff() {
+		return nil
+	}
 	msg := factoryKeyPress(v.key)
 	if cmd, took := (placeFactory{}).owns(a, msg); took {
 		return cmd

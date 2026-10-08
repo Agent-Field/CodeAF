@@ -210,8 +210,8 @@ func TestFactorySettingsPaneRunning(t *testing.T) {
 	}
 }
 
-// `enter` ON THE MANAGER OPENS THE CONVERSATION as `T` does; on the result it
-// does nothing.
+// `enter` ON THE MANAGER PUTS THE KEYS IN ITS BOX, and asks no door; `T`
+// still opens the conversation; on the result `enter` does nothing.
 func TestFactoryFacetEnter(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbsLab(t, f, 150)
@@ -223,8 +223,13 @@ func TestFactoryFacetEnter(t *testing.T) {
 	}
 	factoryRowNamed(t, a, wordFacetManager)
 	drive(t, a, key("enter"))
+	if got := f.said(); len(got) != 0 || !a.factoryBoxFocused() {
+		t.Fatalf("enter on the manager asked %v (box focused %v)", got, a.factoryBoxFocused())
+	}
+	drive(t, a, key("esc"))
+	drive(t, a, key("T"))
 	if got := strings.Join(f.said(), " "); !strings.Contains(got, "Talk") {
-		t.Fatalf("enter on the manager asked %q, not the Talk door", got)
+		t.Fatalf("T on the manager asked %q, not the Talk door", got)
 	}
 }
 

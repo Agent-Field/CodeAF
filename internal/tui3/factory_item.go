@@ -332,6 +332,19 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			a.factoryStageMove(1)
 			return nil, true
 		}
+		// `TAB` REACHES THE MANAGER'S BOX from the story (factory_timeline.go):
+		// on a row whose center is the run's story the box is the place after
+		// the center, and the next `tab`, from inside the box, walks on to
+		// the next place as it always did.
+		if k == "tab" {
+			if it, ok := a.factoryCursorItem(); ok {
+				if r, ok := a.factoryPageRowAt(it); ok && factoryOnTimeline(r) && a.factory.Has("talk") && !a.fp.tl.diving {
+					a.factoryTLOpenBox(it)
+					return nil, true
+				}
+			}
+			return nil, false
+		}
 		// THE RUN'S STORY HEARS A KEY FIRST on the rows whose center it is
 		// (factory_timeline.go), the walk and `esc` excepted, and a key it
 		// does not take goes on to mean what it meant. `enter` asks it in
@@ -410,8 +423,9 @@ func (a *app) factoryNothingToOpen(it factory.Item) string {
 }
 
 // factoryItemEnter is `enter` on the item page, and a double press on a row of
-// its left column: the issue and the manager row open the item's own
-// conversation; on the run and on a stage the run's story is asked first
+// its left column: the issue opens the item's own conversation and the
+// manager row puts the keys in the manager's box (factory_timeline.go); on
+// the run and on a stage the run's story is asked first
 // (factory_timeline.go); then the proof stage of a landed item answers as its
 // sheet, a stage with a room opens it, and every other stage says why it has
 // none. The log, the result and the settings do nothing here.
@@ -424,11 +438,19 @@ func (a *app) factoryItemEnter() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	// `ENTER` ON THE ISSUE (AND ON THE MANAGER ROW) OPENS THE ITEM'S OWN
-	// CONVERSATION, exactly as `T` does (factory_talk.go): a new item is
-	// started by talking it through, and `enter` is the key a person tries
-	// first. With no Talk door it opens the item on github through `g`'s door,
-	// and with neither the action line says there is nothing to open yet.
+	// `ENTER` ON THE MANAGER ROW PUTS THE KEYS IN THE MANAGER'S BOX
+	// (owner decision, 2026-10-08): a person who starts typing to the
+	// manager types, and `T chat` stays the way to the whole conversation.
+	if r.kind == factoryPageManager && a.factory.Has("talk") {
+		a.pageMsg = ""
+		a.factoryTLOpenBox(it)
+		return nil
+	}
+	// `ENTER` ON THE ISSUE OPENS THE ITEM'S OWN CONVERSATION, exactly as `T`
+	// does (factory_talk.go): a new item is started by talking it through,
+	// and `enter` is the key a person tries first. With no Talk door it opens
+	// the item on github through `g`'s door, and with neither the action line
+	// says there is nothing to open yet.
 	if r.kind == factoryPageIssue || r.kind == factoryPageManager {
 		switch a.factoryIssueEnter(it) {
 		case factoryIssueTalk:
