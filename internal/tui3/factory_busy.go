@@ -88,7 +88,7 @@ func (a *app) factorySpinning() bool {
 	if !a.at(pageFactory) || a.linear {
 		return false
 	}
-	if a.fp.act.doing != "" || strings.TrimSpace(a.fp.snap.BusyAll) != "" {
+	if a.fp.act.doing != "" || strings.TrimSpace(a.fp.snap.BusyAll) != "" || a.factoryFirstReading() {
 		return true
 	}
 	for id := range a.fp.snap.Busy {

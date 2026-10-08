@@ -119,6 +119,17 @@ type factoryLaunchNote struct {
 // after the fold with what the doors said, for the verbs that move the cursor
 // or open an offer. A refusal's own sentence goes on the note line.
 func (a *app) factoryDo(act func(s factory.Seam) error, then func(err error)) tea.Cmd {
+	return a.factoryDoThen(act, func(err error) tea.Cmd {
+		if then != nil {
+			then(err)
+		}
+		return nil
+	})
+}
+
+// factoryDoThen is [app.factoryDo] whose `then` hands the loop a command of
+// its own, for the save that arms a re-read (factory_settings.go).
+func (a *app) factoryDoThen(act func(s factory.Seam) error, then func(err error) tea.Cmd) tea.Cmd {
 	seam := a.factory
 	return a.offLoop(func() func(bool) tea.Cmd {
 		err := act(seam)
@@ -140,11 +151,8 @@ func (a *app) factoryDo(act func(s factory.Seam) error, then func(err error)) te
 			if err != nil {
 				a.pageMsg = strings.TrimSpace(err.Error())
 			}
-			if then != nil {
-				then(err)
-			}
 			a.touch()
-			return nil
+			return then(err)
 		}
 	})
 }
