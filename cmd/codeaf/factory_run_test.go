@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,8 +35,16 @@ func newRunRig(t *testing.T) runRig {
 		t.Fatal(err)
 	}
 	if _, err := exec.LookPath("git"); err == nil {
-		if out, err := exec.Command("git", "-C", workspace, "init", "-q").CombinedOutput(); err != nil {
-			t.Fatalf("git init: %v\n%s", err, out)
+		// ONE COMMIT, because an item's rounds run in a worktree made from
+		// the checkout, and a repository with no commit has nothing to make
+		// one from.
+		for _, args := range [][]string{
+			{"init", "-q"},
+			{"-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "first"},
+		} {
+			if out, err := exec.Command("git", append([]string{"-C", workspace}, args...)...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
 		}
 	}
 	return runRig{st: st, workspace: workspace}
@@ -115,6 +124,24 @@ func TestFactoryRunnerCarriesEveryExecutorThisProcessHas(t *testing.T) {
 	}
 	if dir := opts.RepoDir("api"); dir != g.workspace {
 		t.Errorf("the checkout of api is %q, want the workspace %q", dir, g.workspace)
+	}
+	if opts.Workdir == nil {
+		t.Fatal("the runner has no Workdir: items would work in the person's checkout")
+	}
+	if _, err := exec.LookPath("git"); err == nil {
+		id := g.checkItem(t)
+		it, _ := g.st.Get(id)
+		dir, err := opts.Workdir(it)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(g.st.Root(), "work", "api-"+strconv.Itoa(id)); dir != want {
+			t.Errorf("the item works in %q, want its own worktree %q", dir, want)
+		}
+		it, _ = g.st.Get(id)
+		if it.Stream == nil || len(it.Stream.Log) == 0 || it.Stream.Log[len(it.Stream.Log)-1].Text != "branch: factory/"+strconv.Itoa(id)+"-prove-it-builds" {
+			t.Errorf("the item's log does not name its branch: %+v", it.Stream)
+		}
 	}
 	if src := opts.Source("acme/api"); src != nil {
 		t.Errorf("a floor with no token and nothing watched has a source: %T", src)

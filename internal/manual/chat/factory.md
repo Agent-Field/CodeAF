@@ -968,10 +968,11 @@ claim was shown.
 
 **What runs today:**
 
-- A **check** stage runs its command in the repository's checkout; the exit code is the answer.
-  With no known checkout it says `codeaf does not know where <repo> is checked out`.
+- A **check** stage runs its command in the item's own worktree (see where an item's work
+  lives); the exit code is the answer. With no known checkout it says
+  `codeaf does not know where <repo> is checked out`.
 - A **post** stage writes through the connected GitHub account (comment, label, pr, close),
-  when the recipe's policy allows it.
+  when the recipe's policy allows it. `pr` first pushes the item's branch to `origin`.
 - A **chat** stage (plan, write, review; in codeaf's default recipe test and proof too, so test
   runs what the change implies itself, and `3. test · check · go test ./...` in the recipe file
   makes it a check) is a conversation, named `#12 · review`, made in the
@@ -989,11 +990,33 @@ line in the owner's own words. If nothing answers within five seconds the window
 `the floor's runner did not answer · is codeaf running?` and nothing happens later.
 
 **What a stage may do.** A chat stage runs with the allow posture (what `--yolo` gives) in the
-repository's checkout, so it edits files and runs commands without asking; your own approval
+item's own worktree, never your checkout, so it edits files and runs commands without asking; your own approval
 settings do not narrow it (see what a stage may do).
 
 **Spend.** A chat stage's calls are on the spend ledger under its own conversation, and the
 item's spend counts them against its cap and the day rail.
+
+## where an item's work lives — a worktree and a branch per item
+
+An item never works in your checkout. The first round that needs a folder makes the item its
+own git worktree, `~/.codeaf/v3/factory/work/<repo>-<number>` (such as `work/api-12`), on its
+own branch, `factory/<number>-<slug>`, the slug from the title, at most forty characters (such
+as `factory/12-total-double-counts`). Every later round, and every stage, works in that same
+folder, so four items running at once never write over each other. The item's log says
+`branch: factory/12-total-double-counts` once, when the worktree is made.
+
+The branch starts from your remote's default branch (`origin/HEAD`) when git knows it, else
+from the branch your checkout is on. **Your checkout is never touched**: uncommitted changes
+in it stay where they are, are not an error, and do not follow the item.
+
+A `pr` post stage pushes the branch first, with `git push -u origin <branch>` and never with
+force, then opens the pull request from it. A failed push says
+`could not push factory/12-…: <git's last line>`; a repository with no `origin` says
+`#12 has no remote to push to`. A worktree git could not make says
+`could not make a worktree for #12: <git's last line>`, and the stage does not run.
+
+Stop, ship and send back all keep the worktree and the branch. Nothing deletes either yet: to
+clean one up, `git worktree remove <folder>` in your checkout, and the branch stays.
 
 ## where factory items are saved
 
