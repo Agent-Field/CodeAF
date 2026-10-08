@@ -479,7 +479,9 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 	// on the dial is a quantity the asker chose — a share, a threshold, a rate —
 	// and declaring its ends whole would refuse "0 to 1, default 0.3" outright.
 	fractional := map[string]bool{"per_run_usd": true, "level": true, "fade": true,
-		"min": true, "max": true, "default": true}
+		"min": true, "max": true, "default": true,
+		// A dollar estimate is fractional by nature ("~$2.50").
+		"estimate_usd": true}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)
 		if err != nil {

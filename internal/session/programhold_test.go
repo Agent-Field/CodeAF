@@ -217,6 +217,9 @@ func TestProgramHoldClassifiesEveryRegisteredChatTool(t *testing.T) {
 		"stand": true, "items": true, "revise_assignment": true, "divide_work": true,
 		"build_harness": true, "list_harnesses": true, "list_subharnesses": true,
 		"propose_subharness": true, "revise_design": true,
+		// The factory tools raise a card and write to the floor store under the
+		// home, or to a recipe file through its own door; none takes a path.
+		"factory_add": true, "factory_recipe": true, "factory_stages": true,
 		"web_search": true, "web_fetch": true,
 		"gmail_read": true, "gmail_search": true, "gmail_send": true,
 		"calendar_list": true, "calendar_create": true,
