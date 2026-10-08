@@ -136,7 +136,7 @@ func TestAWindowLeavesAnEngineOfAnotherCleanBuildAndRunsItsOwn(t *testing.T) {
 		t.Fatalf("the launch answered %v, want the in-process road for another build", err)
 	}
 	want := "this workspace's engine is another build (" + old + ") · this window runs its own · " +
-		"the old engine keeps the chats it already has; stop it when they are done: codeaf engine --stop --workspace " + workspace
+		"the old engine keeps the chats it already has; stop it when they are done: codeaf engine --stop --workspace '" + workspace + "'"
 	if another.sentence != want {
 		t.Fatalf("the notice is\n  %q\nwant\n  %q", another.sentence, want)
 	}
@@ -155,21 +155,27 @@ func TestAWindowLeavesAnEngineOfAnotherCleanBuildAndRunsItsOwn(t *testing.T) {
 	}
 }
 
-// The same build, and a dirty or dev build on either side, attach as they
-// always have. A launch shape the stand-in did not open with is how the test
-// sees that the road went past the build question: the shape refusal is the
-// next thing an attached window asks.
-func TestAWindowAttachesToItsOwnBuildAndToDirtyOrDevBuilds(t *testing.T) {
+// ONLY THE SAME BUILD ATTACHES. A launch shape the stand-in did not open with
+// is how the test sees that the road went past the build question: the shape
+// refusal is the next thing an attached window asks.
+func TestAWindowAttachesOnlyToItsOwnBuild(t *testing.T) {
+	const dirtyMine = "abc12345/true/2026-10-08T09:00:00Z"
 	cases := []struct {
 		name               string
 		identity, revision string
 		welcome            remote.Welcome
+		attaches           bool
 	}{
-		{"same build", "abc12345", "abc12345", remote.Welcome{Identity: "abc12345", Build: "abc12345 built 2026-10-06 09:00"}},
-		{"engine dirty", "abc12345", "abc12345", remote.Welcome{Identity: "0ld0ld00/true/2026-10-06T09:00:00Z", Build: "0ld0ld00 (dirty) built 2026-10-06 09:00"}},
-		{"engine dev", "abc12345", "abc12345", remote.Welcome{Build: "dev"}},
-		{"window dirty", "abc12345/true/2026-10-08T09:00:00Z", "abc12345", remote.Welcome{Identity: "0ld0ld00", Build: "0ld0ld00 built 2026-10-06 09:00"}},
-		{"window dev", "/false/2026-10-08T09:00:00Z", "", remote.Welcome{Identity: "0ld0ld00", Build: "0ld0ld00 built 2026-10-06 09:00"}},
+		{"same clean build", "abc12345", "abc12345", remote.Welcome{Identity: "abc12345", Build: "abc12345 built 2026-10-06 09:00"}, true},
+		{"same dirty binary", dirtyMine, "abc12345", remote.Welcome{Identity: dirtyMine, Build: "abc12345 (dirty) built 2026-10-08 09:00"}, true},
+		{"older engine, same clean revision", "abc12345", "abc12345", remote.Welcome{Build: "abc12345 built 2026-10-06 09:00"}, true},
+		{"another clean revision", "abc12345", "abc12345", remote.Welcome{Identity: "0ld0ld00", Build: "0ld0ld00 built 2026-10-06 09:00"}, false},
+		{"engine dirty", "abc12345", "abc12345", remote.Welcome{Identity: "abc12345/true/2026-10-06T09:00:00Z", Build: "abc12345 (dirty) built 2026-10-06 09:00"}, false},
+		{"engine dev", "abc12345", "abc12345", remote.Welcome{Build: "dev"}, false},
+		{"engine names nothing", "abc12345", "abc12345", remote.Welcome{}, false},
+		{"window dirty", dirtyMine, "abc12345", remote.Welcome{Identity: "abc12345", Build: "abc12345 built 2026-10-06 09:00"}, false},
+		{"window dev", "/false/2026-10-08T09:00:00Z", "", remote.Welcome{Identity: "abc12345", Build: "abc12345 built 2026-10-06 09:00"}, false},
+		{"both dirty on one revision, older engine", dirtyMine, "abc12345", remote.Welcome{Build: "abc12345 (dirty) built 2026-10-06 09:00"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -180,18 +186,25 @@ func TestAWindowAttachesToItsOwnBuildAndToDirtyOrDevBuilds(t *testing.T) {
 
 			err := openChatV3Local(localLaunch{workspace: workspace, shape: &remote.LaunchShape{Yolo: true}})
 			var another *hostAnotherBuild
-			if errors.As(err, &another) {
-				t.Fatalf("the window left an engine it should attach to: %q", another.sentence)
-			}
 			var taken *hostShapeTaken
-			if !errors.As(err, &taken) {
+			switch {
+			case c.attaches && errors.As(err, &another):
+				t.Fatalf("the window left an engine of its own build: %q", another.sentence)
+			case c.attaches && !errors.As(err, &taken):
 				t.Fatalf("the launch answered %v, want it attached (and then the shape question)", err)
-			}
-			if strings.Contains(taken.sentence, "another build") {
-				t.Fatalf("an attached window spoke of another build: %q", taken.sentence)
+			case !c.attaches && !errors.As(err, &another):
+				t.Fatalf("the launch answered %v, want the in-process road for another build", err)
+			case !c.attaches:
+				if !strings.HasPrefix(another.sentence, "this workspace's engine is another build (") ||
+					!strings.HasSuffix(another.sentence, "codeaf engine --stop --workspace '"+workspace+"'") {
+					t.Fatalf("the notice %q does not name the build and the quoted stop", another.sentence)
+				}
 			}
 			if hellos, _ := host.counts(); hellos != 1 {
 				t.Fatalf("the engine saw %d hellos, want one", hellos)
+			}
+			if !hostAnswers(workspace) {
+				t.Fatal("the engine was stopped; it keeps the chats it already has")
 			}
 		})
 	}
