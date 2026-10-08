@@ -244,7 +244,12 @@ func (c *stageConversation) drain(events <-chan session.Event) {
 			}
 			c.say(event.Tool + " failed: " + reason)
 		case session.EventNotice:
-			c.say(event.Text)
+			// THE ACCEPTANCE NOTICE IS THE STAGE'S OWN BUSINESS: every stage
+			// would log a `done when · …` line, which says nothing to the
+			// person reading the item's log.
+			if !strings.HasPrefix(event.Text, "done when · ") {
+				c.say(event.Text)
+			}
 		case session.EventError:
 			c.fail(event.Err)
 		}

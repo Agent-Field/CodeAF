@@ -719,7 +719,7 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 	}
 	c.roundCancel = cancel
 	lp.mu.Unlock()
-	res, err = exec.Run(rctx, job)
+	res, err = runIn(rctx, exec, job)
 	lp.mu.Lock()
 	c.roundCancel = nil
 	cut := rctx.Err() != nil
@@ -752,22 +752,23 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		last = &res
 	}
 	lp.mu.Unlock()
-	dir := ""
-	if lp.r.opts.RepoDir != nil {
-		dir = lp.r.opts.RepoDir(it.Repo)
-	}
+	// THE ROUND RUNS IN THE ITEM'S OWN WORKTREE when the floor makes one
+	// (workdir.go), else in the repository's checkout; a worktree that could
+	// not be made fails the round rather than running in the person's tree.
+	dir, dirErr := lp.jobDir(it)
 	return Job{
-		Item:  it,
-		Stage: st,
-		Index: index,
-		Round: round,
-		Notes: notes,
-		Prior: prior,
-		Last:  last,
-		Dir:   dir,
-		Steer: c.steer,
-		Log:   func(line string) { lp.say(c, "thought", line) },
-		Spend: lp.spender(c),
+		Item:   it,
+		Stage:  st,
+		Index:  index,
+		Round:  round,
+		Notes:  notes,
+		Prior:  prior,
+		Last:   last,
+		Dir:    dir,
+		dirErr: dirErr,
+		Steer:  c.steer,
+		Log:    func(line string) { lp.say(c, "thought", line) },
+		Spend:  lp.spender(c),
 	}
 }
 
@@ -1370,7 +1371,7 @@ func (lp *floorLoop) reverifyRun(c *loopCtl) {
 		}) != nil {
 			return
 		}
-		res, err := exec.Run(c.ctx, lp.job(c, st, index, i, ph.Round+1))
+		res, err := runIn(c.ctx, exec, lp.job(c, st, index, i, ph.Round+1))
 		if c.ctx.Err() != nil {
 			return
 		}
