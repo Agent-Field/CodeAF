@@ -60,6 +60,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"who is the manager of an issue on the factory floor", "factory"},
 		{"what happens to what I type in the item's chat while it runs", "factory-stage-conversations"},
 		{"what lines does the run write into the item's chat", "factory-stage-conversations"},
+		{"what does run these stages mean on the factory floor", "factory"},
+		{"the manager did not answer", "factory-stage-conversations"},
 		{"how do I approve a landed item", "factory"},
 		{"what does ask me at mean on a factory item", "factory"},
 		{"what is select on the factory floor", "factory"},
