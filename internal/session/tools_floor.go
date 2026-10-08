@@ -6,8 +6,10 @@ package session
 // cmd/codeaf's factory_foreman.go): the product-level judgment about what to
 // take first, never the runner. It reads the floor through this one tool and
 // proposes by MARKING items; the person launches what is marked with `L` on
-// the floor. Every conversation on a launch with a floor carries it, because
-// "what should I take first?" is a fair question in any of them.
+// the floor. ONLY THE FOREMAN CARRIES IT: cmd/codeaf sets [Config.Floor] on
+// the conversation whose session file the floor names as its foreman and on
+// no other, so an ordinary chat proposes through `factory_add` and an item's
+// own conversation through `factory_item`.
 //
 // ── THE LAWS THIS FILE APPLIES ──
 //
@@ -24,7 +26,8 @@ package session
 //     ids never reach the model.
 //
 //   - A CAPABILITY WITH NOTHING BEHIND IT IS ABSENT. With no [Config.Floor]
-//     the tool is off the belt (--once, a task node, --host, --at).
+//     the tool is off the belt (every conversation but the foreman, --once,
+//     a task node, a stage, --host, --at).
 
 import (
 	"context"

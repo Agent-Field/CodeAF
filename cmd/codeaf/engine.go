@@ -984,14 +984,18 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// the verb is absent rather than writing to a floor nobody there can see.
 	// Conversations this engine opens later for the same window inherit it from
 	// cfg ([remote.Engine.Fresh] and Open below both start from it).
+	var floorStore *factorystore.Store
 	if engineFactoryHere(hello) {
 		cfg.Factory = factoryDoor(engineFactory(proc.ProfileDir))
 		// And `factory_recipe`'s door, on the same law and the same store.
 		cfg.Recipe = recipeDoor(engineFactory(proc.ProfileDir), workspace)
 		// And `factory_item`'s door, on the same law and the same store.
 		cfg.FactoryItem = itemDoor(engineFactory(proc.ProfileDir), workspace)
-		// And `factory_floor`'s door, on the same law and the same store.
-		cfg.Floor = floorDoor(engineFactory(proc.ProfileDir), workspace)
+		// And the store `factory_floor`'s door reads, on the same law; the door
+		// itself is on the foreman's belt only, so each conversation this engine
+		// opens asks [foremanFloorDoor] by its own session file (below, once the
+		// hello has settled which file that is, and in Fresh and Open).
+		floorStore = engineFactory(proc.ProfileDir)
 		// AND THE FLOOR'S RUNNER, which on the ordinary launch is this
 		// process's: it outlives the window, so an item keeps running when the
 		// terminal closes (factory_run.go). Every stage conversation is opened
@@ -1016,6 +1020,9 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return nil, err
 		}
 	}
+	// `factory_floor`, now that the hello has settled which conversation this
+	// is: on the foreman's belt and no other (factory_foreman.go).
+	cfg.Floor = foremanFloorDoor(floorStore, workspace, cfg.SessionFile)
 
 	// THE THREE ROAD-DEPENDENT CAPABILITIES ARE DECIDED IN ONE PLACE, and this
 	// door no longer keeps its own answer to any of them (chatv3_lanes.go). Each
@@ -1158,6 +1165,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			if err != nil {
 				return nil, "", err
 			}
+			fresh.Floor = foremanFloorDoor(floorStore, workspace, fresh.SessionFile)
 			// THROUGH THE SAME BUILDER THE BOOT CONVERSATION WAS OPENED WITH, so
 			// a conversation started by /new over a connection is not a lesser
 			// one than the conversation it replaced: the adaptive runner is
@@ -1184,6 +1192,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			if err != nil {
 				return nil, false, err
 			}
+			earlier.Floor = foremanFloorDoor(floorStore, workspace, earlier.SessionFile)
 			// Whether the file was found is asked BEFORE it is opened, because
 			// opening it creates it: a path nobody has written yet is a new
 			// conversation, and the surface says so on its first line.

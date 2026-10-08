@@ -40,6 +40,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/connect"
+	factorystore "github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/history"
 	"github.com/Agent-Field/codeaf/internal/modelsource"
@@ -729,6 +730,12 @@ type v3Seam struct {
 	// carried so that a conversation opened an hour later is the same launch
 	// this one is rather than a second one quietly drifting away from it.
 	seed v3Options
+	// floor is this window's factory floor and floorAt the workspace its door
+	// reads checkouts from; nil when the window has no floor. Each
+	// conversation opened here asks [foremanFloorDoor] whether it is the
+	// foreman, which is the only conversation `factory_floor` is on.
+	floor   *factorystore.Store
+	floorAt string
 }
 
 // v3GoneWord is what a door says about a workspace that is not there.
@@ -864,6 +871,10 @@ func (s *v3Seam) open(launch *v3Launch, cfg session.Config, resumed bool) (tui3.
 	// There is a surface, and it answers (internal/tui3's consent.go). Every
 	// conversation this seam opens is one somebody is looking at.
 	cfg.AskConsent = true
+	// `factory_floor` is on the foreman's belt and no other, decided per
+	// conversation by its session file (factory_foreman.go's
+	// [foremanFloorDoor]), never inherited from the boot conversation.
+	cfg.Floor = foremanFloorDoor(s.floor, s.floorAt, cfg.SessionFile)
 	// And it holds every standing lane for every one of them: the surface opens
 	// those subscriptions again on each conversation it takes (internal/tui3's
 	// switcher.go), which is what lets chat offer a saved program with an intake

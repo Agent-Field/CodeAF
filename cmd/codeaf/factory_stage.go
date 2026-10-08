@@ -83,7 +83,7 @@ func (m stageMaker) Open(ctx context.Context, spec factoryrun.ConversationSpec) 
 	cfg.Unattended = true
 	cfg.Budget = session.Budget{Wall: factoryStageWall}
 	cfg.AskConsent = false
-	cfg.Factory, cfg.Recipe, cfg.FactoryItem = nil, nil, nil
+	cfg.Factory, cfg.Recipe, cfg.FactoryItem, cfg.Floor = nil, nil, nil, nil
 	gate := stageApprovalGate{rows: v3ApprovalGate{workspace: where, profileDir: m.profileDir, headless: true}, posture: factoryStagePosture()}
 	cfg.ApprovalGate = gate
 	cfg.ApprovalPosture = gate.posture
