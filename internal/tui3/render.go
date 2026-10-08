@@ -76,6 +76,10 @@ const (
 	// manager's message or of a member's answer, which a press lays out in
 	// full and a second press folds again. The row's open field says whose.
 	hitThread
+	// hitFactoryItem is a live item card in a conversation (factoryitemcard.go):
+	// a press, or `enter` on the selected card, opens the item page. It is a hit
+	// of its own because no other block opens a page of another place.
+	hitFactoryItem
 )
 
 // row is one visible screen row and what it points at. It is the single
@@ -669,6 +673,9 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		if e.kind == entryTask {
 			hit = hitTask
 		}
+		if e.kind == entryFactory && a.factoryCardOpens(e.fac) {
+			hit = hitFactoryItem
+		}
 		// THE BLOCK'S REFERENCES ARE NUMBERED ACROSS ITS ROWS, and the count is
 		// reset here because the pointer holds a link as (block, ordinal): a
 		// paragraph re-wraps when the frame is dragged, so an ordinal counted per
@@ -1015,6 +1022,12 @@ func (a *app) entryRows(d deck, i, width int) []string {
 	// A TEAM NOTE DRAWS ANSWERS OUT OF THE TRAFFIC CACHE (teamthreadcard.go), so
 	// its rows go stale when that cache moves, and only then.
 	if a.teamNoteStale(e, width) {
+		e.stale = true
+	}
+	// AND A LIVE ITEM CARD'S ROWS GO STALE WHEN THE ITEM THEY DRAW MOVES
+	// (factoryitemcard.go): the floor's next read, the news an event carried,
+	// or the minute a running item's clock turns over — and only then.
+	if a.factoryLiveStale(e) {
 		e.stale = true
 	}
 	if e.built && e.rowKey == key && !e.stale {

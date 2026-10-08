@@ -153,7 +153,7 @@ func TestFactoryCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 	results := runFactoryAdd(t, agent, ctx)
 
 	q := awaitFactoryQuestion(t, questions)
-	if q.Head != "wants to put this on the factory floor: retry the flaky upload test" {
+	if q.Head != "put this on the factory floor?" {
 		t.Errorf("head = %q", q.Head)
 	}
 	if q.Subject.Name != "web · bug · S" {

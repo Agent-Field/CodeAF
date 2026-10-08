@@ -141,10 +141,10 @@ const (
 	// repository's recipe, policy or habits (tools_factory_recipe.go,
 	// [Agent.ResolveRecipe]). Its token is the proposal's own id, by Ref.
 	QuestionRecipe QuestionKind = "recipe"
-	// QuestionStages is a card the chat raised to change one floor item's
-	// stages (tools_factory_stages.go, [Agent.ResolveStages]). Its token is the
-	// proposal's own id, by Ref.
-	QuestionStages QuestionKind = "stages"
+	// QuestionItem is a card the chat raised to change one floor item's
+	// stages, gate, cap or effort, or leave it a note (tools_factory_item.go,
+	// [Agent.ResolveItem]). Its token is the proposal's own id, by Ref.
+	QuestionItem QuestionKind = "item"
 )
 
 // AnswerOption is one answer a question will take: the key that gives it and
@@ -274,12 +274,12 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 			{Key: RecipeBankKey, Label: RecipeBankLabel},
 			{Key: RecipeNotNowKey, Label: RecipeNotNowLabel, Safe: true},
 		}
-	case QuestionStages:
-		// THE YES CHANGES THE ITEM'S STAGES, within the recipe's bounds, and
+	case QuestionItem:
+		// THE YES CHANGES THE ITEM, within the recipe's bounds, and
 		// the no changes nothing, so it is the safe one.
 		return []AnswerOption{
-			{Key: StagesChangeKey, Label: StagesChangeLabel},
-			{Key: StagesNotNowKey, Label: StagesNotNowLabel, Safe: true},
+			{Key: ItemYesKey, Label: ItemYesLabel},
+			{Key: ItemKeepKey, Label: ItemKeepLabel, Safe: true},
 		}
 	case QuestionConnect:
 		return []AnswerOption{
@@ -644,8 +644,8 @@ type AnswerAction struct {
 	Factory FactoryAnswer
 	// Recipe is the recipe card's answer, for [Agent.ResolveRecipe].
 	Recipe RecipeAnswer
-	// Stages is the stages card's answer, for [Agent.ResolveStages].
-	Stages StagesAnswer
+	// Item is the item card's answer, for [Agent.ResolveItem].
+	Item ItemAnswer
 }
 
 // AnswerFromKey is the whole mapping, and it is the one place it is written.
@@ -720,13 +720,13 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 			// Written out for the factory arm's reason.
 			action.Recipe = RecipeAnswer{}
 		}
-	case QuestionStages:
+	case QuestionItem:
 		switch key {
-		case StagesChangeKey:
-			action.Stages = StagesAnswer{Approved: true}
-		case StagesNotNowKey:
+		case ItemYesKey:
+			action.Item = ItemAnswer{Approved: true}
+		case ItemKeepKey:
 			// Written out for the factory arm's reason.
-			action.Stages = StagesAnswer{}
+			action.Item = ItemAnswer{}
 		}
 	}
 	return action, true

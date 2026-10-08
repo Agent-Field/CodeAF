@@ -55,6 +55,10 @@ type FactoryNotice struct {
 	// Item is the floor's own id, set on EventFactoryAdded and zero on a
 	// proposal.
 	Item int
+	// Now is the item as the floor wrote it, set on EventFactoryAdded when the
+	// door can read it back, so a surface with no floor of its own (a window
+	// over --host) still draws the item's live card from the event.
+	Now *factory.Item `json:",omitempty"`
 	// Decided is set on the one rebroadcast of a card somebody answered: what
 	// they said. Nil while the card stands.
 	Decided *FactoryAnswer
@@ -135,6 +139,13 @@ type RecipeNotice struct {
 	// Policy and Habit are one sentence each.
 	Policy string
 	Habit  string
+	// Now and After are the stage names the kind runs today and after a yes,
+	// the new one marked `+`, read before the card is raised; both are empty
+	// for a policy or a habit, and when the door cannot read the recipe.
+	Now   []string
+	After []string
+	// Why is the model's one sentence for the line, when it gave one.
+	Why string
 	// Decided is set on the one rebroadcast of a card somebody answered.
 	Decided *RecipeAnswer
 	// Withdrawn is set on the one rebroadcast of a card that came down
@@ -164,30 +175,66 @@ func (a *Agent) ResolveRecipe(id string, answer RecipeAnswer) {
 	offer.answers <- answer
 }
 
-// ── the stages card ─────────────────────────────────────────────────────────
+// ── the item card ───────────────────────────────────────────────────────────
 
-// StagesDoor is the one thing a conversation may do to one item already on
-// the floor: change which stages it runs. The launch implements it over the
-// store (cmd/codeaf's factory.go): it loads the item, reads its repository's
-// recipe, applies the edit through [factory.Adapt] — WHICH IS WHERE EVERY
-// BOUND IS HELD, never a prompt — and saves it. Apply answers the stage names
-// the item runs after the change, in order, or the reason it did not change in
-// a person's words (a `fixed` recipe's refusal is Adapt's own sentence).
+// ItemDoor is the one thing a conversation may do to one item already on the
+// floor: change its stages, its gate, its cap or its effort, or leave its
+// stages a note. The launch implements it over the store (cmd/codeaf's
+// factory_talk.go), and the change itself is [ApplyItemChange], WHICH IS WHERE
+// EVERY BOUND IS HELD: the stages go through [factory.Adapt], never a prompt.
 //
-// IT CHANGES STAGES AND NOTHING ELSE. There is no field for the cap, the gate
-// or a launch: [factory.PlanEdit] is the whole of what travels.
-type StagesDoor interface {
-	Apply(ctx context.Context, item int, edit factory.PlanEdit) ([]string, error)
+// IT IS ASKED TWICE. Preview answers the item as it stands and as it would
+// stand after the change, without writing anything, BEFORE any card is raised:
+// the card shows both, and a change the bounds refuse is refused with Adapt's
+// own sentence and never offered. Apply makes the change after a yes, against
+// the item as it is then, and answers the item as the floor now holds it.
+//
+// THERE IS NO FIELD FOR A LAUNCH, a stop or a sign-off: [ItemChange] is the
+// whole of what travels.
+type ItemDoor interface {
+	Preview(ctx context.Context, item int, change ItemChange) (before, after factory.Item, err error)
+	Apply(ctx context.Context, item int, change ItemChange) (factory.Item, error)
 }
 
-// mayStages says whether `factory_stages` belongs on this belt: there is a
-// door behind it. It is the belt's predicate, asked of one field.
-func (c Config) mayStages() bool { return c.Stages != nil }
+// mayItem says whether `factory_item` belongs on this belt: there is a door
+// behind it. It is the belt's predicate, asked of one field.
+func (c Config) mayItem() bool { return c.FactoryItem != nil }
 
-// StagesNotice is the stages card. It is the payload of EventStagesProposal
-// (ID is the token a surface hands back to [Agent.ResolveStages]) and of
-// EventStagesChanged, whose Now is the item's stages after the change.
-type StagesNotice struct {
+// ItemChange is what one item card changes, every field optional and the
+// zero value of each one "leave it as it is".
+type ItemChange struct {
+	// Edit is the stages: sentences to add, names to skip or switch on.
+	Edit factory.PlanEdit
+	// Gate is plan, ship or none; "" leaves it.
+	Gate factory.Gate
+	// Cap is the item's spending cap in dollars; zero leaves it.
+	Cap float64
+	// Effort is cheap, strong or default (the knee, stored as ""); "" leaves
+	// it. It is the effort of every conversation stage that has not run.
+	Effort string
+	// Note is one sentence appended to the item's notes for its stages.
+	Note string
+}
+
+// Empty says the change changes nothing.
+func (c ItemChange) Empty() bool {
+	return c.Edit.Empty() && c.Gate == "" && c.Cap == 0 && c.Effort == "" && strings.TrimSpace(c.Note) == ""
+}
+
+// ItemFacts is one item as the card compares it, before and after: the stages
+// it runs, its gate, its cap and its effort. EVERY FIELD IS THE FLOOR'S OWN
+// SPELLING; the card draws `—` where a field is empty.
+type ItemFacts struct {
+	Stages []string
+	Gate   string
+	Cap    float64
+	Effort string
+}
+
+// ItemNotice is the item card. It is the payload of EventItemProposal (ID is
+// the token a surface hands back to [Agent.ResolveItem]) and of
+// EventItemChanged, whose Now is the item after the change.
+type ItemNotice struct {
 	// ID is THE PROPOSAL'S id; nothing about the item changes until the person
 	// says yes.
 	ID string
@@ -195,38 +242,51 @@ type StagesNotice struct {
 	// (`#12`), which is what the card's head says.
 	Item int
 	Ref  string
-	// Add, Skip and On are the edit as the model asked for it: stage sentences
-	// to add, and stage names to skip or switch on.
+	// Add, Skip and On are the stages as the model asked: stage sentences to
+	// add, and stage names to skip or switch on.
 	Add  []string
 	Skip []string
 	On   []string
-	// Why is the model's one sentence for the change.
-	Why string
-	// Now is the item's stage names after the change, set on
-	// EventStagesChanged and empty on a proposal.
-	Now []string
+	// Gate, Cap and Effort are the chips as the model asked; empty or zero is
+	// unchanged.
+	Gate   string
+	Cap    float64
+	Effort string
+	// Note is the sentence the stages will read, and Why the model's one
+	// sentence for the change.
+	Note string
+	Why  string
+	// Before and After are the item as it stands and as it would stand, read by
+	// the door's preview before the card is raised. After is the item as the
+	// floor holds it on EventItemChanged.
+	Before ItemFacts
+	After  ItemFacts
+	// Now is the whole item as the floor holds it after a yes, set on
+	// EventItemChanged only, so a surface with no floor of its own still draws
+	// the item's live card from the event.
+	Now *factory.Item `json:",omitempty"`
 	// Decided is set on the one rebroadcast of a card somebody answered.
-	Decided *StagesAnswer
+	Decided *ItemAnswer
 	// Withdrawn is set on the one rebroadcast of a card that came down
 	// unanswered, in a person's words.
 	Withdrawn string
 }
 
-// StagesAnswer is what the person said to a stages card.
-type StagesAnswer struct {
-	// Approved changes the stages exactly as the card showed it.
+// ItemAnswer is what the person said to an item card.
+type ItemAnswer struct {
+	// Approved changes the item exactly as the card showed it.
 	Approved bool
 	// Change is the person's correction. NOTHING CHANGES ON A CHANGE.
 	Change string
 }
 
-// ResolveStages answers one EventStagesProposal. An id nobody is waiting on is
+// ResolveItem answers one EventItemProposal. An id nobody is waiting on is
 // ignored, as [Agent.ResolveFactory] ignores one.
-func (a *Agent) ResolveStages(id string, answer StagesAnswer) {
+func (a *Agent) ResolveItem(id string, answer ItemAnswer) {
 	id = strings.TrimSpace(id)
 	a.mu.Lock()
-	offer := a.stagesOffers[id]
-	delete(a.stagesOffers, id)
+	offer := a.itemOffers[id]
+	delete(a.itemOffers, id)
 	a.mu.Unlock()
 	if offer == nil {
 		return

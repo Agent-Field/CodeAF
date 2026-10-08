@@ -578,7 +578,7 @@ func (a *app) hoverTarget(x, y int) hoverAt {
 		case r.hit == hitThread:
 			return hoverAt{kind: hoverThread, entry: r.entry, key: r.open}
 		case r.hit == hitTool, r.hit == hitMore, r.hit == hitTask, r.hit == hitDone,
-			r.hit == hitHarness:
+			r.hit == hitHarness, r.hit == hitFactoryItem:
 			// THE ONES THAT WERE MISSING FROM THIS LIST, and every one of them is
 			// a row [app.press] already acts on. A sub-harness card opens the same
 			// way a landed task's does (harnesscard.go) — so a card that lit up

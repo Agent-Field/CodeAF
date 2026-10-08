@@ -155,10 +155,13 @@ func TestFactoryTeamsFoldUnderOneRow(t *testing.T) {
 	}
 }
 
-// THE STAGES CARD folds like the recipe card: a question while it stands, and
-// one foot afterwards — changed, not now, changed in words, expired.
-func TestFactoryStagesCardSettles(t *testing.T) {
-	notice := session.StagesNotice{ID: "g1", Item: 12, Ref: "#12", Add: []string{"after review, read it for auth holes"}, Skip: []string{"neaten"}, Why: "touches billing"}
+// THE ITEM CARD folds like the recipe card: one question while it stands —
+// the head built from what changes, the body before and after — and one foot
+// afterwards: changed, kept as it was, changed in words, expired.
+func TestFactoryItemCardSettles(t *testing.T) {
+	notice := session.ItemNotice{ID: "g1", Item: 1, Ref: "#1", Gate: "plan", Cap: 8, Why: "plan first",
+		Before: session.ItemFacts{Stages: []string{"plan", "write", "test", "proof"}, Gate: "ship", Cap: 5},
+		After:  session.ItemFacts{Stages: []string{"plan", "write", "test", "proof"}, Gate: "plan", Cap: 8}}
 	for _, c := range []struct {
 		name   string
 		settle func(a *app)
@@ -166,39 +169,42 @@ func TestFactoryStagesCardSettles(t *testing.T) {
 	}{
 		{"yes", func(a *app) {
 			d := notice
-			d.Decided = &session.StagesAnswer{Approved: true}
-			a.stagesProposal(session.Event{Kind: session.EventStagesProposal, Stages: &d})
+			d.Decided = &session.ItemAnswer{Approved: true}
+			a.itemProposal(session.Event{Kind: session.EventItemProposal, FactoryItem: &d})
 			n := notice
-			n.Now = []string{"plan", "write"}
-			a.stagesChanged(session.Event{Kind: session.EventStagesChanged, Stages: &n})
+			a.itemChanged(session.Event{Kind: session.EventItemChanged, FactoryItem: &n})
 		}, "changed"},
 		{"no", func(a *app) {
 			d := notice
-			d.Decided = &session.StagesAnswer{}
-			a.stagesProposal(session.Event{Kind: session.EventStagesProposal, Stages: &d})
-		}, "not now"},
+			d.Decided = &session.ItemAnswer{}
+			a.itemProposal(session.Event{Kind: session.EventItemProposal, FactoryItem: &d})
+		}, "kept as it was"},
 		{"words", func(a *app) {
 			d := notice
-			d.Decided = &session.StagesAnswer{Change: "keep neaten"}
-			a.stagesProposal(session.Event{Kind: session.EventStagesProposal, Stages: &d})
+			d.Decided = &session.ItemAnswer{Change: "make it $10"}
+			a.itemProposal(session.Event{Kind: session.EventItemProposal, FactoryItem: &d})
 		}, factoryChangedWord},
 		{"window", func(a *app) {
 			d := notice
-			d.Withdrawn = "nothing changed in the item's stages"
-			a.stagesProposal(session.Event{Kind: session.EventStagesProposal, Stages: &d})
+			d.Withdrawn = "nothing changed on the item"
+			a.itemProposal(session.Event{Kind: session.EventItemProposal, FactoryItem: &d})
 		}, "expired · nothing changed"},
 	} {
 		a := placeApp(t)
 		raised := notice
-		a.stagesProposal(session.Event{Kind: session.EventStagesProposal, Stages: &raised})
+		a.itemProposal(session.Event{Kind: session.EventItemProposal, FactoryItem: &raised})
 		card := a.factoryCardFor("g1", "")
-		if card == nil || card.stages == nil {
+		if card == nil || card.change == nil {
 			t.Fatalf("%s: the card was not drawn", c.name)
 		}
-		rows := strings.Join(FactoryCardRows(a, card, 100, false), "\n")
-		if !strings.Contains(plain(rows), "wants to change #12's stages: +") || !strings.Contains(plain(rows), "−neaten") ||
-			!strings.Contains(plain(rows), "stages · #12 · touches billing") {
-			t.Fatalf("%s: the standing card reads %q", c.name, plain(rows))
+		rows := plain(strings.Join(FactoryCardRows(a, card, 100, false), "\n"))
+		for _, want := range []string{"#1 · plan first with a $8 cap?", "gate  ship → plan", "cap  $5 → $8", "why: plan first"} {
+			if !strings.Contains(rows, want) {
+				t.Fatalf("%s: the standing card lacks %q:\n%s", c.name, want, rows)
+			}
+		}
+		if strings.Contains(rows, "now:") {
+			t.Fatalf("%s: a card whose stages do not move says them:\n%s", c.name, rows)
 		}
 		c.settle(a)
 		if got := factoryCardWord(card); got != c.want {

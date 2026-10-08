@@ -8,6 +8,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -172,7 +173,7 @@ func TestFactoryRecipeCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 	results := runFactoryRecipe(t, agent, ctx, recipeStageArgs)
 
 	q := awaitRecipeQuestion(t, questions)
-	if q.Head != "wants to add to web's recipe for issue: security · chat · read it for auth holes · when touches auth" {
+	if q.Head != "add this to web's recipe for issue?" {
 		t.Errorf("head = %q", q.Head)
 	}
 	if q.Subject.Name != "recipe · web · issue" {
@@ -203,15 +204,15 @@ func TestFactoryRecipeCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 func TestFactoryRecipeYesWritesExactlyOneLine(t *testing.T) {
 	for _, c := range []struct{ args, head, want, line string }{
 		{recipeStageArgs,
-			"wants to add to web's recipe for issue: security · chat · read it for auth holes · when touches auth",
+			"add this to web's recipe for issue?",
 			"security · chat · read it for auth holes · when touches auth is in web's recipe for issue",
 			"stage web issue security · chat · read it for auth holes · when touches auth"},
 		{`{"repo":"web","policy":"never post without green tests"}`,
-			"wants to add to web's policy: never post without green tests",
+			"add this to web's policy?",
 			"never post without green tests is in web's policy",
 			"policy web never post without green tests"},
 		{`{"repo":"web","habit":"PRs from my own issues ship when proof is green"}`,
-			"wants to add to web's habits: PRs from my own issues ship when proof is green",
+			"add this to web's habits?",
 			"PRs from my own issues ship when proof is green is in web's habits",
 			"habit web PRs from my own issues ship when proof is green"},
 	} {
@@ -339,5 +340,60 @@ func TestFactoryRecipeCardIsReplayedToALateTaskLane(t *testing.T) {
 	agent.mu.Unlock()
 	if len(standing) != 0 {
 		t.Fatalf("a settled card is still replayed as standing: %+v", standing)
+	}
+}
+
+// fakeStagerDoor is a recipe door that can also say the stages a kind runs
+// today, as the file door does (cmd/codeaf's fileRecipeDoor.Stages), or
+// refuse to.
+type fakeStagerDoor struct {
+	fakeRecipeDoor
+	now    []string
+	refuse error
+}
+
+func (d *fakeStagerDoor) Stages(_ context.Context, repo string, kind factory.Kind) ([]string, error) {
+	if d.refuse != nil {
+		return nil, d.refuse
+	}
+	return d.now, nil
+}
+
+// THE RECIPE CARD SAYS THE KIND'S STAGES BEFORE AND AFTER, the new one marked
+// `+`, then the line and the reason; and a recipe the door cannot read refuses
+// the line before any card, in the door's own words.
+func TestFactoryRecipeCardSaysNowAndAfter(t *testing.T) {
+	door := &fakeStagerDoor{now: []string{"plan", "write", "test", "review", "proof"}}
+	agent := newRecipeAgent(t, door, 0)
+	questions, stop := agent.WatchQuestions()
+	t.Cleanup(stop)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	results := runFactoryRecipe(t, agent, ctx, `{"repo":"web","kind":"issue","stage":"security · chat · read it for auth holes · when touches auth","why":"you said auth always gets a second look"}`)
+	q := awaitRecipeQuestion(t, questions)
+	want := "now: plan · write · test · review · proof; after: plan · write · test · review · proof · +security; " +
+		"security · chat · read it for auth holes · when touches auth; why: you said auth always gets a second look"
+	if q.Reason != want {
+		t.Errorf("reason =\n%q\nwant\n%q", q.Reason, want)
+	}
+	cancel()
+	awaitResult(t, results)
+
+	policy := RecipeRows(RecipeNotice{Repo: "web", Policy: "never post without green tests", Why: "a red post cost a day"})
+	if strings.Join(policy, "|") != "never post without green tests|why: a red post cost a day" {
+		t.Errorf("policy rows = %q", policy)
+	}
+	replaced := recipeAfter([]string{"plan", "review", "proof"}, "review")
+	if strings.Join(replaced, " ") != "plan +review proof" {
+		t.Errorf("a replaced stage = %q", replaced)
+	}
+
+	lost := &fakeStagerDoor{refuse: errors.New("codeaf does not know where web is checked out; open codeaf there once")}
+	out, isErr, _ := newRecipeAgent(t, lost, 0).factoryRecipeTool().Execute(context.Background(), json.RawMessage(recipeStageArgs))
+	if !isErr || out != "nothing was banked: codeaf does not know where web is checked out; open codeaf there once" {
+		t.Errorf("an unreadable recipe = %q, %v", out, isErr)
+	}
+	if len(lost.written()) != 0 {
+		t.Error("an unreadable recipe still banked")
 	}
 }

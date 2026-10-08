@@ -42,7 +42,7 @@ func factoryOfferQuestion(n session.FactoryNotice) session.Question {
 		Ask:      session.AskPermission,
 		Form:     session.FormCard,
 		Asker:    session.Asker{Kind: session.AskerModel},
-		Head:     session.FactoryCardLead + n.Title,
+		Head:     session.FactoryCardHead,
 		Reason:   n.Body,
 		Subject:  session.SubjectRef{Ref: n.ID, Name: strings.Join([]string{n.Repo, n.Kind, n.Size}, session.DecisionSep)},
 		Options:  session.AnswerOptions(session.QuestionFactory),
@@ -67,8 +67,9 @@ func factoryCardLines(a *app, width int) []string {
 	return nil
 }
 
-// THE CARD SAYS THE ENGINE'S HEAD, THE FACTS WITH NOTHING INVENTED, THE BODY
-// CUT TO THREE ROWS, AND THE STAGES THE FLOOR WOULD RUN.
+// THE CARD IS ONE QUESTION, THEN THE ITEM IN THE ITEM CARD'S SHAPE — its title
+// with the facts at the right, `new` with the stages it would run — and the
+// body cut to three rows. Nothing invented: no estimate draws no money.
 func TestFactoryCardDrawsTheOffer(t *testing.T) {
 	lab := newQuestionLab(t)
 	a := lab.a
@@ -78,45 +79,37 @@ func TestFactoryCardDrawsTheOffer(t *testing.T) {
 		t.Fatal("the offer drew no card in the transcript")
 	}
 	text := strings.Join(rows, "\n")
-	if !strings.Contains(rows[0], "wants to put this on the factory floor: paste drops the last line") {
-		t.Fatalf("the head is not the engine's: %q", rows[0])
+	if !strings.Contains(rows[0], "put this on the factory floor?") || strings.Contains(rows[0], "paste drops") {
+		t.Fatalf("the head is not the engine's one question: %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "codeaf · bug · M") {
-		t.Fatalf("the facts row is %q", rows[1])
+	if !strings.Contains(rows[1], a.icon(tokens.GFileDocument)+" paste drops the last line") || !strings.HasSuffix(strings.TrimRight(rows[1], " "), "codeaf · bug · M") {
+		t.Fatalf("the item row is %q", rows[1])
+	}
+	if !strings.Contains(rows[2], "new") || !strings.Contains(rows[2], "plan") || !strings.Contains(rows[2], "proof") ||
+		strings.Contains(rows[2], "security") {
+		t.Fatalf("the state row is %q (new, and the stages that are on)", rows[2])
 	}
 	// THE EMPTINESS LAW: no estimate is no estimate, never `~$0`.
 	if strings.Contains(text, "$") {
 		t.Fatalf("a card with no estimate drew money:\n%s", text)
 	}
-	body := 0
-	for _, row := range rows {
-		if strings.Contains(row, "paste") && !strings.Contains(row, "factory floor") {
-			body++
-		}
-	}
-	if body == 0 {
-		t.Fatalf("the body is not on the card:\n%s", text)
-	}
-	// Three rows of body, the last ending on the ellipsis.
+	// Head, two item rows, three rows of body, the last ending on the
+	// ellipsis, and the foot.
 	if len(rows) != 7 {
-		t.Fatalf("the card is head, facts, three body rows, stages and foot; it drew %d rows:\n%s", len(rows), text)
+		t.Fatalf("the card is head, item, state, three body rows and foot; it drew %d rows:\n%s", len(rows), text)
 	}
-	if !strings.HasSuffix(strings.TrimRight(strings.TrimPrefix(rows[4], "│"), " "), a.icon(tokens.GEllipsis)) {
-		t.Fatalf("the cut body does not end on the ellipsis: %q", rows[4])
-	}
-	if !strings.Contains(rows[5], "plan · write · test · review · security · proof") {
-		t.Fatalf("the stages row is %q", rows[5])
+	if !strings.HasSuffix(strings.TrimRight(strings.TrimPrefix(rows[5], "│"), " "), a.icon(tokens.GEllipsis)) {
+		t.Fatalf("the cut body does not end on the ellipsis: %q", rows[5])
 	}
 
 	// AND AN ESTIMATE IS SAID WITH ITS TILDE.
 	priced := factoryNotice()
 	priced.ID, priced.Estimate = "f2", 1.5
-	if meta := factoryCardMeta(priced); meta != "codeaf · bug · M · ~$1.50" {
-		t.Fatalf("the priced facts row is %q", meta)
-	}
-	bare := session.FactoryNotice{Repo: "codeaf", Kind: "chore"}
-	if meta := factoryCardMeta(bare); meta != "codeaf · chore" {
-		t.Fatalf("a card with no size and no estimate reads %q", meta)
+	a.factoryProposal(factoryOffer(priced))
+	if card := a.factoryCardFor("f2", ""); card == nil {
+		t.Fatal("the priced card was not drawn")
+	} else if rows := questionPlainRows(FactoryCardRows(a, card, 100, false)); !strings.Contains(rows[2], "new · ~$1.50") {
+		t.Fatalf("the priced state row is %q", rows[2])
 	}
 }
 
@@ -182,11 +175,20 @@ func TestFactoryCardSettledWords(t *testing.T) {
 			a.factoryProposal(factoryOffer(n))
 			c.settle(a, n)
 			rows := factoryCardLines(a, 100)
-			if len(rows) != 2 {
-				t.Fatalf("a settled card is its head and its foot; it drew:\n%s", strings.Join(rows, "\n"))
+			// A card the floor took keeps the item's live card between its
+			// head and its foot; every other settled card is the two alone.
+			want := 2
+			if c.name == "added" {
+				want = 4
+				if !strings.Contains(rows[1], "#12 paste drops the last line") {
+					t.Fatalf("the body is not the item's live card:\n%s", strings.Join(rows, "\n"))
+				}
 			}
-			if !strings.Contains(rows[1], c.want) {
-				t.Fatalf("the foot is %q, want %q", rows[1], c.want)
+			if len(rows) != want {
+				t.Fatalf("a settled card drew %d rows, want %d:\n%s", len(rows), want, strings.Join(rows, "\n"))
+			}
+			if !strings.Contains(rows[len(rows)-1], c.want) {
+				t.Fatalf("the foot is %q, want %q", rows[len(rows)-1], c.want)
 			}
 		})
 	}
@@ -204,7 +206,7 @@ func TestFactoryCardAddedWithoutAnIDPairsByTitle(t *testing.T) {
 	a.factoryProposal(factoryOffer(yes))
 	added := session.FactoryNotice{Title: n.Title, Item: 7}
 	a.factoryAdded(session.Event{Kind: session.EventFactoryAdded, Factory: &added})
-	if rows := factoryCardLines(a, 100); len(rows) != 2 || !strings.Contains(rows[1], "added · #7") {
+	if rows := factoryCardLines(a, 100); len(rows) == 0 || !strings.Contains(rows[len(rows)-1], "added · #7") {
 		t.Fatalf("the card did not take its number by title:\n%s", strings.Join(rows, "\n"))
 	}
 }
@@ -311,7 +313,7 @@ func recipeOfferQuestion(n session.RecipeNotice) session.Question {
 		Form:     session.FormCard,
 		Asker:    session.Asker{Kind: session.AskerModel},
 		Head:     session.RecipeHead(n),
-		Reason:   session.RecipeWords(n),
+		Reason:   strings.Join(session.RecipeRows(n), "; "),
 		Subject:  session.SubjectRef{Ref: n.ID, Name: session.RecipeSubject(n)},
 		Options:  session.AnswerOptions(session.QuestionRecipe),
 		Input:    session.InputShape{Kind: session.InputText, Prompt: session.RecipeChangePrompt},
@@ -320,32 +322,34 @@ func recipeOfferQuestion(n session.RecipeNotice) session.Question {
 	}
 }
 
-// THE RECIPE CARD IS THE FACTORY CARD'S SHAPE: the engine's head, one dim row
-// saying where the line goes, the line, and the foot.
+// THE RECIPE CARD IS ONE QUESTION SAYING WHERE, THEN NOW AND AFTER, THE LINE
+// AND THE WHY; a policy or a habit is the sentence alone.
 func TestFactoryRecipeCardDrawsTheLine(t *testing.T) {
 	lab := newQuestionLab(t)
 	a := lab.a
-	a.recipeProposal(recipeOffer(recipeNotice()))
+	n := recipeNotice()
+	n.Now = []string{"plan", "write", "test", "review", "proof"}
+	n.After = []string{"plan", "write", "test", "review", "proof", "+security"}
+	n.Why = "auth changes get a second look"
+	a.recipeProposal(recipeOffer(n))
 	rows := factoryCardLines(a, 140)
-	if len(rows) != 4 {
-		t.Fatalf("the recipe card is head, where, line and foot; it drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
+	if len(rows) != 6 {
+		t.Fatalf("the recipe card is head, now, after, line, why and foot; it drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
 	}
-	if !strings.Contains(rows[0], "wants to add to web's recipe for issue: security") {
-		t.Fatalf("the head is not the engine's: %q", rows[0])
-	}
-	if !strings.Contains(rows[1], "recipe · web · issue") {
-		t.Fatalf("the where row is %q", rows[1])
-	}
-	if !strings.Contains(rows[2], "security · chat · read it for auth holes · when touches auth") {
-		t.Fatalf("the line row is %q", rows[2])
+	for i, want := range []string{"add this to web's recipe for issue?", "now: plan · write · test · review · proof",
+		"after: plan · write · test · review · proof · +security", "security · chat · read it for auth holes · when touches auth",
+		"why: auth changes get a second look"} {
+		if !strings.Contains(rows[i], want) {
+			t.Fatalf("row %d is %q, want %q", i, rows[i], want)
+		}
 	}
 
 	policy := session.RecipeNotice{ID: "r2", Repo: "web", Policy: "never post without green tests"}
 	a.recipeProposal(recipeOffer(policy))
 	if card := a.factoryCardFor("r2", ""); card == nil {
 		t.Fatal("the policy card was not drawn")
-	} else if rows := questionPlainRows(FactoryCardRows(a, card, 140, false)); !strings.Contains(rows[0], "wants to add to web's policy: never post without green tests") ||
-		!strings.Contains(rows[1], "recipe · web · policy") {
+	} else if rows := questionPlainRows(FactoryCardRows(a, card, 140, false)); len(rows) != 3 || !strings.Contains(rows[0], "add this to web's policy?") ||
+		!strings.Contains(rows[1], "never post without green tests") {
 		t.Fatalf("the policy card drew:\n%s", strings.Join(rows, "\n"))
 	}
 }

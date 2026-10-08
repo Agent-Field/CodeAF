@@ -1152,9 +1152,9 @@ var tuiWords = map[string]tuiWord{
 
 	// ── the factory floor, from the chat ─────────────────────────────────────
 	"factoryCardLead": {
-		screen: "wants to put this on the factory floor",
+		screen: "put this on the factory floor?",
 		pkg:    "internal/session",
-		why:    "the head of the card `factory_add` raises: the chat asks before anything reaches the floor",
+		why:    "the head of the card `factory_add` raises, one question in the person's words: the chat asks before anything reaches the floor",
 	},
 	"factoryAddOffer": {
 		screen: "1  add it",

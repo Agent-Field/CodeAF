@@ -1482,6 +1482,9 @@ type app struct {
 	// snapshot, the cursor and whether a read is out (factory_page.go).
 	factory factory.Seam
 	fp      factoryPage
+	// fic is the live item cards' clock (factoryitemcard.go): one beat every
+	// three seconds while a conversation holding a card is in front.
+	fic factoryItemCards
 	// tsheet is a team's card: its settings, its close and its delete
 	// (teamsheet.go).
 	tsheet teamSheet
@@ -3484,7 +3487,11 @@ func (a *app) Init() tea.Cmd {
 		// first `/factory` (factory_page.go's [app.factoryLaunchRead]). It is
 		// beside the door line like every other read of the floor, and nil when
 		// no floor is behind this window.
-		a.factoryLaunchRead()}
+		a.factoryLaunchRead(),
+		// AND THE LIVE ITEM CARDS' CLOCK, when the conversation this window
+		// opened on already holds one — an item's own conversation, reopened
+		// (factoryitemcard.go). Nil in every other case.
+		a.factoryCardPollArm()}
 	if a.warmEmptyProviders != nil {
 		warm := a.warmEmptyProviders
 		standing = append(standing, func() tea.Msg {
@@ -5316,6 +5323,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// factory page stands on a seam with a clock (factory_keys.go).
 		return a, a.factoryBeat(msg.gen)
 
+	case factoryCardPollMsg:
+		// AND THE LIVE ITEM CARDS IN A CONVERSATION HAVE THEIR OWN, reading the
+		// floor every three seconds while one is on screen and stopping the
+		// moment none is (factoryitemcard.go).
+		return a, a.factoryCardPoll()
+
 	case pulseTickMsg:
 		// THE PULSE'S COUNTS, KEPT WHILE NO HOME IS OPEN: a walk of the world
 		// asked off the loop, and the next beat (pulsebeat.go).
@@ -6443,7 +6456,11 @@ func (a *app) applyEvent(ev session.Event, lump bool) tea.Cmd {
 		a.changedNote()
 		a.cacheNote(ev.Usage)
 		a.take(ev.Usage)
-		after = tea.Batch(a.settle(), a.notifyDone())
+		// AND A LIVE CARD UNDER THE REPLY for every floor item it named, once per
+		// turn, before the turn settles so it lands under the reply it is about
+		// (factoryitemcard.go's [app.factoryRefCards]).
+		refs := a.factoryRefCards()
+		after = tea.Batch(refs, a.settle(), a.notifyDone())
 
 	case session.EventError:
 		a.refreshCreditWarnings()
@@ -7537,6 +7554,12 @@ func (a *app) press(x, y int) (cmd tea.Cmd) {
 		a.toggleBriefFoldAt(r.entry)
 	case hitAction:
 		a.toggleProgramAction(int64(r.turn))
+	case hitFactoryItem:
+		// A PRESS ON A LIVE ITEM CARD OPENS THE ITEM PAGE, the road `enter` on
+		// the selected card takes (factoryitemcard.go).
+		if cmd, ok := a.openFactoryItemCard(r.entry); ok {
+			return cmd
+		}
 	case hitTask:
 		// A CLICK ON A SPAWN CARD IS THE DOOR INTO THE NODE. It used to open the
 		// brief, which is the card's own text one fold down — and the question a
@@ -7694,7 +7717,7 @@ func (a *app) selectTool(delta int) bool {
 		// make the room a mouse-only place. The walk is also what gives ctrl+o
 		// something to act on: the key a card names is spent on the SELECTED card
 		// (taskdone.go's [app.openDone]).
-		if r.hit != hitTool && r.hit != hitCaption && r.hit != hitTask && r.hit != hitDone && r.hit != hitHarness {
+		if r.hit != hitTool && r.hit != hitCaption && r.hit != hitTask && r.hit != hitDone && r.hit != hitHarness && r.hit != hitFactoryItem {
 			continue
 		}
 		key := r.entry

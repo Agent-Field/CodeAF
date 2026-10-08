@@ -11,18 +11,23 @@ import (
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
-// THE FACTORY OFFER, IN THE CONVERSATION: ONE CARD, AND ONE LINE AFTERWARDS.
+// THE FACTORY OFFER, IN THE CONVERSATION: ONE CARD, AND THE ITEM AFTERWARDS.
 //
 // `factory_add` is the chat's one door onto the factory floor, and it is a
 // QUESTION, never a write (internal/session's tools_factory.go). This file draws
 // what the question is ABOUT, in the transcript, as [StandingCardRows] draws a
 // standing offer: the same corner, the same question hue, the same stem.
 //
-//	╭─ ? wants to put this on the factory floor: paste drops the last line ──
-//	│ codeaf · bug · M · ~$1.20
+// EVERY CARD IS A QUESTION IN THE PERSON'S WORDS. The head is the question
+// itself, and what it is about is drawn under it: for `factory_add`, the item
+// in THE ITEM CARD'S SHAPE (factoryitemcard.go), so the row a person is asked
+// about is the row they will find on the floor.
+//
+//	╭─ ? put this on the factory floor? ─────────────────────────────────────
+//	│ ▤ paste drops the last line                            codeaf · bug · M
+//	│   new · ~$1.20                     ○ plan  ○ write  ○ test  ○ proof
 //	│ Pasting three lines into the box keeps two. The third is lost when the
 //	│ paste ends without a newline, and the fix is in the paste path.
-//	│ plan · write · test · review · security · proof
 //	╰──────────────────────────────────────────────────────────────────────────
 //
 // THE ANSWERS ARE NOT DRAWN HERE. `1 add it`, `2 not now` and the words box with
@@ -41,6 +46,10 @@ import (
 //	not now                  the person said no
 //	changed in words         they typed a correction; nothing was written
 //	expired · nothing added  the card came down unanswered
+//
+// AND A CARD THE FLOOR TOOK KEEPS THE ITEM BETWEEN THE TWO: its body is
+// replaced by the item's LIVE card, read from the floor, which goes on saying
+// what the item is doing for as long as the conversation is on screen.
 //
 // THE NUMBER IS THE FLOOR'S OWN. It arrives on EventFactoryAdded after the yes,
 // and between the two the foot says the answer that was given (`add it`), which
@@ -70,7 +79,8 @@ const (
 // item is on the floor.
 const factoryBodyRows = 3
 
-// factoryCard is one offer, from the question to what it came to.
+// factoryCard is one offer, from the question to what it came to — or, when
+// liveOnly, one item's live card and nothing else.
 //
 // It is a pointer held by the transcript entry that draws it, and the task lane
 // finds it there by the proposal's id when the answer and the floor's number
@@ -91,14 +101,23 @@ type factoryCard struct {
 	// recipe. notice.ID is then the recipe proposal's id, so the one lookup
 	// ([app.factoryCardFor]) finds both kinds of card.
 	recipe *session.RecipeNotice
-	// stages is set when this card is `factory_stages`'s: a change to the
-	// stages of one item already on the floor (the stages card, below), found
-	// by the same lookup on its proposal's id.
-	stages *session.StagesNotice
+	// change is set when this card is `factory_item`'s: a change to one item
+	// already on the floor (the item card, below), found by the same lookup on
+	// its proposal's id.
+	change *session.ItemNotice
+	// live is the item this card shows LIVE (factoryitemcard.go): the item a
+	// yes put on the floor, once its number arrives, or — for a card that
+	// never asked anything (liveOnly) — the item a conversation is about.
+	live *factoryItemLive
+	// liveOnly says this card is only the item's live card: drawn at the top
+	// of an item's own conversation, or under a reply that named the item. It
+	// asks nothing and settles into nothing.
+	liveOnly bool
 }
 
-// settled reports whether this offer has been answered or has come down.
-func (c *factoryCard) settled() bool { return c.answer != "" || c.verdict != "" }
+// settled reports whether this offer has been answered or has come down. A
+// live card is never a question, so it is settled from the start.
+func (c *factoryCard) settled() bool { return c.liveOnly || c.answer != "" || c.verdict != "" }
 
 // factoryProposal folds one EventFactoryProposal in: a new card, or the
 // rebroadcast that settles one already drawn.
@@ -108,16 +127,19 @@ func (c *factoryCard) settled() bool { return c.answer != "" || c.verdict != "" 
 // unanswered (Withdrawn set). A settling notice for a card this window never
 // drew — it opened after the raise — draws nothing, because a foot with no card
 // above it is an answer to a question nobody here saw.
-func (a *app) factoryProposal(ev session.Event) {
+//
+// A CARD THAT SETTLES READS THE FLOOR AGAIN, so every live card on screen says
+// what the answer came to (factoryitemcard.go).
+func (a *app) factoryProposal(ev session.Event) tea.Cmd {
 	notice := ev.Factory
 	if notice == nil || strings.TrimSpace(notice.ID) == "" {
-		return
+		return nil
 	}
 	card := a.factoryCardFor(notice.ID, "")
 	switch {
 	case notice.Decided != nil:
 		if card == nil || card.settled() {
-			return
+			return nil
 		}
 		switch {
 		case strings.TrimSpace(notice.Decided.Change) != "":
@@ -131,28 +153,30 @@ func (a *app) factoryProposal(ev session.Event) {
 		}
 	case strings.TrimSpace(notice.Withdrawn) != "":
 		if card == nil || card.settled() {
-			return
+			return nil
 		}
 		card.verdict = factoryExpiredWord
 	default:
 		if card != nil {
 			// The same card raised twice is one card: the block replaces its
 			// question by token, and the transcript keeps the row it has.
-			return
+			return nil
 		}
 		card = &factoryCard{notice: *notice}
 		a.closeLive()
 		a.entries = append(a.entries, entry{kind: entryFactory, turn: a.turn, fac: card})
 		a.follow()
 		a.touch()
-		return
+		return nil
 	}
 	a.markFactoryStale(card)
 	a.touch()
+	return a.factoryRead()
 }
 
 // factoryAdded folds one EventFactoryAdded in: the card that asked says the
-// floor's number, and the floor is read again.
+// floor's number, its body becomes the item's live card, and the floor is read
+// again.
 //
 // THE CARD IS FOUND BY THE PROPOSAL'S ID. The engine's Added event carries the
 // whole notice the card was raised with, ID included (session's factory_add
@@ -173,20 +197,26 @@ func (a *app) factoryAdded(ev session.Event) tea.Cmd {
 			card.answer = session.FactoryAddLabel
 		}
 		card.verdict = factoryAddedWord + "#" + itoa(notice.Item)
+		// THE BODY BECOMES THE ITEM'S LIVE CARD, drawn from the floor's read
+		// and, until that read lands or where there is no floor here at all,
+		// from the item the news carried.
+		card.live = &factoryItemLive{id: notice.Item, ref: "#" + itoa(notice.Item), repo: notice.Repo,
+			title: notice.Title, kind: notice.Kind, size: notice.Size, last: notice.Now}
 		a.markFactoryStale(card)
 		a.touch()
 	}
-	return a.factoryRead()
+	return tea.Batch(a.factoryRead(), a.factoryCardPollArm())
 }
 
 // factoryCardFor is the card this proposal id names, newest first. With no id,
 // it is the newest card with this title that was answered yes and has no floor
-// number yet — the one an Added event without an id can only be about.
+// number yet — the one an Added event without an id can only be about. A live
+// card asked nothing, so it is never one a lookup finds.
 func (a *app) factoryCardFor(id, title string) *factoryCard {
 	id, title = strings.TrimSpace(id), strings.TrimSpace(title)
 	for i := len(a.entries) - 1; i >= 0; i-- {
 		e := &a.entries[i]
-		if e.kind != entryFactory || e.fac == nil {
+		if e.kind != entryFactory || e.fac == nil || e.fac.liveOnly {
 			continue
 		}
 		if id != "" {
@@ -214,9 +244,10 @@ func (a *app) markFactoryStale(card *factoryCard) {
 
 // ── the card, drawn ─────────────────────────────────────────────────────────
 
-// FactoryCardRows draws one factory offer: the head, the facts, the body, the
-// stages and the foot while it is a question; the head and the foot that says
-// what it came to once it is not.
+// FactoryCardRows draws one factory card: the head, the item it is about and
+// the reason while it is a question; the head and the foot that says what it
+// came to once it is not, with the item's live card between them when the
+// floor took it. A live-only card is the item's live card alone.
 //
 // IT IS PACKAGE-LEVEL ON PURPOSE, as [StandingCardRows] is: any pane in this
 // package that holds a card draws it with this and a width, so a second
@@ -228,42 +259,55 @@ func FactoryCardRows(a *app, card *factoryCard, width int, sel bool) []string {
 	if a == nil || card == nil || width < 4 {
 		return nil
 	}
+	if card.liveOnly {
+		return a.factoryItemCardRows(card.live, width, sel)
+	}
 	head := a.factoryCardHead(card, width, sel)
+	room := max(width-ansi.StringWidth(a.blockStem()), 1)
 	if card.settled() {
+		if card.live != nil {
+			// THE FLOOR TOOK IT: the body is the item's live card, under the
+			// question it answered and over the foot that says so.
+			stem := a.pal.dim(a.blockStem())
+			out := []string{head}
+			for _, line := range a.factoryItemLines(a.factoryLiveItem(card.live), room, sel) {
+				out = append(out, stem+line)
+			}
+			return append(out, a.factoryCardFoot(card, width))
+		}
 		return []string{head, a.factoryCardFoot(card, width)}
 	}
 	stem := a.pal.ask(a.blockStem())
-	room := max(width-ansi.StringWidth(a.blockStem()), 1)
 	out := []string{head}
 	if card.recipe != nil {
 		return append(append(out, a.recipeCardBody(card.recipe, stem, room)...), a.factoryCardFoot(card, width))
 	}
-	if card.stages != nil {
-		return append(append(out, a.stagesCardBody(card.stages, stem, room)...), a.factoryCardFoot(card, width))
+	if card.change != nil {
+		return append(append(out, a.itemChangeCardBody(card.change, stem, room)...), a.factoryCardFoot(card, width))
 	}
-	if meta := factoryCardMeta(card.notice); meta != "" {
-		out = append(out, stem+a.pal.dim(fit(meta, room)))
+	// THE ITEM IN THE ITEM CARD'S SHAPE, as it will stand on the floor, then
+	// the model's reason under it.
+	for _, line := range a.factoryItemLines(factoryOfferItem(card.notice), room, false) {
+		out = append(out, stem+line)
 	}
 	for _, line := range a.factoryCardBody(card.notice.Body, room) {
 		out = append(out, stem+a.pal.ink(line))
 	}
-	if stages := a.factoryCardStages(card.notice, room); stages != "" {
-		out = append(out, stem+stages)
-	}
 	return append(out, a.factoryCardFoot(card, width))
 }
 
-// factoryCardMeta is the card's facts in one row: repo · kind · size · ~$est.
-//
-// EVERY PART IS DROPPED WHEN NOBODY SAID IT (the emptiness law). The size and
-// the estimate are the model's guesses and it may make neither, and an estimate
-// of nothing is no estimate — never `~$0`.
-func factoryCardMeta(n session.FactoryNotice) string {
-	parts := []string{strings.TrimSpace(n.Repo), strings.TrimSpace(n.Kind), strings.TrimSpace(n.Size)}
-	if est := factoryMoney(n.Estimate); est != "" {
-		parts = append(parts, "~"+est)
+// factoryOfferItem is the offer as the row it would be on the floor: new, of
+// the card's kind and size, with the model's estimate. It is drawn with the
+// live card's own rows (factoryitemcard.go), so the shape asked about is the
+// shape found.
+func factoryOfferItem(n session.FactoryNotice) factory.Item {
+	return factory.Item{
+		Title:  n.Title,
+		Repo:   n.Repo,
+		Kind:   factoryCardKind(n.Kind),
+		State:  factory.StateNew,
+		Triage: factory.Triage{Type: n.Kind, Size: n.Size, Est: n.Estimate},
 	}
-	return strings.Join(nonEmpty(parts), rowSep)
 }
 
 // factoryCardBody is the model's reason, wrapped to the card, at most
@@ -288,38 +332,6 @@ func (a *app) factoryCardBody(body string, room int) []string {
 	return lines
 }
 
-// factoryCardStages is the stages the floor would run this kind of work
-// through, as the default recipe spells them, one dim row: the stages that
-// would run in the card's muted grey and the ones banked off in dim, so a
-// person sees the whole recipe and which of it is switched on.
-//
-// IT IS THE DEFAULT RECIPE AND NOT A REPO'S. The card is drawn before the item
-// exists, and the repo's own banked recipe is the floor's to apply when it is
-// written; the default is the one place the stages are spelled
-// ([factory.DefaultRecipe]), so this row cannot invent a stage.
-func (a *app) factoryCardStages(n session.FactoryNotice, room int) string {
-	it := factory.Item{Kind: factoryCardKind(n.Kind), Triage: factory.Triage{Size: n.Size}}
-	stages := factory.DefaultRecipe().For(it.Kind)
-	if len(stages) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(stages))
-	plainParts := make([]string, 0, len(stages))
-	for _, st := range stages {
-		plainParts = append(plainParts, st.Name)
-		if st.On && factory.Fits(st, it) {
-			parts = append(parts, a.pal.muted(st.Name))
-			continue
-		}
-		parts = append(parts, a.pal.dim(st.Name))
-	}
-	line := strings.Join(parts, a.pal.dim(rowSep))
-	if ansi.StringWidth(strings.Join(plainParts, rowSep)) > room {
-		return fit(line, room)
-	}
-	return line
-}
-
 // factoryCardKind is the floor's kind for the card's kind word, read the way
 // the engine writes the item (session's factoryItem): a pull request is a PR, a
 // chore is a chore, and every other word — bug, feat, question — is an issue.
@@ -337,8 +349,9 @@ func factoryCardKind(word string) factory.Kind {
 // engine's own head, and the rule out to the frame's edge — [app.standHead]'s
 // row with the engine's sentence in it.
 //
-// THE HEAD IS THE ENGINE'S SPELLING ([session.FactoryCardLead] and the title),
-// so the card and the question above the box say the same words.
+// THE HEAD IS THE ENGINE'S SPELLING ([session.FactoryCardHead],
+// [session.RecipeHead], [session.ItemHead]), so the card and the question
+// above the box say the same words.
 func (a *app) factoryCardHead(card *factoryCard, width int, sel bool) string {
 	paint, rule := a.factoryCardPaint(card), a.blockRule()
 	corner := taskHeadCorner
@@ -350,12 +363,12 @@ func (a *app) factoryCardHead(card *factoryCard, width int, sel bool) string {
 		glyph = a.pal.bold(glyph)
 	}
 	lead := corner + " " + glyph + " "
-	words := session.FactoryCardLead + strings.Join(strings.Fields(card.notice.Title), " ")
+	words := session.FactoryCardHead
 	if card.recipe != nil {
 		words = strings.Join(strings.Fields(session.RecipeHead(*card.recipe)), " ")
 	}
-	if card.stages != nil {
-		words = strings.Join(strings.Fields(session.StagesHead(*card.stages)), " ")
+	if card.change != nil {
+		words = strings.Join(strings.Fields(session.ItemHead(*card.change)), " ")
 	}
 	title := fit(words, max(width-ansi.StringWidth(lead)-2, 1))
 	line := paint(lead)
@@ -405,6 +418,35 @@ func factoryCardWord(card *factoryCard) string {
 	return card.answer
 }
 
+// factoryLabelledRows paints a card's body rows: a row's label — the words up
+// to its first `: ` or its first two spaces, `now:`, `gate`, `why:` — dim,
+// and the rest in ink, each row cut to the card. The rows are the engine's own
+// spelling ([session.ItemRows], [session.RecipeRows]), so the card and the
+// question's reason say the same words.
+func (a *app) factoryLabelledRows(rows []string, stem string, room int) []string {
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		row = fit(row, room)
+		cut := -1
+		if i := strings.Index(row, ": "); i >= 0 {
+			cut = i + 2
+		} else if i := strings.Index(row, "  "); i >= 0 {
+			cut = i + 2
+		}
+		// A LABEL IS ONE WORD. A policy sentence that happens to hold a colon
+		// is a sentence, and is drawn whole in ink.
+		if cut > 0 && strings.ContainsAny(strings.TrimRight(row[:cut], ": "), " ") {
+			cut = -1
+		}
+		if cut <= 0 || cut > len(row) {
+			out = append(out, stem+a.pal.ink(row))
+			continue
+		}
+		out = append(out, stem+a.pal.dim(row[:cut])+a.pal.ink(row[cut:]))
+	}
+	return out
+}
+
 // ── the recipe card ─────────────────────────────────────────────────────────
 
 // THE RECIPE OFFER, IN THE CONVERSATION: THE FACTORY CARD'S SHAPE, ONE LINE.
@@ -412,12 +454,15 @@ func factoryCardWord(card *factoryCard) string {
 // `factory_recipe` asks to add one line to a repository's recipe, its policy or
 // its habits (internal/session's tools_factory_recipe.go). Its card is drawn by
 // [FactoryCardRows] with the factory card's corner, hue, head and foot, and a
-// body of its own: one dim row naming where the line goes and the line itself
-// in ink, because the line is exactly what the file will hold.
+// body of its own: for a stage, the kind's stages now and after with the new
+// one marked `+`, then the line itself; for a policy or a habit, the sentence;
+// and the reason when the model gave one.
 //
-//	╭─ ? wants to add to web's recipe for issue: security · chat · read it… ──
-//	│ recipe · web · issue
+//	╭─ ? add this to web's recipe for issue? ─────────────────────────────────
+//	│ now: plan · write · test · review · proof
+//	│ after: plan · write · test · review · proof · +security
 //	│ security · chat · read it for auth holes · when touches auth
+//	│ why: you said auth changes always get a second look
 //	╰──────────────────────────────────────────────────────────────────────────
 //
 // AFTERWARDS IT FOLDS TO ITS HEAD AND ONE FOOT, in the factory card's place:
@@ -502,126 +547,120 @@ func (a *app) recipeBanked(ev session.Event) tea.Cmd {
 	return a.factoryRead()
 }
 
-// recipeCardBody is the recipe card's body: the dim row saying where the line
-// goes, then the line in ink, wrapped to the card at the factory body's height.
+// recipeCardBody is the recipe card's body: the engine's rows
+// ([session.RecipeRows]), labels dim and the rest in ink.
 func (a *app) recipeCardBody(n *session.RecipeNotice, stem string, room int) []string {
-	var out []string
-	if where := session.RecipeSubject(*n); where != "" {
-		out = append(out, stem+a.pal.dim(fit(where, room)))
-	}
-	for _, line := range a.factoryCardBody(session.RecipeWords(*n), room) {
-		out = append(out, stem+a.pal.ink(line))
-	}
-	return out
+	return a.factoryLabelledRows(session.RecipeRows(*n), stem, room)
 }
 
-// ── the stages card ─────────────────────────────────────────────────────────
+// ── the item card ───────────────────────────────────────────────────────────
 
-// THE STAGES OFFER, IN THE ITEM'S OWN CONVERSATION: THE RECIPE CARD'S SHAPE.
+// THE CHANGE TO ONE ITEM, IN ITS OWN CONVERSATION: THE RECIPE CARD'S SHAPE.
 //
-// `factory_stages` asks to change the stages of the one item a conversation is
-// about (internal/session's tools_factory_stages.go). Its card is drawn by
-// [FactoryCardRows] with the factory card's corner, hue, head and foot, and a
-// body of its own: one dim row naming the item and the reason, and the change
-// in ink, a plus for a stage added or switched on and a minus for one skipped.
+// `factory_item` asks to change the one item a conversation is about — its
+// stages, gate, cap or effort — or to leave its stages a note
+// (internal/session's tools_factory_item.go). Its card is drawn by
+// [FactoryCardRows] with the factory card's corner, hue, head and foot; the
+// head is the engine's one question and the body says before and after, only
+// for what changes.
 //
-//	╭─ ? wants to change #12's stages: +security · −neaten ──────────────────
-//	│ stages · #12 · touches billing
-//	│ +security · −neaten
+//	╭─ ? #1 · plan first with a $8 cap? ──────────────────────────────────────
+//	│ gate  ship → plan
+//	│ cap  $5 → $8
+//	│ why: the person wants to see the plan before any code
 //	╰──────────────────────────────────────────────────────────────────────────
 //
 // AFTERWARDS IT FOLDS TO ITS HEAD AND ONE FOOT, in the factory card's place:
 //
-//	changed                    the item's stages are changed on the floor
-//	not now                    the person said no
+//	changed                    the item is changed on the floor
+//	kept as it was             the person said no
 //	changed in words           they typed a correction; nothing was changed
 //	expired · nothing changed  the card came down unanswered
 //
 // The answers and the words box are the question's, drawn once above the box
 // (question.go's [app.questionDrawnHere]), exactly as on the factory card.
 
-// The words a settled stages card keeps.
+// The words a settled item card keeps.
 const (
-	// stagesChangedWord is the item changed on the floor. It arrives on
-	// EventStagesChanged after the yes; between the two the foot says the
+	// itemChangedWord is the item changed on the floor. It arrives on
+	// EventItemChanged after the yes; between the two the foot says the
 	// answer that was given.
-	stagesChangedWord = "changed"
-	// stagesNotNowWord is the person's no, in the card's own word for it.
-	stagesNotNowWord = session.StagesNotNowLabel
-	// stagesExpiredWord is a card that came down unanswered, and NOTHING
+	itemChangedWord = "changed"
+	// itemKeptWord is the person's no: the item stays as it was.
+	itemKeptWord = "kept as it was"
+	// itemExpiredWord is a card that came down unanswered, and NOTHING
 	// CHANGED, which is the half a person looking back needs.
-	stagesExpiredWord = "expired · nothing changed"
+	itemExpiredWord = "expired · nothing changed"
 )
 
-// stagesProposal folds one EventStagesProposal in: a new card, or the
-// rebroadcast that settles one already drawn — [app.recipeProposal]'s reading.
-func (a *app) stagesProposal(ev session.Event) {
-	notice := ev.Stages
+// itemProposal folds one EventItemProposal in: a new card, or the rebroadcast
+// that settles one already drawn — [app.recipeProposal]'s reading — and a card
+// that settles reads the floor again, for [app.factoryProposal]'s reason.
+func (a *app) itemProposal(ev session.Event) tea.Cmd {
+	notice := ev.FactoryItem
 	if notice == nil || strings.TrimSpace(notice.ID) == "" {
-		return
+		return nil
 	}
 	card := a.factoryCardFor(notice.ID, "")
 	switch {
 	case notice.Decided != nil:
 		if card == nil || card.settled() {
-			return
+			return nil
 		}
 		switch {
 		case strings.TrimSpace(notice.Decided.Change) != "":
 			// WORDS ARE A CHANGE, NOT A YES: the engine changes nothing on one.
 			card.verdict = factoryChangedWord
 		case notice.Decided.Approved:
-			card.answer = session.StagesChangeLabel
+			card.answer = session.ItemYesLabel
 		default:
-			card.verdict = stagesNotNowWord
+			card.verdict = itemKeptWord
 		}
 	case strings.TrimSpace(notice.Withdrawn) != "":
 		if card == nil || card.settled() {
-			return
+			return nil
 		}
-		card.verdict = stagesExpiredWord
+		card.verdict = itemExpiredWord
 	default:
 		if card != nil {
-			return
+			return nil
 		}
 		held := *notice
-		card = &factoryCard{notice: session.FactoryNotice{ID: notice.ID}, stages: &held}
+		card = &factoryCard{notice: session.FactoryNotice{ID: notice.ID}, change: &held}
 		a.closeLive()
 		a.entries = append(a.entries, entry{kind: entryFactory, turn: a.turn, fac: card})
 		a.follow()
 		a.touch()
-		return
+		return nil
 	}
 	a.markFactoryStale(card)
 	a.touch()
+	return a.factoryRead()
 }
 
-// stagesChanged folds one EventStagesChanged in: the card that asked says
-// `changed`, and the floor is read again, so the item page standing behind
-// this conversation draws the new stages the moment the person goes back.
-func (a *app) stagesChanged(ev session.Event) tea.Cmd {
-	if notice := ev.Stages; notice != nil {
-		if card := a.factoryCardFor(notice.ID, ""); card != nil && card.stages != nil {
+// itemChanged folds one EventItemChanged in: the card that asked says
+// `changed`, every live card of the item takes the item the news carried, and
+// the floor is read again, so the item page standing behind this conversation
+// draws the change the moment the person goes back.
+func (a *app) itemChanged(ev session.Event) tea.Cmd {
+	if notice := ev.FactoryItem; notice != nil {
+		if card := a.factoryCardFor(notice.ID, ""); card != nil && card.change != nil {
 			if card.answer == "" {
-				card.answer = session.StagesChangeLabel
+				card.answer = session.ItemYesLabel
 			}
-			card.verdict = stagesChangedWord
+			card.verdict = itemChangedWord
 			a.markFactoryStale(card)
 			a.touch()
+		}
+		if notice.Now != nil {
+			a.factoryLiveTake(*notice.Now)
 		}
 	}
 	return a.factoryRead()
 }
 
-// stagesCardBody is the stages card's body: the dim row naming the item and
-// the reason, then the change in ink, wrapped at the factory body's height.
-func (a *app) stagesCardBody(n *session.StagesNotice, stem string, room int) []string {
-	var out []string
-	if where := session.StagesSubject(*n); where != "" {
-		out = append(out, stem+a.pal.dim(fit(where, room)))
-	}
-	for _, line := range a.factoryCardBody(session.StagesWords(*n), room) {
-		out = append(out, stem+a.pal.ink(line))
-	}
-	return out
+// itemChangeCardBody is the item card's body: the engine's rows
+// ([session.ItemRows]), labels dim and the rest in ink.
+func (a *app) itemChangeCardBody(n *session.ItemNotice, stem string, room int) []string {
+	return a.factoryLabelledRows(session.ItemRows(*n), stem, room)
 }

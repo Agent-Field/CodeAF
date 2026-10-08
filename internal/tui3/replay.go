@@ -788,6 +788,15 @@ func (a *app) replayBlocks(entries []session.DisplayEntry, shape replayShape) ([
 			if text == "" {
 				continue
 			}
+			// AN ITEM'S BRIEF IS DRAWN AS THE ITEM. The opening note of an item's
+			// own conversation is a line the session wrote, and it starts with
+			// `[factory item #12]` (cmd/codeaf's talkBrief): what the person
+			// sees there is the item's live card rather than the brief the model
+			// reads (factoryitemcard.go).
+			if card, ok := factoryMarkerCard(text); ok {
+				blocks = append(blocks, entry{kind: entryFactory, turn: turn, fac: card})
+				continue
+			}
 			// AN INTERRUPTED OPERATIONAL PARTIAL IS STILL THE MODEL'S WORK.
 			// The journal gives it an aside audience so it cannot stand as an
 			// answer, but a generic note at the end of a stopped turn is left

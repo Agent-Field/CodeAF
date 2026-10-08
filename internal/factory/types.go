@@ -301,6 +301,12 @@ type Item struct {
 	// line each in the order it changed them, `why: …` last: the record
 	// [Adapt] writes and the surface draws under the stages line.
 	Adapted []string
+	// Notes are sentences a person settled on in the item's own conversation
+	// for the stages to read (session's `factory_item`), oldest first. They
+	// are kept on the item now; THE STAGES' BRIEFS WILL CARRY THEM WHEN THE
+	// RUNNER LANDS, and until then nothing reads them but the item's own
+	// conversation and its page.
+	Notes []string
 	// Talk is the item's own conversation, by its session file: the one `T`
 	// opens on the floor ([Seam.Talk]). "" IS NONE, which is every item until
 	// a person asks for one — the conversation is never made by default.
