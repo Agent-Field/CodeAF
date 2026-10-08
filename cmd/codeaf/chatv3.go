@@ -397,6 +397,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// And `factory_item`'s door, the one onto an item already on the floor,
 	// which an item's own conversation (`T`, factory_talk.go) proposes through.
 	cfg.FactoryItem = itemDoor(floor, workspace)
+	// And `factory_run`'s, the manager's pen on its item's stages, over the
+	// floor's own edit door (factory_shape.go's [runDoor]).
+	cfg.FactoryRun = runDoor(floor, workspace)
 	// And `factory_floor`'s door, the foreman's read of the floor and its
 	// marks, ON THE FOREMAN'S BELT ONLY: this conversation carries it when it
 	// is the one the floor names as its foreman, and every conversation the

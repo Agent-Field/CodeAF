@@ -99,17 +99,24 @@ or while another codeaf has the chat open, the line waits and is written afterwa
 
 ## the manager did not answer — shaping a run, manager set, the recipe stands
 
-When `ask me at` is plan, the runner lets the manager shape the run before the first stage and
-then pauses on `run these stages? <what it set>`. The item's stream writes what the manager did:
+Every run starts with the manager shaping it: one turn of the item's chat, before the first
+stage (see the manager shapes the run, on the factory page). The item's stream and the chat both
+get one line for what came of it:
 
 - `manager set review: thorough on security, code and architecture · added arch after review ·
   skipped neaten · why: touches the call row`: the same line the Adapted row of the item page
   shows, one clause for each change and the reason last;
-- `the recipe stands` after `n` (keep the recipe), and when the manager changed nothing;
-- `the manager did not answer · the recipe stands` when the manager's conversation ended
-  without a plan_edit: the run asks you about the recipe as it is;
-- `a stage is one word` when a stage name has a space in it, and
-  `the run has nine stages already` when a tenth is asked for; the stages stay as they were.
+- `the recipe stands` when the manager changed nothing, and after `n` (keep the recipe) on
+  `run these stages?`;
+- `the manager did not answer · the recipe stands` when the turn failed, or did not end within a
+  minute: the recipe runs as it is, with no question about it;
+- `the manager's change was not applied: <why> · the recipe stands` when the bounds refused it,
+  for instance `a stage is one word · "do through" is two` or
+  `the run has nine stages already`; the stages stay as they were.
+
+With `ask me at` plan and a change made, the run then pauses on `run these stages? <what it
+set>`. During a run, a change the manager makes on something you said is the same
+`manager set …` line, or `the manager's change was not applied: <why>`.
 
 ## talk to the manager — what you type is the brief before a run and the steer during it
 
@@ -125,5 +132,6 @@ What you type into the item's chat goes to the run; nothing else is needed.
   (`no, use the other file`) answer it in words, as `a` does. The chat then says `answered: yes`. Words that do not answer a budget question are
   taken as a steer instead.
 
-Each line is taken once. The chat's model still answers you, and still changes the item only
-through `factory_item`'s card.
+Each line is taken once. The chat's model still answers you; it shapes the run's stages with
+`factory_run` and changes the budget, ask me at, thinking and notes through `factory_item`'s card.
+During a run each line also gives the manager one turn to reshape the stages not yet started.

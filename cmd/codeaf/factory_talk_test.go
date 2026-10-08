@@ -66,8 +66,8 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#" + strconv.Itoa(first) + " · fix the ledger double count", "repo web", talkClosing, "factory_item", "stages:",
-		"[factory item #" + strconv.Itoa(first) + "]", "hub", "leave notes its stages will read", "its stages will report into this conversation"} {
+	for _, want := range []string{"#" + strconv.Itoa(first) + " · fix the ledger double count", "repo web", "factory_item", "factory_run", "stages:",
+		"[factory item #" + strconv.Itoa(first) + "]", talkBlockKnow, talkBlockDo, talkBlockShape, talkBlockSay} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("the opening brief lacks %q:\n%s", want, data)
 		}
@@ -223,7 +223,7 @@ func TestFactoryTalkMarker(t *testing.T) {
 		t.Errorf("a forge-numbered item = %q", got)
 	}
 	brief := talkBrief(factory.Item{ID: 3, Repo: "web", Title: "t", Notes: []string{"the fixture is flaky"}}, factory.DefaultRecipe())
-	if !strings.HasPrefix(brief, "[factory item #3]\n#3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
+	if !strings.HasPrefix(brief, "[factory item #3]\nYou are the manager of #3 in web.\n") || !strings.Contains(brief, "\n\n#3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
 		t.Errorf("brief = %q", brief)
 	}
 }
