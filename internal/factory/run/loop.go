@@ -723,7 +723,10 @@ func (lp *floorLoop) round(c *loopCtl, exec Executor, job Job) (res factory.Stag
 func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job {
 	it, _ := lp.r.opts.Store.Get(c.id)
 	lp.mu.Lock()
-	notes := append([]string(nil), lp.notes[c.id]...)
+	// THE PERSON'S NOTES COME FIRST: what was settled in the item's own
+	// conversation opens every stage's brief, and what earlier stages left
+	// follows it in order.
+	notes := append(append([]string(nil), it.Notes...), lp.notes[c.id]...)
 	var prior []factory.StageResult
 	for k := 0; k < i; k++ {
 		if res, ok := lp.results[c.id][k]; ok {
