@@ -425,6 +425,20 @@ func (a *app) factoryScrollKey(k string) bool {
 	default:
 		return false
 	}
+	if _, ok := a.factoryCursorItem(); !ok || a.fp.pick != nil || a.fp.recipe != nil {
+		return false
+	}
+	a.factoryScrollBy(step)
+	return true
+}
+
+// factoryScrollBy moves the item's body step rows, down for a positive step,
+// within what the last draw measured: THE ONE SCROLL every road to the rest
+// of the body shares — `J` and `K` and the page keys, the wheel over the peek
+// or the issue, and a press on `▾ more` ([app.factoryPointer]). It answers
+// false where there is no body to move: no item, a settings page standing,
+// or an item page whose rail stands on a row other than the issue.
+func (a *app) factoryScrollBy(step int) bool {
 	it, ok := a.factoryCursorItem()
 	if !ok || a.fp.pick != nil || a.fp.recipe != nil {
 		return false
@@ -432,13 +446,14 @@ func (a *app) factoryScrollKey(k string) bool {
 	if a.fp.open {
 		rows := a.factoryItemRows(it)
 		if a.fp.stage < 0 || a.fp.stage >= len(rows) || rows[a.fp.stage].kind != factoryPageIssue {
-			return true
+			return false
 		}
 	}
 	if a.fp.scrollID != it.ID {
 		a.fp.scrollID, a.fp.scroll = it.ID, 0
 	}
-	next := max(min(a.fp.scroll+step, a.fp.scrollMax), 0)
+	from := max(min(a.fp.scroll, a.fp.scrollMax), 0)
+	next := max(min(from+step, a.fp.scrollMax), 0)
 	if next != a.fp.scroll {
 		a.fp.scroll = next
 		a.touch()
@@ -504,6 +519,9 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 		a.fp.railTop, a.fp.railShown = len(lines), 1
 		lines = append(lines, strip)
 		for _, line := range a.factoryPagePane(it, rows, measure, left-1) {
+			if a.factoryHasMore(line) {
+				a.fp.moreRow = len(lines)
+			}
 			lines = append(lines, factoryPad(lead+line, width))
 		}
 	default:
@@ -516,6 +534,9 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 			right := ""
 			if pane[i] != "" {
 				right = lead + pane[i]
+			}
+			if a.factoryHasMore(right) {
+				a.fp.moreRow = len(lines)
 			}
 			lines = append(lines, rail[i]+sep+factoryPad(right, paneW))
 		}
