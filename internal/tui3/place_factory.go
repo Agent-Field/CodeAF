@@ -36,6 +36,7 @@ func (placeFactory) word() string { return "factory" }
 // words go with it, because they were about an item that may have moved on.
 func (placeFactory) open(a *app) tea.Cmd {
 	a.fp.typing = false
+	a.fp.hover = -1
 	a.fp.act.ask = nil
 	// THE FLOOR'S SETTINGS ARE SHUT ON THE WAY BACK IN, for the typing row's
 	// reason: they were about a moment that has passed, and the picker's

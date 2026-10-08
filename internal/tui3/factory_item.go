@@ -383,6 +383,29 @@ func (a *app) factoryItemPress(x, y, row int) tea.Cmd {
 	return nil
 }
 
+// factoryStageHover is the pointer resting at (x, y) on the item page: over
+// the stage rail it selects the stage under it, as a press does without the
+// second press's walk in ([app.factoryItemPress]), and anywhere else it moves
+// nothing. It reports whether the rail took the motion.
+func (a *app) factoryStageHover(x, y int) bool {
+	at := y - placeHeadRows - a.fp.railTop
+	if at < 0 || at >= a.fp.railShown || a.fp.bodyW < factoryStageFloor || x >= factoryRailW {
+		return false
+	}
+	it, ok := a.factoryCursorItem()
+	if !ok {
+		return false
+	}
+	pick := a.fp.railFirst + at
+	if pick >= len(a.factoryItemRows(it)) {
+		return false
+	}
+	if pick != a.fp.stage {
+		a.factoryStageSelect(pick)
+	}
+	return true
+}
+
 // factoryScrollKey is `J` and `K`, one row down and up the item's body, and
 // `pgdn` and `pgup`, a page: on the floor the peek's body, and on the item
 // page the issue while the rail stands on it. It answers false for every other
