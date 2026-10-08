@@ -48,8 +48,9 @@ keys about the whole floor (`n new item`, `L launch marked`, `T talk`, `u read a
 `g github`, `d hide`, the stage keys), so the item's own knobs, `t gate · c cap · e effort`,
 still show at 120 columns.
 
-- `↑` and `↓` (or `ctrl+p`, `ctrl+n`, the wheel) walk the items. A click selects a row, a second
-  click opens it; a click in the peek moves nothing.
+- `↑` and `↓` (or `ctrl+p`, `ctrl+n`, the wheel) walk the items. Resting the pointer on a row
+  selects it and the peek previews it. A click selects a row, a second click opens it; a click in
+  the peek moves nothing.
 - `enter` opens the item on its own page (see the item page).
 - `J` and `K` scroll the peek's description, `pgdn` and `pgup` a page.
 - `{` and `}` move the divider, `|` puts it back (see resize the split).

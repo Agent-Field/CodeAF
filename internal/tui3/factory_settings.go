@@ -81,6 +81,10 @@ type factoryPicker struct {
 	cursor int
 	top    int
 	shown  int
+	// hits is the walk position each body row of the last draw holds, -1 for
+	// a row that holds no repository, so the pointer lands on the row a
+	// person saw ([app.factoryPickHover]).
+	hits []int
 	// query is the filter, typed straight into the list.
 	query string
 }
@@ -799,6 +803,7 @@ func (a *app) factoryPickerBody(width, room int) []placeRow {
 		vis = append(vis, s.rows...)
 	}
 	p.shown = 0
+	walks := map[int]int{}
 	foot := ""
 	switch {
 	case len(vis) == 0 && p.query != "":
@@ -845,23 +850,45 @@ func (a *app) factoryPickerBody(width, room int) []placeRow {
 			case l.row < 0:
 				lines = append(lines, "")
 			default:
+				walks[len(lines)] = l.walk
 				lines = append(lines, a.factoryPickRowText(p.rows[l.row], cols, nameW, now, measure, l.walk == p.cursor))
 				p.shown++
 			}
 		}
 	}
 	rows := make([]placeRow, room)
+	p.hits = make([]int, room)
 	for i := range rows {
 		text := ""
 		if i < len(lines) && lines[i] != "" {
 			text = factoryMarginPad() + lines[i]
 		}
 		rows[i] = placeRow{text: factoryPad(text, width), hit: -1}
+		p.hits[i] = -1
+		if walk, ok := walks[i]; ok {
+			p.hits[i] = walk
+		}
 	}
 	if foot != "" && room >= head+factoryActionRows {
 		rows[room-1] = placeRow{text: factoryPad(factoryMarginPad()+foot, width), hit: -1}
+		p.hits[room-1] = -1
 	}
 	return rows
+}
+
+// factoryPickHover is the pointer resting on screen row y over the picker:
+// the repository drawn there takes the cursor, as a row on the floor does
+// ([app.factoryHover]). It reports whether a repository's row took it.
+func (a *app) factoryPickHover(y int) bool {
+	p, row := a.fp.pick, y-placeHeadRows
+	if row < 0 || row >= len(p.hits) || p.hits[row] < 0 {
+		return false
+	}
+	if p.hits[row] != p.cursor {
+		p.cursor = p.hits[row]
+		a.touch()
+	}
+	return true
 }
 
 // factoryPickRowText is one repository's row, exactly measure cells: its mark,
