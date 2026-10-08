@@ -799,6 +799,10 @@ The floor reads open issues and open pull requests from the GitHub repositories 
   to it on the floor. The token is never shown or logged.
 - **No watched repository or no token: nothing is connected.** Nothing polls, and the floor's
   facts line says only `terminal · chat`.
+- **Who polls:** the codeaf window you are sitting in, whether or not a background engine
+  holds your chats, and the engine too when it has the floor open. They take turns through the
+  floor's lock, so only one of them reads GitHub at a time, and only one of them reads new items
+  for triage, so a read is never paid for twice.
 - **How often:** every 60 seconds while a codeaf window is open on this machine; after a
   failure the wait doubles, up to 10 minutes. Only one window polls at a time. An unchanged
   list costs no rate limit.
@@ -846,6 +850,16 @@ A floor with a source but no watched repository says
 handover (`h`) the facts row carries the same progress in the source's own clause,
 `github · ⠋ reading Agent-Field/CodeAF · 1 of 3`, and the shift row says
 `nothing happened while you were away` without `quiet` while the read is out.
+
+## my chats run but the factory never fills — the engine is another build
+
+The background engine that runs your chats outlives the codeaf that started it, so after you
+install or build a new codeaf, a window can attach to an engine from an older build. Your window
+reads the floor itself either way, so watched repositories still fill. When the two builds
+differ, the chat's notice line says so once, for example
+`this workspace's engine is another build (0ld0ld00 built 2026-10-06 09:00) · it keeps running your chats; restart it to match: codeaf engine --stop --workspace /srv/app, then codeaf`.
+Nothing is stopped for you: the engine keeps your chats until you stop it. Run that command
+when nothing is running in it, then open codeaf again, and the engine starts from your build.
 
 ## what github gives an item — comments, changed files, check runs, its page
 

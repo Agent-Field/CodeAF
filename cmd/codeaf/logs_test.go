@@ -15,6 +15,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/calllog"
 	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/config"
+	factorystore "github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
 // TestMain switches the model-call log OFF for this package and gives the
@@ -81,6 +82,13 @@ func TestMain(m *testing.M) {
 	// that a later unset undoes is not a pin. A test that means the harness sets
 	// "bash" for itself and wins.
 	os.Setenv("CODEAF_TASK_BELT", "node")
+	// AND NO WINDOW ROAD STARTS THE FLOOR'S REAL WORK. Both window roads call
+	// [factoryFloorHere] (the host road since 2026-10-08), so every test that
+	// assembles a window's doors would otherwise start this binary's one
+	// GitHub poll and triage worker, over whichever floor it happened to open,
+	// and spend the process's once before the tests that mean it. A test that
+	// means the start swaps the hook in and reads what it was handed.
+	factoryFloorHere = func(*factorystore.Store, string, string) {}
 	code := m.Run()
 	restore()
 	os.Exit(code)

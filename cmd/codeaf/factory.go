@@ -156,8 +156,8 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	}
 	// The floor's facts line names GitHub only while a poll somewhere on this
 	// machine is keeping the store's record of it fresh (factorygithub.Facts),
-	// which is how the window on the ordinary launch learns what the engine
-	// behind it is doing without a word on the wire.
+	// which is how a window learns what any poll on this machine is doing (its
+	// own, or an engine's) without a word on the wire.
 	//
 	// THE PICKER AND THE CONNECT DOORS ARE HUNG HERE and only here: the local
 	// seam is handed the forge's list over the profile's token
@@ -197,10 +197,11 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 
 // nudgeOnWatch wraps the picker's save so that, once repos.json is written,
 // the poll on this machine reads at once ([factorygithub.Nudge]) instead of on
-// its next tick: THE FIRST READ STARTS ON SAVE. On the ordinary launch the
-// window saves and the engine polls, and the nudge reaches it as the store's
-// `poll-now` mark, which a waiting poll looks at every second. A failed save
-// nudges nothing.
+// its next tick: THE FIRST READ STARTS ON SAVE. The window that saves runs a
+// poll of its own ([factoryFloorHere]), so the common case is a nudge in the
+// same process, answered at once. A poll in another process (an engine that
+// polls the same floor) is reached through the store's `poll-now` mark, which
+// a waiting poll looks at every second. A failed save nudges nothing.
 func nudgeOnWatch(seam factory.Seam, st *store.Store) factory.Seam {
 	if seam.SetRepos == nil || st == nil {
 		return seam
@@ -374,11 +375,19 @@ func waitForFactoryGitHub(ctx context.Context, st *store.Store, token func(conte
 // and starts the poll the first time both exist, so the picker's save (which
 // writes repos.json after a yes to gh or a token) brings rows in without a
 // relaunch; the save nudges ([nudgeOnWatch]), so neither loop waits its tick. Once the poll is alive it reads repos.json itself on every tick
-// (factorygithub.PollOnce). Two processes on one machine share the floor's
-// poller lock, so only one of them reads at a time (store.TryPoller). It is
-// called only where a person's window on this machine opened the store
-// (chatv3.go's interactive launch and engine.go's local hello), so --once, a
-// task node, --host and --at never start one.
+// (factorygithub.PollOnce).
+//
+// EVERY WINDOW THAT OPENED THE FLOOR RUNS IT, HOST OR NOT ([factoryFloorHere]):
+// the in-process launch (chatv3.go) and the session-host road
+// (chatv3_local.go's [localDoors]) both call it, and so does an engine on a
+// person's local hello (engine.go's [engineFactory]). The window must not count
+// on the engine: a host started days ago from an older binary has no poll at
+// all, and a floor that waited on it stayed quiet for good (2026-10-08). Two
+// processes on one machine take turns through the floor's locks: the poller
+// lock is taken per tick (store.TryPoller), so whoever holds it reads and the
+// other skips that tick; the triage lock is held for the whole life of the
+// worker (store.TryTriager), so only one process ever spends on reads. --once,
+// a task node, --host and --at never start one.
 func startFactoryPoll(st *store.Store, profileDir string) {
 	if st == nil {
 		return
@@ -408,6 +417,16 @@ func startFactoryPoll(st *store.Store, profileDir string) {
 			factorygithub.Poll(ctx, src, st, factoryPollEvery, nil)
 		})
 	})
+}
+
+// factoryFloorHere is what a window that opened the floor starts beside it:
+// the GitHub poll and the triage worker ([startFactoryPoll]), and the
+// workspace's checkout record ([recordWorkspaceCheckout]). It is one call so
+// the two window roads (in-process and session host) cannot drift apart, and
+// a variable so a test can see that the host road calls it.
+var factoryFloorHere = func(st *store.Store, workspace, profileDir string) {
+	startFactoryPoll(st, profileDir)
+	recordWorkspaceCheckout(st, workspace)
 }
 
 // factoryHere names the repository new work lands on when the floor itself

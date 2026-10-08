@@ -40,8 +40,10 @@ var factoryTriage sync.Once
 // no worker at all: a small loop ([waitForFactoryTriage]) looks again every
 // [factoryWatchEvery], so a key pasted into the first-run setup starts the
 // reads without a relaunch, and a machine with no key never lists the floor
-// for triage. The same loop takes the floor's triage lock, so two windows on
-// one machine never pay twice for one item.
+// for triage. The same loop takes the floor's triage lock and the worker holds
+// it until this process ends, so two processes on one machine (two windows, or
+// a window and its engine) never pay twice for one item: the one that lost
+// looks again every [factoryWatchEvery] and takes over when the holder exits.
 func startFactoryTriage(st *store.Store) {
 	if st == nil {
 		return

@@ -1227,6 +1227,7 @@ func (sess *Session) welcomeLocked(s *server) Welcome {
 		Resumed:                    sess.engine.Resumed,
 		Model:                      sess.agent.Model(),
 		Build:                      buildinfo.String(),
+		Identity:                   buildinfo.Identity(),
 		Title:                      sess.agent.Title(),
 		Note:                       note,
 		ApprovalMode:               sess.engine.ApprovalMode,
