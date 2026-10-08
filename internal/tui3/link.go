@@ -90,7 +90,17 @@ func (a *app) frameEvery() time.Duration {
 // counting frames drawn — is an animation that runs a third as fast over a
 // link, which is a surface that behaves differently depending on where it is
 // being read.
+//
+// AND THE SAME HOLDS FOR A CLOCK SLOWED ON PURPOSE. When the only thing moving
+// is a spinner, the clock ticks at the spinner's own cadence (app.go's
+// [app.paint]), and the frame that tick brings covers that many slots: the
+// stride is the tick that was armed ([app.armFrame]), not the link's alone.
+// Counting it as one slot turned every paint-counted spinner a quarter as
+// fast, a braille cycle in five seconds instead of one and a third.
 func (a *app) frameStride() int {
+	if a.frameSlots > 0 {
+		return a.frameSlots
+	}
 	return max(1, int(a.frameEvery()/frameInterval))
 }
 

@@ -1579,6 +1579,11 @@ type app struct {
 	painting bool
 	paints   int
 	builds   int
+	// frameSlots is how many [frameInterval] slots the tick now in flight was
+	// armed for, so the frame it brings advances paints by the time that passed
+	// rather than by one ([app.frameStride]). Zero means the clock is not
+	// running on a slow tick, and the link's own stride holds.
+	frameSlots int
 	// renders counts actual entry renderer calls so allocation laws can prove a
 	// viewport move did not repaint a block whose key stayed the same.
 	renders uint64
@@ -5928,7 +5933,7 @@ func (a *app) paint() tea.Cmd {
 		if waitLive && !otherLive && !a.streamFresh() && !a.workLogoVisible() {
 			every *= spinnerStep
 		}
-		return tea.Batch(kick, surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} }))
+		return tea.Batch(kick, a.armFrame(every))
 	}
 	// A WORKING TILE ON THE WALL OR A VISIBLE TEAMS CARD turns its spinner at
 	// the spinner's own cadence and no faster: the glyph changes once a step, and a whole wall
@@ -5943,9 +5948,10 @@ func (a *app) paint() tea.Cmd {
 	// which is what the owner saw on `⠸ asking gh…` (factory_busy.go's
 	// [app.factorySpinning]).
 	if a.wallSpinning() || a.teamsSpinning() || a.factorySpinning() {
-		return tea.Batch(kick, surfaceTick(a.frameEvery()*spinnerStep, func(time.Time) tea.Msg { return frameMsg{} }))
+		return tea.Batch(kick, a.armFrame(a.frameEvery()*spinnerStep))
 	}
 	a.painting = false
+	a.frameSlots = 0
 	return kick
 }
 
@@ -7212,7 +7218,17 @@ func (a *app) wake() tea.Cmd {
 // frameTick asks for the next frame, at whatever cadence the link earns
 // (link.go's [app.frameEvery]).
 func (a *app) frameTick() tea.Cmd {
-	return surfaceTick(a.frameEvery(), func(time.Time) tea.Msg { return frameMsg{} })
+	return a.armFrame(a.frameEvery())
+}
+
+// armFrame asks for the next frame after every, and records how many frame
+// slots that is, so the frame it brings steps the animations by the whole of
+// the wait ([app.frameStride]). A clock slowed to the spinner's cadence then
+// turns the spinner one glyph a tick, as it would have at full cadence, and
+// not a quarter of one.
+func (a *app) armFrame(every time.Duration) tea.Cmd {
+	a.frameSlots = max(1, int(every/frameInterval))
+	return surfaceTick(every, func(time.Time) tea.Msg { return frameMsg{} })
 }
 
 // running reports whether any call of the current turn is still unresolved —
