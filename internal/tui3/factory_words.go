@@ -174,10 +174,17 @@ const (
 	wordSaid         = "said"
 	wordSkipped      = "skipped"
 	wordMoreAbove    = "more above"
-	wordSaySomething = "say something to the manager"
 	wordRunsIt       = "runs it"
-	wordTellMeFirst  = "or tell me what you want first"
 	wordOpensTheChat = "opens the conversation"
+	// The manager's box (factory_timeline.go): what it says unfocused, what
+	// its empty typing row says, what `enter` on the manager row does, and
+	// the way out of it, which keeps the words typed.
+	wordEnterOrClickToTalk = "enter or click to talk"
+	wordToTheManager       = "to the manager"
+	wordSayIt              = "say it"
+	wordTalk               = "talk"
+	wordSend               = "send"
+	wordBackToKeys         = "back to keys"
 )
 
 // The `?` sheet's group names, in the order the sheet draws them.

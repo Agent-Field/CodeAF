@@ -208,6 +208,9 @@ func (a *app) factoryItemHint(it factory.Item, head []string) string {
 // factoryItemEnterWord is what `enter` does on the item page's row, as the
 // bottom line names it, and "" where it does nothing.
 func (a *app) factoryItemEnterWord(it factory.Item) string {
+	if r, ok := a.factoryPageRowAt(it); ok && a.fp.open && r.kind == factoryPageManager && a.factory.Has("talk") {
+		return wordTalk
+	}
 	if a.factoryOnIssueRow(it) {
 		switch a.factoryIssueEnter(it) {
 		case factoryIssueTalk:

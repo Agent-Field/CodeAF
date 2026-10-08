@@ -30,7 +30,7 @@ import (
 //
 //	○ test ×2 · ○ review · ○ proof
 //	──────────────────────────────────────────────────────────────────────────
-//	› say something to the manager
+//	› enter or click to talk to the manager
 //
 // A FINISHED STAGE IS FOLDED to its head and what it came to: the phase's own
 // note, else the first sentence or two of the last thing its conversation
@@ -48,10 +48,19 @@ import (
 // `manager · …` lines after the section they are about, and the person's
 // replies there as `you · …`. An item with no conversation draws none.
 //
-// THE BOX IS THE PANE'S LAST ROW: `› say something to the manager`. Its
-// typing row is the floor's own ([factoryAsk], kind [factoryAskManager]),
-// and `enter` opens the item's conversation the way `T` does with the words
-// typed in its box, for the person to send there.
+// THE BOX IS THE PANE'S LAST ROW: `› enter or click to talk to the manager`
+// (`› enter or click to talk · r runs it` before a run). THE BOX HAS A FOCUS
+// (owner decision, 2026-10-08): `enter` on the `manager` row, `enter` on the
+// box's own stop, `tab` from the story, or a click on the box puts the keys
+// in it, and while they are there every key types, the verbs' rail on the
+// right is dimmed (factory_verbs.go: a dim rail means the keys type now) and
+// the bottom bar says `type · enter send · esc back to keys`. Its typing row
+// is the floor's own ([factoryAsk], kind [factoryAskManager]), empty it says
+// `› say it`, and `esc` gives the keys back with the words kept as the box's
+// draft, which the next focus shows again. `enter` opens the item's
+// conversation the way `T` does with the words typed in its box, for the
+// person to send there: the seam has no door that appends to the
+// conversation and wakes it.
 //
 // DIVE IN: `enter` on a head, or a click on `▸ 14 steps`, shows that stage's
 // whole conversation in the centre, through the transcript renderer the
@@ -156,6 +165,9 @@ type factoryTimeline struct {
 	// file and width, keyed by diveKey.
 	diveRows []string
 	diveKey  string
+	// draft is the words the manager's box held when `esc` gave the keys
+	// back, shown again when the box takes them next.
+	draft string
 }
 
 // factoryTL is the timeline's state for item it, started afresh when the
@@ -867,8 +879,9 @@ func (a *app) factoryTimelinePane(it factory.Item, width, room int) []string {
 }
 
 // factoryTLFoot is the pane's last row and whether it is the box: the typing
-// row while the manager's box is open, else `› say something to the manager`
-// dim (`› r runs it · or tell me what you want first` before a run), and,
+// row while the manager's box has the keys, else `› enter or click to talk
+// to the manager` dim (`› enter or click to talk · r runs it` before a run,
+// where `r` runs), and,
 // dived in, the keys that leave. THE BOX IS DRAWN ONLY WHERE THE TALK DOOR
 // IS, because its words go to the item's conversation.
 func (a *app) factoryTLFoot(it factory.Item, measure int) (string, bool) {
@@ -888,9 +901,9 @@ func (a *app) factoryTLFoot(it factory.Item, measure int) (string, bool) {
 		return a.factoryAskLine(ask, measure), true
 	}
 	prompt := a.linearMark(tokens.GlyphPromptChat, ">")
-	words := wordSaySomething
+	words := wordEnterOrClickToTalk + " " + wordToTheManager
 	if it.Stream == nil && a.factoryCanRun() {
-		words = factoryHintClause(keyRun, wordRunsIt) + rowSep + wordTellMeFirst
+		words = wordEnterOrClickToTalk + rowSep + factoryHintClause(keyRun, wordRunsIt)
 	}
 	return pal.accent(prompt) + " " + pal.dim(fit(words, max(measure-ansi.StringWidth(prompt)-1, 0))), true
 }
@@ -1208,14 +1221,23 @@ func (a *app) factoryTLDiveIn(at int) {
 	a.touch()
 }
 
-// factoryTLOpenBox opens the manager's box: the floor's typing row, kind
-// [factoryAskManager], drawn on the pane's last row.
+// factoryTLOpenBox puts the keys in the manager's box: the floor's typing
+// row, kind [factoryAskManager], drawn on the pane's last row with the draft
+// `esc` kept. A box that has them already keeps its words.
 func (a *app) factoryTLOpenBox(it factory.Item) {
-	if !a.factory.Has("talk") {
+	if !a.factory.Has("talk") || a.factoryBoxFocused() {
 		return
 	}
-	a.fp.tl.at, a.fp.tl.set = -1, true
-	a.factoryOpenAsk(factoryAsk{kind: factoryAskManager, id: it.ID, label: a.linearMark(tokens.GlyphPromptChat, ">"), example: wordSaySomething})
+	tl := a.factoryTL(it)
+	tl.diving, tl.diveUp, tl.free = false, 0, false
+	tl.at, tl.set = -1, true
+	a.factoryOpenAsk(factoryAsk{kind: factoryAskManager, id: it.ID, label: a.linearMark(tokens.GlyphPromptChat, ">"), example: wordSayIt, text: tl.draft})
+}
+
+// factoryBoxFocused says whether the manager's box has the keys.
+func (a *app) factoryBoxFocused() bool {
+	ask := a.fp.act.ask
+	return ask != nil && ask.kind == factoryAskManager
 }
 
 // factoryTimelineSend is `enter` in the manager's box: the item's own

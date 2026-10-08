@@ -240,7 +240,7 @@ func TestFactoryTimelineDrawsTheRunsStory(t *testing.T) {
 	if !strings.Contains(rows[room-2], strings.Repeat("─", width)) {
 		t.Fatalf("no rule over the box: %q", rows[room-2])
 	}
-	if !strings.HasPrefix(rows[room-1], lead+tokens.GlyphPromptChat+" "+wordSaySomething) {
+	if !strings.HasPrefix(rows[room-1], lead+tokens.GlyphPromptChat+" "+wordEnterOrClickToTalk+" "+wordToTheManager) {
 		t.Fatalf("the box is not the last row: %q", rows[room-1])
 	}
 	all := strings.Join(rows, "\n")
@@ -506,7 +506,7 @@ func TestFactoryTimelineBeforeARun(t *testing.T) {
 	if !strings.Contains(rows[0], "your own words; no triage needed beyond sizing") {
 		t.Fatalf("the issue's line is not first: %q", rows[0])
 	}
-	want := tokens.GlyphPromptChat + " " + factoryHintClause(keyRun, wordRunsIt) + rowSep + wordTellMeFirst
+	want := tokens.GlyphPromptChat + " " + wordEnterOrClickToTalk + rowSep + factoryHintClause(keyRun, wordRunsIt)
 	if strings.TrimSpace(rows[11]) != want {
 		t.Fatalf("the box before a run is %q, want %q", rows[11], want)
 	}
@@ -585,5 +585,132 @@ func TestFactoryTimelineAndTheRowsShareOneCursor(t *testing.T) {
 	a.factoryTLDiveIn(1)
 	if cmd, took := a.factoryLayoutKey(key("esc")); !took || a.fp.tl.diving || !a.fp.open || cmd != nil {
 		t.Fatalf("esc in a dive: took=%v diving=%v open=%v", took, a.fp.tl.diving, a.fp.open)
+	}
+}
+
+// factoryBoxLab is the verbs' lab (with the Talk door) on item id's page,
+// the cursor on the manager row, one frame drawn.
+func factoryBoxLab(t *testing.T, f *factoryFake, id int) *app {
+	t.Helper()
+	a := factoryVerbsLab(t, f, 150)
+	factoryVerbsOpen(t, a, id)
+	factoryRowNamed(t, a, wordFacetManager)
+	frame(a)
+	f.said()
+	return a
+}
+
+// THE MANAGER'S BOX TAKES THE KEYS: `enter` on the manager row puts them in
+// the box and asks no door; then every letter types, the settings' and the
+// verbs' letters included; the bottom bar is the box's; the empty box says
+// `› say it`; `esc` gives the keys back with the words kept, and a second
+// `enter` shows them again.
+func TestFactoryBoxTakesTheKeys(t *testing.T) {
+	f := &factoryFake{}
+	a := factoryBoxLab(t, f, 4)
+	if want := factoryHintClause(keyOpen, wordTalk); !strings.Contains((placeFactory{}).hint(a), want) {
+		t.Fatalf("the manager row's bottom bar is %q, want %q in it", (placeFactory{}).hint(a), want)
+	}
+	drive(t, a, key("enter"))
+	if !a.factoryBoxFocused() {
+		t.Fatal("enter on the manager row did not put the keys in the box")
+	}
+	if got := f.said(); len(got) != 0 {
+		t.Fatalf("enter on the manager row asked %v", got)
+	}
+	rows := factoryTLPlain(t, a, 120, 12)
+	if want := a.linearMark(tokens.GlyphPromptChat, ">") + "   " + wordSayIt; strings.TrimSpace(rows[11]) != want {
+		t.Fatalf("the empty box is %q, want %q", strings.TrimSpace(rows[11]), want)
+	}
+	if hint := (placeFactory{}).hint(a); hint != "type · enter send · esc back to keys" {
+		t.Fatalf("the box's bottom bar is %q", hint)
+	}
+	if tailed := placeTailed((placeFactory{}).hint(a)); tailed != "type · enter send · "+placeHintTail+" · esc back to keys" {
+		t.Fatalf("the box's bottom bar on screen is %q", tailed)
+	}
+	factoryType(t, a, "swb1 rtec")
+	if got := f.said(); len(got) != 0 {
+		t.Fatalf("letters in the box asked %v", got)
+	}
+	if ask := a.fp.act.ask; ask == nil || ask.kind != factoryAskManager || ask.text != "swb1 rtec" {
+		t.Fatalf("the box holds %+v, want the typed letters", ask)
+	}
+	if !strings.Contains(factoryTLPlain(t, a, 120, 12)[11], "swb1 rtec") {
+		t.Fatal("the typed letters are not drawn in the box")
+	}
+	drive(t, a, key("esc"))
+	if a.factoryBoxFocused() || !a.fp.open {
+		t.Fatalf("esc in the box: focused %v, page open %v", a.factoryBoxFocused(), a.fp.open)
+	}
+	if hint := (placeFactory{}).hint(a); !strings.HasPrefix(hint, factoryHintClause(keyWalk, wordRows)) {
+		t.Fatalf("after esc the bottom bar is %q", hint)
+	}
+	drive(t, a, key("enter"))
+	if ask := a.fp.act.ask; ask == nil || ask.text != "swb1 rtec" {
+		t.Fatalf("the draft did not survive esc and enter: %+v", ask)
+	}
+}
+
+// THE BOX READS WHAT OPENS IT: unfocused before a run `› enter or click to
+// talk · r runs it`, during one `› enter or click to talk to the manager`.
+func TestFactoryBoxUnfocusedWords(t *testing.T) {
+	for _, c := range []struct {
+		id   int
+		want string
+	}{
+		{4, wordEnterOrClickToTalk + rowSep + factoryHintClause(keyRun, wordRunsIt)},
+		{2, wordEnterOrClickToTalk + " " + wordToTheManager},
+	} {
+		a := factoryBoxLab(t, &factoryFake{}, c.id)
+		rows := factoryTLPlain(t, a, 120, 12)
+		if got, want := strings.TrimSpace(rows[11]), a.linearMark(tokens.GlyphPromptChat, ">")+" "+c.want; got != want {
+			t.Errorf("item %d: the box is %q, want %q", c.id, got, want)
+		}
+	}
+}
+
+// `TAB` REACHES THE BOX from a row whose center is the story; from the
+// issue it walks on to the next place as before.
+func TestFactoryBoxTabReachesIt(t *testing.T) {
+	a := factoryVerbsLab(t, &factoryFake{}, 150)
+	factoryVerbsOpen(t, a, 2)
+	if r, _ := a.factoryPageRowAt(factoryTLItem(t, a)); !factoryOnTimeline(r) {
+		t.Fatalf("the running item's page opened on %+v, not the story", r)
+	}
+	drive(t, a, key("tab"))
+	if !a.factoryBoxFocused() || !a.at(pageFactory) {
+		t.Fatalf("tab on the story: box focused %v, on the factory %v", a.factoryBoxFocused(), a.at(pageFactory))
+	}
+	drive(t, a, key("tab"))
+	if a.at(pageFactory) {
+		t.Fatal("tab from inside the box did not walk on to the next place")
+	}
+
+	b := factoryVerbsLab(t, &factoryFake{}, 150)
+	factoryVerbsOpen(t, b, 4)
+	factoryRowNamed(t, b, wordFacetIssue)
+	drive(t, b, key("tab"))
+	if b.factoryBoxFocused() || b.at(pageFactory) {
+		t.Fatalf("tab on the issue: box focused %v, still on the factory %v", b.factoryBoxFocused(), b.at(pageFactory))
+	}
+}
+
+// A CLICK ON THE BOX PUTS THE KEYS IN IT, and a second click keeps its words.
+func TestFactoryBoxClickFocusesIt(t *testing.T) {
+	a := factoryVerbsLab(t, &factoryFake{}, 150)
+	factoryVerbsOpen(t, a, 2)
+	frame(a)
+	h := factoryTLHitOf(t, a, factoryTLBox, -1)
+	x := factoryRailW + factoryRuleW + factoryMargin + h.x0 + 2
+	y := placeHeadRows + a.fp.railTop + h.row
+	drive(t, a, clickAt(x, y), releaseAt(x, y))
+	if !a.factoryBoxFocused() {
+		t.Fatalf("a click on the box at (%d,%d) did not put the keys in it", x, y)
+	}
+	factoryType(t, a, "hi")
+	frame(a)
+	drive(t, a, clickAt(x, y), releaseAt(x, y))
+	if ask := a.fp.act.ask; ask == nil || ask.text != "hi" {
+		t.Fatalf("a second click on the box lost its words: %+v", ask)
 	}
 }
