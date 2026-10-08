@@ -3573,7 +3573,11 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	a.frontWaits = needsPerson(a.agent)
 	// A Teams card can start working in another window while our own turn is
 	// idle. Its current signal wakes the same clock that keeps it animated.
-	if a.teamsSpinning() {
+	// AND SO CAN THE FACTORY FLOOR: a key asking a door, a door's answer, a
+	// snapshot read with an item busy each arrive as a message, and this is
+	// where the clock that keeps the floor's spinner turning is started
+	// ([app.factorySpinning]).
+	if a.teamsSpinning() || a.factorySpinning() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
@@ -5917,7 +5921,15 @@ func (a *app) paint() tea.Cmd {
 	// the spinner's own cadence and no faster: the glyph changes once a step, and a whole wall
 	// drawn thirty times a second to move one glyph a quarter as often would be
 	// the costliest frame on this surface spent on nothing (wall.go).
-	if a.wallSpinning() || a.teamsSpinning() {
+	//
+	// AND THE FACTORY FLOOR WITH WORK IN FLIGHT IS THE TWENTIETH, on the wall's
+	// terms exactly, and the seventh that can be the whole of what is
+	// happening: a door a key asked, an item being read, a source mid-poll, all
+	// run off the loop or in another process, and the floor's own beat paints
+	// once in three seconds. Without this its spinners were still photographs,
+	// which is what the owner saw on `⠸ asking gh…` (factory_busy.go's
+	// [app.factorySpinning]).
+	if a.wallSpinning() || a.teamsSpinning() || a.factorySpinning() {
 		return tea.Batch(kick, surfaceTick(a.frameEvery()*spinnerStep, func(time.Time) tea.Msg { return frameMsg{} }))
 	}
 	a.painting = false
