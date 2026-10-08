@@ -232,6 +232,9 @@ func (lp *floorLoop) hear(c *loopCtl) {
 			return
 		}
 		lp.steer(c, h.Words, lp.roundRunning(c))
+		// AND THE MANAGER HEARS IT TOO, with one turn to reshape the stages
+		// not yet started if that is what the person meant (shape.go).
+		lp.reshape(c, h.Words)
 	}
 }
 

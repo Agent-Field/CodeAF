@@ -149,6 +149,30 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			})
 		},
 	}
+	// THE EDIT DOOR knows by itself which bounds apply: an item none of whose
+	// stages has started is shaped before its run, and one with a stage begun
+	// is edited in its run, the tail only.
+	seam.Edit = func(_ context.Context, id int, e RunEdit) (Item, []string, error) {
+		var out Item
+		var lines []string
+		err := st.Update(id, func(it *Item) error {
+			mode := EditBeforeRun
+			if len(startedStages(*it)) > 0 {
+				mode = EditInRun
+			}
+			next, l, err := Edit(*it, e, o.recipe(it.Repo), mode)
+			if err != nil {
+				return err
+			}
+			*it = next
+			out, lines = next, l
+			return nil
+		})
+		if err != nil {
+			return Item{}, nil, err
+		}
+		return out, lines, nil
+	}
 	localSettings(&seam, st, o)
 	localRunner(&seam, o)
 	// THE FLOOR'S OWN MARKS, kept by the store when it keeps them (marks.go).

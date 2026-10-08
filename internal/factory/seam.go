@@ -61,6 +61,13 @@ type Seam struct {
 	SetGate   func(id int, g Gate) error
 	SetCap    func(id int, usd float64) error
 	SetEffort func(id int, stage int, effort string) error
+	// Edit changes the item's stages by the manager's (or anybody's) edit,
+	// within the bounds [Edit] holds: before a run when nothing of the item has
+	// started, and only the stages not yet started during one. It answers the
+	// item as saved and the lines the edit recorded ([Item.Adapted]); a
+	// refused edit changes nothing and answers why. A running item's runner
+	// reads the new stages at its next round.
+	Edit func(ctx context.Context, id int, e RunEdit) (Item, []string, error)
 
 	// THE FLOOR'S OWN SETTINGS (settings.go), each a door like every other:
 	// nil is a key the floor does not draw.
@@ -186,6 +193,8 @@ func (s Seam) Has(door string) bool {
 		return s.SetCap != nil
 	case "seteffort":
 		return s.SetEffort != nil
+	case "edit":
+		return s.Edit != nil
 	case "repos":
 		return s.Repos != nil
 	case "setrepos":

@@ -219,8 +219,10 @@ words (`after review, arch: read it for the architecture` puts a stage named arc
 with no `name:` the stage is named by its ask's first word, so `after review, make it neater`
 is `make`), and `b` banks the item's stages
 as its repository's recipe, into `.codeaf/factory.md` (see the recipe file). A new item starts
-from its repository's recipe file, or codeaf's default when there is none. A run keeps the
-stages it launched with.
+from its repository's recipe file, or codeaf's default when there is none. Once a run starts,
+the stages it has not started yet are read again at each round, so a change the manager makes
+during the run (see the manager shapes the run) reaches them; a stage that started is never
+changed.
 
 ## the recipe file — .codeaf/factory.md
 
@@ -658,6 +660,53 @@ is `after 1 round`, one finding `1 finding`),
 item that is not waiting says `#12 is not waiting on you` on the bottom line and changes nothing
 (`n` there is new work, and `a` on a thin new item asks its author).
 
+## the manager shapes the run — what happens when you press r
+
+The manager is the author of the run. Shaping is its first act, not a stage: when you press `r`
+(or `L`), after the manager is made and before the first stage, the runner gives it one turn of
+its own conversation with the ask `Shape the run for this item now. What the person said: …`
+(what you said to it beforehand, if anything). That turn thinks cheap, unless
+codeaf read the item as large (`L`). The manager answers by calling `factory_run` once: it may
+give a stage a new ask, change a stage's thinking, add a stage after one it names, switch a
+stage on, or skip one, within the bounds under who may change an item's stages. Then the run
+goes on:
+
+- what it set goes on the item's log and into the manager's conversation as one line,
+  `manager set review: thorough on security, code and architecture · added arch after review ·
+  why: touches the call row`, and the item page's stages redraw;
+- when it changes nothing, the line is `the recipe stands`;
+- when its turn fails or takes longer than a minute (another window holds the conversation, say),
+  the line is `the manager did not answer · the recipe stands`, and the recipe runs as it is;
+- when the bounds refuse what it set, the line is
+  `the manager's change was not applied: <why> · the recipe stands`.
+
+With `ask me at` plan and a change made, the run then stops before the first stage on
+`run these stages? <what it set>` (see run these stages?). An item the manager already shaped
+because you talked to it first (see tell the manager what you want before it runs) is not shaped
+again: that is the run's shape.
+
+Mid-way the same happens on a smaller scale: each line you say to the manager is the steer, as
+always (see talk to the manager), and the manager is also given one turn,
+`The person said: … · reshape the stages not yet started if that is what they mean, else leave
+them`. So `do a thorough review on security, code and architecture`, said during plan, can
+change review's ask before review starts; the log then says `manager set review: …`. A stage that
+started is never changed.
+
+## tell the manager what you want before it runs — one word per stage, it sets the asks
+
+Open the manager (`T`, or `enter` on the issue row) and say what you want before you press
+`r`: `do a thorough review on security, code and architecture`, `skip neaten, this is one line`.
+Nothing is running, so the manager sets it at once with `factory_run` and no card is shown: the
+stages on the item page redraw, and the manager says what it set in three lines at most. Each
+stage is one lowercase word (`review`, `arch`, `e2e`), at most nine of them, and each has an ask
+that says what done looks like; the manager changes asks before it adds stages, and adds a stage
+only for work no stage covers. It never drops proof or a gate stage.
+
+Budget, ask me at, thinking for every stage and notes for the stages still go through
+`factory_item`'s card (see changing an item from its conversation). `factory_run` is on the
+manager's belt only; a stage's own conversation does not have it, and a conversation that manages no
+item is told `this conversation is not the manager of any item on the floor`.
+
 ## run these stages? — what the manager set, y runs, n keeps the recipe, a says it in words
 
 When the manager has shaped a run and `ask me at` is plan, the run stops before the first stage
@@ -738,10 +787,14 @@ asking any model. Either way the chat is the **lead** of the item's team (`#12 �
 the one `factory` team), and each stage's conversation joins that team as a member, so the teams
 rail and the team menu show the manager above its stages.
 
-Its opening brief tells it so: `You are the manager of this item. The runner reports each stage
-here. What the person says here is the brief before a run and the steer during one; use
-factory_item to change the item. While the run waits on a question, a yes or a no the person
-types here answers it, and the runner's next line here says so.`
+Its opening brief tells it so, in five blocks, before the item's facts (its read, its stages with
+their asks and loops, the recipe's policy and habits, ask me at, budget and thinking):
+
+    You are the manager of #12 in acme/web.
+    You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.
+    You do: shape the run, start it when asked, report each stage here, answer the person, and ask only when ask-me-at says so.
+    Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof or a gate stage. Nothing posts outward before ask-me-at.
+    Say what you set in three lines at most, then stop. Do not narrate.
 
 What the manager does:
 
@@ -749,8 +802,9 @@ What the manager does:
   `plan done · 2m · $0.04 · …`, `landed · proof sheet ready · your approval`); the lines are
   listed under what the manager hears (the stage conversations page).
 - **What you type there reaches the run** as its brief or its steer (see talk to the manager).
-- **It changes the item only through `factory_item`**, whose card still asks you before anything
-  lands. It cannot run, stop, approve or post: those stay your keys on the floor.
+- **It shapes the run with `factory_run`** (see the manager shapes the run), with no card; the
+  budget, ask me at, thinking and notes go through `factory_item`, whose card still asks you
+  before anything lands. It cannot run, stop, approve or post: those stay your keys on the floor.
 
 An item whose chat cannot be made (no folder known for it) runs without a manager; its log says
 `the item's conversation could not be made: …`.
