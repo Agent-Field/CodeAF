@@ -1,3 +1,6 @@
+#[cfg(target_os = "macos")]
+mod menu;
+
 use tauri_plugin_shell::ShellExt;
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -26,7 +29,11 @@ async fn engine_health(app: tauri::AppHandle) -> Result<EngineHealth, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(menu::build).on_menu_event(menu::handle);
+
+    builder
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![engine_health])
         .run(tauri::generate_context!())

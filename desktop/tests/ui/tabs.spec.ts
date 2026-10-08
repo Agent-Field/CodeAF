@@ -139,3 +139,52 @@ test('delayed hover previews show real draft text without moving focus', async (
  await expect(draft).toBeFocused();
  await page.keyboard.press('Escape'); await expect(page.getByRole('tooltip')).not.toBeVisible();
 });
+
+test('platform tab shortcuts create, close, reopen, navigate and open overview', async ({ page }) => {
+ await page.goto('/');
+ await expect(page.getByRole('tab')).toHaveCount(1);
+ const mac = await page.evaluate(() => /Mac/.test(navigator.platform));
+ const primary = mac ? 'Meta' : 'Control';
+ await page.keyboard.press(`${primary}+t`);
+ await expect(page.getByRole('tab')).toHaveCount(2);
+ await expect(page.getByRole('button', { name: 'New tab', exact: true })).toHaveAttribute('title', mac ? 'New tab (⌘ T)' : 'New tab (Ctrl T)');
+ await page.keyboard.press(`${primary}+w`);
+ await expect(page.getByRole('tab')).toHaveCount(1);
+ await page.keyboard.press(`${primary}+Shift+t`);
+ await expect(page.getByRole('tab')).toHaveCount(2);
+ await page.getByRole('tab').first().click();
+ await page.keyboard.press(mac ? 'Meta+Shift+]' : 'Control+PageDown');
+ await expect(page.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');
+ await page.keyboard.press(mac ? 'Meta+Shift+[' : 'Control+PageUp');
+ await expect(page.getByRole('tab').first()).toHaveAttribute('aria-selected', 'true');
+ await page.keyboard.press(mac ? 'Meta+Shift+\\' : 'Control+Shift+a');
+ await expect(page.getByRole('dialog', { name: 'All tabs overview', exact: true })).toBeVisible();
+ await page.keyboard.press('Escape');
+ await page.getByRole('button', { name: 'Tab actions', exact: true }).click();
+ const menu = page.getByRole('menu', { name: 'Tab actions', exact: true });
+ await expect(menu.locator('kbd').first()).toHaveText(mac ? '⌘ T' : 'Ctrl T');
+ await page.keyboard.press('Escape');
+ const commandTabHandled = await page.evaluate(() => {
+  const event = new KeyboardEvent('keydown', { key: 'Tab', code: 'Tab', metaKey: true, bubbles: true, cancelable: true });
+  window.dispatchEvent(event); return event.defaultPrevented;
+ });
+ expect(commandTabHandled).toBe(false);
+ await expect(page.getByRole('listbox', { name: 'Switch tabs', exact: true })).not.toBeVisible();
+});
+
+test('native tab actions attach to workspace without invoking the engine', async ({ page }) => {
+ await page.goto('/');
+ await page.getByRole('button', { name: 'Activity', exact: true }).click();
+ await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:desktop-tab-action', { detail: 'new' })));
+ await expect(page.getByRole('tab')).toHaveCount(2);
+ await expect(page.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');
+ await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:desktop-tab-action', { detail: 'overview' })));
+ await expect(page.getByRole('dialog', { name: 'All tabs overview', exact: true })).toBeVisible();
+ await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:desktop-tab-action', { detail: 'close' })));
+ await expect(page.getByRole('dialog', { name: 'All tabs overview', exact: true })).not.toBeVisible();
+ await expect(page.getByRole('tab')).toHaveCount(1);
+ await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:desktop-tab-action', { detail: 'reopen' })));
+ await expect(page.getByRole('tab')).toHaveCount(2);
+ await page.evaluate(() => window.dispatchEvent(new CustomEvent('codeaf:desktop-tab-action', { detail: 'unrecognized' })));
+ await expect(page.getByRole('tab')).toHaveCount(2);
+});

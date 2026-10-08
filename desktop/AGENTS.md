@@ -98,3 +98,8 @@ The overview has one compact toolbar and a flat grid with one title per tab.
 Do not reintroduce duplicate headings/captions, faux window chrome or decorative
 card colors. Organization actions require hover, focus and coarse-pointer
 access. New tabs and overview actions must remain visible at 320px.
+
+Platform shortcut labels and matching helpers belong in src/design/keyboard.ts.
+Use Command for Mac tab creation/closing/reopening and Control for Linux.
+Recent-tab switching remains Control+Tab on both platforms; Command+Tab must
+remain available to macOS. Menu hints must describe the host platform.

@@ -156,3 +156,19 @@ Search uses an understated focus underline. Only selection earns a persistent
 preview border. Organization actions appear on hover/focus and stay visible
 for coarse pointers. The preview contains actual draft text or a quiet empty
 state, never fabricated conversation content.
+
+## Platform tab shortcuts
+
+Mac uses Command+T for New tab, Command+W for Close tab, and
+Command+Shift+T for Reopen closed tab. Linux uses the corresponding Control
+chords. The recent-tab switcher uses Control+Tab on both platforms and
+Control+Shift+Tab to reverse. Do not intercept Command+Tab: macOS owns it for
+application switching. Hints originate in src/design/keyboard.ts rather than
+showing a combined Command/Control label on every platform.
+
+References: [Apple Safari shortcuts](https://support.apple.com/guide/safari/cpsh003/mac)
+and [Arc's recent-tab switcher](https://resources.arc.net/hc/en-us/articles/25619402657303-How-Do-You-Switch-Between-Tabs-Quickly-on-Arc-Desktop).
+
+Mac also uses Command+Shift+[ / ] for adjacent tabs and Command+Shift+\ for
+the overview, following Safari's horizontal-tab conventions. Linux uses
+Control+PageUp / PageDown for adjacent tabs and Control+Shift+A for overview.

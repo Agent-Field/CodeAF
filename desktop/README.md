@@ -28,6 +28,20 @@ The final icon family is AnimateIcons Lucide outline. All theme/type/spacing/bra
 
 Read [the design standard](docs/DESIGN.md). System fonts, warm neutral light theme, charcoal dark theme, graphite accent, spacing/radius/motion tokens, native window controls, visible focus, and reduced motion are the defaults. No custom fonts or external asset requests.
 
+## Native tab shortcuts
+
+On macOS, the native File menu owns Cmd+T (New Tab), Cmd+W (Close Tab),
+Cmd+Shift+T (Reopen Closed Tab), and Cmd+Shift+W (Close Window). Closing a tab
+never closes the window. View offers Cmd+Shift+\ (Show All Tabs); Window offers
+Cmd+Shift+] / Cmd+Shift+[ to select the next / previous tab. Native Edit,
+Services, application commands, fullscreen, and window controls remain available.
+
+The native shell sends a narrow `desktop-tab-action` event to the main view.
+These actions only update the local UI; they never invoke the engine. Browser
+previews use renderer shortcuts and remain subject to browser-reserved keys.
+Cmd+Tab remains the operating system application switcher; Ctrl+Tab is the
+in-app recent-tab switcher.
+
 ## Checks
 
 CI verifies frontend/Go contracts and native compilation on Ubuntu and macOS. Signing, notarization, auto-update, Windows validation, and production distribution are not configured.

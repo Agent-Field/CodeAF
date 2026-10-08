@@ -1,5 +1,5 @@
+import { formatShortcut, isMac } from '../../design/keyboard';
 export function KeyboardShortcut({ command, label }: { command?: string; label?: string }) {
- const mac = /Mac/.test(navigator.platform);
- const platformLabel = label?.replace('⌘/Ctrl', mac ? '⌘' : 'Ctrl').replace('⇧', mac ? '⇧' : 'Shift');
- return <kbd className="keyboard-shortcut">{platformLabel ?? `${mac ? '⌘' : 'Ctrl'} ${command ?? ''}`}</kbd>;
+ const platformLabel = label ? formatShortcut(label) : undefined;
+ return <kbd className="keyboard-shortcut">{platformLabel ?? `${isMac ? '⌘' : 'Ctrl'} ${command ?? ''}`}</kbd>;
 }
