@@ -739,3 +739,33 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 		t.Fatalf("cap %v log %+v", it.Cap, it.Stream.Log)
 	}
 }
+
+// A running stage's conversation is on its phase from the moment it is made,
+// so the item page can walk into a round while it works rather than only once
+// it has ended (the 2026-10-08 run on factory-demo: `enter` on a running plan
+// said it had no conversation yet for the whole of its two minutes).
+func TestARunningStageNamesItsConversationBeforeItEnds(t *testing.T) {
+	release := make(chan struct{})
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return
+		}
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "planned"})
+	}}
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: NewChatExecutor(maker)}, nil)
+	id := g.add("fix it", chat("plan"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.wait(id, "running with its room named", func(it factory.Item) bool {
+		return it.State == factory.StateRunning && it.Stream != nil && len(it.Stream.Phases) == 1 &&
+			it.Stream.Phases[0].State == factory.PhaseRunning && it.Stream.Phases[0].Chat == "fake-1"
+	})
+	if it.Stream.Phases[0].Chat != "fake-1" {
+		t.Fatalf("phase = %+v", it.Stream.Phases[0])
+	}
+	close(release)
+	g.waitState(id, factory.StateLanded)
+}

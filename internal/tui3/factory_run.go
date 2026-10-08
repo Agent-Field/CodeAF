@@ -71,7 +71,10 @@ func factoryNoRoomWords(v factoryStageView) string {
 	case !v.ran || v.state == factory.PhasePending:
 		return name + " has not started"
 	case v.state == factory.PhaseRunning || v.state == factory.PhaseWaiting:
-		return name + " has no conversation yet" + rowSep + "it opens when a round ends"
+		// A round names its conversation on its phase the moment it is made
+		// (internal/factory/run's Job.Room), so this is the moment between
+		// the round starting and its conversation opening.
+		return name + " has no conversation yet" + rowSep + "it opens as the round starts"
 	}
 	return name + " kept no conversation"
 }

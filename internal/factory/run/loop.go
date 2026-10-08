@@ -748,8 +748,21 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		Dir:   dir,
 		Steer: c.steer,
 		Log:   func(line string) { lp.say(c, "thought", line) },
+		Room:  func(chat string) { lp.room(c, i, chat) },
 		Spend: lp.spender(c),
 	}
+}
+
+// room writes a round's conversation onto its phase as soon as it is made:
+// the item page's `enter` on a running stage walks into it. A stopped item
+// takes no write, which is [floorLoop.write]'s own refusal.
+func (lp *floorLoop) room(c *loopCtl, i int, chat string) {
+	_ = lp.write(c, func(it *factory.Item) error {
+		if i >= 0 && i < len(it.Stream.Phases) {
+			it.Stream.Phases[i].Chat = chat
+		}
+		return nil
+	})
 }
 
 // spender is the Job.Spend hook: the money's when there is one, else the
