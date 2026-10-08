@@ -56,8 +56,10 @@ const factoryCardWindow = 15 * time.Minute
 // constants because the manual quotes them (internal/manual/chat/factory.md)
 // and a surface drawing the card must spell the same head.
 const (
-	// FactoryCardLead opens the card's head; the title follows it.
-	FactoryCardLead = "wants to put this on the factory floor: "
+	// FactoryCardHead is the card's whole head: ONE QUESTION IN THE PERSON'S
+	// WORDS. The item it is about is drawn under it in the item card's shape,
+	// title first, so the head never has to carry the title too.
+	FactoryCardHead = "put this on the factory floor?"
 	// FactoryAddLabel and FactoryNotNowLabel are the card's two answers.
 	FactoryAddLabel    = "add it"
 	FactoryNotNowLabel = "not now"
@@ -135,12 +137,19 @@ func (a *Agent) factoryTools() []bare.Tool {
 	if a.config.mayRecipe() {
 		tools = append(tools, a.factoryRecipeTool())
 	}
-	// `factory_stages` (tools_factory_stages.go) rides on a third door, the
-	// one onto an item already on the floor, absent on the same law.
-	if a.config.mayStages() {
-		tools = append(tools, a.factoryStagesTool())
+	// `factory_item` (tools_factory_item.go) rides on a third door, the one
+	// onto an item already on the floor, absent on the same law.
+	if a.config.mayItem() {
+		tools = append(tools, a.factoryItemTool())
 	}
 	return tools
+}
+
+// factoryReader is what a [FactoryDoor] may also answer: the item it just
+// wrote, as the floor holds it. The store answers it; a door that does not is
+// simply not read back.
+type factoryReader interface {
+	Get(id int) (factory.Item, error)
 }
 
 // factoryOffer is one card still waiting on somebody: the channel its answer
@@ -207,6 +216,14 @@ func (a *Agent) factoryAddTool() bare.Tool {
 			}
 			added := notice
 			added.Item = id
+			// THE ITEM AS THE FLOOR WROTE IT rides the news when the door can read
+			// it back, so a window with no floor of its own draws the live card
+			// from the event (internal/tui3's factoryitemcard.go).
+			if reader, ok := a.config.Factory.(factoryReader); ok {
+				if it, err := reader.Get(id); err == nil {
+					added.Now = &it
+				}
+			}
 			a.emitFactory(Event{Kind: EventFactoryAdded, Tool: "factory_add", Text: "#" + strconv.Itoa(id), Factory: &added})
 			return "#" + strconv.Itoa(id) + " " + notice.Title + factoryAddedTail, false, nil
 		},
@@ -381,7 +398,7 @@ func (a *Agent) factoryQuestion(id string, notice FactoryNotice, asked time.Time
 		Ask:      AskPermission,
 		Form:     FormCard,
 		Asker:    Asker{Kind: AskerModel},
-		Head:     FactoryCardLead + notice.Title,
+		Head:     FactoryCardHead,
 		Reason:   notice.Body,
 		Subject:  SubjectRef{Ref: id, Name: strings.Join(parts, DecisionSep)},
 		Options:  AnswerOptions(QuestionFactory),

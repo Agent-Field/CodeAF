@@ -1,9 +1,10 @@
 package main
 
-// The item's own conversation (`T`) and the stages door behind
-// `factory_stages`, held to their laws: the conversation is made once, inside
-// the item's team under the one `factory` team, with the item in front of it;
-// the stages change only through factory.Adapt, which refuses under `fixed`.
+// The item's own conversation (`T`) and the item door behind `factory_item`,
+// held to their laws: the conversation is made once, inside the item's team
+// under the one `factory` team, with the item in front of it and its marker
+// first; the door previews without writing, applies each field, changes the
+// stages only through factory.Adapt, and refuses a stage change under `fixed`.
 
 import (
 	"context"
@@ -65,7 +66,8 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"#" + strconv.Itoa(first) + " · fix the ledger double count", "repo web", talkClosing, "factory_stages", "stages:"} {
+	for _, want := range []string{"#" + strconv.Itoa(first) + " · fix the ledger double count", "repo web", talkClosing, "factory_item", "stages:",
+		"[factory item #" + strconv.Itoa(first) + "]", "hub", "leave notes its stages will read", "its stages will report into this conversation"} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("the opening brief lacks %q:\n%s", want, data)
 		}
@@ -123,34 +125,50 @@ func TestFactoryTalkMakesOneConversationInTheItemsTeamUnderFactory(t *testing.T)
 	}
 }
 
-func TestFactoryStagesDoorAppliesAdaptAndRefusesUnderFixed(t *testing.T) {
+func TestFactoryItemDoorAppliesEachFieldAndRefusesUnderFixed(t *testing.T) {
 	st, web, _ := talkLab(t)
 	id, err := st.Add(context.Background(), factory.Item{Repo: "web", Title: "fix the ledger double count", Kind: factory.KindIssue,
-		Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
+		Gate: factory.GateShip, Cap: 5, Stages: factory.CopyStages(factory.DefaultRecipe().For(factory.KindIssue))})
 	if err != nil {
 		t.Fatal(err)
 	}
-	door := stagesDoor(st, web).(storeStagesDoor)
-	if ref, err := door.Ref(context.Background(), id); err != nil || ref != "#"+strconv.Itoa(id) {
-		t.Fatalf("ref = %q, %v", ref, err)
+	door := itemDoor(st, web).(storeItemDoor)
+	ctx := context.Background()
+	if _, _, err := door.Preview(ctx, 999, session.ItemChange{Cap: 8}); err == nil || !strings.Contains(err.Error(), "there is no item 999") {
+		t.Fatalf("an item that is not there = %v", err)
 	}
-	if _, err := door.Ref(context.Background(), 999); err == nil {
-		t.Fatal("an item that is not there was named")
-	}
-	now, err := door.Apply(context.Background(), id, factory.PlanEdit{Skip: []string{"review"}, Why: "one-line fix"})
+
+	// THE PREVIEW WRITES NOTHING.
+	change := session.ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}, Why: "one-line fix"},
+		Gate: factory.GatePlan, Cap: 8, Effort: "strong", Note: "the fixture in testdata is flaky"}
+	before, after, err := door.Preview(ctx, id, change)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range now {
-		if name == "review" {
-			t.Fatalf("review is still on: %v", now)
-		}
+	if before.Gate != factory.GateShip || after.Gate != factory.GatePlan || after.Cap != 8 || len(after.Notes) != 1 {
+		t.Fatalf("preview = %+v → %+v", before, after)
+	}
+	if held, _ := st.Get(id); held.Gate != factory.GateShip || held.Cap != 5 || len(held.Notes) != 0 {
+		t.Fatalf("a preview wrote to the store: %+v", held)
+	}
+
+	// AND THE APPLY WRITES EVERY FIELD, ONCE.
+	now, err := door.Apply(ctx, id, change)
+	if err != nil {
+		t.Fatal(err)
 	}
 	it, _ := st.Get(id)
 	if i := factory.StageIndex(it.Stages, "review"); i < 0 || it.Stages[i].On {
 		t.Fatalf("the saved item still runs review: %+v", it.Stages)
 	}
-	if _, err := door.Apply(context.Background(), id, factory.PlanEdit{Skip: []string{"proof"}}); err == nil || !strings.Contains(err.Error(), "may not skip proof") {
+	if it.Gate != factory.GatePlan || it.Cap != 8 || session.ItemEffort(it) != "strong" ||
+		strings.Join(it.Notes, "|") != "the fixture in testdata is flaky" {
+		t.Fatalf("the saved item = gate %s cap %v effort %q notes %v", it.Gate, it.Cap, session.ItemEffort(it), it.Notes)
+	}
+	if now.Gate != it.Gate || now.Cap != it.Cap {
+		t.Fatalf("Apply answered %+v, the store holds %+v", now, it)
+	}
+	if _, err := door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{Skip: []string{"proof"}}}); err == nil || !strings.Contains(err.Error(), "may not skip proof") {
 		t.Fatalf("skipping proof = %v, want Adapt's refusal", err)
 	}
 
@@ -159,19 +177,53 @@ func TestFactoryStagesDoorAppliesAdaptAndRefusesUnderFixed(t *testing.T) {
 	if err := factory.Save(web, fixed); err != nil {
 		t.Fatal(err)
 	}
-	before, _ := st.Get(id)
-	_, err = door.Apply(context.Background(), id, factory.PlanEdit{On: []string{"review"}})
+	held, _ := st.Get(id)
+	if _, _, err := door.Preview(ctx, id, session.ItemChange{Edit: factory.PlanEdit{On: []string{"review"}}, Cap: 12}); err == nil ||
+		err.Error() != "the recipe for issue is fixed; plan may not change the stages" {
+		t.Fatalf("preview under fixed = %v, want Adapt's sentence", err)
+	}
+	_, err = door.Apply(ctx, id, session.ItemChange{Edit: factory.PlanEdit{On: []string{"review"}}, Cap: 12})
 	if err == nil || err.Error() != "the recipe for issue is fixed; plan may not change the stages" {
 		t.Fatalf("under fixed = %v, want Adapt's sentence", err)
 	}
-	after, _ := st.Get(id)
-	if strings.Join(factory.StageLines(after.Stages), "\n") != strings.Join(factory.StageLines(before.Stages), "\n") {
+	later, _ := st.Get(id)
+	if strings.Join(factory.StageLines(later.Stages), "\n") != strings.Join(factory.StageLines(held.Stages), "\n") || later.Cap != held.Cap {
 		t.Fatal("a refused change still changed the item")
 	}
 }
 
-func TestFactoryStagesDoorOfANilStoreIsNil(t *testing.T) {
-	if door := stagesDoor(nil, t.TempDir()); door != nil {
-		t.Fatalf("a nil store became a non-nil stages door: %#v", door)
+func TestFactoryItemDoorOfANilStoreIsNil(t *testing.T) {
+	if door := itemDoor(nil, t.TempDir()); door != nil {
+		t.Fatalf("a nil store became a non-nil item door: %#v", door)
+	}
+}
+
+// THE RECIPE DOOR SAYS THE STAGES A KIND RUNS, so the recipe card can show
+// them before and after its line, and refuses an unknown checkout in the
+// bank's own words.
+func TestFactoryRecipeDoorSaysTheStagesAKindRuns(t *testing.T) {
+	st, web, _ := talkLab(t)
+	door := recipeDoor(st, web).(fileRecipeDoor)
+	names, err := door.Stages(context.Background(), "web", factory.KindIssue)
+	if err != nil || strings.Join(names, " ") != "plan write test review security proof" {
+		t.Fatalf("stages = %v, %v", names, err)
+	}
+	if _, err := door.Stages(context.Background(), "nowhere", factory.KindIssue); err == nil || !strings.Contains(err.Error(), "does not know where nowhere is checked out") {
+		t.Fatalf("an unknown checkout = %v", err)
+	}
+}
+
+// THE BRIEF'S MARKER names the item by its ref, and a forge-numbered item by
+// its floor id beside it.
+func TestFactoryTalkMarker(t *testing.T) {
+	if got := talkMarker(factory.Item{ID: 1}); got != "[factory item #1]" {
+		t.Errorf("a floor-numbered item = %q", got)
+	}
+	if got := talkMarker(factory.Item{ID: 7, Num: 1540}); got != "[factory item #1540 · 7]" {
+		t.Errorf("a forge-numbered item = %q", got)
+	}
+	brief := talkBrief(factory.Item{ID: 3, Repo: "web", Title: "t", Notes: []string{"the fixture is flaky"}}, factory.DefaultRecipe())
+	if !strings.HasPrefix(brief, "[factory item #3]\n#3 · t\nrepo web") || !strings.Contains(brief, "note for the stages: the fixture is flaky") {
+		t.Errorf("brief = %q", brief)
 	}
 }

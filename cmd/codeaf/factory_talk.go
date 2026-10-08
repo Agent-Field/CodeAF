@@ -35,8 +35,12 @@ import (
 //     ([talkBrief]) as the session's own note ([session.SeedConversation]).
 //
 // The conversation's belt is every other conversation's on this launch: the
-// factory tools, and `factory_stages` beside them ([stagesDoor]), which is how
-// the conversation proposes a change to the item and the person's key makes it.
+// factory tools, and `factory_item` beside them ([itemDoor]), which is how the
+// conversation proposes a change to the item — its stages, gate, cap, effort,
+// or a note for its stages — and the person's key makes it. THE CONVERSATION IS
+// THE ITEM'S HUB, and the brief says so: the model is told it may change the
+// item through the card, leave notes the stages will read, and that the stages
+// will report into this conversation once they run.
 
 // factoryTeamName is the one team every item's team sits under.
 const factoryTeamName = "factory"
@@ -169,6 +173,10 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 			b.WriteByte('\n')
 		}
 	}
+	// THE MARKER IS THE FIRST LINE, and a surface draws the item's live card
+	// in its place (internal/tui3's factoryitemcard.go), so the person sees the
+	// item where the model sees its brief.
+	line(talkMarker(it))
 	line(talkTeamName(it))
 	var facts []string
 	add := func(label, value string) {
@@ -214,65 +222,114 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 		}
 	}
 	line(it.Triage.Read)
-	line(fmt.Sprintf("Call this item %s in everything you say; the person knows it by that name. To change its stages, propose it with factory_stages; the floor id for factory_stages is %d, and it goes in the tool's item field only, never in your words. Nothing changes until the person presses a key on the card.", it.Ref(), it.ID))
+	for _, note := range it.Notes {
+		line("note for the stages: " + note)
+	}
+	line(fmt.Sprintf("Call this item %s in everything you say; the person knows it by that name. This conversation is %s's hub: through factory_item you can change its stages, its gate, its cap and its effort, and leave notes its stages will read. The floor id for factory_item is %d, and it goes in the tool's item field only, never in your words. Nothing changes until the person presses a key on the card. Once %s runs, its stages will report into this conversation.", it.Ref(), it.Ref(), it.ID, it.Ref()))
 	line(talkClosing)
 	return strings.TrimSpace(b.String())
 }
 
-// stagesDoor is `factory_stages`' door over the store, or nil.
+// itemDoor is `factory_item`'s door over the store, or nil.
 //
 // A NIL STORE IS A NIL DOOR, for [factoryDoor]'s reason: with no floor there
 // is no item to change, and the tool is then absent from the belt.
-func stagesDoor(st *store.Store, workspace string) session.StagesDoor {
+func itemDoor(st *store.Store, workspace string) session.ItemDoor {
 	if st == nil {
 		return nil
 	}
-	return storeStagesDoor{st: st, dirs: factoryRepoDirs(st, workspace)}
+	return storeItemDoor{st: st, dirs: factoryRepoDirs(st, workspace)}
 }
 
-// storeStagesDoor changes one item's stages through [factory.Adapt].
-type storeStagesDoor struct {
+// storeItemDoor changes one item through [session.ApplyItemChange], which is
+// where every bound is held: the stages through [factory.Adapt], under the
+// item's own repository's recipe.
+type storeItemDoor struct {
 	st   *store.Store
 	dirs func(repo string) string
 }
 
-// Ref is the floor's name for an item, asked before any card is raised so a
-// card never names an item the floor does not have.
-func (d storeStagesDoor) Ref(_ context.Context, item int) (string, error) {
+// get is the item, or the person's sentence for an id the floor does not have.
+func (d storeItemDoor) get(item int) (factory.Item, error) {
 	it, err := d.st.Get(item)
 	if errors.Is(err, store.ErrNotFound) {
-		return "", fmt.Errorf("there is no item %d on the factory floor", item)
+		return factory.Item{}, fmt.Errorf("there is no item %d on the factory floor", item)
 	}
-	if err != nil {
-		return "", err
-	}
-	return it.Ref(), nil
+	return it, err
 }
 
-// Apply loads the item, reads its repository's recipe, applies the edit
-// through [factory.Adapt] — WHERE EVERY BOUND IS HELD, and under a `fixed`
-// recipe the refusal is Adapt's own sentence — and saves it, in one
-// read-modify-write of the item's document. It answers the stages the item
-// runs now, in order.
-func (d storeStagesDoor) Apply(_ context.Context, item int, edit factory.PlanEdit) ([]string, error) {
-	var now []string
+// Preview answers the item as it stands and as the change would leave it,
+// writing nothing. A change the bounds refuse is refused here, before any
+// card, in [factory.Adapt]'s own sentence.
+func (d storeItemDoor) Preview(_ context.Context, item int, change session.ItemChange) (factory.Item, factory.Item, error) {
+	it, err := d.get(item)
+	if err != nil {
+		return factory.Item{}, factory.Item{}, err
+	}
+	recipe := factoryItemRecipe(d.dirs, it)
+	before := session.ItemStaged(it, recipe)
+	after, err := session.ApplyItemChange(it, change, recipe)
+	if err != nil {
+		return factory.Item{}, factory.Item{}, err
+	}
+	return before, after, nil
+}
+
+// Apply makes the change in one read-modify-write of the item's document,
+// against the item as it is NOW — a stage may have started since the card was
+// raised, and the bounds are asked again — and answers the item as saved.
+func (d storeItemDoor) Apply(_ context.Context, item int, change session.ItemChange) (factory.Item, error) {
+	var now factory.Item
 	err := d.st.Update(item, func(it *factory.Item) error {
-		next, _, err := factory.Adapt(*it, edit, factoryItemRecipe(d.dirs, *it))
+		next, err := session.ApplyItemChange(*it, change, factoryItemRecipe(d.dirs, *it))
 		if err != nil {
 			return err
 		}
 		*it = next
-		for _, st := range it.Stages {
-			if st.On {
-				now = append(now, st.Name)
-			}
-		}
 		return nil
 	})
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, fmt.Errorf("there is no item %d on the factory floor", item)
+		return factory.Item{}, fmt.Errorf("there is no item %d on the factory floor", item)
 	}
-	return now, err
+	if err != nil {
+		return factory.Item{}, err
+	}
+	if now, err = d.st.Get(item); err != nil {
+		return factory.Item{}, err
+	}
+	return now, nil
+}
+
+// Stages is the stage names kind runs in repo's recipe today, which the recipe
+// card shows before and after its line ([session.RecipeRows]). It is asked of
+// the same checkout the bank writes to, so an unknown checkout refuses here in
+// the bank's own words, before the person is asked anything.
+func (d fileRecipeDoor) Stages(_ context.Context, repo string, kind factory.Kind) ([]string, error) {
+	dir, err := d.dir(repo)
+	if err != nil {
+		return nil, err
+	}
+	recipe, _, err := factory.Load(dir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, st := range recipe.For(kind) {
+		names = append(names, st.Name)
+	}
+	return names, nil
+}
+
+// talkMarker is the brief's first line, `[factory item #12]`, which a surface
+// draws as the item's live card. An item the floor names by a forge number
+// carries its floor id after it (`[factory item #1540 · 7]`) so the surface
+// finds the right row whichever repository the number belongs to.
+func talkMarker(it factory.Item) string {
+	ref := it.Ref()
+	if ref == "#"+strconv.Itoa(it.ID) || it.ID <= 0 {
+		return "[factory item " + ref + "]"
+	}
+	return "[factory item " + ref + " · " + strconv.Itoa(it.ID) + "]"
 }
 
 // talkPutAway wraps a seam's Dismiss so an item put away takes its

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Agent-Field/codeaf/internal/factory"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -154,6 +155,61 @@ func TestAFactoryRecipeCardCrossesTheTaskLaneWhole(t *testing.T) {
 		t.Fatalf("the recipe answer arrived changed: %+v", heard[len(heard)-1])
 	}
 	for _, kind := range []session.EventKind{session.EventRecipeProposal, session.EventRecipeBanked} {
+		if !factsMoved(kind) {
+			t.Fatalf("factsMoved(%v) is false", kind)
+		}
+	}
+}
+
+// THE ITEM CARD CROSSES THE SAME LANE WHOLE — its before and after, its
+// answer, and the item the change left behind, which is what a hosted window
+// draws the live card from — and its answer the same door.
+func TestAFactoryItemCardCrossesTheTaskLaneWhole(t *testing.T) {
+	far := &railAgent{fakeAgent: &fakeAgent{}}
+	loop := laneLoop(t, far)
+	lane, stop := loop.Client.Agent().WatchTaskUpdates()
+	t.Cleanup(stop)
+	waitFor(t, "the engine opened the surface's task lane", func() bool { return far.opened() == 1 })
+
+	card := session.ItemNotice{ID: "g2", Item: 1, Ref: "#1", Skip: []string{"review"}, Gate: "plan", Cap: 8, Note: "the fixture is flaky", Why: "plan first",
+		Before: session.ItemFacts{Stages: []string{"plan", "write", "test", "review", "proof"}, Gate: "ship", Cap: 5},
+		After:  session.ItemFacts{Stages: []string{"plan", "write", "test", "proof"}, Gate: "plan", Cap: 8}}
+	far.land(session.Event{Kind: session.EventItemProposal, Tool: "factory_item", Text: session.ItemHead(card), FactoryItem: &card})
+	got := nextTask(t, lane)
+	if got.Kind != session.EventItemProposal || got.FactoryItem == nil || !reflect.DeepEqual(*got.FactoryItem, card) {
+		t.Fatalf("the card arrived changed: %v / %+v, want %+v", got.Kind, got.FactoryItem, card)
+	}
+
+	changed := card
+	changed.Now = &factory.Item{ID: 1, Title: "Total double-counts an entry added twice", Repo: "factory-demo", State: factory.StateNew, Gate: factory.GatePlan, Cap: 8,
+		Notes: []string{"the fixture is flaky"}}
+	far.land(session.Event{Kind: session.EventItemChanged, Tool: "factory_item", FactoryItem: &changed})
+	got = nextTask(t, lane)
+	if got.Kind != session.EventItemChanged || got.FactoryItem == nil || got.FactoryItem.Now == nil ||
+		got.FactoryItem.Now.Gate != factory.GatePlan || got.FactoryItem.Now.Title != changed.Now.Title ||
+		!reflect.DeepEqual(got.FactoryItem.Now.Notes, changed.Now.Notes) {
+		t.Fatalf("the change arrived as %v / %+v", got.Kind, got.FactoryItem)
+	}
+
+	added := factoryNotice()
+	added.Item = 12
+	added.Now = &factory.Item{ID: 12, Title: added.Title, Repo: added.Repo, State: factory.StateNew}
+	far.land(session.Event{Kind: session.EventFactoryAdded, Tool: "factory_add", Factory: &added})
+	got = nextTask(t, lane)
+	if got.Factory == nil || got.Factory.Now == nil || got.Factory.Now.ID != 12 || got.Factory.Now.Title != added.Title {
+		t.Fatalf("the added item arrived as %+v", got.Factory)
+	}
+
+	asking := newAskingAgent()
+	answers := laneLoop(t, asking)
+	given := session.Answer{Kind: session.QuestionItem, Ref: "g2", Key: "1", Picked: []string{"1"}}
+	if err := answers.Client.Agent().ResolveQuestion(given); err != nil {
+		t.Fatalf("answering an item card over the wire: %v", err)
+	}
+	if heard := asking.heard(); !reflect.DeepEqual(heard[len(heard)-1], given) {
+		t.Fatalf("the item answer arrived changed: %+v", heard[len(heard)-1])
+	}
+	for _, kind := range []session.EventKind{session.EventItemProposal, session.EventItemChanged} {
 		if !factsMoved(kind) {
 			t.Fatalf("factsMoved(%v) is false", kind)
 		}

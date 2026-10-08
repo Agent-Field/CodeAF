@@ -49,8 +49,9 @@ import (
 // quotes them (internal/manual/chat/factory.md) and a surface drawing the card
 // spells the same head.
 const (
-	// RecipeCardLead opens every recipe card's head; [RecipeHead] finishes it.
-	RecipeCardLead = "wants to add to "
+	// RecipeCardLead opens every recipe card's head; [RecipeHead] finishes it
+	// as ONE QUESTION: `add this to web's recipe for issue?`.
+	RecipeCardLead = "add this to "
 	// RecipeBankLabel and RecipeNotNowLabel are the card's two answers.
 	RecipeBankLabel   = "bank it"
 	RecipeNotNowLabel = "not now"
@@ -95,7 +96,8 @@ func factoryRecipeSchemaJSON() string {
 		`"kind":{"type":"string","enum":[` + strings.Join(quoted, ",") + `],"description":"Which work the stage is for. Required with stage."},` +
 		`"stage":{"type":"string","description":"One stage line: name · kind · ask · knobs."},` +
 		`"policy":{"type":"string","description":"One policy sentence."},` +
-		`"habit":{"type":"string","description":"One habit sentence."}` +
+		`"habit":{"type":"string","description":"One habit sentence."},` +
+		`"why":{"type":"string","description":"One sentence saying why, in the person's own reason when they gave one."}` +
 		`},"required":["repo"],"additionalProperties":false}`
 }
 
@@ -113,16 +115,71 @@ type recipeOffer struct {
 // reStageNumber is a leading `N.` the model may have copied off the file.
 var reStageNumber = regexp.MustCompile(`^\d+\.\s*`)
 
-// RecipeHead is the card's head for one notice: what it adds and where.
+// RecipeHead is the card's head for one notice: ONE QUESTION, saying where the
+// line goes. What the line is, and what the recipe looks like before and
+// after it, is the card's body ([RecipeRows]).
 func RecipeHead(n RecipeNotice) string {
 	repo := strings.TrimSpace(n.Repo)
 	switch {
 	case n.Policy != "":
-		return RecipeCardLead + repo + "'s policy: " + n.Policy
+		return RecipeCardLead + repo + "'s policy?"
 	case n.Habit != "":
-		return RecipeCardLead + repo + "'s habits: " + n.Habit
+		return RecipeCardLead + repo + "'s habits?"
 	}
-	return RecipeCardLead + repo + "'s recipe for " + n.Kind + ": " + n.Line
+	return RecipeCardLead + repo + "'s recipe for " + n.Kind + "?"
+}
+
+// RecipeRows is the card's body: for a stage, `now:` with the stage names the
+// kind runs today and `after:` with the new one marked `+`, then the line
+// itself; for a policy or a habit, the sentence; and `why:` last when the
+// model gave a reason. A recipe the door could not read draws no `now:` and
+// no `after:` (the emptiness law), and the line still says what is banked.
+func RecipeRows(n RecipeNotice) []string {
+	var rows []string
+	if n.Line != "" && len(n.After) > 0 {
+		rows = append(rows, "now: "+itemList(n.Now), "after: "+itemList(n.After))
+	}
+	rows = append(rows, RecipeWords(n))
+	if why := strings.TrimSpace(n.Why); why != "" {
+		rows = append(rows, "why: "+why)
+	}
+	return rows
+}
+
+// recipeStager is what a [RecipeDoor] may also answer: the stage names kind
+// runs in repo's recipe today. A door that answers it is asked BEFORE the card
+// is raised, so the card can say the recipe before and after, and a recipe
+// that cannot be read refuses the line in the door's own words — the same
+// words the bank would have refused it with after a yes.
+type recipeStager interface {
+	Stages(ctx context.Context, repo string, kind factory.Kind) ([]string, error)
+}
+
+// recipeLineName is a stage line's name: its first field, which is where the
+// file's grammar (`name · kind · ask · knobs`) puts it and where
+// [recipeStageLine] spelled it.
+func recipeLineName(line string) string {
+	return strings.TrimSpace(strings.SplitN(line, "·", 2)[0])
+}
+
+// recipeAfter is the stage names after a yes: the new stage replaces one of
+// the same name where it stands, or goes on the end, as the door banks it —
+// and is marked `+` either way, because it is the line being decided.
+func recipeAfter(now []string, name string) []string {
+	out := make([]string, 0, len(now)+1)
+	placed := false
+	for _, s := range now {
+		if s == name {
+			out = append(out, itemAddedMark+s)
+			placed = true
+			continue
+		}
+		out = append(out, s)
+	}
+	if !placed {
+		out = append(out, itemAddedMark+name)
+	}
+	return out
 }
 
 // recipeBanked is the sentence a yes returns.
@@ -168,6 +225,7 @@ func (a *Agent) factoryRecipeTool() bare.Tool {
 				Stage  string `json:"stage"`
 				Policy string `json:"policy"`
 				Habit  string `json:"habit"`
+				Why    string `json:"why"`
 			}
 			if len(args) > 0 {
 				if err := decodeToolArguments(args, &parsed); err != nil {
@@ -179,6 +237,7 @@ func (a *Agent) factoryRecipeTool() bare.Tool {
 				Kind:   strings.ToLower(strings.TrimSpace(parsed.Kind)),
 				Policy: strings.Join(strings.Fields(parsed.Policy), " "),
 				Habit:  strings.Join(strings.Fields(parsed.Habit), " "),
+				Why:    strings.Join(strings.Fields(parsed.Why), " "),
 			}
 			stage := strings.TrimSpace(parsed.Stage)
 			given := 0
@@ -202,6 +261,17 @@ func (a *Agent) factoryRecipeTool() bare.Tool {
 					return "Invalid arguments: the recipe cannot read that stage line: " + err.Error() + ".", true, nil
 				}
 				notice.Line = line
+				// THE RECIPE IS READ BEFORE THE CARD, so the card says the stages
+				// before and after the yes, and a recipe nobody can write is
+				// refused now rather than after the person agreed to it.
+				if stager, ok := a.config.Recipe.(recipeStager); ok {
+					now, err := stager.Stages(ctx, notice.Repo, factory.Kind(notice.Kind))
+					if err != nil {
+						return recipeRefusedLead + oneLine(err.Error()), true, nil
+					}
+					notice.Now = now
+					notice.After = recipeAfter(now, recipeLineName(line))
+				}
 			} else {
 				// A sentence belongs to the whole repository, not to a kind.
 				notice.Kind = ""
@@ -339,7 +409,7 @@ func (a *Agent) recipeQuestion(id string, notice RecipeNotice, asked time.Time) 
 		Form:     FormCard,
 		Asker:    Asker{Kind: AskerModel},
 		Head:     RecipeHead(notice),
-		Reason:   RecipeWords(notice),
+		Reason:   strings.Join(RecipeRows(notice), "; "),
 		Subject:  SubjectRef{Ref: id, Name: RecipeSubject(notice)},
 		Options:  AnswerOptions(QuestionRecipe),
 		Input:    InputShape{Kind: InputText, Prompt: RecipeChangePrompt},

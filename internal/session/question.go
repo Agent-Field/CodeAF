@@ -1498,14 +1498,14 @@ func questionAsked(event Event) (string, bool) {
 		}
 		return questionToken(QuestionRecipe, strings.TrimSpace(event.Recipe.ID)), true
 
-	case EventStagesProposal:
-		if event.Stages == nil || strings.TrimSpace(event.Stages.ID) == "" {
+	case EventItemProposal:
+		if event.FactoryItem == nil || strings.TrimSpace(event.FactoryItem.ID) == "" {
 			return "", false
 		}
-		if event.Stages.Decided != nil || event.Stages.Withdrawn != "" {
+		if event.FactoryItem.Decided != nil || event.FactoryItem.Withdrawn != "" {
 			return "", false
 		}
-		return questionToken(QuestionStages, strings.TrimSpace(event.Stages.ID)), true
+		return questionToken(QuestionItem, strings.TrimSpace(event.FactoryItem.ID)), true
 	}
 	return "", false
 }
@@ -1910,8 +1910,8 @@ func questionGoneReason(q Question) string {
 		return factoryGoneReason
 	case QuestionRecipe:
 		return recipeGoneReason
-	case QuestionStages:
-		return stagesGoneReason
+	case QuestionItem:
+		return itemGoneReason
 	}
 	// The model's own question and everything else: the turn that raised it
 	// has ended — interrupted, or finished around it — which is the one way a
@@ -2337,24 +2337,24 @@ func (a *Agent) applyToLane(answer Answer) error {
 		}
 		a.ResolveRecipe(answer.Ref, action.Recipe)
 		return nil
-	case QuestionStages:
+	case QuestionItem:
 		// The factory card's reading, word for word: words are a change and
-		// never a yes, and words beside `change it` still change nothing.
+		// never a yes, and words beside `yes` still change nothing.
 		if key == "" {
 			if strings.TrimSpace(words) == "" {
 				return errAnswerEmpty
 			}
-			a.ResolveStages(answer.Ref, StagesAnswer{Change: words})
+			a.ResolveItem(answer.Ref, ItemAnswer{Change: words})
 			return nil
 		}
-		action, ok := AnswerFromKey(QuestionStages, key)
+		action, ok := AnswerFromKey(QuestionItem, key)
 		if !ok {
 			return errAnswerEmpty
 		}
-		if action.Stages.Approved {
-			action.Stages.Change = strings.TrimSpace(words)
+		if action.Item.Approved {
+			action.Item.Change = strings.TrimSpace(words)
 		}
-		a.ResolveStages(answer.Ref, action.Stages)
+		a.ResolveItem(answer.Ref, action.Item)
 		return nil
 	case QuestionSubharnessAsk:
 		// A RUNNING SUB-HARNESS IS ANSWERED IN WORDS, not with a key: its
@@ -2555,8 +2555,8 @@ func (a *Agent) OpenQuestions() []Question {
 			recipes = append(recipes, *offer)
 		}
 	}
-	stageCards := make([]stagesOffer, 0, len(a.stagesOffers))
-	for _, offer := range a.stagesOffers {
+	stageCards := make([]itemOffer, 0, len(a.itemOffers))
+	for _, offer := range a.itemOffers {
 		if offer != nil {
 			stageCards = append(stageCards, *offer)
 		}
@@ -2615,7 +2615,7 @@ func (a *Agent) OpenQuestions() []Question {
 		open = append(open, a.recipeQuestion(offer.notice.ID, offer.notice, offer.asked))
 	}
 	for _, offer := range stageCards {
-		open = append(open, a.stagesQuestion(offer.notice.ID, offer.notice, offer.asked))
+		open = append(open, a.itemQuestion(offer.notice.ID, offer.notice, offer.asked))
 	}
 	for id, live := range runs {
 		if snap := live.run.Snapshot(); snap.Paused {

@@ -481,7 +481,9 @@ func TestNoWholeNumberArgumentIsDeclaredANumber(t *testing.T) {
 	fractional := map[string]bool{"per_run_usd": true, "level": true, "fade": true,
 		"min": true, "max": true, "default": true,
 		// A dollar estimate is fractional by nature ("~$2.50").
-		"estimate_usd": true}
+		"estimate_usd": true,
+		// An item's cap is dollars too ("$12.50").
+		"cap": true}
 	for _, path := range toolArgumentSources(t) {
 		body, err := os.ReadFile(path)
 		if err != nil {
