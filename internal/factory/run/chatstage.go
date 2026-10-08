@@ -147,11 +147,6 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		return factory.StageResult{}, err
 	}
 	defer conv.Close()
-	if job.Room != nil {
-		if id := strings.TrimSpace(conv.ID()); id != "" {
-			job.Room(id)
-		}
-	}
 	log := job.Log
 	if log == nil {
 		log = func(string) {}

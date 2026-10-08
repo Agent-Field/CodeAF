@@ -62,11 +62,6 @@ type Job struct {
 	Steer <-chan string
 	// Log appends one line to the item's stream, timestamped by the runner.
 	Log func(line string)
-	// Room records the round's conversation on its phase the moment it is
-	// made, so the item page can walk into a stage WHILE IT RUNS rather than
-	// only once the round has ended. nil records nothing; the result's Chat
-	// still lands with the result.
-	Room func(chat string)
 	// Spend reports model cost the round incurred, in dollars, as it happens.
 	Spend func(usd float64)
 }
