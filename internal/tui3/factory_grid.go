@@ -101,8 +101,8 @@ const (
 // repository's full name, and the facts that choose, each in its own
 // right-aligned column so a number stands under a number on every row:
 //
-//	│mark│owner/name …                    │gg│  open│gg│private│gg│here│gg│     pushed│
-//	   4                                     2     9    2     7    2    4   2        11
+//	│mark│owner/name …                    │gg│  open│gg│private│gg│              here│gg│     pushed│
+//	   4                                     2     9    2     7    2                18   2        11
 //
 // A COLUMN NO VISIBLE ROW HAS ANYTHING IN IS NOT DRAWN, and while the name
 // would be narrower than [factoryPickNameMinW] the columns drop in
@@ -117,8 +117,9 @@ const (
 	factoryPickOpenW = 9
 	// factoryPickPrivateW is `private`.
 	factoryPickPrivateW = 7
-	// factoryPickHereW is `here`: checked out on this machine.
-	factoryPickHereW = 4
+	// factoryPickHereW is `here`, checked out on this machine, as wide as
+	// `clone on first run`, which a seam with a Clone door says instead.
+	factoryPickHereW = 18
 	// factoryPickPushedW is `pushed 3m`, as wide as `pushed 11mo`.
 	factoryPickPushedW = 11
 )

@@ -168,13 +168,18 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// AND THE ITEM'S OWN CONVERSATION (`T`, factory_talk.go) is made on this
 	// machine, so its door is hung only here, where the floor is this
 	// machine's: --once and --host never build this seam.
+	dirs := factoryRepoDirs(st, workspace)
+	token := func(ctx context.Context) string {
+		t, _ := factorygithub.TokenAt(ctx, profileDir)
+		return t
+	}
 	local := factory.LocalSeam(st, time.Now(),
 		// THE RUNNER'S DOORS ARE HUNG IN EVERY WINDOW (factory_run.go): in the
 		// process that runs the floor they are the runner's own, and in every
 		// other window the same eight are asks posted to that process's
 		// mailbox and answered within about a second.
 		factoryRunnerDoors(st),
-		factory.WithRepoDirs(factoryRepoDirs(st, workspace)),
+		factory.WithRepoDirs(dirs),
 		factory.WithRepoLister(factorygithub.Lister(profileDir)),
 		factory.WithTalk(talkMaker(st, workspace, profileDir)),
 		// THE REFRESH DOORS (`u`, `U`, `g`) read through a GitHub source built
@@ -184,15 +189,17 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 		// or nothing watched, a GitHub item's refresh says github is not
 		// connected; a terminal or chat item is only read again.
 		factory.WithRefetch(factorygithub.Refetcher(st, func(ctx context.Context) *factorygithub.Source {
-			return factoryGitHub(ctx, st, func(ctx context.Context) string {
-				t, _ := factorygithub.TokenAt(ctx, profileDir)
-				return t
-			})
+			return factoryGitHub(ctx, st, token)
 		})))
 	local = talkPutAway(local, st, profileDir)
 	// AND THE FOREMAN (`m`, factory_foreman.go), on the Talk door's law.
 	local = withForeman(local, st, workspace, profileDir)
-	return nudgeOnWatch(factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir), st)
+	seam := nudgeOnWatch(factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir), st)
+	// A RUN NEVER STARTS WITHOUT A CHECKOUT (factory_clone.go): the Clone door
+	// gets one into the factory's own folder over the same token the forge
+	// reads with, and Launch refuses an item whose repository has none.
+	seam.Clone = factoryCloneDoor(st, token)
+	return factoryNeedsCheckout(seam, st, dirs)
 }
 
 // nudgeOnWatch wraps the picker's save so that, once repos.json is written,

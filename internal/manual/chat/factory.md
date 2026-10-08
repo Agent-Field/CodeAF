@@ -1079,12 +1079,14 @@ filter, no `/` first (a `/` typed first works too). Words match anywhere in `own
 aside; `agent-field/` keeps only that owner's repositories, and `agent-field/api` that owner's
 repositories with `api` in the name. Nothing is scored: the list keeps its sections and order.
 
-A repository says `here` when it is checked out on this machine and codeaf knows where. The
-floor's stages run only in a checkout, so a repository without `here` can still be watched and
-its issues and pull requests read onto the floor, but its stages wait until it is cloned. The
-list's last line says so for the repository under the cursor:
+A repository says `here` when it is checked out on this machine and codeaf knows where, and
+`clone on first run` when it is not: the floor's stages run only in a checkout, so the first
+`r` on one of its items asks to clone it into `~/.codeaf/v3/factory/repos` (see it says CodeAF
+is not checked out). The list's last line says so for the repository under the cursor:
+`not checked out here · it is cloned on the first run`, or `checked out at <folder>` for one
+that is. Where codeaf cannot clone, the column is blank and the line says
 `codeaf does not know where owner/name is checked out · it is watched and read, and its stages
-wait until it is cloned`, or `checked out at <folder>` for one that is.
+wait until it is cloned`.
 
 - `↑` `↓` walk, `space` ticks or unticks, `enter` saves, `ctrl+o` orders every section by how
   many are open (the most first) and again back to the last push, `backspace` takes a letter off
@@ -1266,6 +1268,32 @@ settings do not narrow it (see what a stage may do).
 **Spend.** A chat stage's calls are on the spend ledger under its own conversation, and the
 item's spend counts them against its budget and the day rail.
 
+## it says CodeAF is not checked out — clone it, where does it go
+
+A run never starts without a checkout. `r`, `L` and `L` on the foreman's selection first look
+for where the item's repository is checked out on this machine. When codeaf knows no folder for
+it, nothing starts and the question stands at the bottom of the floor, such as
+`CodeAF is not checked out on this machine · clone it into ~/.codeaf/v3/factory/repos? [y] clone · [n] not now`.
+
+- `y` clones it, saying `⠋ cloning Agent-Field/CodeAF…` while it runs (a large repository takes
+  a minute), into `~/.codeaf/v3/factory/repos/<owner>/<name>` (`v3/factory/repos` under
+  `CODEAF_HOME` when that is set), records that folder as the checkout, and then runs the item.
+  It uses `gh repo clone` when gh is installed, else `git clone https://github.com/<owner>/<name>`,
+  over the connected GitHub account. A clone that fails says
+  `could not clone Agent-Field/CodeAF · <git's last line>` and nothing runs.
+- `n` (or `esc`) runs nothing and says
+  `not run · clone CodeAF first, or tell codeaf where it is in the repos list`.
+- Where codeaf cannot clone, it says
+  `not run · codeaf does not know where CodeAF is checked out · open it from that folder once`.
+
+`L` over several repositories without a checkout asks once per repository, in turn; a `y` to
+each clones it, and the items run once every one has a folder. A `n` keeps the selection.
+
+**Your own checkout comes first.** Opening codeaf inside a watched repository records that
+folder as its checkout, and a repository with any known folder is never cloned. The repos list
+(`R`) says `here` for a repository checked out on this machine and `clone on first run` for one
+that is not.
+
 ## where an item's work lives — a worktree and a branch per item
 
 An item never works in your checkout. The first round that needs a folder makes the item its
@@ -1294,7 +1322,8 @@ Factory items are saved on this machine, in the v3 factory folder under the code
 `~/.codeaf/v3/factory`, or `v3/factory` under `CODEAF_HOME` when that is set. Each item is one
 small file named by its number, such as `1.json`, and a change rewrites that file. They are not
 in any repository and not on any server; nothing is posted, synced or uploaded. The same folder
-holds `repos.json` (the GitHub repositories you watch), `sources.json` (when GitHub was last
+holds `repos.json` (the GitHub repositories you watch), `repos/` (the repositories a run cloned
+because this machine had no checkout of them), `sources.json` (when GitHub was last
 read, the day rail and what a triage read costs) and `busy.json` (what is being read right now). A chat's
 `factory_add` and the page's `n` write to the same folder, so an item added from a chat is a row
 on the floor straight away. Deleting the folder empties the floor.
