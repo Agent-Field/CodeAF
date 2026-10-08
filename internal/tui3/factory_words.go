@@ -187,6 +187,17 @@ const (
 	wordBackToKeys         = "back to keys"
 )
 
+// A stage's loop (owner decision, 2026-10-08): the item page's rail says it
+// in a cell or two (factory_item.go), and the story's open head says it whole,
+// `round 1 of 2 · until clean · per finding`, with the stage's ask and the
+// reason it was set dim under it (factory_timeline.go).
+const (
+	wordRound    = "round"
+	wordUntil    = "until"
+	wordAskLabel = "ask:"
+	wordWhyLabel = "why:"
+)
+
 // The shaping question's words: after the manager shapes a run whose `ask me
 // at` is plan, the runner pauses on `run these stages? <what it set>` of kind
 // `plan` (factory_shaping.go draws it as the stages it asks about). Only

@@ -533,6 +533,12 @@ func (a *app) factoryTLStory(it factory.Item, measure int) []factoryTLLine {
 			out = append(out, factoryTLLine{phase: -1})
 		}
 	}
+	// WHAT CHANGED ABOUT THE STAGES STANDS FIRST, dim, one line: the run
+	// row's second line, `manager set review: … · added arch after review ·
+	// why: …` ([factory.AdaptedLine]), and nothing on an item nobody changed.
+	if adapted := factory.AdaptedLine(it); adapted != "" {
+		out = append(out, factoryTLLine{left: pal.dim(fit(adapted, measure)), phase: -1})
+	}
 	if it.Stream == nil || len(it.Stream.Phases) == 0 {
 		summary := strings.TrimSpace(it.Triage.Read)
 		if summary == "" {
@@ -541,6 +547,7 @@ func (a *app) factoryTLStory(it factory.Item, measure int) []factoryTLLine {
 		if summary == "" {
 			summary = strings.TrimSpace(it.Title)
 		}
+		gap()
 		out = append(out, factoryTLLine{left: pal.muted(fit(summary, measure)), phase: -1})
 		if len(mgr) > 0 {
 			gap()
@@ -612,21 +619,87 @@ func (a *app) factoryTLStory(it factory.Item, measure int) []factoryTLLine {
 }
 
 // factoryTLHead is the section head of phase at: its mark (the spinner while
-// it runs), its words as the strip says them, and what the surface saw of its
-// time and money.
-func (a *app) factoryTLHead(it factory.Item, at int, kind factoryMarkKind, stages []factory.Stage) string {
+// it runs), its words, and what the surface saw of its time and money. A
+// FOLDED HEAD SAYS ITS WORDS AS THE STRIP SAYS THEM, `✓ review 2/2 · 3m ·
+// $0.20`; AN OPEN HEAD SAYS ITS LOOP WHOLE ([app.factoryTLLoopWords]),
+// `⠋ review · round 1 of 2 · until clean · per finding · 4m · $0.27`.
+func (a *app) factoryTLHead(it factory.Item, at int, kind factoryMarkKind, stages []factory.Stage, open bool) string {
 	pal := a.pal
 	mark, markPaint := a.factoryKindMark(kind)
 	if kind == factoryMarkRunning {
 		mark = a.factorySpin()
 	}
-	words := phaseWord(it, at, factoryStageMax(stages, it.Stream.Phases[at].Name))
-	parts := append([]string{words}, a.factoryTLClockWords(it, at)...)
+	var parts []string
+	if open {
+		parts = factoryTLLoopWords(it, at, kind, stages)
+	} else {
+		parts = []string{phaseWord(it, at, factoryStageMax(stages, it.Stream.Phases[at].Name))}
+	}
+	parts = append(parts, a.factoryTLClockWords(it, at)...)
 	paint := pal.muted
 	if kind == factoryMarkRunning || kind == factoryMarkWaiting {
 		paint = pal.ink
 	}
 	return markPaint(mark) + " " + paint(strings.Join(parts, rowSep))
+}
+
+// factoryTLLoopWords is an open head's words before its time and money: the
+// stage's name (and `paused` or `stopped` on a held or ended one), the round
+// it is on over its most where it may take more than one, `round 1 of 2`,
+// what it runs until, `until clean`, and how it fans out where it is not one
+// task, `per finding`. A KNOB NOBODY SET SAYS NOTHING (the emptiness law).
+func factoryTLLoopWords(it factory.Item, at int, kind factoryMarkKind, stages []factory.Stage) []string {
+	ph := it.Stream.Phases[at]
+	st, _ := factoryStageNamed(stages, ph.Name)
+	parts := []string{ph.Name}
+	switch kind {
+	case factoryMarkPaused:
+		parts = append(parts, "paused")
+	case factoryMarkStopped:
+		parts = append(parts, "stopped")
+	}
+	if most := max(st.Max, ph.Round); most > 1 && ph.Round > 0 {
+		parts = append(parts, wordRound+" "+itoa(ph.Round)+" "+wordOf+" "+itoa(most))
+	}
+	if u := strings.TrimSpace(st.Until); u != "" {
+		parts = append(parts, wordUntil+" "+u)
+	}
+	if f := strings.TrimSpace(st.Fanout); f != "" && f != "one" {
+		parts = append(parts, strings.ReplaceAll(f, "-", " "))
+	}
+	return parts
+}
+
+// factoryStageNamed is the first of the item's stages named name, and false
+// when it runs none of that name.
+func factoryStageNamed(stages []factory.Stage, name string) (factory.Stage, bool) {
+	for _, st := range stages {
+		if st.Name == name {
+			return st, true
+		}
+	}
+	return factory.Stage{}, false
+}
+
+// factoryTLBrief is the dim lines under an open head, before its question or
+// its steps: the stage's ask, `ask: thorough on security, code and
+// architecture`, and the reason it was set where one was given, `why: touches
+// billing`, each one line fit to the measure.
+func (a *app) factoryTLBrief(st factory.Stage, inner int) []string {
+	var out []string
+	if ask := oneLineOf(st.Ask); ask != "" {
+		out = append(out, a.pal.dim(fit(wordAskLabel+" "+ask, inner)))
+	}
+	if why := oneLineOf(stageWhy(st)); why != "" {
+		out = append(out, a.pal.dim(fit(wordWhyLabel+" "+why, inner)))
+	}
+	return out
+}
+
+// oneLineOf is text on one line: its runs of space and its line breaks each
+// one space.
+func oneLineOf(text string) string {
+	return strings.Join(strings.Fields(text), " ")
 }
 
 // factoryTLButton is the section's door into its conversation, `▸ 14 steps`
@@ -663,7 +736,8 @@ func factoryTLCalls(rec session.Record) int {
 func (a *app) factoryTLSection(it factory.Item, at int, kind factoryMarkKind, stages []factory.Stage, measure int) []factoryTLLine {
 	pal := a.pal
 	ph := it.Stream.Phases[at]
-	head := factoryTLLine{left: a.factoryTLHead(it, at, kind, stages), kind: factoryTLHead, phase: at}
+	open := a.factoryTLOpen(it, at)
+	head := factoryTLLine{left: a.factoryTLHead(it, at, kind, stages, open), kind: factoryTLHead, phase: at}
 	button := a.factoryTLButton(it, at, kind)
 	inner := max(measure-factoryLeadW, 0)
 	indent := factorySpaces(factoryLeadW)
@@ -673,7 +747,7 @@ func (a *app) factoryTLSection(it factory.Item, at int, kind factoryMarkKind, st
 			l.right, l.rightW, l.btn = pal.dim(button), ansi.StringWidth(button), true
 		}
 	}
-	if !a.factoryTLOpen(it, at) {
+	if !open {
 		result := strings.TrimSpace(ph.Note)
 		if result == "" {
 			if rec, ok := a.factoryTLRecord(ph.Chat); ok {
@@ -701,6 +775,11 @@ func (a *app) factoryTLSection(it factory.Item, at int, kind factoryMarkKind, st
 		return out
 	}
 	withButton(&out[0])
+	if st, ok := factoryStageNamed(stages, ph.Name); ok {
+		for _, line := range a.factoryTLBrief(st, inner) {
+			out = append(out, factoryTLLine{left: indent + line, phase: at})
+		}
+	}
 	if kind == factoryMarkWaiting {
 		q := strings.TrimSpace(it.Question)
 		if q == "" {
@@ -1024,7 +1103,7 @@ func (a *app) factoryTLDive(it factory.Item, measure, room int) []factoryTLLine 
 	at := tl.dive
 	kind := factoryPhaseKind(it, at)
 	stages := factoryStages(a.fp.snap, it)
-	head := factoryTLLine{left: a.factoryTLHead(it, at, kind, stages), phase: at}
+	head := factoryTLLine{left: a.factoryTLHead(it, at, kind, stages, true), phase: at}
 	ph := it.Stream.Phases[at]
 	var rows []string
 	if rec, ok := a.factoryTLRecord(ph.Chat); ok && len(rec.Entries) > 0 {

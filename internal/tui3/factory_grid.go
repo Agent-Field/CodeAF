@@ -81,6 +81,14 @@ const (
 	// factoryRailW is the item page's stage rail, the rule beside it not
 	// included.
 	factoryRailW = 20
+	// factoryStageRoundsW is a stage row's rounds on the item page's rail,
+	// `×2` before the stage runs and `1/2` once it has, right-aligned so the
+	// numbers stand under one another, and factoryStageGlyphW the one glyph
+	// after it: `+` for a stage someone other than the recipe added or
+	// changed, `?` for one that asks you. A COLUMN NO STAGE HAS ANYTHING IN
+	// IS NOT DRAWN, and each stands one cell of air past what comes before.
+	factoryStageRoundsW = 3
+	factoryStageGlyphW  = 1
 	// factoryRuleW is the divider's rule, and factoryDividerW the divider's
 	// two cells: one of air beside the rows, then the rule.
 	factoryRuleW    = 1
