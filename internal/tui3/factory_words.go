@@ -187,6 +187,17 @@ const (
 	wordBackToKeys         = "back to keys"
 )
 
+// A stage's loop (owner decision, 2026-10-08): the item page's rail says it
+// in a cell or two (factory_item.go), and the story's open head says it whole,
+// `round 1 of 2 · until clean · per finding`, with the stage's ask and the
+// reason it was set dim under it (factory_timeline.go).
+const (
+	wordRound    = "round"
+	wordUntil    = "until"
+	wordAskLabel = "ask:"
+	wordWhyLabel = "why:"
+)
+
 // The `?` sheet's group names, in the order the sheet draws them.
 const (
 	wordGroupDo   = "do"

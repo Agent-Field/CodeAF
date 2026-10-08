@@ -710,7 +710,7 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	switch {
 	case left <= 0:
 	case width < factoryStageFloor:
-		strip := lead + a.factoryCellStrip(cells, a.fp.stage, measure)
+		strip := lead + a.factoryCellStrip(a.factoryPageCellsIn(it, rows, false), a.fp.stage, measure)
 		a.fp.railTop, a.fp.railShown = len(lines), 1
 		lines = append(lines, strip)
 		for _, line := range a.factoryPagePane(it, rows, measure, left-1) {
@@ -1086,14 +1086,29 @@ func (a *app) factoryStageCellIn(v factoryStageView, indent int) factoryRailCell
 
 // factoryPageCells is the item page's left column as cells: each facet by
 // its word, in ink, with no mark of its own; the stages and the log nested
-// under `run` by [factoryNestW], each stage with its mark; and the run's
-// facts after its word, dim ([app.factoryRunFacts]).
+// under `run` by [factoryNestW], each stage with its mark and its loop in
+// columns ([app.factoryStageRowCell]); and the run's facts after its word,
+// dim ([app.factoryRunFacts]).
 func (a *app) factoryPageCells(it factory.Item, rows []factoryPageRow) []factoryRailCell {
+	return a.factoryPageCellsIn(it, rows, true)
+}
+
+// factoryPageCellsIn is [app.factoryPageCells], its stages' facts in the
+// rail's columns when grid is set and run on after the name when it is not,
+// for the one-line strip a narrow terminal draws.
+func (a *app) factoryPageCellsIn(it factory.Item, rows []factoryPageRow, grid bool) []factoryRailCell {
 	pal := a.pal
 	cells := make([]factoryRailCell, 0, len(rows))
 	facet := func(word string, indent int) factoryRailCell {
 		return factoryRailCell{rest: word, paint: pal.ink, markPaint: pal.ink, flat: true, indent: indent}
 	}
+	var views []factoryStageView
+	for _, r := range rows {
+		if r.kind == factoryPageStage {
+			views = append(views, r.view)
+		}
+	}
+	cols := a.factoryStageColumns(it, views, grid)
 	for _, r := range rows {
 		switch r.kind {
 		case factoryPageIssue:
@@ -1113,10 +1128,191 @@ func (a *app) factoryPageCells(it factory.Item, rows []factoryPageRow) []factory
 		case factoryPageSettings:
 			cells = append(cells, facet(wordFacetSettings, 0))
 		default:
-			cells = append(cells, a.factoryStageCellIn(r.view, factoryNestW))
+			cells = append(cells, a.factoryStageRowCell(it, views, r.at, cols))
 		}
 	}
 	return cells
+}
+
+// factoryStageCols is the item page's stage columns as one rail draws them:
+// the rounds column's width, 0 when no stage has rounds, whether the glyph
+// column is drawn, and grid, unset for the one-line strip, where the facts run
+// on after the name instead of standing in columns.
+type factoryStageCols struct {
+	rounds int
+	glyph  bool
+	grid   bool
+}
+
+// factoryStageColumns is the columns the stages draw: A COLUMN NO STAGE HAS
+// ANYTHING IN IS NOT DRAWN (the emptiness law), and the rounds column is
+// [factoryStageRoundsW] unless a stage's rounds are wider.
+func (a *app) factoryStageColumns(it factory.Item, views []factoryStageView, grid bool) factoryStageCols {
+	cols := factoryStageCols{grid: grid}
+	for i, v := range views {
+		if factoryStageOut(v) {
+			continue
+		}
+		if r := factoryStageRounds(v); r != "" {
+			cols.rounds = max(cols.rounds, factoryStageRoundsW, ansi.StringWidth(r))
+		}
+		if g, _ := a.factoryStageGlyph(it, views, i); g != "" {
+			cols.glyph = true
+		}
+	}
+	return cols
+}
+
+// factoryStageOut says whether a stage will not run on the item: switched
+// off, its condition missed, or passed over by the run.
+func factoryStageOut(v factoryStageView) bool {
+	return v.off || v.skipped || v.kind == factoryMarkSkipped
+}
+
+// factoryStageRounds is a stage's rounds as its row says them: `×2`, the most
+// it may take, before it runs, and `1/2`, the round it is on over its most,
+// once it has (factory_run.go's [factoryRoundWords]). A stage of one round
+// says nothing.
+func factoryStageRounds(v factoryStageView) string {
+	most := v.stage.Max
+	if v.ran && v.phase.Round > 0 {
+		return factoryRoundWords(v.phase.Round, max(most, 1))
+	}
+	if most > 1 {
+		return "×" + strconv.Itoa(most)
+	}
+	return ""
+}
+
+// factoryStageGlyph is the one glyph a stage row carries and its paint: `?`
+// where the run stops to ask you ([factoryStageAsks]), else `+` where someone
+// other than the recipe set the stage, and nothing otherwise. Both are dim:
+// the stage waiting on you now says so with its own amber mark.
+func (a *app) factoryStageGlyph(it factory.Item, views []factoryStageView, at int) (string, func(string) string) {
+	v := views[at]
+	switch {
+	case factoryStageOut(v):
+		return "", a.pal.dim
+	case factoryStageAsks(it, views, at):
+		return a.factoryAsksMark(), a.pal.dim
+	case stageSetByOther(v.stage):
+		return a.factoryAddedMark(), a.pal.dim
+	}
+	return "", a.pal.dim
+}
+
+// factoryStageAsks says whether the run stops at the stage at to ask the
+// person, read the way the runner reads it (internal/factory/run's loop): a
+// gate stage is a person; a stage whose own gate applies to the item asks
+// before it runs; `ask me at plan` asks after the plan stage; and every item
+// whose ask-me-at is not never is signed off after its last stage that runs.
+func factoryStageAsks(it factory.Item, views []factoryStageView, at int) bool {
+	v := views[at]
+	if factoryStageOut(v) {
+		return false
+	}
+	st := v.stage
+	if st.Kind == factory.StageGate || (st.Gate != factory.GateShip && factory.GateApplies(st, it)) {
+		return true
+	}
+	first, last := -1, -1
+	for i, w := range views {
+		if factoryStageOut(w) {
+			continue
+		}
+		if first < 0 && w.stage.Name == wordGatePlan {
+			first = i
+		}
+		last = i
+	}
+	if it.Gate == factory.GatePlan && first == at {
+		return true
+	}
+	return it.Gate != factory.GateNone && last == at
+}
+
+// factoryStageRowCell is the stage at as a row of the item page's rail: its
+// mark, its one-word name, and after it its loop in columns, each cell of
+// air apart (owner decision, 2026-10-08, "the left column shows the loop of
+// each stage in one word each"):
+//
+//	⠋ review   1/2 ?
+//	○ arch         +
+//
+// the rounds right-aligned in [factoryStageRoundsW], then the one glyph in
+// [factoryStageGlyphW]. The conversation's mark and a running stage's elapsed
+// follow the name where they fit whole, and are the first things a narrow
+// rail drops; THE NAME IS CUT ONLY AS A LAST RESORT. A stage that will not
+// run keeps its one dim line, `⊘ neaten · skipped`.
+func (a *app) factoryStageRowCell(it factory.Item, views []factoryStageView, at int, cols factoryStageCols) factoryRailCell {
+	v := views[at]
+	if factoryStageOut(v) {
+		return a.factoryStageCellIn(v, factoryNestW)
+	}
+	room := factoryRailW - factoryMargin - factoryNestW
+	mark, markPaint := a.factoryStageMark(v)
+	_, paint := a.factoryStageLabel(v)
+	rounds := factoryStageRounds(v)
+	glyph, glyphPaint := a.factoryStageGlyph(it, views, at)
+	var tail, tailPlain string
+	add := func(painted, plain string) {
+		tail, tailPlain = tail+" "+painted, tailPlain+" "+plain
+	}
+	switch {
+	case cols.grid:
+		// A ROW WITH NO ROUNDS LENDS ITS ROUNDS CELL TO THE NAME, so a
+		// one-round stage keeps its elapsed beside it; the glyph column
+		// stands in one cell on every row either way.
+		if cols.rounds > 0 && rounds != "" {
+			cell := factorySpaces(cols.rounds-ansi.StringWidth(rounds)) + rounds
+			add(paint(cell), cell)
+		}
+		if cols.glyph {
+			cell := glyph + factorySpaces(factoryStageGlyphW-ansi.StringWidth(glyph))
+			add(glyphPaint(cell), cell)
+		}
+	default:
+		if rounds != "" {
+			add(paint(rounds), rounds)
+		}
+		if glyph != "" {
+			add(glyphPaint(glyph), glyph)
+		}
+	}
+	// THE NAME'S ROOM is what the mark, its space and the columns leave, a
+	// lent rounds cell included.
+	nameW := max(room-ansi.StringWidth(mark)-1-ansi.StringWidth(tailPlain), 0)
+	words := v.stage.Name
+	extra := func(w string) {
+		if ansi.StringWidth(words)+ansi.StringWidth(w) <= nameW {
+			words += w
+		}
+	}
+	switch v.kind {
+	case factoryMarkPaused:
+		extra(rowSep + "paused")
+	case factoryMarkStopped:
+		extra(rowSep + "stopped")
+	}
+	plainWords := words
+	var after string
+	if v.ran && strings.TrimSpace(v.phase.Chat) != "" {
+		w := " " + a.icon(tokens.GActionCommunicate)
+		if ansi.StringWidth(plainWords)+ansi.StringWidth(w) <= nameW {
+			plainWords, after = plainWords+w, after+a.pal.dim(w)
+		}
+	}
+	if v.elapsed != "" {
+		w := rowSep + v.elapsed
+		if ansi.StringWidth(plainWords)+ansi.StringWidth(w) <= nameW {
+			plainWords, after = plainWords+w, after+a.pal.dim(w)
+		}
+	}
+	if !cols.grid {
+		return factoryRailCell{mark: mark, markPaint: markPaint, rest: " " + words, paint: paint, tail: after + tail, tailPlain: strings.TrimPrefix(plainWords, words) + tailPlain, indent: factoryNestW}
+	}
+	pad := factorySpaces(max(nameW-ansi.StringWidth(plainWords), 0))
+	return factoryRailCell{mark: mark, markPaint: markPaint, rest: " " + fit(words, nameW), paint: paint, tail: after + pad + tail, tailPlain: strings.TrimPrefix(plainWords, words) + pad + tailPlain, indent: factoryNestW}
 }
 
 // factoryRunFacts is the run row's facts, plain: where it stands, how long it

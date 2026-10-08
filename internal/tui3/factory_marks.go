@@ -444,3 +444,13 @@ func (a *app) factoryPhasePart(it factory.Item, at, most int) factoryStripPart {
 	}
 	return c
 }
+
+// factoryAddedMark is a stage row's `+` on the item page's rail: someone
+// other than the recipe (the manager, the plan, you) added or changed the
+// stage. It is drawn dim.
+func (a *app) factoryAddedMark() string { return a.icon(tokens.GDiffAdd) }
+
+// factoryAsksMark is a stage row's `?` on the item page's rail: the run
+// stops at this stage to ask you. It is drawn dim, in its own column, so it
+// never reads as the amber mark of the stage waiting on you now.
+func (a *app) factoryAsksMark() string { return a.icon(tokens.GNeedsHuman) }
