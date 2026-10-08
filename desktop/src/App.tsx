@@ -19,6 +19,7 @@ function App() {
  const narrow = useMediaQuery(`(max-width: ${design.breakpoints.small}px)`);
  const [drawerOpen, setDrawerOpen] = useState(false);
  const drawer = useRef<HTMLDialogElement>(null);
+ const sidebarToggle = useRef<HTMLButtonElement>(null);
  const sidebarHidden = narrow || collapsed;
  useEffect(() => {
   if (narrow && drawerOpen) { if (!drawer.current?.open) drawer.current?.showModal(); }
@@ -57,14 +58,18 @@ function App() {
    <div className="sidebar-bottom"><ThemeSelect/><IconButton label="Quick commands" title="Command palette" icon="plus" onClick={openPalette}/></div>
   </aside>;
  return <div className={`app-shell ${sidebarHidden ? 'sidebar-collapsed' : ''}`}>
-  {narrow ? <dialog ref={drawer} className="sidebar-drawer" aria-label="Navigation" onCancel={() => setDrawerOpen(false)} onClose={() => setDrawerOpen(false)} onClick={event => {
+  {narrow ? <dialog ref={drawer} className="sidebar-drawer" aria-label="Navigation" onCancel={() => setDrawerOpen(false)} onClose={() => {
+   setDrawerOpen(false);
+   // Explicit restoration also works where pointer clicks do not focus buttons.
+   if (!palette) sidebarToggle.current?.focus();
+  }} onClick={event => {
    if (event.target !== event.currentTarget) return;
    const bounds = event.currentTarget.getBoundingClientRect();
    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) setDrawerOpen(false);
   }}>{sidebar}</dialog> : sidebar}
   <main className="content-pane" inert={narrow && drawerOpen}>
    <header className="content-toolbar" data-tauri-drag-region>
-    {sidebarHidden && <IconButton label="Show sidebar" icon="sidebar" title="Show sidebar (⌘/Ctrl B)" onClick={toggleSidebar}/>}
+    {sidebarHidden && <IconButton ref={sidebarToggle} label="Show sidebar" icon="sidebar" title="Show sidebar (⌘/Ctrl B)" onClick={toggleSidebar}/>}
     <span className="page-title">{page}</span>
     <IconButton label="Search commands" icon="search" onClick={openPalette}/>
    </header>
