@@ -31,7 +31,7 @@ The rows window follows the cursor when they do not all fit.
 
 The bottom line names the keys that work for the item under the cursor. On the still made-up
 floor, which has no verbs, it names the walking keys:
-`↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · E recipe · esc back`.
+`↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · O order · by obligation · E recipe · esc back`.
 On a floor that can be changed it names `enter open` and the item's own keys first (see the
 factory's verbs), and when the line is too long the list keys are the first to go.
 
@@ -40,6 +40,7 @@ factory's verbs), and when the line is too long the list keys are the first to g
 - `z` switches between compact rows (one line each, the default) and comfortable rows (a dim
   second line under each row with the factory's one-sentence read of it, and a blank row between
   items). The choice is not saved; every launch starts compact.
+- `O` changes the order of the rows inside each group (see order the floor).
 - `space` marks or unmarks the new item under the cursor (offered only on a new item).
 - `/` opens a filter box at the top of the list.
 - `[` and `]` show one repository at a time, then all of them again (offered with two or more).
@@ -84,7 +85,7 @@ are dropped whole from the right. The row under the cursor sits on a lifted back
 as you type. Every word you type has to hold. A plain word matches anywhere in an item's title,
 repository, area, kind or author. These words mean something more:
 
-- `risky`: high risk, or a large item. `cheap`: estimated at $2.50 or less.
+- `risky`: any risk the triage read named (`touches money`, `has ui`), or a large item. `cheap`: estimated at $2.50 or less.
 - `strangers`: written by someone outside the project. `mine`: written by you.
 - `spend`: about spend, billing, the ledger or caps. `ui`: in the tui, pages or render areas.
 - `prs`: pull requests. `bugs`: bugs. `thin`: too underspecified to run without questions.
@@ -521,6 +522,44 @@ reaches GitHub: `github  santoshkumarradha · via gh` (gh's own login, after you
 `GITHUB_TOKEN`), `not connected`, or `not reachable`. It is read once when the page opens.
 `enter` on it opens the floor with the same connect prompt `R` asks (`enter connects`), so a
 token can be changed there.
+
+## triage on arrival — the read, size, estimate and risk, from one cheap call
+
+Every new item on the floor is read once, by one call on the cheapest seat (the `small work`
+row in /settings; a row you cleared follows the conversation's model). The call sees the item's
+title, its text cut to 3000 characters, its labels, its kind and its repository, and answers:
+
+- a one-sentence read (shown under the row in the comfortable density, `z`, and on the peek),
+- a type (`bug`, `feat`, `chore`, `question`) and a size (`S`, `M`, `L`),
+- an estimate in dollars (the `~$3` on the row),
+- risks in short phrases, such as `touches money`, `touches auth`, `has ui`, `migration`,
+- a possible duplicate (`#950`), only when the text names one,
+- a priority from 1 (take it first) to 5 (later) and a reason of at most five words, used by
+  the `first` order.
+
+It only fills what is empty: a type GitHub's labels gave, a size the poll measured, and anything
+you set win over the model. One item is read every two seconds, newest first; with nothing new it
+looks again every thirty seconds. Each item is read ONCE: an answer that cannot be understood is
+not asked for again, and the item simply has no read. A call that fails is tried three times.
+Reading does not change a row's age.
+
+What it never does: launch, hide, dismiss, label, comment, change a gate, cap or stage, or ask you
+anything. It is facts drawn dim, never a decision. It runs only in the window that opened the
+floor, one window per machine, and only while a key resolves; with no key there is no reading
+at all. Each call is a row on the spend ledger named `factory triage`, on the low seat.
+
+## order the floor — O
+
+`O` on the factory floor cycles how rows are ordered inside each group: `by obligation` (the
+default: newest first, as the floor has always been), `first` (the triage priority, 1 before 5,
+older first on a tie, unprioritised items last), `age` (oldest arrival first) and `cost`
+(cheapest first, by what the item has spent or else its estimate; items with neither last). The
+groups never move: `NEEDS YOU` stays on top in every order.
+
+The bottom line names the current order, `O order · first`. In the `first` order each row shows
+the triage reason dim at the far right, before the age (`main is red    6h`); it is the first thing
+a narrow row drops, before any fact. `O` does nothing on the item page. The choice lasts until
+codeaf closes, like the density; it is not saved.
 
 ## what the factory does not do yet
 

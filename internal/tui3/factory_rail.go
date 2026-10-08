@@ -65,6 +65,8 @@ type factoryView struct {
 	// comfy is `z`: each item row carries the factory's read under it, and
 	// a blank row stands between two items.
 	comfy bool
+	// order is `O`: how rows sit within each section (factory_order.go).
+	order factoryOrder
 }
 
 // factoryRowKind is what one rail line is.
@@ -186,6 +188,7 @@ func factoryRailRows(snap factory.Snapshot, views ...factoryView) []factoryRailR
 		if len(in) == 0 && kept == 0 {
 			continue
 		}
+		in = factoryOrdered(snap, in, v.order)
 		rows = append(rows,
 			factoryRailRow{kind: factoryRowBlank, item: -1, walk: -1},
 			factoryRailRow{kind: factoryRowHeading, heading: g.word, count: len(in), item: -1, walk: -1})
@@ -240,7 +243,7 @@ func factoryWalk(snap factory.Snapshot, views ...factoryView) []int {
 // has reads as every repo, so a floor whose repos changed under the filter
 // shows everything rather than nothing.
 func (a *app) factoryViewNow() factoryView {
-	v := factoryView{query: a.fp.query, typing: a.fp.typing, backlog: a.fp.backlog, comfy: a.fp.comfy}
+	v := factoryView{query: a.fp.query, typing: a.fp.typing, backlog: a.fp.backlog, comfy: a.fp.comfy, order: a.fp.order}
 	if r := a.fp.repo; r > 0 && r <= len(a.fp.snap.Repos) {
 		v.repo = a.fp.snap.Repos[r-1].Name
 	}
@@ -593,6 +596,11 @@ func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 			rightW += ansi.StringWidth(factoryAnswerWord) + 2
 			factsW -= ansi.StringWidth(factoryAnswerWord) + 2
 		}
+		// The `first` order's reason stands before the age, only in the cells
+		// ALL of the facts leave free, so it goes before any fact does
+		// (factory_order.go).
+		reason, reasonW := a.factoryOrderReason(it, factsW-ansi.StringWidth(a.factoryFactsLine(it, factsW+width))-2)
+		right, rightW = reason+right, rightW+reasonW
 		facts := a.factoryFactsLine(it, factsW)
 		text += facts
 		gap := width - ansi.StringWidth(text) - rightW

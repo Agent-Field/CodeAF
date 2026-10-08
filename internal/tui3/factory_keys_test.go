@@ -410,9 +410,9 @@ func TestFactoryHintByState(t *testing.T) {
 		id   int
 		want string
 	}{
-		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t c e chips · d hide · n new · / filter · [ ] repo · A backlog · z density · S sleep 8h · E recipe · esc back"},
-		{2, "enter open · s steer · p pause · x stop · e effort · n new · / filter · [ ] repo · A backlog · z density · S sleep 8h · E recipe · esc back"},
-		{1, "enter open · y n answer · a in words · s steer · x stop · / filter · [ ] repo · A backlog · z density · S sleep 8h · E recipe · esc back"},
+		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t c e chips · d hide · n new · / filter · [ ] repo · A backlog · z density · O order · by obligation · S sleep 8h · E recipe · esc back"},
+		{2, "enter open · s steer · p pause · x stop · e effort · n new · / filter · [ ] repo · A backlog · z density · O order · by obligation · S sleep 8h · E recipe · esc back"},
+		{1, "enter open · y n answer · a in words · s steer · x stop · / filter · [ ] repo · A backlog · z density · O order · by obligation · S sleep 8h · E recipe · esc back"},
 	} {
 		factoryOn(t, a, c.id)
 		if got := (placeFactory{}).hint(a); got != c.want {

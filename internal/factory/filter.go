@@ -51,7 +51,7 @@ func matchTerm(it Item, t string) bool {
 	title := strings.ToLower(it.Title)
 	switch t {
 	case "risky":
-		return it.Triage.Risk == "high" || it.Triage.Size == "L"
+		return len(it.Triage.Risk) > 0 || it.Triage.Size == "L"
 	case "cheap":
 		return it.Triage.Est > 0 && it.Triage.Est <= CheapEst
 	case "strangers":

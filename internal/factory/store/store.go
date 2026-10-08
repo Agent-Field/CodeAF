@@ -266,6 +266,20 @@ func (st *Store) Save(it factory.Item) error {
 // window did since; a door that moves one field moves it on the document on
 // disk instead.
 func (st *Store) Update(id int, change func(*factory.Item) error) error {
+	return st.update(id, true, change)
+}
+
+// Annotate is [Store.Update] for a write that is not a change to the work: the
+// same read-modify-write under the item's flock, the same next revision, and
+// Changed LEFT AS IT WAS. The cheap read made on arrival (internal/factory/
+// triage) writes through it, because a row's age counts from Changed, and a
+// read the factory made by itself is not the item moving: every row on a
+// freshly connected floor would otherwise say `now` the minute it was read.
+func (st *Store) Annotate(id int, change func(*factory.Item) error) error {
+	return st.update(id, false, change)
+}
+
+func (st *Store) update(id int, stamp bool, change func(*factory.Item) error) error {
 	if err := checkID(id); err != nil {
 		return ErrNotFound
 	}
@@ -282,7 +296,9 @@ func (st *Store) Update(id int, change func(*factory.Item) error) error {
 			return err
 		}
 		it.ID = id
-		it.Changed = st.now()
+		if stamp {
+			it.Changed = st.now()
+		}
 		data, err := marshalDoc(doc{Revision: current.Revision + 1, Item: it})
 		if err != nil {
 			return err
