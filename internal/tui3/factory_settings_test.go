@@ -207,8 +207,14 @@ func TestFactoryPickerRowsToggleSaveAndCancel(t *testing.T) {
 	if a.fp.pick != nil {
 		t.Fatal("the picker stayed after saving")
 	}
-	if a.pageMsg != "watching 2 repositories · reading them now" {
-		t.Fatalf("note line = %q", a.pageMsg)
+	// The receipt says reading exactly while the head does: on this floor,
+	// whose items show the read at once, it is the count alone.
+	note := a.pageMsg
+	if note == "" {
+		note = a.factoryReadNote()
+	}
+	if !strings.HasPrefix(note, "watching 2 repositories") || strings.Contains(note, factoryReadingNowWords) != a.factoryFirstReading() {
+		t.Fatalf("note line = %q while reading is %v", note, a.factoryFirstReading())
 	}
 
 	// And esc on an unfiltered picker closes it with nothing saved.

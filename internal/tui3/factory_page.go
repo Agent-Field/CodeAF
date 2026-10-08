@@ -160,13 +160,16 @@ type factoryPage struct {
 	ghOffer string
 	// readingSince is the moment the picker saved a non-empty list, zero when
 	// no such read is owed: from then until a snapshot shows the read
-	// ([app.factoryFoldFirstRead]) or [factoryFirstReadWait] passes, the floor
-	// says it is reading. readingGen is which save the one-second re-read
-	// belongs to ([factoryReadSoonMsg]), so a second save retires the first's.
-	// THE SAME BEAT keeps the open item page alive while a stage runs on it
-	// ([app.factoryWantsSecondBeat]); readingArmed says one is in the air,
-	// so the loop never arms a second beside it.
+	// ([app.factoryFoldFirstRead]) the floor says it is reading, and past
+	// [factoryFirstReadWait] that there is no word from the read
+	// ([app.factoryNoWord]). readingRepos is how many that save watched, for
+	// the note line's receipt ([app.factoryReadNote]). readingGen is which save
+	// the one-second re-read belongs to ([factoryReadSoonMsg]), so a second
+	// save retires the first's. THE SAME BEAT keeps the open item page alive
+	// while a stage runs on it ([app.factoryWantsSecondBeat]); readingArmed
+	// says one is in the air, so the loop never arms a second beside it.
 	readingSince time.Time
+	readingRepos int
 	readingGen   int
 	readingArmed bool
 
@@ -636,8 +639,11 @@ func (a *app) factoryBareRail(width, room int) ([]string, []int) {
 	var out []string
 	var hits []int
 	words := factoryBareSentence(a.fp.snap)
-	if a.factoryFirstReading() {
+	switch {
+	case a.factoryFirstReading():
 		words = factoryBareReadingWords
+	case a.factoryNoWord():
+		words = factoryBareNoWordWords
 	}
 	for _, line := range placeTeachProse(words, width, a.pal) {
 		if len(out) >= room {

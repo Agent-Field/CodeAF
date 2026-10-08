@@ -471,7 +471,7 @@ func (a *app) factoryPickKey(msg tea.KeyPressMsg) tea.Cmd {
 // above still said quiet for the one to three seconds before the next beat).
 // A non-empty save stands [factoryPage.readingSince] and reads the floor every
 // second until it clears ([app.factoryReadSoon]); an empty one owes no read,
-// so it stands nothing.
+// so it stands nothing and retires any earlier save's.
 func (a *app) factorySaveRepos() tea.Cmd {
 	list := a.fp.pick.watching()
 	saved := a.now()
@@ -481,12 +481,17 @@ func (a *app) factorySaveRepos() tea.Cmd {
 			return nil
 		}
 		a.fp.pick = nil
-		a.factorySay(factoryWatchingWords(len(list)))
+		a.fp.readingGen++
 		if len(list) == 0 {
+			a.fp.readingSince, a.fp.readingRepos = time.Time{}, 0
+			a.factorySay(factoryWatchingWords(0))
 			return nil
 		}
-		a.fp.readingSince = saved
-		a.fp.readingGen++
+		// THE RECEIPT IS THE READ'S STATE, NOT A NOTE OF ITS OWN: the note
+		// line draws it from readingSince ([app.factoryReadNote]), so it
+		// turns and clears in the same frame the head and the bare line do.
+		a.pageMsg = ""
+		a.fp.readingSince, a.fp.readingRepos = saved, len(list)
 		a.factoryFoldFirstRead()
 		return a.factoryReadSoonArm()
 	})
@@ -499,7 +504,7 @@ func factoryWatchingWords(n int) string {
 	if n == 0 {
 		return "watching no repositories · the floor keeps what chat and n bring"
 	}
-	return "watching " + itoa(n) + " " + factoryPlural(n, "repository", "repositories") + rowSep + factoryReadingNowWords
+	return factoryWatchedWords(n) + rowSep + factoryReadingNowWords
 }
 
 // ── the first read, from the save ───────────────────────────────────────────
@@ -508,10 +513,23 @@ func factoryWatchingWords(n int) string {
 // from the picker's save until the floor shows the read.
 const factoryFirstReadWords = "reading the repositories you watch"
 
-// factoryFirstReadWait is how long a save's reading moment stands with no
-// snapshot showing the read. A poller that never comes does not spin forever:
-// past it the floor's own words return.
+// factoryFirstReadWait is how long a save's reading moment spins with no
+// snapshot showing the read. Past it the floor does not go back to its own
+// words: the read was asked for and has not answered, and the floor says that
+// ([factoryNoWordWords]) until a snapshot shows the read.
 const factoryFirstReadWait = 30 * time.Second
+
+// factoryNoWordWords is the handover's clause once [factoryFirstReadWait] has
+// passed with no word from the read, and factoryBareNoWordWords the bare
+// floor's line under it: what is true (asked, not answered) and what a person
+// can do. NO SPINNER: nothing is known to be moving (owner screenshots,
+// 2026-10-08 15:14 and 15:15, where the head went back to `quiet` forty-six
+// seconds after a save while no poller was alive and the foot still said
+// `reading them now`).
+const (
+	factoryNoWordWords     = "no word from the read yet"
+	factoryBareNoWordWords = "the read was asked for and has not answered · R to check the repositories · if codeaf was just updated, restart it"
+)
 
 // factoryReadSoonEvery is the floor's one-second beat, quicker than its own
 // ([homeEvery]), armed only while [app.factoryWantsSecondBeat] says so.
@@ -520,7 +538,8 @@ const factoryReadSoonEvery = time.Second
 // factoryReadSoonMsg is one beat of that re-read, carrying the save it is for.
 type factoryReadSoonMsg struct{ gen int }
 
-// factoryFirstReading says whether the save's reading moment stands now.
+// factoryFirstReading says whether the save's reading moment spins now: a
+// read asked for, inside [factoryFirstReadWait], with no word yet.
 func (a *app) factoryFirstReading() bool {
 	at := a.fp.readingSince
 	return !at.IsZero() && a.now().Sub(at) < factoryFirstReadWait
@@ -536,9 +555,37 @@ func (a *app) factoryWantsSecondBeat() bool {
 	return a.factoryFirstReading() || a.factoryPageRunning()
 }
 
-// factoryFoldFirstRead clears the reading moment once the snapshot shows the
-// read is known: a source mid-poll (its own clause says where), a source that
-// answered after the save, or any item on the floor.
+// factoryNoWord says whether a save's read was asked for, the wait has passed
+// and no snapshot has shown it: the state the floor names with
+// [factoryNoWordWords].
+func (a *app) factoryNoWord() bool {
+	at := a.fp.readingSince
+	return !at.IsZero() && a.now().Sub(at) >= factoryFirstReadWait
+}
+
+// factoryReadNote is the note line's receipt for the save, drawn from the one
+// state the head and the bare line read: `watching 3 repositories · reading
+// them now` while the moment spins, `watching 3 repositories` once there is
+// no word, and "" once none is owed; when the read becomes known
+// [app.factoryFoldFirstRead] leaves `watching 3 repositories` on the line. A
+// sentence a later key put on the line ([app.pageMsg]) outranks it.
+func (a *app) factoryReadNote() string {
+	n := a.fp.readingRepos
+	switch {
+	case n <= 0:
+		return ""
+	case a.factoryFirstReading():
+		return factoryWatchingWords(n)
+	case a.factoryNoWord():
+		return factoryWatchedWords(n)
+	}
+	return ""
+}
+
+// factoryFoldFirstRead clears the save's read once the snapshot shows it is
+// known: a source mid-poll (its own clause says where), a source that
+// answered after the save, or any item on the floor. The wait passing clears
+// nothing; it turns the moment into no word ([app.factoryNoWord]).
 func (a *app) factoryFoldFirstRead() {
 	at := a.fp.readingSince
 	if at.IsZero() {
@@ -551,9 +598,20 @@ func (a *app) factoryFoldFirstRead() {
 			known = true
 		}
 	}
-	if known || !a.factoryFirstReading() {
-		a.fp.readingSince = time.Time{}
+	if known {
+		// The receipt keeps what is still true once the read is known, how
+		// many are watched, and drops `reading them now` with the head's
+		// clause; the rows or the source's own clause carry the read now.
+		if n := a.fp.readingRepos; n > 0 && a.pageMsg == "" && a.at(pageFactory) {
+			a.pageMsg = factoryWatchedWords(n)
+		}
+		a.fp.readingSince, a.fp.readingRepos = time.Time{}, 0
 	}
+}
+
+// factoryWatchedWords is the receipt with no read in it: how many are watched.
+func factoryWatchedWords(n int) string {
+	return "watching " + itoa(n) + " " + factoryPlural(n, "repository", "repositories")
 }
 
 // factoryReadSoonArm arms the next one-second re-read for the save standing.
@@ -575,15 +633,18 @@ func (a *app) factoryReadSoonWake() tea.Cmd {
 
 // factoryReadSoon is that beat, arriving: the floor is read and the beat
 // re-armed while [app.factoryWantsSecondBeat] holds, and nothing once the
-// reading moment has cleared or lapsed and no stage runs on an open page. A
-// beat a later save replaced asks nothing.
+// reading moment has cleared and no stage runs on an open page. A beat a
+// later save replaced asks nothing. The beat that finds the wait passed
+// redraws once, so head, bare line and note turn to no word in one frame
+// ([app.factoryNoWord]), and then stops unless a stage runs on the open page:
+// the floor's own beat ([homeEvery]) goes on reading, and a snapshot that
+// shows the read clears no word as it clears the moment.
 func (a *app) factoryReadSoon(gen int) tea.Cmd {
 	if gen != a.fp.readingGen {
 		return nil
 	}
 	a.fp.readingArmed = false
 	if !a.fp.readingSince.IsZero() && !a.factoryFirstReading() {
-		a.fp.readingSince = time.Time{}
 		a.touch()
 	}
 	if !a.factoryWantsSecondBeat() {
