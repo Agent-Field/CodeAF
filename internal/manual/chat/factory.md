@@ -123,8 +123,8 @@ work. There is no graph to draw and no model to choose per stage; the one word a
 is its effort, cheap or strong.
 
 A stage can repeat until a condition holds (until green, until clean) up to a number of rounds,
-and then it stops and asks you. Nothing inside a stage can add a stage. A stage can also be a
-gate: `plan` comes back with the plan before any code, and `ship` waits for your sign-off.
+and then it stops and asks you. Nothing inside a stage can add a stage, except plan, within the
+bounds its recipe word allows (see adapt). A stage can also be a gate: `plan` comes back with the plan before any code, and `ship` waits for your sign-off.
 
 The peek shows a new item's stages as one line of names and a running item's as a strip of
 marks; the item page lists them down its stage rail. A stage can carry a condition (`thin`,
@@ -167,7 +167,9 @@ shape (indented here; in the file each line starts at the margin):
     - factory PRs from your own issues self-ship when the proof is green
 
 A stage line is `N. name · kind · ask · knob · knob`. The sections are `## issue`, `## pr`,
-`## ci` and `## chore`; a missing section runs the default for that kind. `## policy` and
+`## ci` and `## chore`; a missing section runs the default for that kind. A kind's heading may
+end in one word, `## issue · adapt`, `## issue · ask` or `## issue · fixed`, saying how much plan
+may change its stages (see adapt); no word is `adapt`. `## policy` and
 `## habits` are sentences kept word for word. A line codeaf cannot read is named with its line
 number and why, and the rest of the file still loads.
 
@@ -196,8 +198,10 @@ In a `.codeaf/factory.md` stage line, after the name:
   green: the check's command exited 0.
 - `max N` (or `rounds N`): rounds before it stops and asks you.
 - `fanout 3`, `fanout one`, `fanout per finding`, `fanout per file`, `fanout per claim`.
-- `gate plan`, `gate ship`, `gate none`; `gate plan when large` also sets the stage's `when`,
-  so on an item that is not large the whole stage is skipped, not only its gate.
+- `gate plan`, `gate ship`, `gate none`; `gate plan when large` makes only the gate conditional:
+  the stage runs on every item and stops for you only on a large one. It leaves the stage's own
+  `when` alone, so `when thin · gate plan when large` is a stage for thin items that asks first
+  when one is also large.
 - `effort cheap` or `effort strong`.
 - `proof a test, a screenshot`: what the stage must show, separated by commas.
 - `off`: the stage is written but does not run. Every other stage is on.
@@ -205,6 +209,33 @@ In a `.codeaf/factory.md` stage line, after the name:
 A line with only a name, such as `4. proof`, is codeaf's default stage of that name for that
 kind; a name with knobs and no ask is that default with the knobs laid over it. A knob word
 with a word it does not know (`until clen`) is named as a problem, never read as the ask.
+
+## adapt — how much plan may change the stages
+
+Three things change what an item runs: a stage's `when` (read off the item, no judgment), the
+plan stage (judgment, within bounds), and you. The recipe gives each kind one word after its
+heading in `.codeaf/factory.md`:
+
+- `## issue · adapt`: plan may add, switch on and skip stages within the bounds. The default
+  when there is no word.
+- `## issue · ask`: the same, and the item's gate becomes `plan`, so you ratify the change
+  before anything after plan runs.
+- `## issue · fixed`: plan may not change the stages. It is refused with
+  `the recipe for issue is fixed; plan may not change the stages`.
+
+The bounds are held by codeaf's own code, not asked of the model. Plan may add only a
+conversation stage with an ask, placed by a time word (`after test, …`) or after review. It may
+never skip a gate stage, the stage named `proof`, or a stage a policy line names
+(`tests pass before anything posts` names test). It may never touch a stage that is done or
+running, nor add one before it. It has no way to change the cap, the gate, the effort or the
+rounds. One refused part refuses the whole change.
+
+What plan changed is kept on the item and drawn as one dim line under the stages on the peek and
+in the item page's head, `plan added security · skipped neaten · why: touches billing`. An item
+plan never changed draws nothing there.
+
+No run calls plan on your own floor yet, so today only the made-up floor
+(`CODEAF_FACTORY_FIXTURE=1`) shows the line, on its shipped item.
 
 ## the handover
 
@@ -236,7 +267,8 @@ keeps its place.
 
 At 120 columns and wider, the right column of the factory floor shows the item under the cursor.
 It has the same shape for every item: five fixed rows, a rule, what that item's state has to say,
-and one dim line of keys on the bottom row.
+and one dim line of keys on the bottom row. An item whose plan changed its stages has one dim row
+more under row 4, such as `plan added security · skipped neaten · why: touches billing`.
 
 1. Its short name and title, and on the right the repository, the kind, the author and how far
    they are trusted (`priya (collaborator)`), how long ago it arrived, and where it came from:
@@ -271,7 +303,8 @@ repository, marks) changes while it is open.
 
 The top two rows are the item: its short name, title, repository, author, where it stands and for
 how long (`running 26m`), with spend over the cap on the right (`$1.42 / $5`); then the chips with
-their keys, `gate ship [t] · cap $5 [c] · effort — [e] · places: codeaf`.
+their keys, `gate ship [t] · cap $5 [c] · effort — [e] · places: codeaf`. When plan changed the
+item's stages, a third dim row says what it changed (see adapt).
 
 Below them, on the left, is the **stage rail**: one row per stage, `●` done (with `×3` when it split
 into tasks), `◐` running (with its round, `review 1/2`), `○` to come, a stage switched off dim, and a

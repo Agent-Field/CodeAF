@@ -46,7 +46,7 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 	if len(is) != 6 {
 		t.Fatalf("issue stages = %d", len(is))
 	}
-	if p := is[0]; p.Name != "plan" || p.Kind != factory.StageChat || p.Ask != "read the issue and say how" || p.Gate != factory.GatePlan || p.When != "large" || !p.On {
+	if p := is[0]; p.Name != "plan" || p.Kind != factory.StageChat || p.Ask != "read the issue and say how" || p.Gate != factory.GatePlan || p.GateWhen != "large" || p.When != "" || !p.On {
 		t.Fatalf("plan = %+v", p)
 	}
 	// A line with no ask copies the default's stage and lays its knobs over.

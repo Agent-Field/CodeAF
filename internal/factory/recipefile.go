@@ -17,7 +17,7 @@ import (
 //
 //	# factory recipe · codeaf
 //
-//	## issue
+//	## issue · ask
 //	1. plan · chat · read the issue and say how · gate plan when large
 //	2. write · chat · fanout 3
 //
@@ -34,6 +34,11 @@ import (
 // laid over it, which is how `4. proof` stays short. A STAGE IS ON UNLESS ITS
 // LINE SAYS `off`, copied or not, because a stage a person wrote into the file
 // and found not running would be a line that silently means nothing.
+//
+// A kind's heading may end in one word for how much the plan stage may change
+// that kind's stages: `## issue · adapt`, `## issue · ask` or `## issue ·
+// fixed` ([AdaptMode]). No word is adapt, and [Format] writes the word only
+// when it is not adapt.
 //
 // THE FILE NEVER FAILS TO LOAD. A line the reader cannot make sense of is a
 // [Problem] that names it, and everything else loads; a missing section is
@@ -76,6 +81,7 @@ func Parse(text string) (Recipe, []Problem) {
 	var probs []Problem
 	got := map[Kind][]Stage{}
 	said := map[string]bool{}
+	var adapt map[Kind]AdaptMode
 	var policy, habits []string
 	section := ""
 	skip := false
@@ -87,7 +93,7 @@ func Parse(text string) (Recipe, []Problem) {
 		case line == "":
 			continue
 		case strings.HasPrefix(line, "## "):
-			name := sectionName(line)
+			name, word := sectionWord(line)
 			skip = true
 			switch {
 			case said[name]:
@@ -96,6 +102,19 @@ func Parse(text string) (Recipe, []Problem) {
 				skip = false
 			default:
 				bad("not a section codeaf knows: issue, pr, ci, chore, policy or habits")
+			}
+			if !skip && word != "" {
+				switch {
+				case !knownKind(name):
+					bad(name + " takes no word after it")
+				case !oneOf(word, AdaptWords):
+					bad("after the kind comes " + strings.Join(AdaptWords, ", ") + "; " + string(AdaptFree) + " when there is none")
+				case AdaptMode(word) != AdaptFree:
+					if adapt == nil {
+						adapt = map[Kind]AdaptMode{}
+					}
+					adapt[Kind(name)] = AdaptMode(word)
+				}
 			}
 			said[name] = true
 			section = name
@@ -139,7 +158,7 @@ func Parse(text string) (Recipe, []Problem) {
 			r.ByKind[k] = s
 		}
 	}
-	r.Policy, r.Habits = policy, habits
+	r.Policy, r.Habits, r.Adapt = policy, habits, adapt
 	// A section that fell back to the default says its kind out loud too, so
 	// a recipe read from a file is the same value it is once written back.
 	chat := func(ss []Stage) {
@@ -158,6 +177,13 @@ func Parse(text string) (Recipe, []Problem) {
 
 func sectionName(line string) string {
 	return strings.ToLower(strings.Join(strings.Fields(strings.TrimPrefix(line, "##")), " "))
+}
+
+// sectionWord is a heading's section and the word after its `·`, if any:
+// `## issue · ask` is issue and ask.
+func sectionWord(line string) (name, word string) {
+	name, word, _ = strings.Cut(sectionName(line), "·")
+	return strings.TrimSpace(name), strings.TrimSpace(word)
 }
 
 func knownKind(name string) bool {
@@ -301,11 +327,12 @@ func parseKnob(seg string) (knob func(*Stage), isKnob bool, why string) {
 		if cond != "" && !oneOf(cond, WhenWords) {
 			return nil, true, "a gate's when is one of " + strings.Join(WhenWords, ", ")
 		}
+		// THE CONDITION IS THE GATE'S, NEVER THE STAGE'S: `gate plan when
+		// large` runs plan on every item and stops for the person only on a
+		// large one ([GateApplies]).
 		return func(s *Stage) {
 			s.Gate = Gate(g)
-			if cond != "" {
-				s.When = cond
-			}
+			s.GateWhen = cond
 		}, true, ""
 	case "effort":
 		if !oneOf(rest, EffortWords) {
@@ -348,7 +375,10 @@ func fanoutWord(w string) (string, bool) {
 // kind (issue first, then pr, ci, chore and any other kind by name), then the
 // policy and the habits. Every stage is written whole, its knobs in one fixed
 // order, even one equal to the default, so the file reads whole without the
-// default beside it. An empty policy or habits section is not written.
+// default beside it. An empty policy or habits section is not written. A
+// kind's adapt word is written after its heading when it is not adapt, and a
+// kind with a word and no stages of its own writes the stages it falls back
+// to, so the word is never dropped for want of a section to carry it.
 func Format(r Recipe) string {
 	var b strings.Builder
 	b.WriteString(recipeTitle + "\n")
@@ -361,16 +391,31 @@ func Format(r Recipe) string {
 			b.WriteString(l + "\n")
 		}
 	}
-	section(string(KindIssue), StageLines(r.For(KindIssue)))
+	kindSection := func(k Kind, stages []Stage) {
+		head := string(k)
+		if m := r.AdaptFor(k); m != AdaptFree {
+			head += " · " + string(m)
+			if len(stages) == 0 {
+				stages = r.For(k)
+			}
+		}
+		section(head, StageLines(stages))
+	}
+	kindSection(KindIssue, r.For(KindIssue))
 	var rest []Kind
 	for k := range r.ByKind {
 		if k != KindIssue && !knownKind(string(k)) {
 			rest = append(rest, k)
 		}
 	}
+	for k := range r.Adapt {
+		if _, ok := r.ByKind[k]; !ok && k != KindIssue && !knownKind(string(k)) {
+			rest = append(rest, k)
+		}
+	}
 	sort.Slice(rest, func(i, j int) bool { return rest[i] < rest[j] })
 	for _, k := range append(append([]Kind{}, fileKinds[1:]...), rest...) {
-		section(string(k), StageLines(r.ByKind[k]))
+		kindSection(k, r.ByKind[k])
 	}
 	section(sectionPolicy, bullets(r.Policy))
 	section(sectionHabits, bullets(r.Habits))
@@ -402,8 +447,9 @@ func StageLines(stages []Stage) []string {
 }
 
 // stageLine is one stage after its number. The knobs come in one order: when,
-// until, max, fanout, gate, effort, proof, off. A stage with both a gate and a
-// condition writes them as `gate plan when large`, the way the owner spells it.
+// until, max, fanout, gate, effort, proof, off. A gate with a condition of its
+// own ([Stage.GateWhen]) writes it as `gate plan when large`, the way the owner
+// spells it, and the stage's own when stays its own knob.
 func stageLine(s Stage) string {
 	kind := s.Kind
 	if kind == "" {
@@ -413,7 +459,7 @@ func stageLine(s Stage) string {
 	if a := oneLine(s.Ask); a != "" {
 		parts = append(parts, a)
 	}
-	if s.When != "" && s.Gate == "" {
+	if s.When != "" {
 		parts = append(parts, "when "+s.When)
 	}
 	if s.Until != "" {
@@ -427,8 +473,8 @@ func stageLine(s Stage) string {
 	}
 	if s.Gate != "" {
 		g := "gate " + string(s.Gate)
-		if s.When != "" {
-			g += " when " + s.When
+		if s.GateWhen != "" {
+			g += " when " + s.GateWhen
 		}
 		parts = append(parts, g)
 	}
@@ -581,7 +627,7 @@ func splitSections(text string) recipeFile {
 
 func (f recipeFile) find(name string) int {
 	for i, s := range f.secs {
-		if sectionName(s.head) == name {
+		if n, _ := sectionWord(s.head); n == name {
 			return i
 		}
 	}
@@ -597,7 +643,7 @@ func (f *recipeFile) replace(name string, lines []string) {
 	}
 	at := len(f.secs)
 	for i, s := range f.secs {
-		if n := sectionName(s.head); n == sectionPolicy || n == sectionHabits {
+		if n, _ := sectionWord(s.head); n == sectionPolicy || n == sectionHabits {
 			at = i
 			break
 		}
