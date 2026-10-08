@@ -703,8 +703,8 @@ folder ends it now.
 
 Three launches keep the old arrangement, where the conversation really does live
 in the window and ends with it: `--no-host`, `--debug`, and `--once`.
-A window built from one commit never attaches to an engine built from another: it opens its
-conversations in itself as `--no-host` does, and the old engine keeps the chats it already has.
+A window never attaches to an engine of another build: it opens its conversations in itself
+as `--no-host` does, and the old engine keeps the chats it already has.
 
 The other half of running with the terminal closed is the **standing side** —
 reminders, watches, rules, overnight work — and it is separate machinery. Every 5 minutes, terminal closed

@@ -531,17 +531,21 @@ var thisWindowBuild = func() (identity, revision string) {
 // build than this window, and the name to call it by when it is.
 //
 // On 2026-10-08 a window with the factory attached to an engine started two
-// days earlier from an older binary, and every conversation it opened ran on
-// that engine: no `factory_add` on its belt, no factory page in its manual. A
-// window that knows it is not the engine's build does not hand its chats to it.
+// days earlier from an older binary (`~/.codeaf/bin/devaf`, a dev build), and
+// every conversation it opened ran on that engine: no `factory_add` on its
+// belt, no factory page in its manual. A window that cannot show the engine is
+// its own build does not hand its chats to it.
 //
-// THE IDENTITY DECIDES, never the build moment: two builds of one clean source
-// are one engine ([buildinfo.Identity] says why). CLEAN BUILDS ONLY: a dirty or
-// unstamped identity carries the moment it was linked, so every rebuild of an
-// edited tree would read as another build; either side being one answers no,
-// and the window attaches as it always has. An engine that predates the
-// welcome's Identity is judged by the revision at the front of its Build, on
-// the same terms; an engine that names nothing is not another build.
+// ONLY THE SAME BUILD ATTACHES. When both sides carry an Identity, the two are
+// the same build exactly when the identities are equal: a clean identity is
+// its source ([buildinfo.Identity] says why two builds of one clean commit
+// are one engine), and a dirty or unstamped one carries the moment it was
+// linked, so equal means the very same binary. When the engine carries no
+// Identity, the revision at the front of its Build must equal this window's
+// AND neither side may be dirty: two dirty trees on one revision are never one
+// build, because the revision does not say what was edited on top of it. Every
+// other case is another build, a `dev` engine and an engine that names nothing
+// at all among them: an engine that cannot name its build is not ours.
 func hostIsAnotherBuild(welcome remote.Welcome) (named string, other bool) {
 	mine, myRevision := thisWindowBuild()
 	return hostIsAnotherBuildThan(welcome, mine, myRevision)
@@ -552,26 +556,25 @@ func hostIsAnotherBuildThan(welcome remote.Welcome, mine, myRevision string) (st
 	theirs := strings.TrimSpace(welcome.Identity)
 	mine = strings.TrimSpace(mine)
 	mineRev := strings.TrimSpace(myRevision)
-	// This side is clean when its identity is its revision and nothing else.
-	if mine == "" || mineRev == "" || mine != mineRev {
-		return "", false
-	}
-	differs := false
+	same := false
 	switch {
-	case theirs != "":
-		// A clean identity is a source with no slash in it; a dirty or
-		// unstamped one is source/dirty/moment ([buildinfo.Info.Identity]).
-		differs = !strings.Contains(theirs, "/") && theirs != mine
+	case theirs != "" && mine != "":
+		same = theirs == mine
 	default:
 		rev, clean := buildRevision(welcome.Build)
-		differs = clean && rev != "" && rev != mineRev
+		// This side is clean when its identity is its revision and nothing else.
+		mineClean := mine != "" && mine == mineRev
+		same = clean && mineClean && rev != "" && rev == mineRev
 	}
-	if !differs {
+	if same {
 		return "", false
 	}
 	named := strings.TrimSpace(welcome.Build)
 	if named == "" {
 		named = theirs
+	}
+	if named == "" {
+		named = "a build it does not name"
 	}
 	return named, true
 }
@@ -586,7 +589,7 @@ func hostIsAnotherBuildThan(welcome remote.Welcome, mine, myRevision string) (st
 func hostAnotherBuildSentence(named, workspace string) string {
 	stop := "codeaf engine --stop"
 	if ws := strings.TrimSpace(workspace); ws != "" {
-		stop += " --workspace " + ws
+		stop += " --workspace " + shellQuote(ws)
 	}
 	return "this workspace's engine is another build (" + named + ") · this window runs its own · " +
 		"the old engine keeps the chats it already has; stop it when they are done: " + stop
