@@ -1,6 +1,9 @@
 package factory
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Seam is every door the surface has onto the factory, as a struct of funcs
 // so a mock, a local engine and a hosted one are the same shape (the pattern
@@ -62,6 +65,35 @@ type Seam struct {
 	SetCap    func(id int, usd float64) error
 	SetEffort func(id int, stage int, effort string) error
 
+	// THE FLOOR'S OWN SETTINGS (settings.go), each a door like every other:
+	// nil is a key the floor does not draw.
+	//
+	// Repos is the repo picker's read: the repositories the floor watches,
+	// `owner/name`, and every repository the connected forge account can see,
+	// most recently pushed first. available is nil when nothing lists them.
+	Repos func(ctx context.Context) (watched []string, available []RepoInfo, err error)
+	// SetRepos replaces the watched repositories.
+	SetRepos func(repos []string) error
+	// GitHub says who this machine reaches GitHub as, and by which way; a
+	// zero link is no token at all.
+	GitHub func(ctx context.Context) (GitHubLink, error)
+	// GHLogin is the login `gh auth status` answers, "" when gh is absent or
+	// not logged in. It is asked only to offer gh; nothing is kept by asking.
+	GHLogin func(ctx context.Context) (string, error)
+	// ConnectGitHub keeps a way to reach GitHub: "" is consent to use gh's own
+	// login, and anything else is a token kept in the profile.
+	ConnectGitHub func(ctx context.Context, token string) error
+	// RecipeAt is a repository's recipe as its file says it, the lines that
+	// did not load, and the folder it was read from ("" when this machine does
+	// not know where the repository is checked out, and the recipe is then the
+	// default one).
+	RecipeAt func(repo string) (r Recipe, problems []Problem, dir string, err error)
+	// SaveRecipe writes a whole recipe to the repository's recipe file.
+	SaveRecipe func(repo string, r Recipe) error
+	// SetRail sets the day's rail, the most the floor may spend in a day; 0
+	// takes it off.
+	SetRail func(usd float64) error
+
 	// Tick advances a mock clock by d. A real engine leaves it nil and the
 	// surface draws no speed, no sleep.
 	Tick func(d time.Duration) error
@@ -116,6 +148,22 @@ func (s Seam) Has(door string) bool {
 		return s.SetCap != nil
 	case "seteffort":
 		return s.SetEffort != nil
+	case "repos":
+		return s.Repos != nil
+	case "setrepos":
+		return s.SetRepos != nil
+	case "github":
+		return s.GitHub != nil
+	case "ghlogin":
+		return s.GHLogin != nil
+	case "connectgithub":
+		return s.ConnectGitHub != nil
+	case "recipeat":
+		return s.RecipeAt != nil
+	case "saverecipe":
+		return s.SaveRecipe != nil
+	case "setrail":
+		return s.SetRail != nil
 	case "tick":
 		return s.Tick != nil
 	case "sleep":

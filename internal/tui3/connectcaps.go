@@ -280,7 +280,11 @@ func (s *sheet) buildConnections() {
 	if !s.conn.loaded {
 		s.readConnections()
 	}
+	// GITHUB STANDS FIRST, and with no account door too: the factory's seam
+	// answers it, not the engine's catalog (settings_github.go).
+	s.appendGitHub(s.query.String())
 	if s.conns == nil {
+		s.cursor = s.clampCursor(s.cursor)
 		return
 	}
 	// ONE SERVICE, ALREADY OPEN. A tab with a single connected account and
@@ -933,6 +937,9 @@ func (s *sheet) connFootNote() string {
 	if !ok || item.conn == nil {
 		return "the accounts codeaf may reach for you"
 	}
+	if item.conn.service == githubService {
+		return "how the factory floor reaches github · enter asks again"
+	}
 	switch item.conn.kind {
 	case connCapability:
 		return "saved the moment you change it"
@@ -1001,6 +1008,8 @@ func (s *sheet) connKeysLine() string {
 	act := "enter act"
 	if item, ok := s.current(); ok && item.conn != nil {
 		switch {
+		case item.conn.service == githubService:
+			act = "enter connects"
 		case item.conn.kind == connCapability:
 			act = "enter " + capYesWord + " · " + capAskWord + " · " + capOffWord
 		case item.conn.kind == connDisconnect:
@@ -1032,6 +1041,9 @@ func (s *sheet) connKeysLine() string {
 // connAct is enter on a row of this tab, and the second click that means the
 // same thing.
 func (a *app) connAct(row *connRow) tea.Cmd {
+	if row.service == githubService {
+		return a.githubAct()
+	}
 	s := &a.sheet
 	_, modelRow := modelConnectionSource(row.service)
 	if s.conns == nil && !modelRow {
