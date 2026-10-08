@@ -240,6 +240,22 @@ func openChatV3Local(launch localLaunch) error {
 
 	agent := client.Agent()
 	welcome := client.Welcome()
+	// AN ENGINE OF ANOTHER BUILD IS NOT ATTACHED TO. Its belt and its manual
+	// are that build's, so every conversation this window opened on it would
+	// run without what this build has (2026-10-08: no factory, and a request
+	// for the factory ran an old saved harness instead). The dial is closed,
+	// the old engine keeps every chat it already holds, and the caller opens
+	// this window's conversations in this process, the --no-host road, which
+	// starts no host of its own and polls the floor itself.
+	if named, other := hostIsAnotherBuild(welcome); other {
+		_ = client.Close()
+		sentence := hostAnotherBuildSentence(named, welcome.Workspace)
+		if launch.once != "" {
+			// No surface to carry it: stderr, as the stale-host line below.
+			fmt.Fprintln(os.Stderr, sentence)
+		}
+		return &hostAnotherBuild{sentence: sentence}
+	}
 	// The shape the engine built, against the shape that was asked for. They
 	// differ when this hello joined a conversation that was already open, and
 	// the flags are real in this process, so the launch goes there rather than
@@ -310,14 +326,6 @@ func openChatV3Local(launch localLaunch) error {
 	// rather than inside that function because it is a fact about THIS ROAD's
 	// dial and not about the conversation the engine opened.
 	options.Notice = joinNotice(options.Notice, link.said())
-	// AND WHEN THE ENGINE IS ANOTHER BUILD, SAID ONCE. The dial joins a host of
-	// another build without a word when it is newer, or when its own sentence
-	// was not needed, and a window running against a binary it is not is the
-	// shape of 2026-10-08 (an older daemon with no factory poll). When the
-	// dial already said something about the host, that line is the one.
-	if link.said() == "" {
-		options.Notice = joinNotice(options.Notice, hostBuildNote(welcome, buildinfo.Identity(), buildinfo.Revision()))
-	}
 	// AND HOME CAN ASK SOMETHING WITHOUT OPENING A CONVERSATION. `ask here` is
 	// the second action row on home, and it is answered by an agent this process
 	// builds against a folder under the standing root ([localErrandDoor],
@@ -504,42 +512,84 @@ func localAskAgainAfterRefusal(launch localLaunch, err error) (string, bool) {
 	return path, true
 }
 
-// hostBuildNote is the one line a window says when the engine serving its
-// chats is another build than the window, and "" when it is the same one or
-// cannot tell.
+// hostAnotherBuild is the answer this door gives when the engine on the socket
+// is another build than this window: the window does not attach, it closes the
+// dial and opens its conversations in this process, exactly as --no-host does,
+// and the caller says this sentence on the entry notice.
+type hostAnotherBuild struct{ sentence string }
+
+func (h *hostAnotherBuild) Error() string { return h.sentence }
+
+// thisWindowBuild is this process's identity and revision, the two inputs
+// [hostIsAnotherBuild] judges the engine against. It is a variable so a test
+// can stand in for a build without stamping a binary.
+var thisWindowBuild = func() (identity, revision string) {
+	return buildinfo.Identity(), buildinfo.Revision()
+}
+
+// hostIsAnotherBuild is whether the engine that sent this welcome is another
+// build than this window, and the name to call it by when it is.
+//
+// On 2026-10-08 a window with the factory attached to an engine started two
+// days earlier from an older binary, and every conversation it opened ran on
+// that engine: no `factory_add` on its belt, no factory page in its manual. A
+// window that knows it is not the engine's build does not hand its chats to it.
 //
 // THE IDENTITY DECIDES, never the build moment: two builds of one clean source
-// are one engine ([buildinfo.Identity] says why). An engine that predates the
-// welcome's Identity is judged by the revision at the front of its Build, and
-// only when both sides name a clean one; an engine that names nothing says
-// nothing. Nothing is restarted from here: the engine is holding somebody's
-// chats, and the person decides when it goes.
-func hostBuildNote(welcome remote.Welcome, mine, myRevision string) string {
+// are one engine ([buildinfo.Identity] says why). CLEAN BUILDS ONLY: a dirty or
+// unstamped identity carries the moment it was linked, so every rebuild of an
+// edited tree would read as another build; either side being one answers no,
+// and the window attaches as it always has. An engine that predates the
+// welcome's Identity is judged by the revision at the front of its Build, on
+// the same terms; an engine that names nothing is not another build.
+func hostIsAnotherBuild(welcome remote.Welcome) (named string, other bool) {
+	mine, myRevision := thisWindowBuild()
+	return hostIsAnotherBuildThan(welcome, mine, myRevision)
+}
+
+// hostIsAnotherBuildThan is [hostIsAnotherBuild] with this side's build named.
+func hostIsAnotherBuildThan(welcome remote.Welcome, mine, myRevision string) (string, bool) {
 	theirs := strings.TrimSpace(welcome.Identity)
 	mine = strings.TrimSpace(mine)
+	mineRev := strings.TrimSpace(myRevision)
+	// This side is clean when its identity is its revision and nothing else.
+	if mine == "" || mineRev == "" || mine != mineRev {
+		return "", false
+	}
 	differs := false
 	switch {
-	case theirs != "" && mine != "":
-		differs = theirs != mine
-	case theirs == "":
+	case theirs != "":
+		// A clean identity is a source with no slash in it; a dirty or
+		// unstamped one is source/dirty/moment ([buildinfo.Info.Identity]).
+		differs = !strings.Contains(theirs, "/") && theirs != mine
+	default:
 		rev, clean := buildRevision(welcome.Build)
-		mineRev := strings.TrimSpace(myRevision)
-		differs = clean && rev != "" && mineRev != "" && mine == mineRev && rev != mineRev
+		differs = clean && rev != "" && rev != mineRev
 	}
 	if !differs {
-		return ""
+		return "", false
 	}
 	named := strings.TrimSpace(welcome.Build)
 	if named == "" {
 		named = theirs
 	}
-	// THE COMMAND NAMES THE WORKSPACE, for [staleEngineHostSentence]'s reason:
-	// a bare --stop resolves to the home directory's host, not this one.
+	return named, true
+}
+
+// hostAnotherBuildSentence is the one line a window says when it left an
+// engine of another build to its chats and opened its own.
+//
+// THE COMMAND NAMES THE WORKSPACE, for [staleEngineHostSentence]'s reason: a
+// bare --stop resolves to the home directory's host, not this one. Nothing is
+// stopped from here: the old engine is holding somebody's chats, and the
+// person decides when it goes.
+func hostAnotherBuildSentence(named, workspace string) string {
 	stop := "codeaf engine --stop"
-	if ws := strings.TrimSpace(welcome.Workspace); ws != "" {
+	if ws := strings.TrimSpace(workspace); ws != "" {
 		stop += " --workspace " + ws
 	}
-	return "this workspace's engine is another build (" + named + ") · it keeps running your chats; restart it to match: " + stop + ", then codeaf"
+	return "this workspace's engine is another build (" + named + ") · this window runs its own · " +
+		"the old engine keeps the chats it already has; stop it when they are done: " + stop
 }
 
 // buildRevision reads the revision off the front of a [buildinfo.String], and
