@@ -181,8 +181,10 @@ stranger would"), and it runs as an ordinary task with the ordinary crew picked 
 work. There is no graph to draw and no model to choose per stage; the one word a stage may carry
 is its effort, cheap or strong.
 
-A stage can repeat until a condition holds (until green, until clean) up to a number of rounds,
-and then it stops and asks you. Nothing inside a stage can add a stage, except plan, within the
+A stage can repeat until a condition holds (until green, until clean, until proven) up to a
+number of rounds, and then it stops and asks you. A second round fixes what the first found, then
+checks again: its brief names what the last round found and says to fix it in the checkout, run
+the tests, and look again, so a review that found one thing does not just find it twice. Nothing inside a stage can add a stage, except plan, within the
 bounds its recipe word allows (see adapt). A stage can also be a gate: `plan` comes back with the plan before any code, and `ship` waits for your sign-off.
 
 The peek shows a new item's stages as one line of names and a running item's as a strip of
@@ -306,8 +308,9 @@ one line across the top of the floor, then a blank row:
 
 what shipped and arrived this stretch, what waits on you (in the question colour), the day's
 spend against the day's rail, and when a source was last read. **Waiting counts the items that
-ask a question;** a landed item waiting for your sign-off stands under `LANDED` on the floor and
-is not in that count, nor in the tab bar's `?`. A part whose count is zero is
+ask a question and the landed items waiting for your sign-off,** so `? 2 waiting` is one
+question and one proof sheet; the full strip's `? 2 waiting on you` and the tab bar's `? 2`
+count the same, and `nothing waits on you` means neither. A part whose count is zero is
 left off; a narrow window drops parts from the right. While a source is being read the last part
 says `github · ⠋ polling`, and while every item is read again, `⠋ refreshing 8 items · 3 done`.
 
@@ -452,8 +455,10 @@ starts with its time, `12:04`, dim at the margin, then a mark for its kind and i
 voices: a **thought** (the run thinking aloud, a round starting again) is dim; **your own
 words**, the `steer: …` lines `S` and the conversation leave, are ink; everything else (what a
 stage said, a test, a failure `✕`, a success `✓`, a question `?` in amber) is the quieter
-second voice. A running stage's pane shows the same lines under its round. An item that never
-ran has no log row. The log keeps the last 400 lines.
+second voice. A running stage's pane shows the same lines under its round. A claim a stage made
+that is not for the proof sheet is a `claimed: …` line, and a batch of reads handed to a quick
+task is one line, `read ×4 · find handed to quick task 1`. An item that never ran has no log
+row. The log keeps the last 400 lines.
 
 ## answering a question — y, n, a
 
@@ -497,6 +502,17 @@ a test row reads `0.3s` beside `test`, not `test · 0.3s`. The sheet's last line
 `d` says `the diff is the appendix` and that it opens in your editor later. Each key is named only
 where the floor can do it.
 
+## what goes on the proof sheet — claims, evidence, repeats
+
+The proof sheet holds what was shown, not what was said. Only the **proof** stage (and a
+send-back's `prove`) and the **check** and **post** stages put rows on it; what plan, write,
+test or review claim goes to the log as `claimed: …` lines instead. One claim is one row: the
+same words again, in any case and with any punctuation (`Refunds count once.` and
+`refunds count once`), update the row rather than add one. A claim given with no evidence is
+not shown: it reads `✕` with `no evidence given`, whatever it said of itself. A later claim
+with evidence replaces an earlier one without, and a later one without evidence never undoes
+an earlier one that had some. Policy rows (`policy`) are kept the same way.
+
 ## steer a running item — S
 
 `S` on a running, queued or waiting item opens `steer ›`: words handed to the round running now
@@ -516,8 +532,9 @@ process runs the floor's items. `enter` on a row never launches; it opens the it
 
 - **New:** `r run · p plan first · space mark · T talk · L launch marked · 1-9 stages ·
   s stage · t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the
-  plan gate; the bottom line says `#12 is running` (`#12 is queued · a bench frees it` when the
-  benches are full). `L` launches this item, or asks first about the marked ones (see mark new
+  plan gate; the bottom line says `#12 is running` once the floor's next read sees it start, and
+  `#12 is queued · a bench frees it` only when that read still finds it queued behind full
+  benches. `L` launches this item, or asks first about the marked ones (see mark new
   items). `t` cycles the gate plan, ship, none; `c` the
   cap $2, $5, $8, $15, $30; `e` the first stage's effort: none, cheap, strong. `w` opens
   `in words ›` for the gate, cap and effort at once (`$8, plan first, stronger`). On a

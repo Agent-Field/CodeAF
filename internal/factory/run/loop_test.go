@@ -753,3 +753,61 @@ func TestARoundCountIsSaidTheWayAPersonSaysIt(t *testing.T) {
 		t.Errorf("one finding reads %q", got)
 	}
 }
+
+// TestTheProofSheetIsTheProofStagesAndTheChecksOnce holds the sheet to its
+// rules: only the proof stage and the checks put rows on it, a row is one
+// claim however its case and punctuation came, a claim with no evidence is
+// not shown, and a later claim with evidence replaces an earlier one without.
+// The hand run of 2026-10-08 landed 27 rows with repeats.
+func TestTheProofSheetIsTheProofStagesAndTheChecksOnce(t *testing.T) {
+	g := newRig(t, map[factory.StageKind]Executor{
+		factory.StageChat: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			switch job.Stage.Name {
+			case "write":
+				return factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "Refunds count once.", OK: true}}}, nil
+			case "proof":
+				return factory.StageResult{Done: true, Claims: []factory.Claim{
+					{Text: "Refunds count once.", OK: true},
+					{Text: "the export matches march", OK: true, Evidence: "export.csv diff", Medium: "transcript"},
+				}}, nil
+			}
+			return done(""), nil
+		}),
+		factory.StageCheck: ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+			return factory.StageResult{Done: true, Claims: []factory.Claim{{Text: "refunds count ONCE", OK: true, Evidence: "TestRefund", Medium: "test"}}}, nil
+		}),
+	}, nil)
+	id := g.add("ledger",
+		chat("write"),
+		factory.Stage{Name: "proof", Kind: factory.StageChat, Ask: "show each claim", Until: "done"},
+		factory.Stage{Name: "test", Kind: factory.StageCheck, Ask: "go test ./..."},
+	)
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.waitState(id, factory.StateLanded)
+	if !logHas(it, "claimed: Refunds count once.") {
+		t.Fatalf("write's claim did not reach the log: %+v", it.Stream.Log)
+	}
+	if len(it.Proof) != 2 {
+		t.Fatalf("the sheet has %d rows, want 2: %+v", len(it.Proof), it.Proof)
+	}
+	if c := it.Proof[0]; !c.OK || c.Evidence != "TestRefund" || c.Text != "refunds count ONCE" {
+		t.Fatalf("the check's evidence did not replace the bare claim: %+v", c)
+	}
+	if c := it.Proof[1]; !c.OK || c.Evidence != "export.csv diff" {
+		t.Fatalf("row 2 = %+v", c)
+	}
+}
+
+func TestAClaimWithNoEvidenceIsNotShown(t *testing.T) {
+	sheet := mergeClaim(nil, factory.Claim{Text: "it is fast", OK: true})
+	if len(sheet) != 1 || sheet[0].OK || sheet[0].Evidence != "no evidence given" {
+		t.Fatalf("a bare claim = %+v", sheet)
+	}
+	sheet = mergeClaim(sheet, factory.Claim{Text: "It is fast!", OK: true, Evidence: "bench 2x"})
+	sheet = mergeClaim(sheet, factory.Claim{Text: "it is FAST", OK: true})
+	if len(sheet) != 1 || !sheet[0].OK || sheet[0].Evidence != "bench 2x" {
+		t.Fatalf("a later bare claim undid the evidence: %+v", sheet)
+	}
+}

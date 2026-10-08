@@ -307,3 +307,105 @@ func TestTheBriefSaysWhichStageOfTheRunThisIs(t *testing.T) {
 		t.Fatalf("a one-stage run names its stages:\n%s", brief)
 	}
 }
+
+// TestASecondRoundOfReviewIsToldWhatTheFirstFound drives the real loop with
+// the chat executor: review runs until clean, round 1 reports a finding, and
+// round 2's conversation opens on a brief that names it and says to fix it
+// first. The hand run of 2026-10-08 reviewed an unchanged tree twice.
+func TestASecondRoundOfReviewIsToldWhatTheFirstFound(t *testing.T) {
+	maker := &FakeMaker{}
+	var mu sync.Mutex
+	rounds := 0
+	maker.Script = func(ctx context.Context, c *FakeConversation) {
+		mu.Lock()
+		rounds++
+		n := rounds
+		mu.Unlock()
+		if n == 1 {
+			_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Findings: 1,
+				Output: "the refund is counted twice in Export",
+				Claims: []factory.Claim{{Text: "refunds count once", OK: false}},
+			})
+			return
+		}
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true, Output: "clean"})
+	}
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: NewChatExecutor(maker)}, nil)
+	id := g.add("ledger", factory.Stage{Name: "review", Kind: factory.StageChat, Ask: "read it as a stranger would", Until: "clean", Max: 2})
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	g.waitState(id, factory.StateLanded)
+	convs := maker.Opened()
+	if len(convs) != 2 {
+		t.Fatalf("%d rounds ran, want 2", len(convs))
+	}
+	if strings.Contains(convs[0].Spec.Brief, "The last round found") {
+		t.Fatalf("round 1 was told of a round before it:\n%s", convs[0].Spec.Brief)
+	}
+	want := "round 2 of review. The last round found: the refund is counted twice in Export · not shown: refunds count once. Fix those in the checkout first, run the tests, then review again and report only what remains."
+	if !strings.Contains(convs[1].Spec.Brief, want) {
+		t.Fatalf("round 2's brief lacks the findings:\n%s", convs[1].Spec.Brief)
+	}
+}
+
+func TestOnlyALoopingStageIsToldToFixFirst(t *testing.T) {
+	job := reviewJob()
+	job.Round = 2
+	job.Last = &factory.StageResult{Done: true, Findings: 1, Output: strings.Repeat("x", 4000)}
+	if got := fixThenCheck(job); !strings.Contains(got, strings.Repeat("x", briefLastMost)+" …. Fix those") {
+		t.Fatalf("a long finding is not cut and marked: %q", got[len(got)-120:])
+	}
+	if n := strings.Count(lastFound(*job.Last), "x"); n != briefLastMost {
+		t.Fatalf("the findings carry %d characters, want %d", n, briefLastMost)
+	}
+	job.Stage.Until = "done"
+	if got := fixThenCheck(job); got != "" {
+		t.Fatalf("a stage that runs until done was told to fix: %q", got)
+	}
+	job.Stage.Until = "clean"
+	job.Round = 1
+	if got := fixThenCheck(job); got != "" {
+		t.Fatalf("round 1 was told to fix: %q", got)
+	}
+}
+
+func TestTheBriefSaysThereIsNoTeamPost(t *testing.T) {
+	brief := stageBrief(reviewJob())
+	if !strings.Contains(brief, "You have no team_post tool; report through stage_result only. Ignore team notices about renames.") {
+		t.Fatalf("the brief does not say there is no team_post:\n%s", brief)
+	}
+	if !strings.HasSuffix(brief, briefClosing) {
+		t.Fatalf("the brief no longer closes with %q:\n%s", briefClosing, brief)
+	}
+}
+
+func TestABatchedReadIsOneLineInTheStream(t *testing.T) {
+	old := handFold
+	handFold = 20 * time.Millisecond
+	t.Cleanup(func() { handFold = old })
+	rec := &logRec{}
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		c.Say("ls")
+		for range 4 {
+			c.Say("read handed to quick task 1")
+		}
+		c.Say("find handed to quick task 1")
+		c.Say("read handed to quick task 2")
+		c.Say("read handed to quick task 2")
+		time.Sleep(60 * time.Millisecond)
+		c.Say("read handed to quick task 3")
+		c.Say("bash go test ./...")
+		c.Say("read handed to quick task 4")
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	job := reviewJob()
+	job.Log = rec.log
+	if _, err := NewChatExecutor(maker).Run(context.Background(), job); err != nil {
+		t.Fatal(err)
+	}
+	want := "ls\nread ×4 · find handed to quick task 1\nread ×2 handed to quick task 2\nread handed to quick task 3\nbash go test ./...\nread handed to quick task 4"
+	if got := strings.Join(rec.all(), "\n"); got != want {
+		t.Fatalf("the stream got:\n%s\nwant:\n%s", got, want)
+	}
+}

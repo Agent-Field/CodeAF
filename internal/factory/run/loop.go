@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
 )
@@ -743,6 +744,13 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 			prior = append(prior, res)
 		}
 	}
+	// A ROUND AFTER THE FIRST READS WHAT THE ROUND BEFORE IT FOUND. The
+	// results map holds this phase's last result until the round now starting
+	// replaces it, so round 2 is handed round 1's findings to fix.
+	var last *factory.StageResult
+	if res, ok := lp.results[c.id][i]; ok && round > 1 {
+		last = &res
+	}
 	lp.mu.Unlock()
 	dir := ""
 	if lp.r.opts.RepoDir != nil {
@@ -755,6 +763,7 @@ func (lp *floorLoop) job(c *loopCtl, st factory.Stage, index, i, round int) Job 
 		Round: round,
 		Notes: notes,
 		Prior: prior,
+		Last:  last,
 		Dir:   dir,
 		Steer: c.steer,
 		Log:   func(line string) { lp.say(c, "thought", line) },
@@ -848,11 +857,17 @@ func (lp *floorLoop) fold(c *loopCtl, before factory.Item, st factory.Stage, i i
 			ph.Chat = res.Chat
 		}
 		it.Stream.Findings = res.Findings
+		sheet := makesSheet(st)
 		for _, cl := range res.Claims {
-			if cl.Medium == "policy" {
+			switch {
+			case cl.Medium == "policy":
 				it.Policy = mergeClaim(it.Policy, cl)
-			} else {
+			case sheet:
 				it.Proof = mergeClaim(it.Proof, cl)
+			default:
+				if text := oneLine(cl.Text); text != "" {
+					loopSay(it, now, "thought", "claimed: "+text)
+				}
 			}
 		}
 		if line := loopFirstLine(res.Output); line != "" {
@@ -902,16 +917,68 @@ func retail(it factory.Item, phases []factory.Phase, i int) []factory.Phase {
 	return out
 }
 
-// mergeClaim puts a claim on a sheet: one with the same words is replaced,
-// so a round run again, or a re-check, updates its row rather than adding one.
+// makesSheet says whether a stage's claims go on the proof sheet: the proof
+// stage (named so, or the one that runs until proven), a send-back's prove,
+// and every check and post, whose claims are an exit code or a receipt.
+//
+// A PLAN, WRITE OR TEST CONVERSATION'S CLAIMS ARE WHAT IT SAYS IT DID, NOT
+// WHAT WAS SHOWN. On the 2026-10-08 hand run every chat stage folded its
+// claims onto the sheet, and the person signed off a sheet of 27 rows with
+// repeats; those claims go to the log as `claimed: …` lines instead.
+func makesSheet(st factory.Stage) bool {
+	switch kindOf(st) {
+	case factory.StageCheck, factory.StagePost:
+		return true
+	}
+	name := strings.ToLower(strings.TrimSpace(st.Name))
+	return name == "proof" || strings.HasPrefix(name, "prove") ||
+		strings.TrimSpace(st.Until) == factory.UntilProven
+}
+
+// noEvidence is the evidence a claim that gave none is shown with.
+const noEvidence = "no evidence given"
+
+// mergeClaim puts a claim on a sheet. Its row is found by its words, read
+// without case or punctuation, so a round run again, or a re-check, updates
+// the row rather than adding one, and `Refunds count once.` is the row
+// `refunds count once`.
+//
+// A CLAIM WITH NO EVIDENCE IS NOT SHOWN, whatever it says of itself: it is
+// marked not OK with [noEvidence]. And a later claim without evidence never
+// replaces an earlier one that had some, while one with evidence always
+// replaces the row before it.
 func mergeClaim(sheet []factory.Claim, cl factory.Claim) []factory.Claim {
+	cl.Evidence = strings.TrimSpace(cl.Evidence)
+	bare := cl.Evidence == ""
+	if bare {
+		cl.OK, cl.Evidence = false, noEvidence
+	}
+	key := claimKey(cl.Text)
 	for k := range sheet {
-		if sheet[k].Text == cl.Text {
-			sheet[k] = cl
+		if claimKey(sheet[k].Text) != key {
+			continue
+		}
+		if bare && sheet[k].Evidence != noEvidence && strings.TrimSpace(sheet[k].Evidence) != "" {
 			return sheet
 		}
+		sheet[k] = cl
+		return sheet
 	}
 	return append(sheet, cl)
+}
+
+// claimKey is a claim's words for matching: lower case, letters and digits
+// only, single spaces.
+func claimKey(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune(' ')
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
 }
 
 func loopFirstLine(s string) string {

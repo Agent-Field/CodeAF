@@ -199,14 +199,14 @@ func TestFactoryHandoverOneLine(t *testing.T) {
 	if len(rows) != 2 || strings.TrimSpace(rows[1]) != "" {
 		t.Fatalf("the handover is %d rows: %q", len(rows), rows)
 	}
-	if got := strings.TrimSpace(ansi.Strip(rows[0])); got != "◆ 1 shipped · 4 arrived · ? 1 waiting · $11.31 / $60 · polled 14s ago" {
+	if got := strings.TrimSpace(ansi.Strip(rows[0])); got != "◆ 1 shipped · 4 arrived · ? 2 waiting · $11.31 / $60 · polled 14s ago" {
 		t.Fatalf("the one line is %q", got)
 	}
 	if !strings.HasPrefix(rows[0], factoryMarginPad()+"◆") {
 		t.Fatalf("the handover does not stand at the margin: %q", rows[0])
 	}
 	a.fp.snap.Shift.Shipped, a.fp.snap.Shift.Arrived = 0, 0
-	if got := strings.TrimSpace(ansi.Strip(a.factoryHead(150)[0])); got != "◆ ? 1 waiting · $11.31 / $60 · polled 14s ago" {
+	if got := strings.TrimSpace(ansi.Strip(a.factoryHead(150)[0])); got != "◆ ? 2 waiting · $11.31 / $60 · polled 14s ago" {
 		t.Fatalf("a zero clause is drawn: %q", got)
 	}
 	a.width, a.height = 150, 40

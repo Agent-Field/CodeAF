@@ -525,3 +525,49 @@ func TestFactoryTypingRowMarksAScrolledStart(t *testing.T) {
 		t.Fatalf("the scrolled row is not marked or lost its end: %q", row)
 	}
 }
+
+// A LAUNCH SAYS QUEUED ONLY WHEN THE NEXT READ STILL SAYS SO. The door writes
+// queued and a bench takes the item a moment later, so the read the door's own
+// ask makes sees queued: the note waits for the floor's next read, and says
+// running when the item started, queued when it did not. On 2026-10-08 `r`
+// said `#1 is queued · a bench frees it` while #1 started that second.
+func TestFactoryLaunchNoteWaitsForTheNextRead(t *testing.T) {
+	for _, c := range []struct {
+		next factory.State
+		key  string
+		want string
+	}{
+		{factory.StateRunning, "r", "#1540 is running"},
+		{factory.StateRunning, "p", "#1540 is running · plan first"},
+		{factory.StateQueued, "r", "#1540 is queued · a bench frees it"},
+		{factory.StateNeedsYou, "L", "#1540 is waiting on you"},
+	} {
+		f := &factoryFake{}
+		a := factoryVerbLab(t, f)
+		factoryOn(t, a, 8)
+		state := factory.StateQueued
+		f.shape = func(s *factory.Snapshot) {
+			for i := range s.Items {
+				if s.Items[i].ID == 8 {
+					s.Items[i].State = state
+				}
+			}
+		}
+		drive(t, a, key(c.key))
+		if a.pageMsg != "" {
+			t.Fatalf("%s said %q before the floor's next read", c.key, a.pageMsg)
+		}
+		state = c.next
+		snap, _ := a.factory.Load()
+		a.factoryFold(snap)
+		if a.pageMsg != c.want {
+			t.Errorf("%s then %s said %q, want %q", c.key, c.next, a.pageMsg, c.want)
+		}
+		snap, _ = a.factory.Load()
+		a.pageMsg = ""
+		a.factoryFold(snap)
+		if a.pageMsg != "" {
+			t.Errorf("a second read said the launch again: %q", a.pageMsg)
+		}
+	}
+}

@@ -426,17 +426,21 @@ func TestFactoryLayoutBarShowsFactoryThird(t *testing.T) {
 	}
 	a := factoryPlaceLab(t)
 	line := plain(a.navLine(160, a.pal))
-	home, chats, fac := strings.Index(line, navLabel(pageHome)), strings.Index(line, navLabel(pageChats)), strings.Index(line, navLabel(pageFactory)+" ? 1")
+	home, chats, fac := strings.Index(line, navLabel(pageHome)), strings.Index(line, navLabel(pageChats)), strings.Index(line, navLabel(pageFactory)+" ? 2")
 	if home < 0 || chats < home || fac < chats {
-		t.Fatalf("the bar does not read Home, Chats, Factory ? 1: %q", line)
+		t.Fatalf("the bar does not read Home, Chats, Factory ? 2: %q", line)
 	}
 	if teams := strings.Index(line, navLabel(pageTeams)); teams >= 0 && teams < fac {
 		t.Fatalf("the factory is not third: %q", line)
 	}
 	snap := factory.Fixture(factoryTestNow)
 	for i := range snap.Items {
-		if snap.Items[i].State == factory.StateNeedsYou {
+		switch snap.Items[i].State {
+		case factory.StateNeedsYou:
 			snap.Items[i].State = factory.StateRunning
+		case factory.StateLanded:
+			// A landed item waits on the sign-off, so it counts too.
+			snap.Items[i].State = factory.StateShipped
 		}
 	}
 	a.factoryFold(snap)

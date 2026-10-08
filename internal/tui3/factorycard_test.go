@@ -227,7 +227,7 @@ func TestFactoryCardAddedReadsTheFloorOnce(t *testing.T) {
 	if loads != 1 {
 		t.Fatalf("an added item read the floor %d times", loads)
 	}
-	if line := plain(a.navLine(160, a.pal)); !strings.Contains(line, navLabel(pageFactory)+" ? 1") {
+	if line := plain(a.navLine(160, a.pal)); !strings.Contains(line, navLabel(pageFactory)+" ? 2") {
 		t.Fatalf("the bar does not count the floor after the read: %q", line)
 	}
 }
@@ -240,11 +240,11 @@ func TestFactoryCountOnTheBarFromTheLaunch(t *testing.T) {
 	if a.fp.loaded {
 		t.Fatal("the lab read the floor before the launch")
 	}
-	if line := plain(a.navLine(160, a.pal)); strings.Contains(line, "? 1") {
+	if line := plain(a.navLine(160, a.pal)); strings.Contains(line, "? 2") {
 		t.Fatalf("the bar counted a floor nobody read: %q", line)
 	}
 	drive(t, a, runCmd(a.factoryLaunchRead())...)
-	if line := plain(a.navLine(160, a.pal)); !strings.Contains(line, navLabel(pageFactory)+" ? 1") {
+	if line := plain(a.navLine(160, a.pal)); !strings.Contains(line, navLabel(pageFactory)+" ? 2") {
 		t.Fatalf("the launch read did not put the count on the bar: %q", line)
 	}
 	// AND THE LAUNCH ASKS FOR IT: the read is one of the commands Init batches.

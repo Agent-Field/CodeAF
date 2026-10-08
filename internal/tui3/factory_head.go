@@ -120,7 +120,7 @@ func (a *app) factoryHeadLine(snap factory.Snapshot, width int) string {
 		w := itoa(n) + " arrived"
 		add(w, pal.ink(w))
 	}
-	if n := snap.Count(factory.StateNeedsYou); n > 0 {
+	if n := factoryWaitingIn(snap); n > 0 {
 		w := "? " + itoa(n) + " waiting"
 		add(w, pal.ask(w))
 	}
@@ -255,6 +255,18 @@ func (a *app) factoryHeadShift(snap factory.Snapshot, width int) string {
 	return lead + pal.ink(rowTail(fields, width-leadW))
 }
 
+// factoryWaitingIn is how many items on a floor wait on the person: every item
+// asking a question, and every landed item, whose proof sheet waits for the
+// sign-off.
+//
+// A LANDED ITEM WAITS ON YOU AS MUCH AS A QUESTION DOES. On the 2026-10-08
+// hand run issue #1 landed, its sheet waited for the sign-off, and the
+// handover said `nothing waits on you`; the handover, its full form and the
+// tab bar's `?` all count through here, so they cannot disagree.
+func factoryWaitingIn(snap factory.Snapshot) int {
+	return snap.Count(factory.StateNeedsYou) + snap.Count(factory.StateLanded)
+}
+
 // factoryHeadWaiting is how many items wait on the person, in the question's
 // hue, or the dim sentence saying none do; and at the right, on a pane wide
 // enough, the day's work as a sparkline of the shift's hours ending at the
@@ -263,7 +275,7 @@ func (a *app) factoryHeadWaiting(snap factory.Snapshot, width int) string {
 	pal := a.pal
 	left := factorySpaces(factoryLeadW) + pal.dim(factoryHeadNoWaitWords)
 	leftW := factoryLeadW + ansi.StringWidth(factoryHeadNoWaitWords)
-	if n := snap.Count(factory.StateNeedsYou); n > 0 {
+	if n := factoryWaitingIn(snap); n > 0 {
 		words := "? " + itoa(n) + " waiting on you"
 		left, leftW = pal.ask(words), ansi.StringWidth(words)
 	}

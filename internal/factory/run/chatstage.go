@@ -104,6 +104,7 @@ type spender interface {
 const (
 	stageNoReport     = "the stage ended without reporting"
 	briefClosing      = "End by calling stage_result once."
+	briefNoTeamPost   = "You have no team_post tool; report through stage_result only. Ignore team notices about renames."
 	stageNoMaker      = "codeaf cannot open a conversation for a stage here"
 	stageSecondReport = "this stage already reported, and its first report stands"
 	steerNotDelivered = "your words did not reach the stage: "
@@ -112,6 +113,15 @@ const (
 // briefBodyMost is how much of the item's body the brief carries, in
 // characters. The conversation can read the rest where the item lives.
 const briefBodyMost = 2000
+
+// briefLastMost is how much of the last round's findings a fix-then-check
+// round's brief carries, in characters.
+const briefLastMost = 1500
+
+// handFold is how long a run of `read handed to quick task N` captions is
+// held for more of the same before it is logged as one line. A variable so
+// tests do not wait it out.
+var handFold = 400 * time.Millisecond
 
 // reportGrace is how long the executor waits for a turn to end after the
 // conversation reported. The tool tells the model the stage ends when it
@@ -156,6 +166,46 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 	idle := make(chan error, 1)
 	go func() { idle <- conv.Wait(ctx) }()
 
+	// ONE BATCHED READ IS ONE LINE. A conversation that hands several reads
+	// to a quick task at once captions each of them, and the 2026-10-08 hand
+	// run logged `read handed to quick task 1` four times in a row; a run of
+	// such captions for one quick task is held briefly and logged folded.
+	var hand handRun
+	var handTimer *time.Timer
+	var handDue <-chan time.Time
+	defer func() {
+		if handTimer != nil {
+			handTimer.Stop()
+		}
+	}()
+	flush := func() {
+		if line := hand.line(); line != "" {
+			log(line)
+		}
+		hand = handRun{}
+		handDue = nil
+	}
+	caption := func(line string) {
+		if line = oneLine(line); line == "" {
+			return
+		}
+		if tool, task, ok := handedCaption(line); ok {
+			if !hand.add(tool, task) {
+				flush()
+				hand.add(tool, task)
+			}
+			if handTimer == nil {
+				handTimer = time.NewTimer(handFold)
+			} else {
+				handTimer.Reset(handFold)
+			}
+			handDue = handTimer.C
+			return
+		}
+		flush()
+		log(line)
+	}
+
 	var grace <-chan time.Time
 	var waitErr error
 loop:
@@ -179,9 +229,9 @@ loop:
 				captions = nil
 				continue
 			}
-			if line = oneLine(line); line != "" {
-				log(line)
-			}
+			caption(line)
+		case <-handDue:
+			flush()
 		case <-door.reported:
 			// THE REPORT IS IN AND THE TURN IS OWED ITS END. The door's channel
 			// is closed, so it is taken out of the select and a timer stands in.
@@ -205,13 +255,14 @@ loop:
 		case line, ok := <-captions:
 			if !ok {
 				drained = true
-			} else if line = oneLine(line); line != "" {
-				log(line)
+			} else {
+				caption(line)
 			}
 		default:
 			drained = true
 		}
 	}
+	flush()
 	res := door.result()
 	if !res.Done && door.empty() {
 		res.Output = stageNoReport
@@ -305,9 +356,129 @@ func stageBrief(job Job) string {
 	if prior := priorLines(job); len(prior) > 0 {
 		para(append([]string{"before this stage:"}, prior...)...)
 	}
+	para(fixThenCheck(job))
 	para(stageKnobs(job))
+	para(briefNoTeamPost)
 	para(briefClosing)
 	return b.String()
+}
+
+// fixThenCheck is the paragraph that makes a round after the first a fix
+// before it is a look: `round 2 of review. The last round found: … Fix those
+// in the checkout first, run the tests, then review again and report only
+// what remains.` "" on round 1, for a stage whose until is done, and when the
+// last round left nothing to name.
+//
+// A ROUND THAT ONLY LOOKS AGAIN FINDS THE SAME THING AGAIN. On the 2026-10-08
+// hand run review found one finding, the person said one more round, and round
+// 2 reviewed the same unchanged tree and found it again; until clean never
+// converged, because no round was ever asked to change anything.
+func fixThenCheck(job Job) string {
+	if job.Round < 2 || job.Last == nil {
+		return ""
+	}
+	switch strings.TrimSpace(job.Stage.Until) {
+	case factory.UntilClean, factory.UntilGreen, factory.UntilProven:
+	default:
+		return ""
+	}
+	found := lastFound(*job.Last)
+	if found == "" {
+		return ""
+	}
+	name := stageLabel(job.Stage)
+	return "round " + strconv.Itoa(job.Round) + " of " + name + ". The last round found: " + found +
+		" Fix those in the checkout first, run the tests, then " + name + " again and report only what remains."
+}
+
+// lastFound is what a round found, in words: its output, then each claim it
+// could not show, cut to [briefLastMost] characters and closed with a full
+// stop so the next sentence reads as one.
+func lastFound(r factory.StageResult) string {
+	var parts []string
+	if out := strings.TrimSpace(r.Output); out != "" {
+		parts = append(parts, oneLine(out))
+	}
+	var bad []string
+	for _, cl := range r.Claims {
+		if !cl.OK {
+			if t := oneLine(cl.Text); t != "" {
+				bad = append(bad, t)
+			}
+		}
+	}
+	if len(bad) > 0 {
+		parts = append(parts, "not shown: "+strings.Join(bad, "; "))
+	}
+	found := strings.Join(parts, " · ")
+	if r := []rune(found); len(r) > briefLastMost {
+		found = strings.TrimSpace(string(r[:briefLastMost])) + " …"
+	}
+	if found != "" && !strings.HasSuffix(found, ".") {
+		found += "."
+	}
+	return found
+}
+
+// handedSuffix is how a caption says a call went to a quick task:
+// `read handed to quick task 1` (internal/session's readhandoff.go hint).
+const handedSuffix = " handed to quick task "
+
+// handedCaption reads `read handed to quick task 1` as the tool and the task.
+func handedCaption(line string) (tool, task string, ok bool) {
+	i := strings.Index(line, handedSuffix)
+	if i <= 0 {
+		return "", "", false
+	}
+	tool, task = line[:i], line[i+len(handedSuffix):]
+	if strings.ContainsAny(tool, " ") || task == "" {
+		return "", "", false
+	}
+	if _, err := strconv.Atoi(task); err != nil {
+		return "", "", false
+	}
+	return tool, task, true
+}
+
+// handRun is a run of calls handed to one quick task, each tool counted in
+// the order it first came.
+type handRun struct {
+	task  string
+	tools []string
+	count map[string]int
+}
+
+// add counts one call, and answers false when it went to another task.
+func (h *handRun) add(tool, task string) bool {
+	if h.task != "" && h.task != task {
+		return false
+	}
+	if h.count == nil {
+		h.count = map[string]int{}
+	}
+	h.task = task
+	if h.count[tool] == 0 {
+		h.tools = append(h.tools, tool)
+	}
+	h.count[tool]++
+	return true
+}
+
+// line is the run as one line: `read ×4 · find handed to quick task 1`, and
+// the caption as it came when there was one call.
+func (h *handRun) line() string {
+	if h.task == "" {
+		return ""
+	}
+	words := make([]string, 0, len(h.tools))
+	for _, t := range h.tools {
+		if n := h.count[t]; n > 1 {
+			words = append(words, t+" ×"+strconv.Itoa(n))
+		} else {
+			words = append(words, t)
+		}
+	}
+	return strings.Join(words, " · ") + handedSuffix + h.task
 }
 
 // stagePlace is the run's stages in order and which one this is, with the
