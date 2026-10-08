@@ -9,18 +9,18 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 // `on` stands, its ask dim, and no key on the floor switches it off or edits
 // it: the press says [factoryFixedWords] on the note line instead.
 
-// stageFixedFor is the test hook on [stageFixed] until the field exists.
-// REMOVED AT MERGE with factory/fixed, with the accessor's body.
+// stageFixedFor is the test lab's way to fix a stage by name on a fixture
+// item it does not build itself (factory_lock_test.go); nothing but a test
+// sets it.
 var stageFixedFor func(factory.Stage) bool
 
 // stageFixed says whether the recipe file fixes s. Every reader of the fact
 // asks here, so the switch to the field is one line.
 func stageFixed(s factory.Stage) bool {
-	if stageFixedFor != nil {
-		return stageFixedFor(s)
+	if s.Fixed {
+		return true
 	}
-	// until factory/fixed lands: then s.Fixed
-	return false
+	return stageFixedFor != nil && stageFixedFor(s)
 }
 
 // stageLocked says whether s is fixed AND on: the stage no key may switch
