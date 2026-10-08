@@ -151,6 +151,21 @@ type Options struct {
 	// TalkPoll is how often a running item reads its manager conversation for
 	// a steer or an answer; 0 is two seconds.
 	TalkPoll time.Duration
+	// Shape is the manager's first act of a run (shape.go): one turn of the
+	// item's manager conversation, at launch, after the manager is made and
+	// before the first stage, that answers the edit it would make to the
+	// stages (an empty one when the recipe stands) and what it said. said is
+	// what the person typed into the conversation before this run. The runner
+	// applies the edit itself, before the run, and says the line. Nil is a run
+	// of the recipe as it stands. The shape lane added it, additively.
+	Shape func(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error)
+	// Reshape is the same turn during a run, given what the person just said:
+	// the edit it answers changes only the stages not yet started. Nil gives
+	// the manager no turn on a steer.
+	Reshape func(ctx context.Context, it factory.Item, said string) (factory.RunEdit, string, error)
+	// ShapeWait is how long a Shape or Reshape turn may take before the run
+	// goes on without it; 0 is a minute.
+	ShapeWait time.Duration
 }
 
 // Pool is what the loop needs of the money, and money.go's *Money answers

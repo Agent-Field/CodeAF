@@ -991,6 +991,8 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		cfg.Recipe = recipeDoor(engineFactory(proc.ProfileDir), workspace)
 		// And `factory_item`'s door, on the same law and the same store.
 		cfg.FactoryItem = itemDoor(engineFactory(proc.ProfileDir), workspace)
+		// And `factory_run`'s, the manager's pen, on the same law.
+		cfg.FactoryRun = runDoor(engineFactory(proc.ProfileDir), workspace)
 		// And the store `factory_floor`'s door reads, on the same law; the door
 		// itself is on the foreman's belt only, so each conversation this engine
 		// opens asks [foremanFloorDoor] by its own session file (below, once the

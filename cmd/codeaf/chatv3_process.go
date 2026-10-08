@@ -800,6 +800,7 @@ func (s *v3Seam) launch(workspace string) (*v3Launch, error) {
 		// conversation opens in the item's checkout, which is often another
 		// project than the boot's (factory_talk.go).
 		launch.Config.FactoryItem = s.boot.Config.FactoryItem
+		launch.Config.FactoryRun = s.boot.Config.FactoryRun
 	}
 	// THE KEY IS THE ONE FIELD READ BACK FROM THE PROCESS rather than from the
 	// launch. A boot that opened keyless and was handed a key on the first

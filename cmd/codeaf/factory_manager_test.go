@@ -62,7 +62,7 @@ func TestTheManagerIsMadeWhenMissingAndLeadsTheItemsTeam(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(chat)
-	if !strings.Contains(string(data), talkManager) {
+	if !strings.Contains(string(data), "You are the manager of "+it.Ref()+" in web.") || !strings.Contains(string(data), talkBlockShape) {
 		t.Fatalf("the manager's brief does not tell it it is the manager:\n%s", data)
 	}
 	team, n := itemTeamLead(t, profile, it)

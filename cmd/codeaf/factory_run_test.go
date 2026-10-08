@@ -103,7 +103,7 @@ func stopAll(t *testing.T, st *store.Store, r *factoryrun.Runner) {
 func TestFactoryRunnerCarriesEveryExecutorThisProcessHas(t *testing.T) {
 	t.Setenv(factoryBenchesEnv, "")
 	g := newRunRig(t)
-	r := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil)
+	r := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
 	opts := r.Opts()
 	for _, kind := range []factory.StageKind{factory.StageChat, factory.StageCheck, factory.StagePost} {
 		if opts.Exec[kind] == nil {
@@ -156,7 +156,7 @@ func TestFactoryRunnerCarriesEveryExecutorThisProcessHas(t *testing.T) {
 // lands with its claim shown.
 func TestAnOwnerLaunchRunsACheckItemToLanded(t *testing.T) {
 	g := newRunRig(t)
-	r := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil)
+	r := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
 	stopAll(t, g.st, r)
 	seam := factory.LocalSeam(g.st, time.Now(), factory.WithRunner(r))
 	for _, door := range []string{"launch", "stop", "pause", "answer", "steer", "signoff", "sendback", "reverify"} {
@@ -184,7 +184,7 @@ func TestAnOwnerLaunchRunsACheckItemToLanded(t *testing.T) {
 func TestANonOwnerLaunchReachesTheOwnerAndLands(t *testing.T) {
 	g := newRunRig(t)
 	window := factory.LocalSeam(g.st, time.Now(), factory.WithMailbox(g.st.Mailbox()))
-	owner := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil)
+	owner := buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
 	stopAll(t, g.st, owner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -282,7 +282,7 @@ func TestTheSeamOptionFollowsWhoRunsTheFloor(t *testing.T) {
 		t.Error("no store still bound a mailbox")
 	}
 	factoryRunner.mu.Lock()
-	factoryRunner.r = buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil)
+	factoryRunner.r = buildFactoryRunner(g.st, g.workspace, t.TempDir(), nil, nil)
 	factoryRunner.mu.Unlock()
 	owner := factory.LocalSeam(g.st, time.Now(), factoryRunnerDoors(g.st))
 	for _, door := range doors {
