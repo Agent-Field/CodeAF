@@ -51,6 +51,19 @@ func TestLocalSettingsDoors(t *testing.T) {
 		t.Fatalf("a rail taken off reads %v", snap.Rail)
 	}
 
+	// WITH CHECKOUTS KNOWN each listed repository carries its own, and one
+	// this machine has not cloned carries none.
+	listed = append(listed, factory.RepoInfo{Full: "santoshkumarradha/notes", Owner: "santoshkumarradha", Name: "notes", Open: -1})
+	dirs := map[string]string{"agentfield/codeaf": "/work/codeaf"}
+	here := factory.LocalSeam(st, time.Now(),
+		factory.WithRepoLister(func(context.Context) ([]factory.RepoInfo, error) {
+			return append([]factory.RepoInfo(nil), listed...), nil
+		}),
+		factory.WithRepoDirs(func(repo string) string { return dirs[repo] }))
+	if _, available, err := here.Repos(context.Background()); err != nil || len(available) != 2 || available[0].Dir != "/work/codeaf" || available[1].Dir != "" || available[1].Open != -1 {
+		t.Fatalf("Repos with checkouts = %+v, %v", available, err)
+	}
+
 	// With no lister the picker lists only what is watched.
 	bare := factory.LocalSeam(st, time.Now())
 	if _, available, err := bare.Repos(context.Background()); err != nil || available != nil {

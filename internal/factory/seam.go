@@ -67,7 +67,9 @@ type Seam struct {
 	//
 	// Repos is the repo picker's read: the repositories the floor watches,
 	// `owner/name`, and every repository the connected forge account can see,
-	// most recently pushed first. available is nil when nothing lists them.
+	// most recently pushed first, each with its open count and, when this
+	// machine knows one, its checkout. available is nil when nothing lists
+	// them.
 	Repos func(ctx context.Context) (watched []string, available []RepoInfo, err error)
 	// SetRepos replaces the watched repositories.
 	SetRepos func(repos []string) error
