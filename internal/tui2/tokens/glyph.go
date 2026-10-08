@@ -258,6 +258,11 @@ const (
 	// "not this one" without claiming it failed or that it is still to come.
 	GlyphSkipped = "–"
 
+	// GlyphLocked is a stage the recipe file fixes: the team's law, which no
+	// key on the floor switches off. The section sign is the mark a statute
+	// wears, and the tier draws a padlock where a patched font supplies one.
+	GlyphLocked = "§"
+
 	// Structure (5.21). The accent rail groups a card's lines in its identity
 	// hue; the drag handle marks a reorderable pending row (5.22).
 	GlyphAccentRail = "▎"
@@ -565,6 +570,7 @@ func Glyphs() []GlyphInfo {
 		{"PriorityThird", GlyphPriorityThird, '▃', true},
 		{"PriorityFourth", GlyphPriorityFourth, '▁', true},
 		{"Skipped", GlyphSkipped, '–', true},
+		{"Locked", GlyphLocked, '§', true},
 		{"ProseBullet", GlyphProseBullet, '·', true},
 		{"ProseQuote", GlyphProseQuote, '▏', true},
 		{"CodeGutter", GlyphCodeGutter, '▏', true},

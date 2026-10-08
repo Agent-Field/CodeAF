@@ -2,10 +2,15 @@ package factory
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -609,6 +614,134 @@ func localSettings(seam *Seam, st ItemStore, o localOptions) {
 		}
 		return Save(dir, r)
 	}
+	localRecipeOffer(seam, st, o)
+}
+
+// localRecipeOffer binds the first offer's three doors ([Seam.RecipeOffer]).
+// THE NO IS THE STORE'S, kept in `<store>/recipe-offers.json` beside its
+// other settings, so a repository put away in one window is put away in every
+// window and after a restart.
+func localRecipeOffer(seam *Seam, st ItemStore, o localOptions) {
+	path := filepath.Join(st.Root(), "recipe-offers.json")
+	var mu sync.Mutex
+	seam.RecipeOffer = func(ctx context.Context, repo string) (bool, error) {
+		dir := strings.TrimSpace(o.dirs(repo))
+		if dir == "" {
+			return false, nil
+		}
+		if _, err := os.Stat(filepath.Join(dir, RecipeFile)); !errors.Is(err, fs.ErrNotExist) {
+			return false, nil
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		away, err := readRecipeOffers(path)
+		if err != nil {
+			return false, err
+		}
+		for _, r := range away {
+			if strings.EqualFold(r, repo) {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	seam.WriteRecipe = func(ctx context.Context, repo string) (string, error) {
+		dir, err := o.dir(repo)
+		if err != nil {
+			return "", err
+		}
+		if _, err := os.Stat(filepath.Join(dir, RecipeFile)); !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("%s has a recipe already · %s", repo, RecipeFile)
+		}
+		if err := Save(dir, o.recipe(repo)); err != nil {
+			return "", err
+		}
+		return checkoutBranch(dir), nil
+	}
+	seam.RecipeNotNow = func(repo string) error {
+		repo = strings.TrimSpace(repo)
+		if repo == "" {
+			return errors.New("which repository?")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		away, err := readRecipeOffers(path)
+		if err != nil {
+			return err
+		}
+		for _, r := range away {
+			if strings.EqualFold(r, repo) {
+				return nil
+			}
+		}
+		away = append(away, repo)
+		sort.Strings(away)
+		data, err := json.MarshalIndent(recipeOffersDoc{Schema: 1, NotNow: away}, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return err
+		}
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
+			return err
+		}
+		return os.Rename(tmp, path)
+	}
+}
+
+// recipeOffersDoc is `<store>/recipe-offers.json`: the repositories whose
+// first offer of a recipe file was answered `not now`.
+type recipeOffersDoc struct {
+	Schema int      `json:"schema"`
+	NotNow []string `json:"not_now"`
+}
+
+// readRecipeOffers is the repositories put away. NO FILE IS NONE.
+func readRecipeOffers(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var d recipeOffersDoc
+	if err := json.Unmarshal(data, &d); err != nil {
+		return nil, fmt.Errorf("factory store: cannot read recipe-offers.json: %w", err)
+	}
+	return d.NotNow, nil
+}
+
+// checkoutBranch is the branch the checkout at dir stands on, read from its
+// HEAD (following a worktree's `.git` file), and "" when HEAD is not a branch
+// or cannot be read. NOTHING IS RUN: git's own files are read as they stand.
+func checkoutBranch(dir string) string {
+	gitDir := filepath.Join(dir, ".git")
+	if info, err := os.Stat(gitDir); err == nil && !info.IsDir() {
+		data, err := os.ReadFile(gitDir)
+		if err != nil {
+			return ""
+		}
+		rest, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
+		if !ok {
+			return ""
+		}
+		gitDir = strings.TrimSpace(rest)
+		if !filepath.IsAbs(gitDir) {
+			gitDir = filepath.Join(dir, gitDir)
+		}
+	}
+	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return ""
+	}
+	ref, ok := strings.CutPrefix(strings.TrimSpace(string(head)), "ref: refs/heads/")
+	if !ok {
+		return ""
+	}
+	return ref
 }
 
 // RunnerDoors is the engine half of the seam: the eight doors that move an

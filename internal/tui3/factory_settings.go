@@ -1240,7 +1240,12 @@ func (a *app) factoryRecipeKey(msg tea.KeyPressMsg) tea.Cmd {
 	stages := factory.CopyStages(p.stages())
 	switch k {
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-		if at := int(k[0] - '1'); at < len(stages) {
+		// A STAGE THE FILE FIXES IS NOT SWITCHED OFF HERE EITHER, nor its
+		// ask edited by `w` (factory_stagefixed.go): the page refuses with
+		// the one sentence.
+		if at := int(k[0] - '1'); at < len(stages) && stageLocked(stages[at]) {
+			a.factorySay(factoryFixedWords(stages[at].Name))
+		} else if at < len(stages) {
 			stages[at].On = !stages[at].On
 			p.setStages(stages)
 		}
@@ -1252,7 +1257,9 @@ func (a *app) factoryRecipeKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "s":
 		a.factoryOpenAsk(factoryAsk{kind: factoryAskRecipeStage, label: "+ stage ›", example: "“after review, make it neater”"})
 	case "w":
-		if a.fp.stage < len(stages) {
+		if at := a.fp.stage; at < len(stages) && stageFixed(stages[at]) {
+			a.factorySay(factoryFixedWords(stages[at].Name))
+		} else if a.fp.stage < len(stages) {
 			a.factoryOpenAsk(factoryAsk{kind: factoryAskKnobs, label: stages[a.fp.stage].Name + " ›", example: "“until clean, max 3, effort strong”"})
 		}
 	case "b":
@@ -1269,8 +1276,15 @@ func (a *app) factoryRecipeAdd(words string) {
 	if p == nil {
 		return
 	}
-	if factory.ParseStage(words).Ask == "" {
+	st := factory.ParseStage(words)
+	if st.Ask == "" {
 		a.factorySay("say what the stage should do")
+		return
+	}
+	// WORDS THAT NAME A STAGE THE FILE FIXES DO NOT WRITE A SECOND ONE OVER
+	// IT: the page refuses with the one sentence.
+	if at := factory.StageIndex(p.stages(), st.Name); at >= 0 && stageFixed(p.stages()[at]) {
+		a.factorySay(factoryFixedWords(st.Name))
 		return
 	}
 	p.setStages(factory.AddStageWords(factory.CopyStages(p.stages()), words))
@@ -1427,12 +1441,20 @@ func (a *app) factoryRecipePane(views []factoryStageView, measure, room int) []s
 	}
 	pal := a.pal
 	v := views[a.fp.stage]
+	ask := pal.ink
+	if stageFixed(v.stage) {
+		ask = pal.dim
+	}
 	lines := []string{
 		pal.muted(fit(factoryKnobs(v.stage), measure)),
-		pal.ink(fit(strings.TrimSpace(v.stage.Ask), measure)),
+		ask(fit(strings.TrimSpace(v.stage.Ask), measure)),
 		pal.dim(strings.Repeat(a.linearMark("─", "-"), measure)),
 	}
 	switch {
+	case stageLocked(v.stage):
+		// A STAGE THE FILE FIXES SAYS SO under its rule, with the lock, in
+		// place of where it runs (factory_stagefixed.go).
+		lines = append(lines, pal.dim(fit(a.icon(tokens.GLocked)+" "+factoryFixedWords(v.stage.Name), measure)))
 	case v.off:
 		lines = append(lines, pal.dim(fit("switched off in this recipe", measure)))
 	default:

@@ -720,6 +720,16 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphSkipped, NerdFont: "\uF068", NFName: "nf-fa-minus", ASCII: "-",
 		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
 	},
+	// A STAGE THE RECIPE FIXES IS THE SECTION SIGN on the floor, the mark of
+	// a written law, and the padlock on the tier; `L` for a reader. It does
+	// NOT auto-upgrade: a cell that is exactly `§` is as likely to be a
+	// citation in prose as a stage mark, so the one consumer reaches it by
+	// name.
+	{
+		ID: GLocked, Name: "Locked", Meaning: "a stage the recipe file fixes; no key switches it off",
+		Plain: GlyphLocked, NerdFont: "\uF023", NFName: "nf-fa-lock", ASCII: "L",
+		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
+	},
 
 	// -- the prose slots (code.go) -------------------------------------------
 	//

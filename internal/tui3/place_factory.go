@@ -132,6 +132,8 @@ func (placeFactory) hint(a *app) string {
 	var head []string
 	if a.fp.act.habit != "" {
 		head = append(head, "y bank it", "n not yet")
+	} else if a.factoryRecipeOfferShown() {
+		head = append(head, factoryHintClause(keyYes, wordWriteIt), factoryHintClause(keyNo, wordNotNow))
 	}
 	if a.fp.open {
 		if it, ok := a.factoryCursorItem(); ok {

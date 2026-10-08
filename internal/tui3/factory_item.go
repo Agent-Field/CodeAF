@@ -1700,6 +1700,13 @@ func (a *app) factorySettingsPane(it factory.Item, measure, room int) []string {
 		if !st.On {
 			state, paint = wordOff, pal.dim
 		}
+		// A STAGE THE RECIPE FIXES WEARS THE LOCK where its `on` stands, and
+		// the whole row is dim: no key here switches it off
+		// (factory_stagefixed.go).
+		if stageLocked(st) {
+			lines = append(lines, pal.dim(fit(factoryPad(num+st.Name, labelW)+a.icon(tokens.GLocked), measure)))
+			continue
+		}
 		lines = append(lines, row(num+st.Name, state, "", paint))
 	}
 	var foot []string

@@ -305,7 +305,9 @@ func (a *app) factoryRead() tea.Cmd {
 				return nil
 			}
 			a.factoryFold(snap)
-			return nil
+			// A LANDED ITEM'S REPOSITORY MAY BE OWED THE FIRST OFFER OF A
+			// RECIPE FILE (factory_recipeoffer.go).
+			return a.factoryRecipeOfferCheck()
 		}
 	})
 }
