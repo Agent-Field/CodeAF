@@ -9,7 +9,7 @@ if (mode === 'remote') {
  if (build.status !== 0) process.exit(build.status || 1);
  args = ['tauri', 'dev', '--config', JSON.stringify({ build: { beforeDevCommand: '', devUrl: url } })];
 } else if (mode === 'dev' || mode === 'build') {
- args = ['tauri', mode];
+ args = ['tauri', mode, ...process.argv.slice(3)];
 } else throw new Error('Use dev, remote, or build');
 const result = spawnSync('npx', args, { stdio: 'inherit' });
 process.exit(result.status || (result.error ? 1 : 0));
