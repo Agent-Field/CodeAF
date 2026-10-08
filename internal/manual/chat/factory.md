@@ -202,7 +202,7 @@ A stage can repeat until a condition holds (until green, until clean, until prov
 number of rounds, and then it stops and asks you. A second round fixes what the first found, then
 checks again: its brief names what the last round found and says to fix it in the checkout, run
 the tests, and look again, so a review that found one thing does not just find it twice. Nothing inside a stage can add a stage, except plan, within the
-bounds its recipe word allows (see adapt). A stage can also be a gate, which is where `ask me at` stops: `plan` comes back with the plan before any code, and `ship` (the screen's `pull request`) waits for you to approve.
+bounds its recipe word allows (see who may change an item's stages). A stage can also be a gate, which is where `ask me at` stops: `plan` comes back with the plan before any code, and `ship` (the screen's `pull request`) waits for you to approve.
 
 The peek shows a new item's stages as one line of names and a running item's as a strip of
 marks; the item page lists them down its stage rail. A stage can carry a condition (`thin`,
@@ -210,9 +210,14 @@ marks; the item page lists them down its stage rail. A stage can carry a conditi
 skip stroke `–` and `· skipped` on the stage rail, and `skipped · not thin` (or the condition it
 missed) beside it. A stage switched off, or one the run went on past, is drawn the same way.
 
+A stage's name is one lowercase word of letters and digits, 2 to 12 long (`review`, `arch`,
+`e2e`), and an item has at most nine stages, so a digit reaches each one.
+
 On a new item, `1` to `9` switch the stage with that number on or off (`1-9 stages` on the `?`
 sheet), `s` adds a stage in
-words (`after review, make it neater` puts it after review), and `b` banks the item's stages
+words (`after review, arch: read it for the architecture` puts a stage named arch after review;
+with no `name:` the stage is named by its ask's first word, so `after review, make it neater`
+is `make`), and `b` banks the item's stages
 as its repository's recipe, into `.codeaf/factory.md` (see the recipe file). A new item starts
 from its repository's recipe file, or codeaf's default when there is none. A run keeps the
 stages it launched with.
@@ -246,10 +251,12 @@ shape (indented here; in the file each line starts at the margin):
     ## habits
     - factory PRs from your own issues self-ship when the proof is green
 
-A stage line is `N. name · kind · ask · knob · knob`. The sections are `## issue`, `## pr`,
+A stage line is `N. name · kind · ask · knob · knob`, the name one word; a name of two words is
+named as a problem, `a stage is one word · "do through" is two`, and a tenth stage line as
+`the run has nine stages already`. The sections are `## issue`, `## pr`,
 `## ci` and `## chore`; a missing section runs the default for that kind. A kind's heading may
 end in one word, `## issue · adapt`, `## issue · ask` or `## issue · fixed`, saying how much plan
-may change its stages (see adapt); no word is `adapt`. `## policy` and
+may change its stages (see who may change an item's stages); no word is `adapt`. `## policy` and
 `## habits` are sentences kept word for word. A line codeaf cannot read is named with its line
 number and why, and the rest of the file still loads.
 
@@ -294,32 +301,45 @@ A line with only a name, such as `4. proof`, is codeaf's default stage of that n
 kind; a name with knobs and no ask is that default with the knobs laid over it. A knob word
 with a word it does not know (`until clen`) is named as a problem, never read as the ask.
 
-## adapt — how much plan may change the stages
+## who may change an item's stages — the manager before a run, plan during it, you always
 
-Three things change what an item runs: a stage's `when` (read off the item, no judgment), the
-plan stage (judgment, within bounds), and you. The recipe gives each kind one word after its
-heading in `.codeaf/factory.md`:
+A run is a short program of one-word stages. Three hands may change it, through one door with
+one set of bounds held by codeaf's own code, never asked of a model:
 
-- `## issue · adapt`: plan may add, switch on and skip stages within the bounds. The default
-  when there is no word.
-- `## issue · ask`: the same, and the item's gate becomes `plan`, so you ratify the change
-  before anything after plan runs.
-- `## issue · fixed`: plan may not change the stages. It is refused with
-  `the recipe for issue is fixed; plan may not change the stages`.
+- **the manager, before a run**: it may give any stage a new ask, change a stage's thinking
+  (cheap, strong, or nothing), add a conversation stage after any stage it names, switch a
+  stage on, and skip a stage. Nothing has run, so nothing is out of reach except what the
+  common bounds keep.
+- **plan, during a run**: the same, but never a stage that is done or running, and nothing is
+  added before one. The recipe gives each kind one word after its heading in
+  `.codeaf/factory.md` saying how much plan may do:
+  - `## issue · adapt`: within the bounds. The default when there is no word.
+  - `## issue · ask`: the same, and the item's gate becomes `plan`, so you ratify the change
+    before anything after plan runs.
+  - `## issue · fixed`: no change at all. It is refused with
+    `the recipe for issue is fixed; plan may not change the stages`.
+- **you, always**: from the item's settings, or in words. The adapt word holds plan, not you.
 
-The bounds are held by codeaf's own code, not asked of the model. Plan may add only a
-conversation stage with an ask, placed by a time word (`after test, …`) or after review. It may
-never skip a gate stage, the stage named `proof`, or a stage a policy line names
-(`tests pass before anything posts` names test). It may never touch a stage that is done or
-running, nor add one before it. It has no way to change the budget, where the run asks you,
-the thinking or the rounds. One refused part refuses the whole change.
+The common bounds, in every case:
 
-What plan changed is kept on the item and drawn as one dim line under the stages on the peek and
-in the item page's head, `plan added security · skipped neaten · why: touches billing`. An item
-plan never changed draws nothing there.
+- a stage is one word (`a stage is one word · "do through" is two`);
+- no two stages share a name, and an item has at most nine stages
+  (`the run has nine stages already`);
+- an added stage is a conversation with an ask, and an ask is at most 240 cells
+  (`an ask is at most 240 cells`);
+- thinking is cheap, strong, or nothing (`thinking is cheap, strong, or nothing`);
+- the stage named `proof`, a gate stage, and a stage a policy line names are never skipped
+  (`plan may not skip proof`; `tests pass before anything posts` names test);
+- nobody may change the budget, where the run asks you, or the rounds this way.
 
-No run calls plan on your own floor yet, so today only the made-up floor
-(`CODEAF_FACTORY_FIXTURE=1`) shows the line, on its shipped item.
+One refused part refuses the whole change, and the refusal names the part. Every stage added or
+changed keeps who changed it and why.
+
+What changed is kept on the item and drawn as one dim line under the stages on the peek and in
+the item page's head, who first:
+`manager set review: thorough on security, code and architecture · added arch after review ·
+skipped neaten · why: touches the call row`. A later change by someone else names them
+(`· you switched on neaten`). An item nobody changed draws nothing there.
 
 ## the handover
 

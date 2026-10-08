@@ -1,10 +1,13 @@
 package factory
 
 import (
+	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Words become chips. THIS IS THE ONE PLACE THE CHIP WORDS ARE SPELLED: a
@@ -202,3 +205,66 @@ func oneOf(word string, words []string) bool {
 	}
 	return false
 }
+
+// A STAGE IS ONE WORD. An item's stages are a short program a person reads at
+// a glance and a digit reaches (`1` to `9`), so a name is one lowercase word
+// of letters and digits, two to twelve cells long, and an item has at most
+// nine of them. Every road that makes a stage name goes through [StageWord]:
+// an edit ([Edit]), the recipe file's reader, and a typed stage sentence
+// ([StageSentence]).
+const (
+	// StageMost is how many stages an item may have.
+	StageMost = 9
+	// AskMost is how many cells a stage's ask may be.
+	AskMost = 240
+
+	stageWordLeast = 2
+	stageWordMost  = 12
+)
+
+// The refusals the stage bounds speak, word for word as the manual quotes
+// them.
+var (
+	// ErrNineStages is an edit or a sentence that would make a tenth stage.
+	ErrNineStages = errors.New("the run has nine stages already")
+	// ErrAskTooLong is an ask longer than [AskMost] cells.
+	ErrAskTooLong = errors.New("an ask is at most 240 cells")
+	// ErrThinking is a thinking word that is not one of [EffortWords].
+	ErrThinking = errors.New("thinking is cheap, strong, or nothing")
+)
+
+// StageWord is name as a stage's one word, lowercased, or the sentence that
+// says why it is not one: `a stage is one word · "do through" is two` for
+// more than one word, and the letters-and-digits or length sentence for one
+// word that is not a name.
+func StageWord(name string) (string, error) {
+	fields := strings.Fields(strings.ToLower(name))
+	switch {
+	case len(fields) == 0:
+		return "", errors.New("a stage needs a name")
+	case len(fields) > 1:
+		return "", fmt.Errorf("a stage is one word · %q is %s", strings.Join(fields, " "), countWord(len(fields)))
+	}
+	w := fields[0]
+	for _, r := range w {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return "", fmt.Errorf("a stage is one word of letters and digits · %q is not", w)
+		}
+	}
+	if n := utf8.RuneCountInString(w); n < stageWordLeast || n > stageWordMost {
+		return "", fmt.Errorf("a stage is one word of 2 to 12 letters · %q is not", w)
+	}
+	return w, nil
+}
+
+// countWord is a small count in words, the way the refusals say it.
+func countWord(n int) string {
+	words := []string{"none", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"}
+	if n >= 0 && n < len(words) {
+		return words[n]
+	}
+	return strconv.Itoa(n)
+}
+
+// askCells is how many cells an ask takes on one line.
+func askCells(ask string) int { return utf8.RuneCountInString(ask) }
