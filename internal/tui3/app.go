@@ -3580,6 +3580,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.teamsSpinning() || a.factorySpinning() {
 		cmd = tea.Batch(cmd, a.wake())
 	}
+	// AND THE FLOOR'S ONE-SECOND READ is armed here when it is owed and not
+	// in the air: an item page opened on a running stage counts its time and
+	// grows its log every second (factory_settings.go's
+	// [app.factoryWantsSecondBeat]).
+	if soon := a.factoryReadSoonWake(); soon != nil {
+		cmd = tea.Batch(cmd, soon)
+	}
 	// AND WHATEVER THE LAST FRAME ASKED THE DISK ABOUT IS READ HERE, on the loop,
 	// before the next frame draws (learned.go). `open` and `tick` may read the
 	// disk and `body` may not, so a frame that met a picture nobody had stat'd
@@ -5323,8 +5330,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.placeBeat(msg.gen)
 
 	case factoryReadSoonMsg:
-		// AND THE FLOOR, FROM THE PICKER'S SAVE UNTIL IT SHOWS THE READ, reads
-		// every second rather than on the three-second beat (factory_settings.go).
+		// AND THE FLOOR, FROM THE PICKER'S SAVE UNTIL IT SHOWS THE READ, and
+		// while the open item page has a stage running, reads every second
+		// rather than on the three-second beat (factory_settings.go).
 		return a, a.factoryReadSoon(msg.gen)
 
 	case factoryCardPollMsg:
