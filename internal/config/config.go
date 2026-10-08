@@ -385,6 +385,12 @@ var nonSettingProfileFields = []string{
 	KeyCrewAllowed,
 	KeyCrewCap,
 	KeyCrewTaskCap,
+	// THE FACTORY'S GITHUB CONNECTION (github.go). The floor's connect prompt
+	// writes them and the factory's GitHub source reads them; the settings
+	// page shows them as the Connections tab's `github` row, not as registry
+	// rows, because a token is answered on the floor.
+	KeyGitHubToken,
+	KeyGitHubVia,
 	// And the free-routes switch beside them, which the crew's providers list
 	// turns on and off.
 	KeyCrewFreeRoutes,

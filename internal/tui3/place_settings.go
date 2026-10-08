@@ -43,7 +43,10 @@ func (placeSettings) open(a *app) tea.Cmd {
 	//
 	// OVER --host THE TEAMS TAB READS THE FAR MACHINE, once, off the loop. A
 	// local launch asks for nothing.
-	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults())
+	//
+	// AND HOW THIS MACHINE REACHES GITHUB, once, off the loop, for the
+	// Connections tab's `github` row (settings_github.go).
+	return tea.Batch(a.armPlaceClock(), a.readHostTeamDefaults(), a.readGitHubLink())
 }
 
 // tick re-reads nothing and keeps the beat: see the note over [placeSettings.open].

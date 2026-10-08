@@ -236,6 +236,9 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	k := msg.String()
 	// THE ANYWHERE KEYS come first: new work and the mock's sleep, which need
 	// no item under the cursor.
+	if cmd, took := a.factorySettingsKey(k); took {
+		return cmd, true
+	}
 	switch k {
 	case "S", "shift+s":
 		if a.factory.Has("sleep") {
@@ -646,6 +649,9 @@ func (a *app) factoryAskKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // factorySubmit hands the typing row's words to its door.
 func (a *app) factorySubmit(ask factoryAsk, words string) tea.Cmd {
+	if cmd, took := a.factorySettingsSubmit(ask, words); took {
+		return cmd
+	}
 	seam, id := a.factory, ask.id
 	switch ask.kind {
 	case factoryAskStage:
@@ -756,10 +762,16 @@ func (a *app) factoryFootRows(measure int) []string {
 			pal.ink(fit("habit forming — 3 sign-offs without edits on "+factoryRepoShort(repo), measure)),
 			fit(pal.muted(factoryHabitSentence+"? ")+pal.accent("[y] bank it")+pal.dim(" · [n] not yet"), measure))
 	}
+	out = append(out, a.factoryOfferRows(measure)...)
 	if ask := a.fp.act.ask; ask != nil {
 		label := pal.accent(ask.label) + " "
 		room := max(measure-ansi.StringWidth(ask.label)-2, 0)
 		text := ask.text
+		// A TOKEN IS NEVER DRAWN: one mark a character, as every secret
+		// typed on this surface is ([keyLine]).
+		if factoryAskSecret(ask) {
+			text = a.factoryMask(text)
+		}
 		if w := ansi.StringWidth(text); w > room {
 			// The row keeps the newest words in view, as a box does.
 			text = ansi.Cut(text, w-room, w)
@@ -851,6 +863,10 @@ func factoryAskHint(ask *factoryAsk) string {
 		verb = "send it back"
 	case factoryAskNew:
 		verb = "make it"
+	default:
+		if v := factorySettingsVerb(ask.kind); v != "" {
+			verb = v
+		}
 	}
 	return "type · enter " + verb + " · esc cancel"
 }

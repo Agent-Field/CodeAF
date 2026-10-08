@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -51,7 +52,15 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		}
 	}
 	seam := Seam{
-		Load: func() (Snapshot, error) { return localLoad(st, started, time.Now(), o.recipe) },
+		Load: func() (Snapshot, error) {
+			snap, err := localLoad(st, started, time.Now(), o.recipe)
+			// THE RAIL IS THE STORE'S, read with the floor so the handover's
+			// money clause and the floor it sits over are one reading.
+			if keeper, ok := st.(RailKeeper); ok && err == nil {
+				snap.Rail, _ = keeper.Rail()
+			}
+			return snap, err
+		},
 		New: func(repo, words string) (int, error) {
 			return localNew(st, repo, words, time.Now(), o.recipe(strings.TrimSpace(repo)))
 		},
@@ -114,6 +123,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			})
 		},
 	}
+	localSettings(&seam, st, o)
 	if o.dirs != nil {
 		seam.BankStages = func(id int) error {
 			it, err := localItem(st, id)
@@ -150,7 +160,8 @@ func WithRepoDirs(dir func(repo string) string) LocalOption {
 }
 
 type localOptions struct {
-	dirs func(repo string) string
+	dirs   func(repo string) string
+	lister RepoLister
 }
 
 // dir is where repo is checked out, or an error that says it is not known.
@@ -282,4 +293,51 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 		return 0, err
 	}
 	return made.ID, nil
+}
+
+// localSettings fills the floor's own settings doors (settings.go) that this
+// machine can answer: the watched repositories and the rail when the store
+// keeps them, and a repository's recipe file when [WithRepoDirs] says where
+// repositories are checked out. EVERY OTHER SETTINGS DOOR STAYS NIL here; the
+// GitHub connection is the launch's to fill, because only it knows the
+// profile a token is kept in.
+func localSettings(seam *Seam, st ItemStore, o localOptions) {
+	if keeper, ok := st.(RepoKeeper); ok {
+		list := o.lister
+		seam.Repos = func(ctx context.Context) ([]string, []RepoInfo, error) {
+			watched, err := keeper.Repos()
+			if err != nil || list == nil {
+				return watched, nil, err
+			}
+			available, err := list(ctx)
+			return watched, available, err
+		}
+		seam.SetRepos = keeper.SetRepos
+	}
+	if keeper, ok := st.(RailKeeper); ok {
+		seam.SetRail = func(usd float64) error {
+			if usd < 0 {
+				return errors.New("a rail is never below nothing")
+			}
+			return keeper.SetRail(usd)
+		}
+	}
+	if o.dirs == nil {
+		return
+	}
+	seam.RecipeAt = func(repo string) (Recipe, []Problem, string, error) {
+		dir := strings.TrimSpace(o.dirs(repo))
+		if dir == "" {
+			return DefaultRecipe(), nil, "", nil
+		}
+		r, probs, err := Load(dir)
+		return r, probs, dir, err
+	}
+	seam.SaveRecipe = func(repo string, r Recipe) error {
+		dir, err := o.dir(repo)
+		if err != nil {
+			return err
+		}
+		return Save(dir, r)
+	}
 }
