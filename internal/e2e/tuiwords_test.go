@@ -1169,13 +1169,6 @@ var tuiWords = map[string]tuiWord{
 		source: "added · ",
 		why:    "the card's foot once the floor took the item, with the floor's own number after it",
 	},
-	"factoryOnTheFloorWord": {
-		screen: " is on the factory floor",
-		pkg:    "internal/session",
-		why: "the sentence the yes returns to the chat, `#<id> <title> is on the factory floor`. The " +
-			"leading space is load-bearing: without it the card's own head, `wants to put this on the " +
-			"factory floor`, carries the needle inside `this` and the wait passes on the question",
-	},
 	"factoryHandoverWord": {
 		screen: "handover",
 		why:    "the floor's handover heading: the page opened on a connected floor",
