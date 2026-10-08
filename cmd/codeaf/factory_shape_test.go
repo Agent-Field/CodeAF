@@ -34,6 +34,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		"You do: shape the run, start it when asked, report each stage here, answer the person, and ask only when ask-me-at says so.",
 		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof or a gate stage. Nothing posts outward before ask-me-at.",
 		"Say what you set in three lines at most, then stop. Do not narrate.",
+		talkRecipeLaw,
 		"",
 		"#12 · fix the ledger double count",
 	}

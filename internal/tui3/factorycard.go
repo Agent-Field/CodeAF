@@ -540,6 +540,11 @@ func (a *app) recipeBanked(ev session.Event) tea.Cmd {
 				card.answer = session.RecipeBankLabel
 			}
 			card.verdict = recipeBankedWord
+			// THE NOTE IS WHAT BECAME OF THE LINE (a pull request for the
+			// team, a branch, a plain write), said after the word.
+			if note := strings.TrimSpace(notice.Note); note != "" {
+				card.verdict = recipeBankedWord + rowSep + note
+			}
 			a.markFactoryStale(card)
 			a.touch()
 		}

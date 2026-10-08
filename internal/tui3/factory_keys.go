@@ -679,10 +679,26 @@ func (a *app) factoryHabitYes() tea.Cmd {
 		return nil
 	}
 	short := factoryRepoShort(repo)
-	return a.factoryDo(func(s factory.Seam) error { return s.Bank(repo, factoryHabitSentence) }, func(err error) {
-		if err == nil {
-			a.factorySay("banked on " + short)
+	// THE NOTE SAYS WHAT BECAME OF THE LINE (a pull request for the team, a
+	// branch, a plain write: recipechange.go's sentences) where the seam can
+	// answer it; a seam with only Bank says the line is in.
+	var note string
+	return a.factoryDo(func(s factory.Seam) error {
+		if s.BankNote != nil {
+			var err error
+			note, err = s.BankNote(repo, factoryHabitSentence)
+			return err
 		}
+		return s.Bank(repo, factoryHabitSentence)
+	}, func(err error) {
+		if err != nil {
+			return
+		}
+		if strings.TrimSpace(note) != "" {
+			a.factorySay(note)
+			return
+		}
+		a.factorySay("banked on " + short)
 	})
 }
 
