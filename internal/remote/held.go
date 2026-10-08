@@ -20,7 +20,13 @@ package remote
 // intake — are deliberately absent: they never travel a stream, and the session
 // replays whichever of them is still standing onto every new subscription
 // (standinglane.go), so remembering them here would hand one question over
-// twice.
+// twice. The factory card is absent for the same reason on the task lane: it is
+// raised there and never on a turn's stream (internal/session's emitFactory),
+// and the session replays a card still standing onto every new task-lane
+// subscription (its standingFactoryCardsLocked), which is what hands it to a
+// window that attaches after it was raised. Its answer comes back through the
+// one door every lane uses, [MethodQuestionResolve], with the proposal id as
+// the question's Ref.
 
 import (
 	"time"

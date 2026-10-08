@@ -75,7 +75,7 @@ func TestFactoryPaneDrawsEveryStateExactly(t *testing.T) {
 				}
 				// THE ACTION LINE IS PINNED TO THE LAST ROW whenever there are two.
 				if room >= 2 {
-					if last := strings.TrimSpace(rows[room-1]); !strings.HasPrefix(factoryActionWords(it), last[:min(len(last), 8)]) {
+					if last := strings.TrimSpace(rows[room-1]); !strings.HasPrefix(a.factoryActionWords(it), last[:min(len(last), 8)]) {
 						t.Fatalf("%s at %d×%d: the last row is not the action line: %q", it.Ref(), paneW, room, rows[room-1])
 					}
 				}
@@ -95,8 +95,14 @@ func TestFactoryPaneDrawsADismissedItemAsNew(t *testing.T) {
 	a := factoryPlaceLab(t)
 	it := *factoryPaneItem(t, a, 8)
 	it.State = factory.StateDismissed
-	if got := factoryActionWords(it); !strings.Contains(got, "r run · p plan first") {
+	// The still fixture has no launch, so a new item's keys are the ones that
+	// need none ([app.factoryCanRun]); a seam that can launch says `r run`.
+	if got := a.factoryActionWords(it); !strings.Contains(got, "enter open · space mark · d hide") {
 		t.Fatalf("a dismissed item's keys are %q", got)
+	}
+	a.factory = (&factoryFake{}).seam()
+	if got := a.factoryActionWords(it); !strings.Contains(got, "r run · p plan first") {
+		t.Fatalf("a dismissed item's keys over a launch are %q", got)
 	}
 	if rows := a.factoryPeekFixed(it, 60); len(rows) != factoryPaneFixed || !strings.Contains(ansi.Strip(rows[0]), "#1540") {
 		t.Fatalf("a dismissed item's fixed rows are %q", rows)
@@ -153,7 +159,9 @@ func TestFactoryPeekNewItem(t *testing.T) {
 	if !strings.Contains(rows[5], "Claims:") {
 		t.Fatalf("the body does not follow the rule:\n%s", strings.Join(rows, "\n"))
 	}
-	if last := strings.TrimSpace(rows[19]); last != "enter open · r run · p plan first · space mark · d hide" {
+	// The still fixture cannot launch, so its new item's keys leave off `r run`
+	// and `p plan first` (TestFactoryPeekKeysNeedALaunch holds the other side).
+	if last := strings.TrimSpace(rows[19]); last != "enter open · space mark · d hide" {
 		t.Fatalf("the action line is %q", last)
 	}
 	// A thin item from a stranger names its questions and the stranger rule.

@@ -773,6 +773,14 @@ func (a *app) factoryFootRows(measure int) []string {
 	return out
 }
 
+// factoryCanRun says whether `r run` and `p plan first` do anything on this
+// seam: a launch to start the item and a gate to set first. It is the one
+// predicate the hint line and the peek's key line both ask, so the two cannot
+// offer different keys for the same item.
+func (a *app) factoryCanRun() bool {
+	return a.factory.Has("launch") && a.factory.Has("setgate")
+}
+
 // factoryVerbHint is the hint line's clauses for the item under the cursor:
 // only keys that work for its state on this seam, in the order the card, the
 // stream and the sheet draw them. `space mark` sits among them on a new item.
@@ -786,8 +794,8 @@ func (a *app) factoryVerbHint(it factory.Item) []string {
 	}
 	switch it.State {
 	case factory.StateNew, factory.StateDismissed:
-		add(seam.Has("launch") && seam.Has("setgate"), "r run")
-		add(seam.Has("launch") && seam.Has("setgate"), "p plan first")
+		add(a.factoryCanRun(), "r run")
+		add(a.factoryCanRun(), "p plan first")
 		add(it.State == factory.StateNew, "space mark")
 		add(seam.Has("launch"), "L launch marked")
 		add(seam.Has("setstage") && len(factoryStages(a.fp.snap, it)) > 0, "1-9 stages")

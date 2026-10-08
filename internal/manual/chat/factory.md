@@ -9,8 +9,10 @@ tab bar, third after `Home` and `Chats`. `esc` goes back to the conversation.
 
 On this machine the page reads your own factory floor: the items you made with `n` on the page
 or added from a chat, kept under the codeaf home (see where factory items are saved). Until the
-first one arrives the floor has no rows and the bottom line offers `n new`. Only when that floor
-cannot be opened, or over `--host`, does the page draw one dim line:
+first one arrives the floor draws one dim line under the handover,
+`work arrives here from chat, from n, and from the repositories you connect`, and `n new` still
+works. Only when that floor cannot be opened, or over `--host` or `--at` to another machine,
+does the page draw
 `nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected`.
 The only key it offers then is `esc back`.
 
@@ -168,6 +170,7 @@ and one dim line of keys on the bottom row.
 1. Its short name and title, and on the right the repository, the kind, the author and how far
    they are trusted (`priya (collaborator)`), how long ago it arrived, and where it came from:
    `github`, `from a chat`, `terminal only`, or `github` with a check when it is on GitHub too.
+   Short of room, those facts drop from the right before the title is cut.
 2. The factory's one-sentence read of it.
 3. The chips: `gate ship · cap $5 · effort —`. The effort is the word on the stage `e` turns; a
    dash means none, so the crew picks the effort it would for that kind of work.
@@ -184,7 +187,8 @@ lines; two lines of a new item's description, the questions it would ask the aut
 thin, and a note when the author is a stranger; or `merged 06:00 · $1.90` for a shipped one.
 
 The bottom line names the item's keys, always starting with `enter open`: then
-`r run · p plan first · space mark · d hide` for a new item, `y n answer · a in words · x stop`
+`r run · p plan first · space mark · d hide` for a new item (your own floor cannot launch
+yet, so it leaves off `r run` and `p plan first`), `y n answer · a in words · x stop`
 when it needs you, `s steer · p pause · x stop` while it runs, and
 `a ship anyway · c send back · o check again` once it has landed with a claim not shown.
 
@@ -266,10 +270,12 @@ After three sign-offs in a row without edits, the bottom of the right column off
 A conversation can offer a piece of work to the factory floor with the `factory_add` tool. The
 chat calls it when you say something belongs on the factory floor, or when it judges a piece of
 work is self-contained enough to run on its own later. It is there only when this conversation
-has a factory floor behind it; without one the chat has no such tool and says it cannot. Today
-that is a conversation running in this window's own process (first-run setup, `--no-host`,
-`--debug`). On the ordinary launch the conversation runs in the session host and has no
-`factory_add`, and neither does `--once`, `--host`, `--at` or a task; add work there with `n`.
+has a factory floor behind it; without one the chat has no such tool and says it cannot. It is
+there on every ordinary launch on this machine: plain `codeaf`, whose conversation runs in the
+session host, as well as first-run setup, `--no-host` and `--debug`. A window that comes back to
+a conversation while its card is still up is shown the card. It is absent over `--host` or `--at`
+to another machine (that machine's floor is not the one your page reads), from `--once`, and
+inside a task; add work there with `n` on your own floor.
 
 Calling it adds nothing. A card asks you first:
 `wants to put this on the factory floor: <title>`, with the repo, kind and size under it and
@@ -307,7 +313,8 @@ Be plain about this when asked:
 - **The foreman does not open yet.** There is no conversation with the factory itself.
 - **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
   in place of yours, with no verbs.
-- **Over `--host`** the page draws `nothing connected yet`.
+- **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, and
+  the chat has no `factory_add`.
 - **`Factory ? N` on the tab bar appears only after the first open** of `/factory`.
 
 ## where factory items are saved

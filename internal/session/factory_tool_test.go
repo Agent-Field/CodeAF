@@ -329,3 +329,40 @@ func TestFactoryRefusedByTheDoorSaysSo(t *testing.T) {
 		t.Errorf("result = %q", out)
 	}
 }
+
+// A WINDOW THAT ARRIVES AFTER THE CARD WAS RAISED IS STILL HANDED IT. The card
+// goes out on the task lane once; a lane opened while the call is parked gets
+// the standing card replayed, and a lane opened after it was answered gets
+// nothing, so a settled card never comes back as a standing one.
+func TestFactoryCardIsReplayedToALateTaskLaneUntilItSettles(t *testing.T) {
+	door := &fakeFactoryDoor{id: 9}
+	agent := newFactoryAgent(t, door, 0)
+	questions, stopQ := agent.WatchQuestions()
+	t.Cleanup(stopQ)
+	results := runFactoryAdd(t, agent, context.Background())
+	q := awaitFactoryQuestion(t, questions)
+
+	late, stopLate := agent.WatchTaskUpdates()
+	t.Cleanup(stopLate)
+	select {
+	case event := <-late:
+		if event.Kind != EventFactoryProposal || event.Factory == nil || event.Factory.ID != q.Ref ||
+			event.Factory.Title != "retry the flaky upload test" || event.Factory.Decided != nil || event.Factory.Withdrawn != "" {
+			t.Fatalf("the late lane was handed %v / %+v, want the standing card", event.Kind, event.Factory)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("a lane opened while the card stood was not handed it")
+	}
+
+	if err := agent.ResolveQuestion(Answer{Kind: QuestionFactory, Ref: q.Ref, Key: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	awaitResult(t, results)
+
+	agent.mu.Lock()
+	standing := agent.standingFactoryCardsLocked()
+	agent.mu.Unlock()
+	if len(standing) != 0 {
+		t.Fatalf("a settled card is still replayed as standing: %+v", standing)
+	}
+}

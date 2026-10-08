@@ -427,8 +427,11 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 	// Codex row above gives: the store is a folder under the codeaf home on
 	// the machine both halves of this road stand on, and a seam handed only to
 	// the in-process door is a page the ordinary launch draws as nothing
-	// connected. The chat's `factory_add` is not on the engine's belt on this
-	// road, so items arrive here from `n` on the floor (factory.go).
+	// connected. The engine on the other half of this road carries the chat's
+	// `factory_add` into the same folder (engine.go's [engineFactoryHere]), so
+	// a yes on the card and `n` on the floor both land on the floor drawn here.
+	// --host and --at never reach this line: the floor there is the other
+	// machine's, and their window has no factory seam at all (factory.go).
 	options.Factory = factoryHere(factorySeam(v3Factory()), welcome.Workspace)
 	if profileDir == settings.ProfileDir {
 		options.Sources = settings.Sources

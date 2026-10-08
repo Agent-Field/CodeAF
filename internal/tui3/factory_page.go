@@ -66,6 +66,12 @@ const factoryHeadLeaves = 6
 // arrives here, never that the page is empty (the emptiness law's panel rule).
 const factoryUnconnectedWords = "nothing connected yet · the factory floor arrives here when a chat splits work off or a repo is connected"
 
+// factoryBareWords is a floor that is connected, read and holds nothing yet:
+// one dim line under the handover naming what arrives there, never a sentence
+// saying it is empty (the emptiness law's panel rule). `n` is the page's own
+// key for new work, and the foot rows it opens still stand under this line.
+const factoryBareWords = "work arrives here from chat, from n, and from the repositories you connect"
+
 // factoryPage is the page's own state, held on the app as `fp`.
 //
 // THE NEXT PIECES OF THIS PAGE BUILD ON THESE FIELDS AND NO OTHERS: snap is the
@@ -305,6 +311,9 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		railW--
 	}
 	rail, hits := a.factoryRail(max(railW, 0), railRoom)
+	if a.factoryBare() {
+		rail, hits = a.factoryBareRail(max(railW, 0), railRoom)
+	}
 	for i := range rail {
 		rail[i] = factoryPad(" "+rail[i], rowsW)
 	}
@@ -333,6 +342,30 @@ func (a *app) factoryBody(width, room int) []placeRow {
 		rows = append(rows, placeRow{text: line + sep + factoryPad(right, paneW), hit: hit})
 	}
 	return rows
+}
+
+// factoryBare says whether the floor has been read and holds no item at all.
+// A floor that has not been read yet draws nothing rather than a line that may
+// be false, and a read that failed keeps the note line's sentence instead.
+func (a *app) factoryBare() bool {
+	return a.fp.loaded && a.fp.err == nil && len(a.fp.snap.Items) == 0
+}
+
+// factoryBareRail is the rail of a bare floor: [factoryBareWords], dim, wrapped
+// to the rows' column and never more than room rows, with no row a press can
+// land on. The cursor's window is emptied with it, so a click finds no item.
+func (a *app) factoryBareRail(width, room int) ([]string, []int) {
+	a.fp.top, a.fp.shown, a.fp.pinned = 0, 0, 0
+	var out []string
+	var hits []int
+	for _, line := range placeTeachProse(factoryBareWords, width, a.pal) {
+		if len(out) >= room {
+			break
+		}
+		out = append(out, factoryPad(line, width))
+		hits = append(hits, -1)
+	}
+	return out, hits
 }
 
 // factoryFoot is the verbs' rows ([app.factoryFootRows]) as whole rows of

@@ -39,7 +39,8 @@ import (
 // THE KEYS ON ITS LAST ROW ARE DRAWN HERE AND ACTED ON ELSEWHERE: what each one
 // does is the verbs' (factory_keys.go), which reads the same item and asks the
 // seam's doors. The hint line under the page is the one that names only the
-// keys the seam has; the peek draws the layout whole.
+// keys the seam has; the peek draws the layout whole, except `r run` and `p
+// plan first`, which it says only where a launch stands behind them.
 
 // factoryPaneLead is the peek's left margin: the spacing ladder's 2-cell lead.
 const factoryPaneLead = 2
@@ -62,7 +63,7 @@ func (a *app) factoryPane(width, room int) []string {
 	if it, ok := a.factoryCursorItem(); ok && width > factoryPaneLead {
 		measure := width - factoryPaneLead
 		top := a.factoryPeekFixed(it, measure)
-		action := a.pal.dim(fit(factoryActionWords(it), measure))
+		action := a.pal.dim(fit(a.factoryActionWords(it), measure))
 		body := room
 		if room >= 2 {
 			body = room - 1
@@ -105,12 +106,35 @@ func (a *app) factoryPeekFixed(it factory.Item, measure int) []string {
 		read = fit(pal.muted(a.icon(tokens.GThought))+" "+pal.ink(r), measure)
 	}
 	return []string{
-		factorySpread(pal.ink(it.Ref()+" "+it.Title), pal.muted(strings.Join(a.factoryMeta(it), rowSep)), measure),
+		a.factoryTitleRow(it, measure),
 		read,
 		fit(a.factoryChips(it, false), measure),
 		a.factoryPeekStrip(it, measure),
 		pal.dim(strings.Repeat(a.linearMark("─", "-"), measure)),
 	}
+}
+
+// factoryTitleRow is the peek's first row: the ref and the title at the left
+// and the meta at the right.
+//
+// THE META YIELDS BEFORE THE TITLE DOES. The title is what the item IS and the
+// meta is what is known about it, so when the two do not fit side by side the
+// meta drops its facts from the right — origin, then age, then author — and
+// the title is cut only when even the repo alone leaves it no room. At 150
+// columns a chat's item read `#3 fix the l…` beside a meta that kept every
+// fact, which is the wrong one of the two to keep whole.
+func (a *app) factoryTitleRow(it factory.Item, measure int) string {
+	pal := a.pal
+	left := pal.ink(it.Ref() + " " + it.Title)
+	lw := ansi.StringWidth(left)
+	meta := a.factoryMeta(it)
+	for n := len(meta); n > 0; n-- {
+		right := pal.muted(strings.Join(meta[:n], rowSep))
+		if lw+factoryPaneGap+ansi.StringWidth(right) <= measure {
+			return left + strings.Repeat(" ", measure-lw-ansi.StringWidth(right)) + right
+		}
+	}
+	return fit(left, measure)
 }
 
 // factoryMeta is what an item is beside its title: the repo, the kind, the
@@ -441,7 +465,13 @@ func factoryMergedLine(it factory.Item) string {
 // ARE THE VERBS' (factory_keys.go); this line only says them. `enter` OPENS
 // THE ITEM PAGE ON EVERY ROW and never launches; a new item runs on `r` or `p`,
 // and a landed one ships from its proof on the item page.
-func factoryActionWords(it factory.Item) string {
+//
+// `r run` AND `p plan first` ARE SAID ONLY WHERE A LAUNCH STANDS BEHIND THEM,
+// asked of the same predicate the hint line asks ([app.factoryCanRun]). The
+// person's own floor has no engine door yet (factory.go's LocalSeam), and a
+// peek that offered `r run` there named a key that does nothing, in the place
+// a person looks for what to press next.
+func (a *app) factoryActionWords(it factory.Item) string {
 	switch it.State {
 	case factory.StateNeedsYou:
 		return "enter open · y n answer · a in words · x stop"
@@ -457,7 +487,11 @@ func factoryActionWords(it factory.Item) string {
 	case factory.StateShipped:
 		return "enter open"
 	}
-	return "enter open · r run · p plan first · space mark · d hide"
+	words := []string{"enter open"}
+	if a.factoryCanRun() {
+		words = append(words, "r run", "p plan first")
+	}
+	return strings.Join(append(words, "space mark", "d hide"), " · ")
 }
 
 // ── the pieces ──────────────────────────────────────────────────────────────
