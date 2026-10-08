@@ -158,6 +158,13 @@ type factoryPage struct {
 	pick    *factoryPicker
 	recipe  *factoryRecipePage
 	ghOffer string
+	// readingSince is the moment the picker saved a non-empty list, zero when
+	// no such read is owed: from then until a snapshot shows the read
+	// ([app.factoryFoldFirstRead]) or [factoryFirstReadWait] passes, the floor
+	// says it is reading. readingGen is which save the one-second re-read
+	// belongs to ([factoryReadSoonMsg]), so a second save retires the first's.
+	readingSince time.Time
+	readingGen   int
 
 	// THE DOCUMENT'S OWN STATE (factory_pane.go, factory_item.go), additive
 	// like the rest. scroll is how far `J` and `K` have moved the item's body
@@ -294,6 +301,7 @@ func (a *app) factoryFold(snap factory.Snapshot) {
 	a.factoryFoldPhases()
 	a.factoryKeep(was, had)
 	a.factoryFoldLaunchNote()
+	a.factoryFoldFirstRead()
 }
 
 // ── the rail's rows ─────────────────────────────────────────────────────────
@@ -618,7 +626,11 @@ func (a *app) factoryBareRail(width, room int) ([]string, []int) {
 	a.fp.top, a.fp.shown, a.fp.pinned = 0, 0, 0
 	var out []string
 	var hits []int
-	for _, line := range placeTeachProse(factoryBareSentence(a.fp.snap), width, a.pal) {
+	words := factoryBareSentence(a.fp.snap)
+	if a.factoryFirstReading() {
+		words = factoryBareReadingWords
+	}
+	for _, line := range placeTeachProse(words, width, a.pal) {
 		if len(out) >= room {
 			break
 		}
