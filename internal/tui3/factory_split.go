@@ -234,6 +234,10 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 		return nil, true
 	}
 	if a.fp.open {
+		// A PRESS ON A CRUMB IS THE CRUMB'S ROAD (factory_item.go).
+		if c := a.factoryCrumbAt(m.X, row); c != factoryCrumbNone {
+			return a.factoryCrumbPress(c), true
+		}
 		// A PRESS ON THE VERBS' COLUMN IS THE ROW'S KEY (factory_verbs.go).
 		if v, ok := a.factoryVerbAt(m.X, row); ok {
 			return a.factoryVerbPress(v), true

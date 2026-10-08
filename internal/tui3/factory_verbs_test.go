@@ -69,23 +69,18 @@ func factoryVerbsHit(t *testing.T, a *app, word string) (int, int) {
 	return -1, -1
 }
 
-// AT 120 A NEW ITEM DRAWS THE THREE GROUPS, each row its word, a `set` row's
-// value and the key at the right, and the head's second row carries no chips.
+// AT 120 A NEW ITEM DRAWS THE TWO GROUPS, each row its word and the key at
+// the right, and the head's second row carries no chips: the knobs are the
+// settings row's (factory_item.go).
 func TestFactoryVerbsOnTheRightOfANewItem(t *testing.T) {
 	a := factoryVerbsLab(t, &factoryFake{}, 120)
 	factoryVerbsOpen(t, a, 4)
-	it, _ := a.factoryCursorItem()
 	got := strings.Join(factoryVerbsText(a), "\n")
 	want := strings.Join([]string{
 		"do",
 		"run r",
 		"chat T",
 		"select space",
-		"set",
-		"ask me at " + factoryGateWord(it.Gate) + " t",
-		"thinking — e",
-		"budget " + factoryMoney(it.Cap) + " c",
-		"stages 3 of 3",
 		"also",
 		"open on github g",
 		"refresh u",
@@ -105,14 +100,15 @@ func TestFactoryVerbsOnTheRightOfANewItem(t *testing.T) {
 	}
 }
 
-// EACH STATE DRAWS ITS OWN VERBS, and A GROUP WITH NOTHING IN IT IS NOT DRAWN:
-// a parked item and a landed one have no setting to turn, so no `set`.
+// EACH STATE DRAWS ITS OWN VERBS, and THE COLUMN HAS NO `set` GROUP on any
+// item: its rows live in the settings row on the left.
 func TestFactoryVerbsByState(t *testing.T) {
 	for _, c := range []struct {
 		id   int
 		want []string
 	}{
-		{2, []string{"do", "stop x", "chat T", "pause space", "steer S", "set", "thinking — e", "also"}},
+		{4, []string{"do", "run r", "chat T", "select space", "also"}},
+		{2, []string{"do", "stop x", "chat T", "pause space", "steer S", "also"}},
 		{1, []string{"do", "yes y", "no n", "in words a", "chat T", "also"}},
 		{9, []string{"do", "approve with changes e", "request changes B", "re-run checks v", "chat T", "also"}},
 	} {
@@ -129,8 +125,8 @@ func TestFactoryVerbsByState(t *testing.T) {
 			t.Errorf("item %d's column is\n%s\nwant in order\n%s", c.id, strings.Join(got, "\n"), strings.Join(c.want, "\n"))
 		}
 		for _, row := range got {
-			if (c.id == 1 || c.id == 9) && row == wordGroupSet {
-				t.Errorf("item %d draws a `set` group with nothing to set: %v", c.id, got)
+			if row == wordGroupSet || strings.HasPrefix(row, wordAskAt) || strings.HasPrefix(row, wordBudget) || strings.HasPrefix(row, wordThinking) || strings.HasPrefix(row, wordStages) {
+				t.Errorf("item %d's column draws the `set` group's %q: %v", c.id, row, got)
 			}
 		}
 	}
@@ -153,8 +149,8 @@ func TestFactoryVerbsNotDrawnWhenNarrow(t *testing.T) {
 	}
 }
 
-// A PRESS ON A ROW IS ITS KEY: `run` asks the launch door, `ask me at` moves
-// the gate as `t` does, `pause` pauses as `space` does.
+// A PRESS ON A ROW IS ITS KEY: `run` asks the launch door, `refresh` reads
+// the item again as `u` does, `pause` pauses as `space` does.
 func TestFactoryVerbsPressRunsTheKey(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbsLab(t, f, 120)
@@ -168,11 +164,10 @@ func TestFactoryVerbsPressRunsTheKey(t *testing.T) {
 	f = &factoryFake{}
 	a = factoryVerbsLab(t, f, 120)
 	factoryVerbsOpen(t, a, 4)
-	it, _ := a.factoryCursorItem()
-	x, y = factoryVerbsHit(t, a, wordAskAt)
+	x, y = factoryVerbsHit(t, a, wordRefresh)
 	drive(t, a, clickAt(x, y), releaseAt(x, y))
-	if got, want := strings.Join(f.said(), " "), "SetGate(4,"+string(factoryNextGate(it.Gate))+")"; got != want {
-		t.Fatalf("a press on ask me at asked %q, want %q", got, want)
+	if got := strings.Join(f.said(), " "); !strings.Contains(got, "Refresh(4)") {
+		t.Fatalf("a press on refresh asked %q", got)
 	}
 
 	f = &factoryFake{}
@@ -185,19 +180,6 @@ func TestFactoryVerbsPressRunsTheKey(t *testing.T) {
 	}
 	if !a.fp.open {
 		t.Fatal("a press on the column closed the page")
-	}
-}
-
-// A PRESS ON `stages` WALKS THE STAGE RAIL TO THE FIRST STAGE, where `1-9`
-// turn them on and off.
-func TestFactoryVerbsStagesRowWalksToTheStages(t *testing.T) {
-	a := factoryVerbsLab(t, &factoryFake{}, 120)
-	factoryVerbsOpen(t, a, 4)
-	x, y := factoryVerbsHit(t, a, wordStages)
-	drive(t, a, clickAt(x, y), releaseAt(x, y))
-	it, _ := a.factoryCursorItem()
-	if rows := a.factoryItemRows(it); rows[a.fp.stage].kind != factoryPageStage || rows[a.fp.stage].at != 0 {
-		t.Fatalf("a press on stages left the rail on row %d", a.fp.stage)
 	}
 }
 
@@ -237,8 +219,7 @@ func TestFactoryVerbsHoverPaintsOneRow(t *testing.T) {
 
 // THE ALIGNMENT AUDIT OF THE COLUMN at 100, 120 and 150: its rule stands at
 // one cell on every row, its group names at one cell, its keys end at one
-// cell, a `set` row's value starts at one cell, and nothing passes the page's
-// right margin.
+// cell, and nothing passes the page's right margin.
 func TestFactoryAlignVerbs(t *testing.T) {
 	for _, width := range []int{100, 120, 150} {
 		a := factoryVerbsLab(t, &factoryFake{}, width)
@@ -251,7 +232,6 @@ func TestFactoryAlignVerbs(t *testing.T) {
 		if end := rule + factoryRuleW + factoryVerbRailW; end != width-factoryMargin {
 			t.Errorf("at %d the column ends at %d, not the margin %d", width, end, width-factoryMargin)
 		}
-		values := map[string]bool{}
 		for i, row := range body[a.fp.railTop:] {
 			r := []rune(row)
 			if len(r) <= rule || string(r[rule]) != "│" {
@@ -275,20 +255,9 @@ func TestFactoryAlignVerbs(t *testing.T) {
 			if x := factoryFirstInk(col); x != factoryVerbLeadW+factoryVerbIndentW {
 				t.Errorf("at %d the row %q starts at %d, not %d", width, name, x, factoryVerbLeadW+factoryVerbIndentW)
 			}
-			for _, w := range []string{wordAskAt, wordThinking, wordBudget, wordStages} {
-				if strings.HasPrefix(name, w+" ") {
-					values[itoa(factoryFirstInk(string([]rune(col)[factoryVerbLeadW+factoryVerbIndentW+factoryVerbWordW:])))] = true
-				}
-			}
-			if strings.HasPrefix(name, wordStages+" ") {
-				continue
-			}
 			if end := len([]rune(strings.TrimRight(col, " "))); end != factoryVerbRailW {
 				t.Errorf("at %d the key of %q ends at %d, not %d", width, name, end, factoryVerbRailW)
 			}
-		}
-		if len(values) != 1 || !values["0"] {
-			t.Errorf("at %d the set rows' values do not start at one cell: %v", width, values)
 		}
 	}
 }

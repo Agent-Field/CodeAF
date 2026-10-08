@@ -55,6 +55,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"how do I answer a factory item's question", "factory"},
 		{"how do I steer a running factory item", "factory"},
 		{"what is talk on the factory floor", "factory"},
+		{"where do I change the budget of an item", "factory"},
+		{"how do I get back to the floor from an item", "factory"},
 		{"how do I approve a landed item", "factory"},
 		{"what does ask me at mean on a factory item", "factory"},
 		{"what is select on the factory floor", "factory"},
@@ -3972,6 +3974,8 @@ func TestFactoryVerbWordsReachTheirSection(t *testing.T) {
 		{"how do I make the run stop after the plan", "what does ask me at mean"},
 		{"what does ask me at mean", "what does ask me at mean"},
 		{"what does the question mark key show on the factory floor", "the ? key sheet"},
+		{"where do I change the budget of an item", "the settings of an item"},
+		{"how do I get back to the floor from an item", "breadcrumbs on the item page"},
 	} {
 		found := false
 		var where []string
