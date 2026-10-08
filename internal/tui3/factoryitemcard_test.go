@@ -72,7 +72,7 @@ func TestFactoryItemCardRowsPerState(t *testing.T) {
 		!strings.HasSuffix(strings.TrimRight(rows[0], " "), "factory-demo · bug · S") {
 		t.Fatalf("the head row is %q", rows[0])
 	}
-	if !strings.Contains(rows[1], "new · gate ship · cap $5") {
+	if !strings.Contains(rows[1], "new · ask me at pull request · budget $5") {
 		t.Fatalf("a new item's row is %q", rows[1])
 	}
 	pending := a.icon(tokens.GStepPending)
@@ -126,7 +126,7 @@ func TestFactoryItemCardReplacesTheBriefsMarker(t *testing.T) {
 	// AND ONCE THE FLOOR IS READ IT IS THE FLOOR'S ROW.
 	liveFloor(a, liveItem())
 	rows = questionPlainRows(FactoryCardRows(a, blocks[0].fac, 110, false))
-	if !strings.Contains(strings.Join(rows, "\n"), "new · gate ship · cap $5") {
+	if !strings.Contains(strings.Join(rows, "\n"), "new · ask me at pull request · budget $5") {
 		t.Fatalf("the card does not follow the floor:\n%s", strings.Join(rows, "\n"))
 	}
 	if _, ok := factoryMarkerCard("an ordinary first message"); ok {
@@ -254,7 +254,7 @@ func TestFactoryItemCardStaysLive(t *testing.T) {
 	changed.Gate, changed.Cap = factory.GatePlan, 8
 	far.itemChanged(session.Event{Kind: session.EventItemChanged, FactoryItem: &session.ItemNotice{ID: "g9", Item: 1, Now: &changed}})
 	rows := questionPlainRows(FactoryCardRows(far, far.entries[0].fac, 110, false))
-	if len(rows) < 2 || !strings.Contains(rows[1], "new · gate plan · cap $8") {
+	if len(rows) < 2 || !strings.Contains(rows[1], "new · ask me at plan · budget $8") {
 		t.Fatalf("the card did not take the news:\n%s", strings.Join(rows, "\n"))
 	}
 }

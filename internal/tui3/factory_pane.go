@@ -33,7 +33,7 @@ import (
 //
 //	touches money      maybe a duplicate of #7      thin  the facts, dim
 //
-//	gate  ship      cap  $5      effort  —                the chips
+//	ask me at  pull request  budget  $5  thinking  —      the chips
 //
 //	● plan    ◐ write    ○ test    ○ review               the stages
 //
@@ -41,9 +41,9 @@ import (
 //
 //	When the same entry id is added twice, Total …       the body, six rows at most
 //
-//	» talk                                                only when it has one
+//	» chat                                                only when it has one
 //
-//	enter open · space mark · d hide                      pinned to the last row
+//	enter open · r run · T chat · space select · t ask me at plan   the strip, last row
 //
 // AN EMPTY BLOCK VANISHES WITH ITS BLANK ROW, so a block that has nothing to
 // say costs nothing, and nothing is drawn for a zero or an empty value
@@ -351,29 +351,42 @@ func factoryDupWord(it factory.Item) string {
 	return ""
 }
 
-// factoryChip is one chip: its label, its value and the key that turns it.
-type factoryChip struct{ label, value, key string }
+// factoryChip is one chip: its label, its value, the key that turns it, and
+// the widest value it can hold, so its slot is one width on every item.
+type factoryChip struct {
+	label, value, key string
+	valueW            int
+}
 
-// factoryChipList is the item's chips: the gate, the cap and the effort,
-// ALWAYS THREE, in that order, so each stands in its own slot on every item
-// ([app.factoryChipRow]). THE EFFORT CHIP READS THE STAGE `e` TURNS
-// ([factoryEffortStage]), so the chip and the key are about the same stage,
-// and it says a dash when that stage carries no word, which is the knee: the
-// crew picks the effort it would pick for this class of work. A gate or a cap
-// of nothing has an empty value, and its slot is drawn as air (the emptiness
-// law).
+// factoryChipList is the item's chips: where the run asks you, the budget
+// and the thinking, ALWAYS THREE, in that order, so each stands in its own
+// slot on every item ([app.factoryChipRow]). THEIR WORDS ARE THE VOCABULARY'S
+// (factory_words.go): `ask me at  plan`, `budget  $5`, `thinking  —`. THE
+// THINKING CHIP READS THE STAGE `e` TURNS ([factoryEffortStage]), so the chip
+// and the key are about the same stage, and it says a dash when that stage
+// carries no word, which is the knee: the crew picks how hard to think for
+// this class of work. A gate or a budget of nothing has an empty value, and
+// its slot is drawn as air (the emptiness law).
 func (a *app) factoryChipList(it factory.Item) []factoryChip {
-	effort := "—"
+	thinking := "—"
 	stages := factoryStages(a.fp.snap, it)
 	if at := factoryEffortStage(a.fp.snap, it); at >= 0 && at < len(stages) && stages[at].Effort != "" {
-		effort = stages[at].Effort
+		thinking = stages[at].Effort
+	}
+	gate := ""
+	if it.Gate != "" {
+		gate = factoryGateWord(it.Gate)
 	}
 	return []factoryChip{
-		{"gate", string(it.Gate), "t"},
-		{"cap", factoryMoney(it.Cap), "c"},
-		{"effort", effort, "e"},
+		{wordAskAt, gate, keyAskAt, factoryGateValueW},
+		{wordBudget, factoryMoney(it.Cap), keyBudget, factoryChipValueW},
+		{wordThinking, thinking, keyThinking, factoryChipValueW},
 	}
 }
+
+// factoryGateValueW is the gate chip's value cell: its widest word, `pull
+// request`, so the budget after it starts at one cell whatever the gate says.
+var factoryGateValueW = max(ansi.StringWidth(wordGatePlan), ansi.StringWidth(wordGatePR), ansi.StringWidth(wordGateNever))
 
 // factoryChipRow is the chips as one row of FIXED SLOTS: each a muted label,
 // [factoryLabelGap] of air, the value in ink padded to [factoryChipValueW],
@@ -386,7 +399,7 @@ func (a *app) factoryChipRow(it factory.Item, keys bool, measure int) string {
 	pal := a.pal
 	var segs, plains []string
 	for _, c := range a.factoryChipList(it) {
-		valueW := factoryChipValueW
+		valueW := c.valueW
 		plain := c.label + factorySpaces(factoryLabelGap) + c.value
 		seg := pal.muted(c.label) + factorySpaces(factoryLabelGap) + pal.ink(c.value)
 		if keys {
@@ -710,7 +723,7 @@ func (a *app) factoryTalkRow(it factory.Item, measure int) string {
 		return ""
 	}
 	pal := a.pal
-	row := pal.muted(a.icon(tokens.GActionCommunicate)) + " " + pal.ink("talk")
+	row := pal.muted(a.icon(tokens.GActionCommunicate)) + " " + pal.ink(wordChat)
 	if facts := a.factoryTalkFacts(it); len(facts) > 0 {
 		row += pal.dim(rowSep + strings.Join(facts, rowSep))
 	}
@@ -987,7 +1000,7 @@ func factorySpend(s *factory.Stream, cap float64) string {
 	case spent != "":
 		return spent
 	case capWord != "":
-		return "cap " + capWord
+		return wordBudget + " " + capWord
 	}
 	return ""
 }

@@ -163,6 +163,9 @@ type factoryPage struct {
 	pick    *factoryPicker
 	recipe  *factoryRecipePage
 	ghOffer string
+	// keys is the `?` sheet standing over the floor or the item page: every
+	// key with its word (factory_keysheet.go).
+	keys bool
 	// readingSince is the moment the picker saved a non-empty list, zero when
 	// no such read is owed: from then until a snapshot shows the read
 	// ([app.factoryFoldFirstRead]) the floor says it is reading, and past
@@ -407,6 +410,10 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	}
 	// THE PICKER AND THE RECIPE PAGE STAND OVER EVERYTHING, at the full
 	// width at every width, as the item page does.
+	if a.fp.keys {
+		a.fp.shown = 0
+		return a.factorySheetBody(width, room)
+	}
 	if a.fp.pick != nil {
 		a.fp.shown = 0
 		return a.factoryPickerBody(width, room)

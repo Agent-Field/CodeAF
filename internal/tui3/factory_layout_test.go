@@ -255,7 +255,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("item %d opened on %q, want %q", c.id, got, c.stage)
 		}
 		text := strings.Join(factoryFrameLines(a), "\n")
-		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State != factory.StateNeedsYou && !strings.Contains(text, "gate")) {
+		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State != factory.StateNeedsYou && !strings.Contains(text, wordAskAt)) {
 			t.Fatalf("item %d's page has no head:\n%s", c.id, text)
 		}
 		if strings.Contains(text, "NEEDS YOU") {
@@ -335,7 +335,7 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 		t.Fatalf("the talk row is not second: %+v", rows[:2])
 	}
 	drive(t, a, key("down"))
-	if frame := strings.Join(factoryFrameLines(a), "\n"); !strings.Contains(frame, a.icon(tokens.GActionCommunicate)+" talk") {
+	if frame := strings.Join(factoryFrameLines(a), "\n"); !strings.Contains(frame, a.icon(tokens.GActionCommunicate)+" "+wordChat) {
 		t.Fatalf("the talk row has no pane:\n%s", frame)
 	}
 	// A stage's pane: knobs, ask, a blank, the tail.

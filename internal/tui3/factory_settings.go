@@ -1451,7 +1451,8 @@ func (a *app) factoryRecipePane(views []factoryStageView, measure, room int) []s
 func (a *app) factoryRecipeHint() string {
 	parts := []string{"[ ] kind", "↑↓ stages"}
 	if a.factoryRecipeEdits() {
-		parts = append(parts, "1-9 stages", "s stage", "e effort", "w in words", "b save")
+		parts = append(parts, factoryHintClause(keyStages, wordStages), factoryHintClause(keyAddStage, wordAddStage),
+			factoryHintClause(keyThinking, wordThinking), "w in words", "b save")
 	}
 	return strings.Join(append(parts, "esc floor"), " · ")
 }

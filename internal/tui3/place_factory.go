@@ -41,7 +41,7 @@ func (placeFactory) open(a *app) tea.Cmd {
 	// THE FLOOR'S SETTINGS ARE SHUT ON THE WAY BACK IN, for the typing row's
 	// reason: they were about a moment that has passed, and the picker's
 	// ticks were never saved.
-	a.fp.pick, a.fp.recipe, a.fp.ghOffer = nil, nil, ""
+	a.fp.pick, a.fp.recipe, a.fp.ghOffer, a.fp.keys = nil, nil, "", false
 	return tea.Batch(a.armPlaceClock(), a.factoryRead())
 }
 
@@ -95,24 +95,22 @@ func (placeFactory) note(a *app, width int) []string {
 
 func (placeFactory) about() string { return "the work in flight, by where it stands" }
 
-// hint names the keys the page has, for the row under the cursor. With nothing
-// on the floor there is nothing to walk, and only the way out is named; with
-// the words box or a typing row open the keys are the box's.
+// hint names the keys the page has. With the words box or a typing row open
+// the keys are the box's; with the `?` sheet up, the way to close it.
 //
-// THE VERBS COME FIRST AND NAME ONLY KEYS THAT WORK: a door the seam does not
-// have is not on the line, and neither is a key the item's state refuses
-// (factory_keys.go's [app.factoryVerbHint]). The rail's own keys follow, and
-// WHEN THE LINE IS TOO LONG THEY ARE THE FIRST TO GO, last one first, because
-// the verbs are about the item a person is standing on and the rail's keys
-// are about the list they already know how to walk.
-//
-// `enter open` leads on every row, because `enter` opens the item page and
-// nothing else. `space mark` is offered only on a new item, the one kind a
-// mark means anything on, and `[ ] repo` only when there is more than one repo
-// to cycle. `esc` says clear while anything narrows the rail, because that is
-// what the first press does. WHILE THE ITEM PAGE IS OPEN THE LINE IS THE
-// PAGE'S ([app.factoryItemHint]).
+// THE FLOOR'S BOTTOM BAR IS NAVIGATION ONLY (owner decision, 2026-10-08):
+// `n new · R repos · m foreman · / filter · tab next place · esc back · ? keys`.
+// The row's own verbs are on the peek's strip beside it ([app.factoryVerbRail])
+// and every key is on the `?` sheet ([app.factorySheet]), so this line never
+// repeats either. A clause whose door is absent is not on it, and WHEN THE
+// LINE IS TOO LONG IT DROPS FROM THE RIGHT of the place's own clauses, keeping
+// the way out and `?`, which a lost person needs most. `esc` says clear while
+// anything narrows the rail, because that is what the first press does. WHILE
+// THE ITEM PAGE IS OPEN THE LINE IS THE PAGE'S ([app.factoryItemHint]).
 func (placeFactory) hint(a *app) string {
+	if a.fp.keys {
+		return factoryHintClause(keyBack, wordClose)
+	}
 	if a.fp.pick != nil {
 		return a.factoryPickerHint()
 	}
@@ -140,143 +138,96 @@ func (placeFactory) hint(a *app) string {
 			return a.factoryItemHint(it, head)
 		}
 	}
-	if !a.factoryFloorHas() {
-		if a.factoryConnected() && a.factory.Has("new") {
-			head = append(head, "n new item")
-		}
-		if a.factoryConnected() {
-			head = append(head, a.factorySettingsHint()...)
-		}
-		return strings.Join(append(head, "esc back"), " · ")
-	}
-	it, ok := a.factoryCursorItem()
-	var verbs []string
-	if ok {
-		verbs = a.factoryVerbRail(it)
-	}
-	// A FLOOR WITH NO DOORS AT ALL (the still fixture) keeps the walk at the
-	// front, because walking is then the whole of what the page does.
-	if len(verbs) <= 1 || (len(verbs) == 2 && verbs[1] == "space mark") {
-		verbs = append([]string{"↑↓ walk"}, verbs...)
-	}
-	// THE RAIL'S CLAUSES CARRY A DROP RANK, and a long line sheds the lowest
-	// rank first. `/ filter` and `A backlog` go first because the manual
-	// names them too; the floor's settings follow (visited once in a while,
-	// where the rest of the line is about the item a person stands on), then
-	// the density and the repo walk. THE ORDER CLAUSE IS THE LAST
-	// OF THE RAIL TO GO: it names a state a person is in, which no other
-	// corner of the floor says.
-	type clause struct {
-		text string
-		rank int
-	}
-	rail := []clause{{"/ filter", 1}}
-	if len(a.fp.snap.Repos) > 1 {
-		rail = append(rail, clause{"[ ] repo", 6})
-	}
-	rail = append(rail, clause{"A backlog", 0}, clause{"z density", 5}, clause{a.factoryOrderHint(), 7})
-	if a.factory.Has("refreshall") {
-		rail = append(rail, clause{"U read all again", 2})
-	}
-	if a.fp.columns {
-		rail = append(rail, clause{"h handover", 2})
-	}
-	for _, t := range a.factorySettingsHint() {
-		rail = append(rail, clause{t, 3})
-	}
-	// THE FOREMAN IS A VERB OF THE WHOLE FLOOR, so its clause sits with the
-	// floor's own and drops with the settings keys (factory_foreman.go).
-	for _, t := range a.factoryForemanHint() {
-		rail = append(rail, clause{t, 3})
-	}
-	out := "esc back"
+	return a.factoryFloorHint(head)
+}
+
+// factoryFloorHint is the floor's navigation line under head (a habit
+// offer's keys, when one is drawn).
+func (a *app) factoryFloorHint(head []string) string {
+	nav := a.factoryNavClauses()
+	out := factoryHintClause(keyBack, wordBack)
 	if a.factoryNarrowed() {
-		out = "esc clear"
+		out = factoryHintClause(keyBack, wordClear)
+	}
+	tail := []string{out}
+	if a.factoryConnected() {
+		tail = append(tail, factoryHintClause(keySheet, wordSheet))
 	}
 	line := func() string {
-		parts := append(append([]string{}, head...), verbs...)
-		for _, c := range rail {
-			parts = append(parts, c.text)
-		}
-		return strings.Join(append(parts, out), " · ")
+		parts := append(append(append([]string{}, head...), nav...), tail...)
+		return strings.Join(parts, " · ")
 	}
-	for len(rail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-factoryHintInset {
-		lo := 0
-		for i, c := range rail {
-			if c.rank < rail[lo].rank {
-				lo = i
-			}
-		}
-		rail = append(rail[:lo], rail[lo+1:]...)
-	}
-	// THEN THE VERBS ABOUT THE WHOLE FLOOR GO, before the item's own knobs
-	// (owner ruling, 2026-10-08): at 120 columns the frame's own cut took the
-	// line's tail, which was `t gate · c cap · e effort`, and kept `T talk`.
-	// A verb [factoryVerbDrop] does not rank is never dropped here.
-	for a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-factoryHintInset {
-		lo, rank := -1, 0
-		for i, v := range verbs {
-			if r, ok := factoryVerbDrop[v]; ok && (lo < 0 || r < rank) {
-				lo, rank = i, r
-			}
-		}
-		if lo < 0 {
-			break
-		}
-		verbs = append(verbs[:lo], verbs[lo+1:]...)
+	for len(nav) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-factoryHintInset {
+		nav = nav[:len(nav)-1]
 	}
 	return line()
 }
 
-// factoryVerbDrop is the order a long hint line sheds the verbs that are not
-// the item's own knobs, lowest first: the verbs of the whole floor (a new item,
-// the marked launch), then the ways out to other places, then the item's
-// lesser verbs. The item's answer, its run, its knobs and its stop are not in
-// it and are never dropped by the floor; the frame's own cut is their limit.
-var factoryVerbDrop = map[string]int{
-	"n new item":      0,
-	"L launch marked": 1,
-	"T talk":          2,
-	"u read again":    3,
-	"g github":        4,
-	"1-9 stages":      5,
-	"s stage":         6,
-	"d hide":          7,
-	"d diff":          7,
+// factoryNavClauses is the floor's navigation, in its one order, each only
+// where its door is: new work (not while the row under the cursor needs you,
+// where `n` answers no), the repositories, the foreman and the filter.
+func (a *app) factoryNavClauses() []string {
+	var nav []string
+	connected := a.factoryConnected()
+	it, ok := a.factoryCursorItem()
+	if connected && a.factory.Has("new") && (!ok || it.State != factory.StateNeedsYou) {
+		nav = append(nav, factoryHintClause(keyNew, wordNew))
+	}
+	if connected && a.factory.Has("repos") && a.factory.Has("setrepos") {
+		nav = append(nav, factoryHintClause(keyRepos, wordRepos))
+	}
+	if connected {
+		nav = append(nav, a.factoryForemanHint()...)
+	}
+	if a.factoryFloorHas() {
+		nav = append(nav, factoryHintClause(keyFilter, wordFilter))
+	}
+	return nav
 }
 
-// factoryItemHint is the hint line while the item page is open: the habit
-// offer's keys when one is drawn, `enter talk` on the issue row, the stage
-// walk, `enter` only where it acts (a stage with a room, which it walks into,
-// and the proof of a landed item, whose sheet it is), the item's verbs, and the way back to the floor. A
-// stage's `enter` that only says why it has no room is not named, because a
-// key that opens nothing is not a verb.
+// factoryItemHint is the hint line while the item page is open, and it is
+// FOUR CLAUSES AT MOST (owner decision, 2026-10-08): `↑↓ stages · enter
+// <what enter does on this row> · esc floor · ? keys`, after the habit offer's
+// keys when one is drawn. The item's verbs are on the pane's own action line
+// ([app.factoryPageAction]) and every key is on the `?` sheet. `enter` is
+// named only where it acts: on the issue row it opens the item's chat (or its
+// page on github where there is no chat door), on a stage with a room it
+// walks into the conversation, and on a landed item's proof it approves or
+// requests changes. A key that opens nothing is not a verb.
 func (a *app) factoryItemHint(it factory.Item, head []string) string {
 	parts := append([]string{}, head...)
-	// ON THE ISSUE ROW `enter` IS THE FIRST CLAUSE: it opens the item's own
-	// conversation, the word `T talk` already uses ([app.factoryItemEnter]),
-	// or its page on github where there is no Talk door.
+	parts = append(parts, factoryHintClause(keyWalk, wordWalkStages))
+	if w := a.factoryItemEnterWord(it); w != "" {
+		parts = append(parts, factoryHintClause(keyOpen, w))
+	}
+	parts = append(parts, factoryHintClause(keyBack, wordFloorName), factoryHintClause(keySheet, wordSheet))
+	return strings.Join(parts, " · ")
+}
+
+// factoryItemEnterWord is what `enter` does on the item page's row, as the
+// bottom line names it, and "" where it does nothing.
+func (a *app) factoryItemEnterWord(it factory.Item) string {
 	if a.factoryOnIssueRow(it) {
 		switch a.factoryIssueEnter(it) {
 		case factoryIssueTalk:
-			parts = append(parts, "enter talk")
+			return wordChat
 		case factoryIssueForge:
-			parts = append(parts, "enter github")
+			return wordOpenGitHub
 		}
+		return ""
 	}
-	parts = append(parts, "↑↓ stages")
 	if _, room := a.factoryRoomRow(it); room {
-		parts = append(parts, "enter conversation")
-	} else if a.factoryOnProof(it) {
+		return wordConversation
+	}
+	if a.factoryOnProof(it) {
 		switch {
 		case factoryFirstFailed(it) != "" && a.factory.Has("sendback"):
-			parts = append(parts, "enter send back")
+			return wordRequestChanges
 		case factoryFirstFailed(it) == "" && a.factory.Has("signoff"):
-			parts = append(parts, "enter sign off")
+			return wordApprove
 		}
 	}
-	parts = append(parts, a.factoryVerbHint(it)...)
-	return strings.Join(append(parts, "esc floor"), " · ")
+	return ""
 }
 
 // factoryOnIssueRow says whether the item page's rail stands on the issue or
@@ -300,6 +251,13 @@ func (a *app) factoryOnIssueRow(it factory.Item) bool {
 // (factory_split.go's [app.factoryPointer]). A press on a row that holds no
 // item, or on the item page itself, does nothing.
 func (placeFactory) press(a *app, y int) (tea.Cmd, bool) {
+	// A PRESS ON THE `?` SHEET PUTS IT AWAY, as a press off a crew panel
+	// closes it: the sheet is read, never pressed through.
+	if a.fp.keys {
+		a.fp.keys = false
+		a.touch()
+		return nil, true
+	}
 	a.factoryPress(y)
 	return nil, true
 }
@@ -321,6 +279,11 @@ func (placeFactory) wheel(a *app, delta int) (tea.Cmd, bool) {
 // one with a pause door, so everywhere else on the floor two spaces still go
 // home.
 func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	// THE `?` SHEET HAS THE KEYBOARD WHILE IT STANDS, and `?` opens it from
+	// the floor and the item page alike (factory_keysheet.go).
+	if cmd, took := a.factorySheetKey(msg); took {
+		return cmd, true
+	}
 	// THE PICKER, THE GH OFFER AND THE RECIPE PAGE HAVE THE KEYBOARD while one
 	// stands, before the layout reads `enter` as opening an item underneath
 	// (factory_settings.go).

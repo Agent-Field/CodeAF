@@ -1199,8 +1199,11 @@ var tuiWords = map[string]tuiWord{
 
 	// ── the factory floor, an item run end to end ───────────────────────────
 	"factoryAnswerKeys": {
-		screen: "y n answer",
-		why:    "the item page's keys while the run waits on the person: y and n are offered only then",
+		screen: "yes",
+		key:    "y",
+		why: "the item page's verbs while the run waits on the person (`y yes · n no · a in words`): " +
+			"y and n are offered only then. The strip composes each clause from factory_words.go's " +
+			"key and word, so the row names the key and holds the word",
 	},
 	"factoryAnsweredWord": {
 		screen: "answered #",
