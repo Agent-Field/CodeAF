@@ -41,6 +41,7 @@ factory's verbs), and when the line is too long the list keys are the first to g
   second line under each row with the factory's one-sentence read of it, and a blank row between
   items). The choice is not saved; every launch starts compact.
 - `space` marks or unmarks the new item under the cursor (offered only on a new item).
+- `T` opens the item's own conversation, made on the first press (see talk it through).
 - `/` opens a filter box at the top of the list.
 - `[` and `]` show one repository at a time, then all of them again (offered with two or more).
 - `A` shows the whole backlog of new items, or only the recent ones.
@@ -356,6 +357,8 @@ can launch yet. `enter` on a row never launches; it opens the item page.
 - **Landed:** `a ship anyway` when a claim failed, `c send back`, `o check again`, `d diff`.
   Shipping from a clean sheet is `enter` on its proof, on the item page. `d` says
   `the diff is the appendix` and that it opens in your editor later.
+- **Any state:** `T talk` opens the item's own conversation (see talk it through), on the
+  floor and on the item page alike; it is named only where the floor can make one.
 - **Anywhere:** `n new` opens `new work ›` on the repository the list shows (or the first one;
   on a floor with no items yet, the name of the folder this window was opened in), and the new
   item's card is under the cursor when it is made. On the made-up moving floor,
@@ -430,6 +433,62 @@ same name already in that section is replaced where it stands; otherwise it is a
 
 It writes only where codeaf knows the checkout; otherwise the answer is
 `codeaf does not know where <repo> is checked out; open codeaf there once`.
+
+## talk it through — T, the item's own conversation
+
+`T` on an item, on the floor or on its page, opens a conversation that belongs to that item, so
+you can talk it over or plan it before you launch it, or while it runs. **It is never made
+by default.** The first `T` makes it and every later `T` opens the same one; the item keeps it.
+
+The first press makes, on this machine and without asking any model:
+
+- a team named by the item, `#12 · fix the ledger double count`, nested under one team named
+  `factory` (made once, the first time any item is talked through);
+- one conversation in that team, in the folder where the item's repository is checked out (or
+  this window's folder when codeaf does not know the checkout). It opens with the item in front
+  of it: the title, the repository, author, tier and floor id, its chips (gate, cap, labels), the
+  body, its stages as numbered lines, the factory's read, and the sentence
+  `This is the item's own conversation on the factory floor. Nothing here launches it; the person does that on the floor.`
+
+You land in the conversation, as when you open one from its tab; the one you were in goes on
+running behind it. `esc` on its empty box, with nothing running, takes you back to the floor on
+the same row (and onto the item page if that is where you pressed `T`). That way back is taken
+once; reopened later from its tab it is an ordinary conversation and `esc` means what it
+always means.
+
+**Where it appears:** a tab on the tab strip, like any conversation you open. Its team sits under
+the one `factory` team in the team menu and on the teams rail, and that team is folded: a hundred
+items talked through are one `factory` row until you stand in it. When the item is hidden with
+`d`, its conversation is put away (home's archive line) and its team is closed.
+
+`T` is not named, and does nothing, over `--host` or `--at` to another machine, from `--once`,
+or on the still made-up floor: nothing there can make a conversation.
+
+## changing an item's stages from its conversation — factory_stages
+
+In an item's conversation codeaf can propose a change to that item's stages with the
+`factory_stages` tool: stages to add (a sentence, `after review, read it for auth holes`),
+stages to skip, stages to switch on, and why. It is for the item the conversation is about, and
+it is on the belt wherever `factory_add` is.
+
+**Nothing changes before `1`.** A card asks first:
+`wants to change #12's stages: +security · −neaten` (a plus for a stage added or switched on, a
+minus for one skipped), with `stages · #12 · <why>` under it. It answers to `1 change it`,
+`2 not now`, or words (`say what to change… (enter sends it)`). There is no clock on it.
+
+- **`change it`** applies the change and codeaf is told
+  `#12's stages are now: plan · write · test · review · security · proof`; the card says
+  `changed` and the item page shows the new stages when you go back.
+- **`not now`**: `nothing changed: the person said no.`
+- **Words**: `the person changed it: <your words>` and
+  `Nothing changed. Propose it again with that` (card: `changed in words`).
+- **No answer** for fifteen minutes: `nothing changed: the card was never answered`
+  (card: `expired · nothing changed`).
+
+The recipe's bounds hold (see adapt): proof, a person's gate and a stage the policy names are
+never skipped, a stage that has run is never touched, and under `fixed` every change is refused
+with `nothing changed: the recipe for issue is fixed; plan may not change the stages`. It never
+touches the cap, the gate or a launch.
 
 ## connecting github — watch a repository, issues and pull requests on the floor
 
@@ -545,7 +604,8 @@ Be plain about this when asked:
 - **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage
   says `the stage's conversation opens here once streams are conversations`.
 - **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
-- **The foreman does not open yet.** There is no conversation with the factory itself.
+- **The foreman does not open yet.** There is no conversation with the factory itself; there
+  is one per item, made only when you press `T` on it (see talk it through).
 - **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
   in place of yours, with no verbs.
 - **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, the

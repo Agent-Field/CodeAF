@@ -172,9 +172,14 @@ func factorySeam(st *store.Store, workspace, profileDir string) factory.Seam {
 	// `github`, `ghlogin` and `connectgithub` doors exist. The mock and fixture
 	// seams above return before this line and are never wrapped.
 	profileDir = factoryProfile(profileDir)
+	// AND THE ITEM'S OWN CONVERSATION (`T`, factory_talk.go) is made on this
+	// machine, so its door is hung only here, where the floor is this
+	// machine's: --once and --host never build this seam.
 	local := factory.LocalSeam(st, time.Now(),
 		factory.WithRepoDirs(factoryRepoDirs(st, workspace)),
-		factory.WithRepoLister(factorygithub.Lister(profileDir)))
+		factory.WithRepoLister(factorygithub.Lister(profileDir)),
+		factory.WithTalk(talkMaker(st, workspace, profileDir)))
+	local = talkPutAway(local, st, profileDir)
 	return factorygithub.Connect(factorygithub.Facts(local, st, nil), profileDir)
 }
 
