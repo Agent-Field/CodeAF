@@ -134,6 +134,8 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		},
 	}
 	localSettings(&seam, st, o)
+	// THE FLOOR'S OWN MARKS, kept by the store when it keeps them (marks.go).
+	localMarks(&seam, st)
 	if o.talk != nil {
 		seam.Talk = func(ctx context.Context, id int) (string, error) {
 			return localTalk(ctx, st, id, o.talk)

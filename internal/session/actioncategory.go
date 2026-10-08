@@ -222,7 +222,9 @@ func ActionCategoryForTool(tool string) ActionCategory {
 		"gmail_read", "slack_read_thread", "slack_list_channels",
 		"calendar_list", "workspace_snapshots",
 		// A manager looking at its team: the states, and a member's page.
-		"team_status", "team_read":
+		"team_status", "team_read",
+		// The foreman reading the factory floor (a mark is a proposal, not a change).
+		"factory_floor":
 		return ActionRead
 
 	// Changing something that exists.
