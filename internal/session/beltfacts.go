@@ -618,11 +618,30 @@ var handoffFacts = []beltFact{{
 	// and every byte here is paid on every request (prefixbudget_test.go); and
 	// nothing at all where there is no door, because a sentence denying a floor
 	// nobody mentioned is a sentence about machinery the model never needed.
-	tools:   []string{"factory_add"},
+	//
+	// `factory_recipe` IS FOLDED INTO THE SAME SENTENCE rather than given one of
+	// its own, because the page had one byte of headroom when it arrived. The
+	// sentence is spelled with both verbs, which is the widest page and the one
+	// the budget weighs, and the fill takes the second verb out on a belt whose
+	// recipe door is nil, so the page never names a verb the belt lacks.
+	tools:   []string{"factory_add", "factory_recipe"},
 	holds:   Config.mayFactory,
-	present: "AND THE FACTORY FLOOR: `factory_add`; a card asks, nothing starts.",
+	present: factoryFact,
 	absent:  "",
+	fill: func(c Config, text string) string {
+		if c.mayFactory() && !c.mayRecipe() {
+			return strings.Replace(text, factoryFactRecipe, "", 1)
+		}
+		return text
+	},
 }}
+
+// factoryFact is the factory row's sentence with both verbs in it, and
+// factoryFactRecipe the clause a belt without the recipe door drops.
+const (
+	factoryFactRecipe = ", `factory_recipe`"
+	factoryFact       = "AND THE FACTORY: `factory_add`" + factoryFactRecipe + "; a card asks."
+)
 
 // programFacts is the ROUTING LINE for saved recipes and saved programs: which
 // verb exists here, and — where they are shelved — the group to load it from.

@@ -399,6 +399,35 @@ the chat's reason. It answers to `1 add it`, `2 not now`, or words typed into it
 **Nothing launches from the chat.** An added item waits on the floor like any other `new` row
 until you launch it from the factory page.
 
+## teaching the recipe in conversation — factory_recipe, always run a security review in a repo
+
+Say a rule out loud ("in my repo always run a security review when auth is touched",
+"never post without green tests", "for PRs, two review rounds") and codeaf can offer it to
+the repository's recipe, `.codeaf/factory.md`, with the `factory_recipe` tool. It is there
+exactly where `factory_add` is, on the ordinary launch on your own machine, and absent over
+`--host`, `--at`, from `--once` and inside a task.
+
+It offers a single line: a stage for `issue`, `pr` or `ci` in the file's grammar
+(`security · read it for auth holes · when touches auth`), a policy sentence, or a habit.
+A stage line the file cannot read is refused before any card, with the reason. A stage of the
+same name already in that section is replaced where it stands; otherwise it is added at the end.
+
+**Nothing is written before `1`.** A card asks first:
+`wants to add to <repo>'s recipe for <kind>: <line>` (or `wants to add to <repo>'s policy: …`,
+`wants to add to <repo>'s habits: …`), with `recipe · <repo> · <kind>` under it. It answers to
+`1 bank it`, `2 not now`, or words (`say what to change… (enter sends it)`).
+
+- **`bank it`** writes the line; codeaf is told `<line> is in <repo>'s recipe for <kind>`
+  (or `… is in <repo>'s policy`, `… is in <repo>'s habits`) and the card says `banked`.
+- **`not now`**: `nothing was banked: the person said no.`
+- **Words**: `the person changed it: <your words>` and
+  `Nothing is banked. Propose it again with that` (card: `changed in words`).
+- **No answer** for fifteen minutes: `nothing was banked: the card was never answered`
+  (card: `expired · nothing banked`).
+
+It writes only where codeaf knows the checkout; otherwise the answer is
+`codeaf does not know where <repo> is checked out; open codeaf there once`.
+
 ## connecting github — watch a repository, issues and pull requests on the floor
 
 The floor reads open issues and open pull requests from the GitHub repositories you watch.

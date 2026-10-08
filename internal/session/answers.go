@@ -137,6 +137,10 @@ const (
 	// factory floor (tools_factory.go, [Agent.ResolveFactory]). Its token is a
 	// string, the proposal's own id, so an answer names it by Ref.
 	QuestionFactory QuestionKind = "factory"
+	// QuestionRecipe is a card the chat raised to add one line to a
+	// repository's recipe, policy or habits (tools_factory_recipe.go,
+	// [Agent.ResolveRecipe]). Its token is the proposal's own id, by Ref.
+	QuestionRecipe QuestionKind = "recipe"
 )
 
 // AnswerOption is one answer a question will take: the key that gives it and
@@ -258,6 +262,13 @@ func AnswerOptions(kind QuestionKind) []AnswerOption {
 		return []AnswerOption{
 			{Key: FactoryAddKey, Label: FactoryAddLabel},
 			{Key: FactoryNotNowKey, Label: FactoryNotNowLabel, Safe: true},
+		}
+	case QuestionRecipe:
+		// THE YES WRITES ONE LINE INTO THE REPOSITORY'S RECIPE, and the no
+		// writes nothing, so it is the safe one. Words arrive through the box.
+		return []AnswerOption{
+			{Key: RecipeBankKey, Label: RecipeBankLabel},
+			{Key: RecipeNotNowKey, Label: RecipeNotNowLabel, Safe: true},
 		}
 	case QuestionConnect:
 		return []AnswerOption{
@@ -620,6 +631,8 @@ type AnswerAction struct {
 	Standing StandingAnswer
 	// Factory is the factory card's answer, for [Agent.ResolveFactory].
 	Factory FactoryAnswer
+	// Recipe is the recipe card's answer, for [Agent.ResolveRecipe].
+	Recipe RecipeAnswer
 }
 
 // AnswerFromKey is the whole mapping, and it is the one place it is written.
@@ -685,6 +698,14 @@ func AnswerFromKey(kind QuestionKind, key string) (AnswerAction, bool) {
 			// Written out for the standing arm's reason: the zero value is
 			// already the no, and a reader counting answers must find both.
 			action.Factory = FactoryAnswer{}
+		}
+	case QuestionRecipe:
+		switch key {
+		case RecipeBankKey:
+			action.Recipe = RecipeAnswer{Approved: true}
+		case RecipeNotNowKey:
+			// Written out for the factory arm's reason.
+			action.Recipe = RecipeAnswer{}
 		}
 	}
 	return action, true

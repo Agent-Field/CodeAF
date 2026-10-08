@@ -86,6 +86,11 @@ type factoryCard struct {
 	answer, verdict string
 	// item is the floor's own id once the item is written, and zero before.
 	item int
+	// recipe is set when this card is `factory_recipe`'s rather than
+	// `factory_add`'s (the recipe card, below): one line for a repository's
+	// recipe. notice.ID is then the recipe proposal's id, so the one lookup
+	// ([app.factoryCardFor]) finds both kinds of card.
+	recipe *session.RecipeNotice
 }
 
 // settled reports whether this offer has been answered or has come down.
@@ -226,6 +231,9 @@ func FactoryCardRows(a *app, card *factoryCard, width int, sel bool) []string {
 	stem := a.pal.ask(a.blockStem())
 	room := max(width-ansi.StringWidth(a.blockStem()), 1)
 	out := []string{head}
+	if card.recipe != nil {
+		return append(append(out, a.recipeCardBody(card.recipe, stem, room)...), a.factoryCardFoot(card, width))
+	}
 	if meta := factoryCardMeta(card.notice); meta != "" {
 		out = append(out, stem+a.pal.dim(fit(meta, room)))
 	}
@@ -336,6 +344,9 @@ func (a *app) factoryCardHead(card *factoryCard, width int, sel bool) string {
 	}
 	lead := corner + " " + glyph + " "
 	words := session.FactoryCardLead + strings.Join(strings.Fields(card.notice.Title), " ")
+	if card.recipe != nil {
+		words = strings.Join(strings.Fields(session.RecipeHead(*card.recipe)), " ")
+	}
 	title := fit(words, max(width-ansi.StringWidth(lead)-2, 1))
 	line := paint(lead)
 	if card.settled() {
@@ -382,4 +393,114 @@ func factoryCardWord(card *factoryCard) string {
 		return card.verdict
 	}
 	return card.answer
+}
+
+// ── the recipe card ─────────────────────────────────────────────────────────
+
+// THE RECIPE OFFER, IN THE CONVERSATION: THE FACTORY CARD'S SHAPE, ONE LINE.
+//
+// `factory_recipe` asks to add one line to a repository's recipe, its policy or
+// its habits (internal/session's tools_factory_recipe.go). Its card is drawn by
+// [FactoryCardRows] with the factory card's corner, hue, head and foot, and a
+// body of its own: one dim row naming where the line goes and the line itself
+// in ink, because the line is exactly what the file will hold.
+//
+//	╭─ ? wants to add to web's recipe for issue: security · chat · read it… ──
+//	│ recipe · web · issue
+//	│ security · chat · read it for auth holes · when touches auth
+//	╰──────────────────────────────────────────────────────────────────────────
+//
+// AFTERWARDS IT FOLDS TO ITS HEAD AND ONE FOOT, in the factory card's place:
+//
+//	banked                    the line is in the file
+//	not now                   the person said no
+//	changed in words          they typed a correction; nothing was written
+//	expired · nothing banked  the card came down unanswered
+//
+// The answers and the words box are the question's, drawn once above the box
+// (question.go's [app.questionDrawnHere]), exactly as on the factory card.
+
+// The words a settled recipe card keeps.
+const (
+	// recipeBankedWord is the line in the file. It arrives on EventRecipeBanked
+	// after the yes; between the two the foot says the answer that was given.
+	recipeBankedWord = "banked"
+	// recipeNotNowWord is the person's no, in the card's own word for it.
+	recipeNotNowWord = session.RecipeNotNowLabel
+	// recipeExpiredWord is a card that came down unanswered, and NOTHING WAS
+	// BANKED, which is the half a person looking back needs.
+	recipeExpiredWord = "expired · nothing banked"
+)
+
+// recipeProposal folds one EventRecipeProposal in: a new card, or the
+// rebroadcast that settles one already drawn — [app.factoryProposal]'s reading.
+func (a *app) recipeProposal(ev session.Event) {
+	notice := ev.Recipe
+	if notice == nil || strings.TrimSpace(notice.ID) == "" {
+		return
+	}
+	card := a.factoryCardFor(notice.ID, "")
+	switch {
+	case notice.Decided != nil:
+		if card == nil || card.settled() {
+			return
+		}
+		switch {
+		case strings.TrimSpace(notice.Decided.Change) != "":
+			// WORDS ARE A CHANGE, NOT A YES: the engine banks nothing on one.
+			card.verdict = factoryChangedWord
+		case notice.Decided.Approved:
+			card.answer = session.RecipeBankLabel
+		default:
+			card.verdict = recipeNotNowWord
+		}
+	case strings.TrimSpace(notice.Withdrawn) != "":
+		if card == nil || card.settled() {
+			return
+		}
+		card.verdict = recipeExpiredWord
+	default:
+		if card != nil {
+			return
+		}
+		held := *notice
+		card = &factoryCard{notice: session.FactoryNotice{ID: notice.ID}, recipe: &held}
+		a.closeLive()
+		a.entries = append(a.entries, entry{kind: entryFactory, turn: a.turn, fac: card})
+		a.follow()
+		a.touch()
+		return
+	}
+	a.markFactoryStale(card)
+	a.touch()
+}
+
+// recipeBanked folds one EventRecipeBanked in: the card that asked says
+// `banked`, and the floor is read again, because a recipe is what the floor's
+// stages are drawn from and its recipe page (when it has one) reads the file.
+func (a *app) recipeBanked(ev session.Event) tea.Cmd {
+	if notice := ev.Recipe; notice != nil {
+		if card := a.factoryCardFor(notice.ID, ""); card != nil && card.recipe != nil {
+			if card.answer == "" {
+				card.answer = session.RecipeBankLabel
+			}
+			card.verdict = recipeBankedWord
+			a.markFactoryStale(card)
+			a.touch()
+		}
+	}
+	return a.factoryRead()
+}
+
+// recipeCardBody is the recipe card's body: the dim row saying where the line
+// goes, then the line in ink, wrapped to the card at the factory body's height.
+func (a *app) recipeCardBody(n *session.RecipeNotice, stem string, room int) []string {
+	var out []string
+	if where := session.RecipeSubject(*n); where != "" {
+		out = append(out, stem+a.pal.dim(fit(where, room)))
+	}
+	for _, line := range a.factoryCardBody(session.RecipeWords(*n), room) {
+		out = append(out, stem+a.pal.ink(line))
+	}
+	return out
 }

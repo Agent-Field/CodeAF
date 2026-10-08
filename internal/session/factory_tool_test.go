@@ -132,7 +132,7 @@ func TestFactoryAddIsAbsentWithoutADoorAndPresentWithOne(t *testing.T) {
 	if !found {
 		t.Fatal("a belt with a factory door does not carry factory_add")
 	}
-	if !strings.Contains(promptWithBeltFacts(with.config), "AND THE FACTORY FLOOR: `factory_add`; a card asks, nothing starts.") {
+	if !strings.Contains(promptWithBeltFacts(with.config), "AND THE FACTORY: `factory_add`; a card asks.") {
 		t.Error("the page does not say factory_add asks first on a belt that carries it")
 	}
 	if got := ActionCategoryForTool("factory_add"); got != ActionCreate {

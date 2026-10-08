@@ -1488,6 +1488,15 @@ func questionAsked(event Event) (string, bool) {
 			return "", false
 		}
 		return questionToken(QuestionFactory, strings.TrimSpace(event.Factory.ID)), true
+
+	case EventRecipeProposal:
+		if event.Recipe == nil || strings.TrimSpace(event.Recipe.ID) == "" {
+			return "", false
+		}
+		if event.Recipe.Decided != nil || event.Recipe.Withdrawn != "" {
+			return "", false
+		}
+		return questionToken(QuestionRecipe, strings.TrimSpace(event.Recipe.ID)), true
 	}
 	return "", false
 }
@@ -1890,6 +1899,8 @@ func questionGoneReason(q Question) string {
 		return "the run is no longer at its gate"
 	case QuestionFactory:
 		return factoryGoneReason
+	case QuestionRecipe:
+		return recipeGoneReason
 	}
 	// The model's own question and everything else: the turn that raised it
 	// has ended — interrupted, or finished around it — which is the one way a
@@ -2296,6 +2307,25 @@ func (a *Agent) applyToLane(answer Answer) error {
 		}
 		a.ResolveFactory(answer.Ref, action.Factory)
 		return nil
+	case QuestionRecipe:
+		// The factory card's reading, word for word: words are a change and
+		// never a yes, and words beside `bank it` still bank nothing.
+		if key == "" {
+			if strings.TrimSpace(words) == "" {
+				return errAnswerEmpty
+			}
+			a.ResolveRecipe(answer.Ref, RecipeAnswer{Change: words})
+			return nil
+		}
+		action, ok := AnswerFromKey(QuestionRecipe, key)
+		if !ok {
+			return errAnswerEmpty
+		}
+		if action.Recipe.Approved {
+			action.Recipe.Change = strings.TrimSpace(words)
+		}
+		a.ResolveRecipe(answer.Ref, action.Recipe)
+		return nil
 	case QuestionSubharnessAsk:
 		// A RUNNING SUB-HARNESS IS ANSWERED IN WORDS, not with a key: its
 		// question is its own and this engine never wrote answers for it. Taking
@@ -2489,6 +2519,12 @@ func (a *Agent) OpenQuestions() []Question {
 			factories = append(factories, *offer)
 		}
 	}
+	recipes := make([]recipeOffer, 0, len(a.recipeOffers))
+	for _, offer := range a.recipeOffers {
+		if offer != nil {
+			recipes = append(recipes, *offer)
+		}
+	}
 	offers := make(map[uint64]Event, len(a.subharnessOffers))
 	for id, offer := range a.subharnessOffers {
 		if offer != nil {
@@ -2538,6 +2574,9 @@ func (a *Agent) OpenQuestions() []Question {
 	}
 	for _, offer := range factories {
 		open = append(open, a.factoryQuestion(offer.notice.ID, offer.notice, offer.asked))
+	}
+	for _, offer := range recipes {
+		open = append(open, a.recipeQuestion(offer.notice.ID, offer.notice, offer.asked))
 	}
 	for id, live := range runs {
 		if snap := live.run.Snapshot(); snap.Paused {

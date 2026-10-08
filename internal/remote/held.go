@@ -26,7 +26,8 @@ package remote
 // subscription (its standingFactoryCardsLocked), which is what hands it to a
 // window that attaches after it was raised. Its answer comes back through the
 // one door every lane uses, [MethodQuestionResolve], with the proposal id as
-// the question's Ref.
+// the question's Ref. The recipe card (`factory_recipe`) is the same shape on
+// the same lane and is absent here for the same reason.
 
 import (
 	"time"

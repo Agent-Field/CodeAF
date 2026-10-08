@@ -203,9 +203,13 @@ func TestTheEngineHandsTheFactoryDoorOnlyToAWindowOnThisMachine(t *testing.T) {
 			t.Fatalf("%s: the engine serves a %T, not a session agent", c.name, engine.Agent)
 		}
 		got := agent.ToolOnBelt("factory_add")
+		gotRecipe := agent.ToolOnBelt("factory_recipe")
 		_ = agent.Close()
 		if got != c.want {
 			t.Fatalf("%s: factory_add on the belt is %v, want %v", c.name, got, c.want)
+		}
+		if gotRecipe != c.want {
+			t.Fatalf("%s: factory_recipe on the belt is %v, want %v", c.name, gotRecipe, c.want)
 		}
 	}
 	// And the store it writes to is this machine's own floor, the one the

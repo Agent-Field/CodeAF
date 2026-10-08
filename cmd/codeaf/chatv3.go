@@ -387,6 +387,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// the boot launch ([v3Seam.launch]).
 	floor := v3Factory()
 	cfg.Factory = factoryDoor(floor)
+	// And the recipe door beside it, over the same floor's record of where each
+	// repository is checked out, so `factory_recipe` banks into the file the
+	// floor reads (factory.go's [recipeDoor]).
+	cfg.Recipe = recipeDoor(floor, workspace)
 	// And the floor's GitHub poll, when repositories are watched and a token
 	// resolves; nothing starts otherwise (factory.go's [startFactoryPoll]).
 	startFactoryPoll(floor)

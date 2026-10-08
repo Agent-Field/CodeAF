@@ -597,6 +597,39 @@ func BankRecipeHabit(repoDir, sentence string) error {
 	return writeRecipeText(repoDir, f.join())
 }
 
+// BankRecipePolicy appends a sentence to the file's policy, once, exactly as
+// [BankRecipeHabit] appends a habit: a sentence already there is not written
+// twice, and every other section is left as it was written.
+func BankRecipePolicy(repoDir, sentence string) error {
+	sentence = oneLine(sentence)
+	if sentence == "" {
+		return errors.New("say the policy")
+	}
+	text, err := recipeText(repoDir)
+	if err != nil {
+		return err
+	}
+	f := splitSections(text)
+	i := f.find(sectionPolicy)
+	if i < 0 {
+		// THE POLICY GOES BEFORE THE HABITS when the file has none yet, which
+		// is the order [Format] writes them in.
+		at := len(f.secs)
+		if h := f.find(sectionHabits); h >= 0 {
+			at = h
+		}
+		f.secs = append(f.secs[:at], append([]recipeSection{{head: "## " + sectionPolicy}}, f.secs[at:]...)...)
+		i = at
+	}
+	for _, l := range f.secs[i].body {
+		if s, ok := bullet(strings.TrimSpace(l)); ok && s == sentence {
+			return nil
+		}
+	}
+	f.secs[i].body = append(trimBlank(f.secs[i].body), "- "+sentence)
+	return writeRecipeText(repoDir, f.join())
+}
+
 // recipeFile is a recipe file cut at its `## ` headings, each section's lines
 // kept exactly as written.
 type recipeFile struct {

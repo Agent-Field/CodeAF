@@ -651,6 +651,16 @@ const (
 	// floor from a chat. Factory.Item is the floor's own id for it, so the
 	// surface re-reads the floor rather than drawing a row from the card.
 	EventFactoryAdded
+	// EventRecipeProposal is the card `factory_recipe` raises: the chat wants to
+	// add one line to a repository's recipe, its policy or its habits
+	// (tools_factory_recipe.go). Recipe carries the card, and its ID is the
+	// token a surface hands back to [Agent.ResolveRecipe]. It comes again, once,
+	// when the card is settled, with Decided or Withdrawn set, exactly as
+	// EventFactoryProposal does, and on the same task lane.
+	EventRecipeProposal
+	// EventRecipeBanked says the line is in the repository's
+	// `.codeaf/factory.md` now, so a surface reading the recipe reads it again.
+	EventRecipeBanked
 )
 
 // TaskReplyTag is the task identity a surface places beside the answer its
@@ -968,6 +978,11 @@ type Event struct {
 	// behind a json tag of its own so a peer built before it simply does not
 	// see it.
 	Factory *FactoryNotice `json:"Factory,omitempty"`
+
+	// Recipe carries one EventRecipeProposal's card or one EventRecipeBanked's
+	// news (factory_contract.go), behind a json tag of its own for the reason
+	// Factory's is.
+	Recipe *RecipeNotice `json:"Recipe,omitempty"`
 
 	// Retry carries one [EventRetrying]'s payload in parts (retrynews.go): which
 	// model was being asked, how far into its patience the step is, why the
@@ -1549,6 +1564,12 @@ type Config struct {
 	// NO DOOR: `factory_add` is off the belt and the page says nothing about
 	// it, because a capability with nothing behind it is absent, not broken.
 	Factory FactoryDoor
+
+	// Recipe is the door onto a repository's recipe file (factory_contract.go).
+	// NIL IS NO DOOR: `factory_recipe` is off the belt. It is set exactly where
+	// Factory is, by a window on this machine, and never on --once, a task node,
+	// --host or --at.
+	Recipe RecipeDoor
 
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
@@ -3406,6 +3427,12 @@ type Agent struct {
 	// subscribes while the question stands must still be able to draw it.
 	factorySeq    uint64
 	factoryOffers map[string]*factoryOffer
+
+	// recipeOffers and recipeSeq are the same book for `factory_recipe`'s
+	// cards (tools_factory_recipe.go), kept apart because the two cards are
+	// answered by different resolvers and write to different places.
+	recipeSeq    uint64
+	recipeOffers map[string]*recipeOffer
 
 	// harnessPick is a harness the PERSON chose rather than one a matcher
 	// offered, left here by [Agent.RunHarnessRequest] for the turn it just

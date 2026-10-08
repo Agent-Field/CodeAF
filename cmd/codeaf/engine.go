@@ -986,6 +986,8 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// cfg ([remote.Engine.Fresh] and Open below both start from it).
 	if engineFactoryHere(hello) {
 		cfg.Factory = factoryDoor(engineFactory())
+		// And `factory_recipe`'s door, on the same law and the same store.
+		cfg.Recipe = recipeDoor(engineFactory(), workspace)
 	}
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
