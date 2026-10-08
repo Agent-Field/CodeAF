@@ -103,11 +103,14 @@ type Stage struct {
 
 // Recipe is what a product banked: stages in order, per kind of item, and the
 // policy every proof must show. Stages is the list for an issue and the
-// fallback for a kind ByKind does not name.
+// fallback for a kind ByKind does not name. Habits are the banked sentences
+// the recipe file keeps under `## habits` (recipefile.go), which a [Repo]
+// carries as its own Habits once loaded.
 type Recipe struct {
 	Stages []Stage
 	ByKind map[Kind][]Stage
 	Policy []string
+	Habits []string
 }
 
 // For is the stage list a kind runs.

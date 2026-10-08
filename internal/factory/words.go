@@ -138,3 +138,28 @@ func GuessType(words string) string {
 	}
 	return "feat"
 }
+
+// The recipe file's knob words (recipefile.go). THIS IS THE ONE PLACE THEY ARE
+// SPELLED, beside the chip words above, so the file's reader, its writer and
+// the manual's account of them can be checked against one list. The until
+// words are [UntilDone] and its siblings, because they are a contract with the
+// runner and live beside [Met].
+
+// WhenWords are the conditions a stage may carry, the ones [Fits] reads off an
+// item's triage.
+var WhenWords = []string{"always", "thin", "large", "touches auth", "has ui"}
+
+// EffortWords are the crew's one word. No word is the knee.
+var EffortWords = []string{"cheap", "strong"}
+
+// StageKinds are what may run a stage, in the order the manual names them.
+var StageKinds = []StageKind{StageChat, StageCheck, StageGate, StagePost}
+
+func oneOf(word string, words []string) bool {
+	for _, w := range words {
+		if word == w {
+			return true
+		}
+	}
+	return false
+}

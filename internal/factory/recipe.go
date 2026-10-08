@@ -134,3 +134,69 @@ func PlaceStage(stages []Stage, st Stage, when string) []Stage {
 func AddStageWords(stages []Stage, words string) []Stage {
 	return PlaceStage(stages, ParseStage(words), StageWhen(words))
 }
+
+// The until words are a stage's exit contract: the condition a runner checks
+// after each round before it lets the item go on to the next stage. THESE FOUR
+// ARE THE WHOLE VOCABULARY. The recipe file accepts no other word after
+// `until`, so every word a person can write maps to a check in [Met] from the
+// day it is written, and a word nobody taught the runner can never be banked.
+//
+//   - done: the stage reported itself done through its result tool.
+//   - clean: the stage reported done with zero findings.
+//   - proven: every claim on the item has evidence, and there is at least one.
+//   - green: the check stage's command ran to an exit, and the exit was 0.
+const (
+	UntilDone   = "done"
+	UntilClean  = "clean"
+	UntilProven = "proven"
+	UntilGreen  = "green"
+)
+
+// untilWords is the until vocabulary in the order the manual names it.
+var untilWords = []string{UntilDone, UntilClean, UntilProven, UntilGreen}
+
+// StageResult is what one round of a stage hands back to the runner, which
+// fills it and asks [Met] whether the stage may stop. There is no runner yet;
+// this is the contract it will be written against.
+//
+// Done is the stage reporting back at all: a chat stage calling its result
+// tool, a check stage's command running to an exit. A ZERO RESULT IS A STAGE
+// THAT SAID NOTHING, and it meets no condition, because an exit code of 0 and
+// a findings count of 0 on a round that never reported would otherwise read
+// exactly like green and clean.
+type StageResult struct {
+	Done     bool
+	Findings int
+	Claims   []Claim
+	Output   string
+	Exit     int
+}
+
+// Met says whether a round's result meets the stage's until. An empty until
+// is done, which is what a stage without one waits for. An until word outside
+// the vocabulary is never met, so the runner stops at its rounds and asks
+// rather than passing a stage on a word it cannot check.
+func Met(s Stage, r StageResult) bool {
+	if !r.Done {
+		return false
+	}
+	switch strings.TrimSpace(s.Until) {
+	case "", UntilDone:
+		return true
+	case UntilClean:
+		return r.Findings == 0
+	case UntilGreen:
+		return r.Exit == 0
+	case UntilProven:
+		if len(r.Claims) == 0 {
+			return false
+		}
+		for _, c := range r.Claims {
+			if !c.OK || strings.TrimSpace(c.Evidence) == "" {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
