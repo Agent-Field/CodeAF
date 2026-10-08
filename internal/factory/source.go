@@ -68,4 +68,9 @@ type SourceInfo struct {
 	Writes bool
 	Repos  []string
 	Polled time.Time
+	// Trouble is what went wrong with the source's last read, in the few
+	// words the facts line says after its name (`not reachable`), or "" when
+	// the last read was good. Polled stays the last GOOD read, so a source in
+	// trouble still says how stale the floor is.
+	Trouble string
 }

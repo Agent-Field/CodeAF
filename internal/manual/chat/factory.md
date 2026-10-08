@@ -362,31 +362,61 @@ the chat's reason. It answers to `1 add it`, `2 not now`, or words typed into it
 **Nothing launches from the chat.** An added item waits on the floor like any other `new` row
 until you launch it from the factory page.
 
+## connecting github — watch a repository, issues and pull requests on the floor
+
+The floor reads open issues and open pull requests from the GitHub repositories you watch.
+
+- **Which repositories:** the ones listed in `repos.json` in the factory folder
+  (`~/.codeaf/v3/factory/repos.json`), each written `owner/name`, as
+  `{"repos": ["acme/api"]}` or a plain `["acme/api"]`. There is no picker key yet; edit the
+  file, then start codeaf again.
+- **The token, in this order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then what `gh auth token`
+  answers. The token is never shown or logged.
+- **No watched repository or no token: nothing is connected.** Nothing polls, and the floor's
+  facts line says only `terminal · chat`.
+- **How often:** every 60 seconds while a codeaf window is open on this machine; after a
+  failure the wait doubles, up to 10 minutes. Only one window polls at a time. An unchanged
+  list costs no rate limit.
+- **What is read:** number, title, the first 2000 characters of the text, author, labels,
+  times; for a pull request also its checks (`ci ✓`, `ci running`, `ci ✕`) and `+N −M`
+  lines. Size is S, M or L (up to 50, 400 changed lines, or more). The author is `owner` for
+  your own login with write access, `collaborator` for others with write access, otherwise
+  `stranger`.
+- **A change on GitHub updates the row's words** (title, text, labels, checks, lines) and never
+  your gate, cap, stages or triage. A dismissed item that changes comes back as new.
+- **The facts line** says `github` and `polled 4m ago`; a failed read says
+  `github · not reachable` (or `token refused`, `repository not found`).
+- **Nothing is ever written to GitHub by itself.** The poll only reads: no comment, label,
+  close or pull request is made by it.
+
 ## what the factory does not do yet
 
 Be plain about this when asked:
 
-- **Items arrive two ways only:** from a chat with `factory_add` (after you answer its card) and
-  from `n` on the floor. They are kept on this machine and are still there next launch.
+- **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
+  `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
+  are kept on this machine and are still there next launch.
+- **Choosing repositories has no key yet:** the picker is a later key; today you list them in
+  `repos.json` by hand.
 - **Chips and stages can be set; nothing launches.** On your own floor `t c e`, `w`, `1-9`, `s`
   and `d` change an item, and no key launches, steers, answers, signs off or sends back. Those
   verbs work only on the made-up moving floor, which needs a development build made with
   `-tags factorymock` and started with `CODEAF_FACTORY_MOCK=1`.
-- **No repository is connected.** No GitHub, GitLab or Linear; a repo on the floor is only a
-  name, so no item arrives from one.
+- **Only GitHub is connected.** No GitLab or Linear.
 - **The recipe file is not read on your own floor yet.** codeaf does not yet know where a
   floor repository is checked out, so every repository runs the default recipe, `b` is not
   offered, and no habit is offered for banking. `.codeaf/factory.md` is read and written once
   it does.
-- **Nothing posts anywhere.** No comment, label, pull request or issue on any service.
+- **Nothing posts anywhere.** Writing to GitHub (a comment, labels, a close, a pull request)
+  happens only from a post stage, and post stages do not run yet.
 - **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage
   says `the stage's conversation opens here once streams are conversations`.
 - **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
 - **The foreman does not open yet.** There is no conversation with the factory itself.
 - **`CODEAF_FACTORY_FIXTURE=1`** shows a still, made-up floor (three repositories, ten items)
   in place of yours, with no verbs.
-- **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, and
-  the chat has no `factory_add`.
+- **Over `--host` or `--at` to another machine** the page draws `nothing connected yet`, the
+  chat has no `factory_add`, and nothing polls GitHub.
 - **`Factory ? N` on the tab bar appears only after the first open** of `/factory`.
 
 ## where factory items are saved
@@ -394,7 +424,9 @@ Be plain about this when asked:
 Factory items are saved on this machine, in the v3 factory folder under the codeaf home:
 `~/.codeaf/v3/factory`, or `v3/factory` under `CODEAF_HOME` when that is set. Each item is one
 small file named by its number, such as `1.json`, and a change rewrites that file. They are not
-in any repository and not on any server; nothing is posted, synced or uploaded. A chat's
+in any repository and not on any server; nothing is posted, synced or uploaded. The same folder
+holds `repos.json` (the GitHub repositories you watch) and `sources.json` (when GitHub was last
+read). A chat's
 `factory_add` and the page's `n` write to the same folder, so an item added from a chat is a row
 on the floor straight away. Deleting the folder empties the floor.
 
