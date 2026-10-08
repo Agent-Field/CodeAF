@@ -114,14 +114,14 @@ func TestFactoryRailFilterWordsNarrow(t *testing.T) {
 		want string
 	}{
 		{"risky", "#1538"},
-		{"cheap", "#1660,#1662,ci,#1540,#1663"},
+		{"cheap", "#1660,ci,#1662,#1540,#1663"},
 		{"strangers", "#31"},
 		{"spend", "#1538,#702,#1663"},
 		{"ui", "#1551,#1662,#1540"},
 		{"prs", "#1662"},
-		{"bugs", "#1551,#1660,#31,#1540,#1661,#1663"},
+		{"bugs", "#1551,#1660,#1540,#31,#1661,#1663"},
 		{"thin", "#31"},
-		{"mine", "#1538,#702,#1540,#1661"},
+		{"mine", "#1538,#1540,#702,#1661"},
 		{"whisper", "ci,#31"},
 		{"mine bugs", "#1540,#1661"},
 		{"nothing-matches-this", ""},
@@ -251,7 +251,7 @@ func TestFactoryRailKeys(t *testing.T) {
 		t.Fatal("a second space did not unmark")
 	}
 
-	if got := (placeFactory{}).hint(a); got != "↑↓ walk · enter open · space mark · [ ] repo · z density · O order · by obligation · esc back" {
+	if got := (placeFactory{}).hint(a); got != "↑↓ walk · enter open · space mark · [ ] repo · z density · O order · priority · E recipe · esc back" {
 		t.Fatalf("the hint is %q", got)
 	}
 	drive(t, a, key("esc"))

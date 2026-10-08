@@ -280,7 +280,7 @@ func TestFactoryRecipePageTabsProblemAndSave(t *testing.T) {
 	repo := a.fp.recipe.repo
 	body := factoryExactBody(t, a, 150, 14)
 	joined := strings.Join(body, "\n")
-	for _, want := range []string{"issue · pr · ci", "recipe · " + factoryRepoShort(repo), "line 7: until is one of done, clean, green, proven", "plan", "write", "runs first"} {
+	for _, want := range []string{"issue · pr · ci", "Factory › " + factoryRepoShort(repo) + " › recipe", "line 7: until is one of done, clean, green, proven", "plan", "write", "runs first"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the recipe page is missing %q:\n%s", want, joined)
 		}
@@ -381,7 +381,7 @@ func TestFactoryRailSetsTheClause(t *testing.T) {
 	if a.pageMsg != "the day rail is $45" {
 		t.Fatalf("note = %q", a.pageMsg)
 	}
-	if text := factoryFrameText(a); !strings.Contains(text, "/ $45 today") {
+	if text := factoryFrameText(a); !strings.Contains(text, "/ $45") {
 		t.Fatalf("the handover does not read the rail:\n%s", text)
 	}
 	// The row opens on the rail that is set.

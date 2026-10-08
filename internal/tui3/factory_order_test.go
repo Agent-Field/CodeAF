@@ -31,6 +31,9 @@ func factoryOrderLab(t *testing.T) *app {
 		}
 	}
 	a.factoryFold(snap)
+	// The lab's priorities are a fresh floor's, so the rows are placed by
+	// them as a first read would place them (factory_order.go).
+	a.factoryPlace(true)
 	return a
 }
 
@@ -45,7 +48,7 @@ func factoryNewRefs(a *app) []string {
 	return out
 }
 
-// `O` CYCLES by obligation → first → age → cost → by obligation, sorting only
+// `O` CYCLES priority → first → age → cost → priority, sorting only
 // within each section, and the hint names the order the floor is in.
 func TestFactoryOrderCyclesAndSortsWithinSections(t *testing.T) {
 	a := factoryOrderLab(t)
@@ -54,11 +57,11 @@ func TestFactoryOrderCyclesAndSortsWithinSections(t *testing.T) {
 		word string
 		new  string
 	}{
-		{"by obligation", "#1662,ci,#31,#702,#1540"},
+		{"priority", "ci,#1540,#1662,#702,#31"},
 		{"first", "ci,#1540,#702,#1662,#31"},
 		{"age", "ci,#31,#702,#1662,#1540"},
 		{"cost", "ci,#1662,#1540,#31,#702"},
-		{"by obligation", "#1662,ci,#31,#702,#1540"},
+		{"priority", "ci,#1540,#1662,#702,#31"},
 	}
 	for n, s := range steps {
 		if n > 0 {
@@ -98,7 +101,7 @@ func TestFactoryOrderFirstRowDrawsTheReasonAndDropsItFirst(t *testing.T) {
 	if got := ansi.StringWidth(wide); got != 150 {
 		t.Fatalf("the row is %d cells, want 150", got)
 	}
-	want := "✕    ci main is red · sync · TestCompactKeepsFilters                   whisper      ci red · ~$1.50 · ci                             main is red    6h"
+	want := "✕ ▇     ci main is red · sync · TestCompactKeepsFilters                 whisper      ci red · ~$1.50 · ci                            main is red    6h"
 	if wide != want {
 		t.Fatalf("the first-order row is\n%q\nwant\n%q\n(before O it was %q)", wide, want, plainBefore)
 	}
@@ -114,7 +117,7 @@ func TestFactoryOrderFirstRowDrawsTheReasonAndDropsItFirst(t *testing.T) {
 	// No reason, no space taken: #31 has none.
 	for _, it := range a.fp.snap.Items {
 		if it.Ref() == "#31" {
-			a.fp.order = factoryOrderObligation
+			a.fp.order = factoryOrderPriority
 			before := ansi.Strip(a.factoryRailItem(it, 150, false))
 			a.fp.order = factoryOrderFirst
 			if after := ansi.Strip(a.factoryRailItem(it, 150, false)); after != before {
@@ -133,7 +136,7 @@ func TestFactoryOrderKeyIsTheFloorsOnly(t *testing.T) {
 		t.Skip("enter did not open the item page on this fixture")
 	}
 	drive(t, a, key("O"))
-	if a.fp.order != factoryOrderObligation {
+	if a.fp.order != factoryOrderPriority {
 		t.Fatalf("O on the item page changed the order to %q", a.fp.order.word())
 	}
 }

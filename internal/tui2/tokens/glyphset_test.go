@@ -113,7 +113,7 @@ func TestVocabularyIsCompleteAndFallsBackToFiveSeventeen(t *testing.T) {
 			t.Errorf("%s has an ASCII plain side (%q) and must not auto-upgrade: a painted cell "+
 				"that is exactly that character is plausible content (5.20 rule 3)", b.Name, b.Plain)
 		}
-		if !typeable && !b.AutoUpgrade {
+		if _, explicit := explicitOnlySlots[b.ID]; !typeable && !b.AutoUpgrade && !explicit {
 			t.Errorf("%s is a non-ASCII semantic slot and should upgrade automatically", b.Name)
 		}
 		if !b.Geometry && b.ASCII == "" {
@@ -142,6 +142,15 @@ func TestVocabularyIsCompleteAndFallsBackToFiveSeventeen(t *testing.T) {
 var typedPlainSides = map[string]string{
 	GlyphRemove:            "the multiplication sign, which is ordinary mathematical content",
 	GlyphActionCommunicate: "the guillemet, which is a quotation mark in half of Europe",
+}
+
+// explicitOnlySlots are non-ASCII slots that are NOT rewritten automatically,
+// with the reason each is reached by name alone.
+var explicitOnlySlots = map[GlyphID]string{
+	GPriorityFirst:  "a block element the gauge and the sparkline draw a cell at a time",
+	GPrioritySecond: "a block element the gauge and the sparkline draw a cell at a time",
+	GPriorityThird:  "a block element the gauge and the sparkline draw a cell at a time",
+	GPriorityFourth: "the gauge's own lowest cell; a whole-cell rewrite would turn a gauge into a priority",
 }
 
 // TestTheASCIITierNamesACharacterForEveryIcon is the third tier's own gate.

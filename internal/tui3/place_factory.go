@@ -85,11 +85,15 @@ func (placeFactory) rowID(a *app) string {
 func (placeFactory) note(a *app, width int) []string {
 	switch {
 	case a.fp.err != nil:
-		return []string{" " + a.pal.dim(noteFit("the factory could not be read · "+a.fp.err.Error(), width-2))}
+		return []string{" " + a.pal.dim(noteFit("the factory could not be read · "+a.fp.err.Error(), width-factoryHintInset))}
+	case a.factoryDoingNote() != "":
+		// A DOOR A KEY ASKED IS STILL OUT (factory_busy.go): the spinner and
+		// what it is doing, until it answers.
+		return []string{" " + fit(a.factoryDoingNote(), width-factoryHintInset)}
 	case a.fp.open && a.fp.said:
-		return []string{" " + a.pal.dim(noteFit(factoryStageNoteWords, width-2))}
+		return []string{" " + a.pal.dim(noteFit(factoryStageNoteWords, width-factoryHintInset))}
 	case a.fp.recipe != nil && a.factoryRecipeNoDir() != "":
-		return []string{" " + a.pal.dim(noteFit(a.factoryRecipeNoDir(), width-2))}
+		return []string{" " + a.pal.dim(noteFit(a.factoryRecipeNoDir(), width-factoryHintInset))}
 	}
 	return nil
 }
@@ -123,6 +127,9 @@ func (placeFactory) hint(a *app) string {
 	if ask := a.fp.act.ask; ask != nil {
 		return factoryAskHint(ask)
 	}
+	if a.fp.act.refresh != nil {
+		return "y go · n not now"
+	}
 	if a.fp.ghOffer != "" {
 		return "y use gh · n a token instead · esc not now"
 	}
@@ -140,7 +147,7 @@ func (placeFactory) hint(a *app) string {
 	}
 	if !a.factoryFloorHas() {
 		if a.factoryConnected() && a.factory.Has("new") {
-			head = append(head, "n new")
+			head = append(head, "n new item")
 		}
 		if a.factoryConnected() {
 			head = append(head, a.factorySettingsHint()...)
@@ -176,6 +183,12 @@ func (placeFactory) hint(a *app) string {
 	if a.factory.Has("sleep") {
 		rail = append(rail, clause{"S sleep 8h", 4})
 	}
+	if a.factory.Has("refreshall") {
+		rail = append(rail, clause{"U read all again", 2})
+	}
+	if a.fp.columns {
+		rail = append(rail, clause{"h handover", 2})
+	}
 	for _, t := range a.factorySettingsHint() {
 		rail = append(rail, clause{t, 3})
 	}
@@ -190,7 +203,7 @@ func (placeFactory) hint(a *app) string {
 		}
 		return strings.Join(append(parts, out), " · ")
 	}
-	for len(rail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-2 {
+	for len(rail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-factoryHintInset {
 		lo := 0
 		for i, c := range rail {
 			if c.rank < rail[lo].rank {
@@ -226,7 +239,7 @@ func (a *app) factoryItemHint(it factory.Item, head []string) string {
 	line := func() string {
 		return strings.Join(append(append(append([]string{}, parts...), tail...), "esc floor"), " · ")
 	}
-	for len(tail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-2 {
+	for len(tail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-factoryHintInset {
 		tail = tail[:len(tail)-1]
 	}
 	return line()

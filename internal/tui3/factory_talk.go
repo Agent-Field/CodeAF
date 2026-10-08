@@ -36,6 +36,9 @@ import (
 // factoryTalk asks the item's conversation off the loop and opens it.
 func (a *app) factoryTalk(it factory.Item) tea.Cmd {
 	seam, id := a.factory, it.ID
+	// THE NOTE LINE SPINS WHILE THE CONVERSATION IS MADE OR FOUND, which can
+	// take a beat on the first ask (factory_busy.go).
+	a.fp.act.doing = "opening " + it.Ref() + "'s conversation…"
 	return a.offLoop(func() func(bool) tea.Cmd {
 		chat, err := seam.Talk(context.Background(), id)
 		where := ""
@@ -53,6 +56,7 @@ func (a *app) factoryTalk(it factory.Item) tea.Cmd {
 			snap, lerr = seam.Load()
 		}
 		return func(bool) tea.Cmd {
+			a.fp.act.doing = ""
 			switch {
 			case lerr != nil:
 				a.fp.err = lerr

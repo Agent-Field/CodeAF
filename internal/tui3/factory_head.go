@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
@@ -37,15 +38,6 @@ import (
 // says `nothing waits on you` rather than nothing at all, because "is anything
 // mine?" is the one question a person opens this page to ask.
 
-// factoryHeadSparkFloor is the narrowest pane that still draws the day's
-// sparkline beside what waits on the person. Under it the sparkline goes and
-// the words keep the row.
-const factoryHeadSparkFloor = 60
-
-// factoryHeadHours is how many hourly cells the sparkline draws: the whole of
-// the day the shift's hours cover, ending at the current hour.
-const factoryHeadHours = 24
-
 // factoryMockBeat is how much real time the mock floor's clock takes to move
 // by [factory.Snapshot.Speed], so a speed of thirty seconds a beat is a floor
 // running at 150×. A real engine has no speed and the strip draws none.
@@ -68,21 +60,31 @@ var (
 	factorySparkASCII = [...]string{".", ":", "-", "=", "+", "*", "#", "%"}
 )
 
-// factoryHead is the handover strip: four rows and a blank, each exactly width
-// cells. It answers nil for a width with no room in it.
+// factoryHead is the handover: ONE LINE AND A BLANK by default, and the four
+// rows and a blank of the full strip under `h` ([app.factoryHeadLine]), each
+// exactly width cells. It answers nil for a width with no room in it.
+//
+// THE ONE LINE IS THE DEFAULT (owner ruling, 2026-10-08): the four rows said
+// what a person reads once a morning, and the rows under them are what they
+// read all day, so the rows get the height and `h` brings the strip back. The
+// choice is remembered with the split (factory_split.go).
 func (a *app) factoryHead(width int) []string {
 	if width <= 0 {
 		return nil
 	}
-	// THE STRIP STANDS ONE CELL IN FROM THE FRAME'S EDGE, so its marks sit
-	// beside the rows' leads rather than on the frame's first cell.
-	snap, inner := a.fp.snap, width-1
-	rows := []string{
-		a.factoryHeadTitle(snap, inner),
-		a.factoryHeadShift(snap, inner),
-		a.factoryHeadWaiting(snap, inner),
-		a.factoryHeadFloor(snap, inner),
-		"",
+	// THE STRIP STANDS [factoryMargin] IN FROM THE FRAME'S EDGE, the margin
+	// every region of the floor keeps, so its mark sits in the column of the
+	// rows' state marks.
+	snap, inner := a.fp.snap, width-factoryMargin
+	rows := []string{a.factoryHeadLine(snap, inner), ""}
+	if a.fp.headFull {
+		rows = []string{
+			a.factoryHeadTitle(snap, inner),
+			a.factoryHeadShift(snap, inner),
+			a.factoryHeadWaiting(snap, inner),
+			a.factoryHeadFloor(snap, inner),
+			"",
+		}
 	}
 	for i, row := range rows {
 		if inner > 0 {
@@ -90,9 +92,95 @@ func (a *app) factoryHead(width int) []string {
 		} else {
 			row = ""
 		}
-		rows[i] = factoryPad(" "+row, width)
+		rows[i] = factoryPad(factoryMarginPad()+row, width)
 	}
 	return rows
+}
+
+// factoryHeadLine is the handover as one line: the manager's mark, what
+// shipped and what arrived, what waits on the person in the question's hue,
+// the day's money against its rail, and how fresh the floor is —
+//
+//	◆ 2 shipped · 3 arrived · ? 5 waiting · $8.44 / $60 · polled 14s ago
+//
+// A CLAUSE THAT COUNTS NOTHING IS NOT ON THE LINE (the emptiness law), and a
+// line too long for the width drops whole clauses from its right. The last
+// clause spins while the floor is being read ([app.factoryHeadFresh]).
+func (a *app) factoryHeadLine(snap factory.Snapshot, width int) string {
+	pal := a.pal
+	var segs, plains []string
+	add := func(plain, painted string) {
+		segs, plains = append(segs, painted), append(plains, plain)
+	}
+	if n := snap.Shift.Shipped; n > 0 {
+		w := itoa(n) + " shipped"
+		add(w, pal.ink(w))
+	}
+	if n := snap.Shift.Arrived; n > 0 {
+		w := itoa(n) + " arrived"
+		add(w, pal.ink(w))
+	}
+	if n := snap.Count(factory.StateNeedsYou); n > 0 {
+		w := "? " + itoa(n) + " waiting"
+		add(w, pal.ask(w))
+	}
+	switch {
+	case snap.Daily > 0 && snap.Rail > 0:
+		w := " / " + factoryRailWord(snap.Rail)
+		add(dollars(snap.Daily)+w, placeMoneyInk(pal)(dollars(snap.Daily))+pal.muted(w))
+	case snap.Daily > 0:
+		add(dollars(snap.Daily), placeMoneyInk(pal)(dollars(snap.Daily)))
+	case snap.Rail > 0:
+		w := "/ " + factoryRailWord(snap.Rail)
+		add(w, pal.muted(w))
+	}
+	if fresh := a.factoryHeadFresh(snap); fresh != "" {
+		add(fresh, pal.dim(fresh))
+	}
+	if x := factorySpeedWord(snap.Speed, a.linearMark("×", "x")); x != "" {
+		add(x, pal.dim(x))
+	}
+	mark := a.linearMark("◆", "*")
+	if len(segs) == 0 {
+		return pal.muted(mark) + " " + pal.dim(fit(factoryHeadQuietWords, max(width-factoryLeadW, 0)))
+	}
+	return pal.muted(mark) + " " + factoryJoinWhole(segs, plains, pal.dim(rowSep), max(width-factoryLeadW, 0))
+}
+
+// factoryHeadFresh is how fresh the floor is, as one clause: a whole-floor
+// re-read in flight, `⠋ refreshing 8 items · 3 done`; else a source mid-poll,
+// `github · ⠋ polling`; else when a source last answered, `polled 14s ago`;
+// and "" when none of the three is known.
+func (a *app) factoryHeadFresh(snap factory.Snapshot) string {
+	if all := strings.TrimSpace(snap.BusyAll); all != "" {
+		return a.factorySpin() + " " + all
+	}
+	var polled time.Time
+	for _, src := range snap.Sources {
+		if src.Polling && src.Name != "" {
+			return src.Name + rowSep + a.factorySpin() + " polling"
+		}
+		if src.Polled.After(polled) {
+			polled = src.Polled
+		}
+	}
+	switch ago := reltime.Short(polled, snap.Now); ago {
+	case "":
+		return ""
+	case "now":
+		return "polled just now"
+	default:
+		return "polled " + ago + " ago"
+	}
+}
+
+// factoryToggleHead is `h`: the handover's one line or its four rows, the
+// choice written beside the split.
+func (a *app) factoryToggleHead() tea.Cmd {
+	a.fp.headFull = !a.fp.headFull
+	a.fp.splitRead = true
+	a.touch()
+	return a.factorySaveSplit()
 }
 
 // factoryHeadTitle is the strip's heading: the manager's mark, the word, when
@@ -140,7 +228,7 @@ func (a *app) factoryHeadShift(snap factory.Snapshot, width int) string {
 	var fields []rowField
 	// THE TICK LEADS ONLY WHAT SHIPPED. It is the settled mark, and a row
 	// that only says what arrived has nothing settled on it to mark.
-	lead, mark := "  ", ""
+	lead, mark := factorySpaces(factoryLeadW), ""
 	if sh.Shipped > 0 {
 		mark = a.icon(tokens.GSettled)
 		lead = pal.add(mark) + " "
@@ -158,9 +246,9 @@ func (a *app) factoryHeadShift(snap factory.Snapshot, width int) string {
 		fields = append(fields, rowSay(itoa(sh.Handled)+" "+factoryPlural(sh.Handled, "question", "questions")+" handled"))
 	}
 	if len(fields) == 0 {
-		return "  " + pal.dim(fit(factoryHeadQuietWords, width-2))
+		return factorySpaces(factoryLeadW) + pal.dim(fit(factoryHeadQuietWords, width-factoryLeadW))
 	}
-	leadW := 2
+	leadW := factoryLeadW
 	if mark != "" {
 		leadW = ansi.StringWidth(mark) + 1
 	}
@@ -173,8 +261,8 @@ func (a *app) factoryHeadShift(snap factory.Snapshot, width int) string {
 // current hour. A day with no hours in it draws no sparkline.
 func (a *app) factoryHeadWaiting(snap factory.Snapshot, width int) string {
 	pal := a.pal
-	left := "  " + pal.dim(factoryHeadNoWaitWords)
-	leftW := 2 + ansi.StringWidth(factoryHeadNoWaitWords)
+	left := factorySpaces(factoryLeadW) + pal.dim(factoryHeadNoWaitWords)
+	leftW := factoryLeadW + ansi.StringWidth(factoryHeadNoWaitWords)
 	if n := snap.Count(factory.StateNeedsYou); n > 0 {
 		words := "? " + itoa(n) + " waiting on you"
 		left, leftW = pal.ask(words), ansi.StringWidth(words)
@@ -191,7 +279,7 @@ func (a *app) factoryHeadWaiting(snap factory.Snapshot, width int) string {
 	if leftW+rowGutter+rightW > width {
 		return fit(left, width)
 	}
-	return left + strings.Repeat(" ", width-leftW-rightW) + right
+	return left + factorySpaces(width-leftW-rightW) + right
 }
 
 // factoryHeadSpark is the shift's hours as one cell each, oldest first and the
@@ -231,23 +319,23 @@ func (a *app) factoryHeadSpark(snap factory.Snapshot) string {
 func (a *app) factoryHeadFloor(snap factory.Snapshot, width int) string {
 	pal := a.pal
 	right, rightW := a.factoryHeadMoney(snap)
-	if rightW > 0 && 2+rightW > width {
+	if rightW > 0 && factoryLeadW+rightW > width {
 		right, rightW = "", 0
 	}
-	room := width - 2
+	room := width - factoryLeadW
 	if rightW > 0 {
 		room -= rightW + rowGutter
 	}
-	facts := rowTail(factoryHeadFacts(snap), room)
+	facts := rowTail(factoryHeadFactsSpun(snap, a.factorySpin()), room)
 	if facts == "" && right == "" {
 		return ""
 	}
 	factsW := ansi.StringWidth(facts)
-	line := "  " + pal.dim(facts)
+	line := factorySpaces(factoryLeadW) + pal.dim(facts)
 	if right == "" {
 		return line
 	}
-	return line + strings.Repeat(" ", width-2-factsW-rightW) + right
+	return line + factorySpaces(width-factoryLeadW-factsW-rightW) + right
 }
 
 // factoryHeadFacts is the floor's facts, most telling first. A fact with
@@ -295,6 +383,38 @@ func factoryHeadFacts(snap factory.Snapshot) []rowField {
 		}
 	}
 	return fields
+}
+
+// factoryHeadFactsSpun is [factoryHeadFacts] with work in flight said in
+// place of the freshness: a whole-floor re-read as `spin refreshing 8 items`,
+// a source mid-poll as `github · spin polling` with no polled clause after it.
+func factoryHeadFactsSpun(snap factory.Snapshot, spin string) []rowField {
+	fields := factoryHeadFacts(snap)
+	busy := strings.TrimSpace(snap.BusyAll)
+	var polling string
+	for _, src := range snap.Sources {
+		if src.Polling && src.Name != "" && src.Name != string(factory.OriginChat) {
+			polling = src.Name
+			break
+		}
+	}
+	if busy == "" && polling == "" {
+		return fields
+	}
+	out := fields[:0:0]
+	for _, f := range fields {
+		switch {
+		case strings.HasPrefix(f.full, "polled "):
+			continue
+		case polling != "" && (f.full == polling || strings.HasPrefix(f.full, polling+rowSep)):
+			f = rowSay(f.full + rowSep + spin + " polling")
+		}
+		out = append(out, f)
+	}
+	if busy != "" {
+		out = append(out, rowSay(spin+" "+busy))
+	}
+	return out
 }
 
 // factoryHeadMoney is the day's money and what it measures: `$11.31 / $60

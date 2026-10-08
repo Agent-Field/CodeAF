@@ -59,33 +59,19 @@ import (
 // does is the verbs' (factory_keys.go), which reads the same item and asks the
 // seam's doors.
 
-// factoryPaneLead is the peek's left margin: the spacing ladder's 2-cell lead.
-const factoryPaneLead = 2
-
-// factoryPaneGap is the least air between a row's left words and its
-// right-aligned meta. Under it the meta is dropped rather than jammed.
-const factoryPaneGap = 2
-
-// factoryPeekWrap is the measure the peek's prose is wrapped at, however wide
-// the column: a line of sixty cells is one a person reads without losing the
-// start of the next, and a wider peek spends the rest as air.
-const factoryPeekWrap = 60
-
-// factoryPageWrap is the item page's measure for the whole issue, which is
-// read there rather than glanced at.
-const factoryPageWrap = 72
-
 // factoryPeekBodyRows is the most rows of the body the peek shows at once.
 const factoryPeekBodyRows = 6
 
-// factoryFactGap is the air between two facts, and between two chips, on one
-// row: wide enough that a row of three short phrases reads as three things
-// without a separator mark between them (docs/DESIGN-LANGUAGE.md's spacing
-// ladder names it).
-const factoryFactGap = 6
+// factoryPeekCommentRows is the most rows one comment's words take in the
+// peek; the item page shows each whole.
+const factoryPeekCommentRows = 3
 
-// factoryStripGap is the air between two cells of the stage strip.
-const factoryStripGap = 4
+// The forge blocks' bounds: the last three comments, six files, five events.
+const (
+	factoryCommentsShown = 3
+	factoryFilesShown    = 6
+	factoryEventsShown   = 5
+)
 
 // factoryPane is the item under the cursor as EXACTLY room rows of EXACTLY
 // width cells. A floor with no items, or no room, is room blank rows. The
@@ -96,10 +82,10 @@ func (a *app) factoryPane(width, room int) []string {
 		return nil
 	}
 	lines := make([]string, room)
-	if it, ok := a.factoryCursorItem(); ok && width > factoryPaneLead {
-		copy(lines, a.factoryPeek(it, width-factoryPaneLead, room))
+	if it, ok := a.factoryCursorItem(); ok && width > factoryMargin {
+		copy(lines, a.factoryPeek(it, width-factoryMargin, room))
 	}
-	lead := strings.Repeat(" ", factoryPaneLead)
+	lead := factorySpaces(factoryMargin)
 	out := make([]string, room)
 	for i, line := range lines {
 		row := ""
@@ -126,7 +112,7 @@ func (a *app) factoryPeek(it factory.Item, measure, room int) []string {
 	action := a.pal.dim(fit(a.factoryActionWords(it), measure))
 	avail := room - 1
 	if room >= 3 {
-		avail = room - 2
+		avail = room - factoryActionRows
 	}
 	before := [][]string{
 		title,
@@ -137,13 +123,17 @@ func (a *app) factoryPeek(it factory.Item, measure, room int) []string {
 		a.factoryPeekStages(it, measure),
 		{a.factoryPeekState(it, measure)},
 	}
-	after := [][]string{{a.factoryTalkRow(it, measure)}}
-	used := len(factoryStack(append(append([][]string{}, before...), after...)))
+	talk := [][]string{{a.factoryTalkRow(it, measure)}}
+	used := len(factoryStack(append(append([][]string{}, before...), talk...)))
 	blocks := before
 	if bodyRoom := min(avail-used-1, factoryPeekBodyRows); bodyRoom > 0 {
 		blocks = append(blocks, a.factoryPeekBody(it, measure, bodyRoom))
 	}
-	lines := factoryStack(append(blocks, after...))
+	// THE FORGE'S BLOCKS FOLLOW THE BODY AND THE TALK ROW (comments, checks,
+	// files, activity, links), and they are what a short peek cuts first:
+	// the body and the conversation were handed their rows before them.
+	blocks = append(append(blocks, talk...), a.factoryForgeBlocks(it, factoryPeekWidth(measure), factoryPeekCommentRows)...)
+	lines := factoryStack(blocks)
 	if len(lines) > avail {
 		lines = lines[:avail]
 	}
@@ -172,19 +162,55 @@ func factoryStack(blocks [][]string) []string {
 }
 
 // factoryPeekWidth is the width the peek's prose wraps at: the column, never
-// wider than [factoryPeekWrap].
-func factoryPeekWidth(measure int) int { return max(min(measure, factoryPeekWrap), 1) }
+// wider than [factoryProseW].
+func factoryPeekWidth(measure int) int { return max(min(measure, factoryProseW), 1) }
 
 // factoryPeekTitle is the title block: the ref and the title in ink, and under
 // it the meta, dim. A title too wide for the column is cut on its own row;
 // the meta drops its facts from the right before it is cut.
+//
+// AN ITEM WITH A PAGE ON ITS FORGE says so twice: its ref is a hyperlink to
+// that page ([app.factoryRefLink]), and its meta ends `github ↗`, which is a
+// link too and is the one fact the meta never drops.
 func (a *app) factoryPeekTitle(it factory.Item, measure int) []string {
 	pal := a.pal
-	out := []string{pal.ink(fit(it.Ref()+" "+it.Title, measure))}
-	if meta := factoryMetaLine(a.factoryMeta(it), measure); meta != "" {
+	ref := it.Ref()
+	title := fit(ref+" "+it.Title, measure)
+	if strings.HasPrefix(ansi.Strip(title), ref) {
+		title = a.factoryRefLink(it, pal.ink(ref)) + pal.ink(strings.TrimPrefix(title, ref))
+	} else {
+		title = pal.ink(title)
+	}
+	out := []string{title}
+	tail, tailW := a.factoryGitHubMark(it)
+	room := measure
+	if tailW > 0 {
+		room -= tailW + ansi.StringWidth(rowSep)
+	}
+	meta := factoryMetaLine(a.factoryMeta(it), max(room, 0))
+	switch {
+	case meta != "" && tailW > 0:
+		out = append(out, pal.dim(meta+rowSep)+tail)
+	case meta != "":
 		out = append(out, pal.dim(meta))
+	case tailW > 0 && tailW <= measure:
+		out = append(out, tail)
 	}
 	return out
+}
+
+// factoryGitHubMark is `github ↗`, dim, as a hyperlink to the item's page on
+// its forge, and its width; nothing for an item with no page there.
+func (a *app) factoryGitHubMark(it factory.Item) (string, int) {
+	if it.URL == "" {
+		return "", 0
+	}
+	words := "github " + a.icon(tokens.GActionBrowse)
+	painted := a.pal.dim(words)
+	if a.pathLinks {
+		painted = linkify(painted, it.URL)
+	}
+	return painted, ansi.StringWidth(words)
 }
 
 // factoryMeta is what an item is beside its title: the repo, the kind, its
@@ -226,7 +252,15 @@ func (a *app) factoryPeekQuestion(it factory.Item, measure int) []string {
 
 // factoryPeekRead is the factory's one-sentence read of the item, in ink with
 // no mark before it, wrapped at the peek's measure.
+//
+// A READ STILL BEING MADE says so in its place, `⠋ reading…`, rather than
+// leaving a hole the person would read as a floor that has nothing to say.
 func (a *app) factoryPeekRead(it factory.Item, measure int) []string {
+	if strings.TrimSpace(it.Triage.Read) == "" {
+		if word, busy := a.factoryBusy(it.ID); busy {
+			return []string{a.pal.accent(a.factorySpin()) + " " + a.pal.dim(fit(word+"…", max(measure-factoryLeadW, 0)))}
+		}
+	}
 	var out []string
 	for _, line := range wrap(strings.TrimSpace(it.Triage.Read), factoryPeekWidth(measure)) {
 		if strings.TrimSpace(line) != "" {
@@ -244,7 +278,7 @@ func (a *app) factoryPeekFacts(it factory.Item, measure int) []string {
 	if len(facts) == 0 {
 		return nil
 	}
-	return []string{a.pal.dim(factoryJoinWhole(facts, facts, strings.Repeat(" ", factoryFactGap), measure))}
+	return []string{a.pal.dim(factoryJoinWhole(facts, facts, factorySpaces(factoryFactGap), measure))}
 }
 
 // factoryFacts is what the triage read noticed about an item, in the words a
@@ -312,53 +346,69 @@ func factoryDupWord(it factory.Item) string {
 // factoryChip is one chip: its label, its value and the key that turns it.
 type factoryChip struct{ label, value, key string }
 
-// factoryChipList is the item's chips: the gate, the cap and the effort. THE
-// EFFORT CHIP READS THE STAGE `e` TURNS ([factoryEffortStage]), so the chip and
-// the key are about the same stage, and it says a dash when that stage carries
-// no word, which is the knee: the crew picks the effort it would pick for this
-// class of work. A cap of nothing is no cap chip (the emptiness law).
+// factoryChipList is the item's chips: the gate, the cap and the effort,
+// ALWAYS THREE, in that order, so each stands in its own slot on every item
+// ([app.factoryChipRow]). THE EFFORT CHIP READS THE STAGE `e` TURNS
+// ([factoryEffortStage]), so the chip and the key are about the same stage,
+// and it says a dash when that stage carries no word, which is the knee: the
+// crew picks the effort it would pick for this class of work. A gate or a cap
+// of nothing has an empty value, and its slot is drawn as air (the emptiness
+// law).
 func (a *app) factoryChipList(it factory.Item) []factoryChip {
-	var chips []factoryChip
-	if it.Gate != "" {
-		chips = append(chips, factoryChip{"gate", string(it.Gate), "t"})
-	}
-	if c := factoryMoney(it.Cap); c != "" {
-		chips = append(chips, factoryChip{"cap", c, "c"})
-	}
 	effort := "—"
 	stages := factoryStages(a.fp.snap, it)
 	if at := factoryEffortStage(a.fp.snap, it); at >= 0 && at < len(stages) && stages[at].Effort != "" {
 		effort = stages[at].Effort
 	}
-	return append(chips, factoryChip{"effort", effort, "e"})
-}
-
-// factoryChips is the item page's chips, muted labels and ink values with the
-// dim key that turns each when keys is set.
-func (a *app) factoryChips(it factory.Item, keys bool) string {
-	pal := a.pal
-	var parts []string
-	for _, c := range a.factoryChipList(it) {
-		s := pal.muted(c.label) + " " + pal.ink(c.value)
-		if keys {
-			s += " " + pal.dim("["+c.key+"]")
-		}
-		parts = append(parts, s)
+	return []factoryChip{
+		{"gate", string(it.Gate), "t"},
+		{"cap", factoryMoney(it.Cap), "c"},
+		{"effort", effort, "e"},
 	}
-	return strings.Join(parts, pal.dim(rowSep))
 }
 
-// factoryPeekChips is the peek's chips: `label  value`, the label dim and the
-// value ink, [factoryFactGap] cells apart, and no key hints — the peek is read,
-// and the keys are on its last row and the hint line.
-func (a *app) factoryPeekChips(it factory.Item, measure int) string {
+// factoryChipRow is the chips as one row of FIXED SLOTS: each a muted label,
+// [factoryLabelGap] of air, the value in ink padded to [factoryChipValueW],
+// and with keys the dim key that turns it; slots [factoryFactGap] apart. A
+// LABEL AND ITS VALUE START AT ONE CELL ON EVERY ITEM, whatever the chips
+// before them say, so a column of items read down the peek reads as one
+// table. A slot with no value is air of its own width. Slots are dropped from
+// the right, whole, when the row is too narrow.
+func (a *app) factoryChipRow(it factory.Item, keys bool, measure int) string {
 	pal := a.pal
 	var segs, plains []string
 	for _, c := range a.factoryChipList(it) {
-		segs = append(segs, pal.dim(c.label)+"  "+pal.ink(c.value))
-		plains = append(plains, c.label+"  "+c.value)
+		valueW := factoryChipValueW
+		plain := c.label + factorySpaces(factoryLabelGap) + c.value
+		seg := pal.muted(c.label) + factorySpaces(factoryLabelGap) + pal.ink(c.value)
+		if keys {
+			// The key follows the value it turns, and the cell is padded
+			// after it, so the values still start at one cell.
+			plain += " [" + c.key + "]"
+			seg += " " + pal.dim("["+c.key+"]")
+			valueW += len(" [") + len(c.key) + len("]")
+		}
+		if pad := ansi.StringWidth(c.label) + factoryLabelGap + valueW - ansi.StringWidth(plain); pad > 0 {
+			plain, seg = plain+factorySpaces(pad), seg+factorySpaces(pad)
+		}
+		if strings.TrimSpace(c.value) == "" {
+			seg = factorySpaces(ansi.StringWidth(plain))
+		}
+		segs, plains = append(segs, seg), append(plains, plain)
 	}
-	return factoryJoinWhole(segs, plains, strings.Repeat(" ", factoryFactGap), measure)
+	// The last slot's padding is trailing air nobody reads.
+	return strings.TrimRight(factoryJoinWhole(segs, plains, factorySpaces(factoryChipGap), measure), " ")
+}
+
+// factoryChips is the item page's chips, with the key that turns each.
+func (a *app) factoryChips(it factory.Item, keys bool) string {
+	return a.factoryChipRow(it, keys, factoryPageProseW+factoryRailW)
+}
+
+// factoryPeekChips is the peek's chips, without keys: the peek is read, and
+// the keys are on its last row and the hint line.
+func (a *app) factoryPeekChips(it factory.Item, measure int) string {
+	return a.factoryChipRow(it, false, measure)
 }
 
 // factoryPeekStages is the stages block: the strip, and under it what the
@@ -394,7 +444,7 @@ func (a *app) factoryAdaptedRow(it factory.Item, measure int) string {
 func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 	pal := a.pal
 	stages := factoryStages(a.fp.snap, it)
-	gap := strings.Repeat(" ", factoryStripGap)
+	gap := factorySpaces(factoryStripGap)
 	var segs, plains []string
 	if it.Stream != nil && len(it.Stream.Phases) > 0 {
 		for _, ph := range it.Stream.Phases {
@@ -413,8 +463,9 @@ func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 			default:
 				seg = pal.dim(mark + " " + words)
 			}
+			seg, plain := factoryStripCell(seg, mark+" "+words)
 			segs = append(segs, seg)
-			plains = append(plains, mark+" "+words)
+			plains = append(plains, plain)
 		}
 		// Phases before the moving one are dropped from the left until it
 		// fits, because a strip cut from the right lost the very phase a
@@ -436,7 +487,7 @@ func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 			}
 			from++
 		}
-		return factoryJoinWhole(segs[from:], plains[from:], gap, measure)
+		return strings.TrimRight(factoryJoinWhole(segs[from:], plains[from:], gap, measure), " ")
 	}
 	mark := a.factoryPendingMark()
 	for _, st := range stages {
@@ -447,10 +498,20 @@ func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 		if st.Max > 1 {
 			words += " ×" + strconv.Itoa(st.Max)
 		}
-		segs = append(segs, pal.dim(mark+" "+words))
-		plains = append(plains, mark+" "+words)
+		seg, plain := factoryStripCell(pal.dim(mark+" "+words), mark+" "+words)
+		segs = append(segs, seg)
+		plains = append(plains, plain)
 	}
-	return factoryJoinWhole(segs, plains, gap, measure)
+	return strings.TrimRight(factoryJoinWhole(segs, plains, gap, measure), " ")
+}
+
+// factoryStripCell pads one stage cell to its LENGTH CLASS, the next multiple
+// of [factoryStripClass], so a strip of short and long stage names stands in
+// regular cells rather than a ragged run.
+func factoryStripCell(seg, plain string) (string, string) {
+	w := ansi.StringWidth(plain)
+	pad := (w+factoryStripClass-1)/factoryStripClass*factoryStripClass - w
+	return seg + factorySpaces(pad), plain + factorySpaces(pad)
 }
 
 // factoryPeekState is the one line an item's state adds under its stages:
@@ -537,11 +598,11 @@ func (a *app) factoryPeekBody(it factory.Item, measure, room int) []string {
 		}
 		return out
 	}
-	return a.factoryScrolled(it, factoryBodyLines(it.Body, factoryPeekWidth(measure)), factoryPeekWidth(measure), room)
+	return a.factoryScrolled(it, a.factoryMarkdown(it.Body, factoryPeekWidth(measure)), factoryPeekWidth(measure), room)
 }
 
-// factoryScrolled is lines seen through a window of room rows from the
-// item's scroll, each painted ink, the last row marked when more is below.
+// factoryScrolled is lines, already painted, seen through a window of room
+// rows from the item's scroll, the last row marked when more is below.
 // The scroll is the item's: a cursor that moved to another item starts that
 // item at its top. The window it drew is kept, so `J`, `K` and the page keys
 // know how far there is to go ([app.factoryScroll]).
@@ -561,11 +622,18 @@ func (a *app) factoryScrolled(it factory.Item, lines []string, measure, room int
 	for i, line := range window {
 		if i == n-1 && a.fp.scroll+n < len(lines) {
 			more := a.pal.dim(a.icon(tokens.GExpanded) + " more")
-			cut := fit(line, max(measure-ansi.StringWidth(more)-factoryPaneGap-2, 1))
-			out = append(out, factorySpread(a.pal.ink(cut+" "+a.icon(tokens.GEllipsis)), more, measure))
+			cut := fit(line, max(measure-ansi.StringWidth(more)-factoryGutter-factoryLeadW, 1))
+			// A CUT THAT FALLS ON A BLANK ROW puts the ellipsis at the margin,
+			// not one cell into the air after it.
+			if strings.TrimSpace(ansi.Strip(cut)) == "" {
+				cut = ""
+			} else {
+				cut += " "
+			}
+			out = append(out, factorySpread(cut+a.pal.ink(a.icon(tokens.GEllipsis)), more, measure))
 			continue
 		}
-		out = append(out, a.pal.ink(line))
+		out = append(out, line)
 	}
 	return out
 }
@@ -803,12 +871,12 @@ func factoryRecipe(snap factory.Snapshot, it factory.Item) factory.Recipe {
 // the second line sits under the first line's words and not under its mark.
 func (a *app) factoryLed(mark, text string, paint func(string) string, measure int) []string {
 	var out []string
-	for i, line := range wrap(text, max(measure-2, 4)) {
+	for i, line := range wrap(text, max(measure-factoryLeadW, factoryLedMin)) {
 		if i == 0 {
 			out = append(out, fit(mark+" "+paint(line), measure))
 			continue
 		}
-		out = append(out, fit("  "+paint(line), measure))
+		out = append(out, fit(factorySpaces(factoryLeadW)+paint(line), measure))
 	}
 	return out
 }
@@ -818,15 +886,15 @@ func (a *app) factoryLed(mark, text string, paint func(string) string, measure i
 // the left words are cut: what the row is matters more than its metadata.
 func factorySpread(left, right string, measure int) string {
 	lw, rw := ansi.StringWidth(left), ansi.StringWidth(right)
-	if right == "" || lw+factoryPaneGap+rw > measure {
-		if right != "" && rw+factoryPaneGap+12 <= measure {
-			left = fit(left, measure-rw-factoryPaneGap)
+	if right == "" || lw+factoryGutter+rw > measure {
+		if right != "" && rw+factoryGutter+12 <= measure {
+			left = fit(left, measure-rw-factoryGutter)
 			lw = ansi.StringWidth(left)
 		} else {
 			return fit(left, measure)
 		}
 	}
-	return left + strings.Repeat(" ", measure-lw-rw) + right
+	return left + factorySpaces(measure-lw-rw) + right
 }
 
 // factoryMoney is an amount as the pane says it: whole dollars without cents,

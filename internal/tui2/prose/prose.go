@@ -52,6 +52,11 @@ type Options struct {
 	// mark supplied by the caller and must therefore stay off the raised plane.
 	// Nil means every inline code span uses prose's ordinary plane.
 	PlainCodeSpan func(string) bool
+	// LinksAsText draws a link as its words alone, underlined, without the
+	// address beside them. It is for a caller that offers the address another
+	// way (the factory floor's `github ↗` and its `g`), where the address in
+	// every sentence would be the measure spent twice.
+	LinksAsText bool
 }
 
 func (o Options) normalized() Options {
