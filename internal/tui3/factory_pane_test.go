@@ -41,18 +41,77 @@ func factoryPaneItem(t *testing.T, a *app, id int) *factory.Item {
 	return nil
 }
 
+// factoryDoneMark and factoryWaitingMark are a done and a waiting phase's
+// marks as the strip draws them.
+func factoryDoneMark(a *app) string { m, _ := a.factoryPhaseMark(factory.PhaseDone); return m }
+
+func factoryWaitingMark(a *app) string {
+	m, _ := a.factoryPhaseMark(factory.PhaseWaiting)
+	return m
+}
+
 // factoryPaneW is the peek's width beside the rows at a terminal width.
 func factoryPaneW(width int) int { return width - factoryRowsCols(width) - 1 }
 
+// factoryPeekBlocks reads a drawn peek back into its blocks: the rows above
+// the action line, trimmed of the lead, split at blank rows. It fails the test
+// on a blank row at the top, two blank rows together, or no blank row above
+// the action line, which are the ladder's three shapes of drift.
+func factoryPeekBlocks(t *testing.T, rows []string) [][]string {
+	t.Helper()
+	n := len(rows)
+	if n < 3 {
+		t.Fatalf("a peek of %d rows has no ladder", n)
+	}
+	body := rows[:n-1]
+	end := len(body)
+	for end > 0 && strings.TrimSpace(body[end-1]) == "" {
+		end--
+	}
+	if end == len(body) {
+		t.Fatalf("no blank row above the action line:\n%s", strings.Join(rows, "\n"))
+	}
+	if strings.TrimSpace(body[0]) == "" {
+		t.Fatalf("the peek starts with a blank row:\n%s", strings.Join(rows, "\n"))
+	}
+	var blocks [][]string
+	var cur []string
+	for i, r := range body[:end] {
+		if strings.TrimSpace(r) == "" {
+			if strings.TrimSpace(body[i-1]) == "" {
+				t.Fatalf("two blank rows together at %d:\n%s", i, strings.Join(rows, "\n"))
+			}
+			blocks = append(blocks, cur)
+			cur = nil
+			continue
+		}
+		cur = append(cur, strings.TrimSpace(r))
+	}
+	return append(blocks, cur)
+}
+
+// factoryWantBlocks says the blocks begin, in order, with the given words.
+func factoryWantBlocks(t *testing.T, what string, blocks [][]string, heads ...string) {
+	t.Helper()
+	if len(blocks) != len(heads) {
+		t.Fatalf("%s has %d blocks, want %d:\n%q", what, len(blocks), len(heads), blocks)
+	}
+	for i, h := range heads {
+		if !strings.HasPrefix(blocks[i][0], h) {
+			t.Fatalf("%s block %d starts %q, want %q:\n%q", what, i+1, blocks[i][0], h, blocks)
+		}
+	}
+}
+
 // EVERY ITEM OF THE FIXTURE DRAWS, in every state, at the two widths that
-// draw a peek, as exactly its width and its room, and nothing a person reads
-// says a word of the machinery.
+// draw a peek, as exactly its width and its room; nothing a person reads says
+// a word of the machinery, a dollar of nothing, or a label with a colon.
 func TestFactoryPaneDrawsEveryStateExactly(t *testing.T) {
 	a := factoryPlaceLab(t)
 	states := map[factory.State]bool{}
 	for _, width := range []int{150, 120} {
 		paneW := factoryPaneW(width)
-		for _, room := range []int{1, 2, 6, 8, 40} {
+		for _, room := range []int{1, 2, 3, 6, 8, 40} {
 			for _, it := range a.fp.snap.Items {
 				if it.State == factory.StateDismissed {
 					continue
@@ -67,11 +126,14 @@ func TestFactoryPaneDrawsEveryStateExactly(t *testing.T) {
 						t.Fatalf("%s at %d×%d: row %d is %d cells: %q", it.Ref(), paneW, room, i, got, r)
 					}
 					low := strings.ToLower(r)
-					for _, banned := range []string{"verified", "verdict", "auditor", "refuted"} {
+					for _, banned := range []string{"verified", "verdict", "auditor", "refuted", "$0", "gate:", "cap:", "effort:", "risk:", "places:"} {
 						if strings.Contains(low, banned) {
 							t.Fatalf("%s says %q: %q", it.Ref(), banned, r)
 						}
 					}
+				}
+				if strings.TrimSpace(rows[0]) == "" {
+					t.Fatalf("%s at %d×%d starts with a blank row", it.Ref(), paneW, room)
 				}
 				// THE ACTION LINE IS PINNED TO THE LAST ROW whenever there are two.
 				if room >= 2 {
@@ -89,23 +151,226 @@ func TestFactoryPaneDrawsEveryStateExactly(t *testing.T) {
 	}
 }
 
-// A DISMISSED ITEM IS NOT ON THE ROWS, but asked for, it reads as a new one:
-// its fixed rows draw and its keys are a new item's.
-func TestFactoryPaneDrawsADismissedItemAsNew(t *testing.T) {
+// A NEW ITEM'S LADDER: the title and its meta, the read, the chips, the
+// stages it would run and its body, a blank row between each and no facts
+// block, because the fixture knows nothing worth one about it.
+func TestFactoryPeekNewItemLadder(t *testing.T) {
 	a := factoryPlaceLab(t)
-	it := *factoryPaneItem(t, a, 8)
-	it.State = factory.StateDismissed
-	// The still fixture has no launch, so a new item's keys are the ones that
-	// need none ([app.factoryCanRun]); a seam that can launch says `r run`.
-	if got := a.factoryActionWords(it); !strings.Contains(got, "enter open · space mark · d hide") {
-		t.Fatalf("a dismissed item's keys are %q", got)
+	rows := factoryPaneOn(t, a, 4, factoryPaneW(150), 30)
+	blocks := factoryPeekBlocks(t, rows)
+	factoryWantBlocks(t, "the new item", blocks,
+		"#1662 fix(media): tree rails on narrow widths",
+		"claims are testable; three checks cover them",
+		"gate  ship      cap  $3      effort  —",
+		a.factoryPendingMark()+" read",
+		"Claims:")
+	if got := blocks[0][1]; got != "codeaf · pr · M · priya · 1h" {
+		t.Fatalf("the meta row is %q", got)
 	}
-	a.factory = (&factoryFake{}).seam()
-	if got := a.factoryActionWords(it); !strings.Contains(got, "r run · p plan first") {
-		t.Fatalf("a dismissed item's keys over a launch are %q", got)
+	strip := blocks[3][0]
+	mark := a.factoryPendingMark()
+	if want := mark + " read    " + mark + " checks    " + mark + " review"; strip != want {
+		t.Fatalf("the would-run strip is %q, want %q", strip, want)
 	}
-	if rows := a.factoryPeekFixed(it, 60); len(rows) != factoryPaneFixed || !strings.Contains(ansi.Strip(rows[0]), "#1540") {
-		t.Fatalf("a dismissed item's fixed rows are %q", rows)
+	for _, key := range []string{"[t]", "[c]", "[e]"} {
+		if strings.Contains(blocks[2][0], key) {
+			t.Fatalf("the peek's chips name a key: %q", blocks[2][0])
+		}
+	}
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · space mark · d hide" {
+		t.Fatalf("the action line is %q", last)
+	}
+}
+
+// THE FACTS ARE ONE DIM ROW OF PHRASES SIX CELLS APART, no labels: what the
+// item may repeat, that it is thin, that its author is a stranger, and what
+// risky ground it touches in either shape the read has had.
+func TestFactoryPeekFacts(t *testing.T) {
+	a := factoryPlaceLab(t)
+	it := factoryPaneItem(t, a, 6) // thin, from a stranger
+	it.Triage.Dup = "7"
+	gap := strings.Repeat(" ", factoryFactGap)
+	want := "mid risk" + gap + "maybe a duplicate of #7" + gap + "thin" + gap + "stranger"
+	// Sixty cells is one too few for all four, so the last goes, whole.
+	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 6, factoryPaneW(150), 30))
+	if cut := strings.TrimSuffix(want, gap+"stranger"); blocks[2][0] != cut {
+		t.Fatalf("the facts row is %q, want %q", blocks[2][0], cut)
+	}
+	blocks = factoryPeekBlocks(t, factoryPaneOn(t, a, 6, 80, 30))
+	if blocks[2][0] != want {
+		t.Fatalf("the wide facts row is %q, want %q", blocks[2][0], want)
+	}
+	if row := a.factoryPeekFacts(*it, 200)[0]; row != a.pal.dim(want) {
+		t.Fatalf("the facts row is not dim: %q", row)
+	}
+	if got := factoryRiskWords([]string{"money", "auth", "", "a schema change"}); strings.Join(got, "|") != "touches money|touches auth|a schema change" {
+		t.Fatalf("risk words from a list are %q", got)
+	}
+	if got := factoryRiskWords("low"); len(got) != 0 {
+		t.Fatalf("a low risk drew %q", got)
+	}
+	// Narrow, the facts drop from the right, whole.
+	if got := ansi.Strip(a.factoryPeekFacts(*it, 40)[0]); got != "mid risk"+gap+"maybe a duplicate of #7" {
+		t.Fatalf("narrow facts are %q", got)
+	}
+}
+
+// A RUNNING ITEM'S STAGES ARE FOLLOWED BY THE RUNNING STAGE'S OWN LINE as a
+// block of its own, and the running cell wears the accent.
+func TestFactoryPeekRunningItemLadder(t *testing.T) {
+	a := factoryPlaceLab(t)
+	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 2, factoryPaneW(150), 30))
+	factoryWantBlocks(t, "the running item", blocks,
+		"#1551 filters lost on compact",
+		"the filter is read before the tree exists",
+		"gate  ship      cap  $5      effort  —",
+		factoryDoneMark(a)+" plan",
+		"review 1/2 · 3 findings · fixing")
+	if strip := blocks[3][0]; !strings.Contains(strip, "review 1/2 · 4m left") || !strings.Contains(strip, "write ×3") && !strings.Contains(strip, "test") {
+		t.Fatalf("the strip is %q", strip)
+	}
+	it := *factoryPaneItem(t, a, 2)
+	painted := a.factoryPeekStrip(it, 200)
+	mark, _ := a.factoryPhaseMark(factory.PhaseRunning)
+	if !strings.Contains(painted, a.pal.accent(mark+" review 1/2 · 4m left")) {
+		t.Fatalf("the running cell is not in the accent: %q", painted)
+	}
+	if !strings.Contains(painted, a.pal.dim(a.factoryPendingMark()+" neaten")) {
+		t.Fatalf("a pending cell is not dim: %q", painted)
+	}
+}
+
+// A NEEDS-YOU ITEM'S QUESTION COMES DIRECTLY UNDER THE TITLE, before the read:
+// the question led by its amber mark, and its keys.
+func TestFactoryPeekNeedsYouLadder(t *testing.T) {
+	a := factoryPlaceLab(t)
+	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 1, factoryPaneW(150), 30))
+	q := a.icon(tokens.GNeedsHuman) + " plan is ready · go, or change it?"
+	factoryWantBlocks(t, "the needs-you item", blocks,
+		"#1538 budget caps per task",
+		q,
+		"touches three packages; wants a plan first",
+		"mid risk",
+		"gate  plan      cap  $8      effort  —",
+		factoryWaitingMark(a)+" plan")
+	if blocks[1][1] != factoryAnswerKeys {
+		t.Fatalf("the question's keys are %q", blocks[1][1])
+	}
+	// THE AMBER IS ON THE MARK, the words are ink.
+	it := *factoryPaneItem(t, a, 1)
+	row := a.factoryPeekQuestion(it, 60)[0]
+	if !strings.HasPrefix(row, a.pal.ask(a.icon(tokens.GNeedsHuman))) || !strings.Contains(row, a.pal.ink("plan is ready · go, or change it?")) {
+		t.Fatalf("the question is not an amber mark and ink words: %q", row)
+	}
+}
+
+// A LANDED ITEM'S CLAIMS STAND WHERE THE BODY WOULD, a failed one saying so,
+// then the policy rows.
+func TestFactoryPeekLandedLadder(t *testing.T) {
+	a := factoryPlaceLab(t)
+	rows := factoryPaneOn(t, a, 9, factoryPaneW(150), 30)
+	blocks := factoryPeekBlocks(t, rows)
+	factoryWantBlocks(t, "the landed item", blocks,
+		"#1661 probes fire once, then retire",
+		"gate  ship      cap  $5      effort  —",
+		factoryDoneMark(a)+" plan",
+		a.icon(tokens.GSettled)+" fires on first true, never again")
+	claims := strings.Join(blocks[3], "\n")
+	for _, want := range []string{"survives a codeaf restart — not shown", "go.mod unchanged · policy", "view]"} {
+		if !strings.Contains(claims, want) {
+			t.Fatalf("the claims are missing %q:\n%s", want, claims)
+		}
+	}
+	if last := strings.TrimSpace(rows[len(rows)-1]); last != "enter open · a ship anyway · c send back · o check again" {
+		t.Fatalf("the action line is %q", last)
+	}
+}
+
+// A QUEUED ITEM SAYS WHAT FREES IT and a shipped one when it merged and what
+// it cost, each as the block under the stages.
+func TestFactoryPeekQueuedAndShipped(t *testing.T) {
+	a := factoryPlaceLab(t)
+	text := strings.Join(factoryPaneOn(t, a, 3, factoryPaneW(150), 30), "\n")
+	if !strings.Contains(text, "queued · benches full · a bench frees it") {
+		t.Fatalf("the queued peek does not say what frees it:\n%s", text)
+	}
+	text = strings.Join(factoryPaneOn(t, a, 10, factoryPaneW(150), 30), "\n")
+	for _, want := range []string{"#1663 spend row shows stale after compact", "merged 06:00 · $1.90", "enter open"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("the shipped item is missing %q:\n%s", want, text)
+		}
+	}
+}
+
+// NOTHING IS DRAWN FOR NOTHING: an item with no read, no facts, no cap and no
+// body has no block for any of them, and no blank row where one would be.
+func TestFactoryPeekEmptyBlocksVanish(t *testing.T) {
+	a := factoryPlaceLab(t)
+	it := factoryPaneItem(t, a, 8)
+	it.Triage.Read, it.Body, it.Cap = "", "", 0
+	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 8, factoryPaneW(150), 30))
+	factoryWantBlocks(t, "the bare item", blocks, "#1540 meter crashes", "gate  ship      effort  —", a.factoryPendingMark()+" plan")
+}
+
+// THE BODY IS SIX ROWS AT MOST, its last row cut with the ellipsis and a dim
+// `▾ more`; J and K scroll it a row, pgdn and pgup a page, and the mark goes
+// once the end is in view.
+func TestFactoryPeekBodyScrolls(t *testing.T) {
+	a := factoryPlaceLab(t)
+	a.width, a.height = 150, 44
+	var lines []string
+	for i := 1; i <= 14; i++ {
+		lines = append(lines, "line "+itoa(i)+" of the body")
+	}
+	factoryPaneItem(t, a, 8).Body = strings.Join(lines, "\n")
+	factoryOn(t, a, 8)
+	body := func() []string {
+		blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 8, factoryPaneW(150), 34))
+		return blocks[len(blocks)-1]
+	}
+	got := body()
+	more := a.icon(tokens.GExpanded) + " more"
+	if len(got) != factoryPeekBodyRows || got[0] != "line 1 of the body" || !strings.HasSuffix(got[5], more) || !strings.Contains(got[5], "line 6 of the body "+a.icon(tokens.GEllipsis)) {
+		t.Fatalf("the cut body is %q", got)
+	}
+	drive(t, a, key("J"))
+	if got := body(); got[0] != "line 2 of the body" {
+		t.Fatalf("J did not scroll a row: %q", got)
+	}
+	drive(t, a, key("K"), key("K"))
+	if got := body(); got[0] != "line 1 of the body" {
+		t.Fatalf("K past the top moved the body: %q", got)
+	}
+	drive(t, a, key("pgdown"))
+	if got := body(); got[0] != "line 7 of the body" {
+		t.Fatalf("pgdown did not scroll a page: %q", got)
+	}
+	drive(t, a, key("pgdown"), key("pgdown"))
+	if got := body(); got[0] != "line 9 of the body" || strings.Contains(strings.Join(got, "\n"), more) {
+		t.Fatalf("the end of the body is %q", got)
+	}
+	drive(t, a, key("pgup"))
+	if got := body(); got[0] != "line 3 of the body" {
+		t.Fatalf("pgup did not scroll back a page: %q", got)
+	}
+	// ANOTHER ITEM STARTS AT ITS TOP.
+	drive(t, a, key("down"), key("up"))
+	if got := body(); got[0] != "line 1 of the body" {
+		t.Fatalf("coming back to the item kept its scroll: %q", got)
+	}
+}
+
+// THE TALK ROW IS DRAWN ONLY WHEN THE ITEM HAS A CONVERSATION, as the last
+// block above the action line.
+func TestFactoryPeekTalkRow(t *testing.T) {
+	a := factoryPlaceLab(t)
+	if text := strings.Join(factoryPaneOn(t, a, 4, factoryPaneW(150), 30), "\n"); strings.Contains(text, " talk") {
+		t.Fatalf("an item with no conversation draws a talk row:\n%s", text)
+	}
+	factoryPaneItem(t, a, 4).Talk = "chat-1"
+	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 4, factoryPaneW(150), 30))
+	if last := blocks[len(blocks)-1]; len(last) != 1 || last[0] != a.icon(tokens.GActionCommunicate)+" talk" {
+		t.Fatalf("the talk row is %q", last)
 	}
 }
 
@@ -132,50 +397,22 @@ func TestFactoryPaneAtThePlainFloorHasNoSGR(t *testing.T) {
 	}
 }
 
-// THE FIVE FIXED ROWS: what it is, the read, the chips, the stages, the rule,
-// in that order on a new item, and its keys on the last row.
-func TestFactoryPeekNewItem(t *testing.T) {
+// A DISMISSED ITEM IS NOT ON THE ROWS, but asked for, it reads as a new one.
+func TestFactoryPaneDrawsADismissedItemAsNew(t *testing.T) {
 	a := factoryPlaceLab(t)
-	rows := factoryPaneOn(t, a, 4, 105, 20)
-	for i, want := range []string{
-		"#1662 fix(media): tree rails on narrow widths",
-		"claims are testable; three checks cover them",
-		"gate ship · cap $3 · effort —",
-		"read · checks · review",
-		"────",
-	} {
-		if !strings.Contains(rows[i], want) {
-			t.Fatalf("row %d is missing %q:\n%s", i+1, want, strings.Join(rows, "\n"))
-		}
+	it := *factoryPaneItem(t, a, 8)
+	it.State = factory.StateDismissed
+	if got := a.factoryActionWords(it); !strings.Contains(got, "enter open · space mark · d hide") {
+		t.Fatalf("a dismissed item's keys are %q", got)
 	}
-	if !strings.Contains(rows[0], "codeaf · pr · priya (collaborator) · 1h · github") {
-		t.Fatalf("row 1 has no meta: %q", rows[0])
-	}
-	for _, key := range []string{"[t]", "[c]", "[e]"} {
-		if strings.Contains(rows[2], key) {
-			t.Fatalf("the peek's chips name a key: %q", rows[2])
-		}
-	}
-	if !strings.Contains(rows[5], "Claims:") {
-		t.Fatalf("the body does not follow the rule:\n%s", strings.Join(rows, "\n"))
-	}
-	// The still fixture cannot launch, so its new item's keys leave off `r run`
-	// and `p plan first` (TestFactoryPeekKeysNeedALaunch holds the other side).
-	if last := strings.TrimSpace(rows[19]); last != "enter open · space mark · d hide" {
-		t.Fatalf("the action line is %q", last)
-	}
-	// A thin item from a stranger names its questions and the stranger rule.
-	text := strings.Join(strings.Fields(strings.Join(factoryPaneOn(t, a, 6, 105, 20), " ")), " ")
-	for _, want := range []string{"thin · it would ask olu: which network, and how slow?", "never shipped on"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the thin stranger's peek is missing %q:\n%s", want, text)
-		}
+	a.factory = (&factoryFake{}).seam()
+	if got := a.factoryActionWords(it); !strings.Contains(got, "r run · p plan first") {
+		t.Fatalf("a dismissed item's keys over a launch are %q", got)
 	}
 }
 
-// A STAGE WHOSE CONDITION DOES NOT FIT THE ITEM IS DIM ON THE PEEK'S STAGE
-// LINE AND SKIPPED ON THE ITEM PAGE, with its reason; on an item it fits it is
-// neither.
+// A STAGE WHOSE CONDITION DOES NOT FIT THE ITEM IS OFF THE PEEK'S STRIP AND
+// SKIPPED ON THE ITEM PAGE, with its reason; on an item it fits it is neither.
 func TestFactoryPaneSkipsAStageThatDoesNotFit(t *testing.T) {
 	a := factoryPlaceLab(t)
 	it := factoryPaneItem(t, a, 8) // ready 75
@@ -184,76 +421,21 @@ func TestFactoryPaneSkipsAStageThatDoesNotFit(t *testing.T) {
 		views := a.factoryItemStages(*it)
 		return views[len(views)-1]
 	}
-	ready := a.factoryPeekStrip(*it, 100)
 	if v := last(); !v.skipped {
 		t.Fatal("on a ready item the thin stage is not skipped")
 	}
 	if label, _ := a.factoryStageLabel(last()); !strings.Contains(label, "skipped") {
 		t.Fatalf("the skipped stage's label is %q", label)
 	}
+	if strip := ansi.Strip(a.factoryPeekStrip(*it, 200)); strings.Contains(strip, "ask") {
+		t.Fatalf("the peek's strip draws a stage that will not run: %q", strip)
+	}
 	it.Triage.Readiness = 40
 	if v := last(); v.skipped {
 		t.Fatal("on a thin item the thin stage is still skipped")
 	}
-	if thin := a.factoryPeekStrip(*it, 100); thin == ready {
-		t.Fatal("the lit stage and the skipped stage are painted the same")
-	}
-}
-
-// THE STREAM: the phase strip, the log's tail with the activity and spend on
-// its first line; NEEDS-YOU puts the question and its keys under the rule;
-// QUEUED says what frees it.
-func TestFactoryPaneStreamStates(t *testing.T) {
-	a := factoryPlaceLab(t)
-	text := strings.Join(factoryPaneOn(t, a, 2, 105, 20), "\n")
-	for _, want := range []string{"#1551 filters lost on compact", "write ×3", "review 1/2 · 4m left", "review 1/2: 3 findings · fixing", "$1.42/$5", "enter open · s steer · p pause · x stop"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the running peek is missing %q:\n%s", want, text)
-		}
-	}
-	// THE LOG IS A TAIL: in a short room the newest line stays and the oldest goes.
-	short := strings.Join(factoryPaneOn(t, a, 2, 105, 8), "\n")
-	if !strings.Contains(short, "review 1/2: 3 findings") || strings.Contains(short, "reading #1551") {
-		t.Fatalf("a short room did not keep the log's tail:\n%s", short)
-	}
-	text = strings.Join(factoryPaneOn(t, a, 1, 105, 20), "\n")
-	for _, want := range []string{"plan is ready · go, or change it?", "[y] yes · [n] no · [a] in words", "y n answer · a in words · x stop"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the needs-you peek is missing %q:\n%s", want, text)
-		}
-	}
-	text = strings.Join(factoryPaneOn(t, a, 3, 105, 20), "\n")
-	if !strings.Contains(text, "queued · benches full · a bench frees it") {
-		t.Fatalf("the queued peek does not say what frees it:\n%s", text)
-	}
-}
-
-// A LANDED ITEM'S TAIL IS ITS CLAIMS, A FAILED ONE SAYING SO, then the policy
-// rows; its keys are open, ship anyway, send back and check again.
-func TestFactoryPaneLandedDrawsTheClaims(t *testing.T) {
-	a := factoryPlaceLab(t)
-	text := strings.Join(factoryPaneOn(t, a, 9, 105, 20), "\n")
-	for _, want := range []string{
-		"fires on first true, never again",
-		"survives a codeaf restart — not shown",
-		"go.mod unchanged · policy",
-		"view]",
-		"enter open · a ship anyway · c send back · o check again",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the landed peek is missing %q:\n%s", want, text)
-		}
-	}
-}
-
-// THE SHIPPED LINE says when it merged and what it cost.
-func TestFactoryPaneShipped(t *testing.T) {
-	a := factoryPlaceLab(t)
-	text := strings.Join(factoryPaneOn(t, a, 10, 105, 10), "\n")
-	for _, want := range []string{"#1663 spend row shows stale after compact", "merged 06:00 · $1.90", "enter open"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the shipped item is missing %q:\n%s", want, text)
-		}
+	if strip := ansi.Strip(a.factoryPeekStrip(*it, 200)); !strings.Contains(strip, "ask") {
+		t.Fatalf("the peek's strip leaves off a stage that will run: %q", strip)
 	}
 }
 

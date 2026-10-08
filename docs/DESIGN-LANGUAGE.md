@@ -605,7 +605,12 @@ one of air and one on its handle. Home's panes and its three-column bridge use a
 **4-cell gutter**, padded on every row so alignment, not a border, makes the
 edge. Sheet rows may use the established **4-cell hanging indent** when a second
 line belongs under a labelled first line. The message box's 1-cell inset is
-input geometry, not a new content margin.
+input geometry, not a new content margin. The factory peek adds one rung for one
+relationship (owner ruling, 2026-10-08): **6 cells between peers on one row that
+carry no separator mark** — the triage facts and the chips (`factoryFactGap`) —
+because short phrases with no ` · ` between them need more air than a clause to
+read as separate things; its stage strip spends the existing **4 cells**
+(`factoryStripGap`) between cells that each lead with a mark.
 
 **A NEW DISTANCE NEEDS A NEW RELATIONSHIP.** Reuse the nearest named step when
 the relationship is the same. A new value may be added only here and as a named

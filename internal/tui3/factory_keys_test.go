@@ -467,6 +467,10 @@ func TestFactoryEnterOnAStreamSaysWhereTheRoomWillBe(t *testing.T) {
 		if !a.fp.open {
 			t.Fatalf("enter on item %d did not open its page", id)
 		}
+		// A shipped item opens on its issue; the first stage is the row under it.
+		if it, _ := a.factoryCursorItem(); a.factoryItemRows(it)[a.fp.stage].kind == factoryPageIssue {
+			drive(t, a, key("down"))
+		}
 		drive(t, a, key("enter"))
 		if text := factoryFrameText(a); !strings.Contains(text, factoryStageNoteWords) || !a.fp.said {
 			t.Fatalf("enter on a stage of item %d does not say where the conversation will be:\n%s", id, text)

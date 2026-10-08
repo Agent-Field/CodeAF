@@ -289,7 +289,11 @@ func placeWindowOf(hits []int) (first, last, drawn int) {
 // Home is one of them now: its first click used to select and its second open,
 // which was the one screen of seven that wanted two. Settings keeps select-then-
 // change, because its `enter` edits a value; memory's lines are the stated
-// exception and have their own test below.
+// exception and have their own test below. AND THE FACTORY FLOOR SELECTS ON ONE
+// PRESS AND OPENS ON TWO (owner ruling, 2026-10-08): the item under its cursor
+// is already open in the peek beside the rows, so a press that put the cursor
+// there has shown the person the item, and `enter`'s page is the second press
+// (factory_split.go; TestFactoryClickMovesTheCursorAndDoubleOpens holds it).
 func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 	// AND THE HIT MAP IS THE ONE THE FRAME DREW, so the law is asked twice: on
 	// the frame as the place opens, and on a squeezed frame whose window the
@@ -316,7 +320,7 @@ func TestAClickOnARowIsEnterOnEveryPlace(t *testing.T) {
 		}},
 	}
 	for _, place := range everyPlaceTable() {
-		if place.id == pageSettings || place.id == pageMemory {
+		if place.id == pageSettings || place.id == pageMemory || place.id == pageFactory {
 			continue
 		}
 		for _, frame := range frames {

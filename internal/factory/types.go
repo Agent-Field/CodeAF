@@ -301,6 +301,10 @@ type Item struct {
 	// line each in the order it changed them, `why: …` last: the record
 	// [Adapt] writes and the surface draws under the stages line.
 	Adapted []string
+	// Talk names the item's own conversation once one has been made for it,
+	// and is "" until then: the surface draws the talk row only when it says
+	// something.
+	Talk string
 }
 
 // Ref is the item's short name: #123, or ci.

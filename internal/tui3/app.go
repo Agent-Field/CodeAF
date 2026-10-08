@@ -4535,6 +4535,12 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// through to the conversation underneath would open a tool call
 			// nobody can see. A press on one of their rows is `enter` on it
 			// (pages.go's [app.placeBodyPress]).
+			// THE FACTORY READS THE COLUMN AS WELL AS THE ROW, before its place's
+			// own press: its divider is dragged, a press in its peek moves no
+			// row, and a second press opens (factory_split.go).
+			if cmd, took := a.factoryPointer(msg, msg.Mouse()); took {
+				return a, cmd
+			}
 			if cmd, took := a.placeBodyPress(msg.Mouse().Y); took {
 				return a, cmd
 			}
@@ -4860,6 +4866,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.hopShowing() {
 			return a, nil
 		}
+		// A DRAG OF THE FACTORY'S DIVIDER ENDS HERE, whichever button the
+		// terminal reports the release with (factory_split.go).
+		if cmd, took := a.factoryPointer(msg, msg.Mouse()); took {
+			return a, cmd
+		}
 		if msg.Mouse().Button != tea.MouseLeft {
 			return a, nil
 		}
@@ -4952,6 +4963,11 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// is actionable) and the linear tier (there is no pointer).
 		if a.copy.on || a.linear {
 			return a, nil
+		}
+		// AND A MOVE WHILE THE FACTORY'S DIVIDER IS HELD MOVES THE DIVIDER,
+		// ahead of the sweep, whose press it never parked (factory_split.go).
+		if cmd, took := a.factoryPointer(msg, msg.Mouse()); took {
+			return a, cmd
 		}
 		// A MOVE WITH THE LEFT BUTTON DOWN IS THE SWEEP, read before every hover:
 		// the rows under it wear the selection and the hover stays where the
