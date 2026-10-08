@@ -443,13 +443,29 @@ nested two cells under `run`:
 issue
 manager
 run  running 4m · $0.31
-  ✓ plan
-  ⠋ write · 4m
-  ○ test ×2
+  ✓ plan           ?
+  ✓ write
+  ⠋ review     1/2
+  ○ test        ×2
+  ○ arch           +
+  ○ proof          ?
   log
 result
 settings
 ```
+
+A stage row is its mark, its one-word name, then at most two cells of its loop, each in its own
+column:
+
+- `×2`: the most rounds the stage may take, before it runs (only where it may take more than one).
+- `1/2`: the round it is on over its most, once it runs, in place of `×2`.
+- `+`, dim: the manager, the plan or you added or changed this stage; the recipe did not set it.
+- `?`, dim: the run stops to ask you here: a stage that is a person, a stage whose own gate
+  applies, the plan stage under `ask me at plan`, and the last stage that runs for the sign-off
+  (unless `ask me at` is `never`). Where both apply, `?` is shown. The amber `?` mark at the
+  start of a row is different: that stage is waiting on you now.
+
+A running stage keeps how long it has run after its name, `⠋ plan · 2m`, where it fits.
 
 - `issue`: the whole issue and what codeaf read (see read the whole issue).
 - `manager`: the item's own conversation, the team's lead. The row is there only where this
@@ -577,12 +593,21 @@ Once an item runs, the middle of its item page tells the run as it happened, one
 stage, top to bottom. A finished stage is folded to its head, `● plan · 2m · $0.04`, then what
 it came to in at most two lines (the stage's own note, else the first sentence or two of the
 last thing its conversation said), and at the right a dim `▸ 14 steps` (`▸ open` before its
-conversation is read). The time and money are what this window saw. The running stage is open: its head wears the spinner,
-`⠋ write · 4m · $0.27`, and its steps stream under it, newest at the bottom in the chat's step
+conversation is read). The time and money are what this window saw. The running stage is open,
+and an open head says the stage's loop whole: its spinner, its name, `round 1 of 2` (where it
+may take more than one round), `until clean` (what it runs until), `per finding`, `per file` or
+`per claim` (how it splits), then the time and money:
+`⠋ review · round 1 of 2 · until clean · per finding · 4m · $0.27`. A folded head keeps only
+`● review 2/2 · 3m · $0.20`. Under an open head the first line is the stage's ask, dim,
+`ask: read it as a stranger would`, then, where someone gave a reason for setting the stage,
+`why: touches the billing cache`, dim. Then its steps stream, newest at the bottom in the chat's step
 gutter, `read   internal/session/session.go`, the call still going on the spinner. At most 12 lines show,
 under a dim `… 23 more above`. Stages still to come fold into one dim line,
 `○ test ×2 · ○ review · ○ proof`; a skipped stage is one dim line, `– security · skipped`; a
 stage waiting on you shows its question and `y yes · n no · a in words` under its head.
+
+When the plan or the manager changed the item's stages, the story's first line says what
+changed, dim, on one line: `plan added security · skipped neaten · why: touches billing`.
 
 The manager's progress lines from the item's own conversation stand between the sections, dim,
 after the stage they are about: `manager · test failed 1 of 2 · asking you`, and your replies
