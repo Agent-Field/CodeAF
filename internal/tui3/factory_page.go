@@ -92,6 +92,10 @@ type factoryPage struct {
 	// is resolved against ([placeBodyLine]).
 	top   int
 	shown int
+	// pinned is how many of the rail's first lines (the repo line and the
+	// words line) the last body drew above the window, fixed, because the
+	// rows did not fit; 0 when the rows fit whole ([app.factoryRail]).
+	pinned int
 	// headRows is how many rows the handover took above the rows at the last
 	// body, so a press is counted from the first row of the floor itself.
 	headRows int
@@ -340,10 +344,11 @@ func (a *app) factoryPress(y int) bool {
 	if a.fp.open {
 		return false
 	}
-	line, ok := placeBodyLine(y-a.fp.headRows, a.fp.top, a.fp.shown)
-	if !ok {
+	at, ok := placeBodyLine(y-a.fp.headRows, 0, a.fp.shown)
+	if !ok || at < a.fp.pinned {
 		return false
 	}
+	line := a.fp.top + at - a.fp.pinned
 	rows := a.factoryRows()
 	if line < 0 || line >= len(rows) || rows[line].walk < 0 {
 		return false
