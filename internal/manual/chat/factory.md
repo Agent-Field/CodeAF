@@ -31,7 +31,7 @@ The rows window follows the cursor when they do not all fit.
 
 The bottom line names the keys that work for the item under the cursor. On the still made-up
 floor, which has no verbs, it names the walking keys:
-`↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · esc back`.
+`↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · E recipe · esc back`.
 On a floor that can be changed it names `enter open` and the item's own keys first (see the
 factory's verbs), and when the line is too long the list keys are the first to go.
 
@@ -45,6 +45,9 @@ factory's verbs), and when the line is too long the list keys are the first to g
 - `[` and `]` show one repository at a time, then all of them again (offered with two or more).
 - `A` shows the whole backlog of new items, or only the recent ones.
 - `esc` clears a filter or a repository first; pressed again, it goes back to the conversation.
+- `R` chooses which repositories the floor watches, `E` opens the recipe page, and `$` sets the
+  day rail (each has its own section). They are named last on the line, `R repos · E recipe ·
+  $ rail`, and are the first to go when it is too long; a key the floor cannot do is not named.
 
 ## what a row is
 
@@ -366,10 +369,11 @@ until you launch it from the factory page.
 
 The floor reads open issues and open pull requests from the GitHub repositories you watch.
 
-- **Which repositories:** the ones listed in `repos.json` in the factory folder
+- **Which repositories:** the ones you tick with `R` on the floor (see choose which
+  repositories the floor watches), kept in `repos.json` in the factory folder
   (`~/.codeaf/v3/factory/repos.json`), each written `owner/name`, as
-  `{"repos": ["acme/api"]}` or a plain `["acme/api"]`. There is no picker key yet; edit the
-  file, then start codeaf again.
+  `{"repos": ["acme/api"]}` or a plain `["acme/api"]`. The file can still be edited by hand. The
+  poll reads the list when codeaf starts, so a change reaches it on the next start.
 - **The token, in this order:** `GH_TOKEN`, then `GITHUB_TOKEN`, then what `gh auth token`
   answers. The token is never shown or logged.
 - **No watched repository or no token: nothing is connected.** Nothing polls, and the floor's
@@ -389,6 +393,67 @@ The floor reads open issues and open pull requests from the GitHub repositories 
 - **Nothing is ever written to GitHub by itself.** The poll only reads: no comment, label,
   close or pull request is made by it.
 
+## choose which repositories the floor watches — R
+
+`R` on the floor opens a list over the floor headed
+`watch · repositories github sees as <login>` (with how many are watched at the right), one row
+per repository: `[x] owner/name   private · pushed 2d` for a watched one, `[ ] owner/name` for one
+that is not. Watched repositories GitHub no longer lists stay at the top so you can untick them.
+
+- `↑` `↓` walk, `space` ticks or unticks, `/` filters by name, `enter` saves, `esc` clears the
+  filter and then closes without saving: `↑↓ walk · space watch · / filter · enter save · esc cancel`.
+- Saving writes `repos.json` and says `watching 3 repositories · github polls every minute`
+  (or `watching no repositories · the floor keeps what chat and n bring`).
+- **With no GitHub token** `R` asks first. When `gh auth status` answers within 3 seconds it asks
+  `connect github: gh is logged in as <login>, use it? [y]` (`y use gh · n a token instead ·
+  esc not now`); otherwise it opens a row `github token ›` whose words are drawn as dots. A yes
+  or a token GitHub accepts says `github connected` and opens the list. The token is kept in your
+  profile beside the model key, never shown and never logged; `github did not take that token`
+  and `gh answered no token · gh auth login, then try again` are the two refusals.
+- `R` is not offered on a floor whose store cannot keep repositories (over `--host`, or the still
+  made-up floor).
+
+## the recipe page — E
+
+`E` on the floor opens the recipe page for the repository the floor's `[ ]` line shows (or the
+floor's only repository). With every repository showing it says
+`pick a repository with [ ] first · a recipe is one repository's`.
+
+It is the item page with no item: the kinds `issue · pr · ci` across the top with the current one
+in ink and `recipe · <repo>` at the right, the stage rail at the left and the selected stage at
+the right (its knobs, its sentence, `runs first` or `runs after <stage>`, or
+`switched off in this recipe`). A line of `.codeaf/factory.md` that did not load is one dim line
+above the rail, `line 7: until is one of done, clean, green, proven`.
+
+- `[` `]` (or `h` `l`) switch the kind, `↑` `↓` walk the stages, `esc floor` goes back.
+- Where codeaf knows the checkout: `1-9` switch a stage on or off, `s` adds one in words
+  (`+ stage ›`), `e` steps its effort, `w` sets its knobs in the recipe file's own words
+  (`until clean, max 3, effort strong`; a word it cannot read says why), and `b` saves the whole
+  recipe, every kind, to `.codeaf/factory.md`:
+  `saved to .codeaf/factory.md · new work on codeaf runs it`.
+- Where it does not, the page is drawn but not changed, and the note line says
+  `codeaf does not know where <owner/name> is checked out`.
+
+## the day rail — $
+
+`$` on the floor opens the row `day rail ›` (with the rail already set in it, `$60`). Type a dollar
+figure and `enter`: `the day rail is $60`. `0` or `off` takes it off: `the day rail is off`. A word
+that is not a figure says `a rail is a dollar figure, like $60`.
+
+The rail is kept with the floor's store (`sources.json` in the factory folder) and the
+handover's money reads it: `$11.31 / $60 today`, or `/ $60 today` before anything is spent. With
+no rail set there is no `/ $N` at all. The rail is a figure to read against; nothing stops at it
+yet. `$` is not offered on a floor whose store cannot keep it.
+
+## connections on the settings page — github
+
+The settings page's **Connections** tab has a `github` row when this window can ask how it
+reaches GitHub: `github  santoshkumarradha · via gh` (gh's own login, after you said yes to it),
+`<login> · token` (a token kept in your profile), `<login> · from the environment` (`GH_TOKEN` or
+`GITHUB_TOKEN`), `not connected`, or `not reachable`. It is read once when the page opens.
+`enter` on it opens the floor with the same connect prompt `R` asks (`enter connects`), so a
+token can be changed there.
+
 ## what the factory does not do yet
 
 Be plain about this when asked:
@@ -396,8 +461,9 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **Choosing repositories has no key yet:** the picker is a later key; today you list them in
-  `repos.json` by hand.
+- **The picker lists only what is already watched** until this window is wired to ask GitHub
+  for every repository the account can see; the connect prompt and the settings `github` row
+  appear with that wiring too. A ticked change reaches the poll on the next start.
 - **Chips and stages can be set; nothing launches.** On your own floor `t c e`, `w`, `1-9`, `s`
   and `d` change an item, and no key launches, steers, answers, signs off or sends back. Those
   verbs work only on the made-up moving floor, which needs a development build made with
@@ -405,8 +471,9 @@ Be plain about this when asked:
 - **Only GitHub is connected.** No GitLab or Linear.
 - **The recipe file is not read on your own floor yet.** codeaf does not yet know where a
   floor repository is checked out, so every repository runs the default recipe, `b` is not
-  offered, and no habit is offered for banking. `.codeaf/factory.md` is read and written once
-  it does.
+  offered, no habit is offered for banking, and the recipe page (`E`) is drawn but not changed.
+  `.codeaf/factory.md` is read and written once it does.
+- **The day rail is read, not enforced.** Nothing stops when the day's spend passes it.
 - **Nothing posts anywhere.** Writing to GitHub (a comment, labels, a close, a pull request)
   happens only from a post stage, and post stages do not run yet.
 - **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage

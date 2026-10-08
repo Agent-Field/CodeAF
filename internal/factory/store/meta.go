@@ -26,6 +26,11 @@ type SourceMeta struct {
 type metaDoc struct {
 	Schema  int                   `json:"schema"`
 	Sources map[string]SourceMeta `json:"sources"`
+	// Rail is the day's rail in dollars, the most the floor may spend in a
+	// day, and 0 when none is set. It lives in this one record beside the
+	// sources because it is the floor's, not an item's, and a second file for
+	// one number is a second lock for one number.
+	Rail float64 `json:"rail,omitempty"`
 }
 
 // MetaPath is <root>/sources.json.
@@ -62,6 +67,43 @@ func (st *Store) SetSourceMeta(name string, m SourceMeta) error {
 			d.Sources = map[string]SourceMeta{}
 		}
 		d.Sources[name] = m
+		d.Schema = Schema
+		data, err := json.MarshalIndent(d, "", "  ")
+		if err != nil {
+			return err
+		}
+		return writeAtomic(st.MetaPath(), append(data, '\n'))
+	})
+}
+
+// Rail reads the day's rail; no rail is 0 and no error.
+func (st *Store) Rail() (float64, error) {
+	if st == nil {
+		return 0, nil
+	}
+	d, err := st.readMeta()
+	return d.Rail, err
+}
+
+// SetRail writes the day's rail, keeping every source's record, as one
+// read-modify-write under the file's flock. 0 takes the rail off; A RAIL IS
+// NEVER BELOW NOTHING.
+func (st *Store) SetRail(usd float64) error {
+	if st == nil {
+		return errors.New("factory store: no store")
+	}
+	if usd < 0 {
+		return errors.New("factory store: a rail is never below nothing")
+	}
+	if err := os.MkdirAll(st.root, 0o700); err != nil {
+		return err
+	}
+	return st.underLock(filepath.Join(st.root, "sources.lock"), func() error {
+		d, err := st.readMeta()
+		if err != nil {
+			return err
+		}
+		d.Rail = usd
 		d.Schema = Schema
 		data, err := json.MarshalIndent(d, "", "  ")
 		if err != nil {

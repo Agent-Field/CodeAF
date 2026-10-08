@@ -23,6 +23,8 @@ daily_budget_usd
 document_engine
 draft.persist
 effort
+github_token
+github_via
 google_oauth_client
 google_oauth_secret
 history.enabled

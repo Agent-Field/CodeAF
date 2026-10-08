@@ -138,6 +138,13 @@ type factoryPage struct {
 	// act is what the verbs leave behind (factory_keys.go): an open typing
 	// row, a habit offer, and the mock clock's beat.
 	act factoryActs
+
+	// THE FLOOR'S OWN SETTINGS (factory_settings.go), additive like the rest:
+	// the repo picker and the recipe page, each standing over the floor while
+	// it is not nil, and the login gh answered while it is offered.
+	pick    *factoryPicker
+	recipe  *factoryRecipePage
+	ghOffer string
 }
 
 // factoryRowsCols is the rows' columns at width: the whole width under
@@ -236,6 +243,16 @@ func (a *app) factoryLines() []int {
 
 // factoryMove walks the cursor by delta items.
 func (a *app) factoryMove(delta int) {
+	switch {
+	case a.fp.pick != nil:
+		a.fp.pick.cursor = moveCursor(a.fp.pick.cursor, delta, len(a.fp.pick.visible()))
+		a.touch()
+		return
+	case a.fp.recipe != nil:
+		a.fp.stage = moveCursor(a.fp.stage, delta, len(a.fp.recipe.stages()))
+		a.touch()
+		return
+	}
 	if a.fp.open {
 		a.factoryStageMove(delta)
 		return
@@ -258,6 +275,16 @@ func (a *app) factoryBody(width, room int) []placeRow {
 	if !a.factoryConnected() {
 		a.fp.rowsW, a.fp.shown = 0, 0
 		return placeTeachRows(placeTeachProse(factoryUnconnectedWords, width, a.pal), room)
+	}
+	// THE PICKER AND THE RECIPE PAGE STAND OVER EVERYTHING, at the full
+	// width at every width, as the item page does.
+	if a.fp.pick != nil {
+		a.fp.shown = 0
+		return a.factoryPickerBody(width, room)
+	}
+	if a.fp.recipe != nil {
+		a.fp.shown = 0
+		return a.factoryRecipeBody(width, room)
 	}
 	if a.fp.open {
 		if it, ok := a.factoryCursorItem(); ok {
@@ -386,7 +413,7 @@ func (a *app) factoryFoot(width, room int) []string {
 // false for a row that holds no item. It reads the window the last body drew,
 // so a press lands on the row a person saw.
 func (a *app) factoryPress(y int) bool {
-	if a.fp.open {
+	if a.fp.open || a.fp.pick != nil || a.fp.recipe != nil {
 		return false
 	}
 	at, ok := placeBodyLine(y-a.fp.headRows, 0, a.fp.shown)

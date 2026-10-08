@@ -42,6 +42,8 @@ type World struct {
 	habits  int // clean sign-offs in a row, for the banking offer
 	speed   time.Duration
 	acc     time.Duration // a Tick shorter than a minute is carried, not lost
+	// set is the floor's own settings, as the mock keeps them (settings.go).
+	set settings
 }
 
 // run is the simulation's private bookkeeping for one stream: which of the

@@ -17,7 +17,7 @@ func New(seed int64, repos, issues, benches int, now time.Time) factory.Seam {
 // Seam is the world's doors. Each takes the world's one lock for the whole of
 // its work, so two doors called at once see each other's result whole.
 func (w *World) Seam() factory.Seam {
-	return factory.Seam{
+	s := factory.Seam{
 		Load: w.Load,
 		Launch: func(id int) error {
 			return w.with(id, func(it *factory.Item) error {
@@ -207,6 +207,8 @@ func (w *World) Seam() factory.Seam {
 			return nil
 		},
 	}
+	w.settingsDoors(&s)
+	return s
 }
 
 // addItemStage places a stage from words onto the item's own copy of the

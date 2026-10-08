@@ -1083,6 +1083,12 @@ type sheet struct {
 	// a day nothing has counted, and the row is then absent.
 	today *railReading
 
+	// githubDoor says the factory's seam can say how this machine reaches
+	// GitHub, and github is what it said, nil until the read lands
+	// (settings_github.go).
+	githubDoor bool
+	github     *githubReading
+
 	// msg is the last refusal, in the registry's own words.
 	msg      string
 	savedKey string // Set only after a setting write succeeds.
@@ -1328,6 +1334,7 @@ func (a *app) raiseSettings() {
 		sessionModel: a.model,
 		routing:      a.routing,
 		today:        a.todayReading(),
+		githubDoor:   a.factory.Has("github"),
 	}
 	a.sheet.rows = a.sheet.registry.Rows()
 	a.sheet.build()
