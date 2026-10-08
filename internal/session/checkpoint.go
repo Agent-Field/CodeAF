@@ -860,7 +860,7 @@ func askRefusedAndNotRetried(messages []ai.Message) (string, bool) {
 		message := messages[i]
 		switch message.Role {
 		case "user":
-			if strings.HasPrefix(partsText(message), "[carry on] ") {
+			if isCarryOn(partsText(message)) {
 				continue
 			}
 			return "", false
@@ -914,7 +914,7 @@ func loadedAndNeverUsed(messages []ai.Message) ([]string, bool) {
 		message := messages[i]
 		switch message.Role {
 		case "user":
-			if strings.HasPrefix(partsText(message), "[carry on] ") {
+			if isCarryOn(partsText(message)) {
 				continue
 			}
 			return nil, false
