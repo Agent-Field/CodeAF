@@ -302,10 +302,11 @@ func TestFactoryTypingRowSubmitsAndCancels(t *testing.T) {
 	}
 }
 
-// ENTER ON A LANDED ITEM WITH A FAILED CLAIM OPENS SEND BACK, NOT SHIP, with
-// the first claim nothing showed already named; enter again sends it. On the
-// floor `enter` opens the item page on its proof, which is the sheet, and the
-// sheet's `enter` is the one that sends back.
+// ENTER ON A LANDED ITEM'S PROOF STAGE WITH A FAILED CLAIM OPENS SEND BACK,
+// NOT SHIP, with the first claim nothing showed already named; enter again
+// sends it. On the floor `enter` opens the item page on its result, whose
+// `enter` does nothing; the proof stage under `run` is the sheet, and its
+// `enter` is the one that sends back.
 func TestFactoryEnterOnAFailedClaimSendsBack(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbLab(t, f)
@@ -317,7 +318,14 @@ func TestFactoryEnterOnAFailedClaimSendsBack(t *testing.T) {
 	if !a.fp.open || f.said() != nil {
 		t.Fatal("enter on the landed row did not open its page, or asked a door")
 	}
-	if hint := (placeFactory{}).hint(a); hint != "↑↓ stages · enter request changes · esc floor · ? keys" {
+	if it, _ := a.factoryCursorItem(); a.factoryItemRows(it)[a.fp.stage].kind != factoryPageResult {
+		t.Fatalf("the landed page opened on row %d, not its result", a.fp.stage)
+	}
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · esc floor · ? keys" {
+		t.Fatalf("the result's hint names an enter: %q", hint)
+	}
+	factoryRowNamed(t, a, "proof")
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · enter request changes · esc floor · ? keys" {
 		t.Fatalf("the proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -355,7 +363,8 @@ func TestFactoryHabitOfferBanksOnY(t *testing.T) {
 		t.Fatalf("the clean landed strip is %q", strip)
 	}
 	drive(t, a, key("enter"))
-	if hint := (placeFactory{}).hint(a); hint != "↑↓ stages · enter approve · esc floor · ? keys" {
+	factoryRowNamed(t, a, "proof")
+	if hint := (placeFactory{}).hint(a); hint != "↑↓ rows · enter approve · esc floor · ? keys" {
 		t.Fatalf("the clean proof page's hint is %q", hint)
 	}
 	drive(t, a, key("enter"))
@@ -436,12 +445,12 @@ func TestFactoryHintByState(t *testing.T) {
 		}
 	}
 
-	// THE ITEM PAGE'S LINE IS THE PAGE'S: the stage walk, what enter does
-	// on the row, the way back to the floor and the sheet, nothing else.
+	// THE ITEM PAGE'S LINE IS THE PAGE'S: the walk down its rows, what enter
+	// does on the row, the way back to the floor and the sheet, nothing else.
 	a.width = 400
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
-	if got, want := (placeFactory{}).hint(a), "↑↓ stages · esc floor · ? keys"; got != want {
+	if got, want := (placeFactory{}).hint(a), "↑↓ rows · esc floor · ? keys"; got != want {
 		t.Fatalf("on the item page the hint is\n%q\nwant\n%q", got, want)
 	}
 }
@@ -477,9 +486,11 @@ func TestFactoryEnterOnAStageWithNoRoomSaysWhy(t *testing.T) {
 		if !a.fp.open {
 			t.Fatalf("enter on item %d did not open its page", id)
 		}
-		// A shipped item opens on its issue; the first stage is the row under it.
-		if it, _ := a.factoryCursorItem(); a.factoryItemRows(it)[a.fp.stage].kind == factoryPageIssue {
-			drive(t, a, key("down"))
+		// A shipped item opens on its issue; the first stage is under `run`.
+		for i := 0; i < 3; i++ {
+			if it, _ := a.factoryCursorItem(); a.factoryItemRows(it)[a.fp.stage].kind != factoryPageStage {
+				drive(t, a, key("down"))
+			}
 		}
 		drive(t, a, key("enter"))
 		it, _ := a.factoryCursorItem()

@@ -186,17 +186,18 @@ func (a *app) factoryNavClauses() []string {
 }
 
 // factoryItemHint is the hint line while the item page is open, and it is
-// FOUR CLAUSES AT MOST (owner decision, 2026-10-08): `↑↓ stages · enter
-// <what enter does on this row> · esc floor · ? keys`, after the habit offer's
-// keys when one is drawn. The item's verbs are on the pane's own action line
-// ([app.factoryPageAction]) and every key is on the `?` sheet. `enter` is
-// named only where it acts: on the issue row it opens the item's chat (or its
-// page on github where there is no chat door), on a stage with a room it
-// walks into the conversation, and on a landed item's proof it approves or
-// requests changes. A key that opens nothing is not a verb.
+// FOUR CLAUSES AT MOST (owner decision, 2026-10-08): `↑↓ rows · enter <what
+// enter does on this row> · esc floor · ? keys`, after the habit offer's keys
+// when one is drawn. The item's verbs are on the column at the right and the
+// pane's own action line ([app.factoryPageAction]) and every key is on the
+// `?` sheet. `enter` is named only where it acts: on the issue and the
+// manager row it opens the item's chat (or its page on github where there is
+// no chat door), on a stage with a room it walks into the conversation, and
+// on a landed item's proof stage it approves or requests changes. A key that
+// opens nothing is not a verb.
 func (a *app) factoryItemHint(it factory.Item, head []string) string {
 	parts := append([]string{}, head...)
-	parts = append(parts, factoryHintClause(keyWalk, wordWalkStages))
+	parts = append(parts, factoryHintClause(keyWalk, wordRows))
 	if w := a.factoryItemEnterWord(it); w != "" {
 		parts = append(parts, factoryHintClause(keyOpen, w))
 	}
@@ -230,18 +231,15 @@ func (a *app) factoryItemEnterWord(it factory.Item) string {
 	return ""
 }
 
-// factoryOnIssueRow says whether the item page's rail stands on the issue or
-// the talk row, the rows whose `enter` opens the item's own conversation.
+// factoryOnIssueRow says whether the item page's left column stands on the
+// issue or the manager row, the rows whose `enter` opens the item's own
+// conversation.
 func (a *app) factoryOnIssueRow(it factory.Item) bool {
 	if !a.fp.open {
 		return false
 	}
-	rows := a.factoryItemRows(it)
-	if a.fp.stage < 0 || a.fp.stage >= len(rows) {
-		return false
-	}
-	k := rows[a.fp.stage].kind
-	return k == factoryPageIssue || k == factoryPageTalk
+	r, ok := a.factoryPageRowAt(it)
+	return ok && (r.kind == factoryPageIssue || r.kind == factoryPageManager)
 }
 
 // press is a press on a row: the cursor lands on the item drawn there, and
