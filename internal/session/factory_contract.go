@@ -178,7 +178,7 @@ func (a *Agent) ResolveRecipe(id string, answer RecipeAnswer) {
 // ── the item card ───────────────────────────────────────────────────────────
 
 // ItemDoor is the one thing a conversation may do to one item already on the
-// floor: change its stages, its gate, its cap or its effort, or leave its
+// floor: change its stages, where the run asks (the field is Gate), its budget (Cap) or its thinking (Effort), or leave its
 // stages a note. The launch implements it over the store (cmd/codeaf's
 // factory_talk.go), and the change itself is [ApplyItemChange], WHICH IS WHERE
 // EVERY BOUND IS HELD: the stages go through [factory.Adapt], never a prompt.
@@ -189,7 +189,7 @@ func (a *Agent) ResolveRecipe(id string, answer RecipeAnswer) {
 // own sentence and never offered. Apply makes the change after a yes, against
 // the item as it is then, and answers the item as the floor now holds it.
 //
-// THERE IS NO FIELD FOR A LAUNCH, a stop or a sign-off: [ItemChange] is the
+// THERE IS NO FIELD FOR A LAUNCH, a stop or an approval: [ItemChange] is the
 // whole of what travels.
 type ItemDoor interface {
 	Preview(ctx context.Context, item int, change ItemChange) (before, after factory.Item, err error)
@@ -205,12 +205,14 @@ func (c Config) mayItem() bool { return c.FactoryItem != nil }
 type ItemChange struct {
 	// Edit is the stages: sentences to add, names to skip or switch on.
 	Edit factory.PlanEdit
-	// Gate is plan, ship or none; "" leaves it.
+	// Gate is plan, ship or none; "" leaves it. The person calls it `ask me at`
+	// (plan, pull request, never).
 	Gate factory.Gate
-	// Cap is the item's spending cap in dollars; zero leaves it.
+	// Cap is the item's budget in dollars (the person's word); zero leaves it.
 	Cap float64
 	// Effort is cheap, strong or default (the knee, stored as ""); "" leaves
-	// it. It is the effort of every conversation stage that has not run.
+	// it. The person calls it `thinking`: the thinking of every conversation
+	// stage that has not run.
 	Effort string
 	// Note is one sentence appended to the item's notes for its stages.
 	Note string
@@ -222,7 +224,7 @@ func (c ItemChange) Empty() bool {
 }
 
 // ItemFacts is one item as the card compares it, before and after: the stages
-// it runs, its gate, its cap and its effort. EVERY FIELD IS THE FLOOR'S OWN
+// it runs, its gate, its cap and its effort (`ask me at`, `budget`, `thinking` on the card). EVERY FIELD IS THE FLOOR'S OWN
 // SPELLING; the card draws `—` where a field is empty.
 type ItemFacts struct {
 	Stages []string

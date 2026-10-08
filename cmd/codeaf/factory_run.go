@@ -31,8 +31,8 @@ import (
 // process that finds the lock taken looks again every [factoryWatchEvery] and
 // becomes the owner when the old one goes.
 //
-// EVERY OTHER WINDOW ASKS. Its eight runner doors (launch, stop, pause,
-// answer, steer, sign-off, send back, check again) post an ask to the store's
+// EVERY OTHER WINDOW ASKS. Its eight runner doors (run, stop, pause,
+// answer, steer, approve, request changes, re-run checks) post an ask to the store's
 // mailbox and wait for the reply (internal/factory's [factory.WithMailbox]);
 // the owner drains the mailbox every [factoryMailboxEvery], carries each ask
 // through its runner's own door and writes the door's answer back. So every

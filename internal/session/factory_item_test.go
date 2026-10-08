@@ -226,16 +226,16 @@ func TestFactoryItemHeadAndRowsForEachChange(t *testing.T) {
 			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · review · +security · proof", "why: touches auth"}},
 		{"add", ItemChange{Edit: factory.PlanEdit{Add: []factory.Stage{{Ask: "after test, read it for auth holes"}}}}, "", "#1 · add a " + security + " stage?",
 			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · +" + security + " · review · proof"}},
-		{"gate and cap", ItemChange{Gate: factory.GatePlan, Cap: 8}, "", "#1 · plan first with a $8 cap?",
-			[]string{"gate  ship → plan", "cap  $5 → $8"}},
-		{"gate", ItemChange{Gate: factory.GateNone}, "", "#1 · let green proof ship it?", []string{"gate  ship → none"}},
-		{"cap up", ItemChange{Cap: 12.5}, "", "#1 · raise the cap to $12.50?", []string{"cap  $5 → $12.50"}},
-		{"cap down", ItemChange{Cap: 3}, "", "#1 · lower the cap to $3?", []string{"cap  $5 → $3"}},
-		{"effort", ItemChange{Effort: "strong"}, "", "#1 · run it with strong effort?", []string{"effort  — → strong"}},
+		{"gate and cap", ItemChange{Gate: factory.GatePlan, Cap: 8}, "", "#1 · ask me at plan, budget $8?",
+			[]string{"ask me at  pull request → plan", "budget  $5 → $8"}},
+		{"gate", ItemChange{Gate: factory.GateNone}, "", "#1 · let green proof ship it?", []string{"ask me at  pull request → never"}},
+		{"cap up", ItemChange{Cap: 12.5}, "", "#1 · raise the budget to $12.50?", []string{"budget  $5 → $12.50"}},
+		{"cap down", ItemChange{Cap: 3}, "", "#1 · lower the budget to $3?", []string{"budget  $5 → $3"}},
+		{"effort", ItemChange{Effort: "strong"}, "", "#1 · think strong?", []string{"thinking  — → strong"}},
 		{"note", ItemChange{Note: "the fixture in testdata is flaky"}, "", "#1 · add a note for the stages?",
 			[]string{"note: the fixture in testdata is flaky"}},
 		{"several", ItemChange{Edit: factory.PlanEdit{Skip: []string{"review"}}, Cap: 8, Note: "keep it small"}, "small change", "#1 · change the plan?",
-			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · proof", "cap  $5 → $8", "note: keep it small", "why: small change"}},
+			[]string{"now: plan · write · test · review · proof", "after: plan · write · test · proof", "budget  $5 → $8", "note: keep it small", "why: small change"}},
 	} {
 		n := itemCard(t, c.change, c.why)
 		if got := ItemHead(n); got != c.head {
@@ -310,10 +310,10 @@ func TestFactoryItemCardAsksWithItsHeadAndTwoAnswers(t *testing.T) {
 	results := runFactoryItem(t, agent, ctx, itemArgs)
 
 	q := awaitItemQuestion(t, questions)
-	if q.Head != "#1 · plan first with a $8 cap?" {
+	if q.Head != "#1 · ask me at plan, budget $8?" {
 		t.Errorf("head = %q", q.Head)
 	}
-	if q.Reason != "gate  ship → plan; cap  $5 → $8; why: the person wants the plan before any code" {
+	if q.Reason != "ask me at  pull request → plan; budget  $5 → $8; why: the person wants the plan before any code" {
 		t.Errorf("reason = %q", q.Reason)
 	}
 	if !q.Deadline.IsZero() || q.Pick != nil {
@@ -350,7 +350,7 @@ func TestFactoryItemYesAppliesTheChangeOnce(t *testing.T) {
 	if err := agent.ResolveQuestion(Answer{Kind: QuestionItem, Ref: q.Ref, Key: "1"}); err != nil {
 		t.Fatal(err)
 	}
-	want := "#1 now: plan · write · test · proof · gate plan · cap $8\n" +
+	want := "#1 now: plan · write · test · proof · ask me at plan · budget $8\n" +
 		"The person said yes and the floor has the change; there is nothing left to answer. The note is kept on the item for its stages."
 	if out := awaitResult(t, results); out != want {
 		t.Errorf("result = %q, want %q", out, want)
@@ -517,6 +517,46 @@ func TestFactoryAddedNewsCarriesTheItem(t *testing.T) {
 			}
 		case <-deadline:
 			t.Fatal("EventFactoryAdded never reached the task lane")
+		}
+	}
+}
+
+// THE CARD AND THE TOOL SPEAK THE FLOOR'S WORDS (`ask me at`, `budget`,
+// `thinking`, `approval`), while the schema keeps its field names (gate, cap,
+// effort) and tells the model which word the person uses for each.
+func TestFactoryItemCardUsesTheFloorsWords(t *testing.T) {
+	ship := ItemNotice{Ref: "#1", Before: ItemFacts{Gate: "plan"}, After: ItemFacts{Gate: "ship"}}
+	if got := ItemHead(ship); got != "#1 · wait for your approval?" {
+		t.Errorf("head = %q", got)
+	}
+	both := ItemNotice{Ref: "#1", Before: ItemFacts{Gate: "ship", Cap: 5}, After: ItemFacts{Gate: "ship", Cap: 8}}
+	both.Before.Gate = "plan"
+	if got := ItemHead(both); got != "#1 · ask me at pull request, budget $8?" {
+		t.Errorf("head = %q", got)
+	}
+	rows := strings.Join(ItemRows(ItemNotice{Before: ItemFacts{Gate: "ship", Cap: 5}, After: ItemFacts{Gate: "plan", Cap: 8, Effort: "strong"}}), "\n")
+	for _, want := range []string{"ask me at  pull request → plan", "budget  $5 → $8", "thinking  — → strong"} {
+		if !strings.Contains(rows, want) {
+			t.Errorf("rows lack %q:\n%s", want, rows)
+		}
+	}
+	for _, old := range []string{"plan first", "sign-off", "sign off", "gate  ", "cap  ", "effort  "} {
+		if strings.Contains(rows+ItemHead(ship)+ItemHead(both), old) {
+			t.Errorf("the card still says %q", old)
+		}
+	}
+	schema := factoryItemSchemaJSON()
+	for _, field := range []string{`"gate"`, `"cap"`, `"effort"`} {
+		if !strings.Contains(schema, field) {
+			t.Errorf("the schema lost the field %s", field)
+		}
+	}
+	for _, word := range []string{"ask me at", "budget", "thinking"} {
+		if !strings.Contains(factoryItemDescription, `"`+word+`"`) {
+			t.Errorf("the description does not tell the model the person's word %q", word)
+		}
+		if !strings.Contains(schema, `\"`+word+`\"`) {
+			t.Errorf("the schema does not tell the model the person's word %q", word)
 		}
 	}
 }

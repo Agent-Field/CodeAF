@@ -95,7 +95,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		},
 		SetCap: func(id int, usd float64) error {
 			if usd < 0 {
-				return errors.New("a cap is never below nothing")
+				return errors.New("a budget is never below nothing")
 			}
 			return st.Update(id, func(it *Item) error {
 				it.Cap = usd
@@ -124,7 +124,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			switch effort {
 			case "", "cheap", "strong":
 			default:
-				return fmt.Errorf("%q is not an effort", effort)
+				return fmt.Errorf("%q is not a thinking level", effort)
 			}
 			return st.Update(id, func(it *Item) error {
 				if stage < 0 || stage >= len(it.Stages) {

@@ -5,7 +5,7 @@ package session
 // The foreman is the floor's own conversation (`m` on the factory floor,
 // cmd/codeaf's factory_foreman.go): the product-level judgment about what to
 // take first, never the runner. It reads the floor through this one tool and
-// proposes by MARKING items; the person launches what is marked with `L` on
+// proposes by SELECTING items; the person runs what is selected with `L` on
 // the floor. ONLY THE FOREMAN CARRIES IT: cmd/codeaf sets [Config.Floor] on
 // the conversation whose session file the floor names as its foreman and on
 // no other, so an ordinary chat proposes through `factory_add` and an item's
@@ -14,12 +14,12 @@ package session
 // ── THE LAWS THIS FILE APPLIES ──
 //
 //   - IT READS AND IT MARKS, AND NOTHING ELSE. There is no argument that
-//     launches, stops, ships, posts or changes an item. A mark is a proposal
+//     launches, stops, ships, posts or changes an item. A selection (the field is `mark`) is a proposal
 //     the person sees on the floor as an accent lead, and takes or leaves.
 //
 //   - ONLY A NEW ITEM TAKES A MARK. The door refuses anything else, and the
 //     tool says which items it left alone and why, so the model never believes
-//     it marked a stream.
+//     it selected a stream.
 //
 //   - ITEMS ARE NAMED BY THEIR REF. The table, the marks and the answers all
 //     speak `#4`, which is what the person reads on the floor; the store's own
@@ -85,25 +85,25 @@ const (
 // The sentences the model reads back. The manual quotes the handoff
 // (internal/manual/chat/factory.md, `## the foreman — m`).
 const (
-	// FloorMarkedTail follows the refs a call marked: `marked #1 #4 #6 ·
-	// press L on the floor to launch them`.
-	FloorMarkedTail = " · press L on the floor to launch them"
+	// FloorMarkedTail follows the refs a call selected: `selected #1 #4 #6 ·
+	// press L on the floor to run them`.
+	FloorMarkedTail = " · press L on the floor to run them"
 	floorNothing    = "the floor has no items yet"
 	floorNoneAsked  = "no items on the floor answer that ask"
 )
 
-const factoryFloorDescription = "Read the factory floor and propose what to take on by marking items. " +
-	"You are the floor's foreman: you read, rank and propose; the person launches what is marked with L on the floor; nothing you do here launches, ships or posts. " +
+const factoryFloorDescription = "Read the factory floor and propose what to take on by selecting items. " +
+	"You are the floor's foreman: you read, rank and propose; the person runs what is selected with L on the floor; nothing you do here runs, ships or posts. " +
 	"ask: waiting (items that need the person), risky, cheapest (ten, by estimate), oldest (ten), all, or item (one item in full: its read, facts, stages, question and body; set item). " +
-	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item takes a mark; marks stay until the person launches or unmarks them. " +
+	"item, mark and unmark take items by the number in their ref (#4 is 4). Only a new item can be selected; selections stay until the person runs or unselects them. The fields are named mark and unmark; the person calls them select and unselect. " +
 	"Name items by their ref in everything you say."
 
 func factoryFloorSchemaJSON() string {
 	return `{"type":"object","properties":{` +
 		`"ask":{"type":"string","enum":["` + strings.Join([]string{floorAskWaiting, floorAskRisky, floorAskCheapest, floorAskOldest, floorAskAll, floorAskItem}, `","`) + `"],"description":"What to read off the floor."},` +
 		`"item":{"type":"integer","description":"With ask item: the number in the item's ref (#4 is 4)."},` +
-		`"mark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers of new items to mark for the person's next launch."},` +
-		`"unmark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers whose marks to take off."}` +
+		`"mark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers of new items to select for the person's next run."},` +
+		`"unmark":{"type":"array","items":{"type":"integer"},"description":"Refs' numbers whose selection to take off."}` +
 		`},"additionalProperties":false}`
 }
 
@@ -173,7 +173,7 @@ func (a *Agent) floorRun(ctx context.Context, ask string, item int, mark, unmark
 }
 
 // floorMarks marks and unmarks through the door and says what happened in one
-// line each: what was marked and the handoff, what was unmarked, and every
+// line each: what was selected and the handoff, what was unselected, and every
 // ref left alone with its reason. failed is a door that refused.
 func floorMarks(ctx context.Context, door FloorDoor, snap factory.Snapshot, mark, unmark []int) (said []string, failed bool) {
 	var notes []string
@@ -186,7 +186,7 @@ func floorMarks(ctx context.Context, door FloorDoor, snap factory.Snapshot, mark
 			case len(found) > 1:
 				notes = append(notes, fmt.Sprintf("#%d is on %d repositories (%s); left alone", n, len(found), floorRepos(found)))
 			case needNew && found[0].State != factory.StateNew:
-				notes = append(notes, fmt.Sprintf("%s is %s, and only a new item takes a mark", found[0].Ref(), floorStateWords(found[0].State)))
+				notes = append(notes, fmt.Sprintf("%s is %s, and only a new item can be selected", found[0].Ref(), floorStateWords(found[0].State)))
 			default:
 				ids = append(ids, found[0].ID)
 				refs = append(refs, found[0].Ref())
@@ -196,15 +196,15 @@ func floorMarks(ctx context.Context, door FloorDoor, snap factory.Snapshot, mark
 	}
 	if ids, refs := resolve(unmark, false); len(ids) > 0 {
 		if err := door.Mark(ctx, ids, false); err != nil {
-			return append(said, "nothing unmarked: "+oneLine(err.Error())), true
+			return append(said, "nothing unselected: "+oneLine(err.Error())), true
 		}
-		said = append(said, "unmarked "+strings.Join(refs, " "))
+		said = append(said, "unselected "+strings.Join(refs, " "))
 	}
 	if ids, refs := resolve(mark, true); len(ids) > 0 {
 		if err := door.Mark(ctx, ids, true); err != nil {
-			return append(said, "nothing marked: "+oneLine(err.Error())), true
+			return append(said, "nothing selected: "+oneLine(err.Error())), true
 		}
-		said = append(said, "marked "+strings.Join(refs, " ")+FloorMarkedTail)
+		said = append(said, "selected "+strings.Join(refs, " ")+FloorMarkedTail)
 	}
 	return append(said, notes...), false
 }
@@ -325,7 +325,7 @@ func floorSummary(open []factory.Item, rows int, head string) string {
 		parts = append(parts, strconv.Itoa(n)+" waiting on the person")
 	}
 	if n := count(func(it factory.Item) bool { return it.Marked && it.State == factory.StateNew }); n > 0 {
-		parts = append(parts, strconv.Itoa(n)+" marked")
+		parts = append(parts, strconv.Itoa(n)+" selected")
 	}
 	return strings.Join(parts, " · ")
 }
@@ -351,7 +351,7 @@ func FloorRow(it factory.Item, now time.Time) string {
 	add(floorPriority(it.Triage))
 	state := string(it.State)
 	if it.Marked && it.State == factory.StateNew {
-		state += ", marked"
+		state += ", selected"
 	}
 	add(state)
 	if age := floorAge(now, it.Created); age != "" {
@@ -391,9 +391,9 @@ func FloorItemText(snap factory.Snapshot, it factory.Item, now time.Time) string
 	}
 	fact("author ", it.Author)
 	fact("tier ", string(it.Tier))
-	fact("gate ", string(it.Gate))
+	fact("ask me at ", floorGateWord(it.Gate))
 	if it.Cap > 0 {
-		fact("cap ", floorDollars(it.Cap))
+		fact("budget ", floorDollars(it.Cap))
 	}
 	fact("may repeat ", it.Triage.Dup)
 	if len(it.Labels) > 0 {
@@ -496,4 +496,13 @@ func floorCut(s string, n int) string {
 		return s
 	}
 	return strings.TrimSpace(string(r[:n])) + "…"
+}
+
+// floorGateWord is a stored gate in the floor's screen words (`plan`,
+// `pull request`, `never`), the same as the card's ([ItemGateWord]).
+func floorGateWord(g factory.Gate) string {
+	if g == "" {
+		return ""
+	}
+	return ItemGateWord(string(g))
 }

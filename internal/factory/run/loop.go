@@ -31,8 +31,10 @@ import (
 // window the floor keeps, so the stream view scrolls the same way.
 const loopLogMost = 400
 
-// habitEvery is how many clean sign-offs on one repo offer a habit, and the
-// activity word a clean sign-off leaves on the item, which is what is counted.
+// habitEvery is how many clean approvals on one repo offer a habit, and the
+// activity word a clean approval leaves on the item, which is what is counted.
+// THE TWO WORDS ARE STORED (counted off the items' own activity, and written
+// to disk), so they keep their old spelling; the screen says approve.
 const (
 	habitEvery         = 3
 	activitySigned     = "signed off"
@@ -179,7 +181,7 @@ func launchable(it factory.Item) error {
 	case factory.StateNew, factory.StateDismissed, "":
 		return nil
 	case factory.StateLanded:
-		return fmt.Errorf("%s has landed · sign it off, or send it back", it.Ref())
+		return fmt.Errorf("%s has landed · approve it, or request changes", it.Ref())
 	case factory.StateShipped:
 		return fmt.Errorf("%s has shipped", it.Ref())
 	}
@@ -792,15 +794,15 @@ func (lp *floorLoop) spender(c *loopCtl) func(usd float64) {
 	}
 }
 
-// capCheck parks the item when its cap is reached after a round: yes raises
-// the cap by as much again, no stops it. It answers false when it stopped.
+// capCheck parks the item when its budget is reached after a round: yes raises
+// the budget by as much again, no stops it. It answers false when it stopped.
 func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return false
 	}
 	reached := it.Cap > 0 && it.Stream != nil && it.Stream.Spent >= it.Cap
-	q, kind := "cap of "+loopUSD(it.Cap)+" reached · "+loopUSD(it.Cap)+" more, or stop?", "cap"
+	q, kind := "budget of "+loopUSD(it.Cap)+" reached · "+loopUSD(it.Cap)+" more, or stop?", "cap"
 	if p := lp.r.opts.Pool; p != nil {
 		reached = p.CapReached(it)
 		if reached {
@@ -821,7 +823,7 @@ func (lp *floorLoop) capCheck(c *loopCtl, i int, name string) bool {
 	now := lp.r.now()
 	return lp.write(c, func(it *factory.Item) error {
 		it.Cap *= 2
-		loopSay(it, now, "said", "cap raised to "+loopUSD(it.Cap)+" · carrying on")
+		loopSay(it, now, "said", "budget raised to "+loopUSD(it.Cap)+" · carrying on")
 		return nil
 	}) == nil
 }
@@ -990,7 +992,7 @@ func loopFirstLine(s string) string {
 	return s
 }
 
-// land puts the proof sheet up and waits for the sign-off. An item whose gate
+// land puts the proof sheet up and waits for the approval. An item whose gate
 // is none, with every claim shown, ships itself: that is a banked habit.
 func (lp *floorLoop) land(c *loopCtl) {
 	now := lp.r.now()
@@ -1009,7 +1011,7 @@ func (lp *floorLoop) land(c *loopCtl) {
 			loopSay(it, now, "ok", "shipped · habit · proof all green")
 			return nil
 		}
-		loopSay(it, now, "said", "landed · proof sheet ready · your sign-off")
+		loopSay(it, now, "said", "landed · proof sheet ready · your approval")
 		return nil
 	})
 	if err == nil && shipped {
@@ -1182,10 +1184,10 @@ func (r *Runner) Steer(id int, words string) error {
 	return nil
 }
 
-// SignOff ships a landed item. A claim not shown refuses it unless the
+// SignOff (the screen's `approve`) ships a landed item. A claim not shown refuses it unless the
 // person changed something first (edited). habitDue is every third clean
-// sign-off on the item's repo, counted off the items' own activity, where a
-// clean sign-off leaves `signed off`.
+// approval on the item's repo, counted off the items' own activity, where a
+// clean approval leaves the stored word `signed off`.
 func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 	lp := r.loop()
 	now := r.now()
@@ -1211,7 +1213,7 @@ func (r *Runner) SignOff(id int, edited bool) (bool, error) {
 		repo = it.Repo
 		it.State = factory.StateShipped
 		it.Question, it.QKind = "", ""
-		loopSay(it, now, "ok", "shipped · your sign-off")
+		loopSay(it, now, "ok", "shipped · your approval")
 		if edited {
 			it.Note(now, activitySignedEdit)
 		} else {
@@ -1264,7 +1266,7 @@ func (r *Runner) SendBack(id int, words string) error {
 	lp.ctls[id] = c
 	lp.mu.Unlock()
 	now := r.now()
-	err := lp.move(c, "", EventQueued, "sent back: "+words, func(it *factory.Item) error {
+	err := lp.move(c, "", EventQueued, "changes requested: "+words, func(it *factory.Item) error {
 		if it.State != factory.StateLanded || len(it.Stream.Phases) == 0 {
 			return fmt.Errorf("%s has not landed", it.Ref())
 		}
@@ -1290,7 +1292,7 @@ func (r *Runner) SendBack(id int, words string) error {
 		}
 		lp.extra[id][name] = factory.Stage{Name: name, Kind: factory.StageChat, Ask: words, Until: factory.UntilDone, On: true}
 		lp.mu.Unlock()
-		loopSay(it, now, "said", "sent back: "+words)
+		loopSay(it, now, "said", "changes requested: "+words)
 		return nil
 	})
 	if err != nil {

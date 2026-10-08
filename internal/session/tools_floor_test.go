@@ -101,7 +101,7 @@ func TestFactoryFloorIsOnTheBeltOnlyWithItsDoor(t *testing.T) {
 			continue
 		}
 		found = true
-		for _, want := range []string{"foreman", "the person launches what is marked with L", "nothing you do here launches, ships or posts"} {
+		for _, want := range []string{"foreman", "the person runs what is selected with L", "nothing you do here runs, ships or posts"} {
 			if !strings.Contains(tool.Description, want) {
 				t.Errorf("the description lacks %q: %q", want, tool.Description)
 			}
@@ -194,10 +194,10 @@ func TestFactoryFloorMarksThroughTheDoor(t *testing.T) {
 	if isErr {
 		t.Fatal(text)
 	}
-	if !strings.HasPrefix(text, "marked #1 #4 #6"+FloorMarkedTail) {
+	if !strings.HasPrefix(text, "selected #1 #4 #6"+FloorMarkedTail) {
 		t.Errorf("the mark answered %q", text)
 	}
-	for _, want := range []string{"#9 is running, and only a new item takes a mark", "there is no #42 on the floor"} {
+	for _, want := range []string{"#9 is running, and only a new item can be selected", "there is no #42 on the floor"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the mark does not say %q:\n%s", want, text)
 		}
@@ -206,11 +206,11 @@ func TestFactoryFloorMarksThroughTheDoor(t *testing.T) {
 		t.Errorf("the door was asked %q, want the three new items by their floor ids", got)
 	}
 	table, _ := floorCall(t, door, `{"ask":"all"}`)
-	if !strings.Contains(table, "3 marked") || !strings.Contains(table, "#4 typo on the login page · issue · acme/api · size S · est $0.10 · new, marked") {
+	if !strings.Contains(table, "3 selected") || !strings.Contains(table, "#4 typo on the login page · issue · acme/api · size S · est $0.10 · new, selected") {
 		t.Errorf("the next read does not show the marks:\n%s", table)
 	}
 	text, _ = floorCall(t, door, `{"unmark":[4],"ask":"all"}`)
-	if !strings.HasPrefix(text, "unmarked #4") || !strings.Contains(text, "2 marked") {
+	if !strings.HasPrefix(text, "unselected #4") || !strings.Contains(text, "2 selected") {
 		t.Errorf("unmark answered:\n%s", text)
 	}
 }

@@ -151,7 +151,7 @@ func TestLaunchRunsStagesInOrderAndLands(t *testing.T) {
 	if s.Bench != 1 || s.Started.IsZero() || s.Ended.IsZero() {
 		t.Fatalf("stream = bench %d, started %v, ended %v", s.Bench, s.Started, s.Ended)
 	}
-	if !logHas(it, "write: write went fine") || !logHas(it, "landed · proof sheet ready · your sign-off") {
+	if !logHas(it, "write: write went fine") || !logHas(it, "landed · proof sheet ready · your approval") {
 		t.Fatalf("log = %+v", s.Log)
 	}
 	if err := g.r.Launch(id); err == nil || !strings.Contains(err.Error(), "has landed") {
@@ -598,7 +598,7 @@ func TestSendBackAppendsProveAndLandsAgain(t *testing.T) {
 	it := g.wait(id, "landed again", func(it factory.Item) bool {
 		return it.State == factory.StateLanded && len(it.Stream.Phases) == 2 && it.Stream.Phases[1].State == factory.PhaseDone
 	})
-	if it.Stream.Phases[1].Name != "prove" || !logHas(it, "sent back: prove restart survival") {
+	if it.Stream.Phases[1].Name != "prove" || !logHas(it, "changes requested: prove restart survival") {
 		t.Fatalf("stream = %+v", it.Stream)
 	}
 	if err := g.r.SendBack(id, "and again"); err != nil {
@@ -727,7 +727,7 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	it := g.asked(id, "cap of $1 reached · $1 more, or stop?")
+	it := g.asked(id, "budget of $1 reached · $1 more, or stop?")
 	if it.QKind != "cap" || it.Stream.Spent != 1.5 {
 		t.Fatalf("kind %q spent %v", it.QKind, it.Stream.Spent)
 	}
@@ -735,7 +735,7 @@ func TestTheCapAsksAndYesRaisesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	it = g.waitState(id, factory.StateLanded)
-	if it.Cap != 2 || !logHas(it, "cap raised to $2 · carrying on") {
+	if it.Cap != 2 || !logHas(it, "budget raised to $2 · carrying on") {
 		t.Fatalf("cap %v log %+v", it.Cap, it.Stream.Log)
 	}
 }

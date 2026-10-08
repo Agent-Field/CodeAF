@@ -551,7 +551,7 @@ question is the run's own sentence, drawn as is in the peek (under the title) an
 page's second row, its `?` amber: `plan is ready · go, or change it?`,
 `review is not clean after 2 rounds: 3 findings · one more round, or go on as is?` (one round
 is `after 1 round`, one finding `1 finding`),
-`cap of $5 reached · $5 more, or stop?`, `review did not finish: … · skip it, or stop?`.
+`budget of $5 reached · $5 more, or stop?`, `review did not finish: … · skip it, or stop?`.
 
 - `y` answers yes: go on, one more round, $5 more, skip it. The bottom line says
   `answered #12 · yes`.
@@ -813,7 +813,7 @@ The first press makes, on this machine and without asking any model:
   this window's folder when codeaf does not know the checkout). It opens with the item in front
   of it: the title, the repository, author and tier, where it asks you, its budget and labels,
   the body, its stages as numbered lines, the factory's read, and the sentence
-  `This is the item's own conversation on the factory floor. Nothing here launches it; the person does that on the floor.`
+  `This is the item's own conversation on the factory floor. Nothing here runs it; the person does that on the floor.`
 
 You land in the conversation, as when you open one from its tab; the one you were in goes on
 running behind it. The first `esc` on its empty box, with nothing running, takes you back to the
@@ -845,13 +845,13 @@ is the ref, title, kind, repository, size, estimate, priority and its reason, st
 risk; what is not known is left out.
 
 **It proposes by selecting.** It selects new items, and the tool tells it
-`marked #1 #4 #6 · press L on the floor to launch them`. On the floor a row it selected wears the
+`selected #1 #4 #6 · press L on the floor to run them`. On the floor a row it selected wears the
 accent lead, as a `space` select does, and the peek offers `L run selected`. What it selects is
 kept with the floor on this machine, so it survives a restart, until you run or unselect it; a
 selection on an item that is no longer new is dropped.
 
 **It never runs, ships or posts.** Only a new item can be selected (the tool says
-`#3 is running, and only a new item takes a mark`), and `L` on the floor is the only way to run
+`#3 is running, and only a new item can be selected`), and `L` on the floor is the only way to run
 them (see what the factory does not do yet).
 
 **Only the foreman reads the floor.** `factory_floor` is on the foreman's belt and on no other
@@ -867,20 +867,20 @@ An item's own conversation (`T`) is the item's hub. In it codeaf can propose a c
 item with the `factory_item` tool: stages to add (`after review, read it for auth holes`), skip
 or switch on; where it asks you (the tool's `gate`: `plan`, `ship` for the pull request,
 `none` for never); its budget in dollars (the tool's `cap`); its thinking (the tool's `effort`:
-`cheap`, `strong`, `default`); or a note its stages will read. The card speaks the engine's own
-words, below; the floor shows the same settings as `ask me at`, `budget` and `thinking`. It is for the item the conversation is
+`cheap`, `strong`, `default`); or a note its stages will read. The card speaks the floor's words: `ask me at`, `budget` and `thinking`; only the tool's own
+field names (`gate`, `cap`, `effort`) are the engine's. It is for the item the conversation is
 about, and it is on the belt wherever `factory_add` is. (It replaced `factory_stages`, which
 could change only the stages.)
 
 **Nothing changes before `1`.** A card asks one question built from what changes:
-`#1 · skip the review stage?`, `#1 · plan first with a $8 cap?`, `#1 · add a note for the stages?`,
+`#1 · skip the review stage?`, `#1 · ask me at plan, budget $8?`, `#1 · add a note for the stages?`,
 or `#1 · change the plan?` for several. Its body is only what changes: `now:` and `after:` for the
-stages, `gate  ship → plan`, `cap  $5 → $8`, `effort  — → strong`, `note: …` and `why: …`.
+stages, `ask me at  pull request → plan`, `budget  $5 → $8`, `thinking  — → strong`, `note: …` and `why: …`.
 It answers to `1 yes`, `2 keep it`, or words (`say what to change… (enter sends it)`). There is
 no clock on it.
 
 - **`yes`** applies it and codeaf is told the item now, only what is set:
-  `#1 now: plan · write · test · proof · gate plan · cap $8`, and that the change is made. The
+  `#1 now: plan · write · test · proof · ask me at plan · budget $8`, and that the change is made. The
   card says `changed`.
 - **`keep it`**: `nothing changed: the person said no.` (card: `kept as it was`).
 - **Words**: `the person changed it: <your words>` and `Nothing changed. Propose it again with that`.
@@ -1253,7 +1253,7 @@ owner: on the ordinary launch it is the session host, so items keep running when
 closes; with `--no-host` it is the first window that opened the floor. Every window still has every
 verb: run, stop, pause, answer, steer, approve, request changes and re-run checks. A window that is not
 the owner hands the verb to the owner, which carries it out within about a second, and a refusal
-(the day rail, `#12 has landed · sign it off, or send it back`) is said on that window's bottom
+(the day rail, `#12 has landed · approve it, or request changes`) is said on that window's bottom
 line in the owner's own words. If nothing answers within five seconds the window says
 `the floor's runner did not answer · this window's engine may be another build · restart codeaf`
 and nothing happens later. The usual cause is a window attached to an engine of another codeaf
