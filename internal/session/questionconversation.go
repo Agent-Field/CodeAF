@@ -75,6 +75,8 @@ func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Even
 		owner.ResolveConnect(q.Ref, false)
 	case QuestionFactory:
 		owner.ResolveFactory(q.Ref, FactoryAnswer{})
+	case QuestionRecipe:
+		owner.ResolveRecipe(q.Ref, RecipeAnswer{})
 	}
 	return a.Submit(ctx, words)
 }

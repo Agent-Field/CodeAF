@@ -114,3 +114,48 @@ func TestFactoryEventsMoveTheFacts(t *testing.T) {
 		}
 	}
 }
+
+// THE RECIPE CARD CROSSES THE SAME LANE WHOLE, and its answer the same door.
+func TestAFactoryRecipeCardCrossesTheTaskLaneWhole(t *testing.T) {
+	far := &railAgent{fakeAgent: &fakeAgent{}}
+	loop := laneLoop(t, far)
+	lane, stop := loop.Client.Agent().WatchTaskUpdates()
+	t.Cleanup(stop)
+	waitFor(t, "the engine opened the surface's task lane", func() bool { return far.opened() == 1 })
+
+	card := session.RecipeNotice{ID: "r2", Repo: "web", Kind: "issue", Line: "security · chat · read it for auth holes · when touches auth"}
+	far.land(session.Event{Kind: session.EventRecipeProposal, Tool: "factory_recipe", Text: session.RecipeHead(card), Recipe: &card})
+	got := nextTask(t, lane)
+	if got.Kind != session.EventRecipeProposal || got.Recipe == nil || !reflect.DeepEqual(*got.Recipe, card) {
+		t.Fatalf("the card arrived changed: %v / %+v, want %+v", got.Kind, got.Recipe, card)
+	}
+
+	decided := card
+	decided.Decided = &session.RecipeAnswer{Approved: true}
+	far.land(session.Event{Kind: session.EventRecipeProposal, Tool: "factory_recipe", Recipe: &decided})
+	got = nextTask(t, lane)
+	if got.Recipe == nil || got.Recipe.Decided == nil || !got.Recipe.Decided.Approved {
+		t.Fatalf("the settled card arrived without its answer: %+v", got.Recipe)
+	}
+
+	far.land(session.Event{Kind: session.EventRecipeBanked, Tool: "factory_recipe", Recipe: &card})
+	got = nextTask(t, lane)
+	if got.Kind != session.EventRecipeBanked || got.Recipe == nil || got.Recipe.ID != card.ID {
+		t.Fatalf("the bank arrived as %v / %+v", got.Kind, got.Recipe)
+	}
+
+	asking := newAskingAgent()
+	answers := laneLoop(t, asking)
+	given := session.Answer{Kind: session.QuestionRecipe, Ref: "r2", Key: "1", Picked: []string{"1"}}
+	if err := answers.Client.Agent().ResolveQuestion(given); err != nil {
+		t.Fatalf("answering a recipe card over the wire: %v", err)
+	}
+	if heard := asking.heard(); !reflect.DeepEqual(heard[len(heard)-1], given) {
+		t.Fatalf("the recipe answer arrived changed: %+v", heard[len(heard)-1])
+	}
+	for _, kind := range []session.EventKind{session.EventRecipeProposal, session.EventRecipeBanked} {
+		if !factsMoved(kind) {
+			t.Fatalf("factsMoved(%v) is false", kind)
+		}
+	}
+}

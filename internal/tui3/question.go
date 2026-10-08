@@ -1512,7 +1512,7 @@ func (a *app) questionSubjectAt(q session.Question) int {
 		}
 		return -1
 	}
-	if q.Kind == session.QuestionFactory {
+	if q.Kind == session.QuestionFactory || q.Kind == session.QuestionRecipe {
 		// A FACTORY OFFER'S SUBJECT IS ITS OWN CARD IN THE TRANSCRIPT
 		// (factorycard.go), paired on the proposal's id, which the engine minted
 		// before anybody was asked and carries as the question's Ref. The card
@@ -4521,6 +4521,10 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// transcript (factorycard.go) is what the question is ABOUT — the head,
 		// the facts, the body and the stages the floor would run — and the
 		// answers and the words box are drawn here, once, like every other card.
+		return true
+	case session.QuestionRecipe:
+		// THE RECIPE OFFER, the factory offer's twin: its card in the
+		// transcript shows the line, and its answers are drawn here, once.
 		return true
 	case session.QuestionConnect:
 		// THE ACCOUNT OFFER, whose own three-row block, answers row, click

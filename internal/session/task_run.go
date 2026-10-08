@@ -4931,6 +4931,7 @@ func (a *Agent) WatchTaskUpdates() (<-chan Event, func()) {
 	news := a.standingNews
 	a.standingNews = nil
 	factoryCards := a.standingFactoryCardsLocked()
+	factoryCards = append(factoryCards, a.standingRecipeCardsLocked()...)
 	a.mu.Unlock()
 	// THE ROSTER GOES OUT FIRST OF ALL, to EVERY new lane. A lane is opened by
 	// a surface that has no rows yet — a conversation resumed from its

@@ -124,11 +124,18 @@ func init() { glossField["factory_add"] = "title" }
 // it — memoryTools' law: a model told it can put work on the floor plans around
 // that for the rest of the conversation, so a session with no door does not
 // have the verb.
+//
+// `factory_recipe` (tools_factory_recipe.go) rides beside it on its own door,
+// and is absent on the same law when that door is nil.
 func (a *Agent) factoryTools() []bare.Tool {
-	if !a.config.mayFactory() {
-		return nil
+	var tools []bare.Tool
+	if a.config.mayFactory() {
+		tools = append(tools, a.factoryAddTool())
 	}
-	return []bare.Tool{a.factoryAddTool()}
+	if a.config.mayRecipe() {
+		tools = append(tools, a.factoryRecipeTool())
+	}
+	return tools
 }
 
 // factoryOffer is one card still waiting on somebody: the channel its answer

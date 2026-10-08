@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,86 @@ func factoryDoor(st *store.Store) session.FactoryDoor {
 		return nil
 	}
 	return st
+}
+
+// recipeDoor is the chat's door onto a repository's recipe file, over the same
+// store and workspace the floor reads, or nil.
+//
+// A NIL STORE IS A NIL DOOR, for [factoryDoor]'s reason, and for one more: the
+// door finds a repository's checkout through the store's record of it
+// ([factoryRepoDirs]), which is the same answer the local seam reads the recipe
+// from, so the card can never bank a line into a file the floor does not read.
+func recipeDoor(st *store.Store, workspace string) session.RecipeDoor {
+	if st == nil {
+		return nil
+	}
+	return fileRecipeDoor{dirs: factoryRepoDirs(st, workspace)}
+}
+
+// fileRecipeDoor writes one line into a repository's `.codeaf/factory.md`.
+type fileRecipeDoor struct {
+	dirs func(repo string) string
+}
+
+// dir is where repo is checked out, or the person's sentence for why the line
+// cannot be written: an unknown checkout is a refusal, never a guess.
+func (d fileRecipeDoor) dir(repo string) (string, error) {
+	repo = strings.TrimSpace(repo)
+	if dir := d.dirs(repo); dir != "" {
+		return dir, nil
+	}
+	return "", errors.New("codeaf does not know where " + repo + " is checked out; open codeaf there once")
+}
+
+// BankStage adds one stage to kind's section: the line is read with the file's
+// own reader, and a stage of the same name already there is replaced where it
+// stands, so the section gains exactly one line or changes exactly one.
+//
+// THE SECTION IS WRITTEN WHOLE, through [factory.BankRecipeStages], which is
+// the floor's own `b`: a kind the file has no section for starts from the
+// stages that kind runs today, so adding a stage never quietly drops the rest.
+func (d fileRecipeDoor) BankStage(_ context.Context, repo string, kind factory.Kind, line string) error {
+	dir, err := d.dir(repo)
+	if err != nil {
+		return err
+	}
+	parsed, problems := factory.Parse("## " + string(kind) + "\n1. " + line)
+	if len(problems) > 0 {
+		return errors.New(problems[0].Why)
+	}
+	add := parsed.For(kind)
+	if len(add) != 1 {
+		return errors.New("a stage is one line: N. name · kind · ask · knobs")
+	}
+	recipe, _, err := factory.Load(dir)
+	if err != nil {
+		return err
+	}
+	stages := factory.CopyStages(recipe.For(kind))
+	if i := factory.StageIndex(stages, add[0].Name); i >= 0 {
+		stages[i] = add[0]
+	} else {
+		stages = append(stages, add[0])
+	}
+	return factory.BankRecipeStages(dir, kind, stages)
+}
+
+// BankPolicy adds one sentence under `## policy`.
+func (d fileRecipeDoor) BankPolicy(_ context.Context, repo, sentence string) error {
+	dir, err := d.dir(repo)
+	if err != nil {
+		return err
+	}
+	return factory.BankRecipePolicy(dir, sentence)
+}
+
+// BankHabit adds one sentence under `## habits`.
+func (d fileRecipeDoor) BankHabit(_ context.Context, repo, sentence string) error {
+	dir, err := d.dir(repo)
+	if err != nil {
+		return err
+	}
+	return factory.BankRecipeHabit(dir, sentence)
 }
 
 // factorySeam is the factory page's seam for this launch.

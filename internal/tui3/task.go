@@ -904,6 +904,14 @@ func (a *app) taskEvent(ev session.Event) tea.Cmd {
 		// floor is read again so the bar's count and the page are true within
 		// one read rather than one beat ([app.factoryAdded]).
 		floor = a.factoryAdded(ev)
+	case session.EventRecipeProposal:
+		// THE CHAT OFFERING ONE LINE FOR A REPOSITORY'S RECIPE, on the same
+		// lane and with the same card as the factory offer (factorycard.go).
+		a.recipeProposal(ev)
+	case session.EventRecipeBanked:
+		// AND THE LINE IS IN THE FILE: the card says so and the floor, whose
+		// stages are read from that file, is read again ([app.recipeBanked]).
+		floor = a.recipeBanked(ev)
 	case session.EventNotice:
 		// A program's limit ending reaches this standing lane even when the
 		// same limit refuses the model turn that would otherwise announce it.

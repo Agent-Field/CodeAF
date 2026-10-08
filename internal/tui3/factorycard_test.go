@@ -290,3 +290,142 @@ func TestFactoryCardChatItemRefIsTheStoreID(t *testing.T) {
 		t.Fatalf("a row still says #0:\n%s", text)
 	}
 }
+
+// ── THE RECIPE OFFER, AS A PERSON MEETS IT ──────────────────────────────────
+
+// recipeNotice is one recipe offer as the engine raises it.
+func recipeNotice() session.RecipeNotice {
+	return session.RecipeNotice{ID: "r1", Repo: "web", Kind: "issue", Line: "security · chat · read it for auth holes · when touches auth"}
+}
+
+func recipeOffer(n session.RecipeNotice) session.Event {
+	return session.Event{Kind: session.EventRecipeProposal, Tool: "factory_recipe", Text: session.RecipeHead(n), Recipe: &n}
+}
+
+// recipeOfferQuestion is the question the engine raises beside the card.
+func recipeOfferQuestion(n session.RecipeNotice) session.Question {
+	return session.Question{
+		Ref:      n.ID,
+		Kind:     session.QuestionRecipe,
+		Ask:      session.AskPermission,
+		Form:     session.FormCard,
+		Asker:    session.Asker{Kind: session.AskerModel},
+		Head:     session.RecipeHead(n),
+		Reason:   session.RecipeWords(n),
+		Subject:  session.SubjectRef{Ref: n.ID, Name: session.RecipeSubject(n)},
+		Options:  session.AnswerOptions(session.QuestionRecipe),
+		Input:    session.InputShape{Kind: session.InputText, Prompt: session.RecipeChangePrompt},
+		Stakes:   session.StakesReversible,
+		Blocking: session.Blocking{Turn: true},
+	}
+}
+
+// THE RECIPE CARD IS THE FACTORY CARD'S SHAPE: the engine's head, one dim row
+// saying where the line goes, the line, and the foot.
+func TestFactoryRecipeCardDrawsTheLine(t *testing.T) {
+	lab := newQuestionLab(t)
+	a := lab.a
+	a.recipeProposal(recipeOffer(recipeNotice()))
+	rows := factoryCardLines(a, 140)
+	if len(rows) != 4 {
+		t.Fatalf("the recipe card is head, where, line and foot; it drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(rows[0], "wants to add to web's recipe for issue: security") {
+		t.Fatalf("the head is not the engine's: %q", rows[0])
+	}
+	if !strings.Contains(rows[1], "recipe · web · issue") {
+		t.Fatalf("the where row is %q", rows[1])
+	}
+	if !strings.Contains(rows[2], "security · chat · read it for auth holes · when touches auth") {
+		t.Fatalf("the line row is %q", rows[2])
+	}
+
+	policy := session.RecipeNotice{ID: "r2", Repo: "web", Policy: "never post without green tests"}
+	a.recipeProposal(recipeOffer(policy))
+	if card := a.factoryCardFor("r2", ""); card == nil {
+		t.Fatal("the policy card was not drawn")
+	} else if rows := questionPlainRows(FactoryCardRows(a, card, 140, false)); !strings.Contains(rows[0], "wants to add to web's policy: never post without green tests") ||
+		!strings.Contains(rows[1], "recipe · web · policy") {
+		t.Fatalf("the policy card drew:\n%s", strings.Join(rows, "\n"))
+	}
+}
+
+// THE ANSWERS ARE THE BLOCK'S: `1 bank it`, `2 not now` and the box's prompt.
+func TestFactoryRecipeCardQuestionIsDrawnOnTheBlock(t *testing.T) {
+	lab := newQuestionLab(t)
+	a := lab.a
+	n := recipeNotice()
+	a.recipeProposal(recipeOffer(n))
+	lab.fromLane(recipeOfferQuestion(n))
+	if len(a.questions) != 1 {
+		t.Fatalf("the recipe question did not reach the block: %d open", len(a.questions))
+	}
+	block := lab.plain()
+	for _, want := range []string{session.RecipeBankLabel, session.RecipeNotNowLabel, session.RecipeChangePrompt} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("the block is missing %q:\n%s", want, block)
+		}
+	}
+}
+
+// THE FOOT SAYS WHAT IT CAME TO.
+func TestFactoryRecipeCardSettledWords(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		settle func(a *app, n session.RecipeNotice)
+		want   string
+	}{
+		{"banked", func(a *app, n session.RecipeNotice) {
+			yes := n
+			yes.Decided = &session.RecipeAnswer{Approved: true}
+			a.recipeProposal(recipeOffer(yes))
+			a.recipeBanked(session.Event{Kind: session.EventRecipeBanked, Recipe: &n})
+		}, "banked"},
+		{"not now", func(a *app, n session.RecipeNotice) {
+			no := n
+			no.Decided = &session.RecipeAnswer{}
+			a.recipeProposal(recipeOffer(no))
+		}, "not now"},
+		{"changed", func(a *app, n session.RecipeNotice) {
+			words := n
+			words.Decided = &session.RecipeAnswer{Change: "only for pull requests"}
+			a.recipeProposal(recipeOffer(words))
+		}, "changed in words"},
+		{"expired", func(a *app, n session.RecipeNotice) {
+			gone := n
+			gone.Withdrawn = "nothing was banked in the recipe"
+			a.recipeProposal(recipeOffer(gone))
+		}, "expired · nothing banked"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			lab := newQuestionLab(t)
+			a := lab.a
+			n := recipeNotice()
+			a.recipeProposal(recipeOffer(n))
+			c.settle(a, n)
+			rows := factoryCardLines(a, 140)
+			if len(rows) != 2 {
+				t.Fatalf("a settled card is its head and its foot; it drew:\n%s", strings.Join(rows, "\n"))
+			}
+			if !strings.Contains(rows[1], c.want) {
+				t.Fatalf("the foot is %q, want %q", rows[1], c.want)
+			}
+		})
+	}
+}
+
+// THE FLOOR IS READ AGAIN WHEN A LINE IS BANKED, through the task lane.
+func TestFactoryRecipeBankedReadsTheFloor(t *testing.T) {
+	a := placeApp(t)
+	a.width = 160
+	loads := 0
+	a.factory = factory.Seam{Load: func() (factory.Snapshot, error) {
+		loads++
+		return factory.Fixture(factoryTestNow), nil
+	}}
+	n := recipeNotice()
+	drive(t, a, taskEventMsg{gen: a.taskGen, ev: session.Event{Kind: session.EventRecipeBanked, Recipe: &n}})
+	if loads != 1 {
+		t.Fatalf("a banked line read the floor %d times", loads)
+	}
+}
