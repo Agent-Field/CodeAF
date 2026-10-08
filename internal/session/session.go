@@ -1591,6 +1591,11 @@ type Config struct {
 	// Factory is, and never on --once, a task node, --host or --at.
 	Stages StagesDoor
 
+	// Stage is the door a factory stage's own conversation reports through
+	// (stage_contract.go). NIL IS NO DOOR: `stage_result` and `plan_edit` are off
+	// the belt. Only the factory's runner sets it, on a stage round it opened.
+	Stage StageDoor
+
 	// factoryWindow overrides how long one factory card holds its tool call
 	// open, for tests that watch the window end. Zero is [factoryCardWindow].
 	factoryWindow time.Duration
