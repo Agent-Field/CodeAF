@@ -101,7 +101,11 @@ pub fn handle<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
         "tab-next" => TabAction::Next,
         "tab-previous" => TabAction::Previous,
         "window-close" => {
-            if let Some(window) = app.get_focused_window() {
+            let focused = app
+                .webview_windows()
+                .into_values()
+                .find(|window| window.is_focused().unwrap_or(false));
+            if let Some(window) = focused.or_else(|| app.get_webview_window("main")) {
                 let _ = window.close();
             }
             return;
