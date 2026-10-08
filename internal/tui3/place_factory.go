@@ -79,9 +79,9 @@ func (placeFactory) rowID(a *app) string {
 }
 
 // note is the one line the place says when the last read failed, the floor
-// drawn above it being the one read before; and on the item page, after
-// `enter` on a stage, what that stage will open ([factoryStageNoteWords]).
-// A failed read is the louder of the two and wins the line.
+// drawn above it being the one read before, and while a door a key asked is
+// out. A failed read is the louder of the two and wins the line. (`enter` on a
+// stage with no room says why on the pane's own action line, not here.)
 func (placeFactory) note(a *app, width int) []string {
 	switch {
 	case a.fp.err != nil:
@@ -90,8 +90,6 @@ func (placeFactory) note(a *app, width int) []string {
 		// A DOOR A KEY ASKED IS STILL OUT (factory_busy.go): the spinner and
 		// what it is doing, until it answers.
 		return []string{" " + fit(a.factoryDoingNote(), width-factoryHintInset)}
-	case a.fp.open && a.fp.said:
-		return []string{" " + a.pal.dim(noteFit(factoryStageNoteWords, width-factoryHintInset))}
 	case a.fp.recipe != nil && a.factoryRecipeNoDir() != "":
 		return []string{" " + a.pal.dim(noteFit(a.factoryRecipeNoDir(), width-factoryHintInset))}
 	}
@@ -127,7 +125,7 @@ func (placeFactory) hint(a *app) string {
 	if ask := a.fp.act.ask; ask != nil {
 		return factoryAskHint(ask)
 	}
-	if a.fp.act.refresh != nil {
+	if a.fp.act.refresh != nil || a.fp.act.launch != nil {
 		return "y go · n not now"
 	}
 	if a.fp.ghOffer != "" {
@@ -180,7 +178,9 @@ func (placeFactory) hint(a *app) string {
 		rail = append(rail, clause{"[ ] repo", 6})
 	}
 	rail = append(rail, clause{"A backlog", 0}, clause{"z density", 5}, clause{a.factoryOrderHint(), 7})
-	if a.factory.Has("sleep") {
+	// `S` STEERS A STEERABLE ITEM, so the sleep is named only where `S`
+	// would sleep (factory_keys.go).
+	if a.factory.Has("sleep") && !(ok && a.factorySteerable(it)) {
 		rail = append(rail, clause{"S sleep 8h", 4})
 	}
 	if a.factory.Has("refreshall") {
@@ -222,23 +222,26 @@ func (placeFactory) hint(a *app) string {
 
 // factoryItemHint is the hint line while the item page is open: the habit
 // offer's keys when one is drawn, the stage walk, `enter` only where it acts
-// (the proof of a landed item, whose sheet it is), the item's verbs, and the
-// way back to the floor. The page's own stage note is not named, because a
-// key that only says it cannot open yet is not a verb. `S sleep 8h` is the
-// first to go when the line is too long.
+// (a stage with a room, which it walks into, and the proof of a landed item,
+// whose sheet it is), the item's verbs, and the way back to the floor. A
+// stage's `enter` that only says why it has no room is not named, because a
+// key that opens nothing is not a verb. `S sleep 8h` is the first to go when
+// the line is too long.
 func (a *app) factoryItemHint(it factory.Item, head []string) string {
 	parts := append(append([]string{}, head...), "↑↓ stages")
-	if a.factoryOnProof(it) {
+	if _, room := a.factoryRoomRow(it); room {
+		parts = append(parts, "enter conversation")
+	} else if a.factoryOnProof(it) {
 		switch {
 		case factoryFirstFailed(it) != "" && a.factory.Has("sendback"):
 			parts = append(parts, "enter send back")
 		case factoryFirstFailed(it) == "" && a.factory.Has("signoff"):
-			parts = append(parts, "enter ship")
+			parts = append(parts, "enter sign off")
 		}
 	}
 	parts = append(parts, a.factoryVerbHint(it)...)
 	tail := []string{}
-	if a.factory.Has("sleep") {
+	if a.factory.Has("sleep") && !a.factorySteerable(it) {
 		tail = append(tail, "S sleep 8h")
 	}
 	line := func() string {
@@ -269,12 +272,14 @@ func (placeFactory) wheel(a *app, delta int) (tea.Cmd, bool) {
 }
 
 // owns is the words box, which has the whole keyboard while it is open, as
-// every box inside a place does; and `space` on a new item, which marks it.
+// every box inside a place does; `space` on a new item, which marks it; and
+// `space` on a running item, which pauses it or resumes it.
 //
 // SPACE IS CLAIMED HERE AND NOT IN key BECAUSE THE ROUTER READS A BARE SPACE
 // AS HALF OF THE DOOR HOME before a place's own keys are asked
-// ([app.placeHomeGesture]). It is claimed only on a new item, so everywhere
-// else on the floor two spaces still go home.
+// ([app.placeHomeGesture]). It is claimed only on a new item and on a running
+// one with a pause door, so everywhere else on the floor two spaces still go
+// home.
 func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	// THE PICKER, THE GH OFFER AND THE RECIPE PAGE HAVE THE KEYBOARD while one
 	// stands, before the layout reads `enter` as opening an item underneath
@@ -302,8 +307,13 @@ func (placeFactory) owns(a *app, msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if cmd, took := a.factoryOwns(msg); took {
 		return cmd, true
 	}
-	if msg.String() == "space" && a.factoryMark() {
-		return nil, true
+	if msg.String() == "space" {
+		if a.factoryMark() {
+			return nil, true
+		}
+		if cmd, took := a.factoryPauseKey(); took {
+			return cmd, true
+		}
 	}
 	return nil, false
 }

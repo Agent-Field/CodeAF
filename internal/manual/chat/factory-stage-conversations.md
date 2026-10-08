@@ -1,6 +1,6 @@
 # factory stage conversations
 
-## a stage is a conversation — stage_result and plan_edit
+## a stage is a conversation — stage_result and plan_edit, and a stage never posts to github
 
 On the factory floor, a stage like plan, write or review runs as one ordinary conversation,
 made in the item's own team and named by the item and the stage: `#12 · review`, or

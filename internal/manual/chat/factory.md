@@ -48,7 +48,8 @@ factory's verbs), and when the line is too long the list keys are the first to g
 - `g` opens the item on github (see open the item on github).
 - `u` reads the item again; `U` reads every item again, after asking (see when the floor is
   doing something).
-- `space` marks or unmarks a new item. `T` opens the item's own conversation.
+- `space` marks or unmarks a new item, and pauses or resumes a running one. `T` opens the
+  item's own conversation.
 - `m` opens the foreman, the floor's own conversation for what to take first (see the foreman).
 - `/` filters, `[` and `]` show one repository at a time, `A` shows the whole backlog.
 - `esc` clears a filter or a repository first; pressed again, it goes back to the conversation.
@@ -117,8 +118,10 @@ never drawn.
 
 `space` on a new item marks it, and its mark turns to an accent dot; `space` again unmarks it.
 Only new items can be marked. The marks are kept through every re-read
-and when you leave the page and come back, until codeaf exits. `L` launches every marked item
-(or the item under the cursor when nothing is marked) and clears the marks. Marks the foreman
+and when you leave the page and come back, until codeaf exits. `L` with marks asks first, with
+the triage estimates summed: `launch 3 marked · ~$7? [y] go · [n] not now`. `y` launches every
+marked item, clears the marks and says `launched 3`; `n` or `esc` keeps them. With nothing
+marked `L` launches the item under the cursor. Marks the foreman
 makes (`m`) are kept with the floor on this machine and are still there after a restart.
 
 ## stages, not a pipeline
@@ -276,12 +279,15 @@ stands level with the first group heading on the left. In order:
 
 1. The short name and title (the short name is a link to the item's page), then dim: repository,
    kind, size, author, age, and `github ↗` when the item has a page there.
-2. For an item that needs you, the question (`?` in amber) and `[y] yes · [n] no · [a] in words`.
+2. For an item that needs you, the question exactly as the run asked it (`?` in amber, the
+   words in ink) and, where the floor can answer, `[y] yes · [n] no · [a] in words`.
 3. The factory's one-sentence read, or `⠋ reading…` while the first read is out.
 4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
 5. The gate, cap and effort in fixed slots, so their values line up from item to item: `gate  ship`,
    `cap  $5`, `effort  —`. A cap of nothing is a blank slot.
-6. The stages: `●` done, `◐` running, `○` to come, each in an even cell.
+6. The stages: `●` done, `◐` running, `?` waiting on you, `✕` failed, `○` to come, each in an
+   even cell, with the round as `2/2` on a stage that may run more than one. Under them, dim,
+   why a stage stopped: `review · review is not clean after 2 round(s)`.
 7. A running stage's line (`review 1/2 · 3 findings · fixing`), what frees a queued item, or
    `merged 06:00 · $1.90`.
 8. The description, rendered from Markdown (headings, lists, code, links as their words, never
@@ -292,7 +298,8 @@ stands level with the first group heading on the left. In order:
     then the words), `checks` (one row per check: mark, name, state), `files` (`+218 −44 · 6
     files`, then up to six paths), `activity` (the last five events) and `links` (`github ↗`).
 
-The bottom row names the keys, starting with `enter open`, with one blank row above it.
+The bottom row names the keys, starting with `enter open`, with one blank row above it, and
+only keys the floor can do: a still floor with no verbs says just `enter open`.
 
 ## resize the split — { } |
 
@@ -328,37 +335,108 @@ the floor (filter, repository, marks) changes while it is open.
 The top row is a trail: `Factory › codeaf › #1551 filters lost on compact`, the crumbs dim and
 the item in ink, with where it stands and for how long (`running 26m`) and the spend over the
 cap (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row is
-the gate, cap and effort with their keys, `gate  ship [t]  cap  $5 [c]  effort  — [e]  places  codeaf`, then a
-blank row; the rail and its pane start on the fourth row on every item. What plan changed about
-the stages is in the issue pane (see adapt).
+the gate, cap and effort with their keys, `gate  ship [t]  cap  $5 [c]  effort  — [e]  places  codeaf`;
+on an item waiting on you it is the question instead (see answering a question). Then a blank
+row; the rail and its pane start on the fourth row on every item. What plan changed about the
+stages is in the issue pane (see adapt).
 
 On the left is the **rail**: `issue` first (see read the whole issue), then `talk` when the item
-has its own conversation, then one row per stage: `●` done (with `×3` when it split into
-tasks), `◐` running (with its round, `review 1/2`), `○` to come, a stage switched off dim, and a
-stage whose condition does not fit dim with `· skipped`. The page opens on the stage waiting on
-you, else the running stage, else `proof` for a landed item, else `issue`. `↑` and `↓` (or `←`
-and `→`) walk it, and a click on a rail row selects it. Under 72 columns the rail is one line
-above the pane.
+has its own conversation, then one row per stage, then `proof` when the item has a sheet and no
+stage is named proof, then `log` once the run has said anything (see the log). A stage reads `●`
+done (with `×3` when it split into tasks), the braille spinner while it runs (with its round,
+`review 2/2`, and how long it has run, `4m`), `?` waiting on you, `✕` failed, `○` to come, a
+stage switched off dim, and a stage whose condition does not fit dim with `· skipped`; a stage
+with a conversation has its mark after the name (see a stage is a room). The page opens on the stage waiting on you, else
+the running stage, else `proof` for a landed item, else `issue`. `↑` and `↓` (or `←` and `→`)
+walk it, and a click on a rail row selects it. Under 72 columns the rail is one line above the
+pane.
 
 On the right is the row under the cursor. For a stage: its settings, dim
 (`review · chat · until clean · max 2 · fanout per-finding · when always`), what it is asked to
-do, a blank row, what it has to say (`runs after test`, the running log, the question waiting on
-you, its result, or the claims on `proof`), a blank row, and the item's keys on the last row.
+do, a blank row, what it has to say (`runs after test`, its round and its newest log lines, the
+question waiting on you, its result, why it failed, or the sheet on `proof`), a blank row, and
+the item's keys on the last row.
 
-Every verb key keeps working on the item while its page is open (see the factory's verbs):
-`t c e s w b g a d x y n o p r L`, and `1` to `9` switch stages. The hint line names them,
-after `↑↓ stages`, and ends with `esc floor`. A box that takes words opens on the last row of
-the pane.
+Every verb key keeps working on the item while its page is open (see the factory's verbs), and
+`1` to `9` switch stages. The hint line names them, after `↑↓ stages` (and `enter conversation`
+on a stage that has one), and ends with `esc floor`. A box that takes words opens on the last
+row of the pane.
 
-## ship or send back from the item page
+## a stage is a room — enter on a stage
 
-`enter` on a stage of the item page does not open it yet; it says
-`the stage's conversation opens here once streams are conversations` on its own line above the
-keys. The one exception is `proof` on a landed item, which is the item's sheet: there `enter`
-ships when every claim was shown (`enter ship`), and when any was not, **send back is the default
-key** (`enter send back`) and opens the `send back ›` row with `prove` and that claim's words
-already typed; `enter` again sends it. `a` ships anyway, `c` sends back in your own words, `o`
-checks again.
+A stage that ran as a conversation (plan, write, review: see a stage is a conversation) is a
+room you can walk into. On the item page its rail row has the conversation's mark after its
+name, the trail reads `Factory › codeaf › #12 › review`, and the hint says `enter conversation`.
+`enter` opens it the way `T` opens the item's own conversation: you land in it, the one you were
+in goes on running behind, and the first `esc` on its empty box, with nothing running, comes
+back to the item page on the same stage. While it opens the line above the keys says
+`⠋ opening #12 › review…`.
+
+A stage with no room says why on the pane's last row instead, and opens nothing:
+`review has not started`, `review has no conversation yet · it opens when a round ends` (a
+round's conversation is kept once the round ends), `test is a check · its log is below`,
+`plan is your answer · it has no conversation` for a gate, `post is a write to github · it has
+no conversation`, `neaten is off on this item`, `neaten is skipped on this item`. The next key
+or a move of the cursor puts the keys back.
+
+## the log
+
+Once a run has said anything, the item page's rail ends with `log`. Its pane is the run's log,
+oldest at the top and the newest at the bottom, as many of the last lines as fit; each line
+starts with its time, `12:04`, dim at the margin, then a mark for its kind and its words. Three
+voices: a **thought** (the run thinking aloud, a round starting again) is dim; **your own
+words**, the `steer: …` lines `S` and the conversation leave, are ink; everything else (what a
+stage said, a test, a failure `✕`, a success `✓`, a question `?` in amber) is the quieter
+second voice. A running stage's pane shows the same lines under its round. An item that never
+ran has no log row. The log keeps the last 400 lines.
+
+## answering a question — y, n, a
+
+A run stops and asks when it cannot go on alone, and the item moves to **needs you**. The
+question is the run's own sentence, drawn as is in the peek (under the title) and on the item
+page's second row, its `?` amber: `plan is ready · go, or change it?`,
+`review is not clean after 2 round(s): 3 findings · one more round, or go on as is?`,
+`cap of $5 reached · $5 more, or stop?`, `review did not finish: … · skip it, or stop?`.
+
+- `y` answers yes: go on, one more round, $5 more, skip it. The bottom line says
+  `answered #12 · yes`.
+- `n` answers no: for a plan or a cap that stops the item; for rounds it goes on as is. It says
+  `answered #12 · no`.
+- `a` opens `answer ›` for words (`go, but keep the old flag`); they reach the next round's
+  brief and it says `answered #12 in words`.
+
+`[y] yes · [n] no · [a] in words` is drawn only where the floor can answer. A run that is not
+waiting refuses with `#12 is not waiting on you`, said on the bottom line.
+
+## sign off, send back, check again — s, B, v
+
+A landed item's page opens on its **proof** sheet: one row per claim and policy row, `✓` shown or
+`✕` with `— not shown`, its evidence dim at the right and its medium (`test`, `screenshot`,
+`policy`) as a chip in one column. The sheet's last line counts it and names its keys:
+`all 6 shown · s sign off`, or `1 of 6 not shown · e sign off with changes · B send back`.
+
+- `s` signs off and ships it: `#12 shipped`. On a sheet with a row not shown the run refuses,
+  in its words: `#12 has a claim not shown`.
+- `e` signs off saying you changed something first, the one that ships a sheet with a row not
+  shown: `#12 shipped with changes`. It does not count toward a habit.
+- `B` opens `send back ›` for what to prove (`prove restart survival`); the item goes back on a
+  bench with one more stage, `prove`, and says `#12 sent back · prove restart survival`.
+- `v` runs every check stage again and puts what they show on the sheet:
+  `#12 is being checked again`.
+- `enter` on the sheet is the default: sign off when every row was shown, and when any was not,
+  **send back** (`enter send back`), with `prove` and that row's words already typed.
+
+`d` says `the diff is the appendix` and that it opens in your editor later. Each key is named only
+where the floor can do it.
+
+## steer a running item — S
+
+`S` on a running, queued or waiting item opens `steer ›`: words handed to the round running now
+and to every round after it (`keep the old flag`). The bottom line says
+`steered #12`, and the log shows `steer: …` in ink. `space` pauses a running item (`#12 paused`)
+and resumes it (`#12 resumed`); a round cut by the pause starts over. `x` stops it and keeps the
+branch: `#12 stopped · branch kept`, and the item is new again. On an item that cannot be
+steered, `S` is the made-up floor's `S sleep 8h`.
 
 ## the factory's verbs, keys that change an item
 
@@ -369,18 +447,19 @@ pause, answers, steering, sign-off, send back and check again work in every wind
 process runs the floor's items. `enter` on a row never launches; it opens the item page.
 
 - **New:** `r run · p plan first · space mark · L launch marked · 1-9 stages · s stage ·
-  t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the plan gate, and
-  `L` launches every marked item (or this one). `t` cycles the gate plan, ship, none; `c` the
+  t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the
+  plan gate; the bottom line says `#12 is running` (`#12 is queued · a bench frees it` when the
+  benches are full). `L` launches this item, or asks first about the marked ones (see mark new
+  items). `t` cycles the gate plan, ship, none; `c` the
   cap $2, $5, $8, $15, $30; `e` the first stage's effort: none, cheap, strong. `w` opens
   `in words ›` for the gate, cap and effort at once (`$8, plan first, stronger`). On a
   terminal-made item `g` puts it on github too, or takes it off; on any other item with a page
   on github, `g` opens that page. `a` asks a thin item's author its questions. `d` hides the item.
-- **Running or queued:** `s steer · p pause · x stop · e effort`. `s` opens `steer ›`; `p`
-  pauses and resumes; `x` stops and keeps the branch; `e` cycles the running stage's effort.
-- **Needs you:** `y n answer · a in words · s steer · x stop`. `a` opens `answer ›`.
-- **Landed:** `a ship anyway` when a claim failed, `c send back`, `o check again`, `d diff`.
-  Shipping from a clean sheet is `enter` on its proof, on the item page. `d` says
-  `the diff is the appendix` and that it opens in your editor later.
+- **Running or queued:** `S steer · space pause · x stop · e effort` (see steer a running
+  item); `e` cycles the running stage's effort.
+- **Needs you:** `y n answer · a in words · S steer · x stop` (see answering a question).
+- **Landed:** `s sign off` on a clean sheet, `e sign off with changes` when a row was not shown,
+  `B send back`, `v check again`, `d diff` (see sign off, send back, check again).
 - **Any state:** `T talk` opens the item's own conversation (see talk it through), on the
   floor and on the item page alike; it is named only where the floor can make one.
 - **Anywhere:** `n new item` opens `new work ›`, at the bottom of the rows column, on the repository the list shows (or the first one;
@@ -390,8 +469,9 @@ process runs the floor's items. `enter` on a row never launches; it opens the it
 
 A key that takes words opens a one-line box at the bottom of the right column, except `n`'s,
 which stands at the bottom of the rows (and every box stands under the rows when there is no
-peek): `enter` sends, `backspace` edits, `esc` cancels. A refusal, such as
-`#1540 is on a bench; stop it first`, is said on the bottom line beside the keys.
+peek): `enter` sends, `backspace` edits, `esc` cancels. After a key the bottom line says what
+became of the item (`#12 is running`, `#12 stopped · branch kept`); a refusal, such as
+`#1540 is on a bench; stop it first`, is said there in the floor's own words instead.
 
 ## open the item on github — g
 
@@ -796,10 +876,7 @@ Be plain about this when asked:
   already running goes on.
 - **Only a post stage writes to GitHub** (a comment, labels, a close, a pull request), through
   the connected GitHub account, and only what the recipe's policy allows.
-- **A stage's conversation opens in the team menu, not from the item page.** Each chat stage
-  is a conversation in the item's team under `factory` (see running an item). `enter` on a
-  stage of the item page still says `the stage's conversation opens here once streams are
-  conversations`, and the diff does not open yet.
+- **The diff does not open yet.** `d` on a landed item says where it will be.
 - **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`.
 - **The foreman only reads and marks.** `m` opens it (see the foreman); it cannot launch,
   ship, post or change an item, and the person's `L` is the only launch.
