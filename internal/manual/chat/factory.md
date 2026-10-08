@@ -695,7 +695,7 @@ items talked through are one `factory` row until you stand in it. When the item 
 `T` is not named, and does nothing, over `--host` or `--at` to another machine, from `--once`,
 or on the still made-up floor: nothing there can make a conversation.
 
-## the foreman — m, what should I take first, factory_floor
+## the foreman — m, what should I take first, factory_floor, why can't my chat read the floor
 
 `m` on the factory floor opens the foreman: one conversation for the whole floor, for deciding
 what to take first ("what should I take first this morning and why?", "mark the three cheapest
@@ -718,8 +718,13 @@ dropped.
 
 **It never launches, ships or posts.** Only a new item takes a mark (`#3 is running, and only a
 new item takes a mark`), and `L` on the floor is the only launch (see what the factory does not
-do yet). `factory_floor` is on the belt wherever `factory_add` is, so any conversation can read
-the floor. `m` does nothing over `--host` or `--at`, from `--once`, or on the still made-up
+do yet).
+
+**Only the foreman reads the floor.** `factory_floor` is on the foreman's belt and on no other
+conversation's: an ordinary chat, an item's own conversation (`T`) and a stage do not have it.
+A chat that wants something on the floor proposes a new item with `factory_add`, an item's own
+conversation changes its item with `factory_item`, and to ask about the whole floor you open the
+foreman with `m`. `m` does nothing over `--host` or `--at`, from `--once`, or on the still made-up
 floor.
 
 ## changing an item from its conversation — factory_item, skip a stage, plan first, raise the cap, leave a note

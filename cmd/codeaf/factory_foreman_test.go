@@ -120,3 +120,47 @@ func TestFactoryFloorDoorMarksWhatThePageReads(t *testing.T) {
 		t.Fatal("a running item took a mark")
 	}
 }
+
+// THE FLOOR IS ON THE FOREMAN'S BELT ONLY: a store that names no foreman gives
+// no conversation the door; once it names one, that session file gets the door
+// (by its own path or a symlink to it) and every other conversation gets nil.
+func TestFactoryFloorDoorIsTheForemansOnly(t *testing.T) {
+	if foremanFloorDoor(nil, "", "/some/transcript.jsonl") != nil {
+		t.Fatal("a nil store made a floor door")
+	}
+	st, web, _ := talkLab(t)
+	dir := t.TempDir()
+	foreman := filepath.Join(dir, "foreman", "transcript.jsonl")
+	other := filepath.Join(dir, "other", "transcript.jsonl")
+	for _, p := range []string{foreman, other} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range []string{foreman, other, ""} {
+		if foremanFloorDoor(st, web, p) != nil {
+			t.Fatalf("a floor with no foreman put the door on %q", p)
+		}
+	}
+	if err := st.SetForeman(foreman); err != nil {
+		t.Fatal(err)
+	}
+	if foremanFloorDoor(st, web, foreman) == nil {
+		t.Fatal("the foreman's own conversation has no floor door")
+	}
+	if foremanFloorDoor(st, web, filepath.Join(dir, "foreman", ".", "transcript.jsonl")) == nil {
+		t.Fatal("an unclean spelling of the foreman's path lost the door")
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(filepath.Join(dir, "foreman"), link); err == nil {
+		if foremanFloorDoor(st, web, filepath.Join(link, "transcript.jsonl")) == nil {
+			t.Fatal("the foreman's path through a symlink lost the door")
+		}
+	}
+	if foremanFloorDoor(st, web, other) != nil {
+		t.Fatal("a conversation that is not the foreman carries the floor door")
+	}
+}

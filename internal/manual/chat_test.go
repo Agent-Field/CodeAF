@@ -52,6 +52,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which branch does a factory item work on, does it touch my checkout", "factory"},
 		{"where is the factory item's worktree", "factory"},
 		{"who is the foreman on the factory floor", "factory"},
+		{"why can't my chat read the factory floor", "factory"},
 		{"why does a wrapped help line stay under its key", "keys"},
 		// The conversations view and its teams (conversations-and-teams.md).
 		{"how do I see all my conversations at once", "conversations-and-teams"},
