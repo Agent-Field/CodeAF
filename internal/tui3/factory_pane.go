@@ -179,7 +179,28 @@ func (a *app) factoryPeekStrip(it factory.Item, measure int) string {
 			segs = append(segs, paint(mark)+" "+name)
 			plains = append(plains, mark+" "+words)
 		}
-		return factoryJoinWhole(segs, plains, "  ", measure)
+		// THE PHASE THAT IS MOVING IS ALWAYS ON THE ROW: the running one, or
+		// the one waiting on the person. Phases before it are dropped from the
+		// left until it fits, as the item page's stage strip does, because a
+		// strip cut from the right lost the very phase a person looks for.
+		from, at := 0, -1
+		for i, ph := range it.Stream.Phases {
+			if ph.State == factory.PhaseRunning || ph.State == factory.PhaseWaiting {
+				at = i
+				break
+			}
+		}
+		for from < at {
+			w := 0
+			for i := from; i <= at; i++ {
+				w += ansi.StringWidth(plains[i]) + 2
+			}
+			if w-2 <= measure {
+				break
+			}
+			from++
+		}
+		return factoryJoinWhole(segs[from:], plains[from:], "  ", measure)
 	}
 	for _, st := range stages {
 		if st.On && factory.Fits(st, it) {
@@ -432,7 +453,7 @@ func factoryActionWords(it factory.Item) string {
 		if factoryFirstFailed(it) != "" {
 			return "enter open · a ship anyway · c send back · o check again"
 		}
-		return "enter open to ship · c send back · o check again"
+		return "enter open · c send back · o check again"
 	case factory.StateShipped:
 		return "enter open"
 	}
