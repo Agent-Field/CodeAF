@@ -11,6 +11,13 @@ import (
 // main is bisected and fixed. Every call answers fresh slices, so a caller may
 // toggle its copy without reaching anybody else's.
 //
+// WRITE WORKS IN THE CHECKOUT. Its ask said `do it in a worktree` until the
+// 2026-10-08 run on factory-demo, where the stage obeyed it, was refused
+// `git worktree` by the session's own guard (a stage may not move its copy
+// onto work it did not do), and reported its edit as landed in "this stage's
+// own worktree copy", which did not exist. An ask the stage is refused the
+// means to follow is a sentence that makes the report untrue.
+//
 // SECURITY IS BANKED OFF and switched on per item, so an item that asks for a
 // security pass gains the stage without the recipe changing. THIS IS THE ONE
 // PLACE THE DEFAULT STAGES ARE SPELLED: the mock's generated world and the
@@ -20,7 +27,7 @@ func DefaultRecipe() Recipe {
 	return Recipe{
 		Stages: []Stage{
 			{Name: "plan", Ask: "read the issue and say how", Until: "done", On: true},
-			{Name: "write", Ask: "do it in a worktree", Fanout: "per-file", Until: "done", On: true},
+			{Name: "write", Ask: "make the change in the checkout", Fanout: "per-file", Until: "done", On: true},
 			{Name: "test", Ask: "run what the change implies", Until: "green", Max: 2, On: true},
 			{Name: "review", Ask: "read it as a stranger would", Fanout: "per-finding", Until: "clean", Max: 1, On: true},
 			{Name: "security", Ask: "secrets, injection and authz", Until: "clean", On: false},
