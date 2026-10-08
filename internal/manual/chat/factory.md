@@ -91,7 +91,8 @@ them before it leaves the page. When nothing matches, the list says
 The first line of the list says which repositories it shows: `all repos`, or one repository's
 short name and how many items it has, such as `codeaf · 7`. `]` steps to the next repository and
 `[` to the one before, and past the last one the list shows all of them again. An item shows
-under a repository it arrived on or touches. `esc` goes back to all repositories before it
+under a repository it arrived on or touches. That line, and the filter's words under it, stay at
+the top while the rows scroll. `esc` goes back to all repositories before it
 leaves the page.
 
 ## older new items, the backlog, and A
