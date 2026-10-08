@@ -476,9 +476,11 @@ project's kind: Go, Rust, Maven, Gradle, .NET, Python, and CMake.
 
 For a CMake project with nothing else to go on, such as a header-only library, it
 builds with `cmake -S . -B .senior-dev/cmake-build && cmake --build
-.senior-dev/cmake-build --parallel` (one job per processor) and tests with
-`ctest --test-dir .senior-dev/cmake-build --output-on-failure`. The build folder is
-inside its own `.senior-dev` folder, so it never ends up in the change it hands in.
+.senior-dev/cmake-build --parallel` (one job per processor). It tests by running
+the same configure and build first, then `ctest --output-on-failure` in that
+folder, so the test still works when the build command came from somewhere else.
+The build folder is inside its own `.senior-dev` folder, so it never ends up in
+the change it hands in.
 This needs `cmake` on the machine.
 
 When it finds nothing, the run fails its checks: the ending says `no build

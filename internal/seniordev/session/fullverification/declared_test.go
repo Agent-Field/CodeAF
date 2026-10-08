@@ -23,12 +23,44 @@ func TestACMakeProjectIsGivenCMakesOwnBuildAndTest(t *testing.T) {
 	if !plan.BuildExpected || !plan.TestExpected {
 		t.Fatalf("plan = %#v, want a CMake project held to both demands", plan)
 	}
+	const build = "cmake -S . -B .senior-dev/cmake-build && cmake --build .senior-dev/cmake-build --parallel \"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)\""
 	want := []Entrypoint{
-		{Kind: KindBuild, Command: "cmake -S . -B .senior-dev/cmake-build && cmake --build .senior-dev/cmake-build --parallel \"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)\"", Source: "CMakeLists.txt"},
-		{Kind: KindTest, Command: "ctest --test-dir .senior-dev/cmake-build --output-on-failure", Source: "CMakeLists.txt"},
+		{Kind: KindBuild, Command: build, Source: "CMakeLists.txt"},
+		{Kind: KindTest, Command: build + " && cd .senior-dev/cmake-build && ctest --output-on-failure", Source: "CMakeLists.txt"},
 	}
 	if !reflect.DeepEqual(plan.Entrypoints, want) {
 		t.Fatalf("plan = %#v, want %#v", plan.Entrypoints, want)
+	}
+}
+
+// THE CMAKE TEST STANDS ALONE. Discover picks each kind on its own, so a CMake
+// project whose README or Makefile names a build and no test is paired with
+// that build and the CMake test. A test that assumed the CMake build had run
+// would fail on a folder nothing configured and report the project's tests
+// red; the test default configures and builds its own tree first.
+func TestTheCMakeTestBuildsItsOwnTreeWhenTheBuildCameFromElsewhere(t *testing.T) {
+	for _, fixture := range []struct {
+		name, file, body string
+		build            Entrypoint
+	}{
+		{"README build", "README.md", "Build with `cmake --build build`.\n",
+			Entrypoint{Kind: KindBuild, Command: "cmake --build build", Source: "README.md"}},
+		{"Makefile build target", "Makefile", "build:\n\tcmake --build out\n",
+			Entrypoint{Kind: KindBuild, Command: "make build", Source: "Makefile#build"}},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			workspace := t.TempDir()
+			writeDiscoveryFile(t, workspace, "CMakeLists.txt", "project(demo CXX)\ninclude(CTest)\n")
+			writeDiscoveryFile(t, workspace, fixture.file, fixture.body)
+			want := []Entrypoint{fixture.build, {
+				Kind:    KindTest,
+				Command: cmakeConfigureAndBuild + " && cd " + cmakeBuildDirectory + " && ctest --output-on-failure",
+				Source:  "CMakeLists.txt",
+			}}
+			if plan := Discover(workspace); !reflect.DeepEqual(plan.Entrypoints, want) {
+				t.Fatalf("plan = %#v, want %#v", plan.Entrypoints, want)
+			}
+		})
 	}
 }
 
