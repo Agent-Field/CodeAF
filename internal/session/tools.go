@@ -246,6 +246,10 @@ func (a *Agent) belt() []bare.Tool {
 	// firing's own headless session do not, because nothing unwatched may arm
 	// something that spends forever.
 	tools = append(tools, a.standingTools()...)
+	// factory_add (tools_factory.go) is the chat's door onto the factory floor,
+	// and it is absent on the same law as `stand` beside it: no door behind it,
+	// no verb. It only ever raises a card, and nothing starts from it.
+	tools = append(tools, a.factoryTools()...)
 	tools = append(tools, a.harnessTools()...)
 	// The saved PROGRAMS, and the list that says which ones there are
 	// (tools_subharness.go). They are conditional on the same terms the three

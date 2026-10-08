@@ -73,6 +73,8 @@ func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Even
 		owner.ResolveSubharness(q.ID, false, nil)
 	case QuestionConnect:
 		owner.ResolveConnect(q.Ref, false)
+	case QuestionFactory:
+		owner.ResolveFactory(q.Ref, FactoryAnswer{})
 	}
 	return a.Submit(ctx, words)
 }
