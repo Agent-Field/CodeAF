@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -8,6 +9,33 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
+
+// Keep only small, fitted excerpts, with one bounded set of shapes per page
+// visit. Exact message equality also catches same-length stream corrections.
+const teamsRenderedPreviewMax = 64
+
+type teamsPreviewShape struct {
+	key           string
+	width, budget int
+}
+
+type teamsRenderedPreview struct {
+	messages []teamsPreviewMessage
+	ink      string
+	styler   *tokens.Styler
+	paths    map[string]bool
+	rows     []string
+	used     uint64
+}
+
+func (a *app) teamsPreviewPathsSame(paths map[string]bool) bool {
+	for span, plain := range paths {
+		if a.plainCodePath(span) != plain {
+			return false
+		}
+	}
+	return true
+}
 
 // A card shows the latest human exchange, even when team traffic arrives
 // afterwards. Without a human prompt it falls back to the latest delivery or
@@ -128,6 +156,39 @@ func (a *app) teamsConversationPreview(key string, width, budget int) []string {
 		}
 		return []string{a.pal.dim(word)}
 	}
+	shape := teamsPreviewShape{key: key, width: width, budget: budget}
+	ink := a.pal.muted("x") + a.pal.accent(a.pal.youGlyph()) + a.pal.ink("...") + a.pal.dim("interrupted")
+	a.tp.previewClock++
+	if cached := a.tp.previewRows[shape]; cached != nil && cached.ink == ink && cached.styler == a.styler() &&
+		slices.Equal(cached.messages, messages) && a.teamsPreviewPathsSame(cached.paths) {
+		cached.used = a.tp.previewClock
+		return cached.rows
+	}
+	paths := map[string]bool{}
+	plainCode := func(span string) bool {
+		plain := a.plainCodePath(span)
+		paths[span] = plain
+		return plain
+	}
+	rows := a.teamsRenderPreview(messages, width, budget, plainCode)
+	if a.tp.previewRows == nil {
+		a.tp.previewRows = map[teamsPreviewShape]*teamsRenderedPreview{}
+	}
+	if a.tp.previewRows[shape] == nil && len(a.tp.previewRows) >= teamsRenderedPreviewMax {
+		var oldest teamsPreviewShape
+		used := ^uint64(0)
+		for shape, cached := range a.tp.previewRows {
+			if cached.used < used {
+				oldest, used = shape, cached.used
+			}
+		}
+		delete(a.tp.previewRows, oldest)
+	}
+	a.tp.previewRows[shape] = &teamsRenderedPreview{messages: messages, ink: ink, styler: a.styler(), paths: paths, rows: rows, used: a.tp.previewClock}
+	return rows
+}
+
+func (a *app) teamsRenderPreview(messages []teamsPreviewMessage, width, budget int, plainCode func(string) bool) []string {
 	var out []string
 	for i, m := range messages {
 		room := budget - len(out)
@@ -150,7 +211,7 @@ func (a *app) teamsConversationPreview(key string, width, budget int) []string {
 				rows = append(rows, a.pal.ink(part))
 			}
 		} else {
-			rows = trimBlanks(a.renderMarkdown(m.text, width))
+			rows = trimBlanks(renderMarkdownWithCode(a.styler(), m.text, width, plainCode))
 			if m.interrupted {
 				rows = append(rows, a.pal.dim("interrupted"))
 			}
@@ -279,6 +340,9 @@ type teamsCardSpot struct {
 func (a *app) teamsConversationCard(d *teamsDraw, t team, r teamsCrewRow, title string, lines []wallCardLine, x, y, width int) []string {
 	if r.key != "" {
 		d.cards = append(d.cards, teamsCardSpot{team: t.ID, key: r.key, title: title, y: y, width: width})
+	}
+	if !d.visible(y, len(lines)+2) {
+		return make([]string, len(lines)+2)
 	}
 	heading, border, _ := a.teamsCardHeading(t, r, title, width)
 	return wallCardBuildWithBorder(a.pal, heading, lines, x, y, width, 1, 0, border).rows
