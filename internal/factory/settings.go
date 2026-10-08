@@ -23,6 +23,13 @@ type RepoInfo struct {
 	Owner   string
 	Private bool
 	Pushed  time.Time
+	// Open is how many issues and pull requests are open on it, as the forge
+	// lists it (GitHub's open_issues_count counts both), and -1 when the forge
+	// did not say.
+	Open int
+	// Dir is where this machine has it checked out, "" when it does not know;
+	// the floor's stages run only where it is known.
+	Dir string
 }
 
 // GitHubLink is how this machine reaches GitHub: the login the token belongs

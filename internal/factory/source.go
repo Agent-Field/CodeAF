@@ -76,4 +76,11 @@ type SourceInfo struct {
 	// Polling is true while a read of the source is in flight, so the floor
 	// can say it is being read rather than leave a person guessing.
 	Polling bool
+	// Reading is the repository the read is on now, `owner/name`, and Read of
+	// Of how many of the watched repositories this read has finished, so a
+	// floor with nothing on it yet can say `reading Agent-Field/CodeAF · 1 of
+	// 3` instead of quiet. All three are zero when no read is in flight.
+	Reading string
+	Read    int
+	Of      int
 }
