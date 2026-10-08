@@ -597,11 +597,13 @@ func (a *app) factoryRailItem(it factory.Item, width int, cur bool) string {
 			factsW -= ansi.StringWidth(factoryAnswerWord) + 2
 		}
 		// The `first` order's reason stands before the age, only in the cells
-		// ALL of the facts leave free, so it goes before any fact does
-		// (factory_order.go).
-		reason, reasonW := a.factoryOrderReason(it, factsW-ansi.StringWidth(a.factoryFactsLine(it, factsW+width))-2)
-		right, rightW = reason+right, rightW+reasonW
+		// the facts leave free AT THIS WIDTH: the facts are drawn first, at
+		// the room the row has, and the reason takes what they did not use
+		// (factory_order.go). Measured against the facts at their widest
+		// there was never room, at any width.
 		facts := a.factoryFactsLine(it, factsW)
+		reason, reasonW := a.factoryOrderReason(it, factsW-ansi.StringWidth(facts))
+		right, rightW = reason+right, rightW+reasonW
 		text += facts
 		gap := width - ansi.StringWidth(text) - rightW
 		text += strings.Repeat(" ", max(gap, 0)) + right

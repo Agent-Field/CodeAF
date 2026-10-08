@@ -157,28 +157,47 @@ func (placeFactory) hint(a *app) string {
 	if len(verbs) <= 1 || (len(verbs) == 2 && verbs[1] == "space mark") {
 		verbs = append([]string{"↑↓ walk"}, verbs...)
 	}
-	rail := []string{"/ filter"}
+	// THE RAIL'S CLAUSES CARRY A DROP RANK, and a long line sheds the lowest
+	// rank first. `/ filter` and `A backlog` go first because the manual
+	// names them too; the floor's settings follow (visited once in a while,
+	// where the rest of the line is about the item a person stands on), then
+	// the sleep, the density and the repo walk. THE ORDER CLAUSE IS THE LAST
+	// OF THE RAIL TO GO: it names a state a person is in, which no other
+	// corner of the floor says.
+	type clause struct {
+		text string
+		rank int
+	}
+	rail := []clause{{"/ filter", 1}}
 	if len(a.fp.snap.Repos) > 1 {
-		rail = append(rail, "[ ] repo")
+		rail = append(rail, clause{"[ ] repo", 6})
 	}
-	rail = append(rail, "A backlog", "z density", a.factoryOrderHint())
+	rail = append(rail, clause{"A backlog", 0}, clause{"z density", 5}, clause{a.factoryOrderHint(), 7})
 	if a.factory.Has("sleep") {
-		rail = append(rail, "S sleep 8h")
+		rail = append(rail, clause{"S sleep 8h", 4})
 	}
-	// THE FLOOR'S SETTINGS ARE THE LAST OF THE RAIL'S KEYS and so the first to
-	// go when the line is too long: they are visited once in a while, and the
-	// rest of the line is about the item a person is standing on.
-	rail = append(rail, a.factorySettingsHint()...)
+	for _, t := range a.factorySettingsHint() {
+		rail = append(rail, clause{t, 3})
+	}
 	out := "esc back"
 	if a.factoryNarrowed() {
 		out = "esc clear"
 	}
 	line := func() string {
-		parts := append(append(append([]string{}, head...), verbs...), rail...)
+		parts := append(append([]string{}, head...), verbs...)
+		for _, c := range rail {
+			parts = append(parts, c.text)
+		}
 		return strings.Join(append(parts, out), " · ")
 	}
 	for len(rail) > 0 && a.width > 0 && ansi.StringWidth(placeTailed(line())) > a.width-2 {
-		rail = rail[:len(rail)-1]
+		lo := 0
+		for i, c := range rail {
+			if c.rank < rail[lo].rank {
+				lo = i
+			}
+		}
+		rail = append(rail[:lo], rail[lo+1:]...)
 	}
 	return line()
 }

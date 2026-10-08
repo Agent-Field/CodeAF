@@ -490,15 +490,15 @@ The first press makes, on this machine and without asking any model:
   `factory` (made once, the first time any item is talked through);
 - one conversation in that team, in the folder where the item's repository is checked out (or
   this window's folder when codeaf does not know the checkout). It opens with the item in front
-  of it: the title, the repository, author, tier and floor id, its chips (gate, cap, labels), the
+  of it: the title, the repository, author and tier, its chips (gate, cap, labels), the
   body, its stages as numbered lines, the factory's read, and the sentence
   `This is the item's own conversation on the factory floor. Nothing here launches it; the person does that on the floor.`
 
 You land in the conversation, as when you open one from its tab; the one you were in goes on
-running behind it. `esc` on its empty box, with nothing running, takes you back to the floor on
-the same row (and onto the item page if that is where you pressed `T`). That way back is taken
-once; reopened later from its tab it is an ordinary conversation and `esc` means what it
-always means.
+running behind it. The first `esc` on its empty box, with nothing running, takes you back to the
+floor on the same row, however many turns the model has answered (and onto the item page if that is
+where you pressed `T`). That way back is taken once; reopened later from its tab it is an ordinary conversation, and there `esc` means
+what it always means, so a first `esc` arms the rewind (`esc again to rewind`).
 
 **Where it appears:** a tab on the tab strip, like any conversation you open. Its team sits under
 the one `factory` team in the team menu and on the teams rail, and that team is folded: a hundred

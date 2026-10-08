@@ -100,6 +100,36 @@ func TestFactoryTalkOpensTheChatAndEscReturnsToTheSameRow(t *testing.T) {
 	}
 }
 
+// THE WAY BACK DOES NOT WAIT FOR AN EMPTY CONVERSATION: once the model has
+// answered, the conversation has turns a rewind could cut, and the first `esc`
+// would otherwise only arm it (`esc again to rewind`). In the conversation `T`
+// opened the first `esc` goes back to the floor all the same.
+func TestFactoryTalkEscReturnsAfterTheModelHasAnswered(t *testing.T) {
+	f := &factoryFake{}
+	a := factoryVerbLab(t, f)
+	seam, _, chat := talkSeam(t, f)
+	a.factory = seam
+	a.open = func(where, file string) (Conversation, error) {
+		agent := &rewindFake{fakeAgent: &fakeAgent{model: "m", past: rewindPast()}}
+		return Conversation{Agent: agent, SessionFile: file, Workspace: where}, nil
+	}
+	factoryOn(t, a, 8)
+	drive(t, a, key("T"))
+	if a.pageShowing() || a.convKey(a.file) != a.convKey(chat) {
+		t.Fatalf("T did not land in the conversation: page %v", a.page)
+	}
+	if _, ok := a.rewinder(); !ok || !a.rewindReady() {
+		t.Fatal("the lab conversation cannot rewind, so the test proves nothing")
+	}
+	drive(t, a, key("esc"))
+	if !a.at(pageFactory) {
+		t.Fatalf("the first esc did not go back to the floor (page %v)", a.page)
+	}
+	if a.rewindArmed() {
+		t.Fatal("the way back left the rewind armed")
+	}
+}
+
 // THE `factory` TEAM IS ONE FOLD: a hundred items' teams under it are one row
 // on the open-team walk (the teams rail and the chats' team menu), until the
 // person stands in it.
