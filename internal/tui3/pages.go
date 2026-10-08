@@ -2027,6 +2027,11 @@ func (a *app) placeMsgLine(width int) (string, bool) {
 	if msg == "" && a.at(pageHome) && !a.homeAskFitsColumn() {
 		msg = a.homeAskFoot()
 	}
+	// THE FLOOR'S SAVE RECEIPT IS DRAWN FROM THE READ'S STATE, not stored, so
+	// it turns and lapses in the frame the handover does ([app.factoryReadNote]).
+	if msg == "" && a.at(pageFactory) {
+		msg = a.factoryReadNote()
+	}
 	if msg == "" {
 		return "", false
 	}

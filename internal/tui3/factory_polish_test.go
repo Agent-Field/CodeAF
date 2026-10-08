@@ -693,7 +693,7 @@ func TestFactoryFirstReadFromTheSave(t *testing.T) {
 	if !a.fp.readingSince.Equal(*now) {
 		t.Fatalf("the save stood no reading moment: %v", a.fp.readingSince)
 	}
-	frame := factoryFrameText(a)
+	frame := factoryFloorAgrees(t, a)
 	head := factoryHeadRow(a, factoryFirstReadWords)
 	if !strings.Contains(head, a.factorySpin()+" "+factoryFirstReadWords) || strings.Contains(frame, "quiet") {
 		t.Fatalf("the frame after the save:\n%s", frame)
@@ -773,29 +773,153 @@ func TestFactoryFirstReadClearsOnPollingOrItems(t *testing.T) {
 	}
 }
 
-// A POLLER THAT NEVER COMES DOES NOT SPIN FOREVER: past factoryFirstReadWait
-// the floor's own words return and the beat stops.
-func TestFactoryFirstReadLapses(t *testing.T) {
+// factoryFloorAgrees is the frame-level law the floor's three lines keep
+// after a save (owner screenshots, 2026-10-08 15:14 and 15:15): no frame says
+// both `quiet` and `reading`; the foot's `reading them now` stands exactly
+// when the head's spinning reading clause does; and the head's no-word clause
+// stands exactly when the bare line's does. It answers the frame, plain.
+func factoryFloorAgrees(t *testing.T, a *app) string {
+	t.Helper()
+	frame := factoryFrameText(a)
+	if strings.Contains(frame, "quiet") && strings.Contains(frame, "reading") {
+		t.Fatalf("one frame says both quiet and reading:\n%s", frame)
+	}
+	text := strings.Join(strings.Fields(frame), " ")
+	foot := strings.Contains(text, factoryReadingNowWords)
+	head := strings.Contains(text, a.factorySpin()+" "+factoryFirstReadWords)
+	if foot != head {
+		t.Fatalf("the foot says reading %v and the head %v:\n%s", foot, head, frame)
+	}
+	noHead := strings.Contains(text, factoryNoWordWords)
+	noBare := strings.Contains(text, factoryBareNoWordWords)
+	if noHead != noBare && (noHead || a.factoryBare()) {
+		t.Fatalf("the head says no word %v and the bare line %v:\n%s", noHead, noBare, frame)
+	}
+	if noHead && (head || foot) {
+		t.Fatalf("one frame says both no word and reading:\n%s", frame)
+	}
+	return frame
+}
+
+// A POLLER THAT NEVER COMES DOES NOT GO BACK TO QUIET (owner screenshots,
+// 2026-10-08 15:14 and 15:15): past factoryFirstReadWait the spinner stops,
+// the head says there is no word from the read, the bare line says what to
+// do, and the foot's `reading them now` lapses in the same frame.
+func TestFactoryFirstReadTurnsToNoWord(t *testing.T) {
 	a, _, now := factorySaveLab(t, nil)
+	factoryFloorAgrees(t, a)
 	drive(t, a, key("R"))
 	drive(t, a, key("enter"))
 	if !a.factoryFirstReading() {
 		t.Fatal("the save stood no reading moment")
 	}
+	if frame := factoryFloorAgrees(t, a); !strings.Contains(frame, factoryReadingNowWords) {
+		t.Fatalf("the foot after the save does not say the read began:\n%s", frame)
+	}
 	*now = now.Add(factoryFirstReadWait - time.Second)
-	if !a.factoryFirstReading() {
-		t.Fatal("the reading moment lapsed early")
+	if !a.factoryFirstReading() || a.factoryNoWord() {
+		t.Fatal("the reading moment turned early")
 	}
+	factoryFloorAgrees(t, a)
 	*now = now.Add(time.Second)
-	if a.factoryFirstReading() || a.factorySpinning() {
-		t.Fatal("the reading moment stood past factoryFirstReadWait")
+	if a.factoryFirstReading() || a.factorySpinning() || !a.factoryNoWord() {
+		t.Fatal("past factoryFirstReadWait the floor is not at no word")
 	}
-	if a.factoryReadSoon(a.fp.readingGen) != nil || !a.fp.readingSince.IsZero() {
-		t.Fatal("the beat went on past factoryFirstReadWait")
+	if a.factoryReadSoon(a.fp.readingGen) != nil {
+		t.Fatal("the one-second beat went on past factoryFirstReadWait")
 	}
-	frame := factoryFrameText(a)
-	if strings.Contains(frame, factoryFirstReadWords) || !strings.Contains(frame, "quiet") {
-		t.Fatalf("the lapsed floor:\n%s", frame)
+	if a.fp.readingSince.IsZero() {
+		t.Fatal("the wait passing cleared the read that was asked for")
+	}
+	frame := factoryFloorAgrees(t, a)
+	head := factoryHeadRow(a, factoryNoWordWords)
+	if !strings.Contains(head, "◆ "+factoryNoWordWords) || strings.Contains(head, a.factorySpin()) {
+		t.Fatalf("the head at no word is %q:\n%s", head, frame)
+	}
+	text := strings.Join(strings.Fields(frame), " ")
+	if !strings.Contains(text, factoryBareNoWordWords) || strings.Contains(text, factoryBareWords) {
+		t.Fatalf("the bare line at no word:\n%s", frame)
+	}
+	if strings.Contains(frame, factoryReadingNowWords) || strings.Contains(frame, "quiet") {
+		t.Fatalf("the frame at no word still says reading or quiet:\n%s", frame)
+	}
+	if note := a.factoryReadNote(); !strings.HasPrefix(note, "watching ") || strings.Contains(note, "reading") {
+		t.Fatalf("the note at no word is %q", note)
+	}
+	// It stands: a minute later, with still no word, it says the same.
+	*now = now.Add(time.Minute)
+	spend(t, a, a.factoryRead())
+	if !a.factoryNoWord() || !strings.Contains(factoryFloorAgrees(t, a), factoryNoWordWords) {
+		t.Fatalf("no word lapsed with still no word:\n%s", factoryFrameText(a))
+	}
+}
+
+// A SOURCE MID-POLL AFTER THE WAIT CLEARS NO WORD, and the source's own
+// clause takes the head; a later answer clears it the same way.
+func TestFactoryNoWordClearsOnPolling(t *testing.T) {
+	var polling bool
+	var polled time.Time
+	a, _, now := factorySaveLab(t, func(gh *factory.SourceInfo) { gh.Polling, gh.Polled = polling, polled })
+	drive(t, a, key("R"))
+	drive(t, a, key("enter"))
+	*now = now.Add(factoryFirstReadWait + time.Second)
+	if !a.factoryNoWord() {
+		t.Fatal("the floor is not at no word past the wait")
+	}
+	polling = true
+	spend(t, a, a.factoryRead())
+	if !a.fp.readingSince.IsZero() || a.factoryNoWord() || a.factoryReadNote() != "" {
+		t.Fatal("a source mid-poll left no word standing")
+	}
+	frame := factoryFloorAgrees(t, a)
+	if strings.Contains(frame, factoryNoWordWords) || !strings.Contains(frame, "github · "+a.factorySpin()+" polling") {
+		t.Fatalf("the floor after the poll began:\n%s", frame)
+	}
+
+	// A later answer clears it too, and the floor reads as read.
+	polling = false
+	drive(t, a, key("R"))
+	drive(t, a, key("enter"))
+	*now = now.Add(factoryFirstReadWait + time.Second)
+	if !a.factoryNoWord() {
+		t.Fatal("the second save did not reach no word")
+	}
+	polled = *now
+	spend(t, a, a.factoryRead())
+	if a.factoryNoWord() || strings.Contains(factoryFloorAgrees(t, a), factoryNoWordWords) {
+		t.Fatalf("an answer after the save left no word:\n%s", factoryFrameText(a))
+	}
+}
+
+// A FAILING READ IS NEVER QUIET: on an empty floor the one-line head says the
+// source's trouble as the facts row does, before the save, after the wait,
+// and beside when it last answered.
+func TestFactoryTroubleOnAnEmptyFloor(t *testing.T) {
+	a := factoryFirstReadLab(t, func(gh *factory.SourceInfo) { gh.Trouble = "not reachable" })
+	frame := factoryFloorAgrees(t, a)
+	head := factoryHeadRow(a, "◆")
+	if !strings.Contains(head, "◆ github · not reachable") || strings.Contains(frame, "quiet") {
+		t.Fatalf("a failing read on an empty floor:\n%s", frame)
+	}
+	b := factoryFirstReadLab(t, func(gh *factory.SourceInfo) {
+		gh.Trouble, gh.Polled = "not reachable", factoryTestNow.Add(-3*time.Minute)
+	})
+	if head := factoryHeadRow(b, "◆"); !strings.Contains(head, "◆ github · not reachable · polled 3m ago") {
+		t.Fatalf("a failing read with an older answer: %q", head)
+	}
+	// The four-row strip's shift row drops quiet with it.
+	b.fp.headFull = true
+	if shift := strings.TrimSpace(ansi.Strip(b.factoryHead(150)[1])); shift != factoryHeadNothingWords {
+		t.Fatalf("the shift row with a failing read is %q", shift)
+	}
+
+	c, _, now := factorySaveLab(t, func(gh *factory.SourceInfo) { gh.Trouble = "token refused" })
+	drive(t, c, key("R"))
+	drive(t, c, key("enter"))
+	*now = now.Add(factoryFirstReadWait)
+	factoryFloorAgrees(t, c)
+	if head := factoryHeadRow(c, "◆"); !strings.Contains(head, "◆ "+factoryNoWordWords+" · github · token refused") {
+		t.Fatalf("no word with a failing source: %q\n%s", head, factoryFrameText(c))
 	}
 }
 
