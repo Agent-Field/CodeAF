@@ -457,16 +457,32 @@ type Options struct {
 	ImplicitTalk bool
 	// ResolveUpdate and InstallUpdate are the two off-frame halves of /update.
 	// Keeping selection separate lets the surface name the tag before the
-	// download begins. Nil leaves the command with an honest refusal.
+	// download begins. InstallUpdate takes the whole InstallOptions so the
+	// surface can say whether a person asked for an exact tag — the one case
+	// where replacing the file with an older release is deliberate. Nil leaves
+	// the command with an honest refusal.
 	ResolveUpdate func(context.Context, codeupdate.Choice) (codeupdate.Release, error)
-	InstallUpdate func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error)
+	InstallUpdate func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error)
 	// UpdateRunning is the exact revision of this process, without build-time
-	// decoration. UpdateArgs are its original arguments. Restart is the slot the
-	// surface fills before quitting and the door reads after the terminal is back.
+	// decoration. UpdateArgs are its original arguments.
+	//
+	// Restart is the plan a quitting surface used to fill for the door to read
+	// after the terminal was back. NO INSTALL FILLS IT NOW: an install replaces
+	// the file and the next launch opens it, so nothing on this surface quits for
+	// an update, and no code here reads the plan. It is handed in by the four
+	// doors so the shared launch keeps one empty plan rather than four, and it is
+	// RETIRED IN PLACE rather than deleted while the door's own detach-then-
+	// restart road (cmd/codeaf/chatv3.go's [finishChatRestart]) is still written
+	// and tested — see the change summary for why that road is kept.
 	UpdateRunning string
 	UpdateCurl    string
 	UpdateArgs    []string
 	Restart       *codeupdate.Plan
+	// UpdateAuto is the automatic updater's durable half: whether it is on, the
+	// release this profile already answered, the failure count that stops a
+	// retry loop, and the cross-terminal install lock. Nil leaves the launch
+	// notice as a one-line note with no offer behind it.
+	UpdateAuto *UpdateCoordinator
 
 	// Memory is the durable memory store behind the memory place. Nil means the
 	// place is unavailable; the live door passes the same store it gave the
@@ -500,6 +516,10 @@ type Options struct {
 	// Archive puts a conversation away on the machine that owns its row. Nil
 	// makes that action absent, so a hosted surface never writes a far path here.
 	Archive func(dir string, archived bool) error
+	// DeleteConversation removes the engine-owned transcript after confirmation.
+	DeleteConversation func(file string, choices map[string]string, affected map[string][]string) error
+	// DeleteTask removes only the selected task and its descendants.
+	DeleteTask func(file, id string) error
 
 	// ── THE PLACES FOLLOW THE SESSION'S MACHINE ─────────────────────────────
 	//
@@ -807,14 +827,19 @@ type Options struct {
 	// slice because the door's list may be warming: it is called the moment the
 	// picker opens, so a catalog that resolved after boot is on offer, and it
 	// MUST NOT block — a picker that waits on a fetch is a picker that answered
-	// a question with a spinner. Nil, or an empty answer, falls through to
-	// ~/.codeaf/v3/models.json and then to [BuiltinModels] (see models.go).
+	// a question with a spinner. Nil falls through to the provider's cached
+	// list; a known empty list stays empty, and no built-ins are offered.
 	//
 	// THE ONE FETCH IS ASKED FOR, AND IT STILL DOES NOT BLOCK: [Options.
 	// RefreshModels] runs as a command off the loop while the picker keeps
 	// answering, and this function goes on returning what it returned until
 	// the door has swapped in what that fetch brought back.
 	Models func() []Model
+	// RequireListedModel makes the opening model and every automatic replacement
+	// come from the same available chat catalog as /model. A cold or empty list
+	// shows no model and holds sends until discovery or a connection supplies one.
+	// Local doors own these catalogs; remote doors leave the engine's choice alone.
+	RequireListedModel bool
 	// ModelsForService is the process shelf's never-waiting reading for one
 	// connected service. Keeping it beside Models makes the picker read one
 	// shelf for every group instead of a surface-only map that a restart happens

@@ -60,11 +60,7 @@ lives under this machine's codeaf state directory at `~/.codeaf/v3/ssh/` (moved 
 `CODEAF_HOME`). The same **103-byte** socket-path limit applies there: a state path too
 long disables reuse only; the ordinary ssh connection still opens.
 
-These network-dependent defaults are editable on `/settings`' **Workspace** tab as `ssh
-reuse` (`300s`), `ssh heartbeat` (`3s`), `ssh missed heartbeats` (`3`), and `ssh traffic`
-(`lowdelay`). They were on the Session tab and moved, because every one of them lands on
-the next launch rather than on the conversation in front of you; nothing you saved moved
-with them. Setting the heartbeat to 0 turns
+These network-dependent defaults are under `/settings` → **Connections** → **Advanced**: `SSH connection reuse` (`300s`), `SSH keepalive interval` (`3s`), `SSH missed keepalives` (`3`), and `SSH traffic priority` (`lowdelay`). Existing saved values are preserved. They apply to new connections. Setting the heartbeat to 0 turns
 dead-link probes off; setting reuse to 0 stops keeping a connection after its channel
 closes. Whole-stream ssh compression stays off because it usually slows a LAN attach;
 large transcript frames compress themselves only when both codeaf builds support it.
@@ -471,17 +467,21 @@ A plain `codeaf` does not run your conversation inside the window — the sessio
 in a process of its own, so it survives the terminal closing. That process also outlives the
 build that started it.
 
-**An engine from an older build is replaced the moment a newer codeaf opens in that
-workspace**, busy or not, and you are told in one line which process that was:
+**An older engine holding work is joined, and steps aside at its first quiet moment.** Your
+window attaches and your work carries on; the old process keeps what it was holding and is
+asked to retire once nothing is in flight. If it was holding nothing, the workspace is handed
+over at once and you are told in one line:
 
 ```
 replaced the older engine on <machine> (pid 4242, a1b2c3d4 built 2026-09-21 09:00, /home/you/.codeaf/bin/devaf) — this build holds the workspace now
 ```
 
-Its conversations are closed properly on the way out — transcripts flushed; a reply it was
-in the middle of stops where it is and keeps what it had written — and they reopen on the
-new build. Windows that were on it reconnect to the new one. `codeaf engine --daemon` does
-the same and prints the same line.
+Retiring closes its conversations properly — transcripts flushed; a reply it was in the
+middle of stops where it is and keeps what it had written — and they reopen on the new build
+at the next connection. **An attached idle window counts as holding work**, so the handover
+waits until you close it; only a stalled window whose link is gone is ignored. A host built
+before this ask ignores it, so for one of those the old process keeps its work and **your
+next safe launch — after the work is done and every window has left — opens from this build**.
 
 When both ends support restart detection, that reconnect retires the old reply channels
 before displaying new replies. If an answer was still open, the window says
@@ -492,8 +492,10 @@ loss to the same running engine still resumes its existing answer.
 "Older" is when the build was made, whichever file it runs from: another binary built two
 days ago is older, and so is one too old to say. **A newer engine is never replaced** by an
 older codeaf — that window joins it — and two copies of one build never take the slot from
-each other. It used to be the other way round: an older engine holding work was left in
-place, and a fresh `codeaf engine --daemon` exited without a word.
+each other. An older engine on another wire, or one too old to be asked at all, is refused
+with `codeaf engine --stop --workspace '<path>'` named, and nothing is signalled behind your
+back. It used to be the other way round for a busy engine: it was killed and replaced, which
+is the rule this page no longer states.
 
 ## What still does not work, even though the session stays open
 

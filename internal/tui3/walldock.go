@@ -66,11 +66,9 @@ const dockLabel = tabWallWord
 // strip's own door to the wall (`▦ All`), and the dock's `▦ All` says
 // [dockChatsWord], which is the same sentence: they are the same door.
 //
-// IT SAYS GRID AND TABS, NOT "EVERY CONVERSATION", because the nav's `chats`
-// sits right over it on every page and is the place for every conversation
-// (topnav.go). Two doors a row apart that both said "every conversation"
-// would be one door drawn twice; this one is the tabs open here, side by side.
-const dockWallWord = "The grid of your open tabs, and your teams" + hintSegment + wallOpenKey
+// The hint names conversations open here because saved sessions belong to
+// Home and Sessions, while this button shows this window's tiles side by side.
+const dockWallWord = "The grid of all your conversations" + hintSegment + wallOpenKey
 
 // dockChatsWord is what the hint slot says while the pointer rests on the
 // dock's `▦ All`.
@@ -113,13 +111,13 @@ func (a *app) dockTabs() []chatTab {
 	// the front), so with nothing held and at most one on it there cannot be two. That is
 	// most frames, scrolling included, and the list is allocations the scroll's
 	// own law counts (inputsmooth_test.go).
-	if len(a.behind) == 0 && len(a.prev) < 2 {
+	if a.wall.activeID == "" && len(a.behind) == 0 && len(a.prev) < 2 {
 		a.dockList = a.dockList[:0]
 		return a.dockList
 	}
 	out := a.dockList[:0]
-	for _, tab := range a.tabList() {
-		if tab.start || tab.work {
+	for _, tab := range a.teamStripTabs(a.tabList()) {
+		if tab.start || tab.work || tab.slot {
 			continue
 		}
 		out = append(out, tab)
@@ -302,8 +300,8 @@ func dockCellHint(tab chatTab) string {
 }
 
 // dockHoverWords is what the hint slot says while the pointer rests on the
-// dock, and "" when it rests anywhere else: `The grid of your open tabs, and
-// your teams · alt+v` over `▦ All`, and [dockCellHint] over a cell. The strip's own door
+// dock, and "" when it rests anywhere else: [dockWallWord] over `▦ All`, and
+// [dockCellHint] over a cell. The strip's own door
 // to the wall (chattabs.go) is explained here too, in its own sentence.
 func (a *app) dockHoverWords() string {
 	// THE TEAM'S OWN DOORS EXPLAIN THEMSELVES HERE TOO: the manager's place on

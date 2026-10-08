@@ -12,44 +12,8 @@ import (
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
 )
 
-// ── THE TEAMS PAGE: THE TEAM-LEVEL VIEW ─────────────────────────────────────
-//
-// The third of the three surfaces (DESIGN.md section 8.4, ruling c-b): the
-// strip is what is open in this window, the wall is the same open set drawn
-// big, and this page is the team as a team. Every member is on it whether this
-// window has it open or not, with what it is doing and when it last moved; the
-// packets waiting on the person are cards on it; and the selected team's
-// manager is not summarised here, it IS here, as the real conversation
-// (teamspagehost.go), so a person can run most of their work from this one
-// page and step away.
-//
-//	home  teams  chats  sessions  spend  settings
-//	────────────────────────────────────────────────────────────────────────
-//	 All teams   + Manager │ ◆ harbor   $1.20 of $5 today  Settings  Close…  Open ▦
-//	 ● harbor          ⠿   │ @web running now · @api idle 2h · @docs not open 3d
-//	   ● parser      ? 1   │
-//	 ● orbit               │ ◆ conflict · raised by @web                waiting on you
-//	                       │ which shape does the signup form send?
-//	 + New team            │  JSON   @api changes the handler     recommended
-//	 ✦ Organize            │
-//	                       │ (the manager's own conversation, composer and all)
-//	 ▸ Closed · 2          │
-//
-// THE LEFT RAIL IS THE TREE (teamspagedraw.go). One row per open team,
-// indented by level, each with its colour dot and at most one mark, and a mark
-// only when something is happening: `⠿` dim while a member works, and the
-// needs-you amber `? N` while N things wait on the person. Idle draws nothing.
-// Above the teams is `All teams`: with no root team it carries `+ Manager` (the
-// optional global manager, which makes the root); with one it is the root and
-// selects like any team. Below them `+ New team` and `✦ Organize`, and at the
-// foot, folded, `Closed · N`.
-//
-// EVERYTHING HERE IS READ OFF THE LOOP, THROUGH THE SEAM, WITH A STAMP
-// (teamseam.go). The page's clock turns only while the page is up AND some
-// team has a manager, because nothing else writes packets or spends a team's
-// money; each turn asks the seam for the packets and the spend with the stamps
-// it holds, and a quiet turn is answered `same` and draws nothing new. The
-// frame reads memory and nothing else (framedisk_law_test.go).
+// The Teams overview draws team membership, previews, decisions and exchanges.
+// Reads happen off the loop; selecting a team never opens its manager.
 
 // teamsAllRow is the rail's `All teams` row while there is no root team behind
 // it: a row the page draws over the top level with nothing stored.
@@ -70,25 +34,35 @@ const teamsInboxWhole = 3
 
 // The page's words, quoted in the manual exactly as spelled here.
 const (
-	teamsExplainWord   = "A team is a set of conversations you run together; give it a manager and you talk to the manager, which hands out the work and asks you only what it cannot decide."
-	teamsNoManagerWord = "a manager takes your messages to the team and asks you only what it cannot decide"
+	teamsExplainWord   = "An AI team groups chats around ongoing work. Add an optional AI manager to coordinate them."
+	teamsNoManagerWord = "an optional AI manager coordinates these chats and brings questions to you"
 	teamsOrganizeWord  = "Organize my conversations"
-	teamsNewTeamWord   = "New team"
+	teamsNewTeamWord   = "New AI team"
 	teamsHostedWord    = "the inbox and the spend are not available over this connection"
-	teamsFocusKeys     = "alt+↑↓"
 )
 
 // teamsPage is the page's whole state, on the app (place_teams.go's handle
 // holds none).
 type teamsPage struct {
+	orgHits            []wallHit
+	orgRect            wallRect
+	previews           map[string]teamsPreview
+	previewRows        map[teamsPreviewShape]*teamsRenderedPreview
+	previewClock       uint64
+	interactionOffsets map[string]int
+	table              teamsTableRect
+	tableOver          int
+	tablePageSize      int
+
 	// sel is the team the pane is about: a team id, [teamsAllRow], or "" for
 	// none (no teams at all).
 	sel string
-	// closedOpen says the `Closed · N` fold is open.
+	// closedOpen includes retained teams in the sidebar and All teams overview.
 	closedOpen bool
-	// focus says the keyboard is on the page's buttons rather than on the
-	// manager's composer. With no manager in the pane there is no composer and
-	// the page always has the keyboard ([app.teamsHasKeys]).
+	// foldedSubteams remembers compact-tree folds by team, across refreshes
+	// and width changes. Descendants start expanded so none silently vanish.
+	foldedSubteams map[string]bool
+	// focus lights the keyboard target while the overview owns the keyboard.
 	focus bool
 	// cur is the target the keyboard is on and hot the one under the pointer,
 	// each named by what it does rather than by where it was drawn, so a
@@ -96,18 +70,22 @@ type teamsPage struct {
 	cur, hot teamsRef
 	// targets is every pressable thing the last frame drew, in frame cells.
 	targets []teamsTarget
+	// cards records the conversation headings in unscrolled pane coordinates,
+	// including idle ones that can start work after this frame was drawn.
+	cards []teamsCardSpot
 	// expand is an inbox card beyond the first three that a press unfolded.
 	expand string
-	// railW is the rail's columns on the last sync, its separator included.
-	railW int
-	// host is the manager key the pane hosts, "" when it hosts none; forwarding
-	// says a key or a pointer event is being handed to that conversation
-	// (teamspagehost.go).
-	host       string
-	forwarding bool
-	// traffic says the hosted manager's Traffic rail is out. It is folded by
-	// default here, because this page has a rail of its own on the left.
-	traffic bool
+	// railW is the rail's columns in the current frame, its separator included.
+	railW      int
+	railOffset int
+	// Pointer scrolling has its own offsets; keyboard focus never redirects
+	// a wheel or snaps its viewport back to a previously selected button.
+	paneOffset, paneRows, paneRoom, paneTop int
+	railRoom, railRows                      int
+	paneWheel, railWheel                    bool
+	// recent exists only during a paint, sharing one subtree-time pass between
+	// the sidebar and every nested card. Readers outside paint use fresh state.
+	recent map[string]time.Time
 	// reading says a read is out, so a beat that comes round before it is
 	// answered does not start a second; again says a read was asked for while
 	// it was out, and againWorld that the ask wanted the members' rows too.
@@ -131,17 +109,10 @@ type teamsPage struct {
 	answer    editor
 	// msg is the page's one line of news, said on its note.
 	msg string
-	// open is the attempt to bring the selected team's manager in front, so
-	// the pane says what it is doing and, when it cannot, why (teamsopen.go).
-	// opens is every open a door has not answered yet, by manager, and
-	// openSeq the last attempt's number.
-	open    teamsOpen
-	opens   map[string]teamsOpenOut
-	openSeq int
-	// top is the hosted pane's header rows, kept between frames.
-	top teamsTopCache
-	// undo is the last close, while Undo is offered (teamclose.go).
-	undo teamsUndo
+	// The disband notice follows its queued write without offering reopen.
+	disbandName string
+	disbandSaid teamWriteSaid
+	// undo retains the older close record for compatibility helpers.
 	// picked is the teams picked on the rail with `space`, which one `Move
 	// into…` moves together (teammove.go).
 	picked map[string]bool
@@ -149,6 +120,7 @@ type teamsPage struct {
 
 // teamsTarget is one pressable thing on the page, in frame cells.
 type teamsTarget struct {
+	hidden    bool
 	x0, x1, y int
 	act       teamsAct
 	// id is the team it acts on; arg and opt are the member key, the packet
@@ -197,14 +169,23 @@ const (
 	teamsActDelete
 	teamsActTraffic
 	teamsActUndo
-	teamsActRetryManager
-	teamsActOpenInChats
 	// The nesting acts (teammove.go, teamcrew.go): `Move` and `Cancel` on a
 	// move's consequence line, the header's `◆ Manager` and its members word.
 	teamsActMoveYes
 	teamsActMoveNo
 	teamsActManagerGo
 	teamsActCrew
+	teamsActInteractionToggle
+	teamsActInteractionJump
+	teamsActInteractionUp
+	teamsActInteractionDown
+	teamsActAddMember
+	teamsActChooseManager
+	teamsActRemoveMember
+	teamsActAddSubteam
+	teamsActOrganizeUndo
+	teamsActDeleteGlobalManager
+	teamsActSubteamsFold
 )
 
 // ── THE TREE ────────────────────────────────────────────────────────────────
@@ -241,14 +222,15 @@ func (a *app) teamsRoot() (team, bool) {
 
 // teamsOpenTree is every open team that is not the root, in tree order: each
 // top-level team (or each team directly under the root) and then its open
-// sub-teams, depth first, in stored order, with its depth from 0.
+// sub-teams, depth first, with siblings sorted by latest message and depth from 0.
 func (a *app) teamsOpenTree() []teamsRailRow {
 	root, hasRoot := a.teamsRoot()
 	var out []teamsRailRow
 	var walk func(parent string, depth int)
 	walk = func(parent string, depth int) {
-		for _, t := range a.wall.teams {
-			if t.Root || t.Closed() || t.Parent != parent {
+		children := a.teamsOverviewChildren(parent)
+		for _, t := range children {
+			if t.Closed() {
 				continue
 			}
 			out = append(out, teamsRailRow{kind: railRowTeam, id: t.ID, depth: depth})
@@ -265,27 +247,33 @@ func (a *app) teamsOpenTree() []teamsRailRow {
 	return out
 }
 
-// teamsClosed is every closed team, newest close first.
+// teamsClosed is every retained team, newest conversation message first.
 func (a *app) teamsClosed() []team {
-	return a.teamTree().ClosedTeams()
+	out := a.teamTree().ClosedTeams()
+	a.teamsSortRecent(out)
+	return out
 }
 
 // teamsRailRows is the rail, top to bottom. Memory only.
 func (a *app) teamsRailRows() []teamsRailRow {
 	rows := []teamsRailRow{{kind: railRowAll}}
 	rows = append(rows, a.teamsOpenTree()...)
-	rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowNew})
-	if _, split := a.teamsRailNewWords(); split {
-		rows = append(rows, teamsRailRow{kind: railRowNewIn})
-	}
-	rows = append(rows, teamsRailRow{kind: railRowOrganize})
 	if closed := a.teamsClosed(); len(closed) > 0 {
-		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
 		if a.tp.closedOpen {
+			width := teamsRailCols(a.width) - 1
+			if width < 1 {
+				width = a.width
+			}
 			for _, t := range closed {
-				rows = append(rows, teamsRailRow{kind: railRowClosedTeam, id: t.ID})
+				for i := range wrap(a.teamsAncestryName(t), max(width-3, 1)) {
+					rows = append(rows, teamsRailRow{kind: railRowClosedTeam, id: t.ID, depth: i})
+				}
 			}
 		}
+	}
+	rows = append(rows, teamsRailRow{kind: railRowNew})
+	if len(a.teamsClosed()) > 0 {
+		rows = append(rows, teamsRailRow{kind: railRowBlank}, teamsRailRow{kind: railRowClosed})
 	}
 	return rows
 }
@@ -310,37 +298,30 @@ func (a *app) teamsSelected() (team, bool) {
 	return a.teamByID(a.tp.sel)
 }
 
-// teamsSettle keeps the selection on something that exists: a team that went
-// is replaced by the team of the conversation in front, else the first open
-// team, else the root, else the `All teams` row, else nothing.
+// A vanished selection follows the Chats overlay or returns to All teams.
+// The conversation's memberships never imply an overview selection.
 func (a *app) teamsSettle() {
 	if a.tp.sel == teamsAllRow {
-		if _, root := a.teamsRoot(); !root && a.teamsAny() {
-			return
+		return
+	}
+	if t, ok := a.teamByID(a.tp.sel); ok && (!t.Closed() || a.tp.closedOpen) {
+		if t.Closed() {
+			if active, found := a.teamByID(a.teamViews.id); a.teamViews.id != "" && (!found || active.Closed()) {
+				a.teamViewSet("")
+				a.tp.sel = t.ID
+			}
 		}
-		a.tp.sel = ""
-	}
-	if t, ok := a.teamByID(a.tp.sel); ok {
-		if !t.Closed() || a.tp.closedOpen {
-			return
-		}
-	}
-	a.tp.sel = ""
-	if t, ok := a.teamOfFront(); ok && !t.Closed() && !t.Root {
-		a.tp.sel = t.ID
 		return
 	}
-	if tree := a.teamsOpenTree(); len(tree) > 0 {
-		a.tp.sel = tree[0].id
+	if t, ok := a.teamByID(a.teamViews.id); ok && !t.Closed() {
+		a.teamsSelectionFromView(t.ID)
 		return
 	}
-	if root, ok := a.teamsRoot(); ok {
-		a.tp.sel = root.ID
+	if a.teamViews.id != "" {
+		a.teamsViewFromSelection(teamsAllRow)
 		return
 	}
-	if a.teamsAny() {
-		a.tp.sel = teamsAllRow
-	}
+	a.teamsSelectionFromView("")
 }
 
 // teamsManaged reports whether any open team has a manager, which is when the
@@ -393,7 +374,6 @@ func (a *app) teamsPick(id string) {
 	} else {
 		a.tp.picked[id] = true
 	}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 }
 
@@ -402,6 +382,11 @@ func (a *app) teamsPick(id string) {
 func (a *app) teamsMoveIDs() []string {
 	if ids := a.teamsPickedIDs(); len(ids) > 0 {
 		return ids
+	}
+	if target, ok := a.teamsCursorTarget(); ok && target.act == teamsActSelect && target.pane {
+		if t, ok := a.teamByID(target.id); ok && !t.Root && !t.Closed() {
+			return []string{t.ID}
+		}
 	}
 	if t, ok := a.teamsSelected(); ok && !t.Root && !t.Closed() {
 		return []string{t.ID}
@@ -498,8 +483,13 @@ func (a *app) teamsInbox() []teamstore.Packet {
 		if !p.Waiting() {
 			continue
 		}
+		if origin, ok := a.teamByID(p.Origin); !ok || origin.Closed() {
+			continue
+		}
 		switch {
 		case p.Team == teamstore.Person && (all || a.teamsSubtree(sel, p.Origin)):
+			out = append(out, p)
+		case all && hasRoot && p.Team == root.ID:
 			out = append(out, p)
 		case p.Team == sel && sel != "":
 			out = append(out, p)
@@ -517,7 +507,7 @@ func (a *app) teamsPrompts(t team) []session.SessionRow {
 	now := time.Now()
 	for _, m := range t.Members {
 		row, ok := a.tp.world[filepath.Clean(m.File)]
-		if !ok || a.answeringHere(row) {
+		if !ok {
 			continue
 		}
 		if _, ok := answerable(row, now); ok {
@@ -546,6 +536,11 @@ func (a *app) teamsPool(t team) (string, teamstore.Effective) {
 
 // teamsGot is what one read found, folded on the loop.
 type teamsGot struct {
+	previews        map[string]teamsPreview
+	interactionTeam string
+	interactions    []teamstore.Entry
+	interactionSets map[string][]teamstore.Entry
+
 	packets      []teamstore.Packet
 	packetsStamp string
 	packetsSame  bool
@@ -606,11 +601,26 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	if t, ok := a.teamsSelected(); ok {
 		if t.Closed() {
 			closedReports = append(closedReports, t.ID)
+			pools = append(pools, t.ID)
 		} else {
 			owner, _ := a.teamsPool(t)
 			pools = append(pools, owner)
 			if owner != t.ID {
 				pools = append(pools, t.ID)
+			}
+		}
+	}
+	if a.teamsAllSelected() {
+		seen := map[string]bool{}
+		pools = nil
+		for _, t := range a.wall.teams {
+			if t.Closed() {
+				continue
+			}
+			owner, _ := a.teamsPool(t)
+			if !seen[owner] {
+				pools = append(pools, owner)
+				seen[owner] = true
 			}
 		}
 	}
@@ -622,6 +632,31 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	if withWorld {
 		files = a.teamsMemberFiles()
 	}
+	selected, _ := a.teamsSelected()
+	var members []teamMember
+	seenMembers := map[string]bool{}
+	for _, t := range a.wall.teams {
+		if t.Closed() && !a.tp.closedOpen {
+			continue
+		}
+		for _, m := range append(append([]teamMember(nil), t.Members...), t.FormerMembers...) {
+			if !seenMembers[m.Key] {
+				members = append(members, m)
+				seenMembers[m.Key] = true
+			}
+		}
+	}
+	var interactionIDs []string
+	if a.teamsAllSelected() {
+		for _, t := range a.wall.teams {
+			if !t.Closed() {
+				interactionIDs = append(interactionIDs, t.ID)
+			}
+		}
+	} else if selected.ID != "" {
+		interactionIDs = append(interactionIDs, selected.ID)
+	}
+	previous := a.tp.previews
 	worldDoor, hosted, rowsDoor := a.world, a.hosted(), a.teamsDisk.rows
 	if rowsDoor == nil {
 		rowsDoor = session.ReadRows
@@ -629,12 +664,30 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	return a.besideLine(func() func(bool) tea.Cmd {
 		got := teamsGot{spend: map[string]teamstore.Spend{}, spendStamp: map[string]string{}}
 		var wg sync.WaitGroup
+		// A large hierarchy must not start one remote request per team at once.
+		slots := make(chan struct{}, 4)
 		side := func(read func()) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
+				slots <- struct{}{}
+				defer func() { <-slots }()
 				read()
 			}()
+		}
+		if !hosted {
+			side(func() {
+				got.previews = map[string]teamsPreview{}
+				for _, m := range members {
+					got.previews[m.Key] = teamsReadPreview(m.File, previous[m.Key])
+				}
+			})
+		}
+		traffic := make([][]teamstore.Entry, len(interactionIDs))
+		if seam.Traffic != nil {
+			for i, id := range interactionIDs {
+				side(func() { traffic[i], _ = seam.Traffic(id, "", trafficKeep) })
+			}
 		}
 		type spendGot struct {
 			spend teamstore.Spend
@@ -676,6 +729,13 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 			side(func() { got.world, got.worldKnown = teamsMemberRows(worldDoor, hosted, rowsDoor, files) })
 		}
 		wg.Wait()
+		got.interactionSets = map[string][]teamstore.Entry{}
+		for i, entries := range traffic {
+			if entries != nil {
+				got.interactionSets[interactionIDs[i]] = entries
+			}
+		}
+
 		for i, id := range pools {
 			if spends[i].ok {
 				got.spend[id], got.spendStamp[id] = spends[i].spend, spends[i].stamp
@@ -696,16 +756,16 @@ func (a *app) teamsRead(withWorld bool) tea.Cmd {
 	})
 }
 
-// teamsMemberFiles is every member transcript of the open teams, cleaned and
-// once each: what the page's rows are read for. Memory only.
+// teamsMemberFiles is every visible member transcript, including retained teams
+// when shown, cleaned and once each: what the page's rows are read for. Memory only.
 func (a *app) teamsMemberFiles() []string {
 	seen := map[string]bool{}
 	var files []string
 	for _, t := range a.wall.teams {
-		if t.Closed() {
+		if t.Closed() && !a.tp.closedOpen {
 			continue
 		}
-		for _, m := range t.Members {
+		for _, m := range append(append([]teamMember(nil), t.Members...), t.FormerMembers...) {
 			file := strings.TrimSpace(m.File)
 			if file == "" {
 				continue
@@ -760,6 +820,23 @@ func teamsMemberRows(door func() (session.World, bool), hosted bool,
 func (a *app) teamsFold(got teamsGot) tea.Cmd {
 	a.tp.reading = false
 	changed := false
+	if got.previews != nil {
+		if a.tp.previews == nil {
+			a.tp.previews = map[string]teamsPreview{}
+		}
+		for key, preview := range got.previews {
+			if a.tp.previews[key] != preview {
+				a.tp.previews[key] = preview
+				changed = true
+			}
+		}
+	}
+	if got.interactionTeam != "" && got.interactions != nil {
+		changed = a.teamsTakeInteractions(got.interactionTeam, got.interactions) || changed
+	}
+	for id, entries := range got.interactionSets {
+		changed = a.teamsTakeInteractions(id, entries) || changed
+	}
 	if got.packetsErr == nil && !got.packetsSame && got.packetsStamp != "" {
 		a.tp.packets, a.tp.packetsStamp, a.tp.packetsKnown = got.packets, got.packetsStamp, true
 		changed = true
@@ -791,7 +868,6 @@ func (a *app) teamsFold(got teamsGot) tea.Cmd {
 		changed = true
 	}
 	if changed {
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	} else {
 		a.ptr.still = a.drawn
@@ -817,7 +893,7 @@ func teamsSameWorld(was, now map[string]session.SessionRow) bool {
 	}
 	for k, r := range now {
 		o, ok := was[k]
-		if !ok || !o.At.Equal(r.At) || o.Open != r.Open || o.Live != r.Live ||
+		if !ok || !o.At.Equal(r.At) || o.Open != r.Open || o.Live != r.Live || o.Title != r.Title || o.Model != r.Model ||
 			o.Presence.State != r.Presence.State || o.Presence.Question.ID != r.Presence.Question.ID ||
 			o.Presence.Question.Kind != r.Presence.Question.Kind {
 			return false

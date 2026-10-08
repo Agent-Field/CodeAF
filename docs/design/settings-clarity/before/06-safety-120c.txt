@@ -1,0 +1,48 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   wed 2:28pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams   Providers   Connections
+
+ › type to search
+ ask before running                                                                             allow
+    what happens when the model asks to run a tool. Dangerous shell commands are asked about whichever way this is
+    set.
+ tool exceptions                                                                                 none
+ shell command rules                                                                             none
+ guardian                                                                                         off
+ approval countdown                                                                               10s
+
+ questions while you are away
+ permission                                                                                    ask me
+ choice                                                                                        ask me
+ judgement                                                                                     ask me
+ clarification                                                         ask me · never runs on a clock
+ confirmation                                                        ask me · destructive always asks
+ landing                                                                                       ask me
+ assumption                                                                                    ask me
+ ratify                                                                                        ask me
+ background after                                                                                 30s
+ who settles work that needs a look                                                               ask
+ task countdown                                                                                   15s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───────────────────────────────────────────
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

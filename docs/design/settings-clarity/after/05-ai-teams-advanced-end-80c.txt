@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › Search all settings
+ ask the AI manager first                                                    on
+ run when team messages arrive                                               on
+ daily spending limit                                                    no cap
+ Advanced                                                                  hide
+ maximum team nesting                                                  3 levels
+ new subteam budget share                                                   50%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Applies to newly created subteams only
+  the share of its parent's cap a new sub-team starts with. Teams that already
+  exist keep theirs.
+
+
+
+─ Default for AI teams; teams can override it ──────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · tab next place · esc close

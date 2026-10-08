@@ -1,0 +1,40 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                  wed 11:36am
+
+   +
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+                                                                                          │ Tasks 0                alt+l
+    · resumed ~/v3/projects/-tmp-codeaf-update-drive.YtHivL-work-                         │ + /task
+      project/df48843f632fbbf6/transcript.jsonl                                           │
+    · esc interrupts · ctrl+c quits · ? for help                                          │ + /standing
+    · codeaf v0.9.3 could not be installed · this version keeps running · the checksum did│
+      not match · /update retries                                                         │
+    · fixture · codeaf update states · CODEAF_UPDATE_DEMO=failure · no network, nothing   │
+      installed                                                                           │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+                                                                                          │
+
+─ deepseek/deepseek-v4.1-flash:auto · ◇ YOLO ─────────────────────────────────────────────────────────    $0.00   idle ─
+ ›
+
+
+ codeaf v0.9.3 could not be installed · /update retries                                                 project: codeaf

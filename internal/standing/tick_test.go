@@ -16,6 +16,7 @@ import (
 // to do and answers whatever the test told it to.
 type fakeRunner struct {
 	evidence  string
+	clipped   bool
 	probeErr  error
 	said      []string
 	runDirs   []string
@@ -25,9 +26,9 @@ type fakeRunner struct {
 	probeSeen int
 }
 
-func (f *fakeRunner) Probe(_ context.Context, _ Item) (string, error) {
+func (f *fakeRunner) Probe(_ context.Context, _ Item) (ProbeReading, error) {
 	f.probeSeen++
-	return f.evidence, f.probeErr
+	return ProbeReading{Text: f.evidence, Clipped: f.clipped}, f.probeErr
 }
 
 func (f *fakeRunner) Say(_ context.Context, _ Item, text string) (Outcome, error) {

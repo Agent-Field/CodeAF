@@ -15,9 +15,8 @@ package main
 //     carries the real path — which is what lets the encoding stay dumb.
 //   - BORROWED OR OWNED. A conversation opened inside a project borrows it and
 //     litters nothing; one opened nowhere at all owns a workspace of its own.
-//   - WHICH CONVERSATION. The newest one the PERSON spoke in, an empty one
-//     reused rather than duplicated, or a new one — and the other empties are
-//     reaped on the way past.
+//   - WHICH CONVERSATION. The newest one the PERSON spoke in, or a fresh
+//     identity — unassigned empty folders are reaped on the way past.
 //
 // EVERY PATH GOES THROUGH internal/home, so CODEAF_HOME moves all of it.
 
@@ -32,8 +31,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Agent-Field/codeaf/internal/config"
 	"github.com/Agent-Field/codeaf/internal/home"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/teams"
 )
 
 // v3Dir is ~/.codeaf/v3: the directory this surface keeps its own files in —
@@ -239,10 +240,8 @@ type v3Session struct {
 //  2. Otherwise the newest conversation the PERSON last spoke in, read from
 //     meta.json rather than from file mtime: a background write touching a file
 //     is not somebody returning to a conversation.
-//  3. Otherwise an empty untitled session is REUSED rather than duplicated. The
-//     flat layout minted one per launch and left nineteen dead ones behind on
-//     the author's own machine, which is this rule's whole case.
-//  4. Otherwise a new one.
+//  3. Otherwise a new identity is minted, protecting empty conversations that
+//     might acquire team membership after discovery.
 //
 // And the other empties are reaped on the way past.
 func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Session, error) {
@@ -281,24 +280,14 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 	if err != nil {
 		return v3Session{}, err
 	}
+	v3ReapEmpty(empty, place.Dir)
 	return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, nil
 }
 
-// v3PickFolder is the resume order applied to one scan of a project's bucket:
-// the newest folder somebody has SPOKEN in, and otherwise the newest empty one.
-// The second bool is whether anything was found at all; the first is whether
-// what was found was spoken in.
-//
-// THE ORDER IS ONE LAW WITH TWO READERS, which is the whole reason it is a
-// function rather than an `if` written out twice. The launch that is about to
-// WRITE the journal reads it with free=true — an empty folder another window is
-// holding open is a person sitting at a prompt, and handing them a second writer
-// only produces the lock notice one step later ([v3FreeEmpty]). The engine host
-// reads it with free=false to answer a different question — WHICH CONVERSATION
-// IS THIS HELLO ASKING FOR ([v3LatestTranscript]) — and there a folder somebody
-// is sitting in is precisely the one a second surface saying nothing wants to
-// sit down in. A joiner is not a second writer, so the filter that protects the
-// writer would, here, hide the answer.
+// v3PickFolder resumes the newest conversation somebody has spoken in. A
+// writer mints a fresh identity when there are only unused conversations: an
+// old empty identity could be assigned to a team between discovery and opening.
+// Read-only host discovery can still find an existing empty conversation to join.
 func v3PickFolder(spoken, empty []v3Folder, free bool) (v3Folder, bool, bool) {
 	if len(spoken) > 0 {
 		return spoken[0], true, true
@@ -309,8 +298,7 @@ func v3PickFolder(spoken, empty []v3Folder, free bool) (v3Folder, bool, bool) {
 		}
 		return v3Folder{}, false, false
 	}
-	folder, found := v3FreeEmpty(empty)
-	return folder, false, found
+	return v3Folder{}, false, false
 }
 
 // v3LatestTranscript is the transcript a launch that named NO session is asking
@@ -323,11 +311,10 @@ func v3PickFolder(spoken, empty []v3Folder, free bool) (v3Folder, bool, bool) {
 // a new one would make the question itself change the answer, and would mint a
 // conversation for a hello that was about to join one.
 //
-// IT IS THE SAME ORDER THE BOOT APPLIES, through the same [v3PickFolder], so the
-// key a hello resolves to and the journal the boot would open cannot drift apart
-// — which is the whole of the defect this closes: a host that resolved "latest"
-// one way at the door and another way at the boot met its OWN flock and told the
-// person their conversation was open in another window.
+// Spoken conversations use the boot's resume order. Empty conversations remain
+// discoverable so a host can join an agent it already holds. If none is held,
+// boot mints a fresh identity and the host files the agent under its actual
+// transcript, rather than taking over an abandoned empty conversation.
 func v3LatestTranscript(workspace string) string {
 	if strings.TrimSpace(workspace) == "" {
 		return ""
@@ -415,12 +402,20 @@ func v3PointAt(cfg session.Config, place session.Place) (session.Config, error) 
 		if workspace := strings.TrimSpace(place.Workspace); workspace != "" {
 			cfg.Workspace = workspace
 		}
+		cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
 		return cfg, nil
 	}
 	if err := prepareOwnedWorkspace(place); err != nil {
 		return cfg, err
 	}
 	cfg.Workspace = place.Work()
+	// AND THE PROJECT KEY FOLLOWS THE WORKSPACE, because the key IS the
+	// workspace's provable identity: a conversation moved to another session
+	// folder — /new, a resume, a picker — is a conversation that may be in a
+	// different project, and a memory scoped to the wrong key is a memory in
+	// the wrong place. Recomputed here, where the workspace is settled, so
+	// every door through this function agrees about whose project this is.
+	cfg.MemoryProjectKey = v3ProjectKey(cfg.Workspace)
 	return cfg, nil
 }
 
@@ -604,7 +599,7 @@ type v3Folder struct {
 // Emptiness is read from the transcript rather than from meta.json, because the
 // transcript is the record and meta.json is a citation: [session.Peek] answers
 // false for a file nobody ever said anything in, which is exactly the folder
-// this groom may reuse or remove. A folder holding work, worktrees or
+// this groom may remove. A folder holding work, worktrees or
 // deliverables is never empty whatever its journal says — those are somebody's
 // content, and no groom of a bookkeeping file may take them.
 func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
@@ -612,6 +607,7 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 	if err != nil {
 		return nil, nil
 	}
+	protected, known := v3TeamConversations()
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -629,8 +625,10 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 				folder.at = info.ModTime()
 			}
 		}
-		if v3EmptySession(dir) {
-			empty = append(empty, folder)
+		if v3EmptyUnassignedSession(dir) {
+			if known && !protected[teams.ConversationIdentity(place.Transcript())] {
+				empty = append(empty, folder)
+			}
 			continue
 		}
 		spoken = append(spoken, folder)
@@ -657,7 +655,24 @@ func v3ScanBucket(bucket string) (spoken, empty []v3Folder) {
 // [session.Peek]: Peek folds "read it all, nobody spoke" and "could not read
 // it" into one false, which is right for a picker row and fatal for a delete.
 // Only the first of the two is emptiness.
+// A team reference makes an empty conversation intentional, not reusable litter.
+func v3TeamConversations() (map[string]bool, bool) {
+	f, err := teams.Snapshot(config.ProfileDir())
+	if err != nil {
+		return nil, false
+	}
+	return f.ReferencedConversations(), true
+}
+
 func v3EmptySession(dir string) bool {
+	protected, known := v3TeamConversations()
+	if !known || protected[teams.ConversationIdentity(session.Place{Dir: dir}.Transcript())] {
+		return false
+	}
+	return v3EmptyUnassignedSession(dir)
+}
+
+func v3EmptyUnassignedSession(dir string) bool {
 	place := session.Place{Dir: dir, Owned: true}
 	spoken, sure := session.SpokeIn(place.Transcript())
 	if spoken || !sure || session.HasSavedTasks(dir) {
@@ -671,19 +686,6 @@ func v3EmptySession(dir string) bool {
 	return true
 }
 
-// v3FreeEmpty is the newest empty session nobody else is sitting at. A window
-// already open on an empty conversation is a person at a prompt, and handing
-// their journal to a second window would only produce the lock notice one step
-// later.
-func v3FreeEmpty(empty []v3Folder) (v3Folder, bool) {
-	for _, folder := range empty {
-		if !session.InUse(session.Place{Dir: folder.dir}.Transcript()) {
-			return folder, true
-		}
-	}
-	return v3Folder{}, false
-}
-
 // v3ReapEmpty removes the empty session folders a launch left behind, except
 // the one it is about to open.
 //
@@ -693,13 +695,17 @@ func v3FreeEmpty(empty []v3Folder) (v3Folder, bool) {
 // to lose. A folder another window is holding open is skipped — a live empty
 // session is somebody sitting at a prompt.
 func v3ReapEmpty(empty []v3Folder, keep string) {
-	for _, folder := range empty {
-		if folder.dir == keep {
-			continue
+	// Recheck the record and emptiness under the team writer's lock. Unknown
+	// membership is a reason to keep a folder, never a reason to remove it.
+	_ = teams.Inspect(config.ProfileDir(), func(f *teams.File) error {
+		protected := f.ReferencedConversations()
+		for _, folder := range empty {
+			transcript := session.Place{Dir: folder.dir}.Transcript()
+			if folder.dir == keep || protected[teams.ConversationIdentity(transcript)] || session.InUse(transcript) || !v3EmptyUnassignedSession(folder.dir) {
+				continue
+			}
+			_ = os.RemoveAll(folder.dir)
 		}
-		if session.InUse(session.Place{Dir: folder.dir}.Transcript()) {
-			continue
-		}
-		_ = os.RemoveAll(folder.dir)
-	}
+		return nil
+	})
 }

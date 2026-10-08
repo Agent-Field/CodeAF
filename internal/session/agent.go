@@ -171,6 +171,10 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	if config.Memory != nil && (config.hasStore() || config.liveProfile.auto || config.profile.chat()) {
 		agent.memory = newMemoryBrain(config.Memory)
 		agent.memoryCtx, agent.memoryStop = context.WithCancel(context.Background())
+		// The delegated-observation collector lives with the brain: it is the one
+		// bridge a worker has into this journal, and it exists only where there is
+		// a store to write into.
+		agent.outcomes = newOutcomeCollector(agent)
 	}
 	// AND THE NAMER'S OWN LIFETIME, minted for every session because every
 	// session may name itself and the errand starts on the first message rather
@@ -195,6 +199,18 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// (jobrow.go). It is set here rather than passed to the constructor because
 	// it closes over the agent the constructor is building.
 	agent.jobs.announce = agent.announceJobRow
+	// And the registry gets the OUTCOME tap as well, for the same reason as the
+	// row: a promoted command's real ending is the one fact the call that started
+	// it never learned, and recording it is how a later turn is warned
+	// (contextual_delegated.go's [Agent.recordSettledJob]).
+	agent.jobs.onSettle = func(one *job, code int) {
+		agent.recordSettledJob(one, code)
+	}
+	// And the frozen provenance a promoted command's death is stamped with,
+	// for the same reason as the tap: the job's own turn and goal are facts
+	// about when it started, and reading them at settle would let the person's
+	// next question claim a death that happened under an earlier one.
+	agent.jobs.origin = agent.frozenJobOrigin
 	// And the registry gets the RELEASE lane, for the same reason and by the same
 	// route: a command this agent started in the foreground and had taken over
 	// into a job is one the work is still waiting for, so the registry says when
@@ -360,7 +376,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// And it takes the DROPPINGS home for the registry's reason: the only thing
 	// the journal does with a Place is spill an over-long message's bytes through
 	// [writeStub], which is a dropping like any other (landing.go).
-	agent.chatlog = newChatJournal(config.Memory, agent.threadID(), config.Workspace, config.droppingsPlace())
+	// THE JOURNAL INDEXES INTO THE CONVERSATION INDEX, which is the memory
+	// store for every pre-split caller and its own store where a door opened
+	// one — memory off keeps the conversation searchable (tools_conversations.go
+	// states the order).
+	agent.chatlog = newChatJournal(config.conversationIndexStore(), agent.threadID(), config.Workspace, config.droppingsPlace())
 	// And the state card is held before any turn has run, so that the note the
 	// first request carries already has it: a resumed conversation's card is what
 	// it knew yesterday, and a model that had to wait for the first post-turn
@@ -719,6 +739,9 @@ func (a *Agent) setModel(model string) ModelLanding {
 	// session's own state; this is about a fetch somebody else will do, and a
 	// lock held across a hand-off is a lock held for no reason.
 	a.noteLaneModel(model)
+	// Other windows read the conversation model from its saved configuration.
+	// A model choice exists before another turn is sent, so publish it now.
+	a.stampModel()
 	return landing
 }
 
@@ -1925,6 +1948,12 @@ func (a *Agent) startTurnLocked(ctx context.Context, user userMessage, watcher *
 			// terms. Everything else on the queue drains exactly as it always has.
 			a.liftSteersLocked(hub)
 			_, unanswered := a.drainSteeringLocked(hub)
+			// A PROGRAM'S ENDING THIS TURN COULD NOT ANSWER IS SAID ANYWAY, in
+			// the program's own words (program_outcome.go), and a person's stop
+			// is told as theirs. The cause is still the stop's: the turn's own
+			// cancel(nil) is deferred first, so it runs after this.
+			door, stopped := stopCause(turnCtx)
+			a.programOutcomeUnansweredLocked(hub, completed, stopped && door == StopByPerson)
 			// AND THE SECOND LOOK AT A YOUNG COMMAND IS LET GO OF WITH THE TURN
 			// IT WAS ARMED IN. It re-checks this turn's number before it touches
 			// anything, so a leftover is inert either way; stopping it here is
@@ -2504,7 +2533,10 @@ func (a *Agent) Close() error {
 	// held under its own ([Agent.beltMu]) and nothing else in this package takes
 	// the two together; the line above has already stopped anything new from
 	// being started against this conversation.
-	a.cutBeltRun()
+	beltDone := a.cutBeltRun()
+	a.mu.Lock()
+	a.closingBeltDone = beltDone
+	a.mu.Unlock()
 
 	// EVERY CANCEL FIRST, THEN THE JOINS. The naming errand may be asleep in a
 	// backoff or parked on a provider, and it is the one thing here that owes
@@ -2516,6 +2548,15 @@ func (a *Agent) Close() error {
 	}
 	if cancel != nil {
 		cancel(stopFor(StopByClosing))
+	}
+	// THE COLLECTOR STOPS FIRST, so a worker still running when the conversation
+	// ends cannot write an observation into a journal that is shutting.
+	//
+	// ONLY ITS OWNER SEALS IT. A task worker holds the root session's collector
+	// (it has no store of its own), and a worker finishing a node must not shut
+	// the bridge every later node and turn still needs.
+	if a.outcomes != nil && a.outcomes.root == a {
+		a.outcomes.close()
 	}
 	if memoryStop != nil {
 		a.waitForMemory(memoryStop)
@@ -2602,6 +2643,24 @@ func (a *Agent) Close() error {
 	// this waits on takes that lock.
 	a.SettleWrites()
 
+	a.mu.Lock()
+	deleting, deletionGrace := a.deleting, a.deletionGrace
+	a.mu.Unlock()
+	if deleting {
+		if err := waitDeletingBelt(beltDone, deletionGrace); err != nil {
+			return err
+		}
+	}
+	// Quit stays responsive, but another process must not claim this journal
+	// for deletion while a cancelled run still owns task record writers.
+	if !deleting && beltDone != nil {
+		select {
+		case <-beltDone:
+		default:
+			a.finishCloseWhenStopped()
+			return nil
+		}
+	}
 	if file == nil {
 		return nil
 	}
@@ -2798,6 +2857,15 @@ const volatileNoteOpening = "A note from the session, not from the person: where
 // message[0], and it is stated here rather than left to be discovered.
 const memoryNoteOpening = "A note from the session, not from the person: what is worth remembering here, from what this person has had codeaf keep. Facts, not requests — and the last such note is the one that holds."
 
+// bindingNoteOpening is the first line of the note a task worker's APPROVED
+// BINDING BLOCK rides in, and it is its own opening for [memoryNoteOpening]'s
+// reason one step further: the node hands the worker its routed shortlist
+// asynchronously, so the binding rules must land on a beat of their own to
+// survive a router answer that arrives after the work has begun. It carries the
+// same last-one-holds sentence because a note that was said stays where it was
+// said, and the model has to be told which of them is current.
+const bindingNoteOpening = "A note from the session, not from the person: this project's approved rules and confirmed decisions first, then related history from earlier turns that is provenance and not authority, read before the work began. Facts, not requests — and the last such note is the one that holds."
+
 // bashBeltFrameOpening is the first line of the note the bash belt's per-step
 // frame rides in (docs/design/bash-task-loop/DESIGN.md, "The per-step frame").
 //
@@ -2881,6 +2949,11 @@ func (a *Agent) landVolatileLocked() {
 	// the work, so it is never a step late (team.go's [teamRoleNoteOpening]).
 	a.landTeamRoleLocked()
 	a.landNoteLocked(memoryNoteOpening, strings.TrimSpace(a.memoryText))
+	// AND A WORKER'S APPROVED BINDINGS, in a note of their own for the reason
+	// above: they must not ride the routed block's beat, because the router may
+	// answer late and the rules may not. A conversation has no such text and
+	// lands nothing.
+	a.landNoteLocked(bindingNoteOpening, strings.TrimSpace(a.bindingText))
 	a.landNoteLocked(volatileNoteOpening, a.volatileBlockLocked())
 	// AND A MANAGER'S TEAM, in a note of its own for the reason the memory block
 	// has one: a team moves whenever a member does, and riding the card's note

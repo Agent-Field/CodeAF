@@ -1,11 +1,10 @@
 package tui3
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	tea "charm.land/bubbletea/v2"
 
 	"github.com/Agent-Field/codeaf/internal/config"
 	teamstore "github.com/Agent-Field/codeaf/internal/teams"
@@ -102,7 +101,7 @@ func TestTeamsIsTheSecondPlaceOnTheBarTheDigitsAndTheCommand(t *testing.T) {
 	}
 	a := placeApp(t)
 	bar := navPlaces(a, 120, false)
-	if !placeWordsInOrder(bar, "home", "teams", "chats", "sessions") {
+	if !placeWordsInOrder(bar, "Home", "Chats", "AI teams", "Activity") {
 		t.Fatalf("the bar does not put teams after home: %q", bar)
 	}
 	drive(t, a, key("alt+2"))
@@ -123,7 +122,7 @@ func TestTeamsWithNoTeamsSaysWhatTheyAreAndOffersTwoWays(t *testing.T) {
 	a.width, a.height = 110, 24
 	drive(t, a, key("alt+2"))
 	text := teamsFrameText(a)
-	for _, want := range []string{"A team is a set of conversations", teamsOrganizeWord, teamsNewTeamWord} {
+	for _, want := range []string{"An AI team groups chats", teamsOrganizeWord, teamsNewTeamWord} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the empty page lost %q:\n%s", want, text)
 		}
@@ -170,7 +169,6 @@ func TestTeamsRailIsTheTreeWithMarksOnlyWhenSomethingHappens(t *testing.T) {
 	a.tp.packets = []teamstore.Packet{{ID: "p1", Team: teamstore.Person, Origin: orbit,
 		Kind: teamstore.PacketQuestion, RaisedBy: "boss", Question: "Friday or Monday?",
 		State: teamstore.PacketOpen}}
-	a.tp.top = teamsTopCache{}
 	a.touch()
 	lines = rail()
 	if !strings.Contains(lines[oy], "? 1") {
@@ -229,7 +227,7 @@ func flushTeams(t *testing.T, a *app) {
 }
 
 // teamsHostedLab is the lab with harbor's manager made of the conversation in
-// front, so the pane hosts it.
+// front, so the overview can show the manager without changing chat focus.
 func teamsHostedLab(t *testing.T) (a *app, harbor, orbit string) {
 	t.Helper()
 	a, harbor, orbit = teamsPlaceLabIDs(t)
@@ -242,54 +240,30 @@ func teamsHostedLab(t *testing.T) (a *app, harbor, orbit string) {
 	}
 	drive(t, a, key("alt+1"))
 	drive(t, a, key("alt+2"))
-	if !a.teamsHosting() {
-		t.Fatalf("the pane does not host harbor's manager:\n%s", teamsFrameText(a))
-	}
 	return a, harbor, orbit
 }
 
-// THE PANE IS THE MANAGER'S REAL CONVERSATION: the bar still says teams, the
-// rail stands on the left, the composer says whom it talks to, and a letter
-// typed lands in the manager's own box.
-func TestTeamsHostsTheManagersRealConversation(t *testing.T) {
-	a, _, _ := teamsHostedLab(t)
-	lines := strings.Split(teamsFrameText(a), "\n")
-	if len(lines) != a.height {
-		t.Fatalf("the hosted frame has %d rows, want %d", len(lines), a.height)
-	}
-	if !strings.Contains(lines[navRow], "teams") {
-		t.Fatalf("the nav does not say teams:\n%s", strings.Join(lines, "\n"))
-	}
-	w, _ := a.size()
-	if w != a.width-a.tp.railW {
-		t.Fatalf("the hosted conversation is %d wide, want %d", w, a.width-a.tp.railW)
-	}
-	text := strings.Join(lines, "\n")
-	for _, want := range []string{"All teams", "harbor", "orbit", "Settings", "Close…"} {
+// The overview owns its keyboard, so typing here cannot alter the manager's
+// conversation draft.
+func TestTeamsOverviewDoesNotEditTheManagersDraft(t *testing.T) {
+	a, harbor, _ := teamsHostedLab(t)
+	a.input.insert("draft")
+	text := teamsFrameText(a)
+	for _, want := range []string{"All teams", "harbor", "Settings", "Manager"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("the hosted page lost %q:\n%s", want, text)
+			t.Fatalf("overview lacks %q:\n%s", want, text)
 		}
 	}
+	a.tp.cur = teamsRef{act: teamsActInteractionDown, id: harbor}
+	if text := teamsFrameText(a); !strings.Contains(text, "Recent interactions") {
+		t.Fatal(text)
+	}
 	drive(t, a, key("h"), key("i"))
-	if got := a.input.String(); got != "hi" {
-		t.Fatalf("typing on the hosted page put %q in the manager's box:\n%s", got, teamsFrameText(a))
+	if a.input.String() != "draft" || !a.at(pageTeams) {
+		t.Fatal("overview changed the manager draft or left the page")
 	}
-	if !a.at(pageTeams) {
-		t.Fatalf("typing left the page for %q", a.page.word())
-	}
-	// alt+↓ puts the keyboard on the page's buttons, and esc gives it back.
-	drive(t, a, tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModAlt})
-	if !a.tp.focus {
-		t.Fatal("alt+↓ did not put the keyboard on the page")
-	}
-	drive(t, a, key("esc"))
-	if a.tp.focus || !a.at(pageTeams) {
-		t.Fatalf("esc did not give the keyboard back (focus %v, page %q)", a.tp.focus, a.page.word())
-	}
-	// And tab still walks the places.
-	drive(t, a, key("tab"))
-	if a.at(pageTeams) {
-		t.Fatal("tab on the hosted page did not walk on")
+	if w, _ := a.size(); w != a.width {
+		t.Fatal("overview narrowed the underlying conversation")
 	}
 }
 
@@ -307,7 +281,7 @@ func TestStartingAManagerReturnsKeyboardToItsComposer(t *testing.T) {
 
 func TestTeamsActionKeysAreListedOnTheHelpSheet(t *testing.T) {
 	sheet := helpText("", chordSpelling{meta: chordAltWord})
-	if !strings.Contains(sheet, "s c w n o M m p r d u") {
+	if !strings.Contains(sheet, "s c w n o M m p d u") {
 		t.Fatalf("the teams action keys are missing from help:\n%s", sheet)
 	}
 }
@@ -330,9 +304,17 @@ func TestTeamsCardShowsProvenanceAndResets(t *testing.T) {
 		t.Fatal("the card did not open")
 	}
 	text := teamsFrameText(a)
-	for _, want := range []string{"from Settings", "from harbor", "$5 a day"} {
+	for _, want := range []string{"from harbor", "$5 a day"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("the card lost %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "from Settings") || strings.Contains(text, "Inside") {
+		t.Fatalf("redundant controls: %s", text)
+	}
+	for _, code := range a.teamSheetStops() {
+		if code == tsInside {
+			t.Fatal("Inside still keyboard reachable")
 		}
 	}
 	if strings.Contains(text, "reset") {
@@ -360,26 +342,26 @@ func TestTeamsCardShowsProvenanceAndResets(t *testing.T) {
 
 // NOTHING RUNNING IS ONE CLOSE AND AN UNDO; the team moves to Closed and Undo
 // puts it back.
-func TestTeamsCloseWithNothingRunningIsOneClickAndUndo(t *testing.T) {
+func TestTeamsDisbandRequiresConfirmationAndKeepsReadOnlyHistory(t *testing.T) {
 	a, _, orbit := teamsPlaceLabIDs(t)
 	drive(t, a, runCmd(a.teamsCloseAsk(orbit))...)
-	if a.tsheet.on {
-		t.Fatal("a quiet team asked before closing")
+	if !a.tsheet.on || a.tsheet.cursor != tsCancel {
+		t.Fatal("disband did not default to cancellation")
 	}
+	if got, _ := a.teamByID(orbit); got.Closed() {
+		t.Fatal("opening confirmation changed the team")
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
 	if got, _ := a.teamByID(orbit); !got.Closed() {
-		t.Fatal("orbit did not close")
+		t.Fatal("confirmed disband failed")
 	}
 	text := teamsFrameText(a)
-	if !strings.Contains(text, "Undo") || !strings.Contains(text, "Closed · 1") {
-		t.Fatalf("the close offers no Undo or no Closed fold:\n%s", text)
-	}
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActUndo, "")))...)
-	if got, _ := a.teamByID(orbit); got.Closed() {
-		t.Fatal("Undo did not reopen orbit")
+	if strings.Contains(text, "Reopen") || strings.Contains(text, "Undo") || !strings.Contains(text, "Delete") {
+		t.Fatalf("history is not read-only:\n%s", text)
 	}
 }
 
-func TestTeamsCloseCountsAndStopsASubteamManagerSharedWithItsParent(t *testing.T) {
+func TestTeamsDisbandKeepsASubteamManagerWorkingInItsParent(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
 	var shared chatTab
 	for _, tab := range a.tabList() {
@@ -404,81 +386,47 @@ func TestTeamsCloseCountsAndStopsASubteamManagerSharedWithItsParent(t *testing.T
 	watch.turning.Store(true)
 	a.behind[shared.key] = &kept{conv: Conversation{Agent: member, SessionFile: shared.file}, watch: watch}
 	drive(t, a, runCmd(a.teamsCloseAsk(orbit))...)
-	if !a.tsheet.on || a.tsheet.cursor != tsWrapUp {
+	if !a.tsheet.on || a.tsheet.cursor != tsCancel {
 		t.Fatalf("the working sub-team manager was skipped: %+v", a.tsheet)
 	}
-	if text := teamsFrameText(a); !strings.Contains(text, a.teamManagerMark()+" manager") {
-		t.Fatalf("the card does not name the working manager:\n%s", text)
-	}
 	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
-	if member.stops != 1 || a.tabShut[shared.key] {
+	if member.stops != 0 || a.tabShut[shared.key] {
 		t.Fatalf("Close now stopped %d turns and shut the parent's tab=%v", member.stops, a.tabShut[shared.key])
 	}
 }
 
 // SOMETHING RUNNING PUTS UP THE CARD: `Close now` first when no manager runs
 // the team, `Wrap up first` first when one does, and Cancel changes nothing.
-func TestTeamsCloseCardOffersWrapUpNowAndCancel(t *testing.T) {
-	a, harbor, _ := teamsPlaceLabIDs(t)
+func TestTeamsDisbandCancelLeavesCoordinationUntouched(t *testing.T) {
+	a, harbor, orbit := teamsPlaceLabIDs(t)
 	a.state = stateWorking
 	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if !a.tsheet.on || a.tsheet.mode != teamSheetClose || a.tsheet.cursor != tsCloseNow {
-		t.Fatalf("the card for a team with no manager: %+v", a.tsheet)
-	}
 	text := teamsFrameText(a)
-	if strings.Contains(text, "Wrap up first") || !strings.Contains(text, "Close now") || !strings.Contains(text, "Cancel") {
-		t.Fatalf("the card with no manager:\n%s", text)
+	if strings.Contains(text, "Close now") || strings.Contains(text, "Wrap up first") || !strings.Contains(text, "Disband") || !strings.Contains(text, "orbit") {
+		t.Fatalf("confirmation omitted the consequences:\n%s", text)
 	}
 	a.teamSheetKey(key("esc"))
-	if got, _ := a.teamByID(harbor); a.tsheet.on || got.Closed() {
-		t.Fatal("Cancel closed the team or left the card up")
-	}
-	for _, tab := range a.tabList() {
-		if tab.key == a.frontTabKey() {
-			if err := a.teamMakeManager(harbor, tab); err != nil {
-				t.Fatal(err)
-			}
+	for _, id := range []string{harbor, orbit} {
+		if got, _ := a.teamByID(id); got.Closed() {
+			t.Fatal("Cancel disbanded a team")
 		}
-	}
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if !a.tsheet.on || a.tsheet.cursor != tsWrapUp {
-		t.Fatalf("a managed team's card does not lead with Wrap up first: %+v", a.tsheet)
-	}
-	drive(t, a, runCmd(a.teamSheetDo(tsWrapUp))...)
-	if got, _ := a.teamByID(harbor); got.Closed() {
-		t.Fatal("Wrap up first closed the team at once")
-	}
-	if !strings.Contains(a.tp.msg, "wrap up") {
-		t.Fatalf("the wrap-up said nothing: %q", a.tp.msg)
-	}
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	drive(t, a, runCmd(a.teamSheetDo(tsCloseNow))...)
-	if got, _ := a.teamByID(harbor); !got.Closed() {
-		t.Fatal("Close now did not close the team")
 	}
 }
 
 // THE CLOSED FOLD shows a closed team's report, members and dates with
 // Reopen and Delete…, and a team under a closed parent offers to reopen the
 // parent too.
-func TestTeamsClosedFoldReopensWithItsParent(t *testing.T) {
+func TestTeamsDisbandedSubteamHasNoReopenAction(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if got, _ := a.teamByID(orbit); !got.Closed() {
-		t.Fatal("closing the parent left the sub-team open")
-	}
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActClosedFold, "")))...)
+	drive(t, a, runCmd(a.teamsCloseNow(harbor, ""))...)
 	drive(t, a, runCmd(a.teamsSelect(orbit))...)
 	text := teamsFrameText(a)
-	for _, want := range []string{"Reopen harbor too", "Delete…", "closed"} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("the closed sub-team lost %q:\n%s", want, text)
-		}
+	if !strings.Contains(text, "Delete") || strings.Contains(text, "Reopen") {
+		t.Fatalf("disbanded team controls:\n%s", text)
 	}
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActReopenParent, orbit)))...)
 	for _, id := range []string{harbor, orbit} {
-		if got, _ := a.teamByID(id); got.Closed() {
-			t.Fatalf("%s is still closed", got.Name)
+		if got, _ := a.teamByID(id); !got.Closed() {
+			t.Fatal("descendant coordination remained active")
 		}
 	}
 }
@@ -630,11 +578,12 @@ func TestTeamsHeaderUsesPerTeamDefaultAndLeavesAllTeamsUncapped(t *testing.T) {
 
 // A MEMBER THIS WINDOW DOES NOT HOLD IS RESUMED BEHIND, in its own tab, and
 // the person stays where they are.
-func TestTeamsMemberPressResumesItBehind(t *testing.T) {
+func TestTeamsMemberPressOpensChatsWithOriginatingOverlay(t *testing.T) {
 	a, harbor, _ := teamsPlaceLabIDs(t)
-	far := "/tmp/lab/far-away.jsonl"
+	where := t.TempDir()
+	far := filepath.Join(where, "far-away.jsonl")
 	if err := a.teamEdit(func(f *teamstore.File) error {
-		return f.AddMember(harbor, teamstore.Member{Key: a.convKey(far), File: far, Where: "/tmp/lab", Word: "far", Handle: "far"})
+		return f.AddMember(harbor, teamstore.Member{Key: a.convKey(far), File: far, Where: where, Word: "far", Handle: "far"})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -643,32 +592,9 @@ func TestTeamsMemberPressResumesItBehind(t *testing.T) {
 		opened = file
 		return Conversation{Agent: &fakeAgent{model: "m"}, Workspace: where, SessionFile: file}, nil
 	}
-	front := a.frontTabKey()
-	// An idle member is not on the header; the members card lists it, with
-	// `Resume` for one this window does not hold, and never says `not open`.
-	drive(t, a, runCmd(a.teamsDo(teamsTargetOf(t, a, teamsActCrew, harbor)))...)
-	text := teamsFrameText(a)
-	if !strings.Contains(text, "@far") || !strings.Contains(text, "Resume") || strings.Contains(text, "not open") {
-		t.Fatalf("the members card does not list the member this window does not hold:\n%s", text)
-	}
-	var member teamsCrewRow
-	for _, r := range a.teamCrewRows() {
-		if r.key == a.convKey(far) {
-			member = r
-		}
-	}
-	if member.key == "" {
-		t.Fatalf("no row for @far:\n%s", teamsFrameText(a))
-	}
-	drive(t, a, runCmd(a.teamCrewGo(member))...)
-	if opened != far {
-		t.Fatalf("the press opened %q", opened)
-	}
-	if a.frontTabKey() != front || !a.at(pageTeams) {
-		t.Fatalf("the resume moved the person: front %q page %q", a.frontTabKey(), a.page.word())
-	}
-	if !a.trafficHeld(a.convKey(far)) {
-		t.Fatal("the member is not held behind")
+	drive(t, a, runCmd(a.teamsMemberGo(harbor, a.convKey(far)))...)
+	if opened != far || a.frontTabKey() != a.convKey(far) || a.at(pageTeams) || a.wall.activeID != harbor {
+		t.Fatalf("member navigation: opened %q front %q team %q", opened, a.frontTabKey(), a.wall.activeID)
 	}
 }
 
@@ -706,9 +632,9 @@ func TestTeamsSettingsTabOverHostIsReadOnlyAndSaysWhose(t *testing.T) {
 
 // ── organize ────────────────────────────────────────────────────────────────
 
-// ORGANIZE OFFERS TO CLOSE THE QUIET TEAMS, ticked like every suggestion,
-// never on its own, and Undo reopens them.
-func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
+// Organize suggests disbanding quiet teams, never applies it on its own, and
+// its grouping Undo cannot reopen a disbanded team.
+func TestOrganizeDisbandsQuietTeamsWithoutReopeningOnUndo(t *testing.T) {
 	a, harbor, orbit := teamsPlaceLabIDs(t)
 	old := a.now().Add(-10 * 24 * time.Hour)
 	if err := a.teamEdit(func(f *teamstore.File) error {
@@ -720,8 +646,8 @@ func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
 		t.Fatal(err)
 	}
 	flushTeams(t, a)
-	_ = a.openWall()
-	a.wallSetTeam("")
+	a.closeWall()
+	runCmd(a.showPage(pageTeams))
 	drive(t, a, runCmd(a.wallOrganizeOpen())...)
 	var quiet *orgProp
 	for i := range a.wall.org.props {
@@ -729,14 +655,14 @@ func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
 			quiet = &a.wall.org.props[i]
 		}
 	}
-	if quiet == nil || len(quiet.closes) != 2 || quiet.name != "Close 2 quiet teams" {
+	if quiet == nil || len(quiet.closes) != 2 || quiet.name != "Disband 2 quiet teams" {
 		t.Fatalf("Organize did not offer the quiet teams: %+v", a.wall.org.props)
 	}
 	// Its row is its sentence whole, then the teams: no colour dot and no
 	// second count, and not cut to a team name's width.
 	a.width, a.height = 110, 30
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "☑ Close 2 quiet teams  harbor, orbit") {
+	frame := orgFrame(a)
+	if !strings.Contains(frame, "☑ Disband 2 quiet teams  harbor, orbit") {
 		t.Fatalf("the quiet-teams row reads:\n%s", frame)
 	}
 	for _, id := range []string{harbor, orbit} {
@@ -752,8 +678,8 @@ func TestOrganizeOffersToCloseQuietTeamsWithUndo(t *testing.T) {
 	}
 	a.wallOrganizeUndo()
 	for _, id := range []string{harbor, orbit} {
-		if got, _ := a.teamByID(id); got.Closed() {
-			t.Fatalf("Undo left %s closed", got.Name)
+		if got, _ := a.teamByID(id); !got.Closed() {
+			t.Fatalf("Undo reopened disbanded %s", got.Name)
 		}
 	}
 }
@@ -767,11 +693,7 @@ func TestTeamsWrapUpAsksTheManagerAndTheReportCloses(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
 	flushTeams(t, a)
 	a.state = stateWorking
-	drive(t, a, runCmd(a.teamsCloseAsk(harbor))...)
-	if a.tsheet.cursor != tsWrapUp {
-		t.Fatalf("the card does not lead with Wrap up first: %+v", a.tsheet)
-	}
-	drive(t, a, runCmd(a.teamSheetDo(tsWrapUp))...)
+	drive(t, a, runCmd(a.teamsWrapUp(harbor))...)
 	log, err := teamstore.ReadTraffic(a.profileDir, harbor, "", 20)
 	if err != nil {
 		t.Fatal(err)
@@ -880,7 +802,6 @@ func TestTeamsCardShowsWakeAndASharedMemberSaysWhoseItIs(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	a.tp.top = teamsTopCache{}
 	// It says so on the members card, as a quiet tag whose hint names the
 	// manager, never as prose on the header.
 	if text := teamsFrameText(a); strings.Contains(text, "reports to orbit") {
@@ -905,75 +826,40 @@ func TestTeamsCardShowsWakeAndASharedMemberSaysWhoseItIs(t *testing.T) {
 // one row; now the newest card is whole, the older ones fold to one line each
 // that still says whose they are, and a press unfolds one. Each card leads
 // with whose it is: the needs-you `?`, never the manager's mark.
-func TestTeamsHostedInboxLeavesTheConversationRoom(t *testing.T) {
+func TestTeamsOverviewRetainsDecisionControls(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
-	a.width, a.height = 110, 34
-	flushTeams(t, a)
-	seam := a.teamsSeam()
-	raise := func(kind, q string) teamstore.Packet {
-		p, err := seam.Raise(teamstore.Packet{Team: teamstore.Person, Origin: harbor, Kind: kind, RaisedBy: "boss", Question: q,
-			Options:        []teamstore.Option{{ID: "a", Label: "One way", Consequence: "this happens"}, {ID: "b", Label: "The other", Consequence: "that happens"}},
-			Recommendation: &teamstore.Recommendation{Option: "b", Reason: "it is cheaper"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return p
+	a.height = 50
+	p, err := a.teamsSeam().Raise(teamstore.Packet{Team: teamstore.Person, Origin: harbor, Kind: teamstore.PacketQuestion, RaisedBy: "boss", Question: "Ship on Friday or Monday?",
+		Options: []teamstore.Option{{ID: "a", Label: "Friday", Consequence: "Ship Friday"}, {ID: "b", Label: "Monday", Consequence: "Ship Monday"}}})
+	if err != nil {
+		t.Fatal(err)
 	}
-	first := raise(teamstore.PacketQuestion, "Ship on Friday or Monday?")
-	raise(teamstore.PacketConflict, "Which parser wins?")
-	raise(teamstore.PacketQuestion, "Keep the old field names?")
 	drive(t, a, runCmd(a.teamsRead(false))...)
-	a.teamsSync()
-	if top := a.teamsHostTopHeight(); top > a.height/2 {
-		t.Fatalf("the inbox takes %d of %d rows over the manager's chat:\n%s", top, a.height, teamsFrameText(a))
-	}
 	text := teamsFrameText(a)
-	if !strings.Contains(text, "Keep the old field names?") || !strings.Contains(text, "The other") {
-		t.Fatalf("the newest card is not whole:\n%s", text)
-	}
-	lines := strings.Split(text, "\n")
-	folded := 0
-	for _, l := range lines {
-		if strings.Contains(l, "▸ question · Ship on Friday") || strings.Contains(l, "▸ conflict · Which parser") {
-			folded++
-			if !strings.Contains(l, "waiting on you") {
-				t.Fatalf("a folded card does not say it waits on you: %q", l)
-			}
-		}
-		if strings.Contains(l, teamManagerGlyph+" question") || strings.Contains(l, teamManagerGlyph+" conflict") {
-			t.Fatalf("a card waiting on the person leads with the manager's mark: %q", l)
+	for _, want := range []string{"Ship on Friday or Monday?", "Friday", "Monday"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("lost %q:\n%s", want, text)
 		}
 	}
-	if folded != 2 {
-		t.Fatalf("%d cards folded, want 2:\n%s", folded, text)
-	}
-	if !strings.Contains(text, "? question · raised by @boss") {
-		t.Fatalf("the whole card does not lead with the needs-you mark:\n%s", text)
-	}
-	// A press on a folded card unfolds it and keeps the budget.
-	var fold teamsTarget
-	for _, tg := range a.tp.targets {
-		if tg.act == teamsActOption && tg.arg == first.ID && tg.opt == "" {
-			fold = tg
+	found := false
+	for _, target := range a.tp.targets {
+		if target.act == teamsActOption && target.arg == p.ID && target.opt == "a" {
+			found = true
 		}
 	}
-	drive(t, a, runCmd(a.teamsDo(fold))...)
-	if text := teamsFrameText(a); !strings.Contains(text, "One way") || !strings.Contains(text, "Ship on Friday or Monday?") {
-		t.Fatalf("the press did not unfold the oldest card:\n%s", text)
+	if !found {
+		t.Fatal("decision option is not interactive")
 	}
-	if top := a.teamsHostTopHeight(); top > a.height/2 {
-		t.Fatalf("an unfolded card let the inbox take %d of %d rows", top, a.height)
+	a.tp.cur = teamsRef{act: teamsActInteractionDown, id: harbor}
+	if text := teamsFrameText(a); !strings.Contains(text, "Recent interactions") {
+		t.Fatal("interaction panel unreachable")
 	}
+
 }
 
-// THE MEMBERS CARD COUNTS WHAT THE HEADER COUNTS: `◆ Manager  1 member` on the
-// header is `◆ Manager · 1 member` on the card, never `2 members`.
-func TestTeamsMembersCardCountsLikeTheHeader(t *testing.T) {
+// The keyboard member list keeps the manager separate from its member count.
+func TestTeamsKeyboardMembersListKeepsManagerSeparate(t *testing.T) {
 	a, harbor, _ := teamsHostedLab(t)
-	head := teamsFrameText(a)
-	if !strings.Contains(head, "1 member") {
-		t.Fatalf("the header's count:\n%s", head)
-	}
 	drive(t, a, runCmd(a.teamCrewOpen(harbor))...)
 	if text := teamsFrameText(a); !strings.Contains(text, "harbor · "+teamManagerGlyph+" Manager · 1 member") {
 		t.Fatalf("the card's title does not count like the header:\n%s", text)
@@ -990,5 +876,47 @@ func TestTeamsCardsStandOverThePane(t *testing.T) {
 	teamsFrameText(a)
 	if rail := teamsRailCols(a.width); a.tsheet.rect.x0 < rail {
 		t.Fatalf("the settings card starts at %d, over the rail's %d columns:\n%s", a.tsheet.rect.x0, rail, teamsFrameText(a))
+	}
+}
+
+func TestTeamSettingsWakeUsesTheSharedOverrideAndResetMechanics(t *testing.T) {
+	a, id, _ := teamsPlaceLabIDs(t)
+	a.tp.defaultsOK = true
+	drive(t, a, runCmd(a.teamSheetOpen(id, teamSheetSettings))...)
+	a.tsheet.cursor = tsWake
+	if !strings.Contains(a.teamSheetHint(), "r reset to inherit") {
+		t.Fatal("Wake has no shared reset hint")
+	}
+	drive(t, a, runCmd(a.teamSheetDo(tsWake))...)
+	team := mustTeam(t, a, id)
+	if team.Settings.Wake == nil {
+		t.Fatal("Wake toggle did not create override")
+	}
+	lines := a.teamSheetSettingsLines(team, 64)
+	var wakeLine wallCardLine
+	for _, line := range lines {
+		if strings.Contains(plain(line.s), "team messages wake") {
+			wakeLine = line
+		}
+	}
+	if !strings.Contains(plain(wakeLine.s), "reset") {
+		t.Fatal("Wake override missing reset")
+	}
+	found := false
+	for _, hit := range wakeLine.hits {
+		if hit.arg == tsWake+tsReset {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Wake reset is not clickable")
+	}
+	drive(t, a, key("r"))
+	if mustTeam(t, a, id).Settings.Wake != nil {
+		t.Fatal("Wake reset retained override")
+	}
+	text := teamsFrameText(a)
+	if strings.Contains(text, "from Settings") || strings.Contains(text, "Inside") {
+		t.Fatal("settings clutter returned")
 	}
 }

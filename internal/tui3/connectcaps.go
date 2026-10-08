@@ -456,6 +456,10 @@ func groupConnections(rows []connect.Status) []connGroup {
 	categorized := false
 	var loose []connect.Status
 	for _, row := range rows {
+		if row.Connected {
+			held.rows = append(held.rows, row)
+			continue
+		}
 		if _, ok := modelConnectionSource(row.ID); ok {
 			models.rows = append(models.rows, row)
 			continue
@@ -470,11 +474,11 @@ func groupConnections(rows []connect.Status) []connGroup {
 		}
 	}
 	out := make([]connGroup, 0, 8)
-	if len(models.rows) > 0 {
-		out = append(out, models)
-	}
 	if len(held.rows) > 0 {
 		out = append(out, held)
+	}
+	if len(models.rows) > 0 {
+		out = append(out, models)
 	}
 	if len(loose) == 0 {
 		return out
@@ -1013,11 +1017,14 @@ func (s *sheet) connKeysLine() string {
 			act = "enter connects"
 		}
 	}
-	line := "↑↓ move · ←→ tabs · " + act
-	if s.filterWorth() {
-		line += " · type to filter"
+	line := "↑↓ move · ←→ categories · " + act
+	escape := "esc close"
+	if s.searching() {
+		escape = "esc clear search"
+	} else if s.conn.expanded != "" || s.conn.armed {
+		escape = "esc back"
 	}
-	return line + " · esc close"
+	return line + " · type to search all · " + escape
 }
 
 // ── acting on them ──────────────────────────────────────────────────────────
@@ -1389,10 +1396,19 @@ func (a *app) connTabSettled(service, name string, connected bool, why string) {
 	mine := s.conn.pending == service
 	keyed := s.conn.pendingKey
 	s.conn.pending, s.conn.pendingKey = "", false
-	if !a.at(pageSettings) || !s.onConnections() {
+	if !a.at(pageSettings) {
 		return
 	}
 	s.reloadConnections()
+	// Global search can rank another category first while still displaying
+	// accounts. Keep its cached catalog current without moving its category.
+	if !s.onConnections() {
+		if s.searching() {
+			s.build()
+		}
+		a.touch()
+		return
+	}
 	if !mine {
 		// Somebody else's sign-in, landing while this page happens to be open.
 		// The list is re-read so the row is honest, and nothing moves: a cursor

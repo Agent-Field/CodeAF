@@ -146,7 +146,7 @@ func TestTeamTabsDrawNoTabForAMemberNotOpenHere(t *testing.T) {
 	}
 }
 
-func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
+func TestTeamStripTabsShowsOnlyTheSelectedMemberships(t *testing.T) {
 	a := &app{}
 	a.teamsEnsure()
 	tabs := []chatTab{{key: "a", word: "alpha"}, {key: "b", word: "beta", here: true}, {key: "c", word: "gamma"}}
@@ -167,8 +167,8 @@ func TestTeamStripTabsKeepsTheFrontTab(t *testing.T) {
 	for _, tab := range got[1:] {
 		keys = append(keys, tab.key)
 	}
-	if strings.Join(keys, ",") != "c,a,b" {
-		t.Fatalf("strip keys %v, want c,a,b", keys)
+	if strings.Join(keys, ",") != "c,a" {
+		t.Fatalf("strip keys %v, want c,a", keys)
 	}
 	// A front tab that is a member is not drawn twice.
 	tabs[1].here, tabs[0].here = false, true
@@ -343,64 +343,44 @@ func TestTeamTreeRefusesLoopsAndDeleteReparents(t *testing.T) {
 // remembered place, an open popover and the strip's chip all stay on theirs.
 func TestTeamDeleteOrReorderNeverRetargetsAnother(t *testing.T) {
 	a, _, _ := tabApp(t)
-	_ = a.openWall()
-	_ = a.wallFrame(a.width, a.height)
-	tiles := a.wallShown(a.now())
-	if len(tiles) < 3 {
-		t.Fatalf("the fixture has %d tiles", len(tiles))
-	}
-	first, err := a.teamMake("first", []chatTab{tiles[0].tab})
+	tabs := a.tabList()
+	first, err := a.teamMake("first", tabs[:1])
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _ := a.teamMake("second", []chatTab{tiles[1].tab, tiles[2].tab})
-	third, _ := a.teamMake("third", []chatTab{tiles[2].tab})
-
-	a.wallSetTeam(second)
-	a.wallMove(1, 2)
-	a.wallSetTeam("")
-	a.wallSetTeam(third)
-	a.wallSetTeam(second)
-	a.wallOpenSettings(third, wallPop{})
-	_ = a.wallFrame(a.width, a.height)
-	chip := plain(a.tabsRow(a.width))
-
+	second, err := a.teamMake("second", tabs[1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	third, err := a.teamMake("third", tabs[2:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	spend(t, a, a.teamActivate(second))
+	selected := a.frontTabKey()
+	a.tabView = tabViewport{from: 1, browsing: true}
+	spend(t, a, a.teamActivate(third))
 	if err := a.teamDelete(first); err != nil {
 		t.Fatal(err)
 	}
-	if a.wall.activeID != second || a.wall.pop.team != third {
-		t.Fatalf("after the delete the wall shows %q and the settings are %q", a.wall.activeID, a.wall.pop.team)
-	}
-	if got, ok := a.teamActive(); !ok || got.Name != "second" {
-		t.Fatalf("the strip is narrowed to %+v", got)
-	}
-	if place, ok := a.wall.places[second]; !ok || place.key != tiles[2].tab.key {
-		t.Fatalf("second's place is %+v %v", place, ok)
-	}
-	a.touch()
-	if got := plain(a.tabsRow(a.width)); !strings.Contains(got, "● second ▾") || got == "" {
-		t.Fatalf("the chip went from %q to %q", chip, got)
-	}
-
-	// The list reordered under the same state.
 	a.wall.teams[0], a.wall.teams[1] = a.wall.teams[1], a.wall.teams[0]
-	if got, _ := a.teamActive(); got.Name != "second" {
-		t.Fatalf("a reorder moved the strip to %q", got.Name)
+	spend(t, a, a.teamActivate(second))
+	if a.frontTabKey() != selected || a.wall.activeID != second || a.tabView.from != 1 {
+		t.Fatal("deletion or reorder retargeted an overlay's selection")
 	}
-	a.wall.pop = wallPop{}
-	_ = a.wallFrame(a.width, a.height)
-	a.wall.hover = wallHitForTeam(t, a, wallHitChip, third).ref()
-	a.wall.teams[0], a.wall.teams[1] = a.wall.teams[1], a.wall.teams[0]
-	frame := wallPlainFrame(a.wallFrame(a.width, a.height))
-	if !strings.Contains(frame, "third · 1 open here · 1 member") {
-		t.Fatalf("the hover followed the place, not the team:\n%s", frame)
+	row := plain(a.tabsRow(a.width))
+	if !strings.Contains(row, "second") {
+		t.Fatal(row)
 	}
-	wallKeyPress(a, "D")
-	if got, ok := a.teamByID(second); !ok || !got.Closed() || a.wall.activeID != "" {
-		t.Fatalf("D closed the wrong team: %v active %q", a.teamNames(), a.wall.activeID)
+	runCmd(a.showPage(pageTeams))
+	runCmd(a.teamsSelect(second))
+	runCmd(a.teamsDo(teamsTarget{act: teamsActClose, id: second}))
+	runCmd(a.teamSheetDo(tsCloseNow))
+	if got, ok := a.teamByID(second); !ok || !got.Closed() {
+		t.Fatal("disband did not close the selected team")
 	}
 	if got, ok := a.teamByID(third); !ok || got.Closed() {
-		t.Fatal("D took a neighbour with it")
+		t.Fatal("disband took a neighbour with it")
 	}
 }
 

@@ -205,7 +205,7 @@ func homeFate(word, rest string) string {
 		return fateQuit
 	case "new":
 		return fateFresh
-	case "land", "workspace", "dismiss":
+	case "land", "workspace", "dismiss", "delete":
 		return fateBehind
 	case "files", "permissions", "connect", "harness", "subharness", "skill",
 		"autonomy", "copy", "select", "rewind", "compact", "export", "drafts", "manual", "folder":

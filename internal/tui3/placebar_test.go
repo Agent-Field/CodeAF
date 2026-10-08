@@ -298,7 +298,7 @@ func TestHoveringATabWordLiftsItsInkAndNothingElse(t *testing.T) {
 		t.Fatalf("the frame changed height under a pointer: %d rows became %d", len(beforeRows), len(afterRows))
 	}
 	hint := len(afterRows) - 1
-	if got := plain(afterRows[hint]); !strings.Contains(got, placeChord(pageSettings)+" settings") || !strings.Contains(got, placeFor(pageSettings).about()) {
+	if got := plain(afterRows[hint]); !strings.Contains(got, placeChord(pageSettings)+" "+navLabel(pageSettings)) || !strings.Contains(got, placeFor(pageSettings).about()) {
 		t.Fatalf("the hint line does not say what the hovered word opens: %q", got)
 	}
 	for at := range beforeRows {
@@ -377,7 +377,7 @@ func TestTheHoverAndTheBarCursorCompose(t *testing.T) {
 	// Both marks are on the one row, and the row still says the same four words.
 	row := strings.Split(mustFrame(a), "\n")[navRow]
 	for _, id := range barPages(a.page, false) {
-		if !strings.Contains(plain(row), id.word()) {
+		if !strings.Contains(plain(row), navLabel(id)) {
 			t.Fatalf("the bar lost %q while wearing two marks: %q", id.word(), plain(row))
 		}
 	}

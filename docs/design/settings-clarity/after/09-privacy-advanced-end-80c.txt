@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+ …  Memory   Tasks   AI teams   Permissions   Spending   Connections   Privacy
+
+ › Search all settings
+ shared model recommendations                                use and contribute
+ save input history                                                          on
+ share anonymous usage reports                                               on
+ save unfinished drafts                                                      on
+ Advanced                                                                  hide
+ model pool signing key                                                built in
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  the public key a Model Pool index must be signed with. Blank trusts the key
+  built into codeaf; set it to read a relay of your own.
+
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · tab next place · esc close

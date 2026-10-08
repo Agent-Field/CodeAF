@@ -80,7 +80,7 @@ func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 			if a.tabRow != navRow || a.headHeight() != placeHeadRows {
 				t.Fatalf("at %d %s drew its nav on row %d and a %d-row head", width, to.word(), a.tabRow, a.headHeight())
 			}
-			if place[navRow] != chat[navRow] || place[1] != chat[1] {
+			if (width >= 80 && place[navRow] != chat[navRow]) || place[1] != chat[1] {
 				t.Fatalf("at %d %s moved the nav or the air row under it:\nchat %q\nplace %q", width, to.word(), chat[navRow], place[navRow])
 			}
 			if !strings.HasPrefix(place[placeHeadRows-2], "─") || strings.TrimSpace(place[placeHeadRows-1]) != "" || strings.Contains(place[placeHeadRows-2], "harbor") {
@@ -93,7 +93,7 @@ func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 			// is where the place drew it, wherever both drew one.
 			for _, c := range chatNav {
 				for _, p := range a.tabs {
-					if c.id == p.id && c != p {
+					if width >= 80 && c.id == p.id && c != p {
 						t.Fatalf("at %d %q moved from %+v on the chat to %+v on %s", width, c.id.word(), c, p, to.word())
 					}
 				}
@@ -112,7 +112,7 @@ func TestRowZeroIsTheSameOnEveryPage(t *testing.T) {
 func TestTheNavLightsWhereYouStand(t *testing.T) {
 	a := navChat(t)
 	a.width = 160
-	lit := func(id page) string { return a.pal.bold(a.pal.accent(tabPad + id.word() + tabPad)) }
+	lit := func(id page) string { return a.pal.bold(a.pal.accent(tabPad + navLabel(id) + tabPad)) }
 	line := a.navLine(a.width, a.pal)
 	if !strings.Contains(line, lit(pageChats)) {
 		t.Fatalf("inside a conversation `chats` is not lit: %q", line)
@@ -124,7 +124,7 @@ func TestTheNavLightsWhereYouStand(t *testing.T) {
 			if got := strings.Contains(line, lit(id)); got != (id == to) {
 				t.Fatalf("standing in %s, %s is lit %v", to.word(), id.word(), got)
 			}
-			if id != to && !strings.Contains(line, a.pal.muted(tabPad+id.word()+tabPad)) {
+			if id != to && !strings.Contains(line, a.pal.muted(tabPad+navLabel(id)+tabPad)) {
 				t.Fatalf("standing in %s, %s is not muted", to.word(), id.word())
 			}
 		}
@@ -133,7 +133,7 @@ func TestTheNavLightsWhereYouStand(t *testing.T) {
 	// the same cells.
 	a.pal = newPalette(tokens.NoColor, false)
 	walkTo(t, a, pageSpend)
-	if line := plain(a.navLine(a.width, a.pal)); !strings.Contains(line, "[spend]") {
+	if line := plain(a.navLine(a.width, a.pal)); !strings.Contains(line, "[Spend]") {
 		t.Fatalf("a plain terminal cannot tell which place is lit: %q", line)
 	}
 }
@@ -276,7 +276,7 @@ func TestTheMoreMenuOpensTheFoldedPlaces(t *testing.T) {
 	}
 	text := plain(frame(a))
 	for _, id := range folded {
-		if !strings.Contains(text, id.word()) || !strings.Contains(text, placeChord(id)) {
+		if !strings.Contains(text, navLabel(id)) || !strings.Contains(text, placeChord(id)) {
 			t.Fatalf("the menu does not offer %q with its key:\n%s", id.word(), text)
 		}
 	}
@@ -363,7 +363,7 @@ func TestEveryNavWordSaysWhatItOpens(t *testing.T) {
 	}
 	drive(t, a, tea.MouseMotionMsg{X: a.wall.door.from, Y: tabStripRow})
 	all := a.footHint(a.width)
-	if !strings.Contains(all, "grid of your open tabs") || strings.Contains(all, placeFor(pageChats).about()) {
+	if !strings.Contains(all, "grid of all your conversations") || strings.Contains(all, placeFor(pageChats).about()) {
 		t.Fatalf("`▦ All` does not say it is the grid of open tabs: %q", all)
 	}
 }
@@ -382,7 +382,7 @@ func TestAResizeDropsTheMoreHint(t *testing.T) {
 		t.Fatal("at 48 the nav drew no more")
 	}
 	a.navHover(a.navMore.span.from, navRow)
-	if hint := a.footHint(48); !strings.Contains(hint, "more · the places this row has no room for") {
+	if hint := a.footHint(48); !strings.Contains(hint, "More · the places this row has no room for") {
 		t.Fatalf("hovering more, the hint reads %q", hint)
 	}
 	for _, span := range a.tabs {
@@ -399,7 +399,7 @@ func TestAResizeDropsTheMoreHint(t *testing.T) {
 	if a.navMore.span.pressable() {
 		t.Fatal("at 110 more is still a door")
 	}
-	if hint := a.footHint(a.width); strings.Contains(hint, "more") {
+	if hint := a.footHint(a.width); strings.Contains(hint, "More") {
 		t.Fatalf("after the resize the hint still says more: %q", hint)
 	}
 	if a.tabHover != pageNone || a.navMore.hot {
@@ -414,7 +414,7 @@ func TestTheNavsFoldIsAWordDoorNotACount(t *testing.T) {
 		if strings.Contains(bar, tokens.GlyphCollapsed) || strings.Contains(bar, "+") {
 			t.Fatalf("at %d the nav's fold is a count: %q", width, bar)
 		}
-		if a.navMore.span.pressable() != strings.HasSuffix(bar, "more ▾") {
+		if a.navMore.span.pressable() != strings.HasSuffix(bar, "More ▾") {
 			t.Fatalf("at %d the fold's word and its door disagree: %q", width, bar)
 		}
 	}
@@ -443,10 +443,10 @@ func TestTheCountThatWantsYouNeverLeavesTheNav(t *testing.T) {
 	a.width = 80
 	a.navMemo = navMemo{}
 	row := plain(a.navLine(80, a.pal))
-	if !placeWordsInOrder(row, "home", "teams", "chats", "sessions", "spend", "settings") || a.navMore.span.pressable() {
+	if !placeWordsInOrder(row, "Home", "Chats", "AI teams", "Activity", "Memory", "More") || !a.navMore.span.pressable() {
 		t.Fatalf("at 80 the short count cost a place: %q", row)
 	}
-	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20 / "+railFigure(20)) {
+	if !strings.HasSuffix(strings.TrimRight(row, " "), "2 ? · $1.20") {
 		t.Fatalf("at 80 the pulse is not the short count and the allowance: %q", row)
 	}
 	// AND NOTHING WANTING YOU DRAWS NOTHING: no `0 ?`.

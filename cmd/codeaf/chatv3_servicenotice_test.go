@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/catalog"
@@ -97,5 +98,35 @@ func TestProviderWarmReportsFailureBeforeTheNextProviderFinishes(t *testing.T) {
 	}
 	if shelf.fetchErrorFor("custom:first") == "" {
 		t.Fatal("failed provider's reason missing")
+	}
+}
+
+func TestTheColdDefaultCatalogNotifiesTheSurfaceWithoutAnotherFetch(t *testing.T) {
+	t.Setenv("CODEAF_HOME", t.TempDir())
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"available-default"}]}`))
+	}))
+	defer server.Close()
+	options := catalog.Options{Dir: t.TempDir(), BaseURL: server.URL, APIKey: "synthetic"}
+	models := catalog.LoadLazy(t.Context(), options)
+	defer models.Close()
+	shelf := newV3ModelShelf(models, options)
+	service := modelsource.Connected{Source: modelsource.DefaultSource(server.URL), Address: server.URL, Key: "synthetic"}
+	shelf.setSources(modelsource.NewSet(service))
+	p := &v3Process{Shelf: shelf}
+	notices := 0
+	remove := p.registerServiceNotice(func(source, address string) {
+		if source != modelsource.DefaultID || address != server.URL {
+			t.Errorf("notice = %q at %q", source, address)
+		}
+		notices++
+	})
+	defer remove()
+	p.warmEmptyProviders(t.Context())
+	if rows := shelf.pickerModels(); len(rows) != 1 || rows[0].ID != "available-default" || notices != 1 || requests.Load() != 1 {
+		t.Fatalf("default warm: rows=%+v notices=%d requests=%d", rows, notices, requests.Load())
 	}
 }

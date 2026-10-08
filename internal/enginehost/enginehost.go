@@ -320,6 +320,16 @@ func Retire(workspace string, anyway bool) error {
 	return retire(workspace, remote.WhoIs{StandDown: true, Anyway: anyway})
 }
 
+// StandDownWhenIdle asks this workspace's host for the slot WITHOUT asking it to
+// end anything: the host records that a newer build is waiting and retires at
+// its first quiet moment rather than holding on through its idle policy. It is
+// the busy half of a replacement and it is not a kill (cmd/codeaf's takeover
+// rule); the answer's [remote.HostSelf.StandDownWhenIdle] says whether this host
+// understood the request or is older than it.
+func StandDownWhenIdle(workspace string) (remote.HostSelf, error) {
+	return Ask(workspace, remote.WhoIs{StandDownWhenIdle: true})
+}
+
 // RetireForEnvironment asks only idle work to stand down, without allowing a
 // disconnected window's watch grace to preserve the environment it just left.
 // NEVER ANYWAY: actual windows, turns, questions and background work still refuse.

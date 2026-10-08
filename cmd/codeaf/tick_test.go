@@ -86,28 +86,33 @@ func TestTickWalksTheItemsAndWritesAWakeLine(t *testing.T) {
 		t.Fatalf("the pass wrote no wake line: %v", err)
 	}
 	line := strings.TrimSpace(string(raw))
-	// One item was reached, and the look that could not be paid for is one
-	// error. `checked=0` is the honest half: the walk never got an answer about
-	// the world, so it must not claim it checked anything.
-	for _, field := range []string{"examined=1", "checked=0", "errors=1", "fired=0", "said=0"} {
+	// ONE ITEM WAS REACHED AND ITS LOOK WAS UNDECIDED, not failed.
+	//
+	// A MACHINE WITH NO KEY IS A PROVIDER THAT COULD NOT ANSWER, which the
+	// three-way reader reads as `unknown`: the look is counted as CHECKED (the
+	// walk did reach the world's question) and NOT as an error, and NOTHING IS
+	// WRITTEN on the item, so it stays due and the next pass faces the same
+	// question. Reading it as an error would publish a failure that did not
+	// happen; reading it as a `no` would consume the opportunity the person is
+	// waiting on. The cost is that a machine with no key shows `checked` and
+	// keeps trying rather than a row that says why — stated, not hidden.
+	for _, field := range []string{"examined=1", "checked=1", "errors=0", "fired=0", "said=0"} {
 		if !strings.Contains(line, field) {
 			t.Fatalf("the wake line does not say %s: %q", field, line)
 		}
 	}
-	// AND THE ITEM'S OWN ROW SAYS WHY, in the one sentence a card shows: the
-	// refusal comes from the sentinel's client at the moment it is asked, not
-	// from the door that built the pass.
+	// Nothing fired: a firing needs a yes, and nobody was able to say one.
+	if _, err := os.Stat(filepath.Join(store.RunsDir(made.ID), "0001")); !os.IsNotExist(err) {
+		t.Fatalf("a pass that could not judge ran something anyway: %v", err)
+	}
+	// AND THE ITEM IS STILL ACTIVE AND STILL DUE, because an unknown writes
+	// nothing at all ([Ticker.one]'s stateUndecided).
 	after, err := store.Get(made.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const wanted = "could not check: no API key: this session has not been given one yet"
-	if after.LastCheckLine != wanted {
-		t.Fatalf("the item's row reads %q, wanted %q", after.LastCheckLine, wanted)
-	}
-	// Nothing fired: a firing needs a yes, and nobody was able to say one.
-	if _, err := os.Stat(filepath.Join(store.RunsDir(made.ID), "0001")); !os.IsNotExist(err) {
-		t.Fatalf("a pass that could not judge ran something anyway: %v", err)
+	if after.Status != standing.StatusActive {
+		t.Fatalf("an undecided look changed the item's status to %q", after.Status)
 	}
 }
 

@@ -37,7 +37,6 @@ var budgetRows = []struct {
 	{[]string{"day", "daily", "today"}, config.KeyDailyBudget},
 	{[]string{"conversation", "chat", "session"}, config.KeySpendRail},
 	{[]string{"plan", "plans", "ask"}, config.KeyPlanConsent},
-	{[]string{"practice"}, config.KeyPracticeBudget},
 }
 
 // budgetRowFor reads the first word of an argument as a row name.
@@ -73,6 +72,10 @@ func budgetWords() string {
 //	/budget plan       the tab, on that row
 func (a *app) budget(rest string) tea.Cmd {
 	rest = strings.TrimSpace(rest)
+	if word, _, _ := strings.Cut(rest, " "); strings.EqualFold(word, "practice") {
+		a.note("Practice limits are not used by chats. Use /budget day, /budget conversation or /budget plan.")
+		return nil
+	}
 	if rest == "" {
 		a.noticeEvent(eventBudgetShown)
 		return a.openSpending(config.KeyDailyBudget)

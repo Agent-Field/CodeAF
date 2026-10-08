@@ -10,8 +10,17 @@ import (
 // only one successful call and one root in the current team's retained history.
 // Repeated identical starts are ambiguous, so they never guess another message.
 func (a *app) teamStartEntryAt(id string) int {
-	team, ok := a.teamOfFront()
-	if !ok || team.Manager != a.frontTabKey() {
+	shown, ok := a.teamOfFront()
+	if !ok {
+		return -1
+	}
+	return a.teamStartEntryInTeamAt(id, shown)
+}
+
+// An explicit interaction link keeps its originating team even when the
+// selected overlay changes while its conversation is being opened.
+func (a *app) teamStartEntryInTeamAt(id string, team team) int {
+	if team.Manager != a.frontTabKey() {
 		return -1
 	}
 	var root teamstore.Entry

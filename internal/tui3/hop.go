@@ -1016,6 +1016,7 @@ func hopLastStop(rows []hopRow) int {
 // in passing on the way to a fourth; those rows keep their `enter`, and the
 // fold that reveals them already converts the card to browsing.
 func (a *app) hopSlide() tea.Cmd {
+	a.teamViewSet("")
 	if a.hop.at < 0 || a.hop.at >= len(a.hop.rows) {
 		return a.hopTick()
 	}
@@ -1124,6 +1125,7 @@ func (a *app) hopWalk(by int) {
 // holding — but it still LANDS, because a place standing over the conversation
 // is a place `enter` has to come down off ([app.hopLand]).
 func (a *app) hopTake() (cmd tea.Cmd) {
+	a.teamViewSet("")
 	if a.startingChat() {
 		back := a.parkChatStart()
 		defer func() { cmd = tea.Batch(back, cmd) }()
@@ -1848,6 +1850,11 @@ func (a *app) hopAway() tea.Cmd {
 		// the screen underneath is about to be a different page.
 		a.hopClose()
 		return a.tabDismiss(chatTab{key: a.frontTabKey(), file: a.file, where: a.workspace, word: row.title})
+	}
+	if t, ok := a.teamActive(); ok && teamHolds(t, a.convKey(row.file)) {
+		a.hop.say = "Team tabs stay visible; remove membership from Teams"
+		a.touch()
+		return nil
 	}
 	a.tabShutKey(a.convKey(row.file))
 	// THE CARD STAYS UP AND RE-READS ITSELF, and the row it just closed LEAVES

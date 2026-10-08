@@ -45,7 +45,7 @@ func TestTabWalksEveryPlaceAndEachOneOpens(t *testing.T) {
 	if a.page != pageHome {
 		t.Fatalf("the circle came back to %q rather than home", a.page.word())
 	}
-	for _, id := range placeOrder[placeBarPlaces:] {
+	for _, id := range placeBarOrder[placeBarPlaces:] {
 		drive(t, a, key(placeChord(id)))
 		if a.page != id || !a.pageShowing() {
 			t.Fatalf("%s left the router on %q with the frame %v", placeChord(id), a.page.word(), a.pageShowing())

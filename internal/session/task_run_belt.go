@@ -71,9 +71,10 @@ func runCostLeft(limit, spent float64) float64 {
 	return left
 }
 
-// seniorDevCeilings caps the conversation's remaining allowance at the
-// unattended run defaults, so an unset conversation limit is still finite.
-func (a *Agent) seniorDevCeilings(spent float64) delegate.Ceilings {
+// programCeilings caps the conversation's remaining allowance at the
+// program's unattended ceilings ([delegate.Delegate.Unattended]), so an unset
+// conversation limit is still finite for a program that names its own.
+func (a *Agent) programCeilings(program *delegate.Delegate, spent float64) delegate.Ceilings {
 	wallLeft, _ := a.config.Budget.Left()
 	if a.config.Budget.Wall > 0 && !a.startedAt.IsZero() {
 		wallLeft = a.config.Budget.Wall - time.Since(a.startedAt)
@@ -84,7 +85,33 @@ func (a *Agent) seniorDevCeilings(spent float64) delegate.Ceilings {
 	return (delegate.Ceilings{
 		CostUSD: runCostLeft(a.railCap(0), spent),
 		Hours:   wallLeft.Hours(),
-	}).SeniorDev()
+	}).CappedBy(programUnattended(program))
+}
+
+// programUnattended is a program's own ceilings, none for no program.
+func programUnattended(program *delegate.Delegate) delegate.Ceilings {
+	if program == nil {
+		return delegate.Ceilings{}
+	}
+	return program.Unattended
+}
+
+// holdProgramCeilings writes onto the run which ceilings it starts under and
+// whether the conversation's own limit, rather than the program's unattended
+// one, is the one that will stop it — the words its ending is told in. A run
+// of no program keeps none.
+//
+// A PROGRAM WITH NO CEILINGS OF ITS OWN IS STOPPED BY THE CONVERSATION'S, and
+// its ending says so. Skipping it left the run holding no ceiling and no
+// word for whose it was, and its ending named "the run's $0.00 limit".
+func (a *Agent) holdProgramCeilings(run *beltRun, spec RunSpec) {
+	if run.delegate == nil {
+		return
+	}
+	own := programUnattended(run.delegate)
+	run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
+	run.conversationCostLimit = a.railCap(0) > 0 && (own.CostUSD <= 0 || runCostLeft(a.railCap(0), a.Usage().CostUSD) <= own.CostUSD)
+	run.conversationTimeLimit = a.programConversationTimeLimit(own)
 }
 
 // RunSpec is one run as the door hands it to the engine: the store to drive,
@@ -119,6 +146,8 @@ type RunSpec struct {
 	Admission RunAdmission
 	// OnHold announces the changed set of task ids whose starts are held.
 	OnHold func([]string)
+	// OnWorker identifies when each worker has finished its record writes.
+	OnWorker func(string, bool)
 	// ProfileDir is the person's profile directory, read by the engine's crew
 	// factory to seat a task on the model its role rides.
 	ProfileDir string
@@ -354,6 +383,7 @@ type beltRun struct {
 	// machineHeld is the set of starts refused on the latest pass. Readers
 	// take beltMu before copying membership onto live plan rows.
 	machineHeld map[string]bool
+	workers     map[string]chan struct{}
 	// cut ends the context the run's workers and every call they have out run
 	// under, and stopped and stopReason say a PERSON ended it and in what words
 	// (stoprun.go). cut is set once before the run starts; the other two are
@@ -371,6 +401,10 @@ type beltRun struct {
 	ending  bool
 	closing bool
 	over    chan struct{}
+	// closingFile is registered only after the conversation's other writers
+	// have stopped, so run completion releases its journal before waking a
+	// caller that may immediately reopen it. It is guarded by Agent.beltMu.
+	closingFile *sessionFile
 	// born is when this run started, off the conversation's own clock, and it is
 	// what the run's row in the work tree ages from ([Agent.beltRunWorkingNow]).
 	// It is the same reading the row published to the surface carries, so the
@@ -670,11 +704,7 @@ func (a *Agent) startAdmittedBeltRun(ctx context.Context, engine RunEngine, g *T
 		Model: run.crewWorker(),
 	})
 	spec := a.beltRunSpec(run, brief)
-	if programName(via) == "senior-dev" {
-		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
-		run.conversationCostLimit = a.railCap(0) > 0 && runCostLeft(a.railCap(0), a.Usage().CostUSD) <= delegate.DefaultSeniorDevCostUSD
-		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
-	}
+	a.holdProgramCeilings(run, spec)
 	go a.driveBeltRun(runCtx, engine, run, spec)
 	return false, nil
 }
@@ -760,17 +790,21 @@ func (run *beltRun) wishedFrom(ctx context.Context) {
 	run.thinking, run.carry, run.crewEffort = wish.thinking, wish.carry, crewWishOf(ctx).effort
 }
 
-// seniorDevConversationTimeLimit reports whether the person's remaining wall
-// limit, rather than the unattended default, is the one that will stop the run.
-func (a *Agent) seniorDevConversationTimeLimit() bool {
+// programConversationTimeLimit reports whether the person's remaining wall
+// limit, rather than the program's unattended one, is the one that will stop
+// the run.
+func (a *Agent) programConversationTimeLimit(own delegate.Ceilings) bool {
 	if a.config.Budget.Wall <= 0 {
 		return false
+	}
+	if own.Hours <= 0 {
+		return true
 	}
 	remaining := a.config.Budget.Wall
 	if !a.startedAt.IsZero() {
 		remaining -= time.Since(a.startedAt)
 	}
-	return remaining <= time.Duration(delegate.DefaultSeniorDevHours*float64(time.Hour))
+	return remaining <= time.Duration(own.Hours*float64(time.Hour))
 }
 
 // lockBeltStart takes the conversation's start lock, the one door every road
@@ -1016,8 +1050,8 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		}
 	}
 	cost := runCostLeft(a.railCap(0), a.Usage().CostUSD)
-	if programName(run.delegate) == "senior-dev" {
-		ceilings := a.seniorDevCeilings(a.Usage().CostUSD)
+	if !programUnattended(run.delegate).IsZero() {
+		ceilings := a.programCeilings(run.delegate, a.Usage().CostUSD)
 		cost, wallLeft = ceilings.CostUSD, ceilings.Elapsed()
 	}
 	admission := run.admission
@@ -1039,6 +1073,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 		// none. Run and node workers must charge that same conversation.
 		Admission:    admission,
 		OnHold:       func(ids []string) { a.setBeltRunMachineHold(run, ids) },
+		OnWorker:     func(id string, on bool) { a.beltWorkerLifetime(run, id, on) },
 		ProfileDir:   a.config.ProfileDir,
 		Sources:      a.liveSources(),
 		WorkModel:    workSeat,
@@ -1694,7 +1729,7 @@ func keptRunProgram(g *TaskGraph, notice TaskNotice) string {
 // landing behind it, and a process killed during that wait writes nothing at
 // all. A crash writes nothing either way; that store is ended by the next
 // process to find it ([endOrphanedProgramRun]).
-func (a *Agent) cutBeltRun() {
+func (a *Agent) cutBeltRun() <-chan struct{} {
 	a.beltMu.Lock()
 	run := a.beltRun
 	var cut context.CancelFunc
@@ -1716,6 +1751,10 @@ func (a *Agent) cutBeltRun() {
 	if cut != nil {
 		cut()
 	}
+	if run != nil {
+		return run.over
+	}
+	return nil
 }
 
 // waitForBeltAdmission keeps a newly seeded run queued until the machine gate
@@ -1823,11 +1862,7 @@ func (a *Agent) startPendingBeltRun(ctx context.Context, run *beltRun) (RunSpec,
 		return RunSpec{}, false
 	}
 	spec := a.beltRunSpec(run, run.brief)
-	if programName(run.delegate) == "senior-dev" {
-		run.costCeiling, run.timeCeiling = spec.CostUSD, spec.Elapsed.Hours()
-		run.conversationCostLimit = a.railCap(0) > 0 && runCostLeft(a.railCap(0), a.Usage().CostUSD) <= delegate.DefaultSeniorDevCostUSD
-		run.conversationTimeLimit = a.seniorDevConversationTimeLimit()
-	}
+	a.holdProgramCeilings(run, spec)
 	return spec, true
 }
 
@@ -1983,18 +2018,22 @@ func crewKept(outcome string, landing RunLanding) bool {
 	return true
 }
 
-// releaseBeltRun is the last thing every run does: it is cleared off the Agent,
-// its store is closed, and every hand-off that was waiting for it to be over is
-// let go to start a run of its own. The clearing comes first, so a waiter that
-// wakes finds no run on the Agent and opens a fresh one rather than meeting this
-// one again.
+// releaseBeltRun keeps the completion join reachable through the store's last
+// close. Clearing the run and signalling its end happen together, so neither
+// deletion nor another hand-off can mistake a still-closing store for no work.
 func (a *Agent) releaseBeltRun(run *beltRun) {
 	a.beltMu.Lock()
+	run.ending = true
+	a.beltMu.Unlock()
+	_ = run.store.Close()
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if run.closingFile != nil {
+		_ = run.closingFile.Close()
+	}
 	if a.beltRun == run {
 		a.beltRun = nil
 	}
-	a.beltMu.Unlock()
-	_ = run.store.Close()
 	if run.over != nil {
 		close(run.over)
 	}
@@ -2519,4 +2558,18 @@ func carryRunIdentity(notice, kept TaskNotice) TaskNotice {
 		notice.Crew = kept.Crew
 	}
 	return notice
+}
+
+func (a *Agent) beltWorkerLifetime(run *beltRun, id string, on bool) {
+	a.beltMu.Lock()
+	defer a.beltMu.Unlock()
+	if run.workers == nil {
+		run.workers = map[string]chan struct{}{}
+	}
+	if on {
+		run.workers[id] = make(chan struct{})
+	} else if done := run.workers[id]; done != nil {
+		close(done)
+		delete(run.workers, id)
+	}
 }

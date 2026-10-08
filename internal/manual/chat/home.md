@@ -59,7 +59,7 @@ There is no argument form. The screen is how you name what you want; a command t
 project name would be asking you to type out the very thing home exists to show you.
 
 Home is the **first place on the top line**, right after the `codeaf` wordmark:
-`home  teams  chats  sessions  spend  settings`.
+`home  chats  AI teams  activity  memory  spend  settings`.
 The **teams page**, right after it, is where your teams and their managers live.
 It still does nothing on its own: no notifications and no alerts. You open it, you see where
 things stand, and you either act on something or leave.
@@ -188,7 +188,7 @@ watch that needs somebody, never age off home.
 as an ordinary line once it has been answered or has aged out of the group.
 
 **On a short frame the whole group folds to one line before any question gives way** —
-`8 unread`. `enter` expands that group; the `sessions` heading opens the sessions place.
+`8 unread`. `enter` expands that group; the `sessions` heading opens the activity page.
 
 ## Answer from home — a digit answers the question that is drawing its answers
 
@@ -245,7 +245,7 @@ A conversation another terminal is holding is not refused: `enter` brings it her
 Work that landed as `your call` **waits until you decide about it**, however many days that
 is: nothing more happens to that work until somebody answers it. Only its row on home ages —
 two days after it landed it leaves `needs you` for the count on the panel's last line,
-`3 more`, and the sessions place still lists it; `enter` on that line opens the panel and shows
+`3 more`, and the activity page still lists it; `enter` on that line opens the panel and shows
 it again.
 
 Three ways to settle it, and they are the same door:
@@ -271,38 +271,38 @@ not where it is settled.**
 
 ## Sessions — the fifteen most recent conversations on Home and what is running on this machine right now
 
-The **sessions** section replaces the old list of individual tasks. It shows up to
+The **activity** section replaces the old list of individual tasks. It shows up to
 fifteen conversations across projects, newest conversation activity first, regardless
 of whether they have tasks. Closed conversations remain in history with dim titles.
 Each row uses the full conversation title, truncated to fit, and its age. Selecting a
 row opens that conversation; `→` offers the usual conversation actions.
 
-Click **sessions** to open the **sessions** tab (formerly tasks), which holds the full
+Click **activity** to open the **activity** tab (formerly tasks), which holds the full
 conversation trees under running and completed. The running section shows work in
 flight across projects. Short frames show fewer rows with a
 fold for the remainder of these fifteen. The heading leads to the full history.
 
-There is exactly one conversation list on Home, under **sessions**. Open tabs,
+There is exactly one conversation list on Home, under **activity**. Open tabs,
 recently closed conversations and saved history are combined by conversation identity
 before choosing the fifteen most recent, so each conversation appears once.
-The `opt+k` chats menu still lists open tabs; closing or reopening a conversation
+The `opt+k` chats menu still lists open tabs; dismissing or reopening a tab
 updates the tab and the row in Sessions together.
 
 ## Why does home show a session id for an untitled chat, untitled conversation, new conversation
 
 **A conversation nothing has named yet reads `new conversation`** on home's sessions
-list, the same word the sessions place uses. It never reads as its session id, including
+list, the same word the activity page uses. It never reads as its session id, including
 the id with its first letter raised (`D53cceead3f99593`). A conversation that has a title
 keeps that title.
 
 ## Close or put away a task from home — task row options, new in project, open folder, copy project
 
-**`→` offers task options just as it does for threads:** `x close`,
+**`→` offers task options just as it does for threads:** `x delete`,
 `n new in project`, `o open folder`, and `p copy project` when the corresponding local
 folder and action are available. On a wide home these appear beneath the description
 in the middle column. Putting a task away hides that task from home and the unfiltered
 Sessions list; it does not stop it, delete its record, or put away its conversation.
-Find it again by typing its name in Sessions, then use `→` and `x reopen`.
+Find it again by typing its name in Sessions, then use `→` and `x delete`.
 The choice survives closing the app. Folder actions use the task's conversation project.
 
 ## Why does only one row spin — the one spinner on home
@@ -325,7 +325,7 @@ spinner. In screen-reader (linear) mode nothing turns at all.
 
 ## What did it do while I was away — the since you left panel, what happened while the terminal was shut
 
-**What happened on its own while you were not looking**, under `sessions` — in the field
+**What happened on its own while you were not looking**, under `activity` — in the field
 when it holds anything and in the rail when it does not — headed with how long you were
 away:
 
@@ -370,10 +370,9 @@ rows that do not fit behind `N more`. The Sessions heading opens the full Sessio
 typing into the box searches older history. The `alt+k chats` menu (`opt+k` on macOS)
 continues to list open tabs only.
 
-Closing with `→`, then `x close`, or `ctrl+e`, removes the same conversation from
-Home's open rows, the tab strip and the default chats menu immediately. It keeps
-running work and drafts. A waiting conversation carries a `?`;
-the question remains reachable even when its tab is closed.
+Permanent deletion with `→`, then `x delete`, or `ctrl+e`, asks before removing the
+transcript, stopping work and ending every membership. Team exchanges and decisions remain
+in history. Cancel keeps the chat and its draft.
 
 **On `space` `space` the cursor is already on the chat you were in before this one**, so a
 switch back is two keys — `space` `space`, then `enter` — and `esc` still goes back to the
@@ -424,7 +423,7 @@ no right side at all on the resting screen.
 Where to go for the whole figure instead:
 
 - **`→` then `its chats`** on the row lists every conversation in the project as a search;
-- **the sessions place** for the work a project has run, which is the record rather than a
+- **the activity page** for the work a project has run, which is the record rather than a
   count;
 - **the spend place** for what it has cost.
 
@@ -491,7 +490,7 @@ while the pointer is on it.
 **`→` opens a row's verbs, on every row and at every width**, and the chords work without
 the strip: `ctrl+o` opens a conversation's workspace, the workspace a standing order stands
 over, or the conversation a `since you left` line happened in; `ctrl+y` copies the path,
-`ctrl+e` puts away or pauses, `ctrl+x` stops. The foot does not change from row to row and
+`ctrl+e` asks to delete a conversation or pauses a standing item, `ctrl+x` stops. The foot does not change from row to row and
 names none of them; `alt+.` draws the map when you want the rest.
 
 A digit answers the question row drawing its answers, wherever you are standing. `enter` acts on
@@ -534,7 +533,7 @@ put would move you onto something else between two glances.
 **It is not empty; the panels are waiting for their first rows.** On a machine that has
 done nothing yet, every panel but one keeps its heading and one dim line naming what
 arrives there — `questions from any chat or task land here · a digit answers them` under
-`needs you`, `work you send off with /task runs here on its own` under `sessions`, and so on
+`needs you`, `work you send off with /task runs here on its own` under `activity`, and so on
 (*See everything at once*). `projects` always has the folder this window opened in, and
 the conversation list has this conversation from its first minute.
 
@@ -591,7 +590,7 @@ panels, and `enter` again folds it. The box at the foot still searches every con
 the machine as you type — a project's name, a folder's name or a word from what a task came
 to all find them — whether or not a panel is drawing the row.
 
-Every panel's fold works the same way: `N more` under `sessions`, `since you left`, `standing`
+Every panel's fold works the same way: `N more` under `activity`, `since you left`, `standing`
 and `projects` opens that panel. The places themselves — tasks, standing, spend — are on the
 tab bar and their slash commands, not behind the folds.
 
@@ -609,7 +608,7 @@ there is no strip. The rule and a blank come next, three rows, and the page star
 row higher. **Inside a chat** and on every place but home the top line reads:
 
 ```
- >● codeaf   home  teams  chats  sessions  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
+ >● codeaf   home  chats  AI teams  activity  memory  spend  settings   2 want you · 4 moving · $0.55 / $500 · tue 1:11pm
 ```
 
 **On home it drops the two counts** and keeps the budget and the clock, because the
@@ -645,7 +644,7 @@ cent — one reading of one file, wherever you are standing.
 
 ## Where did standing and memory go: the six words on the tab bar
 
-The top line reads `home  teams  chats  sessions  spend  settings`. `alt+1` through
+The top line reads `home  chats  AI teams  activity  memory  spend  settings`. `alt+1` through
 `alt+6` go to each; `chats` (`alt+3`) returns to your conversation.
 
 - `/standing` (or `/orders`) and `alt+7` open Standing.
@@ -699,21 +698,17 @@ Not being greeted is not the same as being out of reach. Once you are in a conve
 `/home` — or `space` twice on an empty box — opens the screen whenever you want it, on a
 machine with one conversation and on one with none (see *Why is the home screen empty*).
 
-## Close or archive a conversation — put junk away and clean up home
+## Permanently deleting a conversation from Home
 
-Select a conversation, press `→`, then **`x close`**. `ctrl+e` does the same.
-Its tab closes and it leaves the default `alt+k chats` list immediately. Home keeps closed conversations dimmed in the same Sessions list while they are
-among the fifteen most recent. The
-foot says `closed · type its name to find it again`.
+Select a conversation, press `→`, then **`x delete`**. `ctrl+e` opens the same confirmation.
+Cancel keeps the conversation and its draft. Confirmation stops its work and permanently
+removes its transcript and all team memberships. Files and copied team history survive.
+A manager requires explicit replacement or recursive disbanding choices for its active teams.
+Long affected-team details scroll with `pgup` and `pgdown`.
 
-Nothing is deleted: its transcript, tasks, running work and draft remain. Closing
-from Home also saves its archived status, so the bounded closed list can find it
-after a restart. Closing a tab with `ctrl+w` retains it in this window's close stack
-without archiving it on disk.
-
-**Enter on a dimmed row reopens the conversation and its tab.** `→`, then `x reopen`,
-or `ctrl+e`, does the same. Older closed conversations remain searchable by name.
-On a phone-width terminal, Enter first opens the row's sheet; use its open action.
+A deleted conversation cannot be reopened. Legacy archived conversations remain searchable
+and Enter still opens them; their row also offers permanent deletion. Ordinary tab dismissal
+in All still keeps work and saved history. See the `/delete` section in sessions and rewind.
 
 ## Why did the list jump to the bottom when I typed — home's two shapes
 
@@ -1340,7 +1335,7 @@ one behind your back. This is every fate, in the words the drop-up draws them in
 | **`opens a conversation here first`** | `/files` · `/folder` `/place` `/dir` · `/manual` · `/permissions` `/perms` · `/connect` · `/harness` · `/subharness` · `/skill` `/skills` · `/copy` · `/select` · `/rewind` `/undo` `/back` · `/compact` · `/export` `/save` · `/standing <words>` · `/task <brief>` | Opens a conversation at the target — the folder at the right of the keys row and the model on the rule above the box — then runs there. Home closes, exactly as `enter` closes it. `/manual` is on this road since 2026-09-22: it is a question put to the model, so it needs a conversation to be asked in. `/folder` joined it the same day — it gives THIS conversation a folder, and home has no this; the pin it used to be here is `/project`. |
 | **`answers here`** | `/help` · `/status` · `/cost` · `/cache` · `/budget` · `/debug` · `/stop` · `/remember` · `/forget` · a word nobody defined | Answers with a note, and the first line of that note is put on home's own line under the box. `there is no command called /pricing · / lists them` is now something you can read. |
 | **`opens the crew panel`** | `/crew` and every `/crew` shortcut | Home steps aside and the crew panel opens over the conversation behind it; `esc` on the panel brings you back to home. A shortcut opens it with a tick on the row it changed. |
-| **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` | Acts on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
+| **`runs on the conversation behind home`** | `/land` · `/land <folder>` · `/workspace <path>` · `/delete` | `/delete` asks to permanently delete the conversation behind Home; it opens its confirmation here and never starts a new conversation. The other commands act on the conversation this window is holding behind the screen — not on the one `enter` would open — and its answer is echoed onto home's line. |
 | **`a fresh conversation behind home`** | `/new` `/clear` `/clean` `/reset` | Replaces the conversation behind the screen and says `started a fresh conversation behind home`. It is not the same act as `enter`, which opens a conversation at the target. |
 | **`closes the conversation behind home`** | `/quit` `/exit` `/q` | Closes it and says `closed · <its name>`. When it was the last conversation this terminal was holding, codeaf leaves. |
 
@@ -1644,7 +1639,7 @@ reports that it can send one, and there `ctrl+1` … `ctrl+8` are a second spell
 map's own line names while it is live.
 
 Beyond that alias there is no `ctrl+` chord for home: the plain ones are all taken (`ctrl+.` is the
-sessions place, `/history`).
+activity page, `/history`).
 
 ## What landed while I was away — since you left, and the look stamp
 
@@ -1745,7 +1740,7 @@ rows on disk that say `running` forever.
 Home never repeats that claim. **It asks the session itself.** A live session says out
 loud, every few seconds, which task nodes it currently has out; the task details show it as running only while the session still names that node.
 Every other live-looking row is **work that was under way when the window went**, and it is
-on no panel: the sessions place and the card beside a search say `incomplete` against it.
+on no panel: the activity page and the card beside a search say `incomplete` against it.
 
 A session too old to keep that file, but whose journal a window is holding, falls back to
 the older answer: the lock is asked, and its rows are believed. That is the same rule with
@@ -2047,7 +2042,7 @@ drawn only when it has something to say:
 7. **what is scheduled** and **news since you last looked**;
 8. a dim line of **facts** — `touched 12 files · spent $1.25 · 34k tokens · last active
    12m`;
-9. one dim line naming the strip: `→ verbs: close, copy name, new in project,
+9. one dim line naming the strip: `→ verbs: delete, copy name, new in project,
    open folder`.
 
 It never moves while the list lifts under your typing, and it goes empty on the
@@ -2058,7 +2053,7 @@ drawn.
 ## Copy a conversation name from Home
 
 Select a conversation and press `→` to show its options. The four ordinary actions are
-`x close`, `c copy name`, `n new in project`, and `o open folder`, in that order.
+`x delete`, `c copy name`, `n new in project`, and `o open folder`, in that order.
 `c` copies the full current conversation name, even when the screen shortens it. It
 also works on remote conversations and when the project folder is missing. Without
 an existing local folder, the folder actions are absent. `ctrl+y` still copies the
@@ -2067,7 +2062,7 @@ project path. Task rows keep their separate `p copy project` action.
 ## What do the keys on a home card do — open, new chat, folder, and copy path
 
 **The card beside a search does not list letters.** Its last dim line names the strip and
-the words instead — `→ verbs: close, copy name, new in project, open folder` — because
+the words instead — `→ verbs: delete, copy name, new in project, open folder` — because
 a letter is a verb only while the strip naming it is on screen.
 
 **The chords work on any conversation row, card or no card**, and each acts on the row you
@@ -2078,7 +2073,7 @@ are looking at: the row under your pointer when there is one, the cursor's row o
 | `ctrl+t` | a fresh conversation **in that row's own folder** — the one you were in keeps running |
 | `ctrl+o` | asks the machine to open that conversation's workspace folder |
 | `ctrl+y` | copies the workspace path |
-| `ctrl+e` | puts the conversation away, or pauses a standing item |
+| `ctrl+e` | confirms conversation deletion, or pauses a standing item |
 | `ctrl+x` | stops a standing item for good |
 | `alt+e` | raises how hard a standing item thinks; nothing on a conversation row |
 
@@ -2098,7 +2093,7 @@ that column, they appear directly under the selected row. **While the options ar
 those letters are the verbs and the box is asleep**:
 
 ```
-1 let it send   2 not this time   x close   n new in project
+1 let it send   2 not this time   x delete   n new in project
 esc or ← to leave · enter opens it instead
 ```
 
@@ -2107,7 +2102,7 @@ In the middle column the options leave the list in place. In the narrow layout t
 pushes the rows under it down. The options are shown only while their shortcuts are active.
 
 **The verbs are the row's own:** a question's first two option words on its own answer keys; a
-conversation's `x close`, `c copy name`, then, where it has a folder, `n new in project`
+conversation's `x delete`, `c copy name`, then, where it has a folder, `n new in project`
 and `o open folder`; a standing item's `p pause it` or `r resume it`; a task this
 window runs, `s stop`.
 
@@ -2145,7 +2140,7 @@ Completed work can also appear under `since you left`.
 
 ## How do I see more tasks on the right — ▸ …5 more tasks
 
-**On the card beside a search, `▸ N more tasks` names the sessions place** out at the right
+**On the card beside a search, `▸ N more tasks` names the activity page** out at the right
 margin rather than unfolding, because a card is not the place that holds them; `ctrl+.`, or
 `tab` onto `sessions`, is the way there. A band of files or folders with more behind it says
 `▸ …3 more files`, and a click on that line — or `→` with the strip closed — opens it, and
@@ -2211,7 +2206,7 @@ time, news text, task file count or cost, and answer chip remain visible. A sing
 wider than the card is still clipped. The card's place line clips from the left so the
 path's basename remains visible.
 
-**The verbs line breaks the same way** — `→ verbs: close, copy name, new in project,` /
+**The verbs line breaks the same way** — `→ verbs: delete, copy name, new in project,` /
 `         open folder` — keeping the comma on the row it ends and hanging the
 second row under the first word.
 
@@ -2454,7 +2449,7 @@ On the card beside a search and on the phone sheet, a conversation's tasks form 
 their actual parents. Clicking a task opens that task's record. A child needing a person
 brings its family forward; work still moving comes before settled work. The compact preview
 keeps three task names in parent-first order, so it never shows a child without its visible
-ancestry, and `N more tasks` names the sessions place, which holds the full conversation tree.
+ancestry, and `N more tasks` names the activity page, which holds the full conversation tree.
 
 ## What home cannot do yet — stop another window's task, and a something is wrong panel
 

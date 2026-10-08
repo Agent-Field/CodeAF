@@ -148,11 +148,21 @@ func TestSurfaceCancelsAndJoinsAnInFlightCreditRead(t *testing.T) {
 	}
 }
 
-func seedLowCredits(t *testing.T, a *app) {
+// creditProfileKey isolates these persisted-key fixtures from the developer's
+// provider credentials. Production deliberately lets environment keys outrank a
+// profile key; a balance recorded for another key must never be used.
+func creditProfileKey(t *testing.T, a *app) {
 	t.Helper()
+	t.Setenv(config.APIKeyEnv, "")
+	t.Setenv("OPENAI_API_KEY", "")
 	if err := config.WriteAPIKey(a.profileDir, "credit-test-key"); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func seedLowCredits(t *testing.T, a *app) {
+	t.Helper()
+	creditProfileKey(t, a)
 	if err := config.WriteCreditsReading(a.profileDir, "credit-test-key", credits.Reading{Known: true, Low: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -442,9 +452,7 @@ func TestAHealthyReadMovesAnUntouchedImplicitConversationBackToTheDefault(t *tes
 		t.Run(tc.name, func(t *testing.T) {
 			a := placeApp(t)
 			a.readCredits = func(context.Context) (credits.Reading, error) { return credits.Reading{Known: true}, nil }
-			if err := config.WriteAPIKey(a.profileDir, "credit-test-key"); err != nil {
-				t.Fatal(err)
-			}
+			creditProfileKey(t, a)
 			if err := config.WriteCreditsReading(a.profileDir, "credit-test-key", credits.Reading{Known: true}); err != nil {
 				t.Fatal(err)
 			}
@@ -467,9 +475,7 @@ func TestAHealthyReadMovesAnUntouchedImplicitConversationBackToTheDefault(t *tes
 // seedExpiredKey is seedLowCredits for a key the service refused as expired.
 func seedExpiredKey(t *testing.T, a *app) {
 	t.Helper()
-	if err := config.WriteAPIKey(a.profileDir, "credit-test-key"); err != nil {
-		t.Fatal(err)
-	}
+	creditProfileKey(t, a)
 	if err := config.WriteCreditsReading(a.profileDir, "credit-test-key", credits.Reading{Known: true, Expired: true}); err != nil {
 		t.Fatal(err)
 	}

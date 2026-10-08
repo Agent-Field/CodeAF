@@ -221,9 +221,7 @@ func (a *app) homeReadingVerbs(line homeLine, row switcherRow) []verb {
 		if row.gone && v.answer == "" && (v.key == 'n' || v.key == 'o') {
 			continue
 		}
-		if v.key == 'x' && row.kind == switcherConversation && (row.session.Archived || line.cell != nil && line.cell.closed) {
-			v.word = "reopen"
-		}
+
 		verbs = append(verbs, a.homeSwitchVerb(line, row, v))
 	}
 	return verbs
@@ -248,7 +246,7 @@ func (a *app) homeSwitchVerb(line homeLine, row switcherRow, v switcherVerb) ver
 			return cmd
 		}
 	case v.key == 'x':
-		do = func() tea.Cmd { return a.homeArchiveRow(row.session) }
+		do = func() tea.Cmd { return a.conversationDeleteOpen(row.session.Transcript, homeName(row.session)) }
 	case v.key == 'n':
 		do = func() tea.Cmd { return a.homeStartInProject(homeWhere(line)) }
 	case v.key == 'o':
@@ -523,6 +521,11 @@ func (placeHome) box(a *app) *editor {
 func (placeHome) about() string { return "what wants you and what is running" }
 
 func (placeHome) hint(a *app) string { return a.homeHint() }
+
+// showsOffer is YES: home draws the offer's own keys row where it is up, in
+// place of the resting hint ([app.homeFootLine], hometip.go), so a release
+// waiting on an answer is answerable from home as it is from a conversation.
+func (placeHome) showsOffer(a *app) bool { return true }
 
 // changed is ZERO AND THAT IS THE DESIGN. Home is where the "since you left"
 // ledger is DRAWN, in sentences that say what happened and open the place it

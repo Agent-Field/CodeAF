@@ -24,6 +24,7 @@ import (
 	"github.com/Agent-Field/codeaf/internal/orchestrate"
 	"github.com/Agent-Field/codeaf/internal/provider"
 	"github.com/Agent-Field/codeaf/internal/search"
+	"github.com/Agent-Field/codeaf/internal/store"
 )
 
 // pieceOf admits one part under a node and hands back the row. It is the shape
@@ -264,5 +265,60 @@ func TestTheLiveSearchPairTravelsOntoEveryKindOfChild(t *testing.T) {
 		if got := child.config.SearchProvider.Name(); got != "duckduckgo" {
 			t.Errorf("%s did not follow the live pin: %q", name, got)
 		}
+	}
+}
+
+// AN ADAPTIVE RUN'S NODE INHERITS THE ROOT'S OBSERVATION BRIDGE AND FROZEN
+// ORIGIN, exactly as a task node's worker does, through the one primitive both
+// constructors call. The node is built by the production constructor
+// ([orchestrateExec.newChild]) and driven through the real
+// [Agent.recordOutcome] boundary: its failing call reaches the root journal
+// stamped with the frozen root turn, the collector is the root's own rather than
+// a second one, and closing the node leaves that bridge open for every later
+// node and turn \u2014 one settlement, never two.
+func TestAnOrchestrateNodeInheritsTheRootObservebridgeAndFrozenOrigin(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	root, brain := brainAgent(t, &reflexScript{}, func(c *Config) {
+		c.Workspace = dir
+		c.MemoryProjectKey = "run-key"
+	})
+	ctx := context.Background()
+	root.prepareBindingContext(ctx, a4Goal)
+	turn, goal := frozenRootTurn(t, root)
+
+	exec := &orchestrateExec{agent: root, call: roleRequest{model: "test/model"}, id: "r1", request: "req", goal: a4Goal}
+	node, err := exec.newChild(dir, orchestrate.Node{ID: "n1", Goal: "g"})
+	if err != nil {
+		t.Fatalf("orchestrate newChild: %v", err)
+	}
+	// THE BRIDGE IS THE ROOT'S OWN, lent read-only and never rebuilt.
+	if node.outcomes == nil || node.outcomes != root.outcomes {
+		t.Fatalf("the node did not inherit the root's collector: %p vs %p", node.outcomes, root.outcomes)
+	}
+	if node.remembers() || node.memoryWritable() {
+		t.Fatal("the node gained a memory write from the lent bridge")
+	}
+	if node.origin.Session != root.memorySourceSession() || node.origin.Turn != turn || node.origin.Goal != goal ||
+		node.origin.Owner == "" || node.origin.Project != "run-key" || node.origin.Task == "" || node.origin.Run == "" {
+		t.Fatalf("the node origin was not frozen from the root: %+v (root turn %q)", node.origin, turn)
+	}
+
+	pre := node.captureSourceSnapshot(ctx).Identity
+	node.recordOutcome(ctx, 1, delegatedBashCall("f1", a4Failed), a4FailureResult(), pre)
+	rows := attemptsForProject(t, brain, root)
+	if len(rows) != 1 || rows[0].Status != store.AttemptFailed {
+		t.Fatalf("the node's failing call did not reach the root journal exactly once: %+v", rows)
+	}
+	if rows[0].SessionID != node.origin.Session || rows[0].TurnID != node.origin.Turn {
+		t.Fatalf("the node's failure was not stamped with its frozen origin: %+v", rows[0])
+	}
+
+	// CLOSING THE NODE MUST NOT SEAL THE BRIDGE the rest of the run still needs.
+	if err := node.Close(); err != nil {
+		t.Fatalf("node close: %v", err)
+	}
+	if root.outcomes == nil || root.outcomes.closedNow() {
+		t.Fatal("closing a node sealed the root session's collector")
 	}
 }

@@ -13,8 +13,7 @@ import (
 // the custom connections the profile holds, in persisted order. The default
 // service's PreferredModel answers the Models door (a.models), so a test whose
 // walk reaches the default side passes []Model{{ID: config.DefaultModel}} and
-// the move lands on the bare default model rather than on whatever
-// BuiltinModels happens to list first.
+// the move lands on the bare default model that this connection lists.
 func connectionDefaultService() modelsource.Connected {
 	return testDefaultService("sk-default-1234567890")
 }
@@ -82,7 +81,7 @@ func connectionTabRow(t *testing.T, a *app) *sheetItem {
 	a.prepareModelServices()
 	a.showPage(pageSettings)
 	for i, tab := range settingTabs {
-		if tab == tabProviders {
+		if tab == tabConnections {
 			a.sheet.tab = i
 		}
 	}

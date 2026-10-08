@@ -282,6 +282,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/subharness` | `/sub` | `<name>` | opens that subharness's intake card straight away |
 | `/<program>` | — | `<brief>` | one row per program this build carries: starts a task that program does on its own |
 | `/senior-dev` | — | `<brief>` | when this build or far engine carries senior-dev, its named row hands the whole task to that program; with no brief, it shows the required `<brief>` usage |
+| `/review` | — | `[<pull request>] [what to focus on] \| post <report>` | when this build or far engine carries review, reviews a GitHub pull request (its link, `owner/repo#N` or `#N`), or with nothing after it the current branch's; `post <report>` posts a review it wrote, on your yes. It changes no files |
+| `/sec` | — | `[changes [since <ref>]] [quick \| thorough]` | when this build or far engine carries sec, audits the whole repository for security problems, or with `changes` only the branch's changes; with nothing after it, the whole repository. It changes no files |
 | `/skill` | `/skills` | — | opens the skill shelf under the message box; enter toggles a skill, and its chip stays attached across messages |
 | `/memory` | — | — | opens the memory panel |
 | `/memory` | `/memories` | `<query>` | prints matching memories into the conversation |
@@ -299,14 +301,14 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/crew` | — | `models <rule>` | which models a seat may be picked from — `all`, `open`, `≤in/out`, ids |
 | `/crew` | — | `cap <dollars\|off>` | the most tasks' crews may spend in a day |
 | `/crew` | — | `cap task <dollars>` | the most one task may spend — $5 unless set; `-yes-spend` does not lift it |
-| `/task` | — | — | opens the full-screen sessions place — the same place as `/history` and ctrl+. |
+| `/task` | — | — | opens the full-screen activity page — the same place as `/history` and ctrl+. |
 | `/task` | — | `<brief>` | starts one worker at once; its brief is written and its width read beside it, and wide work splits |
 | `/task` | — | `solo <brief>` | starts one worker at once, with no reading of its width |
 | `/task` | — | `--best <brief>` | starts the task on the strongest crew the allowed models make, this task only |
 | `/task` | — | `--cheap <brief>` | starts the task on the cheapest crew that does the work, this task only |
 | `/stop` | — | — | asks before stopping the open task or selected work; with no target says `open a running task to stop it` |
 | `/redo` | — | `stronger` | runs the last task again on a stronger crew, and teaches the crew that kind of work needs more |
-| `/history` | — | — | opens the full-screen sessions place — every task this machine has run, filterable (also ctrl+.) |
+| `/history` | — | — | opens the full-screen activity page — every task this machine has run, filterable (also ctrl+.) |
 
 ## Status, search, teams and spending commands
 
@@ -315,8 +317,8 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/status` | `/info`, `/context` | — | prints every fact the status line knows, one per line |
 | `/status` | `/info`, `/context` | `--json` | prints the same facts as one JSON object, keys in the same order |
 | `/spend` | none | none | opens the spend place, what this machine has cost, by the day (also `alt+5`) |
-| `/wall` | | | every open conversation at once, as a grid of live tiles, and the teams you group them into (also `alt+v`, or `▦` under the box) |
-| `/teams` | | | the teams page: your teams as a tree, what waits on you, and the selected team's manager conversation (also `alt+2`, or `teams` on the tab bar) |
+| `/wall` | | | every saved conversation at once, with live or saved previews and card-based team creation (also `alt+v`, or `▦` under the box) |
+| `/teams` | | | the teams page: your teams as a tree, what waits on you, member previews and the selected team's interaction table (also `alt+2`, or `teams` on the tab bar) |
 | `/cost` | `/usage`, `/tokens` | — | prints what this conversation has spent, and on what |
 | `/effort` | `/think`, `/thinking` | — | opens this conversation's thinking levels; says it is unavailable when the session has no dial |
 | `/effort` | `/think`, `/thinking` | `<rung>` | sets this conversation's thinking level; an unknown rung lists the accepted levels and changes nothing |
@@ -332,8 +334,10 @@ Canonical word, the other words it answers to, its argument form, and what it do
 | `/cache` | — | `clean` | asks first, then deletes the cache to free disk — confirm with `/cache clean now` |
 | `/cache` | — | `clean now` | deletes the shared build cache now |
 | `/debug` | — | — | keeps the full record of **this conversation** from here on, and says which folder it goes to |
-| `/update` | `/upgrade` | — | installs the newest stable release and restarts this conversation on it |
-| `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag, then restarts this conversation on it |
+| `/update` | `/upgrade` | — | installs the newest stable release in the background for the next launch |
+| `/update` | `/upgrade` | `<stable\|rc\|dev\|staging\|tag>` | installs that channel's newest release or one exact tag for the next launch |
+| `/update skip` | `/upgrade skip` | — | answers an open update offer not now, for that release only |
+| `/update never` | `/upgrade never` | — | turns `auto update` off; the setting row does the same |
 | `/copy` | — | — | enters copy mode (also ctrl+b) |
 | `/select` | — | — | hands the pointer back to the terminal (also ctrl+s) |
 | `/export` | `/save` | — | writes the whole conversation to a file |
@@ -366,7 +370,7 @@ Under the table `/help` prints the keys that have no slash command, including
 rows, directly under the `tab` row:
 
 ```
-alt+1…8        go to a place · in the tab bar's own order: home teams chats sessions spend settings standing memory
+alt+1…8        go to a place · established shortcut order: home · AI teams · chats · activity · spend · settings · standing · memory
 alt+.          on a place: what else is here · every key that place has, drawn
                on a place, tab is the next place · esc back
 ```
@@ -1038,11 +1042,12 @@ place with a short list of models under it. It is bottom-anchored, so the conver
 shrinks above it and nothing pops up over what you were reading. Pressing the model's
 name on the legend line above the box opens the same picker.
 
-With only the default provider in the list, models have no provider heading. The
-default provider stays in the list even without its key: adding a direct provider
-such as Ollama therefore draws headings, including the default provider's. Models
-sit under their provider's name as a dim heading, default provider first; a custom
-provider's heading is the name you gave it.
+With only OpenRouter connected, models have no provider heading. OpenRouter is
+absent without its key: with only Ollama connected, the list contains only Ollama's
+installed models. When direct providers are connected, models sit under their
+provider's name as a dim heading; OpenRouter comes first when it has a key, followed
+by the connected providers in your saved order. A custom provider's heading is the
+name you gave it.
 
 `/model <slug>` switches straight to that slug: no list, no confirmation, and no check
 that the slug exists in any list. If the slug is in no known list, the context window is
@@ -1064,15 +1069,14 @@ thinking control takes. enter switches.
 provider or `auto`; enter pins, ← or tab walks back out. *Providers → Pinning one provider yourself*
 has the rest.
 
-**Enter chooses and the list stays up; esc is the way out.** Pressing enter on a row
-switches to it there and then and leaves the list on screen, so you can compare two models
-by their prices, switch, and switch back without reopening anything — and the mark moves to
-whatever you just chose. The same is true of a provider inside a fold: enter pins it, the
-list stays.
+**Enter on a model selects it and closes the list immediately.** The keyboard returns
+to your half-typed draft or the settings page that opened the list. To compare another
+model, reopen the picker. Enter with no matching model leaves the list open and changes
+nothing. Enter inside a provider fold keeps its controls open, including when it opens
+OpenRouter's machines or pins a provider.
 
-esc itself changes **nothing** — it closes the list and gives your half-typed draft and the
-frame back as they were. What enter already did is already done; esc does not undo it. The
-filter is forgotten when the picker closes.
+Esc closes without choosing another model and restores the draft and frame. Provider
+changes already made stay done. The filter is forgotten when the picker closes.
 
 ## Where the /model cursor opens — Enter confirms the model in use
 
@@ -1123,20 +1127,24 @@ row under the cursor.
 Choosing a model in `/model` sets it on the agent, teaches the surface its context window and tells
 the session — compaction fires at a fraction of that window, so this is not decoration —
 notes `model · <model>`, and writes the choice into your profile, so the next `codeaf`
-opens on it. Over `--host` the switch takes for the session and is not written down: the
+opens on it if it is still in the available model list. Otherwise a local launch chooses
+an available chat model; with no known models, it holds the draft until discovery supplies
+one. Over `--host` the switch takes for the session and is not written down: the
 model a remote session opens on is that machine's to resolve.
 
 ## What the model picker lists, and what it will not do
 
 At launch, codeaf fetches a connected provider's model list once if it has an empty cached list.
 After that, `ctrl+r` asks for a fresh list (see "Refreshing the model list" below).
-The list is what is already known, tried in this order,
-each rung used only when the one above it came back empty after filtering:
+The list offers models only from usable provider connections: a key, a signed-in
+account, or an explicitly anonymous connection such as Ollama. With only Ollama
+connected, only its installed models appear. With several providers connected, their
+models appear together. An unconnected provider contributes no rows, even when its
+public catalog or cache is available.
 
-1. the catalog handed in at launch,
-2. `~/.codeaf/v3/models.json`,
-3. five names this build remembers: `deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
-   `anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`.
+Each provider contributes its known catalog, or its own cached list while discovery
+is warming. A known catalog is authoritative; an empty list never adds built-in
+model guesses. Slots still keep only models with their required capabilities.
 
 Filtering is over the model's **name** and nothing else — no word in the box means
 anything but itself. It splits your text on whitespace and every word must match, each
@@ -1544,7 +1552,7 @@ The row is called by the first words you typed for a second or two, and then by 
 name a small model gives it.
 
 When a `/task` runs on the run engine (*The worker harness* page), the row it writes to the
-sessions place carries the step its worker is on **right now** — the running glyph `◐`, the shell
+activity page carries the step its worker is on **right now** — the running glyph `◐`, the shell
 lead `$` and the command — with the task's `N steps · $0.11` under it. The line is there only
 while a step is in flight, and goes the moment the command ends.
 
@@ -1552,10 +1560,10 @@ while a step is in flight, and goes the moment the command ends.
 strips the tag and takes the remaining words through this same road. Backspace
 immediately after the tag makes it plain prose.
 
-**A bare `/task` opens the full-screen sessions place** — the same place `/history` and `ctrl+.`
+**A bare `/task` opens the full-screen activity page** — the same place `/history` and `ctrl+.`
 open, holding this machine's conversation and task record. It does *not* print a usage line, and
 it starts nothing. On a project that has never run one it opens the page anyway, headed
-`sessions` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
+`activity` over one line: `work you send off with /task lands here, and its record stays`. The `+ /task`
 row at the foot of the task column types `/task ` into your box, which is why the word on
 its own has an answer worth giving.
 
@@ -1578,7 +1586,7 @@ happened:
 `/task adaptive` on its own, with no brief after it, starts nothing and prints the usage
 line instead: `usage: /task <brief> · /task solo <brief>`.
 
-The `starting a task` row in `/settings` → Session decides what the plain form does:
+The `task planning` row in `/settings` → Tasks decides what the plain form does:
 `sized` is the default and is the behaviour above, and `single` always starts one worker
 and does not read its width at all. `solo` typed on the command line overrides the row
 either way. Two of the row's old answers are gone — `ask` with the two-choice list it
@@ -1633,12 +1641,12 @@ and nothing to walk between — the arrows keep their ordinary meaning — and w
 forming there is no head that counts, only the block described under *Why is there a line
 next to my task*. A typed `/task` never joins the block: it has no wait in front of it.
 
-## /history — task history in the sessions place, including past tasks
+## /history — task history in the activity page, including past tasks
 
-`/history` opens the full-screen `[sessions]` place, the same destination as `ctrl+.`,
+`/history` opens the full-screen `[activity]` place, the same destination as `ctrl+.`,
 `alt+4` and a bare `/task`. It lists this machine's conversations and their nested
 tasks across projects and earlier sessions. The column beside a conversation holds
-that conversation's tasks; the sessions place holds the broader record. There is no
+that conversation's tasks; the activity page holds the broader record. There is no
 `/tasks` command. `/task <brief>` and `/task solo <brief>` start work; `/history`
 only opens the record.
 
@@ -1655,7 +1663,7 @@ otherwise it opens that task's record card. `→` opens the row's available
 actions. Another window's running task can be opened or located when its row
 offers that action.
 
-On a machine with no task record, the place still opens under `sessions` with
+On a machine with no task record, the place still opens under `activity` with
 `work you send off with /task lands here, and its record stays`.
 
 ## /crew — the crew panel, and the three seats a task runs on
@@ -1721,9 +1729,7 @@ status sheet. Change that machine's profile there.
 ## /connect — your connected accounts
 
 `/connect` (or `/connections`) opens the connect panel. Its pinned `providers` group
-holds the eight built-in model providers — DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen,
-ai&, Codex and Ollama — plus **Custom OpenAI-compatible API** and every one already
-connected; the account
+holds every built-in model provider plus every one already connected; the account
 catalog groups follow it. The Codex row says `browser`; enter opens the sign-in road and
 the waiting card keeps the address available to copy. The other listed providers say what
 they need. Pick a row and connect it. There is no argument form. **Custom OpenAI-compatible API** connects a custom provider: it asks for a
@@ -1767,7 +1773,7 @@ this split when it opens; configure the remote profile on that machine.
 
 `/settings` (or `/set`, `/config`, or ctrl+,) opens a fullscreen page: a tab bar over the
 codeaf settings, plus a tab of connected accounts. It was the first of the three fullscreen
-pages here — the others are `/history` (the sessions place, ctrl+.) and `/home` — and **only one
+pages here — the others are `/history` (the activity page, ctrl+.) and `/home` — and **only one
 of the three is ever up at a time**: opening any one closes the other two.
 
 Moving in it:
@@ -1775,7 +1781,7 @@ Moving in it:
 - ↑ / ctrl+p and ↓ / ctrl+n move a row at a time. Headings are stepped over, never landed
   on. pgup/pgdown move 16. home/end jump to the ends.
 - ← and → switch sections, clamping at the ends rather than wrapping. **`tab` no longer
-  does**: it is the way to the next place — home, teams, sessions, spend,
+  does**: it is the way to the next place — home, AI teams, activity, memory, spend,
   settings — here as everywhere else, and `shift+tab` walks that circle back. The panel's own
   bar is the second one, under the places' bar.
 - **Any printable key types into a search box** that filters across all tabs at once,
@@ -1788,12 +1794,17 @@ Moving in it:
 - A click on a tab word switches tabs. A click on a row **selects** it, and a second click
   on the already-selected row **acts** on it. One press never does both.
 
+Choice settings open a list with the current value marked; Enter or a click chooses
+and saves. Text and number editors offer adjacent Save/Cancel controls. Invalid
+input keeps the draft and shows its error beside it. Escape cancels an open editor
+or choice list without saving.
+
 esc backs out one layer at a time: the search first, then anything the `Connections` tab
 has standing open, then the panel. The head line says `esc close` on the right. The
 bottom legend normally reads
 `↑↓ move · ←→ tabs · enter change · type to search · esc close`.
 
-Only the selected row shows its description, at most two wrapped lines. A `•` (or `*` in
+Selected and hovered rows share a stable description area with scope and known restart requirements. A `•` (or `*` in
 ASCII) before a value means you changed it from the untouched default. `set by <NAME>`
 after a value means an environment variable holds it.
 
@@ -1805,11 +1816,12 @@ Every change made in the settings panel goes through the settings registry and i
 **saved to your global profile**.
 
 So does a change you ask codeaf for. There are **two doors onto one file**: the panel,
-and the `change_setting` tool codeaf reaches when you say "set my daily budget to 5" or
-"use a different model for planning". Both go through the same registry, take the same
+and the `change_setting` tool codeaf reaches when you say "hide hints" or
+"expand completed tool details". Both go through the same registry, take the same
 validation, refuse in the same words, and land in the same `config.json` — so a row you
 change by asking is a row you find changed in the panel, and the reverse. `settings` is
-the read beside it, listing every row by the key `change_setting` names. Which rows
+the read beside it, listing live-chat rows by the key `change_setting` names. It uses
+the same categories and labels as the panel and explains raw write values. Which rows
 codeaf refuses to change for you, and why, is on the permissions page.
 
 The project layer, `<workspace>/.codeaf/config.json`, is deliberately not writable from
@@ -1877,191 +1889,48 @@ config.json keys are not read: models, tiers; anything set under them is ignored
 
 It names every unread key, sorted. It is said **once per profile for that set of keys**:
 the next launch with the same keys says nothing, and a set that changes — a key added
-or taken away — is said again. It is not a tip, so turning tips off in the Display
-tab's `hints` row does not hide it, and a conversation over `--host` says it about the
+or taken away — is said again. It is not a tip, so turning tips off in the General
+category's `show hints` row does not hide it, and a conversation over `--host` says it about the
 profile on the machine running the work. Nothing is rewritten: to act on it, move the
 value to the key a settings row names (`settings` lists every one), or delete the key.
 
-## The ten settings tabs
+## Settings categories — where did Session, Context, Workspace, Display and Providers go
 
-The tabs, in order:
+Settings now groups controls by what you want to change:
 
-```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
-```
+`General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Privacy`
 
-## The settings tab strip on a narrow terminal
+General holds appearance, input and updates. Models holds model selection and
+advanced routing/context controls. Memory holds remembering across chats and a
+link to saved memories. Tasks controls delegated work; AI teams sets defaults
+for groups of AI chats. Permissions controls approvals. Spending holds limits.
+Connections holds accounts, keys, web search and remote connection settings.
+Privacy holds history, drafts and data-sharing choices.
 
-On a terminal too narrow for all ten tabs, the strip **scrolls** rather
-than being cut: the tab you are standing on is always drawn and always inked, its
-neighbours are drawn while they fit, and each end that had to give a tab up wears a `…`
-saying there is more that way. `←` and `→` still walk the tabs one at a time, and the
-strip follows.
+Old saved keys and values are unchanged. Search accepts old labels and keys,
+including settings inside Advanced. Resident-only practice, arrival-brief and
+tenure controls no longer appear in chat settings. See **Settings** for scope,
+activation timing and how an existing profile carries forward.
 
-It anchors left while you are near `Session` and right while you are near `Connections`,
-so both ends of the walk look exactly like a strip that fits. A tab the strip could not
-draw cannot be clicked, because nothing on this surface acts on something you cannot see.
+## Settings categories on a narrow terminal
 
-**Session** — the rows this conversation carries that belong nowhere else: "memory" and
-"fallback models". Two rows, and that is the honest size of it.
+Wide terminals show a category list beside the controls. Narrow terminals show
+a scrolling category bar. The selected category remains visible; `…` indicates
+more categories. Left and right change category and the bar follows. Only
+visible controls can be clicked. Hover shows row help without changing its value.
 
-The four ssh rows a `--host` conversation rides on ("ssh reuse", "ssh heartbeat", "ssh
-missed heartbeats", "ssh traffic") are **not** here any more — they are on **Workspace**.
-Every one of them lands on the next launch rather than on the conversation in front of
-you, so they are a fact about this machine and not about this session. Nothing you saved
-moved: the keys they are stored under are unchanged.
-
-The models codeaf uses on your behalf are **not** here — they are on Providers, with
-the row that says which model you are talking to. They used to be on this tab, one tab away
-from it, which made "which model does the planning" and "which model am I talking to" two
-errands on two screens. Neither is the conversation's own money limit here any more: it is
-`per conversation` on **Spending**.
-
-**Context** — what a model carries. Rows: "compact at", "answer room", "working set",
-"context reuse", "searching", "exa key", "firecrawl key", "jina key".
-
-The selected **searching** row is a live explanation rather than a static
-description. On untouched `auto` it reads `now firecrawl, keyless — set
-search.exaKey or search.firecrawlKey to raise it`; a pinned Exa row with no key
-quotes the exact `Search failed (exa): no API key` answer; a configured pin
-reads `exa, with your key`. Provider and key changes land on the next search in
-the conversation already open.
-
-**Workspace** — this machine and this project: what codeaf does with its own time here, and
-what it may reach on your behalf. Rows: "quiet before practice", "arrival brief after",
-"tenure after", "background checks", "model in commits", "google sign-in id", "google sign-in
-secret", "slack sign-in id", and the four ssh rows — "ssh reuse", "ssh heartbeat", "ssh
-missed heartbeats", "ssh traffic". **It holds no money row at all** — every one of those
-moved to Spending.
-
-The ssh rows are here because "what may codeaf reach on your behalf" is this tab's own
-question, and a link to another machine is that question asked about a machine rather
-than about an account. They are not on the tab named **Connections**: that one is the
-catalog of third-party accounts you sign in to, and it is built from the account list
-rather than from the settings registry.
-
-**"background checks"** is on by default: one small timer under your own login checks
-your reminders, watches and routines every 5 minutes with no window open. Off removes it
-and nothing standing is lost — see *Keeping an eye on things* for the whole of it.
-
-**Spending** — money, and nothing that is not money. Seven lines: the reading `today`, then
-"per day", "per conversation", "per plan", the readings "per task" and "per standing run",
-and "practice". `/budget` and `/limits` open it. *Models, context, and what it costs* has
-every row and every door onto them.
-
-**Safety** — what codeaf may do without asking you first. Rows: "ask before running",
-"tool exceptions", "shell command rules", "guardian", "approval countdown", "background
-after", "task countdown", "who settles work that needs a look".
-
-**Tasks** — how work you can walk away from is run. Rows: "starting a task", "check task
-work", "task repair rounds", "tasks at once", "busy machine", "memory floor", "task
-model".
+Type to search across settings and connection services. Escape clears the
+search before leaving settings. Advanced controls remain searchable while
+collapsed. Escape from an editor cancels its unfinished edit.
 
 ## What the number on a settings row is counted in
 
-Every row that shows a number shows what the number counts, so a whole tab can be read
-without moving the cursor onto each row. The unit is part of the value:
-
-| Row | Reads | Counted in |
-| --- | --- | --- |
-| ssh reuse | `300s` | seconds a connection stays reusable after its channel closes |
-| ssh heartbeat | `3s` | seconds of silence before ssh asks whether the far machine is there |
-| ssh missed heartbeats | `3` | unanswered heartbeats — the label says what is counted |
-| approval countdown | `10s` | seconds an approval question counts down before it pauses and keeps waiting |
-| background after | `30s` | seconds a foreground command runs before it becomes a job |
-| task countdown | `15s` | seconds a proposed task waits for you before it starts |
-| compact at | `60%` | how much of the model's window is filled before compaction |
-| answer room | `65536 tok` | tokens every call keeps free for its answer |
-| working set | `160000 tok` | tokens of material kept quoted in front of a worker |
-| context reuse | `250%` | shares of one whole context a job may re-send — 100% is once |
-| memory floor | `1536 MB` | megabytes that must be free before another task starts |
-| busy machine | `1.5 per core` | the load average per core at which new tasks wait |
-| tenure after | `3 clean firings` | clean firings a standing charter needs to earn tenure |
-| chat width | `50%` | the chat pane's share of the frame while the task rail is open |
-
-A row whose label already names what is counted — "task repair rounds", "tasks at once",
-"ssh missed heartbeats" — shows the figure alone rather than saying the word twice.
-
-**A row takes its unit back.** The box a value is typed into opens on the bare figure, and
-typing the unit back in is accepted: `120s` on "ssh reuse" and `120` both save 120
-seconds. Anything else is refused in the row's own words.
-
-**A duration row is different and always was.** "quiet before practice" and "arrival brief
-after" are written the way you would say them — `20m`, `4h`, `1h30m` — and `0` turns them
-off.
-
-**Display** — how the surface draws itself and what it remembers of your typing. Rows:
-"input history", "keep drafts", "task column", "chat width",
-"mouse", "timestamps", "turn work". There is no "nerd font" or "linear mode" row: icons
-need no patched font anywhere on this surface, and the accessible single-column rendering
-is the `--linear` flag at launch rather than a persisted setting.
-
-**Providers** — which model answers what. It leads with the **Models section**, in this
-order:
-
-1. **your model** — the model you are talking to. It is the conversation slot, and picking
-   here is the same road `/model` takes — the same picker, providers and all. Its value carries
-   the provider serving it: `deepseek/deepseek-v4-flash · auto (cloudflare now)`.
-2. **provider** — which provider answers your model. enter opens them with
-   what has been measured of each, and enter on one pins it.
-3. **speed guard** — whether an answer slow to start is asked of the next-best provider as
-   well.
-4. **routing** — what every request prefers among the providers, and it cycles
-   `simple`, `latency`, `price`, `off`. **`simple` is what it ships as**: codeaf sends no
-   preference of its own, a provider you pinned goes out as the whole request, and with no pin
-   the router's own default routing answers. `latency` asks for the fastest provider and
-   `price` for the cheapest, on every call. With `off` nothing is measured, so the two rows
-   above it have no provider to name.
-5. **prompt profile** — how much codeaf tells the model before you type: `auto`, `lean`,
-   `full`. Another cycle row. `auto` reads the model's context window and goes lean under
-   32,000 tokens (see *Models, context, and what it costs*).
-6. **reflex** — `near-free · reads every turn — memory, titles, safety`
-7. **small work** — `cheap · the small calls — names, digests, the safety gate`
-8. **seats** — `the worker, planner and checker, the models they may be picked from, the providers they may route through, and the per-task and daily caps · enter opens /crew`
-9. **pinned roles**, and hanging off it the **roles** list — one row per auxiliary call
-    codeaf makes for itself, grouped under its row. Those rows come from the running binary
-    rather than the settings registry.
-
-**worker**, **checker** and **planner** are the crew's three seats, and on the tab they are
-one row, **seats** (`auto · 1 pinned · models open · 3 of 4 providers · per task $5 · crew daily cap $5.00`).
-`enter` on it opens the `/crew` panel, where the seats, the allowed models, the providers
-and the per-task and daily caps are changed; `esc` there comes back to the row.
-
-**A pin for a role this build no longer has is ignored, and the row stops showing it.** Roles
-come and go with the calls that use them — `compaction` was one, and a compaction has not asked
-a model since long before it was deleted. A pin left behind for a word like that is dropped
-when the row is read, never written back, and the foot line says `compaction is no longer a
-role — that pin is ignored` the next time you change any pin. **Every other pin on the row
-keeps working**, which is the whole point: the row is one string holding all of them, and
-refusing the lot over one dead word would leave you unable to change any of them without
-editing `config.json` by hand.
-
-Typing a word that is not a role is still refused outright, with the real names listed — that
-refusal is for the pin you are adding now, which is the one you can do something about.
-
-The four machine rows lead because the endpoint serving your model is part of the same
-decision as the model, and they used to sit at the foot of the tab, forty rows below it.
-
-Then the rest of the tab: "looking", "reading", "reply guard" — whether a reply
-that has come apart is cut and asked again, on by default (see *Models, context, and what
-it costs*) — and one row per capability slot added automatically from the settings
-registry: drawing, speaking, composing, filming, voice.
-
-The reflex and small work rows are **select** rows and open the model picker. The crew's
-worker, checker and planner have no rows of their own here: the one **seats** row opens the
-`/crew` panel, and a seat is pinned there or with `/crew pin` — a pin may carry a thinking
-level, `/crew pin planner moonshotai/kimi-k3:high`, and the seat is then asked at that level.
-
-The connected model providers have their own section on the tab, each with its billing
-door, the safe spelling of its key, its region and its order. The section ends with a
-`+ add a provider` row, and once a custom provider is connected an `active
-provider` row follows it: it reads
-`answering on localhost · enter moves it to homelab`, and enter moves this conversation
-onto the next provider, wrapping past the last back to the first. The
-[services page](services.md) has the whole of it.
-
-**Connections** — the accounts this profile has connected and what each may do. Its rows
-come from the engine rather than the settings registry.
+Settings show units with their values: dollars, seconds, percentages, tokens,
+RAM in MB and task counts. The editor explains accepted values and validates
+before saving. Zero is not interchangeable between controls: it can mean no
+limit, waiting indefinitely or disabling a behavior. Read the selected control's
+help before changing it. Invalid input keeps the editor open with an explanation;
+it does not silently save another value.
 
 ## Changing a row in settings
 
@@ -2090,7 +1959,7 @@ hear, and everything else follows the general chat rule. Its legend is
 
 Because the picker is the same component, everything true of `/model`'s ranking, its rows
 and its ctrl+t effort knob is true here too — **including the providers** on the row that has
-them. On **your model**, `→` or `tab` unfolds the providers serving the model under the
+them. On **chat model**, `→` or `tab` unfolds the providers serving the model under the
 cursor, walks the cursor into them, and `enter` on one pins it, exactly as under
 `/model`. The legend says `↑↓ move · → or tab providers · enter choose · esc cancel · type to filter`
 on a model and `↑↓ move · ← or tab back · enter choose · esc cancel · type to filter`
@@ -2101,9 +1970,15 @@ key.
 While any of those layers is up — the value box, the model picker, the key box on the
 Connections tab — the foot drops `tab next place`, because the layer has taken that key.
 
+## Task model seats and their limits in Settings
+
+Models → Advanced includes the seats door to `/crew`. Its default summary is
+`per task $5 · crew daily cap $5.00`; actual saved limits appear when configured.
+Change those limits in `/crew`, which owns them, rather than a duplicate setting.
+
 ## The roles rows in settings — pinning a role, and del to unpin
 
-The **roles** list sits on the **Providers** tab, directly under "pinned roles". Each row is
+The **roles** list is in **Models → Advanced**, alongside "pinned roles". Each row is
 one call codeaf makes outside a turn — `title`, `guardian`, `checker`,
 `planner`, `designer`, `worker`, `router`, `vision`, `reflex`, and `spellout`, which is the
 one of them you ask for yourself with `ctrl+r` (see the keys page) — drawn as
@@ -2134,7 +2009,7 @@ in the models page.
 
 ## Which model draws my pictures, speaks, films, or looks at an image
 
-Each of those is one row on the **Providers** tab, and the row is the front door: the model
+Each of those is one row on the **Models** category, and the row is the front door: the model
 you pick there is the model that runs. A blank row reads `automatic`, which is not "off" —
 it means codeaf picks one for you.
 

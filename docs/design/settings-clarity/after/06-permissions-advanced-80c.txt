@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › Search all settings
+ tool approvals                                                allow by default
+ tool exceptions                                                           none
+ shell command rules                                                       none
+ AI approval screening                                                      off
+ start proposed tasks after                                                 15s
+ Advanced                                                                  hide
+ pause approval timer after                                                 10s
+
+ questions while you are away
+ permission                                                              ask me
+ choice                                                                  ask me
+ judgement                                                               ask me
+ clarification                                   ask me · never runs on a clock
+ confirmation                                  ask me · destructive always asks
+ landing                                                                 ask me
+ assumption                                                              ask me
+ ratify                                                                  ask me
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Less common controls. Search finds these even while collapsed.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter collapse · tab next place · esc close

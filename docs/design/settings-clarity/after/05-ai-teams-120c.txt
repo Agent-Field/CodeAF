@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 4:27pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             AI teams
+  Models
+  Memory             › Search all settings
+  Tasks              ask the AI manager first                                                                        on
+  AI teams           run when team messages arrive                                                                   on
+  Permissions        daily spending limit                                                                        no cap
+  Spending           Advanced                                                                                      show
+  Connections
+  Privacy
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      a member's clarifying question goes to its manager first; you are asked only what no manager can
+                      answer. Permission prompts always come to you.
+
+
+
+
+─ Default for AI teams; teams can override it ──────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · type to search all · tab next place · esc close

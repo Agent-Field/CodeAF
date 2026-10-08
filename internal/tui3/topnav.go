@@ -86,6 +86,15 @@ const (
 	navTailGap = 2
 )
 
+// navLabel changes presentation only; page words remain stable navigation identities.
+func navLabel(id page) string {
+	word := id.word()
+	if word == "" {
+		return word
+	}
+	return strings.ToUpper(word[:1]) + word[1:]
+}
+
 // navMoreWord is the fold's own word, `more ▾`, with the caret every menu on
 // this surface wears ([app.tabTeamWord]).
 func (a *app) navMoreWord(pal palette) string {
@@ -93,7 +102,7 @@ func (a *app) navMoreWord(pal palette) string {
 	if pal.ascii {
 		caret = "v"
 	}
-	return "more " + caret
+	return "More " + caret
 }
 
 // navLit is the place the nav lights: the one a person is standing in, and
@@ -325,8 +334,8 @@ func (a *app) navPaint(width int, pal palette, name string, lead int, shown, fol
 }
 
 // navChipPaint is one place's button: the cursor's band while the bar's
-// cursor is on it, the pointer's ground under the pointer, the one accent on
-// the place you are in, and muted otherwise.
+// cursor is on it, the pointer's ground under the pointer, and that same
+// ground with bold accent ink on the selected place. Other places stay muted.
 func (a *app) navChipPaint(pal palette, id page, word string, lit bool) string {
 	chip := tabPad + word + tabPad
 	ink, hover := pal.muted, pal.ink
@@ -347,6 +356,8 @@ func (a *app) navChipPaint(pal palette, id page, word string, lit bool) string {
 		// its pad cells, as the strip's tab in front does ([tabLabel]); the
 		// button is the same width either way.
 		return pal.bold("[" + word + "]")
+	case lit:
+		return a.navHoverPaint(pal, word, ink)
 	}
 	return ink(chip)
 }
@@ -498,9 +509,9 @@ func (a *app) headHint() string {
 	case a.navMore.on:
 		return navMoreFootWords
 	case placeFor(a.tabHover) != nil:
-		return a.chords.say(placeChord(a.tabHover)+" "+a.tabHover.word()) + hintSegment + placeFor(a.tabHover).about()
+		return a.chords.say(placeChord(a.tabHover)+" "+navLabel(a.tabHover)) + hintSegment + placeFor(a.tabHover).about()
 	case a.navMore.hot:
-		return "more · the places this row has no room for"
+		return "More · the places this row has no room for"
 	case a.hot.kind == hoverTab:
 		// THE STRIP'S DOORS SAY WHAT THEY SAY IN A CONVERSATION, in the one
 		// place those sentences are written (walldock.go's

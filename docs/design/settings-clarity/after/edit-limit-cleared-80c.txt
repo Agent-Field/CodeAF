@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › task.parallel
+ Tasks
+ concurrent tasks                                                      no limit
+ task scope assessment                                     assess while working
+
+ Permissions
+ tool approvals                                                allow by default
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Restart the CLI to apply this to already-open chats
+  how many tasks may run at the same time. Blank is no limit — the machine and
+  the provider are the real ceilings.
+
+
+
+─ Saved ────────────────────────────────────────────────────────────────────────
+ ↑↓ results · enter change · tab next place · esc clear search

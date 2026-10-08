@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -46,8 +47,9 @@ const (
 // rather than for the team, because the chip beside it already names the team
 // and `● harbor ▾  ◆ harbor` read as two harbors.
 const (
-	teamManagerSlotWord = "+ Manager"
-	teamManagerWord     = "Manager"
+	teamGlobalManagerSlotWord = "+ Global manager"
+	teamManagerSlotWord       = "+ AI manager"
+	teamManagerWord           = "Manager"
 )
 
 // teamManagerSlotFloor is the narrowest strip that offers `+ Manager`; under
@@ -100,7 +102,7 @@ func (a *app) teamFrontManaged() (team, bool) {
 // team first when it is not a member, with its title, file and folder, and
 // then takes the team's one manager's place, so a manager there before goes
 // back to being an ordinary member.
-func (a *app) teamMakeManager(id string, tab chatTab) error {
+func (a *app) teamMakeManager(id string, tab chatTab, expected ...string) error {
 	if tab.key == "" || tab.start || tab.work {
 		return nil
 	}
@@ -113,6 +115,12 @@ func (a *app) teamMakeManager(id string, tab chatTab) error {
 	}
 	m := teamFromTabs("", []chatTab{tab}, a.now()).Members
 	return a.teamEdit(func(f *teamstore.File) error {
+		if len(expected) > 0 {
+			current, ok := f.Team(id)
+			if !ok || current.Manager != expected[0] && current.Manager != tab.key {
+				return fmt.Errorf("The manager changed; review it in Teams before assigning another")
+			}
+		}
 		if len(m) > 0 {
 			if err := f.AddMember(id, m[0]); err != nil {
 				return err
@@ -346,9 +354,6 @@ func (a *app) teamHoverWords() string {
 			return a.teamCrewHint()
 		}
 	}
-	if words := a.teamsPageHint(); words != "" {
-		return words
-	}
 	if words := a.sideHoverWords(); words != "" {
 		return words
 	}
@@ -368,7 +373,9 @@ func (a *app) teamHoverWords() string {
 		if !shown {
 			return "Show one team's conversations" + hintSegment + "click"
 		}
-		return "Switch team, add this conversation, or make a manager" + hintSegment + "click"
+		return "Switch team overlay" + hintSegment + "click"
+	case hit.kind == tabTeamClear:
+		return "Remove team overlay" + hintSegment + "click"
 	case hit.kind == tabManager:
 		if a.teamsOff() {
 			return teamHostedWord

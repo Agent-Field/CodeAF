@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+ …  Memory   Tasks   AI teams   Permissions   Spending   Connections   Privacy
+
+ › Search all settings
+ shared model recommendations                                use and contribute
+ save input history                                                          on
+ share anonymous usage reports                                               on
+ save unfinished drafts                                                      on
+ Advanced                                                                  show
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Use and contribute receives model recommendations and shares text-free
+  performance measurements. Use only sends nothing. Off does neither. Code,
+  prompts and file paths are never included.
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · tab next place · esc close

@@ -38,31 +38,25 @@ which resumes it first when this window does not have it open. A team's name in 
 places, written as a team (`team harbor`, `the harbor team` or `"harbor"`), is a link too. A
 press opens the **teams page** with that team selected. The hint says `Open harbor on the
 teams page · click`. Over `--host`, against an engine with no teams doors, the press opens the
-conversations view on that team instead, and the hint says so.
+team-agnostic conversations view instead, and the hint says so.
 
 ## Making a manager
 
-The **teams page** (`/teams`, `alt+2`) offers `+ Manager` on a team that has none, and
+The **teams page** (`/teams`, `alt+2`) offers `+ AI manager` on a team that has none, and
 `All teams` offers one manager over every team. Choose a team to talk to its manager
 beside the tree of teams.
 
 Managers cost nothing until you make one. A team's manager is pinned at the left of
 its tab strip and never scrolls away:
 
-- **`+ Manager`**, a quiet button, while the team has none. A press starts a new conversation
+- **`+ AI manager`**, a quiet button, while the team has none. A press starts a new conversation
   in the team's folder and makes it the manager. Its hint says so. Under 100 columns the
-  button leaves the strip; the team switcher still offers it.
-- **`◆ Make this harbor's manager`** in the team switcher (the `● harbor ▾` chip) makes the
-  conversation in front the manager. A tile's Teams list on the conversations view makes
-  that tile the manager. With an existing manager, the row names which one it replaces:
-  `◆ Make this harbor's manager (replaces Shipping the parser)`. On the manager itself the row
-  reads **`◇ Make an ordinary member`**, which turns it back into an ordinary conversation with
-  all its history. When the chip reads `teams ▾` with All shown, choose a team and reopen the
-  chip: All has no manager or Remove row. After you make a manager, the menu stays open and
-  that row changes to `◇ Make an ordinary member`.
+  button leaves the strip; Teams still offers manager controls.
+- **Choose AI manager** on Teams assigns an existing member. To use a new conversation,
+  first use Add chat, then Choose AI manager. The Chats dropdown and conversation grid
+  offer no manager-assignment controls.
 
-The manager's place reads **`◆ Manager`**. Its conversations tile comes first, titled
-`◆ Manager · <its title>`. The tab's hint names its team and title. `alt+m` goes to the
+The manager's place reads **`◆ Manager`**. Its tile in the team-agnostic grid keeps its ordinary title and position. The tab's hint names its team and title. `alt+m` goes to the
 manager from any conversation in the team.
 
 An untitled manager is addressable immediately: codeaf derives its fallback handle from
@@ -74,9 +68,13 @@ handle choice may replace that fallback.
 
 ## The manager's screen
 
-While the manager is in front, the message box says `to ◆ manager`, and keeps saying it on the
+While the manager is in front, the message box says `to ◆ manager of harbor`, using the
+selected team's name, and keeps saying it on the
 rule above the box once you start typing: everything you type goes to the manager and nowhere
-else. With a member in front the box says `to @web` the same way.
+else. With a member in front the box says `to @web of harbor` the same way. A shared
+conversation uses the selected team's own alias and name; renaming the team updates this
+label immediately. The manager can have a title-derived or explicitly chosen alias just
+like other members; `@member1` is not a required manager name.
 
 On the right is the conversation's column, the same one every chat has. Its header is two
 words, `Tasks 14 · Traffic 8` with `alt+l` at its right: the word in front is in bold ink and
@@ -161,7 +159,7 @@ over the conversation, and `esc` or `alt+l` takes it off again.
 Over `--host` teams and the manager work as they do locally. The teams and their Traffic are
 kept on the machine the conversations run on, and the window reads and writes them there, so
 the Traffic is the team's own and a manager set from the laptop is the one the far session
-follows. Against a far machine running an older codeaf, `+ Manager` and the menus say managers
+follows. Against a far machine running an older codeaf, `+ AI manager` and the menus say managers
 are not available over `--host`, and the column has no Traffic word.
 
 ## When a manager starts a member — team_start and approvals
@@ -183,6 +181,16 @@ was started. It reads the brief when it next runs.`, and the brief arrives on th
 the same way. When the manager stops a member,
 its current turn ends the way your own Stop would, including when codeaf opened it in the
 background without a window. Starting a new member still needs a window holding the manager.
+
+The member runs in the team's folder, which is this workspace, so the workspace's
+approved rules and confirmed decisions are read locally before its first request
+and bind the member from its first turn, exactly as they do for any conversation
+there. The team itself owns none of them. The router's relevant-memory shortlist
+is the separate advisory path: it may arrive after the member has begun, and it is
+never what carries an approved rule. The manager reads the same workspace's
+binding rules the same way. Being placed first does not make them unlimited,
+though — the block in front of a request is bounded, so a very large set of
+approved lines is not all guaranteed to fit.
 
 ## Who a Traffic row is from and who it is to
 
@@ -241,13 +249,15 @@ than 30 minutes, even if a process still holds the transcript: nothing is still 
 
 ## Who a member reports to
 
-A conversation can be in more than one team, but it **reports to** exactly one manager, its
+A conversation can be in more than one team, but it **reports to** at most one manager, its
 home: the nearest manager above it, picked for you and never changed by itself. Its home
 manager directs it; every other manager whose team it is in is a **link**, which may read it
 (`team_read`) and send it a note, and nothing more. A link's `team_send` of a directive, and
 its `team_stop`, are refused with a sentence saying whose the member is; a directive to
 `everyone` goes to the members who report to that manager and names the ones it left out.
 In `team_status` a shared member reads `reports to dock`, and `busy for dock` while it runs.
+Removing the reporting membership leaves it independent; remaining memberships allow notes
+only until an explicit reporting reassignment. Its roster and status say `independent; notes only`.
 
 ## Who outranks whom
 
@@ -267,25 +277,42 @@ on one waits for you.
 | `team_read` | the end of one member's conversation, bounded; the member is not told | no |
 | `team_send` | a message to one member, to several (one message, every handle in `to`), or to everyone, as a note (information, which waits) or a directive (an instruction, which starts an idle member) | no |
 | `team_stop` | ends one member's current turn, the way your own Stop does, whether a window has it open or codeaf opened it in the background: nothing is deleted, and its background tasks and jobs keep running | no |
+| `team_add` | list saved conversations (optional query), then add an existing conversation by its returned id or transcript path; context and existing reporting authority remain | under the approval posture |
+| `team_remove` | release one membership by its handle; preserve the session, work and other teams. Removing the reporting membership leaves it independent. Replace the manager before removing it | under the approval posture |
 | `team_start` | a new member conversation with a handle and a brief; it opens in the team's folder and is handed the brief, marked as the manager's, on its first request. With kind `team` it starts a sub-team instead (see **Sub-teams**) | under `◇ asks` |
 | `team_decide` | answers a decision packet waiting on the manager, most often a member's question: an option, or its own words | no |
 | `team_escalate` | sends a packet waiting on the manager up, to its own manager or to you, with the reason it is not the manager's to decide | no |
 | `team_close_report` | brings you the team's closing report (done, left, where the files are) after you asked it to wrap up | no |
 | `team_raise` | raises a conflict to the manager above every party (see **Conflicts between members and teams**); members have it too | no |
 
+## Adding existing sessions and removing members through the manager
+
+Ask the manager to add an existing conversation or remove a named member. `team_add` without
+`conversation` lists up to 40 saved conversations; `query` filters by title or workspace.
+Copy a returned id or transcript path into `conversation`. Ambiguous ids and sessions absent
+from the listing are refused. Use `team_start` for a new session.
+
+`team_remove` takes a handle in the selected team and releases only that membership. It
+never stops the session or deletes its transcript. The manager cannot remove itself or edit
+All teams' automatic manager memberships. Appoint a replacement through Teams first. A
+conversation's remaining memberships do not silently acquire reporting authority when its
+reporting membership is removed. Its next role note describes it as independent; former
+team directives cannot be delivered through the ended membership.
+
 ## Why team_start may ask before it starts
 
 `team_start` follows the conversation's approval posture because a new conversation can
 spend money; the default `◇ YOLO` allows it, while `◇ asks` raises the card. It is
-refused while the team is at its daily cap. The others act only inside the team you made, and
-every one of them is logged in the team's traffic. Questions, packets, caps and wrapping up are
+refused while the team is at its daily cap. Membership tools `team_add` and `team_remove` also follow the conversation's approval posture.
+They update the selected team's membership record. The messaging and decision tools keep their
+existing approval rules and traffic history. Questions, packets, caps and wrapping up are
 on the page **Team questions, decisions and caps**.
 Like any tool, each can be set to ask or allow in `/settings` under the tool approvals.
 
 ## What happens when a conversation stops being the manager
 
 At its next step, a conversation removed as manager loses `team_status`, `team_read`,
-`team_send`, `team_stop`, `team_start`, `team_decide`, `team_escalate` and
+`team_send`, `team_stop`, `team_start`, `team_add`, `team_remove`, `team_decide`, `team_escalate` and
 `team_close_report`. If it is still a member of a managed team, it keeps `team_post` and
 `team_raise`; outside a team it loses those too. A remembered call to a removed manager
 tool says `team_send is no longer one of your tools: this conversation no longer manages a
@@ -467,3 +494,11 @@ member’s handle to open the delivered brief in that member’s conversation.
 Collapsed work opens at the selected message. Older unnumbered receipts are
 matched only when the accepted handle and brief identify one successful start
 in the current team; ambiguous or missing history is not guessed.
+
+## Managing one team and its subteams
+
+One conversation may manage a team and descendants of that team, while remaining an
+ordinary member of other teams. It cannot manage unrelated teams. The global manager is
+separate from every ordinary team's manager. Choose AI manager or a team move refuses a
+change that introduces conflicting responsibilities, naming the teams. Existing conflicts
+are retained until the person explicitly chooses replacements in Teams.

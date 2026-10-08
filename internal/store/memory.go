@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Agent-Field/codeaf/internal/redact"
 )
 
 // Memories are what one session knows and the next one would otherwise have to
@@ -61,6 +63,19 @@ const (
 	// that carry none — so the journal takes a snapshot on an interval instead
 	// and a replay lands on that floor rather than on nothing.
 	EventMemoryRanking EventKind = "memory_ranking"
+	// EventMemorySkipped journals a write the dedup door refused. A skip is an
+	// outcome, not a silence: the person said "remember X" twice, and the
+	// record of both says so. It carries the text and the id it matched.
+	EventMemorySkipped EventKind = "memory_skipped"
+	// EventMemoryWriteFailed journals a write that did not land — an
+	// extraction the store refused, an import row that failed. Errors used to
+	// vanish at every one of these doors; now every failure that reaches this
+	// kind is readable at the store, and the session's dim line points here.
+	EventMemoryWriteFailed EventKind = "memory_write_failed"
+	// EventMemoryRehomed journals a quarantine row's move to a provable owner.
+	// A permission change is exactly the kind of thing the journal exists to
+	// carry: it can be replayed, audited, and — much later, with sync — folded.
+	EventMemoryRehomed EventKind = "memory_rehomed"
 )
 
 // The five kinds of thing worth remembering across sessions. They are separate
@@ -78,6 +93,11 @@ const (
 // A memory's scope is the blast radius of its truth: something true about the
 // person everywhere, something true only inside this project, or something true
 // only of this machine.
+//
+// SCOPE IS DERIVED FROM OWNER NOW (memory_owner.go), and the column stays
+// because the snapshot's shelf grouping and every row the migration already
+// moved read it. A caller setting one without the other gets the owner's —
+// the payload gate derives scope from owner and refuses the reverse drift.
 const (
 	MemoryScopeUser    = "user"
 	MemoryScopeProject = "project"
@@ -108,7 +128,12 @@ const (
 
 // Memory is one durable thing known across sessions.
 type Memory struct {
-	ID     string
+	ID string
+	// Owner is WHO the memory belongs to — the whole of the permission model
+	// (memory_owner.go). Every read that can put a memory in front of a model
+	// filters on it; two projects may hold genuinely different truths about
+	// the same words, and never see each other's.
+	Owner  string
 	Type   string
 	Scope  string
 	Title  string
@@ -163,9 +188,17 @@ type MemoryStub struct{ ID, Title, Type, Scope string }
 // view and search" a property of the write rather than a filter every reader
 // has to remember — a superseded or forgotten row leaves the index at the
 // moment it stops being true.
+//
+// THE INDEX IS CREATED SEPARATELY FROM THE TABLE, and only when a probe proves
+// FTS5 works in this build ([Store.fts]). It has always worked in the SQLite
+// this module ships, and the probe is not a hedge against that — it is the
+// answer to "what happens on a build where it does not": memory stays readable,
+// writable and owner-scoped, and only the lexical tier goes quiet, the same way
+// a store with no vectors answers without them.
 const memoriesSchema = `
 CREATE TABLE IF NOT EXISTS memories (
     id          TEXT PRIMARY KEY,
+    owner       TEXT NOT NULL DEFAULT 'user',
     type        TEXT NOT NULL,
     scope       TEXT NOT NULL,
     title       TEXT NOT NULL,
@@ -181,6 +214,16 @@ CREATE TABLE IF NOT EXISTS memories (
 );
 CREATE INDEX IF NOT EXISTS memories_status_updated ON memories (status, updated_seq DESC);
 CREATE INDEX IF NOT EXISTS memories_status_scope ON memories (status, scope, updated_seq DESC);
+-- THE OWNER INDEX IS NOT HERE. owner is a migration column: a database written
+-- before owners existed already has this table, so CREATE TABLE IF NOT EXISTS
+-- leaves it alone, and an index declared here would be created against a column
+-- that does not exist yet — which is exactly the open that failed with
+-- "no such column: owner" on every store already on disk. It is created by
+-- [migrateMemoriesOwner], beside the column it indexes, on both a legacy store
+-- and a brand new one.
+`
+
+const memoriesFTSSchema = `
 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
     memory_id UNINDEXED,
     title,
@@ -205,11 +248,34 @@ func migrateMemoriesSchema(db *sql.DB) error {
 			}
 		}
 	}
+	// THE APPROVED-RULE PROJECTION IS A SEEK, NOT A PARTITION WALK. It asks for
+	// the newest 128 BINDING rows by authority, and the only index over the
+	// journal was (node_id, kind, seq): with a few rare approved rules under
+	// thousands of newer observations, the plan preferred that index for its
+	// ordering and paid for every observation behind each rule. This PARTIAL
+	// index holds only binding rows and covers the same ordering, so the read is
+	// an index seek bounded by the rule count rather than the owner's evidence
+	// partition. Created here (idempotently) because this migration hook runs at
+	// every open, after the schema step has made the events table.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS events_contextual_approved ON events (node_id, kind, seq) WHERE json_extract(payload,'$.Authority') IN ('approved_rule','confirmed_decision')`); err != nil {
+		return err
+	}
+	// AND THE PER-MEMORY LATEST RECORD IS A SEEK, NOT A PARTITION WALK. A binding
+	// projection asks for the newest evidence of each candidate memory; the only
+	// index over the journal was (node_id, kind, seq), so a latest-by-memory read
+	// walked the owner's evidence partition behind each id. This expression index
+	// carries the memory id, so SQLite takes the maximum sequence per id and the
+	// read is bounded by the ids asked for rather than by the partition behind
+	// them. Created here (idempotently) beside the approved partial index.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS events_contextual_memory ON events (node_id, kind, json_extract(payload,'$.MemoryID'), seq)`); err != nil {
+		return err
+	}
 	return nil
 }
 
 type memoryPayload struct {
 	ID            string   `json:"id"`
+	Owner         string   `json:"owner,omitempty"`
 	Type          string   `json:"type"`
 	Scope         string   `json:"scope"`
 	Title         string   `json:"title"`
@@ -233,6 +299,7 @@ type memorySupersedePayload struct {
 }
 
 type memoryForgetPayload struct {
+	Owner         string `json:"owner,omitempty"`
 	ID            string `json:"id"`
 	SourceSession string `json:"source_session,omitempty"`
 }
@@ -311,14 +378,14 @@ func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 	if err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
-	if err := applyMemoryAdd(tx, payload, seq); err != nil {
+	if err := applyMemoryAdd(tx, payload, seq, s.fts); err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Memory{}, fmt.Errorf("add memory: %w", err)
 	}
 	return Memory{
-		ID: payload.ID, Type: payload.Type, Scope: payload.Scope,
+		ID: payload.ID, Owner: payload.Owner, Type: payload.Type, Scope: payload.Scope,
 		Title: payload.Title, Text: payload.Text, Tags: payload.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
 		SourceSession: payload.SourceSession, SourceSeq: memorySourceSeq(payload.SourceSession, seq),
@@ -329,6 +396,17 @@ func (s *Store) addMemory(m Memory, sourceSession string) (Memory, error) {
 // because a memory that changed either of those is a different memory and
 // wants SupersedeMemory: the whole point of an update is that the router's
 // existing pointers to this id stay valid.
+// UpdateMemory, UpdateMemoryFromSession, SupersedeMemory,
+// ForgetMemoryFromSession and RestoreMemory act BY ID, with no owner filter —
+// that is a contract, not an oversight, and it is written here so the next
+// caller reads it before it becomes a hole. A raw id door is for two callers
+// only: the person's own surface (the memory place, which may manage any row
+// it is showing), and a caller that has PROVEN the row's visibility first —
+// the session's write path reads the target through its owner filter before
+// it updates or supersedes, and its forget match is scoped the same way. A
+// caller that holds an id from a model or from the wire and has not proven
+// where it came from must not call these; it should go through reads that
+// name owners, and write through [Store.Write].
 func (s *Store) UpdateMemory(id, title, text string, tags []string) error {
 	return s.UpdateMemoryFromSession(id, title, text, tags, "")
 }
@@ -354,7 +432,7 @@ func (s *Store) UpdateMemoryFromSession(id, title, text string, tags []string, s
 	if err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
-	if err := applyMemoryUpdate(tx, payload, seq); err != nil {
+	if err := applyMemoryUpdate(tx, payload, seq, s.fts); err != nil {
 		return fmt.Errorf("update memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -386,6 +464,17 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	}
 	defer tx.Rollback()
 
+	var oldOwner string
+	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Memory{}, fmt.Errorf("supersede memory: %w: target must be active", ErrInvalid)
+		}
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if oldOwner != fresh.Owner {
+		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
+	}
+
 	var exists int
 	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, fresh.ID).Scan(&exists); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
@@ -399,18 +488,236 @@ func (s *Store) SupersedeMemory(oldID string, m Memory) (Memory, error) {
 	if err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
-	if err := applyMemorySupersede(tx, payload, seq); err != nil {
+	if err := applyMemorySupersede(tx, payload, seq, s.fts); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return Memory{}, fmt.Errorf("supersede memory: %w", err)
 	}
 	return Memory{
-		ID: fresh.ID, Type: fresh.Type, Scope: fresh.Scope,
+		ID: fresh.ID, Owner: fresh.Owner, Type: fresh.Type, Scope: fresh.Scope,
 		Title: fresh.Title, Text: fresh.Text, Tags: fresh.Tags,
 		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
 		SourceSession: fresh.SourceSession, SourceSeq: memorySourceSeq(fresh.SourceSession, seq),
 	}, nil
+}
+
+// SupersedeMemoryForOwners retires one memory and admits its replacement, under
+// the constraint that the old row is owned by one of the named owners. The
+// owners list is the store-level enforcement: even a caller that holds a foreign
+// id cannot retire another project's memory through this door. The raw-id door
+// [Store.SupersedeMemory] remains for the person's own surface (which may
+// manage any row it is showing) and for callers that have already proven
+// visibility.
+func (s *Store) SupersedeMemoryForOwners(owners []string, oldID string, m Memory) (Memory, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	defer tx.Rollback()
+	fresh, err := supersedeMemoryForOwnersTx(tx, s.fts, owners, oldID, m)
+	if err != nil {
+		return Memory{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	return fresh, nil
+}
+
+// SupersedeMemoryForOwnersContextual is [Store.SupersedeMemoryForOwners] with
+// the replacement's provenance appended in the SAME transaction, so a
+// supersession whose evidence could not be written rolls back rather than
+// leaving a live replacement with no journal row to establish it.
+func (s *Store) SupersedeMemoryForOwnersContextual(owners []string, oldID string, m Memory, e ContextualEvidence) (Memory, ContextualEvidence, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	defer tx.Rollback()
+	fresh, err := supersedeMemoryForOwnersTx(tx, s.fts, owners, oldID, m)
+	if err != nil {
+		return Memory{}, e, err
+	}
+	// THE REPLACEMENT'S PROVENANCE NAMES THE REPLACEMENT'S OWNER, exactly as
+	// the supersede itself must keep the target's owner.
+	if e.Owner != "" && normalizeOwner(e.Owner) != fresh.Owner {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w: evidence owner %q is not the replacement owner %q", ErrInvalid, e.Owner, fresh.Owner)
+	}
+	e.Owner = fresh.Owner
+	e.MemoryID = fresh.ID
+	if err := validateContextualEvidence(e); err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	committed, err := appendContextualEvidenceTx(tx, e)
+	if err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return Memory{}, e, fmt.Errorf("supersede memory: %w", err)
+	}
+	return fresh, committed, nil
+}
+
+func supersedeMemoryForOwnersTx(tx *sql.Tx, fts bool, owners []string, oldID string, m Memory) (Memory, error) {
+	if len(owners) == 0 {
+		return Memory{}, fmt.Errorf("supersede memory: %w: no owner was named", ErrInvalid)
+	}
+	oldID = strings.TrimSpace(oldID)
+	if oldID == "" {
+		return Memory{}, fmt.Errorf("supersede memory: %w: id is required", ErrInvalid)
+	}
+	fresh, err := memoryPayloadFrom(m)
+	if err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if fresh.ID == "" {
+		fresh.ID = NewMemoryID()
+	}
+	if fresh.ID == oldID {
+		return Memory{}, fmt.Errorf("supersede memory: %w: %q cannot supersede itself", ErrInvalid, oldID)
+	}
+	// THE OLD ROW'S OWNER IS IN THE NAMED OWNERS, or the supersession is
+	// refused. This is the store-level guard the session's own visibility
+	// check already makes, and it is what closes the raw-id door: a decider
+	// naming (or a stale neighbor list carrying) another project's memory id
+	// cannot mark that row superseded here.
+	where, ownerArgs := ownerFilterSQL(owners)
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ? AND status = ?`+where,
+		append([]any{oldID, MemoryActive}, ownerArgs...)...).Scan(&count); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if count == 0 {
+		return Memory{}, fmt.Errorf("supersede memory: %w: %q is not an active memory this session can see", ErrInvalid, oldID)
+	}
+	var oldOwner string
+	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ? AND status = ?`, oldID, MemoryActive).Scan(&oldOwner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Memory{}, fmt.Errorf("supersede memory: %w: target must be active", ErrInvalid)
+		}
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if oldOwner != fresh.Owner {
+		return Memory{}, fmt.Errorf("supersede memory: %w: replacement must keep the target owner", ErrInvalid)
+	}
+	var exists int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ?`, fresh.ID).Scan(&exists); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if exists != 0 {
+		return Memory{}, fmt.Errorf("supersede memory: %w: %q already exists", ErrInvalid, fresh.ID)
+	}
+	fresh.SourceSession = strings.TrimSpace(m.SourceSession)
+	payload := memorySupersedePayload{OldID: oldID, New: fresh, SourceSession: fresh.SourceSession}
+	seq, _, err := appendEvent(tx, fresh.ID, EventMemorySupersede, payload)
+	if err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	if err := applyMemorySupersede(tx, payload, seq, fts); err != nil {
+		return Memory{}, fmt.Errorf("supersede memory: %w", err)
+	}
+	return Memory{
+		ID: fresh.ID, Owner: fresh.Owner, Type: fresh.Type, Scope: fresh.Scope,
+		Title: fresh.Title, Text: fresh.Text, Tags: fresh.Tags,
+		Status: MemoryActive, CreatedSeq: seq, UpdatedSeq: seq,
+		SourceSession: fresh.SourceSession, SourceSeq: memorySourceSeq(fresh.SourceSession, seq),
+	}, nil
+}
+
+// UpdateMemoryForOwners updates a memory only when the target's owner is in the
+// named owners list. It is the store-level guard: the session's own visibility
+// check closes one door, and this closes the other. A caller that holds a
+// foreign id from a stale neighbor list or a model invention cannot rewrite
+// another project's memory through this door.
+func (s *Store) UpdateMemoryForOwners(owners []string, id, title, text string, tags []string, sourceSession string) error {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := updateMemoryForOwnersTx(tx, s.fts, owners, id, title, text, tags, sourceSession); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("update memory: %w", err)
+	}
+	return nil
+}
+
+// UpdateMemoryForOwnersContextual is [Store.UpdateMemoryForOwners] with the
+// claim's provenance appended in the SAME transaction. It is the one write the
+// post-turn settle takes for an update, so a crash cannot leave a corrected row
+// whose latest evidence row is older than the correction — which the eligible
+// projection reads as a claim with no live provenance.
+func (s *Store) UpdateMemoryForOwnersContextual(owners []string, id, title, text string, tags []string, sourceSession string, e ContextualEvidence) (ContextualEvidence, error) {
+	tx, err := s.beginWrite()
+	if err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	defer tx.Rollback()
+	rowOwner, err := updateMemoryForOwnersTx(tx, s.fts, owners, id, title, text, tags, sourceSession)
+	if err != nil {
+		return e, err
+	}
+	// THE EVIDENCE MUST NAME THE ROW'S OWNER. The row was updated under the
+	// named owners; a provenance row claiming a different blast radius is
+	// refused rather than written beside it.
+	if e.Owner != "" && normalizeOwner(e.Owner) != rowOwner {
+		return e, fmt.Errorf("update memory: %w: evidence owner %q is not the row owner %q", ErrInvalid, e.Owner, rowOwner)
+	}
+	e.Owner = rowOwner
+	e.MemoryID = id
+	if err := validateContextualEvidence(e); err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	committed, err := appendContextualEvidenceTx(tx, e)
+	if err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return e, fmt.Errorf("update memory: %w", err)
+	}
+	return committed, nil
+}
+
+func updateMemoryForOwnersTx(tx *sql.Tx, fts bool, owners []string, id, title, text string, tags []string, sourceSession string) (string, error) {
+	if len(owners) == 0 {
+		return "", fmt.Errorf("update memory: %w: no owner was named", ErrInvalid)
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return "", fmt.Errorf("update memory: %w: id is required", ErrInvalid)
+	}
+	title, text, tags, err := validMemoryBody(title, text, tags)
+	if err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
+	}
+	// THE TARGET ROW'S OWNER IS IN THE NAMED OWNERS, or the update is refused.
+	// A store error on this read also refuses: a guard that cannot prove the
+	// target is owned by this session must never become a pass.
+	where, ownerArgs := ownerFilterSQL(owners)
+	var count int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM memories WHERE id = ? AND status = ?`+where,
+		append([]any{id, MemoryActive}, ownerArgs...)...).Scan(&count); err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
+	}
+	if count == 0 {
+		return "", fmt.Errorf("update memory: %w: %q is not an active memory this session can see", ErrInvalid, id)
+	}
+	var rowOwner string
+	if err := tx.QueryRow(`SELECT owner FROM memories WHERE id = ?`, id).Scan(&rowOwner); err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
+	}
+	payload := memoryUpdatePayload{ID: id, Title: title, Text: text, Tags: tags, SourceSession: strings.TrimSpace(sourceSession)}
+	seq, _, err := appendEvent(tx, id, EventMemoryUpdate, payload)
+	if err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
+	}
+	if err := applyMemoryUpdate(tx, payload, seq, fts); err != nil {
+		return "", fmt.Errorf("update memory: %w", err)
+	}
+	return rowOwner, nil
 }
 
 // ForgetMemory tombstones a memory. It refuses a memory that is already
@@ -423,6 +730,18 @@ func (s *Store) ForgetMemory(id string) error {
 
 // ForgetMemoryFromSession records the conversation that issued the tombstone.
 func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
+	return s.forgetMemory(nil, id, sourceSession)
+}
+
+// ForgetMemoryForOwners tombstones only a row owned by the named owners.
+func (s *Store) ForgetMemoryForOwners(owners []string, id, sourceSession string) error {
+	if len(owners) == 0 {
+		return fmt.Errorf("forget memory: %w: no owner was named", ErrInvalid)
+	}
+	return s.forgetMemory(owners, id, sourceSession)
+}
+
+func (s *Store) forgetMemory(owners []string, id, sourceSession string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("forget memory: %w: id is required", ErrInvalid)
@@ -433,13 +752,43 @@ func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
 	}
 	defer tx.Rollback()
 
-	payload := memoryForgetPayload{ID: id, SourceSession: strings.TrimSpace(sourceSession)}
+	if owners != nil {
+		if err := requireMemoryOwners(tx, owners, id); err != nil {
+			return fmt.Errorf("forget memory: %w", err)
+		}
+	}
+	var rowOwner string
+	if err := tx.QueryRow("SELECT owner FROM memories WHERE id = ?", id).Scan(&rowOwner); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("forget memory: %w: missing memory", ErrInvalid)
+		}
+		return fmt.Errorf("forget memory: %w", err)
+	}
+	payload := memoryForgetPayload{ID: id, Owner: rowOwner, SourceSession: strings.TrimSpace(sourceSession)}
 	seq, _, err := appendEvent(tx, id, EventMemoryForget, payload)
 	if err != nil {
 		return fmt.Errorf("forget memory: %w", err)
 	}
-	if err := applyMemoryForget(tx, payload, seq); err != nil {
+	if err := applyMemoryForget(tx, payload, seq, s.fts); err != nil {
 		return fmt.Errorf("forget memory: %w", err)
+	}
+	// FORGET IS ONE TRANSACTION. The row's tombstone and the provenance
+	// suppression used to commit separately, so a crash between them left the
+	// row active while its evidence was already unusable — and a later write of
+	// the same body skipped as a duplicate. Landing them together closes that
+	// window. The suppression is written only when the claim actually HAS
+	// contextual evidence, so an ordinary memory forget grows the journal by
+	// nothing.
+	var contextual int
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM events WHERE node_id=? AND kind=? AND json_extract(payload,'$.MemoryID')=?`,
+		contextualNode(rowOwner), EventContextualEvidence, id).Scan(&contextual); err != nil {
+		return fmt.Errorf("forget memory: %w", err)
+	}
+	if contextual > 0 {
+		if _, _, err := appendEvent(tx, contextualNode(rowOwner), EventContextualMemorySuppression,
+			struct{ MemoryID, Reason string }{id, "explicit forget"}); err != nil {
+			return fmt.Errorf("forget memory: %w", err)
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("forget memory: %w", err)
@@ -449,7 +798,29 @@ func (s *Store) ForgetMemoryFromSession(id, sourceSession string) error {
 
 // RestoreMemory returns a forgotten memory to the active views. Superseded
 // memories remain retired because their replacement is still the store's truth.
-func (s *Store) RestoreMemory(id string) error {
+func (s *Store) RestoreMemory(id string) error { return s.restoreMemory(nil, id) }
+
+// RestoreMemoryForOwners restores only a forgotten row owned by the named owners.
+func (s *Store) RestoreMemoryForOwners(owners []string, id string) error {
+	if len(owners) == 0 {
+		return fmt.Errorf("restore memory: %w: no owner was named", ErrInvalid)
+	}
+	return s.restoreMemory(owners, id)
+}
+
+func requireMemoryOwners(tx *sql.Tx, owners []string, id string) error {
+	where, args := ownerFilterSQL(owners)
+	var count int
+	if err := tx.QueryRow("SELECT COUNT(*) FROM memories WHERE id = ?"+where, append([]any{id}, args...)...).Scan(&count); err != nil {
+		return err
+	}
+	if count != 1 {
+		return fmt.Errorf("%w: memory is outside the named owners", ErrInvalid)
+	}
+	return nil
+}
+
+func (s *Store) restoreMemory(owners []string, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return fmt.Errorf("restore memory: %w: id is required", ErrInvalid)
@@ -459,12 +830,17 @@ func (s *Store) RestoreMemory(id string) error {
 		return fmt.Errorf("restore memory: %w", err)
 	}
 	defer tx.Rollback()
+	if owners != nil {
+		if err := requireMemoryOwners(tx, owners, id); err != nil {
+			return fmt.Errorf("restore memory: %w", err)
+		}
+	}
 	payload := memoryRestorePayload{ID: id}
 	seq, _, err := appendEvent(tx, id, EventMemoryRestore, payload)
 	if err != nil {
 		return fmt.Errorf("restore memory: %w", err)
 	}
-	if err := applyMemoryRestore(tx, payload, seq); err != nil {
+	if err := applyMemoryRestore(tx, payload, seq, s.fts); err != nil {
 		return fmt.Errorf("restore memory: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -473,15 +849,22 @@ func (s *Store) RestoreMemory(id string) error {
 	return nil
 }
 
-// GetMemories reads full memories by id, in the order asked for.
+// GetMemories reads full memories by id, in the order asked for, and returns
+// only the ones the caller may SEE: owner-filtered and active-only. The owner
+// filter is the point — a pointer to an id survives in transcripts, in a
+// session's held lines and in a task's brief, and an id that names another
+// project's memory must hand back nothing, not somebody else's truth.
 //
 // Input order is the contract because the caller is a router that has already
 // decided what matters most; re-sorting its choice by anything the store knows
 // would discard the one ranking in the system that saw the actual question. Ids
-// that name nothing, or name something no longer active, are simply absent —
-// a memory the user forgot between the index read and this call must not
-// reappear because a pointer to it survived.
-func (s *Store) GetMemories(ids []string) ([]Memory, error) {
+// that name nothing, or name something no longer active or not the caller's,
+// are simply absent — a memory the user forgot between the index read and this
+// call must not reappear because a pointer to it survived.
+func (s *Store) GetMemories(owners []string, ids []string) ([]Memory, error) {
+	if len(owners) == 0 {
+		return nil, fmt.Errorf("get memories: %w: no owner was named", ErrInvalid)
+	}
 	wanted := make([]string, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
@@ -501,8 +884,10 @@ func (s *Store) GetMemories(ids []string) ([]Memory, error) {
 		args = append(args, id)
 	}
 	args = append(args, MemoryActive)
+	where, ownerArgs := ownerFilterSQL(owners)
+	args = append(args, ownerArgs...)
 	found, err := s.queryMemories(
-		`WHERE id IN (`+placeholders+`) AND status = ?`, args, "", 0)
+		`WHERE id IN (`+placeholders+`) AND status = ?`+where, args, "", 0)
 	if err != nil {
 		return nil, fmt.Errorf("get memories: %w", err)
 	}
@@ -531,15 +916,36 @@ func (s *Store) GetMemories(ids []string) ([]Memory, error) {
 // that safe to say: it reduces the caller's words to quoted alphanumeric terms
 // joined by OR, so hostile FTS syntax never reaches MATCH and a failure here is
 // a real failure worth returning.
-func (s *Store) SearchMemories(query string, limit int) ([]Memory, error) {
+// SearchMemories finds active memories the caller may see, by their words, best
+// match first. The owners list is the search's blast radius: two projects may
+// hold genuinely different truths about the same words, so a search never
+// leaves the owners it was handed — dedup, forget-matching and person queries
+// all go through it, and all of them are scoped the same way by construction.
+//
+// An empty owners list is an error and not "everything": this read feeds
+// decisions a model acts on, and "unscoped" would be the scope leak the owner
+// column exists to close. The janitor's unscoped read is [Store.ListMemories].
+//
+// A store without the FTS index answers nil: the lexical tier is the whole of
+// this read, and a missing tier is a miss, not a failure.
+func (s *Store) SearchMemories(owners []string, query string, limit int) ([]Memory, error) {
+	if len(owners) == 0 {
+		return nil, fmt.Errorf("search memories: %w: no owner was named", ErrInvalid)
+	}
+	if !s.fts {
+		return nil, nil
+	}
 	terms := ftsQueryFrom(query)
 	if terms == "" {
 		return nil, nil
 	}
+	where, ownerArgs := ownerFilterSQL(owners)
+	args := []any{terms, MemoryActive}
+	args = append(args, ownerArgs...)
 	memories, err := s.queryMemories(`
 		JOIN memories_fts ON memories_fts.memory_id = memories.id
-		WHERE memories_fts MATCH ? AND memories.status = ?`,
-		[]any{terms, MemoryActive},
+		WHERE memories_fts MATCH ? AND memories.status = ?`+where,
+		args,
 		`bm25(memories_fts), memories.updated_seq DESC`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("search memories: %w", err)
@@ -547,16 +953,19 @@ func (s *Store) SearchMemories(query string, limit int) ([]Memory, error) {
 	return memories, nil
 }
 
-// ListMemories returns active memories newest-touched first. An empty scope
-// means every scope, which is what a person means by "what do you remember".
-func (s *Store) ListMemories(scope string, limit int) ([]Memory, error) {
-	where := `WHERE status = ?`
-	args := []any{MemoryActive}
-	if scope = strings.TrimSpace(scope); scope != "" {
-		where += ` AND scope = ?`
-		args = append(args, scope)
-	}
-	memories, err := s.queryMemories(where, args, `updated_seq DESC, id`, limit)
+// ListMemories returns active memories newest-touched first.
+//
+// THE OWNERS LIST IS THE ONLY FILTER, and an empty one is deliberate: this is
+// the janitor's read — the background tidy, the demo seeder, a repair pass —
+// and it is the one place "every owner" is an honest answer, because its work
+// is by id against the row's own owner and never a retrieval. Every caller
+// that can put a row in front of a model names its owners and the type system
+// will not say so twice: [Store.MemoryCandidates] and [Store.SearchMemories]
+// refuse the empty list.
+func (s *Store) ListMemories(owners []string, limit int) ([]Memory, error) {
+	where, ownerArgs := ownerFilterSQL(owners)
+	args := append([]any{MemoryActive}, ownerArgs...)
+	memories, err := s.queryMemories(`WHERE status = ?`+where, args, `updated_seq DESC, id`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list memories: %w", err)
 	}
@@ -576,14 +985,15 @@ func (s *Store) ListMemories(scope string, limit int) ([]Memory, error) {
 // It is a separate read from ListMemories rather than a projection of it
 // because carrying five hundred bodies to render five hundred titles is how a
 // memory store becomes the most expensive thing in the loop.
-func (s *Store) MemoryIndex(limit int) ([]MemoryStub, error) {
+func (s *Store) MemoryIndex(owners []string, limit int) ([]MemoryStub, error) {
 	// THE INDEX IS A RANKING, NOT A CHRONOLOGY. Memories that have proved useful
 	// lead; updated sequence only settles equal-use rows.
+	where, ownerArgs := ownerFilterSQL(owners)
 	statement := `
 		SELECT id, title, type, scope FROM memories
-		WHERE status = ?
+		WHERE status = ?` + where + `
 		ORDER BY use_count DESC, updated_seq DESC, id`
-	args := []any{MemoryActive}
+	args := append([]any{MemoryActive}, ownerArgs...)
 	if limit > 0 {
 		statement += ` LIMIT ?`
 		args = append(args, limit)
@@ -669,7 +1079,10 @@ const rrfK = 60
 // shorter than the index keeps — is not an error and not an empty answer: the
 // two arithmetic orderings still rank, so a person who types "ok, do it" is
 // still shown what has mattered most and what changed last.
-func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) {
+func (s *Store) MemoryCandidates(owners []string, terms string, limit int) ([]MemoryStub, error) {
+	if len(owners) == 0 {
+		return nil, fmt.Errorf("memory candidates: %w: no owner was named", ErrInvalid)
+	}
 	if limit <= 0 {
 		limit = MemoryCandidatesDefault
 	}
@@ -677,8 +1090,10 @@ func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) 
 	// lexical ranking is left out of the fusion entirely when there is nothing
 	// to match with. The other two still rank every row.
 	lexical := `SELECT '' AS id, 0 AS rank WHERE 0`
+	where, ownerArgs := ownerFilterSQL(owners)
 	args := []any{MemoryActive}
-	if query := ftsQueryFrom(terms); query != "" {
+	args = append(args, ownerArgs...)
+	if query := ftsQueryFrom(terms); query != "" && s.fts {
 		lexical = `
 			SELECT id, ROW_NUMBER() OVER (ORDER BY relevance, updated_seq DESC, id) AS rank
 			FROM (
@@ -692,7 +1107,7 @@ func (s *Store) MemoryCandidates(terms string, limit int) ([]MemoryStub, error) 
 	statement := `
 		WITH active AS (
 			SELECT id, title, type, scope, use_count, miss_count, updated_seq
-			FROM memories WHERE status = ?
+			FROM memories WHERE status = ?` + where + `
 		),
 		lexical AS (` + lexical + `),
 		important AS (
@@ -935,7 +1350,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 	// that rewrote it would be a reader with two shapes. One statement, one
 	// rowid seek per row carried out, and no second read from Go.
 	statement := `
-		SELECT memories.id, memories.type, memories.scope, memories.title,
+		SELECT memories.id, memories.owner, memories.type, memories.scope, memories.title,
 		       memories.text, memories.tags, memories.status, memories.use_count,
 		       memories.miss_count, memories.created_seq, memories.updated_seq,
 		       memories.source_session, memories.source_seq,
@@ -957,7 +1372,7 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 	for rows.Next() {
 		var memory Memory
 		var tags, updatedAt string
-		if err := rows.Scan(&memory.ID, &memory.Type, &memory.Scope, &memory.Title,
+		if err := rows.Scan(&memory.ID, &memory.Owner, &memory.Type, &memory.Scope, &memory.Title,
 			&memory.Text, &tags, &memory.Status, &memory.UseCount, &memory.MissCount,
 			&memory.CreatedSeq, &memory.UpdatedSeq, &memory.SourceSession, &memory.SourceSeq,
 			&updatedAt); err != nil {
@@ -984,22 +1399,28 @@ func queryMemoriesOn(db memoryQuerier, where string, args []any, order string, l
 
 // applyMemoryAdd materializes one added memory. It is shared by the write path
 // and by Rebuild, so a replayed brain and a live one cannot differ.
-func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64) error {
+func applyMemoryAdd(tx *sql.Tx, payload memoryPayload, seq int64, fts bool) error {
+	// A PAYLOAD WITH NO OWNER IS A JOURNAL WRITTEN BEFORE THE COLUMN EXISTED,
+	// and it is answered the way the migration answers its rows: from the scope
+	// the row carries, with a bare `project` quarantined. An insert here must
+	// never land an empty owner — the column is NOT NULL and an empty owner in
+	// a view would be a row nothing can see and nothing can prove.
+	payload.Owner = ownerForReplay(payload)
 	tags, err := memoryTagsJSON(payload.Tags)
 	if err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`
-		INSERT INTO memories (id, type, scope, title, text, tags, status, use_count, created_seq, updated_seq, source_session, source_seq)
-		VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-		payload.ID, payload.Type, payload.Scope, payload.Title, payload.Text,
+		INSERT INTO memories (id, owner, type, scope, title, text, tags, status, use_count, created_seq, updated_seq, source_session, source_seq)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+		payload.ID, payload.Owner, payload.Type, payload.Scope, payload.Title, payload.Text,
 		tags, MemoryActive, seq, seq, payload.SourceSession, memorySourceSeq(payload.SourceSession, seq)); err != nil {
 		return err
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
-func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error {
+func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64, fts bool) error {
 	tags, err := memoryTagsJSON(payload.Tags)
 	if err != nil {
 		return err
@@ -1018,10 +1439,10 @@ func applyMemoryUpdate(tx *sql.Tx, payload memoryUpdatePayload, seq int64) error
 	if changed != 1 {
 		return fmt.Errorf("%w: update targets missing or inactive memory %q", ErrInvalid, payload.ID)
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
-func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64) error {
+func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64, fts bool) error {
 	result, err := tx.Exec(`
 		UPDATE memories SET status = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status = ?`,
@@ -1036,13 +1457,13 @@ func applyMemorySupersede(tx *sql.Tx, payload memorySupersedePayload, seq int64)
 	if changed != 1 {
 		return fmt.Errorf("%w: supersession targets missing or inactive memory %q", ErrInvalid, payload.OldID)
 	}
-	if err := refreshMemoryFTS(tx, payload.OldID); err != nil {
+	if err := refreshMemoryFTS(tx, payload.OldID, fts); err != nil {
 		return err
 	}
-	return applyMemoryAdd(tx, payload.New, seq)
+	return applyMemoryAdd(tx, payload.New, seq, fts)
 }
 
-func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error {
+func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64, fts bool) error {
 	result, err := tx.Exec(`
 		UPDATE memories SET status = ?, updated_seq = ?, source_session = ?, source_seq = ?
 		WHERE id = ? AND status <> ?`,
@@ -1055,9 +1476,20 @@ func applyMemoryForget(tx *sql.Tx, payload memoryForgetPayload, seq int64) error
 		return err
 	}
 	if changed != 1 {
+		// An owner-proven sync tombstone may precede its row. Its journal event
+		// remains the pending tombstone when Rebuild has no row to materialize.
+		if ValidOwner(normalizeOwner(payload.Owner)) && strings.TrimSpace(payload.ID) != "" {
+			var exists int
+			if err := tx.QueryRow("SELECT COUNT(*) FROM memories WHERE id = ?", payload.ID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists == 0 {
+				return nil
+			}
+		}
 		return fmt.Errorf("%w: nothing to forget under %q", ErrInvalid, payload.ID)
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
 // applyMemoryRanking restores the counters one snapshot recorded. It is shared
@@ -1089,7 +1521,7 @@ func memorySourceSeq(sourceSession string, seq int64) int64 {
 	return seq
 }
 
-func applyMemoryRestore(tx *sql.Tx, payload memoryRestorePayload, seq int64) error {
+func applyMemoryRestore(tx *sql.Tx, payload memoryRestorePayload, seq int64, fts bool) error {
 	result, err := tx.Exec(`UPDATE memories SET status = ?, updated_seq = ? WHERE id = ? AND status = ?`,
 		MemoryActive, seq, payload.ID, MemoryForgotten)
 	if err != nil {
@@ -1102,7 +1534,7 @@ func applyMemoryRestore(tx *sql.Tx, payload memoryRestorePayload, seq int64) err
 	if changed != 1 {
 		return fmt.Errorf("%w: restore targets missing or non-forgotten memory %q", ErrInvalid, payload.ID)
 	}
-	return refreshMemoryFTS(tx, payload.ID)
+	return refreshMemoryFTS(tx, payload.ID, fts)
 }
 
 // memoryTagsJSON is why a memory with no tags reads back the same way after a
@@ -1133,7 +1565,13 @@ func memoryTagsJSON(tags []string) (string, error) {
 // superseded or forgotten row matches nothing, so the DELETE stands and the row
 // is out of every search from that instant — no reader has to remember to
 // filter it, and none can forget.
-func refreshMemoryFTS(tx *sql.Tx, id string) error {
+func refreshMemoryFTS(tx *sql.Tx, id string, fts bool) error {
+	if !fts {
+		// NO INDEX, NOTHING TO REFRESH — and nothing to get wrong: a store
+		// running without FTS5 must not have its writes fail because the index
+		// is not there.
+		return nil
+	}
 	if _, err := tx.Exec(`DELETE FROM memories_fts WHERE memory_id = ?`, id); err != nil {
 		return err
 	}
@@ -1145,21 +1583,52 @@ func refreshMemoryFTS(tx *sql.Tx, id string) error {
 }
 
 // memoryPayloadFrom is the one gate every written memory passes through.
+//
+// OWNER IS THE AUTHORITY AND SCOPE IS DERIVED from it (memory_owner.go): a
+// caller that names both gets the owner's scope, and a caller that names only
+// the old scope word is answered as a legacy write — `user` and `env` map to
+// their owners, and a bare `project` maps to the QUARANTINE, because a caller
+// that cannot name the project's key has just demonstrated that it cannot prove
+// the row belongs anywhere. The old `MemoryScopeProject` constant stays part of
+// the surface for the snapshot's shelf words; the write path never trusts it as
+// an identity.
 func memoryPayloadFrom(m Memory) (memoryPayload, error) {
 	memoryType := strings.ToLower(strings.TrimSpace(m.Type))
 	if !validMemoryType(memoryType) {
 		return memoryPayload{}, fmt.Errorf("%w: unknown memory type %q", ErrInvalid, m.Type)
 	}
-	scope := strings.ToLower(strings.TrimSpace(m.Scope))
-	if !validMemoryScope(scope) {
-		return memoryPayload{}, fmt.Errorf("%w: unknown memory scope %q", ErrInvalid, m.Scope)
+	owner := normalizeOwner(m.Owner)
+	if owner == "" {
+		// THE LEGACY CALLER. Only Scope was set. user and env are provable
+		// without anything else; a project is not, and lands in quarantine.
+		switch strings.ToLower(strings.TrimSpace(m.Scope)) {
+		case MemoryScopeUser:
+			owner = OwnerUser
+		case MemoryScopeEnv:
+			owner = OwnerMachine
+		case MemoryScopeProject:
+			owner = OwnerLegacyProject
+		default:
+			return memoryPayload{}, fmt.Errorf("%w: unknown memory scope %q", ErrInvalid, m.Scope)
+		}
 	}
+	if !ValidOwner(owner) {
+		return memoryPayload{}, fmt.Errorf("%w: unknown memory owner %q", ErrInvalid, m.Owner)
+	}
+	scope := OwnerScopeOf(owner)
 	title, text, tags, err := validMemoryBody(m.Title, m.Text, m.Tags)
 	if err != nil {
 		return memoryPayload{}, err
 	}
+	if owner == OwnerLegacyProject && !hasTag(tags, legacyTag) {
+		// THE QUARANTINE CARRIES ITS MARK. A row nobody can prove the owner of
+		// is labeled as one, wherever it is read back — the person who is asked
+		// to re-home it deserves to see that this is what it is.
+		tags = append(tags, legacyTag)
+	}
 	return memoryPayload{
 		ID:    strings.TrimSpace(m.ID),
+		Owner: owner,
 		Type:  memoryType,
 		Scope: scope,
 		Title: title,
@@ -1172,9 +1641,14 @@ func memoryPayloadFrom(m Memory) (memoryPayload, error) {
 // without: something to say. Lengths are counted in runes rather than bytes,
 // because a cap measured in bytes refuses a shorter sentence for being written
 // in a different language.
+// validMemoryBody is the ONE normalization every memory mouth shares: the add
+// door, the update doors and the supersede door all pass through it. It redacts
+// first and then enforces the caps, so a credential cannot ride a title, a body
+// or a tag through a door that forgot to redact. A caller that already redacted
+// loses nothing: the redactor is idempotent over its own output.
 func validMemoryBody(title, text string, tags []string) (string, string, []string, error) {
-	title = strings.TrimSpace(title)
-	text = strings.TrimSpace(text)
+	title = redact.Secrets(strings.TrimSpace(title))
+	text = redact.Secrets(strings.TrimSpace(text))
 	if text == "" {
 		return "", "", nil, fmt.Errorf("%w: a memory with no text says nothing", ErrInvalid)
 	}
@@ -1188,7 +1662,7 @@ func validMemoryBody(title, text string, tags []string) (string, string, []strin
 	}
 	kept := make([]string, 0, len(tags))
 	for _, tag := range tags {
-		if tag = strings.ToLower(strings.TrimSpace(tag)); tag != "" {
+		if tag = redact.Secrets(strings.ToLower(strings.TrimSpace(tag))); tag != "" {
 			kept = append(kept, tag)
 		}
 	}

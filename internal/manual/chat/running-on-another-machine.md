@@ -164,20 +164,25 @@ So before it hands your window over, `codeaf engine` asks whatever is already ho
 workspace which build it is. The check asks which source the running engine was built from,
 so building the same commit twice is the same build and your window attaches to it without
 a word; a build from a changed working tree, or one too old to report a stamp at all, counts
-as another build. Three things can be true:
+as another build. Four things can be true:
 
 - **It is this build.** Your window attaches to it exactly as before. This is the ordinary
   case, and it costs one question on a local socket.
-- **It is an older build** — built earlier, from any file, or too old to answer the
-  question at all. It is replaced, busy or not: it closes its conversations, flushes their
-  transcripts, and a fresh one starts from the binary that is on disk now. The window says
-  `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build holds the
-  workspace now`.
+- **It is an older build, holding work.** Your window joins it and your work carries on. The
+  old process keeps what it was holding and steps aside at its first quiet moment; a host
+  built before this ask ignores the note, so for one of those the line says the work is kept
+  and **your next safe launch once the work is done and every window has left** opens from
+  the new build. An attached idle window counts as holding work, so close it before the
+  handover.
+- **It is an older build, holding nothing.** It hands the workspace over at once and the
+  window says `replaced the older engine on spark (pid <n>, <build>, <binary>) — this build
+  holds the workspace now`.
 - **It is a newer build.** Your window joins it. If its wire is one this binary cannot
   speak, the connection is refused, naming this binary as the older one and
   `codeaf engine --status` as the way to see which is newer.
 
-Only if the older engine will not go is the connection refused, in these words:
+An older engine on another wire, or one too old to be asked at all, is refused, in these
+words:
 
 ```
 engine: spark is still holding this conversation on an older codeaf — run codeaf engine --stop --workspace /home/you/project on spark
@@ -455,13 +460,13 @@ exact sentence each one says.
    travels on the wire like every other answer; nothing about it needs a browser or a
    port. This is the one entry on the list that is a capability, not a limit.
 
-5. **`/settings` opens anyway, and says whose rows these are.** Every tab but Teams writes
-   this machine. The Teams tab is saved on the other machine when that machine can take the
+5. **`/settings` opens anyway, and says whose rows these are.** Every category but AI teams writes
+   this machine. The AI teams category is saved on the other machine when that machine can take the
    change. Opening on any other tab says exactly:
-   `these rows belong to this machine; the Teams tab is saved on the other one.`
-   On the Teams tab it says only what is true there:
+   `these rows belong to this machine; the AI teams category is saved on the other one.`
+   On the AI teams category it says only what is true there:
    `these rows are saved on <machine>.`
-   An older engine, where the Teams tab cannot be saved over the connection, says exactly:
+   An older engine, where the AI teams category cannot be saved over the connection, says exactly:
    `these rows belong to this machine; this conversation reads its profile on the other one.`
 
 ## More of what does not work over --host
@@ -682,10 +687,10 @@ browser and no port, so that road stays open over `--host`.
 `/settings` opens over a connection. On any tab but Teams it says exactly:
 
 ```
-these rows belong to this machine; the Teams tab is saved on the other one.
+these rows belong to this machine; the AI teams category is saved on the other one.
 ```
 
-On the Teams tab it says only what is true there:
+On the AI teams category it says only what is true there:
 
 ```
 these rows are saved on <machine>.
@@ -698,13 +703,13 @@ these rows belong to this machine; this conversation reads its profile on the ot
 ```
 
 The rows on every tab but Teams are this machine's, and those changes apply to what you
-are looking at. The Teams tab is the other machine's when the connection can save it.
+are looking at. The AI teams category is the other machine's when the connection can save it.
 
 **Asking codeaf to change a setting goes the other way.** `settings` and `change_setting`
 run inside the session, which is on the far machine, so they read and write that
 machine's profile, which is the profile the conversation actually obeys. So over a
 connection the two doors land in two different files: the panel edits this laptop, and
-asking edits the machine the work is on. The Teams tab is the exception on the panel.
+asking edits the machine the work is on. The AI teams category is the exception on the panel.
 It saves on the other machine, the same place asking would write a team default.
 
 ## Can I change the Teams settings on another machine, and where do team defaults go over a connection

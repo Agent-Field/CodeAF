@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/exec/bare"
+	"github.com/Agent-Field/codeaf/internal/gitidentity"
 )
 
 const anchorWorkspaceDescription = "Anchor this project-less conversation to the named repository or folder."
@@ -75,6 +76,19 @@ func (a *Agent) AnchorWorkspace(path string) (string, error) {
 	// assembled, so changing only Config would leave their cwd behind.
 	a.config.Workspace = resolved
 	a.config.Place = place
+	// AND THE PROJECT KEY FOLLOWS THE WORKSPACE, exactly as [v3PointAt] states
+	// it: the key IS the workspace's provable identity, so an anchor that moved
+	// the workspace and left the key behind would scope every later project write
+	// and read to the scratch folder this conversation started in rather than the
+	// repository it has just been anchored to. [gitidentity.ProjectKey] is the one
+	// mint, and an unprovable workspace answers "" — the quarantine — exactly as
+	// the launching doors answer it.
+	a.config.MemoryProjectKey = anchoredProjectKey(resolved)
+	// AND THE NEXT ACTION-CAPABLE REQUEST MUST CARRY THE NEW PROJECT'S RULES,
+	// not the scratch project's cached block: recompute and land the binding note
+	// now, while the owner is settled, so a call that acts after this anchor is
+	// bound to the repository it acts in ([Agent.rebindAfterAnchor]).
+	a.rebindAfterAnchor()
 	tools := a.belt()
 	definitions, err := toolDefinitions(tools)
 	if err != nil {
@@ -158,4 +172,15 @@ func resolveWorkspaceAnchor(path, relativeTo string) (string, error) {
 		return root, nil
 	}
 	return filepath.Clean(path), nil
+}
+
+// anchoredProjectKey mints the project identity of a workspace an anchor has
+// just settled, through the one helper every other door uses
+// ([gitidentity.ProjectKey]) and answering "" — the quarantine — when it cannot.
+func anchoredProjectKey(workspace string) string {
+	key, err := gitidentity.ProjectKey(workspace)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(key)
 }

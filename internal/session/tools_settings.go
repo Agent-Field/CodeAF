@@ -83,7 +83,7 @@ const changeSettingDescription = "Change one codeaf setting permanently: the set
 
 const settingsSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"One registry key, read in full"},"search":{"type":"string","description":"Filter the listing by key, label or hint"}},"additionalProperties":false}`
 
-const changeSettingSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"The row's exact registry key"},"value":{"type":"string","description":"New value as text; empty clears it to the default"}},"required":["key","value"],"additionalProperties":false}`
+const changeSettingSchemaJSON = `{"type":"object","properties":{"key":{"type":"string","description":"The row's exact registry key"},"value":{"type":"string","description":"Raw value accepted by settings, not a display label; empty clears it to the default"}},"required":["key","value"],"additionalProperties":false}`
 
 // settingsTools is the pair, or nothing at all inside a task node.
 //
@@ -202,6 +202,9 @@ func (a *Agent) changeSettingTool(registry *config.Settings) bare.Tool {
 			if refusal := modelSlotRefusal(row); refusal != "" {
 				return refusal, true, nil
 			}
+			if row.ChatPresentation().Hidden {
+				return fmt.Sprintf("%q (%s) is unavailable in chat settings; this legacy or resident-only control cannot be changed from chat.", settingLabel(row), key), true, nil
+			}
 			before := row.Value()
 			if err := row.Apply(parsed.Value); err != nil {
 				// The registry's own wording, verbatim. It is the sentence the
@@ -236,13 +239,18 @@ func (a *Agent) settingChanged(registry *config.Settings, key, before string) st
 		return "changed " + key
 	}
 	after := row.Value()
-	if after == before {
-		a.noteSetting(fmt.Sprintf("settings · %s is already %s", row.Label, settingReading(after)))
-		return fmt.Sprintf("%s (%s) was already %s; nothing changed.", row.Label, key, settingReading(after))
+	label := settingLabel(row)
+	timing := toolSettingActivation(row)
+	if timing != "" {
+		timing = " " + strings.TrimSuffix(timing, ".") + "."
 	}
-	a.noteSetting(fmt.Sprintf("settings · %s · %s → %s", row.Label, settingReading(before), settingReading(after)))
-	return fmt.Sprintf("%s (%s) is now %s, saved to the profile — it will still be set the next time codeaf starts. It was %s.%s",
-		row.Label, key, settingReading(after), settingReading(before), projectOverrideWarning(a.config.Workspace, key))
+	warning := projectOverrideWarning(a.config.Workspace, key)
+	if after == before {
+		a.noteSetting(fmt.Sprintf("settings · %s is already %s", label, settingReading(config.ChatChoiceLabel(row.Key, after, after))))
+		return fmt.Sprintf("%s (%s) was already saved as %s; nothing changed.%s%s", label, key, settingDisplayValue(row, after), timing, warning)
+	}
+	a.noteSetting(fmt.Sprintf("settings · %s · %s → %s · saved%s", label, settingReading(config.ChatChoiceLabel(row.Key, before, before)), settingReading(config.ChatChoiceLabel(row.Key, after, after)), timing))
+	return fmt.Sprintf("%s (%s) saved to the profile as %s. It was %s.%s%s", label, key, settingDisplayValue(row, after), settingDisplayValue(row, before), timing, warning)
 }
 
 // settingReading is one value as a sentence can carry it. THE EMPTINESS LAW: a
@@ -316,7 +324,7 @@ func modelSlotRefusal(row config.Setting) string {
 		return ""
 	}
 	if slot.Slot == conversationSlot {
-		return fmt.Sprintf("%q (%s) is the model this conversation is running on, which is not a row in the profile: change it with /model, or on the Providers tab of /settings.", row.Label, row.Key)
+		return fmt.Sprintf("%q (%s) is the model this conversation is running on, which is not a row in the profile: change it with /model, or under Models in /settings.", row.Label, row.Key)
 	}
 	return fmt.Sprintf("%q (%s) is a binding the running session holds rather than a value in the profile, so neither this hand nor the /settings panel can write it. To send codeaf's own auxiliary calls to a particular model, set %q (%s) or %q (%s), or pin one role in %q (%s).",
 		row.Label, row.Key,
@@ -337,27 +345,28 @@ func modelSlotRefusal(row config.Setting) string {
 // word the person would use, and what the row says right now.
 func settingListing(registry *config.Settings, search string) string {
 	needle := strings.ToLower(strings.TrimSpace(search))
-	var out strings.Builder
+	groups := map[string][]string{}
 	matched := 0
-	for _, group := range registry.Groups() {
-		var lines []string
-		for _, row := range group.Rows {
-			if needle != "" && !settingMatches(row, needle) {
-				continue
-			}
-			lines = append(lines, "  "+settingLine(row))
-		}
-		if len(lines) == 0 {
+	for _, row := range registry.Rows() {
+		p := row.ChatPresentation()
+		if p.Hidden || (needle != "" && !settingMatches(row, needle)) {
 			continue
 		}
-		matched += len(lines)
-		if out.Len() > 0 {
-			out.WriteString("\n")
-		}
-		out.WriteString(group.Title + "\n" + strings.Join(lines, "\n") + "\n")
+		groups[p.Category] = append(groups[p.Category], "  "+settingLine(row))
+		matched++
 	}
 	if matched == 0 {
 		return fmt.Sprintf("No setting mentions %q. Call %s with no arguments to see every row.", search, settingsToolName)
+	}
+	var out strings.Builder
+	for _, category := range []string{"General", "Models", "Memory", "Tasks", "AI teams", "Permissions", "Spending", "Connections", "Privacy"} {
+		if len(groups[category]) == 0 {
+			continue
+		}
+		if out.Len() > 0 {
+			out.WriteString("\n")
+		}
+		out.WriteString(category + "\n" + strings.Join(groups[category], "\n") + "\n")
 	}
 	head := fmt.Sprintf("%d settings, as they read now. Change one with %s, naming the key on the left.\n\n", matched, changeSettingToolName)
 	if needle != "" {
@@ -370,9 +379,9 @@ func settingListing(registry *config.Settings, search string) string {
 // true about who may write it. Empty parts are dropped rather than printed as
 // separators with nothing between them — the emptiness law, one line at a time.
 func settingLine(row config.Setting) string {
-	parts := []string{row.Key, row.Label}
+	parts := []string{row.Key, settingLabel(row)}
 	if value := strings.TrimSpace(row.Value()); value != "" {
-		parts = append(parts, value)
+		parts = append(parts, settingDisplayValue(row, value))
 	}
 	if name, pinned := row.PinnedBy(); pinned {
 		parts = append(parts, "set by "+name)
@@ -390,13 +399,22 @@ func settingLine(row config.Setting) string {
 // this session may write it.
 func settingDetail(row config.Setting) string {
 	var out strings.Builder
-	fmt.Fprintf(&out, "%s · %s · %s\n", row.Label, row.Key, row.Category)
-	reading := settingReading(row.Value())
+	p := row.ChatPresentation()
+	fmt.Fprintf(&out, "%s · %s · %s\n", settingLabel(row), row.Key, p.Category)
+	reading := settingDisplayValue(row, row.Value())
 	if receipt := row.Receipt(); receipt != "" {
 		reading += " · " + receipt
 	}
 	fmt.Fprintf(&out, "now: %s\ntakes: %s\n", reading, row.Accepts())
-	if hint := strings.TrimSpace(row.Hint); hint != "" {
+	out.WriteString(settingOptions(row))
+	fmt.Fprintf(&out, "scope: %s\n", p.Scope)
+	if activation := toolSettingActivation(row); activation != "" {
+		out.WriteString(activation + "\n")
+	}
+	if p.Hidden {
+		out.WriteString("Unavailable in chat settings; legacy or resident-only control.\n")
+	}
+	if hint := strings.TrimSpace(settingHint(row)); hint != "" {
 		out.WriteString(hint + "\n")
 	}
 	if name, pinned := row.PinnedBy(); pinned {
@@ -408,6 +426,8 @@ func settingDetail(row config.Setting) string {
 		out.WriteString(row.SelfServiceRefusal() + "\n")
 	case modelSlotRefusal(row) != "":
 		out.WriteString(modelSlotRefusal(row) + "\n")
+	case p.Hidden:
+		out.WriteString("This control cannot be changed from chat.\n")
 	default:
 		fmt.Fprintf(&out, "I can change this one with %s.\n", changeSettingToolName)
 	}
@@ -418,7 +438,8 @@ func settingDetail(row config.Setting) string {
 // search box matches on (internal/tui3's settings.go), so a word that finds a
 // row in the panel finds it here.
 func settingMatches(row config.Setting, needle string) bool {
-	haystack := strings.ToLower(row.Key + " " + row.Label + " " + row.Hint + " " + row.Category)
+	p := row.ChatPresentation()
+	haystack := strings.ToLower(strings.Join(append([]string{row.Key, row.Label, row.Hint, row.Category, p.Label, p.Category, p.Description, row.Value(), settingDisplayValue(row, row.Value())}, p.Aliases...), " "))
 	return strings.Contains(haystack, needle)
 }
 
@@ -466,7 +487,10 @@ func nearSettingKeys(rows []config.Setting, asked string) []string {
 	var hits []hit
 	for _, row := range rows {
 		key := strings.ToLower(row.Key)
-		haystack := key + " " + strings.ToLower(row.Label)
+		if row.ChatPresentation().Hidden {
+			continue
+		}
+		haystack := key + " " + strings.ToLower(row.Label+" "+settingLabel(row))
 		score := 0
 		for _, word := range words {
 			if strings.Contains(haystack, word) {

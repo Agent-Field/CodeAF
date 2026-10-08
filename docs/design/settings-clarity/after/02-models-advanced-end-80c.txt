@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › Search all settings
+ consolidate                                       deepseek/deepseek-v4.1-flash
+ guardian                                          deepseek/deepseek-v4.1-flash
+ intake                                            deepseek/deepseek-v4.1-flash
+ jobname                                           deepseek/deepseek-v4.1-flash
+ router                                            deepseek/deepseek-v4.1-flash
+ sentinel                                          deepseek/deepseek-v4.1-flash
+ spellout                                          deepseek/deepseek-v4.1-flash
+ taskname                                          deepseek/deepseek-v4.1-flash
+ title                                             deepseek/deepseek-v4.1-flash
+
+ roles · worker
+ worker                                            deepseek/deepseek-v4.1-flash
+
+ roles · checker
+ checker                                           deepseek/deepseek-v4.1-flash
+ careful                                           deepseek/deepseek-v4.1-flash
+ repair                                            deepseek/deepseek-v4.1-flash
+ shaper                                            deepseek/deepseek-v4.1-flash
+ vision                                            deepseek/deepseek-v4.1-flash
+
+ roles · planner
+ designer                                          deepseek/deepseek-v4.1-flash
+ division                                          deepseek/deepseek-v4.1-flash
+ handoff                                           deepseek/deepseek-v4.1-flash
+ markreader                                        deepseek/deepseek-v4.1-flash
+ planner                                           deepseek/deepseek-v4.1-flash
+ routerconfirm                                     deepseek/deepseek-v4.1-flash
+ compact context at                                                         60%
+ tokens reserved for replies                                          65536 tok
+ working context limit                                               160000 tok
+ context reuse limit                                                       250%
+ reply guard                                                                 on
+
+  Restart the CLI to apply this to already-open chats
+  on cuts a reply that has come apart — one line or one letter repeated,
+  alphabets mixed inside words — throws it away and asks once more. Code
+  blocks are never judged.
+
+
+─ This profile ─────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · tab next place · esc close

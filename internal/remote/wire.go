@@ -1031,6 +1031,9 @@ type Welcome struct {
 	// under a project on the laptop. Empty is an engine that answers no world,
 	// which is version 3 and every build before it.
 	PlacesRoot string `json:"placesRoot,omitempty"`
+	// ConversationDelete advertises the permanent deletion door.
+	ConversationDelete bool `json:"conversationDelete,omitempty"`
+	TaskDelete         bool `json:"taskDelete,omitempty"`
 
 	// ── version 2 ───────────────────────────────────────────────────────────
 
@@ -1219,6 +1222,8 @@ type Welcome struct {
 	// with the sentence the window has always said; it never sends the window
 	// back to the laptop's own teams file, which the far session cannot see.
 	Teams bool `json:"teams,omitempty"`
+	// Membership writes require both halves to preserve reporting and delivery boundaries.
+	TeamMembershipVersion int `json:"team_membership_version,omitempty"`
 
 	// Delegation says this engine ANSWERS THE DELEGATION DOORS
 	// ([MethodTeamsDefaults], [MethodTeamsPackets], [MethodTeamsRaise],

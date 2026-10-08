@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+ …  Memory   Tasks   AI teams   Permissions   Spending   Connections   Privacy
+
+ › Search all settings
+ web search provider                                                       auto
+ openrouter key                                                  • ••••••••used
+ + add a provider            an OpenAI-compatible base URL · a name of your own
+ exa key                                                                not set
+ firecrawl key                                                          not set
+ jina key                                                               not set
+ Advanced                                                                  show
+
+ providers
+ · DeepSeek                                                                 key
+ · Z.ai                                                            region · key
+ · Moonshot                                                        region · key
+ · MiniMax                                                                  key
+ · Alibaba Qwen                                                    region · key
+ · Codex                                                                browser
+ · Ollama
+ · Custom OpenAI-compatible API                                   address · key
+
+ analytics
+ · Amplitude                                                                key
+ · ChartMogul                                                               key
+ · Dovetail                                                                 key
+ · Geckoboard                                                               key
+ · Mixpanel                                                                 key
+ · PostHog                                                              sign in
+ · Segment                                                                  key
+
+ billing
+ · Braintree                                                                key
+ · Chargebee                                                                key
+ · ChargeOver                                                               key
+ · FastSpring                                                               key
+
+  Applies on the next web search
+  now firecrawl, keyless — set search.exaKey or search.firecrawlKey to raise
+  it
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────
+ ↑↓ move · ←→ categories · enter act · tab next place · esc close

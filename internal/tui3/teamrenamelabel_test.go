@@ -53,20 +53,10 @@ func TestARenamedTeamUpdatesTheRunLabelAndTheComposer(t *testing.T) {
 	}
 
 	a.tp.sel = harbor
-	a.tp.host = a.frontTabKey()
-	before := a.teamsComposerWord()
-	if !strings.Contains(before, "harbor") {
-		t.Fatalf("the composer does not name the team: %q", before)
-	}
 	if err := a.teamRename(harbor, "dock"); err != nil {
 		t.Fatal(err)
 	}
-	after := a.teamsComposerWord()
-	if strings.Contains(after, "harbor") || !strings.Contains(after, "dock") {
-		t.Fatalf("after the rename the composer says %q", after)
-	}
-	a.input.insert("hi")
-	if pieces := a.seamPieces(120); !strings.Contains(pieces.name, "dock") {
-		t.Fatalf("the seam kept the old team: %q", pieces.name)
+	if text := teamsFrameText(a); strings.Contains(text, "harbor") || !strings.Contains(text, "dock") {
+		t.Fatal(text)
 	}
 }

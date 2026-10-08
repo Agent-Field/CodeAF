@@ -30,6 +30,13 @@ below is made, and the background tidy never runs. With it off, `/remember`,
 memory is off for this session · turn it on under /settings
 ```
 
+**Turning memory off does not turn conversation search off.** Everything said
+in this machine's conversations stays indexed and `search_conversations` still
+works — searching what was said is reading your own history, not remembering
+about you, and the memory row takes the second away, not the first. The
+`remember` verb is off the belt entirely, so the model cannot try to save
+anything.
+
 Skills are not memory, and turning memory off keeps them: the skills in your
 Claude Code, Codex and other skill folders still reach the conversation, carried
 with a message that suits them and attached by `/skill`
@@ -145,11 +152,48 @@ that teaches rather than an error. It did not always: a first run once reported
 every reason a file will not open, and a build old enough to print it is a build
 worth replacing.
 
+## It said no such column: owner
+
+That sentence is the second half of `memory is off for this session:`, and it
+means the saved store was written by an older codeaf that the version you just
+opened did not know how to read. It is a mismatch between the file and the
+program, not damage to the file.
+
+The repair is the newer codeaf itself. Its first open of the file adds what the
+old file was missing and reads the same lines back, keeping each note's words,
+where it came from and whether it was still active. A note the old store kept as
+**this project** had no way to name its project, so it also gains the quarantine
+marker `legacy-project` and needs a proven owner before any conversation is
+shown it again. There is nothing to move aside and nothing to restore by hand.
+
+**A window whose conversation is held by an engine keeps talking to that engine
+until a newer build takes its place.** That engine is a process of its own on the
+machine holding the workspace; installing a newer codeaf beside it does not
+change it. So:
+
+- Update codeaf on the machine holding the workspace.
+- Reconnect or open a conversation in that workspace. On that same machine a
+  newer build replaces the older engine as the window connects, busy or not — a
+  turn it catches stops where it is and keeps its partial reply — and the new
+  engine repairs the file as it opens.
+- A window held by an engine on **another** machine is not reached by this
+  machine's reconnect: update codeaf there too, then when its work is safe run
+  `codeaf engine --stop --workspace <that folder>` there and reconnect.
+  `codeaf engine --status` names the engine if you are unsure which folder it is.
+
+A conversation on this machine that no engine is holding is simpler: quit codeaf
+and open it again, and the file is repaired as it opens. An idle engine of the
+same build may restart to pick up a changed terminal environment; a busy one
+keeps running and is only replaced when a newer build connects. Nothing already
+saved is at risk while it waits.
+
 ## Where is everything you remember kept
 
 In `~/.codeaf/graph.db`, one file, made the first time codeaf runs. Memories,
-every conversation this machine has held, and the work it has run are all in it,
-which is why a memory kept in one project is there in the next.
+every conversation this machine has held, and the work it has run are all in it.
+One file holding every project's lines is not the same as every project seeing
+them: a memory kept as **you** or **this machine** is there in the next project,
+while one kept as **this project** stays with the workspace it was learned in.
 
 `CODEAF_HOME` moves the whole folder — set it and codeaf keeps everything
 somewhere else, which is how a disposable run gets a brain of its own without
@@ -357,6 +401,12 @@ an empty message, and a continuation shorter than three words — `yes`, `go on`
 error, no warning, no memory in the prompt. A memory failure is never allowed to
 break the thing you actually asked for.
 
+**One advisory is not on this path.** A prior *observed* attempt — a `bash` call
+that failed or was blocked — is read **locally** from your saved memories before
+the first request, under your current circumstances, and is bounded to what is
+relevant to what you are asking. It does not depend on the router's ranking or
+this small model (`Remembering a failed method or tool`).
+
 ## Does a remembered line show its age?
 
 Yes, and it is told. Every line in the `<memory>` block carries when it was last
@@ -400,8 +450,9 @@ stopped being true. So it now says one dim line, exactly as `remember` and
 `forget` do.
 
 **The old line is not destroyed.** It is retired, not deleted: it leaves every
-list, every search and every message, and the record of what it said survives.
-If the replacement is wrong, `/remember` the original and it is written back.
+memory list and every memory search, and stops riding into a message, but the
+record of what it said survives. If the replacement is wrong, `/remember` the
+original and it is written back.
 
 The background tidy can retire a line the same way, and says so in the same dim
 register — `memory tidied · 2 merged · 1 superseded`. It is held to a narrower
@@ -410,10 +461,10 @@ correction.
 
 ## Does a memory count as used when it actually helped?
 
-It asks. When a message was answered with remembered lines in front of it, the
-same cheap pass that reads the exchange afterwards is also shown those lines and
-asked which of them **bore on the answer** — as in, would the reply have been
-different without it. It costs no extra call and about ten words of answer.
+Only where a benefit was **observed**, never where a model merely said so. The
+cheap pass that reads the exchange afterwards still runs, but its answer about
+which lines it leaned on is diagnostic and does **not** train the ranking:
+ordinary extraction no longer records a benefit count from a turn's self-report.
 
 That number is what `helped 7` counts in `/memory`, and it is one of the three
 things the shortlist is ranked by. It counts **help, not retrieval**: a line put
@@ -466,10 +517,11 @@ even when there is no transcript file beside the current conversation.
 - Only messages already indexed in this store are searched. Memory-off history,
   failed or pending index writes, other stores and spilled file contents are not
   included. A miss does not prove the subject was never discussed.
-- **It is off when memory is off.** The conversations are kept in the same place
-  the memories are, so the `memory` row in `/settings` turned off means nothing
-  is written and there is nothing to search. Task workers inherit read-only search
-  when their parent has it; this does not enable memory writes or worker-message indexing.
+- **It survives memory being turned off.** Search reads the same store the
+  memories live in, so turning the `memory` row off stops new memories being
+  written — it does not disable or empty an index already there. With no index
+  yet, there is nothing to search. Task workers inherit read-only search when
+  their parent has it; this does not enable memory writes or worker-message indexing.
 - **It is not the same as what is remembered.** The remembered lines are a few
   durable facts, extracted and rewritten; this is the conversation in its own
   words. Asked what was decided, codeaf searches and quotes rather than
@@ -512,6 +564,12 @@ all — which is most passes. The line arrives in whichever conversation you mos
 recently touched, if any is open; on a machine with no window open there is no
 line, and the change is simply there the next time you look at `/memory`.
 
+If a tidy write fails, it reports an error rather than recording a successful
+no-op. Successful changes from that pass remain, but its completion watermark
+is not advanced, so the failed work stays eligible for retry. Write failures
+are also journaled when the store can accept the failure record. Quarantined
+rows are excluded even if a project key is accidentally set to `legacy`.
+
 **When it runs.** It rides the same 5-minute background pass that checks
 everything standing, and three things have to be true at once: memory is **on**,
 **nobody has said anything anywhere for fifteen minutes**, and the last tidy was
@@ -520,8 +578,10 @@ must have changed since the last one — one new line has already been settled
 against its neighbours on the turn that wrote it, so there would be nothing to
 merge it with.
 
-**What it may do.** It reads the fifty most recently touched lines, grouped by
-how far each one's truth reaches, and answers with at most **eight** changes:
+**What it may do.** It reads the fifty most recently touched lines — only yours and
+this machine's, never a project you are not currently in and never what is in
+quarantine — grouped by how far each one's truth reaches, and answers with at most
+**eight** changes:
 
 - **merge** two lines that say the same thing into one clearer line, keeping
   every fact both of them carried;
@@ -529,7 +589,7 @@ how far each one's truth reaches, and answers with at most **eight** changes:
   true now in its place.
 
 **What it costs.** One call on the **small work** class — the `consolidate` role
-in `/settings` → Providers — a few times a day at most. It spends under the same
+in `/settings` → Models — a few times a day at most. It spends under the same
 daily budget as everything else that runs in the background, and it is the first
 thing a spent day stops paying for.
 
@@ -577,12 +637,16 @@ remembered · deploys on Fridays
 
 `/remember <text>` is the same thing typed as a command. So is the `remember`
 tool, which codeaf reaches for itself when you have stated something durable: it
-takes the line and, optionally, how far the truth reaches — `user` for something
-true about you everywhere (the default), `project` for something true only in
-this project, `env` for something true only on this machine.
+takes the line and, optionally, how far the truth reaches — `project` for
+something true only in this project (the default, and what an empty scope means),
+`user` for something true about you everywhere, `env` for something true only on
+this machine. Only `/remember` is the personal save.
 
 All three go through the same settling step, so saying it twice refines one
-memory rather than making a second.
+memory rather than making a second — **and the settling step no longer needs
+the model to be up**: if the small memory model cannot answer, the line is
+still kept through the store's own duplicate check, and the failed settle is
+recorded in the journal rather than lost.
 
 ## Forgetting something
 
@@ -605,7 +669,8 @@ dropped all three would be losing two things you never named.
 
 A dropped memory leaves a tombstone rather than a hole — the record that you
 asked for it to be forgotten survives, and the memory itself is out of every
-list, every search and every message from that instant.
+memory list and every memory search from that instant, and no longer travels
+into a message.
 
 ## What does remembering cost?
 
@@ -645,24 +710,68 @@ reading as three times the price of its neighbours. `/cost` also names how many
 of those paid requests were empty at their ceiling.
 
 You can point that row at a different model — the **reflex** row in
-`/settings` → Providers — or pin the
+`/settings` → Models — or pin the
 `reflex` role by itself under `pinned roles`. A change is live: the next turn's
 pair uses it.
 
 ## Where is it kept, and does a task see it?
 
 It is kept in `~/.codeaf/graph.db`, which is per person rather than per
-conversation or per project — so something remembered in one repository is
-remembered in the next. `CODEAF_HOME` moves it with everything else codeaf
-keeps. The same file holds every message of every conversation, which is what
+conversation — but **not** one flat pool: what each conversation is SHOWN
+depends on who the memory belongs to.
+
+- A memory kept as **you** is yours everywhere — every project, every
+  conversation.
+- A memory kept as **this project** belongs to that project and is shown only
+  in conversations running in it. Two repositories can hold genuinely
+  different truths about the same words, and neither one's memory leaks into
+  the other's conversation: the router's shortlist, a `/memories <query>` and
+  a `/forget <query>` in this project can never answer with another project's
+  memory.
+- A memory kept as **this machine** stays on this machine.
+
+The scope depends on how you save it: an omitted scope on the `remember`
+tool — and the same instruction said in words — means **this project**, while
+`/remember` is the explicit personal save and keeps the memory as **you**.
+
+Which project a conversation is in is proved, not guessed: the project's git
+`origin` URL (folded so that an SSH clone and an HTTPS clone of the same
+repository are the same project), or the folder itself when there is no
+remote. A memory whose project cannot be proved — rows kept by older builds
+that recorded only the word `project` — is **quarantined** rather than
+re-attributed: it is never shown to any conversation automatically, and the
+ones whose source conversation can be traced to a folder are moved back to
+that project's own memories. The rest wait on the memory place under the
+project shelf, marked `legacy-project`, for you to keep, re-word or drop.
+
+`CODEAF_HOME` moves the whole file with everything else codeaf keeps. The
+same file holds every message of every conversation, which is what
 `search_conversations` searches; the transcripts themselves stay in each
 conversation's own folder.
 
-**A task gets the same treatment as a message.** When work is handed off to a
-task, the router is asked once against that task's brief, and whatever it names
-is put at the top of the task's own instructions. The task never writes memories
-of its own: a family of eight tasks would otherwise be eight writers on one
-brain, all blind to each other.
+**A task is bound before it starts, and the ordinary lookup is separate.** Before
+a task's worker makes its first request, the approved rules and confirmed
+decisions the conversation can see are read straight from your saved memories on
+this machine — no model, no router, no provider needed — so a provider that is
+slow or down cannot stop a task seeing a rule it must obey. Those binding lines go
+in first and are never crowded out by the advisory history. The **router's
+relevant-memory shortlist is the other, ordinary path**, the same advisory lookup
+any message gets: it is extra, it may arrive after the work has begun, and it is
+never what carries an approved rule. Two limits are honest here. The binding block
+is bounded, so when more approved lines exist than fit at once, the ones that do
+not fit are left out rather than a receipt or a decision being clipped. And a
+task's worker gets the context **read-only**: a task never writes memories of its
+own, so a family of eight tasks cannot become eight writers on one brain.
+
+**There is no team shelf.** A memory belongs to you, to one workspace (proved by
+its git identity, or the folder itself when there is no remote) or to this
+machine — no door mints a memory owned by a whole team, and nothing shares a
+line with another person's account automatically. That is about **ownership**,
+not about who reads it: a team's manager and every new member run in that same
+workspace, so its project-scoped memories reach them as they reach a conversation
+(`team-manager`, *When a manager starts a member*), and a task worker gets the
+same scoped context read-only and writes nothing back (`how-tasks-run`, *What the
+task actually reads*).
 
 ## Do you remember errors and how they were fixed?
 
@@ -696,8 +805,10 @@ Only **one** suggestion is ever offered — the one with the best record — and
 nothing at all is said when the record is worse than three tries in five, because
 a coin toss dressed as advice is worth less than silence.
 
-This only happens **after** something has already failed. Nothing is looked up
-before a command runs, and a command that works is never annotated.
+This suggestion only happens **after** something has already failed: nothing of
+its kind is looked up before a command runs, and a command that works is never
+annotated. The separate prior-attempt advisory further down is different — it is
+read before the model answers a relevant turn.
 
 Only `bash` is remembered this way, because a `bash` call's answer is a command
 you could run again. `grep` and `find` are not: their answer is the pattern that
@@ -795,6 +906,31 @@ imported 12 memories from memory.md
 
 After that the file is gone from codeaf's view and the store is the only memory.
 
+**The rename is the last thing that happens.** If the file could not be read in
+full, or a line could not be kept, the file stays exactly where it is, the
+failure is written into the store's journal, and the import is tried again on a
+later turn. A retry never makes duplicates: a line the first attempt already
+kept is recognised as kept and skipped, so a file that half-imported once
+finishes cleanly the second time.
+
+## When a memory write fails
+
+Memory writes used to fail silently — an extraction the small memory model
+could not settle, a line the store refused, an import that stopped halfway.
+Now every failure lands in the store's journal (`memory_write_failed`, with
+the door that failed and the reason), and the conversation says one dim line
+about it, at most once every five minutes however many failures pile up:
+
+```
+couldn't settle a memory just now · the journal has the reason
+```
+
+If the store itself is what failed — a disk out of room, a file that will not
+take writes — the reason goes to `~/.codeaf/v3/memory-failures.log` instead,
+one line per failure, so there is always somewhere the answer lives. Nothing
+is retried automatically except the legacy import above; the next turn's
+extraction simply tries again the normal way.
+
 ## It used to say preparing saved context — why is that gone, and does the lookup slow my answer down?
 
 It is gone because **the lookup is not a wait any more**, and a status word for
@@ -826,3 +962,168 @@ the time it does not.
 **What bounds it now.** It acts on a silent machine after **two seconds** by
 moving to a different one, and stops trying after **eighteen**. Saved memories are
 never deleted by a lookup that ran out of time.
+
+## Do ordinary decisions and conditional rules survive a fresh conversation?
+
+Ordinary exchanges can save a project decision, its reason, rejected alternatives,
+and circumstances that would justify reconsidering it. You do not need a memory
+command. Conditions and exceptions stay with the supporting source words: an
+offline release-runtime rule does not forbid network use during development.
+Automatic observations stay in their project unless your words explicitly make
+them apply across projects. The ordinary remember tool also defaults to project;
+`/remember` retains its explicit personal-save behavior.
+
+Explicit rules and decisions with supporting user words are read locally before
+the first reply request. A standing order authorized to act unattended is bound
+the same way: its run reads this project's approved rules read-only before its
+first action and writes nothing back, and when memory is on a run that cannot load
+those rules refuses and asks for you instead of acting unbound. Optional semantic recall can arrive later.
+Source words outrank interpretations; assistant assertions do not confirm test
+outcomes. A binding claim is judged against its own supporting span, not every
+word of the turn, so a quotation of ordinary talk cannot manufacture a rule. The
+containing sentence must be an instruction rather than a question or a quotation of
+something the person rejected, so "Should we never use pandas?" is not a rule, while
+"Please make sure the release never uses pandas" is. Scope
+is read the same way: a project rule stays in its project, a rule that says on this
+machine may apply across projects on this machine, and "everywhere in this project"
+is still just this project.
+Observed tool results carry receipt identities and a source revision; automatic
+extraction has only the current turn's receipts. Dirty or
+untracked sources cannot establish a current test result; inspect them again.
+Legacy notes have less evidence, and should be treated as old assertions.
+
+## How are cross-project consequences noticed or dismissed?
+
+A successful full read can establish a dependency when the consumer references
+the exact producer path, including a literal Python pathlib chain. Matching names
+alone do not establish a connection. After the producer changes, memory checks a
+small neighborhood and re-reads the consumer assumption. A changed file does not
+prove breakage: the assistant should inspect the contract before offering a useful
+follow-up. This does not authorize edits in another project. Dynamic imports,
+partial reads, arbitrary shell programs and delegated-worker receipts are not
+resolved by this adapter.
+
+Impact checks are driven by observed state, not a word list: a producer whose
+source truly changed while the re-read consumer assumption still holds is offered
+however the request was worded, and an unchanged file stays quiet. A repeated read
+of the same content does not reset the recorded baseline.
+
+Dismissal is precise. "dismiss that" drops an unmistakable single offer; with
+several held, naming the file dismisses just that one and an explicit plural
+("dismiss those") drops the whole batch. A bare "dismiss" that names nothing drops
+nothing. "do not dismiss" and "don't dismiss" are read as the opposite and keep the
+offer. A dismissal suppresses by exact content evidence, survives a restart, and a
+later content change can be offered again. The notice is context put in front of
+the assistant, not proof the person saw or read it; there is no global
+user-awareness model.
+
+## Can a forgotten thing come back or will it be relearned
+
+`/forget` removes the matching saved claim and suppresses all its recorded sources.
+It is gone from every memory list and every memory search, and it is no longer carried
+into a message. Derived claims cannot use those sources, and automatic extraction
+cannot save the same suppressed evidence again under a new memory identity.
+
+**Searching an old conversation does not bring it back.** `search_conversations`
+reads your indexed history — the words exactly as they were said — so finding the
+decision where you first made it is reading, not remembering, and that match does
+not reactivate the line. It is the suppression above that makes forgetting hold,
+not the absence of a search. If the decision still holds, `/remember` it again and
+it becomes a carried line. A genuinely new source may support a new claim.
+Explicitly completed or abandoned work can expire from recall while remaining in
+the evidence history.
+
+## Will a future intention automatically schedule work?
+
+An intention can be retained with its prerequisite, but memory does not schedule
+it. When available, the existing `stand` tool proposes a standing order and uses
+its existing ratification, triggers and spending rails. Recognizing an opportunity
+never authorizes an unrelated edit. Memory adds no second scheduler.
+
+
+## Can I inspect the source behind a saved claim?
+
+The assistant can use `memory_evidence` for one saved memory id when its supporting
+source matters to the work. It returns the source words or actual receipt, conditions,
+rationale and circumstances for reconsidering the decision. Secret-shaped spans are
+replaced with a marker before anything is kept or shown, so a credential spoken beside
+a real rule does not travel with it. The same access and
+validity rules apply: forgotten or expired evidence is unavailable, and a stale source
+needs a fresh inspection. This read is bounded; original conversation history can still
+be searched separately.
+
+## Remembering a failed method or tool — will that stop you trying it again, and what if the inputs change?
+
+**No.** Remembering a failure does not stop the tool being tried again. The
+prior failure is shown **before** a matching action rather than only after a
+failure. When a `bash` call fails, or is blocked before it runs, one row is
+written the moment the call ends — no model is asked anything, so a single
+extraction that found nothing, or a turn that rolled over, cannot lose it. The
+row keeps the exact **action** that ran, the **goal** it served, the **observed
+receipt** in its own words, and the **circumstances** it was earned under.
+
+This is a different path from an ordinary remembered note reaching the model. A
+note goes through the router's ranking and its small relevance model, and only the
+two or three lines that survive are shown. This observed-outcome advisory is read
+**locally**, from your saved memories, before the first request goes out, chosen by its
+own relevance to your turn and bounded to the rows that are relevant — **it does not
+depend on the router's ranking or its small relevance model** and does not wait for
+one.
+
+On a later turn, before the first request of the answer goes out, a prior failed
+or blocked attempt that is **relevant to what you are asking** is put in front of
+the model as an advisory line:
+
+```
+- Prior observed attempt [different source snapshot, seen 2026-10-03]: `bash: make build` failed; receipt "make: *** No rule to make target 'build'".
+```
+
+It is history, not a prohibition and not a cause: what failed once may work now,
+and the line says so. **It never bans the tool, and nothing reads a memory to block
+a call.** When the inputs, the tree or the circumstances have changed the agent is
+free to try it again, or to take another route — the line may shape the choice but
+does not settle it. It never promises a retry either: it is advice in front of a
+decision, not the decision. A source snapshot, the day it was seen, or a launcher every
+row genuinely shared is stated **once** above the rows instead of on every row, so
+the bounded space is spent on observed work rather than on repetition; a row whose
+own source or day differs keeps its own bracket. A failure of a task you are not working on stays quiet. A
+successful call is not remembered on its own, so this is not a list of everything
+that has ever worked — but where a later success was observed on the same work,
+the block names it beside the failure as an `Observed successful alternative`.
+
+The label in the brackets is honest about circumstances:
+
+- **same source snapshot** — the failure was earned under exactly the commit and
+  the uncommitted changes the tree has now;
+- **different source snapshot** — the tree has moved since; the failure may no
+  longer apply, so it invites a fresh check;
+- **circumstances unknown** — the source could not be identified, and it is never
+  presented as current.
+
+A blocked call — a refused door, a hand taken off the belt — is recorded as
+**blocked**, never as a failure, because a refusal is not proof that the approach
+cannot work. An overall success on one command never proves a sub-check passed;
+the row is only ever one observed result.
+
+The receipt is untrusted text and is **quoted** rather than obeyed, and any
+secret-shaped span in it is redacted before it is stored. `/forget` retires the
+claims a failure was provenance of, and the failures learned from the same
+receipt with them — an unrelated failure in the same project is untouched, and a
+genuinely new observation is kept. Turning memory off turns this off with it.
+
+## What happens to old command results when input files change?
+
+If a command failed last week and the data file has changed since, codeaf keeps
+that old result as history but does not treat it as current proof. The recorded
+failure stays in memory as a historical advisory: it says what was observed
+once, under the source snapshot it ran against, so it can shape the next
+decision. A changed input does not automatically erase or retire that history,
+and it does not force a rerun. A changed file is a reason to look again, not proof
+either way.
+
+What it must not do is call the old result still true. A fresh inspection of the
+changed file is needed before any prior result may be reported as current; until
+then the failure is an old observation, not a fact about now. Depending on the
+task, codeaf may rerun the command, read the changed file, or adapt its approach.
+Nothing about the change itself guarantees the command will be tried again, and
+nothing about it guarantees the old failure is forgotten.

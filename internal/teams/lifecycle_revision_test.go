@@ -1,0 +1,127 @@
+package teams
+
+import (
+	"errors"
+	"os"
+	"testing"
+	"time"
+)
+
+func TestDisbandPreservesOtherMembershipsAndEndsReportingRecursively(t *testing.T) {
+	f := &File{Teams: []Team{
+		{ID: "aaaaaaaaaaaa", Name: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "worker", Home: true}}},
+		{ID: "bbbbbbbbbbbb", Name: "child", Parent: "aaaaaaaaaaaa", Manager: "child-manager", Members: []Member{{Key: "child-manager"}, {Key: "worker"}}},
+		{ID: "cccccccccccc", Name: "other", Manager: "other-manager", Members: []Member{{Key: "other-manager"}, {Key: "worker"}}},
+	}}
+	must(t, f.Disband("aaaaaaaaaaaa", time.Unix(100, 0), "report"))
+	parent, _ := f.Team("aaaaaaaaaaaa")
+	child, _ := f.Team("bbbbbbbbbbbb")
+	other, _ := f.Team("cccccccccccc")
+	if !parent.Closed() || !child.Closed() || other.Closed() || !other.Holds("worker") || parent.Report != "report" {
+		t.Fatalf("incorrect cascade: %+v", f.Teams)
+	}
+	if _, ok := f.Home("worker"); ok {
+		t.Fatal("lost reporting manager was implicitly replaced")
+	}
+}
+
+func TestConversationDeleteRejectsLegacyManagerChoicesWithoutMutation(t *testing.T) {
+	for _, choices := range []map[string]string{nil, {"parent": "", "child": ""}, {"parent": "replacement", "child": "replacement"}} {
+		f := &File{Teams: []Team{
+			{ID: "parent", Name: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "replacement"}}},
+			{ID: "child", Name: "child", Parent: "parent", Manager: "manager", Members: []Member{{Key: "manager"}, {Key: "replacement"}}},
+		}}
+		if err := f.RemoveConversation("manager", choices, time.Now()); err == nil || err.Error() != f.ManagerRemovalMessage("manager") {
+			t.Fatalf("legacy deletion accepted: %v", err)
+		}
+		for _, team := range f.Teams {
+			if team.Closed() || team.Manager != "manager" || !team.Holds("manager") {
+				t.Fatalf("refusal mutated team: %+v", team)
+			}
+		}
+		must(t, f.SetManager("child", "replacement"))
+		must(t, f.SetManager("parent", "replacement"))
+		must(t, f.RemoveConversation("manager", nil, time.Now()))
+		for _, team := range f.Teams {
+			if team.Closed() || team.Manager != "replacement" || team.Holds("manager") {
+				t.Fatalf("reassigned deletion: %+v", team)
+			}
+		}
+	}
+}
+
+func TestDisbandHistoryRejectsDecisionAndTrafficWrites(t *testing.T) {
+	dir := packetTeams(t)
+	p, err := Raise(dir, conflict())
+	must(t, err)
+	before, _ := os.ReadFile(DecisionsPath(dir, p.Origin))
+	must(t, Update(dir, func(f *File) error { return f.Disband(p.Origin, time.Now(), "") }))
+	if _, err = Decide(dir, p.ID, Person, "1", "late"); !errors.Is(err, ErrClosed) && !errors.Is(err, ErrNotDecider) {
+		t.Fatalf("closed decision: %v", err)
+	}
+	if err = AppendTraffic(dir, p.Origin, Entry{Kind: KindNote, From: FromYou, To: ToRoom, Text: "late"}); !errors.Is(err, ErrClosed) {
+		t.Fatalf("closed traffic: %v", err)
+	}
+	after, _ := os.ReadFile(DecisionsPath(dir, p.Origin))
+	if string(before) != string(after) {
+		t.Fatal("decision history changed")
+	}
+}
+
+func TestConversationDeleteReplacesManagerAndKeepsHistoricalIdentity(t *testing.T) {
+	dir := packetTeams(t)
+	must(t, Update(dir, func(f *File) error {
+		if err := f.SetManager("bbbbbbbbbbbb", "w1"); err != nil {
+			return err
+		}
+		return f.RemoveConversation("dm", nil, time.Now())
+	}))
+	f, err := Load(dir)
+	must(t, err)
+	child, _ := f.Team("bbbbbbbbbbbb")
+	parent, _ := f.Team("aaaaaaaaaaaa")
+	if child.Manager != "w1" || child.Closed() || child.Holds("dm") || parent.Holds("dm") {
+		t.Fatalf("replacement/removal: %+v", f.Teams)
+	}
+	if len(child.FormerMembers) != 1 || child.FormerMembers[0].Handle != "lead" {
+		t.Fatal("history lost the removed alias")
+	}
+}
+
+func TestDisbandDeletionAcceptsActiveTeamsAndRejectsChangedScope(t *testing.T) {
+	dir := packetTeams(t)
+	if _, err := Delete(dir, "aaaaaaaaaaaa", []string{"aaaaaaaaaaaa"}); err == nil {
+		t.Fatal("changed scope accepted")
+	}
+	f, _ := Load(dir)
+	if len(f.Teams) != 2 {
+		t.Fatal("refusal mutated teams")
+	}
+	gone, err := Delete(dir, "aaaaaaaaaaaa", []string{"aaaaaaaaaaaa", "bbbbbbbbbbbb"})
+	must(t, err)
+	f, _ = Load(dir)
+	if len(gone) != 2 || len(f.Teams) != 0 {
+		t.Fatal("active cascade deletion failed")
+	}
+}
+
+func TestTeamsTrafficRecordsStableIdentitiesBeforeManagerReplacement(t *testing.T) {
+	dir := packetTeams(t)
+	must(t, AppendTraffic(dir, "bbbbbbbbbbbb", Entry{Kind: KindNote, From: FromManager, To: "web", Text: "before"}))
+	must(t, Update(dir, func(f *File) error { return f.SetManager("bbbbbbbbbbbb", "w2") }))
+	log, err := ReadTraffic(dir, "bbbbbbbbbbbb", "", 0)
+	must(t, err)
+	if len(log) != 1 || log[0].FromKey != "dm" || log[0].ToKey != "w1" {
+		t.Fatalf("history identities: %+v", log)
+	}
+}
+
+func TestTeamsClearingManagerKeepsOldHistoryIdentityAmbiguous(t *testing.T) {
+	f := &File{Teams: []Team{{ID: "aaaaaaaaaaaa", Manager: "old", Members: []Member{{Key: "old"}, {Key: "new"}}}}}
+	must(t, f.ClearManager("aaaaaaaaaaaa"))
+	must(t, f.SetManager("aaaaaaaaaaaa", "new"))
+	tm, _ := f.Team("aaaaaaaaaaaa")
+	if tm.FormerManager != "old" {
+		t.Fatal("clearing manager forgot legacy history identity")
+	}
+}

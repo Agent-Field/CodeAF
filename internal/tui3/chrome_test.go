@@ -84,6 +84,11 @@ func sheetHas(a *app, want string) bool {
 func cursorTo(t *testing.T, a *app, key string) {
 	t.Helper()
 	for tab := range settingTabs {
+		if a.sheet.advanced == nil {
+			a.sheet.advanced = map[string]bool{}
+		}
+		a.sheet.advanced[settingTabs[tab]] = true
+		a.sheet.build()
 		if a.sheet.tab != tab {
 			a.sheet.tab = tab
 			a.sheet.cursor, a.sheet.top = 0, 0
@@ -108,6 +113,9 @@ func cursorTo(t *testing.T, a *app, key string) {
 func TestEverySettingRowHasATab(t *testing.T) {
 	registry := config.NewSettings(config.SettingsOptions{ProfileDir: t.TempDir()})
 	for _, row := range registry.Rows() {
+		if row.ChatPresentation().Hidden {
+			continue
+		}
 		meta, ok := settingMetaFor(row)
 		if !ok {
 			t.Fatalf("registry row %q has no tab — add one line to settingUI", row.Key)
@@ -148,7 +156,7 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 	if strings.Contains(plain(frame(a)), microcopy) {
 		t.Fatal("the panel is drawn over a frame that is still showing its status line")
 	}
-	if !sheetHas(a, "memory") {
+	if !sheetHas(a, "General") {
 		t.Fatalf("the Session tab is missing its first row:\n%s", strings.Join(sheetLabels(a), "\n"))
 	}
 }
@@ -157,67 +165,24 @@ func TestTheSettingsPanelOpensOnBothDoorsAndClosesOnEsc(t *testing.T) {
 func TestTheSettingsTabsSwitchAndCarryTheirOwnRows(t *testing.T) {
 	a, _ := sheetApp(t)
 	a.openSettings()
-
-	if got := settingTabs[a.sheet.tab]; got != tabSession {
-		t.Fatalf("the panel opened on %q, want %q", got, tabSession)
+	if got := settingTabs[a.sheet.tab]; got != tabGeneral {
+		t.Fatalf("opened on %q", got)
 	}
-	for _, want := range []string{"memory", "fallback models"} {
-		if !sheetHas(a, want) {
-			t.Fatalf("the Session tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
-		}
-	}
-	if sheetHas(a, "compact at") {
-		t.Fatal("a Context row is showing on the Session tab")
-	}
-	// AND THE FOUR QUESTIONS THAT LEFT IT ARE GONE FROM IT. The gate belongs to
-	// Safety, the task rows to Tasks, the money to Spending
-	// (docs/design/spending/DESIGN.md's information hierarchy) — and the ssh
-	// link to Workspace, because it lands next launch and is a fact about this
-	// machine rather than about the conversation in front of the reader.
-	for _, gone := range []string{"ask before running", "per conversation", "tasks at once", "ssh reuse"} {
-		if sheetHas(a, gone) {
-			t.Fatalf("%q is still on the Session tab:\n%s", gone, strings.Join(sheetLabels(a), "\n"))
-		}
-	}
-	// THE CREW IS ON PROVIDERS, with the model it answers under — one tab, one
-	// question (settings.go's [modelsSection] says why it moved).
-	if sheetHas(a, "small work") {
-		t.Fatal("a crew row is showing on the Session tab")
-	}
-
-	drive(t, a, key("right"))
-	if got := settingTabs[a.sheet.tab]; got != tabContext {
-		t.Fatalf("→ landed on %q, want %q", got, tabContext)
-	}
-	if !sheetHas(a, "compact at") || sheetHas(a, "ask before running") {
-		t.Fatalf("the Context tab did not replace the Session rows:\n%s",
-			strings.Join(sheetLabels(a), "\n"))
-	}
-
-	// The walk clamps at both ends rather than wrapping — the rule every list
-	// on this surface follows (palette.go).
-	drive(t, a, key("left"), key("left"), key("left"))
-	if got := settingTabs[a.sheet.tab]; got != tabSession {
-		t.Fatalf("← past the first tab landed on %q", got)
-	}
-	// AND THE SSH ROWS ARE ON WORKSPACE, the tab about what this machine reaches
-	// on your behalf, two steps right of the one they used to be on.
-	drive(t, a, key("right"), key("right"))
-	if got := settingTabs[a.sheet.tab]; got != tabWorkspace {
-		t.Fatalf("→ landed on %q, want %q", got, tabWorkspace)
-	}
-	for _, want := range []string{"ssh reuse", "ssh heartbeat", "ssh missed heartbeats", "ssh traffic"} {
-		if !sheetHas(a, want) {
-			t.Fatalf("the Workspace tab is missing %q:\n%s", want, strings.Join(sheetLabels(a), "\n"))
-		}
-	}
-	for i := 0; i < len(settingTabs)+3; i++ {
+	for _, want := range settingTabs[1:] {
 		drive(t, a, key("right"))
+		if got := settingTabs[a.sheet.tab]; got != want {
+			t.Fatalf("landed %q want %q", got, want)
+		}
 	}
-	// The last tab is the accounts one (connectcaps.go), which is where the walk
-	// stops rather than wrapping round to the first.
-	if got := settingTabs[a.sheet.tab]; got != tabConnections {
-		t.Fatalf("→ past the last tab landed on %q", got)
+	drive(t, a, key("right"))
+	if settingTabs[a.sheet.tab] != tabPrivacy {
+		t.Fatal("right must clamp")
+	}
+	for range settingTabs {
+		drive(t, a, key("left"))
+	}
+	if settingTabs[a.sheet.tab] != tabGeneral {
+		t.Fatal("left must clamp")
 	}
 }
 
@@ -245,7 +210,7 @@ func TestTheSettingsSearchFiltersAcrossEveryTab(t *testing.T) {
 		items = append(items, item.meta.label)
 	}
 	joined := strings.Join(items, "\n")
-	for _, want := range []string{tabSession, tabProviders, "small work", "your model"} {
+	for _, want := range []string{tabSession, tabProviders, "small work", "chat model"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("the search dropped %q:\n%s", want, joined)
 		}
@@ -255,8 +220,8 @@ func TestTheSettingsSearchFiltersAcrossEveryTab(t *testing.T) {
 	}
 	// The tab follows the first match, so backing the search out leaves the
 	// person where the thing they found lives.
-	if got := settingTabs[a.sheet.tab]; got != tabSession {
-		t.Fatalf("the tab bar did not follow the first match: %q", got)
+	if got := settingTabs[a.sheet.tab]; len(a.sheet.items) > 0 && a.sheet.items[0].head != got {
+		t.Fatalf("category %q does not follow first result", got)
 	}
 	// And the cursor is ON that first match rather than on its heading.
 	item, ok := a.sheet.current()
@@ -291,8 +256,8 @@ func TestASettingsToggleWritesTheRegistryKey(t *testing.T) {
 	}
 }
 
-// AN ENUM CYCLES IN PLACE, in the registry's own order.
-func TestASettingsCycleWritesTheRegistryKey(t *testing.T) {
+// AN ENUM OPENS ITS CHOICES AND SAVES THE EXPLICIT SELECTION.
+func TestASettingsChoiceWritesTheRegistryKey(t *testing.T) {
 	a, dir := sheetApp(t)
 	a.openSettings()
 	cursorTo(t, a, config.KeyToolApprovalMode)
@@ -300,13 +265,13 @@ func TestASettingsCycleWritesTheRegistryKey(t *testing.T) {
 	if got := config.ToolApprovalModeAt(dir); got != "allow" {
 		t.Fatalf("the gate did not start at allow: %q", got)
 	}
-	drive(t, a, key("enter"))
+	chooseSheetValue(t, a, "deny")
 	if got := config.ToolApprovalModeAt(dir); got != "deny" {
-		t.Fatalf("the cycle wrote %q, want the next choice after allow", got)
+		t.Fatalf("the choice wrote %q, want the next choice after allow", got)
 	}
-	drive(t, a, key("enter"))
+	chooseSheetValue(t, a, "prompt")
 	if got := config.ToolApprovalModeAt(dir); got != "prompt" {
-		t.Fatalf("the second cycle wrote %q, want prompt", got)
+		t.Fatalf("the second choice wrote %q, want prompt", got)
 	}
 }
 
@@ -348,6 +313,8 @@ func TestASettingsTextRowWritesTheRegistryKey(t *testing.T) {
 		t.Fatalf("a refused value was written anyway: %v", got)
 	}
 
+	// Cancel the refused draft before editing a different setting.
+	drive(t, a, key("esc"))
 	// An empty box clears the row.
 	cursorTo(t, a, config.KeyToolApprovals)
 	drive(t, a, key("enter"))
@@ -379,7 +346,7 @@ func TestAChangedSettingIsMarked(t *testing.T) {
 		t.Fatalf("an untouched row drew the mark: %q", line)
 	}
 
-	drive(t, a, key("enter"))
+	chooseSheetValue(t, a, "deny")
 	item, _ = a.sheet.current()
 	if !a.sheet.changed(item) {
 		t.Fatal("a row written by hand is not marked as changed")
@@ -479,13 +446,9 @@ func TestASettingsSelectSubmenuSwitchesTheModel(t *testing.T) {
 		t.Fatalf("the walk did not reach the other model, it is on %q", chosen)
 	}
 	drive(t, a, key("enter"))
-	// ENTER WRITES AND LEAVES THE LIST UP ([app.pickerKey] argues it).
-	if a.sheet.sel == nil {
-		t.Fatal("enter closed the submenu; esc is the way out now")
-	}
-	drive(t, a, key("esc"))
+	// Enter confirms the model and returns to its settings row.
 	if a.sheet.sel != nil {
-		t.Fatal("esc left the submenu open")
+		t.Fatal("enter left the submenu open")
 	}
 	if a.model != "anthropic/claude-sonnet-4.5" {
 		t.Fatalf("the session is on %q", a.model)
@@ -495,14 +458,14 @@ func TestASettingsSelectSubmenuSwitchesTheModel(t *testing.T) {
 		t.Fatalf("the session was told the window is %d", got)
 	}
 
-	// A slot this surface did not open answers in the registry's own words
-	// rather than pretending to have written something.
-	cursorTo(t, a, config.ModelSettingKey("work"))
-	drive(t, a, key("enter"))
-	drive(t, a, key("enter"))
-	if a.sheet.msg == "" {
-		t.Fatal("a slot with no seam silently swallowed the change")
+	// Unsupported legacy slots are absent rather than offering a picker that refuses.
+	row, ok := a.registry().Row(config.ModelSettingKey("work"))
+	if ok {
+		if _, visible := settingMetaFor(row); visible {
+			t.Fatal("unsupported legacy slot is visible")
+		}
 	}
+
 }
 
 // THE PANEL IS MOUSE-NAVIGABLE: a click on a tab word switches tabs, a click on
@@ -525,8 +488,8 @@ func TestTheSettingsPanelTakesTheMouse(t *testing.T) {
 	}
 	drive(t, a, clickAt(spans[3].from, bar))
 	drive(t, a, releaseAt(spans[3].from, bar))
-	if got := settingTabs[a.sheet.tab]; got != tabDisplay {
-		t.Fatalf("a click on the Display tab landed on %q", got)
+	if got := settingTabs[a.sheet.tab]; got != tabTasks {
+		t.Fatalf("a click on the Tasks tab landed on %q", got)
 	}
 
 	// Find the screen row the history toggle is drawn on, then click it twice:
@@ -1482,7 +1445,7 @@ func TestTheFrameDrawsThePageThatWasOpenedLast(t *testing.T) {
 	// two vocabularies staying apart, so a place may never be renamed to a word
 	// the settings panel already spells (pages.go).
 	for _, id := range barPages(a.page, false) {
-		if !strings.Contains(plain(spend), id.word()) {
+		if !strings.Contains(strings.ToLower(plain(spend)), strings.ToLower(id.word())) {
 			t.Fatalf("the tab bar does not name the %s place:\n%s", id.word(), spend)
 		}
 	}

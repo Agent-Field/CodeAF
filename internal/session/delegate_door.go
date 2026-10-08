@@ -40,6 +40,11 @@ type DelegateRow struct {
 	Description string
 	// Lands is delegate.LandsTree or delegate.LandsText.
 	Lands string
+	// Args is what the row shows after the name; empty is `<brief>`.
+	Args string `json:",omitempty"`
+	// BriefOptional says a bare `/<name>` runs the program's default brief
+	// ([delegate.Delegate.DefaultBrief]) rather than asking for one.
+	BriefOptional bool `json:",omitempty"`
 }
 
 // DelegateReport is the programs this conversation can hand work to, as the
@@ -59,7 +64,8 @@ func (c Config) delegateReport() DelegateReport {
 		if lands == "" {
 			lands = delegate.LandsTree
 		}
-		report.Rows = append(report.Rows, DelegateRow{Name: program.Name, Description: program.Summary, Lands: lands})
+		report.Rows = append(report.Rows, DelegateRow{Name: program.Name, Description: program.Summary, Lands: lands,
+			Args: program.Args, BriefOptional: strings.TrimSpace(program.DefaultBrief) != ""})
 	}
 	return report
 }
@@ -72,6 +78,18 @@ func (c Config) delegateNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// delegateNamed finds a program this launch carries by its name, without the
+// refusal [Agent.delegateFor] words for one it does not.
+func (c Config) delegateNamed(name string) (delegate.Delegate, bool) {
+	name = strings.TrimSpace(name)
+	for _, program := range c.Delegates {
+		if name != "" && program.Name == name {
+			return program, true
+		}
+	}
+	return delegate.Delegate{}, false
 }
 
 // mayDelegate says whether this belt may hand work to a program: it is the
@@ -392,6 +410,16 @@ func (a *Agent) delegateFor(name string) (delegate.Delegate, error) {
 	return delegate.Delegate{}, DelegateUnknownError{Named: name, Have: a.config.delegateNames()}
 }
 
+// programWords is the brief a program that reads its brief as words is
+// handed from a proposal: the words the model wrote, or the program's default
+// brief when it wrote none ([delegate.Delegate.Words]).
+func programWords(brief string, program delegate.Delegate) string {
+	if brief = strings.TrimSpace(brief); brief != "" {
+		return brief
+	}
+	return strings.TrimSpace(program.DefaultBrief)
+}
+
 // StartDelegate hands one person-authored brief to the named program. It is
 // `/<name> <brief>`'s door and it answers what StartTask answers: the id the
 // row wears, the title, a note about where the work stands (always empty here)
@@ -402,10 +430,13 @@ func (a *Agent) delegateFor(name string) (delegate.Delegate, error) {
 // linked.
 func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, string, string, error) {
 	brief = strings.TrimSpace(brief)
+	program, err := a.delegateFor(name)
+	if brief == "" && err == nil {
+		brief = strings.TrimSpace(program.DefaultBrief)
+	}
 	if brief == "" {
 		return 0, "", "", errors.New("/" + strings.TrimSpace(name) + " needs a brief: the whole task, in words")
 	}
-	program, err := a.delegateFor(name)
 	if err != nil {
 		return 0, "", "", err
 	}
@@ -422,9 +453,14 @@ func (a *Agent) StartDelegate(ctx context.Context, name, brief string) (uint64, 
 	}
 	id := g.reserve()
 	title := taskPersonTitle(brief)
+	if program.Title != nil {
+		if own := strings.TrimSpace(program.Title(brief)); own != "" {
+			title = own
+		}
+	}
 	note := ""
-	if program.Name == "senior-dev" {
-		note = a.seniorDevCeilings(a.Usage().CostUSD).Summary()
+	if !program.Unattended.IsZero() {
+		note = a.programCeilings(&program, a.Usage().CostUSD).Summary()
 	}
 	if err := a.startKnownTaskRunVia(ctx, id, title, brief, nil, delegateStand(folder), "", &program); err != nil {
 		return 0, "", "", err

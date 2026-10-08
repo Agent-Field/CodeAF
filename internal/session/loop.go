@@ -286,6 +286,33 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 	return "", false
 }
 
+// turnCue is the goal a turn's before-request reads are scoped to, and it is
+// the same goal the model is about to be given. A turn the person (or a caller)
+// started carries its own words. A WOKEN TURN OPENS EMPTY ([Agent.wakeLocked]):
+// nobody typed it, so its goal exists only as the note the loop's first drain is
+// about to put in front of the model, and the before-request reads run BEFORE
+// that drain (loop.go). Reading the cue off that pending note is what keeps a
+// fresh native team member — and any delegated directive that opens a turn with
+// no words — from composing its grounding from no goal at all. With neither an
+// opening message nor a queued note the cue is "" and the reads are unchanged:
+// truthfully nothing here is worth a call ([memoryTrivialCue]).
+//
+// It is ONE reading rather than two, so the conversation's own binding and a
+// task worker's lent approved bindings are scoped to the same words.
+func (a *Agent) turnCue(user userMessage) string {
+	if cue := strings.TrimSpace(user.text()); cue != "" {
+		return cue
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, note := range a.steering {
+		if text := strings.TrimSpace(note.text()); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
 // runTurn executes one Submit: provider requests interleaved with tool
 // execution until the assistant answers without a tool call, the person
 // interrupts, or the provider fails permanently.
@@ -300,6 +327,15 @@ func (a *Agent) settleBoundTripped(ctx context.Context, turn *Usage, calls int) 
 // a follow-up (agent.go) — an interrupted or faulted turn must not be the thing
 // that starts the next one.
 func (a *Agent) runTurn(ctx context.Context, hub *eventHub, user userMessage) bool {
+	// Binding context is read locally before any model or early tool request.
+	// Optional semantic recall can still race beside the reply.
+	cue := a.turnCue(user)
+	a.prepareBindingContext(ctx, cue)
+	// AND A TASK WORKER'S READ-ONLY APPROVED BINDINGS, DETERMINISTICALLY, before
+	// its first request: the node's routed shortlist arrives beside the work and
+	// may be late ([nodeMemory]), but an approved rule or confirmed decision may
+	// not be. A conversation owns a brain and returns here immediately.
+	a.prepareWorkerBinding(ctx, cue)
 	if user.bash != "" {
 		return a.runUserBash(ctx, hub, user.bash)
 	}
@@ -1998,7 +2034,17 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		if err := a.preparePromptProfile(model); err != nil {
 			return nil, model, err
 		}
-		messages, carried := a.snapshotWithReasoning()
+		messages, carried, policyActive := a.snapshotWithReasoning()
+		// AND THE SOURCE-AUTHORED FRAMEWORK METHOD POLICY, in the SYSTEM
+		// authority and never the quoted-history note, when this turn carries
+		// prior-outcome rows ([Agent.withFrameworkPolicy]): the same constant for
+		// an ordinary conversation, a manager and a task worker, added to THIS
+		// request's leading system message alone so a refresh cannot double-insert
+		// it and the transcript behind it never moves. The activation bit is the
+		// one TAKEN WITH the snapshot above, never reread here, so a routed pass
+		// that lands a new note between the snapshot and this line cannot pair its
+		// flag with rows the request does not carry.
+		messages = a.withFrameworkPolicy(messages, policyActive)
 		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 {
 			rolePage := textMessage("system", strings.TrimSpace(wake.prompt))
 			messages = append(messages[:1:1], append([]ai.Message{rolePage}, messages[1:]...)...)
@@ -3560,7 +3606,21 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
 	started := time.Now()
+	a.mu.Lock()
+	memoryTurn := a.turnSeq
+	a.mu.Unlock()
+	// THE CALL'S OWN CIRCUMSTANCES, TAKEN BEFORE IT RUNS. A snapshot read only
+	// after the action could certify a state the failure was never earned under;
+	// the pre-action identity is what tells an honest "the tree moved" from a
+	// claim earned against the post state.
+	pre := ""
+	if a.remembers() || a.outcomes != nil {
+		pre = a.captureSourceSnapshot(ctx).Identity
+	}
 	result := a.dispatchTool(ctx, ep, hub, call, rendered)
+	a.recordMemoryTool(ctx, memoryTurn, call, result)
+	a.recordOutcome(ctx, memoryTurn, call, result, pre)
+	a.refreshContextualImpactsAfterAction(result, call.Function.Name)
 	// Only a call that RAN counts: a door that refused it before it ran, or a
 	// hand withdrawn off the belt, is the harness's own answer and rides on
 	// [toolResult.harness] for this reason — every counter that judges the

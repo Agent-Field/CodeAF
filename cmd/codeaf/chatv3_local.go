@@ -123,6 +123,9 @@ func (l *localLink) dial() (io.ReadWriteCloser, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A staleHost refusal is passed through UNTOUCHED: openChatV3Local reads it
+	// back out of the dial's error to decide that this launch may not fall back
+	// to a conversation in this process.
 	note, err := clearStaleEngineHost(l.workspace)
 	if err != nil {
 		return nil, err
@@ -148,6 +151,16 @@ func (h *hostShapeTaken) Error() string { return h.sentence }
 type hostUnreachable struct{ reason string }
 
 func (h *hostUnreachable) Error() string { return h.reason }
+
+// hostRefusal is an engine on this machine that holds the workspace and will not
+// give it up: a busy one on another wire, one holding work, or one too old to be
+// asked. It is deliberately NOT [hostUnreachable], because the floor is not
+// available here — that engine holds the conversation's journal, so opening the
+// conversation in this process would be a second writer beside it. The launch
+// refuses in the host's own words instead (openChatV3Local states the whole of it).
+type hostRefusal struct{ sentence string }
+
+func (h *hostRefusal) Error() string { return h.sentence }
 
 // hostFallbackReason is the clause a person reads after "this conversation
 // opened in this terminal instead, and ends with it: ". The two host failures
@@ -206,9 +219,19 @@ func openChatV3Local(launch localLaunch) error {
 		client, err = remote.Roam("", hello, remote.Roaming{Dial: link.dial})
 	}
 	if err != nil {
+		// AN ENGINE THAT HOLDS THE WORKSPACE IS NOT AN UNREACHABLE ONE. The
+		// in-process floor is right for a machine where no host could be
+		// reached or started — and wrong here, because this host holds the
+		// conversation's journal: opening it in this process as well would be a
+		// second writer beside it. So the sentence is the whole answer and the
+		// launch refuses (staleHost is the takeover rule's own refusal).
+		var stale *staleHost
+		if errors.As(err, &stale) {
+			return &hostRefusal{sentence: stale.reason}
+		}
 		// A host that cannot be reached or started is not the end of the
 		// launch: the in-process door is the floor, and the reason travels with
-		// the fallback so a stale host's own sentence is still read.
+		// the fallback so nothing is swallowed.
 		return &hostUnreachable{reason: hostFallbackReason(err)}
 	}
 	closeClient := func() { _ = client.Close() }
@@ -377,6 +400,7 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 		}
 	}
 	options.EngineRoad = true
+	options.RequireListedModel = true
 	options.ReadCredits = v3LocalCreditReader(settings)
 	options.Connections = v3Connections(v3Connect(profileDir))
 	options.Harnesses = subharness.Default()
@@ -428,9 +452,9 @@ func localDoors(options *tui3.Options, welcome remote.Welcome, settings config.C
 // point at.
 //
 // The three launches that do not: one the engine answered (err is nil), one it
-// refused for any other reason — unreachable, a wrong wire version, a stale
-// host, all of which are the in-process door's own floor — and `--once`, which
-// has no screen to land an offer on and says the sentence instead
+// refused for any other reason — unreachable, a wrong wire version, and a stale
+// host, which is a refusal rather than a fallback — and `--once`, which has no
+// screen to land an offer on and says the sentence instead
 // ([sessionHeldElsewhereSentence]).
 func localAskAgainAfterRefusal(launch localLaunch, err error) (string, bool) {
 	if err == nil || launch.once != "" || !hostHeldRefusal(err) {

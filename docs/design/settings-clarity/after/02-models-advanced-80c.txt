@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › Search all settings
+ chat model                                        deepseek/deepseek-v4.1-flash
+ image generation                                                     automatic
+ speech generation                                                    automatic
+ music generation                                                     automatic
+ video generation                                                     automatic
+ audio transcription                                                  automatic
+ image understanding model                                            automatic
+ reasoning effort                                                          auto
+ document reader                                                           auto
+ fallback models                                         nearest in the catalog
+ Advanced                                                                  hide
+
+ routing
+ model provider                                                            auto
+ speed guard                                                                 on
+ routing                                                                 simple
+ prompt profile                                                            auto
+ reflex                                          • deepseek/deepseek-v4.1-flash
+ small work                                      • deepseek/deepseek-v4.1-flash
+ seats            auto · 3 pinned · models all · 1 of 1 providers · per task $5
+ pinned roles                                                              none
+
+ roles · reflex
+ reflex                                            deepseek/deepseek-v4.1-flash
+
+ roles · small work
+ caption                                           deepseek/deepseek-v4.1-flash
+ consolidate                                       deepseek/deepseek-v4.1-flash
+ guardian                                          deepseek/deepseek-v4.1-flash
+ intake                                            deepseek/deepseek-v4.1-flash
+ jobname                                           deepseek/deepseek-v4.1-flash
+ router                                            deepseek/deepseek-v4.1-flash
+
+  Less common controls. Search finds these even while collapsed.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter collapse · tab next place · esc close

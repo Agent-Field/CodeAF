@@ -23,6 +23,34 @@ const (
 	EnvModelToken = "CODEAF_MODEL_TOKEN"
 )
 
+// EnvRecords names the run's own record folder in a program's environment: the
+// task's folder for a run the chat started, the run's folder under
+// `~/.codeaf/v3/carried/<name>/` for a shell run. It is where a program that
+// lands text leaves the files its answer points at, because the folder it
+// works in is the person's and it promised to change nothing there.
+const EnvRecords = "CODEAF_RECORDS"
+
+// Recorder is a host that names the run's record folder ([EnvRecords]). A
+// program asks for it by type, as it asks for a [Listener], so a test's host
+// that names none is still a Host.
+type Recorder interface {
+	// Records is the run's record folder, absolute, or "" when codeaf named
+	// none.
+	Records() string
+}
+
+// RecordsEnv is the environment entry that names a run's record folder to its
+// program, nil for none.
+func RecordsEnv(folder string) []string {
+	if strings.TrimSpace(folder) == "" {
+		return nil
+	}
+	return []string{EnvRecords + "=" + folder}
+}
+
+// Records is the run's record folder codeaf named on the child's environment.
+func (h *childHost) Records() string { return strings.TrimSpace(env.Get(EnvRecords)) }
+
 // Host is what a running program asks codeaf for. Its body is handed one and
 // reports through it: the records go to codeaf, and the models come from it.
 type Host interface {
@@ -47,6 +75,9 @@ type Ceilings struct {
 	Hours   float64
 }
 
+// senior-dev's own unattended ceilings ([Delegate.Unattended]). They are
+// named here rather than in its package because the manual's truth gate and
+// the session's tests read them without linking its engine.
 const (
 	// An autonomous senior-dev run with no person watching must stop on its own.
 	DefaultSeniorDevCostUSD = 10.0
@@ -54,31 +85,58 @@ const (
 	DefaultSeniorDevHours = 3.0
 )
 
-// SeniorDev fills absent conversation limits and caps larger ones at defaults.
-func (c Ceilings) SeniorDev() Ceilings {
-	if c.CostUSD <= 0 || c.CostUSD > DefaultSeniorDevCostUSD || math.IsNaN(c.CostUSD) {
-		c.CostUSD = DefaultSeniorDevCostUSD
+// SeniorDevCeilings is senior-dev's [Delegate.Unattended].
+var SeniorDevCeilings = Ceilings{CostUSD: DefaultSeniorDevCostUSD, Hours: DefaultSeniorDevHours}
+
+// IsZero says neither ceiling is set.
+func (c Ceilings) IsZero() bool { return c.CostUSD == 0 && c.Hours == 0 }
+
+// CappedBy is a conversation's remaining limits held to a program's unattended
+// ceilings: an absent or unreadable limit becomes the program's, and a larger
+// one is cut to it. A field the program leaves at zero is passed through
+// untouched, so a program with no ceiling of its own runs on what is left.
+func (c Ceilings) CappedBy(unattended Ceilings) Ceilings {
+	if limit := unattended.CostUSD; limit > 0 && (c.CostUSD <= 0 || c.CostUSD > limit || math.IsNaN(c.CostUSD)) {
+		c.CostUSD = limit
 	}
-	if c.Hours <= 0 || c.Hours > DefaultSeniorDevHours || math.IsNaN(c.Hours) {
-		c.Hours = DefaultSeniorDevHours
+	if limit := unattended.Hours; limit > 0 && (c.Hours <= 0 || c.Hours > limit || math.IsNaN(c.Hours)) {
+		c.Hours = limit
 	}
 	return c
 }
 
-// SeniorDevDefaults fills omitted shell limits while preserving explicit flags.
-func (c Ceilings) SeniorDevDefaults() Ceilings {
+// FilledFrom is a shell line's ceilings with the program's unattended ones put
+// where the line set none. A ceiling the person typed is kept as typed, larger
+// or not: at a shell they are the one watching.
+func (c Ceilings) FilledFrom(unattended Ceilings) Ceilings {
 	if c.CostUSD <= 0 || math.IsNaN(c.CostUSD) || math.IsInf(c.CostUSD, 0) {
-		c.CostUSD = DefaultSeniorDevCostUSD
+		c.CostUSD = unattended.CostUSD
 	}
 	if c.Hours <= 0 || math.IsNaN(c.Hours) || math.IsInf(c.Hours, 0) {
-		c.Hours = DefaultSeniorDevHours
+		c.Hours = unattended.Hours
 	}
 	return c
 }
 
-// Summary says the two ceilings as the person sees them at either start door.
+// SeniorDev is [Ceilings.CappedBy] senior-dev's ceilings.
+func (c Ceilings) SeniorDev() Ceilings { return c.CappedBy(SeniorDevCeilings) }
+
+// SeniorDevDefaults is [Ceilings.FilledFrom] senior-dev's ceilings.
+func (c Ceilings) SeniorDevDefaults() Ceilings { return c.FilledFrom(SeniorDevCeilings) }
+
+// Summary says the two ceilings as the person sees them at either start door,
+// and says nothing of a ceiling that is not set: none at all is "", never
+// `up to $0.00 and 0h` (the emptiness law).
 func (c Ceilings) Summary() string {
-	return fmt.Sprintf("up to $%.2f and %s", c.CostUSD, c.TimeWord())
+	switch {
+	case c.CostUSD > 0 && c.Hours > 0:
+		return fmt.Sprintf("up to $%.2f and %s", c.CostUSD, c.TimeWord())
+	case c.CostUSD > 0:
+		return fmt.Sprintf("up to $%.2f", c.CostUSD)
+	case c.Hours > 0:
+		return "up to " + c.TimeWord()
+	}
+	return ""
 }
 
 // TimeWord spells the wall ceiling without padded zero units.

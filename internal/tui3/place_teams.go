@@ -16,13 +16,6 @@ import (
 // pointer and the acts of the page teamspage.go describes. The second place on
 // the bar, right after home: `home  teams  chats  sessions  spend  settings`.
 //
-// TWO SHAPES, ONE PLACE. With a manager in the pane the page hosts that
-// conversation whole (teamspagehost.go): the frame is the conversation's own,
-// laid out beside the rail, and the composer has the keyboard; `alt+↑↓` puts it
-// on the page's buttons and `esc` gives it back. With no manager in the pane
-// (a team without one, a closed team, the `All teams` row, no teams at all)
-// the page is drawn in the shared place frame and has the keyboard itself.
-
 // placeTeams is this place's handle (pages.go's [place] states the contract
 // and why the handle holds no state of its own).
 type placeTeams struct{ placeBase }
@@ -30,34 +23,29 @@ type placeTeams struct{ placeBase }
 func init() { registerPlace(placeTeams{}) }
 
 func (placeTeams) id() page     { return pageTeams }
-func (placeTeams) word() string { return "teams" }
+func (placeTeams) word() string { return "AI teams" }
 
 // counted is true: what is in here is a pile of things, and a packet waiting
 // on the person is news about this place.
 func (placeTeams) counted() bool { return true }
 
 // open loads the teams at the door (the one read made on the loop, and it does
-// not block, teamseam.go), settles the selection, brings the selected team's
-// manager in front, and arms the router's beat, which the page answers.
+// not block, teamseam.go), settles the selection and arms the router's beat.
+// The overview leaves the underlying conversation and draft alone.
 func (placeTeams) open(a *app) tea.Cmd {
 	a.teamsEnsure()
 	a.tp.focus, a.tp.cur, a.tp.hot = false, teamsRef{}, teamsRef{}
 	a.tp.answering, a.tp.msg = "", ""
-	a.tp.top = teamsTopCache{}
 	a.teamsSettle()
 	// The keyboard starts on the selected team's row, where `↓` walks from.
-	// A managed team's page opens with the keyboard on the manager's composer.
 	a.tp.focus, a.tp.cur = true, teamsRef{act: teamsActSelect, id: a.tp.sel}
-	if t, ok := a.teamsSelected(); ok && t.Manager != "" && !t.Closed() {
-		a.tp.focus = false
-	}
-	return tea.Batch(a.armPlaceClock(), a.teamsRead(true), a.teamsBringManager())
+	return tea.Batch(a.armPlaceClock(), a.teamsRead(true))
 }
 
 // tick is the router's beat: the counts are the router's own, and the page
-// reads the store on it only while an open team has a manager.
+// refreshes visible teams' previews and the selected team's interactions and states.
 func (placeTeams) tick(a *app, now time.Time) (bool, tea.Cmd) {
-	if !a.teamsManaged() {
+	if !a.teamsAny() {
 		return true, nil
 	}
 	return true, a.teamsRead(true)
@@ -66,21 +54,25 @@ func (placeTeams) tick(a *app, now time.Time) (bool, tea.Cmd) {
 // close drops what the page drew; the selection and the
 // fold are kept for the next visit, as a place's views are.
 func (placeTeams) close(a *app) {
-	a.tp.focus, a.tp.host, a.tp.targets = false, "", nil
+	a.tp.previewRows = nil
+	a.tp.focus, a.tp.targets = false, nil
+	if a.wall.org.on {
+		a.wallOrganizeClose()
+	}
 	a.tp.answering = ""
-	a.tp.top = teamsTopCache{}
 	// A drag, the members card and a move waiting on its line belong to the
 	// page and go with it; a move made keeps its Undo for the next visit.
 	a.tdrag, a.tcrew = teamDrag{}, teamCrew{}
+	a.teamMembershipShut()
+	a.teamCreateShut()
 	a.tmove.pend = teamMovePend{}
 }
 
 func (placeTeams) body(a *app, width, room int) []placeRow { return a.teamsBody(width, room) }
 
-// ownFrame is the hosted shape: the manager's own conversation beside the
-// rail (teamspagehost.go). Every other shape is the shared frame's.
+// The overview uses the shared place frame at the full terminal width.
 func (placeTeams) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
-	return a.teamsHostFrame()
+	return nil, nil, 0, 0, false
 }
 
 // remote is the one line over --host against an engine without the teams
@@ -133,7 +125,9 @@ func (placeTeams) note(a *app, width int) []string {
 
 // hint is what the pointer or the cursor is on, with its key, and otherwise
 // the page's keys.
-func (placeTeams) about() string { return "the teams you hand work to" }
+func (placeTeams) about() string {
+	return "AI chats grouped around ongoing work, with an optional AI manager"
+}
 
 func (placeTeams) hint(a *app) string {
 	if a.tmove.on {
@@ -160,7 +154,7 @@ func (placeTeams) hint(a *app) string {
 	if !a.teamsAny() {
 		return "o organize · n new team · " + homeDoorWord
 	}
-	return "↑↓ walk · enter open · m move into… · space pick · p members · s settings · c close · n new team · o organize · " + homeDoorWord
+	return "↑↓ walk · enter open · m move into… · space pick · a add chat · s settings · c disband · n new team · o organize · " + homeDoorWord
 }
 
 // changed is how many packets wait on the person, which is the count a person
@@ -207,17 +201,10 @@ func (placeTeams) key(a *app, msg tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 
-// wheel walks the page's buttons exactly as the arrows do, a row a notch.
+// Pointer routing normally chooses the side from its coordinates. A wheel
+// delivered without coordinates still scrolls the overview rather than keys.
 func (placeTeams) wheel(a *app, delta int) (tea.Cmd, bool) {
-	step := tea.KeyPressMsg{Code: tea.KeyDown}
-	if delta < 0 {
-		step, delta = tea.KeyPressMsg{Code: tea.KeyUp}, -delta
-	}
-	for i := 0; i < delta; i++ {
-		a.teamsKey(step)
-	}
-	a.tp.top = teamsTopCache{}
-	a.touch()
+	a.teamsScrollPane(delta)
 	return nil, true
 }
 
@@ -230,15 +217,11 @@ func (placeTeams) enter(a *app) tea.Cmd {
 
 // ── THE KEYBOARD ────────────────────────────────────────────────────────────
 
-// teamsHasKeys reports whether the page, rather than a hosted composer, has
-// the keyboard.
-func (a *app) teamsHasKeys() bool { return a.tp.host == "" || a.tp.focus }
+// The overview always owns its keyboard.
+func (a *app) teamsHasKeys() bool { return true }
 
 // teamsCursorIndex is the index of the target the cursor is on, -1 for none.
 func (a *app) teamsCursorIndex() int {
-	if !a.tp.focus && a.tp.host != "" {
-		return -1
-	}
 	for i, t := range a.tp.targets {
 		if t.ref() == a.tp.cur {
 			return i
@@ -273,15 +256,24 @@ func (a *app) teamsCursorHome() {
 // or below (dy 1), keeping as close to its column as it can, or along its row
 // for dx. It reports whether it moved.
 func (a *app) teamsWalk(dx, dy int) bool {
+	a.tp.paneWheel, a.tp.railWheel = false, false
 	at := a.teamsCursorIndex()
 	if at < 0 {
 		a.teamsCursorHome()
 		return true
 	}
 	here := a.tp.targets[at]
-	order := make([]int, len(a.tp.targets))
-	for i := range order {
-		order[i] = i
+	order := make([]int, 0, len(a.tp.targets))
+	// Cards expose every interior row to the pointer but only one keyboard
+	// stop. Choosing a duplicate row would resolve back to its first row and
+	// could trap vertical navigation among neighboring cards.
+	seen := make(map[teamsRef]bool, len(a.tp.targets))
+	for i, t := range a.tp.targets {
+		if seen[t.ref()] {
+			continue
+		}
+		seen[t.ref()] = true
+		order = append(order, i)
 	}
 	sort.SliceStable(order, func(i, j int) bool {
 		ti, tj := a.tp.targets[order[i]], a.tp.targets[order[j]]
@@ -297,15 +289,15 @@ func (a *app) teamsWalk(dx, dy int) bool {
 	best, bestScore := -1, 1<<30
 	for _, i := range order {
 		t := a.tp.targets[i]
-		if i == at {
+		if i == at || t.ref() == here.ref() {
 			continue
 		}
 		var score int
 		switch {
-		case dy < 0 && t.y < here.y && t.pane == here.pane:
-			score = (here.y-t.y)*1000 + abs(t.x0-here.x0)
-		case dy > 0 && t.y > here.y && t.pane == here.pane:
-			score = (t.y-here.y)*1000 + abs(t.x0-here.x0)
+		case dy < 0 && t.line < here.line && t.pane == here.pane:
+			score = (here.line-t.line)*1000 + abs(t.x0-here.x0)
+		case dy > 0 && t.line > here.line && t.pane == here.pane:
+			score = (t.line-here.line)*1000 + abs(t.x0-here.x0)
 		case dx < 0 && t.y == here.y && t.x0 < here.x0:
 			score = here.x0 - t.x0
 		case dx > 0 && t.y == here.y && t.x0 > here.x0:
@@ -334,7 +326,7 @@ func (a *app) teamsWalk(dx, dy int) bool {
 // team is moved whenever the tree is reshaped.
 var teamsLetters = map[string]teamsAct{
 	"s": teamsActSettings, "c": teamsActClose, "w": teamsActWall, "n": teamsActNewTeam,
-	"o": teamsActOrganize, "M": teamsActManager, "r": teamsActReopen, "d": teamsActDelete,
+	"o": teamsActOrganize, "M": teamsActManager, "d": teamsActDelete,
 }
 
 // teamsMoveLetter is `Move into…`, on the selected team or the picked ones.
@@ -345,6 +337,14 @@ const teamsMoveLetter = "m"
 func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	key := msg.String()
 	switch key {
+	case "pgdown", "pgup":
+		delta := 1
+		if key == "pgup" {
+			delta = -1
+		}
+		a.teamsInteractionsPage(delta)
+		a.tp.cur = teamsRef{act: teamsActInteractionDown, id: a.tp.sel}
+		return nil, true
 	case "up", "k":
 		if !a.tp.focus {
 			a.tp.focus = true
@@ -387,7 +387,7 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 		// SPACE PICKS A TEAM ON THE RAIL, as it picks a tile on the wall, so
 		// several can be moved with one `Move into…`.
-		if key == "space" && t.act == teamsActSelect && !t.pane {
+		if key == "space" && t.act == teamsActSelect {
 			if u, ok := a.teamByID(t.id); ok && !u.Root && !u.Closed() {
 				a.teamsPick(t.id)
 				return nil, true
@@ -400,6 +400,11 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return nil, true
 		}
 		return a.teamMoveOpen(ids, teamMoveFromPage), true
+	case "a":
+		if t, ok := a.teamsSelected(); ok {
+			return a.teamMembershipOpen(t.ID, ""), true
+		}
+		return nil, true
 	case teamCrewLetter:
 		if t, ok := a.teamsSelected(); ok && !t.Closed() {
 			return a.teamCrewOpen(t.ID), true
@@ -408,12 +413,6 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "esc":
 		if len(a.tp.picked) > 0 {
 			a.tp.picked = nil
-			a.tp.top = teamsTopCache{}
-			a.touch()
-			return nil, true
-		}
-		if a.tp.host != "" {
-			a.tp.focus = false
 			a.touch()
 			return nil, true
 		}
@@ -429,6 +428,19 @@ func (a *app) teamsKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 // teamsLetter is one of the bare letters: the act on the selected team, when
 // the page offers it there.
 func (a *app) teamsLetter(act teamsAct) tea.Cmd {
+	if act == teamsActOrganize {
+		return a.wallOrganizeOpen()
+	}
+	if t, ok := a.teamsSelected(); ok {
+		switch act {
+		case teamsActSettings, teamsActWall:
+			return a.teamsDo(teamsTarget{act: act, id: t.ID})
+		case teamsActClose:
+			if !t.Closed() && !t.Root {
+				return a.teamsDo(teamsTarget{act: act, id: t.ID})
+			}
+		}
+	}
 	for _, t := range a.tp.targets {
 		if t.act != act {
 			continue
@@ -487,8 +499,11 @@ func (a *app) teamsAnswerKey(msg tea.KeyPressMsg) tea.Cmd {
 
 // teamsTargetAt is the target under the pointer on the last frame.
 func (a *app) teamsTargetAt(x, y int) (teamsTarget, bool) {
+	if y < placeHeadRows || y >= a.height-placeFootRowsFor(pageTeams, a.height) {
+		return teamsTarget{}, false
+	}
 	for _, t := range a.tp.targets {
-		if y == t.y && x >= t.x0 && x < t.x1 {
+		if !t.hidden && y == t.y && x >= t.x0 && x < t.x1 {
 			return t, true
 		}
 	}
@@ -517,7 +532,6 @@ func (a *app) teamsHover(x, y int) {
 	t, _ := a.teamsTargetAt(x, y)
 	if r := t.ref(); r != a.tp.hot {
 		a.tp.hot = r
-		a.tp.top = teamsTopCache{}
 		a.touch()
 	}
 }

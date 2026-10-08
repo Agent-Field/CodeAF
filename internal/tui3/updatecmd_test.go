@@ -25,31 +25,36 @@ func TestC1LaunchAvailabilityBecomesOneTranscriptNote(t *testing.T) {
 	a := newTestApp(&fakeAgent{model: "test/model"})
 	available := codeupdate.Available{Latest: "v0.2.0", Running: "v0.1.1"}
 	drive(t, a, updateCheckMsg{available: available, show: true})
-	line := "codeaf v0.2.0 is out · you have v0.1.1 · /update installs it and restarts · or: " + codeupdate.CurlCommand
+	line := "codeaf v0.2.0 is out · you have v0.1.1 · /update installs it for the next launch · or: " + codeupdate.CurlCommand
 	if got := strings.Count(updateNotes(a), line); got != 1 {
 		t.Fatalf("launch note count = %d, want 1:\n%s", got, updateNotes(a))
 	}
 }
 
-// TestOneUpdateOwnsTheSurfaceUntilItFinishes proves that a second installer
-// and a home-page turn cannot begin while release selection is off-frame.
-func TestOneUpdateOwnsTheSurfaceUntilItFinishes(t *testing.T) {
+// TestASecondUpdateIsRefusedWhileWorkContinues proves one install at a time is
+// enforced, and that an install in flight blocks NOTHING else: a turn started
+// from home while the download runs is exactly what a background update must
+// allow. (The old name of this test was "OneUpdateOwnsTheSurface": it does not.)
+func TestASecondUpdateIsRefusedWhileWorkContinues(t *testing.T) {
 	agent := &fakeAgent{model: "test/model"}
 	a := newApp(context.Background(), Options{
 		Agent: agent, Workspace: "/tmp/lab", UpdateRunning: "v0.1.1", Restart: &codeupdate.Plan{},
 		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
 			return codeupdate.Release{Tag: "v0.2.0"}, nil
 		},
-		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+		InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			return codeupdate.InstallResult{}, nil
 		},
 	})
 	first := a.slash("/update")
-	if first == nil || !a.updateActive {
-		t.Fatalf("first command = %v, active = %t", first, a.updateActive)
+	if first == nil || !a.updateInFlight {
+		t.Fatalf("first command = %v, in flight = %t", first, a.updateInFlight)
 	}
 	if second := a.slash("/upgrade"); second != nil {
 		t.Fatal("the overlapping update returned a command")
+	}
+	if strings.Count(updateNotes(a), "an update is already running") != 1 {
+		t.Fatalf("notes do not contain the refusal once:\n%s", updateNotes(a))
 	}
 	started := 0
 	a.start = func(string) (Conversation, error) {
@@ -60,25 +65,18 @@ func TestOneUpdateOwnsTheSurfaceUntilItFinishes(t *testing.T) {
 	a.home.box.setText("start another turn")
 	a.home.build()
 	drive(t, a, key("enter"))
-	if started != 0 {
-		t.Fatalf("home enter started %d conversations while the update was running", started)
-	}
-	if len(agent.sent) != 0 || a.home.box.String() != "start another turn" {
-		t.Fatalf("sent = %q home draft = %q", agent.sent, a.home.box.String())
-	}
-	for _, want := range []string{"an update is already running", "finish the update before starting a turn"} {
-		if strings.Count(updateNotes(a), want) != 1 {
-			t.Fatalf("notes do not contain %q once:\n%s", want, updateNotes(a))
-		}
+	if started != 1 {
+		t.Fatalf("home enter started %d conversations while an install was in flight", started)
 	}
 }
 
-// TestAnUpdateOwnsHomesAskHereRoad proves that the home-page chord cannot
-// start an errand beneath the restart that an update is preparing.
-func TestAnUpdateOwnsHomesAskHereRoad(t *testing.T) {
+// TestABackgroundInstallLeavesTheAskHereRoadOpen proves a running download is
+// not a lock on the surface: the home chord still starts an errand, which the
+// old blocking design refused.
+func TestABackgroundInstallLeavesTheAskHereRoadOpen(t *testing.T) {
 	called := 0
 	a := newTestApp(&fakeAgent{model: "test/model"})
-	a.updateActive = true
+	a.updateInFlight = true
 	a.standingRoot = t.TempDir()
 	a.errand = func(ErrandOrders) (Agent, error) {
 		called++
@@ -92,12 +90,8 @@ func TestAnUpdateOwnsHomesAskHereRoad(t *testing.T) {
 		t.Fatal("the first ask-here chord did not open its composer")
 	}
 	drive(t, a, key("alt+enter"))
-
-	if called != 0 || len(a.exchanges) != 0 {
-		t.Fatalf("errand calls = %d exchanges = %d", called, len(a.exchanges))
-	}
-	if got := strings.Count(updateNotes(a), "finish the update before starting a turn"); got != 1 {
-		t.Fatalf("update refusal count = %d, want 1:\n%s", got, updateNotes(a))
+	if called == 0 {
+		t.Fatal("the install in flight stopped home's ask-here road")
 	}
 }
 
@@ -130,15 +124,15 @@ func TestC6UpdateOnTheNewestBuildDoesNotInstallOrQuit(t *testing.T) {
 		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
 			return codeupdate.Release{Tag: "v0.2.0"}, nil
 		},
-		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+		InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			installed = true
 			return codeupdate.InstallResult{}, nil
 		},
 	})
 	command := a.slash("/update")
 	drive(t, a, command())
-	if installed || a.updateActive || restart.Path != "" || !strings.Contains(updateNotes(a), "you are on the newest codeaf, v0.2.0") {
-		t.Fatalf("installed = %t active = %t restart = %+v notes:\n%s", installed, a.updateActive, restart, updateNotes(a))
+	if installed || a.updateInFlight || restart.Path != "" || !strings.Contains(updateNotes(a), "you are on the newest codeaf, v0.2.0") {
+		t.Fatalf("installed = %t in flight = %t restart = %+v notes:\n%s", installed, a.updateInFlight, restart, updateNotes(a))
 	}
 }
 
@@ -153,7 +147,7 @@ func TestC15ChatUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls(t *testing
 			ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
 				return codeupdate.Release{Tag: "v0.2.0"}, nil
 			},
-			InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+			InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 				installed = true
 				return codeupdate.InstallResult{}, nil
 			},
@@ -161,8 +155,8 @@ func TestC15ChatUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls(t *testing
 		command := a.slash("/update")
 		drive(t, a, command())
 		want := "this codeaf is v0.3.0, ahead of the newest stable v0.2.0 — /update v0.2.0 installs it anyway"
-		if installed || a.updateActive || restart.Path != "" || !strings.Contains(updateNotes(a), want) {
-			t.Fatalf("installed = %t active = %t restart = %+v notes:\n%s", installed, a.updateActive, restart, updateNotes(a))
+		if installed || a.updateInFlight || restart.Path != "" || !strings.Contains(updateNotes(a), want) {
+			t.Fatalf("installed = %t in flight = %t restart = %+v notes:\n%s", installed, a.updateInFlight, restart, updateNotes(a))
 		}
 	})
 
@@ -178,14 +172,17 @@ func TestC15ChatUpdateRefusesAnImplicitDowngradeAndAnExactTagInstalls(t *testing
 				}
 				return codeupdate.Release{Tag: "v0.2.0"}, nil
 			},
-			InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+			InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 				installed = true
 				return codeupdate.InstallResult{Release: codeupdate.Release{Tag: "v0.2.0"}, Path: "/tmp/codeaf"}, nil
 			},
 		})
 		command := a.slash("/update v0.2.0")
 		drive(t, a, command())
-		if !installed || restart.Path != "/tmp/codeaf" {
+		// A HAND-RUN INSTALL IS A BACKGROUND INSTALL: the file is replaced and
+		// the session keeps running the build it started on, so no restart plan
+		// is armed at all.
+		if !installed || restart.Path != "" || !strings.Contains(updateNotes(a), "codeaf v0.2.0 installed") {
 			t.Fatalf("installed = %t restart = %+v notes:\n%s", installed, restart, updateNotes(a))
 		}
 	})
@@ -206,8 +203,10 @@ func TestUpdateCommandListNamesItsOptionalArgument(t *testing.T) {
 	}
 }
 
-// TestC7UpdateInstallReturnsTheRestartPlanForThisTranscript proves C7.
-func TestC7UpdateInstallReturnsTheRestartPlanForThisTranscript(t *testing.T) {
+// TestC7UpdateInstallReplacesTheFileAndKeepsThisSession proves C7 under the
+// new law: the file is replaced in the background, the session keeps the build
+// it started on, and NO restart is armed.
+func TestC7UpdateInstallReplacesTheFileAndKeepsThisSession(t *testing.T) {
 	restart := &codeupdate.Plan{}
 	a := newApp(context.Background(), Options{
 		Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab", SessionFile: "/tmp/this.jsonl",
@@ -215,16 +214,16 @@ func TestC7UpdateInstallReturnsTheRestartPlanForThisTranscript(t *testing.T) {
 		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
 			return codeupdate.Release{Tag: "v0.2.0"}, nil
 		},
-		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+		InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			return codeupdate.InstallResult{Release: codeupdate.Release{Tag: "v0.2.0"}, Path: "/tmp/codeaf"}, nil
 		},
 	})
 	command := a.slash("/update")
 	drive(t, a, command())
-	if restart.Path != "/tmp/codeaf" || strings.Join(restart.Args, " ") != "chat --model x --session /tmp/this.jsonl" {
-		t.Fatalf("restart = %+v", restart)
+	if restart.Path != "" {
+		t.Fatalf("a background install armed a restart: %+v", restart)
 	}
-	for _, want := range []string{"downloading codeaf v0.2.0", "checksum matched · installed at /tmp/codeaf", "restarting on v0.2.0"} {
+	for _, want := range []string{"updating codeaf in the background", "checksum matched \u00b7 installed at /tmp/codeaf", "codeaf v0.2.0 installed"} {
 		if !strings.Contains(updateNotes(a), want) {
 			t.Fatalf("notes do not contain %q:\n%s", want, updateNotes(a))
 		}
@@ -239,30 +238,33 @@ func TestC7UpdateFailureNamesTheCauseAndLeavesNoRestart(t *testing.T) {
 		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
 			return codeupdate.Release{Tag: "v0.2.0"}, nil
 		},
-		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+		InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			return codeupdate.InstallResult{}, errors.New("the checksum did not match")
 		},
 	})
 	drive(t, a, a.slash("/update")())
-	if a.updateActive || restart.Path != "" || !strings.Contains(updateNotes(a), "the checksum did not match") || !strings.Contains(updateNotes(a), codeupdate.CurlCommand) {
-		t.Fatalf("active = %t restart = %+v notes:\n%s", a.updateActive, restart, updateNotes(a))
+	if a.updateInFlight || restart.Path != "" || !strings.Contains(updateNotes(a), "the checksum did not match") || !strings.Contains(updateNotes(a), codeupdate.CurlCommand) {
+		t.Fatalf("in flight = %t restart = %+v notes:\n%s", a.updateInFlight, restart, updateNotes(a))
 	}
 }
 
 // TestC8UpdateRefusesWhileATurnOrTaskIsRunning proves C8.
-func TestC8UpdateRefusesWhileATurnOrTaskIsRunning(t *testing.T) {
+// TestC8AnUpdateInstallsWhileATurnOrTaskIsRunning proves C8 under the new law:
+// an install never interrupts work and never refuses because work is happening.
+// The file is replaced in the background and the turn or task is untouched.
+func TestC8AnUpdateInstallsWhileATurnOrTaskIsRunning(t *testing.T) {
 	for _, kind := range []string{"turn", "task"} {
 		t.Run(kind, func(t *testing.T) {
-			resolved := false
+			installed := 0
 			a := newTestApp(&fakeAgent{model: "test/model"})
 			a.updateRunning = "v0.1.1"
 			a.restart = &codeupdate.Plan{}
 			a.resolveUpdate = func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
-				resolved = true
-				return codeupdate.Release{}, nil
+				return codeupdate.Release{Tag: "v0.2.0"}, nil
 			}
-			a.installUpdate = func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
-				return codeupdate.InstallResult{}, nil
+			a.installUpdate = func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
+				installed++
+				return codeupdate.InstallResult{Release: codeupdate.Release{Tag: "v0.2.0"}, Path: "/tmp/codeaf"}, nil
 			}
 			if kind == "turn" {
 				a.state = stateWorking
@@ -270,11 +272,16 @@ func TestC8UpdateRefusesWhileATurnOrTaskIsRunning(t *testing.T) {
 				a.tasks = map[uint64]*taskNode{1: {id: 1, state: session.TaskRunning}}
 				a.taskOrder = []uint64{1}
 			}
-			if command := a.slash("/update"); command != nil {
-				t.Fatal("the refusal returned a command")
+			command := a.slash("/update")
+			if command == nil {
+				t.Fatal("an update was refused because work was running")
 			}
-			if resolved || strings.Count(updateNotes(a), "finish the running turn or task before updating codeaf") != 1 {
-				t.Fatalf("resolved = %t notes:\n%s", resolved, updateNotes(a))
+			drive(t, a, command())
+			if installed != 1 || a.updateInFlight || a.restart.Path != "" {
+				t.Fatalf("installed = %d in flight = %t restart = %+v notes:\n%s", installed, a.updateInFlight, a.restart, updateNotes(a))
+			}
+			if strings.Contains(updateNotes(a), "finish the running turn or task") {
+				t.Fatalf("the old refusal is still spoken:\n%s", updateNotes(a))
 			}
 		})
 	}
@@ -304,7 +311,7 @@ func TestV6UpdateChoiceFollowsTheRunningBuildUnlessOverridden(t *testing.T) {
 					got = choice
 					return codeupdate.Release{Tag: row.running}, nil
 				},
-				InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+				InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 					return codeupdate.InstallResult{}, nil
 				},
 			})
@@ -336,9 +343,9 @@ func TestV7ChatUpdateRefusesAnAheadChannelBuildUnlessTheTagIsNamed(t *testing.T)
 				}
 				return codeupdate.Release{Tag: newest}, nil
 			},
-			InstallUpdate: func(_ context.Context, release codeupdate.Release) (codeupdate.InstallResult, error) {
+			InstallUpdate: func(_ context.Context, options codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 				installed++
-				return codeupdate.InstallResult{Release: release, Path: "/tmp/devaf"}, nil
+				return codeupdate.InstallResult{Release: options.Release, Path: "/tmp/devaf"}, nil
 			},
 		})
 	}
@@ -365,7 +372,7 @@ func TestV8UpdateNotesUseTheRightCurlLine(t *testing.T) {
 		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) {
 			return codeupdate.Release{}, errors.New("release service is away")
 		},
-		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+		InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			return codeupdate.InstallResult{}, nil
 		},
 	})
@@ -378,7 +385,7 @@ func TestV8UpdateNotesUseTheRightCurlLine(t *testing.T) {
 		Agent: &fakeAgent{model: "test/model"}, Workspace: "/tmp/lab",
 		UpdateRunning: "deadbeef", UpdateCurl: devafCurl, Restart: &codeupdate.Plan{},
 		ResolveUpdate: func(context.Context, codeupdate.Choice) (codeupdate.Release, error) { return codeupdate.Release{}, nil },
-		InstallUpdate: func(context.Context, codeupdate.Release) (codeupdate.InstallResult, error) {
+		InstallUpdate: func(context.Context, codeupdate.InstallOptions) (codeupdate.InstallResult, error) {
 			return codeupdate.InstallResult{}, nil
 		},
 	})

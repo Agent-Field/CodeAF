@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 4:27pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Tasks
+  Models
+  Memory             › Search all settings
+  Tasks              concurrent tasks                                                                          no limit
+  AI teams           task model                                                                       the crew's worker
+  Permissions        review task results                                                                             on
+  Spending           when task results need a decision                                                           ask me
+  Connections        repair attempts                                                                                  1
+  Privacy            Advanced                                                                                      hide
+                     background shell commands after                                                                30s
+                     task scope assessment                                                         assess while working
+                     maximum load per CPU core                                                             1.5 per core
+                     minimum available RAM                                                                      1536 MB
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      Less common controls. Search finds these even while collapsed.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter collapse · type to search all · tab next place · esc close

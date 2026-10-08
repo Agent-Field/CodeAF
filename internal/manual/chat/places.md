@@ -2,25 +2,17 @@
 
 ## What a place is, and the seven of them
 
-A **place** is a full-screen room in codeaf that is not this conversation. There are seven,
-and they are always in the same order: the words on the top line, then the two reached by
-their command, with `chats`, the way back to your conversations, third on the line:
+A **place** is a full-screen view in codeaf. The main bar groups your daily work first, then utilities:
 
-`home` · `teams` · `chats` · `sessions` · `spend` · `settings` · `standing` · `memory`
+`Home` · `Chats` · `AI teams` · `Activity` · `Memory` · `Spend` · `Settings`
 
-**The top line draws six places:** `home  teams  chats  sessions  spend  settings`. **Teams** is
-right after home: your teams, what waits on you from them, and the selected team's manager
-conversation (the **Teams page** of this manual has all of it). `chats` is not a room: it is
-the way back to your conversations (*The `chats` word on the bar* below). Standing and memory are
-places all the same — `/standing`, `/memory`, their digit, the map and the typed
-box all reach them — and while you are standing in one its word is on the bar after the
-six, so the bar always says where you are.
+AI teams groups AI chats around ongoing work, with an optional AI manager. Activity shows work across chats and delegated tasks. Memory is always available, including before anything has been saved. Standing orders remain accessible through `/standing`, their shortcut, and the map; their label appears when that view is open.
 
 They are drawn on the **top line of every page**, right after the `codeaf` wordmark, on a
 place and in a conversation alike. This manual still calls that row of words **the bar**:
 
 ```
- >● codeaf   home  teams  chats  sessions  spend  settings      3 moving · $1.20  thu 10:31pm
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings      3 moving · $1.20  thu 10:31pm
 ──────────────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -45,7 +37,7 @@ stacked: opening one closes whichever was up, so `esc` is always one press from 
 
 ## The `chats` word on the bar: how do I get back to my conversation from a place
 
-**`chats` is the third word on the bar, and it is the way back.** Click it, press `alt+3`
+**`chats` is the second word on the bar, and it is the way back.** Click it, press `alt+3`
 (`opt+3` on a Mac), or walk the bar's cursor onto it and press `enter`: the place closes and
 the conversation that was in front before you opened it is in front again, with its draft
 and its scroll where you left them. With no conversation open at all, it opens the new-chat
@@ -54,7 +46,7 @@ page instead, so the word never leads nowhere.
 It is not a room. It is the lit word while you are in a conversation, because that is where
 the tab strip of your chats is drawn; `tab` and `shift+tab` step over it (they walk the rooms), and it has
 no count. Its hint says `every conversation, one at a time`, which is how it differs from
-`▦ All` on the strip: that one is the grid of the tabs you have open, all at once. `esc` still goes to home, as on every place.
+`▦ All` on the strip: that one is the grid of all saved conversations. `esc` still goes to home, as on every place.
 `alt+k` is a different key: it opens the chats switcher to choose *which* conversation, while
 `chats` on the bar goes straight back to the one you were in.
 
@@ -63,11 +55,9 @@ no count. Its hint says `every conversation, one at a time`, which is how it dif
 Four ways, and they all reach the same seven rooms:
 
 - **`tab`** — the next place **on the bar**, round again from the last. **`shift+tab`** —
-  the one before. From standing or memory, `tab` goes on round the bar to home.
+  the one before. The order follows the visible bar; Chats returns to the conversation.
 - **`alt+1`** … **`alt+8`** (**`opt+1`** … **`opt+8`** on a Mac) jump straight to one, **from a
-  place or from a conversation**. `alt+1` … `alt+6` are the tab bar's own order (home,
-  teams, chats, sessions, spend, settings), and `alt+7` and `alt+8` are the two places off the bar:
-  standing and memory. Hold `alt` and press the digit. macOS draws the modifier as `opt`
+  place or from a conversation**. Shortcuts preserve their established destinations even though the visual order changed: home (1), AI teams (2), chats (3), activity (4), spend (5), settings (6), standing (7), memory (8). Hold `alt` and press the digit. macOS draws the modifier as `opt`
   because that is the key's name on a Mac keycap; Linux and Windows draw it `alt+`, and it is the same
   chord either way. `tab` and the shift-arrows are not like them: in a conversation those
   already belong to path completion and to the caret, so the digits are the one class of
@@ -106,7 +96,7 @@ empty room actually wants — see **Every place opens, always** further down thi
 
 That is true of every door onto a place and not only of the walk: a number, a click on the
 word, and the command that names it all open the same room on the same machine. `/history`
-and a bare `/task` on a machine that has run nothing open the sessions place, headed `sessions`
+and a bare `/task` on a machine that has run nothing open the activity page, headed `activity`
 over one line: `work you send off with /task lands here, and its record stays`.
 
 ## How do I move between the tabs with the arrow keys — the tab bar is a row the cursor can stand on
@@ -159,7 +149,7 @@ back.
 **The hint line says what the word opens and its key** while the pointer rests on it:
 `alt+2 teams · the teams you hand work to`, `alt+3 chats · every conversation, one at a
 time`. On `more ▾` it says `more · the places this row has no room for`; on the strip's
-`▦ All` it says `The grid of your open tabs, and your teams · alt+v`.
+`▦ All` it says `The grid of all your conversations · alt+v`.
 
 **A resize drops that hint.** Widening the window so `more ▾` is no longer drawn clears
 the hover, and the hint line stops saying `more · the places this row has no room for`
@@ -188,7 +178,7 @@ does nothing; a press on the word you are already standing on does nothing.
 ## Where did the places go: the top line holds the places, and why chat tabs are not showing on the home page
 
 **The places sit on the top line, after the `codeaf` wordmark. The tab strip of your chats
-is drawn only while a conversation is in front.** It is not on home, teams, sessions, spend,
+is drawn only while a conversation is in front.** It is not on home, AI teams, activity, memory, spend,
 settings, or any other place. Chat tabs on the home page are not a thing this screen does.
 `chats` on the top line, `alt+k`, and home's sessions list are how you get to one.
 
@@ -196,10 +186,10 @@ The places used to be a row of their own under the top line on a place, and the 
 took that same row inside a conversation. For a while after that the strip stayed on every
 page, which repeated the teams rail and home's sessions. Now:
 
-- **The top line** is the wordmark, the six places, and the machine's signs on the far end.
+- **The top line** is the wordmark, the seven main destinations, and the machine's signs on the far end.
   It is identical on every page; only which word is lit changes. It never moves.
 - **The second line of a chat** is the tab strip: the team chip (` ● harbor ▾ `, or a quiet
-  ` teams ▾ `), `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece, since home
+  ` Teams ▾ `), `◆ Manager`, your tabs, `+` and `▦ All`. It has no `home` piece, since home
   is the first word of the line above.
 - **On a place the second line is the rule**, then a blank, and the page starts on the next
   row. A click there is the page's. There is no invisible tab under it.
@@ -208,7 +198,7 @@ page, which repeated the teams rail and home's sessions. Now:
 
 **The tab strip is a chat's row.** Teams is a place, like home, sessions, spend and
 settings, so the row under the top line is the rule, then a blank, and the page starts
-there. The manager's conversation in the pane does not bring the strip back. `chats` on
+there. The overview shows member cards and interactions. `chats` on
 the top line, `alt+k`, and home's sessions list open a conversation, and the strip is on
 that chat.
 
@@ -255,7 +245,7 @@ six of the seven places that box was a lie in a slot: `enter` opened rows, typin
 went to the filter at the top of the list, and on spend the words went nowhere at all. It
 is gone (2026-09-17).
 
-**Typing still filters where a list is worth filtering.** On **sessions** every printable key
+**Typing still filters where a list is worth filtering.** On **activity** every printable key
 narrows the conversation list by conversation name, project name or path, or nested task
 name. Matching conversations keep their complete task trees. The letters draw on the
 control row at the top beside the `⌕` mark. On **memory** the head row echoes the filter in place of
@@ -422,7 +412,7 @@ The last two classes are bound where there is something to bind. `alt+<letter>` 
 `alt+s` on the memory place, which changes which shelf it is showing; home's panels have no
 second shape, so `alt+g` and `alt+q` do nothing there. `shift+<arrow>` is a place's time
 window — `shift+←→` moves it by its own length, `shift+↑↓` changes how coarse it is — and
-three places have one: **sessions** (when it ran), **standing** (when it fired) and **spend**
+three places have one: **activity** (when it ran), **standing** (when it fired) and **spend**
 (which days). All three draw the same control on their own head row, at the right of the
 line: `shift+← aug 12 – aug 25 →`, with `shift+↑ coarser` beside it where the line has room.
 The label between the arrows is the control and the reading at once, so the span is on the
@@ -441,7 +431,7 @@ p pause   s stop   n not here
 ```
 
 On memory they are `c open the card`, `e fix the wording` and `f forget it`. On home the
-verbs are the row's own — a question's first two answers on its own answer keys, `x close`, `c copy name`, `n new in project`, `o open folder`, and
+verbs are the row's own — a question's first two answers on its own answer keys, `x delete`, `c copy name`, `n new in project`, `o open folder`, and
 `p pause it` or `r resume it` on a standing item, `s stop` on a task this window runs,
 `its chats` and `open folder` on a project. On home, `→` opens the selected row's
 options at every width; the arrows stay in the list.
@@ -518,8 +508,7 @@ Neither of them ever ends in `…`, and neither ever cuts inside a word.
 
 Press `alt+.` and the whole key map appears **in the cells you were already reading**:
 
-- the tab bar's words grow their numbers: `1 home`, `2 teams`, `3 chats`, `4 sessions`,
-  `5 spend`, `6 settings`. The two places off the bar follow: `7 standing`, `8 memory`.
+- the bar shows the established shortcut numbers beside each destination: `1 home`, `3 chats`, `2 AI teams`, `4 activity`, `8 memory`, `5 spend`, `6 settings`, followed by `7 standing`. Visual order does not change shortcut destinations.
 - the hint line becomes the chord list
 
 `?` over an empty box draws the same map, which is what that key means on a place — show me
@@ -558,18 +547,17 @@ bullets on the conversation or task, with no separate `needs you` heading.
 
 ## teams: your teams, what waits on you, and each team's manager
 
-The second place on the bar, right after home. On the left is a **rail**: your teams as a
+The AI teams destination follows Chats on the bar. On the left is a **rail**: your teams as a
 tree (a sub-team indented under its parent), each with its colour, and a mark only when
 something is happening in it: a dim `⠿` while one of its members is working, and an amber
-`? 2` while two things wait on you. Under the tree are `+ New team` and `✦ Organize`, and
-at the foot a folded `▸ Closed · N` holds the teams you closed. On the right is the team
-you chose: a header with what it has spent today against its cap and three buttons,
-`Settings`, `Close…` and `Open ▦`; a line of its members, every one of them, open in this
-window or not; the decisions waiting on you, as cards you answer with one press; and the
-team manager's own conversation, which you talk to right there. `/teams`, `alt+2` and a
-click on the word open it. The **Teams page** of this manual has the whole of it.
+`? 2` while two things wait on you. The sidebar keeps `+ New team` after the teams list and a `Show closed · N` toggle at its bottom.
+`✦ Organize` sits in the All teams main view. The selected team has spending and settings,
+a larger manager preview, a six-row interaction table with Prev and Next, and compact member
+cards. Decisions and permissions remain actionable, and exchanges expand inline. Clicking a member or exchange opens Chats with that
+team selected. Selecting the team itself leaves the current chat and draft untouched.
+`/teams`, `alt+2` and a click on `teams` open it. The **Teams page** has the details.
 
-## sessions — the sessions page for tasks and history, and how to get to it without a command
+## sessions — the activity page for tasks and history, and how to get to it without a command
 
 The full-screen conversation tree groups every chat and its tasks into **running** and
 **completed**. A conversation stays under running while it is answering or has running,
@@ -588,7 +576,7 @@ rather than home's `› type to search or start something new`. It used to show 
 shared prompt with the correction two rows further down on the foot, which meant the loudest
 row on the screen was inviting a message the page cannot send. `enter` opens a task's room
 when this conversation is holding it, and goes inside its record card otherwise. `→` opens
-the row's options: `x close`, `n new in project`, `o open folder`, and
+the row's options: `x delete`, `n new in project`, `o open folder`, and
 `p copy project` where the local conversation and project are available. A task this
 conversation is holding that is still queued or running also offers `s stop it`. Everything starts expanded; the list scrolls and its
 tail fades. The rule under the list is a bare line — the counts are on the section headings
@@ -596,22 +584,18 @@ the list already draws, and it says `nothing matches` only when your filter has 
 page — and the foot names only what is true of the row you are on: `enter open its room ·
 → verbs: stop it`.
 
-## Close or put away a task, find an archived task, or reopen it
+## Delete a task, subtask, or conversation — replaces close, put away, and reopen
 
-On home or the Sessions list, select the task, press `→`, then `x close`.
-The task disappears immediately from the Sessions list, including the current filter
-results, and from home's panels. Its work continues if it is running; its record,
-conversation, and other tasks are unchanged. The choice is saved with the conversation
-and survives reopening the app.
+On Home or Sessions, select any conversation or task row, press `→`, then `x delete`.
+On Sessions an empty filter also permits the bare `x` key. Typing a filter keeps `x` as text.
+The confirmation defaults to `cancel`; `delete` permanently deletes the selected row.
+A conversation deletes its transcript and every task underneath it. A task deletes only
+its own records and descendants. Deleting a leaf subtask deletes only that subtask.
+Surviving siblings and their conversations remain. Deleted records cannot be recovered by search or reopened.
 
-To recover it, change the Sessions filter or reopen the page and type its name. Search
-includes put-away tasks within the selected time window; expand that window if the task is older. Select the matching
-task and use `→`, then `x reopen`. `enter` can still open its record.
-
-`n new in project`, `o open folder`, and `p copy project` use the project of the conversation
-that owns the selected task. A new chat is independent of the task. These folder actions
-and per-task put-away are local capabilities; a connected remote window does not offer
-them. Its existing stop action remains available when that engine supports it.
+`n new in project`, `o open folder`, and `p copy project` use the selected task's owner project.
+Folder actions are local. Permanent deletion is also available over a connection when
+that engine advertises the capability. Stopping work without deletion remains a separate action.
 
 ## standing — what runs without being asked, and where to type on the standing page
 
@@ -761,12 +745,7 @@ the line):
 6. and then the day's figure itself.
 
 **The count of things waiting on you never goes.** `2 ?` outlasts the money and the places,
-at every width. At 80 columns all six places fit beside `2 ? · $1.20 / $20`. At 60, with
-nothing waiting on you, they read
-
-```
- >● codeaf   home  teams  chats  sessions  more ▾     $1.20
-```
+at every width. With activity and spending to show, an 80-column bar keeps daily work and Memory visible, while Spend and Settings remain under `more`. The menu preserves their names and shortcuts. Wider windows show all main destinations; narrower windows progressively fold them while keeping the current destination visible.
 
 **`more ▾` is a door.** Click it and a small menu hangs under it listing exactly the places it
 folded, each with its key (`spend  alt+5`, `settings  alt+6`). The pointer lights a row and a
@@ -794,7 +773,7 @@ do. It never says the place is empty.
 or any of the eight assigned digits, is a key that does nothing. On a machine codeaf was installed on
 an hour ago, `alt+4`, `alt+7` and `alt+8` all open:
 
-- **sessions**, headed `sessions`:
+- **activity**, headed `activity`:
   `work you send off with /task lands here, and its record stays`
 - **standing**, headed `standing orders`:
   `reminders, watches and routines · "remind me at 6" or "every morning at 9"`
@@ -868,7 +847,7 @@ own remote stores when the engine supports them:
 |---|---|
 | **home** | the far machine's projects and conversations |
 | **teams** | the far machine's teams, their packets and their spend; the team card's settings rows are that machine's, and `Wrap up first` is offered only when its engine answers the wrap-up doors |
-| **sessions** | the far machine's work, out of the same reading |
+| **activity** | the far machine's work, out of the same reading |
 | **standing** | the far machine's orders — both what stands on this conversation and what stands anywhere else on that machine |
 | **settings** | this computer's rows; the sheet says the far conversation reads its profile on the other machine |
 | **spend** | the far machine's priced model calls |
@@ -911,7 +890,7 @@ something true to say.
 
 **Yes — the far machine's work, and none of this one's.**
 
-The sessions place reads its rows out of the same reading home lists, so the door that carried
+The activity page reads its rows out of the same reading home lists, so the door that carried
 home carried this too. `/history`, `ctrl+.` and the tabs all open the same page.
 
 This was the worst of the seven before it crossed. The page walked *this* computer's
@@ -937,7 +916,8 @@ conversation, the commands and page say
 
 ## Can I put away a conversation on the other machine from home
 
-Yes. `x close` on the row menu or `ctrl+e` writes the archive mark on the machine whose home you are viewing.
+Yes. `x delete` on the row menu or `ctrl+e` opens the same default-cancel confirmation.
+Choosing `delete` stops and permanently deletes that conversation and its tasks on the machine whose Home you are viewing.
 `enter` on a far conversation opens it in this window. `c copy name` copies its current
 name to this computer’s clipboard. `o open folder` and starting a new conversation in that
 folder are absent on far rows because those paths do not name local folders.

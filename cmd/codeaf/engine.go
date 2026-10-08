@@ -268,26 +268,22 @@ func clearStaleEngineHost(workspace string) (string, error) {
 }
 
 // clearStaleEngineHostAs is the question and what is done with the answer. A nil
-// error means "go ahead and attach": nothing is holding this workspace, what is
-// holding it is this build or a newer one, or what was holding it was older and
-// has been replaced — in which case the string is the one line saying so.
+// error means "go ahead and attach"; what was holding the workspace was this
+// build, a newer one, or an older one that let go — and then the string is the
+// one line saying so.
 //
-// ── THE RULE: THE OLDER ENGINE GIVES UP THE SLOT ─────────────────────────────
-//
-// On 2026-09-23 a new `codeaf engine --daemon` exited without a word because a
-// two-day-old engine, started from a different binary, held the workspace. The
-// windows went on talking to it, and conversations it had open refused the new
-// build with "open in another window". The file-replaced retirement
-// (internal/enginehost's binary.go) never fired, because nothing had replaced
-// ITS file: a different file was simply newer.
-//
-// So an engine from an OLDER build is replaced whenever a newer one arrives,
-// busy or not, and the window says so in one line. It is not asked first: an
-// older engine is stale by definition, the conversations it holds are closed
-// properly on the way out (every journal flushed; a turn it catches stops where
-// it is and keeps its partial reply, as ctrl+c does), and the next connection —
-// this one — reopens them on the current build. Windows that were attached to it
-// see their connection end and redial onto the replacement.
+// AN OLDER ENGINE HOLDS ONTO ITS WORK AND LETS GO WHEN IT IS QUIET. A turn
+// running, a question waiting, a task handed off, a window attached: all of it
+// is somebody's work, and a newer binary connecting is no reason to end it. So
+// an older engine holding anything is JOINED, and asked with
+// [enginehost.StandDownWhenIdle] to retire at its first quiet moment. One
+// holding nothing is RETIRED — through the host's own admission check
+// ([enginehost.Retire] with no Anyway), never a signal, which is what makes the
+// decision atomic with admitting a conversation. A host on another wire cannot
+// be joined, so it is refused in words while it is busy and retired when it is
+// not; one too old to answer at all cannot say whether it is holding work, so it
+// is refused too rather than signalled. The explicit `codeaf engine --stop` is
+// the only force left, and it is a person's own.
 //
 // WHAT MAKES TWO BUILDS THE SAME ONE IS THE SOURCE AND THE FILE. A host of this
 // source running from this file (or one that does not say which file) is this
@@ -295,15 +291,10 @@ func clearStaleEngineHost(workspace string) (string, error) {
 // unless an environment change can retire it without ending anybody's work.
 //
 // WHICH IS OLDER IS THE BUILD MOMENT AND NOTHING ELSE, and a tie is never a
-// replacement. That is what makes the rule converge: two windows on two builds
-// agree on which one is older, so the newer engine is never replaced by a window
-// of the older build, and two copies of one binary cannot take the slot from
-// each other forever. A host too old to answer the question at all is older than
-// everything.
-//
-// A NEWER ENGINE IS JOINED when it speaks this build's wire, and refused in words
-// when it does not — the older half of that pair is this binary, and the
-// sentence names it.
+// replacement, so two windows on two builds agree and the slot cannot go back
+// and forth. A NEWER ENGINE IS JOINED when it speaks this build's wire and
+// refused in words when it does not — the older half of that pair is this
+// binary, and the sentence names it.
 func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 	held, err := enginehost.Inspect(workspace)
 	if err != nil {
@@ -331,18 +322,76 @@ func clearStaleEngineHostAs(workspace string, me engineBuild) (string, error) {
 		}
 		return "", &staleHost{reason: newerEngineHostSentence(hostWorkspace(host, workspace))}
 	}
-	// OLDER: replaced. [enginehost.Stop] asks it to stand down regardless of
-	// what it holds, and ends a host too old to be asked with the signal every
-	// build of the host has answered by flushing and exiting.
-	went, err := enginehost.Stop(workspace)
-	if err != nil {
-		return "", &staleHost{reason: staleEngineHostSentence(host.Busy, hostWorkspace(host, workspace))}
+	// Too old to answer at all: it cannot say whether it is holding work, so
+	// nothing here may decide for it. Words, and the explicit stop.
+	if !held.Answered {
+		return "", &staleHost{reason: unknownOlderEngineHostSentence(hostWorkspace(host, workspace))}
 	}
-	if !went {
-		// It went on its own between the question and the stop.
+	if host.Version != remote.Version {
+		return olderEngineOnAnotherWire(workspace, held)
+	}
+	return olderEngineOnThisWire(workspace, held)
+}
+
+// olderEngineOnThisWire is an older engine that speaks this build's protocol:
+// the ordinary road. Busy means joined, idle means asked to go.
+func olderEngineOnThisWire(workspace string, held enginehost.Holder) (string, error) {
+	host := held.Self
+	if host.Busy {
+		return waitingEngineHostNote(workspace, held), nil
+	}
+	err := enginehost.Retire(workspace, false)
+	switch {
+	case err == nil:
+		return replacedEngineHostSentence(held), nil
+	case nothingHolds(workspace):
+		// It went on its own between the question and the ask: the caller's
+		// attach starts a host from this build.
 		return "", nil
+	case errors.Is(err, enginehost.ErrHostBusy):
+		// The host decided, and its answer is the one that counts: something
+		// arrived between the two questions, so this build joins it rather than
+		// ending the conversation that arrived.
+		return waitingEngineHostNote(workspace, held), nil
+	default:
+		return "", &staleHost{reason: staleEngineHostSentence(false, hostWorkspace(host, workspace))}
 	}
-	return replacedEngineHostSentence(held), nil
+}
+
+// waitingEngineHostNote tells the host a newer build is waiting for the slot and
+// writes the one line the surface shows. The line is chosen by the host's own
+// answer: a host too old to have heard of the note steps aside only when asked,
+// and the sentence says that instead of promising a quiet moment it cannot take.
+func waitingEngineHostNote(workspace string, held enginehost.Holder) string {
+	self, err := enginehost.StandDownWhenIdle(workspace)
+	return busyEngineHostSentence(hostWorkspace(held.Self, workspace), err == nil && self.StandDownWhenIdle)
+}
+
+// olderEngineOnAnotherWire is an older engine this build cannot speak to: it
+// cannot be joined, so while it holds anything the honest answer is a sentence
+// and the explicit stop, and when it holds nothing it is asked to go exactly as
+// the same-wire one is. Nothing on this road signals anything.
+func olderEngineOnAnotherWire(workspace string, held enginehost.Holder) (string, error) {
+	host := held.Self
+	if host.Busy {
+		return "", &staleHost{reason: otherProtocolEngineHostSentence(hostWorkspace(host, workspace))}
+	}
+	err := enginehost.Retire(workspace, false)
+	switch {
+	case err == nil:
+		return replacedEngineHostSentence(held), nil
+	case nothingHolds(workspace):
+		return "", nil
+	default:
+		return "", &staleHost{reason: otherProtocolEngineHostSentence(hostWorkspace(host, workspace))}
+	}
+}
+
+// nothingHolds reports that no host is answering this workspace any more, which
+// is what a host that retired on its own leaves behind.
+func nothingHolds(workspace string) bool {
+	_, err := enginehost.Inspect(workspace)
+	return errors.Is(err, enginehost.ErrNothingHolding)
 }
 
 // differentEngineEnvironmentSentence names the host's workspace so the command
@@ -423,6 +472,48 @@ func staleEngineHostSentence(busy bool, workspace string) string {
 	return fmt.Sprintf("engine: %s is still holding this conversation on an older codeaf — run %s on %s", name, stop, name)
 }
 
+// unknownOlderEngineHostSentence is what a person reads when the process holding
+// their conversation is older than the version exchange itself: it refused the
+// only question there is, so this build cannot tell whether it is mid-turn,
+// holding a window or doing nothing at all.
+//
+// SO IT IS NOT ENDED. The one thing that still ends a build this old is a person
+// saying stop — which [enginehost.Stop] reaches by signalling what it cannot
+// ask, and which is the command the sentence names.
+func unknownOlderEngineHostSentence(workspace string) string {
+	name := remote.MachineName()
+	if strings.TrimSpace(name) == "" {
+		name = "that machine"
+	}
+	stop := engineStopWords(workspace)
+	return fmt.Sprintf("engine: %s is holding this conversation on an older codeaf that cannot say what it is or what it is doing, and this build will not end work it cannot see — run %s on %s if you want it stopped", name, stop, name)
+}
+
+// otherProtocolEngineHostSentence is the refusal for an older engine on a wire
+// this build cannot speak to while it is holding something: there is nothing to
+// join and nothing here will end it. It has to read well in a window of the
+// newer build and in a terminal somebody just typed `codeaf` into, which is why
+// it names both the work and the way out.
+func otherProtocolEngineHostSentence(workspace string) string {
+	name := remote.MachineName()
+	if strings.TrimSpace(name) == "" {
+		name = "that machine"
+	}
+	stop := engineStopWords(workspace)
+	return fmt.Sprintf("engine: %s is holding this conversation on a codeaf that speaks a different protocol, and something is still going in it — let that finish, or run %s on %s", name, stop, name)
+}
+
+// engineStopWords is the command a refusal tells a person to run: the explicit
+// stop, naming and quoting the workspace so a folder with a space in it survives
+// being copied out of a sentence and pasted into a shell.
+func engineStopWords(workspace string) string {
+	stop := "codeaf engine --stop"
+	if workspace = strings.TrimSpace(workspace); workspace != "" {
+		stop += " --workspace " + shellQuote(workspace)
+	}
+	return stop
+}
+
 // newerEngineHostSentence is the refusal the other way round: the engine holding
 // this workspace is a NEWER codeaf on a wire this binary cannot speak, so the
 // binary that is behind is this one. Nothing is stopped — the newer engine is
@@ -455,20 +546,25 @@ func hostWorkspace(host remote.HostSelf, asked string) string {
 	return asked
 }
 
-// busyEngineHostSentence is the one line a window reads when it is attached to
-// an engine one build behind that could not be let go of. Under the takeover
-// rule this door no longer leaves such an engine in place; the sentence stays
-// because a window of THIS build can still meet it from an older build's door,
-// and the hosted surface quotes its voice (internal/tui3's newsSilenceNote).
-func busyEngineHostSentence(busy bool) string {
+// busyEngineHostSentence is the one line a window reads when it joined an engine
+// one build behind that is holding something. It is the ordinary line of the
+// takeover rule rather than a leftover: an older engine with work in flight is
+// joined, not replaced, and the hosted surface quotes this voice for the same
+// fact (internal/tui3's newsSilenceNote).
+//
+// THE PROMISE IS MADE ONLY WHERE IT IS KEPT. "Picks up this build once it goes
+// quiet" is [enginehost.StandDownWhenIdle], and a host older than that field
+// never heard of it: waits says whether the host acknowledged the request, and
+// the other sentence says what actually gets a person onto this build.
+func busyEngineHostSentence(workspace string, waits bool) string {
 	name := remote.MachineName()
 	if strings.TrimSpace(name) == "" {
 		name = "this machine"
 	}
-	if busy {
-		return fmt.Sprintf("the engine on %s is an older codeaf and is still holding work — it picks up this build the moment it goes quiet", name)
+	if waits {
+		return fmt.Sprintf("the engine on %s is an older codeaf and is still holding work — it keeps that work and picks up this build once it goes quiet", name)
 	}
-	return fmt.Sprintf("the engine on %s is an older codeaf — it is holding this conversation and picks up this build the moment you leave it", name)
+	return fmt.Sprintf("the engine on %s is an older codeaf and is still holding work — it keeps that work, and your next launch once the work is done opens from this build", name)
 }
 
 // replacedEngineHostSentence is the ONE LINE a takeover owes: which engine was
@@ -729,12 +825,12 @@ func runEngineHost(workspaceFlag, sessionFlag string) error {
 	if err != nil {
 		return err
 	}
-	// AN OLDER ENGINE IN THE SLOT IS REPLACED, NOT DEFERRED TO. This door used
-	// to find the lock taken and exit without a word, which is right when the
-	// holder is this build and was the whole defect when it was a two-day-old
-	// engine from another binary (the takeover rule: [clearStaleEngineHostAs]).
-	// Stderr is the person's terminal when they typed this, and the host's log
-	// when a window spawned it — the one line belongs in either.
+	// THE SLOT IS SETTLED BEFORE THIS PROCESS BECOMES THE HOST, so an older
+	// engine is either joined (holding work) or asked to go (holding nothing)
+	// and this door starts a host of this build rather than exiting into a
+	// lock it cannot take ([clearStaleEngineHostAs]). Stderr is the person's
+	// terminal when they typed this and the host's log when a window spawned
+	// it, so the one line belongs in either.
 	note, err := clearStaleEngineHost(workspace)
 	if err != nil {
 		return err
@@ -1121,13 +1217,22 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 			return remote.LedgerReading{Lines: lines, Held: held}
 		},
 		Search: func(terms string, limit int) ([]store.ConversationHit, error) {
-			if proc.Memory == nil {
-				return nil, errors.New("memory is off")
+			// THE SEARCH STORE, NOT THE MEMORY STORE. Memory off used to take
+			// this down with it; the process keeps the index open either way
+			// ([v3Process.Search]).
+			if proc.Search == nil {
+				return nil, errors.New("conversation search is unavailable")
 			}
-			return proc.Memory.SearchConversations(terms, limit)
+			return proc.Search.SearchConversations(terms, limit)
 		},
-		Memory:     v3MemorySeam(proc.Memory),
-		Archive:    session.SetArchived,
+		Memory:  v3MemorySeam(proc.Memory),
+		Archive: session.SetArchived,
+		DeleteTask: func(file, id string) error {
+			return session.DeleteTaskUnder(session.PlacesRoot(), file, id, proc.deleteOwnedTask)
+		},
+		DeleteConversation: func(file string, choices map[string]string, affected map[string][]string) error {
+			return session.DeleteConversationUnder(session.PlacesRoot(), proc.ProfileDir, file, choices, proc.stopConversation, affected)
+		},
 		PlacesRoot: session.PlacesRoot(),
 		// AND ONE ROW OF THAT RECORD, READ DEEPER THAN THE WALK READS IT. The
 		// card behind a task row draws the last thing that piece of work said,
