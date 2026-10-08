@@ -256,10 +256,10 @@ func TestParseStage(t *testing.T) {
 		before           string // the stage it must sit directly before
 		afterAnchor      string // a stage it must come after
 	}{
-		{"before proof, screenshot the page", "screenshot the", "screenshot the page", "proof", "review"},
-		{"make it neater", "make it", "make it neater", "", "review"},
-		{"after plan, write the migration down", "write the", "write the migration down", "write", "plan"},
-		{"after write, update the manual page", "update the", "update the manual page", "test", "write"},
+		{"before proof, screenshot the page", "screenshot page", "screenshot the page", "proof", "review"},
+		{"make it neater", "make neater", "make it neater", "", "review"},
+		{"after plan, write the migration down", "write migration", "write the migration down", "write", "plan"},
+		{"after write, update the manual page", "update manual", "update the manual page", "test", "write"},
 	}
 	for _, c := range cases {
 		t.Run(c.words, func(t *testing.T) {

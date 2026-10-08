@@ -319,8 +319,21 @@ func (s *Source) issueItem(ctx context.Context, owner, name string, is forge.Iss
 		Created: is.Created, Changed: is.Updated,
 		State:  factory.StateNew,
 		Labels: is.Labels,
-		Triage: factory.Triage{Type: factory.GuessType(is.Title), Size: issueSize(is.Body)},
+		Triage: factory.Triage{Type: issueType(is), Size: issueSize(is.Body)},
 	}
+}
+
+// issueType is the kind word the floor draws for an issue: the first label that
+// names one (bug, feature, chore, question and their usual synonyms), else a
+// guess from the title and the first line of the body. A pull request keeps
+// "review" in pullItem and is not asked.
+func issueType(is forge.Issue) string {
+	for _, l := range is.Labels {
+		if t := factory.LabelType(l); t != "" {
+			return t
+		}
+	}
+	return factory.GuessType(is.Title)
 }
 
 func (s *Source) pullItem(ctx context.Context, owner, name string, p forge.Pull, state forge.CheckState) factory.Item {
