@@ -492,3 +492,22 @@ func TestFactoryLiftChips(t *testing.T) {
 		t.Fatalf("plain words lifted chips: %v %v %v %q %q", gate, usd, rounds, effort, rest)
 	}
 }
+
+// A TYPING ROW WIDER THAN THE PANE SCROLLS, AND SAYS SO: the window that does
+// not start at the first word begins with `…`, and the newest words stay.
+func TestFactoryTypingRowMarksAScrolledStart(t *testing.T) {
+	f := &factoryFake{made: 7}
+	a := factoryVerbLab(t, f)
+	factoryOn(t, a, 8)
+	drive(t, a, key("s"))
+	factoryType(t, a, "alpha bravo "+strings.Repeat("charlie delta ", 20)+"zulu")
+	var row string
+	for _, line := range strings.Split(factoryFrameText(a), "\n") {
+		if strings.Contains(line, "+ stage ›") {
+			row = line
+		}
+	}
+	if !strings.Contains(row, "+ stage › …") || !strings.HasSuffix(strings.TrimRight(row, " "), "zulu") || strings.Contains(row, "alpha") {
+		t.Fatalf("the scrolled row is not marked or lost its end: %q", row)
+	}
+}

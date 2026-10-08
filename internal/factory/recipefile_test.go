@@ -257,7 +257,7 @@ func TestLocalSeamReadsAndBanksTheRecipeFile(t *testing.T) {
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, factory.RecipeFile))
 	text := string(data)
-	if !strings.Contains(text, "3. make it · chat · make it neater · until done") {
+	if !strings.Contains(text, "3. make neater · chat · make it neater · until done") {
 		t.Fatalf("banked file =\n%s", text)
 	}
 	// Every other section is as the person wrote it, the bad line included.

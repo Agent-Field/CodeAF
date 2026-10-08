@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Words become chips. THIS IS THE ONE PLACE THE CHIP WORDS ARE SPELLED: a
@@ -126,17 +127,56 @@ func LiftSecurity(rest string) (bool, string) {
 	return true, reSecurity.ReplaceAllString(rest, "")
 }
 
-// GuessType is the triage type a person's own words imply: a bug when they say
-// fix or bug, a feature otherwise. It is the cheap guess a terminal-made item
-// carries until something reads it properly, and it never guesses a kind: a
-// sentence typed on the floor is an issue, because a pull request or a red
-// run arrives from a source and is never typed.
+// GuessType is the triage type a person's own words imply: a question when
+// they end in a question mark, a bug when they say fix, crash, wrong, broken,
+// flaky, loses or the like, a chore when they rename or clean up, a feature
+// otherwise. It is the cheap guess an item carries until something reads it
+// properly, and it never guesses a kind: a sentence typed on the floor is an
+// issue, because a pull request or a red run arrives from a source and is
+// never typed.
 func GuessType(words string) string {
-	low := strings.ToLower(words)
-	if strings.Contains(low, "fix") || strings.Contains(low, "bug") {
+	low := strings.ToLower(strings.TrimSpace(words))
+	if strings.HasSuffix(low, "?") {
+		return "question"
+	}
+	fields := strings.FieldsFunc(low, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	has := func(stems ...string) bool {
+		for _, f := range fields {
+			for _, s := range stems {
+				if f == s {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	switch {
+	case strings.Contains(low, "bug") || strings.Contains(low, "fix") || strings.Contains(low, "double-count") ||
+		has("crash", "crashes", "wrong", "broke", "broken", "flaky", "lose", "loses", "lost", "fail", "fails", "error", "panic", "panics", "regression", "incorrect", "leak", "leaks", "hang", "hangs"):
 		return "bug"
+	case has("add", "adds", "support", "export", "implement", "introduce", "allow"):
+		return "feat"
+	case has("rename", "cleanup", "clean", "refactor", "tidy", "bump", "deprecate"):
+		return "chore"
 	}
 	return "feat"
+}
+
+// LabelType is the triage type a label names, or "" for a label that names
+// none: bug; feat, feature and enhancement; chore, maintenance, refactor, docs
+// and documentation; question.
+func LabelType(label string) string {
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "bug":
+		return "bug"
+	case "feat", "feature", "enhancement":
+		return "feat"
+	case "chore", "maintenance", "refactor", "docs", "documentation":
+		return "chore"
+	case "question":
+		return "question"
+	}
+	return ""
 }
 
 // The recipe file's knob words (recipefile.go). THIS IS THE ONE PLACE THEY ARE

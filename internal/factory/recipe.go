@@ -1,6 +1,9 @@
 package factory
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // DefaultRecipe is the recipe a repo starts from before anybody banks one of
 // its own: stages for an issue, and the fixed shapes for the two kinds an
@@ -65,61 +68,104 @@ func StageIndex(stages []Stage, name string) int {
 	return -1
 }
 
-// stageTimeWords are where a sentence may place a stage, in recipe order. With
-// no time word a stage runs after review, which is where most of them belong.
-var stageTimeWords = []string{"after plan", "after write", "after test", "after review", "before proof"}
+// stagePlacement reads the placement clause a stage sentence may start with
+// and answers it normalised along with the words left after it. The clauses
+// are `after <stage>`, `before <stage>`, `first,` and `last,`; first and last
+// need their comma, because "first run the tests" is a sentence and not a
+// place. No clause answers an empty when and the words whole.
+var stagePlacement = regexp.MustCompile(`(?i)^\s*(?:(after|before)\s+(?:the\s+)?([a-z][a-z-]*)\b\s*[,:;]?|(first|last)\s*[,:;])\s*`)
 
-// StageWhen is the time word a stage sentence starts with, or "after review".
+func stagePlacementOf(words string) (when, rest string) {
+	m := stagePlacement.FindStringSubmatch(words)
+	if m == nil {
+		return "", strings.TrimSpace(words)
+	}
+	rest = strings.TrimSpace(words[len(m[0]):])
+	if m[3] != "" {
+		return strings.ToLower(m[3]), rest
+	}
+	return strings.ToLower(m[1]) + " " + strings.ToLower(m[2]), rest
+}
+
+// StageWhen is the place a stage sentence asks for: "after review",
+// "before proof", "first" or "last", or "" when it names none, which
+// [PlaceStage] reads as just before proof.
 func StageWhen(words string) string {
-	low := strings.ToLower(strings.TrimSpace(words))
-	for _, w := range stageTimeWords {
-		if strings.HasPrefix(low, w) {
-			return w
+	when, _ := stagePlacementOf(words)
+	return when
+}
+
+// stageStop are the words a rail name leaves out: articles, pronouns, and the
+// fillers a sentence starts with. "run" is dropped only from the front.
+var stageStop = map[string]bool{"it": true, "the": true, "a": true, "an": true, "this": true, "that": true, "them": true}
+var stageLead = map[string]bool{"then": true, "please": true, "run": true}
+
+// stageName is the first two meaningful words of an ask, for a rail:
+// `make it neater` is `make neater` and `check the docs build` is `check docs`.
+func stageName(ask string) string {
+	var raw []string
+	for _, w := range strings.Fields(strings.ToLower(ask)) {
+		if w = strings.Trim(w, ",:;.!?\"'()"); w != "" {
+			raw = append(raw, w)
 		}
 	}
-	return "after review"
+	var kept []string
+	lead := true
+	for _, w := range raw {
+		if lead && stageLead[w] {
+			continue
+		}
+		lead = false
+		if !stageStop[w] {
+			kept = append(kept, w)
+		}
+	}
+	if len(kept) == 0 {
+		kept = raw
+	}
+	if len(kept) > 2 {
+		kept = kept[:2]
+	}
+	return strings.Join(kept, " ")
 }
 
 // ParseStage reads "after review, make it neater" into a stage: a
-// conversation whose ask is the words with the time word taken off, and whose
-// name is the first two words of that ask. Its place comes from [StageWhen]
+// conversation whose ask is the words with the placement clause taken off, and
+// whose name is [stageName] of that ask. Its place comes from [StageWhen]
 // and [PlaceStage], because A STAGE CARRIES NO TIME WORD: its place in the
 // list is its time. An empty Ask is a sentence that said only when.
 func ParseStage(words string) Stage {
-	ask := strings.TrimSpace(words)
-	low := strings.ToLower(ask)
-	for _, w := range stageTimeWords {
-		if strings.HasPrefix(low, w) {
-			ask = ask[len(w):]
-			break
-		}
-	}
+	_, ask := stagePlacementOf(words)
 	ask = strings.Trim(strings.TrimSpace(ask), " ,:;.")
-	f := strings.Fields(strings.ToLower(ask))
-	if len(f) > 2 {
-		f = f[:2]
-	}
-	return Stage{Name: strings.Join(f, " "), Kind: StageChat, Ask: ask, Until: "done", On: true}
+	return Stage{Name: stageName(ask), Kind: StageChat, Ask: ask, Until: "done", On: true}
 }
 
-// stageAnchors are the stages a time word names. A stage placed "after X" goes
-// after X and after whatever already sits between X and the next anchor, so
-// stages banked at the same moment keep the order they were said in.
-var stageAnchors = map[string]bool{"plan": true, "write": true, "test": true, "review": true, "proof": true}
-
-// PlaceStage inserts st at the moment when names. A recipe without the named
-// stage (a pull request has no plan) takes it just before proof, and a recipe
-// without proof takes it at the end.
+// PlaceStage inserts st at the place when names. `after X` is directly after
+// the stage named X and `before X` directly before it; `first` is the front
+// and `last` is the end, but ahead of proof when proof is the last stage. No
+// place, or a stage the recipe does not have (a pull request has no plan),
+// takes it just before proof, and a recipe without proof takes it at the end.
 func PlaceStage(stages []Stage, st Stage, when string) []Stage {
 	at := len(stages)
 	if p := StageIndex(stages, "proof"); p >= 0 {
 		at = p
 	}
-	if after, ok := strings.CutPrefix(when, "after "); ok {
-		if i := StageIndex(stages, after); i >= 0 {
-			at = i + 1
-			for at < len(stages) && !stageAnchors[stages[at].Name] {
-				at++
+	switch {
+	case when == "first":
+		at = 0
+	case when == "last":
+		at = len(stages)
+		if n := len(stages); n > 0 && stages[n-1].Name == "proof" {
+			at = n - 1
+		}
+	default:
+		if x, ok := strings.CutPrefix(when, "after "); ok {
+			if i := StageIndex(stages, x); i >= 0 {
+				at = i + 1
+			}
+		} else if x, ok := strings.CutPrefix(when, "before "); ok {
+			if i := StageIndex(stages, x); i >= 0 {
+				at = i
 			}
 		}
 	}
