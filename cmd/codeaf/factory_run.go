@@ -208,6 +208,11 @@ func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker fac
 		// this machine is waiting to hear them.
 		Events: nil,
 		Pool:   money,
+		// THE ITEM'S OWN CONVERSATION IS THE MANAGER OF ITS RUN: made at
+		// launch the way `T` makes it, the lead of the item's team, told every
+		// stage, and listened to for the brief, the steer and an answer.
+		Manager: managerMaker(st, workspace, profileDir),
+		Talk:    sessionTalk{},
 	})
 }
 

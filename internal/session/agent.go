@@ -465,6 +465,11 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// AND A CONVERSATION A TEAM'S MANAGER STARTED TAKES ITS FIRST TURN ON ITS
 	// OWN, once the interface has made it a member (team_wake.go).
 	agent.watchTeamStart()
+	// AND A FACTORY RUNNER'S LINE REACHES IT THROUGH IT, between turns, rather
+	// than failing on the journal's lock (talk_progress.go).
+	if agent.file != nil {
+		rememberLiveJournal(config.SessionFile, agent)
+	}
 	return agent, nil
 }
 
@@ -2410,6 +2415,7 @@ func (f sessionCompleter) FallbackModels(model string) []string {
 // inside a tool must not hold the process open, and past the grace the journal
 // simply stops accepting writes rather than writing to a closed descriptor.
 func (a *Agent) Close() error {
+	forgetLiveJournal(a)
 	// WHAT THE RECORD ALREADY HOLDS IS SETTLED BEFORE THE DOOR SHUTS, so an idle
 	// session that read a landing in its last turn does not re-tell it tomorrow.
 	// What the record does NOT hold stays owed, which is the whole point: a note
