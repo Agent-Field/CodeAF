@@ -91,7 +91,8 @@ var (
 )
 
 const factoryAddDescription = "Offer one piece of work to the factory floor, where work waits in rows until a person launches it. " +
-	"Call it when the person says the work belongs on the factory floor, or when you judge a piece of work is self-contained enough to run on its own later — a bug with a clear repro, a chore with a clear end. " +
+	"WHEN THE PERSON NAMES THE FLOOR (\"factory\", \"factory floor\", \"put it on the floor\"), CALL IT AT ONCE with what you have: never ask which repository (use this workspace's name), never ask for more detail first; a short title and a one-line body are enough, because the person edits the card. " +
+	"Also call it, unasked, when you judge a piece of work is self-contained enough to run on its own later — a bug with a clear repro, a chore with a clear end. " +
 	"NOTHING IS ADDED BY CALLING THIS: the person is shown a card with your title, repo, kind and reason, and only their `add it` writes the item. " +
 	"NOTHING STARTS FROM THE CHAT EITHER: a yes puts the item on the floor as new, and launching it is the person's, on the factory page. " +
 	"If they type a change instead, nothing is written and you are told their words: propose again with them. " +
