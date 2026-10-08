@@ -1232,6 +1232,14 @@ remembered as well.
 With history not wired up (`--no-history`), `up` takes nothing and keeps its other
 meanings.
 
+## How do I make this one chat think harder — `alt+e` on the thinking chip
+
+Press `alt+e` in the conversation. The thinking chip above the message box walks one
+rung up the effort ladder (`low`, `medium`, `high`, `xhigh`, `max`) and the next turn
+thinks that hard; off the top it comes back to `auto`. `/effort high` names a rung
+outright. It changes this one chat only; the section right below says where the chip
+sits and what each word on it means.
+
 ## The thinking chip above the message box — `alt+e`, `/effort`, and how to make this one chat think harder
 
 The line above the message box — the legend — names how hard the model will think about

@@ -8,11 +8,23 @@
  "nf-fa-adjust": {
   "code": "f042"
  },
+ "nf-fa-angle_double_down": {
+  "code": "f103"
+ },
+ "nf-fa-angle_double_up": {
+  "code": "f102"
+ },
+ "nf-fa-angle_down": {
+  "code": "f107"
+ },
  "nf-fa-angle_left": {
   "code": "f104"
  },
  "nf-fa-angle_right": {
   "code": "f105"
+ },
+ "nf-fa-angle_up": {
+  "code": "f106"
  },
  "nf-fa-asterisk": {
   "code": "f069"

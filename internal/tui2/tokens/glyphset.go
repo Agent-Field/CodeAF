@@ -203,6 +203,12 @@ const (
 	GFollowUp
 	// GTeamDot marks a team identity in the navigation tree.
 	GTeamDot
+	// GPriorityFirst to GPriorityFourth are the factory floor's priority
+	// column (internal/tui3's factory_rail.go), one cell each, first loudest.
+	GPriorityFirst
+	GPrioritySecond
+	GPriorityThird
+	GPriorityFourth
 	glyphIDCount
 )
 

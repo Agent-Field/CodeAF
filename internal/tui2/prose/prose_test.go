@@ -320,3 +320,17 @@ func TestNilStylerRendersPlain(t *testing.T) {
 		t.Error("markdown punctuation survived into the frame")
 	}
 }
+
+// TestLinksAsTextDrawsTheWordsAlone pins the option a caller takes when it
+// offers the address another way: the label stays, the address goes.
+func TestLinksAsTextDrawsTheWordsAlone(t *testing.T) {
+	src := "see [the docs](https://example.com/docs) first"
+	with := strings.Join(Render(src, Options{Width: 80, LinksAsText: true}), "\n")
+	if strings.Contains(with, "example.com") || !strings.Contains(with, "the docs") {
+		t.Errorf("LinksAsText drew %q; want the label and no address", with)
+	}
+	without := strings.Join(Render(src, Options{Width: 80}), "\n")
+	if !strings.Contains(without, "example.com") {
+		t.Errorf("the default drew %q; want the address beside the label", without)
+	}
+}

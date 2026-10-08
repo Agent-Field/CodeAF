@@ -384,12 +384,12 @@ func TestFactoryNilDoorDrawsNoKeyAndIgnoresThePress(t *testing.T) {
 	a.factory.Dismiss, a.factory.SetGate, a.factory.Sleep, a.factory.New = nil, nil, nil, nil
 	factoryOn(t, a, 8)
 	hint := (placeFactory{}).hint(a)
-	for _, gone := range []string{"d hide", "p plan first", "r run", "S sleep", "n new", "t c e"} {
+	for _, gone := range []string{"d hide", "p plan first", "r run", "S sleep", "n new", "t gate"} {
 		if strings.Contains(hint, gone) {
 			t.Fatalf("the hint names %q with no door behind it: %q", gone, hint)
 		}
 	}
-	if !strings.Contains(hint, "L launch marked") || !strings.Contains(hint, "c e chips") {
+	if !strings.Contains(hint, "L launch marked") || !strings.Contains(hint, "c cap · e effort") {
 		t.Fatalf("the hint lost the keys that do work: %q", hint)
 	}
 	for _, k := range []string{"d", "p", "r", "t", "S", "n"} {
@@ -410,9 +410,9 @@ func TestFactoryHintByState(t *testing.T) {
 		id   int
 		want string
 	}{
-		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t c e chips · d hide · n new · / filter · [ ] repo · A backlog · z density · O order · by obligation · S sleep 8h · E recipe · esc back"},
-		{2, "enter open · s steer · p pause · x stop · e effort · n new · / filter · [ ] repo · A backlog · z density · O order · by obligation · S sleep 8h · E recipe · esc back"},
-		{1, "enter open · y n answer · a in words · s steer · x stop · / filter · [ ] repo · A backlog · z density · O order · by obligation · S sleep 8h · E recipe · esc back"},
+		{8, "enter open · r run · p plan first · space mark · L launch marked · 1-9 stages · s stage · t gate · c cap · e effort · d hide · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · S sleep 8h · E recipe · esc back"},
+		{2, "enter open · s steer · p pause · x stop · e effort · n new item · / filter · [ ] repo · A backlog · z density · O order · priority · S sleep 8h · E recipe · esc back"},
+		{1, "enter open · y n answer · a in words · s steer · x stop · / filter · [ ] repo · A backlog · z density · O order · priority · S sleep 8h · E recipe · esc back"},
 	} {
 		factoryOn(t, a, c.id)
 		if got := (placeFactory{}).hint(a); got != c.want {
@@ -431,7 +431,7 @@ func TestFactoryHintByState(t *testing.T) {
 	a.width = 400
 	factoryOn(t, a, 2)
 	drive(t, a, key("enter"))
-	if got, want := (placeFactory{}).hint(a), "↑↓ stages · s steer · p pause · x stop · e effort · n new · S sleep 8h · esc floor"; got != want {
+	if got, want := (placeFactory{}).hint(a), "↑↓ stages · s steer · p pause · x stop · e effort · n new item · S sleep 8h · esc floor"; got != want {
 		t.Fatalf("on the item page the hint is\n%q\nwant\n%q", got, want)
 	}
 }

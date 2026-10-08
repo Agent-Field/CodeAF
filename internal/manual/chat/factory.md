@@ -18,8 +18,8 @@ The only key it offers then is `esc back`.
 
 The floor is one layout in three widths:
 
-- **120 columns and wider**: the handover runs across the whole width at the top, then a blank
-  row, then two columns: the rows on the left (58% of the width to start with, never under 70
+- **120 columns and wider**: the handover runs across the whole width at the top (one line, or
+  four rows after `h`; see the handover), then a blank row, then two columns: the rows on the left (58% of the width to start with, never under 70
   columns), a dim `│`, and the **peek** on the right (never under 40 columns), which shows the
   item under the cursor. The divider moves (see resize the split).
 - **90 to 119 columns**: the handover on top, then the rows across the full width, with no peek.
@@ -32,60 +32,53 @@ The rows window follows the cursor when they do not all fit.
 
 The bottom line names the keys that work for the item under the cursor. On the still made-up
 floor, which has no verbs, it names the walking keys:
-`↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · O order · by obligation · E recipe · esc back`.
+`↑↓ walk · enter open · space mark · / filter · [ ] repo · A backlog · z density · O order · priority · h handover · E recipe · esc back`.
 On a floor that can be changed it names `enter open` and the item's own keys first (see the
 factory's verbs), and when the line is too long the list keys are the first to go.
 
-- `↑` and `↓` (or `ctrl+p` and `ctrl+n`, or the wheel) walk the items.
-- A click on a row moves the cursor there and the peek shows it; a second click on the same row
-  opens it. A click in the peek moves nothing.
-- `enter` opens the item under the cursor on its own page (see the item page).
-- `J` and `K` scroll the peek's description a row down and up, `pgdn` and `pgup` a page
-  (see read the whole issue).
-- `{` and `}` move the divider between the rows and the peek, and `|` puts it back (see resize
-  the split).
-- `z` switches between compact rows (one line each, the default) and comfortable rows (a dim
-  second line under each row with the factory's one-sentence read of it, and a blank row between
-  items). The choice is not saved; every launch starts compact.
-- `O` changes the order of the rows inside each group (see order the floor).
-- `space` marks or unmarks the new item under the cursor (offered only on a new item).
-- `T` opens the item's own conversation, made on the first press (see talk it through).
-- `/` opens a filter box at the top of the list.
-- `[` and `]` show one repository at a time, then all of them again (offered with two or more).
-- `A` shows the whole backlog of new items, or only the recent ones.
+- `↑` and `↓` (or `ctrl+p`, `ctrl+n`, the wheel) walk the items. A click selects a row, a second
+  click opens it; a click in the peek moves nothing.
+- `enter` opens the item on its own page (see the item page).
+- `J` and `K` scroll the peek's description, `pgdn` and `pgup` a page.
+- `{` and `}` move the divider, `|` puts it back (see resize the split).
+- `h` switches the handover between one line (the default) and four rows; remembered.
+- `z` switches compact rows (one line each, the default) and comfortable rows (a long title on
+  two lines, a dim line with the factory's read, a blank row between items). Not saved.
+- `O` re-sorts the rows inside each group (see order the floor).
+- `g` opens the item on github (see open the item on github).
+- `u` reads the item again; `U` reads every item again, after asking (see when the floor is
+  doing something).
+- `space` marks or unmarks a new item. `T` opens the item's own conversation.
+- `/` filters, `[` and `]` show one repository at a time, `A` shows the whole backlog.
 - `esc` clears a filter or a repository first; pressed again, it goes back to the conversation.
-- `R` chooses which repositories the floor watches, `E` opens the recipe page, and `$` sets the
-  day rail (each has its own section). They are named last on the line, `R repos · E recipe ·
-  $ rail`, and are the first to go when it is too long; a key the floor cannot do is not named.
+- `R` repos, `E` recipe and `$` rail are named last and are the first to go.
 
 ## what a row is
 
 A row on the factory floor is one **item**: an issue, a pull request, a red CI run, a chore,
-or work a chat split off. Rows are laid out in fixed columns so they line up down the page:
-a mark, the short name right-aligned (`#1538`, or `ci` for a red CI run), the title (cut with
-`…`), the repository's short name (`codeaf`), the facts, and at the far right how long ago the
-item last moved (`12m`, `7h`, `3d`). Under 90 columns a row is only the mark, the short name and
-the title.
+or work a chat split off. Rows stand on one grid so they line up down the page: a state mark,
+the **priority** in one cell, the short name right-aligned so the numbers line up by digit
+(`#1538`, or `ci`), the title, the repository's short name, the facts, and at the far right how
+long ago the item last moved (`12m`, `7h`). Under 90 columns a row is the mark, the priority, the
+short name and the title.
 
-The rows are grouped under muted capital headings with a count and a dim line out to the edge
-(`NEEDS YOU · 1 ───`), in this order, with one blank row between groups. A group with nothing in
-it is not drawn at all:
+The priority is the cheap read's guess at what to take first: `▇` first (in the accent), `▅`
+second, `▃` third, `▁` fourth, dim; nothing for an item nobody ranked. A patched font draws
+chevrons instead; a screen reader hears `!`, `:` and `.`. While the item is being read the cell
+is a spinner instead.
 
-- `NEEDS YOU`: waiting on your answer. Its mark is `?`; its first fact is the question itself,
-  in the question colour, and `[y/n]` stands just before the age.
-- `STREAMS`: running items (a half-filled circle) and queued ones (`○`). A running row's first
-  fact is a strip with one mark per stage (`●` done, `◐` running, `○` to come) and the stage it is
-  in with how long it has run: `review 26m`. A queued row says `queued`.
-- `NEW`: arrived and not started; no mark, except `✕` on a red CI run. The first fact is its kind
-  and size: `bug · S`, `pr · ci ✓`, or `ci red`.
-- `LANDED`: finished, waiting for your sign-off (`✓`). The first fact counts its claims: `3✓ 1✕`.
-- `SHIPPED`: signed off (a dim dot), with `shipped 06:00`.
+On a forge item the short name is a link to its page where the terminal takes links.
 
-After the first fact come, in this order: the money (`$1.42/$5`, spent against the cap, or `~$3`
-estimated), the author (`olu (stranger)` when the author is a stranger), and tags: `factory`,
-`thin` (too underspecified to run without questions), `dup #950?`, `from chat ▸` and
-`terminal only`. A row carries at most four facts and never wraps: as the window narrows, facts
-are dropped whole from the right. The row under the cursor sits on a lifted background.
+Groups have muted capital headings (`NEEDS YOU · 1 ───`) and one blank row between them:
+`NEEDS YOU` (the question in its colour, `[y/n]` before the age), `STREAMS` (a stage strip
+`●●◐○` and `review 26m`, or `queued`), `NEW` (`bug · S`, `pr · ci ✓`, `ci red`), `LANDED`
+(`3✓ 1✕`) and `SHIPPED` (`shipped 06:00`). An empty group is not drawn.
+
+After the first fact come the money (`$1.42/$5`, or `~$3` estimated), the author, tags (`thin`,
+`dup #950?`, `from chat ▸`, `terminal only`), and `reading…` or `refreshing…` while the item is
+being read. A long title takes width from the facts before it is cut; the facts drop whole from
+the right, the state fact last. The row under the cursor sits on the same lifted background the
+Chats list and the Teams page use.
 
 ## filter the factory floor, search for an item
 
@@ -251,73 +244,53 @@ No run calls plan on your own floor yet, so today only the made-up floor
 
 ## the handover
 
-The **handover** is what happened on the factory floor since you last looked. It is four rows
-and a blank row across the whole width at the top of the floor, above the rows and the peek. It
-is drawn at 90 columns and wider, and only when the window is tall enough to leave the rows at
-least six lines under it.
+The **handover** is what happened on the factory floor since you last looked. By default it is
+one line across the top of the floor, then a blank row:
 
-1. A muted heading with a line out to the edge: `◆ handover · since 23:12 · 7h 12m · $8.44`,
-   when the stretch began, how long ago, and what it spent. The spend is left off when nothing
-   was spent.
-2. What happened: `✓ 2 shipped #1661 #1663 · 3 arrived · 1 question handled`. A part whose
-   count is zero is left off. When nothing at all happened the row says
+`◆ 2 shipped · 3 arrived · ? 5 waiting · $8.44 / $60 · polled 14s ago`
+
+what shipped and arrived this stretch, what waits on you (in the question colour), the day's
+spend against the day's rail, and when a source was last read. A part whose count is zero is
+left off; a narrow window drops parts from the right. While a source is being read the last part
+says `github · ⠋ polling`, and while every item is read again, `⠋ refreshing 8 items · 3 done`.
+
+`h` switches to the four-row strip and back, and the choice is remembered in `factory.json` in
+the codeaf home, beside the split:
+
+1. `◆ handover · since 23:12 · 7h 12m · $8.44`, with a line out to the edge.
+2. `✓ 2 shipped #1661 #1663 · 3 arrived · 1 question handled`, or
    `quiet · nothing happened while you were away`.
-3. What waits on you: `? 2 waiting on you`, in the question colour, or
-   `nothing waits on you`. At the right, labelled `24h`, a sparkline of the last
-   twenty-four hours of activity, one cell an hour, the current hour last. It is not drawn
-   when no hour had anything in it.
-4. The floor in one dim line: `3 repos · github · chat · benches 2/6 · polled 4m ago`, how many
-   repositories, which sources are connected, how many benches are busy out of how many, and
-   when a source was last read. At the right, the day's money: `$11.31 / $60 today`, what was
-   spent against the day's limit. With nothing spent today it draws only `/ $60 today`. The
-   made-up moving floor adds how fast its clock runs, such as `· 150×`; a real floor never does.
+3. `? 2 waiting on you` or `nothing waits on you`, and at the right a `24h` sparkline.
+4. `3 repos · github · chat · benches 2/6 · polled 4m ago`, and `$11.31 / $60 today` at the
+   right. The made-up moving floor adds its clock's speed, `· 150×`.
 
-A narrow window drops the shipped items' names first, then the last facts on a row; the money
-keeps its place.
+The handover is drawn at 90 columns and wider, when the window leaves the rows six lines.
 
 ## the peek
 
-At 120 columns and wider, the right column of the factory floor shows the item under the cursor
-as a short document: blocks with one blank row between each; a block with nothing to say, or a
-zero, is left out along with its blank row. In order:
+At 120 columns and wider, the right column shows the item under the cursor as a short document:
+blocks with one blank row between each, and a block with nothing to say is left out. Its title
+stands level with the first group heading on the left. In order:
 
-```
-#1 Total double-counts an entry added twice
-factory-demo · bug · S · santosh · 8h
-
-Add appends without checking the id, so Total sums the pair.
-
-touches money      maybe a duplicate of #7      thin
-
-gate  ship      cap  $5      effort  —
-
-● plan    ◐ write    ○ test    ○ review    ○ proof
-
-When the same entry id is added twice, Total counts it
-twice. The ledger should treat the second Add as a no-op …
-
-» talk
-
-enter open · space mark · d hide
-```
-
-1. The short name and title, then dim: repository, kind, size, author, age.
+1. The short name and title (the short name is a link to the item's page), then dim: repository,
+   kind, size, author, age, and `github ↗` when the item has a page there.
 2. For an item that needs you, the question (`?` in amber) and `[y] yes · [n] no · [a] in words`.
-3. The factory's one-sentence read of it.
-4. Facts, dim, with no labels: what risky ground it touches, `maybe a duplicate of #7`, `thin`,
-   `stranger`. Too wide, they drop from the right.
-5. The chips: `gate`, `cap` and `effort`; no cap when there is none, `—` for no effort word.
-6. The stages: `●` done, `◐` running (round, minutes left), `○` to come; a new item's are the
-   ones it would run. What plan changed follows on a dim row.
-7. A running item's stage line, such as `review 1/2 · 3 findings · fixing`;
-   `queued · benches full · a bench frees it`; or `merged 06:00 · $1.90`.
-8. The description, at most six rows, cut with `…` and a dim `▾ more`. A landed item shows its
-   claims and policy rows here instead.
-9. `talk`, only when the item has its own conversation.
+3. The factory's one-sentence read, or `⠋ reading…` while the first read is out.
+4. Facts, dim: `touches money`, `maybe a duplicate of #7`, `thin`, `stranger`.
+5. The gate, cap and effort in fixed slots, so their values line up from item to item: `gate  ship`,
+   `cap  $5`, `effort  —`. A cap of nothing is a blank slot.
+6. The stages: `●` done, `◐` running, `○` to come, each in an even cell.
+7. A running stage's line (`review 1/2 · 3 findings · fixing`), what frees a queued item, or
+   `merged 06:00 · $1.90`.
+8. The description, rendered from Markdown (headings, lists, code, links as their words, never
+   raw backticks), 60 columns wide, at most six rows, cut with `…` and `▾ more`. A landed item
+   shows its claims here instead.
+9. `talk`, when the item has its own conversation.
+10. What the forge says, each block absent when empty: `comments` (the last three, `author · 2h`
+    then the words), `checks` (one row per check: mark, name, state), `files` (`+218 −44 · 6
+    files`, then up to six paths), `activity` (the last five events) and `links` (`github ↗`).
 
-The bottom row names the keys, starting with `enter open`: `space mark · d hide` for a new item
-(plus `r run · p plan first` where a floor can launch), `y n answer · a in words · x stop`,
-`s steer · p pause · x stop`, or `a ship anyway · c send back · o check again`.
+The bottom row names the keys, starting with `enter open`, with one blank row above it.
 
 ## resize the split — { } |
 
@@ -338,8 +311,10 @@ in `…` with a dim `▾ more` at the right. `J` scrolls it down a row and `K` u
 `pgup` move a page. Moving to another item starts that item at its top.
 
 To read everything, open the item (`enter`, or click its row twice). The item page's rail starts
-with `issue`, and its pane is the whole description wrapped at 72 columns, then the factory's
-read, the facts, and, for a thin item, the questions it would ask the author. `J`, `K`, `pgdn`
+with `issue`, and its pane is the whole description rendered from Markdown at 72 columns, then
+`read 3m ago · u again` (or `⠋ reading · 4s` while a read is out), the factory's read, the
+facts, for a thin item the questions it would ask the author, what plan changed about the
+stages, and then the comments (each whole), checks, files, activity and links. `J`, `K`, `pgdn`
 and `pgup` scroll it, and its bottom row says `J K scroll` while there is more to see.
 
 ## the item page
@@ -348,10 +323,12 @@ and `pgup` scroll it, and its bottom row says `J K scroll` while there is more t
 across the full width; `esc` closes it and puts the cursor back on the same row. Nothing about
 the floor (filter, repository, marks) changes while it is open.
 
-The top two rows are the item: its short name, title, repository, author, where it stands and for
-how long (`running 26m`), with spend over the cap on the right (`$1.42 / $5`); then the chips with
-their keys, `gate ship [t] · cap $5 [c] · effort — [e] · places: codeaf`. When plan changed the
-item's stages, a third dim row says what it changed (see adapt). A blank row follows.
+The top row is a trail: `Factory › codeaf › #1551 filters lost on compact`, the crumbs dim and
+the item in ink, with where it stands and for how long (`running 26m`) and the spend over the
+cap (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row is
+the gate, cap and effort with their keys, `gate  ship [t]  cap  $5 [c]  effort  — [e]  places  codeaf`, then a
+blank row; the rail and its pane start on the fourth row on every item. What plan changed about
+the stages is in the issue pane (see adapt).
 
 On the left is the **rail**: `issue` first (see read the whole issue), then `talk` when the item
 has its own conversation, then one row per stage: `●` done (with `×3` when it split into
@@ -385,16 +362,17 @@ checks again.
 
 On the made-up moving floor every key below works; the bottom line names only the keys that
 work for the item under the cursor. On your own floor in the shipped binary the keys that change
-an item's own words work (`n`, `t c e` chips, `w`, `1-9` and `s` stages, `space`, `d`) and
+an item's own words work (`n`, `t` gate, `c` cap, `e` effort, `w`, `1-9` and `s` stages, `space`, `d`) and
 nothing that launches, steers, answers or ships is offered on the bottom line, because nothing
 can launch yet. `enter` on a row never launches; it opens the item page.
 
 - **New:** `r run · p plan first · space mark · L launch marked · 1-9 stages · s stage ·
-  t c e chips · d hide · n new`. `r` launches with the ship gate, `p` with the plan gate, and
+  t gate · c cap · e effort · d hide · n new item`. `r` launches with the ship gate, `p` with the plan gate, and
   `L` launches every marked item (or this one). `t` cycles the gate plan, ship, none; `c` the
   cap $2, $5, $8, $15, $30; `e` the first stage's effort: none, cheap, strong. `w` opens
-  `in words ›` for chips (`$8, plan first, stronger`). `g` puts a terminal-made item on github
-  too, or takes it off. `a` asks a thin item's author its questions. `d` hides the item.
+  `in words ›` for the gate, cap and effort at once (`$8, plan first, stronger`). On a
+  terminal-made item `g` puts it on github too, or takes it off; on any other item with a page
+  on github, `g` opens that page. `a` asks a thin item's author its questions. `d` hides the item.
 - **Running or queued:** `s steer · p pause · x stop · e effort`. `s` opens `steer ›`; `p`
   pauses and resumes; `x` stops and keeps the branch; `e` cycles the running stage's effort.
 - **Needs you:** `y n answer · a in words · s steer · x stop`. `a` opens `answer ›`.
@@ -403,14 +381,48 @@ can launch yet. `enter` on a row never launches; it opens the item page.
   `the diff is the appendix` and that it opens in your editor later.
 - **Any state:** `T talk` opens the item's own conversation (see talk it through), on the
   floor and on the item page alike; it is named only where the floor can make one.
-- **Anywhere:** `n new` opens `new work ›` on the repository the list shows (or the first one;
+- **Anywhere:** `n new item` opens `new work ›`, at the bottom of the rows column, on the repository the list shows (or the first one;
   on a floor with no items yet, the name of the folder this window was opened in), and the new
   item's card is under the cursor when it is made. On the made-up moving floor,
   `S sleep 8h` jumps its clock eight hours and starts a new handover.
 
-A key that takes words opens a one-line box at the bottom of the right column (or under the
-rows when there is no peek): `enter` sends, `backspace` edits, `esc` cancels. A refusal, such as
+A key that takes words opens a one-line box at the bottom of the right column, except `n`'s,
+which stands at the bottom of the rows (and every box stands under the rows when there is no
+peek): `enter` sends, `backspace` edits, `esc` cancels. A refusal, such as
 `#1540 is on a bench; stop it first`, is said on the bottom line beside the keys.
+
+## open the item on github — g
+
+An item that came from GitHub has a page there, and the floor offers it three ways: its short
+name on the row and on the peek is a link (where the terminal takes links, it opens on click,
+and takes no extra room), the peek's dim meta row ends `github ↗`, and `g` on the item opens the
+page in your browser. The bottom line says `g github` where it works. After `g` the bottom line
+says `opened #1662 on github`; on a machine with no browser it says
+`could not open your browser` with the address to copy.
+
+`g` is offered only when the floor can name the page; with no such door there is no key. On an
+item typed into the terminal with `n`, which has no page on GitHub, `g` keeps its other meaning:
+it puts the item on GitHub too, or takes it off.
+
+## when the floor is doing something — the spinner
+
+Everything the floor does in the background says it is happening, with the same braille spinner
+the transcript uses (`⠋`), and nothing is drawn when nothing is in flight:
+
+- **An item being read:** its priority cell spins and its last fact says `reading…` or
+  `refreshing…`. The peek's read says `⠋ reading…` while the first read is out, and the item
+  page's read line says `⠋ reading · 4s`.
+- **`u` reads the item under the cursor again.** The line above the keys says `re-reading #6…`
+  until the read is over, then the bottom line says `#6 read again · ~$0.0004`.
+- **`U` reads every item again, and asks first:** `re-read 8 items · ~$0.004? [y] go · [n] not
+  now` stands at the bottom of the rows. `y` goes, `n` or `esc` does not. While it runs the
+  handover says `⠋ refreshing 8 items · 3 done`.
+- **A source being read:** the handover says `github · ⠋ polling`, then `polled 14s ago`.
+- **A key waiting on its answer:** `T` says `⠋ opening #1's conversation…`, `b` says
+  `⠋ banking…`, saving the repositories or the recipe says `⠋ saving…`, and `R` says
+  `⠋ asking gh…`, each until the answer arrives.
+
+`u` and `U` are offered only where the floor can read items again.
 
 ## bank a habit after clean sign-offs
 
@@ -490,7 +502,7 @@ The first press makes, on this machine and without asking any model:
   `factory` (made once, the first time any item is talked through);
 - one conversation in that team, in the folder where the item's repository is checked out (or
   this window's folder when codeaf does not know the checkout). It opens with the item in front
-  of it: the title, the repository, author and tier, its chips (gate, cap, labels), the
+  of it: the title, the repository, author and tier, its gate, cap and labels, the
   body, its stages as numbered lines, the factory's read, and the sentence
   `This is the item's own conversation on the factory floor. Nothing here launches it; the person does that on the floor.`
 
@@ -695,16 +707,19 @@ at all. Each call is a row on the spend ledger named `factory triage`, on the lo
 
 ## order the floor — O
 
-`O` on the factory floor cycles how rows are ordered inside each group: `by obligation` (the
-default: newest first, as the floor has always been), `first` (the triage priority, 1 before 5,
-older first on a tie, unprioritised items last), `age` (oldest arrival first) and `cost`
-(cheapest first, by what the item has spent or else its estimate; items with neither last). The
-groups never move: `NEEDS YOU` stays on top in every order.
+The rows inside each group are ordered by `priority` by default: priority 1 first, unranked items
+last, then the newest issue number first (the floor's own number for chat and terminal items).
+`O` cycles `priority`, `first` (priority, then older first), `age` (oldest arrival first) and
+`cost` (cheapest first). The groups never move: `NEEDS YOU` stays on top in every order.
+
+**The rows do not move under you.** An order is applied when the floor is first read and when
+`O` is pressed; after that a re-read never reorders the rows, even when it changes an item's
+priority. Two things move a row: a new arrival, which slides in at the top of its group, and a
+change of state, which moves the row to the top of its new group. Press `O` round to sort again.
 
 The bottom line names the current order, `O order · first`. In the `first` order each row shows
-the triage reason dim at the far right, before the age (`main is red    6h`); it is the first thing
-a narrow row drops, before any fact. `O` does nothing on the item page. The choice lasts until
-codeaf closes, like the density; it is not saved.
+the triage reason dim before the age (`main is red    6h`), the first thing a narrow row drops.
+`O` does nothing on the item page. The choice lasts until codeaf closes; it is not saved.
 
 ## what the factory does not do yet
 
@@ -713,7 +728,7 @@ Be plain about this when asked:
 - **Items arrive three ways:** from a chat with `factory_add` (after you answer its card), from
   `n` on the floor, and from the GitHub repositories you watch (see connecting github). They
   are kept on this machine and are still there next launch.
-- **Chips and stages can be set; nothing launches.** On your own floor `t c e`, `w`, `1-9`, `s`
+- **The gate, cap, effort and stages can be set; nothing launches.** On your own floor `t`, `c`, `e`, `w`, `1-9`, `s`
   and `d` change an item, and no key launches, steers, answers, signs off or sends back. Those
   verbs work only on the made-up moving floor, which needs a development build made with
   `-tags factorymock` and started with `CODEAF_FACTORY_MOCK=1`.

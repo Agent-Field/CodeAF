@@ -243,7 +243,15 @@ const (
 	GlyphSeparator = "·" // telemetry separator
 	GlyphMissing   = "—" // missing data — never an estimate (10.2.8)
 	GlyphTeamDot   = "●" // a team identity in the navigation tree
-	GlyphEstimate  = "~" // estimated number (10.2.8)
+
+	// The factory floor's priority column: how soon the cheap read says to
+	// take an item, first to fourth, as a bar that falls. Unranked draws
+	// nothing at all, so there is no fifth.
+	GlyphPriorityFirst  = "▇"
+	GlyphPrioritySecond = "▅"
+	GlyphPriorityThird  = "▃"
+	GlyphPriorityFourth = "▁"
+	GlyphEstimate       = "~" // estimated number (10.2.8)
 
 	// Structure (5.21). The accent rail groups a card's lines in its identity
 	// hue; the drag handle marks a reorderable pending row (5.22).
@@ -547,6 +555,10 @@ func Glyphs() []GlyphInfo {
 		// entirely until it was added. It has one now — the blockquote's gutter
 		// moved onto it, off the box rule it shared with the spawn tree.
 		{"TeamDot", GlyphTeamDot, '●', true},
+		{"PriorityFirst", GlyphPriorityFirst, '▇', true},
+		{"PrioritySecond", GlyphPrioritySecond, '▅', true},
+		{"PriorityThird", GlyphPriorityThird, '▃', true},
+		{"PriorityFourth", GlyphPriorityFourth, '▁', true},
 		{"ProseBullet", GlyphProseBullet, '·', true},
 		{"ProseQuote", GlyphProseQuote, '▏', true},
 		{"CodeGutter", GlyphCodeGutter, '▏', true},

@@ -18,6 +18,9 @@ func factoryHeadLab(t *testing.T, snap factory.Snapshot) *app {
 	a := factoryPlaceLab(t)
 	a.pal = newPalette(tokens.NoColor, false)
 	a.fp.snap = snap
+	// These tests read the full strip, which is `h` (factory_head.go); the
+	// one line is factory_polish_test.go's.
+	a.fp.headFull = true
 	return a
 }
 
@@ -44,7 +47,7 @@ func TestFactoryHeadCarriesTheFixturesCounts(t *testing.T) {
 		"handover · since 04:00 · 8h · $8.44 ─",
 		"1 shipped #1663 · 4 arrived",
 		"? 1 waiting on you",
-		"3 repos · benches 1/6",
+		"3 repos · github · chat · benches 1/6 · polled 14s ago",
 	} {
 		if !strings.Contains(rows[i], want) {
 			t.Errorf("row %d is missing %q:\n%q", i, want, rows[i])
@@ -169,7 +172,7 @@ func TestFactoryPageStacksTheHandoverAboveTheColumns(t *testing.T) {
 	a.width, a.height = 150, 40
 	head, cols := -1, -1
 	for i, line := range strings.Split(factoryFrameText(a), "\n") {
-		if head < 0 && strings.Contains(line, "handover · since") {
+		if head < 0 && strings.Contains(line, "◆ ") {
 			if strings.Contains(line, "│") {
 				t.Fatalf("the handover shares its row with the column rule: %q", line)
 			}
@@ -179,8 +182,10 @@ func TestFactoryPageStacksTheHandoverAboveTheColumns(t *testing.T) {
 			cols = i
 		}
 	}
-	if head < 0 || cols != head+5 {
-		t.Fatalf("the columns do not start five rows under the handover (head %d, columns %d):\n%s", head, cols, factoryFrameText(a))
+	// THE ONE-LINE HANDOVER is its line and a blank, and the columns start
+	// on the row after (factory_head.go).
+	if head < 0 || cols != head+2 {
+		t.Fatalf("the columns do not start two rows under the handover (head %d, columns %d):\n%s", head, cols, factoryFrameText(a))
 	}
 }
 

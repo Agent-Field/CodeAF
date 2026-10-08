@@ -681,6 +681,36 @@ var vocabulary = []GlyphBinding{
 		UsualTint: TextPrimary, PlainAmbiguous: true, NFAmbiguous: true, AutoUpgrade: true,
 	},
 
+	// -- the factory floor's priority column -------------------------------
+	//
+	// THE FLOOR IS A BAR THAT FALLS, the tier is a chevron that points, and
+	// the reader hears punctuation that thins: `!`, `:`, `.`, and a space for
+	// the last, which is a rank a person takes when nothing else is waiting.
+	// NONE OF THE FOUR AUTO-UPGRADES. Their plain bytes are block elements the
+	// gauge and the sparkline also draw a cell at a time, and a whole-cell
+	// rewrite would turn a context gauge into a priority mark; the one
+	// consumer reaches them through [GlyphSet.Glyph] by name.
+	{
+		ID: GPriorityFirst, Name: "PriorityFirst", Meaning: "take this first",
+		Plain: GlyphPriorityFirst, NerdFont: "\uF102", NFName: "nf-fa-angle_double_up", ASCII: "!",
+		UsualTint: Cyan, PlainAmbiguous: true, NFAmbiguous: true,
+	},
+	{
+		ID: GPrioritySecond, Name: "PrioritySecond", Meaning: "take this second",
+		Plain: GlyphPrioritySecond, NerdFont: "\uF106", NFName: "nf-fa-angle_up", ASCII: ":",
+		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
+	},
+	{
+		ID: GPriorityThird, Name: "PriorityThird", Meaning: "take this third",
+		Plain: GlyphPriorityThird, NerdFont: "\uF107", NFName: "nf-fa-angle_down", ASCII: ".",
+		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
+	},
+	{
+		ID: GPriorityFourth, Name: "PriorityFourth", Meaning: "take this when nothing else waits",
+		Plain: GlyphPriorityFourth, NerdFont: "\uF103", NFName: "nf-fa-angle_double_down", ASCII: " ",
+		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
+	},
+
 	// -- the prose slots (code.go) -------------------------------------------
 	//
 	// Named in code.go because a slot is a MEANING and not a byte; bound HERE

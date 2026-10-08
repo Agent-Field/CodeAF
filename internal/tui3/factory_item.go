@@ -32,7 +32,7 @@ import (
 // IT IS THE PEEK'S LADDER AT THE SCALE OF A PAGE (factory_pane.go): the head
 // is two rows and a blank, and every pane on the right is blocks with ONE
 // BLANK ROW BETWEEN THEM. The rail on the left starts with the `issue` row,
-// whose pane is the whole issue — the body wrapped at [factoryPageWrap] and
+// whose pane is the whole issue — the body wrapped at [factoryPageProseW] and
 // scrollable with `J` and `K`, then the read and the facts — then `talk` when
 // the item has a conversation, then the stages. A stage's pane is its knobs,
 // dim; its ask, in ink; a blank; what its state has to say; a blank; and the
@@ -54,14 +54,6 @@ import (
 // and keeps working on the item while the page is open. THE VERBS' ROWS, the
 // typing row and the habit offer, stand at the bottom of the pane, as they
 // stand at the bottom of the peek on the floor.
-
-// factoryStageCols is the stage rail's columns, the rule beside it not
-// included.
-const factoryStageCols = 22
-
-// factoryStageFloor is the narrowest terminal that draws the stage rail beside
-// the stage's pane. Under it the rail is one line of stages above the pane.
-const factoryStageFloor = 72
 
 // factoryStageNoteWords is what `enter` on a stage says until a stage's
 // conversation can be walked into from here.
@@ -254,6 +246,12 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return cmd, true
 	}
 	switch k {
+	case "h":
+		// `h` is the handover's height, wherever the floor is showing.
+		if !a.factoryFloorHas() {
+			return nil, false
+		}
+		return a.factoryToggleHead(), true
 	case "z":
 		if !a.factoryFloorHas() {
 			return nil, false
@@ -299,7 +297,7 @@ func (a *app) factoryItemPress(x, y, row int) tea.Cmd {
 	if at < 0 || at >= a.fp.railShown {
 		return nil
 	}
-	if a.fp.bodyW >= factoryStageFloor && x >= factoryStageCols {
+	if a.fp.bodyW >= factoryStageFloor && x >= factoryRailW {
 		return nil
 	}
 	// Under the stage floor the rail is one line; a press on it selects
@@ -387,15 +385,14 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	a.fp.stage = moveCursor(a.fp.stage, 0, len(rows))
 	a.fp.pageRows, a.fp.bodyW = room, width
 	a.fp.railTop, a.fp.railFirst, a.fp.railShown = 0, 0, 0
-	measure := max(width-factoryPaneLead, 0)
-	lines := []string{a.factoryItemTitle(it, measure), a.factoryItemChips(it, measure)}
-	// What the plan stage changed sits in the head under the chips, above the
-	// stages it changed, and only when it changed something.
-	if adapted := a.factoryAdaptedRow(it, measure); adapted != "" {
-		lines = append(lines, adapted)
-	}
-	lines = append(lines, "")
-	lead := strings.Repeat(" ", factoryPaneLead)
+	measure := max(width-factoryMargin, 0)
+	// THE HEAD IS TWO ROWS AND A BLANK ON EVERY ITEM (owner ruling,
+	// 2026-10-08): the crumbs on row 0, the chips on row 1, and the rail and
+	// its pane from row 3, so the page's regions start on the same rows
+	// whatever the item. What the plan stage changed is the issue pane's,
+	// beside the stages it changed.
+	lines := []string{a.factoryItemTitle(it, measure), a.factoryItemChips(it, measure), ""}
+	lead := factoryMarginPad()
 	for i, line := range lines {
 		if line != "" {
 			lines[i] = lead + line
@@ -413,10 +410,10 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 			lines = append(lines, factoryPad(lead+line, width))
 		}
 	default:
-		paneW := width - factoryStageCols - 1
+		paneW := width - factoryRailW - 1
 		rail, first := a.factoryCellRail(cells, a.fp.stage, left)
 		a.fp.railTop, a.fp.railFirst, a.fp.railShown = len(lines), first, min(len(cells)-first, left)
-		pane := a.factoryPagePane(it, rows, max(paneW-factoryPaneLead, 0), left)
+		pane := a.factoryPagePane(it, rows, max(paneW-factoryMargin, 0), left)
 		sep := a.pal.dim(a.linearMark("│", "|"))
 		for i := 0; i < left; i++ {
 			right := ""
@@ -437,9 +434,11 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	return out
 }
 
-// factoryItemTitle is the head's first row: the ref and the title in ink, the
-// repo, the author and where the item stands with how long it has run, muted,
-// and the spend over the cap right-aligned in money's ink.
+// factoryItemTitle is the head's first row, a TRAIL OF CRUMBS (owner ruling,
+// 2026-10-08): `Factory › codeaf › #1551 filters lost on compact`, the crumbs
+// dim and the item's own ref and title in ink, and at the right where the item
+// stands with how long it has run, muted, and the spend over the cap in
+// money's ink. `esc` climbs one crumb, back to the floor.
 func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 	pal := a.pal
 	state := string(it.State)
@@ -448,16 +447,27 @@ func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 			state += " " + e
 		}
 	}
-	meta := nonEmpty([]string{factoryRepoShort(it.Repo), it.Author, state})
-	left := pal.ink(it.Ref()+" "+it.Title) + pal.muted(rowSep+strings.Join(meta, rowSep))
+	ref := it.Ref()
+	left := a.factoryCrumbs(it.Repo) + a.factoryRefLink(it, pal.ink(ref)) + pal.ink(" "+it.Title)
 	// THE MONEY AT THE RIGHT IS SPEND OVER THE CAP, so an item with no stream
 	// draws none: its cap is the chip on the row under it, and saying it twice
 	// is a second number to read for one fact.
-	right := ""
+	right := pal.muted(state)
 	if spend := factorySpend(it.Stream, it.Cap); spend != "" && it.Stream != nil {
-		right = placeMoneyInk(pal)(spend)
+		right += factorySpaces(factoryGutter) + placeMoneyInk(pal)(spend)
 	}
 	return factorySpread(left, right, measure)
+}
+
+// factoryCrumbs is the trail above a page on the floor, dim, up to the page's
+// own name: `Factory › codeaf › `. A repo the page does not name is no crumb.
+func (a *app) factoryCrumbs(repo string) string {
+	sep := " " + a.linearMark("›", ">") + " "
+	trail := "Factory" + sep
+	if r := factoryRepoShort(repo); r != "" {
+		trail += r + sep
+	}
+	return a.pal.dim(trail)
 }
 
 // factoryItemChips is the head's second row: the chips with the key that turns
@@ -472,9 +482,9 @@ func (a *app) factoryItemChips(it factory.Item, measure int) string {
 	for _, p := range places {
 		short = append(short, factoryRepoShort(p))
 	}
-	line := a.factoryChips(it, true)
+	line := a.factoryChipRow(it, true, measure)
 	if len(short) > 0 {
-		line += pal.dim(rowSep) + pal.muted("places:") + " " + pal.ink(strings.Join(short, ", "))
+		line += factorySpaces(factoryFactGap) + pal.muted("places") + factorySpaces(factoryLabelGap) + pal.ink(strings.Join(short, ", "))
 	}
 	return fit(line, measure)
 }
@@ -582,7 +592,7 @@ func (a *app) factoryStageStrip(views []factoryStageView, measure int) string {
 	return a.factoryCellStrip(cells, a.fp.stage, measure)
 }
 
-// factoryCellRail is a rail: one row per cell, [factoryStageCols] wide, the
+// factoryCellRail is a rail: one row per cell, [factoryRailW] wide, the
 // window following the cursor, and the cursor's row on the cursor ground and
 // nothing else changed on it. The mark carries the row's colour; the words
 // wear the reading tiers. It answers the rows and the first cell drawn.
@@ -593,19 +603,19 @@ func (a *app) factoryCellRail(cells []factoryRailCell, cursor, room int) ([]stri
 	for i := range out {
 		at := top + i
 		if at >= len(cells) {
-			out[i] = strings.Repeat(" ", factoryStageCols)
+			out[i] = factorySpaces(factoryRailW)
 			continue
 		}
 		c := cells[at]
 		text := ""
 		if c.flat {
-			text = c.paint(fit(c.rest, factoryStageCols-factoryPaneLead))
+			text = c.paint(fit(c.rest, factoryRailW-factoryMargin))
 		} else {
-			text = c.markPaint(c.mark) + c.paint(fit(c.rest, factoryStageCols-factoryPaneLead-ansi.StringWidth(c.mark)))
+			text = c.markPaint(c.mark) + c.paint(fit(c.rest, factoryRailW-factoryMargin-ansi.StringWidth(c.mark)))
 		}
-		row := factoryPad(strings.Repeat(" ", factoryPaneLead)+text, factoryStageCols)
+		row := factoryPad(factorySpaces(factoryMargin)+text, factoryRailW)
 		if at == cursor {
-			row = pal.cursor(row, factoryStageCols)
+			row = pal.selected(row, factoryRailW)
 		}
 		out[i] = row
 	}
@@ -622,7 +632,7 @@ func (a *app) factoryCellStrip(cells []factoryRailCell, cursor, measure int) str
 		label := c.label()
 		seg := c.paint(label)
 		if i == cursor {
-			seg = a.pal.cursor(seg, ansi.StringWidth(label))
+			seg = a.pal.selected(seg, ansi.StringWidth(label))
 		}
 		segs = append(segs, seg)
 		plains = append(plains, label)
@@ -631,14 +641,14 @@ func (a *app) factoryCellStrip(cells []factoryRailCell, cursor, measure int) str
 	for from < cursor && cursor < len(cells) {
 		w := 0
 		for i := from; i <= cursor; i++ {
-			w += ansi.StringWidth(plains[i]) + 2
+			w += ansi.StringWidth(plains[i]) + factoryGutter
 		}
 		if w <= measure {
 			break
 		}
 		from++
 	}
-	return factoryJoinWhole(segs[from:], plains[from:], "  ", measure)
+	return factoryJoinWhole(segs[from:], plains[from:], factorySpaces(factoryGutter), measure)
 }
 
 // factoryPagePane is the pane of the rail row under the cursor as exactly room
@@ -685,7 +695,7 @@ func factoryPaneLadder(blocks [][]string, action string, room int) []string {
 	if action != "" {
 		avail = room - 1
 		if room >= 3 {
-			avail = room - 2
+			avail = room - factoryActionRows
 		}
 		out[room-1] = action
 	}
@@ -708,29 +718,23 @@ func (a *app) factoryPageAction(it factory.Item, measure int, extra ...string) s
 	return a.pal.dim(fit(strings.Join(words, " · "), measure))
 }
 
-// factoryIssuePane is the whole issue: its body wrapped at [factoryPageWrap],
+// factoryIssuePane is the whole issue: its body wrapped at [factoryPageProseW],
 // then the factory's read and the facts, then the questions it would put to
 // the author when the item is thin — one document, scrolled with `J` and `K`
 // from where they left it, its last row marked when more is below.
+//
+// THE BODY IS MARKDOWN, rendered (factory_forge.go's [app.factoryMarkdown]),
+// and the forge's blocks follow the read, each comment whole. Over the read
+// stands the line that says when it was made, `read 3m ago · u again`, which
+// spins while a read is out ([app.factoryReadLine]).
 func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	pal := a.pal
-	w := max(min(measure, factoryPageWrap), 1)
-	var body []string
-	blank := false
-	for _, line := range wrap(strings.TrimSpace(it.Body), w) {
-		// A blank line in the body is a paragraph break and stays one, but a
-		// run of them is one: A GAP ASKED FOR TWICE IS STILL ONE GAP.
-		if strings.TrimSpace(line) == "" {
-			if !blank && len(body) > 0 {
-				body = append(body, "")
-			}
-			blank = true
-			continue
-		}
-		blank = false
-		body = append(body, pal.ink(line))
-	}
+	w := max(min(measure, factoryPageProseW), 1)
+	body := a.factoryMarkdown(it.Body, w)
 	var read []string
+	if line := a.factoryReadLine(it, w); line != "" {
+		read = append(read, line)
+	}
 	for _, line := range wrap(strings.TrimSpace(it.Triage.Read), w) {
 		if strings.TrimSpace(line) != "" {
 			read = append(read, pal.ink(line))
@@ -738,7 +742,7 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	}
 	var facts []string
 	if f := factoryFacts(it); len(f) > 0 {
-		facts = []string{pal.dim(factoryJoinWhole(f, f, strings.Repeat(" ", factoryFactGap), measure))}
+		facts = []string{pal.dim(factoryJoinWhole(f, f, factorySpaces(factoryFactGap), measure))}
 	}
 	var asks []string
 	if r := it.Triage.Readiness; r > 0 && r < factory.ThinReadiness {
@@ -748,7 +752,11 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 			}
 		}
 	}
-	doc := factoryStack([][]string{body, read, facts, asks})
+	var adapted []string
+	if line := a.factoryAdaptedRow(it, w); line != "" {
+		adapted = []string{line}
+	}
+	doc := factoryStack(append([][]string{body, read, facts, asks, adapted}, a.factoryForgeBlocks(it, w, 0)...))
 	if len(doc) == 0 {
 		return make([]string, max(room, 0))
 	}
@@ -756,7 +764,7 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	// and `K` have anywhere to go before it names them.
 	window := room
 	if room >= 3 {
-		window = room - 2
+		window = room - factoryActionRows
 	}
 	shown := a.factoryScrolled(it, doc, w, window)
 	extra := []string{}
@@ -788,7 +796,7 @@ func (a *app) factoryStagePane(it factory.Item, views []factoryStageView, at, me
 	action := a.factoryPageAction(it, measure)
 	tailRoom := room - len(head) - 1
 	if action != "" {
-		tailRoom -= 2
+		tailRoom -= factoryActionRows
 	}
 	tail := a.factoryStageTail(it, views, at, measure, max(tailRoom, 0))
 	return factoryPaneLadder([][]string{head, tail}, action, room)
