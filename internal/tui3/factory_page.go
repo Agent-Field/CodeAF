@@ -104,6 +104,11 @@ type factoryPage struct {
 	err error
 	// cursor is the item the keyboard is on, as a position in the walk order.
 	cursor int
+	// hover is the walk position of the row the pointer rests on, and -1 for
+	// none. THE POINTER SELECTS, as on every list place (placeselection.go):
+	// the row it reaches takes the cursor, so the peek shows it and the keys
+	// act on it, and this only says the pointer is what put it there.
+	hover int
 	// top is the first rail line drawn, so the window follows the cursor, and
 	// shown is how many rail lines the last body drew from it: the pair a press
 	// is resolved against ([placeBodyLine]).
@@ -687,21 +692,60 @@ func (a *app) factoryPress(y int) bool {
 	if a.fp.open || a.fp.pick != nil || a.fp.recipe != nil {
 		return false
 	}
+	walk := a.factoryWalkAt(y)
+	if walk < 0 {
+		return false
+	}
+	if walk != a.fp.cursor {
+		a.fp.scroll = 0
+	}
+	a.fp.cursor = walk
+	a.touch()
+	return true
+}
+
+// factoryWalkAt is the walk position of the item drawn on screen row y, and
+// -1 for a row that holds none. It reads the window the last body drew, so a
+// press and a pointer resting land on the row a person saw.
+func (a *app) factoryWalkAt(y int) int {
 	at, ok := placeBodyLine(y-a.fp.headRows, 0, a.fp.shown)
 	if !ok || at < a.fp.pinned {
-		return false
+		return -1
 	}
 	line := a.fp.top + at - a.fp.pinned
 	rows := a.factoryRows()
-	if line < 0 || line >= len(rows) || rows[line].walk < 0 {
-		return false
+	if line < 0 || line >= len(rows) {
+		return -1
 	}
-	if rows[line].walk != a.fp.cursor {
+	return rows[line].walk
+}
+
+// factoryHover is the pointer resting at (x, y) on the floor, and whether a
+// row of it took the motion. THE POINTER SELECTS, as on every list place
+// ([app.placeBodyHover]): the row under it takes the cursor, wears the
+// cursor's ground (the one ink for "the pointer is here", carddoors.go), and
+// the peek beside the rows shows its item. The peek and the divider are read,
+// not rows, so a pointer resting on them moves nothing, as a press there
+// moves nothing ([app.factoryPointer]). The repository picker's rows and the
+// item page's stage rail answer the same way.
+func (a *app) factoryHover(x, y int) bool {
+	switch {
+	case a.fp.pick != nil:
+		return a.factoryPickHover(y)
+	case a.fp.recipe != nil:
+		return false
+	case a.fp.open:
+		return a.factoryStageHover(x, y)
+	}
+	next := -1
+	if a.fp.bodyW-a.fp.rowsW-1 <= 0 || x < a.fp.rowsW-1 {
+		next = a.factoryWalkAt(y)
+	}
+	if next >= 0 && next != a.fp.cursor {
 		a.fp.scroll = 0
 	}
-	a.fp.cursor = rows[line].walk
-	a.touch()
-	return true
+	placeHoverMoved(&a.fp.hover, &a.fp.cursor, next, next, a)
+	return next >= 0
 }
 
 // factoryPad is s cut or padded to exactly width cells.

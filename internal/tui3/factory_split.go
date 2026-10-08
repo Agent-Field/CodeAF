@@ -208,6 +208,15 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 			a.fp.dragging = false
 		}
 	}
+	// THE POINTER RESTING SELECTS THE ROW UNDER IT, read here and not in the
+	// place's own hover because the floor's rows share their screen rows with
+	// the peek, and only the column says which of the two the pointer is on.
+	if _, motion := msg.(tea.MouseMotionMsg); motion && m.Button == tea.MouseNone {
+		if !a.at(pageFactory) || a.composer.open || !a.factoryConnected() {
+			return nil, false
+		}
+		return nil, a.factoryHover(m.X, m.Y)
+	}
 	if _, click := msg.(tea.MouseClickMsg); !click || m.Button != tea.MouseLeft {
 		return nil, false
 	}

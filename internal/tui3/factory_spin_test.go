@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	"github.com/Agent-Field/codeaf/internal/tui2/tokens"
 )
 
 // ── the floor's spinners turn (owner's screenshot, 2026-10-08) ─────────────
@@ -138,5 +139,50 @@ func TestFactoryStillFloorArmsNoClock(t *testing.T) {
 	a.page = pageHome
 	if a.factorySpinning() {
 		t.Fatal("a floor off screen turned the clock")
+	}
+}
+
+// THE FLOOR'S SPINNER TURNS AT THE SURFACE'S PACE (owner, 2026-10-08: "the
+// running animation is dead slow"). The clock slows to the spinner's own
+// cadence while the floor is the only thing moving, and each tick it arms
+// covers spinnerStep slots, so each frame it brings is the next braille
+// glyph: a cycle in ten ticks, the transcript's own second and a third, not
+// four times that.
+func TestFactorySpinnerTurnsOneGlyphATick(t *testing.T) {
+	a, _ := factorySpinLab(t)
+	delays := factorySpinClock(t)
+	a.fp.act.doing = "asking gh…"
+	a.painting = true
+	a.paint()
+	at := -1
+	for i, g := range tokens.SpinnerFrames {
+		if g == a.factorySpin() {
+			at = i
+		}
+	}
+	if at < 0 {
+		t.Fatalf("the floor's mark %q is not a spinner frame", a.factorySpin())
+	}
+	tick := a.frameEvery() * spinnerStep
+	for i := 1; i <= 2*len(tokens.SpinnerFrames); i++ {
+		*delays = nil
+		a.paint()
+		if len(*delays) == 0 || (*delays)[len(*delays)-1] != tick {
+			t.Fatalf("frame %d was armed at %v, not one tick of %v", i, *delays, tick)
+		}
+		want := tokens.SpinnerFrames[(at+i)%len(tokens.SpinnerFrames)]
+		if got := a.factorySpin(); got != want {
+			t.Fatalf("frame %d, %v after the last, shows %q, want the next glyph %q", i, tick, got, want)
+		}
+	}
+	if cycle := tick * time.Duration(len(tokens.SpinnerFrames)); cycle > 1400*time.Millisecond {
+		t.Fatalf("one braille cycle takes %v", cycle)
+	}
+	// AND THE CLOCK THAT STOPS FORGETS ITS STRIDE, so the next wake steps one
+	// slot a frame again.
+	a.fp.act.doing = ""
+	a.paint()
+	if a.painting || a.frameStride() != 1 {
+		t.Fatalf("a stopped clock kept a stride of %d", a.frameStride())
 	}
 }
