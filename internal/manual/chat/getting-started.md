@@ -14,9 +14,8 @@ terminal* page, under *How do I install or update codeaf*.
 ## Getting started — first time setup, what happens the first time I run codeaf
 
 The first time `codeaf` opens a new local conversation with no provider connected,
-setup begins with **choose a model provider**. Its one flat list shows all nine options:
-**OpenRouter**, **Ollama**, **Codex**, **DeepSeek**, **Z.ai**, **Moonshot**, **MiniMax**,
-**Alibaba Qwen**, and **Custom OpenAI-compatible API**. There is no scrolling viewport
+setup begins with **choose a model provider**. Its one flat list shows every built-in provider.
+On a short terminal the key hint yields before any provider row. There is no scrolling viewport
 or page counter. Arrow keys or the mouse wheel move the selection; `home` and `end`
 jump to either end. Press `enter` or click a row to choose it. No key is collected on the chooser.
 

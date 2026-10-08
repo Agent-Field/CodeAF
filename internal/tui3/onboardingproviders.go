@@ -246,10 +246,14 @@ func (a *app) setupProvidersFrame(width, height int) ([]string, int, int) {
 	if inner < 58 {
 		footer = "enter chooses · " + setupSkipKeysWord
 	}
-	if height >= len(rows)+2 {
-		body = append(body, "")
+	// THE PROVIDERS COME BEFORE THE HINT. Keep the footer only when it cannot
+	// displace a provider; the shared block already lets the heading yield.
+	if height > len(rows) {
+		if height >= len(rows)+2 {
+			body = append(body, "")
+		}
+		body = append(body, a.pal.dim(footer))
 	}
-	body = append(body, a.pal.dim(footer))
 	return a.setupProviderBlock(body, hits, width, height, -1, 0)
 }
 
