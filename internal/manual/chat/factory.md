@@ -254,6 +254,30 @@ After three sign-offs in a row without edits, the bottom of the right column off
 `factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet`.
 `y` writes that sentence into the repository's habits; `n` puts the offer away.
 
+## from chat to the factory floor — factory_add
+
+A conversation can offer a piece of work to the factory floor with the `factory_add` tool. The
+chat calls it when you say something belongs on the factory floor, or when it judges a piece of
+work is self-contained enough to run on its own later. It is there only when this conversation
+has a factory floor behind it; without one the chat has no such tool and says it cannot.
+
+Calling it adds nothing. A card asks you first:
+`wants to put this on the factory floor: <title>`, with the repo, kind and size under it and
+the chat's reason. It answers to `1 add it`, `2 not now`, or words typed into its box
+(`say what to change… (enter sends it)`).
+
+- **`add it`** writes one item to the floor as `new`, from chat, and the chat is told
+  `#<id> <title> is on the factory floor`. The floor redraws with it.
+- **`not now`** writes nothing: `nothing was added: the person said no.`
+- **Words** write nothing either. The chat is told `the person changed it: <your words>` and
+  `Nothing is on the floor yet. Propose it again with that`, and asks again with a new card.
+- **No answer** writes nothing. There is no clock that adds: after fifteen minutes the card
+  comes down with `nothing was added to the factory floor`, and the chat is told
+  `nothing was added: the card was never answered`.
+
+**Nothing launches from the chat.** An added item waits on the floor like any other `new` row
+until you launch it from the factory page.
+
 ## what the factory does not do yet
 
 Be plain about this when asked:
@@ -268,6 +292,8 @@ Be plain about this when asked:
 - **A stage's conversation does not open yet.** `enter` on a stage of the item page says
   `the stage's conversation opens here once streams are conversations`, `s` on a landed item
   says `the room opens here once streams are conversations`, and the diff does not open either.
+- **Nothing launches from the chat.** `factory_add` only puts an item on the floor as `new`,
+  after you answer its card; starting the work is the factory page's, never the conversation's.
 - **The foreman does not open yet.** There is no conversation with the factory itself, and no
   key on the page reaches one.
 - **The page is empty on an ordinary launch** and draws the `nothing connected yet` line. With

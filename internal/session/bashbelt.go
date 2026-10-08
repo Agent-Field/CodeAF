@@ -84,6 +84,7 @@ func (a *Agent) bashBelt() []bare.Tool {
 	// (plandb_plan.go's [TaskGraph.planReviseThrough]).
 	tools = append(tools, a.assignmentTools()...)
 	tools = append(tools, a.standingTools()...)
+	tools = append(tools, a.factoryTools()...)
 	tools = append(tools, a.harnessTools()...)
 	tools = append(tools, a.subharnessTools()...)
 	tools = append(tools, a.memoryTools()...)
