@@ -220,13 +220,20 @@ func (a *app) factoryOnProof(it factory.Item) bool {
 // ── drawing ─────────────────────────────────────────────────────────────────
 
 // factoryItemBody is the item page as exactly room rows of exactly width
-// cells: two head rows, a blank, and the stages beside the stage's pane (or
-// one line of stages above it under [factoryStageFloor]). No row is a hit.
+// cells: two head rows (three when plan changed the stages), a blank, and the
+// stages beside the stage's pane (or one line of stages above it under
+// [factoryStageFloor]). No row is a hit.
 func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 	views := a.factoryItemStages(it)
 	a.fp.stage = moveCursor(a.fp.stage, 0, len(views))
 	measure := max(width-factoryPaneLead, 0)
-	lines := []string{a.factoryItemTitle(it, measure), a.factoryItemChips(it, measure), ""}
+	lines := []string{a.factoryItemTitle(it, measure), a.factoryItemChips(it, measure)}
+	// What the plan stage changed sits in the head under the chips, above the
+	// stages it changed, and only when it changed something.
+	if adapted := a.factoryAdaptedRow(it, measure); adapted != "" {
+		lines = append(lines, adapted)
+	}
+	lines = append(lines, "")
 	lead := strings.Repeat(" ", factoryPaneLead)
 	for i, line := range lines {
 		if line != "" {

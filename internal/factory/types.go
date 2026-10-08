@@ -6,8 +6,10 @@
 // THE TWO LAYERS. A [Recipe] is a fixed, ordered list of stages written once
 // per repo or team. A run is that recipe compiled into tasks; the inside of a
 // stage is dynamic (split, parallel, fix tasks, a parked question) and nothing
-// inside a stage can add a stage. Loops are a condition on a stage ([Stage.Until]
-// with [Stage.Max]), never an edge. There is no graph for a person to draw.
+// inside a stage can add a stage, except plan, within the bounds [Adapt] holds
+// it to and the one word the recipe gives each kind ([AdaptMode]). Loops are a
+// condition on a stage ([Stage.Until] with [Stage.Max]), never an edge. There
+// is no graph for a person to draw.
 //
 // NO MODEL ON A STAGE. A stage runs as an ordinary task with the ordinary crew:
 // worker, planner and checker picked for the class of work (internal/crewroute).
@@ -97,8 +99,11 @@ type Stage struct {
 	Until  string    // done · clean · green · proven
 	Max    int       // rounds before it stops and asks; 0 means one
 	Gate   Gate      // none · plan (ask before going on) · ship (sign-off)
-	Proof  []string  // what this stage must show
-	On     bool      // an item may switch a banked stage off
+	// GateWhen is the condition under which Gate stops the item, read by
+	// [GateApplies]; "" is always. The stage itself runs whatever it says.
+	GateWhen string
+	Proof    []string // what this stage must show
+	On       bool     // an item may switch a banked stage off
 }
 
 // Recipe is what a product banked: stages in order, per kind of item, and the
@@ -111,6 +116,9 @@ type Recipe struct {
 	ByKind map[Kind][]Stage
 	Policy []string
 	Habits []string
+	// Adapt is how much the plan stage may change an item's stages, per kind.
+	// A kind it does not name is [AdaptFree]; read it through [Recipe.AdaptFor].
+	Adapt map[Kind]AdaptMode
 }
 
 // For is the stage list a kind runs.
@@ -237,6 +245,10 @@ type Item struct {
 	Labels   []string
 	Checks   string
 	Diff     string
+	// Adapted is what the plan stage changed about the item's stages, one
+	// line each in the order it changed them, `why: …` last: the record
+	// [Adapt] writes and the surface draws under the stages line.
+	Adapted []string
 }
 
 // Ref is the item's short name: #123, or ci.
