@@ -173,6 +173,10 @@ func (a *app) factoryHeadFresh(snap factory.Snapshot) (string, string) {
 		w := src.Name + rowSep + a.factorySpin() + " polling"
 		return w, pal.dim(w)
 	}
+	if a.factoryFirstReading() {
+		w := a.factorySpin() + " " + factoryFirstReadWords
+		return w, pal.dim(w)
+	}
 	var polled time.Time
 	for _, src := range snap.Sources {
 		if src.Polled.After(polled) {
@@ -294,7 +298,7 @@ func (a *app) factoryHeadShift(snap factory.Snapshot, width int) string {
 	}
 	if len(fields) == 0 {
 		words := factoryHeadQuietWords
-		if factoryInFlight(snap) {
+		if factoryInFlight(snap) || a.factoryFirstReading() {
 			words = factoryHeadNothingWords
 		}
 		return factorySpaces(factoryLeadW) + pal.dim(fit(words, width-factoryLeadW))

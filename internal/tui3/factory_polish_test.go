@@ -640,3 +640,177 @@ func TestFactoryWatchingWordsSayTheReadBegan(t *testing.T) {
 		t.Fatalf("the receipt is %q", got)
 	}
 }
+
+// factorySaveLab is the settings fake over a floor with no item, no shift and
+// no money, github watching what the fake says is watched and never polled,
+// on a clock the test moves. src shapes github on every read.
+func factorySaveLab(t *testing.T, src func(*factory.SourceInfo)) (*app, *factorySettingsFake, *time.Time) {
+	t.Helper()
+	f := newSettingsFake()
+	f.factoryFake.shape = func(s *factory.Snapshot) {
+		s.Items, s.Shift, s.Daily = nil, factory.Shift{}, 0
+		f.mu.Lock()
+		gh := factory.SourceInfo{Name: "github", Writes: true, Repos: append([]string(nil), f.watched...)}
+		f.mu.Unlock()
+		if src != nil {
+			src(&gh)
+		}
+		s.Sources = []factory.SourceInfo{gh, {Name: string(factory.OriginChat)}}
+	}
+	a := factorySettingsLab(t, f, 150)
+	a.linear = false
+	a.pal = newPalette(tokens.NoColor, false)
+	now := factoryTestNow
+	a.clock = func() time.Time { return now }
+	return a, f, &now
+}
+
+// factoryHeadRow is the frame's first row carrying words, plain.
+func factoryHeadRow(a *app, words string) string {
+	for _, row := range strings.Split(factoryFrameText(a), "\n") {
+		if strings.Contains(row, words) {
+			return row
+		}
+	}
+	return ""
+}
+
+// FROM THE PICKER'S SAVE THE FLOOR SAYS IT IS READING (recording, 2026-10-08:
+// one second after `enter` the foot said `reading them now` and the head above
+// still said quiet). The head is the reading clause and nothing else, the bare
+// line is the reading sentence, and the spinner turns.
+func TestFactoryFirstReadFromTheSave(t *testing.T) {
+	var polled time.Time
+	a, f, now := factorySaveLab(t, func(gh *factory.SourceInfo) { gh.Polled = polled })
+	if text := factoryFrameText(a); !strings.Contains(text, "quiet") {
+		t.Fatalf("the lab's floor before the save is not quiet:\n%s", text)
+	}
+	drive(t, a, key("R"))
+	drive(t, a, key("down"), key(" "), key("enter"))
+	if got := strings.Join(f.said(), " "); got != "SetRepos(agentfield/codeaf agentfield/agentfield)" {
+		t.Fatalf("enter asked %q", got)
+	}
+	if !a.fp.readingSince.Equal(*now) {
+		t.Fatalf("the save stood no reading moment: %v", a.fp.readingSince)
+	}
+	frame := factoryFrameText(a)
+	head := factoryHeadRow(a, factoryFirstReadWords)
+	if !strings.Contains(head, a.factorySpin()+" "+factoryFirstReadWords) || strings.Contains(frame, "quiet") {
+		t.Fatalf("the frame after the save:\n%s", frame)
+	}
+	if strings.Contains(head, "polled") || strings.Contains(head, factoryHeadNothingWords) {
+		t.Fatalf("the head after the save is not the reading clause alone: %q", head)
+	}
+	text := strings.Join(strings.Fields(frame), " ")
+	if !strings.Contains(text, factoryBareReadingWords) || strings.Contains(text, factoryBareWords) {
+		t.Fatalf("the bare line after the save:\n%s", frame)
+	}
+	if !a.factorySpinning() {
+		t.Fatal("the floor reading from the save does not spin")
+	}
+
+	// The one-second beat reads while the moment stands; a stale save's beat
+	// reads nothing.
+	soon := a.factoryReadSoon(a.fp.readingGen)
+	if soon == nil {
+		t.Fatal("the reading moment's beat asked nothing")
+	}
+	spend(t, a, soon)
+	if a.factoryReadSoon(a.fp.readingGen-1) != nil {
+		t.Fatal("a stale save's beat asked something")
+	}
+
+	// A source that answered before the save says nothing about this read.
+	polled = now.Add(-time.Second)
+	spend(t, a, a.factoryRead())
+	if a.fp.readingSince.IsZero() {
+		t.Fatal("a poll from before the save cleared the reading moment")
+	}
+	// One that answered after it does.
+	polled = now.Add(time.Second)
+	spend(t, a, a.factoryRead())
+	if !a.fp.readingSince.IsZero() {
+		t.Fatal("a poll after the save left the reading moment standing")
+	}
+	if a.factoryReadSoon(a.fp.readingGen) != nil {
+		t.Fatal("the beat went on after the read was known")
+	}
+}
+
+// A SNAPSHOT THAT SAYS THE READ — a source mid-poll, or items on the floor —
+// clears the moment, and the source's own clause or the rows take over.
+func TestFactoryFirstReadClearsOnPollingOrItems(t *testing.T) {
+	var polling bool
+	a, f, _ := factorySaveLab(t, func(gh *factory.SourceInfo) { gh.Polling = polling })
+	drive(t, a, key("R"))
+	drive(t, a, key("enter"))
+	if a.fp.readingSince.IsZero() {
+		t.Fatal("the save stood no reading moment")
+	}
+	polling = true
+	spend(t, a, a.factoryRead())
+	if !a.fp.readingSince.IsZero() {
+		t.Fatal("a source mid-poll left the reading moment standing")
+	}
+	if !strings.Contains(factoryFrameText(a), "github · "+a.factorySpin()+" polling") {
+		t.Fatalf("the source's own clause did not take over:\n%s", factoryFrameText(a))
+	}
+
+	polling = false
+	drive(t, a, key("R"))
+	drive(t, a, key("enter"))
+	if a.fp.readingSince.IsZero() {
+		t.Fatal("the second save stood no reading moment")
+	}
+	shape := f.factoryFake.shape
+	f.factoryFake.shape = func(s *factory.Snapshot) {
+		shape(s)
+		s.Items = factory.Fixture(factoryTestNow).Items
+	}
+	spend(t, a, a.factoryRead())
+	if !a.fp.readingSince.IsZero() {
+		t.Fatal("items on the floor left the reading moment standing")
+	}
+}
+
+// A POLLER THAT NEVER COMES DOES NOT SPIN FOREVER: past factoryFirstReadWait
+// the floor's own words return and the beat stops.
+func TestFactoryFirstReadLapses(t *testing.T) {
+	a, _, now := factorySaveLab(t, nil)
+	drive(t, a, key("R"))
+	drive(t, a, key("enter"))
+	if !a.factoryFirstReading() {
+		t.Fatal("the save stood no reading moment")
+	}
+	*now = now.Add(factoryFirstReadWait - time.Second)
+	if !a.factoryFirstReading() {
+		t.Fatal("the reading moment lapsed early")
+	}
+	*now = now.Add(time.Second)
+	if a.factoryFirstReading() || a.factorySpinning() {
+		t.Fatal("the reading moment stood past factoryFirstReadWait")
+	}
+	if a.factoryReadSoon(a.fp.readingGen) != nil || !a.fp.readingSince.IsZero() {
+		t.Fatal("the beat went on past factoryFirstReadWait")
+	}
+	frame := factoryFrameText(a)
+	if strings.Contains(frame, factoryFirstReadWords) || !strings.Contains(frame, "quiet") {
+		t.Fatalf("the lapsed floor:\n%s", frame)
+	}
+}
+
+// AN EMPTY SAVE OWES NO READ: `watching no repositories` stands nothing.
+func TestFactoryFirstReadNotOnAnEmptySave(t *testing.T) {
+	a, f, _ := factorySaveLab(t, nil)
+	drive(t, a, key("R"))
+	drive(t, a, key(" "), key("enter"))
+	if got := strings.Join(f.said(), " "); got != "SetRepos()" {
+		t.Fatalf("enter asked %q", got)
+	}
+	if !a.fp.readingSince.IsZero() || a.factorySpinning() {
+		t.Fatal("an empty save stood a reading moment")
+	}
+	if strings.Contains(factoryFrameText(a), factoryFirstReadWords) {
+		t.Fatalf("an empty save's floor says it is reading:\n%s", factoryFrameText(a))
+	}
+}

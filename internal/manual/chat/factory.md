@@ -824,7 +824,11 @@ with `R`, and it says the read is loading while it runs. The bottom line says
 `watching 3 repositories · reading them now`, and from then until rows stand the floor says
 which of three things is true, one sentence each:
 
-- **The first read is under way.** The handover's line says where it is,
+- **The first read is under way.** From the moment you save, before the read has said
+  anything, the handover's line is `⠋ reading the repositories you watch`, the floor reads
+  itself every second, and it keeps saying so until the read reports where it is or rows stand
+  (after half a minute with no word from the read, the floor's usual words return). Once the
+  read reports, the handover's line says where it is,
   `⠋ reading Agent-Field/CodeAF · 1 of 3`, and under it the floor says
   `reading the repositories you watch · rows stand here as issues and pull requests arrive`.
   It does not say `quiet` while a read is out: quiet means nothing is happening and nothing
