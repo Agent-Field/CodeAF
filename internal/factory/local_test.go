@@ -169,3 +169,29 @@ func TestLocalSeamEngineDoorsAbsent(t *testing.T) {
 		}
 	}
 }
+
+// BENCHES ARE THE ITEMS RUNNING, and a floor with none draws nothing.
+func TestLoadFillsBenchesAndDaily(t *testing.T) {
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seam := factory.LocalSeam(st, time.Now())
+	snap, err := seam.Load()
+	if err != nil || snap.Benches != 0 || snap.Daily != 0 {
+		t.Fatalf("an empty floor drew %d, %v, %v", snap.Benches, snap.Daily, err)
+	}
+	now := time.Now()
+	for _, it := range []factory.Item{
+		{Repo: "a/b", State: factory.StateRunning, Changed: now, Stream: &factory.Stream{Spent: 1.5}},
+		{Repo: "a/b", State: factory.StateRunning, Changed: now, Stream: &factory.Stream{Spent: 0.5}},
+		{Repo: "a/b", State: factory.StateLanded, Changed: now.Add(-72 * time.Hour), Stream: &factory.Stream{Spent: 7}},
+	} {
+		if _, err := st.Create(it); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if snap, _ = seam.Load(); snap.Benches != 2 || snap.Daily != 2 {
+		t.Fatalf("Benches %d Daily %v", snap.Benches, snap.Daily)
+	}
+}
