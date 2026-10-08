@@ -250,6 +250,9 @@ func (a *Agent) belt() []bare.Tool {
 	// and it is absent on the same law as `stand` beside it: no door behind it,
 	// no verb. It only ever raises a card, and nothing starts from it.
 	tools = append(tools, a.factoryTools()...)
+	// factory_floor (tools_floor.go) is the foreman's read of the whole floor
+	// and its marks, absent on the same law: no floor behind it, no verb.
+	tools = append(tools, a.floorTools()...)
 	tools = append(tools, a.harnessTools()...)
 	// The saved PROGRAMS, and the list that says which ones there are
 	// (tools_subharness.go). They are conditional on the same terms the three

@@ -990,6 +990,8 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 		cfg.Recipe = recipeDoor(engineFactory(proc.ProfileDir), workspace)
 		// And `factory_stages`' door, on the same law and the same store.
 		cfg.Stages = stagesDoor(engineFactory(proc.ProfileDir), workspace)
+		// And `factory_floor`'s door, on the same law and the same store.
+		cfg.Floor = floorDoor(engineFactory(proc.ProfileDir), workspace)
 	}
 
 	// A HELLO THAT ASKED FOR A CONVERSATION OF ITS OWN GETS A SIBLING FOLDER,
