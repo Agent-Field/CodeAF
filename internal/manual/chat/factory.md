@@ -576,7 +576,9 @@ it puts the item on GitHub too, or takes it off.
 ## when the floor is doing something — the spinner
 
 Everything the floor does in the background says it is happening, with the same braille spinner
-the transcript uses (`⠋`), and nothing is drawn when nothing is in flight:
+the transcript uses (`⠋`), and nothing is drawn when nothing is in flight. The spinner turns for
+as long as a read, a door or a poll is in flight, and never stands still while one is, so a
+spinner that moves is work still going:
 
 - **An item being read:** its priority cell spins and the fact after its state says `reading…`
   or `refreshing…`. An item waiting its turn in a whole-floor re-read does not spin: it shows a
