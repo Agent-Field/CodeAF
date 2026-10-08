@@ -109,10 +109,18 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 				return nil
 			})
 		},
+		// THE PERSON'S OWN ROADS GO THROUGH THE SAME BOUND as every edit
+		// ([Edit]): a stage the recipe file fixes is never switched off, and
+		// its thinking never changes, with the one sentence ([FixedRefusal]).
+		// Switching a fixed stage on is allowed.
 		SetStage: func(id, index int, on bool) error {
+			recipe := o.itemRecipe(st, id)
 			return st.Update(id, func(it *Item) error {
 				if index < 0 || index >= len(it.Stages) {
 					return fmt.Errorf("there is no stage %d", index+1)
+				}
+				if !on && it.Stages[index].On && StageFixed(it.Stages, index, recipe, it.Kind) {
+					return FixedRefusal(it.Stages[index].Name)
 				}
 				it.Stages[index].On = on
 				return nil
@@ -140,9 +148,13 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 			default:
 				return fmt.Errorf("%q is not a thinking level", effort)
 			}
+			recipe := o.itemRecipe(st, id)
 			return st.Update(id, func(it *Item) error {
 				if stage < 0 || stage >= len(it.Stages) {
 					return fmt.Errorf("there is no stage %d", stage+1)
+				}
+				if effort != it.Stages[stage].Effort && StageFixed(it.Stages, stage, recipe, it.Kind) {
+					return FixedRefusal(it.Stages[stage].Name)
 				}
 				it.Stages[stage].Effort = effort
 				return nil
@@ -418,6 +430,17 @@ func (o localOptions) recipe(repo string) Recipe {
 	return r
 }
 
+// itemRecipe is the recipe of the repository item id is on, read before the
+// store's update so no git read happens inside it; the default recipe when
+// the item or its folder is not known.
+func (o localOptions) itemRecipe(st ItemStore, id int) Recipe {
+	it, err := localItem(st, id)
+	if err != nil {
+		return DefaultRecipe()
+	}
+	return o.recipe(it.Repo)
+}
+
 // localItem is one item off the store, by its id.
 func localItem(st ItemStore, id int) (Item, error) {
 	items, err := st.List()
@@ -512,13 +535,22 @@ func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (i
 	if it.Gate == "" {
 		it.Gate = GateShip
 	}
+	// A CHIP IS THE PERSON'S EDIT, under the same bound: rounds or thinking
+	// laid on a stage the recipe fixes is refused in the one sentence, while
+	// switching security on is always allowed.
 	if i := StageIndex(it.Stages, "review"); c.Rounds > 0 && i >= 0 {
+		if c.Rounds != it.Stages[i].Max && StageFixed(it.Stages, i, recipe, KindIssue) {
+			return 0, FixedRefusal(it.Stages[i].Name)
+		}
 		it.Stages[i].Max = c.Rounds
 	}
 	if i := StageIndex(it.Stages, "security"); security && i >= 0 {
 		it.Stages[i].On = true
 	}
 	if i := StageIndex(it.Stages, "write"); c.Effort != "" && i >= 0 {
+		if c.Effort != it.Stages[i].Effort && StageFixed(it.Stages, i, recipe, KindIssue) {
+			return 0, FixedRefusal(it.Stages[i].Name)
+		}
 		it.Stages[i].Effort = c.Effort
 	}
 	made, err := st.Create(it)

@@ -114,6 +114,12 @@ type Stage struct {
 	// By is who put the stage here or last changed it: `recipe`, `manager`,
 	// `plan` or `you` ([ByRecipe] and its siblings). "" is the recipe.
 	By string
+	// Fixed says the recipe file binds this stage: its line ends `· fixed`
+	// or its section's heading does. NO ONE CHANGES A FIXED STAGE'S ASK,
+	// THINKING OR LOOP, OR SWITCHES IT OFF: not the manager, not plan, not
+	// the person ([Edit], [FixedRefusal]). It may be switched on. The law
+	// changes only by changing the file. Missing reads false.
+	Fixed bool `json:",omitempty"`
 }
 
 // Recipe is what a product banked: stages in order, per kind of item, and the

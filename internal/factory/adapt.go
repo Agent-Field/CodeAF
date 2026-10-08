@@ -167,7 +167,10 @@ func Adapt(it Item, edit PlanEdit, recipe Recipe) (Item, []string, error) {
 //   - a stage of kind gate, the stage named proof, and a stage a policy line
 //     names are never skipped;
 //   - a stage that is done or running (or waiting on the person, or failed)
-//     is never changed, and nothing is added before one.
+//     is never changed, and nothing is added before one;
+//   - A FIXED STAGE ([Stage.Fixed], [StageFixed]) BINDS EVERYONE, YOU TOO:
+//     its ask and thinking are never changed and it is never skipped, and
+//     the refusal is [FixedRefusal]'s sentence. Switching it on is allowed.
 //
 // In a run ([EditInRun]) the recipe's adapt word holds for everyone but you:
 // under `fixed` every change is refused, and under `ask` the item's gate
@@ -209,6 +212,7 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 		stages = CopyStages(recipe.For(kind))
 	}
 	started := startedStages(it)
+	fixed := func(i int) bool { return StageFixed(stages, i, recipe, kind) }
 	why := oneLine(e.Why)
 	var errs []error
 	refuse := func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) }
@@ -237,6 +241,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 		}
 		ask := oneLine(e.Ask[name])
 		switch {
+		case fixed(i) && ask != stages[i].Ask:
+			errs = append(errs, FixedRefusal(stages[i].Name))
 		case started[stages[i].Name]:
 			refuse("%s may not change %s, which has already run", who, stages[i].Name)
 		case ask == "":
@@ -258,6 +264,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 		switch {
 		case word != "" && !oneOf(word, EffortWords):
 			refuse("%s", ErrThinking.Error())
+		case fixed(i) && word != stages[i].Effort:
+			errs = append(errs, FixedRefusal(stages[i].Name))
 		case started[stages[i].Name]:
 			refuse("%s may not change %s, which has already run", who, stages[i].Name)
 		case word != stages[i].Effort:
@@ -330,6 +338,8 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 		}
 		st := stages[i]
 		switch {
+		case fixed(i):
+			errs = append(errs, FixedRefusal(st.Name))
 		case st.Kind == StageGate:
 			refuse("%s may not skip %s; it is a person's gate", who, st.Name)
 		case st.Name == "proof":
@@ -359,6 +369,32 @@ func Edit(it Item, e RunEdit, recipe Recipe, mode EditMode) (Item, []string, err
 	}
 	it.Adapted = append(append([]string(nil), it.Adapted...), lines...)
 	return it, lines, nil
+}
+
+// FixedRefusal is the one sentence every road says when it is asked to change
+// a stage the recipe file fixes ([Stage.Fixed]), whoever asked:
+// `security is fixed by the recipe · change .codeaf/factory.md to change it`.
+func FixedRefusal(name string) error {
+	return errors.New(strings.TrimSpace(name) + " is fixed by the recipe · change " + RecipeFile + " to change it")
+}
+
+// StageFixed says whether the stage at i of an item's stages is fixed: the
+// item's copy says so, or the recipe's stage of the same name for the item's
+// kind does, so an item that took its copy before the file said fixed is
+// bound all the same.
+func StageFixed(stages []Stage, i int, recipe Recipe, kind Kind) bool {
+	if i < 0 || i >= len(stages) {
+		return false
+	}
+	if stages[i].Fixed {
+		return true
+	}
+	if kind == "" {
+		kind = KindIssue
+	}
+	rs := recipe.For(kind)
+	j := StageIndex(rs, stages[i].Name)
+	return j >= 0 && rs[j].Fixed
 }
 
 // sortedKeys is a map's keys in order, so an edit's lines read the same on
