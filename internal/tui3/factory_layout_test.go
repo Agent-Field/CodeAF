@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -216,22 +217,34 @@ func TestFactoryLayoutFactsDropFromTheRight(t *testing.T) {
 	}
 }
 
-// factoryPageRowName is the rail row under the item page's cursor, by name:
-// `issue`, `talk`, or the stage's own name.
+// factoryPageRowName is the left column's row under the item page's cursor,
+// by name: the facet's word, or the stage's own name.
 func factoryPageRowName(a *app, it factory.Item) string {
-	rows := a.factoryItemRows(it)
-	r := rows[a.fp.stage]
+	return factoryPageRowWord(a.factoryItemRows(it)[a.fp.stage])
+}
+
+// factoryPageRowWord is one row of the left column by name: the facet's
+// word, or the stage's own name.
+func factoryPageRowWord(r factoryPageRow) string {
 	switch r.kind {
 	case factoryPageIssue:
-		return "issue"
-	case factoryPageTalk:
-		return "talk"
+		return wordFacetIssue
+	case factoryPageManager:
+		return wordFacetManager
+	case factoryPageRun:
+		return wordFacetRun
+	case factoryPageLog:
+		return wordFacetLog
+	case factoryPageResult:
+		return wordFacetResult
+	case factoryPageSettings:
+		return wordFacetSettings
 	}
 	return r.view.stage.Name
 }
 
 // ENTER OPENS THE ITEM PAGE where the item is moving: the stage waiting on the
-// person, else the running one, else the proof of a landed item, else the
+// person, else the running one, else the result of a landed item, else the
 // issue; ESC PUTS THE FLOOR BACK ON THE SAME ROW.
 func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 	a := factoryPlaceLab(t)
@@ -239,7 +252,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 	for _, c := range []struct {
 		id    int
 		stage string
-	}{{2, "review"}, {9, "proof"}, {1, "plan"}, {4, "issue"}, {10, "issue"}, {3, "issue"}} {
+	}{{2, "review"}, {9, "result"}, {1, "plan"}, {4, "issue"}, {10, "issue"}, {3, "issue"}} {
 		for at, i := range a.factoryWalkNow() {
 			if a.fp.snap.Items[i].ID == c.id {
 				a.fp.cursor = at
@@ -255,9 +268,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 			t.Fatalf("item %d opened on %q, want %q", c.id, got, c.stage)
 		}
 		text := strings.Join(factoryFrameLines(a), "\n")
-		// `ask me at` stands on every item that can still move it: in the
-		// verbs' column on a page this wide, and only where `t` works.
-		if !strings.Contains(text, it.Ref()+" "+it.Title) || (it.State == factory.StateNew && a.factory.Has("setgate") && !strings.Contains(text, wordAskAt)) {
+		if !strings.Contains(text, it.Ref()+" "+it.Title) {
 			t.Fatalf("item %d's page has no head:\n%s", c.id, text)
 		}
 		if strings.Contains(text, "NEEDS YOU") {
@@ -265,7 +276,7 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 		}
 		drive(t, a, key("enter"))
 		said := a.fp.said
-		if c.stage != "issue" && c.stage != "proof" && !said {
+		if c.stage != "issue" && c.stage != "result" && !said {
 			t.Fatalf("enter on item %d's stage did not say what it will open", c.id)
 		}
 		// `enter` on the issue opens the item's conversation (or its github
@@ -280,10 +291,11 @@ func TestFactoryLayoutItemPageOpensOnTheRightStage(t *testing.T) {
 	}
 }
 
-// THE RAIL STARTS WITH THE ISSUE, then the talk row when the item has a
-// conversation, then the stages. The issue's pane is the whole body, then the
-// read and the facts, a blank row between each, scrolled with J and K; a
-// stage's pane is its knobs, its ask, a blank, and its tail.
+// THE LEFT COLUMN STARTS WITH THE ISSUE, then the manager where the seam has
+// the Talk door, then the run with its stages. The issue's pane is the whole
+// body, then the read and the facts, a blank row between each, scrolled with
+// J and K; the manager's, the run's and a stage's center is the run's story
+// (factory_timeline.go).
 func TestFactoryItemPageIssueRow(t *testing.T) {
 	a := factoryPlaceLab(t)
 	a.width, a.height = 150, 44
@@ -301,8 +313,8 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 	drive(t, a, key("enter"))
 	cur, _ := a.factoryCursorItem()
 	rows := a.factoryItemRows(cur)
-	if rows[0].kind != factoryPageIssue || rows[1].kind != factoryPageStage || a.fp.stage != 0 {
-		t.Fatalf("the rail does not start with the issue, or the cursor is not on it: %+v at %d", rows[:2], a.fp.stage)
+	if rows[0].kind != factoryPageIssue || rows[1].kind != factoryPageRun || rows[2].kind != factoryPageStage || a.fp.stage != 0 {
+		t.Fatalf("the column does not start with the issue and the run, or the cursor is not on it: %+v at %d", rows[:3], a.fp.stage)
 	}
 	frame := strings.Join(factoryFrameLines(a), "\n")
 	// AT 150 THE VERBS STAND ON THE RIGHT and the pane draws no action line,
@@ -310,7 +322,7 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 	if a.factoryVerbsDrawn() == strings.Contains(frame, "J K scroll") {
 		t.Fatalf("verbs on the right %v, and the pane names J K scroll %v:\n%s", a.factoryVerbsDrawn(), strings.Contains(frame, "J K scroll"), frame)
 	}
-	for _, want := range []string{a.icon(tokens.GFileDocument) + " issue", "paragraph line 1", a.icon(tokens.GExpanded) + " more"} {
+	for _, want := range []string{wordFacetIssue, "paragraph line 1", a.icon(tokens.GExpanded) + " more"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("the issue pane is missing %q:\n%s", want, frame)
 		}
@@ -332,35 +344,31 @@ func TestFactoryItemPageIssueRow(t *testing.T) {
 			t.Fatalf("the end of the issue is missing %q:\n%s", want, frame)
 		}
 	}
-	// A conversation puts the talk row second, and the cursor still lands on
+	// THE TALK DOOR PUTS THE MANAGER SECOND, and the cursor still lands on
 	// the issue of an item nothing is happening to.
 	drive(t, a, key("esc"))
-	factoryPaneItem(t, a, 6).Talk = "chat-6"
+	a.factory.Talk = func(context.Context, int) (string, error) { return "", nil }
 	drive(t, a, key("enter"))
 	cur, _ = a.factoryCursorItem()
-	if rows := a.factoryItemRows(cur); rows[1].kind != factoryPageTalk || a.fp.stage != 0 {
-		t.Fatalf("the talk row is not second: %+v", rows[:2])
+	if rows := a.factoryItemRows(cur); rows[1].kind != factoryPageManager || a.fp.stage != 0 {
+		t.Fatalf("the manager row is not second: %+v", rows[:2])
 	}
-	drive(t, a, key("down"))
-	if frame := strings.Join(factoryFrameLines(a), "\n"); !strings.Contains(frame, a.icon(tokens.GActionCommunicate)+" "+wordChat) {
-		t.Fatalf("the talk row has no pane:\n%s", frame)
-	}
-	// A stage's pane: knobs, ask, a blank, the tail.
-	drive(t, a, key("down"))
-	var pane []string
-	for _, r := range a.factoryItemBody(cur, 150, 30) {
-		if _, right, div := factorySplitAt(ansi.Strip(r.text)); div >= 0 {
-			pane = append(pane, strings.TrimSpace(right))
+	// The manager's, the run's and a stage's center is the run's story.
+	story := strings.TrimSpace(ansi.Strip(a.factoryTimelinePane(cur, 150-factoryRailW-factoryRuleW-factoryMargins, 30)[0]))
+	for _, want := range []factoryPageKind{factoryPageManager, factoryPageRun, factoryPageStage} {
+		drive(t, a, key("down"))
+		if got := a.factoryItemRows(cur)[a.fp.stage].kind; got != want {
+			t.Fatalf("↓ stands on %v, want %v", got, want)
 		}
-	}
-	at := -1
-	for i, p := range pane {
-		if strings.HasPrefix(p, "plan · chat") {
-			at = i
+		var pane []string
+		for _, r := range a.factoryItemBody(cur, 150, 30) {
+			if _, right, div := factorySplitAt(ansi.Strip(r.text)); div >= 0 {
+				pane = append(pane, strings.TrimSpace(right))
+			}
 		}
-	}
-	if at < 0 || pane[at+1] != "read the issue and say how" || pane[at+2] != "" || pane[at+3] != "runs first" {
-		t.Fatalf("the stage pane is not knobs, ask, blank, tail:\n%s", strings.Join(pane, "\n"))
+		if story == "" || !strings.Contains(strings.Join(pane, "\n"), story) {
+			t.Fatalf("row %v's center is not the run's story %q:\n%s", want, story, strings.Join(pane, "\n"))
+		}
 	}
 }
 

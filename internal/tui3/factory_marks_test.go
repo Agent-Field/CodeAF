@@ -230,7 +230,7 @@ func TestFactoryMarkCursorGroundMatchesTeams(t *testing.T) {
 	if sel := ground.FindStringSubmatch(a.pal.selected("x", 1)); sel != nil && sel[1] == floor[1] {
 		t.Fatalf("the floor's cursor wears the selected step %s", sel[1])
 	}
-	rail, _ := a.factoryCellRail(a.factoryPageCells(a.factoryItemRows(*factoryPaneItem(t, a, 2))), 0, 3)
+	rail, _ := a.factoryCellRail(a.factoryPageCells(*factoryPaneItem(t, a, 2), a.factoryItemRows(*factoryPaneItem(t, a, 2))), 0, 3)
 	if got := ground.FindStringSubmatch(rail[0]); got == nil || got[1] != teams[1] {
 		t.Fatalf("the item page's rail cursor is %v, want %s", got, teams[1])
 	}

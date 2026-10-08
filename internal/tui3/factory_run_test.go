@@ -39,18 +39,7 @@ func factoryRowNamed(t *testing.T, a *app, name string) factoryPageRow {
 	rows := a.factoryItemRows(it)
 	for i, r := range rows {
 		got := ""
-		switch r.kind {
-		case factoryPageIssue:
-			got = "issue"
-		case factoryPageTalk:
-			got = "talk"
-		case factoryPageProof:
-			got = "proof"
-		case factoryPageLog:
-			got = "log"
-		default:
-			got = r.view.stage.Name
-		}
+		got = factoryPageRowWord(r)
 		if got == name {
 			a.factoryStageSelect(i)
 			return r

@@ -142,20 +142,19 @@ const (
 )
 
 // THE ITEM PAGE'S VERBS ON THE RIGHT (factory_verbs.go): a column beside the
-// pane, past one more rule, grouped `do / set / also` the way the `?` sheet
-// is. A group's name stands [factoryVerbLeadW] past the rule and its rows
-// [factoryVerbIndentW] further in; a `set` row is its word in a column of
-// [factoryVerbWordW], its value in one of [factoryVerbValueW], and every
-// row's key right-aligned in [factoryVerbKeyW] at the column's end, so the
-// values start at one cell and the keys end at one cell on every row:
+// pane, past one more rule, grouped `do / also` the way the `?` sheet is. A
+// group's name stands [factoryVerbLeadW] past the rule and its rows
+// [factoryVerbIndentW] further in; a row is its word in the columns of
+// [factoryVerbWordW] and [factoryVerbValueW] together, and its key
+// right-aligned in [factoryVerbKeyW] at the column's end, so the keys end at
+// one cell on every row:
 //
-//	│l│ii│word       │value       │g│  key│
-//	 1  2      11          12      1    5
+//	│l│ii│word                    │g│  key│
+//	 1  2      11 + 12             1    5
 //
-// THE WORD AND VALUE COLUMNS TOGETHER HOLD THE LONGEST VERB WHOLE (`approve
-// with changes`), and the value column the longest value (`pull request`),
-// so no verb on the column is ever cut. The key column holds `space` whole,
-// the one spelling the `?` sheet uses.
+// THE WORD COLUMNS TOGETHER HOLD THE LONGEST VERB WHOLE (`approve with
+// changes`), so no verb on the column is ever cut. The key column holds
+// `space` whole, the one spelling the `?` sheet uses.
 const (
 	factoryVerbLeadW   = 1
 	factoryVerbIndentW = 2
@@ -169,6 +168,26 @@ const (
 	// under it the column is not drawn, the chips stand on the head's second
 	// row and the pane keeps its action line, as before the column existed.
 	factoryVerbRailMinW = 100
+)
+
+// THE ITEM PAGE'S LEFT COLUMN IS THE ISSUE'S MAP (factory_item.go): one row
+// per facet, the stages and the log nested under `run` by [factoryNestW].
+// THE SETTINGS FACET is a table of three knobs and then one line per stage:
+//
+//	│label      │value       │key
+//	│ask me at  │plan        │t
+//	│1 plan     │on          │
+//	      11          14
+//
+// The label column holds `ask me at` and its air, or a stage's number and
+// name when a stage name is longer ([app.factorySettingsPane] widens it for
+// every line at once, so the values start at one cell); the value column
+// holds `pull request` whole and two cells of air before the key.
+const (
+	factoryNestW     = 2
+	factorySetLabelW = 11
+	factorySetValueW = 14
+	factorySetNumW   = 2
 )
 
 // THE FRAME'S OWN LINES, which the place draws and the floor writes into.

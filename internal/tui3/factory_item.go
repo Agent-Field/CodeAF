@@ -117,59 +117,89 @@ func (a *app) factoryItemStages(it factory.Item) []factoryStageView {
 	return out
 }
 
-// factoryPageKind is what one row of the item page's rail stands for.
+// factoryPageKind is what one row of the item page's left column stands for:
+// ONE FACET OF THE ITEM'S DATA MODEL (owner decision, 2026-10-08, "the item
+// page is the issue's map").
 type factoryPageKind int
 
 const (
-	factoryPageIssue factoryPageKind = iota // the issue itself, always first
-	factoryPageTalk                         // the item's conversation, when it has one
-	factoryPageStage                        // one stage of its recipe
-	factoryPageProof                        // the sheet, when no stage is named proof
-	factoryPageLog                          // the stream's log, when it has one
+	factoryPageIssue    factoryPageKind = iota // what it says and what codeaf read, always first
+	factoryPageManager                         // the item's conversation, where the seam has the Talk door
+	factoryPageRun                             // the run, with its stages and its log nested under it
+	factoryPageStage                           // one stage of its recipe, under run
+	factoryPageLog                             // the stream's log, last under run, when it has one
+	factoryPageResult                          // the sheet, the diff and the checks, once something came out
+	factoryPageSettings                        // ask me at, thinking, budget and the stages on or off, always last
 )
 
-// factoryPageRow is one row of the item page's rail: what it stands for, and
-// for a stage, the stage as it stands on the item and where it is among them.
+// factoryPageRow is one row of the item page's left column: what it stands
+// for, and for a stage, the stage as it stands on the item and where it is
+// among them.
 type factoryPageRow struct {
 	kind factoryPageKind
 	view factoryStageView
 	at   int // the stage's place in [app.factoryItemStages]; -1 for the others
 }
 
-// factoryItemRows is the rail's rows top to bottom: the issue, the talk row
-// when the item has a conversation, its stages, a `proof` row when the item
-// carries a sheet and no stage is named proof (a recipe without one, or a
-// send-back's `prove`), and `log` when its stream has said anything. A ROW
-// WITH NOTHING BEHIND IT IS NOT ON THE RAIL: an item that never ran has no log
-// row (the emptiness law).
+// factoryItemRows is the left column's rows top to bottom:
+//
+//	issue              always
+//	manager            the item's conversation, where the seam has the Talk door
+//	run                the run, where there are stages or a stream
+//	  ✓ plan  2m       each stage, nested under run
+//	  log              the stream's log, nested last, once it has said anything
+//	result             the sheet, the diff and the checks, once something came out
+//	settings           always
+//
+// A ROW WITH NOTHING BEHIND IT IS NOT IN THE COLUMN (the emptiness law): an
+// item that never ran has no log row and no result row.
 func (a *app) factoryItemRows(it factory.Item) []factoryPageRow {
 	rows := []factoryPageRow{{kind: factoryPageIssue, at: -1}}
-	if strings.TrimSpace(it.Talk) != "" {
-		rows = append(rows, factoryPageRow{kind: factoryPageTalk, at: -1})
+	if a.factory.Has("talk") {
+		rows = append(rows, factoryPageRow{kind: factoryPageManager, at: -1})
 	}
-	proofStage := false
-	for i, v := range a.factoryItemStages(it) {
+	stages := a.factoryItemStages(it)
+	if len(stages) > 0 || it.Stream != nil {
+		rows = append(rows, factoryPageRow{kind: factoryPageRun, at: -1})
+	}
+	for i, v := range stages {
 		rows = append(rows, factoryPageRow{kind: factoryPageStage, view: v, at: i})
-		proofStage = proofStage || v.stage.Name == "proof"
-	}
-	if !proofStage && len(it.Proof)+len(it.Policy) > 0 {
-		rows = append(rows, factoryPageRow{kind: factoryPageProof, at: -1})
 	}
 	if it.Stream != nil && len(it.Stream.Log) > 0 {
 		rows = append(rows, factoryPageRow{kind: factoryPageLog, at: -1})
 	}
-	return rows
+	if factoryHasResult(it) {
+		rows = append(rows, factoryPageRow{kind: factoryPageResult, at: -1})
+	}
+	return append(rows, factoryPageRow{kind: factoryPageSettings, at: -1})
 }
 
-// factoryIsProofRow says whether a rail row is the item's sheet: the stage
-// named proof, or the proof row that stands in for one.
-func factoryIsProofRow(r factoryPageRow) bool {
-	return r.kind == factoryPageProof || (r.kind == factoryPageStage && r.view.stage.Name == "proof")
+// factoryHasResult says whether something came out of the item's run: a
+// proof sheet, or a diff the run made. A pull request's own diff, read from
+// the forge before anything ran, is the issue's, not a result.
+func factoryHasResult(it factory.Item) bool {
+	return len(it.Proof)+len(it.Policy) > 0 || (it.Stream != nil && strings.TrimSpace(it.Diff) != "")
 }
 
-// factoryStageFor is the rail row the page opens on: the stage waiting on the
-// person, else the running one, else the proof of a landed item (its last
-// stage when the recipe has no proof), else the issue.
+// factoryPageRowAt is the row under the item page's cursor, and false when
+// the cursor stands on none.
+func (a *app) factoryPageRowAt(it factory.Item) (factoryPageRow, bool) {
+	rows := a.factoryItemRows(it)
+	if a.fp.stage < 0 || a.fp.stage >= len(rows) {
+		return factoryPageRow{}, false
+	}
+	return rows[a.fp.stage], true
+}
+
+// factoryOnTimeline says whether a row's center is the run's story
+// (factory_timeline.go): the manager, the run and every stage.
+func factoryOnTimeline(r factoryPageRow) bool {
+	return r.kind == factoryPageManager || r.kind == factoryPageRun || r.kind == factoryPageStage
+}
+
+// factoryStageFor is the row the page opens on: the stage waiting on the
+// person, else the running one, else a landed item's result (its proof
+// stage, else its last stage, when nothing came out), else the issue.
 func (a *app) factoryStageFor(it factory.Item) int {
 	rows := a.factoryItemRows(it)
 	find := func(ok func(factoryPageRow) bool) int {
@@ -189,7 +219,12 @@ func (a *app) factoryStageFor(it factory.Item) int {
 	if it.State == factory.StateLanded {
 		last := -1
 		for i, r := range rows {
-			if factoryIsProofRow(r) {
+			if r.kind == factoryPageResult {
+				return i
+			}
+		}
+		for i, r := range rows {
+			if r.kind == factoryPageStage && r.view.stage.Name == "proof" {
 				return i
 			}
 			if r.kind == factoryPageStage {
@@ -222,6 +257,7 @@ func (a *app) factoryOpenItem() bool {
 // cursor on the row the page was opened from, because nothing moved it.
 func (a *app) factoryCloseItem() {
 	a.fp.open, a.fp.said = false, false
+	a.fp.crumbHover = factoryCrumbNone
 	a.fp.scroll = 0
 	a.pageMsg = ""
 	a.touch()
@@ -258,15 +294,14 @@ func (a *app) factoryStageSelect(at int) {
 // what it meant before.
 //
 // `ENTER` ON A FLOOR ROW OPENS THE ITEM PAGE AND NEVER LAUNCHES: launching is
-// `r`, `p` and `L` (factory_keys.go). The one `enter` on the item page that
-// acts is on the proof of a landed item, which IS the item's sheet, so the
-// sheet's default key keeps its meaning there ([app.factoryLandedKey]): sign
-// off when every claim was shown, and the send-back row otherwise. A STAGE
-// THAT RAN AS A CONVERSATION IS A ROOM, and `enter` walks into it
-// (factory_run.go's [app.factoryOpenRoom]); every other stage says why it has
-// none on the pane's action line. `enter` on the issue and on the talk row
-// opens the item's own conversation, as `T` does ([app.factoryItemEnter]);
-// `enter` on the log does nothing here.
+// `r`, `p` and `L` (factory_keys.go). On the item page `enter` on the issue
+// and on the manager row opens the item's own conversation, as `T` does; on a
+// stage it is the run's story's first (factory_timeline.go), and then a
+// stage that ran as a conversation is a ROOM it walks into (factory_run.go's
+// [app.factoryOpenRoom]), the proof stage of a landed item answers as the
+// sheet ([app.factoryLandedKey]), and every other stage says why it has none
+// on the note line. `enter` on the log, the result and the settings does
+// nothing ([app.factoryItemEnter]).
 //
 // IT STANDS ASIDE for the map, the tab bar's cursor, the words box and a
 // verb's typing row, each of which has the keyboard while it is up.
@@ -275,22 +310,38 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	k := msg.String()
-	if took := a.factoryScrollKey(k); took {
-		return nil, true
-	}
 	if a.fp.open {
 		switch k {
 		case "esc":
 			a.factoryCloseItem()
-		case "enter":
-			return a.factoryItemEnter(), true
+			return nil, true
 		case "up", "ctrl+p", "left":
 			a.factoryStageMove(-1)
+			return nil, true
 		case "down", "ctrl+n", "right":
 			a.factoryStageMove(1)
-		default:
-			return nil, false
+			return nil, true
 		}
+		// THE RUN'S STORY HEARS A KEY FIRST on the rows whose center it is
+		// (factory_timeline.go), the walk and `esc` excepted, and a key it
+		// does not take goes on to mean what it meant. `enter` asks it in
+		// [app.factoryItemEnter], so a double press asks it the same way.
+		if it, ok := a.factoryCursorItem(); ok && k != "enter" {
+			if r, ok := a.factoryPageRowAt(it); ok && factoryOnTimeline(r) {
+				if cmd, took := a.factoryTimelineKey(it, msg); took {
+					return cmd, true
+				}
+			}
+		}
+		if k == "enter" {
+			return a.factoryItemEnter(), true
+		}
+		if took := a.factoryScrollKey(k); took {
+			return nil, true
+		}
+		return nil, false
+	}
+	if took := a.factoryScrollKey(k); took {
 		return nil, true
 	}
 	if cmd, took := a.factorySplitKey(k); took {
@@ -349,25 +400,26 @@ func (a *app) factoryNothingToOpen(it factory.Item) string {
 }
 
 // factoryItemEnter is `enter` on the item page, and a double press on a row of
-// its rail: the issue and the talk row open the item's own conversation, the
-// proof of a landed item answers as its sheet, a stage with a room opens it,
-// every other stage says why it has none, and the log does nothing here.
+// its left column: the issue and the manager row open the item's own
+// conversation; on the run and on a stage the run's story is asked first
+// (factory_timeline.go); then the proof stage of a landed item answers as its
+// sheet, a stage with a room opens it, and every other stage says why it has
+// none. The log, the result and the settings do nothing here.
 func (a *app) factoryItemEnter() tea.Cmd {
 	it, ok := a.factoryCursorItem()
 	if !ok {
 		return nil
 	}
-	rows := a.factoryItemRows(it)
-	if a.fp.stage < 0 || a.fp.stage >= len(rows) {
+	r, ok := a.factoryPageRowAt(it)
+	if !ok {
 		return nil
 	}
-	r := rows[a.fp.stage]
-	// `ENTER` ON THE ISSUE (AND ON THE TALK ROW) OPENS THE ITEM'S OWN
+	// `ENTER` ON THE ISSUE (AND ON THE MANAGER ROW) OPENS THE ITEM'S OWN
 	// CONVERSATION, exactly as `T` does (factory_talk.go): a new item is
 	// started by talking it through, and `enter` is the key a person tries
 	// first. With no Talk door it opens the item on github through `g`'s door,
 	// and with neither the action line says there is nothing to open yet.
-	if r.kind == factoryPageIssue || r.kind == factoryPageTalk {
+	if r.kind == factoryPageIssue || r.kind == factoryPageManager {
 		switch a.factoryIssueEnter(it) {
 		case factoryIssueTalk:
 			a.pageMsg = ""
@@ -380,7 +432,12 @@ func (a *app) factoryItemEnter() tea.Cmd {
 		a.touch()
 		return nil
 	}
-	if r.kind != factoryPageStage && r.kind != factoryPageProof {
+	if r.kind == factoryPageRun || r.kind == factoryPageStage {
+		if cmd, took := a.factoryTimelineKey(it, tea.KeyPressMsg{Code: tea.KeyEnter}); took {
+			return cmd
+		}
+	}
+	if r.kind != factoryPageStage {
 		return nil
 	}
 	// A SHEET WITH NO DOOR FOR ITS `enter` (the still fixture) says the
@@ -395,18 +452,29 @@ func (a *app) factoryItemEnter() tea.Cmd {
 		a.pageMsg = ""
 		return a.factoryOpenRoom(it, r.view)
 	}
-	if r.kind != factoryPageStage {
-		return nil
-	}
+	// `ENTER` ON A STAGE WITH NO ROOM SAYS WHY on the pane's last line
+	// ([app.factoryPagePane]).
 	a.fp.said = true
 	a.touch()
 	return nil
 }
 
 // factoryItemPress is a press on the item page at screen cell (x, y), body row
-// row: a press on a row of the rail selects it, and a second press on the same
-// row is `enter` on it. Every other press on the page moves nothing.
+// row: a press on the center of a row whose center is the run's story is the
+// story's (factory_timeline.go), a press on a row of the left column selects
+// it, and a second press on the same row is `enter` on it. Every other press
+// on the page moves nothing.
 func (a *app) factoryItemPress(x, y, row int) tea.Cmd {
+	it, ok := a.factoryCursorItem()
+	if !ok {
+		return nil
+	}
+	if r, ok := a.factoryPageRowAt(it); ok && factoryOnTimeline(r) {
+		if px, py, ok := a.factoryPaneAt(x, row); ok {
+			cmd, _ := a.factoryTimelinePress(it, px, py)
+			return cmd
+		}
+	}
 	at := row - a.fp.railTop
 	if at < 0 || at >= a.fp.railShown {
 		return nil
@@ -419,10 +487,6 @@ func (a *app) factoryItemPress(x, y, row int) tea.Cmd {
 	if a.fp.bodyW < factoryStageFloor {
 		return nil
 	}
-	it, ok := a.factoryCursorItem()
-	if !ok {
-		return nil
-	}
 	pick := a.fp.railFirst + at
 	if pick >= len(a.factoryItemRows(it)) {
 		return nil
@@ -433,6 +497,44 @@ func (a *app) factoryItemPress(x, y, row int) tea.Cmd {
 		return a.factoryItemEnter()
 	}
 	return nil
+}
+
+// factoryPaneAt is screen column x on body row row as the center pane's own
+// cell, counted from the pane's first cell past its margin and its first
+// line, and false off the pane: on the left column, its rule, the verbs'
+// column or the head. Under [factoryStageFloor] the pane is the rows under
+// the left column's one line.
+func (a *app) factoryPaneAt(x, row int) (int, int, bool) {
+	if a.fp.railShown == 0 {
+		return 0, 0, false
+	}
+	top, left := a.fp.railTop, factoryRailW+factoryRuleW+factoryMargin
+	if a.fp.bodyW < factoryStageFloor {
+		top, left = a.fp.railTop+1, factoryMargin
+	}
+	py := row - top
+	if py < 0 || row >= a.fp.pageRows || x < left {
+		return 0, 0, false
+	}
+	if a.factoryVerbsDrawn() && x >= a.fp.verbX-factoryRuleW {
+		return 0, 0, false
+	}
+	return x - left, py, true
+}
+
+// factoryPaneHover is the pointer resting at (x, y) over the center of a row
+// whose center is the run's story: the story's to answer.
+func (a *app) factoryPaneHover(x, y int) bool {
+	it, ok := a.factoryCursorItem()
+	if !ok {
+		return false
+	}
+	r, ok := a.factoryPageRowAt(it)
+	if !ok || !factoryOnTimeline(r) {
+		return false
+	}
+	px, py, ok := a.factoryPaneAt(x, y-placeHeadRows)
+	return ok && a.factoryTimelineHover(it, px, py)
 }
 
 // factoryStageHover is the pointer resting at (x, y) on the item page: over
@@ -496,8 +598,7 @@ func (a *app) factoryScrollBy(step int) bool {
 		return false
 	}
 	if a.fp.open {
-		rows := a.factoryItemRows(it)
-		if a.fp.stage < 0 || a.fp.stage >= len(rows) || rows[a.fp.stage].kind != factoryPageIssue {
+		if r, ok := a.factoryPageRowAt(it); !ok || r.kind != factoryPageIssue {
 			return false
 		}
 	}
@@ -514,19 +615,19 @@ func (a *app) factoryScrollBy(step int) bool {
 }
 
 // factoryOnProof says whether the item page stands on the proof of a landed
-// item, the one row whose `enter` is the sheet's: `proof`, or the last stage of
-// a recipe that has no sheet at all, which is the row the page opens a landed
-// item on ([app.factoryStageFor]).
+// item, the one stage whose `enter` is the sheet's: the stage named proof, or
+// the last stage of a recipe that has no sheet at all, which is the row the
+// page opens a landed item on ([app.factoryStageFor]). The result row's
+// `enter` does nothing: the sheet's keys are `s`, `e` and `B` there.
 func (a *app) factoryOnProof(it factory.Item) bool {
 	if !a.fp.open || it.State != factory.StateLanded {
 		return false
 	}
-	rows := a.factoryItemRows(it)
-	if a.fp.stage < 0 || a.fp.stage >= len(rows) {
+	r, ok := a.factoryPageRowAt(it)
+	if !ok || r.kind != factoryPageStage {
 		return false
 	}
-	r := rows[a.fp.stage]
-	return factoryIsProofRow(r) || (r.kind == factoryPageStage && a.fp.stage == a.factoryStageFor(it))
+	return r.view.stage.Name == "proof" || a.fp.stage == a.factoryStageFor(it)
 }
 
 // ── drawing ─────────────────────────────────────────────────────────────────
@@ -573,7 +674,7 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 		}
 	}
 	left := room - len(lines)
-	cells := a.factoryPageCells(rows)
+	cells := a.factoryPageCells(it, rows)
 	switch {
 	case left <= 0:
 	case width < factoryStageFloor:
@@ -640,6 +741,11 @@ func (a *app) factoryItemBody(it factory.Item, width, room int) []placeRow {
 // dim and the item's own ref and title in ink, and at the right where the item
 // stands with how long it has run, muted, and the spend over the cap in
 // money's ink. `esc` climbs one crumb, back to the floor.
+//
+// THE CRUMBS ARE BUTTONS ([app.factoryCrumbPress]): `Factory` is the floor,
+// the repo the floor narrowed to that repo, and the ref the item on github
+// where `g` has a door. Where each stands is kept for the pointer
+// ([factoryPage.crumbHits]), the page's left margin included.
 func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 	pal := a.pal
 	state := factoryStateWord(it)
@@ -650,14 +756,14 @@ func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 			state += " " + e
 		}
 	}
-	ref := it.Ref()
-	left := a.factoryCrumbs(it.Repo) + a.factoryRefLink(it, pal.ink(ref)) + pal.ink(" "+it.Title)
+	trail := a.factoryItemCrumbs(it, measure)
+	left := trail + pal.ink(" "+it.Title)
 	// ON A STAGE WITH A ROOM THE TRAIL GOES ONE CRUMB DEEPER, the way `enter`
 	// will take: `Factory › codeaf › #12 › review`, the item's title after it,
 	// muted. `esc` from the room climbs back to this page.
 	if r, ok := a.factoryRoomRow(it); ok {
 		sep := " " + a.linearMark("›", ">") + " "
-		left = a.factoryCrumbs(it.Repo) + a.factoryRefLink(it, pal.ink(ref)) + pal.dim(sep) + pal.ink(r.view.stage.Name) + factorySpaces(factoryGutter) + pal.muted(it.Title)
+		left = trail + pal.dim(sep) + pal.ink(r.view.stage.Name) + factorySpaces(factoryGutter) + pal.muted(it.Title)
 	}
 	// THE MONEY AT THE RIGHT IS SPEND OVER THE CAP, so an item with no stream
 	// draws none: its cap is on the row under it, and saying it twice
@@ -669,11 +775,118 @@ func (a *app) factoryItemTitle(it factory.Item, measure int) string {
 	return factorySpread(left, right, measure)
 }
 
+// factoryCrumb is one button of the item page's trail.
+type factoryCrumb int
+
+const (
+	factoryCrumbNone    factoryCrumb = iota
+	factoryCrumbFactory              // `Factory`: the floor, as `esc`
+	factoryCrumbRepo                 // the repo: the floor narrowed to it
+	factoryCrumbRef                  // the ref: the item on github, as `g`
+)
+
+// factoryCrumbHit is a crumb as the last draw placed it on the page's first
+// row: the cells from x0 up to x1, and which crumb.
+type factoryCrumbHit struct {
+	x0, x1 int
+	crumb  factoryCrumb
+}
+
+// factoryItemCrumbs is the trail up to the item's ref, painted, with each
+// crumb's cells kept for the pointer: `Factory › codeaf › #1551`. The crumb
+// the pointer rests on wears the pointer's ground, as the verbs' rows do. THE
+// REF IS A BUTTON ONLY WHERE `g` OPENS IT ([app.factoryRefOpens]), and a repo
+// the trail does not name is no crumb.
+func (a *app) factoryItemCrumbs(it factory.Item, measure int) string {
+	pal := a.pal
+	sep := " " + a.linearMark("›", ">") + " "
+	a.fp.crumbHits = a.fp.crumbHits[:0]
+	x := factoryMargin
+	add := func(word string, crumb factoryCrumb, paint func(string) string) string {
+		w := ansi.StringWidth(word)
+		if crumb != factoryCrumbNone && x-factoryMargin < measure {
+			a.fp.crumbHits = append(a.fp.crumbHits, factoryCrumbHit{x0: x, x1: min(x+w, factoryMargin+measure), crumb: crumb})
+		}
+		x += w
+		if crumb != factoryCrumbNone && crumb == a.fp.crumbHover {
+			return pal.cursor(word, w)
+		}
+		return paint(word)
+	}
+	out := add(wordFloorCrumb, factoryCrumbFactory, pal.dim) + add(sep, factoryCrumbNone, pal.dim)
+	if r := factoryRepoShort(it.Repo); r != "" {
+		out += add(r, factoryCrumbRepo, pal.dim) + add(sep, factoryCrumbNone, pal.dim)
+	}
+	ref := factoryCrumbNone
+	if a.factoryRefOpens(it) {
+		ref = factoryCrumbRef
+	}
+	return out + a.factoryRefLink(it, add(it.Ref(), ref, pal.ink))
+}
+
+// factoryRefOpens says whether `g` opens the item on github: it has a page
+// there, it did not start on this machine, and the seam has the door.
+func (a *app) factoryRefOpens(it factory.Item) bool {
+	return it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Has("open")
+}
+
+// factoryCrumbAt is the crumb the last draw put at screen column x on body
+// row row, and none off the trail.
+func (a *app) factoryCrumbAt(x, row int) factoryCrumb {
+	if !a.fp.open || row != 0 {
+		return factoryCrumbNone
+	}
+	for _, h := range a.fp.crumbHits {
+		if x >= h.x0 && x < h.x1 {
+			return h.crumb
+		}
+	}
+	return factoryCrumbNone
+}
+
+// factoryCrumbHover is the pointer resting at (x, y): the crumb under it
+// takes the pointer's ground and every other gives it up. It reports whether
+// the pointer is on a crumb.
+func (a *app) factoryCrumbHover(x, y int) bool {
+	next := a.factoryCrumbAt(x, y-placeHeadRows)
+	if next != a.fp.crumbHover {
+		a.fp.crumbHover = next
+		a.touch()
+	}
+	return next != factoryCrumbNone
+}
+
+// factoryCrumbPress is a press on a crumb: `Factory` puts the floor back as
+// `esc` does, the repo puts it back narrowed to that repo as `[ ]` would,
+// and the ref opens the item on github through `g`'s own door.
+func (a *app) factoryCrumbPress(c factoryCrumb) tea.Cmd {
+	it, ok := a.factoryCursorItem()
+	if !ok {
+		return nil
+	}
+	switch c {
+	case factoryCrumbFactory:
+		a.factoryCloseItem()
+	case factoryCrumbRepo:
+		a.factoryCloseItem()
+		for i, r := range a.fp.snap.Repos {
+			if r.Name == it.Repo {
+				a.factoryRefocus(func() { a.fp.repo = i + 1 })
+				break
+			}
+		}
+	case factoryCrumbRef:
+		a.pageMsg = ""
+		return a.factoryOpenForge(it)
+	}
+	return nil
+}
+
 // factoryCrumbs is the trail above a page on the floor, dim, up to the page's
 // own name: `Factory › codeaf › `. A repo the page does not name is no crumb.
 func (a *app) factoryCrumbs(repo string) string {
 	sep := " " + a.linearMark("›", ">") + " "
-	trail := "Factory" + sep
+	trail := wordFloorCrumb + sep
 	if r := factoryRepoShort(repo); r != "" {
 		trail += r + sep
 	}
@@ -788,6 +1001,9 @@ type factoryRailCell struct {
 	// phase's elapsed. THE WORDS ARE CUT BEFORE THE TAIL IS, so the room's
 	// mark is never what a narrow rail loses.
 	tail, tailPlain string
+	// indent is the air before the row past the margin: [factoryNestW] for
+	// a row nested under another (the stages and the log under `run`).
+	indent int
 }
 
 // label is the cell's plain words, mark and all.
@@ -803,52 +1019,94 @@ func (c factoryRailCell) label() string {
 // long a running one has run. The elapsed is the first thing a narrow rail
 // drops.
 func (a *app) factoryStageCell(v factoryStageView) factoryRailCell {
+	return a.factoryStageCellIn(v, 0)
+}
+
+// factoryStageCellIn is [app.factoryStageCell] indented by indent cells, the
+// room it measures against narrowed by as much.
+func (a *app) factoryStageCellIn(v factoryStageView, indent int) factoryRailCell {
+	room := factoryRailW - factoryMargin - indent
 	label, paint := a.factoryStageLabel(v)
 	if v.off || v.skipped || v.kind == factoryMarkSkipped {
 		// A NAME TOO LONG FOR THE RAIL BESIDE ITS WORD KEEPS THE NAME WHOLE and
 		// lets the word go: the stroke still says skipped, and `security ·
 		// skip…` said less than `security` does.
-		if ansi.StringWidth(label) > factoryRailW-factoryMargin {
+		if ansi.StringWidth(label) > room {
 			mark, _ := a.factoryKindMark(factoryMarkSkipped)
 			label = mark + " " + v.stage.Name
 		}
-		return factoryRailCell{rest: label, paint: paint, markPaint: paint, flat: true}
+		return factoryRailCell{rest: label, paint: paint, markPaint: paint, flat: true, indent: indent}
 	}
 	mark, markPaint := a.factoryStageMark(v)
-	c := factoryRailCell{mark: mark, markPaint: markPaint, rest: strings.TrimPrefix(label, mark), paint: paint}
+	c := factoryRailCell{mark: mark, markPaint: markPaint, rest: strings.TrimPrefix(label, mark), paint: paint, indent: indent}
 	if v.ran && strings.TrimSpace(v.phase.Chat) != "" {
 		room := " " + a.icon(tokens.GActionCommunicate)
 		c.tail, c.tailPlain = a.pal.dim(room), room
 	}
 	if v.elapsed != "" {
 		e := rowSep + v.elapsed
-		if ansi.StringWidth(c.label())+ansi.StringWidth(e) <= factoryRailW-factoryMargin {
+		if ansi.StringWidth(c.label())+ansi.StringWidth(e) <= room {
 			c.tail, c.tailPlain = c.tail+a.pal.dim(e), c.tailPlain+e
 		}
 	}
 	return c
 }
 
-// factoryPageCells is the item page's rail as cells: the issue with the
-// document's mark, the talk row with the conversation's, and the stages.
-func (a *app) factoryPageCells(rows []factoryPageRow) []factoryRailCell {
+// factoryPageCells is the item page's left column as cells: each facet by
+// its word, in ink, with no mark of its own; the stages and the log nested
+// under `run` by [factoryNestW], each stage with its mark; and the run's
+// facts after its word, dim ([app.factoryRunFacts]).
+func (a *app) factoryPageCells(it factory.Item, rows []factoryPageRow) []factoryRailCell {
 	pal := a.pal
 	cells := make([]factoryRailCell, 0, len(rows))
+	facet := func(word string, indent int) factoryRailCell {
+		return factoryRailCell{rest: word, paint: pal.ink, markPaint: pal.ink, flat: true, indent: indent}
+	}
 	for _, r := range rows {
 		switch r.kind {
 		case factoryPageIssue:
-			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GFileDocument), markPaint: pal.muted, rest: " issue", paint: pal.ink})
-		case factoryPageTalk:
-			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionCommunicate), markPaint: pal.muted, rest: " " + wordChat, paint: pal.ink})
-		case factoryPageProof:
-			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GActionTest), markPaint: pal.muted, rest: " proof", paint: pal.ink})
+			cells = append(cells, facet(wordFacetIssue, 0))
+		case factoryPageManager:
+			cells = append(cells, facet(wordFacetManager, 0))
+		case factoryPageRun:
+			c := facet(wordFacetRun, 0)
+			if facts := a.factoryRunFacts(it, factoryRailW-factoryMargin-ansi.StringWidth(wordFacetRun)-factoryGutter); facts != "" {
+				c.tail, c.tailPlain = factorySpaces(factoryGutter)+pal.dim(facts), factorySpaces(factoryGutter)+facts
+			}
+			cells = append(cells, c)
 		case factoryPageLog:
-			cells = append(cells, factoryRailCell{mark: a.icon(tokens.GShell), markPaint: pal.muted, rest: " log", paint: pal.ink})
+			cells = append(cells, facet(wordFacetLog, factoryNestW))
+		case factoryPageResult:
+			cells = append(cells, facet(wordFacetResult, 0))
+		case factoryPageSettings:
+			cells = append(cells, facet(wordFacetSettings, 0))
 		default:
-			cells = append(cells, a.factoryStageCell(r.view))
+			cells = append(cells, a.factoryStageCellIn(r.view, factoryNestW))
 		}
 	}
 	return cells
+}
+
+// factoryRunFacts is the run row's facts, plain: where it stands, how long it
+// has run and what it has spent, `running 4m · $0.31`, the spend and then
+// the time dropped until it fits in room, and nothing for an item that
+// never ran (the emptiness law).
+func (a *app) factoryRunFacts(it factory.Item, room int) string {
+	s := it.Stream
+	if s == nil {
+		return ""
+	}
+	state := factoryStateWord(it)
+	timed := state
+	if e := factoryElapsed(s.Started, factoryEnd(s, a.fp.snap.Now)); e != "" && !factoryPaused(it) {
+		timed += " " + e
+	}
+	for _, line := range []string{strings.Join(nonEmpty([]string{timed, factoryMoney(s.Spent)}), rowSep), timed, state} {
+		if ansi.StringWidth(line) <= room {
+			return line
+		}
+	}
+	return ""
 }
 
 // factoryStageRail is the recipe page's stage rail (factory_settings.go): the
@@ -888,12 +1146,13 @@ func (a *app) factoryCellRail(cells []factoryRailCell, cursor, room int) ([]stri
 		c := cells[at]
 		text := ""
 		tailW := ansi.StringWidth(c.tailPlain)
+		room := factoryRailW - factoryMargin - c.indent - tailW
 		if c.flat {
-			text = c.paint(fit(c.rest, factoryRailW-factoryMargin-tailW)) + c.tail
+			text = c.paint(fit(c.rest, room)) + c.tail
 		} else {
-			text = c.markPaint(c.mark) + c.paint(fit(c.rest, factoryRailW-factoryMargin-ansi.StringWidth(c.mark)-tailW)) + c.tail
+			text = c.markPaint(c.mark) + c.paint(fit(c.rest, room-ansi.StringWidth(c.mark))) + c.tail
 		}
-		row := factoryPad(factorySpaces(factoryMargin)+text, factoryRailW)
+		row := factoryPad(factorySpaces(factoryMargin+c.indent)+text, factoryRailW)
 		if at == cursor {
 			row = pal.cursorRow(row, factoryRailW)
 		}
@@ -951,15 +1210,24 @@ func (a *app) factoryPagePane(it factory.Item, rows []factoryPageRow, measure, r
 	switch r.kind {
 	case factoryPageIssue:
 		lines = a.factoryIssuePane(it, measure, body)
-	case factoryPageTalk:
-		lines = a.factoryTalkPane(it, measure, body)
-	case factoryPageProof:
-		lines = a.factoryProofPane(it, nil, measure, body)
 	case factoryPageLog:
 		lines = a.factoryLogPane(it, measure, body)
+	case factoryPageResult:
+		lines = a.factoryResultPane(it, measure, body)
+	case factoryPageSettings:
+		lines = a.factorySettingsPane(it, measure, body)
 	default:
-		views := a.factoryItemStages(it)
-		lines = a.factoryStagePane(it, views, r.at, measure, body)
+		// THE MANAGER, THE RUN AND EVERY STAGE ARE THE RUN'S STORY
+		// (factory_timeline.go), which reads the row under the cursor itself.
+		// `ENTER` ON A STAGE WITH NO ROOM SAYS WHY on the pane's last line,
+		// where the item's keys stand, until the cursor moves or another key
+		// is pressed.
+		if r.kind == factoryPageStage && a.fp.said && strings.TrimSpace(r.view.phase.Chat) == "" && body >= factoryActionRows {
+			why := a.pal.dim(fit(factoryNoRoomWords(r.view), measure))
+			lines = factoryPaneLadder([][]string{a.factoryTimelinePane(it, measure, body-factoryActionRows)}, why, body)
+		} else {
+			lines = a.factoryTimelinePane(it, measure, body)
+		}
 	}
 	copy(out, lines)
 	copy(out[body:], foot)
@@ -1041,16 +1309,22 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 			read = append(read, pal.ink(line))
 		}
 	}
+	// WHAT CODEAF READ stands under its sentence, dim: the type, the size,
+	// the estimate, the priority and its reason, each only where the read
+	// said it (the emptiness law).
+	if line := factoryReadFacts(it); line != "" {
+		read = append(read, pal.dim(fit(line, w)))
+	}
 	var facts []string
 	if f := factoryFacts(it); len(f) > 0 {
 		facts = []string{pal.dim(factoryJoinWhole(f, f, factorySpaces(factoryFactGap), measure))}
 	}
+	// THE READ'S OPEN QUESTIONS ARE ON THE ISSUE whenever it has any: the
+	// issue is the one place what codeaf read is read whole.
 	var asks []string
-	if r := it.Triage.Readiness; r > 0 && r < factory.ThinReadiness {
-		if qs := nonEmpty(it.Triage.Questions); len(qs) > 0 {
-			for _, line := range wrap("it would ask "+factoryOr(it.Author, "the author")+" "+strings.Join(qs, " / "), w) {
-				asks = append(asks, pal.muted(line))
-			}
+	if qs := nonEmpty(it.Triage.Questions); len(qs) > 0 {
+		for _, line := range wrap("it would ask "+factoryOr(it.Author, "the author")+" "+strings.Join(qs, " / "), w) {
+			asks = append(asks, pal.muted(line))
 		}
 	}
 	var adapted []string
@@ -1075,7 +1349,23 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	return factoryPaneLadder([][]string{shown}, a.factoryIssueAction(it, measure, extra...), room)
 }
 
-// factoryIssueAction is the action line under the issue and the talk row: the
+// factoryReadFacts is what codeaf read about the item on one line, plain:
+// `bug · M · ~$3 · priority 2 · touches the meter`, each part only where the
+// read said it, and nothing for an item not read yet.
+func factoryReadFacts(it factory.Item) string {
+	t := it.Triage
+	parts := []string{strings.TrimSpace(t.Type), strings.TrimSpace(t.Size)}
+	if est := factoryMoney(t.Est); est != "" {
+		parts = append(parts, "~"+est)
+	}
+	if t.Priority > 0 {
+		parts = append(parts, "priority "+strconv.Itoa(t.Priority))
+	}
+	parts = append(parts, strings.TrimSpace(t.Reason))
+	return strings.Join(nonEmpty(parts), rowSep)
+}
+
+// factoryIssueAction is the action line under the issue and the manager row: the
 // item's keys, or, after an `enter` that had nothing to open, the sentence
 // that says so, until the cursor moves or another key is pressed.
 func (a *app) factoryIssueAction(it factory.Item, measure int, extra ...string) string {
@@ -1085,10 +1375,110 @@ func (a *app) factoryIssueAction(it factory.Item, measure int, extra ...string) 
 	return a.factoryPaneAction(it, measure, extra...)
 }
 
-// factoryTalkPane is the item's conversation as the item page shows it: its
-// row, and the item's keys.
-func (a *app) factoryTalkPane(it factory.Item, measure, room int) []string {
-	return factoryPaneLadder([][]string{{a.factoryTalkRow(it, measure)}}, a.factoryIssueAction(it, measure), room)
+// factoryResultPane is what came out of the run: the proof sheet as the
+// proof stage draws it, then the diff and the checks, each a block with its
+// word over it; on a landed item the sign-off line is pinned where the keys
+// stand, because on the sheet those ARE the keys ([app.factoryProofPane]).
+func (a *app) factoryResultPane(it factory.Item, measure, room int) []string {
+	pal := a.pal
+	blocks := [][]string{a.factorySheetRows(it, measure)}
+	action := a.factoryPaneAction(it, measure)
+	if it.State == factory.StateLanded {
+		action = a.factorySignOffLine(it, measure)
+	} else if line := a.factorySignOffLine(it, measure); line != "" {
+		blocks = append(blocks, []string{line})
+	}
+	if d := strings.TrimSpace(it.Diff); d != "" {
+		blocks = append(blocks, []string{a.factoryBlockHead(wordDiff, measure), pal.ink(fit(d, measure))})
+	}
+	blocks = append(blocks, a.factoryChecksBlock(it, measure))
+	return factoryPaneLadder(blocks, action, room)
+}
+
+// factorySettingsPane is the item's settings, the knobs that stood in the
+// verbs' `set` group and on the head's chips, as a table:
+//
+//	ask me at  plan        t
+//	thinking   —           e
+//	budget     $3          c
+//
+//	1 plan     on
+//	2 write    on
+//	3 test     off
+//
+//	1-9 stages · s add a stage
+//
+// EACH KEY IS DRAWN ONLY WHERE IT ACTS on the item where it stands, the `?`
+// sheet's own predicates ([app.factorySheet]): a running item's gate and
+// budget are read here and turned nowhere. The stages carry their number only
+// while `1-9` turns them, and the set group's other keys stand under them.
+// The keys are the place's own (factory_keys.go): they act from every row of
+// the page, and this pane is where a person reads what they turn.
+func (a *app) factorySettingsPane(it factory.Item, measure, room int) []string {
+	pal := a.pal
+	acts := map[string]bool{}
+	var more []string
+	for _, g := range a.factorySheet() {
+		if g.name != wordGroupSet {
+			continue
+		}
+		for _, r := range g.rows {
+			acts[r.key] = true
+			switch r.key {
+			case keyAskAt, keyThinking, keyBudget, keyWalk:
+			default:
+				more = append(more, factoryHintClause(r.key, r.word))
+			}
+		}
+	}
+	stages := factoryStages(a.fp.snap, it)
+	labelW := factorySetLabelW
+	for _, st := range stages {
+		labelW = max(labelW, factorySetNumW+ansi.StringWidth(st.Name)+factoryLabelGap)
+	}
+	row := func(label, value, key string, valuePaint func(string) string) string {
+		line := pal.muted(factoryPad(label, labelW))
+		if key == "" {
+			return fit(line+valuePaint(value), measure)
+		}
+		return fit(line+valuePaint(factoryPad(value, factorySetValueW))+pal.dim(key), measure)
+	}
+	// THE KNOBS STAND IN THE ORDER A PERSON TURNS THEM BEFORE A RUN: where it
+	// stops to ask, how hard it thinks, what it may spend.
+	chips := map[string]factoryChip{}
+	for _, c := range a.factoryChipList(it) {
+		chips[c.label] = c
+	}
+	var knobs []string
+	for _, label := range []string{wordAskAt, wordThinking, wordBudget} {
+		c := chips[label]
+		key := ""
+		if acts[c.key] {
+			key = c.key
+		}
+		if strings.TrimSpace(c.value) == "" && key == "" {
+			continue
+		}
+		knobs = append(knobs, row(c.label, c.value, key, pal.ink))
+	}
+	var lines []string
+	numbered := acts[keyStages]
+	for i, st := range stages {
+		num := factorySpaces(factorySetNumW)
+		if numbered && i < 9 {
+			num = factoryPad(strconv.Itoa(i+1), factorySetNumW)
+		}
+		state, paint := wordOn, pal.ink
+		if !st.On {
+			state, paint = wordOff, pal.dim
+		}
+		lines = append(lines, row(num+st.Name, state, "", paint))
+	}
+	var foot []string
+	if len(more) > 0 {
+		foot = []string{pal.dim(fit(strings.Join(more, rowSep), measure))}
+	}
+	return factoryPaneLadder([][]string{knobs, lines, foot}, a.factoryPaneAction(it, measure), room)
 }
 
 // factoryStagePane is the stage at views[at] as exactly room lines of at most

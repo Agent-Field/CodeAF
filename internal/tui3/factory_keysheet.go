@@ -107,8 +107,11 @@ func (a *app) factorySheet() []factorySheetGroup {
 	row(&also, floor && len(a.fp.snap.Repos) > 1, keyRepoWalk, wordRepoWalk)
 	row(&also, floor && ok, keySplit, wordSplit)
 	row(&also, ok, keyScroll, wordScroll)
+	// ON THE ITEM PAGE THE KNOBS ARE THE SETTINGS ROW'S (factory_item.go),
+	// and the sheet says where they stand.
+	row(&set, a.fp.open && ok, keyWalk, wordFacetSettings)
 	if a.fp.open {
-		row(&move, true, keyWalk, wordWalkStages)
+		row(&move, true, keyWalk, wordRows)
 		row(&move, true, keyBack, wordFloorName)
 	} else {
 		row(&move, a.factoryFloorHas(), keyWalk, wordWalk)

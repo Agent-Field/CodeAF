@@ -413,97 +413,117 @@ in `…` with a dim `▾ more` at the right. To see the rest:
 The scroll stays where you left it while the floor reads itself again. Moving to another item
 starts that item at its top.
 
-To read everything, open the item (`enter`, or click its row twice). The item page's rail starts
-with `issue`, and its pane is the whole description rendered from Markdown at 72 columns, then
+To read everything, open the item (`enter`, or click its row twice). The item page's left column
+starts with `issue`, and its pane is the whole description rendered from Markdown at 72 columns, then
 `read 3m ago · u again` (or `⠋ reading · 4s` while a read is out, `waiting to read` while it
 waits its turn, `not read yet · u reads it` before the first read, and `u reads it again` when
-the time of the read was not kept), the factory's read, the
-facts, for a thin item the questions it would ask the author, what plan changed about the
-stages, and then the comments (each whole), checks, files, activity and links. `J`, `K`, `pgdn`
-and `pgup` scroll it, so do the wheel over the pane and a click on `▾ more`, and its bottom row
-says `J K scroll` while there is more to see. Over the rail the wheel walks the rail.
+the time of the read was not kept), the factory's read, what codeaf read in one dim line (type,
+size, estimate, priority and its reason, `bug · M · ~$3 · priority 2 · …`), the facts and risks,
+the questions it would ask the author, what plan changed about the stages, and then the comments
+(each whole), checks, files, activity and links. `J`, `K`, `pgdn` and `pgup` scroll it, so do the
+wheel over the pane and a click on `▾ more`, and its bottom row says `J K scroll` while there is
+more to see. Over the left column the wheel walks its rows.
 
-## the item page
+## the item page — issue, manager, run, result, settings
 
 `enter` on a row of the factory floor (or a second click on it) opens that item on its own page,
 across the full width; `esc` closes it and puts the cursor back on the same row. Nothing about
 the floor (filter, repository, selection) changes while it is open.
 
-The top row is a trail: `Factory › codeaf › #1551 filters lost on compact`, the crumbs dim and
-the item in ink, with where it stands and for how long (`running 26m`) and the spend over the
-budget (`$1.42 / $5`) at the right. `esc` climbs one crumb, back to the floor. The second row
-names the other repositories an item touches, dim, `also harness, agentfield` (the repository
-it arrived on is the crumb above and is not said again); on an item waiting on you it is the
-question instead (see answering a question). Where it asks you, the budget and the thinking
-stand in the verbs on the right (see the verbs on the right of the item page); on a page
-narrower than 100 columns they stand on this second row instead, with their keys,
-`ask me at  pull request [t]  budget  $5 [c]  thinking  — [e]`. Then a blank row; the rail and
-its pane start on the fourth row on every item. What plan changed about the
-stages is in the issue pane (see adapt).
+The top row is a trail of breadcrumbs, `Factory › codeaf › #1551 filters lost on compact`, with
+where the item stands and for how long (`running 26m`) and the spend over the budget
+(`$1.42 / $5`) at the right; the crumbs are buttons (see breadcrumbs on the item page). The
+second row names the other repositories the item touches, `also harness, agentfield`, or on an
+item waiting on you its question. Then a blank row, and the page's columns.
 
-On the left is the **rail**: `issue` first (see read the whole issue), then `chat` when the item
-has its own conversation, then one row per stage, then `proof` when the item has a sheet and no
-stage is named proof, then `log` once the run has said anything (see the log). A stage reads `●`
-done (with `×3` when it split into tasks), the braille spinner while it runs (with its round,
-`review 2/2`, and how long it has run, `4m`), `?` waiting on you, `✕` failed, `○` to come, the
-pause mark with `· paused` while it is held, the stop square with `· stopped` where a person
-stopped it, and a stage switched off, one whose condition does not fit, or one the run went on
-past dim with `–` and `· skipped` (see paused, stopped and skipped); a stage
-with a conversation has its mark after the name (see a stage is a room). The page opens on the stage waiting on you, else
-the running stage, else `proof` for a landed item, else `issue`. `↑` and `↓` (or `←` and `→`)
-walk it, and a click on a rail row selects it. Under 72 columns the rail is one line above the
-pane.
+The left column is the **issue's map**, one row per part of the item, the stages and the log
+nested two cells under `run`:
 
-On the right is the row under the cursor. For a stage: its settings, dim
-(`review · chat · until clean · max 2 · fanout per-finding · when always`), what it is asked to
-do, a blank row, what it has to say (`runs after test`, its round and its newest log lines, the
-question waiting on you, its result, why it failed, or the sheet on `proof`), and, on a page
-narrower than 100 columns, a blank row and the item's keys on the last row.
+```
+issue
+manager
+run  running 4m · $0.31
+  ✓ plan
+  ⠋ write · 4m
+  ○ test ×2
+  log
+result
+settings
+```
 
-While a stage runs and its page is open, the page is alive: the stage's spinner turns on the rail
-and at the head of its pane (`⠋ 1 task · 15s`), its time counts up every second, and the log
-lines under it grow as the stage works, the newest at the bottom. The floor reads the item every
-second while you watch it, and goes back to its own beat when the stage ends or you press `esc`.
+- `issue`: the whole issue and what codeaf read (see read the whole issue).
+- `manager`: the item's own conversation, the team's lead. The row is there only where this
+  window can make the item's conversation (where `T chat` works).
+- `run`: where the run stands, how long and what it spent; under it each stage with its mark
+  (see paused, stopped and skipped) and `log` once the run has said anything (see the log).
+- `result`: the proof sheet, then the diff and the checks, once something came out.
+- `settings`: ask me at, thinking, budget and which stages are on (see the settings of an item).
 
-Every verb key keeps working on the item while its page is open (see the factory's verbs), and
-`1` to `9` switch stages. The verbs on the right name them (on a page narrower than 100 columns,
-the pane's last row names at most five, as the peek does). The bottom line is only `↑↓ stages · enter <what enter does here> · esc floor · ? keys`
-(`enter chat` on the issue row, `enter conversation` on a stage that has one, `enter approve`
-or `enter request changes` on a landed item's proof; no `enter` where it does nothing), with the
-router's `tab next place` before `esc`. `?` lists every key. A box that takes words opens on the
-last row of the pane.
+The center shows the row under the cursor; for `manager`, `run` and every stage it is the run's
+story. The page opens on the stage waiting on you, else the running stage, else `result` for a
+landed item, else `issue`. `↑` and `↓` (or `←` and `→`) walk every row, nested stages included,
+and a click selects one. Under 72 columns the left column is one line above the center.
 
-## the verbs on the right of the item page — do, set, also
+The bottom line is `↑↓ rows · enter <what enter does here> · esc floor · ? keys`: `enter chat`
+on the issue and the manager, `enter conversation` on a stage with a room, `enter approve` or
+`enter request changes` on a landed item's proof stage; `enter` on `result`, `settings` and
+`log` does nothing. Every verb key works from any row.
+
+## the verbs on the right of the item page — do, also
 
 On an item page 100 columns wide or wider, a column on the right lists what you can do to the
-item, so you never have to decode the bottom line. It has three groups, each under its dim
-name, and each row has its key at the right edge:
+item, in two groups, each row with its key at the right edge:
 
 - **do:** the item's verbs for where it stands. A new item: `run r`, `chat T`, `select space`
   (and `run selected L` while rows are selected). A running one: `stop x`, `chat T`,
   `pause space` (`resume` while paused), `steer S`. One waiting on you: `yes y`, `no n`,
   `in words a`, `chat T`. A landed one: `approve s` (or `approve with changes e`),
   `request changes B`, `re-run checks v`, `chat T`.
-- **set:** the settings with their values: `ask me at  plan  t`, `thinking  —  e`,
-  `budget  $3  c`, and `stages  6 of 8`, how many of the item's stages are on.
 - **also:** `open on github g`, `refresh u`, `dismiss d`.
 
-Click a row or press its key: a click does exactly what the key does, so a click on `ask me at`
-moves it to the next stop, as `t` does. A click on `stages` walks the rail on the left to the
-first stage, where `1` to `9` switch stages on and off. Resting the pointer on a row highlights
-it. `↑` and `↓` still walk the rail on the left; the column on the right has no cursor, because
-every row already has its key.
+There is no `set` group: ask me at, thinking, budget and the stages are the `settings` row on
+the left (see the settings of an item).
 
-Only what works is listed: a verb this item's state or this floor cannot do is not there, and a
-group with nothing in it is not drawn (a landed item has no `set`). On a page narrower than 100
-columns there is no column: where it asks you, the budget and the thinking stand on the head's
-second row with their keys, and the pane's last row names the verbs, as before. `?` lists every
-key either way.
+Click a row or press its key: a click does exactly what the key does. Resting the pointer on a
+row highlights it. The column has no cursor, because every row already has its key. Only what
+works is listed, and a group with nothing in it is not drawn. On a page narrower than 100
+columns there is no column: ask me at, the budget and the thinking stand on the head's second
+row with their keys, and the pane's last row names the verbs. `?` lists every key either way.
+
+## the settings of an item — where to change the budget, ask me at, thinking, which stages run
+
+Open the item and walk to its last row, `settings`. The center is a table:
+
+```
+ask me at  plan          t
+thinking   —             e
+budget     $3            c
+
+1 plan     on
+2 write    on
+3 test     off
+
+1-9 stages · s add a stage · w set in words · b save stages as the recipe
+```
+
+`t` moves where the run stops to ask (plan, pull request, never), `e` turns how hard the model
+thinks, `c` raises the budget, `1` to `9` switch that stage on or off, and `s` adds a stage in
+words. The keys work from any row of the page; this is where you read what they turn. A key is
+shown only where it works: a running item's ask me at and budget have no key, because they
+cannot change mid-run, and its stages carry no numbers. `enter` here does nothing.
+
+## breadcrumbs on the item page — how to get back to the floor from an item
+
+The item page's top row, `Factory › codeaf › #1551`, is a row of buttons. Click `Factory` to go
+back to the floor, exactly as `esc` does. Click the repository, `codeaf`, to go back to the
+floor showing only that repository (as `[` and `]` choose one; `esc` there clears it). Click the
+number, `#1551`, to open the item on github, as `g` does; on an item with no page on github the
+number is not a button. Resting the pointer on a crumb highlights it.
 
 ## start a conversation about an issue — enter on the issue row, when enter on the item page does nothing
 
 To chat about an item before anything runs, open it and press `enter` on its `issue` row (or
-its `chat` row): that opens the item's own conversation, exactly as `T` does from anywhere on
+its `manager` row): that opens the item's own conversation, exactly as `T` does from anywhere on
 the floor (see chat about an item). On the issue row the bottom line says `enter chat`, and
 `T chat` stays in the item's verbs. While it opens the line above the keys says
 `⠋ opening #12's conversation…`; the first `esc` on its empty box comes back to the item page.
@@ -512,12 +532,12 @@ Where this window cannot make the item's conversation (its verbs then have no `T
 chat about an item), `enter` on the issue row opens the item on github, as `g` does, and the
 bottom line says `enter open on github`. Where neither works, `enter` says on the pane's last row
 `nothing to open yet · r run` (without `r run` where `r` does nothing), and the next key
-puts the verbs back. `enter` on the `log` row opens nothing.
+puts the verbs back. `enter` on the `log`, `result` and `settings` rows opens nothing.
 
 ## a stage is a room — enter on a stage
 
 A stage that ran as a conversation (plan, write, review: see a stage is a conversation) is a
-room you can walk into. On the item page its rail row has the conversation's mark after its
+room you can walk into. On the item page its row under `run` has the conversation's mark after its
 name, the trail reads `Factory › codeaf › #12 › review`, and the hint says `enter conversation`.
 `enter` opens it the way `T` opens the item's own conversation: you land in it, the one you were
 in goes on running behind, and the first `esc` on its empty box, with nothing running, comes
@@ -533,13 +553,13 @@ or a move of the cursor puts the keys back.
 
 ## the log
 
-Once a run has said anything, the item page's rail ends with `log`. Its pane is the run's log,
+Once a run has said anything, the item page's `run` row ends with `log`, nested under the stages. Its pane is the run's log,
 oldest at the top and the newest at the bottom, as many of the last lines as fit; each line
 starts with its time, `12:04`, dim at the margin, then a mark for its kind and its words. Three
 voices: a **thought** (the run thinking aloud, a round starting again) is dim; **your own
 words**, the `steer: …` lines `S` and the conversation leave, are ink; everything else (what a
 stage said, a test, a failure `✕`, a success `✓`, a question `?` in amber) is the quieter
-second voice. A running stage's pane shows the same lines under its round. A claim a stage made
+second voice. A claim a stage made
 that is not for the proof sheet is a `claimed: …` line, and a batch of reads handed to a quick
 task is one line, `read ×4 · find handed to quick task 1`. An item that never ran has no log
 row. The log keeps the last 400 lines.
@@ -682,9 +702,9 @@ back and check again; `p` (plan first) is gone, because `t` and `r` do it.
 
 `?` on the floor or on the item page opens the key sheet over the page: every key that works
 where you stand, beside its word, in four groups, `do` (the row's verbs), `set` (ask me at,
-budget, thinking, stages, in words), `also` (open on github, refresh, dismiss, new, foreman,
+budget, thinking, stages, in words, and on the item page `↑↓ settings`, the row they stand on), `also` (open on github, refresh, dismiss, new, foreman,
 refresh all, handover, repos, recipe, rail, backlog, density, order, repo, the split, scroll)
-and `move` (walk, open, filter, tab next place, esc back, ? keys). Only keys the floor can do are
+and `move` (walk, or `↑↓ rows` on the item page, open, filter, tab next place, esc back, ? keys). Only keys the floor can do are
 listed. The hint says `esc close`; `esc` or `?` puts it away and leaves you where you were. Other
 letters do nothing while it is up.
 
@@ -720,7 +740,7 @@ spinner that moves is work still going:
   handover says `⠋ refreshing 8 items · 3 done`.
 - **A source being read:** the handover says `⠋ reading Agent-Field/CodeAF · 1 of 3` (or
   `github · ⠋ polling` when the source does not say where it is), then `polled 14s ago`.
-- **A stage running on the open item page:** its rail mark and the head of its pane spin, and
+- **A stage running on the open item page:** its mark in the left column spins, and
   its time counts up each second (see the item page).
 - **A key waiting on its answer:** `T` says `⠋ opening #1's conversation…`, `b` says
   `⠋ banking…`, saving the repositories or the recipe says `⠋ saving…`, and `R` says
