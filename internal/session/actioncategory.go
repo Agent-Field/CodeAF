@@ -267,6 +267,10 @@ func ActionCategoryForTool(tool string) ActionCategory {
 	case "track", "items", "commit", "recall":
 		return ActionPlan
 
+	// A factory stage reporting its round and proposing stages (tools_stage.go).
+	case "stage_result", "plan_edit":
+		return ActionPlan
+
 	// Standing by for something outside this turn.
 	case "watch":
 		return ActionWait
