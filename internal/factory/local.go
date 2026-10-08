@@ -34,13 +34,27 @@ type ItemStore interface {
 // keeps no clock of its own and draws no speed.
 //
 // A NIL STORE IS NO FLOOR: the zero Seam, whose every door is absent.
-func LocalSeam(st ItemStore, started time.Time) Seam {
+//
+// The two bank doors are the exception, and only with [WithRepoDirs]: when
+// the seam is told where a repository is checked out, a repo's recipe and
+// habits are read from its `.codeaf/factory.md` (recipefile.go), BankStages
+// writes an item's stages into that file and Bank appends a habit to it.
+// Without that option they stay nil, because there is nowhere to write.
+func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 	if st == nil || st.Root() == "" {
 		return Seam{}
 	}
-	return Seam{
-		Load: func() (Snapshot, error) { return localLoad(st, started, time.Now()) },
-		New:  func(repo, words string) (int, error) { return localNew(st, repo, words, time.Now()) },
+	var o localOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	seam := Seam{
+		Load: func() (Snapshot, error) { return localLoad(st, started, time.Now(), o.recipe) },
+		New: func(repo, words string) (int, error) {
+			return localNew(st, repo, words, time.Now(), o.recipe(strings.TrimSpace(repo)))
+		},
 		Dismiss: func(id int) error {
 			return st.Update(id, func(it *Item) error {
 				it.State = StateDismissed
@@ -100,6 +114,81 @@ func LocalSeam(st ItemStore, started time.Time) Seam {
 			})
 		},
 	}
+	if o.dirs != nil {
+		seam.BankStages = func(id int) error {
+			it, err := localItem(st, id)
+			if err != nil {
+				return err
+			}
+			dir, err := o.dir(it.Repo)
+			if err != nil {
+				return err
+			}
+			return BankRecipeStages(dir, it.Kind, it.Stages)
+		}
+		seam.Bank = func(repo, sentence string) error {
+			dir, err := o.dir(repo)
+			if err != nil {
+				return err
+			}
+			return BankRecipeHabit(dir, sentence)
+		}
+	}
+	return seam
+}
+
+// LocalOption changes how [LocalSeam] is built.
+type LocalOption func(*localOptions)
+
+// WithRepoDirs tells the local seam where each repository is checked out:
+// dir answers the folder for a repo's name, or "" when this machine does not
+// know it. THE FOLDER IS THE PERSON'S OWN CHECKOUT OF THE TRUNK, never a
+// worktree an item's run made, because the recipe read from it is the policy
+// every item on that repository runs under ([Load]).
+func WithRepoDirs(dir func(repo string) string) LocalOption {
+	return func(o *localOptions) { o.dirs = dir }
+}
+
+type localOptions struct {
+	dirs func(repo string) string
+}
+
+// dir is where repo is checked out, or an error that says it is not known.
+func (o localOptions) dir(repo string) (string, error) {
+	if d := strings.TrimSpace(o.dirs(repo)); d != "" {
+		return d, nil
+	}
+	return "", fmt.Errorf("codeaf does not know where %s is checked out, so its recipe has nowhere to go", repo)
+}
+
+// recipe is repo's recipe: its file's when the folder is known, the default
+// recipe otherwise. A FILE THAT CANNOT BE READ IS THE DEFAULT RECIPE, and a
+// line that did not load is left out, so one repository's mistyped file never
+// takes the whole floor down with it.
+func (o localOptions) recipe(repo string) Recipe {
+	if o.dirs == nil || repo == "" {
+		return DefaultRecipe()
+	}
+	d := strings.TrimSpace(o.dirs(repo))
+	if d == "" {
+		return DefaultRecipe()
+	}
+	r, _, _ := Load(d)
+	return r
+}
+
+// localItem is one item off the store, by its id.
+func localItem(st ItemStore, id int) (Item, error) {
+	items, err := st.List()
+	if err != nil {
+		return Item{}, err
+	}
+	for _, it := range items {
+		if it.ID == id {
+			return it, nil
+		}
+	}
+	return Item{}, fmt.Errorf("there is no item %d", id)
 }
 
 // localLoad copies the floor out of the store. Everything on the snapshot is
@@ -107,7 +196,7 @@ func LocalSeam(st ItemStore, started time.Time) Seam {
 // day's spend is what their streams spent today, and the shift's arrivals are
 // what was made since the window opened. A FLOOR WITH NOTHING ON IT IS ALL
 // ZEROES, which the surface draws as nothing.
-func localLoad(st ItemStore, started, now time.Time) (Snapshot, error) {
+func localLoad(st ItemStore, started, now time.Time, recipe func(repo string) Recipe) (Snapshot, error) {
 	items, err := st.List()
 	if err != nil {
 		return Snapshot{}, err
@@ -139,17 +228,18 @@ func localLoad(st ItemStore, started, now time.Time) (Snapshot, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		snap.Repos = append(snap.Repos, Repo{Name: name, Recipe: DefaultRecipe()})
+		r := recipe(name)
+		snap.Repos = append(snap.Repos, Repo{Name: name, Recipe: r, Habits: r.Habits})
 	}
 	return snap, nil
 }
 
 // localNew makes an item from words typed on the floor. The chips lift out
 // (a cap, a gate, a round count, an effort, a security pass) and what is left,
-// tidied, is the title. The stages are the default recipe for an issue, with
+// tidied, is the title. The stages are the repo's recipe for an issue, with
 // the chips written onto them the way the mock writes them: rounds onto
 // review, the effort onto write, security switched on.
-func localNew(st ItemStore, repo, words string, now time.Time) (int, error) {
+func localNew(st ItemStore, repo, words string, now time.Time, recipe Recipe) (int, error) {
 	repo = strings.TrimSpace(repo)
 	if repo == "" {
 		return 0, errors.New("say which repository the work is on")
@@ -173,7 +263,7 @@ func localNew(st ItemStore, repo, words string, now time.Time) (int, error) {
 		Cap:     c.Cap,
 		Gate:    c.Gate,
 		Triage:  Triage{Type: GuessType(title)},
-		Stages:  CopyStages(DefaultRecipe().For(KindIssue)),
+		Stages:  CopyStages(recipe.For(KindIssue)),
 	}
 	if it.Gate == "" {
 		it.Gate = GateShip

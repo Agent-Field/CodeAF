@@ -133,7 +133,74 @@ marks; the item page lists them down its stage rail. A stage can carry a conditi
 
 On a new item, `1` to `9` switch the stage with that number on or off, `s` adds a stage in
 words (`after review, make it neater` puts it after review), and `b` banks the item's stages
-as its repository's recipe. A run keeps the stages it launched with.
+as its repository's recipe, into `.codeaf/factory.md` (see the recipe file). A new item starts
+from its repository's recipe file, or codeaf's default when there is none. A run keeps the
+stages it launched with.
+
+## the recipe file — .codeaf/factory.md
+
+A repository's recipe lives in that repository, in `.codeaf/factory.md`. A person edits it by
+hand and the floor writes it back. A repository with no file runs codeaf's default recipe. The
+shape (indented here; in the file each line starts at the margin):
+
+    # factory recipe · codeaf
+
+    ## issue
+    1. plan · chat · read the issue and say how · gate plan when large
+    2. write · chat · fanout 3
+    3. test · check · go test ./... · until clean · max 2
+    4. review · chat · read it as a stranger would · until clean · max 2
+    5. security · chat · when touches auth
+    6. proof · chat · show each claim in its own medium
+
+    ## pr
+    1. read · chat · what changed and why
+    2. checks · check · ci
+    3. review · chat · until clean · max 2 · fanout per finding
+    4. proof
+
+    ## policy
+    - tests pass before anything posts
+    - a stranger's PR never runs write
+
+    ## habits
+    - factory PRs from your own issues self-ship when the proof is green
+
+A stage line is `N. name · kind · ask · knob · knob`. The sections are `## issue`, `## pr`,
+`## ci` and `## chore`; a missing section runs the default for that kind. `## policy` and
+`## habits` are sentences kept word for word. A line codeaf cannot read is named with its line
+number and why, and the rest of the file still loads.
+
+**The recipe is read from your own checkout of the trunk, never from an item's branch**, so a
+stranger's pull request cannot rewrite the policy it is held to. Policy and habit lines are
+applied by codeaf's own code; they are never handed to the model as instructions.
+
+`b` on a new item writes its stages into its kind's section of this file and leaves every other
+section as written; banking a habit adds a `- ` line under `## habits`. Both are offered only when
+codeaf knows where the repository is checked out; otherwise `b` is not on the bottom line.
+
+## recipe file knobs — kind, when, until, max, fanout, gate, effort, proof, off
+
+In a `.codeaf/factory.md` stage line, after the name:
+
+- **kind**: `chat`, `check`, `gate` or `post`; `chat` when absent.
+- **ask**: the first segment that is not a kind and not a knob. `check` runs it as a command.
+- `when always`, `when thin`, `when large`, `when touches auth`, `when has ui`: the stage is
+  skipped on an item the condition does not fit.
+- `until done`, `until clean`, `until proven`, `until green`, and no other word. done: the stage
+  reported done. clean: it reported zero findings. proven: every claim on the item has evidence.
+  green: the check's command exited 0.
+- `max N` (or `rounds N`): rounds before it stops and asks you.
+- `fanout 3`, `fanout one`, `fanout per finding`, `fanout per file`, `fanout per claim`.
+- `gate plan`, `gate ship`, `gate none`; `gate plan when large` also sets the stage's `when`,
+  so on an item that is not large the whole stage is skipped, not only its gate.
+- `effort cheap` or `effort strong`.
+- `proof a test, a screenshot`: what the stage must show, separated by commas.
+- `off`: the stage is written but does not run. Every other stage is on.
+
+A line with only a name, such as `4. proof`, is codeaf's default stage of that name for that
+kind; a name with knobs and no ask is that default with the knobs laid over it. A knob word
+with a word it does not know (`until clen`) is named as a problem, never read as the ask.
 
 ## the handover
 
@@ -263,7 +330,8 @@ rows when there is no peek): `enter` sends, `backspace` edits, `esc` cancels. A 
 After three sign-offs in a row without edits, the bottom of the right column offers a habit:
 `habit forming — 3 sign-offs without edits on codeaf` and
 `factory PRs from your own issues self-ship when the proof is green? [y] bank it · [n] not yet`.
-`y` writes that sentence into the repository's habits; `n` puts the offer away.
+`y` writes that sentence into the repository's habits, under `## habits` in its
+`.codeaf/factory.md`; `n` puts the offer away. The offer comes only where banking can be written.
 
 ## from chat to the factory floor — factory_add
 
@@ -306,6 +374,10 @@ Be plain about this when asked:
   `-tags factorymock` and started with `CODEAF_FACTORY_MOCK=1`.
 - **No repository is connected.** No GitHub, GitLab or Linear; a repo on the floor is only a
   name, so no item arrives from one.
+- **The recipe file is not read on your own floor yet.** codeaf does not yet know where a
+  floor repository is checked out, so every repository runs the default recipe, `b` is not
+  offered, and no habit is offered for banking. `.codeaf/factory.md` is read and written once
+  it does.
 - **Nothing posts anywhere.** No comment, label, pull request or issue on any service.
 - **A stage's conversation does not open yet**, and neither does the diff. `enter` on a stage
   says `the stage's conversation opens here once streams are conversations`.
