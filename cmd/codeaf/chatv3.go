@@ -395,7 +395,10 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// which an item's own conversation (`T`, factory_talk.go) proposes through.
 	cfg.FactoryItem = itemDoor(floor, workspace)
 	// And `factory_floor`'s door, the foreman's read of the floor and its
-	cfg.Floor = floorDoor(floor, workspace)
+	// marks, ON THE FOREMAN'S BELT ONLY: this conversation carries it when it
+	// is the one the floor names as its foreman, and every conversation the
+	// seam opens later decides the same question for itself ([v3Seam.open]).
+	cfg.Floor = foremanFloorDoor(floor, workspace, transcript)
 	// And the floor's GitHub poll, when repositories are watched and a token
 	// resolves; nothing starts otherwise (factory.go's [startFactoryPoll]).
 	startFactoryPoll(floor, settings.ProfileDir)
@@ -424,6 +427,9 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	var held *sessionHeldElsewhere
 	if errors.As(err, &held) {
 		takeOver = held.transcript
+		// The conversation opened beside the held one is a new one, and a new
+		// conversation is never the foreman, so it does not carry the floor.
+		cfg.Floor = nil
 		agent, cfg, err = v3TakeOverInstead(cfg, workspace)
 		// The session file moved, so everything downstream that names it names
 		// the new one — the same correction the notice below makes.
@@ -510,7 +516,7 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// must exist before the factory seam below is built, which binds its doors.
 	startFactoryRunner(floor, workspace, settings.ProfileDir, cfg)
 	settled.SessionFile, settled.Resumed = transcript, resumed
-	seam := &v3Seam{proc: proc, boot: &settled, seed: seed}
+	seam := &v3Seam{proc: proc, boot: &settled, seed: seed, floor: floor, floorAt: workspace}
 
 	// The byte meter and the logger redirect both belong to the surface rather
 	// than to this door, and [runSurface] (chatv3_surface.go) is where every
