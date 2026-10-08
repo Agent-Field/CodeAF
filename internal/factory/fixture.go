@@ -47,7 +47,7 @@ func Fixture(now time.Time) Snapshot {
 		Log:    []LogLine{{At: h(7), Glyph: "»", Tone: "said", Text: "plan: queue the writes behind one owner; three files; the migration is reversible"}, {At: h(7), Glyph: "?", Tone: "ask", Text: "plan is ready · go, or change it?"}}}
 	landed := &Stream{Started: h(3), Ended: h(1), Spent: 2.87, Bench: 3, Activity: []int{0, 0, 0, 0, 0, 0, 0, 0}, Cur: 5,
 		Phases: []Phase{{Name: "plan", State: PhaseDone}, {Name: "write", State: PhaseDone, Tasks: 2}, {Name: "test", State: PhaseDone}, {Name: "review", State: PhaseDone, Round: 2}, {Name: "neaten", State: PhaseDone}, {Name: "proof", State: PhaseDone}},
-		Log:    []LogLine{{At: h(1), Glyph: "»", Tone: "said", Text: "landed · proof sheet ready · your sign-off"}}}
+		Log:    []LogLine{{At: h(1), Glyph: "»", Tone: "said", Text: "landed · proof sheet ready · your approval"}}}
 	// THE SHIPPED ITEM IS THE ONE PLAN ADAPTED: it added a security pass after
 	// review and skipped neaten, and its stream ran the stages it was left
 	// with, so the record under its stages line has something true to say.

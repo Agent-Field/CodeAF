@@ -195,7 +195,7 @@ func TestANonOwnerLaunchReachesTheOwnerAndLands(t *testing.T) {
 		t.Fatal(err)
 	}
 	g.waitFor(t, id, factory.StateLanded)
-	if err := window.Launch(id); err == nil || !strings.Contains(err.Error(), "has landed · sign it off, or send it back") {
+	if err := window.Launch(id); err == nil || !strings.Contains(err.Error(), "has landed · approve it, or request changes") {
 		t.Fatalf("a second launch from the window = %v, not the runner's own sentence", err)
 	}
 }

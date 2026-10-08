@@ -28,7 +28,7 @@ const activityTop = 7
 //
 // THE CAP CONTRACT. The loop calls [Money.CapReached] after EVERY round, and
 // when it is true it parks the item as needing the person with
-// [Money.CapQuestion] as Item.Question and QKind `cap`. Money never stops a
+// [Money.CapQuestion] as Item.Question and QKind `cap` (a stored key; the sentence says `budget`). Money never stops a
 // round itself: a round already paid for is kept.
 //
 // MONEY IS WRITTEN THROUGH Annotate. A model's cost is not the item moving, so
@@ -138,7 +138,7 @@ func (m *Money) CapReached(it factory.Item) bool {
 // CapQuestion is the sentence the item waits on, and its QKind.
 func (m *Money) CapQuestion(it factory.Item) (q string, kind string) {
 	c := dollars(it.Cap)
-	return "cap of " + c + " reached · " + c + " more, or stop?", "cap"
+	return "budget of " + c + " reached · " + c + " more, or stop?", "cap"
 }
 
 func dollars(usd float64) string {

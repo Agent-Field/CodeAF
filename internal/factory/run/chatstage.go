@@ -576,7 +576,7 @@ func resultWords(r factory.StageResult) string {
 }
 
 // stageKnobs is the stage's structure in words: `until clean · max 2 · fanout
-// per-finding · effort strong`, with `round 2` once it has looped.
+// per-finding · thinking strong`, with `round 2` once it has looped.
 func stageKnobs(job Job) string {
 	s := job.Stage
 	until := strings.TrimSpace(s.Until)
@@ -591,7 +591,7 @@ func stageKnobs(job Job) string {
 		parts = append(parts, "fanout "+f)
 	}
 	if e := oneLine(s.Effort); e != "" {
-		parts = append(parts, "effort "+e)
+		parts = append(parts, "thinking "+e)
 	}
 	if job.Round > 1 {
 		parts = append(parts, "round "+strconv.Itoa(job.Round))

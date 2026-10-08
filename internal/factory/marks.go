@@ -60,7 +60,7 @@ func localMarks(seam *Seam, st ItemStore) {
 					return fmt.Errorf("there is no item %d", id)
 				}
 				if s != StateNew {
-					return errors.New("only a new item takes a mark")
+					return errors.New("only a new item can be selected")
 				}
 			}
 		}

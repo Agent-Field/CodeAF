@@ -36,7 +36,7 @@ import (
 //
 // The conversation's belt is every other conversation's on this launch: the
 // factory tools, and `factory_item` beside them ([itemDoor]), which is how the
-// conversation proposes a change to the item — its stages, gate, cap, effort,
+// conversation proposes a change to the item — its stages, ask me at, budget, thinking,
 // or a note for its stages — and the person's key makes it. THE CONVERSATION IS
 // THE ITEM'S HUB, and the brief says so: the model is told it may change the
 // item through the card, leave notes the stages will read, and that the stages
@@ -47,7 +47,7 @@ const factoryTeamName = "factory"
 
 // talkClosing is the brief's last sentence, said once so the brief and the
 // manual quote the same words.
-const talkClosing = "This is the item's own conversation on the factory floor. Nothing here launches it; the person does that on the floor."
+const talkClosing = "This is the item's own conversation on the factory floor. Nothing here runs it; the person does that on the floor."
 
 // talkMaker is the Talk door's maker for this machine's floor: st is the store
 // the item lives in, workspace the window's own folder, and profileDir the
@@ -191,7 +191,7 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	add("author ", it.Author)
 	add("tier ", string(it.Tier))
 	line(strings.Join(facts, " · "))
-	// THE GATE AND THE CAP ARE SAID AS WHAT THEY ARE, `gate ship · cap $5`,
+	// THE GATE AND THE CAP ARE SAID AS WHAT THEY ARE, `ask me at pull request · budget $5`,
 	// and the labels on a line of their own: the conversation is read by a
 	// model and by a person, and neither knows a "chip" as anything but a
 	// shape some screen draws.
@@ -202,10 +202,10 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 		}
 	}
 	if it.Gate != "" {
-		add2(&set, "gate "+string(it.Gate))
+		add2(&set, "ask me at "+session.ItemGateWord(string(it.Gate)))
 	}
 	if it.Cap > 0 {
-		add2(&set, "cap $"+strconv.FormatFloat(it.Cap, 'f', -1, 64))
+		add2(&set, "budget $"+strconv.FormatFloat(it.Cap, 'f', -1, 64))
 	}
 	for _, label := range it.Labels {
 		add2(&labels, label)
@@ -235,7 +235,7 @@ func talkBrief(it factory.Item, recipe factory.Recipe) string {
 	for _, note := range it.Notes {
 		line("note for the stages: " + note)
 	}
-	line(fmt.Sprintf("Call this item %s in everything you say; the person knows it by that name. This conversation is %s's hub: through factory_item you can change its stages, its gate, its cap and its effort, and leave notes its stages will read. The floor id for factory_item is %d, and it goes in the tool's item field only, never in your words. Nothing changes until the person presses a key on the card. Once %s runs, its stages will report into this conversation.", it.Ref(), it.Ref(), it.ID, it.Ref()))
+	line(fmt.Sprintf("Call this item %s in everything you say; the person knows it by that name. This conversation is %s's hub: through factory_item you can change its stages, where the run asks the person (the person calls it \"ask me at\"; the tool's field is gate), its budget (field cap) and its thinking (field effort), and leave notes its stages will read. The floor id for factory_item is %d, and it goes in the tool's item field only, never in your words. Nothing changes until the person presses a key on the card. Once %s runs, its stages will report into this conversation.", it.Ref(), it.Ref(), it.ID, it.Ref()))
 	line(talkClosing)
 	return strings.TrimSpace(b.String())
 }
