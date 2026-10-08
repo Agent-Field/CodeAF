@@ -139,8 +139,8 @@ func TestLocalDoorsPersistAcrossOpen(t *testing.T) {
 	if it.Gate != factory.GateNone || it.Cap != 12.5 || it.Stages[0].On || it.Stages[1].Effort != "strong" {
 		t.Fatalf("chips did not persist: %+v", it)
 	}
-	at := factory.StageIndex(it.Stages, "make neater")
-	if at != factory.StageIndex(it.Stages, "review")+1 || it.Stages[at].Kind != factory.StageChat || it.Stages[at].Ask != "make it neater" || !it.Stages[at].On {
+	at := factory.StageIndex(it.Stages, "make")
+	if at != factory.StageIndex(it.Stages, "review")+1 || it.Stages[at].Kind != factory.StageChat || it.Stages[at].Ask != "make it neater" || !it.Stages[at].On || it.Stages[at].By != factory.ByYou {
 		t.Fatalf("added stage = %+v", it.Stages)
 	}
 }
