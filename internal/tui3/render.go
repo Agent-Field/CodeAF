@@ -646,6 +646,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		if (e.kind == entryNote && !wasNote) ||
 			wasCluster || wasBlock || wasUser || e.kind == entryUser || e.kind == entrySteer || e.kind == entryTask ||
 			(e.kind == entryStanding && e.stand != nil && !e.stand.news()) ||
+			e.kind == entryFactory ||
 			// AND THE BREATH ABOVE A PROMOTED ANSWER (hierarchy.go's
 			// [answerBreath]). It is asked HERE, inside the same condition as the
 			// four rules above it, because [gap] is not idempotent: two calls are
@@ -728,7 +729,7 @@ func (a *app) deckRows(d deck, width int) ([]row, bool) {
 		}
 		wasCluster = false
 		wasNote = e.kind == entryNote
-		wasBlock = e.kind == entryTask || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
+		wasBlock = e.kind == entryTask || e.kind == entryFactory || (e.kind == entryStanding && e.stand != nil && !e.stand.news())
 		// The change-of-speaker gap belongs to the person's message and not to a
 		// kind of block: a divider between the question and the reply carries the
 		// mark forward, because the reply still opens under their words.
@@ -1313,6 +1314,9 @@ func (a *app) renderEntry(i int, e *entry, width int) []string {
 
 	case entryHarness:
 		return a.harnessFeedRows(e.harness, width, a.sel == i)
+
+	case entryFactory:
+		return FactoryCardRows(a, e.fac, width, a.sel == i)
 
 	case entryTeam:
 		return a.teamCardRows(*e, width)

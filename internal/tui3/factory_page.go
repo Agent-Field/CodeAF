@@ -170,6 +170,18 @@ func (a *app) factoryRead() tea.Cmd {
 	})
 }
 
+// factoryLaunchRead is the one read of the floor a window takes as it opens,
+// so the tab bar can count what waits on the person before anybody has been to
+// the page ([app.barAsk]). It is [app.factoryRead] and nothing more, asked
+// only of a seam that can load: a window with no floor behind it reads nothing
+// and draws no chip, which is the emptiness law on the bar.
+func (a *app) factoryLaunchRead() tea.Cmd {
+	if !a.factory.Has("load") {
+		return nil
+	}
+	return a.factoryRead()
+}
+
 // factoryFold takes one snapshot in. THE CURSOR STAYS ON THE ITEM IT WAS ON, by
 // id, because a re-read three seconds later may have moved that item to another
 // group and a cursor kept by position would land on a stranger.

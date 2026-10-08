@@ -1512,6 +1512,19 @@ func (a *app) questionSubjectAt(q session.Question) int {
 		}
 		return -1
 	}
+	if q.Kind == session.QuestionFactory {
+		// A FACTORY OFFER'S SUBJECT IS ITS OWN CARD IN THE TRANSCRIPT
+		// (factorycard.go), paired on the proposal's id, which the engine minted
+		// before anybody was asked and carries as the question's Ref. The card
+		// already draws the body, so the block does not say it twice.
+		ref := strings.TrimSpace(q.Ref)
+		for i := range a.entries {
+			if e := &a.entries[i]; e.kind == entryFactory && e.fac != nil && ref != "" && e.fac.notice.ID == ref {
+				return i
+			}
+		}
+		return -1
+	}
 	if q.Subject.Kind == session.SubjectNode {
 		// A NODE'S SUBJECT IS ITS OWN BLOCK IN THE TRANSCRIPT (task.go). It is
 		// paired on the id, which the engine minted before anybody was asked, so
@@ -4500,6 +4513,14 @@ func (a *app) questionDrawnHere(q session.Question) bool {
 		// in its room (harnesscard.go, roomapproval.go). All three are deleted.
 		// What is left is the PAGE in the transcript, which is what is being
 		// judged, and the one line it keeps afterwards saying what became of it.
+		return true
+	case session.QuestionFactory:
+		// THE FACTORY OFFER, which never had an older block: `factory_add` raised
+		// it through the one door from the day it landed, and until this case it
+		// was a turn parked on a question no window drew. Its card in the
+		// transcript (factorycard.go) is what the question is ABOUT — the head,
+		// the facts, the body and the stages the floor would run — and the
+		// answers and the words box are drawn here, once, like every other card.
 		return true
 	case session.QuestionConnect:
 		// THE ACCOUNT OFFER, whose own three-row block, answers row, click
