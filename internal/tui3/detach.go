@@ -604,6 +604,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 					return nil
 				}
 				a.replayList(entries)
+				a.greetingGivesWay()
 				var back []tea.Cmd
 				if events != nil {
 					back = append(back, a.adoptTurn(events, stop))
@@ -622,6 +623,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 		})
 	} else {
 		a.replay()
+		a.greetingGivesWay()
 		joined = tea.Batch(a.joinTurn(), a.resumeStoppedTurn())
 	}
 	a.noteStandingHere()
@@ -789,4 +791,20 @@ func (a *app) enginePending() bool {
 		return true
 	}
 	return len(door.PendingConsent()) > 0
+}
+
+// greetingGivesWay puts the greeting away when the conversation just attached
+// has something in it.
+//
+// THE GREETING IS A FACT ABOUT AN EMPTY CONVERSATION, decided once when the
+// window opened ([app.openWelcome]). A window that opened on an empty one and
+// then took up another that already says something — an item's own
+// conversation from the floor's `T`, whose brief is drawn as the item's card —
+// kept the greeting over the top of it, so the person landed on "What would
+// you like to work on?" in front of the work they had just asked to talk
+// about. The start page (`+`) is its own door and is left alone.
+func (a *app) greetingGivesWay() {
+	if a.welcome.open && !a.welcome.start && len(a.entries) > 0 {
+		a.welcome = welcome{spent: true}
+	}
 }

@@ -77,8 +77,8 @@ func (a *Agent) ReplaceQuestion(ctx context.Context, answer Answer) (<-chan Even
 		owner.ResolveFactory(q.Ref, FactoryAnswer{})
 	case QuestionRecipe:
 		owner.ResolveRecipe(q.Ref, RecipeAnswer{})
-	case QuestionStages:
-		owner.ResolveStages(q.Ref, StagesAnswer{})
+	case QuestionItem:
+		owner.ResolveItem(q.Ref, ItemAnswer{})
 	}
 	return a.Submit(ctx, words)
 }

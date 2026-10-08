@@ -1486,6 +1486,10 @@ func (a *app) enterLine() tea.Cmd {
 			a.toggleCap(key)
 			return nil
 		}
+		// A LIVE ITEM CARD OPENS THE ITEM PAGE (factoryitemcard.go).
+		if cmd, ok := a.openFactoryItemCard(a.sel); ok {
+			return cmd
+		}
 		a.openTool(a.sel)
 		return nil
 	}

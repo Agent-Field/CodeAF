@@ -27,7 +27,9 @@ package remote
 // window that attaches after it was raised. Its answer comes back through the
 // one door every lane uses, [MethodQuestionResolve], with the proposal id as
 // the question's Ref. The recipe card (`factory_recipe`) is the same shape on
-// the same lane and is absent here for the same reason.
+// the same lane and is absent here for the same reason, and so is the item
+// card (`factory_item`), whose news carries the item itself so a hosted window
+// draws the item's live card from the event.
 
 import (
 	"time"
