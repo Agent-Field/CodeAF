@@ -185,12 +185,18 @@ func (a *app) factoryFoldPhases() {
 // factoryPhaseElapsed is how long the phase at index at of the item has been
 // seen running, in one short word (`12s`, `4m`, `1h 5m`), and "" when it is
 // not running or no time has passed.
+//
+// IT COUNTS FROM THE MOMENT AND NOW, NOT FROM THE READS (owner's screenshot,
+// 2026-10-08: `plan · 15s` stood still for three seconds at a time): the
+// floor's clock is carried on from the last snapshot by the surface's own
+// ([app.factoryFloorNow]), so every paint says the time it is drawn at.
 func (a *app) factoryPhaseElapsed(id, at int, name string) string {
 	since, ok := a.fp.phaseSince[factoryPhaseKey(id, at, name)]
-	if !ok || since.IsZero() || a.fp.snap.Now.IsZero() {
+	now := a.factoryFloorNow()
+	if !ok || since.IsZero() || now.IsZero() {
 		return ""
 	}
-	d := a.fp.snap.Now.Sub(since)
+	d := now.Sub(since)
 	switch {
 	case d < time.Second:
 		return ""
@@ -199,7 +205,21 @@ func (a *app) factoryPhaseElapsed(id, at int, name string) string {
 	case d < time.Hour:
 		return itoa(int(d/time.Minute)) + "m"
 	}
-	return factoryElapsed(since, a.fp.snap.Now)
+	return factoryElapsed(since, now)
+}
+
+// factoryFloorNow is the floor's clock as of this moment: the last snapshot's
+// Now, carried on by however long the surface's own clock says has passed
+// since it was folded in. Zero before the first read.
+func (a *app) factoryFloorNow() time.Time {
+	now := a.fp.snap.Now
+	if now.IsZero() || a.fp.snapAt.IsZero() {
+		return now
+	}
+	if d := a.now().Sub(a.fp.snapAt); d > 0 {
+		now = now.Add(d)
+	}
+	return now
 }
 
 // ── the log ─────────────────────────────────────────────────────────────────
