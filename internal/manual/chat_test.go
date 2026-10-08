@@ -44,6 +44,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"why does a repo say here", "factory"},
 		{"how do I make this repo always run a security review", "factory"},
 		{"how do I talk through a factory item before I launch it", "factory"},
+		{"how do I start a conversation about an issue on the factory floor", "factory"},
+		{"enter on the item page does nothing", "factory"},
 		{"can the chat skip review on one factory item", "factory"},
 		{"can the chat raise the cap on a factory item and make it plan first", "factory"},
 		{"how do I leave a note for a factory item's stages", "factory"},
