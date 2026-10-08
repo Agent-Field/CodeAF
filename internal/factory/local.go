@@ -29,13 +29,14 @@ type ItemStore interface {
 // handover's shift begins.
 //
 // EVERY ENGINE DOOR IS NIL unless the launch hands one in. Without
-// [WithRunner] nothing here launches, stops, pauses, answers, steers, signs
-// off, sends back or re-checks, and nothing ever syncs or asks an author, so
-// the surface draws no key for any of those: A CAPABILITY THAT CANNOT WORK IS
-// ABSENT, NOT BROKEN. [WithRunner] binds the eight runner doors in the one
-// process that runs the floor's items, and [WithQueuedLaunch] binds Launch
-// alone in every other window. Tick and Sleep are nil too, because a real floor
-// keeps no clock of its own and draws no speed.
+// [WithRunner] or [WithMailbox] nothing here launches, stops, pauses, answers,
+// steers, signs off, sends back or re-checks, and nothing ever syncs or asks an
+// author, so the surface draws no key for any of those: A CAPABILITY THAT
+// CANNOT WORK IS ABSENT, NOT BROKEN. [WithRunner] binds the eight runner doors
+// directly in the one process that runs the floor's items, and [WithMailbox]
+// binds the same eight in every other window as asks posted to that process.
+// Tick and Sleep are nil too, because a real floor keeps no clock of its own
+// and draws no speed.
 //
 // A NIL STORE IS NO FLOOR: the zero Seam, whose every door is absent.
 //
@@ -137,7 +138,7 @@ func LocalSeam(st ItemStore, started time.Time, opts ...LocalOption) Seam {
 		},
 	}
 	localSettings(&seam, st, o)
-	localRunner(&seam, st, o)
+	localRunner(&seam, o)
 	// THE FLOOR'S OWN MARKS, kept by the store when it keeps them (marks.go).
 	localMarks(&seam, st)
 	if o.talk != nil {
@@ -196,7 +197,7 @@ func WithTalk(maker func(ctx context.Context, it Item) (string, error)) LocalOpt
 
 type localOptions struct {
 	runner  RunnerDoors
-	queued  bool
+	mailbox Mailbox
 	dirs    func(repo string) string
 	lister  RepoLister
 	talk    func(ctx context.Context, it Item) (string, error)
@@ -568,16 +569,124 @@ func WithRunner(r RunnerDoors) LocalOption {
 	return func(o *localOptions) { o.runner = r }
 }
 
-// WithQueuedLaunch binds Launch alone, for a window whose process does not run
-// the floor's items: its launch writes the item `queued`, and the process that
-// does run them picks the mark up within a few seconds. Every other runner
-// door stays nil there, so the floor draws no key it cannot keep.
-func WithQueuedLaunch() LocalOption {
-	return func(o *localOptions) { o.queued = true }
+// ── THE MAILBOX: EVERY RUNNER VERB FROM EVERY WINDOW ───────────────────────
+//
+// One process on a machine holds the floor's runner, because a second runner
+// over the same store would run the same item twice. On the ordinary launch
+// that process is the session host, NOT the window a person sits at, so the
+// window cannot call the runner's doors itself. It asks instead: an [Ask] is
+// posted to the store's mailbox, the owner drains the mailbox about once a
+// second, carries each ask through the runner's own door ([Carry]) and writes
+// a [Reply], and the window waits for that reply and says it. THE REFUSAL A
+// PERSON READS IS THE RUNNER'S OWN SENTENCE, word for word, whichever window
+// they pressed the key in.
+
+// The eight verbs an ask carries, spelled once: the mailbox's file keeps them
+// and [Carry] reads them back.
+const (
+	VerbLaunch   = "launch"
+	VerbStop     = "stop"
+	VerbPause    = "pause"
+	VerbAnswer   = "answer"
+	VerbSteer    = "steer"
+	VerbSignOff  = "signoff"
+	VerbSendBack = "sendback"
+	VerbReverify = "reverify"
+)
+
+// Ask is one runner verb a window asked of the process that runs the floor.
+// Yes, Words and Edited are the door's own arguments, each read only by the
+// verbs that take it. Seq is the mailbox's number for it, which its [Reply]
+// carries back; At is when it was posted.
+type Ask struct {
+	ID     int       `json:"id"`
+	Verb   string    `json:"verb"`
+	Yes    bool      `json:"yes,omitempty"`
+	Words  string    `json:"words,omitempty"`
+	Edited bool      `json:"edited,omitempty"`
+	At     time.Time `json:"at"`
+	Seq    int       `json:"seq"`
 }
 
-// localRunner hangs the runner's doors, or the queued launch, over st.
-func localRunner(seam *Seam, st ItemStore, o localOptions) {
+// Reply is the owner's answer to the ask numbered Seq: the door's refusal in
+// its own words ("" when it did what was asked), and for a sign-off whether a
+// habit is due to be offered. At is when it was written.
+type Reply struct {
+	Seq      int       `json:"seq"`
+	Err      string    `json:"err,omitempty"`
+	HabitDue bool      `json:"habitDue,omitempty"`
+	At       time.Time `json:"at"`
+}
+
+// Mailbox is where a window posts an ask and waits for its reply.
+// internal/factory/store's *Mailbox is the one that answers it; it is an
+// interface here because that package imports this one.
+type Mailbox interface {
+	// Post appends ask and answers the number its reply will carry.
+	Post(ask Ask) (int, error)
+	// Wait answers the reply to seq, or [ErrRunnerSilent] when none comes
+	// within timeout.
+	Wait(seq int, timeout time.Duration) (Reply, error)
+}
+
+// ErrRunnerSilent is what a door posted through the mailbox answers when the
+// process that runs the floor wrote no reply in time: nothing on this machine
+// is draining the mailbox, which is almost always codeaf's own host having
+// gone. The manual quotes it (internal/manual/chat/factory.md).
+var ErrRunnerSilent = errors.New("the floor's runner did not answer · is codeaf running?")
+
+// MailboxWait is how long a window waits for the owner's reply before it says
+// [ErrRunnerSilent]. The owner drains about once a second, so this is several
+// of its passes. A variable so a test can shorten it.
+var MailboxWait = 5 * time.Second
+
+// Carry is the owner's half of an ask: it calls the runner door the verb
+// names and answers the reply, the door's error in its own words. A verb this
+// build does not know is refused in words rather than dropped, so a newer
+// window asking an older owner hears why nothing happened.
+func Carry(r RunnerDoors, ask Ask) Reply {
+	var (
+		err error
+		due bool
+	)
+	switch ask.Verb {
+	case VerbLaunch:
+		err = r.Launch(ask.ID)
+	case VerbStop:
+		err = r.Stop(ask.ID)
+	case VerbPause:
+		err = r.Pause(ask.ID)
+	case VerbAnswer:
+		err = r.Answer(ask.ID, ask.Yes, ask.Words)
+	case VerbSteer:
+		err = r.Steer(ask.ID, ask.Words)
+	case VerbSignOff:
+		due, err = r.SignOff(ask.ID, ask.Edited)
+	case VerbSendBack:
+		err = r.SendBack(ask.ID, ask.Words)
+	case VerbReverify:
+		err = r.Reverify(ask.ID)
+	default:
+		err = fmt.Errorf("the floor's runner does not know %q", ask.Verb)
+	}
+	reply := Reply{Seq: ask.Seq, HabitDue: due}
+	if err != nil {
+		reply.Err = err.Error()
+	}
+	return reply
+}
+
+// WithMailbox binds all eight runner doors onto the seam as asks posted to m
+// and waited on, for a window whose process does not run the floor's items.
+// A seam handed both a runner and a mailbox uses the runner: THE WINDOW THAT
+// HOLDS THE LOCK KEEPS THE DIRECT DOORS. A nil m binds nothing.
+func WithMailbox(m Mailbox) LocalOption {
+	return func(o *localOptions) { o.mailbox = m }
+}
+
+// localRunner hangs the runner's doors, directly or through the mailbox, over
+// the seam.
+func localRunner(seam *Seam, o localOptions) {
 	if r := o.runner; r != nil {
 		seam.Launch = r.Launch
 		seam.Stop = r.Stop
@@ -589,27 +698,38 @@ func localRunner(seam *Seam, st ItemStore, o localOptions) {
 		seam.Reverify = r.Reverify
 		return
 	}
-	if o.queued {
-		seam.Launch = func(id int) error { return QueueLaunch(st, id) }
+	m := o.mailbox
+	if m == nil {
+		return
 	}
-}
-
-// QueueLaunch marks an item `queued` for the process that runs the floor to
-// pick up. It refuses, in the runner's own words, an item that cannot be
-// launched from where it stands, so a window that only queues says the same
-// sentence the owner would have said.
-func QueueLaunch(st ItemStore, id int) error {
-	return st.Update(id, func(it *Item) error {
-		switch it.State {
-		case StateNew, StateDismissed, "":
-		case StateLanded:
-			return fmt.Errorf("%s has landed · sign it off, or send it back", it.Ref())
-		case StateShipped:
-			return fmt.Errorf("%s has shipped", it.Ref())
-		default:
-			return fmt.Errorf("%s is already running", it.Ref())
+	ask := func(a Ask) (bool, error) {
+		seq, err := m.Post(a)
+		if err != nil {
+			return false, err
 		}
-		it.State = StateQueued
-		return nil
-	})
+		reply, err := m.Wait(seq, MailboxWait)
+		if err != nil {
+			return false, err
+		}
+		if reply.Err != "" {
+			return reply.HabitDue, errors.New(reply.Err)
+		}
+		return reply.HabitDue, nil
+	}
+	plain := func(a Ask) error {
+		_, err := ask(a)
+		return err
+	}
+	seam.Launch = func(id int) error { return plain(Ask{ID: id, Verb: VerbLaunch}) }
+	seam.Stop = func(id int) error { return plain(Ask{ID: id, Verb: VerbStop}) }
+	seam.Pause = func(id int) error { return plain(Ask{ID: id, Verb: VerbPause}) }
+	seam.Answer = func(id int, yes bool, words string) error {
+		return plain(Ask{ID: id, Verb: VerbAnswer, Yes: yes, Words: words})
+	}
+	seam.Steer = func(id int, words string) error { return plain(Ask{ID: id, Verb: VerbSteer, Words: words}) }
+	seam.SignOff = func(id int, edited bool) (bool, error) {
+		return ask(Ask{ID: id, Verb: VerbSignOff, Edited: edited})
+	}
+	seam.SendBack = func(id int, words string) error { return plain(Ask{ID: id, Verb: VerbSendBack, Words: words}) }
+	seam.Reverify = func(id int) error { return plain(Ask{ID: id, Verb: VerbReverify}) }
 }
