@@ -201,6 +201,13 @@ func PersonLines(path string, after time.Time) ([]PersonLine, error) {
 						break
 					}
 					words := strings.TrimSpace(e.Content)
+					// A CARRY-ON IS CODEAF'S OWN VOICE in the person's seat (the
+					// checkpoint's nudge to finish, checkpoint.go), never the
+					// person's words: a runner that took it as the steer would
+					// steer every stage with it, as the 18:31 run did.
+					if isCarryOn(words) {
+						break
+					}
 					at, perr := time.Parse(time.RFC3339Nano, e.Timestamp)
 					if words == "" || perr != nil || !at.After(after) {
 						break
@@ -254,3 +261,10 @@ func lastSentence(text string) string {
 	}
 	return text
 }
+
+// carryOnLead opens every user message the checkpoint writes in the person's
+// seat to make the model carry on (agent.go, checkpoint.go); isCarryOn says
+// whether a user message is one of those rather than something a person typed.
+const carryOnLead = "[carry on] "
+
+func isCarryOn(text string) bool { return strings.HasPrefix(text, carryOnLead) }

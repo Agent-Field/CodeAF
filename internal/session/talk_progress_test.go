@@ -70,6 +70,8 @@ func TestPersonLinesAreWhatThePersonTypedOnceEachAfterTheMark(t *testing.T) {
 		t.Fatal(err)
 	}
 	typedLine(t, path, "use the second ledger", t0.Add(time.Second))
+	// A CARRY-ON is codeaf's own nudge in the person's seat, not a line typed.
+	typedLine(t, path, carryOnLead+"You stopped, but what was asked is not finished.", t0.Add(2*time.Second))
 	// A COMPACTION'S COPY of the window is not typed again.
 	f, _ := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
 	_, _ = f.WriteString(`{"type":"compaction","window":1,"timestamp":"` + time.Now().UTC().Format(time.RFC3339Nano) + `"}` + "\n")
