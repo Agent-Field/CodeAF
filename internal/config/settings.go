@@ -1121,6 +1121,11 @@ var OperatorEnvPins = []string{
 	// behind a fixture is not a preference, so plumbing.
 	"CODEAF_FACTORY_FIXTURE",
 	"CODEAF_FACTORY_MOCK",
+	// How many factory items run at once on this machine (cmd/codeaf's
+	// factory_run.go; the manual quotes the default). It tunes the process
+	// that runs the floor, and the floor has no settings row for it yet, so it
+	// is plumbing rather than a row that would promise a dial.
+	"CODEAF_FACTORY_BENCHES",
 	"CODEAF_GITHUB_API",
 	"CODEAF_GITHUB_DOWNLOAD",
 	// CODEAF_INSTALL_NAME belongs to the shell installer and not to this

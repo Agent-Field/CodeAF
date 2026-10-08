@@ -29,5 +29,11 @@ so the round is counted and the stage stops at its max and asks you.
 
 **Nothing posts.** Neither tool writes to GitHub or anywhere else, and neither raises a card.
 
-Today no key on your own floor launches an item, so these conversations do not open yet (see
-what the factory does not do yet).
+**Where it opens.** It is made when the stage starts, in the folder of the repository's checkout,
+and joins the item's team (`#12 · <title>`) under the one `factory` team in the team menu, where
+you can open it while it runs or after. Nobody is at its keyboard: it runs unattended for at most
+two hours, and its approvals are the ones `codeaf chat --once` has: a tool that would ask you is
+refused with `needs approval but no resolver is attached: <rule>` unless your tool approval mode
+or rules let it run (`stage_result` and `plan_edit` never ask). It has no `factory_add`, `factory_recipe` or
+`factory_item`, because those wait on a card. The round is over when it has been idle, with no
+task it started still running.

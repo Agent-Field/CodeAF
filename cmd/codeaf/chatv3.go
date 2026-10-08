@@ -504,6 +504,11 @@ func openChatV3(name string, args []string, pickSession bool) error {
 	// window is actually in.
 	settled := *launch
 	settled.Config, settled.Place = cfg, cfg.Place
+	// AND THE FLOOR'S RUNNER, from the conversation config now that it is
+	// settled: every stage conversation is opened from it. It runs here only
+	// when this process takes the floor's run lock (factory_run.go), and it
+	// must exist before the factory seam below is built, which binds its doors.
+	startFactoryRunner(floor, workspace, settings.ProfileDir, cfg)
 	settled.SessionFile, settled.Resumed = transcript, resumed
 	seam := &v3Seam{proc: proc, boot: &settled, seed: seed}
 
@@ -2117,6 +2122,12 @@ func v3BuiltinApprovals() map[string]any {
 		// A conflict raised to the manager above the parties: a packet and a
 		// line of Traffic, and nothing spent or started.
 		"team_raise": "allow",
+		// A factory stage's report and its proposal of stages (internal/session's
+		// tools_stage.go): each hands words to the runner waiting in code, and
+		// neither changes, posts or starts anything. They are on a stage's belt
+		// alone, and a stage has nobody at its keyboard to ask, so without this
+		// line the headless floor refused every report and no stage could end.
+		"stage_result": "allow", "plan_edit": "allow",
 	}
 }
 

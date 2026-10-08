@@ -100,29 +100,32 @@ func talkJoinTeam(profileDir string, it factory.Item, transcript, where, name st
 	key = filepath.Clean(key)
 	now := time.Now()
 	return teams.Update(profileDir, func(f *teams.File) error {
-		parent := ""
-		for _, t := range f.Teams {
-			if t.Name == factoryTeamName && t.Parent == "" && !t.Closed() && !t.Root {
-				parent = t.ID
-				break
-			}
-		}
-		if root, ok := f.Root(); ok && parent == "" {
-			for _, t := range f.Teams {
-				if t.Name == factoryTeamName && t.Parent == root.ID && !t.Closed() {
-					parent = t.ID
-					break
-				}
-			}
-		}
-		if parent == "" {
-			parent = teams.NewID()
-			f.Teams = append(f.Teams, teams.Team{ID: parent, Name: factoryTeamName, Made: now})
-		}
+		parent := factoryParentTeam(f, now)
 		id := teams.NewID()
 		f.Teams = append(f.Teams, teams.Team{ID: id, Name: name, Parent: parent, Made: now})
 		return f.AddMember(id, teams.Member{Key: key, File: transcript, Where: where, Word: name, Handle: talkHandle(it), JoinedAt: now})
 	})
+}
+
+// factoryParentTeam is the one open `factory` team every item's team sits
+// under, found in f or made in it now. It is called inside a teams.Update, so
+// finding and making are one read-modify-write of the teams file.
+func factoryParentTeam(f *teams.File, now time.Time) string {
+	for _, t := range f.Teams {
+		if t.Name == factoryTeamName && t.Parent == "" && !t.Closed() && !t.Root {
+			return t.ID
+		}
+	}
+	if root, ok := f.Root(); ok {
+		for _, t := range f.Teams {
+			if t.Name == factoryTeamName && t.Parent == root.ID && !t.Closed() {
+				return t.ID
+			}
+		}
+	}
+	parent := teams.NewID()
+	f.Teams = append(f.Teams, teams.Team{ID: parent, Name: factoryTeamName, Made: now})
+	return parent
 }
 
 // talkHandle is the one handle an item's conversation has for good, made from
