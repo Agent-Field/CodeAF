@@ -38,6 +38,8 @@ export type Scenario = {
   diffs?: Record<string, MockDiff>;
   /** When true a turn only records the message; call engine.advance() to apply the reply. */
   manual?: boolean;
+  /** Models the provider offers; defaults to the one default model. */
+  models?: { id: string; name: string; efforts?: string[] }[];
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
   fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
@@ -46,12 +48,21 @@ export type Call = { method: string; path: string; body: Record<string, unknown>
 
 export type MockEngine = {
   calls: Call[];
+  /** The conversation model in force at the moment each accepted turn arrived. */
+  turnModels: string[];
   snapshot: () => EngineSnapshot;
   /** Apply the next scripted turn reply (for scenarios with manual: true). */
   advance: () => void;
   /** Merge fields into the snapshot and publish a snapshot record to stream readers. */
   update: (patch: Partial<EngineSnapshot>) => void;
 };
+
+/** Names and one-line jobs of the roles, as the engine reports them. */
+const ROLES = [
+  ['conversation', 'Conversation', 'Answers what you type in a chat and decides when to start a task.'],
+  ['tasks', 'Tasks', 'Does the steps of a task: reading, editing, running commands.'],
+  ['naming', 'Titles and summaries', 'Writes the short names for chats, tasks and background jobs, and the one-line step captions.'],
+];
 
 const emptyUsage = { Input: 0, Output: 0, CostUSD: 0, Duration: 0, Turns: 0 };
 
@@ -91,6 +102,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   let state = baseSnapshot(scenario.initial);
   const log: StreamRecord[] = [];
   const calls: Call[] = [];
+  const turnModels: string[] = [];
   let turnIndex = 0;
   let pending: ScriptedTurn | undefined;
   let closed = false;
@@ -143,6 +155,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   const turn = (route: Route, body: Record<string, unknown>) => {
     const text = String(body.text ?? '');
+    turnModels.push(state.model);
     if (state.running && body.mode === 'queue') {
       queued.push({ Role: 'user', Text: text });
       return json(route, { accepted: true });
@@ -290,18 +303,36 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { accepted: true });
   };
 
+  // Model roles: the choice is held here like the engine holds it in the profile.
+  const chosen: Record<string, { model: string; effort?: string }> = {};
+  const roleView = ([id, name, controls]: string[]) => ({ id, name, controls, model: chosen[id]?.model ?? MODEL, default: MODEL, effort: chosen[id]?.effort, chosen: Boolean(chosen[id]) });
+  const models = (route: Route, parts: string[], method: string, body: Record<string, unknown>) => {
+    const listed = scenario.models ?? [{ id: MODEL, name: 'DeepSeek V4.1 Flash' }];
+    if (!parts[1]) return json(route, { models: listed });
+    if (!parts[2]) return json(route, { default: MODEL, roles: ROLES.map(roleView) });
+    const role = ROLES.find(row => row[0] === parts[2]);
+    if (!role || method !== 'PUT') return json(route, { error: 'unknown model role' }, 404);
+    const model = String(body.model ?? '');
+    if (model && !listed.some(row => row.id === model)) return json(route, { error: 'that model is not on the list' }, 400);
+    if (model) chosen[parts[2]] = { model, effort: String(body.effort ?? '') || undefined }; else delete chosen[parts[2]];
+    // Only the Conversation role moves the open chat, as the bridge does.
+    if (parts[2] === 'conversation') { state = { ...state, model: model || MODEL }; publish(); }
+    return json(route, roleView(role));
+  };
+
   await page.route('**/api/engine/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
     const method = request.method();
     const parts = url.pathname.replace(/^.*\/api\/engine/, '').split('/').filter(Boolean).map(decodeURIComponent);
-    const body = method === 'POST' && request.postData() ? JSON.parse(request.postData()!) as Record<string, unknown> : {};
+    const body = (method === 'POST' || method === 'PUT') && request.postData() ? JSON.parse(request.postData()!) as Record<string, unknown> : {};
     calls.push({ method, path: url.pathname, body });
     const [root, id, action, arg] = parts;
     const forced = (key: keyof NonNullable<Scenario['fail']>) => {
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
+    if (root === 'models') return models(route, parts, method, body);
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
     if (!id) return forced('create') ?? json(route, state);
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);
@@ -336,5 +367,5 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown action' }, 404);
   });
 
-  return { calls, snapshot: () => state, advance, update };
+  return { calls, turnModels, snapshot: () => state, advance, update };
 }

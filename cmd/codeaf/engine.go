@@ -1279,6 +1279,7 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 		opts.Yolo = shape.Yolo
 		opts.NoCompact = shape.NoCompact
 		opts.OneModel = shape.OneModel
+		opts.DesktopRoles = shape.OneModel && hello.Surface == "desktop"
 		opts.Budget = chatBudget(shape.MaxHours, shape.MaxCost)
 		opts.Interactive = shape.Interactive && !hello.Headless
 	}

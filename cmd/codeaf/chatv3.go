@@ -751,6 +751,11 @@ type v3Options struct {
 	// setting and writes nothing — the rows are still there, and the next
 	// session without the flag reads them exactly as before.
 	OneModel bool
+	// DesktopRoles says the one-model session belongs to the desktop app, whose
+	// settings page lets the person choose a model for each kind of job. The
+	// session still starts on one model, but the roles the person has chosen for
+	// answer from their own choice instead of the conversation's model.
+	DesktopRoles bool
 	// Budget is the ceiling an unattended session carries its own work on
 	// under: hours, dollars, or both (internal/session's principal.go). THE
 	// ZERO BUDGET IS THE DEFAULT AND IS NOT A CEILING OF ZERO — it is the
@@ -1137,6 +1142,9 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	cfg, err = applyV3Governance(cfg, settings.ProfileDir, opts.Yolo, opts.OneModel)
 	if err != nil {
 		return nil, err
+	}
+	if opts.OneModel && opts.DesktopRoles {
+		cfg.RolesSource = config.DesktopRolesSource(settings.ProfileDir)
 	}
 	// AND WHO THIS SESSION IS WORKING FOR (internal/session's
 	// principal.go): the unattended flag and its ceiling, plus the door's own

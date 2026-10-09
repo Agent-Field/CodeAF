@@ -28,11 +28,11 @@ test('stream handles chunked CRLF, multiline data and replay then aborts without
  expect(result.calls).toEqual(['/api/engine/sessions/session-1/events?after=4']);
 });
 
-test('fixed model and failed requests never silently create a replacement session', async ({ page }) => {
+test('a chosen model is accepted and failed requests never silently create a replacement session', async ({ page }) => {
  await page.goto('/');
  const result = await page.evaluate(async (base) => {
   const path = '/src/features/chat/engine-client.ts'; const client = await import(path);
-  const calls: string[] = []; const errors: string[] = [];
+  const calls: string[] = []; const errors: string[] = []; const models: string[] = [];
   const originalFetch = window.fetch;
   window.fetch = async (input) => {
    calls.push(String(input));
@@ -40,12 +40,12 @@ test('fixed model and failed requests never silently create a replacement sessio
   };
   try {
    for (let index = 0; index < 2; index++) {
-    try { await client.readEngine(base.id); } catch (error) { errors.push((error as Error).message); }
+    try { models.push((await client.readEngine(base.id)).model); } catch (error) { errors.push((error as Error).message); }
    }
-   return { calls, errors };
+   return { calls, errors, models };
   } finally { window.fetch = originalFetch; }
  }, snapshot);
- expect(result.errors[0]).toContain('required DeepSeek v4.1 Flash');
- expect(result.errors[1]).toBe('reattach this conversation');
+ expect(result.models).toEqual(['another-model']);
+ expect(result.errors).toEqual(['reattach this conversation']);
  expect(result.calls).toEqual(['/api/engine/sessions/session-1', '/api/engine/sessions/session-1']);
 });
