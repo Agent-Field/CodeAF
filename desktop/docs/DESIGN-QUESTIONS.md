@@ -55,9 +55,14 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | **Designer: keep.** No hunk header on edit diffs; file/diff tabs (from git) keep it. |
 | Q33 | Elapsed time on the live thinking row ("4s") | **Designer: keep.** Not shown until thinking ends; the engine gives no time before then. |
 | Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | **Designer: keep.** Nearest set icons: ban, pencil, the plain file icons. |
+| Q30 | ⌘1–3: the Conversation page said they switch pinned models, the Shell spec said ⌘1–9 jump to tabs | **Designer (Interactions, latest):** ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models. The keys wiring belongs to the rail-and-keys and composer lanes. |
 
 ## Open: for the designer
 
 | # | Question | Assumption the app ships now |
 |---|---|---|
-| Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | ⌘1–3 switch pinned models while a conversation composer is on screen; ⌘4–9 jump to tabs. Tabs 1–3 are reached with ⌃Tab or a click. |
+| Q35 | Shell 3g and Components "Context menu" draw ⌥⌘W beside "Close other tabs", while 3l and Interactions give ⌥⌘W to "Close and stop" | ⌥⌘W closes and stops. "Close other tabs" shows no shortcut. "Close and stop" is listed in the tab menu only for a tab whose work is running (3g draws the menu of an idle tab without it; 3l says an idle tab has nothing to stop). |
+| Q36 | The tab menu has no "Rename tab" in 3g or Interactions, but the "Rename a conversation" flow says "or use the menu" | "Rename tab" stays in the menu, under Duplicate, so keyboard and trackpad users have a path that does not need a double-click. |
+| Q37 | "Reopen closed tab" is no longer in the tab menu (3g, Interactions) | It stays on ⌘⇧T and in the strip's overflow menu. |
+| Q38 | Where the Inbox tab comes from: Interactions says the rail's Inbox row opens it; 3l calls it "the pinned tab" and says closed running work lists there | The Inbox tab is created the first time work outlives its tab or an open tab needs the person, pinned first in the strip, with a dot only while something needs you. The rail lane can open it with the `open-inbox` workspace action. |
+| Q39 | "Copy link" (⌘⇧C) and "Move to new window" are drawn enabled | Both are listed and disabled. Copy link needs a codeaf link scheme the app does not register, and a second window needs a Tauri multi-window bridge. Neither exists in the engine bridge today. |

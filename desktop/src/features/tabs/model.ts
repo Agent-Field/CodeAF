@@ -6,6 +6,7 @@ import { kindOrDefault } from './kinds/types.ts';
 import { initialWorkspace, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceSplit, type SplitAction } from './reducers/split.ts';
+import { reduceClosing, type ClosingAction } from './reducers/closing.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
 import type { Pane, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 
@@ -79,9 +80,9 @@ export function readWorkspace(): WorkspaceState {
   } catch { return initialWorkspace(); }
 }
 
-export type WorkspaceAction = TabAction | GroupAction | SplitAction;
+export type WorkspaceAction = TabAction | GroupAction | SplitAction | ClosingAction;
 type Slice = (state: WorkspaceState, action: { type: string }) => WorkspaceState | undefined;
-const slices: readonly Slice[] = [reduceTabs, reduceGroups, reduceSplit];
+const slices: readonly Slice[] = [reduceTabs, reduceGroups, reduceSplit, reduceClosing];
 
 export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState {
   for (const slice of slices) {
