@@ -255,7 +255,15 @@ type Phase struct {
 	// a pause cut short (internal/factory/run's inbox.go). Taken by the round
 	// that resumes the step.
 	Carry []string `json:",omitempty"`
+	// Result is what the step's last round reported (its plan edit left
+	// out, its output cut at [ResultOutputMost]), kept so a run revived
+	// after a restart still hands the steps after it what came before.
+	Result *StageResult `json:",omitempty"`
 }
+
+// ResultOutputMost is how much of a step's output [Phase.Result] keeps, in
+// bytes.
+const ResultOutputMost = 16 << 10
 
 // LogLine is one line of a stream's grain: a thought, a shell call, a test,
 // a write, something said, a question, a failure, a success.

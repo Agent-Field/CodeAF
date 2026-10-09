@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1023,6 +1024,49 @@ func TestAPausedItemStaysPausedAcrossARestartAndRunsInTheSameChat(t *testing.T) 
 	if it.Stream.Paused {
 		t.Fatal("still paused after it landed")
 	}
+}
+
+// WHAT CAME BEFORE OUTLIVES A RESTART: a step resumed in a new process is
+// still handed the results and notes of the steps that finished before it.
+func TestAResumedStepAfterARestartStillReadsTheStepsBefore(t *testing.T) {
+	p := newPauseExec()
+	plan := ExecutorFunc(func(ctx context.Context, job Job) (factory.StageResult, error) {
+		if job.Stage.Name == "plan" {
+			return factory.StageResult{Done: true, Output: "three files", Notes: []string{"keep the old flag"}}, nil
+		}
+		return p.Run(ctx, job)
+	})
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: plan}, nil)
+	id := g.add("one", chat("plan"), chat("write"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	if err := g.r.Pause(id); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
+	g.r.loop().ctl(id).cancel()
+	time.Sleep(20 * time.Millisecond)
+	if it, _ := g.st.Get(id); it.Stream.Phases[0].Result == nil || it.Stream.Phases[0].Result.Output != "three files" {
+		t.Fatalf("the plan's result is not kept on its step: %+v", it.Stream.Phases[0])
+	}
+
+	p2 := newPauseExec()
+	r2 := New(Options{Store: g.st, Exec: map[factory.StageKind]Executor{factory.StageChat: p2}, Benches: 1, Events: make(chan Event, 100)})
+	if err := r2.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p2)
+	j := p2.job(0)
+	if len(j.Prior) != 1 || j.Prior[0].Output != "three files" {
+		t.Fatalf("the resumed write's prior is %+v", j.Prior)
+	}
+	if !slices.Contains(j.Notes, "keep the old flag") {
+		t.Fatalf("the resumed write's notes are %q", j.Notes)
+	}
+	close(p2.release)
+	g.waitState(id, factory.StateLanded)
 }
 
 func TestRunOnAnItemNobodyPausedIsRefused(t *testing.T) {
