@@ -16,31 +16,12 @@
 .work-mark { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); }
 .work-mark-word { white-space: nowrap; }
 
-.work-calls { display: flex; flex-direction: column; gap: var(--space-half); padding-inline-start: calc(var(--icon-sm) + var(--space-tight)); }
-.work-call { display: flex; flex-direction: column; min-width: 0; }
-.work-call-head { position: relative; display: flex; align-items: center; gap: var(--space-tight); min-height: var(--step-row-height); padding-inline: var(--space-half); border-radius: var(--radius-sm); }
-.work-call-head:hover { background: var(--control-hover); }
-.work-call-head:active { background: var(--control-pressed); }
-.work-call-head:has(.work-call-toggle:focus-visible) { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
-.work-call-toggle.button { min-height: 0; padding: 0; border: 0; background: transparent; }
-.work-call-toggle:focus-visible { outline: none; }
-/* The toggle stretches over the whole row so a click anywhere opens it; a file chip rises above it. */
-.work-call-toggle::after { content: ""; position: absolute; inset: 0; }
-.work-call-file { position: relative; z-index: 1; display: inline-flex; min-width: 0; }
-.work-call-text, .work-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.work-call-text[data-mono], .work-path { font-family: var(--font-mono); font-size: var(--font-size-code); }
-.work-path.type-code { color: inherit; }
-.work-stat { display: inline-flex; flex: none; gap: var(--space-1); margin-inline-start: auto; font-variant-numeric: tabular-nums; }
-.work-add { color: var(--success); }
-.work-remove { color: var(--danger); }
-.work-call[data-state="forming"] .work-call-head { opacity: var(--opacity-disabled); }
-.work-call[data-state="waiting"] .work-call-head { color: var(--text); }
 
+.work-calls { display: flex; flex-direction: column; gap: var(--space-half); padding-inline-start: calc(var(--icon-sm) + var(--space-tight)); }
 .work-detail { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding-block: var(--space-1) var(--space-2); padding-inline-start: calc(var(--icon-sm) + var(--space-tight) + var(--space-half)); }
 .work-excerpt, .work-diff { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); width: 100%; min-width: 0; }
 .work-pre { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
 .work-pre .type-code { color: inherit; }
-.work-terminal-command.type-code { color: var(--text); }
 .work-more.button { min-height: var(--icon-button-size); padding-inline: var(--space-half); font-size: var(--font-size-label); }
 .work-note { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
 .work-list { margin: 0; padding-inline-start: var(--space-4); }

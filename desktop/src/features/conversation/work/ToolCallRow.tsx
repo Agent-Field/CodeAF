@@ -1,10 +1,10 @@
 import './work.css';
-import { Button, CodeText, Icon } from '../../../components/ui';
+import './tool-call.css';
+import { Button, CodeText, Icon, type IconName } from '../../../components/ui';
 import type { ToolStep } from '../types';
 import { toolIcon } from '../tool-family';
 import { CallDetail } from './CallDetail';
 import { elapsed, duration } from './format';
-import { StateMark } from './Marks';
 import type { RowState, WorkRender } from './props';
 import { callStat, callTarget, targetText, type CallStat, type Target } from './target';
 
@@ -27,7 +27,8 @@ function StatText({ stat }: { stat: CallStat }) {
   );
 }
 
-function TargetView({ target, call, stat, render }: { target: Target; call: ToolStep; stat: CallStat } & { render: WorkRender }) {
+function TargetView({ target, call, stat, render, state }: { target: Target; call: ToolStep; stat: CallStat; render: WorkRender; state: RowState }) {
+  if (state === 'forming') return <span className="work-call-text">Preparing…</span>;
   if (target.kind === 'file') {
     const chip = render.renderFile?.(target.path, stat.removed === undefined && stat.added === undefined ? undefined : stat);
     return <span className="work-call-file">{chip ?? <CodeText className="work-path">{target.path}</CodeText>}</span>;
@@ -38,9 +39,33 @@ function TargetView({ target, call, stat, render }: { target: Target; call: Tool
   return <span className="work-call-text" data-mono={mono || undefined} title={call.hint || undefined}>{text}</span>;
 }
 
+/** Done keeps the tool's own icon; waiting and running swap it for a dot, the rest for their mark. */
+const markIcons: Partial<Record<RowState, IconName>> = { failed: 'triangleAlert', stopped: 'cancelled', refused: 'cancelled' };
+
+function Lead({ call, state }: { call: ToolStep; state: RowState }) {
+  if (state === 'waiting' || state === 'running') return <span className="work-call-dot" data-state={state} aria-hidden="true" />;
+  return <Icon name={markIcons[state] ?? toolIcon(call.tool)} size="xs" />;
+}
+
 function timeOf(call: ToolStep, state: RowState, now?: number): string | undefined {
   if (state === 'running') return elapsed(call.startedAt, now ?? Date.now());
   return call.tookMs ? duration(call.tookMs) : undefined;
+}
+
+const words: Partial<Record<RowState, string>> = { waiting: 'waiting on you', failed: 'Failed', stopped: 'Stopped', refused: 'refused' };
+
+/** The trailing column: a word where the state needs one, then the time. A done call is only its time. */
+function Status({ state, time }: { state: RowState; time?: string }) {
+  const word = words[state];
+  const shown = state === 'waiting' || state === 'refused' || state === 'stopped' ? undefined : time;
+  if (!word && !shown) return null;
+  return (
+    <span className="work-call-status" data-state={state}>
+      {word}
+      {word && shown && ' · '}
+      {shown && <span className="work-call-time">{shown}</span>}
+    </span>
+  );
 }
 
 /** One tool call: target, stat, state and time on a line; the detail unfolds below. */
@@ -53,12 +78,13 @@ export function ToolCallRow({ call, open, onToggle, phase, now, ...render }: Pro
     <div className="work-call" data-state={state}>
       <div className="work-call-head">
         <Button className="work-call-toggle" aria-expanded={open} aria-label={`${call.tool.replace(/_/g, ' ')} ${targetText(target)}`} onClick={onToggle}>
-          <Icon name={toolIcon(call.tool)} size="sm" />
+          <Lead call={call} state={state} />
         </Button>
-        <TargetView target={target} call={call} stat={stat} render={render} />
-        <StatText stat={stat} />
-        <StateMark state={state} />
-        {time && <span className="work-time">{time}</span>}
+        <span className="work-call-main">
+          <TargetView target={target} call={call} stat={stat} render={render} state={state} />
+          {call.tool !== 'bash' && <StatText stat={stat} />}
+        </span>
+        <Status state={state} time={time} />
       </div>
       {open && state !== 'forming' && <CallDetail call={call} {...render} />}
     </div>

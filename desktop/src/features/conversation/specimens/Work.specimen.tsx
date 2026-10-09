@@ -109,6 +109,24 @@ function OpenCall({ call: sample }: { call: ToolStep }) {
 
 const writeCall = call('w1', 'write', { path: 'internal/session/shape_test.go', content: 'package session\n\nfunc TestShapeEntriesKeepsNotes(t *testing.T) {\n\tgot := shape(notes)\n\tif len(got) != 3 {\n\t\tt.Fatalf("want 3, got %d", len(got))\n\t}\n}\n' }, 'done', 'Successfully wrote 156 bytes', { tookMs: 210 });
 
+/** The call row in every state, one line each, as components §3.3 lists them. */
+function CallStates() {
+  const row = (sample: ToolStep, phase?: 'forming' | 'waiting' | 'refused') => (
+    <ToolCallRow key={sample.id} call={sample} phase={phase} open={false} onToggle={() => undefined} now={NOW} />
+  );
+  return (
+    <div className="work-calls">
+      {row(call('t1', 'bash', { command: 'go build ./...' }, 'running'), 'forming')}
+      {row(call('t2', 'bash', { command: 'rm -rf build' }, 'running'), 'waiting')}
+      {row(call('t3', 'bash', { command: 'go test ./...' }, 'running', '', { startedAt: NOW - 12_000 }))}
+      {row(call('t4', 'bash', { command: 'make build' }, 'done', '', { tookMs: 1200 }))}
+      {row(call('t5', 'bash', { command: 'make build' }, 'failed', 'Command exited with code 2', { tookMs: 4100 }))}
+      {row(call('t6', 'bash', { command: 'go generate ./...' }, 'stopped'))}
+      {row(call('t7', 'bash', { command: 'git push --force' }, 'running'), 'refused')}
+    </div>
+  );
+}
+
 /** The work rhythm with realistic engine data (research notes); the clock is fixed. */
 export function WorkSpecimen() {
   return (
@@ -119,6 +137,7 @@ export function WorkSpecimen() {
       <Labelled label="Settled, folded"><WorkBlockView block={{ ...settled, id: 'folded' }} /></Labelled>
       <Labelled label="Edit as a diff"><OpenCall call={settled.steps[1].calls[0]} /></Labelled>
       <Labelled label="Write preview"><OpenCall call={writeCall} /></Labelled>
+      <Labelled label="Tool call row states"><CallStates /></Labelled>
       <Labelled label="Bash output"><OpenCall call={settled.steps[2].calls[0]} /></Labelled>
       <Labelled label="Thinking, live and settled">
         <ThinkingView streaming text={running.thinking?.text ?? ''} />
