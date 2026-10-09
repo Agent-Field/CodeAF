@@ -1,6 +1,8 @@
 package placegraph
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,5 +236,85 @@ func TestSnoozeRefusesAnEmptyOrOversizedID(t *testing.T) {
 		if _, err := book.Snooze(id, staleNow); err == nil {
 			t.Fatalf("snoozed %q", id)
 		}
+	}
+}
+
+// A failed write, short write, sync or rename must reach the caller, leave the
+// previous file byte-for-byte, and leave no temp file behind.
+func TestAFailedSnoozeWriteKeepsTheOldFileAndSaysSo(t *testing.T) {
+	boom := errors.New("injected")
+	cases := map[string]func(){
+		"write": func() {
+			staleFileOps.write = func(f *os.File, b []byte) (int, error) { f.Write(b[:len(b)/2]); return len(b) / 2, boom }
+		},
+		"short":  func() { staleFileOps.write = func(f *os.File, b []byte) (int, error) { return f.Write(b[:len(b)/2]) } },
+		"sync":   func() { staleFileOps.sync = func(*os.File) error { return boom } },
+		"rename": func() { staleFileOps.rename = func(string, string) error { return boom } },
+	}
+	for name, inject := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "places-stale.json")
+			book, _ := OpenStale(path)
+			if _, err := book.Snooze("pl_a", staleNow); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(path)
+			saved := staleFileOps
+			t.Cleanup(func() { staleFileOps = saved })
+			inject()
+			if _, err := book.Snooze("pl_b", staleNow); err == nil {
+				t.Fatal("the failure was swallowed and reported as a saved snooze")
+			}
+			after, _ := os.ReadFile(path)
+			if string(after) != string(before) {
+				t.Fatalf("the old file changed:\n%s", after)
+			}
+			left, _ := filepath.Glob(filepath.Join(dir, ".places-stale-*.tmp"))
+			if len(left) != 0 {
+				t.Fatalf("temp files left behind: %v", left)
+			}
+		})
+	}
+}
+
+func TestACorruptSnoozeFileIsRefusedBeforeItCostsMemory(t *testing.T) {
+	ok := `{"at":"2026-10-09T12:00:00Z","until":"2026-11-08T12:00:00Z"`
+	rec := func(id string) string { return fmt.Sprintf(`{"placeId":%q,%s}`, id, ok[1:]) }
+	many := make([]string, MaxStaleSnoozes+1)
+	for i := range many {
+		many[i] = rec(fmt.Sprintf("pl_%d", i))
+	}
+	bad := map[string]string{
+		"no version":     `{"snoozes":[]}`,
+		"future version": `{"version":2,"snoozes":[]}`,
+		"empty id":       `{"version":1,"snoozes":[` + rec("") + `]}`,
+		"reserved id":    `{"version":1,"snoozes":[` + rec(RootID) + `]}`,
+		"zero time":      `{"version":1,"snoozes":[{"placeId":"pl_a"}]}`,
+		"until<at":       `{"version":1,"snoozes":[{"placeId":"pl_a","at":"2026-10-09T12:00:00Z","until":"2026-10-01T00:00:00Z"}]}`,
+		"duplicate":      `{"version":1,"snoozes":[` + rec("pl_a") + `,` + rec("pl_a") + `]}`,
+		"one too many":   `{"version":1,"snoozes":[` + strings.Join(many, ",") + `]}`,
+		"oversize":       `{"version":1,"pad":"` + strings.Repeat("x", maxStaleBytes) + `"}`,
+	}
+	for name, body := range bad {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "places-stale.json")
+			os.WriteFile(path, []byte(body), 0o600)
+			if _, err := readStaleDoc(path); err == nil {
+				t.Fatal("accepted")
+			}
+			if n := len((&StaleBook{path: path}).Active(staleNow)); n != 0 {
+				t.Fatalf("a refused file still hid %d places", n)
+			}
+		})
+	}
+	// The cap is exact: a full, valid file reads.
+	path := filepath.Join(t.TempDir(), "places-stale.json")
+	os.WriteFile(path, []byte(`{"version":1,"snoozes":[`+strings.Join(many[:MaxStaleSnoozes], ",")+`]}`), 0o600)
+	if doc, err := readStaleDoc(path); err != nil || len(doc.Snoozes) != MaxStaleSnoozes {
+		t.Fatalf("a full valid file must read: %v", err)
+	}
+	if info, _ := os.Stat(path); info.Size() > maxStaleBytes {
+		t.Fatalf("maxStaleBytes %d is smaller than a full realistic file (%d)", maxStaleBytes, info.Size())
 	}
 }

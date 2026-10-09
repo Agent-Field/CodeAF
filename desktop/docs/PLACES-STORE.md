@@ -26,4 +26,4 @@ A damaged file is never deleted. Unparseable or structurally invalid (cycle, dup
 
 ## Bounds
 
-`MaxPlaces` 2000, `MaxMemberships` 50000, `MaxParents` 16, `MaxPinned` 50, `MaxChatPlaces` 64, `MaxNameRunes` 120, `MaxInstructions` 64 KiB, `MaxSources` 200, `MaxFileBytes` 32 MiB, `MaxStaleListed` 20, `MaxStaleSnoozes` = `MaxPlaces`. Changing one changes this list in the same commit.
+`MaxPlaces` 2000, `MaxMemberships` 50000, `MaxParents` 16, `MaxPinned` 50, `MaxChatPlaces` 64, `MaxNameRunes` 120, `MaxInstructions` 64 KiB, `MaxSources` 200, `MaxFileBytes` 32 MiB, `MaxStaleListed` 20, `MaxStaleSnoozes` = `MaxPlaces` (the snooze file is read through its own byte cap, about 600 KB, not `MaxFileBytes`). Changing one changes this list in the same commit.
