@@ -1,0 +1,7 @@
+.sidebar { display: flex; flex-direction: column; padding: 0 var(--space-compact); min-width: 0; overflow: hidden; opacity: var(--opacity-opaque); transition: opacity var(--duration) var(--chrome-ease), visibility var(--duration-sidebar); }
+.sidebar-toolbar { height: var(--titlebar-height); display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--space-three-quarter); flex-shrink: 0; }
+.sidebar-divider { margin: var(--space-row) var(--space-three-quarter) var(--space-2); }
+.sidebar-bottom .select-trigger.select-trigger-icon { justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; }
+.sidebar-bottom { margin-top: auto; padding: var(--space-4) var(--border-width) var(--space-half); display: flex; align-items: center; justify-content: flex-start; gap: var(--space-1); }
+.rail .new-item { color: var(--ink-2); }
+.rail .new-item kbd { opacity: var(--opacity-opaque); }

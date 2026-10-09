@@ -1,0 +1,18 @@
+/* The strip: 46px, on the frame (no fill of its own), tabs 2px apart. */
+.workspace-tabbar { display: flex; align-items: center; min-width: 0; flex-shrink: 0; height: var(--tab-strip-height); padding: 0 var(--space-2) 0 var(--space-2); gap: var(--space-half); font-size: var(--font-size-body); }
+.workspace-tabstrip { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; gap: var(--space-half); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-behavior: auto; }
+.workspace-tabstrip::-webkit-scrollbar { display: none; }
+/* Scrolled content fades out under a 40px mask at the right edge; no scrollbar, no chevrons. */
+.workspace-tabstrip[data-fade-end] { mask-image: linear-gradient(to right, black calc(100% - var(--tab-strip-fade)), transparent); }
+.workspace-tablist-owner { position: absolute; width: var(--border-width); height: var(--border-width); overflow: hidden; }
+.workspace-tab-divider { flex: none; width: var(--border-width); height: var(--tab-divider-height); margin: 0 var(--space-tight); background: var(--line); }
+.workspace-tab-actions { display: flex; align-items: center; flex: 1 0 auto; gap: var(--space-half); }
+.workspace-tabbar .workspace-tab-action.icon-button { width: var(--tab-height); height: var(--tab-height); border-radius: var(--radius-control); color: var(--ink-3); }
+.workspace-tabbar .workspace-tab-action.icon-button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
+.workspace-tabbar .workspace-tab-action.icon-button:active:not(:disabled) { background: var(--field-2); }
+.workspace-overview-trigger { margin-left: auto; }
+.workspace-tab-more.button { height: var(--tab-height); min-height: 0; gap: var(--space-half); padding: 0 var(--tab-more-pad); border: 0; border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
+.workspace-tab-more.button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
+:root[data-environment="mac-desktop"] .sidebar-collapsed .workspace-tabbar { padding-left: var(--native-controls-inset); }
+.workspace-tab, .workspace-tab-actions, .workspace-group-label, .workspace-tabbar > .icon-button { -webkit-app-region: no-drag; }
+@media (max-width: 600px) { .workspace-tabbar { padding: 0 var(--space-1); } }

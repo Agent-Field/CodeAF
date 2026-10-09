@@ -60,7 +60,7 @@ test('navigation is still; action motion is bounded; collapse has a real transit
  await page.getByRole('button',{name:'Hide sidebar'}).click();
  const shell=page.locator('.app-shell');
  await expect(shell).toHaveCSS('transition-duration',Array(2).fill(`${parseFloat(design.foundation['duration-sidebar'])/1000}s`).join(', '));
- await expect.poll(async()=>page.locator('.content-pane').evaluate(el=>Math.round(el.getBoundingClientRect().left))).toBe(parseFloat(design.foundation['frame-inset']));
+ await expect.poll(async()=>page.locator('.content-pane').evaluate(el=>Math.round(el.getBoundingClientRect().left))).toBe(parseFloat(design.foundation['shell-card-inset']));
  await expect(navigation).not.toBeVisible();
  await page.getByRole('button',{name:'Show sidebar'}).click();
  await expect.poll(async()=>page.locator('.content-pane').evaluate(el=>Math.round(el.getBoundingClientRect().left))).toBe(parseFloat(design.foundation['sidebar-width']));

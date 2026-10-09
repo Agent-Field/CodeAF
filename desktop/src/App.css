@@ -3,16 +3,13 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; }
 body { margin: 0; background: var(--chrome-canvas); color: var(--text); font-family: var(--font-sans); font-size: var(--font-size-body); font-weight: var(--font-weight-regular); letter-spacing: var(--tracking-body); -webkit-font-smoothing: antialiased; }
-.app-shell { min-width: 0; height: 100dvh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0,1fr); transition: grid-template-columns var(--duration-sidebar) var(--ease-layout), padding var(--duration-sidebar) var(--ease-layout); padding: var(--frame-inset) var(--frame-inset) var(--frame-inset) 0; background: var(--chrome-preview); }
+.app-shell { min-width: 0; height: 100dvh; display: grid; grid-template-columns: var(--sidebar-width) minmax(0,1fr); transition: grid-template-columns var(--duration-sidebar) var(--ease-layout), padding var(--duration-sidebar) var(--ease-layout); padding: 0; background: var(--frame); }
 :root[data-environment="mac-desktop"] body { background: transparent; }
 :root[data-environment="mac-desktop"] .app-shell { background: var(--chrome-tint); }
-.sidebar { display: flex; flex-direction: column; padding: 0 var(--space-compact); min-width: 0; overflow: hidden; opacity: var(--opacity-opaque); transition: opacity var(--duration) var(--chrome-ease), visibility var(--duration-sidebar); }
-.sidebar-toolbar { height: var(--titlebar-height); display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--space-three-quarter); flex-shrink: 0; }
-.sidebar-divider { margin: var(--space-row) var(--space-three-quarter) var(--space-2); }
-.sidebar-bottom .select-trigger.select-trigger-icon { justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; }
-.sidebar-bottom { margin-top: auto; padding: var(--space-4) var(--border-width) var(--space-half); display: flex; align-items: center; justify-content: flex-start; gap: var(--space-1); }
-.content-pane { grid-column: 2; min-height: 0; border-radius: var(--radius-sm); background: var(--chrome-surface); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
-.content-toolbar { height: var(--toolbar-height); padding: 0 var(--space-row); display: flex; align-items: center; gap: var(--space-compact); color: var(--muted); flex-shrink: 0; }
+.content-pane { grid-column: 2; min-height: 0; display: flex; flex-direction: column; min-width: 0; padding: 0 var(--shell-card-inset) var(--shell-card-inset) 0; }
+/* The content card (design 2a): radius 10, canvas, sh-1. A workspace tab draws its own card per pane; other pages sit in this one. */
+.content-card { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); color: var(--text); }
+.content-toolbar { height: var(--tab-strip-height); padding: 0 var(--space-row); display: flex; align-items: center; gap: var(--space-compact); color: var(--muted); flex-shrink: 0; }
 .page-title { font-size: var(--font-size-label); }.content-toolbar > .icon-button:last-child { margin-left: auto; }
 .quiet-action { margin-top: var(--space-section-inner); }
 .page-content { flex: 1; min-height: 0; min-width: 0; width: 100%; overflow-wrap: anywhere; max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-3xl) var(--space-2xl) var(--space-2xl); overflow: auto; }
@@ -25,12 +22,12 @@ small { font-size: var(--font-size-caption); color: var(--muted); }.type-sample 
 .palette-search { display: flex; align-items: center; gap: var(--space-compact); padding: var(--space-tight) var(--space-2); color: var(--muted); }
 .palette-close { border: 0; background: var(--chrome-field); color: var(--muted); border-radius: var(--radius-xs); padding: var(--space-three-quarter) var(--space-tiny); }
 .commands { border-top: var(--border-width) solid var(--border); padding-top: var(--space-2); margin-top: var(--space-1); }.commands button { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; color: var(--text); padding: var(--space-3) var(--space-compact); border-radius: var(--radius-sm); text-align: left; }.commands button:hover { background: var(--chrome-field); }.commands .app-icon { color: var(--muted); }.no-results { padding: var(--space-3); }
-.sidebar-collapsed { grid-template-columns: 0 minmax(0,1fr); padding-left: var(--frame-inset); }.sidebar-collapsed .sidebar { visibility: hidden; opacity: var(--opacity-transparent); pointer-events: none; }
+.sidebar-collapsed { grid-template-columns: 0 minmax(0,1fr); padding-left: var(--shell-card-inset); }.sidebar-collapsed .sidebar { visibility: hidden; opacity: var(--opacity-transparent); pointer-events: none; }
 :root[data-environment="mac-desktop"] .sidebar-collapsed .content-toolbar { padding-left: var(--native-controls-inset); }
 /* Media thresholds mirror tokens.json: CSS variables cannot be used in media conditions. */
 @media (max-width: 850px) { .app-shell:not(.sidebar-collapsed) { grid-template-columns: var(--sidebar-width-compact) minmax(0,1fr); }.theme-select { width: var(--select-width-compact); } }
 @media (max-width: 600px) {
- .app-shell { grid-template-columns: 0 minmax(0,1fr); padding-left: var(--frame-inset); }
+ .app-shell { grid-template-columns: 0 minmax(0,1fr); padding-left: var(--shell-card-inset); }
  .sidebar-drawer { position: fixed; inset: var(--frame-inset) auto var(--frame-inset) var(--frame-inset); margin: 0; width: min(var(--drawer-max-width),calc(100vw - var(--space-6))); height: calc(100dvh - var(--frame-inset) * 2); max-height: none; max-width: none; border: 0; border-radius: var(--radius-md); padding: 0; background: var(--sidebar); color: var(--text); box-shadow: var(--palette-shadow); }
  .sidebar-drawer[open] { display: flex; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
  .sidebar-drawer::backdrop { background: var(--palette-backdrop); backdrop-filter: blur(var(--palette-blur)); }
