@@ -46,7 +46,10 @@ A turn is everything from one person message to the next.
 ```
 
 A turn folds to one line from its gutter chevron: the person's words, then the
-digest of the final answer, both on one line.
+digest of the final answer, both on one line. Settled turns fold by default; beyond
+12 turns the oldest sit in one "N earlier turns" group (each already folded).
+⌘↑ / ⌘↓ step between turns and Esc returns to the latest. The "Earlier messages
+summarized" divider (§3.5) draws only after an engine compaction.
 
 ---
 
@@ -59,11 +62,14 @@ digest of the final answer, both on one line.
 - Look: right-aligned soft bubble (`--bubble`), radius 16, max 80% of the column.
   Attachments sit above the text inside the bubble: picture thumbnails
   (64px square, rounded 8, grid), file chips (§5.1).
-- Long text: clamp 8 lines + "Show more".
+- Long text: clamp 8 lines + "Show more" (with a fade on the clamp).
+- Pasted text: a leading `<pasted-text lines="N">` block in `Text` is drawn as a
+  card with the line count, then the typed text. The tag never shows in folded
+  lines, queued rows, tab labels or Up recall (`plainMessage`).
+- Hover: Copy through `RowActions` on the bubble.
 - States: sent · queued (drawn above the composer in muted ink with a queued
   mark until its turn starts) · sending (optimistic, 60% opacity until the
   snapshot has it).
-- Hover: Copy, Edit-and-resend (later).
 
 ### 2.2 Steer (message typed into a running turn)
 - Data: user entry with `Steer {At, Consumed, Landing}`; live events
@@ -173,6 +179,7 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 
 ### 3.5 System notes
 - Compaction (`Role:"note"`): centred divider with "Earlier messages summarized".
+  It is the only trigger; a long history alone never draws it.
 - Notice (raw kind 18), harness/orchestration notes: one muted work-rhythm line.
 - Session notes to the model (`Role:"aside"`, e.g. "while you worked: A note from
   the session, not from the person: …"): drawn in a person's words. The batching
@@ -202,11 +209,14 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
   incomplete · stopped · interrupted · your call. Plus paused, and "waiting on X" from `Waits`.
 
 ### 4.2 Task tree (right panel)
-- Header: "Tasks" · progress strip (segments: done / running / queued / failed,
-  failures at the end) · "3 of 14" · close.
-- Tree: indentation 14px per level with 1px vertical guide lines (Arc sidebar
-  tree), disclosure chevrons on parents, families with running work first.
-- Row (28px): state glyph · title · right-aligned age (`40s`, `2m`; blank while queued).
+- Header: "Tasks" · "3 of 14" · Expand tasks · close, then the progress strip
+  (segments: done / running / queued / failed, failures at the end; five colours).
+- Tree: indentation per level with 1px hairline guide lines joined to open parents
+  (Arc sidebar tree), disclosure chevrons on parents, families with running work
+  first, edge masks on the scrolling list, finished tasks under a "Finished" fold.
+- Row (one 30px line): 6px status mark (the shared `StatusMark`, via `TaskMark`) ·
+  title · done/total on parents · right-aligned duration (`40s`, `2m`; blank while queued).
+  Queued rows lead with what they wait on.
   - running: a second line, mono, muted: the live command (`go test ./…`) with its own clock.
   - queued with waits: second line "waits on Parse config".
   - your call: amber glyph, title in full ink.
@@ -215,6 +225,18 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 - Hover actions (and context menu): Open in new tab · Pause/Resume · Stop.
 - Empty: the panel does not exist.
 - Narrow window: a sheet from the right with a backdrop.
+
+### 4.2a Expanded tasks (route `#tasks`)
+- Expand tasks in the panel header opens a tab-local route stop, so Back, Forward
+  and reload treat it like a task. The chosen row persists.
+- Table: filter tabs with counts · progress strip · search · groups with done of
+  total and duration · rows with the live command or waiting reason and a state
+  word column. Cost, steps and model show only when the engine provides them.
+- Reasons come from the questions blocking each task; instructions from the task
+  page Description.
+- Detail pane (right): parent crumb · title · state with step and age · the pending
+  question (the tray's question card) · Model / Steps / Cost / Started facts only
+  when known · Instructions · Open task.
 
 ### 4.3 Task view (a task is a conversation)
 ```
@@ -331,13 +353,17 @@ Batch, Later, Scope[], Attach[Block], Asked, Deadline, Withdrawn}`. Answer goes 
 `POST /answer` with `key`/`picked`/`change`/`blanks`/`dial`/`scope`/`decidedBy`.
 
 ### 6.2 Decision tray (where questions live)
-- One tray docked directly above the composer. It holds every waiting question.
-- One question: the tray shows it whole.
-- Several: a tab row at the top of the tray, one tab per question (short head,
-  asker icon), oldest first; deeper clarifications first. Questions with the
-  same `Batch` form one set: tabs + a final "Review" tab that sends all held
-  answers at once. A set of only permissions collapses into one card:
-  "3 actions need your OK · Allow all · One by one · Deny all".
+- One tray docked directly above the composer. It holds every waiting question as
+  ONE card that pages through them ("N of M"): amber head with the task crumb, a
+  body of at most 40vh that scrolls under a bottom fade.
+- Scrolled away from it, the tray shrinks to a 40px compact bar ("N need you", a
+  one-line summary, Review).
+- One question: the card shows it whole.
+- Several: paged oldest first; deeper clarifications first. Questions with the
+  same `Batch` form one set: a final "Review" step sends all held answers at once.
+  A set of only permissions collapses into one card: "Allow N actions?" with a
+  collapsible command list, Allow all and Deny all. **One by one** turns the card
+  into a pager over the same actions.
 - Non-blocking questions (`Blocking.turn` false: landings, fuel, designs) sit in
   the tray but never block the composer. Blocking ones say so: "The reply is
   waiting on this".
@@ -345,7 +371,7 @@ Batch, Later, Scope[], Attach[Block], Asked, Deadline, Withdrawn}`. Answer goes 
 - In the conversation flow, at the point the question was asked, a quiet
   receipt line: while waiting "Waiting on you: Allow `rm -rf build`?" (click →
   focuses the tray tab); after: "Allowed once · you · 14:02". Withdrawn: "No
-  longer needed — the turn moved on". A task proposal that went away (it started
+  longer needed. The turn moved on." A task proposal that went away (it started
   on its own, or the work stopped waiting) leaves no receipt: the task notice
   and the panel name what became of it. Each question has at most one receipt.
 - Option labels are the engine's words: a path, file name or lone word keeps its
@@ -360,7 +386,7 @@ image, diagram) · Answers · Words field · Footer (countdown, Later, You decid
 | Form | Control |
 |---|---|
 | permission | Allow once (primary) · Always… (opens scope/pattern choice; widening, never on irreversible) · Deny (safe) + "say why" field |
-| choice / judgement | option buttons with Body/Consequence; the suggested pick marked "Suggested" with its reason; Safe option is the quiet one |
+| choice / judgement | radio cards with Body/Consequence, then Choose; the engine's pick is lit first and tagged "Suggested" (its reason on hover); the countdown and Hold show only when the question has a `Deadline` |
 | checklist | checkboxes (2–8) + Submit |
 | blanks | labelled fields by `Kind` (text, path → file picker, number, choice → select, time); defaults prefilled |
 | pairs | per row a segmented control: A · either · B |
@@ -372,17 +398,23 @@ image, diagram) · Answers · Words field · Footer (countdown, Later, You decid
 
 ### 6.5 Clocks
 - `Deadline` set (task proposals auto-start, recommend-then-auto asks): a muted
-  countdown "Starts in 12s" + "Hold" (engine `HoldQuestion`; needs a bridge endpoint).
-  Typing in the card holds it automatically.
+  countdown "Picks Suggested in 12s" + "Hold" (engine `HoldQuestion`); a held clock
+  reads "On hold — take your time". Typing in the card holds it automatically.
+  Without a `Deadline` there is no countdown, no Hold and no Suggested line.
 - Irreversible questions never have clocks.
 
 ---
 
 ## 7. Composer
 
-- Conversation composer: textarea, Attach (files and pictures; paste and drag),
-  attachment chips above the text, model label, Send/Stop/Steer, Queue in the menu.
-- Queued messages: listed above the composer in muted rows with a remove action.
+- Empty conversation: "What are we building?" with the composer centred under it.
+- Conversation composer: textarea (1–8 lines, then a top fade), Attach (files and
+  pictures; paste and drag), attachment chips above the text, model label, Send/Stop.
+  A paste over 12 lines becomes a card and is sent as a `<pasted-text>` block.
+  While running with text: a **Queue** button (Alt/⌥ Enter) beside an accent
+  **Steer** pill; there is no send-options menu.
+- Queued messages: listed above the composer in muted rows with a remove action
+  (no edit or reorder: the engine cannot take a queued message back).
 - Decision tray sits above everything else in the dock.
 - Task composer: §4.4.
 

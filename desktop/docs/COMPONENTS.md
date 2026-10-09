@@ -42,6 +42,16 @@ Status marks: `mark-running`, `mark-queued`, `mark-done`, `mark-waiting`,
 Step category icons use `step-category` (ink-2), sizes `icon-xs` 13 /
 `icon-sm` 14 in work rows and `icon-md` 16 in chrome.
 
+### Accessibility deviation: ink-3 text reads in ink-2
+
+The designer's `ink-3` meta colour measures about 3.6:1 on `canvas`/`surface`, under
+the WCAG AA 4.5:1 that the axe checks in the browser suite enforce. Where axe flags
+it, the text is drawn in `ink-2` instead; the suite stays strict, the design bends.
+Moved so far: the ghost `Button` label, the composer model label, the tray crumb and
+foot, and the clarification links. Non-text uses of `ink-3` (marks, rules, icons)
+and text that passes keep the designed value. A new `ink-3` text role must pass axe
+or use `ink-2`.
+
 ## Type, space, radius, motion
 
 - Fonts: `sans`, `mono`.
@@ -94,13 +104,14 @@ Import from `src/components/ui`. Features compose these; they never restyle them
 | Button · Danger ("Stop task") | `<Button variant="danger">` | Button.tsx | danger-soft, danger |
 | Icon button (toolbar) | `<IconButton label icon iconSize="sm">` | Button.tsx | ink-2; hover field + ink; press field-2 |
 | Row action (24px, in a row) | `<IconButton size="row" iconSize="xs">` inside `<RowActions>` | Button.tsx, RowActions.tsx | hover field-2 |
+| Message, queued and task-row actions | `RowActions` hosts them: message actions are `size="message"`; queued and task-row actions are `size="row"`. `CopyButton` takes `size`/`iconSize` | RowActions.tsx, CopyButton.tsx | as above |
 | Message action (26px: Copy, Edit) | `<IconButton size="message" iconSize="xs">` inside `<RowActions>` on a `data-actions-host` element | Button.tsx, RowActions.tsx | ink-3; hover field + ink |
 | Tooltip | built into IconButton (text = `title` or `label`); `useTooltip` for other icon-only triggers; `<TruncatedText>` for cut text | Tooltip.tsx | surface, ink, sh-2, type-caption-size |
 | Segmented | `<Segmented label options value onChange>` | Segmented.tsx | field track, surface + sh-1 chosen |
 | Field | `<TextInput appearance="field">` | TextInput.tsx | field; focus surface + accent ring + accent-soft halo |
 | Tags (Suggested, Reversible, Irreversible, key) | `<Tag tone="accent" / "neutral" / "danger" / "key">` | Chip.tsx | accent-soft, field, danger-soft, surface + line |
 | Chip base (file chip, link chip) | `<Chip>` static, `<ChipButton>` interactive, `muted` for missing/outside | Chip.tsx | field, hover field-2, ink, ink-3 |
-| Status mark (Running … Incomplete) | `<StatusMark status label>` | StatusMark.tsx | mark-* roles |
+| Status mark (Running … Incomplete) | `<StatusMark status label>`; every task mark goes through `TaskMark` (`statusOf` in taskState.ts): tree, task links, expanded table, detail pane, notices | StatusMark.tsx, tasks/TaskMark.tsx | mark-* roles (Incomplete is a dashed ring in ink-3) |
 | Row · tree, table (rest none, hover field, selected field) | `<Row selected>` with `<RowActions>` | RowActions.tsx | field, radius-control |
 | Copy feedback | `<CopyButton>` | CopyButton.tsx | (IconButton) |
 | Menus, Select, delayed tab preview | `DropdownMenu`, `ContextMenu`, `Select`, `HoverPreview` | Menu.tsx, Select.tsx, HoverPreview.tsx | legacy chrome roles (not restyled in v3 yet) |
@@ -116,8 +127,7 @@ per-feature hover, focus or disabled CSS for these controls.
   actions (host element gets `data-actions-host`), `Chip` for attachments,
   `bubble`, `ink`, `space-turn`, `space-answer`, `radius-bubble`, `type-prose-*`.
   Folded turn rows use `Button` ghost restyled only by layout.
-- **work**: `StatusMark` for step marks (replace `features/conversation/StateMark.tsx`
-  icon marks), `step-category` colour with `icon-xs`/`icon-sm`, `guide`,
+- **work**: `StatusMark` for step marks (`StateMark.tsx` is removed), `step-category` colour with `icon-xs`/`icon-sm`, `guide`,
   `work-indent`, `space-work-row`, `space-work-block`, `term` for output,
   `type-mono-*`, `TruncatedText` for cut step titles.
 - **tray**: `Button` primary/raised/quiet/ghost/danger (the tray's
@@ -127,6 +137,6 @@ per-feature hover, focus or disabled CSS for these controls.
   `sh-2`, `radius-dock`, the field focus ring.
 - **tasks**: `Row`, `RowActions`, `StatusMark`, `panel`, `row-h`, `sh-3` for the
   narrow sheet.
-- **assets**: build FileChip and LinkChip on `Chip`/`ChipButton` (they still carry
-  their own CSS today), `field-2` for hover, `success`/`danger` for +/− stats,
+- **assets**: FileChip is a `ChipButton` and LinkChip a `.chip` anchor (their own
+  pill, hover and reveal CSS is gone), `field-2` for hover, `success`/`danger` for +/− stats,
   `sh-3` and `dur-slow` for sheets and the lightbox.
