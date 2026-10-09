@@ -304,9 +304,7 @@ var staleFileOps = struct {
 	rename: os.Rename,
 }
 
-// writeStaleDoc replaces the file whole: a complete temp file beside it, fsynced,
-// then renamed. EVERY STEP'S ERROR LEAVES THE OLD FILE IN PLACE AND REMOVES THE
-// TEMP: a short write or a failed sync must never be renamed over a good file.
+// writeStaleDoc replaces the file whole; see writeFileAtomic.
 func writeStaleDoc(path string, doc staleDoc) error {
 	data, err := json.MarshalIndent(doc, "", " ")
 	if err != nil {
@@ -315,7 +313,16 @@ func writeStaleDoc(path string, doc staleDoc) error {
 	if len(data) > maxStaleBytes {
 		return ErrTooLarge
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".places-stale-*.tmp")
+	return writeFileAtomic(path, ".places-stale-*.tmp", data)
+}
+
+// writeFileAtomic writes a complete temp file beside path, fsyncs it, then
+// renames it over path. EVERY STEP'S ERROR LEAVES THE OLD FILE IN PLACE AND
+// REMOVES THE TEMP: a short write or a failed sync must never be renamed over a
+// good file. The steps go through staleFileOps so one test seam covers every
+// sidecar written this way.
+func writeFileAtomic(path, pattern string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), pattern)
 	if err != nil {
 		return err
 	}
