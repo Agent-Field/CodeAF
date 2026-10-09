@@ -28,6 +28,8 @@ type TooltipOptions = {
  /** The text says more than the trigger's accessible name (a full path behind a file name), so it is also the
   * trigger's description. A tooltip that only repeats the name stays undescribed, or a reader hears it twice. */
  describe?: boolean;
+ /** A muted key hint drawn after the text (⌘W). Visual only: the trigger's own name or menu carries the key. */
+ shortcut?: string;
 };
 
 /** The designer's tooltip: icon-only buttons and truncated text only. It appears after the
@@ -62,8 +64,9 @@ export function useTooltip<E extends HTMLElement = HTMLElement>(text: string, ha
  // A described trigger points at the same id whether or not the tooltip is drawn: the hidden copy carries the
  // description while it is closed, so a keyboard focus hears it at once instead of after the open delay.
  const describe = !!options.describe && !!text;
+ const shortcut = options.shortcut;
  const element = anchor && text
-  ? createPortal(<span ref={tip} id={id} role="tooltip" className="tooltip">{text}</span>, anchor.container)
+  ? createPortal(<span ref={tip} id={id} role="tooltip" className="tooltip">{text}{shortcut && <span className="tooltip-shortcut">{shortcut}</span>}</span>, anchor.container)
   : describe ? <span id={id} hidden>{text}</span> : null;
  return { props: describe ? { ...props, 'aria-describedby': id } : props, element };
 }

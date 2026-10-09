@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { newConversation } from './support/new-tab';
-import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, tokenColor } from './contracts';
+import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, menuSurface, tokenColor } from './contracts';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 // Tab behaviour never needs the engine; a send fails fast and keeps its draft.
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
@@ -22,10 +22,10 @@ test('top tabs preserve isolated drafts across closing, reopening and reload', a
  await page.getByRole('tab', { name: 'Engine design', exact: true }).click();
  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Keep the benchmarked loop');
  await page.getByRole('tab', { name: 'Desktop UX', exact: true }).click({ button: 'right' });
- await page.getByRole('menuitem', { name: /^Close tab/ }).click();
+ await page.getByRole('menuitem', { name: /^Close tab\b/ }).click();
  await expect(page.getByRole('tab', { name: 'Engine design', exact: true })).toHaveAttribute('aria-selected', 'true');
- await page.getByRole('tab', { name: 'Engine design', exact: true }).click({ button: 'right' });
- await page.getByRole('menuitem', { name: /^Reopen closed tab/ }).click();
+ // Design 3g: the tab menu no longer lists "Reopen closed tab"; the key and the strip's overflow menu do.
+ await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+Shift+t`);
  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Quiet chrome');
  await page.reload();
  await expect(page.getByRole('tab', { name: 'Desktop UX', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -38,13 +38,13 @@ test('top tabs preserve isolated drafts across closing, reopening and reload', a
 test('pinning, groups and keyboard context menus retain visible selection', async ({ page }) => {
  await page.goto('/'); await rename(page, 0, 'Pinned work');
  await page.getByRole('tab', { name: 'Pinned work', exact: true }).click({ button: 'right' });
- await expectThemedSurface(page, page.getByRole('menu', { name: 'Actions for Pinned work', exact: true }));
+ await expectThemedSurface(page, page.getByRole('menu', { name: 'Actions for Pinned work', exact: true }), menuSurface);
  await page.getByRole('menuitem', { name: 'Pin tab', exact: true }).click();
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await rename(page, 1, 'Grouped work');
  await page.getByRole('tab', { name: 'Grouped work', exact: true }).click({ button: 'right' });
- await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
- await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
+ await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
+ await page.getByRole('menuitem', { name: /^New group…/ }).click();
  const group = page.getByRole('button', { name: /New group/ });
  await group.click(); await expect(group).toHaveAttribute('aria-expanded', 'false');
  await expect(page.getByRole('tab', { name: 'Grouped work', exact: true })).toBeVisible();
@@ -80,7 +80,7 @@ test('many top tabs scroll under a mask with a +N menu and keep narrow-screen ac
  await expectAccessible(page); await page.keyboard.press('Escape');
  await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeFocused();
  await more.click();
- await expectThemedSurface(page, page.getByRole('menu', { name: 'Tab actions', exact: true }));
+ await expectThemedSurface(page, page.getByRole('menu', { name: 'Tab actions', exact: true }), menuSurface);
  await expect(page.getByRole('menuitem', { name: /^New tab/ })).toBeFocused();
  await expectAccessible(page);
  await page.keyboard.press('Escape');
@@ -107,7 +107,7 @@ test('overview searches real drafts and restores focus after nested organization
  await expect(overview.getByRole('button', { name: 'Open Engine', exact: true })).toBeVisible();
  await expect(overview.getByRole('button', { name: 'Open Design', exact: true })).not.toBeVisible();
  await overview.getByRole('button', { name: 'Open Engine', exact: true }).click({ button: 'right' });
- await expectThemedSurface(page, page.getByRole('menu', { name: 'Actions for Engine', exact: true }));
+ await expectThemedSurface(page, page.getByRole('menu', { name: 'Actions for Engine', exact: true }), menuSurface);
  await expectAccessible(page);
  await page.keyboard.press('Escape');
  await expect(overview).toBeVisible();
@@ -189,7 +189,7 @@ test('platform tab shortcuts create, close, reopen, navigate and open overview',
  await page.keyboard.press('Escape');
  await page.getByRole('tab').first().click({ button: 'right' });
  const menu = page.getByRole('menu').first();
- await expect(menu.locator('kbd').first()).toHaveText(mac ? '⌘ W' : 'Ctrl W');
+ await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl W');
  await page.keyboard.press('Escape');
  const commandTabHandled = await page.evaluate(() => {
   const event = new KeyboardEvent('keydown', { key: 'Tab', code: 'Tab', metaKey: true, bubbles: true, cancelable: true });
@@ -282,7 +282,7 @@ test('groups have distinct names and support overview moves, rename and reload',
  const group = page.locator('.workspace-group-label');
  await expect(group).toHaveCount(1);
  await group.click({ button: 'right' });
- await page.getByRole('menuitem', { name: 'Rename group', exact: true }).click();
+ await page.getByRole('menuitem', { name: 'Rename', exact: true }).click();
  await page.getByRole('dialog', { name: 'Rename group' }).getByRole('textbox', { name: 'Name' }).fill('Release');
  await page.getByRole('button', { name: 'Save', exact: true }).click();
  await group.click();
@@ -300,8 +300,8 @@ test('groups have distinct names and support overview moves, rename and reload',
 test('dragging onto a collapsed group label groups the tab and preserves its draft', async ({ page }) => {
  await page.goto('/'); await rename(page, 0, 'Grouped');
  await page.getByRole('tab', { name: 'Grouped', exact: true }).click({ button: 'right' });
- await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
- await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
+ await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
+ await page.getByRole('menuitem', { name: /^New group…/ }).click();
  await newConversation(page);
  await rename(page, 0, 'Incoming');
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Keep my context');
