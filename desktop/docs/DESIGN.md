@@ -83,6 +83,8 @@ The codeaf C is one vector arc, not a text glyph. The same geometry produces the
 
 `npm run design:check` runs before every production build and checks generated outputs, known CSS tokens, literal CSS style values, typography/opacity literals, breakpoints, icon import boundaries, raw screen controls, inline styles and per-screen SVGs. Regression tests prove common violations fail. `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md` require all contributors to use that gate. This is a concrete baseline; it does not automatically judge every visual design decision. Human review still checks coherence, readable contrast and native behavior. No branch protection or successful remote CI run is implied.
 
+Icons come from `@animateicons/react` plus, only where it has no glyph, `lucide-react` 0.460.0 (file-json, file-code-2), both imported solely in `Icon.tsx`.
+
 Sources: [AnimateIcons](https://github.com/Avijit07x/animateicons), [Lucide](https://lucide.dev/), and the [alternative family browser](https://icons.lndev.me/?lib=heroicons).
 
 ## Motion and interaction states
