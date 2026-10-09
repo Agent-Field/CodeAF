@@ -13,6 +13,7 @@ export type HomePageProps = {
   actions: PlaceActions;
   /** The composer that starts a chat in this place (↵ new tab after Home, ⌘↵ background): the conversation feature owns it. */
   composer?: ReactNode;
+  suggestion?: ReactNode;
   /** Injected so tests and the specimen are deterministic; the live page uses the real time. */
   now?: Date;
   /** The host's label for Open in new window (⌘↵ on Mac, Ctrl ↵ elsewhere). */
@@ -21,7 +22,7 @@ export type HomePageProps = {
 
 /** A place's Home, the root's All places, or Now (Places 8a to 8e). One page; `view.kind` says which. Everything it shows is in `view`; every
  * control it draws exists because the owner wired the verb behind it. Loading, error and offline are states of this page, not other pages. */
-export function HomePage({ view, connection = { state: 'ready' }, actions, composer, now, newWindowHint }: HomePageProps) {
+export function HomePage({ view, connection = { state: 'ready' }, actions, composer, suggestion, now, newWindowHint }: HomePageProps) {
   const runner = useRunner();
   const drag = useDragState();
   const deletion = useDeleteFlow(actions, runner);
@@ -42,7 +43,7 @@ export function HomePage({ view, connection = { state: 'ready' }, actions, compo
 
   if (view.kind === 'root') {
     return <HomeFrame label="All places" composer={composer}>
-      <AllPlacesPage view={view} actions={actions} readOnly={readOnly} runner={runner} drag={drag} onDelete={deletion.start} now={clock} notices={notices}/>
+      <AllPlacesPage suggestion={suggestion} view={view} actions={actions} readOnly={readOnly} runner={runner} drag={drag} onDelete={deletion.start} now={clock} notices={notices}/>
     </HomeFrame>;
   }
 

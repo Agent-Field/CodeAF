@@ -14,6 +14,7 @@
 // `world` record, which is what makes the places store read the graph again, exactly as the live window does.
 
 import type { Page, Route } from '@playwright/test';
+import type { PlaceProposal } from '../../../src/features/places/proposals-client';
 import type {
   AddedBy, ChatRow, Crumb, HomeDigest, Mutation, PlaceCounts, PlaceDetail, PlaceView, PlacesGraph, Receipt, SourceKind, SourceView, StatusRollup, Tint,
 } from '../../../src/features/places/client';
@@ -49,6 +50,7 @@ export type SeedChat = {
 };
 
 export type PlacesSeed = {
+  proposals?: PlaceProposal[];
   places?: SeedPlace[];
   chats?: SeedChat[];
   /** Chat ids a live bridge conversation holds though the world has not saved them yet: filing them is allowed. */
@@ -102,6 +104,8 @@ export type MockPlaces = {
   fail: (key: RouteKey, forced: Forced | undefined) => void;
   /** Moves the world sequence, so the window reads the graph again. */
   nudge: () => void;
+  /** A delayed ledger answer, without a world event, as actual advice finishes asynchronously. */
+  propose: (next: PlaceProposal[]) => void;
   /** POSTs whose path ends with the suffix. */
   posts: (suffix: string) => PlacesCall[];
 };
@@ -111,6 +115,8 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
   const nextId = (prefix: string) => `${prefix}_${hex(++counter)}`;
   const now = () => new Date().toISOString();
   let revision = 0;
+  const offers = structuredClone(seed.proposals ?? []);
+  const offersView = () => ({ proposals: offers, organizing: false });
   let store: Store = { places: [], pins: [], members: [], chats: [] };
   const overrides = new Map<string, Partial<StatusRollup>>();
   const live = new Set(seed.live ?? []);
@@ -599,6 +605,22 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
         const known = store.chats.some(c => c.id === id);
         return json(route, { chatId: id, known, places: store.members.filter(m => m.chatId === id && get(m.placeId)).map(m => { const p = get(m.placeId)!; return { id: p.id, name: p.name, tint: effectiveTint(p), addedBy: m.addedBy, at: m.at, archived: p.archived }; }) });
       }
+      if (root === 'places' && id === 'proposals') {
+        if (method === 'GET' && !verb) return json(route, offersView());
+        const index = offers.findIndex(offer => offer.id === verb);
+        const offer = offers[index];
+        if (method !== 'POST' || !offer) return json(route, { error: 'That offer is no longer open.', code: 'gone' }, 409);
+        if (sub === 'decline') { offers.splice(index, 1); return json(route, offersView()); }
+        if (sub !== 'accept') return json(route, { error: 'unknown route' }, 404);
+        if (body.offerVersion !== offer.offerVersion) return json(route, { error: 'That offer changed since you saw it.', code: 'stale_offer' }, 409);
+        const receipts: Receipt[] = [];
+        let target = offer.placeId;
+        if (offer.kind === 'create') { const made = create({ name: offer.name, parent: offer.parentId }); target = made.place?.id; receipts.push(...made.receipts); }
+        if (!target) return json(route, { error: 'That place no longer exists.' }, 409);
+        receipts.push(...members(target, { chats: offer.chatIds, addedBy: 'ai' }).receipts);
+        offers.splice(index, 1);
+        return json(route, { proposal: { ...offer, status: 'accepted' }, placeId: target, receipts, view: offersView() });
+      }
       if (method === 'GET') {
         if (!id) return json(route, graph(url.searchParams.get('archived') === '1'));
         if (id === 'status') {
@@ -642,6 +664,7 @@ export async function installMockPlaces(page: Page, seed: PlacesSeed = {}): Prom
     setStatus: (placeId, rollup) => { overrides.set(placeId, rollup); nudge(); },
     fail: (key, value) => { if (value) forced.set(key, value); else forced.delete(key); },
     nudge,
+    propose: next => { offers.splice(0, offers.length, ...structuredClone(next)); },
     posts: suffix => calls.filter(call => call.method === 'POST' && call.path.endsWith(suffix)),
   };
 }

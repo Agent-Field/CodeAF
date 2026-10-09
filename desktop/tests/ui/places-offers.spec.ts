@@ -1,0 +1,55 @@
+import { test, expect } from '@playwright/test';
+import { installMockEngine } from './support/mock-engine';
+import { installMockPlaces, sessionFileFor } from './support/mock-places';
+import type { PlaceProposal } from '../../src/features/places/proposals-client';
+const reading = 'pl_0123456789abcdef';
+const cluster: PlaceProposal = { id: 'prop_0123456789abcdef', kind: 'move', status: 'pending', chatIds: ['a', 'b', 'c', 'd', 'e'], placeId: reading, reason: 'Looks like Reading', offerVersion: 'current-v1' };
+for (const theme of ['light', 'dark']) {
+  test(`cluster accept once and canonical Undo · ${theme}`, async ({ page }) => {
+    await page.addInitScript(theme => localStorage.setItem('codeaf-theme', theme), theme);
+    await installMockEngine(page, { initial: { entries: [], title: '' } });
+    const places = await installMockPlaces(page, { places: [{ id: reading, name: 'Reading' }], chats: cluster.chatIds!.map(id => ({ id, title: `Read ${id}` })), proposals: [cluster] });
+    await page.goto('/');
+    await page.getByRole('button', { name: /^All places/ }).click();
+    const line = page.getByLabel('Place suggestion', { exact: true });
+    await expect(line).toContainText('5 of these look like they belong in Reading');
+    await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/cluster-${theme}-${test.info().project.name}.png` });
+    await line.getByRole('button', { name: 'Move them', exact: true }).click();
+    await expect(line).toHaveCount(0);
+    expect(places.posts('/accept')).toHaveLength(1);
+    expect(places.posts('/accept')[0].body).toEqual({ offerVersion: 'current-v1' });
+    expect(places.state().members).toHaveLength(5);
+    await page.locator('.toast').getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect.poll(() => places.state().members.length).toBe(0);
+    await page.reload();
+    await expect(line).toHaveCount(0);
+    expect(places.traffic.some(call => call.path.endsWith('/organize'))).toBe(false);
+  });
+  test(`Not now persists; first reply offer uses canonical chat · ${theme}`, async ({ page }) => {
+    await page.addInitScript(theme => localStorage.setItem('codeaf-theme', theme), theme);
+    await installMockEngine(page, { initial: { entries: [], title: '', sessionFile: sessionFileFor('mock-1') }, turns: [{ entries: [{ Role: 'assistant', Text: 'Finished reading.', Answer: true } as never] }] });
+    const file: PlaceProposal = { ...cluster, id: 'prop_fedcba9876543210', kind: 'file', chatIds: ['mock-1'], reason: 'Looks like the work in Reading' };
+    const places = await installMockPlaces(page, { places: [{ id: reading, name: 'Reading' }], chats: cluster.chatIds!.map(id => ({ id, title: `Read ${id}` })), live: ['mock-1'], proposals: [cluster] });
+    await page.goto('/');
+    await page.getByRole('button', { name: /^All places/ }).click();
+    const line = page.getByLabel('Place suggestion', { exact: true });
+    await line.getByRole('button', { name: 'Not now', exact: true }).click();
+    await expect(line).toHaveCount(0);
+    await page.reload();
+    await expect(line).toHaveCount(0);
+    await page.keyboard.press((await page.evaluate(() => /Mac/.test(navigator.platform))) ? 'Meta+t' : 'Control+t');
+    await page.getByRole('combobox', { name: 'Search or start' }).fill('Read this.');
+    await page.keyboard.press('Enter');
+    await expect(page.getByText('Finished reading.', { exact: true })).toBeVisible();
+    await expect(line).toHaveCount(0);
+    places.propose([{ ...file, id: 'prop_0000000000000001', chatIds: ['another-chat'] }, file]);
+    await expect(line).toContainText('Looks like the work in Reading', { timeout: 8000 });
+    await expect(line.locator('..')).toHaveAttribute('data-turn', /.+/);
+    await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/first-reply-${theme}-${test.info().project.name}.png` });
+    await line.getByRole('button', { name: 'Add to Reading', exact: true }).click();
+    await expect(line).toHaveCount(0);
+    expect(places.posts('/decline')).toHaveLength(1);
+    expect(places.posts('/accept')).toHaveLength(1);
+    expect(places.state().members.filter(member => member.chatId === 'mock-1')).toHaveLength(1);
+  });
+}
