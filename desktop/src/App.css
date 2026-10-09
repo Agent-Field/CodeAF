@@ -54,3 +54,23 @@ small { font-size: var(--font-size-caption); color: var(--muted); }.type-sample 
 .swatch.composer-surface { background: var(--composer-surface); }
 
 .swatch.overlay-surface { background: var(--overlay-surface); }
+
+/* Design v3 controls specimen: the designer's canvas panel inside the specimen page. */
+.controls-specimen { display: flex; flex-direction: column; gap: var(--space-section-inner); width: 100%; padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--canvas); box-shadow: inset 0 0 0 var(--hairline) var(--line); color: var(--ink); font-family: var(--sans); }
+.controls-specimen-group { display: flex; flex-direction: column; gap: var(--space-compact); min-width: 0; }
+.controls-specimen-label { font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); color: var(--ink-3); }
+.controls-specimen-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.controls-specimen-icons { gap: var(--space-1); color: var(--ink-2); }
+.controls-specimen-note { margin-left: var(--space-2); font-size: var(--type-caption-size); color: var(--ink-3); }
+.controls-specimen-columns { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+.controls-specimen-grow { flex: 1; min-width: var(--overview-card-min-width); }
+.controls-specimen-mark { display: inline-flex; align-items: center; gap: var(--space-compact); font-size: var(--type-label-size); margin-right: var(--space-2); }
+.controls-specimen .row { font-size: var(--type-prose-size); }
+.role-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--swatch-width), 1fr)); gap: var(--space-3); }
+.role-swatch { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.role-swatch small { color: var(--ink-3); overflow-wrap: anywhere; }
+.role-swatch-chip { height: var(--swatch-height); border-radius: var(--radius-control); box-shadow: inset 0 0 0 var(--hairline) var(--line); }
+.role-swatch-chip[data-role="canvas"] { background: var(--canvas); }.role-swatch-chip[data-role="frame"] { background: var(--frame); }.role-swatch-chip[data-role="surface"] { background: var(--surface); }.role-swatch-chip[data-role="field"] { background: var(--field); }
+.role-swatch-chip[data-role="field-2"] { background: var(--field-2); }.role-swatch-chip[data-role="bubble"] { background: var(--bubble); }.role-swatch-chip[data-role="term"] { background: var(--term); }.role-swatch-chip[data-role="line"] { background: var(--line); }
+.role-swatch-chip[data-role="ink"] { background: var(--ink); }.role-swatch-chip[data-role="ink-2"] { background: var(--ink-2); }.role-swatch-chip[data-role="ink-3"] { background: var(--ink-3); }.role-swatch-chip[data-role="accent"] { background: var(--accent); }
+.role-swatch-chip[data-role="accent-soft"] { background: var(--accent-soft); }.role-swatch-chip[data-role="amber"] { background: var(--amber); }.role-swatch-chip[data-role="danger"] { background: var(--danger); }.role-swatch-chip[data-role="success"] { background: var(--success); }

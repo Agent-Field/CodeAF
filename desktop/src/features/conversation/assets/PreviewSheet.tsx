@@ -11,7 +11,7 @@ function Unavailable({ reason, onOpen }: { reason: string; onOpen: () => void })
   return (
     <div className="sheet-note">
       <Text>{reason}</Text>
-      <Button variant="secondary" onClick={onOpen}>Open</Button>
+      <Button variant="quiet" onClick={onOpen}>Open</Button>
     </div>
   );
 }

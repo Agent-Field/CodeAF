@@ -425,6 +425,17 @@
   --latest-shimmer-edge: 35%;
   --latest-shimmer-mid: 50%;
   --latest-shimmer-far: 65%;
+  --brightness-hover: 1.07;
+  --brightness-press: .94;
+  --tooltip-pad-y: 4px;
+  --tooltip-pad-x: 8px;
+  --chip-pad-start: 5px;
+  --chip-pad-end: 7px;
+  --chip-gap: 5px;
+  --field-focus-ring: 1px;
+  --field-focus-halo: 4px;
+  --specimen-pad: 28px;
+  --specimen-radius: 16px;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

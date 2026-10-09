@@ -1,10 +1,23 @@
 import type { ButtonHTMLAttributes, Ref } from 'react';
 import { Icon, type IconName, type IconSize } from './Icon';
-type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'quiet' | 'secondary' | 'primary'; loading?: boolean };
-export function Button({ variant = 'quiet', loading = false, disabled, className = '', type = 'button', ...props }: ButtonProps) {
+import { useTooltip } from './Tooltip';
+
+/** The designer's control set. Primary is the one action per surface; the safe choice is quiet.
+ * Raised sits on a surface with sh-1; ghost is the bare, row-like default; danger is soft. */
+export type ButtonVariant = 'primary' | 'raised' | 'quiet' | 'ghost' | 'danger';
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; loading?: boolean };
+export function Button({ variant = 'ghost', loading = false, disabled, className = '', type = 'button', ...props }: ButtonProps) {
  return <button {...props} type={type} className={`button button-${variant} ${className}`} disabled={disabled || loading} aria-busy={loading || undefined}/>;
 }
-type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-label'> & { ref?: Ref<HTMLButtonElement>; label: string; icon: IconName; iconSize?: IconSize };
-export function IconButton({ label, icon, iconSize = 'md', className = '', type = 'button', ...props }: IconButtonProps) {
- return <button {...props} type={type} aria-label={label} title={props.title ?? label} className={`icon-button ${className}`}><Icon name={icon} size={iconSize}/></button>;
+
+/** control: 28px toolbar button. row: 24px action inside a hovered row. message: 26px message action. */
+export type IconButtonSize = 'control' | 'row' | 'message';
+type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-label'> & { ref?: Ref<HTMLButtonElement>; label: string; icon: IconName; iconSize?: IconSize; size?: IconButtonSize };
+/** Icon-only, so it always carries an accessible name and the shared delayed tooltip (title text or the label). */
+export function IconButton({ label, icon, iconSize = 'md', size = 'control', className = '', type = 'button', title, onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur, ...props }: IconButtonProps) {
+ const tooltip = useTooltip(title ?? label, { onPointerEnter, onPointerLeave, onPointerDown, onFocus, onBlur });
+ return <>
+  <button {...props} {...tooltip.props} type={type} aria-label={label} data-size={size} className={`icon-button ${className}`}><Icon name={icon} size={iconSize}/></button>
+  {tooltip.element}
+ </>;
 }

@@ -58,7 +58,7 @@ test('permission: allow once is primary, deny is quiet and carries the reason', 
   const q = consent(1);
   const [allow, always, deny] = q.options!;
   assert.equal(optionVariant(q, allow), 'primary');
-  assert.equal(optionVariant(q, always), 'secondary');
+  assert.equal(optionVariant(q, always), 'raised');
   assert.equal(optionVariant(q, deny), 'quiet');
   assert.equal(optionLabel(q, deny), 'Deny');
   const draft = { ...initialDraft(q), change: ' too risky ' };

@@ -1,4 +1,5 @@
 import type { ComponentPropsWithRef } from 'react';
-export function TextInput(props: ComponentPropsWithRef<'input'>) {
- return <input {...props} className={`text-input ${props.className ?? ''}`}/>;
+/** bare: an unframed input inside its own surface (palette, composer). field: the designer's 30px field with the focus halo. */
+export function TextInput({ appearance = 'bare', ...props }: ComponentPropsWithRef<'input'> & { appearance?: 'bare' | 'field' }) {
+ return <input {...props} className={`text-input ${appearance === 'field' ? 'text-input-field' : ''} ${props.className ?? ''}`}/>;
 }

@@ -76,17 +76,17 @@ export function optionLabel(question: Question, option: Option): string {
   return sentenceStart(option.label) + dots;
 }
 
-export type Variant = 'primary' | 'secondary' | 'quiet';
+export type Variant = 'primary' | 'raised' | 'quiet';
 
 /** The Pick is the loud one; the Safe answer is always the quiet one. */
 export function optionVariant(question: Question, option: Option): Variant {
   if (option.safe) return 'quiet';
   const pick = question.pick?.key;
-  if (pick) return option.key === pick ? 'primary' : 'secondary';
+  if (pick) return option.key === pick ? 'primary' : 'raised';
   const first = visibleOptions(question).find(
     (candidate) => !candidate.safe && !candidate.widening && !needsWords(question, candidate),
   );
-  return first?.key === option.key ? 'primary' : 'secondary';
+  return first?.key === option.key ? 'primary' : 'raised';
 }
 
 const SCOPE_LABELS: Record<string, string> = {

@@ -67,7 +67,7 @@ export function PairRows({ question, draft, edit, locked }: FormProps) {
               {sides.map((side) => (
                 <Button
                   key={side}
-                  variant={draft.blanks[blank.label] === side ? 'secondary' : 'quiet'}
+                  variant={draft.blanks[blank.label] === side ? 'raised' : 'ghost'}
                   aria-pressed={draft.blanks[blank.label] === side}
                   disabled={locked}
                   onClick={() => set(blank.label, side)}

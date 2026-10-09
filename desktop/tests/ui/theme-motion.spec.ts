@@ -110,14 +110,22 @@ for (const theme of ['Light','Dark']) {
   const address=page.getByRole('button',{name:'codeaf',exact:true});
   await address.hover(); await expect(address).toHaveCSS('background-color',await tokenColor(page,'control-hover'));
   await page.getByRole('button',{name:'Design system',exact:true}).click();
-  const secondary=page.getByRole('button',{name:'Secondary action',exact:true});
-  await secondary.hover(); await expect(secondary).toHaveCSS('background-color',await tokenColor(page,'control-hover'));
-  await expect(secondary).toHaveCSS('border-color',await tokenColor(page,'control-border-hover'));
-  await page.mouse.down(); await expect(secondary).toHaveCSS('background-color',await tokenColor(page,'control-pressed')); await page.mouse.up();
+  // Design v3 controls: hover changes only the fill, press darkens it, focus is the accent ring and halo.
+  const controls=page.locator('.controls-specimen');
+  const quiet=controls.getByRole('button',{name:'Deny',exact:true});
+  await expect(quiet).toHaveCSS('background-color',await tokenColor(page,'field'));
+  await quiet.hover(); await expect(quiet).toHaveCSS('background-color',await tokenColor(page,'field-2'));
+  await page.mouse.down(); await expect(quiet).toHaveCSS('filter',`brightness(${Number(design.foundation['brightness-press'])})`); await page.mouse.up();
   // macOS WebKit uses Option-Tab to include buttons in keyboard navigation.
-  await secondary.focus(); await page.keyboard.press(browserName==='webkit'?'Alt+Tab':'Tab'); await page.keyboard.press(browserName==='webkit'?'Alt+Shift+Tab':'Shift+Tab');
-  await expect(secondary).toBeFocused();
-  await expect(secondary).toHaveCSS('outline-color',await tokenColor(page,'focus-ring'));
-  await expect(page.getByRole('button',{name:'Disabled',exact:true})).toBeDisabled();
+  await quiet.focus(); await page.keyboard.press(browserName==='webkit'?'Alt+Tab':'Tab'); await page.keyboard.press(browserName==='webkit'?'Alt+Shift+Tab':'Shift+Tab');
+  await expect(quiet).toBeFocused();
+  expect(await quiet.evaluate(node=>getComputedStyle(node).boxShadow)).toContain(await tokenColor(page,'accent'));
+  await expect(controls.getByRole('button',{name:'Disabled',exact:true})).toHaveCSS('opacity',design.foundation['opacity-control-disabled']);
+  const row=controls.locator('.row').nth(1);
+  await expect(row.locator('.row-actions')).toHaveCSS('opacity','0');
+  await row.hover(); await expect(row.locator('.row-actions')).toHaveCSS('opacity','1');
+  const copy=controls.getByRole('button',{name:'Copy',exact:true});
+  await copy.hover(); await expect(page.getByRole('tooltip',{name:'Copy'})).toBeVisible();
+  await expect(controls.getByRole('button',{name:'Disabled',exact:true})).toBeDisabled();
  });
 }
