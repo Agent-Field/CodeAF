@@ -1,6 +1,7 @@
 package tui3
 
 import (
+	"context"
 	"strconv"
 	"strings"
 
@@ -240,17 +241,100 @@ func (a *app) factoryStageFor(it factory.Item) int {
 
 // factoryOpenItem is `enter` on a row: the item page opens over the floor on
 // the row [app.factoryStageFor] names, with the issue read from its top. It
-// answers false with no item under the cursor.
-func (a *app) factoryOpenItem() bool {
+// answers false with no item under the cursor, and the command that lets the
+// manager read the issue when the item is owed that ([app.factoryShapeOnOpen]).
+func (a *app) factoryOpenItem() (tea.Cmd, bool) {
 	it, ok := a.factoryCursorItem()
 	if !ok {
-		return false
+		return nil, false
 	}
 	a.fp.open, a.fp.stage, a.fp.said = true, a.factoryStageFor(it), false
 	a.fp.scroll, a.fp.scrollID = 0, it.ID
 	a.pageMsg = ""
 	a.touch()
-	return true
+	return a.factoryShapeOnOpen(it), true
+}
+
+// ── THE MANAGER READS THE ISSUE WHEN YOU OPEN IT ────────────────────────────
+//
+// The owner's decision of 2026-10-08. The first time this window opens the
+// page of an item the manager has never shaped, the floor's Shape door
+// ([factory.Seam.Shape]) gives the manager its shaping turn at once, off the
+// loop and off the ordered line (a turn waits on a model, and a key pressed
+// meanwhile must not wait behind it). The story shows the manager thinking
+// ([app.factoryManagerThinking]) until the door answers; the floor is then
+// read, so the stages redraw as the manager set them. The note line says the
+// door's line only when the turn failed.
+//
+// ONCE PER ITEM PER WINDOW, and never for an item only seen on the floor. The
+// door itself decides the rest (an item whose conversation the person spoke in
+// is left alone) and answers [factory.ShapeAlready], which says nothing.
+
+// factoryShapeOnOpen asks the Shape door for it when this window has not yet,
+// and answers nil when there is no door or nothing is owed.
+func (a *app) factoryShapeOnOpen(it factory.Item) tea.Cmd {
+	shape := a.factory.Shape
+	if shape == nil || a.fp.shapeAsked[it.ID] || factoryShapedAlready(it) {
+		return nil
+	}
+	if a.fp.shapeAsked == nil {
+		a.fp.shapeAsked = map[int]bool{}
+	}
+	if a.fp.shaping == nil {
+		a.fp.shaping = map[int]bool{}
+	}
+	id := it.ID
+	a.fp.shapeAsked[id] = true
+	a.fp.shaping[id] = true
+	a.factoryManagerThinking(id, true)
+	load := a.factory.Load
+	return a.besideLine(func() func(bool) tea.Cmd {
+		line, err := shape(context.Background(), id)
+		var snap factory.Snapshot
+		var lerr error
+		if load != nil {
+			snap, lerr = load()
+		}
+		return func(bool) tea.Cmd {
+			delete(a.fp.shaping, id)
+			a.factoryManagerThinking(id, false)
+			switch {
+			case lerr != nil:
+				a.fp.err = lerr
+			case load != nil:
+				a.factoryFold(snap)
+			}
+			if err != nil && strings.TrimSpace(line) != factory.ShapeAlready {
+				said := strings.TrimSpace(line)
+				if said == "" {
+					said = strings.TrimSpace(err.Error())
+				}
+				a.pageMsg = said
+			}
+			a.touch()
+			return nil
+		}
+	})
+}
+
+// factoryShapedAlready says what the floor already shows about an item that
+// is owed no shaping turn: it ran, or the manager set its stages or kept its
+// recipe. The door holds the same rule and the person's lines besides.
+func factoryShapedAlready(it factory.Item) bool {
+	if s := it.Stream; s != nil && (!s.Started.IsZero() || len(s.Phases) > 0) {
+		return true
+	}
+	for _, st := range it.Stages {
+		if st.By == factory.ByManager {
+			return true
+		}
+	}
+	for _, l := range it.Adapted {
+		if strings.HasPrefix(strings.TrimSpace(l), factory.ByManager+" ") {
+			return true
+		}
+	}
+	return false
 }
 
 // factoryCloseItem is `esc` on the item page: the floor comes back with its
@@ -384,7 +468,7 @@ func (a *app) factoryLayoutKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		a.factoryRefocus(func() { a.fp.comfy = !a.fp.comfy })
 		return nil, true
 	case "enter":
-		return nil, a.factoryOpenItem()
+		return a.factoryOpenItem()
 	}
 	return nil, false
 }
