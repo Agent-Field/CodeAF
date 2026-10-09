@@ -24,6 +24,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/remote"
 	"github.com/Agent-Field/codeaf/internal/session"
+	"github.com/Agent-Field/codeaf/internal/workspacestore"
 )
 
 const Model = "deepseek/deepseek-v4.1-flash"
@@ -163,6 +164,8 @@ type Bridge struct {
 	models    *Models
 	places    *Places
 	history   *History
+	// workspaces holds each window place's tab set (workspaces.go).
+	workspaces *workspacestore.Store
 	// world is the engine-wide feed (worldstream.go); nil until first used.
 	world *WorldFeed
 }
@@ -512,6 +515,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if b.historyRoutes(w, r, path) {
+		return
+	}
+	if b.workspaceRoutes(w, r, path) {
 		return
 	}
 	if b.worldRoutes(w, r, path) {
