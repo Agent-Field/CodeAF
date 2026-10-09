@@ -1,0 +1,23 @@
+/* Work rhythm: muted, tight rows, indented under a 1px guide. */
+.task-log { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; margin-block: calc(var(--space-work-block) - var(--space-answer)); }
+.task-log-toggle.button { min-height: var(--step-row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); }
+.task-log-toggle .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
+.task-log-toggle[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: none; }
+
+.task-log-list { display: flex; flex-direction: column; gap: var(--space-work-row); width: 100%; min-width: 0; margin: var(--space-work-row) var(--motion-rest) var(--motion-rest) var(--space-1); padding: var(--motion-rest) var(--motion-rest) var(--motion-rest) calc(var(--work-indent) - var(--space-1)); list-style: none; border-inline-start: var(--border-width) solid var(--work-guide); }
+.task-log-step { display: flex; flex-direction: column; min-width: 0; }
+
+.task-log-line { display: flex; align-items: baseline; gap: var(--space-tight); width: 100%; min-width: 0; min-height: var(--step-row-height); box-sizing: border-box; padding: var(--space-half) var(--space-1); color: var(--muted); font-size: var(--font-size-body); text-align: left; }
+.task-log-line.button { justify-content: flex-start; border: 0; }
+.task-log-prompt.type-code { flex-shrink: 0; color: var(--muted); }
+.task-log-command.type-code { flex: 1; min-width: var(--motion-rest); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--font-size-code); }
+.task-log-step[data-state="refused"] .task-log-command { color: var(--muted); }
+.task-log-outcome { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--space-1); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
+.task-log-mark { display: inline-flex; }
+.task-log-outcome[data-state="failed"] { color: var(--warning); }
+.task-log-outcome[data-state="running"] { color: var(--accent); }
+
+.task-log-detail { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: var(--space-half) var(--space-1) var(--space-1) var(--space-section); }
+.task-log-output { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; border-radius: var(--radius-sm); background: var(--field); color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-log-error { margin: 0; color: var(--warning); font-size: var(--font-size-label); }
+.task-log-more.button { min-height: var(--icon-button-size); padding-inline: var(--space-half); font-size: var(--font-size-label); }

@@ -1,90 +1,54 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { readTaskPage, type EngineTaskPage } from '../chat/engine-client';
-import { Button, Icon, Markdown, PageHeading, Text } from '../../components/ui';
-import { StateMark } from './StateMark';
-import { TaskNotice } from './TaskNotice';
-import { isTaskRunning, taskPageModel, type TaskPageModel } from './taskPageTurn';
-import { taskMark } from './taskState';
-import type { TurnItem } from './types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { readEngineFile, readTaskPage, taskAction, type TaskAction } from '../chat/engine-client';
+import { Button, Text } from '../../components/ui';
+import type { ReadFile } from './tasks/LogStep';
+import { TaskComposer } from './tasks/TaskComposer';
+import { TaskHead, type HeadActions } from './tasks/TaskHead';
+import { TaskLinks } from './tasks/TaskLinks';
+import { TaskNotes, type Outbox } from './tasks/TaskNotes';
+import { Checks, ChangedFiles, Instructions, LastWords, Result, type RenderFile } from './tasks/TaskSections';
+import type { TaskPage } from './tasks/taskTypes';
+import { useNow } from './tasks/useNow';
+import { WorkLog } from './tasks/WorkLog';
+import { isTaskRunning, taskPageModel } from './taskPageTurn';
 import './task-view.css';
 
 const REFRESH_MS = 3000;
 
-type RenderItem = (item: TurnItem) => ReactNode;
 type OpenTask = (taskId: string, background: boolean) => void;
 
-function StatusLine({ model }: { model: TaskPageModel }) {
-  const label = taskMark(model.status, model.stopped).label;
-  return (
-    <div className="task-view-status">
-      <StateMark status={model.status} stopped={model.stopped} />
-      <span>{model.detail ? `${label} \u00b7 ${model.detail}` : label}</span>
-    </div>
-  );
-}
+export type TaskPageBodyProps = {
+  page: TaskPage;
+  now: number;
+  onOpenTask: OpenTask;
+  actions?: HeadActions;
+  actionError?: string;
+  renderFile?: RenderFile;
+  readFile?: ReadFile;
+  /** A note being sent, drawn as a bubble until the engine's record replaces it. */
+  outbox?: Outbox;
+};
 
-/** The worker brief is for the engine; it stays one quiet step away. */
-function Instructions({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  if (!text.trim()) return null;
-  return (
-    <div className="task-view-instructions">
-      <Button className="task-view-disclosure" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon name="chevron" size="xs" motion="disclosure" />
-        <span>Instructions</span>
-      </Button>
-      {open && (
-        <div className="task-view-brief">
-          <Markdown>{text}</Markdown>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Checks({ checks }: { checks: string[] }) {
-  if (checks.length === 0) return null;
-  return (
-    <ul className="task-view-list" aria-label="Checks">
-      {checks.map((check, index) => (
-        <li key={index} className="task-view-check">
-          <Icon name="checklist" size="xs" />
-          <span>{check}</span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-type BodyProps = { page: EngineTaskPage; renderItem: RenderItem; onOpenTask: OpenTask };
-
-export function TaskPageBody({ page, renderItem, onOpenTask }: BodyProps) {
-  const model = taskPageModel(page);
+/** A task is a conversation: result first, then the work, the notes, the brief. */
+export function TaskPageBody({ page, now, onOpenTask, actions = {}, actionError, renderFile, readFile, outbox }: TaskPageBodyProps) {
+  const model = taskPageModel(page, now);
   return (
     <article className="task-view-body">
-      <header className="task-view-head">
-        <PageHeading className="task-view-title">{model.title}</PageHeading>
-        <StatusLine model={model} />
-      </header>
-      {model.result && <Markdown>{model.result}</Markdown>}
-      {model.worked && <div className="task-view-worked">{renderItem(model.worked)}</div>}
+      <TaskHead model={model} actions={actions} actionError={actionError} />
+      <Result text={model.result} />
+      <LastWords text={model.lastWords} shown={model.ended && !model.result} />
+      <ChangedFiles paths={model.changed} renderFile={renderFile} />
+      <WorkLog steps={model.steps} live={model.live} ended={model.ended} now={now} readFile={readFile} />
+      <TaskNotes notes={model.notes} outbox={outbox} />
       <Instructions text={model.instructions} />
       <Checks checks={model.checks} />
-      {model.notes.map((note, index) => (
-        <Text key={index} className="task-view-note">{note}</Text>
-      ))}
-      {model.children.length > 0 && (
-        <div className="task-view-children">
-          {model.children.map((child) => (
-            <TaskNotice key={child.id} item={child} open={false} onToggle={() => undefined} onOpenTask={onOpenTask} />
-          ))}
-        </div>
-      )}
+      <TaskLinks label="Tasks inside this one" links={model.children} onOpenTask={onOpenTask} />
+      <TaskLinks label="Waits on" links={model.waits} onOpenTask={onOpenTask} />
     </article>
   );
 }
 
-type Load = { page?: EngineTaskPage; error?: string; loading: boolean };
+type Load = { page?: TaskPage; error?: string; loading: boolean };
 
 function useTaskPage(sessionId: string, taskId: string) {
   const [load, setLoad] = useState<Load>({ loading: true });
@@ -92,9 +56,10 @@ function useTaskPage(sessionId: string, taskId: string) {
   const timer = useRef<number | undefined>(undefined);
 
   const fetchPage = useCallback(async () => {
+    window.clearTimeout(timer.current);
     const mine = ++generation.current;
     try {
-      const page = await readTaskPage(sessionId, taskId);
+      const page = (await readTaskPage(sessionId, taskId)) as TaskPage;
       if (mine !== generation.current) return;
       setLoad({ page, loading: false });
       if (isTaskRunning(page)) timer.current = window.setTimeout(fetchPage, REFRESH_MS);
@@ -115,15 +80,63 @@ function useTaskPage(sessionId: string, taskId: string) {
   }, [fetchPage]);
 
   const retry = useCallback(() => {
-    window.clearTimeout(timer.current);
     setLoad((previous) => ({ ...previous, error: undefined }));
     void fetchPage();
   }, [fetchPage]);
-  return { load, retry };
+  return { load, retry, refresh: fetchPage };
 }
 
-export function TaskView({ sessionId, taskId, renderItem, onOpenTask }: { sessionId: string; taskId: string; renderItem: RenderItem; onOpenTask: OpenTask }) {
-  const { load, retry } = useTaskPage(sessionId, taskId);
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : 'That did not go through.');
+
+/** Full command output lives in a file the engine wrote; read it through the engine's file door. */
+async function readEngineText(sessionId: string, path: string): Promise<string> {
+  const file = await readEngineFile(sessionId, path);
+  const bytes = Uint8Array.from(atob(file.dataBase64), (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+export type TaskViewProps = {
+  sessionId: string;
+  taskId: string;
+  onOpenTask: OpenTask;
+  /** Draws a changed file (the file chip); without it the path is shown as text. */
+  renderFile?: RenderFile;
+  readFile?: ReadFile;
+  /** The way back from a finished task to the conversation. */
+  onMessageConversation?: () => void;
+  now?: number;
+};
+
+export function TaskView({ sessionId, taskId, onOpenTask, renderFile, readFile, onMessageConversation, now: given }: TaskViewProps) {
+  const { load, retry, refresh } = useTaskPage(sessionId, taskId);
+  const [outbox, setOutbox] = useState<Outbox>();
+  const [actionError, setActionError] = useState('');
+  const now = useNow(isTaskRunning(load.page), given);
+  const read = readFile ?? ((path: string) => readEngineText(sessionId, path));
+
+  async function act(action: TaskAction, text?: string) {
+    await taskAction(sessionId, taskId, action, text);
+    await refresh();
+  }
+  const control = (action: TaskAction) => async () => {
+    setActionError('');
+    try {
+      await act(action);
+    } catch (error) {
+      setActionError(messageOf(error));
+    }
+  };
+  async function note(text: string) {
+    setOutbox({ text });
+    try {
+      await act('note', text);
+    } finally {
+      setOutbox(undefined);
+    }
+  }
+
+  const actions: HeadActions = { onPause: control('pause'), onResume: control('resume'), onStop: control('cancel') };
+  const model = load.page ? taskPageModel(load.page, now) : undefined;
   return (
     <div className="task-view">
       {load.loading && !load.page && <Text className="task-view-quiet">Loading…</Text>}
@@ -133,7 +146,21 @@ export function TaskView({ sessionId, taskId, renderItem, onOpenTask }: { sessio
           <Button onClick={retry}>Retry</Button>
         </div>
       )}
-      {load.page && <TaskPageBody page={load.page} renderItem={renderItem} onOpenTask={onOpenTask} />}
+      {load.page && (
+        <>
+          <TaskPageBody {...{ page: load.page, now, onOpenTask, actions, actionError, renderFile, outbox, readFile: read }} />
+          <TaskComposer
+            ended={Boolean(model?.ended)}
+            paused={Boolean(model?.controls.resume)}
+            onNote={note}
+            onAmend={(text) => act('amend', text)}
+            onPause={actions.onPause}
+            onResume={actions.onResume}
+            onStop={actions.onStop}
+            onMessageConversation={onMessageConversation}
+          />
+        </>
+      )}
     </div>
   );
 }

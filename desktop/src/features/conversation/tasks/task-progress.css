@@ -1,0 +1,6 @@
+.task-progress { display: flex; gap: var(--space-half); width: 100%; height: var(--space-1); }
+.task-progress-cell { flex: 1 1 0; min-width: var(--motion-rest); border-radius: var(--radius-xs); background: var(--control-pressed); }
+.task-progress-cell[data-segment="done"] { background: var(--success); }
+.task-progress-cell[data-segment="running"] { background: var(--accent); }
+.task-progress-cell[data-segment="queued"] { background: var(--control-pressed); }
+.task-progress-cell[data-segment="failed"] { background: var(--danger); }

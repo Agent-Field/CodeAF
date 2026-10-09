@@ -9,22 +9,20 @@
 @keyframes task-backdrop-enter { from { opacity: var(--opacity-transparent); } to { opacity: var(--opacity-opaque); } }
 @media (prefers-reduced-motion: reduce) { .task-panel[data-variant="sheet"], .task-panel-backdrop { animation: none; } }
 
-.task-panel-header { display: flex; align-items: center; gap: var(--space-tight); padding: var(--space-3) var(--space-2) var(--space-2) var(--space-4); }
+.task-panel-header { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-2) var(--space-4); }
+.task-panel-headline { display: flex; align-items: center; gap: var(--space-tight); }
 .task-panel-heading { font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
 .task-panel-count { flex: 1; color: var(--muted); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
+.task-panel-tokens { color: var(--muted); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
 .task-panel-error { padding: var(--space-1) var(--space-4) var(--space-2); font-size: var(--font-size-label); }
 
 .task-panel-list { list-style: none; margin: var(--motion-rest); padding: var(--motion-rest); }
 .task-panel-scroll { flex: 1; min-height: var(--motion-rest); overflow-y: auto; padding: var(--space-1) var(--space-2) var(--space-3); }
-.task-panel-children { padding-left: var(--space-4); }
 
-.task-panel-row { display: flex; align-items: flex-start; min-width: var(--motion-rest); border-radius: var(--radius-sm); }
-.task-panel-row[data-current] { background: var(--control-selected); }
-.task-panel-disclosure, .task-panel-spacer { flex: 0 0 var(--space-section); width: var(--space-section); }
-.task-panel-disclosure { height: var(--task-outline-row-height); color: var(--muted); }
-.task-panel-main.button { flex: 1; min-width: var(--motion-rest); min-height: var(--task-outline-row-height); justify-content: flex-start; align-items: flex-start; gap: var(--space-tight); padding: var(--space-tight) var(--space-2) var(--space-tight) var(--space-half); text-align: left; color: var(--text); font-size: var(--font-size-body); line-height: var(--line-height-tight); white-space: normal; }
-.task-panel-main .state-mark { margin-top: var(--space-half); }
-.task-panel-text { display: flex; flex-direction: column; flex: 1; min-width: var(--motion-rest); }
-.task-panel-title, .task-panel-step { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.task-panel-row[data-current] .task-panel-title { font-weight: var(--font-weight-medium); }
-.task-panel-step { color: var(--muted); font-size: var(--font-size-caption); }
+/* The guide hangs under the parent's chevron, one level per tree-indent, like Arc's sidebar. */
+.task-panel-children { margin-inline-start: calc(var(--tree-indent) / 2 - var(--border-width)); padding-inline-start: calc(var(--tree-indent) / 2); border-inline-start: var(--border-width) solid var(--work-guide); }
+
+.state-mark[data-tone="attention"] { color: var(--attention); }
+
+/* The specimen needs a pane to stand in. */
+.specimen-panel { display: flex; height: calc(var(--task-panel-width) * 2); }
