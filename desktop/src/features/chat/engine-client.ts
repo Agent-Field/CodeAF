@@ -14,7 +14,7 @@ export type EngineAnswer = { kind: string; id: number; ref?: string; key: string
 export type EngineEntry = {
  Role: 'user' | 'assistant' | 'tool' | 'note' | 'aside'; Text: string;
  Answer?: boolean; Addressed?: boolean; Interrupted?: boolean;
- Tool?: string; Hint?: string; CallID?: string; Answered?: boolean;
+ Tool?: string; Hint?: string; CallID?: string; Answered?: boolean; Failed?: boolean;
  Args?: string; Output?: string; Caption?: string; CaptionCategory?: string;
 };
 export type EngineTaskRow = PlanTaskRow & { Depth?: number; USD?: number; Model?: string; Tokens?: number; LiveParts?: unknown[]; Folder?: string; TrajectoryPath?: string };

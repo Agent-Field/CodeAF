@@ -3538,6 +3538,7 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// the row.
 	for index, call := range calls {
 		if results[index].isError {
+			a.file.appendFailed(call.ID)
 			a.sendBeltStep(ctx, hub, Event{
 				Kind:   EventToolFailed,
 				Tool:   call.Function.Name,
