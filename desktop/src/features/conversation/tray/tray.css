@@ -42,7 +42,7 @@
 .tray-review-head { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 
 .tray-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.tray-note { margin-left: auto; padding-right: var(--space-2); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
+.tray-note.type-body { margin-left: auto; padding-right: var(--space-2); color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
 .tray-footer-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-left: auto; }
 
 .tray-specimen-stack { display: flex; flex-direction: column; gap: var(--space-8); max-width: var(--composer-max-width); }
