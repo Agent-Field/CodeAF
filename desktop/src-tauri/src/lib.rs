@@ -72,7 +72,7 @@ async fn engine_connection(app: tauri::AppHandle) -> Result<EngineConnection, St
         .shell()
         .sidecar("codeaf-engine")
         .map_err(|e| e.to_string())?
-        .args(["desktop-bridge", "--listen", "127.0.0.1:0"])
+        .args(["desktop-bridge", "--gui", "--listen", "127.0.0.1:0"])
         .spawn()
         .map_err(|e| e.to_string())?;
     let mut output = Vec::new();
