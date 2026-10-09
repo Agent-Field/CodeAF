@@ -1,4 +1,4 @@
-import { Text } from '../../../components/ui';
+import { Markdown } from '../../../components/ui';
 import { headingLabel, type BriefSection } from './brief';
 import './full-brief.css';
 
@@ -9,7 +9,7 @@ export function FullBrief({ sections }: { sections: BriefSection[] }) {
       {sections.map((section) => (
         <section key={section.heading} className="full-brief-section">
           <h4 className="full-brief-label">{headingLabel(section.heading)}</h4>
-          <Text className="full-brief-body">{section.body}</Text>
+          <Markdown tone="secondary" className="full-brief-body">{section.body}</Markdown>
         </section>
       ))}
     </div>

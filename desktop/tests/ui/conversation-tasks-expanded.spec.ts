@@ -166,3 +166,37 @@ test('400px dark: no horizontal overflow and accessible', async ({ page }) => {
   await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
 });
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`long task instructions are secondary Markdown inside a keyboard-scrollable bounded pane · ${theme}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    const rig = scenario();
+    const longBrief = ['## Render the chart', '', 'Run `python plot.py` and **verify** the result.', '', ...Array.from({ length: 50 }, (_, i) => `- Check ${i + 1}: labels stay readable beside /a/very/long/path/${'segment'.repeat(20)}.`,), '', '```bash', 'printf "READY"', '```', '', 'Last instruction.'].join('\n');
+    rig.taskPages!['1.1'] = pageOf(1, longBrief);
+    await installMockEngine(page, rig);
+    await openApp(page);
+    await send(page, 'Ship it');
+    await expect(page.locator('html')).toHaveAttribute('data-resolved-theme', theme);
+    await page.getByRole('complementary', { name: 'Tasks' }).getByRole('button', { name: 'Expand tasks' }).click();
+    await rowButton(page, '1.1').click();
+    const pane = detail(page, 'Read the current screen');
+    const instructions = pane.getByRole('region', { name: 'Task instructions', exact: true });
+    await expect(instructions.getByRole('heading', { name: 'Render the chart' })).toBeVisible();
+    await expect(instructions.locator('li')).toHaveCount(50);
+    await expect(instructions.locator('strong')).toHaveText('verify');
+    await expect.poll(() => instructions.evaluate(el => {
+      const s = getComputedStyle(el); const md = el.querySelector('.markdown')!;
+      return { overflow: el.scrollHeight > el.clientHeight, bounded: el.clientHeight <= parseFloat(s.getPropertyValue('--task-detail-brief-max-height')), secondary: getComputedStyle(md).color === getComputedStyle(el.closest('.task-detail')!.querySelector('.task-detail-state-word')!).color, fits: el.getBoundingClientRect().bottom <= el.closest('.task-detail')!.getBoundingClientRect().bottom };
+    })).toEqual({ overflow: true, bounded: true, secondary: true, fits: true });
+    await instructions.focus();
+    await page.keyboard.press('End');
+    await expect.poll(() => instructions.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+    await expect(instructions.getByText('Last instruction.', { exact: true })).toBeVisible();
+    await expect(pane.getByRole('button', { name: 'Open task' })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    if (process.env.TASK_INSTRUCTION_SHOTS) await pane.screenshot({ path: `${process.env.TASK_INSTRUCTION_SHOTS}/long-instructions-${theme}-${test.info().project.name}.png` });
+    await page.setViewportSize({ width: 1200, height: 480 });
+    await expect.poll(() => pane.evaluate(el => el.getBoundingClientRect().bottom <= innerHeight)).toBeTruthy();
+    await expectNoHorizontalOverflow(page);
+  });
+}
