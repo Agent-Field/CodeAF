@@ -14,6 +14,8 @@ export type ToolStep = {
   output: string; // compact inline output; full output is fetched on demand
   state: 'running' | 'done' | 'failed' | 'stopped'; // stopped: cancelled by the person's Stop
   entryIndex?: number; // record position; lets the live overlay tell a call is already recorded
+  tookMs?: number; // the engine's Took for this call; absent when unknown
+  startedAt?: number; // epoch ms the call began, live only; lets a row show elapsed time
 };
 
 /** What sits inside one assistant reply, in record order. */
@@ -60,6 +62,7 @@ export type WorkBlock = {
   thinking?: { text: string; streaming: boolean; seconds?: number }; // live only; absent after reload
   notes: TurnItem[]; // note | aside | steer items that happened inside the work
   live: boolean; // the turn is still producing this block
+  startedAt?: number; // epoch ms the block began, live only; lets the header show elapsed time
   summary: { seconds?: number; thoughtSeconds?: number; steps: number; calls: number; failed: number };
 };
 
