@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { FirstTurnContext } from './firstTurn';
+import { Text } from '../../components/ui';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
@@ -159,6 +160,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const conversationModel = useConversationModel(snapshot?.model);
   const showJump = unanchored && (behind || model.running) && !inTask;
   const showFooter = !inTask || conversation.unreachable;
+  const folder = snapshot?.workingFolder;
+  const folderNote = folder?.note ?? (folder?.skipped?.length ? `Skipped ${folder.skipped.length} unavailable ${folder.skipped.length === 1 ? 'place folder' : 'place folders'}. This chat works in ${folder.label || folder.path || snapshot?.workspace}.` : undefined);
 
   return (
     <EngineAssetProvider sessionId={sessionId} workspace={snapshot?.workspace ?? ''}>
@@ -213,6 +216,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             <div className="conversation-dock-layer">
               {showJump && <LatestPill working={model.running} since={liveSince(model)} onJump={jump} />}
               <div className="conversation-footer conversation-column">
+                {folderNote && <Text role="status">{folderNote}</Text>}
                 {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
                 {!inTask && (
                   <ConversationDock

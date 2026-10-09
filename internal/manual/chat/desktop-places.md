@@ -150,13 +150,14 @@ parents.
 
 ## Is a place's folder the working directory — places versus attached folders
 
-No. A place's folders are references, like attached folders: the conversation's working
-directory, what a relative path means and where work may be written do not move.
+A place's folders are **not** attached folders. Attached folders are ones you attached to this
+one conversation. A place's folders arrive because the conversation is filed under the place.
+Removing the conversation from the place removes those references. It never touches what you
+attached.
 
-A place's folders are **not** attached folders. Attached folders are the ones you attached
-to this one conversation; a place's folders arrive because the conversation is filed under
-the place, and are credited to it. Removing the conversation from the place removes them;
-it never touches what you attached.
+A new conversation **started in a place** works in that place's **first** folder or repository
+that can be used, in the order listed. Later folders stay references, not the working directory.
+A relative path in a tool is read against that first folder.
 
 A conversation **started in a place** opens in the desktop app's own working folder, not in one of
 the place's folders: a place can list several folders, and picking one would be a guess.
@@ -183,3 +184,24 @@ including one originally opened in the terminal. The reader joins that conversat
 workspace host, never types a message or starts a turn, and bills the question to that
 conversation. A missing workspace or unavailable engine leaves rules available and shows
 why the model could not answer; it does not create a spare conversation to ask through.
+The folder comes from the place's own list and is checked again when the chat opens. A link is
+followed to the real directory. A link into a credentials folder or into codeaf's state folder
+is refused. A folder that is missing, that this account cannot enter or read, or that is the
+top of a disk, is skipped and the next one is tried.
+
+With no folder source, the chat works where the desktop app was started and says nothing about
+a folder. When every listed folder was skipped, it still opens there and says
+`The place's folders can't be used, so this chat works where codeaf was started.`
+A bridge that cannot open a chat in a place's folder says
+`This engine can't open a chat in a place's folder, so it works where codeaf was started.`
+
+A window cannot name the folder. A saved conversation reopens in the folder its own record
+names, when that folder still qualifies and sits outside codeaf's state. Otherwise it reopens
+where the desktop app was started.
+
+A terminal opened in the conversation uses that same folder. One that is already running
+keeps the directory it was given. The desktop process stays where it was launched.
+
+The model does not follow the folder. A new chat still takes a place's model and permissions
+when its **first turn** opens. A later change still applies at the **next turn**. A choice you
+made in the chat still wins.

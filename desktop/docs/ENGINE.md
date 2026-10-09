@@ -66,6 +66,32 @@ second device agree, and a failure that lands later is unseen again with no clie
 mark and is never counted unseen. The client is `markFailureSeen` in `src/features/chat/world-client.ts`; the closing seam is
 `closing/seenMarks.ts` (optimistic, withdrawn with a toast if the engine refuses).
 
+## Where a chat in a place works
+
+POST `/sessions` with `{place}` opens that new chat on the session host of the place's first
+usable folder or repository source, in listed order. The path is read from the place's own
+record and checked again (absolute, symlinks followed, not a denied folder, not the top of a
+disk, enterable and readable). Fields such as `workspace` or `path` in the body are ignored.
+The snapshot's `workspace` is that folder. `workingFolder` is present only when the place
+listed a folder: `{from:"place", path, label?, skipped?}`, or `{from:"launch", skipped, note}`
+when none could be used or this bridge cannot dial another host. A place with no folder
+source omits `workingFolder` and keeps the bridge's launch workspace. The note, when there
+is one, is `The place's folders can't be used, so this chat works where codeaf was started.`
+or `This engine can't open a chat in a place's folder, so it works where codeaf was started.`
+
+POST `/sessions` with `{sessionFile}` reopens a saved conversation on the workspace named in
+its own `meta.json`, when that transcript lives in the state root, the id matches the folder,
+and the workspace still qualifies and lies outside the state root. Otherwise it reopens on
+the launch host. A host that reports a different workspace is refused with 409 and the
+connection is closed; nothing is filed.
+
+A terminal started later uses that conversation's `workspace`. A terminal already running
+keeps its directory. The bridge process does not change directory. The hello still carries
+the Conversation role's model. A place's model and permissions still apply when the first
+turn opens, and a later change still waits for the next turn. The typed field is
+`workingFolder` on `EngineSnapshot` in `src/features/chat/engine-client.ts`. No screen
+draws it yet.
+
 Aside entries carry `TaskIDs`, the tasks they concern, so a task notice in the
 conversation can open its task; this holds for run reports as well as task
 landings. They also carry `AsideKind` (`"task"`, `"job"`, `"watch"` or `"resume"`,
