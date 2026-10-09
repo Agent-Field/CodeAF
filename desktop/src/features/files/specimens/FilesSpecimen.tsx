@@ -47,7 +47,7 @@ function Case({ label, note, ...props }: { label: string; note: string } & Parti
 
 /** The file and diff tab in each state the design draws or the designer decided. Specimen only: none of this is live data. */
 export function FilesSpecimen() {
-  return <Surface direction="column">
+  return <Surface direction="column" className="files-specimen-section">
     <SectionHeading>File and diff tabs</SectionHeading>
     <Text>Specimen. Changes first, a toggle to the whole file, a handoff to the editor. Hunk header, two line-number columns, folds that open in place.</Text>
     <div className="files-specimen">
