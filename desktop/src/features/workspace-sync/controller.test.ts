@@ -278,3 +278,31 @@ test('native focused-view arrival survives an automatic Inbox insertion before c
   assert.deepEqual(ids(incoming.getState()), ['inbox', 'first', 'web-target']);
   assert.equal(a.getState().activeId, 'first', 'source focus stays window-local');
 });
+
+
+test('a first-ever offline launch preserves its seed, pending new tabs and drafts across reload', async () => {
+  const engine = createTestEngine();
+  engine.setDown(true);
+  const time = createManualClock();
+  let saved: Persisted | undefined;
+  const make = (persisted?: Persisted) => createWorkspaceController({
+    key: 'now', client: engine.client(), writer: 'offline-first', initial: seed('fresh-import'),
+    persisted, clock: time.clock, persist: state => { saved = structuredClone(state); },
+  });
+  const first = make();
+  first.start();
+  first.dispatch({ type: 'open', tab: tab('queued-chat') });
+  first.dispatch({ type: 'draft', id: 'queued-chat', draft: 'Keep these words' });
+  await time.advance(200);
+  first.stop();
+  assert.ok(saved?.base, 'the import seed is durable before any engine answer');
+  const reloaded = make(saved);
+  assert.deepEqual(ids(reloaded.getState()), ['fresh-import', 'queued-chat']);
+  assert.equal(reloaded.getState().tabs.find(t => t.id === 'queued-chat')?.draft, 'Keep these words');
+  reloaded.start();
+  engine.setDown(false);
+  await time.advance(10000);
+  assert.equal(reloaded.getStatus().phase, 'saved');
+  assert.deepEqual(ids(reloaded.getState()), ['fresh-import', 'queued-chat']);
+  reloaded.stop();
+});
