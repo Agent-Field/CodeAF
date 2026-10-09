@@ -1,9 +1,15 @@
+import type { WorldRow } from '../../chat/world-client.ts';
+
 // Which failures this window has already looked at. A world row's `failed` is a COUNT of landed-failed task rows and it
 // never goes down, so without a record of what was seen every old failure would sit in the Inbox forever.
 //
-// THIS IS WINDOW-LOCAL VIEW STATE, not a canonical fact. The engine has no durable "failure seen" mark (nothing in the
-// world feed or the session index carries one), so another window or a reinstall starts unseen. That gap is documented in
-// run/menus-integration.md; do not present this as shared state.
+// THE CANONICAL FACT LIVES IN THE ENGINE. A world row carries `unseenFailed` and `failure` (the newest failure's task and
+// landing instant); `markFailureSeen` (chat/world-client.ts) writes a watermark into the conversation's own metadata, so every
+// window and device agrees and a later failure is unseen again. This file keeps two small things around that:
+//   - `pending`: a mark this window has sent and the feed has not yet echoed, so the Inbox row leaves at once. It is
+//     in memory, keyed to the failure's landing instant, and it is dropped if the engine refuses the mark.
+//   - the count record below, used ONLY for a row from an engine that predates the mark (no `unseenFailed`). It is
+//     window-local view state, not shared; it is the old behaviour kept for that case alone.
 export const failedSeenKey = 'codeaf.desktop.inbox.failed-seen.v1';
 export type FailedSeen = Readonly<Record<string, number>>;
 
@@ -24,6 +30,18 @@ export function markFailedSeen(seen: FailedSeen, chatId: string, count: number):
   if (!chatId || !Number.isSafeInteger(count) || count <= (seen[chatId] ?? 0)) return seen;
   const { [chatId]: _old, ...rest } = seen;
   return Object.fromEntries([...Object.entries(rest), [chatId, count]].slice(-limit));
+}
+
+/** Marks this window has sent and the feed has not echoed yet: chat id → the `failure.at` it covers. */
+export type PendingSeen = Readonly<Record<string, string>>;
+
+/**
+ * Whether a world row still has a failure to look at. The engine's own count decides when it gives one; a pending mark for
+ * the row's CURRENT failure hides it early, and never hides a newer one (a different landing instant).
+ */
+export function rowHasUnseenFailure(row: Pick<WorldRow, 'session' | 'failed' | 'unseenFailed' | 'failure'>, seen: FailedSeen, pending: PendingSeen = {}): boolean {
+  if (row.unseenFailed === undefined) return row.failed > 0 && hasUnseenFailure(seen, row.session, row.failed);
+  return row.unseenFailed > 0 && !(row.failure && pending[row.session] === row.failure.at);
 }
 
 export const hasUnseenFailure = (seen: FailedSeen, chatId: string, failed: number): boolean => failed > (seen[chatId] ?? 0);

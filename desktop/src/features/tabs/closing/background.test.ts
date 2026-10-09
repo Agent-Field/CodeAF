@@ -65,3 +65,17 @@ test('an unreachable feed marks what it contributed as stale and says so once; a
   assert.equal(build({ world: { status: 'unavailable', rows: [], items: [] } }).notice, undefined);
   assert.equal(build({ world: { status: 'live', rows: [row('c1', { running: true })], items: [] } }).running[0].stale, undefined);
 });
+
+test('failures: the engine\'s shared mark decides, a pending mark hides only the failure it names, and a seen failure hides nothing else', () => {
+  const failure = { task: '2', at: '2026-10-02T10:00:00.25Z' };
+  const rows = [
+    row('shared', { failed: 2, unseenFailed: 0, failure, at: agoMs(1000) }),
+    row('fresh', { failed: 2, unseenFailed: 1, failure, at: agoMs(2000) }),
+    row('pend', { failed: 1, unseenFailed: 1, failure, at: agoMs(3000) }),
+    row('later', { failed: 2, unseenFailed: 1, failure: { task: '3', at: '2026-10-05T00:00:00Z' }, at: agoMs(4000) }),
+    row('busy', { failed: 1, unseenFailed: 0, running: true, live: true, at: agoMs(5000) }),
+  ];
+  const out = build({ world: { status: 'live', rows, items: [] }, seen: { shared: 0 }, pending: { pend: failure.at, later: failure.at } });
+  assert.deepEqual(out.failed.map(i => [i.chatId, i.failed, i.failure?.at]), [['fresh', 1, failure.at], ['later', 1, '2026-10-05T00:00:00Z']]);
+  assert.deepEqual(out.running.map(i => i.chatId), ['busy'], 'a seen failure does not hide running work');
+});

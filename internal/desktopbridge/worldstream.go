@@ -229,6 +229,11 @@ func (b *Bridge) worldRoutes(w http.ResponseWriter, r *http.Request, path string
 			b.worldFeed().serve(w, r)
 		}
 		return true
+	case "/world/failures/seen":
+		if needPost(w, r) {
+			b.markFailureSeen(w, r)
+		}
+		return true
 	}
 	return false
 }
