@@ -1,0 +1,4 @@
+.files-specimen { display: flex; flex-direction: column; gap: var(--space-6); }
+.files-specimen-case { display: flex; flex-direction: column; gap: var(--space-2); }
+.files-specimen-label { margin: 0; }
+.files-specimen-card { display: flex; flex-direction: column; height: var(--specimen-file-height); border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); overflow: hidden; }
