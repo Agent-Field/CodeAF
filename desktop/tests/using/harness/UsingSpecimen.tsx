@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { ConversationBar } from '../../../src/features/conversation/ConversationBar';
 import { UsingLine, usingVisible } from '../../../src/features/places/UsingLine';
 import { useUsing } from '../../../src/features/places/useUsing';
-import type { SourceHandoff } from '../../../src/features/places/using-types';
+import { createUsingClient } from '../../../src/features/places/using-client';
+import type { PolicyField, SourceHandoff } from '../../../src/features/places/using-types';
 import { mockApi, type Calls, type Scenario } from './mock';
 import './harness.css';
 
@@ -14,8 +15,15 @@ declare global { interface Window { __usingCalls: Calls; __heal?: () => void } }
 const params = new URLSearchParams(location.search);
 const scenario = (params.get('scenario') ?? 'full') as Scenario;
 const calls: Calls = (window.__usingCalls = []);
-const api = mockApi(scenario, calls, { choiceFails: params.get('choiceFails') === '1' });
-window.__heal = (api as unknown as { heal?: () => void } | undefined)?.heal;
+const bridge = mockApi(scenario, calls, { choiceFails: params.get('choiceFails') === '1' });
+window.__heal = (bridge as unknown as { heal?: () => void } | undefined)?.heal;
+// The page drives the REAL typed client (and so its answer validation) over the in-memory bridge: a mock shape the client would refuse fails here.
+const api = bridge && createUsingClient(async (path, request) => {
+  const [, , token, , tail] = path.split('/');
+  const body = request.body as { field: PolicyField; placeId: string };
+  if (request.method === 'GET') return bridge.using(decodeURIComponent(token), request.signal);
+  return tail === 'choice' ? bridge.choose(decodeURIComponent(token), body.field, body.placeId) : bridge.apply(decodeURIComponent(token), body.field);
+});
 
 export function UsingSpecimen() {
   const control = useUsing(api, 'mock-token');
