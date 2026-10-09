@@ -75,9 +75,11 @@ function asideItem(entry: EngineEntry, id: string, ctx: Ctx): TurnItem {
   const fields = entry as EngineEntry & AsideFields;
   const given = fields.TaskIDs?.[0];
   if (!parsed && !given) return { kind: 'note', id, text: entry.Text };
-  const row = rowById(ctx, given) ?? rowByTitle(ctx, parsed?.title ?? '');
+  // The canonical row named by id outranks words parsed out of the note.
+  const byId = rowById(ctx, given);
+  const row = byId ?? rowByTitle(ctx, parsed?.title ?? '');
   // A notice with no name cannot be read or opened; it is only a note.
-  const title = parsed?.title || row?.Title || '';
+  const title = byId?.Title || parsed?.title || row?.Title || '';
   if (!title) return { kind: 'note', id, text: entry.Text };
   const taskId = given ?? (row?.ID ? String(row.ID) : undefined);
   return {
@@ -85,7 +87,7 @@ function asideItem(entry: EngineEntry, id: string, ctx: Ctx): TurnItem {
     id,
     taskId,
     title,
-    status: fields.TaskStatus ?? parsed?.status ?? row?.Status ?? '',
+    status: fields.TaskStatus ?? byId?.Status ?? parsed?.status ?? row?.Status ?? '',
     summary: parsed?.summary ?? firstSentence(entry.Text),
     body: entry.Text,
   };
