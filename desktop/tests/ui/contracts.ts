@@ -43,6 +43,7 @@ export const INK3_TEXT = [
  '.task-row-meta', '.task-log-outcome', '.task-note-receipt', '.task-note-author', '.instructions-toggle', '.instructions-edit', '.breadcrumb-link',
  '.task-detail-crumb', '.task-detail-state', '.task-detail-fact dt', '.task-detail-label', '.button-ghost', '.text-input-field', '.task-composer-field',
  '.markdown-code-lang', '.turn-folded', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
+ '.rail .new-item kbd',
 ];
 async function isDesignInk3(page: Page, target: unknown) {
  const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);

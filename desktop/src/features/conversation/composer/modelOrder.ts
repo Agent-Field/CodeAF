@@ -4,13 +4,13 @@ import type { ModelOption } from './ModelPicker';
 export type CatalogEntry = { id: string; name?: string };
 export type PinnedEntry = { id: string; label: string };
 
-/** Models pinned to the segmented control and to ⌘1-3. */
+/** Models pinned to the segmented control and to ⌥⌘1-3. */
 export const PINNED_LIMIT = 3;
 
 /**
  * The picker's list: the person's pinned models first, in their order (those the catalog really offers),
  * then the model in use if it is not pinned, then everything else. The pinned count is how many leading
- * models are segments and take ⌘1-3. When none of the pinned models is on offer the model in use stands alone.
+ * models are segments and take ⌥⌘1-3. When none of the pinned models is on offer the model in use stands alone.
  */
 export function orderModels<T extends CatalogEntry>(catalog: readonly T[], pinned: readonly PinnedEntry[], selectedId: string, labelOf: (model: T) => string): { models: ModelOption[]; pinnedCount: number } {
   const byId = new Map(catalog.map(model => [model.id, model]));

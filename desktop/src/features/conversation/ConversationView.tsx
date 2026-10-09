@@ -24,6 +24,8 @@ import { useConversation } from './useConversation';
 import { readEngineText } from './tasks/readText';
 import { contentSignature, useStickToBottom } from './useStickToBottom';
 import { useFoldAnchor, useTurnJump } from './turnScroll';
+import { shortcutLayer } from '../../design/keyboard';
+import { useShortcuts } from '../../design/useShortcuts';
 import './conversation-view.css';
 
 export type ConversationViewProps = {
@@ -38,6 +40,8 @@ export type ConversationViewProps = {
 };
 
 const MODEL_LABEL = 'DeepSeek v4.1 Flash';
+/** A fresh tab has asked the engine nothing yet, so its chip reads the default model's pinned label from the start. */
+const MODEL_SHORT = 'DS Flash';
 
 /** The task panel: a column on wide panes, a sheet the person opens on narrow ones. */
 function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationViewProps['onView']) {
@@ -123,6 +127,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
   const { done, total } = taskCounts(model.tasks);
   const barPanel = hasTasks && !inTask ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
+  // ⌘⇧K toggles the task panel (design Shell 2h); a conversation without tasks has no panel, so the key is left alone.
+  useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView);
   const barCounts = { running: taskProgress(model.tasks).running, needsYou: model.questions.length };
   const barTitle = tab.titleSource ? label : '';
   const showBar = inTask || Boolean(barTitle) || hasTasks;
@@ -197,6 +203,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                       running: model.running,
                       docked: !empty,
                       modelLabel,
+                      modelShort: modelLabel === MODEL_LABEL ? MODEL_SHORT : undefined,
                       model: conversationModel,
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
                       autoFocus,

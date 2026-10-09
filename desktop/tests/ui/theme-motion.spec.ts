@@ -101,14 +101,14 @@ for (const theme of ['Light','Dark']) {
   await page.goto('/'); await chooseTheme(page,`${theme} appearance`);
   const quick=page.getByRole('button',{name:'Activity',exact:true});
   await expect(quick).not.toHaveAttribute('aria-current','page');
-  await quick.hover(); await expect(quick).toHaveCSS('background-color',await tokenColor(page,'hover'));
+  await quick.hover(); await expect(quick).toHaveCSS('background-color',await tokenColor(page,'tab-hover'));
   await page.mouse.down(); await page.mouse.up();
   await page.mouse.move(700,30);
   await expect(quick).toHaveAttribute('aria-current','page');
-  await expect(quick).toHaveCSS('background-color',await tokenColor(page,'active'));
+  await expect(quick).toHaveCSS('background-color',await tokenColor(page,'tab'));
   await expect(page.getByRole('button',{name:'Workspace',exact:true}).first()).not.toHaveAttribute('aria-current','page');
   const address=page.getByRole('button',{name:'codeaf',exact:true});
-  await address.hover(); await expect(address).toHaveCSS('background-color',await tokenColor(page,'control-hover'));
+  await address.hover(); await expect(address).toHaveCSS('background-color',await tokenColor(page,'field-2'));
   await page.getByRole('button',{name:'Design system',exact:true}).click();
   // Design v3 controls: hover changes only the fill, press darkens it, focus is the accent ring and halo.
   const controls=page.locator('.controls-specimen');

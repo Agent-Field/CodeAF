@@ -487,6 +487,17 @@
   --monogram-font: 9px;
   --font-weight-bold: 700;
   --tab-more-pad: 8px;
+  --rail-toggle-size: 26px;
+  --radius-rail-toggle: 7px;
+  --icon-rail-toggle: 15px;
+  --shell-hotzone: 8px;
+  --z-shell-peek: 20;
+  --rail-peek-tint: 88%;
+  --rail-row-height: 32px;
+  --rail-row-font: 13px;
+  --rail-row-gap: 1px;
+  --rail-group-gap: 16px;
+  --rail-peek-delay: 300ms;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);
@@ -551,6 +562,7 @@
   --control-border-hover: #35332f30;
   --tab-selected: #fdfdfc;
   --tab-hover: oklch(1 0 0 / .3);
+  --tab: oklch(1 0 0 / .55);
   --tab-strip: #ece8e1;
   --group-mark: #716b62;
   --overlay-surface: #f3f0e9;
@@ -678,6 +690,7 @@
   --control-border-hover: #ffffff30;
   --tab-selected: #202020;
   --tab-hover: oklch(1 0 0 / .05);
+  --tab: oklch(1 0 0 / .09);
   --tab-strip: #171717;
   --group-mark: #aaa39a;
   --overlay-surface: #2b2927;
@@ -771,6 +784,7 @@
   --control-border-hover: #ffffff30;
   --tab-selected: #202020;
   --tab-hover: oklch(1 0 0 / .05);
+  --tab: oklch(1 0 0 / .09);
   --tab-strip: #171717;
   --group-mark: #aaa39a;
   --overlay-surface: #2b2927;

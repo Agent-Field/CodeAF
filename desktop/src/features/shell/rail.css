@@ -1,7 +1,43 @@
-.sidebar { display: flex; flex-direction: column; padding: 0 var(--space-compact); min-width: 0; overflow: hidden; opacity: var(--opacity-opaque); transition: opacity var(--duration) var(--chrome-ease), visibility var(--duration-sidebar); }
-.sidebar-toolbar { height: var(--titlebar-height); display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--space-three-quarter); flex-shrink: 0; }
-.sidebar-divider { margin: var(--space-row) var(--space-three-quarter) var(--space-2); }
+/* The rail (design Shell 2h "Rail", Places helper PRAIL and row `rr`): 232px, no fill of its own so the frame shows
+   through (on a native window the material tinted with the frame), padded 16 10 12, groups 16px apart. The top row
+   holds the 26px toggle at its right; rows are 32px, radius 8, 13px ink-2 with a 14px ink-3 glyph, 1px apart. Every
+   number is a token. */
+.sidebar { display: flex; flex-direction: column; gap: var(--rail-group-gap); padding: var(--space-4) var(--space-compact) var(--space-3); min-width: 0; overflow: hidden; background: transparent; opacity: var(--opacity-opaque); transition: opacity var(--duration) var(--chrome-ease), visibility var(--duration-sidebar), transform var(--duration-sidebar) var(--ease-layout); }
+.rail-head { display: flex; align-items: center; flex-shrink: 0; height: var(--rail-toggle-size); padding: 0 var(--space-tight); }
+.rail-head .rail-toggle { margin-left: auto; }
+
+/* The toggle: ink-3 panel-left, 26px in the rail and 30px (then a hairline) in the strip; hover is a fill only. */
+.rail-toggle.icon-button { flex: none; width: var(--rail-toggle-size); height: var(--rail-toggle-size); border-radius: var(--radius-rail-toggle); color: var(--ink-3); }
+.rail-toggle.icon-button .app-icon { width: var(--icon-rail-toggle); height: var(--icon-rail-toggle); }
+.rail-toggle.icon-button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
+.rail-toggle.icon-button:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.rail-toggle.icon-button[data-placement="strip"] { width: var(--tab-height); height: var(--tab-height); border-radius: var(--radius-control); }
+.rail-toggle-divider { flex: none; width: var(--border-width); height: var(--tab-divider-height); margin: 0 var(--space-tight); background: var(--line); }
+
+/* Rows: the open one is the --tab fill plus sh-1, ink and medium weight; hover is the tab-hover fill and nothing else. */
+.rail-nav { display: flex; flex-direction: column; gap: var(--rail-row-gap); }
+.rail .address-field { flex-shrink: 0; height: var(--rail-row-height); gap: var(--space-compact); border-radius: var(--radius-control); padding: 0 var(--space-2); background: var(--field); color: var(--ink); font-size: var(--rail-row-font); }
+.rail .address-field:hover:not(:disabled) { background: var(--field-2); }
+.rail .address-field > .app-icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--ink-3); }
+.rail .nav-item { height: var(--rail-row-height); margin: 0; padding: 0 var(--space-2); gap: var(--space-compact); border-radius: var(--radius-control); background: transparent; box-shadow: none; color: var(--ink-2); font-size: var(--rail-row-font); line-height: var(--line-height-tight); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.rail .nav-item .app-icon { width: var(--icon-sm); height: var(--icon-sm); color: var(--ink-3); opacity: var(--opacity-opaque); }
+.rail .nav-item:hover, .rail .nav-item[data-hover] { background: var(--tab-hover); color: var(--ink); }
+.rail .nav-item:active { background: var(--field-2); }
+.rail .nav-item.active { background: var(--tab); box-shadow: var(--sh-1); color: var(--ink); font-weight: var(--font-weight-medium); }
 .sidebar-bottom .select-trigger.select-trigger-icon { justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; }
-.sidebar-bottom { margin-top: auto; padding: var(--space-4) var(--border-width) var(--space-half); display: flex; align-items: center; justify-content: flex-start; gap: var(--space-1); }
-.rail .new-item { color: var(--ink-2); }
-.rail .new-item kbd { opacity: var(--opacity-opaque); }
+.sidebar-bottom { margin-top: auto; padding: 0 var(--border-width); display: flex; align-items: center; justify-content: flex-start; gap: var(--space-1); }
+
+/* Collapsed (⌘S) or Focus mode (⌘⇧F): the rail leaves the layout. Resting on the left 8px edge for 300ms brings it
+   back as a translucent sheet over the content, tinted with the frame (Places 9e). */
+.app-shell.sidebar-collapsed > .sidebar { position: fixed; z-index: var(--z-shell-peek); top: 0; bottom: 0; left: 0; width: var(--sidebar-width); transform: translateX(-100%); background: color-mix(in srgb, var(--frame) var(--rail-peek-tint), transparent); backdrop-filter: blur(var(--palette-blur)); }
+.app-shell.sidebar-collapsed[data-peek="rail"] > .sidebar { transform: none; visibility: visible; opacity: var(--opacity-opaque); pointer-events: auto; box-shadow: var(--sh-3); }
+@media (max-width: 850px) { .app-shell.sidebar-collapsed > .sidebar { width: var(--sidebar-width-compact); } }
+.shell-hotzone { position: fixed; z-index: var(--z-shell-peek); top: 0; left: 0; }
+.shell-hotzone[data-edge="top"] { right: 0; height: var(--shell-hotzone); }
+.shell-hotzone[data-edge="left"] { bottom: 0; width: var(--shell-hotzone); }
+
+/* Focus mode also hides the strip (and a page's toolbar); the card moves up to the top inset. The top 8px of the
+   window brings the strip back (Shell 2h). */
+.app-shell[data-focus] .content-pane { padding-top: var(--shell-card-inset); }
+.app-shell[data-focus] :is(.workspace-tabbar, .content-toolbar) { position: fixed; z-index: var(--z-shell-peek); top: 0; left: 0; right: 0; transform: translateY(-100%); visibility: hidden; background: color-mix(in srgb, var(--frame) var(--rail-peek-tint), transparent); backdrop-filter: blur(var(--palette-blur)); transition: transform var(--duration-sidebar) var(--ease-layout), visibility var(--duration-sidebar); }
+.app-shell[data-focus][data-peek="strip"] :is(.workspace-tabbar, .content-toolbar) { transform: none; visibility: visible; box-shadow: var(--sh-1); }
