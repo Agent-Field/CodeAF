@@ -111,6 +111,13 @@ type Seam struct {
 	// a conversation. NOTHING IS MADE UNTIL A PERSON ASKS: no item has one by
 	// default.
 	Talk func(ctx context.Context, id int) (chat string, err error)
+	// Say hands the person's words to the item's own conversation (the one
+	// [Seam.Talk] answers, made now when the item has none) as their message,
+	// and starts the manager's turn on them, without the surface leaving the
+	// item: the turn's reply lands in the conversation's transcript, which
+	// the item page reads. It returns once the words are in, not when the
+	// turn ends.
+	Say func(ctx context.Context, id int, words string) error
 
 	// Mark sets or takes off the floor's own marks on items by id, kept by
 	// the store, so a mark made outside this window (the foreman's, through
@@ -235,6 +242,8 @@ func (s Seam) Has(door string) bool {
 		return s.SetRail != nil
 	case "talk":
 		return s.Talk != nil
+	case "say":
+		return s.Say != nil
 	case "mark":
 		return s.Mark != nil
 	case "foreman":

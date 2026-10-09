@@ -176,6 +176,11 @@ const (
 	wordMoreAbove    = "more above"
 	wordRunsIt       = "runs it"
 	wordOpensTheChat = "opens the conversation"
+	// The story is the manager's conversation: the line while a turn runs on
+	// it, `manager is thinking`, and the tail of a reply cut short, `… ▸ T
+	// for the whole chat`.
+	wordIsThinking      = "is thinking"
+	wordForTheWholeChat = "for the whole chat"
 	// The manager's box (factory_timeline.go): what it says unfocused, what
 	// its empty typing row says, what `enter` on the manager row does, and
 	// the way out of it, which keeps the words typed.

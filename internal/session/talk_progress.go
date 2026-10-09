@@ -92,6 +92,27 @@ func LiveAgentFor(path string) (*Agent, bool) {
 	return a, true
 }
 
+// TurnRunning says whether a turn is in flight on the conversation: the
+// person's, a wake, or a factory runner's shaping turn. A closed conversation
+// runs nothing.
+func (a *Agent) TurnRunning() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return !a.closed && a.running
+}
+
+// LiveTurnRunning says whether the conversation on the journal at path is
+// open in this process with a turn in flight: how the factory's item page
+// knows its manager is thinking, whoever started the turn. It resolves the
+// path's links, so it touches the disk and is asked off a surface's loop.
+func LiveTurnRunning(path string) bool {
+	a, ok := LiveAgentFor(path)
+	return ok && a.TurnRunning()
+}
+
 // forgetLiveJournal takes a closing conversation off the registry.
 func forgetLiveJournal(a *Agent) {
 	turnRunDoors.Delete(a)
