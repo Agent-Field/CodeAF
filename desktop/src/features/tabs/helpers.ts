@@ -1,7 +1,7 @@
 // Pure helpers shared by the reducer slices, the persistence reader and the views.
 import { cleanView } from './view-state.ts';
 import { defaultKind } from './kinds/types.ts';
-import type { Pane, Split, SplitLayout, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
+import type { Pane, Split, SplitLayout, SplitRatios, Tab, TabGroup, TitleSource, WorkspaceState } from './types.ts';
 
 /** Replaceable so tests are deterministic. */
 export let createId: () => string = () => crypto.randomUUID();
@@ -60,9 +60,13 @@ export function withSplitTitle(tab: Tab): Tab {
   return title === tab.title ? tab : { ...tab, title };
 }
 
-export function makeSplit(panes: Pane[], focus: number, layout: SplitLayout = defaultLayout(panes.length)): Split {
-  return { layout: layoutFits(layout, panes.length) ? layout : defaultLayout(panes.length), focus: Math.min(Math.max(focus, 0), panes.length - 1), panes };
+export function makeSplit(panes: Pane[], focus: number, layout: SplitLayout = defaultLayout(panes.length), ratios?: SplitRatios): Split {
+  return { layout: layoutFits(layout, panes.length) ? layout : defaultLayout(panes.length), focus: Math.min(Math.max(focus, 0), panes.length - 1), panes, ...(ratios ? { ratios } : {}) };
 }
+
+/** The share a divider may take: never so small that a pane is lost. */
+export const splitRatioMin = 0.2;
+export const clampRatio = (value: number) => Math.min(1 - splitRatioMin, Math.max(splitRatioMin, value));
 
 /** Applies `change` to the tab or pane with this id; a pane change re-derives its split tab's title. */
 export function mapContent(state: WorkspaceState, id: string, change: (content: Pane) => Pane): WorkspaceState {

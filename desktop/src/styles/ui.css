@@ -175,3 +175,5 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .app-icon[data-icon="panelRight"] { transform: scaleX(-1); }
 /* Menu rows show selection through the highlight fill, not the focus ring. */
 .select-option:focus-visible, .menu-item:focus-visible { box-shadow: none; }
+/* Split panes (Shell 3b): the full composer grows out of the 36px compact field. */
+@keyframes composer-expand { from { max-height: var(--compact-composer-height); opacity: var(--opacity-subtle); } to { max-height: var(--composer-expand-max-height); opacity: var(--opacity-opaque); } }
