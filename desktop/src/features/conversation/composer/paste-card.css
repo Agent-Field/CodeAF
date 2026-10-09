@@ -9,7 +9,7 @@
 }
 
 .paste-card[data-variant='composer'] {
-  width: var(--paste-card-width);
+  width: calc(var(--paste-card-width) + var(--space-compact) * 2);
   max-width: 100%;
 }
 
@@ -31,19 +31,21 @@
 
 .paste-card-name.type-body {
   font-size: var(--font-size-body);
+  line-height: var(--paste-card-header-leading);
   font-weight: var(--font-weight-medium);
 }
 
 .paste-card-lines.type-body {
   font-size: var(--font-size-body);
+  line-height: var(--paste-card-header-leading);
   color: var(--ink-3);
 }
 
 .paste-card-remove.icon-button {
   margin-left: auto;
   flex: none;
-  width: var(--icon-md);
-  height: var(--icon-md);
+  width: var(--icon-tiny);
+  height: var(--icon-tiny);
   min-width: 0;
   color: var(--ink-3);
 }

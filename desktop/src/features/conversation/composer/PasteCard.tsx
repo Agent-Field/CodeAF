@@ -21,7 +21,7 @@ export function PasteCard({ lines, text, onRemove, variant = 'composer' }: Paste
         <Text className="paste-card-name">Pasted text</Text>
         <Text className="paste-card-lines">{lines} lines</Text>
         {onRemove && (
-          <IconButton className="paste-card-remove" label="Remove pasted text" icon="close" iconSize="xs" onClick={onRemove} />
+          <IconButton className="paste-card-remove" label="Remove pasted text" icon="close" iconSize="tiny" onClick={onRemove} />
         )}
       </div>
       <pre className="paste-card-preview" aria-hidden="true">{preview}</pre>
