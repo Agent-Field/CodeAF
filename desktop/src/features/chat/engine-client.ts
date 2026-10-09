@@ -22,11 +22,19 @@ export const ENGINE_MODEL = 'deepseek/deepseek-v4.1-flash';
 export type EngineQuestionBlock = { kind: string; title?: string; body?: string; rows?: string[][]; path?: string };
 export type EngineQuestion = {
  id: number; ref?: string; kind: string; ask: string; form?: string; head: string; reason?: string;
- options?: { key: string; label: string; body?: string; consequence?: string; safe?: boolean; widening?: boolean; blocks?: EngineQuestionBlock[] }[];
- input?: { kind?: string; prompt?: string; secret?: boolean; blanks?: { label: string; kind?: string; default?: string; choices?: string[] }[]; dial?: unknown };
+ options?: { key: string; label: string; body?: string; consequence?: string; safe?: boolean; widening?: boolean; blocks?: EngineQuestionBlock[]; dimensions?: Record<string, string> }[];
+ input?: { kind?: string; prompt?: string; secret?: boolean; blanks?: { label: string; kind?: string; default?: string; choices?: string[] }[]; dial?: { min: number; max: number; default: number; labels?: string[] } };
  attach?: EngineQuestionBlock[]; scope?: string[]; asked?: string; deadline?: string;
+ pick?: { key: string; reason?: string; confidence?: 'sure' | 'fairly' | 'unsure'; wouldChange?: string };
+ stakes?: 'reversible' | 'costly' | 'irreversible';
+ blocking?: { turn?: boolean; tasks?: string[] };
+ asker?: { kind?: 'model' | 'engine' | 'task' | 'surface' | 'window'; name?: string };
+ subject?: { kind?: string; id?: number; callId?: string; ref?: string; name?: string };
+ batch?: string; later?: boolean; clarificationDepth?: number;
+ policy?: { kind?: 'ask' | 'recommend-then-auto' | 'decide'; after?: number }; // after: nanoseconds, a Go duration
+ withdrawn?: { reason?: string; by?: string; at?: string };
 };
-export type EngineAnswer = { kind: string; id: number; ref?: string; key: string; picked?: string[]; change?: string; blanks?: Record<string,string>; scope?: string };
+export type EngineAnswer = { kind: string; id: number; ref?: string; key: string; picked?: string[]; change?: string; blanks?: Record<string,string>; scope?: string; dial?: number; decidedBy?: 'person' | 'dial' | 'record' | 'asker' | 'window'; comments?: Record<string,string> };
 export type EngineEntry = {
  Role: 'user' | 'assistant' | 'tool' | 'note' | 'aside'; Text: string;
  Answer?: boolean; Addressed?: boolean; Interrupted?: boolean;

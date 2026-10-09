@@ -1,0 +1,62 @@
+/* Decision tray: layout only. Quiet overlay surface, hairline, no heavy shadow. */
+.decision-tray { display: flex; flex-direction: column; min-width: 0; max-height: var(--tray-max-height); border: var(--border-width) solid var(--border); border-radius: var(--radius-lg); background: var(--overlay-surface); color: var(--text); }
+.tray-header { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-1) var(--space-2); }
+.tray-header:empty { display: none; }
+.tray-tabs { display: flex; flex: 1; gap: var(--space-1); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tray-tabs .button { flex-shrink: 0; gap: var(--space-1); max-width: var(--tab-max-width); }
+.tray-tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.button.tray-chip { margin-left: auto; flex-shrink: 0; min-height: var(--chip-height); padding-inline: var(--space-2); border-radius: var(--radius-chip); background: var(--field); color: var(--attention); font-size: var(--font-size-caption); }
+.tray-folded { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: var(--space-1) var(--space-3); list-style: none; border-top: var(--border-width) solid var(--border); }
+.tray-folded-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.tray-body { min-height: 0; overflow-y: auto; }
+
+.tray-card { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); min-width: 0; }
+.tray-card-head { display: flex; flex-direction: column; gap: var(--space-1); }
+.tray-head { margin: 0; color: var(--text); font-size: var(--font-size-prose); font-weight: var(--font-weight-medium); line-height: var(--line-height-body); overflow-wrap: anywhere; }
+.tray-reason { margin: 0; color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-body); }
+.tray-caption { margin: 0; color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-body); }
+.tray-evidence { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.tray-figure { margin: 0; max-width: var(--figure-max-width); }
+.tray-figure img { display: block; max-width: 100%; max-height: calc(var(--tray-max-height) / 2); object-fit: contain; border-radius: var(--radius-md); }
+
+.tray-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.tray-options { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.tray-option { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+.tray-option-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.tray-badge { color: var(--attention); font-size: var(--font-size-caption); font-weight: var(--font-weight-medium); }
+.tray-panel { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-top: var(--space-1); }
+.tray-panel-column { flex-direction: column; align-items: flex-start; }
+
+.tray-field { padding: var(--space-2) var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--field); font-family: var(--font-sans); resize: vertical; }
+.tray-field:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.tray-mono { font-family: var(--font-mono); font-size: var(--font-size-code); }
+.tray-fields { display: flex; flex-direction: column; gap: var(--space-2); }
+.tray-field-row { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+.tray-pair { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.tray-segment { display: flex; gap: var(--space-half); padding: var(--space-half); border-radius: var(--radius-sm); background: var(--field); }
+.tray-dial { display: flex; flex-direction: column; gap: var(--space-1); }
+.tray-dial .text-input { padding: 0; accent-color: var(--accent); }
+.tray-dial-labels { display: flex; justify-content: space-between; gap: var(--space-2); }
+.tray-checks { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.tray-check { display: flex; align-items: flex-start; gap: var(--space-2); }
+.tray-check .text-input { width: auto; min-height: 0; padding: 0; margin-top: var(--space-half); accent-color: var(--accent); }
+
+.tray-compare { max-width: 100%; overflow-x: auto; font-size: var(--font-size-body); }
+.tray-compare table { border-collapse: collapse; }
+.tray-compare th, .tray-compare td { padding: var(--space-1) var(--space-3) var(--space-1) 0; text-align: left; vertical-align: top; border-bottom: var(--border-width) solid var(--border); }
+.tray-compare th { color: var(--muted); font-weight: var(--font-weight-regular); }
+.tray-compare thead th { color: var(--text); font-weight: var(--font-weight-medium); }
+
+.tray-bulk-list, .tray-review { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.tray-bulk-row { padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--field); font-family: var(--font-mono); font-size: var(--font-size-code); overflow-wrap: anywhere; }
+.tray-review-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.tray-review-head { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.tray-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.tray-footer-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-left: auto; }
+
+.button.tray-receipt, .tray-receipt-static { justify-content: flex-start; display: inline-flex; align-items: center; gap: var(--space-2); min-height: 0; padding: var(--space-half) var(--space-2); color: var(--muted); font-size: var(--font-size-body); }
+.tray-receipt-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tray-specimen-stack { display: flex; flex-direction: column; gap: var(--space-8); max-width: var(--composer-max-width); }
+.tray-specimen { display: flex; flex-direction: column; gap: var(--space-2); }
