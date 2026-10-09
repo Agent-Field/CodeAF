@@ -3330,6 +3330,10 @@ type Agent struct {
 	connectSeq  uint64
 	connectAsks map[string]connectAsk
 
+	// withdrawals is the short memory of questions that stopped being asked, so
+	// a window can draw the receipt ([Agent.RecentQuestionOutcomes]).
+	withdrawals questionWithdrawals
+
 	// harnessAsks is the sub-harness offers a person owes an answer to, keyed by
 	// the id the EventHarnessOffer carried, and harnessSeq is what names them
 	// (harness.go). Same machinery as consent's, one lane over: an offer lives

@@ -2919,6 +2919,19 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 		}
 		return json.Marshal(door.PlanTasks())
 
+	case MethodRecentQuestionOutcomes:
+		args, err := arg[RecentQuestionOutcomesArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, ok := agent.(interface {
+			RecentQuestionOutcomes(int) []session.QuestionOutcome
+		})
+		if !ok {
+			return json.Marshal([]session.QuestionOutcome(nil))
+		}
+		return json.Marshal(door.RecentQuestionOutcomes(args.Limit))
+
 	case MethodPlanTaskPage:
 		args, err := arg[PlanTaskPageArgs](call)
 		if err != nil {

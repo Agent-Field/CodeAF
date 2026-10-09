@@ -205,6 +205,15 @@ type PlanTaskPage struct {
 	// A page that carries one is drawn as that conversation rather than as a
 	// list of steps.
 	Program *PlanProgram
+	// Ended is how the task's worker finished, off the trajectory's ending line;
+	// nil until it has ([PlanTaskEnding]).
+	Ended *PlanTaskEnding
+	// Changed is the files the task's run wrote, repo-relative; empty when the
+	// run recorded none.
+	Changed []string
+	// LastWords is the last thing the task's newest worker said, cut to 600
+	// characters; empty when there is no transcript.
+	LastWords string
 }
 
 // PlanStep is one line of a task's trajectory — one command the worker ran and
@@ -418,6 +427,12 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		Children: children,
 		WaitRows: waitRows,
 		Program:  planProgramPage(dir, task.ID, carried[task.ID], copies.or(pageRow.Folder), a.config.Delegates),
+		// HOW THE WORKER ENDED, WHAT IT WROTE AND WHAT IT LAST SAID are three
+		// readings of records that already exist, lifted onto the page so a
+		// surface does not open a trajectory or a transcript to draw a task's end.
+		Ended:     planTaskEnding(dir, task.ID, pageRow.Ended),
+		Changed:   a.planTaskChanged(pageRow.ID),
+		LastWords: planLastWords(dir, task.ID),
 	}, true
 }
 

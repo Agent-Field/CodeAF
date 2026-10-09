@@ -102,6 +102,14 @@ func (s *server) submitFiles(call Frame) (json.RawMessage, error) {
 	// SubmitImage with no pictures IS Submit (internal/session's image.go says
 	// so in as many words), so one door answers both shapes of this message.
 	said := AttachedSentence(args.Text, kept)
+	// THE FILES ARE RECORDED STRUCTURALLY WHEN THE AGENT CAN: the journal then
+	// holds the paths beside the words, and a reopened page shows the person's
+	// own line with the files as attachments. An agent without that door still
+	// gets the same sentence, which is what the model reads either way.
+	if recorder, ok := agent.(attachedSubmitter); ok && len(kept) > 0 {
+		events, err := recorder.SubmitAttached(context.Background(), args.Text, kept, images)
+		return s.stream(MethodSubmitFiles, said, events, err)
+	}
 	events, err := agent.SubmitImage(context.Background(), said, images)
 	return s.stream(MethodSubmitFiles, said, events, err)
 }
@@ -617,19 +625,14 @@ func fileMIME(path string) string {
 // of the message that tells a model where something is, and anything decorative
 // in it is a thing the model has to decide whether to repeat.
 func AttachedSentence(text string, paths []string) string {
-	if len(paths) == 0 {
-		return text
-	}
-	var block string
-	if len(paths) == 1 {
-		block = "attached file: " + paths[0]
-	} else {
-		block = "attached files:\n" + strings.Join(paths, "\n")
-	}
-	if strings.TrimSpace(text) == "" {
-		return block
-	}
-	return strings.TrimRight(text, " \t\n") + "\n\n" + block
+	return session.AttachedSentence(text, paths)
+}
+
+// attachedSubmitter is the optional seam "this agent records the files a message
+// names", asserted rather than required for the reason [WrappedAgent] stays small:
+// a scripted agent in a test owes the interface nothing it does not use.
+type attachedSubmitter interface {
+	SubmitAttached(ctx context.Context, text string, files []string, images []session.Image) (<-chan session.Event, error)
 }
 
 // ── the surface's half ──────────────────────────────────────────────────────
