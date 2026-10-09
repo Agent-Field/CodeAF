@@ -15,3 +15,10 @@ test('same file ignores a trailing slash and a leading dot', () => {
   assert.equal(sameWorkspaceFile('./a.go/', 'a.go'), true);
   assert.equal(sameWorkspaceFile('dir/a.go', 'a.go.bak'), false);
 });
+
+test('a relative edit elsewhere in the tree is not this file', () => {
+  assert.equal(sameWorkspaceFile('cmd/a.go', 'a.go'), false);
+  assert.equal(sameWorkspaceFile('a.go', 'cmd/a.go'), false);
+  assert.equal(sameWorkspaceFile('/work/cmd/a.go', 'cmd/a.go'), true);
+  assert.equal(sameWorkspaceFile('cmd/a.go', '/work/cmd/a.go'), true);
+});

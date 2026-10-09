@@ -226,13 +226,61 @@ func TestDesktopEntriesDefaultFirstAndIgnoreExec(t *testing.T) {
 	writeDesktop("preview.desktop", "[Desktop Entry]\nType=Application\nName=Preview\nMimeType=text/plain;\nExec=preview %f\n")
 	writeDesktop("code.desktop", "[Desktop Entry]\nType=Application\nName=Code\nMimeType=text/plain;text/x-go;\nExec=bash -c evil %f\n")
 	writeDesktop("hidden.desktop", "[Desktop Entry]\nType=Application\nName=Hidden\nHidden=true\nMimeType=text/plain;\nExec=hidden %f\n")
-	found := scanDesktops([]string{apps}, "text/plain", "code.desktop")
+	found := scanDesktops([]string{apps}, []string{"text/plain"}, "code.desktop")
 	found = capEditors(found)
 	if len(found) != 2 || found[0].ID != "code.desktop" || !found[0].Default || found[0].Name != "Code" {
 		t.Fatalf("parsed: %+v", found)
 	}
 	if found[1].Name == "Hidden" || strings.Contains(found[0].Name, "bash") || strings.Contains(found[0].ID, "Exec") {
 		t.Fatalf("exec or hidden leaked: %+v", found)
+	}
+}
+
+func TestSourceFilesFindTextEditorsThroughTheirParentType(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "mime"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "mime", "subclasses"), []byte("application/x-shellscript text/plain\nbad;rm text/plain\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	parents := mimeParents([]string{root})
+	if got := mimeFamily("text/x-go", parents); strings.Join(got, ",") != "text/x-go,text/plain" {
+		t.Fatalf("text family: %v", got)
+	}
+	if got := mimeFamily("application/x-shellscript", parents); strings.Join(got, ",") != "application/x-shellscript,text/plain" {
+		t.Fatalf("subclass family: %v", got)
+	}
+	if got := mimeFamily("image/png", parents); strings.Join(got, ",") != "image/png" {
+		t.Fatalf("an image gained a parent: %v", got)
+	}
+	if _, bad := parents["bad;rm"]; bad {
+		t.Fatal("an unsafe type was read from the table")
+	}
+
+	apps := filepath.Join(root, "applications")
+	if err := os.MkdirAll(apps, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(apps, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("gedit.desktop", "[Desktop Entry]\nType=Application\nName=Text Editor\nMimeType=text/plain;\nTryExec=gedit\n")
+	write("gone.desktop", "[Desktop Entry]\nType=Application\nName=Uninstalled\nMimeType=text/plain;\nTryExec=not-installed-anywhere\n")
+	prev := lookPath
+	lookPath = func(name string) (string, error) {
+		if name == "gedit" {
+			return "/usr/bin/gedit", nil
+		}
+		return "", os.ErrNotExist
+	}
+	t.Cleanup(func() { lookPath = prev })
+	found := scanDesktops([]string{apps}, mimeFamily("text/x-go", parents), "")
+	if len(found) != 1 || found[0].ID != "gedit.desktop" {
+		t.Fatalf("source file handlers: %+v", found)
 	}
 }
 

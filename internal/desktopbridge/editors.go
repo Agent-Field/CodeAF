@@ -209,14 +209,64 @@ func discoverLinux(abs string) ([]Editor, error) {
 	if err != nil {
 		return nil, err
 	}
+	family := mimeFamily(mime, mimeParents(applicationDataDirs()))
 	def := ""
-	if out, err := runCmd(mustLook("xdg-mime"), "query", "default", mime); err == nil {
-		candidate := strings.TrimSpace(string(out))
-		if safeEditorID(candidate) {
-			def = candidate
+	for _, kind := range family {
+		if out, err := runCmd(mustLook("xdg-mime"), "query", "default", kind); err == nil {
+			candidate := strings.TrimSpace(string(out))
+			if safeEditorID(candidate) {
+				def = candidate
+				break
+			}
 		}
 	}
-	return scanDesktops(applicationDirs(), mime, def), nil
+	return scanDesktops(applicationDirs(), family, def), nil
+}
+
+// mimeFamily is the file's own type followed by the types it is a subclass
+// of, the way shared-mime-info defines them: the subclasses table, and the
+// spec's rule that every text/* type is also text/plain. Without it a Go or
+// Rust source answers text/x-go, which almost no handler lists, and a machine
+// with three text editors reports none of them.
+func mimeFamily(mime string, parents map[string][]string) []string {
+	family := []string{mime}
+	seen := map[string]bool{mime: true}
+	for i := 0; i < len(family) && len(family) < 8; i++ {
+		for _, parent := range parents[family[i]] {
+			if !seen[parent] {
+				seen[parent] = true
+				family = append(family, parent)
+			}
+		}
+	}
+	if strings.HasPrefix(mime, "text/") && !seen["text/plain"] {
+		family = append(family, "text/plain")
+	}
+	return family
+}
+
+// mimeParents reads the subclasses tables shared-mime-info writes. A missing
+// table is an empty map, never an error: the type's own handlers still count.
+func mimeParents(dataDirs []string) map[string][]string {
+	parents := map[string][]string{}
+	for _, dir := range dataDirs {
+		data, err := os.ReadFile(filepath.Join(dir, "mime", "subclasses"))
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			child, parent, ok := strings.Cut(strings.TrimSpace(line), " ")
+			if !ok {
+				continue
+			}
+			if c, good := cleanMime(child); good {
+				if p, good := cleanMime(parent); good {
+					parents[c] = append(parents[c], p)
+				}
+			}
+		}
+	}
+	return parents
 }
 
 func mustLook(name string) string {
@@ -257,12 +307,13 @@ func cleanMime(raw string) (string, bool) {
 	return mime, true
 }
 
-func applicationDirs() []string {
+// applicationDataDirs is the XDG data search path, user directory first.
+func applicationDataDirs() []string {
 	home := os.Getenv("XDG_DATA_HOME")
 	if home == "" {
 		home = filepath.Join(os.Getenv("HOME"), ".local", "share")
 	}
-	dirs := []string{filepath.Join(home, "applications")}
+	dirs := []string{home}
 	raw := os.Getenv("XDG_DATA_DIRS")
 	var rest []string
 	if raw == "" {
@@ -274,15 +325,24 @@ func applicationDirs() []string {
 		if strings.TrimSpace(dir) == "" {
 			continue
 		}
+		dirs = append(dirs, dir)
+	}
+	return dirs
+}
+
+func applicationDirs() []string {
+	var dirs []string
+	for _, dir := range applicationDataDirs() {
 		dirs = append(dirs, filepath.Join(dir, "applications"))
 	}
 	return dirs
 }
 
-// scanDesktops reads Name and MimeType. Exec is ignored on purpose: the line
-// is a command template, and the only thing that may run later is the
-// desktop id through the platform launcher.
-func scanDesktops(dirs []string, mime, defaultID string) []Editor {
+// scanDesktops reads Name, MimeType and TryExec. Exec is ignored on purpose:
+// the line is a command template, and the only thing that may run later is
+// the desktop id through the platform launcher. An entry whose TryExec program
+// is not installed is left out, because the launcher could not start it.
+func scanDesktops(dirs []string, mimes []string, defaultID string) []Editor {
 	seen := map[string]bool{}
 	var found []Editor
 	for _, dir := range dirs {
@@ -299,11 +359,16 @@ func scanDesktops(dirs []string, mime, defaultID string) []Editor {
 			if err != nil {
 				continue
 			}
-			title, types, hidden, app := parseDesktop(string(data))
+			title, types, try, hidden, app := parseDesktop(string(data))
 			if hidden || !app || title == "" || strings.ContainsAny(title, "\r\n") {
 				continue
 			}
-			if !mimeListed(types, mime) && id != defaultID {
+			if try != "" {
+				if _, err := lookPath(try); err != nil {
+					continue
+				}
+			}
+			if !mimeListedAny(types, mimes) && id != defaultID {
 				continue
 			}
 			seen[id] = true
@@ -313,7 +378,7 @@ func scanDesktops(dirs []string, mime, defaultID string) []Editor {
 	return found
 }
 
-func parseDesktop(data string) (name, mime string, hidden, app bool) {
+func parseDesktop(data string) (name, mime, tryExec string, hidden, app bool) {
 	section := ""
 	for _, line := range strings.Split(data, "\n") {
 		line = strings.TrimSpace(line)
@@ -340,13 +405,24 @@ func parseDesktop(data string) (name, mime string, hidden, app bool) {
 			}
 		case "MimeType":
 			mime = value
+		case "TryExec":
+			tryExec = strings.TrimSpace(value)
 		case "Hidden":
 			if value == "true" {
 				hidden = true
 			}
 		}
 	}
-	return name, mime, hidden, app
+	return name, mime, tryExec, hidden, app
+}
+
+func mimeListedAny(field string, mimes []string) bool {
+	for _, mime := range mimes {
+		if mimeListed(field, mime) {
+			return true
+		}
+	}
+	return false
 }
 
 func mimeListed(field, mime string) bool {
