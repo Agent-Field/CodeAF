@@ -223,6 +223,23 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	if !a.at(pageFactory) || a.composer.open || !a.factoryConnected() || a.fp.pick != nil || a.fp.recipe != nil || a.fp.keys {
 		return nil, false
 	}
+	// THE ITEM PAGE READS EVERY PRESS AGAINST WHAT ITS LAST DRAW PLACED, in
+	// screen cells (factory_item.go's [app.factoryItemPress]); the hosted
+	// chat's own cells were the chat's before this was asked
+	// (factory_host.go).
+	if a.fp.open {
+		if m.Y < placeHeadRows && !a.fp.geo.hosted {
+			return nil, false
+		}
+		if row := m.Y - placeHeadRows; !a.fp.geo.hosted && row == a.fp.moreRow && a.factoryOverBody(m.X, row) {
+			a.factoryScrollBy(max(a.fp.scrollPage, 1))
+			return nil, true
+		}
+		if m.Y < a.fp.geo.barY {
+			return nil, false
+		}
+		return a.factoryItemPress(m.X, m.Y), true
+	}
 	row := m.Y - placeHeadRows
 	if row < 0 || row >= a.fp.bodyRows() {
 		return nil, false
@@ -232,17 +249,6 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	if row == a.fp.moreRow && a.factoryOverBody(m.X, row) {
 		a.factoryScrollBy(max(a.fp.scrollPage, 1))
 		return nil, true
-	}
-	if a.fp.open {
-		// A PRESS ON A CRUMB IS THE CRUMB'S ROAD (factory_item.go).
-		if c := a.factoryCrumbAt(m.X, row); c != factoryCrumbNone {
-			return a.factoryCrumbPress(c), true
-		}
-		// A PRESS ON THE VERBS' COLUMN IS THE ROW'S KEY (factory_verbs.go).
-		if v, ok := a.factoryVerbAt(m.X, row); ok {
-			return a.factoryVerbPress(v), true
-		}
-		return a.factoryItemPress(m.X, m.Y, row), true
 	}
 	paneW := a.fp.bodyW - a.fp.rowsW - 1
 	if paneW > 0 && row >= a.fp.headRows && abs(m.X-a.fp.rowsW) <= 1 {
@@ -273,6 +279,14 @@ func (a *app) factoryWheel(m tea.Mouse, delta int) (tea.Cmd, bool) {
 	if delta == 0 || !a.at(pageFactory) || a.composer.open || !a.factoryConnected() || a.fp.pick != nil || a.fp.recipe != nil {
 		return nil, false
 	}
+	// ON THE ITEM PAGE THE WHEEL MOVES WHAT IT IS OVER (factory_item.go's
+	// [app.factoryItemWheel]): the left column, or the issue.
+	if a.fp.open {
+		if m.Y < a.fp.geo.barY {
+			return nil, false
+		}
+		return nil, a.factoryItemWheel(m.X, m.Y, delta)
+	}
 	row := m.Y - placeHeadRows
 	if row < 0 || row >= a.fp.bodyRows() || !a.factoryOverBody(m.X, row) {
 		return nil, false
@@ -292,8 +306,7 @@ func (a *app) factoryOverBody(x, row int) bool {
 		if a.fp.bodyW < factoryStageFloor {
 			return a.fp.railShown > 0 && row > a.fp.railTop
 		}
-		// The verbs' column on the right, and its rule, are not the body.
-		return row >= a.fp.railTop && x > factoryRailW && (!a.factoryVerbsDrawn() || x < a.fp.verbX-factoryRuleW)
+		return row >= a.fp.railTop && x >= a.fp.geo.centerX
 	}
 	return a.fp.bodyW-a.fp.rowsW-1 > 0 && row >= a.fp.headRows && x > a.fp.rowsW
 }

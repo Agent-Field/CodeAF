@@ -467,90 +467,85 @@ the questions it would ask the author, what plan changed about the stages, and t
 wheel over the pane and a click on `▾ more`, and its bottom row says `J K scroll` while there is
 more to see. Over the left column the wheel walks its rows.
 
-## the item page — issue, manager, run, result, settings
+## the item page — issue, manager, steps, settings
 
 `enter` on a row of the factory floor (or a second click on it) opens that item on its own page,
 across the full width; `esc` closes it and puts the cursor back on the same row. Nothing about
 the floor (filter, repository, selection) changes while it is open.
 
-The top row is a trail of breadcrumbs, `Factory › codeaf › #1551 filters lost on compact`, with
-where the item stands and for how long (`running 26m`) and the spend over the budget
-(`$1.42 / $5`) at the right; the crumbs are buttons (see breadcrumbs on the item page). The
-second row names the other repositories the item touches, `also harness, agentfield`, or on an
-item waiting on you its question. Then a blank row, and the page's columns.
+The top row is the page's bar: the run control, then a trail of breadcrumbs,
+`Factory › codeaf › #1551 filters lost on compact`, and at the right the step the run is on, its
+round and the spend over the budget, `review · round 1/2 · $1.42 / $5` (see the run control).
+While the run waits on you the second row is its question with the keys that answer it. Then a
+blank row, the left column, a dim `│`, and the center.
 
-The left column is the **issue's map**, one row per part of the item, the stages and the log
-nested two cells under `run`:
+The left column is the **issue's map**, one row per part of the item, the steps nested two
+cells under `steps`, then the item's actions under a blank row:
 
 ```
 issue
 manager
-run  running 4m · $0.31
-  ✓ plan           ?
-  ✓ write
-  ⠋ review     1/2
-  ○ test        ×2
-  ○ arch           +
-  ○ proof          ?
-  log
-result
+steps  running 4m · $0.31
+  ● plan ?
+  ● write
+  ⠋ review ↻ 1/2 until clean
+  ○ test ↻ 2 until green
+  ○ arch +
+  ○ approve ?
+log
 settings
+
+open on github
+refresh
+dismiss
 ```
 
-A stage row is its mark, its one-word name, then at most two cells of its loop, each in its own
-column:
-
-- `×2`: the most rounds the stage may take, before it runs (only where it may take more than one).
-- `1/2`: the round it is on over its most, once it runs, in place of `×2`.
-- `+`, dim: the manager, the plan or you added or changed this stage; the recipe did not set it.
-- `?`, dim: the run stops to ask you here: a stage that is a person, a stage whose own gate
-  applies, the plan stage under `ask me at plan`, and the last stage that runs for the sign-off
-  (unless `ask me at` is `never`). Where both apply, `?` is shown. The amber `?` mark at the
-  start of a row is different: that stage is waiting on you now.
-
-A running stage keeps how long it has run after its name, `⠋ plan · 2m`, where it fits.
+A step row is its mark, its one-word name, then what fits of its loop: `↻ 2` the most rounds it
+may take, before it runs (only where it may take more than one); `↻ 1/2` the round it is on over
+its most, once it runs; `until clean` what it runs until; how long it has run. `+`, dim: the
+manager, the plan or you added or changed this step; the recipe did not set it. `?`, dim: the
+run stops to ask you here (a person's step, the plan under `ask me at plan`, the last step for
+the sign-off). A step held for you says `waiting for you` in amber. A step that ran as a
+conversation wears the conversation's mark.
 
 - `issue`: the whole issue and what codeaf read (see read the whole issue).
-- `manager`: the item's own conversation, the team's lead. The row is there only where this
-  window can make the item's conversation (where `T chat` works).
-- `run`: where the run stands, how long and what it spent; under it each stage with its mark
-  (see paused, stopped and skipped) and `log` once the run has said anything (see the log).
-- `result`: the proof sheet, then the diff and the checks, once something came out.
-- `settings`: ask me at, thinking, budget and which stages are on (see the settings of an item).
+- `manager`: the item's own conversation, the team's lead (only where `T chat` works).
+- `steps`: where the run stands, and every step as written with its knobs.
+- `log`: the run's log, once it has said anything (see the log).
+- `result`: the proof sheet, the diff and the checks, once something came out.
+- `settings`: ask me at, thinking, budget and which steps are on.
+- `open on github`, `refresh`, `dismiss`: each does what its key does (`g`, `u`, `d`).
 
-The center shows the row under the cursor; for `manager`, `run` and every stage it is the run's
-story. The page opens on the stage waiting on you, else the running stage, else `result` for a
-landed item, else `issue`. `↑` and `↓` (or `←` and `→`) walk every row, nested stages included,
-and a click selects one. Under 72 columns the left column is one line above the center.
+The page opens on the step waiting on you, else the running step, else `result` for a landed
+item, else `issue`. Under 72 columns the left column is one line above the center.
 
-The bottom line is `↑↓ rows · enter <what enter does here> · esc floor · ? keys`: `enter chat`
-on the issue, `enter talk` on the manager (it puts your keys in the manager's box; see typing to
-the manager), `enter conversation` on a stage with a room, `enter approve` or
-`enter request changes` on a landed item's proof stage; `enter` on `result`, `settings` and
-`log` does nothing. Every verb key on the right works from any row; the settings' own keys
-answer only on the `settings` row (see the settings of an item).
+## the run control on the item page — run, pause, continue, space
 
-## the verbs on the right of the item page — do, also
+The bar's first cells are one button that does what the run needs next, by `space` or a click:
 
-On an item page 100 columns wide or wider, a column on the right lists what you can do to the
-item, in two groups, each row with its key at the right edge:
+- `▶ run` on an item that has not run, and on a run that is paused (it goes on in the same chat);
+- `= pause` on a run that is moving;
+- `▶ continue` on a run held at an approve step (a step of kind gate, a person): the step's row
+  says `waiting for you`, the second row says `approve · waiting for you` (or the run's own
+  question) with `space continue`, and `space` or a click lets the run go past it.
 
-- **do:** the item's verbs for where it stands. A new item: `run r`, `chat T`, `select space`
-  (and `run selected L` while rows are selected). A running one: `stop x`, `chat T`,
-  `pause space` (`resume` while paused), `steer S`. One waiting on you: `yes y`, `no n`,
-  `in words a`, `chat T`. A landed one: `approve s` (or `approve with changes e`),
-  `request changes B`, `re-run checks v`, `chat T`.
-- **also:** `open on github g`, `refresh u`, `dismiss d`.
+A queued or landed item has no control. `?` names `space` by what it does now. On the item page
+`space` never selects: select is the floor's.
 
-There is no `set` group: ask me at, thinking, budget and the stages are the `settings` row on
-the left (see the settings of an item).
+## move around the item page — arrows, tab, click, hover, the wheel
 
-Click a row or press its key: a click does exactly what the key does. Resting the pointer on a
-row highlights it. While the manager's box has your keys the column is dimmed: every key types
-then, and a click on a dimmed row does nothing (see typing to the manager). The column has no cursor, because every row already has its key. Only what
-works is listed, and a group with nothing in it is not drawn. On a page narrower than 100
-columns there is no column: ask me at, the budget and the thinking stand on the head's second
-row with their keys, and the pane's last row names the verbs. `?` lists every key either way.
+`↑` and `↓` walk every row of the left column in order, the steps and the actions included,
+and the center follows the row. `→` or `tab` gives the keys to the center's chat box, `esc` or
+`tab` gives them back, and `esc` on the page goes back to the floor. `enter` acts on the row: the
+issue and the manager open the manager's chat, a step with a chat puts the keys in its box, an
+action does what it says.
+
+A click does what the key does: on a row it moves the cursor there (a second click is `enter`),
+on an action it acts at once, on the control it runs, pauses or continues, on a crumb it goes
+there, and on the chat's box it gives the box the keys. Resting the pointer on any of these
+highlights it, one thing at a time, on a ground apart from the cursor's; the highlight goes when
+the pointer leaves. The wheel scrolls what is under the pointer: the chat in the center, or the
+left column when it is longer than the page.
 
 ## the settings of an item — where to change the budget, ask me at, thinking, which stages run
 
@@ -594,118 +589,66 @@ number is not a button. Resting the pointer on a crumb highlights it.
 
 ## start a conversation about an issue — enter on the issue row, when enter on the item page does nothing
 
-To chat about an item before anything runs, open it and press `enter` on its `issue` row: that
-opens the item's own conversation, exactly as `T` does from anywhere on the floor (see chat
-about an item). `enter` on the `manager` row puts your keys in the manager's box instead (see
-typing to the manager). On the issue row the bottom line says `enter chat`, and
-`T chat` stays in the item's verbs. While it opens the line above the keys says
-`⠋ opening #12's conversation…`; the first `esc` on its empty box comes back to the item page.
+To chat about an item before anything runs, open it and press `enter` on its `issue` or
+`manager` row, or `T` anywhere on the page: the cursor goes to `manager`, and the item's own
+conversation opens in the center of the page, the same chat view as anywhere else, with your
+keys in its box. The page stays: the bar and the left column are still there, and `esc` gives
+the keys back. An item with no conversation yet asks for one first; while it opens the line above
+the keys says `⠋ opening #12's conversation…`. On the issue row the bottom line says
+`enter chat`, on the manager `enter talk`.
 
-Where this window cannot make the item's conversation (its verbs then have no `T chat`; see
-chat about an item), `enter` on the issue row opens the item on github, as `g` does, and the
-bottom line says `enter open on github`. Where neither works, `enter` says on the pane's last row
-`nothing to open yet · r run` (without `r run` where `r` does nothing), and the next key
-puts the verbs back. `enter` on the `log`, `result` and `settings` rows opens nothing.
+From the floor, `T` opens the item's conversation as a chat of its own instead, and the first
+`esc` on its empty box comes back to the floor (see chat about an item). So does `enter` on the
+page when the window is under 72 columns, too narrow to keep the page beside the chat.
 
-## a stage is a room — enter on a stage
+Where this window cannot make the item's conversation, `enter` on the issue row opens the item
+on github, as `g` does, and the bottom line says `enter open on github`. Where neither works,
+`enter` says on the pane's last row `nothing to open yet · r run` (without `r run` where `r`
+does nothing). `enter` on the `log`, `result` and `settings` rows opens nothing.
 
-A stage that ran as a conversation (plan, write, review: see a stage is a conversation) is a
-room you can walk into. On the item page its row under `run` has the conversation's mark after its
-name, the trail reads `Factory › codeaf › #12 › review`, and the hint says `enter conversation`.
-`enter` opens it the way `T` opens the item's own conversation: you land in it, the one you were
-in goes on running behind, and the first `esc` on its empty box, with nothing running, comes
-back to the item page on the same stage. While it opens the line above the keys says
-`⠋ opening #12 › review…`.
+## a step is a room — enter on a step, its conversation in the center of the item page
 
-A stage with no room says why on the pane's last row instead, and opens nothing:
+A step that ran as a conversation (plan, review: see a stage is a conversation) is shown whole
+in the center when its row is under the cursor: the same view as any conversation, live while
+the step is going, scrolled with the wheel, its tasks beside it, and a box to type into. The trail reads
+`Factory › codeaf › #12 › review` and the hint says `enter conversation`. `enter`, `→`, `tab`
+or a click on the box gives the box your keys; `esc` gives them back. The conversation you were
+in before goes on running behind. Under 72 columns `enter` opens it on its own, and the
+first `esc` on its empty box comes back to the item page on the same step.
+
+A step with no chat says why in the center instead, and opens nothing:
 `review has not started`, `review has no conversation yet · it opens when a round ends` (a
 round's conversation is kept once the round ends), `test is a check · its log is below`,
 `plan is your answer · it has no conversation` for a gate, `post is a write to github · it has
-no conversation`, `neaten is off on this item`, `neaten is skipped on this item`. The next key
-or a move of the cursor puts the keys back.
+no conversation`, `neaten is off on this item`, `neaten is skipped on this item`.
 
 ## the log
 
-Once a run has said anything, the item page's `run` row ends with `log`, nested under the stages. Its pane is the run's log,
-oldest at the top and the newest at the bottom, as many of the last lines as fit; each line
-starts with its time, `12:04`, dim at the margin, then a mark for its kind and its words. Three
-voices: a **thought** (the run thinking aloud, a round starting again) is dim; **your own
-words**, the `steer: …` lines `S` and the conversation leave, are ink; everything else (what a
-stage said, a test, a failure `✕`, a success `✓`, a question `?` in amber) is the quieter
-second voice. A claim a stage made
-that is not for the proof sheet is a `claimed: …` line, and a batch of reads handed to a quick
-task is one line, `read ×4 · find handed to quick task 1`. An item that never ran has no log
-row. The log keeps the last 400 lines.
-
-## what is happening on my item right now — the run's story in the middle of the page
-
-Once an item runs, the middle of its item page tells the run as it happened, one section per
-stage, top to bottom. A finished stage is folded to its head, `● plan · 2m · $0.04`, then what
-it came to in at most two lines (the stage's own note, else the first sentence or two of the
-last thing its conversation said), and at the right a dim `▸ 14 steps` (`▸ open` before its
-conversation is read). The time and money are what this window saw. The running stage is open,
-and an open head says the stage's loop whole: its spinner, its name, `round 1 of 2` (where it
-may take more than one round), `until clean` (what it runs until), `per finding`, `per file` or
-`per claim` (how it splits), then the time and money:
-`⠋ review · round 1 of 2 · until clean · per finding · 4m · $0.27`. A folded head keeps only
-`● review 2/2 · 3m · $0.20`. Under an open head the first line is the stage's ask, dim,
-`ask: read it as a stranger would`, then, where someone gave a reason for setting the stage,
-`why: touches the billing cache`, dim. Then its steps stream, newest at the bottom in the chat's step
-gutter, `read   internal/session/session.go`, the call still going on the spinner. At most 12 lines show,
-under a dim `… 23 more above`. Stages still to come fold into one dim line,
-`○ test ×2 · ○ review · ○ proof`; a skipped stage is one dim line, `– security · skipped`; a
-stage waiting on you shows its question and `y yes · n no · a in words` under its head.
-
-When the plan or the manager changed the item's stages, the story's first line says what
-changed, dim, on one line: `plan added security · skipped neaten · why: touches billing`.
-
-The story is the manager's conversation: everything said in the item's own conversation is
-drawn in it, in order. The manager's progress lines stand between the sections, dim, after the
-stage they are about: `manager · test failed 1 of 2 · asking you`. Its ordinary replies are
-drawn as `manager · ` and the reply's words in full ink, wrapped, at most 8 rows a reply; a
-longer one ends `… ▸ T for the whole chat`. Each tool the manager called is one dim line,
-`factory_run · …`, and your words are `you · …`. The item's opening brief is never drawn. Before
-a run all of it stands in order under the issue's line; during a run, what was said before the
-first progress line stands above the first stage. While the manager is working on a turn, the
-story's last line is `⠋ manager is thinking`, and the page reads the conversation every second
-so the reply appears as it lands, whether you asked from the box, from the chat, or the run
-asked. An item with no conversation has none of this.
-
-**Dive in:** `enter` on a section head, or a click on `▸ 14 steps`, shows that stage's whole
-conversation in the middle, drawn as a task page draws one and following it while the stage
-runs; `J` and `K` scroll it. The last row says `enter opens the conversation · esc back`:
-a second `enter` opens it as a real conversation (once its round has ended), and `esc` comes
-back to the story on the same section. A click on a head opens or folds it; `↑` and `↓` walk
-the heads.
-
-**The box:** the last row is `› enter or click to talk to the manager`; before a run it says
-`› enter or click to talk · r runs it`, under the issue's one line. Where this window cannot
-make the item's conversation, there is no box (see typing to the manager).
+Once a run has said anything, the item page's left column has a `log` row under the steps. Its
+pane is the run's log, oldest at the top and the newest at the bottom, as many of the last lines
+as fit; each line starts with its time, `12:04`, dim at the margin, then a mark for its kind and
+its words. Three voices: a **thought** (the run thinking aloud, a round starting again) is dim;
+**your own words**, the `steer: …` lines `S` and the conversation leave, are ink; everything else
+(what a step said, a test, a failure `✕`, a success `✓`, a question `?` in amber) is the quieter
+second voice. A claim a step made that is not for the proof sheet is a `claimed: …` line, and a
+batch of reads handed to a quick task is one line, `read ×4 · find handed to quick task 1`. An
+item that never ran has no log row. The log keeps the last 400 lines.
 
 ## typing to the manager — enter the box, the keys type, esc gives the keys back
 
-The manager's box is the last row of the run's story. Your keys go into it four ways: `enter` on
-the `manager` row, `enter` on the box itself (walk down to it with `↓` on the story), `tab` from
-any row whose center is the story (the manager, the run, a stage), or a click on the box.
+With the `manager` row under the cursor the center is the manager's own conversation, the chat
+view itself, your words and the manager's replies live as they are written. Your keys go into its box by `enter` on the manager
+row, `→` or `tab`, or a click on the box.
 
-While the box has your keys:
+While the box has your keys every key types, letters that are keys elsewhere (`s`, `r`, `t`,
+space) included, and the arrows move in what you typed; nothing on the page acts. `enter` sends
+your words to the manager as your message and you stay on the item page. `esc` or `tab` gives
+the keys back to the page.
 
-- every key types, letters that are verbs elsewhere (`s`, `r`, `t`) included;
-- the verbs on the right are dimmed, which means exactly that the keys type now, and a click on
-  a dimmed row does nothing;
-- the empty box says `› say it`, with its cursor drawn;
-- the bottom line is `type · enter send · tab next place · esc back to keys`.
-
-`enter` sends in place: your words go to the manager's conversation as your message and you
-stay on the item page. The box clears, the story shows `you · …` at once and then
-`⠋ manager is thinking`, and the manager's reply appears in the story as it is written. The first
-words to an item with no conversation yet make it. Where this window can only open a
-conversation by showing it, `enter` opens the item's conversation as `T` does instead, with your
-words typed in its box for you to send there. `esc` gives the keys back: the verbs light up, the
-bottom line comes back, and what you typed is kept, so the next `enter` on the box shows it
-again. `tab` from inside the box walks on to the next place. `T chat` opens the whole
-conversation from any row: the same conversation the box talks to, with any turn still running
-in it, never a second copy.
+Before the item has a conversation the center is a box of its own,
+`› enter or click to talk to the manager` (`› enter or click to talk · r runs it` before a run),
+and `⠋ manager is thinking` while it works; the first words make the conversation. Where this
+window cannot make the item's conversation there is no box.
 
 ## answering a question — y, n, a
 
@@ -946,8 +889,7 @@ became of the item (`#12 is running`, `#12 stopped · branch kept`); a refusal, 
 ## what does ask me at mean, how do I make it stop after the plan
 
 `ask me at` is where an item's run stops to ask you. On the item page it reads
-`ask me at  plan  t` in the verbs on the right (`ask me at  plan [t]` on the second row of a
-page narrower than 100 columns), and `t`, or a click on it, cycles it:
+`ask me at  plan  t` on the `settings` row, and `t` cycles it from any row of the page:
 
 - `ask me at plan`: the run comes back with the plan before any code, and waits for `y`.
 - `ask me at pull request` (the default): every stage runs, and it stops before the pull

@@ -53,6 +53,14 @@ func (placeFactory) tick(a *app, now time.Time) (bool, tea.Cmd) {
 
 func (placeFactory) body(a *app, width, room int) []placeRow { return a.factoryBody(width, room) }
 
+// ownFrame is the item page while its center hosts the selected row's chat
+// (factory_host.go): the chat's own frame beside the left column, under the
+// top bar. Every other shape is the shared frame's.
+func (placeFactory) ownFrame(a *app, width, height int) ([]string, []placeHit, int, int, bool) {
+	lines, caretX, caretY, ok := a.factoryHostFrame()
+	return lines, nil, caretX, caretY, ok
+}
+
 // stops is the rail line of every item, top first.
 func (placeFactory) stops(a *app) []int { return a.factoryLines() }
 

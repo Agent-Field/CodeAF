@@ -615,7 +615,7 @@ func TestFactorySettingsKeysOnlyOnTheSettingsRow(t *testing.T) {
 	f := &factoryFake{}
 	a := factoryVerbsLab(t, f, 150)
 	factoryVerbsOpen(t, a, 8)
-	for _, row := range []string{wordFacetManager, wordFacetIssue, wordFacetRun} {
+	for _, row := range []string{wordFacetManager, wordFacetIssue, wordFacetSteps} {
 		factoryRowNamed(t, a, row)
 		before := frame(a)
 		f.said()

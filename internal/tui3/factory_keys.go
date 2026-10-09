@@ -375,10 +375,15 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	}
 	it, ok := a.factoryCursorItem()
-	// `T` IS THE ITEM'S OWN CONVERSATION in every state, on the floor and on
-	// the item page alike: it is talk about the item, never a change to it.
+	// `T` IS THE ITEM'S OWN CONVERSATION in every state: it is talk about
+	// the item, never a change to it. On the item page it is the manager's
+	// chat in the center (factory_host.go), and on the floor, or a page too
+	// narrow to host it, the chat surface's own.
 	if ok && (k == "T" || k == "shift+t") && a.factory.Has("talk") {
 		a.pageMsg = ""
+		if a.fp.open && a.factoryCanHost() {
+			return a.factoryTalkHere(it), true
+		}
 		return a.factoryTalk(it), true
 	}
 	if k == "n" && (!ok || it.State != factory.StateNeedsYou) {

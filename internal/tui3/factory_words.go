@@ -156,12 +156,22 @@ const (
 const (
 	wordFacetIssue    = "issue"
 	wordFacetManager  = "manager"
-	wordFacetRun      = "run"
+	wordFacetSteps    = "steps"
 	wordFacetLog      = "log"
 	wordFacetResult   = "result"
 	wordFacetSettings = "settings"
 	// wordFloorCrumb is the first crumb of the item page's trail, the floor.
 	wordFloorCrumb = "Factory"
+)
+
+// The item page's top bar (factory_bar.go): its one control, which says what
+// a press does where the run stands, and what a step held for a person says
+// on the left column.
+const (
+	keyControl        = "space"
+	wordContinue      = "continue"
+	wordWaitingForYou = "waiting for you"
+	wordTypeHere      = "type here"
 )
 
 // The timeline's words: the run's story in the middle of the item page
