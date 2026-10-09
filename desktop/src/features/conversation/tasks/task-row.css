@@ -1,6 +1,8 @@
 /* One line per task. Colour lives only on the mark; the selected row takes a soft fill. */
 .task-row { position: relative; display: flex; align-items: center; gap: var(--space-2); min-width: 0; height: var(--row-height-v3); padding: 0 var(--row-pad); border-radius: var(--radius-control); color: var(--ink); font-size: var(--type-prose-size); line-height: var(--type-label-leading); transition: background var(--dur-fast) var(--ease); }
 .task-row:hover, .task-row:focus-within, .task-row[data-current] { background: var(--field); }
+/* Press darkens the fill one step, quickly (design 1f). */
+.task-row:active { background: var(--field-2); transition-duration: var(--dur-press); }
 .task-row[data-depth="1"][data-parent] { padding-inline-start: var(--tasks-chevron-pad); }
 .task-row[data-depth="1"]:not([data-parent]) { gap: var(--tasks-mark-gap); }
 

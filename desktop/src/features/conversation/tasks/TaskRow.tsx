@@ -1,8 +1,8 @@
-import { Button, ContextMenu, IconButton, RowActions } from '../../../components/ui';
+import { Button, ContextMenu, DropdownMenu, IconButton, RowActions } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
 import { rowFlags, rowKind } from '../taskState';
 import { rowAge, waitPrefix } from './rowText';
-import { taskActions, type TaskCommands } from './taskMenu';
+import { splitActions, taskActions, type TaskCommands } from './taskMenu';
 import { TaskMark } from './TaskMark';
 import { waitTitles } from '../taskTree';
 import './task-row.css';
@@ -59,6 +59,7 @@ export function TaskRow(props: TaskRowProps) {
   const { row, now, current, commands, below } = props;
   const kind = rowKind(row);
   const actions = taskActions(row, commands);
+  const { inline, more } = splitActions(actions);
   return (
     <ContextMenu label={`${row.Title} actions`} items={actions}>
       <div className="task-row" data-actions-host="" data-kind={kind} data-depth={props.depth === 0 ? 0 : 1} data-parent={props.expanded !== undefined || undefined} data-current={current || undefined}>
@@ -76,9 +77,14 @@ export function TaskRow(props: TaskRowProps) {
         </Button>
         <Meta row={row} kind={kind} now={now} below={below} />
         <RowActions className="task-row-actions">
-          {actions.map((action) => (
+          {inline.map((action) => (
             <IconButton key={action.id} label={action.label} icon={action.icon ?? 'more'} size="row" iconSize="xs" onClick={action.onSelect} />
           ))}
+          {more.length > 0 && (
+            <DropdownMenu label={`More actions for ${row.Title}`} items={more}>
+              <IconButton label="More actions" icon="more" size="row" iconSize="xs" />
+            </DropdownMenu>
+          )}
         </RowActions>
       </div>
     </ContextMenu>

@@ -403,6 +403,10 @@
   --task-composer-max-width: 592px;
   --task-view-column-width: 640px;
   --task-view-bar-height: 52px;
+  --conversation-bar-pad-start: 22px;
+  --conversation-bar-pad-end: 12px;
+  --conversation-bar-count-gap: 7px;
+  --conversation-bar-counts-gap: 16px;
   --task-composer-clearance: 20px;
   --task-composer-pad-start: 16px;
   --task-note-pad-block: 7px;

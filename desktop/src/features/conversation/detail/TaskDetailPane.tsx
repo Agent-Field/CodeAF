@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Button, Icon, PageHeading, Text } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
-import { rowFlags, rowKind, taskMark } from '../taskState';
+import { rowFlags, rowKind } from '../taskState';
 import { QuestionCardV2, type QuestionCardProps } from '../tray/QuestionCardV2';
 import { factsOf, progressText } from './taskDetail';
 import { parseBrief } from '../tasks/brief';
 import { FullBrief } from '../tasks/FullBrief';
 import { TaskMark } from '../tasks/TaskMark';
+import { stateWord } from '../tasks/tasksTableModel';
 import './task-detail.css';
 
 /** The pending question and the handlers its card needs; the tray owns the card itself. */
@@ -23,14 +24,14 @@ export type TaskDetailPaneProps = {
   onOpenTask: (taskId: string, background: boolean) => void;
 };
 
-/** "● Your call  step 12 · 2m": the state word, then only the progress the engine knows. */
+/** "● Needs you  step 12 · 2m": the state word, then only the progress the engine knows. */
 function StateLine({ row, now }: Pick<TaskDetailPaneProps, 'row' | 'now'>) {
   const kind = rowKind(row);
   const progress = progressText(row, kind, now);
   return (
     <span className="task-detail-state">
       <TaskMark dense status={row.Status} {...rowFlags(row)} />
-      <span className="task-detail-state-word">{taskMark(row.Status, rowFlags(row)).label}</span>
+      <span className="task-detail-state-word">{stateWord(row)}</span>
       {progress && <span>{progress}</span>}
     </span>
   );
