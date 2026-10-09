@@ -84,10 +84,14 @@
   opacity: var(--opacity-disabled);
 }
 
-.composer-reason.type-body {
+.composer-reason {
+  display: flex;
+  justify-content: center;
   margin-top: var(--space-2);
+}
+
+.composer-reason .button {
   font-size: var(--font-size-label);
-  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {

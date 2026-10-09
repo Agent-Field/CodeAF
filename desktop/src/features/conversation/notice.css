@@ -22,3 +22,10 @@
 .question-caption { color: var(--muted); font-size: var(--font-size-body); }
 .question-input { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
 .question-input .text-area { padding: var(--space-2) var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); resize: vertical; }
+.question-blanks { display: flex; flex-direction: column; gap: var(--space-2); }
+.question-field { display: flex; flex-direction: column; gap: var(--space-1); }
+.question-evidence { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; width: 100%; }
+.question-code { margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; border-radius: var(--radius-sm); background: var(--field); font-family: var(--font-mono); font-size: var(--font-size-code); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.question-table { max-width: 100%; overflow-x: auto; font-size: var(--font-size-body); }
+.question-table th, .question-table td { padding: var(--space-1) var(--space-2); text-align: left; border-bottom: var(--border-width) solid var(--border); }
+.question-path.type-body { font-family: var(--font-mono); font-size: var(--font-size-code); }

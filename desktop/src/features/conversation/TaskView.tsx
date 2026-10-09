@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { readTaskPage, type EngineTaskPage } from '../chat/engine-client';
 import { Button, Icon, Text } from '../../components/ui';
+import { TaskNotice } from './TaskNotice';
 import { isTaskRunning, taskPageModel } from './taskPageTurn';
 import type { Turn } from './types';
 import './task-view.css';
@@ -16,36 +17,24 @@ export function TaskPageBody({ page, renderTurn, onOpenTask }: { page: EngineTas
     <div className="task-view-body">
       {renderTurn(model.turn, { userFormat: model.userFormat })}
       {model.checks.length > 0 && (
-        <section className="task-view-checks" aria-label="Checks">
-          <Text className="task-view-heading">Checks</Text>
-          <ul className="task-view-list">
-            {model.checks.map((check, index) => (
-              <li key={index} className="task-view-check">
-                <Icon name="checklist" size="sm" />
-                <span>{check}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <ul className="task-view-list" aria-label="Checks">
+          {model.checks.map((check, index) => (
+            <li key={index} className="task-view-check">
+              <Icon name="checklist" size="sm" />
+              <span>{check}</span>
+            </li>
+          ))}
+        </ul>
       )}
       {model.notes.map((note, index) => (
         <Text key={index} className="task-view-note">{note}</Text>
       ))}
       {model.children.length > 0 && (
-        <ul className="task-view-list task-view-children">
+        <div className="task-view-children">
           {model.children.map((child) => (
-            <li key={child.id}>
-              <Button
-                className="task-view-child"
-                disabled={!child.taskId}
-                onClick={(event) => child.taskId && onOpenTask(child.taskId, event.metaKey || event.ctrlKey)}
-              >
-                <span className="task-view-child-title">{child.title}</span>
-                <span className="task-view-child-state">{child.status}</span>
-              </Button>
-            </li>
+            <TaskNotice key={child.id} item={child} open={false} onToggle={() => undefined} onOpenTask={onOpenTask} />
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

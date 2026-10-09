@@ -45,3 +45,15 @@ export function taskCounts(rows: EngineTaskRow[]): { done: number; total: number
   const all = leaves(buildTaskTree(rows));
   return { done: all.filter((row) => row.Status === 'done').length, total: all.length };
 }
+
+/** The task and its ancestors, outermost first; a cycle stops the walk. */
+export function taskTrail(rows: EngineTaskRow[], taskId: string): EngineTaskRow[] {
+  const byId = new Map(rows.filter((row) => !row.Archived).map((row) => [row.ID, row]));
+  const trail: EngineTaskRow[] = [];
+  let row = byId.get(taskId);
+  while (row && !trail.includes(row)) {
+    trail.unshift(row);
+    row = row.Parent ? byId.get(row.Parent) : undefined;
+  }
+  return trail;
+}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Button, Icon, IconButton, Markdown, WorkStateIndicator } from '../../components/ui';
+import { Button, CopyButton, Icon, IconButton, Markdown, WorkStateIndicator } from '../../components/ui';
 import { ErrorItem } from './ErrorItem';
 import { NoteItem } from './NoteItem';
 import type { Turn, TurnItem } from './types';
@@ -11,19 +11,25 @@ type TurnViewProps = {
   folded: boolean;
   onToggleFold: () => void;
   renderItem: (item: TurnItem) => ReactNode;
+  onRetry?: () => void;
+  /** Task-authored descriptions may be Markdown; a person's words never are. */
+  userMarkdown?: boolean;
 };
 
-function BuiltInItem({ item }: { item: TurnItem }) {
+type ItemProps = { item: TurnItem; renderItem: TurnViewProps['renderItem']; onRetry?: () => void };
+
+function BuiltInItem({ item, onRetry }: Omit<ItemProps, 'renderItem'>) {
   if (item.kind === 'text') return item.text ? <Markdown>{item.text}</Markdown> : null;
   if (item.kind === 'note') return <NoteItem text={item.text} />;
-  if (item.kind === 'error') return <ErrorItem text={item.text} />;
+  if (item.kind === 'error') return <ErrorItem text={item.text} onRetry={onRetry} />;
   return null;
 }
 
 const builtIn = new Set<TurnItem['kind']>(['text', 'note', 'error']);
 
-function Item({ item, renderItem }: { item: TurnItem; renderItem: TurnViewProps['renderItem'] }) {
-  return <div className="turn-item">{builtIn.has(item.kind) ? <BuiltInItem item={item} /> : renderItem(item)}</div>;
+function Item({ item, renderItem, onRetry }: ItemProps) {
+  const content = builtIn.has(item.kind) ? <BuiltInItem item={item} onRetry={onRetry} /> : renderItem(item);
+  return <div className="turn-item">{content}</div>;
 }
 
 function FoldedTurn({ turn, onToggleFold }: Pick<TurnViewProps, 'turn' | 'onToggleFold'>) {
@@ -47,7 +53,14 @@ function Working() {
   );
 }
 
-export function TurnView({ turn, folded, onToggleFold, renderItem }: TurnViewProps) {
+/** The reply's own words, for Copy; empty while it is still being written. */
+function replyText(turn: Turn): string {
+  if (turn.state === 'working' || turn.state === 'streaming') return '';
+  const texts = turn.items.flatMap((item) => (item.kind === 'text' && item.text.trim() ? [item.text] : []));
+  return texts.join('\n\n');
+}
+
+export function TurnView({ turn, folded, onToggleFold, renderItem, onRetry, userMarkdown }: TurnViewProps) {
   if (folded) {
     return (
       <section className="turn" data-folded="true">
@@ -56,6 +69,7 @@ export function TurnView({ turn, folded, onToggleFold, renderItem }: TurnViewPro
     );
   }
   const waiting = turn.state === 'working' && turn.items.length === 0;
+  const reply = replyText(turn);
   return (
     <section className="turn">
       <IconButton
@@ -66,11 +80,16 @@ export function TurnView({ turn, folded, onToggleFold, renderItem }: TurnViewPro
         aria-expanded={true}
         onClick={onToggleFold}
       />
-      <UserMessage text={turn.user} />
+      <UserMessage text={turn.user} markdown={userMarkdown} />
       {turn.items.map((item) => (
-        <Item key={item.id} item={item} renderItem={renderItem} />
+        <Item key={item.id} item={item} renderItem={renderItem} onRetry={onRetry} />
       ))}
       {waiting && <Working />}
+      {reply && (
+        <div className="turn-actions">
+          <CopyButton text={reply} label="Copy reply" />
+        </div>
+      )}
     </section>
   );
 }

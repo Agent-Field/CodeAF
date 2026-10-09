@@ -3,7 +3,7 @@
   width: 100%;
   max-width: var(--chat-column-max-width);
   margin-inline: auto;
-  padding-inline: max(var(--space-3), var(--chat-gutter));
+  padding-inline: max(var(--icon-button-size), var(--chat-gutter));
   box-sizing: border-box;
   min-width: 0;
   overflow-wrap: anywhere;
@@ -25,7 +25,8 @@
   position: absolute;
   top: var(--space-1);
   right: 100%;
-  margin-right: var(--space-1);
+  /* The column's gutter is exactly one icon button wide, so the chevron never clips. */
+  margin-right: 0;
   opacity: var(--opacity-transparent);
   transition: opacity var(--duration-fast) var(--ease), background var(--duration) var(--ease), color var(--duration) var(--ease);
 }
@@ -106,3 +107,15 @@
 /* Error: warning text with an optional retry. */
 .error-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--warning); font-size: var(--font-size-body); }
 .error-item-text { min-width: 0; }
+
+/* Reply actions: quiet, revealed with the turn's hover or focus. */
+.turn-actions { display: flex; margin-top: calc(var(--space-2) * -1); opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
+.turn:hover .turn-actions,
+.turn-actions:focus-within { opacity: var(--opacity-opaque); }
+@media (pointer: coarse) {
+  .turn-actions { opacity: var(--opacity-opaque); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-actions { transition: none; }
+}
+.user-message-text[data-markdown] { white-space: normal; }

@@ -21,6 +21,35 @@ const freeText: EngineQuestion = {
   input: { kind: 'text', prompt: 'Folder name' },
 };
 
+const checklist: EngineQuestion = {
+  id: 3,
+  kind: 'question',
+  head: 'Pick the folders',
+  ask: 'Which folders should the audit cover?',
+  input: { kind: 'checklist' },
+  options: [
+    { key: 'src', label: 'src' },
+    { key: 'docs', label: 'docs' },
+    { key: 'tests', label: 'tests' },
+  ],
+};
+
+const blanks: EngineQuestion = {
+  id: 4,
+  kind: 'consent',
+  head: 'Connect the database',
+  ask: 'Fill in the connection details.',
+  input: {
+    kind: 'blanks',
+    blanks: [
+      { label: 'Host', default: 'localhost' },
+      { label: 'Mode', kind: 'choice', choices: ['read', 'write'], default: 'read' },
+    ],
+  },
+  attach: [{ kind: 'diff', title: 'Planned change', body: '- timeout = 5\n+ timeout = 30' }],
+  scope: ['once', 'session'],
+};
+
 const settle = () => Promise.resolve(true);
 
 export function QuestionCardSpecimen() {
@@ -28,6 +57,8 @@ export function QuestionCardSpecimen() {
     <div>
       <QuestionCard question={approval} busy={false} onAnswer={settle} />
       <QuestionCard question={freeText} busy={false} onAnswer={settle} />
+      <QuestionCard question={checklist} busy={false} onAnswer={settle} />
+      <QuestionCard question={blanks} busy={false} onAnswer={settle} />
     </div>
   );
 }

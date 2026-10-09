@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { EngineTaskRow } from '../chat/engine-client';
-import { buildTaskTree, taskCounts } from './taskTree.ts';
+import { buildTaskTree, taskCounts, taskTrail } from './taskTree.ts';
 
 const row = (ID: string, Status: string, extra: Partial<EngineTaskRow> = {}): EngineTaskRow => ({
   ID,
@@ -30,4 +30,17 @@ test('a cycle does not hide rows or recurse forever', () => {
 test('counts leaves only', () => {
   const rows = [row('p', 'running'), row('x', 'done', { Parent: 'p' }), row('y', 'failed', { Parent: 'p' }), row('z', 'done')];
   assert.deepEqual(taskCounts(rows), { done: 2, total: 3 });
+});
+
+test('trail walks parents outermost first and stops on a cycle', () => {
+  const rows = [
+    { ID: 'a', Title: 'A', Status: 'done', Parent: 'c' },
+    { ID: 'b', Title: 'B', Status: 'done', Parent: 'a' },
+    { ID: 'c', Title: 'C', Status: 'done', Parent: 'b' },
+    { ID: 'd', Title: 'D', Status: 'done' },
+    { ID: 'e', Title: 'E', Status: 'done', Parent: 'd' },
+  ];
+  assert.deepEqual(taskTrail(rows, 'e').map((r) => r.ID), ['d', 'e']);
+  assert.equal(taskTrail(rows, 'b').length, 3);
+  assert.deepEqual(taskTrail(rows, 'missing'), []);
 });

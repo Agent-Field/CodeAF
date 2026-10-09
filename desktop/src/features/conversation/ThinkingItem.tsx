@@ -11,7 +11,7 @@ export function ThinkingItem({ item, open, onToggle }: Props) {
       <Button className="tool-toggle" aria-expanded={open} onClick={onToggle}>
         <Icon name="chevron" size="xs" motion="disclosure" />
         {item.streaming && <WorkStateIndicator phase="streaming" label="Thinking" />}
-        <span className="tool-summary">{item.streaming ? 'Thinking…' : 'Thought'}</span>
+        <span className="tool-summary">{item.streaming ? 'Thinking…' : 'Thought for a moment'}</span>
       </Button>
       {open && item.text && <p className="thinking-text">{item.text}</p>}
     </div>
