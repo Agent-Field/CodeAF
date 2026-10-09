@@ -1,0 +1,62 @@
+/* Work rhythm (ELEMENTS §0): quieter ink, 12px labels, a guide line at the left, 4px between rows. Layout only. */
+.work-block { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; margin-block: var(--space-work-block); color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-tight); }
+.work-toggle.button, .work-step-head.button { min-height: var(--step-row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); text-align: left; }
+.work-step-head.button { width: 100%; }
+.work-toggle.button { align-self: flex-start; }
+.work-toggle .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
+.work-toggle[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: none; }
+.work-summary-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-tone="warning"] { color: var(--warning); }
+
+.work-body { display: flex; flex-direction: column; gap: var(--space-work-row); align-self: stretch; min-width: 0; box-sizing: border-box; margin-inline-start: calc(var(--icon-xs) / 2); padding-inline-start: calc(var(--work-indent) - var(--icon-xs) / 2); border-inline-start: var(--border-width) solid var(--work-guide); }
+.work-step { display: flex; flex-direction: column; min-width: 0; }
+.work-step-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-step[data-state="forming"] .work-step-title { opacity: var(--opacity-disabled); }
+.work-time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.work-mark { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); }
+.work-mark-word { white-space: nowrap; }
+
+.work-calls { display: flex; flex-direction: column; gap: var(--space-half); padding-inline-start: calc(var(--icon-sm) + var(--space-tight)); }
+.work-call { display: flex; flex-direction: column; min-width: 0; }
+.work-call-head { position: relative; display: flex; align-items: center; gap: var(--space-tight); min-height: var(--step-row-height); padding-inline: var(--space-half); border-radius: var(--radius-sm); }
+.work-call-head:hover { background: var(--control-hover); }
+.work-call-head:active { background: var(--control-pressed); }
+.work-call-head:has(.work-call-toggle:focus-visible) { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.work-call-toggle.button { min-height: 0; padding: 0; border: 0; background: transparent; }
+.work-call-toggle:focus-visible { outline: none; }
+/* The toggle stretches over the whole row so a click anywhere opens it; a file chip rises above it. */
+.work-call-toggle::after { content: ""; position: absolute; inset: 0; }
+.work-call-file { position: relative; z-index: 1; display: inline-flex; min-width: 0; }
+.work-call-text, .work-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-call-text[data-mono], .work-path { font-family: var(--font-mono); font-size: var(--font-size-code); }
+.work-path.type-code { color: inherit; }
+.work-stat { display: inline-flex; flex: none; gap: var(--space-1); margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+.work-add { color: var(--success); }
+.work-remove { color: var(--danger); }
+.work-call[data-state="forming"] .work-call-head { opacity: var(--opacity-disabled); }
+.work-call[data-state="waiting"] .work-call-head { color: var(--text); }
+
+.work-detail { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding-block: var(--space-1) var(--space-2); padding-inline-start: calc(var(--icon-sm) + var(--space-tight) + var(--space-half)); }
+.work-excerpt, .work-diff { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); width: 100%; min-width: 0; }
+.work-pre { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.work-pre .type-code { color: inherit; }
+.work-terminal-command.type-code { color: var(--text); }
+.work-more.button { min-height: var(--icon-button-size); padding-inline: var(--space-half); font-size: var(--font-size-label); }
+.work-note { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
+.work-list { margin: 0; padding-inline-start: var(--space-4); }
+
+.work-diff-rows { box-sizing: border-box; width: 100%; max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--font-size-code); line-height: var(--line-height-body); }
+.work-diff-row { display: flex; padding-inline: var(--space-2); color: var(--muted); }
+.work-diff-sign { flex: none; width: var(--space-4); user-select: none; }
+.work-diff-text { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.work-diff-row[data-kind="add"] { background: var(--work-diff-add); color: var(--text); }
+.work-diff-row[data-kind="remove"] { background: var(--work-diff-remove); color: var(--text); }
+.work-diff-row[data-kind="gap"] { color: var(--muted); }
+
+.work-thinking { display: flex; flex-direction: column; gap: var(--space-half); min-width: 0; }
+.work-thinking-label { display: inline-flex; align-items: center; gap: var(--space-tight); min-height: var(--step-row-height); padding-inline: var(--space-half); }
+.work-thinking-text, .work-thinking-body { margin: 0; padding-inline-start: calc(var(--icon-xs) + var(--space-tight) + var(--space-half)); font-style: italic; white-space: pre-wrap; overflow-wrap: anywhere; }
+.work-thinking-text { display: flex; flex-direction: column; justify-content: flex-end; max-height: calc(var(--font-size-body) * var(--line-height-tight) * 3); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--work-fade)); mask-image: linear-gradient(to bottom, transparent, black var(--work-fade)); }
+
+.work-specimen { display: flex; flex-direction: column; gap: var(--space-4); max-width: var(--content-max-width); }
+.work-specimen-label { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
