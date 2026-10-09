@@ -3,12 +3,10 @@
 // optional: a page without them draws exactly what it knows.
 
 import type { EngineTaskPage, EngineTaskRow, PlanStep } from '../../chat/engine-client';
-import type { CommandPart } from './displayCommand';
 
-/** session.PlanStep as recorded; `parts`, `full_output` and the timings are not in the shared type yet. */
+/** session.PlanStep as recorded. The engine does not send step timings or exit
+ * codes yet; the log reads them when a later engine does, and draws nothing otherwise. */
 export type PageStep = PlanStep & {
-  full_output?: string;
-  parts?: readonly CommandPart[];
   /** Nanoseconds the command ran, when the engine recorded it. */
   took?: number;
   exit?: number;

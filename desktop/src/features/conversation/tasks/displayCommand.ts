@@ -2,15 +2,9 @@
 // command whole, and marks the parts that are machinery: the `cd <run copy>`
 // the harness prepends and the plandb record shims it appends. Those are cut.
 
-export type CommandPart = {
-  Command?: string;
-  Separator?: string;
-  Start?: number;
-  End?: number;
-  SepEnd?: number;
-  RecordAddressed?: boolean;
-  RunCopyPrefix?: boolean;
-};
+import type { PlanCommandPart } from '../../chat/engine-client.ts';
+
+export type CommandPart = PlanCommandPart;
 
 const ELLIPSIS = '…';
 
