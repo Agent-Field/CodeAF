@@ -41,7 +41,7 @@ export type Entry = { action: WorkspaceAction; ids: string[]; want?: boolean; re
 
 /** What a window saves locally for one place, so a reload or relaunch resumes exactly where it was. */
 export type Persisted = {
-  /** The last tab set the engine confirmed, and its revision; absent before the first answer. */
+  /** The last confirmed tab set, or the local import seed until the first engine answer. */
   base?: SharedWorkspace;
   revision: number;
   /** Changes made here that the engine has not confirmed yet. */
@@ -147,8 +147,12 @@ export function createWorkspaceController(options: ControllerOptions) {
   let local: WindowLocal = saved?.local ? { ...emptyLocal(), ...saved.local } : emptyLocal();
   let requestedFocus = options.focus;
   if (options.focus) local = { ...local, activeId: options.focus };
-  /** Before the engine has answered once, a window with nothing saved shows the import seed. */
+  /** Keep the import seed locally even before first contact, so offline edits replay over the same tabs after reload. */
   let view: WorkspaceState = base ? compose(base, local) : options.initial();
+  if (!base) {
+    base = sharedOf(view);
+    local = localOf(view, local);
+  }
   let status: SyncStatus = { phase: 'loading', overtaken: 0, unsaved: pending.length };
   let loaded = false;
   let stopped = true;
