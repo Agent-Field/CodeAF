@@ -9,6 +9,7 @@ import type { OutgoingFile } from '../chat/engine-client';
 import { EngineAssetProvider } from './assets';
 import { renderFile } from './blockRenderer';
 import type { SendMode } from './Composer';
+import { ConversationBar } from './ConversationBar';
 import { ConversationDock } from './ConversationDock';
 import { ConversationTranscript } from './ConversationTranscript';
 import { EngineNotice } from './EngineNotice';
@@ -17,7 +18,7 @@ import { LatestPill, liveSince } from './LatestPill';
 import { summarize, type TabSummary } from './tabSummary';
 import { TaskPanel } from './TaskPanel';
 import { TaskRoute, TaskRouteBar } from './TaskRoute';
-import { taskCounts } from './taskTree';
+import { taskCounts, taskProgress } from './taskTree';
 import { useConversation } from './useConversation';
 import { readEngineText } from './tasks/readText';
 import { useQueued } from './useQueued';
@@ -122,7 +123,10 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   useTurnJump(scroller, !inTask && !tasksView);
   const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
   const { done, total } = taskCounts(model.tasks);
-  const tasksToggle = hasTasks && !panel.shown ? { label: `Tasks · ${done}/${total}`, onClick: panel.open } : undefined;
+  const barPanel = hasTasks ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
+  const barCounts = { running: taskProgress(model.tasks).running, needsYou: model.questions.length };
+  const barTitle = tab.titleSource ? label : '';
+  const showBar = inTask || Boolean(barTitle) || hasTasks;
   const modelLabel = !snapshot || snapshot.model === ENGINE_MODEL ? MODEL_LABEL : snapshot.model;
   const showJump = unanchored && (behind || model.running) && !inTask;
   const showFooter = !inTask || conversation.unreachable;
@@ -145,7 +149,11 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
           />
         )}
         <div className="conversation-main" data-empty={empty || undefined} hidden={tasksView}>
-          {taskId && <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} />}
+          {showBar && (
+            <ConversationBar lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel}>
+              {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
+            </ConversationBar>
+          )}
           <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
             <div ref={content} className="conversation-column">
               {taskId ? (
@@ -188,7 +196,6 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                       running: model.running,
                       docked: !empty,
                       modelLabel,
-                      tasksToggle,
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
                       autoFocus: true,
                     }}

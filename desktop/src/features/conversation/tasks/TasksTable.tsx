@@ -43,6 +43,7 @@ function Head({ tasks, onClose }: Pick<TasksTableProps, 'tasks' | 'onClose'>) {
         {usd > 0 && <span>{costText(usd)} spent</span>}
         {steps > 0 && <span>{stepsText(steps)}</span>}
       </span>
+      <IconButton className="tasks-table-collapse" label="Collapse tasks" icon="shrink" iconSize="xs" onClick={onClose} />
     </header>
   );
 }

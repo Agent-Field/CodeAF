@@ -26,7 +26,7 @@ async function startWithTasks(page: Page, adjust: (scenario: Scenario) => void =
   return engine;
 }
 
-test('panel shows counts and nested rows, closes, and reopens from the composer toggle', async ({ page }) => {
+test('panel shows counts and nested rows, closes, and reopens from the header toggle', async ({ page }) => {
   await startWithTasks(page);
   const tasks = panel(page);
   // Every visible row counts once, parents included.

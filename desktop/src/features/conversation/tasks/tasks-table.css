@@ -44,6 +44,7 @@
 .tasks-table .tasks-table-group.button { min-height: var(--tasks-table-group-height); padding: var(--space-0) var(--space-3); border-radius: var(--radius-control); font-weight: var(--type-label-strong); }
 .tasks-table .tasks-table-row.button { min-height: var(--tasks-table-row-height); padding: var(--space-0) var(--space-3) var(--space-0) var(--space-row); border-radius: var(--space-0) var(--tasks-table-row-radius) var(--tasks-table-row-radius) var(--space-0); font-weight: var(--type-label-weight); }
 .tasks-table .tasks-table-group.button:hover:not(:disabled), .tasks-table .tasks-table-row.button:hover:not(:disabled), .tasks-table .tasks-table-row.button[aria-current] { background: var(--field); color: var(--ink); }
+.tasks-table .tasks-table-group.button:active:not(:disabled), .tasks-table .tasks-table-row.button:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
 
 .tasks-table-group-title, .tasks-table-title-cell { display: flex; align-items: center; gap: var(--space-2); min-width: var(--space-0); }
 .tasks-table-group-title { color: var(--ink); }
