@@ -110,7 +110,10 @@ type ProposalsView struct {
 
 // EngineAsks is whether the offers can use a model right now, and why not.
 type EngineAsks struct {
-	Asks   bool   `json:"asks"`
+	Asks bool `json:"asks"`
+	// Via is "conversation" (an open window) or "saved" (a saved conversation
+	// opened for reading only, when no window is open).
+	Via    string `json:"via,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -138,10 +141,17 @@ func (a *PlaceAdvice) view(rec *placegraph.Recommender) (ProposalsView, error) {
 	for _, p := range pending {
 		out.Proposals = append(out.Proposals, ProposalView{Proposal: p, OfferVersion: offerVersion(p)})
 	}
-	if a.b.askingConversation() != nil {
-		out.Engine.Asks = true
-	} else {
-		out.Engine.Reason = "Open a conversation to let codeaf ask its model; until then only folder matches are offered."
+	switch {
+	case a.b.askingConversation() != nil:
+		out.Engine.Asks, out.Engine.Via = true, "conversation"
+	case a.Detached != nil && a.backgroundFile() != "":
+		if file := a.backgroundFile(); a.recentlyFailed(file) {
+			out.Engine.Reason = "codeaf couldn't open a saved conversation to ask its model. It will try again in a few minutes; until then only folder matches are offered."
+		} else {
+			out.Engine.Asks, out.Engine.Via = true, "saved"
+		}
+	default:
+		out.Engine.Reason = "There's no conversation yet for codeaf to ask its model through; only folder matches are offered."
 	}
 	a.mu.Lock()
 	if a.lastAsk != nil {
