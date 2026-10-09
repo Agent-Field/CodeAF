@@ -69,6 +69,24 @@ test('blank assistant records do not split a group of steps', () => {
   assert.equal(items[0].kind === 'tools' && items[0].steps.length, 2);
 });
 
+test('blank notes and asides between tool rounds still merge into one group', () => {
+  const model = projectConversation(
+    snap([
+      entry({ Role: 'user', Text: 'go' }),
+      call('a', true),
+      entry({ Role: 'note', Text: '' }),
+      call('b', true),
+      entry({ Role: 'aside', Text: '   ' }),
+      entry({ Role: 'assistant', Text: '' }),
+      call('c', true),
+      entry({ Role: 'assistant', Text: 'Done.' }),
+    ]),
+  );
+  const items = model.turns[0].items;
+  assert.deepEqual(items.map((i) => i.kind), ['tools', 'text']);
+  assert.equal(items[0].kind === 'tools' && items[0].steps.length, 3);
+});
+
 test('raw results without a tool name are skipped', () => {
   const model = projectConversation(
     snap([
@@ -130,6 +148,31 @@ test('structured task fields win; other asides are notes', () => {
   const [task, note] = model.turns[0].items;
   assert.equal(task.kind === 'task' && task.taskId, 't-1');
   assert.equal(note.kind, 'note');
+});
+
+test('an aside with a task id but no parsable shape takes its title and status from the task row', () => {
+  const text = 'Task 2 started: Migrate the settings screen. More detail follows.';
+  const model = projectConversation(
+    snap([entry({ Role: 'user', Text: 'go' }), { ...entry({ Role: 'aside', Text: text }), TaskIDs: ['t-2'] } as EngineEntry], false, [
+      { ID: 't-2', Title: 'Migrate the settings screen', Status: 'running' },
+    ]),
+  );
+  const item = model.turns[0].items[0];
+  assert.equal(item.kind, 'task');
+  if (item.kind !== 'task') return;
+  assert.equal(item.title, 'Migrate the settings screen');
+  assert.equal(item.status, 'running');
+  assert.equal(item.taskId, 't-2');
+  assert.equal(item.summary, 'Task 2 started: Migrate the settings screen.');
+});
+
+test('an aside with a task id but no title anywhere is a note, never an unnamed task', () => {
+  const text = 'Task 9 started: something.';
+  const model = projectConversation(
+    snap([entry({ Role: 'user', Text: 'go' }), { ...entry({ Role: 'aside', Text: text }), TaskIDs: ['t-9'] } as EngineEntry]),
+  );
+  const item = model.turns[0].items[0];
+  assert.equal(item.kind, 'note');
 });
 
 test('notes before the first user entry are preface', () => {

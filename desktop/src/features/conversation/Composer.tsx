@@ -37,7 +37,8 @@ function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, draft: string) 
     const line = parseFloat(style.lineHeight);
     if (!line) return;
     const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
-    const lines = Math.ceil((field.scrollHeight - padding) / line);
+    // scrollHeight is rounded to whole pixels, so a lone line can read a hair over one.
+    const lines = Math.round((field.scrollHeight - padding) / line);
     field.rows = Math.min(composerMaxRows, Math.max(composerMinRows, lines));
   }, [ref, draft]);
 }
@@ -79,6 +80,7 @@ export function Composer(props: ComposerProps) {
 
   return (
     <div className="composer-dock" data-docked={docked}>
+      {!docked && <p className="composer-greeting">What should we work on?</p>}
       <div className="composer" data-running={running} data-disabled={disabled}>
         <TextArea
           ref={field}

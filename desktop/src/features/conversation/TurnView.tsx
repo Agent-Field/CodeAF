@@ -38,8 +38,17 @@ function FoldedTurn({ turn, onToggleFold }: Pick<TurnViewProps, 'turn' | 'onTogg
       <span className="turn-folded-chevron" aria-hidden="true">
         <Icon name="chevronRight" size="sm" />
       </span>
-      <span className="turn-folded-user">{turn.user}</span>
-      {turn.digest && <span className="turn-folded-digest">{turn.digest}</span>}
+      <span className="turn-folded-text">
+        <span className="turn-folded-user">{turn.user}</span>
+        {turn.digest && (
+          <>
+            <span className="turn-folded-sep" aria-hidden="true">
+              {' — '}
+            </span>
+            <span className="turn-folded-digest">{turn.digest}</span>
+          </>
+        )}
+      </span>
     </Button>
   );
 }
