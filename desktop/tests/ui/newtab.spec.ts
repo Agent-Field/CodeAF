@@ -9,6 +9,7 @@ import { newConversation } from './support/new-tab';
 const field = (page: Page) => page.getByRole('combobox', { name: 'Search or start' });
 const rowNames = (page: Page) => page.getByRole('option').allTextContents();
 const openField = (page: Page) => page.getByRole('button', { name: 'New tab', exact: true }).click();
+const terminalHint = (page: Page) => page.evaluate(() => /Mac/.test(navigator.platform) ? '⌃`' : 'Ctrl `');
 const mod = (page: Page) => page.evaluate(() => (/Mac/.test(navigator.platform) ? '⌘' : 'Ctrl '));
 const saved = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('codeaf.desktop.workspace.v1') ?? 'null'));
 
@@ -26,7 +27,7 @@ test.describe('with the engine away', () => {
   await expect(page.getByText('↵ to start a conversation')).toBeVisible();
   await expect(page.getByText('Type a question, a file, a URL, or a command.')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveCount(0);
-  expect(await rowNames(page)).toEqual([`Open file…${await mod(page)}O`]);
+  expect(await rowNames(page)).toEqual([`New terminal${await terminalHint(page)}`, `Open file…${await mod(page)}O`]);
   expect(calls).toEqual([]);
  });
 
@@ -74,7 +75,7 @@ test.describe('with the engine away', () => {
   await openField(page);
   await field(page).fill('fix');
   const key = await mod(page);
-  expect(await rowNames(page)).toEqual(['Ask “fix” in a new conversation↵', `Open file…${key}O`, `Port fix to v1 branch open tab${key}1`, 'Fix it in the lexer closed']);
+  expect(await rowNames(page)).toEqual(['Ask “fix” in a new conversation↵', `New terminal${await terminalHint(page)}`, `Open file…${key}O`, `Port fix to v1 branch open tab${key}1`, 'Fix it in the lexer closed']);
   await expect(page.getByRole('option').first()).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.newtab-row b').first()).toHaveText('fix');
   expect(await page.locator('.newtab-section').allTextContents()).toEqual(['Start', 'Matching']);
@@ -88,7 +89,7 @@ test.describe('with the engine away', () => {
   await page.getByRole('dialog', { name: 'Rename tab' }).getByRole('button', { name: 'Save' }).click();
   await openField(page);
   await field(page).fill('fix');
-  await field(page).press('ArrowDown'); await field(page).press('ArrowDown');
+  await field(page).press('ArrowDown'); await field(page).press('ArrowDown'); await field(page).press('ArrowDown');
   await expect(page.getByRole('option', { name: /Port fix/ })).toHaveAttribute('aria-selected', 'true');
   await field(page).press('ArrowDown');
   await expect(page.getByRole('option').first()).toHaveAttribute('aria-selected', 'true');

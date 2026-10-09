@@ -1,9 +1,11 @@
+import { startFor, startSentence } from '../../../terminal/open';
+import { bind, bindingOf } from '../../../terminal/bindings';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { TextInput } from '../../../../components/ui';
 import { isMac } from '../../../../design/keyboard';
 import { connectEngine, sendEngine } from '../../../chat/engine-client';
 import { tabHolding, visibleTabs } from '../../model';
-import { terminalKind } from '../terminal';
+import { terminalKind, newTerminalShortcut } from '../terminal';
 import type { PaneRenderProps } from '../slots';
 import { useNewTabHost, type NewTabHost } from './api';
 import { buildSections, flatRows, tabDigit, titleFromText, type NewTabRow } from './rows';
@@ -11,7 +13,7 @@ import { useFileMatches } from './useFileMatches';
 import { NewTabView } from './NewTabView';
 
 const shortcut = (digit?: number) => (digit === undefined ? undefined : isMac ? `⌘${digit}` : `Ctrl ${digit}`);
-const terminalShortcut = isMac ? '⌃`' : 'Ctrl `';
+const terminalShortcut = newTerminalShortcut;
 const fileShortcut = isMac ? '⌘O' : 'Ctrl O';
 const caption = 'Type a question, a file, a URL, or a command.';
 const fileCaption = 'Type part of a file name.';
@@ -64,10 +66,17 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
     } catch { /* The conversation opens with the words kept as its draft; sending again is one key. */ }
     dispatch({ type: 'newtab-become', id: paneId, kind: 'conversation', title: titleFromText(text), titleSource: 'message', sessionFile, draft });
   }
+  async function openShell() {
+    setBusy(true);
+    let title = 'Terminal';
+    try { title = await startFor(paneId, { sessionFile }); }
+    catch (error) { bind(paneId, { sessionFile, refused: startSentence(error) }); }
+    dispatch({ type: 'newtab-become', id: paneId, kind: 'terminal', title, sessionFile: bindingOf(paneId)?.sessionFile });
+  }
   function pick(row: NewTabRow | undefined) {
     if (!row || busy) return;
     if (row.kind === 'ask') void ask(query.trim());
-    else if (row.kind === 'terminal') dispatch({ type: 'newtab-become', id: paneId, kind: 'terminal', title: 'Terminal' });
+    else if (row.kind === 'terminal') void openShell();
     else if (row.kind === 'openfile') { setFiling(true); input.current?.focus(); }
     else if (row.kind === 'file') dispatch({ type: 'newtab-become', id: paneId, kind: 'file', title: row.label, path: row.target, sessionFile });
     else if (row.kind === 'tab') { dispatch({ type: 'select', id: row.target! }); closeSelf(); }

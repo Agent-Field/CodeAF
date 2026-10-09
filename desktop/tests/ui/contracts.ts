@@ -45,6 +45,7 @@ export const INK3_TEXT = [
  '.overview-card-head', '.overview-card-empty', '.overview-card-foot', '.overview-section-count', '.overview-film-position', '.overview-film-hint', '.overview-film-label .app-icon',
  '.markdown-code-lang', '.turn-folded', '.update-eyebrow', '.answer-worked', '.receipt-rest', '.receipt[data-state="withdrawn"]', '.work-step-caption', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
  '.newtab-hint', '.newtab-section', '.newtab-row-detail', '.newtab-row-hint', '.newtab-caption',
+ '.terminal-meta', '.terminal-ask-note',
 ];
 async function isDesignInk3(page: Page, target: unknown) {
  const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);
@@ -61,6 +62,8 @@ export async function expectNoUnstyledControls(page: Page) {
   const bad: string[] = [];
   for (const el of document.querySelectorAll('select:not([aria-hidden="true"])')) if (shown(el)) bad.push(`visible native select: ${el.outerHTML.slice(0, 120)}`);
   for (const el of document.querySelectorAll('button,input:not([type=hidden]),textarea')) {
+   // xterm.js's input proxy: transparent, off-screen and named; the visible terminal field is what a person sees and focuses.
+   if (el.classList.contains('xterm-helper-textarea')) continue;
    if (shown(el) && !themed.test(el.getAttribute('class') ?? '')) bad.push(`unstyled control: ${el.outerHTML.slice(0, 120)}`);
   }
   return bad;

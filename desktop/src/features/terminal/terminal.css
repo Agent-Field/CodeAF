@@ -1,0 +1,32 @@
+/* A terminal or job tab (design 3c): header, the terminal field, and the Ask pill. Layout and token references only. */
+.terminal-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; color: var(--ink); }
+
+.terminal-header { flex: none; display: flex; align-items: center; gap: var(--terminal-header-gap); height: var(--terminal-header-height); padding: 0 var(--terminal-header-pad-end) 0 var(--terminal-header-pad-start); font-size: var(--font-size-input); }
+.terminal-identity { flex: 1; display: flex; align-items: baseline; gap: var(--terminal-header-gap); min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.terminal-title { flex: none; font-weight: var(--font-weight-medium); }
+.terminal-meta { flex: none; font-size: var(--font-size-body); color: var(--ink-3); }
+.terminal-state { flex: none; display: flex; align-items: center; gap: var(--terminal-state-gap); font-size: var(--font-size-body); color: var(--ink-2); white-space: nowrap; }
+.terminal-mark { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--radius-pill); background: var(--ink-3); }
+.terminal-mark[data-tone="running"] { background: var(--mark-running); }
+.terminal-mark[data-tone="done"] { background: var(--mark-done); }
+.terminal-mark[data-tone="failed"] { background: var(--mark-failed); }
+.terminal-mark[data-tone="stopped"] { background: var(--mark-stopped); }
+.terminal-action { color: var(--ink-3); }
+
+.terminal-field { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; margin: 0 var(--terminal-field-inset); padding: var(--terminal-pad-y) var(--terminal-pad-x); border-radius: var(--radius-control); background: var(--term); overflow: hidden; mask-image: linear-gradient(to bottom, transparent, black var(--terminal-fade)); }
+.terminal-field:has(.xterm-helper-textarea:focus-visible) { box-shadow: inset 0 0 0 var(--focus-ring-width) var(--accent); }
+html[data-input="pointer"] .terminal-field:has(.xterm-helper-textarea:focus-visible) { box-shadow: none; }
+.terminal-field[data-note] { justify-content: center; align-items: center; mask-image: none; }
+.terminal-note { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); padding: var(--terminal-note-pad); text-align: center; }
+
+.terminal-ask { flex: none; display: flex; flex-direction: column; align-items: center; gap: var(--space-tight); padding: var(--terminal-ask-pad-top) var(--terminal-ask-pad-inline) var(--terminal-ask-pad-bottom); }
+.terminal-ask-note { font-size: var(--font-size-body); color: var(--ink-3); }
+.terminal-ask-field { display: flex; align-items: center; gap: var(--space-2); box-sizing: border-box; width: 100%; max-width: var(--terminal-ask-max-width); height: var(--terminal-ask-height); padding: 0 var(--terminal-ask-pad-end) 0 var(--terminal-ask-pad-start); border-radius: var(--radius-dock); background: var(--surface); box-shadow: var(--sh-2); }
+.terminal-ask-input.text-input { flex: 1; min-height: 0; padding: 0; font-size: var(--font-size-input); color: var(--ink); }
+.terminal-ask-input.text-input::placeholder { color: var(--ink-3); }
+.terminal-ask-input.text-input:focus-visible { box-shadow: none; outline: none; }
+html:not([data-input="pointer"]) .terminal-ask-field:has(.terminal-ask-input:focus-visible) { box-shadow: var(--sh-2), 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+.terminal-ask-send.icon-button { flex: none; width: var(--terminal-ask-send-size); height: var(--terminal-ask-send-size); border-radius: var(--radius-pill); background: var(--field-2); color: var(--ink-3); }
+.terminal-ask-send.icon-button[data-ready] { color: var(--ink); }
+
+.terminal-action-error { flex: none; margin: 0 var(--terminal-header-pad-end) var(--space-2) var(--terminal-header-pad-start); color: var(--ink-2); }

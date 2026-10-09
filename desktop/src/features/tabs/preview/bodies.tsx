@@ -1,3 +1,5 @@
+import { bindingOf } from '../../terminal/bindings';
+import { sessionFor } from '../../terminal/open';
 // The preview body of each tab kind (Shell 3k): kind, state, title, then the one piece that matters.
 // Conversation and task are live from the engine's summary; file, diff and terminal read through the engine
 // client while the card is open; web, settings and history draw what the tab itself knows.
@@ -31,8 +33,14 @@ export function SessionPreview({ pane, title, summary, act }: PreviewRenderProps
 
 export function TerminalPreview({ pane, title, summary, now }: PreviewRenderProps) {
   const target = targetOf(pane);
+  const binding = bindingOf(pane.id);
+  const terminalId = target.terminalId ?? binding?.terminalId;
   const session = target.sessionId ?? summary?.sessionId;
-  const output = useLoaded(session && target.terminalId ? `${session}/${target.terminalId}` : undefined, () => readTerminalOutput(session!, target.terminalId!, 4096));
+  const saved = binding?.sessionFile ?? pane.sessionFile;
+  const output = useLoaded(terminalId && (session || saved) ? `${session ?? saved}/${terminalId}` : undefined, async () => {
+    const id = session ?? (await sessionFor(saved!)).id;
+    return readTerminalOutput(id, terminalId!, 4096);
+  });
   return (
     <PreviewCard kind="terminal" title={title} state={output && terminalStateWords(output.info, now)}>
       {output && <PreviewField label="Last output" lines={tailLines(output.text)}/>}

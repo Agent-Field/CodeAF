@@ -1,0 +1,10 @@
+/* The xterm.js screen inside the terminal field. xterm's own sheet (imported beside this one) lays out rows
+   and the viewport; this one only sizes the host inside the field. */
+.terminal-host { flex: 1; min-width: 0; min-height: 0; }
+.terminal-host .xterm { height: 100%; }
+/* xterm paints its viewport black; the field's own colour should show through. */
+.terminal-host .xterm .xterm-viewport { background-color: transparent; }
+/* The program's output scrolls with the wheel and keys; no scrollbar is drawn (the design's field has none). */
+.terminal-host .xterm-scrollable-element > .scrollbar { visibility: hidden; }
+/* The hidden input takes focus for the keyboard; the field itself shows the focus ring, not this zero-height box. */
+.terminal-host .xterm-helper-textarea:focus-visible { box-shadow: none; outline: none; }
