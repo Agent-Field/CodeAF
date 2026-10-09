@@ -12,6 +12,23 @@ export type TabView = {
   tasksClosed?: boolean;
   /** The row chosen in the expanded tasks view. */
   tasksSelected?: string;
+  /** What a file, diff, terminal or web tab points at; set by that kind's lane and read by its hover preview. */
+  target?: PaneTarget;
+};
+
+/**
+ * Where a file, diff, terminal or web tab points. Every field is optional and validated on read; the preview
+ * reads it and a kind lane writes it. `sessionId` falls back to the session the tab's summary came from.
+ */
+export type PaneTarget = {
+  sessionId?: string;
+  /** Workspace-relative path of a file or diff tab. */
+  path?: string;
+  /** The terminal or job id of a terminal tab. */
+  terminalId?: string;
+  /** A web tab's address, and a screenshot of it when the browser surface has one. */
+  url?: string;
+  shot?: string;
 };
 
 export const rootRoute: TabRoute = { back: [], forward: [] };
@@ -42,6 +59,17 @@ function isRoute(value: unknown): value is TabRoute {
   return taskOk && isStringList(route.back) && isStringList(route.forward);
 }
 
+const TARGET_FIELDS = ['sessionId', 'path', 'terminalId', 'url', 'shot'] as const;
+
+/** Keeps the string fields of a target; anything else is dropped, and an empty result is no target. */
+function cleanTarget(value: unknown): PaneTarget | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const target: PaneTarget = {};
+  for (const field of TARGET_FIELDS) if (typeof source[field] === 'string' && source[field]) target[field] = source[field] as string;
+  return Object.keys(target).length ? target : undefined;
+}
+
 /** Keeps only the view fields that validate. */
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
@@ -51,6 +79,8 @@ export function cleanView(value: Record<string, unknown>): TabView {
   if (isFlagMap(value.open)) view.open = value.open;
   if (typeof value.tasksClosed === 'boolean') view.tasksClosed = value.tasksClosed;
   if (typeof value.tasksSelected === 'string' && value.tasksSelected) view.tasksSelected = value.tasksSelected;
+  const target = cleanTarget(value.target);
+  if (target) view.target = target;
   return view;
 }
 

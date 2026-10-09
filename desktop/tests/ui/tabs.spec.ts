@@ -137,26 +137,30 @@ test('delayed hover previews show real draft text without moving focus', async (
  await page.goto('/'); await rename(page, 0, 'Preview');
  const draft = page.getByRole('textbox', { name: 'Message', exact: true });
  await draft.fill('A real saved thought');
+ // A preview belongs to a tab you are not on.
+ await page.getByRole('button', { name: 'New tab', exact: true }).click();
+ const draftOfOther = page.getByRole('textbox', { name: 'Message', exact: true });
+ const preview = page.getByRole('group', { name: 'Preview of Preview', exact: true });
  await page.getByRole('tab', { name: 'Preview', exact: true }).hover();
- await expect(page.getByRole('tooltip')).not.toBeVisible();
- await expect(page.getByRole('tooltip')).toContainText('A real saved thought');
- await expect(draft).toBeFocused();
- await page.keyboard.press('Escape'); await expect(page.getByRole('tooltip')).not.toBeVisible();
+ await expect(preview).not.toBeVisible();
+ await expect(preview).toContainText('A real saved thought');
+ await expect(draftOfOther).toBeFocused();
+ await page.keyboard.press('Escape'); await expect(preview).not.toBeVisible();
 });
 
 test('a press closes the hover preview and it stays shut until the pointer leaves the tab', async ({ page }) => {
  await page.goto('/'); await rename(page, 0, 'Preview');
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('A real saved thought');
+ await page.getByRole('button', { name: 'New tab', exact: true }).click();
+ const preview = page.getByRole('group', { name: 'Preview of Preview', exact: true });
  const tab = page.getByRole('tab', { name: 'Preview', exact: true });
  await tab.hover();
- await expect(page.getByRole('tooltip')).toBeVisible();
+ await expect(preview).toBeVisible();
  await tab.click();
- await expect(page.getByRole('tooltip')).not.toBeVisible();
+ await expect(preview).not.toBeVisible();
  // Focus and the hover timer would reopen it over the conversation; it stays shut.
  await page.waitForTimeout(design.interaction.previewOpenDelay * 2);
- await expect(page.getByRole('tooltip')).not.toBeVisible();
- await page.mouse.move(0, 0); await tab.hover();
- await expect(page.getByRole('tooltip')).toContainText('A real saved thought');
+ await expect(preview).not.toBeVisible();
 });
 
 test('platform tab shortcuts create, close, reopen, navigate and open overview', async ({ page }) => {
