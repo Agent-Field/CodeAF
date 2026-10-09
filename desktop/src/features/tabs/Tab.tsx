@@ -40,7 +40,8 @@ export type TabProps = FrameProps & {
   pinned?: boolean;
   state?: TabState;
   /** Inbox only: the one pinned tab that carries a dot. */
-  badge?: boolean;
+  /** The Inbox's corner dot: something needs you (amber) or a task failed (red). Absent means nothing to say. */
+  badge?: false | 'needsYou' | 'failed';
   /** Icon-only at the narrowest widths (the 44px "compressed" tab). */
   compressed?: boolean;
   /** Forces the hover look, for specimens. */
@@ -71,10 +72,10 @@ export type TabProps = FrameProps & {
  */
 export function Tab({ kind, title, active = false, pinned = false, state, badge = false, compressed = false, hover = false, closeMode = 'close', closeHint, closeShortcut, tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, ...rest }: TabProps) {
   const select = (
-    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={state ? tabStateLabel[state] : badge ? 'Needs you' : undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
+    <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={state ? tabStateLabel[state] : badge === 'failed' ? 'A task failed' : badge ? 'Needs you' : undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
       <TabGlyph kind={kind} title={title} state={state}/>
       {!pinned && !compressed && <span className="workspace-tab-title">{title}</span>}
-      {badge && <span className="tab-badge" aria-hidden="true"/>}
+      {badge && <span className="tab-badge" data-kind={badge} aria-hidden="true"/>}
     </Button>
   );
   const stop = closeMode === 'stop';
