@@ -117,10 +117,22 @@ test('a failed turn keeps the draft and offers Retry', async ({ page }) => {
   expect(posts(engine, '/turn').length).toBeGreaterThanOrEqual(1);
 });
 
+test('typing while a send is in flight keeps the new draft when the send lands', async ({ page }) => {
+  const engine = await installMockEngine(page, { ...plainReply(), initial: { entries: [], title: '' }, manual: true });
+  await openApp(page);
+  await send(page, 'first words');
+  await expect.poll(() => posts(engine, '/turn').length).toBe(1);
+  await message(page).fill('second thoughts');
+  engine.advance();
+  await expect(page.getByText('Here is the short version.')).toBeVisible();
+  await expect(message(page)).toHaveValue('second thoughts');
+});
+
 test('a queued message waits above the composer until the engine records it; removing it says it stays queued', async ({ page }) => {
   const engine = await installMockEngine(page, { ...streaming(), manual: true });
   await openApp(page);
   await send(page, 'Say hello');
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
   const queued = page.getByRole('list', { name: 'Queued messages' });
   for (const [index, text] of ['then update the changelog', 'and tag the release'].entries()) {
     await message(page).fill(text);
