@@ -1,0 +1,6 @@
+/* The Inbox tab: one reading column like a Home (places home.css geometry), rows from the shared AttentionRow. Layout only. */
+.inbox-pane { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; background: var(--canvas); }
+.inbox-column { max-width: var(--chat-column-max-width); margin: 0 auto; padding: var(--places-home-pad-top) var(--places-home-pad-inline) var(--space-6); display: flex; flex-direction: column; gap: var(--places-home-gap); }
+.inbox-section { display: flex; flex-direction: column; gap: var(--space-2); }
+.inbox-quiet { margin: 0; font-size: var(--font-size-input); color: var(--ink-2); }
+@media (max-width: 600px) { .inbox-column { padding-inline: var(--space-4); } }

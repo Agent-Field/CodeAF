@@ -1,6 +1,7 @@
 import type { HTMLAttributes, ReactElement, Ref } from 'react';
 import { Button, Icon, IconButton } from '../../components/ui';
 import { kindDef } from './kinds/registry';
+import { PlaceSwatch, type TintName } from '../places/components/PlaceSwatch';
 import type { TabKind } from './kinds/types';
 import './tab.css';
 
@@ -60,23 +61,29 @@ export type TabProps = FrameProps & {
   inGroup?: boolean;
   /** Specimen mode: a plain button with no tab role, for pages that show a tab outside any tablist. */
   specimen?: boolean;
+  /** A place's Home tab: its tint square replaces the kind glyph and its name stays visible though it is pinned (Shell 3j). */
+  placeTint?: TintName;
+  /** The rail is put away: the Home tab is the place switcher (⇅), with an amber glyph when another place needs you (Places 9c, 9e). */
+  switcher?: { alert?: string };
 };
 
 /**
  * One tab, per design 2h "Tabs": 30px, radius 8, 13px kind glyph, 12px title faded over its last 20px,
  * a close in a fixed 20px slot. All state is props; the primitive owns no data and no menus.
  */
-export function Tab({ kind, title, active = false, pinned = false, state, badge = false, compressed = false, hover = false, closeMode = 'close', tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, ...rest }: TabProps) {
+export function Tab({ kind, title, active = false, pinned = false, state, badge = false, compressed = false, hover = false, closeMode = 'close', tabIndex, wrapSelect, onSelect, onClose, onRename, onKeyDown, frame, id, inGroup = false, specimen = false, placeTint, switcher, ...rest }: TabProps) {
+  const home = !!placeTint;
   const select = (
     <Button className="workspace-tab-select" role={specimen ? undefined : 'tab'} id={id} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : active} aria-current={specimen && active ? true : undefined} aria-label={title} aria-description={state ? tabStateLabel[state] : undefined} tabIndex={tabIndex ?? (active ? 0 : -1)} onClick={onSelect} onDoubleClick={onRename} onKeyDown={onKeyDown}>
-      <TabGlyph kind={kind} title={title} state={state}/>
-      {!pinned && !compressed && <span className="workspace-tab-title">{title}</span>}
+      {home && !state ? <PlaceSwatch tint={placeTint} role="rail"/> : <TabGlyph kind={kind} title={title} state={state}/>}
+      {(home || (!pinned && !compressed)) && <span className="workspace-tab-title">{title}</span>}
+      {home && switcher && <>{switcher.alert && <span className="tab-dot" data-state="waiting" role="img" aria-label={switcher.alert}/>}<Icon name="switcher" size="micro"/></>}
       {badge && <span className="tab-badge" aria-hidden="true"/>}
     </Button>
   );
   const stop = closeMode === 'stop';
   return (
-    <div {...rest} {...frame} className={`workspace-tab ${pinned ? 'is-pinned' : ''} ${frame?.className ?? ''}`} data-active={active} data-kind={kind} data-state={state} data-hover={hover || undefined} data-compressed={compressed || undefined} data-in-group={inGroup || undefined}>
+    <div {...rest} {...frame} className={`workspace-tab ${pinned && !home ? 'is-pinned' : ''} ${home ? 'is-place-home' : ''} ${frame?.className ?? ''}`} data-active={active} data-kind={kind} data-state={state} data-hover={hover || undefined} data-compressed={compressed || undefined} data-in-group={inGroup || undefined}>
       {wrapSelect ? wrapSelect(select) : select}
       {!pinned && !compressed && onClose && <span className="workspace-tab-close-slot"><IconButton className="workspace-tab-close" label={stop ? `Close and stop ${title}` : `Close ${title}`} title={stop ? 'Close and stop (⌥⌘W)' : undefined} icon={stop ? 'stop' : 'close'} iconSize="micro" tabIndex={active ? 0 : -1} onClick={onClose}/></span>}
     </div>

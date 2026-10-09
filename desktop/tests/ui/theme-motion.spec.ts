@@ -93,7 +93,7 @@ test('theme menu keyboard selection, persistence, outside dismissal and selectio
  await expect(page.getByRole('listbox')).not.toBeVisible();
  await page.getByRole('button',{name:'Activity',exact:true}).click();
  await expect(page.getByRole('button',{name:'Activity',exact:true})).toHaveAttribute('aria-current','page');
- await expect(page.getByRole('button',{name:'Workspace',exact:true})).not.toHaveAttribute('aria-current','page');
+ await expect(page.getByRole('button',{name:'Now',exact:true})).not.toHaveAttribute('aria-current','page');
 });
 
 for (const theme of ['Light','Dark']) {
@@ -106,7 +106,7 @@ for (const theme of ['Light','Dark']) {
   await page.mouse.move(700,30);
   await expect(quick).toHaveAttribute('aria-current','page');
   await expect(quick).toHaveCSS('background-color',await tokenColor(page,'tab'));
-  await expect(page.getByRole('button',{name:'Workspace',exact:true}).first()).not.toHaveAttribute('aria-current','page');
+  await expect(page.getByRole('button',{name:'Now',exact:true}).first()).not.toHaveAttribute('aria-current','page');
   const address=page.getByRole('button',{name:'codeaf',exact:true});
   await address.hover(); await expect(address).toHaveCSS('background-color',await tokenColor(page,'field-2'));
   await page.getByRole('button',{name:'Design system',exact:true}).click();

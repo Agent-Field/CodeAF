@@ -24,7 +24,7 @@ for (const theme of ['Light', 'Dark']) {
    await page.getByRole('combobox', { name: 'Theme' }).click();
    await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
    await page.setViewportSize({ width, height: width < design.nativeWindow.minWidth ? 480 : design.nativeWindow.minHeight });
-   for (const name of ['Workspace', 'Activity', 'Design system']) {
+   for (const name of ['Now', 'Activity', 'Design system']) {
     await openNavigation(page);
     await page.getByRole('button', { name, exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Navigation', exact: true })).not.toBeVisible();
@@ -50,7 +50,7 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  await page.setViewportSize({ width: 320, height: 480 });
  await page.goto('/');
  await expect(page.locator('.content-pane')).toHaveCSS('min-width', '0px');
- await expect(page.getByRole('button', { name: 'Workspace', exact: true })).not.toBeVisible();
+ await expect(page.getByRole('button', { name: 'Now', exact: true })).not.toBeVisible();
  const show = page.getByRole('button', { name: 'Show sidebar' });
  await show.click();
  const drawer = page.getByRole('dialog', { name: 'Navigation', exact: true });
@@ -81,12 +81,12 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  await expectAccessible(page);
  await page.keyboard.press('Escape');
  await page.setViewportSize({ width: 1200, height: 800 });
- await expect(page.getByRole('button', { name: 'Workspace', exact: true })).toBeVisible();
+ await expect(page.getByRole('button', { name: 'Now', exact: true })).toBeVisible();
  await page.getByRole('button', { name: 'Hide sidebar' }).click();
  await page.setViewportSize({ width: 320, height: 480 });
  await show.click(); await page.getByRole('button', { name: 'Activity', exact: true }).click();
  await page.setViewportSize({ width: 1200, height: 800 });
- await expect(page.getByRole('button', { name: 'Workspace', exact: true })).not.toBeVisible();
+ await expect(page.getByRole('button', { name: 'Now', exact: true })).not.toBeVisible();
  await expect(show).toBeVisible();
 });
 

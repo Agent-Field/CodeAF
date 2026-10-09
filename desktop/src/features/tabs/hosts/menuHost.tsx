@@ -4,9 +4,13 @@ import { ContextMenu, type MenuEntry } from '../../../components/ui';
 import { tabShortcuts } from '../../../design/keyboard';
 import type { TabsApi } from '../context';
 import type { Tab, TabGroup } from '../model';
+import { isPlaceHome } from '../reducers/home';
 
 export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   const { state, dispatch } = api;
+  // A place's Home is not an ordinary tab: it never closes, moves or groups, so its menu is the place's own.
+  if (isPlaceHome(tab)) return api.placeMenu ?? [];
+  const move: MenuEntry[] = api.moveToNewWindow ? [{ id: 'new-window', label: 'Move to new window', onSelect: () => api.moveToNewWindow?.(tab) }] : [];
   return [
     { id: 'rename', label: 'Rename tab', onSelect: () => api.startRename(tab.id) },
     { id: 'pin', label: tab.pinned ? 'Unpin tab' : 'Pin tab', icon: 'pin', onSelect: () => dispatch({ type: 'pin', id: tab.id }) },
@@ -16,6 +20,7 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
       { id: 'no-group', label: 'No group', disabled: !tab.groupId, onSelect: () => dispatch({ type: 'move-group', id: tab.id }) },
     ] },
     ...(tab.split ? [{ id: 'unmerge', label: 'Separate split', onSelect: () => dispatch({ type: 'split-unmerge', id: tab.id }) }] : []),
+    ...move,
     { kind: 'separator', id: 'close-separator' },
     { id: 'close', label: 'Close tab', icon: 'close', shortcut: tabShortcuts.close, onSelect: () => api.closeTab(tab.id) },
     { id: 'reopen', label: 'Reopen closed tab', shortcut: tabShortcuts.reopen, disabled: !state.closed.length, onSelect: () => dispatch({ type: 'reopen' }) },
@@ -23,9 +28,10 @@ export function tabMenuItems(api: TabsApi, tab: Tab): MenuEntry[] {
   ];
 }
 
-export const withTabMenu = (api: TabsApi, tab: Tab, node: ReactElement): ReactElement => (
-  <ContextMenu key={tab.id} label={`Actions for ${tab.title}`} items={tabMenuItems(api, tab)}>{node}</ContextMenu>
-);
+export const withTabMenu = (api: TabsApi, tab: Tab, node: ReactElement): ReactElement => {
+  const items = tabMenuItems(api, tab);
+  return items.length ? <ContextMenu key={tab.id} label={`Actions for ${tab.title}`} items={items}>{node}</ContextMenu> : node;
+};
 
 export function groupMenuItems(api: TabsApi, group: TabGroup): MenuEntry[] {
   return [

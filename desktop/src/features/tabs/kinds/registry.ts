@@ -4,6 +4,7 @@ import { conversationKind } from './conversation';
 import { diffKind } from './diff';
 import { fileKind } from './file';
 import { historyKind } from './history';
+import { homeKind } from './home';
 import { inboxKind } from './inbox';
 import { newtabKind } from './newtab';
 import { settingsKind } from './settings';
@@ -15,7 +16,7 @@ import { kindOrDefault, tabKinds, type TabKind } from './types';
 
 export const kindRegistry: Readonly<Record<TabKind, KindDef>> = {
   conversation: conversationKind, task: taskKind, file: fileKind, diff: diffKind, web: webKind,
-  terminal: terminalKind, settings: settingsKind, history: historyKind, newtab: newtabKind, inbox: inboxKind,
+  terminal: terminalKind, settings: settingsKind, history: historyKind, newtab: newtabKind, inbox: inboxKind, home: homeKind,
 };
 
 export const kindDef = (kind: TabKind): KindDef => kindRegistry[kindOrDefault(kind)];

@@ -11,6 +11,17 @@ export const tabShortcuts = {
  switchBack: isMac ? '⌃ ⇧ Tab' : 'Ctrl Shift Tab',
 };
 export const overviewShortcut = isMac ? '⌘ ⇧ \\' : 'Ctrl Shift A';
+export const placeShortcuts = {
+ goTo: formatShortcut('⌘/Ctrl P'),
+ allPlaces: isMac ? '⌘⇧P' : 'Ctrl Shift P',
+ home: formatShortcut('⌘/Ctrl 0'),
+ close: isMac ? '⌘⇧W' : 'Ctrl Shift W',
+ newWindow: formatShortcut('⌘/Ctrl N'),
+ /** The rail slot chord: ⌃1 on a Mac, Alt 1 elsewhere; 0 is Now. */
+ slot: (index: number) => (isMac ? `⌃${index}` : `Alt ${index}`),
+ /** ⌘↵ / Ctrl ↵: open in a new window. */
+ openInNewWindow: isMac ? '⌘↵' : 'Ctrl ↵',
+};
 export const shellShortcuts = {
  rail: formatShortcut('⌘/Ctrl S'),
  focus: formatShortcut('⌘/Ctrl ⇧ F'),
@@ -33,7 +44,11 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  */
 export type ShortcutId =
  | 'new' | 'close' | 'reopen' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
- | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings';
+ | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
+ /** Places (Interactions "Shortcuts"): ⌘P Go to a place, ⌘⇧P All places, ⌘0 this place's Home, ⌘⇧W close this place,
+  * ⌘N a new window on Now, ⌘Z undo the last structural action. `place-jump` carries the rail slot: 0 is Now, 1–9 the
+  * pinned-then-open places (⌃ on a Mac; Alt elsewhere, because Ctrl+digit is already the tab jump there). */
+ | 'goto' | 'all-places' | 'place-home' | 'place-jump' | 'close-place' | 'new-window' | 'undo';
 export type Shortcut = { id: ShortcutId; index?: number };
 
 /** A text field with words in it keeps ⌘↑ and ⌘↓ as caret keys. */
@@ -42,8 +57,17 @@ function isWritingField(target: EventTarget | null | undefined): boolean {
  return (field?.tagName === 'TEXTAREA' || field?.tagName === 'INPUT') && (field.value?.length ?? 0) > 0;
 }
 
+/** A field, editor or terminal keeps ⌘Z for its own text. */
+function isEditable(target: EventTarget | null | undefined): boolean {
+ const element = target as { tagName?: string; isContentEditable?: boolean; closest?: (selector: string) => unknown } | null | undefined;
+ return element?.tagName === 'TEXTAREA' || element?.tagName === 'INPUT' || !!element?.isContentEditable || !!element?.closest?.('.xterm');
+}
+
 export function shortcutOf(event: KeyEvent, mac = isMac): Shortcut | undefined {
  if (event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.code === 'Backquote') return { id: 'terminal' };
+ // The place slots: ⌃0–9 on a Mac, Alt 0–9 elsewhere. The digit comes from `code` so a layout's symbols do not matter.
+ const slot = /^(?:Digit|Numpad)([0-9])$/.exec(event.code ?? '');
+ if (slot && !event.shiftKey && (mac ? event.ctrlKey && !event.metaKey && !event.altKey : event.altKey && !event.ctrlKey && !event.metaKey)) return { id: 'place-jump', index: Number(slot[1]) };
  if (event.ctrlKey && !event.metaKey && !event.altKey && event.key === 'Tab') return { id: event.shiftKey ? 'switch-back' : 'switch' };
  const primaryKey = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
  // ⌥⌘1–3 pick a pinned model. The digit comes from `code`: Option turns the key into a symbol on a Mac.
@@ -67,8 +91,14 @@ export function shortcutOf(event: KeyEvent, mac = isMac): Shortcut | undefined {
   if (key === 't') return { id: 'reopen' };
   if (key === 'k') return { id: 'tasks' };
   if (key === 'f') return { id: 'focus' };
+  if (key === 'p') return { id: 'all-places' };
+  if (key === 'w') return { id: 'close-place' };
   return;
  }
+ if (key === 'p') return { id: 'goto' };
+ if (key === '0') return { id: 'place-home' };
+ if (key === 'n') return { id: 'new-window' };
+ if (key === 'z' && !isEditable(event.target)) return { id: 'undo' };
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
  if (key === 's' || key === 'b') return { id: 'rail' };

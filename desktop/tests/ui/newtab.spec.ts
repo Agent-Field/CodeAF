@@ -18,7 +18,8 @@ test.describe('with the engine away', () => {
 
  test('the New tab button opens an empty card with one centred field and no engine call', async ({ page }) => {
   const calls: string[] = [];
-  page.on('request', request => { if (request.url().includes('/api/engine/')) calls.push(request.url()); });
+  // The window's own reads of the place graph and the world stream are not the tab's; a new tab must add none.
+  page.on('request', request => { if (request.url().includes('/api/engine/') && !/\/api\/engine\/(places|events|world)\b/.test(request.url())) calls.push(request.url()); });
   await page.goto('/');
   calls.length = 0;
   await openField(page);
