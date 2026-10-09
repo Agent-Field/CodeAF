@@ -9,6 +9,6 @@
 .work-diff-row[data-kind="gap"] { padding-block: var(--space-half); color: var(--ink-2); }
 .work-diff-row[data-kind="add"] { background: var(--diff-add); color: var(--ink); }
 .work-diff-row[data-kind="remove"] { background: var(--danger-soft); color: var(--ink); }
-.work-diff-row[data-kind="add"] .work-diff-sign { color: var(--success-text); }
+.work-diff-row[data-kind="add"] .work-diff-sign { color: var(--success); }
 .work-diff-row[data-kind="remove"] .work-diff-sign { color: var(--danger); }
 .work-diff-rows:focus-visible { outline: var(--focus-ring-width) solid transparent; box-shadow: inset 0 0 0 var(--focus-ring-width) var(--accent); }

@@ -2,10 +2,10 @@
 .clarify { display: flex; flex-direction: column; gap: var(--space-compact); }
 .clarify-field { display: flex; align-items: center; gap: var(--space-tight); margin-right: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) var(--clarify-field-pad-start); border-radius: var(--clarify-field-radius); background: var(--surface); box-shadow: 0 0 0 var(--clarify-ring-width) var(--accent), 0 0 0 var(--clarify-halo-width) var(--accent-soft); }
 .clarify-input { flex: 1; min-width: 0; min-height: 0; max-height: calc(var(--tray-max-height) / 3); padding: 0; border: 0; background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); resize: none; field-sizing: content; }
-.clarify-input::placeholder { color: var(--ink-2); }
-.clarify-input:focus-visible { outline: none; }
+.clarify-input::placeholder { color: var(--ink-3); }
+.clarify-input:focus-visible { outline: none; box-shadow: none; }
 .button.clarify-send { flex-shrink: 0; min-height: var(--clarify-send-height); height: var(--clarify-send-height); padding: 0 var(--clarify-send-pad); border-radius: var(--radius-segment-item); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
 .clarify-links { display: flex; gap: var(--space-row); }
-.button.clarify-link { min-height: 0; height: var(--row-action-size); padding: 0 var(--space-2); margin-inline: calc(var(--space-2) * -1); border-radius: var(--radius-row-action); background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
+.button.clarify-link { min-height: 0; height: var(--row-action-size); padding: 0 var(--space-2); margin-inline: calc(var(--space-2) * -1); border-radius: var(--radius-row-action); background: transparent; color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
 .button.clarify-link:hover:not(:disabled) { background: var(--field); color: var(--ink); }
 .button.clarify-link:active:not(:disabled) { background: var(--field-2); color: var(--ink); }

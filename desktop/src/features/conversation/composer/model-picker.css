@@ -1,12 +1,11 @@
-/* The composer's model label: quiet text that lifts to a field fill on hover.
-   The design draws it in ink-3, which reads 3.6:1 on the dock; ink-2 is the quietest ink that meets WCAG AA. */
+/* The composer's model label: quiet ink-3 text (design 1e) that lifts to a field fill on hover. */
 .model-picker.button {
   min-height: var(--control-height);
   min-width: 0;
   padding: 0 var(--control-pad-ghost);
   gap: var(--space-1);
   border-radius: var(--radius-control);
-  color: var(--ink-2);
+  color: var(--ink-3);
   font-size: var(--type-label-size);
   line-height: var(--type-label-leading);
   font-weight: var(--type-label-weight);
@@ -65,7 +64,6 @@
 
 .model-popover .model-popover-segment:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
 .model-popover .model-popover-segment[aria-checked='true'] { background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); font-weight: var(--type-label-strong); }
-.model-popover .model-popover-segment:focus-visible { box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 
 .model-popover-effort {
   display: flex;
@@ -76,7 +74,7 @@
 
 .model-popover-effort-options { display: flex; gap: var(--model-popover-effort-gap); margin-left: auto; }
 
-.model-popover .model-popover-effort-option { min-height: 0; padding: 0; font-weight: var(--type-label-weight); }
+.model-popover .model-popover-effort-option { min-height: 0; padding: 0; color: var(--ink-3); font-weight: var(--type-label-weight); }
 .model-popover .model-popover-effort-option:hover:not(:disabled) { background: transparent; color: var(--ink); }
 .model-popover .model-popover-effort-option[aria-checked='true'] { color: var(--ink); font-weight: var(--type-label-strong); }
 
@@ -96,9 +94,9 @@
 
 .model-popover .model-popover-row:hover:not(:disabled) { background: var(--field); color: var(--ink); }
 .model-popover .model-popover-row:active:not(:disabled) { background: var(--field-2); }
-.model-popover .model-popover-all, .model-popover-all .keyboard-shortcut { color: var(--ink-2); }
+.model-popover .model-popover-all, .model-popover-all .keyboard-shortcut { color: var(--ink-3); }
 .model-popover-mark { display: grid; place-items: center; width: var(--space-4); color: var(--accent); }
 .model-popover-all .model-popover-mark { color: inherit; }
 .model-popover-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.model-popover .keyboard-shortcut { color: var(--ink-2); white-space: nowrap; }
+.model-popover .keyboard-shortcut { color: var(--ink-3); white-space: nowrap; }
 

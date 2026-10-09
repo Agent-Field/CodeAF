@@ -15,7 +15,7 @@
 .task-log-step[data-state="running"] .task-log-line { color: var(--ink); }
 .task-log-step[data-state="refused"] .task-log-text { text-decoration: line-through; text-decoration-color: var(--line); }
 
-.task-log-outcome { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--space-compact); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.task-log-outcome { display: inline-flex; align-items: center; flex-shrink: 0; gap: var(--space-compact); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .task-log-outcome[data-state="refused"] { font-family: var(--font-sans); font-size: var(--type-caption-size); }
 .task-log-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-failed); }
 .task-log-outcome[data-state="running"] .task-log-dot { background: var(--mark-running); }

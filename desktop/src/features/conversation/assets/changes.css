@@ -3,7 +3,7 @@
 .button.changes-head { align-self: flex-start; gap: var(--space-2); min-height: var(--chip-height); padding: 0 var(--space-1); color: var(--ink-2); font-size: var(--font-size-body); }
 .changes-title { color: var(--ink); }
 .changes-added, .changes-removed { font-family: var(--mono); font-size: var(--type-mono-small-size); font-variant-numeric: tabular-nums; }
-.changes-added { color: var(--success-text); }
+.changes-added { color: var(--success); }
 .changes-removed { color: var(--danger); }
 .changes-head > .app-icon { transition: transform var(--duration-fast) var(--ease); }
 .changes[data-open="true"] .changes-head > .app-icon { transform: rotate(var(--motion-ask-open)); }

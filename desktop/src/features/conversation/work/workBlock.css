@@ -13,6 +13,6 @@
 .work-summary-text > span { overflow: hidden; text-overflow: ellipsis; }
 .work-summary-sep { color: var(--ink-3); }
 .work-summary-text [data-tone="warning"] { color: var(--danger); }
-.work-live-time { font-family: var(--mono); font-size: var(--type-mono-small-size); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.work-live-time { font-family: var(--mono); font-size: var(--type-mono-small-size); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 .work-body { display: flex; flex-direction: column; gap: var(--space-work-row); align-self: stretch; min-width: 0; box-sizing: border-box; margin-inline-start: var(--work-block-guide-inset); padding-block: var(--space-half); padding-inline-start: var(--work-indent); border-inline-start: var(--border-width) solid var(--guide); }

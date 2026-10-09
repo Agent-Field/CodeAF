@@ -7,7 +7,7 @@
 .thinking-mark::before { content: ""; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--thinking-dot-radius); background: var(--accent); }
 .thinking-row .app-icon { width: var(--thinking-chevron); height: var(--thinking-chevron); color: var(--ink-3); }
 .thinking-row[aria-expanded="true"] .app-icon { transform: rotate(var(--motion-ask-open)); }
-.thinking-text, .thinking-body { margin: 0; padding-inline-start: var(--thinking-indent); font-size: var(--font-size-body); line-height: var(--thinking-leading); font-style: italic; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.thinking-text, .thinking-body { margin: 0; padding-inline-start: var(--thinking-indent); font-size: var(--font-size-body); line-height: var(--thinking-leading); font-style: italic; color: var(--ink-3); white-space: pre-wrap; overflow-wrap: anywhere; }
 .thinking-text { display: flex; flex-direction: column; justify-content: flex-end; height: var(--thinking-live-height); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--thinking-fade)); mask-image: linear-gradient(to bottom, transparent, black var(--thinking-fade)); }
 /* The shimmer belongs to the live step only (conversation header note). */
 .thinking-shimmer { background-image: linear-gradient(var(--shimmer-angle), var(--ink-2) 0%, var(--ink-2) 35%, var(--ink) 50%, var(--ink-2) 65%, var(--ink-2) 100%); background-size: var(--shimmer-size) 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: thinking-shimmer var(--shimmer-duration) linear infinite; }

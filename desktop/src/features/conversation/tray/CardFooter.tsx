@@ -21,15 +21,11 @@ function waitingNote(question: Question): string | null {
   return tasks.length ? `Holding up ${tasks.join(', ')}` : null;
 }
 
-function stakesNote(question: Question): string | null {
-  return question.stakes === 'irreversible' ? 'This cannot be undone' : null;
-}
-
 /** Clock, Hold, Later, You decide: everything about time and delegation, never about the answer. */
 export function CardFooter({ question, now, held, locked, canDecide, onHold, onLater, onDecide, clock: showClock = true }: FooterProps) {
   const ticking = clockText(question, now);
   const clock = showClock ? ticking : null;
-  const note = clock && !held ? clock : (waitingNote(question) ?? stakesNote(question));
+  const note = clock && !held ? clock : waitingNote(question);
   const showLater = onLater && !question.blocking?.turn && !ticking;
   if (!note && !clock && !showLater && !canDecide) return null;
   return (

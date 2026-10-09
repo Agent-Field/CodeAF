@@ -81,7 +81,7 @@
   width: var(--control-height);
   height: var(--control-height);
   border-radius: var(--radius-control);
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 
 .composer-attach.icon-button .app-icon {
@@ -99,7 +99,7 @@
   padding: 0 var(--space-2);
   border-radius: var(--radius-control);
   font-size: var(--type-label-size);
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 
 /* The right-hand button changes role: Send, then Stop, then Steer. */
@@ -151,7 +151,7 @@
   padding: 0 var(--space-tight);
   border-radius: var(--radius-control);
   font-size: var(--type-label-size);
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 
 .composer-queue.button:hover:not(:disabled) {

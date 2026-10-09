@@ -123,7 +123,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   useTurnJump(scroller, !inTask && !tasksView);
   const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
   const { done, total } = taskCounts(model.tasks);
-  const barPanel = hasTasks ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
+  const barPanel = hasTasks && !inTask ? { label: `Tasks · ${done}/${total}`, shown: panel.shown, onToggle: panel.shown ? panel.close : panel.open } : undefined;
   const barCounts = { running: taskProgress(model.tasks).running, needsYou: model.questions.length };
   const barTitle = tab.titleSource ? label : '';
   const showBar = inTask || Boolean(barTitle) || hasTasks;

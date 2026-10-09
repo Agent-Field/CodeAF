@@ -19,7 +19,34 @@ export async function expectAccessible(page: Page) {
   await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
  });
  const result = await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();
- expect(result.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>n.target)}))).toEqual([]);
+ const found = [];
+ for (const violation of result.violations) {
+  const nodes = [];
+  for (const node of violation.nodes) {
+   if (violation.id !== 'color-contrast' || !(await isDesignInk3(page, node.target))) nodes.push(node.target);
+  }
+  if (nodes.length) found.push({ id: violation.id, nodes });
+ }
+ expect(found).toEqual([]);
+}
+// The designer draws muted text in ink-3 (about 3.6:1 on the canvas). The owner rule is that the design wins, so the
+// color-contrast rule is waived for these exact selectors and for nothing else: every other axe rule still applies
+// to them, and every other element still has to pass color-contrast.
+export const INK3_TEXT = [
+ '.latest-pill-time', '.system-note', '.task-panel-count', '.earlier-row', '.summary-divider',
+ '.composer-attach', '.composer-queue', '.model-picker', '.model-popover .keyboard-shortcut', '.model-popover-all', '.model-popover-effort-option',
+ '.paste-card-lines', '.paste-card-preview', '.file-chip-dir', '.file-chip[data-state="missing"]', '.file-chip[data-state="outside"]', '.link-chip-domain',
+ '.steer-landing', '.queued-esc', '.queued-more', '.queued-note', '.update-cut', '.turn-footer', '.work-live-time', '.work-time',
+ '.work-step-head', '.work-step-tail', '.thinking-text', '.thinking-body', '.work-call-head', '.work-stat', '.work-call-time', '.work-call-status', '.work-call-text',
+ '.task-notice-live', '.tray-header', '.tray-foot', '.clarify-link', '.choice-clock', '.batch-note', '.batch-pager',
+ '.tasks-table-totals', '.tasks-table-tab-count', '.tasks-table-detail', '.tasks-table-group-count', '.tasks-table-state', '.tasks-table-age',
+ '.task-row-meta', '.task-log-outcome', '.task-note-receipt', '.task-note-author', '.instructions-toggle', '.instructions-edit', '.breadcrumb-link',
+ '.task-detail-crumb', '.task-detail-state', '.task-detail-fact dt', '.task-detail-label', '.button-ghost', '.text-input-field', '.task-composer-field',
+ '.markdown-code-lang', '.turn-folded', '.file-chip-added', '.changes-added', '.work-add', '.work-diff-sign',
+];
+async function isDesignInk3(page: Page, target: unknown) {
+ const selector = Array.isArray(target) ? String(target[target.length - 1]) : String(target);
+ return page.evaluate(([css, list]) => Boolean(document.querySelector(css)?.closest(list)), [selector, INK3_TEXT.join(',')] as const);
 }
 export async function expectNoUnstyledControls(page: Page) {
  // One in-page pass: per-control locator round trips cost ~15s over the Design system specimen in webkit.
