@@ -2127,6 +2127,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 		note.batch = false
 		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
 		note.settlePrompt = landingAnswerPrompt
+		note.settleAnswerOnly = true
 		note.settleModel, _ = roles.TierModel(roles.Source(a.config.RolesSource), owedLandingTier())
 		a.accept(delivery{origin: fromRuntime, kind: msgResult, note: note})
 		return
@@ -2171,7 +2172,7 @@ func questionAtTaskHandoff(owed []owedAsk) string {
 
 func owedLandingDocument(task *plandb.Task, result string) userMessage {
 	question, outcome := strings.TrimSpace(task.Question), strings.TrimSpace(result)
-	document := userText(question + "\n\n" + outcome)
+	document := userText("A completion report from the session, not a new request from the person. The original request below is context for reporting the result; do not commission or execute it again.\n\nOriginal request (already handed off):\n" + question + "\n\nCompleted task result:\n" + outcome)
 	document.landingQuestion, document.landingOutcome = question, outcome
 	return document
 }
