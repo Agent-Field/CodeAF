@@ -2,7 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { isMac } from '../../../design/keyboard';
 import { connectEngine, sendEngine, sendEngineWithFiles, type EngineSnapshot, type OutgoingFile } from '../../chat/engine-client';
 import { Composer } from '../../conversation/Composer';
-import { DEFAULT_MODEL_LABEL, DEFAULT_MODEL_SHORT, useConversationModel } from '../../conversation/composer/useConversationModel';
+import { useConversationModel } from '../../conversation/composer/useConversationModel';
 import { newTab } from '../../tabs/helpers';
 import type { WorkspaceAction } from '../../tabs/model';
 import { chatIdFromSessionFile } from '../client';
@@ -41,8 +41,8 @@ export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispat
   const decided = say?.state === 'applies' && say.model ? { model: say.model, by: say.decidedBy?.name ?? 'a place' } : undefined;
   const model = useConversationModel(undefined, true, decided);
   const settled = effective.kind === 'known';
-  const note = decided ? `Model set by ${decided.by}.`
-    : say?.state === 'needsPick' && say.wanted?.length ? `${say.wanted.map(place => place.name).join(' and ')} choose different models, so you pick one in the chat.` : undefined;
+  // When places disagree nothing is applied; the chip's tooltip says so rather than a paragraph above the composer.
+  const disagree = say?.state === 'needsPick' && say.wanted?.length ? `${say.wanted.map(place => place.name).join(' and ')} choose different models, so you pick one in the chat.` : undefined;
   const background = useRef(false);
   const created = useRef<{ snapshot: EngineSnapshot; filed: boolean }>(undefined);
   const [error, setError] = useState<string>();
@@ -79,9 +79,8 @@ export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispat
 
   return <div className="home-composer-field" onKeyDownCapture={noteModifier}>
     {error && <p className="home-composer-error" role="alert">{error}</p>}
-    {note && <p className="home-composer-note">{note}</p>}
     <Composer variant="home" draft={draft} onDraft={onDraft} onSend={onSend} onStop={() => undefined} running={false} docked
       disabledReason={offline ? 'Reconnecting to the engine…' : undefined}
-      placeholder={`Start something in ${placeName}`} model={settled ? model : undefined} modelLabel={settled ? DEFAULT_MODEL_LABEL : undefined} modelShort={settled ? DEFAULT_MODEL_SHORT : undefined} autoFocus={false}/>
+      placeholder={`Start something in ${placeName}`} model={settled && model ? { ...model, hint: model.hint ?? disagree } : undefined} autoFocus={false}/>
   </div>;
 }

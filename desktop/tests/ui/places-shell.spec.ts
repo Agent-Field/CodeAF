@@ -1,3 +1,4 @@
+import { writeFile, mkdir } from 'node:fs/promises';
 import { openAppearance } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible } from './contracts';
@@ -706,7 +707,9 @@ for (const { role, model, word, name } of roleCases) {
         // The place decides: its model, whatever the role says, with no swap that would pretend to change it.
         await expect(chip).toHaveAccessibleName('Model: Fixture Placed');
         await expect(chip).toHaveText('Placed');
-        await expect(page.locator('.home-composer-note')).toHaveText('Model set by Marketing.');
+        await chip.hover();
+        await expect(page.getByRole('tooltip')).toHaveText('Model set by Marketing.');
+        await expect(page.locator('.home-composer-note')).toHaveCount(0);
         await chip.click();
         const rows = page.getByRole('dialog').getByRole('option');
         await expect(page.getByRole('dialog').getByText('Fixture Alternate')).toHaveCount(0);
@@ -715,7 +718,7 @@ for (const { role, model, word, name } of roleCases) {
       } else {
         await expect(chip).toHaveAccessibleName(`Model: ${name}`);
         await expect(chip).toHaveText(word);
-        await expect(page.locator('.home-composer-note')).toHaveCount(0);
+        await expect(page.getByRole('tooltip')).toHaveCount(0);
       }
       expect(rig.engine.calls.filter(isCreate)).toHaveLength(0);
       // A typed first send is unchanged by any of it: the session is made first, the chat filed, then the turn.
@@ -758,3 +761,97 @@ test('Home model caption follows a role change only while no place decides, and 
   await expect(page.locator('.home-composer')).toBeVisible();
   await expect(chip).toHaveCount(0);
 });
+
+// A place that decides the default model is shown with the same word the role path gives it, and the unknown is never filled in
+// with the default: an unreadable role or list names nothing, or the role's own id, never "DS Flash" by guess.
+test('Home names a place-decided default model exactly, and keeps its caption inside the composer row', async ({ page }) => {
+  const seed = garden();
+  seed.places![0].model = ROLE_DEFAULT;
+  const sample = fresh();
+  sample.models = CATALOG;
+  await boot(page, seed, sample);
+  await page.route('**/models/roles', route => route.fulfill({ json: { default: ROLE_DEFAULT, roles: [{ id: 'conversation', model: ROLE_CHANGED }] } }));
+  await railPlace(page, 'Marketing').click();
+  const chip = page.locator('.home-composer .model-picker');
+  await expect(chip).toHaveAccessibleName('Model: DeepSeek v4.1 Flash');
+  await expect(chip).toHaveText('DS Flash');
+  const box = await chip.boundingBox();
+  const composer = await page.locator('.home-composer').boundingBox();
+  expect(box && composer && box.y >= composer.y && box.y + box.height <= composer.y + composer.height).toBe(true);
+});
+
+for (const failing of ['models/roles', 'models']) {
+  test(`Home never names the default when ${failing} cannot be read`, async ({ page }) => {
+    const sample = fresh();
+    sample.models = CATALOG;
+    await boot(page, garden(), sample);
+    await page.route('**/models/roles', route => failing === 'models/roles'
+      ? route.fulfill({ status: 503, json: { error: 'busy' } })
+      : route.fulfill({ json: { default: ROLE_DEFAULT, roles: [{ id: 'conversation', model: ROLE_CHANGED }] } }));
+    if (failing === 'models') await page.route(/\/models(\?.*)?$/, route => route.fulfill({ status: 503, json: { error: 'busy' } }));
+    await railPlace(page, 'Marketing').click();
+    await page.evaluate(() => window.dispatchEvent(new Event('codeaf:models-changed')));
+    await expect(page.locator('.home-composer')).toBeVisible();
+    const chip = page.locator('.home-composer .model-picker');
+    if (failing === 'models/roles') await expect(chip).toHaveCount(0);
+    else await expect(chip).toHaveAccessibleName('Model: fixture/alternate'); // the saved role's own id, no swap
+    await expect(page.getByText('DS Flash')).toHaveCount(0);
+  });
+}
+
+for (const arrival of ['focus', 'visibilitychange']) {
+  test(`Home refreshes the saved role after another window changes it · ${arrival}`, async ({ page, context }) => {
+    const sample = fresh(); sample.models = CATALOG;
+    let role = ROLE_DEFAULT;
+    const rig = await boot(page, garden(), sample);
+    await page.route('**/models/roles', route => route.fulfill({ json: { default: ROLE_DEFAULT, roles: [{ id: 'conversation', model: role }] } }));
+    await railPlace(page, 'Marketing').click();
+    const chip = page.locator('.home-composer .model-picker');
+    await expect(chip).toHaveText('DS Flash');
+    const other = await context.newPage();
+    try {
+      await boot(other, garden(), sample);
+      await other.route('**/models/roles', route => route.fulfill({ json: { default: ROLE_DEFAULT, roles: [{ id: 'conversation', model: role }] } }));
+      await other.route('**/models/roles/conversation', async route => {
+        role = route.request().postDataJSON().model;
+        rig.engine.update({ model: role });
+        await route.fulfill({ json: { id: 'conversation', model: role } });
+      });
+      await railPlace(other, 'Marketing').click();
+      await other.locator('.home-composer .model-picker').click();
+      await other.getByRole('dialog').getByRole('button', { name: /All models/ }).click();
+      await other.getByRole('dialog').getByRole('radio').filter({ hasText: 'Fixture Alternate' }).click();
+      await expect.poll(() => role).toBe(ROLE_CHANGED);
+      await page.bringToFront();
+      await page.evaluate(event => event === 'focus' ? window.dispatchEvent(new Event('focus')) : document.dispatchEvent(new Event('visibilitychange')), arrival);
+      await expect(chip).toHaveText('Alternate');
+      const composer = page.getByRole('textbox', { name: 'Message', exact: true });
+      await composer.fill('Use the updated role'); await composer.press('Enter');
+      await expect.poll(() => rig.engine.turnModels).toEqual([ROLE_CHANGED]);
+    } finally { await other.close(); }
+  });
+}
+
+for (const theme of ['light', 'dark']) {
+  test(`Home effective model keeps the exact composer geometry · ${theme}`, async ({ page }, info) => {
+    const seed = garden(); seed.places![0].model = ROLE_DEFAULT;
+    const sample = fresh(); sample.models = CATALOG;
+    await boot(page, seed, sample);
+    await page.evaluate(theme => { localStorage.setItem('codeaf-theme', theme); window.dispatchEvent(new StorageEvent('storage', { key: 'codeaf-theme', newValue: theme })); }, theme);
+    await railPlace(page, 'Marketing').click();
+    await expect(page.locator('.home-composer .model-picker')).toHaveText('DS Flash');
+    const box = await page.locator('.home-composer .composer').boundingBox();
+    expect(box?.width).toBe(616); expect(box?.height).toBe(48);
+    const typography = await page.locator('.home-composer textarea').evaluate(field => {
+      const font = getComputedStyle(field), placeholder = getComputedStyle(field, '::placeholder');
+      return { font: font.fontFamily, placeholder: placeholder.fontFamily, size: font.fontSize, leading: font.lineHeight, sans: font.getPropertyValue('--sans'), alias: font.getPropertyValue('--font-sans') };
+    });
+    await info.attach('home-composer-typography', { body: JSON.stringify(typography), contentType: 'application/json' });
+    if (process.env.CODEAF_UI_RESULTS) {
+      await mkdir(`${process.env.CODEAF_UI_RESULTS}/shots`, { recursive: true });
+      await writeFile(`${process.env.CODEAF_UI_RESULTS}/shots/home-effective-${theme}-${info.project.name}.json`, JSON.stringify({ ...typography, width: box?.width, height: box?.height }, null, 2));
+    }
+    await expect(page.locator('.home-composer-note')).toHaveCount(0);
+    if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/shots/home-effective-${theme}-${info.project.name}.png` });
+  });
+}
