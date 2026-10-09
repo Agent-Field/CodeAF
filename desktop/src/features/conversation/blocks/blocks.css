@@ -41,33 +41,8 @@
 .steer-landing { transition: opacity var(--duration) var(--ease); }
 .steer[data-consumed="true"] .steer-landing { opacity: var(--opacity-transparent); }
 
-/* Update: the AI speaking mid-work, set off by a quiet rule and an eyebrow. */
-.update-block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding-left: var(--space-3);
-  border-left: var(--space-half) solid var(--convo-update-rule);
-}
-.update-eyebrow { color: var(--muted); font-size: var(--font-size-caption); }
-.update-cut { color: var(--muted); font-size: var(--font-size-body); }
-
-/* Answer: Copy appears on hover or focus, bottom-left. */
-.answer-block { position: relative; }
-.answer-actions { display: flex; margin-left: calc(var(--space-2) * -1); opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
-.answer-block:hover .answer-actions,
-.answer-actions:focus-within { opacity: var(--opacity-opaque); }
-@media (pointer: coarse) {
-  .answer-actions { opacity: var(--opacity-opaque); }
-}
-
-/* Footer: one quiet line; failure uses the warning ink. */
-.turn-footer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--muted); font-size: var(--font-size-body); }
-.turn-footer[data-failed="true"] { color: var(--warning); }
-
 @media (prefers-reduced-motion: reduce) {
-  .steer-landing,
-  .answer-actions { transition: none; }
+  .steer-landing { transition: none; }
 }
 
 /* An attached picture fills its square thumbnail cell. */

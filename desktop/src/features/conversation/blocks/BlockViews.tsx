@@ -2,6 +2,7 @@ import { CopyButton, Markdown } from '../../../components/ui';
 import { useAssetMarkdownHooks } from '../assets/markdownHooks';
 import { ErrorItem } from '../ErrorItem';
 import type { TurnBlock } from '../types';
+import './turn-answer.css';
 
 type Block<K extends TurnBlock['kind']> = Extract<TurnBlock, { kind: K }>;
 
