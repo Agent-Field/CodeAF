@@ -453,8 +453,8 @@ var retiredRowEnv = map[string]string{
 func RetiredRowNote(key string) string { return retiredRowNotes[key] }
 
 // consumedProfileKeys is every top-level config.json key a reader consumes at
-// head: every settings-registry row plus the non-setting loader and first run
-// fields. It is the one definition the unread check and the ledger law both
+// head: every settings-registry row, desktop model role, and the non-setting
+// loader and first run fields. It is the one definition the unread check and the ledger law both
 // read, so the two cannot drift.
 func consumedProfileKeys(profileDir string) map[string]bool {
 	consumed := make(map[string]bool)
@@ -463,6 +463,9 @@ func consumedProfileKeys(profileDir string) map[string]bool {
 	}
 	for _, row := range NewSettings(SettingsOptions{ProfileDir: profileDir}).Rows() {
 		consumed[row.Key] = true
+	}
+	for _, role := range DesktopRoles() {
+		consumed[desktopRoleKey(role.ID)] = true
 	}
 	return consumed
 }

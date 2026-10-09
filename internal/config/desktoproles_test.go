@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/roles"
@@ -155,5 +156,18 @@ func TestARoleIsLiveOnlyOnceSomethingRegistersItsCall(t *testing.T) {
 	naming, _ := DesktopRoleFor("naming")
 	if !DesktopRoleLive(naming) {
 		t.Fatal("chat titles are registered but not live")
+	}
+}
+
+func TestDesktopRoleRegistryKeysAreConsumedButUnknownRolesStillWarn(t *testing.T) {
+	values := make(map[string]json.RawMessage)
+	for _, role := range DesktopRoles() {
+		values[desktopRoleKey(role.ID)] = json.RawMessage(`"deepseek/deepseek-v4.1-flash"`)
+	}
+	unknown := desktopRoleKey("unknown-role")
+	values[unknown] = json.RawMessage(`"deepseek/deepseek-v4.1-flash"`)
+	unread := warnUnreadProfileKeys(t.TempDir(), values)
+	if len(unread) != 1 || unread[0] != unknown {
+		t.Fatalf("unread role keys %v; want only %q", unread, unknown)
 	}
 }
