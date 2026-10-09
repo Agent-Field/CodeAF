@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObje
 import design from '../../design/tokens.json';
 import type { ConversationModel } from './types';
 
-// Within this distance of the end the reader counts as "at the bottom".
-const SLACK = parseFloat(design.foundation['space-8']);
+// Within this distance of the end the reader counts as "at the bottom" (design 1f, Anchor).
+const SLACK = parseFloat(design.foundation['scroll-anchor']);
 
 const distanceToEnd = (element: HTMLElement) => element.scrollHeight - element.clientHeight - element.scrollTop;
 
@@ -17,13 +17,16 @@ export function contentSignature(model: ConversationModel): string {
 
 /**
  * Follows new content only while the reader is at the bottom; otherwise it
- * reports that something arrived below so the view can offer a jump.
+ * reports that something arrived below so the view can offer a jump. `scrolled`
+ * is true once the top edge has content above it, which turns the top fade on.
  */
 export function useStickToBottom(scroller: RefObject<HTMLElement | null>, content: RefObject<HTMLElement | null>, signature: string, pageKey?: string) {
   const atBottom = useRef(true);
   const onPage = useRef(Boolean(pageKey));
   onPage.current = Boolean(pageKey);
   const [behind, setBehind] = useState(false);
+  const [unanchored, setUnanchored] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
     const element = scroller.current;
@@ -32,6 +35,8 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     const onScroll = () => {
       atBottom.current = !onPage.current && distanceToEnd(element) <= SLACK;
       if (atBottom.current) setBehind(false);
+      setUnanchored(!atBottom.current);
+      setScrolled(element.scrollTop > 0);
     };
     const follow = () => {
       if (atBottom.current) element.scrollTop = element.scrollHeight;
@@ -69,5 +74,5 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     setBehind(false);
   }, [scroller]);
 
-  return { behind, jump };
+  return { behind, unanchored, scrolled, jump };
 }

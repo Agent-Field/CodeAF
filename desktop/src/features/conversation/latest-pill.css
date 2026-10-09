@@ -1,0 +1,30 @@
+/* The Latest pill: a floating chip above the dock, shown only while unanchored (design 1f). */
+.latest-pill.button {
+  position: absolute; bottom: calc(100% - var(--latest-overlap)); left: 50%; translate: -50% 0;
+  z-index: var(--z-overlay); gap: var(--space-2); min-height: var(--latest-height); height: var(--latest-height);
+  padding: 0 var(--space-3) 0 var(--space-compact); border: 0; border-radius: var(--radius-pill);
+  background: var(--surface); box-shadow: var(--sh-2); color: var(--ink);
+  font-size: var(--font-size-body); white-space: nowrap;
+  animation: latest-pill-enter var(--dur-base) var(--ease);
+}
+.latest-pill .app-icon { color: var(--ink-2); }
+.latest-pill-label { font-weight: var(--font-weight-medium); }
+.latest-pill-dot { color: var(--ink-3); }
+.latest-pill-time { color: var(--ink-3); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
+.latest-pill-shimmer {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  background-image: linear-gradient(to right, var(--ink-2) 0%, var(--ink-2) var(--latest-shimmer-edge), var(--ink) var(--latest-shimmer-mid), var(--ink-2) var(--latest-shimmer-far), var(--ink-2) 100%);
+  background-size: var(--latest-shimmer-size) 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: latest-pill-shimmer var(--latest-shimmer-duration) linear infinite;
+}
+@keyframes latest-pill-enter { from { opacity: var(--opacity-transparent); transform: translateY(var(--latest-rise)); } to { opacity: var(--opacity-opaque); transform: translateY(var(--motion-rest)); } }
+@keyframes latest-pill-shimmer { from { background-position: var(--latest-shimmer-from) 0; } to { background-position: var(--latest-shimmer-to) 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .latest-pill.button { animation: none; }
+  .latest-pill-shimmer { animation: none; background: none; color: var(--ink-2); }
+}
+
+/* Specimen stage: gives the absolutely placed pill a dock line to sit on. */
+.latest-pill-stage { display: flex; flex-direction: column; gap: var(--space-xl); padding-top: var(--latest-height); }
+.latest-pill-stage-dock { position: relative; width: 100%; height: var(--space-1); }
