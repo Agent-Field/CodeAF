@@ -1,0 +1,20 @@
+/* The Design system specimen for the shell tabs: the designer's frame sheet, light and dark through the theme tokens. */
+.tabs-specimen { display: flex; flex-direction: column; gap: var(--space-6); padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--frame); box-shadow: var(--sh-3); color: var(--ink); font-size: var(--font-size-body); width: 100%; min-width: 0; overflow-x: auto; }
+.tabs-specimen-grid { display: grid; grid-template-columns: var(--specimen-tab-column) repeat(5, var(--specimen-tab-cell)); align-items: center; width: max-content; }
+.tabs-specimen-head { padding: 0 var(--space-2) var(--space-tight); font-size: var(--type-caption-size); font-weight: var(--font-weight-medium); color: var(--ink-2); }
+.tabs-specimen-kind { padding: var(--space-tight) var(--space-2); color: var(--ink-2); }
+.tabs-specimen-cell { display: flex; align-items: center; padding: var(--space-tight) var(--space-2); }
+.tabs-specimen-cell .workspace-tab, .tabs-specimen-wide .workspace-tab { flex: none; width: var(--specimen-tab-width); }
+.tabs-specimen-wide .workspace-tab { width: var(--specimen-tab-wide); }
+.tabs-specimen-na { padding: var(--space-tight) var(--space-2); font-size: var(--type-caption-size); color: var(--ink-2); }
+.tabs-specimen-rule { height: var(--hairline); background: var(--line); }
+.tabs-specimen-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-6); color: var(--ink-2); }
+.tabs-specimen-item { display: flex; align-items: center; gap: var(--space-compact); }
+.tabs-specimen-item .workspace-tab-group .workspace-tab { width: var(--specimen-tab-column); min-width: 0; flex: none; }
+.tabs-specimen-label { font-size: var(--type-caption-size); font-weight: var(--font-weight-medium); color: var(--ink-2); }
+.tabs-specimen-card { position: relative; display: grid; place-items: center; height: var(--tab-strip-height); border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink-3); overflow: hidden; }
+.tabs-specimen-legend { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-6); margin: 0; padding: 0; list-style: none; color: var(--ink-2); }
+.tabs-specimen-legend li { display: flex; align-items: center; gap: var(--space-compact); }
+.tabs-specimen-note { color: var(--ink-2); }
+.tabs-specimen-legend li > span:nth-child(2) { white-space: nowrap; color: var(--ink); font-weight: var(--font-weight-medium); }
+.tabs-specimen-item .workspace-group-tab-slot { width: var(--specimen-tab-column); min-width: 0; }

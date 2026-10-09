@@ -1,0 +1,42 @@
+/* One tab (design 2h "Tabs", shell-helpers tA/tI). Geometry and colour come only from tokens.json. */
+.workspace-tab { position: relative; display: flex; align-items: center; flex: 0 1 auto; width: var(--tab-max-width); min-width: var(--tab-min-width); max-width: var(--tab-max-width); height: var(--tab-height); border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); line-height: var(--line-height-tight); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); animation: tab-enter var(--duration-overlay) var(--ease-overlay); }
+.workspace-tab:hover, .workspace-tab[data-hover] { background: var(--tab-hover); color: var(--ink); }
+.workspace-tab[data-active="true"] { background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
+/* An inactive tab that needs you lifts its title to full ink. */
+.workspace-tab[data-state="waiting"] { color: var(--ink); }
+
+.workspace-tab-select.button { display: flex; align-items: center; justify-content: flex-start; flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0 0 0 var(--space-compact); gap: var(--space-2); border: 0; border-radius: inherit; background: transparent; color: inherit; font-size: inherit; font-weight: var(--font-weight-regular); line-height: inherit; text-align: left; }
+.workspace-tab-select.button:hover:not(:disabled), .workspace-tab-select.button:active:not(:disabled) { background: transparent; color: inherit; }
+.workspace-tab-select.button:focus-visible { outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
+.workspace-tab-select .app-icon { color: var(--ink-2); }
+.workspace-tab-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+
+/* The 6px state glyph replaces the kind icon; colour lives on this dot only. */
+.tab-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); margin: 0 var(--tab-dot-margin); border-radius: 50%; background: var(--amber); }
+.tab-dot[data-state="failed"] { background: var(--danger); }
+.tab-monogram { flex: none; width: var(--monogram-size); height: var(--monogram-size); border-radius: var(--radius-xs); background: var(--site-icon-hue-1); color: var(--on-accent); font-family: var(--sans); font-size: var(--monogram-font); font-weight: var(--font-weight-bold); line-height: var(--monogram-size); text-align: center; object-fit: cover; }
+.tab-monogram[data-hue="2"] { background: var(--site-icon-hue-2); }.tab-monogram[data-hue="3"] { background: var(--site-icon-hue-3); }.tab-monogram[data-hue="4"] { background: var(--site-icon-hue-4); }.tab-monogram[data-hue="5"] { background: var(--site-icon-hue-5); }.tab-monogram[data-hue="6"] { background: var(--site-icon-hue-6); }
+
+/* Close lives in a fixed 20px slot, so revealing it never changes the title's width. */
+.workspace-tab-close-slot { flex: none; display: grid; place-items: center; width: var(--tab-close-slot); height: var(--tab-close-slot); margin-right: var(--tab-pad-end); }
+.workspace-tab .workspace-tab-close.icon-button { width: var(--tab-close-size); height: var(--tab-close-size); border-radius: var(--radius-tab-close); color: var(--ink-3); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.workspace-tab .workspace-tab-close.icon-button:hover:not(:disabled) { width: var(--tab-close-slot); height: var(--tab-close-slot); background: var(--field-2); color: var(--ink); }
+.workspace-tab .workspace-tab-close.icon-button:active:not(:disabled) { background: var(--field-2); }
+.workspace-tab:hover .workspace-tab-close, .workspace-tab:focus-within .workspace-tab-close, .workspace-tab[data-active="true"] .workspace-tab-close, .workspace-tab[data-hover] .workspace-tab-close { opacity: var(--opacity-opaque); }
+
+/* Pinned: icon-only square. The Inbox alone carries a dot. */
+.workspace-tab.is-pinned { flex: none; width: var(--tab-pinned-width); min-width: var(--tab-pinned-width); max-width: var(--tab-pinned-width); justify-content: center; }
+.workspace-tab.is-pinned .workspace-tab-select.button { justify-content: center; padding: 0; }
+.workspace-tab.is-pinned .app-icon { color: inherit; }
+.tab-badge { position: absolute; top: var(--space-tiny); right: var(--space-tiny); width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 var(--space-half) var(--canvas); }
+
+/* Compressed: the narrowest fallback, icon only. */
+.workspace-tab[data-compressed] { flex: none; max-width: var(--tab-compressed-width); width: var(--tab-compressed-width); min-width: var(--tab-compressed-width); }
+.workspace-tab[data-compressed] .workspace-tab-select.button { justify-content: center; padding: 0; }
+
+/* A member of a group capsule is 26px with radius 7 (Components "Tab · group · split tab"). */
+.workspace-tab[data-in-group] { height: var(--tab-group-height); border-radius: var(--radius-segment-item); }
+.workspace-tab[data-in-group] .workspace-tab-select.button { padding-left: var(--tab-member-pad); gap: var(--tab-member-gap); }
+
+@media (hover: none), (pointer: coarse) { .workspace-tab .workspace-tab-close.icon-button { opacity: var(--opacity-opaque); } }
+@media (prefers-reduced-motion: reduce) { .workspace-tab { animation: none; } }

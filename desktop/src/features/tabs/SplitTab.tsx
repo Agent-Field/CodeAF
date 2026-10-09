@@ -1,0 +1,31 @@
+import type { HTMLAttributes, Ref } from 'react';
+import { Button, IconButton } from '../../components/ui';
+import { TabGlyph, type TabState } from './Tab';
+import type { TabKind } from './kinds/types';
+import './tab.css';
+import './split-tab.css';
+
+export type SplitSegment = { id: string; kind: TabKind; title: string; state?: TabState };
+
+/**
+ * A split is ONE merged tab with a segment per pane (up to four); the focused pane's segment is filled.
+ * Each segment is itself a tab-role button so keyboard and screen-reader users reach every pane.
+ */
+export function SplitTab({ segments, focus, active, hover = false, specimen = false, onSelectPane, onClose, frame, ...rest }: {
+  segments: readonly SplitSegment[]; focus: number; active?: boolean; hover?: boolean; specimen?: boolean;
+  onSelectPane?: (index: number) => void; onClose?: () => void;
+  frame?: HTMLAttributes<HTMLDivElement> & { draggable?: boolean };
+} & Omit<HTMLAttributes<HTMLDivElement>, 'onSelect'> & { ref?: Ref<HTMLDivElement> }) {
+  const name = segments.map(s => s.title).join(' and ');
+  return (
+    <div {...rest} {...frame} className={`workspace-tab workspace-split-tab ${frame?.className ?? ''}`} data-active={!!active} data-hover={hover || undefined} role="group" aria-label={`Split: ${name}`}>
+      {segments.map((segment, index) => (
+        <Button key={segment.id} className="workspace-split-segment" role={specimen ? undefined : 'tab'} id={`tab-${segment.id}`} aria-controls={specimen ? undefined : 'workspace-tab-panel'} aria-selected={specimen ? undefined : !!active && index === focus} aria-label={segment.title} data-focused={!!active && index === focus} tabIndex={active && index === focus ? 0 : -1} onClick={() => onSelectPane?.(index)}>
+          <TabGlyph kind={segment.kind} title={segment.title} state={segment.state}/>
+          <span className="workspace-tab-title">{segment.title}</span>
+        </Button>
+      ))}
+      {onClose && <span className="workspace-tab-close-slot"><IconButton className="workspace-tab-close" label={`Close split ${name}`} icon="close" iconSize="micro" tabIndex={active ? 0 : -1} onClick={onClose}/></span>}
+    </div>
+  );
+}

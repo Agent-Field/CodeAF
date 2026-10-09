@@ -1,0 +1,7 @@
+.load-line { position: absolute; top: 0; left: 0; right: 0; height: var(--tab-load-height); overflow: hidden; pointer-events: none; z-index: 1; }
+.load-line-bar { display: block; height: 100%; width: 100%; background: var(--accent); transform-origin: left; transition: width var(--dur-base) var(--ease); }
+.load-line-bar[data-step="0"] { width: 0%; }.load-line-bar[data-step="1"] { width: 10%; }.load-line-bar[data-step="2"] { width: 20%; }.load-line-bar[data-step="3"] { width: 30%; }.load-line-bar[data-step="4"] { width: 40%; }.load-line-bar[data-step="5"] { width: 50%; }
+.load-line-bar[data-step="6"] { width: 60%; }.load-line-bar[data-step="7"] { width: 70%; }.load-line-bar[data-step="8"] { width: 80%; }.load-line-bar[data-step="9"] { width: 90%; }.load-line-bar[data-step="10"] { width: 100%; }
+.load-line[data-indeterminate] .load-line-bar { width: 40%; animation: load-line-sweep var(--duration-work) var(--ease-layout) infinite alternate; }
+@keyframes load-line-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .load-line[data-indeterminate] .load-line-bar { animation: none; width: 100%; } }

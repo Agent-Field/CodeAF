@@ -1,0 +1,14 @@
+/* The content card (radius 10, canvas, sh-1) and the split grid of cards. */
+.workspace-conversation { flex: 1; display: flex; min-height: 0; min-width: 0; gap: var(--pane-gap); }
+.workspace-conversation:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
+.workspace-conversation[data-layout="1x2"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
+.workspace-conversation[data-layout="2x1"] { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.workspace-conversation[data-layout="2x2"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.workspace-conversation[data-layout="2x2"][data-count="3"] > .workspace-pane:nth-child(3) { grid-column: 1 / -1; }
+.workspace-pane { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
+.workspace-pane[data-focused="true"] { box-shadow: var(--sh-1), 0 0 0 var(--pane-ring-width) var(--accent-soft); }
+.workspace-pane-body { flex: 1; display: flex; min-height: 0; min-width: 0; }
+.pane-header { display: flex; align-items: center; flex: none; height: var(--pane-header-height); padding: 0 var(--space-compact) 0 var(--space-4); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--ink-2); }
+.pane-header[data-focused="true"] { color: var(--ink); }
+.pane-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.pane-header-controls { flex: none; display: flex; align-items: center; gap: var(--space-half); }
