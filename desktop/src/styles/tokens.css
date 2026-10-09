@@ -182,6 +182,18 @@
   --favicon-size: 16px;
   --step-row-height: 26px;
   --work-fade: 60%;
+  --thinking-row-height: 24px;
+  --thinking-gap: 8px;
+  --thinking-leading: 1.55;
+  --thinking-live-height: 56px;
+  --thinking-fade: 55%;
+  --thinking-indent: 21px;
+  --thinking-mark-box: 13px;
+  --thinking-chevron: 12px;
+  --thinking-dot-radius: 99px;
+  --shimmer-duration: 2.4s;
+  --shimmer-size: 250%;
+  --shimmer-angle: 90deg;
   --asset-dir-max-width: 140px;
   --asset-name-max-width: 220px;
   --asset-sheet-gutter: 20px;
