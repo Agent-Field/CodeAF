@@ -169,3 +169,38 @@ test('the overlay never touches a settled snapshot', () => {
   const settled = projectTurnsV2(snap([user('go'), final('done')]), play([text('late')]));
   assert.equal(settled.turns[0].blocks.length, 1);
 });
+
+test('Working survives intermediate text, assistantDone and the next tool until canonical turn completion', () => {
+  const entries = [user('investigate')];
+  let overlay = emptyLive(1);
+  const events = [event('reasoning', { text: 'Trace the path.' }), toolEvent('toolBegin', 'a'), toolEvent('toolEnd', 'a'), text('I found the first cause. '), event('assistantDone'), event('reasoning', { text: 'Check the second path.' }), toolEvent('toolBegin', 'b'), toolEvent('toolEnd', 'b'), text('Here is the complete result.')];
+  for (const next of events) {
+    overlay = reduceLive(overlay, next, entries.length, 1000);
+    const turn = running(entries, overlay);
+    const blocks = works(turn.blocks);
+    assert.ok(blocks.length);
+    assert.equal(blocks.at(-1)?.live, true, next.kind);
+    assert.ok(turn.state === 'working' || turn.state === 'streaming');
+  }
+  const recorded = [...entries, tool('bash', 'a', {}), final('Intermediate answer'), tool('bash', 'b', {})];
+  const active = projectTurnsV2(snap(recorded, { running: true })).turns[0];
+  assert.equal(works(active.blocks).at(-1)?.live, true, 'snapshot-only handoff');
+  const done = projectTurnsV2(snap([...recorded, final('Done')])).turns[0];
+  assert.equal(done.state, 'done');
+  assert.ok(works(done.blocks).every(block => !block.live));
+});
+
+test('elapsed origins are observed once, survive retry, and are never invented for reloaded work', () => {
+  let overlay = reduceLive(emptyLive(), toolEvent('toolForming', 'a'), 1, 1200);
+  assert.equal(overlay.startedAt, 1200);
+  assert.equal(overlay.calls[0].startedAt, undefined);
+  overlay = reduceLive(overlay, toolEvent('toolBegin', 'a'), 1, 2400);
+  overlay = reduceLive(overlay, toolEvent('toolEnd', 'a'), 1, 4000);
+  assert.equal(overlay.calls[0].startedAt, 2400);
+  assert.equal(works(running([user('go')], overlay).blocks)[0].startedAt, 1200);
+  overlay = reduceLive(overlay, event('retrying'), 1, 4500);
+  assert.equal(overlay.startedAt, 1200);
+  assert.equal(reduceLive(overlay, event('turnDone'), 3, 5000).startedAt, undefined);
+  const reloaded = projectTurnsV2(snap([user('go'), tool('bash', 'a', {})], { running: true })).turns[0];
+  assert.equal(works(reloaded.blocks)[0].startedAt, undefined);
+});
