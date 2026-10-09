@@ -49,6 +49,8 @@ test('an answer table fades its right edge only while more lies that way', async
   const scroll = page.locator('.markdown-table-scroll');
   await expect(scroll).toBeVisible();
   await page.setViewportSize({ width: 360, height: 700 });
+  // Wait for the table to overflow before scrolling: "false" equals "false" before the narrow layout lands, and scrolling then moves nothing.
+  await expect(scroll).toHaveAttribute('data-more', 'true');
   await expect.poll(() => scroll.evaluate((el) => String(el.scrollLeft + el.clientWidth < el.scrollWidth - 1) === el.getAttribute('data-more'))).toBe(true);
   await scroll.evaluate((el) => (el.scrollLeft = el.scrollWidth));
   await expect(scroll).toHaveAttribute('data-more', 'false');

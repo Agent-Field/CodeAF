@@ -56,3 +56,6 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | No hunk header on edit diffs; file/diff tabs (from git) keep it. |
 | Q33 | Elapsed time on the live thinking row ("4s") | Not shown until thinking ends; the engine gives no time before then. |
 | Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | Nearest set icons: ban, pencil, the plain file icons. |
+| F4-1 | Fresh-tab model chip | The chip reads the default model's pinned short label ("DS Flash", D4) from the start, shipped with the client; no engine call on a fresh tab. Once the engine's pinned list loads, its labels take over. |
+| F4-2 | Running step chevron | The design draws a blank 12px spacer where a running step's chevron would be; none is drawn, expanded or not. The row stays a button. |
+| F4-3 | Bash output | The design opens the terminal with `$ command` in ink as its first line, always, even when the row already shows it. Shipped as drawn. |

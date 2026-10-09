@@ -25,15 +25,10 @@ function useFullOutput(call: ToolStep, readFull?: ReadFull) {
   return { output: full ?? call.output, canLoad: Boolean(callId && readFull && full === undefined), loading, error, load };
 }
 
-/** The row already names the command, so the box repeats it only when it has more lines than the row shows. */
-function extraCommand(command: string): string {
-  return command.trim().includes('\n') ? command.trim() : '';
-}
-
 /** Output on the terminal field; a footer carries the exit code and the full output on request. */
 export function TerminalBlock({ call, readFull }: { call: ToolStep; readFull?: ReadFull }) {
   const full = useFullOutput(call, readFull);
-  const command = extraCommand(argString(parseArgs(call.args), 'command'));
+  const command = argString(parseArgs(call.args), 'command').trim();
   const exit = bashExit(call.output);
   if (!command && !full.output) return null;
   return (

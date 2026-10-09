@@ -7,7 +7,7 @@
   border-left: var(--space-half) solid var(--accent-rule);
   color: var(--ink);
 }
-.update-eyebrow { color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); font-weight: var(--type-caption-weight); }
+.update-eyebrow { color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); font-weight: var(--type-caption-weight); }
 /* A cut update ends mid-sentence: the marker follows the last words on the same line (design v3 Interim update · cut off). */
 .update-body[data-cut] > .markdown, .update-body[data-cut] > .markdown > p:last-child { display: inline; }
 .update-cut { margin-inline-start: var(--space-1); color: var(--ink-3); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
@@ -17,7 +17,7 @@
 /* Copy is the shared RowActions, set back so the icon lines up with the text. */
 .answer-actions.row-actions { margin-left: calc(var(--space-tight) * -1); }
 /* "Worked 42s" rides beside Copy: label type, hover fills (design v3 Final answer · hover). */
-.button.answer-worked { height: var(--row-action-size); padding: 0 var(--space-tight); border-radius: var(--radius-message-action); background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
+.button.answer-worked { height: var(--row-action-size); padding: 0 var(--space-tight); border-radius: var(--radius-message-action); background: transparent; color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
 .button.answer-worked:hover:not(:disabled) { background: var(--field); color: var(--ink); }
 
 /* Footer: one quiet line; only a failure takes colour and an action. */
