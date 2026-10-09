@@ -1,0 +1,116 @@
+{
+  "bundle": {
+    "chatId": "0123456789abcdef",
+    "counts": {
+      "places": 3,
+      "sources": 1
+    },
+    "instructions": [
+      {
+        "bytes": 35,
+        "placeId": "pl_0000000000000005",
+        "text": "Write for customers, not engineers."
+      }
+    ],
+    "places": [
+      {
+        "id": "pl_0000000000000005",
+        "inherited": false,
+        "level": 0,
+        "name": "Release",
+        "tint": "tide"
+      },
+      {
+        "id": "pl_0000000000000003",
+        "inherited": false,
+        "level": 0,
+        "name": "Marketing",
+        "tint": "iris"
+      },
+      {
+        "id": "pl_0000000000000001",
+        "inherited": true,
+        "level": 1,
+        "name": "Software",
+        "through": [
+          "pl_0000000000000005"
+        ],
+        "tint": "tide"
+      }
+    ],
+    "policy": [
+      {
+        "field": "model",
+        "outcome": "needsPick",
+        "value": "",
+        "wanted": [
+          {
+            "placeId": "pl_0000000000000005",
+            "value": "place/flash"
+          },
+          {
+            "placeId": "pl_0000000000000003",
+            "value": "place/writer"
+          }
+        ]
+      },
+      {
+        "decidedBy": "pl_0000000000000001",
+        "field": "permissions",
+        "outcome": "decided",
+        "value": "ask",
+        "wanted": [
+          {
+            "placeId": "pl_0000000000000005",
+            "value": "allow"
+          },
+          {
+            "placeId": "pl_0000000000000001",
+            "value": "ask"
+          }
+        ]
+      }
+    ],
+    "refused": [],
+    "revision": 6,
+    "sources": [
+      {
+        "from": [
+          {
+            "addedBy": "you",
+            "level": 0,
+            "placeId": "pl_0000000000000005",
+            "sourceId": "src_0000000000000007"
+          }
+        ],
+        "key": "url:https://codeaf.dev/docs",
+        "kind": "url",
+        "ref": "https://codeaf.dev/docs",
+        "status": "ok"
+      }
+    ],
+    "trimmed": []
+  },
+  "chatId": "0123456789abcdef",
+  "engine": {
+    "places": true
+  },
+  "readAt": "2026-10-09T12:00:00Z",
+  "revision": 6,
+  "settings": [
+    {
+      "current": "deepseek/deepseek-v4.1-flash",
+      "field": "model",
+      "reason": "These places disagree and no place above them decides. Pick one; until then neither is applied.",
+      "state": "needsPick"
+    },
+    {
+      "current": "ask",
+      "decidedBy": "pl_0000000000000001",
+      "field": "permissions",
+      "reason": "Applies when the next turn starts.",
+      "state": "pending",
+      "value": "ask"
+    }
+  ]
+}

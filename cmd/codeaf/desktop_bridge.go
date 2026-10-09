@@ -70,6 +70,20 @@ func runDesktopBridge(args []string) error {
 		return errors.New("desktop transport token must contain at least 32 characters")
 	}
 	profileDir := config.ProfileDir()
+	// The place graph lives at a path chosen here and handed in; nothing in the
+	// bridge picks a default of its own. It is made absolute ONCE, and that one
+	// string is both the file the bridge's store opens and the file every
+	// engine this bridge reaches reads — carried in the hello, because the
+	// engine is often a session host that was running before this bridge was,
+	// and a variable set on the child below would never reach it.
+	graphPath, err := desktopPlacesPath(*placesFile)
+	if err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
+	placeDoor, err := session.PlaceGraphDoorFor(graphPath)
+	if err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
 	binary, err := os.Executable()
 	if err != nil {
 		return err
@@ -92,7 +106,7 @@ func runDesktopBridge(args []string) error {
 			return desktopbridge.Connection{}, err
 		}
 		pipe := &desktopPipe{Reader: output, Writer: input, command: command}
-		client, err := remote.Dial(pipe, "local desktop", remote.Hello{Version: remote.Version, Workspace: resolved, Session: file, New: file == "", Model: conversationModel(profileDir), Surface: "desktop", Launch: &remote.LaunchShape{OneModel: true, Interactive: true}})
+		client, err := remote.Dial(pipe, "local desktop", desktopHello(resolved, file, conversationModel(profileDir), placeDoor.Path))
 		if err != nil {
 			pipe.Close()
 			return desktopbridge.Connection{}, err
@@ -101,22 +115,21 @@ func runDesktopBridge(args []string) error {
 	})
 	defer bridge.Close()
 	bridge.UseModels(&desktopbridge.Models{ProfileDir: profileDir, Catalog: desktopCatalog(profileDir)})
-	// The place graph lives at a path chosen here and handed in; nothing in the
-	// bridge picks a default of its own.
-	if strings.TrimSpace(*placesFile) == "" {
-		*placesFile = home.Join("desktop", "places.json")
-	}
-	placeStore, err := placegraph.Open(placegraph.Options{Path: *placesFile})
+	placeStore, err := placegraph.Open(placegraph.Options{Path: placeDoor.Path})
 	if err != nil {
 		return fmt.Errorf("places: %w", err)
 	}
 	if recovery := placeStore.LastRecovery(); recovery != nil {
 		fmt.Fprintf(os.Stderr, "places: %s file kept at %s (%s)\n", recovery.Kind, recovery.MovedTo, recovery.Reason)
 	}
-	bridge.UsePlaces(desktopbridge.NewPlaces(placeStore))
+	places := desktopbridge.NewPlaces(placeStore)
+	if err := places.UseDoor(placeDoor); err != nil {
+		return fmt.Errorf("places: %w", err)
+	}
+	bridge.UsePlaces(places)
 	// Offers about places keep their own ledger beside the graph, and read the
 	// person's Places settings fresh on every job.
-	ledger, err := placegraph.OpenLedger(filepath.Join(filepath.Dir(*placesFile), "places-ai.json"))
+	ledger, err := placegraph.OpenLedger(filepath.Join(filepath.Dir(placeDoor.Path), "places-ai.json"))
 	if err != nil {
 		return fmt.Errorf("places: %w", err)
 	}
@@ -147,6 +160,28 @@ func runDesktopBridge(args []string) error {
 		return fmt.Errorf("desktop transport: %w", err)
 	}
 	return nil
+}
+
+// desktopPlacesPath is the place graph file this bridge opens and every engine
+// it reaches reads: the --places flag, or the desktop folder of the state root,
+// made absolute once so both processes name one file.
+func desktopPlacesPath(flag string) (string, error) {
+	path := strings.TrimSpace(flag)
+	if path == "" {
+		path = home.Join("desktop", "places.json")
+	}
+	return filepath.Abs(path)
+}
+
+// desktopHello is the hello a desktop conversation is opened with. The place
+// graph rides its launch shape (remote.LaunchShape.PlaceGraph) so a session
+// host that was already running reads the same file this bridge does.
+func desktopHello(workspace, file, model, graph string) remote.Hello {
+	return remote.Hello{
+		Version: remote.Version, Workspace: workspace, Session: file, New: file == "", Model: model,
+		Surface: "desktop",
+		Launch:  &remote.LaunchShape{OneModel: true, Interactive: true, PlaceGraph: graph},
+	}
 }
 
 type desktopPipe struct {
