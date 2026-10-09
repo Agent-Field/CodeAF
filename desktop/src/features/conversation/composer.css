@@ -7,32 +7,38 @@
   transition-timing-function: var(--ease-layout);
 }
 
+/* The dock: a radius-dock surface on depth 2. Focus lifts it with the accent halo. */
 .composer {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
-  border: var(--border-width) solid var(--border);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--composer-pad-end) var(--space-2) var(--space-4);
   border-radius: var(--radius-composer);
-  background: var(--composer-surface);
-  transition: box-shadow var(--duration) var(--ease), border-color var(--duration) var(--ease);
+  background: var(--surface);
+  box-shadow: var(--sh-2);
+  transition: box-shadow var(--dur-fast) var(--ease);
 }
 
-/* Hairline at rest; a slightly stronger line only while typing. */
 .composer:focus-within {
-  border-color: var(--control-border-hover);
-  box-shadow: var(--shadow);
+  box-shadow: var(--sh-2), 0 0 0 var(--composer-halo-width) var(--accent-soft);
 }
 
 .composer-field.text-area {
   resize: none;
   overflow-y: auto;
-  min-height: var(--composer-writing-min-height);
+  min-height: 0;
   max-height: var(--composer-writing-max-height);
-  padding: var(--space-1) 0;
+  padding: 0;
   font-family: var(--font-sans);
-  line-height: var(--line-height-body);
+  font-size: var(--type-prose-size);
+  font-weight: var(--type-prose-weight);
+  line-height: var(--type-prose-leading);
+  color: var(--ink);
+}
+
+.composer-field.text-area::placeholder {
+  color: var(--ink-3);
 }
 
 .composer-field.text-area:focus-visible {
@@ -45,47 +51,136 @@
   justify-content: space-between;
   gap: var(--space-2);
   min-width: 0;
+  margin-left: calc(-1 * var(--space-2));
 }
 
 .composer-tools,
 .composer-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-half);
   min-width: 0;
 }
 
+.composer-actions {
+  gap: var(--space-tight);
+}
+
+.composer-attach.icon-button {
+  width: var(--control-height);
+  height: var(--control-height);
+  border-radius: var(--radius-control);
+  color: var(--ink-2);
+}
+
+.composer-attach.icon-button .app-icon {
+  width: var(--composer-plus-size);
+  height: var(--composer-plus-size);
+}
+
+.composer-attach.icon-button:hover:not(:disabled) {
+  background: var(--field);
+  color: var(--ink);
+}
+
 .composer-model.type-body {
-  font-size: var(--font-size-label);
+  display: flex;
+  align-items: center;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-leading);
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .composer-tasks.button {
-  min-height: var(--icon-button-size);
+  height: var(--control-height);
   padding: 0 var(--space-2);
-  font-size: var(--font-size-label);
+  border-radius: var(--radius-control);
+  font-size: var(--type-label-size);
+  color: var(--ink-2);
 }
 
-.composer-primary.icon-button {
-  border-radius: 50%;
+/* The right-hand button changes role: Send, then Stop, then Steer. */
+.composer-primary.icon-button,
+.composer-primary.button {
+  flex: none;
+  width: var(--control-height);
+  height: var(--control-height);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--composer-send-radius);
   background: var(--accent);
-  color: var(--on-accent);
+  color: var(--accent-ink);
 }
 
 .composer-primary.icon-button:hover:not(:disabled),
 .composer-primary.icon-button:active:not(:disabled) {
-  background: var(--accent-hover);
-  color: var(--on-accent);
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
-/* Nothing to send: a quiet outlined ring, not a solid disc. */
+/* Nothing to send: a quiet field-2 disc. */
 .composer-primary.icon-button:disabled {
-  border: var(--border-width) solid var(--control-border-hover);
-  background: transparent;
-  color: var(--muted);
-  opacity: var(--opacity-disabled);
+  background: var(--field-2);
+  color: var(--ink-3);
+  opacity: var(--opacity-opaque);
+}
+
+.composer-primary.composer-stop {
+  background: var(--field);
+  color: var(--ink);
+}
+
+.composer-primary.composer-stop:hover:not(:disabled) {
+  background: var(--field-2);
+  color: var(--ink);
+}
+
+.composer-stop-mark {
+  width: var(--composer-stop-size);
+  height: var(--composer-stop-size);
+  border-radius: var(--composer-stop-radius);
+  background: currentColor;
+}
+
+.composer-queue.button {
+  height: var(--control-height);
+  padding: 0 var(--space-tight);
+  border-radius: var(--radius-control);
+  font-size: var(--type-label-size);
+  color: var(--ink-2);
+}
+
+.composer-queue.button:hover:not(:disabled) {
+  background: var(--field);
+  color: var(--ink);
+}
+
+.composer-steer.button {
+  height: var(--control-height);
+  padding: 0 var(--space-3) 0 var(--space-compact);
+  gap: var(--space-tight);
+  border: 0;
+  border-radius: var(--composer-send-radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-strong);
+}
+
+.composer-steer.button:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.composer-steer.button .app-icon {
+  width: var(--composer-steer-icon-size);
+  height: var(--composer-steer-icon-size);
 }
 
 .composer-greeting {
@@ -128,8 +223,8 @@
   align-items: center;
   justify-content: center;
   border-radius: inherit;
-  background: var(--composer-surface);
-  color: var(--muted);
+  background: var(--surface);
+  color: var(--ink-3);
   pointer-events: none;
 }
 

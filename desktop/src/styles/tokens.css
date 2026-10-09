@@ -227,6 +227,13 @@
   --space-5: 20px;
   --row-h: 28px;
   --hit: 32px;
+  --composer-pad-end: 10px;
+  --composer-halo-width: 4px;
+  --composer-send-radius: 99px;
+  --composer-plus-size: 15px;
+  --composer-steer-icon-size: 12px;
+  --composer-stop-size: 10px;
+  --composer-stop-radius: 2px;
   --panel: 300px;
   --radius-control: 8px;
   --radius-card: 12px;
