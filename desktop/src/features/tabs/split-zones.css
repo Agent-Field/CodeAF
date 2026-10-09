@@ -4,7 +4,7 @@
 .split-zone-band[data-zone="left"] { top: var(--shell-card-inset); bottom: var(--shell-card-inset); left: var(--shell-card-inset); width: var(--split-zone-band); }
 .split-zone-band[data-zone="right"] { top: var(--shell-card-inset); bottom: var(--shell-card-inset); right: var(--shell-card-inset); width: var(--split-zone-band); }
 .split-zone-band[data-zone="bottom"] { left: calc(var(--shell-card-inset) + var(--split-zone-band)); right: calc(var(--shell-card-inset) + var(--split-zone-band)); bottom: var(--shell-card-inset); height: var(--split-zone-band); }
-.split-zone-preview { position: absolute; display: grid; place-items: center; pointer-events: none; border-radius: var(--radius-control); background: var(--accent-soft); box-shadow: inset 0 0 0 var(--pane-ring-width) var(--accent); }
+.split-zone-preview { position: absolute; display: grid; place-items: center; pointer-events: auto; border-radius: var(--radius-control); background: var(--accent-soft); box-shadow: inset 0 0 0 var(--pane-ring-width) var(--accent); }
 .split-zone-preview[data-zone="left"] { top: var(--shell-card-inset); bottom: var(--shell-card-inset); left: var(--shell-card-inset); width: calc(50% - var(--shell-card-inset) - var(--pane-gap) / 2); }
 .split-zone-preview[data-zone="right"] { top: var(--shell-card-inset); bottom: var(--shell-card-inset); right: var(--shell-card-inset); width: calc(50% - var(--shell-card-inset) - var(--pane-gap) / 2); }
 .split-zone-preview[data-zone="bottom"] { left: var(--shell-card-inset); right: var(--shell-card-inset); bottom: var(--shell-card-inset); height: calc(50% - var(--shell-card-inset) - var(--pane-gap) / 2); }
