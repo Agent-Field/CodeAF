@@ -9,6 +9,8 @@ import {
   isPlaceKey,
   isSafeWebUrl,
   needsYouCount,
+  NOTICE_ACTIVATED_EVENT,
+  noticeTarget,
   paneFromHandoff,
   placeFromSearch,
   type NativeBridge,
@@ -192,6 +194,42 @@ test('notifications: the full list goes to Rust; outside the app nothing is clai
   const browser = createNativeControls(fakeBridge({}, false).bridge);
   assert.deepEqual(await browser.notifyAttention(items), { posted: 0, groups: 0, skipped: 'unavailable' });
   assert.deepEqual(await browser.notificationPermission(), { state: 'unavailable', verified: false });
+});
+
+test('a notification names only a conversation and question Rust will accept', () => {
+  assert.deepEqual(noticeTarget('9446cc2627f3deae', { kind: 'consent', id: 7 }), { chatId: '9446cc2627f3deae', question: { kind: 'consent', id: 7 } });
+  // A question the tray cannot match (no engine id) still opens its conversation.
+  assert.deepEqual(noticeTarget('s1', { kind: 'consent' }), { chatId: 's1' });
+  assert.deepEqual(noticeTarget('s1', { kind: 'consent', id: 0 }), { chatId: 's1' });
+  assert.deepEqual(noticeTarget('s1', { kind: 'two words', id: 7 }), { chatId: 's1' });
+  assert.deepEqual(noticeTarget('s1', { kind: 'consent', id: 2 ** 53 }), { chatId: 's1' });
+  // Rust refuses the whole list over one bad item, so a conversation id that does not fit is left off entirely.
+  assert.deepEqual(noticeTarget('../../etc', { kind: 'consent', id: 7 }), {});
+  assert.deepEqual(noticeTarget('x'.repeat(129)), {});
+  assert.deepEqual(noticeTarget(undefined), {});
+});
+
+test('notification clicks: claimed from Rust for this window only, in the one shape a click can carry', async () => {
+  const { bridge, calls, fire } = fakeBridge({ notify_claim: [
+    { chatId: 's1', question: { kind: 'consent', id: 7 } },
+    { chatId: 's2' },
+    { chatId: '../x' },
+    { chatId: 's3', question: { kind: 'consent', id: -1 } },
+    'codeaf://chat/s4',
+    null,
+  ] });
+  const native = createNativeControls(bridge);
+  let heard = 0;
+  const off = await native.onNoticeActivated(() => heard++);
+  assert.equal(NOTICE_ACTIVATED_EVENT, 'notification://activated');
+  fire(NOTICE_ACTIVATED_EVENT, undefined);
+  assert.equal(heard, 1);
+  assert.deepEqual(await native.claimNotices(), [{ chatId: 's1', question: { kind: 'consent', id: 7 } }, { chatId: 's2' }]);
+  assert.deepEqual(calls.map(c => c.command), ['notify_claim']);
+  off();
+
+  const browser = createNativeControls(fakeBridge({}, false).bridge);
+  assert.deepEqual(await browser.claimNotices(), []);
 });
 
 test('the badge is the needs-you count, clamped, and unavailable in a browser', async () => {

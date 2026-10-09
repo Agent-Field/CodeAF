@@ -1,9 +1,13 @@
+// Public only so the native smoke test (tests/notification_click_smoke.rs) can drive it.
+#[doc(hidden)]
+pub mod activation;
 mod dialogs;
 mod links;
 #[cfg(target_os = "macos")]
 mod menu;
 mod native;
-mod notifications;
+#[doc(hidden)]
+pub mod notifications;
 // Public only so the native smoke test (tests/web_smoke.rs) can drive it.
 #[doc(hidden)]
 pub mod web;
@@ -150,6 +154,7 @@ pub fn run() {
         .manage(links::Links::default())
         .manage(windows::Windows::default())
         .manage(notifications::Attention::default())
+        .manage(activation::Activation::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
@@ -163,6 +168,7 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 windows::on_destroyed(window.app_handle(), window.label());
                 links::on_destroyed(window.app_handle(), window.label());
+                activation::on_destroyed(window.app_handle(), window.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -185,6 +191,7 @@ pub fn run() {
             notifications::notify_request_permission,
             notifications::notify_attention,
             notifications::badge_set,
+            activation::notify_claim,
             web::web_open,
             web::web_navigate,
             web::web_bounds,
