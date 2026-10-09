@@ -6,7 +6,19 @@ import { CopyButton } from './CopyButton';
 import type { ReactElement, ReactNode } from 'react';
 import '../../styles/markdown.css';
 
-export type MarkdownProps = { children: string; className?: string; onOpenLink?: (url: string) => void };
+/** A hook returns a node to take over an element, or undefined to keep the default rendering. */
+export type MarkdownHooks = {
+ renderLink?: (href: string, children: ReactNode) => ReactNode | undefined;
+ renderInlineCode?: (text: string) => ReactNode | undefined;
+ renderImage?: (src: string, alt: string) => ReactNode | undefined;
+};
+export type MarkdownProps = MarkdownHooks & { children: string; className?: string; onOpenLink?: (url: string) => void };
+// A reference with no scheme may name a workspace file; only a hook can resolve it, so it passes through only when one is installed.
+const hasScheme = /^[a-z][a-z0-9+.-]*:/i;
+function localReference(value: string): string {
+ const text = value.trim();
+ return text && !text.startsWith('#') && !text.startsWith('//') && !hasScheme.test(text) && !/[\0\n\r]/.test(text) ? text : '';
+}
 /** AI output is content, never executable HTML or an arbitrary URL scheme. */
 export function safeMarkdownUrl(value: string): string {
  const safe = defaultUrlTransform(value.trim());
@@ -33,18 +45,32 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   <pre>{children}</pre>
  </div>;
 }
-export function Markdown({ children, className = '', onOpenLink }: MarkdownProps) {
- return <div className={`markdown ${className}`}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={safeMarkdownUrl} components={{
+export function Markdown({ children, className = '', onOpenLink, renderLink, renderInlineCode, renderImage }: MarkdownProps) {
+ const resolvesLocal = !!(renderLink || renderImage);
+ const transform = (value: string) => safeMarkdownUrl(value) || (resolvesLocal ? localReference(value) : '');
+ return <div className={`markdown ${className}`}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={transform} components={{
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
-  code: ({ children, className }) => <CodeText className={className}>{children}</CodeText>,
+  code: ({ children, className }) => {
+   // Fenced code carries a language or ends in a newline; anything else is an inline span a hook may enrich.
+   const text = textOf(children);
+   const inline = !className && !text.endsWith('\n');
+   const hooked = inline && renderInlineCode ? renderInlineCode(text) : undefined;
+   return hooked !== undefined ? <>{hooked}</> : <CodeText className={className}>{children}</CodeText>;
+  },
   // Tables keep real table semantics and a named keyboard-scrollable viewport.
   table: ({ children }) => <div className="markdown-table-scroll" role="region" aria-label="Response table" tabIndex={0}><table>{children}</table></div>,
   // GFM checklist marks describe output; they never act as approval controls.
   input: ({ checked }) => <span className="markdown-task-check" role="img" aria-label={checked ? 'Completed item' : 'Incomplete item'} data-checked={!!checked}>{checked && <Icon name="check" size="xs"/>}</span>,
   th: ({ children, style }) => <th scope="col" data-align={style?.textAlign}>{children}</th>,
   td: ({ children, style }) => <td data-align={style?.textAlign}>{children}</td>,
-  a: ({ href, children }) => !href ? <span>{children}</span> : <a href={href} target={href.startsWith('#') ? undefined : '_blank'} rel={href.startsWith('#') ? undefined : 'noopener noreferrer'} onClick={event => { if (!href.startsWith('#') && onOpenLink) { event.preventDefault(); onOpenLink(href); } }}>{children}</a>,
+  a: ({ href, children }) => {
+   const hooked = href && renderLink ? renderLink(href, children) : undefined;
+   if (hooked !== undefined) return <>{hooked}</>;
+   return !href || !safeMarkdownUrl(href) ? <span>{children}</span> : <a href={href} target={href.startsWith('#') ? undefined : '_blank'} rel={href.startsWith('#') ? undefined : 'noopener noreferrer'} onClick={event => { if (!href.startsWith('#') && onOpenLink) { event.preventDefault(); onOpenLink(href); } }}>{children}</a>;
+  },
   img: ({ src, alt }) => {
+   const hooked = typeof src === 'string' && renderImage ? renderImage(src, alt ?? '') : undefined;
+   if (hooked !== undefined) return <>{hooked}</>;
    const href = typeof src === 'string' ? safeMarkdownUrl(src) : '';
    const label = alt ? `Image: ${alt}` : 'Referenced image';
    return href ? <a href={href} target="_blank" rel="noopener noreferrer" onClick={event => { if (onOpenLink) { event.preventDefault(); onOpenLink(href); } }}>{label}</a> : <span>{label}</span>;

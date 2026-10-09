@@ -35,12 +35,26 @@ import { ArrowDownIcon } from '@animateicons/react/lucide/arrow-down-icon';
 import { ArrowLeftIcon } from '@animateicons/react/lucide/arrow-left-icon';
 import { ListChecksIcon } from '@animateicons/react/lucide/list-checks-icon';
 import { CopyIcon } from '@animateicons/react/lucide/copy-icon';
+import { ImageIcon } from '@animateicons/react/lucide/image-icon';
+import { FileCodeIcon } from '@animateicons/react/lucide/file-code-icon';
+import { FileTypeIcon } from '@animateicons/react/lucide/file-type-icon';
+import { FileXIcon } from '@animateicons/react/lucide/file-x-icon';
+import { MusicIcon } from '@animateicons/react/lucide/music-icon';
+import { VideoIcon } from '@animateicons/react/lucide/video-icon';
+import { PlayIcon } from '@animateicons/react/lucide/play-icon';
+import { PauseIcon } from '@animateicons/react/lucide/pause-icon';
+import { ExpandIcon } from '@animateicons/react/lucide/expand-icon';
+import { ZoomInIcon } from '@animateicons/react/lucide/zoom-in-icon';
+import { ZoomOutIcon } from '@animateicons/react/lucide/zoom-out-icon';
+import { ExternalLinkIcon } from '@animateicons/react/lucide/external-link-icon';
+import { FolderOpenIcon } from '@animateicons/react/lucide/folder-open-icon';
+import { ImageOffIcon } from '@animateicons/react/lucide/image-off-icon';
 import { useTheme } from '../../design/ThemeProvider';
 import design from '../../design/tokens.json';
-export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check','close','pin','folder','more','split','tab','chevronRight','chevronLeft','attach','send','stop','queued','running','failed','alert','cancelled','terminal','file','edit','web','thinking','tasks','tool','findFiles','arrowDown','back','checklist','copy'] as const;
+export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check','close','pin','folder','more','split','tab','chevronRight','chevronLeft','attach','send','stop','queued','running','failed','alert','cancelled','terminal','file','edit','web','thinking','tasks','tool','findFiles','arrowDown','back','checklist','copy','image','fileCode','pdf','fileMissing','audio','video','play','pause','expand','zoomIn','zoomOut','external','folderOpen','imageOff'] as const;
 export type IconName = typeof iconNames[number];
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg';
-const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon, close: XIcon, pin: PinIcon, folder: FolderIcon, more: EllipsisIcon, split: PanelLeftIcon, tab: MessageSquareIcon, chevronRight: ChevronRightIcon, chevronLeft: ChevronLeftIcon, attach: PaperclipIcon, send: ArrowUpIcon, stop: CircleStopIcon, queued: CircleDashedIcon, running: CircleDotIcon, failed: CircleXIcon, alert: CircleAlertIcon, cancelled: CircleMinusIcon, terminal: TerminalIcon, file: FileTextIcon, edit: FilePenIcon, web: GlobeIcon, thinking: BrainIcon, tasks: ListTreeIcon, tool: WrenchIcon, findFiles: FileSearchIcon, arrowDown: ArrowDownIcon, back: ArrowLeftIcon, checklist: ListChecksIcon, copy: CopyIcon };
+const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon, close: XIcon, pin: PinIcon, folder: FolderIcon, more: EllipsisIcon, split: PanelLeftIcon, tab: MessageSquareIcon, chevronRight: ChevronRightIcon, chevronLeft: ChevronLeftIcon, attach: PaperclipIcon, send: ArrowUpIcon, stop: CircleStopIcon, queued: CircleDashedIcon, running: CircleDotIcon, failed: CircleXIcon, alert: CircleAlertIcon, cancelled: CircleMinusIcon, terminal: TerminalIcon, file: FileTextIcon, edit: FilePenIcon, web: GlobeIcon, thinking: BrainIcon, tasks: ListTreeIcon, tool: WrenchIcon, findFiles: FileSearchIcon, arrowDown: ArrowDownIcon, back: ArrowLeftIcon, checklist: ListChecksIcon, copy: CopyIcon, image: ImageIcon, fileCode: FileCodeIcon, pdf: FileTypeIcon, fileMissing: FileXIcon, audio: MusicIcon, video: VideoIcon, play: PlayIcon, pause: PauseIcon, expand: ExpandIcon, zoomIn: ZoomInIcon, zoomOut: ZoomOutIcon, external: ExternalLinkIcon, folderOpen: FolderOpenIcon, imageOff: ImageOffIcon };
 export function Icon({ name, size = 'md', motion = 'none' }: { name: IconName; size?: IconSize; motion?: 'none' | 'directional' | 'disclosure' }) {
  const { reducedMotion } = useTheme();
  // Upstream glyph choreography is disabled. Only approved, state-meaningful motion is allowed.
