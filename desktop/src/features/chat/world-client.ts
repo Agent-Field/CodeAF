@@ -1,3 +1,4 @@
+import { engineFetch } from '../../design/engineFetch.ts';
 // Wire client for the engine-wide world feed (internal/desktopbridge/world*.go):
 // GET /world and the SSE /events?after=N. It holds no state and starts no timer;
 // world-store.ts owns the one connection and its reconnects.
@@ -55,7 +56,7 @@ export const engineTransport: WorldTransport = async (path, init) => {
   headers.set('Authorization', `Bearer ${connection.token}`);
   url = `${base.origin}/api/engine${path}`;
  }
- try { return await fetch(url, { method: init.method ?? 'GET', headers, body: init.body, cache: 'no-store', signal: init.signal }); }
+ try { return await engineFetch(url, { method: init.method ?? 'GET', headers, body: init.body, cache: 'no-store', signal: init.signal }); }
  catch (error) {
   if (init.signal?.aborted) throw error;
   throw new WorldError('codeaf engine is not running', 0, true);

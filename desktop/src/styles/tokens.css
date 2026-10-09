@@ -821,6 +821,7 @@
   --places-goto-height: 560px;
   --places-goto-row-height: 34px;
   --places-goto-scrim: oklch(0 0 0 / .18);
+  --receipt-leading: normal;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

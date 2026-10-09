@@ -1,3 +1,4 @@
+import { openAppearance, openPage } from './support/shell-navigation';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface } from './contracts';
@@ -21,12 +22,13 @@ for (const theme of ['Light', 'Dark']) {
  for (const width of [320, 480, 600, design.nativeWindow.minWidth, 1200]) {
   test(`${theme}: layouts stay usable from 320px browser to native minimum at ${width}px`, async ({ page }) => {
    await page.goto('/');
-   await page.getByRole('combobox', { name: 'Theme' }).click();
+   await openAppearance(page);
    await page.getByRole('option', { name: `${theme} appearance`, exact: true }).click();
    await page.setViewportSize({ width, height: width < design.nativeWindow.minWidth ? 480 : design.nativeWindow.minHeight });
    for (const name of ['Now', 'Activity', 'Design system']) {
     await openNavigation(page);
-    await page.getByRole('button', { name, exact: true }).click();
+    if (name === 'Now') await page.getByRole('button', { name, exact: true }).click();
+    else { await page.keyboard.press('Escape'); await openPage(page, name as 'Activity' | 'Design system'); }
     await expect(page.getByRole('dialog', { name: 'Navigation', exact: true })).not.toBeVisible();
     await expectNoHorizontalOverflow(page);
     await expectNoUnstyledControls(page);
@@ -60,17 +62,19 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  // Native modals may allow browser-chrome focus, but background app controls stay inert.
  await page.locator('.workspace-tab-actions').getByRole('button', { name: 'New tab', exact: true, includeHidden: true }).evaluate(el => (el as HTMLElement).focus());
  await expect(page.getByRole('button', { name: 'Hide sidebar' })).toBeFocused();
- await page.getByRole('combobox', { name: 'Theme' }).click();
+ await page.keyboard.press('Escape');
+ await expect(drawer).not.toBeVisible();
+ await expect(show).toBeFocused();
+ await openAppearance(page);
  await expectThemedSurface(page, page.getByRole('listbox'));
- await expect(page.locator('.sidebar-drawer .sidebar')).toHaveAttribute('inert', '');
+ await expect(drawer).not.toBeVisible();
  await expectAccessible(page);
  await page.getByRole('option', { name: 'Dark appearance' }).click();
  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
  await expect(page.getByRole('listbox')).not.toBeVisible();
- await expect(page.locator('.sidebar-drawer .sidebar')).not.toHaveAttribute('inert', '');
+ await expect(page.getByRole('combobox', { name: 'Theme' })).toBeFocused();
  await page.keyboard.press('Escape');
  await expect(drawer).not.toBeVisible();
- await expect(show).toBeFocused();
  await show.click();
  await page.mouse.click(300, 200);
  await expect(drawer).not.toBeVisible();
@@ -84,7 +88,7 @@ test('narrow navigation traps focus, themes nested menus, dismisses, and preserv
  await expect(page.getByRole('button', { name: 'Now', exact: true })).toBeVisible();
  await page.getByRole('button', { name: 'Hide sidebar' }).click();
  await page.setViewportSize({ width: 320, height: 480 });
- await show.click(); await page.getByRole('button', { name: 'Activity', exact: true }).click();
+ await show.click(); await openPage(page, 'Activity');
  await page.setViewportSize({ width: 1200, height: 800 });
  await expect(page.getByRole('button', { name: 'Now', exact: true })).not.toBeVisible();
  await expect(show).toBeVisible();
@@ -96,11 +100,11 @@ test('narrow drawer and palette keep reduced motion and usable short-height scro
  await page.goto('/');
  await openNavigation(page);
  await expect(page.getByRole('dialog', { name: 'Navigation', exact: true })).toHaveCSS('animation-duration', '0s');
- const theme = page.getByRole('combobox', { name: 'Theme' });
- await theme.scrollIntoViewIfNeeded(); await theme.click();
+ await page.keyboard.press('Escape');
+ await openAppearance(page);
  await expectThemedSurface(page, page.getByRole('listbox'));
  await page.keyboard.press('Escape');
- await page.getByRole('button', { name: 'Design system', exact: true }).click();
+ await openPage(page, 'Design system');
  await page.getByRole('button', { name: 'Open command palette', exact: true }).click();
  await expect(page.getByRole('dialog', { name: 'Command palette' })).toHaveCSS('animation-duration', '0s');
  await expectNoHorizontalOverflow(page);

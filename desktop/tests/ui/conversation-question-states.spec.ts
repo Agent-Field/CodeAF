@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import type { EngineQuestion } from '../../src/features/chat/engine-client';
 import { installMockEngine } from './support/mock-engine';
@@ -18,7 +19,7 @@ async function openSpecimen(page: Page, scheme: 'light' | 'dark') {
   await page.emulateMedia({ colorScheme: scheme });
   await installMockEngine(page, { ...plainReply(), initial: { entries: [], title: '' } });
   await openApp(page);
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
 }
 
 for (const scheme of ['light', 'dark'] as const) {

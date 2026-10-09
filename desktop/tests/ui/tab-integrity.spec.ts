@@ -1,3 +1,4 @@
+import { savedWorkspace } from './support/synced-workspace';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible, tokenColor } from './contracts';
 import { installMockEngine, type Scenario } from './support/mock-engine';
@@ -16,7 +17,7 @@ async function seed(page: Page, value: Seed) {
  const state = { groups: [], closed: [], nextNumber: value.tabs.length + 1, recentIds: value.tabs.map(t => (t as { id: string }).id), ...value };
  await page.addInitScript(([key, json]) => { if (!sessionStorage.getItem('integrity-seeded')) { localStorage.setItem(key, json); sessionStorage.setItem('integrity-seeded', '1'); } }, [KEY, JSON.stringify(state)] as const);
 }
-const saved = (page: Page) => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? 'null'), KEY);
+const saved = savedWorkspace;
 const tabNamed = (page: Page, name: string) => page.getByRole('tab', { name, exact: true });
 const groupLabel = (page: Page, name: string) => page.locator('.workspace-group-label', { has: page.locator('.workspace-group-name', { hasText: new RegExp(`^${name}$`) }) });
 const message = (page: Page) => page.getByRole('textbox', { name: 'Message', exact: true });
@@ -56,8 +57,8 @@ test.describe('one strip order (finding 5)', () => {
   await seed(page, { tabs: [tab('a', 'Alpha'), tab('b', 'Beta'), tab('c', 'Gamma')], activeId: 'a' });
   await page.goto('/');
   await tabNamed(page, 'Alpha').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
-  await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
+  await page.getByRole('menuitem', { name: /^New group…/ }).click();
   await expect.poll(() => strip(page)).toEqual(['[New group: Alpha]', 'Beta', 'Gamma']);
   await page.getByRole('button', { name: 'New tab', exact: true }).click();
   await expect(tabNamed(page, 'New tab')).toHaveAttribute('aria-selected', 'true');
@@ -162,8 +163,8 @@ test('a task opened from a grouped conversation joins its group', async ({ page 
  await expect(panel).toBeVisible();
  const title = (await page.getByRole('tab').first().getAttribute('aria-label'))!;
  await tabNamed(page, title).click({ button: 'right' });
- await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
- await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
+ await page.getByRole('menuitem', { name: 'Add to group', exact: true }).hover();
+ await page.getByRole('menuitem', { name: /^New group…/ }).click();
  await expect(page.locator('.workspace-tab-group')).toHaveCount(1);
  await panel.getByRole('button', { name: /^(?!Collapse|Expand).*Port the form fields/ }).click({ modifiers: [await primary(page)] });
  await expect(page.getByRole('tab')).toHaveCount(2);

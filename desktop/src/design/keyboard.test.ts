@@ -98,3 +98,11 @@ test('⌘O and Ctrl O are the new-tab field\'s Open file…; Shift or Alt makes 
   assert.equal(linux(key('O', { ctrlKey: true, shiftKey: true })), undefined);
   assert.equal(linux(key('o', { ctrlKey: true, altKey: true, code: 'KeyO' })), undefined);
 });
+
+test('⌘Z (Ctrl Z on Linux) is the structural Undo; ⌘⇧Z and ⌥⌘Z are not', () => {
+  assert.deepEqual(mac(key('z', { metaKey: true })), { id: 'undo' });
+  assert.deepEqual(linux(key('z', { ctrlKey: true })), { id: 'undo' });
+  assert.equal(mac(key('Z', { metaKey: true, shiftKey: true })), undefined);
+  assert.equal(mac(key('Ω', { code: 'KeyZ', metaKey: true, altKey: true })), undefined);
+  assert.equal(mac(key('z', { ctrlKey: true })), undefined);
+});

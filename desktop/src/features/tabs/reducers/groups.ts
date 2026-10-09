@@ -8,8 +8,12 @@ export type GroupAction =
   | { type: 'group'; id: string; ids?: string[]; title?: string }
   /** ⌘G: groups the active tab with every tab picked by ⌘-click (Shell "⌘-selecting and pressing ⌘G"). */
   | { type: 'group-picked' }
-  /** Moves a tab to the end of a group, or out of every group (to just after the one it leaves) when `groupId` is absent. */
-  | { type: 'move-group'; id: string; groupId?: string }
+  /**
+   * Moves a tab to the end of a group, or out of every group (to just after the one it leaves) when `groupId` is absent.
+   * `beside` is the tab it was dropped on in the overview: it lands just before (or `after`) that tab when that tab is
+   * in the destination, and never inside another group's run.
+   */
+  | { type: 'move-group'; id: string; groupId?: string; beside?: { id: string; after?: boolean } }
   /**
    * Moves a whole group (Interactions, group label: "Drag moves the whole group") before or `after` a tab, or a whole
    * other group when `targetId` names a group or one of its members. Pinned tabs stay first.
@@ -39,12 +43,13 @@ export function reduceGroups(state: WorkspaceState, action: { type: string }): W
       const tab = state.tabs.find(t => t.id === a.id);
       if (!tab || (a.groupId && !state.groups.some(group => group.id === a.groupId))) return state;
       const groups = state.groups.map(g => (g.id === a.groupId ? { ...g, collapsed: false } : g));
-      if (tab.groupId === a.groupId && !tab.pinned) return { ...state, groups };
       const rest = state.tabs.filter(t => t.id !== tab.id);
+      const anchor = a.beside && a.beside.id !== tab.id ? rest.find(t => t.id === a.beside!.id && !t.pinned && t.groupId === a.groupId) : undefined;
+      if (tab.groupId === a.groupId && !tab.pinned && !anchor) return { ...state, groups };
       const moved: Tab = { ...tab, groupId: a.groupId, pinned: false };
       // Joining goes to the end of the group; leaving goes to just after the group it left, never into its middle.
       const run = runOf(rest, a.groupId ?? tab.groupId);
-      const wanted = run ? run.end + 1 : state.tabs.indexOf(tab);
+      const wanted = anchor ? rest.indexOf(anchor) + (a.beside!.after ? 1 : 0) : run ? run.end + 1 : state.tabs.indexOf(tab);
       return normalize({ ...state, groups, tabs: insertAt(rest, moved, fitIndex(rest, moved, wanted)) });
     }
     case 'reorder-group': {

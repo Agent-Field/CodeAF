@@ -127,7 +127,7 @@
 /* ---- specimen ---- */
 .history-specimen-stack .history-row { position: static; height: auto; }
 .history-specimen-stack { width: 100%; min-width: 0; max-width: var(--history-list-width); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--specimen-pad); border-radius: var(--specimen-radius); background: var(--canvas); box-shadow: var(--sh-1); }
-.history-specimen-label { font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); color: var(--ink-3); }
+.history-specimen-label { font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); color: var(--ink-2); }
 .history-specimen-toast { position: relative; width: 100%; min-width: 0; display: flex; justify-content: center; height: var(--history-toast-height); }
 .history-specimen-toast .history-toast { position: static; flex: 0 1 auto; min-width: 0; max-width: 100%; transform: none; }
 

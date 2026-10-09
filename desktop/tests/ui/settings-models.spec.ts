@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine, GLM, GLM_FLASH, MODEL } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
@@ -20,7 +21,7 @@ const chip = (page: Page, label: string) => page.getByRole('button', { name: `Mo
 const puts = (calls: { method: string; path: string; body: Record<string, unknown> }[]) => calls.filter(call => call.method === 'PUT');
 
 async function openSettings(page: Page) {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await openPage(page, 'Settings');
   await expect(page.getByRole('heading', { name: 'Models', level: 1 })).toBeVisible();
 }
 

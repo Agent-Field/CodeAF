@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, menuSurface, tokenColor } from './contracts';
 import { installMockEngine, type MockEngine } from './support/mock-engine';
@@ -43,8 +44,9 @@ test.describe('tab and group menus (3g)', () => {
     await seed(page, [{ id: 'a', title: 'Config stack' }, { id: 'b', title: 'lexer.go' }, { id: 'c', title: 'Release v2.4', groupId: 'g' }], { groups: [{ id: 'g', title: 'Trailing commas' }], active: 'a' });
     await page.goto('/');
     const menu = await openMenu(page, 'lexer.go');
-    // Copy link and Move to new window are ABSENT in a browser, not disabled: there is no canonical link scheme, and a
-    // tab moves only in the desktop app. A capability that cannot work is left off the menu.
+    // Copy link and Move to new window are ABSENT here, not disabled: these tabs were never sent, so nothing durable
+    // stands behind them to link to (tab-deep-links.spec covers saved tabs), and a tab moves only in the desktop app.
+    // A capability that cannot work is left off the menu.
     expect(await labels(menu)).toEqual(['Open in split', 'Add to group', 'Pin tab', 'Duplicate', 'Rename tab', 'Close tab', 'Close other tabs', 'Close tabs to the right']);
     await expect(menu.getByRole('menuitem', { name: /^Close tab\b/ }).locator('kbd')).toHaveText(mac ? '⌘W' : 'Ctrl W');
     // Components "Context menu": 240px, radius 10, 5px padding, 28px rows, 13px text, hairline separators, no border.
@@ -341,7 +343,7 @@ test('the Design system page shows the menus, the closing states and the Inbox, 
   for (const scheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme: scheme });
     await page.goto('/');
-    await page.getByRole('button', { name: 'Design system', exact: true }).click();
+    await openPage(page, 'Design system');
     const sheet = page.locator('[data-closing-specimen]');
     await sheet.scrollIntoViewIfNeeded();
     await expect(sheet.locator('.closing-specimen-menu')).toHaveCount(4);

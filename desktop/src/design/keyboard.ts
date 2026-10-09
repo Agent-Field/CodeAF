@@ -9,6 +9,8 @@ export const tabShortcuts = {
  reopen: formatShortcut('⌘/Ctrl ⇧ T'),
  /** Groups the active tab with the tabs picked by ⌘-click (Interactions, Shortcuts: "⌘G Group selected tabs"). */
  group: formatShortcut('⌘/Ctrl G'),
+ /** Takes back the last structural tab action (Interactions, Shortcuts: "⌘Z Undo structural action"). */
+ undo: formatShortcut('⌘/Ctrl Z'),
  switch: isMac ? '⌃ Tab' : 'Ctrl Tab',
  switchBack: isMac ? '⌃ ⇧ Tab' : 'Ctrl Shift Tab',
 };
@@ -181,6 +183,13 @@ export function isCopyPathShortcut(event: KeyEvent) {
  const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
  return primary && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'c';
 }
+
+/**
+ * Copy link (Shell 3g): the same chord as Copy path. A file or diff tab keeps it as Copy path (its own header binds it),
+ * and a terminal field keeps it as the shell's copy; everywhere else it copies the active tab's link.
+ */
+export const copyLinkShortcut = copyPathShortcut;
+export const isCopyLinkShortcut = isCopyPathShortcut;
 
 /** Interactive shell tabs: Control-backtick is identical on every platform. */
 export const newTerminalShortcut = isMac ? '⌃`' : 'Ctrl `';

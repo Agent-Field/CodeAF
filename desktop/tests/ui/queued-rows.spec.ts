@@ -1,3 +1,4 @@
+import { openPage } from './support/shell-navigation';
 import { test, expect } from '@playwright/test';
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
@@ -5,7 +6,7 @@ import { plainReply } from './support/scenarios';
 async function queue(page: import('@playwright/test').Page) {
   await installMockEngine(page, { ...plainReply(), initial: { id: 'specimen', entries: [] } });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Design system', exact: true }).click();
+  await openPage(page, 'Design system');
   const list = page.getByRole('list', { name: 'Queued messages' });
   await list.scrollIntoViewIfNeeded();
   return list;
