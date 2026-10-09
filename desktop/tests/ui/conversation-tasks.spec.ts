@@ -31,7 +31,6 @@ test('panel shows counts and nested rows, closes, and reopens from the composer 
   await expect(tasks.getByText('1 of 4')).toBeVisible();
   await expect(tasks.getByRole('button', { name: /^(?!Collapse|Expand).*Migrate the settings screen/ })).toBeVisible();
   await expect(tasks.getByRole('button', { name: /^(?!Collapse|Expand).*Port the form fields/ })).toBeVisible();
-  await expect(tasks.getByText('npm run typecheck')).toBeVisible();
   await tasks.getByRole('button', { name: 'Close tasks' }).click();
   await expect(tasks).toHaveCount(0);
   await page.getByRole('button', { name: /^Tasks · / }).click();

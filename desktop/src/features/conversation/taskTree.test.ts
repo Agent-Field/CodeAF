@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { EngineTaskRow } from '../chat/engine-client';
-import { buildTaskTree, taskCounts, taskProgress, taskTrail, waitTitles } from './taskTree.ts';
+import { branchCounts, buildTaskTree, holdsTask, splitFinished, taskCounts, taskProgress, taskTrail, waitTitles } from './taskTree.ts';
 
 const row = (ID: string, Status: string, extra: Partial<EngineTaskRow> = {}): EngineTaskRow => ({
   ID,
@@ -66,7 +66,7 @@ test('families with running work come first, at every level; otherwise store ord
   assert.deepEqual(tree[0].children.map((n) => n.row.ID), ['b2', 'b1']);
 });
 
-test('progress groups done, running, queued, failed; a task waiting on a person is still queued', () => {
+test('progress groups done, running, waiting on you, queued, failed', () => {
   const rows = [
     row('a', 'done'),
     row('b', 'running', { Tokens: 4000 }),
@@ -75,7 +75,26 @@ test('progress groups done, running, queued, failed; a task waiting on a person 
     row('e', 'failed'),
     row('f', 'running', { Stopped: true, Tokens: 500 }),
   ];
-  assert.deepEqual(taskProgress(rows), { done: 1, running: 1, queued: 2, failed: 2, total: 6, tokens: 4500 });
+  assert.deepEqual(taskProgress(rows), { done: 1, running: 1, waiting: 1, queued: 1, failed: 2, total: 6, tokens: 4500 });
+});
+
+test('a parent counts what is done below it, and only whole done families leave for the fold', () => {
+  const tree = buildTaskTree([
+    row('p', 'running'),
+    row('x', 'done', { Parent: 'p' }),
+    row('y', 'running', { Parent: 'p' }),
+    row('q', 'done'),
+    row('q1', 'done', { Parent: 'q' }),
+    row('r', 'done'),
+    row('r1', 'failed', { Parent: 'r' }),
+  ]);
+  assert.deepEqual(branchCounts(tree[0]), { done: 1, total: 2 });
+  const { live, finished, finishedCount } = splitFinished(tree);
+  assert.deepEqual(live.map((n) => n.row.ID), ['p', 'r']);
+  assert.deepEqual(finished.map((n) => n.row.ID), ['q']);
+  assert.equal(finishedCount, 2);
+  assert.equal(holdsTask(finished[0], 'q1'), true);
+  assert.equal(holdsTask(finished[0], undefined), false);
 });
 
 test('a queued row names only the unfinished tasks it waits on', () => {
