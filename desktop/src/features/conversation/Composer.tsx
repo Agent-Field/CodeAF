@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react';
-import { Button, DropdownMenu, IconButton, Text, TextArea, TextInput, type MenuEntry } from '../../components/ui';
+import { Button, Icon, IconButton, Text, TextArea, TextInput } from '../../components/ui';
 import design from '../../design/tokens.json';
 import type { OutgoingFile } from '../chat/engine-client';
 import { AttachmentTray } from './composer/AttachmentTray';
@@ -95,22 +95,21 @@ export function Composer(props: ComposerProps) {
     if (isComposing(event)) return;
     if (event.key === 'Escape') return event.currentTarget.blur();
     if (event.key === 'ArrowUp' && draft === '') return recall(event);
-    const plainEnter = event.key === 'Enter' && !event.shiftKey && !event.altKey;
-    if (!plainEnter) return;
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    if (event.altKey && !running) return;
     event.preventDefault();
-    void send(running ? 'steer' : 'submit');
+    void send(event.altKey ? 'queue' : running ? 'steer' : 'submit');
   }
 
-  const queueItems: MenuEntry[] = [
-    { id: 'queue', label: 'Queue for after this turn', onSelect: () => void send('queue') },
-  ];
   const stopping = running && blank;
+  const steering = running && !blank;
 
   return (
     <div className="composer-dock" data-docked={docked}>
       <div
         className="composer"
         data-running={running}
+        data-steering={steering}
         data-disabled={disabled}
         data-drop={dropState}
         {...drop.handlers}
@@ -121,7 +120,7 @@ export function Composer(props: ComposerProps) {
           ref={field}
           className="composer-field"
           aria-label="Message"
-          placeholder={disabledReason ?? 'Ask codeaf'}
+          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : 'Ask codeaf')}
           value={draft}
           disabled={disabled}
           autoFocus={autoFocus}
@@ -145,8 +144,9 @@ export function Composer(props: ComposerProps) {
               onChange={event => onPicked(event.currentTarget)}
             />
             <IconButton
+              className="composer-attach"
               label="Attach files"
-              icon="attach"
+              icon="plus"
               iconSize="sm"
               disabled={disabled}
               onClick={() => picker.current?.click()}
@@ -155,21 +155,28 @@ export function Composer(props: ComposerProps) {
             {props.tasksToggle && <Button className="composer-tasks" onClick={props.tasksToggle.onClick}>{props.tasksToggle.label}</Button>}
           </div>
           <div className="composer-actions">
-            {running && !blank && (
-              <DropdownMenu label="Send options" items={queueItems}>
-                <IconButton label="More send options" icon="more" iconSize="sm" />
-              </DropdownMenu>
+            {stopping && (
+              <Button className="composer-primary composer-stop" aria-label="Stop" title="Stop" onClick={onStop}>
+                <span className="composer-stop-mark" aria-hidden="true" />
+              </Button>
             )}
-            {stopping ? (
-              <IconButton className="composer-primary" label="Stop" icon="stop" iconSize="sm" onClick={onStop} />
-            ) : (
+            {steering && (
+              <>
+                <Button className="composer-queue" onClick={() => void send('queue')}>Queue ⌥↵</Button>
+                <Button className="composer-steer" disabled={disabled} onClick={() => void send('steer')}>
+                  <Icon name="steer" size="xs" />
+                  Steer
+                </Button>
+              </>
+            )}
+            {!running && (
               <IconButton
-                className="composer-primary"
-                label={running ? 'Steer' : 'Send'}
+                className="composer-primary composer-send"
+                label="Send"
                 icon="send"
                 iconSize="sm"
                 disabled={blank || disabled}
-                onClick={() => void send(running ? 'steer' : 'submit')}
+                onClick={() => void send('submit')}
               />
             )}
           </div>
