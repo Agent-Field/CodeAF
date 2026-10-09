@@ -1,0 +1,38 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { matchingTabs, planTransfer, planTransferUndo, transferredLocal } from './transfer-plan.ts';
+import type { SharedTab, SharedWorkspace } from './shared.ts';
+const tab = (id: string, extra: Partial<SharedTab> = {}): SharedTab => ({ id, title: id, kind: 'conversation', draft: `draft-${id}`, pinned: false, sessionFile: `/saved/${id}/transcript.jsonl`, ...extra });
+const doc = (...tabs: SharedTab[]): SharedWorkspace => ({ schema: 1, tabs, closed: [], groups: [], nextNumber: 7 });
+const match = { placeId: 'place', sources: [{ kind: 'folder', ref: '/work/repo' }], resolve: (file: string) => file.includes('member') ? { chatId: 'member', placeIds: ['place'], workspace: '/elsewhere' } : file.includes('folder') ? { chatId: 'folder', placeIds: [], workspace: '/work/repo/sub' } : file.includes('prefix') ? { chatId: 'prefix', placeIds: [], workspace: '/work/repository' } : undefined };
+test('canonical membership and segment-bounded folder roots; excludes pinned/navigation/unknown and whole mixed splits', () => {
+  const split = tab('split', { split: { layout: '1x2', panes: [tab('member-a'), tab('unknown')] } });
+  assert.deepEqual(matchingTabs(doc(tab('member'), tab('folder'), tab('prefix'), tab('unknown'), tab('member-pinned', { pinned: true }), tab('member-home', { kind: 'home' }), split), match), ['member', 'folder']);
+});
+test('moves whole split/group metadata without touching session state, drafts, routes, folds or unrelated contents', () => {
+  const group = { id: 'g', title: 'Work', collapsed: true };
+  const moving = tab('split', { groupId: 'g', split: { layout: '1x2', panes: [tab('member'), tab('folder')], ratios: { col: .3, row: .5 } }, route: { back: ['earlier'], forward: [], taskId: 'task' }, folded: { x: true } });
+  const source = { ...doc(tab('home', { kind: 'home', pinned: true }), moving, tab('other')), groups: [group] };
+  const destination = doc(tab('place-home', { kind: 'home', pinned: true }));
+  const plan = planTransfer(source, destination, ['split']);
+  assert.deepEqual(plan.destination.tabs[1], moving);
+  assert.deepEqual(plan.destination.groups, [group]);
+  assert.deepEqual(plan.source.tabs.map(t => t.id), ['home', 'other']);
+  assert.equal(source.tabs.length, 3, 'planning never mutates the source');
+  const latestSource = { ...plan.source, tabs: [...plan.source.tabs, tab('later-source')] };
+  const latestDestination = { ...plan.destination, tabs: [...plan.destination.tabs, tab('later-destination')] };
+  const undo = planTransferUndo(latestSource, latestDestination, plan.receipt);
+  assert.deepEqual(undo.destination.tabs.map(t => t.id), ['home', 'split', 'other', 'later-source']);
+  assert.deepEqual(undo.source.tabs.map(t => t.id), ['place-home', 'later-destination']);
+  assert.throws(() => planTransferUndo(latestSource, { ...latestDestination, tabs: latestDestination.tabs.map(t => t.id === 'split' ? { ...t, draft: 'edited' } : t) }, plan.receipt), /newer contents/);
+  assert.throws(() => planTransfer(source, doc(moving), ['split']), /already exists/);
+  assert.throws(() => planTransfer(source, destination, ['missing']), /changed/);
+  const all = planTransfer(doc(tab('member')), destination, ['member'], tab('stable-empty', { draft: '', sessionFile: undefined }));
+  assert.equal(all.source.tabs[0].id, 'stable-empty');
+  const reordered = { ...all.source, tabs: all.source.tabs.map(t => Object.fromEntries(Object.entries(t).reverse()) as SharedTab) };
+  assert.deepEqual(planTransferUndo(reordered, all.destination, all.receipt).destination.tabs.map(t => t.id), ['member'], 'wire key order cannot make an unchanged placeholder look edited');
+  assert.deepEqual(planTransferUndo(all.source, all.destination, all.receipt).destination.tabs.map(t => t.id), ['member']);
+  const typedPlaceholder = { ...all.source, tabs: all.source.tabs.map(t => ({ ...t, draft: 'later placeholder words' })) };
+  assert.deepEqual(planTransferUndo(typedPlaceholder, all.destination, all.receipt).destination.tabs.map(t => t.id), ['stable-empty', 'member']);
+  assert.deepEqual(transferredLocal({ recentIds: ['place-home'], focus: { old: 2 }, scroll: { old: 30 } }, { recentIds: [], focus: { split: 1, other: 1 }, scroll: { member: 200, folder: 100, other: 80 } }, plan.receipt), { recentIds: ['place-home'], focus: { old: 2, split: 1 }, scroll: { old: 30, member: 200, folder: 100 } });
+});

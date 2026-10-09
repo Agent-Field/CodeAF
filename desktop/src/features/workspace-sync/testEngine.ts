@@ -3,7 +3,7 @@
 import { createWorkspaceClient, type WorkspaceRequest, type WorkspaceTransport } from './client.ts';
 import type { Clock } from './controller.ts';
 
-type Stored = { revision: number; writer?: string; workspace?: unknown };
+type Stored = { revision: number; writer?: string; workspace?: unknown; movedTo?: Record<string, string> };
 
 export function createTestEngine() {
   const docs = new Map<string, Stored>();
@@ -15,7 +15,7 @@ export function createTestEngine() {
   const wake = () => { for (const w of [...waiters]) w(); };
   const record = (key: string) => {
     const doc = docs.get(key);
-    return { key, revision: doc?.revision ?? 0, ...(doc?.writer ? { writer: doc.writer } : {}), workspace: doc?.workspace ?? null };
+    return { key, revision: doc?.revision ?? 0, ...(doc?.writer ? { writer: doc.writer } : {}), workspace: doc?.workspace ?? null, ...(doc?.movedTo ? { movedTo: doc.movedTo } : {}) };
   };
   const transport: WorkspaceTransport = async (path: string, request: WorkspaceRequest) => {
     calls.push({ method: request.method, path });
@@ -63,7 +63,7 @@ export function createTestEngine() {
     setDown(value: boolean) { down = value; if (value) wake(); },
     loseNextAnswer() { loseNextAnswer = true; },
     /** Writes as a window outside the test would. */
-    write(key: string, workspace: unknown) { const r = record(key); docs.set(key, { revision: r.revision + 1, writer: 'outside', workspace }); wake(); },
+    write(key: string, workspace: unknown, movedTo?: Record<string, string>) { const r = record(key); docs.set(key, { revision: r.revision + 1, writer: 'outside', workspace, movedTo }); wake(); },
   };
 }
 

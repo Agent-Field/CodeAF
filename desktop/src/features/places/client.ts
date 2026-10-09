@@ -109,7 +109,7 @@ export type Mutation = {
 };
 export type DeleteImpact = { children: number; chatsHere: number; wouldBeUnplaced: string[] };
 export type ChatPlacesAnswer = {
-  chatId: string; known: boolean;
+  chatId: string; known: boolean; workspace?: string; sessionFile?: string;
   places: { id: string; name: string; tint: Tint; addedBy: AddedBy; at?: string; archived: boolean }[];
 };
 export type UndoAnswer = { revision: number; undone: number };
@@ -298,7 +298,7 @@ export function createPlacesClient(transport: PlacesTransport = defaultTransport
     },
     chatPlaces: async (chatId: string): Promise<ChatPlacesAnswer> => {
       const v = await get(`/chats/${enc(chatId)}/places`);
-      if (!isObject(v) || typeof v.chatId !== 'string' || typeof v.known !== 'boolean' || !Array.isArray(v.places)) return bad('chat places answer');
+      if (!isObject(v) || typeof v.chatId !== 'string' || typeof v.known !== 'boolean' || (v.workspace !== undefined && typeof v.workspace !== 'string') || (v.sessionFile !== undefined && typeof v.sessionFile !== 'string') || !Array.isArray(v.places)) return bad('chat places answer');
       return v as ChatPlacesAnswer;
     },
 
