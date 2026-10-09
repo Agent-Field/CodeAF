@@ -127,6 +127,7 @@ pub fn run() {
             engine_connection,
             native::open_path,
             native::reveal_path,
+            native::host_name,
             native::open_url
         ])
         .run(tauri::generate_context!())

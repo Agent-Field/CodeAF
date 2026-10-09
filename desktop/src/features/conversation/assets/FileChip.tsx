@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { ChipButton, ContextMenu, Icon, type IconName } from '../../../components/ui';
 import type { EnginePathFact } from '../../chat/engine-client';
 import type { FileRef } from '../types';
 import { useAssets, usePathFact } from './AssetContext';
 import { fileMenu, type FileAvailability } from './FileActions';
-import { displayDir, fileKind, middleTruncate, relativePath, splitPath, type FileKind } from './paths';
+import { isMac } from '../../../design/keyboard';
+import { useOpenFile } from '../../files/OpenFile';
+import { displayDir, fileKind, middleTruncate, previewKind, relativePath, splitPath, type FileKind } from './paths';
 import { PreviewSheet } from './PreviewSheet';
 import './FileChip.css';
 
@@ -55,6 +57,7 @@ function Stat({ added, removed, capped }: Pick<FileChipProps, 'added' | 'removed
 export function FileChip({ path, stat, source, added, removed, capped }: FileChipProps) {
   const assets = useAssets();
   const [open, setOpen] = useState(false);
+  const openFile = useOpenFile();
   const looked = usePathFact(path, !!stat);
   const fact = stat ?? looked.fact;
   const { name, dir: fullDir } = splitPath(path);
@@ -65,6 +68,18 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
   const icon = availabilityIcon[availability] ?? kindIcon[kind];
   const note = stateNote[availability];
   const canOpen = availability === 'exists' && !fact?.dir;
+  // Click opens the preview sheet. Command-click (Control off the Mac) or a middle click opens a text or code file in a tab:
+  // its changes first when the turn edited it. Images, PDFs and the rest have no tab to open and keep the sheet.
+  const relative = relativePath(path, assets.workspace);
+  const openInTab = () => {
+    if (!openFile || !relative || previewKind(name) !== 'text') return false;
+    openFile(relative, source === 'edit' || source === 'write' || added || removed ? 'diff' : 'file');
+    return true;
+  };
+  const openChip = (event: MouseEvent) => {
+    const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+    if (!(primary && openInTab())) setOpen(true);
+  };
   return (
     <>
       <ContextMenu label={`Actions for ${name}`} items={fileMenu(path, assets, availability)}>
@@ -75,7 +90,8 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
           title={[path, note].filter(Boolean).join(' · ')}
           aria-label={[name, note].filter(Boolean).join(', ')}
           aria-disabled={!canOpen || undefined}
-          onClick={() => canOpen && setOpen(true)}
+          onClick={event => canOpen && openChip(event)}
+          onAuxClick={event => { if (canOpen && event.button === 1 && openInTab()) event.preventDefault(); }}
         >
           <Icon name={icon} size="xs" />
           <span className="file-chip-name">{name}</span>

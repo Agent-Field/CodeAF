@@ -12,6 +12,16 @@ export async function revealPath(path: string, workspace: string): Promise<void>
   await invoke('reveal_path', { path, workspace });
 }
 
+/** This machine's name, or undefined in a browser (where nothing local can be opened anyway). */
+export async function hostName(): Promise<string | undefined> {
+  if (!isTauri()) return undefined;
+  try {
+    return await invoke<string>('host_name');
+  } catch {
+    return undefined;
+  }
+}
+
 export async function openUrl(url: string): Promise<void> {
   if (isTauri()) {
     await invoke('open_url', { url });

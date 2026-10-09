@@ -1,0 +1,35 @@
+/* File and diff tab (Shell 3e): a 48px head, then a terminal-ground body with two line-number columns. */
+.file-surface { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.file-head { flex: none; min-height: var(--file-head-height); display: flex; flex-wrap: wrap; align-items: center; gap: var(--control-gap); padding-block: var(--space-1); padding-inline: var(--file-head-pad-start) var(--file-head-pad-end); font-size: var(--font-size-input); }
+.file-id { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: var(--control-gap); }
+.file-id > .app-icon { color: var(--ink-2); }
+.file-name { flex: 0 1 auto; min-width: 0; font-weight: var(--font-weight-medium); white-space: nowrap; overflow: hidden; }
+.file-dir { flex: 0 1 auto; min-width: 0; font-size: var(--font-size-body); color: var(--ink-3); white-space: nowrap; overflow: hidden; }
+.file-fade[data-cut] { -webkit-mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.file-count { flex: none; font-family: var(--mono); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
+.file-count[data-sign="add"] { color: var(--diff-count-add); }
+.file-count[data-sign="del"] { color: var(--danger); margin-inline-start: calc(var(--space-1) * -1); }
+.file-actions { flex: none; margin-inline-start: auto; display: flex; align-items: center; gap: var(--control-gap); }
+.button.file-editor { height: var(--editor-button-height); padding-inline: var(--editor-button-pad); gap: var(--editor-button-gap); border-radius: var(--radius-md); font-size: var(--font-size-body); color: var(--ink-2); }
+.file-base { flex: none; margin: 0; padding-inline: var(--file-head-pad-start) var(--file-head-pad-end); padding-block-end: var(--file-note-pad); font-size: var(--font-size-body); color: var(--ink-3); }
+
+.file-body { flex: 1; min-height: 0; margin: 0 var(--shell-card-inset) var(--shell-card-inset); padding-block: var(--file-body-pad); border-radius: var(--radius-file-body); background: var(--term); font-family: var(--mono); font-size: var(--font-size-code); line-height: var(--file-row-leading); overflow: auto; tab-size: 4; }
+.file-body { display: grid; grid-auto-columns: minmax(100%, max-content); grid-auto-rows: max-content; align-content: start; }
+.file-body:focus-visible { outline: var(--focus-width) var(--focus-style) transparent; box-shadow: inset 0 0 0 var(--focus-input-width) var(--accent); }
+.file-message, .file-note { margin: 0; padding-inline: var(--file-row-pad); font-family: var(--font-sans); font-size: var(--font-size-body); color: var(--ink-3); }
+.file-note { padding-block: var(--file-fold-pad); }
+
+.file-row { display: grid; padding-inline: var(--file-row-pad); color: var(--ink); }
+.file-diff-row { grid-template-columns: var(--file-gutter-width) var(--file-gutter-width) var(--diff-sign-width) 1fr; }
+.file-plain-row { grid-template-columns: var(--file-gutter-width) 1fr; }
+.file-num { color: var(--ink-3); text-align: right; padding-inline-end: var(--file-gutter-pad); user-select: none; font-variant-numeric: tabular-nums; }
+.file-sign { color: var(--ink-3); user-select: none; }
+.file-text { white-space: pre; color: var(--ink); }
+.file-diff-row[data-kind="add"] { background: var(--diff-add); }
+.file-diff-row[data-kind="add"] .file-sign { color: var(--success); }
+.file-diff-row[data-kind="del"] { background: var(--danger-soft); }
+.file-diff-row[data-kind="del"] .file-sign { color: var(--danger); }
+.file-hunk { padding: 0 var(--file-row-pad) var(--file-hunk-gap); color: var(--ink-3); white-space: pre; }
+.button.file-fold { display: flex; justify-content: flex-start; width: 100%; height: auto; padding: var(--file-fold-pad) var(--file-row-pad); border-radius: 0; font-family: var(--mono); font-size: var(--font-size-code); line-height: var(--file-row-leading); color: var(--ink-3); }
+.button.file-fold:hover:not(:disabled) { color: var(--ink-2); }
+
