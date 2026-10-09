@@ -53,12 +53,10 @@ function App() {
     <IconButton label="Hide sidebar" icon="sidebar" title="Hide sidebar (⌘/Ctrl B)" onClick={() => narrow ? setDrawerOpen(false) : setCollapsed(true)}/>
    </div>
    <SidebarAction variant="address" aria-haspopup="dialog" aria-expanded={palette} onClick={openPalette}><BrandMark/><span>codeaf</span><Icon name="search" size="xs"/></SidebarAction>
-   <div className="favorites" aria-label="Quick navigation">{pages.map((p, i) => <SidebarAction variant="favorite" active={page === p} key={p} aria-label={`Open ${p}`} title={p} onClick={() => navigate(p)}><Icon name={navIcons[i]} size="lg"/></SidebarAction>)}</div>
-   <div className="space-name">Personal space</div>
    <nav>{pages.map((p, i) => <NavigationItem key={p} icon={navIcons[i]} active={page === p} onClick={() => navigate(p)}>{p}</NavigationItem>)}</nav>
    <Separator className="sidebar-divider"/>
    <SidebarAction variant="new" onClick={openPalette}><Icon name="plus" size="sm"/><span>Find anything</span><KeyboardShortcut command="K"/></SidebarAction>
-   <div className="sidebar-bottom"><ThemeSelect/><IconButton label="Quick commands" title="Command palette" icon="plus" onClick={openPalette}/></div>
+   <div className="sidebar-bottom"><ThemeSelect/></div>
   </aside>;
  return <div className={`app-shell ${sidebarHidden ? 'sidebar-collapsed' : ''}`}>
   {narrow ? <dialog ref={drawer} className="sidebar-drawer" aria-label="Navigation" onCancel={() => setDrawerOpen(false)} onClose={() => {
