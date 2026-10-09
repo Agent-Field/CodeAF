@@ -103,3 +103,31 @@ test('release-moved removes the tab without a closed record, and leaves split ta
   assert.equal(moved.activeId, 'b');
   assert.equal(run(s, { type: 'release-moved', id: 'zzz' }), s);
 });
+
+test('restore-closed brings back a bulk close with its group metadata, split panes and place, even past the closed cap', () => {
+  const pane = (id: string) => ({ id, kind: 'conversation' as const, title: id, draft: `draft ${id}` });
+  const split: Tab = { ...tab('s', { groupId: 'g' }), split: { layout: '1x2', focus: 1, panes: [pane('s1'), pane('s2')] } };
+  const s = state([tab('p', { pinned: true }), tab('a'), tab('b', { groupId: 'g' }), split, tab('c')], { groups: [{ id: 'g', title: 'Trailing commas', collapsed: true }], activeId: 's' });
+  const order = s.tabs.map(t => t.id);
+  const closing = run(s, { type: 'close-group', id: 'g' });
+  assert.deepEqual(ids(closing), ['p', 'a', 'c']);
+  assert.equal(closing.groups.length, 0);
+  const back = run(closing, { type: 'restore-closed', tabs: [s.tabs[2], s.tabs[3]], order, groups: s.groups, activeId: s.activeId });
+  assert.deepEqual(ids(back), order);
+  assert.deepEqual(back.groups, [{ id: 'g', title: 'Trailing commas', collapsed: true }]);
+  assert.equal(back.tabs.find(t => t.id === 's')!.split!.panes.length, 2);
+  assert.equal(back.tabs.find(t => t.id === 's')!.split!.panes[1].draft, 'draft s2');
+  assert.equal(back.activeId, 's');
+  assert.deepEqual(back.closed, []);
+});
+
+test('restore-closed leaves tabs that exist again alone and keeps tabs opened since in place', () => {
+  const s = state([tab('a'), tab('b'), tab('c')], { activeId: 'a' });
+  const order = ['a', 'b', 'c'];
+  const closing = run(s, { type: 'close-others', id: 'a' }, { type: 'new' });
+  const fresh = closing.tabs.find(t => !order.includes(t.id))!;
+  const back = run(closing, { type: 'restore-closed', tabs: [s.tabs[1], s.tabs[2]], order, groups: [], activeId: 'a' });
+  assert.deepEqual(ids(back), ['a', 'b', 'c', fresh.id]);
+  assert.equal(back.activeId, closing.activeId);
+  assert.equal(run(back, { type: 'restore-closed', tabs: [s.tabs[1]], order, groups: [], activeId: 'a' }), back);
+});

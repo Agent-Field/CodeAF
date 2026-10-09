@@ -16,6 +16,8 @@ export type TabsApi = {
   closeTab: (id: string) => void;
   /** Closes the tab and asks the engine to stop the running turn and tasks of each of its panes. */
   closeAndStop: (id: string) => void;
+  /** Closes a group, the other tabs, or the tabs to the right behind one Undo that restores every pane, group and place. */
+  closeMany: (action: Extract<WorkspaceAction, { type: 'close-others' | 'close-right' | 'close-group' }>) => void;
   /** True while any pane of the tab is working or waiting on the person, so closing it leaves work running. */
   isRunning: (tab: Tab) => boolean;
   /** Work that outlived its tab, and open tabs that need the person: what the Inbox lists. */

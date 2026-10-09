@@ -47,7 +47,7 @@ export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; ta
     return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={index => api.dispatch({ type: 'select', id: panes[index].id })} onClose={() => api.closeTab(tab.id)}/>);
   }
   return withTabMenu(api, tab, (
-    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && api.background.needsYou.length > 0}
+    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && (api.background.needsYou.length > 0 ? 'needsYou' : api.background.failed.length > 0 ? 'failed' : false)}
       closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
       onSelect={() => api.dispatch({ type: 'select', id: tab.id })} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} wrapSelect={select => withPreview(api, tab, select)}/>
