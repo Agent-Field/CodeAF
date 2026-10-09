@@ -3,7 +3,7 @@
 
 import { displayCommand } from './displayCommand.ts';
 import { parseTime, spanText } from './taskClock.ts';
-import type { LogLine, NoteLine, PageNote, PageStep, TaskPage } from './taskTypes.ts';
+import type { Landing, LogLine, NoteLine, PageNote, PageStep, TaskPage } from './taskTypes.ts';
 
 const NANOS_PER_MS = 1_000_000;
 const SUBSECOND_LIMIT_MS = 10_000;
@@ -67,7 +67,23 @@ export function logSummary(lines: readonly LogLine[], live: LogLine | undefined,
 function authorWord(author?: string): string {
   const word = (author ?? '').trim();
   if (word.toLowerCase() === 'chat') return 'Conversation';
+  // A bare task number is a task's own note (the run's outcome note is written under the run's id).
+  if (/^\d+(\.\d+)*$/.test(word)) return `Task ${word}`;
   return word ? word.charAt(0).toUpperCase() + word.slice(1) : '';
+}
+
+// The engine's landing sentence, `landed on <branch>: <n> file(s)` (beltLandingLine in
+// internal/session/task_run_belt.go), joined to the rest of the run's outcome with " · ".
+const LANDING = /^landed on (\S+): (\d+ files?)$/;
+const OUTCOME_JOIN = ' · ';
+
+/** Splits the landing part out of an outcome note; the rest stays as the note's words. */
+export function splitLanding(body: string): { rest: string; landing?: Landing } {
+  const parts = body.split(OUTCOME_JOIN);
+  const at = parts.findIndex((part) => LANDING.test(part.trim()));
+  if (at < 0) return { rest: body };
+  const [, branch, files] = LANDING.exec(parts[at].trim()) as RegExpExecArray;
+  return { rest: parts.filter((_, index) => index !== at).join(OUTCOME_JOIN).trim(), landing: { branch, files } };
 }
 
 /** A person's note is read once a step starts after it was written. */
@@ -86,11 +102,16 @@ export function noteLines(page: TaskPage, running: boolean): NoteLine[] {
   const result = (page.Result ?? '').trim();
   return (page.Notes ?? [])
     .filter((note) => note.Body && !repeatsResult(note.Body, result))
-    .map((note, index) => ({
-      id: `note-${index}`,
-      person: Boolean(note.Person),
-      author: authorWord(note.Author),
-      body: note.Body,
-      receipt: receiptFor(note, page, running),
-    }));
+    .map((note, index) => {
+      const { rest, landing } = note.Person ? { rest: note.Body, landing: undefined } : splitLanding(note.Body);
+      return {
+        id: `note-${index}`,
+        person: Boolean(note.Person),
+        // A landing is the task's own result, not a voice: it needs no author.
+        author: landing && !rest ? '' : authorWord(note.Author),
+        body: rest,
+        landing,
+        receipt: receiptFor(note, page, running),
+      };
+    });
 }

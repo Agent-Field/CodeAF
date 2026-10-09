@@ -8,7 +8,7 @@
 .task-composer-field.text-area:focus-visible { outline: none; }
 .task-composer-send.icon-button { flex: none; width: var(--control-height); height: var(--control-height); border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
 .task-composer-send.icon-button:disabled { background: var(--field-2); color: var(--ink-3); opacity: var(--opacity-opaque); }
-.task-composer-ended { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); color: var(--ink-2); font-size: var(--type-label-size); }
+.task-composer-why { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding-inline: var(--space-4); color: var(--ink-2); font-size: var(--type-label-size); }
 .task-composer-error { margin: 0; padding-inline: var(--space-4); color: var(--danger); font-size: var(--type-label-size); }
 
 .specimen-task .task-composer { position: static; }

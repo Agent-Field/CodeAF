@@ -105,6 +105,35 @@ test('selecting a row fills the detail pane; facts and instructions appear only 
   await expect(running.getByRole('region', { name: 'Instructions' })).toHaveCount(0);
 });
 
+test('the detail pane shows the task from the engine brief, with the full brief folded', async ({ page }) => {
+  const brief = [
+    'WHAT THE PERSON ASKED FOR, IN THEIR OWN WORDS',
+    'This is the message this work came out of. Where anything below reads differently from it, their words are what was asked for.',
+    '',
+    'Ship it',
+    '',
+    'THE WORK',
+    '',
+    'Read the screen and list its form fields.',
+    '',
+    'DONE WHEN',
+    '',
+    'The fields are listed.',
+  ].join('\n');
+  const withBrief = scenario();
+  withBrief.taskPages!['1.1'] = pageOf(1, brief);
+  await installMockEngine(page, withBrief);
+  await openApp(page);
+  await send(page, 'Ship it');
+  await page.getByRole('complementary', { name: 'Tasks' }).getByRole('button', { name: 'Expand tasks' }).click();
+  await rowButton(page, '1.1').click();
+  const pane = detail(page, 'Read the current screen');
+  await expect(pane.getByText('Read the screen and list its form fields.')).toBeVisible();
+  await expect(pane.getByText('WHAT THE PERSON ASKED FOR')).toHaveCount(0);
+  await pane.getByRole('button', { name: 'Full brief' }).click();
+  await expect(pane.getByRole('heading', { name: 'Done when' })).toBeVisible();
+});
+
 test('Open task goes to the task view', async ({ page }) => {
   await openExpanded(page);
   await rowButton(page, '1.1').click();

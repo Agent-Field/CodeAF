@@ -40,12 +40,17 @@ export type LogLine = {
   since?: string;
 };
 
+/** Where finished work went: the branch it is on and how many files it holds. */
+export type Landing = { branch: string; files: string };
+
 export type NoteLine = {
   id: string;
   person: boolean;
   /** "Conversation", or the engine's own word for who wrote it. */
   author: string;
   body: string;
+  /** The landing line of a run's outcome, drawn as a result rather than as words. */
+  landing?: Landing;
   /** Person notes only, and only while the task runs. */
   receipt: string;
 };

@@ -12,27 +12,18 @@ export type TaskComposerProps = {
 };
 
 const PLACEHOLDER = 'Note to this task';
+const ENDED = 'This task has finished';
 const MAX_ROWS = 6;
-
-function Finished({ onMessageConversation }: Pick<TaskComposerProps, 'onMessageConversation'>) {
-  return (
-    <div className="task-composer task-composer-ended">
-      <span>This task has finished</span>
-      {onMessageConversation && <Button onClick={onMessageConversation}>Message the conversation</Button>}
-    </div>
-  );
-}
 
 /** Talks to a running task: Enter sends a note it reads at its next step. */
 export function TaskComposer({ ended, onNote, onMessageConversation }: TaskComposerProps) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  if (ended) return <Finished onMessageConversation={onMessageConversation} />;
   const blank = draft.trim() === '';
 
   async function send() {
-    if (blank || sending) return;
+    if (ended || blank || sending) return;
     setSending(true);
     setError('');
     try {
@@ -53,20 +44,27 @@ export function TaskComposer({ ended, onNote, onMessageConversation }: TaskCompo
   }
 
   return (
-    <div className="task-composer">
-      <div className="task-composer-bar" data-disabled={sending || undefined}>
+    <div className="task-composer" data-ended={ended || undefined}>
+      <div className="task-composer-bar" data-disabled={sending || ended || undefined}>
         <TextArea
           className="task-composer-field"
           aria-label={PLACEHOLDER}
-          placeholder={PLACEHOLDER}
+          placeholder={ended ? ENDED : PLACEHOLDER}
+          disabled={ended}
           value={draft}
           rows={Math.min(draft.split('\n').length, MAX_ROWS)}
           readOnly={sending}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
         />
-        <IconButton className="task-composer-send" label="Send note" icon="send" iconSize="sm" disabled={blank || sending} onClick={() => void send()} />
+        <IconButton className="task-composer-send" label="Send note" icon="send" iconSize="sm" disabled={ended || blank || sending} onClick={() => void send()} />
       </div>
+      {ended && (
+        <p className="task-composer-why">
+          <span>{ENDED}, so it cannot read a note.</span>
+          {onMessageConversation && <Button onClick={onMessageConversation}>Message the conversation</Button>}
+        </p>
+      )}
       {error && <p className="task-composer-error" role="alert">{error}</p>}
     </div>
   );

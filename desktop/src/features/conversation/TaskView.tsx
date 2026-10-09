@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { readTaskPage, taskAction, type TaskAction } from '../chat/engine-client';
+import { readTaskPage, taskAction, type EngineTaskRow, type TaskAction } from '../chat/engine-client';
 import { readEngineText } from './tasks/readText';
 import { Button, Text } from '../../components/ui';
 import type { ReadFile } from './tasks/LogStep';
@@ -12,6 +12,7 @@ import { Checks, ChangedFiles, LastWords, Result, type RenderFile } from './task
 import type { TaskPage } from './tasks/taskTypes';
 import { useNow } from './tasks/useNow';
 import { WorkLog } from './tasks/WorkLog';
+import { isEnded, rowKind } from './taskState';
 import { isTaskRunning, taskPageModel } from './taskPageTurn';
 import './task-view.css';
 
@@ -99,16 +100,30 @@ export type TaskViewProps = {
   /** Draws a changed file (the file chip); without it the path is shown as text. */
   renderFile?: RenderFile;
   readFile?: ReadFile;
+  /** The conversation's own row for this task: the same live state the task panel draws, so the two cannot disagree. */
+  liveRow?: EngineTaskRow;
   /** The way back from a finished task to the conversation. */
   onMessageConversation?: () => void;
   now?: number;
 };
 
-export function TaskView({ sessionId, taskId, onOpenTask, renderFile, readFile, onMessageConversation, now: given }: TaskViewProps) {
+/** The page read, with its row replaced by the live one: the panel and this view then say one thing. */
+function withLiveRow(page: TaskPage | undefined, liveRow: EngineTaskRow | undefined): TaskPage | undefined {
+  return page && liveRow ? { ...page, Row: { ...page.Row, ...liveRow } } : page;
+}
+
+export function TaskView({ sessionId, taskId, liveRow, onOpenTask, renderFile, readFile, onMessageConversation, now: given }: TaskViewProps) {
   const { load, retry, refresh } = useTaskPage(sessionId, taskId);
+  const page = withLiveRow(load.page, liveRow);
+  const liveEnded = liveRow ? isEnded(rowKind(liveRow)) : undefined;
+  const pageEnded = load.page ? isEnded(rowKind(load.page.Row)) : undefined;
+  // The live row says the task is over before the page read knows it: read the page again, for its result.
+  useEffect(() => {
+    if (liveEnded !== undefined && pageEnded !== undefined && liveEnded !== pageEnded) void refresh();
+  }, [liveEnded, pageEnded, refresh]);
   const [outbox, setOutbox] = useState<Outbox>();
   const [actionError, setActionError] = useState('');
-  const now = useNow(isTaskRunning(load.page), given);
+  const now = useNow(isTaskRunning(page), given);
   const read = readFile ?? ((path: string) => readEngineText(sessionId, path));
 
   async function act(action: TaskAction, text?: string) {
@@ -127,13 +142,17 @@ export function TaskView({ sessionId, taskId, onOpenTask, renderFile, readFile, 
     setOutbox({ text });
     try {
       await act('note', text);
+    } catch (error) {
+      // The engine refused (a task that has ended answers 409): read the page again so the view catches up.
+      void refresh();
+      throw error;
     } finally {
       setOutbox(undefined);
     }
   }
 
   const actions: HeadActions = { onPause: control('pause'), onResume: control('resume'), onStop: control('cancel') };
-  const model = load.page ? taskPageModel(load.page, now) : undefined;
+  const model = page ? taskPageModel(page, now) : undefined;
   return (
     <div className="task-view">
       {load.loading && !load.page && <Text className="task-view-quiet">Loading…</Text>}
@@ -143,9 +162,9 @@ export function TaskView({ sessionId, taskId, onOpenTask, renderFile, readFile, 
           <Button onClick={retry}>Retry</Button>
         </div>
       )}
-      {load.page && (
+      {page && (
         <>
-          <TaskPageBody {...{ page: load.page, now, onOpenTask, actions, actionError, renderFile, outbox, readFile: read, onAmend: (text: string) => act('amend', text) }} />
+          <TaskPageBody {...{ page, now, onOpenTask, actions, actionError, renderFile, outbox, readFile: read, onAmend: (text: string) => act('amend', text) }} />
           <TaskComposer
             ended={Boolean(model?.ended)}
             onNote={note}
