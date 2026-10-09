@@ -172,7 +172,7 @@ func TestFactoryPeekNewItemLadder(t *testing.T) {
 	factoryWantBlocks(t, "the new item", blocks,
 		"#1662 fix(media): tree rails on narrow widths",
 		"claims are testable; three checks cover them",
-		"budget  $3      thinking  —",
+		"budget  $3",
 		a.factoryPendingMark()+" read",
 		"Claims",
 		"· rails follow the tree")
@@ -238,7 +238,7 @@ func TestFactoryPeekRunningItemLadder(t *testing.T) {
 	factoryWantBlocks(t, "the running item", blocks,
 		"#1551 filters lost on compact",
 		"the filter is read before the tree exists",
-		"budget  $5      thinking  —",
+		"budget  $5",
 		"…",
 		"review 1/2 · 3 findings · fixing · 4m left")
 	if strip := blocks[3][0]; !strings.Contains(strip, "review 1/2") || !strings.Contains(strip, "write ×3") && !strings.Contains(strip, "test") {
@@ -267,7 +267,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 		q,
 		"touches three packages; wants a plan first",
 		"touches money",
-		"budget  $8      thinking  —",
+		"budget  $8",
 		factoryDoneMark(a)+" plan")
 	// THE STILL FIXTURE HAS NO ANSWER DOOR, so the question draws no keys;
 	// over a floor that can answer, they stand under it.
@@ -295,7 +295,7 @@ func TestFactoryPeekLandedLadder(t *testing.T) {
 	blocks := factoryPeekBlocks(t, rows)
 	factoryWantBlocks(t, "the landed item", blocks,
 		"#1661 probes fire once, then retire",
-		"budget  $5      thinking  —",
+		"budget  $5",
 		factoryDoneMark(a)+" plan",
 		a.icon(tokens.GSettled)+" fires on first true, never again")
 	claims := strings.Join(blocks[3], "\n")
@@ -337,7 +337,13 @@ func TestFactoryPeekEmptyBlocksVanish(t *testing.T) {
 	it := factoryPaneItem(t, a, 8)
 	it.Triage.Read, it.Body, it.Cap = "", "", 0
 	blocks := factoryPeekBlocks(t, factoryPaneOn(t, a, 8, factoryPaneW(150), 30))
-	factoryWantBlocks(t, "the bare item", blocks, "#1540 meter crashes", "thinking  —", a.factoryPendingMark()+" plan")
+	// THE THINKING CHIP WITH NO WORD OF ITS OWN IS NOT DRAWN: a bare
+	// `thinking  —` floated mid-peek and read as a manager thinking about
+	// nothing (owner's screenshot, 2026-10-09).
+	factoryWantBlocks(t, "the bare item", blocks, "#1540 meter crashes", a.factoryPendingMark()+" plan")
+	if text := strings.Join(factoryPaneOn(t, a, 8, factoryPaneW(150), 30), "\n"); strings.Contains(text, wordThinking) {
+		t.Fatalf("the bare item's peek says thinking:\n%s", text)
+	}
 }
 
 // THE BODY IS SIX ROWS AT MOST, its last row cut with the ellipsis and a dim
