@@ -3,7 +3,7 @@ import { Text } from '../../components/ui';
 import type { PaneRenderProps } from '../tabs/kinds/slots';
 import { FileSurface } from './FileSurface';
 import { defaultView, type FileTabKind } from './fileTarget';
-import { useFileDiff, useFileRefresh, useFileSession, useFileText, useHandoff } from './useWorkView';
+import { useFileDiff, useFileImage, useFileRefresh, useFileSession, useFileText, useHandoff } from './useWorkView';
 import './files.css';
 
 /**
@@ -36,10 +36,12 @@ function LiveFile({ pane, actions, focused, path, session }: { focused: boolean;
   const host = useRef<HTMLDivElement>(null);
   const shown = useShown(host);
   const [wantText, setWantText] = useState(false);
+  const [wantImage, setWantImage] = useState(false);
   const refresh = useFileRefresh(session?.id, path, shown);
   const diff = useFileDiff(session?.id, path, refresh);
   const text = useFileText(session?.id, path, wantText, refresh);
+  const image = useFileImage(session?.id, path, wantImage, refresh);
   const handoff = useHandoff(session?.id, path);
   const view = pane.file?.view ?? defaultView(pane.kind as FileTabKind);
-  return <div ref={host} className="file-live"><FileSurface path={path} workspace={session?.workspace ?? ''} view={view} diff={session ? diff : undefined} text={wantText ? text : undefined} onNeedText={() => setWantText(true)} handoff={handoff} keys={focused} onView={next => actions.onView({ file: { path, view: next } })}/></div>;
+  return <div ref={host} className="file-live"><FileSurface path={path} workspace={session?.workspace ?? ''} view={view} diff={session ? diff : undefined} text={wantText ? text : undefined} onNeedText={() => setWantText(true)} image={wantImage ? image : undefined} onNeedImage={() => setWantImage(true)} handoff={handoff} keys={focused} onView={next => actions.onView({ file: { path, view: next } })}/></div>;
 }
