@@ -147,6 +147,13 @@ export function isCopyPathShortcut(event: KeyEvent) {
  return primary && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'c';
 }
 
+/**
+ * Copy link (Shell 3g): the same chord as Copy path. A file or diff tab keeps it as Copy path (its own header binds it),
+ * and a terminal field keeps it as the shell's copy; everywhere else it copies the active tab's link.
+ */
+export const copyLinkShortcut = copyPathShortcut;
+export const isCopyLinkShortcut = isCopyPathShortcut;
+
 /** Interactive shell tabs: Control-backtick is identical on every platform. */
 export const newTerminalShortcut = isMac ? '⌃`' : 'Ctrl `';
 export const isNewTerminalShortcut = (event: KeyEvent) => shortcutOf(event)?.id === 'terminal';

@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::{
     AppHandle, Emitter, LogicalPosition, Manager, Runtime, Webview, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    WebviewWindowBuilder, Window,
 };
 
 pub const UNTRUSTED: &str = "Only codeaf's own windows can do that";
@@ -49,6 +49,25 @@ pub fn is_app_window(label: &str) -> bool {
         || label
             .strip_prefix("w-")
             .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// codeaf's own window called `label`, if it is open. NEVER look a window up
+/// with `get_webview_window` or `webview_windows`: Tauri counts a window as a
+/// webview window only while its own webview is its only one, so a window
+/// showing a web page (a `web-*` child view) dropped out of both, and a link
+/// would have nowhere to land. Adopted from the verified linux-native lookup.
+pub fn app_window<R: Runtime>(app: &AppHandle<R>, label: &str) -> Option<Window<R>> {
+    is_app_window(label)
+        .then(|| app.get_window(label))
+        .flatten()
+}
+
+/// Every open codeaf window by label, web pages or not (see `app_window`).
+pub fn app_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, Window<R>)> {
+    app.windows()
+        .into_iter()
+        .filter(|(label, _)| is_app_window(label))
+        .collect()
 }
 
 /// Returns the caller's label when it is one of codeaf's own windows.

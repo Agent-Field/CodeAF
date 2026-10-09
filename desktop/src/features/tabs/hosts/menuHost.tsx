@@ -2,11 +2,11 @@
 // Design 3g "Right-click: tab menu with a submenu, group label menu" and 3l "Right-click, the explicit path".
 import type { ReactElement } from 'react';
 import { ContextMenu, type MenuEntry } from '../../../components/ui';
-import { tabShortcuts } from '../../../design/keyboard';
+import { copyLinkShortcut, tabShortcuts } from '../../../design/keyboard';
 import { closeShortcutFor, closeStopShortcut, newGroupShortcut } from '../closing/shortcuts';
 import type { TabsApi } from '../context';
 import { kindDef } from '../kinds/registry';
-import { splitCapacity, visibleTabs, type Tab, type TabGroup } from '../model';
+import { focusedPane, splitCapacity, visibleTabs, type Tab, type TabGroup } from '../model';
 
 const separator = (id: string): MenuEntry => ({ kind: 'separator', id });
 
@@ -36,12 +36,14 @@ function groupEntry(api: TabsApi, tab: Tab): MenuEntry {
 
 /**
  * Copy link and Move to new window are present only where they can work. A capability that cannot work is ABSENT, not
- * disabled: there is no canonical link scheme today (actions.ts says why), and a tab moves only in the desktop app.
+ * disabled: a tab with nothing durable behind it has no link (links/deepLinks.ts), and a tab moves only in the desktop app.
  */
 function transferEntries(api: TabsApi, tab: Tab): MenuEntry[] {
   const { actions } = api;
   const entries: MenuEntry[] = [];
-  if (actions.linkFor(tab)) entries.push({ id: 'copy-link', label: 'Copy link', icon: 'link', onSelect: () => void actions.copyLink(tab) });
+  // The chord is Copy path on a file or diff tab (keyboard.ts), so those tabs show Copy link without it.
+  const chord = ['file', 'diff'].includes(focusedPane(tab).kind) ? undefined : copyLinkShortcut;
+  if (actions.linkFor(tab)) entries.push({ id: 'copy-link', label: 'Copy link', icon: 'link', shortcut: chord, onSelect: () => void actions.copyLink(tab) });
   if (actions.canMove(tab)) entries.push({ id: 'new-window', label: 'Move to new window', icon: 'appWindow', onSelect: () => void actions.moveToNewWindow(tab) });
   return entries.length ? [separator('link-separator'), ...entries] : [];
 }

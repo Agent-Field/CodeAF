@@ -142,7 +142,7 @@ test.describe('the Inbox from the engine world feed', () => {
 });
 
 test.describe('the tab menu offers only what can work', () => {
-  test('in a browser there is no Copy link and no Move to new window, and nothing is disabled in their place', async ({ page }) => {
+  test('in a browser a tab never sent has no Copy link and no Move to new window, and nothing is disabled in their place', async ({ page }) => {
     await page.route('**/api/engine/**', route => route.abort());
     await seed(page, [{ id: 'a', title: 'Config stack' }, { id: 'b', title: 'lexer.go' }], 'a');
     await page.goto('/');

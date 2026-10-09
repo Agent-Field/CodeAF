@@ -13,12 +13,35 @@ const native = (over: Partial<NativeForTabs> = {}): NativeForTabs => ({
   ...over,
 });
 
-test('there is no canonical link today, so Copy link yields nothing and copies nothing', async () => {
+test('a tab with nothing durable behind it has no link, so Copy link copies nothing and says nothing', async () => {
   let wrote = false;
-  const actions = createTabActions({ native: native(), toasts: createToasts(), writeClipboard: async () => { wrote = true; } });
+  const toasts = createToasts();
+  const actions = createTabActions({ native: native(), toasts, writeClipboard: async () => { wrote = true; } });
   assert.equal(actions.linkFor(tab()), undefined);
   assert.equal(await actions.copyLink(tab()), false);
   assert.equal(wrote, false);
+  assert.equal(toasts.getToast(), null);
+});
+
+const SAVED = '/srv/store/projects/-srv-app/9446cc2627f3deae/transcript.jsonl';
+
+test('a saved conversation copies its codeaf link and the shared toast says so', async () => {
+  const written: string[] = [];
+  const toasts = createToasts();
+  const actions = createTabActions({ native: native(), toasts, writeClipboard: async text => { written.push(text); } });
+  assert.equal(actions.linkFor(tab({ sessionFile: SAVED })), 'codeaf://chat/9446cc2627f3deae');
+  assert.equal(await actions.copyLink(tab({ sessionFile: SAVED })), true);
+  assert.deepEqual(written, ['codeaf://chat/9446cc2627f3deae']);
+  assert.deepEqual(toasts.getToast()?.message, ['Copied the link to ', { strong: 'Config stack' }]);
+  assert.equal(toasts.getToast()?.tone, 'info');
+});
+
+test('a clipboard that refuses is said in a danger toast, never as copied', async () => {
+  const toasts = createToasts();
+  const actions = createTabActions({ native: native(), toasts, writeClipboard: async () => { throw new Error('denied'); } });
+  assert.equal(await actions.copyLink(tab({ sessionFile: SAVED })), false);
+  assert.deepEqual(toasts.getToast()?.message, ['Could not copy the link to ', { strong: 'Config stack' }]);
+  assert.equal(toasts.getToast()?.tone, 'danger');
 });
 
 test('a tab can move only in the desktop app, as one pane, and never the Inbox', () => {

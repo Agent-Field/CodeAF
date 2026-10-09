@@ -43,6 +43,7 @@ Start with Appearance, Models and jobs, Permissions and privacy, Places and cont
 | File changes | Compare against conversation start commit; documented latest-commit fallback when absent/gone. Binary or >1MB gets an honest refusal and external-open path. | User-selectable comparison base, file-size override and editor preference. |
 | New tab | Quiet until first send or explicit action; offline draft retained. | Startup landing page, history suggestion policy and draft retention. |
 | Native web | Separate native webview being implemented; external pages must not gain engine credentials or privileged app commands. | Default external/internal opening, history/cookies/storage clearing, page-read consent. |
+| Links | Scheme `codeaf`. Copy link copies a durable target: conversation folder id, task id, workspace-relative path, or engine terminal id. A web tab copies its own http(s) address. A tab with none omits the command. Opening focuses the existing tab or opens one, and never starts a chat, a turn, or a terminal. | Whether a public web redirect should exist later. Development registration of the scheme stays opt-in (`CODEAF_DESKTOP_REGISTER_LINKS=1`). |
 
 ## Settings defaults still deliberately undecided
 
