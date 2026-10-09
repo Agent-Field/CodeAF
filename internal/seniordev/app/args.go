@@ -64,9 +64,14 @@ type cliArgs struct {
 	// InPlace forces the snapshot recorder: senior-dev edits the workspace
 	// without writing to any repository around it. Without it, the snapshot
 	// recorder is still chosen wherever there is no git history to use.
-	InPlace  bool
-	MaxCost  *float64
-	MaxHours *float64
+	InPlace bool
+	// VerifyBuild and VerifyTest are the build and test the person named as
+	// the project's own check, each in place of discovery for its kind; empty
+	// leaves that kind to discovery (fullverification/declared.go).
+	VerifyBuild string
+	VerifyTest  string
+	MaxCost     *float64
+	MaxHours    *float64
 }
 
 // CrewModel is a crew seat's model as a pool entry: the id filed under the

@@ -3397,6 +3397,33 @@ func TestTheCallLogPageSaysWhyAFigureIsMissingFromARow(t *testing.T) {
 	t.Fatalf("the question does not reach a section that says %q; a row missing a figure reads as a broken row", said)
 }
 
+// A senior-dev run on a project whose build it could not find ends with a
+// sentence a person pastes back as a question, and a person with a harness of
+// their own asks how to hand it over. Both reach the section that names the
+// flags, and the CMake shape reaches the section that names its default.
+func TestTheUndiscoveredBuildQuestionsReachTheVerifyFlags(t *testing.T) {
+	for _, probe := range []struct {
+		asked string
+		says  string
+	}{
+		{"senior-dev says no build entrypoint could be discovered", "--verify-test"},
+		{"how do I tell senior-dev which command runs my tests", "--verify-test"},
+		{"senior-dev failed verification on my fuzz target harness", "--verify-build"},
+		{"does senior-dev build a cmake project and run ctest", "cmake-build"},
+	} {
+		found := false
+		for _, section := range Chat().Search(probe.asked, DefaultResults) {
+			if section.Page == "senior-dev" && strings.Contains(section.Body, probe.says) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%q does not reach a senior-dev section that says %q", probe.asked, probe.says)
+		}
+	}
+}
+
 // A person whose reply vanished asks in their own words, and there is exactly
 // one page that can say who ended it. The pins are the two halves the fix owes
 // them: that a stop of their own is the only silent door, and that a thinking

@@ -468,6 +468,39 @@ resolve project imports. Older Python cannot use `-t .` on a folder without
 reports it ran no tests leaves the submission unchecked, even if it exits zero;
 the ending says `no tests were found by <command>`.
 
+## How does senior-dev find a project's build and tests — no build entrypoint could be discovered, CMake, ctest, --verify-build, --verify-test
+
+Any folder that looks like a project — a manifest, a `Makefile`, a
+`CMakeLists.txt`, a `test/` folder — must have a build command and a test command
+for its checks. senior-dev looks for them in CI, `AGENTS.md`, a Makefile or
+`package.json` script, `README.md` or `CONTRIBUTING.md`, then a default for the
+project's kind: Go, Rust, Maven, Gradle, .NET, Python, and CMake.
+
+For a CMake project with nothing else to go on, such as a header-only library, it
+builds with `cmake -S . -B .senior-dev/cmake-build && cmake --build
+.senior-dev/cmake-build --parallel` (one job per processor). It tests by running
+the same configure and build first, then `ctest --output-on-failure` in that
+folder, so the test still works when the build command came from somewhere else.
+The build folder is inside its own `.senior-dev` folder, so it never ends up in
+the change it hands in.
+This needs `cmake` on the machine.
+
+When it finds nothing, the run fails its checks: the ending says `no build
+entrypoint could be discovered` (or `test`), and the change is still handed in.
+
+**Naming the check yourself.** If the project is checked by something it cannot
+find — a fuzzing harness or a benchmark's validation script outside the folder —
+pass it on `run`:
+
+```sh
+codeaf senior-dev run --verify-test '/scripts/validate.py --poc /tmp/poc' -- <brief>
+```
+
+`--verify-build CMD` and `--verify-test CMD` each replace what senior-dev would
+have found. senior-dev runs them itself on the submitted tree, with the same strict
+settings and time limit, and a non-zero exit fails the check. Naming one never
+excuses the other. Only the command line sets them; senior-dev's own model cannot.
+
 ## Can I run senior-dev in a folder that is not a git repo — a plain folder, no git, --in-place, operation not permitted, .Trash
 
 Yes. **senior-dev uses git only if it is there.** A folder with no git history — a plain
@@ -1081,7 +1114,7 @@ after the run's record folder (such as `20260924-150405.000000`). That folder al
 `delegate-program.json`, with the instant senior-dev's process started and the instant it
 ended.
 
-## senior-dev's flags — run, --variant, --in-place, --high, --max-cost
+## senior-dev's flags — run, --variant, --in-place, --high, --verify-test, --max-cost
 
 `codeaf senior-dev <brief>` is `codeaf senior-dev run -- <brief>`. codeaf gives every
 program it carries four flags:
@@ -1104,6 +1137,9 @@ senior-dev's own flags on `run`:
   bare OpenRouter id, service-prefixed id, or short `/crew` model word;
 - `--asked` — the `--high` models were chosen by name, so one senior-dev cannot
   size ends the run before its first call rather than being skipped;
+- `--verify-build CMD`, `--verify-test CMD` — the project's own build or test command,
+  run by senior-dev on the submitted tree instead of the one it would have found (see
+  how senior-dev finds a project's build and tests);
 - `--frontier` — accepted, and changes nothing: no call senior-dev makes uses that tier;
 - `--crew` — the models came from a conversation's crew: one its catalog cannot size is
   left out instead of failing the run. codeaf passes it with the crew's models.
