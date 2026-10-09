@@ -13,6 +13,7 @@ import { observedClosedPanes } from './closing/background';
 import { useCloseStopKey } from './closing/useCloseStopKey';
 import { useBackground } from './closing/useBackground';
 import { useClosing } from './closing/useClosing';
+import { useStructuralUndo } from './undo/useStructuralUndo';
 import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { tabMenuFor } from './hosts/menuHost';
@@ -35,7 +36,9 @@ type Props = {
 };
 
 export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
-  const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
+  const [state, applyAction] = useReducer(workspaceReducer, undefined, readWorkspace);
+  // Every change goes through the window's structural Undo (⌘Z); it records this window's own steps only.
+  const { dispatch } = useStructuralUndo({ state, dispatch: applyAction, enabled });
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
   const [previews] = useState(() => createPreviewStore(design.interaction.previewCloseDelay));
@@ -120,7 +123,7 @@ export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
       {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : kindDef(focusedPane(tab).kind).icon} size="sm"/><span>{tab.title}</span></Button> : null; })}
     </div><Text>Release Ctrl to switch · Escape to cancel</Text>
     </div>}
-    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} menuFor={tab => tabMenuFor(api, tab)} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCloseTab={id => dispatch({ type: 'close', id })}/>
+    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} menuFor={tab => tabMenuFor(api, tab)} onMoveGroup={(id, groupId, beside) => dispatch({ type: 'move-group', id, groupId, beside })} onCloseTab={closeTab}/>
     <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
       <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="quiet">Save</Button></div></form>
     </dialog>

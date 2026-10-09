@@ -9,6 +9,8 @@ export const tabShortcuts = {
  reopen: formatShortcut('⌘/Ctrl ⇧ T'),
  /** Groups the active tab with the tabs picked by ⌘-click (Interactions, Shortcuts: "⌘G Group selected tabs"). */
  group: formatShortcut('⌘/Ctrl G'),
+ /** Takes back the last structural tab action (Interactions, Shortcuts: "⌘Z Undo structural action"). */
+ undo: formatShortcut('⌘/Ctrl Z'),
  switch: isMac ? '⌃ Tab' : 'Ctrl Tab',
  switchBack: isMac ? '⌃ ⇧ Tab' : 'Ctrl Shift Tab',
 };
@@ -35,7 +37,7 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S. 'open-file' (⌘/Ctrl O) belongs to the new-tab field: only that surface claims it.
  */
 export type ShortcutId =
- | 'new' | 'close' | 'reopen' | 'group' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
+ | 'new' | 'close' | 'reopen' | 'group' | 'undo' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
  | 'terminal' | 'open-file' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings';
 export type Shortcut = { id: ShortcutId; index?: number };
 
@@ -75,6 +77,8 @@ export function shortcutOf(event: KeyEvent, mac = isMac): Shortcut | undefined {
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
  if (key === 'g') return { id: 'group' };
+ // ⌘Z: the window's structural Undo (Interactions, Shortcuts). Its handler steps aside inside text fields and terminals.
+ if (key === 'z') return { id: 'undo' };
  if (key === 'o') return { id: 'open-file' };
  if (key === 's' || key === 'b') return { id: 'rail' };
  if (key === 'y') return { id: 'history' };
