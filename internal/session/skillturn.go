@@ -60,7 +60,7 @@ const turnSkillsLead = "\n\nSkills suited to this message:\n"
 // references; the words of a picture message still reach the catalog and
 // `use_skill`, so nothing is lost by waiting for the next text one.
 func (a *Agent) attachTurnSkillsLocked(user *userMessage) {
-	if user.empty() || user.refs != nil {
+	if user.empty() || user.refs != nil || user.noSkills {
 		return
 	}
 	words := user.text()

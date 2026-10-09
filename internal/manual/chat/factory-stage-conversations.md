@@ -148,4 +148,6 @@ What you type into the item's chat goes to the run; nothing else is needed.
 
 Each line is taken once. The chat's model still answers you; it shapes the run's stages with
 `factory_run` and changes the budget, thinking and notes through `factory_item`'s card.
-During a run each line also gives the manager one turn to reshape the stages not yet started.
+During a run the chat's own turn on each line may reshape the stages not yet started; the
+runner gives it no second turn on the same words. Say `start` and the manager starts the run
+with `factory_start`.

@@ -230,12 +230,12 @@ func buildFactoryRunner(st *store.Store, workspace, profileDir string, maker fac
 		Manager: managerMaker(st, workspace, profileDir),
 		Talk:    sessionTalk{},
 	}
-	// AND THE MANAGER SHAPES THE RUN: one turn of its conversation at launch,
-	// before the first stage, and one on each thing the person says during
-	// the run (factory_shape.go). Nil shapes nothing; the recipe stands.
+	// AND THE MANAGER SHAPES THE RUN: one turn of its conversation at the
+	// launch of an item it never shaped, before the first stage
+	// (factory_shape.go). Nil shapes nothing; the recipe stands. What the
+	// person says during the run is the manager's own turn, never a second one.
 	if shape != nil {
 		opts.Shape = shape.Shape
-		opts.Reshape = shape.Reshape
 		// AND THE MANAGER IS THE INBOX: every question a step asks is given to
 		// it first, one turn of its conversation (factory_inbox.go).
 		opts.Inbox = shape.Inbox

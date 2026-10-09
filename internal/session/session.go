@@ -3077,7 +3077,10 @@ type Agent struct {
 	// team is this conversation's account of its teams: its key, its roles and
 	// its Traffic cursors (team.go). It has its own lock and is never read
 	// under mu.
-	team  teamSeat
+	team teamSeat
+	// lead is whether this conversation manages a factory item (team.go's
+	// [Agent.factoryLead]), asked of its run door and kept once known.
+	lead  factoryLeadSeat
 	usage Usage
 	// principal is WHO THIS SESSION IS WORKING FOR (principal.go), and it is
 	// never nil: a session built with no posture at all gets a [Person], which

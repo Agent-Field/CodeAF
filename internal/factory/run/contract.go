@@ -177,11 +177,10 @@ type Options struct {
 	// applies the edit itself, before the run, and says the line. Nil is a run
 	// of the recipe as it stands. The shape lane added it, additively.
 	Shape func(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error)
-	// Reshape is the same turn during a run, given what the person just said:
-	// the edit it answers changes only the stages not yet started. Nil gives
-	// the manager no turn on a steer.
-	Reshape func(ctx context.Context, it factory.Item, said string) (factory.RunEdit, string, error)
-	// ShapeWait is how long a Shape or Reshape turn may take before the run
+	// THERE IS NO TURN ON A STEER: words the person types into the manager's
+	// conversation during a run are already a turn of the manager there, and
+	// it reshapes the stages not yet started with its own `factory_run`.
+	// ShapeWait is how long a Shape turn may take before the run
 	// goes on without it; 0 is a minute. An Inbox turn is given the same.
 	ShapeWait time.Duration
 	// Inbox is the manager's turn on a question a step asked (inbox.go): one

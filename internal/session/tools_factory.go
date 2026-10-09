@@ -149,6 +149,11 @@ func (a *Agent) factoryTools() []bare.Tool {
 		// `factory_answer` (tools_factory_answer.go), the manager's reply to a
 		// step's question, rides on the same door: it is the manager's.
 		tools = append(tools, a.factoryAnswerTool())
+		// `factory_start` (tools_factory_start.go), the manager's start, rides
+		// on the same door where that door can start.
+		if a.config.mayStart() {
+			tools = append(tools, a.factoryStartTool())
+		}
 	}
 	return tools
 }

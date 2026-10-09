@@ -236,10 +236,12 @@ func (lp *floorLoop) hear(c *loopCtl) {
 		if lp.heard(c, h.At) != nil {
 			return
 		}
+		// THE WORDS ARE HANDLED ONCE: the person typed them to the manager,
+		// whose own turn on them answers and reshapes the stages not yet
+		// started with `factory_run` when that is what they meant. The runner
+		// adds no second turn on the same words (the owner's run of
+		// 2026-10-09 answered `how's the plan coming along?` twice).
 		lp.steer(c, h.Words, lp.roundRunning(c))
-		// AND THE MANAGER HEARS IT TOO, with one turn to reshape the stages
-		// not yet started if that is what the person meant (shape.go).
-		lp.reshape(c, h.Words)
 	}
 }
 

@@ -725,12 +725,12 @@ manager think, at the thinking you set there. If the conversation is open in ano
 instead (a window on the engine host), the runner cannot give it a turn, and the line is
 `the manager is open in another window · the recipe stands`.
 
-Mid-way the same happens on a smaller scale: each line you say to the manager is the steer, as
-always (see talk to the manager), and the manager is also given one turn,
-`The person said: … · reshape the stages not yet started if that is what they mean, else leave
-them`. So `do a thorough review on security, code and architecture`, said during plan, can
-change review's ask before review starts; the log then says `manager set review: …`. A stage that
-started is never changed.
+Mid-way, each line you say to the manager is the steer, as always (see talk to the manager), and
+it is answered once, by the manager's own turn on it. That turn may reshape the stages not yet
+started with its `factory_run`, so `do a thorough review on security, code and architecture`,
+said during plan, can change review's ask before review starts; the log then says `manager set
+review: …`. The runner gives the manager no second turn on the same words. A stage that started
+is never changed.
 
 ## does opening an issue run anything — no; the manager sets the steps when you ask, shape steps, p
 
@@ -751,11 +751,30 @@ The manager shapes the steps in exactly three ways:
   the ask `Shape the run for this item now.` Nothing runs. Before a run it may change every step;
   during one, only the steps not yet started. The note line says what it set, `manager set …`,
   `the recipe stands`, or why its turn did not happen (`the manager did not answer · the recipe
-  stands`). An item whose run is over has nothing to shape and says so.
+  stands`). An item whose run is over has nothing to shape and says so. An item the manager
+  already shaped takes no turn: the note line says `the manager already shaped the steps · say
+  what to change in its chat`.
 
 After a `shape steps` that changed nothing, the item says `manager kept the recipe`, and `▶ run`
-does not shape it again. The manager's own verbs, `factory_run` and `factory_answer`, never wait
-on an approval card: a shaping turn nobody is at the keyboard of could not answer one.
+does not shape it again. When the manager calls `factory_run` more than once in one turn, the
+last call wins for each step: a step it skipped and then switched on again is on, and the line
+says only what changed. The manager's own verbs, `factory_run`, `factory_start` and
+`factory_answer`, never wait on an approval card: a shaping turn nobody is at the keyboard of
+could not answer one.
+
+## start the run from the manager's chat — say start
+
+Say `start` (or `run it`, `go`) in the manager's chat and the manager starts the run with
+`factory_start`, the same control as `▶ run` on the item's page. A run that has not started is
+launched with the steps as they stand (the manager is the one you just talked to, so the launch
+does not shape them again), a paused run goes on with the same step in the same chat, and a run
+held at an approve step goes past it, which the manager does only when you clearly said so. It
+says what happened in one line, `#12 started`, `#12 resumed`, `#12 went past approve`, or why
+nothing changed (`#12 is already running`, `#12 is queued · it starts when a bench frees`).
+
+The runner runs the steps; the manager reports them. It may read a step's conversation to tell
+you where it stands, but it never sends a step work, stops one or starts one of its own: in an
+item's team the manager has the team's reads and nothing that drives a member.
 
 ## tell the manager what you want before it runs — one word per stage, it sets the asks
 
@@ -862,7 +881,7 @@ their asks and loops, the recipe's policy and habits, budget and thinking):
 
     You are the manager of #12 in acme/web.
     You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.
-    You do: shape the run, start it when asked, report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on.
+    You do: shape the run, start it with factory_start when the person asks (nothing to look up first), report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on. The runner runs the steps: read a step to report on it, and never send one work, stop it or start one yourself.
     Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.
     You are the inbox: every question a stage asks comes to you first, and you reply with factory_answer. Answer it yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. Send it to the person (ask_person, one line of why) when it turns on taste, scope, risk, credentials or access, money, or anything those do not settle; the stage waits, and the person answers here.
     Say what you set in three lines at most, then stop. Do not narrate.

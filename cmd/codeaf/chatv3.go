@@ -2153,6 +2153,11 @@ func v3BuiltinApprovals() map[string]any {
 		// 2026-10-09 met `needs approval but no resolver is attached: default`
 		// on every edit and the recipe stood by accident.
 		"factory_run": "allow",
+		// THE MANAGER'S START (internal/session's tools_factory_start.go): the
+		// run button on the item's page, pressed from the manager's chat when
+		// the person asks; it launches, resumes or continues the one item the
+		// conversation manages, within the floor's own rules.
+		"factory_start": "allow",
 		// LOADING IS NOT PERMISSION (internal/session's tools_capabilities.go):
 		// it arms a shelved group onto the belt, and every tool it arms keeps
 		// its own gate. Asked about on a headless turn it was refused, and the

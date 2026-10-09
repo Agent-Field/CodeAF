@@ -17,9 +17,10 @@ package run
 //     launch then skips shaping, because the item was already shaped by the
 //     manager ([shapedByManager]);
 //   - the person says something mid-run: the words are the steer, as always,
-//     and the manager is given one more turn ([Options.Reshape]) that may
-//     change the stages not yet started; the tail is re-read at each round
-//     ([tailPhases]).
+//     and they are a turn of the manager's own conversation, whose
+//     `factory_run` may change the stages not yet started; the tail is
+//     re-read at each round ([tailPhases]). The runner gives no second turn
+//     on the same words.
 //
 // A TURN THAT FAILS OR TAKES TOO LONG IS NO EDIT: the recipe stands, and the
 // log says so. The bounds are [factory.Edit]'s, held in code.
@@ -43,7 +44,6 @@ const (
 	sayShapeBusy    = "the manager was busy in the window · the recipe stands"
 	sayShapeAway    = "the manager is open in another window · the recipe stands"
 	sayShapeRefused = "the manager's change was not applied: %s · the recipe stands"
-	sayTailRefused  = "the manager's change was not applied: %s"
 )
 
 // The two reasons a shaping turn did not happen that the person is told by
@@ -142,40 +142,6 @@ func (lp *floorLoop) shape(c *loopCtl) bool {
 	// shaping itself never stops the run.
 	lp.tell(c.id, line)
 	return true
-}
-
-// reshape gives the manager one turn on what the person just said during a
-// run, and applies what it answers to the stages not yet started. A turn that
-// fails, or answers nothing, leaves the stages as they are and says nothing:
-// the words are already the steer.
-func (lp *floorLoop) reshape(c *loopCtl, words string) {
-	fn := lp.r.opts.Reshape
-	if fn == nil || c.reverify || strings.TrimSpace(words) == "" {
-		return
-	}
-	it, err := lp.r.opts.Store.Get(c.id)
-	if err != nil {
-		return
-	}
-	edit, err := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
-		return fn(ctx, it, words)
-	})
-	if err != nil || c.ctx.Err() != nil {
-		return
-	}
-	line, err := lp.applyEdit(c, edit, true)
-	if c.ctx.Err() != nil {
-		return
-	}
-	if err != nil {
-		refused := fmt.Sprintf(sayTailRefused, loopFirstLine(err.Error()))
-		lp.say(c, "fail", refused)
-		lp.tell(c.id, refused)
-		return
-	}
-	if line != "" {
-		lp.tell(c.id, line)
-	}
 }
 
 // turn runs one manager turn under the item's ctx and the shaping wait. The
