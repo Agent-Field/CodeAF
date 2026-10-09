@@ -414,7 +414,8 @@ test('j. a terminal tab and a file tab still open inside a place strip', async (
   await expect(page.locator('.workspace-tab[data-kind="terminal"]')).toHaveCount(1);
   await expect(tabs(page).first()).toHaveAccessibleName('Marketing');
 
-  await page.keyboard.press(`${primary(rig)}+KeyT`);
+  // Focus is in the terminal: off a Mac plain Ctrl+T belongs to the shell, so the new tab is Ctrl+Shift+T there.
+  await page.keyboard.press(rig.mac ? 'Meta+KeyT' : 'Control+Shift+KeyT');
   await page.getByRole('combobox', { name: 'Search or start' }).fill('lex');
   await page.getByRole('option', { name: /lexer\.go/ }).click();
   await expect(page.getByRole('tab', { name: 'lexer.go', exact: true })).toHaveAttribute('aria-selected', 'true');
