@@ -23,6 +23,34 @@ re-scored. Until then nothing that exists only in an unintegrated candidate is c
   red), MISSING (no code at the baseline; where possible a test shows the absence), NOT VERIFIED (no evidence that
   could honestly be produced here: native-only, design-ambiguous, or candidate-only).
 
+## Integrated acceptance update — 2026-10-09
+
+The inventory below preserves the original `199bf66c6` baseline. Its FAIL/MISSING
+labels describe that baseline, not the current integrated app. Do not use those
+historical labels as current acceptance results.
+
+- The integrated 244-case core gate passed 240; four stale persistence/menu
+  assertions were corrected. The affected immutable `c38af1487` gate passed
+  **98/98** in Chromium and WebKit, including those four cases.
+- The final extra tab audit on `17f666a08` ran **104 cases: 103 passed**. One WebKit
+  accessibility case failed while creating its browser context, before an app
+  assertion; its unchanged isolated retry passed. Both logs remain preserved.
+- Integrated web/pinch journeys passed **20/20**; favicon/fallback/file-glyph
+  fixtures passed **4/4** across browser/theme combinations. Physical trackpad
+  acceptance remains unverified.
+- Native Linux controls independently verified canonical multi-window movement,
+  terminal close/Undo and cleanup, split closing, real drag grouping, folder picker,
+  first-turn Place working directory, multi-question Send and genuine web favicons.
+  These proofs are separate from filled browser fixtures.
+- Final acceptance remains open: native task quit/reattach worked, but completion
+  replayed the original request and commissioned duplicate tasks without another
+  Send. A bounded backend fix and live retest are required. The final visual audit
+  also requires its measured preview/menu corrections and affected rechecks.
+
+Evidence stays outside the source repository. Exact case-to-suite references,
+original baseline results and remaining native limits are retained in the external
+143-case audit crosswalk. No screenshot count alone constitutes acceptance.
+
 ## Totals at `199bf66c6`
 
 | Suite | Chromium | WebKit |
