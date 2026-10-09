@@ -5,15 +5,17 @@ package session
 // The manager is the author of the run (the owner's decision of 2026-10-08):
 // an item's own conversation sets the stages its run will take, one lowercase
 // word each, each with an ask that says what done looks like. `factory_run` is
-// that act, beside `factory_item` (budget, ask me at, thinking, notes), and it
+// that act, beside `factory_item` (budget, thinking, notes), and it
 // differs from it in one way that matters: IT RAISES NO CARD. Before a run
 // nothing is running, so the change is made at once and the item's page
 // redraws; during a run it touches only the stages not yet started, and the
 // run's next round reads them. The person sees the line it answers.
 //
-// THE BOUNDS ARE HELD IN CODE, by [factory.Edit] behind the door: proof and a
-// gate stage are never dropped, a stage that started is never touched, and a
-// refusal comes back in Edit's own sentence with nothing changed.
+// THE BOUNDS ARE HELD IN CODE, by [factory.Edit] behind the door: proof is
+// never dropped, a fixed stage never changes, a stage that started is never
+// touched, and a refusal comes back in Edit's own sentence with nothing
+// changed. AN APPROVE STEP (where the run holds until the person says
+// continue) is added or skipped like any stage: add one named approve.
 
 import (
 	"context"
@@ -52,10 +54,11 @@ var runThinking = []string{"cheap", "strong", "default"}
 
 const factoryRunDescription = "Shape the run of the ONE factory item this conversation manages. Its stages are one lowercase word each, at most nine. " +
 	"set changes a stage's ask (what done looks like) or its thinking (cheap, strong, default); add puts in a new stage after a named one, with its ask and one line of why; on switches a stage of the recipe on; skip switches one off; why is one sentence for the whole change. " +
-	"Keep the recipe's stages unless the item says otherwise, change asks before adding stages, and add a stage only for work no stage covers. Proof and a gate stage are never skipped. " +
+	"Keep the recipe's stages unless the item says otherwise, change asks before adding stages, and add a stage only for work no stage covers. Proof is never skipped. " +
+	"An approve step (named approve, a second one approve2) is where the run holds until the person says continue: add one after the stage the person wants to read first, with no ask, or skip it to let the run go on; a fixed one stays. " +
 	"Before the run the change is made at once and NO CARD IS SHOWN to the person: nothing is running, and the stages on the item's page redraw. During a run it changes only the stages that have not started, and the run's next round reads them. " +
 	"The answer is the line the item's page shows (manager set review: … · added arch after review · why: …), or why it was refused, with nothing changed. " +
-	"Budget, ask me at, thinking for every stage and notes for the stages stay with factory_item."
+	"Budget, thinking for every stage and notes for the stages stay with factory_item."
 
 func factoryRunSchemaJSON() string {
 	quoted := make([]string, len(runThinking))
@@ -70,12 +73,12 @@ func factoryRunSchemaJSON() string {
 		`},"required":["stage"],"additionalProperties":false}},` +
 		`"add":{"type":"array","description":"New stages, each after a stage the run has.","items":{"type":"object","properties":{` +
 		`"name":{"type":"string","description":"One lowercase word."},` +
-		`"ask":{"type":"string","description":"What done looks like for it."},` +
+		`"ask":{"type":"string","description":"What done looks like for it; none for an approve step."},` +
 		`"after":{"type":"string","description":"The stage it goes after."},` +
 		`"why":{"type":"string","description":"One line of why no stage covers this work."}` +
-		`},"required":["name","ask","after"],"additionalProperties":false}},` +
+		`},"required":["name","after"],"additionalProperties":false}},` +
 		`"on":{"type":"array","items":{"type":"string"},"description":"Stage names of the recipe to switch on."},` +
-		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off. Never proof or a gate stage."},` +
+		`"skip":{"type":"array","items":{"type":"string"},"description":"Stage names to switch off. Never proof."},` +
 		`"why":{"type":"string","description":"One sentence saying why."}` +
 		`},"additionalProperties":false}`
 }
@@ -141,11 +144,21 @@ func runEditOf(args runArgs) (factory.RunEdit, error) {
 			return factory.RunEdit{}, err
 		}
 		ask := strings.Join(strings.Fields(a.Ask), " ")
+		after := strings.ToLower(strings.TrimSpace(a.After))
+		why := strings.Join(strings.Fields(a.Why), " ")
+		if factory.ApproveWord(name) {
+			// AN APPROVE STEP HAS NO ASK: the person is the step.
+			st := factory.Approve(nil)
+			st.Why, st.By = why, factory.ByManager
+			e.Add = append(e.Add, factory.Added{Stage: st, After: after})
+			if e.Why == "" {
+				e.Why = why
+			}
+			continue
+		}
 		if ask == "" {
 			return factory.RunEdit{}, errors.New("the stage " + name + " needs an ask that says what done looks like")
 		}
-		after := strings.ToLower(strings.TrimSpace(a.After))
-		why := strings.Join(strings.Fields(a.Why), " ")
 		e.Add = append(e.Add, factory.Added{Stage: addedStage(name, ask, why), After: after})
 		if e.Why == "" {
 			e.Why = why

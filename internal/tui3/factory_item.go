@@ -130,7 +130,7 @@ const (
 	factoryPageStage                           // one stage of its recipe, under run
 	factoryPageLog                             // the stream's log, last under run, when it has one
 	factoryPageResult                          // the sheet, the diff and the checks, once something came out
-	factoryPageSettings                        // ask me at, thinking, budget and the stages on or off, always last
+	factoryPageSettings                        // thinking, budget and the stages on or off, always last
 )
 
 // factoryPageRow is one row of the item page's left column: what it stands
@@ -1286,33 +1286,24 @@ func (a *app) factoryStageGlyph(it factory.Item, views []factoryStageView, at in
 }
 
 // factoryStageAsks says whether the run stops at the stage at to ask the
-// person, read the way the runner reads it (internal/factory/run's loop): a
-// gate stage is a person; a stage whose own gate applies to the item asks
-// before it runs; `ask me at plan` asks after the plan stage; and every item
-// whose ask-me-at is not never is signed off after its last stage that runs.
+// person, read the way the runner reads it (internal/factory/run's loop): an
+// approve step is a person; and an item with an approve step anywhere is
+// signed off after its last stage that runs ([factory.HasApprove]).
 func factoryStageAsks(it factory.Item, views []factoryStageView, at int) bool {
 	v := views[at]
 	if factoryStageOut(v) {
 		return false
 	}
-	st := v.stage
-	if st.Kind == factory.StageGate || (st.Gate != factory.GateShip && factory.GateApplies(st, it)) {
+	if factory.IsApprove(v.stage) {
 		return true
 	}
-	first, last := -1, -1
+	last := -1
 	for i, w := range views {
-		if factoryStageOut(w) {
-			continue
+		if !factoryStageOut(w) {
+			last = i
 		}
-		if first < 0 && w.stage.Name == wordGatePlan {
-			first = i
-		}
-		last = i
 	}
-	if it.Gate == factory.GatePlan && first == at {
-		return true
-	}
-	return it.Gate != factory.GateNone && last == at
+	return factory.HasApprove(it) && last == at
 }
 
 // factoryStageRowCell is the stage at as a row of the item page's rail: its
@@ -1710,7 +1701,6 @@ func (a *app) factoryResultPane(it factory.Item, measure, room int) []string {
 // factorySettingsPane is the item's settings, the knobs that stood in the
 // verbs' `set` group and on the head's chips, as a table:
 //
-//	ask me at  plan        t
 //	thinking   —           e
 //	budget     $3          c
 //
@@ -1737,7 +1727,7 @@ func (a *app) factorySettingsPane(it factory.Item, measure, room int) []string {
 		for _, r := range g.rows {
 			acts[r.key] = true
 			switch r.key {
-			case keyAskAt, keyThinking, keyBudget, keyWalk:
+			case keyThinking, keyBudget, keyWalk:
 			default:
 				more = append(more, factoryHintClause(r.key, r.word))
 			}
@@ -1755,14 +1745,15 @@ func (a *app) factorySettingsPane(it factory.Item, measure, room int) []string {
 		}
 		return fit(line+valuePaint(factoryPad(value, factorySetValueW))+pal.dim(key), measure)
 	}
-	// THE KNOBS STAND IN THE ORDER A PERSON TURNS THEM BEFORE A RUN: where it
-	// stops to ask, how hard it thinks, what it may spend.
+	// THE KNOBS STAND IN THE ORDER A PERSON TURNS THEM BEFORE A RUN: how hard
+	// it thinks, what it may spend. Where it holds for the person is an
+	// approve step among the stages below.
 	chips := map[string]factoryChip{}
 	for _, c := range a.factoryChipList(it) {
 		chips[c.label] = c
 	}
 	var knobs []string
-	for _, label := range []string{wordAskAt, wordThinking, wordBudget} {
+	for _, label := range []string{wordThinking, wordBudget} {
 		c := chips[label]
 		key := ""
 		if acts[c.key] {

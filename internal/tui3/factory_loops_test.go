@@ -72,7 +72,7 @@ func TestFactoryStageRowsShowTheirLoops(t *testing.T) {
 	rows, body := factoryStageRowsAt(t, a, 3, 120)
 	t.Logf("before the run at 120:\n%s", strings.Join(body[3:12], "\n"))
 	for name, want := range map[string][2]string{
-		"plan": {"", asks}, "write": {"", ""}, "test": {"×2", ""}, "review": {"×2", ""}, "neaten": {"", ""}, "proof": {"", asks},
+		"plan": {"", ""}, "approve": {"", asks}, "write": {"", ""}, "test": {"×2", ""}, "review": {"×2", ""}, "neaten": {"", ""}, "proof": {"", asks},
 	} {
 		row, ok := rows[name]
 		if !ok {
@@ -99,24 +99,26 @@ func TestFactoryStageRowsShowTheirLoops(t *testing.T) {
 	}
 }
 
-// AN ITEM WHOSE ASK-ME-AT IS NEVER asks at no stage of its own, and a gate
-// stage, a person, always asks.
+// AN APPROVE STEP, A PERSON, ALWAYS ASKS; an item with an approve step takes
+// the sign-off after its last stage that runs, and one with none ships
+// itself, so asks at no stage of its own.
 func TestFactoryStageRowAsksWhereTheRunStops(t *testing.T) {
-	it := factory.Item{Gate: factory.GateNone}
+	approve := factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate, On: true}
+	it := factory.Item{}
 	views := []factoryStageView{
 		{stage: factory.Stage{Name: "plan", On: true}},
-		{stage: factory.Stage{Name: "sign", Kind: factory.StageGate, On: true}},
+		{stage: approve},
 		{stage: factory.Stage{Name: "proof", On: true}},
 	}
 	for at, want := range []bool{false, true, false} {
 		if got := factoryStageAsks(it, views, at); got != want {
-			t.Errorf("stage %s asks %v, not %v", views[at].stage.Name, got, want)
+			t.Errorf("with no approve step on the item, stage %s asks %v, not %v", views[at].stage.Name, got, want)
 		}
 	}
-	it.Gate = factory.GatePlan
-	for at, want := range []bool{true, true, true} {
+	it.Stages = []factory.Stage{{Name: "plan", On: true}, approve, {Name: "proof", On: true}}
+	for at, want := range []bool{false, true, true} {
 		if got := factoryStageAsks(it, views, at); got != want {
-			t.Errorf("under ask me at plan, stage %s asks %v, not %v", views[at].stage.Name, got, want)
+			t.Errorf("with an approve step, stage %s asks %v, not %v", views[at].stage.Name, got, want)
 		}
 	}
 	views[2].off = true
@@ -169,23 +171,23 @@ func TestFactoryTLHeadSaysTheLoop(t *testing.T) {
 	factoryOn(t, a, 2)
 	it, _ := a.factoryCursorItem()
 	stages := factoryStages(a.fp.snap, it)
-	open := ansi.Strip(a.factoryTLHead(it, 3, factoryMarkRunning, stages, true))
+	open := ansi.Strip(a.factoryTLHead(it, 4, factoryMarkRunning, stages, true))
 	want := a.factorySpin() + " review · round 1 of 2 · until clean · per finding"
 	if !strings.HasPrefix(open, want) {
 		t.Errorf("the open head is %q, not %q…", open, want)
 	}
-	if folded := ansi.Strip(a.factoryTLHead(it, 3, factoryMarkRunning, stages, false)); !strings.HasPrefix(folded, a.factorySpin()+" review 1/2") || strings.Contains(folded, wordUntil) {
+	if folded := ansi.Strip(a.factoryTLHead(it, 4, factoryMarkRunning, stages, false)); !strings.HasPrefix(folded, a.factorySpin()+" review 1/2") || strings.Contains(folded, wordUntil) {
 		t.Errorf("the folded head is %q", folded)
 	}
 	if head := ansi.Strip(a.factoryTLHead(it, 0, factoryMarkDone, stages, true)); strings.Contains(head, wordRound) || !strings.Contains(head, "plan · until done") {
 		t.Errorf("a one-round stage's open head is %q", head)
 	}
-	if head := ansi.Strip(a.factoryTLHead(it, 1, factoryMarkDone, stages, true)); !strings.Contains(head, "write · until done · per file") {
+	if head := ansi.Strip(a.factoryTLHead(it, 2, factoryMarkDone, stages, true)); !strings.Contains(head, "write · until done · per file") {
 		t.Errorf("the write's open head is %q", head)
 	}
 	story := a.factoryTLStory(it, 120)
 	for i, l := range story {
-		if l.kind == factoryTLHead && l.phase == 3 {
+		if l.kind == factoryTLHead && l.phase == 4 {
 			if i+1 >= len(story) || strings.TrimSpace(ansi.Strip(story[i+1].left)) != wordAskLabel+" read it as a stranger would" {
 				t.Fatalf("the line under the open review head is not its ask: %q", ansi.Strip(story[i+1].left))
 			}

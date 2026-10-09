@@ -274,9 +274,6 @@ func Merge(st *store.Store, origin string, items []factory.Item) error {
 		if len(in.Stages) == 0 {
 			in.Stages = factory.CopyStages(factory.DefaultRecipe().For(in.Kind))
 		}
-		if in.Gate == "" {
-			in.Gate = factory.GateShip
-		}
 		if len(in.Places) == 0 && in.Repo != "" {
 			in.Places = []string{in.Repo}
 		}

@@ -33,7 +33,7 @@ import (
 //
 //	touches money      maybe a duplicate of #7      thin  the facts, dim
 //
-//	ask me at  pull request  budget  $5  thinking  —      the chips
+//	budget  $5  thinking  —                              the chips
 //
 //	● plan    ◐ write    ○ test    ○ review               the stages
 //
@@ -43,7 +43,7 @@ import (
 //
 //	» chat                                                only when it has one
 //
-//	enter open · r run · T chat · space select · t ask me at plan   the strip, last row
+//	enter open · r run · T chat · space select            the strip, last row
 //
 // AN EMPTY BLOCK VANISHES WITH ITS BLANK ROW, so a block that has nothing to
 // say costs nothing, and nothing is drawn for a zero or an empty value
@@ -361,35 +361,27 @@ type factoryChip struct {
 	valueW            int
 }
 
-// factoryChipList is the item's chips: where the run asks you, the budget
-// and the thinking, ALWAYS THREE, in that order, so each stands in its own
-// slot on every item ([app.factoryChipRow]). THEIR WORDS ARE THE VOCABULARY'S
-// (factory_words.go): `ask me at  plan`, `budget  $5`, `thinking  —`. THE
+// factoryChipList is the item's chips: the budget and the thinking, ALWAYS
+// TWO, in that order, so each stands in its own slot on every item
+// ([app.factoryChipRow]). Where the run holds for the person is an approve
+// step among the stages, never a chip. THEIR WORDS ARE THE VOCABULARY'S
+// (factory_words.go): `budget  $5`, `thinking  —`. THE
 // THINKING CHIP READS THE STAGE `e` TURNS ([factoryEffortStage]), so the chip
 // and the key are about the same stage, and it says a dash when that stage
 // carries no word, which is the knee: the crew picks how hard to think for
-// this class of work. A gate or a budget of nothing has an empty value, and
-// its slot is drawn as air (the emptiness law).
+// this class of work. A budget of nothing has an empty value, and its slot is
+// drawn as air (the emptiness law).
 func (a *app) factoryChipList(it factory.Item) []factoryChip {
 	thinking := "—"
 	stages := factoryStages(a.fp.snap, it)
 	if at := factoryEffortStage(a.fp.snap, it); at >= 0 && at < len(stages) && stages[at].Effort != "" {
 		thinking = stages[at].Effort
 	}
-	gate := ""
-	if it.Gate != "" {
-		gate = factoryGateWord(it.Gate)
-	}
 	return []factoryChip{
-		{wordAskAt, gate, keyAskAt, factoryGateValueW},
 		{wordBudget, factoryMoney(it.Cap), keyBudget, factoryChipValueW},
 		{wordThinking, thinking, keyThinking, factoryChipValueW},
 	}
 }
-
-// factoryGateValueW is the gate chip's value cell: its widest word, `pull
-// request`, so the budget after it starts at one cell whatever the gate says.
-var factoryGateValueW = max(ansi.StringWidth(wordGatePlan), ansi.StringWidth(wordGatePR), ansi.StringWidth(wordGateNever))
 
 // factoryChipRow is the chips as one row of FIXED SLOTS: each a muted label,
 // [factoryLabelGap] of air, the value in ink padded to [factoryChipValueW],

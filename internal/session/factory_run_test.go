@@ -117,7 +117,7 @@ func TestFactoryRunIsOnTheBeltOnlyWithItsDoor(t *testing.T) {
 			continue
 		}
 		found = true
-		for _, want := range []string{"NO CARD IS SHOWN", "one lowercase word each, at most nine", "only the stages that have not started", "Proof and a gate stage are never skipped"} {
+		for _, want := range []string{"NO CARD IS SHOWN", "one lowercase word each, at most nine", "only the stages that have not started", "Proof is never skipped", "An approve step (named approve"} {
 			if !strings.Contains(tool.Description, want) {
 				t.Errorf("the description does not say %q", want)
 			}
@@ -185,5 +185,30 @@ func TestLiveAgentForIsTheOpenConversation(t *testing.T) {
 	a.closed = true
 	if _, ok := LiveAgentFor(path); ok {
 		t.Fatal("a closed conversation read as live")
+	}
+}
+
+// AN APPROVE STEP IS ADDED BY NAME WITH NO ASK: the person is the step, and it
+// is the manager's, placed after the stage it names.
+func TestRunEditAddsAnApproveStepWithNoAsk(t *testing.T) {
+	var args runArgs
+	if err := json.Unmarshal([]byte(`{"add":[{"name":"approve","after":"test","why":"the person reads the tests first"}]}`), &args); err != nil {
+		t.Fatal(err)
+	}
+	e, err := runEditOf(args)
+	if err != nil || len(e.Add) != 1 {
+		t.Fatalf("edit = %+v, %v", e, err)
+	}
+	st := e.Add[0].Stage
+	if st.Kind != factory.StageGate || st.Name != factory.ApproveName || st.Ask != "" || e.Add[0].After != "test" || st.By != factory.ByManager {
+		t.Fatalf("approve = %+v after %q", st, e.Add[0].After)
+	}
+	if _, err := runEditOf(runArgs{Add: []struct {
+		Name  string `json:"name"`
+		Ask   string `json:"ask"`
+		After string `json:"after"`
+		Why   string `json:"why"`
+	}{{Name: "arch", After: "test"}}}); err == nil {
+		t.Fatal("a conversation stage with no ask was taken")
 	}
 }

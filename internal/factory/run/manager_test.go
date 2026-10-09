@@ -287,14 +287,11 @@ func TestAYesTypedInTheManagerAnswersTheQuestionThatStands(t *testing.T) {
 	g, _ := managed(t, map[factory.StageKind]Executor{
 		factory.StageChat: ExecutorFunc(func(context.Context, Job) (factory.StageResult, error) { return done("ok"), nil }),
 	}, talk, 5*time.Millisecond)
-	id := g.add("fix it", chat("plan"), chat("write"))
-	if err := g.st.Update(id, func(it *factory.Item) error { it.Gate = factory.GatePlan; return nil }); err != nil {
-		t.Fatal(err)
-	}
+	id := g.add("fix it", chat("plan"), factory.Stage{Name: factory.ApproveName, Kind: factory.StageGate}, chat("write"))
 	if err := g.r.Launch(id); err != nil {
 		t.Fatal(err)
 	}
-	q := "plan is ready · go, or change it?"
+	q := factory.ApproveQuestion("plan")
 	it := g.asked(id, q)
 	talk.waitSaid(t, it.Talk, "asking you: "+q)
 	talk.typed(it.Talk, "Yes.")
@@ -321,6 +318,12 @@ func TestATypedAnswerIsReadByTheQuestionsKind(t *testing.T) {
 		{"yes, go", "plan", true, "", true},
 		{"what does it cost?", "cap", false, "", false},
 		{"split it in two", "gate", false, "split it in two", true},
+		// AT AN APPROVE STEP words go on, a no with words sends back.
+		{"continue", factory.QKindApprove, true, "", true},
+		{"yes, keep the old flag", factory.QKindApprove, true, "keep the old flag", true},
+		{"No, use the Other file", factory.QKindApprove, false, "use the Other file", true},
+		{"no", factory.QKindApprove, false, "", true},
+		{"what does the plan change?", factory.QKindApprove, false, "", false},
 	} {
 		yes, said, ok := typedAnswer(c.words, c.kind)
 		if yes != c.yes || said != c.said || ok != c.ok {

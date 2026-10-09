@@ -26,8 +26,8 @@ type Seam struct {
 
 	// Answer resolves a waiting question: yes, no, or words.
 	Answer func(id int, yes bool, words string) error
-	// Steer hands words into a running stream. Words that name an effort, a
-	// gate or a round count change the item; the rest is folded into the work.
+	// Steer hands words into a running stream. Words that name an effort or
+	// a round count change the item; the rest is folded into the work.
 	Steer func(id int, words string) error
 
 	// SignOff ships a landed item. Edited says the person changed something
@@ -61,8 +61,8 @@ type Seam struct {
 	AddStage func(id int, words string) error
 	// BankStages writes the item's stages back onto its repo's recipe.
 	BankStages func(id int) error
-	// SetGate, SetCap and SetEffort are the item's chips.
-	SetGate   func(id int, g Gate) error
+	// SetCap and SetEffort are the item's chips. Where the run holds for the
+	// person is its approve steps, changed through Edit like any stage.
 	SetCap    func(id int, usd float64) error
 	SetEffort func(id int, stage int, effort string) error
 	// Edit changes the item's stages by the manager's (or anybody's) edit,
@@ -232,8 +232,6 @@ func (s Seam) Has(door string) bool {
 		return s.AddStage != nil
 	case "bankstages":
 		return s.BankStages != nil
-	case "setgate":
-		return s.SetGate != nil
 	case "setcap":
 		return s.SetCap != nil
 	case "seteffort":

@@ -171,9 +171,9 @@ func TestAFactoryItemCardCrossesTheTaskLaneWhole(t *testing.T) {
 	t.Cleanup(stop)
 	waitFor(t, "the engine opened the surface's task lane", func() bool { return far.opened() == 1 })
 
-	card := session.ItemNotice{ID: "g2", Item: 1, Ref: "#1", Skip: []string{"review"}, Gate: "plan", Cap: 8, Note: "the fixture is flaky", Why: "plan first",
-		Before: session.ItemFacts{Stages: []string{"plan", "write", "test", "review", "proof"}, Gate: "ship", Cap: 5},
-		After:  session.ItemFacts{Stages: []string{"plan", "write", "test", "proof"}, Gate: "plan", Cap: 8}}
+	card := session.ItemNotice{ID: "g2", Item: 1, Ref: "#1", Skip: []string{"review"}, Cap: 8, Note: "the fixture is flaky", Why: "a small change",
+		Before: session.ItemFacts{Stages: []string{"plan", "approve", "write", "test", "review", "proof"}, Cap: 5},
+		After:  session.ItemFacts{Stages: []string{"plan", "approve", "write", "test", "proof"}, Cap: 8}}
 	far.land(session.Event{Kind: session.EventItemProposal, Tool: "factory_item", Text: session.ItemHead(card), FactoryItem: &card})
 	got := nextTask(t, lane)
 	if got.Kind != session.EventItemProposal || got.FactoryItem == nil || !reflect.DeepEqual(*got.FactoryItem, card) {
@@ -181,12 +181,12 @@ func TestAFactoryItemCardCrossesTheTaskLaneWhole(t *testing.T) {
 	}
 
 	changed := card
-	changed.Now = &factory.Item{ID: 1, Title: "Total double-counts an entry added twice", Repo: "factory-demo", State: factory.StateNew, Gate: factory.GatePlan, Cap: 8,
+	changed.Now = &factory.Item{ID: 1, Title: "Total double-counts an entry added twice", Repo: "factory-demo", State: factory.StateNew, Cap: 8,
 		Notes: []string{"the fixture is flaky"}}
 	far.land(session.Event{Kind: session.EventItemChanged, Tool: "factory_item", FactoryItem: &changed})
 	got = nextTask(t, lane)
 	if got.Kind != session.EventItemChanged || got.FactoryItem == nil || got.FactoryItem.Now == nil ||
-		got.FactoryItem.Now.Gate != factory.GatePlan || got.FactoryItem.Now.Title != changed.Now.Title ||
+		got.FactoryItem.Now.Cap != 8 || got.FactoryItem.Now.Title != changed.Now.Title ||
 		!reflect.DeepEqual(got.FactoryItem.Now.Notes, changed.Now.Notes) {
 		t.Fatalf("the change arrived as %v / %+v", got.Kind, got.FactoryItem)
 	}

@@ -1205,14 +1205,11 @@ var tuiWords = map[string]tuiWord{
 			"y and n are offered only then. The strip composes each clause from factory_words.go's " +
 			"key and word, so the row names the key and holds the word",
 	},
-	"factoryShapeAsk": {
-		screen: "run these stages?",
-		why:    "the question the runner stops on after the manager shapes a run whose `ask me at` is plan; the floor draws it as the stages it asks about",
-	},
-	"factoryShapeKeep": {
-		screen: "keep the recipe",
-		key:    "n",
-		why:    "what `n` does on that question: the stages stay as the recipe has them",
+	"factoryApproveAsk": {
+		screen: "continue, or send it back?",
+		pkg:    "internal/factory",
+		why: "the question a run holds on at an approve step (plan → approve → write by default), after the " +
+			"step before it: `plan is ready · continue, or send it back?`. y continues; it replaced `ask me at`",
 	},
 	"factoryShapeSet": {
 		screen: "manager set",

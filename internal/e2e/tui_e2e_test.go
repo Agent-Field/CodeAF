@@ -2738,13 +2738,11 @@ func testFactoryRunsAnIssue(t *testing.T) {
 			t.Fatalf("#1 left the run as %q:\n%s\n%s", it.State, strings.Join(it.logLines(), "\n"), r.capture())
 		}
 		if it.State == "needs you" && it.Question != "" {
-			if strings.HasPrefix(it.Question, say(t, "factoryShapeAsk")) {
-				// THE SHAPING QUESTION: the stages stand under it and `n` keeps the recipe.
-				r.waitFor(30*time.Second, say(t, "factoryShapeAsk"))
-				r.waitFor(30*time.Second, say(t, "factoryShapeKeep"))
-			} else {
-				r.waitFor(30*time.Second, say(t, "factoryAnswerKeys"))
+			if strings.HasSuffix(it.Question, say(t, "factoryApproveAsk")) {
+				// THE APPROVE STEP: the run holds after plan until the person says continue.
+				r.waitFor(30*time.Second, say(t, "factoryApproveAsk"))
 			}
+			r.waitFor(30*time.Second, say(t, "factoryAnswerKeys"))
 			key := "y"
 			if strings.Contains(it.Question, say(t, "factoryRoundsAsk")) {
 				key = "n"

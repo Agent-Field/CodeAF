@@ -14,8 +14,7 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 //
 // THE WORDS SAY WHAT THE KEY DOES, never the shape the screen draws it in:
 //
-//	r  run              run every stage; the run stops where `ask me at` says
-//	t  ask me at        where the run stops to ask you: plan, pull request, never
+//	r  run              run every stage; the run holds at each approve step
 //	T  chat             a conversation about this item with the issue loaded
 //	space select        tick the row to run several together
 //	L  run selected     run the ticked rows (named only while one is ticked)
@@ -32,16 +31,13 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 //	U  refresh all      read every item again
 //	h  handover         the four-row head
 //
-// THE RECIPE FILE KEEPS ITS OWN GRAMMAR. `.codeaf/factory.md` still says
-// `gate plan`, `gate ship`, `gate none` and `effort strong`, and the item's
-// stored gate is still [factory.GatePlan], [factory.GateShip] or
-// [factory.GateNone]: only the screen's words changed ([factoryGateWord]).
+// WHERE THE RUN HOLDS FOR THE PERSON IS AN APPROVE STEP among the stages
+// (internal/factory's approve.go), never a setting: `ask me at` is gone.
 
 // The keys.
 const (
 	keyOpen               = "enter"
 	keyRun                = "r"
-	keyAskAt              = "t"
 	keyChat               = "T"
 	keySelect             = "space"
 	keyRunSelected        = "L"
@@ -91,10 +87,6 @@ const (
 	wordOpen               = "open"
 	wordProof              = "proof"
 	wordRun                = "run"
-	wordAskAt              = "ask me at"
-	wordGatePlan           = "plan"
-	wordGatePR             = "pull request"
-	wordGateNever          = "never"
 	wordChat               = "chat"
 	wordSelect             = "select"
 	wordRunSelected        = "run selected"
@@ -261,27 +253,3 @@ const factoryStripMost = 5
 
 // factoryHintClause is one clause of a key line: the key, a space, the word.
 func factoryHintClause(key, word string) string { return key + " " + word }
-
-// factoryGateWord is the screen's word for where the run stops to ask: the
-// stored gate is the recipe file's word (`plan`, `ship`, `none`), and the
-// screen says it the way a person would (`plan`, `pull request`, `never`).
-func factoryGateWord(g factory.Gate) string {
-	switch g {
-	case factory.GatePlan:
-		return wordGatePlan
-	case factory.GateShip:
-		return wordGatePR
-	case factory.GateNone:
-		return wordGateNever
-	}
-	return string(g)
-}
-
-// factoryAskAtWords is the gate as one phrase, `ask me at plan`, and nothing
-// for an item with no gate (the emptiness law).
-func factoryAskAtWords(g factory.Gate) string {
-	if g == "" {
-		return ""
-	}
-	return wordAskAt + " " + factoryGateWord(g)
-}

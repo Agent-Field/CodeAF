@@ -16,12 +16,13 @@ import (
 const ownerRecipe = `# factory recipe · codeaf
 
 ## issue
-1. plan · chat · read the issue and say how · gate plan when large
-2. write · chat · fanout 3
-3. test · check · go test ./... · until clean · max 2
-4. review · chat · read it as a stranger would · until clean · max 2
-5. security · chat · when touches auth
-6. proof · chat · show each claim in its own medium
+1. plan · chat · read the issue and say how
+2. approve · when large
+3. write · chat · fanout 3
+4. test · check · go test ./... · until clean · max 2
+5. review · chat · read it as a stranger would · until clean · max 2
+6. security · chat · when touches auth
+7. proof · chat · show each claim in its own medium
 
 ## pr
 1. read · chat · what changed and why
@@ -43,12 +44,17 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 		t.Fatalf("problems = %+v", probs)
 	}
 	is := r.For(factory.KindIssue)
-	if len(is) != 6 {
+	if len(is) != 7 {
 		t.Fatalf("issue stages = %d", len(is))
 	}
-	if p := is[0]; p.Name != "plan" || p.Kind != factory.StageChat || p.Ask != "read the issue and say how" || p.Gate != factory.GatePlan || p.GateWhen != "large" || p.When != "" || !p.On {
+	if p := is[0]; p.Name != "plan" || p.Kind != factory.StageChat || p.Ask != "read the issue and say how" || p.When != "" || !p.On {
 		t.Fatalf("plan = %+v", p)
 	}
+	// `N. approve` is the person's gate without saying gate.
+	if a := is[1]; a.Name != factory.ApproveName || a.Kind != factory.StageGate || a.When != "large" || !a.On {
+		t.Fatalf("approve = %+v", a)
+	}
+	is = append(is[:1:1], is[2:]...)
 	// A line with no ask copies the default's stage and lays its knobs over.
 	if w := is[1]; w.Ask != "make the change in the checkout" || w.Fanout != "3" || w.Until != "done" {
 		t.Fatalf("write = %+v", w)
@@ -67,7 +73,7 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 	if rv := pr[2]; rv.Ask != "findings as a comment" || rv.Fanout != "per-finding" || rv.Max != 2 {
 		t.Fatalf("pr review = %+v", rv)
 	}
-	if pf := pr[3]; pf.Name != "proof" || pf.Ask != "the sheet" || pf.Gate != factory.GateShip || pf.Until != "proven" {
+	if pf := pr[3]; pf.Name != "proof" || pf.Ask != "the sheet" || pf.Until != "proven" {
 		t.Fatalf("pr proof shorthand = %+v", pf)
 	}
 	// The missing ci section is the default's.
@@ -83,13 +89,13 @@ func TestParseTheOwnersRecipe(t *testing.T) {
 }
 
 func TestParseEveryKnob(t *testing.T) {
-	r, probs := factory.Parse("## chore\n1. tidy · post · neaten it · when has ui · until proven · rounds 3 · fanout per file · gate ship · effort strong · proof a test, a screenshot · off\n2. ask · gate\n")
+	r, probs := factory.Parse("## chore\n1. tidy · post · neaten it · when has ui · until proven · rounds 3 · fanout per file · effort strong · proof a test, a screenshot · off\n2. ask · gate\n")
 	if len(probs) != 0 {
 		t.Fatalf("problems = %+v", probs)
 	}
 	got := r.For(factory.KindChore)
 	want := factory.Stage{Name: "tidy", Kind: factory.StagePost, Ask: "neaten it", When: "has ui", Until: "proven", Max: 3,
-		Fanout: "per-file", Gate: factory.GateShip, Effort: "strong", Proof: []string{"a test", "a screenshot"}, On: false}
+		Fanout: "per-file", Effort: "strong", Proof: []string{"a test", "a screenshot"}, On: false}
 	if !reflect.DeepEqual(got[0], want) {
 		t.Fatalf("stage = %+v\nwant    %+v", got[0], want)
 	}
@@ -125,6 +131,23 @@ func TestParseNamesBadLinesAndLoadsTheRest(t *testing.T) {
 	}
 }
 
+// `## approve` ON A LINE OF ITS OWN INSIDE A KIND'S SECTION is an approve step
+// at that place, and a second one is approve2; the file writes them back as
+// stage lines.
+func TestParseApproveHeadingIsAStep(t *testing.T) {
+	r := mustParse(t, "## issue\n1. plan · chat · say how\n## approve\n2. write · chat · do it\n## approve\n3. proof\n")
+	var names []string
+	for _, st := range r.Stages {
+		names = append(names, st.Name+":"+string(st.Kind))
+	}
+	if strings.Join(names, " ") != "plan:chat approve:gate write:chat approve2:gate proof:chat" {
+		t.Fatalf("stages = %q", names)
+	}
+	if again := mustParse(t, factory.Format(r)); !reflect.DeepEqual(again.Stages, r.Stages) {
+		t.Fatalf("drifted: %+v", again.Stages)
+	}
+}
+
 func TestParseNeverPanics(t *testing.T) {
 	for _, s := range []string{"", "\n\n", "##", "## issue\n1.", "## issue\n1. ·", "## issue\n1. a · gate when", "## issue\n1. a · proof", "## issue\n1. a · fanout per", "\r\n## pr\r\n1. read\r\n"} {
 		factory.Parse(s)
@@ -140,7 +163,7 @@ func TestFormatRoundTripsTheDefault(t *testing.T) {
 	if again := factory.Format(r); again != first {
 		t.Fatalf("not byte-stable:\n%s\n---\n%s", first, again)
 	}
-	if !strings.Contains(first, "5. security · chat · secrets, injection and authz · until clean · off") {
+	if !strings.Contains(first, "6. security · chat · secrets, injection and authz · until clean · off") {
 		t.Fatalf("default file =\n%s", first)
 	}
 	// The owner's file comes back in the same shape it went in.
@@ -149,7 +172,7 @@ func TestFormatRoundTripsTheDefault(t *testing.T) {
 	if !reflect.DeepEqual(o, o2) {
 		t.Fatalf("owner's recipe drifted across a round trip")
 	}
-	if !strings.Contains(factory.Format(o), "1. plan · chat · read the issue and say how · gate plan when large") {
+	if !strings.Contains(factory.Format(o), "1. plan · chat · read the issue and say how\n2. approve · gate · when large\n") {
 		t.Fatalf("formatted owner's recipe =\n%s", factory.Format(o))
 	}
 }

@@ -569,10 +569,9 @@ func (a *app) recipeCardBody(n *session.RecipeNotice, stem string, room int) []s
 // head is the engine's one question and the body says before and after, only
 // for what changes.
 //
-//	╭─ ? #1 · ask me at plan, budget $8? ─────────────────────────────────────
-//	│ ask me at  pull request → plan
+//	╭─ ? #1 · raise the budget to $8? ───────────────────────────────────────
 //	│ budget  $5 → $8
-//	│ why: the person wants to see the plan before any code
+//	│ why: the stages need a second review round
 //	╰──────────────────────────────────────────────────────────────────────────
 //
 // AFTERWARDS IT FOLDS TO ITS HEAD AND ONE FOOT, in the factory card's place:

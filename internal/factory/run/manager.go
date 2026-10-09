@@ -59,7 +59,8 @@ const (
 	sayStopped   = "stopped"
 	sayPaused    = "paused"
 	sayResumed   = "resumed"
-	saySteer     = "steer: %s" // what the person typed during a run
+	saySteer     = "steer: %s"       // what the person typed during a run
+	sayBack      = "sent back to %s" // sent back to plan: <the person's words>, from an approve step
 	saySep       = " · "
 )
 
@@ -305,10 +306,25 @@ func typedAnswer(words, qkind string) (yes bool, said string, ok bool) {
 	rest := strings.TrimSpace(strings.Trim(strings.Join(fields[1:], " "), ".,!?:;- "))
 	var isYes, isNo bool
 	switch first {
-	case "yes", "y", "yeah", "yep", "go", "ok", "okay", "sure":
+	case "yes", "y", "yeah", "yep", "go", "ok", "okay", "sure", "continue", "approve", "approved", "lgtm":
 		isYes = true
 	case "no", "n", "nope", "stop":
 		isNo = true
+	}
+	// AN APPROVE STEP TAKES WORDS EITHER WAY: a yes with words goes on with
+	// them as the person's note (`yes, keep the old flag`), and a no with words
+	// sends the run back with them (`no, use the other file`). WORDS THAT OPEN
+	// ON NEITHER ARE NOT AN ANSWER: the person is talking to the manager (`what
+	// does the plan change?`), and the run keeps holding.
+	if qkind == factory.QKindApprove {
+		said := strings.TrimSpace(strings.Trim(strings.Join(strings.Fields(words)[1:], " "), ".,!?:;- "))
+		switch {
+		case isNo:
+			return false, said, true
+		case isYes:
+			return true, said, true
+		}
+		return false, "", false
 	}
 	takesWords := false
 	switch qkind {

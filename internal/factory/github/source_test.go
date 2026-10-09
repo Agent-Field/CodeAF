@@ -325,12 +325,12 @@ func TestPollCreatesThenUpdatesWithoutClobbering(t *testing.T) {
 		t.Fatalf("the first poll made %d items", len(items))
 	}
 	issue := byNum(items)[7]
-	if len(issue.Stages) == 0 || issue.Gate != factory.GateShip || len(issue.Places) != 1 {
-		t.Fatalf("a new forge item has no stages or gate: %+v", issue)
+	if len(issue.Stages) == 0 || !factory.HasApprove(issue) || len(issue.Places) != 1 {
+		t.Fatalf("a new forge item has no stages or approve step: %+v", issue)
 	}
 	// The person's own edits.
 	if err := st.Update(issue.ID, func(it *factory.Item) error {
-		it.Gate, it.Cap, it.State = factory.GatePlan, 7, factory.StateDismissed
+		it.Cap, it.State = 7, factory.StateDismissed
 		it.Stages[0].On = false
 		it.Triage.Readiness = 80
 		return nil
@@ -360,7 +360,7 @@ func TestPollCreatesThenUpdatesWithoutClobbering(t *testing.T) {
 	if got.Body != "short now" {
 		t.Fatalf("the forge's new body did not land: %q", got.Body)
 	}
-	if got.Gate != factory.GatePlan || got.Cap != 7 || got.Stages[0].On || got.Triage.Readiness != 80 || got.Triage.Size != "L" {
+	if got.Cap != 7 || got.Stages[0].On || got.Triage.Readiness != 80 || got.Triage.Size != "L" {
 		t.Fatalf("the poll undid a person's edit: %+v", got)
 	}
 	if got.State != factory.StateNew {
