@@ -5,7 +5,7 @@ import design from '../../src/design/tokens.json' with { type: 'json' };
 import { installMockEngine } from './support/mock-engine';
 import { plainReply } from './support/scenarios';
 
-// Shell 2h "Preview", 3a, 3k: hovering an inactive tab for 500ms shows a 300px text card; moving across
+// Shell 2h "Preview", 3a, 3k: hovering an inactive tab for 500ms shows a 300px content column plus 14px side padding; moving across
 // neighbours swaps it at once; a press, a drag or Escape closes it; a card that needs you carries Allow all.
 const delay = design.interaction.previewOpenDelay;
 const permission = (id: number, head: string, tasks = ['3']): EngineQuestion => ({
@@ -30,7 +30,7 @@ async function open(page: Page) {
   return engine;
 }
 
-test('a 500ms hover opens a 300px text card; hovering the active tab opens nothing', async ({ page }) => {
+test('a 500ms hover opens the reference 328px padded text card; hovering the active tab opens nothing', async ({ page }) => {
   await open(page);
   expect(delay).toBe(500);
   const port = page.getByRole('tab', { name: 'Port fix', exact: true });
@@ -40,7 +40,7 @@ test('a 500ms hover opens a 300px text card; hovering the active tab opens nothi
   await expect(card(page, 'Port fix')).toHaveCount(0);
   await expect(card(page, 'Port fix')).toBeVisible();
   expect(Date.now() - started).toBeGreaterThanOrEqual(delay * 0.9);
-  expect(await card(page, 'Port fix').locator('.preview-card').evaluate(el => (el as HTMLElement).offsetWidth)).toBe(300);
+  expect(await card(page, 'Port fix').locator('.preview-card').evaluate(el => (el as HTMLElement).offsetWidth)).toBe(328);
   await expect(card(page, 'Port fix')).toContainText('Task');
   await expect(card(page, 'Port fix')).toContainText('Needs you');
   await expect(card(page, 'Port fix')).toContainText('Allow 3 actions?');

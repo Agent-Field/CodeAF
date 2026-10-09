@@ -297,3 +297,7 @@ The History lane numbered these Q35–Q44 on its branch; the file and terminal l
 | H8 | History: continuing an archived conversation | Continue takes it back out of the archive, as Restore all does. |
 | H9 | History row menu: "Add to place" and "Delete" | Absent. The place graph and its routes now exist (Places lane), but the History row menu is not wired to them yet, and there is no engine delete route. The menu shows Continue, Read conversation and Archive. |
 | H10 | Auto-archive toast duration: Components says every toast sits 6s and always offers Undo; 4c's archive toast offers Review and Restore all | 6s (`historyToastMs`), paused while hovered or focused; Restore all is its undo. |
+
+
+### Preview geometry from rendered reference
+Detailed Shell 3k and Components §15 declare width 300px with 14px horizontal padding in content-box sizing: rendered text cards are 328px wide. The app preserves that content width through a shared inline-padding token and a derived border-box width. Web screenshot cards have no outer padding and remain 300px. The catalogue prose calls these “300px cards”; this is treated as nominal content width, with the detailed rendered geometry authoritative. Narrow windows still clamp the whole card to the available space.
