@@ -95,3 +95,15 @@ func TestConsentOnceAnswersOnlyTheExactPendingCall(t *testing.T) {
 		t.Fatal("once created a broad bash grant")
 	}
 }
+
+func TestUnclaimedConsentCannotWinWithStandingPermission(t *testing.T) {
+	// A second window can arrive after another window has claimed the exact
+	// question, but before its one-shot answer reaches the blocked call.
+	// Without the offer it has no authority to widen that in-flight answer.
+	if err := consentScopeError(Question{}, false, Answer{Kind: QuestionConsent, Key: "2"}); err == nil {
+		t.Fatal("an unclaimed widening answer was allowed to dispatch")
+	}
+	if err := consentScopeError(Question{}, false, Answer{Kind: QuestionConsent, Key: "1"}); err != nil {
+		t.Fatal("ordinary one-shot replay handling changed")
+	}
+}
