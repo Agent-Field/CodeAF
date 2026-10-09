@@ -38,10 +38,6 @@
 .work-list { margin: 0; padding-inline-start: var(--space-4); }
 
 
-.work-thinking { display: flex; flex-direction: column; gap: var(--space-half); min-width: 0; }
-.work-thinking-label { display: inline-flex; align-items: center; gap: var(--space-tight); min-height: var(--step-row-height); padding-inline: var(--space-half); }
-.work-thinking-text, .work-thinking-body { margin: 0; padding-inline-start: calc(var(--icon-xs) + var(--space-tight) + var(--space-half)); font-style: italic; white-space: pre-wrap; overflow-wrap: anywhere; }
-.work-thinking-text { display: flex; flex-direction: column; justify-content: flex-end; max-height: calc(var(--font-size-body) * var(--line-height-tight) * 3); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--work-fade)); mask-image: linear-gradient(to bottom, transparent, black var(--work-fade)); }
 
 .work-specimen { display: flex; flex-direction: column; gap: var(--space-4); max-width: var(--content-max-width); }
 .work-specimen-label { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
