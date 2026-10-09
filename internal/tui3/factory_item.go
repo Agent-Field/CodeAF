@@ -2057,8 +2057,6 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 				out = append(out, a.factoryLogRow(l, measure))
 			}
 		}
-	case v.state == factory.PhaseWaiting && factoryIsShaping(it) && it.State == factory.StateNeedsYou:
-		out = append(out, a.factoryShapingBlock(it, measure, room)...)
 	case v.state == factory.PhaseWaiting:
 		q := strings.TrimSpace(it.Question)
 		if q == "" {

@@ -118,7 +118,7 @@ func (a *app) factoryPeek(it factory.Item, measure, room int) []string {
 	}
 	before := [][]string{
 		title,
-		a.factoryPeekQuestion(it, measure, max(avail-len(title), factoryShapingMinRows)),
+		a.factoryPeekQuestion(it, measure),
 		a.factoryPeekRead(it, measure),
 		a.factoryPeekFacts(it, measure),
 		{a.factoryPeekChips(it, measure)},
@@ -240,14 +240,11 @@ func factoryMetaLine(meta []string, measure int) string {
 // title: the question led by its mark and its keys under it. THE AMBER IS ON
 // THE MARK AND NOWHERE ELSE (docs/DESIGN-LANGUAGE.md's COLOUR IS STROKE, NEVER
 // FILL); the words are ink and the keys dim.
-func (a *app) factoryPeekQuestion(it factory.Item, measure, room int) []string {
+func (a *app) factoryPeekQuestion(it factory.Item, measure int) []string {
 	if it.State != factory.StateNeedsYou {
 		return nil
 	}
 	pal := a.pal
-	if factoryIsShaping(it) {
-		return a.factoryShapingBlock(it, measure, room)
-	}
 	var out []string
 	if q := strings.TrimSpace(it.Question); q != "" {
 		out = a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ink, factoryPeekWidth(measure))
