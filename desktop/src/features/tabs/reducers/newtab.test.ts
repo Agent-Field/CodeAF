@@ -35,10 +35,11 @@ test('only a field can become something else', () => {
   assert.equal(run(base, { type: 'newtab-become', id: 'a', kind: 'file', title: 'x' }).tabs[0].kind, 'conversation');
 });
 
-test('reopening from the field restores the closed tab into the field and drops it from the closed list', () => {
+test('reopening from the field brings the closed tab back under its own id, the field goes, and the closed list drops it', () => {
   const closed = tab('c', { title: 'Fix it in the lexer', sessionFile: '/s/9.jsonl', draft: 'half' });
   const s = run(state([tab('f', { kind: 'newtab', title: 'New tab' })], { closed: [closed] }), { type: 'newtab-reopen', id: 'f', closedId: 'c' });
-  assert.deepEqual([s.tabs[0].id, s.tabs[0].kind, s.tabs[0].title, s.tabs[0].sessionFile, s.tabs[0].draft, s.closed.length], ['f', 'conversation', 'Fix it in the lexer', '/s/9.jsonl', 'half', 0]);
+  assert.deepEqual([s.tabs.length, s.tabs[0].id, s.tabs[0].kind, s.tabs[0].title, s.tabs[0].sessionFile, s.tabs[0].draft, s.closed.length, s.activeId], [1, 'c', 'conversation', 'Fix it in the lexer', '/s/9.jsonl', 'half', 0, 'c']);
+  assert.ok(!s.recentIds.includes('f'));
 });
 
 test('reopening an unknown closed tab changes nothing', () => {

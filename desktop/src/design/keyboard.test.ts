@@ -36,3 +36,11 @@ test('⌃Tab switches recent tabs on both platforms and ⌘Tab is left to macOS'
   assert.deepEqual(mac(key('Tab', { ctrlKey: true, shiftKey: true })), { id: 'switch-back' });
   assert.equal(mac(key('Tab', { metaKey: true })), undefined);
 });
+
+test('⌘G (Ctrl G on Linux) groups the selected tabs; ⌘⇧G and ⌥⌘G mean nothing here', () => {
+  assert.deepEqual(mac(key('g', { metaKey: true })), { id: 'group' });
+  assert.deepEqual(linux(key('g', { ctrlKey: true })), { id: 'group' });
+  assert.equal(mac(key('g', { ctrlKey: true })), undefined);
+  assert.equal(mac(key('G', { metaKey: true, shiftKey: true })), undefined);
+  assert.equal(mac(key('©', { code: 'KeyG', metaKey: true, altKey: true })), undefined);
+});

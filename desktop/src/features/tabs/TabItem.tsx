@@ -1,4 +1,5 @@
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
+import { isMac } from '../../design/keyboard';
 import type { TabMark } from '../conversation/tabSummary';
 import type { TabsApi } from './context';
 import { tabDragProps } from './hosts/dragHost';
@@ -29,18 +30,23 @@ function navigate(api: TabsApi, order: readonly Tab[], tab: Tab) {
   };
 }
 
+/** ⌘-click on a Mac, Ctrl-click elsewhere: picks a tab for ⌘G instead of selecting it (Shell, "⌘-selecting and pressing ⌘G"). */
+const picks = (event: MouseEvent) => (isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey) && !event.altKey && !event.shiftKey;
+
 /** One strip item: the tab primitive composed with the menu, preview and drag hosts. */
 export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; tab: Tab; order: readonly Tab[]; inGroup?: boolean }) {
   const active = tab.id === api.state.activeId;
-  const frame = tabDragProps(api, tab);
+  const picked = !!api.state.picked?.includes(tab.id);
+  const frame = { ...tabDragProps(api, tab), 'data-picked': picked || undefined };
+  const choose = (id: string) => (event: MouseEvent) => api.dispatch(picks(event) ? { type: 'pick', id: tab.id } : { type: 'select', id });
   if (tab.split) {
     const { panes, focus } = tab.split;
     const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, state: stateOfMark(api.summaries[pane.id]?.mark) }));
-    return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={index => api.dispatch({ type: 'select', id: panes[index].id })} onClose={() => api.closeTab(tab.id)}/>);
+    return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={(index, event) => choose(panes[index].id)(event)} onClose={() => api.closeTab(tab.id)}/>);
   }
   return withTabMenu(api, tab, (
-    <TabView kind={tab.kind} title={tab.title} active={active} pinned={tab.pinned} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
-      onSelect={() => api.dispatch({ type: 'select', id: tab.id })} onClose={() => api.closeTab(tab.id)} onRename={() => api.startRename(tab.id)}
+    <TabView kind={tab.kind} title={tab.title} active={active} pinned={tab.pinned} inGroup={inGroup} picked={picked} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
+      onSelect={choose(tab.id)} onClose={() => api.closeTab(tab.id)} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} wrapSelect={select => withPreview(api, tab, select)}/>
   ));
 }
