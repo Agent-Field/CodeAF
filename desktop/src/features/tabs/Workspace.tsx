@@ -189,7 +189,7 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   useWorkspaceWeb(state.tabs, dispatch);
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, closeAndStop, setOverviewOpen });
   const historyHost = useHistoryWorkspace(state, dispatch);
-  const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries);
+  const [archived, dismissArchived] = useAutoArchive(state, dispatch, summaries, Date.now, sync.status.phase === 'saved' || sync.status.phase === 'saving');
 
   const api: TabsApi = { workspaceKey: place, state, dispatch, summaries, now, closeTab, closeAndStop, closeMany: closing.closeMany, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat ?? openChatHere, canOpenChat: id => !!worldStore.getState().rows.find(row => row.session === id)?.sessionFile, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename,
     placeTint: place === 'now' ? undefined : placeTint, placeMenu, placeSwitcher };
