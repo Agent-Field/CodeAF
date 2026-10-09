@@ -1,7 +1,7 @@
 // @ts-nocheck -- the app tsconfig has no node types; this file runs under node --test.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { liveStep, rowAge, tokensText, waitsText } from './rowText.ts';
+import { rowAge, tokensText, waitPrefix } from './rowText.ts';
 import { parseTime, shortAge, spanText } from './taskClock.ts';
 
 const NOW = Date.parse('2026-10-09T10:05:00Z');
@@ -29,19 +29,11 @@ test('a running row counts up, an ended row shows how long it took, a queued row
   assert.equal(rowAge(row({ Status: 'paused' }), 'yourcall', NOW), '');
 });
 
-test('the live line is cut for display and has its own clock; only for running rows', () => {
-  const live = { Command: 'cd /run && go test ./...', Since: '2026-10-09T10:04:48Z' };
-  const parts = [{ Command: 'cd /run', Separator: '&&', Start: 0, End: 7, RunCopyPrefix: true }, { Command: 'go test ./...', Start: 11, End: 24 }];
-  assert.deepEqual(liveStep(row({ Live: live, LiveParts: parts }), 'running', NOW), { command: 'go test ./...', clock: '12s' });
-  assert.equal(liveStep(row({ Live: live }), 'queued', NOW), undefined);
-  assert.equal(liveStep(row(), 'running', NOW), undefined);
-});
-
-test('queued rows say what they wait on', () => {
-  assert.equal(waitsText('queued', ['Parse config']), 'waits on Parse config');
-  assert.equal(waitsText('queued', ['A', 'B']), 'waits on A, B');
-  assert.equal(waitsText('queued', []), '');
-  assert.equal(waitsText('running', ['A']), '');
+test('queued rows lead their title with what they wait on', () => {
+  assert.equal(waitPrefix('queued', ['Split by loader']), 'Split by loader /');
+  assert.equal(waitPrefix('queued', ['A', 'B']), 'A, B /');
+  assert.equal(waitPrefix('queued', []), '');
+  assert.equal(waitPrefix('running', ['A']), '');
 });
 
 test('token counts are compact', () => {

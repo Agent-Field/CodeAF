@@ -1,9 +1,9 @@
-import { Button, CodeText, ContextMenu, IconButton } from '../../../components/ui';
+import { Button, ContextMenu, IconButton } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
-import { StateMark } from '../StateMark';
 import { rowFlags, rowKind } from '../taskState';
-import { liveStep, rowAge, waitsText } from './rowText';
+import { rowAge, waitPrefix } from './rowText';
 import { taskActions, type TaskCommands } from './taskMenu';
+import { TaskMark } from './TaskMark';
 import { waitTitles } from '../taskTree';
 import './task-row.css';
 
@@ -13,14 +13,18 @@ export type TaskRowProps = {
   rows: EngineTaskRow[];
   now: number;
   current: boolean;
+  /** Levels below the panel's top; the top level reads as a heading, deeper ones as work. */
+  depth: number;
   /** Set on parents only: whether their children are showing. */
   expanded?: boolean;
+  /** Parents only: how many tasks below are done, and how many there are ("2/7"). */
+  below?: { done: number; total: number };
   onToggle: (taskId: string) => void;
   commands: TaskCommands;
 };
 
 function Disclosure({ row, expanded, onToggle }: Pick<TaskRowProps, 'row' | 'expanded' | 'onToggle'>) {
-  if (expanded === undefined) return <span className="task-row-spacer" aria-hidden="true" />;
+  if (expanded === undefined) return null;
   return (
     <IconButton
       className="task-row-disclosure"
@@ -34,28 +38,30 @@ function Disclosure({ row, expanded, onToggle }: Pick<TaskRowProps, 'row' | 'exp
   );
 }
 
-function SecondLine({ row, rows, now }: Pick<TaskRowProps, 'row' | 'rows' | 'now'>) {
-  const kind = rowKind(row);
-  const step = liveStep(row, kind, now);
-  const waits = waitsText(kind, waitTitles(rows, row));
-  if (step) {
-    return (
-      <span className="task-row-step">
-        <CodeText className="task-row-command">{step.command}</CodeText>
-        {step.clock && <span className="task-row-clock">{step.clock}</span>}
-      </span>
-    );
-  }
-  return waits ? <span className="task-row-step">{waits}</span> : null;
+/** The title, led by what a queued task waits on ("Split by loader / Convert env"). */
+function Title({ row, rows }: Pick<TaskRowProps, 'row' | 'rows'>) {
+  const prefix = waitPrefix(rowKind(row), waitTitles(rows, row));
+  return (
+    <span className="task-row-title" title={row.Title}>
+      {prefix && <span className="task-row-wait">{prefix} </span>}
+      {row.Title}
+    </span>
+  );
+}
+
+/** A parent counts what is done below it; any other task says how long it has run or took. */
+function Meta({ row, kind, now, below }: Pick<TaskRowProps, 'row' | 'now' | 'below'> & { kind: ReturnType<typeof rowKind> }) {
+  const text = below ? `${below.done}/${below.total}` : rowAge(row, kind, now);
+  return text ? <span className="task-row-meta">{text}</span> : null;
 }
 
 export function TaskRow(props: TaskRowProps) {
-  const { row, now, current, commands } = props;
+  const { row, now, current, commands, below } = props;
   const kind = rowKind(row);
   const actions = taskActions(row, commands);
   return (
     <ContextMenu label={`${row.Title} actions`} items={actions}>
-      <div className="task-row" data-kind={kind} data-current={current || undefined}>
+      <div className="task-row" data-kind={kind} data-depth={props.depth === 0 ? 0 : 1} data-parent={props.expanded !== undefined || undefined} data-current={current || undefined}>
         <Disclosure row={row} expanded={props.expanded} onToggle={props.onToggle} />
         <Button
           className="task-panel-main"
@@ -65,15 +71,10 @@ export function TaskRow(props: TaskRowProps) {
           aria-current={current ? 'true' : undefined}
           onClick={(event) => commands.onOpenTask(row.ID, event.metaKey || event.ctrlKey)}
         >
-          <StateMark status={row.Status} {...rowFlags(row)} />
-          <span className="task-row-text">
-            <span className="task-row-line">
-              <span className="task-row-title" title={row.Title}>{row.Title}</span>
-              <span className="task-row-age">{rowAge(row, kind, now)}</span>
-            </span>
-            <SecondLine row={row} rows={props.rows} now={now} />
-          </span>
+          <TaskMark status={row.Status} {...rowFlags(row)} />
+          <Title row={row} rows={props.rows} />
         </Button>
+        <Meta row={row} kind={kind} now={now} below={below} />
         <span className="task-row-actions">
           {actions.map((action) => (
             <IconButton key={action.id} label={action.label} icon={action.icon ?? 'more'} iconSize="xs" onClick={action.onSelect} />

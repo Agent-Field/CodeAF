@@ -28,6 +28,15 @@ export const panelRows: EngineTaskRow[] = [
   { ID: 't5', Title: 'Pick the changelog format', Status: 'paused', Parent: 't1' },
   { ID: 't6', Title: 'Hold the release notes', Status: 'running', Parent: 't1', Paused: true, Started: at(90) },
   { ID: 't7', Title: 'Write the summary', Status: 'pending', Parent: 't1', Waits: ['t3', 't2'] },
+  { ID: 'u1', Title: 'Audit config loaders', Status: 'running', Started: at(200) },
+  { ID: 'u2', Title: 'Scan env overrides', Status: 'running', Parent: 'u1', Started: at(60) },
+  { ID: 'u3', Title: 'Migrate old fixtures', Status: 'failed', Parent: 'u1', Started: at(180), Ended: at(100) },
+  { ID: 'u4', Title: 'Rewrite YAML fixtures', Status: 'pending', Parent: 'u3' },
+  { ID: 'u5', Title: 'Convert env', Status: 'pending', Parent: 'u3', Waits: ['u4'] },
+  { ID: 'v1', Title: 'Audit error messages', Status: 'running', Paused: true, Started: at(300) },
+  { ID: 'f1', Title: 'Parse config edge cases', Status: 'done', Started: at(900), Ended: at(780) },
+  { ID: 'f2', Title: 'Read the loader sources', Status: 'done', Parent: 'f1', Started: at(900), Ended: at(840) },
+  { ID: 'f3', Title: 'Fix the lint warnings', Status: 'done', Started: at(700), Ended: at(640) },
 ];
 
 export function TaskPanelSpecimen() {
@@ -44,6 +53,7 @@ export function TaskPanelSpecimen() {
       onResume={() => undefined}
       onStop={() => undefined}
       onClose={() => undefined}
+      onExpand={() => undefined}
     />
     </div>
   );
