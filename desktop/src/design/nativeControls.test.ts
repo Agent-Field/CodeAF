@@ -187,8 +187,8 @@ test('notifications: the full list goes to Rust; outside the app nothing is clai
   const items = [attentionItem({ kind: 'needsYou', chatId: 'c1', chatTitle: 'Launch', placeId: 'pl_00000000000000aa', placeName: 'Marketing', text: 'Which branch?' })];
   const { bridge, calls } = fakeBridge({ notify_attention: { posted: 1, groups: 1, skipped: null }, notify_permission: { state: 'granted', verified: false } });
   const native = createNativeControls(bridge);
-  assert.deepEqual(await native.notifyAttention(items, 42), { posted: 1, groups: 1, skipped: null });
-  assert.deepEqual(calls[0].args, { items, seq: 42 }, 'the list names the feed reading it came from');
+  assert.deepEqual(await native.notifyAttention(items, 42, 'engine-a'), { posted: 1, groups: 1, skipped: null });
+  assert.deepEqual(calls[0].args, { items, seq: 42, epoch: 'engine-a' }, 'the list names the feed reading it came from');
   await native.notifyAttention(items, -1);
   assert.equal(calls[1].args?.seq, 0, 'a nonsense sequence is the oldest reading, never a newer one');
   assert.deepEqual(await native.notificationPermission(), { state: 'granted', verified: false });

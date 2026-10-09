@@ -173,3 +173,10 @@ test('fetchWorld reads the whole state and reports a refusal in the engine words
  const broken: WorldTransport = async () => new Response('{"seq":"x"}', { status: 200 });
  await assert.rejects(() => fetchWorld(broken), /invalid world/);
 });
+
+test('engine identity crosses resets and rejects cross-epoch deltas', () => {
+ const a = applyWorldRecord({ status: 'live', epoch: 'old', seq: 900, rows: [row('old')], items: [] }, { epoch: 'new', seq: 3, type: 'reset', at: 'x', payload: { rows: [row('new')], items: [] } });
+ assert.equal(a.epoch, 'new'); assert.equal(a.seq, 3);
+ const delayed = applyWorldRecord(a, { epoch: 'old', seq: 901, type: 'attention', at: 'x', payload: { items: [] } });
+ assert.equal(delayed, a);
+});
