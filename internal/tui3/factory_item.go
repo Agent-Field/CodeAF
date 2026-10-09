@@ -155,7 +155,8 @@ type factoryPageRow struct {
 //	result             the sheet, the diff and the checks, once something came out
 //	settings           always
 //
-//	open on github     the item's own actions, each where its door is
+//	shape steps        the item's own actions, each where its door is
+//	open on github
 //	refresh
 //	dismiss
 //
@@ -191,7 +192,7 @@ func (a *app) factoryItemRows(it factory.Item) []factoryPageRow {
 // factoryItemActions is the item's own actions under the facets, in the
 // order the column draws them, each only where its door is and it acts on
 // the item where it stands: the `?` sheet's `also` group read for these
-// three ([app.factorySheet]), so the column and the sheet cannot disagree.
+// four ([app.factorySheet]), so the column and the sheet cannot disagree.
 func (a *app) factoryItemActions() []factoryVerbRow {
 	var sheet []factorySheetRow
 	for _, g := range a.factorySheet() {
@@ -200,7 +201,7 @@ func (a *app) factoryItemActions() []factoryVerbRow {
 		}
 	}
 	var out []factoryVerbRow
-	for _, word := range []string{wordOpenGitHub, wordRefresh, wordDismiss} {
+	for _, word := range []string{wordShapeSteps, wordOpenGitHub, wordRefresh, wordDismiss} {
 		for _, r := range sheet {
 			if r.word == word {
 				out = append(out, factoryVerbRow{word: word, key: r.key})
@@ -271,8 +272,9 @@ func (a *app) factoryStageFor(it factory.Item) int {
 
 // factoryOpenItem is `enter` on a row: the item page opens over the floor on
 // the row [app.factoryStageFor] names, with the issue read from its top. It
-// answers false with no item under the cursor, and the command that lets the
-// manager read the issue when the item is owed that ([app.factoryShapeOnOpen]).
+// answers false with no item under the cursor. OPENING RUNS NOTHING (the
+// owner's journey, 2026-10-09): no turn, no spending; the steps the page shows
+// are the recipe's until somebody asks the manager to shape them.
 func (a *app) factoryOpenItem() (tea.Cmd, bool) {
 	it, ok := a.factoryCursorItem()
 	if !ok {
@@ -283,39 +285,65 @@ func (a *app) factoryOpenItem() (tea.Cmd, bool) {
 	a.fp.hot, a.fp.box, a.fp.leftTop = factoryItemHot{}, false, -1
 	a.pageMsg = ""
 	a.touch()
-	return a.factoryShapeOnOpen(it), true
+	return nil, true
 }
 
-// ── THE MANAGER READS THE ISSUE WHEN YOU OPEN IT ────────────────────────────
+// ── THE MANAGER SHAPES THE STEPS WHEN SOMEBODY ASKS ─────────────────────────
 //
-// The owner's decision of 2026-10-08. The first time this window opens the
-// page of an item the manager has never shaped, the floor's Shape door
-// ([factory.Seam.Shape]) gives the manager its shaping turn at once, off the
-// loop and off the ordered line (a turn waits on a model, and a key pressed
-// meanwhile must not wait behind it). The story shows the manager thinking
-// ([app.factoryManagerThinking]) until the door answers; the floor is then
-// read, so the stages redraw as the manager set them. The note line says the
-// door's line only when the turn failed.
+// The owner's journey (2026-10-09). Opening an issue runs nothing: the steps
+// are the recipe's (the repository's `.codeaf/factory.md`, else the built-in
+// one). The manager shapes them in exactly three ways:
 //
-// ONCE PER ITEM PER WINDOW, and never for an item only seen on the floor. The
-// door itself decides the rest (an item whose conversation the person spoke in
-// is left alone) and answers [factory.ShapeAlready], which says nothing.
+//   - ▶ run on an item the manager never shaped: the runner's own shaping
+//     turn (internal/factory/run's shape.go), then the steps run one by one;
+//   - the person asks in the manager's chat, where its `factory_run` changes
+//     the steps at once;
+//   - `shape steps` in the column's actions, which reshapes and runs nothing
+//     ([app.factoryShapeSteps], through the floor's Shape door).
+//
+// THE PAGE'S OWN TWO ROADS GO THROUGH THE MANAGER'S CHAT IN THE CENTER FIRST
+// ([app.factoryAfterManager]): the cursor goes to the manager row, the chat
+// is brought in front, and only then is the turn asked for, so it runs as a
+// turn of the conversation the person is looking at and streams there, the
+// steps on the left redrawing as its edit lands.
 
-// factoryShapeOnOpen asks the Shape door for it when this window has not yet,
-// and answers nil when there is no door or nothing is owed.
-func (a *app) factoryShapeOnOpen(it factory.Item) tea.Cmd {
-	shape := a.factory.Shape
-	if shape == nil || a.fp.shapeAsked[it.ID] || factoryShapedAlready(it) {
+// factoryShapeable says whether `shape steps` works on item it here: the
+// seam has the Shape door and the item has steps still to come.
+func (a *app) factoryShapeable(it factory.Item) bool {
+	if !a.factory.Has("shape") {
+		return false
+	}
+	switch it.State {
+	case factory.StateNew, factory.StateDismissed, factory.StateQueued, factory.StateRunning, factory.StateNeedsYou:
+		return true
+	}
+	return false
+}
+
+// factoryShapeSteps is `shape steps`: the manager's shaping turn, in its chat,
+// and nothing run. A turn already out for the item asks nothing more.
+func (a *app) factoryShapeSteps(it factory.Item) tea.Cmd {
+	if !a.factoryShapeable(it) || a.fp.shaping[it.ID] {
 		return nil
 	}
-	if a.fp.shapeAsked == nil {
-		a.fp.shapeAsked = map[int]bool{}
+	id := it.ID
+	return a.factoryAfterManager(it, func() tea.Cmd { return a.factoryShapeNow(id) })
+}
+
+// factoryShapeNow asks the Shape door for item id's turn, OFF THE LOOP and off
+// the ordered line (a turn waits on a model, and a key pressed meanwhile must
+// not wait behind it). The manager is thinking while the door is out; on its
+// answer the floor is read, so the steps redraw as the manager set them, and
+// the note line says the door's line: what the manager set, `the recipe
+// stands`, or why the turn did not happen.
+func (a *app) factoryShapeNow(id int) tea.Cmd {
+	shape := a.factory.Shape
+	if shape == nil || a.fp.shaping[id] {
+		return nil
 	}
 	if a.fp.shaping == nil {
 		a.fp.shaping = map[int]bool{}
 	}
-	id := it.ID
-	a.fp.shapeAsked[id] = true
 	a.fp.shaping[id] = true
 	a.factoryManagerThinking(id, true)
 	load := a.factory.Load
@@ -335,22 +363,36 @@ func (a *app) factoryShapeOnOpen(it factory.Item) tea.Cmd {
 			case load != nil:
 				a.factoryFold(snap)
 			}
-			if err != nil && strings.TrimSpace(line) != factory.ShapeAlready {
-				said := strings.TrimSpace(line)
-				if said == "" {
-					said = strings.TrimSpace(err.Error())
-				}
-				a.pageMsg = said
+			said := strings.TrimSpace(line)
+			if said == "" && err != nil {
+				said = strings.TrimSpace(err.Error())
 			}
+			if said == factory.ShapeAlready {
+				said = ""
+			}
+			a.pageMsg = said
 			a.touch()
 			return nil
 		}
 	})
 }
 
-// factoryShapedAlready says what the floor already shows about an item that
-// is owed no shaping turn: it ran, or the manager set its stages or kept its
-// recipe. The door holds the same rule and the person's lines besides.
+// factoryRunHere is ▶ run (and `r`) on the item page: an item the manager
+// never shaped is run from its chat, so the runner's shaping turn streams in
+// the center before the steps run ([app.factoryAfterManager]); every other
+// item runs at once.
+func (a *app) factoryRunHere(it factory.Item) tea.Cmd {
+	id := it.ID
+	run := func() tea.Cmd { return a.factoryRunIDs([]int{id}, factoryRunItem) }
+	if factoryShapedAlready(it) {
+		return run()
+	}
+	return a.factoryAfterManager(it, run)
+}
+
+// factoryShapedAlready says what the floor already shows about an item whose
+// run owes no shaping turn: it ran, or the manager set its stages or kept its
+// recipe. The runner holds the same rule (internal/factory/run's ShapedByManager).
 func factoryShapedAlready(it factory.Item) bool {
 	if s := it.Stream; s != nil && (!s.Started.IsZero() || len(s.Phases) > 0) {
 		return true

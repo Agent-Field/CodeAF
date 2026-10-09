@@ -81,8 +81,8 @@ func (a *app) factoryBusy(id int) (string, bool) {
 // it: a door a key asked, out ([app.factoryDoingNote]); an item being read,
 // whose row, peek and read line spin ([app.factoryRowSpins]; a row waiting
 // its turn wears a still dot and turns nothing); the whole floor read again,
-// or a source mid-poll ([app.factoryHeadFresh]); a manager reading an issue
-// whose page just opened ([app.factoryShapeOnOpen]); and a running stage on
+// or a source mid-poll ([app.factoryHeadFresh]); a manager
+// asked to shape its steps ([app.factoryShapeNow]); and a running stage on
 // the open item page ([app.factoryStageMark]). The linear tier draws one still
 // mark ([app.formingMark]), so it turns nothing either.
 func (a *app) factorySpinning() bool {

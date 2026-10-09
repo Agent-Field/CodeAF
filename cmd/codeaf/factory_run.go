@@ -111,7 +111,7 @@ func startFactoryRunner(st *store.Store, workspace, profileDir string, parent se
 			}
 			turns := factoryShapeTurns(st, workspace, profileDir, parent)
 			r := buildFactoryRunner(st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent), turns)
-			// AND THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS, in this
+			// AND `shape steps`, the manager shaping when the person asks, in this
 			// process for every window (factory_shape.go's [shapeDoor]).
 			shape := factoryShapeDoor(st, workspace, profileDir, turns)
 			// AN ASK THE PREVIOUS OWNER NEVER ANSWERED IS NOT CARRIED OUT NOW:

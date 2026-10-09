@@ -195,6 +195,65 @@ func (it *Item) UnmarshalJSON(data []byte) error {
 	}
 	*it = Item(p)
 	MigrateGates(it)
+	RepairShipDefault(it)
 	NormalizeStageNames(it)
 	return nil
+}
+
+// RepairShipDefault puts the approve step of an issue still on the OLD
+// DEFAULT back where the recipe puts it, after plan, and answers whether it
+// moved one.
+//
+// WHY THERE IS SUCH AN ITEM: until approve steps (2026-10-09) the floor wrote
+// every issue it read from GitHub with `ask me at ship` and the recipe's proof
+// stage with `gate ship`, as the default and not as anybody's choice. Read
+// into approve steps that became one approve step at the very end (plan write
+// test review security proof approve), which the owner met on #1550, where an
+// issue's approve step belongs after plan. So an issue that NEVER RAN, whose
+// steps nobody edited (no step carries who set it), whose one approve step is
+// its last, and whose other steps are the default recipe's in order, is read
+// as the default it was: the approve step moves to after plan, everything
+// else about every step kept. Any other item is left exactly as it is.
+func RepairShipDefault(it *Item) bool {
+	if it == nil || it.Stream != nil || (it.Kind != KindIssue && it.Kind != "") {
+		return false
+	}
+	n := len(it.Stages)
+	if n < 2 || !IsApprove(it.Stages[n-1]) {
+		return false
+	}
+	var names []string
+	for _, s := range it.Stages[:n-1] {
+		if IsApprove(s) || s.By != "" {
+			return false
+		}
+		names = append(names, s.Name)
+	}
+	if it.Stages[n-1].By != "" {
+		return false
+	}
+	def := DefaultRecipe().For(KindIssue)
+	var want []string
+	at := -1
+	for i, s := range def {
+		if IsApprove(s) {
+			if at >= 0 {
+				return false
+			}
+			at = i
+			continue
+		}
+		want = append(want, s.Name)
+	}
+	if at < 0 || at == len(def)-1 || len(names) != len(want) {
+		return false
+	}
+	for i := range names {
+		if names[i] != want[i] {
+			return false
+		}
+	}
+	approve := it.Stages[n-1]
+	it.Stages = insertStage(CopyStages(it.Stages[:n-1]), at, approve)
+	return true
 }

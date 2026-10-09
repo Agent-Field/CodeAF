@@ -220,3 +220,25 @@ func TestTheTeamVerbsAreAllowedAndTeamStartAsks(t *testing.T) {
 	}
 	wantAction(t, policy, "team_start", `{"handle":"docs","brief":"write the README"}`, approval.ActionPrompt)
 }
+
+// THE MANAGER'S OWN VERBS NEVER WAIT ON A CARD (the owner's run of
+// 2026-10-09): `factory_run` edits the one item the conversation manages,
+// `factory_answer` replies to a step's question, and `load_capability` only
+// arms a shelved group whose tools keep their own gates. A shaping turn the
+// runner or the floor starts is headless, so a card there was a refusal
+// (`needs approval but no resolver is attached: default`), and the recipe
+// stood by accident. They are on the floor, under the shipped default and the
+// headless gate a manager's turn is opened with ([openManagerTurn]).
+func TestTheManagersFactoryVerbsAreAllowedOnAHeadlessTurn(t *testing.T) {
+	dir := v3Profile(t, map[string]any{"tools.approvalMode": "prompt"})
+	gate := v3ApprovalGate{workspace: t.TempDir(), profileDir: dir, headless: true}
+	policy, _, err := gate.Build(session.PostureAsk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"factory_run", "factory_answer", "load_capability"} {
+		wantAction(t, *policy, tool, `{"group":"questions","set":[{"stage":"write","ask":"x"}]}`, approval.ActionAllow)
+	}
+	// AND NOTHING ELSE CAME WITH THEM: an edit still asks.
+	wantAction(t, *policy, "edit", `{"path":"x"}`, approval.ActionPrompt)
+}

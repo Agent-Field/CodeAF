@@ -253,7 +253,16 @@ func (a *app) factoryPauseKey() (tea.Cmd, bool) {
 	a.pageMsg = ""
 	a.fp.said = false
 	paused := it.Stream != nil && it.Stream.Paused
-	return a.factoryVerb(it.ID, func(s factory.Seam) error { return s.Pause(it.ID) }, func(it factory.Item) string {
+	// THE KEY SENDS WHAT THE SCREEN SHOWS: pause on a moving run, go on with a
+	// paused one, through the Hold door where the seam has it, so the same
+	// press landing twice holds twice rather than undoing itself.
+	id := it.ID
+	return a.factoryVerb(id, func(s factory.Seam) error {
+		if s.Hold != nil {
+			return s.Hold(id, !paused)
+		}
+		return s.Pause(id)
+	}, func(it factory.Item) string {
 		if paused {
 			return it.Ref() + " resumed"
 		}
@@ -399,6 +408,12 @@ func (a *app) factoryKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if k == "u" && a.factory.Has("refresh") {
 		return a.factoryReread(it), true
 	}
+	// `p` IS `shape steps`: the manager's shaping turn, in its chat on the
+	// item page, and nothing run (factory_item.go's [app.factoryShapeSteps]).
+	if k == keyShapeSteps && a.factoryShapeable(it) {
+		a.pageMsg = ""
+		return a.factoryShapeSteps(it), true
+	}
 	if k == "g" && it.URL != "" && it.Origin != factory.OriginTerminal && a.factory.Has("open") {
 		a.pageMsg = ""
 		return a.factoryOpenForge(it), true
@@ -475,6 +490,9 @@ func (a *app) factoryNewKey(it factory.Item, k string) (tea.Cmd, bool) {
 		// AND NEVER WITHOUT A CHECKOUT: the gate asks to clone first
 		// (factory_clone.go).
 		if a.factoryCanRun() {
+			if a.fp.open {
+				return a.factoryRunHere(it), true
+			}
 			return a.factoryRunIDs([]int{id}, factoryRunItem), true
 		}
 	case "L", "shift+l":

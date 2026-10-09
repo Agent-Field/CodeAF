@@ -2144,6 +2144,20 @@ func v3BuiltinApprovals() map[string]any {
 		// tools_factory_answer.go): words handed to the runner waiting in
 		// code, on a turn nobody is at the keyboard of.
 		"factory_answer": "allow",
+		// THE MANAGER'S PEN ON ITS OWN ITEM'S STEPS (internal/session's
+		// tools_factory_run.go): it changes the stages of the one item the
+		// conversation manages, within the bounds factory.Edit holds in code,
+		// and posts, starts and spends nothing. Its brief promises it raises no
+		// card, and its shaping turns are headless (the runner's at ▶ run, the
+		// floor's `shape steps`), so without this line the owner's run of
+		// 2026-10-09 met `needs approval but no resolver is attached: default`
+		// on every edit and the recipe stood by accident.
+		"factory_run": "allow",
+		// LOADING IS NOT PERMISSION (internal/session's tools_capabilities.go):
+		// it arms a shelved group onto the belt, and every tool it arms keeps
+		// its own gate. Asked about on a headless turn it was refused, and the
+		// model was left reaching for a verb it could not even see.
+		"load_capability": "allow",
 	}
 }
 

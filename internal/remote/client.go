@@ -2000,6 +2000,19 @@ func (a *Agent) Detach() error {
 	return a.Close()
 }
 
+// Closed says this view can no longer take a word: its connection to the
+// engine has ended for good (closed by this end, or lost with no redial left),
+// so a surface hosting it (the factory item page's center) lets it go and
+// opens the conversation again rather than offering a box that goes nowhere.
+// A link that is only reconnecting is not closed. IT IS A MEMORY READ, under
+// the client's own lock, and crosses no wire.
+func (a *Agent) Closed() bool {
+	if a == nil || a.c == nil {
+		return true
+	}
+	return a.c.Err() != nil
+}
+
 // Model is the model the next request will use.
 //
 // IT IS A MEMORY READ. The engine states this at the door and again whenever it

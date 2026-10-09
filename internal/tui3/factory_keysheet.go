@@ -101,6 +101,7 @@ func (a *app) factorySheet() []factorySheetGroup {
 		}
 		row(&also, it.URL != "" && it.Origin != factory.OriginTerminal && seam.Has("open"), keyOpenGitHub, wordOpenGitHub)
 		row(&also, seam.Has("refresh"), keyRefresh, wordRefresh)
+		row(&also, a.factoryShapeable(it), keyShapeSteps, wordShapeSteps)
 	}
 	floor := !a.fp.open
 	connected := a.factoryConnected()

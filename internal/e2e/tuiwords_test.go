@@ -1217,6 +1217,12 @@ var tuiWords = map[string]tuiWord{
 		why: "the question a run holds on at an approve step (plan → approve → write by default), after the " +
 			"step before it: `plan is ready · continue, or send it back?`. y continues; it replaced `ask me at`",
 	},
+	"factoryShapeSteps": {
+		screen: "shape steps",
+		key:    "p",
+		why: "the item page's action under its facets that asks the manager to set the steps now and runs nothing; " +
+			"opening an issue runs nothing, so it stands there on an item that never ran",
+	},
 	"factoryShapeSet": {
 		screen: "manager set",
 		why:    "the head of the Adapted line the manager's edit writes, under the stages on the question",

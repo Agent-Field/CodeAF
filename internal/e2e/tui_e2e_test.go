@@ -2714,6 +2714,15 @@ func testFactoryRunsAnIssue(t *testing.T) {
 	if !factoryCursorOn(r, factoryDemoIssue, 12) {
 		t.Fatalf("the cursor never reached %s:\n%s", factoryDemoIssue, r.capture())
 	}
+	// OPENING AN ISSUE RUNS NOTHING: the page stands with `shape steps` among
+	// its actions, and the item is still new and unshaped when it closes.
+	r.keys("Enter")
+	r.waitFor(30*time.Second, say(t, "factoryShapeSteps"))
+	r.keys("Escape")
+	time.Sleep(700 * time.Millisecond)
+	if opened := factoryItemNum(t, home, 1); opened.State != "new" {
+		t.Fatalf("opening #1's page moved it to %q:\n%s", opened.State, r.capture())
+	}
 	r.keys("r")
 	// THE STORE SAYS IT RAN, NOT THE NOTE LINE: `r` answers `#1 is queued · a
 	// bench frees it` even when a bench is free and the run starts that second.

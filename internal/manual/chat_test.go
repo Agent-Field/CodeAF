@@ -58,6 +58,8 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"where do I change the budget of an item", "factory"},
 		{"how do I get back to the floor from an item", "factory"},
 		{"who is the manager of an issue on the factory floor", "factory"},
+		{"does opening an issue on the factory floor run anything", "factory"},
+		{"how do I get the manager to set the steps without running", "factory"},
 		{"what happens to what I type in the item's chat while it runs", "factory-stage-conversations"},
 		{"what lines does the run write into the item's chat", "factory-stage-conversations"},
 		{"what does run these stages mean on the factory floor", "factory"},

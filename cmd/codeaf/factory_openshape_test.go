@@ -12,9 +12,9 @@ import (
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 )
 
-// openShapeRig is the Shape door over a real store, with a fake turn that
-// answers edit, a maker that counts the conversations it made, the lines said
-// into conversations, and the conversations the person spoke in.
+// openShapeRig is the Shape door (`shape steps`) over a real store, with a
+// fake turn that answers edit, a maker that counts the conversations it made,
+// and the lines said into conversations.
 type openShapeRig struct {
 	st      *store.Store
 	door    *shapeDoor
@@ -22,10 +22,9 @@ type openShapeRig struct {
 	edit    factory.RunEdit
 	turnErr error
 	turns   int
-	asked   [][]string
+	inRun   []bool
 	made    int
 	said    []string
-	spoken  map[string]bool
 }
 
 func newOpenShapeRig(t *testing.T) *openShapeRig {
@@ -40,12 +39,12 @@ func newOpenShapeRig(t *testing.T) *openShapeRig {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &openShapeRig{st: st, id: it.ID, spoken: map[string]bool{}}
+	r := &openShapeRig{st: st, id: it.ID}
 	r.door = &shapeDoor{
 		st: st,
-		turn: func(_ context.Context, it factory.Item, said []string) (factory.RunEdit, string, error) {
+		turn: func(_ context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error) {
 			r.turns++
-			r.asked = append(r.asked, said)
+			r.inRun = append(r.inRun, inRun)
 			if it.Talk == "" {
 				t.Error("the turn was given an item with no conversation")
 			}
@@ -59,18 +58,18 @@ func newOpenShapeRig(t *testing.T) *openShapeRig {
 			r.said = append(r.said, transcript+" ← "+line)
 			return nil
 		},
-		spoke:  func(transcript string) bool { return r.spoken[transcript] },
 		recipe: func(factory.Item) factory.Recipe { return recipe },
 		wait:   time.Second,
 	}
 	return r
 }
 
-// THE DOOR MAKES THE CONVERSATION, RUNS ONE TURN, APPLIES AND KEEPS THE EDIT,
-// AND SAYS THE LINE: an item with no conversation gets one, the manager is
-// given one turn with nothing said, the edit is on the item's stages marked
-// the manager's with its record line, the line goes into the conversation,
-// and the second ask is `already shaped` with no second turn.
+// `shape steps` MAKES THE CONVERSATION, RUNS ONE TURN, APPLIES AND KEEPS THE
+// EDIT, AND SAYS THE LINE: an item with no conversation gets one, the manager
+// is given one turn bounded as before a run, the edit is on the item's stages
+// marked the manager's with its record line, the line goes into the
+// conversation, and nothing runs. Asked again, it is asked again: the person
+// pressed it again.
 func TestOpenShapeDoorMakesTheConversationAndShapesOnce(t *testing.T) {
 	r := newOpenShapeRig(t)
 	r.edit = factory.RunEdit{By: factory.ByManager, Ask: map[string]string{"review": "read it for security"}, Why: "touches the ledger"}
@@ -81,8 +80,8 @@ func TestOpenShapeDoorMakesTheConversationAndShapesOnce(t *testing.T) {
 	if !strings.HasPrefix(line, "manager set review: read it for security") {
 		t.Fatalf("line = %q", line)
 	}
-	if r.made != 1 || r.turns != 1 || len(r.asked[0]) != 0 {
-		t.Fatalf("made %d conversations, %d turns, said %q", r.made, r.turns, r.asked)
+	if r.made != 1 || r.turns != 1 || r.inRun[0] {
+		t.Fatalf("made %d conversations, %d turns, in a run %v", r.made, r.turns, r.inRun)
 	}
 	it, err := r.st.Get(r.id)
 	if err != nil {
@@ -101,9 +100,23 @@ func TestOpenShapeDoorMakesTheConversationAndShapesOnce(t *testing.T) {
 	if len(r.said) != 1 || r.said[0] != "/x/manager/transcript.jsonl ← "+line {
 		t.Fatalf("said %q", r.said)
 	}
+	r.edit = factory.RunEdit{}
 	again, err := r.door.Shape(context.Background(), r.id)
-	if err != nil || again != factory.ShapeAlready || r.turns != 1 || r.made != 1 {
+	if err != nil || again != "the recipe stands" || r.turns != 2 || r.made != 1 {
 		t.Fatalf("the second ask answered %q, %v after %d turns and %d conversations", again, err, r.turns, r.made)
+	}
+}
+
+// ONE TURN PER ITEM AT A TIME: an ask while a turn for the item is out is
+// `already shaped`, and no second turn.
+func TestOpenShapeDoorAsksOneTurnAtATime(t *testing.T) {
+	r := newOpenShapeRig(t)
+	if !r.door.begin(r.id) {
+		t.Fatal("no turn was out and the door refused one")
+	}
+	defer r.door.end(r.id)
+	if line, err := r.door.Shape(context.Background(), r.id); err != nil || line != factory.ShapeAlready || r.turns != 0 {
+		t.Fatalf("line %q, err %v, %d turns", line, err, r.turns)
 	}
 }
 
@@ -126,28 +139,30 @@ func TestOpenShapeDoorRecipeStandsIsKept(t *testing.T) {
 			t.Fatalf("the stages changed: %+v", it.Stages[i])
 		}
 	}
-	if again, _ := r.door.Shape(context.Background(), r.id); again != factory.ShapeAlready || r.turns != 1 {
+	// A SECOND STANDING IS NOT A SECOND RECORD.
+	if again, _ := r.door.Shape(context.Background(), r.id); again != "the recipe stands" || r.turns != 2 {
 		t.Fatalf("second ask %q after %d turns", again, r.turns)
+	}
+	if it, _ := r.st.Get(r.id); len(it.Adapted) != 1 {
+		t.Fatalf("records %q", it.Adapted)
 	}
 }
 
-// THE PERSON SPOKE FIRST: an item whose conversation holds a line the person
-// typed is left to that conversation. No turn, nothing written.
-func TestOpenShapeDoorLeavesAnItemThePersonTalkedTo(t *testing.T) {
+// THE CONVERSATION THE ITEM HAS IS THE ONE THE TURN RUNS IN: nothing is made.
+func TestOpenShapeDoorUsesTheItemsConversation(t *testing.T) {
 	r := newOpenShapeRig(t)
 	chat := "/x/talked/transcript.jsonl"
 	if err := r.st.Update(r.id, func(it *factory.Item) error { it.Talk = chat; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	r.spoken[chat] = true
 	line, err := r.door.Shape(context.Background(), r.id)
-	if err != nil || line != factory.ShapeAlready || r.turns != 0 || r.made != 0 || len(r.said) != 0 {
+	if err != nil || line != "the recipe stands" || r.turns != 1 || r.made != 0 || len(r.said) != 1 || !strings.HasPrefix(r.said[0], chat) {
 		t.Fatalf("line %q, err %v, %d turns, %d made, said %q", line, err, r.turns, r.made, r.said)
 	}
 }
 
 // A TURN THAT DID NOT ANSWER IS NO SHAPING: the launch's line is said and
-// answered as the failure, and nothing is recorded, so `r` asks again.
+// answered as the failure, and nothing is recorded, so ▶ run asks again.
 func TestOpenShapeDoorFailedTurnRecordsNothing(t *testing.T) {
 	r := newOpenShapeRig(t)
 	r.turnErr = errors.New("model unavailable")
@@ -164,17 +179,25 @@ func TestOpenShapeDoorFailedTurnRecordsNothing(t *testing.T) {
 	}
 }
 
-// AN ITEM THAT RAN IS NEVER SHAPED AT OPEN.
-func TestOpenShapeDoorLeavesAnItemThatRan(t *testing.T) {
+// A RUNNING ITEM IS SHAPED IN ITS TAIL: the turn is bounded to the steps not
+// yet started. AN ITEM WHOSE RUN IS OVER HAS NOTHING TO SHAPE, and says so.
+func TestOpenShapeDoorShapesARunningItemsTailAndRefusesALandedOne(t *testing.T) {
 	r := newOpenShapeRig(t)
 	if err := r.st.Update(r.id, func(it *factory.Item) error {
+		it.State = factory.StateRunning
 		it.Stream = &factory.Stream{Started: time.Now()}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if line, _ := r.door.Shape(context.Background(), r.id); line != factory.ShapeAlready || r.turns != 0 {
-		t.Fatalf("line %q after %d turns", line, r.turns)
+	if _, err := r.door.Shape(context.Background(), r.id); err != nil || r.turns != 1 || !r.inRun[0] {
+		t.Fatalf("err %v after %d turns, in a run %v", err, r.turns, r.inRun)
+	}
+	if err := r.st.Update(r.id, func(it *factory.Item) error { it.State = factory.StateLanded; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.door.Shape(context.Background(), r.id); !errors.Is(err, errNothingToShape) || r.turns != 1 {
+		t.Fatalf("a landed item: err %v after %d turns", err, r.turns)
 	}
 }
 

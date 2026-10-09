@@ -1348,19 +1348,70 @@ func (r *Runner) Pause(id int) error {
 	if c == nil || c.reverify {
 		return r.notRunning(id)
 	}
-	lp.mu.Lock()
-	c.paused = !c.paused
-	paused := c.paused
-	if paused {
-		c.resume = make(chan struct{})
-		if c.roundCancel != nil {
-			c.roundCancel()
-		}
-	} else if c.resume != nil {
-		close(c.resume)
-		c.resume = nil
+	return r.setPaused(c, func(was bool) bool { return !was })
+}
+
+// Hold is the pause with its intent said: on holds the item's step now,
+// keeping its chat, and off goes on with the same step in the same chat (a
+// paused item codeaf was restarted since is put back on a bench). AN ASK
+// THAT IS ALREADY TRUE CHANGES NOTHING AND IS NO ERROR: the top bar's button
+// sends what it shows, and a doubled press, or a doubled event, must never
+// undo itself (the owner saw paused, resumed, paused in one second on
+// 2026-10-09, from a toggle pressed twice).
+func (r *Runner) Hold(id int, on bool) error {
+	lp := r.loop()
+	c := lp.ctl(id)
+	it, err := r.opts.Store.Get(id)
+	if err != nil {
+		return err
 	}
-	lp.mu.Unlock()
+	if c == nil || c.reverify {
+		if on {
+			if storedPaused(it) {
+				return nil
+			}
+			return r.notRunning(id)
+		}
+		if storedPaused(it) && c == nil {
+			return r.revive(it)
+		}
+		if c != nil {
+			// A re-run of the checks has no step to hold: it is moving.
+			return nil
+		}
+		return r.notRunning(id)
+	}
+	return r.setPaused(c, func(bool) bool { return on })
+}
+
+// setPaused moves the control to the paused state want answers for the one
+// it is in, under the loop's lock, and says the word on the stream and into
+// the manager's conversation only when that changed anything.
+func (r *Runner) setPaused(c *loopCtl, want func(was bool) bool) error {
+	lp := r.loop()
+	id := c.id
+	paused, changed := func() (bool, bool) {
+		lp.mu.Lock()
+		defer lp.mu.Unlock()
+		next := want(c.paused)
+		if next == c.paused {
+			return next, false
+		}
+		c.paused = next
+		if next {
+			c.resume = make(chan struct{})
+			if c.roundCancel != nil {
+				c.roundCancel()
+			}
+		} else if c.resume != nil {
+			close(c.resume)
+			c.resume = nil
+		}
+		return next, true
+	}()
+	if !changed {
+		return nil
+	}
 	kind, word := EventResumed, sayResumed
 	if paused {
 		kind, word = EventPaused, sayPaused
