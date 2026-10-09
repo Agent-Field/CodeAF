@@ -43,6 +43,8 @@ export async function installNativeWebMock(page: Page, options: { snapshot?: boo
       if (cmd === 'engine_connection' || cmd === 'engine_health') return fail('The local engine could not start');
       if (cmd === 'open_url') return urlOk(args.url) ? null : fail('Only web links can be opened');
       if (cmd === 'web_list') return [...views.values()];
+      // Rust answers null when no tab is waiting for this window (windows.rs window_claim_handoff); every boot asks.
+      if (cmd === 'window_claim_handoff') return null;
       if (!cmd.startsWith('web_')) return fail(`Command ${cmd} not found`);
       if (!paneOk(args.pane)) return fail('That pane cannot hold a web page');
       const pane = args.pane as string;

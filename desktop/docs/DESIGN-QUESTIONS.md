@@ -186,3 +186,16 @@ The History lane numbered these Q35–Q44 on its branch; the file and terminal l
 | H8 | History: continuing an archived conversation | Continue takes it back out of the archive, as Restore all does. |
 | H9 | History row menu: "Add to place" and "Delete" | Absent. The place graph and its routes now exist (Places lane), but the History row menu is not wired to them yet, and there is no engine delete route. The menu shows Continue, Read conversation and Archive. |
 | H10 | Auto-archive toast duration: Components says every toast sits 6s and always offers Undo; 4c's archive toast offers Review and Restore all | 6s (`historyToastMs`), paused while hovered or focused; Restore all is its undo. |
+
+## Menus and closing lane notes
+
+The menus lane numbered these Q35–Q39 on its branch; the file and terminal lanes had already used those numbers, so they are M1–M6 here.
+
+| ID | Question | Assumption |
+|---|---|---|
+| M1 | Shell 3g and Components "Context menu" draw ⌥⌘W beside "Close other tabs", while 3l and Interactions give ⌥⌘W to "Close and stop" | ⌥⌘W closes and stops. "Close other tabs" shows no shortcut. "Close and stop" is listed in the tab menu only for a tab whose work is running (3g draws the menu of an idle tab without it; 3l says an idle tab has nothing to stop). |
+| M2 | The tab menu has no "Rename tab" in 3g or Interactions, but the "Rename a conversation" flow says "or use the menu" | "Rename tab" stays in the menu, under Duplicate, so keyboard and trackpad users have a path that does not need a double-click. |
+| M3 | "Reopen closed tab" is no longer in the tab menu (3g, Interactions) | It stays on ⌘⇧T and in the strip's overflow menu. |
+| M4 | Where the Inbox tab comes from: Interactions says the rail's Inbox row opens it; 3l calls it "the pinned tab" and says closed running work lists there | The Inbox tab is created the first time work outlives its tab or an open tab needs the person, pinned first in the strip, with a dot only while something needs you. The rail lane can open it with the `open-inbox` workspace action. |
+| M5 | "Copy link" (⌘⇧C) and "Move to new window" are drawn enabled | "Move to new window" is real in the desktop app: it opens a window on the same place carrying the tab, and the tab leaves the source only when the new window claims it. In a browser it is absent (nothing can move there). "Copy link" is absent everywhere: the shell registers no deep-link scheme, so there is no canonical link to copy and none is invented. |
+| M6 | Failures in the Inbox: the design draws only running and needs-you | A "Failed" section lists recent (3 days) unseen task failures from the engine feed, at most five, each with a Seen button; opening one marks it seen. "Seen" is remembered in this window only; the engine has no durable failure-seen mark. |

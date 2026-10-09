@@ -1,4 +1,6 @@
-import type { KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
+import { useAltHeld } from './closing/altHeld';
+import { closeShortcutFor, closeStopShortcut } from './closing/shortcuts';
 import type { TabMark } from '../conversation/tabSummary';
 import type { TabsApi } from './context';
 import { tabDragProps } from './hosts/dragHost';
@@ -33,15 +35,21 @@ function navigate(api: TabsApi, order: readonly Tab[], tab: Tab) {
 /** One strip item: the tab primitive composed with the menu, preview and drag hosts. */
 export function TabItem({ api, tab, order, inGroup = false }: { api: TabsApi; tab: Tab; order: readonly Tab[]; inGroup?: boolean }) {
   const active = tab.id === api.state.activeId;
-  const frame = tabDragProps(api, tab);
+  const drag = tabDragProps(api, tab);
+  // Design 3l: Alt turns a running tab's close into a stop square, but only under the pointer or focus. An idle tab ignores Alt.
+  const [engaged, setEngaged] = useState(false);
+  const stop = useAltHeld() && engaged && api.isRunning(tab);
+  const running = api.isRunning(tab);
+  const frame = { ...drag, onPointerEnter: () => setEngaged(true), onPointerLeave: () => setEngaged(false), onFocus: () => setEngaged(true), onBlur: () => setEngaged(false) };
   if (tab.split) {
     const { panes, focus } = tab.split;
     const segments = panes.map(pane => ({ id: pane.id, kind: pane.kind, title: pane.title, monogram: monogramOf(pane), state: stateOfMark(api.summaries[pane.id]?.mark) }));
     return withTabMenu(api, tab, <SplitTab segments={segments} focus={focus} active={active} frame={frame} onSelectPane={index => api.dispatch({ type: 'select', id: panes[index].id })} onClose={() => api.closeTab(tab.id)}/>);
   }
   return withTabMenu(api, tab, (
-    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame}
-      onSelect={() => api.dispatch({ type: 'select', id: tab.id })} onClose={() => api.closeTab(tab.id)} onRename={() => api.startRename(tab.id)}
+    <TabView kind={tab.kind} title={tab.title} monogram={monogramOf(focusedPane(tab))} active={active} pinned={tab.pinned} inGroup={inGroup} state={stateOfMark(api.summaries[tab.id]?.mark)} id={tabDomId(tab)} frame={frame} badge={tab.kind === 'inbox' && api.background.needsYou.length > 0}
+      closeMode={stop ? 'stop' : 'close'} closeHint={stop ? 'Close and stop' : running ? 'Close · keeps running' : 'Close'} closeShortcut={stop ? closeStopShortcut : closeShortcutFor(tab.kind)}
+      onSelect={() => api.dispatch({ type: 'select', id: tab.id })} onClose={() => (stop ? api.closeAndStop(tab.id) : api.closeTab(tab.id))} onRename={() => api.startRename(tab.id)}
       onKeyDown={navigate(api, order, tab)} wrapSelect={select => withPreview(api, tab, select)}/>
   ));
 }

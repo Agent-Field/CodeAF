@@ -1,5 +1,6 @@
 import type { Page, Route } from '@playwright/test';
 import { historyRoutes, type HistoryHandle, type MockHistory } from './history-engine';
+import type { AttentionItem, WorldRow } from '../../../src/features/chat/world-client';
 import type { EngineEntry, EngineEvent, EngineFile, EngineFileDiff, EngineSnapshot, EngineTaskPage, TerminalInfo } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
@@ -49,6 +50,8 @@ export type Scenario = {
   models?: { id: string; name: string; efforts?: string[] }[];
   /** false: the engine serves no /places/policy route (an engine before the Places organization settings). */
   placesPolicy?: false;
+  /** The engine-wide world feed (GET /world, GET /events). Absent: the engine serves no feed and both routes answer 404. */
+  world?: { rows: WorldRow[]; items: AttentionItem[] };
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
   fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
@@ -62,6 +65,8 @@ export type MockEngine = {
   /** The conversation model in force at the moment each accepted turn arrived. */
   turnModels: string[];
   snapshot: () => EngineSnapshot;
+  /** Replaces the world feed's rows and/or attention items and streams the new state to readers. Needs `scenario.world`. */
+  setWorld: (next: { rows?: WorldRow[]; items?: AttentionItem[] }) => void;
   /** Apply the next scripted turn reply (for scenarios with manual: true). */
   advance: () => void;
   /** Merge fields into the snapshot and publish a snapshot record to stream readers. */
@@ -139,6 +144,23 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   let pending: ScriptedTurn | undefined;
   let closed = false;
   page.on('close', () => { closed = true; });
+
+  // The world feed: every change is one full `reset` record, which the client applies at any cursor.
+  let world = scenario.world ? structuredClone(scenario.world) : undefined;
+  let worldSeq = 1;
+  const worldRecord = () => ({ seq: worldSeq, type: 'reset', at: new Date().toISOString(), payload: structuredClone(world!) });
+  const worldEvents = async (route: Route, after: number) => {
+    const deadline = Date.now() + 60_000;
+    while (!closed && Date.now() < deadline) {
+      if (worldSeq > after) {
+        const record = worldRecord();
+        await route.fulfill({ status: 200, headers: { 'Cache-Control': 'no-cache' }, contentType: 'text/event-stream', body: `: connected\n\nid: ${record.seq}\ndata: ${JSON.stringify(record)}\n\n` });
+        return;
+      }
+      await new Promise(r => setTimeout(r, 25));
+    }
+    await route.abort().catch(() => undefined);
+  };
 
   const publish = () => {
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
@@ -419,6 +441,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       const status = scenario.fail?.[key];
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
+    if (world && root === 'world') return json(route, { seq: worldSeq, ...structuredClone(world) });
+    if (world && root === 'events') return worldEvents(route, Number(url.searchParams.get('after') ?? 0));
     if (root === 'models') return models(route, parts, method, body);
     if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
     if (root === 'history') return history.handle(route, parts, method, body, url);
@@ -458,8 +482,14 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     return json(route, { error: 'unknown action' }, 404);
   });
 
+  const setWorld: MockEngine['setWorld'] = next => {
+    if (!world) throw new Error('setWorld needs scenario.world');
+    world = { rows: next.rows ?? world.rows, items: next.items ?? world.items };
+    worldSeq += 1;
+  };
+
   return {
-    calls, turnModels, history: { archived: history.archived }, snapshot: () => state, advance, update,
+    calls, turnModels, history: { archived: history.archived }, snapshot: () => state, advance, update, setWorld,
     /** Push one live event, the way a running turn would. */
     push: emitEvent,
     /** Replace one file's diff so the next GET /diff answers with it. */
