@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button, Text, TextArea } from '../../../components/ui';
 import type { EngineAnswer } from '../../chat/engine-client';
 import { answerFor, canPress, canSend, decideAnswer, initialDraft, submitAnswer, type Draft } from './answers';
@@ -10,7 +10,8 @@ import { deadlineAt } from './clock';
 import { formOf, hasWordsField, isIrreversible, needsWords, type Option, type Question } from './form';
 import { IrreversibleAnswers, PermissionAnswers, type WhyToggle } from './AnswerForms';
 import { BlankFields, CheckList, DialField, Declines, PairRows, WordsField, type FormProps } from './InputForms';
-import { OptionList, ScopeChoice, WordsPanel } from './OptionActions';
+import { NonBlockingNote, doesNotBlock } from './NonBlockingNote';
+import { OptionList, ScopeChoice, WordsPanel, hasButtonRow } from './OptionActions';
 
 export type QuestionCardProps = {
   question: Question;
@@ -37,15 +38,15 @@ function Fields({ form, props, send }: { form: string; props: FormProps; send: (
   return <WordsField {...props} onEnter={send} />;
 }
 
-type AnswersProps = { question: Question; locked: boolean; single?: boolean; why: WhyToggle; onPress: (option: Option) => void; renderImage?: RenderImage };
+type AnswersProps = { question: Question; locked: boolean; single?: boolean; why: WhyToggle; note?: ReactNode; onPress: (option: Option) => void; renderImage?: RenderImage };
 
 /** Permission and irreversible questions have their own rows; everything else lists its options. */
-function Answers({ question, locked, single, why, onPress, renderImage }: AnswersProps) {
+function Answers({ question, locked, single, why, note, onPress, renderImage }: AnswersProps) {
   const form = formOf(question);
   const risky = isIrreversible(question) && (form === 'permission' || form === 'choice');
-  if (risky) return <IrreversibleAnswers question={question} locked={locked} onPress={onPress} />;
-  if (form === 'permission') return <PermissionAnswers question={question} locked={locked} single={single} why={why} onPress={onPress} />;
-  return <OptionList question={question} locked={locked} onPress={onPress} renderImage={renderImage} />;
+  if (risky) return <IrreversibleAnswers question={question} locked={locked} note={note} onPress={onPress} />;
+  if (form === 'permission') return <PermissionAnswers question={question} locked={locked} single={single} why={why} note={note} onPress={onPress} />;
+  return <OptionList question={question} locked={locked} note={note} onPress={onPress} renderImage={renderImage} />;
 }
 
 function Heading({ question }: { question: Question }) {
@@ -94,6 +95,10 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
   const clocked = deadlineAt(question) !== null;
   const clarifying = form === 'text';
   const cards = wantsCards(question);
+  const note = doesNotBlock([question]) ? <NonBlockingNote /> : undefined;
+  // The note rides the card's main row of answers when it has one; otherwise the footer row carries it.
+  const risky = isIrreversible(question) && (form === 'permission' || form === 'choice');
+  const rowHostsNote = cards || (form !== 'text' && (INPUT_FORMS.has(form) || risky || form === 'permission' || hasButtonRow(question)));
   const stopClock = () => clocked && !held && onHold();
 
   return (
@@ -120,12 +125,13 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
           <div className="tray-actions">
             <Button variant="primary" disabled={locked || !canSend(question, draft)} onClick={sendForm}>Send</Button>
             <Declines question={question} locked={locked} onPress={decline} />
+            {note}
           </div>
         </>
       ) : cards ? (
-        <ChoiceForm question={question} now={now} held={held} locked={locked} onChoose={press} onHold={onHold} renderImage={renderImage} />
+        <ChoiceForm question={question} now={now} held={held} locked={locked} note={note} onChoose={press} onHold={onHold} renderImage={renderImage} />
       ) : (
-        <Answers question={question} locked={locked} single={single} why={{ open: whyOpen, toggle: () => setWhyOpen((open) => !open) }} onPress={press} renderImage={renderImage} />
+        <Answers question={question} locked={locked} single={single} why={{ open: whyOpen, toggle: () => setWhyOpen((open) => !open) }} note={note} onPress={press} renderImage={renderImage} />
       )}
       {form === 'permission' && !isIrreversible(question) && (whyOpen || draft.change) && (
         <TextArea
@@ -165,6 +171,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
         locked={locked}
         canDecide={Boolean(decide) && !clarifying}
         clock={!cards}
+        note={rowHostsNote ? undefined : note}
         onHold={onHold}
         onLater={clarifying ? undefined : onLater}
         onDecide={() => decide && void send(decide)}

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Button, Text, TextArea } from '../../../components/ui';
 import { CardEvidence, type RenderImage } from './CardEvidence';
 import { optionLabel, optionVariant, scopeLabel, visibleOptions, widerScopes, type Option, type Question } from './form';
@@ -7,6 +8,8 @@ type ListProps = {
   locked: boolean;
   onPress: (option: Option) => void;
   renderImage?: RenderImage;
+  /** Drawn at the right end of the row of short answers. */
+  note?: ReactNode;
 };
 
 const confidenceNote = (confidence?: string) => (confidence === 'unsure' ? ' · not sure' : '');
@@ -24,8 +27,14 @@ function isPlain(options: Option[]) {
   return options.every((option) => !option.body && !option.consequence && !option.blocks?.length);
 }
 
+/** True when the options sit in one row of buttons, which is where the card's note can go. */
+export const hasButtonRow = (question: Question) => {
+  const options = visibleOptions(question);
+  return options.length > 0 && isPlain(options);
+};
+
 /** Short answers sit in one row of buttons; answers with something to read stack. */
-export function OptionList({ question, locked, onPress, renderImage }: ListProps) {
+export function OptionList({ question, locked, onPress, renderImage, note }: ListProps) {
   const options = visibleOptions(question);
   const pick = question.pick;
   if (!options.length) return null;
@@ -38,7 +47,7 @@ export function OptionList({ question, locked, onPress, renderImage }: ListProps
     const picked = options.find((option) => option.key === pick?.key);
     return (
       <>
-        <div className="tray-actions">{options.map(button)}</div>
+        <div className="tray-actions">{options.map(button)}{note}</div>
         {picked && pick?.reason && (
           <Text className="tray-caption">{`Suggested: ${optionLabel(question, picked)}. ${pick.reason}`}</Text>
         )}

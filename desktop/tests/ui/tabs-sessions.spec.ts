@@ -108,6 +108,10 @@ async function seedSavedTabs(page: Page) {
 
 const savedLine = (page: Page, index: number) => page.getByText(`Saved saved-${index}.jsonl`, { exact: true });
 
+// The sent words, as the transcript shows them. A text query over the whole panel also matches the composer: its textarea mirrors
+// the draft as text content, and the draft is cleared only once the engine has accepted the send (so a refusal keeps it).
+const sentWords = (page: Page, text: string) => page.locator('.user-message-text').filter({ hasText: text });
+
 test('a new tab beside six saved tabs sends to a new session of its own', async ({ page }) => {
  await seedSavedTabs(page);
  await page.goto('/');
@@ -116,7 +120,7 @@ test('a new tab beside six saved tabs sends to a new session of its own', async 
  await expect(page.getByRole('tab', { name: 'New conversation', exact: true })).toHaveAttribute('aria-selected', 'true');
  await message(page).fill('Hello from the seventh tab');
  await message(page).press('Enter');
- await expect(page.getByRole('tabpanel').getByText('Hello from the seventh tab', { exact: true })).toBeVisible();
+ await expect(sentWords(page, 'Hello from the seventh tab')).toBeVisible();
  await expect(message(page)).toHaveValue('');
  expect(engine.creates().filter(call => !call.body.sessionFile)).toHaveLength(1);
  const turns = engine.calls.filter(call => call.method === 'POST' && call.path.endsWith('/turn'));
@@ -124,7 +128,7 @@ test('a new tab beside six saved tabs sends to a new session of its own', async 
  // The saved conversation keeps its own history.
  await page.getByRole('tab', { name: 'Saved 1', exact: true }).click();
  await expect(savedLine(page, 1)).toBeVisible();
- await expect(page.getByRole('tabpanel').getByText('Hello from the seventh tab', { exact: true })).toHaveCount(0);
+ await expect(sentWords(page, 'Hello from the seventh tab')).toHaveCount(0);
 });
 
 test('reload attaches each saved tab exactly once', async ({ page }) => {
