@@ -37,6 +37,17 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"which models are pinned in the desktop model picker", "starting-codeaf"},
 		{"where is the desktop settings page for choosing a model per job", "starting-codeaf"},
 		{"what do command 1 2 and 3 do in the desktop model picker", "starting-codeaf"},
+		// DESKTOP PLACES — what filing a conversation under places gives the model.
+		{"why does this chat know about brand-voice.md", "desktop-places"},
+		{"what does Using 3 places · 5 sources mean", "desktop-places"},
+		{"which place's model wins when two places disagree", "desktop-places"},
+		{"two places have contradictory instructions which one does the chat follow", "desktop-places"},
+		{"some sources were trimmed from the Using list why", "desktop-places"},
+		{"I added a place while it was replying and nothing changed", "desktop-places"},
+		{"what does Now also using Release mean in my chat", "desktop-places"},
+		{"did deleting the place delete my chats", "desktop-places"},
+		{"can a place give the chat my ssh folder as a source", "desktop-places"},
+		{"is the place's folder the working directory or an attached folder", "desktop-places"},
 
 		{"what can you do", "what-i-can-do"},
 		{"why does a wrapped help line stay under its key", "keys"},
