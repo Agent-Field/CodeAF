@@ -83,3 +83,11 @@ export function Markdown({ children, className = '', onOpenLink, renderLink, ren
   },
  }}>{children}</ReactMarkdown></div>;
 }
+
+/** Inline content keeps its surrounding heading or label typography and never creates block controls. */
+export function InlineMarkdown({ children }: { children: string }) {
+ return <ReactMarkdown skipHtml allowedElements={['p', 'strong', 'em', 'del', 'code']} unwrapDisallowed components={{
+  p: ({ children }) => <>{children}</>,
+  code: ({ children }) => <CodeText className="inline-code">{children}</CodeText>,
+ }}>{children}</ReactMarkdown>;
+}

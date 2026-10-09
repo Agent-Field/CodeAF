@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Button, Text, TextArea } from '../../../components/ui';
+import { Button, Text, TextArea, InlineMarkdown } from '../../../components/ui';
 import type { EngineAnswer } from '../../chat/engine-client';
 import { answerFor, canPress, canSend, decideAnswer, initialDraft, submitAnswer, type Draft } from './answers';
 import { CardEvidence, CompareTable, type RenderImage } from './CardEvidence';
@@ -53,7 +53,7 @@ function Heading({ question }: { question: Question }) {
   const from = question.asker?.kind === 'task' ? question.asker.name : '';
   return (
     <header className="tray-card-head">
-      <h3 className="tray-head">{question.head}</h3>
+      <h3 className="tray-head"><InlineMarkdown>{question.head}</InlineMarkdown></h3>
       {from && <Text className="tray-caption">{`From ${from}`}</Text>}
       {question.reason && <Text className="tray-reason">{question.reason}</Text>}
     </header>
