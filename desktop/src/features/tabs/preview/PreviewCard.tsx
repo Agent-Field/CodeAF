@@ -28,6 +28,8 @@ type CardProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
   children?: ReactNode;
   /** The primary action when the tab needs you. */
   actions?: ReactNode;
+  /** Small read-only context, before actions (Places6e). */
+  contextNote?: ReactNode;
   ref?: Ref<HTMLDivElement>;
 };
 
@@ -35,7 +37,7 @@ type CardProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
  * The preview card (Shell 3k, Components "Tab hover preview · overview card"): 300px, surface, radius 12, sh-2,
  * header (icon, kind, state), title, then one body. The same anatomy draws the overview card.
  */
-export function PreviewCard({ kind, label, lead, state, title, children, actions, className = '', ...rest }: CardProps) {
+export function PreviewCard({ kind, label, lead, state, title, children, actions, contextNote, className = '', ...rest }: CardProps) {
   if (useContext(bodyOnly)) return <>{children}</>;
   return (
     <div {...rest} className={`preview-card ${className}`} data-kind={kind}>
@@ -46,6 +48,7 @@ export function PreviewCard({ kind, label, lead, state, title, children, actions
       </div>
       <span className="preview-title">{title}</span>
       {children}
+      {contextNote && <span className="preview-context">{contextNote}</span>}
       {actions && <div className="preview-actions">{actions}</div>}
     </div>
   );

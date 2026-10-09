@@ -84,6 +84,10 @@ func (b *Bridge) workspaceRoutes(w http.ResponseWriter, r *http.Request, path st
 		failWorkspace(w, http.StatusForbidden, "origin", "this page may not read codeaf's tabs")
 		return true
 	}
+	if key, found := strings.CutSuffix(rest, "/open-elsewhere"); found && workspacestore.ValidKey(key) {
+		b.workspaceOpenElsewhere(w, r, store, key)
+		return true
+	}
 	if key, found := strings.CutSuffix(rest, "/favicon"); found && workspacestore.ValidKey(key) {
 		b.workspaceFavicon(w, r, store, key)
 		return true

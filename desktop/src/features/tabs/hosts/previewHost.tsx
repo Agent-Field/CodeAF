@@ -11,6 +11,7 @@ import type { PreviewActions } from '../kinds/slots';
 import { focusedPane, type Tab } from '../model';
 import { routeTask } from '../view-state';
 import { questionsFor } from '../preview/content';
+import { useOpenElsewhere } from '../preview/useOpenElsewhere';
 import { usePreviewShown } from '../preview/usePreviewShown';
 import { usePreviewTrigger } from '../preview/usePreviewTrigger';
 
@@ -56,11 +57,12 @@ function useActions(api: TabsApi, tab: Tab): PreviewActions {
   };
 }
 
-function PreviewBody({ api, tab }: { api: TabsApi; tab: Tab }) {
+function PreviewBody({ api, tab, enabled }: { api: TabsApi; tab: Tab; enabled: boolean }) {
   const act = useActions(api, tab);
   const pane = focusedPane(tab);
+  const elsewhere = useOpenElsewhere(api.workspaceKey, pane, enabled);
   const Body = kindDef(pane.kind).preview;
-  return <Body pane={pane} title={tab.title} summary={api.summaries[pane.id]} now={api.now} act={act}/>;
+  return <Body pane={pane} title={tab.title} summary={api.summaries[pane.id]} now={api.now} act={act} openElsewhere={elsewhere}/>;
 }
 
 function TabPreview({ api, tab, trigger }: { api: TabsApi; tab: Tab; trigger: ReactElement }) {
@@ -69,7 +71,7 @@ function TabPreview({ api, tab, trigger }: { api: TabsApi; tab: Tab; trigger: Re
   const handlers = usePreviewTrigger(api.previews, tab.id, open, disabled);
   return (
     <HoverCard open={open && !disabled} trigger={trigger} triggerProps={handlers} role="group" aria-label={`Preview of ${tab.title}`} className="tab-preview" data-swap={swapped || undefined} onPointerEnter={api.previews.keepOpen} onPointerLeave={() => api.previews.scheduleClose(tab.id)}>
-      <PreviewBody api={api} tab={tab}/>
+      <PreviewBody api={api} tab={tab} enabled={open && !disabled}/>
     </HoverCard>
   );
 }
