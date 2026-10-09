@@ -43,7 +43,7 @@ for (const theme of ['light', 'dark']) test(`first place matching tabs move once
   await expect(page.getByRole('heading', { name: 'Reading', exact: true })).toBeVisible();
   const line = page.getByLabel('Matching tabs suggestion', { exact: true });
   await expect(line).toContainText('1 matching tab');
-  await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/first-place-offer-${theme}-${test.info().project.name}.png` });
+  if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/first-place-offer-${theme}-${test.info().project.name}.png` });
   await line.getByRole('button', { name: 'Move matching tabs' }).click();
   await expect(line).toHaveCount(0);
   expect(posts).toHaveLength(1);
@@ -51,7 +51,7 @@ for (const theme of ['light', 'dark']) test(`first place matching tabs move once
   expect(docs.get(place).workspace.groups).toEqual(source.groups);
   expect(docs.get('now').workspace.tabs.map((t: any) => t.id)).toEqual(['home', 'other', 'member-pin']);
   await expect(page.locator('.workspace-group-name').filter({ hasText: 'Reading group' })).toBeVisible();
-  await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/first-place-moved-${theme}-${test.info().project.name}.png` });
+  if (process.env.CODEAF_UI_RESULTS) await page.screenshot({ path: `${process.env.CODEAF_UI_RESULTS}/first-place-moved-${theme}-${test.info().project.name}.png` });
   await page.locator('.toast').getByRole('button', { name: 'Undo', exact: true }).click();
   await expect.poll(() => docs.get('now').workspace.tabs.map((t: any) => t.id)).toEqual(source.tabs.map(t => t.id));
   expect(posts).toHaveLength(2);
