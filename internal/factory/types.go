@@ -311,13 +311,19 @@ type Item struct {
 	OldGate  Gate `json:"Gate,omitempty"`
 	Stream   *Stream
 	Question string
-	QKind    string // plan · cap · scope
+	QKind    string // plan · cap · scope · step
 	Proof    []Claim
 	Policy   []Claim
 	Marked   bool
 	Labels   []string
 	Checks   string
 	Diff     string
+	// Asking is the question a step of the run put to the manager and that
+	// is not answered yet (the inbox, internal/factory/run's inbox.go): with
+	// the manager while it reads it, with the person once the manager sent it
+	// on. It is kept on the item so a question sent to the person outlives a
+	// pause and a restart; nil is none.
+	Asking *Asked
 	// Adapted is what was changed about the item's stages, one line each in
 	// the order it changed them, each starting with who changed them
 	// (`manager set review: …`, `plan added arch`), `why: …` last: the record
@@ -501,3 +507,28 @@ func (s Snapshot) Count(st State) int {
 	}
 	return n
 }
+
+// Asked is one question a step of an item's run asked: every such question
+// goes to the item's manager first, which answers it from the issue, the
+// recipe and the stages, or sends it on to the person.
+type Asked struct {
+	// Stage is the step that asked, by its one word.
+	Stage string
+	// Question is the question in one line, and Options its answers when it
+	// offered some, with Pick the one the step would take.
+	Question string
+	Options  []string
+	Pick     string
+	// At is when the step asked.
+	At time.Time
+	// With is who holds the question now: [AskedManager] or [AskedYou].
+	With string
+	// Why is the manager's reason for sending it to the person, "" for none.
+	Why string
+}
+
+// Who holds a step's question ([Asked.With]).
+const (
+	AskedManager = "manager"
+	AskedYou     = "you"
+)

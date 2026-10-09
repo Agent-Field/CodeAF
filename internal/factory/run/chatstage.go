@@ -110,6 +110,7 @@ const (
 	stageNoReport     = "the stage ended without reporting"
 	briefClosing      = "End by calling stage_result once."
 	briefNoTeamPost   = "You have no team_post tool; report through stage_result only. Ignore team notices about renames."
+	briefAsk          = "A question the brief and the checkout do not settle goes to the item's manager through ask, and you wait for its answer; ask only what you cannot settle yourself."
 	stageNoMaker      = "codeaf cannot open a conversation for a stage here"
 	stageSecondReport = "this stage already reported, and its first report stands"
 	steerNotDelivered = "your words did not reach the stage: "
@@ -156,6 +157,7 @@ func (e chatExecutor) Run(ctx context.Context, job Job) (factory.StageResult, er
 		return factory.StageResult{}, errors.New(stageNoMaker)
 	}
 	door := newStageDoor()
+	door.ask = job.Ask
 	log := job.Log
 	if log == nil {
 		log = func(string) {}
@@ -390,6 +392,7 @@ func stageBrief(job Job) string {
 	para(fixThenCheck(job))
 	para(stageKnobs(job))
 	para(briefNoTeamPost)
+	para(briefAsk)
 	para(briefClosing)
 	return b.String()
 }
@@ -660,6 +663,21 @@ type stageDoor struct {
 	edit     factory.PlanEdit
 	edited   bool
 	reported chan struct{}
+	// ask is the round's road to the manager (Job.Ask), nil for none.
+	ask func(ctx context.Context, q factory.Asked) (string, error)
+}
+
+// errNobodyToAsk is a question from a round that has no road to the manager.
+var errNobodyToAsk = errors.New("this stage has nobody to ask")
+
+// Ask puts the stage's question to the item's manager and answers its
+// answer, or the person's when the manager sent it on (inbox.go). It waits
+// until there is one, or ctx ends.
+func (d *stageDoor) Ask(ctx context.Context, q factory.Asked) (string, error) {
+	if d.ask == nil {
+		return "", errNobodyToAsk
+	}
+	return d.ask(ctx, q)
 }
 
 func newStageDoor() *stageDoor { return &stageDoor{reported: make(chan struct{})} }
