@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Button, ContextMenu, DropdownMenu, Icon, IconButton, SectionHeading, Text, TextInput, type MenuEntry } from '../../components/ui';
-import type { WorkDocument } from '../chat/work-model';
-import { activityLabel } from '../chat/activity';
+import type { TabMark, TabSummary } from '../conversation/tabSummary';
 import type { Tab, TabGroup } from './model';
 import './overview.css';
 
 type Props = {
- documents: Readonly<Record<string, WorkDocument>>; open: boolean; tabs: readonly Tab[]; groups: readonly TabGroup[]; activeId: string;
+ summaries: Readonly<Record<string, TabSummary>>; open: boolean; tabs: readonly Tab[]; groups: readonly TabGroup[]; activeId: string;
  onClose: () => void; onSelect: (id: string) => void; onNew: () => void;
  onPin: (id: string) => void; onMoveGroup: (id: string, groupId?: string) => void;
  onCreateGroup: (id: string) => void; onCloseTab?: (id: string) => void;
  returnFocus?: RefObject<HTMLElement | null>;
 };
 
-export function TabOverview({ documents, open, tabs, groups, activeId, onClose, onSelect, onNew, onPin, onMoveGroup, onCreateGroup, onCloseTab, returnFocus }: Props) {
+const markWords: Record<TabMark, string> = { working: 'Working', waiting: 'Needs you', failed: 'Failed' };
+
+export function TabOverview({ summaries, open, tabs, groups, activeId, onClose, onSelect, onNew, onPin, onMoveGroup, onCreateGroup, onCloseTab, returnFocus }: Props) {
  const dialog = useRef<HTMLDialogElement>(null);
  const search = useRef<HTMLInputElement>(null);
  const previousFocus = useRef<HTMLElement | null>(null);
@@ -60,12 +61,12 @@ export function TabOverview({ documents, open, tabs, groups, activeId, onClose, 
   <div className="overview-scroll">
    <div className="overview-grid">
     {open && ordered.map(tab => {
-     const sections = documents[tab.id]?.sections;
-     const section = sections?.[sections.length - 1];
-     const summary = tab.draft || (section?.sample ? section.digest : section?.original);
+     const known = summaries[tab.id];
+     const summary = tab.draft || known?.digest || known?.firstLine;
+     const mark = known?.mark;
      return <ContextMenu key={tab.id} label={`Actions for ${tab.title} preview`} items={items(tab)}><div className="overview-card" data-active={tab.id === activeId}>
      <Button className="overview-preview" aria-label={`Open ${tab.title}`} aria-pressed={tab.id === activeId} onClick={() => { onSelect(tab.id); onClose(); }}>
-      <span className="overview-content">{section && <span className="overview-section-title">{section.sample ? section.title : "Latest instruction"}</span>}{summary ? <span className="overview-draft">{summary}</span> : <span className="overview-empty"><Icon name="tab" size="sm"/><span>No work yet</span></span>}{activityLabel(documents[tab.id]) && <span className="overview-work-state">{activityLabel(documents[tab.id])}</span>}</span>
+      <span className="overview-content">{summary ? <span className="overview-draft">{summary}</span> : <span className="overview-empty"><Icon name="tab" size="sm"/><span>No work yet</span></span>}{mark && <span className="overview-work-state">{markWords[mark]}</span>}</span>
      </Button>
      <div className="overview-card-footer"><div className="overview-card-label">{tab.pinned && <Icon name="pin" size="xs"/>}<span className="overview-card-title">{tab.title}</span>{tab.id === activeId && <span className="overview-current"><Icon name="check" size="xs"/><span>Current</span></span>}{tab.groupId && <span className="overview-group-name">{groups.find(group => group.id === tab.groupId)?.title}</span>}</div><DropdownMenu label={`Organize ${tab.title}`} items={items(tab)}><IconButton className="overview-card-menu" label={`Organize ${tab.title}`} icon="more" iconSize="xs"/></DropdownMenu></div>
     </div></ContextMenu>; })}

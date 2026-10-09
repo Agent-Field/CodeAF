@@ -1,0 +1,63 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import design from '../../design/tokens.json';
+import type { ConversationModel } from './types';
+
+// Within this distance of the end the reader counts as "at the bottom".
+const SLACK = parseFloat(design.foundation['space-8']);
+
+const distanceToEnd = (element: HTMLElement) => element.scrollHeight - element.clientHeight - element.scrollTop;
+
+/** Changes when something new is said, not when the reader opens a disclosure. */
+export function contentSignature(model: ConversationModel): string {
+  const last = model.turns[model.turns.length - 1];
+  const tail = last?.items[last.items.length - 1];
+  const size = tail && 'text' in tail ? tail.text.length : 0;
+  return [model.turns.length, last?.items.length ?? 0, size, model.questions.length].join(':');
+}
+
+/**
+ * Follows new content only while the reader is at the bottom; otherwise it
+ * reports that something arrived below so the view can offer a jump.
+ */
+export function useStickToBottom(scroller: RefObject<HTMLElement | null>, content: RefObject<HTMLElement | null>, signature: string) {
+  const atBottom = useRef(true);
+  const [behind, setBehind] = useState(false);
+
+  useEffect(() => {
+    const element = scroller.current;
+    const inner = content.current;
+    if (!element || !inner) return;
+    const onScroll = () => {
+      atBottom.current = distanceToEnd(element) <= SLACK;
+      if (atBottom.current) setBehind(false);
+    };
+    const follow = () => {
+      if (atBottom.current) element.scrollTop = element.scrollHeight;
+    };
+    const observer = new ResizeObserver(follow);
+    observer.observe(inner);
+    element.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      element.removeEventListener('scroll', onScroll);
+    };
+  }, [scroller, content]);
+
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    if (atBottom.current) element.scrollTop = element.scrollHeight;
+    else setBehind(true);
+  }, [scroller, signature]);
+
+  const jump = useCallback(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    element.scrollTo({ top: element.scrollHeight, behavior: reduced ? 'auto' : 'smooth' });
+    atBottom.current = true;
+    setBehind(false);
+  }, [scroller]);
+
+  return { behind, jump };
+}
