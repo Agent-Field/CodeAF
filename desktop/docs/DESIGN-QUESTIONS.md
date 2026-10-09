@@ -53,3 +53,6 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q29 | Editing a queued message that holds a pasted-text card | The field edits the whole stored text, including the `<pasted-text>` block, as plain text. |
 | Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | ⌘1–3 switch pinned models while a conversation composer is on screen; ⌘4–9 jump to tabs. Tabs 1–3 are reached with ⌃Tab or a click. |
 | Q31 | Segment label for a pinned model outside the three defaults | The tail of the model name (for example "kimi-k3"). |
+| Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | No hunk header on edit diffs; file/diff tabs (from git) keep it. |
+| Q33 | Elapsed time on the live thinking row ("4s") | Not shown until thinking ends; the engine gives no time before then. |
+| Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | Nearest set icons: ban, pencil, the plain file icons. |
