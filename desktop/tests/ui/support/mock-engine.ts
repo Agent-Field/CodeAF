@@ -44,6 +44,8 @@ export type Scenario = {
   manual?: boolean;
   /** Models the provider offers; defaults to the one default model. */
   models?: { id: string; name: string; efforts?: string[] }[];
+  /** false: the engine serves no /places/policy route (an engine before the Places organization settings). */
+  placesPolicy?: false;
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
   fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
@@ -61,12 +63,27 @@ export type MockEngine = {
   update: (patch: Partial<EngineSnapshot>) => void;
 };
 
-/** Names and one-line jobs of the roles, as the engine reports them. */
+/** Names, one-line jobs, sections and states of the roles, as the engine reports them (a sample of each section). */
 const ROLES = [
-  ['conversation', 'Conversation', 'Answers what you type in a chat and decides when to start a task.'],
-  ['tasks', 'Tasks', 'Does the steps of a task: reading, editing, running commands.'],
-  ['naming', 'Titles and summaries', 'Writes the short names for chats, tasks and background jobs, and the one-line step captions.'],
+  { id: 'conversation', name: 'Conversation', controls: 'Answers what you type in a chat and decides when to start a task.', category: 'conversation', live: true },
+  { id: 'tasks', name: 'Tasks', controls: 'Does the steps of a task: reading, editing, running commands.', category: 'conversation', live: true },
+  { id: 'naming', name: 'Chat titles', controls: 'Names each chat from its opening exchange.', category: 'naming', live: true },
+  { id: 'summaries', name: 'Summaries', controls: 'Writes the short recap of a conversation that History shows.', category: 'naming', live: false, inherits: 'naming' },
+  { id: 'placefiling', name: 'Chat filing', controls: 'Picks which of your places a chat belongs in, to offer it after the first reply. Never creates a place.', category: 'places', live: false },
+  { id: 'memory', name: 'Memory', controls: 'Reads each turn for things worth remembering and tidies what has been remembered.', category: 'memory', live: true },
 ];
+const ROLE_CATEGORIES = [
+  { id: 'conversation', name: 'Conversation and tasks' },
+  { id: 'naming', name: 'Naming and summaries' },
+  { id: 'places', name: 'Places organization' },
+  { id: 'memory', name: 'Memory, routing and safety' },
+];
+/** A sample of internal/placegraph's policy table: one switch that is the design's figure, one provisional number. */
+const PLACES_POLICY = [
+  { key: 'clusterOffers', group: 'offers', name: 'Offer new places', explain: 'When enough chats in no place belong together, offer to put them in a place. You approve every new place.', kind: 'switch', default: true, design: true },
+  { key: 'autoFile', group: 'offers', name: 'File chats without asking', explain: 'Put a chat in a place you already have when codeaf is very sure, and say so.', kind: 'switch', default: false, design: false },
+  { key: 'maxAiTopLevel', group: 'limits', name: 'Top-level places codeaf may create', explain: 'Places you make yourself are never limited.', kind: 'number', default: 6, min: 0, max: 50, unit: 'places', design: false },
+] as const;
 
 const emptyUsage = { Input: 0, Output: 0, CostUSD: 0, Duration: 0, Turns: 0 };
 
@@ -332,7 +349,25 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
 
   // Model roles: the choice is held here like the engine holds it in the profile.
   const chosen: Record<string, { model: string; effort?: string }> = {};
-  const roleView = ([id, name, controls]: string[]) => ({ id, name, controls, model: chosen[id]?.model ?? MODEL, default: MODEL, effort: chosen[id]?.effort, chosen: Boolean(chosen[id]) });
+  const roleView = (role: typeof ROLES[number]) => {
+    const own = chosen[role.id];
+    const followed = !own && role.inherits ? chosen[role.inherits] : undefined;
+    return { ...role, model: own?.model ?? followed?.model ?? MODEL, default: MODEL, effort: own?.effort ?? followed?.effort, chosen: Boolean(own) };
+  };
+  // Places organization choices, held like the engine holds them in the profile.
+  const placesChosen: Record<string, boolean | number> = {};
+  const placesView = (row: typeof PLACES_POLICY[number]) => ({ ...row, value: placesChosen[row.key] ?? row.default, chosen: row.key in placesChosen && placesChosen[row.key] !== row.default });
+  const placesPolicy = (route: Route, parts: string[], method: string, body: Record<string, unknown>) => {
+    if (scenario.placesPolicy === false) return json(route, { error: 'unknown route' }, 404);
+    if (!parts[2]) return json(route, { settings: PLACES_POLICY.map(placesView) });
+    const row = PLACES_POLICY.find(entry => entry.key === parts[2]);
+    if (!row || method !== 'PUT') return json(route, { error: 'no such setting' }, 404);
+    const value = body.value;
+    if (value === null || value === undefined) delete placesChosen[row.key];
+    else if (row.kind === 'switch' ? typeof value !== 'boolean' : !Number.isInteger(value) || (value as number) < (row as { min?: number }).min! || (value as number) > (row as { max?: number }).max!) return json(route, { error: `${row.key} is out of range` }, 400);
+    else placesChosen[row.key] = value as boolean | number;
+    return json(route, placesView(row));
+  };
   let pins = [GLM_FLASH, MODEL, GLM];
   let pinsChosen = false;
   const pinsView = () => ({ pinned: pins.map(id => ({ id, label: PIN_LABELS[id] ?? id.slice(id.lastIndexOf('/') + 1) })), chosen: pinsChosen });
@@ -348,8 +383,8 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       }
       return json(route, pinsView());
     }
-    if (!parts[2]) return json(route, { default: MODEL, roles: ROLES.map(roleView) });
-    const role = ROLES.find(row => row[0] === parts[2]);
+    if (!parts[2]) return json(route, { default: MODEL, roles: ROLES.map(roleView), categories: ROLE_CATEGORIES });
+    const role = ROLES.find(row => row.id === parts[2]);
     if (!role || method !== 'PUT') return json(route, { error: 'unknown model role' }, 404);
     const model = String(body.model ?? '');
     if (model && !listed.some(row => row.id === model)) return json(route, { error: 'that model is not on the list' }, 400);
@@ -372,6 +407,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
       return status ? json(route, { error: `Mock engine forced ${key} failure` }, status) : undefined;
     };
     if (root === 'models') return models(route, parts, method, body);
+    if (root === 'places' && parts[1] === 'policy') return placesPolicy(route, parts, method, body);
     if (root !== 'sessions') return json(route, { error: 'unknown route' }, 404);
     if (!id) return forced('create') ?? json(route, state);
     if (id !== state.id) return json(route, { error: 'reattach this conversation' }, 404);

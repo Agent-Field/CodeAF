@@ -416,8 +416,13 @@ export function terminalStateWords(info: TerminalInfo, now = Date.now()): string
   return info.state === 'closed' ? `closed${ago}` : `exit ${info.exitCode ?? 0}${ago}`;
 }
 /** One thing the person picks a model for, as the engine names and describes it. */
-export type ModelRole = { id: string; name: string; controls: string; model: string; default: string; effort?: string; chosen: boolean };
-export type ModelRoles = { default: string; roles: ModelRole[] };
+/**
+ * One model role. `category` is the settings section it is listed under; `live` is false while nothing in the engine
+ * makes this role's calls yet; `inherits` names the role it follows until it is chosen itself.
+ */
+export type ModelRole = { id: string; name: string; controls: string; model: string; default: string; effort?: string; chosen: boolean; category?: string; live?: boolean; inherits?: string };
+export type ModelRoleCategory = { id: string; name: string };
+export type ModelRoles = { default: string; roles: ModelRole[]; categories?: ModelRoleCategory[] };
 /** One model the provider offers; `efforts` lists the effort words it accepts, when it has any. */
 export type CatalogModel = { id: string; name: string; contextLength?: number; efforts?: string[] };
 /** `fallback` means the provider's list could not be read and only the models in use are offered. */
@@ -438,6 +443,24 @@ export async function readModelCatalog(): Promise<ModelCatalog> {
 export async function setModelRole(role: string, choice: { model: string; effort?: string }): Promise<ModelRole> {
  const response = await fetchEngine(`/models/roles/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify({ model: choice.model, effort: choice.effort ?? '' }) });
  return await response.json() as ModelRole;
+}
+/**
+ * One Places organization setting, as internal/placegraph's policy table describes it. `design` is true when the
+ * default is the design's own figure; otherwise it is a provisional engineering choice.
+ */
+export type PlacesSetting = {
+ key: string; group: string; name: string; explain: string; kind: 'switch' | 'number';
+ default: boolean | number; value: boolean | number; min?: number; max?: number; unit?: string; design: boolean; chosen: boolean;
+};
+export async function readPlacesPolicy(): Promise<PlacesSetting[]> {
+ const view = await (await fetchEngine('/places/policy')).json() as { settings?: PlacesSetting[] };
+ if (!view || !Array.isArray(view.settings)) throw new EngineError('The engine returned invalid Places settings.');
+ return view.settings;
+}
+/** Saves one Places setting; `null` puts it back on its default. */
+export async function setPlacesPolicy(key: string, value: boolean | number | null): Promise<PlacesSetting> {
+ const response = await fetchEngine(`/places/policy/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify({ value }) });
+ return await response.json() as PlacesSetting;
 }
 /** One pinned model: its id and the short word the composer's segmented control shows for it. */
 export type PinnedModel = { id: string; label: string };
