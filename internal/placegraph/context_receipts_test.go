@@ -1,8 +1,10 @@
 package placegraph
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -53,4 +55,52 @@ func TestContextReceiptCrossProcessProvenanceAndStrictUndo(t *testing.T) {
 	if got := ContextUndoReceipt(path, first.BeforeRevision, first.AfterRevision); len(got) != 0 {
 		t.Fatal(got)
 	}
+}
+
+func TestContextReceiptRejectsUnboundedOrAmbiguousAuthority(t *testing.T) {
+	s, path := newStore(t)
+	_, rc, err := s.CreatePlace(NewPlace{Name: "Minimal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path + ".context-receipts.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields []map[string]any
+	if err = json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 1 || len(fields[0]) != 3 {
+		t.Fatalf("not minimal: %s", data)
+	}
+	good := contextReceipt{rc.ID, rc.BeforeRevision, rc.AfterRevision}
+	tests := map[string][]byte{
+		"oversize":          []byte(strings.Repeat(" ", contextReceiptByteLimit+1)),
+		"duplicateID":       mustJSON(t, []contextReceipt{good, good}),
+		"duplicateRevision": mustJSON(t, []contextReceipt{good, {"rc_other", good.Before, good.After}}),
+		"malformedID":       mustJSON(t, []contextReceipt{{"../../rc_bad", good.Before, good.After}}),
+		"nonCommit":         mustJSON(t, []contextReceipt{{"rc_bad", 1, 4}}),
+		"overflow":          mustJSON(t, []contextReceipt{{"rc_bad", ^uint64(0), 0}}),
+		"tooMany":           mustJSON(t, make([]contextReceipt, MaxUndo+1)),
+	}
+	for name, bytes := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(path+".context-receipts.json", bytes, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if got := ContextUndoReceipt(path, good.Before, good.After); len(got) != 0 {
+				t.Fatalf("granted invalid authority: %v", got)
+			}
+		})
+	}
+}
+
+func mustJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
