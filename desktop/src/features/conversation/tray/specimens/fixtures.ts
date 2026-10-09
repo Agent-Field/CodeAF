@@ -93,6 +93,23 @@ export function fixtures(now: number): Case[] {
       ],
     },
     {
+      title: 'Choice with a suggested pick and a countdown',
+      questions: [
+        {
+          id: 14,
+          kind: 'ask',
+          ask: 'choice',
+          head: 'Should trailing commas be on by default?',
+          deadline: later(now, 12),
+          pick: { key: 'strict', reason: 'No surprise for existing users.' },
+          options: [
+            { key: 'strict', label: 'Keep strict', body: 'Opt in with Strict: false. No surprise for existing users.' },
+            { key: 'tolerant', label: 'Tolerant by default', body: 'Friendlier, but files may break other tools.' },
+          ],
+        },
+      ],
+    },
+    {
       title: 'Checklist',
       questions: [
         { id: 9, kind: 'ask', ask: 'choice', head: 'Which folders should the audit cover?', input: { kind: 'checklist' }, options: [{ key: 'src', label: 'src', body: 'The application.' }, { key: 'docs', label: 'docs' }, { key: 'tests', label: 'tests' }] },
