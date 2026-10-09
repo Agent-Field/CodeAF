@@ -562,4 +562,48 @@ for (const theme of ['light', 'dark'] as const) {
   expect(rig.engine.snapshot().workspace).toBe('/work/brand');
   expect(rig.engine.snapshot().workingFolder?.from).toBe('place');
  });
+ test(`populated Home can add its first folder, then start using it · ${theme}`, async ({ page }, info) => {
+  await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+  const rig = await boot(page, { places: [{ name: 'Studio', tint: 'sage' }], chats: [{ id: 'existing', title: 'Earlier work', places: ['Studio'] }], live: [NEW_CHAT], disk: ['/work/brand'] });
+  const studio = rig.places.id('Studio');
+  await goVia(page, rig, 'Studio');
+  await expect(page.getByText('Earlier work', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add files or links', exact: true })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Add files or links', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'Files and links for “Studio”' });
+  const path = sheet.getByRole('textbox', { name: 'Add a path or a link' });
+  await path.fill('/not-present'); await sheet.getByRole('radio', { name: 'Folder' }).click();
+  await sheet.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(sheet.getByRole('alert')).toContainText("That path doesn't exist.");
+  expect(rig.places.state().places.find(place => place.id === studio)?.sources).toHaveLength(0);
+  await path.fill('/work/brand'); await sheet.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(sheet.getByRole('list', { name: 'Files and links' })).toContainText('brand');
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.locator('.home-source-list')).toContainText('brand');
+  await expect(page.getByRole('button', { name: 'Add files or links', exact: true })).toHaveCount(1);
+  if (process.env.HOME_SOURCE_SHOTS) await page.screenshot({ path: `${process.env.HOME_SOURCE_SHOTS}/populated-source-${theme}-${info.project.name}.png` });
+  await page.route('**/api/engine/sessions', async route => {
+    if (route.request().method() !== 'POST') { await route.fallback(); return; }
+    const body = route.request().postDataJSON();
+    if (!body.sessionFile) {
+      expect(body).toEqual({ place: studio });
+      rig.engine.update({ workspace: '/work/brand', workingFolder: { from: 'place', path: '/work/brand', label: 'brand' } });
+    }
+    await route.fulfill({ json: rig.engine.snapshot() });
+  });
+  await page.route('**/api/engine/sessions/*/using', async route => {
+    const state = rig.places.state();
+    const place = state.places.find(place => place.id === studio)!;
+    const sources = place.sources.map(source => ({ key: source.id, kind: source.kind, ref: source.ref, label: source.label, status: 'ok', from: [{ placeId: studio, sourceId: source.id, addedBy: 'you', level: 0 }] }));
+    await route.fulfill({ json: { chatId: NEW_CHAT, engine: { places: true }, revision: state.revision, readAt: '2026-10-09T12:00:00Z', settings: [], bundle: { chatId: NEW_CHAT, revision: state.revision, places: [{ id: studio, name: 'Studio', tint: 'sage', level: 0, inherited: false }], instructions: [], sources, trimmed: [], refused: [], policy: [], counts: { places: 1, sources: sources.length } } } });
+  });
+  const composer = page.locator('.home-composer').getByRole('textbox', { name: 'Message' });
+  await composer.fill('Use the folder added after earlier work'); await composer.press('Enter');
+  await expect(tabs(page).filter({ hasText: 'Use the folder added after earlier work' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('button', { name: 'Using 1 place · 1 source', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'What this conversation is using' })).toContainText('brand');
+  expect(rig.engine.snapshot().workspace).toBe('/work/brand');
+  if (process.env.HOME_SOURCE_SHOTS) await page.screenshot({ path: `${process.env.HOME_SOURCE_SHOTS}/using-source-${theme}-${info.project.name}.png` });
+ });
+
 }
