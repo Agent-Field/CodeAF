@@ -51,11 +51,14 @@ const (
 	// replay detection and for relocation hints.
 	maxLedgerEntries = 20
 	// maxMovedPerEntry bounds the relocation hints one transfer records.
-	maxMovedPerEntry = 400
-	// maxJournalBytes holds two whole records and the metadata around them.
-	maxJournalBytes = 2*maxFileBytes + 256<<10
-	// maxLedgerBytes is generous for 20 entries of 400 hints each.
-	maxLedgerBytes = 4 << 20
+	maxMovedPerEntry = (MaxTabs + MaxClosed) * (1 + MaxPanes)
+	// Every moved identity occurs in the validated destination document, so
+	// its escaped key bytes fit that document budget. Each map entry adds only
+	// a bounded destination key plus punctuation; metadata adds a small envelope.
+	maxMovedBytes = MaxDocumentBytes + maxMovedPerEntry*(len("pl_0000000000000000")+8)
+	// Both encoded records plus complete relocation metadata, still bounded.
+	maxJournalBytes = 2*maxFileBytes + maxMovedBytes + 16<<10
+	maxLedgerBytes  = maxLedgerEntries * (maxMovedBytes + 4<<10)
 
 	pairJournalName = ".pair-pending"
 	pairLedgerName  = ".pair-ledger"
@@ -213,7 +216,7 @@ func readStrict(path string, limit int64, into any, schemaOf func() int) error {
 // readJournal returns the committed pending transfer, or nil when there is none.
 func (s *Store) readJournal() (*pairJournal, error) {
 	var j pairJournal
-	err := readStrict(s.journalPath(), maxJournalBytes, &j, func() int { return j.Schema })
+	err := readStrict(s.journalPath(), int64(maxJournalBytes), &j, func() int { return j.Schema })
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -238,7 +241,7 @@ func (s *Store) readJournal() (*pairJournal, error) {
 // readLedger returns the completion ledger, empty when there is none.
 func (s *Store) readLedger() (*pairLedger, error) {
 	var l pairLedger
-	err := readStrict(s.ledgerPath(), maxLedgerBytes, &l, func() int { return l.Schema })
+	err := readStrict(s.ledgerPath(), int64(maxLedgerBytes), &l, func() int { return l.Schema })
 	if errors.Is(err, os.ErrNotExist) {
 		return &pairLedger{Schema: SchemaVersion}, nil
 	}
@@ -250,8 +253,7 @@ func (s *Store) readLedger() (*pairLedger, error) {
 
 // overlay shows a committed pending transfer on top of the disk record. It is
 // read-only: the journal only wins when it is newer than the file.
-func (s *Store) overlay(rec Record) Record {
-	j, _ := s.readJournal()
+func (s *Store) overlay(rec Record, j *pairJournal) Record {
 	if j != nil {
 		if jr, ok := j.record(rec.Key); ok && jr.Revision > rec.Revision {
 			rec = jr
@@ -585,6 +587,25 @@ func (s *Store) PutPair(req PairRequest) (PairResult, error) {
 		Destination: file{Schema: SchemaVersion, Key: req.Destination, Revision: curD.Revision + 1, UpdatedAt: now, Writer: req.Writer, Workspace: compact[1].Bytes()},
 		Moved:       movedIDs(curS.Workspace, compact[0].Bytes(), compact[1].Bytes(), req.Destination),
 	}
+	// Check the actual encoded form before the public journal rename. Raw
+	// JSON documents can fit the input bound yet expand under HTML escaping;
+	// publishing one the record/journal readers reject would strand the commit.
+	for _, record := range []*file{&next.Source, &next.Destination} {
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			return PairResult{}, err
+		}
+		if len(encoded) > maxFileBytes {
+			return PairResult{}, ErrTooLarge
+		}
+		var persisted file
+		if err := json.Unmarshal(encoded, &persisted); err != nil {
+			return PairResult{}, err
+		}
+		if len(persisted.Workspace) > MaxDocumentBytes {
+			return PairResult{}, ErrTooLarge
+		}
+	}
 	data, err := json.Marshal(&next)
 	if err != nil {
 		return PairResult{}, err
@@ -598,13 +619,13 @@ func (s *Store) PutPair(req PairRequest) (PairResult, error) {
 	if _, err := s.writeState(s.journalPath(), data, "journal-rename"); err != nil {
 		return PairResult{}, err
 	}
-	if err := s.syncDirectory(); err != nil {
-		// The rename is visible but not known durable. If it can be taken back
-		// the transfer simply did not happen; if it cannot, it is committed.
-		if os.Remove(s.journalPath()) == nil {
-			return PairResult{}, fmt.Errorf("workspacestore: could not make the transfer durable: %w", err)
-		}
-	}
+	// A renamed journal is already public to lock-free readers. A failed
+	// directory fsync cannot unpublish it: doing so would roll back a commit
+	// another window has observed. Finishing retries durable materialization;
+	// failures leave the journal for the next writer. An I/O failure still means
+	// crash durability cannot be guaranteed, but never means nothing changed.
+	_ = s.syncDirectory()
+
 	s.signal()
 	_ = s.finishLocked(&next)
 	return s.acknowledge(req, false)
