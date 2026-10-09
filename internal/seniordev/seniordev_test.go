@@ -61,6 +61,10 @@ func (h *recordingHost) Terminal(end delegate.Ending) {
 	h.add(hostRecord{kind: "terminal", ending: end})
 }
 
+// Records names the run's record folder as codeaf's own child host does: from
+// CODEAF_RECORDS, which codeaf sets on the line of every run it carries.
+func (h *recordingHost) Records() string { return os.Getenv(delegate.EnvRecords) }
+
 func (h *recordingHost) add(r hostRecord) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -92,6 +96,9 @@ type modelAPIServer struct {
 	// hold, when set, blocks each request until the caller gives up, and says
 	// so on the channel first.
 	hold chan struct{}
+	// script, when set, is the model's side of the conversation in place of
+	// [scriptedReply].
+	script func(call int) string
 }
 
 type seenRequest struct {
@@ -120,6 +127,10 @@ func (s *modelAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	call := len(s.requests)
 	hold := s.hold
+	reply := scriptedReply
+	if s.script != nil {
+		reply = s.script
+	}
 	s.mu.Unlock()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
@@ -137,7 +148,7 @@ func (s *modelAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()
 		return
 	}
-	_, _ = io.WriteString(w, scriptedReply(call))
+	_, _ = io.WriteString(w, reply(call))
 }
 
 func (s *modelAPIServer) seen() []seenRequest {
@@ -201,6 +212,8 @@ func hermeticRun(t *testing.T) (workspace string, trap *atomic.Bool) {
 	t.Setenv("SENIOR_DEV_PERMISSION", "")
 	t.Setenv("SENIOR_DEV_NET", "allow")
 	t.Setenv("SENIOR_DEV_SCRATCH_ROOT", t.TempDir())
+	t.Setenv(app.StateDirEnv, "")
+	t.Setenv(delegate.EnvRecords, "")
 	t.Setenv("SENIOR_DEV_DISABLE_MODELS_FETCH", "1")
 	catalog, err := filepath.Abs(filepath.Join("modelsdev", "testdata", "catalog.json"))
 	if err != nil {
@@ -403,6 +416,235 @@ func TestTheRunCommandWorksATaskThroughTheModelAPIItIsGiven(t *testing.T) {
 	}
 	if trapHit.Load() {
 		t.Fatal("a request went to OPENROUTER_BASE_URL")
+	}
+}
+
+// --state-dir REACHES THE RUN, AND WINS OVER SENIOR_DEV_STATE_DIR. A whole run
+// keeps its session database and its conversation in the directory the flag
+// names; the variable's directory and the folder's .senior-dev hold none of
+// them, and the brief is still written where the model is told to read it.
+func TestTheStateDirFlagKeepsTheStoreWhereItSays(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	stateDir, variable, record := filepath.Join(t.TempDir(), "run-1"), t.TempDir(), t.TempDir()
+	t.Setenv(app.StateDirEnv, variable)
+	t.Setenv(delegate.EnvRecords, record)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	err := runBody(t, context.Background(), host, "--state-dir", stateDir,
+		"--high", "openrouter/fixture/vendor-model", "--", "Add", "the", "feature.")
+	if err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+
+	records := host.snapshot()
+	if ending := records[len(records)-1].ending; ending.Status != delegate.StatusPass {
+		t.Fatalf("ending = %+v, want pass", ending)
+	}
+	for _, name := range []string{"senior-dev.db", "storage", "projection.lock"} {
+		if _, err := os.Stat(filepath.Join(stateDir, name)); err != nil {
+			t.Errorf("%s is not in the --state-dir: %v", name, err)
+		}
+	}
+	if entries, _ := os.ReadDir(variable); len(entries) != 0 {
+		t.Errorf("%s's directory holds %d entries although --state-dir named another", app.StateDirEnv, len(entries))
+	}
+	if entries, _ := os.ReadDir(record); len(entries) != 0 {
+		t.Errorf("the record folder holds %d entries although --state-dir named another directory", len(entries))
+	}
+	for _, name := range []string{"senior-dev.db", "storage", "projection.lock"} {
+		if _, err := os.Lstat(filepath.Join(workspace, ".senior-dev", name)); err == nil {
+			t.Errorf("the folder's .senior-dev holds %s", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(workspace, ".senior-dev", "spec.md")); err != nil {
+		t.Errorf("the brief is not where the model reads it: %v", err)
+	}
+}
+
+// A RUN CODEAF CARRIES KEEPS ITS STORE IN ITS RECORD FOLDER. With no
+// --state-dir and no SENIOR_DEV_STATE_DIR, the session database, the records
+// and the lock go in a directory of the run's own in the folder codeaf named
+// on CODEAF_RECORDS, and the folder's .senior-dev holds only what the model
+// works from.
+func TestACarriedRunKeepsItsStoreInTheRecordFolder(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	record := t.TempDir()
+	t.Setenv(delegate.EnvRecords, record)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	if err := runBody(t, context.Background(), host,
+		"--high", "openrouter/fixture/vendor-model", "--", "Add", "the", "feature."); err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+	records := host.snapshot()
+	if ending := records[len(records)-1].ending; ending.Status != delegate.StatusPass {
+		t.Fatalf("ending = %+v, want pass", ending)
+	}
+	for _, name := range []string{"senior-dev.db", "storage", "projection.lock"} {
+		if _, err := os.Stat(filepath.Join(record, "store", name)); err != nil {
+			t.Errorf("%s is not in the record folder's store: %v", name, err)
+		}
+	}
+	assertNotesOnly(t, workspace)
+}
+
+// A LAUNCH REFUSED BEFORE ITS FIRST CALL LEAVES NO STORE BEHIND. Where the
+// store goes is decided early, but its directory is made only when the store
+// opens, after every refusal, so the next launch of the task gets store and
+// not store.1 beside an empty one.
+func TestARefusedLaunchLeavesNoStoreInTheRecordFolder(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	record := t.TempDir()
+	t.Setenv(delegate.EnvRecords, record)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	_ = runBody(t, context.Background(), host,
+		"--asked", "--high", "openrouter/nobody/knows-this-model", "--", "Add", "the", "feature.")
+	records := host.snapshot()
+	if ending := records[len(records)-1].ending; ending.Status != delegate.StatusCrashed {
+		t.Fatalf("ending = %+v, want the launch refused", ending)
+	}
+	if entries, _ := os.ReadDir(record); len(entries) != 0 {
+		t.Errorf("a refused launch left %d entries in the record folder", len(entries))
+	}
+}
+
+// SENIOR_DEV_STATE_DIR WINS OVER THE RECORD FOLDER, as --state-dir does: a
+// directory a person named is where the store goes, and the record folder
+// gets none.
+func TestTheStateDirVariableWinsOverTheRecordFolder(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	record, variable := t.TempDir(), filepath.Join(t.TempDir(), "named")
+	t.Setenv(delegate.EnvRecords, record)
+	t.Setenv(app.StateDirEnv, variable)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	if err := runBody(t, context.Background(), host,
+		"--high", "openrouter/fixture/vendor-model", "--", "Add", "the", "feature."); err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(variable, "senior-dev.db")); err != nil {
+		t.Errorf("the store is not where %s named: %v", app.StateDirEnv, err)
+	}
+	if entries, _ := os.ReadDir(record); len(entries) != 0 {
+		t.Errorf("the record folder holds %d entries although %s named another directory", len(entries), app.StateDirEnv)
+	}
+}
+
+// A RUN NOBODY CARRIED KEEPS ITS STORE IN THE FOLDER'S .senior-dev, as before:
+// with no record folder there is nowhere else that is the run's own.
+func TestARunWithNoRecordFolderKeepsItsStoreInTheFolder(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	api := httptest.NewServer(&modelAPIServer{})
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	if err := runBody(t, context.Background(), host,
+		"--high", "openrouter/fixture/vendor-model", "--", "Add", "the", "feature."); err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+	for _, name := range []string{"senior-dev.db", "storage", "projection.lock"} {
+		if _, err := os.Stat(filepath.Join(workspace, ".senior-dev", name)); err != nil {
+			t.Errorf("%s is not in the folder's .senior-dev: %v", name, err)
+		}
+	}
+}
+
+// A .senior-dev THE WORK REMOVES MID-RUN IS WRITTEN BACK, AND THE RUN HANDS IN.
+// The model's own command empties it, as a benchmark's restore script and
+// OpenSSL's `make clean` did; the store is in the record folder and untouched,
+// the brief and the checklist are written back as the run last read them, and
+// the submit that reads the checklist next is accepted.
+func TestANotesFolderTheWorkRemovesIsWrittenBack(t *testing.T) {
+	workspace, _ := hermeticRun(t)
+	record := t.TempDir()
+	t.Setenv(delegate.EnvRecords, record)
+	server := &modelAPIServer{script: func(call int) string {
+		switch call {
+		case 4:
+			return toolCall(call, "bash", map[string]any{"command": "rm -rf .senior-dev"})
+		case 5:
+			return toolCall(call, "submit", map[string]any{
+				"reason": "feature.txt now holds the feature", "evidence": "make test exits 0",
+				"checklist_satisfied": true,
+			})
+		}
+		return scriptedReply(call)
+	}}
+	api := httptest.NewServer(server)
+	t.Cleanup(api.Close)
+	host := &recordingHost{
+		workspace: workspace,
+		api:       delegate.ModelAPI{BaseURL: api.URL + "/v1", Token: runToken},
+	}
+
+	if err := runBody(t, context.Background(), host,
+		"--high", "openrouter/fixture/vendor-model", "--", "Add", "the", "feature."); err != nil {
+		t.Fatalf("the body answered an error: %v", err)
+	}
+	records := host.snapshot()
+	if ending := records[len(records)-1].ending; ending.Status != delegate.StatusPass {
+		t.Fatalf("ending = %+v, want pass", ending)
+	}
+	if !slices.ContainsFunc(records, func(record hostRecord) bool {
+		return record.kind == "stage" && record.stage == "implement/notes-rewritten"
+	}) {
+		t.Error("no implement/notes-rewritten record says a note file was written back")
+	}
+	for name, want := range map[string]string{
+		"spec.md":      "Add the feature.",
+		"checklist.md": "- [x] the feature is implemented\n",
+	} {
+		if data, err := os.ReadFile(filepath.Join(workspace, ".senior-dev", name)); err != nil || string(data) != want {
+			t.Errorf(".senior-dev/%s = %q, %v; want %q written back", name, data, err, want)
+		}
+	}
+	messages, _ := filepath.Glob(filepath.Join(record, "store", "storage", "message", "*", "*.json"))
+	if len(messages) < 5 {
+		t.Errorf("the store in the record folder holds %d messages; the conversation should be whole", len(messages))
+	}
+	assertNotesOnly(t, workspace)
+}
+
+// assertNotesOnly fails the test when the folder's .senior-dev holds anything
+// but the files the model works from: no database, no records, no lock.
+func assertNotesOnly(t *testing.T, workspace string) {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(workspace, ".senior-dev"))
+	if err != nil {
+		t.Fatalf("the folder's .senior-dev: %v", err)
+	}
+	allowed := map[string]bool{
+		"spec.md": true, "checklist.md": true, "pinned.txt": true, "steering.md": true,
+		"tool-output": true, "cmake-build": true,
+	}
+	for _, entry := range entries {
+		if !allowed[entry.Name()] {
+			t.Errorf("the folder's .senior-dev holds %s, which is not one of the model's files", entry.Name())
+		}
 	}
 }
 

@@ -62,6 +62,10 @@ type pipeline struct {
 	fingerprintFiles map[string]worktreeFileFingerprint
 	fingerprintNonce uint64
 
+	// kept is what the note files in .senior-dev last held, so a removed one
+	// can be written back ([pipeline.readNote]).
+	kept keptNotes
+
 	// verificationTimeouts remembers entrypoints that hung at the verification
 	// ceiling so a second pass does not pay the full ceiling again for an
 	// identical command against an unchanged tree.
@@ -132,7 +136,13 @@ func newPipeline(args cliArgs, workspace string, deps pipelineDeps) *pipeline {
 	if aware, ok := deps.Backend.(adaptiveRouterBackend); ok {
 		aware.setAdaptiveRouter(router)
 	}
-	runtime := newConfiguredRuntime(workspace, deps.Backend, deps.Config)
+	// The record folder's store is made only now, when the store opens and
+	// every refusal is behind the run.
+	stateDir := args.StateDir
+	if stateDir == "" {
+		stateDir = claimRecordStore(args.RecordStore)
+	}
+	runtime := newConfiguredRuntime(workspace, stateDir, deps.Backend, deps.Config)
 	runtime.now = now
 	runtime.events = deps.Events
 	if deps.Events != nil && runtime.bus != nil {

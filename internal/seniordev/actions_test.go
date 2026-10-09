@@ -221,3 +221,18 @@ func TestAGuessedWindowReadsOnTheRunsPage(t *testing.T) {
 		t.Fatalf("shown = %+v, %v", shown, ok)
 	}
 }
+
+// A NOTE FILE WRITTEN BACK SAYS SO on the run's page, naming the file when the
+// record does: something the work ran removed it, and the run put it back as
+// it last read it (app/notes_kept.go).
+func TestANoteWrittenBackReadsOnTheRunsPage(t *testing.T) {
+	read := Program.Reader()
+	named, ok := read(stage("implement", "notes-rewritten", map[string]any{"file": ".senior-dev/checklist.md", "bytes": 43}))
+	if !ok || named.Text != "wrote .senior-dev/checklist.md back after something removed it" {
+		t.Fatalf("shown = %+v, %v", named, ok)
+	}
+	unnamed, ok := read(stage("implement", "notes-rewritten", nil))
+	if !ok || unnamed.Text != "wrote its notes back after something removed them" {
+		t.Fatalf("shown = %+v, %v", unnamed, ok)
+	}
+}

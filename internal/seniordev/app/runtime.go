@@ -198,11 +198,13 @@ func (runtime *runtimeAdapter) compactionProvenance(configured turn) map[string]
 	return record
 }
 
-func newConfiguredRuntime(workspace string, client backend, cfg *seniorDevConfig) *runtimeAdapter {
+// newConfiguredRuntime is the runtime for one run in workspace, its session
+// store in stateDir or, with that empty, in the workspace's own .senior-dev.
+func newConfiguredRuntime(workspace, stateDir string, client backend, cfg *seniorDevConfig) *runtimeAdapter {
 	runtime := &runtimeAdapter{
 		backend: client, config: cfg, workspace: workspace, now: time.Now,
 	}
-	runtime.durable, runtime.initErr = openDurableSessions(context.Background(), workspace)
+	runtime.durable, runtime.initErr = openDurableSessionsIn(context.Background(), workspace, stateDir)
 	if runtime.durable != nil && runtime.durable.bus != nil {
 		runtime.bus = runtime.durable.bus
 	} else {
