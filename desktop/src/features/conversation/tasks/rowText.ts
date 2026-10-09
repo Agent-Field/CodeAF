@@ -5,6 +5,8 @@ import { isEnded, type TaskKind } from '../taskState.ts';
 import { displayCommand } from './displayCommand.ts';
 import { parseTime, shortAge, sinceMs } from './taskClock.ts';
 
+const SECOND = 1000;
+
 /** Compact token count: 940, 9.9k, 1.2M. Empty when unknown. */
 export function tokensText(tokens: number): string {
   const scaled = (value: number, unit: string) => `${value.toFixed(1).replace(/\.0$/, '')}${unit}`;
@@ -16,7 +18,9 @@ export function tokensText(tokens: number): string {
 /** Running: time so far. Ended: how long it took. Queued, paused, your call: blank. */
 export function rowAge(row: EngineTaskRow, kind: TaskKind, now: number): string {
   if (kind === 'running') return shortAge(sinceMs(row.Started, now));
-  return isEnded(kind) ? shortAge(parseTime(row.Ended) - parseTime(row.Started)) : '';
+  // A task that took no measurable time says nothing: zero is never drawn (the emptiness law).
+  const took = parseTime(row.Ended) - parseTime(row.Started);
+  return isEnded(kind) && took >= SECOND ? shortAge(took) : '';
 }
 
 /** What a queued row waits on, as the dimmed lead of its title ("Split by loader /"); empty otherwise. */

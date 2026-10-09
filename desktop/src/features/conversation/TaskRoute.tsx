@@ -26,19 +26,17 @@ function segmentsFor(tasks: EngineTaskRow[], taskId: string): BreadcrumbSegment[
   return [...trail, ...own];
 }
 
-/** The pane's top row in task view: Back and the trail, across the whole pane (design 1c). */
+/** The trail in the pane's top row in task view: Back and the path, across the whole pane (design 1c). */
 export function TaskRouteBar({ taskId, tasks, route, onRoute }: Pick<Props, 'taskId' | 'tasks' | 'route' | 'onRoute'>) {
   return (
-    <div className="task-view-bar">
-      <Breadcrumb
-        segments={segmentsFor(tasks, taskId)}
-        onNavigate={(id) => onRoute(navigate(route, id ?? undefined))}
-        canBack={route.back.length > 0}
-        canForward={route.forward.length > 0}
-        onBack={() => onRoute(goBack(route))}
-        onForward={() => onRoute(goForward(route))}
-      />
-    </div>
+    <Breadcrumb
+      segments={segmentsFor(tasks, taskId)}
+      onNavigate={(id) => onRoute(navigate(route, id ?? undefined))}
+      canBack={route.back.length > 0}
+      canForward={route.forward.length > 0}
+      onBack={() => onRoute(goBack(route))}
+      onForward={() => onRoute(goForward(route))}
+    />
   );
 }
 

@@ -86,7 +86,7 @@ test('selecting a row fills the detail pane; facts and instructions appear only 
   // The first waiting row is chosen at first, with the engine's question beside it.
   const waitingPane = detail(page, 'Update the snapshot tests');
   await expect(waitingPane).toBeVisible();
-  await expect(waitingPane.getByText('Your call')).toBeVisible();
+  await expect(waitingPane.getByText('Needs you')).toBeVisible();
   await expect(waitingPane.getByText('Allow 3 git actions?')).toBeVisible();
 
   await rowButton(page, '1.1').click();
@@ -159,7 +159,7 @@ test('400px dark: no horizontal overflow and accessible', async ({ page }) => {
   await installMockEngine(page, scenario());
   await openApp(page);
   await send(page, 'Ship it');
-  // At this width the panel is a sheet, closed until the composer toggle opens it.
+  // At this width the panel is a sheet, closed until the header toggle opens it.
   await page.getByRole('button', { name: /^Tasks · / }).click();
   await page.getByRole('button', { name: 'Expand tasks' }).click();
   await expect(table(page)).toBeVisible();

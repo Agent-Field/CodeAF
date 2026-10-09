@@ -28,8 +28,9 @@
 .task-panel-scroll[data-below] { -webkit-mask-image: linear-gradient(to top, transparent, var(--ink) var(--tasks-mask-bottom)); mask-image: linear-gradient(to top, transparent, var(--ink) var(--tasks-mask-bottom)); }
 .task-panel-scroll[data-above][data-below] { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--ink) var(--tasks-mask-top), var(--ink) calc(100% - var(--tasks-mask-bottom)), transparent); mask-image: linear-gradient(to bottom, transparent, var(--ink) var(--tasks-mask-top), var(--ink) calc(100% - var(--tasks-mask-bottom)), transparent); }
 
-.task-panel-fold.button { flex: none; justify-content: flex-start; gap: var(--space-2); width: 100%; height: var(--tasks-fold-height); padding: 0 var(--space-4); border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--type-label-size); }
-.task-panel-fold.button:hover:not(:disabled) { background: transparent; color: var(--ink-2); }
+.task-panel-fold.button { flex: none; justify-content: flex-start; gap: var(--space-2); width: calc(100% - var(--space-4)); height: var(--tasks-fold-height); margin-inline: var(--space-2); padding: 0 var(--space-2); border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--type-label-size); }
+.task-panel-fold.button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.task-panel-fold.button:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
 .task-panel-fold .app-icon { width: var(--tasks-chevron); height: var(--tasks-chevron); }
 .task-panel-fold-count { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 
