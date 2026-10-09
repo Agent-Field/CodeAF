@@ -50,7 +50,15 @@ type Connection struct {
 	Welcome   remote.Welcome
 	FetchFile func(string) (remote.FetchedFile, error)
 	StatPaths func([]string) ([]remote.PathFact, error)
-	Close     func()
+	// The file and diff tabs' doors (workview.go). Nil means the engine cannot.
+	ReadText    func(string) (remote.TextFile, error)
+	FindFiles   func(string, int) (remote.FoundFiles, error)
+	DiffChanges func([]string) (remote.ChangedFiles, error)
+	DiffFile    func(string) (remote.FileDiff, error)
+	// Local is true when the engine runs on this machine's disk (a child the
+	// bridge started). Only then may the app hand a path to a local editor.
+	Local bool
+	Close func()
 }
 type Open func(sessionFile string) (Connection, error)
 

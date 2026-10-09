@@ -67,3 +67,35 @@ func (c *Client) DepositFile(name, mime string, data []byte) (string, error) {
 	}
 	return landed.Path, nil
 }
+
+// callTyped is the shared shape of the four work-view getters: one typed ask, one
+// typed answer, the engine's sentence on refusal.
+func callTyped[A, R any](c *Client, method string, args A) (R, error) {
+	var out R
+	payload, err := c.call(nil, method, args)
+	if err != nil {
+		return out, err
+	}
+	err = json.Unmarshal(payload, &out)
+	return out, err
+}
+
+// ReadText asks for one workspace file as text, or a refusal that says why not.
+func (c *Client) ReadText(path string) (TextFile, error) {
+	return callTyped[ReadTextArgs, TextFile](c, MethodReadText, ReadTextArgs{Path: path})
+}
+
+// FindFiles asks which workspace files match a query.
+func (c *Client) FindFiles(query string, limit int) (FoundFiles, error) {
+	return callTyped[FindFilesArgs, FoundFiles](c, MethodFindFiles, FindFilesArgs{Query: query, Limit: limit})
+}
+
+// DiffChanges asks which workspace files differ from the base.
+func (c *Client) DiffChanges(paths []string) (ChangedFiles, error) {
+	return callTyped[DiffChangesArgs, ChangedFiles](c, MethodDiffChanges, DiffChangesArgs{Paths: paths})
+}
+
+// DiffFile asks for one file's diff against the base.
+func (c *Client) DiffFile(path string) (FileDiff, error) {
+	return callTyped[DiffFileArgs, FileDiff](c, MethodDiffFile, DiffFileArgs{Path: path})
+}

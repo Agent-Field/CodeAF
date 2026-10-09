@@ -238,6 +238,53 @@ export async function readEngineFile(id: string, path: string): Promise<EngineFi
 export async function statEnginePaths(id: string, paths: string[]): Promise<EnginePathFact[]> {
   return (await (await fetchEngine(`${sessionPath(id)}/files/stat`, { method: 'POST', body: JSON.stringify({ paths }) })).json()) as EnginePathFact[];
 }
+// ---- File and diff tabs (docs/ENGINE.md "File and diff tabs"). Every byte comes from the
+// engine, which may be on another machine; paths are workspace-relative, slash separated. ----
+/** One workspace file as text. `refusal` set means no text: show `message`, offer the editor. */
+export type EngineTextFile = {
+ path: string; name: string; dir: string; abs: string; size: number; hash?: string;
+ language?: string; lines: number; text: string;
+ refusal?: 'binary' | 'too-large'; message?: string;
+};
+/** One Matching row of the command field. */
+export type EngineFoundFile = { path: string; name: string; dir: string };
+export type EngineFoundFiles = { files: EngineFoundFile[]; truncated?: boolean };
+export type EngineChangeStatus = 'modified' | 'added' | 'deleted' | 'untracked';
+/** One row of "what changed": header "lexer.go internal/parse +12 −3" is name, dir, added, deleted. */
+export type EngineChangedFile = { path: string; name: string; dir: string; status: EngineChangeStatus; added: number; deleted: number; binary?: boolean };
+export type EngineChangedFiles = { git: boolean; base?: string; branch?: string; files: EngineChangedFile[]; added: number; deleted: number; truncated?: boolean };
+/** Unified-diff row: `old`/`new` are the two line-number columns (absent = blank). */
+export type EngineDiffLine = { kind: 'context' | 'add' | 'del'; old?: number; new?: number; text: string };
+export type EngineDiffHunk = { header: string; oldStart: number; oldLines: number; newStart: number; newLines: number; section?: string; lines: EngineDiffLine[] };
+/** `lines` is the current file's length: the gap before a hunk is `newStart - 1 - previous end`, after the last is `lines - end`. */
+export type EngineFileDiff = {
+ path: string; name: string; dir: string; abs: string; git: boolean;
+ status: 'clean' | EngineChangeStatus; added: number; deleted: number; binary?: boolean;
+ lines: number; hunks: EngineDiffHunk[]; truncated?: boolean;
+};
+/** Where "Open in editor" may go. Open only when `local` is true and `host` equals this machine's name. */
+export type EngineEditorTarget = { path: string; abs: string; host: string; local: boolean };
+/** Read one workspace file as text (1MB cap; binary and large files come back with `refusal`). */
+export async function readEngineText(id: string, path: string): Promise<EngineTextFile> {
+ return (await (await fetchEngine(`${sessionPath(id)}/files/text?path=${encodeURIComponent(path)}`)).json()) as EngineTextFile;
+}
+/** Files matching a query, best first (gitignore-aware); an empty query matches nothing. */
+export async function findEngineFiles(id: string, query: string, limit = 20): Promise<EngineFoundFiles> {
+ return (await (await fetchEngine(`${sessionPath(id)}/files/find?q=${encodeURIComponent(query)}&limit=${limit}`)).json()) as EngineFoundFiles;
+}
+/** Files that differ from the base (git HEAD); `paths` narrows to what a conversation touched. */
+export async function engineChanges(id: string, paths: string[] = []): Promise<EngineChangedFiles> {
+ const query = paths.map(path => `path=${encodeURIComponent(path)}`).join('&');
+ return (await (await fetchEngine(`${sessionPath(id)}/changes${query ? `?${query}` : ''}`)).json()) as EngineChangedFiles;
+}
+/** One file's diff against the base, with hunks and counts. */
+export async function engineFileDiff(id: string, path: string): Promise<EngineFileDiff> {
+ return (await (await fetchEngine(`${sessionPath(id)}/diff?path=${encodeURIComponent(path)}`)).json()) as EngineFileDiff;
+}
+/** Absolute path for "Open in editor"; 404 when the file is gone, 403 outside the workspace. */
+export async function engineEditorTarget(id: string, path: string): Promise<EngineEditorTarget> {
+ return (await (await fetchEngine(`${sessionPath(id)}/files/locate?path=${encodeURIComponent(path)}`)).json()) as EngineEditorTarget;
+}
 /** E3: send a message with attachments. Files are base64 in the body (≤20MB total). */
 export type OutgoingFile = { name: string; mime: string; dataBase64: string };
 export function sendEngineWithFiles(id: string, text: string, files: OutgoingFile[]): Promise<EngineSnapshot> {
