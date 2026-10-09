@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, CodeText, Icon, WorkStateIndicator } from '../../components/ui';
 import type { ToolStep } from './types';
-import { argsRestateHint, prettyArgs, toolIcon, toolLabel } from './tool-family';
+import { argsRestateHint, prettyArgs, rowHint, toolIcon } from './tool-family';
 
 type ReadFull = (callId: string) => Promise<{ output: string; full: boolean }>;
 type Props = { step: ToolStep; open: boolean; onToggle: () => void; readFull?: ReadFull };
@@ -82,7 +82,7 @@ function Details({ step, readFull }: { step: ToolStep; readFull?: ReadFull }) {
 }
 
 export function ToolRow({ step, open, onToggle, readFull }: Props) {
-  const label = step.hint || toolLabel(step.tool);
+  const label = rowHint(step.tool, step.hint);
   return (
     <div className="tool-row" data-state={step.state}>
       <Button className="tool-row-head" aria-expanded={open} onClick={onToggle}>

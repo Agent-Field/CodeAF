@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { argsRestateHint, toolIcon } from './tool-family.ts';
+import { argsRestateHint, hintText, rowHint, toolIcon } from './tool-family.ts';
 
 test('arguments that only restate the hint are hidden', () => {
   assert.equal(argsRestateHint('{"path": "/tmp/ws"}', 'ls /tmp/ws'), true);
@@ -18,4 +18,18 @@ test('listing tools use the folder mark, searches the file-search mark', () => {
   assert.equal(toolIcon('list_files'), 'folder');
   assert.equal(toolIcon('grep'), 'findFiles');
   assert.equal(toolIcon('read_file'), 'file');
+});
+
+test('the hint drops the tool word the row already shows', () => {
+  assert.equal(hintText('bash', 'bash ls -A | wc -l'), 'ls -A | wc -l');
+  assert.equal(hintText('propose_task', 'propose_task List files'), 'List files');
+  assert.equal(hintText('bash', 'bash'), '');
+  assert.equal(hintText('read', 'README.md'), 'README.md');
+  assert.equal(hintText('bash', 'bashful ls'), 'bashful ls');
+});
+
+test('a row keeps the tool word when its icon is the generic one', () => {
+  assert.equal(rowHint('bash', 'bash ls'), 'ls');
+  assert.equal(rowHint('jobs', 'jobs output'), 'jobs output');
+  assert.equal(rowHint('bash', 'bash'), 'bash');
 });
