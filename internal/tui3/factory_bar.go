@@ -245,12 +245,23 @@ func (a *app) factoryBarQuestion(it factory.Item, measure int) string {
 	return a.factoryItemQuestion(it, measure)
 }
 
-// factoryAnswerClauses is the keys that answer a question, as clauses:
-// `y yes · n no · a in words`.
-func factoryAnswerClauses() string {
+// factoryAnswerClauses is the keys that answer item it's question, as
+// clauses: `y yes · n no · a in words`, and at an approve step
+// `y continue · n send back · a in words`, the bar's own word.
+func factoryAnswerClauses(it factory.Item) string {
+	yes, no := factoryYesNo(it)
 	return strings.Join([]string{
-		factoryHintClause(keyYes, wordYes),
-		factoryHintClause(keyNo, wordNo),
+		factoryHintClause(keyYes, yes),
+		factoryHintClause(keyNo, no),
 		factoryHintClause(keyInWords, wordInWords),
 	}, rowSep)
+}
+
+// factoryYesNo is what `y` and `n` do for item it, in words: continue and
+// send back at an approve step, yes and no on every other question.
+func factoryYesNo(it factory.Item) (yes, no string) {
+	if it.QKind == factory.QKindApprove {
+		return wordContinue, wordSendBack
+	}
+	return wordYes, wordNo
 }

@@ -452,7 +452,7 @@ func TestFactoryHintByState(t *testing.T) {
 	}{
 		{8, "enter open · r run · space select", "n new · / filter · esc back · ? keys"},
 		{2, "enter open · x stop · space pause · S steer", "n new · / filter · esc back · ? keys"},
-		{1, "enter open · y yes · n no · a in words", "/ filter · esc back · ? keys"},
+		{1, "enter open · y continue · n send back · a in words", "/ filter · esc back · ? keys"},
 	} {
 		factoryOn(t, a, c.id)
 		if got := factoryStripOf(t, a); got != c.strip {

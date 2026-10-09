@@ -250,8 +250,8 @@ func TestFactoryRunKeysSayTheirSentence(t *testing.T) {
 		{8, []string{"L"}, "Launch(8)", "#1540 is running"},
 		{2, []string{"x"}, "Stop(2)", "#1551 stopped · branch kept"},
 		{2, []string{" "}, "Pause(2)", "#1551 paused"},
-		{1, []string{"y"}, "Answer(1,true,)", "answered #1538 · yes"},
-		{1, []string{"n"}, "Answer(1,false,)", "answered #1538 · no"},
+		{1, []string{"y"}, "Answer(1,true,)", "answered #1538 · continue"},
+		{1, []string{"n"}, "Answer(1,false,)", "answered #1538 · send back"},
 		{9, []string{"s"}, "SignOff(9,false)", "#1661 shipped"},
 		{9, []string{"e"}, "SignOff(9,true)", "#1661 shipped with changes"},
 		{9, []string{"v"}, "Reverify(9)", "#1661's checks are running again"},
@@ -405,7 +405,7 @@ func TestFactoryQuestionInTheItemPageHead(t *testing.T) {
 		t.Fatalf("the question's paint is wrong: %q", row)
 	}
 	body := factoryBodyPlain(a, a.width, 30)
-	if !strings.Contains(body[1], q) || !strings.Contains(body[1], factoryAnswerClauses()) {
+	if !strings.Contains(body[1], q) || !strings.Contains(body[1], factoryAnswerClauses(it)) {
 		t.Fatalf("the head's second row is not the question with its answers: %q", body[1])
 	}
 }

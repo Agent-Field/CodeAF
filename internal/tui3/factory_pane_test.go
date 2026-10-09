@@ -275,7 +275,7 @@ func TestFactoryPeekNeedsYouLadder(t *testing.T) {
 		t.Fatalf("a question with no answer door draws keys: %q", blocks[1])
 	}
 	a.factory = (&factoryFake{}).seam()
-	if keys := factoryPeekBlocks(t, factoryPaneOn(t, a, 1, factoryPaneW(150), 30))[1]; len(keys) != 2 || keys[1] != factoryAnswerKeys {
+	if keys := factoryPeekBlocks(t, factoryPaneOn(t, a, 1, factoryPaneW(150), 30))[1]; len(keys) != 2 || keys[1] != "[y] continue · [n] send back · [a] in words" {
 		t.Fatalf("the question's keys are %q", keys)
 	}
 	// THE AMBER IS ON THE MARK, the words are ink.

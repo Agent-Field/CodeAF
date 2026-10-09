@@ -162,6 +162,9 @@ const (
 const (
 	keyControl        = "space"
 	wordContinue      = "continue"
+	// wordSendBack is `n` at an approve step: the run goes back to the step
+	// before it.
+	wordSendBack = "send back"
 	wordWaitingForYou = "waiting for you"
 	wordTypeHere      = "type here"
 )
