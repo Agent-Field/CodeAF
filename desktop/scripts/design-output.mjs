@@ -27,7 +27,7 @@ ${dark}
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { ${Object.keys(design.foundation).filter(key => key.startsWith('dur') && key !== 'duration-none').map(key => `--${key}: var(--duration-none);`).join(' ')} --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); }
+  :root { ${Object.keys(design.foundation).filter(key => key.startsWith('dur') && key !== 'duration-none').map(key => `--${key}: var(--duration-none);`).join(' ')} --motion-travel: var(--motion-rest); --motion-directional-travel: var(--motion-rest); --motion-scale-enter: var(--motion-scale-rest); --motion-scale-popover: var(--motion-scale-rest); }
 }
 `;
 const b = design.brand;

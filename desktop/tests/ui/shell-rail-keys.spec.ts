@@ -16,10 +16,10 @@ const box = async (page: Page, selector: string) => (await page.locator(selector
 const selectedIndex = async (page: Page) => (await tabs(page).evaluateAll(all => all.findIndex(tab => tab.getAttribute('aria-selected') === 'true')));
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 
-test('the rail is 232px, drawn like the design, with today\'s items as 32px rail rows', async ({ page }) => {
+test('the rail is 252px (232px rows plus 10px padding), drawn like the design, with today\'s items as 32px rail rows', async ({ page }) => {
   await page.goto('/');
-  expect(px('sidebar-width')).toBe(232);
-  expect((await rail(page).boundingBox())!.width).toBe(232);
+  expect(px('sidebar-width')).toBe(252);
+  expect((await rail(page).boundingBox())!.width).toBe(252);
   await expect(rail(page)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   const toggle = rail(page).getByRole('button', { name: 'Hide sidebar' });
   expect(await toggle.boundingBox()).toMatchObject({ width: 26, height: 26 });
@@ -91,7 +91,7 @@ test('resting on the left 8px edge for 300ms peeks the collapsed rail over the c
   await page.mouse.move(4, 400);
   await expect(rail(page)).toBeVisible();
   await expect.poll(async () => (await rail(page).boundingBox())?.x).toBe(0);
-  expect(await rail(page).boundingBox()).toMatchObject({ y: 0, width: 232 });
+  expect(await rail(page).boundingBox()).toMatchObject({ y: 0, width: 252 });
   // Moving onto the sheet keeps it; leaving it puts it away.
   await page.mouse.move(120, 400);
   await expect(rail(page)).toBeVisible();
