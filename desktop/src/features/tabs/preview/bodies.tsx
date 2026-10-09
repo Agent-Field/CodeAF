@@ -3,6 +3,7 @@ import { sessionFor } from '../../terminal/open';
 // The preview body of each tab kind (Shell 3k): kind, state, title, then the one piece that matters.
 // Conversation and task are live from the engine's summary; file, diff and terminal read through the engine
 // client while the card is open; web, settings and history draw what the tab itself knows.
+import { useWebShot } from '../../web/shots';
 import { engineFileDiff, readEngineText, readTerminalOutput, terminalStateWords } from '../../chat/engine-client';
 import type { PreviewRenderProps } from '../kinds/slots';
 import { routeTask } from '../view-state';
@@ -70,9 +71,12 @@ export function FilePreview({ pane, title, summary }: PreviewRenderProps) {
   );
 }
 
+/** The page's own picture: the pane's saved shot, else the native view's snapshot taken while the card is shown. */
 export function WebPreview({ pane, title }: PreviewRenderProps) {
   const target = targetOf(pane);
-  return <PreviewShot title={title} address={target.url ? addressOf(target.url) : ''} image={target.shot}/>;
+  const live = useWebShot(pane.id);
+  const image = target.shot ?? live.image;
+  return <PreviewShot title={title} address={target.url ? addressOf(target.url) : ''} image={image} note={live.missing}/>;
 }
 
 /** Settings, history, the inbox and a new tab have nothing to quote: kind and title, and a draft if one is typed. */

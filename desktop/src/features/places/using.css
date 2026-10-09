@@ -2,7 +2,7 @@
    control's hover, pressed, focus and disabled look, and this sheet only lays them out. */
 
 .using-anchor { display: inline-flex; flex: none; min-width: 0; margin-inline-start: var(--space-tight); }
-.using-chip.button { min-height: var(--using-chip-height); height: var(--using-chip-height); padding: 0 var(--using-chip-pad); gap: var(--space-tight); border-radius: var(--using-chip-radius); font-weight: var(--type-label-weight); max-width: 100%; }
+.using-chip.button { background: var(--field-2); min-height: var(--using-chip-height); height: var(--using-chip-height); padding: 0 var(--using-chip-pad); gap: var(--space-tight); border-radius: var(--using-chip-radius); font-weight: var(--type-label-weight); max-width: 100%; }
 .using-chip.button[aria-expanded="true"] { background: var(--field-2); }
 .using-chip[data-tone="failed"] .app-icon:first-child { color: var(--danger); }
 .using-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
