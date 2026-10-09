@@ -1,0 +1,5 @@
+/* Layout only for the Places Home specimen: the Home styles itself in home.css. */
+.home-specimen { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--specimen-pad); background: var(--frame); color: var(--ink); font-family: var(--sans); }
+.home-specimen-frame { position: relative; display: flex; flex-direction: column; height: var(--places-home-specimen-height); border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); overflow: hidden; }
+.home-specimen-composer { max-width: calc(var(--content-max-width) - var(--space-8) * 2); margin: 0 auto; padding: var(--space-compact) var(--space-4); border-radius: var(--radius-dock); background: var(--surface); box-shadow: var(--sh-2); font-size: var(--type-prose-size); color: var(--ink-3); }
+.home-specimen-log { margin: 0; padding: 0; list-style: none; font-family: var(--mono); font-size: var(--type-mono-small-size); color: var(--ink-2); min-height: var(--space-section); }
