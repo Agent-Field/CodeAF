@@ -2,6 +2,7 @@ mod dialogs;
 mod links;
 #[cfg(target_os = "macos")]
 mod menu;
+mod menu_route;
 mod native;
 mod notifications;
 // Public only so the native smoke test (tests/web_smoke.rs) can drive it.

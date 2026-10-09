@@ -805,7 +805,7 @@ Source shorthand: SH = `codeaf Shell.dc.html` §id; IX = `codeaf Interactions.dc
 | SH-279 | ⌘N new window on Now | IX Flows "Multiple windows" | none | missing | t-d5-int-sh-keymap, t-d5-sh-window-new, t-d5-sh-window-test |
 | SH-281 | ⌘⇧] / ⌘⇧[ (Ctrl PgDn / PgUp) adjacent tabs | AGENTS platform contract | `keyboard.ts sequentialTabDirection`, `menu.rs` | complete (tabs.spec "platform tab shortcuts create, close, reopen, navigate and open overview") | — |
 | SH-282 | Linux spellings (Ctrl, Ctrl Shift A, Ctrl Alt 1–3) | L-rail DQ R1 | L-rail `keyboard.ts` | in-flight:t-s1-rail | — |
-| SH-283 | macOS menu bar mirrors shell chords: has New Tab, Close Tab, Reopen, Next/Previous, Show All Tabs; lacks Close and Stop ⌥⌘W, Toggle Sidebar ⌘S, Focus Mode ⌘⇧F, History ⌘Y, Settings… ⌘, | AGENTS "native accelerators" | `src-tauri/src/menu.rs`, `src/lib/desktopTabs.ts` | partial | t-d5-sh-native-menu-items, t-d5-sh-native-menu-test |
+| SH-283 | macOS menu bar mirrors shell chords: has New Tab, Close Tab, Reopen, Next/Previous, Show All Tabs; now also Close and Stop ⌥⌘W, Toggle Sidebar ⌘S, Focus Mode ⌘⇧F, History ⌘Y, Settings… ⌘, New Window ⌘N, delivered to the focused window; not yet exercised on macOS | AGENTS "native accelerators" | `src-tauri/src/menu.rs`, `src/lib/desktopTabs.ts`, `desktopMenuRoute.ts`, `menu_route.rs` | partial | t-d5-sh-native-menu-items, t-d5-sh-native-menu-test |
 | SH-284 | Native menu actions reach the FOCUSED window (today `emit_to("main")`) | IX Flows "Multiple windows" | `menu.rs handle` | partial | t-d5-sh-native-menu-items, t-d5-sh-native-menu-test |
 
 #### 13. Multiwindow (renderer side; native = fixed t-d5-nat-*)
