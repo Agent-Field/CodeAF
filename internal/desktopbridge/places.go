@@ -33,6 +33,10 @@ type Places struct {
 	// Now is the clock for the rail's idle window and the world cache. Nil is
 	// time.Now.
 	Now func() time.Time
+	// Recaps reads the recap a conversation persisted about itself, for a Home's
+	// "Since yesterday". Nil reads each conversation's own meta.json
+	// (places_digest.go); a test injects a fixture.
+	Recaps RecapReader
 
 	// live lists the chat ids of conversations this bridge holds open. A
 	// conversation the person just started may not be in the world yet; it is
@@ -59,6 +63,9 @@ type Places struct {
 	cached    session.World
 	cachedAt  time.Time
 	cacheDone bool
+
+	recapOnce    sync.Once
+	recapDefault *metaRecaps
 }
 
 // NewPlaces wraps an opened store. The caller chose its path.
