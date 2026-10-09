@@ -1,3 +1,4 @@
+import { engineFetch } from '../../design/engineFetch.ts';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
 /** Canonical read-only transport from session.PlanTaskRow. No engine policy lives here. */
@@ -104,7 +105,7 @@ export async function fetchEngine(path: string, init?: RequestInit, stream = fal
  const clock = new AbortController();
  const timer = stream ? undefined : setTimeout(() => clock.abort(), ENGINE_REQUEST_TIMEOUT_MS);
  let response: Response;
- try { response = await fetch(target.url, { ...init, headers, cache: 'no-store', signal: stream ? init?.signal : clock.signal }); }
+ try { response = await engineFetch(target.url, { ...init, headers, cache: 'no-store', signal: stream ? init?.signal : clock.signal }); }
  catch (error) {
   if (init?.signal?.aborted) throw error;
   throw new EngineError('codeaf engine is not running', 0, true);
