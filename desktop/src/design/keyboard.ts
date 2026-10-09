@@ -156,6 +156,11 @@ function dispatchShortcut(event: KeyboardEvent) {
   if (handler(shortcut, event)) { event.preventDefault(); event.stopPropagation(); return; }
  }
 }
+/** Runs a shortcut a native menu item chose through the same handlers a keypress reaches; true when one used it. */
+export function runShortcut(shortcut: Shortcut): boolean {
+ const event = new KeyboardEvent('keydown', { cancelable: true });
+ return [...handlers].some(({ handler }) => handler(shortcut, event));
+}
 /** The one window listener. Handlers are tried layer by layer, newest first; returns the way to unregister. */
 export function registerShortcuts(layer: number, handler: ShortcutHandler): () => void {
  const entry = { layer, handler };
