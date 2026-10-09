@@ -1,12 +1,13 @@
 import type { ReactNode } from 'react';
 import type { ToolStep } from '../types';
-import { prettyArgs } from '../tool-family';
+import { argsRestateHint } from '../tool-family';
 import { DiffView } from './DiffView';
 import { LinesBlock } from './LinesBlock';
 import { TerminalBlock } from './TerminalBlock';
 import type { WorkRender } from './props';
 import { argString, parseArgs, uncapped } from './stats';
 import { splitLines } from './diff';
+import { callTarget, targetText } from './target';
 
 const URL_LINE = /^https?:\/\/\S+$/;
 
@@ -23,17 +24,30 @@ function LinkList({ output, renderLink }: { output: string; renderLink?: WorkRen
   );
 }
 
+/** Arguments as plain `key: value` lines: a person reads the ask, never the JSON it travelled in. */
+function plainArgs(args: string): string {
+  return Object.entries(parseArgs(args) ?? {})
+    .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
+    .join('\n');
+}
+
+/** The call's input worth showing: nothing when the row's own target already says it. */
+function inputText(call: ToolStep): string {
+  const said = `${call.hint} ${targetText(callTarget(call))}`;
+  return !call.args.trim() || argsRestateHint(call.args, said) ? '' : plainArgs(call.args);
+}
+
 function Generic({ call }: { call: ToolStep }) {
-  const input = call.args.trim() ? prettyArgs(call.args) : '';
   return (
     <>
-      <LinesBlock text={input} rows={20} label="Input" />
+      <LinesBlock text={inputText(call)} rows={20} label="Input" />
       <LinesBlock text={call.output} rows={20} label="Output" />
     </>
   );
 }
 
 function body(call: ToolStep, render: WorkRender): ReactNode {
+  if (call.covered) return <p className="work-note">Read together with the call above.</p>;
   const failed = call.state === 'failed' || call.state === 'stopped';
   if (call.tool === 'bash') return <TerminalBlock call={call} readFull={render.readFull} />;
   if (failed) return <LinesBlock text={call.output} rows={20} label="Output" />;

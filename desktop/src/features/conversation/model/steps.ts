@@ -3,6 +3,7 @@
 
 import type { ToolStep, WorkStep } from '../types.ts';
 import type { RichEntry } from './entry.ts';
+import { withoutHandoff } from './handoff.ts';
 import { categoryOf, composedTitle, narrationTitle } from './titles.ts';
 
 export type StepCtx = {
@@ -41,13 +42,15 @@ function tookOf(entry: RichEntry): number | undefined {
 }
 
 export function toolStep(entry: RichEntry, index: number, ctx: StepCtx): ToolStep {
+  const { output, covered } = withoutHandoff(entry.Output ?? '');
   return {
     id: entry.CallID || `${ctx.sessionFile}:${index}`,
     callId: entry.CallID || undefined,
     tool: entry.Tool ?? '',
     hint: entry.Hint ?? '',
     args: entry.Args ?? '',
-    output: entry.Output ?? '',
+    output,
+    ...(covered ? { covered } : {}),
     state: callState(entry, index, ctx),
     entryIndex: index,
     tookMs: tookOf(entry),

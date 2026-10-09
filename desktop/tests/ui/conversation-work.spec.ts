@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { installMockEngine, type MockEngine } from './support/mock-engine';
-import { PNG_1X1, richReply } from './support/scenarios-v2';
+import { HANDOFF_ANSWER, PNG_1X1, handoffReply, richReply } from './support/scenarios-v2';
 import { message, openApp, posts, send } from './support/conversation';
 
 const gets = (engine: MockEngine, part: string) => engine.calls.filter((c) => c.method === 'GET' && c.path.includes(part));
@@ -93,4 +93,25 @@ test('a picture sent with the message goes to the engine and shows in the bubble
   expect(body.files.map((f) => [f.name, f.dataBase64])).toEqual([['failure.png', PNG_1X1]]);
   const thumb = page.locator('.user-message').getByRole('button', { name: 'Open image: .codeaf/attachments/failure.png' });
   await expect(thumb.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/);
+});
+
+test('a handed-off read shows its answer and a target, never raw JSON or the engine hand-off notes', async ({ page }) => {
+  await installMockEngine(page, handoffReply());
+  await openApp(page);
+  await send(page, 'Summarise the sandbox');
+  await expect(page.getByText('The sandbox is a scratch workspace.')).toBeVisible();
+  await page.getByRole('button', { name: /^Worked \d+s/ }).click();
+  await page.getByRole('button', { name: /^Reading the sandbox/ }).click();
+  await page.getByRole('button', { name: /^read .*README\.md$/ }).click();
+  await expect(page.locator('pre[aria-label="Excerpt"]')).toContainText(HANDOFF_ANSWER);
+  await page.getByRole('button', { name: /^ls .*notes$/ }).click();
+  await page.getByRole('button', { name: /^mystery probe/ }).click();
+
+  const detail = page.locator('.work-detail');
+  await expect(page.getByText('Read together with the call above.')).toHaveCount(1);
+  for (const gone of ['handed to quick task', 'Covered by the handoff', '"path":', '{']) {
+    await expect(detail.filter({ hasText: gone })).toHaveCount(0);
+  }
+  // A tool the row cannot name keeps its extra input, as plain words.
+  await expect(page.locator('pre[aria-label="Input"]')).toHaveText('path: /home/santosh/sandbox/notes\ndepth: 2');
 });

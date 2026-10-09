@@ -6,6 +6,7 @@ import type { EngineSnapshot } from '../../chat/engine-client.ts';
 import type { ToolStep, TurnV2, WorkBlock, WorkStep } from '../types.ts';
 import { asRich, questionsOf, type RichEntry } from './entry.ts';
 import type { LiveCall, LiveOverlayV2 } from './live.ts';
+import { withoutHandoff } from './handoff.ts';
 import { finishStep, newBatch, summarize, type Batch } from './steps.ts';
 
 const PREPARING = ['forming', 'announced'];
@@ -16,8 +17,9 @@ function callState(call: LiveCall): ToolStep['state'] {
 }
 
 function liveToolStep(call: LiveCall): ToolStep {
-  const { id, tool, hint, args, output, tookMs } = call;
-  return { id, callId: id.startsWith('live:') ? undefined : id, tool, hint, args, output, tookMs, state: callState(call) };
+  const { id, tool, hint, args, tookMs } = call;
+  const { output, covered } = withoutHandoff(call.output);
+  return { id, callId: id.startsWith('live:') ? undefined : id, tool, hint, args, output, ...(covered ? { covered } : {}), tookMs, state: callState(call) };
 }
 
 function recordedCalls(turn: TurnV2): ToolStep[] {
@@ -34,7 +36,7 @@ function reconcile(recorded: ToolStep[], live: LiveOverlayV2): Set<string> {
     twin.tookMs ??= call.tookMs;
     if (twin.state === 'running' && callState(call) !== 'running') {
       twin.state = callState(call);
-      twin.output = twin.output || call.output;
+      twin.output = twin.output || withoutHandoff(call.output).output;
     }
   }
   return seen;
