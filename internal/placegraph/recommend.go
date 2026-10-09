@@ -290,7 +290,7 @@ func (r *Recommender) FileChat(ctx context.Context, chat ChatEvidence, library [
 			_ = r.Ledger.update(r.now(), func(st *ledgerState) error { delete(st.Considered, chat.ChatID); return nil })
 			return nil, err
 		}
-		i, c, err := readFileAnswer(answer, len(cands))
+		i, c, err := readFileAnswer(answer, candidateNames(cands))
 		if err != nil {
 			return nil, err
 		}
@@ -598,7 +598,11 @@ func (r *Recommender) clusterOffer(ctx context.Context, snap *Snapshot, st *ledg
 	if err != nil {
 		return nil, err
 	}
-	sg, err := readSuggestAnswer(answer, len(shown), len(cands), len(parents))
+	parentNames := make([]string, len(parents))
+	for i, p := range parents {
+		parentNames[i] = p.Name
+	}
+	sg, err := readSuggestAnswer(answer, len(shown), candidateNames(cands), parentNames)
 	if err != nil {
 		return dropped, err
 	}

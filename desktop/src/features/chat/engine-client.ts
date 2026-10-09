@@ -96,7 +96,7 @@ async function endpoint(path: string): Promise<{ url: string; headers: Headers }
  */
 export const ENGINE_REQUEST_TIMEOUT_MS = 30_000;
 /** Only a stream reader holds its connection open, so only it runs without the request clock. */
-async function fetchEngine(path: string, init?: RequestInit, stream = false): Promise<Response> {
+export async function fetchEngine(path: string, init?: RequestInit, stream = false): Promise<Response> {
  const target = await endpoint(path);
  const headers = target.headers;
  new Headers(init?.headers).forEach((value, name) => headers.set(name, value));

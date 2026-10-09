@@ -981,7 +981,7 @@ func bootEngine(hello remote.Hello, workspaceFlag, sessionFlag string) (*remote.
 	// one it already has must not be handed the one it already has
 	// ([remote.Hello.New] holds the whole of why the two intentions are two
 	// flags).
-	if hello.New {
+	if hello.New && !launch.Fresh {
 		place, err := v3NextSession(cfg.Place, workspace)
 		if err != nil {
 			return nil, err
@@ -1274,12 +1274,19 @@ func engineLaunchOptions(hello remote.Hello, workspace, sessionFlag string) v3Op
 	// anyway and [bootEngine] points the config at a sibling of it.
 	if hello.New {
 		opts.Session = ""
+		opts.Fresh = true
 	}
 	if shape := hello.Launch; shape != nil {
 		opts.Yolo = shape.Yolo
 		opts.NoCompact = shape.NoCompact
 		opts.OneModel = shape.OneModel
 		opts.DesktopRoles = shape.OneModel && hello.Surface == "desktop"
+		// THE PLACE GRAPH IS A DESKTOP FACT. A terminal, a --host surface or a
+		// --once probe that named one is ignored rather than obeyed, so a
+		// conversation opened anywhere but the desktop reads no place file.
+		if hello.Surface == "desktop" {
+			opts.PlaceGraph = strings.TrimSpace(shape.PlaceGraph)
+		}
 		opts.Budget = chatBudget(shape.MaxHours, shape.MaxCost)
 		opts.Interactive = shape.Interactive && !hello.Headless
 	}
