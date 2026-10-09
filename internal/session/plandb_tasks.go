@@ -64,18 +64,18 @@ type PlanTaskRow struct {
 	// when it waits on nothing but its own parent. A row still `pending` because
 	// of one of these hangs under it and names it ([planWaits]).
 	Waits []string
-	// Steps is the count of the task's own trajectory lines — the steps its
-	// worker recorded, which is what the row's "14 steps" counts.
+	// Steps counts finished steps in the task's dedicated trajectory, or
+	// completed tool calls recorded by its explicitly bound session worker.
 	Steps int
 	// USD is the sum of the task's spend rows: what this piece of the plan has
 	// cost so far.
 	USD float64
-	// Model is the model this task's own spend rows spent most through, and
-	// Tokens the tokens those rows carried, in and out together. Both are read
-	// off the same ledger as USD and both are EMPTY WHEN THE LEDGER NAMES NONE:
-	// a task that has written no spend row has no known model and no known
-	// token count, which is not the same fact as a model called "" or a count
-	// of zero, and a surface draws nothing for either.
+	// Model is the recorded primary worker when the graph binds one to this
+	// task, including its saved session header when the model was inherited.
+	// Older store-only tasks retain their ledger's dominant-model reading.
+	// Tokens sums the task's own spend rows, in and out together; an empty
+	// ledger has no known token count. Auxiliary spend never renames a known
+	// worker, and a model is never inferred from a configured default.
 	Model  string `json:",omitempty"`
 	Tokens int    `json:",omitempty"`
 	// Started is when the task was created and Ended when it completed; a task
@@ -297,12 +297,13 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 	copies := a.planDisplayRunCopy()
 	carried := a.planCarriedPrograms()
 	clocks := a.planRunClocks()
+	workers := a.planWorkerFacts()
 	for _, store := range stores {
 		dir := filepath.Dir(store.Path())
 		// AN ENDED RUN'S STORE IS NAMED FOR ITS PLACE IN THE LINE (`plan.db.1`,
 		// [planArchivePaths]); the live run's is the plan's own path.
 		archived := filepath.Clean(store.Path()) != filepath.Clean(plan.path)
-		spend := planSpendByTask(store.Path())
+		usage := planUsageByTask(store.Path())
 		live := store.LiveSteps()
 		tasks := store.Tasks(plandb.Filter{Chat: plan.chat})
 		// THE RUN'S ROOT IS WHAT THE STORE SAYS IT IS, never a name. A run the
@@ -311,7 +312,10 @@ func (a *Agent) PlanTasks() []PlanTaskRow {
 		// counted nothing on any real run and its row wore no progress.
 		root := store.RootID()
 		for _, task := range tasks {
-			row := planTaskRow(store, dir, task, spend, live)
+			row := planTaskRow(store, dir, task, usage, live)
+			if !archived {
+				workers.apply(&row, dir, task.ID)
+			}
 			planCarriedRow(&row, carried[task.ID])
 			clocks.apply(&row, dir, task, root)
 			a.markPlanInterrupted(&row)
@@ -353,18 +357,22 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		return PlanTaskPage{}, false
 	}
 	dir := filepath.Dir(store.Path())
-	spend := planSpendByTask(store.Path())
+	usage := planUsageByTask(store.Path())
 	live := store.LiveSteps()
 	copies := a.planDisplayRunCopy()
 	carried := a.planCarriedPrograms()
 	clocks := a.planRunClocks()
+	workers := a.planWorkerFacts()
 	// Walk admission order once; membership follows parent edges only.
 	all := store.Tasks(plandb.Filter{Chat: plan.chat})
 	rows := make(map[string]PlanTaskRow, len(all))
 	var children []PlanTaskRow
 	depths := map[string]int{task.ID: -1}
 	for _, child := range all {
-		row := planTaskRow(store, dir, child, spend, live)
+		row := planTaskRow(store, dir, child, usage, live)
+		if filepath.Clean(store.Path()) == filepath.Clean(plan.path) {
+			workers.apply(&row, dir, child.ID)
+		}
 		planCarriedRow(&row, carried[child.ID])
 		clocks.apply(&row, dir, child, store.RootID())
 		a.markPlanInterrupted(&row)
@@ -389,7 +397,7 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 		applyPlanRootProgress(&pageRow, all, root)
 	}
 	for _, id := range pageRow.Waits {
-		if row, ok := rows[id]; ok && open(plandb.Status(row.Status)) {
+		if row, ok := rows[planTaskID(id)]; ok && open(plandb.Status(row.Status)) {
 			waitRows = append(waitRows, row)
 		}
 	}
@@ -399,17 +407,11 @@ func (a *Agent) PlanTaskPage(id string) (PlanTaskPage, bool) {
 			continue
 		}
 		for _, id := range row.Waits {
-			if id == task.ID {
+			if planTaskID(id) == task.ID {
 				waitRows = append(waitRows, row)
 				break
 			}
 		}
-	}
-	// THE PAGE'S OWN ROW CARRIES WHO SPENT AND HOW MUCH THEY READ AND WROTE, off
-	// the same ledger its price comes from. A listing does not: the figures are
-	// drawn on a task's page and nowhere else.
-	if usage, ok := planUsageByTask(store.Path())[task.ID]; ok {
-		pageRow.Model, pageRow.Tokens = usage.model, usage.tokens
 	}
 	return PlanTaskPage{
 		Row:         pageRow,
@@ -600,7 +602,7 @@ type PlanSpendLine struct {
 //
 // THE ROLLUP IS SUMMED HERE AND NOT BY THE STORE. [plandb.Store.SpendBy]
 // groups by seat but names no model beside it, and the page draws the model on
-// the seat's own line, so the ledger is read the way [planSpendByTask] reads it
+// the seat's own line, so the ledger is read the way [planUsageByTask] reads it
 // — a read-only connection beside the writer, so a store that will not open as
 // a reader answers nothing rather than failing the read.
 func (a *Agent) PlanSpend(since time.Time) []PlanSpendLine {
@@ -737,7 +739,7 @@ func applyPlanRootProgress(row *PlanTaskRow, tasks []*plandb.Task, root string) 
 // not on the task: the dollars its spend rows carry, already summed, and its
 // steps, already read. The live step is the third: the store's live rows, read
 // whole in one pass by the caller, keyed by the task's own bare id.
-func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[string]float64, live map[string]plandb.LiveStep) PlanTaskRow {
+func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, usage map[string]planTaskUsage, live map[string]plandb.LiveStep) PlanTaskRow {
 	seat, _ := store.RoleOf(task.ID)
 	// A HELD TASK WEARS THE HOLD'S OWN WORD. Pause is status-independent in the
 	// store — a held task keeps the rung it reached — while the row says what a
@@ -756,7 +758,9 @@ func planTaskRow(store *plandb.Store, dir string, task *plandb.Task, spend map[s
 		Interrupted:    planTaskInterrupted(task),
 		Seat:           seat,
 		Steps:          len(planTrajectory(dir, task.ID)),
-		USD:            spend[task.ID],
+		USD:            usage[task.ID].usd,
+		Model:          usage[task.ID].model,
+		Tokens:         usage[task.ID].tokens,
 		Started:        task.CreatedAt,
 		Ended:          task.CompletedAt,
 		Note:           planLastNote(store, task.ID),
@@ -921,46 +925,17 @@ func planTrajectory(dir, id string) []PlanStep {
 	return steps
 }
 
-// planSpendByTask sums the run's spend ledger per task — the dollars each
-// task's own rows carry, which is the figure a row shows. The store's own
-// rollups are per project and per chat; a task's total is not among them, so
-// the ledger is summed here. THE READ IS ITS OWN READ-ONLY CONNECTION, so it
-// never races the handle the pulse writes through — WAL lets a reader run
-// beside a writer, and a store that will not open as a reader answers no
-// figures rather than failing the read.
-func planSpendByTask(path string) map[string]float64 {
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
-	if err != nil {
-		return nil
-	}
-	defer db.Close()
-	rows, err := db.Query(`SELECT task_id, SUM(usd) FROM spend GROUP BY task_id`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	totals := map[string]float64{}
-	for rows.Next() {
-		var id string
-		var usd float64
-		if rows.Scan(&id, &usd) != nil {
-			return totals
-		}
-		totals[id] = usd
-	}
-	return totals
-}
-
 // planTaskUsage is one task's model and token figures, read off its spend rows.
 type planTaskUsage struct {
 	model  string
 	tokens int
+	usd    float64
 }
 
-// planUsageByTask reads the run's spend ledger per task for the two figures a
-// task's page draws beside its price: the model the task's rows spent most
-// through, and the tokens they carried. It is [planSpendByTask]'s reading, on
-// its own read-only connection for the same reason. A row that names no model
+// planUsageByTask reads one ledger projection for every task list and page:
+// its own cost, the model its rows spent most through, and reported tokens.
+// One read-only query makes the three facts consistent while the worker writes
+// through its independent WAL connection. A row that names no model
 // names none, and a task whose rows carry no tokens has none known.
 func planUsageByTask(path string) map[string]planTaskUsage {
 	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
@@ -987,6 +962,7 @@ func planUsageByTask(path string) map[string]planTaskUsage {
 			return out
 		}
 		usage := out[id]
+		usage.usd += usd
 		if tokens > 0 {
 			usage.tokens += tokens
 		}
