@@ -9,9 +9,7 @@
 [data-tone="warning"] { color: var(--warning); }
 
 .work-body { display: flex; flex-direction: column; gap: var(--space-work-row); align-self: stretch; min-width: 0; box-sizing: border-box; margin-inline-start: calc(var(--icon-xs) / 2); padding-inline-start: calc(var(--work-indent) - var(--icon-xs) / 2); border-inline-start: var(--border-width) solid var(--work-guide); }
-.work-step { display: flex; flex-direction: column; min-width: 0; }
 .work-step-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.work-step[data-state="forming"] .work-step-title { opacity: var(--opacity-disabled); }
 .work-time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .work-mark { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); }
 .work-mark-word { white-space: nowrap; }
