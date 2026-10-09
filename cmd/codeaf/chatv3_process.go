@@ -230,7 +230,7 @@ func openV3ProcessWith(door string, askKey bool) (*v3Process, error) {
 		}
 		fmt.Fprintln(os.Stderr, "codeaf "+door+" needs a model to talk with.")
 		if keyless, loadErr := config.LoadKeyless(); loadErr == nil && v3UsesDefaultOpenRouter(keyless) {
-			fmt.Fprintln(os.Stderr, "run `codeaf` in a terminal to connect OpenRouter, or export "+config.APIKeyEnv+" and run it again.")
+			fmt.Fprintln(os.Stderr, "run `codeaf` in a terminal to choose a model provider, or export "+config.APIKeyEnv+" and run it again.")
 		} else {
 			fmt.Fprintln(os.Stderr, "export "+config.APIKeyEnv+" and run it again.")
 		}
@@ -463,6 +463,15 @@ func (p *v3Process) warmEmptyProviders(ctx context.Context) {
 		return
 	}
 	p.Shelf.warmAll(ctx, true, p.noteServiceModels)
+	// The default catalog warms independently. Deliver its answer on the same
+	// subscription as direct providers so a cold opening can acquire a model
+	// without a keystroke or a second fetch.
+	service := p.Shelf.sourcesNow().Default()
+	if service.HasCredentials() {
+		if models := p.Shelf.current.Load(); models != nil && models.Warmed(ctx) {
+			p.noteServiceModels(service)
+		}
+	}
 }
 
 // registerServiceNotice subscribes one window and returns its removal function.

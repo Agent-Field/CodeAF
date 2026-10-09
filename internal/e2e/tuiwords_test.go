@@ -864,6 +864,10 @@ var tuiWords = map[string]tuiWord{
 		screen: "setting up",
 		why:    "the dim line over the first-run question, which says where in the flow this is",
 	},
+	"setupProviderHeading": {
+		screen: "choose a model provider",
+		why:    "a fresh install chooses a supported provider before connection or key entry",
+	},
 	"setupConnectHeading": {
 		screen: "connect openrouter",
 		why:    "the heading of the step a fresh install meets first — the whole subject of #322",
@@ -1261,7 +1265,7 @@ var tuiWords = map[string]tuiWord{
 	},
 
 	"setupNotConnectedNote": {
-		screen: "openrouter is not connected",
+		screen: "no model provider is connected",
 		why: "the dim line the conversation says after esc, which is the other half of a front door: " +
 			"a person who declined is told the next direct road rather than left on an empty screen",
 	},

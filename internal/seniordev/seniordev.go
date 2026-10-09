@@ -186,16 +186,22 @@ func bindRun(fs *flag.FlagSet) delegate.Body {
 	frontier := fs.String("frontier", "", "models for the frontier tier (no call uses it)")
 	crew := fs.Bool("crew", false, "the models came from codeaf's crew: skip any it cannot size")
 	asked := fs.Bool("asked", false, "the --high models were asked for by name; none is skipped")
+	// The project's own check, named by whoever started the run, for a project
+	// whose build or test discovery cannot find (fullverification/declared.go).
+	verifyBuild := fs.String("verify-build", "", "the project's build command, run on the frozen tree in place of the one discovered")
+	verifyTest := fs.String("verify-test", "", "the project's test command, run on the frozen tree in place of the one discovered")
 	return func(ctx context.Context, host delegate.Host, args []string) error {
 		run(ctx, host, app.Options{
-			Goal:     strings.Join(args, " "),
-			High:     *high,
-			Low:      *low,
-			Frontier: *frontier,
-			Variant:  *variant,
-			InPlace:  *inPlace,
-			Crew:     *crew,
-			Asked:    *asked,
+			Goal:        strings.Join(args, " "),
+			High:        *high,
+			Low:         *low,
+			Frontier:    *frontier,
+			Variant:     *variant,
+			InPlace:     *inPlace,
+			VerifyBuild: *verifyBuild,
+			VerifyTest:  *verifyTest,
+			Crew:        *crew,
+			Asked:       *asked,
 		}, os.Stderr)
 		return nil
 	}

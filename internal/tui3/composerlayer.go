@@ -556,12 +556,12 @@ func (a *app) composerPickKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
 		a.composer.pick.close()
-	// ENTER CHOOSES AND LEAVES THE LIST UP ([app.pickerKey] argues it), and esc
-	// is the way out.
+	// ENTER CONFIRMS AND CLOSES THE MODEL LIST, so the task draft shows its
+	// chosen execution model immediately.
 	case "enter":
 		if chosen, ok := a.composer.pick.choice(); ok {
 			a.composer.model = chosen.ID
-			a.restatePicker(&a.composer.pick, chosen.ID)
+			a.composer.pick.close()
 		}
 	default:
 		// THE FOLD AND THE SORT ARE THE LIST'S OWN KEY MAP and not this door's

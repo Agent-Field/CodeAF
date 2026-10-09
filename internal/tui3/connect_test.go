@@ -446,11 +446,10 @@ func TestTheHandoffOpensTheBrowserAndWritesTheLinkDown(t *testing.T) {
 	if !strings.Contains(screen, "waiting in your browser") {
 		t.Fatalf("the surface does not say what it is waiting for:\n%s", screen)
 	}
-	if !strings.Contains(screen, testAuthLink) {
-		t.Fatalf("the link is not on screen as text:\n%s", screen)
+	if !strings.Contains(screen, signInLinkWord) {
+		t.Fatalf("the sign-in link label is not on screen:\n%s", screen)
 	}
-	// AND IT IS A HYPERLINK where the sequence is safe — the plain text above is
-	// what a person selects, this is what a modern terminal makes clickable.
+	// The short label is a hyperlink to the complete sign-in address.
 	painted := strings.Join(rowTexts(a), "\n")
 	if !strings.Contains(painted, "\x1b]8;;"+testAuthLink) {
 		t.Fatal("the link on screen carries no hyperlink")
@@ -472,7 +471,7 @@ func TestAFailedHandoffStillLeavesTheLink(t *testing.T) {
 		Kind: session.EventConnectAuth, Service: "google", AuthURL: testAuthLink,
 	}))
 	screen := strings.Join(plainRows(a), "\n")
-	if !strings.Contains(screen, testAuthLink) {
+	if !strings.Contains(screen, signInLinkWord) {
 		t.Fatalf("a failed handoff took the link with it:\n%s", screen)
 	}
 }
@@ -508,7 +507,7 @@ func TestAFinishedSignInSettlesTheWaitingBlock(t *testing.T) {
 	if strings.Contains(screen, "waiting in your browser") {
 		t.Fatalf("the waiting line survived the outcome:\n%s", screen)
 	}
-	if strings.Contains(screen, testAuthLink) {
+	if strings.Contains(screen, signInLinkWord) {
 		t.Fatalf("the link survived the sign-in it was for:\n%s", screen)
 	}
 	if a.connectAnimating() {

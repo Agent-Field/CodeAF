@@ -47,6 +47,8 @@ type teamsPage struct {
 	orgHits            []wallHit
 	orgRect            wallRect
 	previews           map[string]teamsPreview
+	previewRows        map[teamsPreviewShape]*teamsRenderedPreview
+	previewClock       uint64
 	interactionOffsets map[string]int
 	table              teamsTableRect
 	tableOver          int

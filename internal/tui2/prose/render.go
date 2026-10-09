@@ -296,7 +296,15 @@ func (r *renderer) list(n *ast.List) {
 		saved := r.push(first, indent)
 		before := len(r.out)
 		r.container(c, !n.IsTight)
-		r.pop(saved, len(r.out) > before)
+		drew := len(r.out) > before
+		r.pop(saved, drew)
+		// An item with no body - a line that was only a marker, like the whole
+		// reply `32.` - would otherwise render to nothing and the deck would
+		// drop the reply. Draw the marker as the literal text the reader sent so
+		// the answer still stands.
+		if !drew {
+			r.emit(first)
+		}
 	}
 }
 

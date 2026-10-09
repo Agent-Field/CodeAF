@@ -178,6 +178,8 @@ func TestATaskModelNeverWearsTheConversationsReasoningSuffix(t *testing.T) {
 // else, and the conversation's own model is untouched by it.
 func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 	a, fake := roomModelApp(t, "z-ai/glm-5.2")
+	// A room can choose only rows a provider actually listed.
+	a.models = func() []Model { return []Model{{ID: "z-ai/glm-5.2"}, {ID: "openai/gpt-4.1-mini"}} }
 	a.width, a.height = 120, 24
 	a.touch()
 
@@ -216,6 +218,9 @@ func TestPressingARunningTasksModelRetargetsThatTaskAlone(t *testing.T) {
 	}
 	if a.model != before {
 		t.Fatalf("retargeting a task moved the conversation's model to %q", a.model)
+	}
+	if a.pick.open || a.room == nil || a.room.id != 9 {
+		t.Fatal("choosing a task model must close the picker and keep its room open")
 	}
 	// And it is written down where every other model change is.
 	want, found := "task 9 · model · "+chosen.ID, false

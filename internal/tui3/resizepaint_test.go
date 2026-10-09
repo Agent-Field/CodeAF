@@ -155,7 +155,7 @@ func (w resizeOutput) Write(p []byte) (int, error) {
 // THE REPAINT REACHES THE TERMINAL. Commands alone cannot prove that Bubble
 // Tea clears physical cells before revealing a shorter greeting after setup.
 func TestTheRealRendererClearsAResizedSetupBeforeTheGreeting(t *testing.T) {
-	a, _, _ := setupApp(t, nil)
+	a, _, _ := setupProviderApp(t, nil)
 	a.routerConnect = func(context.Context) (OpenRouterFlow, error) { return nil, nil }
 	a.width, a.height = 80, 24
 	model := &resizeTerminal{app: a, cleared: make(chan struct{}, 1)}
@@ -193,9 +193,9 @@ func TestTheRealRendererClearsAResizedSetupBeforeTheGreeting(t *testing.T) {
 			}
 		}
 	}
-	awaitText("connect openrouter")
+	awaitText(setupProviderHeading)
 	program.Send(tea.WindowSizeMsg{Width: 160, Height: 45})
-	awaitText("connect openrouter")
+	awaitText(setupProviderHeading)
 	program.Send(resizeSettledMsg{})
 	select {
 	case <-model.cleared:

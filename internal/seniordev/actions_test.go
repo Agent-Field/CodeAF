@@ -208,3 +208,16 @@ func TestAMessageHandedToItsModelSaysWhoseAndWhat(t *testing.T) {
 		t.Fatalf("three messages read %+v", several)
 	}
 }
+
+// A RUN ON A GUESSED WINDOW SAYS SO on its page: nothing could size its model,
+// and a run that then compacts every few steps has its reason on the first
+// line it wrote.
+func TestAGuessedWindowReadsOnTheRunsPage(t *testing.T) {
+	read := Program.Reader()
+	shown, ok := read(stage("compaction-capacity", "guessed", map[string]any{
+		"models": []string{"vendor/offline-model"}, "limit_tokens": 16384,
+	}))
+	if !ok || shown.Text != "could not learn how much its model holds; assumed 16,384 tokens" {
+		t.Fatalf("shown = %+v, %v", shown, ok)
+	}
+}

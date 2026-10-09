@@ -253,13 +253,8 @@ func TestAltOOpensTheOneModelListScopedToTheExecutionSlot(t *testing.T) {
 		t.Skip("this lab's catalog offers no model to pick")
 	}
 	a.placeKeyPress(key("enter"))
-	// ENTER CHOOSES AND LEAVES THE LIST UP ([app.pickerKey] argues it).
-	if !a.composer.pick.open {
-		t.Fatal("enter closed the list; esc is the way out now")
-	}
-	a.placeKeyPress(key("esc"))
 	if a.composer.pick.open {
-		t.Fatal("esc left the list open")
+		t.Fatal("enter must close the model list after choosing the execution model")
 	}
 	if a.composer.model != chosen.ID {
 		t.Fatalf("the layer bound %q rather than %q", a.composer.model, chosen.ID)

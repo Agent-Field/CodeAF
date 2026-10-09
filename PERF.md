@@ -29,6 +29,32 @@ the pointer. Paint performs no filesystem or network reads.
 the overview navigation/geometry regressions and `TestTheFrameNeverReadsTheDisk` defend
 these bounds.
 
+### Teams overview paint bounds
+
+Unchanged fitted conversation excerpts reuse their Markdown rows across hover,
+keyboard focus and spinner paints. A page visit retains at most **64 excerpt
+shapes** (`teamsRenderedPreviewMax`), evicting the least recently used shape and
+dropping all rendered excerpts on close. Each shape retains the existing bounded
+exchange (at most 64 KiB), only its fitted rows, and inline-code path decisions.
+Exact text, clipping/interruption facts, width, row budget, palette ink, Markdown
+styler and current path facts determine reuse; a same-length stream correction
+cannot retain stale text. There is no new journal read or model request.
+
+Offscreen fixed-height member cards register their keyboard stops and heading
+positions without rendering metadata, Markdown or borders. Targets remain in
+the same order and physical scrolling retains the complete pane height. When
+keyboard focus or a shrinking pane changes the final offset, the revealed cards
+are painted before that same frame publishes its hit targets. Manager cards
+retain their existing latest-preview target semantics.
+
+`teamsperf_test.go` pins excerpt reuse, bounded shape retention, live-front edits,
+path/theme/geometry invalidation, viewport equivalence and keyboard reveal;
+`TestTeamsLargeOverviewPointerAndLivePreview` drives the built terminal with a
+120-member fixture and a live manager exchange. `BenchmarkTeamsHover` measures
+12-, 120- and 1,000-member overviews with approximately 48 KiB Markdown replies.
+Timing is diagnostic; regression gates assert reuse and rendered geometry,
+rather than a machine-dependent time limit.
+
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;

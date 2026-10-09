@@ -109,6 +109,10 @@ func TestTheFilterRanksAPrefixAboveASubstring(t *testing.T) {
 	if _, ok := a.pick.choice(); ok {
 		t.Fatal("enter on an empty list must choose nothing")
 	}
+	drive(t, a, key("enter"))
+	if !a.pick.open || a.model != "moonshotai/kimi-k3" {
+		t.Fatal("enter without a matching model must leave the picker and model alone")
+	}
 }
 
 // THE MATCHED LETTERS CARRY THE EMPHASIS, AND NOTHING ELSE ON THE ROW DOES.
@@ -138,29 +142,23 @@ func TestTheFilterCarriesTheMatchedLettersInBold(t *testing.T) {
 	}
 }
 
-// ENTER APPLIES AND THE LIST STAYS UP. It used to close on the press, which
-// made every choice final and every comparison a round trip; the list is a
-// table now, and esc is the way out ([app.pickerKey]).
-func TestEnterAppliesTheChoiceAndLeavesTheListOpen(t *testing.T) {
+// ENTER CONFIRMS AND RETURNS THE KEYBOARD TO THE DRAFT, so choosing a model
+// cannot leave subsequent typing in the filter box.
+func TestEnterAppliesTheChoiceAndClosesTheList(t *testing.T) {
 	agent := &fakeAgent{model: "moonshotai/kimi-k3"}
 	a := pickerApp(t, agent, pickerCatalog)
-	typeLine(t, a, "/model")
+	a.input.setText("half a thought")
+	a.openPicker()
 
 	typeInto(t, a, "gpt")
 	drive(t, a, key("down")) // gpt-5-classic → openai/gpt-4.1-mini
 	drive(t, a, key("enter"))
 
-	if !a.pick.open {
-		t.Fatal("enter has to leave the picker open")
-	}
-	// AND THE MARK FOLLOWS THE CHOICE, because the row it used to sit on is no
-	// longer the model in use ([picker.restate]).
-	if a.pick.current != "openai/gpt-4.1-mini" {
-		t.Fatalf("the list still marks %q", a.pick.current)
-	}
-	drive(t, a, key("esc"))
 	if a.pick.open {
-		t.Fatal("esc has to close the picker")
+		t.Fatal("enter has to close the picker after choosing the model")
+	}
+	if a.input.String() != "half a thought" {
+		t.Fatalf("choosing a model changed the draft to %q", a.input.String())
 	}
 	if agent.model != "openai/gpt-4.1-mini" {
 		t.Fatalf("model is %q, want openai/gpt-4.1-mini", agent.model)
@@ -281,14 +279,13 @@ func TestThePickerIsBottomAnchoredAndMarksTheCurrentModel(t *testing.T) {
 	}
 }
 
-func TestTheModelListFallsBackToTheCacheThenTheBuiltins(t *testing.T) {
+func TestTheModelListUsesKnownRowsAndNeverInventsBuiltins(t *testing.T) {
 	t.Setenv("CODEAF_HOME", t.TempDir())
 	a := newTestApp(&fakeAgent{model: "m"})
 
-	// Nothing from the door, nothing on disk: the built-ins are the floor, and
-	// the picker still opens onto a list.
-	if got := a.modelList(); len(got) != len(BuiltinModels()) || got[0].ID != BuiltinModels()[0].ID {
-		t.Fatalf("with no source the list is %v, want the built-ins", got)
+	// Nothing from the door or disk means no known model can be offered.
+	if got := a.modelList(); len(got) != 0 {
+		t.Fatalf("with no known catalog the list invented models: %v", got)
 	}
 
 	cached := []Model{{ID: "cached/one", ContextLength: 32_000}, {ID: "cached/two"}}

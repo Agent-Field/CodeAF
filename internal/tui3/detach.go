@@ -554,6 +554,7 @@ func (a *app) attachConversation(conv Conversation, side *aside) tea.Cmd {
 	a.resetMeters()
 	if agent != nil {
 		a.model = agent.Model()
+		a.ensureAvailableModel()
 		a.title = strings.TrimSpace(agent.Title())
 		// A cached earned name survives an agent whose snapshot is still arriving.
 		if a.title == "" && side != nil {
