@@ -10,6 +10,7 @@
 .preview-dot[data-tone="danger"] { background: var(--danger); }
 .preview-title { font-size: var(--preview-title-size); font-weight: var(--font-weight-medium); overflow-wrap: anywhere; }
 .preview-text { font-size: var(--type-label-size); line-height: var(--preview-body-leading); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
+.preview-error { font-size: var(--type-label-size); line-height: var(--preview-body-leading); color: var(--danger); overflow-wrap: anywhere; }
 .preview-field { display: flex; flex-direction: column; padding: var(--preview-field-pad); border-radius: var(--radius-control); background: var(--term); font-family: var(--mono); font-size: var(--preview-mono-size); line-height: var(--preview-mono-leading); color: var(--ink-2); overflow: hidden; }
 .preview-line { display: block; overflow: hidden; white-space: nowrap; text-overflow: clip; }
 .preview-line[data-tone="ink"] { color: var(--ink); }

@@ -1,20 +1,12 @@
-// Where a file, diff, terminal or web tab points. The kind lanes own these tabs; the preview reads one optional
-// `target` on the pane, so a preview of those kinds fills in as soon as a lane sets it (and is title-only until then).
+// Where a file, diff, terminal or web tab points. The kind lanes own these tabs and write one optional `target`
+// on the pane (typed and validated in view-state.ts, so it survives reload); a preview of those kinds fills in as
+// soon as a lane sets it and is title-only until then.
+import type { PaneTarget } from '../view-state';
 import type { Pane } from '../types';
 
-export type PreviewTarget = {
-  /** The engine session the file, diff or terminal belongs to. Falls back to the session the tab's summary came from. */
-  sessionId?: string;
-  /** Workspace-relative path of a file or diff tab. */
-  path?: string;
-  /** The terminal or job id of a terminal tab. */
-  terminalId?: string;
-  /** A web tab's address, and a screenshot of it when the browser surface has one. */
-  url?: string;
-  shot?: string;
-};
+export type PreviewTarget = PaneTarget;
 
-export const targetOf = (pane: Pane): PreviewTarget => (pane as Pane & { target?: PreviewTarget }).target ?? {};
+export const targetOf = (pane: Pane): PreviewTarget => pane.target ?? {};
 
 /** "pkg.go.dev/encoding/json" from a full address. */
 export function addressOf(url: string): string {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { EngineQuestion } from '../../chat/engine-client.ts';
 import type { TabSummary } from '../../conversation/tabSummary.ts';
-import { askOf, changedLines, headLines, stateOf, tailLines } from './content.ts';
+import { askOf, changedLines, headLines, questionsFor, stateOf, tailLines } from './content.ts';
 
 const consent = (id: number, head: string): EngineQuestion => ({ id, kind: 'consent', ask: 'permission', head, options: [{ key: 'y', label: 'allow' }, { key: 'n', label: 'deny', safe: true }] });
 const summary = (over: Partial<TabSummary> = {}): TabSummary => ({ title: '', firstLine: '', digest: '', ...over });
@@ -49,4 +49,24 @@ test('card state: needs you and failed lead with a dot, running counts tasks, a 
   assert.deepEqual(stateOf(summary()), {});
   assert.deepEqual(stateOf(undefined), {});
   assert.deepEqual(stateOf(summary({ taskState: { t1: 'Done' } }), 't1'), { words: 'Done' });
+});
+
+const asking = (id: number, head: string, tasks: string[]): EngineQuestion => ({ ...consent(id, head), blocking: { turn: true, tasks } });
+
+test('a task card owns only the questions that name its task', () => {
+  const mine = asking(1, 'Run git step 1', ['t7']);
+  const other = asking(2, 'Run git step 2', ['t9']);
+  const conversation = summary({ mark: 'waiting', questions: [mine, other], taskState: { t7: 'Running', t9: 'Running' } });
+  assert.deepEqual(questionsFor(conversation).map(q => q.id), [1, 2]);
+  assert.deepEqual(questionsFor(conversation, 't7').map(q => q.id), [1]);
+  assert.deepEqual(questionsFor(conversation, 'tX'), []);
+  assert.equal(askOf(questionsFor(conversation, 't7'))?.text, 'Run git step 1');
+  assert.equal(askOf(questionsFor(conversation, 'tX')), undefined);
+});
+
+test('a task card says Needs you only for its own question, and the conversation mark is not its state', () => {
+  const conversation = summary({ mark: 'waiting', questions: [asking(2, 'x', ['t9'])], taskState: { t7: 'Running', t9: 'Running' } });
+  assert.deepEqual(stateOf(conversation, 't7'), { words: 'Running' });
+  assert.deepEqual(stateOf(conversation, 't9'), { lead: 'amber', words: 'Needs you' });
+  assert.deepEqual(stateOf(summary({ mark: 'failed', taskState: { t7: 'Done' } }), 't7'), { words: 'Done' });
 });

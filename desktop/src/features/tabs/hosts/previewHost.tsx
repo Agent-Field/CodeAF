@@ -9,27 +9,45 @@ import type { TabsApi } from '../context';
 import { kindDef } from '../kinds/registry';
 import type { PreviewActions } from '../kinds/slots';
 import { focusedPane, type Tab } from '../model';
-import { closePreview, keepOpen, scheduleClose, usePreviewShown } from '../preview/previewStore';
+import { routeTask } from '../view-state';
+import { questionsFor } from '../preview/content';
+import { usePreviewShown } from '../preview/usePreviewShown';
 import { usePreviewTrigger } from '../preview/usePreviewTrigger';
 
-/** "Act from the preview": answering needs the engine session the tab's summary came from. */
+/** What went wrong in words a person can act on; the engine's own message when it gave one. */
+const failureWords = (error: unknown) => `Not sent. ${error instanceof Error && error.message ? error.message : 'The engine did not answer.'}`;
+
+/**
+ * "Act from the preview": answering needs the engine session the tab's summary came from, and only the questions this
+ * card shows (a task's card answers its own task's, never the whole conversation's). A failed answer is said, out
+ * loud, in the card; the card keeps asking whatever the engine still lists, and nothing is shown as answered.
+ */
 function useActions(api: TabsApi, tab: Tab): PreviewActions {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
   const pane = focusedPane(tab);
   const summary = api.summaries[pane.id];
+  const taskId = pane.kind === 'task' && pane.route ? routeTask(pane.route) : undefined;
   return {
     busy,
-    review: () => { closePreview(tab.id); api.dispatch({ type: 'select', id: tab.id }); },
+    error,
+    review: () => { api.previews.close(tab.id); api.dispatch({ type: 'select', id: tab.id }); },
     allowAll: () => {
       const session = summary?.sessionId;
       if (!session || busy) return;
       setBusy(true);
+      setError(undefined);
       void (async () => {
+        let latest = summary;
         try {
-          for (const answer of bulkAnswers(summary?.questions ?? [], 'allow')) api.receiveSummary(pane.id, summarize(await answerEngine(session, answer)));
-          closePreview(tab.id);
-        } catch {
-          // The card stays, still asking: the answer did not go through and nothing is shown as answered.
+          for (const answer of bulkAnswers(questionsFor(summary, taskId), 'allow')) {
+            latest = summarize(await answerEngine(session, answer));
+            api.receiveSummary(pane.id, latest);
+          }
+          if (questionsFor(latest, taskId).length) setError('Some questions still need you. Review them.');
+          else api.previews.close(tab.id);
+        } catch (failure) {
+          setError(failureWords(failure));
         } finally {
           setBusy(false);
         }
@@ -47,10 +65,10 @@ function PreviewBody({ api, tab }: { api: TabsApi; tab: Tab }) {
 
 function TabPreview({ api, tab, trigger }: { api: TabsApi; tab: Tab; trigger: ReactElement }) {
   const disabled = api.overlayOpen || tab.id === api.state.activeId;
-  const { open, swapped } = usePreviewShown(tab.id);
-  const handlers = usePreviewTrigger(tab.id, open, disabled);
+  const { open, swapped } = usePreviewShown(api.previews, tab.id);
+  const handlers = usePreviewTrigger(api.previews, tab.id, open, disabled);
   return (
-    <HoverCard open={open && !disabled} trigger={trigger} triggerProps={handlers} role="group" aria-label={`Preview of ${tab.title}`} className="tab-preview" data-swap={swapped || undefined} onPointerEnter={keepOpen} onPointerLeave={() => scheduleClose(tab.id)}>
+    <HoverCard open={open && !disabled} trigger={trigger} triggerProps={handlers} role="group" aria-label={`Preview of ${tab.title}`} className="tab-preview" data-swap={swapped || undefined} onPointerEnter={api.previews.keepOpen} onPointerLeave={() => api.previews.scheduleClose(tab.id)}>
       <PreviewBody api={api} tab={tab}/>
     </HoverCard>
   );

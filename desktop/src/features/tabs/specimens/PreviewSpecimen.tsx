@@ -1,5 +1,5 @@
 import { SectionHeading, Text } from '../../../components/ui';
-import { PreviewButtons, PreviewCard, PreviewField, PreviewShot, PreviewState, PreviewText } from '../preview/PreviewCard';
+import { PreviewButtons, PreviewCard, PreviewError, PreviewField, PreviewShot, PreviewState, PreviewText } from '../preview/PreviewCard';
 import '../preview/preview.css';
 import '../preview/preview-specimen.css';
 
@@ -19,6 +19,10 @@ export function PreviewSpecimen() {
       </PreviewCard>
       <PreviewCard kind="task" lead="amber" title="Port fix to v1 branch" state="Needs you" actions={<PreviewButtons primary={{ label: 'Allow all', onClick: noop }} secondary={{ label: 'Review', onClick: noop }}/>}>
         <PreviewText>Allow 3 git actions?</PreviewText>
+      </PreviewCard>
+      <PreviewCard kind="task" lead="amber" title="Port fix to v1 branch" state="Needs you" actions={<PreviewButtons primary={{ label: 'Allow all', onClick: noop }} secondary={{ label: 'Review', onClick: noop }}/>}>
+        <PreviewText>Allow 3 git actions?</PreviewText>
+        <PreviewError>Not sent. The engine did not answer.</PreviewError>
       </PreviewCard>
       <PreviewCard kind="terminal" title="nightly-bench" state="exit 0 · 2m ago">
         <PreviewField label="Last output" lines={[{ text: 'BenchmarkLex-10      812 ns/op' }, { text: 'BenchmarkParse-10   2104 ns/op' }, { text: 'ok  codeaf/internal/parse  4.2s', tone: 'ink' }]}/>

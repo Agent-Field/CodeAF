@@ -20,6 +20,8 @@ export type PaneRenderProps = { pane: Pane; label: string; focused: boolean; spl
 export type PreviewActions = {
   /** True while an answer is on its way, so the buttons wait. */
   busy: boolean;
+  /** Why the last answer did not go through, in words; cleared by the next attempt. The card keeps asking. */
+  error?: string;
   /** Answers every permission the tab is asking, by role. */
   allowAll: () => void;
   /** Opens the tab, where the full question is. */

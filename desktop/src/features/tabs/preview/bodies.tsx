@@ -4,8 +4,8 @@
 import { engineFileDiff, readEngineText, readTerminalOutput, terminalStateWords } from '../../chat/engine-client';
 import type { PreviewRenderProps } from '../kinds/slots';
 import { routeTask } from '../view-state';
-import { askOf, changedLines, headLines, stateOf, tailLines, type Ask } from './content';
-import { PreviewButtons, PreviewCard, PreviewField, PreviewShot, PreviewState, PreviewText } from './PreviewCard';
+import { askOf, changedLines, headLines, questionsFor, stateOf, tailLines, type Ask } from './content';
+import { PreviewButtons, PreviewCard, PreviewError, PreviewField, PreviewShot, PreviewState, PreviewText } from './PreviewCard';
 import { addressOf, targetOf } from './target';
 import { useLoaded } from './useLoaded';
 
@@ -18,12 +18,13 @@ function Actions({ ask, act }: { ask: Ask; act: PreviewRenderProps['act'] }) {
 export function SessionPreview({ pane, title, summary, act }: PreviewRenderProps) {
   const taskId = pane.kind === 'task' && pane.route ? routeTask(pane.route) : undefined;
   const state = stateOf(summary, taskId);
-  const ask = askOf(summary?.questions);
+  const ask = askOf(questionsFor(summary, taskId));
   const draft = pane.draft.trim();
   const body = ask?.text ?? (summary?.digest ? `Last reply: “${summary.digest}”` : draft ? `Draft: ${draft}` : '');
   return (
     <PreviewCard kind={pane.kind} lead={state.lead} title={title} state={state.words && <PreviewState dot={state.dot}>{state.words}</PreviewState>} actions={ask && <Actions ask={ask} act={act}/>}>
       {body && <PreviewText>{body}</PreviewText>}
+      {act.error && <PreviewError>{act.error}</PreviewError>}
     </PreviewCard>
   );
 }
