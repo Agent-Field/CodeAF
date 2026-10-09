@@ -43,17 +43,20 @@ function FoldedLine({ turn, onToggleFold }: Pick<TurnViewV2Props, 'turn' | 'onTo
 
 type BlockProps = Pick<TurnViewV2Props, 'renderBlock' | 'onRetry'> & { block: TurnBlock };
 
-function BuiltInBlock({ block, renderBlock, onRetry }: BlockProps) {
+function builtIn({ block, renderBlock, onRetry }: BlockProps): ReactNode {
   if (block.kind === 'update') return <UpdateBlock block={block} />;
   if (block.kind === 'answer') return <AnswerBlock block={block} />;
   if (block.kind === 'error') return <ErrorBlock block={block} onRetry={onRetry} />;
   return renderBlock(block);
 }
 
+/** A block the renderer leaves out (an image drawn in its neighbour's grid) adds no gap. */
 function Block(props: BlockProps) {
+  const content = builtIn(props);
+  if (content === null || content === undefined) return null;
   return (
     <div className="turn-block" data-kind={props.block.kind}>
-      <BuiltInBlock {...props} />
+      {content}
     </div>
   );
 }

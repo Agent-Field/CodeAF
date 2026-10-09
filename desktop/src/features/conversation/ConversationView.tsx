@@ -6,15 +6,20 @@ import { ENGINE_MODEL } from '../chat/engine-client';
 import type { Tab } from '../tabs/model';
 import { goBack, goForward, navigate, rootRoute, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
-import { Composer, type SendMode } from './Composer';
+import type { OutgoingFile } from '../chat/engine-client';
+import { EngineAssetProvider } from './assets';
+import { renderFile } from './blockRenderer';
+import type { SendMode } from './Composer';
+import { ConversationDock } from './ConversationDock';
 import { ConversationTranscript } from './ConversationTranscript';
 import { EngineNotice } from './EngineNotice';
-import { itemRenderer } from './itemRenderer';
 import { summarize, type TabSummary } from './tabSummary';
 import { TaskPanel } from './TaskPanel';
 import { TaskRoute } from './TaskRoute';
 import { taskCounts } from './taskTree';
 import { useConversation } from './useConversation';
+import { readEngineText } from './tasks/readText';
+import { useQueued } from './useQueued';
 import { contentSignature, useStickToBottom } from './useStickToBottom';
 import './conversation-view.css';
 
@@ -46,6 +51,8 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
 export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab }: ConversationViewProps) {
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }) });
   const { model, snapshot, failed } = conversation;
+  const queued = useQueued(snapshot?.entries ?? []);
+  const [focusKey, setFocusKey] = useState<string>();
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -70,9 +77,17 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   }
 
   // The person's own message always brings the end of the conversation into view.
-  function sendAndFollow(text: string, mode: SendMode) {
+  async function sendAndFollow(text: string, mode: SendMode, files?: OutgoingFile[]) {
     jump();
-    return conversation.send(text, mode);
+    const sent = await conversation.send(text, mode, files);
+    if (sent && mode === 'queue') queued.add(text);
+    return sent;
+  }
+
+  // A receipt brings its question forward; clearing first lets the same receipt work twice.
+  function focusQuestion(key: string) {
+    setFocusKey(undefined);
+    window.setTimeout(() => setFocusKey(key), 0);
   }
 
   async function retry() {
@@ -81,12 +96,17 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
     if (sent && text && tab.draft.trim() === text) onDraft('');
   }
 
-  const renderItem = itemRenderer({
+  const blocks = {
+    tasks: model.tasks,
     open: tab.open ?? {},
-    onToggle: (id) => onView({ open: toggleFlag(tab.open, id) }),
+    onToggle: (id: string) => onView({ open: toggleFlag(tab.open, id) }),
     readFull: conversation.readFull,
     onOpenTask: openTask,
-  });
+    onFocusQuestion: focusQuestion,
+  };
+  const sessionId = snapshot?.id;
+  const readFile = sessionId ? (path: string) => readEngineText(sessionId, path) : undefined;
+  const control = (action: 'pause' | 'resume' | 'cancel') => (taskId: string) => void conversation.controlTask(taskId, action);
   const folded = tab.folded ?? {};
   const toggleFold = (id: string) => onView({ folded: toggleFlag(tab.folded, id) });
   const inTask = Boolean(route.taskId);
@@ -99,73 +119,81 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const greeting = empty ? folderName(snapshot?.workspace) : '';
 
   return (
-    <div className="conversation-view">
-      <div className="conversation-main" data-empty={empty || undefined}>
-        <div ref={scroller} className="conversation-scroll">
-          <div ref={content} className="conversation-column">
-            {greeting && <p className="conversation-greeting">{greeting}</p>}
-            {route.taskId ? (
-              <TaskRoute
-                sessionId={snapshot?.id}
-                taskId={route.taskId}
-                tasks={model.tasks}
-                rootLabel={label}
-                route={route}
-                onRoute={setRoute}
-                renderItem={renderItem}
-                onOpenTask={openTask}
-              />
-            ) : (
-              <ConversationTranscript
-                model={model}
-                folded={folded}
-                onToggleFold={toggleFold}
-                renderItem={renderItem}
-                failed={conversation.unreachable ? undefined : failed}
-                onRetry={() => void retry()}
-                answering={conversation.answering}
-                onAnswer={conversation.answer}
-              />
-            )}
+    <EngineAssetProvider sessionId={sessionId} workspace={snapshot?.workspace ?? ''}>
+      <div className="conversation-view">
+        <div className="conversation-main" data-empty={empty || undefined}>
+          <div ref={scroller} className="conversation-scroll">
+            <div ref={content} className="conversation-column">
+              {greeting && <p className="conversation-greeting">{greeting}</p>}
+              {route.taskId ? (
+                <TaskRoute
+                  sessionId={sessionId}
+                  taskId={route.taskId}
+                  tasks={model.tasks}
+                  rootLabel={label}
+                  route={route}
+                  onRoute={setRoute}
+                  renderFile={(path) => renderFile(path)}
+                  readFile={readFile}
+                  onOpenTask={openTask}
+                />
+              ) : (
+                <ConversationTranscript
+                  {...blocks}
+                  model={model}
+                  folded={folded}
+                  onToggleFold={toggleFold}
+                  failed={conversation.unreachable ? undefined : failed}
+                  onRetry={() => void retry()}
+                />
+              )}
+            </div>
           </div>
+          {showFooter && (
+            <div className="conversation-footer conversation-column">
+              {showJump && (
+                <Button className="conversation-jump" onClick={jump}>
+                  <Icon name="arrowDown" size="xs" />
+                  <span>New messages</span>
+                </Button>
+              )}
+              {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
+              {!inTask && (
+                <ConversationDock
+                  tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey }}
+                  queue={{ items: queued.items, onRemove: queued.remove, removedHere: queued.removedHere }}
+                  composer={{
+                    draft: tab.draft,
+                    onDraft,
+                    onSend: sendAndFollow,
+                    onStop: () => void conversation.stop(),
+                    running: model.running,
+                    docked: !empty,
+                    modelLabel,
+                    tasksToggle,
+                    recallLast: () => model.turns[model.turns.length - 1]?.user,
+                    autoFocus: true,
+                  }}
+                />
+              )}
+            </div>
+          )}
         </div>
-        {showFooter && (
-          <div className="conversation-footer conversation-column">
-            {showJump && (
-              <Button className="conversation-jump" onClick={jump}>
-                <Icon name="arrowDown" size="xs" />
-                <span>New messages</span>
-              </Button>
-            )}
-            {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
-            {!inTask && (
-              <Composer
-                draft={tab.draft}
-                onDraft={onDraft}
-                onSend={sendAndFollow}
-                onStop={() => void conversation.stop()}
-                running={model.running}
-                docked={!empty}
-                modelLabel={modelLabel}
-                tasksToggle={tasksToggle}
-                recallLast={() => model.turns[model.turns.length - 1]?.user}
-                autoFocus
-              />
-            )}
-          </div>
+        {panel.shown && panel.sheet && <div className="task-panel-backdrop" aria-hidden="true" onClick={panel.close} />}
+        {panel.shown && (
+          <TaskPanel
+            tasks={model.tasks}
+            planError={model.planError}
+            currentTaskId={route.taskId}
+            onOpenTask={openTask}
+            onClose={panel.close}
+            variant={panel.sheet ? 'sheet' : 'column'}
+            onPause={control('pause')}
+            onResume={control('resume')}
+            onStop={control('cancel')}
+          />
         )}
       </div>
-      {panel.shown && panel.sheet && <div className="task-panel-backdrop" aria-hidden="true" onClick={panel.close} />}
-      {panel.shown && (
-        <TaskPanel
-          tasks={model.tasks}
-          planError={model.planError}
-          currentTaskId={route.taskId}
-          onOpenTask={openTask}
-          onClose={panel.close}
-          variant={panel.sheet ? 'sheet' : 'column'}
-        />
-      )}
-    </div>
+    </EngineAssetProvider>
   );
 }
