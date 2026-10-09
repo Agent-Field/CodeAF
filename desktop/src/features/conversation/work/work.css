@@ -1,26 +1,24 @@
 /* Work rhythm (ELEMENTS §0). The block container and its guide live in workBlock.css. */
 .work-step-head.button { min-height: var(--step-row-height); padding-inline: var(--space-half); gap: var(--space-tight); max-width: 100%; justify-content: flex-start; font-size: var(--font-size-body); text-align: left; }
 .work-step-head.button { width: 100%; }
-[data-tone="warning"] { color: var(--warning); }
+[data-tone="warning"] { color: var(--amber); }
 
 .work-step-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.work-time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
-.work-mark { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); }
-.work-mark-word { white-space: nowrap; }
+.work-time { flex: none; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 
 .work-calls { display: flex; flex-direction: column; gap: var(--space-half); padding-inline-start: calc(var(--icon-sm) + var(--space-tight)); }
 .work-detail { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); min-width: 0; padding-block: var(--space-1) var(--space-2); padding-inline-start: calc(var(--icon-sm) + var(--space-tight) + var(--space-half)); }
 .work-excerpt, .work-diff { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); width: 100%; min-width: 0; }
-.work-pre { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.work-pre { box-sizing: border-box; width: 100%; margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
 .work-pre .type-code { color: inherit; }
 .work-more.button { min-height: var(--icon-button-size); padding-inline: var(--space-half); font-size: var(--font-size-label); }
-.work-note { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
+.work-note { margin: 0; font-size: var(--font-size-label); color: var(--ink-2); }
 .work-list { margin: 0; padding-inline-start: var(--space-4); }
 
 
 
 .work-specimen { display: flex; flex-direction: column; gap: var(--space-4); max-width: var(--content-max-width); }
-.work-specimen-label { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
+.work-specimen-label { margin: 0; font-size: var(--font-size-label); color: var(--ink-2); }
 /* Scrolling excerpts take keyboard focus so their overflow can be read without a pointer. */
 .work-pre:focus-visible,

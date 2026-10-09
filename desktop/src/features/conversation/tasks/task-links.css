@@ -1,8 +1,8 @@
 .task-links { display: flex; flex-direction: column; gap: var(--space-half); min-width: 0; }
-.task-links-label { margin: 0; padding-inline: var(--space-half); color: var(--muted); font-size: var(--font-size-label); font-weight: var(--font-weight-medium); }
+.task-links-label { margin: 0; padding-inline: var(--space-half); color: var(--ink-2); font-size: var(--font-size-label); font-weight: var(--font-weight-medium); }
 .task-links-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .task-links-item[data-depth="1"] { padding-inline-start: var(--tree-indent); }
 .task-links-item[data-depth="2"] { padding-inline-start: calc(var(--tree-indent) * 2); }
 .task-links-item[data-depth="3"] { padding-inline-start: calc(var(--tree-indent) * 3); }
 .task-links-row.button { width: 100%; min-height: var(--task-outline-row-height); justify-content: flex-start; gap: var(--space-tight); padding-inline: var(--space-half); font-size: var(--font-size-body); text-align: left; }
-.task-links-title { min-width: var(--motion-rest); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-links-title { min-width: var(--space-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

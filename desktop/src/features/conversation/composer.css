@@ -216,7 +216,7 @@
 }
 
 .composer[data-drop='over'] > .composer-drop-hint {
-  color: var(--text);
+  color: var(--ink);
 }
 
 .composer-error.type-body {

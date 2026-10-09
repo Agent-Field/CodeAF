@@ -10,9 +10,6 @@
 /* The expanded tasks view takes the pane the conversation had; the conversation stays mounted underneath. */
 .expanded-tasks { display: flex; flex: 1; min-width: 0; min-height: 0; }
 .conversation-main[data-empty] .conversation-scroll { flex: 0 0 auto; padding-block: 0 var(--space-4); }
-
-/* The composer draws its own greeting on a fresh tab; ConversationView's folder line is retired. */
-.conversation-greeting { display: none; }
 .conversation-preface { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-xl); }
 .conversation-failure { margin-top: var(--space-4); }
 
@@ -21,8 +18,8 @@
 .conversation-main[data-empty] .conversation-dock-layer { margin-top: 0; padding-top: 0; background: none; }
 .conversation-footer { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-4); }
 
-.engine-notice { display: flex; align-items: center; justify-content: center; gap: var(--space-2); max-width: var(--chat-column-max-width); margin: 0 auto var(--space-2); color: var(--muted); font-size: var(--font-size-label); }
+.engine-notice { display: flex; align-items: center; justify-content: center; gap: var(--space-2); max-width: var(--chat-column-max-width); margin: 0 auto var(--space-2); color: var(--ink-2); font-size: var(--font-size-label); }
 .engine-notice .button { font-size: var(--font-size-label); }
 
 .task-route { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
-.conversation-specimen { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; min-width: 0; padding-block: var(--space-3); border-top: var(--border-width) solid var(--border); }
+.conversation-specimen { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; min-width: 0; padding-block: var(--space-3); border-top: var(--border-width) solid var(--line); }
