@@ -46,10 +46,10 @@ function FoldedTurn({ turn, onToggleFold }: Pick<TurnViewProps, 'turn' | 'onTogg
 
 function Working() {
   return (
-    <p className="turn-working">
+    <div className="turn-working">
       <WorkStateIndicator phase="working" label="Working" />
       <span>Working…</span>
-    </p>
+    </div>
   );
 }
 

@@ -102,14 +102,23 @@
 }
 .note-item::before,
 .note-item::after { content: ""; flex: 1; border-top: var(--border-width) solid var(--border); }
-.note-item-text { max-width: 80%; text-align: center; }
+.note-item-text {
+  max-width: 80%;
+  text-align: center;
+  /* A note is a marker, not a report: long text never becomes a wall. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--preview-line-clamp);
+  line-clamp: var(--preview-line-clamp);
+  overflow: hidden;
+}
 
 /* Error: warning text with an optional retry. */
 .error-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); color: var(--warning); font-size: var(--font-size-body); }
 .error-item-text { min-width: 0; }
 
 /* Reply actions: quiet, revealed with the turn's hover or focus. */
-.turn-actions { display: flex; margin-top: calc(var(--space-2) * -1); opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
+.turn-actions { position: absolute; top: 100%; left: 0; display: flex; opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
 .turn:hover .turn-actions,
 .turn-actions:focus-within { opacity: var(--opacity-opaque); }
 @media (pointer: coarse) {
