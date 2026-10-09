@@ -279,6 +279,26 @@ const (
 	// yet", this one for parts whose failure is quiet wrongness. Registered from
 	// internal/session/task_divide.go, which owns the field that reaches it.
 	RoleCareful Role = "careful"
+	// RolePlaceFile picks which EXISTING place a chat belongs in, after its
+	// first reply, from a short list internal/placegraph has already chosen by
+	// rule. It answers one label out of that list or "none", so it is a
+	// classification and sits LOW: a wrong pick costs one offer the person
+	// declines, and nothing is filed without their yes unless they turned
+	// automatic filing on themselves.
+	//
+	// IT IS DELIBERATELY NOT REGISTERED HERE. The file in the engine that makes
+	// the call registers it, so a build with no caller has no registered role
+	// and the desktop's settings page says the job is not in use yet rather
+	// than offering a model for a call nothing makes.
+	RolePlaceFile Role = "placefile"
+	// RolePlaceSuggest names a group of five or more chats in no place that
+	// rules have already found to belong together, and says whether they
+	// really do. It is its own role and not [RolePlaceFile] because the bill and
+	// the question differ: filing is one pick per chat, often; this is one
+	// judgement over a whole group, rarely, and what it decides is whether a new
+	// place exists at all. LOW all the same, because a person approves every
+	// place it names. Registered by its caller, for RolePlaceFile's reason.
+	RolePlaceSuggest Role = "placesuggest"
 )
 
 // Tier is a class of model the person configures once. Roles are open; tiers
@@ -439,6 +459,8 @@ var roleDescriptions = map[Role]string{
 	RoleTaskName:      "the two or three words a task is called",
 	RoleJobName:       "the three or four words a background job is called",
 	RoleCaption:       "the discrete step title over a live tool batch",
+	RolePlaceFile:     "which place you already have a chat belongs in",
+	RolePlaceSuggest:  "the name and the members of a place it offers to create",
 }
 
 var (
@@ -553,6 +575,7 @@ var vocabulary = []Role{
 	RoleAuditor, RoleCaption, RoleCareful, RoleConsolidate,
 	RoleDesigner, RoleDivision, RoleGuardian, RoleHandoff,
 	RoleImageGen, RoleIntake, RoleJobName, RoleMarkReader,
+	RolePlaceFile, RolePlaceSuggest,
 	RolePlanner, RoleReflex, RoleRepair, RoleRouter,
 	RoleRouterConfirm, RoleSentinel, RoleShaper, RoleSpeech,
 	RoleSpellOut, RoleTaskName, RoleTitle, RoleVideo,

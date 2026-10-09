@@ -36,31 +36,97 @@ type DesktopRole struct {
 	// Engine lists the engine roles this entry pins. Conversation owns none:
 	// it is the live model of the open chat.
 	Engine []roles.Role `json:"-"`
+	// Category is the settings page section the role is listed under.
+	Category string `json:"category"`
+	// Inherits names the role whose choice this one runs on until it is
+	// chosen itself. It is how splitting one row into two keeps what a person
+	// had already chosen: before the split, "naming" covered titles, task and
+	// job names, captions and recaps, and a choice made then still reaches all
+	// of them.
+	Inherits string `json:"inherits,omitempty"`
+}
+
+// The settings page's sections. The page groups roles under these, in this
+// order; the words are provisional until the Settings page is designed.
+const (
+	DesktopCategoryConversation = "conversation"
+	DesktopCategoryNaming       = "naming"
+	DesktopCategoryPlaces       = "places"
+	DesktopCategoryMemory       = "memory"
+)
+
+// DesktopCategory is one section of the model settings.
+type DesktopCategory struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+var desktopCategories = []DesktopCategory{
+	{ID: DesktopCategoryConversation, Name: "Conversation and tasks"},
+	{ID: DesktopCategoryNaming, Name: "Naming and summaries"},
+	{ID: DesktopCategoryPlaces, Name: "Places organization"},
+	{ID: DesktopCategoryMemory, Name: "Memory, routing and safety"},
+}
+
+// DesktopRoleCategories lists the sections in page order.
+func DesktopRoleCategories() []DesktopCategory {
+	return append([]DesktopCategory(nil), desktopCategories...)
+}
+
+// DesktopRoleLive reports whether anything in this build makes the role's
+// calls. A role is live when the engine has registered at least one of the
+// engine roles it owns — registration happens in the file that makes the call
+// — and the conversation is always live. A role that is not live is still
+// listed and its choice is still kept, so a person can set it before the job
+// exists, but the page must not say it is doing anything.
+func DesktopRoleLive(role DesktopRole) bool {
+	if role.ID == DesktopRoleConversation {
+		return true
+	}
+	for _, engine := range role.Engine {
+		if _, ok := roles.TierOf(engine); ok {
+			return true
+		}
+	}
+	return false
 }
 
 var desktopRoles = []DesktopRole{
-	{ID: DesktopRoleConversation, Name: "Conversation",
+	{ID: DesktopRoleConversation, Name: "Conversation", Category: DesktopCategoryConversation,
 		Controls: "Answers what you type in a chat and decides when to start a task."},
-	{ID: "tasks", Name: "Tasks",
+	{ID: "tasks", Name: "Tasks", Category: DesktopCategoryConversation,
 		Controls: "Does the steps of a task: reading, editing, running commands.",
 		Engine:   []roles.Role{roles.RoleWorker, roles.RoleCareful, roles.RoleDivision}},
-	{ID: "planning", Name: "Planning",
+	{ID: "planning", Name: "Planning", Category: DesktopCategoryConversation,
 		Controls: "Plans a task before it starts and rewrites the plan as steps finish.",
 		Engine:   []roles.Role{roles.RolePlanner, roles.RoleDesigner, roles.RoleShaper}},
-	{ID: "checking", Name: "Checking",
+	{ID: "checking", Name: "Checking", Category: DesktopCategoryConversation,
 		Controls: "Decides whether finished-looking work is really finished, and has a second go when it is not.",
 		Engine:   []roles.Role{roles.RoleAuditor, roles.RoleRepair}},
-	{ID: "naming", Name: "Titles and summaries",
-		Controls: "Writes the short names for chats, tasks and background jobs, and the one-line step captions.",
-		Engine:   []roles.Role{roles.RoleTitle, roles.RoleTaskName, roles.RoleJobName, roles.RoleCaption}},
-	{ID: "memory", Name: "Memory",
+	// "naming" keeps its id so a choice saved before the split stays with chat
+	// titles, and the two rows split from it inherit that choice.
+	{ID: "naming", Name: "Chat titles", Category: DesktopCategoryNaming,
+		Controls: "Names each chat from its opening exchange.",
+		Engine:   []roles.Role{roles.RoleTitle}},
+	{ID: "worknames", Name: "Task and job names", Category: DesktopCategoryNaming, Inherits: "naming",
+		Controls: "Writes the short names for tasks and background jobs, and the one-line step captions.",
+		Engine:   []roles.Role{roles.RoleTaskName, roles.RoleJobName, roles.RoleCaption}},
+	{ID: "summaries", Name: "Summaries", Category: DesktopCategoryNaming, Inherits: "naming",
+		Controls: "Writes the short recap of a conversation that History shows."},
+	{ID: "placefiling", Name: "Chat filing", Category: DesktopCategoryPlaces,
+		Controls: "Picks which of your places a chat belongs in, to offer it after the first reply. Never creates a place.",
+		Engine:   []roles.Role{roles.RolePlaceFile}},
+	{ID: "placesuggest", Name: "Place suggestions", Category: DesktopCategoryPlaces,
+		Controls: "Names a group of chats that belong together and offers it as a new place, for you to approve.",
+		Engine:   []roles.Role{roles.RolePlaceSuggest}},
+	{ID: "memory", Name: "Memory", Category: DesktopCategoryMemory,
 		Controls: "Reads each turn for things worth remembering and tidies what has been remembered.",
 		Engine:   []roles.Role{roles.RoleReflex, roles.RoleConsolidate}},
-	{ID: "routing", Name: "Turn routing",
+	{ID: "routing", Name: "Turn routing", Category: DesktopCategoryMemory,
 		Controls: "Judges whether a message should become a task, reads long answers for parts, and fills in forms from what was said.",
 		Engine: []roles.Role{roles.RoleRouter, roles.RoleRouterConfirm, roles.RoleMarkReader,
 			roles.RoleHandoff, roles.RoleSpellOut, roles.RoleIntake}},
-	{ID: "safety", Name: "Safety checks",
+	{ID: "safety", Name: "Safety checks", Category: DesktopCategoryMemory,
 		Controls: "Reads one tool call and says whether it is safe to run without asking you, and decides what is worth telling you about.",
 		Engine:   []roles.Role{roles.RoleGuardian, roles.RoleSentinel}},
 }
@@ -85,10 +151,20 @@ func desktopRoleKey(id string) string { return "desktop.roles." + id }
 
 // DesktopRoleChoice is what a role runs on: the model, the effort word (empty
 // means the model's own default), and whether the person chose it.
+//
+// A role that inherits and has no choice of its own runs on its parent's
+// SAVED choice, unchosen; it never follows the parent's default, which is the
+// same default anyway.
 func DesktopRoleChoice(profileDir, id string) (model, effort string, chosen bool) {
 	if value, ok := persistedString(profileDir, desktopRoleKey(id)); ok && strings.TrimSpace(value) != "" {
 		model, effort = roles.SplitEffort(value)
 		return model, effort, true
+	}
+	if role, ok := DesktopRoleFor(id); ok && role.Inherits != "" {
+		if value, ok := persistedString(profileDir, desktopRoleKey(role.Inherits)); ok && strings.TrimSpace(value) != "" {
+			model, effort = roles.SplitEffort(value)
+			return model, effort, false
+		}
 	}
 	if id == DesktopRoleConversation {
 		if saved := ChatModelAt(profileDir); saved != "" {

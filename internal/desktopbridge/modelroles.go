@@ -48,12 +48,21 @@ type RoleView struct {
 	Effort   string `json:"effort,omitempty"`
 	// Chosen is false while the role is on the default.
 	Chosen bool `json:"chosen"`
+	// Category is the page section the role sits in.
+	Category string `json:"category"`
+	// Live is false while nothing in the engine makes this role's calls; the
+	// page says so instead of implying the choice is doing something.
+	Live bool `json:"live"`
+	// Inherits names the role this one follows until it is chosen itself.
+	Inherits string `json:"inherits,omitempty"`
 }
 
-// RolesView is the whole page: every role and the default they start on.
+// RolesView is the whole page: every role, the default they start on, and the
+// sections the page groups them under, in order.
 type RolesView struct {
-	Default string     `json:"default"`
-	Roles   []RoleView `json:"roles"`
+	Default    string                   `json:"default"`
+	Roles      []RoleView               `json:"roles"`
+	Categories []config.DesktopCategory `json:"categories"`
 }
 
 // ModelsView is the catalog answer. Fallback says the list could not be read
@@ -64,12 +73,13 @@ type ModelsView struct {
 }
 
 func (m *Models) roles() RolesView {
-	view := RolesView{Default: config.DesktopDefaultModel}
+	view := RolesView{Default: config.DesktopDefaultModel, Categories: config.DesktopRoleCategories()}
 	for _, role := range config.DesktopRoles() {
 		model, effort, chosen := config.DesktopRoleChoice(m.ProfileDir, role.ID)
 		view.Roles = append(view.Roles, RoleView{
 			ID: role.ID, Name: role.Name, Controls: role.Controls,
 			Model: model, Default: config.DesktopDefaultModel, Effort: effort, Chosen: chosen,
+			Category: role.Category, Live: config.DesktopRoleLive(role), Inherits: role.Inherits,
 		})
 	}
 	return view
