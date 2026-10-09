@@ -16,7 +16,7 @@ type Options = {
   tabs: readonly Tab[];
   /** The ONE way a group is made: the caller dispatches the reducer's own `group` action. Nothing here builds a group. */
   onGroup: (ids: string[], title?: string) => void;
-  /** Engine summaries keyed by tab id. The chat id is read from here, never from a path. */
+  /** Engine summaries keyed by tab id. Canonical saved chat identity is separate from its transient bridge token. */
   summaries?: Readonly<Record<string, ChatSummary | undefined>>;
   /**
    * Asks the engine about one settled set of canonical chat ids. Absent in a specimen that has no engine.
