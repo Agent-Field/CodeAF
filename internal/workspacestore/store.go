@@ -412,3 +412,25 @@ func (s *Store) writeLocked(key string, doc *file) error {
 	}
 	return nil
 }
+
+// FileSignature identifies the current atomic workspace file without reading
+// its drafts. It is only a cache hint; callers periodically re-read unchanged
+// files too. Missing keys have the zero signature. Reads create nothing.
+type FileSignature struct {
+	Bytes    int64
+	Modified int64
+}
+
+func (s *Store) Signature(key string) (FileSignature, error) {
+	if !ValidKey(key) {
+		return FileSignature{}, ErrInvalidKey
+	}
+	info, err := os.Stat(s.path(key))
+	if errors.Is(err, os.ErrNotExist) {
+		return FileSignature{}, nil
+	}
+	if err != nil {
+		return FileSignature{}, err
+	}
+	return FileSignature{Bytes: info.Size(), Modified: info.ModTime().UnixNano()}, nil
+}
