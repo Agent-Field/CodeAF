@@ -1,0 +1,87 @@
+/* The Using chip and sheet (Places 6e, 6f). Geometry comes from tokens.json (using-*); the shared Button, Tag and Icon carry every
+   control's hover, pressed, focus and disabled look, and this sheet only lays them out. */
+
+.using-anchor { display: inline-flex; flex: none; min-width: 0; margin-inline-start: var(--space-tight); }
+.using-chip.button { min-height: var(--using-chip-height); height: var(--using-chip-height); padding: 0 var(--using-chip-pad); gap: var(--space-tight); border-radius: var(--using-chip-radius); font-weight: var(--type-label-weight); max-width: 100%; }
+.using-chip.button[aria-expanded="true"] { background: var(--field-2); }
+.using-chip[data-tone="failed"] .app-icon:first-child { color: var(--danger); }
+.using-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.using-chip .app-icon { color: var(--ink-2); }
+/* A narrow pane keeps the chip but drops its words to the count; the sheet has the rest. */
+@media (max-width: 600px) { .using-chip.button { padding: 0 var(--space-tight); } }
+
+.using-sheet {
+  position: fixed;
+  left: var(--using-sheet-left);
+  top: var(--using-sheet-top);
+  z-index: var(--z-menu);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--using-sheet-width), calc(100vw - var(--space-6)));
+  max-height: min(var(--using-sheet-max-height), calc(100vh - var(--using-sheet-top) - var(--space-3)));
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--using-sheet-pad);
+  border-radius: var(--using-sheet-radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-2);
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-leading);
+}
+.using-sheet:focus { outline: none; }
+.using-sheet:focus-visible { box-shadow: var(--sh-2), 0 0 0 var(--focus-ring-width) var(--accent); }
+
+.using-section { display: flex; flex-direction: column; min-width: 0; }
+.using-label, .using-sublabel { margin: 0; padding: var(--space-2) var(--using-row-pad) var(--space-half); color: var(--ink-3); font-size: var(--type-section-label-size); font-weight: var(--type-section-label-weight); line-height: var(--type-caption-leading); }
+.using-sublabel { padding-top: var(--space-tight); }
+.using-note { margin: 0; color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--type-caption-leading); overflow-wrap: anywhere; }
+.using-section > .using-note { padding: 0 var(--using-row-pad) var(--space-1); }
+
+/* Places: the chips of the places this conversation belongs to; an inherited one is plain muted words. */
+.using-places { display: flex; flex-wrap: wrap; gap: var(--using-rule-gap); margin: 0; padding: var(--space-1) var(--using-row-pad) var(--using-rule-gap); list-style: none; }
+.using-place { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; height: var(--using-place-chip-height); padding: 0 var(--space-2); border-radius: var(--using-place-chip-radius); background: var(--field); }
+.using-place[data-inherited] { padding: 0; background: transparent; color: var(--ink-3); }
+.using-place-level { color: var(--ink-3); }
+
+.using-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.using-row { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-width: 0; min-height: var(--using-row-height); border-radius: var(--using-row-radius); }
+.using-row-main { display: flex; flex: 1; align-items: center; gap: var(--using-row-gap); min-width: 0; padding: var(--space-1) var(--using-row-pad); }
+.using-row-main .app-icon { flex: none; color: var(--ink-3); }
+.button.using-row-main { justify-content: flex-start; height: auto; min-height: var(--using-row-height); border-radius: var(--using-row-radius); background: transparent; color: var(--ink); font-weight: var(--type-label-weight); white-space: normal; text-align: left; }
+.button.using-row-main:hover:not(:disabled), .button.using-row-main:active:not(:disabled) { background: var(--field); color: var(--ink); }
+.using-row-text { flex: 1; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--using-clamp-lines); line-clamp: var(--using-clamp-lines); overflow-wrap: anywhere; }
+.using-row-text[data-expanded] { display: block; }
+.using-row-aside { flex: none; max-width: 45%; color: var(--ink-3); font-size: var(--type-caption-size); overflow-wrap: anywhere; text-align: right; }
+.using-row-tag { flex: none; }
+.using-row-open { flex: none; color: var(--ink-3); }
+
+/* Sources: a name, its path, and the reason when it is not given as asked. */
+.using-source-text { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.using-source-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.using-source-detail, .using-source-note { color: var(--ink-3); font-size: var(--type-caption-size); overflow-wrap: anywhere; }
+.using-row[data-status="missing"] .using-source-name, .using-row[data-status="left-out"] .using-source-name, .using-row[data-status="refused"] .using-source-name { color: var(--ink-2); }
+.using-row[data-status="refused"] .using-source-note { color: var(--danger); }
+
+/* Policy: the field and what the places decided, then the engine's word for what the conversation is doing about it. */
+.using-policy { align-items: stretch; flex-direction: column; padding-bottom: var(--space-1); }
+.using-policy-head { flex: none; }
+.using-policy-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.using-policy-state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); padding: 0 var(--using-row-pad); }
+.using-conflict, .using-apply, .using-confirm { display: flex; flex-direction: column; gap: var(--space-tight); padding: var(--space-1) var(--using-row-pad) 0; }
+.using-choices, .using-confirm-actions { display: flex; flex-wrap: wrap; gap: var(--using-rule-gap); }
+.button.using-choice { gap: var(--space-tight); max-width: 100%; white-space: normal; }
+.using-choice[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.using-choice-value { color: var(--ink-3); }
+.using-confirm { gap: var(--using-confirm-gap); }
+
+/* A failure keeps its place at the top of the sheet until it is dealt with. */
+.using-alert { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-tight); margin: var(--space-half) 0 var(--space-1); padding: var(--space-tight) var(--using-row-pad); border-radius: var(--using-row-radius); background: var(--field); }
+.using-alert[data-tone="failed"] { background: var(--danger-soft); color: var(--danger); }
+.using-alert .app-icon { flex: none; }
+.using-alert-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.using-alert-action { flex: none; }
+
+.using-foot { margin-top: var(--using-rule-gap); padding-top: var(--space-1); }
+.using-add.button { color: var(--ink-2); justify-content: flex-start; width: 100%; padding-inline: var(--using-row-pad); }
