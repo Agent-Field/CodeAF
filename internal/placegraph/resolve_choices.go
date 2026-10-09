@@ -164,22 +164,5 @@ func writeChoiceDoc(path string, doc choiceDoc) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".place-choices-*.tmp")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	if _, err := tmp.Write(data); err == nil {
-		err = tmp.Sync()
-	}
-	if cerr := tmp.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(name, path)
-	}
-	if err != nil {
-		_ = os.Remove(name)
-	}
-	return err
+	return writeFileAtomic(path, ".place-choices-*.tmp", data)
 }
