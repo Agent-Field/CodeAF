@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, Icon, WorkStateIndicator } from '../../components/ui';
 import type { TurnItem } from './types';
 import { ToolRow } from './ToolRow';
-import { toolLabel } from './tool-family';
+import { hintText, toolLabel } from './tool-family';
 import './tools.css';
 
 type Group = Extract<TurnItem, { kind: 'tools' }>;
@@ -13,7 +13,8 @@ function summary(item: Group): { running: boolean; text: string; failed: number 
   const running = item.steps.find((step) => step.state === 'running');
   const failed = item.steps.filter((step) => step.state === 'failed').length;
   if (running) {
-    const hint = running.hint ? ` · ${running.hint}` : '';
+    const words = hintText(running.tool, running.hint);
+    const hint = words ? ` · ${words}` : '';
     return { running: true, text: `Running ${toolLabel(running.tool)}${hint}`, failed };
   }
   const count = item.steps.length;
