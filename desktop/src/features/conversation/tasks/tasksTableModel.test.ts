@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { EngineTaskRow } from '../../chat/engine-client';
 import { buildTaskTree } from '../taskTree.ts';
-import { costText, filterTree, groupCount, metaParts, stateWord, stripCounts, tabCounts, totals, waitReason } from './tasksTable.ts';
+import { costText, filterTree, groupCount, metaParts, stateWord, stripCounts, tabCounts, totals, waitReason } from './tasksTableModel.ts';
 
 const rows: EngineTaskRow[] = [
   { ID: 'a', Title: 'Ship it', Status: 'running' },
