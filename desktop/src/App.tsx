@@ -10,9 +10,10 @@ import './App.css';
 import { Workspace } from './features/tabs/Workspace';
 import { ControlsSpecimen } from './components/specimens/ControlsSpecimen';
 import { ConversationSpecimens } from './features/conversation/specimens/ConversationSpecimens';
+import { SettingsPage } from './features/settings';
 
-type Page = 'Workspace' | 'Activity' | 'Design system';
-const pages: Page[] = ['Workspace', 'Activity', 'Design system'];
+type Page = 'Workspace' | 'Activity' | 'Settings' | 'Design system';
+const pages: Page[] = ['Workspace', 'Activity', 'Settings', 'Design system'];
 const desktop = isTauri();
 const mac = desktop && /Mac/.test(navigator.platform);
 document.documentElement.dataset.environment = mac ? 'mac-desktop' : desktop ? 'desktop' : 'browser';
@@ -49,7 +50,7 @@ function App() {
   catch (e) { setEngine(String(e instanceof Error ? e.message : e)); }
   finally { setBusy(false); }
  }
- const navIcons = ['code', 'activity', 'grid'] as const;
+ const navIcons = ['code', 'activity', 'sliders', 'grid'] as const;
  const sidebar = <aside className="sidebar" aria-label="Main navigation" inert={narrow ? !drawerOpen : collapsed}>
    <div className="sidebar-toolbar" data-tauri-drag-region>
     <IconButton label="Hide sidebar" icon="sidebar" title="Hide sidebar (⌘/Ctrl B)" onClick={() => narrow ? setDrawerOpen(false) : setCollapsed(true)}/>
@@ -78,6 +79,7 @@ function App() {
    </header>}
    <div className="workspace-page" hidden={page !== 'Workspace'}><Workspace onActivate={() => { setPalette(false); navigate('Workspace'); }} enabled={page === 'Workspace'} leading={sidebarHidden ? <IconButton ref={sidebarToggle} label="Show sidebar" icon="sidebar" title="Show sidebar (⌘/Ctrl B)" onClick={toggleSidebar}/> : undefined}/></div>
    {page === 'Activity' && <div className="page-content"><PageHeading>Activity</PageHeading><Text className="intro">Your workspace is quiet. No sessions yet.</Text><Surface><div><SectionHeading>Local engine</SectionHeading><Text role="status">{engine}</Text></div><Button variant="quiet" loading={busy} onClick={health}>{busy ? 'Checking…' : 'Check engine'}</Button></Surface></div>}
+   {page === 'Settings' && <div className="settings-scroll"><SettingsPage/></div>}
    {page === 'Design system' && <div className="page-content"><PageHeading>Less, but considered.</PageHeading><Text className="intro">Soft chrome. Native type. Space to focus.</Text><Surface direction="column"><SectionHeading>Surfaces</SectionHeading><div className="swatches">{['canvas','surface','overlay-surface','composer-surface','accent','text'].map(s => <div key={s}><div className={`swatch ${s}`}/><small>{s}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Typography</SectionHeading><Text className="type-sample">The font your device calls home.</Text><Text>System sans for the interface. System monospace for code.</Text><CodeText>const workspace = "codeaf";</CodeText></Surface><Surface direction="column"><SectionHeading>Response typography</SectionHeading><Markdown>{'# A readable result\n\n## Findings\n\nUse `src/engine.ts` and `npm run check` without changing the interface font.\n\n### Next step\n\n**Emphasis**, lists and `inline code` use shared type.\n\n- One finding\n- Another finding\n\n| Item | State |\n| --- | --- |\n| Example | Ready |\n\n```ts\nconst ready = true;\n```'}</Markdown></Surface><Surface direction="column"><SectionHeading>Icon family</SectionHeading><Text>AnimateIcons · Lucide · one monochrome stroke style.</Text><div className="icon-specimens">{iconNames.map(name => <IconButton key={name} label={`${name} icon`} icon={name}/>)}</div></Surface><ControlsSpecimen/><Surface direction="column"><SectionHeading>Work states</SectionHeading><Text>Still indicators. Full activity details live in tab previews.</Text><div className="control-specimens">{(['streaming','working','waiting','completed','stopped','failed','staged'] as const).map(phase=><div className="work-state-specimen" key={phase}><WorkStateIndicator phase={phase} label={`${phase} sample`}/><Text>{phase}</Text></div>)}</div></Surface><Surface direction="column"><SectionHeading>Menus and motion</SectionHeading><Text>Menus use the same quiet surfaces, focus, and keyboard controls.</Text><div className="control-specimens"><DropdownMenu label="Menu specimen" items={[{ id: 'workspace', label: 'Open workspace', icon: 'tab', onSelect: () => navigate('Workspace') }, { id: 'disabled', label: 'Unavailable action', disabled: true, onSelect: () => {} }]}><Button variant="raised">Open themed menu <Icon name="chevron" size="xs" motion="disclosure"/></Button></DropdownMenu><ContextMenu label="Context menu specimen" items={[{ id: 'workspace', label: 'Open workspace', onSelect: () => navigate('Workspace') }]}><Button variant="ghost">Right-click or Shift F10</Button></ContextMenu></div></Surface><ConversationSpecimens/><Surface direction="column"><SectionHeading>Spacing</SectionHeading><div className="spacing-specimens">{[1,2,3,4,6,8,12].map(n => <div key={n}><div className={`spacing-sample spacing-sample-${n}`}/><small>{design.foundation[`space-${n}` as keyof typeof design.foundation]}</small></div>)}</div></Surface><Surface direction="column"><SectionHeading>Built-in care</SectionHeading><Text>Keyboard navigation, visible focus, reduced motion, and system appearance.</Text><Button variant="ghost" className="quiet-action" onClick={openPalette}>Open command palette <Icon name="arrow" size="xs" motion="directional"/></Button></Surface></div>}
   </main>
   <CommandPalette open={palette} onClose={() => setPalette(false)} commands={pages} onSelect={command => setPage(command as Page)}/>

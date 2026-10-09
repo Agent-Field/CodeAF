@@ -192,7 +192,7 @@ export function Composer(props: ComposerProps) {
               onClick={() => picker.current?.click()}
             />
             {props.model ? (
-              <ModelPicker models={props.model.models} selectedId={props.model.selectedId} onSelect={props.model.onSelect} effort={props.model.effort} />
+              <ModelPicker models={props.model.models} selectedId={props.model.selectedId} onSelect={props.model.onSelect} effort={props.model.effort} pinnedCount={props.model.pinnedCount} />
             ) : props.modelLabel && (
               <ModelPicker models={[{ id: props.modelLabel, label: props.modelLabel }]} selectedId={props.modelLabel} />
             )}

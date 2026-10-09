@@ -18,6 +18,8 @@ test('swapping the model in the composer sets the Conversation role and the next
   await expect.poll(() => engine.turnModels).toEqual([MODEL]);
   await chip(page, 'DeepSeek v4.1 Flash').click();
   const popover = page.getByRole('dialog', { name: 'Model' });
+  // Only the pinned models are listed until the full catalog is opened.
+  await popover.getByText('All models…').click();
   await popover.getByRole('radiogroup', { name: 'Models', exact: true }).getByRole('radio', { name: 'Kimi K3' }).click();
   await expect(chip(page, 'Kimi K3')).toBeVisible();
   const put = engine.calls.find(call => call.method === 'PUT');
@@ -27,14 +29,15 @@ test('swapping the model in the composer sets the Conversation role and the next
   await expect.poll(() => engine.turnModels).toEqual([MODEL, OTHER]);
 });
 
-test('a pinned segment switches the model and an effort choice is saved on the role', async ({ page }) => {
+test('another catalog model switches the chat and an effort choice is saved on the role', async ({ page }) => {
   const engine = await installMockEngine(page, fresh());
   await openApp(page);
   // A fresh tab makes no engine call, so the list is read once the first message has made a session.
   await send(page, 'hello');
   await expect.poll(() => engine.calls.some(call => call.path.endsWith('/models/roles'))).toBe(true);
   await chip(page, 'DeepSeek v4.1 Flash').click();
-  await page.getByRole('radiogroup', { name: 'Pinned models', exact: true }).getByRole('radio', { name: 'K3' }).click();
+  await page.getByRole('dialog', { name: 'Model' }).getByText('All models…').click();
+  await page.getByRole('radiogroup', { name: 'Models', exact: true }).getByRole('radio', { name: 'Kimi K3' }).click();
   await expect(chip(page, 'Kimi K3')).toBeVisible();
   await chip(page, 'Kimi K3').click();
   const popover = page.getByRole('dialog', { name: 'Model' });
