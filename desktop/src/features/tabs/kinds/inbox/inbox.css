@@ -1,0 +1,19 @@
+/* The Inbox list (design 3l "Inbox, background work"): a 300px surface card, radius 12, sh-2, 32px rows. */
+.inbox { flex: 1; width: 100%; min-width: 0; display: flex; justify-content: center; align-items: flex-start; height: 100%; overflow: auto; padding: var(--space-6) var(--space-4); }
+.inbox-card { display: flex; flex-direction: column; width: min(var(--inbox-width), 100%); padding: var(--inbox-pad); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--sh-2); font-size: var(--font-size-body); color: var(--ink); }
+.inbox-head { margin: 0; padding: var(--inbox-head-pad); font-size: var(--type-caption-size); font-weight: var(--font-weight-medium); color: var(--ink-3); }
+.inbox-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.inbox-card .inbox-row.button { display: flex; justify-content: flex-start; width: 100%; min-height: var(--inbox-row-height); padding: 0 var(--space-compact); gap: var(--space-compact); border-radius: var(--radius-segment-item); font-size: inherit; font-weight: var(--font-weight-regular); color: var(--ink); text-align: left; }
+.inbox-card .inbox-row.button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.inbox-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
+.inbox-row[data-state="waiting"] .inbox-dot { background: var(--amber); }
+.inbox-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-align: left; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.inbox-meta { flex: none; color: var(--ink-3); }
+.inbox-empty { padding: var(--space-compact); color: var(--ink-3); }
+.inbox-row-static { display: flex; align-items: center; min-height: var(--inbox-row-height); padding: 0 var(--space-compact); gap: var(--space-compact); }
+.inbox-row[data-state="failed"] .inbox-dot { background: var(--danger); }
+.inbox-row[data-stale] { color: var(--ink-2); }
+.inbox-failed { display: flex; align-items: center; gap: var(--space-1); }
+.inbox-failed > .inbox-row { flex: 1; min-width: 0; }
+.inbox-card .inbox-seen.button { flex: none; min-height: var(--toast-action-height); padding: 0 var(--toast-action-pad); border-radius: var(--radius-segment-item); font-size: var(--type-caption-size); color: var(--ink-3); }
+.inbox-notice { padding: var(--space-compact); color: var(--ink-3); }

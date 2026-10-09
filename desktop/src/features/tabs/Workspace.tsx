@@ -1,13 +1,21 @@
 // The workspace: owns the reducer state and composes the strip, the content card and the dialogs.
 // Everything with a lane of its own lives in a sibling file (see ARCHITECTURE.md).
 import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
-import { Button, Icon, Text, TextInput } from '../../components/ui';
+import { Button, Icon, Text, TextInput, ToastRegion } from '../../components/ui';
+import { nativeControls } from '../../design/nativeControls';
 import design from '../../design/tokens.json';
+import { toasts } from '../../design/toasts';
 import { summarize, type TabSummary } from '../conversation/tabSummary';
 import { useBackgroundSessions } from '../conversation/useBackgroundSessions';
 import { fileTab, findFileTab, type FileTabKind } from '../files/fileTarget';
-import type { TabsApi } from './context';
+import { createTabActions } from './actions';
+import { observedClosedPanes } from './closing/background';
+import { useCloseStopKey } from './closing/useCloseStopKey';
+import { useBackground } from './closing/useBackground';
+import { useClosing } from './closing/useClosing';
+import { TabsApiContext, type TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
+import { tabMenuFor } from './hosts/menuHost';
 import { NewTabHostContext } from './kinds/newtab/api';
 import { kindDef } from './kinds/registry';
 import { focusedPane, panesOf, readWorkspace, storageKey, visibleTabs, workspaceReducer, type Pane, type Tab } from './model';
@@ -17,11 +25,16 @@ import { TabOverview } from './TabOverview';
 import { TabStrip } from './TabStrip';
 import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
+import { useWindowHandoff } from './useWindowHandoff';
 import './workspace.css';
 
-type Props = { enabled: boolean; onActivate: () => void; leading?: ReactNode };
+type Props = {
+  enabled: boolean; onActivate: () => void; leading?: ReactNode;
+  /** Opens a conversation by its chat id (the shell's Places navigation owns this). The Inbox lists work with no tab here and can only offer it a click when this is given. */
+  onOpenChat?: (chatId: string) => void;
+};
 
-export function Workspace({ enabled, onActivate, leading }: Props) {
+export function Workspace({ enabled, onActivate, leading, onOpenChat }: Props) {
   const [state, dispatch] = useReducer(workspaceReducer, undefined, readWorkspace);
   const [summaries, setSummaries] = useState<Record<string, TabSummary>>({});
   const [now, setNow] = useState(Date.now);
@@ -54,7 +67,9 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   const visible = visibleTabs(state);
 
   // Inactive tabs (every pane of them) keep observing their sessions; the active tab's panes stream themselves.
-  useBackgroundSessions(state.tabs.filter(tab => tab.id !== active.id).flatMap(tab => panesOf(tab)).filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
+  // Closed tabs whose work goes on keep being read too, so the Inbox follows them to the end.
+  const watched = [...state.tabs.filter(tab => tab.id !== active.id).flatMap(tab => panesOf(tab)), ...observedClosedPanes(state.closed, summaries)];
+  useBackgroundSessions(watched.filter(pane => pane.sessionFile).map(pane => ({ id: pane.id, sessionFile: pane.sessionFile! })), (id, snapshot) => receiveSummary(id, summarize(snapshot)));
   useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch { /* A full or unavailable store must not interrupt local tab navigation. */ } }, [state]);
 
   useEffect(() => {
@@ -75,17 +90,21 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
     else renameDialog.current?.close();
   }, [rename]);
 
-  function closeTab(id: string) {
-    const restore = !!document.activeElement?.closest('.workspace-tab');
-    dispatch({ type: 'close', id });
-    if (restore) requestAnimationFrame(() => document.querySelector<HTMLElement>('.workspace-tabstrip [aria-selected="true"]')?.focus());
-  }
+  const closing = useClosing({ state, dispatch, summaries });
+  const { closeTab, closeAndStop } = closing;
+  const { background, markFailedSeen } = useBackground({ tabs: state.tabs, closed: state.closed, summaries, since: closing.sinceOf, stopping: closing.stopping, now });
+  // The Inbox appears the first time work outlives its tab or waits on the person.
+  const inboxWanted = background.running.length > 0 || background.needsYou.length > 0; // Failures alone do not summon the Inbox: they never go away on their own.
+  useEffect(() => { if (inboxWanted) dispatch({ type: 'ensure-inbox' }); }, [inboxWanted]);
+  useWindowHandoff(dispatch);
+  const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts }));
+  useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
   useTerminalTabs({ enabled, state, dispatch });
   useDesktopTabActions({ state, dispatch, visible, renaming: !!rename, onActivate, closeTab, setOverviewOpen });
 
-  const api: TabsApi = { state, dispatch, summaries, now, closeTab, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
+  const api: TabsApi = { state, dispatch, summaries, now, closeTab, closeAndStop, isRunning: closing.isRunning, background, markFailedSeen, openChat: onOpenChat, actions, reopenClosed: closing.reopenClosed, startRename, receiveSummary, previews, overlayOpen: !!switcher || overviewOpen || !!rename };
   const newTabHost = { state, summaries, dispatch, closeTab };
   const actionsFor = (pane: Pane): PaneActions => ({
     onDraft: draft => dispatch({ type: 'draft', id: pane.id, draft }),
@@ -94,16 +113,17 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
     onOpenTaskTab: (taskId, title) => openTaskTab(pane, taskId, title),
     onOpenFile: (path, kind) => openFile(pane, path, kind),
   });
-  return <section className="tab-workspace" aria-label="Conversation workspace">
+  return <TabsApiContext.Provider value={api}><section className="tab-workspace" aria-label="Conversation workspace">
     <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={() => setOverviewOpen(true)}/>
     <NewTabHostContext.Provider value={newTabHost}><PaneGrid tab={active} tabs={state.tabs} dispatch={dispatch} actionsFor={actionsFor}/></NewTabHostContext.Provider>
     {switcher && <div className="workspace-switcher"><div ref={switcherFocus} className="workspace-switcher-list" role="listbox" tabIndex={0} aria-label="Switch tabs" aria-activedescendant={`switcher-${switcher.ids[switcher.index]}`}>
       {switcher.ids.map((id, index) => { const tab = state.tabs.find(t => t.id === id); return tab ? <Button key={id} id={`switcher-${id}`} className="workspace-switcher-item" role="option" aria-selected={index === switcher.index} tabIndex={-1} onClick={() => { dispatch({ type: 'select', id }); switcherRef.current = null; setSwitcher(null); }}><Icon name={tab.pinned ? 'pin' : kindDef(focusedPane(tab).kind).icon} size="sm"/><span>{tab.title}</span></Button> : null; })}
     </div><Text>Release Ctrl to switch · Escape to cancel</Text>
     </div>}
-    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} onPin={id => dispatch({ type: 'pin', id })} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCreateGroup={id => dispatch({ type: 'group', id })} onCloseTab={id => dispatch({ type: 'close', id })}/>
+    <TabOverview summaries={summaries} now={now} returnFocus={overviewTrigger} open={overviewOpen} tabs={state.tabs} groups={state.groups} activeId={state.activeId} onSplitGroup={groupId => dispatch({ type: 'split-group', groupId })} onClose={() => setOverviewOpen(false)} onSelect={id => dispatch({ type: 'select', id })} menuFor={tab => tabMenuFor(api, tab)} onMoveGroup={(id, groupId) => dispatch({ type: 'move-group', id, groupId })} onCloseTab={id => dispatch({ type: 'close', id })}/>
     <dialog ref={renameDialog} className="workspace-rename" aria-label={rename?.group ? 'Rename group' : 'Rename tab'} onCancel={() => setRename(null)} onClose={() => setRename(null)}>
       <form onSubmit={event => { event.preventDefault(); if (rename) dispatch({ type: rename.group ? 'rename-group' : 'rename', id: rename.id, title: rename.value }); setRename(null); }}><TextInput ref={renameInput} aria-label="Name" value={rename?.value ?? ''} maxLength={80} onChange={event => setRename(current => current ? { ...current, value: event.target.value } : null)}/><div className="workspace-rename-actions"><Button onClick={() => setRename(null)}>Cancel</Button><Button type="submit" variant="quiet">Save</Button></div></form>
     </dialog>
-  </section>;
+    <ToastRegion/>
+  </section></TabsApiContext.Provider>;
 }

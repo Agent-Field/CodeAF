@@ -86,7 +86,9 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .text-input-field:focus-visible { background: var(--surface); }
 
 /* Tooltip: icon-only buttons and truncated text; sh-2 and 11px text. Its position is measured. */
-.tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: var(--menu-max-width); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--type-caption-leading); pointer-events: none; }
+.tooltip-shortcut { margin-left: var(--tooltip-gap); color: var(--ink-3); }
+/* A full tab title can be longer than a narrow window: the tooltip wraps inside the collision padding (overlay.collisionPadding, 12px = space-3) instead of running off the edge. */
+.tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: min(var(--menu-max-width), calc(100vw - 2 * var(--space-3))); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--type-caption-leading); pointer-events: none; }
 .truncated-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* LEGACY CHROME CONTROLS. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and
@@ -142,14 +144,16 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .address-field:active:not(:disabled), .favorite-button:active:not(:disabled), .new-item:active:not(:disabled), .select-trigger:active:not(:disabled) { background: var(--control-pressed); color: var(--text); }
 
 /* One surface and state system for tab context menus and toolbar dropdowns. */
-.app-menu { z-index: var(--z-menu); min-width: var(--menu-min-width); max-width: min(var(--menu-max-width),calc(100vw - var(--space-6))); max-height: var(--menu-max-height); overflow: auto; padding: var(--space-1); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--overlay-surface); color: var(--text); box-shadow: var(--palette-shadow); }
+/* Design Components "Context menu": surface, radius 10, sh-2, 5px padding, 28px rows, no border. */
+.app-menu { z-index: var(--z-menu); min-width: var(--menu-popup-min-width); max-width: min(var(--menu-max-width),calc(100vw - var(--space-6))); max-height: var(--menu-max-height); overflow: auto; padding: var(--menu-pad); border-radius: var(--radius-menu); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); }
+.app-menu-wide { min-width: var(--menu-wide-min-width); }
 .app-menu-context { transform-origin: var(--radix-context-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-context-menu-content-available-height)); }
 .app-menu-dropdown { transform-origin: var(--radix-dropdown-menu-content-transform-origin); max-height: min(var(--menu-max-height),var(--radix-dropdown-menu-content-available-height)); }
 .app-menu[data-state="open"] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }.app-menu[data-state="closed"] { animation: surface-exit var(--duration) var(--chrome-ease); }
-.menu-item { display: flex; align-items: center; gap: var(--space-2); min-height: var(--menu-row-height); padding: var(--space-tight) var(--space-2); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-body); font-weight: var(--font-weight-regular); cursor: default; user-select: none; transition: background var(--duration-fast) var(--chrome-ease), color var(--duration-fast) var(--chrome-ease); }
-.menu-label { flex: 1; min-width: 0; }.menu-item .keyboard-shortcut { color: var(--muted); margin-left: var(--space-4); white-space: nowrap; }.menu-item > .app-icon { color: var(--muted); }
-.menu-item[data-state="checked"] { background: var(--menu-selected); }.menu-item[data-highlighted], .menu-item[data-state="open"] { background: var(--menu-highlight); }.menu-item:active:not([data-disabled]) { background: var(--control-pressed); }.menu-item[data-disabled] { opacity: var(--opacity-disabled); }
-.menu-item-danger { color: var(--chrome-danger); }.menu-item-danger > .app-icon { color: inherit; }.menu-check { display: flex; align-items: center; margin-left: auto; }.menu-separator { height: var(--border-width); background: var(--border); margin: var(--space-1) var(--space-2); }
+.menu-item { display: flex; align-items: center; gap: var(--space-compact); min-height: var(--menu-item-height); padding: 0 var(--space-compact); border-radius: var(--radius-sm); outline: none; font-size: var(--font-size-prose); font-weight: var(--font-weight-regular); cursor: default; user-select: none; transition: background var(--duration-fast) var(--chrome-ease), color var(--duration-fast) var(--chrome-ease); }
+.menu-label { flex: 1; min-width: 0; }.menu-item .keyboard-shortcut { color: var(--ink-3); font-size: var(--font-size-body); white-space: nowrap; }.menu-item > .app-icon { color: var(--ink-2); }.menu-item > .app-icon-xs:last-child { color: var(--ink-3); }
+.menu-item[data-highlighted], .menu-item[data-state="open"] { background: var(--field-2); }.menu-item:active:not([data-disabled]) { background: var(--control-pressed); }.menu-item[data-disabled] { opacity: var(--opacity-disabled); }
+.menu-item-danger { color: var(--danger); }.menu-item-danger > .app-icon { color: inherit; }.menu-check { display: flex; align-items: center; margin-left: auto; color: var(--ink-2); }.menu-separator { height: var(--hairline); background: var(--line); margin: var(--menu-sep-pad-y) var(--space-2); }
 
 /* Preview waits for intent; it is informational and never competes with menus. */
 .hover-preview { z-index: var(--z-overlay); width: min(var(--preview-width),calc(100vw - var(--space-6))); padding: var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-md); background: var(--overlay-surface); color: var(--text); box-shadow: var(--shadow); pointer-events: none; transform-origin: var(--radix-hover-card-content-transform-origin); }
@@ -179,3 +183,15 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .select-option:focus-visible, .menu-item:focus-visible { box-shadow: none; }
 /* Split panes (Shell 3b): the full composer grows out of the 36px compact field. */
 @keyframes composer-expand { from { max-height: var(--compact-composer-height); opacity: var(--opacity-subtle); } to { max-height: var(--composer-expand-max-height); opacity: var(--opacity-opaque); } }
+
+/* The shared toast (design 3l step 3): 40px, radius 12, surface, sh-2. Posted through design/toasts.ts, drawn once by ToastRegion. */
+.toast-region { position: fixed; inset: auto 0 var(--toast-offset); z-index: var(--z-toast); display: flex; justify-content: center; padding: 0 var(--space-4); pointer-events: none; }
+.toast { display: inline-flex; align-items: center; gap: var(--toast-gap); height: var(--toast-height); max-width: 100%; padding: 0 var(--toast-pad-end) 0 var(--space-row); border-radius: var(--radius-card); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-size: var(--font-size-body); pointer-events: auto; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
+.toast-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
+.toast-dot[data-tone="danger"] { background: var(--danger); }
+.toast-text { min-width: 0; overflow: hidden; white-space: nowrap; padding-right: var(--tab-title-fade); margin-right: calc(var(--tab-title-fade) * -1); mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
+.toast-strong { font-weight: var(--font-weight-medium); }
+.toast .toast-action.button { flex: none; min-height: var(--toast-action-height); padding: 0 var(--toast-action-pad); border-radius: var(--radius-segment-item); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); color: var(--ink-2); }
+.toast .toast-action.button-quiet { background: var(--field); color: var(--ink); }
+.toast .toast-action.button-ghost:hover:not(:disabled) { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }

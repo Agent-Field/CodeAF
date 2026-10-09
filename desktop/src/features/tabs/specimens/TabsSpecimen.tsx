@@ -10,6 +10,7 @@ import { LoadingLine } from '../LoadingLine';
 import { OverviewSpecimen } from './OverviewSpecimen';
 import { SplitTab } from '../SplitTab';
 import { Tab, type TabState } from '../Tab';
+import { ClosingSpecimen } from './ClosingSpecimen';
 import '../split-zones.css';
 import './tabs-specimen.css';
 
@@ -101,6 +102,8 @@ export function TabsSpecimen() {
         <div className="tabs-specimen-wide"><Tab specimen kind="conversation" title="Trailing commas across the config stack and env loader" hover tabIndex={-1} onClose={noop}/></div>
         <div className="tabs-specimen-wide"><Tab specimen kind="conversation" title="Config stack" hover closeMode="stop" tabIndex={-1} onClose={noop}/></div>
       </div>
+      <div className="tabs-specimen-rule"/>
+      <ClosingSpecimen/>
       <div className="tabs-specimen-rule"/>
       <span className="tabs-specimen-label">Web load line: 2px along the top of the card, never on the tab</span>
       <div className="tabs-specimen-card"><LoadingLine progress={0.45}/><Icon name="web" size="lg"/></div>

@@ -38,7 +38,7 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 | Lane | Owns |
 | --- | --- |
 | hover preview | `hosts/previewHost.tsx`, each kind's `preview`, new `preview/` folder |
-| menus and closing | `hosts/menuHost.tsx`, `closing/` (toast, Alt stop), `reducers/closing.ts`, `Tab.tsx` `closeMode` wiring in `TabItem.tsx` |
+| menus and closing | `hosts/menuHost.tsx`, `actions.ts` (typed `TabActions`: link, move to window), `useWindowHandoff.ts` (claim and release, both halves of a move), `reducers/closing.ts` + `reducers/handoff.ts`, `closing/` (Alt stop, `background.ts` Inbox model, `useBackground.ts` world feed + signals, `failedSeen.ts`), `kinds/inbox.ts` + `kinds/inbox/`, `Tab.tsx` `closeMode` wiring in `TabItem.tsx`. The toast is shared: post with `toasts.show` from `design/toasts.ts`, drawn once by `ToastRegion` (undo is a slot of the toast, never a feature-drawn button). Seam for the rail: dispatch `{ type: 'open-inbox' }`. Seam for the shell: `<Workspace onOpenChat>` lets the Inbox open work that has no tab here. Closing never stops engine work; "Close and stop" calls the session stop endpoint through `closing/stopWork.ts` and a failure stays on screen (toast + Inbox). "Copy link" is ABSENT (no deep-link scheme exists); "Move to new window" is desktop-only and two-phase (the source tab leaves only when the new window claims it). |
 | split panes | `reducers/split.ts`, `PaneGrid.tsx`, `panes.css`, `split-tab.css`, `hosts/dragHost.ts` (edge drops), `PaneHeader` controls |
 | overview and filmstrip | `TabOverview.tsx` (the layer, bar, keys, cursor), `OverviewCard.tsx`, `OverviewFilmstrip.tsx`, `overview-model.ts` (pure order and filter, node test), `overview.css`, `specimens/OverviewSpecimen.tsx`. No `.overview-*` rules live in `styles/ui.css` any more. |
 | new tab field | `kinds/newtab.ts` (+ its folder), switch `new` to kind `newtab` in `reducers/tabs.ts` |
@@ -48,6 +48,13 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 | kind lanes (file, diff, web, terminal, settings, inbox) | their own `kinds/<kind>.ts`, flip `backed` when an engine/bridge source exists |
 
 Shared, change with care and keep edits small: `tokens.json` (add keys, never rename), `Tab.tsx`/`tab.css` (the primitive: states are props), `model.ts` slice list, `TabItem.tsx` (three host calls), `Workspace.tsx`.
+
+## Tab polish seams
+
+- **Title tooltip** (`hosts/titleTooltipHost.tsx`, the strip's third `wrapSelect` host beside preview and menu): the shared 500ms `useTooltip` with the full title for the active tab, a pinned tab (icon only) and a cut title. An inactive tab's hover preview already holds its title, and no tooltip opens while any preview card is open, so the two never overlap. A split's segments use `SplitTab`'s `wrapSegment`.
+- **⌘/Ctrl O** is ShortcutId `open-file` in `design/keyboard.ts`. Only the focused new-tab field registers for it (surface layer) and it runs the Open file… row's own pick; no other surface claims it.
+- **Overview card press** (Interactions "Overview card · ⌘-click / middle: Background tab"): every card is a tab that is ALREADY open, so a ⌘/Ctrl-click or middle-click opens nothing: the active tab and the overlay stay as they are and only the cursor moves to the card (`backgroundPress` in `OverviewCard.tsx`, predicate `isBackgroundPress` in `overview-model.ts`). A plain click opens and closes the overview.
+- **Overview card menu** is `tabMenuFor(api, tab)` from `hosts/menuHost.tsx`, the strip's own builder, passed down as `TabOverview`'s `menuFor`. There is no second menu array; the Inbox has no menu in either place. `ToastRegion` draws inside an open modal dialog so a toast posted from the overview is seen.
 
 ## Primitives and specimens
 
