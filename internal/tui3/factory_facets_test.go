@@ -150,6 +150,10 @@ func TestFactorySettingsPane(t *testing.T) {
 	for _, c := range a.factoryChipList(it) {
 		values[c.label] = c.value
 	}
+	// Thinking with no word of its own says so in a word, never a dash.
+	if values[wordThinking] == "" {
+		values[wordThinking] = wordThinkingAuto
+	}
 	want := []string{
 		lead + factoryPad(wordThinking, labelW) + factoryPad(values[wordThinking], factorySetValueW) + keyThinking,
 		lead + factoryPad(wordBudget, labelW) + factoryPad(values[wordBudget], factorySetValueW) + keyBudget,
@@ -396,9 +400,17 @@ func TestFactoryAlignFacets(t *testing.T) {
 		valueX := factoryMargin + factorySettingsLabelW(factoryStages(a.fp.snap, cur))
 		keyX := valueX + factorySetValueW
 		values, keys := 0, 0
-		for _, line := range lines {
+		// The foot's keys stand after the last blank row, wrapped whole
+		// clause by clause: they are not a table's rows.
+		foot := len(lines)
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				foot = i
+			}
+		}
+		for i, line := range lines {
 			plain := []rune(line)
-			if strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), keyStages) {
+			if i >= foot || strings.TrimSpace(line) == "" || strings.HasPrefix(strings.TrimSpace(line), keyStages) {
 				continue
 			}
 			if len(plain) <= valueX || plain[valueX-1] != ' ' || plain[valueX] == ' ' {

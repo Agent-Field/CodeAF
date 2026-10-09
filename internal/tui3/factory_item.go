@@ -1667,7 +1667,7 @@ func (a *app) factoryPagePane(it factory.Item, rows []factoryPageRow, measure, r
 		lines = a.factorySettingsPane(it, measure, room)
 	default:
 		if words := a.factoryHostWaitWords(); words != "" {
-			lines = []string{a.pal.dim(fit(words, measure))}
+			lines = factoryWrapped(words, measure, a.pal.dim)
 			break
 		}
 		var views []factoryStageView
@@ -1702,9 +1702,7 @@ func (a *app) factoryManagerPane(it factory.Item, measure, room int) []string {
 		}
 	}
 	var body []string
-	if words := a.factoryHostWaitWords(); words != "" {
-		body = append(body, pal.dim(fit(words, measure)))
-	}
+	body = append(body, factoryWrapped(a.factoryHostWaitWords(), measure, pal.dim)...)
 	if a.factoryTLThinking(it) {
 		body = append(body, a.factorySpin()+" "+pal.muted(fit(wordManager+" "+wordIsThinking, max(measure-factoryLeadW, 0))))
 	}
@@ -1726,8 +1724,15 @@ func (a *app) factoryStepsPane(it factory.Item, measure, room int) []string {
 		}
 		head := markPaint(mark) + " " + pal.ink(v.stage.Name)
 		knobs := strings.TrimPrefix(factoryKnobs(v.stage), v.stage.Name+rowSep)
-		line := fit(head+factorySpaces(factoryGutter)+pal.dim(knobs), measure)
-		block := []string{line}
+		// THE KNOBS STAND BESIDE THE NAME where they fit, and under it,
+		// wrapped, where they do not.
+		block := []string{head + factorySpaces(factoryGutter) + pal.dim(knobs)}
+		if ansi.StringWidth(block[0]) > measure {
+			block = []string{fit(head, measure)}
+			for _, l := range wrap(knobs, max(measure-factoryLeadW, 1)) {
+				block = append(block, factorySpaces(factoryLeadW)+pal.dim(l))
+			}
+		}
 		if ask := strings.TrimSpace(v.stage.Ask); ask != "" {
 			for _, l := range wrap(ask, max(measure-factoryLeadW, 1)) {
 				block = append(block, factorySpaces(factoryLeadW)+pal.muted(l))
@@ -1801,42 +1806,38 @@ func (a *app) factoryPaneAction(it factory.Item, measure int, extra ...string) s
 // and the forge's blocks follow the read, each comment whole. Over the read
 // stands the line that says when it was made, `read 3m ago · u refresh`, which
 // spins while a read is out ([app.factoryReadLine]).
+//
+// WHERE THE PANE IS WIDE ENOUGH THE DETAILS STAND BESIDE THE BODY (owner's
+// screenshot, 2026-10-09): the body keeps its readable measure on the left,
+// and the read, the facts, the questions, the checks, the activity and the
+// link stand in a column on its right ([app.factoryIssueSide]), instead of
+// under a body that left the right of a wide screen empty. Narrower, they
+// stack under the body as one column. Both columns scroll as one document.
 func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
-	pal := a.pal
-	w := max(min(measure, factoryPageProseW), 1)
-	body := a.factoryMarkdown(it.Body, w)
-	var read []string
-	if line := a.factoryReadLine(it, w); line != "" {
-		read = append(read, line)
+	scrollW := max(min(measure, factoryPageProseW), 1)
+	bodyW, sideW, split := factoryIssueSplit(measure)
+	var left []string
+	if split {
+		left = factoryStack([][]string{a.factoryMarkdown(it.Body, bodyW),
+			a.factoryCommentsBlock(it, bodyW, 0), a.factoryFilesBlock(it, bodyW)})
 	}
-	for _, line := range wrap(strings.TrimSpace(it.Triage.Read), w) {
-		if strings.TrimSpace(line) != "" {
-			read = append(read, pal.ink(line))
-		}
+	var doc []string
+	// AN ISSUE WITH NOTHING TO READ ON THE LEFT HAS NO BODY TO STAND BESIDE:
+	// its details are the document, from the margin.
+	if len(left) > 0 {
+		side := a.factoryIssueSide(it, sideW)
+		right := factoryStack([][]string{side.read, side.facts, side.asks, side.adapted, side.checks, side.activity, side.link})
+		doc = factoryBeside(left, right, bodyW, factoryIssueSideGap)
+		scrollW = bodyW + factoryIssueSideGap + sideW
+	} else {
+		w := scrollW
+		side := a.factoryIssueSide(it, w)
+		doc = factoryStack([][]string{
+			a.factoryMarkdown(it.Body, w),
+			side.read, side.facts, side.asks, side.adapted, side.link,
+			a.factoryCommentsBlock(it, w, 0), side.checks, a.factoryFilesBlock(it, w), side.activity,
+		})
 	}
-	// WHAT CODEAF READ stands under its sentence, dim: the type, the size,
-	// the estimate, the priority and its reason, each only where the read
-	// said it (the emptiness law).
-	if line := factoryReadFacts(it); line != "" {
-		read = append(read, pal.dim(fit(line, w)))
-	}
-	var facts []string
-	if f := factoryFacts(it); len(f) > 0 {
-		facts = []string{pal.dim(factoryJoinWhole(f, f, factorySpaces(factoryFactGap), measure))}
-	}
-	// THE READ'S OPEN QUESTIONS ARE ON THE ISSUE whenever it has any: the
-	// issue is the one place what codeaf read is read whole.
-	var asks []string
-	if qs := nonEmpty(it.Triage.Questions); len(qs) > 0 {
-		for _, line := range wrap("it would ask "+factoryOr(it.Author, "the author")+" "+strings.Join(qs, " / "), w) {
-			asks = append(asks, pal.muted(line))
-		}
-	}
-	var adapted []string
-	if line := a.factoryAdaptedRow(it, w); line != "" {
-		adapted = []string{line}
-	}
-	doc := factoryStack(append([][]string{body, read, facts, asks, adapted}, a.factoryForgeBlocks(it, w, 0)...))
 	if len(doc) == 0 {
 		return make([]string, max(room, 0))
 	}
@@ -1846,12 +1847,147 @@ func (a *app) factoryIssuePane(it factory.Item, measure, room int) []string {
 	if room >= 3 {
 		window = room - factoryActionRows
 	}
-	shown := a.factoryScrolled(it, doc, w, window)
+	shown := a.factoryScrolled(it, doc, scrollW, window)
 	extra := []string{}
 	if a.fp.scrollMax > 0 {
 		extra = append(extra, factoryHintClause(keyScroll, wordScroll))
 	}
 	return factoryPaneLadder([][]string{shown}, a.factoryIssueAction(it, measure, extra...), room)
+}
+
+// factoryIssueSplit is the issue pane's two columns at measure cells: the
+// body's measure and the details' beside it, and false when the pane is too
+// narrow for the details to stand beside a readable body.
+func factoryIssueSplit(measure int) (bodyW, sideW int, ok bool) {
+	if measure < factoryPageProseW+factoryIssueSideGap+factoryIssueSideMin {
+		return 0, 0, false
+	}
+	bodyW = factoryPageProseW
+	sideW = min(measure-bodyW-factoryIssueSideGap, factoryIssueSideMax)
+	return bodyW, sideW, true
+}
+
+// factoryBeside lays right beside left, top-aligned: each row the left
+// line padded to leftW, gap cells of air, then the right line. A row with
+// nothing on the right is the left line alone, so no row carries trailing air.
+func factoryBeside(left, right []string, leftW, gap int) []string {
+	n := max(len(left), len(right))
+	out := make([]string, n)
+	for i := range out {
+		l, r := "", ""
+		if i < len(left) {
+			l = left[i]
+		}
+		if i < len(right) {
+			r = right[i]
+		}
+		if r == "" {
+			out[i] = l
+			continue
+		}
+		out[i] = factoryPad(l, leftW) + factorySpaces(gap) + r
+	}
+	return out
+}
+
+// factoryIssueDetails is the issue's details, each block wrapped to its
+// measure and none cut, empty where the item says nothing (the emptiness
+// law): the read's line over codeaf's read and its facts, what it noticed,
+// the questions it would ask, what plan changed, the checks, the activity,
+// and the link to the item on github.
+type factoryIssueDetails struct {
+	read, facts, asks, adapted, checks, activity, link []string
+}
+
+// factoryIssueSide is the issue's details at w cells ([factoryIssueDetails]).
+func (a *app) factoryIssueSide(it factory.Item, w int) factoryIssueDetails {
+	pal := a.pal
+	var d factoryIssueDetails
+	if line := a.factoryReadLine(it, w); line != "" {
+		d.read = append(d.read, line)
+	}
+	for _, line := range wrap(strings.TrimSpace(it.Triage.Read), w) {
+		if strings.TrimSpace(line) != "" {
+			d.read = append(d.read, pal.ink(line))
+		}
+	}
+	// WHAT CODEAF READ stands under its sentence, dim: the type, the size,
+	// the estimate, the priority and its reason, each only where the read
+	// said it (the emptiness law).
+	d.read = append(d.read, factoryWrapped(factoryReadFacts(it), w, pal.dim)...)
+	// WHAT IT NOTICED is one row of phrases where they fit on one, and one
+	// phrase a row where they do not, so none is dropped.
+	if f := factoryFacts(it); len(f) > 0 {
+		if ansi.StringWidth(strings.Join(f, factorySpaces(factoryFactGap))) <= w {
+			d.facts = []string{pal.dim(strings.Join(f, factorySpaces(factoryFactGap)))}
+		} else {
+			for _, fact := range f {
+				d.facts = append(d.facts, factoryWrapped(fact, w, pal.dim)...)
+			}
+		}
+	}
+	// THE READ'S OPEN QUESTIONS ARE ON THE ISSUE whenever it has any: the
+	// issue is the one place what codeaf read is read whole.
+	if qs := nonEmpty(it.Triage.Questions); len(qs) > 0 {
+		d.asks = factoryWrapped("it would ask "+factoryOr(it.Author, "the author")+" "+strings.Join(qs, " / "), w, pal.muted)
+	}
+	if line := a.factoryAdaptedRow(it, w); line != "" {
+		d.adapted = []string{line}
+	}
+	d.checks = a.factoryChecksBlock(it, w)
+	d.activity = a.factoryActivityBlock(it, w)
+	if line := a.factoryIssueLink(it, w); line != "" {
+		d.link = []string{line}
+	}
+	return d
+}
+
+// factoryIssueLink is the item's address on github, dim and linked where the
+// terminal takes links, `github.com/agentfield/codeaf/issues/1551`, and
+// nothing for an item with no page there. `g` and the trail's ref open it.
+func (a *app) factoryIssueLink(it factory.Item, w int) string {
+	u := strings.TrimSpace(it.URL)
+	if u == "" || it.Origin == factory.OriginTerminal {
+		return ""
+	}
+	u = strings.TrimPrefix(strings.TrimPrefix(u, "https://"), "http://")
+	return a.factoryRefLink(it, a.pal.dim(fit(u, w)))
+}
+
+// factoryWrapClauses is clauses joined with [rowSep], as many WHOLE clauses
+// a line as fit in measure cells, each line painted: a key and its word are
+// never parted across two lines. A clause wider than measure on its own is
+// wrapped as prose.
+func factoryWrapClauses(clauses []string, measure int, paint func(string) string) []string {
+	var out []string
+	line := ""
+	for _, c := range clauses {
+		switch {
+		case line == "":
+			line = c
+		case ansi.StringWidth(line+rowSep+c) <= measure:
+			line += rowSep + c
+		default:
+			out = append(out, factoryWrapped(line, measure, paint)...)
+			line = c
+		}
+	}
+	return append(out, factoryWrapped(line, measure, paint)...)
+}
+
+// factoryWrapped is prose wrapped to measure cells, each line painted, and
+// nothing for prose with no words. THE PANES WRAP WHAT A PERSON READS; they
+// never cut it with an ellipsis (owner's screenshot, 2026-10-09).
+func factoryWrapped(text string, measure int, paint func(string) string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	var out []string
+	for _, line := range wrap(text, max(measure, 1)) {
+		out = append(out, paint(line))
+	}
+	return out
 }
 
 // factoryReadFacts is what codeaf read about the item on one line, plain:
@@ -1894,7 +2030,7 @@ func (a *app) factoryResultPane(it factory.Item, measure, room int) []string {
 		blocks = append(blocks, []string{line})
 	}
 	if d := strings.TrimSpace(it.Diff); d != "" {
-		blocks = append(blocks, []string{a.factoryBlockHead(wordDiff, measure), pal.ink(fit(d, measure))})
+		blocks = append(blocks, append([]string{a.factoryBlockHead(wordDiff, measure)}, factoryWrapped(d, measure, pal.ink)...))
 	}
 	blocks = append(blocks, a.factoryChecksBlock(it, measure))
 	return factoryPaneLadder(blocks, action, room)
@@ -1964,6 +2100,11 @@ func (a *app) factorySettingsPane(it factory.Item, measure, room int) []string {
 		if strings.TrimSpace(c.value) == "" && key == "" {
 			continue
 		}
+		// THINKING WITH NO WORD OF ITS OWN SAYS SO IN A WORD where `e` turns
+		// it, never a bare dash.
+		if label == wordThinking && strings.TrimSpace(c.value) == "" {
+			c.value = wordThinkingAuto
+		}
 		knobs = append(knobs, row(c.label, c.value, key, pal.ink))
 	}
 	var lines []string
@@ -1988,7 +2129,7 @@ func (a *app) factorySettingsPane(it factory.Item, measure, room int) []string {
 	}
 	var foot []string
 	if len(more) > 0 {
-		foot = []string{pal.dim(fit(strings.Join(more, rowSep), measure))}
+		foot = factoryWrapClauses(more, measure, pal.dim)
 	}
 	return factoryPaneLadder([][]string{knobs, lines, foot}, a.factoryPaneAction(it, measure), room)
 }
@@ -2002,10 +2143,10 @@ func (a *app) factoryStagePane(it factory.Item, views []factoryStageView, at, me
 	}
 	pal := a.pal
 	v := views[at]
-	head := []string{pal.dim(fit(factoryKnobs(v.stage), measure))}
-	if ask := strings.TrimSpace(v.stage.Ask); ask != "" {
-		head = append(head, pal.ink(fit(ask, measure)))
-	}
+	// THE KNOBS AND THE ASK ARE WRAPPED, never cut: the ask is what the step
+	// is told, and a person reads it whole (owner's screenshot, 2026-10-09).
+	head := factoryWrapped(factoryKnobs(v.stage), measure, pal.dim)
+	head = append(head, factoryWrapped(v.stage.Ask, measure, pal.ink)...)
 	if v.stage.Name == "proof" && len(it.Proof)+len(it.Policy) > 0 {
 		return a.factoryProofPane(it, head, measure, room)
 	}
@@ -2077,14 +2218,14 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 	case v.off:
 		out = append(out, pal.dim(fit("switched off on this item", measure)))
 	case v.skipped:
-		out = append(out, pal.dim(fit("skipped · not "+strings.TrimSpace(v.stage.When), measure)))
+		out = append(out, factoryWrapped("skipped · not "+strings.TrimSpace(v.stage.When), measure, pal.dim)...)
 	case v.kind == factoryMarkSkipped:
 		out = append(out, pal.dim(fit("skipped · the run went on past it", measure)))
 	case v.kind == factoryMarkPaused:
 		line := strings.Join(nonEmpty([]string{a.factoryPausedFor(it), factoryStageCounts(v)}), rowSep)
-		out = append(out, pal.muted(fit(line, measure)))
+		out = append(out, factoryWrapped(line, measure, pal.muted)...)
 	case v.kind == factoryMarkStopped:
-		out = append(out, pal.muted(fit(factoryStoppedWords, measure)))
+		out = append(out, factoryWrapped(factoryStoppedWords, measure, pal.muted)...)
 	case v.state == factory.PhaseRunning:
 		// THE PANE'S RUNNING LINE LEADS WITH THE SAME SPINNER THE RAIL WEARS
 		// ([app.factoryStageMark]), turning, and its time counts up every
@@ -2093,13 +2234,7 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 		line := strings.Join(nonEmpty([]string{factoryStageCounts(v), v.elapsed}), rowSep)
 		out = append(out, markPaint(mark)+" "+pal.muted(fit(line, max(measure-factoryLeadW, 0))))
 		if s := it.Stream; s != nil {
-			log := s.Log
-			if left := room - len(out); len(log) > left {
-				log = log[len(log)-max(left, 0):]
-			}
-			for _, l := range log {
-				out = append(out, a.factoryLogRow(l, measure))
-			}
+			out = append(out, a.factoryLogTail(s.Log, measure, max(room-len(out), 0))...)
 		}
 	case v.state == factory.PhaseWaiting:
 		q := strings.TrimSpace(it.Question)
@@ -2113,16 +2248,16 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 			out = append(out, pal.dim(fit(factoryAnswerClauses(it), measure)))
 		}
 		if note := strings.TrimSpace(v.phase.Note); note != "" && note != q && note != strings.TrimSpace(v.stage.Ask) {
-			out = append(out, pal.dim(fit(note, measure)))
+			out = append(out, factoryWrapped(note, measure, pal.dim)...)
 		}
 	case v.state == factory.PhaseDone:
 		result := strings.TrimSpace(v.phase.Note)
 		if result == "" {
 			result = "done"
 		}
-		out = append(out, pal.muted(fit(strings.Join(nonEmpty([]string{result, factoryStageCounts(v)}), rowSep), measure)))
+		out = append(out, factoryWrapped(strings.Join(nonEmpty([]string{result, factoryStageCounts(v)}), rowSep), measure, pal.muted)...)
 	case v.state == factory.PhaseFailed:
-		out = append(out, pal.dim(fit(factoryOr(v.phase.Note, "failed"), measure)))
+		out = append(out, factoryWrapped(factoryOr(v.phase.Note, "failed"), measure, pal.dim)...)
 	default:
 		after := "runs first"
 		for i := at - 1; i >= 0; i-- {

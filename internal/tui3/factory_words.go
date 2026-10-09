@@ -93,6 +93,7 @@ const (
 	wordSelect             = "select"
 	wordRunSelected        = "run selected"
 	wordThinking           = "thinking"
+	wordThinkingAuto       = "auto" // thinking with no word of its own: the crew picks
 	wordBudget             = "budget"
 	wordStages             = "stages"
 	wordAddStage           = "add a stage"
@@ -157,6 +158,9 @@ const (
 	wordFacetSettings = "settings"
 	// wordFloorCrumb is the first crumb of the item page's trail, the floor.
 	wordFloorCrumb = "Factory"
+	// wordAllRepos is the floor narrowed to no repo: the rows' first line
+	// over every repo, and `esc`'s word on a floor narrowed to one.
+	wordAllRepos = "all repos"
 )
 
 // The item page's top bar (factory_bar.go): its one control, which says what

@@ -156,8 +156,12 @@ func (placeFactory) hint(a *app) string {
 func (a *app) factoryFloorHint(head []string) string {
 	nav := a.factoryNavClauses()
 	out := factoryHintClause(keyBack, wordBack)
-	if a.factoryNarrowed() {
+	switch {
+	case a.fp.query != "" || a.fp.typing:
 		out = factoryHintClause(keyBack, wordClear)
+	case a.fp.repo != 0:
+		// A FLOOR NARROWED TO ONE REPO NAMES WHERE `esc` GOES: every repo.
+		out = factoryHintClause(keyBack, wordAllRepos)
 	}
 	tail := []string{out}
 	if a.factoryConnected() {

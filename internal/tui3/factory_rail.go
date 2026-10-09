@@ -374,6 +374,7 @@ func (a *app) factoryKeep(was factory.Item, had bool) {
 // factoryClear is `esc` over a narrowed rail: the words and the repo go, and
 // the cursor stays on its item.
 func (a *app) factoryClear() {
+	a.fp.stripHot = false
 	a.factoryRefocus(func() {
 		a.fp.query, a.fp.typing, a.fp.repo = "", false, 0
 	})
@@ -563,13 +564,9 @@ func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 		return ""
 	case factoryRowStrip:
 		if r.heading == "" {
-			return pal.dim("all repos")
+			return pal.dim(wordAllRepos)
 		}
-		word := factoryRepoShort(r.heading)
-		if r.count > 0 {
-			word += " · " + itoa(r.count)
-		}
-		return pal.muted(fit(word, width))
+		return a.factoryStripCrumbs(r, width)
 	case factoryRowQuery:
 		words := fit("/ "+a.fp.query, max(width-1, 0))
 		if a.fp.typing {
@@ -603,6 +600,51 @@ func (a *app) factoryRailLine(r factoryRailRow, width int) string {
 	}
 	it := a.fp.snap.Items[r.item]
 	return a.factoryRailItem(it, width, r.walk == a.fp.cursor)
+}
+
+// factoryStripCrumbs is the narrowed floor's first row, a trail like the item
+// page's: `Factory › codeaf · 274`. `Factory` IS A BUTTON that puts every
+// repo back, as `esc` does on a narrowed floor, and it wears the pointer's
+// ground while the pointer rests on it (owner's screenshot, 2026-10-09: the
+// repo crumb on the item page led to a floor with no road back).
+func (a *app) factoryStripCrumbs(r factoryRailRow, width int) string {
+	pal := a.pal
+	home := wordFloorCrumb
+	sep := " " + a.linearMark("›", ">") + " "
+	repo := factoryRepoShort(r.heading)
+	if r.count > 0 {
+		repo += " · " + itoa(r.count)
+	}
+	if ansi.StringWidth(home+sep) >= width {
+		return pal.muted(fit(repo, width))
+	}
+	button := pal.dim(home)
+	if a.fp.stripHot {
+		button = pal.cursor(home, ansi.StringWidth(home))
+	}
+	return button + pal.dim(sep) + pal.muted(fit(repo, width-ansi.StringWidth(home+sep)))
+}
+
+// factoryStripAt says whether screen cell (x, y) is on the narrowed floor's
+// `Factory` crumb as the last draw placed it ([app.factoryStripCrumbs]): the
+// rows' first line, [factoryMargin] in from the frame's edge.
+func (a *app) factoryStripAt(x, y int) bool {
+	if a.fp.open || a.fp.repo == 0 {
+		return false
+	}
+	at, ok := placeBodyLine(y-a.fp.headRows, 0, a.fp.shown)
+	if !ok {
+		return false
+	}
+	line := at
+	if at >= a.fp.pinned {
+		line = a.fp.top + at - a.fp.pinned
+	}
+	rows := a.factoryRows()
+	if line < 0 || line >= len(rows) || rows[line].kind != factoryRowStrip || rows[line].heading == "" {
+		return false
+	}
+	return x >= factoryMargin && x < factoryMargin+ansi.StringWidth(wordFloorCrumb)
 }
 
 // factoryHeading is a section's heading: its name in muted capitals with its
