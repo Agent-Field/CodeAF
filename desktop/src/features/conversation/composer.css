@@ -89,19 +89,6 @@
   color: var(--ink);
 }
 
-.composer-model.type-body {
-  display: flex;
-  align-items: center;
-  height: var(--control-height);
-  padding: 0 var(--space-2);
-  font-size: var(--type-label-size);
-  line-height: var(--type-label-leading);
-  color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer-tasks.button {
   height: var(--control-height);
   padding: 0 var(--space-2);
