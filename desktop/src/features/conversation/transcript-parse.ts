@@ -45,7 +45,7 @@ export function digestOf(markdown: string): string {
   return '';
 }
 
-function firstSentence(text: string): string {
+export function firstSentence(text: string): string {
   const match = text.match(/^.*?[.!?](?=\s|$)/);
   return clip((match ? match[0] : text).trim(), DIGEST_LIMIT);
 }

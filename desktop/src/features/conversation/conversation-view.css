@@ -5,7 +5,8 @@
 .conversation-main[data-empty] { justify-content: center; }
 .conversation-main[data-empty] .conversation-scroll { flex: 0 0 auto; padding-block: 0 var(--space-4); }
 
-.conversation-greeting { margin: 0; text-align: center; color: var(--muted); font-size: var(--font-size-prose); }
+/* The composer draws its own greeting on a fresh tab; ConversationView's folder line is retired. */
+.conversation-greeting { display: none; }
 .conversation-preface { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-xl); }
 .conversation-failure { margin-top: var(--space-4); }
 .conversation-column > .question-card { margin-top: var(--space-xl); }
