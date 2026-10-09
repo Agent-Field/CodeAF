@@ -3,7 +3,7 @@
 // its action type to WorkspaceAction and its function to `slices` below. Nothing here touches React.
 import { cleanView } from './view-state.ts';
 import { kindOrDefault } from './kinds/types.ts';
-import { initialWorkspace, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
+import { clampRatio, initialWorkspace, layoutFits, makeSplit, titleRank, withSplitTitle, splitCapacity } from './helpers.ts';
 import { reduceGroups, type GroupAction } from './reducers/groups.ts';
 import { reduceSplit, type SplitAction } from './reducers/split.ts';
 import { reduceTabs, type TabAction } from './reducers/tabs.ts';
@@ -36,7 +36,10 @@ function readSplit(value: unknown): Tab['split'] {
   if (panes.some(p => !p) || new Set(panes.map(p => p!.id)).size !== panes.length) return undefined;
   const layout = layouts.find(l => l === s.layout);
   const focus = Number.isInteger(s.focus) ? (s.focus as number) : 0;
-  return makeSplit(panes as Pane[], focus, layout && layoutFits(layout, panes.length) ? layout : undefined);
+  const r = s as { ratios?: { col?: unknown; row?: unknown } };
+  const share = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? clampRatio(v) : 0.5);
+  const ratios = r.ratios && typeof r.ratios === 'object' ? { col: share(r.ratios.col), row: share(r.ratios.row) } : undefined;
+  return makeSplit(panes as Pane[], focus, layout && layoutFits(layout, panes.length) ? layout : undefined, ratios);
 }
 
 function readTab(value: unknown): Tab | undefined {

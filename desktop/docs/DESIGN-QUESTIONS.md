@@ -61,3 +61,6 @@ Shell). On any conflict, the design files win over code and older docs.
 | # | Question | Assumption the app ships now |
 |---|---|---|
 | Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | ⌘1–3 switch pinned models while a conversation composer is on screen; ⌘4–9 jump to tabs. Tabs 1–3 are reached with ⌃Tab or a click. |
+| Q-split-1 | Pane menu "Swap" (Interactions: Close pane · Swap · Maximize) does not say with which pane when a split has 3 or 4 | With two panes "Swap" trades them. With three or four it opens a "Swap with" submenu listing the other panes by title. |
+| Q-split-2 | "Maximize" has no drawn state or exit | The pane fills the card, the others stay mounted but hidden (drafts and running work carry on), and the same menu item reads "Restore panes". It is a view only: not saved, and it ends on a tab switch or when the pane count changes. |
+| Q-split-3 | Dropping a tab on the content edge of a tab that is pinned or already a 4-pane split | No zones are drawn and the drop does nothing (a pinned tab cannot merge; capacity is 4 panes). The design draws no refusal state. |

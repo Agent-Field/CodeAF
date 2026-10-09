@@ -1,12 +1,16 @@
 // Reducer slice: split tabs. A split is ONE merged tab holding two to four panes (Split in types.ts).
 // Merging, closing a pane, moving focus, changing layout and unmerging are all pure here; the drag
 // gestures that call them belong to the split lane.
-import { createId, defaultLayout, layoutFits, makeSplit, normalize, paneOf, splitCapacity, tabOf, withSplitTitle } from '../helpers.ts';
+import { clampRatio, createId, defaultLayout, layoutFits, makeSplit, normalize, paneOf, splitCapacity, tabOf, withSplitTitle } from '../helpers.ts';
 import type { SplitLayout, Tab, WorkspaceState } from '../types.ts';
 
 export type SplitAction =
   /** Merges tab `withId` into tab `id` as new pane(s). If `id` is already a split the panes are appended. The new pane takes focus. */
-  | { type: 'split-merge'; id: string; withId: string; layout?: SplitLayout }
+  | { type: 'split-merge'; id: string; withId: string; layout?: SplitLayout; at?: 'start' | 'end' }
+  /** Moves a divider. `col` and `row` are shares (0..1) of the first column and first row; either may be omitted. */
+  | { type: 'split-resize'; id: string; col?: number; row?: number }
+  /** Trades the places of two panes of a split ("Swap" in the pane menu). Focus stays with the pane that had it. */
+  | { type: 'split-swap'; id: string; paneId: string; withPaneId: string }
   /** Closes one pane. A split left with one pane becomes the plain tab it was. */
   | { type: 'split-close-pane'; id: string; paneId: string }
   | { type: 'split-focus'; id: string; index: number }
@@ -21,7 +25,27 @@ const swapId = (ids: string[], from: string, to: string) => [...new Set(ids.map(
 export function reduceSplit(state: WorkspaceState, action: { type: string }): WorkspaceState | undefined {
   const a = action as SplitAction;
   switch (a.type) {
-    case 'split-merge': return merge(state, a.id, a.withId, a.layout);
+    case 'split-merge': return merge(state, a.id, a.withId, a.layout, a.at);
+    case 'split-resize': {
+      const tab = state.tabs.find(t => t.id === a.id);
+      if (!tab?.split) return state;
+      const now = tab.split.ratios ?? { col: 0.5, row: 0.5 };
+      const ratios = { col: a.col === undefined ? now.col : clampRatio(a.col), row: a.row === undefined ? now.row : clampRatio(a.row) };
+      if (ratios.col === now.col && ratios.row === now.row) return state;
+      return { ...state, tabs: state.tabs.map(t => (t.id === a.id ? { ...t, split: { ...t.split!, ratios } } : t)) };
+    }
+    case 'split-swap': {
+      const tab = state.tabs.find(t => t.id === a.id);
+      const split = tab?.split;
+      const from = split ? split.panes.findIndex(p => p.id === a.paneId) : -1;
+      const to = split ? split.panes.findIndex(p => p.id === a.withPaneId) : -1;
+      if (!tab || !split || from < 0 || to < 0 || from === to) return state;
+      const panes = [...split.panes];
+      [panes[from], panes[to]] = [panes[to], panes[from]];
+      const held = split.panes[split.focus].id;
+      const next = withSplitTitle({ ...tab, split: makeSplit(panes, panes.findIndex(p => p.id === held), split.layout, split.ratios) });
+      return { ...state, tabs: state.tabs.map(t => (t.id === tab.id ? next : t)) };
+    }
     case 'split-group': {
       const members = state.tabs.filter(t => t.groupId === a.groupId && !t.split && !t.pinned).slice(0, splitCapacity);
       if (members.length < 2) return state;
@@ -70,18 +94,19 @@ export function reduceSplit(state: WorkspaceState, action: { type: string }): Wo
   }
 }
 
-function merge(state: WorkspaceState, id: string, withId: string, layout?: SplitLayout): WorkspaceState {
+function merge(state: WorkspaceState, id: string, withId: string, layout?: SplitLayout, at: 'start' | 'end' = 'end'): WorkspaceState {
   const host = state.tabs.find(t => t.id === id);
   const guest = state.tabs.find(t => t.id === withId);
   if (!host || !guest || host.id === guest.id || host.pinned || guest.pinned) return state;
   const own = host.split ? host.split.panes : [paneOf(host)];
-  const panes = [...own, ...(guest.split ? guest.split.panes : [paneOf(guest)])];
+  const joining = guest.split ? guest.split.panes : [paneOf(guest)];
+  const panes = at === 'start' ? [...joining, ...own] : [...own, ...joining];
   if (panes.length > splitCapacity) return state;
   const kept = host.split && !layout && layoutFits(host.split.layout, panes.length) ? host.split.layout : undefined;
   // A split tab's own content fields are unused: it carries only its place in the strip and its panes.
   const merged: Tab = withSplitTitle({
     id: host.split ? host.id : createId(), kind: panes[0].kind, title: host.split ? host.title : '', draft: '', titleSource: host.split ? host.titleSource : undefined,
-    pinned: false, groupId: host.groupId, split: makeSplit(panes, own.length, layout ?? kept),
+    pinned: false, groupId: host.groupId, split: makeSplit(panes, at === 'start' ? 0 : own.length, layout ?? kept),
   });
   const tabs = state.tabs.filter(t => t.id !== guest.id).map(t => (t.id === host.id ? merged : t));
   const recentIds = [merged.id, ...state.recentIds.filter(r => r !== host.id && r !== guest.id)];
