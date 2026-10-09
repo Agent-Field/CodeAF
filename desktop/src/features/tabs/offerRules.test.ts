@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findOffers, folderOf, nextOffer, offerMemoryDays, offerStorageKey, readMemory, remember, writeMemory } from './offerRules.ts';
+import { canonicalSetKey, chatIDOf, findOffers, folderOf, looseChatIDs, mergeOffers, nextOffer, offerMemoryDays, offerStorageKey, readMemory, remember, shouldAskCanonical, tabOffersForChats, writeMemory } from './offerRules.ts';
 import { setIdSource } from './helpers.ts';
 import { workspaceReducer, type Tab, type WorkspaceState } from './model.ts';
 
@@ -62,6 +62,36 @@ test('nextOffer skips decided sets and sets already shown this launch', () => {
   const offers = [{ key: 'a', basis: 'folder' as const, ids: [] }, { key: 'b', basis: 'folder' as const, ids: [] }, { key: 'c', basis: 'folder' as const, ids: [] }];
   assert.equal(nextOffer(offers, { a: 1 }, new Set(['b']))?.key, 'c');
   assert.equal(nextOffer(offers, { a: 1, c: 2 }, new Set(['b'])), undefined);
+});
+
+test('canonical chat ids come from the engine summary, never a session path or a title', () => {
+  const id = 'aaaa000000000001';
+  const path = tab('path', { title: 'Drip irrigation', sessionFile: '/tmp/-bucket/aaaa000000000001/transcript.jsonl' });
+  const fromSummary = tab('sum', { title: 'Ignore this title' });
+  const fromTarget = tab('tgt', { target: { sessionId: 'bbbb000000000002' } });
+  const pinned = tab('pin', { pinned: true, target: { sessionId: 'cccc000000000003' } });
+  const bad = tab('bad', { target: { sessionId: 'not-a-session-id' } });
+  assert.equal(chatIDOf(path), undefined);
+  assert.deepEqual(looseChatIDs([path, fromSummary, fromTarget, pinned, bad], { sum: { sessionId: id } }), [id, 'bbbb000000000002']);
+  assert.equal(shouldAskCanonical([id, 'bbbb000000000002'], new Set()), false);
+  const three = [id, 'bbbb000000000002', 'cccc000000000003'];
+  const key = canonicalSetKey(three);
+  assert.equal(canonicalSetKey([...three].reverse()), key);
+  assert.equal(shouldAskCanonical(three, new Set()), true);
+  assert.equal(shouldAskCanonical(three, new Set([key])), false);
+});
+
+test('an engine offer maps onto loose conversation tabs and does not take a tab a saved session already claimed', () => {
+  const summaries = { a: { sessionId: 'aaaa000000000001' }, b: { sessionId: 'bbbb000000000002' }, c: { sessionId: 'cccc000000000003' } };
+  const tabs = [tab('a'), tab('b'), tab('c'), tab('t1', { kind: 'task', sessionFile: 's' }), tab('t2', { kind: 'task', sessionFile: 's' }), tab('t3', { kind: 'task', sessionFile: 's' })];
+  const engine = [{ key: 'topic:drip', basis: 'topic' as const, ids: ['aaaa000000000001', 'bbbb000000000002', 'cccc000000000003', '9999999999999999'], title: 'Drip irrigation' }];
+  const mapped = tabOffersForChats(tabs, summaries, engine);
+  assert.deepEqual(mapped, [{ key: 'topic:drip', basis: 'topic', ids: ['a', 'b', 'c'], title: 'Drip irrigation' }]);
+  const local = findOffers(tabs);
+  assert.equal(local[0].key, 'conversation:s');
+  assert.deepEqual(mergeOffers(local, mapped).map(offer => offer.key), ['conversation:s', 'topic:drip']);
+  const claimed = [tab('a', { sessionFile: 's' }), tab('b', { kind: 'task', sessionFile: 's' }), tab('c', { kind: 'task', sessionFile: 's' })];
+  assert.deepEqual(mergeOffers(findOffers(claimed), tabOffersForChats(claimed, summaries, engine)), findOffers(claimed));
 });
 
 test('accepting hands ids to the reducer\'s own group action: one group, one run, named, nothing else moved', () => {

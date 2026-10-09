@@ -171,6 +171,8 @@ type Bridge struct {
 	world *WorldFeed
 	// advice schedules place offers (places_advice.go); nil makes none.
 	advice *PlaceAdvice
+	// groups answers tab-group offers (tabgroups.go); nil makes none.
+	groups *TabGroups
 }
 
 func New(token string, open Open) *Bridge {

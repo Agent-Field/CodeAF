@@ -15,7 +15,76 @@ const day = 86_400_000;
  * One suggestion. `key` names the SET (its source), not its members, so the same source is offered once however its tabs
  * come and go. `title` is a real tab title or a real folder name; it is never composed, so an absent one stays absent.
  */
-export type GroupOffer = { key: string; basis: 'conversation' | 'folder'; ids: string[]; title?: string };
+export type GroupOffer = { key: string; basis: 'conversation' | 'folder' | 'repo' | 'topic'; ids: string[]; title?: string };
+
+/** How long a settled set of chat ids waits before one organizing question. A selection change is not a new set. */
+export const offerSettleMs = 400;
+
+/** A canonical chat id is the session id the engine minted: 16 lower-case hex digits, never a path. */
+const canonicalChatID = /^[0-9a-f]{16}$/;
+
+export type ChatSummary = { sessionId?: string };
+
+/** The chat id a loose conversation tab is showing, from the engine summary, else the tab's own target. A path is not an id. */
+export function chatIDOf(tab: Tab, summary?: ChatSummary): string | undefined {
+  if (tab.kind !== 'conversation' || !candidate(tab)) return undefined;
+  const id = summary?.sessionId || tab.target?.sessionId;
+  return id && canonicalChatID.test(id) ? id : undefined;
+}
+
+/** Distinct canonical chat ids of the loose conversation tabs, in strip order. */
+export function looseChatIDs(tabs: readonly Tab[], summaries: Readonly<Record<string, ChatSummary | undefined>> = {}): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const tab of tabs) {
+    const id = chatIDOf(tab, summaries[tab.id]);
+    if (id && !seen.has(id)) { seen.add(id); ids.push(id); }
+  }
+  return ids;
+}
+
+/** The set's own key. Order does not matter, so a strip reorder is not a new question. */
+export function canonicalSetKey(ids: readonly string[]): string {
+  return `canonical:${[...ids].sort().join('|')}`;
+}
+
+/** One organizing question per new set of at least three chats, and none for a set already asked this launch. */
+export function shouldAskCanonical(ids: readonly string[], asked: ReadonlySet<string>): boolean {
+  return ids.length >= offerMinimum && !asked.has(canonicalSetKey(ids));
+}
+
+/**
+ * Maps an engine offer's chat ids onto the loose conversation tabs that show them.
+ * A chat the strip is not showing, or a tab that is pinned, grouped, split or not a conversation, is left out.
+ */
+export function tabOffersForChats(tabs: readonly Tab[], summaries: Readonly<Record<string, ChatSummary | undefined>>, engine: readonly GroupOffer[]): GroupOffer[] {
+  const tabOf = new Map<string, string>();
+  for (const tab of tabs) {
+    const id = chatIDOf(tab, summaries[tab.id]);
+    if (id && !tabOf.has(id)) tabOf.set(id, tab.id);
+  }
+  const offers: GroupOffer[] = [];
+  for (const offer of engine) {
+    if (offer.basis !== 'repo' && offer.basis !== 'topic') continue;
+    const ids = offer.ids.flatMap(id => { const tab = tabOf.get(id); return tab ? [tab] : []; });
+    if (ids.length < offerMinimum) continue;
+    offers.push({ key: offer.key, basis: offer.basis, ids, title: offer.title });
+  }
+  return offers;
+}
+
+/** Local offers keep the tabs they claimed. An engine offer that then has fewer than three tabs is dropped. */
+export function mergeOffers(local: readonly GroupOffer[], extra: readonly GroupOffer[]): GroupOffer[] {
+  const claimed = new Set(local.flatMap(offer => offer.ids));
+  const offers = [...local];
+  for (const offer of extra) {
+    const ids = offer.ids.filter(id => !claimed.has(id));
+    if (ids.length < offerMinimum) continue;
+    ids.forEach(id => claimed.add(id));
+    offers.push({ ...offer, ids });
+  }
+  return offers;
+}
 
 /** The kinds whose tabs say where they came from: a saved session, or a path inside the workspace. */
 const sourced = new Set(['conversation', 'task', 'file', 'diff']);
