@@ -1,0 +1,23 @@
+.plan-outline { display:flex; flex-direction:column; width:var(--task-inspector-width); flex:0 0 var(--task-inspector-width); min-width:var(--motion-rest); min-height:var(--motion-rest); }
+.plan-outline-header { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--space-3); }
+.plan-outline-heading { min-width:var(--motion-rest); }
+.plan-outline-actions { display:flex; align-items:center; }
+.plan-outline-source { padding:var(--motion-rest) var(--space-3) var(--space-2); }
+.plan-outline-search { padding:var(--motion-rest) var(--space-3) var(--space-2); }
+.plan-outline-search .text-input { width:100%; }
+.plan-outline-scroll { overflow:auto; min-height:var(--motion-rest); flex:1; padding:var(--motion-rest) var(--space-2) var(--space-3); }
+.plan-outline-list { list-style:none; margin:var(--motion-rest); padding:var(--motion-rest); }
+.plan-outline-children { position:relative; padding-left:var(--space-3); }
+.plan-outline-row { display:flex; align-items:center; min-width:var(--motion-rest); }
+.plan-outline-disclosure,.plan-outline-indent { width:var(--space-6); flex:0 0 var(--space-6); }
+.plan-outline-task { min-width:var(--motion-rest); flex:1; display:flex; align-items:center; justify-content:flex-start; gap:var(--space-tight); }
+.plan-outline-title { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.plan-outline-empty { padding:var(--space-3) var(--space-1); }
+
+.plan-outline-branch { position:relative; }
+.plan-outline-children::before { content:''; position:absolute; left:var(--space-3); top:calc(var(--motion-rest) - var(--task-outline-row-height) / 2 + var(--icon-xs) / 2); height:calc(var(--task-outline-row-height) / 2 - var(--icon-xs) / 2); }
+.plan-outline-children > .plan-outline-branch::before { content:''; position:absolute; left:var(--motion-rest); top:calc(var(--task-outline-row-height) / 2); width:var(--space-6); pointer-events:none; }
+.plan-outline-children > .plan-outline-branch[data-parent="true"]::before { width:var(--space-tight); }
+.plan-outline-children > .plan-outline-branch::after { content:''; position:absolute; left:var(--motion-rest); top:var(--motion-rest); bottom:var(--motion-rest); pointer-events:none; }
+.plan-outline-children > .plan-outline-branch:last-child::after { bottom:auto; height:calc(var(--task-outline-row-height) / 2); }
+.plan-outline-count { flex-shrink:0; min-width:var(--space-3); text-align:right; }

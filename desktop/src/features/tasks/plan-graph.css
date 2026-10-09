@@ -1,0 +1,23 @@
+.plan-graph { min-width: var(--motion-rest); min-height: var(--motion-rest); display:flex; flex-direction:column; }
+.plan-graph-header { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--space-3) var(--space-4); }
+.plan-graph-heading { min-width:var(--motion-rest); }
+.plan-graph-scroll { min-height:var(--motion-rest); flex:1; overflow:auto; padding:var(--space-4); }
+.dependency-map { position:relative; width:max-content; min-width:100%; min-height:100%; }
+.dependency-map-edges { position:absolute; inset:var(--motion-rest); pointer-events:none; }
+.plan-graph-group { position:relative; margin-bottom:var(--space-6); }
+.plan-graph-group-header { display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-3); }
+.plan-graph-group-title { display:flex; align-items:center; gap:var(--space-2); }
+.plan-graph-stages { display:flex; align-items:center; gap:var(--plan-stage-gap); padding-left:var(--space-2); }
+.plan-graph-stage { display:flex; flex-direction:column; gap:var(--plan-node-gap); width:var(--plan-node-width); flex:0 0 var(--plan-node-width); }
+.plan-graph-node { position:relative; display:flex; align-items:flex-start; justify-content:flex-start; gap:var(--space-2); width:100%; min-height:var(--plan-node-min-height); white-space:normal; text-align:left; }
+.plan-graph-node-content { min-width:var(--motion-rest); display:flex; flex-direction:column; gap:var(--space-1); }
+.plan-graph-detail { flex:0 0 auto; max-height:var(--plan-detail-height); overflow:auto; padding:var(--space-3) var(--space-4); }
+.plan-graph-detail-header { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+.plan-graph-relations { display:flex; flex-wrap:wrap; gap:var(--space-3); margin-top:var(--space-2); }
+.plan-graph-relations > section { flex:1; min-width:var(--plan-node-width); }
+.plan-graph-relations ul { margin:var(--space-1) var(--motion-rest); padding-left:var(--space-4); }
+.plan-graph-empty { padding:var(--space-4); }
+.plan-graph-node-shell { position:relative; min-width:var(--motion-rest); }
+.plan-graph-node-disclosure { position:absolute; right:var(--space-half); bottom:var(--space-half); }
+
+.plan-graph-meta { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--motion-rest) var(--space-4) var(--space-2); }

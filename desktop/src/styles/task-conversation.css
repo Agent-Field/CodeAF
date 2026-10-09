@@ -1,0 +1,5 @@
+.task-location { border-bottom:var(--border-width) solid var(--border); color:var(--muted); }
+.task-breadcrumbs { font-size:var(--font-size-label); }
+.task-breadcrumbs .button { font-size:var(--font-size-label); white-space:nowrap; }
+.task-breadcrumbs [aria-current="page"] { color:var(--text); font-weight:var(--font-weight-medium); }
+.task-record-relations .button { font-size:var(--font-size-label); }

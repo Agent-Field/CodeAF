@@ -4,15 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc && vite build --config vite.config.ts",
     "preview": "vite preview",
     "tauri": "tauri",
     "desktop:dev": "node scripts/desktop.mjs dev",
     "desktop:remote": "node scripts/desktop.mjs remote",
     "desktop:build": "node scripts/desktop.mjs build",
     "engine:build": "node scripts/build-engine.mjs",
-    "engine:test": "cd engine && go test ./...",
+    "engine:test": "cd .. && go test ./internal/desktopbridge",
     "check": "npm run build && npm run design:test && npm run engine:test",
     "design:generate": "node scripts/generate-design.mjs",
     "design:check": "node scripts/check-design.mjs",
@@ -21,7 +21,8 @@
     "prebuild": "npm run design:check",
     "design:test": "node --test scripts/check-design.test.mjs",
     "test:ui": "playwright test",
-    "upstream:sync": "node scripts/sync-dev.mjs"
+    "upstream:sync": "node scripts/sync-dev.mjs",
+    "engine:dev": "node scripts/engine-bridge.mjs"
   },
   "dependencies": {
     "@animateicons/react": "0.12.0",
@@ -31,7 +32,9 @@
     "@radix-ui/react-select": "^2.3.8",
     "@tauri-apps/api": "^2",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

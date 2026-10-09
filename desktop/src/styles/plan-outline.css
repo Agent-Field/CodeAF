@@ -1,0 +1,18 @@
+.plan-outline { background:var(--surface); color:var(--text); border-left:var(--border-width) solid var(--border); }
+.plan-outline-progress.type-body,.plan-outline-source.type-body { font-size:var(--font-size-caption); }
+.plan-outline-header .type-section { font-size:var(--font-size-body); }
+.plan-outline-row { border-radius:var(--radius-sm); }
+.plan-outline-task.button { min-height:var(--task-outline-row-height); padding:var(--space-1) var(--space-tight); color:var(--muted); font-size:var(--font-size-label); text-align:left; }
+.plan-outline-task.button:hover:not(:disabled) { background:var(--hover); color:var(--text); }
+.plan-outline-task.button:active:not(:disabled) { background:var(--control-pressed); }
+.plan-outline-row[data-selected="true"] { background:var(--control-selected); }
+.plan-outline-row[data-selected="true"] .plan-outline-task.button { color:var(--text); font-weight:var(--font-weight-medium); }
+.plan-outline-disclosure.icon-button { height:var(--task-outline-row-height); color:var(--muted); }
+.plan-outline-progress.type-body { margin-top:var(--space-half); }
+.plan-outline-search .text-input { font-size:var(--font-size-label); }
+
+.plan-outline-row[data-active-branch="true"] .plan-outline-task.button { color:var(--text); font-weight:var(--font-weight-medium); }
+
+.plan-outline-children::before,.plan-outline-children > .plan-outline-branch::after { border-left:var(--border-width) solid var(--border); }
+.plan-outline-children > .plan-outline-branch::before { border-top:var(--border-width) solid var(--border); }
+.plan-outline-count { color:var(--muted); font-size:var(--font-size-caption); font-weight:var(--font-weight-regular); }

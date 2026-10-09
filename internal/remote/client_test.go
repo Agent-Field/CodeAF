@@ -1135,3 +1135,18 @@ func TestRunSummariesCrossWholeAndDroppedRefreshKeepsNothing(t *testing.T) {
 	}
 	<-dropped
 }
+
+func TestReadPlanTasksKeepsFailureDistinctFromEmptyPlan(t *testing.T) {
+	client, engine := newEngine(t)
+	engine.fails[MethodPlanTasks] = "plan read unavailable"
+	rows, err := client.Agent().ReadPlanTasks()
+	if err == nil || !strings.Contains(err.Error(), "plan read unavailable") || len(rows) != 0 {
+		t.Fatalf("failed read looked empty: rows=%v error=%v", rows, err)
+	}
+	delete(engine.fails, MethodPlanTasks)
+	engine.answers[MethodPlanTasks] = []session.PlanTaskRow{}
+	rows, err = client.Agent().ReadPlanTasks()
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("valid empty plan read failed: rows=%v error=%v", rows, err)
+	}
+}

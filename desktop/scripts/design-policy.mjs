@@ -6,6 +6,7 @@ export function inspectSource(path, source) {
  const primitives = path.startsWith('src/components/ui/');
  const vendorBoundary = path === 'src/components/ui/Icon.tsx';
  const approvedRadix = { 'src/components/ui/Select.tsx': ['@radix-ui/react-select'], 'src/components/ui/Menu.tsx': ['@radix-ui/react-context-menu','@radix-ui/react-dropdown-menu'], 'src/components/ui/HoverPreview.tsx': ['@radix-ui/react-hover-card'] };
+ const graphBoundary = path === 'src/components/ui/DependencyMap.tsx';
  const brandBoundary = path === 'src/components/ui/BrandMark.tsx';
  const modalBoundary = path === 'src/components/CommandPalette.tsx';
  function visit(node) {
@@ -18,7 +19,7 @@ export function inspectSource(path, source) {
   if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
    const tag = node.tagName.getText(ast);
    if (tag === 'select') add(node, 'Use shared themed Select instead of an OS-styled popup.');
-   if (['svg','path','circle','rect','polygon','line','polyline'].includes(tag) && !brandBoundary) add(node, 'Use Icon or BrandMark; no per-screen SVG artwork.');
+   if (['svg','path','circle','rect','polygon','line','polyline'].includes(tag) && !brandBoundary && !(graphBoundary && ['svg','path'].includes(tag))) add(node, 'Use Icon or BrandMark; no per-screen SVG artwork.');
    if (['button','input','select','textarea','h1','h2','code','kbd'].includes(tag) && !primitives && !modalBoundary) add(node, `Use shared UI primitives instead of raw <${tag}>.`);
    for (const attr of node.attributes.properties) {
     if (ts.isJsxAttribute(attr) && attr.name.getText(ast) === 'style') add(attr, 'Use token-backed CSS classes instead of inline style values.');

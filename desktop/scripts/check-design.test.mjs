@@ -41,3 +41,9 @@ test('keeps delayed previews inside their approved primitive boundary', () => {
  assert.ok(inspectSource('src/features/Tabs.tsx', "import * as Preview from '@radix-ui/react-hover-card';").length > 0);
  assert.ok(inspectSource('src/components/ui/HoverPreview.tsx', "import * as Menu from '@radix-ui/react-context-menu';").length > 0);
 });
+
+ test('graph connectors are restricted to the shared dependency-map boundary', () => {
+ assert.deepEqual(inspectSource('src/components/ui/DependencyMap.tsx', '<svg><path d="M0 0" /></svg>'), []);
+ assert.ok(inspectSource('src/features/tasks/Graph.tsx', '<svg><path /></svg>').length);
+ assert.ok(inspectSource('src/components/ui/DependencyMap.tsx', '<svg><circle /></svg>').length);
+ });
