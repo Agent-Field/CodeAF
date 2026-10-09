@@ -29,6 +29,32 @@ the pointer. Paint performs no filesystem or network reads.
 the overview navigation/geometry regressions and `TestTheFrameNeverReadsTheDisk` defend
 these bounds.
 
+### Teams overview paint bounds
+
+Unchanged fitted conversation excerpts reuse their Markdown rows across hover,
+keyboard focus and spinner paints. A page visit retains at most **64 excerpt
+shapes** (`teamsRenderedPreviewMax`), evicting the least recently used shape and
+dropping all rendered excerpts on close. Each shape retains the existing bounded
+exchange (at most 64 KiB), only its fitted rows, and inline-code path decisions.
+Exact text, clipping/interruption facts, width, row budget, palette ink, Markdown
+styler and current path facts determine reuse; a same-length stream correction
+cannot retain stale text. There is no new journal read or model request.
+
+Offscreen fixed-height member cards register their keyboard stops and heading
+positions without rendering metadata, Markdown or borders. Targets remain in
+the same order and physical scrolling retains the complete pane height. When
+keyboard focus or a shrinking pane changes the final offset, the revealed cards
+are painted before that same frame publishes its hit targets. Manager cards
+retain their existing latest-preview target semantics.
+
+`teamsperf_test.go` pins excerpt reuse, bounded shape retention, live-front edits,
+path/theme/geometry invalidation, viewport equivalence and keyboard reveal;
+`TestTeamsLargeOverviewPointerAndLivePreview` drives the built terminal with a
+120-member fixture and a live manager exchange. `BenchmarkTeamsHover` measures
+12-, 120- and 1,000-member overviews with approximately 48 KiB Markdown replies.
+Timing is diagnostic; regression gates assert reuse and rendered geometry,
+rather than a machine-dependent time limit.
+
 ## Context recovery bounds
 
 Conversation request admission sums the existing encoded messages and tool schemas;
@@ -252,6 +278,39 @@ What made dev about eight megabytes heavier than `main` on linux/amd64 by
 2026-09-27 (65,712,393 at `837b2b06a` against 57,921,801 at `e44650715`, both from
 the CI size job) is not attributed here; #1694 finds it, cuts what is redundant,
 and lowers this number in the same commit as each cut.
+
+It was reset a seventh time on 2026-10-05, when sec — sec-af, the
+security auditor, copied in once at its tag `codeaf-absorb` — became the second
+program built into codeaf (`internal/secaf`). Like senior-dev's, this one is a
+decision: the programs codeaf hands a whole task to are built into every build.
+Measured on darwin/amd64 with its own furrow artifact staged, with the flags
+`make build` uses, the same tree with and without the program in the build's
+list (`internal/delegate/builtin`), on Go 1.27.0:
+
+| platform | without | with | what sec cost |
+| --- | --- | --- | --- |
+| darwin/amd64, furrow staged | 67,051,312 | 69,564,304 | 2,512,992 |
+
+About 1.4 megabytes of it is sec-af's own code and the schema and YAML readers
+it brings (`invopop/jsonschema`, `santhosh-tekuri/jsonschema`, `yaml/v4`); the
+rest is the type and line tables that code carries. The budget rises by exactly
+that cost, to 71,363,000 — this change's bill and nothing else. The tree without
+it was 1,798,688 under the sixth reset's 68,850,000, and still is.
+
+It was reset an eighth time on 2026-10-06, when review — pr-af, the pull-request
+reviewer, copied in once at its tag `codeaf-absorb` — became the third program
+built into codeaf (`internal/praf`). Measured the same way, on darwin/amd64 with
+its own furrow staged, the same tree with and without the program in the build's
+list, on Go 1.27.0:
+
+| platform | without | with | what review cost |
+| --- | --- | --- | --- |
+| darwin/amd64, furrow staged | 69,630,224 | 70,663,008 | 1,032,784 |
+
+It brings no module codeaf did not already link — its agent sessions are sec's
+and its schema readers the ones sec brought — so the cost is pr-af's own code
+and prompts and the tables that code carries. The budget rises by exactly that
+cost, to 72,395,784.
 
 ## Adaptive run shutdown grace
 
@@ -1481,6 +1540,21 @@ The full page is 22,291 bytes and its 24 tools encode to 34,927 bytes, so the
 fixed cap is **57,218** bytes, exactly 94 above the previous measurement.
 The lean cap remains **49,590** bytes. The dated fixed waiver in
 `prefixWaivers` pays only that measured increase.
+
+**sec, the second program (sec-af's security audit), adds its guide (2026-10-05).** A program
+costs the fixed prefix one item of the hand-off paragraph's list — its guide, at
+most 400 bytes — and nothing else: its manual page and the wording of the turn its
+report wakes ride no request. sec's guide is 386 bytes, and the caps
+rise by exactly what it measured: against dev on 2026-10-07 (baa2d7f0f) it costs
+both prefixes 396 bytes, so the full cap is **57,614** bytes and the lean cap
+**49,986**, both dated in `prefixWaivers`. (Against the dev of 2026-10-05 it cost
+the lean prefix only 229, before the page carried a program's guide there too.)
+
+**review, the third program (pr-af's code review), adds its guide (2026-10-06).** review's
+guide is 190 bytes and its item in the hand-off paragraph's list 203, the same in
+both arms, and the caps rise by exactly that over sec's: measured on dev
+`baa2d7f0f` with sec (2026-10-07), the full cap is **57,817** bytes and the lean
+cap **50,189**, both dated in `prefixWaivers`.
 
 ## Following through on a completion claim
 

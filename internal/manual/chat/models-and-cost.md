@@ -80,6 +80,25 @@ Over `--host`, the picker and its prices are this laptop's catalog, while the co
 window used for compaction comes from the far machine's catalog. The machine doing the
 work owns that execution limit even when the two catalog caches differ.
 
+## Which model is the default — Ollama only, a removed model, or no available models
+
+On a local launch, the opening model comes from the same available chat list as
+`/model`. A saved choice, environment value, command-line choice or shipped preference
+is kept only if that model is listed. Otherwise codeaf selects the first available
+chat model in provider order. With only Ollama connected, that is an installed Ollama
+model. With several providers, the default still belongs to their combined list.
+Automatic replacements do not overwrite your saved preference.
+
+While every catalog is cold or empty, no default model is displayed and a message
+stays in the draft. The picker opens with:
+`no available model · connect a provider or refresh /model`.
+When a provider's list arrives, codeaf selects an available model. Press Enter again
+to send the draft. Refreshing a list or removing a connection also replaces a model
+that is no longer listed; existing requests finish on the model they started with.
+
+Remote sessions keep the engine's opening model; this laptop's catalog does not
+choose a default for another machine.
+
 ## Sign in with ChatGPT and use my Codex plan — models, context window, price, limits and expiry
 
 Open `/connect`, choose **Codex**, and finish the browser sign-in. This signs in the way
@@ -118,8 +137,8 @@ An expired sign-in says:
 codex sign-in has expired · /connect or codeaf connect codex signs in again
 ```
 
-This sign-in does not add an OpenAI API key, cannot connect a custom endpoint, does not
-put Codex on first-run setup, and does not replace codeaf's own instructions with the
+Codex is available on the first-run provider chooser and later through `/connect`.
+This sign-in does not add an OpenAI API key, cannot connect a custom endpoint, and does not replace codeaf's own instructions with the
 Codex CLI's base instructions. Use the custom-service row for an OpenAI-compatible API.
 
 ## Can I switch models while it is replying — I changed the model in the middle of an answer, does it change now or wait?
@@ -177,10 +196,9 @@ written anywhere: the model a remote session opens on is resolved on that machin
 that machine's profile. And reasoning effort is kept per model for the session, not
 written to the profile.
 
-esc closes the picker and **undoes nothing**. It gives your half-typed draft and the frame
-back as they were — the picker holds its own filter text, and the filter is forgotten when
-it closes — but the model in use does not come back: enter already switched it, then and
-there, and esc is only the way out. To go back to the model you were on, choose it.
+Enter on a model switches to it and closes the picker. Your half-typed draft and the
+frame return as they were; the filter text is forgotten. Esc closes the picker without
+choosing another model. To go back to the model you were on, open the picker and choose it.
 
 ## Moving and filtering in the model picker
 
@@ -194,8 +212,8 @@ Type to filter. The keys:
 | ctrl+t | walk the reasoning effort of the model under the cursor |
 | tab, → | open the providers — the providers serving the model under the cursor — and move the cursor into them |
 | tab, ← | close them again, back on the model |
-| enter | switch to the row under the cursor — or, on an open provider, pin it — and **leave the list up** |
-| esc | close it; what enter already did stays done |
+| enter | choose the highlighted model and close the list; on an open provider, pin it and keep its controls open |
+| esc | close the list without choosing another model; provider changes already made stay done |
 | alt+s, alt+shift+s | order the list by the next column, and turn that column round |
 
 ## Why left and right arrows do the wrong thing in the model picker — the caret and the providers share one pair of keys
@@ -215,7 +233,7 @@ Now you pause and press it once.
 your query. `↑`/`↓` do not count as editing. `tab` always opens and closes.
 
 **This is one list with two doors.** `/model` opens it, and so does the **your model**
-row at the top of the Providers tab in `/settings` — the same rows, the same name
+row at the top of the Models category in `/settings` — the same rows, the same name
 search, the same providers under `→`, and `enter` on a provider pins it either way. The media
 slots on that tab (**drawing**, **speaking**, **looking** and the rest) open the same
 component over their own models, but they have no provider row behind them, so nothing
@@ -242,10 +260,29 @@ and the task composer walk three rows a notch, clamped at both ends, while the p
 beneath stays put. The cursor's row stays on screen with headings and extra lines
 included in the window's size.
 
-**Enter does not close the list.** It switches, the mark moves to the row you chose, and
-the list stays where it is — so two models can be compared on their prices, chosen between,
-and changed back without reopening anything. `esc` is the way out, and it undoes nothing:
-what enter did is already done.
+**Enter on a model chooses it and closes the list immediately.** This applies to the
+conversation, a task's model, settings slots and roles, home's draft and the task composer.
+The keyboard returns to the draft or page you opened the list from. To compare another
+model, reopen the list. With no matching model, Enter leaves the list open and changes
+nothing. Enter inside a provider fold keeps those controls open, including when it opens
+the machines under OpenRouter.
+
+## Which models appear — only connected providers, Ollama without OpenRouter, multiple providers
+
+Model lists offer only models from connections with a key, a signed-in account, or an
+explicitly anonymous endpoint such as connected Ollama. A public catalog or a leftover
+cache does not connect a provider. With only Ollama connected, only its installed models
+appear; with only OpenRouter connected, only its models appear. With several providers
+connected, their lists appear together in provider groups. Removing a connection or its
+key removes its models from subsequent lists. A cold catalog never adds built-in guesses.
+
+This applies to `/model`, task rooms, settings slots and roles, Home drafts and the task
+composer. Each slot still keeps only models with the capabilities it needs. A provider
+that cannot list models has a non-selectable notice; `+ add a provider` opens connection
+setup and is not a model. That menu includes every built-in provider from initial setup, including
+OpenRouter, and labels each `connected` or `not connected`. You can add OpenRouter after
+Ollama without repeating onboarding; both catalogs then appear together. `ctrl+r`
+refreshes the known lists.
 
 ## Searching the model picker by name
 
@@ -262,10 +299,9 @@ At launch, codeaf fetches a connected provider's model list once if it has an em
 Pressing `ctrl+r` in the picker asks for a fresh list (the *commands* page,
 "Refreshing the model list"). Otherwise
 the list comes from what is already known, in this order: the
-catalog the door passed in, then `~/.codeaf/v3/models.json`, then five names this build
-remembers (`deepseek/deepseek-v4-flash`, `openai/gpt-4.1-mini`,
-`anthropic/claude-sonnet-4.5`, `google/gemini-2.5-flash`, `moonshotai/kimi-k3`). Each rung is
-tried only when the one above it came back empty after filtering.
+catalog the door passed in, or that provider's cached list while discovery is warming.
+A known catalog is authoritative. A cold list offers no
+built-in guesses; connect a provider or refresh to discover its models.
 
 **The `/model` you typed stays in the box**, drawn as the chip it was, with the filter after
 it: `› /model filter by name`. The list is a different box from the one you typed the command
@@ -537,7 +573,7 @@ whenever one serves the model.
 
 The crew is three seats because those are the calls a task spends most of its money on.
 codeaf also makes smaller calls on your behalf — naming a session, the safety gate, memory
-— and those ride two rows of their own in `/settings` → Providers, **reflex** and
+— and those ride two rows of their own in `/settings` → Models, **reflex** and
 **small work**, which ship pointed at near-free models and are not part of the crew.
 
 **`/model` is untouched.** It is the model you talk to, and nothing about the crew moves
@@ -679,7 +715,7 @@ that seat through OpenRouter even when a direct connection also serves the model
 the rule would have to break is not a pin. And a pinned model none of your connections can
 reach is not quietly swapped: the task does not start, and says why.
 
-In `/settings` → Providers the three seats are one row, **seats**, which says how many are
+In `/settings` → Models the three seats are one row, **seats**, which says how many are
 pinned, the allowed rule, how many providers are on, the per-task limit and the daily cap; `enter` on it opens the crew panel, and `esc` there
 brings you back to the row.
 
@@ -903,7 +939,7 @@ is not touched. A family of
 
 ### The roles under each row
 
-Directly under the **pinned roles** row, `/settings` → Providers lists **every registered
+Directly under the **pinned roles** row, `/settings` → Models lists **every registered
 role**, grouped under the row answering it, saying which model comes out:
 
 | role | row | what it is |
@@ -1101,7 +1137,7 @@ asks for high thinking separately.
 - Where a level is set, the role rows print it after the id, `kimi-k3:low`, which is the
   same notation the model picker and `/status` use.
 
-The **planner** row in `/settings` → Providers is a text box because a picker hands back a
+The **planner** row in `/settings` → Models is a text box because a picker hands back a
 bare id, while this row may hold an id with a thinking instruction on it.
 
 ## Why is my crew thinking at low — the pin is being ignored, effort=low in the log
@@ -1143,7 +1179,7 @@ without any one message reading as three times the price of its neighbours.
 
 ## Which model the vision role uses
 
-For `vision`, the **looking** row further down the Providers tab is the front door
+For `vision`, the **looking** row further down the Models category is the front door
 for which model sees, and it wins over this role's class. The `vision` pin is the second rung
 of that ladder — set the looking row for the ordinary case, and pin the role only when
 you want a pin that also binds the older surfaces.
@@ -1172,11 +1208,11 @@ on the first row of the page instead, above the chips. It is moved, not dropped 
 header sheds first is the goal, which you can still read in the conversation.
 
 The nodes under the planner run on the `worker` role, which sits on the crew's **worker** —
-a different model, and not on this line. `/settings` → Providers lists both.
+a different model, and not on this line. `/settings` → Models lists both.
 
 ## Pinning one role to its own model, and unpinning it
 
-In `/settings` → Providers, move onto any row of the roles list and press **enter**. That
+In `/settings` → Models, move onto any row of the roles list and press **enter**. That
 opens the model picker — the same one `/model` opens, same filter box, same ranking — and
 what you choose is **pinned** to that role alone. The row then reads
 `<model>  pinned`, and the legend at the foot offers **del unpin**. Press
@@ -1193,9 +1229,9 @@ and pinning from the list rewrites the row without disturbing the other pins in 
 **A third door: just ask.** "Use `deepseek/deepseek-v4-pro` for planning and for designing
 harnesses" is a sentence codeaf acts on — it looks the row up with `settings` and writes it
 with `change_setting`, into the same `models.roles` row, after asking you. The reflex and
-small work rows of the Providers tab, and the crew's worker, checker and planner pins behind
+small work rows of the Models category, and the crew's worker, checker and planner pins behind
 its one **seats** row, are writable that way too — a pin outside your allowed models is
-refused there as it is on `/crew`; only the role **slots** further down the Providers tab are not,
+refused there as it is on `/crew`; only the role **slots** further down the Models category are not,
 because those are bindings the running session holds rather than values in your profile.
 
 So the ladder for any role, most specific first: **its pin**, then **its row's model**,
@@ -1605,7 +1641,7 @@ number of tries (see *How long codeaf keeps trying*).
 
 **Sometimes it moves after two attempts instead of three.** Three attempts are worth
 making only when they can reach *different* endpoints. If the stream died before naming
-which endpoint served it, or you have set `routing` to `off` or `simple` on the **Providers** tab, then
+which endpoint served it, or you have set `routing` to `off` or `simple` on the **Models** category, then
 nothing is being routed around and the next attempt lands in exactly the same place — so
 codeaf stops asking and moves to the next model a try earlier. Setting `routing` to `off`
 or `simple` switches off **endpoint** steering; it does not switch off moving to another model.
@@ -2174,7 +2210,7 @@ came back with nothing in it at all. Its row in the provider fold then reads `ba
 an hour, and every usable answer it serves afterwards walks it back up. Recovery is by
 serving properly, which is the only evidence there could be.
 
-**Turning it off.** The row is `reply guard` on the **Providers** tab of `/settings`, `on`
+**Turning it off.** The row is `reply guard` on the **Models** category of `/settings`, `on`
 or `off`, and the default is **on**. Off means you see whatever arrives, and keep whatever
 you stop. You can also just
 ask codeaf to turn it off; it is not one of the rows it refuses. The two clocks in the
@@ -2205,7 +2241,7 @@ reply arrives (*The model was printing garbage* above), so only the text that ha
 stopped being language is dropped — and the line above is the only time you are told, which
 is how you can tell the two apart.
 
-**It does not happen at all with the guard off.** `reply guard` on the **Providers** tab of
+**It does not happen at all with the guard off.** `reply guard` on the **Models** category of
 `/settings` is `on` by default; set it to `off` and you see, and keep, whatever arrives —
 including whatever you stop.
 
@@ -2244,7 +2280,7 @@ what a tool call looks like gets you an honest answer full of exactly this synta
 that merely names a tool is safe: the markup has to be the substance of the reply, not a
 word in a sentence. And a conversation with no tools available cannot trigger it at all.
 
-**The switch is the same one.** `reply guard` on the **Providers** tab of `/settings`
+**The switch is the same one.** `reply guard` on the **Models** category of `/settings`
 turns this off together with the repetition guard above; off means you see whatever
 arrives.
 
@@ -2600,7 +2636,7 @@ name on the row. A thing neither of them knows keeps its id.
 **`enter` on any row under "by topic" or "by standing order" opens the thing itself**, and
 the foot says so on every row that is a door — `enter opens what spent it`. The headings
 said it too for a while; the heading over the cut is the control that swaps cuts now, and
-a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the sessions place, with the list
+a control with an unrelated instruction after it is two objects on one line. A task opens **its own record card** in the activity page, with the list
 behind it parked on that row; a standing promise opens the standing place **on that
 order**; and a conversation **opens** — brought forward if this terminal already has it,
 otherwise opened beside the one you are in, with all of that door's refusals (a folder that
@@ -2647,7 +2683,7 @@ Time is two questions, so it gets two arrow axes and no letters:
 The cut of the ledger is its own control and has nothing to do with time: walk onto the
 heading and `←`/`→` swap `by topic` for `by model`. The window opens on **the last 14 days,
 by the day**. The label between the arrows is the
-reading and the control at once, and the same head row is drawn on the sessions place and the
+reading and the control at once, and the same head row is drawn on the activity page and the
 standing place. A terminal too narrow to draw the control has no window there at all — the
 keys do nothing rather than moving something nothing on screen reports — and the zoom keys
 are bound only where `shift+↑ coarser` fits beside the arrows. A week buckets from Monday; there is no year rung, because a
@@ -2970,9 +3006,8 @@ They live on **one tab**: `/settings` → **Spending**, which `/budget` opens di
 | **per plan** | `asks first above $100` | a planned job estimated above it quotes its step count and its price and waits for your go-ahead — it asks, it does not stop |
 | **per task** | `$5 a task` | an ordinary task's next priced call is not made; set in `/crew`. senior-dev has its own run ceiling |
 | **per standing run** | `$5 a firing` | that one firing stops there; each order may name its own |
-| **practice** | `$50 of the day` | codeaf's practice on itself stops until tomorrow, and your own work is untouched |
 
-Above those six the tab leads with **`today`**, which is a reading and not a setting:
+Above those limits the category leads with **`today`**, which is a reading and not a setting:
 `$3.42 of $500 · resets at midnight`, or `$3.42 · no limit` on a machine with no daily
 limit. Before the first model call of the day it is **not on the tab at all** — a machine
 that has not spent anything has not spent zero.
@@ -2989,24 +3024,21 @@ the conversation itself had spent, so the tab and the row a person pressed to ge
 disagreed while a task was running. It also counts a call whose receipt arrived after its
 turn ended, the same moment `today` does.
 
-**Four of the six are rows you can edit** — `per day`, `per conversation`, `per plan`,
-`practice`. `per task` and `per standing run` are **readings**: they are real rails, and
+**Three are rows you can edit** — daily spending, per-chat spending and the plan approval threshold. `per task` and `per standing run` are **readings**: they are real rails, and
 neither is a number a settings row could hold. The sections below say why.
 
-The rows used to be spread across two other tabs — the money on **Workspace**, the
-conversation's own ceiling on **Session**. They are all on **Spending** now, and
-**Workspace holds no money row at all**.
+Open **Spending** for monetary limits. Resident practice settings are absent from chat settings because they do not control this chat surface. The separate resident’s practice default is `$50 of the day`; it is not a chat setting.
 
 ## Where are the spending limits — the Spending tab, and every door onto it
 
 The settings panel's tab bar reads, in order:
 
 ```
-Session · Context · Workspace · Display · Spending · Safety · Tasks · Teams · Providers · Connections
+General · Models · Memory · Tasks · AI teams · Permissions · Spending · Connections · Privacy
 ```
 
 Money is on **Spending** and nowhere else. The rows that used to share it are on the two
-tabs beside it: **Safety** is what codeaf may do without asking you first (ask before
+tabs beside it: **Permissions** is what codeaf may do without asking you first (ask before
 running, tool exceptions, shell command rules, guardian, approval countdown, task
 countdown, who settles work that needs a look), and **Tasks** is how work you can walk
 away from is run (starting a task, check task work, task repair rounds, tasks at once,
@@ -3125,8 +3157,9 @@ tab.
 The `$` on the status line counts what the tasks are spending while they spend it, and
 `/cost` splits that figure into `conversation` and `tasks`.
 
-senior-dev's run ceiling is separate from this per-task figure. Its own page names
-the defaults and flags; its run still spends against the conversation and day.
+senior-dev's, sec's and review's run ceilings are separate from this per-task figure.
+Each program's own page names the defaults and flags; its run still spends against the
+conversation and day.
 
 `/budget task 20` is not a shape this command takes; the per-task figure lives in `/crew`.
 The **composer layer** can put a further figure on one errand; see the tasks page.
@@ -3195,7 +3228,7 @@ nothing and says, for a $5 limit,
 
 One model id is served by many providers, and they differ in two ways at once: how fast they answer, and what they charge. The published list price beside a model is the model's own figure — no provider is obliged to match it, and the fastest one often does not.
 
-**Left alone, codeaf asks for nothing.** The **routing** row on the Providers tab ships as `simple`, and `simple` means the request carries no preference of codeaf's own: with no provider pinned there is no `provider` object on it at all, and OpenRouter's own default routing picks the provider. Pin a provider and that pin is the whole request — that provider, `only`, no fallbacks, and nothing else added to it. Nothing is ranked, nothing is capped, nothing is retired behind your back, and what the picker shows, what is chosen and what the record says are the same thing.
+**Left alone, codeaf asks for nothing.** The **routing** row on the Models category ships as `simple`, and `simple` means the request carries no preference of codeaf's own: with no provider pinned there is no `provider` object on it at all, and OpenRouter's own default routing picks the provider. Pin a provider and that pin is the whole request — that provider, `only`, no fallbacks, and nothing else added to it. Nothing is ranked, nothing is capped, nothing is retired behind your back, and what the picker shows, what is chosen and what the record says are the same thing.
 
 It has not always been this way: until this build the shipped row was `latency`, and codeaf asked for the fastest provider on your own turns and the cheapest on work you were not waiting on. That choosing was invisible — the one decision in a turn you could not see being made — so it is now something you turn on rather than something you turn off.
 
@@ -3257,7 +3290,7 @@ model you picked.
 codeaf calls one of those a **provider** — older builds called it a *lane*, and the
 setting on disk still does — and you can see them and choose one.
 
-**Three rows on the Providers tab of `/settings` sit directly under **your model**, in
+**Three rows on the Models category of `/settings` sit directly under **your model**, in
 that order** — **provider**, **speed guard**, **routing** — because the provider that serves
 your model is part of the same decision as the model:
 
@@ -3591,7 +3624,7 @@ is kept, so a rescue is also a free measurement.
 
 ## Speed guard — what it costs and when to turn it off
 
-**speed guard** is a row on the Providers tab of the settings panel, directly under
+**speed guard** is a row on the Models category of the settings panel, directly under
 **provider** and two rows under your model, and it is **on**.
 
 It hedges **at most one extra call** per answer and stays under **a tenth** of what the
@@ -3664,14 +3697,14 @@ probes. That file is the record of what was sent.
 
 **How to make it zero.** It is already zero on a home where nobody has touched
 **routing**: the shipped row is `simple` and it buys none of these. If you have set
-`latency` or `price` and want it back to zero: Settings → Providers → **speed guard**,
+`latency` or `price` and want it back to zero: Settings → Models → **speed guard**,
 off. The same row governs asking a second provider when an answer is slow to start, so
 turning it off stops both. `routing simple`, `routing off`, and a provider row set to
 `openrouter`, also stop it.
 
 ## The provider row in settings — auto, pinned, pinned but borrowable, openrouter
 
-Settings → Providers has two rows under **routing**:
+Settings → Models has two rows under **routing**:
 
 ```
  your model     deepseek-v4-flash
@@ -3709,7 +3742,7 @@ row drops its `auto (cloudflare now)` tail rather than name a provider nobody ch
 
 Every request in a conversation re-sends the whole conversation. What keeps that from costing a fortune is the **prompt cache**: the provider that answered you a moment ago still has those tokens, and re-reading them costs a fraction of sending them fresh. The catch is that the cache sits on **one provider**. An provider that has never seen your conversation charges full price for all of it — measured on a real run, the same 94,000-token context cost **4.7 times more** on a cold provider than on the warm one, and that alone is where a quarter of the requests in that run ate half its money.
 
-**This is something codeaf does under `routing: latency` and `routing: price`, and not under the shipped `simple` row.** Under `simple` the request carries no preference of codeaf's own at all, and asking for last time's provider is a preference — so keeping the cache warm is the router's business there, as the rest of the choosing is. The row is one word away if you want it: `/settings` → Providers → **routing**.
+**This is something codeaf does under `routing: latency` and `routing: price`, and not under the shipped `simple` row.** Under `simple` the request carries no preference of codeaf's own at all, and asking for last time's provider is a preference — so keeping the cache warm is the router's business there, as the rest of the choosing is. The row is one word away if you want it: `/settings` → Models → **routing**.
 
 Under those two rows, codeaf remembers which provider answered your last request and **asks for that same provider first on the next one**. It is a preference, not a demand: if that provider is busy or gone, the request still goes through somewhere else rather than failing. Nothing extra is sent and nothing is probed to work this out — it is the name that came back on the last answer.
 

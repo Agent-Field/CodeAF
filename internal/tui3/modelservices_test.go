@@ -177,7 +177,7 @@ func modelServiceTestApp(t *testing.T, dir string, model string, sources modelso
 
 func modelServiceTestAppWithAgent(t *testing.T, dir string, model string, sources modelsource.Set, models []Model, agent Agent) *app {
 	t.Helper()
-	for _, env := range []string{"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY"} {
+	for _, env := range []string{"DEEPSEEK_API_KEY", "ZHIPU_API_KEY", "MOONSHOT_API_KEY", "AIAND_API_KEY"} {
 		t.Setenv(env, "")
 	}
 	t.Setenv("CODEAF_HOME", t.TempDir())
@@ -334,7 +334,7 @@ func TestConnectingAServiceFromProvidersMovesTheConversationOntoItsPreferredMode
 		Source: connectedSource, Key: row.Key, Address: source.Doors[0].Address, Door: source.Doors[0],
 	})
 	a.openSettings()
-	toProviders(t, a)
+	toConnections(t, a)
 	found := false
 	for at, item := range a.sheet.items {
 		if item.service != nil && item.service.id == "z-ai" {
@@ -1644,8 +1644,8 @@ func TestDirectOnlyCommandsInventNoDefaultProviderUsage(t *testing.T) {
 	if !strings.Contains(rendered, "deepseek-direct") || !strings.Contains(rendered, "deepseek-direct/deepseek-v4-pro") {
 		t.Fatalf("/model lost the connected service and its model:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "openrouter") || !strings.Contains(rendered, config.DefaultModel) {
-		t.Fatalf("/model lost the keyless default service's existing group or model:\n%s", rendered)
+	if strings.Contains(rendered, "openrouter") || strings.Contains(rendered, config.DefaultModel) {
+		t.Fatalf("/model offered the unconnected default service's group or model:\n%s", rendered)
 	}
 }
 
@@ -1707,7 +1707,7 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 		modelsource.NewSet(testDefaultService("sk-default-1234567890")), nil)
 	a.raiseSettings()
 	for i, tab := range settingTabs {
-		if tab == tabProviders {
+		if tab == tabConnections {
 			a.sheet.tab = i
 		}
 	}
@@ -1741,7 +1741,7 @@ func TestConnectedServicesAppearUnderProvidersAndEmptinessDrawsNothing(t *testin
 	a.sources = modelsource.NewSet(testDefaultService("sk-default-1234567890"), testDirectService("https://api.deepseek.com/v1"))
 	a.raiseSettings()
 	for i, tab := range settingTabs {
-		if tab == tabProviders {
+		if tab == tabConnections {
 			a.sheet.tab = i
 		}
 	}

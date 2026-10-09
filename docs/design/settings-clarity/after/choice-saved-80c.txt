@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › ui.work
+ General
+ completed tool details                                              • expanded
+ automatic updates                                                           on
+
+ Spending
+ daily spending limit                                                      $500
+
+ Models
+ reasoning effort                                                          auto
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Collapsed keeps completed tool steps behind one summary. Expanded keeps
+  those details visible.
+
+
+
+
+─ Saved ────────────────────────────────────────────────────────────────────────
+ ↑↓ results · enter change · tab next place · esc clear search

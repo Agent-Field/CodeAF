@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 4:27pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             General
+  Models
+  Memory             › Search all settings
+  Tasks              mouse interaction                                                                               on
+  AI teams           timestamps                                                                                 footers
+  Permissions        completed tool details                                                                  • expanded
+  Spending           tool icons                                                                                    auto
+  Connections        automatic updates                                                                               on
+  Privacy            background reminders                                                                           off
+                     task sidebar                                                                                    on
+                     switch chats immediately                                                                        on
+                     show hints                                                                                   • off
+                     include model in commit attribution                                                             on
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                      on gives hover and click; off gives the terminal's own text selection back.
+
+
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · type to search all · tab next place · esc close

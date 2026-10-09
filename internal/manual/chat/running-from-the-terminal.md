@@ -3,14 +3,14 @@
 ## Is there a newer version — update a dev build — keep a dev build up to date — latest dev — /update — why does it say this every time I start
 
 At launch, a stable, dev or staging build behind the newest release of its own
-channel is told about it, and with `auto update` on (the default) the install
+channel is told about it, and with `automatic updates` on (the default) the install
 begins on its own after a brief pause: the sentence `codeaf <newest> is out ·
 installs in 10s · <skip chord> skip · /update` waits in the keys line, counted
 down from about ten seconds. It never blocks a keystroke. `/update` while it
 is up installs immediately — that is the release the offer is about, not a
 rollback; the skip chord, or `/update skip`, answers that one release, it is
 never offered again, and a later release is a new question; `/update never` turns
-`auto update` off, and so does the `auto update` row on `/settings`' **Workspace** tab. Turning it off does not
+`automatic updates` off, and so does the `automatic updates` row on `/settings`' **General** tab. Turning it off does not
 cancel an install already downloading, and the launch check still makes its one
 request and names what is out. A release whose automatic install failed
 three times stops being tried on its own.
@@ -20,10 +20,10 @@ or ahead build gets nothing. Source and unstamped builds make no launch request,
 and their `/update` answers `this codeaf was built from source · rebuild with
 make build, or install a release: curl -fsSL https://agentfield.ai/get/codeaf |
 bash`. A codeaf owned by Homebrew, Nix or the system package manager, or one in a
-folder this account cannot write, is never replaced in place: with `auto update`
+folder this account cannot write, is never replaced in place: with `automatic updates`
 on or off the launch names the manager and the curl line, not `/update`.
 
-With `auto update` off, the launch check still runs and still says `codeaf <newest>
+With `automatic updates` off, the launch check still runs and still says `codeaf <newest>
 is out · you have <running> · /update installs it for the next launch`, but
 nothing is downloaded until you ask.
 
@@ -299,7 +299,8 @@ other call.
 headings, in this order — **Talk to it**, **Hand it work**, **Hand it a whole task**,
 **Look at what happened**, **Housekeeping** and **Plan work by hand** — then five worked
 examples. **Hand it a whole task** lists the programs this build carries, such as
-`codeaf senior-dev`; a build that carries none prints the other five.
+`codeaf senior-dev`, `codeaf sec` and `codeaf review`; a build that carries none
+prints the other five.
 
 **The environment table is not on that page**: it is `codeaf help env`, because it is a
 reference somebody consults and it used to be more than half of what `--help` printed.

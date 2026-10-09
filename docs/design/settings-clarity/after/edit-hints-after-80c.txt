@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › ui.hints
+ General
+ show hints                                                               • off
+ automatic updates                                                           on
+ background reminders                                                       off
+
+ Privacy
+ model pool signing key                                                built in
+ share anonymous usage reports                                               on
+ shared model recommendations                                use and contribute
+
+ Memory
+ remember across chats                                                       on
+
+ Spending
+ daily spending limit                                                      $500
+
+ Models
+ chat model                                        deepseek/deepseek-v4.1-flash
+ reasoning effort                                                          auto
+
+ Permissions
+ tool approvals                                                allow by default
+
+ Tasks
+ background shell commands after                                            30s
+ concurrent tasks                                                      no limit
+
+
+
+
+
+
+
+  Show contextual tips while you work.
+
+
+
+
+
+─ Saved ────────────────────────────────────────────────────────────────────────
+ ↑↓ results · enter change · tab next place · esc clear search

@@ -1866,7 +1866,7 @@ func (placeTasks) window(a *app, key string) (bool, tea.Cmd) {
 	return a.taskSheet.window(a, key), nil
 }
 func (placeTasks) note(a *app, width int) []string { return a.taskSheet.note(a, width) }
-func (placeTasks) about() string                   { return "every session and task this machine ran" }
+func (placeTasks) about() string                   { return "work across your chats and delegated tasks" }
 
 func (placeTasks) hint(a *app) string                  { return a.taskSheet.hint(a) }
 func (placeTasks) changed(a *app, since time.Time) int { return a.taskSheet.changed(a, since) }

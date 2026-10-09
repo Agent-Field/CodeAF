@@ -164,7 +164,7 @@ func (a *app) teamsOverviewHeader(d *teamsDraw, t team, width, y int) string {
 	}
 	left = fit(left, leftRoom)
 	if !t.Closed() {
-		for _, c := range []control{{"+ Add member", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}, {"Choose manager", teamsActChooseManager}} {
+		for _, c := range []control{{"+ Add chat", teamsActAddMember}, {"+ Add subteam", teamsActAddSubteam}, {"Choose AI manager", teamsActChooseManager}} {
 			if t.Root && c.act == teamsActAddSubteam {
 				continue
 			}
@@ -229,8 +229,11 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 			if !t.Root && !t.Closed() {
 				labelWidth -= 3
 			}
-			words := a.teamsCardMetadata(r, labelWidth)
-			words = append(words, a.teamsConversationPreview(r.key, w-4, 5-len(words))...)
+			var words []string
+			if d.visible(y+len(out), 7) {
+				words = a.teamsCardMetadata(r, labelWidth)
+				words = append(words, a.teamsConversationPreview(r.key, w-4, 5-len(words))...)
+			}
 			for len(words) < 5 {
 				words = append(words, "")
 			}
@@ -240,10 +243,19 @@ func (a *app) teamsMemberCards(d *teamsDraw, t team, width, y int) []string {
 				if row == 0 && !t.Root && !t.Closed() {
 					contentWidth -= 3
 				}
-				line := teamsPad(word, contentWidth)
+				line := ""
+				if d.visible(y+len(out), 7) {
+					line = teamsPad(word, contentWidth)
+				}
 				if !a.tp.previews[r.key].missing {
-					line = d.row(word, contentWidth, teamsTarget{act: teamsActMember, id: t.ID, arg: r.key,
-						x0: x + 2, y: y + len(out) + 1 + row, hint: a.teamsCrewHint(r), pane: true}, false)
+					target := teamsTarget{act: teamsActMember, id: t.ID, arg: r.key,
+						x0: x + 2, y: y + len(out) + 1 + row, hint: a.teamsCrewHint(r), pane: true}
+					if d.visible(y+len(out), 7) {
+						line = d.row(word, contentWidth, target, false)
+					} else {
+						target.x1 = target.x0 + contentWidth
+						d.targets = append(d.targets, target)
+					}
 				}
 				if row == 0 && !t.Root && !t.Closed() {
 					const actionCells = 3

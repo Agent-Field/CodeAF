@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Agent-Field/codeaf/internal/modelsource"
 )
 
 func TestProbeOpenAIEndpointSuccess(t *testing.T) {
@@ -101,7 +103,7 @@ func TestProbeLoopbackPort(t *testing.T) {
 
 func TestAddProviderPanelRebuild(t *testing.T) {
 	var p addProviderPanel
-	p.rebuild(nil, nil)
+	p.rebuild(nil, nil, modelsource.Set{})
 	if len(p.items) == 0 {
 		t.Fatal("expected items, got none")
 	}
@@ -115,7 +117,7 @@ func TestAddProviderPanelRebuild(t *testing.T) {
 	probes := []LocalServerProbe{
 		{Port: 8317, Name: "127.0.0.1:8317", Address: "http://127.0.0.1:8317/v1", Models: 12},
 	}
-	p.rebuild(probes, nil)
+	p.rebuild(probes, nil, modelsource.Set{})
 	if p.items[0].title != "found on this machine" {
 		t.Fatalf("expected 'found on this machine' heading, got %q", p.items[0].title)
 	}

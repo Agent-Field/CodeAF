@@ -80,6 +80,10 @@ func toProviders(t *testing.T, a *app) {
 	for at, title := range settingTabs {
 		if title == tabProviders {
 			a.sheet.tab = at
+			if a.sheet.advanced == nil {
+				a.sheet.advanced = map[string]bool{}
+			}
+			a.sheet.advanced[tabProviders] = true
 			a.sheet.build()
 			return
 		}
@@ -248,9 +252,9 @@ func TestPinningARoleWritesThePinnedRolesRow(t *testing.T) {
 		t.Fatalf("pinning the planner moved the designer to %q", got)
 	}
 
-	// The list a role is pinned from stays open ([app.pickerKey]); the panel
-	// behind it is what this reads.
-	drive(t, a, key("esc"))
+	if a.sheet.sel != nil || !a.at(pageSettings) {
+		t.Fatal("choosing a role model must return to the settings panel")
+	}
 	cursorToRole(t, a, roles.RolePlanner)
 	a.touch()
 	screen := plain(frame(a))

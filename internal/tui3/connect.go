@@ -765,16 +765,15 @@ type connectCard struct {
 // connectLinkPress copies a waiting card's sign-in link, and reports whether
 // the press was one it wanted.
 //
-// THE WHOLE CARD IS THE TARGET, not the two rows the link happens to wrap over.
+// THE WHOLE CARD IS THE TARGET, not only the row carrying the sign-in link.
 // It is the argument a thinking block makes for taking a click anywhere on
 // itself (app.go): the card has no other gesture, and asking somebody to land
 // on a particular row of a wrapped address is asking them to aim.
 //
 // It exists because a sign-in link is the one thing on this surface that a
 // person needs somewhere ELSE — in the browser on their laptop, when the
-// session is on a machine three hops away that has no browser at all. Copy
-// mode can reach it and it reaches it as the frame drew it: two rows, indented,
-// with the address split across them. Here it is one link, whole.
+// session is on a machine three hops away that has no browser at all. The visible text is a short hyperlink;
+// the card copies its full target even on a terminal without hyperlink support.
 func (a *app) connectLinkPress(i int) (tea.Cmd, bool) {
 	if !a.connectLinkable(i) {
 		return nil, false
@@ -1043,14 +1042,9 @@ func (a *app) connectRows(e *entry, width int) []string {
 		if card.link == "" {
 			return out
 		}
-		// THE LINK IS WRAPPED AND NEVER CUT. It has no spaces in it, so it breaks
-		// at the frame's width rather than at a word — and a link with its tail
-		// truncated away is a link nobody can use, which is the one thing this
-		// row exists to prevent. The hyperlink is applied to each line after the
-		// layout is done with it: an OSC 8 occupies no cells (opener.go).
-		for _, line := range wrap(card.link, width-2) {
-			out = append(out, a.pal.dim("  "+linkify(line, card.link)))
-		}
+		// A short label stays on one row while the hyperlink retains the full
+		// sign-in target. Clicking the waiting card still copies that target whole.
+		out = append(out, a.pal.dim("  "+linkify(fit(signInLinkWord, max(1, width-2)), card.link)))
 		if card.copied {
 			out = append(out, a.pal.dim(fit("  copied — paste it wherever you can sign in", width)))
 		}

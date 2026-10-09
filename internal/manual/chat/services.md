@@ -7,27 +7,45 @@ something else again: long-running background processes, covered by their own pa
 ## Add a key — connect a provider, add an api key, use a different provider
 
 An api key for another provider, or another model provider, is added here. Open `/connect` or
-`/connections`. The `providers` group lists DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba Qwen, Codex,
-Ollama and **Custom OpenAI-compatible API**, followed by any provider already connected and, once
+`/connections`. The `providers` group includes every built-in provider from setup,
+including **Custom OpenAI-compatible API**.
+Connected providers appear first, followed by the remaining options and any saved custom instances. Once
 a custom provider is connected, a `+ add a provider` row. Codex says `browser`; it signs
-in a ChatGPT plan instead of asking for an API key. Ollama needs no key. The other named vendors
-ask for theirs.
+in a ChatGPT plan instead of asking for an API key. OpenRouter offers the same browser/key
+screen as setup: `enter connects in browser`, or paste an existing key. Ollama needs no key.
+The other named vendors ask for theirs.
 Pick a row and answer its fields. A successful listed provider says
 `deepseek-direct is connected · 6 models`; one without a list says only
 `deepseek-direct is connected`. A provider with more than one billing door names the one it
 bound: `z-ai-direct is connected · coding plan · 4 models` or
-`z-ai-direct is connected · pay-as-you-go · 10 models`. The Providers tab in `/settings`
+`z-ai-direct is connected · pay-as-you-go · 10 models`. The Connections category in `/settings`
 then shows the provider, door, safe spelling of its key, region and order.
 
 The default provider remains first. With two or more providers, `/model` groups models by
 provider in that order; with only the default provider, the picker remains ungrouped.
+
+## Add OpenRouter after Ollama — add another provider from the model menu
+
+Open `/model` and choose `+ add a provider`. Its flat list shows every built-in
+provider from initial setup, with `connected` or `not connected` beside each. Local servers
+found on this machine appear separately. An unconnected row starts its connection;
+a connected row says `enter manages` and opens `/connect` focused on that provider.
+The custom API option says `connected · add another` when a custom connection exists;
+it always adds another address, while `/connect` manages saved custom instances.
+
+To add OpenRouter while using Ollama, select **OpenRouter**, then press Enter to sign in
+in your browser or paste an existing key and press Enter to save it. `esc close`
+returns to the provider menu; during browser sign-in, Esc cancels the attempt first.
+This does not repeat onboarding or replace your draft. Ollama stays connected, and
+`/model` combines both providers' available models. Adding a provider does not change a
+current model that is still available.
 
 ## Using codeaf with only a direct provider — no OpenRouter key at all
 
 Yes. When the conversation is on a model from a connected provider, that provider can carry
 the turn without an OpenRouter key. Pressing `enter` sends the message; the setup screen
 does not open, and codeaf does not show
-`openrouter is not connected · enter on your message connects in a browser, or export OPENROUTER_API_KEY`.
+`no model provider is connected · enter on your message chooses a provider, or use /connect`.
 Ollama counts as connected without a key because its local provider explicitly needs none.
 
 The small background calls follow the same road — naming a session, titling a task, the
@@ -39,7 +57,7 @@ default provider does have a key, those calls keep using their configured models
 
 ## What model do I get after connecting a provider — why did my model change
 
-A successful connection from `/connect`, or a reconnect from the Providers tab in
+A successful connection from `/connect`, or a reconnect from the Connections category in
 `/settings`, moves this conversation onto that provider in the same moment. A plan door's
 first documented model wins. Otherwise codeaf uses the vendor's preferred model when the
 provider listed it or published no list, then the first model the provider listed. With no
@@ -198,13 +216,19 @@ the disconnected sentence first and then says
 `this conversation was on deepseek-direct/deepseek-v4-pro · it is now on ~deepseek/deepseek-v4-flash-latest`, or, when nothing can replace it,
 `this conversation was on deepseek-direct/deepseek-v4-pro and nothing else here can take it · connect a provider or pick a model`.
 
+OpenRouter uses the same two-Enter confirmation. A saved profile key is cleared from the
+profile and the running session; its models disappear, while Ollama and other connected
+providers remain usable. A shell credential cannot be removed by the menu: it names the
+shell variable and asks you to unset it and restart. A provider answering the current
+turn must finish before it can be disconnected.
+
 ## Model names carry the provider they came from
 
 The default provider's model ids remain unchanged and unqualified. A model from another
 provider is written `<provider>/<model id>`, such as
 `deepseek-direct/deepseek-v4-pro`. That first segment is how the conversation remembers
 where the model can be reached. With two or more connected providers, `/model` shows a dim
-heading for each provider, default first, in the order shown in the Providers tab. A
+heading for each provider, default first, in the order shown in the Connections category. A
 custom provider's heading is the name you gave it.
 
 The status line uses the same spelling: an unqualified default-provider id, and
@@ -259,7 +283,7 @@ available spelling (`localhost-direct`, then numbered ones) and the connect line
 what it used.
 
 That name is the provider everywhere. It is the row's name in `/connect` and on the
-Providers tab, the heading its models sit under in `/model`, and the first segment of
+Connections category, the heading its models sit under in `/model`, and the first segment of
 every model id it serves, so a model on a provider named `homelab` reads
 `homelab/glm-5.3` and `/model homelab/glm-5.3` moves onto it. A refusal or a success
 names the provider by the name it was given; neither switches back to `custom`.
@@ -270,7 +294,7 @@ becomes that first provider's edit door once one is connected and a `+ add a
 provider` row connects a new one; with none connected yet, **Custom OpenAI-compatible API** is the
 door onto the first.
 
-On the Providers tab in `/settings` each custom provider is a row of its own. `enter`
+On the Connections category in `/settings` each custom provider is a row of its own. `enter`
 opens its available actions. Custom providers offer refresh, rename, change key,
 and disconnect; rename reopens the address and name with their saved values. An
 empty key box keeps the saved key. A changed name is a rename: every model id already picked under the old

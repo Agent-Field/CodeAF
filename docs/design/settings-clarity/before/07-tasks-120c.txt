@@ -1,0 +1,48 @@
+ >● codeaf   home  teams  chats  sessions  spend  settings                                                   wed 2:28pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Session   Context   Workspace   Display   Spending   Safety   Tasks   Teams   Providers   Connections
+
+ › type to search
+ starting a task                                                                                sized
+    what /task does with your brief: sized reads it for width first, so the one worker that starts can hand the parts
+    out once it has opened the material, single starts that worker without reading the brief at all.
+ check task work                                                                                   on
+ task repair rounds                                                                                 1
+ tasks at once                                                                               no limit
+ busy machine                                                                            1.5 per core
+ memory floor                                                                                 1536 MB
+ task model                                                                         the crew's worker
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───────────────────────────────────────────
+ ↑↓ move · ←→ tabs · enter change · type to search · tab next place · esc close

@@ -71,6 +71,9 @@ func TestPlainLaunchReadsClosedTeamReportFromEngineProfile(t *testing.T) {
 		t.Fatal("the engine did not hand teams to the plain launch")
 	}
 	localDoors(&options, welcome, settings)
+	if !options.RequireListedModel {
+		t.Fatal("the plain launch can still use an unlisted default model")
+	}
 	if options.Teams.History == nil {
 		t.Fatal("the plain launch has no history door")
 	}

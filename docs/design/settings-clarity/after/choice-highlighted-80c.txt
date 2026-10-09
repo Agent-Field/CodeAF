@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+  completed tool details
+  Collapsed keeps completed tool steps behind one summary. Expanded keeps
+  those details visible.
+
+ collapsed · current
+ expanded
+  Cancel  esc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ ↑↓ options · enter save · esc cancel

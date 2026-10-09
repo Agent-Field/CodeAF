@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › Search all settings
+ mouse interaction                                                           on
+ timestamps                                                             footers
+ completed tool details                                               collapsed
+ tool icons                                                                auto
+ automatic updates                                                           on
+ background reminders                                                       off
+ task sidebar                                                                on
+ switch chats immediately                                                    on
+ show hints                                                                  on
+ include model in commit attribution                                         on
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  on gives hover and click; off gives the terminal's own text selection back.
+
+
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · tab next place · esc close

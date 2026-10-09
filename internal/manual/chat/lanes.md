@@ -334,7 +334,7 @@ What that means, exactly:
 - **the line stays in the conversation.** It is not one of the dim retry notes
   the work chip collapses when an answer lands, so it is still on the screen
   after the turn finishes;
-- **your settings row is not touched.** The `host` row on the Providers tab still reads
+- **your settings row is not touched.** The `host` row on the Models category still reads
   `pinned: coreweave`, exactly as you wrote it. What changes is everything that names the
   host **requests are going to**: the `@coreweave` comes off the model's name, the tail
   on the `your model` row reads `auto (coreweave cannot serve this model)`, and the fold's
@@ -511,7 +511,7 @@ The table above is the whole answer, and **`response.attempts` is the one thing
 you can turn about it**. It is a multiplier on those times, not a number of
 requests: `3` means three times as long — four and a half minutes on a turn you
 are watching instead of ninety seconds — and the default is `1`, which is exactly
-the table. Set it on the **Providers** tab of `/settings`, or with
+the table. Set it on the **Models** tab of `/settings`, or with
 `CODEAF_RESPONSE_ATTEMPTS`.
 
 ```
@@ -926,7 +926,7 @@ model id is already the whole route.
 
 ## How do I stop codeaf choosing the host itself — the simple routing mode, OpenRouter's default routing, and what my pinned host still sends
 
-The `routing` row (`/settings` → **Providers**) has a fourth answer, **`simple`**,
+The `routing` row (`/settings` → **Models**) has a fourth answer, **`simple`**,
 for exactly this. Under it codeaf keeps no opinion of its own about the hosts
 behind your model, and sends none:
 

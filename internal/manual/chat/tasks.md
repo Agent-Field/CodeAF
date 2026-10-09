@@ -521,8 +521,8 @@ because its row is read as a design and not as a task.
 ## Stopping the sizing call — the starting a task setting, making one worker the default
 
 `/task <brief>` asks you nothing, and every answer here starts **one worker**. What the row
-decides is only what is paid to find out how wide the work is. `/settings` → Session →
-**starting a task**, or the `task.start` row:
+decides is only what is paid to find out how wide the work is. `/settings` → Tasks →
+**task planning**, or the `task.start` row:
 
 - **sized** — the default. One worker starts at once and the sizing call reads your brief
   **beside** it; where it finds independent parts in your words, they are weighed and
@@ -1050,7 +1050,7 @@ handed to the model that has just written the answer and would be editing itself
 is set for them, they have no model at all, and this is the sentence that says so.
 
 **What to do about it.** Pin a planner with `/crew pin planner <model>`, or pin the two roles on the
-**pinned roles** row in `/settings` → Providers — they are called `markreader` and `handoff`,
+**pinned roles** row in `/settings` → Models — they are called `markreader` and `handoff`,
 so the row reads `markreader:openai/gpt-5, handoff:openai/gpt-5`. Or run with `--one-model`,
 which settles them on the model you are talking to along with everything else. Either way the
 move still happens — a task that starts knowing only what you typed is better than an answer
@@ -2059,7 +2059,7 @@ tree of who started whom; the task's own page (its kin line) and the task page h
 family.
 
 **A run's rows are on this column too.** Under the conversation that started a run, the
-column draws that run's tree out of the sessions place's reading: one line per task (the
+column draws that run's tree out of the activity page's reading: one line per task (the
 connector, the state mark and the fitted title) with `waits: <that task>` at the end of a
 line held behind named work, and the run's own row ending in the dot row (*what are the
 dots next to a task?* has the cells). While a task's worker is on a step, its row spends one
@@ -2349,8 +2349,9 @@ $100.00 default.
 **An ordinary `/task`, or any task codeaf's own worker does, also has a money limit of its own: $5 unless you set another**, shown on the
 Spending tab's `per task` row and set with `/crew cap task <$>`. A call that would spend
 past it is not made, whichever way the ordinary task was started, and the task stops there.
-**senior-dev has its own dollar and time ceilings for each run**, separate from that
-`per task` row; see the senior-dev page for its defaults and how to change them.
+**senior-dev, sec and review have their own dollar and time ceilings for each run**,
+separate from that `per task` row; see each program's page for its defaults and how to
+change them.
 
 Changing the engine's default changes the figure the composer layer opens on; the two are
 meant to be one number and are stated in both places on purpose.
@@ -2383,7 +2384,7 @@ work, shapes the brief and starts it. The column's other section, `standing`, en
 
 ## What a bare /task does — /task with nothing after it opens the task page
 
-**`/task` typed on its own opens the full-screen sessions place** — the same place `/history` and
+**`/task` typed on its own opens the full-screen activity page** — the same place `/history` and
 `ctrl+.` open, holding this machine's conversations and their tasks. It used to print a one-line
 usage instead. It does not any more.
 
@@ -2391,7 +2392,7 @@ The reason is the `+ /task` row at the foot of the task column: that row puts `/
 your box before you have said what the work is, so a `/task` sent as it stands is asking
 the only question the word can answer with no brief behind it — *what work is there.*
 
-**On a project that has never run a task it opens the page anyway**, headed `sessions` over one
+**On a project that has never run a task it opens the page anyway**, headed `activity` over one
 line — `work you send off with /task lands here, and its record stays` — which is exactly
 what `/history` and `ctrl+.` do there too.
 
@@ -2399,7 +2400,7 @@ what `/history` and `ctrl+.` do there too.
 still size, shape and start the work directly, with no proposal card in between and no
 extra question. There is no third form: `/task adaptive` is retired.
 
-**There is still no `/tasks` command**, though `sessions` is the name of the PLACE `/history`
+**There is still no `/tasks` command**, though `activity` is the name of the PLACE `/history`
 opens, `alt+4` and `tab` get there without typing anything. As a slash word the plural is not one this surface answers to;
 the two things a bare `/task` and a `/task <brief>` do are the pair of errands a person has
 about tasks — go and look at the work, or give codeaf some.
@@ -2415,7 +2416,7 @@ ctrl+. earlier
 ```
 
 - **It is a door and not a note.** Press `ctrl+.`, or click that line, and the full-screen
-  sessions place opens with every task this machine has run on it, grouped by what you do
+  activity page opens with every task this machine has run on it, grouped by what you do
   next: `running` and `completed`. `/history` is the same page.
 - **It is drawn only when there is something behind it**, and never as `0 earlier` or any
   other count of nothing. There is only ever one such line.
@@ -2432,11 +2433,11 @@ conversation's work into another one's without the column ever saying it had. Ev
 they offered is on the other side of the door, whole: every row, the filter, the cards, and
 `m` for the mention.
 
-**Where old work is listed now:** the sessions place (`ctrl+.`, `/history`, or that line), and
+**Where old work is listed now:** the activity page (`ctrl+.`, `/history`, or that line), and
 home (`/home`, or space twice on an empty box). The chat can also read the whole project
 record for you with its `tasks` tool; just ask.
 
-**Running work in another codeaf window** is on no surface but the sessions place. An ordinary
+**Running work in another codeaf window** is on no surface but the activity page. An ordinary
 task writes nothing into the project's file until it lands, so the window next door is the
 only place that work can be read from, and `/history` is the page that reads it.
 
@@ -2483,7 +2484,7 @@ you need to know a chord to recover. See *The task bar disappeared* below.
 
 The choice is remembered. It is written to your profile the moment the column moves, as
 the `ui.task_column` setting, which also appears in the settings panel (`ctrl+,`) on the
-Display tab as **task column**. A change made in the panel lands the next time codeaf
+General category as **task sidebar**. A change made in the panel lands the next time codeaf
 starts; `alt+l` acts immediately and wins for this session. On the teams page the column
 starts folded, because that page has a rail of its own on the left, and `alt+l` there opens
 it for that visit only.
@@ -2569,7 +2570,7 @@ server still has the jobs section to put a cursor on, so `alt+t` takes it.
 
 **The walk stops at this conversation's last job, after its last task.** `↓` walks the band,
 the groups and then the jobs section under them, and clamps there rather than carrying on
-into the project's record. Old work is walked on the sessions place (`ctrl+.`), where `enter`
+into the project's record. Old work is walked on the activity page (`ctrl+.`), where `enter`
 goes inside its card.
 
 The cursor follows the task, not the row, when a task moves from one group to another. If
@@ -2624,7 +2625,7 @@ nothing else, so a task you ran last week, in a session you have closed, is nowh
 screen until you open this.
 
 **There is no `/tasks` command** — though `sessions` is what the PLACE this opens is called on
-the tab bar, reached with `alt+4` or `tab`. `/task <brief>` starts work; `/history` opens the same sessions place
+the tab bar, reached with `alt+4` or `tab`. `/task <brief>` starts work; `/history` opens the same activity page
 started — and so does a **bare `/task`**, which opens this very page rather than printing a
 usage line. The page is also reached from the one dim door line at the bottom of the task
 column, `ctrl+. earlier`, whenever the project has work this conversation never ran.
@@ -3183,7 +3184,7 @@ originating conversation and available evidence. Press `esc` to return to the li
 
 ## Going inside an old task — see what a past task did, read a finished task's report, where is the story my task wrote
 
-`enter` on any task row of the sessions place (`ctrl+.`, `/history`) that this conversation did not
+`enter` on any task row of the activity page (`ctrl+.`, `/history`) that this conversation did not
 run **goes inside that task**. A click does the same on the first press. The task column carries no rows of old
 work — its `ctrl+. earlier` line is the door onto this page — so the page is where every
 old task is opened.
@@ -3270,7 +3271,7 @@ one more dim line:
 ctrl+. earlier
 ```
 
-Click it, or press `ctrl+.`, and the full-screen sessions place opens. The column is left exactly
+Click it, or press `ctrl+.`, and the full-screen activity page opens. The column is left exactly
 as it was: the page is somewhere you go and come back from, not a state the column enters.
 
 **There is exactly one such line, never two.** It is drawn when the record holds tasks
@@ -4989,8 +4990,8 @@ it was going to be decided in is gone and nothing is going to finish that though
 
 ## Can codeaf decide on its own — can the chat decide on its own, stop asking me about tasks that need a look
 
-Yes. The setting is **`task.settle`**, in `/settings` under Session as
-`who settles work that needs a look`, and it takes two words:
+Yes. The setting is **`task.settle`**, in `/settings` under Tasks as
+`when task results need a decision`, and it takes two words:
 
 | Value | What happens when a task lands as `your call` |
 | --- | --- |
@@ -5185,7 +5186,7 @@ stop, one word, wherever you reach it from.
 
 Pressing `x` on a run that has already finished does nothing but say so.
 
-## The sessions place — tree lines, project column, folds, and the time-window keys
+## The activity page — tree lines, project column, folds, and the time-window keys
 
 The **sessions** place lists conversations and their nested work across projects, under
 **running** or **completed**. The whole conversation moves together. Both sections and
@@ -5343,7 +5344,7 @@ conversation is the way today.
 
 ## Preview a task without opening it — the record beside the list, seeing what a task did, and answering a task from the list with 1 and 2
 
-On a terminal **110 columns or wider** the sessions place splits: the list keeps the left, a dim
+On a terminal **110 columns or wider** the activity page splits: the list keeps the left, a dim
 rule divides it, and the right is the record of whatever row the cursor is on. Nothing is
 opened and nothing is lost — walking down with `↑` and `↓` changes what the pane shows, and the
 list stays exactly where it was.
@@ -5456,7 +5457,7 @@ come back exactly as you left them.
 **`esc` clears the filter first and closes the place second**, which is why the foot says
 `esc clear the filter` while one is on.
 
-## The foot of the sessions place — x delete, row verbs and stopping work
+## The foot of the activity page — x delete, row verbs and stopping work
 
 The foot names the actions available for the selected row. `enter` opens its
 conversation, task room or saved record. `→` opens its verbs. An expandable row

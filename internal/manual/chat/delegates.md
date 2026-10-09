@@ -1,13 +1,18 @@
 # Programs codeaf carries
 
-## What a program codeaf carries is — a delegate, another coding agent, an agent of its own for a whole task
+## What a program codeaf carries is — a delegate, another coding agent, an agent of its own for a whole task, which programs there are
 
-codeaf carries programs of its own that take one whole coding task and do it alone, for as
-long as an hour or more. People call them delegates. You hand one a task the way codeaf
-hands a task to its own worker: in a git repository it works in a private copy of its
-own and leaves its work on a branch of its own when it ends; in a folder with no git
-history it works in the folder itself. It runs under this conversation's dollar and time
-limits, shows on the rail while it runs, and can be stopped.
+codeaf carries programs of its own that take one whole task and do it alone, for as
+long as an hour or more. People call them delegates. There are three: **senior-dev**, a
+coding agent for one large, well-specified change; **sec**, which audits
+the repository or its changes for security problems and changes nothing; and **review**,
+which reviews a GitHub pull request and changes and posts nothing (each one's own page
+says how). You hand one a task the way codeaf hands a task to its own worker. A program
+that edits code, as senior-dev does, works in a private copy of its own in a git
+repository and leaves its work on a branch of its own when it ends; in a folder with no
+git history it works in the folder itself. One that answers, as sec and review do,
+reads and leaves its report. Each runs under this conversation's dollar and
+time limits, shows on the rail while it runs, and can be stopped.
 
 Each one is **built into codeaf**. There is nothing to install and nothing to set up, and
 none of them runs on its own outside codeaf. Each is a command in the chat, `/<name>
@@ -27,8 +32,8 @@ did.
 ## Where a program's badge appears — and where it does not
 
 **Every program's tasks wear its name as a badge**: `[<name>]` after the task's title on
-the side list, the proposal card, the task's page, the `@` list, the sessions place and home, and its
-initials (`[sd]` for senior-dev) where a list is narrow. A task codeaf's own worker does
+the side list, the proposal card, the task's page, the `@` list, the activity page and home, and its
+initials (`[sd]` for senior-dev, `[s]` for sec, `[r]` for review) where a list is narrow. A task codeaf's own worker does
 wears none, and a program added to codeaf later gets its own badge from its name.
 The landed card's head shows the title and outcome without a program badge.
 
@@ -66,8 +71,9 @@ than doing it itself or giving it to codeaf's own worker, even when it is one lo
 with nothing to run beside it. Each program's own line says what it is for: senior-dev's
 claims complex, multi-part coding work, such as fixing an issue in a mature codebase
 whose cause spans files, a feature with its tests, a rewrite across a package, or a
-migration. The model proposes that work with `via` naming the program, and its card goes
-up like any proposal's.
+migration; sec's claims a security audit of the whole repository or of the
+changes on the branch; review's claims a code review of a GitHub pull request. The model proposes that work with `via` naming the program, and
+its card goes up like any proposal's.
 
 **Naming the program is enough.** Say it in your message, by name or as its command
 ("fix issue 412 with senior-dev", "give this to /senior-dev", "senior dev should do
@@ -90,6 +96,13 @@ that, your words have to ask for the program: its command (`/senior-dev`), its n
 first in the message, or its name right after with, via, using, use, give, hand, to,
 have, let, ask, get or want. A name in passing asks nothing: "fix senior-dev's typo in
 this file" or "fix the line senior-dev changed in this file" stays here.
+
+**review is heard by its work, not its word.** "review" is a word you use for much
+else, so the word alone names nothing: "review this function" stays here. `/review`
+always asks for it, and so does a message that points at a pull request (PR, pull
+request, its link, `owner/repo#123`) and asks for it to be looked over: "review PR
+123", "take a look at my PR". Its turn-back then says which work was heard:
+``the person asked for a code review of a GitHub pull request, which review does: …``.
 
 **A commit, an undo or a revert stays here, whatever it names.** "revert senior-dev's
 commit", "commit senior-dev's changes" or "revert this commit with senior-dev" is done in
@@ -147,15 +160,18 @@ everything it would stop and ask is already settled. The model is told the same 
 it proposes one. A program that listens, as senior-dev does until it hands in, can still be
 told something while it works; it never waits for a reply.
 
-**It has no step cap.** senior-dev has finite dollar and wall-clock ceilings even when
-the conversation sets none; `/budget conversation` can lower the dollar ceiling,
+**It has no step cap.** Each program has finite dollar and wall-clock ceilings of its own
+even when the conversation sets none — senior-dev's are $10 and three hours,
+sec's $5 and four hours, review's $5 and two hours; `/budget conversation` can lower the dollar ceiling,
 and shell flags set either ceiling directly.
 An open chat's `/budget conversation` change binds its next proposal, run and turn
 as soon as the setting receipt appears.
 Before forwarding a call, codeaf reserves the larger estimate from the requested model
 and its possible fallback seat when both have known prices, using input size and output
 cap; if either price is unknown, it uses the unpriced bound. It refuses a call whose
-estimate would cross the ceiling. An
+estimate would cross the ceiling, and a call that would fit once calls already in flight have
+ended (a program that makes many calls at once, as sec does) is asked to wait for
+them instead and goes on when one ends. An
 answer can cost more than its estimate. When a model has no known price, codeaf reserves
 half the dollar ceiling and limits concurrent calls once half the recorded spend is used;
 an unpriced service's actual charge cannot be measured here. The wall-clock ceiling still
@@ -225,13 +241,25 @@ and keeps what was loose as a patch in the run's record folder. Its own notes
 folder. In a folder with no git history its work is simply there, and nothing is
 committed.
 
-A program that only answers works in your folder in place and changes nothing. Its answer
-arrives in the conversation the way a task's landing does.
+A program that only answers, as sec and review do, changes nothing in your folder. Its answer arrives in the conversation the way a task's landing does, and
+the chat tells you what it found and offers the next step it names; the files its answer
+points at are in the task's record folder.
 
 What it spent is in the conversation's total, in `/cost` and on the status line. Every
 model call it made went through codeaf and is priced like one of codeaf's own. A run
 stopped in the middle of a call is not over until that call's price has come in, for at
 most 70 seconds, so the call it was cut in is in those figures too.
+
+## When a program finished but the chat said nothing — done with no summary, no answer after it ended, I pressed stop
+
+When a program ends, its ending wakes a turn in the conversation, and that turn tells you
+what it did or found. **The ending is never lost to a missing reply:** if that turn does
+not finish an answer, the conversation gives the program's own account in full in a line
+of its own. When every model it was offered failed, the line opens
+`<name> ended, but the chat could not finish its answer to it, so here is what <name> said:`;
+when you stopped the answer yourself, it opens
+`<name> ended, and you stopped the chat's answer to it, so here is what <name> said:`.
+It is written once per run. Ask again in your own words and the chat answers from it.
 
 ## Why is there no command for it — missing, not in this build, Windows, a hosted conversation
 

@@ -526,6 +526,11 @@ func (a *app) closeCrew() tea.Cmd {
 	cmd := a.showPage(back)
 	if a.at(pageSettings) {
 		a.sheet.tab = tab
+		// The seats door lives in Advanced; returning must keep that door visible.
+		if a.sheet.advanced == nil {
+			a.sheet.advanced = map[string]bool{}
+		}
+		a.sheet.advanced[settingTabs[tab]] = true
 		a.sheet.build()
 		a.sheet.cursor = a.sheet.clampCursor(cursor)
 	}

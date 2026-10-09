@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › Search all settings
+ chat model                                        deepseek/deepseek-v4.1-flash
+ image generation                                                     automatic
+ speech generation                                                    automatic
+ music generation                                                     automatic
+ video generation                                                     automatic
+ audio transcription                                                  automatic
+ image understanding model                                            automatic
+ reasoning effort                                                          auto
+ document reader                                                           auto
+ fallback models                                         nearest in the catalog
+ Advanced                                                                  show
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  the model you are talking to. Everything below it is a model codeaf uses on
+  your behalf.
+
+
+
+
+─ This chat and the profile default ────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter change · tab next place · esc close

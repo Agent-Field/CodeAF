@@ -507,7 +507,8 @@ func openChatV3(name string, args []string, pickSession bool) error {
 		// resolved while the person was reading is a catalog the picker can
 		// use, and one that has not resolved answers nil instead of waiting.
 		// It reads the shelf, which ctrl+r in /model refills with today's list.
-		Models:                  func() []tui3.Model { return v3Models(proc.Shelf) },
+		Models:                  proc.Shelf.pickerModels,
+		RequireListedModel:      true,
 		RefreshModels:           proc.refreshDefaultModels,
 		ModelsForService:        proc.Shelf.modelsForService,
 		RefreshModelsForService: proc.Shelf.refreshService,
@@ -962,6 +963,8 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		BaseURL:        settings.BaseURL,
 		Sources:        settings.Sources,
 		CompactEnabled: !opts.NoCompact,
+		// Carry the saved reader choice into the live chat and its tasks.
+		DocumentEngine: settings.DocumentEngine,
 		SessionFile:    transcript,
 		TaskLanded:     taskLanded,
 		// The folder this conversation keeps everything in (Decision 26). It is

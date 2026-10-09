@@ -270,6 +270,9 @@ func CodexRememberedModels(service modelsource.Connected, profileDir string) []c
 // ConnectCodex keeps a completed browser sign-in, persists its service row and
 // seeds the picker from the account's own visible model list.
 func ConnectCodex(ctx context.Context, profileDir string, tokens codexauth.Tokens) (modelsource.Outcome, error) {
+	if err := ctx.Err(); err != nil {
+		return modelsource.Outcome{}, err
+	}
 	if err := codexauth.Save(profileDir, tokens); err != nil {
 		return modelsource.Outcome{}, err
 	}
@@ -411,7 +414,7 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	address := resolvedSourceAddress(row, src)
 	listing := src.Probe
 	if listing.Method == "" && listing.Address == "" {
-		if err := persistConnectedSource(profileDir, row); err != nil {
+		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
 			return modelsource.Outcome{}, err
 		}
 		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
@@ -427,13 +430,13 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 		}
 		listed := true
 		row.Listed = &listed
-		if err := persistConnectedSource(profileDir, row); err != nil {
+		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
 			return modelsource.Outcome{}, err
 		}
 		return outcome, nil
 	}
 	if paymentrefusal.Matches(status, body) {
-		if err := persistConnectedSource(profileDir, row); err != nil {
+		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
 			return modelsource.Outcome{}, err
 		}
 		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
@@ -446,7 +449,7 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	row.Listed = &listed
 	fallback := src.FallbackProbe()
 	if fallback.Method == "" && fallback.Address == "" {
-		if err := persistConnectedSource(profileDir, row); err != nil {
+		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
 			return modelsource.Outcome{}, err
 		}
 		return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
@@ -456,7 +459,7 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 		return modelsource.Outcome{Kind: modelsource.OutcomeUnanswered}, nil
 	}
 	if paymentrefusal.Matches(status, body) {
-		if err := persistConnectedSource(profileDir, row); err != nil {
+		if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
 			return modelsource.Outcome{}, err
 		}
 		return modelsource.Outcome{Kind: modelsource.OutcomeAccountCannotPay, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
@@ -464,7 +467,7 @@ func ConnectService(ctx context.Context, profileDir string, row PersistedSource,
 	if !acceptsStatus(fallback.Accepts, status) {
 		return modelsource.Outcome{Kind: modelsource.OutcomeRefused, VendorSaid: withoutExactSecret(vendorWords(body), key)}, nil
 	}
-	if err := persistConnectedSource(profileDir, row); err != nil {
+	if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
 		return modelsource.Outcome{}, err
 	}
 	return modelsource.Outcome{Kind: modelsource.OutcomeConnected}, nil
@@ -544,7 +547,7 @@ func connectAtDoor(ctx context.Context, profileDir string, row PersistedSource, 
 			row.Listed = &value
 		}
 	}
-	if err := persistConnectedSource(profileDir, row); err != nil {
+	if err := persistSourceUnlessCancelled(ctx, profileDir, row); err != nil {
 		return modelsource.Outcome{}, err
 	}
 	return outcome, nil
@@ -699,4 +702,12 @@ func DisconnectService(profileDir, id string) error {
 		return codexauth.Remove(profileDir)
 	}
 	return nil
+}
+
+// A cancelled connection must not save an answer from a network trip it left.
+func persistSourceUnlessCancelled(ctx context.Context, dir string, row PersistedSource) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return persistConnectedSource(dir, row)
 }

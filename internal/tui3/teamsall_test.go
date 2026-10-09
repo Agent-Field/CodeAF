@@ -84,7 +84,7 @@ func TestTeamsAllOverviewKeepsGlobalManagerAndDecisions(t *testing.T) {
 	a.tp.previews[root.Manager] = teamsPreview{text: "Current global update"}
 	a.tp.sel = teamsAllRow
 	text := teamsFrameText(a)
-	for _, want := range []string{"@global", "Settings", "+ Add member", "Which layout first?", "Global decision", "Subteams"} {
+	for _, want := range []string{"@global", "Settings", "+ Add chat", "Which layout first?", "Global decision", "Subteams"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("missing %s:\n%s", want, text)
 		}

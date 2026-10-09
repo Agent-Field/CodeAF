@@ -476,6 +476,8 @@ func TestBackStandsBesideThePickAtHome(t *testing.T) {
 	lab := newHomeLab(t)
 	mine := lab.session("-tmp-alpha", "aaaa000000000001", "a session", "/tmp/alpha", time.Now())
 	a := lab.app(mine)
+	// The picker needs a listed model; a cold catalog offers no guesses.
+	a.models = func() []Model { return pickerCatalog }
 	a.openHome()
 	runCmd(a.openHome())
 	typeHome(a, "/model")

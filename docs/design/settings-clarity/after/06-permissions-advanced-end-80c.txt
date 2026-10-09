@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › Search all settings
+ tool approvals                                                allow by default
+ tool exceptions                                                           none
+ shell command rules                                                       none
+ AI approval screening                                                      off
+ start proposed tasks after                                                 15s
+ Advanced                                                                  hide
+ pause approval timer after                                                 10s
+
+ questions while you are away
+ permission                                                              ask me
+ choice                                                                  ask me
+ judgement                                                               ask me
+ clarification                                   ask me · never runs on a clock
+ confirmation                                  ask me · destructive always asks
+ landing                                                                 ask me
+ assumption                                                              ask me
+ ratify                                                                  ask me
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  what happens to a question of this shape when nobody answers it · kept for
+  this project · /autonomy <kind> ask · recommend <duration> · decide
+
+
+
+
+─ saved to your profile · a project's own .codeaf/config.json is a hand edit ───
+ ↑↓ settings · ←→ categories · enter change · tab next place · esc close

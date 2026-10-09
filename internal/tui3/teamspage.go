@@ -34,10 +34,10 @@ const teamsInboxWhole = 3
 
 // The page's words, quoted in the manual exactly as spelled here.
 const (
-	teamsExplainWord   = "A team is a set of conversations you run together; give it a manager and you talk to the manager, which hands out the work and asks you only what it cannot decide."
-	teamsNoManagerWord = "a manager takes your messages to the team and asks you only what it cannot decide"
+	teamsExplainWord   = "An AI team groups chats around ongoing work. Add an optional AI manager to coordinate them."
+	teamsNoManagerWord = "an optional AI manager coordinates these chats and brings questions to you"
 	teamsOrganizeWord  = "Organize my conversations"
-	teamsNewTeamWord   = "New team"
+	teamsNewTeamWord   = "New AI team"
 	teamsHostedWord    = "the inbox and the spend are not available over this connection"
 )
 
@@ -47,6 +47,8 @@ type teamsPage struct {
 	orgHits            []wallHit
 	orgRect            wallRect
 	previews           map[string]teamsPreview
+	previewRows        map[teamsPreviewShape]*teamsRenderedPreview
+	previewClock       uint64
 	interactionOffsets map[string]int
 	table              teamsTableRect
 	tableOver          int

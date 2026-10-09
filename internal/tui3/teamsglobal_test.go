@@ -66,12 +66,12 @@ func TestTeamsGlobalManagerCardLinksPreviewAndDeletesOnlyItsConversation(t *test
 	a.tp.previews = map[string]teamsPreview{key: {text: "Actual saved update from the global manager"}}
 	d := &teamsDraw{a: a}
 	text := plain(strings.Join(a.teamsGlobalManagerCard(d, 90, 3), "\n"))
-	for _, word := range []string{"Global manager", "@global", "Actual saved update", "+ Add member", "Settings"} {
+	for _, word := range []string{"Global manager", "@global", "Actual saved update", "+ Add chat", "Settings"} {
 		if !strings.Contains(text, word) {
 			t.Fatalf("missing %s: %s", word, text)
 		}
 	}
-	for _, word := range []string{teamGlobalManagerSlotWord, "Choose manager"} {
+	for _, word := range []string{teamGlobalManagerSlotWord, "Choose AI manager"} {
 		if strings.Contains(text, word) {
 			t.Fatalf("populated global card has %s", word)
 		}
@@ -172,7 +172,7 @@ func TestTeamsGlobalManagerDeletionRefreshesWithoutOtherHeldMembers(t *testing.T
 	a.tp.sel = teamsAllRow
 	a.page = pageTeams
 	text := plain(strings.Join(a.teamsGlobalManagerCard(&teamsDraw{a: a}, 100, 0), "\n"))
-	if strings.Contains(text, "+ Add member") || strings.Contains(text, "Settings") || strings.Contains(text, "Choose manager") {
+	if strings.Contains(text, "+ Add chat") || strings.Contains(text, "Settings") || strings.Contains(text, "Choose AI manager") {
 		t.Fatal("deleted manager card retained controls")
 	}
 	if !strings.Contains(text, teamGlobalManagerSlotWord) || strings.Contains(text, "Conversation unavailable") {
@@ -339,7 +339,7 @@ func TestEmptyTeamsPageOffersGlobalCreationOnlyInItsCard(t *testing.T) {
 		}
 		label := "Organize"
 		if target.act == teamsActNewTeam {
-			label = "New team"
+			label = "New AI team"
 		}
 		if !strings.Contains(ansi.Cut(rows[target.y], target.x0, target.x1), label) {
 			t.Fatalf("empty-page %s hit misses visible label: %+v", label, target)

@@ -297,7 +297,7 @@ you, or `/autonomy <kind> decide`. **How do I turn that off:** `/autonomy <kind>
 puts it back to asking you every time, and `/autonomy` on its own shows every
 row as it stands.
 
-**Open settings** (`ctrl+,` or `/settings`) and look under **Safety** for
+**Open settings** (`ctrl+,` or `/settings`) and look under **Permissions** for
 `questions while you are away`. There is a row per kind of question, and `enter`
 walks the answer round three words:
 
@@ -719,7 +719,7 @@ With more than one waiting it counts them instead — `? 3 questions · alt+y`. 
 ratify line is never counted: nothing is waiting on it.
 
 The chip never takes the keys off the page you are standing on. A task that
-raised a question while you were on the sessions place says so at the right of the
+raised a question while you were on the activity page says so at the right of the
 foot, and the row's own `enter open its room` stays where it was.
 
 **`alt+y` brings the newest one back** and takes you to the conversation it
@@ -835,7 +835,7 @@ minute has passed — that line is news, and coming back later is later. The
 decision itself is in the transcript and in `decisions.jsonl` for good.
 
 **A question you have NOT answered is still there when you come back**, wherever
-you went — another tab, home, the sessions place. That is the point of leaving it:
+you went — another tab, home, the activity page. That is the point of leaving it:
 nothing about the work moves while it waits, and the chip in the status line
 counts it from every page.
 
@@ -1117,7 +1117,7 @@ have one is to close this and talk.
 ## Can I just let it decide — stop asking me this kind of thing
 
 **There is a row for it where settings are browsed.** Open settings (`ctrl+,`,
-or `/settings`), go to **Safety**, and the section *questions while you are
+or `/settings`), go to **Permissions**, and the section *questions while you are
 away* has one row per kind of question — permission, choice, judgement, landing,
 assumptions — each saying `ask me`, `recommend then go · 30s` or `decide
 yourself`, and `enter` walks it round the three. Searching settings for "away"

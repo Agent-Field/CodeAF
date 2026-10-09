@@ -76,7 +76,7 @@ func TestHomeSessionsHeadingOpensRenamedTab(t *testing.T) {
 			t.Fatalf("width %d: no sessions heading", width)
 		}
 		drive(t, a, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
-		if !a.at(pageTasks) || a.page.word() != "sessions" {
+		if !a.at(pageTasks) || a.page.word() != "activity" {
 			t.Fatalf("opened %s", a.page.word())
 		}
 	}

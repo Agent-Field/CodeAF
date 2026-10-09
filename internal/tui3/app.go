@@ -834,13 +834,14 @@ type (
 		err     error
 	}
 	modelConnectResultMsg struct {
-		service string
-		name    string
-		written string
-		keyEnv  string
-		outcome modelsource.Outcome
-		models  []Model
-		err     error
+		setupAttempt *setupProviderAttempt
+		service      string
+		name         string
+		written      string
+		keyEnv       string
+		outcome      modelsource.Outcome
+		models       []Model
+		err          error
 		// browser says this result owns a waiting browser card. Word is the
 		// shared terminal-and-panel sentence that settles that card.
 		browser bool
@@ -2265,9 +2266,10 @@ type app struct {
 	// models is the door's model list, asked for at the moment the picker
 	// opens rather than at boot — a lazily warmed catalog may have arrived in
 	// between, and it must never be waited for. Nil falls through to the cache
-	// and the built-ins (see [app.modelList]).
-	models           func() []Model
-	modelsForService func(modelsource.Connected) []Model
+	// while warming (see [app.modelList]).
+	models             func() []Model
+	requireListedModel bool
+	modelsForService   func(modelsource.Connected) []Model
 	// refreshModels is the door's fetch of today's list ([Options.
 	// RefreshModels]), nil where the door has none — which removes the key.
 	// modelsFetching is whether one is out, kept here rather than on the
@@ -2981,6 +2983,7 @@ func newApp(ctx context.Context, opts Options) *app {
 		updateAuto:          opts.UpdateAuto,
 		restart:             opts.Restart,
 		models:              opts.Models,
+		requireListedModel:  opts.RequireListedModel,
 		modelsForService:    opts.ModelsForService,
 		sources:             opts.Sources,
 		refreshModels:       opts.RefreshModels,
@@ -3150,6 +3153,7 @@ func newApp(ctx context.Context, opts Options) *app {
 	}
 	if a.agent != nil {
 		a.model = a.agent.Model()
+		a.ensureAvailableModel()
 		// A resumed session is already named, and the name is a fact about the
 		// conversation on screen: it belongs in the first frame, not after the
 		// next turn (session's title.go re-names nothing).
@@ -3694,7 +3698,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		selected, hadSelection := p.current()
 		p.loading = false
-		p.rebuild(msg.probes, nil)
+		p.rebuild(msg.probes, a.modelCatalog, a.sources)
 		if hadSelection {
 			for i, item := range p.items {
 				if !item.heading && (selected.custom && item.custom || selected.sourceID != "" && item.sourceID == selected.sourceID) {
@@ -4173,6 +4177,17 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.touch()
 			return a, nil
 		}
+		if a.at(pageSettings) && a.sheet.edit != nil {
+			return a, nil
+		}
+		// A settings choice owns scrolling while its options are open.
+		if a.at(pageSettings) && a.sheet.choice != nil {
+			c := a.sheet.choice
+			c.cursor = max(0, min(len(c.item.row.Choices)-1, c.cursor+placeWheelDelta(msg.Mouse().Button)))
+			a.sheet.savedKey = ""
+			a.touch()
+			return a, nil
+		}
 		// A SETTINGS ROW'S MODEL LIST ANSWERS BEFORE THE PAGE, including
 		// its nav: the row being chosen must move, not the slot under it.
 		if a.at(pageSettings) && a.sheet.sel != nil && a.sheet.sel.pick.open {
@@ -4442,6 +4457,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The controls screen answers a press on its own rows the way the
 			// keys would (onboarding.go's [app.setupPress]); the key step, which
 			// is one box, takes nothing from the pointer.
+			if msg.Mouse().Button == tea.MouseLeft && a.setup.step() == setupKey {
+				return a, a.setupProviderPress(msg.Mouse().X, msg.Mouse().Y)
+			}
 			if msg.Mouse().Button == tea.MouseLeft && a.setupPress(msg.Mouse().X, msg.Mouse().Y) {
 				return a, a.endSetup(false)
 			}
@@ -4945,7 +4963,7 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if a.at(pageSettings) {
-			a.sheetHover(msg.Mouse().Y)
+			a.sheetHoverAt(msg.Mouse().X, msg.Mouse().Y)
 			return a, nil
 		}
 		if a.at(pageTasks) {
@@ -5333,6 +5351,9 @@ func (a *app) route(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, a.adoptCodexFlow(msg)
 
 	case modelConnectResultMsg:
+		if msg.setupAttempt != nil {
+			return a, a.adoptSetupProviderResult(msg)
+		}
 		a.adoptModelConnectResult(msg)
 		return a, nil
 
@@ -6537,6 +6558,7 @@ func (a *app) settle() tea.Cmd {
 		a.state = stateIdle
 	}
 	a.applyDeferredModelServiceMove()
+	a.ensureAvailableModel()
 	// A turn that is over is a turn nothing is outstanding on: the clock stops
 	// here rather than at the next turn's start, so a session left idle for an
 	// hour cannot open its next turn holding an hour-old anchor.
@@ -6569,13 +6591,7 @@ func (a *app) settle() tea.Cmd {
 	a.turnBegan, a.turnOutStart, a.turnCostAt = time.Time{}, 0, 0
 	a.col.open()
 	a.approval = a.approvalPosture()
-	a.mouse = config.MouseEnabledAt(a.profileDir)
-	a.timestamps = config.TimestampsAt(a.profileDir)
-	a.workMode = config.WorkAt(a.profileDir)
-	a.adoptIcons()
-	a.hopQuick = config.QuickSwitchAt(a.profileDir)
-	a.askWait = a.consentWait()
-	a.notices.enabled = config.HintsAt(a.profileDir)
+	a.refreshProfileUI()
 	// AND THE ANSWER HAS JUST ARRIVED, which is when somebody starts reading
 	// it: the conversation's tip waits its quiet out from here (notice.go).
 	a.stirred()
@@ -6982,6 +6998,10 @@ func (a *app) submitting(text string, start func() (<-chan session.Event, error)
 // plain carries the words the person demoted with backspace, as ranges into
 // shown, so the transcript leaves them plain (entry.plainTags).
 func (a *app) submittingShown(text, shown string, plain []segment, start func() (<-chan session.Event, error)) tea.Cmd {
+	if !a.ensureAvailableModel() {
+		a.note(noAvailableModelWord)
+		return nil
+	}
 	if a.deferHosted(func() tea.Cmd { return a.submittingShown(text, shown, plain, start) }) {
 		return nil
 	}
@@ -9219,6 +9239,9 @@ func (a *app) paste(text string) tea.Cmd {
 	if a.at(pageSettings) {
 		flat := strings.ReplaceAll(text, "\n", " ")
 		switch {
+		case a.sheet.choice != nil:
+			// Closed choices have no text field; do not alter the hidden search.
+			return nil
 		case a.sheet.edit != nil:
 			a.sheet.edit.box.insert(flat)
 		case a.sheet.sel != nil:

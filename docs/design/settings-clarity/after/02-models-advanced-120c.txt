@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings                                        wed 4:27pm
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  General             Models
+  Models
+  Memory             › Search all settings
+  Tasks              chat model                                                            deepseek/deepseek-v4.1-flash
+  AI teams           image generation                                                                         automatic
+  Permissions        speech generation                                                                        automatic
+  Spending           music generation                                                                         automatic
+  Connections        video generation                                                                         automatic
+  Privacy            audio transcription                                                                      automatic
+                     image understanding model                                                                automatic
+                     reasoning effort                                                                              auto
+                     document reader                                                                               auto
+                     fallback models                                                             nearest in the catalog
+                     Advanced                                                                                      hide
+
+                     routing
+                     model provider                                                                                auto
+                     speed guard                                                                                     on
+                     routing                                                                                     simple
+                     prompt profile                                                                                auto
+                     reflex                                                              • deepseek/deepseek-v4.1-flash
+                     small work                                                          • deepseek/deepseek-v4.1-flash
+                     seats                                auto · 3 pinned · models all · 1 of 1 providers · per task $5
+                     pinned roles                                                                                  none
+
+                     roles · reflex
+                     reflex                                                                deepseek/deepseek-v4.1-flash
+
+                     roles · small work
+                     caption                                                               deepseek/deepseek-v4.1-flash
+                     consolidate                                                           deepseek/deepseek-v4.1-flash
+                     guardian                                                              deepseek/deepseek-v4.1-flash
+                     intake                                                                deepseek/deepseek-v4.1-flash
+                     jobname                                                               deepseek/deepseek-v4.1-flash
+                     router                                                                deepseek/deepseek-v4.1-flash
+
+                      Less common controls. Search finds these even while collapsed.
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ↑↓ settings · ←→ categories · enter collapse · type to search all · tab next place · esc close

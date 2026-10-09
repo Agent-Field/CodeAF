@@ -326,9 +326,9 @@ The second page is `Daily limit` and `Chat model`.
 </details>
 
 The chat model resolves from `--model`, then saved `model.talk`, then `CODEAF_MODEL`,
-then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. Besides
-OpenRouter, the connection screen supports DeepSeek, Z.ai, Moonshot, MiniMax, Alibaba
-Qwen, Codex through a ChatGPT plan, Ollama, and a custom OpenAI-compatible provider.
+then `~deepseek/deepseek-v4-flash-latest`. The last value is a floating alias. The connection
+screen shows every built-in provider in one flat list, including a custom
+OpenAI-compatible API option.
 The same supported providers can be managed without opening the chat with `codeaf
 connect` and `codeaf disconnect`; a qualified slug such as
 `qwen/<model>` selects its provider.

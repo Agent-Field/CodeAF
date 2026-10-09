@@ -96,6 +96,20 @@ func (s *v3ModelShelf) setSources(sources modelsource.Set) {
 	}
 }
 
+// pickerModels excludes capability fallbacks from selectable rows. Those facts
+// help the engine describe a known model, but only a provider's listing proves
+// that a model belongs in this account's menu.
+func (s *v3ModelShelf) pickerModels() []tui3.Model {
+	if s == nil {
+		return nil
+	}
+	models := s.current.Load()
+	if models == nil || models.FetchedAtNow().IsZero() {
+		return nil
+	}
+	return v3Models(models)
+}
+
 // modelsForService is the never-waiting half of the connected-service shelf
 // seam. The default keeps reading the atomic launch catalog; another service
 // reads only its own compartment.

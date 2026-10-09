@@ -94,7 +94,7 @@ func (a *app) teamsGlobalManagerCard(d *teamsDraw, width, y int) []string {
 		action(teamGlobalManagerSlotWord, teamsActRootManager, "", "", "Create the optional global manager conversation")
 	}
 	if hasManager {
-		action("+ Add member", teamsActAddMember, root.ID, "", "Add a conversation to the global manager team")
+		action("+ Add chat", teamsActAddMember, root.ID, "", "Add a conversation to the global manager team")
 		action("Settings", teamsActSettings, root.ID, "", "Global manager settings and spending controls")
 	}
 	line, x := "", 0

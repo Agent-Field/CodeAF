@@ -246,14 +246,21 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 			strings.Join(foldSynopsis("codeaf "+inv.Program.Name+" "+carriedSynopsis), "\n"), inv.Program.Name)
 		return exitCannotRun
 	}
+	// THE PROGRAM SAYS WHICH OF ITS FLAGS NAMES ITS MODELS
+	// ([delegate.Delegate.ModelFlag]); codeaf resolves what was typed there.
+	modelFlag := strings.TrimSpace(inv.Program.ModelFlag)
+	asked := ""
+	if modelFlag != "" {
+		asked = strings.TrimSpace(inv.ExplicitFlags[modelFlag])
+	}
 	road, err := carriedModels()
 	if err != nil {
-		if word := strings.TrimSpace(inv.ExplicitFlags["high"]); word != "" && errors.Is(err, config.ErrNoAPIKey) {
+		if word := asked; word != "" && errors.Is(err, config.ErrNoAPIKey) {
 			return session.ProgramShellModelRefusal(word)
 		}
 		return err
 	}
-	if word := strings.TrimSpace(inv.ExplicitFlags["high"]); word != "" && road.resolveModel != nil {
+	if word := asked; word != "" && road.resolveModel != nil {
 		resolved, err := road.resolveModel(word)
 		if err != nil {
 			return err
@@ -269,9 +276,9 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 			}
 			resolved = strings.Join(models, ",")
 		}
-		inv.Line = carriedResolvedHigh(inv.Line, resolved)
+		inv.Line = carriedResolvedModel(inv.Line, modelFlag, resolved)
 	}
-	if strings.TrimSpace(inv.ExplicitFlags["high"]) == "" && road.defaultSeat != nil {
+	if asked == "" && road.defaultSeat != nil {
 		road.seat, err = road.defaultSeat()
 		if err != nil {
 			return err
@@ -413,8 +420,8 @@ func runCarriedHost(ctx context.Context, inv *delegate.Invocation) error {
 		Args: carriedInFolder(carriedChildLine(inv), inv, folder),
 		// NO PROVIDER KEY IS INHERITED BY THE PROGRAM (delegate.ChildEnv): the engine
 		// gets the loopback token it needs, and model commands lose that token.
-		Env: append(delegate.ChildEnv(api.API()), "SENIOR_DEV_IGNORED_AT_START="+folder.IgnoredFile(),
-			gitidentity.InputsEnv+"="+folder.InputsFile()),
+		Env: append(append(delegate.ChildEnv(api.API()), "SENIOR_DEV_IGNORED_AT_START="+folder.IgnoredFile(),
+			gitidentity.InputsEnv+"="+folder.InputsFile()), delegate.RecordsEnv(record)...),
 		Dir:        here,
 		StderrPath: filepath.Join(record, carriedStderrName),
 		Grace:      grace,
@@ -585,23 +592,23 @@ func carriedSeatedLine(inv *delegate.Invocation, seat string) []string {
 	return append(line, inv.Line[at:]...)
 }
 
-// carriedResolvedHigh replaces only the model flag's value on the person's
+// carriedResolvedModel replaces only the model flag's value on the person's
 // line. Every other program flag and every word of the brief stays as typed.
-func carriedResolvedHigh(line []string, model string) []string {
+func carriedResolvedModel(line []string, flag, model string) []string {
 	resolved := append([]string(nil), line...)
 	for i, word := range resolved {
 		if word == "--" {
 			break
 		}
 		switch {
-		case word == "--high" || word == "-high":
+		case word == "--"+flag || word == "-"+flag:
 			if i+1 < len(resolved) {
 				resolved[i+1] = model
 			}
-		case strings.HasPrefix(word, "--high="):
-			resolved[i] = "--high=" + model
-		case strings.HasPrefix(word, "-high="):
-			resolved[i] = "-high=" + model
+		case strings.HasPrefix(word, "--"+flag+"="):
+			resolved[i] = "--" + flag + "=" + model
+		case strings.HasPrefix(word, "-"+flag+"="):
+			resolved[i] = "-" + flag + "=" + model
 		}
 	}
 	return resolved
@@ -741,7 +748,11 @@ func (v *carriedView) begin() {
 	if v.records != nil {
 		return
 	}
-	v.say("%s · working in %s · %s", v.inv.Program.Name, v.where(), v.inv.Ceilings.Summary())
+	if ceilings := v.inv.Ceilings.Summary(); ceilings != "" {
+		v.say("%s · working in %s · %s", v.inv.Program.Name, v.where(), ceilings)
+	} else {
+		v.say("%s · working in %s", v.inv.Program.Name, v.where())
+	}
 	// A COPY IS CUT FROM A COMMIT, so what the person had not committed is not
 	// in it, and a person at a shell is told so before the run spends a cent on
 	// work that needed it — as a conversation's receipt tells them.
@@ -1031,6 +1042,23 @@ func (v *carriedView) end(result delegate.Result, runErr error, limited bool, sp
 			line += "; its last stage was " + result.Reading.LastStage
 		}
 		v.say("%s", line)
+	case !v.inv.Program.LandsTree():
+		// A PROGRAM THAT ANSWERS IS READ FOR ITS ANSWER. Its ending's first
+		// line is what it came to, and the answer under it is the report the
+		// person ran it for — the account a conversation is handed — rather
+		// than what a program that edits code claimed and checked.
+		v.say("%s", carriedEnding(name, *terminal))
+		if answer := strings.TrimSpace(terminal.Deliverable()); answer != "" && answer != strings.TrimSpace(terminal.Message) {
+			v.say("")
+			for _, line := range strings.Split(answer, "\n") {
+				if line = strings.TrimRight(line, " "); line == "" {
+					v.say("")
+					continue
+				}
+				v.say("  %s", line)
+			}
+			v.say("")
+		}
 	default:
 		v.say("%s", carriedEnding(name, *terminal))
 		if claim := terminal.Claim(); claim != "" {

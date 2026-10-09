@@ -1503,6 +1503,14 @@ func (a *app) enterLine() tea.Cmd {
 		a.openSetup(false)
 		return nil
 	}
+	// DISCOVERY MUST CHOOSE A REAL MODEL BEFORE THE DRAFT LEAVES THE BOX.
+	// The surface can open while catalogs warm, but a guessed launch model
+	// must never receive the message in the meantime.
+	if !strings.HasPrefix(line, "/") && (line != "" || held) && !a.ensureAvailableModel() {
+		a.note(noAvailableModelWord)
+		a.openPicker()
+		return nil
+	}
 	// A TAG IS READ BEFORE THE DRAFT IS CLEARED. More than one cannot choose a
 	// winner safely: falling back to an ordinary send is precisely the failure
 	// these alternate doors exist to prevent, so the words stay in the box.

@@ -512,3 +512,55 @@ func TestTheDoorBouncesARequestedProgramBeforeTheFloor(t *testing.T) {
 		t.Fatalf("the proposal read %q (error %v), want the bounce", result, isError)
 	}
 }
+
+// A PROGRAM WHOSE NAME IS AN EVERYDAY WORD IS HEARD BY ITS COMMAND AND ITS
+// WORK, NEVER BY THE BARE WORD. review sets [delegate.Delegate.Asked]: "review
+// this function" names nothing, "/review" names it, and a message asking for
+// its work names it by that work, which its turn-back says. A program without
+// Asked is heard by its name as before, beside it.
+func TestAProgramNamedByAnEverydayWordIsHeardByItsCommandAndItsWork(t *testing.T) {
+	word := func(config *Config) {
+		reviewer := testPrograms("review")[0]
+		reviewer.Summary = "a code review of a GitHub pull request"
+		reviewer.Asked = func(message string) bool { return strings.Contains(strings.ToLower(message), "pr 123") }
+		config.Delegates = append(testPrograms("senior-dev"), reviewer)
+	}
+	agent := programConversation(t, word)
+	config := agent.config
+	for asked, want := range map[string]struct {
+		named  string
+		byWork bool
+		asked  []string
+	}{
+		"review this function":          {},
+		"can you review my essay":       {},
+		"/review owner/repo#7":          {named: "review", asked: []string{"review"}},
+		"review PR 123":                 {named: "review", byWork: true, asked: []string{"review"}},
+		"take a look at PR 123":         {named: "review", byWork: true},
+		"give PR 123 to review":         {named: "review", byWork: true, asked: []string{"review"}},
+		"fix the retry with senior-dev": {named: "senior-dev", asked: []string{"senior-dev"}},
+	} {
+		named, byWork := config.programHeardIn(asked)
+		if named != want.named || byWork != want.byWork {
+			t.Errorf("%q heard %q (by its work: %v), want %q (%v)", asked, named, byWork, want.named, want.byWork)
+		}
+		if got := config.programsAskedIn(asked); strings.Join(got, ",") != strings.Join(want.asked, ",") {
+			t.Errorf("%q asked for %q, want %q", asked, got, want.asked)
+		}
+	}
+
+	heard(agent, "take a look at PR 123")
+	want := programWorkSentence("review", "a code review of a GitHub pull request")
+	if bounce := agent.programAskBounce(taskSpec{title: "t"}).text(); bounce != want {
+		t.Errorf("the proposal without via read %q, want %q", bounce, want)
+	}
+	if !strings.HasPrefix(want, "the person asked for a code review of a GitHub pull request, which review does:") {
+		t.Errorf("the work's turn-back reads %q", want)
+	}
+
+	quiet := programConversation(t, word)
+	heard(quiet, "review this function")
+	if bounce := quiet.programAskBounce(taskSpec{title: "t"}); bounce != nil {
+		t.Errorf("the bare word turned a proposal back: %q", bounce.text())
+	}
+}

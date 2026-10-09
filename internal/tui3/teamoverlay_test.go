@@ -142,7 +142,7 @@ func TestTeamMembershipControlsRemainVisibleAndDoNotOverlapConversationLinks(t *
 	for _, width := range []int{40, 72, 100, 160} {
 		a.width, a.height = width, 42
 		text := teamsFrameText(a)
-		if !strings.Contains(text, "+ Add member") || strings.Contains(text, "Actions") || !strings.Contains(text, "+ Add subteam") || !strings.Contains(text, "Choose manager") {
+		if !strings.Contains(text, "+ Add chat") || strings.Contains(text, "Actions") || !strings.Contains(text, "+ Add subteam") || !strings.Contains(text, "Choose AI manager") {
 			t.Fatalf("membership controls missing at %d:\n%s", width, text)
 		}
 		for _, action := range a.tp.targets {

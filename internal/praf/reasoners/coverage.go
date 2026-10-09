@@ -1,0 +1,38 @@
+package reasoners
+
+import (
+	"context"
+
+	"github.com/Agent-Field/codeaf/internal/praf/appx"
+
+	"github.com/Agent-Field/codeaf/internal/praf/harnessx"
+	"github.com/Agent-Field/codeaf/internal/praf/prompts"
+	"github.com/Agent-Field/codeaf/internal/praf/schemas"
+)
+
+// CoverageGate ports coverage_gate: one .ai() call that decides whether the
+// review dimensions covered every change cluster, with a .harness() retry of
+// the same prompt when the AI seam is unavailable or refuses the structured
+// request (harnesses.py coverage_gate wraps its .ai() call the same way).
+//
+// Output keys (§B.2): fully_covered, gap_descriptions, confident. Absent
+// response keys land on the pydantic defaults through CoverageGate's seeded
+// UnmarshalJSON (confident=true, gap_descriptions=[]); a harness fallback that
+// fails to parse returns {} (Python returns a literal empty dict).
+func CoverageGate(ctx context.Context, deps Deps, in CoverageGateInput) (map[string]any, error) {
+	prompt := prompts.CoverageGatePrompt(in.Anatomy, in.ReviewedClusters, in.DimensionNamesReviewed)
+
+	var gate schemas.CoverageGate
+	if err := aiStructured(ctx, deps.AI, prompt, prompts.CoverageGateSystem, strictAISchemas[strictAISchemaCoverageGate], &gate); err != nil {
+		parsed, res, harnessErr := harnessx.Run[schemas.CoverageGate](ctx, deps.Harness, prompt, appx.HarnessOptions{Label: LabelCoverage})
+		if harnessErr != nil {
+			return nil, harnessErr
+		}
+		if res == nil || res.Parsed == nil {
+			return map[string]any{}, nil
+		}
+		gate = *parsed
+	}
+	gate.GapDescriptions = orEmptyStrs(gate.GapDescriptions)
+	return dumpMap(gate)
+}

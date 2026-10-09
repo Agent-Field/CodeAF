@@ -1,0 +1,48 @@
+ >● codeaf   Home  Chats  AI teams  Activity  Memory  Spend  Settings
+
+────────────────────────────────────────────────────────────────────────────────
+
+  General   Models   Memory   Tasks   AI teams   Permissions   Spending  …
+
+ › github
+ General
+ background reminders                                                       off
+ automatic updates                                                           on
+
+ Models
+ reasoning effort                                                          auto
+ model provider                                                            auto
+ fallback models                                         nearest in the catalog
+ routing                                                                 simple
+
+ Privacy
+ model pool signing key                                                built in
+
+ AI teams
+ maximum team nesting                                                  3 levels
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  Check reminders, watches and routines while the CLI is closed. Uses a timer
+  under your login; the machine must be awake and you must be logged in.
+
+
+
+
+─ This profile ─────────────────────────────────────────────────────────────────
+ ↑↓ results · enter change · tab next place · esc clear search
