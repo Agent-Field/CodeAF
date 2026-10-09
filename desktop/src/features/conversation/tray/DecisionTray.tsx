@@ -8,6 +8,7 @@ import { layoutTabs, questionKey, type Tab } from './layout';
 import { QuestionCardV2 } from './QuestionCardV2';
 import { ReviewPanel } from './SetPanels';
 import { TrayCompact } from './TrayCompact';
+import { TrayFold } from './TrayFold';
 import { TrayHeader } from './TrayHeader';
 import { useMoreBelow } from './useBodyFade';
 import './tray.css';
@@ -132,10 +133,11 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
 
   return (
     <>
-      {compact && (
+      <TrayFold shown={Boolean(compact)}>
         <TrayCompact count={standing} summary={(active?.label ?? '').replace(/`/g, '')} onReview={() => onReview?.()} />
-      )}
-      <section className="decision-tray" aria-label="Waiting on you" hidden={compact}>
+      </TrayFold>
+      <TrayFold shown={!compact}>
+      <section className="decision-tray" aria-label="Waiting on you">
         <TrayHeader
           question={shown}
           index={index + 1}
@@ -162,6 +164,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
         )}
         {nonBlocking && <p className="tray-foot">Doesn't block this reply</p>}
       </section>
+      </TrayFold>
     </>
   );
 }
