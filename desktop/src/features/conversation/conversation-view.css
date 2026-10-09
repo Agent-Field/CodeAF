@@ -16,7 +16,7 @@
 .conversation-dock-layer { position: relative; flex: none; margin-top: calc(-1 * var(--scroll-fade-dock)); padding-top: var(--scroll-fade-dock); background: linear-gradient(to bottom, transparent, var(--canvas) var(--scroll-fade-dock)); pointer-events: none; }
 .conversation-dock-layer > * { pointer-events: auto; }
 .conversation-main[data-empty] .conversation-dock-layer { margin-top: 0; padding-top: 0; background: none; }
-.conversation-footer { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-4); }
+.conversation-footer { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-5); }
 
 .engine-notice { display: flex; align-items: center; justify-content: center; gap: var(--space-2); max-width: var(--chat-column-max-width); margin: 0 auto var(--space-2); color: var(--ink-2); font-size: var(--font-size-label); }
 .engine-notice .button { font-size: var(--font-size-label); }
