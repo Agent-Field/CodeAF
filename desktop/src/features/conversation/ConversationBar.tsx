@@ -18,13 +18,13 @@ function Count({ status, count, words }: CountProps) {
   );
 }
 
-type BarProps = { children: ReactNode; counts: BarCounts; panel?: BarPanel; lead: 'title' | 'trail' };
+type BarProps = { children: ReactNode; counts: BarCounts; panel?: BarPanel; lead: 'title' | 'trail'; /** The Using chip: sits beside the title, and only on a conversation (the trail of a task page has no chip). */ using?: ReactNode };
 
 /** The pane's top row (design 1a to 1c): the title or the trail on the left, what is happening on the right, then the panel toggle. */
-export function ConversationBar({ children, counts, panel, lead }: BarProps) {
+export function ConversationBar({ children, counts, panel, lead, using }: BarProps) {
   return (
     <div className="conversation-bar" data-lead={lead}>
-      <div className="conversation-bar-lead">{children}</div>
+      <div className="conversation-bar-lead">{children}{lead === 'title' && using}</div>
       <span className="conversation-bar-counts">
         <Count status="running" count={counts.running} words="running" />
         <Count status="waiting" count={counts.needsYou} words="need you" />

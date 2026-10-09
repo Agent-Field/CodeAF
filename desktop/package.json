@@ -23,6 +23,7 @@
     "test:ui": "playwright test",
     "test:places-components": "playwright test --config playwright.places-components.config.ts",
     "test:places-home": "playwright test --config playwright.places-home.config.ts",
+    "test:using": "playwright test --config playwright.using.config.ts",
     "upstream:sync": "node scripts/sync-dev.mjs",
     "engine:dev": "node scripts/engine-bridge.mjs"
   },

@@ -1,0 +1,6 @@
+/* Test-only layout for the Using harness page. */
+.using-harness { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3); min-width: 0; }
+.using-harness-mock { margin: 0; color: var(--ink-3); font-size: var(--type-caption-size); }
+.using-harness-pane { background: var(--canvas); border-radius: var(--radius-pane); box-shadow: var(--sh-1); min-height: 240px; }
+.using-harness-body { margin: 0; padding: var(--space-4); color: var(--ink-3); font-size: var(--type-prose-size); }
+.using-harness-log { margin: 0; padding: 0; list-style: none; color: var(--ink-3); font-size: var(--type-caption-size); overflow-wrap: anywhere; }
