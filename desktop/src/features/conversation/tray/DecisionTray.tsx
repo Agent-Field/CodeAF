@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../../components/ui';
 import type { EngineAnswer } from '../../chat/engine-client';
-import { bulkAnswers } from './answers';
+import { BatchCard } from './BatchCard';
 import type { RenderImage } from './CardEvidence';
 import type { Question } from './form';
 import { layoutTabs, questionKey, type Tab } from './layout';
 import { QuestionCardV2 } from './QuestionCardV2';
-import { BulkCard, ReviewPanel } from './SetPanels';
+import { ReviewPanel } from './SetPanels';
 import { panelDomId, tabDomId, TrayTabs } from './TrayTabs';
 import './tray.css';
 
@@ -33,7 +33,7 @@ function tabHolds(tab: Tab | undefined, key: string): boolean {
 
 export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, renderImage, focusKey }: DecisionTrayProps) {
   const [later, setLater] = useState<Set<string>>(new Set());
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded] = useState<Set<string>>(new Set());
   const [held, setHeld] = useState<Record<string, EngineAnswer>>({});
   const [clockStopped, setClockStopped] = useState<Set<string>>(new Set());
   const [wanted, setWanted] = useState('');
@@ -90,12 +90,7 @@ export function DecisionTray({ questions, busyKey, onAnswer, onHold, now, render
     if (tab.kind === 'bulk') {
       const busyNow = tab.members.some((member) => busy(questionKey(member)));
       return (
-        <BulkCard
-          members={tab.members}
-          busy={busyNow}
-          onAll={(role) => void sendInOrder(bulkAnswers(tab.members, role))}
-          onOneByOne={() => setExpanded((before) => new Set(before).add(tab.batch))}
-        />
+        <BatchCard members={tab.members} busy={busyNow} onSend={sendInOrder} />
       );
     }
     if (tab.kind === 'review') {

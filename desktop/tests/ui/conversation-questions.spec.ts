@@ -45,7 +45,7 @@ test('several questions are tabs; a permission set is one card; the composer blo
   await page.getByRole('button', { name: 'Waiting on you: Pick a database' }).click();
   await expect(tray(page).getByRole('tab', { name: /Pick a database/ })).toHaveAttribute('aria-selected', 'true');
   await tray(page).getByRole('tab', { name: /3 actions/ }).click();
-  const set = tray(page).getByRole('region', { name: '3 actions need your OK' });
+  const set = tray(page).getByRole('region', { name: 'Allow 3 actions?' });
   await set.getByRole('button', { name: 'Allow all' }).click();
   await expect.poll(() => posts(engine, '/answer').length).toBe(3);
   expect(posts(engine, '/answer').map((call) => [call.body.id, call.body.key])).toEqual([[1, '1'], [2, '1'], [3, '1']]);
