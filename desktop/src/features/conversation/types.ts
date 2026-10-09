@@ -36,6 +36,63 @@ export type Turn = {
   digest: string; // first meaningful line of the final answer, plain text, '' when none
 };
 
+// ---- Contract v2 (docs/ELEMENTS.md). Lanes build against these; transcript.ts fills them. ----
+
+/** Where an item sits: the person's conversation, or the folded machinery under it. */
+export type Rhythm = 'conversation' | 'work';
+
+/** One batch of parallel tool calls (ELEMENTS §3.2). */
+export type WorkStep = {
+  id: string;
+  title: string; // narration line > engine Caption > composed ("Read 3 files")
+  titleSource: 'narration' | 'caption' | 'composed';
+  category: string; // CaptionCategory: search|read|edit|create|run|test|browse|transfer|communicate|coordinate|plan|wait|work
+  calls: ToolStep[];
+  tookMs?: number; // sum of known call durations; absent when unknown
+  state: 'preparing' | 'running' | 'waiting' | 'done' | 'failed' | 'stopped';
+};
+
+/** Everything between two conversation items (ELEMENTS §3.1). */
+export type WorkBlock = {
+  kind: 'work';
+  id: string;
+  steps: WorkStep[];
+  thinking?: { text: string; streaming: boolean; seconds?: number }; // live only; absent after reload
+  notes: TurnItem[]; // note | aside | steer items that happened inside the work
+  live: boolean; // the turn is still producing this block
+  summary: { seconds?: number; thoughtSeconds?: number; steps: number; calls: number; failed: number };
+};
+
+/** A file the turn produced or touched (ELEMENTS §5.1, §5.4). */
+export type FileRef = { path: string; added?: number; removed?: number; capped?: boolean; source: 'write' | 'edit' | 'read' | 'image' | 'task' | 'attachment' | 'markdown' };
+
+/** A deliverable promoted into the conversation (ELEMENTS §5.3–5.5). */
+export type Deliverable =
+  | { kind: 'image'; id: string; path: string; caption: string; meta: string }
+  | { kind: 'changes'; id: string; files: FileRef[] }
+  | { kind: 'media'; id: string; path: string; media: 'audio' | 'video'; caption: string };
+
+/** Conversation-rhythm items of a turn, in order (ELEMENTS §1–2). */
+export type TurnBlock =
+  | WorkBlock
+  | { kind: 'update'; id: string; text: string; cut: boolean; streaming: boolean } // Addressed interim update
+  | { kind: 'answer'; id: string; text: string; streaming: boolean } // Answer final reply (Markdown)
+  | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string; live?: string }
+  | { kind: 'deliverable'; id: string; deliverable: Deliverable }
+  | { kind: 'receipt'; id: string; questionKey: string; text: string; state: 'waiting' | 'decided' | 'withdrawn' } // question receipt in the flow
+  | { kind: 'error'; id: string; text: string };
+
+/** Turn v2: user message + attachments + ordered blocks. Turn (v1) stays until integration swaps. */
+export type TurnV2 = {
+  id: string;
+  user: string;
+  attachments: FileRef[]; // pictures (ImageRefs) and attached files
+  steer: { id: string; text: string; landing?: string; consumed: boolean }[];
+  blocks: TurnBlock[];
+  state: Turn['state'];
+  digest: string;
+};
+
 export type ConversationModel = {
   title: string; // engine title, '' until generated
   turns: Turn[];

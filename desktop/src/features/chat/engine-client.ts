@@ -177,3 +177,34 @@ export async function watchEngine(snapshot: EngineSnapshot, onSnapshot: (snapsho
  } catch (error) { if (!signal.aborted) throw error; }
  finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
 }
+
+// ---- Contract v2 endpoints (docs/ELEMENTS.md §9). The bridge lane implements the
+// server side; until then these reject with the engine's own 404 text. ----
+export type TaskAction = 'note' | 'amend' | 'pause' | 'resume' | 'cancel';
+/** E1: talk to or control one task. `text` is required for note/amend. */
+export async function taskAction(id: string, taskId: string, action: TaskAction, text?: string): Promise<void> {
+  await fetchEngine(`${sessionPath(id)}/tasks/${encodeURIComponent(taskId)}/${action}`, { method: 'POST', body: JSON.stringify(text === undefined ? {} : { text }) });
+}
+export type EngineFile = { name: string; mime: string; size: number; hash: string; dataBase64: string };
+export type EnginePathFact = { path: string; exists: boolean; dir: boolean; size: number; modTime?: string; outside?: boolean };
+/** E2: read one workspace file (confined, symlink-safe, 16MB cap). */
+export async function readEngineFile(id: string, path: string): Promise<EngineFile> {
+  return (await (await fetchEngine(`${sessionPath(id)}/files?path=${encodeURIComponent(path)}`)).json()) as EngineFile;
+}
+/** E2: stat up to 64 paths at once. */
+export async function statEnginePaths(id: string, paths: string[]): Promise<EnginePathFact[]> {
+  return (await (await fetchEngine(`${sessionPath(id)}/files/stat`, { method: 'POST', body: JSON.stringify({ paths }) })).json()) as EnginePathFact[];
+}
+/** E3: send a message with attachments. Files are base64 in the body (≤20MB total). */
+export type OutgoingFile = { name: string; mime: string; dataBase64: string };
+export function sendEngineWithFiles(id: string, text: string, files: OutgoingFile[]): Promise<EngineSnapshot> {
+  return action(id, 'turn', { text, mode: 'submit', files });
+}
+/** E4: stop a question's clock while the person reads it. */
+export async function holdQuestion(id: string, q: { kind: string; id: number; ref?: string }): Promise<void> {
+  await fetchEngine(`${sessionPath(id)}/questions/hold`, { method: 'POST', body: JSON.stringify(q) });
+}
+/** E8: favicon for a domain the engine itself contacted in this conversation; data URL or null. */
+export async function engineFavicon(id: string, domain: string): Promise<string | null> {
+  try { const r = (await (await fetchEngine(`${sessionPath(id)}/favicon?domain=${encodeURIComponent(domain)}`)).json()) as { dataUrl?: string }; return r.dataUrl ?? null; } catch { return null; }
+}
