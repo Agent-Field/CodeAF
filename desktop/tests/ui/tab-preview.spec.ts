@@ -7,10 +7,10 @@ import { plainReply } from './support/scenarios';
 // Shell 2h "Preview", 3a, 3k: hovering an inactive tab for 500ms shows a 300px text card; moving across
 // neighbours swaps it at once; a press, a drag or Escape closes it; a card that needs you carries Allow all.
 const delay = design.interaction.previewOpenDelay;
-const permission = (id: number, head: string): EngineQuestion => ({
+const permission = (id: number, head: string, tasks = ['3']): EngineQuestion => ({
   id, kind: 'consent', ask: 'permission', head, batch: 'step:1',
   options: [{ key: '1', label: 'allow once' }, { key: '3', label: 'deny', safe: true }],
-  blocking: { turn: true },
+  blocking: { turn: true, tasks },
 });
 const tab = (id: string, title: string, over: Record<string, unknown> = {}) => ({ id, title, titleSource: 'manual', kind: 'conversation', draft: '', pinned: false, ...over });
 
@@ -22,7 +22,7 @@ const card = (page: Page, title: string) => page.getByRole('group', { name: `Pre
 
 async function open(page: Page) {
   const base = plainReply();
-  const engine = await installMockEngine(page, { ...base, initial: { ...base.initial, needsPerson: true, tasks: [], questions: [1, 2, 3].map(n => permission(n, `Run git step ${n}`)), entries: [{ Role: 'user', Text: 'Port the fix' }, { Role: 'assistant', Text: 'The fixtures run now.' }] } });
+  const engine = await installMockEngine(page, { ...base, initial: { ...base.initial, needsPerson: true, tasks: [], questions: [...[1, 2, 3].map(n => permission(n, `Run git step ${n}`)), permission(7, 'Delete the build folder', ['9'])], entries: [{ Role: 'user', Text: 'Port the fix' }, { Role: 'assistant', Text: 'The fixtures run now.' }] } });
   await seed(page, [tab('a', 'Active tab', { sessionFile: 'a.jsonl' }), tab('b', 'Port fix', { kind: 'task', sessionFile: 'b.jsonl', route: { taskId: '3', back: [''], forward: [] } }), tab('c', 'Plain tab', { draft: 'A saved thought' })]);
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Port fix', exact: true })).toBeVisible();
@@ -124,7 +124,75 @@ test('the Design system page shows every preview card', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Design system', exact: true }).click();
   const specimen = page.locator('[data-preview-specimen]');
-  await expect(specimen.locator('.preview-card')).toHaveCount(9);
-  await expect(specimen.getByRole('button', { name: 'Allow all', exact: true })).toBeVisible();
+  await expect(specimen.locator('.preview-card')).toHaveCount(10);
+  await expect(specimen.getByRole('button', { name: 'Allow all', exact: true })).toHaveCount(2);
+  await expect(specimen.getByRole('alert')).toContainText('Not sent.');
   await expect(specimen.locator('.preview-card-shot .preview-shot')).toHaveCSS('height', '120px');
+});
+
+
+test('a task card shows and answers only its own task questions, not the conversation\'s', async ({ page }) => {
+  const engine = await open(page);
+  await page.getByRole('tab', { name: 'Plain tab', exact: true }).click();
+  await page.getByRole('tab', { name: 'Port fix', exact: true }).hover();
+  const preview = card(page, 'Port fix');
+  await expect(preview).toContainText('Allow 3 actions?');
+  await expect(preview).not.toContainText('Delete the build folder');
+  await preview.getByRole('button', { name: 'Allow all', exact: true }).click();
+  await expect.poll(() => engine.calls.filter(call => call.path.endsWith('/answer')).length).toBe(3);
+  // The other task's question was never answered from this card.
+  expect(engine.calls.filter(call => call.path.endsWith('/answer')).map(call => call.body.id)).toEqual([1, 2, 3]);
+});
+
+test('a task with no question of its own does not say Needs you, whatever the conversation is asking', async ({ page }) => {
+  const base = plainReply();
+  await installMockEngine(page, { ...base, initial: { ...base.initial, needsPerson: true, tasks: [], questions: [permission(1, 'Run git step 1', ['3'])], entries: [{ Role: 'user', Text: 'Port the fix' }] } });
+  await seed(page, [tab('a', 'Active tab'), tab('b', 'Other task', { kind: 'task', sessionFile: 'b.jsonl', route: { taskId: '5', back: [''], forward: [] } })]);
+  await page.goto('/');
+  await page.getByRole('tab', { name: 'Other task', exact: true }).hover();
+  await expect(card(page, 'Other task')).toBeVisible();
+  await expect(card(page, 'Other task')).not.toContainText('Needs you');
+  await expect(card(page, 'Other task').getByRole('button')).toHaveCount(0);
+});
+
+test('a failed Allow all says so in the card, keeps asking, and can be tried again', async ({ page }) => {
+  const base = plainReply();
+  const scenario = { ...base, initial: { ...base.initial, needsPerson: true, tasks: [], questions: [permission(1, 'Run git step 1'), permission(2, 'Run git step 2')], entries: [{ Role: 'user' as const, Text: 'Port the fix' }] } };
+  const engine = await installMockEngine(page, scenario);
+  await seed(page, [tab('a', 'Active tab', { sessionFile: 'a.jsonl' }), tab('b', 'Port fix', { kind: 'task', sessionFile: 'b.jsonl', route: { taskId: '3', back: [''], forward: [] } })]);
+  await page.goto('/');
+  await expect(page.getByRole('tab', { name: 'Port fix', exact: true })).toBeVisible();
+  scenario.fail = { answer: 500 };
+  await page.getByRole('tab', { name: 'Port fix', exact: true }).hover();
+  const preview = card(page, 'Port fix');
+  await preview.getByRole('button', { name: 'Allow all', exact: true }).click();
+  await expect(preview.getByRole('alert')).toContainText('Not sent.');
+  await expect(preview).toContainText('Allow 2 actions?');
+  await expect(preview.getByRole('button', { name: 'Allow all', exact: true })).toBeEnabled();
+  await expect(preview.getByRole('button', { name: 'Review', exact: true })).toBeEnabled();
+  scenario.fail = undefined;
+  await preview.getByRole('button', { name: 'Allow all', exact: true }).click();
+  await expect(preview).toHaveCount(0);
+  expect(engine.calls.filter(call => call.path.endsWith('/answer')).length).toBeGreaterThanOrEqual(2);
+});
+
+test('file, diff and terminal cards read the target their tab carries, and it survives a reload', async ({ page }) => {
+  const base = plainReply();
+  await installMockEngine(page, {
+    ...base,
+    files: { 'internal/parse/lexer.go': { mime: 'text/plain', dataBase64: Buffer.from('package parse\n\nimport "io"\nvar a\n').toString('base64') } },
+    terminals: [{ id: 'job-1', command: 'nightly-bench', title: 'nightly-bench', output: 'goos: darwin\r\nok codeaf/parse 4.2s\r\n' }],
+  });
+  const target = { sessionId: 'mock-1' };
+  await seed(page, [tab('a', 'Active tab'), tab('f', 'lexer.go', { kind: 'file', target: { ...target, path: 'internal/parse/lexer.go' } }), tab('t', 'bench', { kind: 'terminal', target: { ...target, terminalId: 'job-1' } })]);
+  await page.goto('/');
+  for (const reload of [false, true]) {
+    if (reload) await page.reload();
+    await page.getByRole('tab', { name: 'lexer.go', exact: true }).hover();
+    await expect(card(page, 'lexer.go')).toContainText('package parse');
+    await expect(card(page, 'lexer.go')).toContainText('lines');
+    await page.getByRole('tab', { name: 'bench', exact: true }).hover();
+    await expect(card(page, 'bench')).toContainText('ok codeaf/parse 4.2s');
+    await page.mouse.move(0, 0);
+  }
 });

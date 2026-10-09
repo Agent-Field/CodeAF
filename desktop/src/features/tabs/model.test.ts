@@ -343,3 +343,12 @@ test('initialWorkspace is one empty conversation', () => {
   assert.equal(s.tabs[0].kind, 'conversation');
   assert.equal(s.activeId, s.tabs[0].id);
 });
+
+test('a pane target survives a reload; unknown or non-string fields are dropped', () => {
+  const tabs = [{ id: 'f', title: 'parse.go', kind: 'file', draft: '', pinned: false, target: { path: 'internal/parse.go', sessionId: 's1', extra: 1, url: 5 } }, { id: 'g', title: 'g', kind: 'file', draft: '', pinned: false, target: ['x'] }];
+  withStorage({ tabs, groups: [], closed: [], activeId: 'f', nextNumber: 3, recentIds: ['f', 'g'] }, () => {
+    const s = readWorkspace();
+    assert.deepEqual(s.tabs[0].target, { sessionId: 's1', path: 'internal/parse.go' });
+    assert.equal(s.tabs[1].target, undefined);
+  });
+});

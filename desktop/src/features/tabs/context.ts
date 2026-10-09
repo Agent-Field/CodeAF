@@ -1,5 +1,6 @@
 import type { Dispatch } from 'react';
 import type { TabSummary } from '../conversation/tabSummary';
+import type { PreviewStore } from './preview/previewStore';
 import type { WorkspaceAction, WorkspaceState } from './model';
 
 /** What every host (menu, preview, drag, keys) may read and do. Built once by Workspace and passed down; hosts never reach for globals. */
@@ -17,4 +18,6 @@ export type TabsApi = {
   receiveSummary: (paneId: string, summary: TabSummary) => void;
   /** True while the switcher, overview or rename dialog is open, so hover cards stay shut. */
   overlayOpen: boolean;
+  /** The hover-preview state of this workspace: which card is open and whether the next one swaps in. */
+  previews: PreviewStore;
 };

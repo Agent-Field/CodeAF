@@ -30,6 +30,16 @@ export function changedLines(diff: Pick<EngineFileDiff, 'hunks'>, count = 2): Fi
 /** What the card asks. A set of permissions reads as the tray's batch card does ("Allow 3 actions?"). */
 export type Ask = { text: string; /** True when every question is a permission, so "Allow all" is honest. */ permissions: boolean; count: number };
 
+/**
+ * The questions a card is entitled to show. A conversation owns every open question; a task tab owns only those that
+ * name its task in `blocking.tasks` (the engine's own link, as the expanded tasks view reads it), so the conversation's
+ * other questions never appear on, or get answered from, a task's card.
+ */
+export function questionsFor(summary: Pick<TabSummary, 'questions'> | undefined, taskId?: string): EngineQuestion[] {
+  const questions = summary?.questions ?? [];
+  return taskId === undefined ? questions : questions.filter(question => question.blocking?.tasks?.includes(taskId));
+}
+
 export function askOf(questions: readonly EngineQuestion[] | undefined): Ask | undefined {
   if (!questions?.length) return undefined;
   const permissions = questions.every(question => formOf(question) === 'permission');
@@ -43,12 +53,14 @@ export type CardState = { lead?: 'amber' | 'danger'; dot?: 'accent'; words?: str
 /** The header state of a conversation or task card: needs you, failed, "4 running", working, or nothing. */
 export function stateOf(summary: TabSummary | undefined, taskId?: string): CardState {
   if (!summary) return {};
-  if (summary.mark === 'waiting') return { lead: 'amber', words: 'Needs you' };
-  if (summary.mark === 'failed') return { lead: 'danger', words: 'Failed' };
   if (taskId) {
+    // A task's own state: it needs you only when a question names it, and the conversation's failure is not its failure.
+    if (questionsFor(summary, taskId).length) return { lead: 'amber', words: 'Needs you' };
     const word = summary.taskState?.[taskId];
     return word ? { words: word } : {};
   }
+  if (summary.mark === 'waiting') return { lead: 'amber', words: 'Needs you' };
+  if (summary.mark === 'failed') return { lead: 'danger', words: 'Failed' };
   if (summary.running) return { dot: 'accent', words: `${summary.running} running` };
   if (summary.mark === 'working') return { dot: 'accent', words: 'Working' };
   return {};

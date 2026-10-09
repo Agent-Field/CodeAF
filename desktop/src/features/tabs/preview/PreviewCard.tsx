@@ -53,6 +53,11 @@ export function PreviewText({ children }: { children: ReactNode }) {
   return <span className="preview-text">{children}</span>;
 }
 
+/** Why an answer did not go through. It sits above the buttons, which stay, so the person can try again or review. */
+export function PreviewError({ children }: { children: ReactNode }) {
+  return <span className="preview-error" role="alert">{children}</span>;
+}
+
 /** The mono field: the last output lines of a terminal, the head of a diff. `--term` ground, radius 8. */
 export function PreviewField({ lines, label }: { lines: readonly FieldLine[]; label: string }) {
   if (lines.length === 0) return null;
