@@ -225,6 +225,12 @@ func (b *Bridge) moveConversations(view RoleView) {
 	}
 	b.mu.Unlock()
 	for _, s := range open {
+		// A chat whose places set its model keeps it: the place is the nearer
+		// default, and moving it here would make the settings page's change
+		// look like the person's own pick in that chat (using.go).
+		if b.placeHoldsModel(s) {
+			continue
+		}
 		if door, ok := s.conn.Agent.(interface{ SetModel(string) }); ok {
 			door.SetModel(view.Model)
 		}

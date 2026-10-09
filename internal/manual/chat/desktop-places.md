@@ -50,8 +50,47 @@ differently — the default model, the permissions, or instructions that contrad
   blended. The model is told: when two places' instructions contradict, follow what their
   nearest shared place above says; when none does, ask you once.
 
-Limit: the decided model and permissions are shown in the Using list. The conversation does
-not switch its running model or approvals because a place was added.
+What a decided model or permissions setting then does to a conversation — and when it does
+nothing — is the next two sections.
+
+## A place's default model and permissions — a new chat starts on them
+
+A place can set a **default model** and **permissions** (what runs without asking: `ask`,
+`guardian`, `allow`, `deny`, or `auto` for "my settings decide"). Anything else is refused
+when the place is saved.
+
+- **New conversations.** A conversation started in a place, or filed before you said anything in it, takes
+  the decided values when its **first turn opens**. A line says so:
+  `Release set this conversation's model to deepseek/deepseek-v4.1-flash.` or
+  `Release set what runs without asking in this conversation to ask.`
+- **Later changes.** If the place's setting changes, a conversation still following it moves at the
+  **start of its next turn** — never in the middle of a reply.
+- **Your pick wins.** Choosing a model or permissions inside the conversation makes that field
+  yours; no place changes it again. Changing the default model in Settings does not move a
+  conversation whose place set its model.
+- **A conversation that was already running** when it was filed keeps its model and permissions.
+  The Using list says `This conversation was already running when a place gave it a model,
+  so it keeps the one it has.` Taking the place's value there is your own pick.
+- A conflict nobody decides applies **nothing** until you pick (see above).
+
+Places exist only in the desktop app. A conversation opened in the terminal reads no
+places, and the Using list says its settings are not applied to it.
+
+## Why didn't the place's permissions apply — a place never loosens them by itself
+
+A place's permissions are applied only when they let **no more** run without asking than
+the conversation does now (`deny` < `ask` < `guardian` < `allow`; `auto` counts as whatever your
+settings stand at). A place that would loosen them — say `allow` on a conversation that asks — is
+**held**: the Using list says `This would let more run without asking than this
+conversation does now, so it waits for you to choose it.` Nothing changes until you choose
+it yourself, and then it is your pick.
+
+This is on purpose: a conversation can be filed by the desktop's suggestions as well as by you, and
+filing must never be a way to switch approvals off. Tighter permissions are applied, because
+being asked more is never a surprise anybody pays for.
+
+A word codeaf does not have, or a conversation with no control over approvals, is shown as not
+applied, with the reason; it is never pretended.
 
 ## Some sources were left out — the source budget and the instruction budget
 
@@ -118,3 +157,6 @@ A place's folders are **not** attached folders. Attached folders are the ones yo
 to this one conversation; a place's folders arrive because the conversation is filed under
 the place, and are credited to it. Removing the conversation from the place removes them;
 it never touches what you attached.
+
+A conversation **started in a place** opens in the desktop app's own working folder, not in one of
+the place's folders: a place can list several folders, and picking one would be a guess.
