@@ -76,17 +76,21 @@ export type Archived = { tabs: Tab[] };
  * Remembers when each tab was last live and, once at launch, archives the ones idle for 12 hours (design 4d).
  * Nothing is deleted: an archived conversation stays in History. Returns what was archived, for the toast.
  */
-export function useAutoArchive(state: WorkspaceState, dispatch: Dispatch<WorkspaceAction>, summaries: Readonly<Record<string, TabSummary>>, now: () => number = Date.now): [Archived | undefined, () => void] {
+export function useAutoArchive(state: WorkspaceState, dispatch: Dispatch<WorkspaceAction>, summaries: Readonly<Record<string, TabSummary>>, now: () => number = Date.now, ready = true): [Archived | undefined, () => void] {
   const [archived, setArchived] = useState<Archived>();
   const dispatched = useRef(false);
+  const owned = useRef(new Set<string>());
   const store = useRef<Activity | undefined>(undefined);
   if (!store.current) store.current = readActivity();
 
   // At launch: judge the clock the last run left behind, before this run touches it.
   useEffect(() => {
-    if (dispatched.current) return;
+    if (!ready || dispatched.current) return;
     dispatched.current = true;
-    const seen = store.current ?? {};
+    // A canonical read may arrive after mount; judge the saved clock only then.
+    const seen = readActivity();
+    store.current = seen;
+    for (const tab of state.tabs) if (holds(tab, summaries[tab.id])) seen[tab.id] = { at: now(), hold: true };
     const candidates = state.tabs.map(tab => ({ id: tab.id, kind: tab.kind, pinned: tab.pinned, hasSession: !!tab.sessionFile && !tab.split }));
     const ids = idleTabs(candidates, state.activeId, seen, now());
     if (!ids.length) return;
@@ -94,15 +98,19 @@ export function useAutoArchive(state: WorkspaceState, dispatch: Dispatch<Workspa
     dispatch({ type: 'history-archive', ids });
     setArchived({ tabs: gone });
     void archiveHistory([...new Set(gone.map(tab => historyIdOf(tab.sessionFile ?? '')))], true).catch(() => undefined);
-  }, []);
+  }, [ready, state.tabs, state.activeId, summaries]);
 
   // While running: the active tab, and any tab whose engine state moved, is live now.
   useEffect(() => {
-    const activity = store.current ?? {};
+    if (!ready) return;
+    // Other Place windows share this clock. Preserve their records and only
+    // retire IDs this hydrated workspace has actually owned.
+    const activity = readActivity();
     const stamp = now();
     let changed = false;
     const live = new Set(state.tabs.map(tab => tab.id));
-    for (const id of Object.keys(activity)) if (!live.has(id)) { delete activity[id]; changed = true; }
+    for (const id of owned.current) if (!live.has(id)) { delete activity[id]; owned.current.delete(id); changed = true; }
+    for (const id of live) owned.current.add(id);
     for (const tab of state.tabs) {
       const summary = summaries[tab.id];
       const hold = holds(tab, summary);
@@ -119,7 +127,7 @@ export function useAutoArchive(state: WorkspaceState, dispatch: Dispatch<Workspa
     }
     store.current = activity;
     if (changed) writeActivity(activity);
-  }, [state.tabs, state.activeId, summaries]);
+  }, [ready, state.tabs, state.activeId, summaries]);
 
   return [archived, () => setArchived(undefined)];
 }
