@@ -93,14 +93,14 @@ func TestUnauthorizedCannotOpenOrSend(t *testing.T) {
 		t.Fatalf("status=%d opens=%d", w.Code, opens.Load())
 	}
 }
-func TestFixedModelAndPersistentLaunchRequired(t *testing.T) {
+func TestSingleModelAndPersistentLaunchRequired(t *testing.T) {
 	for _, kind := range []string{"model", "roles", "persistence"} {
 		t.Run(kind, func(t *testing.T) {
 			closed := false
 			welcome := remote.Welcome{Model: Model, Persistent: true, Launch: &remote.LaunchShape{OneModel: true}}
 			switch kind {
 			case "model":
-				welcome.Model = "another-model"
+				welcome.Model = ""
 			case "roles":
 				welcome.Launch.OneModel = false
 			case "persistence":
@@ -157,12 +157,12 @@ func TestViewDisconnectDoesNotStopTurnAndReplaySurvives(t *testing.T) {
 	}
 	t.Fatal("turn did not settle")
 }
-func TestChangedModelRefusesSendWithoutFallback(t *testing.T) {
+func TestAChosenConversationModelDoesNotBlockTheNextSend(t *testing.T) {
 	b, a, id := fixture(t)
 	a.model = "different"
 	w := request(b, "POST", "/api/engine/sessions/"+id+"/turn", `{"text":"hello"}`)
-	if w.Code != 409 || a.submitted.Load() != 0 {
-		t.Fatal("changed model submitted")
+	if w.Code != 200 {
+		t.Fatalf("a chosen model refused a send: %d %s", w.Code, w.Body.String())
 	}
 }
 func TestNativePreflightNeverCreatesSession(t *testing.T) {

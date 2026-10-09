@@ -28,6 +28,7 @@ export type PlanTaskPage = {
  Steps?: readonly PlanStep[];
 };
 
+/** What every model role starts on; the model is a setting now, so nothing checks a snapshot against it. */
 export const ENGINE_MODEL = 'deepseek/deepseek-v4.1-flash';
 export type EngineQuestionBlock = { kind: string; title?: string; body?: string; rows?: string[][]; path?: string };
 export type EngineQuestion = {
@@ -78,7 +79,7 @@ async function endpoint(path: string): Promise<{ url: string; headers: Headers }
  const headers = new Headers({ Accept: 'application/json' });
  if (!isTauri()) return { url: `/api/engine${path}`, headers };
  const connection = await invoke<Connection>('engine_connection');
- if (connection.model !== ENGINE_MODEL) throw new EngineError('The engine is not using the required DeepSeek v4.1 Flash model.');
+ if (typeof connection.model !== 'string' || !connection.model) throw new EngineError('The local engine announced no model.');
  const base = new URL(connection.url);
  if (base.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(base.hostname)) throw new EngineError('The local engine announced an invalid connection.');
  headers.set('Authorization', `Bearer ${connection.token}`);
@@ -116,7 +117,7 @@ async function fetchEngine(path: string, init?: RequestInit, stream = false): Pr
 function snapshotFrom(value: unknown): EngineSnapshot {
  if (!value || typeof value !== 'object') throw new EngineError('The engine returned an invalid session.');
  const s = value as EngineSnapshot;
- if (s.model !== ENGINE_MODEL) throw new EngineError('The conversation is not using the required DeepSeek v4.1 Flash model.');
+ if (typeof s.model !== 'string' || !s.model) throw new EngineError('The engine returned a conversation without a model.');
  if (typeof s.id !== 'string' || !s.id || typeof s.sessionFile !== 'string' || typeof s.workspace !== 'string' || typeof s.running !== 'boolean' || typeof s.needsPerson !== 'boolean' || typeof s.persistent !== 'boolean' || typeof s.title !== 'string' || !Number.isSafeInteger(s.seq) || s.seq < 0 || (s.entries !== null && !Array.isArray(s.entries)) || (s.tasks !== null && !Array.isArray(s.tasks)) || !s.usage || typeof s.usage !== 'object') throw new EngineError('The engine returned an invalid session.');
  if (!s.persistent || !s.sessionFile) throw new EngineError('The engine session is not persistent; it cannot safely survive closing this tab.');
  const entries = s.entries ?? [];
@@ -399,4 +400,28 @@ export function terminalStateWords(info: TerminalInfo, now = Date.now()): string
   const ended = Date.parse(info.endedAt ?? '');
   const ago = Number.isFinite(ended) ? ` · ${span(now - ended)} ago` : '';
   return info.state === 'closed' ? `closed${ago}` : `exit ${info.exitCode ?? 0}${ago}`;
+}
+/** One thing the person picks a model for, as the engine names and describes it. */
+export type ModelRole = { id: string; name: string; controls: string; model: string; default: string; effort?: string; chosen: boolean };
+export type ModelRoles = { default: string; roles: ModelRole[] };
+/** One model the provider offers; `efforts` lists the effort words it accepts, when it has any. */
+export type CatalogModel = { id: string; name: string; contextLength?: number; efforts?: string[] };
+/** `fallback` means the provider's list could not be read and only the models in use are offered. */
+export type ModelCatalog = { models: CatalogModel[]; fallback?: boolean };
+/** The word for the role that answers what the person types; the composer's picker drives it. */
+export const CONVERSATION_ROLE = 'conversation';
+export async function readModelRoles(): Promise<ModelRoles> {
+ const view = await (await fetchEngine('/models/roles')).json() as ModelRoles;
+ if (!view || !Array.isArray(view.roles)) throw new EngineError('The engine returned invalid model roles.');
+ return view;
+}
+export async function readModelCatalog(): Promise<ModelCatalog> {
+ const view = await (await fetchEngine('/models')).json() as ModelCatalog;
+ if (!view || !Array.isArray(view.models)) throw new EngineError('The engine returned an invalid model list.');
+ return view;
+}
+/** Sets a role's model (and effort). An empty model puts the role back on the default. The change applies to the role's next call. */
+export async function setModelRole(role: string, choice: { model: string; effort?: string }): Promise<ModelRole> {
+ const response = await fetchEngine(`/models/roles/${encodeURIComponent(role)}`, { method: 'PUT', body: JSON.stringify({ model: choice.model, effort: choice.effort ?? '' }) });
+ return await response.json() as ModelRole;
 }

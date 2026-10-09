@@ -832,13 +832,38 @@ reaches a conversation when you next open it or switch models;
 `OPENROUTER_API_KEY` still wins. `your key was not accepted for this model` means
 the provider refused the key; doctor helps find the source to replace.
 
+## Choosing the model for each kind of job in the desktop
+
+In the desktop app you can change which model does each kind of job, and every
+job starts on `deepseek/deepseek-v4.1-flash`. The jobs are named in plain words:
+
+- **Conversation** answers what you type and decides when to start a task. It is
+  also the model picker in the message box, so a swap there changes this job.
+- **Tasks** does the steps of a task.
+- **Planning** plans a task and rewrites the plan as steps finish.
+- **Checking** decides whether finished-looking work is really finished.
+- **Titles and summaries** writes the short names for chats, tasks and jobs.
+- **Memory** reads each turn for things worth remembering.
+- **Turn routing** judges whether a message should become a task.
+- **Safety checks** reads one tool call and says whether it is safe to run.
+
+A choice is saved in your profile, not in the window, and it applies to the next
+time that job runs: an open chat sends its next message on the new Conversation
+model, and a task that is already running keeps the models it started with. The
+list of models comes from the provider; when it cannot be reached the desktop
+offers only the models already in use. Some jobs also take an effort level
+(`low`, `medium` or `high`). Reading images and making pictures are not on the
+list, because they need a model that can see or draw. The terminal keeps its own
+`/model` and `/crew` settings.
+
 ## Desktop connection and the terminal
 
 The desktop preview can connect to the same persistent conversation engine as the
 terminal. Its local transport is `codeaf desktop-bridge --workspace path`; it
-listens on loopback only and requires a process-local bearer credential. This
-preview fixes every text model role to `deepseek/deepseek-v4.1-flash`, with no
-fallback model. Provider keys remain in the engine's existing configuration.
+listens on loopback only and requires a process-local bearer credential. Every
+model role starts on `deepseek/deepseek-v4.1-flash`, and the person can change
+the model for each role in the desktop (see the next section). Provider keys
+remain in the engine's existing configuration.
 
 Opening another desktop tab creates another conversation. Reopening its stored
 session file attaches to the existing conversation; closing a tab detaches its

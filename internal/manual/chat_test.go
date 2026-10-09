@@ -2587,6 +2587,7 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"does a watch keep running with the app closed, is there a helper", "keeping-an-eye"},
 		{"my key is missing or disconnected will my reminder retry", "keeping-an-eye"},
 		{"will a once watch pop a desktop notification or toast", "keeping-an-eye"},
+		{"in the desktop app can I choose which model writes titles or does the tasks", "starting-codeaf"},
 		{"what happens to a check missed while my computer was off", "keeping-an-eye"},
 		// The wave that gave the ambient side a reach: an order that governs one
 		// chat, one project, or everything. Each of these is what somebody types

@@ -153,6 +153,7 @@ type Bridge struct {
 	sessions  map[string]*conversation
 	closeOnce sync.Once
 	icons     *faviconCache
+	models    *Models
 }
 
 func New(token string, open Open) *Bridge {
@@ -471,7 +472,7 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if native {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 	}
 	if r.Method == http.MethodOptions && native {
 		w.WriteHeader(204)
@@ -484,6 +485,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/engine")
 	if path == "/health" && r.Method == http.MethodGet {
 		write(w, map[string]any{"status": "ready", "model": Model})
+		return
+	}
+	if b.modelRoutes(w, r, path) {
 		return
 	}
 	if path == "/sessions" && r.Method == http.MethodPost {
@@ -506,9 +510,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, 502, err.Error())
 			return
 		}
-		if conn.Welcome.Model != Model || conn.Welcome.Launch == nil || !conn.Welcome.Launch.OneModel || !conn.Welcome.Persistent {
+		if strings.TrimSpace(conn.Welcome.Model) == "" || conn.Welcome.Launch == nil || !conn.Welcome.Launch.OneModel || !conn.Welcome.Persistent {
 			conn.Close()
-			fail(w, 409, "this conversation must use the fixed model and persistent engine; open a new conversation")
+			fail(w, 409, "this conversation must use the single-model persistent engine; open a new conversation")
 			return
 		}
 		id, err := Token()
@@ -668,10 +672,6 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if attachments.any() && ask.Mode != "" && ask.Mode != "submit" {
 			fail(w, 409, "files can only be sent with a new message")
-			return
-		}
-		if s.conn.Agent.Model() != Model {
-			fail(w, 409, "conversation model changed; reconnect with the fixed model")
 			return
 		}
 		if s.conn.Take != nil {
