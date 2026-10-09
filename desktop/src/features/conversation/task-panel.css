@@ -34,7 +34,6 @@
 .task-panel-fold-count { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 
 /* The task view's header mark still reads this tone. */
-.state-mark[data-tone="attention"] { color: var(--attention); }
 
 /* The specimen needs a pane to stand in. */
 .specimen-panel { display: flex; height: calc(var(--task-panel-width) * 2); }

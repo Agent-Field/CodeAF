@@ -54,12 +54,6 @@
 .tasks-table-age { color: var(--ink-3); font-size: var(--type-label-size); font-variant-numeric: tabular-nums; text-align: end; }
 
 /* Still marks: a dot per state, a ring while queued; waiting-on-you reads in amber, failure in red. */
-.tasks-table-mark { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-done); }
-.tasks-table-mark[data-kind="running"] { background: var(--mark-running); }
-.tasks-table-mark[data-kind="yourcall"] { background: var(--mark-waiting); }
-.tasks-table-mark[data-kind="incomplete"] { background: var(--mark-failed); }
-.tasks-table-mark[data-kind="stopped"], .tasks-table-mark[data-kind="interrupted"] { background: var(--mark-stopped); }
-.tasks-table-mark[data-kind="queued"] { background: transparent; box-shadow: inset 0 0 0 var(--mark-ring-width) var(--mark-queued); }
 
 /* Waiting work steps back: the title drops to the second ink. */
 .tasks-table-row[data-kind="queued"] { color: var(--ink-3); }

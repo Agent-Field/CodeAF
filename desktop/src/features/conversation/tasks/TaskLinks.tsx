@@ -1,5 +1,5 @@
 import { Button } from '../../../components/ui';
-import { StateMark } from '../StateMark';
+import { TaskMark } from './TaskMark';
 import { rowFlags } from '../taskState';
 import type { TaskLink } from '../taskPageTurn';
 import './task-links.css';
@@ -20,7 +20,7 @@ export function TaskLinks({ label, links, onOpenTask }: Props) {
         {links.map(({ row, depth }) => (
           <li key={row.ID} className="task-links-item" data-depth={Math.min(depth, 3)}>
             <Button className="task-links-row" onClick={(event) => onOpenTask(row.ID, event.metaKey || event.ctrlKey)}>
-              <StateMark status={row.Status} {...rowFlags(row)} />
+              <TaskMark status={row.Status} {...rowFlags(row)} />
               <span className="task-links-title">{row.Title}</span>
             </Button>
           </li>

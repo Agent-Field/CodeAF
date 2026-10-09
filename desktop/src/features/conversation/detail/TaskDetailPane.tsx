@@ -3,6 +3,7 @@ import type { EngineTaskRow } from '../../chat/engine-client';
 import { rowFlags, rowKind, taskMark } from '../taskState';
 import { QuestionCardV2, type QuestionCardProps } from '../tray/QuestionCardV2';
 import { factsOf, progressText } from './taskDetail';
+import { TaskMark } from '../tasks/TaskMark';
 import './task-detail.css';
 
 /** The pending question and the handlers its card needs; the tray owns the card itself. */
@@ -25,7 +26,7 @@ function StateLine({ row, now }: Pick<TaskDetailPaneProps, 'row' | 'now'>) {
   const progress = progressText(row, kind, now);
   return (
     <span className="task-detail-state">
-      <span className="task-detail-dot" data-kind={kind} aria-hidden="true" />
+      <TaskMark status={row.Status} {...rowFlags(row)} />
       <span className="task-detail-state-word">{taskMark(row.Status, rowFlags(row)).label}</span>
       {progress && <span>{progress}</span>}
     </span>

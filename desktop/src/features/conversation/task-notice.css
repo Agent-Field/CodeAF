@@ -7,10 +7,6 @@
 .button.task-notice-row:hover { background: transparent; }
 .button.task-notice-row:focus-visible { outline: var(--focus-ring-width) solid var(--accent); outline-offset: calc(var(--focus-ring-width) * -1); }
 .task-notice-mark { display: grid; place-items: center; flex: none; width: var(--mark-box); height: var(--task-notice-mark-height); color: var(--ink-3); }
-.task-notice-mark[data-kind="running"] { color: var(--mark-running); }
-.task-notice-mark[data-kind="yourcall"] { color: var(--mark-waiting); }
-.task-notice-mark[data-kind="incomplete"] { color: var(--mark-incomplete); }
-.task-notice-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: currentColor; }
 .task-notice-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-half); }
 /* Constrained space: the title stays whole and wraps; the summary takes the rest of its line
    or, when less than 40% is left, a line of its own, where it ends in an ellipsis. */

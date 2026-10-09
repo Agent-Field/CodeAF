@@ -5,11 +5,6 @@
 .task-detail-title { margin: 0; color: var(--ink); font-size: var(--task-detail-title-size); font-weight: var(--type-title-weight); letter-spacing: var(--task-detail-title-tracking); line-height: var(--type-title-leading); overflow-wrap: anywhere; }
 .task-detail-state { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
 .task-detail-state-word { color: var(--ink-2); }
-.task-detail-dot { flex: none; width: var(--mark-dot); height: var(--mark-dot); box-sizing: border-box; border-radius: 50%; background: var(--ink-3); }
-.task-detail-dot[data-kind="running"] { background: var(--mark-running); }
-.task-detail-dot[data-kind="yourcall"] { background: var(--mark-waiting); }
-.task-detail-dot[data-kind="incomplete"] { background: var(--mark-failed); }
-.task-detail-dot[data-kind="queued"] { background: transparent; box-shadow: inset 0 0 0 var(--mark-ring-width) var(--mark-queued); }
 
 /* The tray's own card, set in the pane's quiet well; its form components keep their look. */
 .task-detail-question { border-radius: var(--radius-card); background: var(--canvas); }
