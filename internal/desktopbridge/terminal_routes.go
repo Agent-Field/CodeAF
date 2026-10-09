@@ -149,6 +149,11 @@ func (s *conversation) startTerminal(w http.ResponseWriter, r *http.Request, set
 		fail(w, 500, "cannot create terminal identity")
 		return
 	}
+	// A new terminal starts in this conversation's workspace: the place's folder
+	// when the chat was opened there, otherwise the folder the bridge was
+	// launched in. A terminal that is already running keeps the directory it
+	// was started with. Nothing here moves a live process, and the bridge
+	// process itself never changes directory.
 	t, err := startTerminal(id[:16], in.Title, in.Command, s.conn.Welcome.Workspace, in.Cols, in.Rows)
 	if err != nil {
 		fail(w, 409, err.Error())
