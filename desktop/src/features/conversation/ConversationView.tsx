@@ -3,7 +3,7 @@ import { useMediaQuery } from '../../design/useMediaQuery';
 import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
 import type { Tab } from '../tabs/model';
-import { goBack, goForward, navigate, rootRoute, toggleFlag, type TabView } from '../tabs/view-state';
+import { goBack, goForward, navigate, rootRoute, routeTask, TASKS_VIEW, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
 import type { OutgoingFile } from '../chat/engine-client';
 import { EngineAssetProvider } from './assets';
@@ -12,6 +12,7 @@ import type { SendMode } from './Composer';
 import { ConversationDock } from './ConversationDock';
 import { ConversationTranscript } from './ConversationTranscript';
 import { EngineNotice } from './EngineNotice';
+import { ExpandedTasks } from './ExpandedTasks';
 import { LatestPill, liveSince } from './LatestPill';
 import { summarize, type TabSummary } from './tabSummary';
 import { TaskPanel } from './TaskPanel';
@@ -61,6 +62,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const hasTasks = model.tasks.length > 0 || Boolean(model.planError);
   const panel = useTaskPanel(hasTasks, Boolean(tab.tasksClosed), onView);
   const setRoute = (next: typeof route) => onView({ route: next });
+  const taskId = routeTask(route);
+  const tasksView = route.taskId === TASKS_VIEW;
 
   useEffect(() => {
     if (snapshot) onSummary(summarize(snapshot, Boolean(failed?.text)));
@@ -117,8 +120,10 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
     holdRow(id);
     onView({ folded: { ...tab.folded, [id]: next } });
   };
-  const inTask = Boolean(route.taskId);
-  useTurnJump(scroller, !inTask);
+  const inTask = Boolean(taskId);
+  // Leaving the expanded view goes back the way the reader came, or to the conversation.
+  const closeTasksView = () => setRoute(route.back.length ? goBack(route) : navigate(route, undefined));
+  useTurnJump(scroller, !inTask && !tasksView);
   const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
   const { done, total } = taskCounts(model.tasks);
   const tasksToggle = hasTasks && !panel.shown ? { label: `Tasks · ${done}/${total}`, onClick: panel.open } : undefined;
@@ -130,14 +135,28 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   return (
     <EngineAssetProvider sessionId={sessionId} workspace={snapshot?.workspace ?? ''}>
       <div className="conversation-view">
-        <div className="conversation-main" data-empty={empty || undefined}>
+        {tasksView && (
+          <ExpandedTasks
+            sessionId={sessionId}
+            tasks={model.tasks}
+            questions={model.questions}
+            selectedId={tab.tasksSelected}
+            onSelect={(id) => onView({ tasksSelected: id })}
+            onClose={closeTasksView}
+            onOpenTask={openTask}
+            busyKey={conversation.busyKey}
+            onAnswer={conversation.answer}
+            onHold={conversation.hold}
+          />
+        )}
+        <div className="conversation-main" data-empty={empty || undefined} hidden={tasksView}>
           <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined}>
             <div ref={content} className="conversation-column">
               {greeting && <p className="conversation-greeting">{greeting}</p>}
-              {route.taskId ? (
+              {taskId ? (
                 <TaskRoute
                   sessionId={sessionId}
-                  taskId={route.taskId}
+                  taskId={taskId}
                   tasks={model.tasks}
                   rootLabel={label}
                   route={route}
@@ -185,14 +204,18 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             </div>
           )}
         </div>
-        {panel.shown && panel.sheet && <div className="task-panel-backdrop" aria-hidden="true" onClick={panel.close} />}
-        {panel.shown && (
+        {panel.shown && panel.sheet && !tasksView && <div className="task-panel-backdrop" aria-hidden="true" onClick={panel.close} />}
+        {panel.shown && !tasksView && (
           <TaskPanel
             tasks={model.tasks}
             planError={model.planError}
-            currentTaskId={route.taskId}
+            currentTaskId={taskId}
             onOpenTask={openTask}
             onClose={panel.close}
+            onExpand={() => {
+              if (panel.sheet) panel.close();
+              setRoute(navigate(route, TASKS_VIEW));
+            }}
             variant={panel.sheet ? 'sheet' : 'column'}
             onPause={control('pause')}
             onResume={control('resume')}
