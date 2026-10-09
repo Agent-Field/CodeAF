@@ -4,6 +4,7 @@ import type { EngineAnswer } from '../../chat/engine-client';
 import { answerFor, canPress, canSend, decideAnswer, initialDraft, submitAnswer, type Draft } from './answers';
 import { CardEvidence, CompareTable, type RenderImage } from './CardEvidence';
 import { CardFooter } from './CardFooter';
+import { ChoiceForm, wantsCards } from './ChoiceForm';
 import { deadlineAt } from './clock';
 import { formOf, hasWordsField, needsWords, type Option, type Question } from './form';
 import { BlankFields, CheckList, DialField, Declines, PairRows, WordsField, type FormProps } from './InputForms';
@@ -75,6 +76,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
   const sendForm = () => canSend(question, draft) && void send(submitAnswer(question, draft));
   const decline = (key: string) => press((question.options ?? []).find((option) => option.key === key)!);
   const clocked = deadlineAt(question) !== null;
+  const cards = wantsCards(question);
   const stopClock = () => clocked && !held && onHold();
 
   return (
@@ -96,6 +98,8 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
             <Declines question={question} locked={locked} onPress={decline} />
           </div>
         </>
+      ) : cards ? (
+        <ChoiceForm question={question} now={now} held={held} locked={locked} onChoose={press} onHold={onHold} renderImage={renderImage} />
       ) : (
         <OptionList question={question} locked={locked} onPress={press} renderImage={renderImage} />
       )}
@@ -136,6 +140,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
         held={held}
         locked={locked}
         canDecide={Boolean(decide)}
+        clock={!cards}
         onHold={onHold}
         onLater={onLater}
         onDecide={() => decide && void send(decide)}
