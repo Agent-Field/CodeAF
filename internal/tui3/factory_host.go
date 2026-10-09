@@ -103,7 +103,31 @@ type factoryHost struct {
 	// turn, or a run whose shaping turn should stream there
 	// ([app.factoryAfterManager]).
 	after *factoryAfter
+	// typing says the person is typing in the center's box, on the row
+	// typingAt names, and held is what they typed while the chat was not
+	// in front to take it (a reattach, a reopen, a focus change). ONCE THE
+	// PERSON TYPES IN THE BOX EVERY KEY IS THE BOX'S UNTIL `esc` (owner's
+	// run, 2026-10-09: `simplify` reached the chat as `simlify`, and the
+	// lost `p` fired the page's `shape steps`): a key that comes while the
+	// chat is away is held and handed to it when it is back, never dropped
+	// and never read as a page key ([app.factoryHoldKey]).
+	typing   bool
+	typingAt factoryTypingAt
+	held     []tea.Msg
+	// draft is the box's words as they stood when its chat was let go of
+	// under the person (a round ended), put back when the chat is opened
+	// again, so a reopen never eats what was typed.
+	draft string
 }
+
+// factoryTypingAt is the row the person typed into the center's box on: the
+// item and the left column's row.
+type factoryTypingAt struct{ id, row int }
+
+// factoryReplayMsg says the center's chat is back in front: the keys held
+// while it was away ([factoryHost.held]) go to it now, in order
+// ([app.factoryHostSettle]).
+type factoryReplayMsg struct{}
 
 // factoryAfter is one thing the page does once the manager's chat of item id
 // is in front, or once it is clear it will not be (the open refused, or the
@@ -397,6 +421,9 @@ func (a *app) factoryHostSettle() tea.Cmd {
 	if r, ok := a.factoryPageRowAt(it); ok && a.factoryCanHost() {
 		want = a.factoryChatOf(it, r)
 	}
+	if h.typing && !a.factoryTypingHere() {
+		a.factoryStopTyping()
+	}
 	if want != h.want {
 		if h.want != "" {
 			h.focus = false
@@ -421,6 +448,9 @@ func (a *app) factoryHostSettle() tea.Cmd {
 			// running step whose round has closed. It is let go of and the
 			// transcript asked for again, which opens it from the journal,
 			// box and all.
+			if a.factoryTypingHere() {
+				h.draft = string(a.input.value)
+			}
 			if back, ok := a.leaveFront(factoryLetGoOff, false); ok {
 				delete(h.opened, h.wantKey)
 				h.key, h.why, h.asked = "", "", want
@@ -435,6 +465,18 @@ func (a *app) factoryHostSettle() tea.Cmd {
 		}
 		if h.focus {
 			h.focus, a.fp.box = false, true
+		}
+		// BACK IN FRONT WHILE THE PERSON WAS TYPING: the box has the keys
+		// again, and what they typed meanwhile goes to it.
+		if a.factoryTypingHere() {
+			a.fp.box = true
+			if h.draft != "" && len(a.input.value) == 0 {
+				a.input.setText(h.draft)
+			}
+			h.draft = ""
+			if len(h.held) > 0 {
+				return tea.Batch(let, func() tea.Msg { return factoryReplayMsg{} })
+			}
 		}
 		return let
 	}
@@ -791,8 +833,14 @@ func (a *app) factoryHostFrame() ([]string, int, int, bool) {
 // [app.route], and answers false at once on every other place, with an
 // overlay of the page up, and while a message is already being handed on.
 func (a *app) factoryRoute(msg tea.Msg) (tea.Cmd, bool) {
-	if a.fp.host.forwarding || !a.factoryHosting() || a.mapShowing || a.bar.on {
+	if _, ok := msg.(factoryReplayMsg); ok {
+		return a.factoryReplay(), true
+	}
+	if a.fp.host.forwarding || a.mapShowing || a.bar.on {
 		return nil, false
+	}
+	if !a.factoryHosting() {
+		return a.factoryHoldKey(msg)
 	}
 	switch m := msg.(type) {
 	case tea.KeyPressMsg:
@@ -818,6 +866,12 @@ func (a *app) factoryRoute(msg tea.Msg) (tea.Cmd, bool) {
 // back to the page (a running turn is paused from the bar, not from the
 // box); with the keys walking the page, the page has them.
 func (a *app) factoryRouteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	h := &a.fp.host
+	// THE BOX THE PERSON WAS TYPING IN TAKES THE KEYS BACK the moment its
+	// chat is in front again, whatever a reattach did to the focus.
+	if !a.fp.box && a.factoryTypingHere() {
+		a.fp.box = true
+	}
 	if !a.fp.box {
 		return nil, false
 	}
@@ -826,10 +880,86 @@ func (a *app) factoryRouteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return nil, false
 	case "esc", "tab", "shift+tab":
 		a.fp.box = false
+		a.factoryStopTyping()
 		a.touch()
 		return nil, true
 	}
-	return a.factoryForward(msg), true
+	if it, ok := a.factoryCursorItem(); ok {
+		h.typing, h.typingAt = true, factoryTypingAt{id: it.ID, row: a.fp.stage}
+	}
+	// Keys held before this one go first, in order.
+	held := a.factoryReplay()
+	return tea.Batch(held, a.factoryForward(msg)), true
+}
+
+// factoryTypingHere says the person was typing in the center's box on the
+// row the page stands on now.
+func (a *app) factoryTypingHere() bool {
+	h := &a.fp.host
+	if !h.typing || !a.fp.open || !a.at(pageFactory) {
+		return false
+	}
+	it, ok := a.factoryCursorItem()
+	return ok && h.typingAt == factoryTypingAt{id: it.ID, row: a.fp.stage}
+}
+
+// factoryStopTyping lets go of the box: the person gave the keys back, or
+// left the row or the page. Keys still held are dropped with it only when
+// nothing will take them.
+func (a *app) factoryStopTyping() {
+	h := &a.fp.host
+	h.typing, h.typingAt, h.held, h.draft = false, factoryTypingAt{}, nil, ""
+}
+
+// factoryHoldKey is a message while the center's chat is NOT in front: when
+// the person was typing in its box on this row, a key or a paste is held for
+// the chat ([factoryHost.held]) rather than read as a page key, and `esc`
+// gives the keys back to the page, dropping what was held. ctrl+c is never
+// held. Every other message, and every key when nobody was typing, is the
+// page's.
+func (a *app) factoryHoldKey(msg tea.Msg) (tea.Cmd, bool) {
+	if !a.factoryTypingHere() {
+		return nil, false
+	}
+	h := &a.fp.host
+	switch m := msg.(type) {
+	case tea.KeyPressMsg:
+		switch m.String() {
+		case "ctrl+c":
+			return nil, false
+		case "esc", "tab", "shift+tab":
+			a.fp.box = false
+			a.factoryStopTyping()
+			a.touch()
+			return nil, true
+		}
+		h.held = append(h.held, m)
+		return nil, true
+	case tea.PasteMsg:
+		h.held = append(h.held, m)
+		return nil, true
+	}
+	return nil, false
+}
+
+// factoryReplay hands the held keys to the center's chat in order, when it
+// is in front and the person was typing on this row; otherwise they stay
+// held. There is ONE QUEUE, so a key that arrives before the replay does
+// never jumps ahead of the keys held before it.
+func (a *app) factoryReplay() tea.Cmd {
+	h := &a.fp.host
+	if len(h.held) == 0 || !a.factoryHosting() || !a.factoryTypingHere() {
+		return nil
+	}
+	held := h.held
+	h.held = nil
+	a.fp.box = true
+	var cmds []tea.Cmd
+	for _, m := range held {
+		cmds = append(cmds, a.factoryForward(m))
+	}
+	a.touch()
+	return tea.Batch(cmds...)
 }
 
 // factoryRouteMouse is a pointer event while the center hosts a chat: over
@@ -839,8 +969,9 @@ func (a *app) factoryRouteKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 func (a *app) factoryRouteMouse(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	g := &a.fp.geo
 	if m.Y < g.centerY || m.X < g.centerX {
-		if _, click := msg.(tea.MouseClickMsg); click && a.fp.box {
+		if _, click := msg.(tea.MouseClickMsg); click && (a.fp.box || a.fp.host.typing) {
 			a.fp.box = false
+			a.factoryStopTyping()
 			a.touch()
 		}
 		return nil, false

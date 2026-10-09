@@ -633,6 +633,11 @@ the keys back. An item with no conversation yet asks for one first; while it ope
 the keys says `⠋ opening #12's conversation…`. On the issue row the bottom line says
 `enter chat`, on the manager `enter talk`.
 
+Once you type in that box, every key is the chat's until `esc` (or `tab`, or a click outside
+the chat): page letters such as `p` never fire while you type. If the chat is opened again under
+you (a step's round ended), what you typed stays in the box and the keys you pressed meanwhile
+land in it, in order, when it is back.
+
 From the floor, `T` opens the item's conversation as a chat of its own instead, and the first
 `esc` on its empty box comes back to the floor (see chat about an item). So does `enter` on the
 page when the window is under 72 columns, too narrow to keep the page beside the chat.
