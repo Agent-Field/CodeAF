@@ -144,3 +144,46 @@ func TestRunEditLineSaysWhoOnce(t *testing.T) {
 		t.Fatal("no lines is a line")
 	}
 }
+
+// A DOOR LENT TO THE SHAPING TURN answers that turn's `factory_run` and no
+// other: the next turn, and a conversation between turns, get the floor's.
+func TestFactoryRunLentDoorIsTheTurnsAlone(t *testing.T) {
+	floor := &fakeRunDoor{lines: []string{"manager set review: by the floor"}}
+	lent := &fakeRunDoor{lines: []string{"manager set review: collected"}}
+	a := &Agent{config: Config{FactoryRun: floor, SessionFile: "/tmp/manager/transcript.jsonl"}}
+	a.running, a.teamTurnSerial = true, 7
+	turnRunDoors.Store(a, turnRunDoor{door: lent, serial: 7})
+	t.Cleanup(func() { turnRunDoors.Delete(a) })
+	if out, _ := runToolCall(t, a, `{"set":[{"stage":"review","ask":"x"}]}`); out != "manager set review: collected" {
+		t.Fatalf("the lent turn answered %q", out)
+	}
+	a.teamTurnSerial = 8
+	if out, _ := runToolCall(t, a, `{"set":[{"stage":"review","ask":"x"}]}`); out != "manager set review: by the floor" {
+		t.Fatalf("the next turn answered %q", out)
+	}
+	if len(lent.edits) != 1 || len(floor.edits) != 1 {
+		t.Fatalf("lent %d, floor %d", len(lent.edits), len(floor.edits))
+	}
+	// A CONVERSATION MID-TURN refuses the runner's ask; it never steers it.
+	if _, err := a.SubmitRunnerNoteThrough(context.Background(), "Shape the run for this item now.", lent); !errors.Is(err, ErrConversationBusy) {
+		t.Fatalf("a running conversation took the ask: %v", err)
+	}
+}
+
+// LIVE IS A CONVERSATION OPEN HERE ON THAT JOURNAL, and not once it closed.
+func TestLiveAgentForIsTheOpenConversation(t *testing.T) {
+	path := t.TempDir() + "/transcript.jsonl"
+	if _, ok := LiveAgentFor(path); ok {
+		t.Fatal("a journal nobody holds read as live")
+	}
+	a := &Agent{}
+	rememberLiveJournal(path, a)
+	t.Cleanup(func() { forgetLiveJournal(a) })
+	if got, ok := LiveAgentFor(path); !ok || got != a {
+		t.Fatalf("live %v %v", got, ok)
+	}
+	a.closed = true
+	if _, ok := LiveAgentFor(path); ok {
+		t.Fatal("a closed conversation read as live")
+	}
+}
