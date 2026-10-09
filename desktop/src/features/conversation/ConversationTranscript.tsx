@@ -30,7 +30,7 @@ function PrefaceItem({ item, open, onToggle, onOpenTask }: PrefaceProps) {
   const expanded = Boolean(open[item.id]);
   switch (item.kind) {
     case 'note':
-      return <NoteItem text={item.text} long={item.long} tone={item.tone} />;
+      return <NoteItem text={item.text} long={item.long} tone={item.tone} undoReceipts={item.undoReceipts} />;
     case 'text':
       return <Markdown {...hooks}>{item.text}</Markdown>;
     case 'aside':

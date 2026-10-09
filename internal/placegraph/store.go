@@ -241,6 +241,8 @@ func (s *Store) mutate(fn func(st *State, now time.Time) (*change, error)) (Rece
 		At:             now,
 	}
 	s.receipts = append(s.receipts, &receiptEntry{Receipt: rc, before: cur})
+	// Provenance only; inability to save it removes the optional note action.
+	s.recordContextReceipt(rc)
 	if len(s.receipts) > MaxUndo {
 		s.receipts = append([]*receiptEntry(nil), s.receipts[len(s.receipts)-MaxUndo:]...)
 	}

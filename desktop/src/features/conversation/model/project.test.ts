@@ -226,3 +226,12 @@ test('time spent waiting on a question is not worked time', () => {
   assert.equal(work.summary.seconds, 2);
   assert.equal(work.steps[1].tookMs, undefined);
 });
+
+test('context changes stay chronological outside collapsed work and carry exact Undo authority',()=>{
+ const turn=first([user('go'),tool('read','c1',{path:'a.go'}),entry({Role:'aside',AsideKind:'places',Text:'Now also using Release',UndoReceipts:['rc_exact']}),final('Done.')]);
+ assert.deepEqual(kinds(turn.blocks),['work','context-note','answer']);
+ const note=turn.blocks[1];
+ assert.equal(note.kind,'context-note');
+ if(note.kind==='context-note') assert.deepEqual(note.undoReceipts,['rc_exact']);
+ assert.deepEqual(works(turn.blocks)[0].notes,[]);
+});

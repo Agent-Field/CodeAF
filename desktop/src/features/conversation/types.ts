@@ -28,7 +28,7 @@ export type TurnItem =
   | { kind: 'text'; id: string; text: string; streaming: boolean } // Markdown
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string } // a task's completion aside
   | { kind: 'aside'; id: string; aside: 'job' | 'watch'; title: string; body: string } // a background job or watch notice; body is literal
-  | { kind: 'note'; id: string; text: string; long?: boolean; tone?: NoteTone } // engine note; long: model-directed text, drawn collapsed
+  | { kind: 'note'; id: string; text: string; long?: boolean; tone?: NoteTone; undoReceipts?: string[] } // engine note; long: model-directed text, drawn collapsed
   | { kind: 'steer'; id: string; text: string; landing?: string; consumed?: boolean } // the person's words typed into the running turn; literal
   | { kind: 'error'; id: string; text: string };
 
@@ -72,6 +72,7 @@ export type Deliverable =
 /** Conversation-rhythm items of a turn, in order (ELEMENTS §1–2). */
 export type TurnBlock =
   | WorkBlock
+  | { kind: 'context-note'; id: string; text: string; undoReceipts?: string[] }
   | { kind: 'update'; id: string; text: string; cut: boolean; streaming: boolean } // Addressed interim update
   | { kind: 'answer'; id: string; text: string; streaming: boolean } // Answer final reply (Markdown)
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string; live?: string }

@@ -26,7 +26,7 @@ export function WorkNotes({ notes }: { notes: TurnItem[] }) {
         item.kind === 'steer' ? (
           <Steer key={item.id} entry={{ text: item.text, landing: item.landing, consumed: item.consumed !== false }} />
         ) : item.kind === 'note' ? (
-          <NoteItem key={item.id} text={item.text} long={item.long} tone={item.tone} />
+          <NoteItem key={item.id} text={item.text} long={item.long} tone={item.tone} undoReceipts={item.undoReceipts} />
         ) : (
           <p key={item.id} className="work-note" data-kind={item.kind}>
             {words(item)}

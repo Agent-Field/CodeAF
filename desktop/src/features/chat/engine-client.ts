@@ -55,6 +55,8 @@ export type EngineEntry = {
  TaskIDs?: string[] | null;
  /** What wrote an aside: "task" | "job" | "watch" | "resume"; absent when unknown. */
  AsideKind?: string;
+ /** Exact context-mutation receipts; absent for older/ambiguous notes. */
+ UndoReceipts?: string[];
  /** A job aside's own short name (its label or command); absent when it has none. */
  AsideTitle?: string;
  /** Set on a user line typed into the running turn rather than starting one. */
