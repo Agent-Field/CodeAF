@@ -1,27 +1,39 @@
-.task-panel { display: flex; flex-direction: column; width: var(--task-panel-width); max-width: 100%; min-height: var(--motion-rest); color: var(--text); }
+/* The panel floats beside the conversation: a surface card, inset from the window edge. */
+.task-panel { display: flex; flex-direction: column; width: var(--tasks-width); max-width: 100%; min-height: 0; overflow: hidden; border-radius: var(--tasks-radius); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); font-size: var(--type-prose-size); }
 .task-panel:focus-visible { outline: none; }
-.task-panel[data-variant="column"] { flex: 0 0 var(--task-panel-width); height: 100%; border-left: var(--border-width) solid var(--border); }
-.task-panel[data-variant="sheet"] { position: absolute; top: var(--motion-rest); right: var(--motion-rest); bottom: var(--motion-rest); z-index: var(--z-overlay); border-left: var(--border-width) solid var(--border); background: var(--overlay-surface); box-shadow: var(--palette-shadow); animation: task-sheet-enter var(--duration-overlay) var(--ease-overlay); }
+.task-panel[data-variant="column"] { flex: 0 0 var(--tasks-width); margin: var(--space-2) var(--space-2) var(--space-2) 0; }
+.task-panel[data-variant="sheet"] { position: absolute; top: var(--space-2); right: var(--space-2); bottom: var(--space-2); z-index: var(--z-overlay); box-shadow: var(--sh-3); animation: task-sheet-enter var(--dur-slow) var(--ease); }
 
 /* Narrow panes: the sheet slides in over a dimmed page; a click on the page closes it. */
-.task-panel-backdrop { position: absolute; inset: var(--motion-rest); z-index: var(--z-overlay); background: var(--palette-backdrop); animation: task-backdrop-enter var(--duration-overlay) var(--ease-overlay); }
-@keyframes task-sheet-enter { from { transform: translateX(100%); } to { transform: translateX(var(--motion-rest)); } }
+.task-panel-backdrop { position: absolute; inset: 0; z-index: var(--z-overlay); background: var(--palette-backdrop); animation: task-backdrop-enter var(--dur-slow) var(--ease); }
+@keyframes task-sheet-enter { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes task-backdrop-enter { from { opacity: var(--opacity-transparent); } to { opacity: var(--opacity-opaque); } }
 @media (prefers-reduced-motion: reduce) { .task-panel[data-variant="sheet"], .task-panel-backdrop { animation: none; } }
 
-.task-panel-header { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-2) var(--space-4); }
-.task-panel-headline { display: flex; align-items: center; gap: var(--space-tight); }
-.task-panel-heading { font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
-.task-panel-count { flex: 1; color: var(--muted); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
-.task-panel-tokens { color: var(--muted); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
-.task-panel-error { padding: var(--space-1) var(--space-4) var(--space-2); font-size: var(--font-size-label); }
+/* The header and the strip stay put; only the list scrolls. */
+.task-panel-header { display: flex; flex-direction: column; flex: none; gap: var(--space-3); padding: var(--tasks-head-top) var(--space-2) var(--space-3) var(--space-4); }
+.task-panel-headline { display: flex; align-items: center; gap: var(--space-2); }
+.task-panel-heading { font-weight: var(--type-h3-weight); }
+.task-panel-count { color: var(--ink-3); font-size: var(--type-label-size); font-variant-numeric: tabular-nums; }
+.task-panel-controls { display: flex; margin-inline-start: auto; color: var(--ink-3); }
+.task-panel-controls .icon-button { width: var(--message-action-size); height: var(--message-action-size); border-radius: var(--radius-message-action); color: inherit; }
+.task-panel-controls .icon-button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.task-panel-header .task-progress { margin-inline-end: var(--space-2); }
+.task-panel-error { padding: var(--space-1) var(--space-4) var(--space-2); font-size: var(--type-label-size); }
 
-.task-panel-list { list-style: none; margin: var(--motion-rest); padding: var(--motion-rest); }
-.task-panel-scroll { flex: 1; min-height: var(--motion-rest); overflow-y: auto; padding: var(--space-1) var(--space-2) var(--space-3); }
+.task-panel-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--space-2); }
+.task-panel-body { display: flex; flex-direction: column; gap: var(--tasks-group-gap); padding-block-end: var(--space-2); }
+/* A fade at a side only while that side has more to show. */
+.task-panel-scroll[data-above] { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--ink) var(--tasks-mask-top)); mask-image: linear-gradient(to bottom, transparent, var(--ink) var(--tasks-mask-top)); }
+.task-panel-scroll[data-below] { -webkit-mask-image: linear-gradient(to top, transparent, var(--ink) var(--tasks-mask-bottom)); mask-image: linear-gradient(to top, transparent, var(--ink) var(--tasks-mask-bottom)); }
+.task-panel-scroll[data-above][data-below] { -webkit-mask-image: linear-gradient(to bottom, transparent, var(--ink) var(--tasks-mask-top), var(--ink) calc(100% - var(--tasks-mask-bottom)), transparent); mask-image: linear-gradient(to bottom, transparent, var(--ink) var(--tasks-mask-top), var(--ink) calc(100% - var(--tasks-mask-bottom)), transparent); }
 
-/* The guide hangs under the parent's chevron, one level per tree-indent, like Arc's sidebar. */
-.task-panel-children { margin-inline-start: calc(var(--tree-indent) / 2 - var(--border-width)); padding-inline-start: calc(var(--tree-indent) / 2); border-inline-start: var(--border-width) solid var(--work-guide); }
+.task-panel-fold.button { flex: none; justify-content: flex-start; gap: var(--space-2); width: 100%; height: var(--tasks-fold-height); padding: 0 var(--space-4); border-radius: var(--radius-control); background: transparent; color: var(--ink-3); font-size: var(--type-label-size); }
+.task-panel-fold.button:hover:not(:disabled) { background: transparent; color: var(--ink-2); }
+.task-panel-fold .app-icon { width: var(--tasks-chevron); height: var(--tasks-chevron); }
+.task-panel-fold-count { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
 
+/* The task view's header mark still reads this tone. */
 .state-mark[data-tone="attention"] { color: var(--attention); }
 
 /* The specimen needs a pane to stand in. */
