@@ -46,6 +46,7 @@ import { useTerminalTabs } from '../terminal/useTerminalTabs';
 import { useWorkspaceWeb } from '../web/useWorkspaceWeb';
 import { useDesktopTabActions, useTabKeys, type Switcher } from './useTabKeys';
 import { useWindowHandoff } from './useWindowHandoff';
+import { useTabLinks } from './links/useTabLinks';
 import './workspace.css';
 
 type Props = {
@@ -174,6 +175,8 @@ export function Workspace({ enabled, onActivate, leading, place = 'now', placeTi
   const latestState = useRef(state);
   latestState.current = state;
   const [actions] = useState(() => createTabActions({ native: nativeControls(), toasts, place: () => placeNow.current, handoffView: id => { syncNow.current.handoff(id); }, stillHere: id => latestState.current.tabs.some(tab => tab.id === id) }));
+  // Incoming durable links reuse canonical dispatch and never start work.
+  useTabLinks({ enabled, state, dispatch, actions });
   useCloseStopKey(enabled, () => closeAndStop(state.activeId));
   function startRename(id: string, group = false) { setRename({ id, group, value: (group ? state.groups : state.tabs).find(item => item.id === id)?.title ?? '' }); }
   useTabKeys({ enabled, state, dispatch, visible, overviewOpen, setOverviewOpen, closeTab, switcherRef, setSwitcher });
