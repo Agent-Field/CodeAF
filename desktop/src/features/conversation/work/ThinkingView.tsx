@@ -1,6 +1,6 @@
-import './work.css';
+import './thinking.css';
 import { useState } from 'react';
-import { Button, Icon, WorkStateIndicator } from '../../../components/ui';
+import { Button, Icon } from '../../../components/ui';
 import { spoken } from './format';
 
 type Props = { text: string; streaming: boolean; seconds?: number };
@@ -16,24 +16,24 @@ export function ThinkingView({ text, streaming, seconds }: Props) {
   const [open, setOpen] = useState(false);
   if (streaming) {
     return (
-      <div className="work-thinking" data-live="true">
-        <span className="work-thinking-label">
-          <WorkStateIndicator phase="streaming" label="Thinking" />
-          Thinking
-        </span>
-        {text && <p className="work-thinking-text">{lastLines(text)}</p>}
+      <div className="thinking" data-live="true">
+        <div className="thinking-live">
+          <span className="thinking-mark" role="img" aria-label="Thinking" />
+          <span className="thinking-shimmer">Thinking</span>
+        </div>
+        {text && <p className="thinking-text">{lastLines(text)}</p>}
       </div>
     );
   }
   if (!text && seconds === undefined) return null;
   const label = seconds === undefined ? 'Thought' : `Thought for ${spoken(seconds)}`;
   return (
-    <div className="work-thinking">
-      <Button className="work-step-head" aria-expanded={open} disabled={!text} onClick={() => setOpen(!open)}>
-        <Icon name="thinking" size="sm" />
-        <span className="work-step-title">{label}</span>
+    <div className="thinking">
+      <Button className="thinking-row" aria-expanded={open} disabled={!text} onClick={() => setOpen(!open)}>
+        <Icon name="chevronRight" size="xs" />
+        {label}
       </Button>
-      {open && text && <p className="work-thinking-body">{text}</p>}
+      {open && text && <p className="thinking-body">{text}</p>}
     </div>
   );
 }
