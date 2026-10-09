@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tauri::{
     AppHandle, Emitter, LogicalPosition, Manager, Runtime, Webview, WebviewUrl, WebviewWindow,
-    WebviewWindowBuilder,
+    WebviewWindowBuilder, Window,
 };
 
 pub const UNTRUSTED: &str = "Only codeaf's own windows can do that";
@@ -52,6 +52,25 @@ pub fn is_app_window(label: &str) -> bool {
 }
 
 /// Returns the caller's label when it is one of codeaf's own windows.
+/// codeaf's own window called `label`, if it is open. NEVER look a window up
+/// with `get_webview_window` or `webview_windows`: Tauri counts a window as a
+/// webview window only while its own webview is its only one, so a window
+/// showing a web page (a `web-*` child view) dropped out of both, and moving a
+/// tab, focusing, listing and notifying all said the window was gone.
+pub fn app_window<R: Runtime>(app: &AppHandle<R>, label: &str) -> Option<Window<R>> {
+    is_app_window(label)
+        .then(|| app.get_window(label))
+        .flatten()
+}
+
+/// Every open codeaf window by label, web pages or not (see `app_window`).
+pub fn app_windows<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, Window<R>)> {
+    app.windows()
+        .into_iter()
+        .filter(|(label, _)| is_app_window(label))
+        .collect()
+}
+
 pub fn trusted<R: Runtime>(caller: &Webview<R>) -> Result<String, String> {
     let window = caller.window();
     if is_trusted_caller(caller.label(), window.label()) {
@@ -341,7 +360,7 @@ pub struct Opened {
 /// that is generated from design tokens.
 fn build<R: Runtime>(
     app: &AppHandle<R>,
-    caller: &WebviewWindow<R>,
+    caller: &Window<R>,
     label: &str,
     place: &str,
     at: Option<Point>,
@@ -391,9 +410,6 @@ pub async fn window_open<R: Runtime>(
         return Err("That position is outside the screen".into());
     }
     let caller = webview.window();
-    let caller = app
-        .get_webview_window(caller.label())
-        .ok_or(NO_WINDOW.to_string())?;
     let (label, handoff_id) = {
         let mut book = book(&app)?;
         let label = book.allocate();
@@ -436,9 +452,7 @@ pub fn window_move_tab<R: Runtime>(
     if !is_app_window(&request.to) || request.to == from {
         return Err(NO_WINDOW.into());
     }
-    let target = app
-        .get_webview_window(&request.to)
-        .ok_or(NO_WINDOW.to_string())?;
+    let target = app_window(&app, &request.to).ok_or(NO_WINDOW.to_string())?;
     let handoff_id = book(&app)?.park(&from, &request.to, request.handoff, Instant::now());
     let event = HandoffEvent { handoff_id };
     let _ = target.emit_to(request.to.as_str(), "window://handoff-ready", event.clone());
@@ -492,10 +506,8 @@ pub fn window_list<R: Runtime>(
     webview: Webview<R>,
 ) -> Result<Vec<WindowRow>, String> {
     trusted(&webview)?;
-    let mut rows: Vec<WindowRow> = app
-        .webview_windows()
+    let mut rows: Vec<WindowRow> = app_windows(&app)
         .into_iter()
-        .filter(|(label, _)| is_app_window(label))
         .map(|(label, window)| WindowRow {
             place_key: place_of(&app, &label),
             focused: window.is_focused().unwrap_or(false),
@@ -524,7 +536,7 @@ pub fn window_focus<R: Runtime>(
     if !is_app_window(&label) {
         return Err(NO_WINDOW.into());
     }
-    let window = app.get_webview_window(&label).ok_or(NO_WINDOW)?;
+    let window = app_window(&app, &label).ok_or(NO_WINDOW)?;
     let _ = window.unminimize();
     window
         .set_focus()
@@ -924,6 +936,60 @@ mod ipc_tests {
             call(&main, "window_claim_handoff", serde_json::json!({})).unwrap()["handoffId"],
             "h-2"
         );
+    }
+
+    /// A web page in a window is a child view, and Tauri then stops counting
+    /// that window as a webview window. Every window command must still find it:
+    /// on Linux the native app refused "Move to new window" from any window that
+    /// had shown a page, and could not move a tab into one.
+    #[test]
+    fn a_window_showing_a_web_page_is_still_one_of_ours() {
+        let app = app();
+        let main = window(&app, "main");
+        main.as_ref()
+            .window()
+            .add_child(
+                tauri::webview::WebviewBuilder::new(
+                    "web-1",
+                    WebviewUrl::External("https://example.com/".parse().unwrap()),
+                ),
+                LogicalPosition::new(0.0, 40.0),
+                tauri::LogicalSize::new(400.0, 300.0),
+            )
+            .unwrap();
+        assert!(app.get_webview_window("main").is_none());
+
+        let opened = call(
+            &main,
+            "window_open",
+            serde_json::json!({ "request": { "placeKey": "now", "handoff": handoff() } }),
+        )
+        .unwrap();
+        assert_eq!(opened["label"], "w-2");
+        let rows = call(&main, "window_list", serde_json::json!({})).unwrap();
+        let labels: Vec<_> = rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["label"].clone())
+            .collect();
+        assert_eq!(
+            labels,
+            [serde_json::json!("main"), serde_json::json!("w-2")]
+        );
+        let second = app.get_webview_window("w-2").expect("the window exists");
+        assert!(call(
+            &second,
+            "window_move_tab",
+            serde_json::json!({ "request": { "to": "main", "handoff": handoff() } })
+        )
+        .is_ok());
+        assert!(call(
+            &second,
+            "window_focus",
+            serde_json::json!({ "label": "main" })
+        )
+        .is_ok());
     }
 
     #[test]
