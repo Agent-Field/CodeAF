@@ -43,7 +43,8 @@ test('work folds to one line, opens to titled steps, an edit shows its diff and 
 
   await page.getByRole('button', { name: /^bash / }).click();
   const terminal = page.getByLabel('Terminal');
-  await expect(terminal).toContainText('$ go test ./internal/auth');
+  await expect(page.locator('.work-call-text[data-mono]')).toContainText('$ go test ./internal/auth');
+  await expect(terminal).not.toContainText('$ go test ./internal/auth');
   await expect(terminal).not.toContainText('line 60: test output');
   await page.getByRole('button', { name: 'Show full output' }).click();
   await expect(terminal).toContainText('line 60: test output');

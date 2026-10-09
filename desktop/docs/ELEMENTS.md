@@ -149,7 +149,7 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 | read | file chip (§5.1) | lines read | excerpt, mono, 30 rows |
 | write | file chip | `+N lines` | content preview, 20 rows |
 | edit | file chip | `+N −M` (computed from Args pairs; `+` suffix when capped) | unified diff, 2 lines context, 40 rows |
-| bash | `$ command` mono, first line | exit mark | terminal output block (mono, dark-on-field), "Show full output" |
+| bash | `$ command` mono, first line | state word and time; exit code in the output box footer | output on the terminal field (command shown once, in the row); footer: exit code, "Show full output" |
 | grep / find / ls | pattern / path | match count if known | result list |
 | web_search | query in quotes | — | result list as link chips (§5.2) |
 | web_fetch | link chip | — | fetched title + excerpt |
