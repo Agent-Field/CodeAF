@@ -8,10 +8,9 @@ body { margin: 0; background: var(--canvas); color: var(--text); font-family: va
 :root[data-environment="mac-desktop"] .app-shell { background: var(--chrome-tint); }
 .sidebar { display: flex; flex-direction: column; padding: 0 var(--space-compact); min-width: 0; overflow: hidden; opacity: var(--opacity-opaque); transition: opacity var(--duration) var(--ease), visibility var(--duration-sidebar); }
 .sidebar-toolbar { height: var(--titlebar-height); display: flex; align-items: center; justify-content: flex-end; padding: 0 var(--space-three-quarter); flex-shrink: 0; }
-.favorites { display: flex; gap: var(--space-2); padding: var(--space-compact) 0 var(--space-4); }
-.space-name { font-size: var(--font-size-label); color: var(--muted); padding: 0 var(--space-2); margin-bottom: var(--space-2); }
 .sidebar-divider { margin: var(--space-row) var(--space-three-quarter) var(--space-2); }
-.sidebar-bottom { margin-top: auto; padding: var(--space-4) var(--border-width) var(--space-half); display: flex; align-items: center; justify-content: space-between; gap: var(--space-1); }
+.sidebar-bottom .select-trigger.select-trigger-icon { justify-content: center; width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; }
+.sidebar-bottom { margin-top: auto; padding: var(--space-4) var(--border-width) var(--space-half); display: flex; align-items: center; justify-content: flex-start; gap: var(--space-1); }
 .content-pane { grid-column: 2; min-height: 0; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
 .content-toolbar { height: var(--toolbar-height); padding: 0 var(--space-row); display: flex; align-items: center; gap: var(--space-compact); color: var(--muted); flex-shrink: 0; }
 .page-title { font-size: var(--font-size-label); }.content-toolbar > .icon-button:last-child { margin-left: auto; }
