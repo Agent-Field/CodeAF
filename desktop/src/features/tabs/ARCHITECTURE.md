@@ -56,6 +56,9 @@ Shared, change with care and keep edits small: `tokens.json` (add keys, never re
 - **⌘/Ctrl O** is ShortcutId `open-file` in `design/keyboard.ts`. Only the focused new-tab field registers for it (surface layer) and it runs the Open file… row's own pick; no other surface claims it.
 - **Overview card press** (Interactions "Overview card · ⌘-click / middle: Background tab"): every card is a tab that is ALREADY open, so a ⌘/Ctrl-click or middle-click opens nothing: the active tab and the overlay stay as they are and only the cursor moves to the card (`backgroundPress` in `OverviewCard.tsx`, predicate `isBackgroundPress` in `overview-model.ts`). A plain click opens and closes the overview.
 - **Overview card menu** is `tabMenuFor(api, tab)` from `hosts/menuHost.tsx`, the strip's own builder, passed down as `TabOverview`'s `menuFor`. There is no second menu array; the Inbox has no menu in either place. `ToastRegion` draws inside an open modal dialog so a toast posted from the overview is seen.
+## Group suggestion
+
+`offerRules.ts` (pure, node-tested: `findOffers`, the 30-day memory), `useGroupOffer.ts` (shown-this-launch, decide), `GroupOffer.tsx` (`GroupOffer` takes the `TabsApi`; `GroupOfferPill` is the drawing) and `group-offer.css`. It dispatches the reducer's own `group` action and owns no tab state. Decisions GO1 to GO8 in `docs/DESIGN-QUESTIONS.md`; wiring in the report `tab-group-offer-api.md`.
 
 ## Primitives and specimens
 
