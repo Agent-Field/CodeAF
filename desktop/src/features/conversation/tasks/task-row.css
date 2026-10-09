@@ -1,0 +1,33 @@
+.task-row { display: flex; align-items: flex-start; min-width: var(--motion-rest); min-height: var(--task-outline-row-height); border-radius: var(--radius-sm); }
+.task-row:hover, .task-row:focus-within { background: var(--control-hover); }
+.task-row[data-current] { background: var(--control-selected); }
+
+.task-row-disclosure.icon-button, .task-row-spacer { flex: 0 0 var(--tree-indent); width: var(--tree-indent); }
+.task-row-disclosure.icon-button { height: var(--task-outline-row-height); }
+
+.task-row .task-panel-main.button { flex: 1; min-width: var(--motion-rest); min-height: var(--task-outline-row-height); justify-content: flex-start; align-items: flex-start; gap: var(--space-tight); padding: var(--space-tight) var(--space-2) var(--space-tight) var(--space-half); text-align: left; background: transparent; font-size: var(--font-size-body); line-height: var(--line-height-tight); white-space: normal; }
+.task-row .task-panel-main.button:hover { background: transparent; }
+.task-row .task-panel-main .state-mark { margin-top: var(--space-half); }
+
+.task-row-text { display: flex; flex-direction: column; flex: 1; min-width: var(--motion-rest); }
+.task-row-line { display: flex; align-items: baseline; gap: var(--space-2); min-width: var(--motion-rest); }
+.task-row-title { flex: 1; min-width: var(--motion-rest); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
+.task-row-age { flex-shrink: 0; color: var(--muted); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
+
+/* Work in flight and decisions for the person read at full ink; settled work steps back. */
+.task-row[data-kind="running"] .task-row-title, .task-row[data-kind="yourcall"] .task-row-title, .task-row[data-current] .task-row-title { color: var(--text); }
+.task-row[data-current] .task-row-title { font-weight: var(--font-weight-medium); }
+
+.task-row-step { display: flex; align-items: baseline; gap: var(--space-2); min-width: var(--motion-rest); color: var(--muted); font-size: var(--font-size-label); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.task-row-command.type-code { flex: 1; min-width: var(--motion-rest); overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: var(--font-size-label); }
+.task-row-clock { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+/* Hover actions take the age's place so the title never sits under them. */
+.task-row-actions { display: none; flex-shrink: 0; align-items: flex-start; }
+.task-row-actions .icon-button { width: var(--task-outline-row-height); height: var(--task-outline-row-height); }
+.task-row:hover .task-row-actions, .task-row:focus-within .task-row-actions { display: flex; }
+.task-row:hover .task-row-age, .task-row:focus-within .task-row-age { display: none; }
+@media (pointer: coarse) {
+  .task-row-actions { display: flex; }
+  .task-row-age { display: none; }
+}

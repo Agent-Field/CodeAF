@@ -1,118 +1,108 @@
-import type { EngineTaskPage, EngineTaskRow } from '../chat/engine-client';
-import type { ToolStep, Turn, TurnItem } from './types';
+// The view model of one task page: only what the engine said, nothing invented.
+// Pure, so the state line, the log and the notes are tested without a DOM.
 
-type TaskItem = Extract<TurnItem, { kind: 'task' }>;
-type PageStep = NonNullable<EngineTaskPage['Steps']>[number];
+import type { EngineTaskRow } from '../chat/engine-client';
+import { liveLine, noteLines, refusedCount, stepLines } from './tasks/logLines.ts';
+import { durationText, sinceMs, spanText } from './tasks/taskClock.ts';
+import type { LogLine, NoteLine, TaskPage } from './tasks/taskTypes.ts';
+import { isEnded, rowKind, taskControls, taskMark, type TaskControls, type TaskKind, type TaskMark } from './taskState.ts';
+
+export { durationText } from './tasks/taskClock.ts';
+
+/** A child or waited-on task, drawn as one quiet row. */
+export type TaskLink = { row: EngineTaskRow; depth: number };
 
 export type TaskPageModel = {
+  id: string;
   title: string;
-  status: string;
-  stopped: boolean;
-  /** One muted fact beside the state word: step count while running, duration once finished. */
-  detail: string;
-  /** The recorded steps as one tools item; absent when there are none. */
-  worked?: Extract<TurnItem, { kind: 'tools' }>;
+  kind: TaskKind;
+  mark: TaskMark;
+  ended: boolean;
+  /** The parts after the state word, each one known: step, elapsed, model. */
+  stateParts: string[];
   result: string;
-  /** The engine's worker brief, kept for the quiet "Instructions" disclosure. */
+  /** Why it ended and what the worker said last; for tasks that ended without a result. */
+  endReason: string;
+  lastWords: string;
+  changed: string[];
+  steps: LogLine[];
+  live?: LogLine;
+  refused: number;
+  notes: NoteLine[];
   instructions: string;
-  children: TaskItem[];
   checks: string[];
-  notes: string[];
+  children: TaskLink[];
+  waits: TaskLink[];
+  controls: TaskControls;
 };
 
-const RUNNING = new Set(['running', 'claimed']);
-
-export function turnStateOf(row: EngineTaskPage['Row']): Turn['state'] {
-  if (row.Stopped || row.Interrupted || row.Status === 'cancelled') return 'stopped';
-  if (row.Status === 'failed') return 'failed';
-  return row.Status === 'done' ? 'done' : 'working';
-}
-
 /** True while the engine is still changing the page, so it is worth refreshing. */
-export function isTaskRunning(page: EngineTaskPage | undefined): boolean {
-  return page ? RUNNING.has(page.Row.Status) && turnStateOf(page.Row) === 'working' : false;
+export function isTaskRunning(page: TaskPage | undefined): boolean {
+  return page ? !isEnded(rowKind(page.Row)) : false;
 }
 
-// Every recorded worker step is a shell command (session.PlanStep's `kind` is
-// always "step"), so the tool family is the terminal one.
-const STEP_TOOL = 'bash';
+/** "deepseek/deepseek-v4.1-flash" reads "Deepseek v4.1 Flash". */
+export function modelName(model?: string): string {
+  const name = (model ?? '').split('/').pop() ?? '';
+  const words = name.split(/[-_]/).filter(Boolean);
+  return words.map(capital).join(' ');
+}
 
-function stepOf(step: PageStep, index: number): ToolStep {
-  const command = step.command ?? '';
+function capital(word: string): string {
+  return /^v?\d/.test(word) ? word : word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+function stepPart(page: TaskPage, kind: TaskKind): string {
+  if (kind !== 'running') return '';
+  const step = page.Live?.Step ?? page.Row.Steps;
+  return step ? `step ${step}` : '';
+}
+
+function elapsedPart(page: TaskPage, kind: TaskKind, now: number): string {
+  const row = page.Row;
+  if (kind === 'running') return spanText(sinceMs(row.Started, now));
+  if (!isEnded(kind)) return '';
+  return durationText(row.Started, row.Ended || page.Ended?.At);
+}
+
+/** Only the parts the engine knows; an unknown one leaves no gap. */
+export function stateParts(page: TaskPage, kind: TaskKind, now: number): string[] {
+  return [stepPart(page, kind), elapsedPart(page, kind, now), modelName(page.Row.Model)].filter(Boolean);
+}
+
+function resultOf(page: TaskPage, ended: boolean): string {
+  // A result belongs to a finished task; on an unfinished one it is left over from an earlier run.
+  return ended ? (page.Result || page.Ended?.Result || '') : '';
+}
+
+function linksOf(rows: readonly EngineTaskRow[] | null | undefined): TaskLink[] {
+  return (rows ?? []).map((row) => ({ row, depth: Math.max(0, (row.Depth ?? 1) - 1) }));
+}
+
+export function taskPageModel(page: TaskPage, now: number = Date.now()): TaskPageModel {
+  const row = page.Row;
+  const kind = rowKind(row);
+  const ended = isEnded(kind);
+  const steps = stepLines(page);
   return {
-    id: `step-${step.step ?? index}`,
-    tool: STEP_TOOL,
-    hint: command,
-    args: command,
-    output: step.observation ?? '',
-    state: step.refused ? 'failed' : 'done',
-  };
-}
-
-/** A not-run step without a refusal is the harness correcting a reply's form: no step a person reads. */
-const isReadable = (step: PageStep) => !step.not_run || Boolean(step.refused);
-
-function liveStepOf(live: NonNullable<EngineTaskPage['Live']>, index: number): ToolStep {
-  const command = live.Command ?? '';
-  return { id: `step-live-${live.Step ?? index}`, tool: STEP_TOOL, hint: command, args: command, output: '', state: 'running' };
-}
-
-function stepsOf(page: EngineTaskPage): ToolStep[] {
-  const done = (page.Steps ?? []).filter(isReadable).map(stepOf);
-  const live = page.Live?.Command ? [liveStepOf(page.Live, done.length)] : [];
-  return [...done, ...live];
-}
-
-function childOf(row: EngineTaskRow): TaskItem {
-  return { kind: 'task', id: `child-${row.ID}`, taskId: row.ID, title: row.Title, status: row.Status, summary: '', body: '' };
-}
-
-const SECOND = 1000;
-
-/** "12s", "3m 4s", "1h 5m"; empty when either end is missing or unreadable. */
-export function durationText(started?: string, ended?: string): string {
-  const from = Date.parse(started ?? '');
-  const to = Date.parse(ended ?? '');
-  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return '';
-  const seconds = Math.round((to - from) / SECOND);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
-
-function detailOf(page: EngineTaskPage, steps: ToolStep[]): string {
-  if (turnStateOf(page.Row) === 'working') {
-    const count = steps.length;
-    return count ? `${count} ${count === 1 ? 'step' : 'steps'}` : '';
-  }
-  return durationText(page.Row.Started, page.Row.Ended);
-}
-
-/** A result belongs to a finished task; on an unfinished one it is left over from an earlier run. */
-function resultOf(page: EngineTaskPage): string {
-  return turnStateOf(page.Row) === 'working' ? '' : (page.Result ?? '');
-}
-
-/** The engine also records the result as a note; drawing both says everything twice. */
-function notesOf(page: EngineTaskPage): string[] {
-  const result = (page.Result ?? '').trim();
-  const bodies = (page.Notes ?? []).map((note) => note.Body).filter(Boolean);
-  return bodies.filter((body) => !result || !body.includes(result));
-}
-
-export function taskPageModel(page: EngineTaskPage): TaskPageModel {
-  const steps = stepsOf(page);
-  return {
-    title: page.Row.Title,
-    status: page.Row.Status,
-    stopped: Boolean(page.Row.Stopped || page.Row.Interrupted),
-    detail: detailOf(page, steps),
-    worked: steps.length ? { kind: 'tools', id: `steps:${page.Row.ID}`, steps } : undefined,
-    result: resultOf(page),
+    id: row.ID,
+    title: row.Title,
+    kind,
+    mark: taskMark(row.Status, { stopped: row.Stopped, interrupted: row.Interrupted, hold: row.Hold, paused: row.Paused }),
+    ended,
+    stateParts: stateParts(page, kind, now),
+    result: resultOf(page, ended),
+    endReason: ended ? (page.Ended?.Reason ?? '') : '',
+    lastWords: ended ? (page.LastWords ?? '') : '',
+    changed: [...(page.Changed ?? [])],
+    steps,
+    live: ended ? undefined : liveLine(page),
+    refused: refusedCount(steps),
+    notes: noteLines(page, !ended),
     instructions: page.Description ?? '',
-    children: (page.Children ?? []).map(childOf),
     checks: [...(page.Checks ?? [])],
-    notes: notesOf(page),
+    children: linksOf(page.Children),
+    waits: linksOf(page.WaitRows),
+    controls: taskControls(kind, Boolean(row.Parent)),
   };
 }
