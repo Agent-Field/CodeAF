@@ -1,3 +1,4 @@
+import { CodeText, Icon } from '../../../components/ui';
 import type { NoteLine } from './taskTypes';
 import './task-notes.css';
 
@@ -17,7 +18,14 @@ function OtherNote({ note }: { note: NoteLine }) {
   return (
     <li className="task-note task-note-other">
       {note.author && <span className="task-note-author">{note.author}</span>}
-      <p className="task-note-body">{note.body}</p>
+      {note.body && <p className="task-note-body">{note.body}</p>}
+      {note.landing && (
+        <div className="task-note-landing">
+          <Icon name="check" size="xs" />
+          <span>Landed · {note.landing.files}</span>
+          <CodeText className="task-note-branch">{note.landing.branch}</CodeText>
+        </div>
+      )}
     </li>
   );
 }
