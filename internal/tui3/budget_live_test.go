@@ -4,15 +4,23 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 type budgetLiveAgent struct {
 	*fakeAgent
-	rail float64
-	err  error
+	rail    float64
+	entered chan struct{}
+	release chan struct{}
+	err     error
 }
 
 func (a *budgetLiveAgent) SetSpendRail(usd float64) error {
+	if a.entered != nil {
+		release := a.release
+		close(a.entered)
+		<-release
+	}
 	if a.err != nil {
 		return a.err
 	}
@@ -24,12 +32,22 @@ func (a *budgetLiveAgent) SetSpendRail(usd float64) error {
 // already behind this window, including the value used by its next run.
 func TestBudgetConversationBindsTheOpenChatBeforeItsReceipt(t *testing.T) {
 	a, _ := sheetApp(t)
-	engine := &budgetLiveAgent{fakeAgent: &fakeAgent{model: "openai/gpt-4.1-mini"}}
+	engine := &budgetLiveAgent{fakeAgent: &fakeAgent{model: "openai/gpt-4.1-mini"}, entered: make(chan struct{}), release: make(chan struct{})}
+	defer func() {
+		if engine.release != nil {
+			close(engine.release)
+		}
+	}()
 	a.agent = engine
 	before := len(a.entries)
 	cmd := a.budget("conversation 1.5")
 	if cmd == nil {
 		t.Fatal("the open conversation did not receive a limit command")
+	}
+	select {
+	case <-engine.entered:
+	case <-time.After(time.Second):
+		t.Fatal("the bind never left the update loop")
 	}
 	if engine.rail != 0 {
 		t.Fatal("the engine call blocked the update loop")
@@ -40,6 +58,8 @@ func TestBudgetConversationBindsTheOpenChatBeforeItsReceipt(t *testing.T) {
 	if len(a.entries) != before {
 		t.Fatal("/budget confirmed the changed limit before the engine answered")
 	}
+	close(engine.release)
+	engine.release = nil
 	msg, ok := cmd().(doorMsg)
 	if !ok {
 		t.Fatal("the bind did not return through the door")

@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,6 +49,7 @@ func TestPlanUnstartedRunningRootShowsMachineHold(t *testing.T) {
 // run against — a task session that answers a plan is a widening of one and not
 // a different one.
 type planFake struct {
+	mu sync.RWMutex
 	*taskFake
 	plan  []session.PlanTaskRow
 	pages map[string]session.PlanTaskPage
@@ -73,7 +75,11 @@ type planCall struct {
 	n    int
 }
 
-func (f *planFake) PlanTasks() []session.PlanTaskRow { return f.plan }
+func (f *planFake) PlanTasks() []session.PlanTaskRow {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return append([]session.PlanTaskRow(nil), f.plan...)
+}
 
 // PlanRunSummary and RefreshRunSummary keep this general plan fixture on the
 // local-store door while answering that it has no stored summary. Summary tests
@@ -87,6 +93,8 @@ func (f *planFake) RefreshRunSummary(context.Context, string, time.Time) (sessio
 }
 
 func (f *planFake) PlanTaskPage(id string) (session.PlanTaskPage, bool) {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
 	page, ok := f.pages[id]
 	return page, ok
 }
@@ -102,7 +110,15 @@ func (f *planFake) PlanNote(id, text string) error {
 // addNote writes a person's note back over the store page, the way the store's
 // note verb does: the next read carries it with its author and its moment, which
 // is the receipt the page draws and the store cannot draw itself.
+func (f *planFake) putPage(id string, page session.PlanTaskPage) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pages[id] = page
+}
+
 func (f *planFake) addNote(id, text string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	page, ok := f.pages[id]
 	if !ok {
 		return
@@ -149,6 +165,8 @@ func (f *planFake) PlanPriority(id string, n int) error {
 // second `p` resume what the first paused: the toggle reads the status fresh
 // ([app.taskPlanPaused]) and the pane's next reading wears the new word.
 func (f *planFake) setStatus(id, status string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	for i := range f.plan {
 		if f.plan[i].ID == id {
 			f.plan[i].Status = status
@@ -179,10 +197,10 @@ func planAppWith(t *testing.T, rows []session.PlanTaskRow, pages map[string]sess
 	a.file, a.title = "/tmp/lab/chat-1/transcript.jsonl", "the run"
 	// THE FIXTURE STANDS WHERE A WINDOW STANDS ONE MESSAGE IN: the run's rows have
 	// been read once, off the loop, and are held ([app.refreshPlanRows]). The
-	// slice is the fake's own, so a test that moves a state in place moves what
-	// the surface holds; a test that replaces the slice is read again through
-	// [readPlanRows], which is the only way a surface ever learns of one.
-	a.planRows, a.planRowsRead, a.planRowsFront = rows, true, a.frontGen
+	// held slice is a snapshot, as it is behind the real agent door. Store
+	// mutations reach the surface through [readPlanRows], never through aliasing
+	// a worker's mutable rows into the frame.
+	a.planRows, a.planRowsRead, a.planRowsFront = fake.PlanTasks(), true, a.frontGen
 	a.planRowsStamp, a.planRowsAt = a.railStamp, now
 	return a, fake
 }
