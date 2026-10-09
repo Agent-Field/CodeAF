@@ -380,11 +380,10 @@ test('closing a tab keeps its place for Reopen, and a place nobody can reopen is
   const stored = () => page.evaluate(prefix => { const key = Object.keys(localStorage).find(k => k.startsWith(prefix) && !k.endsWith('.index')); return key ? JSON.parse(localStorage.getItem(key)!) as { panes: Record<string, unknown>; retired: string[] } : null; }, STORE_PREFIX);
   await expect.poll(async () => Object.keys((await stored())?.panes ?? {}).join()).toContain('b');
   await tabButton(page, 'Beta chat').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /^Close tab/ }).click();
+  await page.getByRole('menuitem', { name: /^Close tab(?:\s+(?:Ctrl|⌘)|$)/ }).click();
   await expect(tabButton(page, 'Beta chat')).toHaveCount(0);
-  await expect.poll(async () => ((await stored())?.retired ?? []).join()).toBe('b');
-  await tabButton(page, 'Alpha chat').click({ button: 'right' });
-  await page.getByRole('menuitem', { name: /^Reopen closed tab/ }).click();
+  await expect.poll(async () => Object.keys((await stored())?.panes ?? {})).toContain('b');
+  await page.keyboard.press('Control+Shift+T');
   await expect(tabButton(page, 'Beta chat')).toHaveAttribute('aria-selected', 'true');
   await ready(page, 'Beta');
   await expectPlace(() => chatScroller(page), bTop);

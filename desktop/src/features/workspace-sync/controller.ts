@@ -281,7 +281,11 @@ export function createWorkspaceController(options: ControllerOptions) {
   /** The window's dispatch: applies at once, queues what changed the shared tab set, and saves shortly after. */
   function dispatch(action: WorkspaceAction) {
     let changedShared = false;
-    for (const one of expand(action)) {
+    for (const expanded of expand(action)) {
+      // Selection belongs to this window. Persist its concrete intent before another window replays it.
+      const one: WorkspaceAction = expanded.type === 'group-picked'
+        ? { ...expanded, type: 'group', id: view.activeId, ids: [...(view.picked ?? [])] }
+        : expanded;
       const before = view;
       const { result, ids } = withIds(undefined, () => reduce(view, one));
       if (result === before || duplicateIds(result)) continue;
