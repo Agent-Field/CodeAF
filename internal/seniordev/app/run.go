@@ -72,6 +72,12 @@ type Options struct {
 	// InPlace edits the folder without git: no commits, no refs, and the run's
 	// checkpoints kept outside it.
 	InPlace bool
+	// VerifyBuild and VerifyTest are the commands the person named as the
+	// project's own build and test (`--verify-build`, `--verify-test`). senior-dev
+	// runs each itself on the frozen tree in place of the one discovery would
+	// have chosen; empty leaves that kind to discovery.
+	VerifyBuild string
+	VerifyTest  string
 	// Crew says the pools came from the crew of the conversation that started
 	// the run (`--crew`), not from a person typing them: a model the catalog
 	// cannot size is dropped with a note, and a --high left empty routes on
@@ -130,6 +136,7 @@ func runWith(ctx context.Context, host delegate.Host, options Options, notes io.
 	args := cliArgs{
 		High: options.High, Low: options.Low, Frontier: options.Frontier,
 		Variant: options.Variant, InPlace: options.InPlace,
+		VerifyBuild: options.VerifyBuild, VerifyTest: options.VerifyTest,
 	}
 	if len(splitPool(args.High)) == 0 {
 		return refused("--high names no model, and the coder needs one to route on")
