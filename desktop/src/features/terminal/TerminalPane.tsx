@@ -4,10 +4,12 @@ import { askAboutTerminalOutput, closeTerminal, readTerminalOutput, removeTermin
 import { labelLine } from '../conversation/tabSummary';
 import type { PaneRenderProps } from '../tabs/kinds/slots';
 import { AskField } from './AskField';
-import { bindingOf, unbind } from './bindings';
+import { unbind } from './bindings';
 import { announceClosePane, announceOpenConversation, announceOpenTerminal } from './events';
 import { startFor, startSentence } from './open';
+import { bindingFor, legacyTerminalView, terminalView } from './target';
 import { metaLine, removeLabel, toneOf } from './state';
+import type { TerminalBinding } from './bindings';
 import { TerminalHeader } from './TerminalHeader';
 import { TerminalScreen, type ScreenHandle } from './TerminalScreen';
 import { useTerminalFeed, type Note } from './useTerminalFeed';
@@ -30,7 +32,9 @@ function useNow(live: boolean) {
 
 /** Design 3c: a terminal or job tab. Output on the terminal field, live state in the header, "Ask codeaf about this output" below. */
 export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
-  const [binding, setBinding] = useState(() => bindingOf(pane.id));
+  // The pane's own target wins; the legacy per-pane binding only speaks for a pane that has none yet.
+  const [started, setStarted] = useState<TerminalBinding>();
+  const binding = started ?? bindingFor(pane);
   const [screen, setScreen] = useState<ScreenHandle | null>(null);
   const [startNote, setStartNote] = useState<string>();
   const [actionError, setActionError] = useState<string>();
@@ -47,6 +51,12 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
   useEffect(() => {
     if (title) summarize.current({ title, firstLine: '', digest: '', mark: failed ? 'failed' : undefined, updatedAt: endedAt ? Date.parse(endedAt) : undefined });
   }, [title, endedAt, failed]);
+  // A tab saved before the durable target carried none: write it onto the pane through the tab action, once.
+  const hydrate = useRef(actions.onView);
+  hydrate.current = actions.onView;
+  const legacy = legacyTerminalView(pane);
+  const legacyKey = legacy ? `${legacy.sessionFile}\n${legacy.target?.terminalId}` : '';
+  useEffect(() => { if (legacy) hydrate.current(legacy); }, [legacyKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // A live terminal takes the keyboard when its tab is the one in front; a finished one has nothing to type into.
   useEffect(() => { if (focused && running) screen?.focus(); }, [focused, running, screen]);
 
@@ -54,7 +64,10 @@ export function TerminalPane({ pane, focused, actions }: PaneRenderProps) {
     ? { text: startNote ?? binding?.refused ?? 'This terminal is gone.', retry: binding?.refused ? startAgain : undefined }
     : feed.note;
   async function startAgain() {
-    try { await startFor(pane.id, { sessionFile: binding?.sessionFile }); setStartNote(undefined); setBinding(bindingOf(pane.id)); }
+    try {
+      const { target: next } = await startFor(pane.id, { sessionFile: binding?.sessionFile });
+      setStartNote(undefined); setStarted(next); actions.onView(terminalView(next));
+    }
     catch (failure) { setStartNote(startSentence(failure)); }
   }
 

@@ -2,6 +2,7 @@ import { connectEngine, EngineError, readTerminal, startTerminal, type TerminalI
 import { newTab } from '../tabs/helpers';
 import type { Tab } from '../tabs/types';
 import { bind } from './bindings';
+import { terminalView, type TerminalTarget } from './target';
 import { limitSentence } from './state';
 
 type Session = { id: string; sessionFile: string };
@@ -31,12 +32,12 @@ export const startSentence = (failure: unknown) => {
   return (failure instanceof EngineError && failure.status === 409 ? limitSentence(failure.message) : undefined) ?? failure.message;
 };
 
-/** Starts the terminal (or finds the one named) and binds it to the tab. Returns the title the tab should carry. */
-export async function startFor(paneId: string, options: OpenTerminal): Promise<string> {
+/** Starts the terminal (or finds the one named) and binds it to the tab. Returns the title the tab should carry and the durable target to save on it. */
+export async function startFor(paneId: string, options: OpenTerminal): Promise<{ title: string; target: TerminalTarget }> {
   const session = await sessionFor(options.sessionFile);
   const info: TerminalInfo = options.terminalId ? await readTerminal(session.id, options.terminalId) : await startTerminal(session.id, { command: options.command, title: options.title });
   bind(paneId, { sessionFile: session.sessionFile, terminalId: info.id });
-  return info.title;
+  return { title: info.title, target: { sessionFile: session.sessionFile, terminalId: info.id } };
 }
 
 /**
@@ -47,10 +48,10 @@ export async function startFor(paneId: string, options: OpenTerminal): Promise<s
 export async function openTerminalTab(options: OpenTerminal = {}): Promise<Tab> {
   const tab = newTab({ kind: 'terminal', title: options.title ?? options.command ?? 'Terminal', titleSource: 'manual' });
   try {
-    const named = await startFor(tab.id, options);
-    return { ...tab, title: options.title ?? named };
+    const { title, target } = await startFor(tab.id, options);
+    return { ...tab, ...terminalView(target), title: options.title ?? title };
   } catch (failure) {
     bind(tab.id, { sessionFile: options.sessionFile, refused: startSentence(failure) });
-    return tab;
+    return options.sessionFile ? { ...tab, sessionFile: options.sessionFile } : tab;
   }
 }

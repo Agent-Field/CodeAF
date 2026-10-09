@@ -30,6 +30,11 @@ test('the field becomes a file tab with its path', () => {
   assert.deepEqual([s.tabs[0].kind, s.tabs[0].path, s.tabs[0].sessionFile], ['file', 'internal/parse/lexer.go', '/s/1.jsonl']);
 });
 
+test('the field becomes a terminal tab that names its shell durably', () => {
+  const s = run(state([tab('f', { kind: 'newtab' })]), { type: 'newtab-become', id: 'f', kind: 'terminal', title: 'zsh', sessionFile: '/s/1.jsonl', terminalId: 'term-3' });
+  assert.deepEqual([s.tabs[0].kind, s.tabs[0].sessionFile, s.tabs[0].target], ['terminal', '/s/1.jsonl', { terminalId: 'term-3' }]);
+});
+
 test('only a field can become something else', () => {
   const base = state([tab('a')]);
   assert.equal(run(base, { type: 'newtab-become', id: 'a', kind: 'file', title: 'x' }).tabs[0].kind, 'conversation');
