@@ -125,3 +125,10 @@ export function isCopyPathShortcut(event: KeyEvent) {
 /** Interactive shell tabs: Control-backtick is identical on every platform. */
 export const newTerminalShortcut = isMac ? '⌃`' : 'Ctrl `';
 export const isNewTerminalShortcut = (event: KeyEvent) => shortcutOf(event)?.id === 'terminal';
+
+/** The new-tab field: ⌘↵ (Ctrl ↵) opens every History match for the words typed ("See all N in History"). */
+export const seeAllHistoryShortcut = isMac ? '⌘↵' : 'Ctrl ↵';
+export function isSeeAllHistoryShortcut(event: KeyEvent) {
+ const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+ return primary && !event.shiftKey && !event.altKey && event.key === 'Enter';
+}

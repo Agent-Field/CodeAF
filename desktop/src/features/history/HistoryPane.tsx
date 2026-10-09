@@ -46,12 +46,15 @@ export function HistoryPane({ pane, focused, actions }: PaneRenderProps) {
   const list = useRef<HTMLDivElement | null>(null);
   const compact = useCompact(root);
   const [filter, setFilter] = useState<HistoryFilter>('all');
-  const [query, setQuery] = useState('');
+  // A search handed over by the new-tab field ("See all N in History") arrives as the pane's draft: it seeds the field once and is consumed.
+  const [query, setQuery] = useState(pane.draft);
   const [selectedId, setSelectedId] = useState<string>();
   const [recapOpen, setRecapOpen] = useState(false);
   const [reading, setReading] = useState<Reading>();
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), design.interaction.activityRefreshInterval); return () => window.clearInterval(timer); }, []);
+
+  useEffect(() => { if (!pane.draft) return; setQuery(pane.draft); setReading(undefined); actions.onDraft(''); }, [pane.draft]);
 
   const searching = query.trim().length > 0;
   const { items, total, loading, error, loadMore, refresh } = useHistoryList(filter);
