@@ -27,7 +27,10 @@ async function seed(page: Page, { tabs, bindings }: Seed) {
 const screenText = (page: Page) => page.locator('.terminal-pane .xterm-rows');
 const header = (page: Page) => page.locator('.terminal-header');
 const starts = (engine: Awaited<ReturnType<typeof installMockEngine>>) => engine.calls.filter(c => c.method === 'POST' && c.path.endsWith('/terminals'));
-const savedPanes = (page: Page) => page.evaluate(key => (JSON.parse(localStorage.getItem(key)!).tabs as { id: string; sessionFile?: string; target?: object }[]), WORKSPACE);
+const savedPanes = (page: Page) => page.evaluate(async () => {
+  const record = await (await fetch('/api/engine/workspaces/now')).json();
+  return (record.workspace?.tabs ?? []) as { id: string; sessionFile?: string; target?: object }[];
+});
 
 test.beforeEach(async ({ page }) => { await page.addInitScript(() => { try { localStorage.removeItem('codeaf-theme'); } catch { /* none */ } }); });
 
@@ -60,6 +63,7 @@ test('a started shell survives a reload with no binding store at all, and never 
   await page.keyboard.press('Control+Backquote');
   await expect(screenText(page)).toContainText('mock$');
   expect(starts(engine)).toHaveLength(1);
+  await expect.poll(async () => (await savedPanes(page))[1]?.target).toEqual({ terminalId: 'mock-term-1' });
   const [, shell] = await savedPanes(page);
   expect(shell.sessionFile).toBeTruthy();
   expect(shell.target).toEqual({ terminalId: 'mock-term-1' });
