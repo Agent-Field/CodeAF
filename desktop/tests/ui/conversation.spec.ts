@@ -68,7 +68,7 @@ test('Enter sends, Shift+Enter adds a line, composition never sends', async ({ p
   expect(posts(engine, '/turn')[0].body.text).toBe('first line\nsecond line');
 });
 
-test('while running: Stop when empty, Steer with text, Queue from the menu', async ({ page }) => {
+test('while running: Stop when empty, Steer with text, Queue beside it', async ({ page }) => {
   const engine = await installMockEngine(page, { ...streaming(), manual: true });
   await openApp(page);
   await send(page, 'Say hello');
@@ -76,8 +76,7 @@ test('while running: Stop when empty, Steer with text, Queue from the menu', asy
   await message(page).fill('also be brief');
   await expect(page.getByRole('button', { name: 'Steer', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: 'More send options' }).click();
-  await page.getByRole('menuitem', { name: /Queue/ }).click();
+  await page.getByRole('button', { name: /^Queue/ }).click();
   await expect.poll(() => posts(engine, '/turn').length).toBe(2);
   expect(posts(engine, '/turn')[1].body).toMatchObject({ text: 'also be brief', mode: 'queue' });
   await message(page).fill('steer this way');
@@ -121,11 +120,11 @@ test('a queued message waits above the composer until the engine records it; rem
   const engine = await installMockEngine(page, { ...streaming(), manual: true });
   await openApp(page);
   await send(page, 'Say hello');
+  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
   const queued = page.getByRole('list', { name: 'Queued messages' });
   for (const [index, text] of ['then update the changelog', 'and tag the release'].entries()) {
     await message(page).fill(text);
-    await page.getByRole('button', { name: 'More send options' }).click();
-    await page.getByRole('menuitem', { name: /Queue/ }).click();
+    await page.getByRole('button', { name: /^Queue/ }).click();
     await expect(queued.getByRole('listitem')).toHaveCount(index + 1);
     await expect(message(page)).toHaveValue('');
   }
