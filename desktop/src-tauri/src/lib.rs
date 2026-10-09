@@ -21,6 +21,27 @@ struct EngineRuntime {
     child: Mutex<Option<CommandChild>>,
 }
 
+// A development shell may attach to an engine that already runs on another
+// machine and is forwarded to this machine's loopback, so a provider key never
+// has to be copied here. The variable names a connection file written by the
+// engine; only a loopback URL is accepted, and the renderer never sees the path.
+fn forwarded_connection() -> Result<Option<EngineConnection>, String> {
+    let Some(path) = std::env::var_os("CODEAF_DESKTOP_CONNECTION") else {
+        return Ok(None);
+    };
+    let text = std::fs::read_to_string(path)
+        .map_err(|_| "The forwarded engine connection is unreadable")?;
+    let connection: EngineConnection =
+        serde_json::from_str(&text).map_err(|_| "The forwarded engine connection is invalid")?;
+    let loopback = ["http://127.0.0.1:", "http://localhost:"]
+        .iter()
+        .any(|prefix| connection.url.starts_with(prefix));
+    if !loopback || connection.token.is_empty() {
+        return Err("The forwarded engine connection must be an authenticated loopback URL".into());
+    }
+    Ok(Some(connection))
+}
+
 // Only the canonical binary's fixed local transport can be started. The
 // renderer never receives process arguments or a provider credential.
 #[tauri::command]
@@ -28,6 +49,10 @@ async fn engine_connection(app: tauri::AppHandle) -> Result<EngineConnection, St
     let runtime = app.state::<EngineRuntime>();
     let mut cached = runtime.connection.lock().await;
     if let Some(connection) = cached.clone() {
+        return Ok(connection);
+    }
+    if let Some(connection) = forwarded_connection()? {
+        *cached = Some(connection.clone());
         return Ok(connection);
     }
     let (mut events, child) = app
