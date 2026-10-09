@@ -23,7 +23,7 @@ const liveTabGroupModel = "deepseek/deepseek-v4.1-flash"
 
 func TestLiveTabGroupTopic(t *testing.T) {
 	if os.Getenv("CODEAF_LIVE_TABGROUPS") == "" {
-		t.Skip("set CODEAF_LIVE_TABGROUPS=1 to spend one organizing call on a copied corpus")
+		t.Skip("set CODEAF_LIVE_TABGROUPS=1 to spend two organizing calls on a copied corpus")
 	}
 	corpus := strings.TrimSpace(os.Getenv("CODEAF_TABGROUP_CORPUS"))
 	if corpus == "" {
@@ -52,6 +52,16 @@ func TestLiveTabGroupTopic(t *testing.T) {
 		t.Fatalf("copied corpus has %d drip chats and %d unrelated chats", len(drip), len(other))
 	}
 	shown := append(append([]placegraph.TabChat{}, drip[:5]...), other[:3]...)
+	// Exercise the same home-workspace eligibility gate as the desktop. The
+	// private copied corpus is read-only; only these in-memory records change.
+	home := t.TempDir()
+	for i := range shown {
+		shown[i].Workspace = home
+	}
+	unrelated := append([]placegraph.TabChat{}, other[:3]...)
+	for i := range unrelated {
+		unrelated[i].Workspace = home
+	}
 	dripIDs := map[string]bool{}
 	for _, chat := range drip[:5] {
 		dripIDs[chat.ID] = true
@@ -91,46 +101,68 @@ func TestLiveTabGroupTopic(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	question := placegraph.TopicQuestion(shown)
-	if question.Role != roles.RolePlaceSuggest {
-		t.Fatalf("role %s", question.Role)
+	calls := 0
+	ask := func(ctx context.Context, req placegraph.ModelRequest) (string, error) {
+		if req.Role != roles.RolePlaceSuggest {
+			t.Fatalf("role %s", req.Role)
+		}
+		calls++
+		answer, err := agent.AskPlaces(ctx, req)
+		t.Logf("actual GroupOffers call %d model=%q answer=%q err=%v", calls, answer.Model, answer.Text, err)
+		if err != nil {
+			t.Fatalf("the organizing call failed: %v", err)
+		}
+		if answer.Model != liveTabGroupModel {
+			t.Fatalf("answered on %q", answer.Model)
+		}
+		return answer.Text, err
 	}
-	answer, err := agent.AskPlaces(ctx, question)
-	t.Logf("placesuggest on %q:\n%s\n→ %q (err %v)", answer.Model, question.User, answer.Text, err)
-	if err != nil {
-		t.Fatalf("the organizing call failed: %v", err)
+	newGate := func() *placegraph.TopicGate {
+		return &placegraph.TopicGate{Policy: func() placegraph.RecommendPolicy {
+			p := placegraph.DefaultRecommendPolicy()
+			p.OrganizeEveryMinutes = 0
+			return p
+		}}
 	}
-	if answer.Model != liveTabGroupModel {
-		t.Fatalf("answered on %q", answer.Model)
+	gate := newGate()
+	offers := placegraph.GroupOffers(ctx, home, shown, ask, gate)
+	if len(offers) != 1 || offers[0].Basis != "topic" || len(offers[0].IDs) != 5 || offers[0].Title == "" {
+		t.Fatalf("expected all five concrete drip chats, got %+v", offers)
 	}
-	offer, err := placegraph.ReadTopicAnswer(answer.Text, shown)
-	if err != nil || offer == nil {
-		t.Fatalf("no honest topic offer: %v", err)
-	}
-	if len(offer.IDs) < 3 || offer.Title == "" {
-		t.Fatalf("offer %+v", offer)
-	}
-	for _, id := range offer.IDs {
+	for _, id := range offers[0].IDs {
 		if otherIDs[id] || !dripIDs[id] {
-			t.Fatalf("offer left the drip chats: %+v", offer)
+			t.Fatalf("offer left the drip chats: %+v", offers)
 		}
 	}
+	t.Logf("home-topic precision=5/5 recall=5/5 offer=%+v", offers[0])
+	repeated := placegraph.GroupOffers(ctx, home, shown, ask, gate)
+	if len(repeated) != 1 || calls != 1 {
+		t.Fatalf("same set repeated a model call: offers=%+v calls=%d", repeated, calls)
+	}
+	refused := placegraph.GroupOffers(ctx, home, unrelated, ask, newGate())
+	if len(refused) != 0 || calls != 2 {
+		t.Fatalf("unrelated home chats offered %+v calls=%d", refused, calls)
+	}
+	t.Log("unrelated-home refusal=3/3; common home is neither repository nor topic evidence")
 	lines := journalUsageLines(t, journal)
 	if len(lines) == 0 {
 		t.Fatal("the journal has no usage line for the organizing call")
 	}
-	saw := false
+	saw := 0
+	cost := 0.0
 	for _, line := range lines {
 		if line.Model != liveTabGroupModel {
 			t.Fatalf("journal model %q", line.Model)
 		}
 		if line.Aux && line.Role == string(roles.RolePlaceSuggest) {
-			saw = true
+			saw++
+			cost += line.CostUSD
 		}
 	}
-	if !saw {
+	if saw != 2 {
 		t.Fatalf("journal lines did not record an aux %s call: %+v", roles.RolePlaceSuggest, lines)
 	}
+	t.Logf("verified journal: %d aux placesuggest calls model=%s totalCostUSD=%.8f", saw, liveTabGroupModel, cost)
 }
 
 func topicOf(title string) string {

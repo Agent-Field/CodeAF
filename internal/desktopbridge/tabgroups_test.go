@@ -83,12 +83,12 @@ func TestGroupOffersThreeChatsInOneRepoAndLeavesHomeLoose(t *testing.T) {
 		},
 		Ask: func(ctx context.Context, req placegraph.ModelRequest) (string, error) {
 			calls++
-			return `{"belong":true,"chats":["c1","c2","c3"],"name":"Should not run"}`, nil
+			return `{"belong":false,"chats":[],"name":""}`, nil
 		},
 	})
 	t.Cleanup(b.Close)
 	code, got := postOffers(t, b, `{"ids":["aaaa000000000001","bbbb000000000002","cccc000000000003","dddd000000000004","eeee000000000005","ffff000000000006","not-an-id","/tmp/cpw-corpus/ws"]}`)
-	if code != 200 || calls != 0 || len(got.Offers) != 1 || got.Offers[0].Basis != "repo" || len(got.Offers[0].IDs) != 3 {
+	if code != 200 || calls != 1 || len(got.Offers) != 1 || got.Offers[0].Basis != "repo" || len(got.Offers[0].IDs) != 3 {
 		t.Fatalf("code %d calls %d offers %+v", code, calls, got.Offers)
 	}
 	for _, id := range got.Offers[0].IDs {
@@ -194,5 +194,47 @@ func TestGroupOffersFailHonestly(t *testing.T) {
 				t.Fatalf("calls = %d", calls)
 			}
 		})
+	}
+}
+
+func TestGroupOffersHomeWorkspaceTopicUsesCanonicalLibraryEvidence(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	ids := []string{"1111111111111111", "2222222222222222", "3333333333333333", "4444444444444444", "5555555555555555", "6666666666666666", "7777777777777777", "8888888888888888"}
+	titles := []string{"Tomato drip cycles", "Emitter clogs", "Garden drip tubing", "Drip rain delay", "Irrigation zones", "Roth conversion", "Buttermilk biscuits", "Hip stretching"}
+	for i, id := range ids {
+		writeChat(t, root, "-home", id, titles[i], "", home)
+	}
+	calls := 0
+	b := New(testToken, func(string) (Connection, error) { return Connection{}, nil })
+	b.UseHistory(&History{Root: root})
+	b.UseTabGroups(&TabGroups{Home: home, Ask: func(ctx context.Context, req placegraph.ModelRequest) (string, error) {
+		calls++
+		if req.Role != "placesuggest" || strings.Contains(req.User, home) || !strings.Contains(req.User, "Tomato drip cycles") {
+			t.Fatalf("unowned evidence or wrong role: %+v", req)
+		}
+		return `{"belong":true,"chats":["c1","c2","c3","c4","c5"],"name":"Drip irrigation"}`, nil
+	}})
+	t.Cleanup(b.Close)
+	body, err := json.Marshal(struct {
+		IDs []string `json:"ids"`
+	}{ids})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, got := postOffers(t, b, string(body))
+	if code != 200 || calls != 1 || len(got.Offers) != 1 || got.Offers[0].Basis != "topic" || len(got.Offers[0].IDs) != 5 {
+		t.Fatalf("code=%d calls=%d offers=%+v", code, calls, got.Offers)
+	}
+	for i, id := range got.Offers[0].IDs {
+		if id != ids[i] {
+			t.Fatalf("unrelated home chat included: %+v", got.Offers)
+		}
+	}
+	postOffers(t, b, string(body))
+	if calls != 1 {
+		t.Fatalf("same set asked twice: %d", calls)
+	}
+	if _, err := os.Stat(filepath.Join(root, "places.json")); !os.IsNotExist(err) {
+		t.Fatal("the offer wrote a place graph")
 	}
 }
