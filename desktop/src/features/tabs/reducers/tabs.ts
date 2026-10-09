@@ -19,7 +19,7 @@ export type TabAction =
   | { type: 'title'; id: string; title: string; source: 'message' | 'engine' }
   | { type: 'view'; id: string; change: TabView }
   | { type: 'draft'; id: string; draft: string }
-  | { type: 'reorder'; id: string; targetId: string };
+  | { type: 'reorder'; id: string; targetId: string; after?: boolean };
 
 const uncollapse = (state: WorkspaceState, groupId?: string) => state.groups.map(g => (g.id === groupId ? { ...g, collapsed: false } : g));
 
@@ -78,7 +78,7 @@ export function reduceTabs(state: WorkspaceState, action: { type: string }): Wor
       const target = state.tabs.find(t => t.id === a.targetId);
       if (!tab || !target || tab.id === target.id) return state;
       const tabs = state.tabs.filter(t => t.id !== tab.id);
-      tabs.splice(tabs.findIndex(t => t.id === target.id), 0, { ...tab, pinned: target.pinned, groupId: target.groupId });
+      tabs.splice(tabs.findIndex(t => t.id === target.id) + (a.after ? 1 : 0), 0, { ...tab, pinned: target.pinned, groupId: target.groupId });
       return normalize({ ...state, tabs });
     }
     default: return undefined;

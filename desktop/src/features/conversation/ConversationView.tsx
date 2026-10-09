@@ -35,6 +35,10 @@ export type ConversationViewProps = {
   onOpenTaskTab: (taskId: string, title: string) => void;
   /** Whether the composer takes focus on mount. A split passes false for panes that are not focused. */
   autoFocus?: boolean;
+  /** True while the pane is one of several in a split. */
+  split?: boolean;
+  /** Whether this pane holds the split's focus. Only the focused pane shows the full composer; the others a compact field. */
+  focused?: boolean;
 };
 
 const MODEL_LABEL = 'DeepSeek v4.1 Flash';
@@ -49,7 +53,7 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true }: ConversationViewProps) {
+export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true }: ConversationViewProps) {
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }) });
   const { model, snapshot, failed } = conversation;
   const [focusKey, setFocusKey] = useState<string>();
@@ -188,6 +192,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                 {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
                 {!inTask && (
                   <ConversationDock
+                    compact={split && !focused ? { label } : undefined}
                     tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey, compact: away, onReview: jump }}
                     queue={{ items: snapshot?.queue ?? [], onRemove: conversation.removeQueue, onEdit: conversation.editQueue, onMove: conversation.moveQueue }}
                     composer={{

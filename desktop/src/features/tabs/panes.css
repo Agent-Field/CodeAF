@@ -1,10 +1,11 @@
 /* The content card (radius 10, canvas, sh-1) and the split grid of cards. */
-.workspace-conversation { flex: 1; display: flex; min-height: 0; min-width: 0; gap: var(--pane-gap); }
+.workspace-conversation { position: relative; flex: 1; display: flex; min-height: 0; min-width: 0; gap: var(--pane-gap); }
 .workspace-conversation:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
 .workspace-conversation[data-layout="1x2"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
 .workspace-conversation[data-layout="2x1"] { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .workspace-conversation[data-layout="2x2"] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
 .workspace-conversation[data-layout="2x2"][data-count="3"] > .workspace-pane:nth-child(3) { grid-column: 1 / -1; }
+.workspace-pane:focus-visible { outline: none; }
 .workspace-pane { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: var(--radius-pane); background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
 .workspace-pane[data-focused="true"] { box-shadow: var(--sh-1), 0 0 0 var(--pane-ring-width) var(--accent-soft); }
 .workspace-pane-body { flex: 1; display: flex; min-height: 0; min-width: 0; }
@@ -12,3 +13,27 @@
 .pane-header[data-focused="true"] { color: var(--ink); }
 .pane-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to right, black calc(100% - var(--tab-title-fade)), transparent); }
 .pane-header-controls { flex: none; display: flex; align-items: center; gap: var(--space-half); }
+/* A maximized pane fills the card; the others stay mounted but hidden. */
+.workspace-pane[hidden] { display: none; }
+/* Pane controls show on hover, on keyboard focus inside the header, and always on touch. */
+.pane-header-more.icon-button, .pane-header-close.icon-button { width: var(--tab-close-size); height: var(--tab-close-size); border-radius: var(--radius-tab-close); color: var(--ink-3); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.workspace-pane:hover .pane-header-more, .workspace-pane:hover .pane-header-close, .pane-header:focus-within .pane-header-more, .pane-header:focus-within .pane-header-close, .pane-header-more[data-state="open"] { opacity: var(--opacity-opaque); }
+.pane-header-more.icon-button:hover:not(:disabled), .pane-header-close.icon-button:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+@media (hover: none), (pointer: coarse) { .pane-header-more.icon-button, .pane-header-close.icon-button { opacity: var(--opacity-opaque); } }
+/* Resize handles: an 8px hit area in the gap; the 2px rule shows on hover, keyboard focus and while dragging. */
+.pane-resize { position: absolute; z-index: var(--z-overlay); touch-action: none; }
+.pane-resize[data-axis="col"] { cursor: col-resize; }
+.pane-resize[data-axis="row"] { cursor: row-resize; }
+.pane-resize::after { content: ""; position: absolute; border-radius: var(--radius-pill); background: var(--accent); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
+.pane-resize[data-axis="col"]::after { top: 0; bottom: 0; left: calc(50% - var(--rule-width) / 2); width: var(--rule-width); }
+.pane-resize[data-axis="row"]::after { left: 0; right: 0; top: calc(50% - var(--rule-width) / 2); height: var(--rule-width); }
+.pane-resize:hover::after, .pane-resize:focus-visible::after, .pane-resize[data-dragging]::after { opacity: var(--opacity-opaque); }
+.pane-resize:focus-visible { outline: none; }
+
+/* Drag target on a tab in the strip (design 2g): the middle of a tab under a dragged tab is the "Group" target; its edges mark a reorder. */
+.workspace-tab[data-drop="group"] { background: var(--accent-soft); box-shadow: inset 0 0 0 var(--pane-ring-width) var(--accent); color: var(--ink-2); }
+.workspace-tab[data-drop="group"] .workspace-tab-close-slot { display: none; }
+.workspace-tab[data-drop="group"]::after { content: "Group"; flex: none; margin-right: var(--tab-segment-pad); color: var(--accent); font-size: var(--font-size-label); font-weight: var(--font-weight-medium); }
+.workspace-tab[data-drop="before"]::before, .workspace-tab[data-drop="after"]::before { content: ""; position: absolute; top: 0; bottom: 0; width: var(--pane-ring-width); border-radius: var(--radius-pill); background: var(--accent); }
+.workspace-tab[data-drop="before"]::before { left: calc(var(--space-half) * -1); }
+.workspace-tab[data-drop="after"]::before { right: calc(var(--space-half) * -1); }

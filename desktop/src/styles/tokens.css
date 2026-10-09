@@ -488,6 +488,14 @@
   --pane-ring-width: 1.5px;
   --pane-gap: 8px;
   --pane-resize-hit: 8px;
+  --split-zone-band: 56px;
+  --split-pill-height: 30px;
+  --compact-composer-height: 36px;
+  --compact-composer-radius: 18px;
+  --compact-composer-pad: 16px;
+  --split-tray-height: 38px;
+  --split-tray-button-height: 26px;
+  --composer-expand-max-height: 400px;
   --shell-card-inset: 8px;
   --preview-card-width: 300px;
   --preview-card-pad: 12px 14px 14px;

@@ -131,3 +131,11 @@ Shell). On any conflict, the design files win over code and older docs.
 | NT13 | New tab rows: the design draws square-terminal and file-code-2 at 15px | The set's terminal and file-code icons at 15px (a size on the row only). |
 | NT14 | New tab rows: hover versus selection | Pointer movement moves the highlight (one fill, field), so hover and selection never differ. Press uses field-2 for 80ms. |
 | NT15 | New tab field: the design draws the card at 600px of content plus 6px padding | The card is 612px wide in total (600 plus padding), shrinking to the card width minus a 16px gutter on narrow windows. |
+
+## Split lane notes
+
+| ID | Question | Assumption |
+|---|---|---|
+| Q-split-1 | Pane menu "Swap" (Interactions: Close pane · Swap · Maximize) does not say with which pane when a split has 3 or 4 | With two panes "Swap" trades them. With three or four it opens a "Swap with" submenu listing the other panes by title. |
+| Q-split-2 | "Maximize" has no drawn state or exit | The pane fills the card, the others stay mounted but hidden (drafts and running work carry on), and the same menu item reads "Restore panes". It is a view only: not saved, and it ends on a tab switch or when the pane count changes. |
+| Q-split-3 | Dropping a tab on the content edge of a tab that is pinned or already a 4-pane split | No zones are drawn and the drop does nothing (a pinned tab cannot merge; capacity is 4 panes). The design draws no refusal state. |
