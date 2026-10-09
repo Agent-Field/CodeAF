@@ -21,6 +21,7 @@
     "prebuild": "npm run design:check",
     "design:test": "node --test scripts/check-design.test.mjs",
     "test:ui": "playwright test",
+    "test:places-components": "playwright test --config playwright.places-components.config.ts",
     "upstream:sync": "node scripts/sync-dev.mjs",
     "engine:dev": "node scripts/engine-bridge.mjs"
   },

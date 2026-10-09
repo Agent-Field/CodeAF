@@ -7,7 +7,7 @@ export { Segmented, type SegmentedOption } from './Segmented';
 export { Chip, ChipButton, Tag, type TagTone } from './Chip';
 export { Row, RowActions } from './RowActions';
 export { NavigationItem } from './NavigationItem';
-export { PageHeading, SectionHeading, Text, CodeText } from './Typography';
+export { PageHeading, SectionHeading, HomeTitle, SectionLabel, Text, CodeText } from './Typography';
 export { Surface, Separator } from './Surface';
 export { KeyboardShortcut } from './KeyboardShortcut';
 export { ThemeSelect } from './ThemeSelect';
