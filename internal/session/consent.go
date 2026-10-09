@@ -684,10 +684,10 @@ func (a *Agent) consentCommand(call ai.ToolCall) []Block {
 // A hidden widening key is not an authority. The question already claimed
 // by ResolveQuestion is the immutable offer that this answer must honour.
 func consentScopeError(q Question, claimed bool, answer Answer) error {
-	if !claimed || q.Kind != QuestionConsent || answer.FirstKey() != "2" {
+	if answer.Kind != QuestionConsent || answer.FirstKey() != "2" {
 		return nil
 	}
-	if q.Stakes != StakesIrreversible {
+	if claimed && q.Kind == QuestionConsent && q.Stakes != StakesIrreversible {
 		for _, option := range q.Options {
 			if option.Key == "2" && option.Widening {
 				return nil
