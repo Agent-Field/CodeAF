@@ -1,0 +1,74 @@
+/* User message (design v3 §2.1). Tokens only. */
+.user-message { position: relative; display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
+.user-message-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--user-message-gap);
+  max-width: var(--chat-bubble-max-width);
+  min-width: 0;
+  padding: var(--user-message-pad-y) var(--user-message-pad-x);
+  border-radius: var(--radius-bubble);
+  background: var(--bubble);
+  color: var(--ink);
+  font-size: var(--type-prose-size);
+  line-height: var(--type-prose-leading);
+  text-wrap: pretty;
+}
+/* Attachments sit inside, above the words. */
+.user-message-bubble[data-attached] {
+  gap: var(--space-2);
+  padding: var(--user-message-inset) var(--user-message-inset) var(--user-message-pad-y);
+}
+.user-message-bubble[data-attached] .user-message-text { padding-inline: var(--space-2); }
+.user-message-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-message-text[data-markdown] { white-space: normal; }
+/* Long text clamps at the configured lines and fades out before Show more. */
+.user-message-text[data-clamped="true"] {
+  max-height: calc(var(--chat-user-clamp-lines) * var(--type-prose-size) * var(--type-prose-leading));
+  overflow: hidden;
+}
+.user-message-text[data-faded] {
+  mask-image: linear-gradient(to bottom, black var(--user-message-clamp-fade), transparent);
+}
+.user-message-bubble .user-message-toggle.button {
+  align-self: flex-start;
+  height: var(--user-message-toggle-height);
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-strong);
+  color: var(--ink-2);
+}
+.user-message-bubble .user-message-toggle.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
+
+/* Actions: hidden at rest, fade in on hover or focus within, always shown on touch. */
+.user-message-actions {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--user-message-gap);
+  margin-top: var(--space-1);
+  color: var(--ink-3);
+  opacity: var(--opacity-transparent);
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.user-message:hover .user-message-actions,
+.user-message:focus-within .user-message-actions { opacity: var(--opacity-opaque); }
+@media (pointer: coarse) {
+  .user-message-actions { opacity: var(--opacity-opaque); }
+}
+.user-message-actions .icon-button {
+  width: var(--message-action-size);
+  height: var(--message-action-size);
+  border-radius: var(--radius-message-action);
+  color: var(--ink-3);
+}
+.user-message-actions .icon-button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.user-message-actions .icon-button svg { width: var(--message-action-icon); height: var(--message-action-icon); }
+/* The copied state shows as the check icon; the live region stays for screen readers. */
+.user-message-actions .copy-button-status { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); }
+
+.user-message-specimen { display: flex; flex-direction: column; gap: var(--space-8); width: 100%; max-width: var(--chat-column-max-width); }
