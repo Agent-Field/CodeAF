@@ -3,7 +3,7 @@ import { useMediaQuery } from '../../design/useMediaQuery';
 import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
 import { useConversationModel } from './composer/useConversationModel';
-import type { Tab } from '../tabs/model';
+import type { Pane } from '../tabs/model';
 import { goBack, goForward, navigate, rootRoute, routeTask, TASKS_VIEW, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
 import type { OutgoingFile } from '../chat/engine-client';
@@ -27,12 +27,14 @@ import { useFoldAnchor, useTurnJump } from './turnScroll';
 import './conversation-view.css';
 
 export type ConversationViewProps = {
-  tab: Tab;
+  tab: Pane;
   label: string;
   onDraft: (draft: string) => void;
   onView: (change: TabView) => void;
   onSummary: (summary: TabSummary) => void;
   onOpenTaskTab: (taskId: string, title: string) => void;
+  /** Whether the composer takes focus on mount. A split passes false for panes that are not focused. */
+  autoFocus?: boolean;
 };
 
 const MODEL_LABEL = 'DeepSeek v4.1 Flash';
@@ -47,7 +49,7 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab }: ConversationViewProps) {
+export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true }: ConversationViewProps) {
   const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }) });
   const { model, snapshot, failed } = conversation;
   const [focusKey, setFocusKey] = useState<string>();
@@ -197,7 +199,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                       modelLabel,
                       model: conversationModel,
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
-                      autoFocus: true,
+                      autoFocus,
                     }}
                   />
                 )}
