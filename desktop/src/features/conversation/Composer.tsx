@@ -1,7 +1,9 @@
-import { useLayoutEffect, useRef, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react';
 import { Button, DropdownMenu, IconButton, Text, TextArea, TextInput, type MenuEntry } from '../../components/ui';
 import design from '../../design/tokens.json';
 import type { OutgoingFile } from '../chat/engine-client';
+import { PasteCard } from './composer/PasteCard';
+import { encodePasted, countLines, isLongPaste } from './composer/pastedText';
 import { AttachmentTray } from './composer/AttachmentTray';
 import { toOutgoing } from './composer/attachments';
 import { useAttachments } from './composer/useAttachments';
@@ -35,7 +37,9 @@ function isComposing(event: KeyboardEvent) {
   return event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
 }
 
+/** Grows to the row cap, then scrolls; `faded` is true only once text has scrolled under the top. */
 function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, draft: string) {
+  const [faded, setFaded] = useState(false);
   useLayoutEffect(() => {
     const field = ref.current;
     if (!field) return;
@@ -47,36 +51,41 @@ function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, draft: string) 
     // scrollHeight is rounded to whole pixels, so a lone line can read a hair over one.
     const lines = Math.round((field.scrollHeight - padding) / line);
     field.rows = Math.min(composerMaxRows, Math.max(composerMinRows, lines));
+    setFaded(field.scrollTop > 0);
   }, [ref, draft]);
+  return { faded, onScroll: () => setFaded((ref.current?.scrollTop ?? 0) > 0) };
 }
 
 export function Composer(props: ComposerProps) {
   const { draft, onDraft, onSend, onStop, running, docked, disabledReason, autoFocus } = props;
   const field = useRef<HTMLTextAreaElement>(null);
-  useAutosize(field, draft);
+  const autosize = useAutosize(field, draft);
+  const [pastes, setPastes] = useState<string[]>([]);
   const disabled = !!disabledReason;
   const attachments = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
   const drop = useFileDrop(attachments.add, !disabled);
   const dropState = props.dropState ?? (drop.over ? 'over' : drop.pageDrag ? 'page' : undefined);
-  const blank = draft.trim() === '' && attachments.items.length === 0;
+  const blank = draft.trim() === '' && attachments.items.length === 0 && pastes.length === 0;
 
   async function send(mode: SendMode) {
     if (blank || disabled) return;
     const { items } = attachments;
-    const accepted = items.length
-      ? await onSend(draft.trim(), mode, await toOutgoing(items))
-      : await onSend(draft.trim(), mode);
+    const text = encodePasted(pastes, draft.trim());
+    const accepted = items.length ? await onSend(text, mode, await toOutgoing(items)) : await onSend(text, mode);
     if (!accepted) return;
     onDraft('');
+    setPastes([]);
     attachments.clear();
   }
 
   function onPaste(event: ClipboardEvent) {
     const files = Array.from(event.clipboardData.files);
-    if (files.length === 0) return;
+    const text = event.clipboardData.getData('text/plain');
+    if (files.length === 0 && !isLongPaste(text)) return;
     event.preventDefault();
-    attachments.add(files);
+    if (files.length) attachments.add(files);
+    else setPastes(current => [...current, text]);
   }
 
   function onPicked(input: HTMLInputElement) {
@@ -118,9 +127,19 @@ export function Composer(props: ComposerProps) {
       >
         {dropState && <Text className="composer-drop-hint">Drop to attach</Text>}
         <AttachmentTray items={attachments.items} onRemove={attachments.remove} />
+        {pastes.map((text, index) => (
+          <PasteCard
+            key={index}
+            lines={countLines(text)}
+            text={text}
+            onRemove={() => setPastes(current => current.filter((_, at) => at !== index))}
+          />
+        ))}
         <TextArea
           ref={field}
           className="composer-field"
+          data-faded={autosize.faded || undefined}
+          onScroll={autosize.onScroll}
           aria-label="Message"
           placeholder={disabledReason ?? 'Message codeaf'}
           value={draft}

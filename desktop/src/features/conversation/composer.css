@@ -35,6 +35,12 @@
   line-height: var(--line-height-body);
 }
 
+/* Past the row cap the text scrolls under a fade at the top. */
+.composer-field.text-area[data-faded] {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade-top));
+  mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade-top));
+}
+
 .composer-field.text-area:focus-visible {
   outline: none;
 }
