@@ -22,9 +22,19 @@ export async function expectAccessible(page: Page) {
  expect(result.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>n.target)}))).toEqual([]);
 }
 export async function expectNoUnstyledControls(page: Page) {
- const selects = page.locator('select:not([aria-hidden="true"])');
- for (const control of await selects.all()) await expect(control).not.toBeVisible();
- for (const control of await page.locator('button,input:not([type=hidden]),textarea').all()) {
-  if (await control.isVisible()) await expect(control).toHaveAttribute('class', /(?:button|nav-item|address-field|favorite-button|new-item|select-trigger|palette-close|command-item|text-input|segmented-option|chip-button)/);
- }
+ // One in-page pass: per-control locator round trips cost ~15s over the Design system specimen in webkit.
+ const offenders = await page.evaluate(() => {
+  const shown = (el: Element) => {
+   const rect = el.getBoundingClientRect();
+   return rect.width > 0 && rect.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+  };
+  const themed = /(?:button|nav-item|address-field|favorite-button|new-item|select-trigger|palette-close|command-item|text-input|segmented-option|chip-button)/;
+  const bad: string[] = [];
+  for (const el of document.querySelectorAll('select:not([aria-hidden="true"])')) if (shown(el)) bad.push(`visible native select: ${el.outerHTML.slice(0, 120)}`);
+  for (const el of document.querySelectorAll('button,input:not([type=hidden]),textarea')) {
+   if (shown(el) && !themed.test(el.getAttribute('class') ?? '')) bad.push(`unstyled control: ${el.outerHTML.slice(0, 120)}`);
+  }
+  return bad;
+ });
+ expect(offenders).toEqual([]);
 }
