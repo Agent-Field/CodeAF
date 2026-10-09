@@ -147,8 +147,9 @@ run_both_locks() {
 	kill -0 "$named" 2>/dev/null || { printf 'the directory lock names pid %s, which is not running\n' "$named" >&2; kill -TERM "$holder_pid"; return 1; }
 
 	# TWO: a reader of the FLOCK still sees it, unchanged. Taking a second lock
-	# must not cost the first one anything.
-	if flock -n "$lock" -c true 2>/dev/null; then
+	# must not cost the first one anything. Without flock this assertion cannot
+	# run; the directory-lock checks above still hold.
+	if command -v flock >/dev/null 2>&1 && flock -n "$lock" -c true 2>/dev/null; then
 		printf 'the flock read free while a suite held it\n' >&2; kill -TERM "$holder_pid"; return 1
 	fi
 
@@ -192,7 +193,10 @@ run_both_locks() {
 		return 1
 	fi
 	[ ! -d "$dir" ] || { printf 'the directory lock %s outlived its holder %s: a lock with no owner, which pins every reader forever\n' "$dir" "$owner" >&2; return 1; }
-	flock -n "$lock" -c true 2>/dev/null || { printf 'the flock outlived its holder %s\n' "$owner" >&2; return 1; }
+	if command -v flock >/dev/null 2>&1 && ! flock -n "$lock" -c true 2>/dev/null; then
+		printf 'the flock outlived its holder %s\n' "$owner" >&2
+		return 1
+	fi
 }
 
 # AND A STALE HOLDER TURNS A CURRENT RUN AWAY, which is the direction that has
@@ -305,7 +309,12 @@ run_dead_directory_lock_is_taken_back() {
 	while [ "$(cat "$dir/pid" 2>/dev/null)" != "$owner" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
 	kill -KILL "$owner"
 	waited=0
-	while ! flock -n "$lock" -c true 2>/dev/null && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+	while command -v flock >/dev/null 2>&1 && ! flock -n "$lock" -c true 2>/dev/null && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+	# Without flock, do not spin waiting for a free that can never be observed.
+	if ! command -v flock >/dev/null 2>&1; then
+		waited=0
+		while [ ! -d "$dir" ] && [ "$waited" -lt 50 ]; do sleep 0.1; waited=$((waited + 1)); done
+	fi
 	[ -d "$dir" ] || { printf 'the killed holder %s took its directory with it, so this arm tests nothing\n' "$owner" >&2; kill -TERM "$wrapper_pid"; return 1; }
 	local out status
 	set +e
@@ -316,7 +325,10 @@ run_dead_directory_lock_is_taken_back() {
 	wait "$wrapper_pid" || true
 	[ "$status" -eq 0 ] || { printf 'a dead directory lock (holder %s, killed) still refused the next run (status %d): %s\n' "$owner" "$status" "$out" >&2; return 1; }
 	[ ! -d "$dir" ] || { printf 'the run that took back the dead lock left its own directory behind\n' >&2; return 1; }
-	flock -n "$lock" -c true 2>/dev/null || { printf 'the flock is still held after both runs ended\n' >&2; return 1; }
+	if command -v flock >/dev/null 2>&1 && ! flock -n "$lock" -c true 2>/dev/null; then
+		printf 'the flock is still held after both runs ended\n' >&2
+		return 1
+	fi
 	ls -d "$dir".stale.* >/dev/null 2>&1 && { printf 'the dead directory was moved aside and left there\n' >&2; return 1; }
 	return 0
 }
@@ -366,13 +378,28 @@ else
 	namespace_ran=
 	printf 'one-suite namespace acceptance: SKIP (bwrap is not installed)\n'
 fi
-run_both_locks
+
+# macOS does not ship flock. Arms that assert the flock state treat
+# "command not found" as "lock still held" and go red on a box where the
+# suite lock itself (the Go helper) never needed flock (#1770). Skip those
+# arms with a stated reason, the same way the namespace arms skip bwrap.
+if command -v flock >/dev/null 2>&1; then
+	run_both_locks
+	run_dead_directory_lock_is_taken_back
+	flock_ran=yes
+else
+	flock_ran=
+	printf 'one-suite flock acceptance: SKIP (flock is not installed)\n'
+fi
 run_refused_by_directory
 run_old_reader_sees_current_holder
-run_dead_directory_lock_is_taken_back
 run_suite_does_not_inherit_the_lock_name
-if [ -n "$namespace_ran" ]; then
+if [ -n "$namespace_ran" ] && [ -n "$flock_ran" ]; then
 	printf 'one-suite namespace and dual-lock acceptance: ok\n'
-else
+elif [ -n "$namespace_ran" ]; then
+	printf 'one-suite namespace acceptance: ok (flock skipped)\n'
+elif [ -n "$flock_ran" ]; then
 	printf 'one-suite dual-lock acceptance: ok (namespace skipped)\n'
+else
+	printf 'one-suite lock acceptance: ok (namespace and flock skipped)\n'
 fi
