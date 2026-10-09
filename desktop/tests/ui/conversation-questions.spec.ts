@@ -30,6 +30,13 @@ test('a question sits in the tray; choosing answers canonically and leaves a rec
   await expect(page.getByRole('button', { name: 'Waiting on you: Pick a database' })).toBeVisible();
   // Not blocking the turn: the composer stays open.
   await expect(message(page)).toBeEnabled();
+  // 1a: a question that does not hold the reply says so at the right end of the card's action row, not under the card.
+  const note = card.getByText('Doesn’t block this reply');
+  await expect(note).toBeVisible();
+  const [noteBox, choose, cardBox] = await Promise.all([note.boundingBox(), card.getByRole('button', { name: 'Choose' }).boundingBox(), card.boundingBox()]);
+  expect(Math.abs(noteBox!.y + noteBox!.height / 2 - (choose!.y + choose!.height / 2))).toBeLessThan(choose!.height / 2);
+  expect(noteBox!.x).toBeGreaterThan(choose!.x + choose!.width);
+  expect(cardBox!.x + cardBox!.width - (noteBox!.x + noteBox!.width)).toBeLessThan(40);
   await card.getByRole('radio', { name: /Postgres/ }).check();
   await card.getByRole('button', { name: 'Choose' }).click();
   await expect.poll(() => posts(engine, '/answer').length).toBe(1);

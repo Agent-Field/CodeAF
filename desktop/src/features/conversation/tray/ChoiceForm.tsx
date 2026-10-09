@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button, Text, TextInput } from '../../../components/ui';
 import { CardEvidence, type RenderImage } from './CardEvidence';
 import { deadlineAt, span } from './clock';
@@ -10,6 +10,8 @@ type Props = {
   now: number;
   held: boolean;
   locked: boolean;
+  /** Drawn at the right end of the action row. */
+  note?: ReactNode;
   onChoose: (option: Option) => void;
   onHold: () => void;
   renderImage?: RenderImage;
@@ -63,7 +65,7 @@ function Countdown({ question, now, held }: { question: Question; now: number; h
 }
 
 /** Cards to pick from, the engine's pick lit first, and Choose. A Deadline adds the clock and Hold. */
-export function ChoiceForm({ question, now, held, locked, onChoose, onHold, renderImage }: Props) {
+export function ChoiceForm({ question, now, held, locked, note, onChoose, onHold, renderImage }: Props) {
   const options = visibleOptions(question);
   const [key, setKey] = useState(() => (options.some((o) => o.key === question.pick?.key) ? question.pick?.key : undefined));
   const chosen = options.find((option) => option.key === key);
@@ -89,6 +91,7 @@ export function ChoiceForm({ question, now, held, locked, onChoose, onHold, rend
         </Button>
         <Countdown question={question} now={now} held={held} />
         {clocked && !held && <Button className="choice-hold" disabled={locked} onClick={onHold}>Hold</Button>}
+        {note}
       </div>
     </>
   );
