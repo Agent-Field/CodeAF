@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
-import { Button, IconButton, Text } from '../../components/ui';
+import { IconButton, Text } from '../../components/ui';
 import type { EngineTaskRow } from '../chat/engine-client';
-import { StateMark } from './StateMark';
-import { buildTaskTree, taskCounts, type TaskNode } from './taskTree';
+import { tokensText } from './tasks/rowText';
+import type { TaskCommands } from './tasks/taskMenu';
+import { TaskProgressStrip } from './tasks/TaskProgress';
+import { TaskRow } from './tasks/TaskRow';
+import { useNow } from './tasks/useNow';
+import { buildTaskTree, taskProgress, type TaskNode } from './taskTree';
 import './task-panel.css';
 
 export type TaskPanelProps = {
@@ -12,6 +16,11 @@ export type TaskPanelProps = {
   onOpenTask: (taskId: string, background: boolean) => void;
   onClose: () => void;
   variant: 'column' | 'sheet';
+  /** Row ages are measured to this clock; when absent the panel keeps its own, ticking while work runs. */
+  now?: number;
+  onPause?: (taskId: string) => void;
+  onResume?: (taskId: string) => void;
+  onStop?: (taskId: string) => void;
 };
 
 const rowSelector = '.task-panel-main';
@@ -27,58 +36,36 @@ function useSheetFocus(variant: TaskPanelProps['variant'], panel: RefObject<HTML
   }, [variant, panel]);
 }
 
-function liveStep(row: EngineTaskRow): string {
-  return row.Status === 'running' || row.Status === 'claimed' ? (row.Live?.Command ?? '').trim() : '';
-}
-
 type BranchProps = {
   node: TaskNode;
+  rows: EngineTaskRow[];
+  now: number;
   collapsed: Set<string>;
   currentTaskId?: string;
   onToggle: (id: string) => void;
-  onOpenTask: TaskPanelProps['onOpenTask'];
+  commands: TaskCommands;
 };
 
-function Branch({ node, collapsed, currentTaskId, onToggle, onOpenTask }: BranchProps) {
+function Branch(props: BranchProps) {
+  const { node, collapsed, currentTaskId } = props;
   const { row, children } = node;
   const isParent = children.length > 0;
   const expanded = !collapsed.has(row.ID);
-  const step = liveStep(row);
   return (
     <li className="task-panel-item">
-      <div className="task-panel-row" data-current={currentTaskId === row.ID || undefined}>
-        {isParent ? (
-          <IconButton
-            className="task-panel-disclosure"
-            label={`${expanded ? 'Collapse' : 'Expand'} ${row.Title}`}
-            icon={expanded ? 'chevron' : 'chevronRight'}
-            iconSize="xs"
-            aria-expanded={expanded}
-            tabIndex={-1}
-            onClick={() => onToggle(row.ID)}
-          />
-        ) : (
-          <span className="task-panel-spacer" aria-hidden="true" />
-        )}
-        <Button
-          className="task-panel-main"
-          data-task-id={row.ID}
-          data-parent={isParent || undefined}
-          data-expanded={isParent ? expanded : undefined}
-          aria-current={currentTaskId === row.ID ? 'true' : undefined}
-          onClick={(event) => onOpenTask(row.ID, event.metaKey || event.ctrlKey)}
-        >
-          <StateMark status={row.Status} stopped={row.Stopped} />
-          <span className="task-panel-text">
-            <span className="task-panel-title">{row.Title}</span>
-            {step && <span className="task-panel-step">{step}</span>}
-          </span>
-        </Button>
-      </div>
+      <TaskRow
+        row={row}
+        rows={props.rows}
+        now={props.now}
+        current={currentTaskId === row.ID}
+        expanded={isParent ? expanded : undefined}
+        onToggle={props.onToggle}
+        commands={props.commands}
+      />
       {isParent && expanded && (
         <ul className="task-panel-list task-panel-children">
           {children.map((child) => (
-            <Branch key={child.row.ID} {...{ node: child, collapsed, currentTaskId, onToggle, onOpenTask }} />
+            <Branch key={child.row.ID} {...props} node={child} />
           ))}
         </ul>
       )}
@@ -91,11 +78,28 @@ function moveFocus(list: HTMLElement, from: HTMLElement, step: number) {
   rows[rows.indexOf(from) + step]?.focus();
 }
 
-export function TaskPanel({ tasks, planError, currentTaskId, onOpenTask, onClose, variant }: TaskPanelProps) {
+function Header({ tasks, onClose }: Pick<TaskPanelProps, 'tasks' | 'onClose'>) {
+  const progress = taskProgress(tasks);
+  const tokens = tokensText(progress.tokens);
+  return (
+    <header className="task-panel-header">
+      <div className="task-panel-headline">
+        <span className="task-panel-heading">Tasks</span>
+        {progress.total > 0 && <span className="task-panel-count">{progress.done} of {progress.total}</span>}
+        <IconButton className="task-panel-close" label="Close tasks" icon="close" iconSize="sm" onClick={onClose} />
+      </div>
+      <TaskProgressStrip progress={progress} />
+      {tokens && <span className="task-panel-tokens">{tokens} tokens</span>}
+    </header>
+  );
+}
+
+export function TaskPanel(props: TaskPanelProps) {
+  const { tasks, planError, currentTaskId, onOpenTask, onClose, variant } = props;
   const panel = useRef<HTMLElement>(null);
   const tree = useMemo(() => buildTaskTree(tasks), [tasks]);
-  const { done, total } = taskCounts(tasks);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const now = useNow(taskProgress(tasks).running > 0, props.now);
   useSheetFocus(variant, panel);
 
   const toggle = (id: string) =>
@@ -125,17 +129,14 @@ export function TaskPanel({ tasks, planError, currentTaskId, onOpenTask, onClose
     }
   }
 
+  const commands: TaskCommands = { onOpenTask, onPause: props.onPause, onResume: props.onResume, onStop: props.onStop };
   return (
     <aside ref={panel} className="task-panel" data-variant={variant} aria-label="Tasks" tabIndex={-1} onKeyDown={onKeyDown}>
-      <header className="task-panel-header">
-        <span className="task-panel-heading">Tasks</span>
-        {total > 0 && <span className="task-panel-count">{done} of {total}</span>}
-        <IconButton className="task-panel-close" label="Close tasks" icon="close" iconSize="sm" onClick={onClose} />
-      </header>
+      <Header tasks={tasks} onClose={onClose} />
       {planError && <Text className="task-panel-error">{planError}</Text>}
       <ul className="task-panel-list task-panel-scroll">
         {tree.map((node) => (
-          <Branch key={node.row.ID} {...{ node, collapsed, currentTaskId, onToggle: toggle, onOpenTask }} />
+          <Branch key={node.row.ID} {...{ node, rows: tasks, now, collapsed, currentTaskId, onToggle: toggle, commands }} />
         ))}
       </ul>
     </aside>

@@ -1,0 +1,6 @@
+.task-composer { position: sticky; bottom: var(--motion-rest); display: flex; flex-direction: column; gap: var(--space-1); padding-block: var(--space-2); background: var(--surface); }
+.task-composer-ended { flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); color: var(--muted); font-size: var(--font-size-body); }
+.task-composer-mode.button { min-height: var(--icon-button-size); padding-inline: var(--space-2); font-size: var(--font-size-label); }
+.task-composer-error { margin: 0; padding-inline: var(--space-3); color: var(--warning); font-size: var(--font-size-label); }
+
+.specimen-task .task-composer { position: static; }
