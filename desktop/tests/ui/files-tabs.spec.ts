@@ -147,7 +147,7 @@ test('Open in editor appears only when the engine is on this machine; otherwise 
     Object.assign(window, { isTauri: true, __calls: calls, __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => undefined }, __TAURI_INTERNALS__: {
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main', windowLabel: 'main' } },
       transformCallback: () => 0,
-      invoke: async (command: string, args: unknown) => { calls.push([command, args]); if (command.startsWith('plugin:http|')) return (window as unknown as { __engineHttpInvoke: (cmd:string,args:unknown) => Promise<unknown> }).__engineHttpInvoke(command,args); if (command === 'host_name') return 'mock-host'; if (command === 'engine_connection') return { url: location.origin, token: 't', model: 'deepseek/deepseek-v4.1-flash' }; return null; },
+      invoke: async (command: string, args: unknown) => { calls.push([command, args]); if (command.startsWith('plugin:http|')) return (window as unknown as { __engineHttpInvoke: (cmd:string,args:unknown) => Promise<unknown> }).__engineHttpInvoke(command,args); if (command === 'window_context') return { label: 'main', placeKey: 'now' }; if (command === 'host_name') return 'mock-host'; if (command === 'engine_connection') return { url: location.origin, token: 't', model: 'deepseek/deepseek-v4.1-flash' }; return null; },
     } });
   });
   await openWithDiff(page);
