@@ -33,8 +33,8 @@ test('the persisted file target is validated', () => {
 });
 
 test('a file tab draws its type: code, JSON, prose and pictures', () => {
-  assert.equal(fileTypeIcon('lexer.go'), 'fileCode');
-  assert.equal(fileTypeIcon('package.json'), 'fileCode');
+  assert.equal(fileTypeIcon('lexer.go'), 'fileCode2');
+  assert.equal(fileTypeIcon('package.json'), 'fileJson');
   assert.equal(fileTypeIcon('README.md'), 'file');
   assert.equal(fileTypeIcon('Makefile'), 'file');
   assert.equal(fileTypeIcon('logo.png'), 'image');
