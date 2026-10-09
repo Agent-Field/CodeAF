@@ -17,7 +17,7 @@
 .place-rail .nav-item { gap: var(--space-compact); }
 .place-rail .nav-label { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--space-tight); overflow: hidden; }
 .rail-place.nav-item { padding: 0 var(--space-tight) 0 var(--space-2); }
-.rail-place-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rail-place-name { line-height: var(--rail-name-leading); min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .rail-place-path { font-weight: var(--font-weight-regular); color: var(--ink-3); white-space: nowrap; }
 .rail-place-closed { flex: none; font-size: var(--type-caption-size); }
 .rail-row[data-busy-closed] .rail-place { color: var(--ink-3); }
