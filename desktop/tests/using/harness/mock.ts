@@ -89,7 +89,7 @@ export function mockApi(scenario: Scenario, calls: Calls, flags: { choiceFails?:
       calls.push({ kind: 'apply', field });
       const setting = view.settings.find(s => s.field === field);
       if (!setting || !setting.value) throw new PlacesError('Nothing to apply.', 409, 'nothing_to_apply');
-      set(field, { field, state: 'yours', value: setting.value, current: setting.value });
+      set(field, { field, state: 'yours', value: setting.value, current: setting.value, reason: 'You set what runs without asking in this conversation yourself, so places do not change it.' });
       return structuredClone(view);
     },
     // Lets a test heal the scenario so "Try again" can succeed.
