@@ -6,7 +6,8 @@
 .breadcrumb-item[data-current] { flex-shrink: 1; }
 .breadcrumb-sep, .breadcrumb-ellipsis { flex: 0 0 auto; padding: 0 var(--space-half); color: var(--muted); }
 .breadcrumb-link, .breadcrumb-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
-.breadcrumb-link { padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); }
+/* A block box, not the button's centred flex row, so a long name ends in an ellipsis instead of losing its start. */
+.breadcrumb-link { display: block; text-align: start; padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); }
 .breadcrumb-link:hover { background: var(--control-hover); color: var(--text); }
 .breadcrumb-link:active { background: var(--control-pressed); color: var(--text); }
 .breadcrumb-link:focus-visible { outline: var(--focus-style); outline-offset: var(--focus-offset); }
