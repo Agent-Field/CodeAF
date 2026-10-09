@@ -314,4 +314,9 @@ func lastSentence(text string) string {
 // whether a user message is one of those rather than something a person typed.
 const carryOnLead = "[carry on] "
 
+// CarryOn is text as a carry-on message: the person's seat, but not their
+// words, so the conversation's own reading of what a person asked skips it.
+// The factory's stage maker puts it on the note a resumed stage is given.
+func CarryOn(text string) string { return carryOnLead + strings.TrimSpace(text) }
+
 func isCarryOn(text string) bool { return strings.HasPrefix(text, carryOnLead) }

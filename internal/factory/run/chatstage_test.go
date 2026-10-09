@@ -409,3 +409,53 @@ func TestABatchedReadIsOneLineInTheStream(t *testing.T) {
 		t.Fatalf("the stream got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestAResumedStageReopensItsChatWithACarryOnNote(t *testing.T) {
+	maker := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	job := reviewJob()
+	job.Resume = "chat-7"
+	var told string
+	job.Opened = func(chat string) { told = chat }
+	res, err := NewChatExecutor(maker).Run(context.Background(), job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := maker.Opened()[0].Spec
+	if spec.Resume != "chat-7" || spec.Brief != stageCarryOn || strings.Contains(spec.Brief, "fix the ledger") {
+		t.Fatalf("spec = %+v", spec)
+	}
+	if res.Chat != "chat-7" || told != "chat-7" {
+		t.Fatalf("chat = %q, told %q", res.Chat, told)
+	}
+}
+
+type refuseResume struct{ inner *FakeMaker }
+
+func (m refuseResume) Open(ctx context.Context, spec ConversationSpec) (Conversation, error) {
+	if spec.Resume != "" {
+		return nil, errors.New("the chat is gone")
+	}
+	return m.inner.Open(ctx, spec)
+}
+
+func TestAChatThatCannotBeReopenedStartsAgainAndSaysSo(t *testing.T) {
+	inner := &FakeMaker{Script: func(ctx context.Context, c *FakeConversation) {
+		_ = c.Spec.Stage.Report(ctx, factory.StageResult{Done: true})
+	}}
+	rec := &logRec{}
+	job := reviewJob()
+	job.Resume = "chat-7"
+	job.Log = rec.log
+	res, err := NewChatExecutor(refuseResume{inner}).Run(context.Background(), job)
+	if err != nil || !res.Done {
+		t.Fatalf("res %+v err %v", res, err)
+	}
+	if got := inner.Opened()[0].Spec; got.Resume != "" || got.Brief != stageBrief(reviewJob()) {
+		t.Fatalf("fresh spec = %+v", got)
+	}
+	if lines := rec.all(); len(lines) == 0 || !strings.HasPrefix(lines[0], stageNoResume) {
+		t.Fatalf("log = %v", lines)
+	}
+}

@@ -876,3 +876,166 @@ func TestAClaimWithNoEvidenceIsNotShown(t *testing.T) {
 		t.Fatalf("a later bare claim undid the evidence: %+v", sheet)
 	}
 }
+
+// pauseExec is a chat executor that opens a chat of its own name each round,
+// tells the loop, and waits to be cut or released. It keeps every job it saw.
+type pauseExec struct {
+	mu      sync.Mutex
+	jobs    []Job
+	started chan struct{}
+	release chan struct{}
+}
+
+func newPauseExec() *pauseExec {
+	return &pauseExec{started: make(chan struct{}, 8), release: make(chan struct{})}
+}
+
+func (p *pauseExec) Run(ctx context.Context, job Job) (factory.StageResult, error) {
+	p.mu.Lock()
+	p.jobs = append(p.jobs, job)
+	n := len(p.jobs)
+	p.mu.Unlock()
+	chat := job.Resume
+	if chat == "" {
+		chat = "chat-" + strings.Repeat("x", n)
+	}
+	if job.Opened != nil {
+		job.Opened(chat)
+	}
+	p.started <- struct{}{}
+	select {
+	case <-ctx.Done():
+		return factory.StageResult{}, ctx.Err()
+	case <-p.release:
+		return factory.StageResult{Done: true, Chat: chat}, nil
+	}
+}
+
+func (p *pauseExec) job(i int) Job {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.jobs[i]
+}
+
+func waitStarted(t *testing.T, p *pauseExec) {
+	t.Helper()
+	select {
+	case <-p.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the round never started")
+	}
+}
+
+func TestPauseKeepsTheChatAndRunCarriesOnInIt(t *testing.T) {
+	p := newPauseExec()
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: p}, nil)
+	id := g.add("one", chat("write"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	if j := p.job(0); j.Resume != "" {
+		t.Fatalf("a first round resumed %q", j.Resume)
+	}
+	if err := g.r.Pause(id); err != nil {
+		t.Fatal(err)
+	}
+	it := g.wait(id, "paused with its chat", func(it factory.Item) bool {
+		return it.Stream != nil && it.Stream.Paused && it.Stream.Phases[0].Chat == "chat-x"
+	})
+	if it.Stream.Phases[0].State != factory.PhaseRunning {
+		t.Fatalf("the paused step is %s", it.Stream.Phases[0].State)
+	}
+	// Launch on the paused item is run: the same round, the same chat.
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	j := p.job(1)
+	if j.Resume != "chat-x" || j.Round != 1 {
+		t.Fatalf("resumed job = round %d resume %q", j.Round, j.Resume)
+	}
+	close(p.release)
+	it = g.waitState(id, factory.StateLanded)
+	if it.Stream.Phases[0].Chat != "chat-x" || it.Stream.Paused {
+		t.Fatalf("landed stream = %+v", it.Stream)
+	}
+}
+
+func TestPausedBeforeTheRoundOpenedCarriesNothing(t *testing.T) {
+	p := newPauseExec()
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: p}, nil)
+	id := g.add("one", chat("plan"), chat("write"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	p.release <- struct{}{}
+	// plan reports; write starts. Pause it twice over: cut, hold, run.
+	waitStarted(t, p)
+	if err := g.r.Pause(id); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
+	if err := g.r.Pause(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	if j := p.job(2); j.Resume != "chat-xx" {
+		t.Fatalf("write carried on %q, want the chat it opened", j.Resume)
+	}
+	close(p.release)
+	g.waitState(id, factory.StateLanded)
+}
+
+func TestAPausedItemStaysPausedAcrossARestartAndRunsInTheSameChat(t *testing.T) {
+	p := newPauseExec()
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: p}, nil)
+	id := g.add("one", chat("write"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	if err := g.r.Pause(id); err != nil {
+		t.Fatal(err)
+	}
+	g.wait(id, "paused", func(it factory.Item) bool { return it.Stream != nil && it.Stream.Paused })
+	// The process dies: its control goes, the document stays.
+	old := g.r.loop().ctl(id)
+	old.cancel()
+	time.Sleep(20 * time.Millisecond)
+	it, _ := g.st.Get(id)
+	if it.State != factory.StateRunning || !it.Stream.Paused || it.Stream.Phases[0].Chat != "chat-x" {
+		t.Fatalf("after the restart the item is %s, stream %+v", it.State, it.Stream)
+	}
+
+	p2 := newPauseExec()
+	r2 := New(Options{Store: g.st, Exec: map[factory.StageKind]Executor{factory.StageChat: p2}, Benches: 1, Events: make(chan Event, 100)})
+	if err := r2.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p2)
+	if j := p2.job(0); j.Resume != "chat-x" || j.Round != 1 {
+		t.Fatalf("after the restart: round %d resume %q", j.Round, j.Resume)
+	}
+	close(p2.release)
+	it = g.waitState(id, factory.StateLanded)
+	if it.Stream.Paused {
+		t.Fatal("still paused after it landed")
+	}
+}
+
+func TestRunOnAnItemNobodyPausedIsRefused(t *testing.T) {
+	p := newPauseExec()
+	g := newRig(t, map[factory.StageKind]Executor{factory.StageChat: p}, nil)
+	id := g.add("one", chat("write"))
+	if err := g.r.Launch(id); err != nil {
+		t.Fatal(err)
+	}
+	waitStarted(t, p)
+	if err := g.r.Launch(id); err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("launch on a running item = %v", err)
+	}
+	close(p.release)
+	g.waitState(id, factory.StateLanded)
+}
