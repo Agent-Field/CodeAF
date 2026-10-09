@@ -25,7 +25,7 @@ every tinted role recomputes inside it. Do not read `--h`/`--a` directly.
 | `guide` | Work guide rule (line at 60% / 70%) |
 | `ink` | Conversation rhythm text |
 | `ink-2` | Work rhythm, secondary text |
-| `ink-3` | Meta: durations, directories, eyebrows |
+| `ink-3` | Non-text only: icons, marks, separators, guides, strip fills, disabled. Text of any size, placeholders included, uses `ink-2` (ink-3 is 3.1 to 4.5:1 on canvas, surface, field and bubble, under WCAG AA 4.5:1) |
 | `accent` | Primary action, running mark, links |
 | `accent-ink` | Text on accent |
 | `accent-soft` | Selection, focus halo, suggested tag |
@@ -90,7 +90,7 @@ Import from `src/components/ui`. Features compose these; they never restyle them
 | Button · Primary ("Allow once") | `<Button variant="primary">` | Button.tsx | accent, accent-ink, brightness-hover/press |
 | Button · Raised ("Always…") | `<Button variant="raised">` | Button.tsx | surface, sh-1; hover field |
 | Button · Quiet ("Deny", the safe choice) | `<Button variant="quiet">` | Button.tsx | field; hover/press field-2 |
-| Button · Ghost ("Later"; default, bare rows) | `<Button>` / `variant="ghost"` | Button.tsx | ink-3; hover field + ink; press field-2 |
+| Button · Ghost ("Later"; default, bare rows) | `<Button>` / `variant="ghost"` | Button.tsx | ink-2; hover field + ink; press field-2 |
 | Button · Danger ("Stop task") | `<Button variant="danger">` | Button.tsx | danger-soft, danger |
 | Icon button (toolbar) | `<IconButton label icon iconSize="sm">` | Button.tsx | ink-2; hover field + ink; press field-2 |
 | Row action (24px, in a row) | `<IconButton size="row" iconSize="xs">` inside `<RowActions>` | Button.tsx, RowActions.tsx | hover field-2 |
@@ -99,7 +99,7 @@ Import from `src/components/ui`. Features compose these; they never restyle them
 | Segmented | `<Segmented label options value onChange>` | Segmented.tsx | field track, surface + sh-1 chosen |
 | Field | `<TextInput appearance="field">` | TextInput.tsx | field; focus surface + accent ring + accent-soft halo |
 | Tags (Suggested, Reversible, Irreversible, key) | `<Tag tone="accent" / "neutral" / "danger" / "key">` | Chip.tsx | accent-soft, field, danger-soft, surface + line |
-| Chip base (file chip, link chip) | `<Chip>` static, `<ChipButton>` interactive, `muted` for missing/outside | Chip.tsx | field, hover field-2, ink, ink-3 |
+| Chip base (file chip, link chip) | `<Chip>` static, `<ChipButton>` interactive, `muted` for missing/outside | Chip.tsx | field, hover field-2, ink, ink-2 (muted: ink-2, text only) |
 | Status mark (Running … Incomplete) | `<StatusMark status label>` | StatusMark.tsx | mark-* roles |
 | Row · tree, table (rest none, hover field, selected field) | `<Row selected>` with `<RowActions>` | RowActions.tsx | field, radius-control |
 | Copy feedback | `<CopyButton>` | CopyButton.tsx | (IconButton) |

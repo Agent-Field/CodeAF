@@ -9,7 +9,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-size: var(--type-label-size);
   text-align: start;
 }
@@ -22,7 +22,7 @@
   align-items: center;
   gap: var(--space-4);
   margin-block: var(--space-2);
-  color: var(--ink-3);
+  color: var(--ink-2);
   font-size: var(--type-caption-size);
   font-weight: var(--type-caption-weight);
 }

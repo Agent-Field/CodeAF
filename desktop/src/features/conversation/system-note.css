@@ -2,7 +2,7 @@
 .system-note { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-height: var(--row-action-size); color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
 .system-note > .app-icon { color: var(--ink-3); }
 .system-note-text { min-width: 0; overflow-wrap: anywhere; }
-.system-note-time { color: var(--ink-3); font-family: var(--mono); font-size: var(--type-mono-small-size); font-variant-numeric: tabular-nums; }
+.system-note-time { color: var(--ink-2); font-family: var(--mono); font-size: var(--type-mono-small-size); font-variant-numeric: tabular-nums; }
 
 .system-note[data-kind="failure"] { color: var(--danger); }
 .system-note[data-kind="failure"] > .app-icon { color: var(--danger); }
@@ -11,7 +11,7 @@
 .system-note-dot > span { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
 
 /* A compaction is the one centred element: its words between two hairlines. */
-.system-note[data-kind="compaction"] { flex-wrap: nowrap; gap: var(--system-note-rule-gap); color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
+.system-note[data-kind="compaction"] { flex-wrap: nowrap; gap: var(--system-note-rule-gap); color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
 .system-note-rule { flex: 1; height: var(--hairline); background: var(--line); }
 .system-note[data-kind="compaction"] .system-note-text { flex: none; max-width: 80%; text-align: center; }
 

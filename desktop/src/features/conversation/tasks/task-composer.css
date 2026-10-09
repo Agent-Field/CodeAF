@@ -4,7 +4,7 @@
 .task-composer-bar:focus-within { box-shadow: var(--sh-2), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .task-composer-bar[data-disabled] { opacity: var(--opacity-subtle); }
 .task-composer-field.text-area { flex: 1; min-width: 0; resize: none; overflow-y: auto; max-height: var(--composer-writing-max-height); padding: var(--space-1) 0; border: 0; background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
-.task-composer-field.text-area::placeholder { color: var(--ink-3); }
+.task-composer-field.text-area::placeholder { color: var(--ink-2); }
 .task-composer-field.text-area:focus-visible { outline: none; }
 .task-composer-send.icon-button { flex: none; width: var(--control-height); height: var(--control-height); border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
 .task-composer-send.icon-button:disabled { background: var(--field-2); color: var(--ink-3); opacity: var(--opacity-opaque); }

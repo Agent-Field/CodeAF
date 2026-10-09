@@ -7,5 +7,5 @@
 .button.answer-field { background: var(--field); color: var(--ink); }
 .button.answer-field:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
 .button.answer-danger { background: var(--danger-soft); color: var(--danger); }
-.button.answer-ghost { padding: 0 var(--control-pad-ghost); background: transparent; color: var(--ink-3); }
+.button.answer-ghost { padding: 0 var(--control-pad-ghost); background: transparent; color: var(--ink-2); }
 .button.answer-ghost:hover:not(:disabled) { background: var(--field); color: var(--ink-2); }

@@ -10,7 +10,7 @@
 .latest-pill .app-icon { color: var(--ink-2); }
 .latest-pill-label { font-weight: var(--font-weight-medium); }
 .latest-pill-dot { color: var(--ink-3); }
-.latest-pill-time { color: var(--ink-3); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
+.latest-pill-time { color: var(--ink-2); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
 .latest-pill-shimmer {
   min-width: 0; overflow: hidden; text-overflow: ellipsis;
   background-image: linear-gradient(to right, var(--ink-2) 0%, var(--ink-2) var(--latest-shimmer-edge), var(--ink) var(--latest-shimmer-mid), var(--ink-2) var(--latest-shimmer-far), var(--ink-2) 100%);

@@ -6,9 +6,9 @@
 .work-diff-sign { flex: none; width: 2ch; user-select: none; }
 .work-diff-text { min-width: 0; }
 .work-diff-row[data-kind="context"] { color: var(--ink-2); }
-.work-diff-row[data-kind="gap"] { padding-block: var(--space-half); color: var(--ink-3); }
+.work-diff-row[data-kind="gap"] { padding-block: var(--space-half); color: var(--ink-2); }
 .work-diff-row[data-kind="add"] { background: var(--diff-add); color: var(--ink); }
 .work-diff-row[data-kind="remove"] { background: var(--danger-soft); color: var(--ink); }
-.work-diff-row[data-kind="add"] .work-diff-sign { color: var(--success); }
+.work-diff-row[data-kind="add"] .work-diff-sign { color: var(--success-text); }
 .work-diff-row[data-kind="remove"] .work-diff-sign { color: var(--danger); }
 .work-diff-rows:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }

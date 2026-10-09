@@ -7,8 +7,8 @@
   border-left: var(--space-half) solid var(--accent-rule);
   color: var(--ink);
 }
-.update-eyebrow { color: var(--ink-3); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); font-weight: var(--type-caption-weight); }
-.update-cut { color: var(--ink-3); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
+.update-eyebrow { color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); font-weight: var(--type-caption-weight); }
+.update-cut { color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
 
 /* Answer: the full column width. Copy shows on hover or focus, bottom-left, its icon aligned with the text. */
 .answer-block { position: relative; max-width: var(--chat-column-max-width); color: var(--ink); }
