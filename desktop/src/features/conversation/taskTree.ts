@@ -80,21 +80,40 @@ export function taskTrail(rows: EngineTaskRow[], taskId: string): EngineTaskRow[
   return trail;
 }
 
-export type TaskProgress = { done: number; running: number; queued: number; failed: number; total: number; tokens: number };
+export type TaskProgress = { done: number; running: number; waiting: number; queued: number; failed: number; total: number; tokens: number };
 
 const FAILED: ReadonlySet<TaskKind> = new Set(['incomplete', 'stopped', 'interrupted']);
 
-/** The strip's four groups. A task waiting on a person counts as queued: it has not finished. */
+/** The strip's five groups. A task waiting on a person is its own group: it has not finished and it needs you. */
 export function taskProgress(rows: EngineTaskRow[]): TaskProgress {
   const all = flatten(buildTaskTree(rows));
   const kinds = all.map(rowKind);
   const count = (test: (kind: TaskKind) => boolean) => kinds.filter(test).length;
   const done = count((kind) => kind === 'done');
   const running = count((kind) => kind === 'running');
+  const waiting = count((kind) => kind === 'yourcall');
   const failed = count((kind) => FAILED.has(kind));
   const tokens = all.reduce((sum, row) => sum + (row.Tokens ?? 0), 0);
-  return { done, running, failed, queued: all.length - done - running - failed, total: all.length, tokens };
+  return { done, running, waiting, failed, queued: all.length - done - running - waiting - failed, total: all.length, tokens };
 }
+
+/** Done and total below a parent ("2/7"); the parent itself is not counted. */
+export function branchCounts(node: TaskNode): { done: number; total: number } {
+  const below = flatten(node.children);
+  return { done: below.filter((row) => row.Status === 'done').length, total: below.length };
+}
+
+const isFinished = (node: TaskNode): boolean => node.row.Status === 'done' && node.children.every(isFinished);
+
+/** A whole family that is done leaves the live tree for the "Finished" fold; a done task inside live work stays. */
+export function splitFinished(tree: TaskNode[]): { live: TaskNode[]; finished: TaskNode[]; finishedCount: number } {
+  const finished = tree.filter(isFinished);
+  return { live: tree.filter((node) => !isFinished(node)), finished, finishedCount: flatten(finished).length };
+}
+
+/** Whether the node, or anything below it, is the task. */
+export const holdsTask = (node: TaskNode, taskId: string | undefined): boolean =>
+  node.row.ID === taskId || node.children.some((child) => holdsTask(child, taskId));
 
 /** Titles of the tasks a row still waits on; finished or unknown ones are left out. */
 export function waitTitles(rows: EngineTaskRow[], row: EngineTaskRow): string[] {

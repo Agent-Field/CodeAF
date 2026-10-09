@@ -1,33 +1,36 @@
-.task-row { display: flex; align-items: flex-start; min-width: var(--motion-rest); min-height: var(--task-outline-row-height); border-radius: var(--radius-sm); }
-.task-row:hover, .task-row:focus-within { background: var(--control-hover); }
-.task-row[data-current] { background: var(--control-selected); }
+/* One line per task. Colour lives only on the mark; the selected row takes a soft fill. */
+.task-row { position: relative; display: flex; align-items: center; gap: var(--space-2); min-width: 0; height: var(--row-height-v3); padding: 0 var(--row-pad); border-radius: var(--radius-control); color: var(--ink); font-size: var(--type-prose-size); line-height: var(--type-label-leading); transition: background var(--dur-fast) var(--ease); }
+.task-row:hover, .task-row:focus-within, .task-row[data-current] { background: var(--field); }
+.task-row[data-depth="1"][data-parent] { padding-inline-start: var(--tasks-chevron-pad); }
+.task-row[data-depth="1"]:not([data-parent]) { gap: var(--tasks-mark-gap); }
 
-.task-row-disclosure.icon-button, .task-row-spacer { flex: 0 0 var(--tree-indent); width: var(--tree-indent); }
-.task-row-disclosure.icon-button { height: var(--task-outline-row-height); }
+.task-row .task-row-disclosure.icon-button { flex: none; width: var(--tasks-chevron); height: var(--row-height-v3); color: var(--ink-3); background: transparent; }
+.task-row .task-row-disclosure.icon-button:hover:not(:disabled) { background: transparent; color: var(--ink-2); }
+.task-row-disclosure .app-icon { width: var(--tasks-chevron); height: var(--tasks-chevron); }
 
-.task-row .task-panel-main.button { flex: 1; min-width: var(--motion-rest); min-height: var(--task-outline-row-height); justify-content: flex-start; align-items: flex-start; gap: var(--space-tight); padding: var(--space-tight) var(--space-2) var(--space-tight) var(--space-half); text-align: left; background: transparent; font-size: var(--font-size-body); line-height: var(--line-height-tight); white-space: normal; }
+.task-row .task-panel-main.button { flex: 1; min-width: 0; height: var(--row-height-v3); justify-content: flex-start; gap: var(--tasks-mark-gap); padding: 0; border-radius: var(--radius-control); background: transparent; color: inherit; font: inherit; text-align: left; white-space: nowrap; }
 .task-row .task-panel-main.button:hover { background: transparent; }
-.task-row .task-panel-main .state-mark { margin-top: var(--space-half); }
+.task-row[data-depth="0"] .task-panel-main.button { gap: var(--space-2); font-weight: var(--type-label-strong); }
+.task-row[data-depth="0"]:not([data-parent]) .task-mark { width: var(--tasks-chevron); }
+/* A top-level parent shows its chevron alone; the mark stays in the tree for a screen reader. */
+.task-row[data-depth="0"][data-parent] .task-mark { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); }
 
-.task-row-text { display: flex; flex-direction: column; flex: 1; min-width: var(--motion-rest); }
-.task-row-line { display: flex; align-items: baseline; gap: var(--space-2); min-width: var(--motion-rest); }
-.task-row-title { flex: 1; min-width: var(--motion-rest); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
-.task-row-age { flex-shrink: 0; color: var(--muted); font-size: var(--font-size-label); font-variant-numeric: tabular-nums; }
+.task-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-row-wait { opacity: var(--opacity-subtle); }
+.task-row-meta { flex: none; color: var(--ink-3); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; transition: opacity var(--dur-fast) var(--ease); }
 
-/* Work in flight and decisions for the person read at full ink; settled work steps back. */
-.task-row[data-kind="running"] .task-row-title, .task-row[data-kind="yourcall"] .task-row-title, .task-row[data-current] .task-row-title { color: var(--text); }
-.task-row[data-current] .task-row-title { font-weight: var(--font-weight-medium); }
+/* Settled work steps back; a task waiting its turn is dimmer still. */
+.task-row[data-kind="done"], .task-row[data-kind="paused"] { color: var(--ink-2); }
+.task-row[data-kind="queued"], .task-row[data-kind="stopped"], .task-row[data-kind="interrupted"] { color: var(--ink-3); }
 
-.task-row-step { display: flex; align-items: baseline; gap: var(--space-2); min-width: var(--motion-rest); color: var(--muted); font-size: var(--font-size-label); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.task-row-command.type-code { flex: 1; min-width: var(--motion-rest); overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: var(--font-size-label); }
-.task-row-clock { flex-shrink: 0; font-variant-numeric: tabular-nums; }
-
-/* Hover actions take the age's place so the title never sits under them. */
-.task-row-actions { display: none; flex-shrink: 0; align-items: flex-start; }
-.task-row-actions .icon-button { width: var(--task-outline-row-height); height: var(--task-outline-row-height); }
-.task-row:hover .task-row-actions, .task-row:focus-within .task-row-actions { display: flex; }
-.task-row:hover .task-row-age, .task-row:focus-within .task-row-age { display: none; }
+/* Hover actions cover the right end of the row, so the title never moves. */
+.task-row-actions { position: absolute; inset-block: 0; inset-inline-end: var(--row-pad); display: flex; align-items: center; padding-inline-start: var(--space-1); border-radius: var(--radius-control); background: var(--field); opacity: var(--opacity-transparent); transition: opacity var(--dur-fast) var(--ease); }
+.task-row-actions .icon-button { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: var(--ink-3); }
+.task-row-actions .icon-button:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.task-row-actions .app-icon { width: var(--row-action-icon); height: var(--row-action-icon); }
+.task-row:hover .task-row-actions, .task-row:focus-within .task-row-actions { opacity: var(--opacity-opaque); }
+.task-row:hover .task-row-meta, .task-row:focus-within .task-row-meta { opacity: var(--opacity-transparent); }
 @media (pointer: coarse) {
-  .task-row-actions { display: flex; }
-  .task-row-age { display: none; }
+  .task-row-actions { position: static; opacity: var(--opacity-opaque); padding: 0; background: transparent; }
+  .task-row-meta { display: none; }
 }

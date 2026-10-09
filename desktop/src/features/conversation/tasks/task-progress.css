@@ -1,6 +1,10 @@
-.task-progress { display: flex; gap: var(--space-half); width: 100%; height: var(--space-1); }
-.task-progress-cell { flex: 1 1 0; min-width: var(--motion-rest); border-radius: var(--radius-xs); background: var(--control-pressed); }
-.task-progress-cell[data-segment="done"] { background: var(--success); }
+/* The strip: three pixels of colour. A segment's last cell carries the gap to the next one. */
+.task-progress { display: flex; height: var(--tasks-strip-height); }
+.task-progress-cell { flex: 1 1 0; min-width: 0; background: var(--field-2); }
+.task-progress-cell[data-start] { border-start-start-radius: var(--tasks-strip-radius); border-end-start-radius: var(--tasks-strip-radius); }
+.task-progress-cell[data-end] { border-start-end-radius: var(--tasks-strip-radius); border-end-end-radius: var(--tasks-strip-radius); margin-inline-end: var(--space-half); }
+.task-progress-cell[data-end]:last-child { margin-inline-end: 0; }
+.task-progress-cell[data-segment="done"] { background: var(--ink-3); }
 .task-progress-cell[data-segment="running"] { background: var(--accent); }
-.task-progress-cell[data-segment="queued"] { background: var(--control-pressed); }
+.task-progress-cell[data-segment="waiting"] { background: var(--amber); }
 .task-progress-cell[data-segment="failed"] { background: var(--danger); }
