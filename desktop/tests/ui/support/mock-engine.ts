@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import type { EngineEntry, EngineEvent, EngineSnapshot, EngineTaskPage } from '../../../src/features/chat/engine-client';
+import type { EngineEntry, EngineEvent, EngineFile, EngineSnapshot, EngineTaskPage } from '../../../src/features/chat/engine-client';
 
 export const MODEL = 'deepseek/deepseek-v4.1-flash';
 
@@ -11,7 +11,12 @@ export type ScriptedTurn = {
   patch?: Partial<EngineSnapshot>;
   /** Text deltas streamed (as `text` events) before the final snapshot. */
   stream?: string[];
+  /** Live events streamed before the final snapshot, after any text. */
+  events?: EngineEvent[];
 };
+
+/** A workspace file the mock serves through GET /files and reports through POST /files/stat. */
+export type MockFile = Omit<EngineFile, 'name' | 'size' | 'hash'> & { dir?: boolean };
 
 export type Scenario = {
   /** State returned by POST /sessions and GET /sessions/{id}. */
@@ -20,10 +25,12 @@ export type Scenario = {
   turns?: ScriptedTurn[];
   taskPages?: Record<string, EngineTaskPage>;
   tools?: Record<string, { output: string; full: boolean }>;
+  /** Workspace files by path, relative or absolute; anything else stats as missing. */
+  files?: Record<string, MockFile>;
   /** When true a turn only records the message; call engine.advance() to apply the reply. */
   manual?: boolean;
   /** Forced HTTP failure per endpoint, e.g. { turn: 409 }. */
-  fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events', number>>;
+  fail?: Partial<Record<'create' | 'read' | 'turn' | 'stop' | 'answer' | 'events' | 'task', number>>;
 };
 
 export type Call = { method: string; path: string; body: Record<string, unknown> };
@@ -84,11 +91,11 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     state = { ...state, seq: state.seq + 1, updatedAt: new Date().toISOString() };
     log.push({ seq: state.seq, type: 'snapshot', snapshot: structuredClone(state) });
   };
-  const emit = (text: string) => {
+  const emitEvent = (event: EngineEvent) => {
     state = { ...state, seq: state.seq + 1 };
-    const event: EngineEvent = { kind: 'text', text, tool: '', hint: '', raw: {} };
     log.push({ seq: state.seq, type: 'event', event });
   };
+  const emit = (text: string) => emitEvent({ kind: 'text', text, tool: '', hint: '', raw: {} });
   const update = (patch: Partial<EngineSnapshot>) => {
     state = { ...state, ...patch };
     publish();
@@ -97,9 +104,14 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     const turns = scenario.turns ?? [];
     return turns[Math.min(turnIndex++, turns.length - 1)];
   };
+  // A queued message is recorded as the person's next message once the turn ends.
+  let queued: EngineEntry[] = [];
   const apply = (turn: ScriptedTurn | undefined) => {
     turn?.stream?.forEach(emit);
-    state = { ...state, ...turn?.patch, running: false, entries: [...state.entries, ...(turn?.entries ?? [])] };
+    turn?.events?.forEach(emitEvent);
+    const entries = [...state.entries, ...(turn?.entries ?? []), ...queued];
+    queued = [];
+    state = { ...state, ...turn?.patch, running: false, entries };
     publish();
   };
   const advance = () => {
@@ -121,10 +133,55 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   };
 
   const turn = (route: Route, body: Record<string, unknown>) => {
-    state = { ...state, running: true, entries: [...state.entries, { Role: 'user', Text: String(body.text ?? '') }] };
+    const text = String(body.text ?? '');
+    if (state.running && body.mode === 'queue') {
+      queued.push({ Role: 'user', Text: text });
+      return json(route, { accepted: true });
+    }
+    if (state.running && body.mode === 'steer') {
+      state = { ...state, entries: [...state.entries, { Role: 'user', Text: text, Steer: { Consumed: false, Landing: 'waiting for the running step' } }] };
+      publish();
+      return json(route, { accepted: true });
+    }
+    const files = (body.files as { name: string }[] | undefined) ?? [];
+    const attached = files.map(f => ({ Path: `.codeaf/attachments/${f.name}`, Name: f.name }));
+    const user = { Role: 'user', Text: text, ...(files.length ? { Attachments: attached } : {}) } as EngineEntry;
+    state = { ...state, running: true, entries: [...state.entries, user] };
     publish();
     if (scenario.manual) pending = nextTurn();
     else apply(nextTurn());
+    return json(route, { accepted: true });
+  };
+
+  // Answering records the decision the way the engine's recentOutcomes reports it.
+  const answer = (body: Record<string, unknown>) => {
+    const asked = state.questions?.find(q => q.id === body.id && q.kind === body.kind);
+    const words = asked?.options?.find(o => o.key === body.key)?.label ?? String(body.key ?? '');
+    const outcome = { kind: String(body.kind), token: String(body.ref || body.id), head: asked?.head, outcome: 'decided', words, by: String(body.decidedBy ?? 'person'), at: new Date().toISOString() };
+    const questions = (state.questions ?? []).filter(q => q !== asked);
+    const before = (state as { recentOutcomes?: unknown[] }).recentOutcomes ?? [];
+    update({ needsPerson: questions.length > 0, questions, recentOutcomes: [outcome, ...before] } as Partial<EngineSnapshot>);
+  };
+
+  const fileAt = (path: string) => scenario.files?.[path] ?? scenario.files?.[path.replace(`${state.workspace}/`, '')];
+  const stat = (path: string) => {
+    const file = fileAt(path);
+    const outside = path.startsWith('/') && !path.startsWith(`${state.workspace}/`);
+    return { path, exists: Boolean(file), dir: Boolean(file?.dir), size: file ? Math.floor(file.dataBase64.length * 0.75) : 0, outside };
+  };
+  const files = (route: Route, arg: string | undefined, body: Record<string, unknown>, url: URL) => {
+    if (arg === 'stat') return json(route, ((body.paths as string[]) ?? []).map(stat));
+    const path = url.searchParams.get('path') ?? '';
+    const file = fileAt(path);
+    if (!file || file.dir) return json(route, { error: `no file ${path}` }, 404);
+    const name = path.split('/').pop() ?? path;
+    return json(route, { name, mime: file.mime, size: stat(path).size, hash: 'mock', dataBase64: file.dataBase64 });
+  };
+
+  // A note is recorded on the task page as the person's own, so the next read shows it.
+  const taskAction = (route: Route, taskId: string, verb: string, body: Record<string, unknown>) => {
+    const taskPage = scenario.taskPages?.[taskId];
+    if (taskPage && verb === 'note') taskPage.Notes = [...(taskPage.Notes ?? []), { Person: true, Body: String(body.text ?? ''), At: new Date().toISOString() }];
     return json(route, { accepted: true });
   };
 
@@ -154,9 +211,13 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     }
     if (action === 'answer') {
       if (scenario.fail?.answer) return forced('answer');
-      update({ needsPerson: false, questions: [] });
+      answer(body);
       return json(route, { accepted: true });
     }
+    if (action === 'questions' && arg === 'hold') return json(route, { accepted: true });
+    if (action === 'favicon') return json(route, {});
+    if (action === 'files') return files(route, arg, body, url);
+    if (action === 'tasks' && arg && parts[4]) return forced('task') ?? taskAction(route, arg, parts[4], body);
     if (action === 'tasks' && arg) {
       const taskPage = scenario.taskPages?.[arg];
       return taskPage ? json(route, taskPage) : json(route, { error: `no task ${arg}` }, 404);

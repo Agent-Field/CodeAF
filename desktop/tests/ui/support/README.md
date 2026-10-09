@@ -16,7 +16,10 @@ expect(engine.calls.some(c => c.path.endsWith('/turn'))).toBe(true);
 
 ## Scenarios (`scenarios.ts`)
 
-`plainReply`, `toolsReply`, `withTasks`, `pendingQuestion`, `streaming`. Each
+`plainReply`, `toolsReply`, `withTasks`, `pendingQuestion`, `streaming`, and in
+`scenarios-v2.ts` `richReply` (update, narrated steps, edit, bash, fetch, a
+generated image, workspace files) plus tray questions (`trayQuestions`,
+`timedProposal`, `waitingConsent`). Each
 returns a `Scenario`: `initial` snapshot fields (merged over a valid snapshot:
 model `deepseek/deepseek-v4.1-flash`, persistent, non-empty `sessionFile`),
 `turns` (one scripted reply per accepted turn, the last repeats), `taskPages`,
@@ -38,5 +41,10 @@ user message and `running: true`, and the reply lands when the spec calls
 
 `calls` (method, path, body of every request), `snapshot()`, `advance()`,
 `update(patch)`. Task pages are served from `taskPages[taskId]`, tool output
-from `tools[callId]`.
+from `tools[callId]`, workspace files from `files[path]` (GET /files and
+POST /files/stat; anything else stats as missing). POST /questions/hold and
+POST /tasks/{id}/{note|amend|pause|resume|cancel} are accepted and logged (a
+note is added to the task page). Answering removes that question and records
+its decision in `recentOutcomes`. While running, `mode: 'queue'` holds the
+message until the reply lands and `mode: 'steer'` records a steer entry.
 `mock-engine.spec.ts` shows each endpoint through `fetch` only.
