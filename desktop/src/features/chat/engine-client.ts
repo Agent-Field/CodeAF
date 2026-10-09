@@ -60,10 +60,14 @@ export type EngineEntry = {
  Steer?: { At?: string; Consumed?: boolean; Landing?: string } | null;
 };
 export type EngineTaskRow = PlanTaskRow & { Depth?: number; USD?: number; Model?: string; Tokens?: number; LiveParts?: unknown[]; Folder?: string; TrajectoryPath?: string };
+/** One message waiting behind the running turn. The id names it to edit, move and remove until its turn starts. */
+export type EngineQueued = { id: string; text: string };
 export type EngineSnapshot = {
  id: string; sessionFile: string; workspace: string; model: string; persistent: boolean;
  running: boolean; needsPerson: boolean; questions?: EngineQuestion[]; planError?: string; entries: EngineEntry[]; tasks: EngineTaskRow[];
  usage: { Input: number; Output: number; CostUSD: number; Duration: number; Turns: number; Calls?: number; CacheRead?: number; CacheWrite?: number };
+ /** Messages queued behind the running turn, in the order they will run. */
+ queue?: EngineQueued[];
  title: string; seq: number; updatedAt?: string;
 };
 export type EngineEvent = { kind: string; text: string; tool: string; hint: string; error?: string; raw: Record<string, unknown> };
@@ -127,7 +131,9 @@ function snapshotFrom(value: unknown): EngineSnapshot {
  if (s.planError !== undefined && typeof s.planError !== 'string') throw new EngineError('The engine returned an invalid plan read status.');
  const questions = s.questions ?? [];
  if (!Array.isArray(questions) || !questions.every(q => q && Number.isSafeInteger(q.id) && q.id >= 0 && (q.id > 0 || typeof q.ref === 'string' && !!q.ref) && typeof q.kind === 'string' && typeof q.ask === 'string' && typeof q.head === 'string' && (q.options == null || Array.isArray(q.options) && q.options.every(option => option && typeof option.key === 'string' && typeof option.label === 'string')))) throw new EngineError('The engine returned an invalid pending question.');
- return { ...s, questions, entries, tasks: tasks.map(row => ({ ...row, Waits: row.Waits ?? [] })) };
+ const queue = s.queue ?? [];
+ if (!Array.isArray(queue) || !queue.every(item => item && typeof item.id === 'string' && !!item.id && typeof item.text === 'string')) throw new EngineError('The engine returned an invalid message queue.');
+ return { ...s, questions, entries, queue, tasks: tasks.map(row => ({ ...row, Waits: row.Waits ?? [] })) };
 }
 const sessionPath = (id: string) => `/sessions/${encodeURIComponent(id)}`;
 /**
@@ -152,7 +158,7 @@ async function openSession(body: { sessionFile?: string }): Promise<EngineSnapsh
 export async function readEngine(id: string): Promise<EngineSnapshot> {
  return snapshotFrom(await (await fetchEngine(sessionPath(id))).json());
 }
-async function action(id: string, kind: 'turn' | 'stop' | 'answer', body?: unknown): Promise<EngineSnapshot> {
+async function action(id: string, kind: 'turn' | 'stop' | 'answer' | 'queue-edit' | 'queue-move' | 'queue-remove', body?: unknown): Promise<EngineSnapshot> {
  const response = await fetchEngine(`${sessionPath(id)}/${kind}`, { method: 'POST', body: JSON.stringify(body ?? {}) });
  const result: unknown = await response.json();
  if (!result || typeof result !== 'object' || !('accepted' in result) || result.accepted !== true) throw new EngineError('The engine did not accept this action.');
@@ -161,6 +167,12 @@ async function action(id: string, kind: 'turn' | 'stop' | 'answer', body?: unkno
 export function sendEngine(id: string, text: string, mode: 'submit' | 'steer' | 'queue' = 'submit'): Promise<EngineSnapshot> {
  return action(id, 'turn', { text, mode });
 }
+/** Replaces the words of a queued message. Refused (409) once its turn has started. */
+export function editQueued(id: string, queued: string, text: string): Promise<EngineSnapshot> { return action(id, 'queue-edit', { id: queued, text }); }
+/** Moves a queued message to index `to` of the queue that remains without it. Refused (409) once its turn has started. */
+export function moveQueued(id: string, queued: string, to: number): Promise<EngineSnapshot> { return action(id, 'queue-move', { id: queued, to }); }
+/** Takes a queued message back so it never runs. Refused (409) once its turn has started. */
+export function removeQueued(id: string, queued: string): Promise<EngineSnapshot> { return action(id, 'queue-remove', { id: queued }); }
 export function stopEngine(id: string): Promise<EngineSnapshot> { return action(id, 'stop'); }
 /** Identity and explicit canonical option keys cross unchanged; only the engine resolves a question. */
 export function answerEngine(id: string, answer: EngineAnswer): Promise<EngineSnapshot> { return action(id, 'answer', answer); }

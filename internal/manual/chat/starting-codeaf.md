@@ -878,3 +878,22 @@ Expanding a recorded tool call can retrieve its saved result through the engine;
 the desktop supplies a call identity rather than an arbitrary file path. Display
 output is capped at 1 MiB and identifies partial results honestly. This is a development preview, not a new
 server or an independently implemented agent.
+
+## Editing, reordering or taking back a queued message in the desktop
+
+A message sent with Queue while work is running waits above the composer, in the
+order it will run. Each row shows a pencil to edit, a handle to drag and a close
+mark to take it back; they appear on hover or keyboard focus. Two rows show; the
+rest fold into "N more queued", and "Show fewer" folds them again.
+
+Pencil turns the row into a field with `Esc` and `Save`. Enter or `Save` replaces
+the message's words in the engine; `Esc` leaves it as it was. Drag a row onto
+another to move it there, or focus a row and press `Alt+↑` or `Alt+↓` to move it one
+place. The close mark takes the message back so it never runs, and Stop drops the
+whole queue. The order shown is the order the engine will run them in, one turn at
+a time.
+
+Every change is true only while the message is still queued. Once its turn has
+started, edit, move and remove are refused with "that message has already been sent",
+the row leaves the list, and the message is in the conversation as sent. Only the
+desktop can edit or reorder a queue; the terminal can only take a message back.

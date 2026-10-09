@@ -81,8 +81,11 @@ type Snapshot struct {
 	Entries        []session.DisplayEntry `json:"entries"`
 	Tasks          []session.PlanTaskRow  `json:"tasks"`
 	Usage          session.Usage          `json:"usage"`
-	UpdatedAt      string                 `json:"updatedAt,omitempty"`
-	Seq            uint64                 `json:"seq"`
+	// Queue is the messages waiting behind the running turn, in the order they
+	// will run. A message leaves it the moment its turn starts.
+	Queue     []QueuedWire `json:"queue"`
+	UpdatedAt string       `json:"updatedAt,omitempty"`
+	Seq       uint64       `json:"seq"`
 }
 
 // OutcomeWire is one ended question as the window reads it. It carries the
@@ -144,6 +147,8 @@ type conversation struct {
 	done       chan struct{}
 	observers  int
 	lastTasks  []session.PlanTaskRow
+	queue      []*queuedItem
+	queueSeq   uint64
 	planError  string
 	icons      *faviconCache
 	terms      *terminalSet
@@ -314,7 +319,7 @@ func (s *conversation) snapshot() Snapshot {
 	if !stamp.IsZero() {
 		updatedAt = stamp.UTC().Format(time.RFC3339)
 	}
-	return Snapshot{ID: s.id, SessionFile: w.SessionFile, Workspace: w.Workspace, Model: a.Model(), Persistent: w.Persistent, Running: running, NeedsPerson: a.NeedsPerson(), Title: a.Title(), Questions: questions, RecentOutcomes: recentOutcomes(a), PlanError: planError, Entries: entries, Tasks: tasks, Usage: a.Usage(), Seq: seq, UpdatedAt: updatedAt}
+	return Snapshot{ID: s.id, SessionFile: w.SessionFile, Workspace: w.Workspace, Model: a.Model(), Persistent: w.Persistent, Running: running, NeedsPerson: a.NeedsPerson(), Title: a.Title(), Questions: questions, RecentOutcomes: recentOutcomes(a), PlanError: planError, Entries: entries, Tasks: tasks, Usage: a.Usage(), Queue: s.queueWire(), Seq: seq, UpdatedAt: updatedAt}
 }
 func (s *conversation) publish(r Record) {
 	s.mu.Lock()
@@ -361,7 +366,11 @@ func (s *conversation) pump(events <-chan session.Event, stop func()) {
 // FollowUp is its own future turn, not a second reader of the current turn.
 func (s *conversation) queued(events <-chan session.Event) {
 	first, ok := <-events
+	s.forget(events)
 	if !ok {
+		// The engine dropped it (a stop, or a take-back): the queue changed.
+		snapshot := s.snapshot()
+		s.publish(Record{Type: "snapshot", Snapshot: &snapshot})
 		return
 	}
 	s.mu.Lock()
@@ -717,6 +726,10 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// A steer/queue has another stream into the same turn; drain it, but publish
 		// only the original owner's stream so the renderer never duplicates text.
 		if running && ask.Mode == "queue" {
+			s.remember(ask.Text, events)
+			// Other windows on this conversation learn of the new row now.
+			listed := s.snapshot()
+			s.publish(Record{Type: "snapshot", Snapshot: &listed})
 			go s.queued(events)
 		} else if running {
 			s.mu.Lock()
@@ -729,6 +742,8 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			go s.pump(events, func() {})
 		}
 		write(w, map[string]bool{"accepted": true})
+	case "queue-edit", "queue-move", "queue-remove":
+		s.queueAction(w, r, parts[2])
 	case "stop":
 		if r.Method != http.MethodPost {
 			fail(w, 405, "POST required")

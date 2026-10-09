@@ -460,6 +460,14 @@ const (
 	// not exist on that wire, and the surface's own guard asks the same
 	// question its rows do (followup.go's [app.queuedTakesBack]).
 	MethodUnqueueFollowUp = "UnqueueFollowUp" // UnqueueArgs → bool (whether the message came out)
+	// MethodEditFollowUp and MethodMoveFollowUp change a queued follow-up IN
+	// PLACE, named by the same stream id the take-back uses. Both answer false
+	// when the message is no longer queued (its turn started first), and an
+	// engine too old to know them answers "no such method", which the client
+	// reads as an error the surface can show: the queue simply cannot be changed
+	// on that wire.
+	MethodEditFollowUp    = "EditFollowUp"    // EditQueueArgs → bool (whether the words were replaced)
+	MethodMoveFollowUp    = "MoveFollowUp"    // MoveQueueArgs → bool (whether the message moved)
 	MethodQuestionReplace = "ReplaceQuestion" // QuestionArgs → StreamRef
 	MethodSteer           = "Steer"           // SubmitArgs → StreamRef, then "event" frames
 	// MethodTyping is a person having started writing, and it is the only frame
@@ -1405,6 +1413,21 @@ type SubmitArgs struct {
 // making an index lie.
 type UnqueueArgs struct {
 	Stream uint64 `json:"stream"`
+}
+
+// EditQueueArgs replaces the words of the queued follow-up that Stream names.
+type EditQueueArgs struct {
+	Stream uint64 `json:"stream"`
+	Text   string `json:"text"`
+}
+
+// MoveQueueArgs moves the queued follow-up that Stream names to sit directly
+// before the one Before names; a zero Before, or one that is not queued, means
+// the end. A neighbour and never a position, for the reason [UnqueueArgs] is a
+// stream.
+type MoveQueueArgs struct {
+	Stream uint64 `json:"stream"`
+	Before uint64 `json:"before,omitempty"`
 }
 
 // SubmitImageArgs carries SubmitImage. Images travel with their bytes filled
