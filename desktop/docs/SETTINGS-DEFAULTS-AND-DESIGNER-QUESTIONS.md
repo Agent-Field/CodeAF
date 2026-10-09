@@ -1,0 +1,188 @@
+# Settings defaults and product-design questions
+
+Updated: 2026-10-09. Working implementation snapshot; development continues.
+
+## Designer handoff
+
+A complete Settings page has not been designed. Existing model controls are provisional, not an approved Settings layout. Please design Settings using the supplied Arc design system, shared components, native system fonts, and both light/dark themes. Do not treat engineering assumptions below as owner-approved product decisions. The appended older ledger contains historical approval labels; those labels are reproduced from the repository, not newly verified approvals.
+
+Start with Appearance, Models and jobs, Permissions and privacy, Places and context, and App/connection/storage. Decide which controls are global, per Place, per conversation, or per device. Each needs its default, inheritance/reset behavior, save feedback, disabled/offline state, and keyboard accessibility.
+
+## Current defaults verified in source
+
+| Area | Default / current behavior | Designer decision needed |
+|---|---|---|
+| Appearance | System appearance unless a saved Light or Dark choice exists. Choice is currently stored in the local webview. | Final control placement; whether device-local or account-wide; reset semantics. |
+| UI font | Native system sans: macOS San Francisco through -apple-system/BlinkMacSystemFont; platform system fallback elsewhere. No downloaded brand font. | Keep design-defined system typography; decide whether user text scaling is exposed. |
+| Code font | System monospace: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono fallback. | Whether code-size control exists; no arbitrary font picker assumed. |
+| Theme/components | Central design tokens and reusable controls. Accent default is Tide. Per-screen custom palettes are not a preference. | Accent customization scope and whether Places tint affects chrome. |
+| Motion/accessibility | Honors system reduced-motion preference; visible keyboard focus. Work-state indicators are still. | Additional motion override, contrast/text-size controls, notification accessibility. |
+| Model roles | Default is deepseek/deepseek-v4.1-flash. Live verification uses OpenRouter and this exact model for every role including auxiliary calls. | Global default versus explicit role overrides; show inheritance clearly. |
+| Pinned models | Existing ledger defaults: GLM Flash (z-ai/glm-5.3-flash), DS Flash (deepseek/deepseek-v4.1-flash), GLM 5.3 (z-ai/glm-5.3). Three slots; choosing an already-pinned model swaps slots. | Number of slots, catalog search, unavailable model handling, reset wording. Availability is not promised by this document. |
+| Model effort | Only offered where the engine catalog reports supported levels; low/medium/high display order. No universal effort default inferred. | Recommended level, role-specific inheritance and budget feedback. |
+| Model saves | Existing controls save immediately through the engine. Receipt: “Saved · applies to the next call”. Failure is visible; no Save button. | Keep immediate save or use explicit Apply; define unsaved-change behavior. |
+| Unchosen roles | Historical ledger says roles stay on DS Flash rather than following the conversation model. | Confirm inheritance hierarchy for global/Place/chat/job overrides. |
+| Overview | Grid initially; last Grid/Filmstrip choice retained locally. | Device persistence versus per-window choice. |
+| Workspace | Open tabs and validated view state are currently persisted locally; corrupt fields are discarded selectively. | Restore-on-launch policy, retention, clear/reset controls and multiwindow scope. |
+| Hover previews | Opens after 500ms; close grace 100ms. No preview on active tab. | Whether accessibility or timing preference is needed; default remains design-defined. |
+| Keyboard | Latest design: Command 1–9 selects tabs; Option Command 1–3 selects pinned models; Command Shift Backslash opens overview; Command Up/Down steps between messages. | Settings shortcut reference/remapping; resolve off-Mac equivalents consistently. |
+| Missing engine data | Do not invent cost, step receipts, model metadata, timestamps or status. Show only backed data. | Empty/unavailable states for settings and summaries. |
+
+## Implementation choices in isolated lanes — not all integrated yet
+
+| Area | Working choice | Decision / limitation |
+|---|---|---|
+| Places tint | New top-level Place chooses least-used tint; child inherits first-parent tint unless overridden; fallback Graphite. | Confirm multi-parent tint precedence and selection UI. |
+| Places hierarchy | Directed acyclic graph; multiple parents; contextual ancestry capped at two levels by current store. | Explain inheritance and scope in Settings/context inspector. |
+| Places memberships | A chat can belong to multiple Places; Now means no active Place membership. | Membership actions, AI suggestions and consent policy. |
+| Archive/delete | Archive does not delete chats; Place deletion reparents children and removes memberships, preserving chats. | Confirmation wording, recovery/retention policy. |
+| Undo | Store currently keeps 20 revision-checked receipts in memory; unavailable across process restart. | User-visible undo window, persistence and conflict behavior. |
+| Context sources | Store supports folder/repository/file/URL/chat references; storage alone does not prove validated or injected context. | Source permissions, freshness, exclusions, context preview and removal. |
+| Terminal | Historical ledger: user's interactive non-login shell in engine project folder; 16 live terminals per conversation; 512KB scrollback each. | Configurable limits, shell override, remote/local distinction and retention. |
+| Terminal colors | Historical ledger: ANSI hues at roughly 60% chroma inside terminal/job output; conversation work output uses ink. | Confirm with final terminal specimens and contrast requirements. |
+| File changes | Compare against conversation start commit; documented latest-commit fallback when absent/gone. Binary or >1MB gets an honest refusal and external-open path. | User-selectable comparison base, file-size override and editor preference. |
+| New tab | Quiet until first send or explicit action; offline draft retained. | Startup landing page, history suggestion policy and draft retention. |
+| Native web | Separate native webview being implemented; external pages must not gain engine credentials or privileged app commands. | Default external/internal opening, history/cookies/storage clearing, page-read consent. |
+
+## Settings defaults still deliberately undecided
+
+| Topic | Decision needed | Current safe boundary |
+|---|---|---|
+| Permissions | Default approval mode, per-tool rules, scope/inheritance, duration of “Allow all”, irreversible actions. | Preserve canonical harness permission gates; no new blanket auto-approval default. |
+| Connection | Local startup versus remote engine, reconnect behavior, account/provider setup, secrets and diagnostics. | Canonical CodeAF connection; show real unavailable states; never expose keys in UI/evidence. |
+| Notifications | Events, sound, badges, quiet hours, native notification permission and per-Place overrides. | No invented notification preference claimed implemented. |
+| AI Place suggestions | Opt-in/default, frequency, approval/editing, explanation, cost and disable behavior. | Do not represent an unimplemented suggestion workflow as available. |
+| Privacy/storage | Conversation retention, archive versus permanent delete, web cookies, attachments, logs, export, clear-data boundaries. | No automatic destructive retention policy chosen. |
+| Offline | Read-only cache scope, queued writes/sends, retry/conflict handling, connection receipts. | Keep drafts; do not silently claim sends succeeded. |
+| Windows/startup | Restore sessions, initial Home/Now/new tab, per-window workspace, background jobs on close, tray/menu behavior. | Final product policy remains open. |
+| Limits/budget | Context/source/token limits, spending limits, concurrency, terminal/file limits and error copy. | Existing engine limits stay authoritative; don't display invented budgets. |
+| Editor/native actions | Default editor, remote editor list, folder picker, external URL opening and OS integrations. | Actual available native controls only; no fabricated app list. |
+| Settings organization | Search, navigation, reset-all, export/import, scope indicators, save model and help. | Existing Models page is provisional. |
+
+## Additional unresolved interaction decisions
+
+The complete current repository ledger follows. It includes non-settings journeys so the designer can reconcile controls across the app. Some assumptions describe earlier incomplete lanes and may be superseded during integration; an open row is not proof that a feature is complete.
+
+# Design questions and assumptions
+
+Open design questions for the designer, with the assumption the app ships
+until the designer answers. Every lane that meets something the design
+files do not specify adds a row here in the same commit. When the designer
+answers, replace the assumption with the answer and mark it **Decided**.
+
+Sources: the claude.ai/design files (Foundations, Components, Conversation,
+Shell). On any conflict, the design files win over code and older docs.
+
+## Decided by the owner
+
+| # | Question | Decision |
+|---|---|---|
+| D1 | Edit a sent message (the design shows a pencil beside Copy) | **No.** Copy only. The pencil is not drawn. |
+| D2 | Edit and reorder queued messages | **Yes.** The engine supports edit and reorder; the queue rows show edit, drag and remove. |
+| D3 | What a file/diff tab compares against | **Engineering choice:** the commit the conversation started on, so the diff shows what this conversation changed. Falls back to the latest commit when no start commit is recorded. |
+| D4 | Pinned models (⌘1–3) | GLM Flash `z-ai/glm-5.3-flash`, DS Flash `deepseek/deepseek-v4.1-flash`, GLM 5.3 `z-ai/glm-5.3`. Every role defaults to DS Flash. |
+| D5 | Settings page | Our own page in the design language for now: pinned models, then one row per model role. A full settings design comes later. |
+| D6 | Composer focus | No ring, border or fill change on mouse click or typing. A 2px accent ring with a 4px halo shows only on keyboard focus. (The Components "ready to send" specimen shows a halo; the owner's instruction wins.) |
+
+## Decided by the designer (2026-10-09)
+
+| # | Question | Decision |
+|---|---|---|
+| Q1 | File tab for a file that cannot be shown (binary, or over 1MB) | **Designer: keep.** One muted line naming why ("Binary file" / "Too large to show, 3.4MB") and an "Open in ⌄" dropdown listing the editors found on the engine machine (default editor first) plus "Copy path". Same dropdown replaces "Open in editor ↗" when the engine is remote. |
+| Q2 | File tab for a file outside git | **Designer: keep.** File view only. No Changes/File toggle and no +/− counts. |
+| Q3 | Terminal colours | **Designer:** keep the ANSI hues, desaturated to about 60% chroma, and only inside terminal and job output (the program's content, not our interface; flattening hides errors). Output inside the conversation's work block flattens to ink. |
+| Q4 | Closing a finished job | **Designer: keep.** Close keeps the job's log; it stays listed until removed from its menu ("Remove"). |
+| Q5 | "Ask codeaf about this output" target | **Designer: keep.** Starts a new conversation with the output attached. |
+| Q6 | Terminal limits | **Designer: keep.** 16 live terminals per conversation; 512KB scrollback each. Not shown in the UI unless hit, then one muted line. |
+| Q7 | Terminal shell | **Designer: keep.** The user's shell, interactive, not a login shell, in the project folder on the engine machine. |
+| Q8 | History recap writer | **Designer: keep.** A model role ("Titles and summaries", DS Flash by default) writes each conversation's recap when a turn settles. |
+| Q9 | Effort row in the model picker for models without effort levels | **Designer: keep.** Hidden. |
+| Q10 | Unchosen roles | **Designer: keep.** Stay on DS Flash; they do not follow the Conversation model. |
+| Q11 | Task panel button inside the task view | **Designer: keep.** Hidden, as in Conversation 1c. Reopen from the conversation header. |
+| Q12 | Task panel open/close motion | **Designer: keep.** No transition specified; the column appears at once. The narrow-width sheet slides and fades. |
+| Q13 | "N need you" count | **Designer: keep.** Number of pending questions, the same number the tray shows. |
+| Q14 | Message "sending" state | **Designer: keep.** The sent message shows at 60% opacity until the engine records it (plain text sends only). |
+| Q15 | Engine data the design shows but the engine does not yet send | **Designer: keep.** Cost per task, "Read at step N", per-step receipts: drawn only when the engine sends them (empty otherwise). |
+| Q16 | How "and say why" opens the "Say why (optional)" field on a permission card | **Designer: keep.** The ghost hint is a toggle: pressing it reveals the field under the answers. |
+| Q17 | Reason field on irreversible permission cards | **Designer: keep.** Not shown, as in Conversation 1e. An irreversible Deny carries no reason. |
+| Q18 | Colour of "Later" / "You decide" on the permission card footer | **Designer:** "Later" and "You decide" use ink-2 on every card (the ink-3 on the clarification card was a design inconsistency). |
+| Q19 | Step row ink: Conversation 1a draws settled steps ink-3, Components draws live work-block steps ink-2 | **Designer:** settled steps ink-3, running step ink, failed step ink-2 plus a red 6px dot. Components follows the conversation screens. |
+| Q20 | "Holding up <tasks>" footer note on a question (engine data, no design) | **Designer: keep.** Shown as one muted line in the tray foot. |
+| Q22 | Ink for queued, stopped and interrupted rows in the task panel | **Designer: keep.** Queued faint as in 1c; stopped and interrupted use the settled-row ink. |
+| Q23 | Start commit for a conversation opened before this rule, or one that began on an unborn branch | **Designer: keep.** The start is recorded the first time the desktop opens the conversation in a git workspace; until then (and while the branch has no commit) diffs compare with the latest commit. |
+| Q24 | What the UI says when the start commit is gone (history rewritten) | **Designer:** the line reads "Compared with the latest commit. The commit this conversation started on is no longer in history." |
+| Q25 | Taking a queued message back (the design draws a remove mark but not what it does) | **Designer: keep.** It really removes the message from the engine, so it never runs. The old line "Removed here only. codeaf still sends a queued message after this turn." is gone. |
+| Q26 | A change to a queued message whose turn has already started | **Designer: keep.** The engine refuses (409). The row leaves the queue, and the composer's muted error line says "that message has already been sent". No toast. |
+| Q27 | Where a dragged queued row lands | **Designer: keep.** On the row it is dropped on: it takes that row's place and the others shift. No drop line is drawn. Only the visible rows (two, or all when expanded) accept a drop. |
+| Q28 | Keyboard reorder | **Designer: keep.** A focused row moves one place with Alt+↑ / Alt+↓ and keeps focus; moving below the second row opens "N more queued". A screen reader hears "Moved to position N of M". |
+| Q29 | Editing a queued message that holds a pasted-text card | **Designer: keep.** The field edits the whole stored text, including the `<pasted-text>` block, as plain text. |
+| Q31 | Segment label for a pinned model outside the three defaults | **Designer: keep.** The tail of the model name (for example "kimi-k3"). |
+| Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | **Designer: keep.** No hunk header on edit diffs; file/diff tabs (from git) keep it. |
+| Q33 | Elapsed time on the live thinking row ("4s") | **Designer: keep.** Not shown until thinking ends; the engine gives no time before then. |
+| Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | **Designer: keep.** Nearest set icons: ban, pencil, the plain file icons. |
+
+## Open: for the designer
+
+| # | Question | Assumption the app ships now |
+|---|---|---|
+| Q30 | RESOLVED by the latest Interactions page: ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models, so the two no longer share keys | ⌘1–9 jump to tabs; ⌥⌘1–3 pick pinned models. No conflict remains. |
+| OV1 | The earlier Shell spec opened the overview with ⌘↑; the latest Shell and Interactions pages say ⌘⇧\ (or a pinch out) and give ⌘↑/⌘↓ to stepping between messages | ⌘⇧\ (Ctrl Shift A off the Mac) and the grid icon open it; the overview no longer listens for ⌘↑. |
+| OV2 | Pinch out opens the overview (Shell 2h) | Not wired: the browser and the webview report no reliable pinch event. The grid icon and the keys open it. |
+| OV3 | A section for pinned tabs (the design shows only a group section and "Other tabs") | A "Pinned" section comes first when any tab is pinned, then each group in strip order, then "Other tabs". The filmstrip uses the same order. |
+| OV4 | Card state line shows "4 running" and "step 7" (engine detail), and the footer shows "2m · Flash" (age and model) | The state line shows only Working, Needs you or Failed from the conversation summary; the footer shows the age only. The summary carries no running count, step or model, and the card never invents them. |
+| OV5 | Card body per kind (diff lines, terminal lines, a web page thumbnail) | The body is the kind's `preview` renderer when the kind has one. Until the hover-preview lane fills it, the body is the draft, else the latest answer's first line, else the muted line "No work yet". A split card lists its pane titles. No kind draws a thumbnail yet (only a web tab may, and none is backed). |
+| OV6 | What the cursor looks like in the grid (the design draws only hover and the active ring) | The cursor card takes the hover fill (`--field`), with no outline. Arrow keys move it, ↵ opens it, ⌘W / Ctrl W closes it. Clicking a card always opens it. |
+| OV7 | What a click on a filmstrip neighbour does | It moves that card to the centre; a click on the centre card opens it. |
+| OV8 | Which filmstrip panes are live (the design shows every pane live) | The centre card and three on each side mount the real pane, inert and aria-hidden, with no-op actions; cards further out draw an empty canvas, which is masked or off screen. Panes with no saved session show their empty state, because the filmstrip never fetches or invents content. |
+| OV9 | The overview ground and the top bar on non-Mac platforms (the design draws macOS traffic lights) | A full-window layer on `--frame`. On the Mac a 68px gutter keeps the native traffic lights clear; elsewhere there is no gutter. The bar is a drag region. |
+| OV10 | Which view opens (Grid or Filmstrip) | The last one used, kept in this browser only. |
+| OV11 | "Open as split" for a group of fewer than two plain tabs, or a pinned or already split member | The button is shown but disabled, matching the group's menu item. At most four tabs merge. |
+| OV12 | The Search field's focus ring (the design draws none) | None after a click; the shared 2px ring only for keyboard focus, as for the composer (D6). |
+| OV13 | ⌘W inside the overview from the native menu | The browser key closes the card under the cursor. The native menu's Close item still closes the active tab and the overview (rail-and-keys lane owns it). |
+| OV14 | Interactions: an overview card "⌘-click / middle" = "Background tab", but every card is already an open tab | Not wired. A ⌘-click opens the tab like a plain click. Open question for the designer: should it select the card without leaving the overview? |
+| OV15 | Card footer "2m · DS Flash" (age and model name) | Age only. The snapshot carries the model id, but `TabSummary` has no model field and no shared display-name helper exists outside the composer, so the card never guesses one. Needs `model` on `TabSummary` (conversation lane). |
+| OV16 | "Drag regroups" on an overview card, no drop targets drawn | A card drags onto a group section to join it, or onto "Other tabs" to leave its group. Pinned is not a drop target. Keyboard equivalent: the right-click menu "Move to group". |
+| Q-P1 | Hover delay: Shell 2h says 500ms, the old token said 650ms | 500ms (`interaction.previewOpenDelay`), the same as the tooltip delay. Close grace stays 100ms so the pointer can cross a gap or reach the card. |
+| Q-P2 | Hovering the active tab | No card: a preview is for "the thing you'd switch for" (Shell 2h). The old preview on the active tab is gone. |
+| Q-P3 | Is the card interactive, and how does the pointer reach it | Yes, because it carries Allow all / Review. The card stays open while the pointer is on it and closes 100ms after it leaves. It is `role="group"` named "Preview of <title>", not a tooltip. Its buttons are not in the Tab order: a keyboard user answers from the tray. |
+| Q-P4 | "4 running": what counts | Tasks the engine reports as running (taskState "running"), whole session. With none running but the turn working, the card says "Working". |
+| Q-P5 | Which questions a task tab's card asks | Only those whose `blocking.tasks` names the card's task (the link the expanded tasks view reads); a conversation card shows every pending question. A task with none of its own says its own state word, never "Needs you". A set of permissions reads "Allow N actions?" and offers Allow all + Review; a lone permission offers Allow + Review; any other question form offers Review only. Open: a question that names no task (an engine-level ask) appears on the conversation card only. |
+| Q-P6 | A conversation that needs you | Same card as a Task that needs you: amber dot instead of the kind icon, "Needs you", the question and the actions (3k draws only the task). |
+| Q-P7 | A conversation with no reply yet | "Draft: <text>" when a draft is typed, otherwise only kind and title. A failed conversation uses a red dot and "Failed". |
+| Q-P8 | Web card with no screenshot or address (no browser surface exists yet) | The screenshot area keeps its 120px light ground and draws nothing; the address line is omitted. Web, file, diff and terminal tabs are not opened in the live app yet, so these cards ship as specimens plus bodies that read a `target` on the pane (see report). |
+| Q-P9 | Terminal and file lines in the card | Last 3 non-empty lines (newest in full ink); first 3 non-empty lines of a file; first 2 changed lines of a diff (design 3k shows 2). ANSI escapes are stripped; the 60% chroma rule is for terminal tabs, not this mono field. |
+| Q-P10 | Preview cards on split tabs and on collapsed group pills | Not shown: a split tab's segments and a collapsed group pill open no card. Design draws neither. |
+| Q-P11 | Swap animation | No enter animation when a card replaces a neighbour's (data-swap); a first open uses the shared overlay enter. |
+| Q-P12 | Allow all fails (engine unreachable, rejected) | The card says why in one danger-colored line ("Not sent. <engine message>"), keeps asking whatever the engine still lists, and leaves Allow all and Review enabled to retry. Open: should the line offer Retry as its own control, as the conversation error does? |
+| Q-P13 | Design says "Allow 3 git actions?"; the engine's batch head reads "Allow N actions?" | The shipped wording is the tray's ("Allow N actions?"); the card does not invent a noun the engine did not send. |
+| Q-P14 | File, diff, terminal and web cards need a target (path, terminal id, URL) | `Pane.target` is an optional validated field kept across reload (`PaneTarget` in view-state.ts); the kind lanes write it. Until a lane sets it the card is kind and title only, never invented content. |
+| Q-P15 | A card whose read fails or is still loading | Kind and title only; no spinner, no error text (a read failure is not the person's to act on). The previous target's content is never shown for a different target. |
+
+
+# Places component questions
+
+# Places components: ambiguous decisions
+
+Decisions made while building `src/features/places/components/` where the design (Places, Components, Interactions) is silent or disagrees with itself. Each is a conservative assumption, kept here instead of the shared ledger so lanes do not collide. Change the token or the rule, not the test, when the designer answers.
+
+| # | Question | Assumption taken |
+| --- | --- | --- |
+| Q-T1 | Tile and row hover/press fills are not drawn. | Hover fills `--field`, press `--field-2` (the shared Row recipe); the selected chat row is `--field`, and hovering it is `--field-2`. A tile in drop-target state keeps its soft accent fill on hover. |
+| Q-T2 | Swatch colours are literals in the mock, identical for light and dark. | One value per tint, defined for both themes (`places-swatch-*`). Graphite is `oklch(.55 .012 250)` from Components. |
+| Q-T3 | Home text in the mock ends in an ellipsis; the shell standard and the brief say long text fades under a mask. | Mask (`places-text-fade` = 20px, the tab title fade). No ellipsis anywhere. |
+| Q-T4 | The design draws no model on a chat row. | `ChatRow` carries `model` as `data-model` only and draws nothing. |
+| Q-T5 | Heading line height is not stated. | 1.2 (`type-home-title-leading`). |
+| Q-T6 | The menu button icon is 15px; the icon scale has 14 and 16. | 14 (`sm`). No new size. |
+| Q-T7 | Home tile grid is exactly four columns in a 680px column. | `repeat(auto-fill, minmax(140px, 1fr))`, which gives 4 at 632px of content and wraps to fewer below. Components draws `150px`; at 150 the Home column would hold three. |
+| Q-T8 | Dragging a row or tile. | Source drops to `--opacity-subtle` (0.7). Drop target is the drawn "Add here" state. MIME types and the nest/add/move semantics (Interactions vs 8g disagree on ⌥) belong to the dnd lane; the components only expose native drag callbacks. |
+| Q-T9 | Tint inherited vs overridden has no distinct look. | Same look. `tintSource` is carried as `data-tint-source`. |
+| Q-T10 | Chat glyph icon. | The registry name `tab` (Lucide message-square) already is the glyph; no `Icon.tsx` change. |
+| Q-T11 | Inline create: where the tint picker sits. | Five swatches (no Graphite) above the field, as drawn in Components. Radiogroup with arrow keys. Enter on an empty name does nothing; the unique-name check is the caller's (`invalid`). |
+| Q-T12 | Inline rename (Q-14). | `PlaceHeading renaming` swaps the title for a field. While renaming the menu button is not drawn. The field reclaims focus from the menu's restore for one second. A shared `onCloseAutoFocus` on `DropdownMenu` would remove that workaround. |
+| Q-T13 | Space on a tile. | Quick Look when `onQuickLook` is given; otherwise an ordinary press. ⌘/Ctrl-Enter and ⌘/Ctrl-click and middle click open in a new window. |
+| Q-T14 | Tab order in the tile grid. | Every tile is a tab stop; arrows, Home and End are an accelerator, not roving tabindex. |
+| Q-T15 | The 12px swatch pickers are below the 24px target size. | Kept as drawn; WCAG 2.2 target size is outside the suite's tags. Revisit with the designer for coarse pointers. |
+
+## Shared edits outside the new folder
+
+Additive only: `tokens.json` (`places-*`, `type-home-title-*`, `type-section-label-*`, theme `places-swatch-*`), regenerated `tokens.css`, `HomeTitle` and `SectionLabel` in `Typography.tsx` and `index.ts`, two type rules in `ui.css`, and the `test:places-components` script.
