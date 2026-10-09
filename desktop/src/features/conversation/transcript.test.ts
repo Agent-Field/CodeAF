@@ -195,3 +195,16 @@ test('digestOf strips marks and clips', () => {
   assert.equal(digestOf(''), '');
   assert.ok(digestOf('x'.repeat(300)).length <= 140);
 });
+
+test('a call the record marks Failed is a failed step, answered or not', () => {
+  const model = projectConversation(
+    snap([
+      entry({ Role: 'user', Text: 'go' }),
+      call('a', true, { Failed: true, Output: 'boom' }),
+      call('b', true, { Output: 'ok' }),
+    ]),
+  );
+  const item = model.turns[0].items[0];
+  assert.equal(item.kind === 'tools' && item.steps[0].state, 'failed');
+  assert.equal(item.kind === 'tools' && item.steps[1].state, 'done');
+});

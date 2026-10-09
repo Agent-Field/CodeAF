@@ -13,8 +13,6 @@ export type { LiveOverlay } from './live-overlay.ts';
 
 // The record may carry these on an aside; the Go side is adding them.
 type AsideFields = { TaskIDs?: string[]; TaskStatus?: string };
-// DisplayEntry has no failure flag today; honour one if it appears.
-type ToolFields = { Failed?: boolean };
 
 type Ctx = { snapshot: EngineSnapshot; lastUnanswered: number };
 type Builder = { turn: Turn; byCall: Map<string, ToolStep> };
@@ -28,7 +26,7 @@ function lastUnansweredTool(entries: EngineEntry[]): number {
 }
 
 function stepState(entry: EngineEntry, index: number, ctx: Ctx): ToolStep['state'] {
-  if ((entry as ToolFields).Failed) return 'failed';
+  if (entry.Failed) return 'failed';
   if (entry.Answered) return 'done';
   return ctx.snapshot.running && index === ctx.lastUnanswered ? 'running' : 'done';
 }

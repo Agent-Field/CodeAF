@@ -183,6 +183,14 @@ type sessionEntry struct {
 	// file written before the line existed.
 	Took *journalTook `json:"took,omitempty"`
 
+	// FailedCall is a `failed` line: the id of ONE tool call whose result came
+	// back a failure (loop.go's EventToolFailed). Anchored by call id for the
+	// `took` line's reason: the flag the tool returned does not survive into the
+	// tool MESSAGE, which is a string, so the record needs a mark of its own or a
+	// reopened page can only guess from the words. Absent from every line that is
+	// not one, and from every file written before the line existed.
+	FailedCall string `json:"failedCall,omitempty"`
+
 	// Pace is ONE TURN'S DECOMPOSITION: how long the person waited to be sent
 	// anywhere, how long they then waited for a word, and the worst gap between a
 	// tool result and the next request. Absent from every line that is not one,
@@ -1209,6 +1217,11 @@ type sessionFile struct {
 	// no duration, which is the lie a room opened after landing used to tell.
 	tooks map[string]journalTook
 
+	// failed is WHICH CALLS CAME BACK A FAILURE, keyed by the call's own id
+	// ([sessionEntry.FailedCall]). Absent means "not recorded as failed", which
+	// is every call in a file written before the line existed.
+	failed map[string]bool
+
 	// restored is what this conversation had already spent when the file was
 	// opened: the SUM of its usage lines, replayed once and never updated after.
 	// It is the file's answer to "what did this cost before today", and the agent
@@ -1469,6 +1482,38 @@ func (s *sessionFile) appendTook(callID string, took time.Duration) {
 	s.writeLine(sessionEntry{Type: "took", Took: &mark, Timestamp: stamp()})
 }
 
+// callFailed reports whether the journal records this call as a failure. The
+// NIL RECEIVER answers false, and so does a call the journal never marked: no
+// text is ever read to decide it.
+func (s *sessionFile) callFailed(callID string) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.failed[strings.TrimSpace(callID)]
+}
+
+// appendFailed journals that one call came back a failure. It is called where
+// EventToolFailed is sent, with the same id, so the record and the live stream
+// cannot disagree about which calls failed.
+func (s *sessionFile) appendFailed(callID string) {
+	if s == nil {
+		return
+	}
+	callID = strings.TrimSpace(callID)
+	if callID == "" {
+		return
+	}
+	s.mu.Lock()
+	if s.failed == nil {
+		s.failed = make(map[string]bool, 4)
+	}
+	s.failed[callID] = true
+	s.mu.Unlock()
+	s.writeLine(sessionEntry{Type: "failed", FailedCall: callID, Timestamp: stamp()})
+}
+
 // rememberSteer marks one message as a splice, in a map the caller owns — the
 // file's, under its lock, or the one a replay is still building. It is
 // [rememberNote]'s twin and keeps its shape on purpose: the two facts are
@@ -1717,6 +1762,7 @@ func openSessionFile(path, cwd, model, id string) (*sessionFile, replayedSession
 	journal.steers = replayed.steers
 	journal.captions = replayed.captions
 	journal.tooks = replayed.tooks
+	journal.failed = replayed.failed
 	journal.restored = replayed.usage
 
 	if !replayed.existed {
@@ -1878,6 +1924,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 	// one call's duration that is not carried by any message (see
 	// [sessionFile.tooks]).
 	tooks := make(map[string]journalTook)
+	failed := make(map[string]bool)
 	replyTags := make(map[string][]TaskReplyTag)
 	delivered := make(map[string]bool)
 	noteDeliveries := make(map[string][]string)
@@ -2050,6 +2097,12 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 				continue
 			}
 			tooks[mark.CallID] = mark
+		case "failed":
+			// ONE CALL THAT CAME BACK A FAILURE. It rebuilds no message; it only
+			// indexes, like a `took` line.
+			if id := strings.TrimSpace(entry.FailedCall); id != "" {
+				failed[id] = true
+			}
 		case "steer":
 			// A STEER THAT FELL THROUGH, and nothing is rebuilt from it
 			// ([sessionFile.appendSteerFellThrough]). Those words never reached
@@ -2237,6 +2290,7 @@ func readJournal(reader io.Reader, path string, rebuild bool) (replayedSession, 
 		steers:         steers,
 		captions:       captions,
 		tooks:          tooks,
+		failed:         failed,
 		usage:          spent,
 		created:        created,
 		requests:       requests,
@@ -2434,6 +2488,8 @@ type replayedSession struct {
 	// tooks is how long each call ran, keyed by the call's own id — the index
 	// [sessionFile.tooks] is opened holding.
 	tooks map[string]journalTook
+	// failed is which calls came back a failure, keyed by call id.
+	failed map[string]bool
 	// unread is the 1-based line of the file this reading could not get past, and
 	// zero for a file read to its end. Everything above it is in `messages`; the
 	// number is what lets a caller say WHICH line rather than "something went
