@@ -479,22 +479,21 @@ func TestAFailureBeforeTheCommitLeavesNothingBehind(t *testing.T) {
 	}
 }
 
-func TestADirectorySyncFailureTakesTheJournalBackOrCommits(t *testing.T) {
+func TestADirectorySyncFailurePreservesThePublishedCommit(t *testing.T) {
 	dir := t.TempDir()
 	s := open(t, dir)
 	r, _, _ := moveSetup(t, s, "intent-1")
-	before := snapshot(t, dir)
 	calls := 0
 	s.syncDir = func(string) error { calls++; return errors.New("EIO") }
-	if _, err := s.PutPair(r); err == nil {
-		t.Fatal("a commit that cannot be made durable is reported, not acknowledged")
+	if result, err := s.PutPair(r); err != nil || result.Source.Revision != 2 || result.Destination.Revision != 2 {
+		t.Fatal("a public logical commit must be acknowledged", result, err)
 	}
 	s.syncDir = nil
 	if calls == 0 {
 		t.Fatal("the journal's directory must be synced")
 	}
-	if after := snapshot(t, dir); !reflect.DeepEqual(before, after) {
-		t.Fatal("an un-durable journal is taken back")
+	if _, err := os.Stat(s.journalPath()); err != nil {
+		t.Fatal("failed durable completion must retain journal", err)
 	}
 	if _, err := s.PutPair(r); err != nil {
 		t.Fatalf("retry: %v", err)

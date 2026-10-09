@@ -131,3 +131,74 @@ func TestOpenElsewhereCanonicalOpenViewsAndCache(t *testing.T) {
 		t.Fatal("removed graph entries retained")
 	}
 }
+
+func TestOpenElsewhereCacheSeesJournalOnlyDestination(t *testing.T) {
+	b, dir := newWorkspaceBridge(t)
+	graph, err := placegraph.Open(placegraph.Options{Path: filepath.Join(t.TempDir(), "places.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.UsePlaces(NewPlaces(graph))
+	current, _, err := graph.CreatePlace(placegraph.NewPlace{Name: "Current"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination, _, err := graph.CreatePlace(placegraph.NewPlace{Name: "Marketing"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := "/project/chat.jsonl"
+	conversation := func(id string) map[string]any {
+		d := sharedDoc(id)
+		d["tabs"].([]map[string]any)[0]["sessionFile"] = target
+		return d
+	}
+	for _, key := range []string{current.ID, "now"} {
+		if w := request(b, "PUT", "/api/engine/workspaces/"+key, putBody(0, "writer", conversation("chat"))); w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	get := func() []openElsewherePlace {
+		t.Helper()
+		w := request(b, "GET", "/api/engine/workspaces/"+current.ID+"/open-elsewhere?pane=chat", "")
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var result struct {
+			Places []openElsewherePlace `json:"places"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+			t.Fatal(err)
+		}
+		return result.Places
+	}
+	if got := get(); len(got) != 0 {
+		t.Fatal(got)
+	} // warm a missing destination projection
+	// This is the actual committed journal format at a crash before materializing
+	// either file. The read-only bridge has no access to the store's fault seam.
+	envelope := func(key string, revision uint64, doc any) map[string]any {
+		return map[string]any{"schema": 1, "key": key, "revision": revision, "writer": "writer", "updatedAt": time.Now().UTC(), "workspace": doc}
+	}
+	journal := map[string]any{"schema": 1, "intent": "cache-pair", "binding": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "writer": "writer", "at": time.Now().UTC(), "source": envelope("now", 2, sharedDoc("fresh")), "destination": envelope(destination.ID, 1, conversation("moved")), "moved": map[string]string{"chat": destination.ID}}
+	bytes, err := json.Marshal(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".pair-pending"), bytes, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(); len(got) != 1 || got[0].ID != destination.ID {
+		t.Fatal("cached missing file hid the logical destination", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, destination.ID+".json")); !os.IsNotExist(err) {
+		t.Fatal("read materialized destination", err)
+	}
+	// An ordinary writer recovers both halves first, then closes the actual view.
+	if w := request(b, "PUT", "/api/engine/workspaces/"+destination.ID, putBody(1, "closer", sharedDoc("new"))); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if got := get(); len(got) != 0 {
+		t.Fatal("closed materialized destination remained cached", got)
+	}
+}
