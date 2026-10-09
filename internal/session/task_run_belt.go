@@ -1028,7 +1028,7 @@ func (a *Agent) beltRunSpec(run *beltRun, brief string) RunSpec {
 	oneModel := ""
 	if a.config.OneModel {
 		oneModel = a.Model()
-		workSeat, planSeat, checkSeat = oneModel, oneModel, oneModel
+		workSeat, planSeat, checkSeat = a.oneModelSeats(oneModel)
 	}
 
 	// A recovered factory asks for original send IDs; the crew completer then
@@ -2574,4 +2574,28 @@ func (a *Agent) beltWorkerLifetime(run *beltRun, id string, on bool) {
 		close(done)
 		delete(run.workers, id)
 	}
+}
+
+// oneModelSeats is the work, plan and check seats of a one-model task. A source
+// that is present under the flag is a surface that lets the person choose a model
+// per job (the desktop), so each seat answers from its own role and falls back to
+// the conversation's model; without one all three are the conversation's model.
+func (a *Agent) oneModelSeats(conversation string) (work, plan, check string) {
+	source := a.config.RolesSource
+	if source == nil {
+		return conversation, conversation, conversation
+	}
+	return a.seatModel(source, roles.RoleWorker, conversation),
+		a.seatModel(source, roles.RolePlanner, conversation),
+		a.seatModel(source, roles.RoleAuditor, conversation)
+}
+
+// seatModel is the model one seat of a one-model task runs on: the role's own
+// choice when the surface made one, and the conversation's model otherwise.
+func (a *Agent) seatModel(source func(string) (string, bool), role roles.Role, floor string) string {
+	model, err := roles.Resolve(roles.Source(source), role, floor)
+	if err != nil || strings.TrimSpace(model) == "" {
+		return floor
+	}
+	return model
 }
