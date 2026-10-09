@@ -10,9 +10,22 @@ export type TabView = {
   folded?: Record<string, boolean>;
   open?: Record<string, boolean>;
   tasksClosed?: boolean;
+  /** The row chosen in the expanded tasks view. */
+  tasksSelected?: string;
 };
 
 export const rootRoute: TabRoute = { back: [], forward: [] };
+
+/**
+ * The expanded tasks view is a stop on the tab's route like a task is, so Back,
+ * Forward and reload treat it the same way. No canonical task id starts with '#'.
+ */
+export const TASKS_VIEW = '#tasks';
+
+/** The task the route shows, or undefined for the conversation and the expanded view. */
+export function routeTask(route: TabRoute): string | undefined {
+  return route.taskId === TASKS_VIEW ? undefined : route.taskId;
+}
 
 const isStringList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -37,6 +50,7 @@ export function cleanView(value: Record<string, unknown>): TabView {
   if (isFlagMap(value.folded)) view.folded = value.folded;
   if (isFlagMap(value.open)) view.open = value.open;
   if (typeof value.tasksClosed === 'boolean') view.tasksClosed = value.tasksClosed;
+  if (typeof value.tasksSelected === 'string' && value.tasksSelected) view.tasksSelected = value.tasksSelected;
   return view;
 }
 
