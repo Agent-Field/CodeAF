@@ -3,9 +3,6 @@ import { expectAccessible, expectNoUnstyledControls } from './contracts';
 
 async function render(page: Page, text: string) {
  await page.goto('/');
- const draft = page.getByRole('textbox', { name: /Draft for/ });
- await draft.fill('Markdown renderer specimen'); await draft.press('Enter');
- await expect(page.locator('.work-document')).toHaveAttribute('data-fresh', 'false');
  await page.evaluate(async (text) => {
   const markdownPath = '/src/components/ui/Markdown.tsx';
   const reactPath = '/node_modules/.vite/deps/react.js';
@@ -13,7 +10,7 @@ async function render(page: Page, text: string) {
   const themePath = '/src/design/ThemeProvider.tsx';
   const [{ Markdown }, { default: React }, { default: ReactDOM }, { ThemeProvider }] = await Promise.all([import(markdownPath), import(reactPath), import(clientPath), import(themePath)]);
   const container = document.createElement('section'); container.id = 'markdown-specimen'; container.setAttribute('aria-label', 'Markdown specimen');
-  document.querySelector('.work-document-scroll')!.replaceChildren(container);
+  document.querySelector('.conversation-column')!.replaceChildren(container);
   const root = ReactDOM.createRoot(container);
   root.render(React.createElement(ThemeProvider, null, React.createElement(Markdown, null, text)));
   (window as unknown as { updateMarkdown: (text: string) => void }).updateMarkdown = (text: string) => root.render(React.createElement(ThemeProvider, null, React.createElement(Markdown, null, text)));
@@ -84,16 +81,4 @@ test('document headings and explicit code use semantic hierarchy and centralized
  }
  await expect(prose.locator('code').first()).toHaveText('src/main.ts');
  await expect(prose.locator('pre code')).toHaveText('npm run check\n');
-});
-
-test('literal user instructions preserve backticks, Markdown and HTML as original words', async ({ page }) => {
- await page.goto('/');
- const original = 'Keep `src/main.ts` literal, **not bold**, and <b>not HTML</b>.';
- const draft = page.getByRole('textbox', { name: /Draft for/ }); await draft.fill(original); await draft.press('Enter');
- await page.getByRole('button', { name: 'Show original instruction for Instruction 1', exact: true }).click();
- const provenance = page.getByRole('group', { name: 'Original instructions for Instruction 1', exact: true });
- await expect(provenance).toHaveText(original);
- await expect(provenance.locator('code,strong,b,.markdown')).toHaveCount(0);
- const size = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-size-prose').trim());
- await expect(provenance.locator('p')).toHaveCSS('font-size', size);
 });

@@ -15,10 +15,7 @@ body { margin: 0; background: var(--canvas); color: var(--text); font-family: va
 .content-pane { grid-column: 2; min-height: 0; border-radius: var(--radius-sm); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
 .content-toolbar { height: var(--toolbar-height); padding: 0 var(--space-row); display: flex; align-items: center; gap: var(--space-compact); color: var(--muted); flex-shrink: 0; }
 .page-title { font-size: var(--font-size-label); }.content-toolbar > .icon-button:last-child { margin-left: auto; }
-.workspace-empty { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: var(--space-2xl) var(--space-6) var(--space-4xl); }
-.empty-content { max-width: 100%; overflow-wrap: anywhere; text-align: center; margin-top: var(--empty-offset); }
 .quiet-action { margin-top: var(--space-section-inner); }
-.workspace-caption { position: absolute; bottom: var(--space-6); color: var(--muted); font-size: var(--font-size-caption); }
 .page-content { flex: 1; min-height: 0; min-width: 0; width: 100%; overflow-wrap: anywhere; max-width: var(--content-max-width); margin: 0 auto; padding: var(--space-3xl) var(--space-2xl) var(--space-2xl); overflow: auto; }
 .intro { margin-bottom: var(--space-xl); }
 .swatches { display: flex; flex-wrap: wrap; gap: var(--space-4); }.swatch { width: var(--swatch-width); height: var(--swatch-height); border-radius: var(--radius-swatch); border: var(--border-width) solid var(--border); margin-bottom: var(--space-2); }.swatch.canvas { background: var(--canvas); }.swatch.surface { background: var(--surface); }.swatch.accent { background: var(--accent); }.swatch.text { background: var(--text); }
@@ -43,13 +40,9 @@ small { font-size: var(--font-size-caption); color: var(--muted); }.type-sample 
  .type-title { font-size: var(--font-size-title-compact); }
  .page-content { padding: var(--space-8) var(--space-section); }
  .settings-section { flex-wrap: wrap; }
- .workspace-empty { justify-content: flex-start; padding: var(--space-6) var(--space-section); }
- .empty-content { width: 100%; min-height: var(--workspace-min-height); display: flex; flex-direction: column; align-items: center; justify-content: center; margin-top: 0; }
- .workspace-caption { position: static; margin-top: auto; padding-top: var(--space-4); text-align: center; }
  .swatches { gap: var(--space-3); }
  .type-code { max-width: 100%; overflow-wrap: anywhere; white-space: pre-wrap; }
 }
-
 
 .command-palette[open] { animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
 /* Search focus is a local underline, not a rectangular native input outline. */
