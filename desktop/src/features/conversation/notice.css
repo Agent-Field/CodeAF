@@ -1,7 +1,7 @@
 
 
 .question-evidence { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; width: 100%; }
-.question-code { margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; border-radius: var(--radius-sm); background: var(--field); font-family: var(--font-mono); font-size: var(--font-size-code); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.question-code { margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; border-radius: var(--radius-sm); background: var(--field); font-family: var(--font-mono); font-size: var(--font-size-code); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); }
 .question-table { max-width: 100%; overflow-x: auto; font-size: var(--font-size-body); }
-.question-table th, .question-table td { padding: var(--space-1) var(--space-2); text-align: left; border-bottom: var(--border-width) solid var(--border); }
+.question-table th, .question-table td { padding: var(--space-1) var(--space-2); text-align: left; border-bottom: var(--border-width) solid var(--line); }
 .question-path.type-body { font-family: var(--font-mono); font-size: var(--font-size-code); }
