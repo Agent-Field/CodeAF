@@ -193,6 +193,7 @@ func newAgent(config Config, client Completer) (*Agent, error) {
 	// belongs beside the transcript of the conversation that commissioned it, not
 	// in the repository it borrowed to work in (landing.go).
 	agent.jobs = newJobRegistry(config.Workspace, config.droppingsPlace(), agent.enqueueJobNote, agent.enqueueWatchNote)
+	agent.jobs.notifyJob = agent.enqueueJobEnding
 	// And the registry gets the ROSTER lane as well as the waking one. A job is
 	// work this conversation started, so it shows on the right the way every
 	// other kind of work does — a quiet row while it runs, settled when it ends
@@ -1212,6 +1213,10 @@ type userMessage struct {
 	// replyTags names finished tasks whose reports this message carries. It is
 	// empty on every person's message and every other authored note.
 	replyTags []TaskReplyTag
+	// facts says what wrote this note and which tasks it reports ([noteFacts]).
+	// It is set by the code that composes the note, journaled beside it, and zero
+	// on every message the person typed.
+	facts noteFacts
 	// otherResults preserves untagged background outcomes when a batch also
 	// carries task results. Their reply obligation must not be lost in folding.
 	otherResults bool
@@ -1439,6 +1444,7 @@ func wakeNote(text string) userMessage {
 func jobNote(text string) userMessage {
 	text = strings.TrimSpace(text)
 	note := wakeNote(text)
+	note.facts = noteFacts{Kind: NoteKindJob}
 	// AND EVERY ENDING IS MARKED AS ONE. It is what releases a worker parked on
 	// the command this note is about, in the same locked step as the append
 	// ([userMessage.ending]).
@@ -1456,6 +1462,7 @@ func jobNote(text string) userMessage {
 func watchNoteMessage(name, text string) userMessage {
 	return userMessage{
 		message:    textMessage("user", watchUpdateSummary(name, text)),
+		facts:      noteFacts{Kind: NoteKindWatch},
 		batchKey:   "watch:" + name,
 		batchLabel: name + " watch",
 		batch:      true,
@@ -2735,6 +2742,7 @@ func (a *Agent) recordUserLocked(user userMessage) {
 		// carries no pictures, which is why this door takes none.
 		durable = a.file.appendNote(user.message, noteMarks{
 			tags:       user.replyTags,
+			facts:      user.facts,
 			deliveries: deliveryIDs(user.delivered),
 		})
 		return
@@ -3452,8 +3460,10 @@ func batchSessionNotes(notes []userMessage) userMessage {
 		otherResults bool
 		tags         []TaskReplyTag
 		delivered    []durableDelivery
+		facts        = make([]noteFacts, 0, len(notes))
 	)
 	for _, note := range notes {
+		facts = append(facts, note.facts)
 		wake = wake || note.wake
 		otherResults = otherResults || note.otherResults
 		tags = append(tags, note.replyTags...)
@@ -3499,6 +3509,7 @@ func batchSessionNotes(notes []userMessage) userMessage {
 	return userMessage{
 		message:      textMessage("user", text),
 		replyTags:    tags,
+		facts:        mergeNoteFacts(facts),
 		otherResults: otherResults,
 		delivered:    delivered,
 		wake:         wake,
@@ -3586,6 +3597,15 @@ func (a *Agent) enqueueJobNote(text string) {
 	a.enqueueNote(jobNote(text))
 }
 
+// enqueueJobEnding is [Agent.enqueueJobNote] for an ending whose job is known,
+// so the note carries the job's short name as data a surface can head the row
+// with rather than something it has to find in the sentence.
+func (a *Agent) enqueueJobEnding(text, title string) {
+	note := jobNote(text)
+	note.facts.Title = title
+	a.enqueueNote(note)
+}
+
 // enqueueWatchNote is the registry's watch lane, and it is TWO lanes chosen by
 // what the news actually is (jobs.go's notifyWatch carries the difference).
 //
@@ -3611,6 +3631,7 @@ func (a *Agent) enqueueJobNote(text string) {
 func (a *Agent) enqueueWatchNote(name, text string, fired bool) {
 	if fired {
 		note := wakeNote(text)
+		note.facts = noteFacts{Kind: NoteKindWatch}
 		note.otherResults = true
 		a.enqueueNote(note)
 		return
@@ -4786,6 +4807,21 @@ type DisplayEntry struct {
 	// were kept.
 	TaskIDs []string
 
+	// AsideKind names what wrote an "aside" entry: NoteKindTask ("task") for a
+	// task or run that finished, NoteKindJob ("job") for a background job's
+	// exit, NoteKindWatch ("watch") for a watch's news and NoteKindResume
+	// ("resume") for a resumed session's account of an interrupt. It is read
+	// from the journal's own mark, written by the code that composed the note,
+	// so a replayed page gets what the live one had. Empty on every other
+	// entry, on a note with no single author worth naming, and on an aside from
+	// a file written before the mark was kept: a surface reads that as "say
+	// nothing about the author".
+	AsideKind string
+	// AsideTitle is a job aside's short name, the label its own row wears, so a
+	// surface can head the entry without reading the sentence. It is empty for
+	// every other kind and whenever the job had no name.
+	AsideTitle string
+
 	// Steer marks a user entry that was typed INTO the turn it sits inside
 	// rather than starting one of its own (steer.go), and carries the instant it
 	// was sent.
@@ -4964,9 +5000,14 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 		}
 		var team []TeamLine
 		var taskIDs []string
+		var facts noteFacts
 		if role == "aside" {
 			team = teamNewsLines(messageContentText(msg))
+			facts = journal.noteFactsOf(msg)
 			taskIDs = taskTagIDs(journal.taskReplyTags(msg))
+			if taskIDs == nil {
+				taskIDs = facts.Tasks
+			}
 		}
 		var tags []TaskReplyTag
 		if role == "assistant" && len(replyTags) > 0 {
@@ -4986,6 +5027,8 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			ImageRefs:   journal.imageRefs(msg),
 			ReplyTags:   tags,
 			TaskIDs:     taskIDs,
+			AsideKind:   facts.Kind,
+			AsideTitle:  facts.Title,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the
@@ -5016,6 +5059,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 				Output:   displayToolOutput(call.ID, result),
 				Answered: answered,
 				Failed:   journal.callFailed(call.ID),
+				// A CALL THE PERSON'S STOP CUT SHORT IS INTERRUPTED AND NOT FAILED:
+				// stopped is not broken, and the two marks are never written for
+				// one call (loop.go's results pass).
+				Interrupted: journal.callStopped(call.ID),
 				// And the call's own duration, off the journal's `took` line —
 				// the same figure EventToolFinished carried while the window was
 				// open. Zero when the file never recorded one.

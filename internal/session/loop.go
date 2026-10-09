@@ -3536,9 +3536,20 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 	// one event needs. The ID remains necessary when one batch calls the same
 	// tool more than once, because neither its name nor completion order identifies
 	// the row.
+	personStopped := stoppedByPerson(ctx)
 	for index, call := range calls {
 		if results[index].isError {
-			a.file.appendFailed(call.ID)
+			// A CALL THE PERSON CUT SHORT IS NOT A FAILURE. Their stop cancels the
+			// turn's context and every running call answers an error (a bash
+			// command says "Command aborted"), but the command did not break: they
+			// ended it. It is journaled as stopped instead of failed so a reopened
+			// page draws what the live one did, and the harness's own refusals keep
+			// their failure because a stop did not make them.
+			if personStopped && !results[index].harness {
+				a.file.appendStopped(call.ID)
+			} else {
+				a.file.appendFailed(call.ID)
+			}
 			a.sendBeltStep(ctx, hub, Event{
 				Kind:   EventToolFailed,
 				Tool:   call.Function.Name,

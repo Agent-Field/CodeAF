@@ -247,7 +247,7 @@ func (r *jobRegistry) cutSubtreeBound(one *job, usage processgroup.Usage, cores 
 	if r.notify == nil {
 		return
 	}
-	r.notify(jobBoundRecord(one, usage, cores))
+	r.tell(jobBoundRecord(one, usage, cores), one)
 }
 
 // jobBoundRecord is the record a subtree's bound hands the run. It names the
