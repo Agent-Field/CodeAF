@@ -181,6 +181,16 @@ and [Arc's recent-tab switcher](https://resources.arc.net/hc/en-us/articles/2561
 Mac also uses Command+Shift+[ / ] for adjacent tabs and Command+Shift+\ for
 the overview, following Safari's horizontal-tab conventions. Linux uses
 Control+PageUp / PageDown for adjacent tabs and Control+Shift+A for overview.
+Command / Control+O is the new-tab field's "Open file…" and belongs to that
+field alone.
+
+The full title of a tab is a 500ms tooltip for the active tab, a pinned tab and
+a cut title; an inactive tab's hover preview already carries it, and a tooltip
+never opens beside an open preview card. In the overview a Command/Control-click
+or middle-click on a card is the design's "Background tab": every card is a tab
+that is already open, so nothing opens or closes, the active tab and the overview
+stay, and only the cursor moves. The card's right-click menu is the strip's tab
+menu, built once.
 
 ## Conversation
 

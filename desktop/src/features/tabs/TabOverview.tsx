@@ -19,8 +19,10 @@ const readView = (): View => { try { return localStorage.getItem(viewKey) === 'f
 type Props = {
   summaries: Readonly<Record<string, TabSummary>>; now: number; open: boolean; tabs: readonly Tab[]; groups: readonly TabGroup[]; activeId: string;
   onClose: () => void; onSelect: (id: string) => void;
-  onPin: (id: string) => void; onMoveGroup: (id: string, groupId?: string) => void;
-  onCreateGroup: (id: string) => void; onCloseTab?: (id: string) => void; onSplitGroup: (groupId: string) => void;
+  onMoveGroup: (id: string, groupId?: string) => void;
+  onCloseTab?: (id: string) => void; onSplitGroup: (groupId: string) => void;
+  /** A card's right-click menu: the strip's own tab menu (hosts/menuHost), so the two can never differ. Absent for a tab with no menu. */
+  menuFor?: (tab: Tab) => MenuEntry[] | undefined;
   returnFocus?: RefObject<HTMLElement | null>;
 };
 
@@ -38,7 +40,7 @@ function verticalTarget(root: HTMLElement | null, id: string | undefined, direct
   return row.reduce((best, card) => (Math.abs(card.getBoundingClientRect().left - current.left) < Math.abs(best.getBoundingClientRect().left - current.left) ? card : best)).dataset.cardId;
 }
 
-export function TabOverview({ summaries, now, open, tabs, groups, activeId, onClose, onSelect, onPin, onMoveGroup, onCreateGroup, onCloseTab, onSplitGroup, returnFocus }: Props) {
+export function TabOverview({ summaries, now, open, tabs, groups, activeId, onClose, onSelect, onMoveGroup, onCloseTab, onSplitGroup, menuFor, returnFocus }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -92,19 +94,6 @@ export function TabOverview({ summaries, now, open, tabs, groups, activeId, onCl
     } else if (event.key === 'Enter' && typing && cursorId) { event.preventDefault(); openTab(cursorId); }
   }
 
-  function items(tab: Tab): MenuEntry[] {
-    return [
-      { id: 'pin', label: tab.pinned ? 'Unpin tab' : 'Pin tab', icon: 'pin', onSelect: () => onPin(tab.id) },
-      { kind: 'submenu', id: 'group', label: 'Move to group', items: [
-        { id: 'create', label: 'Create group', icon: 'plus', onSelect: () => onCreateGroup(tab.id) },
-        { kind: 'separator', id: 'group-separator' },
-        { id: 'none', label: 'No group', checked: !tab.groupId, onSelect: () => onMoveGroup(tab.id) },
-        ...groups.map(group => ({ id: group.id, label: group.title, checked: tab.groupId === group.id, onSelect: () => onMoveGroup(tab.id, group.id) })),
-      ] },
-      ...(onCloseTab ? [{ kind: 'separator' as const, id: 'close-separator' }, { id: 'close', label: 'Close tab', icon: 'close' as const, onSelect: () => onCloseTab(tab.id) }] : []),
-    ];
-  }
-
   return <dialog ref={dialog} className="tab-overview" data-view={view} aria-label="All tabs overview" onCancel={onClose} onKeyDown={onKeyDown} onClose={() => {
     onClose();
     // Safari pointer clicks do not focus buttons, so the owner supplies the reliable return target.
@@ -134,7 +123,7 @@ export function TabOverview({ summaries, now, open, tabs, groups, activeId, onCl
               {section.kind === 'group' && <Button className="overview-split" disabled={splittable < 2} onClick={() => { onSplitGroup(section.id); onClose(); }}><Icon name="grid" size="micro"/>Open as split</Button>}
             </div>
             <div className="overview-grid">
-              {section.tabs.map(tab => <OverviewCard key={tab.id} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={items(tab)} onOpen={() => openTab(tab.id)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
+              {section.tabs.map(tab => <OverviewCard key={tab.id} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={menuFor?.(tab)} onOpen={() => openTab(tab.id)} onBackground={() => move(tab.id, false)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
             </div>
           </section>;
         })}

@@ -31,6 +31,7 @@ export const shellShortcuts = {
  tasks: formatShortcut('⌘/Ctrl ⇧ K'),
  palette: formatShortcut('⌘/Ctrl K'),
  settings: formatShortcut('⌘/Ctrl ,'),
+ openFile: formatShortcut('⌘/Ctrl O'),
  allModels: formatShortcut('⌘/Ctrl /'),
  /** The pinned-model chord for the 1-based slot (design Interactions: ⌥⌘1–3). */
  pinnedModel: (slot: number) => (isMac ? `⌥⌘${slot}` : `Ctrl Alt ${slot}`),
@@ -42,11 +43,11 @@ type KeyEvent = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'sh
  * Every window-level shortcut of the shell, as ids. This is the ONE place that decides which chord means what,
  * so two surfaces can never both claim a key (design Interactions "Shortcuts"). `jump` carries the tab digit and
  * `model-pin` the pinned-model slot (⌥⌘1–3). ⌘⇧\ (Ctrl Shift A on Linux) is the tab overview; ⌘↑ and ⌘↓ step between
- * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S.
+ * messages in a chat. ⌘/Ctrl B for the rail keeps working beside ⌘S. 'open-file' (⌘/Ctrl O) belongs to the new-tab field: only that surface claims it.
  */
 export type ShortcutId =
  | 'new' | 'close' | 'reopen' | 'group' | 'next' | 'previous' | 'switch' | 'switch-back' | 'jump'
- | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
+ | 'open-file' | 'terminal' | 'overview' | 'turn-previous' | 'turn-next' | 'history' | 'tasks' | 'rail' | 'focus' | 'palette' | 'models' | 'model-pin' | 'settings'
  /** Places (Interactions "Shortcuts"): ⌘P Go to a place, ⌘⇧P All places, ⌘0 this place's Home, ⌘⇧W close this place,
   * ⌘N a new window on Now, ⌘Z undo the last structural action. `place-jump` carries the rail slot: 0 is Now, 1–9 the
   * pinned-then-open places (⌃ on a Mac; Alt elsewhere, because Ctrl+digit is already the tab jump there). */
@@ -129,6 +130,7 @@ export function shortcutOf(event: KeyEvent, platform: boolean | ShortcutContext 
  if (key === 't') return { id: 'new' };
  if (key === 'w') return { id: 'close' };
  if (key === 'g') return { id: 'group' };
+ if (key === 'o') return { id: 'open-file' };
  if (key === 's' || key === 'b') return { id: 'rail' };
  if (key === 'y') return { id: 'history' };
  if (key === 'k') return { id: 'palette' };
