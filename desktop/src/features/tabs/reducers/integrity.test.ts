@@ -103,6 +103,21 @@ test('joining a group goes to its end; leaving goes to just after the group, nev
   assert.deepEqual(strip(run(s, { type: 'move-group', id: 'b' })), ['x', '[g: a c]', 'b', 'y']);
 });
 
+test('an overview drop lands beside the card it was dropped on, in that card\'s section', () => {
+  const s = state([tab('a', { groupId: 'g' }), tab('b', { groupId: 'g' }), tab('d'), tab('e')], { groups: [group('g', 'Bench')] });
+  // Right half of Alpha: join the group just after Alpha. Left half of Echo: leave, just before Echo.
+  assert.deepEqual(strip(run(s, { type: 'move-group', id: 'd', groupId: 'g', beside: { id: 'a', after: true } })), ['[g: a d b]', 'e']);
+  const joined = run(s, { type: 'move-group', id: 'd', groupId: 'g', beside: { id: 'a', after: true } });
+  assert.deepEqual(strip(run(joined, { type: 'move-group', id: 'b', beside: { id: 'e' } })), ['[g: a d]', 'b', 'e']);
+  // Left half of the first member, and a drop on empty section space (no beside) at the end.
+  assert.deepEqual(strip(run(s, { type: 'move-group', id: 'd', groupId: 'g', beside: { id: 'a' } })), ['[g: d a b]', 'e']);
+  assert.deepEqual(strip(run(s, { type: 'move-group', id: 'd', groupId: 'g' })), ['[g: a b d]', 'e']);
+  // Pinned is not an anchor, and a drop onto the card's own place changes nothing.
+  const pinned = state([tab('p', { pinned: true }), tab('a'), tab('b')]);
+  assert.deepEqual(strip(run(pinned, { type: 'move-group', id: 'b', beside: { id: 'p' } })), strip(pinned));
+  assert.equal(run(s, { type: 'move-group', id: 'a', groupId: 'g', beside: { id: 'a', after: true } }).tabs.map(t => t.id).join(' '), s.tabs.map(t => t.id).join(' '));
+});
+
 test('⌘-click picks tabs and ⌘G groups them with the active tab where the first of them stands; a plain select drops the picks', () => {
   const s = state([tab('a'), tab('b'), tab('c'), tab('d')], { activeId: 'b' });
   const picked = run(s, { type: 'pick', id: 'd' }, { type: 'pick', id: 'a' }, { type: 'pick', id: 'c' }, { type: 'pick', id: 'c' });

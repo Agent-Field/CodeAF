@@ -1,6 +1,8 @@
 /* The merged split tab: 30px, a 24px segment per pane, the focused segment filled with --field. */
 .workspace-split-tab { flex: none; min-width: 0; max-width: none; width: auto; padding: 0 var(--tab-split-pad); gap: var(--tab-split-gap); }
-.workspace-split-segment.button { display: flex; align-items: center; justify-content: flex-start; flex: none; max-width: var(--tab-max-width); height: var(--segment-height); min-height: 0; padding: 0 var(--tab-segment-pad); gap: var(--tab-segment-pad); border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; font-size: inherit; font-weight: var(--font-weight-regular); }
+/* The segment clips its title's faded tail (negative margin below), so a segment never lies over the close slot and
+   the × is hit where it is drawn (tabs audit 4b). The clipped tail is fully transparent under the mask. */
+.workspace-split-segment.button { overflow: hidden; display: flex; align-items: center; justify-content: flex-start; flex: none; max-width: var(--tab-max-width); height: var(--segment-height); min-height: 0; padding: 0 var(--tab-segment-pad); gap: var(--tab-segment-pad); border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; font-size: inherit; font-weight: var(--font-weight-regular); }
 .workspace-split-segment.button:hover:not(:disabled) { background: var(--tab-hover); color: inherit; }
 .workspace-split-segment.button[data-focused="true"], .workspace-split-segment.button[data-focused="true"]:hover:not(:disabled) { background: var(--field); color: var(--ink); }
 .workspace-split-segment .app-icon { color: var(--ink-2); }
