@@ -257,3 +257,13 @@ test('a draft is one composer for every pane of the same conversation', async ()
   const drafts = w.getState().tabs.flatMap(panesOf).map(p => p.draft);
   assert.deepEqual(drafts, ['same words', 'same words', '']);
 });
+
+test('two windows typing into the same draft at once: the later typing wins, and the overwrite is counted, not silent', async () => {
+  const { time, a, b } = await twoWindows('t1');
+  a.dispatch({ type: 'draft', id: 't1', draft: 'words from a' });
+  b.dispatch({ type: 'draft', id: 't1', draft: 'words from b' });
+  await time.advance(100);
+  const drafts = [a, b].map(w => w.getState().tabs[0].draft);
+  assert.equal(drafts[0], drafts[1], 'one composer');
+  assert.equal(a.getStatus().overtaken + b.getStatus().overtaken, 1, 'the overwritten words are counted once');
+});

@@ -33,9 +33,11 @@ import { compose, duplicateIds, emptyLocal, localOf, sharedOf, sharedText, type 
  * One queued change: the action, the ids its reducer minted the first time it ran, and what a toggle meant.
  * `want` is the value a pin or collapse toggle produced here, so a replay over a tab set where another window
  * already made the same change leaves it alone instead of toggling it back. `reopened` is the tab Reopen brought
- * back, so a replay reopens that tab and not whichever one another window closed last.
+ * back, so a replay reopens that tab and not whichever one another window closed last. `prior` is the draft a
+ * typing burst started from: replayed over a draft another window changed in the meantime, it still wins (the
+ * person here typed last) but the other window's words are counted as overtaken, never replaced in silence.
  */
-export type Entry = { action: WorkspaceAction; ids: string[]; want?: boolean; reopened?: string };
+export type Entry = { action: WorkspaceAction; ids: string[]; want?: boolean; reopened?: string; prior?: string };
 
 /** What a window saves locally for one place, so a reload or relaunch resumes exactly where it was. */
 export type Persisted = {
@@ -195,6 +197,10 @@ export function createWorkspaceController(options: ControllerOptions) {
     let overtaken = 0;
     for (const entry of pending) {
       const was = sharedText(state);
+      if (entry.action.type === 'draft' && entry.prior !== undefined) {
+        const now = paneById(state, entry.action.id)?.draft;
+        if (now !== undefined && now !== entry.prior && now !== entry.action.draft) overtaken++;
+      }
       const { next, ids, repeated } = apply(state, entry);
       // The change is already in the confirmed set (another window made it, or this window's save landed and the
       // answer was lost): nothing to redo. A Reopen pointed back at its own tab is a change and is kept.
@@ -242,16 +248,17 @@ export function createWorkspaceController(options: ControllerOptions) {
   }
 
   /** What a toggle or Reopen meant, read off the state it produced here. */
-  function intentOf(action: WorkspaceAction, before: WorkspaceState, after: WorkspaceState): Pick<Entry, 'want' | 'reopened'> {
+  function intentOf(action: WorkspaceAction, before: WorkspaceState, after: WorkspaceState): Pick<Entry, 'want' | 'reopened' | 'prior'> {
     if (action.type === 'pin') return { want: after.tabs.find(t => t.id === action.id)?.pinned };
     if (action.type === 'collapse-group') return { want: after.groups.find(g => g.id === action.id)?.collapsed };
     if (action.type === 'reopen') return { reopened: before.closed[before.closed.length - 1]?.id };
+    if (action.type === 'draft') return { prior: paneById(before, action.id)?.draft };
     return {};
   }
 
   function enqueue(entry: Entry) {
     const last = pending[pending.length - 1];
-    if (last && coalescing.has(entry.action.type) && last.action.type === entry.action.type && targetOf(last.action) === targetOf(entry.action)) pending[pending.length - 1] = entry;
+    if (last && coalescing.has(entry.action.type) && last.action.type === entry.action.type && targetOf(last.action) === targetOf(entry.action)) pending[pending.length - 1] = { ...entry, prior: last.prior };
     else pending.push(entry);
   }
 

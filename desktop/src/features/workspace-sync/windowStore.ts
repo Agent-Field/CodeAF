@@ -55,6 +55,7 @@ function readEntries(value: unknown): Entry[] {
     const entry: Entry = { action: item.action as unknown as Entry['action'], ids: item.ids };
     if (typeof item.want === 'boolean') entry.want = item.want;
     if (typeof item.reopened === 'string') entry.reopened = item.reopened;
+    if (typeof item.prior === 'string') entry.prior = item.prior;
     return [entry];
   });
 }
