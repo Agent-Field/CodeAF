@@ -48,6 +48,9 @@ func TestTheChatManualAnswersTheQuestionsPeopleAsk(t *testing.T) {
 		{"did deleting the place delete my chats", "desktop-places"},
 		{"can a place give the chat my ssh folder as a source", "desktop-places"},
 		{"is the place's folder the working directory or an attached folder", "desktop-places"},
+		{"why is my new chat in Release on a different model", "desktop-places"},
+		{"the place says allow but the chat still asks me before running commands", "desktop-places"},
+		{"I picked a model in the chat will the place change it back", "desktop-places"},
 
 		// The desktop's History tab (history.md).
 		{"where do I find my old conversations in the desktop app", "history"},

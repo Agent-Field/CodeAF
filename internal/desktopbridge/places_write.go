@@ -137,6 +137,9 @@ func (p *Places) update(w http.ResponseWriter, r *http.Request, id string) {
 		failPlaces(w, 400, "invalid", "A place needs a name.")
 		return
 	}
+	if ask.Policy != nil && !p.checkPolicy(w, r.Context(), ask.Policy.Model, ask.Policy.Permissions) {
+		return
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.staleRevision(w, ask.IfRevision) {

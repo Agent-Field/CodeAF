@@ -324,6 +324,13 @@ func (a *Agent) fillMetaLocked(meta Meta) Meta {
 	// is a value a person chose their way back to, and a conversation opened
 	// wide and then handed back has to come back handed back.
 	meta.Approval = a.approvalPosture
+	// And what this conversation's places set on it, once this agent has read
+	// the record back: an agent that never looked must not write an empty
+	// record over one another process wrote (placegraphpolicy.go).
+	if a.placeDefaultsRead {
+		record := a.placeDefaults
+		meta.PlaceDefaults = &record
+	}
 	// Configuration stamps own the folders this conversation is about. Title
 	// and spend patches preserve the latest stored set instead of replacing it
 	// with a snapshot captured before a folder was named (places.go).
@@ -377,6 +384,9 @@ func (a *Agent) stampMeta() {
 	a.updateMeta(dir, snapshot, func(meta *Meta) {
 		meta.Model, meta.Effort, meta.Approval = snapshot.Model, snapshot.Effort, snapshot.Approval
 		meta.Places, meta.Trees = snapshot.Places, snapshot.Trees
+		if snapshot.PlaceDefaults != nil {
+			meta.PlaceDefaults = snapshot.PlaceDefaults
+		}
 	})
 }
 
