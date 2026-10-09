@@ -313,3 +313,7 @@ The ZIP says Tab focuses controls and describes a preview after a 500ms hover; i
 ### Tab and Latest text line boxes
 
 Matched Components tab-title and Latest-label leaves inherit normal leading in 30px flex parents. Dedicated shared leading tokens preserve that 14px system-font leaf geometry without changing generic typography. Catalog/global fractional screenshot origins can round a 14px DOM leaf into a 15px image crop; avoid adding compensating pixel offsets for that capture artifact.
+
+### Paste card catalogue and detailed screen differ
+
+The Components catalogue shows a 260px content-width composer paste with a 32px preview and a quote icon. Detailed Conversation long-input uses 240px content width, 10px side padding (260px outer), a 30px preview, and no quote icon. The detailed screen is the implementation authority: shared width derives from nominal content width plus existing padding; header text uses normal leading, and the close control uses the central 12px icon tier. Sent pastes retain their separate full bubble layout and 48px preview. Rail names use normal leading in their unchanged 32px rows; shared HomeTitle uses normal leading for the reference 28px/600 system-font heading, including rename.
