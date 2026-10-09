@@ -11,6 +11,7 @@ import (
 
 	"github.com/Agent-Field/codeaf/internal/effort"
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/factory/store"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
@@ -28,7 +29,8 @@ import (
 //     Options.Reshape): at launch, and on a steer during a run, the runner
 //     gives the manager ONE turn of its own conversation with an ask
 //     (`Shape the run for this item now. …`), at the cheap thinking unless the
-//     item reads as large, and collects the edit its `factory_run` call made,
+//     item reads as large (or, when a window here holds the conversation,
+//     through that window at the person's own thinking), and collects the edit its `factory_run` call made,
 //     for the runner to apply itself.
 //
 // THE SHAPING TURN COLLECTS, IT DOES NOT WRITE. Its `factory_run` door checks
@@ -66,9 +68,19 @@ type managerTurn interface {
 	Close() error
 }
 
+// idleWaiter is a managerTurn that can be waited on until its conversation is
+// between turns: the live road's, where the person's own turn may be running.
+type idleWaiter interface {
+	WaitIdle(ctx context.Context) error
+}
+
 // shapeTurns gives an item's manager one turn to shape its run.
 type shapeTurns struct {
 	dirs func(repo string) string
+	// live answers the item's manager conversation when a window of THIS
+	// process holds it ([session.LiveAgentFor]), as a turn through it with
+	// door lent to that turn alone.
+	live func(transcript string, door session.RunDoor) (managerTurn, bool)
 	// open opens the item's manager conversation for one turn, with door as
 	// its `factory_run`, at the cheap thinking when cheap.
 	open func(ctx context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error)
@@ -79,10 +91,47 @@ type shapeTurns struct {
 func factoryShapeTurns(st *store.Store, workspace, profileDir string, parent session.Config) *shapeTurns {
 	return &shapeTurns{
 		dirs: factoryRepoDirs(st, workspace),
+		live: liveManagerTurnFor,
 		open: func(_ context.Context, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
 			return openManagerTurn(parent, workspace, profileDir, it, door, cheap)
 		},
 	}
+}
+
+// ── THE LIVE ROAD: THE WINDOW HOLDS THE MANAGER ─────────────────────────────
+//
+// The most natural flow is the person opening the item, telling the manager
+// what they want in its window, going back to the floor and pressing `r`. The
+// window's conversation holds the journal's lock, so a second open is
+// refused. The shaping turn then runs AS A TURN OF THAT CONVERSATION: the
+// window shows the manager think, its `factory_run` on that one turn is the
+// collecting door (lent to the turn, [session.Agent.SubmitRunnerNoteThrough]),
+// and the runner applies the edit itself, as on the road that opens. The
+// thinking is the person's setting there: this road does not make it cheap.
+// Closing the turn closes nothing; the window keeps its conversation.
+
+// liveManagerTurn is one shaping turn through a conversation open here.
+type liveManagerTurn struct {
+	agent *session.Agent
+	door  session.RunDoor
+}
+
+func (l liveManagerTurn) SubmitRunnerNote(ctx context.Context, text string) (<-chan session.Event, error) {
+	return l.agent.SubmitRunnerNoteThrough(ctx, text, l.door)
+}
+func (l liveManagerTurn) Interrupt()                         { l.agent.Interrupt() }
+func (l liveManagerTurn) WaitIdle(ctx context.Context) error { return l.agent.WaitIdle(ctx) }
+
+// Close lets the turn go and leaves the window's conversation open.
+func (l liveManagerTurn) Close() error { return nil }
+
+// liveManagerTurnFor is the live road when the transcript is open here.
+func liveManagerTurnFor(transcript string, door session.RunDoor) (managerTurn, bool) {
+	agent, ok := session.LiveAgentFor(transcript)
+	if !ok {
+		return nil, false
+	}
+	return liveManagerTurn{agent: agent, door: door}, true
 }
 
 // Shape is the runner's Options.Shape: the launch's one turn.
@@ -107,12 +156,24 @@ func (s *shapeTurns) run(ctx context.Context, it factory.Item, ask string, inRun
 		return factory.RunEdit{}, "", errors.New("no manager to ask")
 	}
 	door := &collectRunDoor{it: it, recipe: factoryItemRecipe(s.dirs, it), inRun: inRun}
-	turn, err := s.open(ctx, it, door, shapeCheap(it))
-	if err != nil {
-		return factory.RunEdit{}, "", err
+	var turn managerTurn
+	if s.live != nil {
+		turn, _ = s.live(it.Talk, door)
+	}
+	if turn == nil {
+		opened, err := s.open(ctx, it, door, shapeCheap(it))
+		if errors.Is(err, session.ErrSessionLocked) {
+			// ANOTHER PROCESS HOLDS IT (a window on the engine host): this
+			// runner cannot give it a turn, and says so by name. No retry.
+			return factory.RunEdit{}, "", fmt.Errorf("%w: %v", factoryrun.ErrManagerAway, err)
+		}
+		if err != nil {
+			return factory.RunEdit{}, "", err
+		}
+		turn = opened
 	}
 	defer turn.Close()
-	events, err := turn.SubmitRunnerNote(context.WithoutCancel(ctx), ask)
+	events, err := s.submit(ctx, turn, ask)
 	if err != nil {
 		return factory.RunEdit{}, "", err
 	}
@@ -141,6 +202,35 @@ func (s *shapeTurns) run(ctx context.Context, it factory.Item, ask string, inRun
 			return factory.RunEdit{}, "", ctx.Err()
 		}
 	}
+}
+
+// submit puts the ask in. A conversation the window holds that is in the
+// middle of a turn of its own is waited on, for at most half of what is left
+// of the shaping wait so the retry has the other half to answer, and asked
+// ONCE more; busy again is [factoryrun.ErrManagerBusy].
+func (s *shapeTurns) submit(ctx context.Context, turn managerTurn, ask string) (<-chan session.Event, error) {
+	events, err := turn.SubmitRunnerNote(context.WithoutCancel(ctx), ask)
+	if !errors.Is(err, session.ErrConversationBusy) {
+		return events, err
+	}
+	waiter, ok := turn.(idleWaiter)
+	if !ok {
+		return nil, fmt.Errorf("%w: %v", factoryrun.ErrManagerBusy, err)
+	}
+	wait := ctx
+	if deadline, has := ctx.Deadline(); has {
+		var cancel context.CancelFunc
+		wait, cancel = context.WithTimeout(ctx, time.Until(deadline)/2)
+		defer cancel()
+	}
+	if werr := waiter.WaitIdle(wait); werr != nil && ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	events, err = turn.SubmitRunnerNote(context.WithoutCancel(ctx), ask)
+	if errors.Is(err, session.ErrConversationBusy) {
+		return nil, fmt.Errorf("%w: %v", factoryrun.ErrManagerBusy, err)
+	}
+	return events, err
 }
 
 // collectRunDoor is `factory_run` on a shaping turn: each call is checked
@@ -215,8 +305,9 @@ func mergeRunEdit(a, b factory.RunEdit) factory.RunEdit {
 // conversation nobody is at the keyboard of for this turn: no card door is on
 // its belt (a card nobody answers holds the turn until the wait ends), the
 // approvals are the person's own rows, headless, and `factory_run` is door.
-// A conversation another window holds is refused here, and the run goes on
-// with the recipe; the window's own manager answers the person there.
+// A conversation a window of THIS process holds never reaches here (the live
+// road above); one another process holds is refused by its lock, and the run
+// goes on with the recipe, saying so by name.
 func openManagerTurn(parent session.Config, workspace, profileDir string, it factory.Item, door session.RunDoor, cheap bool) (managerTurn, error) {
 	transcript := strings.TrimSpace(it.Talk)
 	if transcript == "" {

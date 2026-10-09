@@ -26,6 +26,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -39,10 +40,36 @@ import (
 const (
 	sayShapeStands  = "the recipe stands"
 	sayShapeNoReply = "the manager did not answer · the recipe stands"
+	sayShapeBusy    = "the manager was busy in the window · the recipe stands"
+	sayShapeAway    = "the manager is open in another window · the recipe stands"
 	sayShapeRefused = "the manager's change was not applied: %s · the recipe stands"
 	sayShapeAsk     = "run these stages? %s"
 	sayTailRefused  = "the manager's change was not applied: %s"
 )
+
+// The two reasons a shaping turn did not happen that the person is told by
+// name. Options.Shape answers them (wrapped as it likes) and the runner says
+// the matching line instead of [sayShapeNoReply]:
+//
+//   - ErrManagerBusy: the conversation is open in this process and was in the
+//     middle of a turn of its own, asked once more after it, and still was;
+//   - ErrManagerAway: another process holds the conversation (a window on the
+//     engine host, `--host`), so this runner cannot give it a turn. No retry.
+var (
+	ErrManagerBusy = errors.New("the manager was busy in the window")
+	ErrManagerAway = errors.New("the manager is open in another window")
+)
+
+// shapeFailLine is the line a shaping turn that did not answer is said with.
+func shapeFailLine(err error) string {
+	switch {
+	case errors.Is(err, ErrManagerAway):
+		return sayShapeAway
+	case errors.Is(err, ErrManagerBusy):
+		return sayShapeBusy
+	}
+	return sayShapeNoReply
+}
 
 // shapeWaitDefault is how long a shaping turn may take when
 // [Options.ShapeWait] is zero.
@@ -74,15 +101,16 @@ func (lp *floorLoop) shape(c *loopCtl) bool {
 	}
 	said := append([]string(nil), c.said...)
 	for {
-		edit, ok := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
+		edit, err := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
 			return shapeFn(ctx, it, said)
 		})
 		if c.ctx.Err() != nil {
 			return false
 		}
-		if !ok {
-			lp.say(c, "fail", sayShapeNoReply)
-			lp.tell(c.id, sayShapeNoReply)
+		if err != nil {
+			line := shapeFailLine(err)
+			lp.say(c, "fail", line)
+			lp.tell(c.id, line)
 			return true
 		}
 		line, err := lp.applyEdit(c, edit, false)
@@ -168,10 +196,10 @@ func (lp *floorLoop) reshape(c *loopCtl, words string) {
 	if err != nil {
 		return
 	}
-	edit, ok := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
+	edit, err := lp.turn(c, func(ctx context.Context) (factory.RunEdit, string, error) {
 		return fn(ctx, it, words)
 	})
-	if !ok || c.ctx.Err() != nil {
+	if err != nil || c.ctx.Err() != nil {
 		return
 	}
 	line, err := lp.applyEdit(c, edit, true)
@@ -189,10 +217,10 @@ func (lp *floorLoop) reshape(c *loopCtl, words string) {
 	}
 }
 
-// turn runs one manager turn under the item's ctx and the shaping wait. ok is
-// false when the turn failed, or did not answer in time: a turn that ignores
-// its ctx is let go, never waited on.
-func (lp *floorLoop) turn(c *loopCtl, call func(ctx context.Context) (factory.RunEdit, string, error)) (factory.RunEdit, bool) {
+// turn runs one manager turn under the item's ctx and the shaping wait. The
+// error is the turn's own, or the wait's when it did not answer in time: a
+// turn that ignores its ctx is let go, never waited on.
+func (lp *floorLoop) turn(c *loopCtl, call func(ctx context.Context) (factory.RunEdit, string, error)) (factory.RunEdit, error) {
 	ctx, cancel := context.WithTimeout(c.ctx, lp.shapeWait())
 	defer cancel()
 	type answer struct {
@@ -206,9 +234,9 @@ func (lp *floorLoop) turn(c *loopCtl, call func(ctx context.Context) (factory.Ru
 	}()
 	select {
 	case a := <-got:
-		return a.edit, a.err == nil
+		return a.edit, a.err
 	case <-ctx.Done():
-		return factory.RunEdit{}, false
+		return factory.RunEdit{}, ctx.Err()
 	}
 }
 

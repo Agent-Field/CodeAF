@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Agent-Field/codeaf/internal/factory"
+	factoryrun "github.com/Agent-Field/codeaf/internal/factory/run"
 	"github.com/Agent-Field/codeaf/internal/session"
 )
 
@@ -172,5 +173,127 @@ func TestTheRunDoorEditsTheItemThisConversationManages(t *testing.T) {
 	}
 	if runDoor(nil, web) != nil {
 		t.Fatal("a nil store has a run door")
+	}
+}
+
+// fakeLiveTurn is the window's own conversation as the live road sees it: it
+// may be mid-turn for busy submits, calls `factory_run` through the door its
+// turn was lent, and counts the waits for it to be between turns.
+type fakeLiveTurn struct {
+	door  session.RunDoor
+	edit  factory.RunEdit
+	busy  int
+	asked []string
+	waits int
+}
+
+func (f *fakeLiveTurn) SubmitRunnerNote(ctx context.Context, text string) (<-chan session.Event, error) {
+	f.asked = append(f.asked, text)
+	if f.busy > 0 {
+		f.busy--
+		return nil, session.ErrConversationBusy
+	}
+	ch := make(chan session.Event, 2)
+	if _, _, err := f.door.EditRun(ctx, "", f.edit); err != nil {
+		return nil, err
+	}
+	ch <- session.Event{Kind: session.EventTextDelta, Text: "kept it tiny; review reads it thoroughly."}
+	close(ch)
+	return ch, nil
+}
+func (f *fakeLiveTurn) Interrupt()                     {}
+func (f *fakeLiveTurn) Close() error                   { return nil }
+func (f *fakeLiveTurn) WaitIdle(context.Context) error { f.waits++; return nil }
+
+// liveShapeRig is shaping turns whose item conversation is live in this
+// process at talk, and whose open fails the test: no second open may happen.
+func liveShapeRig(t *testing.T, talk string, live *fakeLiveTurn) *shapeTurns {
+	t.Helper()
+	return &shapeTurns{
+		dirs: func(string) string { return "" },
+		live: func(transcript string, door session.RunDoor) (managerTurn, bool) {
+			if transcript != talk {
+				return nil, false
+			}
+			live.door = door
+			return live, true
+		},
+		open: func(context.Context, factory.Item, session.RunDoor, bool) (managerTurn, error) {
+			t.Error("the conversation was opened a second time while the window held it")
+			return nil, errors.New("held")
+		},
+	}
+}
+
+// THE PERSON TALKED IN THE WINDOW AND PRESSED `r` (the 2026-10-08 19:33
+// recording): the shaping turn runs through the window's own conversation, no
+// second open happens, the person's words are in the ask, the edit is
+// collected and not written, and the window's conversation is not closed.
+func TestALiveConversationShapesThroughTheWindow(t *testing.T) {
+	talk := "/x/manager/transcript.jsonl"
+	live := &fakeLiveTurn{edit: factory.RunEdit{By: "manager", Ask: map[string]string{"review": "review it thoroughly"}}}
+	s := liveShapeRig(t, talk, live)
+	it := factory.Item{ID: 1, Talk: talk, Stages: factory.CopyStages(factory.DefaultRecipe().Stages), Triage: factory.Triage{Size: "S"}}
+	said := "keep the fix tiny and prove it at the CLI, review it thoroughly"
+	got, reply, err := s.Shape(context.Background(), it, []string{said})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Ask["review"] != "review it thoroughly" || reply == "" {
+		t.Fatalf("collected %+v, reply %q", got, reply)
+	}
+	if len(live.asked) != 1 || live.asked[0] != shapeAsk+" What the person said: "+said {
+		t.Fatalf("asked %q", live.asked)
+	}
+	if it.Stages[factory.StageIndex(it.Stages, "review")].Ask == "review it thoroughly" {
+		t.Fatal("the shaping turn wrote the item")
+	}
+	if live.waits != 0 {
+		t.Fatalf("an idle conversation was waited on %d times", live.waits)
+	}
+	// CLOSING THE LIVE TURN closes nothing of the window's: the real live
+	// turn's Close never reaches its agent (a nil one would panic here).
+	if err := (liveManagerTurn{}).Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := liveManagerTurnFor(filepath.Join(t.TempDir(), "nobody.jsonl"), nil); ok {
+		t.Fatal("a conversation nobody holds read as live")
+	}
+}
+
+// A WINDOW MID-TURN is waited on and asked once more; busy again is the busy
+// line's error, after exactly two asks.
+func TestABusyLiveConversationIsAskedOnceMoreThenNamed(t *testing.T) {
+	talk := "/x/manager/transcript.jsonl"
+	it := factory.Item{ID: 1, Talk: talk, Stages: factory.CopyStages(factory.DefaultRecipe().Stages)}
+	edit := factory.RunEdit{By: "manager", Ask: map[string]string{"review": "review it thoroughly"}}
+
+	once := &fakeLiveTurn{edit: edit, busy: 1}
+	got, _, err := liveShapeRig(t, talk, once).Shape(context.Background(), it, nil)
+	if err != nil || got.Ask["review"] != "review it thoroughly" || len(once.asked) != 2 || once.waits != 1 {
+		t.Fatalf("busy once: %+v, %v, asked %d, waited %d", got, err, len(once.asked), once.waits)
+	}
+
+	twice := &fakeLiveTurn{edit: edit, busy: 2}
+	_, _, err = liveShapeRig(t, talk, twice).Shape(context.Background(), it, nil)
+	if !errors.Is(err, factoryrun.ErrManagerBusy) || len(twice.asked) != 2 || twice.waits != 1 {
+		t.Fatalf("busy twice: %v, asked %d, waited %d", err, len(twice.asked), twice.waits)
+	}
+}
+
+// ANOTHER PROCESS HOLDS THE CONVERSATION: the open's lock refusal is the
+// other-window line's error, with no retry.
+func TestAConversationAnotherProcessHoldsIsNamed(t *testing.T) {
+	opens := 0
+	s := &shapeTurns{
+		dirs: func(string) string { return "" },
+		open: func(context.Context, factory.Item, session.RunDoor, bool) (managerTurn, error) {
+			opens++
+			return nil, &session.SessionLockedError{Path: "/x/t.jsonl"}
+		},
+	}
+	_, _, err := s.Shape(context.Background(), factory.Item{ID: 1, Talk: "/x/t.jsonl"}, nil)
+	if !errors.Is(err, factoryrun.ErrManagerAway) || opens != 1 {
+		t.Fatalf("err %v after %d opens", err, opens)
 	}
 }

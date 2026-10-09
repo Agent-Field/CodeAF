@@ -110,6 +110,10 @@ get one line for what came of it:
   `run these stages?`;
 - `the manager did not answer · the recipe stands` when the turn failed, or did not end within a
   minute: the recipe runs as it is, with no question about it;
+- `the manager was busy in the window · the recipe stands` when the chat open in your window was
+  answering you, and was still answering when it was asked a second time;
+- `the manager is open in another window · the recipe stands` when another codeaf has the chat
+  open, so this one cannot give it a turn;
 - `the manager's change was not applied: <why> · the recipe stands` when the bounds refused it,
   for instance `a stage is one word · "do through" is two` or
   `the run has nine stages already`; the stages stay as they were.
