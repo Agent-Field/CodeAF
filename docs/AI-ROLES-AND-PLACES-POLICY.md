@@ -165,14 +165,40 @@ suggestion in the shell (`t-d5-sh-group-suggest-model`).
 
 `GET /places/proposals` and an SSE reconnect never ask a model. One job runs at a time
 per bridge; at most 32 chats wait to be weighed; every ask has a 60-second deadline and
-is cancelled when the bridge closes. With no conversation open the recommender runs on
-rules alone, and the view says so (`engine.asks: false`).
+is cancelled when the bridge closes.
 
-**Evidence** is the conversation's own title, its first message, its settled replies, and
-its folder — except the folder every desktop conversation runs in (the bridge's
-`--workspace`), which says nothing about what a chat is and would make the folder rule
-offer every chat the same place. Other chats are read from the canonical session list
-(title, folder, and whether a turn has finished).
+**With no conversation tab open** — the ordinary state at app start, when Home shows —
+the ask rides ONE reading connection (`Hello.Watch`) onto an existing saved conversation
+of this desktop's workspace: one the engine host already holds, else the newest one
+somebody spoke in. A reader never drives, is refused every write, starts no turn and is
+never `New`, so it cannot mint a conversation; a welcome naming any other transcript is
+refused. It opens only when a job actually asks (a job the rules answer opens nothing),
+is cached once, and closes after two idle minutes, on a failed ask and with the bridge;
+a failed attach waits five minutes. The engine's watcher allow-list carries
+`Places.Ask` by name and no other model ask. An empty library opens and asks nothing.
+The call is billed to that conversation's background errands.
+
+**Evidence** is the conversation's own title, its first message, its settled replies,
+its saved **recap** (the Summaries role's `recap.line` and `recap.discussed` from
+`meta.json`, at most 600 characters) and its folder — except the folder every desktop
+conversation runs in (the bridge's `--workspace`), which says nothing about what a chat is
+and would make the folder rule offer every chat the same place. Nothing is written or
+asked for here: no recap is no summary, an unreadable `meta.json` is no recap, and a stale
+recap is still the conversation's own account of what it covers. A recap of an exchange
+(two or more messages) proves one reply and never more.
+
+**Grouping chats in no place.** Measured on thirteen real chats whose titles and recaps
+deepseek/deepseek-v4.1-flash wrote (`internal/placegraph/testdata/`), the pairwise rule
+(shared words ≥ a third) linked none of the twenty same-group pairs, and adding recap text
+made it worse. No threshold was moved. Chats now also group around ONE topic word that
+reaches at least `minClusterChats` of them (title, recap or opening message) and that at
+least half of them carry in their TITLE — so a recap can bring in a chat titled another
+way, while a recap's own vocabulary ("discussed", "recommended") anchors nothing. The
+pairwise rule and the words matched against place names read titles and opening messages
+only. "Wi-Fi" counts as "wifi". On that corpus the garden group of five is found and
+nothing else; the five Wi-Fi chats share no single topic word (one never says Wi-Fi or
+router), so they are not offered — the model is never asked about a group the rules
+cannot see.
 
 **Accepting** may carry the `offerVersion` the window read; an offer that changed since
 is refused (`409 stale_offer`), one already decided or overtaken by the graph is `409
