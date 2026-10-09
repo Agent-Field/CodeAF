@@ -25,7 +25,7 @@ every tinted role recomputes inside it. Do not read `--h`/`--a` directly.
 | `guide` | Work guide rule (line at 60% / 70%) |
 | `ink` | Conversation rhythm text |
 | `ink-2` | Work rhythm, secondary text |
-| `ink-3` | Non-text only: icons, marks, separators, guides, strip fills, disabled. Text of any size, placeholders included, uses `ink-2` (ink-3 is 3.1 to 4.5:1 on canvas, surface, field and bubble, under WCAG AA 4.5:1) |
+| `ink-3` | Muted text (placeholders, ghost and link buttons, step rows at rest, times, digests, receipts, hints, counts) and non-text: icons, marks, separators, guides, strip fills, disabled |
 | `accent` | Primary action, running mark, links |
 | `accent-ink` | Text on accent |
 | `accent-soft` | Selection, focus halo, suggested tag |
@@ -42,15 +42,15 @@ Status marks: `mark-running`, `mark-queued`, `mark-done`, `mark-waiting`,
 Step category icons use `step-category` (ink-2), sizes `icon-xs` 13 /
 `icon-sm` 14 in work rows and `icon-md` 16 in chrome.
 
-### Accessibility deviation: ink-3 text reads in ink-2
+### ink-3 text is the design's own
 
-The designer's `ink-3` meta colour measures about 3.6:1 on `canvas`/`surface`, under
-the WCAG AA 4.5:1 that the axe checks in the browser suite enforce. Where axe flags
-it, the text is drawn in `ink-2` instead; the suite stays strict, the design bends.
-Moved so far: the ghost `Button` label, the composer model label, the tray crumb and
-foot, and the clarification links. Non-text uses of `ink-3` (marks, rules, icons)
-and text that passes keep the designed value. A new `ink-3` text role must pass axe
-or use `ink-2`.
+The designer draws muted text in `ink-3`: placeholders, ghost and link buttons
+("Always allow...", "Later", "You decide", "One by one"), step rows at rest, times,
+digests, receipts, hints and counts. The app follows the design. `ink-3` measures
+about 3.6:1 on `canvas`/`surface`, which axe reports under `color-contrast`; the
+contrast sweep (tests/ui/conversation-contrast.spec.ts) disables that one rule on
+the design-sanctioned selectors only and keeps every other axe rule. A new `ink-3`
+text role must be drawn in `ink-3` by the design first.
 
 ## Type, space, radius, motion
 
@@ -100,9 +100,9 @@ Import from `src/components/ui`. Features compose these; they never restyle them
 | Button · Primary ("Allow once") | `<Button variant="primary">` | Button.tsx | accent, accent-ink, brightness-hover/press |
 | Button · Raised ("Always…") | `<Button variant="raised">` | Button.tsx | surface, sh-1; hover field |
 | Button · Quiet ("Deny", the safe choice) | `<Button variant="quiet">` | Button.tsx | field; hover/press field-2 |
-| Button · Ghost ("Later"; default, bare rows) | `<Button>` / `variant="ghost"` | Button.tsx | ink-2; hover field + ink; press field-2 |
+| Button · Ghost ("Always allow...", "One by one"; default, bare rows) | `<Button>` / `variant="ghost"` | Button.tsx | ink-3; hover field + ink; press field-2 |
 | Button · Danger ("Stop task") | `<Button variant="danger">` | Button.tsx | danger-soft, danger |
-| Icon button (toolbar) | `<IconButton label icon iconSize="sm">` | Button.tsx | ink-2; hover field + ink; press field-2 |
+| Icon button (toolbar) | `<IconButton label icon iconSize="sm">` | Button.tsx | ink-3 (ink-2 in the tray pager); hover field + ink; press field-2 |
 | Row action (24px, in a row) | `<IconButton size="row" iconSize="xs">` inside `<RowActions>` | Button.tsx, RowActions.tsx | hover field-2 |
 | Message, queued and task-row actions | `RowActions` hosts them: message actions are `size="message"`; queued and task-row actions are `size="row"`. `CopyButton` takes `size`/`iconSize` | RowActions.tsx, CopyButton.tsx | as above |
 | Message action (26px: Copy, Edit) | `<IconButton size="message" iconSize="xs">` inside `<RowActions>` on a `data-actions-host` element | Button.tsx, RowActions.tsx | ink-3; hover field + ink |
@@ -110,7 +110,7 @@ Import from `src/components/ui`. Features compose these; they never restyle them
 | Segmented | `<Segmented label options value onChange>` | Segmented.tsx | field track, surface + sh-1 chosen |
 | Field | `<TextInput appearance="field">` | TextInput.tsx | field; focus surface + accent ring + accent-soft halo |
 | Tags (Suggested, Reversible, Irreversible, key) | `<Tag tone="accent" / "neutral" / "danger" / "key">` | Chip.tsx | accent-soft, field, danger-soft, surface + line |
-| Chip base (file chip, link chip) | `<Chip>` static, `<ChipButton>` interactive, `muted` for missing/outside | Chip.tsx | field, hover field-2, ink, ink-2 (muted: ink-2, text only) |
+| Chip base (file chip, link chip) | `<Chip>` static, `<ChipButton>` interactive, `muted` for missing/outside | Chip.tsx | field, hover field-2, ink, directory and muted state in ink-3 |
 | Status mark (Running … Incomplete) | `<StatusMark status label dense?>` (dense: rows of work, 6px footprint, failure as a red dot); every task mark goes through `TaskMark` (`statusOf` in taskState.ts): tree, task links, expanded table, detail pane, notices | StatusMark.tsx, tasks/TaskMark.tsx | mark-* roles |
 | Row · tree, table (rest none, hover field, selected field) | `<Row selected>` with `<RowActions>` | RowActions.tsx | field, radius-control |
 | Copy feedback | `<CopyButton>` | CopyButton.tsx | (IconButton) |

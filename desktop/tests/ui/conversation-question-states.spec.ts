@@ -4,6 +4,7 @@ import { installMockEngine } from './support/mock-engine';
 import { pendingQuestion, plainReply } from './support/scenarios';
 import { trayQuestions } from './support/scenarios-v2';
 import { openApp, posts, send } from './support/conversation';
+import { tokenColor } from './contracts';
 
 const tray = (page: Page) => page.getByRole('region', { name: 'Waiting on you' });
 
@@ -43,7 +44,9 @@ for (const scheme of ['light', 'dark'] as const) {
 
   test(`${scheme}: inline tray fields show no ring on a mouse click`, async ({ page }) => {
     await openSpecimen(page, scheme);
-    const field = page.locator('.tray-specimen', { hasText: 'One consent' }).getByRole('textbox', { name: 'Say why, if you say no' });
+    const card = page.locator('.tray-specimen', { hasText: 'One reversible consent' });
+    await card.getByRole('button', { name: 'and say why' }).click();
+    const field = card.getByRole('textbox', { name: 'Say why (optional)' });
     const before = await look(field);
     await field.click();
     await expect(field).toBeFocused();
@@ -51,6 +54,27 @@ for (const scheme of ['light', 'dark'] as const) {
     expect(after.outline).toBe('none');
     expect(after.ring).toBe(before.ring);
     expect(await field.evaluate((node) => getComputedStyle(node).resize)).toBe('none');
+  });
+
+  test(`${scheme}: keyboard focus draws the one shared ring: 2px accent plus the 4px soft halo`, async ({ page }) => {
+    await openSpecimen(page, scheme);
+    const card = page.locator('.tray-specimen', { hasText: 'One reversible consent' });
+    const deny = card.getByRole('button', { name: 'Deny', exact: true });
+    await deny.focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    const why = card.getByRole('button', { name: 'and say why' });
+    await expect(why).toBeFocused();
+    const ring = await why.evaluate((node) => getComputedStyle(node).boxShadow);
+    const accent = await tokenColor(page, 'accent');
+    expect(ring).toContain(accent);
+    expect(ring).toMatch(/0px 0px 0px 2px/);
+    expect(ring).toMatch(/0px 0px 0px 6px/);
+    await page.keyboard.press('Enter');
+    const field = card.getByRole('textbox', { name: 'Say why (optional)' });
+    await page.keyboard.press('Tab');
+    await expect(field).toBeFocused();
+    expect(await field.evaluate((node) => getComputedStyle(node).boxShadow)).toMatch(/0px 0px 0px 2px/);
   });
 }
 

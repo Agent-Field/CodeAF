@@ -1,11 +1,11 @@
 /* "Note to this task": one rounded bar on the surface, a field and a round send. Design v3 conversation 1c. */
 .task-composer { margin-top: auto; position: sticky; bottom: var(--space-0); display: flex; flex-direction: column; gap: var(--space-1); width: 100%; max-width: var(--task-composer-max-width); margin-inline: auto; padding-block: var(--space-2) var(--task-composer-clearance); box-sizing: border-box; }
 .task-composer-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--task-composer-pad-start); border-radius: var(--radius-dock); background: var(--surface); box-shadow: var(--sh-2); transition: box-shadow var(--dur-fast) var(--ease); }
-.task-composer-bar:focus-within { box-shadow: var(--sh-2), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
+:where(html:not([data-input="pointer"])) .task-composer-bar:has(.task-composer-field:focus-visible) { box-shadow: var(--sh-2), 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .task-composer-bar[data-disabled] { opacity: var(--opacity-subtle); }
 .task-composer-field.text-area { flex: 1; min-width: 0; resize: none; overflow-y: auto; max-height: var(--composer-writing-max-height); padding: var(--space-1) 0; border: 0; background: transparent; color: var(--ink); font-family: var(--font-sans); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); }
-.task-composer-field.text-area::placeholder { color: var(--ink-2); }
-.task-composer-field.text-area:focus-visible { outline: none; }
+.task-composer-field.text-area::placeholder { color: var(--ink-3); }
+.task-composer-field.text-area:focus-visible { outline: none; box-shadow: none; }
 .task-composer-send.icon-button { flex: none; width: var(--control-height); height: var(--control-height); border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
 .task-composer-send.icon-button:disabled { background: var(--field-2); color: var(--ink-3); opacity: var(--opacity-opaque); }
 .task-composer-why { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding-inline: var(--space-4); color: var(--ink-2); font-size: var(--type-label-size); }

@@ -22,9 +22,8 @@
   transition: background var(--dur-fast) var(--ease);
 }
 .chip.link-chip:hover, .chip.link-chip:active { background: var(--field-2); }
-.chip.link-chip:focus-visible { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .link-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); font-weight: var(--type-label-strong); }
-.link-chip-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-2); }
+.link-chip-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-3); }
 
 /* A text link keeps its own words in the accent, led by a smaller site mark. */
 .text-link { color: var(--accent); text-decoration: none; }
@@ -89,5 +88,5 @@
 .asset-specimen { display: flex; flex-direction: column; gap: var(--space-section); min-width: 0; }
 .asset-specimen-row { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 
-.changes-added { color: var(--success-text); }
+.changes-added { color: var(--success); }
 .changes-removed { color: var(--danger); }

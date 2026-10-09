@@ -25,7 +25,7 @@ for (const theme of ['Light','Dark','System']) {
   await expectAccessible(page);
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
-  await expect(trigger).toHaveCSS('outline-width',design.foundation['focus-width']);
+  await expect(trigger).toHaveCSS('outline-width',design.foundation['focus-ring-width']);
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog'); await expectThemedSurface(page,palette);
   const input=page.getByRole('textbox',{name:'Search commands'});

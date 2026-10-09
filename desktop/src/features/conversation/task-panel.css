@@ -1,6 +1,6 @@
 /* The panel floats beside the conversation: a surface card, inset from the window edge. */
 .task-panel { display: flex; flex-direction: column; width: var(--tasks-width); max-width: 100%; min-height: 0; overflow: hidden; border-radius: var(--tasks-radius); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); font-size: var(--type-prose-size); }
-.task-panel:focus-visible { outline: none; }
+.task-panel:focus-visible { outline: none; box-shadow: none; }
 .task-panel[data-variant="column"] { flex: 0 0 var(--tasks-width); margin: var(--space-2) var(--space-2) var(--space-2) 0; }
 .task-panel[data-variant="sheet"] { position: absolute; top: var(--space-2); right: var(--space-2); bottom: var(--space-2); z-index: var(--z-overlay); box-shadow: var(--sh-3); animation: task-sheet-enter var(--dur-slow) var(--ease); }
 
@@ -14,7 +14,7 @@
 .task-panel-header { display: flex; flex-direction: column; flex: none; gap: var(--space-3); padding: var(--tasks-head-top) var(--space-2) var(--space-3) var(--space-4); }
 .task-panel-headline { display: flex; align-items: center; gap: var(--space-2); }
 .task-panel-heading { font-weight: var(--type-h3-weight); }
-.task-panel-count { color: var(--ink-2); font-size: var(--type-label-size); font-variant-numeric: tabular-nums; }
+.task-panel-count { color: var(--ink-3); font-size: var(--type-label-size); font-variant-numeric: tabular-nums; }
 .task-panel-controls { display: flex; margin-inline-start: auto; color: var(--ink-3); }
 .task-panel-controls .icon-button { width: var(--message-action-size); height: var(--message-action-size); border-radius: var(--radius-message-action); color: inherit; }
 .task-panel-controls .icon-button:hover:not(:disabled) { background: var(--field); color: var(--ink); }

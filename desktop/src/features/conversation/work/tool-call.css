@@ -1,11 +1,11 @@
 /* Tool call row (components §3.3): lead, target, stat, state word, time. One 28px line, ink-2 at 12px. Layout only. */
 .work-call { display: flex; flex-direction: column; min-width: 0; }
-.work-call-head { position: relative; display: grid; grid-template-columns: var(--tool-row-lead) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-height: var(--row-h); border-radius: var(--radius-chip); color: var(--ink-2); font-size: var(--type-label-size); }
+.work-call-head { position: relative; display: grid; grid-template-columns: var(--tool-row-lead) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-height: var(--row-h); border-radius: var(--radius-chip); color: var(--ink-3); font-size: var(--type-label-size); }
 .work-call-head:hover { background: var(--field); }
 .work-call-head:active { background: var(--field-2); }
 .work-call-head:has(.work-call-toggle:focus-visible) { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .work-call-toggle.button { display: grid; place-items: center; width: var(--tool-row-lead); min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; }
-.work-call-toggle:focus-visible { outline: none; }
+.work-call-toggle:focus-visible { outline: none; box-shadow: none; }
 /* The toggle stretches over the whole row so a click anywhere opens it; a file chip rises above it. */
 .work-call-toggle::after { content: ""; position: absolute; inset: 0; }
 .work-call-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-running); }
@@ -18,18 +18,18 @@
 .work-call-text, .work-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .work-call-text[data-mono], .work-path { font-family: var(--font-mono); color: var(--ink); }
 .work-path.type-code { color: inherit; }
-.work-stat { display: inline-flex; flex: none; gap: var(--space-1); font-size: var(--type-caption-size); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.work-stat { display: inline-flex; flex: none; gap: var(--space-1); font-size: var(--type-caption-size); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .work-stat .work-add, .work-stat .work-remove { font-family: var(--font-mono); }
-.work-add { color: var(--success-text); }
+.work-add { color: var(--success); }
 .work-remove { color: var(--danger); }
 
 .work-call-status { display: inline-flex; align-items: center; gap: var(--space-1); padding-inline-end: var(--space-2); white-space: nowrap; }
-.work-call-time { font-family: var(--font-mono); font-size: var(--type-caption-size); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.work-call-time { font-family: var(--font-mono); font-size: var(--type-caption-size); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .work-call-status[data-state="done"] { font-size: var(--type-caption-size); }
 .work-call-status[data-state="failed"] { color: var(--danger); }
-.work-call-status[data-state="stopped"], .work-call-status[data-state="refused"] { color: var(--ink-2); }
-.work-call[data-state="stopped"] .work-call-text { color: var(--ink-2); }
-.work-call[data-state="refused"] .work-call-text { color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--ink-3); }
+.work-call-status[data-state="stopped"], .work-call-status[data-state="refused"] { color: var(--ink-3); }
+.work-call[data-state="stopped"] .work-call-text { color: var(--ink-3); }
+.work-call[data-state="refused"] .work-call-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--ink-3); }
 .work-call[data-state="forming"] .work-call-head { opacity: var(--tool-forming-opacity); }
 
 /* Bash output: the field is the terminal; a hairline footer carries the exit and the full-output action. */

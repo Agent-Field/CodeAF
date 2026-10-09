@@ -1,3 +1,4 @@
+import './design/inputModality';
 import { ThemeProvider } from './design/ThemeProvider';
 import React from "react";
 import ReactDOM from "react-dom/client";
