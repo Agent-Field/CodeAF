@@ -494,3 +494,60 @@ func TestTheManualStatesTheContextBudgets(t *testing.T) {
 		}
 	}
 }
+
+// A failed choices write must reach the caller, publish nothing, keep the
+// earlier pick across a reload, and leave no temp file behind.
+func TestAFailedChoiceWriteKeepsTheOldPickAndSaysSo(t *testing.T) {
+	boom := errors.New("injected")
+	cases := map[string]func(){
+		"write": func() {
+			staleFileOps.write = func(f *os.File, b []byte) (int, error) { f.Write(b[:len(b)/2]); return len(b) / 2, boom }
+		},
+		"short":  func() { staleFileOps.write = func(f *os.File, b []byte) (int, error) { return f.Write(b[:len(b)/2]) } },
+		"sync":   func() { staleFileOps.sync = func(*os.File) error { return boom } },
+		"rename": func() { staleFileOps.rename = func(string, string) error { return boom } },
+	}
+	for name, inject := range cases {
+		t.Run(name, func(t *testing.T) {
+			s, path := newStore(t)
+			a := placeWith(t, s, "Work", Context{}, Policy{Permissions: "ask"})
+			bb := placeWith(t, s, "Home", Context{}, Policy{Permissions: "auto"})
+			file(t, s, "c1", a, bb)
+			dir := filepath.Dir(path)
+			choicePath := filepath.Join(dir, "place-choices.json")
+			book, err := OpenChoices(choicePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := book.Set("c1", PolicyPermissions, bb.ID); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(choicePath)
+			saved := staleFileOps
+			t.Cleanup(func() { staleFileOps = saved })
+			inject()
+			if _, err := book.Set("c1", PolicyPermissions, a.ID); err == nil {
+				t.Fatal("the failure was swallowed and reported as a saved pick")
+			}
+			staleFileOps = saved
+			if after, _ := os.ReadFile(choicePath); string(after) != string(before) {
+				t.Fatalf("the old file changed:\n%s", after)
+			}
+			if left, _ := filepath.Glob(filepath.Join(dir, ".place-choices-*.tmp")); len(left) != 0 {
+				t.Fatalf("temp files left behind: %v", left)
+			}
+			reopened, err := OpenChoices(choicePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			picks, err := reopened.For("c1")
+			if err != nil || len(picks) != 1 || picks[0].PlaceID != bb.ID {
+				t.Fatalf("reloaded picks = %+v %v", picks, err)
+			}
+			d := snap(t, s).Resolve("c1", ResolveOptions{Sources: noDeny, Choices: picks}).Policy[0]
+			if d.Outcome != PolicyChosen || d.Value != "auto" || d.Chosen != bb.ID {
+				t.Fatalf("the earlier pick did not survive the failed write: %+v", d)
+			}
+		})
+	}
+}
