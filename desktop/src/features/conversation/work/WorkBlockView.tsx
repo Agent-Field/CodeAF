@@ -11,7 +11,7 @@ import { WorkNotes } from './WorkNotes';
 import { WorkStepView } from './WorkStepView';
 
 // `open`/`onToggle` are optional: without them the block follows `live` on its own.
-type Props = WorkRender & { block: WorkBlock; open?: boolean; onToggle?: () => void; now?: number };
+type Props = WorkRender & { block: WorkBlock; paused?: boolean; open?: boolean; onToggle?: () => void; now?: number };
 
 const LIVE_STATES: WorkStep['state'][] = ['preparing', 'waiting'];
 
@@ -22,12 +22,12 @@ function openByDefault(step: WorkStep, last: boolean): boolean {
 }
 
 /** Live: "Working" and the running clock. Settled: only the parts that exist, set apart by a dot. */
-function Summary({ block, now }: { block: WorkBlock; now: number }) {
+function Summary({ block, now, shimmer }: { block: WorkBlock; now: number; shimmer: boolean }) {
   if (block.live) {
     const seconds = block.startedAt ? Math.floor((now - block.startedAt) / 1000) : undefined;
     return (
       <span className="work-summary-text">
-        <span>Working</span>
+        <span className={shimmer ? 'thinking-shimmer' : undefined}>Working</span>
         {seconds !== undefined && <span className="work-live-time">{spoken(seconds)}</span>}
       </span>
     );
@@ -52,19 +52,21 @@ function summaryLabel(block: WorkBlock, now: number): string {
 }
 
 /** Everything between two conversation items, in the quieter work rhythm. */
-export function WorkBlockView({ block, open, onToggle, now: given, ...render }: Props) {
+export function WorkBlockView({ block, paused, open, onToggle, now: given, ...render }: Props) {
   const auto = useWorkOpen(block.live);
-  const now = useNow(block.live, given);
+  const waiting = Boolean(paused) || block.steps.some(step => step.state === 'waiting');
+  const now = useNow(block.live && !waiting, given);
   const [stepOpen, setStepOpen] = useState<Record<string, boolean>>({});
   const isOpen = open ?? auto.open;
   const thinking = block.thinking;
+  const activeStep = block.steps.map(step => step.state === 'running' || step.state === 'preparing').lastIndexOf(true);
   if (block.steps.length === 0 && !thinking && block.notes.length === 0) return null;
-  const thought = thinking && <ThinkingView text={thinking.text} streaming={thinking.streaming} seconds={thinking.seconds} />;
+  const thought = thinking && <ThinkingView text={thinking.text} streaming={thinking.streaming && !waiting} seconds={thinking.seconds} />;
   return (
     <div className="work-block" data-live={block.live || undefined}>
       <Button className="work-toggle" aria-expanded={isOpen} aria-label={summaryLabel(block, now)} onClick={onToggle ?? auto.toggle}>
         <Icon name="chevron" size="xs" motion="disclosure" />
-        <Summary block={block} now={now} />
+        <Summary block={block} now={now} shimmer={!isOpen && !waiting} />
       </Button>
       {isOpen && (
         <div className="work-body">
@@ -75,6 +77,7 @@ export function WorkBlockView({ block, open, onToggle, now: given, ...render }: 
               <WorkStepView
                 key={step.id}
                 step={step}
+                shimmer={block.live && !waiting && !thinking?.streaming && at === activeStep}
                 open={stepIsOpen}
                 onToggle={() => setStepOpen((value) => ({ ...value, [step.id]: !stepIsOpen }))}
                 now={now}

@@ -16,8 +16,9 @@ import { WorkBlockView } from './work/WorkBlockView';
 
 export type BlockContext = {
   tasks: EngineTaskRow[];
+  waiting?: boolean;
   open: Record<string, boolean>;
-  onToggle: (id: string) => void;
+  onToggle: (id: string, current?: boolean) => void;
   readFull?: ReadFull;
   onOpenTask: OpenTask;
   onFocusQuestion: (questionKey: string) => void;
@@ -87,14 +88,22 @@ function task(block: Block<'task'>, ctx: BlockContext): ReactNode {
   );
 }
 
-/** A work block follows its own state until the "Worked 42s" link opens it; then the shared map holds it open. */
-function WorkBlock({ block, ctx }: { block: Block<'work'>; ctx: BlockContext }) {
-  const forced = Boolean(ctx.open[block.id]);
+/** The disclosure follows the whole turn, not each assistant/tool phase. Its stable ordinal survives
+ * live-call handoff to canonical entries whose block ids can change while the same work continues. */
+export function workDisclosureKey(turn: TurnV2, block: Block<'work'>): string {
+  return `${turn.id}:work-disclosure:${turn.blocks.filter(row => row.kind === 'work').indexOf(block)}`;
+}
+
+function WorkBlock({ block, turn, ctx }: { block: Block<'work'>; turn: TurnV2; ctx: BlockContext }) {
+  const active = turn.state === 'working' || turn.state === 'streaming';
+  const key = workDisclosureKey(turn, block);
+  const open = ctx.open[key] ?? ctx.open[block.id] ?? active;
   return (
     <WorkBlockView
       block={block}
-      open={forced || undefined}
-      onToggle={forced ? () => ctx.onToggle(block.id) : undefined}
+      paused={active && ctx.waiting}
+      open={open}
+      onToggle={() => ctx.onToggle(key, open)}
       renderFile={renderFile}
       renderLink={renderLink}
       readFull={ctx.readFull}
@@ -109,7 +118,7 @@ export function blockRenderer(ctx: BlockContext) {
       switch (block.kind) {
         case 'context-note': return <NoteItem text={block.text} undoReceipts={block.undoReceipts}/>;
         case 'work':
-          return <WorkBlock block={block} ctx={ctx} />;
+          return <WorkBlock block={block} turn={turn} ctx={ctx} />;
         case 'task':
           return task(block, ctx);
         case 'deliverable':

@@ -17,11 +17,13 @@ export type LiveCall = {
   caption?: string;
   category?: string;
   tookMs?: number;
+  startedAt?: number; // first observed toolBegin in this reader; never a reconstructed history time
 };
 
 export type LiveSteer = { id: string; text: string; landing?: string; consumed: boolean };
 
 export type LiveOverlayV2 = {
+  startedAt?: number; // first observed event of this turn; resets on completion/reload
   baseEntries: number; // snapshot entry count when this turn's overlay began
   text: string;
   textDone: boolean; // AssistantDone seen: the next delta starts a new message
@@ -145,7 +147,7 @@ function toolEvent(next: LivePhase): Handler {
     const opened = known || !OPENING.includes(next) ? calm : openCall(calm, event);
     const call = known ?? (OPENING.includes(next) ? opened.calls[opened.calls.length - 1] : undefined);
     if (!call) return opened;
-    return { ...opened, retry: undefined, calls: patchCall(opened.calls, call.id, patchOf(call, event, next)) };
+    return { ...opened, retry: undefined, calls: patchCall(opened.calls, call.id, { ...patchOf(call, event, next), startedAt: call.startedAt ?? (next === 'running' ? now : undefined) }) };
   };
 }
 
@@ -176,7 +178,7 @@ const onSteerConsumed: Handler = (o, event) => {
 const onSteerFell: Handler = (o, event) => ({ ...o, steers: o.steers.filter((s) => s.id !== steerOf(event)?.id) });
 
 // Retrying discards everything drawn since the last user line.
-const onRetrying: Handler = (o, event) => ({ ...emptyLive(o.baseEntries), steers: o.steers, retry: event.text || 'retrying' });
+const onRetrying: Handler = (o, event) => ({ ...emptyLive(o.baseEntries), startedAt: o.startedAt, steers: o.steers, retry: event.text || 'retrying' });
 
 const onError: Handler = (o, event) => ({ ...o, error: event.error || event.text || 'The engine reported an error.' });
 
@@ -207,5 +209,5 @@ export function reduceLive(overlay: LiveOverlayV2, event: EngineEvent, entryCoun
   const handler = HANDLERS[kind];
   if (!handler) return overlay;
   const base = isIdle(overlay) ? { ...overlay, baseEntries: entryCount } : overlay;
-  return handler(base, event, now);
+  return handler({ ...base, startedAt: base.startedAt ?? now }, event, now);
 }
