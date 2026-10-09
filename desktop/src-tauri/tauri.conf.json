@@ -39,5 +39,10 @@
     "externalBin": [
       "binaries/codeaf-engine"
     ]
+  },
+  "plugins": {
+    "http": {
+      "scopeRedirects": true
+    }
   }
 }
