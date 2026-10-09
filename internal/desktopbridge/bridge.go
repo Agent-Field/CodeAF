@@ -55,6 +55,8 @@ type Connection struct {
 	FindFiles   func(string, int) (remote.FoundFiles, error)
 	DiffChanges func([]string) (remote.ChangedFiles, error)
 	DiffFile    func(string) (remote.FileDiff, error)
+	// DiffStart records the commit the conversation starts on (once); best effort.
+	DiffStart func() (remote.DiffStart, error)
 	// Local is true when the engine runs on this machine's disk (a child the
 	// bridge started). Only then may the app hand a path to a local editor.
 	Local bool
@@ -520,6 +522,9 @@ func (b *Bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			conn.Close()
 			fail(w, 500, "cannot create session identity")
 			return
+		}
+		if conn.DiffStart != nil {
+			_, _ = conn.DiffStart() // diffs compare against where this conversation began; best effort
 		}
 		s := &conversation{conn: conn, id: id, changed: make(chan struct{}), done: make(chan struct{}), icons: b.icons}
 		b.sessions[id] = s

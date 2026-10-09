@@ -264,13 +264,15 @@ export type EngineFoundFiles = { files: EngineFoundFile[]; truncated?: boolean }
 export type EngineChangeStatus = 'modified' | 'added' | 'deleted' | 'untracked';
 /** One row of "what changed": header "lexer.go internal/parse +12 −3" is name, dir, added, deleted. */
 export type EngineChangedFile = { path: string; name: string; dir: string; status: EngineChangeStatus; added: number; deleted: number; binary?: boolean };
-export type EngineChangedFiles = { git: boolean; base?: string; branch?: string; files: EngineChangedFile[]; added: number; deleted: number; truncated?: boolean };
+/** What a diff was measured against: `start` is the commit the conversation began on; `head` is the latest commit (no start recorded, or history was rewritten past it). */
+export type EngineDiffBase = { kind: 'start' | 'head'; sha?: string };
+export type EngineChangedFiles = { git: boolean; base?: EngineDiffBase; branch?: string; files: EngineChangedFile[]; added: number; deleted: number; truncated?: boolean };
 /** Unified-diff row: `old`/`new` are the two line-number columns (absent = blank). */
 export type EngineDiffLine = { kind: 'context' | 'add' | 'del'; old?: number; new?: number; text: string };
 export type EngineDiffHunk = { header: string; oldStart: number; oldLines: number; newStart: number; newLines: number; section?: string; lines: EngineDiffLine[] };
 /** `lines` is the current file's length: the gap before a hunk is `newStart - 1 - previous end`, after the last is `lines - end`. */
 export type EngineFileDiff = {
- path: string; name: string; dir: string; abs: string; git: boolean;
+ path: string; name: string; dir: string; abs: string; git: boolean; base?: EngineDiffBase;
  status: 'clean' | EngineChangeStatus; added: number; deleted: number; binary?: boolean;
  lines: number; hunks: EngineDiffHunk[]; truncated?: boolean;
 };
@@ -284,7 +286,7 @@ export async function readEngineText(id: string, path: string): Promise<EngineTe
 export async function findEngineFiles(id: string, query: string, limit = 20): Promise<EngineFoundFiles> {
  return (await (await fetchEngine(`${sessionPath(id)}/files/find?q=${encodeURIComponent(query)}&limit=${limit}`)).json()) as EngineFoundFiles;
 }
-/** Files that differ from the base (git HEAD); `paths` narrows to what a conversation touched. */
+/** Files that differ from the base (the conversation's start commit, else git HEAD; see `base.kind`); `paths` narrows to what a conversation touched. */
 export async function engineChanges(id: string, paths: string[] = []): Promise<EngineChangedFiles> {
  const query = paths.map(path => `path=${encodeURIComponent(path)}`).join('&');
  return (await (await fetchEngine(`${sessionPath(id)}/changes${query ? `?${query}` : ''}`)).json()) as EngineChangedFiles;

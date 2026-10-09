@@ -38,3 +38,5 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q13 | "N need you" count | Number of pending questions, the same number the tray shows. |
 | Q14 | Message "sending" state | The sent message shows at 60% opacity until the engine records it (plain text sends only). |
 | Q15 | Engine data the design shows but the engine does not yet send | Cost per task, "Read at step N", per-step receipts: drawn only when the engine sends them (empty otherwise). |
+| Q16 | Start commit for a conversation opened before this rule, or one that began on an unborn branch | The start is recorded the first time the desktop opens the conversation in a git workspace; until then (and while the branch has no commit) diffs compare with the latest commit. |
+| Q17 | What the UI says when the start commit is gone (history rewritten) | The engine falls back to the latest commit and answers `base.kind: "head"`; no wording is shipped yet because the design has no slot for it. |

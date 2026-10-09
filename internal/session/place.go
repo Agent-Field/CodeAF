@@ -45,8 +45,11 @@ const (
 	placeNodeJournals = "tasks"
 	placeLogs         = "logs"
 	placeTrees        = "trees"
-	placeWork         = "work"
-	placeArtifacts    = "artifacts"
+	// placeDiffBase remembers the git commit the conversation started on, so
+	// the desktop's diff tabs show what this conversation changed.
+	placeDiffBase  = "diffbase.json"
+	placeWork      = "work"
+	placeArtifacts = "artifacts"
 	// placeTeamCursors is how far into each of its teams' Traffic this
 	// conversation has read (team.go). It is .json, so neither conversation
 	// scan can take it for a transcript.
@@ -139,6 +142,9 @@ func (p Place) Tasks() string { return p.join(placeTasks) }
 
 // MetaPath is the identity file a picker reads without opening the journal.
 func (p Place) MetaPath() string { return p.join(placeMeta) }
+
+// DiffBase is the file holding the commit the conversation started on.
+func (p Place) DiffBase() string { return p.join(placeDiffBase) }
 
 // NodeJournals is where task nodes and their audits keep their transcripts —
 // beside the conversation that commissioned them, not in a parallel tree.
