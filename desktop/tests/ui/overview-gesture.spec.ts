@@ -17,6 +17,7 @@ for (const theme of ['light', 'dark'] as const) {
   await expect(overview).not.toBeVisible();
   await gesture(strip, 'gesturechange', 1.05); await expect(overview).not.toBeVisible();
   await gesture(strip, 'gesturechange', 1.2); await expect(overview).toBeVisible();
+  await overview.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished.catch(() => {}))));
   if (process.env.GESTURE_SHOTS) await page.screenshot({ path: `${process.env.GESTURE_SHOTS}/overview-spread-${theme}-${info.project.name}.png` });
   await overview.getByRole('button', { name: 'Done' }).click(); await expect(overview).not.toBeVisible();
   await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeFocused();
