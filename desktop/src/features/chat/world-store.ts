@@ -12,6 +12,7 @@ export type WorldState = {
  status: WorldStatus;
  /** Why the feed is unavailable, in the engine's own words; absent otherwise. */
  error?: string;
+ epoch?: string;
  seq: number;
  rows: readonly WorldRow[];
  items: readonly AttentionItem[];
@@ -29,8 +30,9 @@ const EMPTY: WorldState = { status: 'idle', seq: 0, rows: [], items: [] };
 
 export function applyWorldRecord(state: WorldState, record: WorldRecord): WorldState {
  // A reset is the engine saying the cursor is unusable; it is applied even at an equal seq.
+ if (record.epoch && state.epoch && record.epoch !== state.epoch && record.type !== 'reset') return state;
  if (record.type !== 'reset' && record.seq <= state.seq) return state;
- if (record.type === 'reset') return { ...state, status: 'live', error: undefined, seq: record.seq, rows: record.payload.rows, items: record.payload.items };
+ if (record.type === 'reset') return { ...state, status: 'live', error: undefined, epoch: record.epoch, seq: record.seq, rows: record.payload.rows, items: record.payload.items };
  if (record.type === 'attention') return { ...state, seq: record.seq, items: record.payload.items };
  const removed = new Set(record.payload.removed);
  const changed = new Map(record.payload.rows.map(row => [row.session, row] as const));
@@ -61,7 +63,7 @@ export function createWorldStore(options: WorldStoreOptions = {}) {
    if (run !== current) return;
    current.delay = first;
    set(applyWorldRecord(state, record));
-  }, current.abort.signal).catch((error: unknown) => {
+  }, current.abort.signal, state.epoch).catch((error: unknown) => {
    if (run !== current || current.abort.signal.aborted) return;
    const denied = error instanceof WorldError && (error.status === 401 || error.status === 403);
    const message = error instanceof Error ? error.message : 'The engine world feed failed.';

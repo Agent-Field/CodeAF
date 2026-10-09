@@ -50,9 +50,9 @@ export function useBackground({ tabs, closed, summaries, since, stopping, now }:
     const native = nativeControls();
     if (!native.desktop || world.status !== 'live') return;
     // Rust announces only what is new and only while no codeaf window is focused; the badge is the needs-you count.
-    void native.notifyAttention(signals, world.seq).catch(() => undefined);
-    void native.setBadge(needsYouCount(signals), world.seq).catch(() => undefined);
-  }, [signature, world.status]);
+    void native.notifyAttention(signals, world.seq, world.epoch).catch(() => undefined);
+    void native.setBadge(needsYouCount(signals), world.seq, world.epoch).catch(() => undefined);
+  }, [signature, world.status, world.seq, world.epoch]);
 
   return { background, markFailedSeen: mark };
 }
