@@ -97,7 +97,7 @@ const titleSystem = "You name conversations."
 
 // titlePrompt requests the one name shared by every conversation surface.
 // Width is a presentation choice, not a second naming job.
-const titlePrompt = "Name this conversation with a descriptive 5-8 word phrase, lowercase, no quotes. Answer with the name only."
+const titlePrompt = "Name this conversation with a short phrase of 2-6 words in sentence case, like \"Repo file and word count\". No quotes, no keyword lists. Answer with the name only."
 
 var errInvalidName = errors.New("naming response contained no usable name")
 
@@ -109,7 +109,7 @@ const legacyTitlePrompt = "Name this session in ≤8 words, lowercase, no quotes
 // would pay for a whole context to produce one short title.
 const titleClip = 2000
 
-// titleLimit bounds the full name itself. Five to eight words asked for, 80 bytes accepted:
+// titleLimit bounds the full name itself. Two to six words asked for, 80 bytes accepted:
 // the cap is a guard against a model that answers with a paragraph, not a
 // second attempt at the instruction.
 const titleLimit = 80

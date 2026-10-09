@@ -4772,6 +4772,12 @@ type DisplayEntry struct {
 	// ReplyTags label the assistant entry that answers finished task notes. They
 	// are nil on every ordinary reply.
 	ReplyTags []TaskReplyTag
+	// TaskIDs names the finished tasks an "aside" entry reports, in note order,
+	// so a surface can link the row to its task without reading the text. It is
+	// read from the journal's own tags, so a replayed page gets the same ids.
+	// Nil on every other entry, and on an aside from a file written before tags
+	// were kept.
+	TaskIDs []string
 
 	// Steer marks a user entry that was typed INTO the turn it sits inside
 	// rather than starting one of its own (steer.go), and carries the instant it
@@ -4950,8 +4956,10 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			}
 		}
 		var team []TeamLine
+		var taskIDs []string
 		if role == "aside" {
 			team = teamNewsLines(messageContentText(msg))
+			taskIDs = taskTagIDs(journal.taskReplyTags(msg))
 		}
 		var tags []TaskReplyTag
 		if role == "assistant" && len(replyTags) > 0 {
@@ -4970,6 +4978,7 @@ func shapeEntries(messages []ai.Message, journal *sessionFile, indexes ...*prese
 			Text:        displayText,
 			ImageRefs:   journal.imageRefs(msg),
 			ReplyTags:   tags,
+			TaskIDs:     taskIDs,
 			// The journal is the only thing that remembers a user line was typed
 			// INTO the turn above it rather than opening one of its own: the
 			// message itself is an ordinary user message, because that is what the
@@ -5086,4 +5095,17 @@ func toolResults(messages []ai.Message) map[*ai.ToolCall]string {
 		results[call] = messageContentText(messages[index])
 	}
 	return results
+}
+
+// taskTagIDs is the ids of the tasks tags name, as the strings a surface keys
+// its task rows by. It answers nil for no tags.
+func taskTagIDs(tags []TaskReplyTag) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	ids := make([]string, len(tags))
+	for i, tag := range tags {
+		ids[i] = strconv.FormatUint(tag.ID, 10)
+	}
+	return ids
 }
