@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { expectAccessible, expectNoUnstyledControls, expectThemedSurface } from './contracts';
+import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, tokenColor } from './contracts';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 // Tab behaviour never needs the engine; a send fails fast and keeps its draft.
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
@@ -74,7 +74,8 @@ test('many top tabs scroll under a mask with a +N menu and keep narrow-screen ac
  await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeInViewport();
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
- await expectThemedSurface(page, page.getByRole('dialog', { name: 'All tabs overview', exact: true }));
+ // The overview is a full-window layer on the frame ground (design 3h), not a raised overlay.
+ await expect(page.getByRole('dialog', { name: 'All tabs overview', exact: true })).toHaveCSS('background-color', await tokenColor(page, 'frame'));
  await expectAccessible(page); await page.keyboard.press('Escape');
  await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeFocused();
  await more.click();
@@ -104,12 +105,11 @@ test('overview searches real drafts and restores focus after nested organization
  await overview.getByRole('textbox', { name: 'Filter tabs', exact: true }).fill('benchmark');
  await expect(overview.getByRole('button', { name: 'Open Engine', exact: true })).toBeVisible();
  await expect(overview.getByRole('button', { name: 'Open Design', exact: true })).not.toBeVisible();
- await overview.getByRole('button', { name: 'Organize Engine', exact: true }).click();
- await expectThemedSurface(page, page.getByRole('menu', { name: 'Organize Engine', exact: true }));
+ await overview.getByRole('button', { name: 'Open Engine', exact: true }).click({ button: 'right' });
+ await expectThemedSurface(page, page.getByRole('menu', { name: 'Actions for Engine', exact: true }));
  await expectAccessible(page);
  await page.keyboard.press('Escape');
  await expect(overview).toBeVisible();
- await expect(overview.getByRole('button', { name: 'Organize Engine', exact: true })).toBeFocused();
  await overview.getByRole('button', { name: 'Open Engine', exact: true }).click();
  await expect(overview).not.toBeVisible();
  await expect(page.getByRole('tab', { name: 'Engine', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -242,7 +242,7 @@ test('tab close sits in a fixed slot: shown on hover and on the active tab, neve
  await expect(close).toBeFocused();
 });
 
-test('compact overview shows persisted work and separates selection from focus', async ({ page }) => {
+test('overview cards show persisted work and mark the active tab with a ring', async ({ page }) => {
  await page.goto('/');
  const instruction = 'Inspect the shared engine boundary';
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill(instruction);
@@ -251,17 +251,12 @@ test('compact overview shows persisted work and separates selection from focus',
  await page.reload();
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
  const overview = page.getByRole('dialog', { name: 'All tabs overview' });
- await expect(overview).toHaveAttribute('data-size', 'compact');
- await expect(overview.locator('.overview-draft')).toHaveText(instruction);
- await expect(overview.locator('.overview-current')).toHaveText('Current');
+ await expect(overview.locator('.overview-card-text').first()).toHaveText(instruction);
  await expect(overview).toContainText('No work yet');
- const selected = overview.locator('[data-active="true"] .overview-preview');
- const other = overview.locator('[data-active="false"] .overview-preview');
- expect(await selected.evaluate(el => getComputedStyle(el).borderColor)).toBe(await other.evaluate(el => getComputedStyle(el).borderColor));
- await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))); });
- const width = (await overview.boundingBox())!.width;
- await page.getByRole('textbox', { name: 'Filter tabs' }).fill('New conversation 2');
- expect((await overview.boundingBox())!.width).toBe(width);
+ const selected = overview.locator('.overview-card[data-active="true"]');
+ await expect(selected).toHaveCount(1);
+ expect(await selected.evaluate(el => getComputedStyle(el).boxShadow)).toMatch(/0px 0px 0px 2px/);
+ expect(await overview.locator('.overview-card[data-active="false"]').evaluate(el => getComputedStyle(el).boxShadow)).not.toMatch(/0px 0px 0px 2px/);
  await expectAccessible(page);
 });
 
@@ -271,17 +266,17 @@ test('groups have distinct names and support overview moves, rename and reload',
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
  const overview = page.getByRole('dialog', { name: 'All tabs overview', exact: true });
  async function organize(name: string, choice: string) {
-  await overview.getByRole('button', { name: `Organize ${name}`, exact: true }).click();
+  await overview.getByRole('button', { name: `Open ${name}`, exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
   await page.getByRole(choice === 'Create group' ? 'menuitem' : 'menuitemcheckbox', { name: choice, exact: true }).click();
  }
  await organize('One', 'Create group');
  await organize('Two', 'Create group');
- await expect(overview.locator('.overview-group-name')).toHaveText(['New group', 'New group 2']);
+ await expect(overview.locator('.overview-section-title')).toHaveText(['New group', 'New group 2']);
  await organize('Two', 'New group');
- await expect(overview.locator('.overview-group-name')).toHaveText(['New group', 'New group']);
- await expect(overview.getByRole('button', { name: 'Organize Two', exact: true })).toBeFocused();
- await overview.getByRole('button', { name: 'Close all tabs overview', exact: true }).click();
+ await expect(overview.locator('.overview-section-title')).toHaveText(['New group']);
+ await expect(overview.locator('.overview-section-count')).toHaveText(['2']);
+ await overview.getByRole('button', { name: 'Done', exact: true }).click();
  await expect(overview).not.toBeVisible();
  const group = page.locator('.workspace-group-label');
  await expect(group).toHaveCount(1);

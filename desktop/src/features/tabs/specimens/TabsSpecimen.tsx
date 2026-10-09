@@ -3,6 +3,7 @@ import { GroupCapsule, MemberSlot } from '../GroupCapsule';
 import { allKinds } from '../kinds/registry';
 import type { TabKind } from '../kinds/types';
 import { LoadingLine } from '../LoadingLine';
+import { OverviewSpecimen } from './OverviewSpecimen';
 import { SplitTab } from '../SplitTab';
 import { Tab, type TabState } from '../Tab';
 import './tabs-specimen.css';
@@ -74,6 +75,8 @@ export function TabsSpecimen() {
       <span className="tabs-specimen-label">Web load line: 2px along the top of the card, never on the tab</span>
       <div className="tabs-specimen-card"><LoadingLine progress={0.45}/><Icon name="web" size="lg"/></div>
       <ul className="tabs-specimen-legend">{allKinds().map(def => <li key={def.kind}><Icon name={def.icon} size="sm"/><span>{def.label}</span><span className="tabs-specimen-note">{def.backed ? 'live' : 'specimen only: no engine backing yet'}</span></li>)}</ul>
+      <div className="tabs-specimen-rule"/>
+      <OverviewSpecimen/>
     </div>
   </Surface>;
 }

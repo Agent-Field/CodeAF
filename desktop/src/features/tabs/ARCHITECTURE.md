@@ -10,7 +10,7 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
  │                  └─ hosts/{previewHost,menuHost,dragHost}   (one function each, see ownership)
  │   GroupCapsule.tsx                                            (capsule, collapsed pill)
  ├─ PaneGrid.tsx ── kinds/registry.ts ── kinds/<kind>.ts        (the card; 1 pane or a split grid)
- ├─ TabOverview.tsx                                              (dialog; overview lane)
+ ├─ TabOverview.tsx ── OverviewCard.tsx | OverviewFilmstrip.tsx   (full-window layer: grid or filmstrip; overview lane)
  └─ useTabKeys.ts                                                (keys + native menu events)
 ```
 
@@ -38,7 +38,7 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 | hover preview | `hosts/previewHost.tsx`, each kind's `preview`, new `preview/` folder |
 | menus and closing | `hosts/menuHost.tsx`, `closing/` (toast, Alt stop), `reducers/closing.ts`, `Tab.tsx` `closeMode` wiring in `TabItem.tsx` |
 | split panes | `reducers/split.ts`, `PaneGrid.tsx`, `panes.css`, `split-tab.css`, `hosts/dragHost.ts` (edge drops), `PaneHeader` controls |
-| overview and filmstrip | `TabOverview.tsx`, `overview.css`, `styles/ui.css` `.overview-*` |
+| overview and filmstrip | `TabOverview.tsx` (the layer, bar, keys, cursor), `OverviewCard.tsx`, `OverviewFilmstrip.tsx`, `overview-model.ts` (pure order and filter, node test), `overview.css`, `specimens/OverviewSpecimen.tsx`. No `.overview-*` rules live in `styles/ui.css` any more. |
 | new tab field | `kinds/newtab.ts` (+ its folder), switch `new` to kind `newtab` in `reducers/tabs.ts` |
 | history tab | `kinds/history.ts`, new `features/history/` |
 | rail and keys | `features/shell/Rail.tsx`, `rail.css`, `useTabKeys.ts`, `design/keyboard.ts` |
@@ -58,3 +58,7 @@ Shared, change with care and keep edits small: `tokens.json` (add keys, never re
 ## Rules that bind every lane
 
 Hover is a fill change only (120ms); press 80ms; focus ring for keyboard only; colour only on 6px glyphs (amber needs you, red failed); running is silent on a tab; fades are masks, never ellipses; menus are the shared `ContextMenu`/`DropdownMenu`; icons come from `components/ui/Icon.tsx` (lucide names missing from the animated set are noted in the lane report).
+
+## Overview and filmstrip (design 2h, 3h, 3i)
+
+`TabOverview` is a full-window `<dialog>` on the `--frame` ground: a 56px bar (search, Grid/Filmstrip, Done), then the grid or the filmstrip. Both read one list from `overview-model.ts` (Pinned, each group in strip order, Other tabs; the filter drops empty sections) and one cursor, so ← → ↑ ↓ ↵ and ⌘W mean the same in both. A card is the kind's `preview` slot when filled, else the draft or latest answer; the filmstrip mounts the kind's real `pane` renderer (inert, no-op actions) at 1040x660 under a 0.5 transform, for the centre card and three on each side. ⌘⇧\ (Ctrl Shift A) and the strip's grid icon open the layer; ⌘↑ is left to stepping turns. Ledger rows OV1 to OV16 in `docs/DESIGN-QUESTIONS.md` list every place the design was silent.
