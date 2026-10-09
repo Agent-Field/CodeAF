@@ -26,29 +26,36 @@ function segmentsFor(tasks: EngineTaskRow[], taskId: string): BreadcrumbSegment[
   return [...trail, ...own];
 }
 
-/** A task drawn as a page: title, result, the work, the notes, the brief, and a composer for notes. */
-export function TaskRoute(props: Props) {
-  const { sessionId, taskId, route, onRoute } = props;
+/** The pane's top row in task view: Back and the trail, across the whole pane (design 1c). */
+export function TaskRouteBar({ taskId, tasks, route, onRoute }: Pick<Props, 'taskId' | 'tasks' | 'route' | 'onRoute'>) {
   return (
-    <div className="task-route">
+    <div className="task-view-bar">
       <Breadcrumb
-        segments={segmentsFor(props.tasks, taskId)}
+        segments={segmentsFor(tasks, taskId)}
         onNavigate={(id) => onRoute(navigate(route, id ?? undefined))}
         canBack={route.back.length > 0}
         canForward={route.forward.length > 0}
         onBack={() => onRoute(goBack(route))}
         onForward={() => onRoute(goForward(route))}
       />
-      {sessionId && (
-        <TaskView
-          sessionId={sessionId}
-          taskId={taskId}
-          onOpenTask={props.onOpenTask}
-          renderFile={props.renderFile}
-          readFile={props.readFile}
-          onMessageConversation={() => onRoute(navigate(route, undefined))}
-        />
-      )}
+    </div>
+  );
+}
+
+/** A task drawn as a page: title, result, the work, the notes, the brief, and a composer for notes. */
+export function TaskRoute(props: Pick<Props, 'sessionId' | 'taskId' | 'route' | 'onRoute' | 'renderFile' | 'readFile' | 'onOpenTask'>) {
+  const { sessionId, taskId, route, onRoute } = props;
+  if (!sessionId) return null;
+  return (
+    <div className="task-route">
+      <TaskView
+        sessionId={sessionId}
+        taskId={taskId}
+        onOpenTask={props.onOpenTask}
+        renderFile={props.renderFile}
+        readFile={props.readFile}
+        onMessageConversation={() => onRoute(navigate(route, undefined))}
+      />
     </div>
   );
 }
