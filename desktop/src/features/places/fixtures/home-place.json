@@ -1,0 +1,155 @@
+{
+  "attention": [
+    {
+      "chatId": "sess-need",
+      "chatTitle": "Port fix to v1",
+      "kind": "needsYou",
+      "placeId": "pl_0000000000000005",
+      "placeName": "Config parser",
+      "text": "Allow the v1 branch push?"
+    },
+    {
+      "chatId": "sess-run",
+      "chatTitle": "Update fixtures",
+      "kind": "running",
+      "placeId": "pl_0000000000000005",
+      "placeName": "Config parser",
+      "since": "2026-10-09T11:58:00Z",
+      "taskId": "7",
+      "text": "Update fixtures"
+    }
+  ],
+  "breadcrumb": [
+    {
+      "id": "pl_0000000000000001",
+      "name": "Software",
+      "tint": "iris"
+    }
+  ],
+  "chats": [
+    {
+      "addedBy": "you",
+      "archived": false,
+      "at": "2026-10-09T11:59:00Z",
+      "doing": "working",
+      "id": "sess-run",
+      "live": true,
+      "needsYou": false,
+      "places": [
+        {
+          "addedBy": "you",
+          "id": "pl_0000000000000005",
+          "name": "Config parser",
+          "tint": "iris"
+        }
+      ],
+      "project": "app",
+      "tasks": {
+        "done": 0,
+        "failed": 0,
+        "incomplete": 0,
+        "running": 1
+      },
+      "title": "Update fixtures",
+      "workspace": "/w"
+    },
+    {
+      "addedBy": "you",
+      "archived": false,
+      "at": "2026-10-09T11:00:00Z",
+      "doing": "waiting on you",
+      "id": "sess-need",
+      "live": true,
+      "needsYou": true,
+      "places": [
+        {
+          "addedBy": "you",
+          "id": "pl_0000000000000005",
+          "name": "Config parser",
+          "tint": "iris"
+        }
+      ],
+      "project": "app",
+      "reason": "Allow the v1 branch push?",
+      "tasks": {
+        "done": 0,
+        "failed": 0,
+        "incomplete": 0,
+        "running": 0
+      },
+      "title": "Port fix to v1",
+      "workspace": "/w"
+    }
+  ],
+  "chatsTruncated": false,
+  "children": [],
+  "counts": {
+    "chats": 2,
+    "chatsInclusive": 2,
+    "children": 0,
+    "descendants": 0
+  },
+  "kind": "place",
+  "missingChats": 0,
+  "place": {
+    "alsoIn": [],
+    "archived": false,
+    "counts": {
+      "chats": 2,
+      "chatsInclusive": 2,
+      "children": 0,
+      "descendants": 0
+    },
+    "createdAt": "2026-10-09T12:01:00Z",
+    "effectiveTint": "iris",
+    "hasInstructions": false,
+    "id": "pl_0000000000000005",
+    "instructions": "",
+    "lastOpenedAt": "2026-10-09T12:01:00Z",
+    "name": "Config parser",
+    "parents": [
+      "pl_0000000000000001"
+    ],
+    "pinned": false,
+    "policy": {},
+    "sourceCount": 1,
+    "sources": [
+      {
+        "addedBy": "you",
+        "at": "2026-10-09T12:01:00Z",
+        "check": {
+          "state": "ok"
+        },
+        "id": "src_000000000000000d",
+        "kind": "repo",
+        "label": "repo",
+        "ref": "/work/repo"
+      }
+    ],
+    "status": {
+      "chats": 2,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 1,
+      "running": 1
+    },
+    "statusInclusive": {
+      "chats": 2,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 1,
+      "running": 1
+    },
+    "tint": ""
+  },
+  "readAt": "2026-10-09T12:01:00Z",
+  "revision": 10,
+  "status": {
+    "chats": 2,
+    "failedTasks": 0,
+    "incomplete": 0,
+    "needsYou": 1,
+    "running": 1
+  },
+  "title": "Config parser"
+}

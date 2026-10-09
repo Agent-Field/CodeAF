@@ -1,0 +1,44 @@
+{
+  "attention": [],
+  "breadcrumb": [],
+  "chats": [
+    {
+      "archived": false,
+      "at": "2026-10-06T12:00:00Z",
+      "doing": "",
+      "id": "sess-loose",
+      "live": false,
+      "needsYou": false,
+      "places": [],
+      "project": "app",
+      "tasks": {
+        "done": 0,
+        "failed": 0,
+        "incomplete": 0,
+        "running": 0
+      },
+      "title": "Pricing for teams",
+      "workspace": "/w"
+    }
+  ],
+  "chatsTruncated": false,
+  "children": [],
+  "counts": {
+    "chats": 1,
+    "chatsInclusive": 1,
+    "children": 0,
+    "descendants": 0
+  },
+  "kind": "now",
+  "missingChats": 0,
+  "readAt": "2026-10-09T12:01:00Z",
+  "revision": 10,
+  "status": {
+    "chats": 1,
+    "failedTasks": 0,
+    "incomplete": 0,
+    "needsYou": 0,
+    "running": 0
+  },
+  "title": "Now"
+}
