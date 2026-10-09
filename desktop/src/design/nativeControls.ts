@@ -335,9 +335,9 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
      * list was derived from; a window behind another window's reading is ignored ('stale'), so it cannot bring an
      * answered question back.
      */
-    async notifyAttention(items: readonly AttentionItem[], seq: number): Promise<NotifyResult> {
+    async notifyAttention(items: readonly AttentionItem[], seq: number, epoch?: string): Promise<NotifyResult> {
       if (!bridge.desktop) return { posted: 0, groups: 0, skipped: 'unavailable' };
-      return bridge.invoke<NotifyResult>('notify_attention', { items, seq: feedSeq(seq) });
+      return bridge.invoke<NotifyResult>('notify_attention', { items, seq: feedSeq(seq), epoch: epoch ?? '' });
     },
 
     /**
@@ -357,10 +357,10 @@ export function createNativeControls(bridge: NativeBridge = defaultBridge()) {
     },
 
     /** Sets the dock or launcher badge to the needs-you count; 0 clears it. `seq` is as for notifyAttention. */
-    async setBadge(count: number, seq: number): Promise<BadgeResult> {
+    async setBadge(count: number, seq: number, epoch?: string): Promise<BadgeResult> {
       if (!bridge.desktop) return { applied: false, reason: 'unavailable' };
       const value = Number.isFinite(count) ? Math.max(0, Math.min(9999, Math.floor(count))) : 0;
-      return bridge.invoke<BadgeResult>('badge_set', { count: value, seq: feedSeq(seq) });
+      return bridge.invoke<BadgeResult>('badge_set', { count: value, seq: feedSeq(seq), epoch: epoch ?? '' });
     },
   };
 

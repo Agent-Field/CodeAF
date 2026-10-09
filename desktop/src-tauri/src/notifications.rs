@@ -22,8 +22,8 @@
 //! open window has reported may say what is pending. An older list is ignored
 //! rather than merged, because merging would bring an answered question back and
 //! announce it again. The engine numbers its feed per process, so a window whose
-//! own sequence goes backwards has seen the engine restart, and that restarts the
-//! count for every window.
+//! feed carries a process identity. A new identity retires the old one; delayed
+//! posts from that retired engine cannot reset the authority or restore questions.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Mutex;
@@ -162,29 +162,38 @@ impl Seen {
 #[derive(Default)]
 struct Feed {
     windows: HashMap<String, u64>,
+    epoch: Option<String>,
+    retired: HashSet<String>,
 }
 
 impl Feed {
-    /// Whether `window`'s list at `seq` is the newest reading, recording it either
-    /// way. `open` names the windows still open; a closed window's reading no
-    /// longer outranks anyone, so the map never outgrows the open windows.
+    fn accept_epoch(&mut self, epoch: &str) -> bool {
+        if epoch.len() > 128 || epoch.is_empty() {
+            return false;
+        }
+        if self.epoch.as_deref() == Some(epoch) {
+            return true;
+        }
+        if self.retired.contains(epoch) || self.retired.len() >= REMEMBERED {
+            return false;
+        }
+        if let Some(previous) = self.epoch.replace(epoch.to_string()) {
+            self.retired.insert(previous);
+        }
+        self.windows.clear();
+        true
+    }
     fn accept(&mut self, window: &str, seq: u64, open: &HashSet<String>) -> bool {
         self.windows
             .retain(|label, _| open.contains(label) || label == window);
         if self.windows.get(window).is_some_and(|&mine| seq < mine) {
-            // Only an engine that restarted numbers this window's feed lower than
-            // before: the other windows' readings belong to the engine that is gone.
-            self.windows.clear();
+            return false;
         }
         self.windows.insert(window.to_string(), seq);
-        self.windows.values().all(|&other| other <= seq)
+        self.current(window, seq)
     }
-
-    /// Whether a list at `seq` from `window` would still be the newest reading.
-    fn current(&self, window: &str, seq: u64) -> bool {
-        self.windows
-            .iter()
-            .all(|(label, &other)| label == window || other <= seq)
+    fn current(&self, _window: &str, seq: u64) -> bool {
+        self.windows.values().all(|&other| other <= seq)
     }
 }
 
@@ -199,7 +208,7 @@ struct Book {
 }
 
 #[derive(Default)]
-pub struct Attention(Mutex<Book>);
+pub struct Attention(Mutex<Book>, Mutex<()>);
 
 fn clean(text: &str, max: usize) -> String {
     let flat: String = text
@@ -403,18 +412,26 @@ pub fn notify_attention<R: Runtime>(
     webview: Webview<R>,
     items: Vec<AttentionItem>,
     seq: u64,
+    epoch: Option<String>,
 ) -> Result<Posted, String> {
     let me = trusted(&webview)?;
     checked(&items)?;
     let open = open_windows(&app);
     let state = app.state::<Attention>();
+    // Keep command effects in the same order as accepted feed readings. Click
+    // handlers only need the book mutex, which is released before posting.
+    let _posting = state
+        .1
+        .lock()
+        .map_err(|_| "Notifications are unavailable")?;
     let mut book = state
         .0
         .lock()
         .map_err(|_| "Notifications are unavailable")?;
     // A window behind the newest reading may neither announce nor change what is
     // pending: its list can still hold a question answered since.
-    if !book.feed.accept(&me, seq, &open) {
+    if !book.feed.accept_epoch(epoch.as_deref().unwrap_or("")) || !book.feed.accept(&me, seq, &open)
+    {
         return Ok(Posted {
             posted: 0,
             groups: 0,
@@ -496,14 +513,24 @@ pub fn badge_set<R: Runtime>(
     webview: Webview<R>,
     count: u32,
     seq: u64,
+    epoch: Option<String>,
 ) -> Result<BadgeAnswer, String> {
     let me = trusted(&webview)?;
     // The badge follows the same newest reading as the notifications; a window
     // behind it would put back a count that has already gone down.
-    let stale = app
-        .try_state::<Attention>()
-        .and_then(|state| state.0.lock().ok().map(|book| !book.feed.current(&me, seq)))
-        .unwrap_or(false);
+    let state = app.state::<Attention>();
+    let _posting = state
+        .1
+        .lock()
+        .map_err(|_| "Notifications are unavailable")?;
+    let stale = {
+        let mut book = state
+            .0
+            .lock()
+            .map_err(|_| "Notifications are unavailable")?;
+        !book.feed.accept_epoch(epoch.as_deref().unwrap_or(""))
+            || !book.feed.accept(&me, seq, &open_windows(&app))
+    };
     if stale {
         return Ok(BadgeAnswer {
             applied: false,
@@ -726,12 +753,44 @@ mod tests {
         assert!(post(&mut book, "w-2", 900, &q).is_some());
         // The engine restarts; main reconnects first and is reset to seq 3.
         assert!(
-            post(&mut book, "main", 3, &[]).is_some(),
+            {
+                assert!(book.feed.accept_epoch("restarted"));
+                post(&mut book, "main", 3, &[]).is_some()
+            },
             "main's own count went backwards"
         );
         assert!(book.pending.is_empty());
         // w-2 was reset too; its new reading is not outranked by the old engine's.
         assert!(post(&mut book, "w-2", 3, &[]).is_some());
+    }
+
+    #[test]
+    fn delayed_same_window_posts_and_badges_never_reset_authority() {
+        let mut feed = Feed::default();
+        assert!(feed.accept_epoch("engine-a"));
+        assert!(!feed.accept_epoch(""));
+        assert!(!feed.accept_epoch(&"x".repeat(129)));
+        let windows = open(&["main", "w-2"]);
+        assert!(feed.accept("main", 10, &windows));
+        assert!(!feed.current("main", 9));
+        assert!(!feed.accept("main", 9, &windows));
+        assert!(!feed.accept("w-2", 9, &windows));
+        assert!(feed.current("main", 10));
+    }
+
+    #[test]
+    fn retired_engine_cannot_restore_questions_after_restart() {
+        let mut book = Book::default();
+        let windows = open(&["main", "w-2"]);
+        assert!(book.feed.accept_epoch("engine-a"));
+        assert!(book.feed.accept("main", 900, &windows));
+        assert!(book.feed.accept("w-2", 900, &windows));
+        assert!(book.feed.accept_epoch("engine-b"));
+        assert!(book.feed.accept("main", 3, &windows));
+        assert!(!book.feed.accept_epoch("engine-a"));
+        assert!(book.feed.current("main", 3));
+        assert!(book.feed.accept("w-2", 3, &windows));
+        assert!(!book.feed.accept("main", 2, &windows));
     }
 
     #[test]
