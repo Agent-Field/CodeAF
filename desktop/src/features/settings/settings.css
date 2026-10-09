@@ -1,0 +1,95 @@
+/* The Models settings page: one centred column, hairline rows, no cards. The choice control borrows the
+   composer popover's paper, shadow and row look; hover is a fill and nothing else. */
+/* Until the shell opens Settings as a tab, the page scrolls inside the content pane. */
+.settings-scroll { flex: 1; min-height: 0; overflow: auto; }
+
+.settings-page {
+  width: 100%;
+  max-width: var(--overview-compact-width);
+  margin: 0 auto;
+  padding: var(--space-3xl) var(--space-6) var(--space-2xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  color: var(--ink);
+}
+
+.settings-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); }
+.settings-receipt { margin: 0; min-height: var(--type-caption-leading); color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
+.settings-receipt[data-failed] { color: var(--danger); }
+
+.models-section { display: flex; flex-direction: column; gap: var(--space-1); }
+.settings-note { margin: 0 0 var(--space-2); }
+.settings-rows { list-style: none; margin: 0; padding: 0; }
+
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-row) 0;
+  border-top: var(--border-width) solid var(--line);
+}
+.settings-row-inline { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.settings-row-head, .settings-row-text { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.settings-row-head { justify-content: space-between; }
+.settings-row-name { font-size: var(--type-h3-size); line-height: var(--type-h3-leading); font-weight: var(--type-label-strong); }
+.settings-row-controls { margin: 0; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
+.settings-row-choice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
+.settings-row .keyboard-shortcut { color: var(--ink-2); }
+
+.settings-page .settings-reset { align-self: flex-start; min-height: 0; padding: 0 var(--control-pad-ghost); color: var(--ink-2); font-size: var(--type-label-size); }
+.settings-page .settings-reset:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+
+/* The searchable model choice. */
+.model-select { position: relative; display: inline-flex; max-width: 100%; }
+.model-select .model-select-trigger {
+  min-height: var(--control-height);
+  max-width: 100%;
+  padding: 0 var(--control-pad-ghost);
+  gap: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  color: var(--ink);
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+}
+.model-select .model-select-trigger:hover:not(:disabled), .model-select .model-select-trigger[data-state='open'] { background: var(--field-2); }
+.model-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.model-select-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: var(--z-menu);
+  margin-top: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--model-popover-gap);
+  width: min(var(--model-popover-width), calc(100vw - var(--space-6)));
+  padding: var(--model-popover-pad);
+  border-radius: var(--model-popover-radius);
+  background: var(--surface);
+  box-shadow: var(--sh-2);
+  font-size: var(--type-label-size);
+}
+.model-select-list { display: flex; flex-direction: column; max-height: var(--menu-max-height); overflow-y: auto; }
+.model-select .model-select-row {
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-height: var(--model-popover-row);
+  padding: 0 var(--model-popover-row-pad);
+  border-radius: var(--model-popover-row-radius);
+  color: var(--ink);
+  font-weight: var(--type-label-weight);
+  text-align: left;
+}
+.model-select .model-select-row:hover:not(:disabled) { background: var(--field); }
+.model-select .model-select-row:active:not(:disabled) { background: var(--field-2); }
+.model-select-mark { display: grid; place-items: center; width: var(--space-4); flex: none; color: var(--accent); }
+.model-select-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-select-empty { margin: 0; padding: var(--space-2) var(--model-popover-row-pad); color: var(--ink-2); }
+
+@media (max-width: 600px) {
+  .settings-page { padding: var(--space-8) var(--space-4) var(--space-6); }
+  .settings-row-inline { flex-wrap: wrap; }
+}
