@@ -134,7 +134,9 @@ func startTerminal(id, title, command, cwd string, cols, rows int) (*terminal, e
 	}
 	cols, rows = clampSize(cols, rows)
 	shell := shellPath()
-	args := []string{"-i"}
+	// A terminal window is an interactive login shell, like the user's native
+	// terminal. Login profiles establish PATH before interactive rc aliases run.
+	args := []string{"-l", "-i"}
 	if command != "" {
 		args = []string{"-c", command}
 	}

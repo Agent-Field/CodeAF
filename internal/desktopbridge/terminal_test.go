@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -269,5 +272,79 @@ func TestPlainOutputCollapsesRedrawsAndEscapes(t *testing.T) {
 	got := plainOutput([]byte("\x1b[32mok\x1b[0m\r\nprogress 10%\rprogress 100%\r\ndone\r\n"))
 	if got != "ok\nprogress 100%\ndone" {
 		t.Fatalf("%q", got)
+	}
+}
+
+func TestTerminalUsesInteractiveLoginShellButJobsStayNoninteractive(t *testing.T) {
+	dir := t.TempDir()
+	shell := filepath.Join(dir, "configured-shell")
+	// An executable account-shell fixture captures the actual argv delivered through the PTY.
+	script := "#!/bin/sh\nprintf '__SHELL_ARGS %s\\n' \"$*\"\nif [ \"$1\" = -l ] && [ \"$2\" = -i ]; then exec /bin/sh -i; fi\nexec /bin/sh \"$@\"\n"
+	if err := os.WriteFile(shell, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SHELL", shell)
+	r := newTermRig(t)
+	interactive := r.start(t, `{}`)
+	got, _ := r.collect(t, interactive.ID, 0, "__SHELL_ARGS -l -i", 5*time.Second)
+	if !strings.Contains(got, "__SHELL_ARGS -l -i") {
+		t.Fatal("interactive PTY did not receive login and interactive flags")
+	}
+	r.send(t, interactive.ID, "printf '__LOGIN_INPUT_OK\\n'\n")
+	got, _ = r.collect(t, interactive.ID, 0, "__LOGIN_INPUT_OK", 5*time.Second)
+	if !strings.Contains(got, "__LOGIN_INPUT_OK") {
+		t.Fatal("login PTY did not accept input")
+	}
+	job := r.start(t, `{"command":"printf '__JOB_OK\\n'"}`)
+	got, _ = r.collect(t, job.ID, 0, "", 5*time.Second)
+	if !strings.Contains(got, "__SHELL_ARGS -c printf") || !strings.Contains(got, "__JOB_OK") {
+		t.Fatal("job shell lost its noninteractive command contract")
+	}
+	if strings.Contains(got, "__SHELL_ARGS -l") {
+		t.Fatal("job unexpectedly sourced login startup")
+	}
+}
+
+func TestTerminalLoginProfilePrecedesInteractiveAliases(t *testing.T) {
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("zsh unavailable: run this real PTY contract on macOS")
+	}
+	home := t.TempDir()
+	bin := filepath.Join(home, "bin")
+	if err := os.Mkdir(bin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// This stands for a user-installed command added by the login profile (e.g. Homebrew).
+	if err := os.WriteFile(filepath.Join(bin, "configured-ls"), []byte("#!/bin/sh\nprintf '__PROFILE_LS_OK\\n'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".zprofile"), []byte("export PATH=\"$HOME/bin:$PATH\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("alias ls=configured-ls\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("ZDOTDIR", home)
+	t.Setenv("SHELL", zsh)
+	t.Setenv("PATH", "/usr/bin:/bin")
+	r := newTermRig(t)
+	info := r.start(t, `{}`)
+	r.send(t, info.ID, "ls\nprintf '__PROFILE_CWD %s\\n' \"$PWD\"\n")
+	got, _ := r.collect(t, info.ID, 0, "__PROFILE_LS_OK", 5*time.Second)
+	if !strings.Contains(got, "__PROFILE_LS_OK") {
+		t.Fatal("login PATH was unavailable to the user's interactive alias")
+	}
+	physicalCwd, err := filepath.EvalSymlinks(info.Cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = r.collect(t, info.ID, 0, "__PROFILE_CWD "+physicalCwd, 5*time.Second)
+	if !strings.Contains(got, "__PROFILE_CWD "+physicalCwd) {
+		t.Fatal("terminal changed the requested workspace cwd")
+	}
+	if strings.Contains(got, "command not found") {
+		t.Fatal("configured terminal startup could not resolve its login-installed command")
 	}
 }
