@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Agent-Field/codeaf/internal/env"
@@ -150,9 +149,8 @@ func APIKeySourceForModel(profileDir string, sources modelsource.Set, model stri
 }
 
 // WriteAPIKey persists a key a person handed over, through the same atomic
-// writer every other setting uses. The file is created owner-readable only
-// (writeProfileValues), which is the property [EnsurePersistedAPIKey] tightens
-// after the fact on a file that predated any secret in it.
+// writer every other setting uses. Each write replaces the file with an
+// owner-readable-only file, including when the profile predates any secret.
 func WriteAPIKey(profileDir, key string) error {
 	return writeProfileValue(profileDir, KeyAPIKey, strings.TrimSpace(key))
 }
@@ -183,38 +181,21 @@ func EnsurePersistedAPIKey(profileDir string) (bool, string, error) {
 		return false, path, nil
 	}
 
-	values := map[string]json.RawMessage{}
-	if raw, err := os.ReadFile(path); err == nil {
-		if err := json.Unmarshal(raw, &values); err != nil {
-			return false, path, fmt.Errorf("persist api key: existing config is not valid JSON: %w", err)
+	change, err := encodeChange(map[string]any{KeyAPIKey: key})
+	if err != nil {
+		return false, path, fmt.Errorf("persist api key: %w", err)
+	}
+	persisted := false
+	err = editProfile(profileDir, KeyAPIKey, func(held map[string]json.RawMessage) (profileChange, error) {
+		// Check again under the profile lock, so another writer's key wins.
+		if persistedAPIKeyFrom(held) != "" {
+			return profileChange{}, nil
 		}
-	} else if !os.IsNotExist(err) {
-		return false, path, fmt.Errorf("persist api key: %w", err)
-	}
-	encoded, err := json.Marshal(key)
+		persisted = true
+		return change, nil
+	})
 	if err != nil {
 		return false, path, fmt.Errorf("persist api key: %w", err)
 	}
-	values[KeyAPIKey] = encoded
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, path, fmt.Errorf("persist api key: %w", err)
-	}
-	body, err := json.MarshalIndent(values, "", "  ")
-	if err != nil {
-		return false, path, fmt.Errorf("persist api key: %w", err)
-	}
-	temporaryPath := path + ".tmp"
-	if err := os.WriteFile(temporaryPath, append(body, '\n'), 0o600); err != nil {
-		return false, path, fmt.Errorf("persist api key: %w", err)
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		_ = os.Remove(temporaryPath)
-		return false, path, fmt.Errorf("persist api key: %w", err)
-	}
-	// The file now carries a secret; tighten it even if it predated the key.
-	if err := os.Chmod(path, 0o600); err != nil {
-		return true, path, fmt.Errorf("persist api key: chmod: %w", err)
-	}
-	return true, path, nil
+	return persisted, path, nil
 }

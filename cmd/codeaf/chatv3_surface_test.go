@@ -76,6 +76,11 @@ func TestRunSurfaceWiresTheDeferredLaunchCheckAndInstallerThroughRealInit(t *tes
 	if err := os.WriteFile(target, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// The installer resolves symlinks, including the macOS temporary directory.
+	target, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
 	oldRun := runSurfaceProgram
 	oldClient, oldExecutable := surfaceUpdateClient, surfaceExecutable
 	oldRunningExecutable := surfaceRunningExecutable

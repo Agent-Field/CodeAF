@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Agent-Field/agentfield/sdk/go/ai"
+	"github.com/Agent-Field/codeaf/internal/catalog"
 	"github.com/Agent-Field/codeaf/internal/delegate"
 	"github.com/Agent-Field/codeaf/internal/delegate/builtin"
 	"github.com/Agent-Field/codeaf/internal/provider"
@@ -95,7 +96,23 @@ func TestSeniorDevWorksATaskThroughTheShellHostsModelAPI(t *testing.T) {
 	t.Setenv("CODEAF_NO_UPDATE_CHECK", "1")
 	model := &seniorDevModel{}
 	previousRoad, previousOut, previousGrace := carriedModels, carriedStdout, carriedGrace
-	carriedModels = func() (carriedRoad, error) { return carriedRoad{completerFor: model.completerFor}, nil }
+	// THE PROFILE'S CATALOG IS WAITED FOR BEFORE THE PROGRAM STARTS, once and
+	// within one catalog fetch, so the window senior-dev reads from it is on
+	// disk before its first call (carried.go's carriedCatalogWarm).
+	var warms, callsAtWarm int
+	var warmBound time.Duration
+	carriedModels = func() (carriedRoad, error) {
+		return carriedRoad{completerFor: model.completerFor, warmCatalog: func(ctx context.Context) bool {
+			warms++
+			if deadline, ok := ctx.Deadline(); ok {
+				warmBound = time.Until(deadline)
+			}
+			model.mu.Lock()
+			callsAtWarm = model.calls
+			model.mu.Unlock()
+			return true
+		}}, nil
+	}
 	printed := &lockedBuffer{}
 	carriedStdout = printed
 	carriedGrace = 5 * time.Second
@@ -110,6 +127,10 @@ func TestSeniorDevWorksATaskThroughTheShellHostsModelAPI(t *testing.T) {
 			stderr = string(data)
 		}
 		t.Fatalf("senior-dev's shell run left with %d:\n%s\nits stderr:\n%s", code, out, stderr)
+	}
+	if warms != 1 || callsAtWarm != 0 || warmBound <= 0 || warmBound > catalog.FetchTimeout {
+		t.Fatalf("catalog waited for %d times, after %d calls, bounded by %v; want once, before any call, within %v",
+			warms, callsAtWarm, warmBound, catalog.FetchTimeout)
 	}
 	for _, want := range []string{"senior-dev · working in " + workspace, "senior-dev finished", "senior-dev's model said: feature.txt now holds the feature", " · 300 in · 20 out · $0.0020"} {
 		if !strings.Contains(out, want) {

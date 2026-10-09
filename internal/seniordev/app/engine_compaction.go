@@ -134,14 +134,16 @@ func newSeniorDevCompactionController(
 	tools []steploop.ToolDefinition,
 	decisions compaction.DecisionSink,
 	sessionID string,
+	providerID string,
+	modelID string,
 ) compaction.Controller {
 	service := compaction.NewService(compaction.Dependencies{
 		Store: store,
-		// The session's config, not the project's: under the window policy
-		// a context-overflow rejection may have pinned this session's
+		// The model's config, not the project's: under the window policy
+		// a context-overflow rejection may have pinned this model's
 		// capacity below the window (compaction_pin.go).
 		Config: compaction.ConfigProviderFunc(func(context.Context) (overflow.Config, error) {
-			return backend.overflowConfigFor(sessionID)
+			return backend.overflowConfigFor(providerID, modelID)
 		}),
 		Agents: compaction.AgentProviderFunc(func(
 			context.Context, string,
