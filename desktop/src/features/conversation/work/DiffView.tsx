@@ -14,7 +14,7 @@ export function DiffView({ args }: { args: string }) {
   const shown = all ? rows : rows.slice(0, LIMIT);
   return (
     <div className="work-diff">
-      <div className="work-diff-rows" role="group" aria-label="Changes">
+      <div className="work-diff-rows" role="group" aria-label="Changes" tabIndex={0}>
         {shown.map((row, at) => (
           <div key={at} className="work-diff-row" data-kind={row.kind}>
             <span className="work-diff-sign" aria-hidden="true">{SIGNS[row.kind]}</span>

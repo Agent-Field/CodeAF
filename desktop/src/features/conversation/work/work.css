@@ -60,3 +60,6 @@
 
 .work-specimen { display: flex; flex-direction: column; gap: var(--space-4); max-width: var(--content-max-width); }
 .work-specimen-label { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
+/* Scrolling excerpts take keyboard focus so their overflow can be read without a pointer. */
+.work-pre:focus-visible,
+.work-diff-rows:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }

@@ -32,7 +32,7 @@ export function TerminalBlock({ call, readFull }: { call: ToolStep; readFull?: R
   if (!command && !full.output) return null;
   return (
     <div className="work-excerpt">
-      <pre className="work-pre work-terminal" aria-label="Terminal">
+      <pre className="work-pre work-terminal" aria-label="Terminal" tabIndex={0}>
         {command && <CodeText className="work-terminal-command">{`$ ${command}`}</CodeText>}
         {full.output && <CodeText>{`\n${full.output}`}</CodeText>}
       </pre>
