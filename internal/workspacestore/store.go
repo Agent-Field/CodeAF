@@ -17,6 +17,10 @@
 // free of side effects; only a write takes the per-key file lock
 // (internal/filelock), re-reads, checks the revision, and replaces the file by
 // temp file, fsync and rename.
+//
+// A move between two places is the one write that needs two files; pair.go
+// publishes it through a journal and takes the global pair lock that every Put
+// takes too.
 package workspacestore
 
 import (
@@ -107,6 +111,13 @@ type Record struct {
 	// is until the next write moves it aside (never deletes it), so a read never
 	// changes the disk.
 	Damaged bool `json:"damaged,omitempty"`
+	// MovedTo says where tabs and split panes that left this place went: id →
+	// destination key. It is the durable acknowledgment a window uses to send a
+	// draft it typed into a moved tab after the move to the tab's new home. It
+	// is derived from committed transfers (pair.go), never stored in a
+	// document, and absent when nothing recent left this place. A missing hint
+	// never means a draft was discarded.
+	MovedTo map[string]string `json:"movedTo,omitempty"`
 }
 
 // file is the on-disk envelope.
@@ -146,8 +157,14 @@ type Store struct {
 	wakeMu sync.Mutex
 	wake   chan struct{}
 
+	// pairMu serialises this process's pair-lock holders before the file lock.
+	pairMu sync.Mutex
+
 	// beforeRename is a test seam run after the temp file is complete.
 	beforeRename func() error
+	// pairFault and syncDir are test seams for the pair journal (pair.go).
+	pairFault func(stage string) error
+	syncDir   func(dir string) error
 }
 
 const lockPoll = 10 * time.Millisecond
@@ -181,12 +198,17 @@ func (s *Store) path(key string) string { return filepath.Join(s.opts.Dir, key+"
 
 // Get reads one place's tab set. It takes no lock and writes nothing: a file is
 // only ever replaced by rename, so a reader sees one whole document or the other.
+// A committed but not yet fully materialized pair transfer is overlaid read-only,
+// so a reader never sees one half of a transfer (pair.go).
 func (s *Store) Get(key string) (Record, error) {
 	if !ValidKey(key) {
 		return Record{}, ErrInvalidKey
 	}
 	rec, _, err := s.read(key)
-	return rec, err
+	if err != nil {
+		return Record{}, err
+	}
+	return s.overlay(rec), nil
 }
 
 // read returns the record and, for a damaged file, why it was unreadable.
@@ -253,6 +275,17 @@ func (s *Store) Put(key string, expect uint64, writer string, workspace json.Raw
 	if err := json.Compact(&compact, workspace); err != nil {
 		return Record{}, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
+	// The pair lock comes first, always, so a write never lands between the
+	// two halves of a transfer; a pending transfer is finished before this
+	// write's own compare-and-swap reads anything.
+	releasePair, err := s.acquirePair()
+	if err != nil {
+		return Record{}, err
+	}
+	defer releasePair()
+	if err := s.recoverLocked(); err != nil {
+		return Record{}, err
+	}
 	release, err := s.acquire(key)
 	if err != nil {
 		return Record{}, err
@@ -263,10 +296,10 @@ func (s *Store) Put(key string, expect uint64, writer string, workspace json.Raw
 		return Record{}, err
 	}
 	if cur.Revision != expect {
-		return Record{}, &ConflictError{Current: cur}
+		return Record{}, &ConflictError{Current: s.withMoves(cur)}
 	}
 	if !cur.Damaged && cur.Revision > 0 && bytes.Equal(cur.Workspace, compact.Bytes()) {
-		return cur, nil
+		return s.withMoves(cur), nil
 	}
 	now := s.opts.Now().UTC()
 	next := cur.Revision + 1
@@ -274,9 +307,8 @@ func (s *Store) Put(key string, expect uint64, writer string, workspace json.Raw
 		// The unreadable file is set aside, never deleted. Its revision is lost,
 		// so the next one starts from the clock: a window still holding a revision
 		// from before the damage cannot match it by coincidence.
-		to := fmt.Sprintf("%s.damaged-%s", s.path(key), now.Format("20060102T150405.000000000Z"))
-		if err := os.Rename(s.path(key), to); err != nil {
-			return Record{}, fmt.Errorf("workspacestore: cannot set aside damaged %s (%s): %w", key, reason, err)
+		if err := s.setAside(key, reason, now); err != nil {
+			return Record{}, err
 		}
 		next = uint64(now.UnixMilli())
 	}
@@ -285,7 +317,16 @@ func (s *Store) Put(key string, expect uint64, writer string, workspace json.Raw
 		return Record{}, err
 	}
 	s.signal()
-	return Record{Key: key, Revision: next, UpdatedAt: &now, Writer: writer, Workspace: doc.Workspace}, nil
+	return s.withMoves(Record{Key: key, Revision: next, UpdatedAt: &now, Writer: writer, Workspace: doc.Workspace}), nil
+}
+
+// setAside moves an unreadable record file next to itself. It never deletes.
+func (s *Store) setAside(key, reason string, now time.Time) error {
+	to := fmt.Sprintf("%s.damaged-%s", s.path(key), now.Format("20060102T150405.000000000Z"))
+	if err := os.Rename(s.path(key), to); err != nil {
+		return fmt.Errorf("workspacestore: cannot set aside damaged %s (%s): %w", key, reason, err)
+	}
+	return nil
 }
 
 // Wait returns the record as soon as its revision is not `after`, or the current
@@ -337,8 +378,13 @@ func (s *Store) acquire(key string) (func(), error) {
 		s.keys[key] = gate
 	}
 	s.gate.Unlock()
+	return s.lockFile(gate, s.path(key)+".lock")
+}
+
+// lockFile takes an in-process gate and then the file lock at path.
+func (s *Store) lockFile(gate *sync.Mutex, path string) (func(), error) {
 	gate.Lock()
-	f, err := os.OpenFile(s.path(key)+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		gate.Unlock()
 		return nil, err
