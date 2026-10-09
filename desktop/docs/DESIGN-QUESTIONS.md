@@ -190,5 +190,22 @@ Shortcuts: "⌘G Group selected tabs", "⌘⇧T Reopen closed tab"). The tabs au
 | TI9 | ⌘⇧T placement (it appended at the end and dropped a group closing had emptied) | Close records where the tab stood (the tab after it, the tab before it, its group) in the closed list, which is saved. Reopen puts it before the tab that followed it, else after the tab that preceded it, else last; never inside another group's run; in its group, made again with its name if closing emptied it, and opened if collapsed. A pane closed out of a split reopens just after the split. The closing toast's Undo is the same action with the place it remembered. |
 | TI10 | Reopening a closed split from the new-tab field (it kept one pane) | The closed tab comes back whole under its own ids, exactly as ⌘⇧T would: every pane with its draft, session and terminal binding, the layout, the dividers and the focused pane, where it stood and in its group. The field goes and is not a closed tab. A field that is itself a pane of a split takes in a closed plain tab as that pane; a closed split reopens as its own tab and the field pane leaves the split. (Supersedes NT10's "the new tab becomes that tab".) |
 | TI11 | An emptied group name | Takes the next "New group" name no other group has. |
-| TI12 | The group suggestion pill (2b "Group the 3 bench tabs as Benchmarks?") | Absent. "3 or more tabs on one repo or topic" needs a repo or topic for every tab and a name for the set; no tab carries a repo and the desktop makes no AI call of its own. It waits for an engine source. |
+| TI12 | The group suggestion pill (2b "Group the 3 bench tabs as Benchmarks?") | **Superseded by GO1–GO8 below**: built from facts the tabs already carry, with no model call. |
 
+## Group suggestion pill (tab group offer)
+
+Sources: Shell 2b (the pill: layers glyph, "Group the 3 bench tabs as **Benchmarks**?", accent Group, quiet X, 34px, sh-2,
+top of the content card), Shell "Groups, split, overview, rail" ("Suggestions are a pill at the top of the content, and only for
+3 or more tabs on one repo or topic, at most once per session per set"), Interactions (place suggestion: "Not now hides it
+for 30 days"). Code: `offerRules.ts`, `useGroupOffer.ts`, `GroupOffer.tsx`; wiring in `tab-group-offer-api.md`.
+
+| # | Where the design is silent | What ships |
+| --- | --- | --- |
+| GO1 | What "one repo or topic" means for a tab, when no tab carries a repo | Two facts, no guesses. (1) Same saved session: the conversation and the task, file and diff tabs it opened share a `sessionFile`. (2) Same top folder: file and diff tabs whose workspace-relative path starts in one folder (`internal/…`). A tab belongs to the first set that claims it. |
+| GO2 | Word-based "topic" grouping | Not built. The only topic reader is the engine's place organizer (Go `placegraph`), reached by the `Places.Ask` door and not exposed per tab; the desktop makes no model call of its own, so a topic offer would be invented. If the bridge ever exposes a tab-level topic, it becomes a third source in `findOffers`. |
+| GO3 | The set's name | A real name or none: the conversation's own title when the engine or the person named it (never "New conversation"), or the folder name. With no real name the pill reads "Group these 3 tabs?" and the group takes the reducer's next free "New group" name. |
+| GO4 | Which tabs count | Loose, unpinned, ungrouped, non-split tabs of kind conversation, task, file or diff. Inbox, terminal, web, settings, history and new tabs are never suggested. Three is the minimum. |
+| GO5 | "At most once per session per set" | A set is its source key (`conversation:<sessionFile>`, `folder:<name>`), not its member list, so a fourth tab joining does not make a new set. It is drawn at most once per launch; if it shrinks below three and returns, it stays quiet until the next launch. |
+| GO6 | How long a decision lasts | Group and the X are both a decision: remembered 30 days (the place suggestion's "Not now" lifetime), in `codeaf.desktop.groupOffers.v1`, validated on read, at most 200 entries. A set withdrawn because it shrank is not a decision. |
+| GO7 | Where it sits and when it hides | Centred, 10px under the strip, over the content card. Hidden (not spent) while the switcher, overview or rename dialog is open. At 320px it shrinks and a long name is clipped (no ellipsis, as for tab titles); Group and the X stay visible. |
+| GO8 | Keyboard | Group and the X are ordinary buttons in Tab order after the strip; the pill takes no focus on its own. No Escape or shortcut is added (the design names none). |
