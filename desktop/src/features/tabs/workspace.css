@@ -1,14 +1,14 @@
 .tab-workspace { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .workspace-tabbar { display: flex; align-items: center; min-width: 0; flex-shrink: 0; min-height: var(--tab-strip-height); padding: 0 var(--space-2); gap: var(--space-1); background: var(--tab-strip); }
 .workspace-tabstrip { display: flex; align-items: flex-end; align-self: stretch; flex: 1; min-width: 0; gap: var(--space-1); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; scroll-behavior: auto; padding: var(--space-2) var(--space-half) 0; }
-.workspace-tab { position: relative; display: flex; align-items: center; flex: 0 0 auto; height: var(--tab-height); min-width: var(--tab-min-width); max-width: var(--tab-max-width); border-radius: var(--radius-sm); background: transparent; color: var(--muted); transition: background-color var(--duration) var(--ease), color var(--duration) var(--ease); animation: tab-enter var(--duration-overlay) var(--ease-overlay); }
+.workspace-tab { position: relative; display: flex; align-items: center; flex: 0 0 auto; height: var(--tab-height); min-width: var(--tab-min-width); max-width: var(--tab-max-width); border-radius: var(--radius-sm); background: transparent; color: var(--muted); transition: background-color var(--duration) var(--chrome-ease), color var(--duration) var(--chrome-ease); animation: tab-enter var(--duration-overlay) var(--ease-overlay); }
 .workspace-tab:hover { background: var(--tab-hover); color: var(--text); }
 .workspace-tab[data-active="true"] { background: var(--tab-selected); color: var(--text); border-radius: var(--radius-md) var(--radius-md) 0 0; }
 .workspace-tab[data-active="true"] .workspace-tab-select { font-weight: var(--font-weight-medium); }
 .workspace-tab-select.button { display: flex; align-items: center; justify-content: flex-start; flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-8) 0 var(--space-2); gap: var(--space-2); color: inherit; background: transparent; text-align: left; font-size: var(--font-size-label); }
 .workspace-tab-select > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-tab-select .app-icon { flex-shrink: 0; color: var(--muted); }
-.workspace-tab-close { position: absolute; right: var(--space-half); opacity: var(--opacity-transparent); transition: opacity var(--duration) var(--ease), background-color var(--duration) var(--ease); }
+.workspace-tab-close { position: absolute; right: var(--space-half); opacity: var(--opacity-transparent); transition: opacity var(--duration) var(--chrome-ease), background-color var(--duration) var(--chrome-ease); }
 .workspace-tab:hover .workspace-tab-close, .workspace-tab:focus-within .workspace-tab-close { opacity: var(--opacity-opaque); }
 .workspace-tab.is-pinned { min-width: var(--tab-pinned-width); max-width: var(--tab-pinned-width); }
 .workspace-tab.is-pinned .workspace-tab-select { justify-content: center; padding: 0; }
@@ -20,7 +20,7 @@
 .workspace-group-label[aria-expanded="false"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
 .workspace-group-count { font-size: var(--font-size-caption); color: var(--muted); }
 .workspace-group-tabs { display: flex; align-items: center; }
-.workspace-group-tab-slot { overflow: hidden; max-width: var(--tab-max-width); margin-right: var(--space-1); opacity: var(--opacity-opaque); transition: max-width var(--duration-sidebar) var(--ease-layout), margin var(--duration-sidebar) var(--ease-layout), opacity var(--duration) var(--ease), visibility var(--duration-sidebar); }
+.workspace-group-tab-slot { overflow: hidden; max-width: var(--tab-max-width); margin-right: var(--space-1); opacity: var(--opacity-opaque); transition: max-width var(--duration-sidebar) var(--ease-layout), margin var(--duration-sidebar) var(--ease-layout), opacity var(--duration) var(--chrome-ease), visibility var(--duration-sidebar); }
 .workspace-group-tab-slot[data-hidden="true"] { max-width: 0; margin-right: 0; opacity: var(--opacity-transparent); visibility: hidden; pointer-events: none; }
 .workspace-conversation { flex: 1; display: flex; min-height: 0; min-width: 0; overflow: hidden; }
 .workspace-conversation:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(var(--motion-rest) - var(--focus-offset)); }
