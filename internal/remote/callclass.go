@@ -158,7 +158,7 @@ func classify(method string) callClass {
 		MethodMemorySnapshot, MethodMemoryChanged, MethodMemoryList, MethodMemoryProvenance,
 		MethodTaskRoom, MethodTaskPending, MethodTaskEffort,
 		MethodListDir, MethodStatPaths, MethodFetchFile,
-		MethodReadText, MethodFindFiles, MethodDiffChanges, MethodDiffFile,
+		MethodReadText, MethodFindFiles, MethodDiffChanges, MethodDiffFile, MethodDiffStart,
 		// The wall's two model asks are reads of the naming role, asked off the
 		// update loop and bounded by the wall; queued behind a turn they would
 		// wait out the wall's patience and answer nobody.

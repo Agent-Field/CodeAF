@@ -758,6 +758,9 @@ const (
 	MethodFindFiles   = "File.Find"    // FindFilesArgs → FoundFiles
 	MethodDiffChanges = "Diff.Changes" // DiffChangesArgs → ChangedFiles
 	MethodDiffFile    = "Diff.File"    // DiffFileArgs → FileDiff
+	// MethodDiffStart records, once, the commit the conversation starts on; the
+	// two Diff doors then measure against it. No args → DiffStart.
+	MethodDiffStart = "Diff.Start"
 
 	// MethodDepositFile is [MethodFetchFile] walked backwards: a file going
 	// from the surface's machine to the engine's, and NOT AS A MESSAGE.

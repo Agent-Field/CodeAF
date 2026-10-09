@@ -127,8 +127,14 @@ machine. Paths are workspace-relative and slash separated. The boundary is the
 workspace only (not the session folder); symlinks resolve before the check, so
 traversal and links that leave the workspace are 403, missing is 404. Typed
 client: `readEngineText`, `findEngineFiles`, `engineChanges`, `engineFileDiff`,
-`engineEditorTarget` in `engine-client.ts`. The base is git HEAD (the empty tree
-on an unborn branch); outside git, `git:false` and no files.
+`engineEditorTarget` in `engine-client.ts`. The base is the commit the
+conversation started on (recorded once, when the bridge first opens it in a git
+workspace, and kept in the session folder so a reload keeps it); the diff shows
+commits since then plus the working tree. With no record, or when history was
+rewritten and the start is no longer reachable from HEAD, the base is HEAD (the
+empty tree on an unborn branch, which records nothing). Both `/changes` and
+`/diff` answer `base: {kind: 'start'|'head', sha?}` so the UI can say which one
+was used. Outside git, `git:false` and no files.
 
 - GET `/files/text?path=` returns `{path,name,dir,abs,size,hash,language,lines,text}`.
   Over 1MB or binary: `text` is empty and `refusal` is `too-large` or `binary`
@@ -136,11 +142,11 @@ on an unborn branch); outside git, `git:false` and no files.
 - GET `/files/find?q=&limit=` returns `{files:[{path,name,dir}],truncated?}`, best
   first, gitignore-aware (`git ls-files`, bounded walk outside git). Empty `q`
   matches nothing. Limit defaults to 20, at most 100.
-- GET `/changes[?path=a&path=b]` returns `{git,base,branch,files:[{path,name,dir,
+- GET `/changes[?path=a&path=b]` returns `{git,base:{kind,sha?},branch,files:[{path,name,dir,
   status,added,deleted,binary?}],added,deleted,truncated?}`; `status` is modified,
   added, deleted or untracked. Repeated `path` narrows to the files a
   conversation touched (the app knows them from its tool calls).
-- GET `/diff?path=` returns `{path,name,dir,abs,git,status,added,deleted,binary?,
+- GET `/diff?path=` returns `{path,name,dir,abs,git,base?,status,added,deleted,binary?,
   lines,hunks,truncated?}`. A hunk is `{header,oldStart,oldLines,newStart,newLines,
   section,lines:[{kind:context|add|del,old?,new?,text}]}`; `old`/`new` are the
   two line-number columns. `lines` is the current file length: the "N unchanged

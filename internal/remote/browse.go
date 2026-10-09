@@ -95,6 +95,11 @@ func (c *Client) DiffChanges(paths []string) (ChangedFiles, error) {
 	return callTyped[DiffChangesArgs, ChangedFiles](c, MethodDiffChanges, DiffChangesArgs{Paths: paths})
 }
 
+// DiffStart records the commit this conversation starts on (once) and returns it.
+func (c *Client) DiffStart() (DiffStart, error) {
+	return callTyped[struct{}, DiffStart](c, MethodDiffStart, struct{}{})
+}
+
 // DiffFile asks for one file's diff against the base.
 func (c *Client) DiffFile(path string) (FileDiff, error) {
 	return callTyped[DiffFileArgs, FileDiff](c, MethodDiffFile, DiffFileArgs{Path: path})
