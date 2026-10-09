@@ -33,6 +33,7 @@
 .home-archived-toggle.button { align-self: flex-start; min-height: 0; padding: 0 var(--space-half); gap: var(--space-tight); color: var(--ink-3); font-size: var(--type-label-size); font-weight: var(--font-weight-regular); }
 .home-suggestion { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding-top: var(--space-1); font-size: var(--type-label-size); color: var(--ink-2); }
 .home-suggestion > .app-icon { color: var(--ink-3); }
+.home-suggestion-text { min-width: 0; overflow-wrap: anywhere; }
 .home-suggestion-action.button { min-height: 0; padding: 0 var(--space-half); background: transparent; color: var(--ink); font-size: var(--type-label-size); font-weight: var(--font-weight-medium); }
 
 /* Quick Look (8d): a read-only Home in a sheet over a scrim. */

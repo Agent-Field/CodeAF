@@ -1,6 +1,7 @@
 import type { TintName } from './components/PlaceSwatch';
 import type { AttentionStatus } from './components/AttentionRow';
 import type { ChatStatus } from './components/ChatRow';
+import type { StalePlace } from './stale-client';
 
 /** The view model a Places Home draws. It mirrors the fields of the published read `GET /places/{id}` (run/places-routes-api.md): a
  * caller maps the typed client's digest onto it in one place, and nothing here is invented. Absent means unknown, and unknown draws nothing. */
@@ -80,6 +81,8 @@ export type HomeView = {
   /** Root only: chats in no place, and an engine-made offer to move a cluster of them. */
   unplaced?: { total: number };
   suggestion?: { text: string; action: string };
+  /** Root only: the place the engine says nobody has touched for 60 days (design 6d). Absent when none is due, so nothing is drawn. */
+  stale?: StalePlace;
 };
 
 /** What the page is doing about its read. `offline` with a view keeps the last good page, read-only. */

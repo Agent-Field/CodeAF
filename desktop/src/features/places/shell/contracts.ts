@@ -7,6 +7,7 @@
 // containers kept by internal/placegraph). Everything in this file is the second kind.
 
 import type { Tint } from '../client';
+import type { SuggestionModel } from '../stale-model';
 export type { ToastAction, ToastModel } from '../../../components/ui/Toast';
 
 /** What one window shows: Now (the unplaced tabs) or one place of the graph. All places is a tab, never a window place. */
@@ -62,6 +63,8 @@ export type ChooserProps = {
   onChooseInNewWindow?: (placeId: string) => void | Promise<void>;
   /** ⌘N / Ctrl N with a typed name: create a place with that name (and, outside `go` mode, then use it). Absent = no create. */
   onCreate?: (name: string) => void | Promise<void>;
+  /** `go` mode only: the one quiet line about an untouched place (design 6d: "on Home and in ⌘P"). Drawn when nothing is typed; absent draws nothing. */
+  suggestion?: SuggestionModel;
   onClose: () => void;
 };
 
