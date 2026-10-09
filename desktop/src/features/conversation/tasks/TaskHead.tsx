@@ -1,5 +1,6 @@
-import { Button, Icon, PageHeading, type IconName } from '../../../components/ui';
+import { DropdownMenu, Icon, IconButton, PageHeading, type MenuEntry } from '../../../components/ui';
 import type { TaskPageModel } from '../taskPageTurn';
+import './task-head.css';
 
 export type HeadActions = {
   onPause?: () => void;
@@ -7,56 +8,66 @@ export type HeadActions = {
   onStop?: () => void;
 };
 
-/** "● Running · step 7 · 2m 14s · Deepseek v4.1 Flash": only the parts the engine knows. */
+/** A running task is a calm accent dot, a waiting one amber, a failed one red; the rest keep their quiet icon. */
+const DOT_KINDS: ReadonlySet<string> = new Set(['running', 'yourcall', 'incomplete']);
+
+function Mark({ model }: { model: TaskPageModel }) {
+  const { mark } = model;
+  return (
+    <span className="task-view-mark" data-kind={mark.kind} role="img" aria-label={mark.label}>
+      {DOT_KINDS.has(mark.kind) ? <span className="task-view-dot" /> : <Icon name={mark.icon} size="xs" />}
+    </span>
+  );
+}
+
+/** "● Running  step 7 · 2m 15s · Flash · $0.06": the state word at ink-2, then only the parts the engine knows. */
 function StateLine({ model }: { model: TaskPageModel }) {
-  const words = [model.mark.label, ...model.stateParts];
   return (
     <div className="task-view-status" data-tone={model.mark.tone}>
-      <span className="state-mark" data-tone={model.mark.tone} role="img" aria-label={model.mark.label}>
-        <Icon name={model.mark.icon} size="xs" />
-      </span>
-      <span>{words.join(' · ')}</span>
+      <Mark model={model} />
+      <span className="task-view-state-word">{model.mark.label}</span>
+      {model.stateParts.length > 0 && <span className="task-view-state-parts">{model.stateParts.join(' · ')}</span>}
     </div>
   );
 }
 
-type Control = { id: string; label: string; icon: IconName; run: () => void };
-
-function controlsOf(model: TaskPageModel, actions: HeadActions): Control[] {
-  const { pause, resume, stop } = model.controls;
-  const all: Control[] = [
-    { id: 'pause', label: 'Pause', icon: 'pause', run: actions.onPause ?? noop },
-    { id: 'resume', label: 'Resume', icon: 'play', run: actions.onResume ?? noop },
-    { id: 'stop', label: 'Stop', icon: 'stop', run: actions.onStop ?? noop },
-  ];
-  const wanted = [pause && actions.onPause, resume && actions.onResume, stop && actions.onStop];
-  return all.filter((_, index) => Boolean(wanted[index]));
+/** The one pause-or-resume verb the task offers right now. */
+function PauseButton({ model, actions }: { model: TaskPageModel; actions: HeadActions }) {
+  const { pause, resume } = model.controls;
+  if (pause && actions.onPause) return <IconButton className="task-view-action" label="Pause" icon="pause" iconSize="sm" onClick={actions.onPause} />;
+  if (resume && actions.onResume) return <IconButton className="task-view-action" label="Resume" icon="play" iconSize="sm" onClick={actions.onResume} />;
+  return null;
 }
 
-function noop() {}
+function moreEntries(model: TaskPageModel, actions: HeadActions): MenuEntry[] {
+  if (!model.controls.stop || !actions.onStop) return [];
+  const stop = actions.onStop;
+  return [{ id: 'stop', label: 'Stop', icon: 'stop', danger: true, onSelect: stop }];
+}
 
-function Controls({ model, actions }: { model: TaskPageModel; actions: HeadActions }) {
-  const buttons = controlsOf(model, actions);
-  if (buttons.length === 0) return null;
+function RowActions({ model, actions }: { model: TaskPageModel; actions: HeadActions }) {
+  const entries = moreEntries(model, actions);
   return (
-    <div className="task-view-actions">
-      {buttons.map((button) => (
-        <Button key={button.id} className="task-view-action" onClick={button.run}>
-          <Icon name={button.icon} size="xs" />
-          <span>{button.label}</span>
-        </Button>
-      ))}
-    </div>
+    <span className="task-view-actions">
+      <PauseButton model={model} actions={actions} />
+      {entries.length > 0 && (
+        <DropdownMenu label="Task actions" items={entries}>
+          <IconButton className="task-view-action" label="More task actions" icon="more" iconSize="sm" />
+        </DropdownMenu>
+      )}
+    </span>
   );
 }
 
 export function TaskHead({ model, actions, actionError }: { model: TaskPageModel; actions: HeadActions; actionError?: string }) {
   return (
     <header className="task-view-head">
-      <PageHeading className="task-view-title">{model.title}</PageHeading>
+      <div className="task-view-titlebar">
+        <PageHeading className="task-view-title">{model.title}</PageHeading>
+        <RowActions model={model} actions={actions} />
+      </div>
       <StateLine model={model} />
       {model.endReason && <p className="task-view-reason">{model.endReason}</p>}
-      <Controls model={model} actions={actions} />
       {actionError && <p className="task-view-action-error" role="alert">{actionError}</p>}
     </header>
   );

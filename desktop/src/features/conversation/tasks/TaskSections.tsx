@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { Button, CodeText, Icon, Markdown } from '../../../components/ui';
+import type { ReactNode } from 'react';
+import { CodeText, Icon, Markdown } from '../../../components/ui';
 
 export type RenderFile = (path: string) => ReactNode;
 
@@ -31,25 +31,6 @@ export function ChangedFiles({ paths, renderFile }: { paths: string[]; renderFil
         ))}
       </ul>
     </section>
-  );
-}
-
-/** The worker brief is for the engine; it stays one quiet step away. */
-export function Instructions({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  if (!text.trim()) return null;
-  return (
-    <div className="task-view-instructions">
-      <Button className="task-view-disclosure" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon name="chevron" size="xs" motion="disclosure" />
-        <span>Instructions</span>
-      </Button>
-      {open && (
-        <div className="task-view-brief">
-          <Markdown>{text}</Markdown>
-        </div>
-      )}
-    </div>
   );
 }
 

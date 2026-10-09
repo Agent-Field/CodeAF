@@ -19,10 +19,11 @@ type Props = {
   onOpenTask: OpenTask;
 };
 
-function segmentsFor(tasks: EngineTaskRow[], taskId: string, rootLabel: string): BreadcrumbSegment[] {
+function segmentsFor(tasks: EngineTaskRow[], taskId: string): BreadcrumbSegment[] {
   const trail = taskTrail(tasks, taskId).map((row) => ({ id: row.ID, label: row.Title }));
   const own = trail.length ? [] : [{ id: taskId, label: 'Task' }];
-  return [{ id: null, label: rootLabel }, ...trail, ...own];
+  // The design's trail starts at the parent task: Back, not a root crumb, returns to the conversation.
+  return [...trail, ...own];
 }
 
 /** A task drawn as a page: title, result, the work, the notes, the brief, and a composer for notes. */
@@ -31,7 +32,7 @@ export function TaskRoute(props: Props) {
   return (
     <div className="task-route">
       <Breadcrumb
-        segments={segmentsFor(props.tasks, taskId, props.rootLabel)}
+        segments={segmentsFor(props.tasks, taskId)}
         onNavigate={(id) => onRoute(navigate(route, id ?? undefined))}
         canBack={route.back.length > 0}
         canForward={route.forward.length > 0}

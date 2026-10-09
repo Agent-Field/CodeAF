@@ -44,11 +44,13 @@ test('a task notice opens the task in the same tab; Back and Ctrl+[ return', asy
   await notice().click();
   await expect(crumbs(page)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Migrate the settings screen' })).toBeVisible();
-  // The worker brief is secondary: folded under Instructions until asked for.
+  // The worker brief is a card under the title, clamped to three lines until Instructions is opened.
   const brief = page.getByText('Move the settings screen onto the shared form primitives.');
-  await expect(brief).toHaveCount(0);
-  await page.getByRole('button', { name: 'Instructions' }).click();
   await expect(brief).toBeVisible();
+  const toggle = page.getByRole('button', { name: 'Instructions' });
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('tab')).toHaveCount(1);
   await crumbs(page).getByRole('button', { name: 'Back' }).click();
   await expect(crumbs(page)).toHaveCount(0);

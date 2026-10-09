@@ -7,7 +7,8 @@ import { TaskComposer } from './tasks/TaskComposer';
 import { TaskHead, type HeadActions } from './tasks/TaskHead';
 import { TaskLinks } from './tasks/TaskLinks';
 import { TaskNotes, type Outbox } from './tasks/TaskNotes';
-import { Checks, ChangedFiles, Instructions, LastWords, Result, type RenderFile } from './tasks/TaskSections';
+import { InstructionsCard } from './tasks/InstructionsCard';
+import { Checks, ChangedFiles, LastWords, Result, type RenderFile } from './tasks/TaskSections';
 import type { TaskPage } from './tasks/taskTypes';
 import { useNow } from './tasks/useNow';
 import { WorkLog } from './tasks/WorkLog';
@@ -28,10 +29,12 @@ export type TaskPageBodyProps = {
   readFile?: ReadFile;
   /** A note being sent, drawn as a bubble until the engine's record replaces it. */
   outbox?: Outbox;
+  /** Changes the brief; offered only while the task can still hear it. */
+  onAmend?: (text: string) => Promise<void> | void;
 };
 
 /** A task is a conversation: result first, then the work, the notes, the brief. */
-export function TaskPageBody({ page, now, onOpenTask, actions = {}, actionError, renderFile, readFile, outbox }: TaskPageBodyProps) {
+export function TaskPageBody({ page, now, onOpenTask, actions = {}, actionError, renderFile, readFile, outbox, onAmend }: TaskPageBodyProps) {
   const model = taskPageModel(page, now);
   return (
     <article className="task-view-body">
@@ -39,9 +42,9 @@ export function TaskPageBody({ page, now, onOpenTask, actions = {}, actionError,
       <Result text={model.result} />
       <LastWords text={model.lastWords} shown={model.ended && !model.result} />
       <ChangedFiles paths={model.changed} renderFile={renderFile} />
+      <InstructionsCard text={model.instructions} onAmend={model.ended ? undefined : onAmend} />
       <WorkLog steps={model.steps} live={model.live} ended={model.ended} now={now} readFile={readFile} />
       <TaskNotes notes={model.notes} outbox={outbox} />
-      <Instructions text={model.instructions} />
       <Checks checks={model.checks} />
       <TaskLinks label="Tasks inside this one" links={model.children} onOpenTask={onOpenTask} />
       <TaskLinks label="Waits on" links={model.waits} onOpenTask={onOpenTask} />
@@ -142,15 +145,10 @@ export function TaskView({ sessionId, taskId, onOpenTask, renderFile, readFile, 
       )}
       {load.page && (
         <>
-          <TaskPageBody {...{ page: load.page, now, onOpenTask, actions, actionError, renderFile, outbox, readFile: read }} />
+          <TaskPageBody {...{ page: load.page, now, onOpenTask, actions, actionError, renderFile, outbox, readFile: read, onAmend: (text: string) => act('amend', text) }} />
           <TaskComposer
             ended={Boolean(model?.ended)}
-            paused={Boolean(model?.controls.resume)}
             onNote={note}
-            onAmend={(text) => act('amend', text)}
-            onPause={actions.onPause}
-            onResume={actions.onResume}
-            onStop={actions.onStop}
             onMessageConversation={onMessageConversation}
           />
         </>
