@@ -2068,7 +2068,7 @@ func (a *app) factoryStageTail(it factory.Item, views []factoryStageView, at, me
 			out = append(out, a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ink, measure)...)
 		}
 		if a.factory.Has("answer") {
-			out = append(out, pal.dim(fit(factoryAnswerClauses(), measure)))
+			out = append(out, pal.dim(fit(factoryAnswerClauses(it), measure)))
 		}
 		if note := strings.TrimSpace(v.phase.Note); note != "" && note != q && note != strings.TrimSpace(v.stage.Ask) {
 			out = append(out, pal.dim(fit(note, measure)))

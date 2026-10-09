@@ -571,11 +571,12 @@ func (a *app) factoryNeedsKey(it factory.Item, k string) (tea.Cmd, bool) {
 	case "y", "n":
 		if seam.Has("answer") {
 			yes := k == "y"
+			said, _ := factoryYesNo(it)
+			if !yes {
+				_, said = factoryYesNo(it)
+			}
 			return a.factoryVerb(id, func(s factory.Seam) error { return s.Answer(id, yes, "") }, func(it factory.Item) string {
-				if yes {
-					return "answered " + it.Ref() + rowSep + "yes"
-				}
-				return "answered " + it.Ref() + rowSep + "no"
+				return "answered " + it.Ref() + rowSep + said
 			}), true
 		}
 	case "a":
@@ -1145,8 +1146,9 @@ func (a *app) factoryVerbRows(it factory.Item) []factorySheetRow {
 		add(seam.Has("pause") && it.State == factory.StateRunning && paused, keyPause, wordResume)
 		add(a.factorySteerable(it), keySteer, wordSteer)
 	case factory.StateNeedsYou:
-		add(seam.Has("answer"), keyYes, wordYes)
-		add(seam.Has("answer"), keyNo, wordNo)
+		yes, no := factoryYesNo(it)
+		add(seam.Has("answer"), keyYes, yes)
+		add(seam.Has("answer"), keyNo, no)
 		add(seam.Has("answer"), keyInWords, wordInWords)
 		chat()
 	case factory.StateLanded:

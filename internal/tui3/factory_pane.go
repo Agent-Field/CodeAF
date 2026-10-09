@@ -250,7 +250,7 @@ func (a *app) factoryPeekQuestion(it factory.Item, measure int) []string {
 		out = a.factoryLed(pal.ask(a.icon(tokens.GNeedsHuman)), q, pal.ink, factoryPeekWidth(measure))
 	}
 	if a.factory.Has("answer") {
-		out = append(out, pal.dim(fit(factoryAnswerKeys, measure)))
+		out = append(out, pal.dim(fit(factoryAnswerKeys(it), measure)))
 	}
 	return out
 }
@@ -786,9 +786,13 @@ func factoryJoinWhole(segs, plains []string, sep string, measure int) string {
 	return out
 }
 
-// factoryAnswerKeys is the question's keys, as the peek and the item page
-// both name them.
-const factoryAnswerKeys = "[y] yes · [n] no · [a] in words"
+// factoryAnswerKeys is item it's question's keys, as the peek names them:
+// `[y] yes · [n] no · [a] in words`, `[y] continue · [n] send back · …` at
+// an approve step.
+func factoryAnswerKeys(it factory.Item) string {
+	yes, no := factoryYesNo(it)
+	return "[" + keyYes + "] " + yes + rowSep + "[" + keyNo + "] " + no + rowSep + "[" + keyInWords + "] " + wordInWords
+}
 
 // factoryMergedLine is a shipped item's one line: when it merged and what it
 // cost, and nothing when neither is known.

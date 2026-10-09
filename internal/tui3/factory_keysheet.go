@@ -81,8 +81,9 @@ func (a *app) factorySheet() []factorySheetGroup {
 			row(&do, a.factorySteerable(it), keySteer, wordSteer)
 			row(&set, seam.Has("seteffort"), keyThinking, wordThinking)
 		case factory.StateNeedsYou:
-			row(&do, seam.Has("answer"), keyYes, wordYes)
-			row(&do, seam.Has("answer"), keyNo, wordNo)
+			yes, no := factoryYesNo(it)
+			row(&do, seam.Has("answer"), keyYes, yes)
+			row(&do, seam.Has("answer"), keyNo, no)
 			row(&do, seam.Has("answer"), keyInWords, wordInWords)
 			row(&do, chat, keyChat, wordChat)
 			row(&do, a.factorySteerable(it), keySteer, wordSteer)

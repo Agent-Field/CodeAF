@@ -2741,8 +2741,10 @@ func testFactoryRunsAnIssue(t *testing.T) {
 			if strings.HasSuffix(it.Question, say(t, "factoryApproveAsk")) {
 				// THE APPROVE STEP: the run holds after plan until the person says continue.
 				r.waitFor(30*time.Second, say(t, "factoryApproveAsk"))
+				r.waitFor(30*time.Second, say(t, "factoryApproveContinue"))
+			} else {
+				r.waitFor(30*time.Second, say(t, "factoryAnswerKeys"))
 			}
-			r.waitFor(30*time.Second, say(t, "factoryAnswerKeys"))
 			key := "y"
 			if strings.Contains(it.Question, say(t, "factoryRoundsAsk")) {
 				key = "n"

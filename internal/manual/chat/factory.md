@@ -83,8 +83,9 @@ order a person reaches for them, and only keys the floor can do:
   `L run selected` takes the fifth place.
 - **Running:** `enter open · x stop · T chat · space pause · S steer` (`space resume` while
   paused). Queued: the same without pause.
-- **Needs you:** `enter open · y yes · n no · a in words · T chat`. At an approve step, `y`
-  continues, `n` sends the run back to the step before, and `a` continues with your words.
+- **Needs you:** `enter open · y yes · n no · a in words · T chat`. At an approve step it reads
+  `y continue · n send back · a in words`: `y` continues, `n` sends the run back to the step
+  before, and `a` continues with your words.
 - **Landed:** `enter proof · s approve · B request changes · v re-run checks · T chat`, with
   `e approve with changes` in place of `s approve` when a row on the sheet was not shown.
 
@@ -666,11 +667,12 @@ is `after 1 round`, one finding `1 finding`),
 - `y` answers yes: continue, one more round, $5 more, skip it. The bottom line says
   `answered #12 · yes`.
 - `n` answers no: at an approve step it sends the run back to the step before; for a spent
-  budget it stops the item; for rounds it goes on as is. It says `answered #12 · no`.
+  budget it stops the item; for rounds it goes on as is. It says `answered #12 · no` (`answered #12 · send back` at an approve step).
 - `a` opens `answer ›` for words (`go, but keep the old flag`); they reach the next round's
   brief (at an approve step: the run continues with them) and it says `answered #12 in words`.
 
-`[y] yes · [n] no · [a] in words` is drawn only where the floor can answer. `y`, or `a`, on an
+`[y] yes · [n] no · [a] in words` (`[y] continue · [n] send back · [a] in words` at an approve
+step) is drawn only where the floor can answer. `y`, or `a`, on an
 item that is not waiting says `#12 is not waiting on you` on the bottom line and changes nothing
 (`n` there is new work, and `a` on a thin new item asks its author).
 
@@ -764,7 +766,8 @@ request and a red main end on one instead. When the run reaches an approve step 
 before it). The manager says the same into its conversation, `asking you: …`, and can explain
 what it waits on if you ask it there.
 
-- `y` (or `continue` said to the manager) continues. `answered #12 · yes`.
+- `y` (or `space` on the item page, its top bar's `▶ continue`, or `continue` said to the
+  manager) continues. `answered #12 · continue`.
 - `a` with words (`keep the old flag`) continues with your words handed to the steps after as
   your note.
 - `n` (or `no, use the other file` said to the manager) sends the run back to the step before

@@ -382,7 +382,7 @@ func (a *app) factoryItemQuestion(it factory.Item, measure int) string {
 	}
 	right := ""
 	if a.factory.Has("answer") {
-		right = pal.dim(factoryAnswerClauses())
+		right = pal.dim(factoryAnswerClauses(it))
 	}
 	left := pal.ask(a.icon(tokens.GNeedsHuman)) + " " + pal.ink(q)
 	if right != "" && ansi.StringWidth(left)+factoryGutter+ansi.StringWidth(right) <= measure {

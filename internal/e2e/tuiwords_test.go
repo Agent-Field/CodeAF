@@ -1205,6 +1205,12 @@ var tuiWords = map[string]tuiWord{
 			"y and n are offered only then. The strip composes each clause from factory_words.go's " +
 			"key and word, so the row names the key and holds the word",
 	},
+	"factoryApproveContinue": {
+		screen: "continue",
+		key:    "y",
+		why: "what answers a run held at an approve step: the item page's top bar `▶ continue` (space), and the keys " +
+			"under the question `y continue · n send back · a in words`, where every other question reads `y yes · n no`",
+	},
 	"factoryApproveAsk": {
 		screen: "continue, or send it back?",
 		pkg:    "internal/factory",
