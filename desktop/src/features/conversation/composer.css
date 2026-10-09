@@ -18,18 +18,17 @@
   transition: box-shadow var(--duration) var(--ease), border-color var(--duration) var(--ease);
 }
 
+/* Hairline at rest; a slightly stronger line only while typing. */
 .composer:focus-within {
   border-color: var(--control-border-hover);
   box-shadow: var(--shadow);
 }
 
-.composer:has(.composer-field:focus-visible) {
-  border-color: var(--focus-ring);
-}
-
 .composer-field.text-area {
   resize: none;
   overflow-y: auto;
+  min-height: var(--composer-writing-min-height);
+  max-height: var(--composer-writing-max-height);
   padding: var(--space-1) 0;
   font-family: var(--font-sans);
   line-height: var(--line-height-body);
@@ -80,8 +79,21 @@
   color: var(--on-accent);
 }
 
+/* Nothing to send: a quiet outlined ring, not a solid disc. */
 .composer-primary.icon-button:disabled {
+  border: var(--border-width) solid var(--control-border-hover);
+  background: transparent;
+  color: var(--muted);
   opacity: var(--opacity-disabled);
+}
+
+.composer-greeting {
+  margin: 0 0 var(--space-4);
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--font-size-document-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
 }
 
 .composer-reason {

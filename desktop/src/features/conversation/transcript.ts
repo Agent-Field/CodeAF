@@ -5,7 +5,7 @@
 import type { EngineEntry, EngineSnapshot } from '../chat/engine-client.ts';
 import type { ConversationModel, ToolStep, Turn, TurnItem } from './types.ts';
 import type { LiveOverlay } from './live-overlay.ts';
-import { digestOf, parseTaskAside } from './transcript-parse.ts';
+import { digestOf, firstSentence, parseTaskAside } from './transcript-parse.ts';
 
 export { digestOf } from './transcript-parse.ts';
 export { reduceLiveEvent, emptyOverlay } from './live-overlay.ts';
@@ -59,33 +59,42 @@ function addTool(b: Builder, entry: EngineEntry, index: number, ctx: Ctx) {
   else b.turn.items.push({ kind: 'tools', id: `${b.turn.id}:t${index}`, steps: [step] });
 }
 
-function taskIdFor(entry: EngineEntry, title: string, ctx: Ctx): string | undefined {
-  const given = (entry as EngineEntry & AsideFields).TaskIDs?.[0];
-  if (given) return given;
-  const row = ctx.snapshot.tasks.find((t) => (t as { Title?: string }).Title === title);
-  const id = (row as { ID?: unknown } | undefined)?.ID;
-  return id ? String(id) : undefined;
+type TaskRowLike = { ID?: unknown; Title?: string; Status?: string };
+
+function rowById(ctx: Ctx, id: string | undefined): TaskRowLike | undefined {
+  if (!id) return undefined;
+  return (ctx.snapshot.tasks as TaskRowLike[]).find((t) => String(t.ID) === id);
+}
+
+function rowByTitle(ctx: Ctx, title: string): TaskRowLike | undefined {
+  return (ctx.snapshot.tasks as TaskRowLike[]).find((t) => t.Title === title);
 }
 
 function asideItem(entry: EngineEntry, id: string, ctx: Ctx): TurnItem {
   const parsed = parseTaskAside(entry.Text);
   const fields = entry as EngineEntry & AsideFields;
-  if (!parsed && !fields.TaskIDs?.length) return { kind: 'note', id, text: entry.Text };
-  const title = parsed?.title ?? '';
+  const given = fields.TaskIDs?.[0];
+  if (!parsed && !given) return { kind: 'note', id, text: entry.Text };
+  const row = rowById(ctx, given) ?? rowByTitle(ctx, parsed?.title ?? '');
+  // A notice with no name cannot be read or opened; it is only a note.
+  const title = parsed?.title || row?.Title || '';
+  if (!title) return { kind: 'note', id, text: entry.Text };
+  const taskId = given ?? (row?.ID ? String(row.ID) : undefined);
   return {
     kind: 'task',
     id,
-    taskId: taskIdFor(entry, title, ctx),
+    taskId,
     title,
-    status: fields.TaskStatus ?? parsed?.status ?? '',
-    summary: parsed?.summary ?? '',
+    status: fields.TaskStatus ?? parsed?.status ?? row?.Status ?? '',
+    summary: parsed?.summary ?? firstSentence(entry.Text),
     body: entry.Text,
   };
 }
 
 function itemFor(entry: EngineEntry, id: string, ctx: Ctx): TurnItem | undefined {
-  // A blank assistant record only opens a tool round; drawing it would split one group of steps.
-  if (entry.Role === 'assistant') return entry.Text.trim() ? { kind: 'text', id, text: entry.Text, streaming: false } : undefined;
+  // A blank record draws nothing, so it must not split one group of steps in two.
+  if (!entry.Text.trim()) return undefined;
+  if (entry.Role === 'assistant') return { kind: 'text', id, text: entry.Text, streaming: false };
   if (entry.Role === 'note') return { kind: 'note', id, text: entry.Text };
   if (entry.Role === 'aside') return asideItem(entry, id, ctx);
   return undefined;
@@ -165,11 +174,17 @@ function liveStep(live: LiveOverlay, turn: Turn): ToolStep | undefined {
   return { id: `${turn.id}:live-tool`, tool, hint, args: '', output: '', state: 'running' };
 }
 
+function addLiveStep(turn: Turn, step: ToolStep) {
+  const last = turn.items[turn.items.length - 1];
+  if (last?.kind === 'tools') last.steps.push(step);
+  else turn.items.push({ kind: 'tools', id: `${turn.id}:live-tools`, steps: [step] });
+}
+
 function applyOverlay(turn: Turn, snapshot: EngineSnapshot, live: LiveOverlay) {
   const extra = overlayItems(turn, snapshot, live);
   turn.items.push(...extra);
   const step = liveStep(live, turn);
-  if (step) turn.items.push({ kind: 'tools', id: `${turn.id}:live-tools`, steps: [step] });
+  if (step) addLiveStep(turn, step);
   if (extra.some((i) => i.kind === 'text')) turn.state = 'streaming';
 }
 

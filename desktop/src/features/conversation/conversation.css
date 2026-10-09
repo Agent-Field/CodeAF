@@ -19,11 +19,15 @@
 }
 .turn + .turn { margin-top: var(--space-xl); }
 .turn-item { min-width: 0; }
+/* An item that draws nothing must not add a gap. */
+.turn-item:empty { display: none; }
+/* The tool line belongs to the prose it produced. */
+.turn-item:has(> .tool-group) + .turn-item { margin-top: calc(var(--space-1) * -1); }
 
 /* Fold chevron sits in the left gutter and appears on hover or focus. */
 .turn-fold {
   position: absolute;
-  top: var(--space-1);
+  top: var(--space-2);
   right: 100%;
   /* The column's gutter is exactly one icon button wide, so the chevron never clips. */
   margin-right: 0;
@@ -49,33 +53,34 @@
   font-size: var(--font-size-body);
 }
 
-/* Folded row is one button. */
+/* Folded row: one line, `message — digest`; the chevron stays in the gutter. */
 .turn-folded.button {
-  display: grid;
-  grid-template-columns: var(--icon-button-size) minmax(0, 1fr);
-  column-gap: var(--space-1);
-  align-items: center;
+  position: relative;
+  display: flex;
   width: 100%;
+  min-height: var(--icon-button-size);
   padding: var(--space-1) 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   text-align: start;
-  font-size: var(--font-size-body);
+  font-size: var(--font-size-prose);
 }
-
-.turn-folded-chevron { grid-row: span 2; display: grid; place-items: center; color: var(--muted); }
+.turn-folded-chevron { position: absolute; right: 100%; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: var(--icon-button-size); color: var(--muted); }
+.turn-folded-text { display: flex; flex: 1; min-width: 0; }
 .turn-folded-user,
 .turn-folded-digest { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.turn-folded-digest { grid-column: 2; color: var(--muted); }
+.turn-folded-user { flex: 0 1 auto; max-width: 60%; }
+.turn-folded-sep { flex: none; white-space: pre; color: var(--muted); }
+.turn-folded-digest { flex: 1 1 0; color: var(--muted); }
 
 /* User message. */
 .user-message { display: flex; justify-content: flex-end; min-width: 0; }
 .user-message-bubble {
   max-width: var(--chat-bubble-max-width);
   min-width: 0;
-  padding: var(--space-compact) var(--space-row);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-bubble);
   background: var(--bubble);
   color: var(--text);
@@ -118,7 +123,7 @@
 .error-item-text { min-width: 0; }
 
 /* Reply actions: quiet, revealed with the turn's hover or focus. */
-.turn-actions { position: absolute; top: 100%; left: 0; display: flex; opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
+.turn-actions { position: absolute; top: 100%; left: calc(var(--space-2) * -1); margin-top: calc(var(--space-1) * -1); display: flex; opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
 .turn:hover .turn-actions,
 .turn-actions:focus-within { opacity: var(--opacity-opaque); }
 @media (pointer: coarse) {
