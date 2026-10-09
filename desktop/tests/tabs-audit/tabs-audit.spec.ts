@@ -290,11 +290,12 @@ test.describe('closing, reopening and undo', () => {
   await page.goto('/');
   await page.waitForTimeout(800);
   await page.getByRole('button', { name: 'Close Long job', exact: true }).click();
-  const toast = page.getByRole('status').filter({ hasText: /closed and still running/ });
+  const toast = page.getByRole('region', { name: 'Notifications', exact: true }).locator('.toast').filter({ hasText: /closed and still running/ });
   await expect(toast).toBeVisible();
   await expect(toast.getByRole('button', { name: 'Stop it' })).toBeVisible();
   await toast.getByRole('button', { name: 'Undo' }).click();
-  expect(await stripOrder(page)).toEqual(['Alpha', 'Long job', 'Gamma']);
+  // The canonical engine adds its pinned Inbox; Undo preserves the user tabs' relative order.
+  expect((await stripOrder(page)).filter(title => title !== 'Inbox')).toEqual(['Alpha', 'Long job', 'Gamma']);
  });
 
  test('TA-CLOSE-05 closing the active tab selects its right neighbour; closing the last tab leaves one fresh tab', async ({ page }) => {
