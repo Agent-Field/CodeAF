@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Markdown } from '../../components/ui';
 import { useAssetMarkdownHooks } from './assets';
 import { AsideRow } from './AsideRow';
@@ -15,6 +16,7 @@ import type { FailedSend } from './useConversation';
 
 type Props = BlockContext & {
   model: ConversationModel;
+  firstReplyAside?: ReactNode;
   folded: Record<string, boolean>;
   onToggleFold: (turnId: string, folded: boolean) => void;
   failed?: FailedSend;
@@ -55,6 +57,7 @@ export function ConversationTranscript(props: Props) {
       <TurnViewV2
         key={turn.id}
         turn={turn}
+        afterReply={turn === model.turns[0] ? props.firstReplyAside : undefined}
         folded={isFold}
         onToggleFold={() => onToggleFold(turn.id, !isFold)}
         renderBlock={renderFor(turn)}

@@ -221,7 +221,7 @@ function home(v: unknown): HomeDigest {
   }
   return v as unknown as HomeDigest;
 }
-function mutation(v: unknown): Mutation {
+export function validatePlacesMutation(v: unknown): Mutation {
   if (!isObject(v) || !isInt(v.revision) || !Array.isArray(v.receipts) || typeof v.noop !== 'boolean' || !Array.isArray(v.undo) || !v.undo.every(id => typeof id === 'string')) return bad('receipt');
   for (const r of v.receipts) if (!isObject(r) || typeof r.id !== 'string' || !r.id || typeof r.action !== 'string' || !isInt(r.beforeRevision) || !isInt(r.afterRevision)) bad('receipt');
   if (v.noop !== (v.receipts.length === 0) || v.undo.length !== v.receipts.length) bad('receipt');
@@ -282,7 +282,7 @@ export type PlacesClient = ReturnType<typeof createPlacesClient>;
 export function createPlacesClient(transport: PlacesTransport = defaultTransport) {
   const get = (path: string, signal?: AbortSignal) => transport(path, { method: 'GET', signal });
   const post = (path: string, body: unknown = {}, signal?: AbortSignal) => transport(path, { method: 'POST', body, signal });
-  const write = async (path: string, body?: unknown) => mutation(await post(path, body));
+  const write = async (path: string, body?: unknown) => validatePlacesMutation(await post(path, body));
   return {
     /** The whole graph with status roll-ups, the rail and totals. */
     graph: async (opts: { archived?: boolean; signal?: AbortSignal } = {}) => graph(await get(opts.archived ? '/places?archived=1' : '/places', opts.signal)),
