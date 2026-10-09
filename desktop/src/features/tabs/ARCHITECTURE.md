@@ -49,6 +49,10 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 
 Shared, change with care and keep edits small: `tokens.json` (add keys, never rename), `Tab.tsx`/`tab.css` (the primitive: states are props), `model.ts` slice list, `TabItem.tsx` (three host calls), `Workspace.tsx`.
 
+## Group suggestion
+
+`offerRules.ts` (pure, node-tested: `findOffers`, the 30-day memory), `useGroupOffer.ts` (shown-this-launch, decide), `GroupOffer.tsx` (`GroupOffer` takes the `TabsApi`; `GroupOfferPill` is the drawing) and `group-offer.css`. It dispatches the reducer's own `group` action and owns no tab state. Decisions GO1 to GO8 in `docs/DESIGN-QUESTIONS.md`; wiring in the report `tab-group-offer-api.md`.
+
 ## Primitives and specimens
 
 `Tab` (30px, radius 8, 13px glyph, 12px title faded over its last 20px with a mask, close in a fixed 20px slot), `SplitTab`, `GroupCapsule` + `MemberSlot`, `LoadingLine` (2px, card top), `TabStrip` (46px). Every state has a row in `specimens/TabsSpecimen.tsx` on the Design system page; extend it with any new state. Specimens pass `specimen` so tabs render outside a tablist without a `tab` role.
