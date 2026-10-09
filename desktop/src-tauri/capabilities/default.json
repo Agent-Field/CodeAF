@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for codeaf's own windows: main and every w-<n> it opens. Web page views (web-*) are deliberately absent.",
   "windows": [
-    "main"
+    "main",
+    "w-*"
   ],
   "permissions": [
     "core:default",
