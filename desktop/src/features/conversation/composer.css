@@ -88,15 +88,6 @@
   opacity: var(--opacity-disabled);
 }
 
-.composer-greeting {
-  margin: 0 0 var(--space-4);
-  text-align: center;
-  color: var(--muted);
-  font-size: var(--font-size-document-h1);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-tight);
-}
-
 .composer-reason {
   display: flex;
   justify-content: center;

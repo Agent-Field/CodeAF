@@ -1,0 +1,13 @@
+/* Empty conversation: the composer centred on the canvas under one line. No suggestions, no splash. */
+.empty-start-title {
+  display: block;
+  margin: 0 0 var(--space-answer);
+  text-align: center;
+  color: var(--ink-2);
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-leading);
+  font-weight: var(--font-weight-medium);
+}
+
+.conversation-main[data-empty] { background: var(--canvas); padding-inline: var(--space-12); transition: padding var(--duration-work) var(--ease-layout); }
+.conversation-main[data-empty] .conversation-footer { padding-bottom: 0; }
