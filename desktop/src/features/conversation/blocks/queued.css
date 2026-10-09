@@ -1,0 +1,15 @@
+/* Queued messages: muted rows above the composer. */
+.queued-rows { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.queued-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding-inline: var(--space-3) var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  color: var(--muted);
+  font-size: var(--font-size-body);
+}
+.queued-mark { display: grid; flex: none; place-items: center; }
+.queued-text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
