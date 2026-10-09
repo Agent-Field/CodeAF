@@ -521,14 +521,14 @@ func TestSnapshotCarriesRecentOutcomesOnlyWhenThereAreSome(t *testing.T) {
 	}
 	at := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
 	a.mu.Lock()
-	a.outcomes = []session.QuestionOutcome{{Kind: session.QuestionConsent, Token: "9", Head: "Run it?", Outcome: session.QuestionDecided, Words: "Allow once", By: "person", At: at}}
+	a.outcomes = []session.QuestionOutcome{{Kind: session.QuestionConsent, Token: "9", Head: "Run it?", Outcome: session.QuestionDecided, Words: "Allow once", By: "person", At: at, CallID: "c1"}}
 	a.mu.Unlock()
 	w := request(b, "GET", path, "")
 	var snapshot Snapshot
 	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	want := OutcomeWire{Kind: "consent", Token: "9", Head: "Run it?", Outcome: "decided", Words: "Allow once", By: "person", At: "2026-10-09T12:00:00Z"}
+	want := OutcomeWire{Kind: "consent", Token: "9", Head: "Run it?", Outcome: "decided", Words: "Allow once", By: "person", At: "2026-10-09T12:00:00Z", CallID: "c1"}
 	if len(snapshot.RecentOutcomes) != 1 || snapshot.RecentOutcomes[0] != want {
 		t.Fatalf("recent outcomes = %+v", snapshot.RecentOutcomes)
 	}

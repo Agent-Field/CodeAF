@@ -27,6 +27,7 @@ export type QuestionOutcome = {
   words?: string; // "Allow once", or "No longer needed — the turn moved on"
   by?: string; // person | dial | record | asker | window, or who withdrew it
   at?: string; // ISO time
+  callId?: string; // the call the question was about; absent from older engines
 };
 
 export type RichSnapshot = EngineSnapshot & { recentOutcomes?: QuestionOutcome[] | null };
