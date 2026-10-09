@@ -60,6 +60,18 @@ var (
 	ErrManagerAway = errors.New("the manager is open in another window")
 )
 
+// The shaping lines the floor's Shape door says, the same words the launch
+// says ([sayShapeStands], [shapeFailLine], [sayShapeRefused]).
+const SayShapeStands = sayShapeStands
+
+// ShapeFailLine is [shapeFailLine] for the floor's Shape door.
+func ShapeFailLine(err error) string { return shapeFailLine(err) }
+
+// ShapeRefusedLine is the line a refused shaping edit is said with.
+func ShapeRefusedLine(err error) string {
+	return fmt.Sprintf(sayShapeRefused, loopFirstLine(err.Error()))
+}
+
 // shapeFailLine is the line a shaping turn that did not answer is said with.
 func shapeFailLine(err error) string {
 	switch {
@@ -248,7 +260,6 @@ func (lp *floorLoop) applyEdit(c *loopCtl, edit factory.RunEdit, inRun bool) (st
 	if edit.Empty() {
 		return "", nil
 	}
-	edit.By = factory.ByManager
 	it, err := lp.r.opts.Store.Get(c.id)
 	if err != nil {
 		return "", err
@@ -257,31 +268,50 @@ func (lp *floorLoop) applyEdit(c *loopCtl, edit factory.RunEdit, inRun bool) (st
 	now := lp.r.now()
 	line := ""
 	err = lp.write(c, func(it *factory.Item) error {
-		var next factory.Item
-		var lines []string
-		var err error
-		if inRun {
-			next, lines, err = factory.Edit(*it, edit, recipe, factory.EditInRun)
-		} else {
-			next, lines, err = factory.Edit(*it, edit, recipe, factory.EditBeforeRun)
-		}
-		if err != nil {
-			return err
-		}
-		if len(lines) == 0 {
-			return nil
-		}
-		stream := it.Stream
-		*it = next
-		it.Stream = stream
+		l, err := ApplyShape(it, edit, recipe, inRun, now)
+		line = l
+		return err
+	})
+	return line, err
+}
+
+// ApplyShape applies the manager's edit to it in place, the one application
+// of a shaping turn's edit: the runner's at launch and on a steer
+// ([floorLoop.applyEdit]), and the floor's Shape door's when an item page
+// first opens ([factory.Seam.Shape]). The edit is the manager's whatever it
+// says; inRun bounds it to the stages not yet started. The item's run keeps
+// its stream, and a stream's phases not yet started are compiled again from
+// the stages; an item with no stream gets none (its launch compiles them). It
+// answers the edit's one line ([EditLine]), said on the stream when there is
+// one, "" when the edit changed nothing, or the refusal, which changes
+// nothing.
+func ApplyShape(it *factory.Item, edit factory.RunEdit, recipe factory.Recipe, inRun bool, at time.Time) (string, error) {
+	if it == nil || edit.Empty() {
+		return "", nil
+	}
+	edit.By = factory.ByManager
+	mode := factory.EditBeforeRun
+	if inRun {
+		mode = factory.EditInRun
+	}
+	next, lines, err := factory.Edit(*it, edit, recipe, mode)
+	if err != nil {
+		return "", err
+	}
+	if len(lines) == 0 {
+		return "", nil
+	}
+	stream := it.Stream
+	*it = next
+	it.Stream = stream
+	if it.Stream != nil {
 		if phases, changed := tailPhases(*it, it.Stream.Phases); changed {
 			it.Stream.Phases = phases
 		}
-		line = EditLine(lines)
-		loopSay(it, now, "said", line)
-		return nil
-	})
-	return line, err
+	}
+	line := EditLine(lines)
+	loopSay(it, at, "said", line)
+	return line, nil
 }
 
 // EditLine is an edit's lines as the one line the log and the manager say:
@@ -306,6 +336,10 @@ func EditLine(lines []string) string {
 	}
 	return strings.Join(parts, saySep)
 }
+
+// ShapedByManager is [shapedByManager] for the floor's Shape door, which
+// skips an item the manager already shaped, as the launch does.
+func ShapedByManager(it factory.Item) bool { return shapedByManager(it) }
 
 // shapedByManager says whether the manager already shaped the item: a stage
 // it set or added (Stage.By), or a line it recorded on the item's stages

@@ -65,6 +65,9 @@ var factoryRunner struct {
 	// process: a file nobody holds is closed by the collector, and its lock
 	// with it.
 	lock *os.File
+	// shape is the floor's Shape door this process carries for every window
+	// (factory_shape.go's [shapeDoor]), nil until it owns the floor.
+	shape func(ctx context.Context, id int) (string, error)
 }
 
 // factoryRunnerHere is this process's runner, or nil when another process
@@ -80,6 +83,14 @@ func setFactoryRunner(r *factoryrun.Runner, lock *os.File) {
 	factoryRunner.mu.Lock()
 	defer factoryRunner.mu.Unlock()
 	factoryRunner.r, factoryRunner.lock = r, lock
+}
+
+// factoryShapeHere is this process's Shape door, or nil when another process
+// runs the floor (a window then asks that one through the mailbox).
+func factoryShapeHere() func(ctx context.Context, id int) (string, error) {
+	factoryRunner.mu.Lock()
+	defer factoryRunner.mu.Unlock()
+	return factoryRunner.shape
 }
 
 // startFactoryRunner builds this process's runner over st when it can take
@@ -98,14 +109,21 @@ func startFactoryRunner(st *store.Store, workspace, profileDir string, parent se
 			if !ok {
 				return false
 			}
-			r := buildFactoryRunner(st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent), factoryShapeTurns(st, workspace, profileDir, parent))
+			turns := factoryShapeTurns(st, workspace, profileDir, parent)
+			r := buildFactoryRunner(st, workspace, profileDir, factoryStageMaker(st, workspace, profileDir, parent), turns)
+			// AND THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS, in this
+			// process for every window (factory_shape.go's [shapeDoor]).
+			shape := factoryShapeDoor(st, workspace, profileDir, turns)
 			// AN ASK THE PREVIOUS OWNER NEVER ANSWERED IS NOT CARRIED OUT NOW:
 			// its window has already said nobody answered.
 			mb := st.Mailbox()
 			_ = mb.Clear()
 			setFactoryRunner(r, lock)
+			factoryRunner.mu.Lock()
+			factoryRunner.shape = shape
+			factoryRunner.mu.Unlock()
 			guard.Go("factory/run-mailbox", func() {
-				drainFactoryMailbox(context.Background(), mb, r, factoryMailboxEvery)
+				drainFactoryMailbox(context.Background(), mb, r, shape, factoryMailboxEvery)
 			})
 			return true
 		}
@@ -262,9 +280,9 @@ func factorySource(st *store.Store, profileDir string) func(repo string) factory
 
 // drainFactoryMailbox answers, every `every`, what other windows asked of r,
 // until ctx ends.
-func drainFactoryMailbox(ctx context.Context, mb *store.Mailbox, r factory.RunnerDoors, every time.Duration) {
+func drainFactoryMailbox(ctx context.Context, mb *store.Mailbox, r factory.RunnerDoors, shape func(context.Context, int) (string, error), every time.Duration) {
 	for {
-		answerFactoryAsks(mb, r, time.Now())
+		answerFactoryAsks(mb, r, shape, time.Now())
 		t := time.NewTimer(every)
 		select {
 		case <-ctx.Done():
@@ -281,13 +299,28 @@ func drainFactoryMailbox(ctx context.Context, mb *store.Mailbox, r factory.Runne
 // [factory.MailboxWait] and told the person the runner did not answer, and a
 // launch or a stop that happened anyway a minute later would make that
 // sentence a lie.
-func answerFactoryAsks(mb *store.Mailbox, r factory.RunnerDoors, now time.Time) {
+//
+// A SHAPING TURN IS CARRIED BESIDE THE DRAIN ([factory.VerbShape]): it takes up
+// to a minute, and a stop pressed meanwhile must not wait behind it. Its window
+// waits [factory.ShapeMailboxWait] for the reply.
+func answerFactoryAsks(mb *store.Mailbox, r factory.RunnerDoors, shape func(context.Context, int) (string, error), now time.Time) {
 	asks, err := mb.Take()
 	if err != nil {
 		return
 	}
 	for _, ask := range asks {
 		if !ask.At.IsZero() && now.Sub(ask.At) > factory.MailboxWait {
+			continue
+		}
+		if ask.Verb == factory.VerbShape && shape != nil {
+			guard.Go("factory/shape", func() {
+				line, err := shape(context.Background(), ask.ID)
+				reply := factory.Reply{Line: line}
+				if err != nil {
+					reply.Err = err.Error()
+				}
+				_ = mb.Answer(ask.Seq, reply)
+			})
 			continue
 		}
 		_ = mb.Answer(ask.Seq, factory.Carry(r, ask))

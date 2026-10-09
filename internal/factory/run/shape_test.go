@@ -317,3 +317,47 @@ func TestEditLineSaysWhoOnce(t *testing.T) {
 		t.Fatalf("line = %q", got)
 	}
 }
+
+// APPLYSHAPE IS THE ONE APPLICATION, shared by the launch and the floor's
+// Shape door: on an item with no run it changes the stages, records the line
+// and makes no stream; on an item in a run it also compiles the phases not yet
+// started and says the line on the log. An empty edit changes nothing.
+func TestApplyShapeIsSharedWithTheLaunch(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)
+	fresh := factory.Item{ID: 1, Kind: factory.KindIssue, Stages: factory.CopyStages(recipe.For(factory.KindIssue))}
+	before := factory.CopyStages(fresh.Stages)
+	edit := shapeEdit()
+	edit.Ask = map[string]string{"review": "read it for security"}
+	edit.Add = nil
+
+	if line, err := ApplyShape(&fresh, factory.RunEdit{}, recipe, false, at); err != nil || line != "" || len(fresh.Adapted) != 0 {
+		t.Fatalf("an empty edit answered %q, %v and recorded %q", line, err, fresh.Adapted)
+	}
+	line, err := ApplyShape(&fresh, edit, recipe, false, at)
+	if err != nil || line != "manager set review: read it for security · why: the ledger is the risk" {
+		t.Fatalf("line %q, err %v", line, err)
+	}
+	if fresh.Stream != nil || !shapedByManager(fresh) {
+		t.Fatalf("stream %v, record %q", fresh.Stream, fresh.Adapted)
+	}
+	if i := factory.StageIndex(fresh.Stages, "review"); fresh.Stages[i].Ask == before[i].Ask {
+		t.Fatal("the edit did not reach the stages")
+	}
+
+	running := factory.Item{ID: 2, Kind: factory.KindIssue, Stages: factory.CopyStages(recipe.For(factory.KindIssue))}
+	running.Stream = &factory.Stream{Started: at, Phases: loopPhases(running)}
+	add := shapeEdit()
+	add.Ask = nil
+	add.Add = []factory.Added{{Stage: factory.Stage{Name: "arch", Kind: factory.StageChat, Ask: "say whether the shape holds", On: true}, After: "review"}}
+	if _, err := ApplyShape(&running, add, recipe, false, at); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, p := range running.Stream.Phases {
+		found = found || p.Name == "arch"
+	}
+	if !found || len(running.Stream.Log) == 0 {
+		t.Fatalf("phases %+v, log %+v", running.Stream.Phases, running.Stream.Log)
+	}
+}

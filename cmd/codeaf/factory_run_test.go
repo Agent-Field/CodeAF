@@ -188,7 +188,7 @@ func TestANonOwnerLaunchReachesTheOwnerAndLands(t *testing.T) {
 	stopAll(t, g.st, owner)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go drainFactoryMailbox(ctx, g.st.Mailbox(), owner, 5*time.Millisecond)
+	go drainFactoryMailbox(ctx, g.st.Mailbox(), owner, nil, 5*time.Millisecond)
 
 	id := g.checkItem(t)
 	if err := window.Launch(id); err != nil {
@@ -207,7 +207,7 @@ func TestARefusedLaunchFromAWindowSaysTheRunnersReason(t *testing.T) {
 	r := factoryrun.New(factoryrun.Options{Store: g.st, Rail: func() float64 { return 1 }, SpentToday: func() float64 { return 2 }})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go drainFactoryMailbox(ctx, g.st.Mailbox(), r, 5*time.Millisecond)
+	go drainFactoryMailbox(ctx, g.st.Mailbox(), r, nil, 5*time.Millisecond)
 	window := factory.LocalSeam(g.st, time.Now(), factory.WithMailbox(g.st.Mailbox()))
 	id := g.checkItem(t)
 	err := window.Launch(id)

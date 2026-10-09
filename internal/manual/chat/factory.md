@@ -754,6 +754,28 @@ them`. So `do a thorough review on security, code and architecture`, said during
 change review's ask before review starts; the log then says `manager set review: …`. A stage that
 started is never changed.
 
+## the manager reads the issue when you open it — the stages are set before you press r
+
+The first time you open an item's page (`enter` on its row) and the manager has never shaped it,
+the manager reads the issue at once: it takes the same shaping turn it takes at `r`, with the ask
+`Shape the run for this item now.` and nothing you said. If the item has no manager conversation
+yet, one is made first. The story shows `manager is thinking` while it reads; then its reply is
+there and the stages on the left redraw as it set them, each one it changed marked `+`. Nothing
+runs: the stages are only set.
+
+What it set goes into the manager's conversation as one line, the same lines as at `r`:
+`manager set review: … · why: …`, or `the recipe stands` when it changed nothing. When it changed
+nothing, the item's stages say `manager kept the recipe`, so you can see it read the issue. When
+its turn fails, the line is `the manager did not answer · the recipe stands` (or one of the other
+lines under the manager shapes the run), and that line is also on the page's note line.
+
+It happens once per item, never for an item you only looked at on the floor, and never again:
+`r` afterwards runs the stages as they stand without shaping a second time. It does not happen
+for an item that already ran, one the manager already shaped, or one whose manager you already
+talked to (see tell the manager what you want before it runs): there your words are what shapes
+it. A turn that failed shapes nothing, so `r` gives the manager its turn again. The turn is one
+cheap turn, and what it costs counts in the day's spend at the top like any other conversation's.
+
 ## tell the manager what you want before it runs — one word per stage, it sets the asks
 
 Open the manager (`T`, or `enter` on the issue row) and say what you want before you press
