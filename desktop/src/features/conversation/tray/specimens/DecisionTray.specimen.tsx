@@ -45,9 +45,10 @@ export function DecisionTraySpecimen() {
       {cases.map(({ title, questions }) => <Case key={title} title={title} questions={questions} />)}
       <div className="tray-specimen">
         <Text tone="default">Receipt lines</Text>
-        <ReceiptLine state="waiting" text="Waiting on you: Allow `rm -rf build`?" onFocus={() => undefined} />
+        <ReceiptLine state="waiting" text="Waiting on you: `rm -rf build`" onFocus={() => undefined} />
         <ReceiptLine state="answered" text="Allowed once · you · 14:02" />
-        <ReceiptLine state="withdrawn" text="No longer needed — the turn moved on" />
+        <ReceiptLine state="answered" text="Keep strict · picked by codeaf after 30s" />
+        <ReceiptLine state="withdrawn" text="No longer needed. The turn moved on." />
       </div>
     </div>
   );
