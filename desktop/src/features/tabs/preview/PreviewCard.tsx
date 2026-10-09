@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode, Ref } from 'react';
+import { createContext, useContext, type HTMLAttributes, type ReactNode, type Ref } from 'react';
 import { Button, Icon } from '../../../components/ui';
 import { kindDef } from '../kinds/registry';
 import type { TabKind } from '../kinds/types';
@@ -7,6 +7,13 @@ import './preview.css';
 
 /** The 6px dot in a card's header: accent while it works, amber when it needs you, red when it failed. */
 export type PreviewDot = 'accent' | 'amber' | 'danger';
+
+const bodyOnly = createContext(false);
+
+/** An overview owns its card chrome and reuses the kind's preview content. */
+export function PreviewContents({ children }: { children: ReactNode }) {
+  return <bodyOnly.Provider value>{children}</bodyOnly.Provider>;
+}
 
 type CardProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
   kind: TabKind;
@@ -29,6 +36,7 @@ type CardProps = Omit<HTMLAttributes<HTMLDivElement>, 'title'> & {
  * header (icon, kind, state), title, then one body. The same anatomy draws the overview card.
  */
 export function PreviewCard({ kind, label, lead, state, title, children, actions, className = '', ...rest }: CardProps) {
+  if (useContext(bodyOnly)) return <>{children}</>;
   return (
     <div {...rest} className={`preview-card ${className}`} data-kind={kind}>
       <div className="preview-head">
@@ -66,12 +74,13 @@ export function PreviewField({ lines, label }: { lines: readonly FieldLine[]; la
 
 /** The web card, whole: a real screenshot area on a light page (a page is light whatever the theme), then title and address. */
 export function PreviewShot({ title, address, image, heading, excerpt }: { title: string; address: string; image?: string; heading?: string; excerpt?: string }) {
+  const contents = useContext(bodyOnly);
   return (
-    <div className="preview-card preview-card-shot" data-kind="web">
+    <div className={contents ? 'preview-card-shot' : 'preview-card preview-card-shot'} data-kind="web">
       <div className="preview-shot" aria-hidden={image ? undefined : true}>
         {image ? <img src={image} alt="" className="preview-shot-image"/> : <>{heading && <span className="preview-shot-heading">{heading}</span>}{excerpt && <span className="preview-shot-body">{excerpt}</span>}</>}
       </div>
-      <div className="preview-caption"><span className="preview-title">{title}</span><span className="preview-address">{address}</span></div>
+      {!contents && <div className="preview-caption"><span className="preview-title">{title}</span><span className="preview-address">{address}</span></div>}
     </div>
   );
 }
