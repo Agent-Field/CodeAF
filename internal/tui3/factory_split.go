@@ -261,7 +261,6 @@ func (a *app) factoryPointer(msg tea.Msg, m tea.Mouse) (tea.Cmd, bool) {
 	}
 	// `Factory` ON A NARROWED FLOOR puts every repo back, as `esc` does.
 	if a.factoryStripAt(m.X, m.Y) {
-		a.fp.stripHot = false
 		a.factoryClear()
 		return nil, true
 	}

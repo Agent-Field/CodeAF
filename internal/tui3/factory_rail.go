@@ -374,6 +374,7 @@ func (a *app) factoryKeep(was factory.Item, had bool) {
 // factoryClear is `esc` over a narrowed rail: the words and the repo go, and
 // the cursor stays on its item.
 func (a *app) factoryClear() {
+	a.fp.stripHot = false
 	a.factoryRefocus(func() {
 		a.fp.query, a.fp.typing, a.fp.repo = "", false, 0
 	})
