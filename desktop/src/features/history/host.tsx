@@ -9,8 +9,11 @@ import { historyIdOf, idleTabs, type TabActivity } from './model';
 import type { HistoryItem } from './types';
 
 export type HistoryHost = {
-  /** Continue: opens the conversation as a live tab. Plain replaces the History tab that asked; `newTab` keeps it. */
-  continueConversation: (item: HistoryItem, paneId: string, press: { newTab: boolean }) => void;
+  /**
+   * Continue: opens the conversation as a live tab. Plain replaces the History tab that asked, or becomes the new-tab field
+   * that asked; `newTab` keeps the asker, and `background` (the new-tab field's ⌘-click) also leaves the person where they are.
+   */
+  continueConversation: (item: HistoryItem, paneId: string, press: { newTab: boolean; background?: boolean }) => void;
   /** Archive: the conversation leaves the tab strip and History marks it archived. Nothing is deleted. */
   archiveConversation: (item: HistoryItem) => Promise<void>;
 };
@@ -30,9 +33,12 @@ export function useHistoryWorkspace(state: WorkspaceState, dispatch: Dispatch<Wo
     if (held) { dispatch({ type: 'select', id: held.id }); return; }
     const tab = newTab({ kind: 'conversation', title: item.title.trim() || undefined, ...(item.title.trim() ? { titleSource: 'engine' as const } : {}), sessionFile: item.sessionFile });
     const holder = tabHolding(current, paneId);
+    const asker = current.tabs.flatMap(panesOf).find(pane => pane.id === paneId);
+    // The new-tab field turns into the conversation wherever it sits (a split pane, a pinned tab), the way a file or a question does.
+    if (!press.newTab && asker?.kind === 'newtab') dispatch({ type: 'newtab-become', id: paneId, kind: 'conversation', title: tab.title, titleSource: tab.titleSource, sessionFile: item.sessionFile });
     // A plain tab that is not pinned is replaced in place; a split pane, a pinned tab or a command-click opens a new tab.
-    if (!press.newTab && holder && holder.id === paneId && !holder.pinned) dispatch({ type: 'history-replace', id: holder.id, tab });
-    else dispatch({ type: 'open', tab, background: false });
+    else if (!press.newTab && holder && holder.id === paneId && !holder.pinned) dispatch({ type: 'history-replace', id: holder.id, tab });
+    else dispatch({ type: 'open', tab, background: !!press.background });
   }, [dispatch]);
   const archiveConversation = useCallback<HistoryHost['archiveConversation']>(async item => {
     // A plain tab holding the conversation goes the way an idle tab does: off the strip, not into Reopen.

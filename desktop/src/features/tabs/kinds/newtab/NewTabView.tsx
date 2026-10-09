@@ -8,6 +8,9 @@ function RowLabel({ row, query }: { row: NewTabRow; query: string }) {
   return <span className="newtab-row-label">{before}{match && <b>{match}</b>}{after}{row.detail && <>{' '}<span className="newtab-row-detail">{row.detail}</span></>}</span>;
 }
 
+/** A history row shows its ↵ only while it is the chosen one, as the design does; every other row's hint is fixed. */
+const hintOf = (row: NewTabRow, activeRowId?: string) => row.hint ?? (row.kind === 'history' && row.id === activeRowId ? '↵' : undefined);
+
 export type NewTabViewProps = {
   /** The id the list and its rows hang their ids from. */
   id: string;
@@ -21,7 +24,8 @@ export type NewTabViewProps = {
   enterHint?: string;
   /** Live only: pointer and click wiring. A specimen leaves it out and draws a still card. */
   onHover?: (row: NewTabRow) => void;
-  onPick?: (row: NewTabRow) => void;
+  /** `background` is the ⌘ (Ctrl) click: open without leaving the field. */
+  onPick?: (row: NewTabRow, press: { background: boolean }) => void;
 };
 
 /** The drawing of the new tab (design 3f / Components "Command field"): shared by the live pane and the Design system specimen. */
@@ -38,10 +42,10 @@ export function NewTabView({ id, field, query, sections, activeRowId, caption, e
         {sections.map((section, at) => <div key={section.title ?? `section-${at}`} role="group" aria-label={section.title}>
           {section.title && <span className="newtab-section" aria-hidden="true">{section.title}</span>}
           {section.rows.map(row => <div key={row.id} id={`newtab-${id}-${row.id}`} className="newtab-row" role="option" aria-selected={row.id === activeRowId}
-            onMouseMove={onHover && (() => onHover(row))} onMouseDown={onPick && (event => event.preventDefault())} onClick={onPick && (() => onPick(row))}>
+            onMouseMove={onHover && (() => onHover(row))} onMouseDown={onPick && (event => event.preventDefault())} onClick={onPick && (event => onPick(row, { background: event.metaKey || event.ctrlKey }))}>
             {row.dot ? <span className="tab-dot" aria-hidden="true"/> : <Icon name={row.icon} size="sm"/>}
             <RowLabel row={row} query={query}/>
-            {row.hint && <span className="newtab-row-hint">{row.hint}</span>}
+            {hintOf(row, activeRowId) && <span className="newtab-row-hint">{hintOf(row, activeRowId)}</span>}
           </div>)}
         </div>)}
       </div>

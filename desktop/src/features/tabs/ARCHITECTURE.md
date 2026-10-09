@@ -32,6 +32,7 @@ Workspace.tsx  (owns useReducer(workspaceReducer), summaries, dialogs; builds Ta
 - `pane` renders the body inside a card (`PaneRenderProps`: `pane`, `label`, `focused`, `split`, `actions`). `split` and `focused` are what the conversation lane needs for the compact 36px composer.
 - `preview` is the hover-card/overview body slot (`PreviewRenderProps`), `null` until the preview lane fills it.
 - Live kinds include conversation, task, newtab, history, file, diff, terminal, settings and web. History uses the engine `/history` routes. Web uses a native child view in the desktop app and an Open in browser line elsewhere; its address is `Pane.target.url`. Each kind owns its renderer and capability checks.
+History search in the new-tab field offers two matches and See all; Ctrl/Cmd Enter opens the matching History query.
 
 ## Ownership by lane (a lane edits ONLY its files; shared files are listed last)
 
