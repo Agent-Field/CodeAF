@@ -1,0 +1,17 @@
+/* Group capsule (Components "Tab · group · split tab"): padding 2, gap 2, radius 10, --tab-hover fill. */
+.workspace-tab-group { display: flex; align-items: center; flex: none; gap: var(--tab-split-gap); padding: var(--space-half); border-radius: var(--radius-group); background: var(--tab-hover); }
+.workspace-group-label.button { display: flex; align-items: center; gap: var(--tab-member-gap); flex: none; max-width: var(--tab-group-max-width); height: var(--tab-group-height); min-height: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-segment-item); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); font-weight: var(--font-weight-medium); }
+.workspace-group-label.button:hover:not(:disabled) { background: var(--tab-hover); color: var(--ink); }
+.workspace-group-name { overflow: hidden; white-space: nowrap; min-width: 0; }
+.workspace-group-count { font-weight: var(--font-weight-regular); color: var(--ink-3); }
+.workspace-group-tabs { display: flex; align-items: center; gap: var(--tab-split-gap); min-width: 0; }
+.workspace-group-tab-slot { overflow: hidden; display: flex; flex: 0 1 auto; width: var(--tab-max-width); min-width: var(--tab-min-width); max-width: var(--tab-max-width); opacity: var(--opacity-opaque); transition: max-width var(--duration-sidebar) var(--ease-layout), opacity var(--dur-fast) var(--ease), visibility var(--duration-sidebar); }
+.workspace-group-tab-slot[data-hidden="true"] { min-width: 0; max-width: 0; opacity: var(--opacity-transparent); visibility: hidden; pointer-events: none; }
+.workspace-group-tab-slot .workspace-tab { flex: 1 1 auto; }
+
+/* Collapsed: the capsule dissolves and the label becomes the 30px pill; the active member sits beside it as an ordinary tab. */
+.workspace-tab-group[data-collapsed="true"] { padding: 0; background: transparent; gap: var(--tab-split-gap); }
+.workspace-tab-group[data-collapsed="true"] .workspace-group-label.button { height: var(--tab-height); padding: 0 var(--space-compact); border-radius: var(--radius-group); background: var(--tab-hover); gap: var(--tab-member-gap); }
+.workspace-tab-group[data-collapsed="true"] .workspace-group-label.button:hover:not(:disabled) { background: var(--field); }
+.workspace-tab-group[data-collapsed="true"] .workspace-tab[data-in-group] { height: var(--tab-height); border-radius: var(--radius-control); }
+.workspace-tab-group[data-collapsed="true"] .workspace-tab[data-in-group] .workspace-tab-select.button { padding-left: var(--space-compact); gap: var(--space-2); }

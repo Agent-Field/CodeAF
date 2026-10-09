@@ -23,8 +23,8 @@ test('top tabs preserve isolated drafts across closing, reopening and reload', a
  await page.getByRole('tab', { name: 'Desktop UX', exact: true }).click({ button: 'right' });
  await page.getByRole('menuitem', { name: /^Close tab/ }).click();
  await expect(page.getByRole('tab', { name: 'Engine design', exact: true })).toHaveAttribute('aria-selected', 'true');
- await page.getByRole('button', { name: 'Tab actions', exact: true }).click();
- await page.getByRole('menuitem', { name: 'Reopen closed tab', exact: true }).click();
+ await page.getByRole('tab', { name: 'Engine design', exact: true }).click({ button: 'right' });
+ await page.getByRole('menuitem', { name: /^Reopen closed tab/ }).click();
  await expect(page.getByRole('textbox', { name: 'Message', exact: true })).toHaveValue('Quiet chrome');
  await page.reload();
  await expect(page.getByRole('tab', { name: 'Desktop UX', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -56,21 +56,20 @@ test('pinning, groups and keyboard context menus retain visible selection', asyn
  await expect(page.getByRole('tab', { name: 'Pinned work', exact: true })).toBeFocused();
  await expectAccessible(page);
 });
-test('many top tabs scroll without hiding narrow-screen actions', async ({ page }) => {
+test('many top tabs scroll under a mask with a +N menu and keep narrow-screen actions reachable', async ({ page }) => {
  await page.setViewportSize({ width: 320, height: 560 }); await page.goto('/');
- await expect(page.getByRole('button', { name: 'Scroll tabs left', exact: true })).not.toBeVisible();
- await expect(page.getByRole('button', { name: 'Scroll tabs right', exact: true })).not.toBeVisible();
+ await expect(page.getByRole('button', { name: 'Tab actions', exact: true })).not.toBeVisible();
  for (let index = 0; index < 8; index++) await page.getByRole('button', { name: 'New tab', exact: true }).click();
  await expect(page.getByRole('tab')).toHaveCount(9);
  const strip = page.locator('.workspace-tabstrip');
  await expect(strip).toHaveCSS('scrollbar-width', 'none');
- await expect(page.getByRole('button', { name: 'Scroll tabs left', exact: true })).toBeVisible();
- const previousScroll = await strip.evaluate(el => el.scrollLeft);
- const viewportWidth = await strip.evaluate(el => el.clientWidth);
- await page.getByRole('button', { name: 'Scroll tabs left', exact: true }).click();
- await expect.poll(() => strip.evaluate(el => el.scrollLeft)).toBeLessThan(previousScroll);
- expect(await strip.evaluate(el => el.clientWidth)).toBe(viewportWidth);
- await expect(page.getByRole('button', { name: 'Scroll tabs right', exact: true })).toBeVisible();
+ await expect(page.getByRole('button', { name: /Scroll tabs/ })).toHaveCount(0);
+ const more = page.getByRole('button', { name: 'Tab actions', exact: true });
+ await expect(more).toBeVisible();
+ await expect(more).toHaveText(/^\+\d+/);
+ await expect(strip).toHaveAttribute('data-fade-end', 'true');
+ await strip.evaluate(el => { el.scrollLeft = 0; });
+ await expect.poll(() => strip.evaluate(el => el.scrollLeft)).toBe(0);
  await expect(page.getByRole('button', { name: 'New tab', exact: true })).toBeInViewport();
  await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeInViewport();
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -78,12 +77,12 @@ test('many top tabs scroll without hiding narrow-screen actions', async ({ page 
  await expectThemedSurface(page, page.getByRole('dialog', { name: 'All tabs overview', exact: true }));
  await expectAccessible(page); await page.keyboard.press('Escape');
  await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeFocused();
- await page.getByRole('button', { name: 'Tab actions', exact: true }).click();
+ await more.click();
  await expectThemedSurface(page, page.getByRole('menu', { name: 'Tab actions', exact: true }));
  await expect(page.getByRole('menuitem', { name: /^New tab/ })).toBeFocused();
  await expectAccessible(page);
  await page.keyboard.press('Escape');
- await expect(page.getByRole('button', { name: 'Tab actions', exact: true })).toBeFocused();
+ await expect(more).toBeFocused();
 });
 test('malformed saved state recovers to a usable workspace', async ({ page }) => {
  await page.addInitScript(() => localStorage.setItem('codeaf.desktop.workspace.v1', JSON.stringify({ tabs: [{ id: 'bad', title: 'bad', draft: '', pinned: false, groupId: 'missing' }], groups: [], closed: [null], activeId: 'bad', nextNumber: -1 })));
@@ -183,9 +182,9 @@ test('platform tab shortcuts create, close, reopen, navigate and open overview',
  await page.keyboard.press(mac ? 'Meta+Shift+\\' : 'Control+Shift+a');
  await expect(page.getByRole('dialog', { name: 'All tabs overview', exact: true })).toBeVisible();
  await page.keyboard.press('Escape');
- await page.getByRole('button', { name: 'Tab actions', exact: true }).click();
- const menu = page.getByRole('menu', { name: 'Tab actions', exact: true });
- await expect(menu.locator('kbd').first()).toHaveText(mac ? '⌘ T' : 'Ctrl T');
+ await page.getByRole('tab').first().click({ button: 'right' });
+ const menu = page.getByRole('menu').first();
+ await expect(menu.locator('kbd').first()).toHaveText(mac ? '⌘ W' : 'Ctrl W');
  await page.keyboard.press('Escape');
  const commandTabHandled = await page.evaluate(() => {
   const event = new KeyboardEvent('keydown', { key: 'Tab', code: 'Tab', metaKey: true, bubbles: true, cancelable: true });
@@ -212,14 +211,17 @@ test('native tab actions attach to workspace without invoking the engine', async
  await expect(page.getByRole('tab')).toHaveCount(2);
 });
 
-test('tab close stays inside its tab and reveals without changing width', async ({ page }) => {
+test('tab close sits in a fixed slot: shown on hover and on the active tab, never changing width', async ({ page }) => {
  await page.goto('/');
+ await page.getByRole('button', { name: 'New tab', exact: true }).click();
  const tab = page.getByRole('tab').first();
  const wrapper = page.locator('.workspace-tab').first();
  const close = wrapper.getByRole('button', { name: /^Close / });
+ const activeClose = page.locator('.workspace-tab[data-active="true"]').getByRole('button', { name: /^Close / });
  await page.mouse.move(600, 400);
  await page.evaluate(async () => { await Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => undefined))); });
  await expect(close).toHaveCSS('opacity', '0');
+ await expect(activeClose).toHaveCSS('opacity', '1');
  const resting = await wrapper.boundingBox();
  await tab.hover();
  await expect(close).toHaveCSS('opacity', '1');
@@ -228,6 +230,8 @@ test('tab close stays inside its tab and reveals without changing width', async 
  expect(hovering!.width).toBe(resting!.width);
  expect(control!.x).toBeGreaterThanOrEqual(hovering!.x);
  expect(control!.x + control!.width).toBeLessThanOrEqual(hovering!.x + hovering!.width);
+ const slot = await wrapper.locator('.workspace-tab-close-slot').boundingBox();
+ expect(slot!.width).toBe(parseFloat(design.foundation['tab-close-slot']));
  await page.mouse.move(600, 400);
  await close.focus();
  await expect(close).toHaveCSS('opacity', '1');

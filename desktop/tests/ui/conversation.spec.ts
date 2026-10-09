@@ -26,7 +26,8 @@ test('first send creates the session, shows literal words, renders a Markdown re
   await expect.poll(() => posts(engine, '/turn').length).toBe(1);
   expect(posts(engine, '/sessions')).toHaveLength(1);
   expect(posts(engine, '/turn')[0].body).toMatchObject({ text: 'Explain **the** add helper', mode: 'submit' });
-  const bubble = page.getByRole('tabpanel').getByText('Explain **the** add helper', { exact: true });
+  // The sent words also sit in the composer for a few ms until the send settles, so name the bubble itself.
+  const bubble = page.getByRole('tabpanel').locator('.user-message-text', { hasText: 'Explain **the** add helper' });
   await expect(bubble).toBeVisible();
   expect(await bubble.locator('strong').count()).toBe(0);
   await expect(page.getByText('Here is the short version.')).toBeVisible();

@@ -63,6 +63,8 @@ extend the responsive browser contracts rather than assume desktop width.
 
 ## Tab workspace contract
 
+> Superseded where it conflicts: the shell design (design 2h, 3j, Components "Tab · group · split tab") and `src/features/tabs/ARCHITECTURE.md` win. In particular: tabs are 30px chips (the active tab is canvas plus sh-1, not an upper-corner tab joined to the page), titles fade under a mask with no ellipsis, a split is one merged tab, groups are capsules that collapse to "Label N", and overflow is a 40px mask plus a "+N" menu with no scroll chevrons and no permanent "..." menu. Rules below that do not conflict (persistence, quiet new tabs, detaching never stops work, roving focus, shared menus) still apply.
+
 Tabs belong in the horizontal strip above workspace content. Keep the sidebar
 for navigation; do not duplicate conversation tabs there. Use the shared menu
 primitives for right-click and overflow actions, with keyboard equivalents.
