@@ -1,4 +1,4 @@
-import { Button, ContextMenu, IconButton } from '../../../components/ui';
+import { Button, ContextMenu, IconButton, RowActions } from '../../../components/ui';
 import type { EngineTaskRow } from '../../chat/engine-client';
 import { rowFlags, rowKind } from '../taskState';
 import { rowAge, waitPrefix } from './rowText';
@@ -61,7 +61,7 @@ export function TaskRow(props: TaskRowProps) {
   const actions = taskActions(row, commands);
   return (
     <ContextMenu label={`${row.Title} actions`} items={actions}>
-      <div className="task-row" data-kind={kind} data-depth={props.depth === 0 ? 0 : 1} data-parent={props.expanded !== undefined || undefined} data-current={current || undefined}>
+      <div className="task-row" data-actions-host="" data-kind={kind} data-depth={props.depth === 0 ? 0 : 1} data-parent={props.expanded !== undefined || undefined} data-current={current || undefined}>
         <Disclosure row={row} expanded={props.expanded} onToggle={props.onToggle} />
         <Button
           className="task-panel-main"
@@ -75,11 +75,11 @@ export function TaskRow(props: TaskRowProps) {
           <Title row={row} rows={props.rows} />
         </Button>
         <Meta row={row} kind={kind} now={now} below={below} />
-        <span className="task-row-actions">
+        <RowActions className="task-row-actions">
           {actions.map((action) => (
-            <IconButton key={action.id} label={action.label} icon={action.icon ?? 'more'} iconSize="xs" onClick={action.onSelect} />
+            <IconButton key={action.id} label={action.label} icon={action.icon ?? 'more'} size="row" iconSize="xs" onClick={action.onSelect} />
           ))}
-        </span>
+        </RowActions>
       </div>
     </ContextMenu>
   );

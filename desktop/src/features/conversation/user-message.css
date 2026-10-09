@@ -42,32 +42,15 @@
 }
 .user-message-bubble .user-message-toggle.button:hover:not(:disabled) { background: transparent; color: var(--ink); }
 
-/* Actions: hidden at rest, fade in on hover or focus within, always shown on touch. */
-.user-message-actions {
+/* Actions: the shared RowActions (hidden at rest, shown on hover, focus or touch), placed under the bubble. */
+.user-message-actions.row-actions {
   position: absolute;
   top: 100%;
   right: 0;
   z-index: 1;
-  display: flex;
   gap: var(--user-message-gap);
   margin-top: var(--space-1);
-  color: var(--ink-3);
-  opacity: var(--opacity-transparent);
-  transition: opacity var(--dur-fast) var(--ease);
 }
-.user-message:hover .user-message-actions,
-.user-message:focus-within .user-message-actions { opacity: var(--opacity-opaque); }
-@media (pointer: coarse) {
-  .user-message-actions { opacity: var(--opacity-opaque); }
-}
-.user-message-actions .icon-button {
-  width: var(--message-action-size);
-  height: var(--message-action-size);
-  border-radius: var(--radius-message-action);
-  color: var(--ink-3);
-}
-.user-message-actions .icon-button:hover:not(:disabled) { background: var(--field); color: var(--ink); }
-.user-message-actions .icon-button svg { width: var(--message-action-icon); height: var(--message-action-icon); }
 /* The copied state shows as the check icon; the live region stays for screen readers. */
 .user-message-actions .copy-button-status { position: absolute; width: var(--hairline); height: var(--hairline); overflow: hidden; clip-path: inset(50%); }
 

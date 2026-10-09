@@ -13,10 +13,7 @@
   font-size: var(--font-size-body);
 }
 .queued-row:hover { padding-inline-end: var(--space-1); background: var(--field); color: var(--ink); }
-.queued-actions { display: flex; gap: var(--space-half); color: var(--ink-2); opacity: var(--opacity-transparent); }
-.queued-row:is(:hover, :focus-within) .queued-actions { opacity: var(--opacity-opaque); }
-@media (hover: none), (pointer: coarse) { .queued-actions { opacity: var(--opacity-opaque); } }
-.icon-button.queued-action { width: var(--queue-action-size); height: var(--queue-action-size); border-radius: var(--queue-action-radius); color: inherit; }
+/* Edit and remove are the shared RowActions with row-size icon buttons; the row is their host. */
 .queued-mark, .queued-grip { display: grid; flex: none; place-items: center; width: var(--queue-mark-size); height: var(--queue-mark-size); color: var(--ink-3); }
 .queued-grip { display: none; position: absolute; left: var(--space-4); cursor: grab; }
 .queued-row[data-movable]:is(:hover, :focus-within) .queued-mark { visibility: hidden; }

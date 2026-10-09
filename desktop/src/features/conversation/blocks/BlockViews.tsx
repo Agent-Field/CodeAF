@@ -1,4 +1,4 @@
-import { CopyButton, Markdown } from '../../../components/ui';
+import { CopyButton, Markdown, RowActions } from '../../../components/ui';
 import { useAssetMarkdownHooks } from '../assets/markdownHooks';
 import { ErrorItem } from '../ErrorItem';
 import type { TurnBlock } from '../types';
@@ -23,12 +23,12 @@ export function AnswerBlock({ block }: { block: Block<'answer'> }) {
   const hooks = useAssetMarkdownHooks();
   if (!block.text) return null;
   return (
-    <div className="answer-block">
+    <div className="answer-block" data-actions-host="">
       <Markdown {...hooks}>{block.text}</Markdown>
       {!block.streaming && (
-        <div className="answer-actions">
-          <CopyButton text={block.text} label="Copy answer" />
-        </div>
+        <RowActions className="answer-actions">
+          <CopyButton text={block.text} label="Copy answer" size="message" iconSize="xs" />
+        </RowActions>
       )}
     </div>
   );

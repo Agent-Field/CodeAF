@@ -12,25 +12,17 @@
 .site-icon-mono[data-hue="6"] { background: var(--site-icon-hue-6); }
 .site-icon-favicon { object-fit: contain; }
 
-.link-chip {
-  display: inline-flex;
-  align-items: center;
+/* The link chip is the shared Chip on an anchor: only its tighter lead, gap and link reset are its own. */
+.chip.link-chip {
   gap: var(--space-tight);
-  max-width: 100%;
-  height: var(--chip-height);
-  padding: 0 var(--link-chip-pad-end) 0 var(--space-three-quarter);
-  vertical-align: middle;
-  border-radius: var(--radius-chip);
-  background: var(--field);
-  color: var(--ink);
-  font-size: var(--type-label-size);
+  padding-left: var(--space-three-quarter);
   line-height: var(--type-label-leading);
   text-decoration: none;
   white-space: nowrap;
   transition: background var(--dur-fast) var(--ease);
 }
-.link-chip:hover { background: var(--field-2); }
-.link-chip:active { background: var(--field-2); }
+.chip.link-chip:hover, .chip.link-chip:active { background: var(--field-2); }
+.chip.link-chip:focus-visible { outline: var(--focus-ring-width) solid transparent; box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft); }
 .link-chip-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-name-max-width); font-weight: var(--type-label-strong); }
 .link-chip-domain { min-width: 0; overflow: hidden; text-overflow: ellipsis; max-width: var(--asset-dir-max-width); color: var(--ink-3); }
 

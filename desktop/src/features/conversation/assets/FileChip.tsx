@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, ContextMenu, Icon, type IconName } from '../../../components/ui';
+import { ChipButton, ContextMenu, Icon, type IconName } from '../../../components/ui';
 import type { EnginePathFact } from '../../chat/engine-client';
 import type { FileRef } from '../types';
 import { useAssets, usePathFact } from './AssetContext';
@@ -67,7 +67,7 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
   return (
     <>
       <ContextMenu label={`Actions for ${name}`} items={fileMenu(path, assets, availability)}>
-        <Button
+        <ChipButton
           className="file-chip"
           data-state={availability}
           data-source={source}
@@ -80,7 +80,7 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
           <span className="file-chip-name">{name}</span>
           {note ? <span className="file-chip-dir">{note}</span> : dir && <span className="file-chip-dir">{middleTruncate(dir, dirBudget)}</span>}
           <Stat added={added} removed={removed} capped={capped} />
-        </Button>
+        </ChipButton>
       </ContextMenu>
       {open && <PreviewSheet path={path} onClose={() => setOpen(false)} />}
     </>

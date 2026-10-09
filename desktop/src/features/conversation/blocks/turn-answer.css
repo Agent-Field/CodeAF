@@ -12,20 +12,8 @@
 
 /* Answer: the full column width. Copy shows on hover or focus, bottom-left, its icon aligned with the text. */
 .answer-block { position: relative; max-width: var(--chat-column-max-width); color: var(--ink); }
-.answer-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-half);
-  margin-left: calc(var(--space-tight) * -1);
-  color: var(--ink-3);
-  opacity: var(--opacity-transparent);
-  transition: opacity var(--dur-fast) var(--ease);
-}
-.answer-block:hover .answer-actions,
-.answer-actions:focus-within { opacity: var(--opacity-opaque); }
-@media (pointer: coarse) {
-  .answer-actions { opacity: var(--opacity-opaque); }
-}
+/* Copy is the shared RowActions, set back so the icon lines up with the text. */
+.answer-actions.row-actions { margin-left: calc(var(--space-tight) * -1); }
 
 /* Footer: one quiet line; only a failure takes colour and an action. */
 .turn-footer {
@@ -53,6 +41,3 @@
 .turn-footer-dot { display: grid; place-items: center; width: var(--mark-box); height: var(--mark-box); }
 .turn-footer-dot::before { content: ""; width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--accent); }
 
-@media (prefers-reduced-motion: reduce) {
-  .answer-actions { transition: none; }
-}
