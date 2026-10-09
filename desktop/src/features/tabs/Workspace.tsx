@@ -5,6 +5,7 @@ import { Button, Icon, Text, TextInput } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { summarize, type TabSummary } from '../conversation/tabSummary';
 import { useBackgroundSessions } from '../conversation/useBackgroundSessions';
+import { fileTab, findFileTab, type FileTabKind } from '../files/fileTarget';
 import type { TabsApi } from './context';
 import type { PaneActions } from './kinds/slots';
 import { kindDef } from './kinds/registry';
@@ -33,6 +34,11 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
   function openTaskTab(source: Pane, taskId: string, title: string) {
     const tab: Tab = { id: crypto.randomUUID(), kind: 'task', title, titleSource: 'manual', pinned: false, draft: '', sessionFile: source.sessionFile, route: { taskId, back: [''], forward: [] } };
     dispatch({ type: 'open', tab, background: true });
+  }
+  function openFile(source: Pane, path: string, kind: FileTabKind) {
+    const tab = fileTab(source, path, kind, crypto.randomUUID());
+    const existing = findFileTab(state.tabs, tab);
+    dispatch(existing ? { type: 'select', id: existing } : { type: 'open', tab, background: false });
   }
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [switcher, setSwitcher] = useState<Switcher>(null);
@@ -82,6 +88,7 @@ export function Workspace({ enabled, onActivate, leading }: Props) {
     onView: change => dispatch({ type: 'view', id: pane.id, change }),
     onSummary: summary => receiveSummary(pane.id, summary),
     onOpenTaskTab: (taskId, title) => openTaskTab(pane, taskId, title),
+    onOpenFile: (path, kind) => openFile(pane, path, kind),
   });
   return <section className="tab-workspace" aria-label="Conversation workspace">
     <TabStrip api={api} leading={leading} overviewTrigger={overviewTrigger} onOverview={() => setOverviewOpen(true)}/>

@@ -6,7 +6,7 @@ import type { Pane } from '../types';
 
 export type PreviewTarget = PaneTarget;
 
-export const targetOf = (pane: Pane): PreviewTarget => pane.target ?? {};
+export const targetOf = (pane: Pane): PreviewTarget => ({ ...(pane.file ? { path: pane.file.path } : {}), ...pane.target });
 
 /** "pkg.go.dev/encoding/json" from a full address. */
 export function addressOf(url: string): string {

@@ -76,6 +76,21 @@ pub fn reveal_path(path: String, workspace: String) -> Result<(), String> {
     reveal(&confine(&path, &workspace)?)
 }
 
+/// This machine's name, as the engine reports its own host. The renderer compares the two to decide whether
+/// "Open in editor" can reach the engine's files (only when the engine runs on this very machine).
+#[tauri::command]
+pub fn host_name() -> Result<String, String> {
+    let output = std::process::Command::new("hostname")
+        .output()
+        .map_err(|error| error.to_string())?;
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if name.is_empty() {
+        Err("this machine has no name".into())
+    } else {
+        Ok(name)
+    }
+}
+
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
     let url = checked_url(&url)?;

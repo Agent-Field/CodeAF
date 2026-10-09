@@ -1,6 +1,6 @@
-import { placeholderPane } from './Placeholder';
 import { FilePreview } from '../preview/bodies';
+import { FilePane } from '../../files/FilePane';
 import type { KindDef } from './slots';
 
-/** Placeholder. No engine file-read bridge backs a file viewer yet; the file lane fills `pane` and `preview`. */
-export const fileKind: KindDef = { kind: 'file', label: 'File', icon: 'fileCode', backed: false, pane: placeholderPane('File', 'fileCode'), preview: FilePreview };
+/** Live. Reads the file through the engine (File.Text, Diff.Changes, Diff.File), so it works for a remote engine too. */
+export const fileKind: KindDef = { kind: 'file', label: 'File', icon: 'fileCode', backed: true, pane: FilePane, preview: FilePreview };

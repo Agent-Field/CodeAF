@@ -45,3 +45,10 @@ export function isWorkShortcut(event: KeyEvent): 'focus'|'preset'|'fold'|undefin
  if(event.key.toLowerCase()==='l')return 'focus';
  if(event.key==='.')return 'preset';
 }
+
+/** File and diff tabs: copy the open file's path (Shell 3e menu shows it beside Copy path). */
+export const copyPathShortcut = formatShortcut('⌘/Ctrl ⇧ C');
+export function isCopyPathShortcut(event: KeyEvent) {
+ const primary = isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+ return primary && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'c';
+}

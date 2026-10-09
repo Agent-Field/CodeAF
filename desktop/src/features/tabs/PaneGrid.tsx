@@ -1,4 +1,5 @@
 import type { Dispatch } from 'react';
+import { OpenFileProvider } from '../files/OpenFile';
 import { kindDef } from './kinds/registry';
 import type { PaneActions } from './kinds/slots';
 import { panesOf, type Pane, type Tab, type WorkspaceAction } from './model';
@@ -29,7 +30,7 @@ export function PaneGrid({ tab, dispatch, actionsFor }: { tab: Tab; dispatch: Di
             onPointerDownCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}
             onFocusCapture={split && !focused ? () => dispatch({ type: 'split-focus', id: tab.id, index }) : undefined}>
             {split && <PaneHeader pane={pane} focused={focused}/>}
-            <div className="workspace-pane-body"><Body pane={pane} label={pane.title} focused={focused} split={split} actions={actionsFor(pane)}/></div>
+            <div className="workspace-pane-body"><OpenFileProvider value={actionsFor(pane).onOpenFile}><Body pane={pane} label={pane.title} focused={focused} split={split} actions={actionsFor(pane)}/></OpenFileProvider></div>
           </section>
         );
       })}
