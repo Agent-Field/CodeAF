@@ -160,3 +160,26 @@ it never touches what you attached.
 
 A conversation **started in a place** opens in the desktop app's own working folder, not in one of
 the place's folders: a place can list several folders, and picking one would be a guess.
+
+## How desktop Place suggestions group a saved library
+
+Saved chats are compared using their title, recap when present, and the first message you
+wrote. Reading that opening message changes nothing in the conversation. Your home folder,
+the filesystem root, and the app's shared working folder are not treated as project topics.
+A real project folder can suggest a place named after the folder without a model call.
+
+For topic groups, the Place suggestions model checks whether the chats belong together.
+It also considers a bounded sample of up to 64 chats the folder and word rules could not
+group, so related chats do not need identical vocabulary. Pasted instructions or a shared
+kind of request are not reasons to group unrelated chats. A declined suggestion stays
+snoozed; organizing again does not create duplicate open names under the same parent.
+
+The organizing interval applies to one pass, rather than each question in that pass. Daily
+call limits, minimum group size, confidence, pending offers and hierarchy limits still
+apply. Nothing is moved until you accept. Accepting creates structural undo receipts.
+
+With no conversation tab open, suggestions can ask through an existing saved conversation,
+including one originally opened in the terminal. The reader joins that conversation's own
+workspace host, never types a message or starts a turn, and bills the question to that
+conversation. A missing workspace or unavailable engine leaves rules available and shows
+why the model could not answer; it does not create a spare conversation to ask through.

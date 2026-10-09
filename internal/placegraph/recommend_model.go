@@ -167,13 +167,25 @@ func suggestQuestion(s *Snapshot, chats []ChatEvidence, existing []candidate, pa
 			fmt.Fprintf(&b, "%s: %s\n", label("u", i), placeLine(s, p))
 		}
 	}
-	b.WriteString("\nDo most of these chats clearly belong together? List only the ones that do. " +
+	b.WriteString("\nDo most of these chats clearly belong together? List only the ones that do. " + groupingGuard +
 		"Prefer an existing place when one fits. Otherwise name a new place in one to four plain words. " +
-		"Use labels (c1, p1, u1), not names, wherever a label is asked for. " +
-		`Answer {"belong": true|false, "chats": ["c1", ...], "use": "<existing p label or empty>", ` +
-		`"name": "<new place name or empty>", "under": "<u label or root>", "confidence": <0-100>}.`)
+		"Use labels (c1, p1, u1), not names, wherever a label is asked for. " + suggestShape)
 	return ModelRequest{Role: roles.RolePlaceSuggest, System: recommendSystem, User: b.String()}
 }
+
+// groupingGuard names what is NOT a reason to belong together. Measured on
+// real saved conversations: smoke-test chats that asked unrelated things in
+// one folder, chats whose opening message was the same pasted brief or team
+// preamble, and quick questions with nothing in common but their shape.
+const groupingGuard = "Chats belong together only when they are about the same subject or project — " +
+	"not because they share a folder, a pasted brief or preamble, a tool, or a kind of request such as quick questions, checks or tests. " +
+	"Judge the concrete topic of each person's request. A shared coding tool, vendor, task system or version-control process is not a shared project. " +
+	"Do not invent a broad umbrella such as development, workflows or troubleshooting to connect different subjects. " +
+	"Exclude any member that only fits that umbrella; prefer no offer over combining unrelated subjects. "
+
+// suggestShape is the answer both group questions ask for.
+const suggestShape = `Answer {"belong": true|false, "chats": ["c1", ...], "use": "<existing p label or empty>", ` +
+	`"name": "<new place name or empty>", "under": "<u label or root>", "confidence": <0-100>}.`
 
 type suggestAnswer struct {
 	Belong     *bool    `json:"belong"`

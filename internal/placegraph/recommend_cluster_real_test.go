@@ -118,20 +118,27 @@ func TestAHyphenatedWordCountsJoined(t *testing.T) {
 	}
 }
 
-// And Organize, end to end on the real chats: one question, about the garden
-// chats only, with their recaps in front of the model.
+// And Organize, end to end on the real chats: one question about the garden
+// chats, with their recaps in front of the model, and then one question
+// about what no rule grouped — which never shows a garden chat again.
 func TestOrganizeAsksOnceAboutTheRealGardenGroup(t *testing.T) {
 	g := newRig(t)
 	chats, group := realChats(t, true)
 	g.model.answer = func(q ModelRequest) (string, error) {
+		if strings.Contains(q.User, "probably unrelated") {
+			return `{"belong": false, "chats": [], "use": "", "name": "", "under": "root", "confidence": 10}`, nil
+		}
 		return `{"belong": true, "chats": ["c1","c2","c3","c4","c5"], "use": "", "name": "Garden drip irrigation", "under": "root", "confidence": 92}`, nil
 	}
 	open, err := g.rec.Organize(context.Background(), chats)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g.model.calls() != 1 {
+	if g.model.calls() != 2 {
 		t.Fatalf("%d questions", g.model.calls())
+	}
+	if rest := g.model.asked[1].User; !strings.Contains(rest, "probably unrelated") || strings.Contains(rest, "Tomato drip emitter") || strings.Count(rest, "\nc") != 8 {
+		t.Fatalf("the second question is not the eight chats no rule grouped:\n%s", rest)
 	}
 	q := g.model.asked[0].User
 	if !strings.Contains(q, "Tomato drip emitter mineral clogs — Recommended pressure-compensating") {

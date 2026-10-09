@@ -153,3 +153,26 @@ func TestAWatcherMayAskAboutPlacesButNotDrive(t *testing.T) {
 		t.Fatal("the reader's allow-list is not exactly the places ask among the model asks")
 	}
 }
+
+// Slow organization answers must not be discarded by the ordinary getter's
+// ten-second deadline while the engine still has a minute to spend.
+type slowPlaceAgent struct{ *placeAgent }
+
+func (a *slowPlaceAgent) AskPlaces(ctx context.Context, q placegraph.ModelRequest) (session.PlacesAnswer, error) {
+	select {
+	case <-time.After(callDeadline + 100*time.Millisecond):
+		return a.placeAgent.AskPlaces(ctx, q)
+	case <-ctx.Done():
+		return session.PlacesAnswer{}, ctx.Err()
+	}
+}
+func TestThePlacesAskWaitsPastTheGetterDeadline(t *testing.T) {
+	far := &slowPlaceAgent{&placeAgent{fakeAgent: &fakeAgent{model: "m"}}}
+	loop := askLoop(t, far)
+	ctx, cancel := context.WithTimeout(context.Background(), callDeadline+3*time.Second)
+	defer cancel()
+	answer, err := loop.Client.Agent().AskPlaces(ctx, placegraph.ModelRequest{Role: roles.RolePlaceSuggest, System: "rules", User: "question"})
+	if err != nil || answer.Model != "cheap/model" {
+		t.Fatalf("model answer discarded: %+v %v", answer, err)
+	}
+}

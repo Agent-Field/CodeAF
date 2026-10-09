@@ -75,11 +75,14 @@ func (a *PlaceAdvice) backgroundFile() string {
 		if row.DeletionPending || row.At.IsZero() || row.Transcript == "" {
 			continue
 		}
-		// ONLY THIS DESKTOP'S OWN CONVERSATIONS. The engine host serves one
-		// workspace; booting a terminal's conversation from another project
-		// under it would hold that journal's lock away from the terminal.
-		if a.SharedWorkspace != "" && filepath.Clean(row.Workspace) != filepath.Clean(a.SharedWorkspace) {
-			continue
+		// The detached launcher joins this row's own workspace host. A saved
+		// remote or deleted project cannot provide a local reader; skip it
+		// instead of retrying that broken newest row while valid chats wait.
+		if a.SharedWorkspace == "" || filepath.Clean(row.Workspace) != filepath.Clean(a.SharedWorkspace) {
+			workspace, err := os.Stat(row.Workspace)
+			if err != nil || !workspace.IsDir() {
+				continue
+			}
 		}
 		info, err := os.Stat(row.Transcript)
 		if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {

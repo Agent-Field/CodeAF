@@ -91,7 +91,7 @@ func runDesktopBridge(args []string) error {
 	// dial is the one way this door reaches an engine: a child `codeaf engine`
 	// on this machine, which joins (or starts) the workspace's session host.
 	dial := func(hello remote.Hello) (desktopbridge.Connection, error) {
-		command := exec.Command(binary, "engine", "--workspace", resolved)
+		command := exec.Command(binary, "engine", "--workspace", hello.Workspace)
 		command.Stderr = os.Stderr
 		input, err := command.StdinPipe()
 		if err != nil {
@@ -138,7 +138,16 @@ func runDesktopBridge(args []string) error {
 	if err != nil {
 		return fmt.Errorf("places: %w", err)
 	}
-	if err := bridge.UsePlaceAdvice(&desktopbridge.PlaceAdvice{Ledger: ledger, SharedWorkspace: resolved, Policy: func() placegraph.RecommendPolicy {
+	// The home folder holds a person's quick chats, not one project; the
+	// folder rule must not offer them all as a place named after the account.
+	notProjects := []string{string(filepath.Separator)}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		notProjects = append(notProjects, home)
+		if real, err := filepath.EvalSymlinks(home); err == nil && real != home {
+			notProjects = append(notProjects, real)
+		}
+	}
+	if err := bridge.UsePlaceAdvice(&desktopbridge.PlaceAdvice{Ledger: ledger, SharedWorkspace: resolved, NotProjects: notProjects, Policy: func() placegraph.RecommendPolicy {
 		return config.DesktopPlacesPolicy(profileDir)
 	}, Detached: func(file string) (desktopbridge.Connection, error) {
 		// An empty session would mean "this workspace's latest", which mints
@@ -146,7 +155,13 @@ func runDesktopBridge(args []string) error {
 		if strings.TrimSpace(file) == "" {
 			return desktopbridge.Connection{}, errors.New("a background reader needs a saved conversation")
 		}
-		return dial(desktopReader(resolved, file, placeDoor.Path))
+		// A watcher must join the saved chat's own workspace host, rather
+		// than booting another project under this desktop's workspace.
+		workspace, err := desktopReaderWorkspace(file)
+		if err != nil {
+			return desktopbridge.Connection{}, err
+		}
+		return dial(desktopReader(workspace, file, placeDoor.Path))
 	}}); err != nil {
 		return fmt.Errorf("places: %w", err)
 	}
@@ -254,4 +269,17 @@ func desktopCatalog(profileDir string) func(context.Context) ([]desktopbridge.Ca
 		}
 		return out, err
 	}
+}
+
+// desktopReaderWorkspace keeps a saved terminal chat on its own host rather
+// than silently reopening it under the desktop's default workspace.
+func desktopReaderWorkspace(file string) (string, error) {
+	if strings.TrimSpace(file) == "" {
+		return "", errors.New("a background reader needs a saved conversation")
+	}
+	meta, err := session.LoadMeta(filepath.Dir(file))
+	if err != nil || strings.TrimSpace(meta.Workspace) == "" {
+		return "", errors.New("the saved conversation has no readable workspace")
+	}
+	return engineWorkspace(meta.Workspace)
 }
