@@ -1,3 +1,4 @@
+import { installNativeHttpMock } from './native-http-mock';
 // A typed stand-in for src-tauri/src/web.rs at the IPC boundary. It replaces
 // window.__TAURI_INTERNALS__ (what @tauri-apps/api's invoke and listen call),
 // so the renderer's real adapter (src/design/nativeWeb.ts) runs unchanged.
@@ -15,6 +16,7 @@ export type MockState = { pane: string; url: string; title: string; loading: boo
 export const MOCK_SHOT = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 export async function installNativeWebMock(page: Page, options: { snapshot?: boolean; engine?: boolean } = {}) {
+  await installNativeHttpMock(page);
   await page.addInitScript(({ shot, snapshot, engine }) => {
     const calls: { cmd: string; args: Record<string, unknown> }[] = [];
     const views = new Map<string, Record<string, unknown>>();
@@ -36,6 +38,7 @@ export async function installNativeWebMock(page: Page, options: { snapshot?: boo
         listeners.set(args.event as string, list);
         return args.handler;
       }
+      if (cmd.startsWith('plugin:http|')) return (window as unknown as { __engineHttpInvoke: (cmd:string, args:Record<string,unknown>) => Promise<unknown> }).__engineHttpInvoke(cmd, args);
       if (cmd.startsWith('plugin:')) return null;
       // With `engine`, the desktop engine connection points at this page's own origin, where a test's mock engine
       // answers /api/engine; without it the engine is unreachable, as in a packaged app that has not started it.

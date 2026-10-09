@@ -1,3 +1,4 @@
+import { installNativeHttpMock } from './support/native-http-mock';
 import { openPage } from './support/shell-navigation';
 import { mkdirSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
@@ -137,12 +138,13 @@ test('a file the engine cannot show is one muted line and an Open in menu with C
 });
 
 test('Open in editor appears only when the engine is on this machine; otherwise the Open in menu', async ({ page }) => {
+  await installNativeHttpMock(page);
   await page.addInitScript(() => {
     const calls: unknown[][] = [];
     Object.assign(window, { isTauri: true, __calls: calls, __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => undefined }, __TAURI_INTERNALS__: {
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main', windowLabel: 'main' } },
       transformCallback: () => 0,
-      invoke: async (command: string, args: unknown) => { calls.push([command, args]); if (command === 'host_name') return 'mock-host'; if (command === 'engine_connection') return { url: location.origin, token: 't', model: 'deepseek/deepseek-v4.1-flash' }; return null; },
+      invoke: async (command: string, args: unknown) => { calls.push([command, args]); if (command.startsWith('plugin:http|')) return (window as unknown as { __engineHttpInvoke: (cmd:string,args:unknown) => Promise<unknown> }).__engineHttpInvoke(command,args); if (command === 'host_name') return 'mock-host'; if (command === 'engine_connection') return { url: location.origin, token: 't', model: 'deepseek/deepseek-v4.1-flash' }; return null; },
     } });
   });
   await openWithDiff(page);

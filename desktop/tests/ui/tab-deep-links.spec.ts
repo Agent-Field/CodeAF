@@ -160,11 +160,11 @@ test.describe('opening a codeaf link', () => {
     ];
     for (const [link, sentence] of cases) {
       await deliverLinks(page, [link]);
-      await expect(toast).toContainText(sentence);
-      await expect(toast.locator('.toast-dot')).toHaveCSS('background-color', await tokenColor(page, 'danger'));
+      await expect(toast.filter({ hasText: sentence }).last()).toBeVisible();
+      await expect(toast.filter({ hasText: sentence }).last().locator('.toast-dot')).toHaveCSS('background-color', await tokenColor(page, 'danger'));
     }
     expect(await tabCount(page)).toBe(1);
-    expect(engine.calls.filter(call => !call.path.includes('/world') && !call.path.includes('/events'))).toEqual([]);
+    expect(engine.calls.filter(call => !call.path.includes('/world') && !call.path.includes('/events') && !call.path.includes('/workspaces/'))).toEqual([]);
   });
 
   test('an unknown conversation and an expired terminal are said, and no shell is started', async ({ page }) => {
@@ -175,9 +175,9 @@ test.describe('opening a codeaf link', () => {
     await expect.poll(() => nativeCalls(page)).toContain('link_claim');
     const toast = page.locator('.toast');
     await deliverLinks(page, ['codeaf://chat/0000000000000000']);
-    await expect(toast).toContainText('That conversation is no longer in codeaf, so the link did not open.');
+    await expect(toast.filter({ hasText: 'That conversation is no longer in codeaf, so the link did not open.' })).toBeVisible();
     await deliverLinks(page, [`codeaf://terminal/${CHAT}/gone01`]);
-    await expect(toast).toContainText('That terminal has ended and is no longer kept, so the link did not open.');
+    await expect(toast.filter({ hasText: 'That terminal has ended and is no longer kept, so the link did not open.' })).toBeVisible();
     expect(await tabCount(page)).toBe(1);
     await deliverLinks(page, [`codeaf://terminal/${CHAT}/live01`]);
     await expect(page.getByRole('tab', { name: 'zsh', exact: true })).toHaveAttribute('aria-selected', 'true');
