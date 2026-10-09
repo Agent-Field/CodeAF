@@ -1,5 +1,5 @@
 import { startFor, startSentence } from '../../../terminal/open';
-import { bind, bindingOf } from '../../../terminal/bindings';
+import { bind } from '../../../terminal/bindings';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { TextInput } from '../../../../components/ui';
 import { isMac } from '../../../../design/keyboard';
@@ -68,10 +68,13 @@ function NewTabField({ host, paneId, focused }: { host: NewTabHost; paneId: stri
   }
   async function openShell() {
     setBusy(true);
-    let title = 'Terminal';
-    try { title = await startFor(paneId, { sessionFile }); }
-    catch (error) { bind(paneId, { sessionFile, refused: startSentence(error) }); }
-    dispatch({ type: 'newtab-become', id: paneId, kind: 'terminal', title, sessionFile: bindingOf(paneId)?.sessionFile });
+    try {
+      const { title, target } = await startFor(paneId, { sessionFile });
+      dispatch({ type: 'newtab-become', id: paneId, kind: 'terminal', title, sessionFile: target.sessionFile, terminalId: target.terminalId });
+    } catch (error) {
+      bind(paneId, { sessionFile, refused: startSentence(error) });
+      dispatch({ type: 'newtab-become', id: paneId, kind: 'terminal', title: 'Terminal', sessionFile });
+    }
   }
   function pick(row: NewTabRow | undefined) {
     if (!row || busy) return;

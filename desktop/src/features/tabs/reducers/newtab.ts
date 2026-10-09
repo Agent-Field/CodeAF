@@ -6,7 +6,7 @@ import type { Pane, TitleSource, WorkspaceState } from '../types.ts';
 
 export type NewTabAction =
   /** The field's tab becomes `kind`. A conversation started from the field carries its session; a file carries its path and the session that can read it. */
-  | { type: 'newtab-become'; id: string; kind: TabKind; title: string; titleSource?: TitleSource; sessionFile?: string; path?: string; draft?: string }
+  | { type: 'newtab-become'; id: string; kind: TabKind; title: string; titleSource?: TitleSource; sessionFile?: string; path?: string; draft?: string; terminalId?: string }
   /** The field's tab becomes the closed tab `closedId`, which leaves the closed list. */
   | { type: 'newtab-reopen'; id: string; closedId: string };
 
@@ -16,7 +16,7 @@ export function reduceNewTab(state: WorkspaceState, action: { type: string }): W
   const a = action as NewTabAction;
   switch (a.type) {
     case 'newtab-become':
-      return mapContent(state, a.id, becomes(pane => ({ ...pane, kind: a.kind, title: a.title, titleSource: a.titleSource ?? 'manual', draft: a.draft ?? '', sessionFile: a.sessionFile, path: a.path, file: a.path && (a.kind === 'file' || a.kind === 'diff') ? { path: a.path, view: a.kind === 'diff' ? 'changes' : 'file' } : undefined })));
+      return mapContent(state, a.id, becomes(pane => ({ ...pane, kind: a.kind, title: a.title, titleSource: a.titleSource ?? 'manual', draft: a.draft ?? '', sessionFile: a.sessionFile, path: a.path, target: a.terminalId ? { terminalId: a.terminalId } : undefined, file: a.path && (a.kind === 'file' || a.kind === 'diff') ? { path: a.path, view: a.kind === 'diff' ? 'changes' : 'file' } : undefined })));
     case 'newtab-reopen': {
       const closed = state.closed.find(tab => tab.id === a.closedId);
       if (!closed) return state;

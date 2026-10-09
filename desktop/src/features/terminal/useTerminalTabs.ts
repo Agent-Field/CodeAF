@@ -1,7 +1,7 @@
 import { useEffect, useRef, type Dispatch } from 'react';
 import { newTab } from '../tabs/helpers';
 import { focusedPane, tabHolding, type WorkspaceAction, type WorkspaceState } from '../tabs/model';
-import { bindingOf } from './bindings';
+import { bindingFor } from './target';
 import { closePaneEvent, openConversationEvent, openTerminalEvent, type ClosePaneDetail, type OpenConversationDetail, type OpenTerminalDetail } from './events';
 import { shortcutLayer } from '../../design/keyboard';
 import { useShortcuts } from '../../design/useShortcuts';
@@ -11,7 +11,7 @@ import { openTerminalTab } from './open';
 export function activeSessionFile(state: WorkspaceState): string | undefined {
   const tab = state.tabs.find(t => t.id === state.activeId);
   const pane = tab && focusedPane(tab);
-  return pane && (bindingOf(pane.id)?.sessionFile ?? pane.sessionFile);
+  return pane && (bindingFor(pane)?.sessionFile ?? pane.sessionFile);
 }
 
 /**
