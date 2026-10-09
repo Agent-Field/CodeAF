@@ -18,7 +18,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
  useEffect(() => {
   document.documentElement.dataset.theme = theme;
   document.documentElement.dataset.resolvedTheme = resolvedTheme;
-  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach(meta => { meta.content = design.themes[resolvedTheme].canvas; });
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach(meta => { meta.content = design.themes[resolvedTheme]['chrome-canvas']; });
   try { localStorage.setItem(storageKey, theme); } catch { /* Appearance remains usable without storage. */ }
   if (isTauri()) void getCurrentWindow().setTheme(theme === 'system' ? null : theme).catch(console.error);
  }, [theme, resolvedTheme]);

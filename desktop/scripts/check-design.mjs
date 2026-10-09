@@ -18,8 +18,9 @@ function walk(dir) {
 walk('src');
 const lightKeys = Object.keys(design.themes.light).sort();
 if (JSON.stringify(lightKeys) !== JSON.stringify(Object.keys(design.themes.dark).sort())) errors.push('tokens.json: Light and Dark must define the same semantic colors.');
+if (!design.tints.hues[design.tints.default]) errors.push('tokens.json: the default tint must be one of tints.hues.');
 const metadata = read('index.html');
-for (const required of [`href="/favicon.svg"`, `href="/mask-icon.svg"`, `color="${design.brand.background}"`, `content="${design.themes.light.canvas}"`]) {
+for (const required of [`href="/favicon.svg"`, `href="/mask-icon.svg"`, `color="${design.brand.background}"`, `content="${design.themes.light['chrome-canvas']}"`]) {
  if (!metadata.includes(required)) errors.push(`index.html: missing central brand/theme metadata ${required}`);
 }
 try {
