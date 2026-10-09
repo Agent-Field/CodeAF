@@ -35,12 +35,20 @@ import { ArrowDownIcon } from '@animateicons/react/lucide/arrow-down-icon';
 import { ArrowLeftIcon } from '@animateicons/react/lucide/arrow-left-icon';
 import { ListChecksIcon } from '@animateicons/react/lucide/list-checks-icon';
 import { CopyIcon } from '@animateicons/react/lucide/copy-icon';
+import { FilePlusIcon } from '@animateicons/react/lucide/file-plus-icon';
+import { FlaskConicalIcon } from '@animateicons/react/lucide/flask-conical-icon';
+import { CompassIcon } from '@animateicons/react/lucide/compass-icon';
+import { ArrowLeftRightIcon } from '@animateicons/react/lucide/arrow-left-right-icon';
+import { MessageCircleIcon } from '@animateicons/react/lucide/message-circle-icon';
+import { NetworkIcon } from '@animateicons/react/lucide/network-icon';
+import { MapIcon } from '@animateicons/react/lucide/map-icon';
+import { HourglassIcon } from '@animateicons/react/lucide/hourglass-icon';
 import { useTheme } from '../../design/ThemeProvider';
 import design from '../../design/tokens.json';
-export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check','close','pin','folder','more','split','tab','chevronRight','chevronLeft','attach','send','stop','queued','running','failed','alert','cancelled','terminal','file','edit','web','thinking','tasks','tool','findFiles','arrowDown','back','checklist','copy'] as const;
+export const iconNames = ['sidebar','plus','search','code','activity','grid','settings','arrow','chevron','check','close','pin','folder','more','split','tab','chevronRight','chevronLeft','attach','send','stop','queued','running','failed','alert','cancelled','terminal','file','edit','web','thinking','tasks','tool','findFiles','arrowDown','back','checklist','copy','create','test','browse','transfer','communicate','coordinate','plan','wait'] as const;
 export type IconName = typeof iconNames[number];
 export type IconSize = 'xs' | 'sm' | 'md' | 'lg';
-const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon, close: XIcon, pin: PinIcon, folder: FolderIcon, more: EllipsisIcon, split: PanelLeftIcon, tab: MessageSquareIcon, chevronRight: ChevronRightIcon, chevronLeft: ChevronLeftIcon, attach: PaperclipIcon, send: ArrowUpIcon, stop: CircleStopIcon, queued: CircleDashedIcon, running: CircleDotIcon, failed: CircleXIcon, alert: CircleAlertIcon, cancelled: CircleMinusIcon, terminal: TerminalIcon, file: FileTextIcon, edit: FilePenIcon, web: GlobeIcon, thinking: BrainIcon, tasks: ListTreeIcon, tool: WrenchIcon, findFiles: FileSearchIcon, arrowDown: ArrowDownIcon, back: ArrowLeftIcon, checklist: ListChecksIcon, copy: CopyIcon };
+const icons = { sidebar: PanelLeftIcon, plus: PlusIcon, search: SearchIcon, code: CodeXmlIcon, activity: ActivityIcon, grid: LayoutGridIcon, settings: SettingsIcon, arrow: ArrowRightIcon, chevron: ChevronDownIcon, check: CheckIcon, close: XIcon, pin: PinIcon, folder: FolderIcon, more: EllipsisIcon, split: PanelLeftIcon, tab: MessageSquareIcon, chevronRight: ChevronRightIcon, chevronLeft: ChevronLeftIcon, attach: PaperclipIcon, send: ArrowUpIcon, stop: CircleStopIcon, queued: CircleDashedIcon, running: CircleDotIcon, failed: CircleXIcon, alert: CircleAlertIcon, cancelled: CircleMinusIcon, terminal: TerminalIcon, file: FileTextIcon, edit: FilePenIcon, web: GlobeIcon, thinking: BrainIcon, tasks: ListTreeIcon, tool: WrenchIcon, findFiles: FileSearchIcon, arrowDown: ArrowDownIcon, back: ArrowLeftIcon, checklist: ListChecksIcon, copy: CopyIcon, create: FilePlusIcon, test: FlaskConicalIcon, browse: CompassIcon, transfer: ArrowLeftRightIcon, communicate: MessageCircleIcon, coordinate: NetworkIcon, plan: MapIcon, wait: HourglassIcon };
 export function Icon({ name, size = 'md', motion = 'none' }: { name: IconName; size?: IconSize; motion?: 'none' | 'directional' | 'disclosure' }) {
  const { reducedMotion } = useTheme();
  // Upstream glyph choreography is disabled. Only approved, state-meaningful motion is allowed.

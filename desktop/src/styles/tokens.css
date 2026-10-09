@@ -180,6 +180,7 @@
   --preview-sheet-width: 520px;
   --favicon-size: 16px;
   --step-row-height: 26px;
+  --work-fade: 60%;
   --canvas: #f0e4d0;
   --sidebar: #e9d9c2;
   --surface: #fdfdfc;
@@ -221,6 +222,8 @@
   --work-guide: #7c61321f;
   --attention: #b4690e;
   --convo-update-rule: #605c534d;
+  --work-diff-add: #39785a1f;
+  --work-diff-remove: #a442371a;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
@@ -265,6 +268,8 @@
   --work-guide: #ffffff1a;
   --attention: #e3a25a;
   --convo-update-rule: #d4c6b14d;
+  --work-diff-add: #87caa41f;
+  --work-diff-remove: #e7a0972b;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
@@ -310,6 +315,8 @@
   --work-guide: #ffffff1a;
   --attention: #e3a25a;
   --convo-update-rule: #d4c6b14d;
+  --work-diff-add: #87caa41f;
+  --work-diff-remove: #e7a0972b;
   }
 }
 @media (prefers-reduced-motion: reduce) {
