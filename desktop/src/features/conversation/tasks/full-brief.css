@@ -2,4 +2,4 @@
 .full-brief { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .full-brief-section { display: flex; flex-direction: column; gap: var(--space-half); min-width: 0; }
 .full-brief-label { margin: 0; color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
-.full-brief-body { margin: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
+.full-brief-body { margin: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); overflow-wrap: anywhere; }

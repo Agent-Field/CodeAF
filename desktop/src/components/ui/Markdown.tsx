@@ -13,7 +13,7 @@ export type MarkdownHooks = {
  renderInlineCode?: (text: string) => ReactNode | undefined;
  renderImage?: (src: string, alt: string) => ReactNode | undefined;
 };
-export type MarkdownProps = MarkdownHooks & { children: string; className?: string; onOpenLink?: (url: string) => void };
+export type MarkdownProps = MarkdownHooks & { children: string; className?: string; tone?: 'primary' | 'secondary'; onOpenLink?: (url: string) => void };
 // A reference with no scheme may name a workspace file; only a hook can resolve it, so it passes through only when one is installed.
 const hasScheme = /^[a-z][a-z0-9+.-]*:/i;
 function localReference(value: string): string {
@@ -51,10 +51,10 @@ function Table({ children }: { children?: ReactNode }) {
  const { ref, more, measure } = useMoreToRight();
  return <div ref={ref} className="markdown-table-scroll" role="region" aria-label="Response table" tabIndex={0} data-more={more} onScroll={measure}><table>{children}</table></div>;
 }
-export function Markdown({ children, className = '', onOpenLink, renderLink, renderInlineCode, renderImage }: MarkdownProps) {
+export function Markdown({ children, className = '', tone = 'primary', onOpenLink, renderLink, renderInlineCode, renderImage }: MarkdownProps) {
  const resolvesLocal = !!(renderLink || renderImage);
  const transform = (value: string) => safeMarkdownUrl(value) || (resolvesLocal ? localReference(value) : '');
- return <div className={`markdown ${className}`}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={transform} components={{
+ return <div className={`markdown ${className}`} data-tone={tone}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml urlTransform={transform} components={{
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
   code: ({ children, className }) => {
    // Fenced code carries a language or ends in a newline; anything else is an inline span a hook may enrich.
