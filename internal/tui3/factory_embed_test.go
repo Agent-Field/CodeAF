@@ -192,3 +192,84 @@ func TestFactoryEmbedEndedChatIsOpenedAgain(t *testing.T) {
 		t.Fatalf("the reopened chat is not in the center (host %+v)", a.fp.host)
 	}
 }
+
+// ONCE THE PERSON TYPES IN THE CENTER'S BOX EVERY KEY IS THE BOX'S, even
+// while its chat is being opened again under it (owner's run, 2026-10-09:
+// `simplify` reached the chat as `simlify`, and the lost `p` fired the page's
+// `shape steps`). The letters typed while the chat is away are held, and the
+// chat takes them in order when it is back; no page key fires.
+func TestFactoryEmbedTypingSurvivesAReopen(t *testing.T) {
+	release := make(chan struct{})
+	var opened []*embedAgent
+	var mu sync.Mutex
+	a, _ := embedLab(t, func(where, file string) (Conversation, error) {
+		mu.Lock()
+		n := len(opened)
+		agent := &embedAgent{fakeAgent: &fakeAgent{model: "deepseek/deepseek-v4-flash"}}
+		opened = append(opened, agent)
+		mu.Unlock()
+		if n > 0 {
+			<-release
+		}
+		return Conversation{Agent: agent, SessionFile: file, Workspace: where}, nil
+	})
+	drive(t, a, embedRun(a.factoryHostSync())...)
+	if !a.factoryHosting() {
+		t.Fatalf("the step's chat is not in the center (host %+v)", a.fp.host)
+	}
+	stage := a.fp.stage
+	a.fp.box = true
+	for _, c := range "sim" {
+		drive(t, a, key(string(c)))
+	}
+	if got := string(a.input.value); got != "sim" {
+		t.Fatalf("the box holds %q after typing sim", got)
+	}
+
+	// The round ends under the center: the chat is let go of and asked for
+	// again, and the open does not answer yet.
+	mu.Lock()
+	opened[0].ended.Store(true)
+	mu.Unlock()
+	reopen := a.factoryHostSync()
+	if a.factoryHosting() {
+		t.Fatal("the ended chat is still in front")
+	}
+	for _, c := range "plify" {
+		_, _ = a.Update(key(string(c)))
+	}
+	if n := len(a.fp.host.held); n != 5 {
+		t.Fatalf("%d of the 5 keys typed while the chat was away were held for it", n)
+	}
+	if a.fp.stage != stage || !a.fp.open || a.fp.host.after != nil || a.fp.act.doing != "" {
+		t.Fatalf("a page key fired while the person typed (row %d→%d, open %v, after %v, doing %q)",
+			stage, a.fp.stage, a.fp.open, a.fp.host.after, a.fp.act.doing)
+	}
+
+	said := make(chan []tea.Msg, 1)
+	go func() { said <- embedRun(reopen) }()
+	close(release)
+	drive(t, a, (<-said)...)
+	drive(t, a, tea.WindowSizeMsg{Width: a.width, Height: a.height})
+	if !a.factoryHosting() || !a.fp.box {
+		t.Fatalf("the reopened chat is not in front with the box focused (host %+v, box %v)", a.fp.host, a.fp.box)
+	}
+	if got := string(a.input.value); !strings.HasSuffix(got, "simplify") || strings.Contains(got, "simlify") {
+		t.Fatalf("the box holds %q, want it to end in simplify", got)
+	}
+	if len(a.fp.host.held) != 0 {
+		t.Fatalf("%d keys are still held", len(a.fp.host.held))
+	}
+	// A FOCUS LOST UNDER THE PERSON (stale state after a reattach) does not
+	// hand the next key to the page: the box takes it back.
+	a.fp.box = false
+	drive(t, a, key("p"))
+	if got := string(a.input.value); !strings.HasSuffix(got, "simplifyp") || a.fp.host.after != nil {
+		t.Fatalf("a key after the focus was lost went to the page (box %q)", got)
+	}
+	// `esc` gives the keys back to the page, and a key after it is the page's.
+	drive(t, a, key("esc"))
+	if a.fp.box || a.fp.host.typing {
+		t.Fatal("esc did not give the keys back to the page")
+	}
+}
