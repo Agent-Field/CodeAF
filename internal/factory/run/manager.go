@@ -218,8 +218,12 @@ func (lp *floorLoop) hear(c *loopCtl) {
 		lp.mu.Lock()
 		pending := c.pending != ""
 		lp.mu.Unlock()
-		if pending {
-			cur, _ := lp.r.opts.Store.Get(c.id)
+		cur, _ := lp.r.opts.Store.Get(c.id)
+		// A STEP'S QUESTION THE PERSON HOLDS is answered here too when the
+		// round that asked it is gone (a pause): the answer is kept for the
+		// step's next round (inbox.go).
+		kept := !pending && cur.Asking != nil && cur.Asking.With == factory.AskedYou
+		if pending || kept {
 			if yes, words, ok := typedAnswer(h.Words, cur.QKind); ok {
 				if lp.heard(c, h.At) != nil {
 					return
@@ -312,7 +316,7 @@ func typedAnswer(words, qkind string) (yes bool, said string, ok bool) {
 	}
 	takesWords := false
 	switch qkind {
-	case "gate", "plan", "scope":
+	case "gate", "plan", "scope", qkindStep:
 		takesWords = true
 	}
 	// A LINE THAT OPENS ON A YES IS A YES (`yes, go`): words after it are

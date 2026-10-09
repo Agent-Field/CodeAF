@@ -156,6 +156,21 @@ func (s *shapeTurns) run(ctx context.Context, it factory.Item, ask string, inRun
 		return factory.RunEdit{}, "", errors.New("no manager to ask")
 	}
 	door := &collectRunDoor{it: it, recipe: factoryItemRecipe(s.dirs, it), inRun: inRun}
+	reply, err := s.through(ctx, it, ask, door)
+	if err != nil {
+		return factory.RunEdit{}, "", err
+	}
+	return door.collected(), reply, nil
+}
+
+// through is one manager turn on ask with door as its `factory_run` (and, on
+// an inbox turn, its `factory_answer`): through the window's conversation
+// when this process holds it, else opened for the turn. It answers what the
+// manager said.
+func (s *shapeTurns) through(ctx context.Context, it factory.Item, ask string, door session.RunDoor) (string, error) {
+	if s == nil || s.open == nil {
+		return "", errors.New("no manager to ask")
+	}
 	var turn managerTurn
 	if s.live != nil {
 		turn, _ = s.live(it.Talk, door)
@@ -165,17 +180,17 @@ func (s *shapeTurns) run(ctx context.Context, it factory.Item, ask string, inRun
 		if errors.Is(err, session.ErrSessionLocked) {
 			// ANOTHER PROCESS HOLDS IT (a window on the engine host): this
 			// runner cannot give it a turn, and says so by name. No retry.
-			return factory.RunEdit{}, "", fmt.Errorf("%w: %v", factoryrun.ErrManagerAway, err)
+			return "", fmt.Errorf("%w: %v", factoryrun.ErrManagerAway, err)
 		}
 		if err != nil {
-			return factory.RunEdit{}, "", err
+			return "", err
 		}
 		turn = opened
 	}
 	defer turn.Close()
 	events, err := s.submit(ctx, turn, ask)
 	if err != nil {
-		return factory.RunEdit{}, "", err
+		return "", err
 	}
 	var reply strings.Builder
 	var failure error
@@ -184,9 +199,9 @@ func (s *shapeTurns) run(ctx context.Context, it factory.Item, ask string, inRun
 		case ev, open := <-events:
 			if !open {
 				if failure != nil {
-					return factory.RunEdit{}, "", failure
+					return "", failure
 				}
-				return door.collected(), strings.TrimSpace(reply.String()), nil
+				return strings.TrimSpace(reply.String()), nil
 			}
 			switch ev.Kind {
 			case session.EventTextDelta:
@@ -199,7 +214,7 @@ func (s *shapeTurns) run(ctx context.Context, it factory.Item, ask string, inRun
 			}
 		case <-ctx.Done():
 			turn.Interrupt()
-			return factory.RunEdit{}, "", ctx.Err()
+			return "", ctx.Err()
 		}
 	}
 }

@@ -67,6 +67,12 @@ const (
 	talkBlockSay   = "Say what you set in three lines at most, then stop. Do not narrate."
 )
 
+// talkBlockInbox is the sixth block (the owner's decision of 2026-10-09): the
+// manager conversation is the item's one inbox, and this is when it answers a
+// step's question itself and when it sends it to the person
+// (factory_inbox.go). The manual quotes it (internal/manual/chat/factory.md).
+const talkBlockInbox = "You are the inbox: every question a stage asks comes to you first, and you reply with factory_answer. Answer it yourself when the issue, the recipe, the stages, the notes or what the person said here settle it. Send it to the person (ask_person, one line of why) when it turns on taste, scope, risk, credentials or access, money, or anything those do not settle; the stage waits, and the person answers here."
+
 // talkBlocks is the five blocks for one item, the ref and the repository
 // filled in.
 func talkBlocks(it factory.Item) []string {
@@ -74,7 +80,7 @@ func talkBlocks(it factory.Item) []string {
 	if repo == "" {
 		repo = "this repository"
 	}
-	return []string{fmt.Sprintf(talkBlockWho, it.Ref(), repo), talkBlockKnow, talkBlockDo, talkBlockShape, talkBlockSay}
+	return []string{fmt.Sprintf(talkBlockWho, it.Ref(), repo), talkBlockKnow, talkBlockDo, talkBlockShape, talkBlockInbox, talkBlockSay}
 }
 
 // talkItemDoor is the brief's one sentence about `factory_item`, which keeps

@@ -69,6 +69,12 @@ type Job struct {
 	Log func(line string)
 	// Spend reports model cost the round incurred, in dollars, as it happens.
 	Spend func(usd float64)
+	// Ask puts a question the round's step asked to the item's manager first
+	// (inbox.go) and answers the answer in words, the manager's or, when the
+	// manager sent it on, the person's. It waits as long as that takes, until
+	// ctx ends. Nil is a round with nobody to ask. The inbox lane added it,
+	// additively.
+	Ask func(ctx context.Context, q factory.Asked) (string, error)
 
 	// dirErr is why Options.Workdir could not answer a folder. The round is
 	// then not run: it fails with this sentence, because a round run in the
@@ -164,8 +170,22 @@ type Options struct {
 	// the manager no turn on a steer.
 	Reshape func(ctx context.Context, it factory.Item, said string) (factory.RunEdit, string, error)
 	// ShapeWait is how long a Shape or Reshape turn may take before the run
-	// goes on without it; 0 is a minute.
+	// goes on without it; 0 is a minute. An Inbox turn is given the same.
 	ShapeWait time.Duration
+	// Inbox is the manager's turn on a question a step asked (inbox.go): one
+	// turn of the item's manager conversation that answers the question, or
+	// sends it on to the person with the reason. Nil, a turn that fails and a
+	// turn that answers nothing all send the question to the person. The
+	// inbox lane added it, additively.
+	Inbox func(ctx context.Context, it factory.Item, q factory.Asked) (InboxReply, error)
+}
+
+// InboxReply is the manager's answer to a step's question: Answer is its
+// answer in words, and "" sends the question on to the person, with Why the
+// manager's reason.
+type InboxReply struct {
+	Answer string
+	Why    string
 }
 
 // Pool is what the loop needs of the money, and money.go's *Money answers
