@@ -348,10 +348,9 @@ func postPhaseNews(news PhaseNews) {
 // frame, a machine under load, a stop-the-world pause — before anything a person
 // is reading blinks.
 //
-// It is a var rather than a const for exactly one reason: the tests that prove a
-// stage outlasting the window keeps drawing shorten it, and a test that waited
-// five real seconds per beat would cost more than the defect it guards.
-var phaseHeldBeat = provider.PhaseWindow / 3
+// Tests shorten one phase through the internal start helper; the shared default
+// is immutable so an old phase cannot race another test resetting its clock.
+const phaseHeldBeat = provider.PhaseWindow / 3
 
 // phaseHeart is the one phase an agent is holding open and the beat that keeps
 // saying it.
@@ -396,6 +395,12 @@ func (a *Agent) tellPhase(phase provider.Phase, detail string, since time.Time) 
 // `switching model` without naming the model would be telling somebody their
 // answer is changing hands and refusing to say to whom.
 func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since time.Time) {
+	a.tellPhaseThenWithBeat(phase, detail, then, since, phaseHeldBeat)
+}
+
+// tellPhaseThenWithBeat captures the interval before starting this phase's goroutine.
+// Tests can accelerate their own phase without changing another agent's timer.
+func (a *Agent) tellPhaseThenWithBeat(phase provider.Phase, detail, then string, since time.Time, interval time.Duration) {
 	if a == nil {
 		return
 	}
@@ -434,7 +439,7 @@ func (a *Agent) tellPhaseThen(phase provider.Phase, detail, then string, since t
 	stop := make(chan struct{})
 	a.phase.held, a.phase.stop = news, stop
 	postPhaseNews(news)
-	guard.Go("phase beat", func() { a.beatHeldPhase(stop) })
+	guard.Go("phase beat", func() { a.beatHeldPhase(stop, interval) })
 }
 
 // interruptPhase says a phase over the top of whatever the turn was already
@@ -504,8 +509,8 @@ func (a *Agent) dropHeldPhaseLocked() {
 // beatHeldPhase re-says one held phase until it ends. It is the whole lifetime
 // of the goroutine [Agent.tellPhase] spawns: it starts with a phase and it
 // returns when that phase is over, and there is no other exit.
-func (a *Agent) beatHeldPhase(stop chan struct{}) {
-	beat := time.NewTicker(phaseHeldBeat)
+func (a *Agent) beatHeldPhase(stop chan struct{}, interval time.Duration) {
+	beat := time.NewTicker(interval)
 	defer beat.Stop()
 	for {
 		select {

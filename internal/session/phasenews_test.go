@@ -385,16 +385,13 @@ func heldSince(news []PhaseNews, phase provider.Phase) (said int, starts map[tim
 // neither of those facts is about the length of the interval.
 func TestAHeldPhaseKeepsSayingItselfAndStopsWhenItEnds(t *testing.T) {
 	log := watchPhases(t)
-	held := phaseHeldBeat
-	phaseHeldBeat = 2 * time.Millisecond
-	t.Cleanup(func() { phaseHeldBeat = held })
-
 	agent, _ := newTestAgent(t, &scriptedCompleter{}, nil)
+	t.Cleanup(agent.endPhase)
 	// A STAGE THAT HAS ALREADY OUTLASTED THE WINDOW. This is the shape the
 	// quarter-hour reading had: begun long ago, still running, and owed a clock
 	// that says how long it has really been.
 	began := time.Now().Add(-provider.PhaseWindow - time.Minute)
-	agent.tellPhase(provider.PhaseChecking, "whether the work is finished", began)
+	agent.tellPhaseThenWithBeat(provider.PhaseChecking, "whether the work is finished", "", began, 2*time.Millisecond)
 
 	deadline := time.Now().Add(5 * time.Second)
 	for {
