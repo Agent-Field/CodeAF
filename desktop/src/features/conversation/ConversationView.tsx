@@ -28,6 +28,9 @@ import { TaskRoute, TaskRouteBar } from './TaskRoute';
 import { taskCounts, taskProgress } from './taskTree';
 import { useConversation } from './useConversation';
 import { readEngineText } from './tasks/readText';
+import { questionFocus } from './questionFocus';
+import { questionKey } from './model/entry';
+import { chatIdFromSessionFile } from '../places/client';
 import { contentSignature, useStickToBottom } from './useStickToBottom';
 import { useFoldAnchor, useTurnJump } from './turnScroll';
 import { shortcutLayer } from '../../design/keyboard';
@@ -116,6 +119,21 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
     setFocusKey(undefined);
     window.setTimeout(() => setFocusKey(key), 0);
   }
+
+  // A clicked system notification names one question of this conversation: bring it forward once the engine has
+  // delivered it, and only that question (questionFocus.ts).
+  const chatId = tab.sessionFile ? chatIdFromSessionFile(tab.sessionFile) : '';
+  useEffect(() => {
+    if (!chatId) return;
+    const answer = () => {
+      const asked = questionFocus.take(chatId, model.questions);
+      if (!asked) return;
+      jump();
+      focusQuestion(questionKey(asked));
+    };
+    answer();
+    return questionFocus.subscribe(answer);
+  }, [chatId, model.questions]);
 
   async function retry() {
     const text = failed?.text;

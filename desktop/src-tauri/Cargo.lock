@@ -478,6 +478,7 @@ version = "0.1.0"
 dependencies = [
  "block2",
  "gtk",
+ "mac-notification-sys",
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-web-kit",
@@ -491,7 +492,9 @@ dependencies = [
  "tauri-plugin-notification",
  "tauri-plugin-shell",
  "tauri-plugin-single-instance",
+ "tauri-winrt-notification",
  "webkit2gtk",
+ "zbus",
 ]
 
 [[package]]

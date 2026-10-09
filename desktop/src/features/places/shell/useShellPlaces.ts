@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { placeShortcuts, registerShortcuts, shortcutLayer, tabShortcuts } from '../../../design/keyboard';
-import { nativeControls, needsYouCount, type AttentionItem } from '../../../design/nativeControls';
+import type { AttentionItem } from '../../../design/nativeControls';
 import { worldStore } from '../../chat/world-store';
 import { parseWorkspace, workspaceKey } from '../../tabs/model';
 import type { PlaceRailActions, PlaceRailProps } from '../../shell/PlaceRail';
@@ -124,21 +124,15 @@ export function useWindowTint(shell: PlacesShell) {
 }
 
 /**
- * What needs the person, from the engine-wide world stream, handed to the native layer: one notification per new
- * question or failure while no codeaf window is focused, and the needs-you count on the dock badge. The stream's
- * `sourceFolders` are filesystem folders, not places, so no place name is claimed for an item here.
+ * What needs the person, from the engine-wide world stream, for the rail's Inbox count. The system notifications and
+ * the dock badge are posted by the workspace (tabs/closing/useBackground.ts), which also knows the failures: posting a
+ * second, failure-less list from here made Rust forget the failures and announce them again.
  */
 export function useAttentionNotices() {
   const world = useSyncExternalStore(worldStore.subscribe, worldStore.getState);
   // Every world attention item is a question a conversation is stopped on (its `kind` is the question's own kind:
-  // consent, choice…). The stream reports no "failed now" item, so no failure notification is posted from it.
+  // consent, choice…). The stream reports no "failed now" item, so failures never count here.
   const items = useMemo<AttentionItem[]>(() => world.items.map(item => ({ id: item.key, kind: 'needsYou' as const, chatTitle: item.title || 'Untitled chat', text: item.text })), [world.items]);
-  useEffect(() => {
-    const native = nativeControls();
-    if (!native.desktop || world.status !== 'live') return;
-    void native.notifyAttention(items).catch(error => console.warn('Attention notifications could not be posted', error));
-    void native.setBadge(needsYouCount(items)).catch(error => console.warn('The dock badge could not be set', error));
-  }, [items, world.status]);
   return { items, status: world.status };
 }
 
