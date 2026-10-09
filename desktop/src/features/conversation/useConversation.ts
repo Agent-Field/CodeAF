@@ -58,6 +58,8 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
   const [connecting, setConnecting] = useState(false);
   const [unreachable, setUnreachable] = useState(false);
   const [failed, setFailed] = useState<FailedSend>();
+  // The person's words between pressing Send and the engine recording them (design: Sending, optimistic at 60%).
+  const [writing, setWriting] = useState<{ text: string; at: number }>();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const generation = useRef(0);
   const current = useRef<EngineSnapshot | undefined>(undefined);
@@ -155,6 +157,7 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
       if (!target || own !== generation.current) return false;
       if (blocksComposer(target.questions ?? [])) throw new Error('Answer the question above first. Your message is kept.');
       if (mode !== 'queue') setLive(emptyLive(target.entries.length));
+      if (mode === 'submit' && text.trim()) setWriting({ text, at: target.entries.length });
       const value = await deliver(target.id, text, mode, files);
       if (own !== generation.current) return false;
       receive(value);
@@ -164,6 +167,8 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
       if (isUnreachable(reason)) setUnreachable(true);
       setFailed({ text, mode, message: messageOf(reason), files });
       return false;
+    } finally {
+      if (own === generation.current) setWriting(undefined);
     }
   }
 
@@ -227,5 +232,8 @@ export function useConversation({ sessionFile, onSessionFile }: Options) {
 
   const model = useMemo(() => (snapshot ? buildModel(snapshot, live, places.current) : emptyModel), [snapshot, live]);
 
-  return { model, snapshot, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull };
+  // Once the engine has recorded anything newer than the send, the real message takes over.
+  const sending = writing && (snapshot?.entries.length ?? 0) <= writing.at ? writing.text : undefined;
+
+  return { model, snapshot, sending, online, connecting, unreachable, failed, busyKey, send, stop, answer, hold, controlTask, retry, readFull };
 }

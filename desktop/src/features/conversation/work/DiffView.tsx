@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from '../../../components/ui';
+import { useState } from 'react';
+import { Button, useMoreToRight } from '../../../components/ui';
 import { diffRows } from './diff';
 import { editPairs } from './stats';
 import './DiffView.css';
@@ -7,25 +7,6 @@ import './DiffView.css';
 const SIGNS = { add: '+', remove: '−', context: ' ', gap: '' } as const;
 const GAP_MARK = '⋯';
 const LIMIT = 40;
-
-/** Whether the scroller still has content past its right edge, which is when the edge fade shows. */
-function useMoreToRight() {
-  const ref = useRef<HTMLDivElement>(null);
-  const [more, setMore] = useState(false);
-  const measure = useCallback(() => {
-    const el = ref.current;
-    if (el) setMore(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-  }, []);
-  useEffect(() => {
-    measure();
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const watch = new ResizeObserver(measure);
-    watch.observe(el);
-    return () => watch.disconnect();
-  });
-  return { ref, more, measure };
-}
 
 /** A unified diff computed from an edit call's replacement pairs: two lines of context, forty rows, then "Show all". */
 export function DiffView({ args }: { args: string }) {

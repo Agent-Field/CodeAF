@@ -174,6 +174,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                   folded={folded}
                   onToggleFold={toggleFold}
                   failed={conversation.unreachable ? undefined : failed}
+                  sending={conversation.sending}
                   onRetry={() => void retry()}
                 />
               )}

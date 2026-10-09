@@ -9,6 +9,7 @@ import { ErrorItem } from './ErrorItem';
 import { EARLIER_KEY, hasCompaction, isFolded, splitEarlier } from './folding';
 import { NoteItem } from './NoteItem';
 import { TaskNotice } from './TaskNotice';
+import { UserMessage } from './UserMessage';
 import type { ConversationModel, TurnItem, TurnV2 } from './types';
 import type { FailedSend } from './useConversation';
 
@@ -17,6 +18,8 @@ type Props = BlockContext & {
   folded: Record<string, boolean>;
   onToggleFold: (turnId: string, folded: boolean) => void;
   failed?: FailedSend;
+  /** Words sent but not yet recorded. */
+  sending?: string;
   onRetry: () => void;
 };
 
@@ -41,7 +44,7 @@ function PrefaceItem({ item, open, onToggle, onOpenTask }: PrefaceProps) {
 
 /** The conversation itself: notes recorded before the first message, then the turns. */
 export function ConversationTranscript(props: Props) {
-  const { model, folded, onToggleFold, failed, onRetry } = props;
+  const { model, folded, onToggleFold, failed, sending, onRetry } = props;
   const lastId = model.turns[model.turns.length - 1]?.id;
   const renderFor = blockRenderer(props);
   const { earlier, recent } = splitEarlier(model.turns);
@@ -77,6 +80,11 @@ export function ConversationTranscript(props: Props) {
         </>
       )}
       {recent.map(renderTurn)}
+      {sending && (
+        <section className="turn-v2" data-pending="true">
+          <UserMessage text={sending} sending />
+        </section>
+      )}
       {failed && (
         <div className="conversation-failure">
           <ErrorItem text={failed.message} onRetry={failed.text || failed.files?.length ? onRetry : undefined} />

@@ -47,7 +47,7 @@ export function WorkStepView({ step, open, onToggle, now, ...render }: Props) {
         <StepLead state={state} />
         {isSettled(state) && <Icon name={categoryIcon(step.category)} size="xs" />}
         <span className="work-step-title">{step.title}</span>
-        <StepTail state={state} time={time} />
+        <StepTail state={state} time={time} decision={step.calls.length === 1 ? step.calls[0].decision : undefined} />
       </Button>
       {open && (
         <div className="work-calls">

@@ -20,3 +20,4 @@ export { HoverPreview } from './HoverPreview';
 export { WorkStateIndicator } from './WorkStateIndicator';
 export { Markdown, safeMarkdownUrl, type MarkdownProps, type MarkdownHooks } from './Markdown';
 export { CopyButton, type CopyButtonProps } from './CopyButton';
+export { useMoreToRight } from './useMoreToRight';
