@@ -45,13 +45,6 @@
 .work-note { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
 .work-list { margin: 0; padding-inline-start: var(--space-4); }
 
-.work-diff-rows { box-sizing: border-box; width: 100%; max-height: var(--tool-output-max-height); overflow: auto; background: var(--field); border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: var(--font-size-code); line-height: var(--line-height-body); }
-.work-diff-row { display: flex; padding-inline: var(--space-2); color: var(--muted); }
-.work-diff-sign { flex: none; width: var(--space-4); user-select: none; }
-.work-diff-text { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.work-diff-row[data-kind="add"] { background: var(--work-diff-add); color: var(--text); }
-.work-diff-row[data-kind="remove"] { background: var(--work-diff-remove); color: var(--text); }
-.work-diff-row[data-kind="gap"] { color: var(--muted); }
 
 .work-thinking { display: flex; flex-direction: column; gap: var(--space-half); min-width: 0; }
 .work-thinking-label { display: inline-flex; align-items: center; gap: var(--space-tight); min-height: var(--step-row-height); padding-inline: var(--space-half); }
@@ -62,4 +55,3 @@
 .work-specimen-label { margin: 0; font-size: var(--font-size-label); color: var(--muted); }
 /* Scrolling excerpts take keyboard focus so their overflow can be read without a pointer. */
 .work-pre:focus-visible,
-.work-diff-rows:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
