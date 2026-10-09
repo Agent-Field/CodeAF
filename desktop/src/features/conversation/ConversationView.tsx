@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button, Icon } from '../../components/ui';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
@@ -13,6 +12,7 @@ import type { SendMode } from './Composer';
 import { ConversationDock } from './ConversationDock';
 import { ConversationTranscript } from './ConversationTranscript';
 import { EngineNotice } from './EngineNotice';
+import { LatestPill, liveSince } from './LatestPill';
 import { summarize, type TabSummary } from './tabSummary';
 import { TaskPanel } from './TaskPanel';
 import { TaskRoute } from './TaskRoute';
@@ -56,7 +56,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const { behind, jump } = useStickToBottom(scroller, content, contentSignature(model), route.taskId ?? '');
+  const { behind, unanchored, scrolled, jump } = useStickToBottom(scroller, content, contentSignature(model), route.taskId ?? '');
   const hasTasks = model.tasks.length > 0 || Boolean(model.planError);
   const panel = useTaskPanel(hasTasks, Boolean(tab.tasksClosed), onView);
   const setRoute = (next: typeof route) => onView({ route: next });
@@ -114,7 +114,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const { done, total } = taskCounts(model.tasks);
   const tasksToggle = hasTasks && !panel.shown ? { label: `Tasks · ${done}/${total}`, onClick: panel.open } : undefined;
   const modelLabel = !snapshot || snapshot.model === ENGINE_MODEL ? MODEL_LABEL : snapshot.model;
-  const showJump = behind && !inTask;
+  const showJump = unanchored && (behind || model.running) && !inTask;
   const showFooter = !inTask || conversation.unreachable;
   const greeting = empty ? folderName(snapshot?.workspace) : '';
 
@@ -122,7 +122,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
     <EngineAssetProvider sessionId={sessionId} workspace={snapshot?.workspace ?? ''}>
       <div className="conversation-view">
         <div className="conversation-main" data-empty={empty || undefined}>
-          <div ref={scroller} className="conversation-scroll">
+          <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined}>
             <div ref={content} className="conversation-column">
               {greeting && <p className="conversation-greeting">{greeting}</p>}
               {route.taskId ? (
@@ -150,32 +150,29 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
             </div>
           </div>
           {showFooter && (
-            <div className="conversation-footer conversation-column">
-              {showJump && (
-                <Button className="conversation-jump" onClick={jump}>
-                  <Icon name="arrowDown" size="xs" />
-                  <span>New messages</span>
-                </Button>
-              )}
-              {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
-              {!inTask && (
-                <ConversationDock
-                  tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey }}
-                  queue={{ items: queued.items, onRemove: queued.remove, removedHere: queued.removedHere }}
-                  composer={{
-                    draft: tab.draft,
-                    onDraft,
-                    onSend: sendAndFollow,
-                    onStop: () => void conversation.stop(),
-                    running: model.running,
-                    docked: !empty,
-                    modelLabel,
-                    tasksToggle,
-                    recallLast: () => model.turns[model.turns.length - 1]?.user,
-                    autoFocus: true,
-                  }}
-                />
-              )}
+            <div className="conversation-dock-layer">
+              {showJump && <LatestPill working={model.running} since={liveSince(model)} onJump={jump} />}
+              <div className="conversation-footer conversation-column">
+                {conversation.unreachable && <EngineNotice onRetry={() => void retry()} />}
+                {!inTask && (
+                  <ConversationDock
+                    tray={{ questions: model.questions, busyKey: conversation.busyKey, onAnswer: conversation.answer, onHold: conversation.hold, focusKey }}
+                    queue={{ items: queued.items, onRemove: queued.remove, removedHere: queued.removedHere }}
+                    composer={{
+                      draft: tab.draft,
+                      onDraft,
+                      onSend: sendAndFollow,
+                      onStop: () => void conversation.stop(),
+                      running: model.running,
+                      docked: !empty,
+                      modelLabel,
+                      tasksToggle,
+                      recallLast: () => model.turns[model.turns.length - 1]?.user,
+                      autoFocus: true,
+                    }}
+                  />
+                )}
+              </div>
             </div>
           )}
         </div>

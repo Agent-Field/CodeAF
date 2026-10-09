@@ -1,7 +1,10 @@
 /* Page layout for one conversation: reading column, docked composer, task panel. */
 .conversation-view { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
-.conversation-main { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
-.conversation-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-block: var(--space-6) var(--space-xl); }
+.conversation-main { background: var(--canvas); display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.conversation-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding-block: var(--space-6) calc(var(--scroll-fade-dock) + var(--scroll-dock-clearance)); }
+/* Top edge: a mask, on only once content sits above it (design 1f, Scroll edges). Never an overlay. */
+.conversation-scroll { mask-image: linear-gradient(to bottom, black, black); transition: mask-image var(--dur-fast) var(--ease); }
+.conversation-scroll[data-scrolled] { mask-image: linear-gradient(to bottom, transparent var(--scroll-fade-top-clear), black var(--scroll-fade-top-solid)); }
 .conversation-main[data-empty] { justify-content: center; }
 .conversation-main[data-empty] .conversation-scroll { flex: 0 0 auto; padding-block: 0 var(--space-4); }
 
@@ -10,9 +13,11 @@
 .conversation-preface { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-xl); }
 .conversation-failure { margin-top: var(--space-4); }
 
+.conversation-dock-layer { position: relative; flex: none; margin-top: calc(-1 * var(--scroll-fade-dock)); padding-top: var(--scroll-fade-dock); background: linear-gradient(to bottom, transparent, var(--canvas) var(--scroll-fade-dock)); pointer-events: none; }
+.conversation-dock-layer > * { pointer-events: auto; }
+.conversation-main[data-empty] .conversation-dock-layer { margin-top: 0; padding-top: 0; background: none; }
 .conversation-footer { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-4); }
 .conversation-main[data-empty] .conversation-footer { padding-bottom: var(--space-12); }
-.conversation-jump.button { position: absolute; bottom: calc(100% + var(--space-2)); left: 50%; translate: -50% 0; gap: var(--space-1); min-height: var(--icon-button-size); padding: 0 var(--space-3); border: var(--border-width) solid var(--border); border-radius: var(--radius-lg); background: var(--overlay-surface); box-shadow: var(--shadow); font-size: var(--font-size-label); z-index: var(--z-menu); }
 
 .engine-notice { display: flex; align-items: center; justify-content: center; gap: var(--space-2); max-width: var(--chat-column-max-width); margin: 0 auto var(--space-2); color: var(--muted); font-size: var(--font-size-label); }
 .engine-notice .button { font-size: var(--font-size-label); }
