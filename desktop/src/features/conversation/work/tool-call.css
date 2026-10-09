@@ -1,0 +1,41 @@
+/* Tool call row (components §3.3): lead, target, stat, state word, time. One 28px line, ink-2 at 12px. Layout only. */
+.work-call { display: flex; flex-direction: column; min-width: 0; }
+.work-call-head { position: relative; display: grid; grid-template-columns: var(--tool-row-lead) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); min-height: var(--row-h); border-radius: var(--radius-chip); color: var(--ink-2); font-size: var(--type-label-size); }
+.work-call-head:hover { background: var(--field); }
+.work-call-head:active { background: var(--field-2); }
+.work-call-head:has(.work-call-toggle:focus-visible) { outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset); }
+.work-call-toggle.button { display: grid; place-items: center; width: var(--tool-row-lead); min-height: 0; padding: 0; border: 0; background: transparent; color: inherit; }
+.work-call-toggle:focus-visible { outline: none; }
+/* The toggle stretches over the whole row so a click anywhere opens it; a file chip rises above it. */
+.work-call-toggle::after { content: ""; position: absolute; inset: 0; }
+.work-call-dot { width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--mark-running); }
+.work-call-dot[data-state="waiting"] { background: var(--mark-waiting); }
+.work-call[data-state="failed"] .work-call-toggle { color: var(--mark-failed); }
+.work-call[data-state="stopped"] .work-call-toggle, .work-call[data-state="refused"] .work-call-toggle { color: var(--ink-3); }
+
+.work-call-main { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; }
+.work-call-file { position: relative; z-index: 1; display: inline-flex; min-width: 0; }
+.work-call-text, .work-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-call-text[data-mono], .work-path { font-family: var(--font-mono); color: var(--ink); }
+.work-path.type-code { color: inherit; }
+.work-stat { display: inline-flex; flex: none; gap: var(--space-1); font-size: var(--type-caption-size); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.work-stat .work-add, .work-stat .work-remove { font-family: var(--font-mono); }
+.work-add { color: var(--success); }
+.work-remove { color: var(--danger); }
+
+.work-call-status { display: inline-flex; align-items: center; gap: var(--space-1); padding-inline-end: var(--space-2); white-space: nowrap; }
+.work-call-time { font-family: var(--font-mono); font-size: var(--type-caption-size); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.work-call-status[data-state="failed"] { color: var(--danger); }
+.work-call-status[data-state="stopped"], .work-call-status[data-state="refused"] { color: var(--ink-3); }
+.work-call[data-state="stopped"] .work-call-text { color: var(--ink-2); }
+.work-call[data-state="refused"] .work-call-text { color: var(--ink-3); text-decoration: line-through; text-decoration-color: var(--ink-3); }
+.work-call[data-state="forming"] .work-call-head { opacity: var(--tool-forming-opacity); }
+
+/* Bash output: the field is the terminal; a hairline footer carries the exit and the full-output action. */
+.work-term { box-sizing: border-box; width: 100%; min-width: 0; overflow: hidden; border-radius: var(--tool-term-radius); background: var(--term); box-shadow: inset 0 0 0 var(--hairline) var(--line); }
+.work-term-body { margin: 0; padding: var(--space-compact) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; font: var(--tool-term-size) / var(--tool-term-leading) var(--font-mono); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
+.work-term-body:focus-visible { outline: var(--focus-width) solid var(--focus-ring); outline-offset: calc(var(--focus-offset) * -1); }
+.work-term-command { color: var(--ink); }
+.work-term-foot { display: flex; align-items: center; justify-content: space-between; min-height: var(--tool-term-footer-height); padding-inline: var(--space-3); border-top: var(--hairline) solid var(--line); font-size: var(--type-caption-size); color: var(--ink-3); }
+.work-term-foot .work-more.button { min-height: 0; padding: 0; background: transparent; font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); color: var(--ink-2); margin-inline-start: auto; }
+.work-term-foot .work-more.button:hover { color: var(--ink); }
