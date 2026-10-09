@@ -30,8 +30,10 @@ test('the settings page lists the pinned models and one row per role', async ({ 
   await openSettings(page);
   const pinned = page.getByRole('region', { name: 'Pinned' });
   await expect(pinned.getByRole('button', { name: /^Pinned model/ })).toHaveText(['GLM 5.3 Flash', 'DeepSeek V4.1 Flash', 'GLM 5.3']);
-  for (const name of ['Conversation', 'Tasks', 'Titles and summaries']) {
-    await expect(page.getByRole('region', { name: 'Jobs' }).getByText(name, { exact: true })).toBeVisible();
+  // Each job sits under its section, in the engine's order.
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Pinned', 'Conversation and tasks', 'Naming and summaries', 'Places organization', 'Memory, routing and safety']);
+  for (const [section, name] of [['Conversation and tasks', 'Tasks'], ['Naming and summaries', 'Chat titles'], ['Places organization', 'Chat filing'], ['Memory, routing and safety', 'Memory']]) {
+    await expect(page.getByRole('region', { name: section }).getByText(name, { exact: true })).toBeVisible();
   }
   await expect(page.getByRole('button', { name: 'Model for Tasks' })).toHaveText('DeepSeek V4.1 Flash');
   // Nothing differs from the default yet, so there is no Reset and no receipt.
@@ -113,4 +115,58 @@ test('settings is one centred column, accessible in light and dark, with no hori
   await page.setViewportSize({ width: 320, height: 700 });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test('a job nothing calls yet says so, and a split job follows the one it came from until chosen', async ({ page }) => {
+  await installMockEngine(page, scenario());
+  await openApp(page);
+  await openSettings(page);
+  const places = page.getByRole('region', { name: 'Places organization' });
+  await expect(places.locator('[data-role="placefiling"]')).toContainText('Not in use yet. Your choice is kept for when it is.');
+  await expect(page.locator('[data-role="tasks"]')).not.toContainText('Not in use yet');
+  await page.getByRole('button', { name: 'Model for Chat titles' }).click();
+  await page.getByRole('listbox', { name: 'Models' }).getByRole('option', { name: 'Kimi K3' }).click();
+  await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+  // Summaries was split from the titles row; it runs on the titles choice until it has its own.
+  await page.reload();
+  await openSettings(page);
+  await expect(page.getByRole('button', { name: 'Model for Summaries' })).toHaveText('Kimi K3');
+  await expect(page.locator('[data-role="summaries"]')).toContainText('Not in use yet');
+});
+
+test('the Places organization choices save at once, refuse what they cannot hold, and reset', async ({ page }) => {
+  const engine = await installMockEngine(page, scenario());
+  await openApp(page);
+  await openSettings(page);
+  const places = page.getByRole('region', { name: 'Places organization' });
+  const auto = places.getByRole('radiogroup', { name: 'File chats without asking' });
+  // Nothing reorganises by itself: automatic filing starts off and is labelled as a provisional choice.
+  await expect(auto.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true');
+  await expect(places.locator('[data-setting="autoFile"]')).toContainText('Provisional default: Off');
+  await expect(places.locator('[data-setting="clusterOffers"]')).not.toContainText('Provisional default');
+  await auto.getByRole('radio', { name: 'On' }).click();
+  await expect.poll(() => puts(engine.calls).at(-1)).toMatchObject({ path: expect.stringMatching(/\/places\/policy\/autoFile$/), body: { value: true } });
+  await expect(page.getByRole('status')).toHaveText('Saved · applies to the next call');
+
+  const cap = places.getByRole('spinbutton', { name: 'Top-level places codeaf may create' });
+  await cap.fill('900');
+  await cap.press('Enter');
+  await expect(page.getByRole('status')).toHaveText('Not saved · maxAiTopLevel is out of range');
+  // A refused number is put back, so the field never shows what was not saved.
+  await expect(cap).toHaveValue('6');
+  await cap.fill('4');
+  await cap.press('Enter');
+  await expect.poll(() => puts(engine.calls).at(-1)?.body).toEqual({ value: 4 });
+  await page.getByRole('button', { name: 'Reset Top-level places codeaf may create' }).click();
+  await expect.poll(() => puts(engine.calls).at(-1)?.body).toEqual({ value: null });
+  await expect(cap).toHaveValue('6');
+});
+
+test('an engine without the Places organization routes still shows every model choice', async ({ page }) => {
+  await installMockEngine(page, { ...scenario(), placesPolicy: false });
+  await openApp(page);
+  await openSettings(page);
+  const places = page.getByRole('region', { name: 'Places organization' });
+  await expect(places.getByText('How codeaf offers places cannot be changed from this engine yet.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Model for Chat filing' })).toBeVisible();
 });

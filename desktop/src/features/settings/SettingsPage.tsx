@@ -1,5 +1,7 @@
-import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text } from '../../components/ui';
-import type { CatalogModel, ModelRole } from '../chat/engine-client';
+import { useState, type KeyboardEvent } from 'react';
+import { Button, KeyboardShortcut, PageHeading, SectionHeading, Segmented, Text, TextInput } from '../../components/ui';
+import type { CatalogModel, ModelRole, PlacesSetting } from '../chat/engine-client';
+import { groupRoles, roleStateLine } from './groups';
 import { ModelSelect } from './ModelSelect';
 import { effortWord, SETTINGS_TAB_TITLE } from './summary';
 import { useModelSettings, type ModelSettings } from './useModelSettings';
@@ -46,6 +48,7 @@ function RoleRow({ role, settings }: { role: ModelRole; settings: ModelSettings 
         {role.chosen && <Button variant="ghost" className="settings-reset" aria-label={`Reset ${role.name}`} onClick={() => settings.saveRole(role.id, { model: '' })}>Reset</Button>}
       </div>
       <p className="settings-row-controls">{role.controls}</p>
+      {roleStateLine(role, settings.roles) && <p className="settings-row-state">{roleStateLine(role, settings.roles)}</p>}
       <div className="settings-row-choice">
         <ModelSelect label={`Model for ${role.name}`} value={role.model} catalog={settings.catalog} onChange={choose} />
         {efforts.length > 0 && (
@@ -57,8 +60,63 @@ function RoleRow({ role, settings }: { role: ModelRole; settings: ModelSettings 
 }
 
 /**
- * The Models page: which three models are pinned to the composer, and which model each kind of job runs on.
- * Every change is saved at once through the engine and says so; there is no Save button.
+ * A whole number typed into a Places setting: saved on Enter or on leaving the field, put back when it is not a whole
+ * number or the engine refused it. It is keyed by the saved value, so a reset or a save elsewhere redraws it.
+ */
+function NumberSetting({ setting, onSave }: { setting: PlacesSetting; onSave: (value: number) => Promise<boolean> }) {
+  const saved = String(setting.value);
+  const [text, setText] = useState(saved);
+  const commit = () => {
+    const value = Number(text);
+    if (text.trim() === '' || !Number.isInteger(value) || value === setting.value) { setText(saved); return; }
+    void onSave(value).then(ok => { if (!ok) setText(saved); });
+  };
+  const keys = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') commit();
+    if (event.key === 'Escape') setText(saved);
+  };
+  return (
+    <span className="settings-number">
+      <TextInput appearance="field" type="number" inputMode="numeric" min={setting.min} max={setting.max} step={1} aria-label={setting.name}
+        value={text} onChange={event => setText(event.target.value)} onBlur={commit} onKeyDown={keys} />
+      {setting.unit && <span className="settings-unit">{setting.unit}</span>}
+    </span>
+  );
+}
+
+function PlacesSettingRow({ setting, settings }: { setting: PlacesSetting; settings: ModelSettings }) {
+  return (
+    <li className="settings-row" data-setting={setting.key}>
+      <div className="settings-row-head">
+        <span className="settings-row-name">{setting.name}</span>
+        {setting.chosen && <Button variant="ghost" className="settings-reset" aria-label={`Reset ${setting.name}`} onClick={() => settings.savePlaces(setting.key, null)}>Reset</Button>}
+      </div>
+      <p className="settings-row-controls">{setting.explain}</p>
+      {!setting.design && <p className="settings-row-state">Provisional default: {String(setting.default === true ? 'On' : setting.default === false ? 'Off' : setting.default)}{setting.unit && typeof setting.default === 'number' ? ` ${setting.unit}` : ''}, an engineering choice until it is designed.</p>}
+      <div className="settings-row-choice">
+        {setting.kind === 'switch'
+          ? <Segmented label={setting.name} value={setting.value ? 'on' : 'off'} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} onChange={word => settings.savePlaces(setting.key, word === 'on')} />
+          : <NumberSetting key={String(setting.value)} setting={setting} onSave={value => settings.savePlaces(setting.key, value)} />}
+      </div>
+    </li>
+  );
+}
+
+/** How codeaf offers places: listed under the Places organization section, after its two model roles. */
+function PlacesPolicy({ settings }: { settings: ModelSettings }) {
+  if (settings.places.state === 'loading') return null;
+  if (settings.places.state === 'unavailable') return <Text className="settings-note">How codeaf offers places cannot be changed from this engine yet.</Text>;
+  return (
+    <ul className="settings-rows" aria-label="How codeaf offers places">
+      {settings.places.settings.map(setting => <PlacesSettingRow key={setting.key} setting={setting} settings={settings} />)}
+    </ul>
+  );
+}
+
+/**
+ * The Models page: which three models are pinned to the composer, which model each kind of job runs on, grouped
+ * into provisional sections, and how codeaf offers places. Every change is saved at once through the engine and
+ * says so; there is no Save button.
  */
 export function SettingsPage() {
   const settings = useModelSettings();
@@ -68,18 +126,24 @@ export function SettingsPage() {
         <PageHeading>{SETTINGS_TAB_TITLE}</PageHeading>
         <Receipt receipt={settings.receipt} />
       </header>
+      <Text className="settings-note">These settings are provisional. Each job starts on the default model, and the defaults are engineering choices until Settings is designed.</Text>
       {settings.state === 'loading' && <Text>Reading your model choices…</Text>}
       {settings.state === 'unavailable' && <Text role="alert">The engine is not reachable, so model choices cannot be read.</Text>}
       {settings.state === 'ready' && (
         <>
           <PinnedSection settings={settings} />
-          <section className="models-section" aria-labelledby="settings-roles">
-            <SectionHeading id="settings-roles">Jobs</SectionHeading>
-            <Text className="settings-note">Each kind of job runs on one model. Every job starts on the default.</Text>
-            <ul className="settings-rows">
-              {settings.roles.map(role => <RoleRow key={role.id} role={role} settings={settings} />)}
-            </ul>
-          </section>
+          {groupRoles(settings.roles, settings.categories).map(({ category, roles }) => {
+            const id = `settings-roles-${category.id || 'all'}`;
+            return (
+              <section key={id} className="models-section" aria-labelledby={id}>
+                <SectionHeading id={id}>{category.name}</SectionHeading>
+                <ul className="settings-rows">
+                  {roles.map(role => <RoleRow key={role.id} role={role} settings={settings} />)}
+                </ul>
+                {category.id === 'places' && <PlacesPolicy settings={settings} />}
+              </section>
+            );
+          })}
         </>
       )}
     </div>
