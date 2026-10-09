@@ -55,6 +55,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | **Designer: keep.** No hunk header on edit diffs; file/diff tabs (from git) keep it. |
 | Q33 | Elapsed time on the live thinking row ("4s") | **Designer: keep.** Not shown until thinking ends; the engine gives no time before then. |
 | Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | **Designer: keep.** Nearest set icons: ban, pencil, the plain file icons. |
+| Q30 | ⌘1–3: the Conversation page said they switch pinned models, the Shell spec said ⌘1–9 jump to tabs | **Designer (Interactions, latest):** ⌘1–9 jump to tabs and ⌥⌘1–3 switch pinned models. The keys wiring belongs to the rail-and-keys and composer lanes. |
 
 ## Open: for the designer
 
@@ -168,3 +169,8 @@ Shell). On any conflict, the design files win over code and older docs.
 | R2 | ⌘B for the rail: the design lists only ⌘S | ⌘/Ctrl B keeps working beside ⌘S, because it was the key before the shell design. Say if it should go. |
 | R3 | The rail the design draws holds Inbox, Now, Places and All places; the engine has no places or inbox endpoint yet | The rail ships Workspace, Activity, Settings and Design system as 32px rail rows (Places `rr` geometry), with the palette field above them. ⌘0, ⌘P, ⌘⇧P and ⌃1–9 are not bound until places exist. |
 | R4 | Focus mode: the top 8px brings the strip back (Shell 2h) with no dwell named, while the rail's left-edge peek waits 300ms (Places 9e) | The strip comes back at once on the top 8px; the rail only after resting 300ms on the left 8px. Both are overlays tinted with the frame at 88% and go away when the pointer leaves them; a menu opened from the revealed strip keeps it up until the menu closes. |
+| M1 | Shell 3g and Components "Context menu" draw ⌥⌘W beside "Close other tabs", while 3l and Interactions give ⌥⌘W to "Close and stop" | ⌥⌘W closes and stops. "Close other tabs" shows no shortcut. "Close and stop" is listed in the tab menu only for a tab whose work is running (3g draws the menu of an idle tab without it; 3l says an idle tab has nothing to stop). |
+| M2 | The tab menu has no "Rename tab" in 3g or Interactions, but the "Rename a conversation" flow says "or use the menu" | "Rename tab" stays in the menu, under Duplicate, so keyboard and trackpad users have a path that does not need a double-click. |
+| M3 | "Reopen closed tab" is no longer in the tab menu (3g, Interactions) | It stays on ⌘⇧T and in the strip's overflow menu. |
+| M4 | Where the Inbox tab comes from: Interactions says the rail's Inbox row opens it; 3l calls it "the pinned tab" and says closed running work lists there | The Inbox tab is created the first time work outlives its tab or an open tab needs the person, pinned first in the strip, with a dot only while something needs you. The rail lane can open it with the `open-inbox` workspace action. |
+| M5 | "Copy link" (⌘⇧C) and "Move to new window" are drawn enabled | Both are listed and disabled. Copy link needs a codeaf link scheme the app does not register, and a second window needs a Tauri multi-window bridge. Neither exists in the engine bridge today. |
