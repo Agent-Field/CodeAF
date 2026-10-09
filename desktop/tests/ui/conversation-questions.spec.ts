@@ -48,7 +48,7 @@ test('several questions page through one card; a permission set is one card; the
   await expect(count).toHaveText(/^2 of 2$/);
   await tray(page).getByRole('button', { name: 'Previous question' }).click();
   await tray(page).getByRole('button', { name: 'Next question' }).click();
-  const set = tray(page).getByRole('region', { name: '3 actions need your OK' });
+  const set = tray(page).getByRole('region', { name: 'Allow 3 actions?' });
   await set.getByRole('button', { name: 'Allow all' }).click();
   await expect.poll(() => posts(engine, '/answer').length).toBe(3);
   expect(posts(engine, '/answer').map((call) => [call.body.id, call.body.key])).toEqual([[1, '1'], [2, '1'], [3, '1']]);
