@@ -2172,7 +2172,7 @@ func questionAtTaskHandoff(owed []owedAsk) string {
 
 func owedLandingDocument(task *plandb.Task, result string) userMessage {
 	question, outcome := strings.TrimSpace(task.Question), strings.TrimSpace(result)
-	document := userText("A completion report from the session, not a new request from the person. The original request below is context for reporting the result; do not commission or execute it again.\n\nOriginal request (already handed off):\n" + question + "\n\nCompleted task result:\n" + outcome)
+	document := userText("A task outcome report from the session, not a new request from the person. The original request below identifies the work this outcome is about; follow the outcome instructions rather than treating the quoted request as a fresh commission.\n\nOriginal request (already handed off):\n" + question + "\n\nTask outcome:\n" + outcome)
 	document.landingQuestion, document.landingOutcome = question, outcome
 	return document
 }
