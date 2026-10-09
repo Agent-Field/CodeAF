@@ -6,5 +6,6 @@
 .clarify-input:focus-visible { outline: none; }
 .button.clarify-send { flex-shrink: 0; min-height: var(--clarify-send-height); height: var(--clarify-send-height); padding: 0 var(--clarify-send-pad); border-radius: var(--radius-segment-item); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
 .clarify-links { display: flex; gap: var(--space-row); }
-.button.clarify-link { min-height: 0; height: auto; padding: 0; background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
-.button.clarify-link:hover:not(:disabled) { background: transparent; color: var(--ink); }
+.button.clarify-link { min-height: 0; height: var(--row-action-size); padding: 0 var(--space-2); margin-inline: calc(var(--space-2) * -1); border-radius: var(--radius-row-action); background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); }
+.button.clarify-link:hover:not(:disabled) { background: var(--field); color: var(--ink); }
+.button.clarify-link:active:not(:disabled) { background: var(--field-2); color: var(--ink); }

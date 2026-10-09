@@ -1,6 +1,12 @@
 /* Decision tray shell: the one card (head, scrolling body, foot) and its 40px compact bar. Design v3 §6.2, 1a, 1b, 1e, 1f. */
-.decision-tray { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: var(--tray-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); animation: surface-enter var(--dur-spring) var(--spring); }
-.decision-tray[hidden] { display: none; }
+.decision-tray { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border-radius: var(--tray-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); }
+.decision-tray { animation: surface-enter var(--dur-spring) var(--spring); }
+
+/* 1f Tray compaction: the card and the 40px bar share one slot; the hidden one folds to zero height over dur-base.
+   The room keeps the shadow from being clipped by the fold. */
+.tray-fold { display: grid; grid-template-rows: 0fr; opacity: var(--opacity-transparent); visibility: hidden; transition: grid-template-rows var(--dur-base) var(--ease), opacity var(--dur-base) var(--ease), visibility var(--duration-none) linear var(--dur-base); }
+.tray-fold[data-shown] { grid-template-rows: 1fr; opacity: var(--opacity-opaque); visibility: visible; transition: grid-template-rows var(--dur-base) var(--ease), opacity var(--dur-base) var(--ease); }
+.tray-fold-room { min-height: 0; overflow: hidden; padding: var(--tray-shadow-room); margin: calc(var(--tray-shadow-room) * -1); }
 
 .tray-header { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-3) var(--tray-pad-end) 0 var(--tray-pad-inline); color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); }
 .tray-mark { flex: none; width: var(--mark-dot); height: var(--mark-dot); border-radius: var(--tray-mark-radius); background: var(--mark-waiting); }
@@ -11,6 +17,7 @@
 .tray-count { padding-right: var(--space-1); font-variant-numeric: tabular-nums; }
 .icon-button.tray-arrow { width: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-row-action); color: var(--ink-2); }
 .icon-button.tray-arrow:hover:not(:disabled) { background: var(--field); color: var(--ink-2); }
+.icon-button.tray-arrow:active:not(:disabled) { background: var(--field-2); color: var(--ink-2); }
 .icon-button.tray-arrow:disabled { color: var(--ink-3); opacity: var(--opacity-control-disabled); }
 .button.tray-later { min-height: var(--row-action-size); padding-inline: var(--space-2); border-radius: var(--radius-row-action); color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
 
@@ -23,8 +30,9 @@
 .tray-foot { margin: 0; padding: 0 var(--tray-pad-end) var(--space-2) var(--tray-pad-inline); color: var(--ink-2); font-size: var(--type-caption-size); line-height: var(--type-caption-leading); text-align: right; }
 
 /* 1b: the compact bar stands in for the card while the reader is scrolled away. */
-.tray-compact { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--tray-compact-height); padding: 0 var(--tray-compact-pad-end) 0 var(--tray-compact-pad-inline); border-radius: var(--tray-compact-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); animation: surface-enter var(--dur-spring) var(--spring); }
+.tray-compact { display: flex; align-items: center; gap: var(--space-compact); min-width: 0; height: var(--tray-compact-height); padding: 0 var(--tray-compact-pad-end) 0 var(--tray-compact-pad-inline); border-radius: var(--tray-compact-radius); background: var(--surface); box-shadow: var(--sh-2); color: var(--ink); font-size: var(--type-label-size); }
 .tray-compact-count { flex: none; font-weight: var(--type-label-strong); }
 .tray-compact-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
 .button.tray-compact-review { flex: none; height: var(--control-height); min-height: var(--control-height); margin-left: auto; padding: 0 var(--control-pad); border: 0; border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); font-weight: var(--type-label-strong); }
-.button.tray-compact-review:hover:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.button.tray-compact-review:hover:not(:disabled), .button.tray-compact-review:active:not(:disabled) { background: var(--field-2); color: var(--ink); }
+.button.tray-compact-review:active:not(:disabled) { filter: brightness(var(--brightness-press)); }

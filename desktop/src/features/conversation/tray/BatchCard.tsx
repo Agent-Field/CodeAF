@@ -54,8 +54,8 @@ function Pager({ members, busy, onDone }: PagerProps) {
       </div>
       <h3 className="batch-title">{member.head}</h3>
       <div className="batch-actions">
-        <Button className="batch-allow" disabled={busy} onClick={() => decide('allow')}>{decided[key] === 'allow' ? 'Allowed' : 'Allow'}</Button>
-        <Button className="batch-deny" disabled={busy} onClick={() => decide('deny')}>{decided[key] === 'deny' ? 'Denied' : 'Deny'}</Button>
+        <Button variant="primary" className="batch-allow" disabled={busy} onClick={() => decide('allow')}>{decided[key] === 'allow' ? 'Allowed' : 'Allow'}</Button>
+        <Button variant="quiet" className="batch-deny" disabled={busy} onClick={() => decide('deny')}>{decided[key] === 'deny' ? 'Denied' : 'Deny'}</Button>
       </div>
     </>
   );
@@ -86,8 +86,8 @@ export function BatchCard({ members, busy, onSend }: BatchProps) {
             </ul>
           )}
           <div className="batch-actions">
-            <Button className="batch-allow" disabled={busy} onClick={() => sendAll('allow')}>Allow all</Button>
-            <Button className="batch-deny" disabled={busy} onClick={() => sendAll('deny')}>Deny all</Button>
+            <Button variant="primary" className="batch-allow" disabled={busy} onClick={() => sendAll('allow')}>Allow all</Button>
+            <Button variant="quiet" className="batch-deny" disabled={busy} onClick={() => sendAll('deny')}>Deny all</Button>
             <Button className="batch-more" disabled={busy} onClick={() => setPaging(true)}>One by one</Button>
             {!blocksReply(members) && <Text className="batch-note">Doesn&rsquo;t block this reply</Text>}
           </div>
