@@ -95,6 +95,44 @@ export function withTasks(prompt = 'Migrate the settings screen'): Scenario {
   };
 }
 
+const treeRows: EngineTaskRow[] = [
+  row('3', 'Ship trailing-comma support', 'running', { Done: 1, Running: 1, Queued: 3, Failed: 0, Total: 7, Steps: 2 }),
+  row('3.1', 'Update fixtures', 'running', { Parent: '3', Steps: 7, Live: { Step: 8, Command: 'go test ./internal/parse/...', Since: at } }),
+  row('3.2', 'Port fix to v1 branch', 'paused', { Parent: '3', Steps: 12, Waiting: true, Note: 'Allow 3 git actions?' }),
+  row('3.2.1', 'Cherry-pick onto v1', 'paused', { Parent: '3.2', Waiting: true }),
+  row('3.2.2', 'Run the v1 suite', 'pending', { Parent: '3.2' }),
+  row('3.3', 'Decide strict-mode default', 'done', { Parent: '3', Steps: 4, Ended: at }),
+  row('3.4', 'Write changelog entry', 'pending', { Parent: '3', Waits: ['3.1'] }),
+  row('4', 'Audit config loaders', 'running', { Done: 1, Running: 0, Queued: 1, Failed: 1, Total: 4, Steps: 1 }),
+  row('4.1', 'Scan config overrides', 'done', { Parent: '4', Steps: 5, Ended: at }),
+  row('4.2', 'Migrate old fixtures', 'failed', { Parent: '4', Steps: 8, Note: 'make fixtures exited 2' }),
+  row('4.3', 'Rewrite YAML fixtures', 'pending', { Parent: '4.2' }),
+  row('4.4', 'Split by loader', 'pending', { Parent: '4.2' }),
+  row('4.5', 'Convert env', 'pending', { Parent: '4.2', Waits: ['4.4'] }),
+];
+
+const treeQuestion: EngineQuestion = {
+  id: 11, kind: 'permission', ask: 'Allow 3 git actions?', head: 'Allow 3 git actions?',
+  options: [{ key: 'all', label: 'Allow all' }, { key: 'deny', label: 'Deny' }],
+  blocking: { tasks: ['3.2'] },
+};
+
+/** A nested plan: one running, one needing you (with a question), one failed, queued children. */
+export function withTaskTree(): Scenario {
+  const aside: WireEntry = { Role: 'aside', Text: 'Task 3 started: Ship trailing-comma support.', TaskIDs: ['3'] };
+  const pages = Object.fromEntries(treeRows.map((r) => [r.ID, {
+    ...taskPage, Row: r, Children: treeRows.filter((c) => c.Parent === r.ID),
+    Description: 'Update every fixture in testdata to cover trailing commas in nested arrays and objects, including the empty case. Keep strict-mode fixtures unchanged.',
+  }]));
+  return {
+    initial: {
+      title: 'Trailing commas', needsPerson: true, questions: [treeQuestion], tasks: treeRows,
+      entries: [user('Ship trailing-comma support'), aside, answer('I split the work into two groups.')],
+    },
+    taskPages: pages,
+  };
+}
+
 export const question: EngineQuestion = {
   id: 7,
   kind: 'choice',

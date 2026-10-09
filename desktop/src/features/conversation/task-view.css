@@ -1,4 +1,8 @@
 /* Breadcrumb: Back and the trail share one quiet line of ink-2 text; the current task is ink at medium weight. */
+/* The bar is the pane's own top row, not part of the column: Back sits at the pane's edge. */
+.task-view-bar { display: flex; align-items: center; flex: none; height: var(--task-view-bar-height); padding-inline: var(--space-3); }
+.task-view-bar .breadcrumb { flex: 1; }
+.task-view-bar .breadcrumb-back.icon-button { margin-inline-start: 0; }
 .breadcrumb { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: var(--control-height); }
 .breadcrumb-back.icon-button { flex: none; width: var(--control-height); height: var(--control-height); margin-inline-start: calc(var(--space-2) * -1); border-radius: var(--radius-control); color: var(--ink-3); }
 .breadcrumb-list { display: flex; align-items: center; flex: 1; min-width: 0; margin: 0; padding: 0; list-style: none; font-size: var(--type-h3-size); font-weight: var(--font-weight-regular); }
@@ -13,7 +17,7 @@
 .breadcrumb-link:focus-visible { outline: var(--focus-style); outline-offset: var(--focus-offset); }
 .breadcrumb-current { padding: var(--space-half) var(--space-1); color: var(--ink); font-weight: var(--type-label-strong); }
 
-.task-view { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
+.task-view { display: flex; flex: 1; flex-direction: column; gap: var(--space-6); min-width: 0; }
 .task-view-body { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
 .task-view-quiet { color: var(--ink-2); font-size: var(--type-label-size); }
 .task-view-error { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
