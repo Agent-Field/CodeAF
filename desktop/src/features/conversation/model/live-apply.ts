@@ -16,8 +16,8 @@ function callState(call: LiveCall): ToolStep['state'] {
 }
 
 function liveToolStep(call: LiveCall): ToolStep {
-  const { id, tool, hint, args, output } = call;
-  return { id, callId: id.startsWith('live:') ? undefined : id, tool, hint, args, output, state: callState(call) };
+  const { id, tool, hint, args, output, tookMs } = call;
+  return { id, callId: id.startsWith('live:') ? undefined : id, tool, hint, args, output, tookMs, state: callState(call) };
 }
 
 function recordedCalls(turn: TurnV2): ToolStep[] {
@@ -31,6 +31,7 @@ function reconcile(recorded: ToolStep[], live: LiveOverlayV2): Set<string> {
     const twin = recorded.find((r) => matches(r, call, live.baseEntries));
     if (!twin) continue;
     seen.add(call.id);
+    twin.tookMs ??= call.tookMs;
     if (twin.state === 'running' && callState(call) !== 'running') {
       twin.state = callState(call);
       twin.output = twin.output || call.output;
@@ -54,7 +55,6 @@ function liveStep(index: number, group: LiveCall[], waiting: ReadonlySet<string>
   const captioned = group.find((c) => c.caption);
   const anchor = { Role: 'tool', Text: '', Caption: captioned?.caption, CaptionCategory: captioned?.category } as RichEntry;
   const batch: Batch = { ...newBatch(`live-s${index}`, group[0].narration ?? '', anchor), calls: group.map(liveToolStep) };
-  batch.tookNs = group.reduce((sum, c) => sum + (c.tookMs ?? 0) * 1e6, 0);
   const step = finishStep(batch, { sessionFile: '', running: true, lastUnanswered: -1, waiting });
   const preparing = group.every((c) => PREPARING.includes(c.phase));
   return preparing ? { ...step, state: 'preparing' } : step;

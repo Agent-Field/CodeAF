@@ -3,13 +3,15 @@ import { Button } from '../../components/ui';
 
 type NoteItemProps = { text: string; long?: boolean };
 
-/** A model-directed note over the limit is one muted line with Show, never a wall of text. */
+/** A model-directed note over the limit is one muted line with Show, never a wall of text.
+ * Folded, it shows its first line; Show reveals the whole note. */
 function FoldedNote({ text }: { text: string }) {
   const [shown, setShown] = useState(false);
+  const line = text.split('\n', 1)[0];
   return (
     <div className="note-folded" role="note">
       <div className="note-folded-line">
-        {!shown && <span className="note-folded-text">{text}</span>}
+        {!shown && <span className="note-folded-text">{line}</span>}
         <Button className="note-folded-toggle" aria-expanded={shown} onClick={() => setShown(!shown)}>
           {shown ? 'Hide' : 'Show'}
         </Button>

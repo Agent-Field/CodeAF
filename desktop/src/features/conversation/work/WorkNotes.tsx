@@ -1,3 +1,4 @@
+import { NoteItem } from '../NoteItem';
 import type { TurnItem } from '../types';
 
 function words(item: TurnItem): string {
@@ -13,17 +14,22 @@ function words(item: TurnItem): string {
   }
 }
 
-/** Notes that happened inside the work: one muted line each. A steer wears the elbow mark. */
+/** Notes that happened inside the work: one muted line each. A steer wears the elbow mark.
+ * A long note is the session's own report: its first line shows, the rest folds under Show. */
 export function WorkNotes({ notes }: { notes: TurnItem[] }) {
   const shown = notes.filter((item) => words(item) !== '');
   if (shown.length === 0) return null;
   return (
     <>
-      {shown.map((item) => (
-        <p key={item.id} className="work-note" data-kind={item.kind}>
-          {item.kind === 'steer' ? `↳ ${words(item)}` : words(item)}
-        </p>
-      ))}
+      {shown.map((item) =>
+        item.kind === 'note' && item.long ? (
+          <NoteItem key={item.id} text={item.text} long />
+        ) : (
+          <p key={item.id} className="work-note" data-kind={item.kind}>
+            {item.kind === 'steer' ? `↳ ${words(item)}` : words(item)}
+          </p>
+        ),
+      )}
     </>
   );
 }

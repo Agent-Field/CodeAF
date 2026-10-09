@@ -57,6 +57,13 @@ const LANDING_LABELS: Record<string, string> = {
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
+// A phrase of plain words: its first word is lowercase letters only, and more words follow.
+const PLAIN_PHRASE = /^[a-z]+\s+\S/;
+
+/** Engine words are literal. Only a plain phrase ("not now") gains a capital to start a
+ * button; a path, a file name or a lone word ("src/c.txt", "notes.md", "json") keeps its case. */
+export const sentenceStart = (text: string) => (PLAIN_PHRASE.test(text) ? capital(text) : text);
+
 export function optionLabel(question: Question, option: Option): string {
   const form = formOf(question);
   if (form === 'permission') {
@@ -66,7 +73,7 @@ export function optionLabel(question: Question, option: Option): string {
   if (form === 'proposal') return option.safe ? 'No' : 'Start it';
   if (form === 'landing' && LANDING_LABELS[option.key]) return LANDING_LABELS[option.key];
   const dots = needsWords(question, option) && !option.label.endsWith('…') ? '…' : '';
-  return capital(option.label) + dots;
+  return sentenceStart(option.label) + dots;
 }
 
 export type Variant = 'primary' | 'secondary' | 'quiet';
@@ -108,7 +115,7 @@ export function compareRows(question: Question): string[][] | null {
   const axes = shared.filter((axis) => options.every((option) => option.dimensions?.[axis]));
   if (!axes.length) return null;
   return [
-    ['', ...options.map((option) => capital(option.label))],
+    ['', ...options.map((option) => sentenceStart(option.label))],
     ...axes.map((axis) => [axis, ...options.map((option) => option.dimensions?.[axis] ?? '')]),
   ];
 }

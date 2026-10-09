@@ -127,7 +127,11 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
   `CaptionCategory`; `Took` per call.
 - Title precedence: the narration line just before it (§2.4) → `Caption` → a
   composed title from the tools ("Read 3 files in internal/x", "Ran 2 commands").
-  Past tense once finished.
+  Past tense once finished. A narration of one word ("done", the word a landing
+  asks the model to say back) is not a title; the next source titles the step.
+- Duration: a batch's calls run side by side, so the step shows its longest
+  call's `Took`; each call row shows its own. A call the record kept no `Took`
+  for shows none.
 - Category icon (one per step) from `CaptionCategory`: search · read · edit ·
   create · run · test · browse · transfer · communicate · coordinate · plan ·
   wait · work.
@@ -170,6 +174,11 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 ### 3.5 System notes
 - Compaction (`Role:"note"`): centred divider with "Earlier messages summarized".
 - Notice (raw kind 18), harness/orchestration notes: one muted work-rhythm line.
+- Session notes to the model (`Role:"aside"`, e.g. "while you worked: A note from
+  the session, not from the person: …"): drawn in a person's words. The batching
+  label, the lead that instructs the model and `file://` transcript links are
+  never drawn; a note of more than one line shows its first line and folds the
+  rest under Show.
 - Job finished (`AsideKind:"job"`): muted row "Background job finished ·
   `AsideTitle`", expandable body.
 - Watch fired (`AsideKind:"watch"`): muted row "Watch fired", expandable.
@@ -247,6 +256,8 @@ horizontal rule. Raw HTML stays off. Mermaid/math: not now.
 ### 4.5 Task notice (in the conversation)
 - Data: task aside (`AsideKind:"task"`, `TaskIDs`) or a proposal/update event.
 - One line: state glyph · title (medium) · one-line summary (muted) · chevron on hover.
+  Narrow: the title stays whole and wraps; the summary takes a line of its own
+  and ends in an ellipsis rather than squeezing the title.
   Click opens the task in this tab; Cmd/Ctrl-click opens a background tab.
 - Running tasks: the notice shows the live step in mono muted under the title.
 
@@ -334,7 +345,11 @@ Batch, Later, Scope[], Attach[Block], Asked, Deadline, Withdrawn}`. Answer goes 
 - In the conversation flow, at the point the question was asked, a quiet
   receipt line: while waiting "Waiting on you: Allow `rm -rf build`?" (click →
   focuses the tray tab); after: "Allowed once · you · 14:02". Withdrawn: "No
-  longer needed — the turn moved on".
+  longer needed — the turn moved on". A task proposal that went away (it started
+  on its own, or the work stopped waiting) leaves no receipt: the task notice
+  and the panel name what became of it. Each question has at most one receipt.
+- Option labels are the engine's words: a path, file name or lone word keeps its
+  case (`src/c.txt`, `notes.md`); only a plain phrase ("not now") starts with a capital.
 - The tab strip shows the "needs you" mark on the tab while anything waits.
 
 ### 6.3 Question card anatomy

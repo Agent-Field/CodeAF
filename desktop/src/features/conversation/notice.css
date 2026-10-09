@@ -4,11 +4,13 @@
 
 .task-notice-line { display: flex; align-items: center; gap: var(--space-1); border-radius: var(--radius-sm); }
 .task-notice-line:hover, .task-notice-line:focus-within { background: var(--hover); }
-.button.task-notice-row { justify-content: flex-start; white-space: normal; flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); min-height: var(--task-outline-row-height); padding: var(--space-half) var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); text-align: left; font-size: var(--font-size-prose); }
+.button.task-notice-row { justify-content: flex-start; white-space: normal; flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-height: var(--task-outline-row-height); padding: var(--space-half) var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); text-align: left; font-size: var(--font-size-prose); }
 .button.task-notice-row:hover { background: transparent; }
 .button.task-notice-row:focus-visible { outline: var(--border-width) solid var(--focus-ring); }
-.task-notice-title { flex-shrink: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: var(--font-weight-medium); }
-.task-notice-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Constrained space: the title stays whole and wraps; the summary takes the rest of its line
+   or, when less than 40% is left, a line of its own, where it ends in an ellipsis. */
+.task-notice-title { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--text); font-weight: var(--font-weight-medium); }
+.task-notice-summary { flex: 1 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .button.task-notice-row > .app-icon { margin-left: auto; flex-shrink: 0; opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
 .task-notice-line:hover .task-notice-row > .app-icon, .task-notice-row:focus-visible > .app-icon { opacity: var(--opacity-opaque); }
 @media (pointer: coarse) { .button.task-notice-row > .app-icon { opacity: var(--opacity-opaque); } }

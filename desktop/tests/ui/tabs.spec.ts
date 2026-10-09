@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface } from './contracts';
+import design from '../../src/design/tokens.json' with { type: 'json' };
 // Tab behaviour never needs the engine; a send fails fast and keeps its draft.
 test.beforeEach(async ({ page }) => { await page.route('**/api/engine/**', route => route.abort()); });
 async function rename(page: Page, index: number, name: string) {
@@ -142,6 +143,21 @@ test('delayed hover previews show real draft text without moving focus', async (
  await expect(page.getByRole('tooltip')).toContainText('A real saved thought');
  await expect(draft).toBeFocused();
  await page.keyboard.press('Escape'); await expect(page.getByRole('tooltip')).not.toBeVisible();
+});
+
+test('a press closes the hover preview and it stays shut until the pointer leaves the tab', async ({ page }) => {
+ await page.goto('/'); await rename(page, 0, 'Preview');
+ await page.getByRole('textbox', { name: 'Message', exact: true }).fill('A real saved thought');
+ const tab = page.getByRole('tab', { name: 'Preview', exact: true });
+ await tab.hover();
+ await expect(page.getByRole('tooltip')).toBeVisible();
+ await tab.click();
+ await expect(page.getByRole('tooltip')).not.toBeVisible();
+ // Focus and the hover timer would reopen it over the conversation; it stays shut.
+ await page.waitForTimeout(design.interaction.previewOpenDelay * 2);
+ await expect(page.getByRole('tooltip')).not.toBeVisible();
+ await page.mouse.move(0, 0); await tab.hover();
+ await expect(page.getByRole('tooltip')).toContainText('A real saved thought');
 });
 
 test('platform tab shortcuts create, close, reopen, navigate and open overview', async ({ page }) => {

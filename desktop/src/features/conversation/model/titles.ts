@@ -32,12 +32,16 @@ export function categoryOf(tool: string, captionCategory?: string): string {
   return CATEGORY_BY_TOOL[tool] ?? 'work';
 }
 
-/** The narration line as a title: first line, no marks, no closing stop. */
+/** A single word ("done", "ok") says nothing about the step; a title takes a phrase. */
+const isPhrase = (line: string) => /\S\s+\S/.test(line);
+
+/** The narration line as a title: first line, no marks, no closing stop; '' when it is not a phrase. */
 export function narrationTitle(text: string): string {
   const line = firstLine(text)
     .replace(/[*_`~]+/g, '')
     .replace(/[.!?;:]+$/, '')
     .trim();
+  if (!isPhrase(line)) return '';
   return line.length > NARRATION_LIMIT ? `${line.slice(0, NARRATION_LIMIT - 1).trimEnd()}…` : line;
 }
 

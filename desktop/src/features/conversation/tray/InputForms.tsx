@@ -1,6 +1,6 @@
 import { Button, Select, Text, TextArea, TextInput } from '../../../components/ui';
 import { pairsEither, togglePicked, type Draft } from './answers';
-import { visibleOptions, type Question } from './form';
+import { sentenceStart, visibleOptions, type Question } from './form';
 
 export type FormProps = {
   question: Question;
@@ -175,7 +175,7 @@ export function Declines({ question, locked, onPress }: { question: Question; lo
         .filter((option) => option.safe)
         .map((option) => (
           <Button key={option.key} disabled={locked} onClick={() => onPress(option.key)}>
-            {option.label.charAt(0).toUpperCase() + option.label.slice(1)}
+            {sentenceStart(option.label)}
           </Button>
         ))}
     </>
