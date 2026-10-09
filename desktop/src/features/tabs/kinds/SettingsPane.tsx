@@ -5,7 +5,7 @@ import type { PaneRenderProps, PreviewRenderProps } from './slots';
 
 /** The Settings tab's body: the Models page, scrolling inside the card. */
 export function SettingsPane(_: PaneRenderProps) {
-  return <div className="settings-scroll"><SettingsPage/></div>;
+  return <div className="settings-scroll" data-scroll-key="settings"><SettingsPage/></div>;
 }
 
 /** The hover card and overview card text: which models are pinned, read from the engine (nothing while it cannot say). */
