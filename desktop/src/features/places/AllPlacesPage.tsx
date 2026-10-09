@@ -7,6 +7,7 @@ import type { PlaceActions } from './place-actions';
 
 type AllPlacesPageProps = {
   view: HomeView;
+  suggestion?: ReactNode;
   actions: PlaceActions;
   readOnly?: boolean;
   runner: Runner;
@@ -19,7 +20,7 @@ type AllPlacesPageProps = {
 
 /** All places: the root Home (Places 8c, 8e, 8f). Top-level places as tiles, a search over every place, archived places behind one toggle, and
  * the chats that are in no place with the engine's one line offering to move a cluster of them. */
-export function AllPlacesPage({ view, actions, readOnly, runner, drag, onDelete, now, notices }: AllPlacesPageProps) {
+export function AllPlacesPage({ suggestion, view, actions, readOnly, runner, drag, onDelete, now, notices }: AllPlacesPageProps) {
   const [query, setQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const searching = query.trim().length > 0;
@@ -73,6 +74,7 @@ export function AllPlacesPage({ view, actions, readOnly, runner, drag, onDelete,
         </>}
 
     {!searching && view.chats.length > 0 && <HomeChatsSection label={`Not in any place · ${unplacedTotal}`} chats={view.chats} truncated={view.chatsTruncated} actions={actions} readOnly={readOnly} drag={drag} now={now}/>}
+    {!searching && !readOnly && suggestion}
     {!searching && view.suggestion && actions.acceptSuggestion && !readOnly && <div className="home-suggestion">
       <Icon name="sparkles" size="micro"/>{view.suggestion.text} · <Button variant="ghost" className="home-suggestion-action" onClick={() => void runner.run(() => actions.acceptSuggestion?.())}>{view.suggestion.action}</Button>
     </div>}

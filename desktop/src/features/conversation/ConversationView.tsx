@@ -33,6 +33,7 @@ import { useFoldAnchor, useTurnJump } from './turnScroll';
 import { shortcutLayer } from '../../design/keyboard';
 import { useShortcuts } from '../../design/useShortcuts';
 import './conversation-view.css';
+import { FirstReplyPlaceOffer } from '../places/FirstReplyPlaceOffer';
 
 export type ConversationViewProps = {
   tab: Pane;
@@ -204,6 +205,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                 <ConversationTranscript
                   {...blocks}
                   model={model}
+                  firstReplyAside={tab.sessionFile && model.turns[0]?.state === 'done' && model.turns[0].blocks.some(block => block.kind === 'answer') ? <FirstReplyPlaceOffer key={tab.sessionFile} sessionFile={tab.sessionFile} focused={focused}/> : undefined}
                   folded={folded}
                   onToggleFold={toggleFold}
                   failed={conversation.unreachable ? undefined : failed}

@@ -1,6 +1,6 @@
 // Every verb a Home can ask for, wired to the Places client through the shell's one write path (so each structural
 // change is a receipt with Undo) and to the window's strip. A verb with nothing real behind it is left out, so the
-// Home draws no control for it: there is no engine suggestion to accept, so `acceptSuggestion` is never wired; the
+// Ledger suggestions are read and decided by PlaceOfferLine; the
 // folder chooser that makes a place from a repo exists only in the desktop app, so `openFolderAsPlace` is absent in a
 // browser (place-actions.ts "a verb that is not passed has no control").
 
