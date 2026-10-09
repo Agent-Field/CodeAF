@@ -8,6 +8,10 @@
 }
 .turn-v2 + .turn-v2 { margin-top: var(--space-turn); }
 .turn-v2 > * + * { margin-top: var(--space-answer); }
+/* The fold chevron is out of flow: the first block under it is the turn's first, with no gap. */
+.turn-v2 > .turn-fold + * { margin-top: 0; }
+/* A settled row above an open turn: design 1a leaves 24, not the full turn gap. */
+.turn-v2[data-folded] + .turn-v2:not([data-folded]) { margin-top: var(--space-folded-turn); }
 .turn-v2 > .turn-block[data-kind="work"],
 .turn-v2 > .turn-block[data-kind="work"] + * { margin-top: var(--space-work-block); }
 .turn-block { min-width: 0; }
