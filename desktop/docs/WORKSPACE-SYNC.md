@@ -19,6 +19,20 @@ A draft is one composer per conversation: typing into a pane copies the words to
 conversation in that tab set (Places 6e "one composer state"). Across two different places' tab sets this is
 not done yet (see Gaps).
 
+## Every tab kind, and what else a window does on its own
+
+| Kind / writer | What mirrors | Two windows at once |
+|---|---|---|
+| conversation, task | `sessionFile`, draft, title, `route` (task view, Back/Forward), folds, task panel | engine titles arrive in both windows; the second `title` is a no-op and is never queued. A route change in one window moves the same tab in the other (a tab is one view; see questions) |
+| file, diff | `path`/`file` (path + Changes/File) | none beyond the tab itself |
+| terminal | the tab; the terminal it shows is bound by pane id in `codeaf.desktop.terminals.v1` (same origin, so both windows read one binding) | both windows attach the same engine terminal; the terminal lane decides whether two attaches are allowed. A terminal exiting closes its tab in both: the second close is a no-op |
+| web | `target.url` (and `target.shot`, which nothing writes today) | a data-URL screenshot written into `shot` would meet the 256 KiB refusal, said in words |
+| settings, history, inbox, newtab | the tab | History's idle archive runs once per window mount (12 h idle, never the window's active tab, `codeaf.desktop.history-activity`); a second window's archive of the same tabs is a no-op |
+| home (Places shell) | the place's pinned Home | `home-ensure` is a no-op on an existing Home; two first Homes converge on one |
+
+Window-local and NOT synced, by design: the overview's grid/filmstrip choice (`TabOverview` `viewKey`),
+appearance (`codeaf-theme`, already mirrored by its own storage event), and everything in "kept by one window".
+
 ## Engine
 
 - `internal/workspacestore` — one `<key>.json` per place in an injected directory; `cmd/codeaf` uses
@@ -108,6 +122,11 @@ pane payload) is the shell lane's to wire.
 
 - No world-stream `workspace` record (above); one long poll per window instead.
 - Drafts are one composer within a place's tab set, not across two places that show the same conversation.
+- Two windows typing into the same draft at the same moment: the window that saves last wins and counts the
+  other's words in `status.overtaken`; the window whose words were replaced is not told.
+- Folds and the task route mirror with the tab (Architecture §3.4 lists only focus, scroll, hover and menus as
+  window-local). If a designer wants a fold or a task view in one window not to move the other, those fields move
+  to `WindowLocal` in `shared.ts` and the engine's refusal list.
 - A tab kind or view field this build does not know is normalised on read (`kindOrDefault`, `cleanView`); two
   different codeaf builds editing one tab set at once could flatten each other's newer fields.
 - Web Locks in the Linux webview (WebKitGTK) are assumed, not verified; without them orphaned queues wait for
