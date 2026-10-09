@@ -480,21 +480,10 @@ func shapeOwed(it factory.Item) bool {
 func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
 	// ONE TURN PER ITEM AT A TIME: two windows opening the same page ask
 	// once; the second hears it already shaped.
-	d.mu.Lock()
-	if d.inTurn == nil {
-		d.inTurn = map[int]bool{}
-	}
-	if d.inTurn[id] {
-		d.mu.Unlock()
+	if !d.begin(id) {
 		return factory.ShapeAlready, nil
 	}
-	d.inTurn[id] = true
-	d.mu.Unlock()
-	defer func() {
-		d.mu.Lock()
-		delete(d.inTurn, id)
-		d.mu.Unlock()
-	}()
+	defer d.end(id)
 
 	it, err := d.st.Get(id)
 	if err != nil {
@@ -583,4 +572,25 @@ func (d *shapeDoor) tell(chat, line string) {
 	if d.say != nil && chat != "" && strings.TrimSpace(line) != "" {
 		_ = d.say(chat, line)
 	}
+}
+
+// begin marks item id's turn as in flight, and answers false when one is.
+func (d *shapeDoor) begin(id int) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.inTurn == nil {
+		d.inTurn = map[int]bool{}
+	}
+	if d.inTurn[id] {
+		return false
+	}
+	d.inTurn[id] = true
+	return true
+}
+
+// end lets item id's turn go.
+func (d *shapeDoor) end(id int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.inTurn, id)
 }
