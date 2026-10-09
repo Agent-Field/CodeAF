@@ -5,34 +5,6 @@ import { summarize } from './answers';
 import type { Question } from './form';
 import { questionKey } from './layout';
 
-type BulkProps = {
-  members: Question[];
-  busy: boolean;
-  onAll: (role: 'allow' | 'deny') => void;
-  onOneByOne: () => void;
-};
-
-/** Several yes-or-no actions asked at once, answered once. */
-export function BulkCard({ members, busy, onAll, onOneByOne }: BulkProps) {
-  return (
-    <section className="tray-card" aria-label={`${members.length} actions need your OK`} aria-busy={busy || undefined}>
-      <header className="tray-card-head">
-        <h3 className="tray-head">{`${members.length} actions need your OK`}</h3>
-      </header>
-      <ul className="tray-bulk-list">
-        {members.map((member) => (
-          <li key={questionKey(member)} className="tray-bulk-row">{member.head}</li>
-        ))}
-      </ul>
-      <div className="tray-actions">
-        <Button variant="primary" disabled={busy} onClick={() => onAll('allow')}>Allow all</Button>
-        <Button variant="secondary" disabled={busy} onClick={onOneByOne}>One by one</Button>
-        <Button disabled={busy} onClick={() => onAll('deny')}>Deny all</Button>
-      </div>
-    </section>
-  );
-}
-
 type ReviewProps = {
   members: Question[];
   held: Record<string, EngineAnswer>;
