@@ -118,7 +118,8 @@ func TestKeysOutsideThePatternAreRefused(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), "pl_0123456789abcdef.json") {
+		// The fixed pair lock is the one file no client input can name.
+		if !strings.HasPrefix(e.Name(), "pl_0123456789abcdef.json") && e.Name() != pairLockName {
 			t.Errorf("only the valid key may touch the disk, found %s", e.Name())
 		}
 	}
