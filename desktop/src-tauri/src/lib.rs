@@ -166,6 +166,17 @@ pub fn run() {
             web::web_snapshot,
             web::web_list
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running codeaf");
+        .build(tauri::generate_context!())
+        .expect("error while building codeaf")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                // Only our bundled transport belongs to this app. A forwarded
+                // development engine has no child here and remains untouched.
+                if let Ok(mut owned) = app.state::<EngineRuntime>().child.lock() {
+                    if let Some(child) = owned.take() {
+                        let _ = child.kill();
+                    }
+                }
+            }
+        });
 }
