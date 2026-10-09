@@ -1,9 +1,11 @@
 // The rows of the new-tab field (design 3f, 4c): pure, so a node test covers the ordering and filtering.
 // The first row always turns the typed text into a conversation; every other row is a way to jump or open.
 import type { IconName } from '../../../../components/ui/Icon';
+import type { HistoryItem } from '../../../history/types.ts';
 import type { Tab } from '../../types.ts';
+import { historyDetail, type HistoryMatches } from './historyRows.ts';
 
-export type RowKind = 'ask' | 'terminal' | 'openfile' | 'file' | 'tab' | 'closed';
+export type RowKind = 'ask' | 'history' | 'seeall' | 'terminal' | 'openfile' | 'file' | 'tab' | 'closed';
 export type NewTabRow = {
   id: string;
   kind: RowKind;
@@ -16,6 +18,8 @@ export type NewTabRow = {
   dot?: boolean;
   /** Payload: a tab id, a closed tab id or a file path. */
   target?: string;
+  /** A history row's conversation, already read, so opening it needs no second request. */
+  conversation?: HistoryItem;
 };
 export type NewTabSection = { title?: string; rows: NewTabRow[] };
 
@@ -30,6 +34,9 @@ export type RowInput = {
   terminal: boolean;
   terminalShortcut: string;
   fileShortcut: string;
+  /** What History found for the query, when it has answered for exactly this query. */
+  history?: HistoryMatches;
+  seeAllShortcut?: string;
 };
 
 export const askLimit = 40;
@@ -48,6 +55,12 @@ export function buildSections(input: RowInput): NewTabSection[] {
   const query = input.query.trim();
   const sections: NewTabSection[] = [];
   if (query) sections.push({ rows: [{ id: 'ask', kind: 'ask', icon: 'tab', label: askLabel(query), hint: '↵' }] });
+  const found = input.history;
+  if (found && found.query === query && (found.rows.length || found.total > 0)) {
+    const rows = found.rows.map((match): NewTabRow => ({ id: `history:${match.id}`, kind: 'history', icon: 'tab', label: match.item.title, detail: historyDetail(match), target: match.id, conversation: match.item }));
+    rows.push({ id: 'seeall', kind: 'seeall', icon: 'history', label: `See all ${found.total} in History`, hint: input.seeAllShortcut });
+    sections.push({ title: 'From history', rows });
+  }
   const start: NewTabRow[] = [
     ...(input.terminal ? [{ id: 'terminal', kind: 'terminal' as const, icon: 'terminal' as const, label: 'New terminal', hint: input.terminalShortcut }] : []),
     { id: 'openfile', kind: 'openfile', icon: 'findFiles', label: 'Open file…', hint: input.fileShortcut },
