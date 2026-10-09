@@ -42,7 +42,7 @@ export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispat
     background.current = false;
     setError(undefined);
     try {
-      const session = created.current ?? { snapshot: await connectEngine(), filed: false };
+      const session = created.current ?? { snapshot: await connectEngine(undefined, placeId), filed: false };
       created.current = session;
       if (!session.filed) {
         const chatId = chatIdFromSessionFile(session.snapshot.sessionFile);

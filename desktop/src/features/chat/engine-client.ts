@@ -152,17 +152,19 @@ const sessionPath = (id: string) => `/sessions/${encodeURIComponent(id)}`;
  * the open tab, its background observer and React's development remount share
  * the one POST in flight. A new conversation (no sessionFile) is never shared,
  * because each empty POST creates a session of its own.
+ * A new place chat supplies its place before the host chooses its working folder;
+ * a saved attachment always uses only its own session file.
  */
 const attaching = new Map<string, Promise<EngineSnapshot>>();
-export function connectEngine(sessionFile?: string): Promise<EngineSnapshot> {
- if (!sessionFile) return openSession({});
+export function connectEngine(sessionFile?: string, place?: string): Promise<EngineSnapshot> {
+ if (!sessionFile) return openSession(place ? { place } : {});
  const pending = attaching.get(sessionFile);
  if (pending) return pending;
  const attach = openSession({ sessionFile }).finally(() => attaching.delete(sessionFile));
  attaching.set(sessionFile, attach);
  return attach;
 }
-async function openSession(body: { sessionFile?: string }): Promise<EngineSnapshot> {
+async function openSession(body: { sessionFile?: string; place?: string }): Promise<EngineSnapshot> {
  const response = await fetchEngine('/sessions', { method: 'POST', body: JSON.stringify(body) });
  return snapshotFrom(await response.json());
 }

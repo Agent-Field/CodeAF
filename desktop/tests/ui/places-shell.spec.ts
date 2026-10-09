@@ -164,6 +164,7 @@ test('d. the Home composer creates, files, then sends; ↵ focuses the new tab a
   await expect(tabs(page).nth(1)).toHaveAccessibleName('Draft the launch email');
   const [create, file, turn] = order(rig, isCreate, isFiling(id), isTurn);
   expect(create).toBeGreaterThanOrEqual(0);
+  expect(rig.places.traffic[create].body).toEqual({ place: id });
   expect(file).toBeGreaterThan(create);
   expect(turn).toBeGreaterThan(file);
   expect(rig.places.traffic[file].body).toMatchObject({ chats: [NEW_CHAT] });
@@ -206,6 +207,7 @@ test('e. ⌘T inside a place files the new chat before its first turn', async ({
   await expect.poll(() => order(rig, isTurn)[0]).toBeGreaterThanOrEqual(0);
   const [create, file, turn] = order(rig, isCreate, isFiling(id), isTurn);
   expect(create).toBeGreaterThanOrEqual(0);
+  expect(rig.places.traffic[create].body).toEqual({ place: id });
   expect(file, 'POST /places/{id}/members must come before the first turn').toBeGreaterThan(create);
   expect(turn).toBeGreaterThan(file);
 });
@@ -526,4 +528,38 @@ for (const width of [320, 600]) {
     await expect(chooser(page)).toBeVisible();
     expect(await overflow()).toBe(true);
   });
+}
+
+for (const theme of ['light', 'dark'] as const) {
+ test(`Home passes its saved folder place before the host opens · ${theme}`, async ({ page }) => {
+  await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+  const rig = await boot(page, { places: [{ name: 'Studio', tint: 'sage' }], live: [NEW_CHAT], disk: ['/work/brand'] });
+  const studio = rig.places.id('Studio');
+  await goVia(page, rig, 'Studio');
+  await page.getByRole('button', { name: 'Add files or links' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Files and links for “Studio”' });
+  await sheet.getByRole('textbox', { name: 'Add a path or a link' }).fill('/work/brand');
+  await sheet.getByRole('radio', { name: 'Folder' }).click();
+  await sheet.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect.poll(() => rig.places.posts(`/places/${studio}/sources`).length).toBe(1);
+  await sheet.getByRole('button', { name: 'Done', exact: true }).click();
+  const starts: Record<string, unknown>[] = [];
+  await page.route('**/api/engine/sessions', async route => {
+    const body = route.request().postDataJSON();
+    starts.push(body);
+    if (!body.sessionFile) {
+      expect(body).toEqual({ place: studio });
+      rig.engine.update({ workspace: '/work/brand', workingFolder: { from: 'place', path: '/work/brand', label: 'brand' } });
+    } else expect(body).toEqual({ sessionFile: sessionFileFor(NEW_CHAT) });
+    await route.fulfill({ json: rig.engine.snapshot() });
+  });
+  const composer = page.locator('.home-composer').getByRole('textbox', { name: 'Message' });
+  await composer.fill('Show the actual folder');
+  await composer.press('Enter');
+  await expect(tabs(page).filter({ hasText: 'Show the actual folder' })).toHaveAttribute('aria-selected', 'true');
+  expect(starts[0]).toEqual({ place: studio });
+  await expect.poll(() => rig.engine.calls.some(call => call.path.endsWith('/turn'))).toBe(true);
+  expect(rig.engine.snapshot().workspace).toBe('/work/brand');
+  expect(rig.engine.snapshot().workingFolder?.from).toBe('place');
+ });
 }
