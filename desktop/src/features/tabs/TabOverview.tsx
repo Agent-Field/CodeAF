@@ -9,6 +9,7 @@ import type { Tab, TabGroup } from './model';
 import { cardText, kindLabel, OverviewCard } from './OverviewCard';
 import { OverviewFilmstrip } from './OverviewFilmstrip';
 import { moveCursor, overviewOrder, overviewSections, searchPlaceholder, sectionPosition } from './overview-model';
+import { useOverviewModelNames } from './useOverviewModelNames';
 import './overview.css';
 
 type View = 'grid' | 'film';
@@ -42,6 +43,7 @@ function verticalTarget(root: HTMLElement | null, id: string | undefined, direct
 }
 
 export function TabOverview({ summaries, now, open, tabs, groups, activeId, onClose, onSelect, onMoveGroup, onCloseTab, onSplitGroup, menuFor, returnFocus }: Props) {
+  const modelNames = useOverviewModelNames(open);
   const dialog = useRef<HTMLDialogElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -125,7 +127,7 @@ export function TabOverview({ summaries, now, open, tabs, groups, activeId, onCl
               {section.kind === 'group' && <Button className="overview-split" disabled={splittable < 2} onClick={() => { onSplitGroup(section.id); onClose(); }}><Icon name="grid" size="micro"/>Open as split</Button>}
             </div>
             <div className="overview-grid">
-              {section.tabs.map(tab => <OverviewCard key={tab.id} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={menuFor?.(tab)} onDropTab={target === undefined ? undefined : (id, after) => onMoveGroup(id, target ?? undefined, { id: tab.id, after })} onOpen={() => openTab(tab.id)} onBackground={() => move(tab.id, false)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
+              {section.tabs.map(tab => <OverviewCard key={tab.id} modelNames={modelNames} tab={tab} summaries={summaries} now={now} active={tab.id === activeId} cursor={tab.id === cursorId} menu={menuFor?.(tab)} onDropTab={target === undefined ? undefined : (id, after) => onMoveGroup(id, target ?? undefined, { id: tab.id, after })} onOpen={() => openTab(tab.id)} onBackground={() => move(tab.id, false)} onClose={onCloseTab && (() => { move(moveCursor(ids, tab.id, 1), false); onCloseTab(tab.id); })}/>)}
             </div>
           </section>;
         })}
