@@ -192,6 +192,10 @@ func (a *Agent) startTitleLocked() {
 func (a *Agent) maybeTitle(context.Context, *eventHub) {
 	a.mu.Lock()
 	a.startTitleLocked()
+	// THE SAME DOOR IS WHERE A CONVERSATION SETTLES, so it is also where a
+	// session that keeps recaps asks for one (recap.go). It is a no-op for a
+	// door that does not, and for a conversation the stored recap already covers.
+	a.startRecapLocked()
 	a.mu.Unlock()
 }
 

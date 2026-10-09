@@ -1,6 +1,6 @@
-import { placeholderPane } from './Placeholder';
+import { HistoryPane } from '../../history/HistoryPane';
 import { PlainPreview } from '../preview/bodies';
 import type { KindDef } from './slots';
 
-/** Placeholder. The history lane builds the tab (4a-4e); recaps need an engine recap source that does not exist yet. */
-export const historyKind: KindDef = { kind: 'history', label: 'History', icon: 'history', backed: false, pane: placeholderPane('History', 'history'), preview: PlainPreview };
+/** The History tab (Shell 4a-4d): backed by the engine's history routes (recaps, list, search). Opened with ⌘Y. */
+export const historyKind: KindDef = { kind: 'history', label: 'History', icon: 'history', backed: true, pane: HistoryPane, preview: PlainPreview };
