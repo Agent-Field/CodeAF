@@ -3,6 +3,7 @@ import { DecisionTraySpecimen } from '../tray/specimens/DecisionTray.specimen';
 import { AssetsSpecimen } from './Assets.specimen';
 import { ComposerSpecimen } from './Composer.specimen';
 import { FoldingSpecimen } from './Folding.specimen';
+import { LatestPillSpecimen } from './LatestPill.specimen';
 import { MarkdownSpecimen } from './Markdown.specimen';
 import { SystemNotesSpecimen } from './SystemNotes.specimen';
 import { TaskDetailSpecimen } from '../detail/TaskDetail.specimen';
@@ -25,6 +26,7 @@ const specimens = [
   { name: 'Task notices', View: TaskNoticeSpecimen },
   { name: 'Decision tray', View: DecisionTraySpecimen },
   { name: 'Composer', View: ComposerSpecimen },
+  { name: 'Latest pill', View: LatestPillSpecimen },
   { name: 'Task panel', View: TaskPanelSpecimen },
   { name: 'Tasks table', View: TasksTableSpecimen },
   { name: 'Task view', View: TaskViewSpecimen },
