@@ -2956,6 +2956,15 @@ type Agent struct {
 	placeGraphStamp  placeGraphStamp
 	placeGraphRead   bool
 	placeGraphBundle *placegraph.Bundle
+	// placeDefaults is what this conversation's places set on its model and
+	// posture, and which of the two are the person's own (placegraphpolicy.go).
+	// It is read back off meta.json once (placeDefaultsRead) and written with
+	// every configuration stamp after that. placeFresh says the person had
+	// said nothing in this conversation when it was read: a NEW conversation,
+	// the only kind a place's defaults are applied to for the first time.
+	placeDefaults     PlaceDefaults
+	placeDefaultsRead bool
+	placeFresh        bool
 	// recordText is the `the record` block as the file now stands (question.go's
 	// [DecisionsSection]), re-rendered off every lock by [Agent.takeRecord] when
 	// the session opens and when a decision is written.
