@@ -90,7 +90,7 @@ function addSteers(turn: TurnV2, live: LiveOverlayV2) {
   const fresh = live.steers.filter((s) => !known.has(s.text));
   turn.steer.push(...fresh);
   const work = turn.blocks[turn.blocks.length - 1];
-  if (work?.kind === 'work') work.notes.push(...fresh.map((s) => ({ kind: 'steer' as const, id: s.id, text: s.text })));
+  if (work?.kind === 'work') work.notes.push(...fresh.map((s) => ({ kind: 'steer' as const, ...s })));
 }
 
 export function applyLive(turn: TurnV2, snapshot: EngineSnapshot, live?: LiveOverlayV2) {

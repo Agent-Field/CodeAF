@@ -1,0 +1,18 @@
+/* Steer (design v3 §2.2): a right-aligned elbow line. Pending: landing, elbow, words in ink at medium weight.
+   Consumed: elbow and words in the work rhythm. */
+.steers { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
+.steer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--steer-gap);
+  margin: 0;
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-leading);
+  color: var(--ink-2);
+}
+.steer-landing { color: var(--ink-3); }
+.steer-elbow { display: inline-flex; flex: none; color: var(--ink-3); }
+.steer-elbow .app-icon { width: var(--steer-icon-size); height: var(--steer-icon-size); }
+.steer-text { min-width: 0; overflow-wrap: anywhere; }
+.steer[data-consumed="false"] .steer-text { color: var(--ink); font-weight: var(--type-label-strong); }

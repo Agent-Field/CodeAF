@@ -24,23 +24,6 @@
 .attachments-thumb { width: var(--thumb-size); height: var(--thumb-size); overflow: hidden; border-radius: var(--radius-md); }
 .attachments-files { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1); }
 
-/* Steer: a right-aligned elbow line; the landing clause fades once consumed. */
-.steers { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
-.steer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-2);
-  max-width: var(--chat-bubble-max-width);
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--font-size-body);
-}
-.steer-text { color: var(--text); }
-.steer-landing { transition: opacity var(--duration) var(--ease); }
-.steer[data-consumed="true"] .steer-landing { opacity: var(--opacity-transparent); }
-
 /* Update: the AI speaking mid-work, set off by a quiet rule and an eyebrow. */
 .update-block {
   display: flex;
@@ -66,7 +49,6 @@
 .turn-footer[data-failed="true"] { color: var(--warning); }
 
 @media (prefers-reduced-motion: reduce) {
-  .steer-landing,
   .answer-actions { transition: none; }
 }
 
