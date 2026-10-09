@@ -32,6 +32,7 @@ const (
 // rows and removed ids), "attention" (the whole open set) or "reset" (the whole
 // state, sent instead of a replay the ring can no longer give).
 type WorldRecord struct {
+	Epoch   string          `json:"epoch"`
 	Seq     uint64          `json:"seq"`
 	Type    string          `json:"type"`
 	At      string          `json:"at"`
@@ -54,6 +55,7 @@ type WorldFeed struct {
 	refreshMu sync.Mutex
 
 	mu        sync.Mutex
+	epoch     string
 	seq       uint64
 	ring      []WorldRecord
 	changed   chan struct{}
@@ -71,8 +73,13 @@ func NewWorldFeed(read func() session.World) *WorldFeed {
 	if read == nil {
 		read = session.ReadHome
 	}
+	epoch, err := Token()
+	if err != nil {
+		panic("cannot create world feed identity")
+	}
 	return &WorldFeed{
-		read: read, interval: worldInterval, heartbeat: worldHeartbeat, maxAge: worldMaxAge, ringSize: WorldRing,
+		epoch: epoch,
+		read:  read, interval: worldInterval, heartbeat: worldHeartbeat, maxAge: worldMaxAge, ringSize: WorldRing,
 		newTicker: func(d time.Duration) (<-chan time.Time, func()) {
 			t := time.NewTicker(d)
 			return t.C, t.Stop
@@ -176,7 +183,7 @@ func (f *WorldFeed) appendLocked(kind string, payload any) {
 		return
 	}
 	f.seq++
-	f.ring = append(f.ring, WorldRecord{Seq: f.seq, Type: kind, At: time.Now().UTC().Format(time.RFC3339Nano), Payload: data})
+	f.ring = append(f.ring, WorldRecord{Epoch: f.epoch, Seq: f.seq, Type: kind, At: time.Now().UTC().Format(time.RFC3339Nano), Payload: data})
 	if len(f.ring) > f.ringSize {
 		f.ring = append([]WorldRecord(nil), f.ring[len(f.ring)-f.ringSize:]...)
 	}
@@ -291,7 +298,7 @@ func (f *WorldFeed) serve(w http.ResponseWriter, r *http.Request) {
 	for {
 		f.mu.Lock()
 		var batch []WorldRecord
-		gap := first && (after == 0 || after > f.seq)
+		gap := first && (after == 0 || after > f.seq || (r.URL.Query().Get("epoch") != "" && r.URL.Query().Get("epoch") != f.epoch))
 		if len(f.ring) > 0 && after+1 < f.ring[0].Seq {
 			gap = true
 		}
@@ -300,7 +307,7 @@ func (f *WorldFeed) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		if gap {
 			data, _ := json.Marshal(f.fullLocked())
-			batch = []WorldRecord{{Seq: f.seq, Type: "reset", At: time.Now().UTC().Format(time.RFC3339Nano), Payload: data}}
+			batch = []WorldRecord{{Epoch: f.epoch, Seq: f.seq, Type: "reset", At: time.Now().UTC().Format(time.RFC3339Nano), Payload: data}}
 		} else {
 			for _, rec := range f.ring {
 				if rec.Seq > after {

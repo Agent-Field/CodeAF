@@ -22,9 +22,10 @@ async function seed(page: Page, tabs: { id: string; title: string; sessionFile?:
   await page.addInitScript(value => { if (!localStorage.getItem('codeaf.desktop.workspace.v1')) localStorage.setItem('codeaf.desktop.workspace.v1', value); }, JSON.stringify(state));
 }
 
-async function open(page: Page, world?: Parameters<typeof installMockEngine>[1]['world']) {
+async function open(page: Page, world?: Parameters<typeof installMockEngine>[1]['world'], epoch?: string) {
   await installDeepLinkMock(page);
   const engine = await installMockEngine(page, { history, ...(world ? { world } : {}), initial: { sessionFile: SESSION, title: 'Fix the parser', entries: [], needsPerson: true, running: true, questions: trayQuestions() } });
+  if (epoch && world) await page.route('**/api/engine/events?**', route => route.fulfill({ status: 200, contentType: 'text/event-stream', body: `id: 42\ndata: ${JSON.stringify({ epoch, seq: 42, type: 'reset', at: 'x', payload: world })}\n\n` }));
   await seed(page, [{ id: 'a', title: 'Intro' }, { id: 'b', title: 'Fix the parser', sessionFile: SESSION }], 'a');
   await page.goto('/');
   await expect(page.getByRole('tab', { name: 'Intro', exact: true })).toHaveAttribute('aria-selected', 'true');
@@ -58,12 +59,13 @@ test('the attention list and the badge name the world-feed reading they came fro
   await open(page, {
     rows: [{ session: CHAT, title: 'Fix the parser', project: 'p', sourceFolders: [], state: 'idle', live: false, open: false, running: false, needsYou: true, failed: 1, unseenFailed: 1, failure: { task: 't1', at: landed }, tasks: { running: 0, incomplete: 0, done: 0, failed: 1, total: 1 }, at: landed }],
     items: [{ key: `${CHAT}:consent:2`, session: CHAT, kind: 'consent', id: 2, text: 'Run it?', sourceFolders: [], answerable: true }],
-  });
+  }, 'fixture-engine-a');
   // Rust lets only the newest reading any window reported say what is pending; without the sequence it cannot tell.
   const posted = () => page.evaluate(() => (window as unknown as { __linkMock: { calls: { cmd: string; args: Record<string, unknown> }[] } }).__linkMock.calls
-    .filter(call => call.cmd === 'notify_attention' || call.cmd === 'badge_set').map(call => ({ cmd: call.cmd, seq: call.args.seq, ids: (call.args.items as { id: string }[] | undefined)?.map(item => item.id) })));
+    .filter(call => call.cmd === 'notify_attention' || call.cmd === 'badge_set').map(call => ({ cmd: call.cmd, seq: call.args.seq, epoch: call.args.epoch, ids: (call.args.items as { id: string }[] | undefined)?.map(item => item.id) })));
   await expect.poll(async () => (await posted()).map(call => call.cmd)).toEqual(expect.arrayContaining(['notify_attention', 'badge_set']));
   const calls = await posted();
+  for (const call of calls) expect(call.epoch).toBe('fixture-engine-a');
   for (const call of calls) expect(Number.isSafeInteger(call.seq) && (call.seq as number) > 0, `${call.cmd} ${String(call.seq)}`).toBe(true);
   const last = (cmd: string) => calls.filter(call => call.cmd === cmd).at(-1);
   expect(last('badge_set')?.seq).toBe(last('notify_attention')?.seq);

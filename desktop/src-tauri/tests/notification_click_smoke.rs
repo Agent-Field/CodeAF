@@ -236,8 +236,13 @@ mod linux {
             ),
             item("r2:choice:5", "needsYou", place, Some(("r2", "choice", 5))),
         ];
-        let posted =
-            notifications::notify_attention(app.clone(), main.clone(), items(list.clone()), 1);
+        let posted = notifications::notify_attention(
+            app.clone(),
+            main.clone(),
+            items(list.clone()),
+            1,
+            Some("smoke-real_server".into()),
+        );
         run.check(
             "the real server took the notification",
             posted.as_ref().is_ok_and(|p| p.posted == 1),
@@ -249,6 +254,7 @@ mod linux {
             main.clone(),
             items(vec![list[1].clone()]),
             2,
+            Some("smoke-real_server".into()),
         );
         println!("READY: click the notification within 60s");
         let clicked = wait(Duration::from_secs(60), || {
@@ -303,7 +309,13 @@ mod linux {
             ),
             item("failed:s9", "failed", None, None),
         ]);
-        let posted = notifications::notify_attention(app.clone(), main.clone(), first, 1);
+        let posted = notifications::notify_attention(
+            app.clone(),
+            main.clone(),
+            first,
+            1,
+            Some("smoke-scenario".into()),
+        );
         run.check(
             "two places become two notifications",
             posted
@@ -410,7 +422,13 @@ mod linux {
                 Some(("x2", "choice", 5)),
             ),
         ];
-        let _ = notifications::notify_attention(app.clone(), main.clone(), items(next.clone()), 2);
+        let _ = notifications::notify_attention(
+            app.clone(),
+            main.clone(),
+            items(next.clone()),
+            2,
+            Some("smoke-scenario".into()),
+        );
         let posted = wait(Duration::from_secs(10), || {
             shown.lock().unwrap().get(before).cloned()
         });
@@ -419,6 +437,7 @@ mod linux {
             main.clone(),
             items(vec![next[1].clone()]),
             3,
+            Some("smoke-scenario".into()),
         );
         if let Some(posted) = posted {
             click(server, posted.id);
@@ -477,8 +496,14 @@ mod linux {
         let both = vec![q1.clone(), q2.clone()];
         let before = shown.lock().unwrap().len();
         let post = |webview: &tauri::Webview, list: &Vec<serde_json::Value>, seq: u64| {
-            notifications::notify_attention(app.clone(), webview.clone(), items(list.clone()), seq)
-                .map(|p| (p.posted, p.skipped))
+            notifications::notify_attention(
+                app.clone(),
+                webview.clone(),
+                items(list.clone()),
+                seq,
+                Some("smoke-two_windows".into()),
+            )
+            .map(|p| (p.posted, p.skipped))
         };
 
         let first = post(&main, &both, 10);

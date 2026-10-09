@@ -578,3 +578,20 @@ func TestBridgeCloseStopsThePoller(t *testing.T) {
 		t.Fatal("Close left the poller running")
 	}
 }
+
+func TestWorldEpochForcesResetEvenWhenOldSequenceFitsNewFeed(t *testing.T) {
+	fw := &fakeWorld{}
+	fw.set(worldWorking("a"))
+	f, _ := testFeed(fw)
+	other := NewWorldFeed(nil)
+	defer other.Close()
+	if f.epoch == "" || f.epoch == other.epoch {
+		t.Fatal("feed identities must be distinct")
+	}
+	srv := bridgeFor(t, f)
+	s := openStream(t, srv, "1&epoch="+other.epoch)
+	rec, _ := s.next(t)
+	if rec.Type != "reset" || rec.Epoch != f.epoch {
+		t.Fatalf("wrong epoch reset %+v", rec)
+	}
+}

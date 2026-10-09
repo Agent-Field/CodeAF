@@ -28,9 +28,9 @@ export type AttentionItem = {
 };
 export type WorldFull = { rows: WorldRow[]; items: AttentionItem[] };
 export type WorldRecord =
- | { seq: number; type: 'reset'; at: string; payload: WorldFull }
- | { seq: number; type: 'world'; at: string; payload: { rows: WorldRow[]; removed: string[] } }
- | { seq: number; type: 'attention'; at: string; payload: { items: AttentionItem[] } };
+ | { epoch?: string; seq: number; type: 'reset'; at: string; payload: WorldFull }
+ | { epoch?: string; seq: number; type: 'world'; at: string; payload: { rows: WorldRow[]; removed: string[] } }
+ | { epoch?: string; seq: number; type: 'attention'; at: string; payload: { items: AttentionItem[] } };
 
 export class WorldError extends Error {
  readonly status: number;
@@ -99,8 +99,9 @@ export async function markFailureSeen(transport: WorldTransport, mark: { session
 export function parseWorldRecord(text: string): WorldRecord {
  let value: unknown;
  try { value = JSON.parse(text); } catch { throw new WorldError('The engine sent an invalid world record.'); }
- const record = value as { seq?: unknown; type?: unknown; payload?: Record<string, unknown> } | null;
+ const record = value as { epoch?: unknown; seq?: unknown; type?: unknown; payload?: Record<string, unknown> } | null;
  if (!record || typeof record !== 'object' || !Number.isSafeInteger(record.seq) || (record.seq as number) < 0 || !record.payload || typeof record.payload !== 'object') throw new WorldError('The engine sent an invalid world record.');
+ if (record.epoch !== undefined && (typeof record.epoch !== 'string' || !record.epoch || record.epoch.length > 128)) throw new WorldError('The engine sent an invalid world identity.');
  const p = record.payload;
  if (record.type === 'reset' && Array.isArray(p.rows) && Array.isArray(p.items)) return value as WorldRecord;
  if (record.type === 'world' && Array.isArray(p.rows) && Array.isArray(p.removed)) return value as WorldRecord;
@@ -114,8 +115,8 @@ export function parseWorldRecord(text: string): WorldRecord {
  * engine closed rejects so the caller can reconnect from its cursor. Aborting
  * detaches the reader and nothing else; no engine work is stopped.
  */
-export async function watchWorld(transport: WorldTransport, after: number, onRecord: (record: WorldRecord) => void, signal: AbortSignal): Promise<void> {
- const response = await transport(`/events?after=${after}`, { signal, headers: { Accept: 'text/event-stream' } });
+export async function watchWorld(transport: WorldTransport, after: number, onRecord: (record: WorldRecord) => void, signal: AbortSignal, epoch?: string): Promise<void> {
+ const response = await transport(`/events?after=${after}${epoch ? `&epoch=${encodeURIComponent(epoch)}` : ""}`, { signal, headers: { Accept: 'text/event-stream' } });
  if (!response.ok) throw await failure(response);
  if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new WorldError('The engine did not open a world stream.');
  const reader = response.body.getReader();
