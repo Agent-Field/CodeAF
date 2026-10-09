@@ -1,6 +1,7 @@
 package session
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -108,11 +109,19 @@ func decidedOutcome(record DecisionRecord) QuestionOutcome {
 	}
 }
 
+// plainPhrase is a run of plain words: a first word of lowercase letters only,
+// followed by more words. Only such a phrase gains a capital.
+var plainPhrase = regexp.MustCompile(`^[a-z]+\s+\S`)
+
+// sentenceCase capitalises a plain phrase ("not now") and leaves everything
+// else literal, because an answer is often a path, a file name or a lone code
+// word ("src/c.txt", "json") whose case is part of what it means. The desktop
+// tray applies the same rule, so the receipt and the button read alike.
 func sentenceCase(text string) string {
-	first, size := utf8.DecodeRuneInString(text)
-	if first == utf8.RuneError {
+	if !plainPhrase.MatchString(text) {
 		return text
 	}
+	first, size := utf8.DecodeRuneInString(text)
 	return string(unicode.ToUpper(first)) + text[size:]
 }
 
