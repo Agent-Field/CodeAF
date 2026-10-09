@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { newConversation } from './support/new-tab';
 import { expectAccessible, expectNoUnstyledControls, expectThemedSurface, tokenColor } from './contracts';
 import design from '../../src/design/tokens.json' with { type: 'json' };
 // Tab behaviour never needs the engine; a send fails fast and keeps its draft.
@@ -15,7 +16,7 @@ test('top tabs preserve isolated drafts across closing, reopening and reload', a
  await page.goto('/');
  await rename(page, 0, 'Engine design');
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Keep the benchmarked loop');
- await page.getByRole('button', { name: 'New tab', exact: true }).click();
+ await newConversation(page);
  await rename(page, 1, 'Desktop UX');
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Quiet chrome');
  await page.getByRole('tab', { name: 'Engine design', exact: true }).click();
@@ -97,7 +98,7 @@ test('malformed saved state recovers to a usable workspace', async ({ page }) =>
 test('overview searches real drafts and restores focus after nested organization menus', async ({ page }) => {
  await page.goto('/'); await rename(page, 0, 'Engine');
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('benchmark loop');
- await page.getByRole('button', { name: 'New tab', exact: true }).click();
+ await newConversation(page);
  await rename(page, 1, 'Design');
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
  const overview = page.getByRole('dialog', { name: 'All tabs overview', exact: true });
@@ -139,7 +140,7 @@ test('delayed hover previews show real draft text without moving focus', async (
  await draft.fill('A real saved thought');
  // A preview belongs to a tab you are not on.
  await page.getByRole('button', { name: 'New tab', exact: true }).click();
- const draftOfOther = page.getByRole('textbox', { name: 'Message', exact: true });
+ const draftOfOther = page.getByRole('combobox', { name: 'Search or start', exact: true });
  const preview = page.getByRole('group', { name: 'Preview of Preview', exact: true });
  await page.getByRole('tab', { name: 'Preview', exact: true }).hover();
  await expect(preview).not.toBeVisible();
@@ -251,7 +252,7 @@ test('overview cards show persisted work and mark the active tab with a ring', a
  await page.reload();
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
  const overview = page.getByRole('dialog', { name: 'All tabs overview' });
- await expect(overview.locator('.overview-card-text').first()).toHaveText(instruction);
+ await expect(overview.locator('.preview-text').first()).toHaveText(`Draft: ${instruction}`);
  await expect(overview).toContainText('No work yet');
  const selected = overview.locator('.overview-card[data-active="true"]');
  await expect(selected).toHaveCount(1);
@@ -262,7 +263,7 @@ test('overview cards show persisted work and mark the active tab with a ring', a
 
 test('groups have distinct names and support overview moves, rename and reload', async ({ page }) => {
  await page.goto('/'); await rename(page, 0, 'One');
- await page.getByRole('button', { name: 'New tab', exact: true }).click(); await rename(page, 1, 'Two');
+ await newConversation(page); await rename(page, 1, 'Two');
  await page.getByRole('button', { name: 'All tabs', exact: true }).click();
  const overview = page.getByRole('dialog', { name: 'All tabs overview', exact: true });
  async function organize(name: string, choice: string) {
@@ -301,7 +302,7 @@ test('dragging onto a collapsed group label groups the tab and preserves its dra
  await page.getByRole('tab', { name: 'Grouped', exact: true }).click({ button: 'right' });
  await page.getByRole('menuitem', { name: 'Move to group', exact: true }).hover();
  await page.getByRole('menuitem', { name: 'Create group', exact: true }).click();
- await page.getByRole('button', { name: 'New tab', exact: true }).click();
+ await newConversation(page);
  await rename(page, 0, 'Incoming');
  await page.getByRole('textbox', { name: 'Message', exact: true }).fill('Keep my context');
  const group = page.locator('.workspace-group-label');

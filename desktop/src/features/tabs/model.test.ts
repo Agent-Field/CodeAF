@@ -14,14 +14,14 @@ const only = (s: WorkspaceState, id: string) => s.tabs.find(t => t.id === id)!;
 
 // ---- tabs ----------------------------------------------------------------
 
-test('new adds an active conversation tab, optionally of another kind or in a group', () => {
+test('new adds an active new-tab field, optionally of another kind or in a group', () => {
   const s = run(state([tab('a')]), { type: 'new' });
   assert.equal(s.tabs.length, 2);
-  assert.equal(s.tabs[1].kind, 'conversation');
+  assert.equal(s.tabs[1].kind, 'newtab');
   assert.equal(s.activeId, s.tabs[1].id);
   assert.equal(s.nextNumber, 3);
-  const g = run(state([tab('a', { groupId: 'g' })], { groups: [{ id: 'g', title: 'G', collapsed: true }] }), { type: 'new', groupId: 'g', kind: 'newtab' });
-  assert.equal(g.tabs[1].kind, 'newtab');
+  const g = run(state([tab('a', { groupId: 'g' })], { groups: [{ id: 'g', title: 'G', collapsed: true }] }), { type: 'new', groupId: 'g', kind: 'conversation' });
+  assert.equal(g.tabs[1].kind, 'conversation');
   assert.equal(g.groups[0].collapsed, false);
 });
 

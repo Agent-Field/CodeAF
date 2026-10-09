@@ -1,0 +1,28 @@
+import { SectionHeading, Surface, Text } from '../../../../components/ui';
+import type { Tab } from '../../types';
+import { NewTabView } from './NewTabView';
+import { buildSections } from './rows';
+
+// Specimen data: drawn only on the Design system page, never in a workspace (engine-truth law).
+const tab = (id: string, title: string): Tab => ({ id, kind: 'conversation', title, draft: '', pinned: false });
+const typed = buildSections({
+  query: 'fix',
+  tabs: [{ tab: tab('t', 'Port fix to v1 branch'), shortcut: '⌘3', waiting: true }],
+  closed: [tab('c', 'Fix it in the lexer')],
+  files: [{ path: 'internal/parse/testdata/fixtures.go', name: 'fixtures.go', dir: 'internal/parse/testdata' }],
+  terminal: true, terminalShortcut: '⌃`', fileShortcut: '⌘O',
+});
+const empty = buildSections({ query: '', tabs: [], closed: [], files: [], terminal: true, terminalShortcut: '⌃`', fileShortcut: '⌘O' });
+const caption = 'Type a question, a file, a URL, or a command.';
+
+/** The new-tab field, typed and empty (design 3f, Components "Command field"). Specimen only: none of this is live data. */
+export function NewTabSpecimen() {
+  return <Surface direction="column">
+    <SectionHeading>New tab field</SectionHeading>
+    <Text>Specimen. One field: the first row turns what you typed into a conversation; below it come starting points, matching files, open tabs and recently closed tabs.</Text>
+    <div className="newtab-specimen" data-newtab-specimen>
+      <NewTabView id="specimen-typed" field={<span className="newtab-typed">fix<span className="newtab-caret"/></span>} query="fix" sections={typed} activeRowId="ask" caption={caption}/>
+      <NewTabView id="specimen-empty" field={<span className="newtab-typed newtab-placeholder"/>} query="" sections={empty} activeRowId="terminal" caption={caption}/>
+    </div>
+  </Surface>;
+}

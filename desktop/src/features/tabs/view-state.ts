@@ -11,6 +11,8 @@ export type TabView = {
   /** The file a file or diff tab shows. It reads through the session in `sessionFile`. */
   file?: FileTarget;
   sessionFile?: string;
+  /** A file tab's workspace-relative path (opened from the new-tab field). */
+  path?: string;
   route?: TabRoute;
   folded?: Record<string, boolean>;
   open?: Record<string, boolean>;
@@ -85,6 +87,7 @@ function isFileTarget(value: unknown): value is FileTarget {
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
   if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;
+  if (typeof value.path === 'string' && value.path) view.path = value.path;
   if (isRoute(value.route)) view.route = value.route;
   if (isFileTarget(value.file)) view.file = { path: value.file.path, ...(value.file.view ? { view: value.file.view } : {}) };
   if (isFlagMap(value.folded)) view.folded = value.folded;

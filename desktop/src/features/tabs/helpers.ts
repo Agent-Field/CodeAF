@@ -8,6 +8,7 @@ export let createId: () => string = () => crypto.randomUUID();
 export const setIdSource = (source: () => string) => { createId = source; };
 
 export const newConversationTitle = 'New conversation';
+export const newTabTitle = 'New tab';
 
 // A title only replaces one of equal or lower rank: the person's name always wins.
 export const titleRank: Record<TitleSource, number> = { message: 1, engine: 2, manual: 3 };
