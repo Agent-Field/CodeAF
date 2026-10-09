@@ -72,8 +72,10 @@ const (
 // drain — so a landing that arrives mid-turn is owed by the turn it lands in.
 func (a *Agent) rememberOwedLocked(user userMessage) {
 	a.rememberProgramOutcomeLocked(user)
+	// The original question identifies the completed work; it is not new
+	// authority from a person to commission that work again.
 	if question := strings.TrimSpace(user.landingQuestion); question != "" {
-		a.oweLocked(owedAsk{text: question, from: owedByPerson})
+		a.oweLocked(owedAsk{text: question, from: owedByResult})
 		if outcome := strings.TrimSpace(user.landingOutcome); outcome != "" {
 			a.landingOutcomes = append(a.landingOutcomes, outcome)
 		}

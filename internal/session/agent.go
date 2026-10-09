@@ -1359,8 +1359,9 @@ type userMessage struct {
 	settleCeiling int
 	// settleModel and settlePrompt narrow an owed-answer landing to its cheap
 	// seat and dedicated role page; ordinary settle wakes leave both empty.
-	settleModel  string
-	settlePrompt string
+	settleModel      string
+	settlePrompt     string
+	settleAnswerOnly bool
 	// settleWindow widens the turn's window past the settle turn's own
 	// ([Agent.settleWindow]) — a program's ending may be checked by running the
 	// project's tests ([programOutcomeWindow]); zero leaves it as it is.
@@ -3982,10 +3983,11 @@ const (
 // [Steward] — and that reading runs the run's own spend closure, which takes the
 // agent's lock, so it may not be made where the wake is decided under that lock.
 type settleWake struct {
-	ceiling int
-	model   string
-	prompt  string
-	window  time.Duration
+	answerOnly bool
+	ceiling    int
+	model      string
+	prompt     string
+	window     time.Duration
 }
 
 type settleWakeKey struct{}
@@ -4011,8 +4013,9 @@ func settleWakeFrom(ctx context.Context) (settleWake, bool) {
 // not may want several, and a turn that has to settle both is not cut to the
 // narrowest one's share.
 func (a *Agent) settleWakeLocked() (settleWake, bool) {
-	wake := settleWake{}
+	wake := settleWake{answerOnly: len(a.steering) > 0}
 	for _, note := range a.steering {
+		wake.answerOnly = wake.answerOnly && note.settleAnswerOnly
 		if !note.settle {
 			continue
 		}

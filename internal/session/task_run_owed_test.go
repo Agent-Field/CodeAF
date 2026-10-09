@@ -61,7 +61,7 @@ func TestOwedRootLandingWakesOnceWithOnlyQuestionAndResult(t *testing.T) {
 	question := "What did the repair find?"
 	summary := RunSummary{Outcome: beltRunOutcomeDone, Result: "The parser now preserves quoted commas."}
 	landing := RunLanding{}
-	wantDocument := question + "\n\n" + beltRunOutcomeNote(nil, "", summary, landing, 0)
+	wantDocument := owedLandingDocument(&plandb.Task{TaskSpec: plandb.TaskSpec{Question: question}}, beltRunOutcomeNote(nil, "", summary, landing, 0)).text()
 
 	completer := &scriptedCompleter{steps: []step{finalText("The repair preserved quoted commas.")}}
 	agent, _ := newTestAgent(t, completer, func(config *Config) {

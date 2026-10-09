@@ -2045,7 +2045,7 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 		// that lands a new note between the snapshot and this line cannot pair its
 		// flag with rows the request does not carry.
 		messages = a.withFrameworkPolicy(messages, policyActive)
-		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 {
+		if wake, settle := settleWakeFrom(ctx); settle && wake.prompt != "" && len(messages) > 0 && (!wake.answerOnly || a.answerOnlyLanding(ctx)) {
 			rolePage := textMessage("system", strings.TrimSpace(wake.prompt))
 			messages = append(messages[:1:1], append([]ai.Message{rolePage}, messages[1:]...)...)
 		}
@@ -2074,8 +2074,12 @@ func (a *Agent) completeWithRetryReasoning(ctx context.Context, hub *eventHub, m
 			Window: a.window(), Reserve: ctxbudget.CompletionReserve(), PromptFloor: promptFloor,
 		})
 		attemptCtx, generation := a.beginGeneration(attemptCtx, reached)
+		definitions := a.beltDefinitions()
+		if a.answerOnlyLanding(ctx) {
+			definitions = nil
+		}
 		response, err := a.completeWithModel(attemptCtx, purpose, messages, model,
-			ai.WithTools(a.beltDefinitions()))
+			ai.WithTools(definitions))
 		cause := a.endGeneration(generation)
 		if errors.Is(cause, errSteerCut) {
 			return response, model, errSteerCut
@@ -3617,6 +3621,9 @@ func (a *Agent) runToolsWarm(ctx context.Context, ep *episode, calls []ai.ToolCa
 // on the belt at all — comes back through this one function, so the record is
 // written around it rather than inside the four exits below (debugrecord.go).
 func (a *Agent) executeTool(ctx context.Context, ep *episode, hub *eventHub, call ai.ToolCall, rendered string) toolResult {
+	if a.answerOnlyLanding(ctx) {
+		return toolResult{text: "This completion turn reports work already finished. No new work was requested. Answer from the supplied result; do not run tools or commission another task.", isError: true, harness: true}
+	}
 	started := time.Now()
 	a.mu.Lock()
 	memoryTurn := a.turnSeq
@@ -5703,4 +5710,21 @@ func (a *Agent) addUsageAs(response *ai.Response, model string, calls int, role 
 	// file has its own, and holding the agent's across a disk write would put
 	// every reader of the session's totals behind it.
 	a.file.appendUsage(aux, model, true, role)
+}
+
+// A completion reply has evidence to report, not a fresh commission. A person
+// steering into that reply supplies fresh authority and restores the normal belt.
+func (a *Agent) answerOnlyLanding(ctx context.Context) bool {
+	wake, ok := settleWakeFrom(ctx)
+	if !ok || !wake.answerOnly {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, ask := range a.owedAsks {
+		if ask.from == owedByPerson {
+			return false
+		}
+	}
+	return true
 }
