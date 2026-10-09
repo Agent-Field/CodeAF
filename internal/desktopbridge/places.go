@@ -1,6 +1,7 @@
 package desktopbridge
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -32,11 +33,26 @@ type Places struct {
 	// Now is the clock for the rail's idle window and the world cache. Nil is
 	// time.Now.
 	Now func() time.Time
+	// Recaps reads the recap a conversation persisted about itself, for a Home's
+	// "Since yesterday". Nil reads each conversation's own meta.json
+	// (places_digest.go); a test injects a fixture.
+	Recaps RecapReader
 
 	// live lists the chat ids of conversations this bridge holds open. A
 	// conversation the person just started may not be in the world yet; it is
 	// still a real chat they can file. UsePlaces fills it.
 	live func() []string
+
+	// door is the engine's own door onto this graph (session.PlaceGraphDoorFor):
+	// the remembered-picks file and the source policy the Using list and the
+	// add-a-source route share with the engine, and choices is the book opened
+	// on that file. UseDoor sets both (using.go); without them the Using routes
+	// answer that this bridge cannot.
+	door    *session.PlaceGraphDoor
+	choices *placegraph.ChoiceBook
+	// allowsModel checks a place's default model against the same model list
+	// the settings page offers. UsePlaces fills it from the bridge's models.
+	allowsModel func(context.Context, string) bool
 
 	// mu serialises this process's read-modify-write mutations. The store's file
 	// lock already protects the document across processes; this protects the
@@ -47,6 +63,9 @@ type Places struct {
 	cached    session.World
 	cachedAt  time.Time
 	cacheDone bool
+
+	recapOnce    sync.Once
+	recapDefault *metaRecaps
 }
 
 // NewPlaces wraps an opened store. The caller chose its path.
@@ -57,6 +76,7 @@ func NewPlaces(store *placegraph.Store) *Places { return &Places{Store: store} }
 func (b *Bridge) UsePlaces(p *Places) {
 	if p != nil {
 		p.live = b.liveChatIDs
+		p.allowsModel = b.allowsModel
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()

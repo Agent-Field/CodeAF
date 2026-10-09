@@ -71,7 +71,7 @@ test('a pinned slot takes a catalog model and the composer picker follows in ord
   await page.getByRole('listbox', { name: 'Models' }).getByRole('option', { name: 'Kimi K3' }).click();
   await expect.poll(() => puts(engine.calls).at(-1)?.body).toEqual({ models: [GLM_FLASH, MODEL, OTHER] });
   await expect(page.getByRole('button', { name: 'Reset pinned models' })).toBeVisible();
-  await page.getByRole('button', { name: 'Workspace', exact: true }).click();
+  await page.getByRole('button', { name: 'Now', exact: true }).click();
   await send(page, 'hello');
   await chip(page, 'DeepSeek v4.1 Flash').click();
   await expect(page.getByRole('radiogroup', { name: 'Pinned models', exact: true }).getByRole('radio')).toHaveText(['GLM Flash', 'DS Flash', 'kimi-k3']);
@@ -131,7 +131,7 @@ test('a job nothing calls yet says so, and a split job follows the one it came f
   await page.reload();
   await openSettings(page);
   await expect(page.getByRole('button', { name: 'Model for Summaries' })).toHaveText('Kimi K3');
-  await expect(page.locator('[data-role="summaries"]')).toContainText('Not in use yet');
+  await expect(page.locator('[data-role="summaries"]')).not.toContainText('Not in use yet');
 });
 
 test('the Places organization choices save at once, refuse what they cannot hold, and reset', async ({ page }) => {

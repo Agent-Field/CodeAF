@@ -8,7 +8,7 @@ Sidebar 216px (190px for smaller windows), 6px outer frame, 6px content corners.
 
 ## Typography and colors
 
-System sans only: SF Pro on macOS, system-ui on Linux. Interface 12px, supporting labels 10–11px, page heading 25px with medium weight. System monospace for code. Warm sand/peach chrome in light mode; warm charcoal in dark mode. White/off-white content is opaque. The primary accent is graphite: reserve stronger color for meaningful status or actual project identities. All visual values originate in `src/design/tokens.json`; `src/styles/tokens.css` is generated. Screens consume semantic variables, not literal values.
+System sans only: SF Pro on macOS, system-ui on Linux, and the system monospace for code. The type roles are the design's Foundations scale: title 20/1.3 600, heading 17, 15 and 13, prose 13/1.6, label 12/1.45, caption 11/1.4 500, mono 12/1.5. One palette, tinted by the place hue (`--h`): frame, canvas, surface, field, field-2, line, ink, ink-2, ink-3, accent, amber and danger, in light and dark. Nothing is drawn in a warm or untinted grey; the old chrome names (`text`, `muted`, `border`, `overlay-surface`, `control-hover`, `focus-ring`, …) remain only as aliases that resolve to those design tokens. Colour carries state only on 6px glyphs. All visual values originate in `src/design/tokens.json`; `src/styles/tokens.css` is generated. Screens consume semantic variables, not literal values.
 
 ## Native materials
 
@@ -18,7 +18,7 @@ Browser preview renders a quiet sand-to-peach background as an approximation of 
 
 ## Interaction
 
-Cmd/Ctrl+K opens the command palette; Cmd/Ctrl+S toggles the rail (Cmd/Ctrl+B still works) and Cmd/Ctrl+Shift+F is Focus mode, which also hides the tab strip. A collapsed rail peeks after the pointer rests 300ms on the left 8px edge; in Focus mode the top 8px brings the strip back. The full key map is `src/design/keyboard.ts` (design Interactions "Shortcuts"). Theme defaults to System, persists locally, and synchronizes the native window appearance. Keep visible focus, semantic controls, modal focus restoration, and reduced motion. Use the top chrome as a native drag region. Sidebar collapse removes hidden controls from keyboard navigation.
+Cmd/Ctrl+K opens the command palette; Cmd/Ctrl+S toggles the rail (Cmd/Ctrl+B still works) and Cmd/Ctrl+Shift+F is Focus mode, which also hides the tab strip. A collapsed rail peeks after the pointer rests 300ms on the left 8px edge; in Focus mode the top 8px brings the strip back. The full key map is `src/design/keyboard.ts` (design Interactions "Shortcuts"). Places (design Places 6a–10a): the rail is Inbox and Now, then Pinned and Open places (a 10px tint square for identity and one amber/red status dot, never a running mark), then All places, with the window's other pages quietly under it. A window shows one place (Now or a graph place): its frame and accent take the place's tint through `data-tint` on the body (Now keeps the root palette until DESIGN-QUESTIONS PS12 is answered), its strip is that place's own tab set, and a place's Home is the pinned first tab (tint square and name, never closes). ⌘P opens the Go to chooser, ⌘⇧P All places, ⌘0 the Home, ⌃1–9 (Alt on Linux) the rail places, ⌃0 Now, ⌘⇧W closes the place, ⌘Z undoes the last structural place change; every change says itself in a bottom-centre toast with Undo. Design-graph places never borrow a conversation's source folders. Theme defaults to System, persists locally, and synchronizes the native window appearance. Keep visible focus, semantic controls, modal focus restoration, and reduced motion. Use the top chrome as a native drag region. Sidebar collapse removes hidden controls from keyboard navigation.
 
 ## Distribution note
 
@@ -68,6 +68,7 @@ System sans is used everywhere except real code/terminal content, which uses sys
 | terminal / file / edit / web / findFiles / tool | Terminal / FileText / FilePen / Globe / FileSearch / Wrench | Tool step family icons |
 | thinking | Brain | Reasoning line |
 | tab / pin / folder / more / split | MessageSquare / Pin / Folder / Ellipsis / PanelLeft | Tabs, groups and overflow |
+| back / forward / reload / chatPlus / external | ArrowLeft / ArrowRight / RotateCw / MessageSquarePlus / ExternalLink | Web tab header: history, reload, start a conversation with the page, open in the browser |
 Sizes: xs 13px for trailing hints, sm 14px for navigation, md 16px for controls, lg 17px for favorites. The central stroke is 1.6 in a 24-unit viewBox, with rounded caps/joins. Use currentColor only. Navigation and utility glyphs stay still. Explicit directional action arrows translate 2px over 280ms; disclosure chevrons rotate only with open state. No upstream default glyph animation. Do not introduce idle animations or increase icon size to compensate for a poor glyph. Icon controls are 28px; compact sidebar actions are 32–34px high. This is desktop density, not a touch-optimized interface.
 
 ## Components and specimens
@@ -82,15 +83,17 @@ The codeaf C is one vector arc, not a text glyph. The same geometry produces the
 
 `npm run design:check` runs before every production build and checks generated outputs, known CSS tokens, literal CSS style values, typography/opacity literals, breakpoints, icon import boundaries, raw screen controls, inline styles and per-screen SVGs. Regression tests prove common violations fail. `AGENTS.md`, `CLAUDE.md` and `CONTRIBUTING.md` require all contributors to use that gate. This is a concrete baseline; it does not automatically judge every visual design decision. Human review still checks coherence, readable contrast and native behavior. No branch protection or successful remote CI run is implied.
 
+Icons come from `@animateicons/react` plus, only where it has no glyph, `lucide-react` 0.460.0 (file-json, file-code-2), both imported solely in `Icon.tsx`.
+
 Sources: [AnimateIcons](https://github.com/Avijit07x/animateicons), [Lucide](https://lucide.dev/), and the [alternative family browser](https://icons.lndev.me/?lib=heroicons).
 
 ## Motion and interaction states
 
-All timings, curves, travel and scale originate in tokens. Control colors settle over 220ms. Sidebar layout changes over 320ms with a gentle decelerating curve; hidden controls become inert. Shared overlay entry is 240ms, moving only 3px and scaling from 0.985; exit fades over 220ms. Shared keyframes live in ui.css, never in feature styles. Reduced motion sets durations and travel to zero while keeping state changes immediate.
+All timings, curves, travel and scale originate in tokens (Foundations, Motion). Hover fills settle over the fast step, 120ms ease. Popovers (menus, choices, hover cards) fade in from 0.98 scale at their origin over 120ms, with no rise, and fade out over 120ms. Sidebar layout changes over 320ms with a gentle decelerating curve; hidden controls become inert. Dialogs and sheets keep the shared 240ms entry that moves 3px and scales from 0.985. Shared keyframes live in ui.css, never in feature styles. Reduced motion sets durations, travel and scale to rest while keeping state changes immediate.
 
 Design v3 controls (docs/COMPONENTS.md) follow the designer's interaction states: hover changes only the fill, press darkens it one step for 80ms, focus-visible is a 2px accent ring with a 4px soft halo for keyboard input only, disabled is 40% opacity of the whole control (the only permitted use of opacity besides fading in hidden row and message actions), and tooltips on icon-only buttons and truncated text appear after 500ms with sh-2 and 11px text. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and palette keep their previous control look through the scoped legacy block in ui.css until the chrome is restyled. Elsewhere, hover is quiet neutral feedback; pressed is slightly stronger. Favorite tiles indicate the active view with aria-pressed; navigation uses aria-current. Secondary buttons have hover, press, visible keyboard focus and disabled states. Selection is meaningful state, not a permanent highlight on every control.
 
-App-owned choices use shared Select; action menus use shared ContextMenu and DropdownMenu with token-colored popups, highlights and checkmarks; the background is inert while open. Keyboard focus uses a thin ring; the palette search uses a subtle underline instead of a large box. Native OS dialogs retain their platform appearance.
+App-owned choices use shared Select; action menus use shared ContextMenu and DropdownMenu (Components "Context menu": surface sheet, radius 10, sh-2, 5px padding, no border; 28px rows with radius 6, 13px labels, 10px gaps, a field-2 hover, hairline separators, right-aligned 12px ink-3 shortcuts, destructive rows in red text only); the background is inert while open. Keyboard focus uses a thin ring; the palette search uses a subtle underline instead of a large box. Native OS dialogs retain their platform appearance.
 
 ## Browser regression gate
 
@@ -180,6 +183,16 @@ and [Arc's recent-tab switcher](https://resources.arc.net/hc/en-us/articles/2561
 Mac also uses Command+Shift+[ / ] for adjacent tabs and Command+Shift+\ for
 the overview, following Safari's horizontal-tab conventions. Linux uses
 Control+PageUp / PageDown for adjacent tabs and Control+Shift+A for overview.
+Command / Control+O is the new-tab field's "Open file…" and belongs to that
+field alone.
+
+The full title of a tab is a 500ms tooltip for the active tab, a pinned tab and
+a cut title; an inactive tab's hover preview already carries it, and a tooltip
+never opens beside an open preview card. In the overview a Command/Control-click
+or middle-click on a card is the design's "Background tab": every card is a tab
+that is already open, so nothing opens or closes, the active tab and the overview
+stay, and only the cursor moves. The card's right-click menu is the strip's tab
+menu, built once.
 
 ## Conversation
 
@@ -288,3 +301,7 @@ breadcrumb appears only in task view.
 Keep native system sans for prose and chrome and the central system monospace stack for code. Shared document prose, heading, code, label and metadata roles live in tokens.json and the shared typography/Markdown components; no screen-specific fonts, heading sizes or syntax palettes. Markdown owns its list, heading, table, quotation and code spacing without descendant overrides from feature styles. Inline code uses the shared CodeText role; fenced code retains literal whitespace with bounded narrow-window wrapping. JSON, shell output and tool results remain literal monospace; search queries, task names and navigation labels stay prose.
 
 Formatting is explicit content metadata, never a regex guess. WorkSection.originalFormat defaults to literal: exact user instructions, amendments, pasted context and tool arguments must remain literal. A captured task-authored Description may opt into markdown through its known projection; show it as a task instruction and retain the original stored string. Unknown/invalid formats fail storage validation rather than enabling HTML. Assistant text and explicitly marked task descriptions use the single safe shared Markdown renderer, including inline code and fenced code; never add another parser. Verify prose/code font roles, heading hierarchy, real task excerpts, exact literal user words, Light/Dark and narrow wrapping together.
+
+## History tab
+
+Shell 4a-4e and Components "Shell · history" are authoritative. History is a tab (⌘Y / Ctrl Y opens it or selects the one already open). The list is one card of `history-list-width` beside a recap card; below `history-compact-width` the recap replaces the list with a Back control. Rows are fixed height (`history-row-height`, `history-row-files-height` with changed files) under sticky time headings, virtualized, newest first; a row leads with the title and one sentence of substance, never a message count or a duration. Colour appears only on the 6px state dot and the file counts. Search is one wide column with the best match card (an existing recap sentence, never composed), then Decisions, Discussed, Files and Tasks; marks cover whole words only. The row menu offers Continue, Read conversation and Archive; Add to place and Delete stay absent until a place graph and an engine delete exist. The auto-archive toast sits bottom-centre on sh-2 for `historyToastMs`. Muted text the design draws in ink-3 is listed in `tests/ui/contracts.ts` `INK3_TEXT`; every other axe rule applies. The live specimen is `HistorySpecimen` on the Design system page.

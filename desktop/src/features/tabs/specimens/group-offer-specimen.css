@@ -1,0 +1,4 @@
+/* Layout for the group suggestion specimen: a card the pill can sit in, as it sits in the workspace. */
+.group-offer-specimen { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.group-offer-specimen-card { position: relative; flex: none; height: calc(var(--tab-strip-height) + var(--group-offer-height) + var(--space-6)); border-radius: var(--radius-lg); background: var(--frame); overflow: hidden; }
+.group-offer-specimen-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }

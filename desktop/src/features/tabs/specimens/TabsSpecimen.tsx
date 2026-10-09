@@ -10,6 +10,7 @@ import { LoadingLine } from '../LoadingLine';
 import { OverviewSpecimen } from './OverviewSpecimen';
 import { SplitTab } from '../SplitTab';
 import { Tab, type TabState } from '../Tab';
+import { ClosingSpecimen } from './ClosingSpecimen';
 import '../split-zones.css';
 import './tabs-specimen.css';
 
@@ -55,7 +56,7 @@ export function TabsSpecimen() {
       <div className="tabs-specimen-wrap">
         <span className="tabs-specimen-item">Pinned
           <Tab specimen kind="inbox" title="Inbox" pinned tabIndex={-1}/>
-          <Tab specimen kind="conversation" title="Config stack" pinned active badge tabIndex={-1}/>
+          <Tab specimen kind="conversation" title="Config stack" pinned active badge="needsYou" tabIndex={-1}/>
         </span>
         <span className="tabs-specimen-item">Group
           <GroupCapsule title="Trailing commas" count={2} collapsed={false}>
@@ -70,6 +71,10 @@ export function TabsSpecimen() {
           <SplitTab specimen active focus={0} segments={[{ id: 'a', kind: 'conversation', title: 'Config' }, { id: 'b', kind: 'task', title: 'Fixtures' }]}/>
         </span>
         <span className="tabs-specimen-item">Compressed<Tab specimen kind="terminal" title="nightly-bench" compressed tabIndex={-1}/></span>
+        <span className="tabs-specimen-item">Picked for ⌘G
+          <Tab specimen kind="conversation" title="Config stack" active tabIndex={-1}/>
+          <Tab specimen kind="task" title="Fixtures" picked tabIndex={-1}/>
+        </span>
       </div>
       <div className="tabs-specimen-rule"/>
       <span className="tabs-specimen-label">Drag a tab: the middle of a tab under it is the Group target, an edge marks a reorder; the content shows a split zone and pill</span>
@@ -97,6 +102,8 @@ export function TabsSpecimen() {
         <div className="tabs-specimen-wide"><Tab specimen kind="conversation" title="Trailing commas across the config stack and env loader" hover tabIndex={-1} onClose={noop}/></div>
         <div className="tabs-specimen-wide"><Tab specimen kind="conversation" title="Config stack" hover closeMode="stop" tabIndex={-1} onClose={noop}/></div>
       </div>
+      <div className="tabs-specimen-rule"/>
+      <ClosingSpecimen/>
       <div className="tabs-specimen-rule"/>
       <span className="tabs-specimen-label">Web load line: 2px along the top of the card, never on the tab</span>
       <div className="tabs-specimen-card"><LoadingLine progress={0.45}/><Icon name="web" size="lg"/></div>

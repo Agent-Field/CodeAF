@@ -21,7 +21,12 @@ export type TabView = {
   tasksSelected?: string;
   /** What a file, diff, terminal or web tab points at; set by that kind's lane and read by its hover preview. */
   target?: PaneTarget;
+  /** A Home tab's place: a design-graph place id (`pl_…`) or `root` for All places. Never a filesystem folder. */
+  place?: string;
 };
+
+/** The design-graph place ids a Home tab may show: `root` (All places) or a placegraph id. */
+export const isHomePlace = (value: unknown): value is string => typeof value === 'string' && (value === 'root' || /^pl_[0-9a-f]{16}$/.test(value));
 
 /**
  * Where a file, diff, terminal or web tab points. Every field is optional and validated on read; the preview
@@ -86,6 +91,8 @@ function isFileTarget(value: unknown): value is FileTarget {
 /** Keeps only the view fields that validate. */
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
+  const target = cleanTarget(value.target);
+  if (target) view.target = target;
   if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;
   if (typeof value.path === 'string' && value.path) view.path = value.path;
   if (isRoute(value.route)) view.route = value.route;
@@ -94,8 +101,7 @@ export function cleanView(value: Record<string, unknown>): TabView {
   if (isFlagMap(value.open)) view.open = value.open;
   if (typeof value.tasksClosed === 'boolean') view.tasksClosed = value.tasksClosed;
   if (typeof value.tasksSelected === 'string' && value.tasksSelected) view.tasksSelected = value.tasksSelected;
-  const target = cleanTarget(value.target);
-  if (target) view.target = target;
+  if (isHomePlace(value.place)) view.place = value.place;
   return view;
 }
 

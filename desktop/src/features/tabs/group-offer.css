@@ -1,0 +1,7 @@
+/* The group suggestion pill (Shell 2b): layout only. Colour, type and controls come from tokens and the shared Button and IconButton. */
+.group-offer { position: absolute; top: calc(var(--tab-strip-height) + var(--space-compact)); inset-inline: 0; margin-inline: auto; width: fit-content; z-index: var(--z-overlay); box-sizing: border-box; max-width: calc(100% - var(--space-4)); height: var(--group-offer-height); padding: 0 var(--space-tight) 0 var(--space-row); display: flex; align-items: center; gap: var(--control-gap); border-radius: var(--radius-pill); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-size: var(--font-size-body); white-space: nowrap; animation: surface-enter var(--duration-overlay) var(--ease-overlay); }
+.group-offer .app-icon { color: var(--ink-2); flex: none; }
+.group-offer-text { min-width: 0; overflow: hidden; }
+.group-offer-text b { font-weight: var(--font-weight-medium); }
+.group-offer .group-offer-accept.button { flex: none; min-height: var(--row-action-size); height: var(--row-action-size); border-radius: var(--radius-pill); font-weight: var(--font-weight-medium); }
+.group-offer .icon-button { color: var(--ink-3); border-radius: var(--radius-pill); }

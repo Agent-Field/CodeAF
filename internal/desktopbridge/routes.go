@@ -23,6 +23,10 @@ func (s *conversation) extra(w http.ResponseWriter, r *http.Request, parts []str
 		s.fileFind(w, r)
 	case len(parts) == 4 && parts[2] == "files" && parts[3] == "locate":
 		s.fileLocate(w, r)
+	case len(parts) == 3 && parts[2] == "editors":
+		s.editors(w, r)
+	case len(parts) == 4 && parts[2] == "editors" && parts[3] == "open":
+		s.openEditor(w, r)
 	case len(parts) == 3 && parts[2] == "changes":
 		s.changes(w, r)
 	case len(parts) == 3 && parts[2] == "diff":

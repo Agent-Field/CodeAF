@@ -11,11 +11,22 @@ const META_SEGMENT = /^(ran|took|cost|used|\$|\d)/i;
 type TaskItem = Extract<TurnItem, { kind: 'task' }>;
 export type TaskAside = Omit<TaskItem, 'id' | 'taskId'>;
 
+/**
+ * Removes emphasis, code and strike marks but keeps characters that are part
+ * of the words themselves. An underscore inside a word is never emphasis, and
+ * a lone tilde is a path: `snake_case`, `LINUX_NATIVE_OK` and `~/notes` were
+ * shown as `snakecase`, `LINUXNATIVEOK` and `/notes`.
+ */
+export function withoutMarks(text: string): string {
+  return text
+    .replace(/[*`]+|~~/g, '')
+    .replace(/(^|[^\p{L}\p{N}_])_+|_+(?![\p{L}\p{N}])/gu, '$1');
+}
+
 function stripMarks(line: string): string {
-  return line
+  return withoutMarks(line
     .replace(/^\s*(?:#{1,6}\s+|>\s*|[-*+]\s+|\d+[.)]\s+)/, '')
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`~]+/g, '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1'))
     .replace(/\s+/g, ' ')
     .trim();
 }

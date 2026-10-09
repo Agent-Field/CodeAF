@@ -1,5 +1,5 @@
 import { useState, type MouseEvent } from 'react';
-import { ChipButton, ContextMenu, Icon, type IconName } from '../../../components/ui';
+import { ChipButton, ContextMenu, Icon, useTooltip, type IconName } from '../../../components/ui';
 import type { EnginePathFact } from '../../chat/engine-client';
 import type { FileRef } from '../types';
 import { useAssets, usePathFact } from './AssetContext';
@@ -62,11 +62,12 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
   const fact = stat ?? looked.fact;
   const { name, dir: fullDir } = splitPath(path);
   const dir = displayDir(fullDir, assets.workspace);
-  if (!assets.available) return <span className="asset-plain">{name}</span>;
   const availability = availabilityOf(path, assets.workspace, fact);
+  const note = stateNote[availability];
+  const tooltip = useTooltip([path, note].filter(Boolean).join(' · '), {}, { describe: true });
+  if (!assets.available) return <span className="asset-plain">{name}</span>;
   const kind = fileKind(name, fact?.dir);
   const icon = availabilityIcon[availability] ?? kindIcon[kind];
-  const note = stateNote[availability];
   const canOpen = availability === 'exists' && !fact?.dir;
   // Click opens the preview sheet. Command-click (Control off the Mac) or a middle click opens a text or code file in a tab:
   // its changes first when the turn edited it. Images, PDFs and the rest have no tab to open and keep the sheet.
@@ -87,9 +88,9 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
           className="file-chip"
           data-state={availability}
           data-source={source}
-          title={[path, note].filter(Boolean).join(' · ')}
           aria-label={[name, note].filter(Boolean).join(', ')}
           aria-disabled={!canOpen || undefined}
+          {...tooltip.props}
           onClick={event => canOpen && openChip(event)}
           onAuxClick={event => { if (canOpen && event.button === 1 && openInTab()) event.preventDefault(); }}
         >
@@ -99,6 +100,7 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
           <Stat added={added} removed={removed} capped={capped} />
         </ChipButton>
       </ContextMenu>
+      {tooltip.element}
       {open && <PreviewSheet path={path} onClose={() => setOpen(false)} />}
     </>
   );

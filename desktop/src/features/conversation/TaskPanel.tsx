@@ -120,7 +120,7 @@ export function TaskPanel(props: TaskPanelProps) {
     <aside ref={panel} className="task-panel" data-variant={variant} aria-label="Tasks" tabIndex={-1} onKeyDown={onKeyDown}>
       <Header tasks={tasks} onClose={onClose} onExpand={props.onExpand} />
       {planError && <Text className="task-panel-error">{planError}</Text>}
-      <div ref={scroller} className="task-panel-scroll" data-above={edges.above || undefined} data-below={edges.below || undefined}>
+      <div ref={scroller} className="task-panel-scroll" data-scroll-key="task-panel" data-above={edges.above || undefined} data-below={edges.below || undefined}>
         <div className="task-panel-body">
           <TaskTree {...tree} nodes={live} />
           {foldOpen && <TaskTree {...tree} nodes={finished} />}

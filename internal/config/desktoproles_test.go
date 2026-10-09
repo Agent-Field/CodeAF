@@ -136,7 +136,13 @@ func TestARoleIsLiveOnlyOnceSomethingRegistersItsCall(t *testing.T) {
 	if !DesktopRoleLive(conversation) {
 		t.Fatal("the conversation is not live")
 	}
-	if DesktopRoleLive(summaries) {
+	// Summaries is live exactly when the recap call is registered, which the
+	// session package does and this test binary does not import.
+	_, recapRegistered := roles.TierOf(roles.RoleRecap)
+	if DesktopRoleLive(summaries) != recapRegistered {
+		t.Fatalf("summaries live = %v, recap registered = %v", DesktopRoleLive(summaries), recapRegistered)
+	}
+	if DesktopRoleLive(DesktopRole{ID: "nothing", Engine: nil}) {
 		t.Fatal("a role with no engine call is live")
 	}
 	if _, registered := roles.TierOf(roles.RolePlaceFile); registered {

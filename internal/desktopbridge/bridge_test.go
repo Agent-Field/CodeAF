@@ -418,7 +418,12 @@ func TestWorkerPlanChangePublishesWithoutTaskNoticeOrAICall(t *testing.T) {
 func TestToolOutputFetchesOnlyNamedCanonicalCallStub(t *testing.T) {
 	b, a, id := stateFixture(t)
 	s := b.sessions[id]
-	dir := t.TempDir()
+	// macOS hands out temp folders under /var, a link to /private/var; the bridge
+	// resolves links before it names the stub, so the expectation must too.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	stubs := filepath.Join(dir, "logs", "stubs")
 	if err := os.MkdirAll(stubs, 0700); err != nil {
 		t.Fatal(err)
@@ -455,7 +460,12 @@ func TestToolOutputFetchesOnlyNamedCanonicalCallStub(t *testing.T) {
 func TestToolOutputRejectsSymlinkOutsideSessionStubs(t *testing.T) {
 	b, a, id := stateFixture(t)
 	s := b.sessions[id]
-	dir := t.TempDir()
+	// macOS hands out temp folders under /var, a link to /private/var; the bridge
+	// resolves links before it names the stub, so the expectation must too.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	stubs := filepath.Join(dir, "logs", "stubs")
 	_ = os.MkdirAll(stubs, 0700)
 	outside := filepath.Join(t.TempDir(), "secret.txt")

@@ -52,6 +52,20 @@ plan rows also refresh every three seconds to catch worker CLI writes outside
 the task notice lane. Reads make no AI call and do not fabricate activity times.
 Failed plan reads expose planError and retain the last successful rows.
 
+## Failed-task Seen (shared by every window and device)
+
+A `GET /world` row (and every `world` record on `/events`) carries `failed` (the count of landed-failed tasks, unchanged),
+`unseenFailed` (those that landed after the shared mark) and `failure {task, at}` (the newest landed failure, `at` in RFC 3339
+with nanoseconds). POST `/world/failures/seen` `{session, at, task?}` records that failure, and every one before it, as looked
+at: 200 `{session, through, changed, unseenFailed}`; 400 malformed; 404 no such conversation; 409 `that failure is no longer on
+record` when no failed task of that conversation landed at `at` (a stale or invented reading; nothing is written). It is
+authenticated like every route, idempotent, monotonic and attaches nothing. The mark is the watermark `failuresSeen` in the
+conversation's own `meta.json`, written under the same lock as the rest of the identity, so a restart, a second window and a
+second device agree, and a failure that lands later is unseen again with no client action. It never changes `running`,
+`needsYou`, `liveTasks` or `failed`. A failed task with no landing instant (a rebuilt or very old index row) has no version to
+mark and is never counted unseen. The client is `markFailureSeen` in `src/features/chat/world-client.ts`; the closing seam is
+`closing/seenMarks.ts` (optimistic, withdrawn with a toast if the engine refuses).
+
 Aside entries carry `TaskIDs`, the tasks they concern, so a task notice in the
 conversation can open its task; this holds for run reports as well as task
 landings. They also carry `AsideKind` (`"task"`, `"job"`, `"watch"` or `"resume"`,
@@ -137,8 +151,20 @@ workspace, and kept in the session folder so a reload keeps it); the diff shows
 commits since then plus the working tree. With no record, or when history was
 rewritten and the start is no longer reachable from HEAD, the base is HEAD (the
 empty tree on an unborn branch, which records nothing). Both `/changes` and
-`/diff` answer `base: {kind: 'start'|'head', sha?}` so the UI can say which one
-was used. Outside git, `git:false` and no files.
+`/diff` answer `base: {kind: 'start'|'head', sha?, startGone?}` so the UI can say
+which one was used. `startGone` is true only when a start was recorded and history
+no longer reaches it; a `head` base without it means no start was ever recorded.
+The tab says "Compared with the latest commit." for the second and adds "The commit
+this conversation started on is no longer in history." for the first. Outside git,
+`git:false` and no files.
+
+An open file or diff tab re-reads on two signals and never on a timer of its own:
+a stream event that edits the path (or a finished turn whose changes list names it),
+and the file's version from POST `/files/stat` (size and modification time, whole
+seconds). The stat asks about that one path every 2 seconds while the tab and the
+window are visible, and once more when the window returns to the front; a hidden or
+closed tab asks nothing. That is what catches a shell command or a save in another
+editor. A rewrite inside the same second at the same size is not seen.
 
 - GET `/files/text?path=` returns `{path,name,dir,abs,size,hash,language,lines,text}`.
   Over 1MB or binary: `text` is empty and `refusal` is `too-large` or `binary`
@@ -161,3 +187,14 @@ was used. Outside git, `git:false` and no files.
   `abs` is a path on the ENGINE's disk. The app opens an editor only when `local`
   is true (the bridge started the engine as its own child) and `host` equals the
   app's own machine name; otherwise it hides the handoff or offers Copy path.
+- GET `/editors?path=` returns `{editors:[{id,name,default}],local,open,reason?}`:
+  the applications registered on the ENGINE machine for that file, default first,
+  at most 8. Linux reads `.desktop` entries for the file's type and its
+  shared-mime-info parents (TryExec must be installed; Exec is never read). macOS
+  asks Launch Services for the file's handlers, plus the plain-text editors when the
+  bytes are text. A remote engine answers an empty list; a machine with no display
+  answers `open:false`.
+- POST `/editors/open` with `{path,id}` starts that editor on the file. The id must
+  be in a fresh listing for that path; there is no command line in the body. Launch
+  is `gtk-launch`/`gio launch` on Linux and `open -b <id> -- <abs>` on macOS, argv
+  only. Remote or no display is 409.

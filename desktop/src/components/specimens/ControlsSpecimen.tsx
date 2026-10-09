@@ -40,7 +40,7 @@ export function ControlsSpecimen() {
      <TextInput appearance="field" aria-label="Field specimen" placeholder="Say why (optional)"/>
     </div>
     <div className="controls-specimen-group"><span className="controls-specimen-label">Tags</span>
-     <div className="controls-specimen-row"><Tag tone="accent">Suggested</Tag><Tag>Reversible</Tag><Tag tone="danger">Irreversible</Tag><Tag tone="key">⌘↵</Tag></div>
+     <div className="controls-specimen-row"><Tag tone="plain">Suggested</Tag><Tag>Reversible</Tag><Tag tone="danger">Irreversible</Tag><Tag tone="key">⌘↵</Tag></div>
     </div>
    </div>
    <div className="controls-specimen-group"><span className="controls-specimen-label">Chips</span>

@@ -71,3 +71,7 @@ test('category: caption wins, else the tool family', () => {
   assert.equal(categoryOf('propose_task'), 'plan');
   assert.equal(categoryOf('mystery'), 'work');
 });
+
+test('narrationTitle keeps identifiers whole', () => {
+  assert.equal(narrationTitle('Checking **read_file** in ~/src.'), 'Checking read_file in ~/src');
+});

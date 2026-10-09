@@ -2,6 +2,8 @@
 .workspace-tab { position: relative; display: flex; align-items: center; flex: 0 1 auto; width: var(--tab-max-width); min-width: var(--tab-min-width); max-width: var(--tab-max-width); height: var(--tab-height); border-radius: var(--radius-control); background: transparent; color: var(--ink-2); font-size: var(--font-size-body); line-height: var(--line-height-tight); transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); animation: tab-enter var(--duration-overlay) var(--ease-overlay); }
 .workspace-tab:hover, .workspace-tab[data-hover] { background: var(--tab-hover); color: var(--ink); }
 .workspace-tab[data-active="true"] { background: var(--canvas); box-shadow: var(--sh-1); color: var(--ink); }
+/* Picked for ⌘G (⌘-click): the field fill, one step past hover, so a picked tab still reads under the pointer. */
+.workspace-tab[data-picked] { background: var(--field); color: var(--ink); }
 /* An inactive tab that needs you lifts its title to full ink. */
 .workspace-tab[data-state="waiting"] { color: var(--ink); }
 
@@ -29,6 +31,7 @@
 .workspace-tab.is-pinned .workspace-tab-select.button { justify-content: center; padding: 0; }
 .workspace-tab.is-pinned .app-icon { color: inherit; }
 .tab-badge { position: absolute; top: var(--space-tiny); right: var(--space-tiny); width: var(--mark-dot); height: var(--mark-dot); border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 var(--space-half) var(--canvas); }
+.tab-badge[data-kind="failed"] { background: var(--danger); }
 
 /* Compressed: the narrowest fallback, icon only. */
 .workspace-tab[data-compressed] { flex: none; max-width: var(--tab-compressed-width); width: var(--tab-compressed-width); min-width: var(--tab-compressed-width); }
@@ -40,3 +43,9 @@
 
 @media (hover: none), (pointer: coarse) { .workspace-tab .workspace-tab-close.icon-button { opacity: var(--opacity-opaque); } }
 @media (prefers-reduced-motion: reduce) { .workspace-tab { animation: none; } }
+
+/* A place's Home (Places helper homeTab): the pinned first tab sized to its name, the tint square and a medium-weight
+   name instead of the kind glyph, never a close. Its name is the place's, so it is not faded like a title. */
+.workspace-tab.is-place-home { flex: none; width: auto; min-width: 0; }
+.workspace-tab.is-place-home .workspace-tab-select.button { padding: 0 var(--space-compact); gap: var(--space-2); font-weight: var(--font-weight-medium); }
+.workspace-tab.is-place-home .workspace-tab-title { flex: none; mask-image: none; }

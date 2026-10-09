@@ -284,6 +284,22 @@ func v3ResolveSession(explicit, workspace, launchDir string, owned bool) (v3Sess
 	return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, nil
 }
 
+// v3FreshSession mints the one folder a launch that asked for a conversation
+// of its own opens. It scans nothing and reaps nothing: an empty folder another
+// window has just minted is that window's, and this launch has no business with
+// any folder but its own.
+func v3FreshSession(workspace, launchDir string, owned bool) (v3Session, error) {
+	bucket, err := v3ProjectDir(workspace)
+	if err != nil {
+		return v3Session{}, err
+	}
+	place, err := v3MintSession(bucket, workspace, launchDir, owned)
+	if err != nil {
+		return v3Session{}, err
+	}
+	return v3Session{Place: place, Transcript: place.Transcript(), Bucket: bucket}, nil
+}
+
 // v3PickFolder resumes the newest conversation somebody has spoken in. A
 // writer mints a fresh identity when there are only unused conversations: an
 // old empty identity could be assigned to a team between discovery and opening.

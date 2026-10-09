@@ -33,6 +33,7 @@ AnimateIcons icons are based on icon shapes from the projects below. Their licen
 ## Lucide
 
 Source: https://github.com/lucide-icons/lucide
+Package: lucide-react 0.460.0 (file-json and file-code-2 only, through the central Icon)
 
 ```
 ISC License

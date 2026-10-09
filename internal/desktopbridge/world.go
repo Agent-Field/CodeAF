@@ -30,6 +30,8 @@ type WorldRow struct {
 	// Project is the bucket's display name and Workspace the recorded tools root.
 	Project   string `json:"project"`
 	Workspace string `json:"workspace,omitempty"`
+	// SessionFile is the conversation's journal, the path a window reattaches with (POST /sessions); omitted when unknown.
+	SessionFile string `json:"sessionFile,omitempty"`
 	// SourceFolders are referenced project folders, NOT memberships in the Places graph. The project comes first, then folders it
 	// turned out to be about, newest first. Paths only; never content.
 	SourceFolders []string `json:"sourceFolders"`
@@ -46,13 +48,25 @@ type WorldRow struct {
 	// NeedsYou is true only for a live conversation stopped on a question.
 	NeedsYou bool `json:"needsYou"`
 	// Failed counts landed-failed task rows; it never says a conversation failed.
-	Failed    int         `json:"failed"`
-	Tasks     WorldTasks  `json:"tasks"`
-	LiveTasks []WorldTask `json:"liveTasks,omitempty"`
-	At        string      `json:"at,omitempty"`
-	Archived  bool        `json:"archived,omitempty"`
-	Pending   bool        `json:"deletionPending,omitempty"`
-	Reason    string      `json:"reason,omitempty"`
+	Failed int `json:"failed"`
+	// UnseenFailed counts landed-failed tasks that arrived after the failure mark every window shares
+	// (session.Meta.FailuresSeen); Failure names the newest one so a window marks exactly what it was shown.
+	// Neither changes Running, NeedsYou or Failed: a seen failure hides nothing else.
+	UnseenFailed int         `json:"unseenFailed"`
+	Failure      *WorldFail  `json:"failure,omitempty"`
+	Tasks        WorldTasks  `json:"tasks"`
+	LiveTasks    []WorldTask `json:"liveTasks,omitempty"`
+	At           string      `json:"at,omitempty"`
+	Archived     bool        `json:"archived,omitempty"`
+	Pending      bool        `json:"deletionPending,omitempty"`
+	Reason       string      `json:"reason,omitempty"`
+}
+
+// WorldFail is a failure's identity: the task and the instant it landed (RFC 3339, nanoseconds), spelled exactly as
+// POST /world/failures/seen wants them back.
+type WorldFail struct {
+	Task string `json:"task"`
+	At   string `json:"at"`
 }
 
 // WorldTasks are the project index's counts for the conversation's tasks.
@@ -145,15 +159,18 @@ func projectRow(p session.Project, r session.SessionRow) WorldRow {
 		state = "open"
 	}
 	row := WorldRow{
-		Session: r.ID, Title: r.Title, Project: p.Name, Workspace: r.Workspace, SourceFolders: place, Model: r.Model,
+		Session: r.ID, Title: r.Title, Project: p.Name, Workspace: r.Workspace, SessionFile: r.Transcript, SourceFolders: place, Model: r.Model,
 		State: state, Live: r.Live, Open: r.Open,
 		Running:  r.Live && r.Presence.State == session.PresenceWorking,
-		NeedsYou: r.NeedsPerson(), Failed: r.Tasks.Failed,
+		NeedsYou: r.NeedsPerson(), Failed: r.Tasks.Failed, UnseenFailed: r.UnseenFailures(),
 		Tasks:    WorldTasks{Running: r.Tasks.Running, Incomplete: r.Tasks.Incomplete, Done: r.Tasks.Done, Failed: r.Tasks.Failed, Total: r.Tasks.Total()},
 		Archived: r.Archived, Pending: r.DeletionPending, Reason: r.Reason(),
 	}
 	if !r.At.IsZero() {
 		row.At = r.At.UTC().Format(time.RFC3339)
+	}
+	if newest, ok := r.NewestFailure(); ok {
+		row.Failure = &WorldFail{Task: newest.ID, At: newest.EndedAt.UTC().Format(time.RFC3339Nano)}
 	}
 	for _, entry := range r.Tasks.Rows {
 		if len(row.LiveTasks) == maxLiveTasks {

@@ -55,6 +55,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q32 | Diff "@@ hunk" header inside an edit's diff (the engine builds edit diffs from the edit, not from git) | **Designer: keep.** No hunk header on edit diffs; file/diff tabs (from git) keep it. |
 | Q33 | Elapsed time on the live thinking row ("4s") | **Designer: keep.** Not shown until thinking ends; the engine gives no time before then. |
 | Q34 | Icons the design uses that the animated icon set lacks: circle-slash, pencil-line, file-code-2 | **Designer: keep.** Nearest set icons: ban, pencil, the plain file icons. |
+| Q30 | ⌘1–3: the Conversation page says they switch pinned models, the Shell spec says ⌘1–9 jump to tabs | **Decided** (latest Interactions): ⌘1–9 jump to tabs and ⌥⌘1–3 switch the pinned models. |
 
 ## Open: for the designer
 
@@ -103,7 +104,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | Q38 | A file in git with no changes (a file tab, or a diff tab after the change was undone) | The toggle stays; Changes shows the muted line "No changes." A file tab opens on File, a diff tab on Changes. |
 | Q39 | The File view: only "line numbers + text in mono" is drawn | One line-number column (44px, right aligned), text in ink, no syntax colours (the design shows none). Lines cap at 5000 with "Showing the first 5000 of N lines." A cut diff says "The diff is cut at 5000 lines." |
 | Q40 | File chip (Interactions): click is the preview sheet, ⌘-click or middle click "opens file tab". Which files, and which tab | A plain click opens the preview sheet for every chip. ⌘-click (Ctrl off the Mac) or a middle click opens a text or code file in a tab: a diff tab for a file the turn edited or wrote, a file tab for any other. Images, PDFs and the rest have no tab and keep the sheet. A second ⌘-click on the same file selects its open tab. Task view and "What changed" rows use the same chip. |
-| Q41 | Tab and header glyph "by type: file-code-2, file-json, file-text, image" (3j); the diff tab draws `file-diff` (3e) | The tab glyph is `fileCode` for file tabs and `diff` for diff tabs, whatever the file type; the header glyph is `fileCode`. The animated icon set has file-code, file-text and file-image but no file-json and no file-diff, and a per-type tab glyph needs a change to the shared Tab primitive. |
+| Q41 | Tab and header glyph "by type: file-code-2, file-json, file-text, image" (3j); the diff tab draws `file-diff` (3e) | File tabs and the header draw by type (`fileJson`, `fileCode2`, `file`, `image`) and diff tabs draw `diff`. File-json and file-code-2 now come from the pinned lucide-react (FF10) and draw by type; the animated icon set has no file-diff, and a diff-tab glyph needs a change to the shared Tab primitive. |
 | Q42 | A file that was deleted (Changes has hunks; File has nothing to read) | File view says "This file was deleted." |
 | Q43 | "Open in editor ↗" only when the engine is local and on the app's own host: the app cannot read its own machine name | New native command `host_name` (runs `hostname`), compared with the engine's `host`. In a browser the name is unknown, so the menu shows. The Rust command passes `cargo check`. |
 | Q44 | Where the "Open in ⌄" menu sits for a refused file | In the header, where "Open in editor ↗" would be. The body holds only the muted reason ("Binary file", "Too large to show, 3.4 MB"). |
@@ -125,7 +126,7 @@ Shell). On any conflict, the design files win over code and older docs.
 | NT7 | New tab: the empty field | Shows the hint "↵ to start a conversation" as in the specimen and lists only the Start rows. Enter on the empty field does what the highlighted Start row does; it never starts an empty conversation. |
 | NT8 | New tab: Esc with text typed | The first Esc clears the text; Esc on the empty field closes the tab (the design states only the second). |
 | NT9 | New tab: choosing an open tab row | Jumps to that tab and closes the new tab, so a jump leaves no empty field behind. |
-| NT10 | New tab: choosing a recently closed row | The new tab becomes that tab (same session, draft and kind) and the tab leaves the closed list. |
+| NT10 | New tab: choosing a recently closed row | Superseded by TI10: the closed tab comes back whole where it stood, and the field goes. |
 | NT11 | New tab: Enter on the first row while the engine is away | The tab becomes a conversation anyway and keeps the typed words as its draft, with the composer's own Retry line. Nothing is lost. |
 | NT12 | New tab: a file row | The tab becomes kind `file` with its path and the session that can read it. The file viewer is not backed yet, so the tab shows the file placeholder until the file lane lands. `path` was added to the persisted tab view for this. |
 | NT13 | New tab rows: the design draws square-terminal and file-code-2 at 15px | The set's terminal and file-code icons at 15px (a size on the row only). |
@@ -168,3 +169,96 @@ Shell). On any conflict, the design files win over code and older docs.
 | R2 | ⌘B for the rail: the design lists only ⌘S | ⌘/Ctrl B keeps working beside ⌘S, because it was the key before the shell design. Say if it should go. |
 | R3 | The rail the design draws holds Inbox, Now, Places and All places; the engine has no places or inbox endpoint yet | The rail ships Workspace, Activity, Settings and Design system as 32px rail rows (Places `rr` geometry), with the palette field above them. ⌘0, ⌘P, ⌘⇧P and ⌃1–9 are not bound until places exist. |
 | R4 | Focus mode: the top 8px brings the strip back (Shell 2h) with no dwell named, while the rail's left-edge peek waits 300ms (Places 9e) | The strip comes back at once on the top 8px; the rail only after resting 300ms on the left 8px. Both are overlays tinted with the frame at 88% and go away when the pointer leaves them; a menu opened from the revealed strip keeps it up until the menu closes. |
+
+## History lane notes
+
+The History lane numbered these Q35–Q44 on its branch; the file and terminal lanes had already used those numbers, so they are H1–H10 here.
+
+| ID | Question | Assumption |
+|---|---|---|
+| H1 | History: what a conversation with no recap yet says on its row (Components draws only rows that have a sentence) | The row shows its title and its stamp and no second line. Nothing is invented; the recap fills in the next time a turn settles. |
+| H2 | History search: when is there "a best match"? The design draws one for a question | Only when one recap sentence the engine already wrote covers at least 60% of the question's content words and no other conversation is within 1.5x of its score. Otherwise the page goes straight to Decisions, Discussed and Files. The answer is never composed. |
+| H3 | History search: which words get the accent mark? The design marks "lexer" but not "decided" for "what did we decide about the lexer" | Whole words only. A term that only matches the start of a longer word (decide, decided) is not marked, so a mark never ends mid-word. |
+| H4 | History: what the tab is called while searching | "History · <last content word of the question>" (the design's "History · lexer"); plain "History" when the field is empty. |
+| H5 | History filters while a search is running (Decisions, Files, Tasks, Open) | They scope the search the same way they scope the list: the field and the pills are one query. |
+| H6 | 12-hour auto-archive: when a tab that was running or waiting on you becomes idle | The 12 hours start when it stopped running or waiting, not when it last looked busy. Only tabs with a saved conversation archive; pinned, active, empty and held tabs never do. |
+| H7 | History row menu: "Archive" on a conversation that is running or waiting on you, or already archived | Disabled while running or waiting (the 12-hour archive never takes those either); absent once archived. Archiving takes a tab holding the conversation off the strip. |
+| H8 | History: continuing an archived conversation | Continue takes it back out of the archive, as Restore all does. |
+| H9 | History row menu: "Add to place" and "Delete" | Absent. The place graph and its routes now exist (Places lane), but the History row menu is not wired to them yet, and there is no engine delete route. The menu shows Continue, Read conversation and Archive. |
+| H10 | Auto-archive toast duration: Components says every toast sits 6s and always offers Undo; 4c's archive toast offers Review and Restore all | 6s (`historyToastMs`), paused while hovered or focused; Restore all is its undo. |
+
+## Menus and closing lane notes
+
+The menus lane numbered these Q35–Q39 on its branch; the file and terminal lanes had already used those numbers, so they are M1–M6 here.
+
+| ID | Question | Assumption |
+|---|---|---|
+| M1 | Shell 3g and Components "Context menu" draw ⌥⌘W beside "Close other tabs", while 3l and Interactions give ⌥⌘W to "Close and stop" | ⌥⌘W closes and stops. "Close other tabs" shows no shortcut. "Close and stop" is listed in the tab menu only for a tab whose work is running (3g draws the menu of an idle tab without it; 3l says an idle tab has nothing to stop). |
+| M2 | The tab menu has no "Rename tab" in 3g or Interactions, but the "Rename a conversation" flow says "or use the menu" | "Rename tab" stays in the menu, under Duplicate, so keyboard and trackpad users have a path that does not need a double-click. |
+| M3 | "Reopen closed tab" is no longer in the tab menu (3g, Interactions) | It stays on ⌘⇧T and in the strip's overflow menu. |
+| M4 | Where the Inbox tab comes from: Interactions says the rail's Inbox row opens it; 3l calls it "the pinned tab" and says closed running work lists there | The Inbox tab is created the first time work outlives its tab or an open tab needs the person, pinned first in the strip, with a dot only while something needs you. The rail lane can open it with the `open-inbox` workspace action. |
+| M5 | "Copy link" (⌘⇧C) and "Move to new window" are drawn enabled | "Move to new window" is real in the desktop app: it opens a window on the same place carrying the tab, and the tab leaves the source only when the new window claims it. In a browser it is absent (nothing can move there). "Copy link" is absent everywhere: the shell registers no deep-link scheme, so there is no canonical link to copy and none is invented. |
+| M6 | Failures in the Inbox: the design draws only running and needs-you | A "Failed" section lists recent (3 days) unseen task failures from the engine feed, at most five, each with a Seen button; opening one marks it seen. "Seen" is remembered in this window only; the engine has no durable failure-seen mark. |
+
+## Places shell integration (2026-10-09)
+
+R3 above is superseded: the rail now draws the Places sections from the engine's Places routes.
+
+| ID | Question | Assumption shipped |
+|---|---|---|
+| PS1 | The Places rail (6a, 10a) has no rows for Activity, Settings or the Design system page, and no palette field | They stay, quieter, under All places (Activity, Settings, Design system, then the theme), and the "codeaf" field keeps opening the ⌘K command palette. Say if any should leave the rail. |
+| PS2 | What the "3" beside Now counts (6a draws "Now 3", 8c draws "Not in any place · 38") | Nothing is drawn beside Now: no count the engine reports matches it. Now carries the amber dot when an unplaced chat needs you, like any place row. |
+| PS3 | ⌃1–9 on Linux, where Ctrl 1–9 is already the tab jump (⌘1–9 on a Mac) | Alt 1–9 switch places and Alt 0 goes to Now on Linux and Windows; ⌃1–9 / ⌃0 on a Mac. |
+| PS4 | A red rail/tile dot for "failed": the engine's roll-up `failedTasks` is all-time, never "new" | A place with any failed task shows red until its chats are archived. A "new since you looked" rule needs an engine field. |
+| PS5 | Closing a place (10a): the engine keeps no "closed" state; Open is derived (visited in 12h, or busy) | Closing is remembered per machine in this app's storage; going to the place again reopens it with its tabs (Q-P4 "closed by the person: tabs restored"). A closed place with running or waiting work stays muted with "closed · still running". |
+| PS6 | Per-place tab sets live in the engine (Architecture §3.4) but there is no workspace route yet | Tab sets are kept per place in this app's storage (Now keeps the v1 key); two windows on one place mirror through the storage event. They do not follow the engine to another machine. |
+| PS7 | Inbox: the design says you answer in Inbox without switching | The Inbox lists the engine's questions, failures and background work and opens the conversation; answering happens in its tray. Answering in place needs the engine's answer route without an attached view. |
+| PS8 | Notifications group "per place"; the world stream carries a chat's source folders, not its places | Notifications are posted per question with the chat's title and no place name; no folder is named as a place. |
+| PS9 | Home tab menu (Interactions "Place menu") | Open in new window, Rename, Tint, Add to another place…, Merge into…, Pin/Unpin, then Close place ⌘⇧W. Archive and Delete stay on the Home page's own ⋯ menu, where the delete confirmation is drawn. |
+| PS10 | The Home composer's model | The chip shows the Conversation role's default (DS Flash) read-only; the chat's own picker takes over once it has a session. |
+| PS11 | "Ask codeaf about this output" from a terminal inside a place | It still starts an unplaced conversation (the terminal lane's own call). Filing it in the place needs that call to go through the place strip. |
+| PS12 | Now in graphite (Places 9d) | Graphite keeps the tint formula's frame chroma (.035) and drops ink-2 on the frame to 4.46:1 (overview filmstrip labels), failing the 4.5:1 contract. Now keeps the root palette; a place window takes its own tint. Needs a graphite frame with less chroma, or a ruling that Now stays untinted. |
+
+## Tab order, groups and reopen (tab integrity)
+
+Sources: Shell 2b (eighteen tabs: loose tabs drawn on both sides of the collapsed group "Release v2.4 3"), Shell
+"Groups, split, overview, rail" ("You make one by dragging a tab onto a tab (the target shows "Group"), or by
+⌘-selecting and pressing ⌘G … Tasks opened from a conversation join its group automatically"), Shell 3g (Add to group
+▸ "New group… ⌘G"), Interactions (Tab: "drag reorders, onto a tab groups"; Group label: "Drag moves the whole group";
+Shortcuts: "⌘G Group selected tabs", "⌘⇧T Reopen closed tab"). The tabs audit (findings 3, 4, 5) named the defects.
+
+| # | Where the design is silent or the code disagreed | What ships |
+| --- | --- | --- |
+| TI1 | Strip order. 2b draws a group between loose tabs; the strip drew pinned, then every loose tab, then every group | `state.tabs` IS the strip order, as in a browser. The reducer keeps two laws after every action: pinned tabs first and in no group, each group's members one run. The strip, ← →, ⌘1–9, Close's next tab and the overview's group order all read that one order; no renderer re-sorts. A save from before the laws loads in the order its strip drew. |
+| TI2 | Where a new tab, a new group and a joining tab land | A new tab: last. A new tab in a group, "Add to group" and a drop on a group label: the end of that group. A new group: where the first of its tabs stood. "No group": just after the group it leaves. |
+| TI3 | What a drop at a group's outer edge means (it used to always join) | A tab dropped between two members joins. At the outer edge of a group, only a member stays in: a loose tab dropped after a group's last member sits after the group. Joining is the middle of a member (the "Group" target) or the label. The last member of a group carries the group with it. |
+| TI4 | Pinning during a drag | A drag never pins or unpins. A loose tab dropped on a pinned tab goes to the head of the loose tabs; a pinned tab stays among the pinned. Pin and Unpin are the menu's. |
+| TI5 | "Drag moves the whole group": where it may go | Before or after a loose tab, before or after a whole other group (dropped on its label, before it), never among the pinned. Groups never nest, so a dragged group has no middle target. No keyboard path is drawn; the menu's per-tab "Move to group" stays the keyboard way to regroup. |
+| TI6 | "⌘-selecting": what a ⌘-click does to a tab and how a pick looks | ⌘-click (Ctrl-click on Linux) picks or unpicks a tab without selecting it; the active tab is always part of the selection. A picked tab takes the field fill and "Selected" for a screen reader. A plain click, and ⌘G, drop the picks. Picks are never saved. |
+| TI7 | ⌘G ("New group… ⌘G") with or without picks, and its name | Groups the active tab with every picked tab where the first of them stands, under the next free "New group" name, without a naming dialog (the same as Create group; Rename is on the label menu). With nothing picked it groups the active tab alone. The Inbox never joins a group. |
+| TI8 | Which tasks "join its group automatically" | A task tab opened from a conversation pane joins that tab's group, at the end. A task opened from a loose conversation opens last, as before. |
+| TI9 | ⌘⇧T placement (it appended at the end and dropped a group closing had emptied) | Close records where the tab stood (the tab after it, the tab before it, its group) in the closed list, which is saved. Reopen puts it before the tab that followed it, else after the tab that preceded it, else last; never inside another group's run; in its group, made again with its name if closing emptied it, and opened if collapsed. A pane closed out of a split reopens just after the split. The closing toast's Undo is the same action with the place it remembered. |
+| TI10 | Reopening a closed split from the new-tab field (it kept one pane) | The closed tab comes back whole under its own ids, exactly as ⌘⇧T would: every pane with its draft, session and terminal binding, the layout, the dividers and the focused pane, where it stood and in its group. The field goes and is not a closed tab. A field that is itself a pane of a split takes in a closed plain tab as that pane; a closed split reopens as its own tab and the field pane leaves the split. (Supersedes NT10's "the new tab becomes that tab".) |
+| TI11 | An emptied group name | Takes the next "New group" name no other group has. |
+| TI12 | The group suggestion pill (2b "Group the 3 bench tabs as Benchmarks?") | **Superseded by GO1–GO8 below**: built from facts the tabs already carry, with no model call. |
+
+| M7 | Undo for closing a group, the other tabs or the tabs to the right: the design draws the toast only for running work | One toast "Closed N tabs" with Undo restores every pane of every split, the group's title and collapsed state and each tab's place. Closing one idle tab stays silent. |
+| M8 | A tab handed to another window that nobody claims | The source keeps it; after the native 60 s expiry plus 2 s a toast says "<title> was not taken by the new window. It is still here." |
+| M9 | Copy link and a canonical failed-seen need backend work | Both are separate backend lanes (a registered deep-link scheme; a persisted failure-seen mark in the session index). The UI offers neither until they exist. |
+## Group suggestion pill (tab group offer)
+
+Sources: Shell 2b (the pill: layers glyph, "Group the 3 bench tabs as **Benchmarks**?", accent Group, quiet X, 34px, sh-2,
+top of the content card), Shell "Groups, split, overview, rail" ("Suggestions are a pill at the top of the content, and only for
+3 or more tabs on one repo or topic, at most once per session per set"), Interactions (place suggestion: "Not now hides it
+for 30 days"). Code: `offerRules.ts`, `useGroupOffer.ts`, `GroupOffer.tsx`; wiring in `tab-group-offer-api.md`.
+
+| # | Where the design is silent | What ships |
+| --- | --- | --- |
+| GO1 | What "one repo or topic" means for a tab, when no tab carries a repo | Two facts, no guesses. (1) Same saved session: the conversation and the task, file and diff tabs it opened share a `sessionFile`. (2) Same top folder: file and diff tabs whose workspace-relative path starts in one folder (`internal/…`). A tab belongs to the first set that claims it. |
+| GO2 | Word-based "topic" grouping | Not built. The only topic reader is the engine's place organizer (Go `placegraph`), reached by the `Places.Ask` door and not exposed per tab; the desktop makes no model call of its own, so a topic offer would be invented. If the bridge ever exposes a tab-level topic, it becomes a third source in `findOffers`. |
+| GO3 | The set's name | A real name or none: the conversation's own title when the engine or the person named it (never "New conversation"), or the folder name. With no real name the pill reads "Group these 3 tabs?" and the group takes the reducer's next free "New group" name. |
+| GO4 | Which tabs count | Loose, unpinned, ungrouped, non-split tabs of kind conversation, task, file or diff. Inbox, terminal, web, settings, history and new tabs are never suggested. Three is the minimum. |
+| GO5 | "At most once per session per set" | A set is its source key (`conversation:<sessionFile>`, `folder:<name>`), not its member list, so a fourth tab joining does not make a new set. It is drawn at most once per launch; if it shrinks below three and returns, it stays quiet until the next launch. |
+| GO6 | How long a decision lasts | Group and the X are both a decision: remembered 30 days (the place suggestion's "Not now" lifetime), in `codeaf.desktop.groupOffers.v1`, validated on read, at most 200 entries. A set withdrawn because it shrank is not a decision. |
+| GO7 | Where it sits and when it hides | Centred, 10px under the strip, over the content card. Hidden (not spent) while the switcher, overview or rename dialog is open. At 320px it shrinks and a long name is clipped (no ellipsis, as for tab titles); Group and the X stay visible. |
+| GO8 | Keyboard | Group and the X are ordinary buttons in Tab order after the strip; the pill takes no focus on its own. No Escape or shortcut is added (the design names none). |

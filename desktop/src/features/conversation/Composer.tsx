@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent, type RefObject } from 'react';
 import { Button, Icon, IconButton, Text, TextArea, TextInput } from '../../components/ui';
 import design from '../../design/tokens.json';
 import { composerShortcuts } from '../../design/keyboard';
@@ -35,8 +35,13 @@ export type ComposerProps = {
   tasksToggle?: { label: string; onClick: () => void };
   recallLast?: () => string | undefined;
   autoFocus?: boolean;
+  /** Files a hand-off (a web page's picture) puts in the tray once, on mount. Nothing is sent. */
+  offeredFiles?: File[];
+  onOfferedFiles?: () => void;
   /** Forces the drag appearance; for specimens, since real drags are global to the window. */
   dropState?: 'page' | 'over';
+  /** The idle prompt in the empty field when the surface has its own words ("Start something in codeaf" on a place's Home). */
+  placeholder?: string;
 };
 
 const START_PLACEHOLDER = 'Ask codeaf, or type @ to reference a file';
@@ -78,6 +83,14 @@ export function Composer(props: ComposerProps) {
   const attachments = useAttachments();
   const picker = useRef<HTMLInputElement>(null);
   const drop = useFileDrop(attachments.add, !disabled);
+  // A ref, not state: StrictMode replays effects and a remounted tray must not take the same offer twice.
+  const offerTaken = useRef(false);
+  useEffect(() => {
+    if (offerTaken.current || !props.offeredFiles?.length) return;
+    offerTaken.current = true;
+    attachments.add(props.offeredFiles);
+    props.onOfferedFiles?.();
+  }, [props.offeredFiles]);
   const dropState = props.dropState ?? (drop.over ? 'over' : drop.pageDrag ? 'page' : undefined);
   const blank = draft.trim() === '' && attachments.items.length === 0 && pastes.length === 0;
 
@@ -162,7 +175,7 @@ export function Composer(props: ComposerProps) {
           onBlur={focus.onBlur}
           onScroll={autosize.onScroll}
           aria-label="Message"
-          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : docked ? 'Ask codeaf' : START_PLACEHOLDER)}
+          placeholder={disabledReason ?? (running ? 'Steer, or queue a message' : props.placeholder ?? (docked ? 'Ask codeaf' : START_PLACEHOLDER))}
           value={draft}
           disabled={disabled}
           autoFocus={autoFocus}

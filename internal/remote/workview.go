@@ -107,10 +107,15 @@ type ChangedFile struct {
 // DiffBase says what a diff was measured against. Kind is "start" (the commit
 // the conversation began on) or "head" (the latest commit: no start was
 // recorded, or it is no longer reachable from HEAD). Sha is the short commit,
-// empty on an unborn branch.
+// empty on an unborn branch. StartGone tells those two "head" answers apart:
+// it is true only when a start WAS recorded and history no longer reaches it,
+// so a surface never says a commit was lost when none was ever written down.
+// It is a new optional field rather than a third Kind so an older surface,
+// which only knows "start" and "head", keeps reading the answer correctly.
 type DiffBase struct {
-	Kind string `json:"kind"`
-	Sha  string `json:"sha,omitempty"`
+	Kind      string `json:"kind"`
+	Sha       string `json:"sha,omitempty"`
+	StartGone bool   `json:"startGone,omitempty"`
 }
 
 // DiffStart is the answer to [MethodDiffStart]: whether the workspace is in git
@@ -490,14 +495,15 @@ func (s *server) resolveBase(root string) (ref string, base DiffBase, err error)
 	if err != nil {
 		return "", DiffBase{}, err
 	}
-	if start := s.startCommit(); start != "" && short != "" {
+	start := s.startCommit()
+	if start != "" && short != "" {
 		if _, e := runGit(root, "merge-base", "--is-ancestor", start+"^{commit}", "HEAD"); e == nil {
 			if out, e := runGit(root, "rev-parse", "--verify", "--short", start+"^{commit}"); e == nil {
 				return start, DiffBase{Kind: "start", Sha: strings.TrimSpace(string(out))}, nil
 			}
 		}
 	}
-	return ref, DiffBase{Kind: "head", Sha: short}, nil
+	return ref, DiffBase{Kind: "head", Sha: short, StartGone: start != "" && short != ""}, nil
 }
 
 // diffStart records the commit the conversation is starting on, once. A

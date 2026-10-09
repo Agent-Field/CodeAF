@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { FirstTurnContext } from './firstTurn';
 import { useMediaQuery } from '../../design/useMediaQuery';
 import design from '../../design/tokens.json';
 import { ENGINE_MODEL } from '../chat/engine-client';
 import { DEFAULT_MODEL_SHORT, useConversationModel } from './composer/useConversationModel';
 import type { Pane } from '../tabs/model';
+import { peekOfferedFiles, settleOfferedFiles } from '../web/useWorkspaceWeb';
 import { goBack, goForward, navigate, rootRoute, routeTask, TASKS_VIEW, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
 import type { OutgoingFile } from '../chat/engine-client';
@@ -11,6 +13,9 @@ import { EngineAssetProvider } from './assets';
 import { renderFile } from './blockRenderer';
 import type { SendMode } from './Composer';
 import { ConversationBar } from './ConversationBar';
+import { UsingLine, usingVisible } from '../places/UsingLine';
+import { useUsing } from '../places/useUsing';
+import type { SourceHandoff, UsingApi } from '../places/using-types';
 import { ConversationDock } from './ConversationDock';
 import { ConversationTranscript } from './ConversationTranscript';
 import { EngineNotice } from './EngineNotice';
@@ -41,6 +46,15 @@ export type ConversationViewProps = {
   split?: boolean;
   /** Whether this pane holds the split's focus. Only the focused pane shows the full composer; the others a compact field. */
   focused?: boolean;
+  /**
+   * The Using list's three calls (`createUsingClient()` from the places runtime client). With none, the conversation draws no Using
+   * chip: a capability with nothing behind it is absent, not broken.
+   */
+  usingApi?: UsingApi;
+  /** Where a Using source goes when the person opens it; with none the sources are listed without an open control. */
+  onOpenSource?: (handoff: SourceHandoff) => void;
+  /** Files this conversation in a place; with none the sheet has no "Add to a place…" row. */
+  onAddToPlace?: () => void;
 };
 
 const MODEL_LABEL = 'DeepSeek v4.1 Flash';
@@ -56,10 +70,13 @@ function useTaskPanel(hasTasks: boolean, closed: boolean, onView: ConversationVi
   return { sheet, shown, close, open };
 }
 
-export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true }: ConversationViewProps) {
-  const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }) });
+export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpenTaskTab, autoFocus = true, split = false, focused = true, usingApi, onOpenSource, onAddToPlace }: ConversationViewProps) {
+  const beforeFirstTurn = useContext(FirstTurnContext);
+  const conversation = useConversation({ sessionFile: tab.sessionFile, onSessionFile: (sessionFile) => onView({ sessionFile }), beforeFirstTurn });
   const { model, snapshot, failed } = conversation;
   const [focusKey, setFocusKey] = useState<string>();
+  // A tab opened from a web page brings that page's picture; the composer attaches it once and the offer is spent.
+  const [offered, setOffered] = useState(() => peekOfferedFiles(tab.id));
   const route = tab.route ?? rootRoute;
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -133,8 +150,10 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   // ⌘⇧K toggles the task panel (design Shell 2h); a conversation without tasks has no panel, so the key is left alone.
   useShortcuts(shortcutLayer.surface, shortcut => { if (shortcut.id !== 'tasks' || !barPanel) return false; barPanel.onToggle(); return true; }, !tasksView);
   const barCounts = { running: taskProgress(model.tasks).running, needsYou: model.questions.length };
+  // The Using list is re-read when a turn lands or the work starts and stops: a place changed meanwhile applies from the next turn.
+  const using = useUsing(usingApi, sessionId, `${model.turns.length}:${model.running}`);
   const barTitle = tab.titleSource ? label : '';
-  const showBar = inTask || Boolean(barTitle) || hasTasks;
+  const showBar = inTask || Boolean(barTitle) || hasTasks || usingVisible(using);
   const modelLabel = !snapshot || snapshot.model === ENGINE_MODEL ? MODEL_LABEL : snapshot.model;
   const modelShort = modelLabel === MODEL_LABEL ? DEFAULT_MODEL_SHORT : undefined;
   const conversationModel = useConversationModel(snapshot?.model);
@@ -160,11 +179,11 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
         )}
         <div className="conversation-main" data-empty={empty || undefined} hidden={tasksView}>
           {showBar && (
-            <ConversationBar lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel}>
+            <ConversationBar lead={inTask ? 'trail' : 'title'} counts={barCounts} panel={barPanel} using={<UsingLine control={using} onOpenSource={onOpenSource} onAddToPlace={onAddToPlace} />}>
               {taskId ? <TaskRouteBar taskId={taskId} tasks={model.tasks} route={route} onRoute={setRoute} /> : <span className="conversation-bar-title">{barTitle}</span>}
             </ConversationBar>
           )}
-          <div ref={scroller} className="conversation-scroll" data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
+          <div ref={scroller} className="conversation-scroll" data-scroll-key={inTask ? 'task-page' : 'conversation'} data-scrolled={scrolled || undefined} data-task={inTask || undefined}>
             <div ref={content} className="conversation-column">
               {taskId ? (
                 <TaskRoute
@@ -212,6 +231,8 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
                       model: conversationModel,
                       recallLast: () => model.turns[model.turns.length - 1]?.user,
                       autoFocus,
+                      offeredFiles: offered,
+                      onOfferedFiles: () => { settleOfferedFiles(tab.id); setOffered([]); },
                     }}
                   />
                 )}

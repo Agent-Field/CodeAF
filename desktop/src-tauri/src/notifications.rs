@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Runtime, UserAttentionType, Webview};
 use tauri_plugin_notification::{NotificationExt, PermissionState};
 
-use crate::windows::{is_app_window, trusted};
+use crate::windows::{app_window, app_windows, trusted};
 
 /// Enough to remember every open question for a long day without growing.
 const REMEMBERED: usize = 2048;
@@ -284,9 +284,9 @@ pub fn notify_request_permission<R: Runtime>(
 }
 
 fn app_focused<R: Runtime>(app: &AppHandle<R>) -> bool {
-    app.webview_windows()
+    app_windows(app)
         .iter()
-        .any(|(label, w)| is_app_window(label) && w.is_focused().unwrap_or(false))
+        .any(|(_, w)| w.is_focused().unwrap_or(false))
 }
 
 #[tauri::command]
@@ -354,12 +354,8 @@ pub fn notify_attention<R: Runtime>(
 /// The fallback when a notification cannot be posted: the dock icon bounces once
 /// on macOS, and the window is marked urgent on Linux.
 fn attract<R: Runtime>(app: &AppHandle<R>) {
-    let window = app.get_webview_window("main").or_else(|| {
-        app.webview_windows()
-            .into_iter()
-            .find(|(l, _)| is_app_window(l))
-            .map(|(_, w)| w)
-    });
+    let window =
+        app_window(app, "main").or_else(|| app_windows(app).into_iter().next().map(|(_, w)| w));
     if let Some(window) = window {
         let _ = window.request_user_attention(Some(UserAttentionType::Informational));
     }
@@ -391,12 +387,9 @@ pub fn badge_set<R: Runtime>(
     }
     // macOS has one dock badge for the app; Linux launchers show it per app too,
     // so setting it through any one codeaf window is enough.
-    let Some(window) = app.get_webview_window("main").or_else(|| {
-        app.webview_windows()
-            .into_iter()
-            .find(|(l, _)| is_app_window(l))
-            .map(|(_, w)| w)
-    }) else {
+    let Some(window) =
+        app_window(&app, "main").or_else(|| app_windows(&app).into_iter().next().map(|(_, w)| w))
+    else {
         return Ok(BadgeAnswer {
             applied: false,
             reason: Some("unavailable"),

@@ -6,6 +6,15 @@ export type OverviewSection =
   | { kind: 'group'; id: string; title: string; tabs: Tab[]; group: TabGroup }
   | { kind: 'other'; id: 'other'; title: string; tabs: Tab[] };
 
+/**
+ * Interactions "Overview card · ⌘-click / middle: Background tab". A press is a background press when it is a
+ * middle-button press or a click with the platform's primary modifier (⌘ on a Mac, Ctrl elsewhere; Control on a Mac
+ * is the context menu). Every card is a tab that is already open, so a background press opens nothing.
+ */
+export const isBackgroundPress = (event: { button: number; metaKey: boolean; ctrlKey: boolean }, mac: boolean): boolean => (
+  event.button === 1 || (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
+);
+
 export const matchesQuery = (haystack: string, query: string) => haystack.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
 
 /**

@@ -826,6 +826,18 @@ type LaunchShape struct {
 	// goal of its own. Only the local dial fills it; a --once probe leaves it
 	// unset, and the engine maps it onto the session's own steering fact.
 	Interactive bool `json:"interactive,omitempty"`
+	// PlaceGraph is the absolute path of the desktop's place graph
+	// (internal/placegraph), which the engine reads at each turn's opening to
+	// put the conversation's places in front of the model and to apply their
+	// defaults (internal/session's placegraphcontext.go and placegraphpolicy.go).
+	//
+	// IT TRAVELS IN THE HELLO AND NEVER IN THE ENVIRONMENT, because the engine
+	// that serves a conversation is very often a session host that was started
+	// by somebody else long before this window opened: a variable set on the
+	// child this window spawned never reaches it. The engine honours it only
+	// from a desktop surface; every other door leaves it empty and its
+	// conversations read no place file at all.
+	PlaceGraph string `json:"placeGraph,omitempty"`
 }
 
 // Same reports whether two shapes describe the same conversation. A nil shape
@@ -1290,6 +1302,16 @@ type Welcome struct {
 	// the wall reads as it reads any failed ask: the word it already holds, and
 	// Organize's folder pass alone.
 	TeamAsk bool `json:"teamAsk,omitempty"`
+
+	// PlaceAsk says this engine ANSWERS THE PLACES MODEL ASK
+	// ([MethodPlacesAsk]): its agent answers internal/placegraph's filing and
+	// suggestion questions on their own two roles.
+	//
+	// IT IS CARRIED FOR [Welcome.TeamAsk]'s REASON: a *remote.Agent always has
+	// AskPlaces on it, so a type assertion says nothing about the far machine.
+	// ABSENCE IS false, and false is refused at this end before anything is
+	// written, which the recommender reads as any failed ask: rules alone.
+	PlaceAsk bool `json:"placeAsk,omitempty"`
 
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from

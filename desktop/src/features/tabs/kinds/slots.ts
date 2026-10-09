@@ -3,10 +3,14 @@ import type { IconName } from '../../../components/ui';
 import type { TabSummary } from '../../conversation/tabSummary';
 import type { Pane } from '../types';
 import type { TabView } from '../view-state';
+import type { SourceHandoff, UsingApi } from '../../places/using-types';
 import type { TabKind } from './types';
 
 /** What a pane may do to its own state. The workspace routes each call to the right pane by id. */
 export type PaneActions = {
+  usingApi?: UsingApi;
+  onOpenSource?: (source: SourceHandoff) => void;
+  onAddToPlace?: () => void;
   onDraft: (draft: string) => void;
   onView: (change: TabView) => void;
   onSummary: (summary: TabSummary) => void;
@@ -38,6 +42,8 @@ export type KindDef = {
   label: string;
   /** Registry icon name. A web tab draws a favicon or monogram instead (see KindIcon). */
   icon: IconName;
+  /** A per-tab icon read from the tab's title, when the kind draws more than one (a file tab draws its type). */
+  glyph?: (title: string) => IconName;
   /** True when the engine or bridge backs this kind today. Unbacked kinds are built and specimened, never opened in the live app. */
   backed: boolean;
   pane: ComponentType<PaneRenderProps>;
