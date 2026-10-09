@@ -24,7 +24,7 @@ export type TurnItem =
   | { kind: 'task'; id: string; taskId?: string; title: string; status: string; summary: string; body: string } // a task's completion aside
   | { kind: 'aside'; id: string; aside: 'job' | 'watch'; title: string; body: string } // a background job or watch notice; body is literal
   | { kind: 'note'; id: string; text: string; long?: boolean } // engine note (e.g. compaction); long: model-directed text, drawn collapsed
-  | { kind: 'steer'; id: string; text: string } // the person's words typed into the running turn; literal
+  | { kind: 'steer'; id: string; text: string; landing?: string; consumed?: boolean } // the person's words typed into the running turn; literal
   | { kind: 'error'; id: string; text: string };
 
 // ---- Contract v2 (docs/ELEMENTS.md). Lanes build against these; model/ fills them. ----

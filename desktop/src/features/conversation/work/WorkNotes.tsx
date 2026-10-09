@@ -1,3 +1,4 @@
+import { Steer } from '../blocks/Steer';
 import { NoteItem } from '../NoteItem';
 import type { TurnItem } from '../types';
 
@@ -14,7 +15,7 @@ function words(item: TurnItem): string {
   }
 }
 
-/** Notes that happened inside the work: one muted line each. A steer wears the elbow mark.
+/** Notes that happened inside the work: one muted line each.
  * A long note is the session's own report: its first line shows, the rest folds under Show. */
 export function WorkNotes({ notes }: { notes: TurnItem[] }) {
   const shown = notes.filter((item) => words(item) !== '');
@@ -22,11 +23,13 @@ export function WorkNotes({ notes }: { notes: TurnItem[] }) {
   return (
     <>
       {shown.map((item) =>
-        item.kind === 'note' && item.long ? (
+        item.kind === 'steer' ? (
+          <Steer key={item.id} entry={{ text: item.text, landing: item.landing, consumed: item.consumed !== false }} />
+        ) : item.kind === 'note' && item.long ? (
           <NoteItem key={item.id} text={item.text} long />
         ) : (
           <p key={item.id} className="work-note" data-kind={item.kind}>
-            {item.kind === 'steer' ? `↳ ${words(item)}` : words(item)}
+            {words(item)}
           </p>
         ),
       )}
