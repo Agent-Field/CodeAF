@@ -17,9 +17,9 @@ function callState(call: LiveCall): ToolStep['state'] {
 }
 
 function liveToolStep(call: LiveCall): ToolStep {
-  const { id, tool, hint, args, tookMs } = call;
+  const { id, tool, hint, args, tookMs, startedAt } = call;
   const { output, covered } = withoutHandoff(call.output);
-  return { id, callId: id.startsWith('live:') ? undefined : id, tool, hint, args, output, ...(covered ? { covered } : {}), tookMs, state: callState(call) };
+  return { id, callId: id.startsWith('live:') ? undefined : id, tool, hint, args, output, ...(covered ? { covered } : {}), tookMs, startedAt, state: callState(call) };
 }
 
 function recordedCalls(turn: TurnV2): ToolStep[] {
@@ -34,6 +34,7 @@ function reconcile(recorded: ToolStep[], live: LiveOverlayV2): Set<string> {
     if (!twin) continue;
     seen.add(call.id);
     twin.tookMs ??= call.tookMs;
+    twin.startedAt ??= call.startedAt;
     if (twin.state === 'running' && callState(call) !== 'running') {
       twin.state = callState(call);
       twin.output = twin.output || withoutHandoff(call.output).output;
@@ -97,7 +98,7 @@ function addSteers(turn: TurnV2, live: LiveOverlayV2) {
 
 export function applyLive(turn: TurnV2, snapshot: EngineSnapshot, live?: LiveOverlayV2) {
   turn.state = 'working';
-  if (!live) return;
+  if (!live) { settleLiveFlag(turn); return; }
   const waiting = new Set(questionsOf(snapshot).flatMap((q) => (q.subject?.callId ? [q.subject.callId] : [])));
   const seen = reconcile(recordedCalls(turn), live);
   addWork(turn, live, live.calls.filter((c) => !seen.has(c.id)), waiting);
@@ -107,11 +108,12 @@ export function applyLive(turn: TurnV2, snapshot: EngineSnapshot, live?: LiveOve
   if (text && !live.textDone) turn.state = 'streaming';
   if (live.error) turn.blocks.push({ kind: 'error', id: `${turn.id}:live-error`, text: live.error });
   settleLiveFlag(turn);
+  const current = [...turn.blocks].reverse().find(block => block.kind === 'work');
+  if (current?.kind === 'work') current.startedAt = live.startedAt;
 }
 
-/** The work block stays open until the answer starts streaming. */
+/** Intermediate assistant text does not finish the canonical running turn. */
 function settleLiveFlag(turn: TurnV2) {
-  const streaming = turn.state === 'streaming';
   const last = [...turn.blocks].reverse().find((b) => b.kind === 'work');
-  if (last?.kind === 'work') last.live = !streaming && turn.blocks[turn.blocks.length - 1] === last;
+  if (last?.kind === 'work') last.live = true;
 }

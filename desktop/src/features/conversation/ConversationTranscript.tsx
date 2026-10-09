@@ -4,7 +4,7 @@ import { useAssetMarkdownHooks } from './assets';
 import { AsideRow } from './AsideRow';
 import { renderAttachment } from './blocks/AttachmentView';
 import { TurnViewV2 } from './blocks/TurnViewV2';
-import { blockRenderer, type BlockContext } from './blockRenderer';
+import { workDisclosureKey, blockRenderer, type BlockContext } from './blockRenderer';
 import { EarlierRow, SummaryDivider } from './EarlierTurns';
 import { ErrorItem } from './ErrorItem';
 import { EARLIER_KEY, hasCompaction, isFolded, splitEarlier } from './folding';
@@ -61,7 +61,11 @@ export function ConversationTranscript(props: Props) {
         folded={isFold}
         onToggleFold={() => onToggleFold(turn.id, !isFold)}
         renderBlock={renderFor(turn)}
-        onOpenWork={(ids) => ids.filter((id) => !props.open[id]).forEach(props.onToggle)}
+        onOpenWork={(ids) => turn.blocks.filter(block => block.kind === 'work' && ids.includes(block.id)).forEach(block => {
+          if (block.kind !== 'work') return;
+          const key = workDisclosureKey(turn, block);
+          if (!props.open[key]) props.onToggle(key, false);
+        })}
         renderAttachment={renderAttachment}
         onRetry={turn.id === lastId ? onRetry : undefined}
       />

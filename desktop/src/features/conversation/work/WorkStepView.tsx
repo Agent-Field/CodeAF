@@ -8,7 +8,7 @@ import { StepLead, StepTail } from './StepMark';
 import { callTarget, categoryIcon, targetText } from './target';
 import { ToolCallRow } from './ToolCallRow';
 
-type Props = WorkRender & { step: WorkStep; open: boolean; onToggle: () => void; now?: number };
+type Props = WorkRender & { step: WorkStep; shimmer?: boolean; open: boolean; onToggle: () => void; now?: number };
 
 const stepState: Record<WorkStep['state'], RowState> = {
   preparing: 'forming',
@@ -43,7 +43,7 @@ const UNSETTLED: RowState[] = ['forming', 'running', 'waiting'];
 const isSettled = (state: RowState) => !UNSETTLED.includes(state);
 
 /** One batch of parallel calls: chevron, category glyph (a still mark while live), title, then state and time on the right. */
-export function WorkStepView({ step, open, onToggle, now, ...render }: Props) {
+export function WorkStepView({ step, shimmer, open, onToggle, now, ...render }: Props) {
   const [openCalls, setOpenCalls] = useState<Record<string, boolean>>({});
   const toggleCall = (id: string) => setOpenCalls((value) => ({ ...value, [id]: !value[id] }));
   const state = stepState[step.state];
@@ -55,7 +55,7 @@ export function WorkStepView({ step, open, onToggle, now, ...render }: Props) {
         <Icon name="chevron" size="xs" motion="disclosure" />
         <StepLead state={state} />
         {isSettled(state) && <Icon name={categoryIcon(step.category)} size="xs" />}
-        <span className="work-step-title">{step.title}</span>
+        <span className={shimmer ? 'work-step-title thinking-shimmer' : 'work-step-title'}>{step.title}</span>
         <StepTail state={state} time={time} decision={step.calls.length === 1 ? step.calls[0].decision : undefined} />
       </Button>
       {caption && <span className="work-step-caption">{caption}</span>}
