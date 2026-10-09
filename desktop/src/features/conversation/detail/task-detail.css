@@ -1,7 +1,7 @@
 /* Task detail pane: the right half of the expanded tasks view (design 1d). */
 .task-detail { display: flex; flex-direction: column; gap: var(--space-5); flex: none; width: var(--task-detail-width); max-width: 100%; box-sizing: border-box; padding: var(--space-6); border-radius: var(--task-detail-radius); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); }
 .task-detail-head { display: flex; flex-direction: column; gap: var(--space-tight); min-width: 0; }
-.task-detail-crumb { margin: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); overflow-wrap: anywhere; }
+.task-detail-crumb { margin: 0; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); overflow-wrap: anywhere; }
 .task-detail-title { margin: 0; color: var(--ink); font-size: var(--task-detail-title-size); font-weight: var(--type-title-weight); letter-spacing: var(--task-detail-title-tracking); line-height: var(--type-title-leading); overflow-wrap: anywhere; }
 .task-detail-state { display: flex; align-items: center; gap: var(--space-2); color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
 .task-detail-state-word { color: var(--ink-2); }
@@ -11,11 +11,11 @@
 
 .task-detail-facts { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; font-size: var(--type-label-size); line-height: var(--type-label-leading); }
 .task-detail-fact { display: grid; grid-template-columns: var(--task-detail-fact-label) minmax(0, 1fr); column-gap: var(--space-5); }
-.task-detail-fact dt { color: var(--ink-3); }
+.task-detail-fact dt { color: var(--ink-2); }
 .task-detail-fact dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
 
 .task-detail-brief { display: flex; flex-direction: column; gap: var(--space-1); }
-.task-detail-label { margin: 0; color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
+.task-detail-label { margin: 0; color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); line-height: var(--type-caption-leading); }
 .task-detail-text { margin: 0; color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .button.task-detail-open { align-self: flex-start; gap: var(--space-tight); margin-top: auto; margin-inline-start: calc(var(--control-pad-ghost) * -1); height: var(--control-height); padding-inline: var(--control-pad-ghost); border-radius: var(--radius-control); color: var(--ink-2); font-size: var(--type-label-size); }
