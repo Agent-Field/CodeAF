@@ -4,16 +4,18 @@ import { AsideRow } from './AsideRow';
 import { renderAttachment } from './blocks/AttachmentView';
 import { TurnViewV2 } from './blocks/TurnViewV2';
 import { blockRenderer, type BlockContext } from './blockRenderer';
+import { EarlierRow, SummaryDivider } from './EarlierTurns';
 import { ErrorItem } from './ErrorItem';
+import { EARLIER_KEY, isFolded, splitEarlier } from './folding';
 import { NoteItem } from './NoteItem';
 import { TaskNotice } from './TaskNotice';
-import type { ConversationModel, TurnItem } from './types';
+import type { ConversationModel, TurnItem, TurnV2 } from './types';
 import type { FailedSend } from './useConversation';
 
 type Props = BlockContext & {
   model: ConversationModel;
   folded: Record<string, boolean>;
-  onToggleFold: (turnId: string) => void;
+  onToggleFold: (turnId: string, folded: boolean) => void;
   failed?: FailedSend;
   onRetry: () => void;
 };
@@ -42,6 +44,22 @@ export function ConversationTranscript(props: Props) {
   const { model, folded, onToggleFold, failed, onRetry } = props;
   const lastId = model.turns[model.turns.length - 1]?.id;
   const renderFor = blockRenderer(props);
+  const { earlier, recent } = splitEarlier(model.turns);
+  const earlierOpen = Boolean(props.open[EARLIER_KEY]);
+  const renderTurn = (turn: TurnV2) => {
+    const isFold = isFolded(turn, model.turns.indexOf(turn), model.turns.length, folded);
+    return (
+      <TurnViewV2
+        key={turn.id}
+        turn={turn}
+        folded={isFold}
+        onToggleFold={() => onToggleFold(turn.id, !isFold)}
+        renderBlock={renderFor(turn)}
+        renderAttachment={renderAttachment}
+        onRetry={turn.id === lastId ? onRetry : undefined}
+      />
+    );
+  };
   return (
     <>
       {model.preface.length > 0 && (
@@ -51,17 +69,14 @@ export function ConversationTranscript(props: Props) {
           ))}
         </div>
       )}
-      {model.turns.map((turn) => (
-        <TurnViewV2
-          key={turn.id}
-          turn={turn}
-          folded={Boolean(folded[turn.id])}
-          onToggleFold={() => onToggleFold(turn.id)}
-          renderBlock={renderFor(turn)}
-          renderAttachment={renderAttachment}
-          onRetry={turn.id === lastId ? onRetry : undefined}
-        />
-      ))}
+      {earlier.length > 0 && (
+        <>
+          <EarlierRow count={earlier.length} open={earlierOpen} onToggle={props.onToggle} />
+          {earlierOpen && earlier.map(renderTurn)}
+          <SummaryDivider />
+        </>
+      )}
+      {recent.map(renderTurn)}
       {failed && (
         <div className="conversation-failure">
           <ErrorItem text={failed.message} onRetry={failed.text || failed.files?.length ? onRetry : undefined} />

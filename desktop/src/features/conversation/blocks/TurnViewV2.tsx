@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Button, Icon, IconButton } from '../../../components/ui';
+import { Button, IconButton } from '../../../components/ui';
 import type { TurnBlock, TurnV2 } from '../types';
 import { UserMessage } from '../UserMessage';
 import { AnswerBlock, ErrorBlock, UpdateBlock } from './BlockViews';
@@ -23,20 +23,8 @@ export type TurnViewV2Props = {
 function FoldedLine({ turn, onToggleFold }: Pick<TurnViewV2Props, 'turn' | 'onToggleFold'>) {
   return (
     <Button className="turn-folded" aria-expanded={false} aria-label="Unfold" onClick={onToggleFold}>
-      <span className="turn-folded-chevron" aria-hidden="true">
-        <Icon name="chevronRight" size="sm" />
-      </span>
-      <span className="turn-folded-text">
-        <span className="turn-folded-user">{turn.user}</span>
-        {turn.digest && (
-          <>
-            <span className="turn-folded-sep" aria-hidden="true">
-              {' — '}
-            </span>
-            <span className="turn-folded-digest">{turn.digest}</span>
-          </>
-        )}
-      </span>
+      <span className="turn-folded-user">{turn.user}</span>
+      {turn.digest && <span className="turn-folded-digest">{turn.digest}</span>}
     </Button>
   );
 }
@@ -71,13 +59,13 @@ export function TurnViewV2(props: TurnViewV2Props) {
   const { turn, folded, onToggleFold, renderBlock, renderAttachment, onRetry, retrying } = props;
   if (folded) {
     return (
-      <section className="turn-v2" data-folded="true">
+      <section className="turn-v2" data-folded="true" data-turn={turn.id} data-anchor={turn.id}>
         <FoldedLine turn={turn} onToggleFold={onToggleFold} />
       </section>
     );
   }
   return (
-    <section className="turn-v2">
+    <section className="turn-v2" data-turn={turn.id} data-anchor={turn.id}>
       <IconButton className="turn-fold" icon="chevron" iconSize="sm" label="Fold" aria-expanded={true} onClick={onToggleFold} />
       <UserMessage text={turn.user} attachments={<Attachments files={turn.attachments} render={renderAttachment} />} />
       <Steers steer={turn.steer} />
