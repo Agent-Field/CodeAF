@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { earlierLabel, isFolded, jumpIndex, splitEarlier } from './folding.ts';
+import { earlierLabel, hasCompaction, isFolded, jumpIndex, splitEarlier } from './folding.ts';
 import type { TurnV2 } from './types.ts';
 
 const turn = (id: string, state: TurnV2['state'] = 'done'): TurnV2 => ({ id, user: id, attachments: [], steer: [], blocks: [], state, digest: '' });
@@ -36,4 +36,15 @@ test('jumps step to the previous and next turn around the offset', () => {
   assert.equal(jumpIndex([-300, -20, 72, 400], 1), 3);
   assert.equal(jumpIndex([100, 400], -1), -1);
   assert.equal(jumpIndex([-300, 72], 1), -1);
+});
+
+test('the summary divider waits for the engine to have compacted', () => {
+  const work = (tone?: 'compaction' | 'retry'): TurnV2 => ({
+    ...turn('w'),
+    blocks: [{ kind: 'work', id: 'w:0', steps: [], notes: [{ kind: 'note', id: 'n', text: 'Earlier messages summarized', tone }], live: false, summary: { steps: 0, calls: 0, failed: 0 } }],
+  });
+  assert.equal(hasCompaction({ preface: [], turns: [turn('a'), turn('b')] }), false);
+  assert.equal(hasCompaction({ preface: [], turns: [work('retry')] }), false);
+  assert.equal(hasCompaction({ preface: [], turns: [work('compaction')] }), true);
+  assert.equal(hasCompaction({ preface: [{ kind: 'note', id: 'p', text: 'x', tone: 'compaction' }], turns: [] }), true);
 });
