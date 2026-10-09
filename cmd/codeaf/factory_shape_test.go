@@ -32,7 +32,7 @@ func TestTheManagersBriefIsTheFiveBlocksThenTheFacts(t *testing.T) {
 		"[factory item #12]",
 		"You are the manager of #12 in acme/web.",
 		"You know: the issue and its comments, what codeaf read of it, the repository's recipe, policy and habits, the checkout, and what the person has said here.",
-		"You do: shape the run, start it when asked, report each stage here, answer the person, and hold at each approve step until the person says continue, saying what you wait on.",
+		talkBlockDo,
 		"Shape the run with factory_run: stages are one lowercase word each, at most nine. Each stage has an ask that says what done looks like, a loop (until, rounds, fanout) and one line of why. Keep the recipe's stages unless the item says otherwise; change asks before adding stages; add a stage only for work no existing stage covers. Never drop proof. An approve step is where the run holds until the person says continue: keep the recipe's, add one (named approve) after a stage the person wants to read first, and skip one only when the person asks. Nothing posts outward before an approve step.",
 		talkBlockInbox,
 		"Say what you set in three lines at most, then stop. Do not narrate.",
@@ -117,10 +117,10 @@ func TestOneShapingTurnCollectsTheManagersEdit(t *testing.T) {
 		t.Fatal("the shaping turn wrote the item")
 	}
 	it.Triage.Size = "L"
-	if _, _, err := s.Reshape(context.Background(), it, "do a thorough review"); err != nil {
+	if _, _, err := s.Shape(context.Background(), it, nil); err != nil {
 		t.Fatal(err)
 	}
-	if asked[1] != "The person said: do a thorough review · reshape the stages not yet started if that is what they mean, else leave them" {
+	if asked[1] != shapeAsk {
 		t.Fatalf("asked %q", asked[1])
 	}
 	if len(cheapness) != 2 || !cheapness[0] || cheapness[1] {

@@ -68,8 +68,8 @@ func newOpenShapeRig(t *testing.T) *openShapeRig {
 // EDIT, AND SAYS THE LINE: an item with no conversation gets one, the manager
 // is given one turn bounded as before a run, the edit is on the item's stages
 // marked the manager's with its record line, the line goes into the
-// conversation, and nothing runs. Asked again, it is asked again: the person
-// pressed it again.
+// conversation, and nothing runs. ASKED AGAIN, NO TURN IS SPENT: the manager
+// already shaped the steps, and the person changes them in its chat.
 func TestOpenShapeDoorMakesTheConversationAndShapesOnce(t *testing.T) {
 	r := newOpenShapeRig(t)
 	r.edit = factory.RunEdit{By: factory.ByManager, Ask: map[string]string{"review": "read it for security"}, Why: "touches the ledger"}
@@ -102,7 +102,7 @@ func TestOpenShapeDoorMakesTheConversationAndShapesOnce(t *testing.T) {
 	}
 	r.edit = factory.RunEdit{}
 	again, err := r.door.Shape(context.Background(), r.id)
-	if err != nil || again != "the recipe stands" || r.turns != 2 || r.made != 1 {
+	if err != nil || again != sayShapedAlready || r.turns != 1 || r.made != 1 {
 		t.Fatalf("the second ask answered %q, %v after %d turns and %d conversations", again, err, r.turns, r.made)
 	}
 }
@@ -139,8 +139,8 @@ func TestOpenShapeDoorRecipeStandsIsKept(t *testing.T) {
 			t.Fatalf("the stages changed: %+v", it.Stages[i])
 		}
 	}
-	// A SECOND STANDING IS NOT A SECOND RECORD.
-	if again, _ := r.door.Shape(context.Background(), r.id); again != "the recipe stands" || r.turns != 2 {
+	// A SECOND ASK IS NO SECOND TURN AND NO SECOND RECORD.
+	if again, _ := r.door.Shape(context.Background(), r.id); again != sayShapedAlready || r.turns != 1 {
 		t.Fatalf("second ask %q after %d turns", again, r.turns)
 	}
 	if it, _ := r.st.Get(r.id); len(it.Adapted) != 1 {
@@ -223,5 +223,58 @@ func TestOpenShapeThroughTheMailbox(t *testing.T) {
 	line, err := seam.Shape(context.Background(), 4)
 	if err != nil || line != "manager set review: read it for security" || <-asked != 4 {
 		t.Fatalf("line %q, err %v", line, err)
+	}
+}
+
+// SKIP THEN SWITCH ON IN ONE TURN IS ON: the edit the turn collected, applied
+// to the item the turn started from, leaves every stage as the manager's last
+// call left it, and the line the item records says what was applied. (The
+// owner's run of 2026-10-09 recorded `skipped write · skipped review · why:
+// Turn write and review back on`, and both stages ended off.)
+func TestASkipThenSwitchOnInOneTurnLeavesTheStagesOn(t *testing.T) {
+	recipe := factory.DefaultRecipe()
+	it := factory.Item{ID: 7, Kind: factory.KindIssue, Talk: "/x/t.jsonl", Stages: factory.CopyStages(recipe.For(factory.KindIssue))}
+	door := &collectRunDoor{it: it, recipe: recipe}
+	ctx := context.Background()
+	if _, lines, err := door.EditRun(ctx, "", factory.RunEdit{By: factory.ByManager, Skip: []string{"write", "review"}, Why: "rebuild them"}); err != nil || len(lines) == 0 {
+		t.Fatalf("skip: %v %q", err, lines)
+	}
+	_, lines, err := door.EditRun(ctx, "", factory.RunEdit{By: factory.ByManager, On: []string{"write", "review"}, Why: "turn write and review back on"})
+	if err != nil || !strings.Contains(strings.Join(lines, " "), "switched on write") {
+		t.Fatalf("on: %v %q", err, lines)
+	}
+	got := door.collected()
+	shaped := it
+	line, err := factoryrun.ApplyShape(&shaped, got, recipe, false, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"write", "review"} {
+		i := factory.StageIndex(shaped.Stages, name)
+		if i < 0 || !shaped.Stages[i].On {
+			t.Fatalf("%s is off after skip then on: %+v", name, shaped.Stages)
+		}
+	}
+	if strings.Contains(line, "skipped") {
+		t.Fatalf("the line says what was not applied: %q", line)
+	}
+	// AND THE OTHER WAY: on then skip is off, and the line says skipped.
+	door = &collectRunDoor{it: it, recipe: recipe}
+	if _, _, err := door.EditRun(ctx, "", factory.RunEdit{By: factory.ByManager, On: []string{"security"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := door.EditRun(ctx, "", factory.RunEdit{By: factory.ByManager, Skip: []string{"security", "write"}}); err != nil {
+		t.Fatal(err)
+	}
+	shaped = it
+	line, err = factoryrun.ApplyShape(&shaped, door.collected(), recipe, false, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := factory.StageIndex(shaped.Stages, "security"); i < 0 || shaped.Stages[i].On {
+		t.Fatalf("security is on after on then skip: %+v", shaped.Stages)
+	}
+	if !strings.Contains(line, "skipped write") || strings.Contains(line, "switched on") {
+		t.Fatalf("line %q", line)
 	}
 }

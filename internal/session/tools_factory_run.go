@@ -251,7 +251,15 @@ func (a *Agent) SubmitRunnerNote(ctx context.Context, text string) (<-chan Event
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
-	return a.submitUser(ctx, briefNote(text))
+	return a.submitUser(ctx, runnerNote(text))
+}
+
+// runnerNote is the factory runner's words for an item's manager: the
+// session's own note, with no skills block ([userMessage.noSkills]).
+func runnerNote(text string) userMessage {
+	note := briefNote(text)
+	note.noSkills = true
+	return note
 }
 
 // ── A SHAPING TURN THROUGH A CONVERSATION THE WINDOW HOLDS ──────────────────
@@ -308,7 +316,7 @@ func (a *Agent) SubmitRunnerNoteThrough(ctx context.Context, text string, door R
 	if text == "" {
 		return nil, errors.New("session: empty message")
 	}
-	user := briefNote(text)
+	user := runnerNote(text)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
