@@ -57,7 +57,7 @@ function liveStep(index: number, group: LiveCall[], waiting: ReadonlySet<string>
   const captioned = group.find((c) => c.caption);
   const anchor = { Role: 'tool', Text: '', Caption: captioned?.caption, CaptionCategory: captioned?.category } as RichEntry;
   const batch: Batch = { ...newBatch(`live-s${index}`, group[0].narration ?? '', anchor), calls: group.map(liveToolStep) };
-  const step = finishStep(batch, { sessionFile: '', running: true, lastUnanswered: -1, waiting });
+  const step = finishStep(batch, { sessionFile: '', running: true, lastUnanswered: -1, waiting, decisions: new Map() });
   const preparing = group.every((c) => PREPARING.includes(c.phase));
   return preparing ? { ...step, state: 'preparing' } : step;
 }

@@ -9,10 +9,10 @@ function isClipped(element: HTMLElement): boolean {
   return element.scrollHeight > element.clientHeight;
 }
 
-type UserMessageProps = { text: string; markdown?: boolean; attachments?: ReactNode };
+type UserMessageProps = { text: string; markdown?: boolean; attachments?: ReactNode; /** Written, not yet recorded by the engine: drawn at 60% until it is. */ sending?: boolean };
 
 /** The person's message: soft bubble, clamped when long, hover actions below. */
-export function UserMessage({ text: message, markdown = false, attachments }: UserMessageProps) {
+export function UserMessage({ text: message, markdown = false, attachments, sending = false }: UserMessageProps) {
   const { pastes, rest: text } = splitPasted(message);
   const body = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -26,7 +26,7 @@ export function UserMessage({ text: message, markdown = false, attachments }: Us
 
   if (!text && !attachments && pastes.length === 0) return null;
   return (
-    <div className="user-message" data-actions-host="">
+    <div className="user-message" data-actions-host="" data-sending={sending || undefined}>
       <div className="user-message-bubble" data-attached={Boolean(attachments) || undefined} data-pasted={pastes.length > 0 || undefined}>
         {attachments}
         {pastes.map((paste, index) => (
@@ -43,7 +43,7 @@ export function UserMessage({ text: message, markdown = false, attachments }: Us
           </Button>
         )}
       </div>
-      {text && (
+      {text && !sending && (
         <RowActions className="user-message-actions">
           <CopyButton text={text} label="Copy message" size="message" iconSize="xs" />
         </RowActions>

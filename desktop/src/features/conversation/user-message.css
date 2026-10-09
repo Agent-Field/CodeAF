@@ -1,5 +1,6 @@
 /* User message (design v3 §2.1). Tokens only. */
 .user-message { position: relative; display: flex; flex-direction: column; align-items: flex-end; min-width: 0; }
+.user-message[data-sending] { opacity: var(--opacity-sending); }
 .user-message-bubble {
   display: flex;
   flex-direction: column;

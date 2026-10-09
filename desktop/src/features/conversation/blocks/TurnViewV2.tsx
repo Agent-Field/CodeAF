@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Button, IconButton } from '../../../components/ui';
+import { Button, Icon, IconButton } from '../../../components/ui';
 import type { TurnBlock, TurnV2 } from '../types';
 import { UserMessage } from '../UserMessage';
 import { plainMessage } from '../composer/pastedText';
@@ -26,6 +26,7 @@ function FoldedLine({ turn, onToggleFold }: Pick<TurnViewV2Props, 'turn' | 'onTo
     <Button className="turn-folded" aria-expanded={false} aria-label="Unfold" onClick={onToggleFold}>
       <span className="turn-folded-user">{plainMessage(turn.user)}</span>
       {turn.digest && <span className="turn-folded-digest">{turn.digest}</span>}
+      <span className="turn-folded-chevron"><Icon name="chevron" size="xs" /></span>
     </Button>
   );
 }
