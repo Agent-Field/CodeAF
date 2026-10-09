@@ -9,39 +9,26 @@ const fixtures: TaskItem[] = [
     kind: 'task',
     id: 'n1',
     taskId: 't-1',
-    title: 'List files',
+    title: 'Benchmark the tokenizer',
     status: 'done',
-    summary: 'Found 4 files in the repository root.',
-    body: 'Listed the repository root.\nREADME.md, go.mod, go.sum, main.go',
+    summary: '8% faster on large arrays, no change on small',
+    body: 'Ran the tokenizer benchmark on both array sizes.',
   },
-  {
-    kind: 'task',
-    id: 'n2',
-    taskId: 't-2',
-    title: 'Run the tests',
-    status: 'failed',
-    summary: 'Two tests failed in the parser package.',
-    body: 'parser_test.go:41: expected 3 tokens, got 2\nparser_test.go:77: unexpected end of input',
-  },
-  {
-    kind: 'task',
-    id: 'n3',
-    taskId: 't-3',
-    title: 'Count words',
-    status: 'running',
-    summary: 'Reading README.md',
-    body: '',
-  },
+  { kind: 'task', id: 'n2', taskId: 't-2', title: 'Update fixtures', status: 'running', summary: 'step 7', body: '' },
+  { kind: 'task', id: 'n3', taskId: 't-3', title: 'Decide strict-mode default', status: 'paused', summary: 'Your call', body: '' },
 ];
+
+const LIVE: Record<string, string> = { n2: '$ go test ./internal/parse/... · 12s' };
 
 export function TaskNoticeSpecimen() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   return (
-    <div>
+    <div className="task-notice-specimen">
       {fixtures.map((item) => (
         <TaskNotice
           key={item.id}
           item={item}
+          live={LIVE[item.id]}
           open={Boolean(open[item.id])}
           onToggle={() => setOpen((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
           onOpenTask={() => undefined}
