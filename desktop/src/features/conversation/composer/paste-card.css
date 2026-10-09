@@ -4,7 +4,7 @@
   gap: var(--space-1);
   min-width: 0;
   padding: var(--space-2) var(--space-compact) 0;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-card);
   background: var(--field);
 }
 

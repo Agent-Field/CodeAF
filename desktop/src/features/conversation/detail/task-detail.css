@@ -1,5 +1,5 @@
 /* Task detail pane: the right half of the expanded tasks view (design 1d). */
-.task-detail { display: flex; flex-direction: column; gap: var(--space-5); flex: none; width: var(--task-detail-width); max-width: 100%; box-sizing: border-box; padding: var(--space-6); border-radius: var(--task-detail-radius); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); }
+.task-detail { display: flex; flex-direction: column; gap: var(--space-5); flex: none; width: var(--task-detail-width); max-width: 100%; box-sizing: border-box; padding: var(--space-6); border-radius: var(--tasks-radius); background: var(--surface); box-shadow: var(--sh-1); color: var(--ink); }
 .task-detail-head { display: flex; flex-direction: column; gap: var(--space-tight); min-width: 0; }
 .task-detail-crumb { margin: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); overflow-wrap: anywhere; }
 .task-detail-title { margin: 0; color: var(--ink); font-size: var(--task-detail-title-size); font-weight: var(--type-title-weight); letter-spacing: var(--task-detail-title-tracking); line-height: var(--type-title-leading); overflow-wrap: anywhere; }

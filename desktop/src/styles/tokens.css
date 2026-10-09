@@ -9,6 +9,7 @@
   --radius-lg: 12px;
   --duration: 220ms;
   --ease: cubic-bezier(.2,.8,.2,1);
+  --space-0: 0px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -72,7 +73,6 @@
   --brand-small: 16px;
   --brand-hero: 44px;
   --brand-opacity: 0.22;
-  --empty-offset: -30px;
   --opacity-disabled: 0.65;
   --opacity-subtle: 0.7;
   --opacity-icon: 0.8;
@@ -131,9 +131,7 @@
   --switcher-max-height: 360px;
   --switcher-inset: 64px;
   --composer-max-width: 608px;
-  --composer-writing-min-height: 28px;
   --composer-writing-max-height: 210px;
-  --composer-queue-max-height: 112px;
   --composer-fade-top: 28px;
   --paste-card-width: 240px;
   --paste-card-preview-height: 30px;
@@ -142,10 +140,6 @@
   --paste-card-fade: 20%;
   --paste-sent-preview-height: 48px;
   --paste-sent-fade: 25%;
-  --model-picker-width: 320px;
-  --model-picker-max-height: 360px;
-  --work-dock-width: 744px;
-  --work-context-max-height: 420px;
   --motion-ask-open: 90deg;
   --duration-work: 300ms;
   --overview-compact-width: 640px;
@@ -190,8 +184,6 @@
   --tree-indent: 14px;
   --chip-height: 20px;
   --file-chip-gap: 5px;
-  --file-chip-pad-start: 5px;
-  --file-chip-pad-end: 7px;
   --file-chip-icon: 12px;
   --radius-chip: 6px;
   --radius-figure: 10px;
@@ -204,11 +196,9 @@
   --step-row-height: 26px;
   --tool-row-lead: 16px;
   --tool-forming-opacity: .55;
-  --tool-term-radius: 10px;
   --tool-term-size: 11.5px;
   --tool-term-leading: 1.65;
   --tool-term-footer-height: 30px;
-  --work-fade: 60%;
   --work-block-toggle-radius: 7px;
   --work-block-toggle-pad-start: 4px;
   --work-block-toggle-pad-end: 8px;
@@ -218,7 +208,6 @@
   --diff-font-size: 11.5px;
   --diff-line-height: 1.65;
   --diff-edge-fade: 24px;
-  --diff-radius: 10px;
   --thinking-row-height: 24px;
   --thinking-gap: 8px;
   --thinking-leading: 1.55;
@@ -235,8 +224,6 @@
   --asset-name-max-width: 220px;
   --asset-sheet-gutter: 20px;
   --asset-lightbox-inset: 56px;
-  --asset-zoom-actual: 1;
-  --link-chip-pad-end: 7px;
   --site-icon-weight: 700;
   --site-icon-font-size: 9px;
   --site-icon-text-size: 12px;
@@ -293,7 +280,6 @@
   --composer-stop-radius: 2px;
   --panel: 300px;
   --task-detail-width: 380px;
-  --task-detail-radius: 14px;
   --task-detail-title-size: 18px;
   --task-detail-title-tracking: -.012em;
   --task-detail-fact-label: 56px;
@@ -355,11 +341,9 @@
   --tasks-guide-pad: 9px;
   --tasks-group-gap: 10px;
   --tasks-mark-gap: 10px;
-  --tasks-ring-width: 1.25px;
   --tasks-chevron-pad: 4px;
   --tasks-head-top: 14px;
   --tasks-fold-height: 40px;
-  --tasks-fold-gap: 6px;
   --tasks-mask-top: 12px;
   --tasks-mask-bottom: 28px;
   --focus-ring-width: 2px;
@@ -389,8 +373,6 @@
   --queue-more-height: 28px;
   --queue-radius: 10px;
   --queue-mark-size: 12px;
-  --queue-action-size: 24px;
-  --queue-action-radius: 6px;
   --queue-save-height: 26px;
   --queue-save-radius: 7px;
   --queue-focus-ring: 1px;
