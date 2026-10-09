@@ -59,15 +59,26 @@ function addTool(b: Builder, entry: EngineEntry, index: number, ctx: Ctx) {
   else b.turn.items.push({ kind: 'tools', id: `${b.turn.id}:t${index}`, steps: [step] });
 }
 
-type TaskRowLike = { ID?: unknown; Title?: string; Status?: string };
+type TaskRowLike = { ID?: unknown; Title?: string; Status?: string; Note?: string };
+
+// Rows arrive oldest run first, so the last match is the newest record.
+function lastRow(ctx: Ctx, matches: (row: TaskRowLike) => boolean): TaskRowLike | undefined {
+  return [...(ctx.snapshot.tasks as TaskRowLike[])].reverse().find(matches);
+}
 
 function rowById(ctx: Ctx, id: string | undefined): TaskRowLike | undefined {
   if (!id) return undefined;
-  return (ctx.snapshot.tasks as TaskRowLike[]).find((t) => String(t.ID) === id);
+  return lastRow(ctx, (t) => String(t.ID) === id);
+}
+
+/** The task whose own recorded report line the note carries. */
+function rowByNote(ctx: Ctx, text: string): TaskRowLike | undefined {
+  return lastRow(ctx, (t) => Boolean(t.Note?.trim()) && text.includes(t.Note as string));
 }
 
 function rowByTitle(ctx: Ctx, title: string): TaskRowLike | undefined {
-  return (ctx.snapshot.tasks as TaskRowLike[]).find((t) => t.Title === title);
+  if (!title) return undefined;
+  return lastRow(ctx, (t) => t.Title === title);
 }
 
 function asideItem(entry: EngineEntry, id: string, ctx: Ctx): TurnItem {
@@ -75,11 +86,11 @@ function asideItem(entry: EngineEntry, id: string, ctx: Ctx): TurnItem {
   const fields = entry as EngineEntry & AsideFields;
   const given = fields.TaskIDs?.[0];
   if (!parsed && !given) return { kind: 'note', id, text: entry.Text };
-  // The canonical row named by id outranks words parsed out of the note.
+  // The canonical row outranks words parsed out of the note.
   const byId = rowById(ctx, given);
-  const row = byId ?? rowByTitle(ctx, parsed?.title ?? '');
+  const row = byId ?? rowByNote(ctx, entry.Text) ?? rowByTitle(ctx, parsed?.title ?? '');
   // A notice with no name cannot be read or opened; it is only a note.
-  const title = byId?.Title || parsed?.title || row?.Title || '';
+  const title = row?.Title || parsed?.title || '';
   if (!title) return { kind: 'note', id, text: entry.Text };
   const taskId = given ?? (row?.ID ? String(row.ID) : undefined);
   return {
@@ -122,11 +133,15 @@ function project(snapshot: EngineSnapshot): ConversationModel {
   const preface: TurnItem[] = [];
   const stopped = new Set<Turn>();
   snapshot.entries.forEach((entry, index) => {
+    const current = builders[builders.length - 1];
+    if (entry.Role === 'user' && entry.Steer && current) {
+      current.turn.items.push({ kind: 'steer', id: `${current.turn.id}:${index}`, text: entry.Text });
+      return;
+    }
     if (entry.Role === 'user') {
       builders.push(newTurn(snapshot, entry, index));
       return;
     }
-    const current = builders[builders.length - 1];
     if (entry.Interrupted && current) stopped.add(current.turn);
     if (entry.Role === 'tool') {
       if (entry.Tool && current) addTool(current, entry, index, ctx);
@@ -158,7 +173,8 @@ function overlayItems(turn: Turn, snapshot: EngineSnapshot, live: LiveOverlay): 
     .pop();
   const out: TurnItem[] = [];
   if (live.thinking) {
-    out.push({ kind: 'thinking', id: `${turn.id}:live-thinking`, text: live.thinking, streaming: true });
+    // Thinking ends where the answer's words begin.
+    out.push({ kind: 'thinking', id: `${turn.id}:live-thinking`, text: live.thinking, streaming: !live.text });
   }
   const covered = recorded && live.text && recorded.Text.startsWith(live.text);
   if (live.text && !covered) {
@@ -170,8 +186,9 @@ function overlayItems(turn: Turn, snapshot: EngineSnapshot, live: LiveOverlay): 
 
 function liveStep(live: LiveOverlay, turn: Turn): ToolStep | undefined {
   if (!live.activeTool) return undefined;
-  const last = turn.items[turn.items.length - 1];
-  if (last?.kind === 'tools' && last.steps.some((s) => s.state === 'running')) return undefined;
+  // A recorded call still waiting on its result is this live step already drawn.
+  const recordedRunning = turn.items.some((item) => item.kind === 'tools' && item.steps.some((s) => s.state === 'running'));
+  if (recordedRunning) return undefined;
   const { tool, hint } = live.activeTool;
   return { id: `${turn.id}:live-tool`, tool, hint, args: '', output: '', state: 'running' };
 }

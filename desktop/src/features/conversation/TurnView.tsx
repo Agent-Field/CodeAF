@@ -22,10 +22,11 @@ function BuiltInItem({ item, onRetry }: Omit<ItemProps, 'renderItem'>) {
   if (item.kind === 'text') return item.text ? <Markdown>{item.text}</Markdown> : null;
   if (item.kind === 'note') return <NoteItem text={item.text} />;
   if (item.kind === 'error') return <ErrorItem text={item.text} onRetry={onRetry} />;
+  if (item.kind === 'steer') return <UserMessage text={item.text} />;
   return null;
 }
 
-const builtIn = new Set<TurnItem['kind']>(['text', 'note', 'error']);
+const builtIn = new Set<TurnItem['kind']>(['text', 'note', 'error', 'steer']);
 
 function Item({ item, renderItem, onRetry }: ItemProps) {
   const content = builtIn.has(item.kind) ? <BuiltInItem item={item} onRetry={onRetry} /> : renderItem(item);
