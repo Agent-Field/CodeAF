@@ -6,7 +6,7 @@
 .task-view-action.icon-button { width: var(--control-height); height: var(--control-height); border-radius: var(--radius-control); color: var(--ink-3); }
 .task-view-action.icon-button:hover:not(:disabled), .task-view-action.icon-button:active:not(:disabled) { background: var(--field); color: var(--ink); }
 
-.task-view-status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; color: var(--ink-3); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
+.task-view-status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin: 0; color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); font-variant-numeric: tabular-nums; }
 .task-view-state-word { color: var(--ink-2); }
 .task-view-state-parts { min-width: 0; }
 .task-view-mark { display: inline-flex; align-items: center; justify-content: center; flex: none; color: var(--ink-3); }

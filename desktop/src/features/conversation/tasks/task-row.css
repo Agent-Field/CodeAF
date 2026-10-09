@@ -17,11 +17,11 @@
 
 .task-row-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-row-wait { opacity: var(--opacity-subtle); }
-.task-row-meta { flex: none; color: var(--ink-3); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; transition: opacity var(--dur-fast) var(--ease); }
+.task-row-meta { flex: none; color: var(--ink-2); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; transition: opacity var(--dur-fast) var(--ease); }
 
 /* Settled work steps back; a task waiting its turn is dimmer still. */
 .task-row[data-kind="done"], .task-row[data-kind="paused"] { color: var(--ink-2); }
-.task-row[data-kind="queued"], .task-row[data-kind="stopped"], .task-row[data-kind="interrupted"] { color: var(--ink-3); }
+.task-row[data-kind="queued"], .task-row[data-kind="stopped"], .task-row[data-kind="interrupted"] { color: var(--ink-2); }
 
 /* Hover actions cover the right end of the row, so the title never moves. */
 /* The shared RowActions (reveal, row-size buttons), laid over the meta on the row's own fill. */

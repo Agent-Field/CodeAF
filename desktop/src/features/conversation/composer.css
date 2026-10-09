@@ -38,7 +38,7 @@
 }
 
 .composer-field.text-area::placeholder {
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 /* Past the row cap the text scrolls under a fade at the top. */
@@ -211,7 +211,7 @@
   justify-content: center;
   border-radius: inherit;
   background: var(--surface);
-  color: var(--ink-3);
+  color: var(--ink-2);
   pointer-events: none;
 }
 

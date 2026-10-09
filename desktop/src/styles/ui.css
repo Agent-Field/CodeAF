@@ -44,13 +44,13 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 
 /* Chips are 20px inline pills on field; tags are 18px labels. */
 .chip { display: inline-flex; align-items: center; gap: var(--chip-gap); height: var(--chip-height); max-width: 100%; padding: 0 var(--chip-pad-end) 0 var(--chip-pad-start); border: 0; border-radius: var(--radius-chip); background: var(--field); color: var(--ink); font-family: var(--sans); font-size: var(--type-label-size); vertical-align: middle; }
-.chip[data-muted] { color: var(--ink-3); }
+.chip[data-muted] { color: var(--ink-2); }
 .chip-button:hover:not(:disabled), .chip-button:active:not(:disabled) { background: var(--field-2); }
 .tag { display: inline-flex; align-items: center; height: var(--tag-height); padding: 0 var(--tag-pad); border-radius: var(--radius-tag); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); white-space: nowrap; }
 .tag[data-tone="accent"] { background: var(--accent-soft); color: var(--accent); }
 .tag[data-tone="neutral"] { background: var(--field); color: var(--ink-2); }
 .tag[data-tone="danger"] { background: var(--danger-soft); color: var(--danger); }
-.tag[data-tone="key"] { padding: 0 var(--tag-pad-key); background: var(--surface); box-shadow: inset 0 0 0 var(--hairline) var(--line); color: var(--ink-3); font-family: var(--mono); }
+.tag[data-tone="key"] { padding: 0 var(--tag-pad-key); background: var(--surface); box-shadow: inset 0 0 0 var(--hairline) var(--line); color: var(--ink-2); font-family: var(--mono); }
 
 /* Status marks: one still mark plus words. */
 .status-mark { display: inline-grid; place-items: center; flex: none; width: var(--mark-box); height: var(--mark-box); color: var(--mark-done); }
@@ -74,7 +74,7 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 
 /* Field: rest on field, focus on surface with a 1px accent ring and a 4px soft halo. */
 .text-input.text-input-field { height: var(--field-height); min-height: var(--field-height); padding: 0 var(--field-pad); border-radius: var(--radius-control); background: var(--field); color: var(--ink); font-size: var(--type-label-size); }
-.text-input-field::placeholder { color: var(--ink-3); }
+.text-input-field::placeholder { color: var(--ink-2); }
 .text-input-field:focus-visible { outline: var(--field-focus-ring) solid transparent; background: var(--surface); box-shadow: 0 0 0 var(--field-focus-ring) var(--accent), 0 0 0 var(--field-focus-halo) var(--accent-soft); }
 
 /* Tooltip: icon-only buttons and truncated text; sh-2 and 11px text. Its position is measured. */

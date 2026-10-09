@@ -1,4 +1,4 @@
-/* Breadcrumb: Back and the trail share one quiet line of ink-3 text; the current task is ink at medium weight. */
+/* Breadcrumb: Back and the trail share one quiet line of ink-2 text; the current task is ink at medium weight. */
 .breadcrumb { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: var(--control-height); }
 .breadcrumb-back.icon-button { flex: none; width: var(--control-height); height: var(--control-height); margin-inline-start: calc(var(--space-2) * -1); border-radius: var(--radius-control); color: var(--ink-3); }
 .breadcrumb-list { display: flex; align-items: center; flex: 1; min-width: 0; margin: 0; padding: 0; list-style: none; font-size: var(--type-h3-size); font-weight: var(--font-weight-regular); }
@@ -7,7 +7,7 @@
 .breadcrumb-sep, .breadcrumb-ellipsis { flex: 0 0 auto; padding: 0 var(--space-tight); color: var(--ink-3); }
 .breadcrumb-link, .breadcrumb-current { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; }
 /* A block box, not the button's centred flex row, so a long name ends in an ellipsis instead of losing its start. */
-.breadcrumb-link { display: block; text-align: start; padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-chip); background: transparent; color: var(--ink-3); }
+.breadcrumb-link { display: block; text-align: start; padding: var(--space-half) var(--space-1); border: 0; border-radius: var(--radius-chip); background: transparent; color: var(--ink-2); }
 .breadcrumb-link:hover { background: var(--field); color: var(--ink); }
 .breadcrumb-link:active { background: var(--field-2); color: var(--ink); }
 .breadcrumb-link:focus-visible { outline: var(--focus-style); outline-offset: var(--focus-offset); }
@@ -15,14 +15,14 @@
 
 .task-view { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
 .task-view-body { display: flex; flex-direction: column; gap: var(--space-6); min-width: 0; }
-.task-view-quiet { color: var(--ink-3); font-size: var(--type-label-size); }
+.task-view-quiet { color: var(--ink-2); font-size: var(--type-label-size); }
 .task-view-error { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
 /* Conversation rhythm: the result and the files it changed read at full ink. */
 .task-view-result { min-width: 0; }
 .task-view-last { margin: 0; padding-inline-start: var(--space-3); border-inline-start: var(--border-width) solid var(--line); color: var(--ink-2); font-size: var(--type-prose-size); line-height: var(--type-prose-leading); white-space: pre-wrap; overflow-wrap: anywhere; }
 .task-view-changed { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
-.task-view-eyebrow { margin: 0; color: var(--ink-3); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
+.task-view-eyebrow { margin: 0; color: var(--ink-2); font-size: var(--type-caption-size); font-weight: var(--type-caption-weight); }
 .task-view-files { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
 
 .task-view-list { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }

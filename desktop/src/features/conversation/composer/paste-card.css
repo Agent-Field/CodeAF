@@ -36,7 +36,7 @@
 
 .paste-card-lines.type-body {
   font-size: var(--font-size-body);
-  color: var(--ink-3);
+  color: var(--ink-2);
 }
 
 .paste-card-remove.icon-button {
@@ -52,7 +52,7 @@
   margin: 0;
   overflow: hidden;
   font-family: var(--mono);
-  color: var(--ink-3);
+  color: var(--ink-2);
   white-space: pre;
   height: var(--paste-card-preview-height);
   font-size: var(--paste-card-preview-size);
