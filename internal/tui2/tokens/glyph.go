@@ -263,6 +263,13 @@ const (
 	// wears, and the tier draws a padlock where a patched font supplies one.
 	GlyphLocked = "§"
 
+	// GlyphRun is the item page's run control: start, or go on from a hold.
+	GlyphRun = "►"
+
+	// GlyphLoop is a stage's loop, the round it is on over its most: an arrow
+	// that comes back round to where it started.
+	GlyphLoop = "↻"
+
 	// Structure (5.21). The accent rail groups a card's lines in its identity
 	// hue; the drag handle marks a reorderable pending row (5.22).
 	GlyphAccentRail = "▎"
@@ -571,6 +578,8 @@ func Glyphs() []GlyphInfo {
 		{"PriorityFourth", GlyphPriorityFourth, '▁', true},
 		{"Skipped", GlyphSkipped, '–', true},
 		{"Locked", GlyphLocked, '§', true},
+		{"Run", GlyphRun, '►', false},
+		{"Loop", GlyphLoop, '↻', false},
 		{"ProseBullet", GlyphProseBullet, '·', true},
 		{"ProseQuote", GlyphProseQuote, '▏', true},
 		{"CodeGutter", GlyphCodeGutter, '▏', true},

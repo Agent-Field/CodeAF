@@ -173,12 +173,7 @@ func TestFactoryItemPageIssueScrollsByWheelAndMore(t *testing.T) {
 		t.Fatalf("the issue is not cut with more:\n%s", strings.Join(factoryFrameLines(a), "\n"))
 	}
 	stage := a.fp.stage
-	// THE PANE'S RIGHT EDGE is the verbs' column's rule while the column
-	// stands, and the frame's otherwise.
 	edge := a.width
-	if a.factoryVerbsDrawn() {
-		edge = a.fp.verbX
-	}
 	drive(t, a, tea.MouseWheelMsg{X: edge - 10, Y: y, Button: tea.MouseWheelDown})
 	factoryFrameLines(a)
 	if a.fp.stage != stage || a.fp.scroll != placeWheelRows {
@@ -192,8 +187,9 @@ func TestFactoryItemPageIssueScrollsByWheelAndMore(t *testing.T) {
 	if a.fp.scroll != page || a.fp.stage != stage {
 		t.Fatalf("a press on more: scroll %d want %d, stage %d", a.fp.scroll, page, a.fp.stage)
 	}
+	// THE WHEEL OVER THE LEFT COLUMN MOVES THE COLUMN, never the cursor.
 	drive(t, a, tea.MouseWheelMsg{X: 2, Y: placeHeadRows + a.fp.railTop, Button: tea.MouseWheelDown})
-	if a.fp.stage == stage {
-		t.Fatal("the wheel over the rail did not walk it")
+	if a.fp.stage != stage {
+		t.Fatal("the wheel over the column moved the cursor")
 	}
 }

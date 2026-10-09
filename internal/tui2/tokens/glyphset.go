@@ -220,6 +220,14 @@ const (
 	// deliberately not [GPinned], which is a seat a PERSON pinned and can
 	// unpin: this one only the file changes.
 	GLocked
+	// GRun is the factory item page's run control (internal/tui3's
+	// factory_bar.go): start the run, or resume it where it held. It is
+	// deliberately not [GQueuePill], whose triangle means one item waiting in
+	// a queue.
+	GRun
+	// GLoop is a stage's loop on the item page's left column, `↻ 1/3`: the
+	// round it is on over the most it may take.
+	GLoop
 	glyphIDCount
 )
 

@@ -85,8 +85,8 @@ func TestFactoryMarkAPausedItemIsNotRunning(t *testing.T) {
 	if !strings.HasPrefix(cell, pause+" ") || !strings.Contains(cell, "paused") || strings.Contains(cell, "left") {
 		t.Fatalf("the item page's rail draws the held stage as %q", cell)
 	}
-	if got := ansi.Strip(a.factoryItemTitle(it, 150)); !strings.Contains(got, "paused 13m") {
-		t.Fatalf("the item page's head does not say it is paused: %q", got)
+	if got := ansi.Strip(a.factoryBarLine(it, 150)); !strings.Contains(got, "paused 13m") {
+		t.Fatalf("the item page's bar does not say it is paused: %q", got)
 	}
 }
 

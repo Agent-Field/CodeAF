@@ -153,6 +153,8 @@ var explicitOnlySlots = map[GlyphID]string{
 	GPriorityFourth: "the gauge's own lowest cell; a whole-cell rewrite would turn a gauge into a priority",
 	GSkipped:        "an en dash, which is a range or a pause in a sentence as often as it is a stage mark",
 	GLocked:         "the section sign, which is a citation in prose as often as it is a stage mark",
+	GRun:            "a pointer, which is ordinary punctuation in a list as often as it is a control",
+	GLoop:           "an arrow, which is ordinary punctuation in prose as often as it is a stage mark",
 }
 
 // TestTheASCIITierNamesACharacterForEveryIcon is the third tier's own gate.

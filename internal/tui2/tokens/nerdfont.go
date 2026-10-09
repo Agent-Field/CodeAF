@@ -730,6 +730,23 @@ var vocabulary = []GlyphBinding{
 		Plain: GlyphLocked, NerdFont: "\uF023", NFName: "nf-fa-lock", ASCII: "L",
 		UsualTint: TextTertiary, PlainAmbiguous: true, NFAmbiguous: true,
 	},
+	// THE RUN CONTROL is the play pointer on the floor, nf-fa-play on the
+	// tier, `>` for a reader. It is not the queue pill's triangle, which is a
+	// thing waiting rather than a press that starts it, and it does NOT
+	// auto-upgrade: the one consumer reaches it by name.
+	{
+		ID: GRun, Name: "Run", Meaning: "start the run, or go on from where it held",
+		Plain: GlyphRun, NerdFont: "\uF04B", NFName: "nf-fa-play", ASCII: ">",
+		UsualTint: TextSecondary, NFAmbiguous: true,
+	},
+	// A STAGE'S LOOP is the arrow that comes round, nf-fa-repeat on the tier,
+	// `~` for a reader. It does NOT auto-upgrade; the one consumer reaches it
+	// by name.
+	{
+		ID: GLoop, Name: "Loop", Meaning: "a stage's loop: the round it is on over its most",
+		Plain: GlyphLoop, NerdFont: "\uF01E", NFName: "nf-fa-repeat", ASCII: "~",
+		UsualTint: TextTertiary, NFAmbiguous: true,
+	},
 
 	// -- the prose slots (code.go) -------------------------------------------
 	//

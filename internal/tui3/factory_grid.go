@@ -103,10 +103,6 @@ const (
 	// for `screenshot` and `transcript`, so the evidence beside it ends in
 	// one column on every row of the sheet.
 	factoryMediumW = 10
-	// factoryTimelineVerbW is a step's verb on the item page's timeline,
-	// wide enough for `search`, so every step's object starts in one column
-	// whatever its verb (factory_timeline.go).
-	factoryTimelineVerbW = 6
 )
 
 // THE REPO PICKER'S GRID (`R`, factory_settings.go). A row is its mark, the
@@ -153,37 +149,13 @@ const (
 	factorySheetColGap = 2
 )
 
-// THE ITEM PAGE'S VERBS ON THE RIGHT (factory_verbs.go): a column beside the
-// pane, past one more rule, grouped `do / also` the way the `?` sheet is. A
-// group's name stands [factoryVerbLeadW] past the rule and its rows
-// [factoryVerbIndentW] further in; a row is its word in the columns of
-// [factoryVerbWordW] and [factoryVerbValueW] together, and its key
-// right-aligned in [factoryVerbKeyW] at the column's end, so the keys end at
-// one cell on every row:
-//
-//	│l│ii│word                    │g│  key│
-//	 1  2      11 + 12             1    5
-//
-// THE WORD COLUMNS TOGETHER HOLD THE LONGEST VERB WHOLE (`approve with
-// changes`), so no verb on the column is ever cut. The key column holds
-// `space` whole, the one spelling the `?` sheet uses.
-const (
-	factoryVerbLeadW   = 1
-	factoryVerbIndentW = 2
-	factoryVerbWordW   = 11
-	factoryVerbValueW  = 12
-	factoryVerbKeyGap  = 1
-	factoryVerbKeyW    = 5
-	// factoryVerbRailW is the whole column, the rule before it not included.
-	factoryVerbRailW = factoryVerbLeadW + factoryVerbIndentW + factoryVerbWordW + factoryVerbValueW + factoryVerbKeyGap + factoryVerbKeyW
-	// factoryVerbRailMinW is the narrowest item page that draws the column:
-	// under it the column is not drawn, the chips stand on the head's second
-	// row and the pane keeps its action line, as before the column existed.
-	factoryVerbRailMinW = 100
-)
+// factoryItemColW is the item page's left column, its margin included: room
+// for a nested step's mark, a one-word name, its loop and `until` in one
+// line (owner's layout, 2026-10-09).
+const factoryItemColW = 30
 
 // THE ITEM PAGE'S LEFT COLUMN IS THE ISSUE'S MAP (factory_item.go): one row
-// per facet, the stages and the log nested under `run` by [factoryNestW].
+// per facet, the steps nested under `steps` by [factoryNestW].
 // THE SETTINGS FACET is a table of three knobs and then one line per stage:
 //
 //	│label      │value       │key

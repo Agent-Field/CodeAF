@@ -207,14 +207,6 @@ type factoryPage struct {
 	railFirst  int
 	railShown  int
 	pageRows   int
-	// THE VERBS ON THE RIGHT (factory_verbs.go) as the last draw placed
-	// them: verbX the column the rail's cells start on, 0 when the page was
-	// too narrow to draw it; verbHits each drawn verb row and the body row it
-	// stands on; verbHover the word of the row the pointer rests on, "" for
-	// none.
-	verbX     int
-	verbHits  []factoryVerbHit
-	verbHover string
 	// THE CRUMBS ARE BUTTONS (factory_item.go): crumbHits each crumb as the
 	// last draw placed it on the page's first row, and crumbHover the one the
 	// pointer rests on.
@@ -269,6 +261,20 @@ type factoryPage struct {
 	// page: its cursor, what is folded, what is dived into, and the stage
 	// transcripts as last read (factory_timeline.go).
 	tl factoryTimeline
+
+	// THE ITEM PAGE'S LAYOUT (factory_bar.go, factory_item.go,
+	// factory_host.go): geo is where the last draw put the top bar, the left
+	// column and the center, in screen cells, so every press and every hover
+	// is read against what was painted; hot is what the pointer rests on, one
+	// thing at a time, and never the keyboard's cursor; box says the keys
+	// type into the center chat's box rather than walk the page; leftTop is
+	// the left column's first line shown, which the wheel moves; host is the
+	// chat the center hosts and how it was brought in front.
+	geo     factoryItemGeo
+	hot     factoryItemHot
+	box     bool
+	leftTop int
+	host    factoryHost
 }
 
 // factoryRowsCols is the rows' columns at width with the divider where it
@@ -778,19 +784,9 @@ func (a *app) factoryHover(x, y int) bool {
 	case a.fp.recipe != nil:
 		return false
 	case a.fp.open:
-		// THE CRUMBS AND THE VERBS' COLUMN ON THE RIGHT ANSWER FIRST: the
-		// crumb or row under the pointer wears its ground (factory_item.go,
-		// factory_verbs.go); anywhere else their ground is let go, the run's
-		// story is asked over the center, and then the left column.
-		crumb := a.factoryCrumbHover(x, y)
-		verb := a.factoryVerbHover(x, y)
-		if crumb || verb {
-			return true
-		}
-		if a.factoryPaneHover(x, y) {
-			return true
-		}
-		return a.factoryStageHover(x, y)
+		// ONE THING UNDER THE POINTER WEARS ITS GROUND, and it never moves
+		// the cursor (factory_item.go's [app.factoryItemHover]).
+		return a.factoryItemHover(x, y)
 	}
 	next := -1
 	if a.fp.bodyW-a.fp.rowsW-1 <= 0 || x < a.fp.rowsW-1 {
