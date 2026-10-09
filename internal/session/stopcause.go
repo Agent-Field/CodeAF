@@ -122,6 +122,14 @@ func StoppedBy(err error) (StopDoor, bool) {
 	return "", false
 }
 
+// stoppedByPerson reports whether the PERSON ended this context's turn with
+// their stop key, as opposed to a window taking the conversation over, a
+// deadline, or the session closing.
+func stoppedByPerson(ctx context.Context) bool {
+	door, stopped := stopCause(ctx)
+	return stopped && door == StopByPerson
+}
+
 // stopCause is the door a context was cancelled through, and whether anybody
 // named one. A cancelled context with no cause of ours is the caller's own —
 // a headless run's deadline, a parent shutting down — and it reads as

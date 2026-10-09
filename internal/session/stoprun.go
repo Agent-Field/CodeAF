@@ -384,6 +384,7 @@ func (a *Agent) settleStoppedBeltRun(run *beltRun, why string, cut []string) {
 	}
 	note := userText(taskStopName(run.row, run.title) + " " + report)
 	note.authored = true
+	note.facts = taskFacts(run.row)
 	a.mu.Lock()
 	a.recordUserLocked(note)
 	a.mu.Unlock()

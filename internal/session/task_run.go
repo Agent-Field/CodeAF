@@ -4017,6 +4017,7 @@ func (a *Agent) reportTaskNode(node *TaskNode) {
 			return
 		}
 		line := userText(note)
+		line.facts = taskFacts(notice.ID)
 		line.delivered = []durableDelivery{node.settlesNote(claim)}
 		if a.accept(delivery{origin: fromRuntime, kind: msgNotice, note: line}).accepted() {
 			node.noteQueued(claim)
@@ -4135,6 +4136,7 @@ func (a *Agent) postTaskMessage(node *TaskNode, tag TaskReplyTag, note, record s
 	// node can be re-armed and revised in that gap: composing the tag here would
 	// hand the OLD result the NEW target (wakecause.go's [TaskNode.resultOf]).
 	message.replyTags = []TaskReplyTag{tag}
+	message.facts = taskFacts(tag.ID)
 	message.delivered = durable
 	got := deliverTo(delivery{origin: fromRuntime, kind: msgResult, note: message, record: record}, a.taskNoteReaders(node)...)
 	if !got.accepted() {

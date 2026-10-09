@@ -2122,6 +2122,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	if task := run.store.Task(run.root); landingOwesAnswer(task) {
 		document := owedLandingDocument(task, line)
 		note := wakeNote(document.text())
+		note.facts = taskFacts(run.row)
 		note.landingQuestion, note.landingOutcome = document.landingQuestion, document.landingOutcome
 		note.batch = false
 		note.settle, note.settleCeiling = true, owedLandingCallCeiling()
@@ -2132,6 +2133,7 @@ func (a *Agent) deliverBeltRunLanding(run *beltRun, summary RunSummary, landing 
 	}
 	note := userText(line)
 	note.authored = true
+	note.facts = taskFacts(run.row)
 	a.mu.Lock()
 	a.recordUserLocked(note)
 	a.mu.Unlock()
