@@ -22,6 +22,7 @@ import (
 //	GET /workspaces/{key}                     → Record, at once
 //	GET /workspaces/{key}?after=N&wait=1      → Record as soon as its revision is not N,
 //	                                            or the unchanged Record after workspaceWait
+//	POST /workspaces/{key}/transfer           → see workspacetransfer.go
 //	PUT /workspaces/{key} {revision, writer, workspace}
 //	                                          → 200 Record
 //	                                          → 409 {error, code:"conflict", current: Record}
@@ -82,6 +83,10 @@ func (b *Bridge) workspaceRoutes(w http.ResponseWriter, r *http.Request, path st
 	// with no Origin are the native shell and the dev proxy.
 	if origin := r.Header.Get("Origin"); origin != "" && !nativeOrigin(origin) {
 		failWorkspace(w, http.StatusForbidden, "origin", "this page may not read codeaf's tabs")
+		return true
+	}
+	if key, found := strings.CutSuffix(rest, "/transfer"); found {
+		b.transferWorkspace(w, r, store, key)
 		return true
 	}
 	if key, found := strings.CutSuffix(rest, "/favicon"); found && workspacestore.ValidKey(key) {
@@ -168,6 +173,12 @@ func workspaceError(w http.ResponseWriter, err error) {
 		failWorkspace(w, http.StatusNotFound, "unknown_key", "there is no such tab set")
 	case errors.Is(err, workspacestore.ErrLocked):
 		failWorkspace(w, http.StatusServiceUnavailable, "busy", "another window is saving these tabs; try again in a moment")
+	case errors.Is(err, workspacestore.ErrIntentChanged):
+		failWorkspace(w, http.StatusConflict, "intent_changed", "that move was already made with different tabs; reload this place before moving again")
+	case errors.Is(err, workspacestore.ErrDamaged):
+		failWorkspace(w, http.StatusConflict, "damaged", "one of these tab sets could not be read, so codeaf left both as they are")
+	case errors.Is(err, workspacestore.ErrPairState):
+		failWorkspace(w, http.StatusServiceUnavailable, "unavailable", "codeaf could not finish an earlier move of tabs, so it will not save over it yet")
 	case errors.Is(err, workspacestore.ErrUnsupportedVersion):
 		failWorkspace(w, http.StatusConflict, "newer", "these tabs were saved by a newer codeaf; this one will not overwrite them")
 	default:
