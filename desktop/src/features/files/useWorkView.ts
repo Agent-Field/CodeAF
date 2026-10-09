@@ -1,9 +1,9 @@
 // The reads behind a file or diff tab. Every byte comes from the engine through the tab's session,
 // because the engine may be on another machine (docs/ENGINE.md "File and diff tabs").
 import { useEffect, useRef, useState } from 'react';
-import { connectEngine, engineChanges, engineEditors, engineEditorTarget, engineFileDiff, EngineError, readEngine, readEngineText, watchEngine, type EngineEditor, type EngineEditorTarget, type EngineFileDiff, type EngineTextFile } from '../chat/engine-client';
+import { connectEngine, engineChanges, engineEditors, engineEditorTarget, engineFileDiff, EngineError, readEngine, readEngineText, statEnginePaths, watchEngine, type EngineEditor, type EngineEditorTarget, type EngineFileDiff, type EngineTextFile } from '../chat/engine-client';
 import { hostName } from '../../design/native';
-import { fileEventTouches, fileRefreshDelay, sameWorkspaceFile } from './fileRefresh';
+import { fileEventTouches, fileRefreshDelay, fileStatInterval, fileVersion, sameWorkspaceFile } from './fileRefresh';
 
 export type Load<T> = { status: 'loading' } | { status: 'ready'; value: T } | { status: 'failed'; message: string };
 
@@ -54,12 +54,59 @@ export function useFileText(session: string | undefined, path: string, enabled: 
 const streamBackoff = [1000, 2000, 5000, 10000];
 
 /**
- * Re-reads when the open conversation writes this file. The signal is the session stream
- * (an edit or write of the path, or a finished turn whose changes list names it). Nothing
- * polls, and nothing here calls a model. While the tab is hidden the stream is dropped.
+ * Re-reads when this file changes. Two signals, neither of which calls a model:
+ * the session stream (an edit or write of the path, or a finished turn whose changes list names it),
+ * and the file's own version from the engine's stat (size and modification time), which is what
+ * catches a shell command or a save in another editor. The stat asks about this one path, every
+ * `fileStatInterval` and when the window comes back to the front. While the tab or the window is
+ * hidden both signals stop, and they stop for good when the tab closes.
  */
 export function useFileRefresh(session: string | undefined, path: string, shown: boolean): number {
   const [tick, setTick] = useState(0);
+  // A read the stream asked for also moves the version; the stat takes that as its new baseline
+  // instead of asking for a second read of the same bytes.
+  const rebase = useRef(false);
+  // The last version seen survives a hidden spell, so a file saved while the tab was in the back is read on return.
+  const seen = useRef<{ key: string; version: string } | null>(null);
+  useEffect(() => {
+    if (!session || !shown) return;
+    const key = `${session}\0${path}`;
+    let stopped = false;
+    let timer = 0;
+    let busy = false;
+    const check = async () => {
+      if (busy || stopped || document.hidden) return;
+      busy = true;
+      try {
+        const [fact] = await statEnginePaths(session, [path]);
+        if (stopped || !fact) return;
+        const version = fileVersion(fact);
+        const known = seen.current?.key === key ? seen.current.version : null;
+        if (known !== null && version !== known && !rebase.current) {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(() => { if (!stopped) setTick(n => n + 1); }, fileRefreshDelay);
+        }
+        rebase.current = false;
+        seen.current = { key, version };
+      } catch {
+        /* An engine that cannot stat leaves the stream as the only signal. */
+      } finally {
+        busy = false;
+      }
+    };
+    void check();
+    const every = window.setInterval(() => void check(), fileStatInterval);
+    const front = () => void check();
+    window.addEventListener('focus', front);
+    document.addEventListener('visibilitychange', front);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      window.clearInterval(every);
+      window.removeEventListener('focus', front);
+      document.removeEventListener('visibilitychange', front);
+    };
+  }, [session, path, shown]);
   useEffect(() => {
     if (!session || !shown) return;
     let stopped = false;
@@ -69,7 +116,7 @@ export function useFileRefresh(session: string | undefined, path: string, shown:
     const controller = new AbortController();
     const bump = () => {
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => { if (!stopped) setTick(n => n + 1); }, fileRefreshDelay);
+      timer = window.setTimeout(() => { if (!stopped) { rebase.current = true; setTick(n => n + 1); } }, fileRefreshDelay);
     };
     const watch = async () => {
       while (!stopped) {

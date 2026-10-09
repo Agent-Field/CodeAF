@@ -164,9 +164,16 @@ test('a file outside git has the file view only: no toggle, no counts', async ({
 
 test('when the start commit is gone the changes view says so', async ({ page }) => {
   await openWithDiff(page);
-  await page.route('**/api/engine/sessions/*/diff?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: FILE, name: 'auth_test.go', dir: 'internal/auth', abs: `/mock-workspace/${FILE}`, git: true, base: { kind: 'head' }, status: 'modified', added: 1, deleted: 1, lines: 60, hunks: [hunk] }) }));
+  await page.route('**/api/engine/sessions/*/diff?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: FILE, name: 'auth_test.go', dir: 'internal/auth', abs: `/mock-workspace/${FILE}`, git: true, base: { kind: 'head', startGone: true }, status: 'modified', added: 1, deleted: 1, lines: 60, hunks: [hunk] }) }));
   await openDiffTab(page);
   await expect(page.locator('.file-base')).toHaveText('Compared with the latest commit. The commit this conversation started on is no longer in history.');
+});
+
+test('a diff with no recorded start says only that it is against the latest commit', async ({ page }) => {
+  await openWithDiff(page);
+  await page.route('**/api/engine/sessions/*/diff?*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: FILE, name: 'auth_test.go', dir: 'internal/auth', abs: `/mock-workspace/${FILE}`, git: true, base: { kind: 'head' }, status: 'modified', added: 1, deleted: 1, lines: 60, hunks: [hunk] }) }));
+  await openDiffTab(page);
+  await expect(page.locator('.file-base')).toHaveText('Compared with the latest commit.');
 });
 
 test('the Design system page draws every file tab state', async ({ page }) => {
@@ -267,13 +274,42 @@ test('an edit by the conversation refreshes the open diff once', async ({ page }
   expect(await body.evaluate(node => node.scrollTop)).toBe(placed);
 });
 
+test('a write from outside the conversation refreshes the open tab from the file stat, and a closed tab stops asking', async ({ page }) => {
+  const engine = await openWithDiff(page);
+  await openDiffTab(page);
+  await expect(page.locator('.file-diff-row[data-kind="add"] .file-text')).toHaveText('\tnow := fixedClock()');
+  const stats = () => engine.calls.filter(call => call.path.endsWith('/files/stat'));
+  await expect.poll(() => stats().length, { timeout: 5000 }).toBeGreaterThan(0);
+  const before = engine.calls.filter(call => call.path.includes('/diff')).length;
+  const models = engine.calls.filter(call => call.path.includes('/models')).length;
+  // A shell command rewrites the file: no tool event, only a new size and modification time.
+  engine.replaceDiff(FILE, { lines: 60, hunks: [{ ...hunk, lines: hunk.lines.map(line => line.kind === 'add' ? { ...line, text: '\tfromShell()' } : line) }] });
+  engine.replaceFile(FILE, { mime: 'text/x-go', dataBase64: b64(body + '// shell\n'), modTime: '2026-10-09T19:00:00Z' });
+  await expect(page.locator('.file-diff-row[data-kind="add"] .file-text')).toHaveText('\tfromShell()', { timeout: 8000 });
+  expect(engine.calls.filter(call => call.path.includes('/diff')).length - before).toBe(1);
+  expect(engine.calls.filter(call => call.path.includes('/models')).length).toBe(models);
+  // Each stat names only the open file.
+  for (const call of stats().slice(-3)) expect(call.body.paths).toEqual([FILE]);
+  await page.locator('.workspace-tab[data-active="true"]').getByRole('button', { name: /^Close / }).click({ force: true });
+  await expect(page.getByRole('tab', { name: /auth_test\.go/ })).toHaveCount(0);
+  const closed = stats().length;
+  await page.waitForTimeout(4500);
+  expect(stats().length).toBe(closed);
+});
+
 test('a file chip tooltip is the full path from the shared tooltip', async ({ page }) => {
   await openWithDiff(page);
   await page.getByRole('button', { name: /^Changed 1 file/ }).click();
   const button = chip(page);
   await expect(button).not.toHaveAttribute('title', /.+/);
+  // The full path is the chip's description before any tooltip is drawn, so keyboard focus hears it at once.
+  await expect(button).toHaveAccessibleDescription('internal/auth/auth_test.go');
+  await button.focus();
+  await expect(button).toHaveAccessibleDescription('internal/auth/auth_test.go');
   await button.hover();
   await expect(page.getByRole('tooltip')).toContainText('internal/auth/auth_test.go', { timeout: 2000 });
+  const described = await button.getAttribute('aria-describedby');
+  await expect(page.getByRole('tooltip')).toHaveAttribute('id', described ?? '');
 });
 
 test('edge shots for the file follow-up', async ({ page }, testInfo) => {

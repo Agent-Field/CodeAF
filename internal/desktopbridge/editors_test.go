@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
@@ -193,14 +195,22 @@ func TestEditorsOpenRefusesOutsideRemoteAndHeadless(t *testing.T) {
 func TestLaunchPlanKeepsTheCommandOffTheShell(t *testing.T) {
 	prev := lookPath
 	lookPath = func(name string) (string, error) {
-		if name == "gtk-launch" {
+		switch name {
+		case "gtk-launch":
 			return "/usr/bin/gtk-launch", nil
+		case "open":
+			return "/usr/bin/open", nil
 		}
 		return "", errors.New("absent")
 	}
 	t.Cleanup(func() { lookPath = prev })
 	bin, args, err := launchPlan("code.desktop", "/project/a.go")
-	if err != nil || bin != "/usr/bin/gtk-launch" || len(args) != 2 || args[0] != "code.desktop" || args[1] != "/project/a.go" {
+	want := []string{"/usr/bin/gtk-launch", "code.desktop", "/project/a.go"}
+	if runtime.GOOS == "darwin" {
+		// The bundle id goes to -b and the path follows --, so neither can be read as an option.
+		want = []string{"/usr/bin/open", "-b", "code.desktop", "--", "/project/a.go"}
+	}
+	if err != nil || strings.Join(append([]string{bin}, args...), " ") != strings.Join(want, " ") {
 		t.Fatalf("argv: %s %v %v", bin, args, err)
 	}
 	if _, _, err := launchPlan("code.desktop;touch /tmp/x", "/project/a.go"); err == nil {
@@ -315,4 +325,149 @@ func jsonString(value string) string {
 		panic(err)
 	}
 	return string(raw)
+}
+
+func TestDarwinRowsKeepOnlyPlainBundleIDs(t *testing.T) {
+	out := "com.todesktop.230313mzl4w4u92\tCursor\t1\ncom.apple.TextEdit\tTextEdit\t0\nbad;id\tEvil\t0\ncom.apple.TextEdit\tTextEdit\t0\n\tNoID\t0\ncom.apple.Numbers\t\t0\nshort\n"
+	got := parseDarwinRows(out)
+	if len(got) != 2 || got[0].ID != "com.todesktop.230313mzl4w4u92" || !got[0].Default || got[1].Name != "TextEdit" || got[1].Default {
+		t.Fatalf("rows: %+v", got)
+	}
+	if ranked := capEditors(got); ranked[0].Name != "Cursor" {
+		t.Fatalf("default not first: %+v", ranked)
+	}
+}
+
+func TestLooksTextReadsTheBytesNotTheName(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, data []byte) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	if !looksText(write("main.go", []byte("package main\n// héllo\n"))) {
+		t.Error("a Go source is text")
+	}
+	if looksText(write("tool.txt", []byte("ab\x00cd"))) {
+		t.Error("a NUL byte is not text, whatever the name says")
+	}
+	if looksText(write("bad.go", []byte{0xff, 0xfe, 0xfd, 'a', 'b'})) {
+		t.Error("invalid UTF-8 is not text")
+	}
+	if looksText(filepath.Join(dir, "missing.go")) {
+		t.Error("a missing file is not text")
+	}
+}
+
+// TestDarwinDiscoveryAndLaunchOnThisMac runs only on a Mac. It asks Launch
+// Services for a Go source's editors and, with CODEAF_EDITOR_LAUNCH_TEST=1 in
+// a logged-in GUI session, starts the default one through the same launch
+// plan the route uses and waits for that application to be running.
+func TestDarwinDiscoveryAndLaunchOnThisMac(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS discovery")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(path, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	found, err := discoverDarwin(path)
+	if err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+	ranked := capEditors(found)
+	t.Logf("editors for main.go: %+v", ranked)
+	if len(ranked) == 0 || !ranked[0].Default {
+		t.Fatalf("a text file on a Mac has at least TextEdit, default first: %+v", ranked)
+	}
+	for _, editor := range ranked {
+		if !safeEditorID(editor.ID) || !strings.Contains(editor.ID, ".") {
+			t.Fatalf("not a bundle id: %+v", editor)
+		}
+	}
+	if os.Getenv("CODEAF_EDITOR_LAUNCH_TEST") != "1" {
+		t.Log("set CODEAF_EDITOR_LAUNCH_TEST=1 in a GUI session to launch the default editor")
+		return
+	}
+	running := func() string {
+		out, _ := exec.Command("lsappinfo", "find", "bundleid="+ranked[0].ID).Output()
+		return strings.TrimSpace(string(out))
+	}
+	before := running()
+	if before != "" {
+		t.Logf("%s was already running (%s); the launch hands it the file", ranked[0].ID, before)
+	}
+	if err := startEditorOS(ranked[0].ID, path); err != nil {
+		t.Fatalf("launch %s: %v", ranked[0].ID, err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if now := running(); now != "" {
+			t.Logf("running: %s %s (before: %q)", ranked[0].ID, now, before)
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Fatalf("%s did not start", ranked[0].ID)
+}
+
+// TestDarwinOpenRouteStartsTheChosenEditor goes through the real routes on a
+// Mac: GET /editors lists what Launch Services offers for a Go source, and
+// POST /editors/open with TextEdit's id starts TextEdit. It runs only with
+// CODEAF_EDITOR_LAUNCH_TEST=1 in a logged-in GUI session, because it opens a
+// window on that screen.
+func TestDarwinOpenRouteStartsTheChosenEditor(t *testing.T) {
+	if runtime.GOOS != "darwin" || os.Getenv("CODEAF_EDITOR_LAUNCH_TEST") != "1" {
+		t.Skip("a Mac GUI session with CODEAF_EDITOR_LAUNCH_TEST=1")
+	}
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	b, _, path := richFixture(t, func(c *Connection) {
+		c.Local = true
+		c.Welcome.Workspace = workspace
+		c.StatPaths = func(paths []string) ([]remote.PathFact, error) {
+			info, err := os.Stat(paths[0])
+			return []remote.PathFact{{Path: paths[0], Exists: err == nil, Dir: err == nil && info.IsDir()}}, nil
+		}
+	})
+	w := request(b, "GET", path+"/editors?path=main.go", "")
+	var got editorList
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || !got.Open {
+		t.Fatalf("list: %d %s", w.Code, w.Body.String())
+	}
+	t.Logf("route listed: %+v", got.Editors)
+	const textEdit = "com.apple.TextEdit"
+	if !editorKnown(got.Editors, textEdit) {
+		t.Fatalf("TextEdit is not offered for a Go source: %+v", got.Editors)
+	}
+	running := func() string {
+		out, _ := exec.Command("lsappinfo", "find", "bundleid="+textEdit).Output()
+		return strings.TrimSpace(string(out))
+	}
+	before := running()
+	w = request(b, "POST", path+"/editors/open", `{"path":"main.go","id":"`+textEdit+`"}`)
+	if w.Code != 200 {
+		t.Fatalf("open: %d %s", w.Code, w.Body.String())
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if now := running(); now != "" && now != before {
+			t.Logf("TextEdit started by the route: %s", now)
+			return
+		}
+		if before != "" {
+			t.Logf("TextEdit was already running (%s); the route was accepted", before)
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	t.Fatal("TextEdit did not start")
 }

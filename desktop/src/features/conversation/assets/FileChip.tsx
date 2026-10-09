@@ -64,7 +64,7 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
   const dir = displayDir(fullDir, assets.workspace);
   const availability = availabilityOf(path, assets.workspace, fact);
   const note = stateNote[availability];
-  const tooltip = useTooltip([path, note].filter(Boolean).join(' · '));
+  const tooltip = useTooltip([path, note].filter(Boolean).join(' · '), {}, { describe: true });
   if (!assets.available) return <span className="asset-plain">{name}</span>;
   const kind = fileKind(name, fact?.dir);
   const icon = availabilityIcon[availability] ?? kindIcon[kind];

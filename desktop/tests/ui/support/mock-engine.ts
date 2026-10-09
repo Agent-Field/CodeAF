@@ -20,7 +20,7 @@ export type ScriptedTurn = {
 };
 
 /** A workspace file the mock serves through GET /files and reports through POST /files/stat. */
-export type MockFile = Omit<EngineFile, 'name' | 'size' | 'hash'> & { dir?: boolean };
+export type MockFile = Omit<EngineFile, 'name' | 'size' | 'hash'> & { dir?: boolean; modTime?: string };
 
 /** A changed file the mock reports through GET /changes and /diff; counts derive from the hunks. */
 export type MockDiff = Pick<EngineFileDiff, 'hunks'> & Partial<Pick<EngineFileDiff, 'status' | 'lines' | 'binary' | 'truncated'>>;
@@ -59,6 +59,12 @@ export type MockEngine = {
   advance: () => void;
   /** Merge fields into the snapshot and publish a snapshot record to stream readers. */
   update: (patch: Partial<EngineSnapshot>) => void;
+  /** Push one live event, the way a running turn would. */
+  push: (event: EngineEvent) => void;
+  /** Replace one file's diff so the next GET /diff answers with it. */
+  replaceDiff: (path: string, diff: MockDiff) => void;
+  /** Replace one file's bytes and stat with no event. */
+  replaceFile: (path: string, file: MockFile) => void;
 };
 
 /** Names and one-line jobs of the roles, as the engine reports them. */
@@ -272,7 +278,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
   const stat = (path: string) => {
     const file = fileAt(path);
     const outside = path.startsWith('/') && !path.startsWith(`${state.workspace}/`);
-    return { path, exists: Boolean(file), dir: Boolean(file?.dir), size: file ? Math.floor(file.dataBase64.length * 0.75) : 0, outside };
+    return { path, exists: Boolean(file), dir: Boolean(file?.dir), size: file ? Math.floor(file.dataBase64.length * 0.75) : 0, modTime: file?.modTime, outside };
   };
   const files = (route: Route, arg: string | undefined, body: Record<string, unknown>, url: URL) => {
     if (arg === 'stat') return json(route, ((body.paths as string[]) ?? []).map(stat));
@@ -414,5 +420,7 @@ export async function installMockEngine(page: Page, scenario: Scenario): Promise
     push: emitEvent,
     /** Replace one file's diff so the next GET /diff answers with it. */
     replaceDiff: (path: string, diff: MockDiff) => { scenario.diffs = { ...scenario.diffs, [path]: diff }; },
+    /** Replace one file's bytes and stat, the way a shell command or another editor would, with no event. */
+    replaceFile: (path: string, file: MockFile) => { scenario.files = { ...scenario.files, [path]: file }; },
   };
 }

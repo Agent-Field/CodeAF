@@ -11,6 +11,9 @@ import './files.css';
 
 /** The sentence the designer set for a diff whose start commit is gone from history (Shell Q24). */
 export const baseGoneNote = 'Compared with the latest commit. The commit this conversation started on is no longer in history.';
+/** A diff measured from the latest commit because no start was ever recorded. The design draws only the gone case;
+ * this is its first sentence alone, so the counts are not read as "since this conversation began" (FILES-FOLLOWUP-QUESTIONS FF1). */
+export const baseHeadNote = 'Compared with the latest commit.';
 
 export type FileSurfaceProps = {
   path: string;
@@ -73,7 +76,7 @@ export function FileSurface({ path, workspace, view, onView, diff, text, onNeedT
   const counts = git ? change : undefined;
   return <div className="file-surface">
     <FileHeader name={name} dir={folder} added={counts?.added} deleted={counts?.deleted} view={git ? shown : null} onView={onView} path={path} workspace={workspace} handoff={handoff} refused={refused} keys={keys}/>
-    {shown === 'changes' && change?.base?.kind === 'head' && <Text className="file-base">{baseGoneNote}</Text>}
+    {shown === 'changes' && change?.base?.kind === 'head' && <Text className="file-base">{change.base.startGone ? baseGoneNote : baseHeadNote}</Text>}
     <div className="file-body" role="region" tabIndex={0} aria-label={shown === 'changes' ? `Changes to ${name}` : `Contents of ${name}`}>
       {shown === 'changes' && (!diff || diff.status === 'loading') && <Message>Loading…</Message>}
       {shown === 'changes' && diff?.status === 'failed' && <Message>{plain(diff.message)}</Message>}

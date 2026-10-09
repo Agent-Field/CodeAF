@@ -38,6 +38,8 @@ export type KindDef = {
   label: string;
   /** Registry icon name. A web tab draws a favicon or monogram instead (see KindIcon). */
   icon: IconName;
+  /** A per-tab icon read from the tab's title, when the kind draws more than one (a file tab draws its type). */
+  glyph?: (title: string) => IconName;
   /** True when the engine or bridge backs this kind today. Unbacked kinds are built and specimened, never opened in the live app. */
   backed: boolean;
   pane: ComponentType<PaneRenderProps>;
