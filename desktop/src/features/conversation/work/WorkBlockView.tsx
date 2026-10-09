@@ -1,8 +1,9 @@
 import './work.css';
-import { useState } from 'react';
-import { Button, Icon, WorkStateIndicator } from '../../../components/ui';
+import './workBlock.css';
+import { Fragment, useState } from 'react';
+import { Button, Icon } from '../../../components/ui';
 import type { WorkBlock, WorkStep } from '../types';
-import { summaryParts } from './format';
+import { spoken, summaryParts } from './format';
 import type { WorkRender } from './props';
 import { ThinkingView } from './ThinkingView';
 import { useNow, useWorkOpen } from './useNow';
@@ -19,16 +20,24 @@ function openByDefault(step: WorkStep, last: boolean): boolean {
   return LIVE_STATES.includes(step.state) || (last && step.state === 'failed');
 }
 
+/** Live: "Working" and the running clock. Settled: only the parts that exist, set apart by a dot. */
 function Summary({ block, now }: { block: WorkBlock; now: number }) {
-  const seconds = block.live && block.startedAt ? Math.floor((now - block.startedAt) / 1000) : block.summary.seconds;
-  const parts = summaryParts({ ...block.summary, seconds }, block.live);
+  if (block.live) {
+    const seconds = block.startedAt ? Math.floor((now - block.startedAt) / 1000) : undefined;
+    return (
+      <span className="work-summary-text">
+        <span>Working</span>
+        {seconds !== undefined && <span className="work-live-time">{spoken(seconds)}</span>}
+      </span>
+    );
+  }
   return (
     <span className="work-summary-text">
-      {parts.map((part, at) => (
-        <span key={at} data-tone={part.tone}>
-          {at > 0 && ' · '}
-          {part.text}
-        </span>
+      {summaryParts(block.summary).map((part, at) => (
+        <Fragment key={at}>
+          {at > 0 && <span className="work-summary-sep" aria-hidden="true">·</span>}
+          <span data-tone={part.tone}>{part.text}</span>
+        </Fragment>
       ))}
     </span>
   );
@@ -47,7 +56,6 @@ export function WorkBlockView({ block, open, onToggle, now: given, ...render }: 
     <div className="work-block" data-live={block.live || undefined}>
       <Button className="work-toggle" aria-expanded={isOpen} onClick={onToggle ?? auto.toggle}>
         <Icon name="chevron" size="xs" motion="disclosure" />
-        {block.live && <WorkStateIndicator phase="working" label="Working" />}
         <Summary block={block} now={now} />
       </Button>
       {isOpen && (

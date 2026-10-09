@@ -1,0 +1,18 @@
+/* Work block (design v3 §3.1): a folded line, or an open run beside its guide. Layout only. */
+.work-block { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-tight); max-width: 100%; margin-block: var(--space-work-block); color: var(--ink-2); font-size: var(--type-label-size); line-height: var(--type-label-leading); }
+.work-block .work-toggle.button { align-self: flex-start; justify-content: flex-start; gap: var(--space-tight); max-width: 100%; min-height: var(--step-row-height); height: var(--step-row-height); margin-inline-start: calc(var(--work-block-toggle-pad-start) * -1); padding-block: 0; padding-inline: var(--work-block-toggle-pad-start) var(--work-block-toggle-pad-end); border-radius: var(--work-block-toggle-radius); background: transparent; color: var(--ink-2); font-size: var(--type-label-size); font-weight: var(--type-label-weight); text-align: left; transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.work-block .work-toggle.button:hover { background: var(--field); color: var(--ink); }
+.work-block .work-toggle.button:active { background: var(--field-2); }
+.work-block[data-live] .work-toggle.button { height: var(--work-block-live-height); min-height: var(--work-block-live-height); }
+.work-toggle .app-icon { width: var(--work-block-chevron-size); height: var(--work-block-chevron-size); color: var(--ink-3); transition: transform var(--dur-base) var(--ease), color var(--dur-fast) var(--ease); }
+.work-toggle:hover .app-icon { color: var(--ink-2); }
+.work-toggle .app-icon[data-motion="disclosure"] { transform: rotate(calc(var(--motion-ask-open) * -1)); }
+.work-toggle[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: none; }
+
+.work-summary-text { display: inline-flex; align-items: center; gap: var(--space-tight); min-width: 0; overflow: hidden; white-space: nowrap; }
+.work-summary-text > span { overflow: hidden; text-overflow: ellipsis; }
+.work-summary-sep { color: var(--ink-3); }
+.work-summary-text [data-tone="warning"] { color: var(--danger); }
+.work-live-time { font-family: var(--mono); font-size: var(--type-mono-small-size); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.work-body { display: flex; flex-direction: column; gap: var(--space-work-row); align-self: stretch; min-width: 0; box-sizing: border-box; margin-inline-start: var(--work-block-guide-inset); padding-block: var(--space-half); padding-inline-start: var(--work-indent); border-inline-start: var(--border-width) solid var(--guide); }
