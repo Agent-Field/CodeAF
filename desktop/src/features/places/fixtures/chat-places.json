@@ -1,0 +1,14 @@
+{
+  "chatId": "sess-need",
+  "known": true,
+  "places": [
+    {
+      "addedBy": "you",
+      "archived": false,
+      "at": "2026-10-09T12:01:00Z",
+      "id": "pl_0000000000000005",
+      "name": "Config parser",
+      "tint": "iris"
+    }
+  ]
+}

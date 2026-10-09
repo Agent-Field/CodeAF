@@ -1,0 +1,67 @@
+{
+  "noop": false,
+  "place": {
+    "alsoIn": [],
+    "archived": false,
+    "counts": {
+      "chats": 2,
+      "chatsInclusive": 2,
+      "children": 0,
+      "descendants": 0
+    },
+    "createdAt": "2026-10-09T12:01:00Z",
+    "effectiveTint": "iris",
+    "hasInstructions": false,
+    "id": "pl_0000000000000005",
+    "instructions": "",
+    "name": "Config parser",
+    "parents": [
+      "pl_0000000000000001"
+    ],
+    "pinned": false,
+    "policy": {},
+    "sourceCount": 1,
+    "sources": [
+      {
+        "addedBy": "you",
+        "at": "2026-10-09T12:01:00Z",
+        "check": {
+          "state": "ok"
+        },
+        "id": "src_000000000000000d",
+        "kind": "repo",
+        "label": "repo",
+        "ref": "/work/repo"
+      }
+    ],
+    "status": {
+      "chats": 2,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 1,
+      "running": 1
+    },
+    "statusInclusive": {
+      "chats": 2,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 1,
+      "running": 1
+    },
+    "tint": ""
+  },
+  "receipts": [
+    {
+      "action": "place.context",
+      "afterRevision": 9,
+      "at": "2026-10-09T12:01:00Z",
+      "beforeRevision": 8,
+      "id": "rc_000000000000000e",
+      "subject": "pl_0000000000000005"
+    }
+  ],
+  "revision": 9,
+  "undo": [
+    "rc_000000000000000e"
+  ]
+}

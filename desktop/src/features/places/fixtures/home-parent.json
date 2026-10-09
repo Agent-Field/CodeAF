@@ -1,0 +1,158 @@
+{
+  "attention": [
+    {
+      "chatId": "sess-need",
+      "chatTitle": "Port fix to v1",
+      "kind": "needsYou",
+      "placeId": "pl_0000000000000005",
+      "placeName": "Config parser",
+      "text": "Allow the v1 branch push?"
+    },
+    {
+      "chatId": "sess-run",
+      "chatTitle": "Update fixtures",
+      "kind": "running",
+      "placeId": "pl_0000000000000005",
+      "placeName": "Config parser",
+      "since": "2026-10-09T11:58:00Z",
+      "taskId": "7",
+      "text": "Update fixtures"
+    }
+  ],
+  "breadcrumb": [],
+  "chats": [],
+  "chatsTruncated": false,
+  "children": [
+    {
+      "alsoIn": [],
+      "archived": false,
+      "counts": {
+        "chats": 2,
+        "chatsInclusive": 2,
+        "children": 0,
+        "descendants": 0
+      },
+      "createdAt": "2026-10-09T12:01:00Z",
+      "effectiveTint": "iris",
+      "hasInstructions": false,
+      "id": "pl_0000000000000005",
+      "lastOpenedAt": "2026-10-09T12:01:00Z",
+      "name": "Config parser",
+      "parents": [
+        "pl_0000000000000001"
+      ],
+      "pinned": false,
+      "sourceCount": 1,
+      "status": {
+        "chats": 2,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      },
+      "statusInclusive": {
+        "chats": 2,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 1,
+        "running": 1
+      },
+      "tint": ""
+    },
+    {
+      "alsoIn": [
+        {
+          "id": "pl_0000000000000003",
+          "name": "Docs"
+        }
+      ],
+      "archived": false,
+      "counts": {
+        "chats": 1,
+        "chatsInclusive": 1,
+        "children": 0,
+        "descendants": 0
+      },
+      "createdAt": "2026-10-09T12:01:00Z",
+      "effectiveTint": "iris",
+      "hasInstructions": false,
+      "id": "pl_0000000000000007",
+      "name": "Release",
+      "parents": [
+        "pl_0000000000000001",
+        "pl_0000000000000003"
+      ],
+      "pinned": false,
+      "sourceCount": 0,
+      "status": {
+        "chats": 1,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      },
+      "statusInclusive": {
+        "chats": 1,
+        "failedTasks": 0,
+        "incomplete": 0,
+        "needsYou": 0,
+        "running": 0
+      },
+      "tint": ""
+    }
+  ],
+  "counts": {
+    "chats": 0,
+    "chatsInclusive": 3,
+    "children": 2,
+    "descendants": 2
+  },
+  "kind": "place",
+  "missingChats": 0,
+  "place": {
+    "alsoIn": [],
+    "archived": false,
+    "counts": {
+      "chats": 0,
+      "chatsInclusive": 3,
+      "children": 2,
+      "descendants": 2
+    },
+    "createdAt": "2026-10-09T12:01:00Z",
+    "effectiveTint": "iris",
+    "hasInstructions": true,
+    "id": "pl_0000000000000001",
+    "instructions": "Keep strict mode the default.",
+    "name": "Software",
+    "parents": [],
+    "pinned": true,
+    "policy": {},
+    "sourceCount": 0,
+    "sources": [],
+    "status": {
+      "chats": 0,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 0,
+      "running": 0
+    },
+    "statusInclusive": {
+      "chats": 3,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 1,
+      "running": 1
+    },
+    "tint": "iris"
+  },
+  "readAt": "2026-10-09T12:01:00Z",
+  "revision": 10,
+  "status": {
+    "chats": 0,
+    "failedTasks": 0,
+    "incomplete": 0,
+    "needsYou": 0,
+    "running": 0
+  },
+  "title": "Software"
+}

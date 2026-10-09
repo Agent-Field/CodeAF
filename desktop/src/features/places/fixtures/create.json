@@ -1,0 +1,53 @@
+{
+  "noop": false,
+  "place": {
+    "alsoIn": [],
+    "archived": false,
+    "counts": {
+      "chats": 0,
+      "chatsInclusive": 0,
+      "children": 0,
+      "descendants": 0
+    },
+    "createdAt": "2026-10-09T12:01:00Z",
+    "effectiveTint": "iris",
+    "hasInstructions": true,
+    "id": "pl_0000000000000001",
+    "instructions": "Keep strict mode the default.",
+    "name": "Software",
+    "parents": [],
+    "pinned": false,
+    "policy": {},
+    "sourceCount": 0,
+    "sources": [],
+    "status": {
+      "chats": 0,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 0,
+      "running": 0
+    },
+    "statusInclusive": {
+      "chats": 0,
+      "failedTasks": 0,
+      "incomplete": 0,
+      "needsYou": 0,
+      "running": 0
+    },
+    "tint": "iris"
+  },
+  "receipts": [
+    {
+      "action": "place.create",
+      "afterRevision": 1,
+      "at": "2026-10-09T12:01:00Z",
+      "beforeRevision": 0,
+      "id": "rc_0000000000000002",
+      "subject": "pl_0000000000000001"
+    }
+  ],
+  "revision": 1,
+  "undo": [
+    "rc_0000000000000002"
+  ]
+}
