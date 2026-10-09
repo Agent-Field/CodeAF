@@ -1414,6 +1414,8 @@ func Run(ctx context.Context, opts Options) error {
 		program = append(program, tea.WithWindowSize(opts.Width, opts.Height))
 	}
 	surface := newApp(ctx, opts)
+	// THE TERMINAL'S MODE IS HELD while the surface draws on it (ttyguard.go).
+	surface.tty = newTTYGuard(opts)
 	defer listenForServiceModels(surface, opts.SubscribeServiceModels)()
 	p := tea.NewProgram(surface, program...)
 	// AND THE ENGINE IS GIVEN SOMEWHERE TO PUT ITS NEWS, and the loop a door to
