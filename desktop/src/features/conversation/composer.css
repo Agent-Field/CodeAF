@@ -7,7 +7,7 @@
   transition-timing-function: var(--ease-layout);
 }
 
-/* The dock: a radius-dock surface on depth 2. Focus lifts it with the accent halo. */
+/* The dock: a radius-dock surface on depth 2. One constant look: hover, click and typing change nothing. */
 .composer {
   position: relative;
   display: flex;
@@ -17,11 +17,6 @@
   border-radius: var(--radius-composer);
   background: var(--surface);
   box-shadow: var(--sh-2);
-  transition: box-shadow var(--dur-fast) var(--ease);
-}
-
-.composer:focus-within {
-  box-shadow: var(--sh-2), 0 0 0 var(--composer-halo-width) var(--accent-soft);
 }
 
 .composer-field.text-area {
@@ -38,7 +33,7 @@
 }
 
 .composer-field.text-area::placeholder {
-  color: var(--ink-2);
+  color: var(--ink-3);
 }
 
 /* Past the row cap the text scrolls under a fade at the top. */
@@ -47,8 +42,15 @@
   mask-image: linear-gradient(to bottom, transparent, black var(--composer-fade-top));
 }
 
+/* Only keyboard focus draws the ring: 2px accent plus a soft halo, on the field alone. */
+.composer-field.text-area:focus,
 .composer-field.text-area:focus-visible {
   outline: none;
+}
+
+.composer-field.text-area[data-keyboard]:focus-visible {
+  border-radius: var(--radius-control);
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--accent), 0 0 0 var(--focus-halo-width) var(--accent-soft);
 }
 
 .composer-row {
@@ -190,8 +192,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .composer-dock,
-  .composer {
+  .composer-dock {
     transition: none;
   }
 }
