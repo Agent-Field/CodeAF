@@ -46,7 +46,9 @@ POST /files/stat; anything else stats as missing). POST /questions/hold and
 POST /tasks/{id}/{note|amend|pause|resume|cancel} are accepted and logged (a
 note is added to the task page). Answering removes that question and records
 its decision in `recentOutcomes`. While running, `mode: 'queue'` holds the
-message until the reply lands and `mode: 'steer'` records a steer entry.
+message in the snapshot's `queue` until the reply lands (POST
+`/queue-edit` `{id,text}`, `/queue-move` `{id,to}` and `/queue-remove` `{id}`
+change it; a message already sent answers 409; Stop clears it) and `mode: 'steer'` records a steer entry.
 Terminals: `scenario.terminals` seeds terminals and jobs (`id`, optional
 `command`, `state`, `exitCode`, `output` as raw terminal text). The mock serves
 `/terminals` list, start, state, `stream` (finite body from `?after`), `output`

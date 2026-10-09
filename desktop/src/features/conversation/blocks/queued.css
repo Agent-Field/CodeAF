@@ -38,4 +38,5 @@
 .queued-save { min-height: var(--queue-save-height); padding: 0 var(--space-compact); border-radius: var(--queue-save-radius); }
 .button.queued-more { justify-content: flex-start; min-height: var(--queue-more-height); padding: 0 0 0 var(--space-4); color: var(--ink-3); font-size: var(--font-size-body); font-weight: inherit; }
 .queued-more[aria-expanded="true"] .app-icon[data-motion="disclosure"] { transform: rotate(var(--motion-chevron-open)); }
-.queued-note { margin: 0; padding-inline: var(--space-3); color: var(--ink-3); font-size: var(--font-size-label); }
+/* Announces a keyboard move to screen readers; never drawn. */
+.queued-announce { position: absolute; width: var(--border-width); height: var(--border-width); overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

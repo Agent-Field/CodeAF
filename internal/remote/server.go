@@ -2065,7 +2065,7 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 	// card, switching a model, interrupting a turn — stays open to every surface
 	// in the room: a watcher is a person watching their own work, not a guest.
 	switch call.Method {
-	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
+	case MethodSubmitBash, MethodSubmit, MethodFollowUp, MethodUnqueueFollowUp, MethodEditFollowUp, MethodMoveFollowUp, MethodSteer, MethodQuestionReplace, MethodSubmitImage, MethodSubmitFiles,
 		MethodTaskSteer, MethodTaskStop, MethodTaskRetry:
 		if err := s.mayDrive(); err != nil {
 			return nil, err
@@ -2570,6 +2570,49 @@ func (s *server) invoke(call Frame) (out json.RawMessage, err error) {
 			}
 		}
 		return json.Marshal(answered)
+
+	case MethodEditFollowUp:
+		args, err := arg[EditQueueArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, can := agent.(interface {
+			EditFollowUp(ch <-chan session.Event, text string) error
+		})
+		if !can {
+			return nil, errors.New("engine: this session cannot edit a queued message")
+		}
+		ch, queued := sess.queuedStream(args.Stream, s)
+		if !queued {
+			return json.Marshal(false)
+		}
+		// THE AGENT DECIDES UNDER THE LOCK ITS DRAIN TAKES: false here is the
+		// race said honestly, a turn that started on the old words first.
+		switch err := door.EditFollowUp(ch, args.Text); {
+		case errors.Is(err, session.ErrFollowUpGone):
+			return json.Marshal(false)
+		case err != nil:
+			return nil, err
+		}
+		return json.Marshal(true)
+
+	case MethodMoveFollowUp:
+		args, err := arg[MoveQueueArgs](call)
+		if err != nil {
+			return nil, err
+		}
+		door, can := agent.(interface {
+			MoveFollowUp(ch, before <-chan session.Event) bool
+		})
+		if !can {
+			return nil, errors.New("engine: this session cannot reorder queued messages")
+		}
+		ch, queued := sess.queuedStream(args.Stream, s)
+		if !queued {
+			return json.Marshal(false)
+		}
+		before, _ := sess.queuedStream(args.Before, s)
+		return json.Marshal(door.MoveFollowUp(ch, before))
 
 	case MethodSteer:
 		args, err := arg[SubmitArgs](call)
@@ -3377,6 +3420,20 @@ func (s *server) release() {
 	// re-register it here: an unqueue may already have removed it.
 	sess.pumps.Add(1)
 	go sess.pump(waiting.id, waiting.generation, waiting.events)
+}
+
+// queuedStream is the channel a surface's stream id stands for while that
+// follow-up is still held, or false. It only reads the index: an edit or a move
+// leaves the receipt where it is, which only the take-back and the stream's end
+// remove.
+func (sess *Session) queuedStream(id uint64, owner *server) (<-chan session.Event, bool) {
+	sess.mu.Lock()
+	defer sess.mu.Unlock()
+	queued, ok := sess.follows[id]
+	if !ok || queued.generation != sess.generation || queued.owner != owner {
+		return nil, false
+	}
+	return queued.ch, true
 }
 
 // followQueued is one entry of [Session.follows]: the queued stream's channel,
