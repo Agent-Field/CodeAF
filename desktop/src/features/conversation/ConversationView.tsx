@@ -6,7 +6,7 @@ import { ENGINE_MODEL } from '../chat/engine-client';
 import type { Tab } from '../tabs/model';
 import { goBack, goForward, navigate, rootRoute, toggleFlag, type TabView } from '../tabs/view-state';
 import { useHistoryKeys } from './Breadcrumb';
-import { Composer } from './Composer';
+import { Composer, type SendMode } from './Composer';
 import { ConversationTranscript } from './ConversationTranscript';
 import { EngineNotice } from './EngineNotice';
 import { itemRenderer } from './itemRenderer';
@@ -67,6 +67,12 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
     }
     if (panel.sheet) panel.close();
     setRoute(navigate(route, taskId));
+  }
+
+  // The person's own message always brings the end of the conversation into view.
+  function sendAndFollow(text: string, mode: SendMode) {
+    jump();
+    return conversation.send(text, mode);
   }
 
   async function retry() {
@@ -136,7 +142,7 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
               <Composer
                 draft={tab.draft}
                 onDraft={onDraft}
-                onSend={conversation.send}
+                onSend={sendAndFollow}
                 onStop={() => void conversation.stop()}
                 running={model.running}
                 docked={!empty}
