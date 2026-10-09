@@ -734,6 +734,13 @@ type v3Options struct {
 	// Session is an explicit transcript to open; empty resumes this
 	// directory's most recent, or makes one.
 	Session string
+	// Fresh is a launch that asked for a conversation of its own (a desktop
+	// window's new chat, [remote.Hello.New]). It mints EXACTLY ONE folder and
+	// resolves nothing: resolving "this workspace's latest" first minted a
+	// folder of its own in a workspace with none, and the new chat was then
+	// minted beside it, leaving an empty meta.json folder behind for every
+	// first chat in a workspace.
+	Fresh bool
 	// NoCompact and Yolo are the two flags that change what a session may do.
 	NoCompact bool
 	Yolo      bool
@@ -863,6 +870,9 @@ type v3Launch struct {
 	// bucket is the list of this project's conversations.
 	Place  session.Place
 	Bucket string
+	// Fresh says Place was minted for this launch alone ([v3Options.Fresh]),
+	// so a door that wanted a new conversation already has it.
+	Fresh bool
 	// Subharnesses is the assembly the four seams on Config were taken from
 	// (chatv3_subharness.go). It is carried out of the launch for ONE thing the
 	// config cannot hold: the belt watch, which is a question about an agent that
@@ -886,8 +896,14 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 	launchDir := proc.LaunchDir
 
 	project, owned := v3Workspace(launchDir, opts.Workspace)
-	found, err := v3ResolveSession(strings.TrimSpace(opts.Session), project,
-		v3StampLaunchDir(launchDir, project), owned)
+	var found v3Session
+	var err error
+	if opts.Fresh && strings.TrimSpace(opts.Session) == "" {
+		found, err = v3FreshSession(project, v3StampLaunchDir(launchDir, project), owned)
+	} else {
+		found, err = v3ResolveSession(strings.TrimSpace(opts.Session), project,
+			v3StampLaunchDir(launchDir, project), owned)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1255,6 +1271,7 @@ func openV3Launch(proc *v3Process, opts v3Options) (*v3Launch, error) {
 		Resumed:      resumed,
 		Place:        found.Place,
 		Bucket:       found.Bucket,
+		Fresh:        opts.Fresh && strings.TrimSpace(opts.Session) == "",
 		Subharnesses: subharnesses,
 	}, nil
 }

@@ -288,6 +288,17 @@ const watchingWord = "this window is reading this conversation, not typing into 
 // (internal/tui3's [app.guestPageRead]). It opens the store's read handles and
 // changes nothing. Every verb on that page — a note, a pause, a stop — is NOT
 // here and must not be: they act on the work, which is the owner's.
+//
+// AND THE PLACES ASK IS ON IT BECAUSE IT IS WHY THE DESKTOP OPENS A READER AT
+// ALL. With no conversation tab open, the desktop's places offers ride a
+// watcher onto one saved conversation (internal/desktopbridge's
+// places_detached.go) so Home can offer groups at start-up. [MethodPlacesAsk]
+// puts no words into the conversation, starts no turn and changes no setting:
+// it is one model call on the places roles, beside the turn. What it does
+// leave is its own bill — a usage line in the journal and the spend stamp in
+// meta.json, as every background errand does — which is bookkeeping about
+// the call, not a change the owner of the conversation made or would have to
+// undo. No other model ask is here: each one is added on purpose, by name.
 var watcherReads = map[string]bool{
 	MethodTaskRoom:      true,
 	MethodTaskWatch:     true,
@@ -295,6 +306,7 @@ var watcherReads = map[string]bool{
 	MethodPlanTaskPage:  true,
 	MethodDetach:        true,
 	MethodPing:          true,
+	MethodPlacesAsk:     true,
 }
 
 func watcherMay(method string) bool { return watcherReads[method] }
