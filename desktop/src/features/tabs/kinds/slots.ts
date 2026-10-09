@@ -3,10 +3,14 @@ import type { IconName } from '../../../components/ui';
 import type { TabSummary } from '../../conversation/tabSummary';
 import type { Pane } from '../types';
 import type { TabView } from '../view-state';
+import type { SourceHandoff, UsingApi } from '../../places/using-types';
 import type { TabKind } from './types';
 
 /** What a pane may do to its own state. The workspace routes each call to the right pane by id. */
 export type PaneActions = {
+  usingApi?: UsingApi;
+  onOpenSource?: (source: SourceHandoff) => void;
+  onAddToPlace?: () => void;
   onDraft: (draft: string) => void;
   onView: (change: TabView) => void;
   onSummary: (summary: TabSummary) => void;

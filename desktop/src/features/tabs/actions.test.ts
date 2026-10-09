@@ -88,3 +88,19 @@ test('no timer is set when a move fails to start', async () => {
   assert.equal(await actions.moveToNewWindow(tab()), false);
   assert.deepEqual(timers, []);
 });
+
+test('same-place Move opens a focused view of the whole split and shifts only local focus after success', async () => {
+  const calls: unknown[] = [];
+  const source = tab({ split: { layout: '1x2', focus: 1, panes: [] } });
+  const actions = createTabActions({ native: native({ openPlaceWindow: async (place, options) => { calls.push([place, options]); return { label: 'w-1', moved: false }; } }), toasts: createToasts(), handoffView: id => calls.push(['local-focus', id]) });
+  assert.equal(actions.canMove(source), true);
+  assert.equal(await actions.moveToNewWindow(source), true);
+  assert.deepEqual(calls, [['now', { focusTab: 't' }], ['local-focus', 't']]);
+});
+
+test('a refused focused-view window keeps source focus and the canonical split untouched', async () => {
+  let shifted = false;
+  const actions = createTabActions({ native: native({ openPlaceWindow: async () => { throw new Error('refused'); } }), toasts: createToasts(), handoffView: () => { shifted = true; } });
+  assert.equal(await actions.moveToNewWindow(tab()), false);
+  assert.equal(shifted, false);
+});
