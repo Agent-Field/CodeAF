@@ -187,12 +187,14 @@ test('notifications: the full list goes to Rust; outside the app nothing is clai
   const items = [attentionItem({ kind: 'needsYou', chatId: 'c1', chatTitle: 'Launch', placeId: 'pl_00000000000000aa', placeName: 'Marketing', text: 'Which branch?' })];
   const { bridge, calls } = fakeBridge({ notify_attention: { posted: 1, groups: 1, skipped: null }, notify_permission: { state: 'granted', verified: false } });
   const native = createNativeControls(bridge);
-  assert.deepEqual(await native.notifyAttention(items), { posted: 1, groups: 1, skipped: null });
-  assert.deepEqual(calls[0].args, { items });
+  assert.deepEqual(await native.notifyAttention(items, 42), { posted: 1, groups: 1, skipped: null });
+  assert.deepEqual(calls[0].args, { items, seq: 42 }, 'the list names the feed reading it came from');
+  await native.notifyAttention(items, -1);
+  assert.equal(calls[1].args?.seq, 0, 'a nonsense sequence is the oldest reading, never a newer one');
   assert.deepEqual(await native.notificationPermission(), { state: 'granted', verified: false });
 
   const browser = createNativeControls(fakeBridge({}, false).bridge);
-  assert.deepEqual(await browser.notifyAttention(items), { posted: 0, groups: 0, skipped: 'unavailable' });
+  assert.deepEqual(await browser.notifyAttention(items, 1), { posted: 0, groups: 0, skipped: 'unavailable' });
   assert.deepEqual(await browser.notificationPermission(), { state: 'unavailable', verified: false });
 });
 
@@ -243,11 +245,12 @@ test('the badge is the needs-you count, clamped, and unavailable in a browser', 
   assert.equal(needsYouCount(items), 2);
   const { bridge, calls } = fakeBridge({ badge_set: { applied: true } });
   const native = createNativeControls(bridge);
-  await native.setBadge(-3);
-  await native.setBadge(1e9);
-  await native.setBadge(Number.NaN);
+  await native.setBadge(-3, 7);
+  await native.setBadge(1e9, 7);
+  await native.setBadge(Number.NaN, 1.5);
   assert.deepEqual(calls.map(c => c.args?.count), [0, 9999, 0]);
-  assert.deepEqual(await createNativeControls(fakeBridge({}, false).bridge).setBadge(2), { applied: false, reason: 'unavailable' });
+  assert.deepEqual(calls.map(c => c.args?.seq), [7, 7, 0]);
+  assert.deepEqual(await createNativeControls(fakeBridge({}, false).bridge).setBadge(2, 1), { applied: false, reason: 'unavailable' });
 });
 
 test('places-routes attention rows map to items; virtual places are not groups', () => {

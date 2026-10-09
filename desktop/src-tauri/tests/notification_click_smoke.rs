@@ -162,7 +162,11 @@ mod linux {
     }
 
     pub fn main() {
-        if std::env::var("CODEAF_NOTIFY_SMOKE").as_deref() != Ok("1") {
+        let mode = std::env::var("CODEAF_NOTIFY_SMOKE").unwrap_or_default();
+        if mode == "real" {
+            return with_app(real_server);
+        }
+        if mode != "1" {
             println!("notification_click_smoke skipped: set CODEAF_NOTIFY_SMOKE=1 under dbus-run-session and a display");
             return;
         }
@@ -174,6 +178,14 @@ mod linux {
             .and_then(|b| b.build())
             .expect("a private session bus (run under dbus-run-session)");
 
+        with_app(move |app, heard, run| scenario(app, &server, &shown, heard, run));
+    }
+
+    /// Builds the app with the real notification state, runs `body` beside its
+    /// event loop, and exits with its verdict.
+    fn with_app(
+        body: impl FnOnce(&tauri::AppHandle, &Arc<AtomicUsize>, &mut Run) + Send + 'static,
+    ) {
         let heard = Arc::new(AtomicUsize::new(0));
         let code = Arc::new(Mutex::new(0));
         let exit_code = Arc::clone(&code);
@@ -189,7 +201,7 @@ mod linux {
                 });
                 std::thread::spawn(move || {
                     let mut run = Run { failed: false };
-                    scenario(&handle, &server, &shown, &heard, &mut run);
+                    body(&handle, &heard, &mut run);
                     *code.lock().unwrap() = i32::from(run.failed);
                     println!(
                         "notification_click_smoke {}",
@@ -204,6 +216,61 @@ mod linux {
             .expect("smoke app");
         app.run(|_, _| {});
         std::process::exit(*exit_code.lock().unwrap());
+    }
+
+    /// A real server: post a grouped notification, then wait for its genuine click.
+    fn real_server(app: &tauri::AppHandle, heard: &Arc<AtomicUsize>, run: &mut Run) {
+        let main = wait(Duration::from_secs(10), || app.get_webview("main")).expect("main webview");
+        let window = app.get_window("main").expect("main window");
+        let _ = window.hide();
+        let _ = wait(Duration::from_secs(5), || {
+            (!window.is_focused().unwrap_or(true)).then_some(())
+        });
+        let place = Some("pl_00000000000000dd");
+        let list = vec![
+            item(
+                "r1:consent:4",
+                "needsYou",
+                place,
+                Some(("r1", "consent", 4)),
+            ),
+            item("r2:choice:5", "needsYou", place, Some(("r2", "choice", 5))),
+        ];
+        let posted =
+            notifications::notify_attention(app.clone(), main.clone(), items(list.clone()), 1);
+        run.check(
+            "the real server took the notification",
+            posted.as_ref().is_ok_and(|p| p.posted == 1),
+            format!("{posted:?}"),
+        );
+        // The first question is answered before the click, as a newer reading says.
+        let _ = notifications::notify_attention(
+            app.clone(),
+            main.clone(),
+            items(vec![list[1].clone()]),
+            2,
+        );
+        println!("READY: click the notification within 60s");
+        let clicked = wait(Duration::from_secs(60), || {
+            (heard.load(Ordering::SeqCst) > 0).then_some(())
+        });
+        let claimed = activation::notify_claim(app.clone(), main.clone())
+            .map(|c| serde_json::to_value(c).unwrap());
+        run.check(
+            "a real click opened the question still waiting",
+            clicked.is_some()
+                && claimed.as_ref().is_ok_and(|c| {
+                    *c == json!([{"chatId": "r2", "question": {"kind": "choice", "id": 5}}])
+                }),
+            format!("claim {claimed:?}"),
+        );
+        let shown = wait(Duration::from_secs(5), || {
+            window.is_visible().ok().filter(|v| *v)
+        });
+        run.check("the window is brought forward", shown.is_some(), "visible");
+        // Long enough for the driver to photograph the raised window before the app exits.
+        println!("CLICKED");
+        std::thread::sleep(Duration::from_secs(3));
     }
 
     fn scenario(
@@ -236,7 +303,7 @@ mod linux {
             ),
             item("failed:s9", "failed", None, None),
         ]);
-        let posted = notifications::notify_attention(app.clone(), main.clone(), first);
+        let posted = notifications::notify_attention(app.clone(), main.clone(), first, 1);
         run.check(
             "two places become two notifications",
             posted
@@ -343,7 +410,7 @@ mod linux {
                 Some(("x2", "choice", 5)),
             ),
         ];
-        let _ = notifications::notify_attention(app.clone(), main.clone(), items(next.clone()));
+        let _ = notifications::notify_attention(app.clone(), main.clone(), items(next.clone()), 2);
         let posted = wait(Duration::from_secs(10), || {
             shown.lock().unwrap().get(before).cloned()
         });
@@ -351,6 +418,7 @@ mod linux {
             app.clone(),
             main.clone(),
             items(vec![next[1].clone()]),
+            3,
         );
         if let Some(posted) = posted {
             click(server, posted.id);
@@ -366,6 +434,125 @@ mod linux {
                 && claimed.as_ref().is_ok_and(|c| {
                     *c == json!([{"chatId": "x2", "question": {"kind": "choice", "id": 5}}])
                 }),
+            format!("claim {claimed:?}"),
+        );
+
+        two_windows(app, server, shown, heard, run, &window);
+    }
+
+    /// Two real codeaf windows, each with its own reading of the world feed, post
+    /// their lists in turn the way two workspaces do. One is a reading behind.
+    fn two_windows(
+        app: &tauri::AppHandle,
+        server: &Connection,
+        shown: &Arc<Mutex<Vec<Shown>>>,
+        heard: &Arc<AtomicUsize>,
+        run: &mut Run,
+        main_window: &tauri::Window,
+    ) {
+        let main = app.get_webview("main").expect("main webview");
+        let built = tauri::WebviewWindowBuilder::new(app, "w-2", Default::default())
+            .visible(false)
+            .build();
+        let Some(second) = built
+            .ok()
+            .and_then(|_| wait(Duration::from_secs(10), || app.get_webview("w-2")))
+        else {
+            run.check("a second window opens", false, "no w-2");
+            return;
+        };
+        let _ = main_window.hide();
+        let _ = wait(Duration::from_secs(5), || {
+            (!main_window.is_focused().unwrap_or(true)).then_some(())
+        });
+        let place = Some("pl_00000000000000cc");
+        let q1 = item(
+            "y1:consent:8",
+            "needsYou",
+            place,
+            Some(("y1", "consent", 8)),
+        );
+        let q2 = item("y2:choice:9", "needsYou", place, Some(("y2", "choice", 9)));
+        let failure = item("failed:y9:2026-10-09T11:00:00Z", "failed", None, None);
+        let both = vec![q1.clone(), q2.clone()];
+        let before = shown.lock().unwrap().len();
+        let post = |webview: &tauri::Webview, list: &Vec<serde_json::Value>, seq: u64| {
+            notifications::notify_attention(app.clone(), webview.clone(), items(list.clone()), seq)
+                .map(|p| (p.posted, p.skipped))
+        };
+
+        let first = post(&main, &both, 10);
+        let echo = post(&second, &both, 10);
+        // y1 is answered; main reads that at 11 and w-2, still at 10, posts its old list.
+        let answered = post(&main, &vec![q2.clone()], 11);
+        let stale = post(&second, &both, 10);
+        // A failure lands at 12; both windows read it; it is marked seen at 13 and main lags.
+        let with_failure = vec![q2.clone(), failure.clone()];
+        let failed_main = post(&main, &with_failure, 12);
+        let failed_second = post(&second, &with_failure, 12);
+        let marked = post(&second, &vec![q2.clone()], 13);
+        let lagging = post(&main, &with_failure, 12);
+        let caught_up = post(&main, &vec![q2.clone()], 13);
+        run.check(
+            "alternating windows: each question and failure is posted once",
+            first.as_ref().is_ok_and(|p| p.0 == 1)
+                && echo.as_ref().is_ok_and(|p| p.0 == 0)
+                && answered.as_ref().is_ok_and(|p| p.0 == 0)
+                && failed_main.as_ref().is_ok_and(|p| p.0 == 1)
+                && failed_second.as_ref().is_ok_and(|p| p.0 == 0)
+                && marked.as_ref().is_ok_and(|p| p.0 == 0)
+                && caught_up.as_ref().is_ok_and(|p| p.0 == 0),
+            format!("{first:?} {echo:?} {answered:?} {failed_main:?} {failed_second:?} {marked:?} {caught_up:?}"),
+        );
+        run.check(
+            "a window a reading behind is ignored, not merged",
+            stale
+                .as_ref()
+                .is_ok_and(|p| p.0 == 0 && p.1 == Some(notifications::Skipped::Stale))
+                && lagging
+                    .as_ref()
+                    .is_ok_and(|p| p.0 == 0 && p.1 == Some(notifications::Skipped::Stale)),
+            format!("{stale:?} {lagging:?}"),
+        );
+        let posted = wait(Duration::from_secs(10), || {
+            let all = shown.lock().unwrap().clone();
+            (all.len() >= before + 2).then_some(all[before..].to_vec())
+        })
+        .unwrap_or_default();
+        std::thread::sleep(Duration::from_millis(500));
+        let total = shown.lock().unwrap().len() - before;
+        run.check(
+            "the notification server was asked to show exactly two",
+            total == 2,
+            format!(
+                "{:?}",
+                posted
+                    .iter()
+                    .map(|s| (&s.summary, &s.body))
+                    .collect::<Vec<_>>()
+            ),
+        );
+        let Some(grouped) = posted.iter().find(|s| s.summary == "Marketing").cloned() else {
+            return;
+        };
+        let clicks = heard.load(Ordering::SeqCst);
+        click(server, grouped.id);
+        let _ = wait(Duration::from_secs(10), || {
+            (heard.load(Ordering::SeqCst) > clicks).then_some(())
+        });
+        let mut claimed = Vec::new();
+        for webview in [&main, &second] {
+            claimed.extend(
+                activation::notify_claim(app.clone(), webview.clone())
+                    .map(|c| serde_json::to_value(c).unwrap())
+                    .ok()
+                    .and_then(|v| v.as_array().cloned())
+                    .unwrap_or_default(),
+            );
+        }
+        run.check(
+            "the stale window did not point the grouped click back at the answered question",
+            claimed == [json!({"chatId": "y2", "question": {"kind": "choice", "id": 9}})],
             format!("claim {claimed:?}"),
         );
     }
