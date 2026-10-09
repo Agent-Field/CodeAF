@@ -51,11 +51,16 @@ function Answers({ question, locked, single, why, note, onPress, renderImage }: 
 
 function Heading({ question }: { question: Question }) {
   const from = question.asker?.kind === 'task' ? question.asker.name : '';
+  const policyPattern = question.kind === 'consent' && question.reason?.startsWith('critical command ')
+    ? question.reason.slice('critical command '.length) : undefined;
+  const reason = policyPattern ? `Safety policy matched critical-command pattern ${policyPattern}. Allow once applies only to this request.` : question.reason;
   return (
     <header className="tray-card-head">
       <h3 className="tray-head"><InlineMarkdown>{question.head}</InlineMarkdown></h3>
       {from && <Text className="tray-caption">{`From ${from}`}</Text>}
-      {question.reason && <Text className="tray-reason">{question.reason}</Text>}
+      {reason && <Text className="tray-reason">{reason}</Text>}
+      {question.kind === 'consent' && question.subject?.name === 'bash' && !question.attach?.some(block => block.kind === 'code') &&
+        <Text className="tray-caption">Full command details are unavailable from this engine. Review the tool row before answering.</Text>}
     </header>
   );
 }

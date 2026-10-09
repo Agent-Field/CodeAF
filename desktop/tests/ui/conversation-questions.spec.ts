@@ -92,3 +92,50 @@ for (const scheme of ['light', 'dark'] as const) {
     await expectAccessible(page);
   });
 }
+
+for (const scheme of ['light', 'dark'] as const) {
+  test(`${scheme}: permission shows the exact compound command, cwd and separate policy pattern; allow once names only that request`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    const command = 'rm -rf /tmp/stars && mkdir -p /tmp/stars\nprintf "only this request"';
+    const permission = (id: number, callId: string, body: string): EngineQuestion => ({
+      id, kind: 'consent', ask: 'permission', head: 'needs your ok to run bash',
+      reason: 'Safety policy matched critical-command pattern "rm -rf /*". Allow once applies only to this request.',
+      stakes: 'irreversible', blocking: { turn: true }, scope: ['once'],
+      subject: { kind: 'call', callId, name: 'bash' },
+      options: [{ key: '1', label: 'Allow once' }, { key: '3', label: 'Deny', safe: true }],
+      attach: [{ kind: 'code', title: 'Command · this request only', body }, { kind: 'text', title: 'Working folder', body: '/tmp/owned workspace' }],
+    });
+    const engine = await openWithQuestions(page, [permission(41, 'call-A', command), permission(42, 'call-B', 'printf "second request"')]);
+    const card = tray(page).getByRole('region', { name: 'needs your ok to run bash' });
+    await expect(card.locator('.question-code')).toHaveText(command);
+    await expect(card.getByText('/tmp/owned workspace', { exact: true })).toBeVisible();
+    await expect(card.getByText(/Safety policy matched critical-command pattern/)).toBeVisible();
+    await expect(card.getByRole('button', { name: /Always allow/ })).toHaveCount(0);
+    const font = await card.locator('.question-code').evaluate(node => getComputedStyle(node).fontFamily);
+    const token = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim());
+    const normalizeFont = (value: string) => value.split(',').map(name => name.trim().replace(/^['"]|['"]$/g, '')).join(',');
+    expect(normalizeFont(font)).toBe(normalizeFont(token));
+    if (process.env.PERMISSION_EVIDENCE_DIR) await page.screenshot({ path: `${process.env.PERMISSION_EVIDENCE_DIR}/permission-${scheme}-${test.info().project.name}.png` });
+    await card.getByRole('button', { name: 'Allow once', exact: true }).click();
+    await expect.poll(() => posts(engine, '/answer').length).toBe(1);
+    expect(posts(engine, '/answer')[0].body).toMatchObject({ kind: 'consent', id: 41, key: '1' });
+    expect(posts(engine, '/answer')[0].body.scope).toBeUndefined();
+    await expect(card.locator('.question-code')).toHaveText('printf "second request"');
+    expect(posts(engine, '/answer')).toHaveLength(1);
+  });
+}
+
+test('legacy pending permission labels the pattern and admits missing full command without guessing another tool row', async ({ page }) => {
+  const engine = await openWithQuestions(page, [{
+    id: 71, kind: 'consent', ask: 'permission', head: 'needs your ok to run bash', reason: 'critical command "rm -rf /*"',
+    stakes: 'irreversible', blocking: { turn: true }, subject: { kind: 'call', callId: 'legacy-call', name: 'bash' },
+    options: [{ key: '1', label: 'Allow once' }, { key: '3', label: 'Deny', safe: true }],
+  }]);
+  const card = tray(page).getByRole('region', { name: 'needs your ok to run bash' });
+  await expect(card.getByText(/Safety policy matched critical-command pattern/)).toBeVisible();
+  await expect(card.getByText('Full command details are unavailable from this engine. Review the tool row before answering.')).toBeVisible();
+  await expect(card.locator('.question-code')).toHaveCount(0);
+  await expect(card.getByRole('button', { name: /Always allow/ })).toHaveCount(0);
+  expect(posts(engine, '/answer')).toHaveLength(0);
+  if (process.env.PERMISSION_EVIDENCE_DIR) await page.screenshot({ path: `${process.env.PERMISSION_EVIDENCE_DIR}/permission-legacy-${test.info().project.name}.png` });
+});
