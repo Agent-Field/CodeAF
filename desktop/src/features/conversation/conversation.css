@@ -27,27 +27,34 @@
   .turn-fold { transition: none; }
 }
 
-/* Folded row: one line, `message — digest`; the chevron stays in the gutter. */
+/* Folded row (design v3 1e): the question, then the digest, one 30px line. */
 .turn-folded.button {
-  position: relative;
   display: flex;
-  width: 100%;
-  min-height: var(--icon-button-size);
-  padding: var(--space-1) 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: calc(100% + var(--row-pad) * 2);
+  height: var(--row-height-v3);
+  margin-inline: calc(var(--row-pad) * -1);
+  padding: 0 var(--row-pad);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: transparent;
-  color: var(--text);
+  color: var(--ink-3);
   text-align: start;
-  font-size: var(--font-size-prose);
+  font-size: var(--type-label-size);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.turn-folded-chevron { position: absolute; right: 100%; top: 50%; translate: 0 -50%; display: grid; place-items: center; width: var(--icon-button-size); color: var(--muted); }
-.turn-folded-text { display: flex; flex: 1; min-width: 0; }
+.turn-folded.button:hover { background: var(--field); color: var(--ink-2); }
+/* Consecutive folded turns stack as a list, without the turn gap. */
+.turn-v2[data-folded] + .turn-v2[data-folded] { margin-top: 0; }
 .turn-folded-user,
 .turn-folded-digest { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.turn-folded-user { flex: 0 1 auto; max-width: 60%; }
-.turn-folded-sep { flex: none; white-space: pre; color: var(--muted); }
-.turn-folded-digest { flex: 1 1 0; color: var(--muted); }
+.turn-folded-user { flex: 0 1 auto; max-width: 60%; color: var(--ink-2); }
+.turn-folded-digest { flex: 1 1 0; }
+@media (prefers-reduced-motion: reduce) {
+  .turn-folded.button { transition: none; }
+}
 
 /* User message. */
 .user-message { display: flex; justify-content: flex-end; min-width: 0; }

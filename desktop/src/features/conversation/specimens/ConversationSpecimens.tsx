@@ -2,6 +2,7 @@ import { SectionHeading, Surface, Text } from '../../../components/ui';
 import { DecisionTraySpecimen } from '../tray/specimens/DecisionTray.specimen';
 import { AssetsSpecimen } from './Assets.specimen';
 import { ComposerSpecimen } from './Composer.specimen';
+import { FoldingSpecimen } from './Folding.specimen';
 import { MarkdownSpecimen } from './Markdown.specimen';
 import { TaskNoticeSpecimen } from './TaskNotice.specimen';
 import { TaskPanelSpecimen } from './TaskPanel.specimen';
@@ -11,6 +12,7 @@ import { WorkSpecimen } from './Work.specimen';
 
 const specimens = [
   { name: 'Turns', View: TurnViewV2Specimen },
+  { name: 'Long history', View: FoldingSpecimen },
   { name: 'Replies', View: MarkdownSpecimen },
   { name: 'Work', View: WorkSpecimen },
   { name: 'Assets', View: AssetsSpecimen },

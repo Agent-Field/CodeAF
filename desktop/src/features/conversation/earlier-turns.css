@@ -1,0 +1,33 @@
+/* Earlier-turns group and its divider (design v3 conversation 1e). */
+.earlier-row.button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  height: var(--row-height-v3);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-size: var(--type-label-size);
+  text-align: start;
+}
+.earlier-row.button:hover { color: var(--ink-2); }
+.earlier-chevron { display: grid; place-items: center; transition: rotate var(--dur-base) var(--ease); }
+.earlier-chevron[data-open] { rotate: var(--motion-ask-open); }
+
+.summary-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-block: var(--space-2);
+  color: var(--ink-3);
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-caption-weight);
+}
+.summary-divider-rule { flex: 1; height: var(--hairline); background: var(--line); }
+
+@media (prefers-reduced-motion: reduce) {
+  .earlier-chevron { transition: none; }
+}

@@ -21,6 +21,7 @@ import { useConversation } from './useConversation';
 import { readEngineText } from './tasks/readText';
 import { useQueued } from './useQueued';
 import { contentSignature, useStickToBottom } from './useStickToBottom';
+import { useFoldAnchor, useTurnJump } from './turnScroll';
 import './conversation-view.css';
 
 export type ConversationViewProps = {
@@ -96,10 +97,14 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
     if (sent && text && tab.draft.trim() === text) onDraft('');
   }
 
+  const holdRow = useFoldAnchor(scroller, `${tab.folded ? JSON.stringify(tab.folded) : ''}${JSON.stringify(tab.open ?? {})}`);
   const blocks = {
     tasks: model.tasks,
     open: tab.open ?? {},
-    onToggle: (id: string) => onView({ open: toggleFlag(tab.open, id) }),
+    onToggle: (id: string) => {
+      holdRow(id);
+      onView({ open: toggleFlag(tab.open, id) });
+    },
     readFull: conversation.readFull,
     onOpenTask: openTask,
     onFocusQuestion: focusQuestion,
@@ -108,8 +113,12 @@ export function ConversationView({ tab, label, onDraft, onView, onSummary, onOpe
   const readFile = sessionId ? (path: string) => readEngineText(sessionId, path) : undefined;
   const control = (action: 'pause' | 'resume' | 'cancel') => (taskId: string) => void conversation.controlTask(taskId, action);
   const folded = tab.folded ?? {};
-  const toggleFold = (id: string) => onView({ folded: toggleFlag(tab.folded, id) });
+  const toggleFold = (id: string, next: boolean) => {
+    holdRow(id);
+    onView({ folded: { ...tab.folded, [id]: next } });
+  };
   const inTask = Boolean(route.taskId);
+  useTurnJump(scroller, !inTask);
   const empty = !inTask && model.turns.length === 0 && model.preface.length === 0 && !failed;
   const { done, total } = taskCounts(model.tasks);
   const tasksToggle = hasTasks && !panel.shown ? { label: `Tasks · ${done}/${total}`, onClick: panel.open } : undefined;
