@@ -491,6 +491,8 @@ Talk to it — a surface you sit in front of
       --max-cost and --max-hours bound unattended work and require --yolo
   codeaf resume
       pick an earlier conversation by name and open it — /resume inside the chat
+  codeaf desktop-bridge [--listen addr] [--workspace path]
+      serve the desktop app over loopback with a token
 
 Hand it work — nobody is watching, the answer is on stdout
   codeaf do   "<task>" [--db path] [--keep] [--dir dir] [--timeout 15m]

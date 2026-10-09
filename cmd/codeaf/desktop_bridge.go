@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/Agent-Field/codeaf/internal/desktopbridge"
+	"github.com/Agent-Field/codeaf/internal/env"
+	"github.com/Agent-Field/codeaf/internal/guard"
 	"github.com/Agent-Field/codeaf/internal/remote"
 )
 
@@ -50,7 +52,7 @@ func runDesktopBridge(args []string) error {
 	if err != nil {
 		return err
 	}
-	token := os.Getenv("CODEAF_DESKTOP_TOKEN")
+	token := env.Get("CODEAF_DESKTOP_TOKEN")
 	if token == "" {
 		token, err = desktopbridge.Token()
 		if err != nil {
@@ -101,12 +103,12 @@ func runDesktopBridge(args []string) error {
 	server := &http.Server{Handler: bridge, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	go func() {
+	guard.Go("desktop-bridge-shutdown", func() {
 		<-ctx.Done()
 		deadline, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = server.Shutdown(deadline)
-	}()
+	})
 	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("desktop transport: %w", err)
 	}
@@ -124,7 +126,7 @@ func (p *desktopPipe) Close() error {
 	p.once.Do(func() {
 		_ = p.Writer.(io.Closer).Close()
 		_ = p.Reader.(io.Closer).Close()
-		go func() { _ = p.command.Wait() }()
+		guard.Go("desktop-bridge-reap", func() { _ = p.command.Wait() })
 	})
 	return nil
 }
