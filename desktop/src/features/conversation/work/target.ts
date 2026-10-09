@@ -9,15 +9,15 @@ export type Target =
   | { kind: 'file'; path: string }
   | { kind: 'command'; text: string }
   | { kind: 'link'; url: string }
-  | { kind: 'text'; text: string };
+  | { kind: 'text'; text: string; mono?: boolean; scope?: string };
 
 export type CallStat = { added?: number; removed?: number; capped?: boolean; text?: string };
 
 const FILE_TOOLS = ['read', 'write', 'edit', 'view_image'];
 const categoryIcons: Record<string, IconName> = {
-  search: 'findFiles',
-  read: 'file',
-  edit: 'edit',
+  search: 'search',
+  read: 'book',
+  edit: 'pencil',
   create: 'create',
   run: 'terminal',
   test: 'test',
@@ -49,6 +49,15 @@ function textTarget(call: ToolStep, ...keys: string[]): Target {
   return { kind: 'text', text: value ? excerpt(value) : hintText(call.tool, call.hint) || toolLabel(call.tool) };
 }
 
+/** A search names its pattern in mono and, apart and quieter, where it looked ("Comma  in internal/parse"). */
+function searchTarget(call: ToolStep): Target {
+  const fields = parseArgs(call.args);
+  const pattern = argString(fields, 'pattern');
+  const path = argString(fields, 'path');
+  if (!pattern) return textTarget(call, 'path');
+  return { kind: 'text', text: excerpt(pattern), mono: true, scope: path ? `in ${path}` : undefined };
+}
+
 export function callTarget(call: ToolStep): Target {
   const fields = parseArgs(call.args);
   if (FILE_TOOLS.includes(call.tool)) {
@@ -60,7 +69,7 @@ export function callTarget(call: ToolStep): Target {
       return { kind: 'command', text: firstLine(argString(fields, 'command') || hintText('bash', call.hint)) };
     case 'grep':
     case 'find':
-      return textTarget(call, 'pattern', 'path');
+      return searchTarget(call);
     case 'ls':
       return textTarget(call, 'path');
     case 'web_search':

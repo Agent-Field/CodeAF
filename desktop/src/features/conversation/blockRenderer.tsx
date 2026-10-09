@@ -86,13 +86,28 @@ function task(block: Block<'task'>, ctx: BlockContext): ReactNode {
   );
 }
 
+/** A work block follows its own state until the "Worked 42s" link opens it; then the shared map holds it open. */
+function WorkBlock({ block, ctx }: { block: Block<'work'>; ctx: BlockContext }) {
+  const forced = Boolean(ctx.open[block.id]);
+  return (
+    <WorkBlockView
+      block={block}
+      open={forced || undefined}
+      onToggle={forced ? () => ctx.onToggle(block.id) : undefined}
+      renderFile={renderFile}
+      renderLink={renderLink}
+      readFull={ctx.readFull}
+    />
+  );
+}
+
 /** One renderer per turn, since grids and diffs read the turn's other blocks. */
 export function blockRenderer(ctx: BlockContext) {
   return (turn: TurnV2) =>
     function renderBlock(block: TurnBlock): ReactNode {
       switch (block.kind) {
         case 'work':
-          return <WorkBlockView block={block} renderFile={renderFile} renderLink={renderLink} readFull={ctx.readFull} />;
+          return <WorkBlock block={block} ctx={ctx} />;
         case 'task':
           return task(block, ctx);
         case 'deliverable':

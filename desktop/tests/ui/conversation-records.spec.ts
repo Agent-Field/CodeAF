@@ -51,7 +51,7 @@ test('a session note to the model is one quiet line with its report folded; no i
   await page.getByRole('button', { name: /^Worked \d+s · 3 steps · 4 calls$/ }).click();
   await expect(page.getByText('task 1 done: reading: List the files in this folder, read README if any, then c…')).toBeVisible();
   await expect(page.getByText(/A note from the session|file:\/\//)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Show', exact: true }).click();
+  await page.getByRole('button', { name: /^task 1 done: reading/ }).click();
   await expect(page.getByText(/Folder: a scratch workspace for trying the app\./)).toBeVisible();
   await expect(page.getByText(/A note from the session|file:\/\/|while you worked/)).toHaveCount(0);
 });

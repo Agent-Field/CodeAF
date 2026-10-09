@@ -100,7 +100,7 @@ test('a handed-off read shows its answer and a target, never raw JSON or the eng
   await openApp(page);
   await send(page, 'Summarise the sandbox');
   await expect(page.getByText('The sandbox is a scratch workspace.')).toBeVisible();
-  await page.getByRole('button', { name: /^Worked \d+s/ }).click();
+  await page.getByRole('button', { name: /^Worked \d+s · / }).click();
   await page.getByRole('button', { name: /^Reading the sandbox/ }).click();
   await page.getByRole('button', { name: /^read .*README\.md$/ }).click();
   await expect(page.locator('pre[aria-label="Excerpt"]')).toContainText(HANDOFF_ANSWER);

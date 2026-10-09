@@ -5,7 +5,7 @@ import type { WorkStep } from '../types';
 import { duration, elapsed } from './format';
 import type { RowState, WorkRender } from './props';
 import { StepLead, StepTail } from './StepMark';
-import { categoryIcon } from './target';
+import { callTarget, categoryIcon, targetText } from './target';
 import { ToolCallRow } from './ToolCallRow';
 
 type Props = WorkRender & { step: WorkStep; open: boolean; onToggle: () => void; now?: number };
@@ -31,6 +31,14 @@ function phaseOf(step: WorkStep, call: WorkStep['calls'][number]): 'forming' | '
   return step.state === 'waiting' ? 'waiting' : undefined;
 }
 
+/** The command, path or query of the call in flight: the live caption of a step that is still running. */
+function liveCaption(step: WorkStep): string | undefined {
+  const call = step.calls.find((item) => item.state === 'running');
+  if (!call) return undefined;
+  const target = callTarget(call);
+  return target.kind === 'command' ? `$ ${target.text}` : targetText(target);
+}
+
 const UNSETTLED: RowState[] = ['forming', 'running', 'waiting'];
 const isSettled = (state: RowState) => !UNSETTLED.includes(state);
 
@@ -40,6 +48,7 @@ export function WorkStepView({ step, open, onToggle, now, ...render }: Props) {
   const toggleCall = (id: string) => setOpenCalls((value) => ({ ...value, [id]: !value[id] }));
   const state = stepState[step.state];
   const time = stepTime(step, now);
+  const caption = !open && state === 'running' ? liveCaption(step) : undefined;
   return (
     <div className="work-step" data-state={state}>
       <Button className="work-step-head" aria-expanded={open} onClick={onToggle}>
@@ -49,6 +58,7 @@ export function WorkStepView({ step, open, onToggle, now, ...render }: Props) {
         <span className="work-step-title">{step.title}</span>
         <StepTail state={state} time={time} decision={step.calls.length === 1 ? step.calls[0].decision : undefined} />
       </Button>
+      {caption && <span className="work-step-caption">{caption}</span>}
       {open && (
         <div className="work-calls">
           {step.calls.map((call) => (
