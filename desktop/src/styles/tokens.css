@@ -831,6 +831,12 @@
   --places-goto-row-height: 34px;
   --places-goto-scrim: oklch(0 0 0 / .18);
   --receipt-leading: normal;
+  --home-composer-content-max-width: 592px;
+  --home-composer-pad-block: var(--space-compact);
+  --home-composer-pad-start: var(--space-4);
+  --home-composer-pad-end: var(--space-2);
+  --home-composer-radius: 20px;
+  --home-composer-leading: normal;
   --canvas: oklch(.985 .004 var(--h));
   --frame: oklch(.93 .035 var(--h));
   --surface: oklch(1 0 0);

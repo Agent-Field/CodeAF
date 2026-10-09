@@ -2,7 +2,7 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { isMac } from '../../../design/keyboard';
 import { connectEngine, sendEngine, sendEngineWithFiles, type EngineSnapshot, type OutgoingFile } from '../../chat/engine-client';
 import { Composer } from '../../conversation/Composer';
-import { DEFAULT_MODEL_LABEL, DEFAULT_MODEL_SHORT } from '../../conversation/composer/useConversationModel';
+import { DEFAULT_MODEL_LABEL, DEFAULT_MODEL_SHORT, useConversationModel } from '../../conversation/composer/useConversationModel';
 import { newTab } from '../../tabs/helpers';
 import type { WorkspaceAction } from '../../tabs/model';
 import { chatIdFromSessionFile } from '../client';
@@ -33,6 +33,7 @@ const titleOf = (text: string) => text.split('\n').find(line => line.trim())?.tr
  * leaving another empty one behind.
  */
 export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispatch, offline }: HomeComposerProps) {
+  const model = useConversationModel(undefined, true);
   const background = useRef(false);
   const created = useRef<{ snapshot: EngineSnapshot; filed: boolean }>(undefined);
   const [error, setError] = useState<string>();
@@ -69,8 +70,8 @@ export function HomeComposer({ shell, placeId, placeName, draft, onDraft, dispat
 
   return <div className="home-composer-field" onKeyDownCapture={noteModifier}>
     {error && <p className="home-composer-error" role="alert">{error}</p>}
-    <Composer draft={draft} onDraft={onDraft} onSend={onSend} onStop={() => undefined} running={false} docked
+    <Composer variant="home" draft={draft} onDraft={onDraft} onSend={onSend} onStop={() => undefined} running={false} docked
       disabledReason={offline ? 'Reconnecting to the engine…' : undefined}
-      placeholder={`Start something in ${placeName}`} modelLabel={DEFAULT_MODEL_LABEL} modelShort={DEFAULT_MODEL_SHORT} autoFocus={false}/>
+      placeholder={`Start something in ${placeName}`} model={model} modelLabel={DEFAULT_MODEL_LABEL} modelShort={DEFAULT_MODEL_SHORT} autoFocus={false}/>
   </div>;
 }

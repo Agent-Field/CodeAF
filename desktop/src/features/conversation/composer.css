@@ -227,3 +227,35 @@
 .composer-file-input.text-input {
   display: none;
 }
+
+/* Places 8a / 9b: 592px content plus asymmetric inline padding. Extra
+ * attachment/paste rows retain the shared controls without changing the idle row. */
+.composer-dock[data-variant='home'] {
+  max-width: calc(var(--home-composer-content-max-width) + var(--home-composer-pad-start) + var(--home-composer-pad-end));
+}
+.composer-dock[data-variant='home'] .composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  padding: var(--home-composer-pad-block) var(--home-composer-pad-end) var(--home-composer-pad-block) var(--home-composer-pad-start);
+  border-radius: var(--home-composer-radius);
+}
+.composer-dock[data-variant='home'] .composer-field.text-area {
+  font-size: var(--font-size-input);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--home-composer-leading);
+}
+.composer-dock[data-variant='home'] .composer-row { display: contents; }
+.composer-dock[data-variant='home'] .composer-tools,
+.composer-dock[data-variant='home'] .composer-actions { margin: 0; }
+.composer-dock[data-variant='home'] .model-picker.button {
+  padding: 0;
+  min-height: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--home-composer-leading);
+}
+.composer-dock[data-variant='home'] .model-picker.button > .app-icon { display: none; }
+.composer-dock[data-variant='home'] .attachment-tray,
+.composer-dock[data-variant='home'] .paste-card,
+.composer-dock[data-variant='home'] .composer-error { grid-column: 1 / -1; }
