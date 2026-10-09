@@ -5,12 +5,17 @@ const fileTools = new Set(['edit', 'write', 'multiedit', 'apply_patch']);
 
 const norm = (value: string) => value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
 
-/** True when both strings name the same workspace file, whether or not one is absolute. */
+/**
+ * True when both strings name the same workspace file. Only an absolute path may end in the other's
+ * relative one: two relative paths are the same file only when they are equal, so an edit of `cmd/a.go`
+ * does not refresh a tab showing the root `a.go`.
+ */
 export function sameWorkspaceFile(eventPath: string, openPath: string): boolean {
   const a = norm(eventPath);
   const b = norm(openPath);
   if (!a || !b) return false;
-  return a === b || a.endsWith('/' + b) || b.endsWith('/' + a);
+  if (a === b) return true;
+  return (a.startsWith('/') && !b.startsWith('/') && a.endsWith('/' + b)) || (b.startsWith('/') && !a.startsWith('/') && b.endsWith('/' + a));
 }
 
 /** The path a file tool named. Malformed arguments are not a path. */

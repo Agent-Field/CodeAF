@@ -302,3 +302,29 @@ test('edge shots for the file follow-up', async ({ page }, testInfo) => {
     await shot(`header-${width}`);
   }
 });
+
+test('editor menu and chip tooltip shots, Light and Dark', async ({ browser }, testInfo) => {
+  const dir = process.env.FILES_SHOTS;
+  test.skip(!dir || testInfo.project.name !== 'chromium', 'shots are taken once, from Chromium, when FILES_SHOTS is set');
+  for (const theme of ['light', 'dark'] as const) {
+    const context = await browser.newContext({ colorScheme: theme, viewport: { width: 1200, height: 800 } });
+    const page = await context.newPage();
+    await page.addInitScript(value => localStorage.setItem('codeaf-theme', value), theme);
+    await openWithDiff(page);
+    // The editor names are the two this Linux test machine's own discovery returned for a Go file,
+    // served by a route stub, registered after the mock engine so it wins, so the shot does not depend on the box.
+    await page.route('**/api/engine/sessions/*/editors?**', route => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ editors: [{ id: 'libreoffice-writer.desktop', name: 'LibreOffice Writer', default: true }, { id: 'org.gnome.TextEditor.desktop', name: 'Text Editor' }], local: true, open: true }),
+    }));
+    await page.getByRole('button', { name: /^Changed 1 file/ }).click();
+    await chip(page).hover();
+    await expect(page.getByRole('tooltip')).toContainText('internal/auth/auth_test.go', { timeout: 2000 });
+    await page.screenshot({ path: `${dir}/${theme}-chip-tooltip.png` });
+    await chip(page).click({ modifiers: ['ControlOrMeta'] });
+    await page.locator('.file-head').getByRole('button', { name: 'Open in' }).click();
+    await expect(page.getByRole('menuitem', { name: /LibreOffice Writer/ })).toBeVisible();
+    await page.screenshot({ path: `${dir}/${theme}-open-in-editors.png` });
+    await context.close();
+  }
+});
