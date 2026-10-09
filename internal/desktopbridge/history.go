@@ -245,6 +245,10 @@ func (b *Bridge) historyRoutes(w http.ResponseWriter, r *http.Request, path stri
 		if needPost(w, r) {
 			history.archive(w, r)
 		}
+	case len(parts) == 2 && parts[1] == "group-offers":
+		if needPost(w, r) {
+			b.groupOffers(w, r, history)
+		}
 	case len(parts) == 2:
 		if needGet(w, r) {
 			history.detail(w, parts[1], attached)

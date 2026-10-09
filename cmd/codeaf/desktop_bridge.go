@@ -185,6 +185,13 @@ func runDesktopBridge(args []string) error {
 		return fmt.Errorf("tab sets: %w", err)
 	}
 	bridge.UseWorkspaces(workspaces)
+	homeDir, _ := os.UserHomeDir()
+	bridge.UseTabGroups(&desktopbridge.TabGroups{
+		Home: homeDir,
+		Policy: func() placegraph.RecommendPolicy {
+			return config.DesktopPlacesPolicy(profileDir)
+		},
+	})
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		return err
