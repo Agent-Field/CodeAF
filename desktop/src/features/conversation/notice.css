@@ -2,21 +2,6 @@
 .state-mark[data-tone="muted"] { color: var(--muted); }
 .state-mark[data-tone="warning"] { color: var(--danger); }
 
-.task-notice-line { display: flex; align-items: center; gap: var(--space-1); border-radius: var(--radius-sm); }
-.task-notice-line:hover, .task-notice-line:focus-within { background: var(--hover); }
-.button.task-notice-row { justify-content: flex-start; white-space: normal; flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-height: var(--task-outline-row-height); padding: var(--space-half) var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); text-align: left; font-size: var(--font-size-prose); }
-.button.task-notice-row:hover { background: transparent; }
-.button.task-notice-row:focus-visible { outline: var(--border-width) solid var(--focus-ring); }
-/* Constrained space: the title stays whole and wraps; the summary takes the rest of its line
-   or, when less than 40% is left, a line of its own, where it ends in an ellipsis. */
-.task-notice-title { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--text); font-weight: var(--font-weight-medium); }
-.task-notice-summary { flex: 1 1 40%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.button.task-notice-row > .app-icon { margin-left: auto; flex-shrink: 0; opacity: var(--opacity-transparent); transition: opacity var(--duration-fast) var(--ease); }
-.task-notice-line:hover .task-notice-row > .app-icon, .task-notice-row:focus-visible > .app-icon { opacity: var(--opacity-opaque); }
-@media (pointer: coarse) { .button.task-notice-row > .app-icon { opacity: var(--opacity-opaque); } }
-.button.task-notice-report { flex-shrink: 0; margin-right: var(--space-1); padding-inline: var(--space-2); color: var(--muted); font-size: var(--font-size-label); }
-.task-notice-live { margin: 0; padding-inline: var(--space-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-family: var(--font-mono); font-size: var(--font-size-code); }
-.task-notice-body { margin: var(--space-1) var(--space-2) 0; padding: var(--space-2) var(--space-3); max-height: var(--notice-body-max-height); overflow: auto; white-space: pre-wrap; color: var(--muted); font-size: var(--font-size-body); line-height: var(--line-height-body); }
 
 .question-evidence { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; width: 100%; }
 .question-code { margin: 0; padding: var(--space-2) var(--space-3); max-height: var(--tool-output-max-height); overflow: auto; border-radius: var(--radius-sm); background: var(--field); font-family: var(--font-mono); font-size: var(--font-size-code); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
