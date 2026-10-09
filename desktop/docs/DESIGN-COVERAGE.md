@@ -7,6 +7,21 @@ Companion: [`PLACES-ARCHITECTURE.md`](PLACES-ARCHITECTURE.md), the data paths, b
 boundary these tasks build. Work orders live in PlanDB project `p-6xuu` under `t-d5-plan`. Every task
 id in this file is a PlanDB id.
 
+## Current audit status
+
+The counts and per-row statuses below are the planning baseline at `39d440c4f`.
+They are preserved for traceability and must not be presented as the current app's
+missing-feature totals. Implementation and acceptance have since proceeded through
+integrated browser, backend and native gates; see [Complete tabs audit](TABS-COMPLETE-AUDIT.md)
+for the recorded revisions and the separate native/browser evidence scopes.
+
+Final acceptance is still open. Newly reproduced task-completion recommissioning
+has a bounded enforced answer-only fix and native retest; actual rendered preview,
+menu and text-line geometry are being checked against the reference screenshots.
+The Overview model footer is a concrete remaining wiring gap, while inactive
+keyboard-preview navigation is a recorded design question. Historical `partial`
+or `missing` rows are neither automatically accepted nor assumed still absent.
+
 ## 1. Bottom line
 
 - **1131 design items are scored.** 143 are complete, 290 partial, 486 missing and 196 in flight in
