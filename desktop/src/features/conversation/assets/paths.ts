@@ -59,6 +59,17 @@ export function absolutePath(path: string, workspace: string): string {
   return `${workspace.replace(/\/+$/, '')}/${path.replace(/^\.\//, '')}`;
 }
 
+/**
+ * The directory a chip shows: workspace-relative when the file is inside the
+ * workspace (and nothing at all for a file at its root), else as given.
+ */
+export function displayDir(dir: string, workspace: string): string {
+  if (!workspace || !dir.startsWith('/')) return dir === '.' ? '' : dir;
+  const inside = relativePath(dir, workspace);
+  if (inside === null) return dir;
+  return inside === '.' ? '' : inside;
+}
+
 /** Keeps both ends of a long directory: the root hints where, the tail says which. */
 export function middleTruncate(text: string, max: number): string {
   if (text.length <= max || max < 5) return text;

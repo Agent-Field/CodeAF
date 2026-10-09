@@ -195,3 +195,34 @@ test('a repeated CallID without a duration keeps the one already known', () => {
   ]);
   assert.equal(works(turn.blocks)[0].steps[0].calls[0].tookMs, 2000);
 });
+
+test('a failed call retried to success at the same target is not counted failed', () => {
+  const turn = first([
+    user('go'),
+    narrate('A'),
+    tool('propose_task', 'a', { title: 'x' }, { Failed: true, Hint: 'propose_task x' }),
+    narrate('B'),
+    tool('propose_task', 'b', { title: 'x' }, { Hint: 'propose_task x' }),
+    tool('bash', 'c', { command: 'false' }, { Failed: true, Hint: 'bash false' }),
+    tool('bash', 'd', { command: 'true' }, { Hint: 'bash true' }),
+    final('ok'),
+  ]);
+  const [work] = works(turn.blocks);
+  // The propose_task retry worked; the bash failure has no later success at its own command.
+  assert.equal(work.summary.failed, 1);
+});
+
+test('time spent waiting on a question is not worked time', () => {
+  const ns = (s: number) => s * 1e9;
+  const turn = first([
+    user('go'),
+    narrate('A'),
+    tool('bash', 'a', { command: 'ls' }, { Took: ns(2) }),
+    narrate('B'),
+    tool('ask', 'q', { head: 'Which?' }, { Took: ns(80) }),
+    final('ok'),
+  ]);
+  const [work] = works(turn.blocks);
+  assert.equal(work.summary.seconds, 2);
+  assert.equal(work.steps[1].tookMs, undefined);
+});

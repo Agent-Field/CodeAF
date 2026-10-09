@@ -4,7 +4,7 @@ import type { EnginePathFact } from '../../chat/engine-client';
 import type { FileRef } from '../types';
 import { useAssets, usePathFact } from './AssetContext';
 import { fileMenu, type FileAvailability } from './FileActions';
-import { fileKind, middleTruncate, relativePath, splitPath, type FileKind } from './paths';
+import { displayDir, fileKind, middleTruncate, relativePath, splitPath, type FileKind } from './paths';
 import { PreviewSheet } from './PreviewSheet';
 import './FileChip.css';
 
@@ -57,7 +57,8 @@ export function FileChip({ path, stat, source, added, removed, capped }: FileChi
   const [open, setOpen] = useState(false);
   const looked = usePathFact(path, !!stat);
   const fact = stat ?? looked.fact;
-  const { name, dir } = splitPath(path);
+  const { name, dir: fullDir } = splitPath(path);
+  const dir = displayDir(fullDir, assets.workspace);
   if (!assets.available) return <span className="asset-plain">{name}</span>;
   const availability = availabilityOf(path, assets.workspace, fact);
   const kind = fileKind(name, fact?.dir);
