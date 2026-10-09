@@ -321,3 +321,47 @@ func TestARecordedWorkspaceThatLeadsIntoADeniedFolderIsNotFollowed(t *testing.T)
 		t.Fatalf("code %d folders %v opens %d", code, rig.foldersAsked(), rig.opens.Load())
 	}
 }
+
+func TestSavedConversationReopensThroughSymlinkedLibraryRoot(t *testing.T) {
+	rig := newFolderRig(t)
+	work := t.TempDir()
+	file := librarySession(t, "0123456789abcdef", work)
+	root := home.Dir()
+	alias := filepath.Join(t.TempDir(), "library")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(home.EnvVar, alias)
+	relative, err := filepath.Rel(root, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliasFile := filepath.Join(alias, relative)
+	snap, code, e := rig.snapshotOf(map[string]any{"sessionFile": aliasFile})
+	want, _ := filepath.EvalSymlinks(work)
+	if code != 200 || snap.Workspace != want || rig.opens.Load() != 0 {
+		t.Fatalf("saved alias open = %d %s workspace %q fallback opens %d", code, e.Error, snap.Workspace, rig.opens.Load())
+	}
+	if got := recordedFolder(alias, file, rig.b.folderPolicy()); got != want {
+		t.Fatalf("canonical transcript through alias root = %q, want %q", got, want)
+	}
+	// The canonical state directory remains forbidden as a working directory.
+	if err := session.SaveMeta(filepath.Dir(file), session.Meta{ID: "0123456789abcdef", Workspace: root}); err != nil {
+		t.Fatal(err)
+	}
+	if got := recordedFolder(alias, aliasFile, rig.b.folderPolicy()); got != "" {
+		t.Fatalf("followed library workspace %q", got)
+	}
+	// A transcript symlink escaping the canonical library remains unauthorized.
+	outside := filepath.Join(t.TempDir(), "transcript.jsonl")
+	if err := os.WriteFile(outside, []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	escape := filepath.Join(root, "escape.jsonl")
+	if err := os.Symlink(outside, escape); err != nil {
+		t.Fatal(err)
+	}
+	if got := recordedFolder(alias, escape, rig.b.folderPolicy()); got != "" {
+		t.Fatalf("followed escaped transcript %q", got)
+	}
+}
