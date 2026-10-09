@@ -74,6 +74,9 @@ type Job struct {
 	// continues that conversation with a short carry-on note instead of
 	// opening a new one, and opens fresh only when it cannot be reopened.
 	Resume string
+	// CarryOn is what the carried-on chat is told besides the carry-on note:
+	// the answers given while the step was paused ([factory.Phase.Carry]).
+	CarryOn []string
 	// Opened is told the conversation's id the moment a chat stage has one,
 	// so the item keeps the stage's chat before the round ends and a pause or
 	// a restart can come back to it. Nil is nobody listening.
