@@ -117,6 +117,12 @@ export function fixtures(now: number): Case[] {
       ],
     },
     {
+      title: 'Clarification',
+      questions: [
+        { id: 14, kind: 'ask', ask: 'clarification', head: 'Which customers still run v1?', input: { kind: 'text', prompt: 'Your answer' }, blocking: { turn: true } },
+      ],
+    },
+    {
       title: 'Secret key',
       questions: [
         { id: 12, kind: 'connect', ask: 'clarification', head: 'Paste the API key for the weather service', reason: 'It is kept on this machine and never shown again.', input: { kind: 'text', prompt: 'API key', secret: true }, stakes: 'reversible' },

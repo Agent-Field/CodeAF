@@ -4,6 +4,7 @@ import type { EngineAnswer } from '../../chat/engine-client';
 import { answerFor, canPress, canSend, decideAnswer, initialDraft, submitAnswer, type Draft } from './answers';
 import { CardEvidence, CompareTable, type RenderImage } from './CardEvidence';
 import { CardFooter } from './CardFooter';
+import { ClarifyForm } from './ClarifyForm';
 import { deadlineAt } from './clock';
 import { formOf, hasWordsField, isIrreversible, needsWords, type Option, type Question } from './form';
 import { IrreversibleAnswers, PermissionAnswers } from './AnswerForms';
@@ -25,7 +26,7 @@ export type QuestionCardProps = {
 
 type Panel = { kind: 'scope' } | { kind: 'words'; option: Option } | null;
 
-const INPUT_FORMS = new Set(['checklist', 'blanks', 'pairs', 'dial', 'text']);
+const INPUT_FORMS = new Set(['checklist', 'blanks', 'pairs', 'dial']);
 
 function Fields({ form, props, send }: { form: string; props: FormProps; send: () => void }) {
   if (form === 'checklist') return <CheckList {...props} />;
@@ -89,6 +90,7 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
   const sendForm = () => canSend(question, draft) && void send(submitAnswer(question, draft));
   const decline = (key: string) => press((question.options ?? []).find((option) => option.key === key)!);
   const clocked = deadlineAt(question) !== null;
+  const clarifying = form === 'text';
   const stopClock = () => clocked && !held && onHold();
 
   return (
@@ -102,7 +104,14 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
       <CardEvidence blocks={question.attach} renderImage={renderImage} />
       <CompareTable question={question} />
       {form === 'proposal' && question.input?.blanks?.length ? <BlankFields {...props} /> : null}
-      {INPUT_FORMS.has(form) ? (
+      {form === 'text' ? (
+        <ClarifyForm
+          {...props}
+          onSend={sendForm}
+          onLater={clocked ? undefined : onLater}
+          onDecide={decide ? () => void send(decide) : undefined}
+        />
+      ) : INPUT_FORMS.has(form) ? (
         <>
           <Fields form={form} props={props} send={sendForm} />
           <div className="tray-actions">
@@ -149,9 +158,9 @@ export function QuestionCardV2({ question, busy, now, held, onAnswer, onHold, on
         now={now}
         held={held}
         locked={locked}
-        canDecide={Boolean(decide)}
+        canDecide={Boolean(decide) && !clarifying}
         onHold={onHold}
-        onLater={onLater}
+        onLater={clarifying ? undefined : onLater}
         onDecide={() => decide && void send(decide)}
       />
     </section>
