@@ -89,9 +89,9 @@ button:disabled { cursor: default; opacity: var(--opacity-disabled); }
 .text-input-field:focus-visible { background: var(--surface); }
 
 /* Tooltip: icon-only buttons and truncated text; sh-2 and 11px text. Its position is measured. */
-.tooltip-shortcut { margin-left: var(--tooltip-gap); color: var(--ink-3); }
+.tooltip-shortcut { flex-shrink: 0; color: var(--ink-3); }
 /* A full tab title can be longer than a narrow window: the tooltip wraps inside the collision padding (overlay.collisionPadding, 12px = space-3) instead of running off the edge. */
-.tooltip { position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: min(var(--menu-max-width), calc(100vw - 2 * var(--space-3))); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--type-caption-leading); pointer-events: none; }
+.tooltip { display: inline-flex; align-items: center; gap: var(--tooltip-gap); min-height: var(--tooltip-min-height); overflow-wrap: anywhere; position: fixed; top: 0; left: 0; z-index: var(--z-menu); max-width: min(var(--menu-max-width), calc(100vw - 2 * var(--space-3))); padding: var(--tooltip-pad-y) var(--tooltip-pad-x); border-radius: var(--radius-chip); background: var(--surface); color: var(--ink); box-shadow: var(--sh-2); font-family: var(--sans); font-size: var(--type-caption-size); font-weight: var(--type-label-weight); line-height: var(--tooltip-leading); pointer-events: none; }
 .truncated-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* LEGACY CHROME CONTROLS. The sidebar, tab strip, overview, switcher, rename dialog, page toolbar and
