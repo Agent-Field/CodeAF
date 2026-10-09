@@ -1521,6 +1521,10 @@ type app struct {
 	// reader could reach before it existed would be a race on this field.
 	news    *doorbell
 	leaving *doorbell
+	// tty holds the terminal's mode while this surface draws on it
+	// (ttyguard.go); the zero guard, everywhere but the ordinary launch, does
+	// nothing.
+	tty ttyGuard
 	// landedBell and serviceLands are the third and fourth of those doors: a
 	// provider listing that a launch warm or a ctrl+r walk stocked behind the
 	// frame (servicelands.go). Made with the surface for the same reason news
@@ -3561,6 +3565,13 @@ func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	model, cmd := a.update(msg)
+	// THE TERMINAL'S MODE IS THE ONE THE PROGRAM SET, checked on the loop
+	// (ttyguard.go): a mode something else put back is undone here and the
+	// screen drawn whole again.
+	if repaint := a.tty.check(time.Now()); repaint != nil {
+		a.ptr.still = false
+		cmd = tea.Batch(cmd, repaint)
+	}
 	// A USAGE NOTICE THE LAST FRAME DREW IS RECORDED HERE, on the loop and once:
 	// the frame may only note that it drew it (view.go), because the door's
 	// record is a write to disk.
