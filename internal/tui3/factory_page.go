@@ -152,12 +152,10 @@ type factoryPage struct {
 	open  bool
 	stage int
 	said  bool
-	// shapeAsked is every item whose page this window asked the Shape door
-	// for, once each, and shaping the ones whose turn is out, which keeps the
-	// frame clock running ([app.factorySpinning]; factory_item.go's
-	// [app.factoryShapeOnOpen]).
-	shapeAsked map[int]bool
-	shaping    map[int]bool
+	// shaping is every item whose shaping turn this window asked for and is
+	// out (`shape steps`), which keeps the frame clock running
+	// ([app.factorySpinning]; factory_item.go's [app.factoryShapeNow]).
+	shaping map[int]bool
 
 	// act is what the verbs leave behind (factory_keys.go): an open typing
 	// row, a habit offer and the like.

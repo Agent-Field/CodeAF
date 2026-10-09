@@ -23,6 +23,7 @@ import "github.com/Agent-Field/codeaf/internal/factory"
 //	1-9 stages          turn a stage on or off (named only on the `?` sheet)
 //	g  open on github   the issue or pull request in the browser
 //	u  refresh          read the issue again: size, cost, priority
+//	p  shape steps      the manager sets the steps for this item, runs nothing
 //	d  dismiss          take the row off the floor
 //	s  approve          accept a landed result
 //	B  request changes  another round, with notes
@@ -51,6 +52,7 @@ const (
 	keySync               = "g"
 	keyOpenGitHub         = "g"
 	keyRefresh            = "u"
+	keyShapeSteps         = "p"
 	keyDismiss            = "d"
 	keyDiff               = "d"
 	keyApprove            = "s"
@@ -100,6 +102,7 @@ const (
 	wordSync               = "sync to github"
 	wordOpenGitHub         = "open on github"
 	wordRefresh            = "refresh"
+	wordShapeSteps         = "shape steps"
 	wordRefreshAll         = "refresh all"
 	wordDismiss            = "dismiss"
 	wordDismissed          = "dismissed"

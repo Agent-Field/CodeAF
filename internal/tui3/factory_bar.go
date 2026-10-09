@@ -110,7 +110,7 @@ func (a *app) factoryControlPress() (tea.Cmd, bool) {
 	a.pageMsg, a.fp.said = "", false
 	switch a.factoryControlOf(it) {
 	case factoryControlRun:
-		return a.factoryRunIDs([]int{it.ID}, factoryRunItem), true
+		return a.factoryRunHere(it), true
 	case factoryControlPause, factoryControlResume:
 		return a.factoryPauseKey()
 	case factoryControlContinue:

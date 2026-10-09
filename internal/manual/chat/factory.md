@@ -67,6 +67,8 @@ The keys themselves:
 - `g` opens the item on github (see open the item on github).
 - `u` refreshes the item; `U` refreshes all, after asking (see when the floor is doing
   something).
+- `p` is `shape steps`: the item's manager sets its steps now and runs nothing (see does opening
+  an issue run anything).
 - `space` selects or unselects a new item, and pauses or resumes a running one. `T` opens a chat
   about the item.
 - `m` opens the foreman, the floor's own conversation for what to take first (see the foreman).
@@ -500,6 +502,7 @@ steps  running 4m · $0.31
 log
 settings
 
+shape steps
 open on github
 refresh
 dismiss
@@ -514,12 +517,16 @@ that has an approve step). A step held for you says `waiting for you` in amber. 
 conversation wears the conversation's mark.
 
 - `issue`: the whole issue and what codeaf read (see read the whole issue).
-- `manager`: the item's own conversation, the team's lead (only where `T chat` works).
+- `manager`: the item's own conversation, the team's lead (only where `T chat` works). Resting
+  the cursor on it opens it in the center at once, as an ordinary idle chat with the issue
+  already in it; making it asks no model anything, and nothing runs until somebody types.
 - `steps`: where the run stands, and every step as written with its knobs.
 - `log`: the run's log, once it has said anything (see the log).
 - `result`: the proof sheet, the diff and the checks, once something came out.
 - `settings`: thinking, budget and which steps are on.
-- `open on github`, `refresh`, `dismiss`: each does what its key does (`g`, `u`, `d`).
+- `shape steps`, `open on github`, `refresh`, `dismiss`: each does what its key does (`p`, `g`,
+  `u`, `d`). `shape steps` is there while the item has steps still to come (see the manager sets
+  the steps when you ask).
 
 The page opens on the step waiting on you, else the running step, else `result` for a landed
 item, else `issue`. Under 72 columns the left column is one line above the center.
@@ -529,6 +536,8 @@ item, else `issue`. Under 72 columns the left column is one line above the cente
 The bar's first cells are one button that does what the run needs next, by `space` or a click:
 
 - `▶ run` on an item that has not run, and on a run that is paused (it goes on in the same chat);
+  on an item the manager never shaped, the cursor first goes to `manager`, its chat opens in the
+  center, and the run starts there, so you watch the manager shape the steps before they run;
 - `= pause` on a run that is moving;
 - `▶ continue` on a run held at an approve step (a step of kind gate, a person): the step's row
   says `waiting for you`, the second row says `approve · waiting for you` (or the run's own
@@ -536,6 +545,10 @@ The bar's first cells are one button that does what the run needs next, by `spac
 
 A queued or landed item has no control. `?` names `space` by what it does now. On the item page
 `space` never selects: select is the floor's.
+
+The button sends what it shows, not a toggle: pressing `pause` twice (or a click and a key landing
+together) holds the run once and leaves it held, and `run` on a paused item goes on once. A
+doubled press never undoes itself.
 
 ## move around the item page — arrows, tab, click, hover, the wheel
 
@@ -719,27 +732,30 @@ them`. So `do a thorough review on security, code and architecture`, said during
 change review's ask before review starts; the log then says `manager set review: …`. A stage that
 started is never changed.
 
-## the manager reads the issue when you open it — the stages are set before you press r
+## does opening an issue run anything — no; the manager sets the steps when you ask, shape steps, p
 
-The first time you open an item's page (`enter` on its row) and the manager has never shaped it,
-the manager reads the issue at once: it takes the same shaping turn it takes at `r`, with the ask
-`Shape the run for this item now.` and nothing you said. If the item has no manager conversation
-yet, one is made first. The manager's chat shows `manager is thinking` while it reads; then its reply is
-there and the stages on the left redraw as it set them, each one it changed marked `+`. Nothing
-runs: the stages are only set.
+Opening an item's page runs nothing and spends nothing. The steps on the left are the recipe's:
+the repository's `.codeaf/factory.md` as the main branch has it, else the built-in recipe
+(plan, approve, write, test, review, security off, proof). The manager row opens at once as an
+idle chat with the issue in it; no model is asked anything until somebody types.
 
-What it set goes into the manager's conversation as one line, the same lines as at `r`:
-`manager set review: … · why: …`, or `the recipe stands` when it changed nothing. When it changed
-nothing, the item's stages say `manager kept the recipe`, so you can see it read the issue. When
-its turn fails, the line is `the manager did not answer · the recipe stands` (or one of the other
-lines under the manager shapes the run), and that line is also on the page's note line.
+The manager shapes the steps in exactly three ways:
 
-It happens once per item, never for an item you only looked at on the floor, and never again:
-`r` afterwards runs the stages as they stand without shaping a second time. It does not happen
-for an item that already ran, one the manager already shaped, or one whose manager you already
-talked to (see tell the manager what you want before it runs): there your words are what shapes
-it. A turn that failed shapes nothing, so `r` gives the manager its turn again. The turn is one
-cheap turn, and what it costs counts in the day's spend at the top like any other conversation's.
+- **`▶ run`** (or `r`) on an item it never shaped: its shaping turn (see the manager shapes the
+  run) streams in its chat in the center, the steps on the left redraw as it sets them, then they
+  run one by one, holding at each approve step.
+- **You ask it in its chat**, `make the review about security`, and its `factory_run` changes the
+  steps at once. Nothing runs.
+- **`shape steps`** (`p`, or the row under the item's facets; a press or a click does the same):
+  the cursor goes to `manager`, its chat opens, and the manager takes one shaping turn there with
+  the ask `Shape the run for this item now.` Nothing runs. Before a run it may change every step;
+  during one, only the steps not yet started. The note line says what it set, `manager set …`,
+  `the recipe stands`, or why its turn did not happen (`the manager did not answer · the recipe
+  stands`). An item whose run is over has nothing to shape and says so.
+
+After a `shape steps` that changed nothing, the item says `manager kept the recipe`, and `▶ run`
+does not shape it again. The manager's own verbs, `factory_run` and `factory_answer`, never wait
+on an approval card: a shaping turn nobody is at the keyboard of could not answer one.
 
 ## tell the manager what you want before it runs — one word per stage, it sets the asks
 

@@ -800,6 +800,13 @@ type RunnerDoors interface {
 	Reverify(id int) error
 }
 
+// HoldDoor is the pause with its intent said ([Seam.Hold]): on holds, off goes
+// on, and an ask already true changes nothing. internal/factory/run's *Runner
+// answers it; a runner that does not leaves the seam's Hold door absent.
+type HoldDoor interface {
+	Hold(id int, on bool) error
+}
+
 // WithRunner binds the eight runner doors onto the seam. ONLY THE PROCESS THAT
 // RUNS THE FLOOR'S ITEMS IS HANDED ONE (cmd/codeaf's factory_run.go): a
 // second runner over the same store would run the same item twice. A nil r
@@ -831,8 +838,11 @@ const (
 	VerbSignOff  = "signoff"
 	VerbSendBack = "sendback"
 	VerbReverify = "reverify"
-	// VerbShape is the manager's shaping turn when an item page opens
-	// ([Seam.Shape]). It is not a runner door: the owner carries it beside
+	// VerbHold is [Seam.Hold]: Yes is on (hold) or off (go on). An owner of an
+	// older build refuses it in words rather than toggling.
+	VerbHold = "hold"
+	// VerbShape is `shape steps`, the manager's shaping turn the person asked
+	// for ([Seam.Shape]). It is not a runner door: the owner carries it beside
 	// the drain, because a turn takes up to a minute and the drain must not
 	// wait on it, and the window waits [ShapeMailboxWait] for its reply.
 	VerbShape = "shape"
@@ -906,6 +916,12 @@ func Carry(r RunnerDoors, ask Ask) Reply {
 		err = r.Stop(ask.ID)
 	case VerbPause:
 		err = r.Pause(ask.ID)
+	case VerbHold:
+		if h, ok := r.(HoldDoor); ok {
+			err = h.Hold(ask.ID, ask.Yes)
+		} else {
+			err = fmt.Errorf("the floor's runner does not know %q", ask.Verb)
+		}
 	case VerbAnswer:
 		err = r.Answer(ask.ID, ask.Yes, ask.Words)
 	case VerbSteer:
@@ -941,6 +957,9 @@ func localRunner(seam *Seam, o localOptions) {
 		seam.Launch = r.Launch
 		seam.Stop = r.Stop
 		seam.Pause = r.Pause
+		if h, ok := r.(HoldDoor); ok {
+			seam.Hold = h.Hold
+		}
 		seam.Answer = r.Answer
 		seam.Steer = r.Steer
 		seam.SignOff = r.SignOff
@@ -973,6 +992,7 @@ func localRunner(seam *Seam, o localOptions) {
 	seam.Launch = func(id int) error { return plain(Ask{ID: id, Verb: VerbLaunch}) }
 	seam.Stop = func(id int) error { return plain(Ask{ID: id, Verb: VerbStop}) }
 	seam.Pause = func(id int) error { return plain(Ask{ID: id, Verb: VerbPause}) }
+	seam.Hold = func(id int, on bool) error { return plain(Ask{ID: id, Verb: VerbHold, Yes: on}) }
 	seam.Answer = func(id int, yes bool, words string) error {
 		return plain(Ask{ID: id, Verb: VerbAnswer, Yes: yes, Words: words})
 	}

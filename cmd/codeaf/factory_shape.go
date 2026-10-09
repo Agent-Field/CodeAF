@@ -411,27 +411,24 @@ func sameFileKey(path string) string {
 	return filepath.Clean(path)
 }
 
-// ── THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS ─────────────────────────
+// ── `shape steps`: THE MANAGER SHAPES THE STEPS WHEN THE PERSON ASKS ─────────
 //
-// The owner's decision of 2026-10-08: the first time an item page opens on an
-// item the manager has never shaped and the person has never talked to, the
-// manager takes its shaping turn at once, as it does at `r`, so the stages are
-// set before the person presses anything. This is the floor's Shape door
-// ([factory.Seam.Shape]): the conversation is made when the item has none
-// ([managerMaker]), the turn is the launch's own ([shapeTurns.Shape], nothing
-// said, through the window's conversation when this process holds it), and
-// its edit is applied as the launch applies it ([factoryrun.ApplyShape])
-// under the store's write. `r` afterwards does not shape again, because the
-// item is then shaped by the manager.
+// The owner's journey (2026-10-09): OPENING AN ISSUE RUNS NOTHING. The steps
+// an item shows are the recipe's until somebody asks the manager to shape
+// them: ▶ run on an item never shaped (the runner's own shaping turn), words
+// in the manager's chat (its `factory_run`), or `shape steps`, which is this
+// door ([factory.Seam.Shape]). It gives the manager one turn, the launch's own
+// ([shapeTurns.run], nothing said, through the window's conversation when this
+// process holds it, so it streams where the person is looking), and applies
+// its edit as the launch applies it ([factoryrun.ApplyShape]) under the
+// store's write: to every step before a run, and to the steps not yet started
+// during one. The conversation is made when the item has none
+// ([managerMaker]); making it asks no model anything.
 //
-// THE RECIPE STANDING IS A SHAPING TOO: an edit that changes nothing is
-// recorded as [shapeKeptRecord] on the item, so the launch knows the manager
-// read it and does not spend a second turn on it. A turn that did not answer,
-// or an edit refused, records nothing, and `r` gives the manager its turn
-// again.
-//
-// It runs regardless of a checkout: the turn reads the item and the recipe the
-// item already carries (its stages), and the recipe file when one is known.
+// THE RECIPE STANDING IS A SHAPING TOO: an edit that changes nothing on an
+// item that never ran is recorded as [shapeKeptRecord], so ▶ run afterwards
+// knows the manager read it and does not spend a second turn on it. A turn
+// that did not answer, or an edit refused, records nothing.
 
 // shapeKeptRecord is the line an item's record ([factory.Item.Adapted]) keeps
 // when the manager read it and kept the recipe. It starts with the manager's
@@ -444,14 +441,13 @@ type shapeDoor struct {
 		Get(id int) (factory.Item, error)
 		Update(id int, change func(*factory.Item) error) error
 	}
-	// turn is the shaping turn ([shapeTurns.Shape]).
-	turn func(ctx context.Context, it factory.Item, said []string) (factory.RunEdit, string, error)
+	// turn is the shaping turn ([shapeTurns.run]); inRun bounds its edit to
+	// the steps not yet started.
+	turn func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error)
 	// make is the item's manager conversation, made when it has none.
 	make func(ctx context.Context, it factory.Item) (string, error)
 	// say writes a progress line into a conversation.
 	say func(transcript, line string) error
-	// spoke says whether the person has said anything in a conversation.
-	spoke func(transcript string) bool
 	// recipe is the item's recipe.
 	recipe func(it factory.Item) factory.Recipe
 	wait   time.Duration
@@ -469,32 +465,32 @@ func factoryShapeDoor(st *store.Store, workspace, profileDir string, turns *shap
 	}
 	dirs := factoryRepoDirs(st, workspace)
 	d := &shapeDoor{
-		st:   st,
-		turn: turns.Shape,
-		make: managerMaker(st, workspace, profileDir),
-		say:  sessionTalk{}.Say,
-		spoke: func(transcript string) bool {
-			lines, _ := session.PersonLines(transcript, time.Time{})
-			return len(lines) > 0
+		st: st,
+		turn: func(ctx context.Context, it factory.Item, inRun bool) (factory.RunEdit, string, error) {
+			return turns.run(ctx, it, shapeAsk, inRun)
 		},
+		make:   managerMaker(st, workspace, profileDir),
+		say:    sessionTalk{}.Say,
 		recipe: func(it factory.Item) factory.Recipe { return factoryItemRecipe(dirs, it) },
 	}
 	return d.Shape
 }
 
-// shapeOwed says whether the item is owed its shaping turn at open: it never
-// ran, and the manager never shaped it.
-func shapeOwed(it factory.Item) bool {
-	if s := it.Stream; s != nil && (!s.Started.IsZero() || len(s.Phases) > 0) {
-		return false
-	}
-	return !factoryrun.ShapedByManager(it)
+// itemRan says whether an item's run has started: its edit is then bounded to
+// the steps not yet started.
+func itemRan(it factory.Item) bool {
+	s := it.Stream
+	return s != nil && (!s.Started.IsZero() || len(s.Phases) > 0)
 }
 
-// Shape is the door: one turn for item id, or [factory.ShapeAlready].
+// errNothingToShape is `shape steps` on an item whose run is over.
+var errNothingToShape = errors.New("its run is over · there are no steps still to come")
+
+// Shape is the door: one turn for item id, or [factory.ShapeAlready] while a
+// turn for it is already out.
 func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
-	// ONE TURN PER ITEM AT A TIME: two windows opening the same page ask
-	// once; the second hears it already shaped.
+	// ONE TURN PER ITEM AT A TIME: two presses (or two windows) ask once; the
+	// second hears it already out.
 	if !d.begin(id) {
 		return factory.ShapeAlready, nil
 	}
@@ -504,12 +500,11 @@ func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	chat := strings.TrimSpace(it.Talk)
-	// THE PERSON TALKED FIRST: what they said is the manager's to act on, in
-	// its own turn there, and the launch carries their words. Nothing here.
-	if !shapeOwed(it) || (chat != "" && d.spoke != nil && d.spoke(chat)) {
-		return factory.ShapeAlready, nil
+	switch it.State {
+	case factory.StateLanded, factory.StateShipped:
+		return "", fmt.Errorf("%s: %w", it.Ref(), errNothingToShape)
 	}
+	chat := strings.TrimSpace(it.Talk)
 	if chat == "" {
 		made, err := d.make(ctx, it)
 		if err != nil {
@@ -538,7 +533,7 @@ func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
 	}
 	turnCtx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
-	edit, _, err := d.turn(turnCtx, it, nil)
+	edit, _, err := d.turn(turnCtx, it, itemRan(it))
 	if err != nil {
 		line := factoryrun.ShapeFailLine(err)
 		d.tell(chat, line)
@@ -551,18 +546,17 @@ func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
 	line := ""
 	var refused error
 	if err := d.st.Update(id, func(x *factory.Item) error {
-		// A LAUNCH THAT CAME IN DURING THE TURN shaped it itself.
-		if !shapeOwed(*x) {
-			line = factory.ShapeAlready
-			return nil
-		}
-		l, err := factoryrun.ApplyShape(x, edit, d.recipe(*x), false, now)
+		// A RUN THAT STARTED DURING THE TURN bounds the edit to its tail.
+		inRun := itemRan(*x)
+		l, err := factoryrun.ApplyShape(x, edit, d.recipe(*x), inRun, now)
 		if err != nil {
 			refused = err
 			return nil
 		}
 		if l == "" {
-			x.Adapted = append(append([]string(nil), x.Adapted...), shapeKeptRecord)
+			if !inRun && !factoryrun.ShapedByManager(*x) {
+				x.Adapted = append(append([]string(nil), x.Adapted...), shapeKeptRecord)
+			}
 			l = factoryrun.SayShapeStands
 		}
 		line = l
@@ -575,9 +569,7 @@ func (d *shapeDoor) Shape(ctx context.Context, id int) (string, error) {
 		d.tell(chat, line)
 		return line, errors.New(line)
 	}
-	if line != factory.ShapeAlready {
-		d.tell(chat, line)
-	}
+	d.tell(chat, line)
 	return line, nil
 }
 

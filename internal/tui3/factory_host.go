@@ -93,6 +93,25 @@ type factoryHost struct {
 	// ([app.factoryHostLetGo]).
 	opened map[string]string
 	kept   map[string]bool
+	// talkAsked is every item the Talk door was asked for its conversation by
+	// the cursor resting on the manager row, once each while the page stands.
+	talkAsked map[int]bool
+	// talkOut is the item whose Talk door ask is out now, 0 for none, so a
+	// press landing meanwhile waits on it rather than asking twice.
+	talkOut int
+	// after is what waits on the manager's chat being in front: a shaping
+	// turn, or a run whose shaping turn should stream there
+	// ([app.factoryAfterManager]).
+	after *factoryAfter
+}
+
+// factoryAfter is one thing the page does once the manager's chat of item id
+// is in front, or once it is clear it will not be (the open refused, or the
+// Talk door made no conversation), so it is never left waiting.
+type factoryAfter struct {
+	id     int
+	do     func() tea.Cmd
+	failed bool
 }
 
 // factoryCanHost says whether the page can host a chat at all on this
@@ -120,51 +139,95 @@ func (a *app) factoryChatOf(it factory.Item, r factoryPageRow) string {
 // factoryTalkHere is `enter` on the issue or the manager row, and `T` on the
 // item page: the manager's chat, IN THE CENTER. The cursor goes to the
 // manager row and the box takes the keys once the chat is in front; an item
-// with no conversation yet asks the Talk door for one first, off the loop,
-// and the floor is read in the same ask so the row learns it has one.
+// with no conversation yet asks the Talk door for one first
+// ([app.factoryTalkFetch]).
 func (a *app) factoryTalkHere(it factory.Item) tea.Cmd {
-	for i, row := range a.factoryItemRows(it) {
-		if row.kind == factoryPageManager {
-			a.factoryStageSelect(i)
-			break
-		}
-	}
+	a.factoryManagerRow(it)
 	h := &a.fp.host
 	h.focus = true
-	if a.factoryChatOf(it, factoryPageRow{kind: factoryPageManager}) != "" {
+	if a.factoryChatOf(it, factoryPageRow{kind: factoryPageManager}) != "" || h.talkOut == it.ID {
 		return nil
 	}
+	return a.factoryTalkFetch(it, true)
+}
+
+// factoryManagerRow puts the left column's cursor on the manager row.
+func (a *app) factoryManagerRow(it factory.Item) {
+	for i, row := range a.factoryItemRows(it) {
+		if row.kind == factoryPageManager {
+			if i != a.fp.stage {
+				a.factoryStageSelect(i)
+			}
+			return
+		}
+	}
+}
+
+// factoryTalkFetch asks the Talk door for item it's conversation OFF THE
+// LOOP; for a gesture the floor is read in the same ask so the row learns it
+// has one.
+// THE DOOR MAKES NO MODEL CALL: the conversation is written with the issue
+// already in it ([factory.Seam.Talk]), idle until somebody speaks, so the
+// manager row opens as a normal chat at once. focus says the box takes the
+// keys when it lands (`enter`, `T`); the cursor merely resting on the row
+// does not.
+func (a *app) factoryTalkFetch(it factory.Item, focus bool) tea.Cmd {
 	seam, id := a.factory, it.ID
+	if seam.Talk == nil {
+		return nil
+	}
+	h := &a.fp.host
+	if h.talkAsked == nil {
+		h.talkAsked = map[int]bool{}
+	}
+	h.talkAsked[id] = true
+	h.talkOut = id
 	a.fp.act.doing = "opening " + it.Ref() + "'s conversation…"
-	return a.offLoop(func() func(bool) tea.Cmd {
+	// THE CURSOR RESTING ON THE ROW IS NOT A GESTURE, so its ask stands
+	// beside the ordered line rather than in front of the next key; `enter`
+	// and `T` are, and keep their place in it.
+	line := a.besideLine
+	if focus {
+		line = a.offLoop
+	}
+	return line(func() func(bool) tea.Cmd {
 		chat, err := seam.Talk(context.Background(), id)
+		// THE FLOOR IS READ AGAIN ONLY FOR A GESTURE: the chat is kept by the
+		// page itself ([factoryHost.talks]) until the floor's own next read
+		// carries it, so the cursor resting on a row costs no read.
 		var snap factory.Snapshot
 		var lerr error
-		if seam.Load != nil {
+		read := focus && seam.Load != nil
+		if read {
 			snap, lerr = seam.Load()
 		}
 		return func(bool) tea.Cmd {
 			a.fp.act.doing = ""
+			if a.fp.host.talkOut == id {
+				a.fp.host.talkOut = 0
+			}
+			focus = focus || a.fp.host.focus
 			switch {
 			case lerr != nil:
 				a.fp.err = lerr
-			case seam.Load != nil:
+			case read:
 				a.factoryFold(snap)
 			}
-			if err != nil {
-				a.fp.host.focus = false
-				a.pageMsg = strings.TrimSpace(err.Error())
-				a.touch()
-				return nil
-			}
 			chat = strings.TrimSpace(chat)
-			if chat == "" {
-				// NO CHAT CAME BACK TO HOST: the manager's own box takes the
-				// keys instead, and the Say door makes the chat on the first
-				// words.
+			if err != nil || chat == "" {
 				a.fp.host.focus = false
-				if it, ok := a.factoryItemByID(id); ok {
-					a.factoryTLOpenBox(it)
+				if after := a.fp.host.after; after != nil && after.id == id {
+					after.failed = true
+				}
+				if err != nil {
+					a.pageMsg = strings.TrimSpace(err.Error())
+				} else if focus {
+					// NO CHAT CAME BACK TO HOST: the manager's own box takes
+					// the keys instead, and the Say door makes the chat on the
+					// first words.
+					if it, ok := a.factoryItemByID(id); ok {
+						a.factoryTLOpenBox(it)
+					}
 				}
 				a.touch()
 				return nil
@@ -177,6 +240,55 @@ func (a *app) factoryTalkHere(it factory.Item) tea.Cmd {
 			return nil
 		}
 	})
+}
+
+// factoryAfterManager does do once the manager's chat of item it is in front
+// of the person: the cursor goes to the manager row now, the chat is made and
+// brought by the ordinary sync ([app.factoryHostSync]), and do is called on
+// the first sync that finds it in front ([app.factoryAfterFire]). A page that
+// cannot host a chat (no door to open one, no Talk door, too narrow) does it
+// at once, and so does one whose chat refused to open: the turn then runs
+// headless and lands in the conversation all the same.
+func (a *app) factoryAfterManager(it factory.Item, do func() tea.Cmd) tea.Cmd {
+	if !a.fp.open || !a.factory.Has("talk") || !a.factoryCanHost() {
+		return do()
+	}
+	a.factoryManagerRow(it)
+	a.fp.host.after = &factoryAfter{id: it.ID, do: do}
+	return nil
+}
+
+// factoryAfterFire calls what waits on the manager's chat when it is time:
+// the chat is in front, its open refused, its conversation could not be made,
+// or the person walked the cursor off the manager row meanwhile (the turn is
+// theirs all the same). It is asked at the end of every sync.
+func (a *app) factoryAfterFire() tea.Cmd {
+	h := &a.fp.host
+	after := h.after
+	if after == nil {
+		return nil
+	}
+	it, ok := a.factoryCursorItem()
+	if !ok || it.ID != after.id || !a.fp.open {
+		h.after = nil
+		return nil
+	}
+	ready := after.failed
+	if r, ok := a.factoryPageRowAt(it); !ok || r.kind != factoryPageManager {
+		ready = true
+	}
+	switch chat := a.factoryChatOf(it, factoryPageRow{kind: factoryPageManager}); {
+	case chat == "" && h.talkAsked[it.ID] && h.talkOut != it.ID:
+		// THE TALK DOOR WAS ASKED AND MADE NOTHING: there is no chat to wait on.
+		ready = true
+	case chat != "" && h.want == chat && (h.why != "" || (h.wantKey != "" && h.key == h.wantKey)):
+		ready = true
+	}
+	if !ready {
+		return nil
+	}
+	h.after = nil
+	return after.do()
 }
 
 // factoryHosting reports whether the center hosts its chat now: the item
@@ -219,9 +331,40 @@ func (a *app) factoryHostTopHeight() int {
 
 // factoryHostSync settles which chat the center hosts, after every message:
 // the selected row's chat when it is in front, and an open asked for it when
-// it is not and none was asked for this selection. It reads memory only on
-// every other place.
+// it is not and none was asked for this selection. The manager row of an item
+// with no conversation yet asks the Talk door for one, once. Then what waited
+// on the manager's chat is done when it is time ([app.factoryAfterFire]). It
+// reads memory only on every other place.
 func (a *app) factoryHostSync() tea.Cmd {
+	settled := a.factoryHostSettle()
+	talk := a.factoryTalkAuto()
+	if a.fp.host.after == nil && talk == nil {
+		return settled
+	}
+	return tea.Batch(settled, talk, a.factoryAfterFire())
+}
+
+// factoryTalkAuto is THE MANAGER ROW OPENING AS A CHAT AT ONCE: an item with
+// no conversation yet has one made for it, with the issue in it and no model
+// asked anything, the first time the cursor rests on its manager row. nil on
+// every other row, and once asked.
+func (a *app) factoryTalkAuto() tea.Cmd {
+	if !a.at(pageFactory) || !a.fp.open || !a.factory.Has("talk") || !a.factoryCanHost() || a.fp.act.doing != "" {
+		return nil
+	}
+	it, ok := a.factoryCursorItem()
+	if !ok || a.fp.host.talkAsked[it.ID] {
+		return nil
+	}
+	r, ok := a.factoryPageRowAt(it)
+	if !ok || r.kind != factoryPageManager || a.factoryChatOf(it, r) != "" {
+		return nil
+	}
+	return a.factoryTalkFetch(it, false)
+}
+
+// factoryHostSettle is the sync's settling of the center ([app.factoryHostSync]).
+func (a *app) factoryHostSettle() tea.Cmd {
 	h := &a.fp.host
 	if !a.at(pageFactory) || !a.fp.open || h.forwarding {
 		if !a.at(pageFactory) || !a.fp.open {

@@ -226,8 +226,8 @@ func (lp *floorLoop) applyEdit(c *loopCtl, edit factory.RunEdit, inRun bool) (st
 
 // ApplyShape applies the manager's edit to it in place, the one application
 // of a shaping turn's edit: the runner's at launch and on a steer
-// ([floorLoop.applyEdit]), and the floor's Shape door's when an item page
-// first opens ([factory.Seam.Shape]). The edit is the manager's whatever it
+// ([floorLoop.applyEdit]), and the floor's Shape door's when the person asks
+// for `shape steps` ([factory.Seam.Shape]). The edit is the manager's whatever it
 // says; inRun bounds it to the stages not yet started. The item's run keeps
 // its stream, and a stream's phases not yet started are compiled again from
 // the stages; an item with no stream gets none (its launch compiles them). It

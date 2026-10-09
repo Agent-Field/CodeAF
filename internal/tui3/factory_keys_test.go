@@ -612,6 +612,9 @@ func TestFactorySettingsKeysOnlyOnTheSettingsRow(t *testing.T) {
 	factoryVerbsOpen(t, a, 8)
 	for _, row := range []string{wordFacetManager, wordFacetIssue, wordFacetSteps} {
 		factoryRowNamed(t, a, row)
+		// The manager row makes its chat when the cursor rests on it (the
+		// Talk door); that is the row's own ask, not a key's.
+		drive(t, a, key("left"))
 		before := frame(a)
 		f.said()
 		for _, k := range []string{keyAddStage, keyInWordsSet, keySaveRecipe, "1"} {

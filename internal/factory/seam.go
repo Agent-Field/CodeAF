@@ -21,6 +21,12 @@ type Seam struct {
 	Stop func(id int) error
 	// Pause holds one bench without ending it; calling it again resumes.
 	Pause func(id int) error
+	// Hold is Pause with its intent said: on holds the item's step now and
+	// keeps its chat, off goes on with the same step in the same chat. AN ASK
+	// THAT IS ALREADY TRUE CHANGES NOTHING, so the top bar's button sends what
+	// it shows and a doubled press never undoes itself. Nil where the runner
+	// has no such door; the surface then falls back to Pause.
+	Hold func(id int, on bool) error
 	// Dismiss hides an item until it changes.
 	Dismiss func(id int) error
 
@@ -72,16 +78,17 @@ type Seam struct {
 	// refused edit changes nothing and answers why. A running item's runner
 	// reads the new stages at its next round.
 	Edit func(ctx context.Context, id int, e RunEdit) (Item, []string, error)
-	// Shape gives the item's manager its shaping turn now, before any run:
-	// THE MANAGER READS THE ISSUE WHEN ITS PAGE OPENS (the owner's decision of
-	// 2026-10-08). The manager conversation is made when the item has none,
-	// given one turn with nothing said, and the edit it makes is applied to the
-	// item's stages before the run, as the launch applies it; the line it
-	// recorded goes into the conversation. It answers that line (`manager set
-	// …`, or `the recipe stands`), or [ShapeAlready] and does nothing for an
-	// item that ran, that the manager already shaped, or whose conversation the
-	// person has already spoken in. A turn that did not answer, or an edit
-	// refused, is an error in the words the launch would say.
+	// Shape is `shape steps`: the item's manager is given its shaping turn
+	// now, because the person asked (the owner's journey, 2026-10-09: OPENING
+	// AN ISSUE RUNS NOTHING, and the manager shapes only when asked). The
+	// manager conversation is made when the item has none (no model is asked
+	// for that), given one turn, and the edit it makes is applied as the
+	// launch applies it: to every step before a run, to the steps not yet
+	// started during one. Nothing is run. The line it recorded goes into the
+	// conversation and is answered (`manager set …`, or `the recipe stands`);
+	// [ShapeAlready] while a turn for the item is already out. A turn that did
+	// not answer, an edit refused, or an item whose run is over is an error in
+	// words.
 	Shape func(ctx context.Context, id int) (line string, err error)
 
 	// THE FLOOR'S OWN SETTINGS (settings.go), each a door like every other:
@@ -187,9 +194,9 @@ type Seam struct {
 	RecipeNotNow func(repo string) error
 }
 
-// ShapeAlready is what [Seam.Shape] answers for an item it leaves alone: one
-// that ran, one the manager already shaped, or one whose conversation the
-// person has spoken in. The surface asks on every first open and ignores it.
+// ShapeAlready is what [Seam.Shape] answers while a shaping turn for the item
+// is already out: the second press asks nothing, and the surface says nothing
+// for it.
 const ShapeAlready = "already shaped"
 
 // Has says whether a door exists, by the door's name: the field's name in
@@ -206,6 +213,8 @@ func (s Seam) Has(door string) bool {
 		return s.Stop != nil
 	case "pause":
 		return s.Pause != nil
+	case "hold":
+		return s.Hold != nil
 	case "dismiss":
 		return s.Dismiss != nil
 	case "answer":
