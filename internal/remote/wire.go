@@ -1291,6 +1291,16 @@ type Welcome struct {
 	// Organize's folder pass alone.
 	TeamAsk bool `json:"teamAsk,omitempty"`
 
+	// PlaceAsk says this engine ANSWERS THE PLACES MODEL ASK
+	// ([MethodPlacesAsk]): its agent answers internal/placegraph's filing and
+	// suggestion questions on their own two roles.
+	//
+	// IT IS CARRIED FOR [Welcome.TeamAsk]'s REASON: a *remote.Agent always has
+	// AskPlaces on it, so a type assertion says nothing about the far machine.
+	// ABSENCE IS false, and false is refused at this end before anything is
+	// written, which the recommender reads as any failed ask: rules alone.
+	PlaceAsk bool `json:"placeAsk,omitempty"`
+
 	// News says this engine SENDS THE STATUS LINE'S NEWS — the "phase" and
 	// "lane" frames the live rate and the `via <machine>` rider are drawn from
 	// (news.go) — for the conversation this surface arrived in.
