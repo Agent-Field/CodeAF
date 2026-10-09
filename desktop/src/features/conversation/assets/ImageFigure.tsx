@@ -4,6 +4,7 @@ import { FileChip } from './FileChip';
 import { useFile } from './AssetContext';
 import { Lightbox } from './Lightbox';
 import { aspectOf } from './paths';
+import './figures.css';
 
 export type FigureItem = { path: string; caption: string; meta: string };
 

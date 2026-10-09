@@ -2,6 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Button, Icon } from '../../../components/ui';
 import type { FileRef } from '../types';
 import { FileChip } from './FileChip';
+import './changes.css';
 
 export type ChangesSummaryProps = {
   files: FileRef[];

@@ -1,0 +1,21 @@
+/* Image figure and grid. Layout only; every value is a token. */
+.image-figure { display: block; max-width: var(--figure-max-width); min-width: 0; margin-block: var(--space-2); }
+.figure-box { display: block; aspect-ratio: 4 / 3; min-height: var(--thumb-size); }
+.figure-frame.button {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-figure);
+  background: var(--field);
+}
+.figure-frame[data-loading="true"] { background: var(--field-2); }
+.figure-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.figure-caption { display: block; margin-top: var(--space-1); font-size: var(--font-size-label); line-height: var(--line-height-tight); color: var(--ink-2); overflow-wrap: anywhere; }
+.figure-meta { color: var(--ink-3); }
+.image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); max-width: calc(var(--figure-max-width) * 2 + var(--space-2)); margin-block: var(--space-2); }
+.image-grid .image-figure { margin: 0; max-width: none; }
+.image-grid .figure-box { aspect-ratio: 1 / 1; }
+@media (max-width: 600px) { .image-grid { grid-template-columns: minmax(0, 1fr); } }
