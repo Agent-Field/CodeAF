@@ -22,6 +22,8 @@ export function contentSignature(model: ConversationModel): string {
  */
 export function useStickToBottom(scroller: RefObject<HTMLElement | null>, content: RefObject<HTMLElement | null>, signature: string, pageKey?: string) {
   const atBottom = useRef(true);
+  // Where our own follow last put the pane: the scroll event it causes is not the reader leaving.
+  const followed = useRef<number | null>(null);
   const onPage = useRef(Boolean(pageKey));
   onPage.current = Boolean(pageKey);
   const [behind, setBehind] = useState(false);
@@ -34,14 +36,19 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
     const inner = content.current;
     if (!element || !inner) return;
     const onScroll = () => {
-      atBottom.current = !onPage.current && distanceToEnd(element) <= SLACK;
+      const ours = followed.current !== null && Math.abs(element.scrollTop - followed.current) < 1;
+      followed.current = null;
+      // Late growth (an image decoding) may land between our follow and its scroll event; the reader did not scroll.
+      atBottom.current = !onPage.current && (ours ? atBottom.current : distanceToEnd(element) <= SLACK);
       setAway(!atBottom.current && !onPage.current);
       if (atBottom.current) setBehind(false);
       setUnanchored(!atBottom.current);
       setScrolled(element.scrollTop > 0);
     };
     const follow = () => {
-      if (atBottom.current) element.scrollTop = element.scrollHeight;
+      if (!atBottom.current) return;
+      element.scrollTop = element.scrollHeight;
+      followed.current = element.scrollTop;
     };
     const observer = new ResizeObserver(follow);
     observer.observe(inner);
@@ -55,8 +62,10 @@ export function useStickToBottom(scroller: RefObject<HTMLElement | null>, conten
   useLayoutEffect(() => {
     const element = scroller.current;
     if (!element) return;
-    if (atBottom.current) element.scrollTop = element.scrollHeight;
-    else setBehind(true);
+    if (atBottom.current) {
+      element.scrollTop = element.scrollHeight;
+      followed.current = element.scrollTop;
+    } else setBehind(true);
   }, [scroller, signature]);
 
   // A task page is read from its top; the conversation itself returns to its end.

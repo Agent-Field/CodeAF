@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm';
 import { Icon } from './Icon';
 import { CodeText } from './Typography';
 import { CopyButton } from './CopyButton';
+import { useMoreToRight } from './useMoreToRight';
 import type { ReactElement, ReactNode } from 'react';
 import '../../styles/markdown.css';
 
@@ -45,6 +46,11 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   <pre>{children}</pre>
  </div>;
 }
+/** Tables keep real table semantics and a named keyboard-scrollable viewport; the right edge fades only while more lies that way. */
+function Table({ children }: { children?: ReactNode }) {
+ const { ref, more, measure } = useMoreToRight();
+ return <div ref={ref} className="markdown-table-scroll" role="region" aria-label="Response table" tabIndex={0} data-more={more} onScroll={measure}><table>{children}</table></div>;
+}
 export function Markdown({ children, className = '', onOpenLink, renderLink, renderInlineCode, renderImage }: MarkdownProps) {
  const resolvesLocal = !!(renderLink || renderImage);
  const transform = (value: string) => safeMarkdownUrl(value) || (resolvesLocal ? localReference(value) : '');
@@ -57,8 +63,7 @@ export function Markdown({ children, className = '', onOpenLink, renderLink, ren
    const hooked = inline && renderInlineCode ? renderInlineCode(text) : undefined;
    return hooked !== undefined ? <>{hooked}</> : <CodeText className={className}>{children}</CodeText>;
   },
-  // Tables keep real table semantics and a named keyboard-scrollable viewport.
-  table: ({ children }) => <div className="markdown-table-scroll" role="region" aria-label="Response table" tabIndex={0}><table>{children}</table></div>,
+  table: ({ children }) => <Table>{children}</Table>,
   // GFM checklist marks describe output; they never act as approval controls.
   input: ({ checked }) => <span className="markdown-task-check" role="img" aria-label={checked ? 'Completed item' : 'Incomplete item'} data-checked={!!checked}>{checked && <Icon name="check" size="xs"/>}</span>,
   th: ({ children, style }) => <th scope="col" data-align={style?.textAlign}>{children}</th>,

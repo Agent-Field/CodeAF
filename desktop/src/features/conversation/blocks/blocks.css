@@ -24,9 +24,13 @@
 /* Attachments sit above the words inside the bubble. */
 .attachments { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-2); }
 .attachments:last-child { margin-bottom: 0; }
-.attachments-pictures { display: grid; grid-template-columns: repeat(auto-fill, var(--thumb-size)); gap: var(--space-2); justify-content: end; }
-.attachments-thumb { width: var(--thumb-size); height: var(--thumb-size); overflow: hidden; border-radius: var(--radius-md); }
-.attachments-files { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1); }
+/* Thumbnails and chips run from the left, 4px apart (design v3 §2.1). */
+.attachments-pictures { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.attachments-thumb { width: var(--thumb-size); height: var(--thumb-size); overflow: hidden; border-radius: var(--radius-figure); background: var(--field-2); }
+.attachments-files { display: flex; flex-wrap: wrap; gap: var(--space-1); padding-inline: var(--space-half); }
+/* A chip inside the bubble sits on surface, since the bubble is already field-toned. */
+.attachments-files .chip { background: var(--surface); }
+.attachments-files .chip-button:hover:not(:disabled) { background: var(--field); }
 
 /* An attached picture fills its square thumbnail cell. */
 .attachments-thumb .figure-box { aspect-ratio: 1 / 1; min-height: 0; height: 100%; }

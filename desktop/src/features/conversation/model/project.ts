@@ -11,6 +11,7 @@ import { attachmentsOf } from './attachments.ts';
 import { placeDeliverables } from './deliverables.ts';
 import { asRich, questionsOf, type RichEntry } from './entry.ts';
 import { receiptOutcomes } from './outcomes.ts';
+import { decisionsOf } from './decisions.ts';
 import { addReceipts, type ReceiptPlaces } from './receipts.ts';
 import { finishStep, lastUnansweredCall, newBatch, summarize, toolStep, type Batch, type StepCtx } from './steps.ts';
 import { asideItem } from './tasks.ts';
@@ -150,7 +151,7 @@ function finishTurn(acc: Acc, index: number): TurnV2 {
 
 function stepContext(snapshot: EngineSnapshot, entries: RichEntry[]): StepCtx {
   const waiting = new Set(questionsOf(snapshot).flatMap((q) => (q.subject?.callId ? [q.subject.callId] : [])));
-  return { sessionFile: snapshot.sessionFile, running: snapshot.running, lastUnanswered: lastUnansweredCall(entries), waiting };
+  return { sessionFile: snapshot.sessionFile, running: snapshot.running, lastUnanswered: lastUnansweredCall(entries), waiting, decisions: decisionsOf(snapshot) };
 }
 
 /** `places` remembers where each question's receipt was drawn, so its outcome lands there too. */

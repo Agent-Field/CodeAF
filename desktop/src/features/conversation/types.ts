@@ -17,6 +17,7 @@ export type ToolStep = {
   entryIndex?: number; // record position; lets the live overlay tell a call is already recorded
   tookMs?: number; // the engine's Took for this call; absent when unknown
   startedAt?: number; // epoch ms the call began, live only; lets a row show elapsed time
+  decision?: string; // what the person decided about this call, in the past tense: "allowed once"; absent when nothing was asked
 };
 
 /** How an engine note is drawn: a compaction marker or a retry in flight; absent is a plain session note. */

@@ -55,8 +55,8 @@ function timeOf(call: ToolStep, state: RowState, now?: number): string | undefin
 const words: Partial<Record<RowState, string>> = { waiting: 'waiting on you', failed: 'Failed', stopped: 'Stopped', refused: 'refused' };
 
 /** The trailing column: a word where the state needs one, then the time. A done call is only its time. */
-function Status({ state, time }: { state: RowState; time?: string }) {
-  const word = words[state];
+function Status({ state, time, decision }: { state: RowState; time?: string; decision?: string }) {
+  const word = words[state] ?? (state === 'done' ? decision : undefined);
   const shown = state === 'waiting' || state === 'refused' || state === 'stopped' ? undefined : time;
   if (!word && !shown) return null;
   return (
@@ -84,7 +84,7 @@ export function ToolCallRow({ call, open, onToggle, phase, now, ...render }: Pro
           <TargetView target={target} call={call} stat={stat} render={render} state={state} />
           {call.tool !== 'bash' && <StatText stat={stat} />}
         </span>
-        <Status state={state} time={time} />
+        <Status state={state} time={time} decision={call.decision} />
       </div>
       {open && state !== 'forming' && <CallDetail call={call} {...render} />}
     </div>

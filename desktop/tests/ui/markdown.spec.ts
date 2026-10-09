@@ -31,7 +31,7 @@ test('assistant Markdown renders GFM structure with the shared typography and th
  await expect(prose.getByRole('link', { name: 'Source' })).toHaveAttribute('rel', 'noopener noreferrer');
  for (const theme of ['light', 'dark']) {
   await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
-  const styles = await prose.locator('.markdown').evaluate(el => ({ color: getComputedStyle(el).color, expected: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--text)'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(), family: getComputedStyle(el).fontFamily, rootFamily: getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim() }));
+  const styles = await prose.locator('.markdown').evaluate(el => ({ color: getComputedStyle(el).color, expected: (() => { const probe = document.createElement('span'); probe.style.color = 'var(--ink)'; document.body.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; })(), family: getComputedStyle(el).fontFamily, rootFamily: getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim() }));
   expect(styles.color).toBe(styles.expected); expect(styles.family).toContain('system-ui');
  }
  await expectAccessible(page); await expectNoUnstyledControls(page);
@@ -68,10 +68,10 @@ test('partial streaming Markdown and long content fit a narrow document', async 
 
 test('document headings and explicit code use semantic hierarchy and centralized type tokens', async ({ page }) => {
  const prose = await render(page, '# Objective\n\nReadable prose with `src/main.ts`.\n\n## Workstream\n\n### Task\n\n```sh\nnpm run check\n```');
- const tokens = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return Object.fromEntries(['font-size-prose', 'font-size-code', 'font-size-document-h1', 'font-size-document-h2', 'font-size-document-h3'].map(name => [name, style.getPropertyValue(`--${name}`).trim()])); });
+ const tokens = await page.evaluate(() => { const style = getComputedStyle(document.documentElement); return Object.fromEntries(['font-size-prose', 'font-size-code', 'type-h1-size', 'type-h2-size', 'type-h3-size'].map(name => [name, style.getPropertyValue(`--${name}`).trim()])); });
  for (const [level, title] of [[1, 'Objective'], [2, 'Workstream'], [3, 'Task']] as const) {
   const heading = prose.getByRole('heading', { level, name: title, exact: true });
-  await expect(heading).toBeVisible(); await expect(heading).toHaveCSS('font-size', tokens[`font-size-document-h${level}`]);
+  await expect(heading).toBeVisible(); await expect(heading).toHaveCSS('font-size', tokens[`type-h${level}-size`]);
  }
  await expect(prose.locator('.markdown > p')).toHaveCSS('font-size', tokens['font-size-prose']);
  for (const code of await prose.locator('code').all()) {

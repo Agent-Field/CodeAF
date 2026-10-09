@@ -19,8 +19,8 @@ export function StepLead({ state }: { state: RowState }) {
 }
 
 /** Right edge of a step: the words that need saying, then the duration. Failed reads "failed · 4.1s" as one phrase. */
-export function StepTail({ state, time }: { state: RowState; time?: string }) {
-  const word = words[state];
+export function StepTail({ state, time, decision }: { state: RowState; time?: string; decision?: string }) {
+  const word = words[state] ?? (state === 'done' ? decision : undefined);
   const failed = state === 'failed';
   return (
     <span className="work-step-tail" data-state={state}>

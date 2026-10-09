@@ -11,6 +11,7 @@ export type StepCtx = {
   running: boolean;
   lastUnanswered: number; // record index of the last call still awaiting its result
   waiting: ReadonlySet<string>; // CallIDs a question is waiting on
+  decisions: ReadonlyMap<string, string>; // CallID -> the person's decision in the past tense
 };
 
 /** The calls that follow one assistant entry, with what the anchor said. */
@@ -41,6 +42,11 @@ function tookOf(entry: RichEntry): number | undefined {
   return ms > 0 ? ms : undefined;
 }
 
+function decisionOf(entry: RichEntry, ctx: StepCtx): Pick<ToolStep, 'decision'> {
+  const decision = entry.CallID ? ctx.decisions.get(entry.CallID) : undefined;
+  return decision ? { decision } : {};
+}
+
 export function toolStep(entry: RichEntry, index: number, ctx: StepCtx): ToolStep {
   const { output, covered } = withoutHandoff(entry.Output ?? '');
   return {
@@ -54,6 +60,7 @@ export function toolStep(entry: RichEntry, index: number, ctx: StepCtx): ToolSte
     state: callState(entry, index, ctx),
     entryIndex: index,
     tookMs: tookOf(entry),
+    ...decisionOf(entry, ctx),
   };
 }
 
