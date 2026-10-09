@@ -7,6 +7,19 @@ import type { Pane, Split, SplitLayout, SplitRatios, Tab, TabGroup, TitleSource,
 export let createId: () => string = () => crypto.randomUUID();
 export const setIdSource = (source: () => string) => { createId = source; };
 
+/**
+ * Runs `run` with createId answering `ids` in order (then fresh ids), and reports every id handed out. An action that
+ * carries the ids its reducer minted (`mint`) therefore produces the same tab set every time it is applied: by the
+ * window that recorded it, by an Undo that predicted it, and by a replay over another window's tab set.
+ */
+export function mintWith<T>(ids: readonly string[] | undefined, run: () => T): { result: T; ids: string[] } {
+  const fresh = createId;
+  const used: string[] = [];
+  let at = 0;
+  setIdSource(() => { const id = ids && at < ids.length ? ids[at++] : fresh(); used.push(id); return id; });
+  try { return { result: run(), ids: used }; } finally { setIdSource(fresh); }
+}
+
 export const newConversationTitle = 'New conversation';
 export const newTabTitle = 'New tab';
 
