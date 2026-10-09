@@ -4,7 +4,28 @@
 
 export type TabRoute = { taskId?: string; back: string[]; forward: string[] };
 
+/**
+ * What a non-conversation pane points at: a web page's address, and for the
+ * preview lane an optional picture of it. Only the address is persisted by the
+ * web lane; a picture stays in memory (see features/web/shots.ts).
+ */
+export type PaneTarget = { url: string; shot?: string };
+
+const TARGET_URL_MAX = 4096;
+const TARGET_SHOT_MAX = 262144;
+
+/** A target survives only as an http(s) address of bounded length; a shot only as a small PNG or JPEG data URL. */
+export function cleanTarget(value: unknown): PaneTarget | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const { url, shot } = value as { url?: unknown; shot?: unknown };
+  if (typeof url !== 'string' || url.length > TARGET_URL_MAX || !/^https?:\/\/[^\s]+$/i.test(url)) return undefined;
+  const keepShot = typeof shot === 'string' && shot.length <= TARGET_SHOT_MAX && /^data:image\/(png|jpeg);base64,[a-z0-9+/=]+$/i.test(shot);
+  return keepShot ? { url, shot } : { url };
+}
+
 export type TabView = {
+  /** Web and preview panes: the page this pane shows. */
+  target?: PaneTarget;
   sessionFile?: string;
   route?: TabRoute;
   folded?: Record<string, boolean>;
@@ -45,6 +66,8 @@ function isRoute(value: unknown): value is TabRoute {
 /** Keeps only the view fields that validate. */
 export function cleanView(value: Record<string, unknown>): TabView {
   const view: TabView = {};
+  const target = cleanTarget(value.target);
+  if (target) view.target = target;
   if (typeof value.sessionFile === 'string' && value.sessionFile) view.sessionFile = value.sessionFile;
   if (isRoute(value.route)) view.route = value.route;
   if (isFlagMap(value.folded)) view.folded = value.folded;
